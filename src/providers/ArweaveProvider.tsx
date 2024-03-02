@@ -37,7 +37,7 @@ const DEFAULT_CONTEXT = {
 	handleDisconnect() {},
 	walletModalVisible: false,
 	setWalletModalVisible(_open: boolean) {},
-	profile: null
+	profile: null,
 };
 
 const ARContext = React.createContext<ArweaveContextState>(DEFAULT_CONTEXT);
@@ -149,7 +149,7 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 
 	// TODO: othent
 	async function handleOthent() {
-		console.log('Othent')
+		console.log('Othent');
 		// Othent.init();
 		// await window.arweaveWallet.connect();
 		// setWallet(window.arweaveWallet);

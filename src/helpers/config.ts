@@ -64,7 +64,7 @@ function createURLs() {
 		base: base,
 		collections: `${base}collections/`,
 		docs: `${base}docs/`,
-		profile: `${base}profile`
+		profile: `${base}profile`,
 	};
 }
 

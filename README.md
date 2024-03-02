@@ -1,1 +1,1 @@
-#### BazAR built on the AO UCM implementation
+#### Bazar built on AO UCM

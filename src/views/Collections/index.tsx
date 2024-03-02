@@ -1,3 +1,3 @@
 export default function Collections() {
-    return <p></p>
+	return <p></p>;
 }

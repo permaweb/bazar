@@ -65,7 +65,7 @@ export const NTitleMobile = styled.button<{ open: boolean }>`
 		height: 12.5px;
 		width: 12.5px;
 		margin: 3.5px 0 0 0;
-		transform: rotate(${(props) => props.open ? '90deg' : '270deg'});
+		transform: rotate(${(props) => (props.open ? '90deg' : '270deg')});
 		fill: ${(props) => props.theme.colors.font.primary};
 	}
 `;
@@ -90,8 +90,7 @@ export const NListItem = styled.li<{ disabled: boolean; active: boolean }>`
 	align-items: center;
 	cursor: pointer;
 	font-size: ${(props) => props.theme.typography.size.small};
-	color: ${(props) =>
-		props.active ? props.theme.colors.font.alt5 : props.theme.colors.font.primary};
+	color: ${(props) => (props.active ? props.theme.colors.font.alt5 : props.theme.colors.font.primary)};
 	font-weight: ${(props) => props.theme.typography.weight.bold};
 	margin: 0 0 7.5px 0;
 	line-height: 1.75;
@@ -100,8 +99,7 @@ export const NListItem = styled.li<{ disabled: boolean; active: boolean }>`
 	background: transparent;
 
 	&:hover {
-		color: ${(props) =>
-			props.active ? props.theme.colors.font.alt5 : props.theme.colors.font.alt1};
+		color: ${(props) => (props.active ? props.theme.colors.font.alt5 : props.theme.colors.font.alt1)};
 	}
 `;
 

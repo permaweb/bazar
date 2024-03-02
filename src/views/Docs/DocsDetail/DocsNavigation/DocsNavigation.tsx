@@ -72,9 +72,7 @@ export default function DocsNavigation() {
 						<p>
 							{APP.name} {language.learn}
 						</p>
-						{!desktop && (
-							<ReactSVG src={ASSETS.arrow} />
-						)}
+						{!desktop && <ReactSVG src={ASSETS.arrow} />}
 					</Title>
 					<S.NList>{open && renderNavItems(desktop ? null : () => setOpen(false))}</S.NList>
 				</S.NContent>

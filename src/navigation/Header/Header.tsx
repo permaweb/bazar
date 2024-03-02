@@ -27,7 +27,11 @@ export default function Header() {
 				<S.ActionsWrapper>
 					<S.NavWrapper>
 						{paths.map((element: { path: string; label: string }, index: number) => {
-							return <Link key={index} to={element.path}>{element.label}</Link>;
+							return (
+								<Link key={index} to={element.path}>
+									{element.label}
+								</Link>
+							);
 						})}
 					</S.NavWrapper>
 					<WalletConnect />

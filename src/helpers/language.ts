@@ -11,6 +11,6 @@ export const language = {
 		pageNotFound: `Page not found`,
 		useDarkMode: `Use dark mode`,
 		useLightMode: `Use light mode`,
-		viewProfile: `View profile`
+		viewProfile: `View profile`,
 	},
 };

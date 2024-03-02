@@ -1,5 +1,5 @@
-import { DocTemplate } from './DocTemplate';
 import { DocsNavigation } from './DocsNavigation';
+import { DocTemplate } from './DocTemplate';
 import * as S from './styles';
 
 export default function DocsDetail() {
