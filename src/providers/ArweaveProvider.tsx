@@ -1,11 +1,12 @@
 import React from 'react';
 
-// import { Othent } from 'permaweb-sdk/dist/helpers/wallet';
-// import { getCurrentProfile } from 'gql';
+import { getCurrentProfile } from 'gql';
+
 import { Modal } from 'components/molecules/Modal';
-import { APP, AR_WALLETS, ASSETS, GATEWAYS, WALLET_PERMISSIONS } from 'helpers/config';
+import { AR_WALLETS, WALLET_PERMISSIONS } from 'helpers/config';
 import { getARBalanceEndpoint } from 'helpers/endpoints';
 import { ProfileType, WalletEnum } from 'helpers/types';
+import Othent from 'helpers/wallet';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 
 import * as S from './styles';
@@ -96,18 +97,17 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 		})();
 	}, [walletAddress]);
 
-	// TODO: profile
-	// React.useEffect(() => {
-	// 	(async function () {
-	// 		if (wallet && walletAddress) {
-	// 			try {
-	// 				setProfile(await getCurrentProfile({ address: walletAddress }));
-	// 			} catch (e: any) {
-	// 				console.error(e);
-	// 			}
-	// 		}
-	// 	})();
-	// }, [wallet, walletAddress, walletType]);
+	React.useEffect(() => {
+		(async function () {
+			if (wallet && walletAddress) {
+				try {
+					setProfile(await getCurrentProfile({ address: walletAddress }));
+				} catch (e: any) {
+					console.error(e);
+				}
+			}
+		})();
+	}, [wallet, walletAddress, walletType]);
 
 	async function handleConnect(walletType: WalletEnum.arConnect | WalletEnum.othent) {
 		let walletObj: any = null;
@@ -147,15 +147,13 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 		}
 	}
 
-	// TODO: othent
 	async function handleOthent() {
-		console.log('Othent');
-		// Othent.init();
-		// await window.arweaveWallet.connect();
-		// setWallet(window.arweaveWallet);
-		// setWalletAddress(Othent.getUserInfo().walletAddress);
-		// setWalletType(WalletEnum.othent);
-		// localStorage.setItem('walletType', WalletEnum.othent);
+		Othent.init();
+		await window.arweaveWallet.connect();
+		setWallet(window.arweaveWallet);
+		setWalletAddress(Othent.getUserInfo().walletAddress);
+		setWalletType(WalletEnum.othent);
+		localStorage.setItem('walletType', WalletEnum.othent);
 	}
 
 	async function handleDisconnect() {

@@ -6,6 +6,7 @@ import { URLS } from 'helpers/config';
 
 const Landing = getLazyImport('Landing');
 const Collections = getLazyImport('Collections');
+const Profile = getLazyImport('Profile');
 const Docs = getLazyImport('Docs');
 const NotFound = getLazyImport('NotFound');
 
@@ -15,8 +16,12 @@ export default function _Routes() {
 			<Routes>
 				<Route path={URLS.base} element={<Landing />} />
 				<Route path={URLS.collections} element={<Collections />} />
+				<Route path={URLS.profile} element={<Profile />} />
+				<Route path={`${URLS.profile}:address`} element={<Profile />} />
+				<Route path={`${URLS.profile}:address/:active`} element={<Profile />} />
 				<Route path={URLS.docs} element={<Docs />} />
 				<Route path={`${URLS.docs}:active/*`} element={<Docs />} />
+				<Route path={URLS.notFound} element={<NotFound />} />
 				<Route path={'*'} element={<NotFound />} />
 			</Routes>
 		</Suspense>

@@ -1,5 +1,7 @@
 export const language = {
 	en: {
+		activity: `Activity`,
+		assets: `Assets`,
 		close: `Close`,
 		collections: `Collections`,
 		connect: `Connect`,
@@ -8,6 +10,7 @@ export const language = {
 		disconnect: `Disconnect`,
 		fetching: `Fetching`,
 		learn: `Learn`,
+		listings: `Listings`,
 		pageNotFound: `Page not found`,
 		useDarkMode: `Use dark mode`,
 		useLightMode: `Use light mode`,

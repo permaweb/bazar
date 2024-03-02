@@ -11,7 +11,6 @@ export const BodyWrapper = styled.div`
 	width: 100%;
 	display: flex;
 	position: relative;
-	margin: 20px 0 0 0;
 	@media (max-width: ${STYLING.cutoffs.initial}) {
 		flex-direction: column;
 	}

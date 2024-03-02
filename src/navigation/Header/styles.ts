@@ -2,7 +2,7 @@ import styled from 'styled-components';
 
 import { STYLING } from 'helpers/config';
 
-export const Wrapper = styled.div`
+export const Wrapper = styled.header`
 	height: ${STYLING.dimensions.nav.height};
 	width: 100%;
 	position: sticky;
@@ -54,8 +54,8 @@ export const NavWrapper = styled.div`
 	}
 	a {
 		color: ${(props) => props.theme.colors.font.primary};
-		font-family: ${(props) => props.theme.typography.family.alt1};
-		font-size: ${(props) => props.theme.typography.size.base};
+		font-family: ${(props) => props.theme.typography.family.primary};
+		font-size: ${(props) => props.theme.typography.size.small};
 		font-weight: ${(props) => props.theme.typography.weight.bold};
 	}
 `;

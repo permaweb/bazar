@@ -246,6 +246,13 @@ export const theme = (currentTheme: any): DefaultTheme => ({
 			primary: currentTheme.semiTransparent5,
 			alt1: currentTheme.neutralA1,
 		},
+		tabs: {
+			color: currentTheme.neutralA4,
+			active: {
+				background: currentTheme.primary2,
+				color: currentTheme.neutralA1,
+			},
+		},
 		view: {
 			background: currentTheme.neutral1,
 		},

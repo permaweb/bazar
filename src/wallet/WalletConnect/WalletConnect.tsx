@@ -1,9 +1,10 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
+import { ReactSVG } from 'react-svg';
 
 import { Avatar } from 'components/atoms/Avatar';
-import { URLS } from 'helpers/config';
-import { formatAddress } from 'helpers/utils';
+import { ASSETS, URLS } from 'helpers/config';
+import { formatAddress, formatARAmount } from 'helpers/utils';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useCustomThemeProvider } from 'providers/CustomThemeProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
@@ -11,6 +12,7 @@ import { CloseHandler } from 'wrappers/CloseHandler';
 
 import * as S from './styles';
 
+// TODO: balances
 export default function WalletConnect(_props: { callback?: () => void }) {
 	const navigate = useNavigate();
 
@@ -56,7 +58,7 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 	}
 
 	function handleViewProfile() {
-		navigate(URLS.profile);
+		navigate(`${URLS.profile}${arProvider.walletAddress}`);
 		setShowWalletDropdown(false);
 	}
 
@@ -98,7 +100,7 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 						<Avatar owner={arProvider.profile} dimensions={{ wrapper: 35, icon: 21.5 }} callback={handlePress} />
 					</S.PWrapper>
 					{showWalletDropdown && (
-						<S.Dropdown className={'border-wrapper-primary'}>
+						<S.Dropdown className={'border-wrapper-alt2 scroll-wrapper'}>
 							<S.DHeaderWrapper>
 								<S.DHeaderFlex>
 									<Avatar
@@ -112,6 +114,25 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 									</S.DHeader>
 								</S.DHeaderFlex>
 							</S.DHeaderWrapper>
+							<S.DBodyWrapper>
+								<S.DBodyHeader>
+									<span>Balances</span>
+								</S.DBodyHeader>
+								<S.BalanceLine>
+									<ReactSVG src={ASSETS.ar} />
+									<p>
+										{formatARAmount(arProvider.availableBalance ? arProvider.availableBalance : 0)} <span>AR</span>
+									</p>
+								</S.BalanceLine>
+								{/* <S.BalanceLine>
+									<ReactSVG src={ASSETS.u} />
+									<p>5.67 <span>U</span></p>
+								</S.BalanceLine>
+								<S.BalanceLine>
+									<ReactSVG src={ASSETS.pixl} className={'pixl-icon'} />
+									<p>3.01 <span>PIXL</span></p>
+								</S.BalanceLine> */}
+							</S.DBodyWrapper>
 							<S.DBodyWrapper>
 								<li onClick={handleViewProfile}>{language.viewProfile}</li>
 								<li onClick={copyAddress}>{copied ? `${language.copied}!` : language.copyAddress}</li>

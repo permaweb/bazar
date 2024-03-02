@@ -228,7 +228,8 @@ export const AppWrapper = styled.div`
 	position: relative;
 `;
 
-export const View = styled.div`
+export const View = styled.main`
 	min-height: calc(100vh - ${STYLING.dimensions.nav.height});
 	width: 100%;
+	padding: 40px 20px 20px 20px;
 `;

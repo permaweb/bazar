@@ -1,4 +1,5 @@
 import { DOM } from 'helpers/config';
+import { Footer } from 'navigation/footer';
 import { Header } from 'navigation/Header';
 import { Routes } from 'routes';
 
@@ -12,9 +13,10 @@ export default function App() {
 			<div id={DOM.overlay} />
 			<S.AppWrapper>
 				<Header />
-				<S.View>
+				<S.View className={'max-view-wrapper'}>
 					<Routes />
 				</S.View>
+				<Footer />
 			</S.AppWrapper>
 		</>
 	);

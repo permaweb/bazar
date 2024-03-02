@@ -19,7 +19,7 @@ export const LAction = styled.button`
 	span {
 		color: ${(props) => props.theme.colors.font.primary};
 		font-family: ${(props) => props.theme.typography.family.alt1};
-		font-size: ${(props) => props.theme.typography.size.base};
+		font-size: ${(props) => props.theme.typography.size.small};
 		font-weight: ${(props) => props.theme.typography.weight.bold};
 		display: block;
 		margin: 0 15px 0 0;
@@ -45,9 +45,10 @@ export const FlexAction = styled.div`
 `;
 
 export const Dropdown = styled.ul`
+	max-height: 75vh;
 	width: 325px;
 	max-width: 90vw;
-	padding: 20px 0 10px 0;
+	padding: 15px 0 10px 0;
 	position: absolute;
 	top: 45px;
 	right: 0px;
@@ -56,6 +57,8 @@ export const Dropdown = styled.ul`
 
 export const DHeaderWrapper = styled.div`
 	width: 100%;
+	padding: 0 0 15px 0;
+	border-bottom: 1px solid ${(props) => props.theme.colors.border.primary};
 `;
 
 export const DHeaderFlex = styled.div`
@@ -96,16 +99,17 @@ export const DHeader = styled.div`
 export const DBodyWrapper = styled.ul`
 	width: 100%;
 	padding: 10px 0;
+	border-bottom: 1px solid ${(props) => props.theme.colors.border.primary};
 	li {
 		text-align: center;
-		height: 37.5px;
+		height: 40px;
 		display: flex;
 		align-items: center;
 		cursor: pointer;
-		font-size: ${(props) => props.theme.typography.size.small};
-		font-family: ${(props) => props.theme.typography.family.primary};
-		font-weight: ${(props) => props.theme.typography.weight.bold};
 		color: ${(props) => props.theme.colors.font.primary};
+		font-family: ${(props) => props.theme.typography.family.primary};
+		font-size: ${(props) => props.theme.typography.size.small};
+		font-weight: ${(props) => props.theme.typography.weight.bold};
 		border: 1px solid transparent;
 		padding: 0 15px;
 		transition: all 75ms;
@@ -115,8 +119,49 @@ export const DBodyWrapper = styled.ul`
 	}
 `;
 
+export const DBodyHeader = styled.div`
+	margin: 0 0 2.5px 0;
+	padding: 0 15px;
+	span {
+		color: ${(props) => props.theme.colors.font.primary};
+		font-family: ${(props) => props.theme.typography.family.primary};
+		font-size: ${(props) => props.theme.typography.size.base};
+		font-weight: ${(props) => props.theme.typography.weight.bold};
+	}
+`;
+
+export const BalanceLine = styled.div`
+	height: 40px;
+	padding: 0 15px;
+	display: flex;
+	align-items: center;
+	p,
+	span {
+		font-size: ${(props) => props.theme.typography.size.small};
+		font-weight: ${(props) => props.theme.typography.weight.bold};
+	}
+	p {
+		color: ${(props) => props.theme.colors.font.primary};
+		font-family: ${(props) => props.theme.typography.family.alt1};
+	}
+	span {
+		color: ${(props) => props.theme.colors.font.alt1};
+		font-family: ${(props) => props.theme.typography.family.primary};
+	}
+	svg {
+		height: 17.5px;
+		width: 17.5px;
+		margin: 7.5px 7.5px 0 0;
+		fill: ${(props) => props.theme.colors.icon.alt2.fill};
+	}
+	.pixl-icon {
+		svg {
+			fill: ${(props) => props.theme.colors.font.light1};
+		}
+	}
+`;
+
 export const DFooterWrapper = styled(DBodyWrapper)`
 	padding: 10px 0 0 0;
-	border-top: 1px solid ${(props) => props.theme.colors.border.primary};
 	border-bottom: none;
 `;

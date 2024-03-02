@@ -4,10 +4,11 @@ import { fadeIn2, open } from 'helpers/animations';
 import { STYLING } from 'helpers/config';
 
 export const NWrapper = styled.div`
-	height: fit-content;
+	height: calc(100vh - 40px);
 	width: 300px;
 	animation: ${open} ${fadeIn2};
 	@media (max-width: ${STYLING.cutoffs.initial}) {
+		height: auto;
 		width: 100%;
 		position: absolute;
 	}
@@ -16,10 +17,14 @@ export const NWrapper = styled.div`
 export const NContent = styled.div`
 	max-height: calc(100vh - 160px);
 	width: 100%;
+	position: sticky;
+	top: 105px;
 	overflow: auto;
 	margin: 10.5px 0 0 0;
 	padding: 15px 20px 0 20px;
 	@media (max-width: ${STYLING.cutoffs.initial}) {
+		position: relative;
+		top: auto;
 		padding: 0 15px;
 		max-height: none;
 	}
