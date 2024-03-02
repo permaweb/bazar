@@ -14,14 +14,14 @@ export const lightTheme = {
 	neutral7: '#FAFAFA',
 	neutral8: '#B1B1B1',
 	neutralA1: '#0A0A0A',
-	neutralA2: '#606060',
+	neutralA2: '#5F5F5F',
 	neutralA3: '#5C5C5C',
-	neutralA4: '#3A3A3A',
+	neutralA4: '#4D4D4D',
 	neutralA5: '#A4A4A4',
 	neutralA6: '#A9A9A9',
 	overlay1: 'rgb(130, 130, 130, .25)',
 	primary1: '#4CBD95',
-	primary2: '#379574',
+	primary2: '#0D9A68',
 	semiTransparent1: 'rgba(255, 255, 255, 0.575)',
 	semiTransparent2: 'rgba(0, 0, 0, 0.45)',
 	semiTransparent3: 'rgba(0, 0, 0, 0.65)',
@@ -38,8 +38,8 @@ export const darkTheme = {
 	labelAlt1: `#FFFFFF`,
 	negative1: '#DF4657',
 	negative2: '#EF6C82',
-	neutral1: '#12151A',
-	neutral2: '#1D1E22',
+	neutral1: '#0D0E10',
+	neutral2: '#171718',
 	neutral3: '#606060',
 	neutral4: '#5C5C5C',
 	neutral5: '#A4A4A4',
@@ -194,17 +194,17 @@ export const theme = (currentTheme: any): DefaultTheme => ({
 		icon: {
 			primary: {
 				fill: currentTheme.neutralA1,
-				active: currentTheme.neutral4,
+				active: currentTheme.neutral3,
 				disabled: currentTheme.neutralA3,
 			},
 			alt1: {
-				fill: currentTheme.neutral1,
+				fill: currentTheme.neutral2,
 				active: currentTheme.semiTransparent4,
 				disabled: currentTheme.neutral3,
 			},
 			alt2: {
 				fill: currentTheme.neutralA1,
-				active: currentTheme.neutral2,
+				active: currentTheme.neutralA4,
 				disabled: currentTheme.neutral3,
 			},
 			alt3: {
@@ -218,7 +218,7 @@ export const theme = (currentTheme: any): DefaultTheme => ({
 		},
 		link: {
 			color: currentTheme.neutralA1,
-			active: currentTheme.neutralA1,
+			active: currentTheme.neutralA4,
 		},
 		loader: {
 			primary: currentTheme.primary2,
@@ -259,7 +259,7 @@ export const theme = (currentTheme: any): DefaultTheme => ({
 	typography: {
 		family: {
 			primary: `'Inter', sans-serif`,
-			alt1: `'Space Grotesk', sans-serif`,
+			alt1: `'Quantico', sans-serif`,
 		},
 		size: {
 			xxxSmall: '12px',

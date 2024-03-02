@@ -1,5 +1,6 @@
 import { DOM } from 'helpers/config';
-import { Navigation } from 'navigation';
+import { Header } from 'navigation/Header';
+import { Routes } from 'routes';
 
 import * as S from './styles';
 
@@ -10,9 +11,9 @@ export default function App() {
 			<div id={DOM.notification} />
 			<div id={DOM.overlay} />
 			<S.AppWrapper>
-				<Navigation />
+				<Header />
 				<S.View>
-					<div>AO Bazar</div>
+					<Routes />
 				</S.View>
 			</S.AppWrapper>
 		</>

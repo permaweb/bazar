@@ -88,6 +88,10 @@ export const GlobalStyle = createGlobalStyle`
   h1, h2, h3, h4, h5, h6 {
     font-family: ${(props) => props.theme.typography.family.alt1};
   }
+
+  a, button {
+    transition: all 100ms;
+  }
   
   button {
     padding: 0;
@@ -100,6 +104,14 @@ export const GlobalStyle = createGlobalStyle`
 
     &:disabled {
       cursor: default;
+    }
+  }
+
+  a {
+    color: ${(props) => props.theme.colors.link.color};
+    text-decoration: none;
+    &:hover {
+      color: ${(props) => props.theme.colors.link.active};
     }
   }
 
@@ -131,16 +143,6 @@ export const GlobalStyle = createGlobalStyle`
     font-weight: ${(props) => props.theme.typography.weight.bold};
   }
 
-  a {
-    color: ${(props) => props.theme.colors.link.color};
-    text-decoration: none;
-    &:hover {
-      color: ${(props) => props.theme.colors.link.active};
-      text-decoration: underline;
-			text-decoration-thickness: 1.35px;
-    }
-  }
-
   .border-wrapper-primary {
     background: ${(props) => props.theme.colors.container.primary.background};
     box-shadow: 0 5px 15px 0 ${(props) => props.theme.colors.shadow.primary};
@@ -165,6 +167,7 @@ export const GlobalStyle = createGlobalStyle`
     width: 100%;
     max-width: ${STYLING.cutoffs.max};
     margin: 0 auto;
+    padding: 0 20px;
   }
 
   .info-text {
@@ -227,6 +230,5 @@ export const AppWrapper = styled.div`
 
 export const View = styled.div`
 	min-height: calc(100vh - ${STYLING.dimensions.nav.height});
-  min-height: 150vh;
 	width: 100%;
 `;

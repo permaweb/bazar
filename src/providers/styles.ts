@@ -22,6 +22,7 @@ export const WalletListItem = styled.button`
 	img {
 		width: 30px;
 		margin: 0 15px 0 0;
+		border-radius: 50%;
 	}
 	span {
 		color: ${(props) => props.theme.colors.font.primary};
