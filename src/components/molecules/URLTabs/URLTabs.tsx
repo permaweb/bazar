@@ -6,6 +6,7 @@ import NotFound from 'views/NotFound';
 import * as S from './styles';
 import { ICProps, ITProps, IUProps } from './types';
 
+// TODO: x overflow
 function Tab(props: ITProps) {
 	function handlePress(e: any) {
 		e.preventDefault();

@@ -23,6 +23,7 @@ module.exports = {
 								'^warp',
 								'^permaweb-orderbook',
 								'^permaweb-sdk',
+								'^@permaweb/aoconnect',
 								'^@permaweb/stampjs',
 								'^@?\\w',
 							],

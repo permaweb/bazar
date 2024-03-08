@@ -17,6 +17,7 @@
 	},
 	"dependencies": {
 		"@othent/kms": "^1.0.7",
+		"@permaweb/aoconnect": "^0.0.45",
 		"jwt-decode": "^4.0.0",
 		"react": "^18.2.0",
 		"react-dom": "^18.2.0",

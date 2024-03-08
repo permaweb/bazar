@@ -19,6 +19,7 @@ export const Tabs = styled.div`
 	display: flex;
 	align-items: center;
 	padding: 0 0 10px 0;
+	overflow-x: auto;
 	border-bottom: 1px solid ${(props) => props.theme.colors.border.primary};
 	> * {
 		&:not(:last-child) {
@@ -49,7 +50,7 @@ export const Tab = styled.div<{ active: boolean }>`
 		&:before {
 			content: '';
 			position: absolute;
-			bottom: -10.5px;
+			bottom: -10px;
 			height: 5px;
 			width: 100%;
 			background: ${(props) => props.theme.colors.tabs.active.background};
