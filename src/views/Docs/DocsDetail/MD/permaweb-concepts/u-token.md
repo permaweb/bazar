@@ -1,6 +1,6 @@
-# $U token
+# U token ($U)
 
-$U serves as the native currency of the Permaweb, providing a swift and efficient user experience while emphasizing permanence and verification. Within BazAR, $U is the primary currency used for exchanging atomic assets among users.
+$U serves as the native currency of the permaweb, providing a swift and efficient user experience while emphasizing permanence and verification. Within BazAR, $U is the primary currency used for exchanging atomic assets among users.
 
 How to get $U:
 
