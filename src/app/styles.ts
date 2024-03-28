@@ -30,7 +30,6 @@ export const GlobalStyle = createGlobalStyle`
   }
 
   body {
-    line-height: 1;
     background: ${(props) => props.theme.colors.view.background};
   }
 
@@ -87,6 +86,20 @@ export const GlobalStyle = createGlobalStyle`
 
   h1, h2, h3, h4, h5, h6 {
     font-family: ${(props) => props.theme.typography.family.alt1};
+		font-weight: ${(props) => props.theme.typography.weight.bold};
+    color: ${(props) => props.theme.colors.font.primary};
+  }
+
+	h1 {
+    font-size: ${(props) => props.theme.typography.size.h1};
+  }
+
+  h2 {
+    font-size: ${(props) => props.theme.typography.size.h2};
+  }
+
+  h4 {
+    font-size: ${(props) => props.theme.typography.size.h4};
   }
 
   a, button {
@@ -232,4 +245,59 @@ export const View = styled.main`
 	min-height: calc(100vh - ${STYLING.dimensions.nav.height});
 	width: 100%;
 	padding: 40px 20px 20px 20px;
+`;
+
+export const DrawerWrapper = styled.div`
+	width: 100%;
+	margin: 20px 0 0 0;
+`;
+
+export const DrawerContent = styled.div<{ transparent?: boolean }>`
+	width: 100%;
+	padding: ${(props) => (props.transparent ? `0` : `20px`)};
+	background: ${(props) =>
+		props.transparent ? props.theme.colors.transparent : props.theme.colors.container.alt2.background};
+	border-bottom-left-radius: ${(props) => (props.transparent ? `0` : STYLING.dimensions.radius.primary)};
+	border-bottom-right-radius: ${(props) => (props.transparent ? `0` : STYLING.dimensions.radius.primary)};
+	> * {
+		&:not(:last-child) {
+			margin: 0 0 15px 0;
+		}
+		&:last-child {
+			margin: 0;
+		}
+	}
+`;
+
+export const DrawerHeader = styled.p`
+	font-size: ${(props) => props.theme.typography.size.lg};
+	font-family: ${(props) => props.theme.typography.family.alt1};
+	font-weight: ${(props) => props.theme.typography.weight.bold};
+	color: ${(props) => props.theme.colors.font.primary.primary};
+	line-height: 1.75;
+	word-wrap: break-word;
+`;
+
+export const DrawerContentLine = styled.div`
+	width: 100%;
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	position: relative;
+`;
+
+export const DrawerContentHeader = styled.p`
+	font-size: ${(props) => props.theme.typography.size.base};
+	font-family: ${(props) => props.theme.typography.family.primary};
+	font-weight: ${(props) => props.theme.typography.weight.medium};
+	color: ${(props) => props.theme.colors.font.alt1};
+	word-wrap: break-word;
+`;
+
+export const DrawerContentDetail = styled.p`
+	font-size: ${(props) => props.theme.typography.size.base};
+	font-family: ${(props) => props.theme.typography.family.primary};
+	font-weight: ${(props) => props.theme.typography.weight.bold};
+	color: ${(props) => props.theme.colors.font.primary};
+	word-wrap: break-word;
 `;

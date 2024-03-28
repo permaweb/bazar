@@ -68,6 +68,11 @@ export const darkTheme = {
 export const theme = (currentTheme: any): DefaultTheme => ({
 	scheme: currentTheme.scheme,
 	colors: {
+		accordion: {
+			background: currentTheme.neutral1,
+			hover: currentTheme.neutral2,
+			color: currentTheme.neutralA1,
+		},
 		border: {
 			primary: currentTheme.neutral3,
 			alt1: currentTheme.primary1,
@@ -275,6 +280,9 @@ export const theme = (currentTheme: any): DefaultTheme => ({
 			small: '15px',
 			base: '16px',
 			lg: '18px',
+			h1: 'clamp(38px, 4.5vw, 62px)',
+			h2: 'clamp(32px, 3.75vw, 44px)',
+			h4: 'clamp(24px, 1.75vw, 32px)',
 		},
 		weight: {
 			medium: '500',

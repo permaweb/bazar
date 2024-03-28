@@ -1,6 +1,6 @@
 import React from 'react';
 
-import { getCurrentProfile } from 'gql';
+import { getCurrentProfile } from 'api';
 
 import { Modal } from 'components/molecules/Modal';
 import { AR_WALLETS, WALLET_PERMISSIONS } from 'helpers/config';

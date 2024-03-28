@@ -174,7 +174,6 @@ module.exports = {
 			arweave: path.resolve(__dirname, 'node_modules/arweave'),
 			assets: path.resolve(__dirname, 'src/assets/'),
 			components: path.resolve(__dirname, 'src/components/'),
-			gql: path.resolve(__dirname, 'src/gql/'),
 			helpers: path.resolve(__dirname, 'src/helpers/'),
 			hooks: path.resolve(__dirname, 'src/hooks/'),
 			navigation: path.resolve(__dirname, 'src/navigation/'),

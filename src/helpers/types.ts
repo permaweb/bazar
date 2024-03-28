@@ -56,6 +56,40 @@ export enum WalletEnum {
 	othent = 'othent',
 }
 
+export type AssetType = {
+	data: {
+		id: string;
+		creator: string;
+		title: string;
+		description: string | null;
+		dateCreated: number;
+		blockHeight: number;
+		renderWith: string | null;
+		thumbnail: string | null;
+		implementation: string | null;
+	};
+};
+
+export type AssetStateType = {
+	name: string | null;
+	ticker: string | null;
+	denomination: number | null;
+	balances: { [address: string]: string } | null;
+};
+
+export type AssetDetailType = AssetType & {
+	state: AssetStateType;
+};
+
+export type RenderType = 'renderer' | 'raw';
+export type ContentType = 'renderer' | any;
+
+export type AssetRenderType = {
+	url: string;
+	type: RenderType;
+	contentType: ContentType;
+};
+
 export type ProfileType = {
 	txId: string;
 	displayName: string | null;
@@ -69,3 +103,5 @@ export type ProfileType = {
 export type FullProfileType = ProfileType & {
 	bio: string;
 };
+
+export type DateType = 'iso' | 'epoch';

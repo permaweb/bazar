@@ -1,12 +1,17 @@
 import ar from 'assets/ar.svg';
 import arconnect from 'assets/arconnect-wallet-logo.png';
 import arrow from 'assets/arrow.svg';
+import audio from 'assets/audio.svg';
 import close from 'assets/close.svg';
+import html from 'assets/html.svg';
 import logo from 'assets/logo.svg';
 import othent from 'assets/othent.svg';
-import pixl from 'assets/pixl.svg';
-import u from 'assets/u.svg';
+import overview from 'assets/overview.svg';
+import provenance from 'assets/provenance.svg';
+import renderer from 'assets/renderer.svg';
+import unsupported from 'assets/unsupported.svg';
 import user from 'assets/user.svg';
+import video from 'assets/video.svg';
 import wallet from 'assets/wallet.svg';
 import x from 'assets/x.svg';
 
@@ -16,7 +21,24 @@ export const APP = {
 	name: 'Bazar',
 };
 
-export const ASSETS = { ar, arconnect, arrow, close, logo, othent, pixl, u, user, wallet, x };
+export const ASSETS = {
+	ar,
+	arconnect,
+	arrow,
+	audio,
+	close,
+	html,
+	logo,
+	othent,
+	overview,
+	provenance,
+	renderer,
+	unsupported,
+	user,
+	video,
+	wallet,
+	x,
+};
 
 export const AR_WALLETS = [
 	{ type: WalletEnum.arConnect, logo: ASSETS.arconnect },
@@ -36,6 +58,7 @@ export const GATEWAYS = {
 
 export const STYLING = {
 	cutoffs: {
+		desktop: '1200px',
 		initial: '1024px',
 		max: '1400px',
 		tablet: '840px',
@@ -66,10 +89,16 @@ export const TAGS = {
 		avatar: 'Avatar',
 		banner: 'Banner',
 		dateCreated: 'Date-Created',
+		description: 'Description',
 		displayName: 'Display-Name',
 		handle: 'Handle',
+		implements: 'Implements',
+		initialOwner: 'Initial-Owner',
 		profileIndex: 'Profile-Index',
 		protocolName: 'Protocol-Name',
+		renderWith: 'Render-With',
+		thumbnail: 'Thumbnail',
+		title: 'Title',
 	},
 	values: {
 		profileVersions: {
@@ -85,6 +114,7 @@ function createURLs() {
 	const profile = `${base}profile/`;
 	return {
 		base: base,
+		asset: `${base}asset/`,
 		collections: `${base}collections/`,
 		docs: `${base}docs/`,
 		profile: profile,
@@ -114,4 +144,5 @@ export const PAGINATORS = {
 
 export const REDIRECTS = {
 	x: `https://twitter.com/OurBazAR`,
+	viewblock: (tx: string) => `https://viewblock.io/arweave/tx/${tx}`,
 };

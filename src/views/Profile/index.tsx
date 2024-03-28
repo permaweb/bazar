@@ -1,13 +1,13 @@
 import React from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
-import { getFullProfile } from 'gql';
+import { getFullProfile } from 'api';
 
 import { Loader } from 'components/atoms/Loader';
 import { URLTabs } from 'components/molecules/URLTabs';
 import { URLS } from 'helpers/config';
 import { FullProfileType } from 'helpers/types';
-import { checkAddress } from 'helpers/utils';
+import { checkValidAddress } from 'helpers/utils';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 
 import { ProfileHeader } from './ProfileHeader';
@@ -28,7 +28,7 @@ export default function Profile() {
 
 	React.useEffect(() => {
 		(async function () {
-			if (address && checkAddress(address)) {
+			if (address && checkValidAddress(address)) {
 				try {
 					const fetchedProfile = await getFullProfile({ address: address });
 					setProfile(fetchedProfile);

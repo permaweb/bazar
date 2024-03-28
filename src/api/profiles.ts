@@ -1,4 +1,4 @@
-import { getGQLData } from 'gql';
+import { getGQLData } from 'api';
 
 import { AR_PROFILE, GATEWAYS, PAGINATORS, TAGS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';

@@ -1,3 +1,5 @@
+import { dryrun } from '@permaweb/aoconnect';
+
 import { CURSORS, GATEWAYS, PAGINATORS } from 'helpers/config';
 import {
 	AGQLResponseType,
@@ -174,4 +176,16 @@ async function getResponse(args: { gateway: string; query: string }): Promise<an
 	}
 }
 
+export async function readProcessState(processId: string): Promise<any> {
+	const messageResult = await dryrun({
+		process: processId,
+		tags: [{ name: 'Action', value: 'Info' }],
+	});
+
+	if (messageResult.Messages && messageResult.Messages.length && messageResult.Messages[0].Data) {
+		return JSON.parse(messageResult.Messages[0].Data);
+	}
+}
+
+export * from './assets';
 export * from './profiles';
