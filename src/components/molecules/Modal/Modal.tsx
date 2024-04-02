@@ -50,8 +50,8 @@ export default function Modal(props: IProps) {
 										handlePress={() => props.handleClose()}
 										active={false}
 										dimensions={{
-											wrapper: 35,
-											icon: 15,
+											wrapper: 32.5,
+											icon: 12.5,
 										}}
 									/>
 								</S.Close>

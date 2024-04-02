@@ -137,7 +137,7 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 								<li onClick={handleViewProfile}>{language.viewProfile}</li>
 								<li onClick={copyAddress}>{copied ? `${language.copied}!` : language.copyAddress}</li>
 								<li onClick={handleToggleTheme}>
-									{themeProvider.current === 'light' ? language.useDarkMode : language.useLightMode}
+									{themeProvider.current === 'light' ? language.useDarkDisplay : language.useLightDisplay}
 								</li>
 							</S.DBodyWrapper>
 							<S.DFooterWrapper>

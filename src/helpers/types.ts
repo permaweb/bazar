@@ -65,6 +65,7 @@ export type AssetType = {
 		dateCreated: number;
 		blockHeight: number;
 		renderWith: string | null;
+		license: string | null;
 		thumbnail: string | null;
 		implementation: string | null;
 	};
@@ -104,4 +105,14 @@ export type FullProfileType = ProfileType & {
 	bio: string;
 };
 
+export type OwnerType = {
+	address: string;
+	ownerPercentage: number;
+	profile: ProfileType | null;
+};
+
 export type DateType = 'iso' | 'epoch';
+
+export type TabType = 'primary' | 'alt1';
+
+export type AssetMarketActionOrderType = 'buy' | 'sell' | 'transfer';

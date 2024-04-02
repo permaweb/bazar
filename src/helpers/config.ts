@@ -1,14 +1,21 @@
+import activity from 'assets/activity.svg';
 import ar from 'assets/ar.svg';
 import arconnect from 'assets/arconnect-wallet-logo.png';
 import arrow from 'assets/arrow.svg';
 import audio from 'assets/audio.svg';
+import buy from 'assets/buy.svg';
 import close from 'assets/close.svg';
+import comments from 'assets/comments.svg';
 import html from 'assets/html.svg';
+import license from 'assets/license.svg';
 import logo from 'assets/logo.svg';
+import market from 'assets/market.svg';
 import othent from 'assets/othent.svg';
 import overview from 'assets/overview.svg';
 import provenance from 'assets/provenance.svg';
 import renderer from 'assets/renderer.svg';
+import sell from 'assets/sell.svg';
+import transfer from 'assets/transfer.svg';
 import unsupported from 'assets/unsupported.svg';
 import user from 'assets/user.svg';
 import video from 'assets/video.svg';
@@ -22,17 +29,24 @@ export const APP = {
 };
 
 export const ASSETS = {
+	activity,
 	ar,
 	arconnect,
 	arrow,
 	audio,
+	buy,
 	close,
+	comments,
 	html,
+	license,
 	logo,
+	market,
 	othent,
 	overview,
 	provenance,
 	renderer,
+	sell,
+	transfer,
 	unsupported,
 	user,
 	video,
@@ -94,6 +108,7 @@ export const TAGS = {
 		handle: 'Handle',
 		implements: 'Implements',
 		initialOwner: 'Initial-Owner',
+		license: 'License',
 		profileIndex: 'Profile-Index',
 		protocolName: 'Protocol-Name',
 		renderWith: 'Render-With',

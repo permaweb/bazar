@@ -43,7 +43,7 @@ export const NavWrapper = styled.div`
 	align-items: center;
 	margin: 0 20px 0 0;
 	padding: 0 20px 0 0;
-	border-right: 1px solid ${(props) => props.theme.colors.border.primary};
+	border-right: 1.5px solid ${(props) => props.theme.colors.border.primary};
 	> * {
 		&:not(:last-child) {
 			margin: 0 20px 0 0;

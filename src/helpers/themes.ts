@@ -20,8 +20,8 @@ export const lightTheme = {
 	neutralA5: '#A4A4A4',
 	neutralA6: '#A9A9A9',
 	overlay1: 'rgb(130, 130, 130, .25)',
-	primary1: '#4CBD95',
-	primary2: '#0D9A68',
+	primary1: '#FF3500',
+	primary2: '#E02D00',
 	semiTransparent1: 'rgba(255, 255, 255, 0.575)',
 	semiTransparent2: 'rgba(0, 0, 0, 0.45)',
 	semiTransparent3: 'rgba(0, 0, 0, 0.65)',
@@ -38,8 +38,8 @@ export const darkTheme = {
 	labelAlt1: `#FFFFFF`,
 	negative1: '#DF4657',
 	negative2: '#EF6C82',
-	neutral1: '#0D0E10',
-	neutral2: '#171718',
+	neutral1: '#131416',
+	neutral2: '#1C1E21',
 	neutral3: '#606060',
 	neutral4: '#5C5C5C',
 	neutral5: '#A4A4A4',
@@ -53,8 +53,8 @@ export const darkTheme = {
 	neutralA5: '#F7F7F7',
 	neutralA6: '#FAFAFA',
 	overlay1: 'rgba(0, 0, 0, 0.5)',
-	primary1: '#379574',
-	primary2: '#12D791',
+	primary1: '#FF3500',
+	primary2: '#E02D00',
 	semiTransparent1: 'rgba(0, 0, 0, 0.15)',
 	semiTransparent2: 'rgba(0, 0, 0, 0.45)',
 	semiTransparent3: 'rgba(0, 0, 0, 0.65)',
@@ -88,7 +88,7 @@ export const theme = (currentTheme: any): DefaultTheme => ({
 				active: {
 					background: currentTheme.accent1,
 					border: currentTheme.accent2,
-					color: currentTheme.neutralA1,
+					color: currentTheme.light1,
 				},
 				disabled: {
 					background: currentTheme.neutral3,
@@ -199,11 +199,11 @@ export const theme = (currentTheme: any): DefaultTheme => ({
 		icon: {
 			primary: {
 				fill: currentTheme.neutralA1,
-				active: currentTheme.neutral3,
+				active: currentTheme.neutral4,
 				disabled: currentTheme.neutralA3,
 			},
 			alt1: {
-				fill: currentTheme.neutral2,
+				fill: currentTheme.neutral4,
 				active: currentTheme.semiTransparent4,
 				disabled: currentTheme.neutral3,
 			},
@@ -254,7 +254,7 @@ export const theme = (currentTheme: any): DefaultTheme => ({
 		tabs: {
 			color: currentTheme.neutralA4,
 			active: {
-				background: currentTheme.primary2,
+				background: currentTheme.accent1,
 				color: currentTheme.neutralA1,
 			},
 		},

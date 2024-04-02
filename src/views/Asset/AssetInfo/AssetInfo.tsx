@@ -1,8 +1,9 @@
 import * as GS from 'app/styles';
 import { Drawer } from 'components/atoms/Drawer';
+import { TxAddress } from 'components/atoms/TxAddress';
 import { AssetData } from 'components/organisms/AssetData';
 import { ASSETS } from 'helpers/config';
-import { formatAddress, formatCount, formatDate } from 'helpers/utils';
+import { formatCount, formatDate } from 'helpers/utils';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 
 import * as S from './styles';
@@ -13,6 +14,19 @@ import { IProps } from './types';
 export default function AssetInfo(props: IProps) {
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
+
+	function getAssetLicense() {
+		if (props.asset && props.asset.data.license) {
+			return (
+				<>
+					<GS.DrawerContentLine>
+						<GS.DrawerContentHeader>{language.license}</GS.DrawerContentHeader>
+						<TxAddress address={props.asset.data.license} wrap={false} />
+					</GS.DrawerContentLine>
+				</>
+			);
+		} else return null;
+	}
 
 	return props.asset ? (
 		<S.Wrapper>
@@ -29,8 +43,7 @@ export default function AssetInfo(props: IProps) {
 							{props.asset.data.description && (
 								<GS.DrawerContentDetail>{props.asset.data.description}</GS.DrawerContentDetail>
 							)}
-							{/* <S.DCHeader>{props.asset.data.title}</S.DCHeader>
-							{creator && !sponsored && (
+							{/* {creator && !sponsored && (
 								<S.DCOwnerFlex>
 									<p>{language.createdBy}</p>
 									<OwnerInfo
@@ -80,7 +93,7 @@ export default function AssetInfo(props: IProps) {
 							)}
 							<GS.DrawerContentLine>
 								<GS.DrawerContentHeader>{language.transaction}</GS.DrawerContentHeader>
-								<GS.DrawerContentDetail>{formatAddress(props.asset.data.id, false)}</GS.DrawerContentDetail>
+								<TxAddress address={props.asset.data.id} wrap={false} />
 							</GS.DrawerContentLine>
 							{props.asset.data.implementation && (
 								<GS.DrawerContentLine>
@@ -92,6 +105,15 @@ export default function AssetInfo(props: IProps) {
 					}
 				/>
 			</GS.DrawerWrapper>
+			{props.asset.data.license && (
+				<GS.DrawerWrapper>
+					<Drawer
+						title={language.assetRights}
+						icon={ASSETS.license}
+						content={<GS.DrawerContent>{getAssetLicense()}</GS.DrawerContent>}
+					/>
+				</GS.DrawerWrapper>
+			)}
 		</S.Wrapper>
 	) : null;
 }

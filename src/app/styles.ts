@@ -183,6 +183,10 @@ export const GlobalStyle = createGlobalStyle`
     padding: 0 20px;
   }
 
+	.modal-wrapper {
+		padding: 0 20px 20px 20px !important;
+	}
+
   .info-text {
     padding: 0 4.25px;
     background: ${(props) => props.theme.colors.container.primary.background};
@@ -269,6 +273,15 @@ export const DrawerContent = styled.div<{ transparent?: boolean }>`
 	}
 `;
 
+export const DrawerHeaderWrapper = styled.div`
+	width: 100%;
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	border-bottom: 1px solid ${(props) => props.theme.colors.border.primary};
+	padding: 0 0 7.5px 0;
+`;
+
 export const DrawerHeader = styled.p`
 	font-size: ${(props) => props.theme.typography.size.lg};
 	font-family: ${(props) => props.theme.typography.family.alt1};
@@ -300,4 +313,8 @@ export const DrawerContentDetail = styled.p`
 	font-weight: ${(props) => props.theme.typography.weight.bold};
 	color: ${(props) => props.theme.colors.font.primary};
 	word-wrap: break-word;
+`;
+
+export const DrawerContentDetailAlt = styled(DrawerContentDetail)`
+	font-family: ${(props) => props.theme.typography.family.alt1};
 `;

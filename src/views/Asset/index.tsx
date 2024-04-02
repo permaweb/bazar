@@ -38,8 +38,6 @@ export default function Asset() {
 		})();
 	}, [id]);
 
-	console.log(asset);
-
 	function getData() {
 		if (asset) {
 			return (

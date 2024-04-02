@@ -45,7 +45,6 @@ function structureAssets(gqlData: AGQLResponseType): AssetType[] {
 	const structuredAssets: AssetType[] = [];
 
 	gqlData.data.forEach((element: GQLNodeResponseType) => {
-		console.log(element);
 		structuredAssets.push({
 			data: {
 				id: element.node.id,
@@ -61,6 +60,7 @@ function structureAssets(gqlData: AGQLResponseType): AssetType[] {
 					: 0,
 				blockHeight: element.node.block ? element.node.block.height : 0,
 				renderWith: getTagValue(element.node.tags, TAGS.keys.renderWith),
+				license: getTagValue(element.node.tags, TAGS.keys.license),
 				thumbnail: getTagValue(element.node.tags, TAGS.keys.thumbnail),
 				implementation: getTagValue(element.node.tags, TAGS.keys.implements),
 			},

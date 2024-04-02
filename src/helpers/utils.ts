@@ -1,4 +1,4 @@
-import { DateType } from './types';
+import { AssetDetailType, DateType, OwnerType, ProfileType } from './types';
 
 export function checkValidAddress(address: string | null) {
 	if (!address) return false;
@@ -37,6 +37,10 @@ export function formatCount(count: string): string {
 	}
 }
 
+export function formatPercentage(percentage: number): string {
+	return `${(percentage * 100).toFixed(2).toString()}%`;
+}
+
 export function formatDate(dateArg: string | number | null, dateType: DateType) {
 	if (!dateArg) {
 		return null;
@@ -59,4 +63,22 @@ export function formatDate(dateArg: string | number | null, dateType: DateType) 
 	return `${date.toLocaleString('default', {
 		month: 'long',
 	})} ${date.getDate()}, ${date.getUTCFullYear()}`;
+}
+
+export async function getOwners(asset: AssetDetailType, profiles: ProfileType[] | null): Promise<OwnerType[] | null> {
+	if (asset && asset.state) {
+		const balances: any = Object.keys(asset.state.balances).map((address: string) => {
+			return Number(asset.state.balances[address]);
+		});
+		const totalBalance = balances.reduce((a: number, b: number) => a + b, 0);
+
+		return Object.keys(asset.state.balances).map((address: string) => {
+			return {
+				address: address,
+				ownerPercentage: Number(asset.state.balances[address]) / totalBalance,
+				profile: profiles ? profiles.find((profile: ProfileType) => profile.walletAddress === address) : null,
+			};
+		});
+	}
+	return null;
 }
