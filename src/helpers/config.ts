@@ -10,6 +10,7 @@ import html from 'assets/html.svg';
 import license from 'assets/license.svg';
 import logo from 'assets/logo.svg';
 import market from 'assets/market.svg';
+import orders from 'assets/orders.svg';
 import othent from 'assets/othent.svg';
 import overview from 'assets/overview.svg';
 import provenance from 'assets/provenance.svg';
@@ -46,6 +47,7 @@ export const ASSETS = {
 	license,
 	logo,
 	market,
+	orders,
 	othent,
 	overview,
 	provenance,

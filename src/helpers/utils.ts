@@ -65,7 +65,7 @@ export function formatDate(dateArg: string | number | null, dateType: DateType) 
 	})} ${date.getDate()}, ${date.getUTCFullYear()}`;
 }
 
-export async function getOwners(asset: AssetDetailType, profiles: ProfileType[] | null): Promise<OwnerType[] | null> {
+export function getOwners(asset: AssetDetailType, profiles: ProfileType[] | null): OwnerType[] | null {
 	if (asset && asset.state) {
 		const balances: any = Object.keys(asset.state.balances).map((address: string) => {
 			return Number(asset.state.balances[address]);

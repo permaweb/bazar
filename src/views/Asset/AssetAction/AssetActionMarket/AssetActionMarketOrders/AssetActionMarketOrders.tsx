@@ -1,17 +1,20 @@
 import React from 'react';
 
-import { createDataItemSigner, message, result } from '@permaweb/aoconnect';
+import { sendMessage } from 'api';
 
 import { Button } from 'components/atoms/Button';
+import { Notification } from 'components/atoms/Notification';
 import { Slider } from 'components/atoms/Slider';
 import { ASSETS, PROCESSES } from 'helpers/config';
-import { formatCount, formatPercentage, getTagValue } from 'helpers/utils';
+import { formatCount, formatPercentage } from 'helpers/utils';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 
 import * as S from './styles';
 import { IProps } from './types';
 
+// TODO: unit price
+// TODO: buy / transfer
 export default function AssetActionMarketOrders(props: IProps) {
 	const arProvider = useArweaveProvider();
 	const languageProvider = useLanguageProvider();
@@ -33,6 +36,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 	const [maxOrderQuantity, setMaxOrderQuantity] = React.useState<number>(0);
 
 	const [orderLoading, setOrderLoading] = React.useState<boolean>(false);
+	const [currentNotification, setCurrentNotification] = React.useState<string | null>(null);
 
 	React.useEffect(() => {
 		if (props.asset && props.asset.state) {
@@ -66,60 +70,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 		setCurrentOrderQuantity(0);
 	}, [props.type, connectedBalance]);
 
-	async function sendMessage(args: any) {
-		try {
-			const txId = await message({
-				process: args.processId,
-				signer: createDataItemSigner(args.wallet),
-				tags: [{ name: 'Action', value: args.action }],
-				data: JSON.stringify(args.data),
-			});
-
-			const { Messages } = await result({ message: txId, process: args.processId });
-
-			if (Messages && Messages.length) {
-				const response = {};
-
-				Messages.forEach((message: any) => {
-					const action = getTagValue(message.Tags, 'Action') || args.action;
-
-					console.log(message);
-
-					let responseData = null;
-					const messageData = message.Data;
-
-					if (messageData) {
-						try {
-							responseData = JSON.parse(messageData);
-						} catch {
-							responseData = messageData;
-						}
-					}
-
-					const responseStatus = getTagValue(message.Tags, 'Status');
-					const responseMessage = getTagValue(message.Tags, 'Message');
-
-					if (responseStatus && responseMessage) {
-						console.log(`${responseStatus}: ${responseMessage}`);
-					}
-
-					response[action] = {
-						id: txId,
-						status: responseStatus,
-						message: responseMessage,
-						data: responseData,
-					};
-				});
-
-				console.log(`${args.action}: ${txId}`);
-
-				return response;
-			} else return null;
-		} catch (e) {
-			console.error(e);
-		}
-	}
-
 	// args: { clientWallet, orderPair, orderQuantity, orderPrice? }
 	async function handleOrderCreate() {
 		if (props.asset && arProvider.wallet) {
@@ -129,7 +79,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 			const dominantToken = orderPair[0];
 
 			try {
-				console.log('Depositing balance to UCM...');
+				setCurrentNotification('Depositing balance to UCM...');
 				const depositResponse: any = await sendMessage({
 					processId: dominantToken,
 					action: 'Transfer',
@@ -139,7 +89,10 @@ export default function AssetActionMarketOrders(props: IProps) {
 						Quantity: currentOrderQuantity.toString(),
 					},
 				});
-				console.log(depositResponse);
+
+				if (depositResponse['Credit-Notice']) {
+					setCurrentNotification(depositResponse['Credit-Notice'].message);
+				}
 
 				const validCreditNotice =
 					depositResponse['Credit-Notice'] && depositResponse['Credit-Notice'].status === 'Success';
@@ -147,8 +100,8 @@ export default function AssetActionMarketOrders(props: IProps) {
 				if (validCreditNotice) {
 					const depositTxId = depositResponse['Credit-Notice'].id; // data.TransferTxId // TODO: refund
 
-					console.log('Checking deposit status...');
-					let depositCheckResponse = await sendMessage({
+					setCurrentNotification('Checking deposit status...');
+					let depositCheckResponse: any = await sendMessage({
 						processId: PROCESSES.ucm,
 						action: 'Check-Deposit-Status',
 						wallet: arProvider.wallet,
@@ -158,7 +111,10 @@ export default function AssetActionMarketOrders(props: IProps) {
 							Quantity: currentOrderQuantity.toString(),
 						},
 					});
-					console.log(depositCheckResponse);
+
+					if (depositCheckResponse['Deposit-Status-Evaluated']) {
+						setCurrentNotification(depositCheckResponse.message);
+					}
 
 					if (depositCheckResponse && depositCheckResponse['Deposit-Status-Evaluated']) {
 						const MAX_DEPOSIT_CHECK_RETRIES = 10;
@@ -178,14 +134,17 @@ export default function AssetActionMarketOrders(props: IProps) {
 									Quantity: currentOrderQuantity.toString(),
 								},
 							});
-							console.log(depositCheckResponse);
+
+							if (depositCheckResponse['Deposit-Status-Evaluated']) {
+								setCurrentNotification(depositCheckResponse.message);
+							}
 
 							depositStatus = depositCheckResponse['Deposit-Status-Evaluated'].status;
 							retryCount++;
 						}
 
 						if (depositStatus === 'Success') {
-							console.log('Creating order...');
+							setCurrentNotification('Creating order...');
 							const orderData: { Pair: string[]; DepositTxId: string; Quantity: string; Price?: string } = {
 								Pair: orderPair,
 								DepositTxId: depositTxId,
@@ -193,16 +152,21 @@ export default function AssetActionMarketOrders(props: IProps) {
 								Price: (10).toString(),
 							};
 
-							console.log(orderData);
 							// if (args.orderPrice) orderData.Price = args.orderPrice; // TODO
 
-							const createOrderResponse = await sendMessage({
+							const createOrderResponse: any = await sendMessage({
 								processId: PROCESSES.ucm,
 								action: 'Create-Order',
 								wallet: arProvider.wallet,
 								data: orderData,
 							});
-							console.log(createOrderResponse);
+
+							if (createOrderResponse['Order-Success']) {
+								setCurrentNotification(createOrderResponse['Order-Success'].message);
+							}
+							if (createOrderResponse['Order-Error']) {
+								setCurrentNotification(createOrderResponse['Order-Error'].message);
+							}
 						} else {
 							console.error('Failed to resolve deposit status after 3 retries.');
 						}
@@ -350,27 +314,32 @@ export default function AssetActionMarketOrders(props: IProps) {
 	}
 
 	return props.asset ? (
-		<S.Wrapper>
-			<S.TotalsWrapper>
-				<S.TotalQuantityLine>
-					<p>
-						{`${language.totalAssetBalance}: `}
-						<span>{formatCount(totalAssetBalance.toString())}</span>
-					</p>
-				</S.TotalQuantityLine>
-				{getTotals()}
-			</S.TotalsWrapper>
-			<S.InputWrapper>
-				<Slider
-					value={currentOrderQuantity}
-					maxValue={maxOrderQuantity}
-					handleChange={(e: React.ChangeEvent<HTMLInputElement>) => handleQuantityInput(e)}
-					label={language.assetQuantityInfo}
-					disabled={maxOrderQuantity <= 0 || orderLoading}
-				/>
-			</S.InputWrapper>
-			<S.SalesWrapper>{getOrderDetails()}</S.SalesWrapper>
-			<S.ActionWrapper>{getAction()}</S.ActionWrapper>
-		</S.Wrapper>
+		<>
+			<S.Wrapper>
+				<S.TotalsWrapper>
+					<S.TotalQuantityLine>
+						<p>
+							{`${language.totalAssetBalance}: `}
+							<span>{formatCount(totalAssetBalance.toString())}</span>
+						</p>
+					</S.TotalQuantityLine>
+					{getTotals()}
+				</S.TotalsWrapper>
+				<S.InputWrapper>
+					<Slider
+						value={currentOrderQuantity}
+						maxValue={maxOrderQuantity}
+						handleChange={(e: React.ChangeEvent<HTMLInputElement>) => handleQuantityInput(e)}
+						label={language.assetQuantityInfo}
+						disabled={maxOrderQuantity <= 0 || orderLoading}
+					/>
+				</S.InputWrapper>
+				<S.SalesWrapper>{getOrderDetails()}</S.SalesWrapper>
+				<S.ActionWrapper>{getAction()}</S.ActionWrapper>
+			</S.Wrapper>
+			{currentNotification && (
+				<Notification message={currentNotification} callback={() => setCurrentNotification(null)} />
+			)}
+		</>
 	) : null;
 }

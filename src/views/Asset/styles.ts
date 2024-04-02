@@ -25,7 +25,7 @@ export const InfoWrapper = styled.div`
 export const ActionWrapper = styled.div`
 	width: calc(100% - ${INFO_DIMENSION});
 	max-width: 100%;
-	padding: 0 0 0 20px;
+	padding: 0 0 0 40px;
 	@media (max-width: ${STYLING.cutoffs.desktop}) {
 		width: 100%;
 		padding: 0;

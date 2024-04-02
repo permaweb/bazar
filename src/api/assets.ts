@@ -1,8 +1,16 @@
 import { getGQLData, readProcessState } from 'api';
 
 import { GATEWAYS, TAGS } from 'helpers/config';
-import { AGQLResponseType, AssetDetailType, AssetStateType, AssetType, GQLNodeResponseType } from 'helpers/types';
+import {
+	AGQLResponseType,
+	AssetDetailType,
+	AssetOrderType,
+	AssetStateType,
+	AssetType,
+	GQLNodeResponseType,
+} from 'helpers/types';
 import { getTagValue } from 'helpers/utils';
+import { store } from 'store';
 
 export async function getAssetById(args: { id: string }): Promise<AssetDetailType> {
 	try {
@@ -32,7 +40,34 @@ export async function getAssetById(args: { id: string }): Promise<AssetDetailTyp
 				if (processState.Balances) assetState.balances = processState.Balances;
 			}
 
-			return { ...structuredAsset, state: assetState };
+			let assetOrders: AssetOrderType[] | null = null;
+			if (store.getState().ucmReducer) {
+				const ucmReducer = store.getState().ucmReducer;
+				const existingEntry = ucmReducer.Orderbook.find((entry: any) => {
+					return entry.Pair ? entry.Pair[0] === args.id : null;
+				});
+				if (existingEntry) {
+					assetOrders = existingEntry.Orders.map((order: any) => {
+						let currentAssetOrder: AssetOrderType = {
+							creator: order.Creator,
+							dateCreated: order.DateCreated,
+							depositTxId: order.DepositTxId,
+							id: order.Id,
+							originalQuantity: order.OriginalQuantity,
+							quantity: order.Quantity,
+							token: order.Token,
+							currency: existingEntry.Pair[1],
+						};
+
+						if (order.Price) currentAssetOrder.price = order.Price;
+						return currentAssetOrder;
+					});
+				}
+			}
+
+			const assetDetail: any = { ...structuredAsset, state: assetState };
+			if (assetOrders) assetDetail.orders = assetOrders;
+			return assetDetail;
 		}
 
 		return null;

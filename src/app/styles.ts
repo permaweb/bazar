@@ -214,6 +214,24 @@ export const GlobalStyle = createGlobalStyle`
     animation: ${open} ${fadeIn1};
   }
 
+	.app-loader {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    animation: ${open} ${fadeIn1};
+    svg {
+      height: auto;
+      width: 50px;
+      margin: 0 0 12.5px 0;
+			fill: ${(props) => props.theme.colors.font.primary};
+    }
+  }
+
   .scroll-wrapper {
     overflow: auto;
 

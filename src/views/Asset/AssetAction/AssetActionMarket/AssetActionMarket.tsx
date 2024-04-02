@@ -1,7 +1,11 @@
 import React from 'react';
 
+import * as GS from 'app/styles';
+import { Drawer } from 'components/atoms/Drawer';
+import { OwnerLine } from 'components/molecules/OwnerLine';
 import { Tabs } from 'components/molecules/Tabs';
 import { ASSETS } from 'helpers/config';
+import { ProfileType } from 'helpers/types';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 
 import { AssetActionMarketOrders } from './AssetActionMarketOrders';
@@ -35,7 +39,7 @@ export default function AssetActionMarket(props: IProps) {
 
 	const [currentTab, setCurrentTab] = React.useState<string>(MARKET_ACTION_TABS[0]!.label);
 
-	function getTab() {
+	function getCurrentTab() {
 		switch (currentTab) {
 			case MARKET_ACTION_TAB_OPTIONS.buy:
 				return <AssetActionMarketOrders asset={props.asset} type={'buy'} />;
@@ -56,8 +60,17 @@ export default function AssetActionMarket(props: IProps) {
 						return <S.TabWrapper key={index} label={tab.label} icon={tab.icon ? tab.icon : null} />;
 					})}
 				</Tabs>
-				<S.TabContent>{getTab()}</S.TabContent>
+				<S.TabContent>{getCurrentTab()}</S.TabContent>
 			</S.TabsWrapper>
+			{props.asset.orders && (
+				<GS.DrawerWrapper>
+					<Drawer
+						title={language.activeSaleOrders}
+						icon={ASSETS.orders}
+						content={<GS.DrawerContent>{props.getCurrentListings()}</GS.DrawerContent>}
+					/>
+				</GS.DrawerWrapper>
+			)}
 		</S.Wrapper>
 	);
 }

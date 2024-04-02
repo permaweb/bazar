@@ -138,11 +138,7 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 					setWalletType(WalletEnum.arConnect);
 					setWalletModalVisible(false);
 					localStorage.setItem('walletType', WalletEnum.arConnect);
-				} catch (e: any) {
-					alert(e);
-				}
-			} else {
-				alert(language.connectorNotFound);
+				} catch (e: any) {}
 			}
 		}
 	}

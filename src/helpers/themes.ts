@@ -26,7 +26,7 @@ export const lightTheme = {
 	semiTransparent2: 'rgba(0, 0, 0, 0.45)',
 	semiTransparent3: 'rgba(0, 0, 0, 0.65)',
 	semiTransparent4: '#AEAEAE45',
-	semiTransparent5: 'rgba(0, 0, 0, 0.15)',
+	semiTransparent5: 'rgba(0, 0, 0, 0.075)',
 	scheme: 'light',
 	light1: '#FFFFFF',
 	dark1: '#151515',
@@ -114,13 +114,13 @@ export const theme = (currentTheme: any): DefaultTheme => ({
 				},
 			},
 			alt2: {
-				background: currentTheme.primary2,
-				border: currentTheme.primary2,
-				color: currentTheme.primary2,
+				background: currentTheme.neutralA1,
+				border: currentTheme.neutralA1,
+				color: currentTheme.neutralA1,
 				active: {
-					background: currentTheme.primary1,
-					border: currentTheme.primary1,
-					color: currentTheme.primary1,
+					background: currentTheme.neutralA4,
+					border: currentTheme.neutralA4,
+					color: currentTheme.neutralA4,
 				},
 				disabled: {
 					background: currentTheme.neutral3,
@@ -168,6 +168,9 @@ export const theme = (currentTheme: any): DefaultTheme => ({
 			},
 			alt9: {
 				background: currentTheme.indicator1,
+			},
+			alt10: {
+				background: currentTheme.accent1,
 			},
 		},
 		font: {

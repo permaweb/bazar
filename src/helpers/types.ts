@@ -78,8 +78,21 @@ export type AssetStateType = {
 	balances: { [address: string]: string } | null;
 };
 
+export type AssetOrderType = {
+	creator: string | null;
+	dateCreated: string | null;
+	depositTxId: string | null;
+	id: string | null;
+	originalQuantity: string | null;
+	price?: string | null;
+	quantity: string | null;
+	token: string | null;
+	currency: string | null;
+};
+
 export type AssetDetailType = AssetType & {
 	state: AssetStateType;
+	orders?: AssetOrderType[];
 };
 
 export type RenderType = 'renderer' | 'raw';
@@ -107,7 +120,7 @@ export type FullProfileType = ProfileType & {
 
 export type OwnerType = {
 	address: string;
-	ownerPercentage: number;
+	ownerPercentage?: number;
 	profile: ProfileType | null;
 };
 

@@ -1,4 +1,4 @@
-import { dryrun } from '@permaweb/aoconnect';
+import { createDataItemSigner, dryrun, message, result } from '@permaweb/aoconnect';
 
 import { CURSORS, GATEWAYS, PAGINATORS } from 'helpers/config';
 import {
@@ -9,6 +9,7 @@ import {
 	GQLNodeResponseType,
 	QueryBodyGQLArgsType,
 } from 'helpers/types';
+import { getTagValue } from 'helpers/utils';
 
 export async function getGQLData(args: GQLArgsType): Promise<AGQLResponseType> {
 	const paginator = args.paginator ? args.paginator : PAGINATORS.default;
@@ -173,6 +174,52 @@ async function getResponse(args: { gateway: string; query: string }): Promise<an
 		return await response.json();
 	} catch (e: any) {
 		throw e;
+	}
+}
+
+export async function sendMessage(args: { processId: string; wallet: any; action: string; data: any }) {
+	try {
+		const txId = await message({
+			process: args.processId,
+			signer: createDataItemSigner(args.wallet),
+			tags: [{ name: 'Action', value: args.action }],
+			data: JSON.stringify(args.data),
+		});
+
+		const { Messages } = await result({ message: txId, process: args.processId });
+
+		if (Messages && Messages.length) {
+			const response = {};
+
+			Messages.forEach((message: any) => {
+				const action = getTagValue(message.Tags, 'Action') || args.action;
+
+				let responseData = null;
+				const messageData = message.Data;
+
+				if (messageData) {
+					try {
+						responseData = JSON.parse(messageData);
+					} catch {
+						responseData = messageData;
+					}
+				}
+
+				const responseStatus = getTagValue(message.Tags, 'Status');
+				const responseMessage = getTagValue(message.Tags, 'Message');
+
+				response[action] = {
+					id: txId,
+					status: responseStatus,
+					message: responseMessage,
+					data: responseData,
+				};
+			});
+
+			return response;
+		} else return null;
+	} catch (e) {
+		console.error(e);
 	}
 }
 
