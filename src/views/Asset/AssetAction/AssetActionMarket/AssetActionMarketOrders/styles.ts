@@ -44,8 +44,29 @@ export const InputWrapper = styled.div`
 	margin: 30px 0 0 0;
 `;
 
+export const FieldsWrapper = styled.div`
+	width: 100%;
+	display: flex;
+	justify-content: space-between;
+	flex-wrap: wrap;
+`;
+
+export const FieldWrapper = styled.div`
+	width: 350px;
+	max-width: 47.5%;
+	@media (max-width: ${STYLING.cutoffs.tablet}) {
+		width: 100%;
+		max-width: none;
+	}
+`;
+
+export const MaxQty = styled.div`
+	width: fit-content;
+	margin: 10px 0 0 auto;
+`;
+
 export const SalesWrapper = styled.div`
-	margin: 40px 0 0 0;
+	margin: 20px 0 0 0;
 	> * {
 		&:not(:last-child) {
 			margin: 0 0 15px 0;
@@ -99,5 +120,26 @@ export const ActionWrapper = styled.div`
 			min-width: 0;
 			width: 100%;
 		}
+	}
+`;
+
+export const ActionWrapperFull = styled(ActionWrapper)`
+	width: 100%;
+	margin: 20px 0 0 0;
+`;
+
+export const ConfirmationWrapper = styled.div``;
+
+export const ConfirmationMessage = styled.div`
+	width: fit-content;
+	margin: 20px 0 0 0;
+	// padding: 6.5px 15.5px;
+	// background: ${(props) => props.theme.colors.container.alt10.background};
+	// border-radius: ${STYLING.dimensions.radius.primary};
+	p {
+		font-size: ${(props) => props.theme.typography.size.small};
+		font-family: ${(props) => props.theme.typography.family.primary};
+		font-weight: ${(props) => props.theme.typography.weight.bold};
+		color: ${(props) => props.theme.colors.font.primary};
 	}
 `;

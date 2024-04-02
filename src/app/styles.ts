@@ -234,11 +234,10 @@ export const GlobalStyle = createGlobalStyle`
 
   .scroll-wrapper {
     overflow: auto;
-
-    scrollbar-width: thin;
+    
     scrollbar-color: transparent transparent;
     ::-webkit-scrollbar {
-      width: 8px;
+      width: 12.5px;
     }
 
     ::-webkit-scrollbar-thumb {

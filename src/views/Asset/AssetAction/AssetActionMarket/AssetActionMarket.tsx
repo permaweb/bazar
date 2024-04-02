@@ -24,12 +24,12 @@ export default function AssetActionMarket(props: IProps) {
 
 	const MARKET_ACTION_TABS = [
 		{
-			label: MARKET_ACTION_TAB_OPTIONS.buy,
-			icon: ASSETS.buy,
-		},
-		{
 			label: MARKET_ACTION_TAB_OPTIONS.sell,
 			icon: ASSETS.sell,
+		},
+		{
+			label: MARKET_ACTION_TAB_OPTIONS.buy,
+			icon: ASSETS.buy,
 		},
 		{
 			label: MARKET_ACTION_TAB_OPTIONS.transfer,

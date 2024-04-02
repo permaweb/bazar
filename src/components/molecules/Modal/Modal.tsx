@@ -58,7 +58,7 @@ export default function Modal(props: IProps) {
 							)}
 						</S.Header>
 					)}
-					<S.Body>{props.children}</S.Body>
+					<S.Body className={'scroll-wrapper'}>{props.children}</S.Body>
 				</S.Container>
 			</>
 		);

@@ -1,14 +1,18 @@
 import React from 'react';
+import { useDispatch, useSelector } from 'react-redux';
 
-import { sendMessage } from 'api';
+import { readProcessState, sendMessage } from 'api';
 
 import { Button } from 'components/atoms/Button';
-import { Notification } from 'components/atoms/Notification';
+import { FormField } from 'components/atoms/FormField';
 import { Slider } from 'components/atoms/Slider';
+import { Modal } from 'components/molecules/Modal';
 import { ASSETS, PROCESSES } from 'helpers/config';
 import { formatCount, formatPercentage } from 'helpers/utils';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
+import { RootState } from 'store';
+import * as ucmActions from 'store/ucm/actions';
 
 import * as S from './styles';
 import { IProps } from './types';
@@ -16,9 +20,13 @@ import { IProps } from './types';
 // TODO: unit price
 // TODO: buy / transfer
 export default function AssetActionMarketOrders(props: IProps) {
+	const dispatch = useDispatch();
+
 	const arProvider = useArweaveProvider();
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
+
+	const ucmReducer = useSelector((state: RootState) => state.ucmReducer);
 
 	// Total quantity of asset
 	const [totalAssetBalance, setTotalAssetBalance] = React.useState<number>(0);
@@ -35,7 +43,9 @@ export default function AssetActionMarketOrders(props: IProps) {
 	// Total asset quantity available for order creation, based on order type (buy, sell, or transfer)
 	const [maxOrderQuantity, setMaxOrderQuantity] = React.useState<number>(0);
 
+	const [showConfirmation, setShowConfirmation] = React.useState<boolean>(false);
 	const [orderLoading, setOrderLoading] = React.useState<boolean>(false);
+	const [orderProcessed, setOrderProcessed] = React.useState<boolean>(false);
 	const [currentNotification, setCurrentNotification] = React.useState<string | null>(null);
 
 	React.useEffect(() => {
@@ -162,13 +172,13 @@ export default function AssetActionMarketOrders(props: IProps) {
 							});
 
 							if (createOrderResponse['Order-Success']) {
-								setCurrentNotification(createOrderResponse['Order-Success'].message);
+								setCurrentNotification(`${createOrderResponse['Order-Success'].message}!`);
 							}
 							if (createOrderResponse['Order-Error']) {
 								setCurrentNotification(createOrderResponse['Order-Error'].message);
 							}
 						} else {
-							console.error('Failed to resolve deposit status after 3 retries.');
+							console.error('Failed to resolve deposit');
 						}
 					} else {
 						console.error('Failed to check deposit status');
@@ -180,6 +190,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 				console.error(e);
 			}
 			setOrderLoading(false);
+			setOrderProcessed(true);
 		}
 	}
 
@@ -279,37 +290,99 @@ export default function AssetActionMarketOrders(props: IProps) {
 		);
 	}
 
-	function getAction() {
+	function getActionDisabled() {
+		if (!arProvider.walletAddress) return true;
+		if (orderLoading) return true;
+		if (maxOrderQuantity <= 0) return true;
+		if (currentOrderQuantity <= 0) return true;
+		if (currentOrderQuantity > maxOrderQuantity) return true;
+		// if (connectedDisabledSale) return true;
+		// if (invalidQuantity.status || quantity <= 0 || isNaN(quantity)) return true;
+		// if (invalidUnitPrice.status || unitPrice <= 0 || isNaN(unitPrice)) return true;
+		// if (props.updating || props.pendingResponse) return true;
+		return false;
+	}
+
+	async function handleAssetUpdate() {
+		console.log('Update / clear asset');
+		setShowConfirmation(false);
+		setCurrentOrderQuantity(0);
+		try {
+			const ucmState = await readProcessState(PROCESSES.ucm);
+			dispatch(ucmActions.setUCM(ucmState));
+		} catch (e: any) {
+			console.error(e);
+		}
+	}
+
+	function getAction(finalizeOrder: boolean) {
 		let label: string | null = null;
 		let icon: string | null = null;
 
-		switch (props.type) {
-			case 'buy':
-				label = language.buy;
-				icon = ASSETS.buy;
-				break;
-			case 'sell':
-				label = language.sell;
-				icon = ASSETS.sell;
-				break;
-			case 'transfer':
-				label = language.transfer;
-				icon = ASSETS.transfer;
-				break;
+		if (orderProcessed) label = language.close;
+		else {
+			switch (props.type) {
+				case 'buy':
+					label = finalizeOrder ? language.confirmPurchase : language.buy;
+					icon = ASSETS.buy;
+					break;
+				case 'sell':
+					label = finalizeOrder ? language.confirmListing : language.sell;
+					icon = ASSETS.sell;
+					break;
+				case 'transfer':
+					label = finalizeOrder ? language.confirmTransfer : language.transfer;
+					icon = ASSETS.transfer;
+					break;
+			}
 		}
+
+		let action: () => void;
+		if (orderProcessed) action = () => handleAssetUpdate();
+		else if (finalizeOrder) action = () => handleOrderCreate();
+		else action = () => setShowConfirmation(true);
 
 		return (
 			<Button
 				type={'primary'}
 				label={label}
-				handlePress={handleOrderCreate}
-				disabled={orderLoading}
-				loading={orderLoading}
+				handlePress={action}
+				disabled={getActionDisabled()}
+				loading={finalizeOrder ? orderLoading : false}
 				height={60}
 				width={350}
+				fullWidth={finalizeOrder}
 				icon={icon}
 				iconLeftAlign
 			/>
+		);
+	}
+
+	function getConfirmation() {
+		let header: string | null = null;
+
+		switch (props.type) {
+			case 'buy':
+				header = language.confirmPurchase;
+				break;
+			case 'sell':
+				header = language.confirmListing;
+				break;
+			case 'transfer':
+				header = language.confirmTransfer;
+				break;
+		}
+
+		return (
+			<Modal header={`${header}: ${props.asset.data.title}`} handleClose={() => setShowConfirmation(false)}>
+				<S.ConfirmationWrapper className={'modal-wrapper'}>
+					<S.SalesWrapper>{getOrderDetails()}</S.SalesWrapper>
+					<S.ActionWrapperFull>{getAction(true)}</S.ActionWrapperFull>
+					<S.ConfirmationMessage>
+						<p>{currentNotification ? currentNotification : language.reviewOrderDetails}</p>
+					</S.ConfirmationMessage>
+				</S.ConfirmationWrapper>
+			</Modal>
 		);
 	}
 
@@ -325,21 +398,56 @@ export default function AssetActionMarketOrders(props: IProps) {
 					</S.TotalQuantityLine>
 					{getTotals()}
 				</S.TotalsWrapper>
-				<S.InputWrapper>
-					<Slider
-						value={currentOrderQuantity}
-						maxValue={maxOrderQuantity}
-						handleChange={(e: React.ChangeEvent<HTMLInputElement>) => handleQuantityInput(e)}
-						label={language.assetQuantityInfo}
-						disabled={maxOrderQuantity <= 0 || orderLoading}
-					/>
-				</S.InputWrapper>
+				{maxOrderQuantity > 0 && (
+					<S.InputWrapper>
+						<Slider
+							value={currentOrderQuantity}
+							maxValue={maxOrderQuantity}
+							handleChange={(e: React.ChangeEvent<HTMLInputElement>) => handleQuantityInput(e)}
+							label={language.assetQuantityInfo}
+							disabled={maxOrderQuantity <= 0 || orderLoading}
+						/>
+						<S.MaxQty>
+							<Button
+								type={'primary'}
+								label={language.max}
+								handlePress={() => setCurrentOrderQuantity(maxOrderQuantity)}
+								disabled={!arProvider.walletAddress || maxOrderQuantity <= 0}
+								noMinWidth
+							/>
+						</S.MaxQty>
+						<S.FieldsWrapper>
+							<S.FieldWrapper>
+								<FormField
+									type={'number'}
+									value={currentOrderQuantity}
+									onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleQuantityInput(e)}
+									label={`${language.assetQuantity} (${language.max}: ${maxOrderQuantity})`}
+									disabled={!arProvider.walletAddress || maxOrderQuantity <= 0}
+									invalid={{ status: false, message: null }}
+									hideErrorMessage
+								/>
+							</S.FieldWrapper>
+							{props.type === 'sell' && (
+								<S.FieldWrapper>
+									<FormField
+										type={'number'}
+										value={currentOrderQuantity}
+										onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleQuantityInput(e)}
+										label={`${language.assetQuantity} (${language.max}: ${maxOrderQuantity})`}
+										disabled={!arProvider.walletAddress || maxOrderQuantity <= 0}
+										invalid={{ status: false, message: null }}
+										hideErrorMessage
+									/>
+								</S.FieldWrapper>
+							)}
+						</S.FieldsWrapper>
+					</S.InputWrapper>
+				)}
 				<S.SalesWrapper>{getOrderDetails()}</S.SalesWrapper>
-				<S.ActionWrapper>{getAction()}</S.ActionWrapper>
+				<S.ActionWrapper>{getAction(false)}</S.ActionWrapper>
 			</S.Wrapper>
-			{currentNotification && (
-				<Notification message={currentNotification} callback={() => setCurrentNotification(null)} />
-			)}
+			{showConfirmation && getConfirmation()}
 		</>
 	) : null;
 }

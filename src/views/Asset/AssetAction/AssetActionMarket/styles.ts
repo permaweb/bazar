@@ -3,7 +3,7 @@ import styled from 'styled-components';
 export const Wrapper = styled.div``;
 
 export const TabsWrapper = styled.div`
-	margin: 25px 0 0 0;
+	margin: 22.5px 0 0 0;
 	padding: 20px;
 `;
 

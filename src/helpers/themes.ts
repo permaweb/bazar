@@ -16,7 +16,7 @@ export const lightTheme = {
 	neutralA1: '#0A0A0A',
 	neutralA2: '#5F5F5F',
 	neutralA3: '#5C5C5C',
-	neutralA4: '#4D4D4D',
+	neutralA4: '#3E3E3E',
 	neutralA5: '#A4A4A4',
 	neutralA6: '#A9A9A9',
 	overlay1: 'rgb(130, 130, 130, .25)',

@@ -1,4 +1,5 @@
 import React from 'react';
+import { useSelector } from 'react-redux';
 import { useNavigate, useParams } from 'react-router-dom';
 
 import { getAssetById } from 'api';
@@ -8,6 +9,7 @@ import { URLS } from 'helpers/config';
 import { AssetDetailType } from 'helpers/types';
 import { checkValidAddress } from 'helpers/utils';
 import { useLanguageProvider } from 'providers/LanguageProvider';
+import { RootState } from 'store';
 
 import { AssetAction } from './AssetAction';
 import { AssetInfo } from './AssetInfo';
@@ -16,7 +18,7 @@ import * as S from './styles';
 export default function Asset() {
 	const navigate = useNavigate();
 	const { id } = useParams();
-
+	const ucmReducer = useSelector((state: RootState) => state.ucmReducer);
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
 
@@ -27,6 +29,7 @@ export default function Asset() {
 	React.useEffect(() => {
 		(async function () {
 			if (id && checkValidAddress(id)) {
+				setAsset(null);
 				setLoading(true);
 				try {
 					setAsset(await getAssetById({ id: id }));
@@ -36,7 +39,7 @@ export default function Asset() {
 				setLoading(false);
 			} else navigate(URLS.base); // TODO redirect 404
 		})();
-	}, [id]);
+	}, [id, ucmReducer]);
 
 	function getData() {
 		if (asset) {

@@ -65,6 +65,10 @@ export function formatDate(dateArg: string | number | null, dateType: DateType) 
 	})} ${date.getDate()}, ${date.getUTCFullYear()}`;
 }
 
+export function formatRequiredField(field: string) {
+	return `${field} *`;
+}
+
 export function getOwners(asset: AssetDetailType, profiles: ProfileType[] | null): OwnerType[] | null {
 	if (asset && asset.state) {
 		const balances: any = Object.keys(asset.state.balances).map((address: string) => {

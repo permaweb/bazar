@@ -63,22 +63,4 @@ export const Body = styled.div`
 	overflow-y: auto;
 	scrollbar-color: transparent transparent;
 	padding: 0 0 0 20px 0;
-
-	::-webkit-scrollbar-track {
-		background: ${(props) => props.theme.colors.view.background};
-		padding: 0 5px;
-	}
-
-	::-webkit-scrollbar {
-		width: 15.5px;
-	}
-
-	scrollbar-color: ${(props) => props.theme.colors.scrollbar.thumb} transparent;
-
-	::-webkit-scrollbar-thumb {
-		background-color: ${(props) => props.theme.colors.scrollbar.thumb};
-		border-radius: 36px;
-		border: 3.5px solid transparent;
-		background-clip: padding-box;
-	}
 `;

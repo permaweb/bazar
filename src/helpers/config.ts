@@ -7,6 +7,7 @@ import buy from 'assets/buy.svg';
 import close from 'assets/close.svg';
 import comments from 'assets/comments.svg';
 import html from 'assets/html.svg';
+import info from 'assets/info.svg';
 import license from 'assets/license.svg';
 import logo from 'assets/logo.svg';
 import market from 'assets/market.svg';
@@ -44,6 +45,7 @@ export const ASSETS = {
 	close,
 	comments,
 	html,
+	info,
 	license,
 	logo,
 	market,

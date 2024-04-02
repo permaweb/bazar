@@ -27,8 +27,8 @@ export const TWrapper = styled.div`
 `;
 
 export const Label = styled.label`
-	color: ${(props) => props.theme.colors.font.primary};
-	font-size: ${(props) => props.theme.typography.size.xSmall};
+	color: ${(props) => props.theme.colors.font.alt1};
+	font-size: ${(props) => props.theme.typography.size.small};
 	font-weight: ${(props) => props.theme.typography.weight.bold};
 `;
 
@@ -49,7 +49,7 @@ export const Input = styled.input<{
 	height: ${(props) => (props.sm ? STYLING.dimensions.form.small : STYLING.dimensions.form.max)};
 	color: ${(props) =>
 		props.disabled ? props.theme.colors.button.primary.disabled.color : props.theme.colors.font.primary};
-	font-size: ${(props) => props.theme.typography.size.base};
+	font-size: ${(props) => props.theme.typography.size.lg};
 	font-weight: ${(props) => props.theme.typography.weight.bold};
 	margin: 10px 0 0 0;
 	background: ${(props) => props.theme.colors.form.background};
