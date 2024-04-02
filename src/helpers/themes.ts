@@ -20,8 +20,8 @@ export const lightTheme = {
 	neutralA5: '#A4A4A4',
 	neutralA6: '#A9A9A9',
 	overlay1: 'rgb(130, 130, 130, .25)',
-	primary1: '#FF3500',
-	primary2: '#E02D00',
+	primary1: '#FF7500',
+	primary2: '#F57200',
 	semiTransparent1: 'rgba(255, 255, 255, 0.575)',
 	semiTransparent2: 'rgba(0, 0, 0, 0.45)',
 	semiTransparent3: 'rgba(0, 0, 0, 0.65)',
@@ -30,6 +30,7 @@ export const lightTheme = {
 	scheme: 'light',
 	light1: '#FFFFFF',
 	dark1: '#151515',
+	indicator1: '#26B426',
 };
 
 export const darkTheme = {
@@ -53,8 +54,8 @@ export const darkTheme = {
 	neutralA5: '#F7F7F7',
 	neutralA6: '#FAFAFA',
 	overlay1: 'rgba(0, 0, 0, 0.5)',
-	primary1: '#FF3500',
-	primary2: '#E02D00',
+	primary1: '#FF7500',
+	primary2: '#F57200',
 	semiTransparent1: 'rgba(0, 0, 0, 0.15)',
 	semiTransparent2: 'rgba(0, 0, 0, 0.45)',
 	semiTransparent3: 'rgba(0, 0, 0, 0.65)',
@@ -63,6 +64,7 @@ export const darkTheme = {
 	scheme: 'dark',
 	light1: '#FFFFFF',
 	dark1: '#151515',
+	indicator1: '#12D912',
 };
 
 export const theme = (currentTheme: any): DefaultTheme => ({
@@ -163,6 +165,9 @@ export const theme = (currentTheme: any): DefaultTheme => ({
 			},
 			alt8: {
 				background: currentTheme.dark1,
+			},
+			alt9: {
+				background: currentTheme.indicator1,
 			},
 		},
 		font: {
@@ -280,6 +285,7 @@ export const theme = (currentTheme: any): DefaultTheme => ({
 			small: '15px',
 			base: '16px',
 			lg: '18px',
+			xLg: '24px',
 			h1: 'clamp(38px, 4.5vw, 62px)',
 			h2: 'clamp(32px, 3.75vw, 44px)',
 			h4: 'clamp(24px, 1.75vw, 32px)',

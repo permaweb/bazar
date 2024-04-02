@@ -24,6 +24,11 @@ import x from 'assets/x.svg';
 
 import { WalletEnum } from './types';
 
+export const PROCESSES = {
+	ucm: 'fzRGvSW2oSop9xGLxs5mcaRtCbrbug8imI_uRZHKdiU',
+	token: 'IRv02cCZGmBVMhmPlL63sce4djgRgkY1J_3DUl_feUw',
+};
+
 export const APP = {
 	name: 'Bazar',
 };
@@ -81,6 +86,7 @@ export const STYLING = {
 	dimensions: {
 		button: {
 			height: '32.5px',
+			width: 'fit-content',
 		},
 		form: {
 			small: '45px',

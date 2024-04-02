@@ -10,9 +10,11 @@ function getHeight(height: number | undefined) {
 	}
 }
 
-function getWidth(_noMinWidth: boolean | undefined, _width: number | undefined, fullWidth: boolean | undefined) {
+function getWidth(_noMinWidth: boolean | undefined, width: number | undefined, fullWidth: boolean | undefined) {
 	if (fullWidth) {
 		return `100%`;
+	} else if (width) {
+		return `${width}px`;
 	} else return 'fit-content';
 }
 
@@ -86,6 +88,9 @@ export const Primary = styled.button<{
 		span {
 			color: ${(props) => props.theme.colors.button.primary.disabled.color} !important;
 		}
+		svg {
+			fill: ${(props) => props.theme.colors.button.primary.disabled.color} !important;
+		}
 	}
 
 	span {
@@ -139,6 +144,9 @@ export const Alt1 = styled(Primary)`
 		border: 1px solid ${(props) => props.theme.colors.button.alt1.disabled.border};
 		span {
 			color: ${(props) => props.theme.colors.button.alt1.disabled.color} !important;
+		}
+		svg {
+			fill: ${(props) => props.theme.colors.button.alt1.disabled.color} !important;
 		}
 	}
 

@@ -33,7 +33,7 @@ export const OwnerLine = styled.div`
 	span {
 		font-size: ${(props) => props.theme.typography.size.base};
 		font-family: ${(props) => props.theme.typography.family.primary};
-		font-weight: ${(props) => props.theme.typography.weight.bold};
+		font-weight: ${(props) => props.theme.typography.weight.medium};
 		color: ${(props) => props.theme.colors.font.alt1};
 		overflow-x: hidden;
 		text-overflow: ellipsis;
