@@ -11,6 +11,7 @@ import { Modal } from 'components/molecules/Modal';
 import { ASSETS, PROCESSES } from 'helpers/config';
 import { AssetOrderType } from 'helpers/types';
 import { formatCount, formatPercentage } from 'helpers/utils';
+import * as windowUtils from 'helpers/window';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 import { RootState } from 'store';
@@ -19,6 +20,7 @@ import * as ucmActions from 'store/ucm/actions';
 import * as S from './styles';
 import { IProps } from './types';
 
+// TODO: create multiple orders, fulfill one and other orders are deleted from ucm
 // TODO: unit price
 // TODO: buy / transfer
 // TODO: input validation
@@ -102,7 +104,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 				setTotalSalesQuantity(calculatedTotalSalesBalance);
 			}
 		}
-	}, [props.asset, arProvider.walletAddress, denomination]);
+	}, [props.asset, arProvider.walletAddress, denomination, ucmReducer]);
 
 	React.useEffect(() => {
 		switch (props.type) {
@@ -117,7 +119,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 				break;
 		}
 		setCurrentOrderQuantity(0);
-	}, [props.type, connectedBalance]);
+	}, [props.asset, props.type, connectedBalance, totalSalesQuantity]);
 
 	// args: { clientWallet, orderPair, orderQuantity, orderPrice? }
 	async function handleOrderCreate() {
@@ -153,7 +155,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 				calculatedQuantity = calculatedQuantity.toString();
 
 				setOrderLoading(true);
-
 				try {
 					setCurrentNotification('Transferring balance...');
 					const transferResponse: any = await sendMessage({
@@ -166,7 +167,9 @@ export default function AssetActionMarketOrders(props: IProps) {
 						},
 					});
 
-					if (transferResponse['Credit-Notice']) {
+					console.log(transferResponse);
+
+					if (transferResponse['Credit-Notice'] && transferResponse['Debit-Notice']) {
 						setCurrentNotification(transferResponse['Credit-Notice'].message);
 					}
 
@@ -176,10 +179,12 @@ export default function AssetActionMarketOrders(props: IProps) {
 						}
 					} else {
 						const validCreditNotice =
-							transferResponse['Credit-Notice'] && transferResponse['Credit-Notice'].status === 'Success';
+							transferResponse['Debit-Notice'] &&
+							transferResponse['Credit-Notice'] &&
+							transferResponse['Credit-Notice'].status === 'Success';
 
 						if (validCreditNotice) {
-							const depositTxId = transferResponse['Credit-Notice'].id; // data.TransferTxId // TODO: refund
+							const depositTxId = transferResponse['Credit-Notice'].id;
 
 							setCurrentNotification('Checking deposit status...');
 							let depositCheckResponse: any = await sendMessage({
@@ -232,14 +237,14 @@ export default function AssetActionMarketOrders(props: IProps) {
 										Quantity: calculatedQuantity,
 									};
 
-									// TODO: check
 									if (unitPrice && unitPrice > 0) {
 										let calculatedUnitPrice: string | number = unitPrice;
-										// if (denomination) calculatedUnitPrice = unitPrice * denomination;
 										calculatedUnitPrice = unitPrice * 1e12; // TODO: denomination of the transfer token
 										calculatedUnitPrice = calculatedUnitPrice.toString();
 										orderData.Price = calculatedUnitPrice;
 									}
+
+									console.log(orderData);
 
 									const createOrderResponse: any = await sendMessage({
 										processId: PROCESSES.ucm,
@@ -248,32 +253,33 @@ export default function AssetActionMarketOrders(props: IProps) {
 										data: orderData,
 									});
 
-									console.log(createOrderResponse);
-
-									if (createOrderResponse['Order-Success']) {
-										setCurrentNotification(`${createOrderResponse['Order-Success'].message}!`);
-									}
-									if (createOrderResponse['Order-Error']) {
-										setCurrentNotification(createOrderResponse['Order-Error'].message);
+									if (createOrderResponse) {
+										if (createOrderResponse['Order-Success']) {
+											setCurrentNotification(`${createOrderResponse['Order-Success'].message}!`);
+										}
+										if (createOrderResponse['Order-Error']) {
+											setCurrentNotification(createOrderResponse['Order-Error'].message);
+										}
+									} else {
+										setCurrentNotification('Error creating order');
 									}
 								} else {
-									console.error('Failed to resolve deposit');
+									setCurrentNotification('Failed to resolve deposit');
 								}
 							} else {
-								console.error('Failed to check deposit status');
+								setCurrentNotification('Failed to check deposit status');
 							}
 						} else {
-							console.error('Invalid credit notice');
+							setCurrentNotification('Invalid credit notice');
 						}
 					}
 				} catch (e: any) {
-					console.error(e);
+					setCurrentNotification(e.message || 'Error creating order');
 				}
-
 				setOrderLoading(false);
 				setOrderProcessed(true);
 			} else {
-				console.error('Invalid order details');
+				setCurrentNotification('Invalid order details');
 			}
 		}
 	}
@@ -380,9 +386,8 @@ export default function AssetActionMarketOrders(props: IProps) {
 						totalPrice += quantity * price;
 					}
 				}
-
 				return totalPrice;
-			}
+			} else return 0;
 		} else {
 			// 1e12; // TODO: denomination of the transfer token
 
@@ -454,17 +459,22 @@ export default function AssetActionMarketOrders(props: IProps) {
 		if (maxOrderQuantity <= 0) return true;
 		if (currentOrderQuantity <= 0) return true;
 		if (currentOrderQuantity > maxOrderQuantity) return true;
+		if (props.type === 'sell' && unitPrice <= 0) return true;
+		if (props.type === 'transfer' && !transferRecipient) return true;
 		// if (connectedDisabledSale) return true;
 		// if (invalidQuantity.status || quantity <= 0 || isNaN(quantity)) return true;
 		// if (invalidUnitPrice.status || unitPrice <= 0 || isNaN(unitPrice)) return true;
-		// if (props.updating || props.pendingResponse) return true;
 		return false;
 	}
 
 	async function handleAssetUpdate() {
-		console.log('Update / clear asset');
-		setShowConfirmation(false);
 		setCurrentOrderQuantity(0);
+		setUnitPrice(0);
+		setCurrentNotification(null);
+		setTransferRecipient('');
+		setShowConfirmation(false);
+		setOrderProcessed(false);
+		windowUtils.scrollTo(0, 0, 'smooth');
 		try {
 			const ucmState = await readProcessState(PROCESSES.ucm);
 			dispatch(ucmActions.setUCM(ucmState));
@@ -537,7 +547,9 @@ export default function AssetActionMarketOrders(props: IProps) {
 					<S.SalesWrapper>{getOrderDetails()}</S.SalesWrapper>
 					<S.ActionWrapperFull>{getAction(true)}</S.ActionWrapperFull>
 					<S.ConfirmationMessage>
-						<p>{currentNotification ? currentNotification : language.reviewOrderDetails}</p>
+						<p>
+							{currentNotification ? currentNotification : orderLoading ? 'Processing...' : language.reviewOrderDetails}
+						</p>
 					</S.ConfirmationMessage>
 				</S.ConfirmationWrapper>
 			</Modal>

@@ -65,7 +65,6 @@ export default function AssetAction(props: IProps) {
 		}
 	}, [props.asset]);
 
-	// TODO: merge sale order profiles and current owners to perform only one profile query
 	React.useEffect(() => {
 		(async function () {
 			const associatedAddresses = [];
@@ -94,8 +93,9 @@ export default function AssetAction(props: IProps) {
 			if (props.asset && props.asset.orders) {
 				const mappedListings = props.asset.orders.map((order: any) => {
 					let currentProfile = null;
-					if (associatedProfiles)
+					if (associatedProfiles) {
 						currentProfile = associatedProfiles.find((profile: ProfileType) => profile.walletAddress === order.creator);
+					}
 
 					const currentListing = {
 						profile: currentProfile || null,

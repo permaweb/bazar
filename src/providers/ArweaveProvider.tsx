@@ -75,15 +75,19 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 
 	React.useEffect(() => {
 		(async function () {
-			if (localStorage.getItem('walletType')) {
-				try {
-					await handleConnect(localStorage.getItem('walletType') as any);
-				} catch (e: any) {
-					console.error(e);
-				}
-			}
+			await handleWallet();
 		})();
 	}, []);
+
+	React.useEffect(() => {
+		handleWallet();
+
+		window.addEventListener('arweaveWalletLoaded', handleWallet);
+
+		return () => {
+			window.removeEventListener('arweaveWalletLoaded', handleWallet);
+		};
+	}, [walletType]);
 
 	React.useEffect(() => {
 		(async function () {
@@ -108,6 +112,16 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 			}
 		})();
 	}, [wallet, walletAddress, walletType]);
+
+	async function handleWallet() {
+		if (localStorage.getItem('walletType')) {
+			try {
+				await handleConnect(localStorage.getItem('walletType') as any);
+			} catch (e: any) {
+				console.error(e);
+			}
+		}
+	}
 
 	async function handleConnect(walletType: WalletEnum.arConnect | WalletEnum.othent) {
 		let walletObj: any = null;
@@ -138,7 +152,9 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 					setWalletType(WalletEnum.arConnect);
 					setWalletModalVisible(false);
 					localStorage.setItem('walletType', WalletEnum.arConnect);
-				} catch (e: any) {}
+				} catch (e: any) {
+					console.error(e);
+				}
 			}
 		}
 	}
