@@ -9,7 +9,7 @@ import {
 	AssetType,
 	GQLNodeResponseType,
 } from 'helpers/types';
-import { getTagValue } from 'helpers/utils';
+import { formatAddress, getTagValue } from 'helpers/utils';
 import { store } from 'store';
 
 export async function getAssetById(args: { id: string }): Promise<AssetDetailType> {
@@ -84,7 +84,10 @@ function structureAssets(gqlData: AGQLResponseType): AssetType[] {
 			data: {
 				id: element.node.id,
 				creator: getTagValue(element.node.tags, TAGS.keys.initialOwner),
-				title: getTagValue(element.node.tags, TAGS.keys.title),
+				title:
+					getTagValue(element.node.tags, TAGS.keys.title) ||
+					getTagValue(element.node.tags, TAGS.keys.name) ||
+					formatAddress(element.node.id, false),
 				description: getTagValue(element.node.tags, TAGS.keys.description),
 				dateCreated: element.node.block
 					? element.node.block.timestamp * 1000

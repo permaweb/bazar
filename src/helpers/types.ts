@@ -56,21 +56,6 @@ export enum WalletEnum {
 	othent = 'othent',
 }
 
-export type AssetType = {
-	data: {
-		id: string;
-		creator: string;
-		title: string;
-		description: string | null;
-		dateCreated: number;
-		blockHeight: number;
-		renderWith: string | null;
-		license: string | null;
-		thumbnail: string | null;
-		implementation: string | null;
-	};
-};
-
 export type AssetStateType = {
 	name: string | null;
 	ticker: string | null;
@@ -88,6 +73,21 @@ export type AssetOrderType = {
 	quantity: string | null;
 	token: string | null;
 	currency: string | null;
+};
+
+export type AssetType = {
+	data: {
+		id: string;
+		creator: string;
+		title: string;
+		description: string | null;
+		dateCreated: number;
+		blockHeight: number;
+		renderWith: string | null;
+		license: string | null;
+		thumbnail: string | null;
+		implementation: string | null;
+	};
 };
 
 export type AssetDetailType = AssetType & {

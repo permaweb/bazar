@@ -7,11 +7,16 @@ export const Tooltip = styled.div<{ useBottom: boolean }>`
 	left: 50%;
 	transform: translate(-50%, 0);
 	z-index: 1;
-	display: block;
+	display: none;
+	span {
+		display: block;
+		line-height: 1.65;
+	}
 `;
 
 export const Wrapper = styled.div`
 	position: relative;
+	height: fit-content;
 	width: fit-content;
 	&:hover {
 		${Tooltip} {

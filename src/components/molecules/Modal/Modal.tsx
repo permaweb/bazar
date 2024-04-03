@@ -35,7 +35,7 @@ export default function Modal(props: IProps) {
 	function getBody() {
 		return (
 			<>
-				<S.Container noHeader={!props.header} className={'border-wrapper-primary'}>
+				<S.Container noHeader={!props.header}>
 					{props.header && (
 						<S.Header>
 							<S.LT>

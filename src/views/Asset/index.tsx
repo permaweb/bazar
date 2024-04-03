@@ -29,7 +29,6 @@ export default function Asset() {
 	React.useEffect(() => {
 		(async function () {
 			if (id && checkValidAddress(id)) {
-				setAsset(null);
 				setLoading(true);
 				try {
 					setAsset(await getAssetById({ id: id }));

@@ -14,6 +14,7 @@ import market from 'assets/market.svg';
 import orders from 'assets/orders.svg';
 import othent from 'assets/othent.svg';
 import overview from 'assets/overview.svg';
+import paste from 'assets/paste.svg';
 import provenance from 'assets/provenance.svg';
 import renderer from 'assets/renderer.svg';
 import sell from 'assets/sell.svg';
@@ -52,6 +53,7 @@ export const ASSETS = {
 	orders,
 	othent,
 	overview,
+	paste,
 	provenance,
 	renderer,
 	sell,
@@ -119,6 +121,7 @@ export const TAGS = {
 		implements: 'Implements',
 		initialOwner: 'Initial-Owner',
 		license: 'License',
+		name: 'Name',
 		profileIndex: 'Profile-Index',
 		protocolName: 'Protocol-Name',
 		renderWith: 'Render-With',

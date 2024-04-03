@@ -121,7 +121,7 @@ export const UnsupportedWrapper = styled.div`
 		line-height: calc(${(props) => props.theme.typography.size.small} + 5px);
 		font-family: ${(props) => props.theme.typography.family.primary};
 		font-weight: ${(props) => props.theme.typography.weight.medium};
-		color: ${(props) => props.theme.colors.font.primary.alt1};
+		color: ${(props) => props.theme.colors.font.alt1};
 	}
 	svg {
 		height: 75px;
@@ -132,5 +132,6 @@ export const UnsupportedWrapper = styled.div`
 		top: 50%;
 		left: 50%;
 		transform: translate(-50%, -50%);
+		fill: ${(props) => props.theme.colors.font.alt1};
 	}
 `;

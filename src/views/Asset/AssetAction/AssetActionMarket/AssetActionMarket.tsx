@@ -24,12 +24,12 @@ export default function AssetActionMarket(props: IProps) {
 
 	const MARKET_ACTION_TABS = [
 		{
-			label: MARKET_ACTION_TAB_OPTIONS.sell,
-			icon: ASSETS.sell,
-		},
-		{
 			label: MARKET_ACTION_TAB_OPTIONS.buy,
 			icon: ASSETS.buy,
+		},
+		{
+			label: MARKET_ACTION_TAB_OPTIONS.sell,
+			icon: ASSETS.sell,
 		},
 		{
 			label: MARKET_ACTION_TAB_OPTIONS.transfer,
@@ -62,7 +62,7 @@ export default function AssetActionMarket(props: IProps) {
 				</Tabs>
 				<S.TabContent>{getCurrentTab()}</S.TabContent>
 			</S.TabsWrapper>
-			{props.asset.orders && (
+			{props.asset.orders && props.asset.orders.length > 0 && (
 				<GS.DrawerWrapper>
 					<Drawer
 						title={language.activeSaleOrders}

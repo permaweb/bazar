@@ -248,5 +248,9 @@ export default function AssetData(props: IProps) {
 		} else return null;
 	}
 
-	return <S.Wrapper ref={wrapperRef}>{getData()}</S.Wrapper>;
+	return (
+		<S.Wrapper ref={wrapperRef} className={'border-wrapper-alt2'}>
+			{getData()}
+		</S.Wrapper>
+	);
 }

@@ -26,7 +26,7 @@ export const lightTheme = {
 	semiTransparent2: 'rgba(0, 0, 0, 0.45)',
 	semiTransparent3: 'rgba(0, 0, 0, 0.65)',
 	semiTransparent4: '#AEAEAE45',
-	semiTransparent5: 'rgba(0, 0, 0, 0.075)',
+	semiTransparent5: 'rgb(240, 240, 240, 0.85)',
 	scheme: 'light',
 	light1: '#FFFFFF',
 	dark1: '#151515',
@@ -262,7 +262,7 @@ export const theme = (currentTheme: any): DefaultTheme => ({
 		tabs: {
 			color: currentTheme.neutralA4,
 			active: {
-				background: currentTheme.accent1,
+				background: currentTheme.neutralA3,
 				color: currentTheme.neutralA1,
 			},
 		},

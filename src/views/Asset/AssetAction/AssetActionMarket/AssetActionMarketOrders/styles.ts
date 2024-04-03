@@ -133,13 +133,20 @@ export const ConfirmationWrapper = styled.div``;
 export const ConfirmationMessage = styled.div`
 	width: fit-content;
 	margin: 20px 0 0 0;
-	// padding: 6.5px 15.5px;
-	// background: ${(props) => props.theme.colors.container.alt10.background};
-	// border-radius: ${STYLING.dimensions.radius.primary};
 	p {
 		font-size: ${(props) => props.theme.typography.size.small};
 		font-family: ${(props) => props.theme.typography.family.primary};
 		font-weight: ${(props) => props.theme.typography.weight.bold};
 		color: ${(props) => props.theme.colors.font.primary};
+	}
+`;
+
+export const RecipientWrapper = styled.div`
+	width: 100%;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 10px;
+	button {
+		margin: 30.5px 0 0 0;
 	}
 `;

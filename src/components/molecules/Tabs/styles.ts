@@ -52,7 +52,8 @@ export const AltTabAction = styled.button<{ active: boolean; icon: boolean }>`
 		left: 50%;
 		transform: translate(-50%, 0);
 		bottom: -12.5px;
-		background: ${(props) => (props.active ? props.theme.colors.border.primary : props.theme.colors.transparent)};
+		background: ${(props) =>
+			props.active ? props.theme.colors.tabs.active.background : props.theme.colors.transparent};
 		height: 3.5px;
 		border-radius: ${STYLING.dimensions.radius.primary};
 		width: 100%;

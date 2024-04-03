@@ -131,6 +131,7 @@ export default function AssetAction(props: IProps) {
 		);
 	}
 
+	// 1e12; // TODO: denomination of the transfer token
 	function getCurrentListings() {
 		if (currentListings) {
 			return (
@@ -155,7 +156,9 @@ export default function AssetAction(props: IProps) {
 								<GS.DrawerContentDetailAlt>
 									{formatPercentage(listing.quantity / totalAssetBalance)}
 								</GS.DrawerContentDetailAlt>
-								<GS.DrawerContentDetailAlt>{formatCount(listing.price || '0')}</GS.DrawerContentDetailAlt>
+								<GS.DrawerContentDetailAlt>
+									{formatCount((Number(listing.price) / 1e12).toString() || '0')}
+								</GS.DrawerContentDetailAlt>
 							</GS.DrawerContentLine>
 						);
 					})}
