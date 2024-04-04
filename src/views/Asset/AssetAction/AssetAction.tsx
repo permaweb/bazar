@@ -8,7 +8,7 @@ import * as GS from 'app/styles';
 import { Modal } from 'components/molecules/Modal';
 import { OwnerLine } from 'components/molecules/OwnerLine';
 import { Tabs } from 'components/molecules/Tabs';
-import { ASSETS, REDIRECTS } from 'helpers/config';
+import { ASSETS, PROCESSES, REDIRECTS } from 'helpers/config';
 import { OwnerType, ProfileType } from 'helpers/types';
 import { formatCount, formatPercentage, getOwners } from 'helpers/utils';
 import { useLanguageProvider } from 'providers/LanguageProvider';
@@ -113,6 +113,19 @@ export default function AssetAction(props: IProps) {
 		})();
 	}, [props.asset, associatedProfiles]);
 
+	function getDenominatedTokenValue(amount: number, currency: string) {
+		if (
+			currenciesReducer &&
+			currenciesReducer[currency] &&
+			currenciesReducer[currency].Denomination &&
+			currenciesReducer[currency].Denomination > 1
+		) {
+			const denomination = currenciesReducer[currency].Denomination;
+			return `${formatCount((amount / Math.pow(10, denomination)).toString())} ${currenciesReducer[currency].Ticker}`;
+		}
+		return formatCount(amount.toString());
+	}
+
 	function getCurrentOwners() {
 		return (
 			<>
@@ -129,26 +142,15 @@ export default function AssetAction(props: IProps) {
 							<GS.DrawerContentFlex>
 								<OwnerLine owner={owner} callback={() => setShowCurrentOwnersModal(false)} />
 							</GS.DrawerContentFlex>
-							<GS.DrawerContentDetailAlt>{formatCount(owner.ownerQuantity.toString())}</GS.DrawerContentDetailAlt>
+							<GS.DrawerContentDetailAlt>
+								{getDenominatedTokenValue(owner.ownerQuantity, props.asset.data.id)}
+							</GS.DrawerContentDetailAlt>
 							<GS.DrawerContentDetailAlt>{formatPercentage(owner.ownerPercentage)}</GS.DrawerContentDetailAlt>
 						</GS.DrawerContentLine>
 					);
 				})}
 			</>
 		);
-	}
-
-	function getDenominatedTokenValue(amount: number, currency: string) {
-		if (
-			currenciesReducer &&
-			currenciesReducer[currency] &&
-			currenciesReducer[currency].Denomination &&
-			currenciesReducer[currency].Denomination > 1
-		) {
-			const denomination = currenciesReducer[currency].Denomination;
-			return `${formatCount((amount / Math.pow(10, denomination)).toString())} ${currenciesReducer[currency].Ticker}`;
-		}
-		return formatCount(amount.toString());
 	}
 
 	function getCurrentListings() {
@@ -173,7 +175,9 @@ export default function AssetAction(props: IProps) {
 										callback={() => setShowCurrentOwnersModal(false)}
 									/>
 								</GS.DrawerContentFlex>
-								<GS.DrawerContentDetailAlt>{listing.quantity}</GS.DrawerContentDetailAlt>
+								<GS.DrawerContentDetailAlt>
+									{getDenominatedTokenValue(listing.quantity, props.asset.data.id)}
+								</GS.DrawerContentDetailAlt>
 								<GS.DrawerContentDetailAlt>
 									{formatPercentage(listing.quantity / totalAssetBalance)}
 								</GS.DrawerContentDetailAlt>
