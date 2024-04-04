@@ -29,6 +29,7 @@ export const lightTheme = {
 	semiTransparent5: 'rgb(240, 240, 240, 0.85)',
 	scheme: 'light',
 	light1: '#FFFFFF',
+	light2: '#DADADA',
 	dark1: '#151515',
 	indicator1: '#26B426',
 };
@@ -63,6 +64,7 @@ export const darkTheme = {
 	semiTransparent5: 'rgba(0, 0, 0, 0.5)',
 	scheme: 'dark',
 	light1: '#FFFFFF',
+	light2: '#DADADA',
 	dark1: '#151515',
 	indicator1: '#12D912',
 };
@@ -181,6 +183,7 @@ export const theme = (currentTheme: any): DefaultTheme => ({
 			alt4: currentTheme.neutral1,
 			alt5: currentTheme.primary2,
 			light1: currentTheme.light1,
+			light2: currentTheme.light2,
 		},
 		form: {
 			background: currentTheme.neutral1,
@@ -262,7 +265,7 @@ export const theme = (currentTheme: any): DefaultTheme => ({
 		tabs: {
 			color: currentTheme.neutralA4,
 			active: {
-				background: currentTheme.neutralA3,
+				background: currentTheme.primary1,
 				color: currentTheme.neutralA1,
 			},
 		},

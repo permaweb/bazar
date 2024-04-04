@@ -6,7 +6,7 @@ export const Wrapper = styled.header`
 	height: ${STYLING.dimensions.nav.height};
 	width: 100%;
 	position: sticky;
-	z-index: 1;
+	z-index: 2;
 	top: 0;
 	background: ${(props) => props.theme.colors.view.background};
 	border-bottom: 1px solid ${(props) => props.theme.colors.border.primary};

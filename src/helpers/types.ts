@@ -53,6 +53,7 @@ export type FullProfileType = ProfileType & {
 
 export type OwnerType = {
 	address: string;
+	ownerQuantity?: number;
 	ownerPercentage?: number;
 	profile: ProfileType | null;
 };
@@ -160,3 +161,8 @@ export type DateType = 'iso' | 'epoch';
 export type TabType = 'primary' | 'alt1';
 
 export type AssetMarketActionOrderType = 'buy' | 'sell' | 'transfer';
+
+export type ReduxActionType = {
+	type: string;
+	payload: any;
+};

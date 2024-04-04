@@ -37,7 +37,7 @@ export default function Asset() {
 					setErrorResponse(e.message || language.assetFetchFailed);
 				}
 				setLoading(false);
-			} else navigate(URLS.base); // TODO redirect 404
+			} else navigate(URLS.notFound);
 		})();
 	}, [id, ucmReducer]);
 

@@ -79,6 +79,7 @@ export function getOwners(asset: AssetDetailType, profiles: ProfileType[] | null
 		return Object.keys(asset.state.balances).map((address: string) => {
 			return {
 				address: address,
+				ownerQuantity: Number(asset.state.balances[address]),
 				ownerPercentage: Number(asset.state.balances[address]) / totalBalance,
 				profile: profiles ? profiles.find((profile: ProfileType) => profile.walletAddress === address) : null,
 			};

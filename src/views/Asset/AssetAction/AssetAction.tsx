@@ -1,4 +1,5 @@
 import React from 'react';
+import { useSelector } from 'react-redux';
 import { Link } from 'react-router-dom';
 
 import { getProfiles } from 'api';
@@ -11,6 +12,7 @@ import { ASSETS, REDIRECTS } from 'helpers/config';
 import { OwnerType, ProfileType } from 'helpers/types';
 import { formatCount, formatPercentage, getOwners } from 'helpers/utils';
 import { useLanguageProvider } from 'providers/LanguageProvider';
+import { RootState } from 'store';
 
 import { AssetActionActivity } from './AssetActionActivity';
 import { AssetActionComments } from './AssetActionComments';
@@ -18,8 +20,9 @@ import { AssetActionMarket } from './AssetActionMarket';
 import * as S from './styles';
 import { IProps } from './types';
 
-// TODO: sale orders
 export default function AssetAction(props: IProps) {
+	const currenciesReducer = useSelector((state: RootState) => state.currenciesReducer);
+
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
 
@@ -117,12 +120,16 @@ export default function AssetAction(props: IProps) {
 					<GS.DrawerContentDetail>
 						{language.owner.charAt(0).toUpperCase() + language.owner.slice(1)}
 					</GS.DrawerContentDetail>
+					<GS.DrawerContentDetail>{language.quantity}</GS.DrawerContentDetail>
 					<GS.DrawerContentDetail>{language.percentage}</GS.DrawerContentDetail>
 				</GS.DrawerHeaderWrapper>
 				{currentOwners.map((owner: OwnerType, index: number) => {
 					return (
 						<GS.DrawerContentLine key={index}>
-							<OwnerLine owner={owner} callback={() => setShowCurrentOwnersModal(false)} />
+							<GS.DrawerContentFlex>
+								<OwnerLine owner={owner} callback={() => setShowCurrentOwnersModal(false)} />
+							</GS.DrawerContentFlex>
+							<GS.DrawerContentDetailAlt>{formatCount(owner.ownerQuantity.toString())}</GS.DrawerContentDetailAlt>
 							<GS.DrawerContentDetailAlt>{formatPercentage(owner.ownerPercentage)}</GS.DrawerContentDetailAlt>
 						</GS.DrawerContentLine>
 					);
@@ -131,7 +138,19 @@ export default function AssetAction(props: IProps) {
 		);
 	}
 
-	// 1e12; // TODO: denomination of the transfer token
+	function getDenominatedTokenValue(amount: number, currency: string) {
+		if (
+			currenciesReducer &&
+			currenciesReducer[currency] &&
+			currenciesReducer[currency].Denomination &&
+			currenciesReducer[currency].Denomination > 1
+		) {
+			const denomination = currenciesReducer[currency].Denomination;
+			return `${formatCount((amount / Math.pow(10, denomination)).toString())} ${currenciesReducer[currency].Ticker}`;
+		}
+		return formatCount(amount.toString());
+	}
+
 	function getCurrentListings() {
 		if (currentListings) {
 			return (
@@ -145,19 +164,21 @@ export default function AssetAction(props: IProps) {
 					{currentListings.map((listing: any, index: number) => {
 						return (
 							<GS.DrawerContentLine key={index}>
-								<OwnerLine
-									owner={{
-										address: listing.creator,
-										profile: listing.profile,
-									}}
-									callback={() => setShowCurrentOwnersModal(false)}
-								/>
+								<GS.DrawerContentFlex>
+									<OwnerLine
+										owner={{
+											address: listing.creator,
+											profile: listing.profile,
+										}}
+										callback={() => setShowCurrentOwnersModal(false)}
+									/>
+								</GS.DrawerContentFlex>
 								<GS.DrawerContentDetailAlt>{listing.quantity}</GS.DrawerContentDetailAlt>
 								<GS.DrawerContentDetailAlt>
 									{formatPercentage(listing.quantity / totalAssetBalance)}
 								</GS.DrawerContentDetailAlt>
 								<GS.DrawerContentDetailAlt>
-									{formatCount((Number(listing.price) / 1e12).toString() || '0')}
+									{getDenominatedTokenValue(listing.price, listing.currency)}
 								</GS.DrawerContentDetailAlt>
 							</GS.DrawerContentLine>
 						);

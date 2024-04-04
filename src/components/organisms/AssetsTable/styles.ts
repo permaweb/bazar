@@ -59,6 +59,7 @@ export const AssetDataWrapper = styled.div`
 export const AssetInfoWrapper = styled.div`
 	height: 100px;
 	width: 100%;
+	text-align: center;
 	padding: 20px 0;
 `;
 

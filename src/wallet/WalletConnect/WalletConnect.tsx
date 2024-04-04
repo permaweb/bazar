@@ -1,20 +1,22 @@
 import React from 'react';
+import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
-import { ReactSVG } from 'react-svg';
 
 import { Avatar } from 'components/atoms/Avatar';
-import { ASSETS, URLS } from 'helpers/config';
-import { formatAddress, formatARAmount } from 'helpers/utils';
+import { PROCESSES, URLS } from 'helpers/config';
+import { formatAddress, formatARAmount, formatCount } from 'helpers/utils';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useCustomThemeProvider } from 'providers/CustomThemeProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
+import { RootState } from 'store';
 import { CloseHandler } from 'wrappers/CloseHandler';
 
 import * as S from './styles';
 
-// TODO: balances
 export default function WalletConnect(_props: { callback?: () => void }) {
 	const navigate = useNavigate();
+
+	const currenciesReducer = useSelector((state: RootState) => state.currenciesReducer);
 
 	const arProvider = useArweaveProvider();
 	const themeProvider = useCustomThemeProvider();
@@ -81,6 +83,23 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 		setShowWalletDropdown(false);
 	}
 
+	function getTokenBalance(tokenProcess: string) {
+		if (
+			arProvider.walletAddress &&
+			currenciesReducer &&
+			currenciesReducer[tokenProcess] &&
+			currenciesReducer[tokenProcess].Balances[arProvider.walletAddress]
+		) {
+			const ownerBalance = currenciesReducer[tokenProcess].Balances[arProvider.walletAddress];
+			const denomination = currenciesReducer[tokenProcess].Denomination;
+			let calculatedOwnerBalance = ownerBalance;
+			if (denomination && denomination > 1) calculatedOwnerBalance = ownerBalance / Math.pow(10, denomination);
+
+			return formatCount(calculatedOwnerBalance.toString());
+		}
+		return 0;
+	}
+
 	return (
 		<>
 			<CloseHandler
@@ -116,14 +135,21 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 							</S.DHeaderWrapper>
 							<S.DBodyWrapper>
 								<S.DBodyHeader>
-									<span>Balances</span>
+									<span>{language.balances}</span>
 								</S.DBodyHeader>
 								<S.BalanceLine>
-									<ReactSVG src={ASSETS.ar} />
+									{/* <ReactSVG src={ASSETS.ar} /> */}
 									<p>
 										{formatARAmount(arProvider.availableBalance ? arProvider.availableBalance : 0)} <span>AR</span>
 									</p>
 								</S.BalanceLine>
+								{currenciesReducer && currenciesReducer[PROCESSES.token] && (
+									<S.BalanceLine>
+										<p>
+											{getTokenBalance(PROCESSES.token)} <span>{currenciesReducer[PROCESSES.token].Ticker}</span>
+										</p>
+									</S.BalanceLine>
+								)}
 								{/* <S.BalanceLine>
 									<ReactSVG src={ASSETS.u} />
 									<p>5.67 <span>U</span></p>

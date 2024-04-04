@@ -4,9 +4,10 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { getAssetsByIds, getCollectionById } from 'api';
 
 import { Loader } from 'components/atoms/Loader';
+import { OwnerLine } from 'components/molecules/OwnerLine';
 import { AssetsTable } from 'components/organisms/AssetsTable';
-import { CollectionCard } from 'components/organisms/CollectionCard';
-import { URLS } from 'helpers/config';
+import { DEFAULTS, URLS } from 'helpers/config';
+import { getTxEndpoint } from 'helpers/endpoints';
 import { AssetDetailType, CollectionDetailType } from 'helpers/types';
 import { checkValidAddress } from 'helpers/utils';
 import { useLanguageProvider } from 'providers/LanguageProvider';
@@ -36,7 +37,7 @@ export default function Collection() {
 					setErrorResponse(e.message || language.collectionFetchFailed);
 				}
 				setLoading(false);
-			} else navigate(URLS.base); // TODO redirect 404
+			} else navigate(URLS.notFound);
 		})();
 	}, [id]);
 
@@ -52,14 +53,31 @@ export default function Collection() {
 		})();
 	}, [collection]);
 
-	console.log(assets);
-
 	function getData() {
 		if (collection) {
 			return (
 				<>
-					<S.CardWrapper>
-						<CollectionCard collection={collection} />
+					<S.CardWrapper backgroundImage={getTxEndpoint(collection.data.banner || DEFAULTS.thumbnail)}>
+						<S.InfoWrapper>
+							<S.InfoHeader>
+								<h2>{collection.data.title}</h2>
+							</S.InfoHeader>
+							<S.InfoCreator>
+								<p>{`Created by`}</p>
+								<OwnerLine
+									owner={{
+										address: collection.data.creator,
+										profile: collection.creatorProfile,
+									}}
+									callback={null}
+								/>
+							</S.InfoCreator>
+							{collection.data.description && (
+								<S.InfoDescription>
+									<p>{collection.data.description}</p>
+								</S.InfoDescription>
+							)}
+						</S.InfoWrapper>
 					</S.CardWrapper>
 					{assets && (
 						<S.AssetsWrapper>

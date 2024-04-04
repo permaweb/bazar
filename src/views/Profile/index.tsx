@@ -47,28 +47,28 @@ export default function Profile() {
 			icon: null,
 			disabled: false,
 			url: URLS.profileAssets(address),
-			view: () => <p>Profile assets</p>,
+			view: () => <p>Coming soon!</p>,
 		},
 		{
 			label: language.collections,
 			icon: null,
 			disabled: false,
 			url: URLS.profileCollections(address),
-			view: () => <p>Profile collections</p>,
+			view: () => <p>Coming soon!</p>,
 		},
 		{
 			label: language.listings,
 			icon: null,
 			disabled: false,
 			url: URLS.profileListings(address),
-			view: () => <p>Profile listings</p>,
+			view: () => <p>Coming soon!</p>,
 		},
 		{
 			label: language.activity,
 			icon: null,
 			disabled: false,
 			url: URLS.profileActivity(address),
-			view: () => <p>Profile activity</p>,
+			view: () => <p>Coming soon!</p>,
 		},
 	];
 

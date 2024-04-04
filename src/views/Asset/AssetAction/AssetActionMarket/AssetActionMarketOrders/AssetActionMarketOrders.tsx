@@ -6,24 +6,23 @@ import { readProcessState, sendMessage } from 'api';
 import { Button } from 'components/atoms/Button';
 import { FormField } from 'components/atoms/FormField';
 import { IconButton } from 'components/atoms/IconButton';
+import { Notification } from 'components/atoms/Notification';
 import { Slider } from 'components/atoms/Slider';
 import { Modal } from 'components/molecules/Modal';
 import { ASSETS, PROCESSES } from 'helpers/config';
 import { AssetOrderType } from 'helpers/types';
-import { formatCount, formatPercentage } from 'helpers/utils';
+import { checkValidAddress, formatCount, formatPercentage } from 'helpers/utils';
 import * as windowUtils from 'helpers/window';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 import { RootState } from 'store';
+import * as currencyActions from 'store/currencies/actions';
 import * as ucmActions from 'store/ucm/actions';
 
 import * as S from './styles';
 import { IProps } from './types';
 
-// TODO: create multiple orders, fulfill one and other orders are deleted from ucm
-// TODO: unit price
-// TODO: buy / transfer
-// TODO: input validation
+// TODO: order cancel
 export default function AssetActionMarketOrders(props: IProps) {
 	const dispatch = useDispatch();
 
@@ -31,6 +30,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
 
+	const currenciesReducer = useSelector((state: RootState) => state.currenciesReducer);
 	const ucmReducer = useSelector((state: RootState) => state.ucmReducer);
 
 	// Total quantity of asset
@@ -54,8 +54,17 @@ export default function AssetActionMarketOrders(props: IProps) {
 	// The number of the token that should be treated as a single unit when quantities and balances are displayed
 	const [denomination, setDenomination] = React.useState<number | null>(null);
 
+	// The number of the transfer token that should be treated as a single unit when quantities and balances are displayed
+	const [transferDenomination, setTransferDenomination] = React.useState<number | null>(null);
+
+	// Ticker of the transfer token
+	const [transferTicker, setTransferTicker] = React.useState<string | null>(null);
+
 	// Price on limit orders for quantity of one transfer token
 	const [unitPrice, setUnitPrice] = React.useState<number>(0);
+
+	// Active after an order is completed and asset is refreshed
+	const [updating, setUpdating] = React.useState<boolean>(false);
 
 	const [orderLoading, setOrderLoading] = React.useState<boolean>(false);
 	const [orderProcessed, setOrderProcessed] = React.useState<boolean>(false);
@@ -91,7 +100,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 				}
 			}
 
-			if (props.asset.orders) {
+			if (props.asset.orders && props.asset.orders.length > 0) {
 				const salesBalances = props.asset.orders.map((order: AssetOrderType) => {
 					return Number(order.quantity);
 				});
@@ -102,6 +111,18 @@ export default function AssetActionMarketOrders(props: IProps) {
 				if (denomination) calculatedTotalSalesBalance = totalSalesBalance / denomination;
 
 				setTotalSalesQuantity(calculatedTotalSalesBalance);
+			}
+
+			const orderCurrency =
+				props.asset.orders && props.asset.orders.length ? props.asset.orders[0].currency : PROCESSES.token;
+			if (
+				currenciesReducer &&
+				currenciesReducer[orderCurrency] &&
+				currenciesReducer[orderCurrency].Denomination &&
+				currenciesReducer[orderCurrency].Denomination > 1
+			) {
+				setTransferDenomination(Math.pow(10, currenciesReducer[orderCurrency].Denomination));
+				setTransferTicker(currenciesReducer[orderCurrency].Ticker);
 			}
 		}
 	}, [props.asset, arProvider.walletAddress, denomination, ucmReducer]);
@@ -121,7 +142,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 		setCurrentOrderQuantity(0);
 	}, [props.asset, props.type, connectedBalance, totalSalesQuantity]);
 
-	// args: { clientWallet, orderPair, orderQuantity, orderPrice? }
 	async function handleOrderCreate() {
 		if (props.asset && arProvider.wallet) {
 			let orderPair = null;
@@ -166,8 +186,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 							Quantity: calculatedQuantity,
 						},
 					});
-
-					console.log(transferResponse);
 
 					if (transferResponse['Credit-Notice'] && transferResponse['Debit-Notice']) {
 						setCurrentNotification(transferResponse['Credit-Notice'].message);
@@ -239,12 +257,10 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 									if (unitPrice && unitPrice > 0) {
 										let calculatedUnitPrice: string | number = unitPrice;
-										calculatedUnitPrice = unitPrice * 1e12; // TODO: denomination of the transfer token
+										if (transferDenomination) calculatedUnitPrice = unitPrice * transferDenomination;
 										calculatedUnitPrice = calculatedUnitPrice.toString();
 										orderData.Price = calculatedUnitPrice;
 									}
-
-									console.log(orderData);
 
 									const createOrderResponse: any = await sendMessage({
 										processId: PROCESSES.ucm,
@@ -389,25 +405,22 @@ export default function AssetActionMarketOrders(props: IProps) {
 				return totalPrice;
 			} else return 0;
 		} else {
-			// 1e12; // TODO: denomination of the transfer token
-
 			let price: number;
 			if (isNaN(unitPrice) || isNaN(currentOrderQuantity) || currentOrderQuantity < 0 || unitPrice < 0) {
 				price = 0;
 			} else {
 				let calculatedUnitPrice = unitPrice;
-				// if (denomination) calculatedUnitPrice = unitPrice * denomination;
-				calculatedUnitPrice = unitPrice * 1e12;
-
+				if (transferDenomination) calculatedUnitPrice = unitPrice * transferDenomination;
 				price = currentOrderQuantity * calculatedUnitPrice;
 			}
 			return price;
 		}
 	}
 
-	// 1e12; // TODO: denomination of the transfer token
 	function getTotalPriceDisplay() {
-		return formatCount((getTotalPrice() / 1e12).toFixed(4).toString());
+		let calculatedTotalPrice = getTotalPrice();
+		if (transferDenomination) calculatedTotalPrice = getTotalPrice() / transferDenomination;
+		return `${formatCount(calculatedTotalPrice.toFixed(4).toString())} ${transferTicker || ''}`;
 	}
 
 	function getOrderDetails() {
@@ -460,14 +473,12 @@ export default function AssetActionMarketOrders(props: IProps) {
 		if (currentOrderQuantity <= 0) return true;
 		if (currentOrderQuantity > maxOrderQuantity) return true;
 		if (props.type === 'sell' && unitPrice <= 0) return true;
-		if (props.type === 'transfer' && !transferRecipient) return true;
-		// if (connectedDisabledSale) return true;
-		// if (invalidQuantity.status || quantity <= 0 || isNaN(quantity)) return true;
-		// if (invalidUnitPrice.status || unitPrice <= 0 || isNaN(unitPrice)) return true;
+		if (props.type === 'transfer' && (!transferRecipient || !checkValidAddress(transferRecipient))) return true;
 		return false;
 	}
 
 	async function handleAssetUpdate() {
+		setUpdating(true);
 		setCurrentOrderQuantity(0);
 		setUnitPrice(0);
 		setCurrentNotification(null);
@@ -478,9 +489,21 @@ export default function AssetActionMarketOrders(props: IProps) {
 		try {
 			const ucmState = await readProcessState(PROCESSES.ucm);
 			dispatch(ucmActions.setUCM(ucmState));
+
+			const orderCurrency =
+				props.asset.orders && props.asset.orders.length ? props.asset.orders[0].currency : PROCESSES.token;
+			const tokenState = await readProcessState(orderCurrency);
+			dispatch(
+				currencyActions.setCurrencies({
+					[orderCurrency]: {
+						...tokenState,
+					},
+				})
+			);
 		} catch (e: any) {
 			console.error(e);
 		}
+		setUpdating(false);
 	}
 
 	function getAction(finalizeOrder: boolean) {
@@ -542,7 +565,10 @@ export default function AssetActionMarketOrders(props: IProps) {
 		}
 
 		return (
-			<Modal header={`${header}: ${props.asset.data.title}`} handleClose={() => setShowConfirmation(false)}>
+			<Modal
+				header={`${header}: ${props.asset.data.title}`}
+				handleClose={() => (orderProcessed ? handleAssetUpdate() : setShowConfirmation(false))}
+			>
 				<S.ConfirmationWrapper className={'modal-wrapper'}>
 					<S.SalesWrapper>{getOrderDetails()}</S.SalesWrapper>
 					<S.ActionWrapperFull>{getAction(true)}</S.ActionWrapperFull>
@@ -594,7 +620,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 									onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleQuantityInput(e)}
 									label={`${language.assetQuantity} (${language.max}: ${maxOrderQuantity})`}
 									disabled={!arProvider.walletAddress || maxOrderQuantity <= 0 || orderLoading}
-									invalid={{ status: false, message: null }}
+									invalid={{ status: currentOrderQuantity < 0, message: null }}
 									hideErrorMessage
 								/>
 							</S.FieldWrapper>
@@ -606,7 +632,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 										value={isNaN(unitPrice) ? '' : unitPrice}
 										onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleUnitPriceInput(e)}
 										disabled={!arProvider.walletAddress || currentOrderQuantity <= 0 || orderLoading}
-										invalid={{ status: false, message: null }}
+										invalid={{ status: unitPrice < 0, message: null }}
 										tooltip={language.saleUnitPriceTooltip}
 									/>
 								</S.FieldWrapper>
@@ -619,7 +645,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 											value={transferRecipient || ''}
 											onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleRecipientInput(e)}
 											disabled={!arProvider.walletAddress || orderLoading}
-											invalid={{ status: false, message: null }}
+											invalid={{ status: transferRecipient && !checkValidAddress(transferRecipient), message: null }}
 										/>
 									</S.FieldWrapper>
 									{navigator && navigator.clipboard && navigator.clipboard.readText && (
@@ -645,6 +671,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 				<S.ActionWrapper>{getAction(false)}</S.ActionWrapper>
 			</S.Wrapper>
 			{showConfirmation && getConfirmation()}
+			{updating && <Notification message={`${language.updatingAsset}...`} callback={() => setUpdating(false)} />}
 		</>
 	) : null;
 }

@@ -2,10 +2,8 @@ import React from 'react';
 
 import * as GS from 'app/styles';
 import { Drawer } from 'components/atoms/Drawer';
-import { OwnerLine } from 'components/molecules/OwnerLine';
 import { Tabs } from 'components/molecules/Tabs';
 import { ASSETS } from 'helpers/config';
-import { ProfileType } from 'helpers/types';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 
 import { AssetActionMarketOrders } from './AssetActionMarketOrders';

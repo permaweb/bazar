@@ -295,12 +295,17 @@ export const DrawerContent = styled.div<{ transparent?: boolean }>`
 `;
 
 export const DrawerHeaderWrapper = styled.div`
-	width: 100%;
 	display: flex;
 	justify-content: space-between;
 	align-items: center;
-	border-bottom: 1px solid ${(props) => props.theme.colors.border.primary};
 	padding: 0 0 7.5px 0;
+	border-bottom: 1px solid ${(props) => props.theme.colors.border.primary};
+	width: 100%;
+	> * {
+		&:not(:first-child) {
+			text-align: right;
+		}
+	}
 `;
 
 export const DrawerHeader = styled.p`
@@ -313,14 +318,20 @@ export const DrawerHeader = styled.p`
 `;
 
 export const DrawerContentLine = styled.div`
-	width: 100%;
 	display: flex;
 	justify-content: space-between;
 	align-items: center;
 	position: relative;
+	width: 100%;
+	> * {
+		&:not(:first-child) {
+			text-align: right;
+		}
+	}
 `;
 
 export const DrawerContentHeader = styled.p`
+	flex: 1;
 	font-size: ${(props) => props.theme.typography.size.base};
 	font-family: ${(props) => props.theme.typography.family.primary};
 	font-weight: ${(props) => props.theme.typography.weight.medium};
@@ -328,7 +339,12 @@ export const DrawerContentHeader = styled.p`
 	word-wrap: break-word;
 `;
 
+export const DrawerContentFlex = styled.div`
+	flex: 1;
+`;
+
 export const DrawerContentDetail = styled.p`
+	flex: 1;
 	font-size: ${(props) => props.theme.typography.size.base};
 	font-family: ${(props) => props.theme.typography.family.primary};
 	font-weight: ${(props) => props.theme.typography.weight.bold};

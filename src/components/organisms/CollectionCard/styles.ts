@@ -13,7 +13,10 @@ export const Wrapper = styled.div`
 export const InfoWrapper = styled.div`
 	width: ${INFO_DIMENSION};
 	max-width: 100%;
-	padding: 0 40px 0 0;
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	align-items: center;
 	@media (max-width: ${STYLING.cutoffs.desktop}) {
 		width: 100%;
 	}
