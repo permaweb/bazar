@@ -232,6 +232,10 @@ export const GlobalStyle = createGlobalStyle`
     }
   }
 
+	.fade-in {
+		animation ${open} ${fadeIn1};
+	}
+
   .scroll-wrapper {
     overflow: auto;
     

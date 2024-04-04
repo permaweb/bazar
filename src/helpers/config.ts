@@ -114,6 +114,8 @@ export const TAGS = {
 	keys: {
 		avatar: 'Avatar',
 		banner: 'Banner',
+		creator: 'Creator',
+		dataProtocol: 'Data-Protocol',
 		dateCreated: 'Date-Created',
 		description: 'Description',
 		displayName: 'Display-Name',
@@ -129,6 +131,7 @@ export const TAGS = {
 		title: 'Title',
 	},
 	values: {
+		collection: 'AO-Test-Collection',
 		profileVersions: {
 			'1': 'Account-0.3',
 		},
@@ -143,6 +146,7 @@ function createURLs() {
 	return {
 		base: base,
 		asset: `${base}asset/`,
+		collection: `${base}collection/`,
 		collections: `${base}collections/`,
 		docs: `${base}docs/`,
 		profile: profile,
@@ -173,4 +177,9 @@ export const PAGINATORS = {
 export const REDIRECTS = {
 	x: `https://twitter.com/OurBazAR`,
 	viewblock: (tx: string) => `https://viewblock.io/arweave/tx/${tx}`,
+};
+
+export const DEFAULTS = {
+	banner: 'eXCtpVbcd_jZ0dmU2PZ8focaKxBGECBQ8wMib7sIVPo',
+	thumbnail: 'lJovHqM9hwNjHV5JoY9NGWtt0WD-5D4gOqNL2VWW5jk',
 };

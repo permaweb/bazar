@@ -2,7 +2,7 @@ import { getGQLData } from 'api';
 
 import { AR_PROFILE, GATEWAYS, PAGINATORS, TAGS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
-import { AGQLResponseType, FullProfileType, GQLNodeResponseType, ProfileType } from 'helpers/types';
+import { DefaultGQLResponseType, FullProfileType, GQLNodeResponseType, ProfileType } from 'helpers/types';
 import { getTagValue } from 'helpers/utils';
 
 export async function getProfiles(args: { addresses: string[]; profileVersions?: string[] }): Promise<ProfileType[]> {
@@ -12,7 +12,7 @@ export async function getProfiles(args: { addresses: string[]; profileVersions?:
 	const profileVersions = args.profileVersions ? args.profileVersions : [TAGS.values.profileVersions['1']];
 
 	for (let i = 0; i < args.addresses.length; i += PAGINATORS.default) {
-		const gqlResponse: AGQLResponseType = await getGQLData({
+		const gqlResponse: DefaultGQLResponseType = await getGQLData({
 			gateway: GATEWAYS.arweave,
 			ids: null,
 			tagFilters: [

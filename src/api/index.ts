@@ -2,16 +2,16 @@ import { createDataItemSigner, dryrun, message, result } from '@permaweb/aoconne
 
 import { CURSORS, GATEWAYS, PAGINATORS } from 'helpers/config';
 import {
-	AGQLResponseType,
 	BatchAGQLResponseType,
 	BatchGQLArgsType,
+	DefaultGQLResponseType,
 	GQLArgsType,
 	GQLNodeResponseType,
 	QueryBodyGQLArgsType,
 } from 'helpers/types';
 import { getTagValue } from 'helpers/utils';
 
-export async function getGQLData(args: GQLArgsType): Promise<AGQLResponseType> {
+export async function getGQLData(args: GQLArgsType): Promise<DefaultGQLResponseType> {
 	const paginator = args.paginator ? args.paginator : PAGINATORS.default;
 
 	let data: GQLNodeResponseType[] = [];
@@ -235,4 +235,5 @@ export async function readProcessState(processId: string): Promise<any> {
 }
 
 export * from './assets';
+export * from './collections';
 export * from './profiles';

@@ -13,7 +13,7 @@ export default function OwnerLine(props: IProps) {
 	function handleViewProfile() {
 		if (props.owner) {
 			navigate(`${URLS.profile}${props.owner.address}`);
-			props.callback();
+			if (props.callback) props.callback();
 		}
 	}
 

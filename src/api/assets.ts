@@ -2,15 +2,63 @@ import { getGQLData, readProcessState } from 'api';
 
 import { GATEWAYS, TAGS } from 'helpers/config';
 import {
-	AGQLResponseType,
 	AssetDetailType,
 	AssetOrderType,
 	AssetStateType,
 	AssetType,
+	DefaultGQLResponseType,
 	GQLNodeResponseType,
 } from 'helpers/types';
 import { formatAddress, getTagValue } from 'helpers/utils';
 import { store } from 'store';
+
+export async function getAssetsByIds(args: { ids: string[] }): Promise<AssetDetailType[]> {
+	try {
+		const gqlResponse = await getGQLData({
+			gateway: GATEWAYS.arweave,
+			ids: args.ids,
+			tagFilters: null,
+			owners: null,
+			cursor: null,
+		});
+
+		if (gqlResponse && gqlResponse.data.length) {
+			const structuredAssets = structureAssets(gqlResponse);
+
+			// let assetOrders: AssetOrderType[] | null = null;
+			// if (store.getState().ucmReducer) {
+			// 	const ucmReducer = store.getState().ucmReducer;
+			// 	const existingEntry = ucmReducer.Orderbook.find((entry: any) => {
+			// 		return entry.Pair ? entry.Pair[0] === args.ids : null;
+			// 	});
+			// 	if (existingEntry) {
+			// 		assetOrders = existingEntry.Orders.map((order: any) => {
+			// 			let currentAssetOrder: AssetOrderType = {
+			// 				creator: order.Creator,
+			// 				dateCreated: order.DateCreated,
+			// 				depositTxId: order.DepositTxId,
+			// 				id: order.Id,
+			// 				originalQuantity: order.OriginalQuantity,
+			// 				quantity: order.Quantity,
+			// 				token: order.Token,
+			// 				currency: existingEntry.Pair[1],
+			// 			};
+
+			// 			if (order.Price) currentAssetOrder.price = order.Price;
+			// 			return currentAssetOrder;
+			// 		});
+			// 	}
+			// }
+
+			// TODO: orders
+			return structuredAssets;
+		}
+
+		return null;
+	} catch (e: any) {
+		throw new Error(e.message || 'Failed to fetch assets');
+	}
+}
 
 export async function getAssetById(args: { id: string }): Promise<AssetDetailType> {
 	try {
@@ -65,7 +113,7 @@ export async function getAssetById(args: { id: string }): Promise<AssetDetailTyp
 				}
 			}
 
-			const assetDetail: any = { ...structuredAsset, state: assetState };
+			const assetDetail: AssetDetailType = { ...structuredAsset, state: assetState };
 			if (assetOrders) assetDetail.orders = assetOrders;
 			return assetDetail;
 		}
@@ -76,10 +124,10 @@ export async function getAssetById(args: { id: string }): Promise<AssetDetailTyp
 	}
 }
 
-function structureAssets(gqlData: AGQLResponseType): AssetType[] {
+export function structureAssets(gqlResponse: DefaultGQLResponseType): AssetType[] {
 	const structuredAssets: AssetType[] = [];
 
-	gqlData.data.forEach((element: GQLNodeResponseType) => {
+	gqlResponse.data.forEach((element: GQLNodeResponseType) => {
 		structuredAssets.push({
 			data: {
 				id: element.node.id,

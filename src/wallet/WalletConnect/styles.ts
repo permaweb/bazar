@@ -53,6 +53,7 @@ export const Dropdown = styled.ul`
 	top: 45px;
 	right: 0px;
 	border-radius: ${STYLING.dimensions.radius.primary};
+	box-shadow: none !important;
 `;
 
 export const DHeaderWrapper = styled.div`

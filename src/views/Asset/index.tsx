@@ -16,8 +16,9 @@ import { AssetInfo } from './AssetInfo';
 import * as S from './styles';
 
 export default function Asset() {
-	const navigate = useNavigate();
 	const { id } = useParams();
+	const navigate = useNavigate();
+
 	const ucmReducer = useSelector((state: RootState) => state.ucmReducer);
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
@@ -59,5 +60,5 @@ export default function Asset() {
 		}
 	}
 
-	return <S.Wrapper>{getData()}</S.Wrapper>;
+	return <S.Wrapper className={'fade-in'}>{getData()}</S.Wrapper>;
 }

@@ -1,6 +1,5 @@
 import styled from 'styled-components';
 
-import { fadeIn2, open } from 'helpers/animations';
 import { STYLING } from 'helpers/config';
 
 const INFO_DIMENSION = '550px';
@@ -8,7 +7,6 @@ const INFO_DIMENSION = '550px';
 export const Wrapper = styled.div`
 	width: 100%;
 	display: flex;
-	animation: ${open} ${fadeIn2};
 	@media (max-width: ${STYLING.cutoffs.desktop}) {
 		flex-direction: column;
 	}
