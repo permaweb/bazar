@@ -63,7 +63,7 @@ export default function Collection() {
 								<h2>{collection.data.title}</h2>
 							</S.InfoHeader>
 							<S.InfoCreator>
-								<p>{`Created by`}</p>
+								<p>{language.createdBy}</p>
 								<OwnerLine
 									owner={{
 										address: collection.data.creator,

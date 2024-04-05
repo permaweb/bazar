@@ -326,6 +326,8 @@ export const DrawerContentLine = styled.div`
 	> * {
 		&:not(:first-child) {
 			text-align: right;
+			display: flex;
+			justify-content: flex-end;
 		}
 	}
 `;
@@ -340,6 +342,14 @@ export const DrawerContentHeader = styled.p`
 `;
 
 export const DrawerContentFlex = styled.div`
+	display: flex;
+	align-items: center;
+	flex: 1.5;
+`;
+
+export const DrawerContentFlexEnd = styled.div`
+	display: flex;
+	align-items: center;
 	flex: 1;
 `;
 

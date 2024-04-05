@@ -272,12 +272,10 @@ export const theme = (currentTheme: any): DefaultTheme => ({
 		view: {
 			background: currentTheme.neutral1,
 		},
-		video: {
-			buffered: currentTheme.neutral4,
-			unbuffered: currentTheme.semiTransparent4,
-			watched: currentTheme.primary1,
+		warning: {
+			primary: currentTheme.negative1,
+			alt1: currentTheme.negative2,
 		},
-		warning: currentTheme.negative1,
 	},
 	typography: {
 		family: {

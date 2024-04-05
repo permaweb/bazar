@@ -23,35 +23,43 @@ export async function getAssetsByIds(args: { ids: string[] }): Promise<AssetDeta
 		});
 
 		if (gqlResponse && gqlResponse.data.length) {
+			const finalAssets: AssetDetailType[] = [];
 			const structuredAssets = structureAssets(gqlResponse);
 
-			// let assetOrders: AssetOrderType[] | null = null;
-			// if (store.getState().ucmReducer) {
-			// 	const ucmReducer = store.getState().ucmReducer;
-			// 	const existingEntry = ucmReducer.Orderbook.find((entry: any) => {
-			// 		return entry.Pair ? entry.Pair[0] === args.ids : null;
-			// 	});
-			// 	if (existingEntry) {
-			// 		assetOrders = existingEntry.Orders.map((order: any) => {
-			// 			let currentAssetOrder: AssetOrderType = {
-			// 				creator: order.Creator,
-			// 				dateCreated: order.DateCreated,
-			// 				depositTxId: order.DepositTxId,
-			// 				id: order.Id,
-			// 				originalQuantity: order.OriginalQuantity,
-			// 				quantity: order.Quantity,
-			// 				token: order.Token,
-			// 				currency: existingEntry.Pair[1],
-			// 			};
+			if (store.getState().ucmReducer) {
+				const ucmReducer = store.getState().ucmReducer;
 
-			// 			if (order.Price) currentAssetOrder.price = order.Price;
-			// 			return currentAssetOrder;
-			// 		});
-			// 	}
-			// }
+				structuredAssets.forEach((asset: AssetType) => {
+					let assetOrders: AssetOrderType[] | null = null;
+					const existingEntry = ucmReducer.Orderbook.find((entry: any) => {
+						return entry.Pair ? entry.Pair[0] === asset.data.id : null;
+					});
 
-			// TODO: orders
-			return structuredAssets;
+					if (existingEntry) {
+						assetOrders = existingEntry.Orders.map((order: any) => {
+							let currentAssetOrder: AssetOrderType = {
+								creator: order.Creator,
+								dateCreated: order.DateCreated,
+								depositTxId: order.DepositTxId,
+								id: order.Id,
+								originalQuantity: order.OriginalQuantity,
+								quantity: order.Quantity,
+								token: order.Token,
+								currency: existingEntry.Pair[1],
+							};
+
+							if (order.Price) currentAssetOrder.price = order.Price;
+							return currentAssetOrder;
+						});
+					}
+
+					const finalAsset: AssetDetailType = { ...asset };
+					if (assetOrders) finalAsset.orders = assetOrders;
+					finalAssets.push(finalAsset);
+				});
+			}
+
+			return finalAssets;
 		}
 
 		return null;

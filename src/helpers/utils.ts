@@ -1,4 +1,4 @@
-import { AssetDetailType, DateType, OwnerType, ProfileType } from './types';
+import { AssetDetailType, AssetOrderType, DateType, OwnerType, ProfileType } from './types';
 
 export function checkValidAddress(address: string | null) {
 	if (!address) return false;
@@ -86,4 +86,11 @@ export function getOwners(asset: AssetDetailType, profiles: ProfileType[] | null
 		});
 	}
 	return null;
+}
+
+export function sortOrders(orders: AssetOrderType[]) {
+	const sortedOrders = orders.sort((a: AssetOrderType, b: AssetOrderType) => {
+		return a.price && b.price ? Number(a.price) - Number(b.price) : 0;
+	});
+	return sortedOrders;
 }

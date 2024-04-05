@@ -5,12 +5,15 @@ import { Link } from 'react-router-dom';
 import { getProfiles } from 'api';
 
 import * as GS from 'app/styles';
+import { CurrencyLine } from 'components/atoms/CurrencyLine';
 import { Modal } from 'components/molecules/Modal';
 import { OwnerLine } from 'components/molecules/OwnerLine';
 import { Tabs } from 'components/molecules/Tabs';
-import { ASSETS, PROCESSES, REDIRECTS } from 'helpers/config';
-import { OwnerType, ProfileType } from 'helpers/types';
-import { formatCount, formatPercentage, getOwners } from 'helpers/utils';
+import { OrderCancel } from 'components/organisms/OrderCancel';
+import { ASSETS, REDIRECTS } from 'helpers/config';
+import { ListingType, OwnerType, ProfileType } from 'helpers/types';
+import { formatCount, formatPercentage, getOwners, sortOrders } from 'helpers/utils';
+import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 import { RootState } from 'store';
 
@@ -23,6 +26,7 @@ import { IProps } from './types';
 export default function AssetAction(props: IProps) {
 	const currenciesReducer = useSelector((state: RootState) => state.currenciesReducer);
 
+	const arProvider = useArweaveProvider();
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
 
@@ -51,7 +55,7 @@ export default function AssetAction(props: IProps) {
 	const [associatedProfiles, setAssociatedProfiles] = React.useState<ProfileType[] | null>(null);
 
 	const [currentOwners, setCurrentOwners] = React.useState<OwnerType[] | null>(null);
-	const [currentListings, setCurrentListings] = React.useState<any[] | null>(null);
+	const [currentListings, setCurrentListings] = React.useState<ListingType[] | null>(null);
 
 	const [showCurrentOwnersModal, setShowCurrentOwnersModal] = React.useState<boolean>(false);
 	const [showCurrentListingsModal, setShowCurrentListingsModal] = React.useState<boolean>(false);
@@ -94,7 +98,9 @@ export default function AssetAction(props: IProps) {
 				setCurrentOwners(getOwners(props.asset, associatedProfiles));
 			}
 			if (props.asset && props.asset.orders) {
-				const mappedListings = props.asset.orders.map((order: any) => {
+				const sortedOrders = sortOrders(props.asset.orders);
+
+				const mappedListings = sortedOrders.map((order: any) => {
 					let currentProfile = null;
 					if (associatedProfiles) {
 						currentProfile = associatedProfiles.find((profile: ProfileType) => profile.walletAddress === order.creator);
@@ -121,18 +127,23 @@ export default function AssetAction(props: IProps) {
 			currenciesReducer[currency].Denomination > 1
 		) {
 			const denomination = currenciesReducer[currency].Denomination;
-			return `${formatCount((amount / Math.pow(10, denomination)).toString())} ${currenciesReducer[currency].Ticker}`;
+			return `${formatCount((amount / Math.pow(10, denomination)).toString())}`;
 		}
 		return formatCount(amount.toString());
+	}
+
+	function getOwnerOrder(listing: ListingType) {
+		if (!arProvider.walletAddress) return false;
+		return listing.creator === arProvider.walletAddress;
 	}
 
 	function getCurrentOwners() {
 		return (
 			<>
 				<GS.DrawerHeaderWrapper>
-					<GS.DrawerContentDetail>
+					<GS.DrawerContentFlex>
 						{language.owner.charAt(0).toUpperCase() + language.owner.slice(1)}
-					</GS.DrawerContentDetail>
+					</GS.DrawerContentFlex>
 					<GS.DrawerContentDetail>{language.quantity}</GS.DrawerContentDetail>
 					<GS.DrawerContentDetail>{language.percentage}</GS.DrawerContentDetail>
 				</GS.DrawerHeaderWrapper>
@@ -158,12 +169,12 @@ export default function AssetAction(props: IProps) {
 			return (
 				<>
 					<GS.DrawerHeaderWrapper>
-						<GS.DrawerContentDetail>{language.seller}</GS.DrawerContentDetail>
+						<GS.DrawerContentFlex>{language.seller}</GS.DrawerContentFlex>
 						<GS.DrawerContentDetail>{language.quantity}</GS.DrawerContentDetail>
 						<GS.DrawerContentDetail>{language.percentage}</GS.DrawerContentDetail>
 						<GS.DrawerContentDetail>{language.price}</GS.DrawerContentDetail>
 					</GS.DrawerHeaderWrapper>
-					{currentListings.map((listing: any, index: number) => {
+					{currentListings.map((listing: ListingType, index: number) => {
 						return (
 							<GS.DrawerContentLine key={index}>
 								<GS.DrawerContentFlex>
@@ -174,16 +185,25 @@ export default function AssetAction(props: IProps) {
 										}}
 										callback={() => setShowCurrentOwnersModal(false)}
 									/>
+									{getOwnerOrder(listing) && (
+										<S.OrderCancel>
+											<OrderCancel listing={listing} />
+										</S.OrderCancel>
+									)}
 								</GS.DrawerContentFlex>
 								<GS.DrawerContentDetailAlt>
-									{getDenominatedTokenValue(listing.quantity, props.asset.data.id)}
+									{getDenominatedTokenValue(Number(listing.quantity), props.asset.data.id)}
 								</GS.DrawerContentDetailAlt>
 								<GS.DrawerContentDetailAlt>
-									{formatPercentage(listing.quantity / totalAssetBalance)}
+									{formatPercentage(Number(listing.quantity) / totalAssetBalance)}
 								</GS.DrawerContentDetailAlt>
-								<GS.DrawerContentDetailAlt>
-									{getDenominatedTokenValue(listing.price, listing.currency)}
-								</GS.DrawerContentDetailAlt>
+								<GS.DrawerContentFlexEnd>
+									<CurrencyLine
+										amount={listing.price}
+										currency={listing.currency}
+										callback={() => setShowCurrentListingsModal(false)}
+									/>
+								</GS.DrawerContentFlexEnd>
 							</GS.DrawerContentLine>
 						);
 					})}

@@ -21,6 +21,11 @@ export const AssetWrapper = styled.div`
 	margin: 15px;
 	width: calc(33.3% - 30px);
 	position: relative;
+	a {
+		display: block;
+		width: fit-content;
+		margin: 0 auto;
+	}
 	@media (max-width: ${STYLING.cutoffs.initial}) {
 		width: 100%;
 		margin: 0;
@@ -42,6 +47,7 @@ export const AssetDataWrapper = styled.div`
 		right: 0;
 		bottom: 0;
 		background-color: ${(props) => props.theme.colors.overlay.alt1};
+		border-radius: ${STYLING.dimensions.radius.primary};
 		opacity: 0;
 		transition: all 75ms;
 	}
@@ -57,13 +63,14 @@ export const AssetDataWrapper = styled.div`
 `;
 
 export const AssetInfoWrapper = styled.div`
-	height: 100px;
 	width: 100%;
 	text-align: center;
-	padding: 20px 0;
+	padding: 20px 0 15px 0;
 `;
 
 export const Title = styled.div`
+	display: flex;
+	justify-content: center;
 	p {
 		font-size: calc(${(props) => props.theme.typography.size.base} + 1px);
 		font-family: ${(props) => props.theme.typography.family.primary};
@@ -72,12 +79,30 @@ export const Title = styled.div`
 `;
 
 export const Description = styled.div`
+	display: flex;
+	justify-content: center;
 	margin: 5px 0 0 0;
 	p {
+		max-width: 75%;
+		overflow-x: hidden;
+		white-space: nowrap;
+		text-overflow: ellipsis;
 		font-size: ${(props) => props.theme.typography.size.base};
 		font-family: ${(props) => props.theme.typography.family.primary};
 		font-weight: ${(props) => props.theme.typography.weight.bold};
 		color: ${(props) => props.theme.colors.font.alt1};
 		line-height: 1.65;
+	}
+`;
+
+export const Listings = styled.div`
+	display: flex;
+	justify-content: center;
+	margin: 5px 0 0 0;
+	span {
+		font-size: ${(props) => props.theme.typography.size.base};
+		font-family: ${(props) => props.theme.typography.family.alt1};
+		font-weight: ${(props) => props.theme.typography.weight.bold};
+		color: ${(props) => props.theme.colors.font.primary};
 	}
 `;

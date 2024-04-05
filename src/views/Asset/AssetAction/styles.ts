@@ -61,3 +61,7 @@ export const TabWrapper = styled.div<{ label: string; icon?: string }>``;
 export const TabContent = styled.div`
 	margin: 20px 0 0 0;
 `;
+
+export const OrderCancel = styled.div`
+	margin: 0 0 0 5px;
+`;

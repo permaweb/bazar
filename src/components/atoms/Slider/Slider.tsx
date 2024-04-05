@@ -44,6 +44,7 @@ export default function Slider(props: IProps) {
 				value={props.value.toString()}
 				onChange={props.handleChange}
 				disabled={props.disabled}
+				invalid={props.invalid.status}
 				onWheel={(e) => e.preventDefault()}
 			/>
 		</S.Wrapper>

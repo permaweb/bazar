@@ -28,6 +28,10 @@ export default function Asset() {
 	const [errorResponse, setErrorResponse] = React.useState<string | null>(null);
 
 	React.useEffect(() => {
+		if (asset) setAsset(null);
+	}, [id]);
+
+	React.useEffect(() => {
 		(async function () {
 			if (id && checkValidAddress(id)) {
 				setLoading(true);

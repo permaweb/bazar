@@ -4,6 +4,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { readProcessState, sendMessage } from 'api';
 
 import { Button } from 'components/atoms/Button';
+import { CurrencyLine } from 'components/atoms/CurrencyLine';
 import { FormField } from 'components/atoms/FormField';
 import { IconButton } from 'components/atoms/IconButton';
 import { Notification } from 'components/atoms/Notification';
@@ -22,7 +23,6 @@ import * as ucmActions from 'store/ucm/actions';
 import * as S from './styles';
 import { IProps } from './types';
 
-// TODO: order cancel
 export default function AssetActionMarketOrders(props: IProps) {
 	const dispatch = useDispatch();
 
@@ -56,9 +56,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 	// The number of the transfer token that should be treated as a single unit when quantities and balances are displayed
 	const [transferDenomination, setTransferDenomination] = React.useState<number | null>(null);
-
-	// Ticker of the transfer token
-	const [transferTicker, setTransferTicker] = React.useState<string | null>(null);
 
 	// Price on limit orders for quantity of one transfer token
 	const [unitPrice, setUnitPrice] = React.useState<number>(0);
@@ -122,7 +119,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 				currenciesReducer[orderCurrency].Denomination > 1
 			) {
 				setTransferDenomination(Math.pow(10, currenciesReducer[orderCurrency].Denomination));
-				setTransferTicker(currenciesReducer[orderCurrency].Ticker);
 			}
 		}
 	}, [props.asset, arProvider.walletAddress, denomination, ucmReducer]);
@@ -418,9 +414,9 @@ export default function AssetActionMarketOrders(props: IProps) {
 	}
 
 	function getTotalPriceDisplay() {
-		let calculatedTotalPrice = getTotalPrice();
-		if (transferDenomination) calculatedTotalPrice = getTotalPrice() / transferDenomination;
-		return `${formatCount(calculatedTotalPrice.toFixed(4).toString())} ${transferTicker || ''}`;
+		const orderCurrency =
+			props.asset.orders && props.asset.orders.length ? props.asset.orders[0].currency : PROCESSES.token;
+		return <CurrencyLine amount={getTotalPrice() || '0'} currency={orderCurrency} />;
 	}
 
 	function getOrderDetails() {
@@ -458,7 +454,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 					<S.SalesLine>
 						<S.SalesDetail>
 							<span>{language.totalPrice}</span>
-							<p>{getTotalPriceDisplay()}</p>
+							{getTotalPriceDisplay()}
 						</S.SalesDetail>
 					</S.SalesLine>
 				)}
@@ -601,7 +597,8 @@ export default function AssetActionMarketOrders(props: IProps) {
 							maxValue={maxOrderQuantity}
 							handleChange={(e: React.ChangeEvent<HTMLInputElement>) => handleQuantityInput(e)}
 							label={language.assetQuantityInfo}
-							disabled={maxOrderQuantity <= 0 || orderLoading}
+							disabled={!arProvider.walletAddress || maxOrderQuantity <= 0 || orderLoading}
+							invalid={{ status: currentOrderQuantity < 0 || currentOrderQuantity > maxOrderQuantity, message: null }}
 						/>
 						<S.MaxQty>
 							<Button
@@ -620,7 +617,10 @@ export default function AssetActionMarketOrders(props: IProps) {
 									onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleQuantityInput(e)}
 									label={`${language.assetQuantity} (${language.max}: ${maxOrderQuantity})`}
 									disabled={!arProvider.walletAddress || maxOrderQuantity <= 0 || orderLoading}
-									invalid={{ status: currentOrderQuantity < 0, message: null }}
+									invalid={{
+										status: currentOrderQuantity < 0 || currentOrderQuantity > maxOrderQuantity,
+										message: null,
+									}}
 									hideErrorMessage
 								/>
 							</S.FieldWrapper>

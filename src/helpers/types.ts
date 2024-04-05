@@ -58,6 +58,8 @@ export type OwnerType = {
 	profile: ProfileType | null;
 };
 
+export type ListingType = AssetOrderType & { profile: ProfileType };
+
 export type CollectionType = {
 	data: {
 		id: string;
@@ -158,6 +160,8 @@ export type AssetRenderType = {
 
 export type DateType = 'iso' | 'epoch';
 
+export type FormFieldType = 'number' | 'password';
+
 export type TabType = 'primary' | 'alt1';
 
 export type AssetMarketActionOrderType = 'buy' | 'sell' | 'transfer';
@@ -165,4 +169,9 @@ export type AssetMarketActionOrderType = 'buy' | 'sell' | 'transfer';
 export type ReduxActionType = {
 	type: string;
 	payload: any;
+};
+
+export type ValidationType = {
+	status: boolean;
+	message: string | null;
 };

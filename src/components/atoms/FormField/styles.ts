@@ -110,6 +110,6 @@ export const ErrorContainer = styled.div`
 export const Error = styled.span`
 	font-size: ${(props) => props.theme.typography.size.xSmall};
 	font-weight: ${(props) => props.theme.typography.weight.regular};
-	border-left: 2.75px solid ${(props) => props.theme.colors.warning};
+	border-left: 2.75px solid ${(props) => props.theme.colors.warning.primary};
 	padding-left: 5px;
 `;

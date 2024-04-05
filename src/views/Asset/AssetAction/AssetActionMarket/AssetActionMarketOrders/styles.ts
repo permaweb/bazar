@@ -96,6 +96,14 @@ export const SalesDetail = styled.div`
 		font-weight: ${(props) => props.theme.typography.weight.bold};
 		color: ${(props) => props.theme.colors.font.primary};
 	}
+	> * {
+		span {
+			font-size: ${(props) => props.theme.typography.size.xLg};
+			font-family: ${(props) => props.theme.typography.family.alt1};
+			font-weight: ${(props) => props.theme.typography.weight.bold};
+			color: ${(props) => props.theme.colors.font.primary};
+		}
+	}
 `;
 
 export const ActionWrapper = styled.div`
