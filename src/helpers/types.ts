@@ -1,3 +1,29 @@
+export type EntryOrderType = {
+	DepositTxId: string;
+	DateCreated: string;
+	OriginalQuantity: string;
+	Creator: string;
+	Id: string;
+	Token: string;
+	Quantity: string;
+	Price?: string;
+};
+
+export type OrderbookEntryType = {
+	Pair: string[];
+	Orders?: EntryOrderType[];
+	PriceData?: {
+		DominantToken: string;
+		Vwap: string;
+		MatchLogs: {
+			Id: string;
+			Quantity: string;
+			Price: string;
+		}[];
+		Block: string;
+	};
+};
+
 export type AssetStateType = {
 	name: string | null;
 	ticker: string | null;
@@ -17,6 +43,21 @@ export type AssetOrderType = {
 	currency: string | null;
 };
 
+export type LicenseValueType = {
+	value: string;
+	icon?: string;
+	endText?: string;
+};
+
+export type LicenseType = {
+	access: LicenseValueType | null;
+	derivations: LicenseValueType | null;
+	commercialUse: LicenseValueType | null;
+	dataModelTraining: LicenseValueType | null;
+	paymentMode: string | null;
+	paymentAddress: string | null;
+};
+
 export type AssetType = {
 	data: {
 		id: string;
@@ -27,6 +68,7 @@ export type AssetType = {
 		blockHeight: number;
 		renderWith: string | null;
 		license: string | null;
+		udl: LicenseType | null;
 		thumbnail: string | null;
 		implementation: string | null;
 	};
@@ -78,9 +120,16 @@ export type CollectionManifestType = {
 	items: string[];
 };
 
+export type CollectionMetricsType = {
+	assetCount: number | null;
+	floorPrice: number | null;
+	percentageListed: number | null;
+};
+
 export type CollectionDetailType = CollectionType & {
 	assetIds: string[];
 	creatorProfile: ProfileType;
+	metrics: CollectionMetricsType;
 };
 
 export type TagType = { name: string; value: string };
@@ -175,3 +224,5 @@ export type ValidationType = {
 	status: boolean;
 	message: string | null;
 };
+
+export type AssetSortType = 'low-to-high' | 'high-to-low';

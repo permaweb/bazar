@@ -1,15 +1,18 @@
 import { getGQLData, readProcessState } from 'api';
 
-import { GATEWAYS, TAGS } from 'helpers/config';
+import { GATEWAYS, LICENSES, TAGS } from 'helpers/config';
 import {
 	AssetDetailType,
 	AssetOrderType,
 	AssetStateType,
 	AssetType,
 	DefaultGQLResponseType,
+	EntryOrderType,
 	GQLNodeResponseType,
+	LicenseType,
+	OrderbookEntryType,
 } from 'helpers/types';
-import { formatAddress, getTagValue } from 'helpers/utils';
+import { formatAddress, getAssetOrderType, getTagValue } from 'helpers/utils';
 import { store } from 'store';
 
 export async function getAssetsByIds(args: { ids: string[] }): Promise<AssetDetailType[]> {
@@ -31,25 +34,13 @@ export async function getAssetsByIds(args: { ids: string[] }): Promise<AssetDeta
 
 				structuredAssets.forEach((asset: AssetType) => {
 					let assetOrders: AssetOrderType[] | null = null;
-					const existingEntry = ucmReducer.Orderbook.find((entry: any) => {
+					const existingEntry = ucmReducer.Orderbook.find((entry: OrderbookEntryType) => {
 						return entry.Pair ? entry.Pair[0] === asset.data.id : null;
 					});
 
 					if (existingEntry) {
-						assetOrders = existingEntry.Orders.map((order: any) => {
-							let currentAssetOrder: AssetOrderType = {
-								creator: order.Creator,
-								dateCreated: order.DateCreated,
-								depositTxId: order.DepositTxId,
-								id: order.Id,
-								originalQuantity: order.OriginalQuantity,
-								quantity: order.Quantity,
-								token: order.Token,
-								currency: existingEntry.Pair[1],
-							};
-
-							if (order.Price) currentAssetOrder.price = order.Price;
-							return currentAssetOrder;
+						assetOrders = existingEntry.Orders.map((order: EntryOrderType) => {
+							return getAssetOrderType(order, existingEntry.Pair[1]);
 						});
 					}
 
@@ -155,6 +146,7 @@ export function structureAssets(gqlResponse: DefaultGQLResponseType): AssetType[
 				blockHeight: element.node.block ? element.node.block.height : 0,
 				renderWith: getTagValue(element.node.tags, TAGS.keys.renderWith),
 				license: getTagValue(element.node.tags, TAGS.keys.license),
+				udl: getLicense(element),
 				thumbnail: getTagValue(element.node.tags, TAGS.keys.thumbnail),
 				implementation: getTagValue(element.node.tags, TAGS.keys.implements),
 			},
@@ -162,4 +154,20 @@ export function structureAssets(gqlResponse: DefaultGQLResponseType): AssetType[
 	});
 
 	return structuredAssets;
+}
+
+function getLicense(element: GQLNodeResponseType): LicenseType | null {
+	const license = getTagValue(element.node.tags, TAGS.keys.license);
+
+	if (license && license === LICENSES.udl.address) {
+		return {
+			access: { value: getTagValue(element.node.tags, TAGS.keys.access) },
+			derivations: { value: getTagValue(element.node.tags, TAGS.keys.derivations) },
+			commercialUse: { value: getTagValue(element.node.tags, TAGS.keys.commericalUse) },
+			dataModelTraining: { value: getTagValue(element.node.tags, TAGS.keys.dataModelTraining) },
+			paymentMode: getTagValue(element.node.tags, TAGS.keys.paymentMode),
+			paymentAddress: getTagValue(element.node.tags, TAGS.keys.paymentAddress),
+		};
+	}
+	return null;
 }

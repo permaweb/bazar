@@ -9,10 +9,9 @@ export const Wrapper = styled.div`
 export const CardWrapper = styled.div<{ backgroundImage: string }>`
 	height: 500px;
 	width: 100%;
-	display: flex;
-	justify-content: center;
-	align-items: center;
 	position: relative;
+	display: flex;
+	align-items: flex-end;
 	background-image: ${(props) => `url(${props.backgroundImage})`};
 	background-size: cover;
 	background-repeat: no-repeat;
@@ -20,44 +19,84 @@ export const CardWrapper = styled.div<{ backgroundImage: string }>`
 	border-radius: ${STYLING.dimensions.radius.primary};
 	overflow: hidden;
 
-	&:before {
-		content: '';
-		display: block;
-		position: absolute;
-		top: 0;
-		left: 0;
-		right: 0;
-		bottom: 0;
-		background: ${(props) => props.theme.colors.overlay.alt1};
-		border-radius: inherit;
-	}
-
 	> * {
 		position: relative;
 		z-index: 1;
 	}
 `;
 
-export const InfoWrapper = styled.div`
-	max-width: 100%;
-	display: flex;
-	flex-direction: column;
-	justify-content: center;
-	align-items: center;
-	@media (max-width: ${STYLING.cutoffs.desktop}) {
+export const Thumbnail = styled.div`
+	height: 85px;
+	width: 85px;
+	background: ${(props) => props.theme.colors.container.primary.background};
+	border-radius: ${STYLING.dimensions.radius.alt2};
+	margin: 0 20px 0 0;
+	overflow: hidden;
+	position: relative;
+	img {
+		height: 100%;
 		width: 100%;
+		object-fit: cover;
+	}
+`;
+
+export const InfoWrapper = styled.div`
+	width: 100%;
+	padding: 20px;
+	background: ${(props) => `linear-gradient(0deg, ${props.theme.colors.overlay.alt2} 50%,transparent)`};
+	p,
+	span {
+		text-shadow: 0 0 5px #000000;
 	}
 `;
 
 export const InfoHeader = styled.div`
-	margin: 0 0 10px 0;
-	h2 {
+	width: 100%;
+	display: flex;
+	margin: 20px 0 0 0;
+`;
+
+export const InfoDetail = styled.div`
+	width: 100%;
+	display: flex;
+`;
+
+export const InfoHeaderTile = styled.div`
+	display: flex;
+	justify-content: flex-end;
+	flex: 1;
+	span {
+		font-size: ${(props) => props.theme.typography.size.base};
+		font-family: ${(props) => props.theme.typography.family.primary};
+		font-weight: ${(props) => props.theme.typography.weight.medium};
+		color: ${(props) => props.theme.colors.font.light2};
+	}
+`;
+
+export const InfoHeaderFlex2 = styled(InfoHeaderTile)`
+	justify-content: flex-start;
+	flex: 2;
+`;
+
+export const InfoDetailTile = styled.div`
+	display: flex;
+	justify-content: flex-end;
+	flex: 1;
+	span {
+		font-size: ${(props) => props.theme.typography.size.xLg};
+		font-family: ${(props) => props.theme.typography.family.alt1};
+		font-weight: ${(props) => props.theme.typography.weight.bold};
 		color: ${(props) => props.theme.colors.font.light1};
 	}
 `;
 
+export const InfoDetailFlex2 = styled(InfoDetailTile)`
+	justify-content: flex-start;
+	flex: 2;
+`;
+
 export const InfoCreator = styled.div`
-	margin: 0 0 15px 0;
+	margin: 15px 0 0 0;
 	display: flex;
 	align-items: center;
 	p,
@@ -70,6 +109,7 @@ export const InfoCreator = styled.div`
 	}
 
 	p {
+		font-weight: ${(props) => props.theme.typography.weight.medium};
 		color: ${(props) => props.theme.colors.font.light2};
 	}
 

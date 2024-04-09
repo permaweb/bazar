@@ -48,6 +48,8 @@ export default function OrderCancel(props: IProps) {
 
 					const ucmState = await readProcessState(PROCESSES.ucm);
 					dispatch(ucmActions.setUCM(ucmState));
+					await new Promise((r) => setTimeout(r, 1000));
+					setShowConfirmation(false);
 					windowUtils.scrollTo(0, 0, 'smooth');
 				}
 			} catch (e: any) {
@@ -69,7 +71,7 @@ export default function OrderCancel(props: IProps) {
 						<S.FlexActions>
 							<Button
 								type={'primary'}
-								label={cancelProcessed ? `${language.updating}...` : language.cancelOrder}
+								label={cancelProcessed ? `${language.complete}!` : language.cancelOrder}
 								handlePress={cancelProcessed ? () => {} : handleOrderCancel}
 								disabled={loading || cancelProcessed}
 								loading={loading}

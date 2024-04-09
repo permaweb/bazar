@@ -17,13 +17,13 @@ export default function AssetsTable(props: IProps) {
 
 	function getListings(asset: AssetDetailType) {
 		if (asset && asset.orders && asset.orders.length) {
-			const sortedOrders = sortOrders(asset.orders);
+			const sortedOrders = sortOrders(asset.orders, 'low-to-high');
 
 			if (sortedOrders && sortedOrders.length) {
 				return <CurrencyLine amount={sortedOrders[0].price || '0'} currency={sortedOrders[0].currency} />;
 			}
 		}
-		return <span>{language.noListings}</span>;
+		return <S.NoListings>{language.noListings}</S.NoListings>;
 	}
 
 	return props.assets ? (

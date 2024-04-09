@@ -106,10 +106,17 @@ export const SalesDetail = styled.div`
 	}
 `;
 
-export const ActionWrapper = styled.div`
+export const ActionWrapper = styled.div<{ loading: boolean; statusWidth: number }>`
 	width: fit-content;
 	margin: 30px 0 0 auto;
+	position: relative;
 	button {
+		z-index: 1;
+		span,
+		svg {
+			position: relative;
+			z-index: 2;
+		}
 		span {
 			font-size: ${(props) => props.theme.typography.size.xLg} !important;
 			font-family: ${(props) => props.theme.typography.family.alt1};
@@ -119,6 +126,37 @@ export const ActionWrapper = styled.div`
 			height: 22.5px;
 			width: 22.5px;
 			margin: 0 15px 0 0;
+		}
+
+		&:disabled {
+			span {
+				color: ${(props) =>
+					props.loading || props.statusWidth > 0
+						? props.theme.colors.font.light1
+						: props.theme.colors.button.primary.disabled.color} !important;
+			}
+			svg {
+				fill: ${(props) =>
+					props.loading || props.statusWidth > 0
+						? props.theme.colors.font.light1
+						: props.theme.colors.button.primary.disabled.color} !important;
+			}
+		}
+
+		&::after {
+			content: '';
+			display: block;
+			position: absolute;
+			top: 0;
+			left: 0;
+			height: 100%;
+			width: ${(props) => `${props.statusWidth.toString()}%`};
+			background: ${(props) => props.theme.colors.container.alt9.background};
+			transition: width 0.25s ease;
+			clip-path: ${(props) =>
+				props.statusWidth >= 100
+					? 'none'
+					: 'polygon(0 0, calc(100% - 20px) 0, 100% 50%, calc(100% - 20px) 100%, 0 100%)'};
 		}
 	}
 	@media (max-width: ${STYLING.cutoffs.secondary}) {
@@ -142,8 +180,8 @@ export const ConfirmationMessage = styled.div`
 	width: fit-content;
 	margin: 20px 0 0 0;
 	p {
-		font-size: ${(props) => props.theme.typography.size.small};
-		font-family: ${(props) => props.theme.typography.family.primary};
+		font-size: ${(props) => props.theme.typography.size.xSmall};
+		font-family: ${(props) => props.theme.typography.family.alt1};
 		font-weight: ${(props) => props.theme.typography.weight.bold};
 		color: ${(props) => props.theme.colors.font.primary};
 	}

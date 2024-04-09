@@ -23,6 +23,7 @@ import * as ucmActions from 'store/ucm/actions';
 import * as S from './styles';
 import { IProps } from './types';
 
+// TODO: not enough token balance
 export default function AssetActionMarketOrders(props: IProps) {
 	const dispatch = useDispatch();
 
@@ -64,6 +65,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 	const [updating, setUpdating] = React.useState<boolean>(false);
 
 	const [orderLoading, setOrderLoading] = React.useState<boolean>(false);
+	const [orderStatusPercentage, setOrderStatusPercentage] = React.useState<number>(0);
 	const [orderProcessed, setOrderProcessed] = React.useState<boolean>(false);
 	const [showConfirmation, setShowConfirmation] = React.useState<boolean>(false);
 	const [currentNotification, setCurrentNotification] = React.useState<string | null>(null);
@@ -185,12 +187,14 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 					if (transferResponse['Credit-Notice'] && transferResponse['Debit-Notice']) {
 						setCurrentNotification(transferResponse['Credit-Notice'].message);
+						setOrderStatusPercentage(33);
 					}
 
 					if (props.type === 'transfer') {
 						if (transferResponse['Transfer-Error']) {
 							setCurrentNotification(transferResponse['Transfer-Error'].message);
 						}
+						setOrderStatusPercentage(100);
 					} else {
 						const validCreditNotice =
 							transferResponse['Debit-Notice'] &&
@@ -214,6 +218,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 							if (depositCheckResponse['Deposit-Status-Evaluated']) {
 								setCurrentNotification(depositCheckResponse.message);
+								setOrderStatusPercentage(66);
 							}
 
 							if (depositCheckResponse && depositCheckResponse['Deposit-Status-Evaluated']) {
@@ -237,6 +242,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 									if (depositCheckResponse['Deposit-Status-Evaluated']) {
 										setCurrentNotification(depositCheckResponse.message);
+										setOrderStatusPercentage(66);
 									}
 
 									depositStatus = depositCheckResponse['Deposit-Status-Evaluated'].status;
@@ -272,6 +278,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 										if (createOrderResponse['Order-Error']) {
 											setCurrentNotification(createOrderResponse['Order-Error'].message);
 										}
+										setOrderStatusPercentage(100);
 									} else {
 										setCurrentNotification('Error creating order');
 									}
@@ -290,6 +297,8 @@ export default function AssetActionMarketOrders(props: IProps) {
 				}
 				setOrderLoading(false);
 				setOrderProcessed(true);
+				await new Promise((r) => setTimeout(r, 1000));
+				await handleAssetUpdate();
 			} else {
 				setCurrentNotification('Invalid order details');
 			}
@@ -464,11 +473,11 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 	function getActionDisabled() {
 		if (!arProvider.walletAddress) return true;
-		if (orderLoading) return true;
-		if (maxOrderQuantity <= 0) return true;
-		if (currentOrderQuantity <= 0) return true;
+		if (orderLoading || orderProcessed) return true;
+		if (maxOrderQuantity <= 0 || isNaN(currentOrderQuantity)) return true;
+		if (currentOrderQuantity <= 0 || isNaN(maxOrderQuantity)) return true;
 		if (currentOrderQuantity > maxOrderQuantity) return true;
-		if (props.type === 'sell' && unitPrice <= 0) return true;
+		if (props.type === 'sell' && (unitPrice <= 0 || isNaN(unitPrice))) return true;
 		if (props.type === 'transfer' && (!transferRecipient || !checkValidAddress(transferRecipient))) return true;
 		return false;
 	}
@@ -481,6 +490,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 		setTransferRecipient('');
 		setShowConfirmation(false);
 		setOrderProcessed(false);
+		setOrderStatusPercentage(0);
 		windowUtils.scrollTo(0, 0, 'smooth');
 		try {
 			const ucmState = await readProcessState(PROCESSES.ucm);
@@ -506,23 +516,22 @@ export default function AssetActionMarketOrders(props: IProps) {
 		let label: string | null = null;
 		let icon: string | null = null;
 
-		if (orderProcessed) label = language.close;
-		else {
-			switch (props.type) {
-				case 'buy':
-					label = finalizeOrder ? language.confirmPurchase : language.buy;
-					icon = ASSETS.buy;
-					break;
-				case 'sell':
-					label = finalizeOrder ? language.confirmListing : language.sell;
-					icon = ASSETS.sell;
-					break;
-				case 'transfer':
-					label = finalizeOrder ? language.confirmTransfer : language.transfer;
-					icon = ASSETS.transfer;
-					break;
-			}
+		switch (props.type) {
+			case 'buy':
+				label = finalizeOrder ? language.confirmPurchase : language.buy;
+				icon = ASSETS.buy;
+				break;
+			case 'sell':
+				label = finalizeOrder ? language.confirmListing : language.sell;
+				icon = ASSETS.sell;
+				break;
+			case 'transfer':
+				label = finalizeOrder ? language.confirmTransfer : language.transfer;
+				icon = ASSETS.transfer;
+				break;
 		}
+		if (orderLoading) label = `${language.executing}...`;
+		if (orderProcessed) label = `${language.complete}!`;
 
 		let action: () => void;
 		if (orderProcessed) action = () => handleAssetUpdate();
@@ -535,7 +544,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 				label={label}
 				handlePress={action}
 				disabled={getActionDisabled()}
-				loading={finalizeOrder ? orderLoading : false}
+				loading={false}
 				height={60}
 				width={350}
 				fullWidth={finalizeOrder}
@@ -567,7 +576,9 @@ export default function AssetActionMarketOrders(props: IProps) {
 			>
 				<S.ConfirmationWrapper className={'modal-wrapper'}>
 					<S.SalesWrapper>{getOrderDetails()}</S.SalesWrapper>
-					<S.ActionWrapperFull>{getAction(true)}</S.ActionWrapperFull>
+					<S.ActionWrapperFull loading={orderLoading} statusWidth={orderStatusPercentage}>
+						{getAction(true)}
+					</S.ActionWrapperFull>
 					<S.ConfirmationMessage>
 						<p>
 							{currentNotification ? currentNotification : orderLoading ? 'Processing...' : language.reviewOrderDetails}
@@ -668,7 +679,9 @@ export default function AssetActionMarketOrders(props: IProps) {
 					</S.InputWrapper>
 				)}
 				<S.SalesWrapper>{getOrderDetails()}</S.SalesWrapper>
-				<S.ActionWrapper>{getAction(false)}</S.ActionWrapper>
+				<S.ActionWrapper loading={null} statusWidth={0}>
+					{getAction(false)}
+				</S.ActionWrapper>
 			</S.Wrapper>
 			{showConfirmation && getConfirmation()}
 			{updating && <Notification message={`${language.updatingAsset}...`} callback={() => setUpdating(false)} />}

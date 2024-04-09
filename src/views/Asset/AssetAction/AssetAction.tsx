@@ -98,7 +98,7 @@ export default function AssetAction(props: IProps) {
 				setCurrentOwners(getOwners(props.asset, associatedProfiles));
 			}
 			if (props.asset && props.asset.orders) {
-				const sortedOrders = sortOrders(props.asset.orders);
+				const sortedOrders = sortOrders(props.asset.orders, 'low-to-high');
 
 				const mappedListings = sortedOrders.map((order: any) => {
 					let currentProfile = null;
@@ -269,14 +269,14 @@ export default function AssetAction(props: IProps) {
 					<S.TabContent>{getCurrentTab()}</S.TabContent>
 				</S.TabsWrapper>
 			</S.Wrapper>
-			{showCurrentOwnersModal && currentOwners && (
+			{showCurrentOwnersModal && currentOwners && currentOwners.length > 0 && (
 				<Modal header={language.currentlyOwnedBy} handleClose={() => setShowCurrentOwnersModal(false)}>
 					<GS.DrawerContent transparent className={'modal-wrapper'}>
 						{getCurrentOwners()}
 					</GS.DrawerContent>
 				</Modal>
 			)}
-			{showCurrentListingsModal && currentListings && (
+			{showCurrentListingsModal && currentListings && currentListings.length > 0 && (
 				<Modal header={language.currentlyBeingSoldBy} handleClose={() => setShowCurrentListingsModal(false)}>
 					<GS.DrawerContent transparent className={'modal-wrapper'}>
 						{getCurrentListings()}

@@ -1,4 +1,13 @@
-import { AssetDetailType, AssetOrderType, DateType, OwnerType, ProfileType } from './types';
+import {
+	AssetDetailType,
+	AssetOrderType,
+	AssetSortType,
+	DateType,
+	EntryOrderType,
+	OrderbookEntryType,
+	OwnerType,
+	ProfileType,
+} from './types';
 
 export function checkValidAddress(address: string | null) {
 	if (!address) return false;
@@ -88,9 +97,58 @@ export function getOwners(asset: AssetDetailType, profiles: ProfileType[] | null
 	return null;
 }
 
-export function sortOrders(orders: AssetOrderType[]) {
+export function getAssetOrderType(order: EntryOrderType, currency: string): AssetOrderType {
+	let currentAssetOrder: AssetOrderType = {
+		creator: order.Creator,
+		dateCreated: order.DateCreated,
+		depositTxId: order.DepositTxId,
+		id: order.Id,
+		originalQuantity: order.OriginalQuantity,
+		quantity: order.Quantity,
+		token: order.Token,
+		currency: currency,
+	};
+
+	if (order.Price) currentAssetOrder.price = order.Price;
+	return currentAssetOrder;
+}
+
+export function sortOrders(orders: AssetOrderType[], sortType: AssetSortType) {
 	const sortedOrders = orders.sort((a: AssetOrderType, b: AssetOrderType) => {
-		return a.price && b.price ? Number(a.price) - Number(b.price) : 0;
+		switch (sortType) {
+			case 'low-to-high':
+				return a.price && b.price ? Number(a.price) - Number(b.price) : 0;
+			case 'high-to-low':
+				return a.price && b.price ? Number(b.price) - Number(a.price) : 0;
+		}
 	});
 	return sortedOrders;
+}
+
+export function sortEntries(entries: OrderbookEntryType[], sortType: AssetSortType): OrderbookEntryType[] {
+	const getSortKey = (entry: OrderbookEntryType): number => {
+		if (!entry.Orders || entry.Orders.length === 0) return Infinity;
+		return Number(entry.Orders[0].Price);
+	};
+
+	const direction = sortType === 'high-to-low' ? -1 : 1;
+
+	const entriesWithOrders = entries.filter((entry) => entry.Orders && entry.Orders.length > 0);
+	const entriesWithoutOrders = entries.filter((entry) => !entry.Orders || entry.Orders.length === 0);
+
+	entriesWithOrders.sort((a, b) => {
+		return direction * (getSortKey(a) - getSortKey(b));
+	});
+
+	return [...entriesWithOrders, ...entriesWithoutOrders];
+}
+
+export function splitTagValue(tag: string) {
+	return tag.split('-').join(' ');
+}
+
+export function getTagDisplay(value: string) {
+	let result = value.replace(/([A-Z])/g, ' $1').trim();
+	result = result.charAt(0).toUpperCase() + result.slice(1);
+	return result;
 }

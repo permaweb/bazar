@@ -362,6 +362,18 @@ export const DrawerContentDetail = styled.p`
 	word-wrap: break-word;
 `;
 
+export const DrawerContentLink = styled.a`
+	font-size: ${(props) => props.theme.typography.size.base};
+	font-family: ${(props) => props.theme.typography.family.primary};
+	font-weight: ${(props) => props.theme.typography.weight.bold};
+	color: ${(props) => props.theme.colors.font.primary};
+	text-decoration: underline;
+	&:hover {
+		color: ${(props) => props.theme.colors.font.alt1};
+	}
+	word-wrap: break-word;
+`;
+
 export const DrawerContentDetailAlt = styled(DrawerContentDetail)`
 	font-family: ${(props) => props.theme.typography.family.alt1};
 `;

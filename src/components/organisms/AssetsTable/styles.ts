@@ -24,7 +24,6 @@ export const AssetWrapper = styled.div`
 	a {
 		display: block;
 		width: fit-content;
-		margin: 0 auto;
 	}
 	@media (max-width: ${STYLING.cutoffs.initial}) {
 		width: 100%;
@@ -64,13 +63,10 @@ export const AssetDataWrapper = styled.div`
 
 export const AssetInfoWrapper = styled.div`
 	width: 100%;
-	text-align: center;
 	padding: 20px 0 15px 0;
 `;
 
 export const Title = styled.div`
-	display: flex;
-	justify-content: center;
 	p {
 		font-size: calc(${(props) => props.theme.typography.size.base} + 1px);
 		font-family: ${(props) => props.theme.typography.family.primary};
@@ -79,8 +75,6 @@ export const Title = styled.div`
 `;
 
 export const Description = styled.div`
-	display: flex;
-	justify-content: center;
 	margin: 5px 0 0 0;
 	p {
 		max-width: 75%;
@@ -96,8 +90,6 @@ export const Description = styled.div`
 `;
 
 export const Listings = styled.div`
-	display: flex;
-	justify-content: center;
 	margin: 5px 0 0 0;
 	span {
 		font-size: ${(props) => props.theme.typography.size.base};
@@ -105,4 +97,8 @@ export const Listings = styled.div`
 		font-weight: ${(props) => props.theme.typography.weight.bold};
 		color: ${(props) => props.theme.colors.font.primary};
 	}
+`;
+
+export const NoListings = styled.span`
+	color: ${(props) => props.theme.colors.font.alt1} !important;
 `;

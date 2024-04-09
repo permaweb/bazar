@@ -32,6 +32,13 @@ export const PROCESSES = {
 	token: 'IRv02cCZGmBVMhmPlL63sce4djgRgkY1J_3DUl_feUw',
 };
 
+export const LICENSES = {
+	udl: {
+		address: 'dE0rmDfl9_OWjkDznNEXHaSO_JohJkRolvMzaCroUdw',
+		label: 'Universal Data License',
+	},
+};
+
 export const APP = {
 	name: 'Bazar',
 };
@@ -112,11 +119,15 @@ export const STYLING = {
 
 export const TAGS = {
 	keys: {
+		access: 'Access-Fee',
 		avatar: 'Avatar',
 		banner: 'Banner',
+		commericalUse: 'Commercial-Use',
 		creator: 'Creator',
+		dataModelTraining: 'Data-Model-Training',
 		dataProtocol: 'Data-Protocol',
 		dateCreated: 'Date-Created',
+		derivations: 'Derivations',
 		description: 'Description',
 		displayName: 'Display-Name',
 		handle: 'Handle',
@@ -124,6 +135,8 @@ export const TAGS = {
 		initialOwner: 'Initial-Owner',
 		license: 'License',
 		name: 'Name',
+		paymentAddress: 'Payment-Address',
+		paymentMode: 'Payment-Mode',
 		profileIndex: 'Profile-Index',
 		protocolName: 'Protocol-Name',
 		renderWith: 'Render-With',

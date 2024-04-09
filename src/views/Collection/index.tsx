@@ -9,7 +9,7 @@ import { AssetsTable } from 'components/organisms/AssetsTable';
 import { DEFAULTS, URLS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import { AssetDetailType, CollectionDetailType } from 'helpers/types';
-import { checkValidAddress } from 'helpers/utils';
+import { checkValidAddress, formatPercentage } from 'helpers/utils';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 
 import * as S from './styles';
@@ -57,11 +57,50 @@ export default function Collection() {
 		if (collection) {
 			return (
 				<>
-					<S.CardWrapper backgroundImage={getTxEndpoint(collection.data.banner || DEFAULTS.thumbnail)}>
+					<S.CardWrapper
+						backgroundImage={getTxEndpoint(collection.data.banner || DEFAULTS.thumbnail)}
+						className={'border-wrapper-alt2'}
+					>
 						<S.InfoWrapper>
+							<S.Thumbnail className={'border-wrapper-alt1'}>
+								<img src={getTxEndpoint(collection.data.thumbnail || DEFAULTS.thumbnail)} alt={'Thumbnail'} />
+							</S.Thumbnail>
 							<S.InfoHeader>
-								<h2>{collection.data.title}</h2>
+								<S.InfoHeaderFlex2>
+									<span>{language.title}</span>
+								</S.InfoHeaderFlex2>
+								{collection.metrics && (
+									<>
+										<S.InfoHeaderTile>
+											<span>{language.totalAssets}</span>
+										</S.InfoHeaderTile>
+										<S.InfoHeaderTile>
+											<span>{language.floorPrice}</span>
+										</S.InfoHeaderTile>
+										<S.InfoHeaderTile>
+											<span>{language.percentageListed}</span>
+										</S.InfoHeaderTile>
+									</>
+								)}
 							</S.InfoHeader>
+							<S.InfoDetail>
+								<S.InfoDetailFlex2>
+									<span>{collection.data.title}</span>
+								</S.InfoDetailFlex2>
+								{collection.metrics && (
+									<>
+										<S.InfoDetailTile>
+											<span>{collection.metrics.assetCount}</span>
+										</S.InfoDetailTile>
+										<S.InfoDetailTile>
+											<span>{collection.metrics.floorPrice}</span>
+										</S.InfoDetailTile>
+										<S.InfoDetailTile>
+											<span>{formatPercentage(collection.metrics.percentageListed)}</span>
+										</S.InfoDetailTile>
+									</>
+								)}
+							</S.InfoDetail>
 							<S.InfoCreator>
 								<p>{language.createdBy}</p>
 								<OwnerLine
@@ -72,11 +111,11 @@ export default function Collection() {
 									callback={null}
 								/>
 							</S.InfoCreator>
-							{collection.data.description && (
+							{/* {collection.data.description && (
 								<S.InfoDescription>
 									<p>{collection.data.description}</p>
 								</S.InfoDescription>
-							)}
+							)} */}
 						</S.InfoWrapper>
 					</S.CardWrapper>
 					{assets && (

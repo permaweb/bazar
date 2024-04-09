@@ -6,11 +6,14 @@ import {
 	CollectionDetailType,
 	CollectionGQLResponseType,
 	CollectionManifestType,
+	CollectionMetricsType,
 	CollectionType,
 	DefaultGQLResponseType,
 	GQLNodeResponseType,
+	OrderbookEntryType,
 } from 'helpers/types';
-import { formatAddress, getTagValue } from 'helpers/utils';
+import { formatAddress, getTagValue, sortEntries } from 'helpers/utils';
+import { store } from 'store';
 
 export async function getCollections(): Promise<CollectionGQLResponseType> {
 	try {
@@ -73,7 +76,18 @@ export async function getCollectionById(args: { id: string }): Promise<Collectio
 				console.error(e);
 			}
 
-			const collectionDetail = { ...structuredCollection, assetIds: assetIds, creatorProfile: creatorProfile };
+			const collectionMetrics: CollectionMetricsType = {
+				assetCount: assetIds.length,
+				floorPrice: getFloorPrice(assetIds),
+				percentageListed: getPercentageListed(assetIds),
+			};
+
+			const collectionDetail = {
+				...structuredCollection,
+				assetIds: assetIds,
+				creatorProfile: creatorProfile,
+				metrics: collectionMetrics,
+			};
 			return collectionDetail;
 		}
 
@@ -111,4 +125,46 @@ export function structureCollections(gqlResponse: DefaultGQLResponseType): Colle
 	});
 
 	return structuredCollections;
+}
+
+function getFloorPrice(assetIds: string[]): number {
+	if (store.getState().ucmReducer) {
+		const ucmReducer = store.getState().ucmReducer;
+		if (ucmReducer.Orderbook && ucmReducer.Orderbook.length) {
+			const filteredEntries: OrderbookEntryType[] = ucmReducer.Orderbook.filter((entry: OrderbookEntryType) =>
+				assetIds.includes(entry.Pair[0])
+			);
+			const sortedEntries: OrderbookEntryType[] = sortEntries(filteredEntries, 'low-to-high');
+			if (sortedEntries && sortedEntries.length) {
+				const currentEntry = sortedEntries[0];
+				if (currentEntry.Orders && currentEntry.Orders.length && currentEntry.Orders[0].Price) {
+					let denomination = null;
+					if (store.getState().currenciesReducer) {
+						const currenciesReducer = store.getState().currenciesReducer;
+						if (currenciesReducer[currentEntry.Pair[1]] && currenciesReducer[currentEntry.Pair[1]].Denomination) {
+							denomination = currenciesReducer[currentEntry.Pair[1]].Denomination;
+						}
+					}
+					let calculatedPrice = Number(currentEntry.Orders[0].Price);
+					if (denomination) calculatedPrice = calculatedPrice / Math.pow(10, denomination);
+					return calculatedPrice;
+				}
+			}
+		}
+	}
+	return 0;
+}
+
+function getPercentageListed(assetIds: string[]): number {
+	if (store.getState().ucmReducer) {
+		const ucmReducer = store.getState().ucmReducer;
+		if (ucmReducer.Orderbook && ucmReducer.Orderbook.length) {
+			const filteredEntries: OrderbookEntryType[] = ucmReducer.Orderbook.filter((entry: OrderbookEntryType) =>
+				assetIds.includes(entry.Pair[0])
+			);
+			const entriesWithOrders = filteredEntries.filter((entry) => entry.Orders && entry.Orders.length > 0);
+			return entriesWithOrders.length / assetIds.length;
+		}
+	}
+	return 0;
 }
