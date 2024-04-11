@@ -16,21 +16,6 @@ import {
 import { formatAddress, getAssetOrderType, getTagValue } from 'helpers/utils';
 import { store } from 'store';
 
-export function getOrderbookAssetIds(args: { groupCount: number | null }): IdGroupType {
-	if (store.getState().ucmReducer) {
-		const ucmReducer = store.getState().ucmReducer;
-		const idGroup: any = {};
-		const groupCount: number = args.groupCount || PAGINATORS.default;
-		if (ucmReducer.Orderbook && ucmReducer.Orderbook.length) {
-			for (let i = 0, j = 0; i < ucmReducer.Orderbook.length; i += groupCount, j++) {
-				idGroup[j] = ucmReducer.Orderbook.slice(i, i + groupCount).map((entry: OrderbookEntryType) => entry.Pair[0]);
-			}
-			return idGroup;
-		}
-	}
-	return { '0': [] };
-}
-
 export async function getAssetsByIds(args: { ids: string[] }): Promise<AssetDetailType[]> {
 	try {
 		const gqlResponse = await getGQLData({
@@ -97,7 +82,10 @@ export async function getAssetById(args: { id: string }): Promise<AssetDetailTyp
 			const processState = await readProcessState(structuredAsset.data.id);
 
 			if (processState) {
-				if (processState.Name) assetState.name = processState.Name;
+				if (processState.Name) {
+					assetState.name = processState.Name;
+					structuredAsset.data.title = processState.Name;
+				}
 				if (processState.Ticker) assetState.ticker = processState.Ticker;
 				if (processState.Denomination) assetState.denomination = processState.Denomination;
 				if (processState.Balances) assetState.balances = processState.Balances;
@@ -186,4 +174,19 @@ function getLicense(element: GQLNodeResponseType): LicenseType | null {
 		};
 	}
 	return null;
+}
+
+export function getOrderbookAssetIds(args: { groupCount: number | null }): IdGroupType {
+	if (store.getState().ucmReducer) {
+		const ucmReducer = store.getState().ucmReducer;
+		const idGroup: any = {};
+		const groupCount: number = args.groupCount || PAGINATORS.default;
+		if (ucmReducer.Orderbook && ucmReducer.Orderbook.length) {
+			for (let i = 0, j = 0; i < ucmReducer.Orderbook.length; i += groupCount, j++) {
+				idGroup[j] = ucmReducer.Orderbook.slice(i, i + groupCount).map((entry: OrderbookEntryType) => entry.Pair[0]);
+			}
+			return idGroup;
+		}
+	}
+	return { '0': [] };
 }

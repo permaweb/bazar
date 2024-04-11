@@ -103,6 +103,11 @@ export const InfoDetail = styled.div`
 		font-weight: ${(props) => props.theme.typography.weight.bold} !important;
 		color: ${(props) => props.theme.colors.font.light1} !important;
 	}
+	img {
+		height: 22.5px;
+		width: 22.5px;
+		margin: 5px 0 0 2.5px;
+	}
 	a {
 		&:hover {
 			span {

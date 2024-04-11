@@ -2,6 +2,7 @@ import { useSelector } from 'react-redux';
 import { Link } from 'react-router-dom';
 
 import { URLS } from 'helpers/config';
+import { getTxEndpoint } from 'helpers/endpoints';
 import { formatCount } from 'helpers/utils';
 import { RootState } from 'store';
 
@@ -29,6 +30,14 @@ export default function CurrencyLine(props: IProps) {
 			let currency = null;
 			if (currenciesReducer[props.currency].Ticker) {
 				currency = <span>{currenciesReducer[props.currency].Ticker}</span>;
+			}
+			if (currenciesReducer[props.currency].Logo) {
+				currency = (
+					<img
+						src={getTxEndpoint(currenciesReducer[props.currency].Logo)}
+						alt={currenciesReducer[props.currency].Ticker}
+					/>
+				);
 			}
 
 			return (

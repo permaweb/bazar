@@ -12,7 +12,8 @@ export default function Collections() {
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
 
-	const [collections, setCollections] = React.useState<CollectionType[] | null>(null);
+	const [collectionsFetch, setCollectionsFetch] = React.useState<CollectionGQLResponseType | null>(null);
+	const [cursor, setCursor] = React.useState<string | null>(null);
 	const [loading, setLoading] = React.useState<boolean>(false);
 	const [errorResponse, setErrorResponse] = React.useState<string | null>(null);
 
@@ -20,18 +21,18 @@ export default function Collections() {
 		(async function () {
 			setLoading(true);
 			try {
-				const collectionsFetch: CollectionGQLResponseType = await getCollections();
-				setCollections(collectionsFetch.data);
+				const collectionsFetch: CollectionGQLResponseType = await getCollections({ cursor: cursor });
+				setCollectionsFetch(collectionsFetch);
 			} catch (e: any) {
 				setErrorResponse(e.message || language.collectionsFetchFailed);
 			}
 			setLoading(false);
 		})();
-	}, []);
+	}, [cursor]);
 
 	function getData() {
-		if (collections) {
-			return <CollectionsList collections={collections} />;
+		if (collectionsFetch) {
+			return <CollectionsList collections={collectionsFetch.data} />;
 		} else {
 			if (loading) return <Loader />;
 			else if (errorResponse) return <p>{errorResponse}</p>;

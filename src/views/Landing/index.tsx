@@ -6,6 +6,7 @@ import { AssetsTable } from 'components/organisms/AssetsTable';
 import { CollectionsCarousel } from 'components/organisms/CollectionsCarousel';
 import { PAGINATORS } from 'helpers/config';
 import { AssetDetailType, CollectionGQLResponseType, CollectionType, IdGroupType } from 'helpers/types';
+import * as windowUtils from 'helpers/window';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 
 import * as S from './styles';
@@ -31,7 +32,7 @@ export default function Landing() {
 
 			setCollectionsLoading(true);
 			try {
-				const collectionsFetch: CollectionGQLResponseType = await getCollections();
+				const collectionsFetch: CollectionGQLResponseType = await getCollections({ cursor: null });
 				setCollections(collectionsFetch.data);
 			} catch (e: any) {
 				setCollectionsErrorResponse(e.message || language.collectionsFetchFailed);
@@ -63,16 +64,22 @@ export default function Landing() {
 		);
 	}
 
+	function getPaginationAction(callback: () => void) {
+		setAssets(null);
+		windowUtils.scrollTo(0, 0, 'smooth');
+		callback();
+	}
+
 	function getNextAction() {
 		if (assetIdGroups && Number(assetCursor) < Object.keys(assetIdGroups).length - 1) {
-			return () => setAssetCursor((Number(assetCursor) + 1).toString());
+			return () => getPaginationAction(() => setAssetCursor((Number(assetCursor) + 1).toString()));
 		}
 		return null;
 	}
 
 	function getPreviousAction() {
 		if (assetIdGroups && Number(assetCursor) > 0) {
-			return () => setAssetCursor((Number(assetCursor) - 1).toString());
+			return () => getPaginationAction(() => setAssetCursor((Number(assetCursor) - 1).toString()));
 		}
 		return null;
 	}

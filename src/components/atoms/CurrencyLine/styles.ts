@@ -9,11 +9,21 @@ export const Wrapper = styled.div`
 		font-weight: ${(props) => props.theme.typography.weight.bold};
 		color: ${(props) => props.theme.colors.font.primary};
 	}
+	img {
+		height: 20px;
+		width: 20px;
+		margin: 2.5px 0 0 2.5px;
+	}
 	a {
 		span {
 			color: ${(props) => props.theme.colors.font.primary};
 			&:hover {
 				color: ${(props) => props.theme.colors.font.alt1};
+			}
+		}
+		img {
+			&:hover {
+				opacity: 0.85;
 			}
 		}
 	}

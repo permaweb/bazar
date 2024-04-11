@@ -576,7 +576,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 			>
 				<S.ConfirmationWrapper className={'modal-wrapper'}>
 					<S.SalesWrapper>{getOrderDetails()}</S.SalesWrapper>
-					<S.ActionWrapperFull loading={orderLoading} statusWidth={orderStatusPercentage}>
+					<S.ActionWrapperFull loading={orderLoading.toString() || null} statusWidth={orderStatusPercentage}>
 						{getAction(true)}
 					</S.ActionWrapperFull>
 					<S.ConfirmationMessage>

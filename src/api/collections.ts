@@ -15,7 +15,7 @@ import {
 import { formatAddress, getTagValue, sortEntries } from 'helpers/utils';
 import { store } from 'store';
 
-export async function getCollections(): Promise<CollectionGQLResponseType> {
+export async function getCollections(args: { cursor: string | null }): Promise<CollectionGQLResponseType> {
 	try {
 		let collections: CollectionType[] = [];
 		let count: number = 0;
@@ -32,7 +32,7 @@ export async function getCollections(): Promise<CollectionGQLResponseType> {
 				},
 			],
 			owners: null,
-			cursor: null,
+			cursor: args.cursor,
 		});
 
 		if (gqlResponse && gqlResponse.data.length) {

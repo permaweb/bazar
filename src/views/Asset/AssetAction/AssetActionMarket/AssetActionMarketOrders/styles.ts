@@ -96,6 +96,11 @@ export const SalesDetail = styled.div`
 		font-weight: ${(props) => props.theme.typography.weight.bold};
 		color: ${(props) => props.theme.colors.font.primary};
 	}
+	img {
+		height: 22.5px;
+		width: 22.5px;
+		margin: 5px 0 0 2.5px;
+	}
 	> * {
 		span {
 			font-size: ${(props) => props.theme.typography.size.xLg};
@@ -106,7 +111,7 @@ export const SalesDetail = styled.div`
 	}
 `;
 
-export const ActionWrapper = styled.div<{ loading: boolean; statusWidth: number }>`
+export const ActionWrapper = styled.div<{ loading: boolean | string; statusWidth: number }>`
 	width: fit-content;
 	margin: 30px 0 0 auto;
 	position: relative;
