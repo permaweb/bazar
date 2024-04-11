@@ -3,10 +3,9 @@ import React from 'react';
 import { getCollections } from 'api';
 
 import { Loader } from 'components/atoms/Loader';
+import { CollectionsList } from 'components/organisms/CollectionsList';
 import { CollectionGQLResponseType, CollectionType } from 'helpers/types';
 import { useLanguageProvider } from 'providers/LanguageProvider';
-
-import { CollectionsList } from './CollectionsList';
 
 // TODO: pagination
 export default function Collections() {

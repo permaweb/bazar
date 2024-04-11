@@ -5,8 +5,6 @@ import { getTxEndpoint } from 'helpers/endpoints';
 import * as S from './styles';
 import { IProps } from './types';
 
-// TODO: asset count
-// TODO: listings
 export default function CollectionCard(props: IProps) {
 	return props.collection ? (
 		<S.Wrapper className={'fade-in'}>

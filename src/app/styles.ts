@@ -269,7 +269,7 @@ export const AppWrapper = styled.div`
 export const View = styled.main`
 	min-height: calc(100vh - ${STYLING.dimensions.nav.height});
 	width: 100%;
-	padding: 40px 20px 20px 20px;
+	padding: 20px;
 `;
 
 export const DrawerWrapper = styled.div`

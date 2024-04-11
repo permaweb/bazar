@@ -2,12 +2,14 @@ import styled from 'styled-components';
 
 import { STYLING } from 'helpers/config';
 
+const CARD_HEIGHT = '500px';
+
 export const Wrapper = styled.div`
 	width: 100%;
 `;
 
 export const CardWrapper = styled.div<{ backgroundImage: string }>`
-	height: 500px;
+	height: ${CARD_HEIGHT};
 	width: 100%;
 	position: relative;
 	display: flex;
@@ -16,12 +18,10 @@ export const CardWrapper = styled.div<{ backgroundImage: string }>`
 	background-size: cover;
 	background-repeat: no-repeat;
 	background-position: center;
-	border-radius: ${STYLING.dimensions.radius.primary};
 	overflow: hidden;
-
-	> * {
-		position: relative;
-		z-index: 1;
+	border-radius: ${STYLING.dimensions.radius.primary};
+	@media (max-width: ${STYLING.cutoffs.initial}) {
+		height: auto;
 	}
 `;
 
@@ -50,62 +50,97 @@ export const InfoWrapper = styled.div`
 	}
 `;
 
-export const InfoHeader = styled.div`
+export const InfoBody = styled.div`
 	width: 100%;
 	display: flex;
+	flex-wrap: wrap;
+	gap: 10px;
 	margin: 20px 0 0 0;
+	@media (max-width: ${STYLING.cutoffs.initial}) {
+		flex-direction: column;
+	}
+`;
+
+export const InfoMetrics = styled.div`
+	flex: 1;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 10px;
+`;
+
+export const InfoBodyTile = styled.div`
+	flex: 1;
+	min-width: 150px;
+`;
+
+export const InfoHeader = styled.div`
+	display: flex;
+	justify-content: flex-end;
+	flex: 1;
+	span {
+		font-size: ${(props) => props.theme.typography.size.base} !important;
+		font-family: ${(props) => props.theme.typography.family.primary} !important;
+		font-weight: ${(props) => props.theme.typography.weight.medium} !important;
+		color: ${(props) => props.theme.colors.font.light2} !important;
+	}
+	@media (max-width: ${STYLING.cutoffs.initial}) {
+		justify-content: flex-start;
+	}
+`;
+
+export const InfoHeaderFlex2 = styled(InfoHeader)`
+	justify-content: flex-start;
+	flex: 2;
 `;
 
 export const InfoDetail = styled.div`
-	width: 100%;
-	display: flex;
-`;
-
-export const InfoHeaderTile = styled.div`
 	display: flex;
 	justify-content: flex-end;
 	flex: 1;
 	span {
-		font-size: ${(props) => props.theme.typography.size.base};
-		font-family: ${(props) => props.theme.typography.family.primary};
-		font-weight: ${(props) => props.theme.typography.weight.medium};
-		color: ${(props) => props.theme.colors.font.light2};
+		font-size: ${(props) => props.theme.typography.size.xLg} !important;
+		font-family: ${(props) => props.theme.typography.family.alt1} !important;
+		font-weight: ${(props) => props.theme.typography.weight.bold} !important;
+		color: ${(props) => props.theme.colors.font.light1} !important;
+	}
+	a {
+		&:hover {
+			span {
+				color: ${(props) => props.theme.colors.font.light2} !important;
+			}
+		}
+	}
+	@media (max-width: ${STYLING.cutoffs.initial}) {
+		justify-content: flex-start;
 	}
 `;
 
-export const InfoHeaderFlex2 = styled(InfoHeaderTile)`
+export const InfoDetailFlex2 = styled(InfoDetail)`
 	justify-content: flex-start;
 	flex: 2;
 `;
 
-export const InfoDetailTile = styled.div`
+export const InfoFooter = styled.div`
+	margin: 15px 0 0 0;
 	display: flex;
-	justify-content: flex-end;
-	flex: 1;
-	span {
-		font-size: ${(props) => props.theme.typography.size.xLg};
-		font-family: ${(props) => props.theme.typography.family.alt1};
-		font-weight: ${(props) => props.theme.typography.weight.bold};
-		color: ${(props) => props.theme.colors.font.light1};
-	}
-`;
-
-export const InfoDetailFlex2 = styled(InfoDetailTile)`
-	justify-content: flex-start;
-	flex: 2;
+	justify-content: space-between;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 10px;
 `;
 
 export const InfoCreator = styled.div`
-	margin: 15px 0 0 0;
 	display: flex;
 	align-items: center;
+	flex-wrap: wrap;
+	gap: 7.5px;
 	p,
 	a {
 		font-size: ${(props) => props.theme.typography.size.base};
 		font-family: ${(props) => props.theme.typography.family.primary};
 		font-weight: ${(props) => props.theme.typography.weight.bold};
 		color: ${(props) => props.theme.colors.font.light1};
-		margin: 0 10px 0 0;
+		margin: 0 2.5px 0 0;
 	}
 
 	p {
@@ -121,15 +156,21 @@ export const InfoCreator = styled.div`
 `;
 
 export const InfoDescription = styled.div`
+	width: fit-content;
+	max-width: 460px;
 	p {
 		font-size: ${(props) => props.theme.typography.size.base};
 		font-family: ${(props) => props.theme.typography.family.primary};
 		font-weight: ${(props) => props.theme.typography.weight.bold};
 		color: ${(props) => props.theme.colors.font.light2};
 		line-height: 1.65;
+		max-width: 100%;
+		white-space: nowrap;
+		text-overflow: ellipsis;
+		overflow: hidden;
 	}
 `;
 
 export const AssetsWrapper = styled.div`
-	margin: 60px 0 0 0;
+	margin: 40px 0 0 0;
 `;

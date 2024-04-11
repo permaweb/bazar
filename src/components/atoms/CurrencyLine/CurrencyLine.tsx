@@ -32,7 +32,10 @@ export default function CurrencyLine(props: IProps) {
 			}
 
 			return (
-				<Link to={`${URLS.asset}${props.currency}`} onClick={() => (props.callback ? props.callback() : {})}>
+				<Link
+					to={`${URLS.asset}${props.currency}`}
+					onClick={(e: any) => (props.callback ? props.callback() : e.stopPropagation())}
+				>
 					<S.Currency>{currency}</S.Currency>
 				</Link>
 			);
@@ -40,7 +43,7 @@ export default function CurrencyLine(props: IProps) {
 		return null;
 	}
 
-	return props.amount && props.currency ? (
+	return props.amount !== null && props.currency ? (
 		<S.Wrapper>
 			<span>{getDenominatedTokenValue(Number(props.amount), props.currency)}</span>
 			{getCurrency()}

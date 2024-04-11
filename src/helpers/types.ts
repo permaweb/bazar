@@ -102,6 +102,18 @@ export type OwnerType = {
 
 export type ListingType = AssetOrderType & { profile: ProfileType };
 
+export type CollectionManifestType = {
+	type: string;
+	items: string[];
+};
+
+export type CollectionMetricsType = {
+	assetCount: number | null;
+	floorPrice: number | null;
+	percentageListed: number | null;
+	defaultCurrency: string;
+};
+
 export type CollectionType = {
 	data: {
 		id: string;
@@ -115,19 +127,8 @@ export type CollectionType = {
 	};
 };
 
-export type CollectionManifestType = {
-	type: string;
-	items: string[];
-};
-
-export type CollectionMetricsType = {
-	assetCount: number | null;
-	floorPrice: number | null;
-	percentageListed: number | null;
-};
-
 export type CollectionDetailType = CollectionType & {
-	assetIds: string[];
+	assetIdGroups: IdGroupType;
 	creatorProfile: ProfileType;
 	metrics: CollectionMetricsType;
 };
@@ -226,3 +227,7 @@ export type ValidationType = {
 };
 
 export type AssetSortType = 'low-to-high' | 'high-to-low';
+
+export type IdGroupType = { [index: string]: string[] };
+
+export type ButtonType = 'primary' | 'alt1' | 'alt2' | 'alt3' | 'success' | 'warning';

@@ -1,6 +1,6 @@
 import { getGQLData, readProcessState } from 'api';
 
-import { GATEWAYS, LICENSES, TAGS } from 'helpers/config';
+import { GATEWAYS, LICENSES, PAGINATORS, TAGS } from 'helpers/config';
 import {
 	AssetDetailType,
 	AssetOrderType,
@@ -9,11 +9,27 @@ import {
 	DefaultGQLResponseType,
 	EntryOrderType,
 	GQLNodeResponseType,
+	IdGroupType,
 	LicenseType,
 	OrderbookEntryType,
 } from 'helpers/types';
 import { formatAddress, getAssetOrderType, getTagValue } from 'helpers/utils';
 import { store } from 'store';
+
+export function getOrderbookAssetIds(args: { groupCount: number | null }): IdGroupType {
+	if (store.getState().ucmReducer) {
+		const ucmReducer = store.getState().ucmReducer;
+		const idGroup: any = {};
+		const groupCount: number = args.groupCount || PAGINATORS.default;
+		if (ucmReducer.Orderbook && ucmReducer.Orderbook.length) {
+			for (let i = 0, j = 0; i < ucmReducer.Orderbook.length; i += groupCount, j++) {
+				idGroup[j] = ucmReducer.Orderbook.slice(i, i + groupCount).map((entry: OrderbookEntryType) => entry.Pair[0]);
+			}
+			return idGroup;
+		}
+	}
+	return { '0': [] };
+}
 
 export async function getAssetsByIds(args: { ids: string[] }): Promise<AssetDetailType[]> {
 	try {

@@ -22,6 +22,7 @@
 		"react": "^18.2.0",
 		"react-dom": "^18.2.0",
 		"react-markdown": "^8.0.7",
+		"react-multi-carousel": "^2.8.5",
 		"react-redux": "^7.2.9",
 		"react-router-dom": "^6.4.2",
 		"react-share": "5.0.2",

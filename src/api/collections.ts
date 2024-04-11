@@ -1,6 +1,6 @@
 import { getCurrentProfile, getGQLData } from 'api';
 
-import { GATEWAYS, TAGS } from 'helpers/config';
+import { GATEWAYS, PAGINATORS, PROCESSES, TAGS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import {
 	CollectionDetailType,
@@ -9,7 +9,7 @@ import {
 	CollectionMetricsType,
 	CollectionType,
 	DefaultGQLResponseType,
-	GQLNodeResponseType,
+	IdGroupType,
 	OrderbookEntryType,
 } from 'helpers/types';
 import { formatAddress, getTagValue, sortEntries } from 'helpers/utils';
@@ -76,17 +76,23 @@ export async function getCollectionById(args: { id: string }): Promise<Collectio
 				console.error(e);
 			}
 
-			const collectionMetrics: CollectionMetricsType = {
+			const assetIdGroups: IdGroupType = {};
+			for (let i = 0, j = 0; i < assetIds.length; i += PAGINATORS.collection.assets, j++) {
+				assetIdGroups[j] = assetIds.slice(i, i + PAGINATORS.collection.assets).map((id: string) => id);
+			}
+
+			const metrics: CollectionMetricsType = {
 				assetCount: assetIds.length,
 				floorPrice: getFloorPrice(assetIds),
 				percentageListed: getPercentageListed(assetIds),
+				defaultCurrency: getDefaultCurrency(assetIds),
 			};
 
 			const collectionDetail = {
 				...structuredCollection,
-				assetIds: assetIds,
+				assetIdGroups: assetIdGroups,
 				creatorProfile: creatorProfile,
-				metrics: collectionMetrics,
+				metrics: metrics,
 			};
 			return collectionDetail;
 		}
@@ -100,7 +106,7 @@ export async function getCollectionById(args: { id: string }): Promise<Collectio
 export function structureCollections(gqlResponse: DefaultGQLResponseType): CollectionType[] {
 	const structuredCollections: CollectionType[] = [];
 
-	gqlResponse.data.forEach((element: GQLNodeResponseType) => {
+	for (const element of gqlResponse.data) {
 		structuredCollections.push({
 			data: {
 				id: element.node.id,
@@ -122,7 +128,7 @@ export function structureCollections(gqlResponse: DefaultGQLResponseType): Colle
 				thumbnail: getTagValue(element.node.tags, TAGS.keys.thumbnail),
 			},
 		});
-	});
+	}
 
 	return structuredCollections;
 }
@@ -138,16 +144,7 @@ function getFloorPrice(assetIds: string[]): number {
 			if (sortedEntries && sortedEntries.length) {
 				const currentEntry = sortedEntries[0];
 				if (currentEntry.Orders && currentEntry.Orders.length && currentEntry.Orders[0].Price) {
-					let denomination = null;
-					if (store.getState().currenciesReducer) {
-						const currenciesReducer = store.getState().currenciesReducer;
-						if (currenciesReducer[currentEntry.Pair[1]] && currenciesReducer[currentEntry.Pair[1]].Denomination) {
-							denomination = currenciesReducer[currentEntry.Pair[1]].Denomination;
-						}
-					}
-					let calculatedPrice = Number(currentEntry.Orders[0].Price);
-					if (denomination) calculatedPrice = calculatedPrice / Math.pow(10, denomination);
-					return calculatedPrice;
+					return Number(currentEntry.Orders[0].Price);
 				}
 			}
 		}
@@ -167,4 +164,21 @@ function getPercentageListed(assetIds: string[]): number {
 		}
 	}
 	return 0;
+}
+
+function getDefaultCurrency(assetIds: string[]): string {
+	if (store.getState().ucmReducer) {
+		const ucmReducer = store.getState().ucmReducer;
+		if (ucmReducer.Orderbook && ucmReducer.Orderbook.length) {
+			const filteredEntries: OrderbookEntryType[] = ucmReducer.Orderbook.filter((entry: OrderbookEntryType) =>
+				assetIds.includes(entry.Pair[0])
+			);
+			const sortedEntries: OrderbookEntryType[] = sortEntries(filteredEntries, 'low-to-high');
+			if (sortedEntries && sortedEntries.length) {
+				const currentEntry = sortedEntries[0];
+				return currentEntry.Pair[1];
+			}
+		}
+	}
+	return PROCESSES.token;
 }

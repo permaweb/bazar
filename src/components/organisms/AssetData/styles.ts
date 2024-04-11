@@ -57,7 +57,7 @@ export const Image = styled.img<{ contain: boolean }>`
 	height: 100%;
 	width: 100%;
 	object-fit: ${(props) => (props.contain ? 'contain' : 'cover')};
-	background: ${(props) => props.theme.colors.container.alt8.background};
+	background: ${(props) => props.theme.colors.container.alt2.background};
 `;
 
 export const AudioWrapper = styled.div`

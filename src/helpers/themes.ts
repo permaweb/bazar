@@ -59,7 +59,7 @@ export const darkTheme = {
 	primary2: '#F57200',
 	semiTransparent1: 'rgba(0, 0, 0, 0.15)',
 	semiTransparent2: 'rgba(0, 0, 0, 0.45)',
-	semiTransparent3: 'rgba(0, 0, 0, 0.55)',
+	semiTransparent3: 'rgba(20, 20, 20, 0.75)',
 	semiTransparent4: '#AEAEAE45',
 	semiTransparent5: 'rgba(0, 0, 0, 0.5)',
 	scheme: 'dark',

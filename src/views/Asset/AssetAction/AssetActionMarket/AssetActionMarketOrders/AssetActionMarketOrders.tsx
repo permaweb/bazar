@@ -530,7 +530,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 				icon = ASSETS.transfer;
 				break;
 		}
-		if (orderLoading) label = `${language.executing}...`;
+		if (orderLoading) label = finalizeOrder ? `${language.executing}...` : label;
 		if (orderProcessed) label = `${language.complete}!`;
 
 		let action: () => void;

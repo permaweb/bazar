@@ -119,6 +119,10 @@ export default function AssetAction(props: IProps) {
 		})();
 	}, [props.asset, associatedProfiles]);
 
+	React.useEffect(() => {
+		if (currentListings && currentListings.length <= 0) setShowCurrentListingsModal(false);
+	}, [currentListings]);
+
 	function getDenominatedTokenValue(amount: number, currency: string) {
 		if (
 			currenciesReducer &&

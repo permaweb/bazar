@@ -94,6 +94,7 @@ export const STYLING = {
 		initial: '1024px',
 		max: '1400px',
 		tablet: '840px',
+		tabletSecondary: '768px',
 		secondary: '540px',
 	},
 	dimensions: {
@@ -185,6 +186,12 @@ export const CURSORS = {
 
 export const PAGINATORS = {
 	default: 100,
+	landing: {
+		assets: 12,
+	},
+	collection: {
+		assets: 12,
+	},
 };
 
 export const REDIRECTS = {
