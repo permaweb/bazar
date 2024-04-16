@@ -4,6 +4,7 @@ import { GATEWAYS, LICENSES, PAGINATORS, TAGS } from 'helpers/config';
 import {
 	AssetDetailType,
 	AssetOrderType,
+	AssetSortType,
 	AssetStateType,
 	AssetType,
 	DefaultGQLResponseType,
@@ -13,10 +14,10 @@ import {
 	LicenseType,
 	OrderbookEntryType,
 } from 'helpers/types';
-import { formatAddress, getAssetOrderType, getTagValue } from 'helpers/utils';
+import { formatAddress, getAssetOrderType, getTagValue, sortByAssetOrders, sortOrderbookEntries } from 'helpers/utils';
 import { store } from 'store';
 
-export async function getAssetsByIds(args: { ids: string[] }): Promise<AssetDetailType[]> {
+export async function getAssetsByIds(args: { ids: string[]; sortType: AssetSortType }): Promise<AssetDetailType[]> {
 	try {
 		const gqlResponse = await getGQLData({
 			gateway: GATEWAYS.arweave,
@@ -51,7 +52,7 @@ export async function getAssetsByIds(args: { ids: string[] }): Promise<AssetDeta
 				});
 			}
 
-			return finalAssets;
+			return sortByAssetOrders(finalAssets, args.sortType);
 		}
 
 		return null;
@@ -176,14 +177,30 @@ function getLicense(element: GQLNodeResponseType): LicenseType | null {
 	return null;
 }
 
-export function getOrderbookAssetIds(args: { groupCount: number | null }): IdGroupType {
+export function getAssetIdGroups(args: {
+	ids?: string[];
+	groupCount: number | null;
+	filterListings: boolean;
+	sortType: AssetSortType;
+}): IdGroupType {
 	if (store.getState().ucmReducer) {
 		const ucmReducer = store.getState().ucmReducer;
 		const idGroup: any = {};
 		const groupCount: number = args.groupCount || PAGINATORS.default;
 		if (ucmReducer.Orderbook && ucmReducer.Orderbook.length) {
-			for (let i = 0, j = 0; i < ucmReducer.Orderbook.length; i += groupCount, j++) {
-				idGroup[j] = ucmReducer.Orderbook.slice(i, i + groupCount).map((entry: OrderbookEntryType) => entry.Pair[0]);
+			let currentOrderbook = ucmReducer.Orderbook;
+			if (args.ids) {
+				currentOrderbook = currentOrderbook.filter((entry: OrderbookEntryType) => args.ids.includes(entry.Pair[0]));
+			}
+			if (args.filterListings) {
+				currentOrderbook = currentOrderbook.filter(
+					(entry: OrderbookEntryType) => entry.Orders && entry.Orders.length > 0
+				);
+			}
+
+			const sortedOrderbook = sortOrderbookEntries(currentOrderbook, args.sortType);
+			for (let i = 0, j = 0; i < sortedOrderbook.length; i += groupCount, j++) {
+				idGroup[j] = sortedOrderbook.slice(i, i + groupCount).map((entry: OrderbookEntryType) => entry.Pair[0]);
 			}
 			return idGroup;
 		}

@@ -96,3 +96,22 @@ export const DateCreated = styled.div`
 		font-weight: ${(props) => props.theme.typography.weight.bold};
 	}
 `;
+
+export const UpdateWrapper = styled.div`
+	width: fit-content;
+	margin: 40px auto 0 auto !important;
+	button {
+		span {
+			font-size: ${(props) => props.theme.typography.size.xLg} !important;
+			font-family: ${(props) => props.theme.typography.family.alt1};
+			text-transform: uppercase;
+		}
+	}
+	@media (max-width: ${STYLING.cutoffs.secondary}) {
+		width: 100%;
+		button {
+			min-width: 0;
+			width: 100%;
+		}
+	}
+`;

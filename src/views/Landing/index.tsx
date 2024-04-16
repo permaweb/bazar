@@ -1,12 +1,18 @@
 import React from 'react';
 
-import { getAssetsByIds, getCollections, getOrderbookAssetIds } from 'api';
+import { getAssetIdGroups, getAssetsByIds, getCollections } from 'api';
 
 import { AssetsTable } from 'components/organisms/AssetsTable';
 import { CollectionsCarousel } from 'components/organisms/CollectionsCarousel';
-import { PAGINATORS } from 'helpers/config';
-import { AssetDetailType, CollectionGQLResponseType, CollectionType, IdGroupType } from 'helpers/types';
-import * as windowUtils from 'helpers/window';
+import { ASSET_SORT_OPTIONS, PAGINATORS } from 'helpers/config';
+import {
+	AssetDetailType,
+	AssetSortType,
+	CollectionGQLResponseType,
+	CollectionType,
+	IdGroupType,
+	SelectOptionType,
+} from 'helpers/types';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 
 import * as S from './styles';
@@ -20,6 +26,8 @@ export default function Landing() {
 	const [collectionsErrorResponse, setCollectionsErrorResponse] = React.useState<string | null>(null);
 
 	const [assetIdGroups, setAssetIdGroups] = React.useState<IdGroupType | null>(null);
+	const [assetFilterListings, setAssetFilterListings] = React.useState<boolean>(false);
+	const [assetSortType, setAssetSortType] = React.useState<SelectOptionType | null>(ASSET_SORT_OPTIONS[0]);
 	const [assetCursor, setAssetCursor] = React.useState<string>('0');
 
 	const [assets, setAssets] = React.useState<AssetDetailType[] | null>(null);
@@ -28,45 +36,43 @@ export default function Landing() {
 
 	React.useEffect(() => {
 		(async function () {
-			setAssetIdGroups(getOrderbookAssetIds({ groupCount: PAGINATORS.landing.assets }));
+			setAssetIdGroups(
+				getAssetIdGroups({
+					groupCount: PAGINATORS.landing.assets,
+					filterListings: assetFilterListings,
+					sortType: assetSortType.id as AssetSortType,
+				})
+			);
 
 			setCollectionsLoading(true);
 			try {
-				const collectionsFetch: CollectionGQLResponseType = await getCollections({ cursor: null });
+				const collectionsFetch: CollectionGQLResponseType = await getCollections({ cursor: null, owner: null });
 				setCollections(collectionsFetch.data);
 			} catch (e: any) {
 				setCollectionsErrorResponse(e.message || language.collectionsFetchFailed);
 			}
 			setCollectionsLoading(false);
 		})();
-	}, []);
+	}, [assetFilterListings, assetSortType]);
 
 	React.useEffect(() => {
 		(async function () {
 			if (assetIdGroups) {
 				setAssetsLoading(true);
 				try {
-					setAssets(await getAssetsByIds({ ids: assetIdGroups[assetCursor] }));
+					setAssets(
+						await getAssetsByIds({ ids: assetIdGroups[assetCursor], sortType: assetSortType.id as AssetSortType })
+					);
 				} catch (e: any) {
 					setAssetErrorResponse(e.message || language.assetsFetchFailed);
 				}
 				setAssetsLoading(false);
 			}
 		})();
-	}, [assetIdGroups, assetCursor]);
-
-	function getCollectionData() {
-		return (
-			<S.CollectionsWrapper>
-				<CollectionsCarousel collections={collections} loading={collectionsLoading} />
-				{collectionsErrorResponse && <p>{collectionsErrorResponse}</p>}
-			</S.CollectionsWrapper>
-		);
-	}
+	}, [assetIdGroups, assetCursor, assetSortType]);
 
 	function getPaginationAction(callback: () => void) {
 		setAssets(null);
-		windowUtils.scrollTo(0, 0, 'smooth');
 		callback();
 	}
 
@@ -84,27 +90,28 @@ export default function Landing() {
 		return null;
 	}
 
-	function getAssetData() {
-		return (
+	return (
+		<S.Wrapper className={'fade-in'}>
+			<S.CollectionsWrapper>
+				<CollectionsCarousel collections={collections} loading={collectionsLoading} />
+				{collectionsErrorResponse && <p>{collectionsErrorResponse}</p>}
+			</S.CollectionsWrapper>
 			<S.AssetsWrapper>
 				<AssetsTable
 					assets={assets}
 					type={'list'}
 					nextAction={getNextAction()}
 					previousAction={getPreviousAction()}
+					filterListings={assetFilterListings}
+					setFilterListings={() => setAssetFilterListings(!assetFilterListings)}
+					currentSortType={assetSortType}
+					setCurrentSortType={(option: SelectOptionType) => setAssetSortType(option)}
 					currentPage={assetCursor}
 					pageCount={PAGINATORS.landing.assets}
 					loading={assetsLoading}
 				/>
 				{assetErrorResponse && <p>{assetErrorResponse}</p>}
 			</S.AssetsWrapper>
-		);
-	}
-
-	return (
-		<S.Wrapper className={'fade-in'}>
-			{getCollectionData()}
-			{getAssetData()}
 		</S.Wrapper>
 	);
 }

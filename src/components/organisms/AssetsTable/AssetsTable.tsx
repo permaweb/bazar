@@ -1,10 +1,12 @@
+import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
 import { Button } from 'components/atoms/Button';
 import { CurrencyLine } from 'components/atoms/CurrencyLine';
 import { IconButton } from 'components/atoms/IconButton';
-import { ASSETS, PAGINATORS, URLS } from 'helpers/config';
-import { AssetDetailType } from 'helpers/types';
+import { Select } from 'components/atoms/Select';
+import { ASSET_SORT_OPTIONS, ASSETS, PAGINATORS, URLS } from 'helpers/config';
+import { AssetDetailType, AssetSortType, SelectOptionType } from 'helpers/types';
 import { sortOrders } from 'helpers/utils';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 
@@ -19,9 +21,11 @@ export default function AssetsTable(props: IProps) {
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
 
+	const scrollRef = React.useRef(null);
+
 	function getListing(asset: AssetDetailType) {
 		if (asset && asset.orders && asset.orders.length) {
-			const sortedOrders = sortOrders(asset.orders, 'low-to-high');
+			const sortedOrders = sortOrders(asset.orders, props.currentSortType.id as AssetSortType);
 
 			if (sortedOrders && sortedOrders.length) {
 				return <CurrencyLine amount={sortedOrders[0].price || '0'} currency={sortedOrders[0].currency} />;
@@ -37,6 +41,36 @@ export default function AssetsTable(props: IProps) {
 			index += Number(props.currentPage) * props.pageCount;
 		}
 		return index;
+	}
+
+	function handlePaginationAction(type: 'next' | 'previous') {
+		if (props.nextAction || props.previousAction) {
+			switch (type) {
+				case 'next':
+					props.nextAction();
+					break;
+				case 'previous':
+					props.previousAction();
+					break;
+			}
+			setTimeout(function () {
+				if (scrollRef && scrollRef.current) {
+					scrollRef.current.scrollIntoView({
+						behavior: 'smooth',
+						block: 'start',
+					});
+				}
+			}, 1);
+		}
+	}
+
+	function getSectionHeader() {
+		return (
+			<S.AssetsListSectionHeader>
+				<span>{language.asset}</span>
+				<span>{language.listing}</span>
+			</S.AssetsListSectionHeader>
+		);
 	}
 
 	function getData() {
@@ -68,9 +102,11 @@ export default function AssetsTable(props: IProps) {
 				return (
 					<S.AssetsListWrapper>
 						<S.AssetsListSection>
+							{getSectionHeader()}
 							<S.AssetsListSectionElements>{splitElements[0]}</S.AssetsListSectionElements>
 						</S.AssetsListSection>
 						<S.AssetsListSection>
+							{getSectionHeader()}
 							<S.AssetsListSectionElements>{splitElements[1]}</S.AssetsListSectionElements>
 						</S.AssetsListSection>
 					</S.AssetsListWrapper>
@@ -92,10 +128,7 @@ export default function AssetsTable(props: IProps) {
 								let sectionIndex = index;
 								return (
 									<S.AssetsListSection key={index}>
-										<S.AssetsListSectionHeader>
-											<span>{language.asset}</span>
-											<span>{language.floorPrice}</span>
-										</S.AssetsListSectionHeader>
+										{getSectionHeader()}
 										<S.AssetsListSectionElements>
 											{section.map((asset: AssetDetailType, index: number) => {
 												const redirect = `${URLS.asset}${asset.data.id}`;
@@ -162,50 +195,74 @@ export default function AssetsTable(props: IProps) {
 	}
 
 	return (
-		<S.Wrapper className={'fade-in'}>
+		<S.Wrapper className={'fade-in'} ref={scrollRef}>
 			<S.Header>
 				<h4>{language.assets}</h4>
-				<S.HeaderPaginator>
-					<IconButton
-						type={'alt1'}
-						src={ASSETS.arrow}
-						handlePress={() => (props.previousAction ? props.previousAction() : {})}
-						disabled={!props.assets || !props.previousAction}
-						dimensions={{
-							wrapper: 30,
-							icon: 12.5,
-						}}
-						tooltip={language.previous}
-						useBottomToolTip
-						className={'table-previous'}
-					/>
-					<IconButton
-						type={'alt1'}
-						src={ASSETS.arrow}
-						handlePress={() => (props.nextAction ? props.nextAction() : {})}
-						disabled={!props.assets || !props.nextAction}
-						dimensions={{
-							wrapper: 30,
-							icon: 12.5,
-						}}
-						tooltip={language.next}
-						useBottomToolTip
-						className={'table-next'}
-					/>
-				</S.HeaderPaginator>
+				<S.HeaderActions>
+					{props.setFilterListings && props.setCurrentSortType && (
+						<>
+							<S.SelectWrapper>
+								<Select
+									label={null}
+									activeOption={props.currentSortType}
+									setActiveOption={(option: SelectOptionType) => props.setCurrentSortType(option)}
+									options={ASSET_SORT_OPTIONS.map((option: SelectOptionType) => option)}
+									disabled={!props.assets || props.loading}
+								/>
+							</S.SelectWrapper>
+							<Button
+								type={'primary'}
+								label={language.filterListings}
+								handlePress={props.setFilterListings}
+								disabled={!props.assets}
+								active={props.filterListings}
+								icon={props.filterListings ? ASSETS.close : null}
+								className={'filter-listings'}
+							/>
+						</>
+					)}
+					<S.HeaderPaginator>
+						<IconButton
+							type={'alt1'}
+							src={ASSETS.arrow}
+							handlePress={() => handlePaginationAction('previous')}
+							disabled={!props.assets || !props.previousAction}
+							dimensions={{
+								wrapper: 30,
+								icon: 12.5,
+							}}
+							tooltip={language.previous}
+							useBottomToolTip
+							className={'table-previous'}
+						/>
+						<IconButton
+							type={'alt1'}
+							src={ASSETS.arrow}
+							handlePress={() => handlePaginationAction('next')}
+							disabled={!props.assets || !props.nextAction}
+							dimensions={{
+								wrapper: 30,
+								icon: 12.5,
+							}}
+							tooltip={language.next}
+							useBottomToolTip
+							className={'table-next'}
+						/>
+					</S.HeaderPaginator>
+				</S.HeaderActions>
 			</S.Header>
 			{getData()}
 			<S.Footer>
 				<Button
 					type={'primary'}
 					label={language.previous}
-					handlePress={() => (props.previousAction ? props.previousAction() : {})}
+					handlePress={() => handlePaginationAction('previous')}
 					disabled={!props.assets || !props.previousAction}
 				/>
 				<Button
 					type={'primary'}
 					label={language.next}
-					handlePress={() => (props.nextAction ? props.nextAction() : {})}
+					handlePress={() => handlePaginationAction('next')}
 					disabled={!props.assets || !props.nextAction}
 				/>
 			</S.Footer>

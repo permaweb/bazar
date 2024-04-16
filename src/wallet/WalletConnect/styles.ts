@@ -115,7 +115,8 @@ export const DBodyWrapper = styled.ul`
 		padding: 0 15px;
 		transition: all 75ms;
 		&:hover {
-			background: ${(props) => props.theme.colors.button.primary.background};
+			color: ${(props) => props.theme.colors.button.primary.active.color};
+			background: ${(props) => props.theme.colors.button.primary.active.background};
 		}
 	}
 `;
@@ -136,24 +137,20 @@ export const BalanceLine = styled.div`
 	padding: 0 15px;
 	display: flex;
 	align-items: center;
-	p,
 	span {
-		font-size: ${(props) => props.theme.typography.size.small};
-		font-weight: ${(props) => props.theme.typography.weight.bold};
-	}
-	p {
-		color: ${(props) => props.theme.colors.font.primary};
+		font-size: ${(props) => props.theme.typography.size.base};
 		font-family: ${(props) => props.theme.typography.family.alt1};
-	}
-	span {
-		color: ${(props) => props.theme.colors.font.alt1};
-		font-family: ${(props) => props.theme.typography.family.primary};
+		font-weight: ${(props) => props.theme.typography.weight.bold};
+		color: ${(props) => props.theme.colors.font.primary};
 	}
 	svg {
 		height: 17.5px;
 		width: 17.5px;
-		margin: 7.5px 7.5px 0 0;
+		margin: 5.5px 0 0 9.5px;
 		fill: ${(props) => props.theme.colors.icon.alt2.fill};
+	}
+	img {
+		margin: 5.5px 0 0 2.5px;
 	}
 	.pixl-icon {
 		svg {

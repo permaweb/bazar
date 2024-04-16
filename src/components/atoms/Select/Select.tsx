@@ -14,9 +14,11 @@ export default function Select(props: IProps) {
 	return props.options && props.activeOption ? (
 		<CloseHandler active={active} disabled={!active || props.disabled} callback={() => setActive(false)}>
 			<S.Wrapper>
-				<S.Label disabled={props.disabled}>
-					<span>{props.label}</span>
-				</S.Label>
+				{props.label && (
+					<S.Label disabled={props.disabled}>
+						<span>{props.label}</span>
+					</S.Label>
+				)}
 				<S.Dropdown active={active} disabled={props.disabled} onClick={() => setActive(!active)}>
 					<span>{props.activeOption.label}</span>
 					<ReactSVG src={ASSETS.arrow} />

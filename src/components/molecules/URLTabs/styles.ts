@@ -66,5 +66,5 @@ export const View = styled.div`
 	height: 100%;
 	width: 100%;
 	position: relative;
-	margin: 20px 0 0 0;
+	margin: 25px 0 0 0;
 `;

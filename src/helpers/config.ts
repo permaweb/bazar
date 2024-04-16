@@ -25,7 +25,7 @@ import video from 'assets/video.svg';
 import wallet from 'assets/wallet.svg';
 import x from 'assets/x.svg';
 
-import { WalletEnum } from './types';
+import { SelectOptionType, WalletEnum } from './types';
 
 export const PROCESSES = {
 	ucm: 'fzRGvSW2oSop9xGLxs5mcaRtCbrbug8imI_uRZHKdiU',
@@ -187,10 +187,10 @@ export const CURSORS = {
 export const PAGINATORS = {
 	default: 100,
 	landing: {
-		assets: 12,
+		assets: 20,
 	},
 	collection: {
-		assets: 12,
+		assets: 20,
 	},
 };
 
@@ -203,3 +203,8 @@ export const DEFAULTS = {
 	banner: 'eXCtpVbcd_jZ0dmU2PZ8focaKxBGECBQ8wMib7sIVPo',
 	thumbnail: 'lJovHqM9hwNjHV5JoY9NGWtt0WD-5D4gOqNL2VWW5jk',
 };
+
+export const ASSET_SORT_OPTIONS: SelectOptionType[] = [
+	{ id: 'low-to-high', label: 'Low to high' },
+	{ id: 'high-to-low', label: 'High to low' },
+];

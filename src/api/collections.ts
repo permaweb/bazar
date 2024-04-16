@@ -1,8 +1,9 @@
-import { getCurrentProfile, getGQLData } from 'api';
+import { getAssetIdGroups, getCurrentProfile, getGQLData } from 'api';
 
 import { GATEWAYS, PAGINATORS, PROCESSES, TAGS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import {
+	AssetSortType,
 	CollectionDetailType,
 	CollectionGQLResponseType,
 	CollectionManifestType,
@@ -12,25 +13,26 @@ import {
 	IdGroupType,
 	OrderbookEntryType,
 } from 'helpers/types';
-import { formatAddress, getTagValue, sortEntries } from 'helpers/utils';
+import { formatAddress, getTagValue, sortOrderbookEntries } from 'helpers/utils';
 import { store } from 'store';
 
-export async function getCollections(args: { cursor: string | null }): Promise<CollectionGQLResponseType> {
+export async function getCollections(args: {
+	cursor: string | null;
+	owner: string | null;
+}): Promise<CollectionGQLResponseType> {
 	try {
 		let collections: CollectionType[] = [];
 		let count: number = 0;
 		let nextCursor: string | null = null;
 		let previousCursor: string | null = null;
 
+		const tagFilters = [{ name: TAGS.keys.dataProtocol, values: [TAGS.values.collection] }];
+		if (args.owner) tagFilters.push({ name: TAGS.keys.creator, values: [args.owner] });
+
 		const gqlResponse = await getGQLData({
 			gateway: GATEWAYS.arweave,
 			ids: null,
-			tagFilters: [
-				{
-					name: TAGS.keys.dataProtocol,
-					values: [TAGS.values.collection],
-				},
-			],
+			tagFilters: tagFilters,
 			owners: null,
 			cursor: args.cursor,
 		});
@@ -53,7 +55,11 @@ export async function getCollections(args: { cursor: string | null }): Promise<C
 	}
 }
 
-export async function getCollectionById(args: { id: string }): Promise<CollectionDetailType> {
+export async function getCollectionById(args: {
+	id: string;
+	filterListings: boolean;
+	sortType: AssetSortType;
+}): Promise<CollectionDetailType> {
 	try {
 		const gqlResponse = await getGQLData({
 			gateway: GATEWAYS.arweave,
@@ -76,10 +82,12 @@ export async function getCollectionById(args: { id: string }): Promise<Collectio
 				console.error(e);
 			}
 
-			const assetIdGroups: IdGroupType = {};
-			for (let i = 0, j = 0; i < assetIds.length; i += PAGINATORS.collection.assets, j++) {
-				assetIdGroups[j] = assetIds.slice(i, i + PAGINATORS.collection.assets).map((id: string) => id);
-			}
+			const assetIdGroups: IdGroupType = getAssetIdGroups({
+				ids: assetIds,
+				groupCount: PAGINATORS.collection.assets,
+				filterListings: args.filterListings,
+				sortType: args.sortType,
+			});
 
 			const metrics: CollectionMetricsType = {
 				assetCount: assetIds.length,
@@ -140,7 +148,7 @@ function getFloorPrice(assetIds: string[]): number {
 			const filteredEntries: OrderbookEntryType[] = ucmReducer.Orderbook.filter((entry: OrderbookEntryType) =>
 				assetIds.includes(entry.Pair[0])
 			);
-			const sortedEntries: OrderbookEntryType[] = sortEntries(filteredEntries, 'low-to-high');
+			const sortedEntries: OrderbookEntryType[] = sortOrderbookEntries(filteredEntries, 'low-to-high');
 			if (sortedEntries && sortedEntries.length) {
 				const currentEntry = sortedEntries[0];
 				if (currentEntry.Orders && currentEntry.Orders.length && currentEntry.Orders[0].Price) {
@@ -173,7 +181,7 @@ function getDefaultCurrency(assetIds: string[]): string {
 			const filteredEntries: OrderbookEntryType[] = ucmReducer.Orderbook.filter((entry: OrderbookEntryType) =>
 				assetIds.includes(entry.Pair[0])
 			);
-			const sortedEntries: OrderbookEntryType[] = sortEntries(filteredEntries, 'low-to-high');
+			const sortedEntries: OrderbookEntryType[] = sortOrderbookEntries(filteredEntries, 'low-to-high');
 			if (sortedEntries && sortedEntries.length) {
 				const currentEntry = sortedEntries[0];
 				return currentEntry.Pair[1];

@@ -57,47 +57,43 @@ export default function AssetData(props: IProps) {
 		};
 	}, [props.asset]);
 
-	function getAssetPath(assetResponse: any) {
-		if (props.asset) {
-			return assetResponse.url;
-		} else return '';
-	}
-
 	React.useEffect(() => {
 		(async function () {
-			if (props.assetRender) {
-				setAssetRender(props.assetRender);
-			} else {
-				if (props.asset && !props.assetRender) {
-					const renderWith = props.asset.data?.renderWith ? props.asset.data.renderWith : '[]';
-					let parsedRenderWith: string | null = null;
-					try {
-						parsedRenderWith = JSON.parse(renderWith);
-					} catch (e: any) {
-						parsedRenderWith = renderWith;
-					}
-					if (parsedRenderWith && parsedRenderWith.length) {
-						setAssetRender({
-							url: getRendererEndpoint(parsedRenderWith, props.asset.data.id),
-							type: 'renderer',
-							contentType: 'renderer',
-						});
-					} else {
-						const assetResponse = await fetch(getTxEndpoint(props.asset.data.id));
-						const contentType = assetResponse.headers.get('content-type');
-
-						if (assetResponse.status === 200 && contentType) {
+			if (!assetRender && wrapperVisible) {
+				if (props.assetRender) {
+					setAssetRender(props.assetRender);
+				} else {
+					if (props.asset && !props.assetRender) {
+						const renderWith = props.asset.data?.renderWith ? props.asset.data.renderWith : '[]';
+						let parsedRenderWith: string | null = null;
+						try {
+							parsedRenderWith = JSON.parse(renderWith);
+						} catch (e: any) {
+							parsedRenderWith = renderWith;
+						}
+						if (parsedRenderWith && parsedRenderWith.length) {
 							setAssetRender({
-								url: getAssetPath(assetResponse),
-								type: 'raw',
-								contentType: contentType,
+								url: getRendererEndpoint(parsedRenderWith, props.asset.data.id),
+								type: 'renderer',
+								contentType: 'renderer',
 							});
+						} else {
+							const assetResponse = await fetch(getTxEndpoint(props.asset.data.id));
+							const contentType = assetResponse.headers.get('content-type');
+
+							if (assetResponse.status === 200 && contentType) {
+								setAssetRender({
+									url: getAssetPath(assetResponse),
+									type: 'raw',
+									contentType: contentType,
+								});
+							}
 						}
 					}
 				}
 			}
 		})();
-	}, [props.asset, props.assetRender]);
+	}, [props.asset, props.assetRender, wrapperVisible]);
 
 	React.useEffect(() => {
 		if (assetRender) {
@@ -135,6 +131,12 @@ export default function AssetData(props: IProps) {
 
 		sendWalletConnection();
 	}, [arProvider.walletAddress]);
+
+	function getAssetPath(assetResponse: any) {
+		if (props.asset) {
+			return assetResponse.url;
+		} else return '';
+	}
 
 	const handleError = () => {
 		setLoadError(true);
@@ -205,7 +207,7 @@ export default function AssetData(props: IProps) {
 						}
 					}
 					if (assetRender.contentType.includes('image')) {
-						return <S.Image src={assetRender.url} contain={contain} onError={handleError} />;
+						return <S.Image src={assetRender.url} contain={contain} onError={handleError} loading={'lazy'} />;
 					}
 					if (assetRender.contentType.includes('audio')) {
 						if (!props.preview) {

@@ -7,9 +7,9 @@ import { CurrencyLine } from 'components/atoms/CurrencyLine';
 import { Loader } from 'components/atoms/Loader';
 import { OwnerLine } from 'components/molecules/OwnerLine';
 import { AssetsTable } from 'components/organisms/AssetsTable';
-import { DEFAULTS, PAGINATORS, URLS } from 'helpers/config';
+import { ASSET_SORT_OPTIONS, DEFAULTS, PAGINATORS, URLS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
-import { AssetDetailType, CollectionDetailType } from 'helpers/types';
+import { AssetDetailType, AssetSortType, CollectionDetailType, SelectOptionType } from 'helpers/types';
 import { checkValidAddress, formatDate, formatPercentage } from 'helpers/utils';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 
@@ -26,6 +26,8 @@ export default function Collection() {
 	const [collectionLoading, setCollectionLoading] = React.useState<boolean>(false);
 	const [collectionErrorResponse, setCollectionErrorResponse] = React.useState<string | null>(null);
 
+	const [assetFilterListings, setAssetFilterListings] = React.useState<boolean>(false);
+	const [assetSortType, setAssetSortType] = React.useState<SelectOptionType | null>(ASSET_SORT_OPTIONS[0]);
 	const [assetCursor, setAssetCursor] = React.useState<string>('0');
 
 	const [assets, setAssets] = React.useState<AssetDetailType[] | null>(null);
@@ -36,29 +38,42 @@ export default function Collection() {
 		(async function () {
 			if (id && checkValidAddress(id)) {
 				setCollectionLoading(true);
+				setAssetsLoading(true);
 				try {
-					setCollection(await getCollectionById({ id: id }));
+					setCollection(
+						await getCollectionById({
+							id: id,
+							filterListings: assetFilterListings,
+							sortType: assetSortType.id as AssetSortType,
+						})
+					);
 				} catch (e: any) {
 					setCollectionErrorResponse(e.message || language.collectionFetchFailed);
 				}
+				setAssetsLoading(false);
 				setCollectionLoading(false);
 			} else navigate(URLS.notFound);
 		})();
-	}, [id]);
+	}, [id, assetFilterListings, assetSortType]);
 
 	React.useEffect(() => {
 		(async function () {
 			if (collection && collection.assetIdGroups) {
 				setAssetsLoading(true);
 				try {
-					setAssets(await getAssetsByIds({ ids: collection.assetIdGroups[assetCursor] }));
+					setAssets(
+						await getAssetsByIds({
+							ids: collection.assetIdGroups[assetCursor],
+							sortType: assetSortType.id as AssetSortType,
+						})
+					);
 				} catch (e: any) {
 					setAssetErrorResponse(e.message || language.assetsFetchFailed);
 				}
 				setAssetsLoading(false);
 			}
 		})();
-	}, [collection, assetCursor]);
+	}, [collection, assetCursor, assetSortType]);
 
 	function getNextAction() {
 		if (collection.assetIdGroups && Number(assetCursor) < Object.keys(collection.assetIdGroups).length - 1) {
@@ -153,6 +168,10 @@ export default function Collection() {
 							type={'list'}
 							nextAction={getNextAction()}
 							previousAction={getPreviousAction()}
+							filterListings={assetFilterListings}
+							setFilterListings={() => setAssetFilterListings(!assetFilterListings)}
+							currentSortType={assetSortType}
+							setCurrentSortType={(option: SelectOptionType) => setAssetSortType(option)}
 							currentPage={assetCursor}
 							pageCount={PAGINATORS.collection.assets}
 							loading={assetsLoading}

@@ -33,16 +33,24 @@ export function getTagValue(list: { [key: string]: any }[], name: string): strin
 }
 
 export function formatARAmount(amount: number) {
-	return `${amount.toFixed(4)}`;
+	return `${amount.toFixed(2)}`;
 }
 
 export function formatCount(count: string): string {
 	if (count.includes('.')) {
 		let parts = count.split('.');
 		parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+
+		// Ensure the decimal part is always two digits long
+		if (parts[1].length > 2) {
+			parts[1] = parts[1].substring(0, 2); // Truncate if more than two digits
+		} else if (parts[1].length < 2) {
+			parts[1] = parts[1].padEnd(2, '0'); // Pad with '0' if less than two digits
+		}
+
 		return parts.join('.');
 	} else {
-		return count.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+		return count.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + '.00'; // Append '.00' if no decimal part
 	}
 }
 
@@ -76,6 +84,16 @@ export function formatDate(dateArg: string | number | null, dateType: DateType) 
 
 export function formatRequiredField(field: string) {
 	return `${field} *`;
+}
+
+export function splitTagValue(tag: string) {
+	return tag.split('-').join(' ');
+}
+
+export function getTagDisplay(value: string) {
+	let result = value.replace(/([A-Z])/g, ' $1').trim();
+	result = result.charAt(0).toUpperCase() + result.slice(1);
+	return result;
 }
 
 export function getOwners(asset: AssetDetailType, profiles: ProfileType[] | null): OwnerType[] | null {
@@ -125,7 +143,25 @@ export function sortOrders(orders: AssetOrderType[], sortType: AssetSortType) {
 	return sortedOrders;
 }
 
-export function sortEntries(entries: OrderbookEntryType[], sortType: AssetSortType): OrderbookEntryType[] {
+export function sortByAssetOrders(assets: AssetDetailType[], sortType: AssetSortType): AssetDetailType[] {
+	const getSortKey = (asset: AssetDetailType): number => {
+		if (!asset.orders || asset.orders.length === 0) return Infinity;
+		return Number(sortOrders(asset.orders, sortType)[0].price);
+	};
+
+	const direction = sortType === 'high-to-low' ? -1 : 1;
+
+	const assetsWithOrders = assets.filter((asset) => asset.orders && asset.orders.length > 0);
+	const assetsWithoutOrders = assets.filter((asset) => !asset.orders || asset.orders.length === 0);
+
+	assetsWithOrders.sort((a, b) => {
+		return direction * (getSortKey(a) - getSortKey(b));
+	});
+
+	return [...assetsWithOrders, ...assetsWithoutOrders];
+}
+
+export function sortOrderbookEntries(entries: OrderbookEntryType[], sortType: AssetSortType): OrderbookEntryType[] {
 	const getSortKey = (entry: OrderbookEntryType): number => {
 		if (!entry.Orders || entry.Orders.length === 0) return Infinity;
 		return Number(entry.Orders[0].Price);
@@ -141,14 +177,4 @@ export function sortEntries(entries: OrderbookEntryType[], sortType: AssetSortTy
 	});
 
 	return [...entriesWithOrders, ...entriesWithoutOrders];
-}
-
-export function splitTagValue(tag: string) {
-	return tag.split('-').join(' ');
-}
-
-export function getTagDisplay(value: string) {
-	let result = value.replace(/([A-Z])/g, ' $1').trim();
-	result = result.charAt(0).toUpperCase() + result.slice(1);
-	return result;
 }

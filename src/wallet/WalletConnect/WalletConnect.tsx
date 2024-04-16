@@ -1,10 +1,12 @@
 import React from 'react';
 import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
+import { ReactSVG } from 'react-svg';
 
 import { Avatar } from 'components/atoms/Avatar';
-import { PROCESSES, URLS } from 'helpers/config';
-import { formatAddress, formatARAmount, formatCount } from 'helpers/utils';
+import { CurrencyLine } from 'components/atoms/CurrencyLine';
+import { ASSETS, PROCESSES, URLS } from 'helpers/config';
+import { formatAddress, formatARAmount } from 'helpers/utils';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useCustomThemeProvider } from 'providers/CustomThemeProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
@@ -91,11 +93,7 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 			currenciesReducer[tokenProcess].Balances[arProvider.walletAddress]
 		) {
 			const ownerBalance = currenciesReducer[tokenProcess].Balances[arProvider.walletAddress];
-			const denomination = currenciesReducer[tokenProcess].Denomination;
-			let calculatedOwnerBalance = ownerBalance;
-			if (denomination && denomination > 1) calculatedOwnerBalance = ownerBalance / Math.pow(10, denomination);
-
-			return formatCount(calculatedOwnerBalance.toString());
+			return ownerBalance.toString();
 		}
 		return 0;
 	}
@@ -119,7 +117,7 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 						<Avatar owner={arProvider.profile} dimensions={{ wrapper: 35, icon: 21.5 }} callback={handlePress} />
 					</S.PWrapper>
 					{showWalletDropdown && (
-						<S.Dropdown className={'border-wrapper-alt2 scroll-wrapper'}>
+						<S.Dropdown className={'border-wrapper-alt1 scroll-wrapper'}>
 							<S.DHeaderWrapper>
 								<S.DHeaderFlex>
 									<Avatar
@@ -138,26 +136,18 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 									<span>{language.balances}</span>
 								</S.DBodyHeader>
 								<S.BalanceLine>
-									{/* <ReactSVG src={ASSETS.ar} /> */}
-									<p>
-										{formatARAmount(arProvider.availableBalance ? arProvider.availableBalance : 0)} <span>AR</span>
-									</p>
+									<span>{formatARAmount(arProvider.availableBalance ? arProvider.availableBalance : 0)}</span>
+									<ReactSVG src={ASSETS.ar} />
 								</S.BalanceLine>
 								{currenciesReducer && currenciesReducer[PROCESSES.token] && (
 									<S.BalanceLine>
-										<p>
-											{getTokenBalance(PROCESSES.token)} <span>{currenciesReducer[PROCESSES.token].Ticker}</span>
-										</p>
+										<CurrencyLine
+											amount={getTokenBalance(PROCESSES.token)}
+											currency={PROCESSES.token}
+											callback={() => setShowWalletDropdown(false)}
+										/>
 									</S.BalanceLine>
 								)}
-								{/* <S.BalanceLine>
-									<ReactSVG src={ASSETS.u} />
-									<p>5.67 <span>U</span></p>
-								</S.BalanceLine>
-								<S.BalanceLine>
-									<ReactSVG src={ASSETS.pixl} className={'pixl-icon'} />
-									<p>3.01 <span>PIXL</span></p>
-								</S.BalanceLine> */}
 							</S.DBodyWrapper>
 							<S.DBodyWrapper>
 								<li onClick={handleViewProfile}>{language.viewProfile}</li>

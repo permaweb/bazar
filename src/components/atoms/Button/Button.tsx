@@ -86,6 +86,7 @@ export default function Button(props: IProps) {
 				fullWidth={props.fullWidth}
 				width={props.width}
 				height={props.height}
+				className={props.className || ''}
 			>
 				{getLabel()}
 			</StyledButton>

@@ -5,6 +5,7 @@ import { getFullProfile } from 'api';
 
 import { Loader } from 'components/atoms/Loader';
 import { URLTabs } from 'components/molecules/URLTabs';
+import { CollectionsList } from 'components/organisms/CollectionsList';
 import { URLS } from 'helpers/config';
 import { FullProfileType } from 'helpers/types';
 import { checkValidAddress } from 'helpers/utils';
@@ -54,7 +55,7 @@ export default function Profile() {
 			icon: null,
 			disabled: false,
 			url: URLS.profileCollections(address),
-			view: () => <p>Coming soon!</p>,
+			view: () => <CollectionsList owner={address} />,
 		},
 		{
 			label: language.listings,

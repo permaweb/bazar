@@ -4,6 +4,7 @@ import { STYLING } from 'helpers/config';
 
 export const Wrapper = styled.div`
 	width: 100%;
+	scroll-margin-top: 20px;
 `;
 
 export const Header = styled.div`
@@ -11,6 +12,20 @@ export const Header = styled.div`
 	justify-content: space-between;
 	align-items: center;
 	margin: 0 0 20px 0;
+`;
+
+export const HeaderActions = styled.div`
+	display: flex;
+	align-items: center;
+	gap: 15px;
+
+	.filter-listings {
+		margin: 0 10px 0 0;
+		svg {
+			margin: 0 0 0 7.5px;
+			padding: 3.5px 0 0 0;
+		}
+	}
 `;
 
 export const HeaderPaginator = styled.div`
@@ -23,6 +38,7 @@ export const HeaderPaginator = styled.div`
 			margin: 0 1.5px 0 0;
 		}
 	}
+
 	.table-next {
 		svg {
 			transform: rotate(180deg);
@@ -208,4 +224,11 @@ export const Footer = styled.div`
 	justify-content: space-between;
 	align-items: center;
 	margin: 20px 0 0 0;
+`;
+
+export const SelectWrapper = styled.div`
+	svg {
+		transform: rotate(270deg);
+		margin: 5px 0 0 50.5px;
+	}
 `;
