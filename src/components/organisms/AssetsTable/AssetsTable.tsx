@@ -64,6 +64,14 @@ export default function AssetsTable(props: IProps) {
 		}
 	}
 
+	function getActionDisabled() {
+		if (!props.assets) return true;
+		if (props.loading) return true;
+		if (props.assets && props.assets.length) {
+			return props.assets.every((asset: AssetDetailType) => (asset.orders ? asset.orders.length <= 0 : true));
+		}
+	}
+
 	function getSectionHeader() {
 		return (
 			<S.AssetsListSectionHeader>
@@ -207,14 +215,14 @@ export default function AssetsTable(props: IProps) {
 									activeOption={props.currentSortType}
 									setActiveOption={(option: SelectOptionType) => props.setCurrentSortType(option)}
 									options={ASSET_SORT_OPTIONS.map((option: SelectOptionType) => option)}
-									disabled={!props.assets || props.loading}
+									disabled={getActionDisabled()}
 								/>
 							</S.SelectWrapper>
 							<Button
 								type={'primary'}
 								label={language.filterListings}
 								handlePress={props.setFilterListings}
-								disabled={!props.assets}
+								disabled={getActionDisabled()}
 								active={props.filterListings}
 								icon={props.filterListings ? ASSETS.close : null}
 								className={'filter-listings'}

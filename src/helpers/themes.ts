@@ -1,8 +1,6 @@
 import { DefaultTheme } from 'styled-components';
 
 export const lightTheme = {
-	accent1: '#454FA8',
-	accent2: '#7A81B8',
 	negative1: '#D81E5B',
 	negative2: '#E43A72',
 	neutral1: '#FFFFFF',
@@ -20,8 +18,8 @@ export const lightTheme = {
 	neutralA5: '#A4A4A4',
 	neutralA6: '#A9A9A9',
 	overlay1: 'rgb(130, 130, 130, .25)',
-	primary1: '#26B426',
-	primary2: '#24A824',
+	primary1: '#00B88D',
+	primary2: '#008F6D',
 	semiTransparent1: 'rgba(255, 255, 255, 0.575)',
 	semiTransparent2: 'rgba(0, 0, 0, 0.45)',
 	semiTransparent3: 'rgba(0, 0, 0, 0.55)',
@@ -31,12 +29,9 @@ export const lightTheme = {
 	light1: '#FFFFFF',
 	light2: '#DADADA',
 	dark1: '#151515',
-	indicator1: '#26B426',
 };
 
 export const darkTheme = {
-	accent1: '#454FA8',
-	accent2: '#7A81B8',
 	labelAlt1: `#FFFFFF`,
 	negative1: '#D81E5B',
 	negative2: '#E43A72',
@@ -55,8 +50,8 @@ export const darkTheme = {
 	neutralA5: '#F7F7F7',
 	neutralA6: '#FAFAFA',
 	overlay1: 'rgba(0, 0, 0, 0.5)',
-	primary1: '#12D912',
-	primary2: '#1DED1D',
+	primary1: '#00CC9C',
+	primary2: '#00B88D',
 	semiTransparent1: 'rgba(0, 0, 0, 0.15)',
 	semiTransparent2: 'rgba(0, 0, 0, 0.45)',
 	semiTransparent3: 'rgba(20, 20, 20, 0.75)',
@@ -66,7 +61,6 @@ export const darkTheme = {
 	light1: '#FFFFFF',
 	light2: '#DADADA',
 	dark1: '#151515',
-	indicator1: '#12D912',
 };
 
 export const theme = (currentTheme: any): DefaultTheme => ({
@@ -90,8 +84,8 @@ export const theme = (currentTheme: any): DefaultTheme => ({
 				border: currentTheme.neutral3,
 				color: currentTheme.neutralA1,
 				active: {
-					background: currentTheme.accent1,
-					border: currentTheme.accent2,
+					background: currentTheme.primary1,
+					border: currentTheme.primary2,
 					color: currentTheme.light1,
 				},
 				disabled: {
@@ -105,8 +99,8 @@ export const theme = (currentTheme: any): DefaultTheme => ({
 				border: currentTheme.primary2,
 				color: currentTheme.light1,
 				active: {
-					background: currentTheme.accent1,
-					border: currentTheme.accent2,
+					background: currentTheme.primary1,
+					border: currentTheme.primary2,
 					color: currentTheme.light1,
 				},
 				disabled: {
@@ -169,10 +163,10 @@ export const theme = (currentTheme: any): DefaultTheme => ({
 				background: currentTheme.dark1,
 			},
 			alt9: {
-				background: currentTheme.indicator1,
+				background: currentTheme.primary1,
 			},
 			alt10: {
-				background: currentTheme.accent1,
+				background: currentTheme.primary1,
 			},
 		},
 		font: {
@@ -204,8 +198,8 @@ export const theme = (currentTheme: any): DefaultTheme => ({
 		},
 		gradient: {
 			start: currentTheme.primary1,
-			middle: currentTheme.accent1,
-			end: currentTheme.accent2,
+			middle: currentTheme.primary1,
+			end: currentTheme.primary2,
 		},
 		icon: {
 			primary: {

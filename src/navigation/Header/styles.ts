@@ -1,5 +1,6 @@
 import styled from 'styled-components';
 
+import { openRight } from 'helpers/animations';
 import { STYLING } from 'helpers/config';
 
 export const Wrapper = styled.header`
@@ -20,6 +21,11 @@ export const Content = styled.div`
 	justify-content: space-between;
 `;
 
+export const C1Wrapper = styled.div`
+	display: flex;
+	align-items: center;
+`;
+
 export const LogoWrapper = styled.div`
 	height: 35px;
 	width: 35px;
@@ -33,17 +39,12 @@ export const LogoWrapper = styled.div`
 	}
 `;
 
-export const ActionsWrapper = styled.div`
+export const DNavWrapper = styled.div`
+	height: 35px;
 	display: flex;
 	align-items: center;
-`;
-
-export const NavWrapper = styled.div`
-	display: flex;
-	align-items: center;
-	margin: 0 20px 0 0;
-	padding: 0 20px 0 0;
-	border-right: 1.5px solid ${(props) => props.theme.colors.border.primary};
+	margin: 0 0 0 15px;
+	padding: 0 0 0 15px;
 	> * {
 		&:not(:last-child) {
 			margin: 0 20px 0 0;
@@ -56,6 +57,75 @@ export const NavWrapper = styled.div`
 		color: ${(props) => props.theme.colors.font.primary};
 		font-family: ${(props) => props.theme.typography.family.primary};
 		font-size: ${(props) => props.theme.typography.size.small};
-		font-weight: ${(props) => props.theme.typography.weight.bold};
+		font-weight: ${(props) => props.theme.typography.weight.xBold};
+	}
+	@media (max-width: ${STYLING.cutoffs.secondary}) {
+		display: none;
+	}
+`;
+
+export const ActionsWrapper = styled.div`
+	display: flex;
+	align-items: center;
+`;
+
+export const MWrapper = styled.div`
+	display: none;
+	margin: 0 0 0 15px;
+	svg {
+		padding: 0 0 1.5px 0;
+	}
+	@media (max-width: ${STYLING.cutoffs.secondary}) {
+		display block;
+	}
+`;
+
+export const PWrapper = styled.div`
+	height: 100vh;
+	width: 400px;
+	max-width: 95vw;
+	max-width: 90vw;
+	position: fixed;
+	top: 0;
+	right: 0;
+	transition: width 50ms ease-out;
+	background: ${(props) => props.theme.colors.container.primary.background};
+	border-left: 1px solid ${(props) => props.theme.colors.border.primary};
+	animation: ${openRight} 200ms;
+`;
+
+export const PMenu = styled.div``;
+
+export const PHeader = styled.div`
+	width: 100%;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 10px 15px;
+	border-bottom: 1px solid ${(props) => props.theme.colors.border.primary};
+	svg {
+		fill: ${(props) => props.theme.colors.icon.primary.fill};
+	}
+	h4 {
+		font-size: ${(props) => props.theme.typography.size.xLg};
+	}
+`;
+
+export const MNavWrapper = styled.div`
+	display: flex;
+	flex-direction: column;
+	a {
+		color: ${(props) => props.theme.colors.font.primary};
+		font-family: ${(props) => props.theme.typography.family.primary};
+		font-size: ${(props) => props.theme.typography.size.small};
+		font-weight: ${(props) => props.theme.typography.weight.xBold};
+		padding: 15px;
+		&:hover {
+			color: ${(props) => props.theme.colors.font.primary};
+			background: ${(props) => props.theme.colors.container.primary.active};
+		}
+	}
+	> * {
+		border-bottom: 1px solid ${(props) => props.theme.colors.border.primary};
 	}
 `;

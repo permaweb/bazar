@@ -81,14 +81,22 @@ export const Thumbnail = styled.div`
 `;
 
 export const Title = styled.div`
-	span {
+	max-width: 200px;
+	p {
 		font-size: ${(props) => props.theme.typography.size.base};
 		font-family: ${(props) => props.theme.typography.family.primary};
 		font-weight: ${(props) => props.theme.typography.weight.xBold};
+		text-align: left;
+		white-space: nowrap;
+		text-overflow: ellipsis;
+		overflow: hidden;
 	}
 `;
 
 export const DateCreated = styled.div`
+	@media (max-width: ${STYLING.cutoffs.secondary}) {
+		display: none;
+	}
 	span {
 		color: ${(props) => props.theme.colors.font.alt1};
 		font-size: ${(props) => props.theme.typography.size.base};

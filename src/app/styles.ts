@@ -330,6 +330,17 @@ export const DrawerContentLine = styled.div`
 			justify-content: flex-end;
 		}
 	}
+	@media (max-width: ${STYLING.cutoffs.secondary}) {
+		flex-direction: column;
+		align-items: flex-start;
+		> * {
+			&:not(:first-child) {
+				text-align: left;
+				display: flex;
+				justify-content: flex-start;
+			}
+		}
+	}
 `;
 
 export const DrawerContentHeader = styled.p`

@@ -58,7 +58,9 @@ export default function CollectionsList(props: IProps) {
 					</S.Header>
 					<S.ListHeader>
 						<span>{language.collection}</span>
-						<span>{language.createdOn}</span>
+						<S.DateCreated>
+							<span>{language.createdOn}</span>
+						</S.DateCreated>
 					</S.ListHeader>
 					<S.CollectionsWrapper>
 						{collections.data.map((collection: CollectionType, index: number) => {
@@ -75,12 +77,14 @@ export default function CollectionsList(props: IProps) {
 												<img src={getTxEndpoint(collection.data.thumbnail || DEFAULTS.thumbnail)} alt={'Thumbnail'} />
 											</S.Thumbnail>
 											<S.Title>
-												<span>{collection.data.title}</span>
+												<p>{collection.data.title}</p>
 											</S.Title>
 										</S.FlexElement>
-										<S.FlexElement>
-											<span>{formatDate(collection.data.dateCreated, 'iso')}</span>
-										</S.FlexElement>
+										<S.DateCreated>
+											<S.FlexElement>
+												<span>{formatDate(collection.data.dateCreated, 'iso')}</span>
+											</S.FlexElement>
+										</S.DateCreated>
 									</Link>
 								</S.CollectionWrapper>
 							);

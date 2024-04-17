@@ -8,7 +8,7 @@ export const Wrapper = styled.div`
 	width: 100%;
 	display: flex;
 	@media (max-width: ${STYLING.cutoffs.desktop}) {
-		flex-direction: column;
+		flex-direction: column-reverse;
 	}
 `;
 

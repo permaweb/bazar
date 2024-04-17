@@ -47,7 +47,7 @@ export const FlexAction = styled.div`
 export const Dropdown = styled.ul`
 	max-height: 75vh;
 	width: 325px;
-	max-width: 90vw;
+	max-width: 75vw;
 	padding: 15px 0 10px 0;
 	position: absolute;
 	top: 45px;
@@ -115,8 +115,7 @@ export const DBodyWrapper = styled.ul`
 		padding: 0 15px;
 		transition: all 75ms;
 		&:hover {
-			color: ${(props) => props.theme.colors.button.primary.active.color};
-			background: ${(props) => props.theme.colors.button.primary.active.background};
+			background: ${(props) => props.theme.colors.container.primary.active};
 		}
 	}
 `;

@@ -1,6 +1,6 @@
 import { getGQLData, readProcessState } from 'api';
 
-import { GATEWAYS, LICENSES, PAGINATORS, TAGS } from 'helpers/config';
+import { GATEWAYS, LICENSES, PAGINATORS, PROCESSES, TAGS } from 'helpers/config';
 import {
 	AssetDetailType,
 	AssetOrderType,
@@ -187,11 +187,21 @@ export function getAssetIdGroups(args: {
 		const ucmReducer = store.getState().ucmReducer;
 		const idGroup: any = {};
 		const groupCount: number = args.groupCount || PAGINATORS.default;
+
 		if (ucmReducer.Orderbook && ucmReducer.Orderbook.length) {
 			let currentOrderbook = ucmReducer.Orderbook;
+
 			if (args.ids) {
 				currentOrderbook = currentOrderbook.filter((entry: OrderbookEntryType) => args.ids.includes(entry.Pair[0]));
+
+				const orderbookIds = currentOrderbook.map((entry: OrderbookEntryType) => entry.Pair[0]);
+				const missingIds = args.ids.filter((id) => !orderbookIds.includes(id));
+
+				missingIds.forEach((missingId) => {
+					currentOrderbook.push({ Pair: [missingId, PROCESSES.token], Orders: [] }); // Assuming default structure for new entries
+				});
 			}
+
 			if (args.filterListings) {
 				currentOrderbook = currentOrderbook.filter(
 					(entry: OrderbookEntryType) => entry.Orders && entry.Orders.length > 0

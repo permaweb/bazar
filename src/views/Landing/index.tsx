@@ -4,7 +4,7 @@ import { getAssetIdGroups, getAssetsByIds, getCollections } from 'api';
 
 import { AssetsTable } from 'components/organisms/AssetsTable';
 import { CollectionsCarousel } from 'components/organisms/CollectionsCarousel';
-import { ASSET_SORT_OPTIONS, PAGINATORS } from 'helpers/config';
+import { ASSET_SORT_OPTIONS, PAGINATORS, STYLING } from 'helpers/config';
 import {
 	AssetDetailType,
 	AssetSortType,
@@ -13,6 +13,7 @@ import {
 	IdGroupType,
 	SelectOptionType,
 } from 'helpers/types';
+import * as windowUtils from 'helpers/window';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 
 import * as S from './styles';
@@ -20,6 +21,8 @@ import * as S from './styles';
 export default function Landing() {
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
+
+	const [desktop, setDesktop] = React.useState(windowUtils.checkWindowCutoff(parseInt(STYLING.cutoffs.initial)));
 
 	const [collections, setCollections] = React.useState<CollectionType[] | null>(null);
 	const [collectionsLoading, setCollectionsLoading] = React.useState<boolean>(false);
@@ -71,6 +74,16 @@ export default function Landing() {
 		})();
 	}, [assetIdGroups, assetCursor, assetSortType]);
 
+	function handleWindowResize() {
+		if (windowUtils.checkWindowCutoff(parseInt(STYLING.cutoffs.initial))) {
+			setDesktop(true);
+		} else {
+			setDesktop(false);
+		}
+	}
+
+	windowUtils.checkWindowResize(handleWindowResize);
+
 	function getPaginationAction(callback: () => void) {
 		setAssets(null);
 		callback();
@@ -99,7 +112,7 @@ export default function Landing() {
 			<S.AssetsWrapper>
 				<AssetsTable
 					assets={assets}
-					type={'list'}
+					type={desktop ? 'list' : 'grid'}
 					nextAction={getNextAction()}
 					previousAction={getPreviousAction()}
 					filterListings={assetFilterListings}

@@ -165,7 +165,7 @@ export default function Collection() {
 					<S.AssetsWrapper>
 						<AssetsTable
 							assets={assets}
-							type={'list'}
+							type={'grid'}
 							nextAction={getNextAction()}
 							previousAction={getPreviousAction()}
 							filterListings={assetFilterListings}

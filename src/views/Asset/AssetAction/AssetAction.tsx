@@ -9,10 +9,12 @@ import { CurrencyLine } from 'components/atoms/CurrencyLine';
 import { Modal } from 'components/molecules/Modal';
 import { OwnerLine } from 'components/molecules/OwnerLine';
 import { Tabs } from 'components/molecules/Tabs';
+import { AssetData } from 'components/organisms/AssetData';
 import { OrderCancel } from 'components/organisms/OrderCancel';
-import { ASSETS, REDIRECTS } from 'helpers/config';
+import { ASSETS, REDIRECTS, STYLING } from 'helpers/config';
 import { ListingType, OwnerType, ProfileType } from 'helpers/types';
 import { formatCount, formatPercentage, getOwners, sortOrders } from 'helpers/utils';
+import * as windowUtils from 'helpers/window';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 import { RootState } from 'store';
@@ -50,6 +52,8 @@ export default function AssetAction(props: IProps) {
 			icon: ASSETS.activity,
 		},
 	];
+
+	const [mobile, setMobile] = React.useState(!windowUtils.checkWindowCutoff(parseInt(STYLING.cutoffs.secondary)));
 
 	const [totalAssetBalance, setTotalAssetBalance] = React.useState<number>(0);
 	const [associatedProfiles, setAssociatedProfiles] = React.useState<ProfileType[] | null>(null);
@@ -123,6 +127,16 @@ export default function AssetAction(props: IProps) {
 		if (currentListings && currentListings.length <= 0) setShowCurrentListingsModal(false);
 	}, [currentListings]);
 
+	function handleWindowResize() {
+		if (windowUtils.checkWindowCutoff(parseInt(STYLING.cutoffs.secondary))) {
+			setMobile(false);
+		} else {
+			setMobile(true);
+		}
+	}
+
+	windowUtils.checkWindowResize(handleWindowResize);
+
 	function getDenominatedTokenValue(amount: number, currency: string) {
 		if (
 			currenciesReducer &&
@@ -144,24 +158,43 @@ export default function AssetAction(props: IProps) {
 	function getCurrentOwners() {
 		return (
 			<>
-				<GS.DrawerHeaderWrapper>
-					<GS.DrawerContentFlex>
-						{language.owner.charAt(0).toUpperCase() + language.owner.slice(1)}
-					</GS.DrawerContentFlex>
-					<GS.DrawerContentDetail>{language.quantity}</GS.DrawerContentDetail>
-					<GS.DrawerContentDetail>{language.percentage}</GS.DrawerContentDetail>
-				</GS.DrawerHeaderWrapper>
+				{!mobile && (
+					<GS.DrawerHeaderWrapper>
+						<GS.DrawerContentFlex>
+							{language.owner.charAt(0).toUpperCase() + language.owner.slice(1)}
+						</GS.DrawerContentFlex>
+						<GS.DrawerContentDetail>{language.quantity}</GS.DrawerContentDetail>
+						<GS.DrawerContentDetail>{language.percentage}</GS.DrawerContentDetail>
+					</GS.DrawerHeaderWrapper>
+				)}
 				{currentOwners.map((owner: OwnerType, index: number) => {
 					return (
-						<GS.DrawerContentLine key={index}>
-							<GS.DrawerContentFlex>
+						<S.DrawerContentLine key={index}>
+							{mobile && (
+								<S.MDrawerHeader>
+									<GS.DrawerContentHeader>
+										{language.owner.charAt(0).toUpperCase() + language.owner.slice(1)}
+									</GS.DrawerContentHeader>
+								</S.MDrawerHeader>
+							)}
+							<S.DrawerContentFlex>
 								<OwnerLine owner={owner} callback={() => setShowCurrentOwnersModal(false)} />
-							</GS.DrawerContentFlex>
-							<GS.DrawerContentDetailAlt>
+							</S.DrawerContentFlex>
+							{mobile && (
+								<S.MDrawerHeader>
+									<GS.DrawerContentHeader>{language.quantity}</GS.DrawerContentHeader>
+								</S.MDrawerHeader>
+							)}
+							<S.DrawerContentDetailAlt>
 								{getDenominatedTokenValue(owner.ownerQuantity, props.asset.data.id)}
-							</GS.DrawerContentDetailAlt>
-							<GS.DrawerContentDetailAlt>{formatPercentage(owner.ownerPercentage)}</GS.DrawerContentDetailAlt>
-						</GS.DrawerContentLine>
+							</S.DrawerContentDetailAlt>
+							{mobile && (
+								<S.MDrawerHeader>
+									<GS.DrawerContentHeader>{language.percentage}</GS.DrawerContentHeader>
+								</S.MDrawerHeader>
+							)}
+							<S.DrawerContentDetailAlt>{formatPercentage(owner.ownerPercentage)}</S.DrawerContentDetailAlt>
+						</S.DrawerContentLine>
 					);
 				})}
 			</>
@@ -172,16 +205,23 @@ export default function AssetAction(props: IProps) {
 		if (currentListings) {
 			return (
 				<>
-					<GS.DrawerHeaderWrapper>
-						<GS.DrawerContentFlex>{language.seller}</GS.DrawerContentFlex>
-						<GS.DrawerContentDetail>{language.quantity}</GS.DrawerContentDetail>
-						<GS.DrawerContentDetail>{language.percentage}</GS.DrawerContentDetail>
-						<GS.DrawerContentDetail>{language.price}</GS.DrawerContentDetail>
-					</GS.DrawerHeaderWrapper>
+					{!mobile && (
+						<GS.DrawerHeaderWrapper>
+							<GS.DrawerContentFlex>{language.seller}</GS.DrawerContentFlex>
+							<GS.DrawerContentDetail>{language.quantity}</GS.DrawerContentDetail>
+							<GS.DrawerContentDetail>{language.percentage}</GS.DrawerContentDetail>
+							<GS.DrawerContentDetail>{language.price}</GS.DrawerContentDetail>
+						</GS.DrawerHeaderWrapper>
+					)}
 					{currentListings.map((listing: ListingType, index: number) => {
 						return (
-							<GS.DrawerContentLine key={index}>
-								<GS.DrawerContentFlex>
+							<S.DrawerContentLine key={index}>
+								{mobile && (
+									<S.MDrawerHeader>
+										<GS.DrawerContentHeader>{language.seller}</GS.DrawerContentHeader>
+									</S.MDrawerHeader>
+								)}
+								<S.DrawerContentFlex>
 									<OwnerLine
 										owner={{
 											address: listing.creator,
@@ -194,13 +234,28 @@ export default function AssetAction(props: IProps) {
 											<OrderCancel listing={listing} />
 										</S.OrderCancel>
 									)}
-								</GS.DrawerContentFlex>
-								<GS.DrawerContentDetailAlt>
+								</S.DrawerContentFlex>
+								{mobile && (
+									<S.MDrawerHeader>
+										<GS.DrawerContentHeader>{language.quantity}</GS.DrawerContentHeader>
+									</S.MDrawerHeader>
+								)}
+								<S.DrawerContentDetailAlt>
 									{getDenominatedTokenValue(Number(listing.quantity), props.asset.data.id)}
-								</GS.DrawerContentDetailAlt>
-								<GS.DrawerContentDetailAlt>
+								</S.DrawerContentDetailAlt>
+								{mobile && (
+									<S.MDrawerHeader>
+										<GS.DrawerContentHeader>{language.percentage}</GS.DrawerContentHeader>
+									</S.MDrawerHeader>
+								)}
+								<S.DrawerContentDetailAlt>
 									{formatPercentage(Number(listing.quantity) / totalAssetBalance)}
-								</GS.DrawerContentDetailAlt>
+								</S.DrawerContentDetailAlt>
+								{mobile && (
+									<S.MDrawerHeader>
+										<GS.DrawerContentHeader>{language.price}</GS.DrawerContentHeader>
+									</S.MDrawerHeader>
+								)}
 								<GS.DrawerContentFlexEnd>
 									<CurrencyLine
 										amount={listing.price}
@@ -208,7 +263,7 @@ export default function AssetAction(props: IProps) {
 										callback={() => setShowCurrentListingsModal(false)}
 									/>
 								</GS.DrawerContentFlexEnd>
-							</GS.DrawerContentLine>
+							</S.DrawerContentLine>
 						);
 					})}
 				</>
@@ -232,6 +287,9 @@ export default function AssetAction(props: IProps) {
 	return props.asset ? (
 		<>
 			<S.Wrapper>
+				<S.DataWrapper>
+					<AssetData asset={props.asset} frameMinHeight={550} autoLoad />
+				</S.DataWrapper>
 				<S.Header className={'border-wrapper-alt2'}>
 					<h4>{props.asset.data.title}</h4>
 					<S.ACLink>
@@ -275,16 +333,14 @@ export default function AssetAction(props: IProps) {
 			</S.Wrapper>
 			{showCurrentOwnersModal && currentOwners && currentOwners.length > 0 && (
 				<Modal header={language.currentlyOwnedBy} handleClose={() => setShowCurrentOwnersModal(false)}>
-					<GS.DrawerContent transparent className={'modal-wrapper'}>
+					<S.DrawerContent transparent className={'modal-wrapper'}>
 						{getCurrentOwners()}
-					</GS.DrawerContent>
+					</S.DrawerContent>
 				</Modal>
 			)}
 			{showCurrentListingsModal && currentListings && currentListings.length > 0 && (
 				<Modal header={language.currentlyBeingSoldBy} handleClose={() => setShowCurrentListingsModal(false)}>
-					<GS.DrawerContent transparent className={'modal-wrapper'}>
-						{getCurrentListings()}
-					</GS.DrawerContent>
+					<S.DrawerContent className={'modal-wrapper'}>{getCurrentListings()}</S.DrawerContent>
 				</Modal>
 			)}
 		</>

@@ -11,6 +11,7 @@ import info from 'assets/info.svg';
 import license from 'assets/license.svg';
 import logo from 'assets/logo.svg';
 import market from 'assets/market.svg';
+import menu from 'assets/menu.svg';
 import orders from 'assets/orders.svg';
 import othent from 'assets/othent.svg';
 import overview from 'assets/overview.svg';
@@ -57,6 +58,7 @@ export const ASSETS = {
 	license,
 	logo,
 	market,
+	menu,
 	orders,
 	othent,
 	overview,
@@ -197,6 +199,7 @@ export const PAGINATORS = {
 export const REDIRECTS = {
 	x: `https://twitter.com/OurBazAR`,
 	viewblock: (tx: string) => `https://viewblock.io/arweave/tx/${tx}`,
+	helix: `https://helix.arweave.dev`,
 };
 
 export const DEFAULTS = {

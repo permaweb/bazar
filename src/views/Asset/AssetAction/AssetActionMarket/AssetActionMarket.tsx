@@ -65,7 +65,7 @@ export default function AssetActionMarket(props: IProps) {
 					<Drawer
 						title={language.activeSaleOrders}
 						icon={ASSETS.orders}
-						content={<GS.DrawerContent>{props.getCurrentListings()}</GS.DrawerContent>}
+						content={<S.DrawerContent>{props.getCurrentListings()}</S.DrawerContent>}
 					/>
 				</GS.DrawerWrapper>
 			)}

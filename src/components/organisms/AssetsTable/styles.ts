@@ -11,13 +11,16 @@ export const Header = styled.div`
 	display: flex;
 	justify-content: space-between;
 	align-items: center;
+	flex-wrap: wrap;
+	gap: 20px;
 	margin: 0 0 20px 0;
 `;
 
 export const HeaderActions = styled.div`
 	display: flex;
 	align-items: center;
-	gap: 15px;
+	flex-wrap: wrap;
+	gap: 20px;
 
 	.filter-listings {
 		margin: 0 10px 0 0;
@@ -109,6 +112,14 @@ export const AssetsListWrapper = styled.div`
 	justify-content: space-between;
 	@media (max-width: ${STYLING.cutoffs.initial}) {
 		flex-direction: column;
+		> * {
+			&:not(:last-child) {
+				margin: 0 0 20px 0;
+			}
+			&:last-child {
+				margin: 0;
+			}
+		}
 	}
 `;
 
@@ -131,6 +142,9 @@ export const AssetsListSectionHeader = styled.div`
 		font-size: ${(props) => props.theme.typography.size.small};
 		font-family: ${(props) => props.theme.typography.family.primary};
 		font-weight: ${(props) => props.theme.typography.weight.bold};
+	}
+	@media (max-width: ${STYLING.cutoffs.initial}) {
+		display: none;
 	}
 `;
 
@@ -177,10 +191,15 @@ export const Index = styled.div`
 `;
 
 export const Title = styled.div`
+	max-width: 200px;
 	p {
 		font-size: ${(props) => props.theme.typography.size.base};
 		font-family: ${(props) => props.theme.typography.family.primary};
 		font-weight: ${(props) => props.theme.typography.weight.xBold};
+		text-align: left;
+		white-space: nowrap;
+		text-overflow: ellipsis;
+		overflow: hidden;
 	}
 `;
 
