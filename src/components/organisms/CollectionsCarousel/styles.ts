@@ -9,11 +9,9 @@ export const Header = styled.div`
 	margin: 0 0 20px 0;
 `;
 
-export const CollectionsWrapper = styled.div`
+export const CollectionsWrapper = styled.div<{ previousDisabled: boolean }>`
 	margin: 0 -12.5px;
-	ul {
-		transition: transform 200ms ease-in-out 0s !important;
-	}
+
 	.react-multiple-carousel__arrow {
 		height: calc(100% - 20px);
 		width: 50px;
@@ -42,6 +40,10 @@ export const CollectionsWrapper = styled.div`
 		.react-multiple-carousel__arrow {
 			display: block;
 			transition: all 100ms;
+		}
+		.react-multiple-carousel__arrow--left {
+			left: 22.5px;
+			display: ${(props) => (props.previousDisabled ? 'none' : 'block')} !important;
 		}
 	}
 `;

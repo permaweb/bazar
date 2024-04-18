@@ -44,6 +44,7 @@ export default function FormField(props: IProps) {
 				</S.TWrapper>
 				<S.Input
 					type={props.type ? props.type : 'text'}
+					step={props.step ? props.step : '1'}
 					value={getValue()}
 					onWheel={(e: any) => e.target.blur()}
 					onChange={props.onChange}

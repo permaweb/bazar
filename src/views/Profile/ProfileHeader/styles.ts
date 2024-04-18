@@ -1,5 +1,7 @@
 import styled from 'styled-components';
 
+import { STYLING } from 'helpers/config';
+
 export const Wrapper = styled.div`
 	margin: 0 0 40px 0;
 `;
@@ -8,6 +10,9 @@ export const HeaderInfo = styled.div`
 	display: flex;
 	flex-wrap: wrap;
 	gap: 25px;
+	@media (max-width: ${STYLING.cutoffs.secondary}) {
+		flex-direction: column;
+	}
 `;
 
 export const HeaderAvatar = styled.div`

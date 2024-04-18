@@ -179,6 +179,16 @@ export const ActionWrapperFull = styled(ActionWrapper)`
 	margin: 20px 0 0 0;
 `;
 
+export const MessageWrapper = styled.div`
+	margin: 10px 0 0 0;
+	span {
+		font-size: ${(props) => props.theme.typography.size.small};
+		font-family: ${(props) => props.theme.typography.family.primary};
+		font-weight: ${(props) => props.theme.typography.weight.bold};
+		color: ${(props) => props.theme.colors.warning.primary};
+	}
+`;
+
 export const ConfirmationWrapper = styled.div``;
 
 export const ConfirmationMessage = styled.div`

@@ -1,8 +1,8 @@
 import { DefaultTheme } from 'styled-components';
 
 export const lightTheme = {
-	negative1: '#D81E5B',
-	negative2: '#E43A72',
+	negative1: '#E94278',
+	negative2: '#E52461',
 	neutral1: '#FFFFFF',
 	neutral2: '#F1F1F1',
 	neutral3: '#8D8D8D',
@@ -18,8 +18,8 @@ export const lightTheme = {
 	neutralA5: '#A4A4A4',
 	neutralA6: '#A9A9A9',
 	overlay1: 'rgb(130, 130, 130, .25)',
-	primary1: '#00B88D',
-	primary2: '#008F6D',
+	primary1: '#64B686',
+	primary2: '#4EA673',
 	semiTransparent1: 'rgba(255, 255, 255, 0.575)',
 	semiTransparent2: 'rgba(0, 0, 0, 0.45)',
 	semiTransparent3: 'rgba(0, 0, 0, 0.55)',
@@ -50,8 +50,8 @@ export const darkTheme = {
 	neutralA5: '#F7F7F7',
 	neutralA6: '#FAFAFA',
 	overlay1: 'rgba(0, 0, 0, 0.5)',
-	primary1: '#00CC9C',
-	primary2: '#00B88D',
+	primary1: '#38BD80',
+	primary2: '#2F9D6A',
 	semiTransparent1: 'rgba(0, 0, 0, 0.15)',
 	semiTransparent2: 'rgba(0, 0, 0, 0.45)',
 	semiTransparent3: 'rgba(20, 20, 20, 0.75)',
@@ -99,7 +99,7 @@ export const theme = (currentTheme: any): DefaultTheme => ({
 				border: currentTheme.primary2,
 				color: currentTheme.light1,
 				active: {
-					background: currentTheme.primary1,
+					background: currentTheme.primary2,
 					border: currentTheme.primary2,
 					color: currentTheme.light1,
 				},

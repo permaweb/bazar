@@ -94,7 +94,7 @@ export const STYLING = {
 	cutoffs: {
 		desktop: '1200px',
 		initial: '1024px',
-		max: '1400px',
+		max: '1600px',
 		tablet: '840px',
 		tabletSecondary: '768px',
 		secondary: '540px',

@@ -70,6 +70,9 @@ export default function AssetActionMarketOrders(props: IProps) {
 	const [showConfirmation, setShowConfirmation] = React.useState<boolean>(false);
 	const [currentNotification, setCurrentNotification] = React.useState<string | null>(null);
 
+	const insufficientBalance =
+		arProvider.walletAddress && props.type === 'buy' && Number(getTokenBalance(PROCESSES.token)) < getTotalPrice();
+
 	React.useEffect(() => {
 		if (props.asset) {
 			if (props.asset.state) {
@@ -137,8 +140,11 @@ export default function AssetActionMarketOrders(props: IProps) {
 				setMaxOrderQuantity(connectedBalance);
 				break;
 		}
-		setCurrentOrderQuantity(0);
 	}, [props.asset, props.type, connectedBalance, totalSalesQuantity]);
+
+	React.useEffect(() => {
+		setCurrentOrderQuantity(0);
+	}, [props.type]);
 
 	async function handleOrderCreate() {
 		if (props.asset && arProvider.wallet) {
@@ -338,6 +344,19 @@ export default function AssetActionMarketOrders(props: IProps) {
 		}
 	};
 
+	function getTokenBalance(tokenProcess: string) {
+		if (
+			arProvider.walletAddress &&
+			currenciesReducer &&
+			currenciesReducer[tokenProcess] &&
+			currenciesReducer[tokenProcess].Balances[arProvider.walletAddress]
+		) {
+			const ownerBalance = currenciesReducer[tokenProcess].Balances[arProvider.walletAddress];
+			return ownerBalance.toString();
+		}
+		return 0;
+	}
+
 	function getTotals() {
 		let balanceHeader: string | null = null;
 		let percentageHeader: string | null = null;
@@ -475,10 +494,12 @@ export default function AssetActionMarketOrders(props: IProps) {
 		if (!arProvider.walletAddress) return true;
 		if (orderLoading || orderProcessed) return true;
 		if (maxOrderQuantity <= 0 || isNaN(currentOrderQuantity)) return true;
-		if (currentOrderQuantity <= 0 || isNaN(maxOrderQuantity)) return true;
+		if (currentOrderQuantity <= 0 || isNaN(maxOrderQuantity) || !Number.isInteger(Number(currentOrderQuantity)))
+			return true;
 		if (currentOrderQuantity > maxOrderQuantity) return true;
 		if (props.type === 'sell' && (unitPrice <= 0 || isNaN(unitPrice))) return true;
 		if (props.type === 'transfer' && (!transferRecipient || !checkValidAddress(transferRecipient))) return true;
+		if (insufficientBalance) return true;
 		return false;
 	}
 
@@ -604,7 +625,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 				{maxOrderQuantity > 0 && (
 					<S.InputWrapper>
 						<Slider
-							value={currentOrderQuantity}
+							value={parseInt(Number(currentOrderQuantity).toString())}
 							maxValue={maxOrderQuantity}
 							handleChange={(e: React.ChangeEvent<HTMLInputElement>) => handleQuantityInput(e)}
 							label={language.assetQuantityInfo}
@@ -624,12 +645,16 @@ export default function AssetActionMarketOrders(props: IProps) {
 							<S.FieldWrapper>
 								<FormField
 									type={'number'}
+									step={'1'}
 									value={currentOrderQuantity}
 									onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleQuantityInput(e)}
 									label={`${language.assetQuantity} (${language.max}: ${maxOrderQuantity})`}
 									disabled={!arProvider.walletAddress || maxOrderQuantity <= 0 || orderLoading}
 									invalid={{
-										status: currentOrderQuantity < 0 || currentOrderQuantity > maxOrderQuantity,
+										status:
+											currentOrderQuantity < 0 ||
+											currentOrderQuantity > maxOrderQuantity ||
+											!Number.isInteger(Number(currentOrderQuantity)),
 										message: null,
 									}}
 									hideErrorMessage
@@ -681,6 +706,21 @@ export default function AssetActionMarketOrders(props: IProps) {
 				<S.SalesWrapper>{getOrderDetails()}</S.SalesWrapper>
 				<S.ActionWrapper loading={null} statusWidth={0}>
 					{getAction(false)}
+					{insufficientBalance && (
+						<S.MessageWrapper>
+							<span>Not enough tokens to purchase this asset</span>
+						</S.MessageWrapper>
+					)}
+					{!arProvider.walletAddress && (
+						<S.MessageWrapper>
+							<span>Connect your wallet to continue</span>
+						</S.MessageWrapper>
+					)}
+					{!Number.isInteger(Number(currentOrderQuantity)) && (
+						<S.MessageWrapper>
+							<span>Quantity must be an integer</span>
+						</S.MessageWrapper>
+					)}
 				</S.ActionWrapper>
 			</S.Wrapper>
 			{showConfirmation && getConfirmation()}
