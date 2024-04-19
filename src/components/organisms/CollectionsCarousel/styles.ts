@@ -10,7 +10,7 @@ export const Header = styled.div`
 `;
 
 export const CollectionsWrapper = styled.div<{ previousDisabled: boolean }>`
-	margin: 0 -12.5px;
+	margin: 0 -10px;
 
 	.react-multiple-carousel__arrow {
 		height: calc(100% - 20px);
@@ -50,7 +50,7 @@ export const CollectionsWrapper = styled.div<{ previousDisabled: boolean }>`
 
 export const CollectionWrapper = styled.div<{ backgroundImage: string; disabled: boolean }>`
 	height: 350px;
-	margin: 0 12.5px;
+	margin: 0 10px;
 	overflow: hidden;
 	position: relative;
 	background-image: ${(props) => `url(${props.backgroundImage})`};

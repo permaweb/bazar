@@ -290,7 +290,7 @@ export default function AssetAction(props: IProps) {
 				<S.DataWrapper>
 					<AssetData asset={props.asset} frameMinHeight={550} autoLoad />
 				</S.DataWrapper>
-				<S.Header className={'border-wrapper-alt2'}>
+				<S.Header className={'border-wrapper-primary'}>
 					<h4>{props.asset.data.title}</h4>
 					<S.ACLink>
 						<Link target={'_blank'} to={REDIRECTS.viewblock(props.asset.data.id)}>

@@ -72,9 +72,6 @@ export const ActionsWrapper = styled.div`
 export const MWrapper = styled.div`
 	display: none;
 	margin: 0 0 0 15px;
-	svg {
-		padding: 0 0 1.5px 0;
-	}
 	@media (max-width: ${STYLING.cutoffs.secondary}) {
 		display block;
 	}

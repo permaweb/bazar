@@ -123,9 +123,10 @@ export const ActionWrapper = styled.div<{ loading: boolean | string; statusWidth
 			z-index: 2;
 		}
 		span {
-			font-size: ${(props) => props.theme.typography.size.xLg} !important;
+			font-size: clamp(18px, 2vw, 24px) !important;
 			font-family: ${(props) => props.theme.typography.family.alt1};
 			text-transform: uppercase;
+			white-space: nowrap;
 		}
 		svg {
 			height: 22.5px;

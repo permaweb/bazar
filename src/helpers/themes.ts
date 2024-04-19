@@ -254,7 +254,7 @@ export const theme = (currentTheme: any): DefaultTheme => ({
 		},
 		shadow: {
 			primary: currentTheme.semiTransparent5,
-			alt1: currentTheme.neutralA1,
+			alt1: currentTheme.neutral4,
 		},
 		tabs: {
 			color: currentTheme.neutralA4,

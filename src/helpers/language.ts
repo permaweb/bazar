@@ -37,6 +37,7 @@ export const language = {
 		dateCreated: `Date Created`,
 		disconnect: `Disconnect`,
 		dismiss: `Dismiss`,
+		error: `Error`,
 		executing: `Executing`,
 		fetching: `Fetching`,
 		filterListings: `Filter listings`,

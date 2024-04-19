@@ -158,7 +158,7 @@ export const GlobalStyle = createGlobalStyle`
 
   .border-wrapper-primary {
     background: ${(props) => props.theme.colors.container.primary.background};
-    box-shadow: 0 5px 15px 0 ${(props) => props.theme.colors.shadow.primary};
+    box-shadow: 0.75px 0.75px 0 0 ${(props) => props.theme.colors.shadow.alt1};
     border: 1px solid ${(props) => props.theme.colors.border.primary};
     border-radius: ${STYLING.dimensions.radius.primary};
   }

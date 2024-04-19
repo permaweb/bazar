@@ -23,7 +23,6 @@ import * as ucmActions from 'store/ucm/actions';
 import * as S from './styles';
 import { IProps } from './types';
 
-// TODO: not enough token balance
 export default function AssetActionMarketOrders(props: IProps) {
 	const dispatch = useDispatch();
 
@@ -67,6 +66,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 	const [orderLoading, setOrderLoading] = React.useState<boolean>(false);
 	const [orderStatusPercentage, setOrderStatusPercentage] = React.useState<number>(0);
 	const [orderProcessed, setOrderProcessed] = React.useState<boolean>(false);
+	const [orderSuccess, setOrderSuccess] = React.useState<boolean>(false);
 	const [showConfirmation, setShowConfirmation] = React.useState<boolean>(false);
 	const [currentNotification, setCurrentNotification] = React.useState<string | null>(null);
 
@@ -150,6 +150,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 		if (props.asset && arProvider.wallet) {
 			let orderPair = null;
 			let recipient = null;
+			let localSuccess = false;
 
 			switch (props.type) {
 				case 'buy':
@@ -192,119 +193,130 @@ export default function AssetActionMarketOrders(props: IProps) {
 					});
 
 					if (transferResponse['Credit-Notice'] && transferResponse['Debit-Notice']) {
+						setOrderSuccess(true);
 						setCurrentNotification(transferResponse['Credit-Notice'].message);
 						setOrderStatusPercentage(33);
-					}
 
-					if (props.type === 'transfer') {
-						if (transferResponse['Transfer-Error']) {
-							setCurrentNotification(transferResponse['Transfer-Error'].message);
-						}
-						setOrderStatusPercentage(100);
-					} else {
-						const validCreditNotice =
-							transferResponse['Debit-Notice'] &&
-							transferResponse['Credit-Notice'] &&
-							transferResponse['Credit-Notice'].status === 'Success';
-
-						if (validCreditNotice) {
-							const depositTxId = transferResponse['Credit-Notice'].id;
-
-							setCurrentNotification('Checking deposit status...');
-							let depositCheckResponse: any = await sendMessage({
-								processId: PROCESSES.ucm,
-								action: 'Check-Deposit-Status',
-								wallet: arProvider.wallet,
-								data: {
-									Pair: orderPair,
-									DepositTxId: depositTxId,
-									Quantity: calculatedQuantity,
-								},
-							});
-
-							if (depositCheckResponse['Deposit-Status-Evaluated']) {
-								setCurrentNotification(depositCheckResponse.message);
-								setOrderStatusPercentage(66);
+						if (props.type === 'transfer') {
+							if (transferResponse['Transfer-Error']) {
+								setCurrentNotification(transferResponse['Transfer-Error'].message);
 							}
+							setOrderStatusPercentage(100);
+						} else {
+							const validCreditNotice =
+								transferResponse['Debit-Notice'] &&
+								transferResponse['Credit-Notice'] &&
+								transferResponse['Credit-Notice'].status === 'Success';
 
-							if (depositCheckResponse && depositCheckResponse['Deposit-Status-Evaluated']) {
-								const MAX_DEPOSIT_CHECK_RETRIES = 10;
+							if (validCreditNotice) {
+								const depositTxId = transferResponse['Credit-Notice'].id;
 
-								let depositStatus = depositCheckResponse['Deposit-Status-Evaluated'].status;
-								let retryCount = 0;
-
-								while (depositStatus === 'Error' && retryCount < MAX_DEPOSIT_CHECK_RETRIES) {
-									await new Promise((r) => setTimeout(r, 1000));
-									depositCheckResponse = await sendMessage({
-										processId: PROCESSES.ucm,
-										action: 'Check-Deposit-Status',
-										wallet: arProvider.wallet,
-										data: {
-											Pair: orderPair,
-											DepositTxId: depositTxId,
-											Quantity: calculatedQuantity,
-										},
-									});
-
-									if (depositCheckResponse['Deposit-Status-Evaluated']) {
-										setCurrentNotification(depositCheckResponse.message);
-										setOrderStatusPercentage(66);
-									}
-
-									depositStatus = depositCheckResponse['Deposit-Status-Evaluated'].status;
-									retryCount++;
-								}
-
-								if (depositStatus === 'Success') {
-									setCurrentNotification('Creating order...');
-									const orderData: { Pair: string[]; DepositTxId: string; Quantity: string; Price?: string } = {
+								setCurrentNotification('Checking deposit status...');
+								let depositCheckResponse: any = await sendMessage({
+									processId: PROCESSES.ucm,
+									action: 'Check-Deposit-Status',
+									wallet: arProvider.wallet,
+									data: {
 										Pair: orderPair,
 										DepositTxId: depositTxId,
 										Quantity: calculatedQuantity,
-									};
+									},
+								});
 
-									if (unitPrice && unitPrice > 0) {
-										let calculatedUnitPrice: string | number = unitPrice;
-										if (transferDenomination) calculatedUnitPrice = unitPrice * transferDenomination;
-										calculatedUnitPrice = calculatedUnitPrice.toString();
-										orderData.Price = calculatedUnitPrice;
+								if (depositCheckResponse['Deposit-Status-Evaluated']) {
+									setCurrentNotification(depositCheckResponse.message);
+									setOrderStatusPercentage(66);
+								}
+
+								if (depositCheckResponse && depositCheckResponse['Deposit-Status-Evaluated']) {
+									const MAX_DEPOSIT_CHECK_RETRIES = 10;
+
+									let depositStatus = depositCheckResponse['Deposit-Status-Evaluated'].status;
+									let retryCount = 0;
+
+									while (depositStatus === 'Error' && retryCount < MAX_DEPOSIT_CHECK_RETRIES) {
+										await new Promise((r) => setTimeout(r, 1000));
+										depositCheckResponse = await sendMessage({
+											processId: PROCESSES.ucm,
+											action: 'Check-Deposit-Status',
+											wallet: arProvider.wallet,
+											data: {
+												Pair: orderPair,
+												DepositTxId: depositTxId,
+												Quantity: calculatedQuantity,
+											},
+										});
+
+										if (depositCheckResponse['Deposit-Status-Evaluated']) {
+											setCurrentNotification(depositCheckResponse.message);
+											setOrderStatusPercentage(66);
+										}
+
+										depositStatus = depositCheckResponse['Deposit-Status-Evaluated'].status;
+										retryCount++;
 									}
 
-									const createOrderResponse: any = await sendMessage({
-										processId: PROCESSES.ucm,
-										action: 'Create-Order',
-										wallet: arProvider.wallet,
-										data: orderData,
-									});
+									if (depositStatus === 'Success') {
+										setCurrentNotification('Creating order...');
+										const orderData: { Pair: string[]; DepositTxId: string; Quantity: string; Price?: string } = {
+											Pair: orderPair,
+											DepositTxId: depositTxId,
+											Quantity: calculatedQuantity,
+										};
 
-									if (createOrderResponse) {
-										if (createOrderResponse['Order-Success']) {
-											setCurrentNotification(`${createOrderResponse['Order-Success'].message}!`);
+										if (unitPrice && unitPrice > 0) {
+											let calculatedUnitPrice: string | number = unitPrice;
+											if (transferDenomination) calculatedUnitPrice = unitPrice * transferDenomination;
+											calculatedUnitPrice = calculatedUnitPrice.toString();
+											orderData.Price = calculatedUnitPrice;
 										}
-										if (createOrderResponse['Order-Error']) {
-											setCurrentNotification(createOrderResponse['Order-Error'].message);
+
+										const createOrderResponse: any = await sendMessage({
+											processId: PROCESSES.ucm,
+											action: 'Create-Order',
+											wallet: arProvider.wallet,
+											data: orderData,
+										});
+
+										if (createOrderResponse) {
+											if (createOrderResponse['Order-Success']) {
+												localSuccess = true;
+												setCurrentNotification(`${createOrderResponse['Order-Success'].message}!`);
+											}
+											if (createOrderResponse['Order-Error']) {
+												setCurrentNotification(createOrderResponse['Order-Error'].message);
+												setOrderSuccess(false);
+											}
+											setOrderStatusPercentage(100);
+										} else {
+											setCurrentNotification('Error creating order');
+											setOrderSuccess(false);
 										}
-										setOrderStatusPercentage(100);
 									} else {
-										setCurrentNotification('Error creating order');
+										setCurrentNotification('Failed to resolve deposit');
+										setOrderSuccess(false);
 									}
 								} else {
-									setCurrentNotification('Failed to resolve deposit');
+									setCurrentNotification('Failed to check deposit status');
+									setOrderSuccess(false);
 								}
 							} else {
-								setCurrentNotification('Failed to check deposit status');
+								setCurrentNotification('Invalid credit notice');
+								setOrderSuccess(false);
 							}
-						} else {
-							setCurrentNotification('Invalid credit notice');
 						}
+					} else {
+						setOrderSuccess(false);
 					}
 				} catch (e: any) {
 					setCurrentNotification(e.message || 'Error creating order');
 				}
+
 				setOrderLoading(false);
 				setOrderProcessed(true);
+
 				await new Promise((r) => setTimeout(r, 1000));
-				await handleAssetUpdate();
+				await handleAssetUpdate(localSuccess);
 			} else {
 				setCurrentNotification('Invalid order details');
 			}
@@ -503,34 +515,47 @@ export default function AssetActionMarketOrders(props: IProps) {
 		return false;
 	}
 
-	async function handleAssetUpdate() {
-		setUpdating(true);
-		setCurrentOrderQuantity(0);
-		setUnitPrice(0);
-		setCurrentNotification(null);
-		setTransferRecipient('');
+	async function handleAssetUpdate(handleUpdate: boolean) {
+		if (handleUpdate) {
+			setCurrentOrderQuantity(0);
+			setUnitPrice(0);
+			setTransferRecipient('');
+			setCurrentNotification(null);
+			setOrderProcessed(false);
+			setShowConfirmation(false);
+			setUpdating(true);
+			setOrderStatusPercentage(0);
+			windowUtils.scrollTo(0, 0, 'smooth');
+			try {
+				const ucmState = await readProcessState(PROCESSES.ucm);
+				dispatch(ucmActions.setUCM(ucmState));
+
+				const orderCurrency =
+					props.asset.orders && props.asset.orders.length ? props.asset.orders[0].currency : PROCESSES.token;
+				const tokenState = await readProcessState(orderCurrency);
+				dispatch(
+					currencyActions.setCurrencies({
+						[orderCurrency]: {
+							...tokenState,
+						},
+					})
+				);
+			} catch (e: any) {
+				console.error(e);
+			}
+			setUpdating(false);
+		}
+	}
+
+	function handleOrderErrorClose() {
 		setShowConfirmation(false);
 		setOrderProcessed(false);
+		setCurrentOrderQuantity(0);
+		setUnitPrice(0);
+		setTransferRecipient('');
+		setCurrentNotification(null);
 		setOrderStatusPercentage(0);
 		windowUtils.scrollTo(0, 0, 'smooth');
-		try {
-			const ucmState = await readProcessState(PROCESSES.ucm);
-			dispatch(ucmActions.setUCM(ucmState));
-
-			const orderCurrency =
-				props.asset.orders && props.asset.orders.length ? props.asset.orders[0].currency : PROCESSES.token;
-			const tokenState = await readProcessState(orderCurrency);
-			dispatch(
-				currencyActions.setCurrencies({
-					[orderCurrency]: {
-						...tokenState,
-					},
-				})
-			);
-		} catch (e: any) {
-			console.error(e);
-		}
-		setUpdating(false);
 	}
 
 	function getAction(finalizeOrder: boolean) {
@@ -552,11 +577,16 @@ export default function AssetActionMarketOrders(props: IProps) {
 				break;
 		}
 		if (orderLoading) label = finalizeOrder ? `${language.executing}...` : label;
-		if (orderProcessed) label = `${language.complete}!`;
+		if (orderProcessed) {
+			if (orderSuccess) label = `${language.complete}!`;
+			else label = language.error;
+		}
 
 		let action: () => void;
-		if (orderProcessed) action = () => handleAssetUpdate();
-		else if (finalizeOrder) action = () => handleOrderCreate();
+		if (orderProcessed) {
+			if (orderSuccess) action = () => handleAssetUpdate(orderSuccess);
+			else action = () => setShowConfirmation(false);
+		} else if (finalizeOrder) action = () => handleOrderCreate();
 		else action = () => setShowConfirmation(true);
 
 		return (
@@ -593,7 +623,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 		return (
 			<Modal
 				header={`${header}: ${props.asset.data.title}`}
-				handleClose={() => (orderProcessed ? handleAssetUpdate() : setShowConfirmation(false))}
+				handleClose={() => (orderProcessed && orderSuccess ? handleAssetUpdate(orderSuccess) : handleOrderErrorClose())}
 			>
 				<S.ConfirmationWrapper className={'modal-wrapper'}>
 					<S.SalesWrapper>{getOrderDetails()}</S.SalesWrapper>

@@ -23,7 +23,7 @@ export default function CollectionsCarousel(props: IProps) {
 		desktopInitial: {
 			breakpoint: { max: 3000, min: 1325 },
 			items: 4,
-			partialVisibilityGutter: 20,
+			partialVisibilityGutter: 10,
 		},
 		desktopSecondary: {
 			breakpoint: { max: 1325, min: 1100 },

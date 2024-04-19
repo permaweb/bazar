@@ -73,7 +73,7 @@ export default function CollectionsList(props: IProps) {
 											<S.Index>
 												<span>{index + 1}</span>
 											</S.Index>
-											<S.Thumbnail className={'border-wrapper-alt2'}>
+											<S.Thumbnail className={'border-wrapper-primary'}>
 												<img src={getTxEndpoint(collection.data.thumbnail || DEFAULTS.thumbnail)} alt={'Thumbnail'} />
 											</S.Thumbnail>
 											<S.Title>

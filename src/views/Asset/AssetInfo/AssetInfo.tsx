@@ -16,8 +16,6 @@ import { useLanguageProvider } from 'providers/LanguageProvider';
 import * as S from './styles';
 import { IProps } from './types';
 
-// TODO sponsorship / collection code
-// TODO license currency amounts
 export default function AssetInfo(props: IProps) {
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];

@@ -18,6 +18,7 @@ export const NContent = styled.div`
 	max-height: calc(100vh - 160px);
 	width: 100%;
 	position: sticky;
+	z-index: 1;
 	top: 105px;
 	overflow: auto;
 	margin: 10.5px 0 0 0;
