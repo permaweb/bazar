@@ -64,7 +64,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 	const [updating, setUpdating] = React.useState<boolean>(false);
 
 	const [orderLoading, setOrderLoading] = React.useState<boolean>(false);
-	const [orderStatusPercentage, setOrderStatusPercentage] = React.useState<number>(0);
 	const [orderProcessed, setOrderProcessed] = React.useState<boolean>(false);
 	const [orderSuccess, setOrderSuccess] = React.useState<boolean>(false);
 	const [showConfirmation, setShowConfirmation] = React.useState<boolean>(false);
@@ -195,13 +194,11 @@ export default function AssetActionMarketOrders(props: IProps) {
 					if (transferResponse['Credit-Notice'] && transferResponse['Debit-Notice']) {
 						setOrderSuccess(true);
 						setCurrentNotification(transferResponse['Credit-Notice'].message);
-						setOrderStatusPercentage(33);
 
 						if (props.type === 'transfer') {
 							if (transferResponse['Transfer-Error']) {
 								setCurrentNotification(transferResponse['Transfer-Error'].message);
 							}
-							setOrderStatusPercentage(100);
 						} else {
 							const validCreditNotice =
 								transferResponse['Debit-Notice'] &&
@@ -225,7 +222,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 								if (depositCheckResponse['Deposit-Status-Evaluated']) {
 									setCurrentNotification(depositCheckResponse.message);
-									setOrderStatusPercentage(66);
 								}
 
 								if (depositCheckResponse && depositCheckResponse['Deposit-Status-Evaluated']) {
@@ -249,7 +245,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 										if (depositCheckResponse['Deposit-Status-Evaluated']) {
 											setCurrentNotification(depositCheckResponse.message);
-											setOrderStatusPercentage(66);
 										}
 
 										depositStatus = depositCheckResponse['Deposit-Status-Evaluated'].status;
@@ -287,7 +282,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 												setCurrentNotification(createOrderResponse['Order-Error'].message);
 												setOrderSuccess(false);
 											}
-											setOrderStatusPercentage(100);
 										} else {
 											setCurrentNotification('Error creating order');
 											setOrderSuccess(false);
@@ -524,7 +518,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 			setOrderProcessed(false);
 			setShowConfirmation(false);
 			setUpdating(true);
-			setOrderStatusPercentage(0);
 			windowUtils.scrollTo(0, 0, 'smooth');
 			try {
 				const ucmState = await readProcessState(PROCESSES.ucm);
@@ -554,7 +547,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 		setUnitPrice(0);
 		setTransferRecipient('');
 		setCurrentNotification(null);
-		setOrderStatusPercentage(0);
 		windowUtils.scrollTo(0, 0, 'smooth');
 	}
 
@@ -590,18 +582,21 @@ export default function AssetActionMarketOrders(props: IProps) {
 		else action = () => setShowConfirmation(true);
 
 		return (
-			<Button
-				type={'primary'}
-				label={label}
-				handlePress={action}
-				disabled={getActionDisabled()}
-				loading={false}
-				height={60}
-				width={350}
-				fullWidth={finalizeOrder}
-				icon={icon}
-				iconLeftAlign
-			/>
+			<>
+				{/* <S.ProgressBarWrapper loading={true} statusWidth={45} /> */}
+				<Button
+					type={'primary'}
+					label={label}
+					handlePress={action}
+					disabled={getActionDisabled()}
+					loading={false}
+					height={60}
+					width={350}
+					fullWidth={finalizeOrder}
+					icon={icon}
+					iconLeftAlign
+				/>
+			</>
 		);
 	}
 
@@ -627,9 +622,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 			>
 				<S.ConfirmationWrapper className={'modal-wrapper'}>
 					<S.SalesWrapper>{getOrderDetails()}</S.SalesWrapper>
-					<S.ActionWrapperFull loading={orderLoading.toString() || null} statusWidth={orderStatusPercentage}>
-						{getAction(true)}
-					</S.ActionWrapperFull>
+					<S.ActionWrapperFull loading={orderLoading.toString() || null}>{getAction(true)}</S.ActionWrapperFull>
 					<S.ConfirmationMessage>
 						<p>
 							{currentNotification ? currentNotification : orderLoading ? 'Processing...' : language.reviewOrderDetails}
@@ -734,7 +727,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 					</S.InputWrapper>
 				)}
 				<S.SalesWrapper>{getOrderDetails()}</S.SalesWrapper>
-				<S.ActionWrapper loading={null} statusWidth={0}>
+				<S.ActionWrapper loading={null}>
 					{getAction(false)}
 					{insufficientBalance && (
 						<S.MessageWrapper>

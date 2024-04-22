@@ -1,5 +1,6 @@
-import styled from 'styled-components';
+import styled, { css } from 'styled-components';
 
+import { progressAnimation } from 'helpers/animations';
 import { STYLING } from 'helpers/config';
 
 export const Wrapper = styled.div`
@@ -111,16 +112,42 @@ export const SalesDetail = styled.div`
 	}
 `;
 
-export const ActionWrapper = styled.div<{ loading: boolean | string; statusWidth: number }>`
+export const ActionWrapper = styled.div<{ loading: boolean | string }>`
 	width: fit-content;
 	margin: 30px 0 0 auto;
 	position: relative;
 	button {
-		z-index: 1;
+		${(props) =>
+			props.loading === 'true' &&
+			css`
+				&::after {
+					content: '';
+					display: block;
+					position: absolute;
+					top: 0;
+					left: 0;
+					right: 0;
+					bottom: 0;
+					z-index: 0;
+					background-image: linear-gradient(
+						-45deg,
+						${props.theme.colors.container.alt9.background} 25%,
+						${props.theme.colors.container.alt10.background} 25%,
+						${props.theme.colors.container.alt10.background} 50%,
+						${props.theme.colors.container.alt9.background} 50%,
+						${props.theme.colors.container.alt9.background} 75%,
+						${props.theme.colors.container.alt10.background} 75%,
+						${props.theme.colors.container.alt10.background}
+					);
+					background-size: 60px 60px;
+					animation: ${progressAnimation} 2s linear infinite;
+				}
+			`}
+
 		span,
 		svg {
 			position: relative;
-			z-index: 2;
+			z-index: 1;
 		}
 		span {
 			font-size: clamp(18px, 2vw, 24px) !important;
@@ -137,32 +164,12 @@ export const ActionWrapper = styled.div<{ loading: boolean | string; statusWidth
 		&:disabled {
 			span {
 				color: ${(props) =>
-					props.loading || props.statusWidth > 0
-						? props.theme.colors.font.light1
-						: props.theme.colors.button.primary.disabled.color} !important;
+					props.loading ? props.theme.colors.font.light1 : props.theme.colors.button.primary.disabled.color} !important;
 			}
 			svg {
 				fill: ${(props) =>
-					props.loading || props.statusWidth > 0
-						? props.theme.colors.font.light1
-						: props.theme.colors.button.primary.disabled.color} !important;
+					props.loading ? props.theme.colors.font.light1 : props.theme.colors.button.primary.disabled.color} !important;
 			}
-		}
-
-		&::after {
-			content: '';
-			display: block;
-			position: absolute;
-			top: 0;
-			left: 0;
-			height: 100%;
-			width: ${(props) => `${props.statusWidth.toString()}%`};
-			background: ${(props) => props.theme.colors.container.alt9.background};
-			transition: width 0.25s ease;
-			clip-path: ${(props) =>
-				props.statusWidth >= 100
-					? 'none'
-					: 'polygon(0 0, calc(100% - 20px) 0, 100% 50%, calc(100% - 20px) 100%, 0 100%)'};
 		}
 	}
 	@media (max-width: ${STYLING.cutoffs.secondary}) {

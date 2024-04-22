@@ -52,7 +52,7 @@ export default function AssetActionMarket(props: IProps) {
 
 	return (
 		<S.Wrapper>
-			<S.TabsWrapper className={'border-wrapper-primary'}>
+			<S.TabsWrapper className={'border-wrapper-alt2'}>
 				<Tabs onTabPropClick={(label: string) => setCurrentTab(label)} type={'alt1'}>
 					{MARKET_ACTION_TABS.map((tab: { label: string; icon?: string }, index: number) => {
 						return <S.TabWrapper key={index} label={tab.label} icon={tab.icon ? tab.icon : null} />;
