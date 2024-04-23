@@ -1,6 +1,9 @@
 import React from 'react';
 import { ReactSVG } from 'react-svg';
 
+import { Button } from 'components/atoms/Button';
+import { Modal } from 'components/molecules/Modal';
+import { ProfileManage } from 'components/organisms/ProfileManage';
 import { ASSETS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import { formatAddress } from 'helpers/utils';
@@ -13,6 +16,7 @@ export default function ProfileHeader(props: IProps) {
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
 
+	const [showManage, setShowManage] = React.useState<boolean>(false);
 	const [copied, setCopied] = React.useState<boolean>(false);
 
 	const copyAddress = React.useCallback(async () => {
@@ -31,7 +35,7 @@ export default function ProfileHeader(props: IProps) {
 	}
 
 	function getHandle() {
-		return props.profile.handle ? `@${props.profile.handle}` : formatAddress(props.profile.walletAddress, false);
+		return props.profile.username ? `@${props.profile.username}` : formatAddress(props.profile.walletAddress, false);
 	}
 
 	function getHeaderDetails() {
@@ -52,20 +56,24 @@ export default function ProfileHeader(props: IProps) {
 		);
 	}
 
-	function getProfile() {
-		if (props.profile) {
-			return (
-				<S.Wrapper>
-					<S.HeaderInfo>
-						<S.HeaderAvatar>{getAvatar()}</S.HeaderAvatar>
-						{getHeaderDetails()}
-					</S.HeaderInfo>
-				</S.Wrapper>
-			);
-		} else {
-			return null;
-		}
-	}
-
-	return <>{getProfile()}</>;
+	return props.profile ? (
+		<>
+			<S.Wrapper>
+				<S.HeaderInfo>
+					<S.HeaderAvatar>{getAvatar()}</S.HeaderAvatar>
+					{getHeaderDetails()}
+				</S.HeaderInfo>
+				<S.HeaderActions>
+					<Button type={'primary'} label={language.editProfile} handlePress={() => setShowManage(true)} />
+				</S.HeaderActions>
+			</S.Wrapper>
+			{showManage && (
+				<Modal header={language.editProfile} handleClose={() => setShowManage(false)}>
+					<S.MWrapper className={'modal-wrapper'}>
+						<ProfileManage initial={false} handleClose={null} />
+					</S.MWrapper>
+				</Modal>
+			)}
+		</>
+	) : null;
 }

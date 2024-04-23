@@ -3,13 +3,33 @@ import styled from 'styled-components';
 import { STYLING } from 'helpers/config';
 
 export const Wrapper = styled.div`
+	display: flex;
+	gap: 25px;
+	justify-content: space-between;
 	margin: 0 0 40px 0;
+	@media (max-width: ${STYLING.cutoffs.initial}) {
+		flex-direction: column;
+	}
 `;
 
 export const HeaderInfo = styled.div`
 	display: flex;
 	flex-wrap: wrap;
 	gap: 25px;
+	@media (max-width: ${STYLING.cutoffs.secondary}) {
+		flex-direction: column;
+	}
+`;
+
+export const HeaderActions = styled.div`
+	display: flex;
+	flex-wrap: wrap;
+	gap: 25px;
+
+	button {
+		width: fit-content;
+	}
+
 	@media (max-width: ${STYLING.cutoffs.secondary}) {
 		flex-direction: column;
 	}
@@ -48,11 +68,11 @@ export const HeaderHA = styled.div`
 `;
 
 export const HeaderInfoDetail = styled.div`
-	margin: 2.5px 0 0 0;
+	margin: 3.5px 0 0 0;
 	span {
-		color: ${(props) => props.theme.colors.font.primary};
+		color: ${(props) => props.theme.colors.font.alt1};
 		font-size: ${(props) => props.theme.typography.size.small};
-		font-weight: ${(props) => props.theme.typography.weight.medium};
+		font-weight: ${(props) => props.theme.typography.weight.bold};
 	}
 `;
 
@@ -82,3 +102,5 @@ export const HeaderAddress = styled.button`
 		opacity: 0.75;
 	}
 `;
+
+export const MWrapper = styled.div``;

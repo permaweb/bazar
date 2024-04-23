@@ -93,6 +93,18 @@ export type FullProfileType = ProfileType & {
 	bio: string;
 };
 
+export type AOProfileType = {
+	id: string;
+	walletAddress: string;
+	displayName: string | null;
+	username: string | null;
+	bio: string | null;
+	avatar: string | null;
+	banner: string | null;
+};
+
+export type ProfileHeaderType = AOProfileType;
+
 export type OwnerType = {
 	address: string;
 	ownerQuantity?: number;

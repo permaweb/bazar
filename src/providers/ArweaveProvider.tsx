@@ -1,7 +1,6 @@
 import React from 'react';
 
-import { getCurrentProfile } from 'api';
-
+// import { getCurrentProfile } from 'api';
 import { Modal } from 'components/molecules/Modal';
 import { AR_WALLETS, WALLET_PERMISSIONS } from 'helpers/config';
 import { getARBalanceEndpoint } from 'helpers/endpoints';
@@ -101,17 +100,18 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 		})();
 	}, [walletAddress]);
 
-	React.useEffect(() => {
-		(async function () {
-			if (wallet && walletAddress) {
-				try {
-					setProfile(await getCurrentProfile({ address: walletAddress }));
-				} catch (e: any) {
-					console.error(e);
-				}
-			}
-		})();
-	}, [wallet, walletAddress, walletType]);
+	// TODO: get ao profile
+	// React.useEffect(() => {
+	// 	(async function () {
+	// 		if (wallet && walletAddress) {
+	// 			try {
+	// 				setProfile(await getCurrentProfile({ address: walletAddress }));
+	// 			} catch (e: any) {
+	// 				console.error(e);
+	// 			}
+	// 		}
+	// 	})();
+	// }, [wallet, walletAddress, walletType]);
 
 	async function handleWallet() {
 		if (localStorage.getItem('walletType')) {

@@ -1,13 +1,13 @@
 import React from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
-import { getFullProfile } from 'api';
+import { getProfile } from 'api';
 
 import { Loader } from 'components/atoms/Loader';
 import { URLTabs } from 'components/molecules/URLTabs';
 import { CollectionsList } from 'components/organisms/CollectionsList';
 import { URLS } from 'helpers/config';
-import { FullProfileType } from 'helpers/types';
+import { ProfileHeaderType } from 'helpers/types';
 import { checkValidAddress } from 'helpers/utils';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 
@@ -20,18 +20,20 @@ export default function Profile() {
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
 
-	const [profile, setProfile] = React.useState<FullProfileType | null>(null);
+	// TODO: full profile type
+	const [profile, setProfile] = React.useState<ProfileHeaderType | null>(null);
 
 	React.useEffect(() => {
 		if (!address && !active) navigate(URLS.notFound);
 		if (address && !active) navigate(URLS.profileAssets(address));
 	}, [address, active]);
 
+	// TODO: get ao profile / catch no profile
 	React.useEffect(() => {
 		(async function () {
 			if (address && checkValidAddress(address)) {
 				try {
-					const fetchedProfile = await getFullProfile({ address: address });
+					const fetchedProfile = await getProfile({ address: address });
 					setProfile(fetchedProfile);
 				} catch (e: any) {
 					console.error(e);

@@ -8,16 +8,13 @@ export const Wrapper = styled.div`
 	display: flex;
 	flex-direction: column;
 	position: relative;
-	label {
-		color: ${(props) => props.theme.colors.font.primary};
-	}
 	@media (max-width: ${STYLING.cutoffs.initial}) {
 		max-width: none;
 	}
 `;
 
 export const Label = styled.label`
-	color: ${(props) => props.theme.colors.font.primary};
+	color: ${(props) => props.theme.colors.font.alt1};
 	font-size: ${(props) => props.theme.typography.size.xSmall};
 	font-weight: ${(props) => props.theme.typography.weight.bold};
 `;
@@ -28,6 +25,7 @@ export const TextArea = styled.textarea<{
 }>`
 	height: 165px;
 	color: ${(props) => props.theme.colors.font.primary};
+	font-family: ${(props) => props.theme.typography.family.primary};
 	font-size: ${(props) => props.theme.typography.size.base};
 	font-weight: ${(props) => props.theme.typography.weight.bold};
 	margin: 7.5px 0 0 0;

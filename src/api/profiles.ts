@@ -1,9 +1,49 @@
-import { getGQLData } from 'api';
+import { getGQLData, readHandler } from 'api';
 
-import { AR_PROFILE, GATEWAYS, PAGINATORS, TAGS } from 'helpers/config';
+import { AR_PROFILE, GATEWAYS, PAGINATORS, PROCESSES, TAGS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
-import { DefaultGQLResponseType, FullProfileType, GQLNodeResponseType, ProfileType } from 'helpers/types';
+import {
+	AOProfileType,
+	DefaultGQLResponseType,
+	FullProfileType,
+	GQLNodeResponseType,
+	ProfileType,
+} from 'helpers/types';
 import { getTagValue } from 'helpers/utils';
+
+export async function getProfile(args: { address: string }): Promise<AOProfileType | null> {
+	const profileLookup = await readHandler({
+		processId: PROCESSES.profileRegistry,
+		action: 'Get-Profiles-By-Address',
+		data: { Address: args.address },
+	});
+
+	// TODO: get active profile from registry
+	let activeProfileId: string;
+	if (profileLookup && profileLookup.length > 0 && profileLookup[0].ProfileId) {
+		activeProfileId = profileLookup[0].ProfileId;
+	}
+
+	if (activeProfileId) {
+		const fetchedProfile = await readHandler({
+			processId: activeProfileId,
+			action: 'Info',
+			data: null,
+		});
+
+		if (fetchedProfile) {
+			return {
+				id: activeProfileId,
+				walletAddress: args.address,
+				displayName: fetchedProfile.displayName || null,
+				username: fetchedProfile.username || null,
+				bio: fetchedProfile.bio || null,
+				avatar: fetchedProfile.avatar || null,
+				banner: fetchedProfile.banner || null,
+			};
+		} else return null;
+	} else return null;
+}
 
 export async function getProfiles(args: { addresses: string[]; profileVersions?: string[] }): Promise<ProfileType[]> {
 	let profiles: ProfileType[] = [];

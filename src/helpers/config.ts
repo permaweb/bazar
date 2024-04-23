@@ -4,6 +4,7 @@ import arconnect from 'assets/arconnect-wallet-logo.png';
 import arrow from 'assets/arrow.svg';
 import audio from 'assets/audio.svg';
 import buy from 'assets/buy.svg';
+import checkmark from 'assets/checkmark.svg';
 import close from 'assets/close.svg';
 import comments from 'assets/comments.svg';
 import html from 'assets/html.svg';
@@ -11,6 +12,7 @@ import info from 'assets/info.svg';
 import license from 'assets/license.svg';
 import logo from 'assets/logo.svg';
 import market from 'assets/market.svg';
+import media from 'assets/media.svg';
 import menu from 'assets/menu.svg';
 import orders from 'assets/orders.svg';
 import othent from 'assets/othent.svg';
@@ -31,6 +33,7 @@ import { SelectOptionType, WalletEnum } from './types';
 export const PROCESSES = {
 	ucm: 'fzRGvSW2oSop9xGLxs5mcaRtCbrbug8imI_uRZHKdiU',
 	token: 'IRv02cCZGmBVMhmPlL63sce4djgRgkY1J_3DUl_feUw',
+	profileRegistry: 'kFYMezhjcPCZLr2EkkwzIXP5A64QmtME6Bxa8bGmbzI',
 };
 
 export const LICENSES = {
@@ -51,6 +54,7 @@ export const ASSETS = {
 	arrow,
 	audio,
 	buy,
+	checkmark,
 	close,
 	comments,
 	html,
@@ -58,6 +62,7 @@ export const ASSETS = {
 	license,
 	logo,
 	market,
+	media,
 	menu,
 	orders,
 	othent,
