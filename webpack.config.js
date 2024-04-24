@@ -165,6 +165,7 @@ module.exports = {
 			assert: require.resolve('assert'),
 			url: require.resolve('url'),
 			buffer: require.resolve('buffer'),
+			timers: require.resolve('timers-browserify'),
 		},
 		alias: {
 			react: path.resolve(__dirname, 'node_modules/react'),
@@ -184,6 +185,8 @@ module.exports = {
 			views: path.resolve(__dirname, 'src/views/'),
 			wallet: path.resolve(__dirname, 'src/wallet/'),
 			wrappers: path.resolve(__dirname, 'src/wrappers/'),
+			'asn1.js': path.resolve(__dirname, 'node_modules/asn1.js'),
+			elliptic: path.resolve(__dirname, 'node_modules/elliptic'),
 		},
 	},
 	output: {

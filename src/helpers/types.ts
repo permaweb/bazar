@@ -245,3 +245,5 @@ export type IdGroupType = { [index: string]: string[] };
 export type ButtonType = 'primary' | 'alt1' | 'alt2' | 'alt3' | 'success' | 'warning';
 
 export type SelectOptionType = { id: string; label: string };
+
+export type UploadMethodType = 'default' | 'turbo';

@@ -36,6 +36,7 @@ export function formatARAmount(amount: number) {
 	return `${amount.toFixed(2)}`;
 }
 
+// TODO: up count
 export function formatCount(count: string): string {
 	if (count.includes('.')) {
 		let parts = count.split('.');
@@ -177,4 +178,26 @@ export function sortOrderbookEntries(entries: OrderbookEntryType[], sortType: As
 	});
 
 	return [...entriesWithOrders, ...entriesWithoutOrders];
+}
+
+export function getDataURLContentType(dataURL: string) {
+	const result = dataURL.match(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+);base64,/);
+	return result ? result[1] : null;
+}
+
+export function getBase64Data(dataURL: string) {
+	return dataURL.split(',')[1];
+}
+
+export function getByteSize(input: string | Buffer): number {
+	let sizeInBytes: number;
+	if (Buffer.isBuffer(input)) {
+		sizeInBytes = input.length;
+	} else if (typeof input === 'string') {
+		sizeInBytes = Buffer.byteLength(input, 'utf-8');
+	} else {
+		throw new Error('Input must be a string or a Buffer');
+	}
+
+	return sizeInBytes;
 }

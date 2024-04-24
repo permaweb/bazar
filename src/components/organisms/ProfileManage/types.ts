@@ -1,4 +1,6 @@
+import { ProfileHeaderType } from 'helpers/types';
+
 export interface IProps {
-	initial: boolean;
 	handleClose: (handleUpdate: boolean) => void;
+	profile: ProfileHeaderType | null;
 }

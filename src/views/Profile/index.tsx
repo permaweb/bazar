@@ -28,7 +28,6 @@ export default function Profile() {
 		if (address && !active) navigate(URLS.profileAssets(address));
 	}, [address, active]);
 
-	// TODO: get ao profile / catch no profile
 	React.useEffect(() => {
 		(async function () {
 			if (address && checkValidAddress(address)) {

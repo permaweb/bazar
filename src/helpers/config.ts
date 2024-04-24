@@ -30,10 +30,16 @@ import x from 'assets/x.svg';
 
 import { SelectOptionType, WalletEnum } from './types';
 
+export const AOS = {
+	module: 'SBNb1qPQ1TDwpD_mboxm2YllmMLXpWw4U8P9Ff8W9vk',
+	scheduler: '_GQ33BkPtZrqxA84vM8Zk-N2aO0toNNu_C-l-rawrBA',
+};
+
 export const PROCESSES = {
 	ucm: 'fzRGvSW2oSop9xGLxs5mcaRtCbrbug8imI_uRZHKdiU',
 	token: 'IRv02cCZGmBVMhmPlL63sce4djgRgkY1J_3DUl_feUw',
 	profileRegistry: 'kFYMezhjcPCZLr2EkkwzIXP5A64QmtME6Bxa8bGmbzI',
+	profileSrc: 'pKnZ_l4_KsBdzo5DdjPjyXVzYfGGSK6Oj1QyAoEbhRg',
 };
 
 export const LICENSES = {
@@ -131,6 +137,7 @@ export const TAGS = {
 		avatar: 'Avatar',
 		banner: 'Banner',
 		commericalUse: 'Commercial-Use',
+		contentType: 'Content-Type',
 		creator: 'Creator',
 		dataModelTraining: 'Data-Model-Training',
 		dataProtocol: 'Data-Protocol',
@@ -216,3 +223,17 @@ export const ASSET_SORT_OPTIONS: SelectOptionType[] = [
 	{ id: 'low-to-high', label: 'Low to high' },
 	{ id: 'high-to-low', label: 'High to low' },
 ];
+
+export const CONTENT_TYPES = {
+	json: 'application/json',
+	mp4: 'video/mp4',
+	textPlain: 'text/plain',
+};
+
+export const UPLOAD_CONFIG = {
+	node1: 'https://up.arweave.net',
+	node2: 'https://turbo.ardrive.io',
+	batchSize: 1,
+	chunkSize: 7500000,
+	dispatchUploadSize: 100 * 1024,
+};

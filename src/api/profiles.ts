@@ -12,6 +12,16 @@ import {
 import { getTagValue } from 'helpers/utils';
 
 export async function getProfile(args: { address: string }): Promise<AOProfileType | null> {
+	const emptyProfile = {
+		id: null,
+		walletAddress: null,
+		displayName: null,
+		username: null,
+		bio: null,
+		avatar: null,
+		banner: null,
+	};
+
 	const profileLookup = await readHandler({
 		processId: PROCESSES.profileRegistry,
 		action: 'Get-Profiles-By-Address',
@@ -35,14 +45,14 @@ export async function getProfile(args: { address: string }): Promise<AOProfileTy
 			return {
 				id: activeProfileId,
 				walletAddress: args.address,
-				displayName: fetchedProfile.displayName || null,
-				username: fetchedProfile.username || null,
-				bio: fetchedProfile.bio || null,
-				avatar: fetchedProfile.avatar || null,
-				banner: fetchedProfile.banner || null,
+				displayName: fetchedProfile.DisplayName || null,
+				username: fetchedProfile.Username || null,
+				bio: fetchedProfile.Bio || null,
+				avatar: fetchedProfile.Avatar || null,
+				banner: fetchedProfile.Banner || null,
 			};
-		} else return null;
-	} else return null;
+		} else return emptyProfile;
+	} else return emptyProfile;
 }
 
 export async function getProfiles(args: { addresses: string[]; profileVersions?: string[] }): Promise<ProfileType[]> {

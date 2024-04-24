@@ -1,6 +1,8 @@
+import Arweave from 'arweave';
+import { ArweaveWebIrys } from '@irys/sdk/build/esm/web/tokens/arweave';
 import { createDataItemSigner, dryrun, message, result } from '@permaweb/aoconnect';
 
-import { CURSORS, GATEWAYS, PAGINATORS } from 'helpers/config';
+import { CONTENT_TYPES, CURSORS, GATEWAYS, PAGINATORS, UPLOAD_CONFIG } from 'helpers/config';
 import {
 	BatchAGQLResponseType,
 	BatchGQLArgsType,
@@ -8,8 +10,10 @@ import {
 	GQLArgsType,
 	GQLNodeResponseType,
 	QueryBodyGQLArgsType,
+	TagType,
+	UploadMethodType,
 } from 'helpers/types';
-import { getTagValue } from 'helpers/utils';
+import { getByteSize, getTagValue } from 'helpers/utils';
 
 export async function getGQLData(args: GQLArgsType): Promise<DefaultGQLResponseType> {
 	const paginator = args.paginator ? args.paginator : PAGINATORS.default;
@@ -174,6 +178,63 @@ async function getResponse(args: { gateway: string; query: string }): Promise<an
 		return await response.json();
 	} catch (e: any) {
 		throw e;
+	}
+}
+
+export async function createTransaction(args: {
+	content: any;
+	contentType: string;
+	tags: TagType[];
+	uploadMethod?: UploadMethodType;
+}) {
+	let finalContent: any;
+	switch (args.contentType) {
+		case CONTENT_TYPES.json as any:
+			finalContent = JSON.stringify(args.content);
+			break;
+		default:
+			finalContent = args.content;
+			break;
+	}
+
+	const contentSize: number = getByteSize(finalContent);
+
+	if (contentSize < Number(UPLOAD_CONFIG.dispatchUploadSize)) {
+		const txRes = await Arweave.init({}).createTransaction({ data: finalContent }, 'use_wallet');
+		args.tags.forEach((tag: TagType) => txRes.addTag(tag.name, tag.value));
+		const response = await global.window.arweaveWallet.dispatch(txRes);
+		return response.id;
+	} else {
+		try {
+			const uploadUrl = args.uploadMethod && args.uploadMethod === 'turbo' ? UPLOAD_CONFIG.node2 : UPLOAD_CONFIG.node1;
+			const irys = new ArweaveWebIrys({
+				url: uploadUrl,
+				wallet: { provider: global.window.arweaveWallet },
+			});
+			await irys.ready();
+
+			if (args.contentType.includes('image') || args.contentType.includes('video')) {
+				const uploader = irys.uploader.chunkedUploader;
+				uploader.setBatchSize(UPLOAD_CONFIG.batchSize);
+				uploader.setChunkSize(UPLOAD_CONFIG.chunkSize);
+
+				uploader.on('chunkUpload', (chunkInfo: any) => {
+					console.log(`Upload status: ${Math.floor((chunkInfo.totalUploaded / contentSize) * 100)}%`);
+				});
+
+				uploader.on('chunkError', (e: any) => {
+					console.error(`Upload error: ${e}`);
+				});
+
+				const response = await uploader.uploadData(finalContent as any, { tags: args.tags } as any);
+				return response.data.id;
+			} else {
+				const response = await irys.upload(finalContent as any, { tags: args.tags } as any);
+				return response.id;
+			}
+		} catch (e: any) {
+			throw new Error(e);
+		}
 	}
 }
 
