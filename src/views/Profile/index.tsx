@@ -20,8 +20,8 @@ export default function Profile() {
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
 
-	// TODO: full profile type
 	const [profile, setProfile] = React.useState<ProfileHeaderType | null>(null);
+	const [toggleUpdate, setToggleUpdate] = React.useState<boolean>(false);
 
 	React.useEffect(() => {
 		if (!address && !active) navigate(URLS.notFound);
@@ -41,7 +41,7 @@ export default function Profile() {
 				navigate(URLS.notFound);
 			}
 		})();
-	}, [address]);
+	}, [address, toggleUpdate]);
 
 	const TABS = [
 		{
@@ -80,7 +80,7 @@ export default function Profile() {
 
 	return profile ? (
 		<>
-			<ProfileHeader profile={profile} />
+			<ProfileHeader profile={profile} handleUpdate={() => setToggleUpdate(!toggleUpdate)} />
 			{urlTabs}
 		</>
 	) : (

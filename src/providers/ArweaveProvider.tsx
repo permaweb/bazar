@@ -1,10 +1,11 @@
 import React from 'react';
 
-// import { getCurrentProfile } from 'api';
+import { getProfile } from 'api';
+
 import { Modal } from 'components/molecules/Modal';
 import { AR_WALLETS, WALLET_PERMISSIONS } from 'helpers/config';
 import { getARBalanceEndpoint } from 'helpers/endpoints';
-import { ProfileType, WalletEnum } from 'helpers/types';
+import { ProfileHeaderType, WalletEnum } from 'helpers/types';
 import Othent from 'helpers/wallet';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 
@@ -20,7 +21,7 @@ interface ArweaveContextState {
 	handleDisconnect: () => void;
 	walletModalVisible: boolean;
 	setWalletModalVisible: (open: boolean) => void;
-	profile: any;
+	profile: ProfileHeaderType;
 }
 
 interface ArweaveProviderProps {
@@ -70,7 +71,7 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 	const [walletModalVisible, setWalletModalVisible] = React.useState<boolean>(false);
 	const [walletAddress, setWalletAddress] = React.useState<string | null>(null);
 	const [availableBalance, setAvailableBalance] = React.useState<number | null>(null);
-	const [profile, setProfile] = React.useState<ProfileType | null>(null);
+	const [profile, setProfile] = React.useState<ProfileHeaderType | null>(null);
 
 	React.useEffect(() => {
 		(async function () {
@@ -112,6 +113,18 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 	// 		}
 	// 	})();
 	// }, [wallet, walletAddress, walletType]);
+
+	React.useEffect(() => {
+		(async function () {
+			if (wallet && walletAddress) {
+				try {
+					setProfile(await getProfile({ address: walletAddress }));
+				} catch (e: any) {
+					console.error(e);
+				}
+			}
+		})();
+	}, [wallet, walletAddress, walletType]);
 
 	async function handleWallet() {
 		if (localStorage.getItem('walletType')) {
@@ -161,7 +174,7 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 
 	async function handleOthent() {
 		Othent.init();
-		await window.arweaveWallet.connect();
+		await window.arweaveWallet.connect(WALLET_PERMISSIONS as any);
 		setWallet(window.arweaveWallet);
 		setWalletAddress(Othent.getUserInfo().walletAddress);
 		setWalletType(WalletEnum.othent);

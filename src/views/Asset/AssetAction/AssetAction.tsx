@@ -25,6 +25,7 @@ import { AssetActionMarket } from './AssetActionMarket';
 import * as S from './styles';
 import { IProps } from './types';
 
+// TODO: ao profiles
 export default function AssetAction(props: IProps) {
 	const currenciesReducer = useSelector((state: RootState) => state.currenciesReducer);
 

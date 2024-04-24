@@ -7,6 +7,7 @@ import { ProfileManage } from 'components/organisms/ProfileManage';
 import { ASSETS, DEFAULTS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import { checkValidAddress, formatAddress } from 'helpers/utils';
+import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 
 import * as S from './styles';
@@ -14,6 +15,8 @@ import { IProps } from './types';
 
 // TODO: handle close / reload on manage
 export default function ProfileHeader(props: IProps) {
+	const arProvider = useArweaveProvider();
+
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
 
@@ -44,7 +47,7 @@ export default function ProfileHeader(props: IProps) {
 	}
 
 	function getHeaderDetails() {
-		return props.profile && props.profile.id ? (
+		return props.profile ? (
 			<S.HeaderHA>
 				<h4>
 					{props.profile.displayName ? props.profile.displayName : formatAddress(props.profile.walletAddress, false)}
@@ -73,17 +76,23 @@ export default function ProfileHeader(props: IProps) {
 					<S.HeaderAvatar>{getAvatar()}</S.HeaderAvatar>
 					{getHeaderDetails()}
 					<S.HeaderActions>
-						<Button type={'primary'} label={language.editProfile} handlePress={() => setShowManage(true)} />
+						{arProvider.walletAddress && arProvider.walletAddress === props.profile.walletAddress && (
+							<Button type={'primary'} label={language.editProfile} handlePress={() => setShowManage(true)} />
+						)}
 					</S.HeaderActions>
 				</S.HeaderInfo>
 			</S.Wrapper>
-			{showManage && (
+			{showManage && arProvider.walletAddress && arProvider.walletAddress === props.profile.walletAddress && (
 				<Modal
 					header={props.profile.id ? language.editProfile : language.createProfile}
 					handleClose={props.profile.id ? () => setShowManage(false) : null}
 				>
 					<S.MWrapper className={'modal-wrapper'}>
-						<ProfileManage profile={props.profile} handleClose={null} />
+						<ProfileManage
+							profile={props.profile}
+							handleClose={props.profile.id ? () => setShowManage(false) : null}
+							handleUpdate={() => props.handleUpdate()}
+						/>
 					</S.MWrapper>
 				</Modal>
 			)}

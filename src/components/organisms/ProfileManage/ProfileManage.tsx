@@ -24,6 +24,7 @@ const MAX_BIO_LENGTH = 500;
 const ALLOWED_BANNER_TYPES = 'image/png, image/jpeg, image/gif';
 const ALLOWED_AVATAR_TYPES = 'image/png, image/jpeg, image/gif';
 
+// TODO: only render if connected profile
 export default function ProfileManage(props: IProps) {
 	const arProvider = useArweaveProvider();
 
@@ -50,7 +51,6 @@ export default function ProfileManage(props: IProps) {
 			setBio(props.profile.bio ?? '');
 			setBanner(props.profile.banner ?? null);
 			setAvatar(props.profile.avatar ?? null);
-			setUsernameAsDisplayName(false);
 		}
 	}, [props.profile]);
 
@@ -121,8 +121,10 @@ export default function ProfileManage(props: IProps) {
 						data: data,
 						wallet: arProvider.wallet,
 					});
-					if (updateResponse && updateResponse['Profile-Success']) setProfileResponse(`${language.profileUpdated}!`);
-					else setProfileResponse(`Error updating profile`);
+					if (updateResponse && updateResponse['Profile-Success']) {
+						setProfileResponse(`${language.profileUpdated}!`);
+						props.handleUpdate();
+					} else setProfileResponse(`Error updating profile`);
 				} else {
 					const aos = connect();
 
@@ -165,40 +167,45 @@ export default function ProfileManage(props: IProps) {
 								} else {
 									console.log(`Transaction not found -`, processId);
 									retryCount++;
-									if (retryCount >= 30) {
-										throw new Error(`Transaction not found after 30 attempts, aborting`);
+									if (retryCount >= 3) {
+										setProfileResponse(language.errorUpdatingProfile);
+										throw new Error(`Transaction not found after 3 attempts, aborting`);
 									}
 								}
 							}
+							if (fetchedAssetId) {
+								console.log('Sending source eval...');
+								const evalMessage = await aos.message({
+									process: processId,
+									signer: createDataItemSigner(arProvider.wallet),
+									tags: [{ name: 'Action', value: 'Eval' }],
+									data: processSrc,
+								});
 
-							console.log('Sending source eval...');
-							const evalMessage = await aos.message({
-								process: processId,
-								signer: createDataItemSigner(arProvider.wallet),
-								tags: [{ name: 'Action', value: 'Eval' }],
-								data: processSrc,
-							});
+								const evalResult = await aos.result({
+									message: evalMessage,
+									process: processId,
+								});
 
-							const evalResult = await aos.result({
-								message: evalMessage,
-								process: processId,
-							});
+								console.log(evalResult);
 
-							console.log(evalResult);
+								await new Promise((r) => setTimeout(r, 1000));
 
-							await new Promise((r) => setTimeout(r, 1000));
+								console.log('Updating profile data...');
+								let updateResponse = await sendMessage({
+									processId: processId,
+									action: 'Update-Profile',
+									data: data,
+									wallet: arProvider.wallet,
+								});
 
-							console.log('Updating profile data...');
-							let updateResponse = await sendMessage({
-								processId: processId,
-								action: 'Update-Profile',
-								data: data,
-								wallet: arProvider.wallet,
-							});
-
-							console.log(updateResponse);
-
-							setProfileResponse(`${language.profileCreated}!`);
+								if (updateResponse && updateResponse['Profile-Success']) {
+									setProfileResponse(`${language.profileCreated}!`);
+									props.handleUpdate();
+								} else setProfileResponse(language.errorUpdatingProfile);
+							} else {
+								setProfileResponse(language.errorUpdatingProfile);
+							}
 						}
 					} catch (e: any) {
 						console.error(e);
@@ -332,6 +339,15 @@ export default function ProfileManage(props: IProps) {
 										required
 										hideErrorMessage
 									/>
+									<FormField
+										label={language.username}
+										value={username}
+										onChange={(e: any) => setUsername(e.target.value)}
+										disabled={loading}
+										invalid={{ status: false, message: null }}
+										hideErrorMessage
+										required
+									/>
 									<S.CWrapper>
 										<span>{language.usernameAsDisplayName}</span>
 										<div className={'c-wrapper-checkbox'}>
@@ -342,15 +358,6 @@ export default function ProfileManage(props: IProps) {
 											/>
 										</div>
 									</S.CWrapper>
-									<FormField
-										label={language.username}
-										value={username}
-										onChange={(e: any) => setUsername(e.target.value)}
-										disabled={loading}
-										invalid={{ status: false, message: null }}
-										hideErrorMessage
-										required
-									/>
 								</S.TForm>
 								<TextArea
 									label={language.bio}
@@ -361,13 +368,15 @@ export default function ProfileManage(props: IProps) {
 								/>
 							</S.Form>
 							<S.SAction>
-								<Button
-									type={'primary'}
-									label={language.close}
-									handlePress={() => props.handleClose(true)}
-									disabled={loading}
-									loading={false}
-								/>
+								{props.handleClose && (
+									<Button
+										type={'primary'}
+										label={language.close}
+										handlePress={() => props.handleClose(true)}
+										disabled={loading}
+										loading={false}
+									/>
+								)}
 								<Button
 									type={'alt1'}
 									label={language.save}

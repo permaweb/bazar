@@ -42,6 +42,7 @@ export const language = {
 		dismiss: `Dismiss`,
 		editProfile: `Edit profile`,
 		error: `Error`,
+		errorUpdatingProfile: `Error updating profile`,
 		executing: `Executing`,
 		fetching: `Fetching`,
 		filterListings: `Filter listings`,

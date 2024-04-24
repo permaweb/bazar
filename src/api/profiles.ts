@@ -14,7 +14,7 @@ import { getTagValue } from 'helpers/utils';
 export async function getProfile(args: { address: string }): Promise<AOProfileType | null> {
 	const emptyProfile = {
 		id: null,
-		walletAddress: null,
+		walletAddress: args.address,
 		displayName: null,
 		username: null,
 		bio: null,
