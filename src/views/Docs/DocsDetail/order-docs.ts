@@ -5,7 +5,7 @@ export const docsOrder = [
 	},
 	{
 		name: 'Geting started on the permaweb',
-		path: 'getting-started',
+		path: 'getting-started-on-the-permaweb',
 	},
 	{
 		name: 'Permaweb concepts',
@@ -52,6 +52,10 @@ export const docsOrder = [
 			{
 				name: 'Universal Data License (UDL) explained',
 				path: 'universal-data-license',
+			},
+			{
+				name: 'Why mint atomic assets',
+				path: 'why-mint-on-bazar',
 			},
 		],
 	},
