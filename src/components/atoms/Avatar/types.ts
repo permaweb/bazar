@@ -1,7 +1,7 @@
-import { ProfileType } from 'helpers/types';
+import { ProfileHeaderType } from 'helpers/types';
 
 export interface IProps {
-	owner: ProfileType | null;
+	owner: ProfileHeaderType | null;
 	dimensions: {
 		wrapper: number;
 		icon: number;

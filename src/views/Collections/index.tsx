@@ -1,3 +1,5 @@
+import { CollectionsList } from 'components/organisms/CollectionsList';
+
 export default function Collections() {
-	return <p></p>;
+	return <CollectionsList owner={null} />;
 }

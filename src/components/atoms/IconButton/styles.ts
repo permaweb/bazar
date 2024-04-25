@@ -7,11 +7,16 @@ export const Tooltip = styled.div<{ useBottom: boolean }>`
 	left: 50%;
 	transform: translate(-50%, 0);
 	z-index: 1;
-	display: block;
+	display: none;
+	span {
+		display: block;
+		line-height: 1.65;
+	}
 `;
 
 export const Wrapper = styled.div`
 	position: relative;
+	height: fit-content;
 	width: fit-content;
 	&:hover {
 		${Tooltip} {
@@ -52,18 +57,36 @@ export const Primary = styled.button<{
 `;
 
 export const Alt1 = styled(Primary)`
+	background: ${(props) =>
+		props.disabled
+			? props.theme.colors.button.primary.disabled.background
+			: props.theme.colors.button.primary.background};
+	border: 1px solid
+		${(props) =>
+			props.active
+				? props.theme.colors.button.primary.active.border
+				: props.disabled
+				? props.theme.colors.button.primary.disabled.border
+				: props.theme.colors.button.primary.border};
 	svg {
 		height: ${(props) => (props.dimensions ? `${props.dimensions.icon.toString()}px` : `24.5px`)};
 		width: ${(props) => (props.dimensions ? `${props.dimensions.icon.toString()}px` : `24.5px`)};
 		fill: ${(props) =>
 			props.disabled
-				? props.theme.colors.icon.alt1.disabled
+				? props.theme.colors.button.primary.disabled.color
 				: props.active
-				? props.theme.colors.icon.alt1.fill
-				: props.theme.colors.icon.alt1.fill};
+				? props.theme.colors.font.light1
+				: props.theme.colors.button.primary.color};
 	}
 
 	&:hover {
-		background: ${(props) => props.theme.colors.icon.alt1.active};
+		background: ${(props) =>
+			props.disabled
+				? props.theme.colors.button.primary.disabled.background
+				: props.theme.colors.button.primary.active.background};
+		svg {
+			fill: ${(props) =>
+				props.disabled ? props.theme.colors.button.primary.disabled.color : props.theme.colors.font.light1};
+		}
 	}
 `;

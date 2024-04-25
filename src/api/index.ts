@@ -1,14 +1,21 @@
-import { CURSORS, GATEWAYS, PAGINATORS } from 'helpers/config';
+import Arweave from 'arweave';
+import { ArweaveWebIrys } from '@irys/sdk/build/esm/web/tokens/arweave';
+import { createDataItemSigner, dryrun, message, result } from '@permaweb/aoconnect';
+
+import { CONTENT_TYPES, CURSORS, GATEWAYS, PAGINATORS, UPLOAD_CONFIG } from 'helpers/config';
 import {
-	AGQLResponseType,
 	BatchAGQLResponseType,
 	BatchGQLArgsType,
+	DefaultGQLResponseType,
 	GQLArgsType,
 	GQLNodeResponseType,
 	QueryBodyGQLArgsType,
+	TagType,
+	UploadMethodType,
 } from 'helpers/types';
+import { getByteSize, getTagValue } from 'helpers/utils';
 
-export async function getGQLData(args: GQLArgsType): Promise<AGQLResponseType> {
+export async function getGQLData(args: GQLArgsType): Promise<DefaultGQLResponseType> {
 	const paginator = args.paginator ? args.paginator : PAGINATORS.default;
 
 	let data: GQLNodeResponseType[] = [];
@@ -174,4 +181,133 @@ async function getResponse(args: { gateway: string; query: string }): Promise<an
 	}
 }
 
+export async function createTransaction(args: {
+	content: any;
+	contentType: string;
+	tags: TagType[];
+	uploadMethod?: UploadMethodType;
+}) {
+	let finalContent: any;
+	switch (args.contentType) {
+		case CONTENT_TYPES.json as any:
+			finalContent = JSON.stringify(args.content);
+			break;
+		default:
+			finalContent = args.content;
+			break;
+	}
+
+	const contentSize: number = getByteSize(finalContent);
+
+	if (contentSize < Number(UPLOAD_CONFIG.dispatchUploadSize)) {
+		const txRes = await Arweave.init({}).createTransaction({ data: finalContent }, 'use_wallet');
+		args.tags.forEach((tag: TagType) => txRes.addTag(tag.name, tag.value));
+		const response = await global.window.arweaveWallet.dispatch(txRes);
+		return response.id;
+	} else {
+		try {
+			const uploadUrl = args.uploadMethod && args.uploadMethod === 'turbo' ? UPLOAD_CONFIG.node2 : UPLOAD_CONFIG.node1;
+			const irys = new ArweaveWebIrys({
+				url: uploadUrl,
+				wallet: { provider: global.window.arweaveWallet },
+			});
+			await irys.ready();
+
+			if (args.contentType.includes('image') || args.contentType.includes('video')) {
+				const uploader = irys.uploader.chunkedUploader;
+				uploader.setBatchSize(UPLOAD_CONFIG.batchSize);
+				uploader.setChunkSize(UPLOAD_CONFIG.chunkSize);
+
+				uploader.on('chunkUpload', (chunkInfo: any) => {
+					console.log(`Upload status: ${Math.floor((chunkInfo.totalUploaded / contentSize) * 100)}%`);
+				});
+
+				uploader.on('chunkError', (e: any) => {
+					console.error(`Upload error: ${e}`);
+				});
+
+				const response = await uploader.uploadData(finalContent as any, { tags: args.tags } as any);
+				return response.data.id;
+			} else {
+				const response = await irys.upload(finalContent as any, { tags: args.tags } as any);
+				return response.id;
+			}
+		} catch (e: any) {
+			throw new Error(e);
+		}
+	}
+}
+
+export async function sendMessage(args: { processId: string; wallet: any; action: string; data: any }): Promise<any> {
+	try {
+		const txId = await message({
+			process: args.processId,
+			signer: createDataItemSigner(args.wallet),
+			tags: [{ name: 'Action', value: args.action }],
+			data: JSON.stringify(args.data),
+		});
+
+		const { Messages } = await result({ message: txId, process: args.processId });
+
+		if (Messages && Messages.length) {
+			const response = {};
+
+			Messages.forEach((message: any) => {
+				const action = getTagValue(message.Tags, 'Action') || args.action;
+
+				let responseData = null;
+				const messageData = message.Data;
+
+				if (messageData) {
+					try {
+						responseData = JSON.parse(messageData);
+					} catch {
+						responseData = messageData;
+					}
+				}
+
+				const responseStatus = getTagValue(message.Tags, 'Status');
+				const responseMessage = getTagValue(message.Tags, 'Message');
+
+				response[action] = {
+					id: txId,
+					status: responseStatus,
+					message: responseMessage,
+					data: responseData,
+				};
+			});
+
+			return response;
+		} else return null;
+	} catch (e) {
+		console.error(e);
+	}
+}
+
+export async function readHandler(args: { processId: string; action: string; data: any }): Promise<any> {
+	const response = await dryrun({
+		process: args.processId,
+		tags: [{ name: 'Action', value: args.action }],
+		data: JSON.stringify(args.data),
+	});
+
+	if (response.Messages && response.Messages.length && response.Messages[0].Data) {
+		return JSON.parse(response.Messages[0].Data);
+	}
+}
+
+// TODO: replace with readHandler
+export async function readProcessState(processId: string): Promise<any> {
+	const messageResult = await dryrun({
+		process: processId,
+		tags: [{ name: 'Action', value: 'Info' }],
+	});
+
+	if (messageResult.Messages && messageResult.Messages.length && messageResult.Messages[0].Data) {
+		return JSON.parse(messageResult.Messages[0].Data);
+	}
+}
+
+export * from './assets';
+export * from './collections';
 export * from './profiles';

@@ -1,5 +1,6 @@
-import { FullProfileType } from 'helpers/types';
+import { ProfileHeaderType } from 'helpers/types';
 
 export interface IProps {
-	profile: FullProfileType | null;
+	profile: ProfileHeaderType | null;
+	handleUpdate: () => void;
 }

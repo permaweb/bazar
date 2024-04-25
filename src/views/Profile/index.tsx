@@ -1,13 +1,14 @@
 import React from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
-import { getFullProfile } from 'gql';
+import { getProfile } from 'api';
 
 import { Loader } from 'components/atoms/Loader';
 import { URLTabs } from 'components/molecules/URLTabs';
+import { CollectionsList } from 'components/organisms/CollectionsList';
 import { URLS } from 'helpers/config';
-import { FullProfileType } from 'helpers/types';
-import { checkAddress } from 'helpers/utils';
+import { ProfileHeaderType } from 'helpers/types';
+import { checkValidAddress } from 'helpers/utils';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 
 import { ProfileHeader } from './ProfileHeader';
@@ -19,7 +20,8 @@ export default function Profile() {
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
 
-	const [profile, setProfile] = React.useState<FullProfileType | null>(null);
+	const [profile, setProfile] = React.useState<ProfileHeaderType | null>(null);
+	const [toggleUpdate, setToggleUpdate] = React.useState<boolean>(false);
 
 	React.useEffect(() => {
 		if (!address && !active) navigate(URLS.notFound);
@@ -28,9 +30,9 @@ export default function Profile() {
 
 	React.useEffect(() => {
 		(async function () {
-			if (address && checkAddress(address)) {
+			if (address && checkValidAddress(address)) {
 				try {
-					const fetchedProfile = await getFullProfile({ address: address });
+					const fetchedProfile = await getProfile({ address: address });
 					setProfile(fetchedProfile);
 				} catch (e: any) {
 					console.error(e);
@@ -39,7 +41,7 @@ export default function Profile() {
 				navigate(URLS.notFound);
 			}
 		})();
-	}, [address]);
+	}, [address, toggleUpdate]);
 
 	const TABS = [
 		{
@@ -47,28 +49,28 @@ export default function Profile() {
 			icon: null,
 			disabled: false,
 			url: URLS.profileAssets(address),
-			view: () => <p>Profile assets</p>,
+			view: () => <p>Coming soon!</p>,
 		},
 		{
 			label: language.collections,
 			icon: null,
 			disabled: false,
 			url: URLS.profileCollections(address),
-			view: () => <p>Profile collections</p>,
+			view: () => <CollectionsList owner={address} />,
 		},
 		{
 			label: language.listings,
 			icon: null,
 			disabled: false,
 			url: URLS.profileListings(address),
-			view: () => <p>Profile listings</p>,
+			view: () => <p>Coming soon!</p>,
 		},
 		{
 			label: language.activity,
 			icon: null,
 			disabled: false,
 			url: URLS.profileActivity(address),
-			view: () => <p>Profile activity</p>,
+			view: () => <p>Coming soon!</p>,
 		},
 	];
 
@@ -78,7 +80,7 @@ export default function Profile() {
 
 	return profile ? (
 		<>
-			<ProfileHeader profile={profile} />
+			<ProfileHeader profile={profile} handleUpdate={() => setToggleUpdate(!toggleUpdate)} />
 			{urlTabs}
 		</>
 	) : (

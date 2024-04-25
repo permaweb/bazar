@@ -6,6 +6,7 @@ export interface IProps {
 	label?: string;
 	value: number | string;
 	type?: FormFieldType;
+	step?: '1';
 	onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
 	invalid: ValidationType;
 	disabled: boolean;

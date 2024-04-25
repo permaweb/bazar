@@ -22,6 +22,7 @@ export const Container = styled.div<{
 	width: 650px;
 	max-width: ${(props) => (props.noHeader ? '100%' : '90vw')};
 	background: ${(props) => (props.noHeader ? 'transparent' : props.theme.colors.container.primary.background)};
+	border: 1px solid ${(props) => props.theme.colors.border.primary};
 	border-radius: ${STYLING.dimensions.radius.primary};
 	margin: 20px auto;
 `;
@@ -63,22 +64,4 @@ export const Body = styled.div`
 	overflow-y: auto;
 	scrollbar-color: transparent transparent;
 	padding: 0 0 0 20px 0;
-
-	::-webkit-scrollbar-track {
-		background: ${(props) => props.theme.colors.view.background};
-		padding: 0 5px;
-	}
-
-	::-webkit-scrollbar {
-		width: 15.5px;
-	}
-
-	scrollbar-color: ${(props) => props.theme.colors.scrollbar.thumb} transparent;
-
-	::-webkit-scrollbar-thumb {
-		background-color: ${(props) => props.theme.colors.scrollbar.thumb};
-		border-radius: 36px;
-		border: 3.5px solid transparent;
-		background-clip: padding-box;
-	}
 `;

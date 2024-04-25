@@ -27,7 +27,7 @@ export const TWrapper = styled.div`
 `;
 
 export const Label = styled.label`
-	color: ${(props) => props.theme.colors.font.primary};
+	color: ${(props) => props.theme.colors.font.alt1};
 	font-size: ${(props) => props.theme.typography.size.xSmall};
 	font-weight: ${(props) => props.theme.typography.weight.bold};
 `;
@@ -49,6 +49,7 @@ export const Input = styled.input<{
 	height: ${(props) => (props.sm ? STYLING.dimensions.form.small : STYLING.dimensions.form.max)};
 	color: ${(props) =>
 		props.disabled ? props.theme.colors.button.primary.disabled.color : props.theme.colors.font.primary};
+	font-family: ${(props) => props.theme.typography.family.primary};
 	font-size: ${(props) => props.theme.typography.size.base};
 	font-weight: ${(props) => props.theme.typography.weight.bold};
 	margin: 10px 0 0 0;
@@ -110,6 +111,6 @@ export const ErrorContainer = styled.div`
 export const Error = styled.span`
 	font-size: ${(props) => props.theme.typography.size.xSmall};
 	font-weight: ${(props) => props.theme.typography.weight.regular};
-	border-left: 2.75px solid ${(props) => props.theme.colors.warning};
+	border-left: 2.75px solid ${(props) => props.theme.colors.warning.primary};
 	padding-left: 5px;
 `;

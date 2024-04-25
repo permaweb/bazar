@@ -1,13 +1,63 @@
 import styled from 'styled-components';
 
-export const Wrapper = styled.div`
+import { STYLING } from 'helpers/config';
+
+const CARD_HEIGHT = '500px';
+
+export const Wrapper = styled.div<{ backgroundImage: string }>`
+	height: ${CARD_HEIGHT};
+	width: 100%;
+	position: relative;
+	display: flex;
+	align-items: flex-end;
+	background-image: ${(props) => `url(${props.backgroundImage})`};
+	background-size: cover;
+	background-repeat: no-repeat;
+	background-position: center;
+	overflow: hidden;
+	border-radius: ${STYLING.dimensions.radius.primary};
 	margin: 0 0 40px 0;
+	@media (max-width: ${STYLING.cutoffs.initial}) {
+		height: auto;
+	}
 `;
 
 export const HeaderInfo = styled.div`
+	width: 100%;
+	padding: 20px;
+	background: ${(props) => `linear-gradient(0deg, ${props.theme.colors.overlay.alt2} 50%,transparent)`};
+	p,
+	span {
+		text-shadow: 0 0 5px #000000;
+	}
+
+	button {
+		span {
+			text-shadow: none;
+		}
+	}
 	display: flex;
 	flex-wrap: wrap;
 	gap: 25px;
+	@media (max-width: ${STYLING.cutoffs.secondary}) {
+		flex-direction: column;
+	}
+`;
+
+export const HeaderActions = styled.div`
+	height: fit-content;
+	margin: auto 0 0 auto;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 25px;
+
+	button {
+		width: fit-content;
+	}
+
+	@media (max-width: ${STYLING.cutoffs.secondary}) {
+		flex-direction: column;
+	}
 `;
 
 export const HeaderAvatar = styled.div`
@@ -34,7 +84,7 @@ export const HeaderAvatar = styled.div`
 
 export const HeaderHA = styled.div`
 	h4 {
-		color: ${(props) => props.theme.colors.font.primary};
+		color: ${(props) => props.theme.colors.font.light1};
 		font-size: clamp(24px, 3.25vw, 32px);
 		font-weight: ${(props) => props.theme.typography.weight.xxBold};
 		line-height: 1.5;
@@ -43,11 +93,11 @@ export const HeaderHA = styled.div`
 `;
 
 export const HeaderInfoDetail = styled.div`
-	margin: 2.5px 0 0 0;
+	margin: 3.5px 0 0 0;
 	span {
-		color: ${(props) => props.theme.colors.font.primary};
+		color: ${(props) => props.theme.colors.font.light2};
 		font-size: ${(props) => props.theme.typography.size.small};
-		font-weight: ${(props) => props.theme.typography.weight.medium};
+		font-weight: ${(props) => props.theme.typography.weight.bold};
 	}
 `;
 
@@ -56,13 +106,13 @@ export const HeaderAddress = styled.button`
 	align-items: center;
 	margin: 7.5px 0 0 0;
 	p {
-		color: ${(props) => props.theme.colors.font.primary};
+		color: ${(props) => props.theme.colors.font.light1};
 		font-size: ${(props) => props.theme.typography.size.small};
 		font-weight: ${(props) => props.theme.typography.weight.bold};
 		margin: 0 0 0 10px;
 	}
 	span {
-		color: ${(props) => props.theme.colors.font.primary};
+		color: ${(props) => props.theme.colors.font.light1};
 		font-size: ${(props) => props.theme.typography.size.xSmall};
 		font-weight: ${(props) => props.theme.typography.weight.bold};
 		display: block;
@@ -70,10 +120,12 @@ export const HeaderAddress = styled.button`
 	}
 	svg {
 		width: 15px;
-		fill: ${(props) => props.theme.colors.font.primary};
+		fill: ${(props) => props.theme.colors.font.light1};
 		margin: 2.5px 0 0 0;
 	}
 	&:hover {
 		opacity: 0.75;
 	}
 `;
+
+export const MWrapper = styled.div``;

@@ -1,10 +1,11 @@
 import { lazy, Suspense } from 'react';
 import { Route, Routes } from 'react-router-dom';
 
-import { Loader } from 'components/atoms/Loader';
 import { URLS } from 'helpers/config';
 
+const Asset = getLazyImport('Asset');
 const Landing = getLazyImport('Landing');
+const Collection = getLazyImport('Collection');
 const Collections = getLazyImport('Collections');
 const Profile = getLazyImport('Profile');
 const Docs = getLazyImport('Docs');
@@ -12,9 +13,12 @@ const NotFound = getLazyImport('NotFound');
 
 export default function _Routes() {
 	return (
-		<Suspense fallback={<Loader />}>
+		<Suspense fallback={null}>
 			<Routes>
 				<Route path={URLS.base} element={<Landing />} />
+				<Route path={URLS.asset} element={<Asset />} />
+				<Route path={`${URLS.asset}:id`} element={<Asset />} />
+				<Route path={`${URLS.collection}:id`} element={<Collection />} />
 				<Route path={URLS.collections} element={<Collections />} />
 				<Route path={URLS.profile} element={<Profile />} />
 				<Route path={`${URLS.profile}:address`} element={<Profile />} />

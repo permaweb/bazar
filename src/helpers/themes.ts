@@ -1,10 +1,8 @@
 import { DefaultTheme } from 'styled-components';
 
 export const lightTheme = {
-	accent1: '#454FA8',
-	accent2: '#7A81B8',
-	negative1: '#DF4657',
-	negative2: '#EF6C82',
+	negative1: '#E94278',
+	negative2: '#E52461',
 	neutral1: '#FFFFFF',
 	neutral2: '#F1F1F1',
 	neutral3: '#8D8D8D',
@@ -16,30 +14,29 @@ export const lightTheme = {
 	neutralA1: '#0A0A0A',
 	neutralA2: '#5F5F5F',
 	neutralA3: '#5C5C5C',
-	neutralA4: '#4D4D4D',
+	neutralA4: '#3E3E3E',
 	neutralA5: '#A4A4A4',
 	neutralA6: '#A9A9A9',
 	overlay1: 'rgb(130, 130, 130, .25)',
-	primary1: '#4CBD95',
-	primary2: '#0D9A68',
+	primary1: '#64B686',
+	primary2: '#4EA673',
 	semiTransparent1: 'rgba(255, 255, 255, 0.575)',
 	semiTransparent2: 'rgba(0, 0, 0, 0.45)',
-	semiTransparent3: 'rgba(0, 0, 0, 0.65)',
+	semiTransparent3: 'rgba(0, 0, 0, 0.55)',
 	semiTransparent4: '#AEAEAE45',
-	semiTransparent5: 'rgba(0, 0, 0, 0.15)',
+	semiTransparent5: 'rgb(240, 240, 240, 0.85)',
 	scheme: 'light',
 	light1: '#FFFFFF',
+	light2: '#DADADA',
 	dark1: '#151515',
 };
 
 export const darkTheme = {
-	accent1: '#454FA8',
-	accent2: '#7A81B8',
 	labelAlt1: `#FFFFFF`,
-	negative1: '#DF4657',
-	negative2: '#EF6C82',
-	neutral1: '#0D0E10',
-	neutral2: '#171718',
+	negative1: '#D81E5B',
+	negative2: '#E43A72',
+	neutral1: '#131416',
+	neutral2: '#1C1E21',
 	neutral3: '#606060',
 	neutral4: '#5C5C5C',
 	neutral5: '#A4A4A4',
@@ -53,21 +50,27 @@ export const darkTheme = {
 	neutralA5: '#F7F7F7',
 	neutralA6: '#FAFAFA',
 	overlay1: 'rgba(0, 0, 0, 0.5)',
-	primary1: '#379574',
-	primary2: '#12D791',
+	primary1: '#38BD80',
+	primary2: '#2F9D6A',
 	semiTransparent1: 'rgba(0, 0, 0, 0.15)',
 	semiTransparent2: 'rgba(0, 0, 0, 0.45)',
-	semiTransparent3: 'rgba(0, 0, 0, 0.65)',
+	semiTransparent3: 'rgba(20, 20, 20, 0.75)',
 	semiTransparent4: '#AEAEAE45',
 	semiTransparent5: 'rgba(0, 0, 0, 0.5)',
 	scheme: 'dark',
 	light1: '#FFFFFF',
+	light2: '#DADADA',
 	dark1: '#151515',
 };
 
 export const theme = (currentTheme: any): DefaultTheme => ({
 	scheme: currentTheme.scheme,
 	colors: {
+		accordion: {
+			background: currentTheme.neutral1,
+			hover: currentTheme.neutral2,
+			color: currentTheme.neutralA1,
+		},
 		border: {
 			primary: currentTheme.neutral3,
 			alt1: currentTheme.primary1,
@@ -81,9 +84,9 @@ export const theme = (currentTheme: any): DefaultTheme => ({
 				border: currentTheme.neutral3,
 				color: currentTheme.neutralA1,
 				active: {
-					background: currentTheme.accent1,
-					border: currentTheme.accent2,
-					color: currentTheme.neutralA1,
+					background: currentTheme.primary1,
+					border: currentTheme.primary2,
+					color: currentTheme.light1,
 				},
 				disabled: {
 					background: currentTheme.neutral3,
@@ -96,8 +99,8 @@ export const theme = (currentTheme: any): DefaultTheme => ({
 				border: currentTheme.primary2,
 				color: currentTheme.light1,
 				active: {
-					background: currentTheme.accent1,
-					border: currentTheme.accent2,
+					background: currentTheme.primary2,
+					border: currentTheme.primary2,
 					color: currentTheme.light1,
 				},
 				disabled: {
@@ -107,13 +110,13 @@ export const theme = (currentTheme: any): DefaultTheme => ({
 				},
 			},
 			alt2: {
-				background: currentTheme.primary2,
-				border: currentTheme.primary2,
-				color: currentTheme.primary2,
+				background: currentTheme.neutralA1,
+				border: currentTheme.neutralA1,
+				color: currentTheme.neutralA1,
 				active: {
-					background: currentTheme.primary1,
-					border: currentTheme.primary1,
-					color: currentTheme.primary1,
+					background: currentTheme.neutralA4,
+					border: currentTheme.neutralA4,
+					color: currentTheme.neutralA4,
 				},
 				disabled: {
 					background: currentTheme.neutral3,
@@ -159,6 +162,12 @@ export const theme = (currentTheme: any): DefaultTheme => ({
 			alt8: {
 				background: currentTheme.dark1,
 			},
+			alt9: {
+				background: currentTheme.primary1,
+			},
+			alt10: {
+				background: currentTheme.primary2,
+			},
 		},
 		font: {
 			primary: currentTheme.neutralA1,
@@ -166,8 +175,9 @@ export const theme = (currentTheme: any): DefaultTheme => ({
 			alt2: currentTheme.neutralA4,
 			alt3: currentTheme.neutral5,
 			alt4: currentTheme.neutral1,
-			alt5: currentTheme.primary2,
+			alt5: currentTheme.primary1,
 			light1: currentTheme.light1,
+			light2: currentTheme.light2,
 		},
 		form: {
 			background: currentTheme.neutral1,
@@ -188,17 +198,17 @@ export const theme = (currentTheme: any): DefaultTheme => ({
 		},
 		gradient: {
 			start: currentTheme.primary1,
-			middle: currentTheme.accent1,
-			end: currentTheme.accent2,
+			middle: currentTheme.primary1,
+			end: currentTheme.primary2,
 		},
 		icon: {
 			primary: {
 				fill: currentTheme.neutralA1,
-				active: currentTheme.neutral3,
+				active: currentTheme.neutral4,
 				disabled: currentTheme.neutralA3,
 			},
 			alt1: {
-				fill: currentTheme.neutral2,
+				fill: currentTheme.neutral4,
 				active: currentTheme.semiTransparent4,
 				disabled: currentTheme.neutral3,
 			},
@@ -244,24 +254,22 @@ export const theme = (currentTheme: any): DefaultTheme => ({
 		},
 		shadow: {
 			primary: currentTheme.semiTransparent5,
-			alt1: currentTheme.neutralA1,
+			alt1: currentTheme.neutral4,
 		},
 		tabs: {
 			color: currentTheme.neutralA4,
 			active: {
-				background: currentTheme.primary2,
+				background: currentTheme.primary1,
 				color: currentTheme.neutralA1,
 			},
 		},
 		view: {
 			background: currentTheme.neutral1,
 		},
-		video: {
-			buffered: currentTheme.neutral4,
-			unbuffered: currentTheme.semiTransparent4,
-			watched: currentTheme.primary1,
+		warning: {
+			primary: currentTheme.negative1,
+			alt1: currentTheme.negative2,
 		},
-		warning: currentTheme.negative1,
 	},
 	typography: {
 		family: {
@@ -275,6 +283,10 @@ export const theme = (currentTheme: any): DefaultTheme => ({
 			small: '15px',
 			base: '16px',
 			lg: '18px',
+			xLg: '24px',
+			h1: 'clamp(38px, 4.5vw, 62px)',
+			h2: 'clamp(32px, 3.75vw, 44px)',
+			h4: 'clamp(28px, 2vw, 36px)',
 		},
 		weight: {
 			medium: '500',

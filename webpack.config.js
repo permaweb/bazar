@@ -165,6 +165,7 @@ module.exports = {
 			assert: require.resolve('assert'),
 			url: require.resolve('url'),
 			buffer: require.resolve('buffer'),
+			timers: require.resolve('timers-browserify'),
 		},
 		alias: {
 			react: path.resolve(__dirname, 'node_modules/react'),
@@ -174,7 +175,6 @@ module.exports = {
 			arweave: path.resolve(__dirname, 'node_modules/arweave'),
 			assets: path.resolve(__dirname, 'src/assets/'),
 			components: path.resolve(__dirname, 'src/components/'),
-			gql: path.resolve(__dirname, 'src/gql/'),
 			helpers: path.resolve(__dirname, 'src/helpers/'),
 			hooks: path.resolve(__dirname, 'src/hooks/'),
 			navigation: path.resolve(__dirname, 'src/navigation/'),
@@ -185,6 +185,8 @@ module.exports = {
 			views: path.resolve(__dirname, 'src/views/'),
 			wallet: path.resolve(__dirname, 'src/wallet/'),
 			wrappers: path.resolve(__dirname, 'src/wrappers/'),
+			'asn1.js': path.resolve(__dirname, 'node_modules/asn1.js'),
+			elliptic: path.resolve(__dirname, 'node_modules/elliptic'),
 		},
 	},
 	output: {

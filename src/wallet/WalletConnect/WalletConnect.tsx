@@ -1,20 +1,24 @@
 import React from 'react';
+import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import { ReactSVG } from 'react-svg';
 
 import { Avatar } from 'components/atoms/Avatar';
-import { ASSETS, URLS } from 'helpers/config';
+import { CurrencyLine } from 'components/atoms/CurrencyLine';
+import { ASSETS, PROCESSES, URLS } from 'helpers/config';
 import { formatAddress, formatARAmount } from 'helpers/utils';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useCustomThemeProvider } from 'providers/CustomThemeProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
+import { RootState } from 'store';
 import { CloseHandler } from 'wrappers/CloseHandler';
 
 import * as S from './styles';
 
-// TODO: balances
 export default function WalletConnect(_props: { callback?: () => void }) {
 	const navigate = useNavigate();
+
+	const currenciesReducer = useSelector((state: RootState) => state.currenciesReducer);
 
 	const arProvider = useArweaveProvider();
 	const themeProvider = useCustomThemeProvider();
@@ -38,8 +42,8 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 			setLabel(`${language.fetching}...`);
 		} else {
 			if (arProvider.walletAddress) {
-				if (arProvider.profile && arProvider.profile.handle) {
-					setLabel(arProvider.profile.handle);
+				if (arProvider.profile && arProvider.profile.username) {
+					setLabel(arProvider.profile.username);
 				} else {
 					setLabel(formatAddress(arProvider.walletAddress, false));
 				}
@@ -81,6 +85,19 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 		setShowWalletDropdown(false);
 	}
 
+	function getTokenBalance(tokenProcess: string) {
+		if (
+			arProvider.walletAddress &&
+			currenciesReducer &&
+			currenciesReducer[tokenProcess] &&
+			currenciesReducer[tokenProcess].Balances[arProvider.walletAddress]
+		) {
+			const ownerBalance = currenciesReducer[tokenProcess].Balances[arProvider.walletAddress];
+			return ownerBalance.toString();
+		}
+		return 0;
+	}
+
 	return (
 		<>
 			<CloseHandler
@@ -116,28 +133,27 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 							</S.DHeaderWrapper>
 							<S.DBodyWrapper>
 								<S.DBodyHeader>
-									<span>Balances</span>
+									<span>{language.balances}</span>
 								</S.DBodyHeader>
 								<S.BalanceLine>
+									<span>{formatARAmount(arProvider.availableBalance ? arProvider.availableBalance : 0)}</span>
 									<ReactSVG src={ASSETS.ar} />
-									<p>
-										{formatARAmount(arProvider.availableBalance ? arProvider.availableBalance : 0)} <span>AR</span>
-									</p>
 								</S.BalanceLine>
-								{/* <S.BalanceLine>
-									<ReactSVG src={ASSETS.u} />
-									<p>5.67 <span>U</span></p>
-								</S.BalanceLine>
-								<S.BalanceLine>
-									<ReactSVG src={ASSETS.pixl} className={'pixl-icon'} />
-									<p>3.01 <span>PIXL</span></p>
-								</S.BalanceLine> */}
+								{currenciesReducer && currenciesReducer[PROCESSES.token] && (
+									<S.BalanceLine>
+										<CurrencyLine
+											amount={getTokenBalance(PROCESSES.token)}
+											currency={PROCESSES.token}
+											callback={() => setShowWalletDropdown(false)}
+										/>
+									</S.BalanceLine>
+								)}
 							</S.DBodyWrapper>
 							<S.DBodyWrapper>
 								<li onClick={handleViewProfile}>{language.viewProfile}</li>
 								<li onClick={copyAddress}>{copied ? `${language.copied}!` : language.copyAddress}</li>
 								<li onClick={handleToggleTheme}>
-									{themeProvider.current === 'light' ? language.useDarkMode : language.useLightMode}
+									{themeProvider.current === 'light' ? language.useDarkDisplay : language.useLightDisplay}
 								</li>
 							</S.DBodyWrapper>
 							<S.DFooterWrapper>

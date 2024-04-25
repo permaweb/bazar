@@ -51,7 +51,7 @@ export const Tab = styled.div<{ active: boolean }>`
 			content: '';
 			position: absolute;
 			bottom: -10px;
-			height: 5px;
+			height: 3.5px;
 			width: 100%;
 			background: ${(props) => props.theme.colors.tabs.active.background};
 			border-radius: ${STYLING.dimensions.radius.primary};
@@ -66,5 +66,5 @@ export const View = styled.div`
 	height: 100%;
 	width: 100%;
 	position: relative;
-	margin: 20px 0 0 0;
+	margin: 25px 0 0 0;
 `;

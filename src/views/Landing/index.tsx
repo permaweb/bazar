@@ -1,86 +1,130 @@
 import React from 'react';
 
-import { createDataItemSigner, dryrun, message, result } from '@permaweb/aoconnect';
+import { getAssetIdGroups, getAssetsByIds, getCollections } from 'api';
 
-import { getTagValue } from 'helpers/utils';
+import { AssetsTable } from 'components/organisms/AssetsTable';
+import { CollectionsCarousel } from 'components/organisms/CollectionsCarousel';
+import { ASSET_SORT_OPTIONS, PAGINATORS, STYLING } from 'helpers/config';
+import {
+	AssetDetailType,
+	AssetSortType,
+	CollectionGQLResponseType,
+	CollectionType,
+	IdGroupType,
+	SelectOptionType,
+} from 'helpers/types';
+import * as windowUtils from 'helpers/window';
+import { useLanguageProvider } from 'providers/LanguageProvider';
+
+import * as S from './styles';
 
 export default function Landing() {
-	const UCM_PROCESS = 'RDNSwCBS1TLoj9E9gman_Bhe0UsA5v-A7VmfDoWmZ-A';
+	const languageProvider = useLanguageProvider();
+	const language = languageProvider.object[languageProvider.current];
 
-	const [state, setState] = React.useState(null);
-	const [errorResponse, setErrorResponse] = React.useState(null);
-	const [successResponse, setSuccessResponse] = React.useState(null);
+	const [desktop, setDesktop] = React.useState(windowUtils.checkWindowCutoff(parseInt(STYLING.cutoffs.initial)));
 
-	async function updateState() {
-		try {
-			setState(null);
-			const messageResult = await dryrun({
-				process: UCM_PROCESS,
-				tags: [{ name: 'Action', value: 'Read' }],
-			});
+	const [collections, setCollections] = React.useState<CollectionType[] | null>(null);
+	const [collectionsLoading, setCollectionsLoading] = React.useState<boolean>(false);
+	const [collectionsErrorResponse, setCollectionsErrorResponse] = React.useState<string | null>(null);
 
-			if (messageResult.Messages && messageResult.Messages.length && messageResult.Messages[0].Data) {
-				setState(messageResult.Messages[0].Data);
-			}
-		} catch (e: any) {
-			console.error(e);
-			setState('None');
-		}
-	}
+	const [assetIdGroups, setAssetIdGroups] = React.useState<IdGroupType | null>(null);
+	const [assetFilterListings, setAssetFilterListings] = React.useState<boolean>(false);
+	const [assetSortType, setAssetSortType] = React.useState<SelectOptionType | null>(ASSET_SORT_OPTIONS[0]);
+	const [assetCursor, setAssetCursor] = React.useState<string>('0');
+
+	const [assets, setAssets] = React.useState<AssetDetailType[] | null>(null);
+	const [assetsLoading, setAssetsLoading] = React.useState<boolean>(false);
+	const [assetErrorResponse, setAssetErrorResponse] = React.useState<string | null>(null);
 
 	React.useEffect(() => {
 		(async function () {
-			await updateState();
+			setAssetIdGroups(
+				getAssetIdGroups({
+					groupCount: PAGINATORS.landing.assets,
+					filterListings: assetFilterListings,
+					sortType: assetSortType.id as AssetSortType,
+				})
+			);
+
+			setCollectionsLoading(true);
 			try {
-				// const messageData = JSON.stringify([
-				// 	'fjgMN5h1bybEULC2ho9SzCc_noUUC3ieYztmlfnxWro',
-				// 	'KTzTXT_ANmF84fWEKHzWURD1LWd9QaFR9yfYUwH2Lxw',
-				// ]);
-
-				// const messageData = 'bad data'
-
-				const messageData = JSON.stringify({
-					Pair: ['fjgMN5h1bybEULC2ho9SzCc_noUUC3ieYztmlfnxWro', 'KTzTXT_ANmF84fWEKHzWURD1LWd9QaFR9yfYUwH2Lxw'],
-					AllowTxId: 'Test',
-					Quantity: 'Test',
-					Price: 'Test',
-				});
-
-				const messageResult = await message({
-					process: UCM_PROCESS,
-					tags: [{ name: 'Action', value: 'Create-Order' }],
-					signer: createDataItemSigner(globalThis.arweaveWallet),
-					data: messageData,
-				});
-
-				const { Messages } = await result({
-					message: messageResult,
-					process: UCM_PROCESS,
-				});
-
-				console.log(Messages);
-
-				if (Messages && Messages.length && Messages[0].Tags && Messages[0].Tags.length) {
-					const status = getTagValue(Messages[0].Tags, 'Status');
-					const message = getTagValue(Messages[0].Tags, 'Message');
-					if (message && status) {
-						if (status === 'Error') setErrorResponse(message);
-						if (status === 'Success') setSuccessResponse(message);
-					}
-				}
+				const collectionsFetch: CollectionGQLResponseType = await getCollections({ cursor: null, owner: null });
+				setCollections(collectionsFetch.data);
 			} catch (e: any) {
-				console.error(e);
-				setState('None');
+				setCollectionsErrorResponse(e.message || language.collectionsFetchFailed);
 			}
-			await updateState();
+			setCollectionsLoading(false);
 		})();
-	}, []);
+	}, [assetFilterListings, assetSortType]);
+
+	React.useEffect(() => {
+		(async function () {
+			if (assetIdGroups) {
+				setAssetsLoading(true);
+				try {
+					setAssets(
+						await getAssetsByIds({ ids: assetIdGroups[assetCursor], sortType: assetSortType.id as AssetSortType })
+					);
+				} catch (e: any) {
+					setAssetErrorResponse(e.message || language.assetsFetchFailed);
+				}
+				setAssetsLoading(false);
+			}
+		})();
+	}, [assetIdGroups, assetCursor, assetSortType]);
+
+	function handleWindowResize() {
+		if (windowUtils.checkWindowCutoff(parseInt(STYLING.cutoffs.initial))) {
+			setDesktop(true);
+		} else {
+			setDesktop(false);
+		}
+	}
+
+	windowUtils.checkWindowResize(handleWindowResize);
+
+	function getPaginationAction(callback: () => void) {
+		setAssets(null);
+		callback();
+	}
+
+	function getNextAction() {
+		if (assetIdGroups && Number(assetCursor) < Object.keys(assetIdGroups).length - 1) {
+			return () => getPaginationAction(() => setAssetCursor((Number(assetCursor) + 1).toString()));
+		}
+		return null;
+	}
+
+	function getPreviousAction() {
+		if (assetIdGroups && Number(assetCursor) > 0) {
+			return () => getPaginationAction(() => setAssetCursor((Number(assetCursor) - 1).toString()));
+		}
+		return null;
+	}
 
 	return (
-		<div>
-			<p>{state || 'Loading...'}</p>
-			{errorResponse && <span style={{ color: 'red' }}>{errorResponse}</span>}
-			{successResponse && <span style={{ color: 'green' }}>{successResponse}</span>}
-		</div>
+		<S.Wrapper className={'fade-in'}>
+			<S.CollectionsWrapper>
+				<CollectionsCarousel collections={collections} loading={collectionsLoading} />
+				{collectionsErrorResponse && <p>{collectionsErrorResponse}</p>}
+			</S.CollectionsWrapper>
+			<S.AssetsWrapper>
+				<AssetsTable
+					assets={assets}
+					type={desktop ? 'list' : 'grid'}
+					nextAction={getNextAction()}
+					previousAction={getPreviousAction()}
+					filterListings={assetFilterListings}
+					setFilterListings={() => setAssetFilterListings(!assetFilterListings)}
+					currentSortType={assetSortType}
+					setCurrentSortType={(option: SelectOptionType) => setAssetSortType(option)}
+					currentPage={assetCursor}
+					pageCount={PAGINATORS.landing.assets}
+					loading={assetsLoading}
+				/>
+				{assetErrorResponse && <p>{assetErrorResponse}</p>}
+			</S.AssetsWrapper>
+		</S.Wrapper>
 	);
 }

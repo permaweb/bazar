@@ -35,7 +35,7 @@ export default function Modal(props: IProps) {
 	function getBody() {
 		return (
 			<>
-				<S.Container noHeader={!props.header} className={'border-wrapper-primary'}>
+				<S.Container noHeader={!props.header}>
 					{props.header && (
 						<S.Header>
 							<S.LT>
@@ -50,15 +50,15 @@ export default function Modal(props: IProps) {
 										handlePress={() => props.handleClose()}
 										active={false}
 										dimensions={{
-											wrapper: 35,
-											icon: 15,
+											wrapper: 32.5,
+											icon: 12.5,
 										}}
 									/>
 								</S.Close>
 							)}
 						</S.Header>
 					)}
-					<S.Body>{props.children}</S.Body>
+					<S.Body className={'scroll-wrapper'}>{props.children}</S.Body>
 				</S.Container>
 			</>
 		);
