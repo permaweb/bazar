@@ -4,22 +4,8 @@ export const docsOrder = [
 		path: 'introduction',
 	},
 	{
-		name: 'Getting started',
-		path: 'new-to-permaweb',
-		children: [
-			{
-				name: 'Create a wallet',
-				path: 'creating-a-wallet',
-			},
-			{
-				name: 'Get vouched',
-				path: 'getting-vouched',
-			},
-			{
-				name: 'Create a profile',
-				path: 'creating-a-permaweb-profile',
-			},
-		],
+		name: 'Geting started on the permaweb',
+		path: 'getting-started-on-the-permaweb',
 	},
 	{
 		name: 'Permaweb concepts',
@@ -34,7 +20,7 @@ export const docsOrder = [
 				path: 'profit-sharing-token',
 			},
 			{
-				name: '$U token',
+				name: 'U token ($U)',
 				path: 'u-token',
 			},
 			{
@@ -45,23 +31,31 @@ export const docsOrder = [
 				name: 'Stamp token ($STAMP)',
 				path: 'stamp-token',
 			},
+			{
+				name: 'AO',
+				path: 'ao',
+			},
 		],
 	},
 	{
-		name: 'Exploring Bazar',
+		name: 'Exploring BazAR',
 		path: 'exploring-bazar',
 		children: [
 			{
-				name: 'What is Bazar and UCM?',
+				name: 'BazAR/UCM explained',
 				path: 'bazar-built-on-ucm',
 			},
 			{
-				name: 'Uploading content',
+				name: 'Uploading content to BazAR (UCM)',
 				path: 'upload-content-to-ucm',
 			},
 			{
-				name: 'What is the UDL?',
+				name: 'Universal Data License (UDL) explained',
 				path: 'universal-data-license',
+			},
+			{
+				name: 'Why mint atomic assets',
+				path: 'why-mint-on-bazar',
 			},
 		],
 	},

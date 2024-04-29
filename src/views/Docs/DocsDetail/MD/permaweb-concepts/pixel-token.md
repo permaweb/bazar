@@ -1,4 +1,4 @@
-# What is $PIXL?
+# Pixel token ($PIXL)
 
 Pixel token ($PIXL) is a rewards token for purchasing atomic assets on the Universal Content Marketplace. When vouched users buy atomic assets via BazAR or any UCM, they become eligible to receive $PIXL tokens. BazAR tracks buying streaks which occur when users buy one or more atomic assets on consecutive days. The longer the streak, the more $PIXL they earn.
 
