@@ -6,7 +6,7 @@ import {
 	EntryOrderType,
 	OrderbookEntryType,
 	OwnerType,
-	ProfileType,
+	RegistryProfileType,
 } from './types';
 
 export function checkValidAddress(address: string | null) {
@@ -36,7 +36,6 @@ export function formatARAmount(amount: number) {
 	return `${amount.toFixed(2)}`;
 }
 
-// TODO: up count
 export function formatCount(count: string): string {
 	if (count.includes('.')) {
 		let parts = count.split('.');
@@ -97,7 +96,7 @@ export function getTagDisplay(value: string) {
 	return result;
 }
 
-export function getOwners(asset: AssetDetailType, profiles: ProfileType[] | null): OwnerType[] | null {
+export function getOwners(asset: AssetDetailType, profiles: RegistryProfileType[] | null): OwnerType[] | null {
 	if (asset && asset.state) {
 		const balances: any = Object.keys(asset.state.balances).map((address: string) => {
 			return Number(asset.state.balances[address]);
@@ -109,7 +108,7 @@ export function getOwners(asset: AssetDetailType, profiles: ProfileType[] | null
 				address: address,
 				ownerQuantity: Number(asset.state.balances[address]),
 				ownerPercentage: Number(asset.state.balances[address]) / totalBalance,
-				profile: profiles ? profiles.find((profile: ProfileType) => profile.walletAddress === address) : null,
+				profile: profiles ? profiles.find((profile: RegistryProfileType) => profile.id === address) : null,
 			};
 		});
 	}

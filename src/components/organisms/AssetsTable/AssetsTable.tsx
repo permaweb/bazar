@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
+import * as GS from 'app/styles';
 import { Button } from 'components/atoms/Button';
 import { CurrencyLine } from 'components/atoms/CurrencyLine';
 import { IconButton } from 'components/atoms/IconButton';
@@ -124,80 +125,88 @@ export default function AssetsTable(props: IProps) {
 			return <Wrapper>{elements}</Wrapper>;
 		}
 		if (props.assets) {
-			switch (props.type) {
-				case 'list':
-					const splitSections = [
-						props.assets.slice(0, Math.ceil(props.assets.length / 2)),
-						props.assets.slice(Math.ceil(props.assets.length / 2)),
-					];
-					return (
-						<S.AssetsListWrapper>
-							{splitSections.map((section: AssetDetailType[], index: number) => {
-								let sectionIndex = index;
-								return (
-									<S.AssetsListSection key={index}>
-										{getSectionHeader()}
-										<S.AssetsListSectionElements>
-											{section.map((asset: AssetDetailType, index: number) => {
-												const redirect = `${URLS.asset}${asset.data.id}`;
-												return (
-													<S.AssetsListSectionElement
-														key={index}
-														className={'border-wrapper-primary'}
-														onClick={() => navigate(redirect)}
-														disabled={false}
-													>
-														<S.FlexElement>
-															<S.Index>
-																<p>{getAssetIndexDisplay(index, sectionIndex, splitSections[0].length)}</p>
-															</S.Index>
-															<S.Thumbnail>
-																<AssetData asset={asset} preview />
-															</S.Thumbnail>
-															<S.Title>
-																<p>{asset.data.title}</p>
-															</S.Title>
-														</S.FlexElement>
-														<S.FlexElement>
-															<S.Listings>{getListing(asset)}</S.Listings>
-														</S.FlexElement>
-													</S.AssetsListSectionElement>
-												);
-											})}
-										</S.AssetsListSectionElements>
-									</S.AssetsListSection>
-								);
-							})}
-						</S.AssetsListWrapper>
-					);
-				case 'grid':
-					return (
-						<S.AssetsGridWrapper>
-							{props.assets.map((asset: AssetDetailType, index: number) => {
-								const redirect = `${URLS.asset}${asset.data.id}`;
-								return (
-									<S.AssetGridElement key={index} className={'fade-in'}>
-										<Link to={redirect}>
-											<S.AssetGridDataWrapper disabled={false}>
-												<AssetData asset={asset} />
-											</S.AssetGridDataWrapper>
-										</Link>
-										<S.AssetGridInfoWrapper>
+			if (props.assets.length) {
+				switch (props.type) {
+					case 'list':
+						const splitSections = [
+							props.assets.slice(0, Math.ceil(props.assets.length / 2)),
+							props.assets.slice(Math.ceil(props.assets.length / 2)),
+						];
+						return (
+							<S.AssetsListWrapper>
+								{splitSections.map((section: AssetDetailType[], index: number) => {
+									let sectionIndex = index;
+									return (
+										<S.AssetsListSection key={index}>
+											{getSectionHeader()}
+											<S.AssetsListSectionElements>
+												{section.map((asset: AssetDetailType, index: number) => {
+													const redirect = `${URLS.asset}${asset.data.id}`;
+													return (
+														<S.AssetsListSectionElement
+															key={index}
+															className={'border-wrapper-primary'}
+															onClick={() => navigate(redirect)}
+															disabled={false}
+														>
+															<S.FlexElement>
+																<S.Index>
+																	<p>{getAssetIndexDisplay(index, sectionIndex, splitSections[0].length)}</p>
+																</S.Index>
+																<S.Thumbnail>
+																	<AssetData asset={asset} preview />
+																</S.Thumbnail>
+																<S.Title>
+																	<p>{asset.data.title}</p>
+																</S.Title>
+															</S.FlexElement>
+															<S.FlexElement>
+																<S.Listings>{getListing(asset)}</S.Listings>
+															</S.FlexElement>
+														</S.AssetsListSectionElement>
+													);
+												})}
+											</S.AssetsListSectionElements>
+										</S.AssetsListSection>
+									);
+								})}
+							</S.AssetsListWrapper>
+						);
+					case 'grid':
+						return (
+							<S.AssetsGridWrapper>
+								{props.assets.map((asset: AssetDetailType, index: number) => {
+									const redirect = `${URLS.asset}${asset.data.id}`;
+									return (
+										<S.AssetGridElement key={index} className={'fade-in'}>
 											<Link to={redirect}>
-												<S.Title>
-													<p>{asset.data.title}</p>
-												</S.Title>
+												<S.AssetGridDataWrapper disabled={false}>
+													<AssetData asset={asset} />
+												</S.AssetGridDataWrapper>
 											</Link>
-											<S.Description>
-												<p>{asset.data.description || asset.data.title}</p>
-											</S.Description>
-											<S.Listings>{getListing(asset)}</S.Listings>
-										</S.AssetGridInfoWrapper>
-									</S.AssetGridElement>
-								);
-							})}
-						</S.AssetsGridWrapper>
-					);
+											<S.AssetGridInfoWrapper>
+												<Link to={redirect}>
+													<S.Title>
+														<p>{asset.data.title}</p>
+													</S.Title>
+												</Link>
+												<S.Description>
+													<p>{asset.data.description || asset.data.title}</p>
+												</S.Description>
+												<S.Listings>{getListing(asset)}</S.Listings>
+											</S.AssetGridInfoWrapper>
+										</S.AssetGridElement>
+									);
+								})}
+							</S.AssetsGridWrapper>
+						);
+				}
+			} else {
+				return (
+					<GS.FullMessageWrapper className={'fade-in border-wrapper-alt2'}>
+						<p>{language.noAssetsFound}</p>
+					</GS.FullMessageWrapper>
+				);
 			}
 		}
 	}

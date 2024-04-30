@@ -24,7 +24,6 @@ const MAX_BIO_LENGTH = 500;
 const ALLOWED_BANNER_TYPES = 'image/png, image/jpeg, image/gif';
 const ALLOWED_AVATAR_TYPES = 'image/png, image/jpeg, image/gif';
 
-// TODO: only render if connected profile
 export default function ProfileManage(props: IProps) {
 	const arProvider = useArweaveProvider();
 
@@ -124,7 +123,10 @@ export default function ProfileManage(props: IProps) {
 					if (updateResponse && updateResponse['Profile-Success']) {
 						setProfileResponse(`${language.profileUpdated}!`);
 						props.handleUpdate();
-					} else setProfileResponse(`Error updating profile`);
+					} else {
+						console.log(updateResponse);
+						setProfileResponse(language.errorUpdatingProfile);
+					}
 				} else {
 					const aos = connect();
 
@@ -182,6 +184,8 @@ export default function ProfileManage(props: IProps) {
 									data: processSrc,
 								});
 
+								console.log(evalMessage);
+
 								const evalResult = await aos.result({
 									message: evalMessage,
 									process: processId,
@@ -202,13 +206,16 @@ export default function ProfileManage(props: IProps) {
 								if (updateResponse && updateResponse['Profile-Success']) {
 									setProfileResponse(`${language.profileCreated}!`);
 									props.handleUpdate();
-								} else setProfileResponse(language.errorUpdatingProfile);
+								} else {
+									console.log(updateResponse);
+									setProfileResponse(language.errorUpdatingProfile);
+								}
 							} else {
 								setProfileResponse(language.errorUpdatingProfile);
 							}
 						}
 					} catch (e: any) {
-						console.error(e);
+						setProfileResponse(e.message ?? language.errorUpdatingProfile);
 					}
 				}
 			} catch (e: any) {

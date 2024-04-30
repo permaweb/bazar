@@ -1,10 +1,11 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { ReactSVG } from 'react-svg';
 
 import { Button } from 'components/atoms/Button';
 import { Modal } from 'components/molecules/Modal';
 import { ProfileManage } from 'components/organisms/ProfileManage';
-import { ASSETS, DEFAULTS } from 'helpers/config';
+import { ASSETS, DEFAULTS, URLS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import { checkValidAddress, formatAddress } from 'helpers/utils';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
@@ -13,8 +14,9 @@ import { useLanguageProvider } from 'providers/LanguageProvider';
 import * as S from './styles';
 import { IProps } from './types';
 
-// TODO: handle close / reload on manage
 export default function ProfileHeader(props: IProps) {
+	const navigate = useNavigate();
+
 	const arProvider = useArweaveProvider();
 
 	const languageProvider = useLanguageProvider();
@@ -24,7 +26,10 @@ export default function ProfileHeader(props: IProps) {
 	const [copied, setCopied] = React.useState<boolean>(false);
 
 	React.useEffect(() => {
-		if (props.profile && !props.profile.id) setShowManage(true);
+		(async function () {
+			await new Promise((r) => setTimeout(r, 100));
+			if (props.profile && !props.profile.id) setShowManage(true);
+		})();
 	}, [props.profile]);
 
 	const copyAddress = React.useCallback(async () => {
@@ -84,8 +89,8 @@ export default function ProfileHeader(props: IProps) {
 			</S.Wrapper>
 			{showManage && arProvider.walletAddress && arProvider.walletAddress === props.profile.walletAddress && (
 				<Modal
-					header={props.profile.id ? language.editProfile : language.createProfile}
-					handleClose={props.profile.id ? () => setShowManage(false) : null}
+					header={props.profile.id ? language.editProfile : `${language.createProfile}!`}
+					handleClose={props.profile.id ? () => setShowManage(false) : () => navigate(URLS.base)}
 				>
 					<S.MWrapper className={'modal-wrapper'}>
 						<ProfileManage

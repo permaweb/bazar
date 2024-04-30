@@ -101,19 +101,6 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 		})();
 	}, [walletAddress]);
 
-	// TODO: get ao profile
-	// React.useEffect(() => {
-	// 	(async function () {
-	// 		if (wallet && walletAddress) {
-	// 			try {
-	// 				setProfile(await getCurrentProfile({ address: walletAddress }));
-	// 			} catch (e: any) {
-	// 				console.error(e);
-	// 			}
-	// 		}
-	// 	})();
-	// }, [wallet, walletAddress, walletType]);
-
 	React.useEffect(() => {
 		(async function () {
 			if (wallet && walletAddress) {

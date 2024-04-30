@@ -79,19 +79,19 @@ export type AssetDetailType = AssetType & {
 	orders?: AssetOrderType[];
 };
 
-export type ProfileType = {
-	txId: string;
-	displayName: string | null;
-	handle: string | null;
-	avatar: string | null;
-	walletAddress: string;
-	profileIndex: string | null;
-	banner: string | null;
-};
+// export type ProfileType = {
+// 	txId: string;
+// 	displayName: string | null;
+// 	handle: string | null;
+// 	avatar: string | null;
+// 	walletAddress: string;
+// 	profileIndex: string | null;
+// 	banner: string | null;
+// };
 
-export type FullProfileType = ProfileType & {
-	bio: string;
-};
+// export type FullProfileType = ProfileType & {
+// 	bio: string;
+// };
 
 export type AOProfileType = {
 	id: string;
@@ -105,14 +105,20 @@ export type AOProfileType = {
 
 export type ProfileHeaderType = AOProfileType;
 
+export type RegistryProfileType = {
+	id: string;
+	username: string;
+	avatar: string | null;
+};
+
 export type OwnerType = {
 	address: string;
 	ownerQuantity?: number;
 	ownerPercentage?: number;
-	profile: ProfileType | null;
+	profile: RegistryProfileType | null;
 };
 
-export type ListingType = AssetOrderType & { profile: ProfileType };
+export type ListingType = AssetOrderType & { profile: RegistryProfileType };
 
 export type CollectionManifestType = {
 	type: string;
@@ -141,7 +147,7 @@ export type CollectionType = {
 
 export type CollectionDetailType = CollectionType & {
 	assetIdGroups: IdGroupType;
-	creatorProfile: ProfileType;
+	creatorProfile: ProfileHeaderType;
 	metrics: CollectionMetricsType;
 };
 

@@ -103,10 +103,10 @@ export const CollectionWrapper = styled.div<{ backgroundImage: string; disabled:
 export const InfoWrapper = styled.div`
 	width: 100%;
 	padding: 20px 15px 12.5px 15px;
-	background: ${(props) => `linear-gradient(0deg, ${props.theme.colors.overlay.alt2} 50%,transparent)`};
+	background: ${(props) => `linear-gradient(0deg, ${props.theme.colors.overlay.alt1} 50%,transparent)`};
 	p,
 	span {
-		text-shadow: 0 0 5px #000000;
+		text-shadow: 0 0 5px ${(props) => props.theme.colors.font.dark1};
 	}
 `;
 

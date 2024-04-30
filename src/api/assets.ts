@@ -1,4 +1,4 @@
-import { getGQLData, readProcessState } from 'api';
+import { getGQLData, readHandler } from 'api';
 
 import { GATEWAYS, LICENSES, PAGINATORS, PROCESSES, TAGS } from 'helpers/config';
 import {
@@ -16,6 +16,31 @@ import {
 } from 'helpers/types';
 import { formatAddress, getAssetOrderType, getTagValue, sortByAssetOrders, sortOrderbookEntries } from 'helpers/utils';
 import { store } from 'store';
+
+export async function getAssetIdsByUser(args: { address: string }): Promise<string[]> {
+	const profileLookup = await readHandler({
+		processId: PROCESSES.profileRegistry,
+		action: 'Get-Profiles-By-Address',
+		data: { Address: args.address },
+	});
+
+	let activeProfileId: string;
+	if (profileLookup && profileLookup.length > 0 && profileLookup[0].ProfileId) {
+		activeProfileId = profileLookup[0].ProfileId;
+	}
+
+	if (activeProfileId) {
+		const fetchedProfile = await readHandler({
+			processId: activeProfileId,
+			action: 'Info',
+			data: null,
+		});
+
+		if (fetchedProfile) {
+			return fetchedProfile.Assets.map((asset: { Id: string; Quantity: string }) => asset.Id);
+		} else return [];
+	} else return [];
+}
 
 export async function getAssetsByIds(args: { ids: string[]; sortType: AssetSortType }): Promise<AssetDetailType[]> {
 	try {
@@ -80,7 +105,11 @@ export async function getAssetById(args: { id: string }): Promise<AssetDetailTyp
 			};
 
 			const structuredAsset = structureAssets(gqlResponse)[0];
-			const processState = await readProcessState(structuredAsset.data.id);
+			const processState = await readHandler({
+				processId: structuredAsset.data.id,
+				action: 'Info',
+				data: null,
+			});
 
 			if (processState) {
 				if (processState.Name) {

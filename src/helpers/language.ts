@@ -59,6 +59,8 @@ export const language = {
 		maxCharsReached: `Max chars reached`,
 		name: `Name`,
 		next: `Next`,
+		noAssetsFound: `No assets found`,
+		noCollectionsFound: `No collections found`,
 		noListings: `No listings`,
 		orderProcessed: `Your order has been processed`,
 		owner: `Owner`,

@@ -19,7 +19,7 @@ export default function OwnerLine(props: IProps) {
 
 	function getLabel() {
 		if (props.owner) {
-			if (props.owner.profile && props.owner.profile.handle) return `${props.owner.profile.handle}`;
+			if (props.owner.profile && props.owner.profile.username) return `${props.owner.profile.username}`;
 			if (props.owner.address) return `${formatAddress(props.owner.address, false)}`;
 		} else return null;
 	}

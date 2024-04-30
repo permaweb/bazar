@@ -1,7 +1,7 @@
-import { ProfileHeaderType } from 'helpers/types';
+import { ProfileHeaderType, RegistryProfileType } from 'helpers/types';
 
 export interface IProps {
-	owner: ProfileHeaderType | null;
+	owner: ProfileHeaderType | RegistryProfileType | null;
 	dimensions: {
 		wrapper: number;
 		icon: number;

@@ -1,7 +1,7 @@
 import React from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 
-import { readProcessState, sendMessage } from 'api';
+import { readHandler, sendMessage } from 'api';
 
 import { Button } from 'components/atoms/Button';
 import { CurrencyLine } from 'components/atoms/CurrencyLine';
@@ -23,6 +23,7 @@ import * as ucmActions from 'store/ucm/actions';
 import * as S from './styles';
 import { IProps } from './types';
 
+// TODO: orders from profile
 export default function AssetActionMarketOrders(props: IProps) {
 	const dispatch = useDispatch();
 
@@ -70,7 +71,11 @@ export default function AssetActionMarketOrders(props: IProps) {
 	const [currentNotification, setCurrentNotification] = React.useState<string | null>(null);
 
 	const insufficientBalance =
-		arProvider.walletAddress && props.type === 'buy' && Number(getTokenBalance(PROCESSES.token)) < getTotalPrice();
+		arProvider.walletAddress &&
+		arProvider.profile &&
+		arProvider.profile.id &&
+		props.type === 'buy' &&
+		Number(getTokenBalance(PROCESSES.token)) < getTotalPrice();
 
 	React.useEffect(() => {
 		if (props.asset) {
@@ -90,8 +95,8 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 				setTotalAssetBalance(calculatedTotalBalance);
 
-				if (arProvider.walletAddress) {
-					const ownerBalance = Number(props.asset.state.balances[arProvider.walletAddress]);
+				if (arProvider.walletAddress && arProvider.profile && arProvider.profile.id) {
+					const ownerBalance = Number(props.asset.state.balances[arProvider.profile.id]);
 					if (ownerBalance) {
 						let calculatedOwnerBalance = ownerBalance;
 						if (denomination) calculatedOwnerBalance = ownerBalance / denomination;
@@ -125,7 +130,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 				setTransferDenomination(Math.pow(10, currenciesReducer[orderCurrency].Denomination));
 			}
 		}
-	}, [props.asset, arProvider.walletAddress, denomination, ucmReducer]);
+	}, [props.asset, arProvider.walletAddress, arProvider.profile, denomination, ucmReducer]);
 
 	React.useEffect(() => {
 		switch (props.type) {
@@ -146,7 +151,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 	}, [props.type]);
 
 	async function handleOrderCreate() {
-		if (props.asset && arProvider.wallet) {
+		if (props.asset && arProvider.wallet && arProvider.profile && arProvider.profile.id) {
 			let orderPair = null;
 			let recipient = null;
 			let localSuccess = false;
@@ -191,7 +196,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 						},
 					});
 
-					if (transferResponse['Credit-Notice'] && transferResponse['Debit-Notice']) {
+					if (transferResponse && transferResponse['Credit-Notice'] && transferResponse['Debit-Notice']) {
 						setOrderSuccess(true);
 						setCurrentNotification(transferResponse['Credit-Notice'].message);
 
@@ -300,6 +305,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 							}
 						}
 					} else {
+						setCurrentNotification('Failed to execute deposit');
 						setOrderSuccess(false);
 					}
 				} catch (e: any) {
@@ -353,11 +359,13 @@ export default function AssetActionMarketOrders(props: IProps) {
 	function getTokenBalance(tokenProcess: string) {
 		if (
 			arProvider.walletAddress &&
+			arProvider.profile &&
+			arProvider.profile.id &&
 			currenciesReducer &&
 			currenciesReducer[tokenProcess] &&
-			currenciesReducer[tokenProcess].Balances[arProvider.walletAddress]
+			currenciesReducer[tokenProcess].Balances[arProvider.profile.id]
 		) {
-			const ownerBalance = currenciesReducer[tokenProcess].Balances[arProvider.walletAddress];
+			const ownerBalance = currenciesReducer[tokenProcess].Balances[arProvider.profile.id];
 			return ownerBalance.toString();
 		}
 		return 0;
@@ -498,6 +506,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 	function getActionDisabled() {
 		if (!arProvider.walletAddress) return true;
+		if (!arProvider.profile || !arProvider.profile.id) return true;
 		if (orderLoading || orderProcessed) return true;
 		if (maxOrderQuantity <= 0 || isNaN(currentOrderQuantity)) return true;
 		if (currentOrderQuantity <= 0 || isNaN(maxOrderQuantity) || !Number.isInteger(Number(currentOrderQuantity)))
@@ -520,12 +529,18 @@ export default function AssetActionMarketOrders(props: IProps) {
 			setUpdating(true);
 			windowUtils.scrollTo(0, 0, 'smooth');
 			try {
-				const ucmState = await readProcessState(PROCESSES.ucm);
+				const ucmState = await readHandler({
+					processId: PROCESSES.ucm,
+					action: 'Info',
+				});
 				dispatch(ucmActions.setUCM(ucmState));
 
 				const orderCurrency =
 					props.asset.orders && props.asset.orders.length ? props.asset.orders[0].currency : PROCESSES.token;
-				const tokenState = await readProcessState(orderCurrency);
+				const tokenState = await readHandler({
+					processId: orderCurrency,
+					action: 'Info',
+				});
 				dispatch(
 					currencyActions.setCurrencies({
 						[orderCurrency]: {
@@ -652,7 +667,13 @@ export default function AssetActionMarketOrders(props: IProps) {
 							maxValue={maxOrderQuantity}
 							handleChange={(e: React.ChangeEvent<HTMLInputElement>) => handleQuantityInput(e)}
 							label={language.assetQuantityInfo}
-							disabled={!arProvider.walletAddress || maxOrderQuantity <= 0 || orderLoading}
+							disabled={
+								!arProvider.walletAddress ||
+								!arProvider.profile ||
+								!arProvider.profile.id ||
+								maxOrderQuantity <= 0 ||
+								orderLoading
+							}
 							invalid={{ status: currentOrderQuantity < 0 || currentOrderQuantity > maxOrderQuantity, message: null }}
 						/>
 						<S.MaxQty>
@@ -660,7 +681,9 @@ export default function AssetActionMarketOrders(props: IProps) {
 								type={'primary'}
 								label={language.max}
 								handlePress={() => setCurrentOrderQuantity(maxOrderQuantity)}
-								disabled={!arProvider.walletAddress || maxOrderQuantity <= 0}
+								disabled={
+									!arProvider.walletAddress || !arProvider.profile || !arProvider.profile.id || maxOrderQuantity <= 0
+								}
 								noMinWidth
 							/>
 						</S.MaxQty>
@@ -672,7 +695,13 @@ export default function AssetActionMarketOrders(props: IProps) {
 									value={currentOrderQuantity}
 									onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleQuantityInput(e)}
 									label={`${language.assetQuantity} (${language.max}: ${maxOrderQuantity})`}
-									disabled={!arProvider.walletAddress || maxOrderQuantity <= 0 || orderLoading}
+									disabled={
+										!arProvider.walletAddress ||
+										!arProvider.profile ||
+										!arProvider.profile.id ||
+										maxOrderQuantity <= 0 ||
+										orderLoading
+									}
 									invalid={{
 										status:
 											currentOrderQuantity < 0 ||
@@ -690,7 +719,13 @@ export default function AssetActionMarketOrders(props: IProps) {
 										label={language.unitPrice}
 										value={isNaN(unitPrice) ? '' : unitPrice}
 										onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleUnitPriceInput(e)}
-										disabled={!arProvider.walletAddress || currentOrderQuantity <= 0 || orderLoading}
+										disabled={
+											!arProvider.walletAddress ||
+											!arProvider.profile ||
+											!arProvider.profile.id ||
+											currentOrderQuantity <= 0 ||
+											orderLoading
+										}
 										invalid={{ status: unitPrice < 0, message: null }}
 										tooltip={language.saleUnitPriceTooltip}
 									/>
@@ -703,7 +738,9 @@ export default function AssetActionMarketOrders(props: IProps) {
 											label={language.recipient}
 											value={transferRecipient || ''}
 											onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleRecipientInput(e)}
-											disabled={!arProvider.walletAddress || orderLoading}
+											disabled={
+												!arProvider.walletAddress || !arProvider.profile || !arProvider.profile.id || orderLoading
+											}
 											invalid={{ status: transferRecipient && !checkValidAddress(transferRecipient), message: null }}
 										/>
 									</S.FieldWrapper>
@@ -712,7 +749,9 @@ export default function AssetActionMarketOrders(props: IProps) {
 											type={'primary'}
 											src={ASSETS.paste}
 											handlePress={handleRecipientPaste}
-											disabled={!arProvider.walletAddress || orderLoading}
+											disabled={
+												!arProvider.walletAddress || !arProvider.profile || !arProvider.profile.id || orderLoading
+											}
 											dimensions={{
 												wrapper: 32.5,
 												icon: 15,
@@ -739,6 +778,12 @@ export default function AssetActionMarketOrders(props: IProps) {
 							<span>Connect your wallet to continue</span>
 						</S.MessageWrapper>
 					)}
+					{!arProvider.profile ||
+						(!arProvider.profile.id && (
+							<S.MessageWrapper>
+								<span>Create an account to continue</span>
+							</S.MessageWrapper>
+						))}
 					{!Number.isInteger(Number(currentOrderQuantity)) && (
 						<S.MessageWrapper>
 							<span>Quantity must be an integer</span>

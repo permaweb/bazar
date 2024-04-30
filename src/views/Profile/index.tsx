@@ -5,13 +5,16 @@ import { getProfile } from 'api';
 
 import { Loader } from 'components/atoms/Loader';
 import { URLTabs } from 'components/molecules/URLTabs';
-import { CollectionsList } from 'components/organisms/CollectionsList';
 import { URLS } from 'helpers/config';
 import { ProfileHeaderType } from 'helpers/types';
 import { checkValidAddress } from 'helpers/utils';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 
+// import { ProfileActivity } from './ProfileActivity';
+import { ProfileAssets } from './ProfileAssets';
+import { ProfileCollections } from './ProfileCollections';
 import { ProfileHeader } from './ProfileHeader';
+// import { ProfileListings } from './ProfileListings';
 
 export default function Profile() {
 	const navigate = useNavigate();
@@ -49,29 +52,29 @@ export default function Profile() {
 			icon: null,
 			disabled: false,
 			url: URLS.profileAssets(address),
-			view: () => <p>Coming soon!</p>,
+			view: () => <ProfileAssets address={address} />,
 		},
 		{
 			label: language.collections,
 			icon: null,
 			disabled: false,
 			url: URLS.profileCollections(address),
-			view: () => <CollectionsList owner={address} />,
+			view: () => <ProfileCollections address={address} />,
 		},
-		{
-			label: language.listings,
-			icon: null,
-			disabled: false,
-			url: URLS.profileListings(address),
-			view: () => <p>Coming soon!</p>,
-		},
-		{
-			label: language.activity,
-			icon: null,
-			disabled: false,
-			url: URLS.profileActivity(address),
-			view: () => <p>Coming soon!</p>,
-		},
+		// {
+		// 	label: language.listings,
+		// 	icon: null,
+		// 	disabled: false,
+		// 	url: URLS.profileListings(address),
+		// 	view: () => <ProfileListings address={address} />
+		// },
+		// {
+		// 	label: language.activity,
+		// 	icon: null,
+		// 	disabled: false,
+		// 	url: URLS.profileActivity(address),
+		// 	view: () => <ProfileActivity address={address} />
+		// },
 	];
 
 	const urlTabs = React.useMemo(() => {

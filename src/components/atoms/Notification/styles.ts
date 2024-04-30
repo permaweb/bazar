@@ -4,8 +4,7 @@ import { fadeIn1, open } from 'helpers/animations';
 import { STYLING } from 'helpers/config';
 
 export const Wrapper = styled.div`
-	max-width: 90vw;
-	min-width: 375px;
+	width: 375px;
 	position: fixed;
 	left: 50%;
 	bottom: 20px;

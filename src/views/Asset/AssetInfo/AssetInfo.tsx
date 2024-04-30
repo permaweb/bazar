@@ -1,6 +1,6 @@
 import React from 'react';
 
-import { getCurrentProfile } from 'api';
+import { getProfile } from 'api';
 
 import * as GS from 'app/styles';
 import { Drawer } from 'components/atoms/Drawer';
@@ -9,7 +9,7 @@ import { OwnerLine } from 'components/molecules/OwnerLine';
 import { AssetData } from 'components/organisms/AssetData';
 import { ASSETS, LICENSES } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
-import { ProfileType } from 'helpers/types';
+import { ProfileHeaderType } from 'helpers/types';
 import { checkValidAddress, formatCount, formatDate, getTagDisplay, splitTagValue } from 'helpers/utils';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 
@@ -20,13 +20,13 @@ export default function AssetInfo(props: IProps) {
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
 
-	const [creator, setCreator] = React.useState<ProfileType | null>(null);
+	const [creator, setCreator] = React.useState<ProfileHeaderType | null>(null);
 
 	React.useEffect(() => {
 		(async function () {
 			if (props.asset && props.asset.data.creator && checkValidAddress(props.asset.data.creator)) {
 				try {
-					setCreator(await getCurrentProfile({ address: props.asset.data.creator }));
+					setCreator(await getProfile({ address: props.asset.data.creator }));
 				} catch (e: any) {
 					console.error(e);
 				}

@@ -284,27 +284,15 @@ export async function sendMessage(args: { processId: string; wallet: any; action
 	}
 }
 
-export async function readHandler(args: { processId: string; action: string; data: any }): Promise<any> {
+export async function readHandler(args: { processId: string; action: string; data?: any }): Promise<any> {
 	const response = await dryrun({
 		process: args.processId,
 		tags: [{ name: 'Action', value: args.action }],
-		data: JSON.stringify(args.data),
+		data: JSON.stringify(args.data || {}),
 	});
 
 	if (response.Messages && response.Messages.length && response.Messages[0].Data) {
 		return JSON.parse(response.Messages[0].Data);
-	}
-}
-
-// TODO: replace with readHandler
-export async function readProcessState(processId: string): Promise<any> {
-	const messageResult = await dryrun({
-		process: processId,
-		tags: [{ name: 'Action', value: 'Info' }],
-	});
-
-	if (messageResult.Messages && messageResult.Messages.length && messageResult.Messages[0].Data) {
-		return JSON.parse(messageResult.Messages[0].Data);
 	}
 }
 

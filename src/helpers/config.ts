@@ -39,7 +39,7 @@ export const PROCESSES = {
 	ucm: 'fzRGvSW2oSop9xGLxs5mcaRtCbrbug8imI_uRZHKdiU',
 	token: 'IRv02cCZGmBVMhmPlL63sce4djgRgkY1J_3DUl_feUw',
 	profileRegistry: 'kFYMezhjcPCZLr2EkkwzIXP5A64QmtME6Bxa8bGmbzI',
-	profileSrc: 'pKnZ_l4_KsBdzo5DdjPjyXVzYfGGSK6Oj1QyAoEbhRg',
+	profileSrc: 'LCKYR5VWsTI1XOwln6yuwEYSjxEXulvIv4wZNVvrjIQ',
 };
 
 export const LICENSES = {
@@ -188,11 +188,6 @@ function createURLs() {
 
 export const URLS = createURLs();
 
-export const AR_PROFILE = {
-	defaultAvatar: 'OrG-ZG2WN3wdcwvpjz1ihPe4MI24QBJUpsJGIdL85wA',
-	defaultBanner: 'a0ieiziq2JkYhWamlrUCHxrGYnHWUAMcONxRmfkWt-k',
-};
-
 export const CURSORS = {
 	p1: 'P1',
 	end: 'END',
@@ -205,6 +200,9 @@ export const PAGINATORS = {
 	},
 	collection: {
 		assets: 20,
+	},
+	profile: {
+		assets: 15,
 	},
 };
 

@@ -2,7 +2,7 @@ import React from 'react';
 import { useSelector } from 'react-redux';
 import { Link } from 'react-router-dom';
 
-import { getProfiles } from 'api';
+import { getRegistryProfiles } from 'api';
 
 import * as GS from 'app/styles';
 import { CurrencyLine } from 'components/atoms/CurrencyLine';
@@ -12,7 +12,7 @@ import { Tabs } from 'components/molecules/Tabs';
 import { AssetData } from 'components/organisms/AssetData';
 import { OrderCancel } from 'components/organisms/OrderCancel';
 import { ASSETS, REDIRECTS, STYLING } from 'helpers/config';
-import { ListingType, OwnerType, ProfileType } from 'helpers/types';
+import { ListingType, OwnerType, RegistryProfileType } from 'helpers/types';
 import { formatCount, formatPercentage, getOwners, sortOrders } from 'helpers/utils';
 import * as windowUtils from 'helpers/window';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
@@ -25,7 +25,6 @@ import { AssetActionMarket } from './AssetActionMarket';
 import * as S from './styles';
 import { IProps } from './types';
 
-// TODO: ao profiles
 export default function AssetAction(props: IProps) {
 	const currenciesReducer = useSelector((state: RootState) => state.currenciesReducer);
 
@@ -44,20 +43,20 @@ export default function AssetAction(props: IProps) {
 			label: ACTION_TAB_OPTIONS.market,
 			icon: ASSETS.market,
 		},
-		{
-			label: ACTION_TAB_OPTIONS.comments,
-			icon: ASSETS.comments,
-		},
-		{
-			label: ACTION_TAB_OPTIONS.activity,
-			icon: ASSETS.activity,
-		},
+		// {
+		// 	label: ACTION_TAB_OPTIONS.comments,
+		// 	icon: ASSETS.comments,
+		// },
+		// {
+		// 	label: ACTION_TAB_OPTIONS.activity,
+		// 	icon: ASSETS.activity,
+		// },
 	];
 
 	const [mobile, setMobile] = React.useState(!windowUtils.checkWindowCutoff(parseInt(STYLING.cutoffs.secondary)));
 
 	const [totalAssetBalance, setTotalAssetBalance] = React.useState<number>(0);
-	const [associatedProfiles, setAssociatedProfiles] = React.useState<ProfileType[] | null>(null);
+	const [associatedProfiles, setAssociatedProfiles] = React.useState<RegistryProfileType[] | null>(null);
 
 	const [currentOwners, setCurrentOwners] = React.useState<OwnerType[] | null>(null);
 	const [currentListings, setCurrentListings] = React.useState<ListingType[] | null>(null);
@@ -89,7 +88,7 @@ export default function AssetAction(props: IProps) {
 			if (associatedAddresses.length) {
 				const uniqueAddresses = [...new Set(associatedAddresses)];
 				try {
-					setAssociatedProfiles(await getProfiles({ addresses: uniqueAddresses }));
+					setAssociatedProfiles(await getRegistryProfiles({ profileIds: uniqueAddresses }));
 				} catch (e: any) {
 					console.error(e);
 				}
@@ -108,7 +107,7 @@ export default function AssetAction(props: IProps) {
 				const mappedListings = sortedOrders.map((order: any) => {
 					let currentProfile = null;
 					if (associatedProfiles) {
-						currentProfile = associatedProfiles.find((profile: ProfileType) => profile.walletAddress === order.creator);
+						currentProfile = associatedProfiles.find((profile: RegistryProfileType) => profile.id === order.creator);
 					}
 
 					const currentListing = {

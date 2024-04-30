@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 
 import { getCollections } from 'api';
 
+import * as GS from 'app/styles';
 import { Button } from 'components/atoms/Button';
 import { Loader } from 'components/atoms/Loader';
 import { CURSORS, DEFAULTS, URLS } from 'helpers/config';
@@ -51,60 +52,68 @@ export default function CollectionsList(props: IProps) {
 
 	function getData() {
 		if (collections && collections.data) {
-			return (
-				<S.Wrapper className={'fade-in'}>
-					<S.Header>
-						<h4>{language.collections}</h4>
-					</S.Header>
-					<S.ListHeader>
-						<span>{language.collection}</span>
-						<S.DateCreated>
-							<span>{language.createdOn}</span>
-						</S.DateCreated>
-					</S.ListHeader>
-					<S.CollectionsWrapper>
-						{collections.data.map((collection: CollectionType, index: number) => {
-							const redirect = `${URLS.collection}${collection.data.id}`;
+			if (collections.data.length > 0) {
+				return (
+					<S.Wrapper className={'fade-in'}>
+						<S.Header>
+							<h4>{language.collections}</h4>
+						</S.Header>
+						<S.ListHeader>
+							<span>{language.collection}</span>
+							<S.DateCreated>
+								<span>{language.createdOn}</span>
+							</S.DateCreated>
+						</S.ListHeader>
+						<S.CollectionsWrapper>
+							{collections.data.map((collection: CollectionType, index: number) => {
+								const redirect = `${URLS.collection}${collection.data.id}`;
 
-							return (
-								<S.CollectionWrapper key={index} className={'border-wrapper-primary fade-in'}>
-									<Link to={redirect}>
-										<S.FlexElement>
-											<S.Index>
-												<span>{index + 1}</span>
-											</S.Index>
-											<S.Thumbnail className={'border-wrapper-primary'}>
-												<img src={getTxEndpoint(collection.data.thumbnail || DEFAULTS.thumbnail)} alt={'Thumbnail'} />
-											</S.Thumbnail>
-											<S.Title>
-												<p>{collection.data.title}</p>
-											</S.Title>
-										</S.FlexElement>
-										<S.DateCreated>
+								return (
+									<S.CollectionWrapper key={index} className={'border-wrapper-primary fade-in'}>
+										<Link to={redirect}>
 											<S.FlexElement>
-												<span>{formatDate(collection.data.dateCreated, 'iso')}</span>
+												<S.Index>
+													<span>{index + 1}</span>
+												</S.Index>
+												<S.Thumbnail className={'border-wrapper-primary'}>
+													<img src={getTxEndpoint(collection.data.thumbnail || DEFAULTS.thumbnail)} alt={'Thumbnail'} />
+												</S.Thumbnail>
+												<S.Title>
+													<p>{collection.data.title}</p>
+												</S.Title>
 											</S.FlexElement>
-										</S.DateCreated>
-									</Link>
-								</S.CollectionWrapper>
-							);
-						})}
-						{nextCursor && nextCursor !== CURSORS.end && (
-							<S.UpdateWrapper>
-								<Button
-									type={'primary'}
-									label={'Load more'}
-									handlePress={() => setToggleUpdate(!toggleUpdate)}
-									disabled={loading}
-									loading={loading}
-									height={60}
-									width={350}
-								/>
-							</S.UpdateWrapper>
-						)}
-					</S.CollectionsWrapper>
-				</S.Wrapper>
-			);
+											<S.DateCreated>
+												<S.FlexElement>
+													<span>{formatDate(collection.data.dateCreated, 'iso')}</span>
+												</S.FlexElement>
+											</S.DateCreated>
+										</Link>
+									</S.CollectionWrapper>
+								);
+							})}
+							{nextCursor && nextCursor !== CURSORS.end && (
+								<S.UpdateWrapper>
+									<Button
+										type={'primary'}
+										label={'Load more'}
+										handlePress={() => setToggleUpdate(!toggleUpdate)}
+										disabled={loading}
+										loading={loading}
+										height={60}
+										width={350}
+									/>
+								</S.UpdateWrapper>
+							)}
+						</S.CollectionsWrapper>
+					</S.Wrapper>
+				);
+			} else {
+				return (
+					<GS.FullMessageWrapper className={'fade-in border-wrapper-alt2'}>
+						<p>{language.noCollectionsFound}</p>
+					</GS.FullMessageWrapper>
+				);
+			}
 		} else {
 			if (loading) return <Loader />;
 			else if (errorResponse) return <p>{errorResponse}</p>;

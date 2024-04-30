@@ -2,7 +2,7 @@ import React from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { ReactSVG } from 'react-svg';
 
-import { readProcessState } from 'api';
+import { readHandler } from 'api';
 
 import { ASSETS, DOM, PROCESSES } from 'helpers/config';
 import { Footer } from 'navigation/footer';
@@ -23,10 +23,16 @@ export default function App() {
 	React.useEffect(() => {
 		(async function () {
 			try {
-				const ucmState = await readProcessState(PROCESSES.ucm);
+				const ucmState = await readHandler({
+					processId: PROCESSES.ucm,
+					action: 'Info',
+				});
 				dispatch(ucmActions.setUCM(ucmState));
 
-				const tokenState = await readProcessState(PROCESSES.token);
+				const tokenState = await readHandler({
+					processId: PROCESSES.token,
+					action: 'Info',
+				});
 				dispatch(
 					currencyActions.setCurrencies({
 						[PROCESSES.token]: {

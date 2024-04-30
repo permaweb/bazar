@@ -391,3 +391,18 @@ export const DrawerContentLink = styled.a`
 export const DrawerContentDetailAlt = styled(DrawerContentDetail)`
 	font-family: ${(props) => props.theme.typography.family.alt1};
 `;
+
+export const FullMessageWrapper = styled.div`
+	height: 150px;
+	width: 100%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	p {
+		font-size: ${(props) => props.theme.typography.size.xLg};
+		font-family: ${(props) => props.theme.typography.family.alt1};
+		font-weight: ${(props) => props.theme.typography.weight.bold};
+		color: ${(props) => props.theme.colors.font.primary};
+		text-align: center;
+	}
+`;

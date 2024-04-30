@@ -1,7 +1,7 @@
 import React from 'react';
 import { useDispatch } from 'react-redux';
 
-import { readProcessState, sendMessage } from 'api';
+import { readHandler, sendMessage } from 'api';
 
 import { Button } from 'components/atoms/Button';
 import { Notification } from 'components/atoms/Notification';
@@ -46,7 +46,11 @@ export default function OrderCancel(props: IProps) {
 						setResponse(cancelOrderResponse['Order-Cancel-Success'].message);
 					if (cancelOrderResponse['Order-Cancel-Error']) setResponse(cancelOrderResponse['Order-Cancel-Error'].message);
 
-					const ucmState = await readProcessState(PROCESSES.ucm);
+					const ucmState = await readHandler({
+						processId: PROCESSES.ucm,
+						action: 'Info',
+					});
+
 					dispatch(ucmActions.setUCM(ucmState));
 					await new Promise((r) => setTimeout(r, 1000));
 					setShowConfirmation(false);
