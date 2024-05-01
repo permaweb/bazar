@@ -1,7 +1,7 @@
 import React from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
-import { getProfile } from 'api';
+import { getProfileById } from 'api';
 
 import { Loader } from 'components/atoms/Loader';
 import { URLTabs } from 'components/molecules/URLTabs';
@@ -35,7 +35,7 @@ export default function Profile() {
 		(async function () {
 			if (address && checkValidAddress(address)) {
 				try {
-					const fetchedProfile = await getProfile({ address: address });
+					const fetchedProfile = await getProfileById({ profileId: address });
 					setProfile(fetchedProfile);
 				} catch (e: any) {
 					console.error(e);

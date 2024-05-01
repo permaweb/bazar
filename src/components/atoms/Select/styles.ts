@@ -6,6 +6,8 @@ export const Wrapper = styled.div`
 	height: fit-content;
 	width: 100%;
 	position: relative;
+	width: 315px;
+	max-width: 90vw;
 `;
 
 export const Label = styled.div<{ disabled: boolean }>`
@@ -31,7 +33,7 @@ export const Dropdown = styled.button<{ active: boolean }>`
 		props.active ? props.theme.colors.button.primary.active.background : props.theme.colors.button.primary.background};
 	border: 1px solid ${(props) => (props.active ? props.theme.colors.border.primary : props.theme.colors.border.primary)};
 	border-radius: ${STYLING.dimensions.radius.primary};
-	transition: all 75ms;
+	transition: all 100ms;
 	&:hover {
 		background: ${(props) => props.theme.colors.button.primary.active.background};
 		border: 1px solid ${(props) => props.theme.colors.button.primary.active.border};
@@ -76,7 +78,8 @@ export const Dropdown = styled.button<{ active: boolean }>`
 	svg {
 		height: 12.5px;
 		width: 12.5px;
-		margin: 0 0 0 12.5px;
+		margin: 5px 0 0 0;
+		transform: rotate(270deg);
 		fill: ${(props) =>
 			props.active ? props.theme.colors.font.light1 : props.theme.colors.button.primary.color} !important;
 	}
@@ -104,7 +107,7 @@ export const Option = styled.li<{ active: boolean }>`
 		props.active ? props.theme.colors.container.primary.active : props.theme.colors.container.primary.background};
 	border: 1px solid transparent;
 	padding: 0 15px;
-	transition: all 75ms;
+	transition: all 100ms;
 	&:hover {
 		background: ${(props) => props.theme.colors.container.primary.active};
 	}

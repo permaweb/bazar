@@ -54,7 +54,7 @@ export const Wrapper = styled.div<{
             bottom: 0;
             background-color: ${props.theme.colors.overlay.alt1};
             opacity: 0;
-            transition: all 75ms;
+            transition: all 100ms;
         }
         &:hover::after {
             opacity: 1;

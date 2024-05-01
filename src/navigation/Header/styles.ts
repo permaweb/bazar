@@ -77,16 +77,13 @@ export const MWrapper = styled.div`
 `;
 
 export const PWrapper = styled.div`
-	height: 100vh;
+	height: calc(100vh - 15px);
 	width: 400px;
-	max-width: 95vw;
-	max-width: 90vw;
+	max-width: 85vw;
 	position: fixed;
-	top: 0;
-	right: 0;
+	top: 7.5px;
+	right: 7.5px;
 	transition: width 50ms ease-out;
-	background: ${(props) => props.theme.colors.container.primary.background};
-	border-left: 1px solid ${(props) => props.theme.colors.border.primary};
 	animation: ${openRight} 200ms;
 `;
 

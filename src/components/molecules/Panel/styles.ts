@@ -1,7 +1,6 @@
 import styled from 'styled-components';
 
-import { fadeIn1, open } from 'helpers/animations';
-import { STYLING } from 'helpers/config';
+import { fadeIn1, open, openRight } from 'helpers/animations';
 
 export const Wrapper = styled.div<{ top: number; noHeader: boolean }>`
 	min-height: 100vh;
@@ -19,12 +18,15 @@ export const Wrapper = styled.div<{ top: number; noHeader: boolean }>`
 export const Container = styled.div<{
 	noHeader: boolean;
 }>`
-	width: 650px;
-	max-width: ${(props) => (props.noHeader ? '100%' : '90vw')};
-	background: ${(props) => (props.noHeader ? 'transparent' : props.theme.colors.container.primary.background)};
-	border: 1px solid ${(props) => props.theme.colors.border.primary};
-	border-radius: ${STYLING.dimensions.radius.primary};
-	margin: 20px auto;
+	height: calc(100vh - 20px);
+	width: 550px;
+	max-width: 95vw;
+	position: fixed;
+	top: 10px;
+	right: 10px;
+	transition: width 50ms ease-out;
+	box-shadow: none !important;
+	animation: ${openRight} 200ms;
 `;
 
 export const Header = styled.div`
@@ -63,5 +65,5 @@ export const Body = styled.div`
 	width: 100%;
 	overflow-y: auto;
 	scrollbar-color: transparent transparent;
-	padding: 0 0 0 20px 0;
+	padding: 0 20px 20px 20px !important;
 `;

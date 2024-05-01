@@ -1,6 +1,6 @@
 import React from 'react';
 
-import { getProfile } from 'api';
+import { getProfileByWalletAddress } from 'api';
 
 import { Modal } from 'components/molecules/Modal';
 import { AR_WALLETS, WALLET_PERMISSIONS } from 'helpers/config';
@@ -22,6 +22,8 @@ interface ArweaveContextState {
 	walletModalVisible: boolean;
 	setWalletModalVisible: (open: boolean) => void;
 	profile: ProfileHeaderType;
+	toggleProfileUpdate: boolean;
+	setToggleProfileUpdate: (toggleUpdate: boolean) => void;
 }
 
 interface ArweaveProviderProps {
@@ -39,6 +41,8 @@ const DEFAULT_CONTEXT = {
 	walletModalVisible: false,
 	setWalletModalVisible(_open: boolean) {},
 	profile: null,
+	toggleProfileUpdate: false,
+	setToggleProfileUpdate(_toggleUpdate: boolean) {},
 };
 
 const ARContext = React.createContext<ArweaveContextState>(DEFAULT_CONTEXT);
@@ -72,6 +76,7 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 	const [walletAddress, setWalletAddress] = React.useState<string | null>(null);
 	const [availableBalance, setAvailableBalance] = React.useState<number | null>(null);
 	const [profile, setProfile] = React.useState<ProfileHeaderType | null>(null);
+	const [toggleProfileUpdate, setToggleProfileUpdate] = React.useState<boolean>(false);
 
 	React.useEffect(() => {
 		(async function () {
@@ -105,13 +110,13 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 		(async function () {
 			if (wallet && walletAddress) {
 				try {
-					setProfile(await getProfile({ address: walletAddress }));
+					setProfile(await getProfileByWalletAddress({ address: walletAddress }));
 				} catch (e: any) {
 					console.error(e);
 				}
 			}
 		})();
-	}, [wallet, walletAddress, walletType]);
+	}, [wallet, walletAddress, walletType, toggleProfileUpdate]);
 
 	async function handleWallet() {
 		if (localStorage.getItem('walletType')) {
@@ -201,6 +206,8 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 					walletModalVisible,
 					setWalletModalVisible,
 					profile,
+					toggleProfileUpdate,
+					setToggleProfileUpdate,
 				}}
 			>
 				{props.children}

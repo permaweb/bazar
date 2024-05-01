@@ -1,6 +1,6 @@
 import React from 'react';
 
-import { getProfile } from 'api';
+import { getProfileByWalletAddress } from 'api';
 
 import * as GS from 'app/styles';
 import { Drawer } from 'components/atoms/Drawer';
@@ -26,7 +26,7 @@ export default function AssetInfo(props: IProps) {
 		(async function () {
 			if (props.asset && props.asset.data.creator && checkValidAddress(props.asset.data.creator)) {
 				try {
-					setCreator(await getProfile({ address: props.asset.data.creator }));
+					setCreator(await getProfileByWalletAddress({ address: props.asset.data.creator }));
 				} catch (e: any) {
 					console.error(e);
 				}

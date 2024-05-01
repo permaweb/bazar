@@ -5,6 +5,8 @@ import { ReactSVG } from 'react-svg';
 
 import { Avatar } from 'components/atoms/Avatar';
 import { CurrencyLine } from 'components/atoms/CurrencyLine';
+import { Panel } from 'components/molecules/Panel';
+import { ProfileManage } from 'components/organisms/ProfileManage';
 import { ASSETS, PROCESSES, URLS } from 'helpers/config';
 import { formatAddress, formatARAmount } from 'helpers/utils';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
@@ -27,6 +29,7 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 
 	const [showWallet, setShowWallet] = React.useState<boolean>(false);
 	const [showWalletDropdown, setShowWalletDropdown] = React.useState<boolean>(false);
+	const [showProfileManage, setShowProfileManage] = React.useState<boolean>(false);
 
 	const [copied, setCopied] = React.useState<boolean>(false);
 	const [label, setLabel] = React.useState<string | null>(null);
@@ -61,9 +64,13 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 		}
 	}
 
-	function handleViewProfile() {
-		navigate(`${URLS.profile}${arProvider.walletAddress}`);
-		setShowWalletDropdown(false);
+	function handleProfileAction() {
+		if (arProvider.profile && arProvider.profile.id) {
+			navigate(`${URLS.profile}${arProvider.profile.id}`);
+			setShowWalletDropdown(false);
+		} else {
+			setShowProfileManage(true);
+		}
 	}
 
 	const copyAddress = React.useCallback(async () => {
@@ -117,17 +124,17 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 						<Avatar owner={arProvider.profile} dimensions={{ wrapper: 35, icon: 21.5 }} callback={handlePress} />
 					</S.PWrapper>
 					{showWalletDropdown && (
-						<S.Dropdown className={'border-wrapper-alt2 scroll-wrapper'}>
+						<S.Dropdown className={'border-wrapper-alt1 scroll-wrapper'}>
 							<S.DHeaderWrapper>
 								<S.DHeaderFlex>
 									<Avatar
 										owner={arProvider.profile}
 										dimensions={{ wrapper: 35, icon: 21.5 }}
-										callback={handleViewProfile}
+										callback={handleProfileAction}
 									/>
 									<S.DHeader>
-										<p onClick={handleViewProfile}>{label}</p>
-										<span onClick={handleViewProfile}>{formatAddress(arProvider.walletAddress, false)}</span>
+										<p onClick={handleProfileAction}>{label}</p>
+										<span onClick={handleProfileAction}>{formatAddress(arProvider.walletAddress, false)}</span>
 									</S.DHeader>
 								</S.DHeaderFlex>
 							</S.DHeaderWrapper>
@@ -150,7 +157,9 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 								)}
 							</S.DBodyWrapper>
 							<S.DBodyWrapper>
-								<li onClick={handleViewProfile}>{language.viewProfile}</li>
+								<li onClick={handleProfileAction}>
+									{arProvider.profile && arProvider.profile.id ? language.editProfile : language.createProfile}
+								</li>
 								<li onClick={copyAddress}>{copied ? `${language.copied}!` : language.copyAddress}</li>
 								<li onClick={handleToggleTheme}>
 									{themeProvider.current === 'light' ? language.useDarkDisplay : language.useLightDisplay}
@@ -163,6 +172,23 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 					)}
 				</S.Wrapper>
 			</CloseHandler>
+			{showProfileManage && (
+				<Panel
+					open={showProfileManage}
+					header={`${language.createProfile}!`}
+					handleClose={() => setShowProfileManage(false)}
+				>
+					<ProfileManage
+						profile={null}
+						handleClose={() => setShowProfileManage(false)}
+						handleUpdate={
+							arProvider.profile && arProvider.profile.id
+								? () => navigate(URLS.profileAssets(arProvider.profile.id))
+								: () => setShowProfileManage(false)
+						}
+					/>
+				</Panel>
+			)}
 		</>
 	);
 }

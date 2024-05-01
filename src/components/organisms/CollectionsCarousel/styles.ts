@@ -79,7 +79,7 @@ export const CollectionWrapper = styled.div<{ backgroundImage: string; disabled:
 			background-color: ${theme.colors.overlay.alt1};
 			border-radius: ${STYLING.dimensions.radius.primary};
 			opacity: 0;
-			transition: all 75ms;
+			transition: all 100ms;
 		}
 		&:hover::after, &:focus::after {
 			opacity: 1;

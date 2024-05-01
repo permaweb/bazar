@@ -22,7 +22,6 @@ export const Body = styled.div`
 	justify-content: center;
 	flex-wrap: wrap;
 	gap: 10px;
-	margin: 20px 0 0 0;
 `;
 
 export const Form = styled.div`
@@ -140,7 +139,7 @@ export const BInput = styled.button<{ hasBanner: boolean }>`
             background-color: ${props.theme.colors.overlay.alt1};
 			border-radius: ${STYLING.dimensions.radius.primary};
             opacity: 0;
-            transition: all 75ms;
+            transition: all 100ms;
         }
         
         &:hover::after {
@@ -224,7 +223,7 @@ export const AInput = styled.button<{ hasAvatar: boolean }>`
             background-color: ${props.theme.colors.overlay.alt1};
 			border-radius: ${STYLING.dimensions.radius.primary};
             opacity: 0;
-            transition: all 75ms;
+            transition: all 100ms;
         }
         &:hover::after {
             opacity: 1;

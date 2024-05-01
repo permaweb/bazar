@@ -210,7 +210,7 @@ export const GlobalStyle = createGlobalStyle`
     top: 0;
     left: 0;
     background: ${(props) => props.theme.colors.overlay.primary};
-    backdrop-filter: blur(2.5px);
+    backdrop-filter: blur(5px);
     animation: ${open} ${fadeIn1};
   }
 

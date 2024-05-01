@@ -31,7 +31,7 @@ export default function ProfileAssets(props: IProps) {
 		(async function () {
 			if (props.address) {
 				setAssetsLoading(true);
-				setAssetIds(await getAssetIdsByUser({ address: props.address }));
+				setAssetIds(await getAssetIdsByUser({ profileId: props.address }));
 			}
 		})();
 	}, [props.address]);

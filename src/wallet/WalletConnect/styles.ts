@@ -113,9 +113,10 @@ export const DBodyWrapper = styled.ul`
 		font-weight: ${(props) => props.theme.typography.weight.bold};
 		border: 1px solid transparent;
 		padding: 0 15px;
-		transition: all 75ms;
+		transition: all 100ms;
 		&:hover {
-			background: ${(props) => props.theme.colors.container.primary.active};
+			color: ${(props) => props.theme.colors.font.light1};
+			background: ${(props) => props.theme.colors.container.alt9.background};
 		}
 	}
 `;

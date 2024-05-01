@@ -39,7 +39,7 @@ export const PROCESSES = {
 	ucm: 'fzRGvSW2oSop9xGLxs5mcaRtCbrbug8imI_uRZHKdiU',
 	token: 'IRv02cCZGmBVMhmPlL63sce4djgRgkY1J_3DUl_feUw',
 	profileRegistry: 'kFYMezhjcPCZLr2EkkwzIXP5A64QmtME6Bxa8bGmbzI',
-	profileSrc: 'LCKYR5VWsTI1XOwln6yuwEYSjxEXulvIv4wZNVvrjIQ',
+	profileSrc: 'vilNa4EYY1RPGtyc8VLjLKhgU7KvTgW5tRIHsRf6GZg',
 };
 
 export const LICENSES = {
@@ -208,7 +208,6 @@ export const PAGINATORS = {
 
 export const REDIRECTS = {
 	x: `https://twitter.com/OurBazAR`,
-	viewblock: (tx: string) => `https://viewblock.io/arweave/tx/${tx}`,
 	helix: `https://helix.arweave.dev`,
 };
 

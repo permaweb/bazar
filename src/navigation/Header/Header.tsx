@@ -57,7 +57,7 @@ export default function Header() {
 			</S.Wrapper>
 			{panelOpen && (
 				<div className={'overlay'}>
-					<S.PWrapper>
+					<S.PWrapper className={'border-wrapper-primary'}>
 						<CloseHandler active={panelOpen} disabled={!panelOpen} callback={() => setPanelOpen(false)}>
 							<S.PMenu>
 								<S.PHeader>

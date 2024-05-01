@@ -109,7 +109,7 @@ export const language = {
 		usernameAsDisplayName: `Name will be the same as username`,
 		useDarkDisplay: `Use dark display`,
 		useLightDisplay: `Use light display`,
-		viewblock: `Viewblock`,
+		viewOnArweave: `View on Arweave`,
 		viewProfile: `View profile`,
 	},
 };

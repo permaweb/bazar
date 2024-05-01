@@ -11,7 +11,8 @@ import { OwnerLine } from 'components/molecules/OwnerLine';
 import { Tabs } from 'components/molecules/Tabs';
 import { AssetData } from 'components/organisms/AssetData';
 import { OrderCancel } from 'components/organisms/OrderCancel';
-import { ASSETS, REDIRECTS, STYLING } from 'helpers/config';
+import { ASSETS, STYLING } from 'helpers/config';
+import { getTxEndpoint } from 'helpers/endpoints';
 import { ListingType, OwnerType, RegistryProfileType } from 'helpers/types';
 import { formatCount, formatPercentage, getOwners, sortOrders } from 'helpers/utils';
 import * as windowUtils from 'helpers/window';
@@ -290,11 +291,11 @@ export default function AssetAction(props: IProps) {
 				<S.DataWrapper>
 					<AssetData asset={props.asset} frameMinHeight={550} autoLoad />
 				</S.DataWrapper>
-				<S.Header className={'border-wrapper-alt1'}>
+				<S.Header className={'border-wrapper-alt2'}>
 					<h4>{props.asset.data.title}</h4>
 					<S.ACLink>
-						<Link target={'_blank'} to={REDIRECTS.viewblock(props.asset.data.id)}>
-							{language.viewblock}
+						<Link target={'_blank'} to={getTxEndpoint(props.asset.data.id)}>
+							{language.viewOnArweave}
 						</Link>
 					</S.ACLink>
 					{currentOwners && currentOwners.length > 0 && (

@@ -17,21 +17,10 @@ import {
 import { formatAddress, getAssetOrderType, getTagValue, sortByAssetOrders, sortOrderbookEntries } from 'helpers/utils';
 import { store } from 'store';
 
-export async function getAssetIdsByUser(args: { address: string }): Promise<string[]> {
-	const profileLookup = await readHandler({
-		processId: PROCESSES.profileRegistry,
-		action: 'Get-Profiles-By-Address',
-		data: { Address: args.address },
-	});
-
-	let activeProfileId: string;
-	if (profileLookup && profileLookup.length > 0 && profileLookup[0].ProfileId) {
-		activeProfileId = profileLookup[0].ProfileId;
-	}
-
-	if (activeProfileId) {
+export async function getAssetIdsByUser(args: { profileId: string }): Promise<string[]> {
+	try {
 		const fetchedProfile = await readHandler({
-			processId: activeProfileId,
+			processId: args.profileId,
 			action: 'Info',
 			data: null,
 		});
@@ -39,7 +28,9 @@ export async function getAssetIdsByUser(args: { address: string }): Promise<stri
 		if (fetchedProfile) {
 			return fetchedProfile.Assets.map((asset: { Id: string; Quantity: string }) => asset.Id);
 		} else return [];
-	} else return [];
+	} catch (e: any) {
+		console.error(e);
+	}
 }
 
 export async function getAssetsByIds(args: { ids: string[]; sortType: AssetSortType }): Promise<AssetDetailType[]> {

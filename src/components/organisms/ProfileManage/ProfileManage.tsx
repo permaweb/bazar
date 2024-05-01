@@ -12,6 +12,7 @@ import { Notification } from 'components/atoms/Notification';
 import { TextArea } from 'components/atoms/TextArea';
 import { AOS, ASSETS, GATEWAYS, PROCESSES, TAGS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
+import { NotificationType } from 'helpers/types';
 import { checkValidAddress, getBase64Data, getDataURLContentType } from 'helpers/utils';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
@@ -41,7 +42,7 @@ export default function ProfileManage(props: IProps) {
 	const [usernameAsDisplayName, setUsernameAsDisplayName] = React.useState<boolean>(false);
 
 	const [loading, setLoading] = React.useState<boolean>(false);
-	const [profileResponse, setProfileResponse] = React.useState<string | null>(null);
+	const [profileResponse, setProfileResponse] = React.useState<NotificationType | null>(null);
 
 	React.useEffect(() => {
 		if (props.profile) {
@@ -56,6 +57,11 @@ export default function ProfileManage(props: IProps) {
 	React.useEffect(() => {
 		if (usernameAsDisplayName) setName(username);
 	}, [usernameAsDisplayName, username]);
+
+	function handleUpdate() {
+		if (props.handleUpdate) props.handleUpdate();
+		arProvider.setToggleProfileUpdate(!arProvider.toggleProfileUpdate);
+	}
 
 	async function handleSubmit() {
 		if (arProvider.wallet) {
@@ -121,11 +127,17 @@ export default function ProfileManage(props: IProps) {
 						wallet: arProvider.wallet,
 					});
 					if (updateResponse && updateResponse['Profile-Success']) {
-						setProfileResponse(`${language.profileUpdated}!`);
-						props.handleUpdate();
+						setProfileResponse({
+							message: `${language.profileUpdated}!`,
+							status: 'success',
+						});
+						handleUpdate();
 					} else {
 						console.log(updateResponse);
-						setProfileResponse(language.errorUpdatingProfile);
+						setProfileResponse({
+							message: language.errorUpdatingProfile,
+							status: 'warning',
+						});
 					}
 				} else {
 					const aos = connect();
@@ -170,8 +182,7 @@ export default function ProfileManage(props: IProps) {
 									console.log(`Transaction not found -`, processId);
 									retryCount++;
 									if (retryCount >= 3) {
-										setProfileResponse(language.errorUpdatingProfile);
-										throw new Error(`Transaction not found after 3 attempts, aborting`);
+										throw new Error(`Profile not found, aborting`);
 									}
 								}
 							}
@@ -204,18 +215,31 @@ export default function ProfileManage(props: IProps) {
 								});
 
 								if (updateResponse && updateResponse['Profile-Success']) {
-									setProfileResponse(`${language.profileCreated}!`);
-									props.handleUpdate();
+									setProfileResponse({
+										message: `${language.profileCreated}!`,
+										status: 'success',
+									});
+									handleUpdate();
 								} else {
 									console.log(updateResponse);
 									setProfileResponse(language.errorUpdatingProfile);
+									setProfileResponse({
+										message: language.errorUpdatingProfile,
+										status: 'warning',
+									});
 								}
 							} else {
-								setProfileResponse(language.errorUpdatingProfile);
+								setProfileResponse({
+									message: language.errorUpdatingProfile,
+									status: 'warning',
+								});
 							}
 						}
 					} catch (e: any) {
-						setProfileResponse(e.message ?? language.errorUpdatingProfile);
+						setProfileResponse({
+							message: e.message ?? language.errorUpdatingProfile,
+							status: 'warning',
+						});
 					}
 				}
 			} catch (e: any) {
@@ -394,7 +418,13 @@ export default function ProfileManage(props: IProps) {
 							</S.SAction>
 						</S.Body>
 					</S.Wrapper>
-					{profileResponse && <Notification message={profileResponse} callback={() => setProfileResponse(null)} />}
+					{profileResponse && (
+						<Notification
+							message={profileResponse.message}
+							type={profileResponse.status}
+							callback={() => setProfileResponse(null)}
+						/>
+					)}
 				</>
 			);
 		}

@@ -1,4 +1,4 @@
-import { getAssetIdGroups, getGQLData, getProfile } from 'api';
+import { getAssetIdGroups, getGQLData, getProfileByWalletAddress } from 'api';
 
 import { GATEWAYS, PAGINATORS, PROCESSES, TAGS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
@@ -71,7 +71,7 @@ export async function getCollectionById(args: {
 
 		if (gqlResponse && gqlResponse.data.length) {
 			const structuredCollection = structureCollections(gqlResponse)[0];
-			const creatorProfile = await getProfile({ address: structuredCollection.data.creator });
+			const creatorProfile = await getProfileByWalletAddress({ address: structuredCollection.data.creator });
 
 			let assetIds: string[] = [];
 			try {

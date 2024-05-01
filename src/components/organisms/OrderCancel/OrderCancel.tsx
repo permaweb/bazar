@@ -85,7 +85,7 @@ export default function OrderCancel(props: IProps) {
 					</S.MWrapper>
 				</Modal>
 			)}
-			{response && <Notification message={response} callback={() => setResponse(null)} />}
+			{response && <Notification message={response} type={'success'} callback={() => setResponse(null)} />}
 		</>
 	);
 }

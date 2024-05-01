@@ -90,7 +90,7 @@ export const AssetGridDataWrapper = styled.div<{ disabled: boolean }>`
 			background-color: ${theme.colors.overlay.alt1};
 			border-radius: ${STYLING.dimensions.radius.primary};
 			opacity: 0;
-			transition: all 75ms;
+			transition: all 100ms;
 		}
 		&:hover::after, &:focus::after {
 			opacity: 1;
@@ -245,9 +245,4 @@ export const Footer = styled.div`
 	margin: 20px 0 0 0;
 `;
 
-export const SelectWrapper = styled.div`
-	svg {
-		transform: rotate(270deg);
-		margin: 5px 0 0 50.5px;
-	}
-`;
+export const SelectWrapper = styled.div``;

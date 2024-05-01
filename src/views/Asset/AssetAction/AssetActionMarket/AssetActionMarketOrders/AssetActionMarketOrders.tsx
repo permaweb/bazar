@@ -781,7 +781,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 					{!arProvider.profile ||
 						(!arProvider.profile.id && (
 							<S.MessageWrapper>
-								<span>Create an account to continue</span>
+								<span>Create your profile to continue</span>
 							</S.MessageWrapper>
 						))}
 					{!Number.isInteger(Number(currentOrderQuantity)) && (
@@ -792,7 +792,9 @@ export default function AssetActionMarketOrders(props: IProps) {
 				</S.ActionWrapper>
 			</S.Wrapper>
 			{showConfirmation && getConfirmation()}
-			{updating && <Notification message={`${language.updatingAsset}...`} callback={() => setUpdating(false)} />}
+			{updating && (
+				<Notification message={`${language.updatingAsset}...`} type={'success'} callback={() => setUpdating(false)} />
+			)}
 		</>
 	) : null;
 }

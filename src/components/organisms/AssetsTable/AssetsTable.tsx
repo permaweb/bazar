@@ -66,7 +66,7 @@ export default function AssetsTable(props: IProps) {
 	}
 
 	function getActionDisabled() {
-		if (!props.assets) return true;
+		if (!props.assets || !props.assets.length) return true;
 		if (props.loading) return true;
 		if (props.assets && props.assets.length) {
 			return props.assets.every((asset: AssetDetailType) => (asset.orders ? asset.orders.length <= 0 : true));

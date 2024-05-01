@@ -3,7 +3,7 @@ import styled from 'styled-components';
 import { fadeIn1, open } from 'helpers/animations';
 import { STYLING } from 'helpers/config';
 
-export const Wrapper = styled.div`
+export const Wrapper = styled.div<{ warning: boolean | undefined }>`
 	width: 375px;
 	position: fixed;
 	left: 50%;
@@ -14,7 +14,8 @@ export const Wrapper = styled.div`
 	display: flex;
 	align-items: center;
 	padding: 11.5px 17.5px;
-	background: ${(props) => props.theme.colors.container.alt10.background};
+	background: ${(props) =>
+		props.warning ? props.theme.colors.warning.alt1 : props.theme.colors.container.alt10.background};
 	border-radius: ${STYLING.dimensions.radius.primary};
 	@media (max-width: ${STYLING.cutoffs.secondary}) {
 		width: 90vw;

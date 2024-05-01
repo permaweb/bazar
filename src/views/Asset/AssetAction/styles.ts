@@ -23,6 +23,9 @@ export const Header = styled.div`
 
 export const ACLink = styled.div`
 	margin: 5px 0 0 0;
+	display: flex;
+	align-items: center;
+	gap: 5px;
 	a {
 		font-size: ${(props) => props.theme.typography.size.base};
 		font-family: ${(props) => props.theme.typography.family.primary};
@@ -50,8 +53,8 @@ export const OwnerLine = styled.div`
 	button {
 		color: ${(props) => props.theme.colors.font.primary};
 		font-size: ${(props) => props.theme.typography.size.base};
-		font-family: ${(props) => props.theme.typography.family.primary};
-		font-weight: ${(props) => props.theme.typography.weight.medium};
+		font-family: ${(props) => props.theme.typography.family.alt1};
+		font-weight: ${(props) => props.theme.typography.weight.bold};
 		text-decoration: underline;
 		margin: 0 0 0 5px;
 		&:hover {

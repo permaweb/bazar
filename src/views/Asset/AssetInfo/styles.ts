@@ -10,7 +10,7 @@ export const Wrapper = styled.div`
 `;
 
 export const DataWrapper = styled.div`
-	height: 550px;
+	height: 600px;
 	width: 100%;
 	display: block;
 	@media (max-width: ${STYLING.cutoffs.desktop}) {

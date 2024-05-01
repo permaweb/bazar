@@ -22,7 +22,7 @@ export default function Notification(props: IProps) {
 
 	return show ? (
 		<Portal node={DOM.notification}>
-			<S.Wrapper>
+			<S.Wrapper warning={props.type === 'warning'}>
 				<S.Message>{props.message}</S.Message>
 				{props.callback && (
 					<S.Close>

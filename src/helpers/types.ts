@@ -253,3 +253,8 @@ export type ButtonType = 'primary' | 'alt1' | 'alt2' | 'alt3' | 'success' | 'war
 export type SelectOptionType = { id: string; label: string };
 
 export type UploadMethodType = 'default' | 'turbo';
+
+export type NotificationType = {
+	message: string;
+	status: 'success' | 'warning';
+};
