@@ -11,8 +11,10 @@ import { IProps } from './types';
 export default function Avatar(props: IProps) {
 	const [hasError, setHasError] = React.useState(false);
 
+	const hasImage = props.owner && props.owner.avatar && checkValidAddress(props.owner.avatar);
+
 	function getAvatar() {
-		if (!hasError && props.owner && props.owner.avatar && checkValidAddress(props.owner.avatar)) {
+		if (!hasError && hasImage) {
 			return <img src={getTxEndpoint(props.owner.avatar)} onError={() => setHasError(true)} />;
 		} else return <ReactSVG src={ASSETS.user} />;
 	}
@@ -23,6 +25,8 @@ export default function Avatar(props: IProps) {
 			dimensions={props.dimensions}
 			hasCallback={props.callback !== null}
 			hasOwner={props.owner !== null}
+			className={'fade-in'}
+			hasImage={hasImage}
 		>
 			{getAvatar()}
 		</S.Wrapper>

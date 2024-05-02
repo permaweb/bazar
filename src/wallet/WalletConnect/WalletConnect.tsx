@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { ReactSVG } from 'react-svg';
 
 import { Avatar } from 'components/atoms/Avatar';
+import { Button } from 'components/atoms/Button';
 import { CurrencyLine } from 'components/atoms/CurrencyLine';
 import { Panel } from 'components/molecules/Panel';
 import { ProfileManage } from 'components/organisms/ProfileManage';
@@ -24,6 +25,7 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 
 	const arProvider = useArweaveProvider();
 	const themeProvider = useCustomThemeProvider();
+
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
 
@@ -116,15 +118,20 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 			>
 				<S.Wrapper>
 					<S.PWrapper>
+						{arProvider.profile && !arProvider.profile.id && (
+							<S.CAction className={'fade-in'}>
+								<Button type={'primary'} label={language.createProfile} handlePress={handleProfileAction} height={35} />
+							</S.CAction>
+						)}
 						{label && (
-							<S.LAction onClick={handlePress}>
+							<S.LAction onClick={handlePress} className={'border-wrapper-alt2'}>
 								<span>{label}</span>
 							</S.LAction>
 						)}
 						<Avatar owner={arProvider.profile} dimensions={{ wrapper: 35, icon: 21.5 }} callback={handlePress} />
 					</S.PWrapper>
 					{showWalletDropdown && (
-						<S.Dropdown className={'border-wrapper-alt1 scroll-wrapper'}>
+						<S.Dropdown className={'border-wrapper-alt2 scroll-wrapper'}>
 							<S.DHeaderWrapper>
 								<S.DHeaderFlex>
 									<Avatar
@@ -158,8 +165,11 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 							</S.DBodyWrapper>
 							<S.DBodyWrapper>
 								<li onClick={handleProfileAction}>
-									{arProvider.profile && arProvider.profile.id ? language.editProfile : language.createProfile}
+									{arProvider.profile && arProvider.profile.id ? language.viewProfile : language.createProfile}
 								</li>
+								{arProvider.profile && arProvider.profile.id && (
+									<li onClick={() => setShowProfileManage(true)}>{language.editProfile}</li>
+								)}
 								<li onClick={copyAddress}>{copied ? `${language.copied}!` : language.copyAddress}</li>
 								<li onClick={handleToggleTheme}>
 									{themeProvider.current === 'light' ? language.useDarkDisplay : language.useLightDisplay}
@@ -179,13 +189,9 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 					handleClose={() => setShowProfileManage(false)}
 				>
 					<ProfileManage
-						profile={null}
+						profile={arProvider.profile && arProvider.profile.id ? arProvider.profile : null}
 						handleClose={() => setShowProfileManage(false)}
-						handleUpdate={
-							arProvider.profile && arProvider.profile.id
-								? () => navigate(URLS.profileAssets(arProvider.profile.id))
-								: () => setShowProfileManage(false)
-						}
+						handleUpdate={null}
 					/>
 				</Panel>
 			)}

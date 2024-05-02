@@ -3,7 +3,7 @@ import { ReactSVG } from 'react-svg';
 
 import { connect, createDataItemSigner } from '@permaweb/aoconnect';
 
-import { createTransaction, getGQLData, sendMessage } from 'api';
+import { createTransaction, getGQLData, messageResult } from 'api';
 
 import { Button } from 'components/atoms/Button';
 import { Checkbox } from 'components/atoms/Checkbox';
@@ -59,8 +59,8 @@ export default function ProfileManage(props: IProps) {
 	}, [usernameAsDisplayName, username]);
 
 	function handleUpdate() {
-		if (props.handleUpdate) props.handleUpdate();
 		arProvider.setToggleProfileUpdate(!arProvider.toggleProfileUpdate);
+		if (props.handleUpdate) props.handleUpdate();
 	}
 
 	async function handleSubmit() {
@@ -120,7 +120,7 @@ export default function ProfileManage(props: IProps) {
 
 			try {
 				if (props.profile && props.profile.id) {
-					let updateResponse = await sendMessage({
+					let updateResponse = await messageResult({
 						processId: props.profile.id,
 						action: 'Update-Profile',
 						data: data,
@@ -207,7 +207,7 @@ export default function ProfileManage(props: IProps) {
 								await new Promise((r) => setTimeout(r, 1000));
 
 								console.log('Updating profile data...');
-								let updateResponse = await sendMessage({
+								let updateResponse = await messageResult({
 									processId: processId,
 									action: 'Update-Profile',
 									data: data,

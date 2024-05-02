@@ -1,7 +1,7 @@
 import React from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 
-import { readHandler, sendMessage } from 'api';
+import { messageResults, readHandler } from 'api';
 
 import { Button } from 'components/atoms/Button';
 import { CurrencyLine } from 'components/atoms/CurrencyLine';
@@ -150,7 +150,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 		setCurrentOrderQuantity(0);
 	}, [props.type]);
 
-	async function handleOrderCreate() {
+	async function handleSubmit() {
 		if (props.asset && arProvider.wallet && arProvider.profile && arProvider.profile.id) {
 			let orderPair = null;
 			let recipient = null;
@@ -185,129 +185,154 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 				setOrderLoading(true);
 				try {
-					setCurrentNotification('Transferring balance...');
-					const transferResponse: any = await sendMessage({
-						processId: dominantToken,
-						action: 'Transfer',
+					setCurrentNotification('Depositing balance...');
+
+					const transferResponse: any = await messageResults({
+						processId: arProvider.profile.id,
+						action: 'Handle-Asset-Transfer',
 						wallet: arProvider.wallet,
 						data: {
+							Target: dominantToken,
 							Recipient: recipient,
 							Quantity: calculatedQuantity,
 						},
 					});
 
-					if (transferResponse && transferResponse['Credit-Notice'] && transferResponse['Debit-Notice']) {
-						setOrderSuccess(true);
-						setCurrentNotification(transferResponse['Credit-Notice'].message);
-
-						if (props.type === 'transfer') {
-							if (transferResponse['Transfer-Error']) {
-								setCurrentNotification(transferResponse['Transfer-Error'].message);
+					if (transferResponse) {
+						if (transferResponse['Transfer-Success']) {
+							setCurrentNotification(transferResponse['Transfer-Success'].message || 'Deposited funds');
+							switch (props.type) {
+								case 'buy':
+									console.log('execute buy order');
+									break;
+								case 'sell':
+									console.log('execute sell order');
+									break;
+								case 'transfer':
+									setOrderSuccess(true);
+									break;
 							}
+						} else if (transferResponse['Transfer-Error']) {
+							setCurrentNotification(transferResponse['Transfer-Error'].message || 'Error depositing funds');
 						} else {
-							const validCreditNotice =
-								transferResponse['Debit-Notice'] &&
-								transferResponse['Credit-Notice'] &&
-								transferResponse['Credit-Notice'].status === 'Success';
-
-							if (validCreditNotice) {
-								const depositTxId = transferResponse['Credit-Notice'].id;
-
-								setCurrentNotification('Checking deposit status...');
-								let depositCheckResponse: any = await sendMessage({
-									processId: PROCESSES.ucm,
-									action: 'Check-Deposit-Status',
-									wallet: arProvider.wallet,
-									data: {
-										Pair: orderPair,
-										DepositTxId: depositTxId,
-										Quantity: calculatedQuantity,
-									},
-								});
-
-								if (depositCheckResponse['Deposit-Status-Evaluated']) {
-									setCurrentNotification(depositCheckResponse.message);
-								}
-
-								if (depositCheckResponse && depositCheckResponse['Deposit-Status-Evaluated']) {
-									const MAX_DEPOSIT_CHECK_RETRIES = 10;
-
-									let depositStatus = depositCheckResponse['Deposit-Status-Evaluated'].status;
-									let retryCount = 0;
-
-									while (depositStatus === 'Error' && retryCount < MAX_DEPOSIT_CHECK_RETRIES) {
-										await new Promise((r) => setTimeout(r, 1000));
-										depositCheckResponse = await sendMessage({
-											processId: PROCESSES.ucm,
-											action: 'Check-Deposit-Status',
-											wallet: arProvider.wallet,
-											data: {
-												Pair: orderPair,
-												DepositTxId: depositTxId,
-												Quantity: calculatedQuantity,
-											},
-										});
-
-										if (depositCheckResponse['Deposit-Status-Evaluated']) {
-											setCurrentNotification(depositCheckResponse.message);
-										}
-
-										depositStatus = depositCheckResponse['Deposit-Status-Evaluated'].status;
-										retryCount++;
-									}
-
-									if (depositStatus === 'Success') {
-										setCurrentNotification('Creating order...');
-										const orderData: { Pair: string[]; DepositTxId: string; Quantity: string; Price?: string } = {
-											Pair: orderPair,
-											DepositTxId: depositTxId,
-											Quantity: calculatedQuantity,
-										};
-
-										if (unitPrice && unitPrice > 0) {
-											let calculatedUnitPrice: string | number = unitPrice;
-											if (transferDenomination) calculatedUnitPrice = unitPrice * transferDenomination;
-											calculatedUnitPrice = calculatedUnitPrice.toString();
-											orderData.Price = calculatedUnitPrice;
-										}
-
-										const createOrderResponse: any = await sendMessage({
-											processId: PROCESSES.ucm,
-											action: 'Create-Order',
-											wallet: arProvider.wallet,
-											data: orderData,
-										});
-
-										if (createOrderResponse) {
-											if (createOrderResponse['Order-Success']) {
-												localSuccess = true;
-												setCurrentNotification(`${createOrderResponse['Order-Success'].message}!`);
-											}
-											if (createOrderResponse['Order-Error']) {
-												setCurrentNotification(createOrderResponse['Order-Error'].message);
-												setOrderSuccess(false);
-											}
-										} else {
-											setCurrentNotification('Error creating order');
-											setOrderSuccess(false);
-										}
-									} else {
-										setCurrentNotification('Failed to resolve deposit');
-										setOrderSuccess(false);
-									}
-								} else {
-									setCurrentNotification('Failed to check deposit status');
-									setOrderSuccess(false);
-								}
-							} else {
-								setCurrentNotification('Invalid credit notice');
-								setOrderSuccess(false);
-							}
+							setCurrentNotification('Error depositing funds');
 						}
 					} else {
-						setCurrentNotification('Failed to execute deposit');
-						setOrderSuccess(false);
+						setCurrentNotification('Error depositing funds');
 					}
+
+					// if (transferResponse && transferResponse['Credit-Notice'] && transferResponse['Debit-Notice']) {
+					// 	setOrderSuccess(true);
+					// 	setCurrentNotification(transferResponse['Credit-Notice'].message);
+
+					// 	if (props.type === 'transfer') {
+					// 		if (transferResponse['Transfer-Error']) {
+					// 			setCurrentNotification(transferResponse['Transfer-Error'].message);
+					// 		}
+					// 	} else {
+					// 		const validCreditNotice =
+					// 			transferResponse['Debit-Notice'] &&
+					// 			transferResponse['Credit-Notice'] &&
+					// 			transferResponse['Credit-Notice'].status === 'Success';
+
+					// 		if (validCreditNotice) {
+					// 			const depositTxId = transferResponse['Credit-Notice'].id;
+
+					// 			setCurrentNotification('Checking deposit status...');
+					// 			let depositCheckResponse: any = await messageResult({
+					// 				processId: PROCESSES.ucm,
+					// 				action: 'Check-Deposit-Status',
+					// 				wallet: arProvider.wallet,
+					// 				data: {
+					// 					Pair: orderPair,
+					// 					DepositTxId: depositTxId,
+					// 					Quantity: calculatedQuantity,
+					// 				},
+					// 			});
+
+					// 			if (depositCheckResponse['Deposit-Status-Evaluated']) {
+					// 				setCurrentNotification(depositCheckResponse.message);
+					// 			}
+
+					// 			if (depositCheckResponse && depositCheckResponse['Deposit-Status-Evaluated']) {
+					// 				const MAX_DEPOSIT_CHECK_RETRIES = 10;
+
+					// 				let depositStatus = depositCheckResponse['Deposit-Status-Evaluated'].status;
+					// 				let retryCount = 0;
+
+					// 				while (depositStatus === 'Error' && retryCount < MAX_DEPOSIT_CHECK_RETRIES) {
+					// 					await new Promise((r) => setTimeout(r, 1000));
+					// 					depositCheckResponse = await messageResult({
+					// 						processId: PROCESSES.ucm,
+					// 						action: 'Check-Deposit-Status',
+					// 						wallet: arProvider.wallet,
+					// 						data: {
+					// 							Pair: orderPair,
+					// 							DepositTxId: depositTxId,
+					// 							Quantity: calculatedQuantity,
+					// 						},
+					// 					});
+
+					// 					if (depositCheckResponse['Deposit-Status-Evaluated']) {
+					// 						setCurrentNotification(depositCheckResponse.message);
+					// 					}
+
+					// 					depositStatus = depositCheckResponse['Deposit-Status-Evaluated'].status;
+					// 					retryCount++;
+					// 				}
+
+					// 				if (depositStatus === 'Success') {
+					// 					setCurrentNotification('Creating order...');
+					// 					const orderData: { Pair: string[]; DepositTxId: string; Quantity: string; Price?: string } = {
+					// 						Pair: orderPair,
+					// 						DepositTxId: depositTxId,
+					// 						Quantity: calculatedQuantity,
+					// 					};
+
+					// 					if (unitPrice && unitPrice > 0) {
+					// 						let calculatedUnitPrice: string | number = unitPrice;
+					// 						if (transferDenomination) calculatedUnitPrice = unitPrice * transferDenomination;
+					// 						calculatedUnitPrice = calculatedUnitPrice.toString();
+					// 						orderData.Price = calculatedUnitPrice;
+					// 					}
+
+					// 					const createOrderResponse: any = await messageResult({
+					// 						processId: PROCESSES.ucm,
+					// 						action: 'Create-Order',
+					// 						wallet: arProvider.wallet,
+					// 						data: orderData,
+					// 					});
+
+					// 					if (createOrderResponse) {
+					// 						if (createOrderResponse['Order-Success']) {
+					// 							localSuccess = true;
+					// 							setCurrentNotification(`${createOrderResponse['Order-Success'].message}!`);
+					// 						}
+					// 						if (createOrderResponse['Order-Error']) {
+					// 							setCurrentNotification(createOrderResponse['Order-Error'].message);
+					// 							setOrderSuccess(false);
+					// 						}
+					// 					} else {
+					// 						setCurrentNotification('Error creating order');
+					// 						setOrderSuccess(false);
+					// 					}
+					// 				} else {
+					// 					setCurrentNotification('Failed to resolve deposit');
+					// 					setOrderSuccess(false);
+					// 				}
+					// 			} else {
+					// 				setCurrentNotification('Failed to check deposit status');
+					// 				setOrderSuccess(false);
+					// 			}
+					// 		} else {
+					// 			setCurrentNotification('Invalid credit notice');
+					// 			setOrderSuccess(false);
+					// 		}
+					// 	}
+					// } else {
+					// 	setCurrentNotification('Failed to execute deposit');
+					// 	setOrderSuccess(false);
+					// }
 				} catch (e: any) {
 					setCurrentNotification(e.message || 'Error creating order');
 				}
@@ -507,7 +532,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 	function getActionDisabled() {
 		if (!arProvider.walletAddress) return true;
 		if (!arProvider.profile || !arProvider.profile.id) return true;
-		if (orderLoading || orderProcessed) return true;
+		if (orderLoading) return true;
 		if (maxOrderQuantity <= 0 || isNaN(currentOrderQuantity)) return true;
 		if (currentOrderQuantity <= 0 || isNaN(maxOrderQuantity) || !Number.isInteger(Number(currentOrderQuantity)))
 			return true;
@@ -593,12 +618,11 @@ export default function AssetActionMarketOrders(props: IProps) {
 		if (orderProcessed) {
 			if (orderSuccess) action = () => handleAssetUpdate(orderSuccess);
 			else action = () => setShowConfirmation(false);
-		} else if (finalizeOrder) action = () => handleOrderCreate();
+		} else if (finalizeOrder) action = () => handleSubmit();
 		else action = () => setShowConfirmation(true);
 
 		return (
 			<>
-				{/* <S.ProgressBarWrapper loading={true} statusWidth={45} /> */}
 				<Button
 					type={'primary'}
 					label={label}
@@ -742,6 +766,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 												!arProvider.walletAddress || !arProvider.profile || !arProvider.profile.id || orderLoading
 											}
 											invalid={{ status: transferRecipient && !checkValidAddress(transferRecipient), message: null }}
+											hideErrorMessage
 										/>
 									</S.FieldWrapper>
 									{navigator && navigator.clipboard && navigator.clipboard.readText && (

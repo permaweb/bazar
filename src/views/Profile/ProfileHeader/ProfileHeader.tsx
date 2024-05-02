@@ -2,11 +2,12 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ReactSVG } from 'react-svg';
 
-// import { connect, createDataItemSigner } from '@permaweb/aoconnect';
+import { connect, createDataItemSigner } from '@permaweb/aoconnect';
+
 import { Button } from 'components/atoms/Button';
 import { Panel } from 'components/molecules/Panel';
 import { ProfileManage } from 'components/organisms/ProfileManage';
-import { ASSETS, DEFAULTS, URLS } from 'helpers/config';
+import { ASSETS, DEFAULTS, PROCESSES, URLS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import { checkValidAddress, formatAddress } from 'helpers/utils';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
@@ -52,38 +53,38 @@ export default function ProfileHeader(props: IProps) {
 		return props.profile.username ? `@${props.profile.username}` : formatAddress(props.profile.walletAddress, false);
 	}
 
-	// async function handleProfileUpdate() {
-	// 	if (arProvider.profile && arProvider.profile.id) {
-	// 		const aos = connect();
+	async function handleProfileSrcUpdate() {
+		if (arProvider.profile && arProvider.profile.id) {
+			const aos = connect();
 
-	// 		let processSrc = null;
-	// 		try {
-	// 			const processSrcFetch = await fetch(getTxEndpoint(PROCESSES.profileSrc));
-	// 			if (processSrcFetch.ok) {
-	// 				processSrc = await processSrcFetch.text();
+			let processSrc = null;
+			try {
+				const processSrcFetch = await fetch(getTxEndpoint(PROCESSES.profileSrc));
+				if (processSrcFetch.ok) {
+					processSrc = await processSrcFetch.text();
 
-	// 				console.log('Sending source eval...');
-	// 				const evalMessage = await aos.message({
-	// 					process: arProvider.profile.id,
-	// 					signer: createDataItemSigner(arProvider.wallet),
-	// 					tags: [{ name: 'Action', value: 'Eval' }],
-	// 					data: processSrc,
-	// 				});
+					console.log('Sending source eval...');
+					const evalMessage = await aos.message({
+						process: arProvider.profile.id,
+						signer: createDataItemSigner(arProvider.wallet),
+						tags: [{ name: 'Action', value: 'Eval' }],
+						data: processSrc,
+					});
 
-	// 				console.log(evalMessage);
+					console.log(evalMessage);
 
-	// 				const evalResult = await aos.result({
-	// 					message: evalMessage,
-	// 					process: arProvider.profile.id,
-	// 				});
+					const evalResult = await aos.result({
+						message: evalMessage,
+						process: arProvider.profile.id,
+					});
 
-	// 				console.log(evalResult);
-	// 			}
-	// 		} catch (e: any) {
-	// 			console.error(e);
-	// 		}
-	// 	}
-	// }
+					console.log(evalResult);
+				}
+			} catch (e: any) {
+				console.error(e);
+			}
+		}
+	}
 
 	function getHeaderDetails() {
 		return props.profile ? (
@@ -115,9 +116,9 @@ export default function ProfileHeader(props: IProps) {
 					<S.HeaderAvatar>{getAvatar()}</S.HeaderAvatar>
 					{getHeaderDetails()}
 					<S.HeaderActions>
-						{/* {arProvider.walletAddress && arProvider.walletAddress === props.profile.walletAddress && (
-							<Button type={'primary'} label={'Update profile'} handlePress={handleProfileUpdate} />
-						)} */}
+						{arProvider.profile && arProvider.profile.id && arProvider.profile.id === props.profile.id && (
+							<Button type={'primary'} label={'Update profile'} handlePress={handleProfileSrcUpdate} />
+						)}
 						{arProvider.profile && arProvider.profile.id === props.profile.id && (
 							<Button
 								type={'alt1'}

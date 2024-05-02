@@ -1,6 +1,6 @@
 import Arweave from 'arweave';
 import { ArweaveWebIrys } from '@irys/sdk/build/esm/web/tokens/arweave';
-import { createDataItemSigner, dryrun, message, result } from '@permaweb/aoconnect';
+import { createDataItemSigner, dryrun, message, result, results } from '@permaweb/aoconnect';
 
 import { CONTENT_TYPES, CURSORS, GATEWAYS, PAGINATORS, UPLOAD_CONFIG } from 'helpers/config';
 import {
@@ -238,7 +238,7 @@ export async function createTransaction(args: {
 	}
 }
 
-export async function sendMessage(args: { processId: string; wallet: any; action: string; data: any }): Promise<any> {
+export async function messageResult(args: { processId: string; wallet: any; action: string; data: any }): Promise<any> {
 	try {
 		const txId = await message({
 			process: args.processId,
@@ -279,6 +279,101 @@ export async function sendMessage(args: { processId: string; wallet: any; action
 
 			return response;
 		} else return null;
+	} catch (e) {
+		console.error(e);
+	}
+}
+
+export async function messageResults(args: {
+	processId: string;
+	wallet: any;
+	action: string;
+	data: any;
+}): Promise<any> {
+	try {
+		await message({
+			process: args.processId,
+			signer: createDataItemSigner(args.wallet),
+			tags: [{ name: 'Action', value: args.action }],
+			data: JSON.stringify(args.data),
+		});
+
+		const messageResults = await results({
+			process: args.processId,
+			sort: 'DESC',
+			limit: 25,
+		});
+
+		if (messageResults && messageResults.edges && messageResults.edges.length) {
+			const response = {};
+
+			for (const result of messageResults.edges) {
+				if (result.node && result.node.Messages && result.node.Messages.length) {
+					for (const message of result.node.Messages) {
+						const action = getTagValue(message.Tags, 'Action');
+
+						if (action) {
+							let responseData = null;
+							const messageData = message.Data;
+
+							if (messageData) {
+								try {
+									responseData = JSON.parse(messageData);
+								} catch {
+									responseData = messageData;
+								}
+							}
+
+							const responseStatus = getTagValue(message.Tags, 'Status');
+							const responseMessage = getTagValue(message.Tags, 'Message');
+
+							response[action] = {
+								status: responseStatus,
+								message: responseMessage,
+								data: responseData,
+							};
+
+							if (action === args.action) break;
+						}
+					}
+				}
+			}
+
+			return response;
+		}
+
+		return null;
+
+		// if (Messages && Messages.length) {
+		// 	const response = {};
+
+		// 	Messages.forEach((message: any) => {
+		// 		const action = getTagValue(message.Tags, 'Action') || args.action;
+
+		// 		let responseData = null;
+		// 		const messageData = message.Data;
+
+		// 		if (messageData) {
+		// 			try {
+		// 				responseData = JSON.parse(messageData);
+		// 			} catch {
+		// 				responseData = messageData;
+		// 			}
+		// 		}
+
+		// 		const responseStatus = getTagValue(message.Tags, 'Status');
+		// 		const responseMessage = getTagValue(message.Tags, 'Message');
+
+		// 		response[action] = {
+		// 			id: txId,
+		// 			status: responseStatus,
+		// 			message: responseMessage,
+		// 			data: responseData,
+		// 		};
+		// 	});
+
+		// 	return response;
+		// } else return null;
 	} catch (e) {
 		console.error(e);
 	}

@@ -218,4 +218,9 @@ export const RecipientWrapper = styled.div`
 	button {
 		margin: 30.5px 0 0 0;
 	}
+	@media (max-width: ${STYLING.cutoffs.initial}) {
+		button {
+			display: none;
+		}
+	}
 `;

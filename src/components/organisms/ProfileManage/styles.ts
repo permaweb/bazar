@@ -121,6 +121,11 @@ export const BInput = styled.button<{ hasBanner: boolean }>`
 		}
 		svg {
 			stroke: ${(props) => props.theme.colors.button.primary.disabled.color};
+			g {
+				.svg-primary-fill {
+					fill: ${(props) => props.theme.colors.button.primary.disabled.color};
+				}
+			}
 		}
 	}
 	${(props) =>

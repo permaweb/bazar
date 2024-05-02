@@ -158,6 +158,10 @@ export const InfoCreator = styled.div`
 			color: ${(props) => props.theme.colors.font.light2};
 		}
 	}
+
+	div {
+		box-shadow: none !important;
+	}
 `;
 
 export const InfoDescription = styled.div`

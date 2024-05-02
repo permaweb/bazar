@@ -15,19 +15,25 @@ export const PWrapper = styled.div`
 	align-items: center;
 `;
 
+export const CAction = styled.div`
+	@media (max-width: ${STYLING.cutoffs.initial}) {
+		display: none;
+	}
+`;
+
 export const LAction = styled.button`
+	height: 35px;
+	padding: 0 17.5px;
+	margin: 0 15px;
 	span {
 		color: ${(props) => props.theme.colors.font.primary};
 		font-family: ${(props) => props.theme.typography.family.alt1};
 		font-size: ${(props) => props.theme.typography.size.small};
 		font-weight: ${(props) => props.theme.typography.weight.bold};
 		display: block;
-		margin: 0 15px 0 0;
 	}
 	&:hover {
-		span {
-			color: ${(props) => props.theme.colors.font.alt1};
-		}
+		background: ${(props) => props.theme.colors.container.primary.active};
 	}
 	@media (max-width: ${STYLING.cutoffs.initial}) {
 		display: none;

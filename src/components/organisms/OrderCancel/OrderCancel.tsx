@@ -1,7 +1,7 @@
 import React from 'react';
 import { useDispatch } from 'react-redux';
 
-import { readHandler, sendMessage } from 'api';
+import { messageResult, readHandler } from 'api';
 
 import { Button } from 'components/atoms/Button';
 import { Notification } from 'components/atoms/Notification';
@@ -30,7 +30,7 @@ export default function OrderCancel(props: IProps) {
 		if (arProvider.wallet) {
 			setLoading(true);
 			try {
-				const cancelOrderResponse = await sendMessage({
+				const cancelOrderResponse = await messageResult({
 					processId: PROCESSES.ucm,
 					action: 'Cancel-Order',
 					wallet: arProvider.wallet,

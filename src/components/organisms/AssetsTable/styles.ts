@@ -25,7 +25,7 @@ export const HeaderActions = styled.div`
 	.filter-listings {
 		margin: 0 10px 0 0;
 		svg {
-			margin: 0 0 0 7.5px;
+			margin: 0 0 0 10px;
 			padding: 3.5px 0 0 0;
 		}
 	}

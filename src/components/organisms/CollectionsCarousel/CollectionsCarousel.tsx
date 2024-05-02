@@ -52,7 +52,6 @@ export default function CollectionsCarousel(props: IProps) {
 						draggable={false}
 						arrows={!props.loading}
 						infinite={!props.loading}
-						partialVisbile={true}
 						removeArrowOnDeviceType={['tablet', 'mobile']}
 						customTransition={'transform 500ms ease'}
 						afterChange={() => {

@@ -1,11 +1,15 @@
 import { OwnerLine } from 'components/molecules/OwnerLine';
 import { DEFAULTS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
+import { useLanguageProvider } from 'providers/LanguageProvider';
 
 import * as S from './styles';
 import { IProps } from './types';
 
 export default function CollectionCard(props: IProps) {
+	const languageProvider = useLanguageProvider();
+	const language = languageProvider.object[languageProvider.current];
+
 	return props.collection ? (
 		<S.Wrapper className={'fade-in'}>
 			<S.InfoWrapper>
@@ -13,7 +17,7 @@ export default function CollectionCard(props: IProps) {
 					<h4>{props.collection.data.title}</h4>
 				</S.InfoHeader>
 				<S.InfoCreator>
-					<p>{`Created by`}</p>
+					<p>{language.createdBy}</p>
 					<OwnerLine
 						owner={{
 							address: props.collection.data.creator,

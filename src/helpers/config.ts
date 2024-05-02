@@ -39,7 +39,7 @@ export const PROCESSES = {
 	ucm: 'fzRGvSW2oSop9xGLxs5mcaRtCbrbug8imI_uRZHKdiU',
 	token: 'IRv02cCZGmBVMhmPlL63sce4djgRgkY1J_3DUl_feUw',
 	profileRegistry: 'kFYMezhjcPCZLr2EkkwzIXP5A64QmtME6Bxa8bGmbzI',
-	profileSrc: 'vilNa4EYY1RPGtyc8VLjLKhgU7KvTgW5tRIHsRf6GZg',
+	profileSrc: 'PBGjRnSLbKoj3KTJuYu5BFcSHJrwev_zizWTeQyVs3c',
 };
 
 export const LICENSES = {
