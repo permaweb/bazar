@@ -288,13 +288,17 @@ export async function messageResults(args: {
 	processId: string;
 	wallet: any;
 	action: string;
+	tags: any;
 	data: any;
 }): Promise<any> {
 	try {
+		const tags = [{ name: 'Action', value: args.action }];
+		if (args.tags) tags.push(...args.tags);
+
 		await message({
 			process: args.processId,
 			signer: createDataItemSigner(args.wallet),
-			tags: [{ name: 'Action', value: args.action }],
+			tags: tags,
 			data: JSON.stringify(args.data),
 		});
 
@@ -343,37 +347,6 @@ export async function messageResults(args: {
 		}
 
 		return null;
-
-		// if (Messages && Messages.length) {
-		// 	const response = {};
-
-		// 	Messages.forEach((message: any) => {
-		// 		const action = getTagValue(message.Tags, 'Action') || args.action;
-
-		// 		let responseData = null;
-		// 		const messageData = message.Data;
-
-		// 		if (messageData) {
-		// 			try {
-		// 				responseData = JSON.parse(messageData);
-		// 			} catch {
-		// 				responseData = messageData;
-		// 			}
-		// 		}
-
-		// 		const responseStatus = getTagValue(message.Tags, 'Status');
-		// 		const responseMessage = getTagValue(message.Tags, 'Message');
-
-		// 		response[action] = {
-		// 			id: txId,
-		// 			status: responseStatus,
-		// 			message: responseMessage,
-		// 			data: responseData,
-		// 		};
-		// 	});
-
-		// 	return response;
-		// } else return null;
 	} catch (e) {
 		console.error(e);
 	}

@@ -399,6 +399,11 @@ export default function ProfileManage(props: IProps) {
 								/>
 							</S.Form>
 							<S.SAction>
+								{(!props.profile || !props.profile.id) && loading && (
+									<S.Message>
+										<span>{`${language.profileCreatingInfo}...`}</span>
+									</S.Message>
+								)}
 								{props.handleClose && (
 									<Button
 										type={'primary'}

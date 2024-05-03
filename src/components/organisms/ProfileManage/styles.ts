@@ -264,6 +264,15 @@ export const SAction = styled.div`
 	margin: 0 0 0 auto !important;
 `;
 
+export const Message = styled.div`
+	span {
+		color: ${(props) => props.theme.colors.font.primary};
+		font-size: ${(props) => props.theme.typography.size.small};
+		font-weight: ${(props) => props.theme.typography.weight.bold};
+		line-height: 1.5;
+	}
+`;
+
 export const MWrapper = styled.div`
 	padding: 0 20px 20px 20px;
 `;

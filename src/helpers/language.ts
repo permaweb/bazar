@@ -73,6 +73,7 @@ export const language = {
 		price: `Price`,
 		profileCreated: `Profile created`,
 		profileUpdated: `Profile updated`,
+		profileCreatingInfo: `Creating profile`,
 		provenanceDetails: `Provenance Details`,
 		quantity: `Quantity`,
 		recipient: `Recipient`,

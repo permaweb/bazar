@@ -153,6 +153,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 	async function handleSubmit() {
 		if (props.asset && arProvider.wallet && arProvider.profile && arProvider.profile.id) {
 			let orderPair = null;
+			let orderTags = null;
 			let recipient = null;
 			let localSuccess = false;
 
@@ -173,6 +174,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 			if (orderPair && recipient) {
 				const dominantToken = orderPair[0];
+				const swapToken = orderPair[1];
 
 				let calculatedQuantity: string | number = currentOrderQuantity;
 				if (props.type === 'sell' || props.type === 'transfer') {
@@ -183,14 +185,29 @@ export default function AssetActionMarketOrders(props: IProps) {
 				}
 				calculatedQuantity = calculatedQuantity.toString();
 
+				if (props.type === 'buy' || props.type === 'sell') {
+					orderTags = [
+						{ name: 'X-Order-Action', value: 'Create-Order' },
+						{ name: 'X-Quantity', value: calculatedQuantity },
+						{ name: 'X-Swap-Token', value: swapToken },
+					];
+					if (unitPrice && unitPrice > 0) {
+						let calculatedUnitPrice: string | number = unitPrice;
+						if (transferDenomination) calculatedUnitPrice = unitPrice * transferDenomination;
+						calculatedUnitPrice = calculatedUnitPrice.toString();
+						orderTags.push({ name: 'X-Price', value: calculatedUnitPrice });
+					}
+				}
+
 				setOrderLoading(true);
 				try {
 					setCurrentNotification('Depositing balance...');
 
 					const transferResponse: any = await messageResults({
 						processId: arProvider.profile.id,
-						action: 'Handle-Asset-Transfer',
+						action: 'Transfer',
 						wallet: arProvider.wallet,
+						tags: orderTags,
 						data: {
 							Target: dominantToken,
 							Recipient: recipient,
@@ -203,10 +220,8 @@ export default function AssetActionMarketOrders(props: IProps) {
 							setCurrentNotification(transferResponse['Transfer-Success'].message || 'Deposited funds');
 							switch (props.type) {
 								case 'buy':
-									console.log('execute buy order');
-									break;
 								case 'sell':
-									console.log('execute sell order');
+									console.log('execute buy / sell order');
 									break;
 								case 'transfer':
 									setOrderSuccess(true);
@@ -288,13 +303,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 					// 						DepositTxId: depositTxId,
 					// 						Quantity: calculatedQuantity,
 					// 					};
-
-					// 					if (unitPrice && unitPrice > 0) {
-					// 						let calculatedUnitPrice: string | number = unitPrice;
-					// 						if (transferDenomination) calculatedUnitPrice = unitPrice * transferDenomination;
-					// 						calculatedUnitPrice = calculatedUnitPrice.toString();
-					// 						orderData.Price = calculatedUnitPrice;
-					// 					}
 
 					// 					const createOrderResponse: any = await messageResult({
 					// 						processId: PROCESSES.ucm,
@@ -533,6 +541,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 		if (!arProvider.walletAddress) return true;
 		if (!arProvider.profile || !arProvider.profile.id) return true;
 		if (orderLoading) return true;
+		if (orderProcessed && !orderSuccess) return true;
 		if (maxOrderQuantity <= 0 || isNaN(currentOrderQuantity)) return true;
 		if (currentOrderQuantity <= 0 || isNaN(maxOrderQuantity) || !Number.isInteger(Number(currentOrderQuantity)))
 			return true;
