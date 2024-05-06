@@ -374,6 +374,11 @@ export const DrawerContentDetail = styled.p`
 	font-weight: ${(props) => props.theme.typography.weight.bold};
 	color: ${(props) => props.theme.colors.font.primary};
 	word-wrap: break-word;
+	img {
+		height: 20px;
+		width: 17.5px;
+		margin: 0.5px 0px 0 10px;
+	}
 `;
 
 export const DrawerContentLink = styled.a`

@@ -305,8 +305,10 @@ export async function messageResults(args: {
 		const messageResults = await results({
 			process: args.processId,
 			sort: 'DESC',
-			limit: 25,
+			limit: 100,
 		});
+
+		console.log(messageResults);
 
 		if (messageResults && messageResults.edges && messageResults.edges.length) {
 			const response = {};

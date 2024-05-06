@@ -39,7 +39,12 @@ export default function AssetInfo(props: IProps) {
 		const licenseElement = props.asset.data.udl[licenseKey];
 
 		if (typeof licenseElement === 'object') {
-			return <GS.DrawerContentDetail>{splitTagValue(licenseElement.value)}</GS.DrawerContentDetail>;
+			return (
+				<GS.DrawerContentDetail>
+					{splitTagValue(licenseElement.value)}{' '}
+					<img src={getTxEndpoint('r_6_cIZ9ZcAclPkA0Bp4n_HeJ5kWnKgCSwH7oFyDrJY')} />
+				</GS.DrawerContentDetail>
+			);
 		}
 
 		if (checkValidAddress(licenseElement)) {

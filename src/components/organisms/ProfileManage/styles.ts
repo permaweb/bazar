@@ -267,6 +267,7 @@ export const SAction = styled.div`
 export const Message = styled.div`
 	span {
 		color: ${(props) => props.theme.colors.font.primary};
+		font-family: ${(props) => props.theme.typography.family.alt1};
 		font-size: ${(props) => props.theme.typography.size.small};
 		font-weight: ${(props) => props.theme.typography.weight.bold};
 		line-height: 1.5;

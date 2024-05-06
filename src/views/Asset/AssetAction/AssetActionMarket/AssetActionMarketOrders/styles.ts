@@ -82,6 +82,13 @@ export const SalesLine = styled.div`
 	display: flex;
 	justify-content: space-between;
 	align-items: center;
+
+	@media (max-width: ${STYLING.cutoffs.secondary}) {
+		flex-direction: column;
+		justify-content: flex-start;
+		align-items: flex-start;
+		gap: 15px;
+	}
 `;
 
 export const SalesDetail = styled.div`

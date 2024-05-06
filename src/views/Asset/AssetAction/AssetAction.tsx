@@ -153,7 +153,8 @@ export default function AssetAction(props: IProps) {
 
 	function getOwnerOrder(listing: ListingType) {
 		if (!arProvider.walletAddress) return false;
-		return listing.creator === arProvider.walletAddress;
+		if (!arProvider.profile || !arProvider.profile.id) return false;
+		return listing.creator === arProvider.profile.id;
 	}
 
 	function getCurrentOwners() {

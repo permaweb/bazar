@@ -7,6 +7,7 @@ import { Button } from 'components/atoms/Button';
 import { Notification } from 'components/atoms/Notification';
 import { Modal } from 'components/molecules/Modal';
 import { PROCESSES } from 'helpers/config';
+import { NotificationType } from 'helpers/types';
 import * as windowUtils from 'helpers/window';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
@@ -24,7 +25,7 @@ export default function OrderCancel(props: IProps) {
 	const [loading, setLoading] = React.useState<boolean>(false);
 	const [showConfirmation, setShowConfirmation] = React.useState<boolean>(false);
 	const [cancelProcessed, setCancelProcessed] = React.useState<boolean>(false);
-	const [response, setResponse] = React.useState<string | null>(null);
+	const [response, setResponse] = React.useState<NotificationType | null>(null);
 
 	async function handleOrderCancel() {
 		if (arProvider.wallet) {
@@ -43,8 +44,9 @@ export default function OrderCancel(props: IProps) {
 				if (cancelOrderResponse) {
 					setCancelProcessed(true);
 					if (cancelOrderResponse['Order-Cancel-Success'])
-						setResponse(cancelOrderResponse['Order-Cancel-Success'].message);
-					if (cancelOrderResponse['Order-Cancel-Error']) setResponse(cancelOrderResponse['Order-Cancel-Error'].message);
+						setResponse({ message: cancelOrderResponse['Order-Cancel-Success'].message, status: 'success' });
+					if (cancelOrderResponse['Order-Cancel-Error'])
+						setResponse({ message: cancelOrderResponse['Order-Cancel-Error'].message, status: 'warning' });
 
 					const ucmState = await readHandler({
 						processId: PROCESSES.ucm,
@@ -85,7 +87,9 @@ export default function OrderCancel(props: IProps) {
 					</S.MWrapper>
 				</Modal>
 			)}
-			{response && <Notification message={response} type={'success'} callback={() => setResponse(null)} />}
+			{response && (
+				<Notification message={response.message} type={response.status} callback={() => setResponse(null)} />
+			)}
 		</>
 	);
 }
