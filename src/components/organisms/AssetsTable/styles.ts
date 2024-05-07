@@ -63,6 +63,7 @@ export const AssetsGridWrapper = styled.div`
 `;
 
 export const AssetGridElement = styled.div`
+	width: 100%;
 	position: relative;
 	a {
 		display: block;
@@ -204,9 +205,10 @@ export const Title = styled.div`
 `;
 
 export const Description = styled.div`
+	width: 100%;
 	margin: 5px 0;
 	p {
-		max-width: 75%;
+		max-width: 200px;
 		overflow-x: hidden;
 		white-space: nowrap;
 		text-overflow: ellipsis;

@@ -78,6 +78,10 @@ export const Thumbnail = styled.div`
 		width: 100%;
 		object-fit: cover;
 	}
+	@media (max-width: ${STYLING.cutoffs.secondary}) {
+		height: 60px;
+		width: 60px;
+	}
 `;
 
 export const Title = styled.div`
@@ -90,6 +94,12 @@ export const Title = styled.div`
 		white-space: nowrap;
 		text-overflow: ellipsis;
 		overflow: hidden;
+	}
+	@media (max-width: ${STYLING.cutoffs.secondary}) {
+		max-width: 60%;
+		p {
+			font-size: ${(props) => props.theme.typography.size.small};
+		}
 	}
 `;
 

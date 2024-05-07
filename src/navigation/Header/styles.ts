@@ -77,12 +77,12 @@ export const MWrapper = styled.div`
 `;
 
 export const PWrapper = styled.div`
-	height: calc(100vh - 15px);
+	height: calc(100dvh - 15px);
 	width: 400px;
 	max-width: 85vw;
 	position: fixed;
-	top: 7.5px;
-	right: 7.5px;
+	top: 10px;
+	right: 10px;
 	transition: width 50ms ease-out;
 	animation: ${openRight} 200ms;
 `;

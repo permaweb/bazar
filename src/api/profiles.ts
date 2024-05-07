@@ -24,7 +24,7 @@ export async function getProfileById(args: { profileId: string }): Promise<Profi
 		if (fetchedProfile) {
 			return {
 				id: args.profileId,
-				walletAddress: null,
+				walletAddress: fetchedProfile.Owner || null,
 				displayName: fetchedProfile.Profile.DisplayName || null,
 				username: fetchedProfile.Profile.Username || null,
 				bio: fetchedProfile.Profile.Bio || null,

@@ -11,8 +11,8 @@ export default function OwnerLine(props: IProps) {
 	const navigate = useNavigate();
 
 	function handleViewProfile() {
-		if (props.owner) {
-			navigate(`${URLS.profile}${props.owner.address}`);
+		if (props.owner && props.owner.profile && props.owner.profile.id) {
+			navigate(`${URLS.profile}${props.owner.profile.id}`);
 			if (props.callback) props.callback();
 		}
 	}
@@ -28,7 +28,14 @@ export default function OwnerLine(props: IProps) {
 		<S.Wrapper>
 			<Avatar owner={props.owner.profile} dimensions={{ wrapper: 23.5, icon: 15 }} callback={handleViewProfile} />
 			<S.Label>
-				<Link onClick={() => (props.callback ? props.callback() : {})} to={`${URLS.profile}${props.owner.address}`}>
+				<Link
+					onClick={() => (props.callback ? props.callback() : {})}
+					to={
+						props.owner.profile && props.owner.profile.id
+							? `${URLS.profile}${props.owner.profile.id}`
+							: `${URLS.profile}${props.owner.address}`
+					}
+				>
 					{getLabel()}
 				</Link>
 			</S.Label>

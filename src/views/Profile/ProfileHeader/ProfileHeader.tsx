@@ -25,6 +25,7 @@ export default function ProfileHeader(props: IProps) {
 	const language = languageProvider.object[languageProvider.current];
 
 	const [showProfileManage, setShowProfileManage] = React.useState<boolean>(false);
+	const [profileUpdating, setProfileUpdating] = React.useState<boolean>(false);
 	// const [copied, setCopied] = React.useState<boolean>(false);
 
 	React.useEffect(() => {
@@ -55,6 +56,7 @@ export default function ProfileHeader(props: IProps) {
 
 	async function handleProfileSrcUpdate() {
 		if (arProvider.profile && arProvider.profile.id) {
+			setProfileUpdating(true);
 			const aos = connect();
 
 			let processSrc = null;
@@ -83,6 +85,7 @@ export default function ProfileHeader(props: IProps) {
 			} catch (e: any) {
 				console.error(e);
 			}
+			setProfileUpdating(false);
 		}
 	}
 
@@ -117,7 +120,13 @@ export default function ProfileHeader(props: IProps) {
 					{getHeaderDetails()}
 					<S.HeaderActions>
 						{arProvider.profile && arProvider.profile.id && arProvider.profile.id === props.profile.id && (
-							<Button type={'primary'} label={'Update profile'} handlePress={handleProfileSrcUpdate} />
+							<Button
+								type={'primary'}
+								label={'Update profile'}
+								handlePress={handleProfileSrcUpdate}
+								disabled={profileUpdating}
+								loading={profileUpdating}
+							/>
 						)}
 						{arProvider.profile && arProvider.profile.id === props.profile.id && (
 							<Button

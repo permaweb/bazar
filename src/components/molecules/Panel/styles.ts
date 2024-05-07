@@ -18,7 +18,7 @@ export const Wrapper = styled.div<{ top: number; noHeader: boolean }>`
 export const Container = styled.div<{
 	noHeader: boolean;
 }>`
-	height: calc(100vh - 20px);
+	height: calc(100dvh - 20px);
 	width: 550px;
 	max-width: 95vw;
 	position: fixed;

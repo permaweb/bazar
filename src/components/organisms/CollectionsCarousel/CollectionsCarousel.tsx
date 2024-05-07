@@ -54,6 +54,7 @@ export default function CollectionsCarousel(props: IProps) {
 						infinite={!props.loading}
 						removeArrowOnDeviceType={['tablet', 'mobile']}
 						customTransition={'transform 500ms ease'}
+						partialVisible
 						afterChange={() => {
 							if (!nextSlideClicked) setNextSlideClicked(true);
 						}}

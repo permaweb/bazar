@@ -66,7 +66,7 @@ export default function Profile() {
 			icon: null,
 			disabled: false,
 			url: URLS.profileCollections(address),
-			view: () => <ProfileCollections address={address} />,
+			view: () => <ProfileCollections address={profile && profile.walletAddress ? profile.walletAddress : null} />,
 		},
 		// {
 		// 	label: language.listings,
@@ -86,7 +86,7 @@ export default function Profile() {
 
 	const urlTabs = React.useMemo(() => {
 		return <URLTabs tabs={TABS} activeUrl={TABS[0]!.url} />;
-	}, [address]);
+	}, [address, profile, language]);
 
 	return profile ? (
 		<>

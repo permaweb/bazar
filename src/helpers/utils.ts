@@ -41,21 +41,47 @@ export function formatCount(count: string): string {
 		let parts = count.split('.');
 		parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 
-		// Ensure the decimal part is always two digits long
-		if (parts[1].length > 2) {
-			parts[1] = parts[1].substring(0, 2); // Truncate if more than two digits
-		} else if (parts[1].length < 2) {
-			parts[1] = parts[1].padEnd(2, '0'); // Pad with '0' if less than two digits
+		// Find the first non-zero digit in the decimal part
+		let index = parts[1].length;
+		for (let i = 0; i < parts[1].length; i++) {
+			if (parts[1][i] !== '0') {
+				index = i + 1;
+				break;
+			}
+		}
+		if (index === parts[1].length && parts[1][parts[1].length - 1] === '0') {
+			parts[1] = '00';
+		} else {
+			parts[1] = parts[1].substring(0, index);
+			parts[1] = parts[1].padEnd(index, '0');
 		}
 
 		return parts.join('.');
 	} else {
-		return count.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + '.00'; // Append '.00' if no decimal part
+		return count.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + '.00';
 	}
 }
 
 export function formatPercentage(percentage: number): string {
-	return `${(percentage * 100).toFixed(2).toString()}%`;
+	let multiplied = percentage * 100;
+	let decimalPart = multiplied.toString().split('.')[1];
+
+	if (!decimalPart) {
+		return `${multiplied.toFixed(0)}%`;
+	}
+
+	let index = decimalPart.length;
+	for (let i = 0; i < decimalPart.length; i++) {
+		if (decimalPart[i] !== '0') {
+			index = i + 1;
+			break;
+		}
+	}
+	if (index === decimalPart.length && decimalPart[decimalPart.length - 1] === '0') {
+		return `${multiplied.toFixed(0)}%`;
+	} else {
+		return `${multiplied.toFixed(index)}%`;
+	}
 }
 
 export function formatDate(dateArg: string | number | null, dateType: DateType) {
