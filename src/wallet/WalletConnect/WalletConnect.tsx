@@ -75,15 +75,15 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 		}
 	}
 
-	const copyAddress = React.useCallback(async () => {
-		if (arProvider.walletAddress) {
-			if (arProvider.walletAddress.length > 0) {
-				await navigator.clipboard.writeText(arProvider.walletAddress);
+	const copyAddress = React.useCallback(async (address: string) => {
+		if (address) {
+			if (address.length > 0) {
+				await navigator.clipboard.writeText(address);
 				setCopied(true);
 				setTimeout(() => setCopied(false), 2000);
 			}
 		}
-	}, [arProvider.walletAddress]);
+	}, []);
 
 	function handleToggleTheme() {
 		themeProvider.setCurrent(themeProvider.current === 'light' ? 'dark' : 'light');
@@ -96,12 +96,13 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 
 	function getTokenBalance(tokenProcess: string) {
 		if (
-			arProvider.walletAddress &&
+			arProvider.profile &&
+			arProvider.profile.id &&
 			currenciesReducer &&
 			currenciesReducer[tokenProcess] &&
-			currenciesReducer[tokenProcess].Balances[arProvider.walletAddress]
+			currenciesReducer[tokenProcess].Balances[arProvider.profile.id]
 		) {
-			const ownerBalance = currenciesReducer[tokenProcess].Balances[arProvider.walletAddress];
+			const ownerBalance = currenciesReducer[tokenProcess].Balances[arProvider.profile.id];
 			return ownerBalance.toString();
 		}
 		return 0;
@@ -168,9 +169,14 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 									{arProvider.profile && arProvider.profile.id ? language.viewProfile : language.createProfile}
 								</li>
 								{arProvider.profile && arProvider.profile.id && (
-									<li onClick={() => setShowProfileManage(true)}>{language.editProfile}</li>
+									<>
+										<li onClick={() => setShowProfileManage(true)}>{language.editProfile}</li>
+										<li onClick={() => copyAddress(arProvider.profile.id)}>
+											{copied ? `${language.copied}!` : language.copyProfileAddress}
+										</li>
+									</>
 								)}
-								<li onClick={copyAddress}>{copied ? `${language.copied}!` : language.copyAddress}</li>
+								{/* <li onClick={() => copyAddress(arProvider.walletAddress)}>{copied ? `${language.copied}!` : language.copyWalletAddress}</li> */}
 								<li onClick={handleToggleTheme}>
 									{themeProvider.current === 'light' ? language.useDarkDisplay : language.useLightDisplay}
 								</li>

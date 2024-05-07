@@ -62,7 +62,7 @@ export async function getCollectionById(args: {
 }): Promise<CollectionDetailType> {
 	try {
 		const gqlResponse = await getGQLData({
-			gateway: GATEWAYS.arweave,
+			gateway: GATEWAYS.goldsky,
 			ids: [args.id],
 			tagFilters: null,
 			owners: null,

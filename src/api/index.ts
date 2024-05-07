@@ -308,8 +308,6 @@ export async function messageResults(args: {
 			limit: 100,
 		});
 
-		console.log(messageResults);
-
 		if (messageResults && messageResults.edges && messageResults.edges.length) {
 			const response = {};
 

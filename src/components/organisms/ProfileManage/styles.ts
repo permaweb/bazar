@@ -256,15 +256,18 @@ export const PActions = styled.div`
 `;
 
 export const SAction = styled.div`
-	width: fit-content;
+	width: 100%;
 	display: flex;
+	justify-content: flex-end;
 	align-items: center;
 	flex-wrap: wrap;
 	gap: 15px;
-	margin: 0 0 0 auto !important;
+	position: relative;
 `;
 
 export const Message = styled.div`
+	position: absolute;
+	left: 0;
 	span {
 		color: ${(props) => props.theme.colors.font.primary};
 		font-family: ${(props) => props.theme.typography.family.alt1};

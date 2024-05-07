@@ -39,7 +39,7 @@ export const PROCESSES = {
 	ucm: 'fzRGvSW2oSop9xGLxs5mcaRtCbrbug8imI_uRZHKdiU',
 	token: 'IRv02cCZGmBVMhmPlL63sce4djgRgkY1J_3DUl_feUw',
 	profileRegistry: 'kFYMezhjcPCZLr2EkkwzIXP5A64QmtME6Bxa8bGmbzI',
-	profileSrc: 'rIw0G3cJiBuwlUNxvV3TDFqw7AMWZLf91ANuU4-a2Hg',
+	profileSrc: 'VgdzqxtexVBVz6faY2A8VuFAkgljR-krybqtGgTqt8g',
 };
 
 export const LICENSES = {
@@ -159,7 +159,7 @@ export const TAGS = {
 		title: 'Title',
 	},
 	values: {
-		collection: 'AO-Test-Collection',
+		collection: 'AO-Collection',
 		profileVersions: {
 			'1': 'Account-0.3',
 		},

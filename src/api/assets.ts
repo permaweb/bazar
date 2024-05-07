@@ -208,7 +208,7 @@ export function getAssetIdGroups(args: {
 		const idGroup: any = {};
 		const groupCount: number = args.groupCount || PAGINATORS.default;
 
-		if (ucmReducer.Orderbook && ucmReducer.Orderbook.length) {
+		if (ucmReducer.Orderbook) {
 			let currentOrderbook = ucmReducer.Orderbook;
 
 			if (args.ids) {
@@ -218,7 +218,7 @@ export function getAssetIdGroups(args: {
 				const missingIds = args.ids.filter((id) => !orderbookIds.includes(id));
 
 				missingIds.forEach((missingId) => {
-					currentOrderbook.push({ Pair: [missingId, PROCESSES.token], Orders: [] }); // Assuming default structure for new entries
+					currentOrderbook.push({ Pair: [missingId, PROCESSES.token], Orders: [] });
 				});
 			}
 
