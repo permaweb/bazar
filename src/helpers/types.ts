@@ -146,7 +146,7 @@ export type CollectionType = {
 };
 
 export type CollectionDetailType = CollectionType & {
-	assetIdGroups: IdGroupType;
+	assetIds: string[];
 	creatorProfile: ProfileHeaderType;
 	metrics: CollectionMetricsType;
 };

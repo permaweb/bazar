@@ -5,7 +5,7 @@ export const Wrapper = styled.div`
 `;
 
 export const CollectionsWrapper = styled.div`
-	margin: 0 0 40px 0;
+	margin: 0 0 60px 0;
 `;
 
 export const AssetsWrapper = styled.div``;

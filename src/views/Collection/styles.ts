@@ -181,5 +181,5 @@ export const InfoDescription = styled.div`
 `;
 
 export const AssetsWrapper = styled.div`
-	margin: 40px 0 0 0;
+	margin: 60px 0 0 0;
 `;

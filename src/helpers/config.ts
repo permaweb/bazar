@@ -7,9 +7,11 @@ import buy from 'assets/buy.svg';
 import checkmark from 'assets/checkmark.svg';
 import close from 'assets/close.svg';
 import comments from 'assets/comments.svg';
+import grid from 'assets/grid.svg';
 import html from 'assets/html.svg';
 import info from 'assets/info.svg';
 import license from 'assets/license.svg';
+import list from 'assets/list.svg';
 import logo from 'assets/logo.svg';
 import market from 'assets/market.svg';
 import media from 'assets/media.svg';
@@ -68,9 +70,11 @@ export const ASSETS = {
 	checkmark,
 	close,
 	comments,
+	grid,
 	html,
 	info,
 	license,
+	list,
 	logo,
 	market,
 	media,

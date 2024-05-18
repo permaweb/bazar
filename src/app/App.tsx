@@ -15,7 +15,6 @@ import * as ucmActions from 'store/ucm/actions';
 
 import * as S from './styles';
 
-// TODO: remove check on currencies reducer
 export default function App() {
 	const dispatch = useDispatch();
 

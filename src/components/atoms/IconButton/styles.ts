@@ -58,7 +58,9 @@ export const Primary = styled.button<{
 
 export const Alt1 = styled(Primary)`
 	background: ${(props) =>
-		props.disabled
+		props.active
+			? props.theme.colors.button.primary.active.border
+			: props.disabled
 			? props.theme.colors.button.primary.disabled.background
 			: props.theme.colors.button.primary.background};
 	border: 1px solid
@@ -72,10 +74,10 @@ export const Alt1 = styled(Primary)`
 		height: ${(props) => (props.dimensions ? `${props.dimensions.icon.toString()}px` : `24.5px`)};
 		width: ${(props) => (props.dimensions ? `${props.dimensions.icon.toString()}px` : `24.5px`)};
 		fill: ${(props) =>
-			props.disabled
-				? props.theme.colors.button.primary.disabled.color
-				: props.active
+			props.active
 				? props.theme.colors.font.light1
+				: props.disabled
+				? props.theme.colors.button.primary.disabled.color
 				: props.theme.colors.button.primary.color};
 	}
 

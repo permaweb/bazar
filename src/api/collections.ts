@@ -1,16 +1,14 @@
-import { getAssetIdGroups, getGQLData, getProfileByWalletAddress } from 'api';
+import { getGQLData, getProfileByWalletAddress } from 'api';
 
-import { GATEWAYS, PAGINATORS, PROCESSES, TAGS } from 'helpers/config';
+import { GATEWAYS, PROCESSES, TAGS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import {
-	AssetSortType,
 	CollectionDetailType,
 	CollectionGQLResponseType,
 	CollectionManifestType,
 	CollectionMetricsType,
 	CollectionType,
 	DefaultGQLResponseType,
-	IdGroupType,
 	OrderbookEntryType,
 } from 'helpers/types';
 import { formatAddress, getTagValue, sortOrderbookEntries } from 'helpers/utils';
@@ -55,11 +53,7 @@ export async function getCollections(args: {
 	}
 }
 
-export async function getCollectionById(args: {
-	id: string;
-	filterListings: boolean;
-	sortType: AssetSortType;
-}): Promise<CollectionDetailType> {
+export async function getCollectionById(args: { id: string }): Promise<CollectionDetailType> {
 	try {
 		const gqlResponse = await getGQLData({
 			gateway: GATEWAYS.goldsky,
@@ -82,13 +76,6 @@ export async function getCollectionById(args: {
 				console.error(e);
 			}
 
-			const assetIdGroups: IdGroupType = getAssetIdGroups({
-				ids: assetIds,
-				groupCount: PAGINATORS.collection.assets,
-				filterListings: args.filterListings,
-				sortType: args.sortType,
-			});
-
 			const metrics: CollectionMetricsType = {
 				assetCount: assetIds.length,
 				floorPrice: getFloorPrice(assetIds),
@@ -98,7 +85,7 @@ export async function getCollectionById(args: {
 
 			const collectionDetail = {
 				...structuredCollection,
-				assetIdGroups: assetIdGroups,
+				assetIds: assetIds,
 				creatorProfile: creatorProfile,
 				metrics: metrics,
 			};

@@ -1,14 +1,17 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
+import { getAssetIdGroups, getAssetsByIds } from 'api';
+
 import * as GS from 'app/styles';
 import { Button } from 'components/atoms/Button';
 import { CurrencyLine } from 'components/atoms/CurrencyLine';
 import { IconButton } from 'components/atoms/IconButton';
 import { Select } from 'components/atoms/Select';
-import { ASSET_SORT_OPTIONS, ASSETS, PAGINATORS, URLS } from 'helpers/config';
-import { AssetDetailType, AssetSortType, SelectOptionType } from 'helpers/types';
+import { ASSET_SORT_OPTIONS, ASSETS, PAGINATORS, STYLING, URLS } from 'helpers/config';
+import { AssetDetailType, AssetSortType, IdGroupType, SelectOptionType } from 'helpers/types';
 import { sortOrders } from 'helpers/utils';
+import * as windowUtils from 'helpers/window';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 
 import { AssetData } from '../AssetData';
@@ -24,9 +27,84 @@ export default function AssetsTable(props: IProps) {
 
 	const scrollRef = React.useRef(null);
 
+	const [assetIdGroups, setAssetIdGroups] = React.useState<IdGroupType | null>(null);
+	const [assetFilterListings, setAssetFilterListings] = React.useState<boolean>(false);
+	const [assetSortType, setAssetSortType] = React.useState<SelectOptionType | null>(ASSET_SORT_OPTIONS[0]);
+	const [assetCursor, setAssetCursor] = React.useState<string>('0');
+
+	const [assets, setAssets] = React.useState<AssetDetailType[] | null>(null);
+	const [assetsLoading, setAssetsLoading] = React.useState<boolean>(false);
+	const [assetErrorResponse, setAssetErrorResponse] = React.useState<string | null>(null);
+
+	const [viewType, setViewType] = React.useState<'list' | 'grid' | null>(null);
+	const [desktop, setDesktop] = React.useState(windowUtils.checkWindowCutoff(parseInt(STYLING.cutoffs.initial)));
+
+	function handleWindowResize() {
+		if (windowUtils.checkWindowCutoff(parseInt(STYLING.cutoffs.initial))) {
+			setDesktop(true);
+		} else {
+			setDesktop(false);
+		}
+	}
+
+	windowUtils.checkWindowResize(handleWindowResize);
+
+	React.useEffect(() => {
+		(async function () {
+			if (!assetIdGroups) {
+				setAssetIdGroups(
+					getAssetIdGroups({
+						ids: props.ids || null,
+						groupCount: PAGINATORS.landing.assets,
+						filterListings: assetFilterListings,
+						sortType: assetSortType.id as AssetSortType,
+					})
+				);
+			}
+		})();
+	}, [assetFilterListings, assetSortType, props.ids]);
+
+	React.useEffect(() => {
+		(async function () {
+			if (assetIdGroups) {
+				setAssetsLoading(true);
+				try {
+					setAssets(
+						await getAssetsByIds({ ids: assetIdGroups[assetCursor], sortType: assetSortType.id as AssetSortType })
+					);
+				} catch (e: any) {
+					setAssetErrorResponse(e.message || language.assetsFetchFailed);
+				}
+				setAssetsLoading(false);
+			}
+		})();
+	}, [assetIdGroups, assetCursor, assetSortType]);
+
+	React.useEffect(() => {
+		if (!desktop) setViewType('grid');
+		else setViewType(props.type);
+	}, [props.type, desktop]);
+
+	const getPaginationAction = (callback: () => void) => {
+		setAssets(null);
+		callback();
+	};
+
+	const previousAction = React.useMemo(() => {
+		return assetIdGroups && Number(assetCursor) > 0
+			? () => getPaginationAction(() => setAssetCursor((Number(assetCursor) - 1).toString()))
+			: null;
+	}, [assetIdGroups, assetCursor]);
+
+	const nextAction = React.useMemo(() => {
+		return assetIdGroups && Number(assetCursor) < Object.keys(assetIdGroups).length - 1
+			? () => getPaginationAction(() => setAssetCursor((Number(assetCursor) + 1).toString()))
+			: null;
+	}, [assetIdGroups, assetCursor]);
+
 	function getListing(asset: AssetDetailType) {
 		if (asset && asset.orders && asset.orders.length) {
-			const sortedOrders = sortOrders(asset.orders, props.currentSortType.id as AssetSortType);
+			const sortedOrders = sortOrders(asset.orders, assetSortType.id as AssetSortType);
 
 			if (sortedOrders && sortedOrders.length) {
 				return <CurrencyLine amount={sortedOrders[0].price || '0'} currency={sortedOrders[0].currency} />;
@@ -38,24 +116,29 @@ export default function AssetsTable(props: IProps) {
 	function getAssetIndexDisplay(assetIndex: number, sectionIndex: number, sectionLength: number) {
 		let index = assetIndex + 1;
 		if (sectionIndex > 0) index += sectionLength;
-		if (props.assets && props.currentPage && props.pageCount) {
-			index += Number(props.currentPage) * props.pageCount;
+		if (assets && assetCursor && props.pageCount) {
+			index += Number(assetCursor) * props.pageCount;
 		}
 		return index;
 	}
 
-	function handlePaginationAction(type: 'next' | 'previous') {
-		if (props.nextAction || props.previousAction) {
-			switch (type) {
-				case 'next':
-					props.nextAction();
-					break;
-				case 'previous':
-					props.previousAction();
-					break;
-			}
-			setTimeout(function () {
-				if (scrollRef && scrollRef.current) {
+	const handleAssetSortType = React.useCallback((option: SelectOptionType) => {
+		setAssetIdGroups(null);
+		setAssets(null);
+		setAssetsLoading(true);
+		setAssetSortType(option);
+	}, []);
+
+	const toggleFilterListings = React.useCallback(() => {
+		setAssetFilterListings((prev) => !prev);
+	}, []);
+
+	const handlePaginationAction = (type: 'next' | 'previous') => {
+		const action = type === 'next' ? nextAction : previousAction;
+		if (action) {
+			action();
+			setTimeout(() => {
+				if (scrollRef.current) {
 					scrollRef.current.scrollIntoView({
 						behavior: 'smooth',
 						block: 'start',
@@ -63,13 +146,13 @@ export default function AssetsTable(props: IProps) {
 				}
 			}, 1);
 		}
-	}
+	};
 
 	function getActionDisabled() {
-		if (!props.assets || !props.assets.length) return true;
-		if (props.loading) return true;
-		if (props.assets && props.assets.length) {
-			return props.assets.every((asset: AssetDetailType) => (asset.orders ? asset.orders.length <= 0 : true));
+		if (!assets || !assets.length) return true;
+		if (assetsLoading) return true;
+		if (assets && assets.length) {
+			return assets.every((asset: AssetDetailType) => (asset.orders ? asset.orders.length <= 0 : true));
 		}
 	}
 
@@ -83,12 +166,12 @@ export default function AssetsTable(props: IProps) {
 	}
 
 	function getData() {
-		if (props.loading) {
+		if (assetsLoading) {
 			let Wrapper: any;
 			let Element: any;
 
 			const keys = Array.from({ length: props.pageCount || PAGINATORS.default }, (_, i) => i + 1);
-			switch (props.type) {
+			switch (viewType) {
 				case 'list':
 					Wrapper = S.AssetsListWrapper;
 					Element = S.AssetsListSectionElement;
@@ -103,7 +186,7 @@ export default function AssetsTable(props: IProps) {
 				<Element key={index} className={'fade-in border-wrapper-alt1'} disabled={true} />
 			));
 
-			if (props.type === 'list') {
+			if (viewType === 'list') {
 				const splitElements = [
 					elements.slice(0, Math.ceil((props.pageCount || PAGINATORS.default) / 2)),
 					elements.slice(Math.ceil((props.pageCount || PAGINATORS.default) / 2)),
@@ -124,13 +207,13 @@ export default function AssetsTable(props: IProps) {
 
 			return <Wrapper>{elements}</Wrapper>;
 		}
-		if (props.assets) {
-			if (props.assets.length) {
-				switch (props.type) {
+		if (assets) {
+			if (assets.length) {
+				switch (viewType) {
 					case 'list':
 						const splitSections = [
-							props.assets.slice(0, Math.ceil(props.assets.length / 2)),
-							props.assets.slice(Math.ceil(props.assets.length / 2)),
+							assets.slice(0, Math.ceil(assets.length / 2)),
+							assets.slice(Math.ceil(assets.length / 2)),
 						];
 						return (
 							<S.AssetsListWrapper>
@@ -175,7 +258,7 @@ export default function AssetsTable(props: IProps) {
 					case 'grid':
 						return (
 							<S.AssetsGridWrapper>
-								{props.assets.map((asset: AssetDetailType, index: number) => {
+								{assets.map((asset: AssetDetailType, index: number) => {
 									const redirect = `${URLS.asset}${asset.data.id}`;
 									return (
 										<S.AssetGridElement key={index} className={'fade-in'}>
@@ -216,34 +299,62 @@ export default function AssetsTable(props: IProps) {
 			<S.Header>
 				<h4>{language.assets}</h4>
 				<S.HeaderActions>
-					{props.setFilterListings && props.setCurrentSortType && (
-						<>
-							<S.SelectWrapper>
-								<Select
-									label={null}
-									activeOption={props.currentSortType}
-									setActiveOption={(option: SelectOptionType) => props.setCurrentSortType(option)}
-									options={ASSET_SORT_OPTIONS.map((option: SelectOptionType) => option)}
-									disabled={getActionDisabled()}
-								/>
-							</S.SelectWrapper>
-							<Button
-								type={'primary'}
-								label={language.filterListings}
-								handlePress={props.setFilterListings}
-								disabled={getActionDisabled()}
-								active={props.filterListings}
-								icon={props.filterListings ? ASSETS.close : null}
-								className={'filter-listings'}
+					<Button
+						type={'primary'}
+						label={language.filterListings}
+						handlePress={toggleFilterListings}
+						disabled={getActionDisabled()}
+						active={assetFilterListings}
+						icon={assetFilterListings ? ASSETS.close : null}
+						className={'filter-listings'}
+					/>
+					<S.SelectWrapper>
+						<Select
+							label={null}
+							activeOption={assetSortType}
+							setActiveOption={(option: SelectOptionType) => handleAssetSortType(option)}
+							options={ASSET_SORT_OPTIONS.map((option: SelectOptionType) => option)}
+							disabled={getActionDisabled()}
+						/>
+					</S.SelectWrapper>
+					{desktop && (
+						<S.ViewTypeWrapper className={'border-wrapper-alt1'}>
+							<IconButton
+								type={'alt1'}
+								src={ASSETS.grid}
+								handlePress={() => setViewType('grid')}
+								disabled={viewType === 'grid'}
+								dimensions={{
+									wrapper: 32.5,
+									icon: 17.5,
+								}}
+								active={viewType === 'grid'}
+								tooltip={'Grid view'}
+								useBottomToolTip
+								className={'start-action'}
 							/>
-						</>
+							<IconButton
+								type={'alt1'}
+								src={ASSETS.list}
+								handlePress={() => setViewType('list')}
+								disabled={viewType === 'list'}
+								dimensions={{
+									wrapper: 32.5,
+									icon: 17.5,
+								}}
+								active={viewType === 'list'}
+								tooltip={'List view'}
+								useBottomToolTip
+								className={'end-action'}
+							/>
+						</S.ViewTypeWrapper>
 					)}
 					<S.HeaderPaginator>
 						<IconButton
 							type={'alt1'}
 							src={ASSETS.arrow}
 							handlePress={() => handlePaginationAction('previous')}
-							disabled={!props.assets || !props.previousAction}
+							disabled={!assets || !previousAction}
 							dimensions={{
 								wrapper: 30,
 								icon: 12.5,
@@ -256,7 +367,7 @@ export default function AssetsTable(props: IProps) {
 							type={'alt1'}
 							src={ASSETS.arrow}
 							handlePress={() => handlePaginationAction('next')}
-							disabled={!props.assets || !props.nextAction}
+							disabled={!assets || !nextAction}
 							dimensions={{
 								wrapper: 30,
 								icon: 12.5,
@@ -274,15 +385,16 @@ export default function AssetsTable(props: IProps) {
 					type={'primary'}
 					label={language.previous}
 					handlePress={() => handlePaginationAction('previous')}
-					disabled={!props.assets || !props.previousAction}
+					disabled={!assets || !previousAction}
 				/>
 				<Button
 					type={'primary'}
 					label={language.next}
 					handlePress={() => handlePaginationAction('next')}
-					disabled={!props.assets || !props.nextAction}
+					disabled={!assets || !nextAction}
 				/>
 			</S.Footer>
+			{assetErrorResponse && <p>{assetErrorResponse}</p>}
 		</S.Wrapper>
 	);
 }

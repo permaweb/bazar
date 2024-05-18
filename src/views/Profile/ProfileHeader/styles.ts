@@ -16,7 +16,7 @@ export const Wrapper = styled.div<{ backgroundImage: string }>`
 	background-position: center;
 	overflow: hidden;
 	border-radius: ${STYLING.dimensions.radius.primary};
-	margin: 0 0 40px 0;
+	margin: 0 0 60px 0;
 	@media (max-width: ${STYLING.cutoffs.initial}) {
 		height: auto;
 	}

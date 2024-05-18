@@ -183,6 +183,7 @@ export const GlobalStyle = createGlobalStyle`
   .border-wrapper-alt3 {
     background: ${(props) => props.theme.colors.container.primary.background};
 		box-shadow: 0px 2.5px 5px 0px ${(props) => props.theme.colors.border.alt5};
+		border: 1px solid ${(props) => props.theme.colors.border.alt4};
     border-radius: ${STYLING.dimensions.radius.primary};
   }
 

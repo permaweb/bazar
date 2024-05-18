@@ -23,7 +23,6 @@ export const HeaderActions = styled.div`
 	gap: 20px;
 
 	.filter-listings {
-		margin: 0 10px 0 0;
 		svg {
 			margin: 0 0 0 10px;
 			padding: 3.5px 0 0 0;
@@ -245,6 +244,24 @@ export const Footer = styled.div`
 	justify-content: space-between;
 	align-items: center;
 	margin: 20px 0 0 0;
+`;
+
+export const ViewTypeWrapper = styled.div`
+	display: flex;
+	align-items: center;
+	button {
+		border-radius: 0;
+		border: none;
+	}
+	.start-action {
+		border-top-left-radius: calc(${STYLING.dimensions.radius.primary} - 1.5px);
+		border-bottom-left-radius: calc(${STYLING.dimensions.radius.primary} - 1.5px);
+		border-right: 1px solid ${(props) => props.theme.colors.border.primary};
+	}
+	.end-action {
+		border-top-right-radius: calc(${STYLING.dimensions.radius.primary} - 1.5px);
+		border-bottom-right-radius: calc(${STYLING.dimensions.radius.primary} - 1.5px);
+	}
 `;
 
 export const SelectWrapper = styled.div``;

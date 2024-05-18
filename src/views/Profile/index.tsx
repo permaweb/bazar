@@ -11,28 +11,23 @@ import { checkValidAddress } from 'helpers/utils';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 
-// import { ProfileActivity } from './ProfileActivity';
 import { ProfileAssets } from './ProfileAssets';
 import { ProfileCollections } from './ProfileCollections';
 import { ProfileHeader } from './ProfileHeader';
-// import { ProfileListings } from './ProfileListings';
 
 export default function Profile() {
 	const navigate = useNavigate();
 	const { address, active } = useParams();
-
 	const arProvider = useArweaveProvider();
-
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
-
 	const [profile, setProfile] = React.useState<ProfileHeaderType | null>(null);
 	const [toggleUpdate, setToggleUpdate] = React.useState<boolean>(false);
 
 	React.useEffect(() => {
 		if (!address && !active) navigate(URLS.notFound);
 		if (address && !active) navigate(URLS.profileAssets(address));
-	}, [address, active]);
+	}, [address, active, navigate]);
 
 	React.useEffect(() => {
 		(async function () {
@@ -51,42 +46,46 @@ export default function Profile() {
 				navigate(URLS.notFound);
 			}
 		})();
-	}, [address, arProvider]);
+	}, [address, arProvider, navigate]);
 
-	const TABS = [
-		{
-			label: language.assets,
-			icon: null,
-			disabled: false,
-			url: URLS.profileAssets(address),
-			view: () => <ProfileAssets address={address} />,
-		},
-		{
-			label: language.collections,
-			icon: null,
-			disabled: false,
-			url: URLS.profileCollections(address),
-			view: () => <ProfileCollections address={profile && profile.walletAddress ? profile.walletAddress : null} />,
-		},
-		// {
-		// 	label: language.listings,
-		// 	icon: null,
-		// 	disabled: false,
-		// 	url: URLS.profileListings(address),
-		// 	view: () => <ProfileListings address={address} />
-		// },
-		// {
-		// 	label: language.activity,
-		// 	icon: null,
-		// 	disabled: false,
-		// 	url: URLS.profileActivity(address),
-		// 	view: () => <ProfileActivity address={address} />
-		// },
-	];
+	// TODO: collections by profile
+	const TABS = React.useMemo(
+		() => [
+			{
+				label: language.assets,
+				icon: null,
+				disabled: false,
+				url: URLS.profileAssets(address),
+				view: () => <ProfileAssets address={address} />,
+			},
+			{
+				label: language.collections,
+				icon: null,
+				disabled: false,
+				url: URLS.profileCollections(address),
+				view: () => <ProfileCollections address={profile && profile.walletAddress ? profile.walletAddress : null} />,
+			},
+			// {
+			// 	label: language.listings,
+			// 	icon: null,
+			// 	disabled: false,
+			// 	url: URLS.profileListings(address),
+			// 	view: () => <ProfileListings address={address} />
+			// },
+			// {
+			// 	label: language.activity,
+			// 	icon: null,
+			// 	disabled: false,
+			// 	url: URLS.profileActivity(address),
+			// 	view: () => <ProfileActivity address={address} />
+			// },
+		],
+		[address]
+	);
 
 	const urlTabs = React.useMemo(() => {
-		return <URLTabs tabs={TABS} activeUrl={TABS[0]!.url} />;
-	}, [address, profile, language]);
+		return <URLTabs tabs={TABS} activeUrl={TABS[0].url} />;
+	}, [TABS]);
 
 	return profile ? (
 		<>

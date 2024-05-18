@@ -1,15 +1,15 @@
 import React from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
-import { getAssetsByIds, getCollectionById } from 'api';
+import { getCollectionById } from 'api';
 
 import { CurrencyLine } from 'components/atoms/CurrencyLine';
 import { Loader } from 'components/atoms/Loader';
 import { OwnerLine } from 'components/molecules/OwnerLine';
 import { AssetsTable } from 'components/organisms/AssetsTable';
-import { ASSET_SORT_OPTIONS, DEFAULTS, PAGINATORS, URLS } from 'helpers/config';
+import { DEFAULTS, PAGINATORS, URLS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
-import { AssetDetailType, AssetSortType, CollectionDetailType, SelectOptionType } from 'helpers/types';
+import { CollectionDetailType } from 'helpers/types';
 import { checkValidAddress, formatDate, formatPercentage } from 'helpers/utils';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 
@@ -26,68 +26,19 @@ export default function Collection() {
 	const [collectionLoading, setCollectionLoading] = React.useState<boolean>(false);
 	const [collectionErrorResponse, setCollectionErrorResponse] = React.useState<string | null>(null);
 
-	const [assetFilterListings, setAssetFilterListings] = React.useState<boolean>(false);
-	const [assetSortType, setAssetSortType] = React.useState<SelectOptionType | null>(ASSET_SORT_OPTIONS[0]);
-	const [assetCursor, setAssetCursor] = React.useState<string>('0');
-
-	const [assets, setAssets] = React.useState<AssetDetailType[] | null>(null);
-	const [assetsLoading, setAssetsLoading] = React.useState<boolean>(false);
-	const [assetErrorResponse, setAssetErrorResponse] = React.useState<string | null>(null);
-
 	React.useEffect(() => {
 		(async function () {
 			if (id && checkValidAddress(id)) {
 				setCollectionLoading(true);
-				setAssetsLoading(true);
 				try {
-					setCollection(
-						await getCollectionById({
-							id: id,
-							filterListings: assetFilterListings,
-							sortType: assetSortType.id as AssetSortType,
-						})
-					);
+					setCollection(await getCollectionById({ id: id }));
 				} catch (e: any) {
 					setCollectionErrorResponse(e.message || language.collectionFetchFailed);
 				}
-				setAssetsLoading(false);
 				setCollectionLoading(false);
 			} else navigate(URLS.notFound);
 		})();
-	}, [id, assetFilterListings, assetSortType]);
-
-	React.useEffect(() => {
-		(async function () {
-			if (collection && collection.assetIdGroups) {
-				setAssetsLoading(true);
-				try {
-					setAssets(
-						await getAssetsByIds({
-							ids: collection.assetIdGroups[assetCursor],
-							sortType: assetSortType.id as AssetSortType,
-						})
-					);
-				} catch (e: any) {
-					setAssetErrorResponse(e.message || language.assetsFetchFailed);
-				}
-				setAssetsLoading(false);
-			}
-		})();
-	}, [collection, assetCursor, assetSortType]);
-
-	function getNextAction() {
-		if (collection.assetIdGroups && Number(assetCursor) < Object.keys(collection.assetIdGroups).length - 1) {
-			return () => setAssetCursor((Number(assetCursor) + 1).toString());
-		}
-		return null;
-	}
-
-	function getPreviousAction() {
-		if (collection.assetIdGroups && Number(assetCursor) > 0) {
-			return () => setAssetCursor((Number(assetCursor) - 1).toString());
-		}
-		return null;
-	}
+	}, [id]);
 
 	function getData() {
 		if (collection) {
@@ -163,20 +114,7 @@ export default function Collection() {
 						</S.InfoWrapper>
 					</S.CardWrapper>
 					<S.AssetsWrapper>
-						<AssetsTable
-							assets={assets}
-							type={'grid'}
-							nextAction={getNextAction()}
-							previousAction={getPreviousAction()}
-							filterListings={assetFilterListings}
-							setFilterListings={() => setAssetFilterListings(!assetFilterListings)}
-							currentSortType={assetSortType}
-							setCurrentSortType={(option: SelectOptionType) => setAssetSortType(option)}
-							currentPage={assetCursor}
-							pageCount={PAGINATORS.collection.assets}
-							loading={assetsLoading}
-						/>
-						{assetErrorResponse && <p>{assetErrorResponse}</p>}
+						<AssetsTable ids={collection.assetIds} type={'grid'} pageCount={PAGINATORS.collection.assets} />
 					</S.AssetsWrapper>
 				</>
 			);
