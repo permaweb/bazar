@@ -68,9 +68,6 @@ export default function ProfileAssets(props: IProps) {
 				}
 				setAssetsLoading(false);
 			}
-			// else {
-			// 	setAssetsLoading(false);
-			// }
 		})();
 	}, [assetIdGroups, assetCursor, assetSortType]);
 
@@ -89,31 +86,41 @@ export default function ProfileAssets(props: IProps) {
 		callback();
 	}
 
-	function getNextAction() {
+	const getNextAction = React.useCallback(() => {
 		if (assetIdGroups && Number(assetCursor) < Object.keys(assetIdGroups).length - 1) {
 			return () => getPaginationAction(() => setAssetCursor((Number(assetCursor) + 1).toString()));
 		}
 		return null;
-	}
+	}, []);
 
-	function getPreviousAction() {
+	const getPreviousAction = React.useCallback(() => {
 		if (assetIdGroups && Number(assetCursor) > 0) {
 			return () => getPaginationAction(() => setAssetCursor((Number(assetCursor) - 1).toString()));
 		}
 		return null;
-	}
+	}, []);
+
+	const handleAssetSortType = React.useCallback((option: SelectOptionType) => {
+		setAssets(null);
+		setAssetsLoading(true);
+		setAssetSortType(option);
+	}, []);
+
+	const toggleFilterListings = React.useCallback(() => {
+		setAssetFilterListings((prev) => !prev);
+	}, []);
 
 	return props.address ? (
 		<S.Wrapper>
 			<AssetsTable
 				assets={assets}
 				type={'grid'}
-				nextAction={getNextAction()}
-				previousAction={getPreviousAction()}
+				nextAction={getNextAction}
+				previousAction={getPreviousAction}
 				filterListings={assetFilterListings}
-				setFilterListings={() => setAssetFilterListings(!assetFilterListings)}
+				setFilterListings={toggleFilterListings}
 				currentSortType={assetSortType}
-				setCurrentSortType={(option: SelectOptionType) => setAssetSortType(option)}
+				setCurrentSortType={(option: SelectOptionType) => handleAssetSortType(option)}
 				currentPage={assetCursor}
 				pageCount={PAGINATORS.profile.assets}
 				loading={assetsLoading}

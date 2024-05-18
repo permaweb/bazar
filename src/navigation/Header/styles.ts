@@ -66,11 +66,11 @@ export const DNavWrapper = styled.div`
 export const ActionsWrapper = styled.div`
 	display: flex;
 	align-items: center;
+	gap: 15px;
 `;
 
 export const MWrapper = styled.div`
 	display: none;
-	margin: 0 0 0 15px;
 	@media (max-width: ${STYLING.cutoffs.secondary}) {
 		display block;
 	}

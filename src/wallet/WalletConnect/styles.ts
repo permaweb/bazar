@@ -16,6 +16,7 @@ export const PWrapper = styled.div`
 `;
 
 export const CAction = styled.div`
+	margin: 0 15px 0 0;
 	@media (max-width: ${STYLING.cutoffs.initial}) {
 		display: none;
 	}
@@ -24,7 +25,7 @@ export const CAction = styled.div`
 export const LAction = styled.button`
 	height: 35px;
 	padding: 0 17.5px;
-	margin: 0 15px;
+	margin: 0 15px 0 0;
 	span {
 		color: ${(props) => props.theme.colors.font.primary};
 		font-family: ${(props) => props.theme.typography.family.alt1};
@@ -59,7 +60,6 @@ export const Dropdown = styled.ul`
 	top: 45px;
 	right: 0px;
 	border-radius: ${STYLING.dimensions.radius.primary};
-	box-shadow: none !important;
 `;
 
 export const DHeaderWrapper = styled.div`

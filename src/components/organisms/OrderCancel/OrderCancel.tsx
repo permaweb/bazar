@@ -1,7 +1,7 @@
 import React from 'react';
 import { useDispatch } from 'react-redux';
 
-import { messageResult, readHandler } from 'api';
+import { messageResults, readHandler } from 'api';
 
 import { Button } from 'components/atoms/Button';
 import { Notification } from 'components/atoms/Notification';
@@ -28,26 +28,31 @@ export default function OrderCancel(props: IProps) {
 	const [response, setResponse] = React.useState<NotificationType | null>(null);
 
 	async function handleOrderCancel() {
-		if (arProvider.wallet) {
+		if (arProvider.wallet && arProvider.profile && arProvider.profile.id) {
 			setLoading(true);
 			try {
-				const cancelOrderResponse = await messageResult({
-					processId: PROCESSES.ucm,
-					action: 'Cancel-Order',
+				const response = await messageResults({
+					processId: arProvider.profile.id,
+					action: 'Run-Action',
 					wallet: arProvider.wallet,
+					tags: null,
 					data: {
-						Pair: [props.listing.token, props.listing.currency],
-						OrderTxId: props.listing.id,
+						Target: PROCESSES.ucm,
+						Action: 'Cancel-Order',
+						Input: JSON.stringify({
+							Pair: [props.listing.token, props.listing.currency],
+							OrderTxId: props.listing.id,
+						}),
 					},
+					handler: 'Cancel-Order',
 				});
 
-				if (cancelOrderResponse) {
+				if (response && response['Action-Response']) {
+					setResponse({
+						message: response['Action-Response'].message,
+						status: response['Action-Response'].status === 'Success' ? 'success' : 'warning',
+					});
 					setCancelProcessed(true);
-					if (cancelOrderResponse['Order-Cancel-Success'])
-						setResponse({ message: cancelOrderResponse['Order-Cancel-Success'].message, status: 'success' });
-					if (cancelOrderResponse['Order-Cancel-Error'])
-						setResponse({ message: cancelOrderResponse['Order-Cancel-Error'].message, status: 'warning' });
-
 					const ucmState = await readHandler({
 						processId: PROCESSES.ucm,
 						action: 'Info',

@@ -26,7 +26,7 @@ export default function CurrencyLine(props: IProps) {
 	}
 
 	function getCurrency() {
-		if (props.currency && currenciesReducer[props.currency]) {
+		if (props.currency && currenciesReducer && currenciesReducer[props.currency]) {
 			let currency = null;
 			if (currenciesReducer[props.currency].Ticker) {
 				currency = <span>{currenciesReducer[props.currency].Ticker}</span>;

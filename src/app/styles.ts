@@ -54,36 +54,39 @@ export const GlobalStyle = createGlobalStyle`
   }
 
   html, body {
-    margin: 0;
-    color-scheme: ${(props) => props.theme.scheme};
-    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen",
-    "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue",
-    sans-serif;
-    font-family: ${(props) => props.theme.typography.family.primary};
-    font-weight: ${(props) => props.theme.typography.weight.medium};
-    color: ${(props) => props.theme.colors.font.primary};
-    line-height: 1.5;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-    box-sizing: border-box;
-		overflow-x: hidden !important;
-    
-    scrollbar-color: ${(props) => props.theme.colors.scrollbar.thumb} ${(props) => props.theme.colors.scrollbar.track};
+			margin: 0;
+			color-scheme: ${(props) => props.theme.scheme};
+			font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen",
+			"Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue",
+			sans-serif;
+			font-family: ${(props) => props.theme.typography.family.primary};
+			font-weight: ${(props) => props.theme.typography.weight.medium};
+			color: ${(props) => props.theme.colors.font.primary};
+			line-height: 1.5;
+			-webkit-font-smoothing: antialiased;
+			-moz-osx-font-smoothing: grayscale;
+			box-sizing: border-box;
+			
+			scrollbar-color: ${(props) => props.theme.colors.scrollbar.thumb} ${(props) => props.theme.colors.scrollbar.track};
 
-    ::-webkit-scrollbar-track {
-      background: ${(props) => props.theme.colors.scrollbar.track};
-    }
-    ::-webkit-scrollbar {
-      width: 15px;
-      border-left: 1px solid ${(props) => props.theme.colors.border.primary};
-    }
-    ::-webkit-scrollbar-thumb {
-      background-color: ${(props) => props.theme.colors.scrollbar.thumb};
-      border-radius: 36px;
-      border: 3.5px solid transparent;
-      background-clip: padding-box;
-    } 
-  }
+			::-webkit-scrollbar-track {
+				background: ${(props) => props.theme.colors.scrollbar.track};
+			}
+			::-webkit-scrollbar {
+				width: 15px;
+				border-left: 1px solid ${(props) => props.theme.colors.border.primary};
+			}
+			::-webkit-scrollbar-thumb {
+				background-color: ${(props) => props.theme.colors.scrollbar.thumb};
+				border-radius: 36px;
+				border: 3.5px solid transparent;
+				background-clip: padding-box;
+			} 
+	}
+
+	body {
+		overflow-x: hidden;
+	}
 
   h1, h2, h3, h4, h5, h6 {
     font-family: ${(props) => props.theme.typography.family.alt1};
@@ -177,6 +180,12 @@ export const GlobalStyle = createGlobalStyle`
     border-radius: ${STYLING.dimensions.radius.primary};
   }
 
+  .border-wrapper-alt3 {
+    background: ${(props) => props.theme.colors.container.primary.background};
+		box-shadow: 0px 2.5px 5px 0px ${(props) => props.theme.colors.border.alt5};
+    border-radius: ${STYLING.dimensions.radius.primary};
+  }
+
   .max-view-wrapper {
     width: 100%;
     max-width: ${STYLING.cutoffs.max};
@@ -211,7 +220,7 @@ export const GlobalStyle = createGlobalStyle`
     top: 0;
     left: 0;
     background: ${(props) => props.theme.colors.overlay.primary};
-    backdrop-filter: blur(5px);
+    backdrop-filter: blur(10px);
     animation: ${open} ${fadeIn1};
   }
 

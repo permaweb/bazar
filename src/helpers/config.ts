@@ -21,6 +21,10 @@ import paste from 'assets/paste.svg';
 import provenance from 'assets/provenance.svg';
 import renderer from 'assets/renderer.svg';
 import sell from 'assets/sell.svg';
+import streak1 from 'assets/streak-1-7.svg';
+import streak2 from 'assets/streak-8-14.svg';
+import streak3 from 'assets/streak-15-29.svg';
+import streak4 from 'assets/streak-30.svg';
 import transfer from 'assets/transfer.svg';
 import unsupported from 'assets/unsupported.svg';
 import user from 'assets/user.svg';
@@ -38,6 +42,7 @@ export const AOS = {
 export const PROCESSES = {
 	ucm: 'fzRGvSW2oSop9xGLxs5mcaRtCbrbug8imI_uRZHKdiU',
 	token: 'IRv02cCZGmBVMhmPlL63sce4djgRgkY1J_3DUl_feUw',
+	streaks: 'jmu9__Fw79vcsCbPD15cy-xR0zFZa3lXv16rbpWQtRA',
 	profileRegistry: 'kFYMezhjcPCZLr2EkkwzIXP5A64QmtME6Bxa8bGmbzI',
 	profileSrc: 'IR30dCPZviSuRgSYM7lYWbJZYz7B_LoydBXAgngh0Gk',
 };
@@ -79,6 +84,10 @@ export const ASSETS = {
 	sell,
 	transfer,
 	unsupported,
+	streak1,
+	streak2,
+	streak3,
+	streak4,
 	user,
 	video,
 	wallet,

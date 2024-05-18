@@ -132,7 +132,7 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 						<Avatar owner={arProvider.profile} dimensions={{ wrapper: 35, icon: 21.5 }} callback={handlePress} />
 					</S.PWrapper>
 					{showWalletDropdown && (
-						<S.Dropdown className={'border-wrapper-alt2 scroll-wrapper'}>
+						<S.Dropdown className={'border-wrapper-alt3 scroll-wrapper'}>
 							<S.DHeaderWrapper>
 								<S.DHeaderFlex>
 									<Avatar

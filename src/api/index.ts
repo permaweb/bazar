@@ -238,13 +238,21 @@ export async function createTransaction(args: {
 	}
 }
 
-export async function messageResult(args: { processId: string; wallet: any; action: string; data: any }): Promise<any> {
+export async function messageResult(args: {
+	processId: string;
+	wallet: any;
+	action: string;
+	data: any;
+	useRawData?: boolean;
+}): Promise<any> {
 	try {
+		const data = args.useRawData ? args.data : JSON.stringify(args.data);
+
 		const txId = await message({
 			process: args.processId,
 			signer: createDataItemSigner(args.wallet),
 			tags: [{ name: 'Action', value: args.action }],
-			data: JSON.stringify(args.data),
+			data: data,
 		});
 
 		const { Messages } = await result({ message: txId, process: args.processId });
@@ -290,6 +298,8 @@ export async function messageResults(args: {
 	action: string;
 	tags: any;
 	data: any;
+	responses?: string[];
+	handler?: string;
 }): Promise<any> {
 	try {
 		const tags = [{ name: 'Action', value: args.action }];
@@ -305,7 +315,7 @@ export async function messageResults(args: {
 		const messageResults = await results({
 			process: args.processId,
 			sort: 'DESC',
-			limit: 100,
+			limit: 5,
 		});
 
 		if (messageResults && messageResults.edges && messageResults.edges.length) {
@@ -313,6 +323,9 @@ export async function messageResults(args: {
 
 			for (const result of messageResults.edges) {
 				if (result.node && result.node.Messages && result.node.Messages.length) {
+					const resultSet = [args.action];
+					if (args.responses) resultSet.push(...args.responses);
+
 					for (const message of result.node.Messages) {
 						const action = getTagValue(message.Tags, 'Action');
 
@@ -331,13 +344,26 @@ export async function messageResults(args: {
 							const responseStatus = getTagValue(message.Tags, 'Status');
 							const responseMessage = getTagValue(message.Tags, 'Message');
 
-							response[action] = {
-								status: responseStatus,
-								message: responseMessage,
-								data: responseData,
-							};
+							if (action === 'Action-Response') {
+								const responseHandler = getTagValue(message.Tags, 'Handler');
+								if (args.handler && args.handler === responseHandler) {
+									response[action] = {
+										status: responseStatus,
+										message: responseMessage,
+										data: responseData,
+									};
+								}
+							} else {
+								if (resultSet.includes(action)) {
+									response[action] = {
+										status: responseStatus,
+										message: responseMessage,
+										data: responseData,
+									};
+								}
+							}
 
-							if (action === args.action) break;
+							if (Object.keys(response).length === resultSet.length) break;
 						}
 					}
 				}

@@ -4,6 +4,7 @@ import storage from 'redux-persist/lib/storage';
 import thunk from 'redux-thunk';
 
 import { currenciesReducer } from './currencies/reducers';
+import { streaksReducer } from './streaks/reducers';
 import { ucmReducer } from './ucm/reducers';
 
 declare const window: any;
@@ -16,6 +17,7 @@ const persistConfig = {
 
 const rootReducer = combineReducers({
 	currenciesReducer,
+	streaksReducer,
 	ucmReducer,
 });
 

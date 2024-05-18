@@ -203,7 +203,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 				try {
 					setCurrentNotification('Depositing balance...');
 
-					const transferResponse: any = await messageResults({
+					const response: any = await messageResults({
 						processId: arProvider.profile.id,
 						action: 'Transfer',
 						wallet: arProvider.wallet,
@@ -213,24 +213,29 @@ export default function AssetActionMarketOrders(props: IProps) {
 							Recipient: recipient,
 							Quantity: calculatedQuantity,
 						},
+						responses: ['Transfer-Success', 'Transfer-Error'],
+						handler: 'Create-Order',
 					});
 
-					if (transferResponse) {
-						if (transferResponse['Transfer-Success']) {
-							setCurrentNotification(transferResponse['Transfer-Success'].message || 'Deposited funds');
+					if (response) {
+						if (response['Transfer-Success']) {
+							setCurrentNotification(response['Transfer-Success'].message || 'Deposited funds');
 							switch (props.type) {
 								case 'buy':
 								case 'sell':
-									console.log('Execute buy / sell order');
-									setCurrentNotification('Order complete!');
-									setOrderSuccess(true);
+									if (response['Action-Response']) {
+										setCurrentNotification(response['Action-Response'].message);
+										if (response['Action-Response'].status === 'Success') {
+											setOrderSuccess(true);
+										}
+									}
 									break;
 								case 'transfer':
 									setOrderSuccess(true);
 									break;
 							}
-						} else if (transferResponse['Transfer-Error']) {
-							setCurrentNotification(transferResponse['Transfer-Error'].message || 'Error depositing funds');
+						} else if (response['Transfer-Error']) {
+							setCurrentNotification(response['Transfer-Error'].message || 'Error depositing funds');
 						} else {
 							setCurrentNotification('Error depositing funds');
 						}

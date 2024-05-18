@@ -10,14 +10,15 @@ import { Header } from 'navigation/Header';
 import { Routes } from 'routes';
 import { RootState } from 'store';
 import * as currencyActions from 'store/currencies/actions';
+import * as streakActions from 'store/streaks/actions';
 import * as ucmActions from 'store/ucm/actions';
 
 import * as S from './styles';
 
+// TODO: remove check on currencies reducer
 export default function App() {
 	const dispatch = useDispatch();
 
-	const currenciesReducer = useSelector((state: RootState) => state.currenciesReducer);
 	const ucmReducer = useSelector((state: RootState) => state.ucmReducer);
 
 	React.useEffect(() => {
@@ -28,6 +29,12 @@ export default function App() {
 					action: 'Info',
 				});
 				dispatch(ucmActions.setUCM(ucmState));
+
+				const streakState = await readHandler({
+					processId: PROCESSES.streaks,
+					action: 'Info',
+				});
+				dispatch(streakActions.setStreaks(streakState.Streaks));
 
 				const tokenState = await readHandler({
 					processId: PROCESSES.token,
@@ -51,7 +58,7 @@ export default function App() {
 			<div id={DOM.loader} />
 			<div id={DOM.notification} />
 			<div id={DOM.overlay} />
-			{ucmReducer && currenciesReducer ? (
+			{ucmReducer ? (
 				<S.AppWrapper>
 					<Header />
 					<S.View className={'max-view-wrapper'}>

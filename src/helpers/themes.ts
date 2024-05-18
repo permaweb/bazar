@@ -17,6 +17,7 @@ export const lightTheme = {
 	neutralA4: '#3E3E3E',
 	neutralA5: '#A4A4A4',
 	neutralA6: '#A9A9A9',
+	neutralA7: '#7E7E7E',
 	overlay1: 'rgb(130, 130, 130, .25)',
 	primary1: '#64B686',
 	primary2: '#4EA673',
@@ -49,6 +50,7 @@ export const darkTheme = {
 	neutralA4: '#C9C9C9',
 	neutralA5: '#F7F7F7',
 	neutralA6: '#FAFAFA',
+	neutralA7: '#323232',
 	overlay1: 'rgba(0, 0, 0, 0.5)',
 	primary1: '#38BD80',
 	primary2: '#2F9D6A',
@@ -77,6 +79,7 @@ export const theme = (currentTheme: any): DefaultTheme => ({
 			alt2: currentTheme.neutralA6,
 			alt3: currentTheme.neutral5,
 			alt4: currentTheme.neutral8,
+			alt5: currentTheme.neutralA7,
 		},
 		button: {
 			primary: {

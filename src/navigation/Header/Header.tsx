@@ -3,7 +3,9 @@ import { Link } from 'react-router-dom';
 import { ReactSVG } from 'react-svg';
 
 import { IconButton } from 'components/atoms/IconButton';
+import { Streaks } from 'components/organisms/Streaks';
 import { ASSETS, REDIRECTS, URLS } from 'helpers/config';
+import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 import { WalletConnect } from 'wallet/WalletConnect';
 import { CloseHandler } from 'wrappers/CloseHandler';
@@ -11,6 +13,8 @@ import { CloseHandler } from 'wrappers/CloseHandler';
 import * as S from './styles';
 
 export default function Header() {
+	const arProvider = useArweaveProvider();
+
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
 
@@ -43,6 +47,7 @@ export default function Header() {
 						</S.DNavWrapper>
 					</S.C1Wrapper>
 					<S.ActionsWrapper>
+						{arProvider.profile && arProvider.profile.id && <Streaks address={arProvider.profile.id} />}
 						<WalletConnect />
 						<S.MWrapper>
 							<IconButton

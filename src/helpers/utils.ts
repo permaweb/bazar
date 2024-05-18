@@ -66,22 +66,18 @@ export function formatPercentage(percentage: number): string {
 	let multiplied = percentage * 100;
 	let decimalPart = multiplied.toString().split('.')[1];
 
+	// If there is no decimal part, return the integer value
 	if (!decimalPart) {
 		return `${multiplied.toFixed(0)}%`;
 	}
 
-	let index = decimalPart.length;
-	for (let i = 0; i < decimalPart.length; i++) {
-		if (decimalPart[i] !== '0') {
-			index = i + 1;
-			break;
-		}
+	// Check the length of the decimal part
+	if (decimalPart.length >= 4) {
+		return `${Math.round(multiplied)}%`;
 	}
-	if (index === decimalPart.length && decimalPart[decimalPart.length - 1] === '0') {
-		return `${multiplied.toFixed(0)}%`;
-	} else {
-		return `${multiplied.toFixed(index)}%`;
-	}
+
+	// Return the percentage with appropriate decimals
+	return `${multiplied.toFixed(decimalPart.length)}%`;
 }
 
 export function formatDate(dateArg: string | number | null, dateType: DateType) {

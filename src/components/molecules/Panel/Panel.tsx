@@ -10,9 +10,9 @@ import { IProps } from './types';
 
 export default function Panel(props: IProps) {
 	React.useEffect(() => {
-		hideDocumentBody();
+		document.body.style.overflow = 'hidden';
 		return () => {
-			showDocumentBody();
+			document.body.style.overflow = 'auto';
 		};
 	}, []);
 
@@ -75,17 +75,3 @@ export default function Panel(props: IProps) {
 		</Portal>
 	);
 }
-
-let modalOpenCounter = 0;
-
-const showDocumentBody = () => {
-	modalOpenCounter -= 1;
-	if (modalOpenCounter === 0) {
-		document.body.style.overflow = 'auto';
-	}
-};
-
-const hideDocumentBody = () => {
-	modalOpenCounter += 1;
-	document.body.style.overflow = 'hidden';
-};

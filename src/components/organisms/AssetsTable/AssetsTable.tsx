@@ -145,7 +145,7 @@ export default function AssetsTable(props: IProps) {
 													return (
 														<S.AssetsListSectionElement
 															key={index}
-															className={'border-wrapper-primary'}
+															className={'border-wrapper-alt2'}
 															onClick={() => navigate(redirect)}
 															disabled={false}
 														>

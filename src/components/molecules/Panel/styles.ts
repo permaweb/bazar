@@ -11,19 +11,19 @@ export const Wrapper = styled.div<{ top: number; noHeader: boolean }>`
 	top: 0;
 	left: 0;
 	background: ${(props) => props.theme.colors.overlay.primary};
-	backdrop-filter: blur(5px);
+	backdrop-filter: blur(10px);
 	animation: ${open} ${fadeIn1};
 `;
 
 export const Container = styled.div<{
 	noHeader: boolean;
 }>`
-	height: calc(100dvh - 20px);
-	width: 550px;
+	height: calc(100dvh - 30px);
+	width: 575px;
 	max-width: 95vw;
 	position: fixed;
-	top: 10px;
-	right: 10px;
+	top: 15px;
+	right: 15px;
 	transition: width 50ms ease-out;
 	box-shadow: none !important;
 	animation: ${openRight} 200ms;

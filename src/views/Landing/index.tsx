@@ -89,19 +89,19 @@ export default function Landing() {
 		callback();
 	}
 
-	function getNextAction() {
+	const getNextAction = React.useCallback(() => {
 		if (assetIdGroups && Number(assetCursor) < Object.keys(assetIdGroups).length - 1) {
 			return () => getPaginationAction(() => setAssetCursor((Number(assetCursor) + 1).toString()));
 		}
 		return null;
-	}
+	}, [assetIdGroups, assetCursor, setAssetCursor]);
 
-	function getPreviousAction() {
+	const getPreviousAction = React.useCallback(() => {
 		if (assetIdGroups && Number(assetCursor) > 0) {
 			return () => getPaginationAction(() => setAssetCursor((Number(assetCursor) - 1).toString()));
 		}
 		return null;
-	}
+	}, [assetIdGroups, assetCursor, setAssetCursor]);
 
 	return (
 		<S.Wrapper className={'fade-in'}>
