@@ -47,7 +47,7 @@ export default function Header() {
 						</S.DNavWrapper>
 					</S.C1Wrapper>
 					<S.ActionsWrapper>
-						{arProvider.profile && arProvider.profile.id && <Streaks address={arProvider.profile.id} />}
+						{arProvider.profile && arProvider.profile.id && <Streaks profile={arProvider.profile} />}
 						<WalletConnect />
 						<S.MWrapper>
 							<IconButton

@@ -249,18 +249,20 @@ export const Footer = styled.div`
 export const ViewTypeWrapper = styled.div`
 	display: flex;
 	align-items: center;
+	border-radius: 36px;
 	button {
 		border-radius: 0;
 		border: none;
+		padding: 4.5px 20px 0 20px;
 	}
 	.start-action {
-		border-top-left-radius: calc(${STYLING.dimensions.radius.primary} - 1.5px);
-		border-bottom-left-radius: calc(${STYLING.dimensions.radius.primary} - 1.5px);
+		border-top-left-radius: 36px;
+		border-bottom-left-radius: 36px;
 		border-right: 1px solid ${(props) => props.theme.colors.border.primary};
 	}
 	.end-action {
-		border-top-right-radius: calc(${STYLING.dimensions.radius.primary} - 1.5px);
-		border-bottom-right-radius: calc(${STYLING.dimensions.radius.primary} - 1.5px);
+		border-top-right-radius: 36px;
+		border-bottom-right-radius: 36px;
 	}
 `;
 

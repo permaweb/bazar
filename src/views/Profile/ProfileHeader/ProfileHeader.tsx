@@ -2,12 +2,12 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ReactSVG } from 'react-svg';
 
-import { connect, createDataItemSigner } from '@permaweb/aoconnect';
-
+// import { connect, createDataItemSigner } from '@permaweb/aoconnect';
 import { Button } from 'components/atoms/Button';
 import { Panel } from 'components/molecules/Panel';
 import { ProfileManage } from 'components/organisms/ProfileManage';
-import { ASSETS, DEFAULTS, PROCESSES, URLS } from 'helpers/config';
+import { Streaks } from 'components/organisms/Streaks';
+import { ASSETS, DEFAULTS, URLS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import { checkValidAddress, formatAddress } from 'helpers/utils';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
@@ -25,7 +25,7 @@ export default function ProfileHeader(props: IProps) {
 	const language = languageProvider.object[languageProvider.current];
 
 	const [showProfileManage, setShowProfileManage] = React.useState<boolean>(false);
-	const [profileUpdating, setProfileUpdating] = React.useState<boolean>(false);
+	// const [profileUpdating, setProfileUpdating] = React.useState<boolean>(false);
 	// const [copied, setCopied] = React.useState<boolean>(false);
 
 	React.useEffect(() => {
@@ -54,40 +54,40 @@ export default function ProfileHeader(props: IProps) {
 		return props.profile.username ? `@${props.profile.username}` : formatAddress(props.profile.walletAddress, false);
 	}
 
-	async function handleProfileSrcUpdate() {
-		if (arProvider.profile && arProvider.profile.id) {
-			setProfileUpdating(true);
-			const aos = connect();
+	// async function handleProfileSrcUpdate() {
+	// 	if (arProvider.profile && arProvider.profile.id) {
+	// 		setProfileUpdating(true);
+	// 		const aos = connect();
 
-			let processSrc = null;
-			try {
-				const processSrcFetch = await fetch(getTxEndpoint(PROCESSES.profileSrc));
-				if (processSrcFetch.ok) {
-					processSrc = await processSrcFetch.text();
+	// 		let processSrc = null;
+	// 		try {
+	// 			const processSrcFetch = await fetch(getTxEndpoint(PROCESSES.profileSrc));
+	// 			if (processSrcFetch.ok) {
+	// 				processSrc = await processSrcFetch.text();
 
-					console.log('Sending source eval...');
-					const evalMessage = await aos.message({
-						process: arProvider.profile.id,
-						signer: createDataItemSigner(arProvider.wallet),
-						tags: [{ name: 'Action', value: 'Eval' }],
-						data: processSrc,
-					});
+	// 				console.log('Sending source eval...');
+	// 				const evalMessage = await aos.message({
+	// 					process: arProvider.profile.id,
+	// 					signer: createDataItemSigner(arProvider.wallet),
+	// 					tags: [{ name: 'Action', value: 'Eval' }],
+	// 					data: processSrc,
+	// 				});
 
-					console.log(evalMessage);
+	// 				console.log(evalMessage);
 
-					const evalResult = await aos.result({
-						message: evalMessage,
-						process: arProvider.profile.id,
-					});
+	// 				const evalResult = await aos.result({
+	// 					message: evalMessage,
+	// 					process: arProvider.profile.id,
+	// 				});
 
-					console.log(evalResult);
-				}
-			} catch (e: any) {
-				console.error(e);
-			}
-			setProfileUpdating(false);
-		}
-	}
+	// 				console.log(evalResult);
+	// 			}
+	// 		} catch (e: any) {
+	// 			console.error(e);
+	// 		}
+	// 		setProfileUpdating(false);
+	// 	}
+	// }
 
 	function getHeaderDetails() {
 		return props.profile ? (
@@ -119,22 +119,29 @@ export default function ProfileHeader(props: IProps) {
 					<S.HeaderAvatar>{getAvatar()}</S.HeaderAvatar>
 					{getHeaderDetails()}
 					<S.HeaderActions>
-						{arProvider.profile && arProvider.profile.id && arProvider.profile.id === props.profile.id && (
-							<Button
-								type={'primary'}
-								label={'Update profile'}
-								handlePress={handleProfileSrcUpdate}
-								disabled={profileUpdating}
-								loading={profileUpdating}
-							/>
-						)}
+						<S.Action>
+							<Streaks profile={props.profile} />
+						</S.Action>
+						{/* {arProvider.profile && arProvider.profile.id && arProvider.profile.id === props.profile.id && (
+							<S.Action>
+								<Button
+									type={'primary'}
+									label={'Update profile'}
+									handlePress={handleProfileSrcUpdate}
+									disabled={profileUpdating}
+									loading={profileUpdating}
+								/>
+							</S.Action>
+						)} */}
 						{arProvider.profile && arProvider.profile.id === props.profile.id && (
-							<Button
-								type={'alt1'}
-								label={language.editProfile}
-								handlePress={() => setShowProfileManage(true)}
-								className={'fade-in'}
-							/>
+							<S.Action>
+								<Button
+									type={'alt1'}
+									label={language.editProfile}
+									handlePress={() => setShowProfileManage(true)}
+									className={'fade-in'}
+								/>
+							</S.Action>
 						)}
 					</S.HeaderActions>
 				</S.HeaderInfo>

@@ -125,14 +125,14 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 							</S.CAction>
 						)}
 						{label && (
-							<S.LAction onClick={handlePress} className={'border-wrapper-alt2'}>
+							<S.LAction onClick={handlePress} className={'border-wrapper-primary'}>
 								<span>{label}</span>
 							</S.LAction>
 						)}
 						<Avatar owner={arProvider.profile} dimensions={{ wrapper: 35, icon: 21.5 }} callback={handlePress} />
 					</S.PWrapper>
 					{showWalletDropdown && (
-						<S.Dropdown className={'border-wrapper-alt3 scroll-wrapper'}>
+						<S.Dropdown className={'border-wrapper-alt1 scroll-wrapper'}>
 							<S.DHeaderWrapper>
 								<S.DHeaderFlex>
 									<Avatar

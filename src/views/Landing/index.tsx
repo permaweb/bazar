@@ -4,6 +4,7 @@ import { getCollections } from 'api';
 
 import { AssetsTable } from 'components/organisms/AssetsTable';
 import { CollectionsCarousel } from 'components/organisms/CollectionsCarousel';
+import { CreatorsTable } from 'components/organisms/CreatorsTable';
 import { PAGINATORS } from 'helpers/config';
 import { CollectionGQLResponseType, CollectionType } from 'helpers/types';
 import { useLanguageProvider } from 'providers/LanguageProvider';
@@ -37,6 +38,9 @@ export default function Landing() {
 				<CollectionsCarousel collections={collections} loading={collectionsLoading} />
 				{collectionsErrorResponse && <p>{collectionsErrorResponse}</p>}
 			</S.CollectionsWrapper>
+			<S.CreatorsWrapper>
+				<CreatorsTable />
+			</S.CreatorsWrapper>
 			<S.AssetsWrapper>
 				<AssetsTable type={'list'} pageCount={PAGINATORS.landing.assets} />
 			</S.AssetsWrapper>

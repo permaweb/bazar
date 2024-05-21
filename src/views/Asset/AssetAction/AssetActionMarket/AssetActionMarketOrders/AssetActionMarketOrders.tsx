@@ -27,6 +27,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 	const dispatch = useDispatch();
 
 	const arProvider = useArweaveProvider();
+
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
 

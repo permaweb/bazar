@@ -1,7 +1,8 @@
 import React from 'react';
 import Carousel from 'react-multi-carousel';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 
+import { Button } from 'components/atoms/Button';
 import { DEFAULTS, URLS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import { CollectionType } from 'helpers/types';
@@ -14,6 +15,8 @@ import * as S from './styles';
 import { IProps } from './types';
 
 export default function CollectionsCarousel(props: IProps) {
+	const navigate = useNavigate();
+
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
 
@@ -43,6 +46,9 @@ export default function CollectionsCarousel(props: IProps) {
 		<S.Wrapper className={'fade-in'}>
 			<S.Header>
 				<h4>{language.collections}</h4>
+				<S.HeaderActions>
+					<Button type={'primary'} label={language.viewAllCollections} handlePress={() => navigate(URLS.collections)} />
+				</S.HeaderActions>
 			</S.Header>
 			<S.CollectionsWrapper previousDisabled={!nextSlideClicked}>
 				{(props.collections || props.loading) && (
@@ -50,6 +56,7 @@ export default function CollectionsCarousel(props: IProps) {
 						responsive={responsive}
 						renderButtonGroupOutside={true}
 						draggable={false}
+						swipeable={true}
 						arrows={!props.loading}
 						infinite={!props.loading}
 						removeArrowOnDeviceType={['tablet', 'mobile']}

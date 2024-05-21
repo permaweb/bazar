@@ -10,6 +10,7 @@ import comments from 'assets/comments.svg';
 import grid from 'assets/grid.svg';
 import html from 'assets/html.svg';
 import info from 'assets/info.svg';
+import leaderboard from 'assets/leaderboard.svg';
 import license from 'assets/license.svg';
 import list from 'assets/list.svg';
 import logo from 'assets/logo.svg';
@@ -73,6 +74,7 @@ export const ASSETS = {
 	grid,
 	html,
 	info,
+	leaderboard,
 	license,
 	list,
 	logo,
@@ -212,7 +214,7 @@ export const PAGINATORS = {
 		assets: 20,
 	},
 	collection: {
-		assets: 20,
+		assets: 15,
 	},
 	profile: {
 		assets: 15,

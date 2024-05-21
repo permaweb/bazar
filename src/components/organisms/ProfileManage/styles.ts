@@ -129,7 +129,7 @@ export const BInput = styled.button<{ hasBanner: boolean }>`
 		}
 	}
 	${(props) =>
-		props.hasBanner
+		props.hasBanner && !props.disabled
 			? `
         pointer-events: all;
         ::after {
@@ -213,7 +213,7 @@ export const AInput = styled.button<{ hasAvatar: boolean }>`
 		}
 	}
 	${(props) =>
-		props.hasAvatar
+		props.hasAvatar && !props.disabled
 			? `
         pointer-events: all;
         ::after {

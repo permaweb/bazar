@@ -114,7 +114,9 @@ export default function Collection() {
 						</S.InfoWrapper>
 					</S.CardWrapper>
 					<S.AssetsWrapper>
-						<AssetsTable ids={collection.assetIds} type={'grid'} pageCount={PAGINATORS.collection.assets} />
+						{collection.assetIds && (
+							<AssetsTable ids={collection.assetIds} type={'grid'} pageCount={PAGINATORS.collection.assets} />
+						)}
 					</S.AssetsWrapper>
 				</>
 			);

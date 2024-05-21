@@ -59,7 +59,7 @@ export const Primary = styled.button<{
 export const Alt1 = styled(Primary)`
 	background: ${(props) =>
 		props.active
-			? props.theme.colors.button.primary.active.border
+			? props.theme.colors.button.primary.active.background
 			: props.disabled
 			? props.theme.colors.button.primary.disabled.background
 			: props.theme.colors.button.primary.background};

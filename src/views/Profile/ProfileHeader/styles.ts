@@ -14,7 +14,6 @@ export const Wrapper = styled.div<{ backgroundImage: string }>`
 	background-size: cover;
 	background-repeat: no-repeat;
 	background-position: center;
-	overflow: hidden;
 	border-radius: ${STYLING.dimensions.radius.primary};
 	margin: 0 0 60px 0;
 	@media (max-width: ${STYLING.cutoffs.initial}) {
@@ -50,7 +49,7 @@ export const HeaderActions = styled.div`
 	margin: auto 0 0 auto;
 	display: flex;
 	flex-wrap: wrap;
-	gap: 25px;
+	gap: 20px;
 
 	button {
 		width: fit-content;
@@ -130,3 +129,8 @@ export const HeaderAddress = styled.button`
 `;
 
 export const MWrapper = styled.div``;
+
+export const Action = styled.div`
+	height: fit-content;
+	width: fit-content;
+`;

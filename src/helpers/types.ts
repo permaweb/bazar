@@ -107,15 +107,16 @@ export type ProfileHeaderType = AOProfileType;
 
 export type RegistryProfileType = {
 	id: string;
-	username: string;
 	avatar: string | null;
+	username: string;
+	bio?: string;
 };
 
 export type OwnerType = {
 	address: string;
+	profile: RegistryProfileType | null;
 	ownerQuantity?: number;
 	ownerPercentage?: number;
-	profile: RegistryProfileType | null;
 };
 
 export type ListingType = AssetOrderType & { profile: RegistryProfileType };

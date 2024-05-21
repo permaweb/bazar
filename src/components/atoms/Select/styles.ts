@@ -100,15 +100,16 @@ export const Option = styled.li<{ active: boolean }>`
 	align-items: center;
 	cursor: ${(props) => (props.active ? 'default' : 'pointer')};
 	pointer-events: ${(props) => (props.active ? 'none' : 'all')};
-	color: ${(props) => props.theme.colors.font.primary};
+	color: ${(props) => (props.active ? props.theme.colors.font.light1 : props.theme.colors.font.primary)};
 	font-size: ${(props) => props.theme.typography.size.xSmall};
 	font-weight: ${(props) => props.theme.typography.weight.bold};
 	background: ${(props) =>
-		props.active ? props.theme.colors.container.primary.active : props.theme.colors.container.primary.background};
+		props.active ? props.theme.colors.container.alt9.background : props.theme.colors.container.primary.active};
 	border: 1px solid transparent;
 	padding: 0 15px;
 	transition: all 100ms;
 	&:hover {
-		background: ${(props) => props.theme.colors.container.primary.active};
+		color: ${(props) => props.theme.colors.font.light1};
+		background: ${(props) => props.theme.colors.container.alt9.background};
 	}
 `;

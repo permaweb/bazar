@@ -1,6 +1,8 @@
 import { DefaultTheme } from 'styled-components';
 
 export const lightTheme = {
+	positive1: '#64B686',
+	positive2: '#4EA673',
 	negative1: '#E94278',
 	negative2: '#E52461',
 	neutral1: '#FFFFFF',
@@ -19,8 +21,8 @@ export const lightTheme = {
 	neutralA6: '#A9A9A9',
 	neutralA7: '#7E7E7E',
 	overlay1: 'rgb(130, 130, 130, .25)',
-	primary1: '#64B686',
-	primary2: '#4EA673',
+	primary1: '#F96E46',
+	primary2: '#E6562C',
 	semiTransparent1: 'rgba(255, 255, 255, 0.575)',
 	semiTransparent2: 'rgba(0, 0, 0, 0.45)',
 	semiTransparent3: 'rgba(0, 0, 0, 0.55)',
@@ -33,11 +35,13 @@ export const lightTheme = {
 };
 
 export const darkTheme = {
+	positive1: '#38BD80',
+	positive2: '#2F9D6A',
 	labelAlt1: `#FFFFFF`,
 	negative1: '#D81E5B',
 	negative2: '#E43A72',
-	neutral1: '#12151A',
-	neutral2: '#1C1E21',
+	neutral1: '#171717',
+	neutral2: '#202020',
 	neutral3: '#606060',
 	neutral4: '#5C5C5C',
 	neutral5: '#A4A4A4',
@@ -52,8 +56,8 @@ export const darkTheme = {
 	neutralA6: '#FAFAFA',
 	neutralA7: '#323232',
 	overlay1: 'rgba(0, 0, 0, 0.5)',
-	primary1: '#38BD80',
-	primary2: '#2F9D6A',
+	primary1: '#F96E46',
+	primary2: '#E6562C',
 	semiTransparent1: 'rgba(0, 0, 0, 0.15)',
 	semiTransparent2: 'rgba(0, 0, 0, 0.45)',
 	semiTransparent3: 'rgba(20, 20, 20, 0.75)',
@@ -228,7 +232,7 @@ export const theme = (currentTheme: any): DefaultTheme => ({
 			},
 		},
 		indicator: {
-			active: currentTheme.primary2,
+			active: currentTheme.positive1,
 		},
 		link: {
 			color: currentTheme.neutralA1,

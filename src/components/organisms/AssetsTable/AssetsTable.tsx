@@ -50,18 +50,18 @@ export default function AssetsTable(props: IProps) {
 	windowUtils.checkWindowResize(handleWindowResize);
 
 	React.useEffect(() => {
-		(async function () {
-			if (!assetIdGroups) {
-				setAssetIdGroups(
-					getAssetIdGroups({
-						ids: props.ids || null,
-						groupCount: PAGINATORS.landing.assets,
-						filterListings: assetFilterListings,
-						sortType: assetSortType.id as AssetSortType,
-					})
-				);
-			}
-		})();
+		if (props.ids && !props.ids.length) {
+			setAssets([]);
+		} else {
+			setAssetIdGroups(
+				getAssetIdGroups({
+					ids: props.ids || null,
+					groupCount: props.pageCount || PAGINATORS.default,
+					filterListings: assetFilterListings,
+					sortType: assetSortType.id as AssetSortType,
+				})
+			);
+		}
 	}, [assetFilterListings, assetSortType, props.ids]);
 
 	React.useEffect(() => {

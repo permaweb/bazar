@@ -30,6 +30,7 @@ export const GlobalStyle = createGlobalStyle`
   }
 
   body {
+		overflow-x: hidden !important;
     background: ${(props) => props.theme.colors.view.background};
   }
 
@@ -48,9 +49,6 @@ export const GlobalStyle = createGlobalStyle`
 
   * {
     box-sizing: border-box;
-    &:focus {
-      
-    }
   }
 
   html, body {
@@ -82,10 +80,6 @@ export const GlobalStyle = createGlobalStyle`
 				border: 3.5px solid transparent;
 				background-clip: padding-box;
 			} 
-	}
-
-	body {
-		overflow-x: hidden;
 	}
 
   h1, h2, h3, h4, h5, h6 {

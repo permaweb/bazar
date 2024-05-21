@@ -1,3 +1,5 @@
+import { ProfileHeaderType } from 'helpers/types';
+
 export interface IProps {
-	address: string;
+	profile: ProfileHeaderType | null;
 }

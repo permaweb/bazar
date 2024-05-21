@@ -6,7 +6,19 @@ import { STYLING } from 'helpers/config';
 export const Wrapper = styled.div``;
 
 export const Header = styled.div`
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 20px;
 	margin: 0 0 20px 0;
+`;
+
+export const HeaderActions = styled.div`
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 20px;
 `;
 
 export const CollectionsWrapper = styled.div<{ previousDisabled: boolean }>`

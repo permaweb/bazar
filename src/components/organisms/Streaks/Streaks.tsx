@@ -1,17 +1,67 @@
 import React from 'react';
 import { useSelector } from 'react-redux';
 
+import Arweave from 'arweave';
+
+import { getRegistryProfiles } from 'api';
+
+import { Button } from 'components/atoms/Button';
+import { Modal } from 'components/molecules/Modal';
+import { OwnerLine } from 'components/molecules/OwnerLine';
 import { ASSETS } from 'helpers/config';
+import { RegistryProfileType } from 'helpers/types';
+import { formatAddress } from 'helpers/utils';
+import { useArweaveProvider } from 'providers/ArweaveProvider';
+import { useLanguageProvider } from 'providers/LanguageProvider';
 import { RootState } from 'store';
 import { CloseHandler } from 'wrappers/CloseHandler';
 
 import * as S from './styles';
 import { IProps } from './types';
 
+// TODO: calculate streak on order create
 export default function Streaks(props: IProps) {
 	const streaksReducer = useSelector((state: RootState) => state.streaksReducer);
 
+	const arProvider = useArweaveProvider();
+
+	const languageProvider = useLanguageProvider();
+	const language = languageProvider.object[languageProvider.current];
+
+	const [count, setCount] = React.useState<number>(0);
 	const [showDropdown, setShowDropdown] = React.useState<boolean>(false);
+	const [showLeaderboard, setShowLeaderboard] = React.useState<boolean>(false);
+	const [currentBlockHeight, setCurrentBlockHeight] = React.useState<number | null>(0);
+	const [profiles, setProfiles] = React.useState<RegistryProfileType[] | null>(null);
+
+	React.useEffect(() => {
+		(async function () {
+			if (props.profile && props.profile.id) {
+				if (streaksReducer) {
+					if (streaksReducer[props.profile.id]) {
+						setCount(streaksReducer[props.profile.id].days);
+					}
+
+					try {
+						const addresses = Object.keys(streaksReducer).map((address: string) => address);
+						const profiles = await getRegistryProfiles({ profileIds: addresses });
+						setProfiles(profiles);
+					} catch (e: any) {
+						console.error(e);
+					}
+				}
+			}
+		})();
+	}, [streaksReducer, props.profile.id]);
+
+	React.useEffect(() => {
+		(async function () {
+			if (showDropdown) {
+				const info = await Arweave.init({}).network.getInfo();
+				setCurrentBlockHeight(info.height);
+			}
+		})();
+	}, [showDropdown]);
 
 	function getRangeLabel(number: number) {
 		if (number >= 0 && number <= 7) return '0-7';
@@ -49,26 +99,143 @@ export default function Streaks(props: IProps) {
 	}, []);
 
 	const label = React.useMemo(() => {
-		let count = 0;
-		if (streaksReducer && props.address && streaksReducer[props.address]) {
-			count = streaksReducer[props.address].days;
-		}
 		return (
 			<>
 				{getStreakIcon(count)}
 				<span>{count}</span>
 			</>
 		);
-	}, [props.address, streaksReducer]);
+	}, [count]);
 
-	return props.address ? (
-		<CloseHandler active={showDropdown} disabled={!showDropdown} callback={handleShowDropdown}>
-			<S.Wrapper>
-				<S.Action onClick={handleShowDropdown} className={'border-wrapper-alt2'}>
-					{label}
-				</S.Action>
-				{showDropdown && <S.Dropdown className={'fade-in border-wrapper-alt3'}></S.Dropdown>}
-			</S.Wrapper>
-		</CloseHandler>
+	const header = React.useMemo(() => {
+		if (props.profile && count !== null) {
+			let title: string = '';
+			let endText: string = '';
+			if (arProvider.profile && arProvider.profile.id && arProvider.profile.id === props.profile.id) {
+				endText = '!';
+				switch (getRangeLabel(count)) {
+					case '0-7':
+						title = `${count <= 0 ? language.streakTitle1 : language.streakTitle2}, `;
+						break;
+					case '8-14':
+						title = `${language.streakTitle3}, `;
+						break;
+					case '15-29':
+						title = `${language.streakTitle4}, `;
+						break;
+					case '30+':
+						title = `${language.streakTitle5}, `;
+						break;
+					default:
+						break;
+				}
+			} else {
+				endText = `'s ${language.streak}`;
+			}
+			return (
+				<p>{`${title}${
+					props.profile.username ? props.profile.username : formatAddress(props.profile.id, false)
+				}${endText}`}</p>
+			);
+		} else return null;
+	}, [count, props.profile, arProvider.profile]);
+
+	const streak = React.useMemo(() => {
+		return (
+			<>
+				{getStreakIcon(count)}
+				<p>{language.dayStreak(count.toString()).toUpperCase()}</p>
+			</>
+		);
+	}, [count]);
+
+	// TODO: countdown
+	const message = React.useMemo(() => {
+		return (
+			<>
+				<S.SDMessageInfo>
+					<span>You have approximately</span>
+				</S.SDMessageInfo>
+				<S.SDMessageCount>
+					<p>23 hours 43 minutes</p>
+				</S.SDMessageCount>
+				<S.SDMessageInfo>
+					<span>Until you can continue building your streak!</span>
+				</S.SDMessageInfo>
+			</>
+		);
+	}, []);
+
+	const leaderboard = React.useMemo(() => {
+		return streaksReducer && profiles ? (
+			<S.StreaksWrapper>
+				{Object.keys(streaksReducer).map((address: string, index: number) => {
+					const addressCount = streaksReducer[address].days;
+					const profile = profiles.find((profile: RegistryProfileType) => profile.id === address);
+					return (
+						<S.StreakLine key={index}>
+							<S.StreakIndex>
+								<span>{`${index + 1}.`}</span>
+							</S.StreakIndex>
+							<S.StreakProfile>
+								<OwnerLine
+									owner={{
+										address: address,
+										profile: profile || null,
+									}}
+									callback={() => {
+										setShowDropdown(false);
+										setShowLeaderboard(false);
+									}}
+								/>
+							</S.StreakProfile>
+							<S.StreakCount>
+								<span>{`${addressCount} ${language.days.toLowerCase()}`}</span>
+								{getStreakIcon(addressCount)}
+							</S.StreakCount>
+						</S.StreakLine>
+					);
+				})}
+			</S.StreaksWrapper>
+		) : (
+			<S.MLoadingWrapper>
+				<span>{`${language.loading}...`}</span>
+			</S.MLoadingWrapper>
+		);
+	}, [streaksReducer, profiles]);
+
+	return props.profile && props.profile.id ? (
+		<>
+			<CloseHandler active={showDropdown} disabled={!showDropdown} callback={handleShowDropdown}>
+				<S.Wrapper>
+					<S.Action onClick={handleShowDropdown} className={'border-wrapper-primary'}>
+						{label}
+					</S.Action>
+					{showDropdown && (
+						<S.Dropdown className={'fade-in border-wrapper-alt1'}>
+							<S.SDHeader>{header}</S.SDHeader>
+							<S.SDStreak>{streak}</S.SDStreak>
+							<S.SDMessage>{message}</S.SDMessage>
+							<S.SDLAction>
+								<Button
+									type={'alt1'}
+									label={language.streakLeaderboard}
+									handlePress={() => setShowLeaderboard(true)}
+									icon={ASSETS.leaderboard}
+									iconLeftAlign
+									height={45}
+									fullWidth
+								/>
+							</S.SDLAction>
+						</S.Dropdown>
+					)}
+				</S.Wrapper>
+			</CloseHandler>
+			{showLeaderboard && (
+				<Modal header={language.streakLeaderboard} handleClose={() => setShowLeaderboard(false)}>
+					<S.MWrapper className={'modal-wrapper'}>{leaderboard}</S.MWrapper>
+				</Modal>
+			)}
+		</>
 	) : null;
 }
