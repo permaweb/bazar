@@ -22,6 +22,7 @@ export const Body = styled.div`
 	justify-content: center;
 	flex-wrap: wrap;
 	gap: 10px;
+	padding: 20px;
 `;
 
 export const Form = styled.div`
@@ -65,6 +66,11 @@ export const CWrapper = styled.div`
 	span {
 		font-size: ${(props) => props.theme.typography.size.xSmall} !important;
 		font-weight: ${(props) => props.theme.typography.weight.bold} !important;
+		display: block;
+		max-width: 75%;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 
 	.c-wrapper-checkbox {

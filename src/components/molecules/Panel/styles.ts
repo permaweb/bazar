@@ -20,7 +20,7 @@ export const Container = styled.div<{
 }>`
 	height: calc(100dvh - 30px);
 	width: 575px;
-	max-width: 95vw;
+	max-width: calc(100vw - 30px);
 	position: fixed;
 	top: 15px;
 	right: 15px;
@@ -65,5 +65,4 @@ export const Body = styled.div`
 	width: 100%;
 	overflow-y: auto;
 	scrollbar-color: transparent transparent;
-	padding: 0 20px 20px 20px !important;
 `;

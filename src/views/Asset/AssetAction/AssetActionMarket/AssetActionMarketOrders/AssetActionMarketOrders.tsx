@@ -80,28 +80,32 @@ export default function AssetActionMarketOrders(props: IProps) {
 	React.useEffect(() => {
 		if (props.asset) {
 			if (props.asset.state) {
-				if (!denomination && props.asset.state.denomination && Number(props.asset.state.denomination) > 1) {
-					setDenomination(Math.pow(10, props.asset.state.denomination));
+				if (props.asset.state.denomination) {
+					if (!denomination && props.asset.state.denomination && Number(props.asset.state.denomination) > 1) {
+						setDenomination(Math.pow(10, props.asset.state.denomination));
+					}
 				}
 
-				const balances: any = Object.keys(props.asset.state.balances).map((address: string) => {
-					return Number(props.asset.state.balances[address]);
-				});
+				if (props.asset.state.balances) {
+					const balances: any = Object.keys(props.asset.state.balances).map((address: string) => {
+						return Number(props.asset.state.balances[address]);
+					});
 
-				const totalBalance = balances.reduce((a: number, b: number) => a + b, 0);
+					const totalBalance = balances.reduce((a: number, b: number) => a + b, 0);
 
-				let calculatedTotalBalance = totalBalance;
-				if (denomination) calculatedTotalBalance = totalBalance / denomination;
+					let calculatedTotalBalance = totalBalance;
+					if (denomination) calculatedTotalBalance = totalBalance / denomination;
 
-				setTotalAssetBalance(calculatedTotalBalance);
+					setTotalAssetBalance(calculatedTotalBalance);
 
-				if (arProvider.walletAddress && arProvider.profile && arProvider.profile.id) {
-					const ownerBalance = Number(props.asset.state.balances[arProvider.profile.id]);
-					if (ownerBalance) {
-						let calculatedOwnerBalance = ownerBalance;
-						if (denomination) calculatedOwnerBalance = ownerBalance / denomination;
+					if (arProvider.walletAddress && arProvider.profile && arProvider.profile.id) {
+						const ownerBalance = Number(props.asset.state.balances[arProvider.profile.id]);
+						if (ownerBalance) {
+							let calculatedOwnerBalance = ownerBalance;
+							if (denomination) calculatedOwnerBalance = ownerBalance / denomination;
 
-						setConnectedBalance(calculatedOwnerBalance);
+							setConnectedBalance(calculatedOwnerBalance);
+						}
 					}
 				}
 			}
@@ -152,29 +156,29 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 	async function handleSubmit() {
 		if (props.asset && arProvider.wallet && arProvider.profile && arProvider.profile.id) {
-			let orderPair = null;
-			let orderTags = null;
+			let pair = null;
+			let tags = null;
 			let recipient = null;
 			let localSuccess = false;
 
 			switch (props.type) {
 				case 'buy':
-					orderPair = [PROCESSES.token, props.asset.data.id];
+					pair = [PROCESSES.token, props.asset.data.id];
 					recipient = PROCESSES.ucm;
 					break;
 				case 'sell':
-					orderPair = [props.asset.data.id, PROCESSES.token];
+					pair = [props.asset.data.id, PROCESSES.token];
 					recipient = PROCESSES.ucm;
 					break;
 				case 'transfer':
-					orderPair = [props.asset.data.id, PROCESSES.token];
+					pair = [props.asset.data.id, PROCESSES.token];
 					recipient = transferRecipient;
 					break;
 			}
 
-			if (orderPair && recipient) {
-				const dominantToken = orderPair[0];
-				const swapToken = orderPair[1];
+			if (pair && recipient) {
+				const dominantToken = pair[0];
+				const swapToken = pair[1];
 
 				let calculatedQuantity: string | number = currentOrderQuantity;
 				if (props.type === 'sell' || props.type === 'transfer') {
@@ -186,7 +190,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 				calculatedQuantity = calculatedQuantity.toString();
 
 				if (props.type === 'buy' || props.type === 'sell') {
-					orderTags = [
+					tags = [
 						{ name: 'X-Order-Action', value: 'Create-Order' },
 						{ name: 'X-Quantity', value: calculatedQuantity },
 						{ name: 'X-Swap-Token', value: swapToken },
@@ -195,7 +199,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 						let calculatedUnitPrice: string | number = unitPrice;
 						if (transferDenomination) calculatedUnitPrice = unitPrice * transferDenomination;
 						calculatedUnitPrice = calculatedUnitPrice.toString();
-						orderTags.push({ name: 'X-Price', value: calculatedUnitPrice });
+						tags.push({ name: 'X-Price', value: calculatedUnitPrice });
 					}
 				}
 
@@ -207,7 +211,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 						processId: arProvider.profile.id,
 						action: 'Transfer',
 						wallet: arProvider.wallet,
-						tags: orderTags,
+						tags: tags,
 						data: {
 							Target: dominantToken,
 							Recipient: recipient,
@@ -297,6 +301,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 			arProvider.profile.id &&
 			currenciesReducer &&
 			currenciesReducer[tokenProcess] &&
+			currenciesReducer[tokenProcess].Balances &&
 			currenciesReducer[tokenProcess].Balances[arProvider.profile.id]
 		) {
 			const ownerBalance = currenciesReducer[tokenProcess].Balances[arProvider.profile.id];
@@ -339,7 +344,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 				<S.TotalQuantityLine>
 					<p>
 						{`${percentageHeader}: `}
-						<span>{formatPercentage(quantity / totalAssetBalance)}</span>
+						<span>{formatPercentage(!isNaN(quantity / totalAssetBalance) ? quantity / totalAssetBalance : 0)}</span>
 					</p>
 				</S.TotalQuantityLine>
 			</>
@@ -423,7 +428,11 @@ export default function AssetActionMarketOrders(props: IProps) {
 					</S.SalesDetail>
 					<S.SalesDetail>
 						<span>{percentageLabel}</span>
-						<p>{formatPercentage(currentOrderQuantity / totalAssetBalance)}</p>
+						<p>
+							{formatPercentage(
+								!isNaN(currentOrderQuantity / totalAssetBalance) ? currentOrderQuantity / totalAssetBalance : 0
+							)}
+						</p>
 					</S.SalesDetail>
 				</S.SalesLine>
 				{props.type !== 'transfer' && (

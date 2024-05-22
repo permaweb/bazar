@@ -68,7 +68,7 @@ export default function AssetAction(props: IProps) {
 	const [currentTab, setCurrentTab] = React.useState<string>(ACTION_TABS[0]!.label);
 
 	React.useEffect(() => {
-		if (props.asset && props.asset.state) {
+		if (props.asset && props.asset.state && props.asset.state.balances) {
 			const balances: any = Object.keys(props.asset.state.balances).map((address: string) => {
 				return Number(props.asset.state.balances[address]);
 			});
@@ -80,7 +80,7 @@ export default function AssetAction(props: IProps) {
 	React.useEffect(() => {
 		(async function () {
 			const associatedAddresses = [];
-			if (props.asset && props.asset.state) {
+			if (props.asset && props.asset.state && props.asset.state.balances) {
 				associatedAddresses.push(...Object.keys(props.asset.state.balances).map((address: string) => address));
 			}
 			if (props.asset && props.asset.orders) {

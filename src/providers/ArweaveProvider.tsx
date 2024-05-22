@@ -1,9 +1,9 @@
 import React from 'react';
 
-import { getProfileByWalletAddress } from 'api';
+import { getProfileByWalletAddress, messageResult, readHandler } from 'api';
 
 import { Modal } from 'components/molecules/Modal';
-import { AR_WALLETS, WALLET_PERMISSIONS } from 'helpers/config';
+import { AR_WALLETS, PROCESSES, WALLET_PERMISSIONS } from 'helpers/config';
 import { getARBalanceEndpoint } from 'helpers/endpoints';
 import { ProfileHeaderType, WalletEnum } from 'helpers/types';
 import Othent from 'helpers/wallet';
@@ -11,12 +11,14 @@ import { useLanguageProvider } from 'providers/LanguageProvider';
 
 import * as S from './styles';
 
+// TODO: token balances
 interface ArweaveContextState {
 	wallets: { type: WalletEnum; logo: string }[];
 	wallet: any;
 	walletAddress: string | null;
 	walletType: WalletEnum | null;
-	availableBalance: number | null;
+	arBalance: number | null;
+	tokenBalances: { [address: string]: number } | null;
 	handleConnect: any;
 	handleDisconnect: () => void;
 	walletModalVisible: boolean;
@@ -35,7 +37,8 @@ const DEFAULT_CONTEXT = {
 	wallet: null,
 	walletAddress: null,
 	walletType: null,
-	availableBalance: null,
+	arBalance: null,
+	tokenBalances: null,
 	handleConnect() {},
 	handleDisconnect() {},
 	walletModalVisible: false,
@@ -78,7 +81,10 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 	const [walletType, setWalletType] = React.useState<WalletEnum | null>(null);
 	const [walletModalVisible, setWalletModalVisible] = React.useState<boolean>(false);
 	const [walletAddress, setWalletAddress] = React.useState<string | null>(null);
-	const [availableBalance, setAvailableBalance] = React.useState<number | null>(null);
+
+	const [arBalance, setArBalance] = React.useState<number | null>(null);
+	const [tokenBalances, setTokenBalances] = React.useState<{ [address: string]: number } | null>(null);
+
 	const [profile, setProfile] = React.useState<ProfileHeaderType | null>(null);
 	const [toggleProfileUpdate, setToggleProfileUpdate] = React.useState<boolean>(false);
 
@@ -102,7 +108,7 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 		(async function () {
 			if (walletAddress) {
 				try {
-					setAvailableBalance(await getARBalance(walletAddress));
+					setArBalance(await getARBalance(walletAddress));
 				} catch (e: any) {
 					console.error(e);
 				}
@@ -115,6 +121,16 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 			if (wallet && walletAddress) {
 				try {
 					setProfile(await getProfileByWalletAddress({ address: walletAddress }));
+				} catch (e: any) {
+					console.error(e);
+				}
+
+				try {
+					const tokenBalance = await readHandler({
+						processId: PROCESSES.token,
+						action: 'Balance',
+					});
+					setTokenBalances({ [PROCESSES.token]: tokenBalance });
 				} catch (e: any) {
 					console.error(e);
 				}
@@ -203,7 +219,8 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 					wallet,
 					walletAddress,
 					walletType,
-					availableBalance,
+					arBalance,
+					tokenBalances,
 					handleConnect,
 					handleDisconnect,
 					wallets,

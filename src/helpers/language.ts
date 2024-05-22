@@ -88,6 +88,7 @@ export const language = {
 		sell: `Sell`,
 		seller: `Seller`,
 		streak: `Streak`,
+		streaks: `Streaks`,
 		streakCountdown1: `You have approximately`,
 		streakCountdown2: `Until you can continue building your streak`,
 		streakLeaderboard: `Streak leaderboard`,

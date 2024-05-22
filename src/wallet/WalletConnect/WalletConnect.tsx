@@ -1,5 +1,4 @@
 import React from 'react';
-import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import { ReactSVG } from 'react-svg';
 
@@ -8,20 +7,18 @@ import { Button } from 'components/atoms/Button';
 import { CurrencyLine } from 'components/atoms/CurrencyLine';
 import { Panel } from 'components/molecules/Panel';
 import { ProfileManage } from 'components/organisms/ProfileManage';
-import { ASSETS, PROCESSES, URLS } from 'helpers/config';
+import { ASSETS, PROCESSES, STYLING, URLS } from 'helpers/config';
 import { formatAddress, formatARAmount } from 'helpers/utils';
+import * as windowUtils from 'helpers/window';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useCustomThemeProvider } from 'providers/CustomThemeProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
-import { RootState } from 'store';
 import { CloseHandler } from 'wrappers/CloseHandler';
 
 import * as S from './styles';
 
 export default function WalletConnect(_props: { callback?: () => void }) {
 	const navigate = useNavigate();
-
-	const currenciesReducer = useSelector((state: RootState) => state.currenciesReducer);
 
 	const arProvider = useArweaveProvider();
 	const themeProvider = useCustomThemeProvider();
@@ -35,6 +32,18 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 
 	const [copied, setCopied] = React.useState<boolean>(false);
 	const [label, setLabel] = React.useState<string | null>(null);
+
+	const [desktop, setDesktop] = React.useState(windowUtils.checkWindowCutoff(parseInt(STYLING.cutoffs.initial)));
+
+	function handleWindowResize() {
+		if (windowUtils.checkWindowCutoff(parseInt(STYLING.cutoffs.initial))) {
+			setDesktop(true);
+		} else {
+			setDesktop(false);
+		}
+	}
+
+	windowUtils.checkWindowResize(handleWindowResize);
 
 	React.useEffect(() => {
 		setTimeout(() => {
@@ -94,99 +103,116 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 		setShowWalletDropdown(false);
 	}
 
-	function getTokenBalance(tokenProcess: string) {
-		if (
-			arProvider.profile &&
-			arProvider.profile.id &&
-			currenciesReducer &&
-			currenciesReducer[tokenProcess] &&
-			currenciesReducer[tokenProcess].Balances[arProvider.profile.id]
-		) {
-			const ownerBalance = currenciesReducer[tokenProcess].Balances[arProvider.profile.id];
-			return ownerBalance.toString();
+	function getDropdown() {
+		return (
+			<>
+				<S.DHeaderWrapper>
+					<S.DHeaderFlex>
+						<Avatar
+							owner={arProvider.profile}
+							dimensions={{ wrapper: 35, icon: 21.5 }}
+							callback={handleProfileAction}
+						/>
+						<S.DHeader>
+							<p onClick={handleProfileAction}>{label}</p>
+							<span onClick={handleProfileAction}>{formatAddress(arProvider.walletAddress, false)}</span>
+						</S.DHeader>
+					</S.DHeaderFlex>
+				</S.DHeaderWrapper>
+				<S.DBodyWrapper>
+					<S.DBodyHeader>
+						<span>{language.balances}</span>
+					</S.DBodyHeader>
+					<S.BalanceLine>
+						<span>{formatARAmount(arProvider.arBalance ? arProvider.arBalance : 0)}</span>
+						<ReactSVG src={ASSETS.ar} />
+					</S.BalanceLine>
+					{arProvider.tokenBalances && arProvider.tokenBalances[PROCESSES.token] !== null && (
+						<S.BalanceLine>
+							<CurrencyLine
+								amount={arProvider.tokenBalances[PROCESSES.token]}
+								currency={PROCESSES.token}
+								callback={() => setShowWalletDropdown(false)}
+							/>
+						</S.BalanceLine>
+					)}
+				</S.DBodyWrapper>
+				<S.DBodyWrapper>
+					<li onClick={handleProfileAction}>
+						{arProvider.profile && arProvider.profile.id ? language.viewProfile : language.createProfile}
+					</li>
+					{arProvider.profile && arProvider.profile.id && (
+						<>
+							<li onClick={() => setShowProfileManage(true)}>{language.editProfile}</li>
+							<li onClick={() => copyAddress(arProvider.profile.id)}>
+								{copied ? `${language.copied}!` : language.copyProfileAddress}
+							</li>
+						</>
+					)}
+					<li onClick={handleToggleTheme}>
+						{themeProvider.current === 'light' ? language.useDarkDisplay : language.useLightDisplay}
+					</li>
+				</S.DBodyWrapper>
+				<S.DFooterWrapper>
+					<li onClick={handleDisconnect}>{language.disconnect}</li>
+				</S.DFooterWrapper>
+			</>
+		);
+	}
+
+	function getHeader() {
+		return (
+			<S.PWrapper>
+				{arProvider.profile && !arProvider.profile.id && (
+					<S.CAction className={'fade-in'}>
+						<Button type={'primary'} label={language.createProfile} handlePress={handleProfileAction} height={35} />
+					</S.CAction>
+				)}
+				{label && (
+					<S.LAction onClick={handlePress} className={'border-wrapper-primary'}>
+						<span>{label}</span>
+					</S.LAction>
+				)}
+				<Avatar owner={arProvider.profile} dimensions={{ wrapper: 35, icon: 21.5 }} callback={handlePress} />
+			</S.PWrapper>
+		);
+	}
+
+	function getView() {
+		if (desktop) {
+			return (
+				<CloseHandler
+					callback={() => {
+						setShowWalletDropdown(false);
+					}}
+					active={showWalletDropdown}
+					disabled={false}
+				>
+					<S.Wrapper>
+						{getHeader()}
+						{showWalletDropdown && (
+							<S.Dropdown className={'border-wrapper-alt1 scroll-wrapper'}>{getDropdown()}</S.Dropdown>
+						)}
+					</S.Wrapper>
+				</CloseHandler>
+			);
+		} else {
+			return (
+				<S.Wrapper>
+					{getHeader()}
+					{showWalletDropdown && (
+						<Panel open={showWalletDropdown} header={label} handleClose={() => setShowWalletDropdown(false)}>
+							{getDropdown()}
+						</Panel>
+					)}
+				</S.Wrapper>
+			);
 		}
-		return 0;
 	}
 
 	return (
 		<>
-			<CloseHandler
-				callback={() => {
-					setShowWalletDropdown(false);
-				}}
-				active={showWalletDropdown}
-				disabled={false}
-			>
-				<S.Wrapper>
-					<S.PWrapper>
-						{arProvider.profile && !arProvider.profile.id && (
-							<S.CAction className={'fade-in'}>
-								<Button type={'primary'} label={language.createProfile} handlePress={handleProfileAction} height={35} />
-							</S.CAction>
-						)}
-						{label && (
-							<S.LAction onClick={handlePress} className={'border-wrapper-primary'}>
-								<span>{label}</span>
-							</S.LAction>
-						)}
-						<Avatar owner={arProvider.profile} dimensions={{ wrapper: 35, icon: 21.5 }} callback={handlePress} />
-					</S.PWrapper>
-					{showWalletDropdown && (
-						<S.Dropdown className={'border-wrapper-alt1 scroll-wrapper'}>
-							<S.DHeaderWrapper>
-								<S.DHeaderFlex>
-									<Avatar
-										owner={arProvider.profile}
-										dimensions={{ wrapper: 35, icon: 21.5 }}
-										callback={handleProfileAction}
-									/>
-									<S.DHeader>
-										<p onClick={handleProfileAction}>{label}</p>
-										<span onClick={handleProfileAction}>{formatAddress(arProvider.walletAddress, false)}</span>
-									</S.DHeader>
-								</S.DHeaderFlex>
-							</S.DHeaderWrapper>
-							<S.DBodyWrapper>
-								<S.DBodyHeader>
-									<span>{language.balances}</span>
-								</S.DBodyHeader>
-								<S.BalanceLine>
-									<span>{formatARAmount(arProvider.availableBalance ? arProvider.availableBalance : 0)}</span>
-									<ReactSVG src={ASSETS.ar} />
-								</S.BalanceLine>
-								{currenciesReducer && currenciesReducer[PROCESSES.token] && (
-									<S.BalanceLine>
-										<CurrencyLine
-											amount={getTokenBalance(PROCESSES.token)}
-											currency={PROCESSES.token}
-											callback={() => setShowWalletDropdown(false)}
-										/>
-									</S.BalanceLine>
-								)}
-							</S.DBodyWrapper>
-							<S.DBodyWrapper>
-								<li onClick={handleProfileAction}>
-									{arProvider.profile && arProvider.profile.id ? language.viewProfile : language.createProfile}
-								</li>
-								{arProvider.profile && arProvider.profile.id && (
-									<>
-										<li onClick={() => setShowProfileManage(true)}>{language.editProfile}</li>
-										<li onClick={() => copyAddress(arProvider.profile.id)}>
-											{copied ? `${language.copied}!` : language.copyProfileAddress}
-										</li>
-									</>
-								)}
-								<li onClick={handleToggleTheme}>
-									{themeProvider.current === 'light' ? language.useDarkDisplay : language.useLightDisplay}
-								</li>
-							</S.DBodyWrapper>
-							<S.DFooterWrapper>
-								<li onClick={handleDisconnect}>{language.disconnect}</li>
-							</S.DFooterWrapper>
-						</S.Dropdown>
-					)}
-				</S.Wrapper>
-			</CloseHandler>
+			{getView()}
 			{showProfileManage && (
 				<Panel
 					open={showProfileManage}

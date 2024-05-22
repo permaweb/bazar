@@ -44,7 +44,7 @@ export const AOS = {
 
 export const PROCESSES = {
 	ucm: 'fzRGvSW2oSop9xGLxs5mcaRtCbrbug8imI_uRZHKdiU',
-	token: 'IRv02cCZGmBVMhmPlL63sce4djgRgkY1J_3DUl_feUw',
+	token: 'xU9zFkq3X2ZQ6olwNVvr1vUWIjc3kXTWr7xKQD6dh10', // IRv02cCZGmBVMhmPlL63sce4djgRgkY1J_3DUl_feUw
 	streaks: 'jmu9__Fw79vcsCbPD15cy-xR0zFZa3lXv16rbpWQtRA',
 	profileRegistry: 'kFYMezhjcPCZLr2EkkwzIXP5A64QmtME6Bxa8bGmbzI',
 	profileSrc: 'IR30dCPZviSuRgSYM7lYWbJZYz7B_LoydBXAgngh0Gk',

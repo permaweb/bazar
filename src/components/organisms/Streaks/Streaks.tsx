@@ -8,9 +8,11 @@ import { getRegistryProfiles } from 'api';
 import { Button } from 'components/atoms/Button';
 import { Modal } from 'components/molecules/Modal';
 import { OwnerLine } from 'components/molecules/OwnerLine';
-import { ASSETS } from 'helpers/config';
+import { Panel } from 'components/molecules/Panel';
+import { ASSETS, STYLING } from 'helpers/config';
 import { RegistryProfileType } from 'helpers/types';
 import { formatAddress } from 'helpers/utils';
+import * as windowUtils from 'helpers/window';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 import { RootState } from 'store';
@@ -19,7 +21,7 @@ import { CloseHandler } from 'wrappers/CloseHandler';
 import * as S from './styles';
 import { IProps } from './types';
 
-// TODO: calculate streak on order create
+// TODO: 0 minute countdown display
 export default function Streaks(props: IProps) {
 	const streaksReducer = useSelector((state: RootState) => state.streaksReducer);
 
@@ -33,6 +35,18 @@ export default function Streaks(props: IProps) {
 	const [showLeaderboard, setShowLeaderboard] = React.useState<boolean>(false);
 	const [profiles, setProfiles] = React.useState<RegistryProfileType[] | null>(null);
 	const [currentBlockHeight, setCurrentBlockHeight] = React.useState<number | null>(0);
+
+	const [desktop, setDesktop] = React.useState(windowUtils.checkWindowCutoff(parseInt(STYLING.cutoffs.initial)));
+
+	function handleWindowResize() {
+		if (windowUtils.checkWindowCutoff(parseInt(STYLING.cutoffs.initial))) {
+			setDesktop(true);
+		} else {
+			setDesktop(false);
+		}
+	}
+
+	windowUtils.checkWindowResize(handleWindowResize);
 
 	React.useEffect(() => {
 		(async function () {
@@ -240,35 +254,64 @@ export default function Streaks(props: IProps) {
 		);
 	}, [streaksReducer, profiles]);
 
-	return props.profile && props.profile.id ? (
-		<>
-			<CloseHandler active={showDropdown} disabled={!showDropdown} callback={handleShowDropdown}>
+	function getAction() {
+		return (
+			<S.Action onClick={handleShowDropdown} className={'border-wrapper-primary'}>
+				{label}
+			</S.Action>
+		);
+	}
+
+	function getDropdown() {
+		return (
+			<>
+				<S.SDHeader>{header}</S.SDHeader>
+				<S.SDStreak>{streak}</S.SDStreak>
+				{arProvider.profile && arProvider.profile.id && arProvider.profile.id === props.profile.id && (
+					<S.SDMessage>{message}</S.SDMessage>
+				)}
+				<S.SDLAction>
+					<Button
+						type={'alt1'}
+						label={language.streakLeaderboard}
+						handlePress={() => setShowLeaderboard(true)}
+						icon={ASSETS.leaderboard}
+						iconLeftAlign
+						height={45}
+						fullWidth
+					/>
+				</S.SDLAction>
+			</>
+		);
+	}
+
+	function getView() {
+		if (desktop) {
+			return (
+				<CloseHandler active={showDropdown} disabled={!showDropdown} callback={handleShowDropdown}>
+					<S.Wrapper>
+						{getAction()}
+						{showDropdown && <S.Dropdown className={'fade-in border-wrapper-alt1'}>{getDropdown()}</S.Dropdown>}
+					</S.Wrapper>
+				</CloseHandler>
+			);
+		} else {
+			return (
 				<S.Wrapper>
-					<S.Action onClick={handleShowDropdown} className={'border-wrapper-primary'}>
-						{label}
-					</S.Action>
+					{getAction()}
 					{showDropdown && (
-						<S.Dropdown className={'fade-in border-wrapper-alt1'}>
-							<S.SDHeader>{header}</S.SDHeader>
-							<S.SDStreak>{streak}</S.SDStreak>
-							{arProvider.profile && arProvider.profile.id && arProvider.profile.id === props.profile.id && (
-								<S.SDMessage>{message}</S.SDMessage>
-							)}
-							<S.SDLAction>
-								<Button
-									type={'alt1'}
-									label={language.streakLeaderboard}
-									handlePress={() => setShowLeaderboard(true)}
-									icon={ASSETS.leaderboard}
-									iconLeftAlign
-									height={45}
-									fullWidth
-								/>
-							</S.SDLAction>
-						</S.Dropdown>
+						<Panel open={showDropdown} header={language.streaks} handleClose={handleShowDropdown}>
+							{getDropdown()}
+						</Panel>
 					)}
 				</S.Wrapper>
-			</CloseHandler>
+			);
+		}
+	}
+
+	return props.profile && props.profile.id ? (
+		<>
+			{getView()}
 			{showLeaderboard && (
 				<Modal header={language.streakLeaderboard} handleClose={() => setShowLeaderboard(false)}>
 					<S.MWrapper className={'modal-wrapper'}>{leaderboard}</S.MWrapper>

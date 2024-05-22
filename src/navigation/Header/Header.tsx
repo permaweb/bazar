@@ -51,10 +51,10 @@ export default function Header() {
 						<WalletConnect />
 						<S.MWrapper>
 							<IconButton
-								type={'primary'}
+								type={'alt1'}
 								src={ASSETS.menu}
 								handlePress={() => setPanelOpen(true)}
-								dimensions={{ wrapper: 35, icon: 18.5 }}
+								dimensions={{ wrapper: 35, icon: 15.5 }}
 							/>
 						</S.MWrapper>
 					</S.ActionsWrapper>

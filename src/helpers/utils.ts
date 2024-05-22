@@ -58,7 +58,7 @@ export function formatCount(count: string): string {
 
 		return parts.join('.');
 	} else {
-		return count.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + '.00';
+		return count.replace(/\B(?=(\d{3})+(?!\d))/g, ','); //  + '.00'
 	}
 }
 
@@ -119,7 +119,7 @@ export function getTagDisplay(value: string) {
 }
 
 export function getOwners(asset: AssetDetailType, profiles: RegistryProfileType[] | null): OwnerType[] | null {
-	if (asset && asset.state) {
+	if (asset && asset.state && asset.state.balances) {
 		const balances: any = Object.keys(asset.state.balances).map((address: string) => {
 			return Number(asset.state.balances[address]);
 		});

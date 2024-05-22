@@ -34,12 +34,10 @@ export const Dropdown = styled.div`
 	z-index: 1;
 	top: 45px;
 	right: 0;
-	padding: 20px;
 	display: flex;
 	flex-direction: column;
 	align-items: center;
 	justify-content: center;
-	gap: 20px;
 	p {
 		text-shadow: none !important;
 	}
@@ -47,6 +45,7 @@ export const Dropdown = styled.div`
 
 export const SDHeader = styled.div`
 	margin: 0 0 10px 0;
+	padding: 20px 0 0 0;
 	p {
 		color: ${(props) => props.theme.colors.font.primary};
 		font-size: ${(props) => props.theme.typography.size.lg};
@@ -65,6 +64,7 @@ export const SDStreak = styled.div`
 	justify-content: center;
 	align-items: center;
 	padding: 0 0 20px 0;
+	margin: 10px 0;
 	border-bottom: 1px solid ${(props) => props.theme.colors.border.primary};
 	p {
 		color: ${(props) => props.theme.colors.font.primary};
@@ -90,6 +90,8 @@ export const SDMessage = styled.div`
 	justify-content: center;
 	gap: 10px;
 	margin: 10px 0 20px 0;
+	padding: 10px 20px 30px 20px;
+	border-bottom: 1px solid ${(props) => props.theme.colors.border.primary};
 `;
 
 export const SDMessageInfo = styled.div`
@@ -147,6 +149,7 @@ export const SDMessageCountDivider = styled.div`
 
 export const SDLAction = styled.div`
 	width: 100%;
+	padding: 0 20px 20px 20px;
 	button {
 		span {
 			font-size: ${(props) => props.theme.typography.size.lg} !important;

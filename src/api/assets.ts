@@ -96,6 +96,7 @@ export async function getAssetById(args: { id: string }): Promise<AssetDetailTyp
 			};
 
 			const structuredAsset = structureAssets(gqlResponse)[0];
+
 			const processState = await readHandler({
 				processId: structuredAsset.data.id,
 				action: 'Info',
