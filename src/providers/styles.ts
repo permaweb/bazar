@@ -19,6 +19,7 @@ export const WalletListItem = styled.button`
 	justify-content: center;
 	text-align: center;
 	padding: 15px;
+	border: 1px solid ${(props) => props.theme.colors.border.primary} !important;
 	img {
 		width: 30px;
 		border-radius: 50%;

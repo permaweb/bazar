@@ -18,9 +18,12 @@ import { ProfileHeader } from './ProfileHeader';
 export default function Profile() {
 	const navigate = useNavigate();
 	const { address, active } = useParams();
+
 	const arProvider = useArweaveProvider();
+
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
+
 	const [profile, setProfile] = React.useState<ProfileHeaderType | null>(null);
 	const [toggleUpdate, setToggleUpdate] = React.useState<boolean>(false);
 

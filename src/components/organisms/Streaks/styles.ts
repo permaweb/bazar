@@ -46,6 +46,7 @@ export const Dropdown = styled.div`
 `;
 
 export const SDHeader = styled.div`
+	margin: 0 0 10px 0;
 	p {
 		color: ${(props) => props.theme.colors.font.primary};
 		font-size: ${(props) => props.theme.typography.size.lg};
@@ -107,10 +108,16 @@ export const SDMessageInfo = styled.div`
 `;
 
 export const SDMessageCount = styled.div`
-	width: 100%;
+	display: flex;
+	align-items: center;
+	padding: 10px 30px;
+	margin: 10px auto;
+`;
+
+export const SDMessageCountUnit = styled.div`
 	p {
 		color: ${(props) => props.theme.colors.font.alt5};
-		font-size: ${(props) => props.theme.typography.size.xLg};
+		font-size: ${(props) => props.theme.typography.size.h4};
 		font-weight: ${(props) => props.theme.typography.weight.xBold};
 		font-family: ${(props) => props.theme.typography.family.alt1};
 		display: block;
@@ -118,6 +125,23 @@ export const SDMessageCount = styled.div`
 		text-overflow: ellipsis;
 		white-space: nowrap;
 		text-align: center;
+	}
+	span {
+		color: ${(props) => props.theme.colors.font.primary};
+		font-size: ${(props) => props.theme.typography.size.xxxSmall};
+		font-weight: ${(props) => props.theme.typography.weight.bold};
+		text-transform: uppercase;
+		display: block;
+		margin: -2.5px 0 0 0;
+	}
+`;
+
+export const SDMessageCountDivider = styled.div`
+	margin: 0 30px;
+	span {
+		color: ${(props) => props.theme.colors.font.alt1};
+		font-size: ${(props) => props.theme.typography.size.xLg};
+		font-weight: ${(props) => props.theme.typography.weight.bold};
 	}
 `;
 
@@ -146,6 +170,7 @@ export const MLoadingWrapper = styled.div`
 `;
 
 export const StreaksWrapper = styled.div`
+	margin: 20px 0 0 0;
 	> * {
 		&:not(:last-child) {
 			margin: 0 0 20px 0;

@@ -190,7 +190,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 						{ name: 'X-Order-Action', value: 'Create-Order' },
 						{ name: 'X-Quantity', value: calculatedQuantity },
 						{ name: 'X-Swap-Token', value: swapToken },
-						{ name: 'X-Controller', value: arProvider.walletAddress },
 					];
 					if (unitPrice && unitPrice > 0) {
 						let calculatedUnitPrice: string | number = unitPrice;

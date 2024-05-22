@@ -66,7 +66,7 @@ export const DNavWrapper = styled.div`
 export const ActionsWrapper = styled.div`
 	display: flex;
 	align-items: center;
-	gap: 15px;
+	gap: 20px;
 `;
 
 export const MWrapper = styled.div`

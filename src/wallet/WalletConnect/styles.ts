@@ -26,6 +26,7 @@ export const LAction = styled.button`
 	height: 35px;
 	padding: 0 17.5px;
 	margin: 0 15px 0 0;
+	display: none;
 	span {
 		color: ${(props) => props.theme.colors.font.primary};
 		font-family: ${(props) => props.theme.typography.family.alt1};

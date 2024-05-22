@@ -19,31 +19,31 @@ export default function CreatorsTable() {
 			id: 'wtS8fY00Xh4eYTORXI49loingAgMd8idBn4rP6e-8RM',
 			username: 'Profile A',
 			avatar: null,
-			bio: 'lorem ipsum lorem ipsumlorem ipsum lorem ipsumlorem ipsumlorem ipsumlorem ipsum lorem ipsum',
+			bio: null,
 		},
 		{
 			id: 'wtS8fY00Xh4eYTORXI49loingAgMd8idBn4rP6e-8RM',
 			username: 'Profile B',
-			avatar: 'GYSs3Gpjgbv9zG1DZJBp-6zeKzZIudBRAQdZsONgY2Q',
-			bio: 'lorem ipsum lorem ipsumlorem ipsum lorem ipsumlorem ipsumlorem ipsumlorem ipsum lorem ipsum',
+			avatar: null,
+			bio: null,
 		},
 		{
 			id: 'wtS8fY00Xh4eYTORXI49loingAgMd8idBn4rP6e-8RM',
 			username: 'Profile C',
-			avatar: 'GYSs3Gpjgbv9zG1DZJBp-6zeKzZIudBRAQdZsONgY2Q',
-			bio: 'lorem ipsum lorem ipsumlorem ipsum lorem ipsumlorem ipsumlorem ipsumlorem ipsum lorem ipsum',
+			avatar: null,
+			bio: null,
 		},
 		{
 			id: 'wtS8fY00Xh4eYTORXI49loingAgMd8idBn4rP6e-8RM',
 			username: 'Profile D',
 			avatar: null,
-			bio: 'lorem ipsum lorem ipsumlorem ipsum lorem ipsumlorem ipsumlorem ipsumlorem ipsum lorem ipsum',
+			bio: null,
 		},
 		{
 			id: 'wtS8fY00Xh4eYTORXI49loingAgMd8idBn4rP6e-8RM',
 			username: 'Profile E',
-			avatar: 'GYSs3Gpjgbv9zG1DZJBp-6zeKzZIudBRAQdZsONgY2Q',
-			bio: 'lorem ipsum lorem ipsumlorem ipsum lorem ipsumlorem ipsumlorem ipsumlorem ipsum lorem ipsum',
+			avatar: null,
+			bio: null,
 		},
 	];
 
@@ -52,7 +52,7 @@ export default function CreatorsTable() {
 			<S.Header>
 				<h4>{language.topCreators}</h4>
 			</S.Header>
-			<S.CreatorsWrapper>
+			<S.CreatorsWrapper className={'border-wrapper-alt2'}>
 				{profiles.map((profile: RegistryProfileType, index: number) => {
 					const hasImage = profile.avatar && checkValidAddress(profile.avatar);
 

@@ -23,6 +23,7 @@ export const HeaderActions = styled.div`
 `;
 
 export const CreatorsWrapper = styled.div`
+	padding: 15px;
 	display: grid;
 	grid-template-columns: repeat(5, 1fr);
 	gap: 30px;

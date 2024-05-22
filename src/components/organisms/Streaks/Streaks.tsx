@@ -31,8 +31,8 @@ export default function Streaks(props: IProps) {
 	const [count, setCount] = React.useState<number>(0);
 	const [showDropdown, setShowDropdown] = React.useState<boolean>(false);
 	const [showLeaderboard, setShowLeaderboard] = React.useState<boolean>(false);
-	const [currentBlockHeight, setCurrentBlockHeight] = React.useState<number | null>(0);
 	const [profiles, setProfiles] = React.useState<RegistryProfileType[] | null>(null);
+	const [currentBlockHeight, setCurrentBlockHeight] = React.useState<number | null>(0);
 
 	React.useEffect(() => {
 		(async function () {
@@ -149,22 +149,58 @@ export default function Streaks(props: IProps) {
 		);
 	}, [count]);
 
-	// TODO: countdown
 	const message = React.useMemo(() => {
-		return (
-			<>
+		if (count !== null && currentBlockHeight) {
+			if (count > 0) {
+				const rewardsInterval = 720;
+				const blockTime = 2;
+
+				const lastHeightDiff = currentBlockHeight - streaksReducer[props.profile.id].lastHeight;
+				const remainingBlocks = rewardsInterval - lastHeightDiff;
+
+				const remainingBlockMinutes = Math.abs(remainingBlocks) * blockTime;
+
+				const hours = Math.floor(remainingBlockMinutes / 60);
+				const minutes = remainingBlockMinutes % 60;
+
+				return (
+					<>
+						<S.SDMessageInfo>
+							<span>{language.streakCountdown1}</span>
+						</S.SDMessageInfo>
+						<S.SDMessageCount className={'border-wrapper-alt2'}>
+							<S.SDMessageCountUnit>
+								<p>{hours}</p>
+								<span>{hours === 1 ? 'hour' : 'hours'}</span>
+							</S.SDMessageCountUnit>
+							<S.SDMessageCountDivider>
+								<span>:</span>
+							</S.SDMessageCountDivider>
+							<S.SDMessageCountUnit>
+								<p>{minutes}</p>
+								<span>{minutes === 1 ? 'minute' : 'minutes'}</span>
+							</S.SDMessageCountUnit>
+						</S.SDMessageCount>
+						<S.SDMessageInfo>
+							<span>{`${language.streakCountdown2}!`}</span>
+						</S.SDMessageInfo>
+					</>
+				);
+			} else {
+				return (
+					<S.SDMessageInfo>
+						<span>{`${language.streakStart}!`}</span>
+					</S.SDMessageInfo>
+				);
+			}
+		} else {
+			return (
 				<S.SDMessageInfo>
-					<span>You have approximately</span>
+					<span>{`${language.loading}...`}</span>
 				</S.SDMessageInfo>
-				<S.SDMessageCount>
-					<p>23 hours 43 minutes</p>
-				</S.SDMessageCount>
-				<S.SDMessageInfo>
-					<span>Until you can continue building your streak!</span>
-				</S.SDMessageInfo>
-			</>
-		);
-	}, []);
+			);
+		}
+	}, [count, currentBlockHeight, props.profile, streaksReducer]);
 
 	const leaderboard = React.useMemo(() => {
 		return streaksReducer && profiles ? (
@@ -190,7 +226,7 @@ export default function Streaks(props: IProps) {
 								/>
 							</S.StreakProfile>
 							<S.StreakCount>
-								<span>{`${addressCount} ${language.days.toLowerCase()}`}</span>
+								<span>{`${language.dayCount(addressCount)}`}</span>
 								{getStreakIcon(addressCount)}
 							</S.StreakCount>
 						</S.StreakLine>
@@ -215,7 +251,9 @@ export default function Streaks(props: IProps) {
 						<S.Dropdown className={'fade-in border-wrapper-alt1'}>
 							<S.SDHeader>{header}</S.SDHeader>
 							<S.SDStreak>{streak}</S.SDStreak>
-							<S.SDMessage>{message}</S.SDMessage>
+							{arProvider.profile && arProvider.profile.id && arProvider.profile.id === props.profile.id && (
+								<S.SDMessage>{message}</S.SDMessage>
+							)}
 							<S.SDLAction>
 								<Button
 									type={'alt1'}

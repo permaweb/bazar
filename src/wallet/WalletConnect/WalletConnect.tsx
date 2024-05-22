@@ -176,7 +176,6 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 										</li>
 									</>
 								)}
-								{/* <li onClick={() => copyAddress(arProvider.walletAddress)}>{copied ? `${language.copied}!` : language.copyWalletAddress}</li> */}
 								<li onClick={handleToggleTheme}>
 									{themeProvider.current === 'light' ? language.useDarkDisplay : language.useLightDisplay}
 								</li>
