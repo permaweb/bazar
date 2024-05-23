@@ -174,7 +174,7 @@ export const ActionWrapper = styled.div<{ loading: boolean | string }>`
 					props.loading ? props.theme.colors.font.light1 : props.theme.colors.button.primary.disabled.color} !important;
 			}
 			svg {
-				fill: ${(props) =>
+				color: ${(props) =>
 					props.loading ? props.theme.colors.font.light1 : props.theme.colors.button.primary.disabled.color} !important;
 			}
 		}

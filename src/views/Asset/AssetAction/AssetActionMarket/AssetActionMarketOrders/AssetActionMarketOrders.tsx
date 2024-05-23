@@ -23,6 +23,7 @@ import * as ucmActions from 'store/ucm/actions';
 import * as S from './styles';
 import { IProps } from './types';
 
+// TODO: on update keep fetching until changes are found
 export default function AssetActionMarketOrders(props: IProps) {
 	const dispatch = useDispatch();
 

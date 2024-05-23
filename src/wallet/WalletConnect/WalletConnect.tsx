@@ -216,7 +216,7 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 					<S.Wrapper>
 						{getHeader()}
 						{showWalletDropdown && (
-							<S.Dropdown className={'border-wrapper-alt3 scroll-wrapper'}>{getDropdown()}</S.Dropdown>
+							<S.Dropdown className={'border-wrapper-alt1 scroll-wrapper'}>{getDropdown()}</S.Dropdown>
 						)}
 					</S.Wrapper>
 				</CloseHandler>

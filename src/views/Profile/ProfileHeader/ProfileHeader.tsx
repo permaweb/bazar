@@ -16,6 +16,7 @@ import { useLanguageProvider } from 'providers/LanguageProvider';
 import * as S from './styles';
 import { IProps } from './types';
 
+// TODO: bio
 export default function ProfileHeader(props: IProps) {
 	const navigate = useNavigate();
 

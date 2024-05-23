@@ -357,7 +357,7 @@ export default function AssetsTable(props: IProps) {
 							disabled={!assets || !previousAction}
 							dimensions={{
 								wrapper: 30,
-								icon: 12.5,
+								icon: 17.5,
 							}}
 							tooltip={language.previous}
 							useBottomToolTip
@@ -370,7 +370,7 @@ export default function AssetsTable(props: IProps) {
 							disabled={!assets || !nextAction}
 							dimensions={{
 								wrapper: 30,
-								icon: 12.5,
+								icon: 17.5,
 							}}
 							tooltip={language.next}
 							useBottomToolTip

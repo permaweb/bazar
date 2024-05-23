@@ -69,7 +69,7 @@ export const Primary = styled.button<{
 			color: ${(props) => props.theme.colors.font.light1} !important;
 		}
 		svg {
-			fill: ${(props) => props.theme.colors.font.light1} !important;
+			color: ${(props) => props.theme.colors.font.light1} !important;
 		}
 	}
 	&:focus {
@@ -79,7 +79,7 @@ export const Primary = styled.button<{
 			color: ${(props) => props.theme.colors.font.light1} !important;
 		}
 		svg {
-			fill: ${(props) => props.theme.colors.font.light1} !important;
+			color: ${(props) => props.theme.colors.font.light1} !important;
 		}
 	}
 	&:disabled {
@@ -89,7 +89,7 @@ export const Primary = styled.button<{
 			color: ${(props) => props.theme.colors.button.primary.disabled.color} !important;
 		}
 		svg {
-			fill: ${(props) => props.theme.colors.button.primary.disabled.color} !important;
+			color: ${(props) => props.theme.colors.button.primary.disabled.color} !important;
 		}
 	}
 
@@ -114,7 +114,7 @@ export const IconPrimary = styled.div<{
 		width: 15px;
 		padding: 1.5px 0 0 0;
 		margin: ${(props) => (props.leftAlign ? '0 7.5px 0 0' : '0 0 0 7.5px')};
-		fill: ${(props) =>
+		color: ${(props) =>
 			props.disabled
 				? props.theme.colors.button.primary.disabled.color
 				: props.active
@@ -146,7 +146,7 @@ export const Alt1 = styled(Primary)`
 			color: ${(props) => props.theme.colors.button.alt1.disabled.color} !important;
 		}
 		svg {
-			fill: ${(props) => props.theme.colors.button.alt1.disabled.color} !important;
+			color: ${(props) => props.theme.colors.button.alt1.disabled.color} !important;
 		}
 	}
 
@@ -162,7 +162,7 @@ export const Alt1 = styled(Primary)`
 
 export const IconAlt1 = styled(IconPrimary)`
 	svg {
-		fill: ${(props) =>
+		color: ${(props) =>
 			props.disabled
 				? props.theme.colors.button.alt1.disabled.color
 				: props.active
@@ -212,7 +212,7 @@ export const Alt2 = styled(Alt1)`
 
 export const IconAlt2 = styled(IconAlt1)`
 	svg {
-		fill: ${(props) =>
+		color: ${(props) =>
 			props.disabled
 				? props.theme.colors.button.alt2.disabled.color
 				: props.active

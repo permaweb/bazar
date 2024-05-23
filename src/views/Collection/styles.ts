@@ -43,7 +43,7 @@ export const Thumbnail = styled.div`
 export const InfoWrapper = styled.div`
 	width: 100%;
 	padding: 20px;
-	background: ${(props) => `linear-gradient(0deg, ${props.theme.colors.overlay.alt1} 50%,transparent)`};
+	background: ${(props) => `linear-gradient(0deg, ${props.theme.colors.overlay.alt1} 0%,transparent)`};
 	p,
 	span {
 		text-shadow: 0 0 5px ${(props) => props.theme.colors.font.dark1};
@@ -81,7 +81,7 @@ export const InfoHeader = styled.div`
 		font-size: ${(props) => props.theme.typography.size.base} !important;
 		font-family: ${(props) => props.theme.typography.family.primary} !important;
 		font-weight: ${(props) => props.theme.typography.weight.medium} !important;
-		color: ${(props) => props.theme.colors.font.light2} !important;
+		color: ${(props) => props.theme.colors.font.light1} !important;
 	}
 	@media (max-width: ${STYLING.cutoffs.initial}) {
 		justify-content: flex-start;
@@ -111,7 +111,7 @@ export const InfoDetail = styled.div`
 	a {
 		&:hover {
 			span {
-				color: ${(props) => props.theme.colors.font.light2} !important;
+				color: ${(props) => props.theme.colors.font.light1} !important;
 			}
 		}
 	}
@@ -150,12 +150,12 @@ export const InfoCreator = styled.div`
 
 	p {
 		font-weight: ${(props) => props.theme.typography.weight.medium};
-		color: ${(props) => props.theme.colors.font.light2};
+		color: ${(props) => props.theme.colors.font.light1};
 	}
 
 	a {
 		&:hover {
-			color: ${(props) => props.theme.colors.font.light2};
+			color: ${(props) => props.theme.colors.font.light1};
 		}
 	}
 
@@ -171,7 +171,7 @@ export const InfoDescription = styled.div`
 		font-size: ${(props) => props.theme.typography.size.base};
 		font-family: ${(props) => props.theme.typography.family.primary};
 		font-weight: ${(props) => props.theme.typography.weight.bold};
-		color: ${(props) => props.theme.colors.font.light2};
+		color: ${(props) => props.theme.colors.font.light1};
 		line-height: 1.65;
 		max-width: 100%;
 		white-space: nowrap;

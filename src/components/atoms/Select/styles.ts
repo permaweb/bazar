@@ -41,7 +41,7 @@ export const Dropdown = styled.button<{ active: boolean }>`
 			color: ${(props) => props.theme.colors.font.light1} !important;
 		}
 		svg {
-			fill: ${(props) => props.theme.colors.font.light1} !important;
+			color: ${(props) => props.theme.colors.font.light1} !important;
 		}
 	}
 	&:focus {
@@ -51,7 +51,7 @@ export const Dropdown = styled.button<{ active: boolean }>`
 			color: ${(props) => props.theme.colors.font.light1} !important;
 		}
 		svg {
-			fill: ${(props) => props.theme.colors.font.light1} !important;
+			color: ${(props) => props.theme.colors.font.light1} !important;
 		}
 	}
 	&:disabled {
@@ -61,7 +61,7 @@ export const Dropdown = styled.button<{ active: boolean }>`
 			color: ${(props) => props.theme.colors.button.primary.disabled.color} !important;
 		}
 		svg {
-			fill: ${(props) => props.theme.colors.button.primary.disabled.color} !important;
+			color: ${(props) => props.theme.colors.button.primary.disabled.color} !important;
 		}
 	}
 
@@ -76,11 +76,11 @@ export const Dropdown = styled.button<{ active: boolean }>`
 	}
 
 	svg {
-		height: 12.5px;
-		width: 12.5px;
+		height: 17.5px;
+		width: 17.5px;
 		margin: 5px 0 0 0;
-		transform: rotate(270deg);
-		fill: ${(props) =>
+		transform: rotate(90deg);
+		color: ${(props) =>
 			props.active ? props.theme.colors.font.light1 : props.theme.colors.button.primary.color} !important;
 	}
 `;

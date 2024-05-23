@@ -24,8 +24,10 @@ export const HeaderActions = styled.div`
 
 	.filter-listings {
 		svg {
-			margin: 0 0 0 10px;
-			padding: 3.5px 0 0 0;
+			height: 17.5px;
+			width: 17.5px;
+			color: ${(props) => props.theme.colors.font.light1};
+			margin: 3.5px 0 0 10px;
 		}
 	}
 `;
@@ -36,14 +38,14 @@ export const HeaderPaginator = styled.div`
 	gap: 15px;
 
 	.table-previous {
+		transform: rotate(180deg);
 		svg {
-			margin: 0 1.5px 0 0;
+			margin: -2.5px 0 0 0;
 		}
 	}
 
 	.table-next {
 		svg {
-			transform: rotate(180deg);
 			margin: 0 0 0 1.5px;
 		}
 	}

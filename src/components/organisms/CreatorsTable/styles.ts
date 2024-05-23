@@ -84,7 +84,7 @@ export const Avatar = styled.div<{
 		height: 75px;
 		width: 75px;
 		padding: 2.5px 0 0 0px;
-		margin: 0 0 -2.5px -0.5px;
+		margin: 0 0 -3.5px 0;
 	}
 `;
 

@@ -14,6 +14,7 @@ import 'react-multi-carousel/lib/styles.css';
 import * as S from './styles';
 import { IProps } from './types';
 
+// TODO: created by
 export default function CollectionsCarousel(props: IProps) {
 	const navigate = useNavigate();
 

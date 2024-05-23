@@ -24,7 +24,7 @@ export const Wrapper = styled.div<{ backgroundImage: string }>`
 export const HeaderInfo = styled.div`
 	width: 100%;
 	padding: 20px;
-	background: ${(props) => `linear-gradient(0deg, ${props.theme.colors.overlay.alt1} 50%,transparent)`};
+	background: ${(props) => `linear-gradient(0deg, ${props.theme.colors.overlay.alt1} 0%,transparent)`};
 	h4,
 	p,
 	span {
@@ -94,7 +94,7 @@ export const HeaderHA = styled.div`
 export const HeaderInfoDetail = styled.div`
 	margin: 3.5px 0 0 0;
 	span {
-		color: ${(props) => props.theme.colors.font.light2};
+		color: ${(props) => props.theme.colors.font.light1};
 		font-size: ${(props) => props.theme.typography.size.small};
 		font-weight: ${(props) => props.theme.typography.weight.bold};
 	}
