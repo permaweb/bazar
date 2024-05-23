@@ -45,7 +45,10 @@ export default function AssetInfo(props: IProps) {
 			return (
 				<GS.DrawerContentDetail>
 					{splitTagValue(licenseElement.value)}{' '}
-					<img src={getTxEndpoint('r_6_cIZ9ZcAclPkA0Bp4n_HeJ5kWnKgCSwH7oFyDrJY')} />
+					<img
+						style={{ height: '17.5px', width: '17.5px', margin: '3.5px 0 0 10px' }}
+						src={getTxEndpoint('L99jaxRKQKJt9CqoJtPaieGPEhJD3wNhR4iGqc8amXs')}
+					/>
 				</GS.DrawerContentDetail>
 			);
 		}

@@ -158,7 +158,6 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 	// 				],
 	// 				data: null,
 	// 			});
-	// 			console.log(response);
 	// 		}
 	// 	})();
 	// }, [profile, tokenBalances]);
