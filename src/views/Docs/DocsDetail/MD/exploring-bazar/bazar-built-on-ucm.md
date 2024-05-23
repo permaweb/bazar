@@ -4,7 +4,7 @@ BazAR is the first digital content marketplace built on the Universal Content Ma
 
 ## Why we use UCM?
 
-UCM provides a secure and transparent environment to trade assets without relying third parties. It ensures data permanence on Arweave, eliminating the fear of losing valuable content.
+UCM provides a secure and transparent environment to trade assets without relying on third parties. It ensures data permanence on Arweave, eliminating the fear of losing valuable content.
 
 With UCM, creators retain control control over their assets. UCM fosters a decentralized ecosystem where creators can interact, trade, and collaborate with confidence, knowing their data and ownership are protected.
 
