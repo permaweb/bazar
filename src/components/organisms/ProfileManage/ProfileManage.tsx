@@ -10,7 +10,7 @@ import { Checkbox } from 'components/atoms/Checkbox';
 import { FormField } from 'components/atoms/FormField';
 import { Notification } from 'components/atoms/Notification';
 import { TextArea } from 'components/atoms/TextArea';
-import { AOS, ASSETS, GATEWAYS, PROCESSES, TAGS } from 'helpers/config';
+import { AOS, ASSETS, GATEWAYS, TAGS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import { NotificationType } from 'helpers/types';
 import { checkValidAddress, getBase64Data, getDataURLContentType } from 'helpers/utils';
@@ -123,6 +123,7 @@ export default function ProfileManage(props: IProps) {
 					let updateResponse = await messageResult({
 						processId: props.profile.id,
 						action: 'Update-Profile',
+						tags: null,
 						data: data,
 						wallet: arProvider.wallet,
 					});
@@ -144,7 +145,7 @@ export default function ProfileManage(props: IProps) {
 
 					let processSrc = null;
 					try {
-						const processSrcFetch = await fetch(getTxEndpoint(PROCESSES.profileSrc));
+						const processSrcFetch = await fetch(getTxEndpoint(AOS.profileSrc));
 						if (processSrcFetch.ok) {
 							processSrc = await processSrcFetch.text();
 
@@ -210,6 +211,7 @@ export default function ProfileManage(props: IProps) {
 								let updateResponse = await messageResult({
 									processId: processId,
 									action: 'Update-Profile',
+									tags: null,
 									data: data,
 									wallet: arProvider.wallet,
 								});

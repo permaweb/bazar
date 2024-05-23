@@ -242,16 +242,20 @@ export async function messageResult(args: {
 	processId: string;
 	wallet: any;
 	action: string;
+	tags: TagType[] | null;
 	data: any;
 	useRawData?: boolean;
 }): Promise<any> {
 	try {
+		const tags = [{ name: 'Action', value: args.action }];
+		if (args.tags) tags.push(...args.tags);
+
 		const data = args.useRawData ? args.data : JSON.stringify(args.data);
 
 		const txId = await message({
 			process: args.processId,
 			signer: createDataItemSigner(args.wallet),
-			tags: [{ name: 'Action', value: args.action }],
+			tags: tags,
 			data: data,
 		});
 
@@ -296,7 +300,7 @@ export async function messageResults(args: {
 	processId: string;
 	wallet: any;
 	action: string;
-	tags: any;
+	tags: TagType[] | null;
 	data: any;
 	responses?: string[];
 	handler?: string;
@@ -315,7 +319,7 @@ export async function messageResults(args: {
 		const messageResults = await results({
 			process: args.processId,
 			sort: 'DESC',
-			limit: 5,
+			limit: 100,
 		});
 
 		if (messageResults && messageResults.edges && messageResults.edges.length) {

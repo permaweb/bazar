@@ -14,38 +14,40 @@ export default function CreatorsTable() {
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
 
-	const profiles = [
-		{
-			id: 'wtS8fY00Xh4eYTORXI49loingAgMd8idBn4rP6e-8RM',
-			username: 'Profile A',
-			avatar: null,
-			bio: null,
-		},
-		{
-			id: 'wtS8fY00Xh4eYTORXI49loingAgMd8idBn4rP6e-8RM',
-			username: 'Profile B',
-			avatar: null,
-			bio: null,
-		},
-		{
-			id: 'wtS8fY00Xh4eYTORXI49loingAgMd8idBn4rP6e-8RM',
-			username: 'Profile C',
-			avatar: null,
-			bio: null,
-		},
-		{
-			id: 'wtS8fY00Xh4eYTORXI49loingAgMd8idBn4rP6e-8RM',
-			username: 'Profile D',
-			avatar: null,
-			bio: null,
-		},
-		{
-			id: 'wtS8fY00Xh4eYTORXI49loingAgMd8idBn4rP6e-8RM',
-			username: 'Profile E',
-			avatar: null,
-			bio: null,
-		},
-	];
+	// const profiles = [
+	// 	{
+	// 		id: 'wtS8fY00Xh4eYTORXI49loingAgMd8idBn4rP6e-8RM',
+	// 		username: 'Profile A',
+	// 		avatar: null,
+	// 		bio: null,
+	// 	},
+	// 	{
+	// 		id: 'wtS8fY00Xh4eYTORXI49loingAgMd8idBn4rP6e-8RM',
+	// 		username: 'Profile B',
+	// 		avatar: null,
+	// 		bio: null,
+	// 	},
+	// 	{
+	// 		id: 'wtS8fY00Xh4eYTORXI49loingAgMd8idBn4rP6e-8RM',
+	// 		username: 'Profile C',
+	// 		avatar: null,
+	// 		bio: null,
+	// 	},
+	// 	{
+	// 		id: 'wtS8fY00Xh4eYTORXI49loingAgMd8idBn4rP6e-8RM',
+	// 		username: 'Profile D',
+	// 		avatar: null,
+	// 		bio: null,
+	// 	},
+	// 	{
+	// 		id: 'wtS8fY00Xh4eYTORXI49loingAgMd8idBn4rP6e-8RM',
+	// 		username: 'Profile E',
+	// 		avatar: null,
+	// 		bio: null,
+	// 	},
+	// ];
+
+	const profiles = null;
 
 	return profiles ? (
 		<S.Wrapper>

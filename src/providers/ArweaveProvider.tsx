@@ -1,9 +1,9 @@
 import React from 'react';
 
-import { getProfileByWalletAddress, messageResult, readHandler } from 'api';
+import { getProfileByWalletAddress, readHandler } from 'api';
 
 import { Modal } from 'components/molecules/Modal';
-import { AR_WALLETS, PROCESSES, WALLET_PERMISSIONS } from 'helpers/config';
+import { AOS, AR_WALLETS, WALLET_PERMISSIONS } from 'helpers/config';
 import { getARBalanceEndpoint } from 'helpers/endpoints';
 import { ProfileHeaderType, WalletEnum } from 'helpers/types';
 import Othent from 'helpers/wallet';
@@ -124,19 +124,45 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 				} catch (e: any) {
 					console.error(e);
 				}
+			}
+		})();
+	}, [wallet, walletAddress, walletType, toggleProfileUpdate]);
 
+	React.useEffect(() => {
+		(async function () {
+			if (profile && profile.id) {
 				try {
 					const tokenBalance = await readHandler({
-						processId: PROCESSES.token,
+						processId: AOS.token,
 						action: 'Balance',
+						tags: [{ name: 'Recipient', value: profile.id }],
 					});
-					setTokenBalances({ [PROCESSES.token]: tokenBalance });
+					setTokenBalances({ [AOS.token]: tokenBalance });
 				} catch (e: any) {
 					console.error(e);
 				}
 			}
 		})();
-	}, [wallet, walletAddress, walletType, toggleProfileUpdate]);
+	}, [profile]);
+
+	// TODO: transfer balance to profile
+	// React.useEffect(() => {
+	// 	(async function () {
+	// 		if (profile && profile.id && tokenBalances && tokenBalances[AOS.token]) {
+	// 			const response = await messageResult({
+	// 				processId: AOS.token,
+	// 				wallet: wallet,
+	// 				action: 'Transfer',
+	// 				tags: [
+	// 					{ name: 'Recipient', value: profile.id },
+	// 					{ name: 'Quantity', value: tokenBalances[AOS.token].toString() },
+	// 				],
+	// 				data: null,
+	// 			});
+	// 			console.log(response);
+	// 		}
+	// 	})();
+	// }, [profile, tokenBalances]);
 
 	async function handleWallet() {
 		if (localStorage.getItem('walletType')) {

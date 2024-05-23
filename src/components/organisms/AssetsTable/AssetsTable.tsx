@@ -66,7 +66,7 @@ export default function AssetsTable(props: IProps) {
 
 	React.useEffect(() => {
 		(async function () {
-			if (assetIdGroups) {
+			if (assetIdGroups && Object.keys(assetIdGroups).length > 0) {
 				setAssetsLoading(true);
 				try {
 					setAssets(

@@ -1,6 +1,6 @@
 import { getGQLData, readHandler } from 'api';
 
-import { GATEWAYS, LICENSES, PAGINATORS, PROCESSES, TAGS } from 'helpers/config';
+import { AOS, GATEWAYS, LICENSES, PAGINATORS, TAGS } from 'helpers/config';
 import {
 	AssetDetailType,
 	AssetOrderType,
@@ -219,7 +219,7 @@ export function getAssetIdGroups(args: {
 				const missingIds = args.ids.filter((id) => !orderbookIds.includes(id));
 
 				missingIds.forEach((missingId) => {
-					currentOrderbook.push({ Pair: [missingId, PROCESSES.token], Orders: [] });
+					currentOrderbook.push({ Pair: [missingId, AOS.token], Orders: [] });
 				});
 			}
 

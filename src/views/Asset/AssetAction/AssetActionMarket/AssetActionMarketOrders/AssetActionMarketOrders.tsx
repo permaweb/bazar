@@ -10,7 +10,7 @@ import { IconButton } from 'components/atoms/IconButton';
 import { Notification } from 'components/atoms/Notification';
 import { Slider } from 'components/atoms/Slider';
 import { Modal } from 'components/molecules/Modal';
-import { ASSETS, PROCESSES } from 'helpers/config';
+import { AOS, ASSETS } from 'helpers/config';
 import { AssetOrderType } from 'helpers/types';
 import { checkValidAddress, formatCount, formatPercentage } from 'helpers/utils';
 import * as windowUtils from 'helpers/window';
@@ -71,11 +71,10 @@ export default function AssetActionMarketOrders(props: IProps) {
 	const [currentNotification, setCurrentNotification] = React.useState<string | null>(null);
 
 	const insufficientBalance =
-		arProvider.walletAddress &&
-		arProvider.profile &&
-		arProvider.profile.id &&
+		arProvider.tokenBalances &&
+		arProvider.tokenBalances[AOS.token] !== null &&
 		props.type === 'buy' &&
-		Number(getTokenBalance(PROCESSES.token)) < getTotalPrice();
+		Number(arProvider.tokenBalances[AOS.token]) < getTotalPrice();
 
 	React.useEffect(() => {
 		if (props.asset) {
@@ -124,7 +123,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 			}
 
 			const orderCurrency =
-				props.asset.orders && props.asset.orders.length ? props.asset.orders[0].currency : PROCESSES.token;
+				props.asset.orders && props.asset.orders.length ? props.asset.orders[0].currency : AOS.token;
 			if (
 				currenciesReducer &&
 				currenciesReducer[orderCurrency] &&
@@ -157,21 +156,21 @@ export default function AssetActionMarketOrders(props: IProps) {
 	async function handleSubmit() {
 		if (props.asset && arProvider.wallet && arProvider.profile && arProvider.profile.id) {
 			let pair = null;
-			let tags = null;
+			let forwardedTags = null;
 			let recipient = null;
 			let localSuccess = false;
 
 			switch (props.type) {
 				case 'buy':
-					pair = [PROCESSES.token, props.asset.data.id];
-					recipient = PROCESSES.ucm;
+					pair = [AOS.token, props.asset.data.id];
+					recipient = AOS.ucm;
 					break;
 				case 'sell':
-					pair = [props.asset.data.id, PROCESSES.token];
-					recipient = PROCESSES.ucm;
+					pair = [props.asset.data.id, AOS.token];
+					recipient = AOS.ucm;
 					break;
 				case 'transfer':
-					pair = [props.asset.data.id, PROCESSES.token];
+					pair = [props.asset.data.id, AOS.token];
 					recipient = transferRecipient;
 					break;
 			}
@@ -190,7 +189,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 				calculatedQuantity = calculatedQuantity.toString();
 
 				if (props.type === 'buy' || props.type === 'sell') {
-					tags = [
+					forwardedTags = [
 						{ name: 'X-Order-Action', value: 'Create-Order' },
 						{ name: 'X-Quantity', value: calculatedQuantity },
 						{ name: 'X-Swap-Token', value: swapToken },
@@ -199,9 +198,17 @@ export default function AssetActionMarketOrders(props: IProps) {
 						let calculatedUnitPrice: string | number = unitPrice;
 						if (transferDenomination) calculatedUnitPrice = unitPrice * transferDenomination;
 						calculatedUnitPrice = calculatedUnitPrice.toString();
-						tags.push({ name: 'X-Price', value: calculatedUnitPrice });
+						forwardedTags.push({ name: 'X-Price', value: calculatedUnitPrice });
 					}
 				}
+
+				const transferTags = [
+					{ name: 'Target', value: dominantToken },
+					{ name: 'Recipient', value: recipient },
+					{ name: 'Quantity', value: calculatedQuantity },
+				];
+
+				if (forwardedTags) transferTags.push(...forwardedTags);
 
 				setOrderLoading(true);
 				try {
@@ -211,7 +218,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 						processId: arProvider.profile.id,
 						action: 'Transfer',
 						wallet: arProvider.wallet,
-						tags: tags,
+						tags: transferTags,
 						data: {
 							Target: dominantToken,
 							Recipient: recipient,
@@ -293,22 +300,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 			console.error(error);
 		}
 	};
-
-	function getTokenBalance(tokenProcess: string) {
-		if (
-			arProvider.walletAddress &&
-			arProvider.profile &&
-			arProvider.profile.id &&
-			currenciesReducer &&
-			currenciesReducer[tokenProcess] &&
-			currenciesReducer[tokenProcess].Balances &&
-			currenciesReducer[tokenProcess].Balances[arProvider.profile.id]
-		) {
-			const ownerBalance = currenciesReducer[tokenProcess].Balances[arProvider.profile.id];
-			return ownerBalance.toString();
-		}
-		return 0;
-	}
 
 	function getTotals() {
 		let balanceHeader: string | null = null;
@@ -395,8 +386,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 	}
 
 	function getTotalPriceDisplay() {
-		const orderCurrency =
-			props.asset.orders && props.asset.orders.length ? props.asset.orders[0].currency : PROCESSES.token;
+		const orderCurrency = props.asset.orders && props.asset.orders.length ? props.asset.orders[0].currency : AOS.token;
 		return <CurrencyLine amount={getTotalPrice() || '0'} currency={orderCurrency} />;
 	}
 
@@ -474,13 +464,13 @@ export default function AssetActionMarketOrders(props: IProps) {
 			windowUtils.scrollTo(0, 0, 'smooth');
 			try {
 				const ucmState = await readHandler({
-					processId: PROCESSES.ucm,
+					processId: AOS.ucm,
 					action: 'Info',
 				});
 				dispatch(ucmActions.setUCM(ucmState));
 
 				const orderCurrency =
-					props.asset.orders && props.asset.orders.length ? props.asset.orders[0].currency : PROCESSES.token;
+					props.asset.orders && props.asset.orders.length ? props.asset.orders[0].currency : AOS.token;
 				const tokenState = await readHandler({
 					processId: orderCurrency,
 					action: 'Info',

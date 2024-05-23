@@ -4,7 +4,7 @@ import { ReactSVG } from 'react-svg';
 
 import { readHandler } from 'api';
 
-import { ASSETS, DOM, PROCESSES } from 'helpers/config';
+import { AOS, ASSETS, DOM } from 'helpers/config';
 import { Footer } from 'navigation/footer';
 import { Header } from 'navigation/Header';
 import { Routes } from 'routes';
@@ -24,24 +24,24 @@ export default function App() {
 		(async function () {
 			try {
 				const ucmState = await readHandler({
-					processId: PROCESSES.ucm,
+					processId: AOS.ucm,
 					action: 'Info',
 				});
 				dispatch(ucmActions.setUCM(ucmState));
 
 				const streakState = await readHandler({
-					processId: PROCESSES.streaks,
+					processId: AOS.streaks,
 					action: 'Info',
 				});
 				dispatch(streakActions.setStreaks(streakState.Streaks));
 
 				const tokenState = await readHandler({
-					processId: PROCESSES.token,
+					processId: AOS.token,
 					action: 'Info',
 				});
 				dispatch(
 					currencyActions.setCurrencies({
-						[PROCESSES.token]: {
+						[AOS.token]: {
 							...tokenState,
 						},
 					})

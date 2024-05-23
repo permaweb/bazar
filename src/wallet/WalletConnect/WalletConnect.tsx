@@ -7,7 +7,7 @@ import { Button } from 'components/atoms/Button';
 import { CurrencyLine } from 'components/atoms/CurrencyLine';
 import { Panel } from 'components/molecules/Panel';
 import { ProfileManage } from 'components/organisms/ProfileManage';
-import { ASSETS, PROCESSES, STYLING, URLS } from 'helpers/config';
+import { AOS, ASSETS, STYLING, URLS } from 'helpers/config';
 import { formatAddress, formatARAmount } from 'helpers/utils';
 import * as windowUtils from 'helpers/window';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
@@ -127,11 +127,11 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 						<span>{formatARAmount(arProvider.arBalance ? arProvider.arBalance : 0)}</span>
 						<ReactSVG src={ASSETS.ar} />
 					</S.BalanceLine>
-					{arProvider.tokenBalances && arProvider.tokenBalances[PROCESSES.token] !== null && (
+					{arProvider.tokenBalances && arProvider.tokenBalances[AOS.token] !== null && (
 						<S.BalanceLine>
 							<CurrencyLine
-								amount={arProvider.tokenBalances[PROCESSES.token]}
-								currency={PROCESSES.token}
+								amount={arProvider.tokenBalances[AOS.token]}
+								currency={AOS.token}
 								callback={() => setShowWalletDropdown(false)}
 							/>
 						</S.BalanceLine>

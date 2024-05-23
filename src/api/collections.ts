@@ -1,6 +1,6 @@
 import { getGQLData, getProfileByWalletAddress } from 'api';
 
-import { GATEWAYS, PROCESSES, TAGS } from 'helpers/config';
+import { AOS, GATEWAYS, TAGS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import {
 	CollectionDetailType,
@@ -33,6 +33,7 @@ export async function getCollections(args: {
 			tagFilters: tagFilters,
 			owners: null,
 			cursor: args.cursor,
+			minBlock: 1430100,
 		});
 
 		if (gqlResponse && gqlResponse.data.length) {
@@ -175,5 +176,5 @@ function getDefaultCurrency(assetIds: string[]): string {
 			}
 		}
 	}
-	return PROCESSES.token;
+	return AOS.token;
 }
