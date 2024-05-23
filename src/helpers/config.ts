@@ -7,11 +7,16 @@ import buy from 'assets/buy.svg';
 import checkmark from 'assets/checkmark.svg';
 import close from 'assets/close.svg';
 import comments from 'assets/comments.svg';
+import copy from 'assets/copy.svg';
+import dark from 'assets/dark.svg';
+import disconnect from 'assets/disconnect.svg';
+import edit from 'assets/edit.svg';
 import grid from 'assets/grid.svg';
 import html from 'assets/html.svg';
 import info from 'assets/info.svg';
 import leaderboard from 'assets/leaderboard.svg';
 import license from 'assets/license.svg';
+import light from 'assets/light.svg';
 import list from 'assets/list.svg';
 import logo from 'assets/logo.svg';
 import market from 'assets/market.svg';
@@ -21,6 +26,7 @@ import orders from 'assets/orders.svg';
 import othent from 'assets/othent.svg';
 import overview from 'assets/overview.svg';
 import paste from 'assets/paste.svg';
+import pixl from 'assets/pixl.svg';
 import provenance from 'assets/provenance.svg';
 import renderer from 'assets/renderer.svg';
 import sell from 'assets/sell.svg';
@@ -68,11 +74,16 @@ export const ASSETS = {
 	checkmark,
 	close,
 	comments,
+	copy,
+	dark,
+	disconnect,
+	edit,
 	grid,
 	html,
 	info,
 	leaderboard,
 	license,
+	light,
 	list,
 	logo,
 	market,
@@ -82,6 +93,7 @@ export const ASSETS = {
 	othent,
 	overview,
 	paste,
+	pixl,
 	provenance,
 	renderer,
 	sell,

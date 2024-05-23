@@ -1,6 +1,7 @@
 import styled from 'styled-components';
 
 import { fadeIn1, open, openRight } from 'helpers/animations';
+import { STYLING } from 'helpers/config';
 
 export const Wrapper = styled.div<{ top: number; noHeader: boolean }>`
 	min-height: 100vh;
@@ -11,7 +12,7 @@ export const Wrapper = styled.div<{ top: number; noHeader: boolean }>`
 	top: 0;
 	left: 0;
 	background: ${(props) => props.theme.colors.overlay.primary};
-	backdrop-filter: blur(10px);
+	backdrop-filter: blur(7.5px);
 	animation: ${open} ${fadeIn1};
 `;
 
@@ -19,7 +20,8 @@ export const Container = styled.div<{
 	noHeader: boolean;
 }>`
 	height: calc(100dvh - 30px);
-	width: 575px;
+	min-width: 450px;
+	width: fit-content;
 	max-width: calc(100vw - 30px);
 	position: fixed;
 	top: 15px;
@@ -27,6 +29,9 @@ export const Container = styled.div<{
 	transition: width 50ms ease-out;
 	box-shadow: none !important;
 	animation: ${openRight} 200ms;
+	@media (max-width: ${STYLING.cutoffs.secondary}) {
+		min-width: 82.5vw;
+	}
 `;
 
 export const Header = styled.div`

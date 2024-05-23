@@ -19,7 +19,7 @@ export const lightTheme = {
 	neutralA4: '#3E3E3E',
 	neutralA5: '#A4A4A4',
 	neutralA6: '#A9A9A9',
-	neutralA7: '#7E7E7E',
+	neutralA7: '#C3C3C3',
 	overlay1: 'rgb(130, 130, 130, .25)',
 	primary1: '#F96E46',
 	primary2: '#E6562C',
@@ -54,7 +54,7 @@ export const darkTheme = {
 	neutralA4: '#C9C9C9',
 	neutralA5: '#F7F7F7',
 	neutralA6: '#FAFAFA',
-	neutralA7: '#323232',
+	neutralA7: '#101010',
 	overlay1: 'rgba(0, 0, 0, 0.5)',
 	primary1: '#F96E46',
 	primary2: '#E6562C',
@@ -83,7 +83,6 @@ export const theme = (currentTheme: any): DefaultTheme => ({
 			alt2: currentTheme.neutralA6,
 			alt3: currentTheme.neutral5,
 			alt4: currentTheme.neutral8,
-			alt5: currentTheme.neutralA7,
 		},
 		button: {
 			primary: {
@@ -263,6 +262,7 @@ export const theme = (currentTheme: any): DefaultTheme => ({
 		shadow: {
 			primary: currentTheme.semiTransparent5,
 			alt1: currentTheme.neutral4,
+			alt2: currentTheme.neutralA7,
 		},
 		tabs: {
 			color: currentTheme.neutralA4,

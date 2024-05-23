@@ -11,7 +11,6 @@ import { useLanguageProvider } from 'providers/LanguageProvider';
 
 import * as S from './styles';
 
-// TODO: token balances
 interface ArweaveContextState {
 	wallets: { type: WalletEnum; logo: string }[];
 	wallet: any;
@@ -145,7 +144,7 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 		})();
 	}, [profile]);
 
-	// TODO: transfer balance to profile
+	// Transfer balance to profile
 	// React.useEffect(() => {
 	// 	(async function () {
 	// 		if (profile && profile.id && tokenBalances && tokenBalances[AOS.token]) {

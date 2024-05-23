@@ -1,5 +1,6 @@
 import React from 'react';
 import { useSelector } from 'react-redux';
+import { ReactSVG } from 'react-svg';
 
 import Arweave from 'arweave';
 
@@ -9,19 +10,16 @@ import { Button } from 'components/atoms/Button';
 import { Modal } from 'components/molecules/Modal';
 import { OwnerLine } from 'components/molecules/OwnerLine';
 import { Panel } from 'components/molecules/Panel';
-import { ASSETS, STYLING } from 'helpers/config';
+import { ASSETS } from 'helpers/config';
 import { RegistryProfileType } from 'helpers/types';
-import { formatAddress } from 'helpers/utils';
-import * as windowUtils from 'helpers/window';
+import { formatAddress, formatCount } from 'helpers/utils';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 import { RootState } from 'store';
-import { CloseHandler } from 'wrappers/CloseHandler';
 
 import * as S from './styles';
 import { IProps } from './types';
 
-// TODO: 0 minute countdown display
 export default function Streaks(props: IProps) {
 	const streaksReducer = useSelector((state: RootState) => state.streaksReducer);
 
@@ -35,18 +33,6 @@ export default function Streaks(props: IProps) {
 	const [showLeaderboard, setShowLeaderboard] = React.useState<boolean>(false);
 	const [profiles, setProfiles] = React.useState<RegistryProfileType[] | null>(null);
 	const [currentBlockHeight, setCurrentBlockHeight] = React.useState<number | null>(0);
-
-	const [desktop, setDesktop] = React.useState(windowUtils.checkWindowCutoff(parseInt(STYLING.cutoffs.initial)));
-
-	function handleWindowResize() {
-		if (windowUtils.checkWindowCutoff(parseInt(STYLING.cutoffs.initial))) {
-			setDesktop(true);
-		} else {
-			setDesktop(false);
-		}
-	}
-
-	windowUtils.checkWindowResize(handleWindowResize);
 
 	React.useEffect(() => {
 		(async function () {
@@ -177,12 +163,12 @@ export default function Streaks(props: IProps) {
 				const hours = Math.floor(remainingBlockMinutes / 60);
 				const minutes = remainingBlockMinutes % 60;
 
-				return (
+				return lastHeightDiff <= 1440 ? (
 					<>
 						<S.SDMessageInfo>
 							<span>{language.streakCountdown1}</span>
 						</S.SDMessageInfo>
-						<S.SDMessageCount className={'border-wrapper-alt2'}>
+						<S.SDMessageCount className={'border-wrapper-alt1'}>
 							<S.SDMessageCountUnit>
 								<p>{hours}</p>
 								<span>{hours === 1 ? 'hour' : 'hours'}</span>
@@ -196,9 +182,13 @@ export default function Streaks(props: IProps) {
 							</S.SDMessageCountUnit>
 						</S.SDMessageCount>
 						<S.SDMessageInfo>
-							<span>{`${language.streakCountdown2}!`}</span>
+							<span>{`${hours <= 0 && minutes <= 0 ? language.streakCountdown3 : language.streakCountdown2}!`}</span>
 						</S.SDMessageInfo>
 					</>
+				) : (
+					<S.SDMessageInfo>
+						<span>{`${language.streakStart}!`}</span>
+					</S.SDMessageInfo>
 				);
 			} else {
 				return (
@@ -215,6 +205,28 @@ export default function Streaks(props: IProps) {
 			);
 		}
 	}, [count, currentBlockHeight, props.profile, streaksReducer]);
+
+	// TODO: get amounts
+	const amounts = React.useMemo(() => {
+		return (
+			<>
+				<S.SDAmount>
+					<p>
+						{`+${formatCount('500')}`}
+						<ReactSVG src={ASSETS.pixl} />
+					</p>
+					<span>{language.dailyRewards}</span>
+				</S.SDAmount>
+				<S.SDAmount>
+					<p>
+						{`${formatCount('12387')}`}
+						<ReactSVG src={ASSETS.pixl} />
+					</p>
+					<span>{language.pixlHoldings}</span>
+				</S.SDAmount>
+			</>
+		);
+	}, []);
 
 	const leaderboard = React.useMemo(() => {
 		return streaksReducer && profiles ? (
@@ -270,6 +282,7 @@ export default function Streaks(props: IProps) {
 				{arProvider.profile && arProvider.profile.id && arProvider.profile.id === props.profile.id && (
 					<S.SDMessage>{message}</S.SDMessage>
 				)}
+				<S.SDAmounts>{amounts}</S.SDAmounts>
 				<S.SDLAction>
 					<Button
 						type={'alt1'}
@@ -286,27 +299,16 @@ export default function Streaks(props: IProps) {
 	}
 
 	function getView() {
-		if (desktop) {
-			return (
-				<CloseHandler active={showDropdown} disabled={!showDropdown} callback={handleShowDropdown}>
-					<S.Wrapper>
-						{getAction()}
-						{showDropdown && <S.Dropdown className={'fade-in border-wrapper-alt1'}>{getDropdown()}</S.Dropdown>}
-					</S.Wrapper>
-				</CloseHandler>
-			);
-		} else {
-			return (
-				<S.Wrapper>
-					{getAction()}
-					{showDropdown && (
-						<Panel open={showDropdown} header={language.streaks} handleClose={handleShowDropdown}>
-							{getDropdown()}
-						</Panel>
-					)}
-				</S.Wrapper>
-			);
-		}
+		return (
+			<S.Wrapper>
+				{getAction()}
+				{showDropdown && (
+					<Panel open={showDropdown} header={language.streaks} handleClose={handleShowDropdown}>
+						{getDropdown()}
+					</Panel>
+				)}
+			</S.Wrapper>
+		);
 	}
 
 	return props.profile && props.profile.id ? (

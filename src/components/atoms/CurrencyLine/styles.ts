@@ -10,9 +10,9 @@ export const Wrapper = styled.div`
 		color: ${(props) => props.theme.colors.font.primary};
 	}
 	img {
-		height: 20px;
-		width: 20px;
-		margin: 2.5px 0 0 2.5px;
+		height: 18.5px;
+		width: 18.5px;
+		margin: 3.5px 0 0 5px;
 	}
 	a {
 		span {

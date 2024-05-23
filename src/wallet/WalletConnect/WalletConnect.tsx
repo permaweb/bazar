@@ -139,22 +139,47 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 				</S.DBodyWrapper>
 				<S.DBodyWrapper>
 					<li onClick={handleProfileAction}>
-						{arProvider.profile && arProvider.profile.id ? language.viewProfile : language.createProfile}
+						{arProvider.profile && arProvider.profile.id ? (
+							<>
+								<ReactSVG src={ASSETS.user} />
+								{`${language.viewProfile}`}
+							</>
+						) : (
+							<>
+								<ReactSVG src={ASSETS.edit} />
+								{`${language.createProfile}`}
+							</>
+						)}
 					</li>
 					{arProvider.profile && arProvider.profile.id && (
 						<>
-							<li onClick={() => setShowProfileManage(true)}>{language.editProfile}</li>
+							<li onClick={() => setShowProfileManage(true)}>
+								<ReactSVG src={ASSETS.edit} />
+								{language.editProfile}
+							</li>
 							<li onClick={() => copyAddress(arProvider.profile.id)}>
+								<ReactSVG src={ASSETS.copy} />
 								{copied ? `${language.copied}!` : language.copyProfileAddress}
 							</li>
 						</>
 					)}
 					<li onClick={handleToggleTheme}>
-						{themeProvider.current === 'light' ? language.useDarkDisplay : language.useLightDisplay}
+						{themeProvider.current === 'light' ? (
+							<>
+								<ReactSVG src={ASSETS.dark} /> {`${language.useDarkDisplay}`}
+							</>
+						) : (
+							<>
+								<ReactSVG src={ASSETS.light} /> {`${language.useLightDisplay}`}
+							</>
+						)}
 					</li>
 				</S.DBodyWrapper>
 				<S.DFooterWrapper>
-					<li onClick={handleDisconnect}>{language.disconnect}</li>
+					<li onClick={handleDisconnect}>
+						<ReactSVG src={ASSETS.disconnect} />
+						{language.disconnect}
+					</li>
 				</S.DFooterWrapper>
 			</>
 		);
@@ -191,7 +216,7 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 					<S.Wrapper>
 						{getHeader()}
 						{showWalletDropdown && (
-							<S.Dropdown className={'border-wrapper-alt1 scroll-wrapper'}>{getDropdown()}</S.Dropdown>
+							<S.Dropdown className={'border-wrapper-alt3 scroll-wrapper'}>{getDropdown()}</S.Dropdown>
 						)}
 					</S.Wrapper>
 				</CloseHandler>
@@ -216,14 +241,16 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 			{showProfileManage && (
 				<Panel
 					open={showProfileManage}
-					header={`${language.createProfile}!`}
+					header={arProvider.profile && arProvider.profile.id ? language.editProfile : `${language.createProfile}!`}
 					handleClose={() => setShowProfileManage(false)}
 				>
-					<ProfileManage
-						profile={arProvider.profile && arProvider.profile.id ? arProvider.profile : null}
-						handleClose={() => setShowProfileManage(false)}
-						handleUpdate={null}
-					/>
+					<S.PManageWrapper>
+						<ProfileManage
+							profile={arProvider.profile && arProvider.profile.id ? arProvider.profile : null}
+							handleClose={() => setShowProfileManage(false)}
+							handleUpdate={null}
+						/>
+					</S.PManageWrapper>
 				</Panel>
 			)}
 		</>

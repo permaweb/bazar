@@ -86,6 +86,7 @@ export const GlobalStyle = createGlobalStyle`
     font-family: ${(props) => props.theme.typography.family.alt1};
 		font-weight: ${(props) => props.theme.typography.weight.bold};
     color: ${(props) => props.theme.colors.font.primary};
+		overflow-wrap: anywhere;
   }
 
 	h1 {
@@ -176,7 +177,7 @@ export const GlobalStyle = createGlobalStyle`
 
   .border-wrapper-alt3 {
     background: ${(props) => props.theme.colors.container.primary.background};
-		box-shadow: 0px 2.5px 5px 0px ${(props) => props.theme.colors.border.alt5};
+		box-shadow: 0px 3.5px 5px 0px ${(props) => props.theme.colors.shadow.alt2};
 		border: 1px solid ${(props) => props.theme.colors.border.alt4};
     border-radius: ${STYLING.dimensions.radius.primary};
   }
@@ -215,7 +216,7 @@ export const GlobalStyle = createGlobalStyle`
     top: 0;
     left: 0;
     background: ${(props) => props.theme.colors.overlay.primary};
-    backdrop-filter: blur(10px);
+    backdrop-filter: blur(7.5px);
     animation: ${open} ${fadeIn1};
   }
 
@@ -368,7 +369,7 @@ export const DrawerContentFlexEnd = styled.div`
 	align-items: center;
 	flex: 1;
 	img {
-		margin: 5px 0 0 2.5px !important;
+		margin: 5.5px 0 0 5px !important;
 	}
 `;
 

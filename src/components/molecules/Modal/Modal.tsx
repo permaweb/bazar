@@ -54,8 +54,8 @@ export default function Modal(props: IProps) {
 										handlePress={() => props.handleClose()}
 										active={false}
 										dimensions={{
-											wrapper: 32.5,
-											icon: 12.5,
+											wrapper: 35,
+											icon: 20,
 										}}
 										tooltip={language.close}
 										useBottomToolTip

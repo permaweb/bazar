@@ -85,7 +85,6 @@ export const Avatar = styled.div<{
 		width: 75px;
 		padding: 2.5px 0 0 0px;
 		margin: 0 0 -2.5px -0.5px;
-		stroke: ${(props) => (props.hasOwner ? props.theme.colors.icon.alt2.fill : props.theme.colors.icon.alt3.fill)};
 	}
 `;
 

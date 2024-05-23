@@ -2,6 +2,9 @@ import styled from 'styled-components';
 
 export const Wrapper = styled.div`
 	position: relative;
+	span {
+		text-shadow: none !important;
+	}
 `;
 
 export const Action = styled.button`
@@ -24,22 +27,6 @@ export const Action = styled.button`
 	}
 	&:hover {
 		background: ${(props) => props.theme.colors.container.primary.active};
-	}
-`;
-
-export const Dropdown = styled.div`
-	width: 400px;
-	max-width: 90vw;
-	position: absolute;
-	z-index: 1;
-	top: 45px;
-	right: 0;
-	display: flex;
-	flex-direction: column;
-	align-items: center;
-	justify-content: center;
-	p {
-		text-shadow: none !important;
 	}
 `;
 
@@ -82,6 +69,41 @@ export const SDStreak = styled.div`
 	}
 `;
 
+export const SDAmounts = styled.div`
+	width: 100%;
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	gap: 40px;
+	margin: 30px 0;
+`;
+
+export const SDAmount = styled.div`
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	p {
+		color: ${(props) => props.theme.colors.font.primary};
+		font-size: ${(props) => props.theme.typography.size.xLg};
+		font-weight: ${(props) => props.theme.typography.weight.bold};
+		font-family: ${(props) => props.theme.typography.family.alt1};
+		display: flex;
+		align-items: center;
+		svg {
+			height: 20px;
+			width: 20px;
+			margin: 8.5px 0 0 10px;
+		}
+	}
+	span {
+		color: ${(props) => props.theme.colors.font.alt1};
+		font-size: ${(props) => props.theme.typography.size.xxxSmall};
+		font-weight: ${(props) => props.theme.typography.weight.bold};
+		text-transform: uppercase;
+		display: block;
+	}
+`;
+
 export const SDMessage = styled.div`
 	width: 100%;
 	display: flex;
@@ -102,9 +124,6 @@ export const SDMessageInfo = styled.div`
 		font-weight: ${(props) => props.theme.typography.weight.bold};
 		font-family: ${(props) => props.theme.typography.family.primary};
 		display: block;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
 		text-align: center;
 	}
 `;

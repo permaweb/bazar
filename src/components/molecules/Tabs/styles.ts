@@ -62,8 +62,8 @@ export const AltTabAction = styled.button<{ active: boolean; icon: boolean }>`
 
 export const Icon = styled.div<{ active: boolean }>`
 	svg {
-		height: 17.5px;
-		width: 17.5px;
+		height: 22.5px;
+		width: 22.5px;
 		padding: 3.5px 0 0 0;
 		margin: 0 12.5px 0 0;
 		fill: ${(props) => props.theme.colors.font.primary};

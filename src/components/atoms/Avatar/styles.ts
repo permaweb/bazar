@@ -31,8 +31,7 @@ export const Wrapper = styled.div<{
 		height: ${(props) => `${props.dimensions.icon.toString()}px`};
 		width: ${(props) => `${props.dimensions.icon.toString()}px`};
 		padding: 2.5px 0 0 0px;
-		margin: 0 0 -2.5px -0.5px;
-		stroke: ${(props) => (props.hasOwner ? props.theme.colors.icon.alt2.fill : props.theme.colors.icon.alt3.fill)};
+		margin: 0 0 -3.5px -0.5px;
 	}
 
 	pointer-events: none;

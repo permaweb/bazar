@@ -121,6 +121,11 @@ export const DBodyWrapper = styled.ul`
 		border: 1px solid transparent;
 		padding: 0 15px;
 		transition: all 100ms;
+		svg {
+			height: 17.5px;
+			width: 17.5px;
+			margin: 7.5px 10px 0 0;
+		}
 		&:hover {
 			color: ${(props) => props.theme.colors.font.light1};
 			background: ${(props) => props.theme.colors.container.alt9.background};
@@ -157,7 +162,7 @@ export const BalanceLine = styled.div`
 		fill: ${(props) => props.theme.colors.icon.alt2.fill};
 	}
 	img {
-		margin: 5.5px 0 0 2.5px;
+		margin: 5.5px 0 0 5.5px;
 	}
 	.pixl-icon {
 		svg {
@@ -169,4 +174,13 @@ export const BalanceLine = styled.div`
 export const DFooterWrapper = styled(DBodyWrapper)`
 	padding: 10px 0 0 0;
 	border-bottom: none;
+	svg {
+		height: 17.5px;
+		width: 17.5px;
+		margin: 7.5px 10px 0 0;
+	}
+`;
+
+export const PManageWrapper = styled.div`
+	max-width: 575px;
 `;

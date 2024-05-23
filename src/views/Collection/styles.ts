@@ -106,7 +106,7 @@ export const InfoDetail = styled.div`
 	img {
 		height: 22.5px;
 		width: 22.5px;
-		margin: 5px 0 0 2.5px;
+		margin: 5.5px 0 0 7.5px;
 	}
 	a {
 		&:hover {

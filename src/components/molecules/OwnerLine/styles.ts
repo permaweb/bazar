@@ -4,7 +4,7 @@ export const Wrapper = styled.div`
 	display: flex;
 	align-items: center;
 	svg {
-		margin: 0 0 -0.75px 0.25px;
+		margin: 0 0 -0.75px 0px;
 	}
 `;
 

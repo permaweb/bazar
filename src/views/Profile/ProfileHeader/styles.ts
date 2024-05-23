@@ -72,7 +72,6 @@ export const HeaderAvatar = styled.div`
 	svg {
 		height: 65px;
 		width: 65px;
-		stroke: ${(props) => props.theme.colors.icon.primary.fill};
 	}
 	img {
 		height: 100%;

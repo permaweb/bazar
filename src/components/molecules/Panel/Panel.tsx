@@ -3,12 +3,16 @@ import React from 'react';
 import { IconButton } from 'components/atoms/IconButton';
 import { Portal } from 'components/atoms/Portal';
 import { ASSETS, DOM } from 'helpers/config';
+import { useLanguageProvider } from 'providers/LanguageProvider';
 import { CloseHandler } from 'wrappers/CloseHandler';
 
 import * as S from './styles';
 import { IProps } from './types';
 
 export default function Panel(props: IProps) {
+	const languageProvider = useLanguageProvider();
+	const language = languageProvider.object[languageProvider.current];
+
 	React.useEffect(() => {
 		document.body.style.overflow = 'hidden';
 		return () => {
@@ -52,9 +56,11 @@ export default function Panel(props: IProps) {
 											handlePress={() => props.handleClose()}
 											active={false}
 											dimensions={{
-												wrapper: 32.5,
-												icon: 12.5,
+												wrapper: 35,
+												icon: 20,
 											}}
+											tooltip={language.close}
+											useBottomToolTip
 										/>
 									</S.Close>
 								)}
