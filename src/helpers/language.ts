@@ -2,6 +2,8 @@ export const language = {
 	en: {
 		activity: `Activity`,
 		activeSaleOrders: `Active Sale Orders`,
+		arBridge: `Bridge AR`,
+		arSwap: `Swap AO Tokens`,
 		asset: `Asset`,
 		assets: `Assets`,
 		assetFetchFailed: `Failed to fetch asset`,

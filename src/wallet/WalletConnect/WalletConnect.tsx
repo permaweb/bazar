@@ -7,7 +7,7 @@ import { Button } from 'components/atoms/Button';
 import { CurrencyLine } from 'components/atoms/CurrencyLine';
 import { Panel } from 'components/molecules/Panel';
 import { ProfileManage } from 'components/organisms/ProfileManage';
-import { AOS, ASSETS, STYLING, URLS } from 'helpers/config';
+import { AOS, ASSETS, REDIRECTS, STYLING, URLS } from 'helpers/config';
 import { formatAddress, formatARAmount } from 'helpers/utils';
 import * as windowUtils from 'helpers/window';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
@@ -115,7 +115,12 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 						/>
 						<S.DHeader>
 							<p onClick={handleProfileAction}>{label}</p>
-							<span onClick={handleProfileAction}>{formatAddress(arProvider.walletAddress, false)}</span>
+							<span onClick={handleProfileAction}>
+								{formatAddress(
+									arProvider.profile && arProvider.profile.id ? arProvider.profile.id : arProvider.walletAddress,
+									false
+								)}
+							</span>
 						</S.DHeader>
 					</S.DHeaderFlex>
 				</S.DHeaderWrapper>
@@ -136,6 +141,16 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 							/>
 						</S.BalanceLine>
 					)}
+				</S.DBodyWrapper>
+				<S.DBodyWrapper>
+					<li onClick={() => window.open(REDIRECTS.arswap)}>
+						<ReactSVG src={ASSETS.swap} />
+						{`${language.arSwap}`}
+					</li>
+					<li onClick={() => window.open(REDIRECTS.aox)}>
+						<ReactSVG src={ASSETS.bridge} />
+						{`${language.arBridge}`}
+					</li>
 				</S.DBodyWrapper>
 				<S.DBodyWrapper>
 					<li onClick={handleProfileAction}>

@@ -153,11 +153,13 @@ export default function ProfileHeader(props: IProps) {
 					header={props.profile.id ? language.editProfile : `${language.createProfile}!`}
 					handleClose={props.profile.id ? () => setShowProfileManage(false) : () => navigate(URLS.base)}
 				>
-					<ProfileManage
-						profile={props.profile}
-						handleClose={props.profile.id ? () => setShowProfileManage(false) : null}
-						handleUpdate={() => props.handleUpdate()}
-					/>
+					<S.PManageWrapper>
+						<ProfileManage
+							profile={props.profile}
+							handleClose={props.profile.id ? () => setShowProfileManage(false) : null}
+							handleUpdate={() => props.handleUpdate()}
+						/>
+					</S.PManageWrapper>
 				</Panel>
 			)}
 		</>

@@ -1,5 +1,5 @@
 import React from 'react';
-import { useDispatch } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 
 import { messageResults, readHandler } from 'api';
 
@@ -11,6 +11,7 @@ import { NotificationType } from 'helpers/types';
 import * as windowUtils from 'helpers/window';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
+import { RootState } from 'store';
 import * as ucmActions from 'store/ucm/actions';
 
 import * as S from './styles';
@@ -18,9 +19,13 @@ import { IProps } from './types';
 
 export default function OrderCancel(props: IProps) {
 	const dispatch = useDispatch();
+
 	const arProvider = useArweaveProvider();
+
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
+
+	const ucmReducer = useSelector((state: RootState) => state.ucmReducer);
 
 	const [loading, setLoading] = React.useState<boolean>(false);
 	const [showConfirmation, setShowConfirmation] = React.useState<boolean>(false);
@@ -53,13 +58,35 @@ export default function OrderCancel(props: IProps) {
 						status: response['Action-Response'].status === 'Success' ? 'success' : 'warning',
 					});
 					setCancelProcessed(true);
-					const ucmState = await readHandler({
-						processId: AOS.ucm,
-						action: 'Info',
-					});
 
-					dispatch(ucmActions.setUCM(ucmState));
-					await new Promise((r) => setTimeout(r, 1000));
+					const existingUCM = { ...ucmReducer };
+					const maxTries = 10;
+					let tries = 0;
+					let changeDetected = false;
+
+					const fetchUntilChange = async () => {
+						while (!changeDetected && tries < maxTries) {
+							const ucmState = await readHandler({
+								processId: AOS.ucm,
+								action: 'Info',
+							});
+
+							dispatch(ucmActions.setUCM(ucmState));
+
+							if (JSON.stringify(existingUCM) !== JSON.stringify(ucmState)) {
+								changeDetected = true;
+							} else {
+								await new Promise((resolve) => setTimeout(resolve, 1000));
+								tries++;
+							}
+						}
+
+						if (!changeDetected) {
+							console.warn(`No changes detected after ${maxTries} attempts`);
+						}
+					};
+
+					await fetchUntilChange();
 					setShowConfirmation(false);
 					windowUtils.scrollTo(0, 0, 'smooth');
 				}

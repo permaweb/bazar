@@ -3,6 +3,7 @@ import ar from 'assets/ar.svg';
 import arconnect from 'assets/arconnect-wallet-logo.png';
 import arrow from 'assets/arrow.svg';
 import audio from 'assets/audio.svg';
+import bridge from 'assets/bridge.svg';
 import buy from 'assets/buy.svg';
 import checkmark from 'assets/checkmark.svg';
 import close from 'assets/close.svg';
@@ -34,6 +35,7 @@ import streak1 from 'assets/streak-1-7.svg';
 import streak2 from 'assets/streak-8-14.svg';
 import streak3 from 'assets/streak-15-29.svg';
 import streak4 from 'assets/streak-30.svg';
+import swap from 'assets/swap.svg';
 import transfer from 'assets/transfer.svg';
 import unsupported from 'assets/unsupported.svg';
 import user from 'assets/user.svg';
@@ -47,7 +49,7 @@ export const AOS = {
 	module: 'SBNb1qPQ1TDwpD_mboxm2YllmMLXpWw4U8P9Ff8W9vk',
 	scheduler: '_GQ33BkPtZrqxA84vM8Zk-N2aO0toNNu_C-l-rawrBA',
 	ucm: 'fzRGvSW2oSop9xGLxs5mcaRtCbrbug8imI_uRZHKdiU',
-	token: 'xU9zFkq3X2ZQ6olwNVvr1vUWIjc3kXTWr7xKQD6dh10', // IRv02cCZGmBVMhmPlL63sce4djgRgkY1J_3DUl_feUw
+	token: 'xU9zFkq3X2ZQ6olwNVvr1vUWIjc3kXTWr7xKQD6dh10',
 	streaks: 'jmu9__Fw79vcsCbPD15cy-xR0zFZa3lXv16rbpWQtRA',
 	profileRegistry: 'kFYMezhjcPCZLr2EkkwzIXP5A64QmtME6Bxa8bGmbzI',
 	profileSrc: 'JjLm85z7IRoMJTwcYoNfM-9xbdZhqxOfjD7vI9c6_co',
@@ -70,6 +72,7 @@ export const ASSETS = {
 	arconnect,
 	arrow,
 	audio,
+	bridge,
 	buy,
 	checkmark,
 	close,
@@ -97,6 +100,7 @@ export const ASSETS = {
 	provenance,
 	renderer,
 	sell,
+	swap,
 	transfer,
 	unsupported,
 	streak1,
@@ -231,8 +235,10 @@ export const PAGINATORS = {
 };
 
 export const REDIRECTS = {
-	x: `https://twitter.com/OurBazAR`,
+	x: `https://X.com/OurBazAR`,
 	helix: `https://helix.arweave.dev`,
+	aox: `https://aox.arweave.dev`,
+	arswap: 'https://arswap.org',
 };
 
 export const DEFAULTS = {

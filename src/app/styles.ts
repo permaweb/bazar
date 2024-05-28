@@ -368,9 +368,6 @@ export const DrawerContentFlexEnd = styled.div`
 	display: flex;
 	align-items: center;
 	flex: 1;
-	img {
-		margin: 5.5px 0 0 5px !important;
-	}
 `;
 
 export const DrawerContentDetail = styled.p`
@@ -383,7 +380,6 @@ export const DrawerContentDetail = styled.p`
 	img {
 		height: 20px;
 		width: 17.5px;
-		margin: 0.5px 0px 0 10px;
 	}
 `;
 

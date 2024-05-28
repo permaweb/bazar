@@ -124,7 +124,7 @@ export const DBodyWrapper = styled.ul`
 		svg {
 			height: 17.5px;
 			width: 17.5px;
-			margin: 7.5px 10px 0 0;
+			margin: 7.5px 12.5px 0 0;
 		}
 		&:hover {
 			color: ${(props) => props.theme.colors.font.light1};
@@ -138,7 +138,7 @@ export const DBodyHeader = styled.div`
 	padding: 0 15px;
 	span {
 		color: ${(props) => props.theme.colors.font.primary};
-		font-family: ${(props) => props.theme.typography.family.primary};
+		font-family: ${(props) => props.theme.typography.family.alt1};
 		font-size: ${(props) => props.theme.typography.size.base};
 		font-weight: ${(props) => props.theme.typography.weight.bold};
 	}
@@ -174,7 +174,7 @@ export const DFooterWrapper = styled(DBodyWrapper)`
 	svg {
 		height: 17.5px;
 		width: 17.5px;
-		margin: 7.5px 10px 0 0;
+		margin: 7.5px 12.5px 0 0;
 	}
 `;
 

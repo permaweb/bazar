@@ -35,13 +35,39 @@ export default function Asset() {
 		(async function () {
 			if (id && checkValidAddress(id)) {
 				setLoading(true);
-				try {
-					setAsset(await getAssetById({ id: id }));
-				} catch (e: any) {
-					setErrorResponse(e.message || language.assetFetchFailed);
-				}
+				let tries = 0;
+				const maxTries = 10;
+				let assetFetched = false;
+
+				const fetchUntilChange = async () => {
+					while (!assetFetched && tries < maxTries) {
+						try {
+							const fetchedAsset = await getAssetById({ id: id });
+							setAsset(fetchedAsset);
+
+							if (fetchedAsset !== null) {
+								assetFetched = true;
+							} else {
+								await new Promise((resolve) => setTimeout(resolve, 2000));
+								tries++;
+							}
+						} catch (e: any) {
+							setErrorResponse(e.message || language.assetFetchFailed);
+							await new Promise((resolve) => setTimeout(resolve, 2000));
+							tries++;
+						}
+					}
+
+					if (!assetFetched) {
+						console.warn(`No changes detected after ${maxTries} attempts`);
+					}
+				};
+
+				await fetchUntilChange();
 				setLoading(false);
-			} else navigate(URLS.notFound);
+			} else {
+				navigate(URLS.notFound);
+			}
 		})();
 	}, [id, ucmReducer]);
 

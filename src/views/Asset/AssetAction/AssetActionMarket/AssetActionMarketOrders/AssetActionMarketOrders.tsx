@@ -17,13 +17,11 @@ import * as windowUtils from 'helpers/window';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 import { RootState } from 'store';
-import * as currencyActions from 'store/currencies/actions';
 import * as ucmActions from 'store/ucm/actions';
 
 import * as S from './styles';
 import { IProps } from './types';
 
-// TODO: on update keep fetching until changes are found
 export default function AssetActionMarketOrders(props: IProps) {
 	const dispatch = useDispatch();
 
@@ -453,8 +451,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 		return false;
 	}
 
-	// TODO: re-read token balance - update arweave providers
-	// TODO: cache ucm state and ensure updates are made
 	async function handleAssetUpdate(handleUpdate: boolean) {
 		if (handleUpdate) {
 			setCurrentOrderQuantity(0);
@@ -465,26 +461,40 @@ export default function AssetActionMarketOrders(props: IProps) {
 			setShowConfirmation(false);
 			setUpdating(true);
 			windowUtils.scrollTo(0, 0, 'smooth');
-			try {
-				const ucmState = await readHandler({
-					processId: AOS.ucm,
-					action: 'Info',
-				});
-				dispatch(ucmActions.setUCM(ucmState));
 
-				const orderCurrency =
-					props.asset.orders && props.asset.orders.length ? props.asset.orders[0].currency : AOS.token;
-				const tokenState = await readHandler({
-					processId: orderCurrency,
-					action: 'Info',
-				});
-				dispatch(
-					currencyActions.setCurrencies({
-						[orderCurrency]: {
-							...tokenState,
-						},
-					})
-				);
+			try {
+				const existingUCM = { ...ucmReducer };
+
+				const fetchUntilChange = async () => {
+					let changeDetected = false;
+					let tries = 0;
+					const maxTries = 10;
+
+					while (!changeDetected && tries < maxTries) {
+						const ucmState = await readHandler({
+							processId: AOS.ucm,
+							action: 'Info',
+						});
+						dispatch(ucmActions.setUCM(ucmState));
+
+						if (JSON.stringify(existingUCM) !== JSON.stringify(ucmState)) {
+							changeDetected = true;
+						} else {
+							await new Promise((resolve) => setTimeout(resolve, 1000));
+							tries++;
+						}
+					}
+
+					if (!changeDetected) {
+						console.warn(`No changes detected after ${maxTries} attempts`);
+					}
+				};
+
+				await fetchUntilChange();
+
+				if (props.type === 'buy') {
+					arProvider.setToggleTokenBalanceUpdate(!arProvider.toggleTokenBalanceUpdate);
+				}
 			} catch (e: any) {
 				console.error(e);
 			}

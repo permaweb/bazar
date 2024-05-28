@@ -133,3 +133,7 @@ export const Action = styled.div`
 	height: fit-content;
 	width: fit-content;
 `;
+
+export const PManageWrapper = styled.div`
+	max-width: 575px;
+`;
