@@ -40,7 +40,7 @@ export const Label = styled.div`
 export const Arrow = styled.div`
 	margin: 2.5px 0 0 0;
 	svg {
-		transform: rotate(270deg);
+		transform: rotate(90deg);
 	}
 `;
 

@@ -18,6 +18,8 @@ interface ArweaveContextState {
 	walletType: WalletEnum | null;
 	arBalance: number | null;
 	tokenBalances: { [address: string]: number } | null;
+	toggleTokenBalanceUpdate: boolean;
+	setToggleTokenBalanceUpdate: (toggleUpdate: boolean) => void;
 	handleConnect: any;
 	handleDisconnect: () => void;
 	walletModalVisible: boolean;
@@ -38,6 +40,8 @@ const DEFAULT_CONTEXT = {
 	walletType: null,
 	arBalance: null,
 	tokenBalances: null,
+	toggleTokenBalanceUpdate: false,
+	setToggleTokenBalanceUpdate(_toggleUpdate: boolean) {},
 	handleConnect() {},
 	handleDisconnect() {},
 	walletModalVisible: false,
@@ -83,6 +87,7 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 
 	const [arBalance, setArBalance] = React.useState<number | null>(null);
 	const [tokenBalances, setTokenBalances] = React.useState<{ [address: string]: number } | null>(null);
+	const [toggleTokenBalanceUpdate, setToggleTokenBalanceUpdate] = React.useState<boolean>(false);
 
 	const [profile, setProfile] = React.useState<ProfileHeaderType | null>(null);
 	const [toggleProfileUpdate, setToggleProfileUpdate] = React.useState<boolean>(false);
@@ -142,25 +147,7 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 				}
 			}
 		})();
-	}, [profile]);
-
-	// Transfer balance to profile
-	// React.useEffect(() => {
-	// 	(async function () {
-	// 		if (profile && profile.id && tokenBalances && tokenBalances[AOS.token]) {
-	// 			const response = await messageResult({
-	// 				processId: AOS.token,
-	// 				wallet: wallet,
-	// 				action: 'Transfer',
-	// 				tags: [
-	// 					{ name: 'Recipient', value: profile.id },
-	// 					{ name: 'Quantity', value: tokenBalances[AOS.token].toString() },
-	// 				],
-	// 				data: null,
-	// 			});
-	// 		}
-	// 	})();
-	// }, [profile, tokenBalances]);
+	}, [profile, toggleTokenBalanceUpdate]);
 
 	async function handleWallet() {
 		if (localStorage.getItem('walletType')) {
@@ -245,6 +232,8 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 					walletType,
 					arBalance,
 					tokenBalances,
+					toggleTokenBalanceUpdate,
+					setToggleTokenBalanceUpdate,
 					handleConnect,
 					handleDisconnect,
 					wallets,

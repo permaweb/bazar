@@ -66,10 +66,6 @@ export const AssetsGridWrapper = styled.div`
 export const AssetGridElement = styled.div`
 	width: 100%;
 	position: relative;
-	a {
-		display: block;
-		width: 100%;
-	}
 `;
 
 export const AssetGridDataWrapper = styled.div<{ disabled: boolean }>`
@@ -107,6 +103,10 @@ export const AssetGridDataWrapper = styled.div<{ disabled: boolean }>`
 export const AssetGridInfoWrapper = styled.div`
 	width: 100%;
 	padding: 20px 0 15px 0;
+	a {
+		display: block;
+		width: fit-content;
+	}
 `;
 
 export const AssetsListWrapper = styled.div`

@@ -10,9 +10,8 @@ export const Wrapper = styled.div`
 		color: ${(props) => props.theme.colors.font.primary};
 	}
 	img {
-		height: 18.5px;
-		width: 18.5px;
-		margin: 3.5px 0 0 5px;
+		height: 17.5px;
+		width: 17.5px;
 	}
 	a {
 		span {
@@ -30,5 +29,8 @@ export const Wrapper = styled.div`
 `;
 
 export const Currency = styled.div`
-	margin: 0 0 0 5px;
+	margin: 0 0 0 7.5px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
 `;

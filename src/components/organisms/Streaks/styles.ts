@@ -82,7 +82,7 @@ export const SDAmount = styled.div`
 	display: flex;
 	flex-direction: column;
 	align-items: center;
-	p {
+	div {
 		color: ${(props) => props.theme.colors.font.primary};
 		font-size: ${(props) => props.theme.typography.size.xLg};
 		font-weight: ${(props) => props.theme.typography.weight.bold};
@@ -92,7 +92,7 @@ export const SDAmount = styled.div`
 		svg {
 			height: 20px;
 			width: 20px;
-			margin: 8.5px 0 0 10px;
+			margin: 0 0 0 10px;
 		}
 	}
 	span {
@@ -111,7 +111,7 @@ export const SDMessage = styled.div`
 	align-items: center;
 	justify-content: center;
 	gap: 10px;
-	margin: 10px 0 20px 0;
+	margin: 20px 0;
 	padding: 10px 20px 30px 20px;
 	border-bottom: 1px solid ${(props) => props.theme.colors.border.primary};
 `;

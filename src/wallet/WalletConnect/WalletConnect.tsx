@@ -190,7 +190,7 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 			<S.PWrapper>
 				{arProvider.profile && !arProvider.profile.id && (
 					<S.CAction className={'fade-in'}>
-						<Button type={'primary'} label={language.createProfile} handlePress={handleProfileAction} height={35} />
+						<Button type={'alt1'} label={language.createProfile} handlePress={handleProfileAction} height={35} />
 					</S.CAction>
 				)}
 				{label && (

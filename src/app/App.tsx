@@ -4,6 +4,7 @@ import { ReactSVG } from 'react-svg';
 
 import { readHandler } from 'api';
 
+import { SwapTokenTransfer } from 'components/organisms/SwapTokenTransfer';
 import { AOS, ASSETS, DOM } from 'helpers/config';
 import { Footer } from 'navigation/footer';
 import { Header } from 'navigation/Header';
@@ -59,6 +60,7 @@ export default function App() {
 			<div id={DOM.overlay} />
 			{ucmReducer ? (
 				<S.AppWrapper>
+					<SwapTokenTransfer />
 					<Header />
 					<S.View className={'max-view-wrapper'}>
 						<Routes />

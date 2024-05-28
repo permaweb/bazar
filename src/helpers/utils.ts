@@ -41,24 +41,25 @@ export function formatCount(count: string): string {
 		let parts = count.split('.');
 		parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 
-		// Find the first non-zero digit in the decimal part
-		let index = parts[1].length;
-		for (let i = 0; i < parts[1].length; i++) {
+		// Find the position of the last non-zero digit within the first 4 decimal places
+		let index = 0;
+		for (let i = 0; i < Math.min(parts[1].length, 4); i++) {
 			if (parts[1][i] !== '0') {
 				index = i + 1;
-				break;
 			}
 		}
-		if (index === parts[1].length && parts[1][parts[1].length - 1] === '0') {
+
+		if (index === 0) {
+			// If all decimals are zeros, keep two decimal places
 			parts[1] = '00';
 		} else {
+			// Otherwise, truncate to the last non-zero digit
 			parts[1] = parts[1].substring(0, index);
-			parts[1] = parts[1].padEnd(index, '0');
 		}
 
 		return parts.join('.');
 	} else {
-		return count.replace(/\B(?=(\d{3})+(?!\d))/g, ','); //  + '.00'
+		return count.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 	}
 }
 

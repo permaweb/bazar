@@ -161,9 +161,6 @@ export const BalanceLine = styled.div`
 		margin: 5.5px 0 0 9.5px;
 		fill: ${(props) => props.theme.colors.icon.alt2.fill};
 	}
-	img {
-		margin: 5.5px 0 0 5.5px;
-	}
 	.pixl-icon {
 		svg {
 			fill: ${(props) => props.theme.colors.font.light1};

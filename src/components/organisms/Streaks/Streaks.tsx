@@ -211,17 +211,17 @@ export default function Streaks(props: IProps) {
 		return (
 			<>
 				<S.SDAmount>
-					<p>
+					<div>
 						{`+${formatCount('500')}`}
 						<ReactSVG src={ASSETS.pixl} />
-					</p>
+					</div>
 					<span>{language.dailyRewards}</span>
 				</S.SDAmount>
 				<S.SDAmount>
-					<p>
+					<div>
 						{`${formatCount('12387')}`}
 						<ReactSVG src={ASSETS.pixl} />
-					</p>
+					</div>
 					<span>{language.pixlHoldings}</span>
 				</S.SDAmount>
 			</>

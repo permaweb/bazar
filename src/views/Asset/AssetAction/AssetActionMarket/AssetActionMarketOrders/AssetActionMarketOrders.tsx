@@ -453,6 +453,8 @@ export default function AssetActionMarketOrders(props: IProps) {
 		return false;
 	}
 
+	// TODO: re-read token balance - update arweave providers
+	// TODO: cache ucm state and ensure updates are made
 	async function handleAssetUpdate(handleUpdate: boolean) {
 		if (handleUpdate) {
 			setCurrentOrderQuantity(0);
