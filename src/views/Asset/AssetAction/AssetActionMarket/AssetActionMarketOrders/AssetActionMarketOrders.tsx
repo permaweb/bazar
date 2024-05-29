@@ -71,9 +71,9 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 	const insufficientBalance =
 		arProvider.tokenBalances &&
-		arProvider.tokenBalances[AOS.token] !== null &&
+		arProvider.tokenBalances[AOS.defaultToken] !== null &&
 		props.type === 'buy' &&
-		Number(arProvider.tokenBalances[AOS.token]) < getTotalPrice();
+		Number(arProvider.tokenBalances[AOS.defaultToken]) < getTotalPrice();
 
 	React.useEffect(() => {
 		if (props.asset) {
@@ -122,7 +122,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 			}
 
 			const orderCurrency =
-				props.asset.orders && props.asset.orders.length ? props.asset.orders[0].currency : AOS.token;
+				props.asset.orders && props.asset.orders.length ? props.asset.orders[0].currency : AOS.defaultToken;
 			if (
 				currenciesReducer &&
 				currenciesReducer[orderCurrency] &&
@@ -161,15 +161,15 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 			switch (props.type) {
 				case 'buy':
-					pair = [AOS.token, props.asset.data.id];
+					pair = [AOS.defaultToken, props.asset.data.id];
 					recipient = AOS.ucm;
 					break;
 				case 'sell':
-					pair = [props.asset.data.id, AOS.token];
+					pair = [props.asset.data.id, AOS.defaultToken];
 					recipient = AOS.ucm;
 					break;
 				case 'transfer':
-					pair = [props.asset.data.id, AOS.token];
+					pair = [props.asset.data.id, AOS.defaultToken];
 					recipient = transferRecipient;
 					break;
 			}
@@ -385,7 +385,8 @@ export default function AssetActionMarketOrders(props: IProps) {
 	}
 
 	function getTotalPriceDisplay() {
-		const orderCurrency = props.asset.orders && props.asset.orders.length ? props.asset.orders[0].currency : AOS.token;
+		const orderCurrency =
+			props.asset.orders && props.asset.orders.length ? props.asset.orders[0].currency : AOS.defaultToken;
 		return <CurrencyLine amount={getTotalPrice() || '0'} currency={orderCurrency} />;
 	}
 

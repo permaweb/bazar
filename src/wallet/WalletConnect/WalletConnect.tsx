@@ -7,7 +7,7 @@ import { Button } from 'components/atoms/Button';
 import { CurrencyLine } from 'components/atoms/CurrencyLine';
 import { Panel } from 'components/molecules/Panel';
 import { ProfileManage } from 'components/organisms/ProfileManage';
-import { AOS, ASSETS, REDIRECTS, STYLING, URLS } from 'helpers/config';
+import { ASSETS, REDIRECTS, STYLING, URLS } from 'helpers/config';
 import { formatAddress, formatARAmount } from 'helpers/utils';
 import * as windowUtils from 'helpers/window';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
@@ -132,14 +132,20 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 						<span>{formatARAmount(arProvider.arBalance ? arProvider.arBalance : 0)}</span>
 						<ReactSVG src={ASSETS.ar} />
 					</S.BalanceLine>
-					{arProvider.tokenBalances && arProvider.tokenBalances[AOS.token] !== null && (
-						<S.BalanceLine>
-							<CurrencyLine
-								amount={arProvider.tokenBalances[AOS.token]}
-								currency={AOS.token}
-								callback={() => setShowWalletDropdown(false)}
-							/>
-						</S.BalanceLine>
+					{arProvider.tokenBalances && Object.keys(arProvider.tokenBalances).length > 0 && (
+						<>
+							{Object.keys(arProvider.tokenBalances).map((token: string) => {
+								return (
+									<S.BalanceLine key={token}>
+										<CurrencyLine
+											amount={arProvider.tokenBalances[token]}
+											currency={token}
+											callback={() => setShowWalletDropdown(false)}
+										/>
+									</S.BalanceLine>
+								);
+							})}
+						</>
 					)}
 				</S.DBodyWrapper>
 				<S.DBodyWrapper>

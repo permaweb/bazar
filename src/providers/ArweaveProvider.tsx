@@ -136,12 +136,22 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 		(async function () {
 			if (profile && profile.id) {
 				try {
-					const tokenBalance = await readHandler({
-						processId: AOS.token,
+					const defaultTokenBalance = await readHandler({
+						processId: AOS.defaultToken,
 						action: 'Balance',
 						tags: [{ name: 'Recipient', value: profile.id }],
 					});
-					setTokenBalances({ [AOS.token]: tokenBalance });
+
+					const pixlTokenBalance = await readHandler({
+						processId: AOS.pixl,
+						action: 'Balance',
+						tags: [{ name: 'Recipient', value: profile.id }],
+					});
+
+					setTokenBalances({
+						[AOS.defaultToken]: defaultTokenBalance || 0,
+						[AOS.pixl]: pixlTokenBalance || 0,
+					});
 				} catch (e: any) {
 					console.error(e);
 				}

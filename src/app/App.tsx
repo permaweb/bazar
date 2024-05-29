@@ -20,6 +20,7 @@ export default function App() {
 	const dispatch = useDispatch();
 
 	const ucmReducer = useSelector((state: RootState) => state.ucmReducer);
+	const currenciesReducer = useSelector((state: RootState) => state.currenciesReducer);
 
 	React.useEffect(() => {
 		(async function () {
@@ -30,23 +31,33 @@ export default function App() {
 				});
 				dispatch(ucmActions.setUCM(ucmState));
 
-				const streakState = await readHandler({
-					processId: AOS.streaks,
-					action: 'Info',
+				const streaks = await readHandler({
+					processId: AOS.pixl,
+					action: 'Get-Streaks',
 				});
-				dispatch(streakActions.setStreaks(streakState.Streaks));
+				dispatch(streakActions.setStreaks(streaks.Streaks));
 
-				const tokenState = await readHandler({
-					processId: AOS.token,
-					action: 'Info',
-				});
-				dispatch(
-					currencyActions.setCurrencies({
-						[AOS.token]: {
-							...tokenState,
-						},
-					})
-				);
+				if (!currenciesReducer) {
+					const defaultTokenState = await readHandler({
+						processId: AOS.defaultToken,
+						action: 'Info',
+					});
+					const pixlState = await readHandler({
+						processId: AOS.pixl,
+						action: 'Info',
+					});
+
+					dispatch(
+						currencyActions.setCurrencies({
+							[AOS.defaultToken]: {
+								...defaultTokenState,
+							},
+							[AOS.pixl]: {
+								...pixlState,
+							},
+						})
+					);
+				}
 			} catch (e: any) {
 				console.error(e);
 			}

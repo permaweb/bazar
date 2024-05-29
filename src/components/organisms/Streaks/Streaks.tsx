@@ -1,18 +1,18 @@
 import React from 'react';
 import { useSelector } from 'react-redux';
-import { ReactSVG } from 'react-svg';
 
 import Arweave from 'arweave';
 
-import { getRegistryProfiles } from 'api';
+import { getRegistryProfiles, readHandler } from 'api';
 
 import { Button } from 'components/atoms/Button';
+import { CurrencyLine } from 'components/atoms/CurrencyLine';
 import { Modal } from 'components/molecules/Modal';
 import { OwnerLine } from 'components/molecules/OwnerLine';
 import { Panel } from 'components/molecules/Panel';
-import { ASSETS } from 'helpers/config';
+import { AOS, ASSETS } from 'helpers/config';
 import { RegistryProfileType } from 'helpers/types';
-import { formatAddress, formatCount } from 'helpers/utils';
+import { formatAddress } from 'helpers/utils';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 import { RootState } from 'store';
@@ -34,6 +34,9 @@ export default function Streaks(props: IProps) {
 	const [profiles, setProfiles] = React.useState<RegistryProfileType[] | null>(null);
 	const [currentBlockHeight, setCurrentBlockHeight] = React.useState<number | null>(0);
 
+	const [pixlBalance, setPixlBalance] = React.useState<number | null>(null);
+	const [dailyRewards, setDailyRewards] = React.useState<number | null>(null);
+
 	React.useEffect(() => {
 		(async function () {
 			if (props.profile && props.profile.id) {
@@ -53,6 +56,45 @@ export default function Streaks(props: IProps) {
 			}
 		})();
 	}, [streaksReducer, props.profile.id]);
+
+	React.useEffect(() => {
+		(async function () {
+			if (
+				props.profile &&
+				arProvider.profile &&
+				arProvider.profile.id &&
+				props.profile.id === arProvider.profile.id &&
+				arProvider.tokenBalances &&
+				arProvider.tokenBalances[AOS.pixl]
+			) {
+				setPixlBalance(arProvider.tokenBalances[AOS.pixl]);
+			} else {
+				try {
+					const pixlTokenBalance = await readHandler({
+						processId: AOS.pixl,
+						action: 'Balance',
+						tags: [{ name: 'Recipient', value: props.profile.id }],
+					});
+
+					if (pixlTokenBalance) setPixlBalance(pixlTokenBalance);
+				} catch (e: any) {
+					console.error(e);
+				}
+			}
+
+			try {
+				const currentRewards = await readHandler({
+					processId: AOS.pixl,
+					action: 'Read-Current-Rewards',
+					tags: [{ name: 'Recipient', value: props.profile.id }],
+				});
+
+				if (currentRewards) setDailyRewards(currentRewards);
+			} catch (e: any) {
+				console.error(e);
+			}
+		})();
+	}, [arProvider.profile, arProvider.tokenBalances, props.profile]);
 
 	React.useEffect(() => {
 		(async function () {
@@ -156,14 +198,21 @@ export default function Streaks(props: IProps) {
 				const blockTime = 2;
 
 				const lastHeightDiff = currentBlockHeight - streaksReducer[props.profile.id].lastHeight;
+
 				const remainingBlocks = rewardsInterval - lastHeightDiff;
 
-				const remainingBlockMinutes = Math.abs(remainingBlocks) * blockTime;
+				const windowActive = lastHeightDiff > rewardsInterval && lastHeightDiff <= rewardsInterval * 2;
+				let remainingBlockMinutes: number;
+				if (windowActive) {
+					remainingBlockMinutes = (rewardsInterval * 2 - lastHeightDiff) * blockTime;
+				} else {
+					remainingBlockMinutes = Math.abs(remainingBlocks) * blockTime;
+				}
 
 				const hours = Math.floor(remainingBlockMinutes / 60);
 				const minutes = remainingBlockMinutes % 60;
 
-				return lastHeightDiff <= 1440 ? (
+				return lastHeightDiff <= rewardsInterval * 2 ? (
 					<>
 						<S.SDMessageInfo>
 							<span>{language.streakCountdown1}</span>
@@ -182,7 +231,7 @@ export default function Streaks(props: IProps) {
 							</S.SDMessageCountUnit>
 						</S.SDMessageCount>
 						<S.SDMessageInfo>
-							<span>{`${hours <= 0 && minutes <= 0 ? language.streakCountdown3 : language.streakCountdown2}!`}</span>
+							<span>{`${windowActive ? language.streakCountdown3 : language.streakCountdown2}!`}</span>
 						</S.SDMessageInfo>
 					</>
 				) : (
@@ -206,27 +255,28 @@ export default function Streaks(props: IProps) {
 		}
 	}, [count, currentBlockHeight, props.profile, streaksReducer]);
 
-	// TODO: get amounts
 	const amounts = React.useMemo(() => {
 		return (
 			<>
-				<S.SDAmount>
-					<div>
-						{`+${formatCount('500')}`}
-						<ReactSVG src={ASSETS.pixl} />
-					</div>
-					<span>{language.dailyRewards}</span>
-				</S.SDAmount>
-				<S.SDAmount>
-					<div>
-						{`${formatCount('12387')}`}
-						<ReactSVG src={ASSETS.pixl} />
-					</div>
-					<span>{language.pixlHoldings}</span>
-				</S.SDAmount>
+				{pixlBalance !== null && (
+					<S.SDAmount>
+						<div>
+							<CurrencyLine amount={pixlBalance} currency={AOS.pixl} callback={() => setShowDropdown(false)} />
+						</div>
+						<p>{language.pixlHoldings}</p>
+					</S.SDAmount>
+				)}
+				{dailyRewards !== null && (
+					<S.SDAmount>
+						<div>
+							<CurrencyLine amount={dailyRewards} currency={AOS.pixl} callback={() => setShowDropdown(false)} />
+						</div>
+						<p>{language.dailyRewards}</p>
+					</S.SDAmount>
+				)}
 			</>
 		);
-	}, []);
+	}, [dailyRewards, pixlBalance]);
 
 	const leaderboard = React.useMemo(() => {
 		return streaksReducer && profiles ? (

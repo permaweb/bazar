@@ -72,30 +72,34 @@ export const SDStreak = styled.div`
 export const SDAmounts = styled.div`
 	width: 100%;
 	display: flex;
+	flex-direction: column;
 	justify-content: center;
 	align-items: center;
-	gap: 40px;
+	flex-wrap: wrap;
+	gap: 20px;
 	margin: 30px 0;
 `;
 
 export const SDAmount = styled.div`
+	width: 100%;
 	display: flex;
 	flex-direction: column;
 	align-items: center;
 	div {
-		color: ${(props) => props.theme.colors.font.primary};
-		font-size: ${(props) => props.theme.typography.size.xLg};
-		font-weight: ${(props) => props.theme.typography.weight.bold};
-		font-family: ${(props) => props.theme.typography.family.alt1};
 		display: flex;
 		align-items: center;
-		svg {
+		span {
+			color: ${(props) => props.theme.colors.font.primary};
+			font-size: ${(props) => props.theme.typography.size.xLg};
+			font-weight: ${(props) => props.theme.typography.weight.bold};
+			font-family: ${(props) => props.theme.typography.family.alt1};
+		}
+		img {
 			height: 20px;
 			width: 20px;
-			margin: 0 0 0 10px;
 		}
 	}
-	span {
+	p {
 		color: ${(props) => props.theme.colors.font.alt1};
 		font-size: ${(props) => props.theme.typography.size.xxxSmall};
 		font-weight: ${(props) => props.theme.typography.weight.bold};

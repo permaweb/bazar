@@ -219,7 +219,7 @@ export function getAssetIdGroups(args: {
 				const missingIds = args.ids.filter((id) => !orderbookIds.includes(id));
 
 				missingIds.forEach((missingId) => {
-					currentOrderbook.push({ Pair: [missingId, AOS.token], Orders: [] });
+					currentOrderbook.push({ Pair: [missingId, AOS.defaultToken], Orders: [] });
 				});
 			}
 

@@ -95,7 +95,7 @@ export const language = {
 		streaks: `Streaks`,
 		streakCountdown1: `You have approximately`,
 		streakCountdown2: `Until you can continue building your streak`,
-		streakCountdown3: `Buy an asset to continue building your streak`,
+		streakCountdown3: `To continue building your streak`,
 		streakLeaderboard: `Streak leaderboard`,
 		streakStart: `Buy an asset today to start your streak`,
 		streakTitle1: `Start your streak`,

@@ -176,5 +176,5 @@ function getDefaultCurrency(assetIds: string[]): string {
 			}
 		}
 	}
-	return AOS.token;
+	return AOS.defaultToken;
 }

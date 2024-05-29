@@ -49,8 +49,8 @@ export const AOS = {
 	module: 'SBNb1qPQ1TDwpD_mboxm2YllmMLXpWw4U8P9Ff8W9vk',
 	scheduler: '_GQ33BkPtZrqxA84vM8Zk-N2aO0toNNu_C-l-rawrBA',
 	ucm: 'fzRGvSW2oSop9xGLxs5mcaRtCbrbug8imI_uRZHKdiU',
-	token: 'xU9zFkq3X2ZQ6olwNVvr1vUWIjc3kXTWr7xKQD6dh10',
-	streaks: 'jmu9__Fw79vcsCbPD15cy-xR0zFZa3lXv16rbpWQtRA',
+	defaultToken: 'xU9zFkq3X2ZQ6olwNVvr1vUWIjc3kXTWr7xKQD6dh10',
+	pixl: 'jmu9__Fw79vcsCbPD15cy-xR0zFZa3lXv16rbpWQtRA',
 	profileRegistry: 'kFYMezhjcPCZLr2EkkwzIXP5A64QmtME6Bxa8bGmbzI',
 	profileSrc: 'JjLm85z7IRoMJTwcYoNfM-9xbdZhqxOfjD7vI9c6_co',
 };

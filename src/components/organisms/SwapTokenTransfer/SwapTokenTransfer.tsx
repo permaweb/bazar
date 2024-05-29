@@ -26,7 +26,7 @@ export default function SwapTokenTransfer() {
 			if (arProvider.walletAddress && arProvider.profile && arProvider.profile.id) {
 				try {
 					const tokenBalance = await readHandler({
-						processId: AOS.token,
+						processId: AOS.defaultToken,
 						action: 'Balance',
 						tags: [{ name: 'Recipient', value: arProvider.walletAddress }],
 					});
@@ -46,7 +46,7 @@ export default function SwapTokenTransfer() {
 			setLoading(true);
 			try {
 				const response = await messageResult({
-					processId: AOS.token,
+					processId: AOS.defaultToken,
 					wallet: arProvider.wallet,
 					action: 'Transfer',
 					tags: [
@@ -101,7 +101,7 @@ export default function SwapTokenTransfer() {
 						<p>Would you like to transfer this balance to continue ?</p>
 						<S.TransferAmount>
 							<span>Transfer amount: </span>
-							<CurrencyLine amount={walletTokenBalance} currency={AOS.token} />
+							<CurrencyLine amount={walletTokenBalance} currency={AOS.defaultToken} />
 						</S.TransferAmount>
 						<S.ActionsWrapper>
 							<Button
