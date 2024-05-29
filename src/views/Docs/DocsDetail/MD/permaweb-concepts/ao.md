@@ -1,0 +1,9 @@
+# What is AO?
+
+AO is a hyper parallel computing system built on the Arweave network, offering a unified environment for executing decentralized applications and smart contracts. Unlike traditional decentralized computer systems, AO provides an open message passing layer that connects parallel processes, creating a cohesive computing experience akin to websites linked through hyperlinks. This distributed architecture allows for computation without protocol-enforced limitations on size and form while ensuring network verifiability and trust minimization.
+
+With AO, developers can launch command-line processes, called aos, that function as smart contracts within the decentralized network. These processes operate without geographical constraints, promoting seamless user interactions across the network. AO thus establishes a shared, global computing platform where users can execute multiple processes securely and rely on services that consistently maintain their rights over time. This trustable environment fosters collaboration and innovation, enabling a new design space of applications that blend the benefits of smart contracts with those of traditional compute environments.
+
+## How is AO used on BazAR?
+
+Transactions on BazAR are fulfilled by trustless smart contracts built on AO. BazAR is one of the first user-facing applications to utilize AO smart contracts. To read more about AO, check out the documentation specs [here](https://ao.arweave.dev/#/).

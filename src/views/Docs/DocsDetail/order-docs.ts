@@ -4,35 +4,37 @@ export const docsOrder = [
 		path: 'introduction',
 	},
 	{
-		name: 'Geting started on the permaweb',
-		path: 'getting-started-on-the-permaweb',
+		name: 'Getting started',
+		path: 'getting-started',
+		children: [
+			{
+				name: 'Create a profile',
+				path: 'bazar-profile',
+			},
+			{
+				name: 'How to upload',
+				path: 'how-to-upload',
+			},
+			{
+				name: 'How to collect',
+				path: 'how-to-collect',
+			},
+		],
 	},
 	{
 		name: 'Permaweb concepts',
 		path: 'permaweb-concepts',
 		children: [
 			{
-				name: 'Atomic asset',
+				name: 'Atomic assets',
 				path: 'atomic-asset',
 			},
 			{
-				name: 'Profit sharing token (PST)',
-				path: 'profit-sharing-token',
+				name: 'Wrapped AR (wAR)',
+				path: 'wrapped-ar',
 			},
 			{
-				name: 'U token ($U)',
-				path: 'u-token',
-			},
-			{
-				name: 'Pixel token ($PIXL)',
-				path: 'pixel-token',
-			},
-			{
-				name: 'Stamp token ($STAMP)',
-				path: 'stamp-token',
-			},
-			{
-				name: 'AO',
+				name: 'ao',
 				path: 'ao',
 			},
 		],
@@ -42,21 +44,25 @@ export const docsOrder = [
 		path: 'exploring-bazar',
 		children: [
 			{
-				name: 'BazAR/UCM explained',
-				path: 'bazar-built-on-ucm',
+				name: 'Why create atomic assets',
+				path: 'why-create-atomic-assets',
 			},
 			{
-				name: 'Uploading content to BazAR (UCM)',
-				path: 'upload-content-to-ucm',
+				name: 'Renderers explained',
+				path: 'renderers-explained',
+			},
+			{
+				name: 'How to earn $PIXL',
+				path: 'pixel-token',
 			},
 			{
 				name: 'Universal Data License (UDL) explained',
 				path: 'universal-data-license',
 			},
-			{
-				name: 'Why mint atomic assets',
-				path: 'why-mint-on-bazar',
-			},
 		],
+	},
+	{
+		name: 'For developers',
+		path: 'developers',
 	},
 ];
