@@ -154,7 +154,7 @@ export const Alt1 = styled(Primary)`
 		width: fit-content;
 		text-overflow: ellipsis;
 		overflow: hidden;
-		font-size: ${(props) => props.theme.typography.size.small} !important;
+		font-size: ${(props) => props.theme.typography.size.xSmall} !important;
 		font-weight: ${(props) => props.theme.typography.weight.bold} !important;
 		color: ${(props) => props.theme.colors.font.light1} !important;
 	}

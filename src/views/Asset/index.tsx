@@ -15,8 +15,6 @@ import { AssetAction } from './AssetAction';
 import { AssetInfo } from './AssetInfo';
 import * as S from './styles';
 
-// TODO: fetch balances if none on info
-// TODO: fetch logo if no data
 export default function Asset() {
 	const { id } = useParams();
 	const navigate = useNavigate();

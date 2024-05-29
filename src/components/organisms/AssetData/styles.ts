@@ -7,6 +7,7 @@ export const Wrapper = styled.div`
 	width: 100%;
 	border-radius: ${STYLING.dimensions.radius.primary};
 	overflow: hidden;
+	position: relative;
 `;
 
 export const Header = styled.div`
@@ -58,6 +59,16 @@ export const Image = styled.img<{ contain: boolean }>`
 	width: 100%;
 	object-fit: ${(props) => (props.contain ? 'contain' : 'cover')};
 	background: ${(props) => props.theme.colors.container.alt2.background};
+`;
+
+export const Logo = styled(Image)`
+	height: 85%;
+	width: 85%;
+	background: transparent;
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	transform: translate(-50%, -50%);
 `;
 
 export const AudioWrapper = styled.div`

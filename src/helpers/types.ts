@@ -28,13 +28,13 @@ export type AssetStateType = {
 	name: string | null;
 	ticker: string | null;
 	denomination: number | null;
+	logo: string | null;
 	balances: { [address: string]: string } | null;
 };
 
 export type AssetOrderType = {
 	creator: string | null;
 	dateCreated: string | null;
-	depositTxId: string | null;
 	id: string | null;
 	originalQuantity: string | null;
 	price?: string | null;

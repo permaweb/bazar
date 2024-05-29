@@ -187,7 +187,7 @@ export const AInput = styled.button<{ hasAvatar: boolean }>`
 		height: 25px;
 		width: 25px;
 		margin: 0 0 5px 0;
-		stroke: ${(props) => props.theme.colors.font.alt1};
+		color: ${(props) => props.theme.colors.font.alt1};
 	}
 	img {
 		height: 100%;
@@ -202,7 +202,7 @@ export const AInput = styled.button<{ hasAvatar: boolean }>`
 			color: ${(props) => props.theme.colors.font.primary};
 		}
 		svg {
-			stroke: ${(props) => props.theme.colors.font.primary};
+			color: ${(props) => props.theme.colors.font.primary};
 		}
 	}
 	&:focus {
@@ -215,7 +215,7 @@ export const AInput = styled.button<{ hasAvatar: boolean }>`
 			color: ${(props) => props.theme.colors.button.primary.disabled.color};
 		}
 		svg {
-			stroke: ${(props) => props.theme.colors.button.primary.disabled.color};
+			color: ${(props) => props.theme.colors.button.primary.disabled.color};
 		}
 	}
 	${(props) =>

@@ -22,7 +22,7 @@ export default function CurrencyLine(props: IProps) {
 			const denomination = currenciesReducer[currency].Denomination;
 			return `${formatCount((amount / Math.pow(10, denomination)).toString())}`;
 		}
-		return formatCount(amount.toString());
+		return '-';
 	}
 
 	function getCurrency() {

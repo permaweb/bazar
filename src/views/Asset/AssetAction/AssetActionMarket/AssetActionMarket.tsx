@@ -3,7 +3,7 @@ import React from 'react';
 import * as GS from 'app/styles';
 import { Drawer } from 'components/atoms/Drawer';
 import { Tabs } from 'components/molecules/Tabs';
-import { ASSETS } from 'helpers/config';
+import { AOS, ASSETS } from 'helpers/config';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 
 import { AssetActionMarketOrders } from './AssetActionMarketOrders';
@@ -20,22 +20,37 @@ export default function AssetActionMarket(props: IProps) {
 		transfer: language.transfer,
 	};
 
-	const MARKET_ACTION_TABS = [
-		{
-			label: MARKET_ACTION_TAB_OPTIONS.buy,
-			icon: ASSETS.buy,
-		},
-		{
-			label: MARKET_ACTION_TAB_OPTIONS.sell,
-			icon: ASSETS.sell,
-		},
-		{
-			label: MARKET_ACTION_TAB_OPTIONS.transfer,
-			icon: ASSETS.transfer,
-		},
-	];
+	const [tabs, setTabs] = React.useState<any>(null);
+	const [currentTab, setCurrentTab] = React.useState<string | null>(null);
 
-	const [currentTab, setCurrentTab] = React.useState<string>(MARKET_ACTION_TABS[0]!.label);
+	React.useEffect(() => {
+		const MARKET_ACTION_TABS = [
+			{
+				label: MARKET_ACTION_TAB_OPTIONS.buy,
+				icon: ASSETS.buy,
+			},
+			{
+				label: MARKET_ACTION_TAB_OPTIONS.sell,
+				icon: ASSETS.sell,
+			},
+			{
+				label: MARKET_ACTION_TAB_OPTIONS.transfer,
+				icon: ASSETS.transfer,
+			},
+		];
+
+		const TRANSFER_ONLY_ASSETS = [AOS.defaultToken];
+
+		if (props.asset && TRANSFER_ONLY_ASSETS.includes(props.asset.data.id)) {
+			setTabs(MARKET_ACTION_TABS.filter((tab: any) => tab.label === MARKET_ACTION_TAB_OPTIONS.transfer));
+		} else {
+			setTabs(MARKET_ACTION_TABS);
+		}
+	}, [props.asset]);
+
+	React.useEffect(() => {
+		if (tabs) setCurrentTab(tabs[0].label);
+	}, [tabs]);
 
 	function getCurrentTab() {
 		switch (currentTab) {
@@ -50,11 +65,11 @@ export default function AssetActionMarket(props: IProps) {
 		}
 	}
 
-	return (
+	return tabs && currentTab ? (
 		<S.Wrapper>
 			<S.TabsWrapper className={'border-wrapper-alt2'}>
 				<Tabs onTabPropClick={(label: string) => setCurrentTab(label)} type={'alt1'}>
-					{MARKET_ACTION_TABS.map((tab: { label: string; icon?: string }, index: number) => {
+					{tabs.map((tab: { label: string; icon?: string }, index: number) => {
 						return <S.TabWrapper key={index} label={tab.label} icon={tab.icon ? tab.icon : null} />;
 					})}
 				</Tabs>
@@ -70,5 +85,5 @@ export default function AssetActionMarket(props: IProps) {
 				</GS.DrawerWrapper>
 			)}
 		</S.Wrapper>
-	);
+	) : null;
 }

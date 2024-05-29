@@ -8,7 +8,7 @@ import { CurrencyLine } from 'components/atoms/CurrencyLine';
 import { Panel } from 'components/molecules/Panel';
 import { ProfileManage } from 'components/organisms/ProfileManage';
 import { ASSETS, REDIRECTS, STYLING, URLS } from 'helpers/config';
-import { formatAddress, formatARAmount } from 'helpers/utils';
+import { formatAddress, formatCount } from 'helpers/utils';
 import * as windowUtils from 'helpers/window';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useCustomThemeProvider } from 'providers/CustomThemeProvider';
@@ -129,7 +129,7 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 						<span>{language.balances}</span>
 					</S.DBodyHeader>
 					<S.BalanceLine>
-						<span>{formatARAmount(arProvider.arBalance ? arProvider.arBalance : 0)}</span>
+						<span>{formatCount(arProvider.arBalance ? arProvider.arBalance.toString() : '0')}</span>
 						<ReactSVG src={ASSETS.ar} />
 					</S.BalanceLine>
 					{arProvider.tokenBalances && Object.keys(arProvider.tokenBalances).length > 0 && (
@@ -211,7 +211,7 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 			<S.PWrapper>
 				{arProvider.profile && !arProvider.profile.id && (
 					<S.CAction className={'fade-in'}>
-						<Button type={'alt1'} label={language.createProfile} handlePress={handleProfileAction} height={35} />
+						<Button type={'alt1'} label={language.createProfile} handlePress={handleProfileAction} />
 					</S.CAction>
 				)}
 				{label && (

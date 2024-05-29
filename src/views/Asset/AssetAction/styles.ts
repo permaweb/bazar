@@ -81,6 +81,16 @@ export const MDrawerHeader = styled.div``;
 
 export const DrawerContent = styled(GS.DrawerContent)`
 	background: transparent;
+	> * {
+		&:not(:last-child) {
+			margin: 0 0 10px 0;
+			padding: 0 0 10px 0;
+			border-bottom: 1px solid ${(props) => props.theme.colors.border.alt4};
+		}
+		&:last-child {
+			margin: 0;
+		}
+	}
 	@media (max-width: ${STYLING.cutoffs.secondary}) {
 		> * {
 			&:not(:last-child) {

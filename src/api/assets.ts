@@ -92,6 +92,7 @@ export async function getAssetById(args: { id: string }): Promise<AssetDetailTyp
 				name: null,
 				ticker: null,
 				denomination: null,
+				logo: null,
 				balances: null,
 			};
 
@@ -110,7 +111,22 @@ export async function getAssetById(args: { id: string }): Promise<AssetDetailTyp
 				}
 				if (processState.Ticker) assetState.ticker = processState.Ticker;
 				if (processState.Denomination) assetState.denomination = processState.Denomination;
+				if (processState.Logo) assetState.logo = processState.Logo;
 				if (processState.Balances) assetState.balances = processState.Balances;
+			}
+
+			if (!assetState.balances) {
+				try {
+					const processBalances = await readHandler({
+						processId: structuredAsset.data.id,
+						action: 'Balances',
+						data: null,
+					});
+
+					if (processBalances) assetState.balances = processBalances;
+				} catch (e: any) {
+					console.error(e);
+				}
 			}
 
 			let assetOrders: AssetOrderType[] | null = null;
@@ -124,7 +140,6 @@ export async function getAssetById(args: { id: string }): Promise<AssetDetailTyp
 						let currentAssetOrder: AssetOrderType = {
 							creator: order.Creator,
 							dateCreated: order.DateCreated,
-							depositTxId: order.DepositTxId,
 							id: order.Id,
 							originalQuantity: order.OriginalQuantity,
 							quantity: order.Quantity,

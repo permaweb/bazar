@@ -66,8 +66,9 @@ export const Close = styled.div`
 `;
 
 export const Body = styled.div`
-	max-height: calc(100dvh - 100px);
+	height: calc(100% - 65px);
 	width: 100%;
 	overflow-y: auto;
 	scrollbar-color: transparent transparent;
+	position: relative;
 `;

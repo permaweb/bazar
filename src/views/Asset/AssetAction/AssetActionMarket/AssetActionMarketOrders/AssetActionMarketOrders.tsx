@@ -68,12 +68,17 @@ export default function AssetActionMarketOrders(props: IProps) {
 	const [orderSuccess, setOrderSuccess] = React.useState<boolean>(false);
 	const [showConfirmation, setShowConfirmation] = React.useState<boolean>(false);
 	const [currentNotification, setCurrentNotification] = React.useState<string | null>(null);
+	const [insufficientBalance, setInsufficientBalance] = React.useState<boolean>(false);
 
-	const insufficientBalance =
-		arProvider.tokenBalances &&
-		arProvider.tokenBalances[AOS.defaultToken] !== null &&
-		props.type === 'buy' &&
-		Number(arProvider.tokenBalances[AOS.defaultToken]) < getTotalPrice();
+	React.useEffect(() => {
+		if (!arProvider.tokenBalances || !arProvider.tokenBalances[AOS.defaultToken]) {
+			setInsufficientBalance(true);
+		} else {
+			if (props.type === 'buy') {
+				setInsufficientBalance(Number(arProvider.tokenBalances[AOS.defaultToken]) < getTotalPrice());
+			}
+		}
+	}, [arProvider.tokenBalances, props.type, props.asset, currentOrderQuantity]);
 
 	React.useEffect(() => {
 		if (props.asset) {
@@ -92,7 +97,8 @@ export default function AssetActionMarketOrders(props: IProps) {
 					const totalBalance = balances.reduce((a: number, b: number) => a + b, 0);
 
 					let calculatedTotalBalance = totalBalance;
-					if (denomination) calculatedTotalBalance = totalBalance / denomination;
+
+					if (denomination) calculatedTotalBalance = totalBalance / denomination; // TODO
 
 					setTotalAssetBalance(calculatedTotalBalance);
 
@@ -100,7 +106,8 @@ export default function AssetActionMarketOrders(props: IProps) {
 						const ownerBalance = Number(props.asset.state.balances[arProvider.profile.id]);
 						if (ownerBalance) {
 							let calculatedOwnerBalance = ownerBalance;
-							if (denomination) calculatedOwnerBalance = ownerBalance / denomination;
+
+							if (denomination) calculatedOwnerBalance = ownerBalance / denomination; // TODO
 
 							setConnectedBalance(calculatedOwnerBalance);
 						}
@@ -116,7 +123,8 @@ export default function AssetActionMarketOrders(props: IProps) {
 				const totalSalesBalance = salesBalances.reduce((a: number, b: number) => a + b, 0);
 
 				let calculatedTotalSalesBalance = totalSalesBalance;
-				if (denomination) calculatedTotalSalesBalance = totalSalesBalance / denomination;
+
+				if (denomination) calculatedTotalSalesBalance = totalSalesBalance / denomination; // TODO
 
 				setTotalSalesQuantity(calculatedTotalSalesBalance);
 			}
@@ -179,11 +187,14 @@ export default function AssetActionMarketOrders(props: IProps) {
 				const swapToken = pair[1];
 
 				let calculatedQuantity: string | number = currentOrderQuantity;
+
+				// TODO
 				if (props.type === 'sell' || props.type === 'transfer') {
 					if (denomination) calculatedQuantity = currentOrderQuantity * denomination;
 				}
+
 				if (props.type === 'buy') {
-					calculatedQuantity = getTotalPrice();
+					calculatedQuantity = getTotalPrice(true);
 				}
 				calculatedQuantity = calculatedQuantity.toString();
 
@@ -226,6 +237,8 @@ export default function AssetActionMarketOrders(props: IProps) {
 						responses: ['Transfer-Success', 'Transfer-Error'],
 						handler: 'Create-Order',
 					});
+
+					console.log(response);
 
 					if (response) {
 						if (response['Transfer-Success']) {
@@ -341,12 +354,13 @@ export default function AssetActionMarketOrders(props: IProps) {
 		);
 	}
 
-	function getTotalPrice() {
+	function getTotalPrice(useDenomination?: boolean) {
 		if (props.type === 'buy') {
 			if (props.asset && props.asset.orders) {
 				let sortedOrders = props.asset.orders.sort(
 					(a: AssetOrderType, b: AssetOrderType) => Number(a.price) - Number(b.price)
 				);
+
 				let totalQuantity = 0;
 				let totalPrice = 0;
 
@@ -356,7 +370,8 @@ export default function AssetActionMarketOrders(props: IProps) {
 					const price = Number(order.price);
 
 					let assetQuantity = currentOrderQuantity;
-					if (denomination) assetQuantity = currentOrderQuantity * denomination;
+
+					if (useDenomination && denomination) assetQuantity = currentOrderQuantity * denomination; // TODO
 
 					if (quantity >= assetQuantity - totalQuantity) {
 						const remainingQty = assetQuantity - totalQuantity;
@@ -369,6 +384,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 						totalPrice += quantity * price;
 					}
 				}
+
 				return totalPrice;
 			} else return 0;
 		} else {
@@ -641,7 +657,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 									step={'1'}
 									value={currentOrderQuantity}
 									onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleQuantityInput(e)}
-									label={`${language.assetQuantity} (${language.max}: ${maxOrderQuantity})`}
+									label={`${language.assetQuantity} (${language.max}: ${formatCount(maxOrderQuantity.toString())})`}
 									disabled={
 										!arProvider.walletAddress ||
 										!arProvider.profile ||

@@ -242,6 +242,21 @@ export default function AssetData(props: IProps) {
 							);
 						}
 					} else {
+						if (
+							props.asset &&
+							props.asset.state &&
+							props.asset.state.logo &&
+							checkValidAddress(props.asset.state.logo)
+						) {
+							return (
+								<S.Logo
+									src={getTxEndpoint(props.asset.state.logo)}
+									contain={contain}
+									onError={handleError}
+									loading={'lazy'}
+								/>
+							);
+						}
 						return getUnsupportedWrapper();
 					}
 				default:

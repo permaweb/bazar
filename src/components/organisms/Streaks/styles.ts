@@ -50,7 +50,7 @@ export const SDStreak = styled.div`
 	display: flex;
 	justify-content: center;
 	align-items: center;
-	padding: 0 0 20px 0;
+	padding: 0 0 30px 0;
 	margin: 10px 0;
 	border-bottom: 1px solid ${(props) => props.theme.colors.border.primary};
 	p {
@@ -77,7 +77,9 @@ export const SDAmounts = styled.div`
 	align-items: center;
 	flex-wrap: wrap;
 	gap: 20px;
-	margin: 30px 0;
+	margin: 30px 0 0 0;
+	padding: 0 0 35px 0;
+	border-bottom: 1px solid ${(props) => props.theme.colors.border.primary};
 `;
 
 export const SDAmount = styled.div`
@@ -172,7 +174,7 @@ export const SDMessageCountDivider = styled.div`
 
 export const SDLAction = styled.div`
 	width: 100%;
-	padding: 0 20px 20px 20px;
+	padding: 20px;
 	button {
 		span {
 			font-size: ${(props) => props.theme.typography.size.lg} !important;

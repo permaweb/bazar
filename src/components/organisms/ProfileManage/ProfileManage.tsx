@@ -182,8 +182,8 @@ export default function ProfileManage(props: IProps) {
 								} else {
 									console.log(`Transaction not found -`, processId);
 									retryCount++;
-									if (retryCount >= 3) {
-										throw new Error(`Profile not found, aborting`);
+									if (retryCount >= 10) {
+										throw new Error(`Profile not found, please try again`);
 									}
 								}
 							}

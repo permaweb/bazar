@@ -32,10 +32,6 @@ export function getTagValue(list: { [key: string]: any }[], name: string): strin
 	return null;
 }
 
-export function formatARAmount(amount: number) {
-	return `${amount.toFixed(2)}`;
-}
-
 export function formatCount(count: string): string {
 	if (count.includes('.')) {
 		let parts = count.split('.');
@@ -63,22 +59,25 @@ export function formatCount(count: string): string {
 	}
 }
 
-export function formatPercentage(percentage: number): string {
+export function formatPercentage(percentage) {
 	let multiplied = percentage * 100;
 	let decimalPart = multiplied.toString().split('.')[1];
 
-	// If there is no decimal part, return the integer value
 	if (!decimalPart) {
 		return `${multiplied.toFixed(0)}%`;
 	}
 
-	// Check the length of the decimal part
-	if (decimalPart.length >= 4) {
-		return `${Math.round(multiplied)}%`;
+	// Find the nearest non-zero decimal place
+	let nonZeroIndex = decimalPart.length;
+	for (let i = 0; i < decimalPart.length; i++) {
+		if (decimalPart[i] !== '0') {
+			nonZeroIndex = i + 1;
+			break;
+		}
 	}
 
 	// Return the percentage with appropriate decimals
-	return `${multiplied.toFixed(decimalPart.length)}%`;
+	return `${multiplied.toFixed(nonZeroIndex)}%`;
 }
 
 export function formatDate(dateArg: string | number | null, dateType: DateType) {
