@@ -4,45 +4,21 @@ export const docsOrder = [
 		path: 'introduction',
 	},
 	{
-		name: 'Getting started',
-		path: 'getting-started',
+		name: 'Create a profile',
+		path: 'bazar-profile',
+	},
+	{
+		name: 'For creators',
+		path: 'creators',
 		children: [
-			{
-				name: 'Create a profile',
-				path: 'bazar-profile',
-			},
 			{
 				name: 'How to upload',
 				path: 'how-to-upload',
 			},
 			{
-				name: 'How to collect',
-				path: 'how-to-collect',
+				name: 'Creating best practices',
+				path: 'creating-best-practices',
 			},
-		],
-	},
-	{
-		name: 'Permaweb concepts',
-		path: 'permaweb-concepts',
-		children: [
-			{
-				name: 'Atomic assets',
-				path: 'atomic-asset',
-			},
-			{
-				name: 'Wrapped AR (wAR)',
-				path: 'wrapped-ar',
-			},
-			{
-				name: 'ao',
-				path: 'ao',
-			},
-		],
-	},
-	{
-		name: 'Exploring BazAR',
-		path: 'exploring-bazar',
-		children: [
 			{
 				name: 'Why create atomic assets',
 				path: 'why-create-atomic-assets',
@@ -52,12 +28,52 @@ export const docsOrder = [
 				path: 'renderers-explained',
 			},
 			{
+				name: 'Universal Data License (UDL)',
+				path: 'universal-data-license',
+			},
+		],
+	},
+	{
+		name: 'For collectors',
+		path: 'collectors',
+		children: [
+			{
+				name: 'How to fund your account',
+				path: 'how-to-fund',
+			},
+			{
+				name: 'How to collect',
+				path: 'how-to-collect',
+			},
+			{
 				name: 'How to earn $PIXL',
 				path: 'pixel-token',
 			},
+		],
+	},
+	{
+		name: 'Key concepts',
+		path: 'key-concepts',
+		children: [
 			{
-				name: 'Universal Data License (UDL) explained',
-				path: 'universal-data-license',
+				name: 'Wallets',
+				path: 'wallets',
+			},
+			{
+				name: 'Tokens',
+				path: 'tokens',
+			},
+			{
+				name: 'Permaweb',
+				path: 'permaweb',
+			},
+			{
+				name: 'Atomic assets',
+				path: 'atomic-asset',
+			},
+			{
+				name: 'BazAR on ao',
+				path: 'bazar-on-ao',
 			},
 		],
 	},

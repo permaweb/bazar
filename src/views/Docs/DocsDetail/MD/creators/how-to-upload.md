@@ -1,8 +1,8 @@
-## How to upload
+### How to upload
 
 BazAR is a user interface for the UCM protocol, allowing for countless ways to upload content to the permaweb and trade on BazAR. Following the recent migration of UCM onto ao, not all permaweb uploaders support ao atomic assets. This list will expand as more permaweb applications support uploads to the ao UCM.
 
-### Upload with Helix
+#### Upload with Helix
 
 [Helix](https://helix.arweave.dev/#/) is an easy-to-use atomic asset uploader. All content uploaded through Helix is stored on Arweave and is tradeable on BazAR.
 

@@ -1,10 +1,10 @@
-## How to collect atomic assets
+### How to collect atomic assets
 
 Collecting atomic assets is how you engage with the permaweb community and support creators. BazAR is the place to discover, collect, and showcase atomic assets. All data transacted on BazAR is stored permanently on Arweave, ensuring that valuable content is preserved for generations.
 
 To start collecting atomic assets on BazAR, you first need to connect your wallet and create a BazAR profile. Once that’s done, you're ready to go.
 
-#### Browse Collections and Single Atomic Assets
+#### Browse collections and single atomic assets
 
 There are two ways to browse atomic assets on BazAR. From the homepage, you can explore the latest collections and the newest single atomic assets. Users can filter single atomic assets by listing prices, either “low to high” or “high to low.”
 
@@ -24,7 +24,7 @@ On the right side of the asset page, you will find the total asset balance and t
 
 Shortly after purchasing the atomic asset, you will see the asset in your profile. Additionally, on the asset page, your profile will be shown under “currently owned by.”
 
-**Provenance Details**
+**Provenance details**
 
 Since all atomic assets are stored on the Arweave network, the provenance details are retrievable and verifiable. In this section, you will find the following information:
 
@@ -33,6 +33,6 @@ Since all atomic assets are stored on the Arweave network, the provenance detail
 - **Transaction**: The transaction ID.
 - **Implements**: Technical specifications of the transaction.
 
-**Asset Rights**
+**Asset rights**
 
 Users can attach license tags to transactions called the Universal Data License (UDL). These tags specify how the piece of content can or cannot be used for commercial use, derivative works, and data model training. Learn more about UDL [here](#).
