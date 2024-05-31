@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { URLS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import { formatCount } from 'helpers/utils';
+import { useLanguageProvider } from 'providers/LanguageProvider';
 import { RootState } from 'store';
 
 import * as S from './styles';
@@ -12,8 +13,12 @@ import { IProps } from './types';
 export default function CurrencyLine(props: IProps) {
 	const currenciesReducer = useSelector((state: RootState) => state.currenciesReducer);
 
+	const languageProvider = useLanguageProvider();
+	const language = languageProvider.object[languageProvider.current];
+
 	function getDenominatedTokenValue(amount: number, currency: string) {
 		if (
+			props.amount &&
 			currenciesReducer &&
 			currenciesReducer[currency] &&
 			currenciesReducer[currency].Denomination &&
@@ -22,7 +27,7 @@ export default function CurrencyLine(props: IProps) {
 			const denomination = currenciesReducer[currency].Denomination;
 			return `${formatCount((amount / Math.pow(10, denomination)).toString())}`;
 		}
-		return '-';
+		return `${language.fetching}...`;
 	}
 
 	function getCurrency() {
@@ -52,8 +57,8 @@ export default function CurrencyLine(props: IProps) {
 		return null;
 	}
 
-	return props.amount !== null && props.currency ? (
-		<S.Wrapper>
+	return props.currency ? (
+		<S.Wrapper useReverseLayout={props.useReverseLayout}>
 			<span>{getDenominatedTokenValue(Number(props.amount), props.currency)}</span>
 			{getCurrency()}
 		</S.Wrapper>

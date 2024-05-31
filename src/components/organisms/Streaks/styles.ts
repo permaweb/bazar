@@ -197,11 +197,17 @@ export const MLoadingWrapper = styled.div`
 	}
 `;
 
+export const StreaksPanelWrapper = styled.div`
+	padding: 0 20px;
+`;
+
 export const StreaksWrapper = styled.div`
 	margin: 20px 0 0 0;
 	> * {
 		&:not(:last-child) {
-			margin: 0 0 20px 0;
+			margin: 0 0 10px 0;
+			padding: 0 0 10px 0;
+			border-bottom: 1px solid ${(props) => props.theme.colors.border.alt4};
 		}
 		&:last-child {
 			margin: 0;
@@ -247,5 +253,21 @@ export const StreakCount = styled.div`
 		font-size: ${(props) => props.theme.typography.size.base};
 		font-weight: ${(props) => props.theme.typography.weight.bold};
 		display: block;
+	}
+`;
+
+export const ReturnWrapper = styled.div`
+	width: 100%;
+	margin: 40px 0 0 0;
+	button {
+		span {
+			font-size: ${(props) => props.theme.typography.size.lg} !important;
+			font-family: ${(props) => props.theme.typography.family.alt1} !important;
+		}
+		svg {
+			height: 20px;
+			width: 20px;
+			margin: 2.5px 12.5px 0 0 !important;
+		}
 	}
 `;

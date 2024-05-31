@@ -4,6 +4,7 @@ import { ReactSVG } from 'react-svg';
 
 // import { connect, createDataItemSigner } from '@permaweb/aoconnect';
 import { Button } from 'components/atoms/Button';
+import { Modal } from 'components/molecules/Modal';
 import { Panel } from 'components/molecules/Panel';
 import { ProfileManage } from 'components/organisms/ProfileManage';
 import { Streaks } from 'components/organisms/Streaks';
@@ -16,7 +17,8 @@ import { useLanguageProvider } from 'providers/LanguageProvider';
 import * as S from './styles';
 import { IProps } from './types';
 
-// TODO: bio
+const MAX_BIO_LENGTH = 80;
+
 export default function ProfileHeader(props: IProps) {
 	const navigate = useNavigate();
 
@@ -26,6 +28,7 @@ export default function ProfileHeader(props: IProps) {
 	const language = languageProvider.object[languageProvider.current];
 
 	const [showProfileManage, setShowProfileManage] = React.useState<boolean>(false);
+	const [showBio, setShowBio] = React.useState<boolean>(false);
 	// const [profileUpdating, setProfileUpdating] = React.useState<boolean>(false);
 	// const [copied, setCopied] = React.useState<boolean>(false);
 
@@ -99,11 +102,18 @@ export default function ProfileHeader(props: IProps) {
 				<S.HeaderInfoDetail>
 					<span>{`${getHandle()}`}</span>
 				</S.HeaderInfoDetail>
-				{/* <S.HeaderAddress onClick={copyAddress}>
-					<ReactSVG src={ASSETS.wallet} />
-					<p>{formatAddress(props.profile.walletAddress, false)}</p>
-					{copied && <span>{`${language.copied}!`}</span>}
-				</S.HeaderAddress> */}
+				{props.profile.bio && (
+					<S.HeaderInfoBio>
+						<span>
+							{props.profile.bio.length > MAX_BIO_LENGTH
+								? props.profile.bio.substring(0, MAX_BIO_LENGTH) + '...'
+								: props.profile.bio}
+						</span>
+						{props.profile.bio.length > MAX_BIO_LENGTH && (
+							<button onClick={() => setShowBio(true)}>{language.viewFullBio}</button>
+						)}
+					</S.HeaderInfoBio>
+				)}
 			</S.HeaderHA>
 		) : null;
 	}
@@ -116,9 +126,12 @@ export default function ProfileHeader(props: IProps) {
 				)}
 				className={'border-wrapper-alt2 fade-in'}
 			>
-				<S.HeaderInfo>
-					<S.HeaderAvatar>{getAvatar()}</S.HeaderAvatar>
-					{getHeaderDetails()}
+				<S.OverlayWrapper />
+				<S.HeaderWrapper>
+					<S.HeaderInfo>
+						<S.HeaderAvatar>{getAvatar()}</S.HeaderAvatar>
+						{getHeaderDetails()}
+					</S.HeaderInfo>
 					<S.HeaderActions>
 						<S.Action>
 							<Streaks profile={props.profile} />
@@ -145,7 +158,7 @@ export default function ProfileHeader(props: IProps) {
 							</S.Action>
 						)}
 					</S.HeaderActions>
-				</S.HeaderInfo>
+				</S.HeaderWrapper>
 			</S.Wrapper>
 			{showProfileManage && arProvider.profile && arProvider.profile.id === props.profile.id && (
 				<Panel
@@ -161,6 +174,15 @@ export default function ProfileHeader(props: IProps) {
 						/>
 					</S.PManageWrapper>
 				</Panel>
+			)}
+			{showBio && props.profile && props.profile.bio && (
+				<Modal header={language.bio} handleClose={() => setShowBio(false)}>
+					<div className={'modal-wrapper'}>
+						<S.HeaderInfoBio>
+							<p>{props.profile.bio}</p>
+						</S.HeaderInfoBio>
+					</div>
+				</Modal>
 			)}
 		</>
 	) : null;

@@ -86,7 +86,10 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 	const [walletAddress, setWalletAddress] = React.useState<string | null>(null);
 
 	const [arBalance, setArBalance] = React.useState<number | null>(null);
-	const [tokenBalances, setTokenBalances] = React.useState<{ [address: string]: number } | null>(null);
+	const [tokenBalances, setTokenBalances] = React.useState<{ [address: string]: number } | null>({
+		[AOS.defaultToken]: null,
+		[AOS.pixl]: null,
+	});
 	const [toggleTokenBalanceUpdate, setToggleTokenBalanceUpdate] = React.useState<boolean>(false);
 
 	const [profile, setProfile] = React.useState<ProfileHeaderType | null>(null);
@@ -133,30 +136,47 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 	}, [wallet, walletAddress, walletType, toggleProfileUpdate]);
 
 	React.useEffect(() => {
-		(async function () {
-			if (profile && profile.id) {
+		if (profile && profile.id) {
+			const fetchDefaultTokenBalance = async () => {
 				try {
 					const defaultTokenBalance = await readHandler({
 						processId: AOS.defaultToken,
 						action: 'Balance',
 						tags: [{ name: 'Recipient', value: profile.id }],
 					});
+					setTokenBalances((prevBalances) => ({
+						...prevBalances,
+						[AOS.defaultToken]: defaultTokenBalance || 0,
+					}));
+				} catch (e) {
+					console.error(e);
+				}
+			};
 
+			fetchDefaultTokenBalance();
+		}
+	}, [profile, toggleTokenBalanceUpdate]);
+
+	React.useEffect(() => {
+		if (profile && profile.id) {
+			const fetchPixlTokenBalance = async () => {
+				try {
 					const pixlTokenBalance = await readHandler({
 						processId: AOS.pixl,
 						action: 'Balance',
 						tags: [{ name: 'Recipient', value: profile.id }],
 					});
-
-					setTokenBalances({
-						[AOS.defaultToken]: defaultTokenBalance || 0,
+					setTokenBalances((prevBalances) => ({
+						...prevBalances,
 						[AOS.pixl]: pixlTokenBalance || 0,
-					});
-				} catch (e: any) {
+					}));
+				} catch (e) {
 					console.error(e);
 				}
-			}
-		})();
+			};
+
+			fetchPixlTokenBalance();
+		}
 	}, [profile, toggleTokenBalanceUpdate]);
 
 	async function handleWallet() {

@@ -129,8 +129,8 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 						<span>{language.balances}</span>
 					</S.DBodyHeader>
 					<S.BalanceLine>
-						<span>{formatCount(arProvider.arBalance ? arProvider.arBalance.toString() : '0')}</span>
 						<ReactSVG src={ASSETS.ar} />
+						<span>{formatCount(arProvider.arBalance ? arProvider.arBalance.toString() : '0')}</span>
 					</S.BalanceLine>
 					{arProvider.tokenBalances && Object.keys(arProvider.tokenBalances).length > 0 && (
 						<>
@@ -141,6 +141,7 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 											amount={arProvider.tokenBalances[token]}
 											currency={token}
 											callback={() => setShowWalletDropdown(false)}
+											useReverseLayout
 										/>
 									</S.BalanceLine>
 								);

@@ -7,7 +7,6 @@ import { getRegistryProfiles, readHandler } from 'api';
 
 import { Button } from 'components/atoms/Button';
 import { CurrencyLine } from 'components/atoms/CurrencyLine';
-import { Modal } from 'components/molecules/Modal';
 import { OwnerLine } from 'components/molecules/OwnerLine';
 import { Panel } from 'components/molecules/Panel';
 import { AOS, ASSETS } from 'helpers/config';
@@ -20,8 +19,6 @@ import { RootState } from 'store';
 import * as S from './styles';
 import { IProps } from './types';
 
-// TODO: rank by days
-// TODO: panel leaderboard
 export default function Streaks(props: IProps) {
 	const streaksReducer = useSelector((state: RootState) => state.streaksReducer);
 
@@ -292,34 +289,45 @@ export default function Streaks(props: IProps) {
 		const sortedStreaks = Object.entries(streaksReducer).sort(([, a], [, b]) => (b as any).days - (a as any).days);
 
 		return (
-			<S.StreaksWrapper>
-				{(sortedStreaks as any).map(([address, { days }], index: number) => {
-					const profile = profiles.find((profile) => profile.id === address);
-					return (
-						<S.StreakLine key={index}>
-							<S.StreakIndex>
-								<span>{`${index + 1}.`}</span>
-							</S.StreakIndex>
-							<S.StreakProfile>
-								<OwnerLine
-									owner={{
-										address: address,
-										profile: profile || null,
-									}}
-									callback={() => {
-										setShowDropdown(false);
-										setShowLeaderboard(false);
-									}}
-								/>
-							</S.StreakProfile>
-							<S.StreakCount>
-								<span>{`${language.dayCount(days)}`}</span>
-								{getStreakIcon(days)}
-							</S.StreakCount>
-						</S.StreakLine>
-					);
-				})}
-			</S.StreaksWrapper>
+			<S.StreaksPanelWrapper>
+				<S.StreaksWrapper>
+					{(sortedStreaks as any).map(([address, { days }], index: number) => {
+						const profile = profiles.find((profile) => profile.id === address);
+						return (
+							<S.StreakLine key={index}>
+								<S.StreakIndex>
+									<span>{`${index + 1}.`}</span>
+								</S.StreakIndex>
+								<S.StreakProfile>
+									<OwnerLine
+										owner={{
+											address: address,
+											profile: profile || null,
+										}}
+										callback={() => {
+											setShowDropdown(false);
+											setShowLeaderboard(false);
+										}}
+									/>
+								</S.StreakProfile>
+								<S.StreakCount>
+									<span>{`${language.dayCount(days)}`}</span>
+									{getStreakIcon(days)}
+								</S.StreakCount>
+							</S.StreakLine>
+						);
+					})}
+				</S.StreaksWrapper>
+				<S.ReturnWrapper>
+					<Button
+						type={'primary'}
+						label={'Go back'}
+						handlePress={() => setShowLeaderboard(false)}
+						height={50}
+						fullWidth
+					/>
+				</S.ReturnWrapper>
+			</S.StreaksPanelWrapper>
 		);
 	}, [streaksReducer, profiles]);
 
@@ -332,7 +340,9 @@ export default function Streaks(props: IProps) {
 	}
 
 	function getDropdown() {
-		return (
+		return showLeaderboard ? (
+			<>{leaderboard}</>
+		) : (
 			<>
 				<S.SDHeader>{header}</S.SDHeader>
 				<S.SDStreak>{streak}</S.SDStreak>
@@ -360,7 +370,11 @@ export default function Streaks(props: IProps) {
 			<S.Wrapper>
 				{getAction()}
 				{showDropdown && (
-					<Panel open={showDropdown} header={language.streaks} handleClose={handleShowDropdown}>
+					<Panel
+						open={showDropdown || showLeaderboard}
+						header={showLeaderboard ? language.leaderboard : language.streaks}
+						handleClose={showLeaderboard ? () => setShowLeaderboard(false) : handleShowDropdown}
+					>
 						{getDropdown()}
 					</Panel>
 				)}
@@ -368,14 +382,5 @@ export default function Streaks(props: IProps) {
 		);
 	}
 
-	return props.profile && props.profile.id ? (
-		<>
-			{getView()}
-			{showLeaderboard && (
-				<Modal header={language.streakLeaderboard} handleClose={() => setShowLeaderboard(false)}>
-					<S.MWrapper className={'modal-wrapper'}>{leaderboard}</S.MWrapper>
-				</Modal>
-			)}
-		</>
-	) : null;
+	return props.profile && props.profile.id ? <>{getView()}</> : null;
 }

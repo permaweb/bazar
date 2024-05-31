@@ -31,7 +31,7 @@ export const OverlayWrapper = styled.div`
 	position: absolute;
 	top: 0;
 	left: 0;
-	background: rgba(30, 30, 30, 0.5);
+	background: ${(props) => props.theme.colors.overlay.alt1};
 	border-radius: ${STYLING.dimensions.radius.primary};
 	@media (max-width: ${STYLING.cutoffs.initial}) {
 		height: auto;
@@ -95,7 +95,7 @@ export const InfoHeader = styled.div`
 		font-size: ${(props) => props.theme.typography.size.base} !important;
 		font-family: ${(props) => props.theme.typography.family.primary} !important;
 		font-weight: ${(props) => props.theme.typography.weight.medium} !important;
-		color: ${(props) => props.theme.colors.font.light1} !important;
+		color: ${(props) => props.theme.colors.font.light2} !important;
 	}
 	@media (max-width: ${STYLING.cutoffs.initial}) {
 		justify-content: flex-start;
@@ -163,12 +163,12 @@ export const InfoCreator = styled.div`
 
 	p {
 		font-weight: ${(props) => props.theme.typography.weight.medium};
-		color: ${(props) => props.theme.colors.font.light1};
+		color: ${(props) => props.theme.colors.font.light2};
 	}
 
 	a {
 		&:hover {
-			color: ${(props) => props.theme.colors.font.light1};
+			color: ${(props) => props.theme.colors.font.light2};
 		}
 	}
 

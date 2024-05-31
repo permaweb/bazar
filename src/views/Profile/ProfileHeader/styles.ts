@@ -21,10 +21,26 @@ export const Wrapper = styled.div<{ backgroundImage: string }>`
 	}
 `;
 
-export const HeaderInfo = styled.div`
+export const OverlayWrapper = styled.div`
+	height: 100%;
+	width: 100%;
+	position: absolute;
+	top: 0;
+	left: 0;
+	background: ${(props) => props.theme.colors.overlay.alt1};
+	border-radius: ${STYLING.dimensions.radius.primary};
+`;
+
+export const HeaderWrapper = styled.div`
 	width: 100%;
 	padding: 20px;
-	background: ${(props) => `linear-gradient(0deg, ${props.theme.colors.overlay.alt1} 0%,transparent)`};
+	display: flex;
+	flex-wrap: wrap;
+	gap: 25px;
+	align-items: flex-end;
+	justify-content: space-between;
+	position: relative;
+	z-index: 1;
 	h4,
 	p,
 	span {
@@ -36,27 +52,22 @@ export const HeaderInfo = styled.div`
 			text-shadow: none;
 		}
 	}
+`;
+
+export const HeaderInfo = styled.div`
 	display: flex;
 	flex-wrap: wrap;
 	gap: 25px;
-	@media (max-width: ${STYLING.cutoffs.secondary}) {
-		flex-direction: column;
-	}
 `;
 
 export const HeaderActions = styled.div`
 	height: fit-content;
-	margin: auto 0 0 auto;
 	display: flex;
 	flex-wrap: wrap;
 	gap: 20px;
 
 	button {
 		width: fit-content;
-	}
-
-	@media (max-width: ${STYLING.cutoffs.secondary}) {
-		flex-direction: column;
 	}
 `;
 
@@ -97,6 +108,32 @@ export const HeaderInfoDetail = styled.div`
 		color: ${(props) => props.theme.colors.font.light1};
 		font-size: ${(props) => props.theme.typography.size.small};
 		font-weight: ${(props) => props.theme.typography.weight.bold};
+	}
+`;
+
+export const HeaderInfoBio = styled(HeaderInfoDetail)`
+	margin: 10px 0 0 0;
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 10px;
+	p {
+		color: ${(props) => props.theme.colors.font.light1};
+		font-size: ${(props) => props.theme.typography.size.small};
+		font-weight: ${(props) => props.theme.typography.weight.bold};
+		line-height: 1.65;
+	}
+	span {
+		color: ${(props) => props.theme.colors.font.light2};
+		font-size: ${(props) => props.theme.typography.size.small};
+	}
+	button {
+		color: ${(props) => props.theme.colors.font.light1};
+		font-size: ${(props) => props.theme.typography.size.small};
+		font-weight: ${(props) => props.theme.typography.weight.bold};
+		&:hover {
+			color: ${(props) => props.theme.colors.font.light2};
+		}
 	}
 `;
 

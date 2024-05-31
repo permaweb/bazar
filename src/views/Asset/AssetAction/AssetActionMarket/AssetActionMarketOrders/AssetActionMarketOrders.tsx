@@ -229,9 +229,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 				if (forwardedTags) transferTags.push(...forwardedTags);
 
-				// TODO
-				console.log(transferTags);
-
 				setOrderLoading(true);
 				try {
 					setCurrentNotification('Depositing balance...');
@@ -253,26 +250,20 @@ export default function AssetActionMarketOrders(props: IProps) {
 					console.log(response);
 
 					if (response) {
-						if (response['Transfer-Success']) {
-							setCurrentNotification(response['Transfer-Success'].message || 'Deposited funds');
-							switch (props.type) {
-								case 'buy':
-								case 'sell':
-									setCurrentNotification(
-										response['Action-Response'] && response['Action-Response'].message
-											? response['Action-Response'].message
-											: 'Order created!'
-									);
-									setOrderSuccess(true);
-									break;
-								case 'transfer':
-									setOrderSuccess(true);
-									break;
-							}
-						} else if (response['Transfer-Error']) {
-							setCurrentNotification(response['Transfer-Error'].message || 'Error depositing funds');
-						} else {
-							setCurrentNotification('Error depositing funds');
+						setCurrentNotification(response['Transfer-Success'].message || 'Deposited funds');
+						switch (props.type) {
+							case 'buy':
+							case 'sell':
+								setCurrentNotification(
+									response['Action-Response'] && response['Action-Response'].message
+										? response['Action-Response'].message
+										: 'Order created!'
+								);
+								setOrderSuccess(true);
+								break;
+							case 'transfer':
+								setOrderSuccess(true);
+								break;
 						}
 					} else {
 						setCurrentNotification('Error depositing funds');

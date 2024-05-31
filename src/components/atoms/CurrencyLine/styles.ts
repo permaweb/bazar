@@ -1,8 +1,10 @@
 import styled from 'styled-components';
 
-export const Wrapper = styled.div`
+export const Wrapper = styled.div<{ useReverseLayout: boolean }>`
 	display: flex;
+	flex-direction: ${(props) => (props.useReverseLayout ? 'row-reverse' : 'row')};
 	align-items: center;
+	gap: 7.5px;
 	span {
 		font-size: ${(props) => props.theme.typography.size.base};
 		font-family: ${(props) => props.theme.typography.family.alt1};
@@ -29,7 +31,6 @@ export const Wrapper = styled.div`
 `;
 
 export const Currency = styled.div`
-	margin: 0 0 0 7.5px;
 	display: flex;
 	align-items: center;
 	justify-content: center;
