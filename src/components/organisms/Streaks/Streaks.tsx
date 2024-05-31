@@ -20,6 +20,8 @@ import { RootState } from 'store';
 import * as S from './styles';
 import { IProps } from './types';
 
+// TODO: rank by days
+// TODO: panel leaderboard
 export default function Streaks(props: IProps) {
 	const streaksReducer = useSelector((state: RootState) => state.streaksReducer);
 
@@ -279,11 +281,20 @@ export default function Streaks(props: IProps) {
 	}, [dailyRewards, pixlBalance]);
 
 	const leaderboard = React.useMemo(() => {
-		return streaksReducer && profiles ? (
+		if (!streaksReducer || !profiles) {
+			return (
+				<S.MLoadingWrapper>
+					<span>{`${language.loading}...`}</span>
+				</S.MLoadingWrapper>
+			);
+		}
+
+		const sortedStreaks = Object.entries(streaksReducer).sort(([, a], [, b]) => (b as any).days - (a as any).days);
+
+		return (
 			<S.StreaksWrapper>
-				{Object.keys(streaksReducer).map((address: string, index: number) => {
-					const addressCount = streaksReducer[address].days;
-					const profile = profiles.find((profile: RegistryProfileType) => profile.id === address);
+				{(sortedStreaks as any).map(([address, { days }], index: number) => {
+					const profile = profiles.find((profile) => profile.id === address);
 					return (
 						<S.StreakLine key={index}>
 							<S.StreakIndex>
@@ -302,17 +313,13 @@ export default function Streaks(props: IProps) {
 								/>
 							</S.StreakProfile>
 							<S.StreakCount>
-								<span>{`${language.dayCount(addressCount)}`}</span>
-								{getStreakIcon(addressCount)}
+								<span>{`${language.dayCount(days)}`}</span>
+								{getStreakIcon(days)}
 							</S.StreakCount>
 						</S.StreakLine>
 					);
 				})}
 			</S.StreaksWrapper>
-		) : (
-			<S.MLoadingWrapper>
-				<span>{`${language.loading}...`}</span>
-			</S.MLoadingWrapper>
 		);
 	}, [streaksReducer, profiles]);
 

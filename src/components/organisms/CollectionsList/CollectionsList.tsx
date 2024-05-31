@@ -4,11 +4,10 @@ import { Link } from 'react-router-dom';
 import { getCollections } from 'api';
 
 import * as GS from 'app/styles';
-import { Button } from 'components/atoms/Button';
 import { Loader } from 'components/atoms/Loader';
-import { CURSORS, DEFAULTS, URLS } from 'helpers/config';
+import { DEFAULTS, URLS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
-import { CollectionGQLResponseType, CollectionType } from 'helpers/types';
+import { CollectionType } from 'helpers/types';
 import { formatDate } from 'helpers/utils';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 
@@ -19,9 +18,7 @@ export default function CollectionsList(props: IProps) {
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
 
-	const [collections, setCollections] = React.useState<CollectionGQLResponseType | null>(null);
-	const [nextCursor, setNextCursor] = React.useState<string | null>(null);
-	const [toggleUpdate, setToggleUpdate] = React.useState<boolean>(false);
+	const [collections, setCollections] = React.useState<CollectionType[] | null>(null);
 	const [loading, setLoading] = React.useState<boolean>(false);
 	const [errorResponse, setErrorResponse] = React.useState<string | null>(null);
 
@@ -29,30 +26,20 @@ export default function CollectionsList(props: IProps) {
 		(async function () {
 			setLoading(true);
 			try {
-				const collectionsFetch: CollectionGQLResponseType = await getCollections({
-					cursor: nextCursor,
-					owner: props.owner,
-				});
+				const collectionsFetch: CollectionType[] = await getCollections(props.owner);
 				if (collections) {
-					setCollections({
-						data: [...collections.data, ...collectionsFetch.data],
-						nextCursor: collectionsFetch.nextCursor,
-						previousCursor: collectionsFetch.previousCursor,
-						count: collections.data.length + collectionsFetch.data.length,
-					});
+					setCollections([...collections, ...collectionsFetch]);
 				} else setCollections(collectionsFetch);
-
-				setNextCursor(collectionsFetch.nextCursor);
 			} catch (e: any) {
 				setErrorResponse(e.message || language.collectionsFetchFailed);
 			}
 			setLoading(false);
 		})();
-	}, [toggleUpdate]);
+	}, []);
 
 	function getData() {
-		if (collections && collections.data) {
-			if (collections.data.length > 0) {
+		if (collections) {
+			if (collections.length > 0) {
 				return (
 					<S.Wrapper className={'fade-in'}>
 						<S.Header>
@@ -65,8 +52,8 @@ export default function CollectionsList(props: IProps) {
 							</S.DateCreated>
 						</S.ListHeader>
 						<S.CollectionsWrapper>
-							{collections.data.map((collection: CollectionType, index: number) => {
-								const redirect = `${URLS.collection}${collection.data.id}`;
+							{collections.map((collection: CollectionType, index: number) => {
+								const redirect = `${URLS.collection}${collection.id}`;
 
 								return (
 									<S.CollectionWrapper key={index} className={'border-wrapper-primary fade-in'}>
@@ -76,34 +63,21 @@ export default function CollectionsList(props: IProps) {
 													<span>{index + 1}</span>
 												</S.Index>
 												<S.Thumbnail className={'border-wrapper-primary'}>
-													<img src={getTxEndpoint(collection.data.thumbnail || DEFAULTS.thumbnail)} alt={'Thumbnail'} />
+													<img src={getTxEndpoint(collection.thumbnail || DEFAULTS.thumbnail)} alt={'Thumbnail'} />
 												</S.Thumbnail>
 												<S.Title>
-													<p>{collection.data.title}</p>
+													<p>{collection.title}</p>
 												</S.Title>
 											</S.FlexElement>
 											<S.DateCreated>
 												<S.FlexElement>
-													<span>{formatDate(collection.data.dateCreated, 'iso')}</span>
+													<span>{formatDate(collection.dateCreated, 'epoch')}</span>
 												</S.FlexElement>
 											</S.DateCreated>
 										</Link>
 									</S.CollectionWrapper>
 								);
 							})}
-							{nextCursor && nextCursor !== CURSORS.end && (
-								<S.UpdateWrapper>
-									<Button
-										type={'primary'}
-										label={'Load more'}
-										handlePress={() => setToggleUpdate(!toggleUpdate)}
-										disabled={loading}
-										loading={loading}
-										height={60}
-										width={350}
-									/>
-								</S.UpdateWrapper>
-							)}
 						</S.CollectionsWrapper>
 					</S.Wrapper>
 				);

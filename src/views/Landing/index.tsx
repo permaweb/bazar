@@ -6,7 +6,7 @@ import { AssetsTable } from 'components/organisms/AssetsTable';
 import { CollectionsCarousel } from 'components/organisms/CollectionsCarousel';
 import { CreatorsTable } from 'components/organisms/CreatorsTable';
 import { PAGINATORS } from 'helpers/config';
-import { CollectionGQLResponseType, CollectionType } from 'helpers/types';
+import { CollectionType } from 'helpers/types';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 
 import * as S from './styles';
@@ -23,8 +23,8 @@ export default function Landing() {
 		(async function () {
 			setCollectionsLoading(true);
 			try {
-				const collectionsFetch: CollectionGQLResponseType = await getCollections({ cursor: null, owner: null });
-				setCollections(collectionsFetch.data);
+				const collectionsFetch: CollectionType[] = await getCollections();
+				if (collectionsFetch) setCollections(collectionsFetch);
 			} catch (e: any) {
 				setCollectionsErrorResponse(e.message || language.collectionsFetchFailed);
 			}

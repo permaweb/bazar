@@ -49,20 +49,26 @@ export default function AssetActionMarket(props: IProps) {
 	}, [props.asset]);
 
 	React.useEffect(() => {
-		if (tabs) setCurrentTab(tabs[0].label);
+		if (tabs && !currentTab) setCurrentTab(tabs[0].label);
 	}, [tabs]);
 
 	function getCurrentTab() {
+		let type = null;
 		switch (currentTab) {
 			case MARKET_ACTION_TAB_OPTIONS.buy:
-				return <AssetActionMarketOrders asset={props.asset} type={'buy'} />;
+				type = 'buy';
+				break;
 			case MARKET_ACTION_TAB_OPTIONS.sell:
-				return <AssetActionMarketOrders asset={props.asset} type={'sell'} />;
+				type = 'sell';
+				break;
 			case MARKET_ACTION_TAB_OPTIONS.transfer:
-				return <AssetActionMarketOrders asset={props.asset} type={'transfer'} />;
+				type = 'transfer';
+				break;
+
 			default:
-				return null;
+				break;
 		}
+		return <AssetActionMarketOrders asset={props.asset} type={type} toggleUpdate={props.toggleUpdate} />;
 	}
 
 	return tabs && currentTab ? (

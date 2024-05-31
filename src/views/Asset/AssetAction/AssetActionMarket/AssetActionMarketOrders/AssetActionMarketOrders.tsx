@@ -71,12 +71,14 @@ export default function AssetActionMarketOrders(props: IProps) {
 	const [insufficientBalance, setInsufficientBalance] = React.useState<boolean>(false);
 
 	React.useEffect(() => {
-		if (!arProvider.tokenBalances || !arProvider.tokenBalances[AOS.defaultToken]) {
-			setInsufficientBalance(true);
-		} else {
-			if (props.type === 'buy') {
+		if (props.type === 'buy') {
+			if (!arProvider.tokenBalances || !arProvider.tokenBalances[AOS.defaultToken]) {
+				setInsufficientBalance(true);
+			} else {
 				setInsufficientBalance(Number(arProvider.tokenBalances[AOS.defaultToken]) < getTotalPrice());
 			}
+		} else {
+			setInsufficientBalance(false);
 		}
 	}, [arProvider.tokenBalances, props.type, props.asset, currentOrderQuantity]);
 
@@ -186,22 +188,29 @@ export default function AssetActionMarketOrders(props: IProps) {
 				const dominantToken = pair[0];
 				const swapToken = pair[1];
 
+				let orderQuantity: string | number = currentOrderQuantity;
 				let calculatedQuantity: string | number = currentOrderQuantity;
 
 				// TODO
 				if (props.type === 'sell' || props.type === 'transfer') {
-					if (denomination) calculatedQuantity = currentOrderQuantity * denomination;
+					if (denomination) {
+						calculatedQuantity = currentOrderQuantity * denomination;
+						orderQuantity = currentOrderQuantity * denomination;
+					}
 				}
 
 				if (props.type === 'buy') {
-					calculatedQuantity = getTotalPrice(true);
+					calculatedQuantity = getTotalPrice(); // true
+					orderQuantity = getTotalPrice(); // true
 				}
+
 				calculatedQuantity = calculatedQuantity.toString();
+				orderQuantity = orderQuantity.toString();
 
 				if (props.type === 'buy' || props.type === 'sell') {
 					forwardedTags = [
 						{ name: 'X-Order-Action', value: 'Create-Order' },
-						{ name: 'X-Quantity', value: calculatedQuantity },
+						{ name: 'X-Quantity', value: orderQuantity },
 						{ name: 'X-Swap-Token', value: swapToken },
 					];
 					if (unitPrice && unitPrice > 0) {
@@ -219,6 +228,9 @@ export default function AssetActionMarketOrders(props: IProps) {
 				];
 
 				if (forwardedTags) transferTags.push(...forwardedTags);
+
+				// TODO
+				console.log(transferTags);
 
 				setOrderLoading(true);
 				try {
@@ -246,12 +258,12 @@ export default function AssetActionMarketOrders(props: IProps) {
 							switch (props.type) {
 								case 'buy':
 								case 'sell':
-									if (response['Action-Response']) {
-										setCurrentNotification(response['Action-Response'].message);
-										if (response['Action-Response'].status === 'Success') {
-											setOrderSuccess(true);
-										}
-									}
+									setCurrentNotification(
+										response['Action-Response'] && response['Action-Response'].message
+											? response['Action-Response'].message
+											: 'Order created!'
+									);
+									setOrderSuccess(true);
 									break;
 								case 'transfer':
 									setOrderSuccess(true);
@@ -369,7 +381,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 					const quantity = Number(order.quantity);
 					const price = Number(order.price);
 
-					let assetQuantity = currentOrderQuantity;
+					let assetQuantity = Number(currentOrderQuantity);
 
 					if (useDenomination && denomination) assetQuantity = currentOrderQuantity * denomination; // TODO
 
@@ -479,42 +491,44 @@ export default function AssetActionMarketOrders(props: IProps) {
 			setUpdating(true);
 			windowUtils.scrollTo(0, 0, 'smooth');
 
-			try {
-				const existingUCM = { ...ucmReducer };
+			arProvider.setToggleTokenBalanceUpdate(!arProvider.toggleTokenBalanceUpdate);
+			props.toggleUpdate();
 
-				const fetchUntilChange = async () => {
-					let changeDetected = false;
-					let tries = 0;
-					const maxTries = 10;
+			if (props.type !== 'transfer') {
+				try {
+					const existingUCM = { ...ucmReducer };
 
-					while (!changeDetected && tries < maxTries) {
-						const ucmState = await readHandler({
-							processId: AOS.ucm,
-							action: 'Info',
-						});
-						dispatch(ucmActions.setUCM(ucmState));
+					const fetchUntilChange = async () => {
+						let changeDetected = false;
+						let tries = 0;
+						const maxTries = 10;
 
-						if (JSON.stringify(existingUCM) !== JSON.stringify(ucmState)) {
-							changeDetected = true;
-						} else {
-							await new Promise((resolve) => setTimeout(resolve, 1000));
-							tries++;
+						while (!changeDetected && tries < maxTries) {
+							const ucmState = await readHandler({
+								processId: AOS.ucm,
+								action: 'Info',
+							});
+							dispatch(ucmActions.setUCM(ucmState));
+
+							if (JSON.stringify(existingUCM) !== JSON.stringify(ucmState)) {
+								changeDetected = true;
+							} else {
+								await new Promise((resolve) => setTimeout(resolve, 1000));
+								tries++;
+							}
 						}
-					}
 
-					if (!changeDetected) {
-						console.warn(`No changes detected after ${maxTries} attempts`);
-					}
-				};
+						if (!changeDetected) {
+							console.warn(`No changes detected after ${maxTries} attempts`);
+						}
+					};
 
-				await fetchUntilChange();
-
-				if (props.type === 'buy') {
-					arProvider.setToggleTokenBalanceUpdate(!arProvider.toggleTokenBalanceUpdate);
+					await fetchUntilChange();
+				} catch (e: any) {
+					console.error(e);
 				}
-			} catch (e: any) {
-				console.error(e);
 			}
+
 			setUpdating(false);
 		}
 	}
@@ -732,7 +746,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 				<S.SalesWrapper>{getOrderDetails()}</S.SalesWrapper>
 				<S.ActionWrapper loading={null}>
 					{getAction(false)}
-					{insufficientBalance && (
+					{arProvider.tokenBalances && arProvider.tokenBalances[AOS.defaultToken] && insufficientBalance && (
 						<S.MessageWrapper>
 							<span>Not enough tokens to purchase this asset</span>
 						</S.MessageWrapper>

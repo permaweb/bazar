@@ -45,12 +45,13 @@ export default function Collection() {
 			return (
 				<>
 					<S.CardWrapper
-						backgroundImage={getTxEndpoint(collection.data.banner || DEFAULTS.banner)}
+						backgroundImage={getTxEndpoint(collection.banner || DEFAULTS.banner)}
 						className={'border-wrapper-alt2'}
 					>
+						<S.OverlayWrapper />
 						<S.InfoWrapper>
 							<S.Thumbnail className={'border-wrapper-alt1'}>
-								<img src={getTxEndpoint(collection.data.thumbnail || DEFAULTS.thumbnail)} alt={'Thumbnail'} />
+								<img src={getTxEndpoint(collection.thumbnail || DEFAULTS.thumbnail)} alt={'Thumbnail'} />
 							</S.Thumbnail>
 							<S.InfoBody>
 								<S.InfoBodyTile>
@@ -58,7 +59,7 @@ export default function Collection() {
 										<span>{language.title}</span>
 									</S.InfoHeaderFlex2>
 									<S.InfoDetailFlex2>
-										<span>{collection.data.title}</span>
+										<span>{collection.title}</span>
 									</S.InfoDetailFlex2>
 								</S.InfoBodyTile>
 								{collection.metrics && (
@@ -98,16 +99,16 @@ export default function Collection() {
 									<p>{language.createdBy}</p>
 									<OwnerLine
 										owner={{
-											address: collection.data.creator,
+											address: collection.creator,
 											profile: collection.creatorProfile,
 										}}
 										callback={null}
 									/>
-									<p>{formatDate(collection.data.dateCreated, 'iso')}</p>
+									<p>{formatDate(collection.dateCreated, 'epoch')}</p>
 								</S.InfoCreator>
-								{collection.data.description && (
+								{collection.description && (
 									<S.InfoDescription>
-										<p>{collection.data.description}</p>
+										<p>{collection.description}</p>
 									</S.InfoDescription>
 								)}
 							</S.InfoFooter>

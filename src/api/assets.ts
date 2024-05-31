@@ -171,7 +171,7 @@ export function structureAssets(gqlResponse: DefaultGQLResponseType): AssetType[
 		structuredAssets.push({
 			data: {
 				id: element.node.id,
-				creator: getTagValue(element.node.tags, TAGS.keys.initialOwner),
+				creator: getTagValue(element.node.tags, TAGS.keys.creator),
 				title:
 					getTagValue(element.node.tags, TAGS.keys.title) ||
 					getTagValue(element.node.tags, TAGS.keys.name) ||
@@ -190,6 +190,8 @@ export function structureAssets(gqlResponse: DefaultGQLResponseType): AssetType[
 				udl: getLicense(element),
 				thumbnail: getTagValue(element.node.tags, TAGS.keys.thumbnail),
 				implementation: getTagValue(element.node.tags, TAGS.keys.implements),
+				collectionId: getTagValue(element.node.tags, TAGS.keys.collectionId),
+				collectionName: getTagValue(element.node.tags, TAGS.keys.collectionName),
 			},
 		});
 	});
@@ -208,6 +210,7 @@ function getLicense(element: GQLNodeResponseType): LicenseType | null {
 			dataModelTraining: { value: getTagValue(element.node.tags, TAGS.keys.dataModelTraining) },
 			paymentMode: getTagValue(element.node.tags, TAGS.keys.paymentMode),
 			paymentAddress: getTagValue(element.node.tags, TAGS.keys.paymentAddress),
+			currency: getTagValue(element.node.tags, TAGS.keys.currency),
 		};
 	}
 	return null;

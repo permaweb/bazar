@@ -63,8 +63,14 @@ export function formatPercentage(percentage) {
 	let multiplied = percentage * 100;
 	let decimalPart = multiplied.toString().split('.')[1];
 
+	// If there is no decimal part, return the integer value
 	if (!decimalPart) {
 		return `${multiplied.toFixed(0)}%`;
+	}
+
+	// Check the length of the decimal part
+	if (decimalPart.length >= 4) {
+		return `${Math.round(multiplied)}%`;
 	}
 
 	// Find the nearest non-zero decimal place
@@ -108,8 +114,17 @@ export function formatRequiredField(field: string) {
 	return `${field} *`;
 }
 
-export function splitTagValue(tag: string) {
-	return tag.split('-').join(' ');
+export function splitTagValue(tag) {
+	let parts = tag.split('-');
+
+	let lastPart = parts[parts.length - 1];
+	if (!isNaN(lastPart)) {
+		parts = parts.slice(0, -1).join(' ') + ': ' + lastPart;
+	} else {
+		parts = parts.join(' ');
+	}
+
+	return parts;
 }
 
 export function getTagDisplay(value: string) {
@@ -141,7 +156,6 @@ export function getAssetOrderType(order: EntryOrderType, currency: string): Asse
 	let currentAssetOrder: AssetOrderType = {
 		creator: order.Creator,
 		dateCreated: order.DateCreated,
-		depositTxId: order.DepositTxId,
 		id: order.Id,
 		originalQuantity: order.OriginalQuantity,
 		quantity: order.Quantity,

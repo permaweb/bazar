@@ -73,17 +73,17 @@ export default function CollectionsCarousel(props: IProps) {
 									<S.CollectionWrapper
 										key={index}
 										className={'fade-in border-wrapper-alt2'}
-										backgroundImage={getTxEndpoint(collection.data.thumbnail || DEFAULTS.thumbnail)}
+										backgroundImage={getTxEndpoint(collection.thumbnail || DEFAULTS.thumbnail)}
 										disabled={false}
 									>
-										<Link to={`${URLS.collection}${collection.data.id}`}>
+										<Link to={`${URLS.collection}${collection.id}`}>
 											<S.InfoWrapper>
 												<S.InfoTile>
 													<S.InfoDetail>
-														<span>{collection.data.title}</span>
+														<span>{collection.title}</span>
 													</S.InfoDetail>
 													<S.InfoDetailAlt>
-														<span>{`${language.createdOn} ${formatDate(collection.data.dateCreated, 'iso')}`}</span>
+														<span>{`${language.createdOn} ${formatDate(collection.dateCreated, 'epoch')}`}</span>
 													</S.InfoDetailAlt>
 												</S.InfoTile>
 											</S.InfoWrapper>

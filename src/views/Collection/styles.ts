@@ -25,6 +25,30 @@ export const CardWrapper = styled.div<{ backgroundImage: string }>`
 	}
 `;
 
+export const OverlayWrapper = styled.div`
+	height: 100%;
+	width: 100%;
+	position: absolute;
+	top: 0;
+	left: 0;
+	background: rgba(30, 30, 30, 0.5);
+	border-radius: ${STYLING.dimensions.radius.primary};
+	@media (max-width: ${STYLING.cutoffs.initial}) {
+		height: auto;
+	}
+`;
+
+export const InfoWrapper = styled.div`
+	width: 100%;
+	padding: 20px;
+	position: relative;
+	z-index: 1;
+	p,
+	span {
+		text-shadow: 0 0 5px ${(props) => props.theme.colors.font.dark1};
+	}
+`;
+
 export const Thumbnail = styled.div`
 	height: 85px;
 	width: 85px;
@@ -37,16 +61,6 @@ export const Thumbnail = styled.div`
 		height: 100%;
 		width: 100%;
 		object-fit: cover;
-	}
-`;
-
-export const InfoWrapper = styled.div`
-	width: 100%;
-	padding: 20px;
-	background: ${(props) => `linear-gradient(0deg, ${props.theme.colors.overlay.alt1} 0%,transparent)`};
-	p,
-	span {
-		text-shadow: 0 0 5px ${(props) => props.theme.colors.font.dark1};
 	}
 `;
 
@@ -106,7 +120,6 @@ export const InfoDetail = styled.div`
 	img {
 		height: 22.5px;
 		width: 22.5px;
-		margin: 5.5px 0 0 7.5px;
 	}
 	a {
 		&:hover {

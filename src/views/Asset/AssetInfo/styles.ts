@@ -26,3 +26,9 @@ export const OwnerLine = styled.div`
 		margin: 0 10px 0 0;
 	}
 `;
+
+export const CurrencyIcon = styled.img`
+	height: 16.5px !important;
+	width: 16.5px !important;
+	margin: 3.5px 0 0 6.5px !important;
+`;

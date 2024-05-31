@@ -1,25 +1,27 @@
 import React from 'react';
+import { useSelector } from 'react-redux';
+import { Link } from 'react-router-dom';
 
-import { getProfileByWalletAddress } from 'api';
+import { getProfileById } from 'api';
 
 import * as GS from 'app/styles';
 import { Drawer } from 'components/atoms/Drawer';
 import { TxAddress } from 'components/atoms/TxAddress';
 import { OwnerLine } from 'components/molecules/OwnerLine';
 import { AssetData } from 'components/organisms/AssetData';
-import { ASSETS, LICENSES } from 'helpers/config';
+import { ASSETS, LICENSES, URLS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import { ProfileHeaderType } from 'helpers/types';
 import { checkValidAddress, formatCount, formatDate, getTagDisplay, splitTagValue } from 'helpers/utils';
 import { useLanguageProvider } from 'providers/LanguageProvider';
+import { RootState } from 'store';
 
 import * as S from './styles';
 import { IProps } from './types';
 
-// TODO: creator
-// TODO: license
-// TODO: collection link
 export default function AssetInfo(props: IProps) {
+	const currenciesReducer = useSelector((state: RootState) => state.currenciesReducer);
+
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
 
@@ -29,7 +31,7 @@ export default function AssetInfo(props: IProps) {
 		(async function () {
 			if (props.asset && props.asset.data.creator && checkValidAddress(props.asset.data.creator)) {
 				try {
-					setCreator(await getProfileByWalletAddress({ address: props.asset.data.creator }));
+					setCreator(await getProfileById({ profileId: props.asset.data.creator }));
 				} catch (e: any) {
 					console.error(e);
 				}
@@ -45,15 +47,16 @@ export default function AssetInfo(props: IProps) {
 			return (
 				<GS.DrawerContentDetail>
 					{splitTagValue(licenseElement.value)}{' '}
-					<img
-						style={{ height: '17.5px', width: '17.5px', margin: '3.5px 0 0 10px' }}
-						src={getTxEndpoint('L99jaxRKQKJt9CqoJtPaieGPEhJD3wNhR4iGqc8amXs')}
-					/>
+					{props.asset.data.udl.currency &&
+						currenciesReducer &&
+						currenciesReducer[props.asset.data.udl.currency] &&
+						currenciesReducer[props.asset.data.udl.currency].Logo &&
+						/\d/.test(licenseElement.value) && (
+							<S.CurrencyIcon src={getTxEndpoint(currenciesReducer[props.asset.data.udl.currency].Logo)} />
+						)}
 				</GS.DrawerContentDetail>
 			);
-		}
-
-		if (checkValidAddress(licenseElement)) {
+		} else if (checkValidAddress(licenseElement)) {
 			return <TxAddress address={licenseElement} wrap={false} />;
 		} else {
 			return <GS.DrawerContentDetail>{licenseElement}</GS.DrawerContentDetail>;
@@ -111,6 +114,9 @@ export default function AssetInfo(props: IProps) {
 					content={
 						<GS.DrawerContent>
 							<GS.DrawerHeader>{props.asset.data.title}</GS.DrawerHeader>
+							{props.asset.data.description && (
+								<GS.DrawerContentDescription>{props.asset.data.description}</GS.DrawerContentDescription>
+							)}
 							{creator && (
 								<GS.DrawerContentFlex>
 									<S.OwnerLine>
@@ -125,23 +131,27 @@ export default function AssetInfo(props: IProps) {
 									</S.OwnerLine>
 								</GS.DrawerContentFlex>
 							)}
-							{props.asset.data.description && (
-								<GS.DrawerContentDetail>{props.asset.data.description}</GS.DrawerContentDetail>
-							)}
-							{/* {sponsored && (
-								<S.DCOwnerFlex>
-									<p>{language.sponsoredAsset}</p>
-								</S.DCOwnerFlex>
-							)}
-							{collection && (
-								<S.DCCollectionFlex>
-									<Link to={`${urls.collection}${collection.id}`}>{collection.title}</Link>
-								</S.DCCollectionFlex>
-							)} */}
 						</GS.DrawerContent>
 					}
 				/>
 			</GS.DrawerWrapper>
+			{props.asset.data.collectionId && checkValidAddress(props.asset.data.collectionId) && (
+				<GS.DrawerWrapper>
+					<Drawer
+						title={language.collection}
+						icon={ASSETS.collection}
+						content={
+							<GS.DrawerContent>
+								<GS.DrawerContentDetail>
+									<Link to={`${URLS.collection}${props.asset.data.collectionId}`}>
+										{props.asset.data.collectionName ?? props.asset.data.collectionId}
+									</Link>
+								</GS.DrawerContentDetail>
+							</GS.DrawerContent>
+						}
+					/>
+				</GS.DrawerWrapper>
+			)}
 			<GS.DrawerWrapper>
 				<Drawer
 					title={language.provenanceDetails}

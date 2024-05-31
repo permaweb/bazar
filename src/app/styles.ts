@@ -377,10 +377,19 @@ export const DrawerContentDetail = styled.p`
 	font-weight: ${(props) => props.theme.typography.weight.bold};
 	color: ${(props) => props.theme.colors.font.primary};
 	word-wrap: break-word;
+	white-space: nowrap;
+	a {
+		text-decoration: underline;
+	}
 	img {
 		height: 20px;
 		width: 17.5px;
 	}
+`;
+
+export const DrawerContentDescription = styled(DrawerContentDetail)`
+	white-space: normal;
+	line-height: 1.65;
 `;
 
 export const DrawerContentLink = styled.a`

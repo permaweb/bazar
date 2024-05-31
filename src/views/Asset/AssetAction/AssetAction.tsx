@@ -276,7 +276,13 @@ export default function AssetAction(props: IProps) {
 	function getCurrentTab() {
 		switch (currentTab) {
 			case ACTION_TAB_OPTIONS.market:
-				return <AssetActionMarket asset={props.asset} getCurrentListings={getCurrentListings} />;
+				return (
+					<AssetActionMarket
+						asset={props.asset}
+						getCurrentListings={getCurrentListings}
+						toggleUpdate={props.toggleUpdate}
+					/>
+				);
 			case ACTION_TAB_OPTIONS.comments:
 				return <AssetActionComments asset={props.asset} />;
 			case ACTION_TAB_OPTIONS.activity:

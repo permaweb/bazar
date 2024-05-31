@@ -52,12 +52,22 @@ export default function OrderCancel(props: IProps) {
 					handler: 'Cancel-Order',
 				});
 
-				if (response && response['Action-Response']) {
-					setResponse({
-						message: response['Action-Response'].message,
-						status: response['Action-Response'].status === 'Success' ? 'success' : 'warning',
-					});
+				if (response) {
+					if (response['Action-Response']) {
+						setResponse({
+							message: response['Action-Response'].message,
+							status: response['Action-Response'].status === 'Success' ? 'success' : 'warning',
+						});
+					} else {
+						setResponse({
+							message: 'Order cancelled',
+							status: 'success',
+						});
+					}
+
 					setCancelProcessed(true);
+
+					arProvider.setToggleTokenBalanceUpdate(!arProvider.toggleTokenBalanceUpdate);
 
 					const existingUCM = { ...ucmReducer };
 					const maxTries = 10;

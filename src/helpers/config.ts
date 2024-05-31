@@ -7,6 +7,7 @@ import bridge from 'assets/bridge.svg';
 import buy from 'assets/buy.svg';
 import checkmark from 'assets/checkmark.svg';
 import close from 'assets/close.svg';
+import collection from 'assets/collection.svg';
 import comments from 'assets/comments.svg';
 import copy from 'assets/copy.svg';
 import dark from 'assets/dark.svg';
@@ -51,6 +52,7 @@ export const AOS = {
 	ucm: 'fzRGvSW2oSop9xGLxs5mcaRtCbrbug8imI_uRZHKdiU',
 	defaultToken: 'xU9zFkq3X2ZQ6olwNVvr1vUWIjc3kXTWr7xKQD6dh10',
 	pixl: 'jmu9__Fw79vcsCbPD15cy-xR0zFZa3lXv16rbpWQtRA',
+	collectionsRegistry: 'YwDYeqpBKURVp3cvSEosefl4LBsfmMTW7QSkauv3pas',
 	profileRegistry: 'kFYMezhjcPCZLr2EkkwzIXP5A64QmtME6Bxa8bGmbzI',
 	profileSrc: 'JjLm85z7IRoMJTwcYoNfM-9xbdZhqxOfjD7vI9c6_co',
 };
@@ -76,6 +78,7 @@ export const ASSETS = {
 	buy,
 	checkmark,
 	close,
+	collection,
 	comments,
 	copy,
 	dark,
@@ -164,9 +167,12 @@ export const TAGS = {
 		access: 'Access-Fee',
 		avatar: 'Avatar',
 		banner: 'Banner',
+		collectionId: 'Collection-Id',
+		collectionName: 'Collection-Name',
 		commericalUse: 'Commercial-Use',
 		contentType: 'Content-Type',
 		creator: 'Creator',
+		currency: 'Currency',
 		dataModelTraining: 'Data-Model-Training',
 		dataProtocol: 'Data-Protocol',
 		dateCreated: 'Date-Created',

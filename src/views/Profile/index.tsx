@@ -1,11 +1,11 @@
 import React from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { ReactSVG } from 'react-svg';
 
 import { getProfileById } from 'api';
 
-import { Loader } from 'components/atoms/Loader';
 import { URLTabs } from 'components/molecules/URLTabs';
-import { URLS } from 'helpers/config';
+import { ASSETS, URLS } from 'helpers/config';
 import { ProfileHeaderType } from 'helpers/types';
 import { checkValidAddress } from 'helpers/utils';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
@@ -51,7 +51,6 @@ export default function Profile() {
 		})();
 	}, [address, arProvider, navigate]);
 
-	// TODO: collections by profile
 	const TABS = React.useMemo(
 		() => [
 			{
@@ -66,7 +65,7 @@ export default function Profile() {
 				icon: null,
 				disabled: false,
 				url: URLS.profileCollections(address),
-				view: () => <ProfileCollections address={profile && profile.walletAddress ? profile.walletAddress : null} />,
+				view: () => <ProfileCollections address={address} />,
 			},
 			// {
 			// 	label: language.listings,
@@ -96,6 +95,8 @@ export default function Profile() {
 			{urlTabs}
 		</>
 	) : (
-		<Loader />
+		<div className={'app-loader'}>
+			<ReactSVG src={ASSETS.logo} />
+		</div>
 	);
 }

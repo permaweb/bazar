@@ -56,6 +56,7 @@ export type LicenseType = {
 	dataModelTraining: LicenseValueType | null;
 	paymentMode: string | null;
 	paymentAddress: string | null;
+	currency: string | null;
 };
 
 export type AssetType = {
@@ -71,6 +72,8 @@ export type AssetType = {
 		udl: LicenseType | null;
 		thumbnail: string | null;
 		implementation: string | null;
+		collectionId?: string | null;
+		collectionName?: string | null;
 	};
 };
 
@@ -134,16 +137,13 @@ export type CollectionMetricsType = {
 };
 
 export type CollectionType = {
-	data: {
-		id: string;
-		creator: string;
-		title: string;
-		description: string | null;
-		dateCreated: number;
-		blockHeight: number;
-		banner: string | null;
-		thumbnail: string | null;
-	};
+	id: string;
+	title: string;
+	description: string | null;
+	creator: string;
+	dateCreated: string;
+	banner: string | null;
+	thumbnail: string | null;
 };
 
 export type CollectionDetailType = CollectionType & {
@@ -204,10 +204,6 @@ export type GQLResponseType = {
 
 export type DefaultGQLResponseType = {
 	data: GQLNodeResponseType[];
-} & GQLResponseType;
-
-export type CollectionGQLResponseType = {
-	data: CollectionType[];
 } & GQLResponseType;
 
 export type BatchAGQLResponseType = { [queryKey: string]: DefaultGQLResponseType };
