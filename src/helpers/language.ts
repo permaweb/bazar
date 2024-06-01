@@ -78,6 +78,7 @@ export const language = {
 		percentage: `Percentage`,
 		percentageListed: `Percentage listed`,
 		previous: `Previous`,
+		pixlBalanceInfo: `Your PIXL balance will show here`,
 		pixlHoldings: `PIXL Holdings`,
 		price: `Price`,
 		profileCreated: `Profile created`,

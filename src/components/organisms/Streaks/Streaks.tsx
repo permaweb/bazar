@@ -255,7 +255,7 @@ export default function Streaks(props: IProps) {
 	}, [count, currentBlockHeight, props.profile, streaksReducer]);
 
 	const amounts = React.useMemo(() => {
-		return (
+		return pixlBalance | dailyRewards ? (
 			<>
 				{pixlBalance !== null && (
 					<S.SDAmount>
@@ -274,6 +274,12 @@ export default function Streaks(props: IProps) {
 					</S.SDAmount>
 				)}
 			</>
+		) : (
+			<S.SDAmount>
+				<S.SDPIXLMessage>
+					<p>{language.pixlBalanceInfo}</p>
+				</S.SDPIXLMessage>
+			</S.SDAmount>
 		);
 	}, [dailyRewards, pixlBalance]);
 

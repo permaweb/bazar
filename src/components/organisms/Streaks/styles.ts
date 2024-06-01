@@ -82,6 +82,10 @@ export const SDAmounts = styled.div`
 	border-bottom: 1px solid ${(props) => props.theme.colors.border.primary};
 `;
 
+export const SDPIXLMessage = styled.div`
+	margin: 5px 0 0 0;
+`;
+
 export const SDAmount = styled.div`
 	width: 100%;
 	display: flex;
