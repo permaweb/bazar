@@ -1,4 +1,4 @@
-## Renderers explained
+### Renderers explained
 
 If you come from the wider crypto ecosystem, then you probably have heard of Farcaster Frames, a canvas for developers to create widgets that are embedded in the Farcaster protocol. Frames were a hit in the crypto community as this showed composability, improvements to web3 ux, and opened the door for developers to experiment.
 

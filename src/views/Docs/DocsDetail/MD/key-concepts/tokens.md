@@ -22,6 +22,10 @@ Alternatively, you can purchase AR through decentralized exchanges such as [ever
 
 Wrapped AR is an Arweave token wrapped and cross-chained onto ao. wAR is the token used to make transactions on BazAR. wAR can be obtained by [bridging](https://aox.arweave.dev/#/) AR or [swapping](https://arswap.org/swap) ao tokens.
 
+#### PIXL
+
+PIXL is a rewards token for purchasing atomic assets on the Universal Content Marketplace. The longer the buying streak, the higher the daily PIXL rewards. PIXL is a fun reward designed to incentivize discovery and interaction with atomic assets, and does not necessarily have financial value.
+
 #### AOCRED
 
 CRED is the ao testnet token. It is awarded to those who complete [quests](https://cookbook_ao.g8way.io/welcome/testnet-info/cred-and-quests.html). CRED can be swapped for wAR on [ArSwap](https://arswap.org/swap).
@@ -30,7 +34,7 @@ CRED is the ao testnet token. It is awarded to those who complete [quests](https
 
 TRUNK is ao’s first meme-coin. TRUNK can be swapped for wAR tokens on [ArSwap](https://arswap.org/swap). Learn more about TRUNK [here](https://trunkao.xyz/#/).
 
-#### U token
+#### U
 
 U was the permaweb token supported in the first release of BazAR. U is not compatible with BazAR on ao. A solution to bridge U onto ao is in development.
 

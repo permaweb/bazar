@@ -5,7 +5,7 @@ export const docsOrder = [
 	},
 	{
 		name: 'Create a profile',
-		path: 'bazar-profile',
+		path: 'permaweb-profile',
 	},
 	{
 		name: 'For creators',
@@ -46,8 +46,8 @@ export const docsOrder = [
 				path: 'how-to-collect',
 			},
 			{
-				name: 'How to earn $PIXL',
-				path: 'pixel-token',
+				name: 'How to earn PIXL',
+				path: 'earn-pixl',
 			},
 		],
 	},
