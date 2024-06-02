@@ -1,10 +1,10 @@
-## BazAR Learn
+### BazAR Learn
 
 Welcome to the permaweb's first fully decentralized atomic asset exchange. BazAR empowers creators and collectors to interact, trade, and transact with any form of digital content, from images and music to videos, papers, components, and even applications.
 
 In these guides, you can learn more about how to use BazAR and why this platform is more than just an NFT marketplace.
 
-### Core functionality
+#### Core functionality
 
 BazAR is built on top of the Universal Content Marketplace (UCM) protocol, a trustless order-book for trading atomic assets on Arweave.
 
@@ -16,7 +16,7 @@ BazAR is built on top of the Universal Content Marketplace (UCM) protocol, a tru
 
 - **Earn $PIXL rewards**: Built into the UCM protocol is a rewards token that is awarded when users maintain a buying streak. The longer the buying streak, the larger the daily $PIXL rewards! Learn more about $PIXL [here](#).
 
-### Early release
+#### Early release
 
 In this "early" release, BazAR showcases the possibilities for transacting digital content on the permaweb. BazAR will continue to undergo updates to fix bugs and enhance the UX/UI.
 
