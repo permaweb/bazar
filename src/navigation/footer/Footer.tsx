@@ -1,11 +1,15 @@
+import { Link } from 'react-router-dom';
 import { ReactSVG } from 'react-svg';
 
-import { APP, ASSETS, REDIRECTS } from 'helpers/config';
+import { APP, ASSETS, REDIRECTS, URLS } from 'helpers/config';
 
 import * as S from './styles';
 
 export default function Footer() {
-	const socialPaths = [{ icon: ASSETS.x, href: REDIRECTS.x }];
+	const socialPaths = [
+		{ icon: ASSETS.x, href: REDIRECTS.x },
+		{ icon: ASSETS.discord, href: REDIRECTS.discord },
+	];
 
 	return (
 		<S.Wrapper className={'max-view-wrapper'}>
@@ -17,6 +21,9 @@ export default function Footer() {
 							<ReactSVG src={path.icon} />
 						</a>
 					))}
+					<Link to={URLS.docs}>
+						<ReactSVG src={ASSETS.docs} />
+					</Link>
 				</S.EWrapper>
 			</S.Container>
 		</S.Wrapper>

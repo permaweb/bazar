@@ -301,7 +301,7 @@ export default function AssetsTable(props: IProps) {
 				<S.HeaderActions>
 					<Button
 						type={'primary'}
-						label={language.filterListings}
+						label={language.activeListings}
 						handlePress={toggleFilterListings}
 						disabled={getActionDisabled()}
 						active={assetFilterListings}

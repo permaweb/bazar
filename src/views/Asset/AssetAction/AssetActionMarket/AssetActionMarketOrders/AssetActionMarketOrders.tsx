@@ -71,18 +71,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 	const [insufficientBalance, setInsufficientBalance] = React.useState<boolean>(false);
 
 	React.useEffect(() => {
-		if (props.type === 'buy') {
-			if (!arProvider.tokenBalances || !arProvider.tokenBalances[AOS.defaultToken]) {
-				setInsufficientBalance(true);
-			} else {
-				setInsufficientBalance(Number(arProvider.tokenBalances[AOS.defaultToken]) < getTotalPrice());
-			}
-		} else {
-			setInsufficientBalance(false);
-		}
-	}, [arProvider.tokenBalances, props.type, props.asset, currentOrderQuantity]);
-
-	React.useEffect(() => {
 		if (props.asset) {
 			if (props.asset.state) {
 				if (props.asset.state.denomination) {
@@ -100,7 +88,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 					let calculatedTotalBalance = totalBalance;
 
-					if (denomination) calculatedTotalBalance = totalBalance / denomination; // TODO
+					if (denomination) calculatedTotalBalance = totalBalance / denomination;
 
 					setTotalAssetBalance(calculatedTotalBalance);
 
@@ -109,7 +97,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 						if (ownerBalance) {
 							let calculatedOwnerBalance = ownerBalance;
 
-							if (denomination) calculatedOwnerBalance = ownerBalance / denomination; // TODO
+							if (denomination) calculatedOwnerBalance = ownerBalance / denomination;
 
 							setConnectedBalance(calculatedOwnerBalance);
 						}
@@ -126,7 +114,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 				let calculatedTotalSalesBalance = totalSalesBalance;
 
-				if (denomination) calculatedTotalSalesBalance = totalSalesBalance / denomination; // TODO
+				if (denomination) calculatedTotalSalesBalance = totalSalesBalance / denomination;
 
 				setTotalSalesQuantity(calculatedTotalSalesBalance);
 			}
@@ -159,6 +147,22 @@ export default function AssetActionMarketOrders(props: IProps) {
 	}, [props.asset, props.type, connectedBalance, totalSalesQuantity]);
 
 	React.useEffect(() => {
+		if (props.type === 'buy') {
+			if (!arProvider.tokenBalances || !arProvider.tokenBalances[AOS.defaultToken]) {
+				setInsufficientBalance(true);
+			} else {
+				let orderAmount = getTotalOrderAmount();
+				if (denomination) {
+					orderAmount = orderAmount / denomination;
+				}
+				setInsufficientBalance(Number(arProvider.tokenBalances[AOS.defaultToken]) < orderAmount);
+			}
+		} else {
+			setInsufficientBalance(false);
+		}
+	}, [arProvider.tokenBalances, props.type, props.asset, currentOrderQuantity, denomination]);
+
+	React.useEffect(() => {
 		setCurrentOrderQuantity(0);
 	}, [props.type]);
 
@@ -188,29 +192,33 @@ export default function AssetActionMarketOrders(props: IProps) {
 				const dominantToken = pair[0];
 				const swapToken = pair[1];
 
-				let orderQuantity: string | number = currentOrderQuantity;
-				let calculatedQuantity: string | number = currentOrderQuantity;
+				let orderFillQuantity: string | number = currentOrderQuantity;
+				let transferQuantity: string | number = currentOrderQuantity;
 
-				// TODO
 				if (props.type === 'sell' || props.type === 'transfer') {
 					if (denomination) {
-						calculatedQuantity = currentOrderQuantity * denomination;
-						orderQuantity = currentOrderQuantity * denomination;
+						transferQuantity = currentOrderQuantity * denomination;
+						orderFillQuantity = currentOrderQuantity * denomination;
 					}
 				}
 
 				if (props.type === 'buy') {
-					calculatedQuantity = getTotalPrice(); // true
-					orderQuantity = getTotalPrice(); // true
+					transferQuantity = getTotalOrderAmount();
+					orderFillQuantity = getTotalOrderAmount();
+
+					// TODO: If denomination then remove it for swap token transfer ?
+					if (denomination) {
+						transferQuantity = transferQuantity / denomination;
+					}
 				}
 
-				calculatedQuantity = calculatedQuantity.toString();
-				orderQuantity = orderQuantity.toString();
+				transferQuantity = transferQuantity.toString();
+				orderFillQuantity = orderFillQuantity.toString();
 
 				if (props.type === 'buy' || props.type === 'sell') {
 					forwardedTags = [
 						{ name: 'X-Order-Action', value: 'Create-Order' },
-						{ name: 'X-Quantity', value: orderQuantity },
+						{ name: 'X-Quantity', value: orderFillQuantity },
 						{ name: 'X-Swap-Token', value: swapToken },
 					];
 					if (unitPrice && unitPrice > 0) {
@@ -224,7 +232,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 				const transferTags = [
 					{ name: 'Target', value: dominantToken },
 					{ name: 'Recipient', value: recipient },
-					{ name: 'Quantity', value: calculatedQuantity },
+					{ name: 'Quantity', value: transferQuantity },
 				];
 
 				if (forwardedTags) transferTags.push(...forwardedTags);
@@ -241,7 +249,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 						data: {
 							Target: dominantToken,
 							Recipient: recipient,
-							Quantity: calculatedQuantity,
+							Quantity: transferQuantity,
 						},
 						responses: ['Transfer-Success', 'Transfer-Error'],
 						handler: 'Create-Order',
@@ -260,6 +268,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 										: 'Order created!'
 								);
 								setOrderSuccess(true);
+								localSuccess = true;
 								break;
 							case 'transfer':
 								setOrderSuccess(true);
@@ -280,6 +289,51 @@ export default function AssetActionMarketOrders(props: IProps) {
 			} else {
 				setCurrentNotification('Invalid order details');
 			}
+		}
+	}
+
+	function getTotalOrderAmount() {
+		if (props.type === 'buy') {
+			if (props.asset && props.asset.orders) {
+				let sortedOrders = props.asset.orders.sort(
+					(a: AssetOrderType, b: AssetOrderType) => Number(a.price) - Number(b.price)
+				);
+
+				let totalQuantity = 0;
+				let totalPrice = 0;
+
+				for (let i = 0; i < sortedOrders.length; i++) {
+					const quantity = Number(sortedOrders[i].quantity); // 100,000,000
+					const price = Number(sortedOrders[i].price); // 1,000,000,000,000
+
+					let inputQuantity = Number(currentOrderQuantity); // 50
+					if (denomination) inputQuantity = currentOrderQuantity * denomination; // 50,000,000
+
+					if (quantity >= inputQuantity - totalQuantity) {
+						// 100,000,000 >= 50,000,000 - 0
+						const remainingQty = inputQuantity - totalQuantity; // 50,000,000 - 0
+
+						totalQuantity += remainingQty; // 0 += 50,000,000
+						totalPrice += remainingQty * price; // 0 += 50,000,000 * 1,000,000,000,000 = 50,000,000,000,000,000,000
+						break;
+					} else {
+						totalQuantity += quantity;
+						totalPrice += quantity * price;
+					}
+				}
+
+				return totalPrice;
+			} else return 0;
+		} else {
+			let price: number;
+			if (isNaN(unitPrice) || isNaN(currentOrderQuantity) || currentOrderQuantity < 0 || unitPrice < 0) {
+				price = 0;
+			} else {
+				let calculatedUnitPrice = unitPrice;
+				if (transferDenomination) calculatedUnitPrice = unitPrice * transferDenomination;
+				price = currentOrderQuantity * calculatedUnitPrice;
+			}
+			return price;
 		}
 	}
 
@@ -357,56 +411,12 @@ export default function AssetActionMarketOrders(props: IProps) {
 		);
 	}
 
-	function getTotalPrice(useDenomination?: boolean) {
-		if (props.type === 'buy') {
-			if (props.asset && props.asset.orders) {
-				let sortedOrders = props.asset.orders.sort(
-					(a: AssetOrderType, b: AssetOrderType) => Number(a.price) - Number(b.price)
-				);
-
-				let totalQuantity = 0;
-				let totalPrice = 0;
-
-				for (let i = 0; i < sortedOrders.length; i++) {
-					const order = sortedOrders[i];
-					const quantity = Number(order.quantity);
-					const price = Number(order.price);
-
-					let assetQuantity = Number(currentOrderQuantity);
-
-					if (useDenomination && denomination) assetQuantity = currentOrderQuantity * denomination; // TODO
-
-					if (quantity >= assetQuantity - totalQuantity) {
-						const remainingQty = assetQuantity - totalQuantity;
-
-						totalQuantity += remainingQty;
-						totalPrice += remainingQty * price;
-						break;
-					} else {
-						totalQuantity += quantity;
-						totalPrice += quantity * price;
-					}
-				}
-
-				return totalPrice;
-			} else return 0;
-		} else {
-			let price: number;
-			if (isNaN(unitPrice) || isNaN(currentOrderQuantity) || currentOrderQuantity < 0 || unitPrice < 0) {
-				price = 0;
-			} else {
-				let calculatedUnitPrice = unitPrice;
-				if (transferDenomination) calculatedUnitPrice = unitPrice * transferDenomination;
-				price = currentOrderQuantity * calculatedUnitPrice;
-			}
-			return price;
-		}
-	}
-
 	function getTotalPriceDisplay() {
+		let amount = getTotalOrderAmount();
+		if (props.type === 'buy' && denomination) amount = amount / denomination;
 		const orderCurrency =
 			props.asset.orders && props.asset.orders.length ? props.asset.orders[0].currency : AOS.defaultToken;
-		return <CurrencyLine amount={getTotalPrice() || '0'} currency={orderCurrency} />;
+		return <CurrencyLine amount={amount || '0'} currency={orderCurrency} />;
 	}
 
 	function getOrderDetails() {

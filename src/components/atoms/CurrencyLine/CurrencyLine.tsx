@@ -18,7 +18,7 @@ export default function CurrencyLine(props: IProps) {
 
 	function getDenominatedTokenValue(amount: number, currency: string) {
 		if (
-			props.amount &&
+			props.amount !== null &&
 			currenciesReducer &&
 			currenciesReducer[currency] &&
 			currenciesReducer[currency].Denomination &&

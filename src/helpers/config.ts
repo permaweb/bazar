@@ -12,6 +12,8 @@ import comments from 'assets/comments.svg';
 import copy from 'assets/copy.svg';
 import dark from 'assets/dark.svg';
 import disconnect from 'assets/disconnect.svg';
+import discord from 'assets/discord.svg';
+import docs from 'assets/docs.svg';
 import edit from 'assets/edit.svg';
 import grid from 'assets/grid.svg';
 import html from 'assets/html.svg';
@@ -83,6 +85,8 @@ export const ASSETS = {
 	copy,
 	dark,
 	disconnect,
+	discord,
+	docs,
 	edit,
 	grid,
 	html,
@@ -242,6 +246,7 @@ export const PAGINATORS = {
 
 export const REDIRECTS = {
 	x: `https://X.com/OurBazAR`,
+	discord: `https://X.com/OurBazAR`, // TODO link / icons
 	helix: `https://helix.arweave.dev`,
 	aox: `https://aox.arweave.dev`,
 	arswap: 'https://arswap.org',

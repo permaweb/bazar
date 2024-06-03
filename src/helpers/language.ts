@@ -1,6 +1,7 @@
 export const language = {
 	en: {
 		activity: `Activity`,
+		activeListings: `Active listings`,
 		activeSaleOrders: `Active Sale Orders`,
 		arBridge: `Bridge AR`,
 		arSwap: `Swap AO Tokens`,
@@ -52,7 +53,6 @@ export const language = {
 		errorUpdatingProfile: `Error updating profile`,
 		executing: `Executing`,
 		fetching: `Fetching`,
-		filterListings: `Filter listings`,
 		floorPrice: `Floor price`,
 		goTo: `Go to`,
 		implements: `Implements`,

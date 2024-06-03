@@ -39,7 +39,7 @@ export default function AssetActionMarket(props: IProps) {
 			},
 		];
 
-		const TRANSFER_ONLY_ASSETS = [AOS.defaultToken];
+		const TRANSFER_ONLY_ASSETS = [AOS.defaultToken, AOS.pixl];
 
 		if (props.asset && TRANSFER_ONLY_ASSETS.includes(props.asset.data.id)) {
 			setTabs(MARKET_ACTION_TABS.filter((tab: any) => tab.label === MARKET_ACTION_TAB_OPTIONS.transfer));
