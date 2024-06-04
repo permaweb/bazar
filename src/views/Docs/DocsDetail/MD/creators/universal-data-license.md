@@ -1,5 +1,7 @@
 ### Universal Data License (UDL)
 
+![AOX UI](https://arweave.net/73oR6KthhcIs7_1bYIXJmmHqOzQqxcnPXB0cUa1wgGA)
+
 The Universal Data License defines the terms and conditions for using media assets on the permaweb. The UDL establishes a framework for licensing digital media such as images, videos, audio, graphics and more.
 
 Instead of platforms setting the terms and conditions, on the permaweb creators define how their media can be utilized. On the asset page under the header "Asset Rights" you will find the license that is imbedded in that specifc asset.

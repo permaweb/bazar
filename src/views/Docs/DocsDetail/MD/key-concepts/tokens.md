@@ -20,7 +20,7 @@ Alternatively, you can purchase AR through decentralized exchanges such as [ever
 
 #### Wrapped AR (wAR)
 
-Wrapped AR is an Arweave token wrapped and cross-chained onto ao. wAR is the token used to make transactions on BazAR. wAR can be obtained by [bridging](https://aox.arweave.dev/#/) AR or [swapping](https://arswap.org/swap) ao tokens.
+Wrapped AR is an Arweave token wrapped and cross-chained onto AO. wAR is the token used to make transactions on BazAR. wAR can be obtained by [bridging](https://aox.arweave.dev/#/) AR or [swapping](https://arswap.org/swap) AO tokens.
 
 #### PIXL
 
@@ -28,15 +28,15 @@ PIXL is a rewards token for purchasing atomic assets on the Universal Content Ma
 
 #### AOCRED
 
-CRED is the ao testnet token. It is awarded to those who complete [quests](https://cookbook_ao.g8way.io/welcome/testnet-info/cred-and-quests.html). CRED can be swapped for wAR on [ArSwap](https://arswap.org/swap).
+CRED is the AO testnet token. It is awarded to those who complete [quests](https://cookbook_ao.g8way.io/welcome/testnet-info/cred-and-quests.html). CRED can be swapped for wAR on [ArSwap](https://arswap.org/swap).
 
 #### TRUNK
 
-TRUNK is ao’s first meme-coin. TRUNK can be swapped for wAR tokens on [ArSwap](https://arswap.org/swap). Learn more about TRUNK [here](https://trunkao.xyz/#/).
+TRUNK is AO's first meme-coin. TRUNK can be swapped for wAR tokens on [ArSwap](https://arswap.org/swap). Learn more about TRUNK [here](https://trunkao.xyz/#/).
 
 #### U
 
-U was the permaweb token supported in the first release of BazAR. U is not compatible with BazAR on ao. A solution to bridge U onto ao is in development.
+U was the permaweb token supported in the first release of BazAR. U is not compatible with BazAR on AO. A solution to bridge U onto AO is in development.
 
 ### Conclusion
 

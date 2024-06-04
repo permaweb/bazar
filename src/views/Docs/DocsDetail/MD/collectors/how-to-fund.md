@@ -1,28 +1,34 @@
 ### How to fund your account
 
-To engage in transactions on BazAR, you need Wrapped AR (wAR). You can obtain wAR by either bridging AR onto ao or swapping other ao tokens for wAR. Here’s how to do it:
+To engage in transactions on BazAR, you need Wrapped AR (wAR). You can obtain wAR by either bridging AR onto AO or swapping other AO tokens for wAR. Here’s how to do it:
 
 #### 1. Create a BazAR profile process
 
 Before you can send tokens to BazAR, ensure you have a BazAR profile process. If you don’t have one, you can create it [here](#).
 
-#### 2. Bridge AR onto ao (AR → wAR)
+#### 2. Bridge AR onto AO (AR → wAR)
 
-If you hold AR, you can bridge it onto ao using AOX. Follow these steps:
+If you hold AR, you can bridge it onto AO using [AOX](https://aox.arweave.dev/#/).
 
-1. Bridge your AR onto ao, converting it to wAR.
+Follow these steps:
+
+1. Bridge your AR onto AO, converting it to wAR.
 2. After bridging, you will be prompted to send your wAR to your BazAR profile process.
 3. Confirm the transaction.
 4. Your wAR balance will now appear in the profile sidebar.
 
-#### 3. Swap ao tokens for wAR
+![AOX UI](https://arweave.net/yOPhazubQIIg5PetoqKtGQiutwNalsqKILPY6Z3syuM)
 
-You can swap ao tokens such as $aocred, $trunk, and others for wAR on ArSwap. Here’s how:
+#### 3. Swap AO tokens for wAR
 
-1. Swap your ao tokens for wAR.
+You can swap AO tokens such as CRED, TRUNK, and others for wAR on [ArSwap](https://arswap.org/swap). Here’s how:
+
+1. Swap your AO tokens for wAR.
 2. After swapping, you will be prompted to send your wAR to your BazAR profile process.
 3. Confirm the transaction.
 4. Your wAR balance will now appear in the profile sidebar.
+
+![ArSwap UI](https://arweave.net/3j0aJ_FvkCObepFPgrBHhoBS1k43NDWuofeKJ6oVwb8)
 
 #### 4. How to purchase $AR
 

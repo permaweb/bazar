@@ -24,10 +24,6 @@ export const docsOrder = [
 				path: 'why-create-atomic-assets',
 			},
 			{
-				name: 'Renderers explained',
-				path: 'renderers-explained',
-			},
-			{
 				name: 'Universal Data License (UDL)',
 				path: 'universal-data-license',
 			},

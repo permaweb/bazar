@@ -11,7 +11,7 @@ The permaweb offers a comprehensive stack for building these applications:
 - **[Arweave](https://arwiki.wiki/#/en/main)**: The core system for data replication, ensuring availability through a decentralized and sustainable [endowment](https://arwiki.wiki/#/en/storage-endowment).
 - **[Gateways](https://arwiki.wiki/#/en/gateways)**: Content delivery servers driven by various business models and incentives (e.g., arweave.net, ar-io.net, g8way.io, arweave.dev, and Meson.Network).
 - **[GraphQL](https://cookbook.arweave.dev/guides/querying-arweave/queryingArweave.html)**: A querying system provided by gateways, enabling all data in the network to be queried in a manner similar to traditional databases and web applications. With GraphQL, you can find posts by users, filter by arbitrary tags and timestamps, etc.
-- **[ao](https://ao.arweave.dev/)**: Hyper-parallel computer that offers a unified environment for executing decentralized applications and smart contracts.
+- **[AO](https://ao.arweave.dev/)**: Hyper-parallel computer that offers a unified environment for executing decentralized applications and smart contracts.
 
 #### The composable web
 

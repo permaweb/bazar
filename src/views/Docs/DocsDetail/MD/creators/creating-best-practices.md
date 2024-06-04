@@ -10,20 +10,21 @@ Just like on web2 social media, you wouldn’t want to share content from an inc
 
 Are you uploading a collection of atomic assets or a single atomic asset? This decision will determine how your assets are displayed and discovered.
 
-**Collections pages**
-Collections allow you to create your own custom branding with a header image, thumbnail image, and description.
+**Collection page**
 
-**Collection image specs:**
+Collections allow you to create your own custom branding with a header image, thumbnail image, and description. Recommended size for collection images:
 
-- **Header:**
-- **Thumbnail:**
+- **Header:** 16:9 aspect ratio, 1920 x 1080 pixels.
+- **Thumbnail:** 1:1 aspect ratio, 300 x 300 pixels.
 
 **Collection assets**
+
 When uploading content to your collection, ensure you name the assets, provide a description, and include tags that represent the style and theme you are sharing.
 
 When uploading, your assets will be displayed in the collection from newest to oldest. So, the first asset that you upload to Helix will display first in the collection.
 
 **Single atomic assets**
+
 You can also upload as many single atomic assets as you’d like. These atomic assets are standalone and not part of a collection. The upload process is the same for single atomic assets, just without the collection page details.
 
 #### 3. 1-1 vs fractionalized
@@ -36,6 +37,6 @@ Before uploading, it is important that the order, name, description, fractionali
 
 #### 5. Upload and share with the permaweb community
 
-After uploading your atomic asset, it’s time to share it with the permaweb community. Tag @OurBazAR in posts on X with your newly created atomic asset!
+After uploading your atomic asset, it’s time to share it with the permaweb community. Tag [@OurBazAR](https://x.com/OurBazAR) in posts on X with your newly created atomic asset!
 
 You can also check out other permaweb social platforms to share your work, such as [Typr](https://www.typr.day/#/).

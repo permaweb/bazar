@@ -1,6 +1,6 @@
 ### How to upload
 
-BazAR is a user interface for the UCM protocol, allowing for countless ways to upload content to the permaweb and trade on BazAR. Following the recent migration of UCM onto ao, not all permaweb uploaders support ao atomic assets. This list will expand as more permaweb applications support uploads to the ao UCM.
+BazAR is a user interface for the UCM protocol, allowing for countless ways to upload content to the permaweb and trade on BazAR. Following the recent migration of UCM onto AO, not all permaweb uploaders support AO atomic assets. This list will expand as more permaweb applications support uploads to the AO UCM.
 
 #### Upload with Helix
 
@@ -11,3 +11,5 @@ Content can be uploaded as single atomic assets or within a full collection. Ato
 Check out the [Helix docs](https://helix.arweave.dev/#/docs/introduction) for more information on how to upload your creative work to the permaweb.
 
 **Please note, Helix currently only accepts upload payments through credit card and has a maximum file size limit of 10MB. The team is working on expanding upload capabilities to support more payment methods and larger file sizes.**
+
+![Helix UI](https://arweave.net/AGh03grysMHx98Uo47bDi5tAS7VHUWSQoRbyRxURh0o)

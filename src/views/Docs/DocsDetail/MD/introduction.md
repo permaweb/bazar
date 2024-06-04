@@ -8,7 +8,7 @@ In these guides, you can learn more about how to use BazAR and why this platform
 
 BazAR is built on top of the Universal Content Marketplace (UCM) protocol, a trustless order-book for trading atomic assets on Arweave.
 
-- **Powered by ao**: The UCM now runs on the [ao](https://ao.arweave.dev/) hyper parallel computer. ao is a hyper parallel computing system built on the Arweave network, offering a unified environment for executing decentralized applications and smart contracts. All transactions on BazAR are carried out through ao smart contracts.
+- **Powered by AO**: The UCM now runs on [AO](https://ao.arweave.dev/). AO is a hyper parallel computing system built on the Arweave network, offering a unified environment for executing decentralized applications and smart contracts. All transactions on BazAR are carried out through AO smart contracts.
 
 - **Trustless transactions**: Users no longer have to rely on third-party intermediaries to make transactions. BazAR serves as a user interface for the UCM. Over time, we expect more UIs to emerge that support unique experiences for creators and collectors.
 
@@ -23,3 +23,5 @@ In this "early" release, BazAR showcases the possibilities for transacting digit
 If you have any questions or encounter technical challenges, please reach out to our team on [X](https://x.com/OurBazAR) or in the BazAR channel of the Weaver's [Discord](https://discord.com/invite/qhztcN3PsA). We also welcome your feedback and suggestions to help us improve the platform.
 
 Stay tuned for future updates and new features designed to enhance your experience on BazAR.
+
+![BazAR gif](https://arweave.net/3ysZxYvuYtYKa1LBiT2z1IVwmY7ypKWwfLgMOQu4_Ug)
