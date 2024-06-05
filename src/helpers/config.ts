@@ -65,7 +65,7 @@ export const LICENSES = {
 };
 
 export const APP = {
-	name: 'Bazar',
+	name: 'BazAR',
 };
 
 export const ASSETS = {

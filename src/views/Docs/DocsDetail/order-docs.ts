@@ -4,59 +4,77 @@ export const docsOrder = [
 		path: 'introduction',
 	},
 	{
-		name: 'Geting started on the permaweb',
-		path: 'getting-started-on-the-permaweb',
+		name: 'Create a profile',
+		path: 'permaweb-profile',
 	},
 	{
-		name: 'Permaweb concepts',
-		path: 'permaweb-concepts',
+		name: 'For creators',
+		path: 'creators',
 		children: [
 			{
-				name: 'Atomic asset',
+				name: 'How to upload',
+				path: 'how-to-upload',
+			},
+			{
+				name: 'Creating best practices',
+				path: 'creating-best-practices',
+			},
+			{
+				name: 'Why create atomic assets',
+				path: 'why-create-atomic-assets',
+			},
+			{
+				name: 'Universal Data License (UDL)',
+				path: 'universal-data-license',
+			},
+		],
+	},
+	{
+		name: 'For collectors',
+		path: 'collectors',
+		children: [
+			{
+				name: 'How to fund your account',
+				path: 'how-to-fund',
+			},
+			{
+				name: 'How to collect',
+				path: 'how-to-collect',
+			},
+			{
+				name: 'How to earn PIXL',
+				path: 'earn-pixl',
+			},
+		],
+	},
+	{
+		name: 'Key concepts',
+		path: 'key-concepts',
+		children: [
+			{
+				name: 'Wallets',
+				path: 'wallets',
+			},
+			{
+				name: 'Tokens',
+				path: 'tokens',
+			},
+			{
+				name: 'Permaweb',
+				path: 'permaweb',
+			},
+			{
+				name: 'Atomic assets',
 				path: 'atomic-asset',
 			},
 			{
-				name: 'Profit sharing token (PST)',
-				path: 'profit-sharing-token',
-			},
-			{
-				name: 'U token ($U)',
-				path: 'u-token',
-			},
-			{
-				name: 'Pixel token ($PIXL)',
-				path: 'pixel-token',
-			},
-			{
-				name: 'Stamp token ($STAMP)',
-				path: 'stamp-token',
-			},
-			{
-				name: 'AO',
-				path: 'ao',
+				name: 'BazAR on ao',
+				path: 'bazar-on-ao',
 			},
 		],
 	},
 	{
-		name: 'Exploring BazAR',
-		path: 'exploring-bazar',
-		children: [
-			{
-				name: 'BazAR/UCM explained',
-				path: 'bazar-built-on-ucm',
-			},
-			{
-				name: 'Uploading content to BazAR (UCM)',
-				path: 'upload-content-to-ucm',
-			},
-			{
-				name: 'Universal Data License (UDL) explained',
-				path: 'universal-data-license',
-			},
-			{
-				name: 'Why mint atomic assets',
-				path: 'why-mint-on-bazar',
-			},
-		],
+		name: 'For developers',
+		path: 'developers',
 	},
 ];
