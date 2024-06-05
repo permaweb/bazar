@@ -233,7 +233,7 @@ export default function AssetAction(props: IProps) {
 									/>
 									{getOwnerOrder(listing) && (
 										<S.OrderCancel>
-											<OrderCancel listing={listing} />
+											<OrderCancel listing={listing} toggleUpdate={props.toggleUpdate} />
 										</S.OrderCancel>
 									)}
 								</S.DrawerContentFlex>

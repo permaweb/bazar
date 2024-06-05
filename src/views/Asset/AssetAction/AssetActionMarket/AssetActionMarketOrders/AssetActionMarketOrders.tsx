@@ -255,8 +255,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 						handler: 'Create-Order',
 					});
 
-					console.log(response);
-
 					if (response) {
 						setCurrentNotification(response['Transfer-Success'].message || 'Deposited funds');
 						switch (props.type) {

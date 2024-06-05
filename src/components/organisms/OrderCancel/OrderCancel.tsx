@@ -68,6 +68,7 @@ export default function OrderCancel(props: IProps) {
 					setCancelProcessed(true);
 
 					arProvider.setToggleTokenBalanceUpdate(!arProvider.toggleTokenBalanceUpdate);
+					props.toggleUpdate();
 
 					const existingUCM = { ...ucmReducer };
 					const maxTries = 10;

@@ -1,14 +1,12 @@
 import React from 'react';
 
-import { RefType } from 'helpers/types';
-
 import * as S from './styles';
 import { IProps } from './types';
 
-function useCloseHandler(ref: RefType, callback: () => void) {
+function useCloseHandler(ref: any, callback: () => void) {
 	React.useEffect(() => {
 		function handleAction(event: React.MouseEvent<HTMLInputElement>, callback: () => void) {
-			if ((ref as RefType).current && !(ref as RefType).current.contains(event.target as any)) {
+			if ((ref as any).current && !(ref as any).current.contains(event.target as any)) {
 				callback();
 			}
 		}
