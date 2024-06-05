@@ -6,6 +6,8 @@ import { STYLING } from 'helpers/config';
 export const NWrapper = styled.div`
 	height: calc(100vh - 40px);
 	width: 300px;
+	position: sticky;
+	top: 0;
 	animation: ${open} ${fadeIn2};
 	@media (max-width: ${STYLING.cutoffs.initial}) {
 		height: auto;

@@ -149,6 +149,7 @@ export const Wrapper = styled.div<{ isView: boolean }>`
 		background: ${(props) => props.theme.colors.container.primary.background};
 		border: 1px solid ${(props) => props.theme.colors.border.primary};
 		border-radius: ${STYLING.dimensions.radius.primary};
+		margin: 30px 0 0 0;
 	}
 `;
 
