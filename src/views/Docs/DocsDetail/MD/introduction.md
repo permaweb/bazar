@@ -4,6 +4,8 @@ Welcome to the permaweb's first fully decentralized atomic asset exchange. BazAR
 
 In these guides, you can learn more about how to use BazAR and why this platform is more than just an NFT marketplace.
 
+![BazAR gif](https://arweave.net/3ysZxYvuYtYKa1LBiT2z1IVwmY7ypKWwfLgMOQu4_Ug)
+
 #### Core functionality
 
 BazAR is built on top of the Universal Content Marketplace (UCM) protocol, a trustless order-book for trading atomic assets on Arweave.
@@ -23,5 +25,3 @@ In this "early" release, BazAR showcases the possibilities for transacting digit
 If you have any questions or encounter technical challenges, please reach out to our team on [X](https://x.com/OurBazAR) or in the BazAR channel of the Weaver's [Discord](https://discord.com/invite/qhztcN3PsA). We also welcome your feedback and suggestions to help us improve the platform.
 
 Stay tuned for future updates and new features designed to enhance your experience on BazAR.
-
-![BazAR gif](https://arweave.net/3ysZxYvuYtYKa1LBiT2z1IVwmY7ypKWwfLgMOQu4_Ug)
