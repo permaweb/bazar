@@ -99,7 +99,7 @@ export default function AssetAction(props: IProps) {
 
 	React.useEffect(() => {
 		(async function () {
-			if (props.asset && props.asset.state) {
+			if (props.asset && props.asset.state && associatedProfiles && associatedProfiles.length > 0) {
 				const owners = getOwners(props.asset, associatedProfiles).filter(
 					(owner: OwnerType) => owner.address !== AOS.ucm
 				);

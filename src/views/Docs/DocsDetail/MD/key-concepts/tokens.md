@@ -34,10 +34,6 @@ CRED is the AO testnet token. It is awarded to those who complete [quests](https
 
 TRUNK is AO's first meme-coin. TRUNK can be swapped for wAR tokens on [ArSwap](https://arswap.org/swap). Learn more about TRUNK [here](https://trunkao.xyz/#/).
 
-#### U
-
-U was the permaweb token supported in the first release of BazAR. U is not compatible with BazAR on AO. A solution to bridge U onto AO is in development.
-
 ### Conclusion
 
 None of this information about tokens is financial advice. Please remember to do your own research. Our team is working to support more tokens on BazAR, which will be updated in this guide. If you have any questions, please reach out to our team on [X](https://x.com/OurBazAR) or in the BazAR channel of the Weaver's [Discord](https://discord.com/invite/qhztcN3PsA).

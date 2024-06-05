@@ -754,7 +754,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 				<S.SalesWrapper>{getOrderDetails()}</S.SalesWrapper>
 				<S.ActionWrapper loading={null}>
 					{getAction(false)}
-					{arProvider.tokenBalances && arProvider.tokenBalances[AOS.defaultToken] && insufficientBalance && (
+					{arProvider.tokenBalances && arProvider.tokenBalances[AOS.defaultToken] !== null && insufficientBalance && (
 						<S.MessageWrapper>
 							<span>Not enough tokens to purchase this asset</span>
 						</S.MessageWrapper>

@@ -154,6 +154,11 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 			};
 
 			fetchDefaultTokenBalance();
+		} else {
+			setTokenBalances({
+				[AOS.defaultToken]: 0,
+				[AOS.pixl]: 0,
+			});
 		}
 	}, [profile, toggleTokenBalanceUpdate]);
 

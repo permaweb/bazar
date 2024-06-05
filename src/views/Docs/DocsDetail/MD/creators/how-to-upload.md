@@ -10,6 +10,4 @@ Content can be uploaded as single atomic assets or within a full collection. Ato
 
 Check out the [Helix docs](https://helix.arweave.dev/#/docs/introduction) for more information on how to upload your creative work to the permaweb.
 
-**Please note, Helix currently only accepts upload payments through credit card and has a maximum file size limit of 10MB. The team is working on expanding upload capabilities to support more payment methods and larger file sizes.**
-
-![Helix UI](https://arweave.net/AGh03grysMHx98Uo47bDi5tAS7VHUWSQoRbyRxURh0o)
+**Please note, Helix currently only accepts upload payments through credit card and has a maximum file size limit of 10MB.**

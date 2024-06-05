@@ -8,10 +8,6 @@ Atomic assets can also be 1-1 or fractionalized, meaning users can purchase port
 
 Read more about atomic assets [here](https://cookbook.arweave.dev/concepts/atomic-tokens.html).
 
-![Atomic Asset](https://arweave.net/7kIS7I0DYscZpwhOAm75h39qqXEGQYOnbpfpH7HCSiw)
-
 #### Atomic asset collections
 
 Atomic asset collections are groups of atomic assets bundled together and displayed as a collection on the UCM. These collections can consist of existing atomic assets owned by the user, newly uploaded assets, or a combination of both.
-
-![Atomic Asset Collection](https://arweave.net/bZn3OwpPCTPV6CPsrobvGvXFyF_vdwkrtj7JaK_F5fM)

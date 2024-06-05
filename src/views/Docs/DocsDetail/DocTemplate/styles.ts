@@ -71,7 +71,7 @@ export const Wrapper = styled.div<{ isView: boolean }>`
 		font-family: ${(props) => props.theme.typography.family.primary} !important;
 		color: ${(props) => props.theme.colors.font.primary.alt1} !important;
 		line-height: 1.65 !important;
-		margin: 20px 0;
+		margin: 10px 0 20px 0;
 	}
 
 	a {

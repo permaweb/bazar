@@ -69,8 +69,8 @@ export default function ProfileManage(props: IProps) {
 
 			const data: any = {
 				DisplayName: name,
-				Username: username,
-				Bio: bio,
+				UserName: username,
+				Description: bio,
 			};
 
 			let bannerTx: any = null;
@@ -115,8 +115,8 @@ export default function ProfileManage(props: IProps) {
 				}
 			}
 
-			if (bannerTx) data.Banner = bannerTx;
-			if (avatarTx) data.Avatar = avatarTx;
+			if (bannerTx) data.CoverImage = bannerTx;
+			if (avatarTx) data.ProfileImage = avatarTx;
 
 			try {
 				if (props.profile && props.profile.id) {
@@ -151,7 +151,10 @@ export default function ProfileManage(props: IProps) {
 
 							const dateTime = new Date().getTime().toString();
 
-							const profileTags: { name: string; value: string }[] = [{ name: 'Date-Created', value: dateTime }];
+							const profileTags: { name: string; value: string }[] = [
+								{ name: 'Date-Created', value: dateTime },
+								{ name: 'Action', value: 'CreateProfile' },
+							];
 
 							console.log('Spawning profile process...');
 							const processId = await aos.spawn({

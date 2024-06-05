@@ -68,13 +68,13 @@ export const docsOrder = [
 				path: 'atomic-asset',
 			},
 			{
-				name: 'BazAR on ao',
+				name: 'BazAR on AO',
 				path: 'bazar-on-ao',
 			},
 		],
 	},
-	{
-		name: 'For developers',
-		path: 'developers',
-	},
+	// {
+	// 	name: 'For developers',
+	// 	path: 'developers',
+	// },
 ];

@@ -17,8 +17,6 @@ Follow these steps:
 3. Confirm the transaction.
 4. Your wAR balance will now appear in the profile sidebar.
 
-![AOX UI](https://arweave.net/yOPhazubQIIg5PetoqKtGQiutwNalsqKILPY6Z3syuM)
-
 #### 3. Swap AO tokens for wAR
 
 You can swap AO tokens such as CRED, TRUNK, and others for wAR on [ArSwap](https://arswap.org/swap). Here’s how:
@@ -27,8 +25,6 @@ You can swap AO tokens such as CRED, TRUNK, and others for wAR on [ArSwap](https
 2. After swapping, you will be prompted to send your wAR to your BazAR profile process.
 3. Confirm the transaction.
 4. Your wAR balance will now appear in the profile sidebar.
-
-![ArSwap UI](https://arweave.net/3j0aJ_FvkCObepFPgrBHhoBS1k43NDWuofeKJ6oVwb8)
 
 #### 4. How to purchase $AR
 

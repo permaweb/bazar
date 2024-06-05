@@ -49,14 +49,14 @@ import x from 'assets/x.svg';
 import { SelectOptionType, WalletEnum } from './types';
 
 export const AOS = {
-	module: 'SBNb1qPQ1TDwpD_mboxm2YllmMLXpWw4U8P9Ff8W9vk',
+	module: 'nI_jcZgPd0rcsnjaHtaaJPpMCW847ou-3RGA5_W3aZg', //
 	scheduler: '_GQ33BkPtZrqxA84vM8Zk-N2aO0toNNu_C-l-rawrBA',
 	ucm: 'fzRGvSW2oSop9xGLxs5mcaRtCbrbug8imI_uRZHKdiU',
 	defaultToken: 'xU9zFkq3X2ZQ6olwNVvr1vUWIjc3kXTWr7xKQD6dh10',
 	pixl: '8Lz_BvNqxlhSlyx282o4v7AIwKQpUn-qklhDnHgUWQs',
 	collectionsRegistry: 'YwDYeqpBKURVp3cvSEosefl4LBsfmMTW7QSkauv3pas',
-	profileRegistry: 'kFYMezhjcPCZLr2EkkwzIXP5A64QmtME6Bxa8bGmbzI',
-	profileSrc: 'JjLm85z7IRoMJTwcYoNfM-9xbdZhqxOfjD7vI9c6_co',
+	profileRegistry: 'tURWyfiTCESFL7avuJsH-_Yoc1q9xlakoKV6DLjxkIw',
+	profileSrc: 'NjB981B7GbAjRe1IL1_equiHsor2SXtDwz9SsyA_OSE',
 };
 
 export const LICENSES = {
@@ -120,10 +120,7 @@ export const ASSETS = {
 	x,
 };
 
-export const AR_WALLETS = [
-	{ type: WalletEnum.arConnect, logo: ASSETS.arconnect },
-	{ type: WalletEnum.othent, logo: ASSETS.othent },
-];
+export const AR_WALLETS = [{ type: WalletEnum.arConnect, logo: ASSETS.arconnect }];
 
 export const DOM = {
 	loader: 'loader',
