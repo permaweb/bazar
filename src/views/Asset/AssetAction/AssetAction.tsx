@@ -11,7 +11,7 @@ import { OwnerLine } from 'components/molecules/OwnerLine';
 import { Tabs } from 'components/molecules/Tabs';
 import { AssetData } from 'components/organisms/AssetData';
 import { OrderCancel } from 'components/organisms/OrderCancel';
-import { ASSETS, STYLING } from 'helpers/config';
+import { AOS, ASSETS, STYLING } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import { ListingType, OwnerType, RegistryProfileType } from 'helpers/types';
 import { formatCount, formatPercentage, getOwners, sortOrders } from 'helpers/utils';
@@ -100,7 +100,10 @@ export default function AssetAction(props: IProps) {
 	React.useEffect(() => {
 		(async function () {
 			if (props.asset && props.asset.state) {
-				setCurrentOwners(getOwners(props.asset, associatedProfiles));
+				const owners = getOwners(props.asset, associatedProfiles).filter(
+					(owner: OwnerType) => owner.address !== AOS.ucm
+				);
+				setCurrentOwners(owners);
 			}
 			if (props.asset && props.asset.orders) {
 				const sortedOrders = sortOrders(props.asset.orders, 'low-to-high');

@@ -88,15 +88,15 @@ export default function SwapTokenTransfer() {
 		<>
 			{walletTokenBalance !== null && walletTokenBalance > 0 && (
 				<S.Wrapper>
-					<button onClick={() => setShow(true)}>Transfer Wrapped AR to Agent</button>
+					<button onClick={() => setShow(true)}>Transfer wrapped AR to your personal process (permaweb profile)</button>
 				</S.Wrapper>
 			)}
 			{show && (
 				<Modal header={'Transfer Wrapped AR'} handleClose={() => setShow(false)}>
 					<S.MWrapper className={'modal-wrapper'}>
 						<p>
-							Wrapped AR was detected in your wallet. In order to buy assets in Bazar, this balance must be transferred
-							to your personal agent process.
+							Wrapped AR was detected in your wallet. In order to buy assets in BazAR, this balance must be transferred
+							to your personal agent process (permaweb profile).
 						</p>
 						<p>Would you like to transfer this balance to continue ?</p>
 						<S.TransferAmount>

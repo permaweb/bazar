@@ -262,7 +262,7 @@ export const StreakCount = styled.div`
 
 export const ReturnWrapper = styled.div`
 	width: 100%;
-	margin: 40px 0 0 0;
+	margin: 20px 0 0 0;
 	button {
 		span {
 			font-size: ${(props) => props.theme.typography.size.lg} !important;

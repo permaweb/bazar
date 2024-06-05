@@ -17,6 +17,7 @@ import * as windowUtils from 'helpers/window';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 import { RootState } from 'store';
+import * as streakActions from 'store/streaks/actions';
 import * as ucmActions from 'store/ucm/actions';
 
 import * as S from './styles';
@@ -526,6 +527,14 @@ export default function AssetActionMarketOrders(props: IProps) {
 				} catch (e: any) {
 					console.error(e);
 				}
+			}
+
+			if (props.type === 'buy') {
+				const streaks = await readHandler({
+					processId: AOS.pixl,
+					action: 'Get-Streaks',
+				});
+				dispatch(streakActions.setStreaks(streaks.Streaks));
 			}
 
 			setUpdating(false);

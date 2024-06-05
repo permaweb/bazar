@@ -45,8 +45,8 @@ export const EWrapper = styled.div`
 		}
 	}
 	svg {
-		height: 15px;
-		width: 15px;
+		height: 17.5px;
+		width: 17.5px;
 		fill: ${(props) => props.theme.colors.icon.alt2.fill};
 		&:hover {
 			fill: ${(props) => props.theme.colors.icon.alt2.active};

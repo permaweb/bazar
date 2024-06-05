@@ -91,7 +91,13 @@ export default function CollectionsList(props: IProps) {
 		} else {
 			if (loading) return <Loader />;
 			else if (errorResponse) return <p>{errorResponse}</p>;
-			else return null;
+			else {
+				return (
+					<GS.FullMessageWrapper className={'fade-in border-wrapper-alt2'}>
+						<p>{language.noCollectionsFound}</p>
+					</GS.FullMessageWrapper>
+				);
+			}
 		}
 	}
 

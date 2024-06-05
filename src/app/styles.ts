@@ -220,6 +220,19 @@ export const GlobalStyle = createGlobalStyle`
     animation: ${open} ${fadeIn1};
   }
 
+  .page-overlay {
+    min-height: 100vh;
+    height: 100%;
+    width: 100%;
+    position: fixed;
+    z-index: 11;
+    top: 0;
+    left: 0;
+    background: ${(props) => props.theme.colors.view.background};
+    backdrop-filter: blur(7.5px);
+    animation: ${open} ${fadeIn1};
+  }
+
 	.app-loader {
     display: flex;
     flex-direction: column;
@@ -233,7 +246,6 @@ export const GlobalStyle = createGlobalStyle`
     svg {
       height: auto;
       width: 50px;
-      margin: 0 0 12.5px 0;
 			fill: ${(props) => props.theme.colors.font.primary};
     }
   }

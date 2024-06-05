@@ -93,8 +93,8 @@ export async function getRegistryProfiles(args: { profileIds: string[] }): Promi
 		});
 
 		if (metadataLookup && metadataLookup.length) {
-			return metadataLookup.map((profile: { ProfileId: string; Username: string; Avatar: string }) => {
-				return { id: profile.ProfileId, username: profile.Username, avatar: profile.Avatar };
+			return metadataLookup.map((profile: { ProfileId: string; Username: string; Avatar: string; Bio?: string }) => {
+				return { id: profile.ProfileId, username: profile.Username, avatar: profile.Avatar, bio: profile.Bio ?? null };
 			});
 		}
 
