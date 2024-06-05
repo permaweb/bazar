@@ -1,4 +1,6 @@
-# Universal Data License (UDL)?
+### Universal Data License (UDL)
+
+![AOX UI](https://arweave.net/73oR6KthhcIs7_1bYIXJmmHqOzQqxcnPXB0cUa1wgGA)
 
 The Universal Data License defines the terms and conditions for using media assets on the permaweb. The UDL establishes a framework for licensing digital media such as images, videos, audio, graphics and more.
 
@@ -6,7 +8,7 @@ Instead of platforms setting the terms and conditions, on the permaweb creators 
 
 Since BazAR is in its "early" release, not all UDL parameters are currently supported. Stay tuned for more updates related to UDL capabilites on BazAR.
 
-## UDL parameters explained:
+#### UDL parameters explained:
 
 - Access Fee - Fee a user must pay to access the content
   - One time - Pay once to access content forever.
