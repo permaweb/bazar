@@ -46,7 +46,7 @@ export const CollectionsWrapper = styled.div<{ previousDisabled: boolean }>`
 			font-weight: 900;
 			content: '›';
 			font-size: 40px;
-			color: ${(props) => props.theme.colors.font.primary};
+			color: ${(props) => props.theme.colors.font.light1};
 		}
 	}
 	.react-multiple-carousel__arrow--left {
