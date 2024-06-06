@@ -8,18 +8,20 @@ export const Wrapper = styled.div`
 	display: flex;
 	align-items: center;
 	justify-content: center;
+	gap: 20px;
 	border-top: 1px solid ${(props) => props.theme.colors.border.alt2};
 	border-bottom: 1px solid ${(props) => props.theme.colors.border.alt2};
 	background: ${(props) => props.theme.colors.container.alt6.background};
 	animation: ${open} ${fadeIn1};
 	button {
 		width: fit-content;
-		margin: auto;
 		color: ${(props) => props.theme.colors.font.light1};
 		font-size: ${(props) => props.theme.typography.size.xxSmall};
 		font-family: ${(props) => props.theme.typography.family.alt1};
 		font-weight: ${(props) => props.theme.typography.weight.bold};
 		text-transform: uppercase;
+		text-decoration: underline;
+		text-decoration-thickness: 1.5px;
 		&:hover {
 			color: ${(props) => props.theme.colors.font.light2};
 		}
@@ -30,9 +32,13 @@ export const MWrapper = styled.div`
 	p {
 		font-size: ${(props) => props.theme.typography.size.base};
 		font-family: ${(props) => props.theme.typography.family.primary};
-		font-weight: ${(props) => props.theme.typography.weight.bold};
+		font-weight: ${(props) => props.theme.typography.weight.medium};
 		color: ${(props) => props.theme.colors.font.alt1};
 		margin: 0 0 10px 0;
+		b {
+			font-weight: ${(props) => props.theme.typography.weight.xBold};
+			color: ${(props) => props.theme.colors.font.primary};
+		}
 	}
 `;
 

@@ -12,10 +12,12 @@ import { useArweaveProvider } from 'providers/ArweaveProvider';
 
 import * as S from './styles';
 
-export default function SwapTokenTransfer() {
+export default function Banner() {
 	const arProvider = useArweaveProvider();
 
-	const [show, setShow] = React.useState<boolean>(false);
+	const [showInfo, setShowInfo] = React.useState<boolean>(false);
+	const [showTransfer, setShowTransfer] = React.useState<boolean>(false);
+
 	const [walletTokenBalance, setWalletTokenBalance] = React.useState<number | null>(null);
 	const [loading, setLoading] = React.useState<boolean>(false);
 	const [response, setResponse] = React.useState<NotificationType | null>(null);
@@ -86,13 +88,16 @@ export default function SwapTokenTransfer() {
 
 	return (
 		<>
-			{walletTokenBalance !== null && walletTokenBalance > 0 && (
-				<S.Wrapper>
-					<button onClick={() => setShow(true)}>Transfer wrapped AR to your personal process (permaweb profile)</button>
-				</S.Wrapper>
-			)}
-			{show && (
-				<Modal header={'Transfer Wrapped AR'} handleClose={() => setShow(false)}>
+			<S.Wrapper>
+				<button onClick={() => setShowInfo(true)}>Welcome to AO BazAR!</button>
+				{walletTokenBalance !== null && walletTokenBalance > 0 && (
+					<button onClick={() => setShowTransfer(true)}>
+						Transfer wrapped AR to your personal process (permaweb profile)
+					</button>
+				)}
+			</S.Wrapper>
+			{showTransfer && (
+				<Modal header={'Transfer Wrapped AR'} handleClose={() => setShowTransfer(false)}>
 					<S.MWrapper className={'modal-wrapper'}>
 						<p>
 							Wrapped AR was detected in your wallet. In order to buy assets in BazAR, this balance must be transferred
@@ -107,7 +112,7 @@ export default function SwapTokenTransfer() {
 							<Button
 								type={'warning'}
 								label={'Cancel'}
-								handlePress={() => setShow(false)}
+								handlePress={() => setShowTransfer(false)}
 								disabled={loading || processed}
 								height={45}
 							/>
@@ -123,13 +128,56 @@ export default function SwapTokenTransfer() {
 					</S.MWrapper>
 				</Modal>
 			)}
+			{showInfo && (
+				<Modal header={'AO BazAR'} handleClose={() => setShowInfo(false)}>
+					<S.MWrapper className={'modal-wrapper'}>
+						<p>
+							Welcome to AO BazAR!
+							<br />
+							<br />
+							<b>A notable change in AO BazAR is the addition of the permaweb profile process.</b>
+							<br />
+							<br />
+							To buy and sell assets in AO BazAR and upload through Helix you must create a permaweb profile.
+							<br />
+							<br />
+							<b>How to create a permaweb profile</b>
+							<br />
+							<br />
+							<b>Connect your Arweave wallet</b> - When you enter BazAR, the first step is to connect your Arweave
+							wallet.
+							<br />
+							<br />
+							<b>Create your profile</b> - After connecting your wallet, you create a permaweb profile. This profile is
+							a unique AO process that you can customize with a name, @handle, description, profile picture, and banner.
+							<br />
+							<br />
+							<b>How to send wAR to your profile process</b>
+							<br />
+							<br />
+							<b>Swap or bridge to wAR</b> - You can swap for wAR with ArSwap, or bridge AR to wAR with AOX.
+							<br />
+							<br />
+							<b>Send to your profile process</b> - When you connect to your profile onto BazaR, you will see a banner
+							that detects wAR in your Arweave wallet. It will ask if you want to send the wAR from your Arweave wallet
+							to your profile. Once the wAR is in your profile process, you will see the wAR amount update in your
+							profile menu.
+							<br />
+							<br />
+							<b>Note on permaweb profiles</b> - Your permaweb profile is a AO process which is owned by your Arweave
+							wallet. This process carries out interactions with the UCM and holds custody to your atomic assets.
+							Therefore atomic assets are owned by your AO process and not your wallet.
+						</p>
+					</S.MWrapper>
+				</Modal>
+			)}
 			{response && (
 				<Notification
 					message={response.message}
 					type={response.status}
 					callback={() => {
 						setResponse(null);
-						setShow(false);
+						setShowTransfer(false);
 					}}
 				/>
 			)}

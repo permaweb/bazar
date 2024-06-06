@@ -46,7 +46,7 @@ export const CreatorWrapper = styled.div`
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		justify-content: space-between;
+		// justify-content: space-between;
 		transition: all 100ms;
 		padding: 20px;
 		border: 1px solid transparent;
@@ -74,7 +74,7 @@ export const Avatar = styled.div<{
 	justify-content: center;
 	align-items: center;
 	position: relative;
-	margin: 0 0 20px;
+	margin: 0 0 20px 0;
 	img {
 		height: 100%;
 		width: 100%;
