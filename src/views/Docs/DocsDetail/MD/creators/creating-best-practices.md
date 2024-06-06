@@ -4,7 +4,7 @@ Creating atomic assets may seem daunting at first, but once you understand a few
 
 #### 1. Set up your permaweb profile
 
-Just like on web2 social media, you wouldn’t want to share content from an incomplete profile. The same applies to the permaweb. When you create your permaweb profile, you can set your name, @username, bio, profile picture, and banner image. Learn more about how to create a permaweb profile [here](#).
+Just like on web2 social media, you wouldn’t want to share content from an incomplete profile. The same applies to the permaweb. When you create your permaweb profile, you can set your name, @username, bio, profile picture, and banner image. Learn more about how to create a permaweb profile [here](https://ao-bazar.arweave.dev/#/docs/permaweb-profile).
 
 #### 2. Decide if you are creating a collection or single uploads
 
