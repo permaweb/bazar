@@ -35,14 +35,24 @@ export const CollectionsWrapper = styled.div<{ previousDisabled: boolean }>`
 		border-radius: ${STYLING.dimensions.radius.primary};
 		animation: ${open} ${fadeIn1};
 		transition: all 100ms;
-		display: none;
+		display: block;
 
 		&:before {
 			font-weight: 900;
+			content: '';
+		}
+
+		&:after {
+			font-weight: 900;
+			content: '›';
+			font-size: 40px;
 		}
 	}
 	.react-multiple-carousel__arrow--left {
 		left: 22.5px;
+		&:after {
+			content: '‹';
+		}
 	}
 	.react-multiple-carousel__arrow--right {
 		right: 22.5px;
