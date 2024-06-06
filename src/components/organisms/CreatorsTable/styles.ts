@@ -36,7 +36,7 @@ export const CreatorsWrapper = styled.div`
 `;
 
 export const CreatorWrapper = styled.div`
-	height: 285px;
+	height: 310px;
 	width: 100%;
 	a {
 		min-height: 100%;

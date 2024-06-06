@@ -133,7 +133,43 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 				}
 			}
 		})();
-	}, [wallet, walletAddress, walletType, toggleProfileUpdate]);
+	}, [wallet, walletAddress, walletType]);
+
+	React.useEffect(() => {
+		(async function () {
+			if (wallet && walletAddress) {
+				const fetchProfileUntilChange = async () => {
+					let changeDetected = false;
+					let tries = 0;
+					const maxTries = 10;
+
+					while (!changeDetected && tries < maxTries) {
+						try {
+							const existingProfile = profile;
+							const newProfile = await getProfileByWalletAddress({ address: walletAddress });
+
+							if (JSON.stringify(existingProfile) !== JSON.stringify(newProfile)) {
+								setProfile(newProfile);
+								changeDetected = true;
+							} else {
+								await new Promise((resolve) => setTimeout(resolve, 1000));
+								tries++;
+							}
+						} catch (error) {
+							console.error(error);
+							break;
+						}
+					}
+
+					if (!changeDetected) {
+						console.warn(`No changes detected after ${maxTries} attempts`);
+					}
+				};
+
+				await fetchProfileUntilChange();
+			}
+		})();
+	}, [toggleProfileUpdate]);
 
 	React.useEffect(() => {
 		if (profile && profile.id) {
