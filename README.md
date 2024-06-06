@@ -14,7 +14,6 @@ AO enables computation without protocol-enforced limitations on size and form wh
 
 Orders on BazAR are fulfilled by a trustless orderbook process built on AO (UCM). BazAR is one of the first user-facing applications to utilize AO processes, providing a secure and efficient trading environment. For more information about AO, refer to the specs [here](https://ao.arweave.dev/#/) and project [here](https://github.com/permaweb/ao).
 
-
 #### Requirements
 
 - Node.js 18+ and npm
