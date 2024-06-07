@@ -84,6 +84,7 @@ export const AudioWrapper = styled.div`
 		top: 50%;
 		left: 50%;
 		transform: translate(-50%, -50%);
+		fill: ${(props) => props.theme.colors.font.alt1};
 	}
 `;
 
@@ -113,6 +114,7 @@ export const Preview = styled.div`
 		height: 57.5px;
 		width: 57.5px;
 		border-radius: ${STYLING.dimensions.radius.primary};
+		fill: ${(props) => props.theme.colors.font.alt1};
 	}
 	img {
 		border-radius: ${STYLING.dimensions.radius.primary};
