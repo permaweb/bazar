@@ -37,10 +37,10 @@ export const Form = styled.div`
 
 export const TForm = styled.div`
 	margin: 20px 0 30px 0;
-	padding: 10px 20px;
+	padding: 10px 20px 25px 20px;
 	> * {
 		&:last-child {
-			margin: 10px 0 0 0;
+			margin: 20px 0 0 0;
 		}
 	}
 `;
