@@ -1,12 +1,11 @@
 import React from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ReactSVG } from 'react-svg';
 
 import { getProfileById } from 'api';
 
-import { Portal } from 'components/atoms/Portal';
+import { Loader } from 'components/atoms/Loader';
 import { URLTabs } from 'components/molecules/URLTabs';
-import { ASSETS, DOM, URLS } from 'helpers/config';
+import { URLS } from 'helpers/config';
 import { ProfileHeaderType } from 'helpers/types';
 import { checkValidAddress } from 'helpers/utils';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
@@ -101,12 +100,6 @@ export default function Profile() {
 			{urlTabs}
 		</>
 	) : (
-		<Portal node={DOM.loader}>
-			<div className={'page-overlay'}>
-				<div className={'app-loader'}>
-					<ReactSVG src={ASSETS.logo} />
-				</div>
-			</div>
-		</Portal>
+		<Loader />
 	);
 }

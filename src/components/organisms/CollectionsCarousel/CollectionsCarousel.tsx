@@ -21,6 +21,7 @@ export default function CollectionsCarousel(props: IProps) {
 	const language = languageProvider.object[languageProvider.current];
 
 	const [nextSlideClicked, setNextSlideClicked] = React.useState<boolean>(false);
+	const [firstClick, setFirstClick] = React.useState<boolean>(false);
 
 	const responsive = {
 		desktopInitial: {
@@ -40,6 +41,18 @@ export default function CollectionsCarousel(props: IProps) {
 			breakpoint: { max: 700, min: 0 },
 			items: 1,
 		},
+	};
+
+	const triggerResize = () => {
+		window.dispatchEvent(new Event('resize'));
+	};
+
+	const handleAfterChange = () => {
+		if (!nextSlideClicked) setNextSlideClicked(true);
+		if (!firstClick) {
+			triggerResize();
+			setFirstClick(true);
+		}
 	};
 
 	return (
@@ -62,45 +75,41 @@ export default function CollectionsCarousel(props: IProps) {
 						removeArrowOnDeviceType={['tablet', 'mobile']}
 						customTransition={'transform 500ms ease'}
 						partialVisible
-						afterChange={() => {
-							if (!nextSlideClicked) setNextSlideClicked(true);
-						}}
+						autoPlay
+						autoPlaySpeed={5000}
+						afterChange={handleAfterChange}
 					>
 						{props.collections &&
-							props.collections.map((collection: CollectionType, index: number) => {
-								return (
-									<S.CollectionWrapper
-										key={index}
-										className={'fade-in border-wrapper-alt2'}
-										backgroundImage={getTxEndpoint(collection.thumbnail || DEFAULTS.thumbnail)}
-										disabled={false}
-									>
-										<Link to={`${URLS.collection}${collection.id}`}>
-											<S.InfoWrapper>
-												<S.InfoTile>
-													<S.InfoDetail>
-														<span>{collection.title}</span>
-													</S.InfoDetail>
-													<S.InfoDetailAlt>
-														<span>{`${language.createdOn} ${formatDate(collection.dateCreated, 'epoch')}`}</span>
-													</S.InfoDetailAlt>
-												</S.InfoTile>
-											</S.InfoWrapper>
-										</Link>
-									</S.CollectionWrapper>
-								);
-							})}
+							props.collections.map((collection: CollectionType, index: number) => (
+								<S.CollectionWrapper
+									key={index}
+									className={'fade-in border-wrapper-alt2'}
+									backgroundImage={getTxEndpoint(collection.thumbnail || DEFAULTS.thumbnail)}
+									disabled={false}
+								>
+									<Link to={`${URLS.collection}${collection.id}`}>
+										<S.InfoWrapper>
+											<S.InfoTile>
+												<S.InfoDetail>
+													<span>{collection.title}</span>
+												</S.InfoDetail>
+												<S.InfoDetailAlt>
+													<span>{`${language.createdOn} ${formatDate(collection.dateCreated, 'epoch')}`}</span>
+												</S.InfoDetailAlt>
+											</S.InfoTile>
+										</S.InfoWrapper>
+									</Link>
+								</S.CollectionWrapper>
+							))}
 						{props.loading &&
-							Array.from({ length: 5 }, (_, i) => i + 1).map((index) => {
-								return (
-									<S.CollectionWrapper
-										key={index}
-										className={'fade-in border-wrapper-alt1'}
-										backgroundImage={null}
-										disabled={true}
-									/>
-								);
-							})}
+							Array.from({ length: 5 }, (_, i) => i + 1).map((index) => (
+								<S.CollectionWrapper
+									key={index}
+									className={'fade-in border-wrapper-alt1'}
+									backgroundImage={null}
+									disabled={true}
+								/>
+							))}
 					</Carousel>
 				)}
 			</S.CollectionsWrapper>

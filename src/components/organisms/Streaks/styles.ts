@@ -239,6 +239,11 @@ export const StreakProfile = styled.div`
 		font-size: ${(props) => props.theme.typography.size.base};
 		font-weight: ${(props) => props.theme.typography.weight.bold};
 		font-family: ${(props) => props.theme.typography.family.alt1};
+		display: block;
+		max-width: 180px;
+		white-space: nowrap;
+		text-overflow: ellipsis;
+		overflow: hidden;
 	}
 `;
 
@@ -263,6 +268,7 @@ export const StreakCount = styled.div`
 export const ReturnWrapper = styled.div`
 	width: 100%;
 	margin: 20px 0 0 0;
+	padding: 0 0 20px 0;
 	button {
 		span {
 			font-size: ${(props) => props.theme.typography.size.lg} !important;

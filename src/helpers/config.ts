@@ -243,7 +243,7 @@ export const PAGINATORS = {
 
 export const REDIRECTS = {
 	x: `https://x.com/OurBazAR`,
-	discord: `https://discord.com/invite/qhztcN3PsA`,
+	discord: `https://discord.gg/yjVaMbmKw4`,
 	helix: `https://helix.arweave.dev`,
 	aox: `https://aox.arweave.dev`,
 	arswap: 'https://arswap.org',

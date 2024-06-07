@@ -35,7 +35,7 @@ export const CollectionsWrapper = styled.div<{ previousDisabled: boolean }>`
 		border-radius: ${STYLING.dimensions.radius.primary};
 		animation: ${open} ${fadeIn1};
 		transition: all 100ms;
-		display: block;
+		display: none;
 
 		&:before {
 			font-weight: 900;
