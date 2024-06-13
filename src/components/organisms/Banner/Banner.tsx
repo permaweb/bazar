@@ -35,6 +35,8 @@ export default function Banner() {
 
 					if (tokenBalance !== null) {
 						setWalletTokenBalance(tokenBalance);
+						if (!sessionStorage.getItem('transferBalance')) setShowTransfer(true);
+						sessionStorage.setItem('transferBalance', 'true');
 					}
 				} catch (e: any) {
 					console.error(e);

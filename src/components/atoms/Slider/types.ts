@@ -8,4 +8,5 @@ export interface IProps {
 	label?: string;
 	disabled: boolean;
 	minValue?: number;
+	useFractional?: boolean;
 }

@@ -40,7 +40,7 @@ export default function Slider(props: IProps) {
 				type={'range'}
 				min={props.minValue ? props.minValue.toString() : '0'}
 				max={props.maxValue.toString()}
-				step={'1'}
+				step={props.useFractional ? '0.000001' : '1'}
 				value={props.value.toString()}
 				onChange={props.handleChange}
 				disabled={props.disabled}

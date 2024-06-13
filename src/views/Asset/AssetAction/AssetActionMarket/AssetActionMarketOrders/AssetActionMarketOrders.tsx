@@ -207,7 +207,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 					transferQuantity = getTotalOrderAmount();
 					orderFillQuantity = getTotalOrderAmount();
 
-					// TODO: If denomination then remove it for swap token transfer ?
 					if (denomination) {
 						transferQuantity = transferQuantity / denomination;
 					}
@@ -471,7 +470,11 @@ export default function AssetActionMarketOrders(props: IProps) {
 		if (orderLoading) return true;
 		if (orderProcessed && !orderSuccess) return true;
 		if (maxOrderQuantity <= 0 || isNaN(currentOrderQuantity)) return true;
-		if (currentOrderQuantity <= 0 || isNaN(maxOrderQuantity) || !Number.isInteger(Number(currentOrderQuantity)))
+		if (
+			currentOrderQuantity <= 0 ||
+			isNaN(maxOrderQuantity) ||
+			(!Number.isInteger(Number(currentOrderQuantity)) && !denomination)
+		)
 			return true;
 		if (currentOrderQuantity > maxOrderQuantity) return true;
 		if (props.type === 'sell' && (unitPrice <= 0 || isNaN(unitPrice))) return true;
@@ -648,7 +651,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 				{maxOrderQuantity > 0 && (
 					<S.InputWrapper>
 						<Slider
-							value={parseInt(Number(currentOrderQuantity).toString())}
+							value={parseFloat(Number(currentOrderQuantity).toString())}
 							maxValue={maxOrderQuantity}
 							handleChange={(e: React.ChangeEvent<HTMLInputElement>) => handleQuantityInput(e)}
 							label={language.assetQuantityInfo}
@@ -660,6 +663,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 								orderLoading
 							}
 							invalid={{ status: currentOrderQuantity < 0 || currentOrderQuantity > maxOrderQuantity, message: null }}
+							useFractional={denomination !== null}
 						/>
 						<S.MaxQty>
 							<Button
@@ -691,7 +695,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 										status:
 											currentOrderQuantity < 0 ||
 											currentOrderQuantity > maxOrderQuantity ||
-											!Number.isInteger(Number(currentOrderQuantity)),
+											(!Number.isInteger(Number(currentOrderQuantity)) && !denomination),
 										message: null,
 									}}
 									hideErrorMessage
@@ -770,7 +774,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 								<span>Create your profile to continue</span>
 							</S.MessageWrapper>
 						))}
-					{!Number.isInteger(Number(currentOrderQuantity)) && (
+					{!Number.isInteger(Number(currentOrderQuantity)) && !denomination && (
 						<S.MessageWrapper>
 							<span>Quantity must be an integer</span>
 						</S.MessageWrapper>
