@@ -11,7 +11,7 @@ import { Notification } from 'components/atoms/Notification';
 import { Slider } from 'components/atoms/Slider';
 import { Modal } from 'components/molecules/Modal';
 import { AOS, ASSETS } from 'helpers/config';
-import { AssetOrderType } from 'helpers/types';
+import { AssetOrderType, OrderbookEntryType } from 'helpers/types';
 import { checkValidAddress, formatCount, formatPercentage } from 'helpers/utils';
 import * as windowUtils from 'helpers/window';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
@@ -301,18 +301,17 @@ export default function AssetActionMarketOrders(props: IProps) {
 				let totalPrice = 0;
 
 				for (let i = 0; i < sortedOrders.length; i++) {
-					const quantity = Number(sortedOrders[i].quantity); // 100,000,000
-					const price = Number(sortedOrders[i].price); // 1,000,000,000,000
+					const quantity = Number(sortedOrders[i].quantity);
+					const price = Number(sortedOrders[i].price);
 
-					let inputQuantity = Number(currentOrderQuantity); // 50
-					if (denomination) inputQuantity = currentOrderQuantity * denomination; // 50,000,000
+					let inputQuantity = Number(currentOrderQuantity);
+					if (denomination) inputQuantity = currentOrderQuantity * denomination;
 
 					if (quantity >= inputQuantity - totalQuantity) {
-						// 100,000,000 >= 50,000,000 - 0
-						const remainingQty = inputQuantity - totalQuantity; // 50,000,000 - 0
+						const remainingQty = inputQuantity - totalQuantity;
 
-						totalQuantity += remainingQty; // 0 += 50,000,000
-						totalPrice += remainingQty * price; // 0 += 50,000,000 * 1,000,000,000,000 = 50,000,000,000,000,000,000
+						totalQuantity += remainingQty;
+						totalPrice += remainingQty * price;
 						break;
 					} else {
 						totalQuantity += quantity;
@@ -494,39 +493,52 @@ export default function AssetActionMarketOrders(props: IProps) {
 			setUpdating(true);
 			windowUtils.scrollTo(0, 0, 'smooth');
 
-			arProvider.setToggleTokenBalanceUpdate(!arProvider.toggleTokenBalanceUpdate);
-			props.toggleUpdate();
-
 			if (props.type !== 'transfer') {
 				try {
 					const existingUCM = { ...ucmReducer };
 
-					const fetchUntilChange = async () => {
-						let changeDetected = false;
-						let tries = 0;
-						const maxTries = 10;
+					if (existingUCM && existingUCM.Orderbook && existingUCM.Orderbook.length) {
+						let pair = [props.asset.data.id, AOS.defaultToken];
 
-						while (!changeDetected && tries < maxTries) {
-							const ucmState = await readHandler({
-								processId: AOS.ucm,
-								action: 'Info',
-							});
-							dispatch(ucmActions.setUCM(ucmState));
+						const currentEntry = existingUCM.Orderbook.find(
+							(entry: OrderbookEntryType) => JSON.stringify(entry.Pair) === JSON.stringify(pair)
+						);
 
-							if (JSON.stringify(existingUCM) !== JSON.stringify(ucmState)) {
-								changeDetected = true;
-							} else {
+						if (currentEntry && currentEntry.Orders) {
+							const fetchUntilChange = async () => {
+								let changeDetected = false;
+								let tries = 0;
+								const maxTries = 10;
+
 								await new Promise((resolve) => setTimeout(resolve, 1000));
-								tries++;
-							}
-						}
 
-						if (!changeDetected) {
-							console.warn(`No changes detected after ${maxTries} attempts`);
-						}
-					};
+								while (!changeDetected && tries < maxTries) {
+									const ucmState = await readHandler({
+										processId: AOS.ucm,
+										action: 'Info',
+									});
 
-					await fetchUntilChange();
+									const currentStateEntry = ucmState.Orderbook.find(
+										(entry: OrderbookEntryType) => JSON.stringify(entry.Pair) === JSON.stringify(pair)
+									);
+
+									if (JSON.stringify(currentEntry) !== JSON.stringify(currentStateEntry)) {
+										dispatch(ucmActions.setUCM(ucmState));
+										changeDetected = true;
+									} else {
+										await new Promise((resolve) => setTimeout(resolve, 1000));
+										tries++;
+									}
+								}
+
+								if (!changeDetected) {
+									console.warn(`No changes detected after ${maxTries} attempts`);
+								}
+							};
+
+							await fetchUntilChange();
+						}
+					}
 				} catch (e: any) {
 					console.error(e);
 				}
@@ -539,6 +551,9 @@ export default function AssetActionMarketOrders(props: IProps) {
 				});
 				dispatch(streakActions.setStreaks(streaks.Streaks));
 			}
+
+			arProvider.setToggleTokenBalanceUpdate(!arProvider.toggleTokenBalanceUpdate);
+			props.toggleUpdate();
 
 			setUpdating(false);
 		}

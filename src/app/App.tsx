@@ -35,7 +35,14 @@ export default function App() {
 					processId: AOS.pixl,
 					action: 'Get-Streaks',
 				});
-				dispatch(streakActions.setStreaks(streaks.Streaks));
+				if (streaks.Streaks) {
+					for (let key in streaks.Streaks) {
+						if (streaks.Streaks[key].days === 0) {
+							delete streaks.Streaks[key];
+						}
+					}
+					dispatch(streakActions.setStreaks(streaks.Streaks));
+				}
 
 				if (!currenciesReducer) {
 					const defaultTokenState = await readHandler({

@@ -316,6 +316,8 @@ export async function messageResults(args: {
 			data: JSON.stringify(args.data),
 		});
 
+		await new Promise((resolve) => setTimeout(resolve, 500));
+
 		const messageResults = await results({
 			process: args.processId,
 			sort: 'DESC',
