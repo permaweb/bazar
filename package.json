@@ -12,7 +12,7 @@
 		"test:verbose": "npm test -- --verbose",
 		"test:coverage": "CI=true npm test -- --env=jsdom --coverage",
 		"build": "NODE_ENV=production webpack",
-		"deploy": "npm run build && permaweb-deploy",
+		"deploy-main": "npm run build && permaweb-deploy --ant-contract OkVoeaDjUBwD4RTIiOFFXtgxpNFeRya0eAqVWaLUdpM",
 		"prepare": "husky install"
 	},
 	"dependencies": {
