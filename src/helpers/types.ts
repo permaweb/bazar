@@ -241,7 +241,7 @@ export type ValidationType = {
 	message: string | null;
 };
 
-export type AssetSortType = 'low-to-high' | 'high-to-low';
+export type AssetSortType = 'high-to-low' | 'low-to-high' | 'recently-listed';
 
 export type IdGroupType = { [index: string]: string[] };
 

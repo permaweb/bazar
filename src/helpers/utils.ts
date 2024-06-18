@@ -203,14 +203,41 @@ export function sortOrderbookEntries(entries: OrderbookEntryType[], sortType: As
 		return Number(entry.Orders[0].Price);
 	};
 
-	const direction = sortType === 'high-to-low' ? -1 : 1;
+	const getDateKey = (entry: OrderbookEntryType): number => {
+		if (!entry.Orders || entry.Orders.length === 0) return 0;
+		return new Date(entry.Orders[0].DateCreated).getTime();
+	};
 
-	const entriesWithOrders = entries.filter((entry) => entry.Orders && entry.Orders.length > 0);
+	let direction: number;
+
+	switch (sortType) {
+		case 'high-to-low':
+			direction = -1;
+			break;
+		case 'low-to-high':
+			direction = 1;
+			break;
+		case 'recently-listed':
+			direction = -1;
+			break;
+		default:
+			direction = 1;
+	}
+
+	let entriesWithOrders = entries.filter((entry) => entry.Orders && entry.Orders.length > 0);
 	const entriesWithoutOrders = entries.filter((entry) => !entry.Orders || entry.Orders.length === 0);
 
 	entriesWithOrders.sort((a, b) => {
-		return direction * (getSortKey(a) - getSortKey(b));
+		if (sortType === 'recently-listed') {
+			return direction * (getDateKey(b) - getDateKey(a));
+		} else {
+			return direction * (getSortKey(a) - getSortKey(b));
+		}
 	});
+
+	if (sortType === 'recently-listed') {
+		entriesWithOrders = entriesWithOrders.reverse();
+	}
 
 	return [...entriesWithOrders, ...entriesWithoutOrders];
 }

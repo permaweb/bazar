@@ -251,6 +251,7 @@ export function getAssetIdGroups(args: {
 			}
 
 			const sortedOrderbook = sortOrderbookEntries(currentOrderbook, args.sortType);
+
 			for (let i = 0, j = 0; i < sortedOrderbook.length; i += groupCount, j++) {
 				idGroup[j] = sortedOrderbook.slice(i, i + groupCount).map((entry: OrderbookEntryType) => entry.Pair[0]);
 			}
