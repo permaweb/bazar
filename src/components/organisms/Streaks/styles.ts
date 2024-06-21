@@ -78,7 +78,7 @@ export const SDAmounts = styled.div`
 	flex-wrap: wrap;
 	gap: 20px;
 	margin: 30px 0 0 0;
-	padding: 0 0 35px 0;
+	padding: 0 0 15px 0;
 	border-bottom: 1px solid ${(props) => props.theme.colors.border.primary};
 `;
 

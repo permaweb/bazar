@@ -122,6 +122,7 @@ export const language = {
 		totalSalesPercentageAvailable: `Total percentage available for sale`,
 		totalTransferBalanceAvailable: `Total balance available for transfer`,
 		totalTransferPercentageAvailable: `Total percentage available for transfer`,
+		tradePixl: `Trade PIXL`,
 		transaction: `Transaction`,
 		transfer: `Transfer`,
 		unitPrice: `Unit price`,

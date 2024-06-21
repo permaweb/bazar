@@ -1,5 +1,6 @@
 import React from 'react';
 import { useSelector } from 'react-redux';
+import { useNavigate } from 'react-router-dom';
 
 import Arweave from 'arweave';
 
@@ -9,7 +10,7 @@ import { Button } from 'components/atoms/Button';
 import { CurrencyLine } from 'components/atoms/CurrencyLine';
 import { OwnerLine } from 'components/molecules/OwnerLine';
 import { Panel } from 'components/molecules/Panel';
-import { AOS, ASSETS } from 'helpers/config';
+import { AOS, ASSETS, URLS } from 'helpers/config';
 import { RegistryProfileType } from 'helpers/types';
 import { formatAddress } from 'helpers/utils';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
@@ -20,6 +21,8 @@ import * as S from './styles';
 import { IProps } from './types';
 
 export default function Streaks(props: IProps) {
+	const navigate = useNavigate();
+
 	const streaksReducer = useSelector((state: RootState) => state.streaksReducer);
 
 	const arProvider = useArweaveProvider();
@@ -355,7 +358,22 @@ export default function Streaks(props: IProps) {
 				{arProvider.profile && arProvider.profile.id && arProvider.profile.id === props.profile.id && (
 					<S.SDMessage>{message}</S.SDMessage>
 				)}
-				<S.SDAmounts>{amounts}</S.SDAmounts>
+				<S.SDAmounts>
+					{amounts}
+					<S.SDLAction>
+						<Button
+							type={'primary'}
+							label={language.tradePixl}
+							handlePress={() => {
+								navigate(`${URLS.asset}${AOS.pixl}`);
+								setShowDropdown(false);
+								setShowLeaderboard(false);
+							}}
+							height={45}
+							fullWidth
+						/>
+					</S.SDLAction>
+				</S.SDAmounts>
 				<S.SDLAction>
 					<Button
 						type={'alt1'}

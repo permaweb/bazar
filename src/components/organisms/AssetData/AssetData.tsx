@@ -1,7 +1,7 @@
 import React from 'react';
 import { ReactSVG } from 'react-svg';
 
-import { ASSETS } from 'helpers/config';
+import { ASSETS, REFORMATTED_ASSETS } from 'helpers/config';
 import { getRendererEndpoint, getTxEndpoint } from 'helpers/endpoints';
 import { AssetRenderType } from 'helpers/types';
 import { checkValidAddress } from 'helpers/utils';
@@ -57,6 +57,19 @@ export default function AssetData(props: IProps) {
 		};
 	}, [props.asset]);
 
+	async function handleGetAssetRender(assetId: string): Promise<AssetRenderType> {
+		const assetResponse = await fetch(getTxEndpoint(assetId));
+		const contentType = assetResponse.headers.get('content-type');
+
+		if (assetResponse.status === 200 && contentType) {
+			return {
+				url: getAssetPath(assetResponse),
+				type: 'raw',
+				contentType: contentType,
+			};
+		}
+	}
+
 	React.useEffect(() => {
 		(async function () {
 			if (!assetRender && wrapperVisible) {
@@ -78,16 +91,8 @@ export default function AssetData(props: IProps) {
 								contentType: 'renderer',
 							});
 						} else {
-							const assetResponse = await fetch(getTxEndpoint(props.asset.data.id));
-							const contentType = assetResponse.headers.get('content-type');
-
-							if (assetResponse.status === 200 && contentType) {
-								setAssetRender({
-									url: getAssetPath(assetResponse),
-									type: 'raw',
-									contentType: contentType,
-								});
-							}
+							const renderFetch = await handleGetAssetRender(props.asset.data.id);
+							setAssetRender(renderFetch);
 						}
 					}
 				}
@@ -195,6 +200,27 @@ export default function AssetData(props: IProps) {
 					if (loadError) {
 						return getUnsupportedWrapper();
 					}
+					if (props.asset && props.asset.state && props.asset.state.logo && checkValidAddress(props.asset.state.logo)) {
+						return (
+							<S.Logo
+								src={getTxEndpoint(props.asset.state.logo)}
+								contain={contain}
+								onError={handleError}
+								loading={'lazy'}
+							/>
+						);
+					}
+					if (props.asset && props.asset.data && REFORMATTED_ASSETS[props.asset.data.id]) {
+						return (
+							<S.Logo
+								src={getTxEndpoint(REFORMATTED_ASSETS[props.asset.data.id].logo)}
+								contain={contain}
+								onError={handleError}
+								loading={'lazy'}
+							/>
+						);
+					}
+
 					if (assetRender.contentType.includes('html')) {
 						if (!props.preview && props.autoLoad)
 							return <S.Frame src={assetRender.url} ref={iframeRef} allowFullScreen onError={handleError} />;
@@ -242,21 +268,6 @@ export default function AssetData(props: IProps) {
 							);
 						}
 					} else {
-						if (
-							props.asset &&
-							props.asset.state &&
-							props.asset.state.logo &&
-							checkValidAddress(props.asset.state.logo)
-						) {
-							return (
-								<S.Logo
-									src={getTxEndpoint(props.asset.state.logo)}
-									contain={contain}
-									onError={handleError}
-									loading={'lazy'}
-								/>
-							);
-						}
 						return getUnsupportedWrapper();
 					}
 				default:

@@ -273,3 +273,10 @@ export const UPLOAD_CONFIG = {
 	chunkSize: 7500000,
 	dispatchUploadSize: 100 * 1024,
 };
+
+export const REFORMATTED_ASSETS = {
+	[AOS.pixl]: {
+		title: 'PIXL Token',
+		logo: 'czR2tJmSr7upPpReXu6IuOc2H7RuHRRAhI7DXAUlszU',
+	},
+};

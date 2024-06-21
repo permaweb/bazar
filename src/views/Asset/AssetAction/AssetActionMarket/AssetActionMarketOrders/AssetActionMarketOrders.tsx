@@ -173,19 +173,23 @@ export default function AssetActionMarketOrders(props: IProps) {
 			let forwardedTags = null;
 			let recipient = null;
 			let localSuccess = false;
+			let initialMessage = null;
 
 			switch (props.type) {
 				case 'buy':
 					pair = [AOS.defaultToken, props.asset.data.id];
 					recipient = AOS.ucm;
+					initialMessage = 'Depositing balance...';
 					break;
 				case 'sell':
 					pair = [props.asset.data.id, AOS.defaultToken];
 					recipient = AOS.ucm;
+					initialMessage = 'Depositing balance...';
 					break;
 				case 'transfer':
 					pair = [props.asset.data.id, AOS.defaultToken];
 					recipient = transferRecipient;
+					initialMessage = 'Transferring balance...';
 					break;
 			}
 
@@ -193,19 +197,16 @@ export default function AssetActionMarketOrders(props: IProps) {
 				const dominantToken = pair[0];
 				const swapToken = pair[1];
 
-				let orderFillQuantity: string | number = currentOrderQuantity;
 				let transferQuantity: string | number = currentOrderQuantity;
 
 				if (props.type === 'sell' || props.type === 'transfer') {
 					if (denomination) {
 						transferQuantity = currentOrderQuantity * denomination;
-						orderFillQuantity = currentOrderQuantity * denomination;
 					}
 				}
 
 				if (props.type === 'buy') {
 					transferQuantity = getTotalOrderAmount();
-					orderFillQuantity = getTotalOrderAmount();
 
 					if (denomination) {
 						transferQuantity = transferQuantity / denomination;
@@ -213,12 +214,10 @@ export default function AssetActionMarketOrders(props: IProps) {
 				}
 
 				transferQuantity = transferQuantity.toString();
-				orderFillQuantity = orderFillQuantity.toString();
 
 				if (props.type === 'buy' || props.type === 'sell') {
 					forwardedTags = [
 						{ name: 'X-Order-Action', value: 'Create-Order' },
-						{ name: 'X-Quantity', value: orderFillQuantity },
 						{ name: 'X-Swap-Token', value: swapToken },
 					];
 					if (unitPrice && unitPrice > 0) {
@@ -226,6 +225,9 @@ export default function AssetActionMarketOrders(props: IProps) {
 						if (transferDenomination) calculatedUnitPrice = unitPrice * transferDenomination;
 						calculatedUnitPrice = calculatedUnitPrice.toString();
 						forwardedTags.push({ name: 'X-Price', value: calculatedUnitPrice });
+					}
+					if (denomination && denomination > 1) {
+						forwardedTags.push({ name: 'X-Transfer-Denomination', value: denomination.toString() });
 					}
 				}
 
@@ -239,7 +241,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 				setOrderLoading(true);
 				try {
-					setCurrentNotification('Depositing balance...');
+					setCurrentNotification(initialMessage);
 					const response: any = await messageResults({
 						processId: arProvider.profile.id,
 						action: 'Transfer',
@@ -256,7 +258,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 					if (response) {
 						if (response['Transfer-Success'])
-							setCurrentNotification(response['Transfer-Success'].message || 'Deposited funds');
+							setCurrentNotification(response['Transfer-Success'].message || 'Balance transferred!');
 						switch (props.type) {
 							case 'buy':
 							case 'sell':
@@ -270,6 +272,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 								break;
 							case 'transfer':
 								setOrderSuccess(true);
+								setCurrentNotification('Balance transferred!');
 								break;
 						}
 					} else {
@@ -288,6 +291,93 @@ export default function AssetActionMarketOrders(props: IProps) {
 				setCurrentNotification('Invalid order details');
 			}
 		}
+	}
+
+	async function handleAssetUpdate(handleUpdate: boolean) {
+		if (handleUpdate) {
+			setCurrentOrderQuantity(0);
+			setUnitPrice(0);
+			setTransferRecipient('');
+			setCurrentNotification(null);
+			setOrderProcessed(false);
+			setShowConfirmation(false);
+			setUpdating(true);
+			windowUtils.scrollTo(0, 0, 'smooth');
+
+			if (props.type !== 'transfer') {
+				try {
+					const existingUCM = { ...ucmReducer };
+
+					if (existingUCM && existingUCM.Orderbook && existingUCM.Orderbook.length) {
+						let pair = [props.asset.data.id, AOS.defaultToken];
+
+						const currentEntry = existingUCM.Orderbook.find(
+							(entry: OrderbookEntryType) => JSON.stringify(entry.Pair) === JSON.stringify(pair)
+						);
+
+						if (currentEntry && currentEntry.Orders) {
+							const fetchUntilChange = async () => {
+								let changeDetected = false;
+								let tries = 0;
+								const maxTries = 10;
+
+								await new Promise((resolve) => setTimeout(resolve, 1000));
+
+								while (!changeDetected && tries < maxTries) {
+									const ucmState = await readHandler({
+										processId: AOS.ucm,
+										action: 'Info',
+									});
+
+									const currentStateEntry = ucmState.Orderbook.find(
+										(entry: OrderbookEntryType) => JSON.stringify(entry.Pair) === JSON.stringify(pair)
+									);
+
+									if (JSON.stringify(currentEntry) !== JSON.stringify(currentStateEntry)) {
+										dispatch(ucmActions.setUCM(ucmState));
+										changeDetected = true;
+									} else {
+										await new Promise((resolve) => setTimeout(resolve, 1000));
+										tries++;
+									}
+								}
+
+								if (!changeDetected) {
+									console.warn(`No changes detected after ${maxTries} attempts`);
+								}
+							};
+
+							await fetchUntilChange();
+						}
+					}
+				} catch (e: any) {
+					console.error(e);
+				}
+			}
+
+			if (props.type === 'buy') {
+				const streaks = await readHandler({
+					processId: AOS.pixl,
+					action: 'Get-Streaks',
+				});
+				dispatch(streakActions.setStreaks(streaks.Streaks));
+			}
+
+			arProvider.setToggleTokenBalanceUpdate(!arProvider.toggleTokenBalanceUpdate);
+			props.toggleUpdate();
+
+			setUpdating(false);
+		}
+	}
+
+	function handleOrderErrorClose() {
+		setShowConfirmation(false);
+		setOrderProcessed(false);
+		setCurrentOrderQuantity(0);
+		setUnitPrice(0);
+		setTransferRecipient('');
+		setCurrentNotification(null);
+		windowUtils.scrollTo(0, 0, 'smooth');
 	}
 
 	function getTotalOrderAmount() {
@@ -366,6 +456,25 @@ export default function AssetActionMarketOrders(props: IProps) {
 			console.error(error);
 		}
 	};
+
+	function getActionDisabled() {
+		if (!arProvider.walletAddress) return true;
+		if (!arProvider.profile || !arProvider.profile.id) return true;
+		if (orderLoading) return true;
+		if (orderProcessed && !orderSuccess) return true;
+		if (maxOrderQuantity <= 0 || isNaN(currentOrderQuantity)) return true;
+		if (
+			currentOrderQuantity <= 0 ||
+			isNaN(maxOrderQuantity) ||
+			(!Number.isInteger(Number(currentOrderQuantity)) && !denomination)
+		)
+			return true;
+		if (currentOrderQuantity > maxOrderQuantity) return true;
+		if (props.type === 'sell' && (unitPrice <= 0 || isNaN(unitPrice))) return true;
+		if (props.type === 'transfer' && (!transferRecipient || !checkValidAddress(transferRecipient))) return true;
+		if (insufficientBalance) return true;
+		return false;
+	}
 
 	function getTotals() {
 		let balanceHeader: string | null = null;
@@ -461,112 +570,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 				)}
 			</>
 		);
-	}
-
-	function getActionDisabled() {
-		if (!arProvider.walletAddress) return true;
-		if (!arProvider.profile || !arProvider.profile.id) return true;
-		if (orderLoading) return true;
-		if (orderProcessed && !orderSuccess) return true;
-		if (maxOrderQuantity <= 0 || isNaN(currentOrderQuantity)) return true;
-		if (
-			currentOrderQuantity <= 0 ||
-			isNaN(maxOrderQuantity) ||
-			(!Number.isInteger(Number(currentOrderQuantity)) && !denomination)
-		)
-			return true;
-		if (currentOrderQuantity > maxOrderQuantity) return true;
-		if (props.type === 'sell' && (unitPrice <= 0 || isNaN(unitPrice))) return true;
-		if (props.type === 'transfer' && (!transferRecipient || !checkValidAddress(transferRecipient))) return true;
-		if (insufficientBalance) return true;
-		return false;
-	}
-
-	async function handleAssetUpdate(handleUpdate: boolean) {
-		if (handleUpdate) {
-			setCurrentOrderQuantity(0);
-			setUnitPrice(0);
-			setTransferRecipient('');
-			setCurrentNotification(null);
-			setOrderProcessed(false);
-			setShowConfirmation(false);
-			setUpdating(true);
-			windowUtils.scrollTo(0, 0, 'smooth');
-
-			if (props.type !== 'transfer') {
-				try {
-					const existingUCM = { ...ucmReducer };
-
-					if (existingUCM && existingUCM.Orderbook && existingUCM.Orderbook.length) {
-						let pair = [props.asset.data.id, AOS.defaultToken];
-
-						const currentEntry = existingUCM.Orderbook.find(
-							(entry: OrderbookEntryType) => JSON.stringify(entry.Pair) === JSON.stringify(pair)
-						);
-
-						if (currentEntry && currentEntry.Orders) {
-							const fetchUntilChange = async () => {
-								let changeDetected = false;
-								let tries = 0;
-								const maxTries = 10;
-
-								await new Promise((resolve) => setTimeout(resolve, 1000));
-
-								while (!changeDetected && tries < maxTries) {
-									const ucmState = await readHandler({
-										processId: AOS.ucm,
-										action: 'Info',
-									});
-
-									const currentStateEntry = ucmState.Orderbook.find(
-										(entry: OrderbookEntryType) => JSON.stringify(entry.Pair) === JSON.stringify(pair)
-									);
-
-									if (JSON.stringify(currentEntry) !== JSON.stringify(currentStateEntry)) {
-										dispatch(ucmActions.setUCM(ucmState));
-										changeDetected = true;
-									} else {
-										await new Promise((resolve) => setTimeout(resolve, 1000));
-										tries++;
-									}
-								}
-
-								if (!changeDetected) {
-									console.warn(`No changes detected after ${maxTries} attempts`);
-								}
-							};
-
-							await fetchUntilChange();
-						}
-					}
-				} catch (e: any) {
-					console.error(e);
-				}
-			}
-
-			if (props.type === 'buy') {
-				const streaks = await readHandler({
-					processId: AOS.pixl,
-					action: 'Get-Streaks',
-				});
-				dispatch(streakActions.setStreaks(streaks.Streaks));
-			}
-
-			arProvider.setToggleTokenBalanceUpdate(!arProvider.toggleTokenBalanceUpdate);
-			props.toggleUpdate();
-
-			setUpdating(false);
-		}
-	}
-
-	function handleOrderErrorClose() {
-		setShowConfirmation(false);
-		setOrderProcessed(false);
-		setCurrentOrderQuantity(0);
-		setUnitPrice(0);
-		setTransferRecipient('');
-		setCurrentNotification(null);
-		windowUtils.scrollTo(0, 0, 'smooth');
 	}
 
 	function getAction(finalizeOrder: boolean) {

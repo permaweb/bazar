@@ -17,7 +17,7 @@ export function checkValidAddress(address: string | null) {
 export function formatAddress(address: string | null, wrap: boolean) {
 	if (!address) return '';
 	if (!checkValidAddress(address)) return address;
-	const formattedAddress = address.substring(0, 5) + '...' + address.substring(36, address.length - 1);
+	const formattedAddress = address.substring(0, 5) + '...' + address.substring(36, address.length);
 	return wrap ? `(${formattedAddress})` : formattedAddress;
 }
 
@@ -63,17 +63,10 @@ export function formatPercentage(percentage) {
 	let multiplied = percentage * 100;
 	let decimalPart = multiplied.toString().split('.')[1];
 
-	// If there is no decimal part, return the integer value
 	if (!decimalPart) {
 		return `${multiplied.toFixed(0)}%`;
 	}
 
-	// Check the length of the decimal part
-	if (decimalPart.length >= 4) {
-		return `${Math.round(multiplied)}%`;
-	}
-
-	// Find the nearest non-zero decimal place
 	let nonZeroIndex = decimalPart.length;
 	for (let i = 0; i < decimalPart.length; i++) {
 		if (decimalPart[i] !== '0') {
@@ -82,7 +75,6 @@ export function formatPercentage(percentage) {
 		}
 	}
 
-	// Return the percentage with appropriate decimals
 	return `${multiplied.toFixed(nonZeroIndex)}%`;
 }
 

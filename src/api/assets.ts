@@ -1,6 +1,6 @@
 import { getGQLData, readHandler } from 'api';
 
-import { AOS, GATEWAYS, LICENSES, PAGINATORS, TAGS } from 'helpers/config';
+import { AOS, GATEWAYS, LICENSES, PAGINATORS, REFORMATTED_ASSETS, TAGS } from 'helpers/config';
 import {
 	AssetDetailType,
 	AssetOrderType,
@@ -171,14 +171,18 @@ export function structureAssets(gqlResponse: DefaultGQLResponseType): AssetType[
 	const structuredAssets: AssetType[] = [];
 
 	gqlResponse.data.forEach((element: GQLNodeResponseType) => {
+		let title =
+			getTagValue(element.node.tags, TAGS.keys.title) ||
+			getTagValue(element.node.tags, TAGS.keys.name) ||
+			formatAddress(element.node.id, false);
+
+		if (REFORMATTED_ASSETS[element.node.id]) title = REFORMATTED_ASSETS[element.node.id].title;
+
 		structuredAssets.push({
 			data: {
 				id: element.node.id,
 				creator: getTagValue(element.node.tags, TAGS.keys.creator),
-				title:
-					getTagValue(element.node.tags, TAGS.keys.title) ||
-					getTagValue(element.node.tags, TAGS.keys.name) ||
-					formatAddress(element.node.id, false),
+				title: title,
 				description: getTagValue(element.node.tags, TAGS.keys.description),
 				dateCreated: element.node.block
 					? element.node.block.timestamp * 1000
