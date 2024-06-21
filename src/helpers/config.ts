@@ -52,11 +52,15 @@ export const AOS = {
 	module: 'sBmq5pehE1_Ed5YBs4DGV4FMftoKwo_cVVsCpPND36Q',
 	scheduler: '_GQ33BkPtZrqxA84vM8Zk-N2aO0toNNu_C-l-rawrBA',
 	ucm: 'U3TjJAZWJjlWBB4KAXSHKzuky81jtyh0zqH8rUL4Wd0',
-	defaultToken: 'xU9zFkq3X2ZQ6olwNVvr1vUWIjc3kXTWr7xKQD6dh10',
+	defaultToken: 'xU9zFkq3X2ZQ6olwNVvr1vUWIjc3kXTWr7xKQD6dh10', // replace when testing upgraded version
 	pixl: 'DM3FoZUq_yebASPhgd8pEIRIzDW6muXEhxz5-JwbZwo',
-	collectionsRegistry: 'TFWDmf8a3_nw43GCm_CuYlYoylHAjCcFGbgHfDaGcsg',
-	profileRegistry: 'SNy4m-DrqxWl01YqGM4sxI8qCni-58re8uuJLvZPypY',
+	collectionsRegistry: 'jii0UeIWYIr4etclyywNGhZVAOwwzmrK56elffh6dzA', // replace for testing and then put back for production
+	profileRegistry: 'dWdBohXUJ22rfb8sSChdFh6oXJzbAtGe4tC6__52Zk4', // replace for testing and then put back for production
 	profileSrc: 'pbrl1fkS3_SZP3RqqPIjbt3-f81L9vIpV2_OnUmxqGQ',
+};
+
+export const AO_VERSIONS = {
+	profileVersion: '0.0.1',
 };
 
 export const LICENSES = {
