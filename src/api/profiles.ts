@@ -1,7 +1,25 @@
 import { readHandler } from 'api';
 
 import { AOS } from 'helpers/config';
-import { ProfileHeaderType, RegistryProfileType } from 'helpers/types';
+
+export type AOProfileType = {
+	id: string;
+	walletAddress: string;
+	displayName: string | null;
+	username: string | null;
+	bio: string | null;
+	avatar: string | null;
+	banner: string | null;
+};
+
+export type ProfileHeaderType = AOProfileType;
+
+export type RegistryProfileType = {
+	id: string;
+	avatar: string | null;
+	username: string;
+	bio?: string;
+};
 
 export async function getProfileById(args: { profileId: string }): Promise<ProfileHeaderType | null> {
 	const emptyProfile = {

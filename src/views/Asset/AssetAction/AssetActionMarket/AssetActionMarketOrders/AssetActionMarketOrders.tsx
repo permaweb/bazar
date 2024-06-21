@@ -240,7 +240,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 				setOrderLoading(true);
 				try {
 					setCurrentNotification('Depositing balance...');
-
 					const response: any = await messageResults({
 						processId: arProvider.profile.id,
 						action: 'Transfer',
@@ -256,7 +255,8 @@ export default function AssetActionMarketOrders(props: IProps) {
 					});
 
 					if (response) {
-						setCurrentNotification(response['Transfer-Success'].message || 'Deposited funds');
+						if (response['Transfer-Success'])
+							setCurrentNotification(response['Transfer-Success'].message || 'Deposited funds');
 						switch (props.type) {
 							case 'buy':
 							case 'sell':

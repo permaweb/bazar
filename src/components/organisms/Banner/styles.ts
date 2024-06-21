@@ -4,12 +4,11 @@ import { fadeIn1, open } from 'helpers/animations';
 
 export const Wrapper = styled.div`
 	height: 30px;
-	width 100%;
+	width: 100%;
 	display: flex;
 	align-items: center;
 	justify-content: center;
 	gap: 20px;
-	border-top: 1px solid ${(props) => props.theme.colors.border.alt2};
 	border-bottom: 1px solid ${(props) => props.theme.colors.border.alt2};
 	background: ${(props) => props.theme.colors.container.alt6.background};
 	animation: ${open} ${fadeIn1};
