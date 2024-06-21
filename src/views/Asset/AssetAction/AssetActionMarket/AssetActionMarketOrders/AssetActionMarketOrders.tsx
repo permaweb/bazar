@@ -247,11 +247,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 						action: 'Transfer',
 						wallet: arProvider.wallet,
 						tags: transferTags,
-						data: {
-							Target: dominantToken,
-							Recipient: recipient,
-							Quantity: transferQuantity,
-						},
+						data: null,
 						responses: ['Transfer-Success', 'Transfer-Error'],
 						handler: 'Create-Order',
 					});
