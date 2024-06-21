@@ -65,11 +65,6 @@ export default function OrderCancel(props: IProps) {
 						});
 					}
 
-					setCancelProcessed(true);
-
-					arProvider.setToggleTokenBalanceUpdate(!arProvider.toggleTokenBalanceUpdate);
-					props.toggleUpdate();
-
 					const existingUCM = { ...ucmReducer };
 					const maxTries = 10;
 					let tries = 0;
@@ -98,7 +93,14 @@ export default function OrderCancel(props: IProps) {
 					};
 
 					await fetchUntilChange();
+
+					setCancelProcessed(true);
+
+					arProvider.setToggleTokenBalanceUpdate(!arProvider.toggleTokenBalanceUpdate);
+					props.toggleUpdate();
+
 					setShowConfirmation(false);
+					setCancelProcessed(false);
 					windowUtils.scrollTo(0, 0, 'smooth');
 				}
 			} catch (e: any) {

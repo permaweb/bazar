@@ -77,7 +77,7 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 
 	function handleProfileAction() {
 		if (arProvider.profile && arProvider.profile.id) {
-			navigate(`${URLS.profile}${arProvider.profile.id}`);
+			navigate(URLS.profileAssets(arProvider.profile.id));
 			setShowWalletDropdown(false);
 		} else {
 			setShowProfileManage(true);

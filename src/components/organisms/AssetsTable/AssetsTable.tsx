@@ -53,16 +53,18 @@ export default function AssetsTable(props: IProps) {
 		if (props.ids && !props.ids.length) {
 			setAssets([]);
 		} else {
-			setAssetIdGroups(
-				getAssetIdGroups({
-					ids: props.ids || null,
-					groupCount: props.pageCount || PAGINATORS.default,
-					filterListings: assetFilterListings,
-					sortType: assetSortType.id as AssetSortType,
-				})
-			);
+			if (!props.loadingIds) {
+				setAssetIdGroups(
+					getAssetIdGroups({
+						ids: props.ids || null,
+						groupCount: props.pageCount || PAGINATORS.default,
+						filterListings: assetFilterListings,
+						sortType: assetSortType.id as AssetSortType,
+					})
+				);
+			}
 		}
-	}, [assetFilterListings, assetSortType, props.ids]);
+	}, [assetFilterListings, assetSortType, props.ids, props.loadingIds]);
 
 	React.useEffect(() => {
 		(async function () {
@@ -166,7 +168,7 @@ export default function AssetsTable(props: IProps) {
 	}
 
 	function getData() {
-		if (assetsLoading) {
+		if ((assetsLoading || props.loadingIds) && viewType) {
 			let Wrapper: any;
 			let Element: any;
 

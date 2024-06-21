@@ -20,6 +20,16 @@ export default function Notification(props: IProps) {
 		props.callback();
 	}
 
+	React.useEffect(() => {
+		if (show) {
+			const timer = setTimeout(() => {
+				handleClose();
+			}, 5000);
+
+			return () => clearTimeout(timer);
+		}
+	}, []);
+
 	return show ? (
 		<Portal node={DOM.notification}>
 			<S.Wrapper warning={props.type === 'warning'}>

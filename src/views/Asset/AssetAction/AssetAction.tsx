@@ -160,53 +160,55 @@ export default function AssetAction(props: IProps) {
 		return listing.creator === arProvider.profile.id;
 	}
 
-	function getCurrentOwners() {
-		return (
-			<>
-				{!mobile && (
-					<GS.DrawerHeaderWrapper>
-						<GS.DrawerContentFlex>
-							{language.owner.charAt(0).toUpperCase() + language.owner.slice(1)}
-						</GS.DrawerContentFlex>
-						<GS.DrawerContentDetail>{language.quantity}</GS.DrawerContentDetail>
-						<GS.DrawerContentDetail>{language.percentage}</GS.DrawerContentDetail>
-					</GS.DrawerHeaderWrapper>
-				)}
-				{currentOwners.map((owner: OwnerType, index: number) => {
-					return (
-						<S.DrawerContentLine key={index}>
-							{mobile && (
-								<S.MDrawerHeader>
-									<GS.DrawerContentHeader>
-										{language.owner.charAt(0).toUpperCase() + language.owner.slice(1)}
-									</GS.DrawerContentHeader>
-								</S.MDrawerHeader>
-							)}
-							<S.DrawerContentFlex>
-								<OwnerLine owner={owner} callback={() => setShowCurrentOwnersModal(false)} />
-							</S.DrawerContentFlex>
-							{mobile && (
-								<S.MDrawerHeader>
-									<GS.DrawerContentHeader>{language.quantity}</GS.DrawerContentHeader>
-								</S.MDrawerHeader>
-							)}
-							<S.DrawerContentDetailAlt>
-								{getDenominatedTokenValue(owner.ownerQuantity, props.asset.data.id)}
-							</S.DrawerContentDetailAlt>
-							{mobile && (
-								<S.MDrawerHeader>
-									<GS.DrawerContentHeader>{language.percentage}</GS.DrawerContentHeader>
-								</S.MDrawerHeader>
-							)}
-							<S.DrawerContentDetailAlt>{formatPercentage(owner.ownerPercentage)}</S.DrawerContentDetailAlt>
-						</S.DrawerContentLine>
-					);
-				})}
-			</>
-		);
-	}
+	const getCurrentOwners = React.useMemo(() => {
+		if (currentOwners) {
+			return (
+				<>
+					{!mobile && (
+						<GS.DrawerHeaderWrapper>
+							<GS.DrawerContentFlex>
+								{language.owner.charAt(0).toUpperCase() + language.owner.slice(1)}
+							</GS.DrawerContentFlex>
+							<GS.DrawerContentDetail>{language.quantity}</GS.DrawerContentDetail>
+							<GS.DrawerContentDetail>{language.percentage}</GS.DrawerContentDetail>
+						</GS.DrawerHeaderWrapper>
+					)}
+					{currentOwners.map((owner: OwnerType, index: number) => {
+						return (
+							<S.DrawerContentLine key={index}>
+								{mobile && (
+									<S.MDrawerHeader>
+										<GS.DrawerContentHeader>
+											{language.owner.charAt(0).toUpperCase() + language.owner.slice(1)}
+										</GS.DrawerContentHeader>
+									</S.MDrawerHeader>
+								)}
+								<S.DrawerContentFlex>
+									<OwnerLine owner={owner} callback={() => setShowCurrentOwnersModal(false)} />
+								</S.DrawerContentFlex>
+								{mobile && (
+									<S.MDrawerHeader>
+										<GS.DrawerContentHeader>{language.quantity}</GS.DrawerContentHeader>
+									</S.MDrawerHeader>
+								)}
+								<S.DrawerContentDetailAlt>
+									{getDenominatedTokenValue(owner.ownerQuantity, props.asset.data.id)}
+								</S.DrawerContentDetailAlt>
+								{mobile && (
+									<S.MDrawerHeader>
+										<GS.DrawerContentHeader>{language.percentage}</GS.DrawerContentHeader>
+									</S.MDrawerHeader>
+								)}
+								<S.DrawerContentDetailAlt>{formatPercentage(owner.ownerPercentage)}</S.DrawerContentDetailAlt>
+							</S.DrawerContentLine>
+						);
+					})}
+				</>
+			);
+		} else return null;
+	}, [currentOwners, mobile]);
 
-	function getCurrentListings() {
+	const getCurrentListings = React.useMemo(() => {
 		if (currentListings) {
 			return (
 				<>
@@ -274,7 +276,7 @@ export default function AssetAction(props: IProps) {
 				</>
 			);
 		} else return null;
-	}
+	}, [currentListings, showCurrentListingsModal, mobile]);
 
 	function getCurrentTab() {
 		switch (currentTab) {
@@ -345,13 +347,13 @@ export default function AssetAction(props: IProps) {
 			{showCurrentOwnersModal && currentOwners && currentOwners.length > 0 && (
 				<Modal header={language.currentlyOwnedBy} handleClose={() => setShowCurrentOwnersModal(false)}>
 					<S.DrawerContent transparent className={'modal-wrapper'}>
-						{getCurrentOwners()}
+						{getCurrentOwners}
 					</S.DrawerContent>
 				</Modal>
 			)}
 			{showCurrentListingsModal && currentListings && currentListings.length > 0 && (
 				<Modal header={language.currentlyBeingSoldBy} handleClose={() => setShowCurrentListingsModal(false)}>
-					<S.DrawerContent className={'modal-wrapper'}>{getCurrentListings()}</S.DrawerContent>
+					<S.DrawerContent className={'modal-wrapper'}>{getCurrentListings}</S.DrawerContent>
 				</Modal>
 			)}
 		</>

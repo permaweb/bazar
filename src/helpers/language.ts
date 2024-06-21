@@ -53,6 +53,7 @@ export const language = {
 		errorUpdatingProfile: `Error updating profile`,
 		executing: `Executing`,
 		fetching: `Fetching`,
+		fetchingAsset: `Fetching asset`,
 		floorPrice: `Floor price`,
 		goTo: `Go to`,
 		implements: `Implements`,

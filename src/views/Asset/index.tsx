@@ -4,6 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { getAssetById } from 'api';
 
 import { Loader } from 'components/atoms/Loader';
+import { Notification } from 'components/atoms/Notification';
 import { URLS } from 'helpers/config';
 import { AssetDetailType } from 'helpers/types';
 import { checkValidAddress } from 'helpers/utils';
@@ -79,6 +80,7 @@ export default function Asset() {
 					<S.ActionWrapper>
 						<AssetAction asset={asset} toggleUpdate={() => setToggleUpdate(!toggleUpdate)} />
 					</S.ActionWrapper>
+					{loading && <Notification message={`${language.updatingAsset}...`} type={'success'} callback={null} />}
 				</>
 			);
 		} else {

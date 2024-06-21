@@ -476,7 +476,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 		return false;
 	}
 
-	function getTotals() {
+	const getTotals = React.useMemo(() => {
 		let balanceHeader: string | null = null;
 		let percentageHeader: string | null = null;
 		let quantity: number | null = null;
@@ -515,7 +515,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 				</S.TotalQuantityLine>
 			</>
 		);
-	}
+	}, [props.asset, props.type, totalAssetBalance, totalSalesQuantity, connectedBalance, ucmReducer]);
 
 	function getTotalPriceDisplay() {
 		let amount = getTotalOrderAmount();
@@ -664,7 +664,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 							<span>{formatCount(totalAssetBalance.toString())}</span>
 						</p>
 					</S.TotalQuantityLine>
-					{getTotals()}
+					{getTotals}
 				</S.TotalsWrapper>
 				{maxOrderQuantity > 0 && (
 					<S.InputWrapper>
@@ -801,7 +801,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 			</S.Wrapper>
 			{showConfirmation && getConfirmation()}
 			{updating && (
-				<Notification message={`${language.updatingAsset}...`} type={'success'} callback={() => setUpdating(false)} />
+				<Notification message={`${language.fetchingAsset}...`} type={'success'} callback={() => setUpdating(false)} />
 			)}
 		</>
 	) : null;

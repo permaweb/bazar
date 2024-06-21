@@ -2,7 +2,6 @@ import React from 'react';
 
 import { getAssetIdsByUser } from 'api';
 
-import { Loader } from 'components/atoms/Loader';
 import { AssetsTable } from 'components/organisms/AssetsTable';
 import { PAGINATORS } from 'helpers/config';
 
@@ -20,13 +19,11 @@ const ProfileAssets = React.memo((props: IProps) => {
 		})();
 	}, [props.address]);
 
-	return props.address && assetIds ? (
+	return props.address ? (
 		<S.Wrapper>
-			<AssetsTable ids={assetIds} type={'grid'} pageCount={PAGINATORS.profile.assets} />
+			<AssetsTable ids={assetIds} loadingIds={!assetIds} type={'grid'} pageCount={PAGINATORS.profile.assets} />
 		</S.Wrapper>
-	) : (
-		<Loader />
-	);
+	) : null;
 });
 
 export default ProfileAssets;
