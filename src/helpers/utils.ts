@@ -177,13 +177,36 @@ export function sortByAssetOrders(assets: AssetDetailType[], sortType: AssetSort
 		return Number(sortOrders(asset.orders, sortType)[0].price);
 	};
 
-	const direction = sortType === 'high-to-low' ? -1 : 1;
+	const getDateKey = (asset: AssetDetailType): number => {
+		if (!asset.orders || asset.orders.length === 0) return 0;
+		return new Date(asset.orders[0].dateCreated).getTime();
+	};
 
-	const assetsWithOrders = assets.filter((asset) => asset.orders && asset.orders.length > 0);
+	let direction: number;
+
+	switch (sortType) {
+		case 'high-to-low':
+			direction = -1;
+			break;
+		case 'low-to-high':
+			direction = 1;
+			break;
+		case 'recently-listed':
+			direction = -1;
+			break;
+		default:
+			direction = 1;
+	}
+
+	let assetsWithOrders = assets.filter((asset) => asset.orders && asset.orders.length > 0);
 	const assetsWithoutOrders = assets.filter((asset) => !asset.orders || asset.orders.length === 0);
 
 	assetsWithOrders.sort((a, b) => {
-		return direction * (getSortKey(a) - getSortKey(b));
+		if (sortType === 'recently-listed') {
+			return direction * (getDateKey(b) - getDateKey(a));
+		} else {
+			return direction * (getSortKey(a) - getSortKey(b));
+		}
 	});
 
 	return [...assetsWithOrders, ...assetsWithoutOrders];
