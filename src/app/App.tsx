@@ -1,20 +1,26 @@
-import React from 'react';
+import React, { lazy, Suspense } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { ReactSVG } from 'react-svg';
 
 import { readHandler } from 'api';
 
+import { Loader } from 'components/atoms/Loader'; // Make sure to import the Loader
 import { Banner } from 'components/organisms/Banner';
 import { AOS, ASSETS, DOM } from 'helpers/config';
 import { Footer } from 'navigation/footer';
 import { Header } from 'navigation/Header';
-import { Routes } from 'routes';
 import { RootState } from 'store';
 import * as currencyActions from 'store/currencies/actions';
 import * as streakActions from 'store/streaks/actions';
 import * as ucmActions from 'store/ucm/actions';
 
 import * as S from './styles';
+
+const Routes = lazy(() =>
+	import(`../routes/Routes.tsx` as any).then((module) => ({
+		default: module.default,
+	}))
+);
 
 export default function App() {
 	const dispatch = useDispatch();
@@ -69,7 +75,7 @@ export default function App() {
 				console.error(e);
 			}
 		})();
-	}, []);
+	}, [currenciesReducer, dispatch]);
 
 	return (
 		<>
@@ -77,14 +83,16 @@ export default function App() {
 			<div id={DOM.notification} />
 			<div id={DOM.overlay} />
 			{ucmReducer ? (
-				<S.AppWrapper>
-					<Banner />
-					<Header />
-					<S.View className={'max-view-wrapper'}>
-						<Routes />
-					</S.View>
-					<Footer />
-				</S.AppWrapper>
+				<Suspense fallback={<Loader />}>
+					<S.AppWrapper>
+						<Banner />
+						<Header />
+						<S.View className={'max-view-wrapper'}>
+							<Routes />
+						</S.View>
+						<Footer />
+					</S.AppWrapper>
+				</Suspense>
 			) : (
 				<div className={'app-loader'}>
 					<ReactSVG src={ASSETS.logo} />

@@ -10,7 +10,7 @@ export const Wrapper = styled.div`
 	top: 0;
 	left: 0;
 	background: ${(props) => props.theme.colors.view.background};
-	animation: ${open} ${fadeIn1};
+	// animation: ${open} ${fadeIn1};
 `;
 
 export const Container = styled.div<{ relative: boolean }>`
