@@ -178,19 +178,30 @@ export const InfoCreator = styled.div`
 `;
 
 export const InfoDescription = styled.div`
-	width: fit-content;
+	width: 100%;
 	max-width: 460px;
-	p {
-		font-size: ${(props) => props.theme.typography.size.base};
-		font-family: ${(props) => props.theme.typography.family.primary};
-		font-weight: ${(props) => props.theme.typography.weight.bold};
+	position: relative;
+
+	button {
 		color: ${(props) => props.theme.colors.font.light1};
-		line-height: 1.65;
-		max-width: 100%;
-		white-space: nowrap;
-		text-overflow: ellipsis;
-		overflow: hidden;
+		font-size: ${(props) => props.theme.typography.size.small};
+		font-weight: ${(props) => props.theme.typography.weight.bold};
+		&:hover {
+			color: ${(props) => props.theme.colors.font.light2};
+		}
 	}
+`;
+
+export const DescriptionText = styled.p`
+	font-size: ${(props) => props.theme.typography.size.base};
+	font-family: ${(props) => props.theme.typography.family.primary};
+	font-weight: ${(props) => props.theme.typography.weight.bold};
+	color: ${(props) => props.theme.colors.font.light1};
+	line-height: 1.65;
+	margin: 0;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
 `;
 
 export const AssetsWrapper = styled.div`

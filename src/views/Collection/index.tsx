@@ -5,6 +5,7 @@ import { getCollectionById } from 'api';
 
 import { CurrencyLine } from 'components/atoms/CurrencyLine';
 import { Loader } from 'components/atoms/Loader';
+import { Modal } from 'components/molecules/Modal';
 import { OwnerLine } from 'components/molecules/OwnerLine';
 import { AssetsTable } from 'components/organisms/AssetsTable';
 import { DEFAULTS, PAGINATORS, URLS } from 'helpers/config';
@@ -14,6 +15,8 @@ import { checkValidAddress, formatDate, formatPercentage } from 'helpers/utils';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 
 import * as S from './styles';
+
+const MAX_DESCRIPTION_LENGTH = 50;
 
 export default function Collection() {
 	const { id } = useParams();
@@ -25,6 +28,7 @@ export default function Collection() {
 	const [collection, setCollection] = React.useState<CollectionDetailType | null>(null);
 	const [collectionLoading, setCollectionLoading] = React.useState<boolean>(false);
 	const [collectionErrorResponse, setCollectionErrorResponse] = React.useState<string | null>(null);
+	const [showFullDescription, setShowFullDescription] = React.useState<boolean>(false);
 
 	React.useEffect(() => {
 		(async function () {
@@ -108,7 +112,14 @@ export default function Collection() {
 								</S.InfoCreator>
 								{collection.description && (
 									<S.InfoDescription>
-										<p>{collection.description}</p>
+										<S.DescriptionText>
+											{collection.description.length > MAX_DESCRIPTION_LENGTH
+												? collection.description.substring(0, MAX_DESCRIPTION_LENGTH) + '...'
+												: collection.description}
+										</S.DescriptionText>
+										{collection.description.length > MAX_DESCRIPTION_LENGTH && (
+											<button onClick={() => setShowFullDescription(true)}>{language.viewFullDescription}</button>
+										)}
 									</S.InfoDescription>
 								)}
 							</S.InfoFooter>
@@ -119,6 +130,13 @@ export default function Collection() {
 							<AssetsTable ids={collection.assetIds} type={'grid'} pageCount={PAGINATORS.collection.assets} />
 						)}
 					</S.AssetsWrapper>
+					{showFullDescription && collection.description && (
+						<Modal header={language.description} handleClose={() => setShowFullDescription(false)}>
+							<div className={'modal-wrapper'}>
+								<p>{collection.description}</p>
+							</div>
+						</Modal>
+					)}
 				</>
 			);
 		} else {
