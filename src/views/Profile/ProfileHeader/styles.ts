@@ -118,7 +118,7 @@ export const HeaderInfoBio = styled(HeaderInfoDetail)`
 	flex-wrap: wrap;
 	gap: 10px;
 	p {
-		color: ${(props) => props.theme.colors.font.light1};
+		color: ${(props) => props.theme.colors.font.primary};
 		font-size: ${(props) => props.theme.typography.size.small};
 		font-weight: ${(props) => props.theme.typography.weight.bold};
 		line-height: 1.65;
