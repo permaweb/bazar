@@ -67,6 +67,10 @@ export function formatPercentage(percentage) {
 		return `${multiplied.toFixed(0)}%`;
 	}
 
+	if (decimalPart.length > 6) {
+		return `${multiplied.toFixed(0)}%`;
+	}
+
 	let nonZeroIndex = decimalPart.length;
 	for (let i = 0; i < decimalPart.length; i++) {
 		if (decimalPart[i] !== '0') {

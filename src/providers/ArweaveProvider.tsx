@@ -105,11 +105,13 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 		handleWallet();
 
 		window.addEventListener('arweaveWalletLoaded', handleWallet);
+		window.addEventListener('walletSwitch', handleWallet);
 
 		return () => {
 			window.removeEventListener('arweaveWalletLoaded', handleWallet);
+			window.removeEventListener('walletSwitch', handleWallet);
 		};
-	}, [walletType]);
+	}, []);
 
 	React.useEffect(() => {
 		(async function () {

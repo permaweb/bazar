@@ -39,18 +39,9 @@ export default function ProfileHeader(props: IProps) {
 		})();
 	}, [props.profile]);
 
-	// const copyAddress = React.useCallback(async () => {
-	// 	if (props.profile && props.profile.walletAddress) {
-	// 		if (props.profile.walletAddress.length > 0) {
-	// 			await navigator.clipboard.writeText(props.profile.walletAddress);
-	// 			setCopied(true);
-	// 			setTimeout(() => setCopied(false), 2000);
-	// 		}
-	// 	}
-	// }, [props.profile]);
-
 	function getAvatar() {
-		if (props.profile && props.profile.avatar) return <img src={getTxEndpoint(props.profile.avatar)} />;
+		if (props.profile && props.profile.avatar && checkValidAddress(props.profile.avatar))
+			return <img src={getTxEndpoint(props.profile.avatar)} />;
 		return <ReactSVG src={ASSETS.user} />;
 	}
 
