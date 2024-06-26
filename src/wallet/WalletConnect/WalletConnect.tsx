@@ -8,7 +8,7 @@ import { CurrencyLine } from 'components/atoms/CurrencyLine';
 import { Panel } from 'components/molecules/Panel';
 import { ProfileManage } from 'components/organisms/ProfileManage';
 import { ASSETS, REDIRECTS, STYLING, URLS } from 'helpers/config';
-import { formatAddress, formatCount } from 'helpers/utils';
+import { formatAddress, formatCount, getTotalTokenBalance } from 'helpers/utils';
 import * as windowUtils from 'helpers/window';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useCustomThemeProvider } from 'providers/CustomThemeProvider';
@@ -138,7 +138,7 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 								return (
 									<S.BalanceLine key={token}>
 										<CurrencyLine
-											amount={arProvider.tokenBalances[token]}
+											amount={getTotalTokenBalance(arProvider.tokenBalances[token])}
 											currency={token}
 											callback={() => setShowWalletDropdown(false)}
 											useReverseLayout

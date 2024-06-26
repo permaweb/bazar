@@ -12,7 +12,7 @@ import { Slider } from 'components/atoms/Slider';
 import { Modal } from 'components/molecules/Modal';
 import { AOS, ASSETS } from 'helpers/config';
 import { AssetOrderType, OrderbookEntryType } from 'helpers/types';
-import { checkValidAddress, formatCount, formatPercentage } from 'helpers/utils';
+import { checkValidAddress, formatCount, formatPercentage, getTotalTokenBalance } from 'helpers/utils';
 import * as windowUtils from 'helpers/window';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
@@ -156,7 +156,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 				if (denomination) {
 					orderAmount = orderAmount / denomination;
 				}
-				setInsufficientBalance(Number(arProvider.tokenBalances[AOS.defaultToken]) < orderAmount);
+				setInsufficientBalance(Number(getTotalTokenBalance(arProvider.tokenBalances[AOS.defaultToken])) < orderAmount);
 			}
 		} else {
 			setInsufficientBalance(false);
@@ -242,6 +242,38 @@ export default function AssetActionMarketOrders(props: IProps) {
 				setOrderLoading(true);
 				try {
 					setCurrentNotification(initialMessage);
+
+					if (props.type === 'buy') {
+						const profileBalance = BigInt(arProvider.tokenBalances[AOS.defaultToken].profileBalance);
+						const walletBalance = BigInt(arProvider.tokenBalances[AOS.defaultToken].walletBalance);
+
+						const transferAmount = BigInt(transferQuantity);
+
+						if (profileBalance < transferAmount) {
+							const differenceNeeded = transferAmount - profileBalance;
+
+							if (walletBalance < differenceNeeded) {
+								console.error(`Wallet balance is less than difference needed: ${differenceNeeded}`);
+								console.error(`Wallet balance: ${walletBalance}`);
+								return;
+							} else {
+								console.log(`Transferring remainder from wallet balance: ${differenceNeeded.toString()}`);
+								const walletTransferResponse: any = await messageResults({
+									processId: AOS.defaultToken,
+									action: 'Transfer',
+									wallet: arProvider.wallet,
+									tags: [
+										{ name: 'Quantity', value: differenceNeeded.toString() },
+										{ name: 'Recipient', value: arProvider.profile.id },
+									],
+									data: null,
+									responses: ['Transfer-Error'],
+								});
+								if (!walletTransferResponse || walletTransferResponse['Transfer-Error']) return;
+							}
+						}
+					}
+
 					const response: any = await messageResults({
 						processId: arProvider.profile.id,
 						action: 'Transfer',
@@ -772,11 +804,13 @@ export default function AssetActionMarketOrders(props: IProps) {
 				<S.SalesWrapper>{getOrderDetails()}</S.SalesWrapper>
 				<S.ActionWrapper loading={null}>
 					{getAction(false)}
-					{arProvider.tokenBalances && arProvider.tokenBalances[AOS.defaultToken] !== null && insufficientBalance && (
-						<S.MessageWrapper>
-							<span>Not enough tokens to purchase this asset</span>
-						</S.MessageWrapper>
-					)}
+					{arProvider.tokenBalances &&
+						getTotalTokenBalance(arProvider.tokenBalances[AOS.defaultToken]) !== null &&
+						insufficientBalance && (
+							<S.MessageWrapper>
+								<span>Not enough tokens to purchase this asset</span>
+							</S.MessageWrapper>
+						)}
 					{!arProvider.walletAddress && (
 						<S.MessageWrapper>
 							<span>Connect your wallet to continue</span>

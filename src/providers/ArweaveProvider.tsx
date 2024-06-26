@@ -17,7 +17,7 @@ interface ArweaveContextState {
 	walletAddress: string | null;
 	walletType: WalletEnum | null;
 	arBalance: number | null;
-	tokenBalances: { [address: string]: number } | null;
+	tokenBalances: { [address: string]: { profileBalance: number; walletBalance: number } } | null;
 	toggleTokenBalanceUpdate: boolean;
 	setToggleTokenBalanceUpdate: (toggleUpdate: boolean) => void;
 	handleConnect: any;
@@ -86,7 +86,9 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 	const [walletAddress, setWalletAddress] = React.useState<string | null>(null);
 
 	const [arBalance, setArBalance] = React.useState<number | null>(null);
-	const [tokenBalances, setTokenBalances] = React.useState<{ [address: string]: number } | null>({
+	const [tokenBalances, setTokenBalances] = React.useState<{
+		[address: string]: { profileBalance: number; walletBalance: number };
+	} | null>({
 		[AOS.defaultToken]: null,
 		[AOS.pixl]: null,
 	});
@@ -174,7 +176,7 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 	}, [toggleProfileUpdate]);
 
 	React.useEffect(() => {
-		if (profile && profile.id) {
+		if (walletAddress && profile && profile.id) {
 			const fetchDefaultTokenBalance = async () => {
 				try {
 					const defaultTokenBalance = await readHandler({
@@ -182,9 +184,17 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 						action: 'Balance',
 						tags: [{ name: 'Recipient', value: profile.id }],
 					});
+					const defaultTokenWalletBalance = await readHandler({
+						processId: AOS.defaultToken,
+						action: 'Balance',
+						tags: [{ name: 'Recipient', value: walletAddress }],
+					});
 					setTokenBalances((prevBalances) => ({
 						...prevBalances,
-						[AOS.defaultToken]: defaultTokenBalance || 0,
+						[AOS.defaultToken]: {
+							profileBalance: defaultTokenBalance || 0,
+							walletBalance: defaultTokenWalletBalance || 0,
+						},
 					}));
 				} catch (e) {
 					console.error(e);
@@ -194,11 +204,11 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 			fetchDefaultTokenBalance();
 		} else {
 			setTokenBalances({
-				[AOS.defaultToken]: 0,
-				[AOS.pixl]: 0,
+				[AOS.defaultToken]: { profileBalance: 0, walletBalance: 0 },
+				[AOS.pixl]: { profileBalance: 0, walletBalance: 0 },
 			});
 		}
-	}, [profile, toggleTokenBalanceUpdate]);
+	}, [walletAddress && profile, toggleTokenBalanceUpdate]);
 
 	React.useEffect(() => {
 		if (profile && profile.id) {
@@ -211,7 +221,7 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 					});
 					setTokenBalances((prevBalances) => ({
 						...prevBalances,
-						[AOS.pixl]: pixlTokenBalance || 0,
+						[AOS.pixl]: { profileBalance: pixlTokenBalance || 0, walletBalance: 0 },
 					}));
 				} catch (e) {
 					console.error(e);

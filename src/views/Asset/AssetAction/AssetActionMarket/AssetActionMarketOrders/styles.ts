@@ -194,12 +194,16 @@ export const ActionWrapperFull = styled(ActionWrapper)`
 `;
 
 export const MessageWrapper = styled.div`
-	margin: 10px 0 0 0;
+	padding: 2.5px 10px;
+	margin: 15px 0 0 0;
+	background: ${(props) => props.theme.colors.warning.primary};
+	border: 1px solid ${(props) => props.theme.colors.warning.primary};
+	border-radius: ${STYLING.dimensions.radius.primary};
 	span {
 		font-size: ${(props) => props.theme.typography.size.small};
 		font-family: ${(props) => props.theme.typography.family.primary};
 		font-weight: ${(props) => props.theme.typography.weight.bold};
-		color: ${(props) => props.theme.colors.warning.primary};
+		color: ${(props) => props.theme.colors.font.light1};
 	}
 `;
 

@@ -282,3 +282,9 @@ export function getByteSize(input: string | Buffer): number {
 
 	return sizeInBytes;
 }
+
+export function getTotalTokenBalance(tokenBalances: { profileBalance: number; walletBalance: number } | null) {
+	if (!tokenBalances) return null;
+	const total = (tokenBalances.profileBalance || 0) + (tokenBalances.walletBalance || 0);
+	return total;
+}

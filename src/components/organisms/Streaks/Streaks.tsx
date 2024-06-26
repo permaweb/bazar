@@ -12,7 +12,7 @@ import { OwnerLine } from 'components/molecules/OwnerLine';
 import { Panel } from 'components/molecules/Panel';
 import { AOS, ASSETS, URLS } from 'helpers/config';
 import { RegistryProfileType } from 'helpers/types';
-import { formatAddress } from 'helpers/utils';
+import { formatAddress, getTotalTokenBalance } from 'helpers/utils';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 import { RootState } from 'store';
@@ -69,7 +69,7 @@ export default function Streaks(props: IProps) {
 				arProvider.tokenBalances &&
 				arProvider.tokenBalances[AOS.pixl]
 			) {
-				setPixlBalance(arProvider.tokenBalances[AOS.pixl]);
+				setPixlBalance(getTotalTokenBalance(arProvider.tokenBalances[AOS.pixl]));
 			} else {
 				try {
 					const pixlTokenBalance = await readHandler({
@@ -199,7 +199,10 @@ export default function Streaks(props: IProps) {
 				const rewardsInterval = 720;
 				const blockTime = 2;
 
-				const lastHeightDiff = currentBlockHeight - streaksReducer[props.profile.id].lastHeight;
+				let lastHeightDiff = 0;
+				if (streaksReducer && streaksReducer[props.profile.id]) {
+					lastHeightDiff = currentBlockHeight - streaksReducer[props.profile.id].lastHeight;
+				}
 
 				const remainingBlocks = rewardsInterval - lastHeightDiff;
 

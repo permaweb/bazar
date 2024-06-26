@@ -53,7 +53,7 @@ export const FlexAction = styled.div`
 `;
 
 export const Dropdown = styled.ul`
-	max-height: 75vh;
+	max-height: 85vh;
 	width: 325px;
 	max-width: 75vw;
 	padding: 15px 0 10px 0;
