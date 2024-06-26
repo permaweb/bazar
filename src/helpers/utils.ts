@@ -59,6 +59,7 @@ export function formatCount(count: string): string {
 	}
 }
 
+// TODO
 export function formatPercentage(percentage) {
 	let multiplied = percentage * 100;
 	let decimalPart = multiplied.toString().split('.')[1];
@@ -68,6 +69,7 @@ export function formatPercentage(percentage) {
 	}
 
 	if (decimalPart.length > 6) {
+		console.log(multiplied);
 		return `${multiplied.toFixed(0)}%`;
 	}
 

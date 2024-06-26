@@ -1,128 +1,144 @@
 import React from 'react';
 
-// import { messageResult, readHandler } from 'api';
-// import { Button } from 'components/atoms/Button';
-// import { CurrencyLine } from 'components/atoms/CurrencyLine';
-// import { Notification } from 'components/atoms/Notification';
-import { Modal } from 'components/molecules/Modal';
+import { createDataItemSigner, message, result } from '@permaweb/aoconnect';
 
-// import { AOS } from 'helpers/config';
-// import { NotificationType } from 'helpers/types';
-// import { useArweaveProvider } from 'providers/ArweaveProvider';
+import { Button } from 'components/atoms/Button';
+import { Notification } from 'components/atoms/Notification';
+import { Modal } from 'components/molecules/Modal';
+import { NotificationType } from 'helpers/types';
+import { useArweaveProvider } from 'providers/ArweaveProvider';
+
 import * as S from './styles';
 
+export function patch() {
+	const patch = `
+  local AO_TESTNET = 'fcoN_xJeisVsPXA-trzVAuIiqO3ydLQxM-L4XbrQKzY'
+  local SEC_PATCH = 'sec-patch-6-5-2024'
+  
+  if not Utils.includes(AO_TESTNET, ao.authorities) then
+	table.insert(ao.authorities, AO_TESTNET)
+  end
+  if not Utils.includes(SEC_PATCH, Utils.map(Utils.prop('name'), Handlers.list)) then
+	Handlers.prepend(SEC_PATCH, 
+	  function (msg)
+		return msg.From ~= msg.Owner and not ao.isTrusted(msg)
+	  end,
+	  function (msg)
+		Send({Target = msg.From, Data = "Message is not trusted."})
+		print("Message is not trusted. From: " .. msg.From .. " - Owner: " .. msg.Owner)
+	  end
+	)
+  end
+  return "Added Patch Handler"
+  `;
+	return patch;
+}
+
 export default function Banner() {
-	// const arProvider = useArweaveProvider();
+	const arProvider = useArweaveProvider();
 
 	const [showInfo, setShowInfo] = React.useState<boolean>(false);
-	// const [showTransfer, setShowTransfer] = React.useState<boolean>(false);
+	const [showUpdate, setShowUpdate] = React.useState<boolean>(false);
 
-	// const [walletTokenBalance, setWalletTokenBalance] = React.useState<number | null>(null);
-	// const [loading, setLoading] = React.useState<boolean>(false);
-	// const [response, setResponse] = React.useState<NotificationType | null>(null);
-	// const [processed, setProcessed] = React.useState<boolean>(false);
+	const [patchApplied, setPatchApplied] = React.useState<boolean>(true);
 
-	// React.useEffect(() => {
-	// 	(async function () {
-	// 		if (arProvider.walletAddress && arProvider.profile && arProvider.profile.id) {
-	// 			try {
-	// 				const tokenBalance = await readHandler({
-	// 					processId: AOS.defaultToken,
-	// 					action: 'Balance',
-	// 					tags: [{ name: 'Recipient', value: arProvider.walletAddress }],
-	// 				});
+	const [loading, setLoading] = React.useState<boolean>(false);
+	const [response, setResponse] = React.useState<NotificationType | null>(null);
+	const [processed, setProcessed] = React.useState<boolean>(false);
 
-	// 				if (tokenBalance !== null) {
-	// 					setWalletTokenBalance(tokenBalance);
-	// 					if (tokenBalance > 0) {
-	// 						if (!sessionStorage.getItem('transferBalance')) setShowTransfer(true);
-	// 						sessionStorage.setItem('transferBalance', 'true');
-	// 					}
-	// 				}
-	// 			} catch (e: any) {
-	// 				console.error(e);
-	// 			}
-	// 		}
-	// 	})();
-	// }, [arProvider.walletAddress, arProvider.profile, arProvider.tokenBalances]);
+	React.useEffect(() => {
+		(async function () {
+			if (arProvider.walletAddress && arProvider.profile && arProvider.profile.id) {
+				try {
+					const evalMessage = await message({
+						process: arProvider.profile.id,
+						signer: createDataItemSigner(arProvider.wallet),
+						tags: [{ name: 'Action', value: 'Eval' }],
+						data: 'return Handlers.list[1].name',
+					});
 
-	// async function handleTransfer() {
-	// 	if (arProvider.wallet && arProvider.profile && arProvider.profile.id) {
-	// 		setLoading(true);
-	// 		try {
-	// 			const response = await messageResult({
-	// 				processId: AOS.defaultToken,
-	// 				wallet: arProvider.wallet,
-	// 				action: 'Transfer',
-	// 				tags: [
-	// 					{ name: 'Recipient', value: arProvider.profile.id },
-	// 					{ name: 'Quantity', value: walletTokenBalance.toString() },
-	// 				],
-	// 				data: null,
-	// 			});
+					const { Output } = await result({ message: evalMessage, process: arProvider.profile.id });
 
-	// 			setProcessed(true);
+					if (Output && Output.data && Output.data.output && Output.data.output !== 'sec-patch-6-5-2024') {
+						setShowUpdate(true);
+						setPatchApplied(false);
+					}
+				} catch (e: any) {
+					console.error(e);
+				}
+			}
+		})();
+	}, [arProvider.walletAddress, arProvider.profile, arProvider.tokenBalances]);
 
-	// 			if (response) {
-	// 				if (response['Debit-Notice'] && response['Credit-Notice']) {
-	// 					arProvider.setToggleTokenBalanceUpdate(!arProvider.toggleTokenBalanceUpdate);
-	// 					setResponse({
-	// 						message: 'Balance transferred!',
-	// 						status: 'success',
-	// 					});
-	// 				} else {
-	// 					setResponse({
-	// 						message: 'Error transferring balanace',
-	// 						status: 'warning',
-	// 					});
-	// 				}
-	// 			} else {
-	// 				setResponse({
-	// 					message: 'Transfer aborted',
-	// 					status: 'warning',
-	// 				});
-	// 			}
-	// 		} catch (e: any) {
-	// 			console.error(e);
-	// 		}
-	// 		setLoading(false);
-	// 	}
-	// }
+	async function handleUpdate() {
+		if (arProvider.wallet && arProvider.profile && arProvider.profile.id) {
+			setLoading(true);
+			try {
+				const evalMessage = await message({
+					process: arProvider.profile.id,
+					signer: createDataItemSigner(arProvider.wallet),
+					tags: [{ name: 'Action', value: 'Eval' }],
+					data: patch(),
+				});
+
+				console.log(evalMessage);
+
+				const evalResult = await result({
+					message: evalMessage,
+					process: arProvider.profile.id,
+				});
+
+				console.log(evalResult);
+
+				setProcessed(true);
+
+				if (evalResult) {
+					setResponse({
+						message: 'Profile updated!',
+						status: 'success',
+					});
+					setPatchApplied(true);
+				} else {
+					setResponse({
+						message: 'Error updating profile',
+						status: 'warning',
+					});
+				}
+			} catch (e: any) {
+				console.error(e);
+			}
+			setLoading(false);
+		}
+	}
 
 	return (
 		<>
 			<S.Wrapper>
 				<button onClick={() => setShowInfo(true)}>Welcome to AO BazAR!</button>
-				{/* {walletTokenBalance !== null && walletTokenBalance > 0 && (
-					<button onClick={() => setShowTransfer(true)}>
-						Transfer wrapped AR to your personal process (permaweb profile)
-					</button>
-				)} */}
+				{!patchApplied && <button onClick={() => setShowUpdate(true)}>Update your profile</button>}
 			</S.Wrapper>
-			{/* {showTransfer && (
-				<Modal header={'Transfer Wrapped AR'} handleClose={() => setShowTransfer(false)}>
-					<S.MWrapper className={'modal-wrapper'}>
+			{!patchApplied && showUpdate && (
+				<Modal header={'Update your profile process!'} handleClose={() => setShowUpdate(false)}>
+					<S.MWrapper>
+						<p>An important security feature has been added to enhance the security of your profile.</p>
 						<p>
-							Wrapped AR was detected in your wallet. In order to buy assets in BazAR, this balance must be transferred
-							to your personal agent process (permaweb profile).
+							This update ensures that only trusted messages are processed by your profile, protecting your data and
+							interactions. It is highly recommended to apply this update to maintain the integrity and security of your
+							profile.
 						</p>
-						<p>Would you like to transfer this balance to continue ?</p>
-						<S.TransferAmount>
-							<span>Transfer amount: </span>
-							<CurrencyLine amount={walletTokenBalance} currency={AOS.defaultToken} />
-						</S.TransferAmount>
+						<p>Would you like to continue and apply this update ?</p>
 						<S.ActionsWrapper>
 							<Button
 								type={'warning'}
 								label={'Cancel'}
-								handlePress={() => setShowTransfer(false)}
+								handlePress={() => setShowUpdate(false)}
 								disabled={loading || processed}
 								height={45}
 							/>
 							<Button
 								type={'alt1'}
-								label={'Yes, execute transfer'}
-								handlePress={handleTransfer}
+								label={'Yes, update my profile'}
+								handlePress={handleUpdate}
 								disabled={loading || processed}
 								loading={loading}
 								height={45}
@@ -130,7 +146,7 @@ export default function Banner() {
 						</S.ActionsWrapper>
 					</S.MWrapper>
 				</Modal>
-			)} */}
+			)}
 			{showInfo && (
 				<Modal header={'AO BazAR'} handleClose={() => setShowInfo(false)}>
 					<S.MWrapper className={'modal-wrapper'}>
@@ -162,16 +178,16 @@ export default function Banner() {
 					</S.MWrapper>
 				</Modal>
 			)}
-			{/* {response && (
+			{response && (
 				<Notification
 					message={response.message}
 					type={response.status}
 					callback={() => {
 						setResponse(null);
-						setShowTransfer(false);
+						setShowUpdate(false);
 					}}
 				/>
-			)} */}
+			)}
 		</>
 	);
 }

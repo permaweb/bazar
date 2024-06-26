@@ -28,12 +28,14 @@ export const Wrapper = styled.div`
 `;
 
 export const MWrapper = styled.div`
+	padding: 0 20px;
 	p {
 		font-size: ${(props) => props.theme.typography.size.base};
 		font-family: ${(props) => props.theme.typography.family.primary};
 		font-weight: ${(props) => props.theme.typography.weight.medium};
 		color: ${(props) => props.theme.colors.font.alt1};
-		margin: 0 0 10px 0;
+		line-height: 1.65;
+		margin: 0 0 20px 0;
 		b {
 			font-weight: ${(props) => props.theme.typography.weight.xBold};
 			color: ${(props) => props.theme.colors.font.primary};
