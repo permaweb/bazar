@@ -120,7 +120,7 @@ export default function Banner() {
 			{!patchApplied && showUpdate && (
 				<Modal header={'Update your profile process!'} handleClose={() => setShowUpdate(false)}>
 					<S.MWrapper>
-						<p>An important security feature has been added to enhance the security of your profile.</p>
+						<p>An important update has been added to enhance the security of your profile.</p>
 						<p>
 							This update ensures that only trusted messages are processed by your profile, protecting your data and
 							interactions. It is highly recommended to apply this update to maintain the integrity and security of your

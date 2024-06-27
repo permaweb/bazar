@@ -63,5 +63,4 @@ export const Body = styled.div`
 	width: 100%;
 	overflow-y: auto;
 	scrollbar-color: transparent transparent;
-	padding: 0 0 20px 0;
 `;
