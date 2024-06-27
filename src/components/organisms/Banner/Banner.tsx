@@ -119,7 +119,7 @@ export default function Banner() {
 			</S.Wrapper>
 			{!patchApplied && showUpdate && (
 				<Modal header={'Update your profile process!'} handleClose={() => setShowUpdate(false)}>
-					<S.MWrapper>
+					<S.MWrapper className={'modal-wrapper'}>
 						<p>An important update has been added to enhance the security of your profile.</p>
 						<p>
 							This update ensures that only trusted messages are processed by your profile, protecting your data and

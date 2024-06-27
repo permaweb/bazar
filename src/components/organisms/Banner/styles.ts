@@ -28,7 +28,6 @@ export const Wrapper = styled.div`
 `;
 
 export const MWrapper = styled.div`
-	padding: 0 20px;
 	p {
 		font-size: ${(props) => props.theme.typography.size.base};
 		font-family: ${(props) => props.theme.typography.family.primary};
