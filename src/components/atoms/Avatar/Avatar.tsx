@@ -13,11 +13,11 @@ export default function Avatar(props: IProps) {
 
 	const hasImage = props.owner && props.owner.avatar && checkValidAddress(props.owner.avatar);
 
-	function getAvatar() {
-		if (!hasError && hasImage) {
+	const avatar = React.useMemo(() => {
+		if (!hasError && props.owner && props.owner.avatar && checkValidAddress(props.owner.avatar)) {
 			return <img src={getTxEndpoint(props.owner.avatar)} onError={() => setHasError(true)} />;
 		} else return <ReactSVG src={ASSETS.user} />;
-	}
+	}, [props.owner, hasError]);
 
 	return (
 		<S.Wrapper
@@ -28,7 +28,7 @@ export default function Avatar(props: IProps) {
 			className={'fade-in'}
 			hasImage={hasImage}
 		>
-			{getAvatar()}
+			{avatar}
 		</S.Wrapper>
 	);
 }

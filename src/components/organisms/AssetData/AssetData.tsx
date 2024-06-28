@@ -27,6 +27,7 @@ export default function AssetData(props: IProps) {
 	const checkVisibility = () => {
 		const element = wrapperRef.current;
 		if (!element) return;
+		if (props.scrolling) return;
 
 		const scroll = window.scrollY || window.pageYOffset;
 		const boundsTop = element.getBoundingClientRect().top + scroll;
@@ -55,7 +56,7 @@ export default function AssetData(props: IProps) {
 			window.removeEventListener('scroll', checkVisibility);
 			window.removeEventListener('resize', checkVisibility);
 		};
-	}, [props.asset]);
+	}, [props.asset, props.scrolling]);
 
 	async function handleGetAssetRender(assetId: string): Promise<AssetRenderType> {
 		const assetResponse = await fetch(getTxEndpoint(assetId));

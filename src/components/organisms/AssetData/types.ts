@@ -7,4 +7,5 @@ export interface IProps {
 	autoLoad?: boolean;
 	loadRenderer?: boolean;
 	assetRender?: AssetRenderType;
+	scrolling?: boolean;
 }

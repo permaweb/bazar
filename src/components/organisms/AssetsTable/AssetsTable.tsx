@@ -38,6 +38,7 @@ export default function AssetsTable(props: IProps) {
 
 	const [viewType, setViewType] = React.useState<'list' | 'grid' | null>(null);
 	const [desktop, setDesktop] = React.useState(windowUtils.checkWindowCutoff(parseInt(STYLING.cutoffs.initial)));
+	const [scrolling, setScrolling] = React.useState<boolean>(false);
 
 	function handleWindowResize() {
 		if (windowUtils.checkWindowCutoff(parseInt(STYLING.cutoffs.initial))) {
@@ -135,16 +136,22 @@ export default function AssetsTable(props: IProps) {
 		setAssetFilterListings((prev) => !prev);
 	}, []);
 
-	const handlePaginationAction = (type: 'next' | 'previous') => {
+	const handlePaginationAction = (type: 'next' | 'previous', useScroll: boolean) => {
 		const action = type === 'next' ? nextAction : previousAction;
 		if (action) {
 			action();
 			setTimeout(() => {
 				if (scrollRef.current) {
+					if (useScroll) setScrolling(true);
 					scrollRef.current.scrollIntoView({
 						behavior: 'smooth',
 						block: 'start',
 					});
+					if (useScroll) {
+						setTimeout(() => {
+							setScrolling(false);
+						}, 750);
+					}
 				}
 			}, 1);
 		}
@@ -239,7 +246,7 @@ export default function AssetsTable(props: IProps) {
 																	<p>{getAssetIndexDisplay(index, sectionIndex, splitSections[0].length)}</p>
 																</S.Index>
 																<S.Thumbnail>
-																	<AssetData asset={asset} preview />
+																	<AssetData asset={asset} scrolling={scrolling} preview />
 																</S.Thumbnail>
 																<S.Title>
 																	<p>{asset.data.title}</p>
@@ -266,7 +273,7 @@ export default function AssetsTable(props: IProps) {
 										<S.AssetGridElement key={index} className={'fade-in'}>
 											<Link to={redirect}>
 												<S.AssetGridDataWrapper disabled={false}>
-													<AssetData asset={asset} />
+													<AssetData asset={asset} scrolling={scrolling} />
 												</S.AssetGridDataWrapper>
 											</Link>
 											<S.AssetGridInfoWrapper>
@@ -355,7 +362,7 @@ export default function AssetsTable(props: IProps) {
 						<IconButton
 							type={'alt1'}
 							src={ASSETS.arrow}
-							handlePress={() => handlePaginationAction('previous')}
+							handlePress={() => handlePaginationAction('previous', true)}
 							disabled={!assets || !previousAction}
 							dimensions={{
 								wrapper: 30,
@@ -368,7 +375,7 @@ export default function AssetsTable(props: IProps) {
 						<IconButton
 							type={'alt1'}
 							src={ASSETS.arrow}
-							handlePress={() => handlePaginationAction('next')}
+							handlePress={() => handlePaginationAction('next', true)}
 							disabled={!assets || !nextAction}
 							dimensions={{
 								wrapper: 30,
@@ -386,13 +393,13 @@ export default function AssetsTable(props: IProps) {
 				<Button
 					type={'primary'}
 					label={language.previous}
-					handlePress={() => handlePaginationAction('previous')}
+					handlePress={() => handlePaginationAction('previous', true)}
 					disabled={!assets || !previousAction}
 				/>
 				<Button
 					type={'primary'}
 					label={language.next}
-					handlePress={() => handlePaginationAction('next')}
+					handlePress={() => handlePaginationAction('next', true)}
 					disabled={!assets || !nextAction}
 				/>
 			</S.Footer>

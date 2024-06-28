@@ -225,6 +225,7 @@ export const StreakLine = styled.div`
 `;
 
 export const StreakIndex = styled.div`
+	min-width: 40px;
 	margin: 0 15px 0 0;
 	span {
 		font-size: ${(props) => props.theme.typography.size.base};
