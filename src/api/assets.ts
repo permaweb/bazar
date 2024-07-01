@@ -97,6 +97,7 @@ export async function getAssetById(args: { id: string }): Promise<AssetDetailTyp
 				denomination: null,
 				logo: null,
 				balances: null,
+				transferable: null,
 			};
 
 			const structuredAsset = structureAssets(gqlResponse)[0];
@@ -116,6 +117,12 @@ export async function getAssetById(args: { id: string }): Promise<AssetDetailTyp
 				if (processState.Denomination) assetState.denomination = processState.Denomination;
 				if (processState.Logo) assetState.logo = processState.Logo;
 				if (processState.Balances) assetState.balances = processState.Balances;
+				console.log(processState);
+				if (processState.Transferable !== undefined) {
+					assetState.transferable = processState.Transferable;
+				} else {
+					assetState.transferable = true;
+				}
 			}
 
 			if (!assetState.balances) {

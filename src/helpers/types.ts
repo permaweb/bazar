@@ -29,6 +29,7 @@ export type AssetStateType = {
 	ticker: string | null;
 	denomination: number | null;
 	logo: string | null;
+	transferable: boolean;
 	balances: { [address: string]: string } | null;
 };
 

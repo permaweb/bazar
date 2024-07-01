@@ -490,6 +490,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 		if (!arProvider.profile || !arProvider.profile.id) return true;
 		if (orderLoading) return true;
 		if (orderProcessed && !orderSuccess) return true;
+		if (props.asset && !props.asset.state.transferable) return true;
 		if (maxOrderQuantity <= 0 || isNaN(currentOrderQuantity)) return true;
 		if (
 			currentOrderQuantity <= 0 ||
@@ -825,6 +826,11 @@ export default function AssetActionMarketOrders(props: IProps) {
 					{!Number.isInteger(Number(currentOrderQuantity)) && !denomination && (
 						<S.MessageWrapper>
 							<span>Quantity must be an integer</span>
+						</S.MessageWrapper>
+					)}
+					{props.asset && !props.asset.state.transferable && (
+						<S.MessageWrapper>
+							<span>This asset cannot be transferred</span>
 						</S.MessageWrapper>
 					)}
 				</S.ActionWrapper>

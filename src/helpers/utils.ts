@@ -69,7 +69,6 @@ export function formatPercentage(percentage) {
 	}
 
 	if (decimalPart.length > 6) {
-		console.log(multiplied);
 		return `${multiplied.toFixed(0)}%`;
 	}
 

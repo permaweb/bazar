@@ -41,15 +41,21 @@ export default function AssetActionMarket(props: IProps) {
 
 		const TRANSFER_ONLY_ASSETS = [AOS.defaultToken];
 
+		// console.log(props.asset)
+		// if (props.asset && !props.asset.state.transferable) {
+		// 	setTabs([])
+		// }
+		// else {
 		if (props.asset && TRANSFER_ONLY_ASSETS.includes(props.asset.data.id)) {
 			setTabs(MARKET_ACTION_TABS.filter((tab: any) => tab.label === MARKET_ACTION_TAB_OPTIONS.transfer));
 		} else {
 			setTabs(MARKET_ACTION_TABS);
 		}
+		// }
 	}, [props.asset]);
 
 	React.useEffect(() => {
-		if (tabs && !currentTab) setCurrentTab(tabs[0].label);
+		if (tabs && tabs.length > 0 && !currentTab) setCurrentTab(tabs[0].label);
 	}, [tabs]);
 
 	function getCurrentTab() {
