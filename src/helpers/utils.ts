@@ -37,9 +37,9 @@ export function formatCount(count: string): string {
 		let parts = count.split('.');
 		parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 
-		// Find the position of the last non-zero digit within the first 4 decimal places
+		// Find the position of the last non-zero digit within the first 6 decimal places
 		let index = 0;
-		for (let i = 0; i < Math.min(parts[1].length, 4); i++) {
+		for (let i = 0; i < Math.min(parts[1].length, 6); i++) {
 			if (parts[1][i] !== '0') {
 				index = i + 1;
 			}
@@ -59,7 +59,6 @@ export function formatCount(count: string): string {
 	}
 }
 
-// TODO
 export function formatPercentage(percentage) {
 	let multiplied = percentage * 100;
 	let decimalPart = multiplied.toString().split('.')[1];
@@ -68,7 +67,7 @@ export function formatPercentage(percentage) {
 		return `${multiplied.toFixed(0)}%`;
 	}
 
-	if (decimalPart.length > 6) {
+	if (decimalPart.length > 6 && decimalPart.substring(0, 6) === '000000') {
 		return `${multiplied.toFixed(0)}%`;
 	}
 
