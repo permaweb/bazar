@@ -169,9 +169,7 @@ export default function ProfileHeader(props: IProps) {
 			{showBio && props.profile && props.profile.bio && (
 				<Modal header={language.bio} handleClose={() => setShowBio(false)}>
 					<div className={'modal-wrapper'}>
-						<S.HeaderInfoBio>
-							<p>{props.profile.bio}</p>
-						</S.HeaderInfoBio>
+						<p>{props.profile.bio}</p>
 					</div>
 				</Modal>
 			)}
