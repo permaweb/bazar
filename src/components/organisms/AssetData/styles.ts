@@ -11,11 +11,11 @@ export const Wrapper = styled.div`
 `;
 
 export const Header = styled.div`
-    height: 60px;
-    width: 100%;
-    display: flex;
-    align-items: end;
-    padding 0 0 0 2.5px;
+	height: 60px;
+	width: 100%;
+	display: flex;
+	align-items: end;
+	padding: 0 0 0 2.5px;
 `;
 
 export const Header1 = styled.h2`
@@ -100,7 +100,7 @@ export const Audio = styled.audio`
 export const Video = styled.video`
 	height: 100%;
 	width: 100%;
-	background: ${(props) => props.theme.colors.container.alt9.background};
+	background: ${(props) => props.theme.colors.container.alt8.background};
 `;
 
 export const Preview = styled.div`

@@ -94,12 +94,16 @@ export default function AssetActionMarketOrders(props: IProps) {
 					setTotalAssetBalance(calculatedTotalBalance);
 
 					if (arProvider.walletAddress && arProvider.profile && arProvider.profile.id) {
-						const ownerBalance = Number(props.asset.state.balances[arProvider.profile.id]);
-						if (ownerBalance) {
-							let calculatedOwnerBalance = ownerBalance;
+						const profileBalance = Number(props.asset.state.balances[arProvider.profile.id]);
+						// const walletBalance = Number(props.asset.state.balances[arProvider.walletAddress]);
 
-							if (denomination) calculatedOwnerBalance = ownerBalance / denomination;
+						let totalBalance = 0;
+						if (profileBalance) totalBalance += profileBalance;
+						// if (walletBalance) totalBalance += walletBalance;
 
+						if (totalBalance) {
+							let calculatedOwnerBalance = totalBalance;
+							if (denomination) calculatedOwnerBalance = totalBalance / denomination;
 							setConnectedBalance(calculatedOwnerBalance);
 						}
 					}
