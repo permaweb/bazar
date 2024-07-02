@@ -150,8 +150,15 @@ export default function AssetAction(props: IProps) {
 		) {
 			const denomination = currenciesReducer[currency].Denomination;
 			return `${formatCount((amount / Math.pow(10, denomination)).toString())}`;
-		}
-		return formatCount(amount.toString());
+		} else if (
+			props.asset &&
+			props.asset.state &&
+			props.asset.state.denomination &&
+			props.asset.state.denomination > 1
+		) {
+			const denomination = props.asset.state.denomination;
+			return `${formatCount((amount / Math.pow(10, denomination)).toString())}`;
+		} else return formatCount(amount.toString());
 	}
 
 	function getOwnerOrder(listing: ListingType) {
