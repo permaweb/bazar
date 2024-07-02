@@ -28,7 +28,7 @@ export const OverlayWrapper = styled.div`
 	top: 0;
 	left: 0;
 	background: ${(props) => props.theme.colors.overlay.alt1};
-	border-radius: ${STYLING.dimensions.radius.primary};
+	border-radius: calc(${STYLING.dimensions.radius.primary} - 1px);
 `;
 
 export const HeaderWrapper = styled.div`
@@ -52,12 +52,22 @@ export const HeaderWrapper = styled.div`
 			text-shadow: none;
 		}
 	}
+	@media (max-width: ${STYLING.cutoffs.initial}) {
+		flex-direction: column;
+		align-items: flex-start;
+		justify-content: flex-start;
+	}
 `;
 
 export const HeaderInfo = styled.div`
 	display: flex;
 	flex-wrap: wrap;
 	gap: 25px;
+	@media (max-width: ${STYLING.cutoffs.initial}) {
+		flex-direction: column;
+		align-items: flex-start;
+		justify-content: flex-start;
+	}
 `;
 
 export const HeaderActions = styled.div`

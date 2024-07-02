@@ -1,4 +1,4 @@
-import { getProfileById, readHandler } from 'api';
+import { readHandler } from 'api';
 
 import { AOS, DEFAULTS } from 'helpers/config';
 import { CollectionDetailType, CollectionMetricsType, CollectionType, OrderbookEntryType } from 'helpers/types';
@@ -52,8 +52,6 @@ export async function getCollectionById(args: { id: string }): Promise<Collectio
 				thumbnail: response.Thumbnail ?? DEFAULTS.thumbnail,
 			};
 
-			const creatorProfile = await getProfileById({ profileId: collection.creator });
-
 			let assetIds: string[] = response.Assets;
 
 			const metrics: CollectionMetricsType = {
@@ -66,7 +64,7 @@ export async function getCollectionById(args: { id: string }): Promise<Collectio
 			const collectionDetail = {
 				...collection,
 				assetIds: assetIds,
-				creatorProfile: creatorProfile,
+				creatorProfile: null, // Async fetch from component level
 				metrics: metrics,
 			};
 			return collectionDetail;

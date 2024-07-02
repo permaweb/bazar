@@ -73,7 +73,7 @@ export const ActionsWrapper = styled.div`
 export const MWrapper = styled.div`
 	display: none;
 	@media (max-width: ${STYLING.cutoffs.secondary}) {
-		display block;
+		display: block;
 	}
 `;
 

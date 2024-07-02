@@ -20,7 +20,7 @@ export const Tabs = styled.div`
 	align-items: center;
 	padding: 0 0 10px 0;
 	overflow-x: auto;
-	border-bottom: 1px solid ${(props) => props.theme.colors.border.primary};
+	border-bottom: 1px solid ${(props) => props.theme.colors.border.alt4};
 	> * {
 		&:not(:last-child) {
 			margin: 0 30px 0 0;

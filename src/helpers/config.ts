@@ -15,6 +15,7 @@ import disconnect from 'assets/disconnect.svg';
 import discord from 'assets/discord.svg';
 import docs from 'assets/docs.svg';
 import edit from 'assets/edit.svg';
+import github from 'assets/github.svg';
 import grid from 'assets/grid.svg';
 import html from 'assets/html.svg';
 import info from 'assets/info.svg';
@@ -88,6 +89,7 @@ export const ASSETS = {
 	discord,
 	docs,
 	edit,
+	github,
 	grid,
 	html,
 	info,
@@ -242,6 +244,7 @@ export const PAGINATORS = {
 };
 
 export const REDIRECTS = {
+	github: `https://github.com/permaweb/bazar`,
 	x: `https://x.com/OurBazAR`,
 	discord: `https://discord.gg/yjVaMbmKw4`,
 	helix: `https://helix.arweave.dev`,

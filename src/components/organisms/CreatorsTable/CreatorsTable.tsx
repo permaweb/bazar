@@ -63,7 +63,7 @@ export default function CreatorsTable() {
 												? profile.bio.length > 40
 													? `${profile.bio.substring(0, 40)}...`
 													: profile.bio
-												: 'No bio'}
+												: language.noBio}
 										</span>
 									</S.Bio>
 								</Link>

@@ -169,7 +169,7 @@ export const BalanceLine = styled.div`
 `;
 
 export const DFooterWrapper = styled(DBodyWrapper)`
-	padding: 10px 0 0 0;
+	padding: 10px 0;
 	border-bottom: none;
 	svg {
 		height: 17.5px;

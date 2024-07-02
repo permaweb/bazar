@@ -20,10 +20,11 @@ export const Container = styled.div<{
 	noHeader: boolean;
 }>`
 	height: calc(100dvh - 30px);
-	min-width: 450px;
+	min-width: 425px;
 	width: fit-content;
 	max-width: calc(100vw - 30px);
 	position: fixed;
+	overflow: hidden;
 	top: 15px;
 	right: 15px;
 	transition: width 50ms ease-out;

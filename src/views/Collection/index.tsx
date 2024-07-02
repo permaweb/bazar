@@ -1,7 +1,7 @@
 import React from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
-import { getCollectionById } from 'api';
+import { getCollectionById, getProfileById } from 'api';
 
 import { CurrencyLine } from 'components/atoms/CurrencyLine';
 import { Loader } from 'components/atoms/Loader';
@@ -43,6 +43,31 @@ export default function Collection() {
 			} else navigate(URLS.notFound);
 		})();
 	}, [id]);
+
+	React.useEffect(() => {
+		(async function () {
+			if (collection && collection.creator) {
+				try {
+					const creatorProfile = await getProfileById({ profileId: collection.creator });
+					setCollection((prev) => ({ ...prev, creatorProfile }));
+				} catch (e: any) {
+					console.error(e);
+					setCollection((prev) => ({
+						...prev,
+						creatorProfile: {
+							id: collection.creator,
+							walletAddress: null,
+							displayName: null,
+							username: null,
+							bio: null,
+							avatar: null,
+							banner: null,
+						},
+					}));
+				}
+			}
+		})();
+	}, [collection]);
 
 	function getData() {
 		if (collection) {
@@ -100,15 +125,21 @@ export default function Collection() {
 							</S.InfoBody>
 							<S.InfoFooter>
 								<S.InfoCreator>
-									<p>{language.createdBy}</p>
-									<OwnerLine
-										owner={{
-											address: collection.creator,
-											profile: collection.creatorProfile,
-										}}
-										callback={null}
-									/>
-									<p>{formatDate(collection.dateCreated, 'epoch')}</p>
+									{collection.creatorProfile ? (
+										<>
+											<p>{language.createdBy}</p>
+											<OwnerLine
+												owner={{
+													address: collection.creator,
+													profile: collection.creatorProfile,
+												}}
+												callback={null}
+											/>
+											<p>{formatDate(collection.dateCreated, 'epoch')}</p>
+										</>
+									) : (
+										<p>{`${language.fetching}...`}</p>
+									)}
 								</S.InfoCreator>
 								{collection.description && (
 									<S.InfoDescription>
@@ -116,10 +147,10 @@ export default function Collection() {
 											{collection.description.length > MAX_DESCRIPTION_LENGTH
 												? collection.description.substring(0, MAX_DESCRIPTION_LENGTH) + '...'
 												: collection.description}
+											{collection.description.length > MAX_DESCRIPTION_LENGTH && (
+												<button onClick={() => setShowFullDescription(true)}>{language.viewFullDescription}</button>
+											)}
 										</S.DescriptionText>
-										{collection.description.length > MAX_DESCRIPTION_LENGTH && (
-											<button onClick={() => setShowFullDescription(true)}>{language.viewFullDescription}</button>
-										)}
 									</S.InfoDescription>
 								)}
 							</S.InfoFooter>

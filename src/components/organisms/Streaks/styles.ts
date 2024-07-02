@@ -195,6 +195,7 @@ export const SDLAction = styled.div`
 export const MWrapper = styled.div``;
 
 export const MLoadingWrapper = styled.div`
+	padding: 0 20px;
 	span {
 		font-size: ${(props) => props.theme.typography.size.base};
 		font-weight: ${(props) => props.theme.typography.weight.bold};
@@ -231,6 +232,7 @@ export const StreakIndex = styled.div`
 		font-size: ${(props) => props.theme.typography.size.base};
 		font-weight: ${(props) => props.theme.typography.weight.bold};
 		font-family: ${(props) => props.theme.typography.family.alt1};
+		color: ${(props) => props.theme.colors.font.alt1};
 	}
 `;
 

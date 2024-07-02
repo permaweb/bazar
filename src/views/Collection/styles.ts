@@ -32,10 +32,7 @@ export const OverlayWrapper = styled.div`
 	top: 0;
 	left: 0;
 	background: ${(props) => props.theme.colors.overlay.alt1};
-	border-radius: ${STYLING.dimensions.radius.primary};
-	@media (max-width: ${STYLING.cutoffs.initial}) {
-		height: auto;
-	}
+	border-radius: calc(${STYLING.dimensions.radius.primary} - 1px);
 `;
 
 export const InfoWrapper = styled.div`
@@ -178,8 +175,10 @@ export const InfoCreator = styled.div`
 `;
 
 export const InfoDescription = styled.div`
-	width: 100%;
-	max-width: 460px;
+	width: fit-content;
+	display: flex;
+	flex-direction: column;
+	justify-content: flex-end;
 	position: relative;
 
 	button {
@@ -190,18 +189,27 @@ export const InfoDescription = styled.div`
 			color: ${(props) => props.theme.colors.font.light2};
 		}
 	}
+
+	@media (max-width: ${STYLING.cutoffs.initial}) {
+		width: 100%;
+	}
 `;
 
 export const DescriptionText = styled.p`
-	font-size: ${(props) => props.theme.typography.size.base};
+	font-size: ${(props) => props.theme.typography.size.small};
 	font-family: ${(props) => props.theme.typography.family.primary};
 	font-weight: ${(props) => props.theme.typography.weight.bold};
 	color: ${(props) => props.theme.colors.font.light1};
 	line-height: 1.65;
 	margin: 0;
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 10px;
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
+	text-align: right;
 `;
 
 export const AssetsWrapper = styled.div`

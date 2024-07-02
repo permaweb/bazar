@@ -7,13 +7,11 @@ import { Button } from 'components/atoms/Button';
 import { CurrencyLine } from 'components/atoms/CurrencyLine';
 import { Panel } from 'components/molecules/Panel';
 import { ProfileManage } from 'components/organisms/ProfileManage';
-import { ASSETS, REDIRECTS, STYLING, URLS } from 'helpers/config';
+import { ASSETS, REDIRECTS, URLS } from 'helpers/config';
 import { formatAddress, formatCount, getTotalTokenBalance } from 'helpers/utils';
-import * as windowUtils from 'helpers/window';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useCustomThemeProvider } from 'providers/CustomThemeProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
-import { CloseHandler } from 'wrappers/CloseHandler';
 
 import * as S from './styles';
 
@@ -32,18 +30,6 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 
 	const [copied, setCopied] = React.useState<boolean>(false);
 	const [label, setLabel] = React.useState<string | null>(null);
-
-	const [desktop, setDesktop] = React.useState(windowUtils.checkWindowCutoff(parseInt(STYLING.cutoffs.initial)));
-
-	function handleWindowResize() {
-		if (windowUtils.checkWindowCutoff(parseInt(STYLING.cutoffs.initial))) {
-			setDesktop(true);
-		} else {
-			setDesktop(false);
-		}
-	}
-
-	windowUtils.checkWindowResize(handleWindowResize);
 
 	React.useEffect(() => {
 		setTimeout(() => {
@@ -226,35 +212,16 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 	}
 
 	function getView() {
-		if (desktop) {
-			return (
-				<CloseHandler
-					callback={() => {
-						setShowWalletDropdown(false);
-					}}
-					active={showWalletDropdown}
-					disabled={false}
-				>
-					<S.Wrapper>
-						{getHeader()}
-						{showWalletDropdown && (
-							<S.Dropdown className={'border-wrapper-alt1 scroll-wrapper'}>{getDropdown()}</S.Dropdown>
-						)}
-					</S.Wrapper>
-				</CloseHandler>
-			);
-		} else {
-			return (
-				<S.Wrapper>
-					{getHeader()}
-					{showWalletDropdown && (
-						<Panel open={showWalletDropdown} header={label} handleClose={() => setShowWalletDropdown(false)}>
-							{getDropdown()}
-						</Panel>
-					)}
-				</S.Wrapper>
-			);
-		}
+		return (
+			<S.Wrapper>
+				{getHeader()}
+				{showWalletDropdown && (
+					<Panel open={showWalletDropdown} header={label} handleClose={() => setShowWalletDropdown(false)}>
+						{getDropdown()}
+					</Panel>
+				)}
+			</S.Wrapper>
+		);
 	}
 
 	return (

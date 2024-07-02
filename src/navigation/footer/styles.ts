@@ -18,7 +18,7 @@ export const Container = styled.div`
 
 export const Content = styled.p`
 	color: ${(props) => props.theme.colors.font.primary};
-	font-family: ${(props) => props.theme.typography.family.primary};
+	font-family: ${(props) => props.theme.typography.family.alt1};
 	font-size: ${(props) => props.theme.typography.size.xSmall};
 	font-weight: ${(props) => props.theme.typography.weight.bold};
 `;
