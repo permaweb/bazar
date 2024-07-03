@@ -44,7 +44,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 	const [connectedBalance, setConnectedBalance] = React.useState<number>(0);
 
 	// Total asset quantity available for order creation, based on order type (buy, sell, or transfer)
-	const [currentOrderQuantity, setCurrentOrderQuantity] = React.useState<number>(0);
+	const [currentOrderQuantity, setCurrentOrderQuantity] = React.useState<string | number>('');
 
 	// Total asset quantity available for order creation, based on order type (buy, sell, or transfer)
 	const [maxOrderQuantity, setMaxOrderQuantity] = React.useState<number>(0);
@@ -59,7 +59,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 	const [transferDenomination, setTransferDenomination] = React.useState<number | null>(null);
 
 	// Price on limit orders for quantity of one transfer token
-	const [unitPrice, setUnitPrice] = React.useState<number>(0);
+	const [unitPrice, setUnitPrice] = React.useState<string | number>('');
 
 	// Active after an order is completed and asset is refreshed
 	const [updating, setUpdating] = React.useState<boolean>(false);
@@ -168,7 +168,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 	}, [arProvider.tokenBalances, props.type, props.asset, currentOrderQuantity, denomination]);
 
 	React.useEffect(() => {
-		setCurrentOrderQuantity(0);
+		if (currentOrderQuantity) setCurrentOrderQuantity('');
 	}, [props.type]);
 
 	async function handleSubmit() {
@@ -205,7 +205,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 				if (props.type === 'sell' || props.type === 'transfer') {
 					if (denomination) {
-						transferQuantity = currentOrderQuantity * denomination;
+						transferQuantity = Number(currentOrderQuantity) * denomination;
 					}
 				}
 
@@ -224,9 +224,9 @@ export default function AssetActionMarketOrders(props: IProps) {
 						{ name: 'X-Order-Action', value: 'Create-Order' },
 						{ name: 'X-Swap-Token', value: swapToken },
 					];
-					if (unitPrice && unitPrice > 0) {
+					if (unitPrice && Number(unitPrice) > 0) {
 						let calculatedUnitPrice: string | number = unitPrice;
-						if (transferDenomination) calculatedUnitPrice = unitPrice * transferDenomination;
+						if (transferDenomination) calculatedUnitPrice = Number(unitPrice) * transferDenomination;
 						calculatedUnitPrice = calculatedUnitPrice.toString();
 						forwardedTags.push({ name: 'X-Price', value: calculatedUnitPrice });
 					}
@@ -327,7 +327,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 	async function handleAssetUpdate(handleUpdate: boolean) {
 		if (handleUpdate) {
-			setCurrentOrderQuantity(0);
+			setCurrentOrderQuantity('');
 			setUnitPrice(0);
 			setTransferRecipient('');
 			setCurrentNotification(null);
@@ -405,7 +405,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 	function handleOrderErrorClose() {
 		setShowConfirmation(false);
 		setOrderProcessed(false);
-		setCurrentOrderQuantity(0);
+		setCurrentOrderQuantity('');
 		setUnitPrice(0);
 		setTransferRecipient('');
 		setCurrentNotification(null);
@@ -427,7 +427,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 					const price = Number(sortedOrders[i].price);
 
 					let inputQuantity = Number(currentOrderQuantity);
-					if (denomination) inputQuantity = currentOrderQuantity * denomination;
+					if (denomination) inputQuantity = Number(currentOrderQuantity) * denomination;
 
 					if (quantity >= inputQuantity - totalQuantity) {
 						const remainingQty = inputQuantity - totalQuantity;
@@ -445,12 +445,17 @@ export default function AssetActionMarketOrders(props: IProps) {
 			} else return 0;
 		} else {
 			let price: number;
-			if (isNaN(unitPrice) || isNaN(currentOrderQuantity) || currentOrderQuantity < 0 || unitPrice < 0) {
+			if (
+				isNaN(Number(unitPrice)) ||
+				isNaN(Number(currentOrderQuantity)) ||
+				Number(currentOrderQuantity) < 0 ||
+				Number(unitPrice) < 0
+			) {
 				price = 0;
 			} else {
-				let calculatedUnitPrice = unitPrice;
-				if (transferDenomination) calculatedUnitPrice = unitPrice * transferDenomination;
-				price = currentOrderQuantity * calculatedUnitPrice;
+				let calculatedUnitPrice = unitPrice as any;
+				if (transferDenomination) calculatedUnitPrice = Number(unitPrice) * transferDenomination;
+				price = Number(currentOrderQuantity) * calculatedUnitPrice;
 			}
 			return price;
 		}
@@ -458,7 +463,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 	function handleQuantityInput(e: React.ChangeEvent<HTMLInputElement>) {
 		if (e.target.value === '' || parseFloat(e.target.value) < 0) {
-			setCurrentOrderQuantity(0);
+			setCurrentOrderQuantity('');
 		} else {
 			if (!isNaN(Number(e.target.value))) setCurrentOrderQuantity(parseFloat(e.target.value));
 		}
@@ -495,15 +500,15 @@ export default function AssetActionMarketOrders(props: IProps) {
 		if (orderLoading) return true;
 		if (orderProcessed && !orderSuccess) return true;
 		if (props.asset && !props.asset.state.transferable) return true;
-		if (maxOrderQuantity <= 0 || isNaN(currentOrderQuantity)) return true;
+		if (maxOrderQuantity <= 0 || isNaN(Number(currentOrderQuantity))) return true;
 		if (
-			currentOrderQuantity <= 0 ||
+			Number(currentOrderQuantity) <= 0 ||
 			isNaN(maxOrderQuantity) ||
 			(!Number.isInteger(Number(currentOrderQuantity)) && !denomination)
 		)
 			return true;
-		if (currentOrderQuantity > maxOrderQuantity) return true;
-		if (props.type === 'sell' && (unitPrice <= 0 || isNaN(unitPrice))) return true;
+		if (Number(currentOrderQuantity) > maxOrderQuantity) return true;
+		if (props.type === 'sell' && (Number(unitPrice) <= 0 || isNaN(Number(unitPrice)))) return true;
 		if (props.type === 'transfer' && (!transferRecipient || !checkValidAddress(transferRecipient))) return true;
 		if (insufficientBalance) return true;
 		return false;
@@ -588,7 +593,9 @@ export default function AssetActionMarketOrders(props: IProps) {
 						<span>{percentageLabel}</span>
 						<p>
 							{formatPercentage(
-								!isNaN(currentOrderQuantity / totalAssetBalance) ? currentOrderQuantity / totalAssetBalance : 0
+								!isNaN(Number(currentOrderQuantity) / totalAssetBalance)
+									? Number(currentOrderQuantity) / totalAssetBalance
+									: 0
 							)}
 						</p>
 					</S.SalesDetail>
@@ -713,7 +720,10 @@ export default function AssetActionMarketOrders(props: IProps) {
 								maxOrderQuantity <= 0 ||
 								orderLoading
 							}
-							invalid={{ status: currentOrderQuantity < 0 || currentOrderQuantity > maxOrderQuantity, message: null }}
+							invalid={{
+								status: Number(currentOrderQuantity) < 0 || Number(currentOrderQuantity) > maxOrderQuantity,
+								message: null,
+							}}
 							useFractional={denomination !== null}
 						/>
 						<S.MaxQty>
@@ -732,7 +742,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 								<FormField
 									type={'number'}
 									step={'1'}
-									value={currentOrderQuantity}
+									value={isNaN(Number(currentOrderQuantity)) ? '' : currentOrderQuantity}
 									onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleQuantityInput(e)}
 									label={`${language.assetQuantity} (${language.max}: ${formatCount(maxOrderQuantity.toString())})`}
 									disabled={
@@ -744,8 +754,8 @@ export default function AssetActionMarketOrders(props: IProps) {
 									}
 									invalid={{
 										status:
-											currentOrderQuantity < 0 ||
-											currentOrderQuantity > maxOrderQuantity ||
+											Number(currentOrderQuantity) < 0 ||
+											Number(currentOrderQuantity) > maxOrderQuantity ||
 											(!Number.isInteger(Number(currentOrderQuantity)) && !denomination),
 										message: null,
 									}}
@@ -757,16 +767,16 @@ export default function AssetActionMarketOrders(props: IProps) {
 									<FormField
 										type={'number'}
 										label={language.unitPrice}
-										value={isNaN(unitPrice) ? '' : unitPrice}
+										value={isNaN(Number(unitPrice)) ? '' : unitPrice}
 										onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleUnitPriceInput(e)}
 										disabled={
 											!arProvider.walletAddress ||
 											!arProvider.profile ||
 											!arProvider.profile.id ||
-											currentOrderQuantity <= 0 ||
+											Number(currentOrderQuantity) <= 0 ||
 											orderLoading
 										}
-										invalid={{ status: unitPrice < 0, message: null }}
+										invalid={{ status: Number(unitPrice) < 0, message: null }}
 										tooltip={language.saleUnitPriceTooltip}
 									/>
 								</S.FieldWrapper>

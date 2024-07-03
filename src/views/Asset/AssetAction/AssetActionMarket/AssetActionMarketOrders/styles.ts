@@ -196,14 +196,18 @@ export const ActionWrapperFull = styled(ActionWrapper)`
 export const MessageWrapper = styled.div`
 	padding: 2.5px 10px;
 	margin: 15px 0 0 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
 	background: ${(props) => props.theme.colors.warning.primary};
 	border: 1px solid ${(props) => props.theme.colors.warning.primary};
-	border-radius: ${STYLING.dimensions.radius.primary};
+	border-radius: ${STYLING.dimensions.radius.alt2};
 	span {
-		font-size: ${(props) => props.theme.typography.size.small};
+		font-size: ${(props) => props.theme.typography.size.xSmall};
 		font-family: ${(props) => props.theme.typography.family.primary};
 		font-weight: ${(props) => props.theme.typography.weight.bold};
 		color: ${(props) => props.theme.colors.font.light1};
+		text-align: center;
 	}
 `;
 

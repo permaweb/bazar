@@ -33,6 +33,8 @@ export function getTagValue(list: { [key: string]: any }[], name: string): strin
 }
 
 export function formatCount(count: string): string {
+	if (count === '0' || !Number(count)) return '0';
+
 	if (count.includes('.')) {
 		let parts = count.split('.');
 		parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
@@ -51,6 +53,11 @@ export function formatCount(count: string): string {
 		} else {
 			// Otherwise, truncate to the last non-zero digit
 			parts[1] = parts[1].substring(0, index);
+
+			// If the decimal part is longer than 2 digits, truncate to 2 digits
+			if (parts[1].length > 2 && parts[1].substring(0, 2) !== '00') {
+				parts[1] = parts[1].substring(0, 2);
+			}
 		}
 
 		return parts.join('.');
@@ -59,7 +66,7 @@ export function formatCount(count: string): string {
 	}
 }
 
-export function formatPercentage(percentage) {
+export function formatPercentage(percentage: any) {
 	let multiplied = percentage * 100;
 	let decimalPart = multiplied.toString().split('.')[1];
 
