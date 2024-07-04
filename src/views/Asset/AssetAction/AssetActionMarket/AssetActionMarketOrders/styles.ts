@@ -7,15 +7,28 @@ export const Wrapper = styled.div`
 	margin: 30px 0 0 0;
 `;
 
+export const InputWrapper = styled.div`
+	margin: 30px 0 0 0;
+`;
+
+export const FieldsFlexWrapper = styled.div`
+	width: 100%;
+	display: flex;
+	justify-content: space-between;
+	@media (max-width: ${STYLING.cutoffs.initial}) {
+		flex-direction: column;
+		justify-content: flex-start;
+		align-items: flex-start;
+		gap: 15px;
+	}
+`;
+
 export const TotalsWrapper = styled.div`
 	width: fit-content;
+	margin: 10px 0 0 0;
 	> * {
 		&:not(:last-child) {
-			margin: 0 0 7.5px 0;
-		}
-		&:first-child {
-			padding: 0 0 7.5px 0;
-			border-bottom: 1px solid ${(props) => props.theme.colors.border.primary};
+			margin: 0 0 17.5px 0;
 		}
 		&:last-child {
 			margin: 0;
@@ -25,7 +38,7 @@ export const TotalsWrapper = styled.div`
 
 export const TotalQuantityLine = styled.div`
 	display: flex;
-	align-items: center;
+	flex-direction: column;
 	p,
 	span {
 		font-size: ${(props) => props.theme.typography.size.base};
@@ -41,20 +54,23 @@ export const TotalQuantityLine = styled.div`
 	}
 `;
 
-export const InputWrapper = styled.div`
-	margin: 30px 0 0 0;
-`;
-
 export const FieldsWrapper = styled.div`
-	width: 100%;
+	width: 50%;
 	display: flex;
-	justify-content: space-between;
+	flex-direction: column;
+	align-items: flex-end;
 	flex-wrap: wrap;
+	@media (max-width: ${STYLING.cutoffs.tablet}) {
+		width: 100%;
+	}
 `;
 
 export const FieldWrapper = styled.div`
-	width: 350px;
-	max-width: 47.5%;
+	width: 100%;
+	input {
+		height: 55px !important;
+		font-size: ${(props) => props.theme.typography.size.lg} !important;
+	}
 	@media (max-width: ${STYLING.cutoffs.tablet}) {
 		width: 100%;
 		max-width: none;
@@ -67,7 +83,7 @@ export const MaxQty = styled.div`
 `;
 
 export const SalesWrapper = styled.div`
-	margin: 20px 0 0 0;
+	margin: 40px 0 20px 0;
 	> * {
 		&:not(:last-child) {
 			margin: 0 0 15px 0;
@@ -119,9 +135,9 @@ export const SalesDetail = styled.div`
 `;
 
 export const ActionWrapper = styled.div<{ loading: boolean | string }>`
-	width: fit-content;
-	margin: 30px 0 0 auto;
+	width: 100%;
 	position: relative;
+	margin: 20px 0 0 0;
 	button {
 		${(props) =>
 			props.loading === 'true' &&
@@ -178,13 +194,9 @@ export const ActionWrapper = styled.div<{ loading: boolean | string }>`
 			}
 		}
 	}
-	@media (max-width: ${STYLING.cutoffs.secondary}) {
+	button {
+		min-width: 0;
 		width: 100%;
-		margin: 20px 0 0 0;
-		button {
-			min-width: 0;
-			width: 100%;
-		}
 	}
 `;
 

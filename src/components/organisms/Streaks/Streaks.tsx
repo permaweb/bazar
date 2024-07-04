@@ -10,7 +10,7 @@ import { Button } from 'components/atoms/Button';
 import { CurrencyLine } from 'components/atoms/CurrencyLine';
 import { OwnerLine } from 'components/molecules/OwnerLine';
 import { Panel } from 'components/molecules/Panel';
-import { AOS, ASSETS, URLS } from 'helpers/config';
+import { AO, ASSETS, URLS } from 'helpers/config';
 import { RegistryProfileType } from 'helpers/types';
 import { formatAddress, getTotalTokenBalance } from 'helpers/utils';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
@@ -67,13 +67,13 @@ export default function Streaks(props: IProps) {
 				arProvider.profile.id &&
 				props.profile.id === arProvider.profile.id &&
 				arProvider.tokenBalances &&
-				arProvider.tokenBalances[AOS.pixl]
+				arProvider.tokenBalances[AO.pixl]
 			) {
-				setPixlBalance(getTotalTokenBalance(arProvider.tokenBalances[AOS.pixl]));
+				setPixlBalance(getTotalTokenBalance(arProvider.tokenBalances[AO.pixl]));
 			} else {
 				try {
 					const pixlTokenBalance = await readHandler({
-						processId: AOS.pixl,
+						processId: AO.pixl,
 						action: 'Balance',
 						tags: [{ name: 'Recipient', value: props.profile.id }],
 					});
@@ -86,7 +86,7 @@ export default function Streaks(props: IProps) {
 
 			try {
 				const currentRewards = await readHandler({
-					processId: AOS.pixl,
+					processId: AO.pixl,
 					action: 'Read-Current-Rewards',
 					tags: [{ name: 'Recipient', value: props.profile.id }],
 				});
@@ -266,7 +266,7 @@ export default function Streaks(props: IProps) {
 				{pixlBalance !== null && (
 					<S.SDAmount>
 						<div>
-							<CurrencyLine amount={pixlBalance} currency={AOS.pixl} callback={() => setShowDropdown(false)} />
+							<CurrencyLine amount={pixlBalance} currency={AO.pixl} callback={() => setShowDropdown(false)} />
 						</div>
 						<p>{language.pixlHoldings}</p>
 					</S.SDAmount>
@@ -274,7 +274,7 @@ export default function Streaks(props: IProps) {
 				{dailyRewards !== null && (
 					<S.SDAmount>
 						<div>
-							<CurrencyLine amount={dailyRewards} currency={AOS.pixl} callback={() => setShowDropdown(false)} />
+							<CurrencyLine amount={dailyRewards} currency={AO.pixl} callback={() => setShowDropdown(false)} />
 						</div>
 						<p>{language.dailyRewards}</p>
 					</S.SDAmount>
@@ -368,7 +368,7 @@ export default function Streaks(props: IProps) {
 							type={'primary'}
 							label={language.tradePixl}
 							handlePress={() => {
-								navigate(`${URLS.asset}${AOS.pixl}`);
+								navigate(`${URLS.asset}${AO.pixl}`);
 								setShowDropdown(false);
 								setShowLeaderboard(false);
 							}}

@@ -136,10 +136,6 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 					)}
 				</S.DBodyWrapper>
 				<S.DBodyWrapper>
-					<li onClick={() => window.open(REDIRECTS.arswap)}>
-						<ReactSVG src={ASSETS.swap} />
-						{`${language.arSwap}`}
-					</li>
 					<li onClick={() => window.open(REDIRECTS.aox)}>
 						<ReactSVG src={ASSETS.bridge} />
 						{`${language.arBridge}`}

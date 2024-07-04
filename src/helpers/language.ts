@@ -109,6 +109,7 @@ export const language = {
 		streakTitle4: `Rising heat`,
 		streakTitle5: `You're on fire`,
 		title: `Title`,
+		trendingTokens: `Trending Tokens`,
 		topCreators: `Top Creators`,
 		totalAssets: `Total assets`,
 		totalAssetBalance: `Total asset balance`,

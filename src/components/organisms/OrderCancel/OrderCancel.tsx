@@ -6,7 +6,7 @@ import { messageResults, readHandler } from 'api';
 import { Button } from 'components/atoms/Button';
 import { Notification } from 'components/atoms/Notification';
 import { Modal } from 'components/molecules/Modal';
-import { AOS } from 'helpers/config';
+import { AO } from 'helpers/config';
 import { NotificationType } from 'helpers/types';
 import * as windowUtils from 'helpers/window';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
@@ -42,7 +42,7 @@ export default function OrderCancel(props: IProps) {
 					wallet: arProvider.wallet,
 					tags: null,
 					data: {
-						Target: AOS.ucm,
+						Target: AO.ucm,
 						Action: 'Cancel-Order',
 						Input: JSON.stringify({
 							Pair: [props.listing.token, props.listing.currency],
@@ -73,7 +73,7 @@ export default function OrderCancel(props: IProps) {
 					const fetchUntilChange = async () => {
 						while (!changeDetected && tries < maxTries) {
 							const ucmState = await readHandler({
-								processId: AOS.ucm,
+								processId: AO.ucm,
 								action: 'Info',
 							});
 

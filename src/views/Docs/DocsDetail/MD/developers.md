@@ -107,7 +107,7 @@ See the following implementation details for how to create atomic assets.
 ```js
 
 try {
-	const processSrcFetch = await fetch(getTxEndpoint(AOS.assetSrc));
+	const processSrcFetch = await fetch(getTxEndpoint(AO.assetSrc));
 	if (processSrcFetch.ok) {
 		processSrc = await processSrcFetch.text();
 	}
@@ -124,8 +124,8 @@ if (processSrc) {
 }
 
 const processId = await aos.spawn({
-	module: AOS.module,
-	scheduler: AOS.scheduler,
+	module: AO.module,
+	scheduler: AO.scheduler,
 	signer: createDataItemSigner(globalThis.arweaveWallet),
 	tags: assetTags,
 	data: buffer,

@@ -1,6 +1,6 @@
 import { readHandler } from 'api';
 
-import { AOS, DEFAULTS } from 'helpers/config';
+import { AO, DEFAULTS } from 'helpers/config';
 import { CollectionDetailType, CollectionMetricsType, CollectionType, OrderbookEntryType } from 'helpers/types';
 import { sortOrderbookEntries } from 'helpers/utils';
 import { store } from 'store';
@@ -10,7 +10,7 @@ export async function getCollections(creator?: string): Promise<CollectionType[]
 
 	try {
 		const response = await readHandler({
-			processId: AOS.collectionsRegistry,
+			processId: AO.collectionsRegistry,
 			action: action,
 			tags: creator ? [{ name: 'Creator', value: creator }] : null,
 		});
@@ -123,5 +123,5 @@ function getDefaultCurrency(assetIds: string[]): string {
 			}
 		}
 	}
-	return AOS.defaultToken;
+	return AO.defaultToken;
 }

@@ -1,6 +1,6 @@
 import { readHandler } from 'api';
 
-import { AOS } from 'helpers/config';
+import { AO } from 'helpers/config';
 
 export type AOProfileType = {
 	id: string;
@@ -68,7 +68,7 @@ export async function getProfileByWalletAddress(args: { address: string }): Prom
 
 	try {
 		const profileLookup = await readHandler({
-			processId: AOS.profileRegistry,
+			processId: AO.profileRegistry,
 			action: 'Get-Profiles-By-Delegate',
 			data: { Address: args.address },
 		});
@@ -105,7 +105,7 @@ export async function getProfileByWalletAddress(args: { address: string }): Prom
 export async function getRegistryProfiles(args: { profileIds: string[] }): Promise<RegistryProfileType[]> {
 	try {
 		const metadataLookup = await readHandler({
-			processId: AOS.profileRegistry,
+			processId: AO.profileRegistry,
 			action: 'Get-Metadata-By-ProfileIds',
 			data: { ProfileIds: args.profileIds },
 		});

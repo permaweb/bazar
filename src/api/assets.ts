@@ -1,6 +1,6 @@
 import { getGQLData, readHandler } from 'api';
 
-import { AOS, GATEWAYS, LICENSES, PAGINATORS, REFORMATTED_ASSETS, TAGS } from 'helpers/config';
+import { AO, GATEWAYS, LICENSES, PAGINATORS, REFORMATTED_ASSETS, TAGS } from 'helpers/config';
 import {
 	AssetDetailType,
 	AssetOrderType,
@@ -26,7 +26,7 @@ export async function getAssetIdsByUser(args: { profileId: string }): Promise<st
 		});
 
 		if (fetchedProfile) {
-			const swapIds = [AOS.defaultToken, AOS.pixl];
+			const swapIds = [AO.defaultToken, AO.pixl];
 			return fetchedProfile.Assets.map((asset: { Id: string; Quantity: string }) => asset.Id).filter(
 				(id: string) => !swapIds.includes(id)
 			);
@@ -109,13 +109,14 @@ export async function getAssetById(args: { id: string }): Promise<AssetDetailTyp
 			});
 
 			if (processState) {
-				if (processState.Name) {
-					assetState.name = processState.Name;
-					structuredAsset.data.title = processState.Name;
+				if (processState.Name || processState.name) {
+					assetState.name = processState.Name || processState.name;
+					structuredAsset.data.title = processState.Name || processState.name;
 				}
-				if (processState.Ticker) assetState.ticker = processState.Ticker;
-				if (processState.Denomination) assetState.denomination = processState.Denomination;
-				if (processState.Logo) assetState.logo = processState.Logo;
+				if (processState.Ticker || processState.ticker) assetState.ticker = processState.Ticker || processState.ticker;
+				if (processState.Denomination || processState.denomination)
+					assetState.denomination = processState.Denomination || processState.denomination;
+				if (processState.Logo || processState.logo) assetState.logo = processState.Logo || processState.logo;
 				if (processState.Balances) assetState.balances = processState.Balances;
 				if (processState.Transferable !== undefined) {
 					assetState.transferable = processState.Transferable;
@@ -250,7 +251,7 @@ export function getAssetIdGroups(args: {
 				const missingIds = args.ids.filter((id) => !orderbookIds.includes(id));
 
 				missingIds.forEach((missingId) => {
-					currentOrderbook.push({ Pair: [missingId, AOS.defaultToken], Orders: [] });
+					currentOrderbook.push({ Pair: [missingId, AO.defaultToken], Orders: [] });
 				});
 			}
 

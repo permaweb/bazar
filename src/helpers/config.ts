@@ -49,7 +49,7 @@ import x from 'assets/x.svg';
 
 import { SelectOptionType, WalletEnum } from './types';
 
-export const AOS = {
+export const AO = {
 	module: 'Pq2Zftrqut0hdisH_MC2pDOT6S4eQFoxGsFUzR6r350',
 	scheduler: '_GQ33BkPtZrqxA84vM8Zk-N2aO0toNNu_C-l-rawrBA',
 	ucm: 'U3TjJAZWJjlWBB4KAXSHKzuky81jtyh0zqH8rUL4Wd0', // Prod
@@ -279,7 +279,7 @@ export const UPLOAD_CONFIG = {
 };
 
 export const REFORMATTED_ASSETS = {
-	[AOS.pixl]: {
+	[AO.pixl]: {
 		title: 'PIXL Token',
 		logo: 'czR2tJmSr7upPpReXu6IuOc2H7RuHRRAhI7DXAUlszU',
 	},

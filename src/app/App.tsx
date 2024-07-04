@@ -5,7 +5,7 @@ import { ReactSVG } from 'react-svg';
 import { readHandler } from 'api';
 
 import { Loader } from 'components/atoms/Loader';
-import { AOS, ASSETS, DOM } from 'helpers/config';
+import { AO, ASSETS, DOM } from 'helpers/config';
 import { Footer } from 'navigation/footer';
 import { Header } from 'navigation/Header';
 import { RootState } from 'store';
@@ -31,13 +31,13 @@ export default function App() {
 		(async function () {
 			try {
 				const ucmState = await readHandler({
-					processId: AOS.ucm,
+					processId: AO.ucm,
 					action: 'Info',
 				});
 				dispatch(ucmActions.setUCM(ucmState));
 
 				const streaks = await readHandler({
-					processId: AOS.pixl,
+					processId: AO.pixl,
 					action: 'Get-Streaks',
 				});
 				if (streaks.Streaks) {
@@ -51,20 +51,20 @@ export default function App() {
 
 				if (!currenciesReducer) {
 					const defaultTokenState = await readHandler({
-						processId: AOS.defaultToken,
+						processId: AO.defaultToken,
 						action: 'Info',
 					});
 					const pixlState = await readHandler({
-						processId: AOS.pixl,
+						processId: AO.pixl,
 						action: 'Info',
 					});
 
 					dispatch(
 						currencyActions.setCurrencies({
-							[AOS.defaultToken]: {
+							[AO.defaultToken]: {
 								...defaultTokenState,
 							},
-							[AOS.pixl]: {
+							[AO.pixl]: {
 								...pixlState,
 							},
 						})

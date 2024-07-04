@@ -56,7 +56,7 @@ export default function ProfileHeader(props: IProps) {
 
 	// 		let processSrc = null;
 	// 		try {
-	// 			const processSrcFetch = await fetch(getTxEndpoint(AOS.profileSrc));
+	// 			const processSrcFetch = await fetch(getTxEndpoint(AO.profileSrc));
 	// 			if (processSrcFetch.ok) {
 	// 				processSrc = await processSrcFetch.text();
 

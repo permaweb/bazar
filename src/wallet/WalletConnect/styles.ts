@@ -17,6 +17,15 @@ export const PWrapper = styled.div`
 
 export const CAction = styled.div`
 	margin: 0 15px 0 0;
+
+	button {
+		span {
+			font-family: ${(props) => props.theme.typography.family.alt1};
+			font-size: ${(props) => props.theme.typography.size.small};
+			font-weight: ${(props) => props.theme.typography.weight.bold};
+		}
+	}
+
 	@media (max-width: ${STYLING.cutoffs.initial}) {
 		display: none;
 	}

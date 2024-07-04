@@ -3,7 +3,7 @@ import React from 'react';
 import * as GS from 'app/styles';
 import { Drawer } from 'components/atoms/Drawer';
 import { Tabs } from 'components/molecules/Tabs';
-import { AOS, ASSETS } from 'helpers/config';
+import { AO, ASSETS } from 'helpers/config';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 
 import { AssetActionMarketOrders } from './AssetActionMarketOrders';
@@ -39,7 +39,7 @@ export default function AssetActionMarket(props: IProps) {
 			},
 		];
 
-		const TRANSFER_ONLY_ASSETS = [AOS.defaultToken];
+		const TRANSFER_ONLY_ASSETS = [AO.defaultToken];
 
 		// console.log(props.asset)
 		// if (props.asset && !props.asset.state.transferable) {

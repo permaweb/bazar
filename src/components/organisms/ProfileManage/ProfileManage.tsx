@@ -9,7 +9,7 @@ import { Button } from 'components/atoms/Button';
 import { FormField } from 'components/atoms/FormField';
 import { Notification } from 'components/atoms/Notification';
 import { TextArea } from 'components/atoms/TextArea';
-import { AOS, ASSETS, GATEWAYS, TAGS } from 'helpers/config';
+import { AO, ASSETS, GATEWAYS, TAGS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import { NotificationType } from 'helpers/types';
 import { checkValidAddress, getBase64Data, getDataURLContentType } from 'helpers/utils';
@@ -139,7 +139,7 @@ export default function ProfileManage(props: IProps) {
 
 					let processSrc = null;
 					try {
-						const processSrcFetch = await fetch(getTxEndpoint(AOS.profileSrc));
+						const processSrcFetch = await fetch(getTxEndpoint(AO.profileSrc));
 						if (processSrcFetch.ok) {
 							processSrc = await processSrcFetch.text();
 
@@ -152,8 +152,8 @@ export default function ProfileManage(props: IProps) {
 
 							console.log('Spawning profile process...');
 							const processId = await aos.spawn({
-								module: AOS.module,
-								scheduler: AOS.scheduler,
+								module: AO.module,
+								scheduler: AO.scheduler,
 								signer: createDataItemSigner(arProvider.wallet),
 								tags: profileTags,
 							});
