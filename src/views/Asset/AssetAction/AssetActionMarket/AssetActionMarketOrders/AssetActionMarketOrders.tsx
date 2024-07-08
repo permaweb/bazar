@@ -531,6 +531,8 @@ export default function AssetActionMarketOrders(props: IProps) {
 	const getTotals = React.useMemo(() => {
 		let balanceHeader: string | null = null;
 		let percentageHeader: string | null = null;
+
+		let totalBalance = 0;
 		let quantity: number | null = null;
 
 		switch (props.type) {
@@ -542,23 +544,29 @@ export default function AssetActionMarketOrders(props: IProps) {
 			case 'sell':
 				balanceHeader = language.totalSalesBalanceAvailable;
 				percentageHeader = language.totalSalesPercentageAvailable;
-				quantity = connectedBalance;
+				totalBalance = 0;
+				if (connectedBalance) totalBalance += connectedBalance;
+				if (connectedWalletBalance) totalBalance += connectedWalletBalance;
+				quantity = totalBalance;
 				break;
 			case 'transfer':
 				balanceHeader = language.totalTransferBalanceAvailable;
 				percentageHeader = language.totalTransferPercentageAvailable;
-				quantity = connectedBalance;
+				totalBalance = 0;
+				if (connectedBalance) totalBalance += connectedBalance;
+				if (connectedWalletBalance) totalBalance += connectedWalletBalance;
+				quantity = totalBalance;
 				break;
 		}
 
 		return (
 			<>
 				<S.TotalQuantityLine>
-					<p>{`${balanceHeader}`}</p>
+					<p>{balanceHeader}</p>
 					<span>{formatCount(quantity.toString())}</span>
 				</S.TotalQuantityLine>
 				<S.TotalQuantityLine>
-					<p>{`${percentageHeader}`}</p>
+					<p>{percentageHeader}</p>
 					<span>{formatPercentage(!isNaN(quantity / totalAssetBalance) ? quantity / totalAssetBalance : 0)}</span>
 				</S.TotalQuantityLine>
 			</>
