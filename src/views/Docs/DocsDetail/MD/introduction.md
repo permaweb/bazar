@@ -10,11 +10,11 @@ In these guides, you can learn more about how to use BazAR and why this platform
 
 BazAR is built on top of the Universal Content Marketplace (UCM) protocol, a trustless order-book for trading atomic assets on Arweave.
 
-- **Powered by AO**: The UCM now runs on [AO](https://ao.arweave.dev/). AO is a hyper parallel computing system built on the Arweave network, offering a unified environment for executing decentralized applications and smart contracts. All transactions on BazAR are carried out through AO smart contracts.
+- **Powered by AO**: The UCM now runs on [AO](https://ao.arweave.net/). AO is a hyper parallel computing system built on the Arweave network, offering a unified environment for executing decentralized applications and smart contracts. All transactions on BazAR are carried out through AO smart contracts.
 
 - **Trustless transactions**: Users no longer have to rely on third-party intermediaries to make transactions. BazAR serves as a user interface for the UCM. Over time, we expect more UIs to emerge that support unique experiences for creators and collectors.
 
-- **Licensable data**: The [Universal Data License](https://udlicense.arweave.dev/) (UDL) ensures that value flows equitably to those who create and contribute to the permaweb. This standard framework allows creators to set their own terms for the usage of content they upload to the permaweb. Learn more about UDL [here](#).
+- **Licensable data**: The [Universal Data License](https://udlicense.arweave.net/) (UDL) ensures that value flows equitably to those who create and contribute to the permaweb. This standard framework allows creators to set their own terms for the usage of content they upload to the permaweb. Learn more about UDL [here](#).
 
 - **Earn $PIXL rewards**: Built into the UCM protocol is a rewards token that is awarded when users maintain a buying streak. The longer the buying streak, the larger the daily $PIXL rewards! Learn more about $PIXL [here](#).
 

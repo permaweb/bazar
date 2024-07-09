@@ -248,8 +248,8 @@ export const REDIRECTS = {
 	github: `https://github.com/permaweb/bazar`,
 	x: `https://x.com/OurBazAR`,
 	discord: `https://discord.gg/yjVaMbmKw4`,
-	helix: `https://helix.arweave.dev`,
-	aox: `https://aox.arweave.dev`,
+	helix: `https://helix.arweave.net`,
+	aox: `https://aox.arweave.net`,
 	arswap: 'https://arswap.org',
 };
 

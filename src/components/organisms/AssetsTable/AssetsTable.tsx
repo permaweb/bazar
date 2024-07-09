@@ -273,7 +273,7 @@ export default function AssetsTable(props: IProps) {
 										<S.AssetGridElement key={index} className={'fade-in'}>
 											<Link to={redirect}>
 												<S.AssetGridDataWrapper disabled={false}>
-													<AssetData asset={asset} scrolling={scrolling} />
+													<AssetData asset={asset} scrolling={scrolling} autoLoad />
 												</S.AssetGridDataWrapper>
 											</Link>
 											<S.AssetGridInfoWrapper>

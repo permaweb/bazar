@@ -14,6 +14,6 @@ export function getRendererEndpoint(renderWith: string, tx: string) {
 	if (checkValidAddress(renderWith)) {
 		return `${arweaveEndpoint}/${renderWith}/?tx=${tx}`;
 	} else {
-		return `https://${renderWith}.arweave.dev/?tx=${tx}`;
+		return `https://${renderWith}.arweave.net/?tx=${tx}`;
 	}
 }

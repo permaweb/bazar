@@ -20,7 +20,7 @@ Alternatively, you can purchase AR through decentralized exchanges such as [ever
 
 #### Wrapped AR (wAR)
 
-Wrapped AR is an Arweave token wrapped and cross-chained onto AO. wAR is the token used to make transactions on BazAR. wAR can be obtained by [bridging](https://aox.arweave.dev/#/) AR or [swapping](https://arswap.org/swap) AO tokens.
+Wrapped AR is an Arweave token wrapped and cross-chained onto AO. wAR is the token used to make transactions on BazAR. wAR can be obtained by [bridging](https://aox.arweave.net/#/) AR or [swapping](https://arswap.org/swap) AO tokens.
 
 #### PIXL
 

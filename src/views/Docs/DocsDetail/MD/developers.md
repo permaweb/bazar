@@ -92,7 +92,7 @@ An atomic asset is a unique digital item stored on Arweave. Unlike traditional N
 
 **How it works**
 
-[AO atomic assets](atomic-asset.lua) follow the token spec designed for exchangeable tokens which can be found [here](https://ao.arweave.dev/#/). The creation of an atomic asset happens with these steps:
+[AO atomic assets](atomic-asset.lua) follow the token spec designed for exchangeable tokens which can be found [here](https://ao.arweave.net/#/). The creation of an atomic asset happens with these steps:
 
 1. The [asset process handlers](https://arweave.net/y9VgAlhHThl-ZiXvzkDzwC5DEjfPegD6VAotpP3WRbs) are fetched from Arweave.
 2. Asset fields are replaced with the values submitted by the user.

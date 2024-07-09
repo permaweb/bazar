@@ -182,5 +182,5 @@ export const Action = styled.div`
 `;
 
 export const PManageWrapper = styled.div`
-	max-width: 575px;
+	max-width: 550px;
 `;

@@ -6,7 +6,7 @@ On other chains, the asset data, metadata, and smart contract are typically sepa
 
 Atomic assets can also be 1-1 or fractionalized, meaning users can purchase portions of an asset. The creator can determine the number of fractional shares for an atomic asset before uploading.
 
-Read more about atomic assets [here](https://cookbook.arweave.dev/concepts/atomic-tokens.html).
+Read more about atomic assets [here](https://cookbook.arweave.net/concepts/atomic-tokens.html).
 
 #### Atomic asset collections
 

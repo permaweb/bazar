@@ -18,9 +18,10 @@ export const Wrapper = styled.div<{ top: number; noHeader: boolean }>`
 
 export const Container = styled.div<{
 	noHeader: boolean;
+	width?: number;
 }>`
 	height: calc(100dvh - 30px);
-	min-width: 425px;
+	min-width: ${(props) => (props.width ? `${props.width.toString()}px` : '425px')};
 	width: fit-content;
 	max-width: calc(100vw - 30px);
 	position: fixed;

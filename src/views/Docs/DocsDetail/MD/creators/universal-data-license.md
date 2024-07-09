@@ -32,4 +32,4 @@ Since BazAR is in its "early" release, not all UDL parameters are currently supp
   - Random - Payments are distributed randomly between wallet addresses proportional to their respective holdings of the asset.
   - Global - Payments are distributed evenly between wallet addresses proportional to their respective holdings of the asset.
 
-  You can read the full UDL [here](https://udlicense.arweave.dev/).
+  You can read the full UDL [here](https://udlicense.arweave.net/).

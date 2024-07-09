@@ -212,7 +212,7 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 			<S.Wrapper>
 				{getHeader()}
 				{showWalletDropdown && (
-					<Panel open={showWalletDropdown} header={label} handleClose={() => setShowWalletDropdown(false)}>
+					<Panel open={showWalletDropdown} header={label} handleClose={() => setShowWalletDropdown(false)} width={375}>
 						{getDropdown()}
 					</Panel>
 				)}

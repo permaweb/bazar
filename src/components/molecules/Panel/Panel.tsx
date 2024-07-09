@@ -40,7 +40,7 @@ export default function Panel(props: IProps) {
 	function getBody() {
 		return (
 			<>
-				<S.Container noHeader={!props.header} className={'border-wrapper-alt2'}>
+				<S.Container noHeader={!props.header} className={'border-wrapper-alt2'} width={props.width}>
 					<CloseHandler active={props.open} disabled={!props.open} callback={() => props.handleClose()}>
 						{props.header && (
 							<S.Header>

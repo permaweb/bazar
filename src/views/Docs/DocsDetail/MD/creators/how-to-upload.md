@@ -4,10 +4,10 @@ BazAR is a user interface for the UCM protocol, allowing for countless ways to u
 
 #### Upload with Helix
 
-[Helix](https://helix.arweave.dev/#/) is an easy-to-use atomic asset uploader. All content uploaded through Helix is stored on Arweave and is tradeable on BazAR.
+[Helix](https://helix.arweave.net/#/) is an easy-to-use atomic asset uploader. All content uploaded through Helix is stored on Arweave and is tradeable on BazAR.
 
 Content can be uploaded as single atomic assets or within a full collection. Atomic assets can also be 1-1 or a fractionalized token.
 
-Check out the [Helix docs](https://helix.arweave.dev/#/docs/introduction) for more information on how to upload your creative work to the permaweb.
+Check out the [Helix docs](https://helix.arweave.net/#/docs/introduction) for more information on how to upload your creative work to the permaweb.
 
 **Please note, Helix currently only accepts upload payments through credit card and has a maximum file size limit of 10MB.**
