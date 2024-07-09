@@ -3,7 +3,7 @@ import React from 'react';
 import { getProfileByWalletAddress, readHandler } from 'api';
 
 import { Modal } from 'components/molecules/Modal';
-import { AO, AR_WALLETS, WALLET_PERMISSIONS } from 'helpers/config';
+import { AO, AR_WALLETS, REDIRECTS, WALLET_PERMISSIONS } from 'helpers/config';
 import { getARBalanceEndpoint } from 'helpers/endpoints';
 import { ProfileHeaderType, WalletEnum } from 'helpers/types';
 import Othent from 'helpers/wallet';
@@ -70,6 +70,14 @@ function WalletList(props: { handleConnect: any }) {
 					<span>{wallet.type.charAt(0).toUpperCase() + wallet.type.slice(1)}</span>
 				</S.WalletListItem>
 			))}
+			<S.WalletLink>
+				<span>
+					Don't have an Arweave Wallet? You can create one{' '}
+					<a href={REDIRECTS.arconnect} target={'_blank'}>
+						here.
+					</a>
+				</span>
+			</S.WalletLink>
 		</S.WalletListContainer>
 	);
 }

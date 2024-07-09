@@ -250,7 +250,7 @@ export const REDIRECTS = {
 	discord: `https://discord.gg/yjVaMbmKw4`,
 	helix: `https://helix.arweave.net`,
 	aox: `https://aox.arweave.net`,
-	arswap: 'https://arswap.org',
+	arconnect: `https://arconnect.io`,
 };
 
 export const DEFAULTS = {
