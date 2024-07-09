@@ -140,7 +140,7 @@ export const language = {
 		viewAllCollections: `View all collections`,
 		viewFullBio: `View full bio`,
 		viewFullDescription: `View full description`,
-		viewOnArweave: `View on Arweave`,
+		viewOnArweave: `Open in a new tab`,
 		viewProfile: `View profile`,
 	},
 };
