@@ -5,7 +5,7 @@ import { getCollections } from 'api';
 import { AssetsTable } from 'components/organisms/AssetsTable';
 import { CollectionsCarousel } from 'components/organisms/CollectionsCarousel';
 import { CreatorsTable } from 'components/organisms/CreatorsTable';
-// import { TrendingTokens } from 'components/organisms/TrendingTokens';
+import { TrendingTokens } from 'components/organisms/TrendingTokens';
 import { PAGINATORS } from 'helpers/config';
 import { CollectionType } from 'helpers/types';
 import { useLanguageProvider } from 'providers/LanguageProvider';
@@ -39,10 +39,9 @@ export default function Landing() {
 				<CollectionsCarousel collections={collections} loading={collectionsLoading} />
 				{collectionsErrorResponse && <p>{collectionsErrorResponse}</p>}
 			</S.CollectionsWrapper>
-			{/* TODO */}
-			{/* <S.TokensWrapper>
+			<S.TokensWrapper>
 				<TrendingTokens />
-			</S.TokensWrapper> */}
+			</S.TokensWrapper>
 			<S.CreatorsWrapper>
 				<CreatorsTable />
 			</S.CreatorsWrapper>

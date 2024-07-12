@@ -10,7 +10,7 @@ import { useLanguageProvider } from 'providers/LanguageProvider';
 import * as S from './styles';
 
 const TOKEN_PROCESSES = [
-	'Btm_9_fvwb7eXbQ2VswA4V19HxYWnFsYRB4gIl3Dahw', // TODO - Get process
+	'pazXumQI-HPH7iFGfTC-4_7biSnqz_U67oFAGry5zUY',
 	AO.pixl,
 	'aYrCboXVSl1AXL9gPFe3tfRxRf0ZmkOXH65mKT0HHZw',
 	'OT9qTE2467gcozb2g8R6D6N3nQS94ENcaAIJfUzHCww',
