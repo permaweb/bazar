@@ -89,7 +89,9 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 					let calculatedTotalBalance = totalBalance;
 
-					if (denomination) calculatedTotalBalance = totalBalance / denomination;
+					if (denomination) {
+						calculatedTotalBalance = totalBalance / denomination;
+					}
 
 					setTotalAssetBalance(calculatedTotalBalance);
 
@@ -256,31 +258,28 @@ export default function AssetActionMarketOrders(props: IProps) {
 					setCurrentNotification(initialMessage);
 
 					let processId: string;
-					let profileBalance: number = 0;
-					let walletBalance: number = 0;
+					let profileBalance: bigint = BigInt(0);
+					let walletBalance: bigint = BigInt(0);
 
 					switch (props.type) {
 						case 'buy':
 							processId = AO.defaultToken;
-							profileBalance = Number(arProvider.tokenBalances[AO.defaultToken].profileBalance);
-							walletBalance = Number(arProvider.tokenBalances[AO.defaultToken].walletBalance);
+							profileBalance = BigInt(arProvider.tokenBalances[AO.defaultToken].profileBalance);
+							walletBalance = BigInt(arProvider.tokenBalances[AO.defaultToken].walletBalance);
 							break;
 						case 'sell':
 						case 'transfer':
 							processId = props.asset.data.id;
 
-							if (connectedBalance) profileBalance = connectedBalance as any;
-							if (connectedWalletBalance) walletBalance = connectedWalletBalance as any;
-
-							if (denomination) {
-								if (profileBalance) profileBalance = profileBalance * Number(denomination);
-								if (walletBalance) walletBalance = walletBalance * Number(denomination);
-							}
+							if (connectedBalance)
+								profileBalance = BigInt(denomination ? connectedBalance * denomination : connectedBalance);
+							if (connectedWalletBalance)
+								walletBalance = BigInt(denomination ? connectedWalletBalance * denomination : connectedWalletBalance);
 							break;
 					}
 
-					if (profileBalance < Number(transferQuantity)) {
-						const differenceNeeded = Number(transferQuantity) - profileBalance;
+					if (profileBalance < BigInt(transferQuantity)) {
+						const differenceNeeded = BigInt(transferQuantity) - profileBalance;
 
 						if (walletBalance < differenceNeeded) {
 							console.error(`Wallet balance is less than difference needed: ${differenceNeeded}`);
