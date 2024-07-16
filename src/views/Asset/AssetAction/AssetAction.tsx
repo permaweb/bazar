@@ -44,14 +44,6 @@ export default function AssetAction(props: IProps) {
 			label: ACTION_TAB_OPTIONS.market,
 			icon: ASSETS.market,
 		},
-		// {
-		// 	label: ACTION_TAB_OPTIONS.comments,
-		// 	icon: ASSETS.comments,
-		// },
-		// {
-		// 	label: ACTION_TAB_OPTIONS.activity,
-		// 	icon: ASSETS.activity,
-		// },
 	];
 
 	const [mobile, setMobile] = React.useState(!windowUtils.checkWindowCutoff(parseInt(STYLING.cutoffs.secondary)));
@@ -324,7 +316,7 @@ export default function AssetAction(props: IProps) {
 								onClick={() => {
 									setShowCurrentOwnersModal(true);
 								}}
-							>{`${currentOwners.length} ${
+							>{`${formatCount(currentOwners.length.toString())} ${
 								currentOwners.length > 1 ? `${language.owner.toLowerCase()}s` : language.owner.toLowerCase()
 							}`}</button>
 						</S.OwnerLine>
@@ -336,7 +328,7 @@ export default function AssetAction(props: IProps) {
 								onClick={() => {
 									setShowCurrentListingsModal(true);
 								}}
-							>{`${currentListings.length} ${
+							>{`${formatCount(currentListings.length.toString())} ${
 								currentListings.length > 1 ? `${language.owner.toLowerCase()}s` : language.owner.toLowerCase()
 							}`}</button>
 						</S.OwnerLine>
