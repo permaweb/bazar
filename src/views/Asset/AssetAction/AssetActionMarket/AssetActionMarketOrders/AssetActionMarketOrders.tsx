@@ -344,7 +344,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 				setOrderLoading(false);
 				setOrderProcessed(true);
 
-				await new Promise((r) => setTimeout(r, 1000));
 				await handleAssetUpdate(localSuccess);
 			} else {
 				setCurrentNotification('Invalid order details');

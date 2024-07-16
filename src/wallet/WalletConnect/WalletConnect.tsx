@@ -1,5 +1,5 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { ReactSVG } from 'react-svg';
 
 import { Avatar } from 'components/atoms/Avatar';
@@ -7,7 +7,7 @@ import { Button } from 'components/atoms/Button';
 import { CurrencyLine } from 'components/atoms/CurrencyLine';
 import { Panel } from 'components/molecules/Panel';
 import { ProfileManage } from 'components/organisms/ProfileManage';
-import { ASSETS, REDIRECTS, URLS } from 'helpers/config';
+import { AO, ASSETS, REDIRECTS, URLS } from 'helpers/config';
 import { formatAddress, formatCount, getTotalTokenBalance } from 'helpers/utils';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useCustomThemeProvider } from 'providers/CustomThemeProvider';
@@ -89,6 +89,17 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 		setShowWalletDropdown(false);
 	}
 
+	const tokenLinks = {
+		[AO.defaultToken]: {
+			link: REDIRECTS.warDepot,
+			label: language.getWrappedAr,
+		},
+		[AO.pixl]: {
+			link: `${URLS.asset}${AO.pixl}`,
+			label: language.tradePixl,
+		},
+	};
+
 	function getDropdown() {
 		return (
 			<>
@@ -129,6 +140,13 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 											callback={() => setShowWalletDropdown(false)}
 											useReverseLayout
 										/>
+										{tokenLinks[token] && (
+											<S.TokenLink>
+												<Link to={tokenLinks[token].link} target={'_blank'}>
+													<span>{tokenLinks[token].label}</span>
+												</Link>
+											</S.TokenLink>
+										)}
 									</S.BalanceLine>
 								);
 							})}

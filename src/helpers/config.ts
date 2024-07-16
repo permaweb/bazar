@@ -251,6 +251,7 @@ export const REDIRECTS = {
 	helix: `https://helix.arweave.net`,
 	aox: `https://aox.arweave.net`,
 	arconnect: `https://arconnect.io`,
+	warDepot: `https://wardepot.arweave.net`,
 };
 
 export const DEFAULTS = {
@@ -282,5 +283,9 @@ export const REFORMATTED_ASSETS = {
 	[AO.pixl]: {
 		title: 'PIXL Token',
 		logo: 'czR2tJmSr7upPpReXu6IuOc2H7RuHRRAhI7DXAUlszU',
+	},
+	['pazXumQI-HPH7iFGfTC-4_7biSnqz_U67oFAGry5zUY']: {
+		title: 'Llama Coin',
+		logo: '9FSEgmUsrug7kTdZJABDekwTGJy7YG7KaN5khcbwcX4',
 	},
 };

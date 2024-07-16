@@ -177,6 +177,44 @@ export const BalanceLine = styled.div`
 	}
 `;
 
+export const TokenLink = styled.div`
+	margin: 0 0 0 auto;
+	a {
+		background: ${(props) => props.theme.colors.button.alt1.background};
+		border: 1px solid ${(props) => props.theme.colors.button.alt1.border};
+		padding: 1.5px 7.5px 2.5px 7.5px;
+		border-radius: ${STYLING.dimensions.radius.alt2};
+		&:hover {
+			background: ${(props) => props.theme.colors.button.alt1.active.background};
+			border: 1px solid ${(props) => props.theme.colors.button.alt1.active.border};
+		}
+		&:focus {
+			background: ${(props) => props.theme.colors.button.alt1.active.background};
+			border: 1px solid ${(props) => props.theme.colors.button.alt1.active.border};
+		}
+		&:disabled {
+			background: ${(props) => props.theme.colors.button.alt1.disabled.background};
+			border: 1px solid ${(props) => props.theme.colors.button.alt1.disabled.border};
+			span {
+				color: ${(props) => props.theme.colors.button.alt1.disabled.color} !important;
+			}
+			svg {
+				color: ${(props) => props.theme.colors.button.alt1.disabled.color} !important;
+			}
+		}
+
+		span {
+			width: fit-content;
+			text-overflow: ellipsis;
+			overflow: hidden;
+			font-family: ${(props) => props.theme.typography.family.primary} !important;
+			font-size: ${(props) => props.theme.typography.size.xxSmall} !important;
+			font-weight: ${(props) => props.theme.typography.weight.bold} !important;
+			color: ${(props) => props.theme.colors.font.light1} !important;
+		}
+	}
+`;
+
 export const DFooterWrapper = styled(DBodyWrapper)`
 	padding: 10px 0;
 	border-bottom: none;
