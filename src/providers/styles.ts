@@ -37,7 +37,7 @@ export const WalletListItem = styled.button`
 `;
 
 export const WalletLink = styled.div`
-	margin: 10px 0 20px 0;
+	margin: 5px 0 20px 0;
 	padding: 0 20px;
 	text-align: center;
 	a,

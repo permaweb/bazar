@@ -123,7 +123,10 @@ export const ASSETS = {
 	x,
 };
 
-export const AR_WALLETS = [{ type: WalletEnum.arConnect, logo: ASSETS.arconnect }];
+export const AR_WALLETS = [
+	{ type: WalletEnum.arConnect, logo: ASSETS.arconnect },
+	{ type: WalletEnum.othent, logo: ASSETS.othent },
+];
 
 export const DOM = {
 	loader: 'loader',

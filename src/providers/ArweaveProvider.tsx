@@ -1,4 +1,6 @@
 import React from 'react';
+import { connect } from '@othent/kms';
+import * as Othent from '@othent/kms';
 
 import { getProfileByWalletAddress, readHandler } from 'api';
 
@@ -6,7 +8,6 @@ import { Modal } from 'components/molecules/Modal';
 import { AO, AR_WALLETS, REDIRECTS, WALLET_PERMISSIONS } from 'helpers/config';
 import { getARBalanceEndpoint } from 'helpers/endpoints';
 import { ProfileHeaderType, WalletEnum } from 'helpers/types';
-import Othent from 'helpers/wallet';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 
 import * as S from './styles';
@@ -104,12 +105,6 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 
 	const [profile, setProfile] = React.useState<ProfileHeaderType | null>(null);
 	const [toggleProfileUpdate, setToggleProfileUpdate] = React.useState<boolean>(false);
-
-	React.useEffect(() => {
-		(async function () {
-			await handleWallet();
-		})();
-	}, []);
 
 	React.useEffect(() => {
 		handleWallet();
@@ -216,7 +211,7 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 				[AO.pixl]: { profileBalance: 0, walletBalance: 0 },
 			});
 		}
-	}, [walletAddress && profile, toggleTokenBalanceUpdate]);
+	}, [walletAddress, profile, toggleTokenBalanceUpdate]);
 
 	React.useEffect(() => {
 		if (profile && profile.id) {
@@ -287,20 +282,24 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 	}
 
 	async function handleOthent() {
-		Othent.init();
-		await window.arweaveWallet.connect(WALLET_PERMISSIONS as any);
-		setWallet(window.arweaveWallet);
-		setWalletAddress(Othent.getUserInfo().walletAddress);
-		setWalletType(WalletEnum.othent);
-		localStorage.setItem('walletType', WalletEnum.othent);
+		try {
+			const othentConnection = await connect();
+			const address = othentConnection.walletAddress;
+			setWallet(Othent);
+			setWalletAddress(address);
+			setWalletType(WalletEnum.othent);
+			localStorage.setItem('walletType', WalletEnum.othent);
+		} catch (e: any) {
+			console.error(e);
+		}
 	}
 
 	async function handleDisconnect() {
+		if (localStorage.getItem('walletType')) localStorage.removeItem('walletType');
 		await global.window?.arweaveWallet?.disconnect();
 		setWallet(null);
 		setWalletAddress(null);
 		setProfile(null);
-		if (localStorage.getItem('walletType')) localStorage.removeItem('walletType');
 	}
 
 	async function getARBalance(walletAddress: string) {

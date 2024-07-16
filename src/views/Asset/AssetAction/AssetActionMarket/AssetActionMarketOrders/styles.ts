@@ -83,7 +83,7 @@ export const MaxQty = styled.div`
 `;
 
 export const SalesWrapper = styled.div`
-	margin: 40px 0 20px 0;
+	margin: 0 0 20px 0;
 	> * {
 		&:not(:last-child) {
 			margin: 0 0 15px 0;
