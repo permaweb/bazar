@@ -162,7 +162,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 			} else {
 				let orderAmount = getTotalOrderAmount();
 				if (denomination) {
-					orderAmount = orderAmount / denomination;
+					orderAmount = BigInt(orderAmount) / BigInt(denomination);
 				}
 				setInsufficientBalance(Number(getTotalTokenBalance(arProvider.tokenBalances[AO.defaultToken])) < orderAmount);
 			}
@@ -208,16 +208,16 @@ export default function AssetActionMarketOrders(props: IProps) {
 				let transferQuantity: string | number = currentOrderQuantity;
 
 				switch (props.type) {
+					case 'buy':
+						transferQuantity = getTotalOrderAmount().toString();
+						if (denomination) {
+							transferQuantity = (BigInt(transferQuantity) / BigInt(denomination)).toString();
+						}
+						break;
 					case 'sell':
 					case 'transfer':
 						if (denomination) {
 							transferQuantity = Number(currentOrderQuantity) * denomination;
-						}
-						break;
-					case 'buy':
-						transferQuantity = getTotalOrderAmount();
-						if (denomination) {
-							transferQuantity = transferQuantity / denomination;
 						}
 						break;
 				}
@@ -446,28 +446,33 @@ export default function AssetActionMarketOrders(props: IProps) {
 					(a: AssetOrderType, b: AssetOrderType) => Number(a.price) - Number(b.price)
 				);
 
-				let totalQuantity = 0;
-				let totalPrice = 0;
+				let totalQuantity: bigint = BigInt(0);
+				let totalPrice: bigint = BigInt(0);
 
 				for (let i = 0; i < sortedOrders.length; i++) {
-					const quantity = Number(sortedOrders[i].quantity);
-					const price = Number(sortedOrders[i].price);
+					const quantity = BigInt(sortedOrders[i].quantity);
+					const price = BigInt(sortedOrders[i].price);
 
-					let inputQuantity = Number(currentOrderQuantity);
-					if (denomination) inputQuantity = Number(currentOrderQuantity) * denomination;
+					let inputQuantity;
+					try {
+						inputQuantity = BigInt(currentOrderQuantity);
+						if (denomination) inputQuantity = BigInt(currentOrderQuantity) * BigInt(denomination);
 
-					if (quantity >= inputQuantity - totalQuantity) {
-						const remainingQty = inputQuantity - totalQuantity;
+						if (quantity >= inputQuantity - totalQuantity) {
+							const remainingQty = inputQuantity - totalQuantity;
 
-						totalQuantity += remainingQty;
-						totalPrice += remainingQty * price;
-						break;
-					} else {
-						totalQuantity += quantity;
-						totalPrice += quantity * price;
+							totalQuantity += remainingQty;
+							totalPrice += remainingQty * price;
+							break;
+						} else {
+							totalQuantity += quantity;
+							totalPrice += quantity * price;
+						}
+					} catch (e: any) {
+						console.error(e);
+						inputQuantity = BigInt(0);
 					}
 				}
-
 				return totalPrice;
 			} else return 0;
 		} else {
@@ -575,10 +580,10 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 	function getTotalPriceDisplay() {
 		let amount = getTotalOrderAmount();
-		if (props.type === 'buy' && denomination) amount = amount / denomination;
+		if (props.type === 'buy' && denomination) amount = BigInt(amount) / BigInt(denomination);
 		const orderCurrency =
 			props.asset.orders && props.asset.orders.length ? props.asset.orders[0].currency : AO.defaultToken;
-		return <CurrencyLine amount={amount || '0'} currency={orderCurrency} />;
+		return <CurrencyLine amount={amount ? amount.toString() : '0'} currency={orderCurrency} />;
 	}
 
 	function getOrderDetails() {
