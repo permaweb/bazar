@@ -236,7 +236,7 @@ export const CURSORS = {
 export const PAGINATORS = {
 	default: 100,
 	landing: {
-		assets: 20,
+		assets: 30,
 	},
 	collection: {
 		assets: 15,

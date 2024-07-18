@@ -4,7 +4,7 @@ import { STYLING } from 'helpers/config';
 
 export const Wrapper = styled.div`
 	width: 100%;
-	scroll-margin-top: 20px;
+	scroll-margin-top: 100px;
 `;
 
 export const Header = styled.div`

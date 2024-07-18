@@ -9,6 +9,8 @@ import {
 	RegistryProfileType,
 } from './types';
 
+declare const InstallTrigger: any;
+
 export function checkValidAddress(address: string | null) {
 	if (!address) return false;
 	return /^[a-z0-9_-]{43}$/i.test(address);
@@ -294,4 +296,8 @@ export function getTotalTokenBalance(tokenBalances: { profileBalance: number; wa
 	if (!tokenBalances) return null;
 	const total = (tokenBalances.profileBalance || 0) + (tokenBalances.walletBalance || 0);
 	return total;
+}
+
+export function isFirefox(): boolean {
+	return typeof InstallTrigger !== 'undefined';
 }

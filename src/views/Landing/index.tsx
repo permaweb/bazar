@@ -46,7 +46,7 @@ export default function Landing() {
 				<CreatorsTable />
 			</S.CreatorsWrapper>
 			<S.AssetsWrapper>
-				<AssetsTable type={'list'} pageCount={PAGINATORS.landing.assets} />
+				<AssetsTable type={'grid'} pageCount={PAGINATORS.landing.assets} />
 			</S.AssetsWrapper>
 		</S.Wrapper>
 	);

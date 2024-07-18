@@ -10,7 +10,7 @@ import { IconButton } from 'components/atoms/IconButton';
 import { Select } from 'components/atoms/Select';
 import { ASSET_SORT_OPTIONS, ASSETS, PAGINATORS, STYLING, URLS } from 'helpers/config';
 import { AssetDetailType, AssetSortType, IdGroupType, SelectOptionType } from 'helpers/types';
-import { sortOrders } from 'helpers/utils';
+import { isFirefox, sortOrders } from 'helpers/utils';
 import * as windowUtils from 'helpers/window';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 
@@ -143,10 +143,9 @@ export default function AssetsTable(props: IProps) {
 			setTimeout(() => {
 				if (scrollRef.current) {
 					if (useScroll) setScrolling(true);
-					scrollRef.current.scrollIntoView({
-						behavior: 'smooth',
-						block: 'start',
-					});
+
+					const scrollOptions = isFirefox() ? {} : { behavior: 'smooth' };
+					scrollRef.current.scrollIntoView(scrollOptions);
 					if (useScroll) {
 						setTimeout(() => {
 							setScrolling(false);
