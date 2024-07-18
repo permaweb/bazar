@@ -160,7 +160,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 			if (!arProvider.tokenBalances || !arProvider.tokenBalances[AO.defaultToken]) {
 				setInsufficientBalance(true);
 			} else {
-				let orderAmount = getTotalOrderAmount();
+				let orderAmount = BigInt(getTotalOrderAmount());
 				if (denomination) {
 					orderAmount = BigInt(orderAmount) / BigInt(denomination);
 				}
@@ -453,24 +453,20 @@ export default function AssetActionMarketOrders(props: IProps) {
 					const quantity = BigInt(sortedOrders[i].quantity);
 					const price = BigInt(sortedOrders[i].price);
 
-					let inputQuantity;
-					try {
-						inputQuantity = BigInt(currentOrderQuantity);
-						if (denomination) inputQuantity = BigInt(currentOrderQuantity) * BigInt(denomination);
+					let inputQuantity: any;
+					inputQuantity = denomination
+						? BigInt((currentOrderQuantity as number) * denomination)
+						: BigInt(Math.floor(currentOrderQuantity as any));
 
-						if (quantity >= inputQuantity - totalQuantity) {
-							const remainingQty = inputQuantity - totalQuantity;
+					if (quantity >= inputQuantity - totalQuantity) {
+						const remainingQty = inputQuantity - totalQuantity;
 
-							totalQuantity += remainingQty;
-							totalPrice += remainingQty * price;
-							break;
-						} else {
-							totalQuantity += quantity;
-							totalPrice += quantity * price;
-						}
-					} catch (e: any) {
-						console.error(e);
-						inputQuantity = BigInt(0);
+						totalQuantity += remainingQty;
+						totalPrice += remainingQty * price;
+						break;
+					} else {
+						totalQuantity += quantity;
+						totalPrice += quantity * price;
 					}
 				}
 				return totalPrice;
@@ -579,7 +575,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 	}, [props.asset, props.type, totalAssetBalance, totalSalesQuantity, connectedBalance, ucmReducer]);
 
 	function getTotalPriceDisplay() {
-		let amount = getTotalOrderAmount();
+		let amount = BigInt(getTotalOrderAmount());
 		if (props.type === 'buy' && denomination) amount = BigInt(amount) / BigInt(denomination);
 		const orderCurrency =
 			props.asset.orders && props.asset.orders.length ? props.asset.orders[0].currency : AO.defaultToken;
