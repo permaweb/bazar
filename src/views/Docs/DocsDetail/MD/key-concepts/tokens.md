@@ -20,19 +20,11 @@ Alternatively, you can purchase AR through decentralized exchanges such as [ever
 
 #### Wrapped AR (wAR)
 
-Wrapped AR is an Arweave token wrapped and cross-chained onto AO. wAR is the token used to make transactions on BazAR. wAR can be obtained by [bridging](https://aox.arweave.net/#/) AR or [swapping](https://arswap.org/swap) AO tokens.
+Wrapped AR is an Arweave token wrapped and cross-chained onto AO. wAR is the token used to make transactions on BazAR. wAR can be obtained by [bridging](https://aox.arweave.net/#/) AR or [swapping](https://wardepot.arweave.net/) ETH and USDC. Transfer Wrapped AR to other Arweave wallets on BazAR [here](https://ao-bazar.arweave.net/#/asset/xU9zFkq3X2ZQ6olwNVvr1vUWIjc3kXTWr7xKQD6dh10)
 
 #### PIXL
 
-PIXL is a rewards token for purchasing atomic assets on the Universal Content Marketplace. The longer the buying streak, the higher the daily PIXL rewards. PIXL is a fun reward designed to incentivize discovery and interaction with atomic assets, and does not necessarily have financial value.
-
-#### AOCRED
-
-CRED is the AO testnet token. It is awarded to those who complete [quests](https://cookbook_ao.g8way.io/welcome/testnet-info/cred-and-quests.html). CRED can be swapped for wAR on [ArSwap](https://arswap.org/swap).
-
-#### TRUNK
-
-TRUNK is AO's first meme-coin. TRUNK can be swapped for wAR tokens on [ArSwap](https://arswap.org/swap). Learn more about TRUNK [here](https://trunkao.xyz/#/).
+PIXL is a rewards token for purchasing atomic assets on the Universal Content Marketplace. The longer the buying streak, the higher the daily PIXL rewards. PIXL is a fun reward designed to incentivize discovery and interaction with atomic assets, and does not necessarily have financial value. Learn more about PIXL [here](https://ao-bazar.arweave.net/#/docs/collectors/earn-pixl).
 
 ### Conclusion
 
