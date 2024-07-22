@@ -455,7 +455,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 					let inputQuantity: any;
 					inputQuantity = denomination
-						? BigInt((currentOrderQuantity as number) * denomination)
+						? BigInt(Math.floor((currentOrderQuantity as number) * denomination))
 						: BigInt(Math.floor(currentOrderQuantity as any));
 
 					if (quantity >= inputQuantity - totalQuantity) {
