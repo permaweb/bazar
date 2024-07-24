@@ -1,6 +1,6 @@
 ### BazAR on AO
 
-The next chapter of BazAR is here. BazAR is now running on the AO hyper parallel computer. Learn more about BazAR on AO in this guide.
+The next chapter of BazAR is here. BazAR is now running on the [AO](https://ao.arweave.net/#/) hyper parallel computer. Learn more about BazAR on AO in this guide.
 
 #### What is AO?
 
