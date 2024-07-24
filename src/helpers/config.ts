@@ -43,6 +43,7 @@ import swap from 'assets/swap.svg';
 import transfer from 'assets/transfer.svg';
 import unsupported from 'assets/unsupported.svg';
 import user from 'assets/user.svg';
+import users from 'assets/users.svg';
 import video from 'assets/video.svg';
 import view from 'assets/view.svg';
 import wallet from 'assets/wallet.svg';
@@ -119,6 +120,7 @@ export const ASSETS = {
 	streak3,
 	streak4,
 	user,
+	users,
 	view,
 	video,
 	wallet,

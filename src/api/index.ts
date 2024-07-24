@@ -188,6 +188,7 @@ export async function createTransaction(args: {
 	contentType: string;
 	tags: TagType[];
 	uploadMethod?: UploadMethodType;
+	useWindowDispatch?: boolean;
 }) {
 	let finalContent: any;
 	switch (args.contentType) {
@@ -204,7 +205,7 @@ export async function createTransaction(args: {
 	if (contentSize < Number(UPLOAD_CONFIG.dispatchUploadSize)) {
 		const txRes = await Arweave.init({}).createTransaction({ data: finalContent }, 'use_wallet');
 		args.tags.forEach((tag: TagType) => txRes.addTag(tag.name, tag.value));
-		const response = await dispatch(txRes);
+		const response = args.useWindowDispatch ? await global.window.arweaveWallet.dispatch(txRes) : await dispatch(txRes);
 		return response.id;
 	} else {
 		try {

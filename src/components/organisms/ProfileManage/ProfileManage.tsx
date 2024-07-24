@@ -81,6 +81,7 @@ export default function ProfileManage(props: IProps) {
 							content: bufferData,
 							contentType: bannerContentType,
 							tags: [{ name: TAGS.keys.contentType, value: bannerContentType }],
+							useWindowDispatch: arProvider.walletType !== 'othent',
 						});
 					} catch (e: any) {
 						console.error(e);
@@ -102,6 +103,7 @@ export default function ProfileManage(props: IProps) {
 							content: bufferData,
 							contentType: avatarContentType,
 							tags: [{ name: TAGS.keys.contentType, value: avatarContentType }],
+							useWindowDispatch: arProvider.walletType !== 'othent',
 						});
 					} catch (e: any) {
 						console.error(e);

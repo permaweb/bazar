@@ -24,6 +24,7 @@ import { RootState } from 'store';
 import { AssetActionActivity } from './AssetActionActivity';
 import { AssetActionComments } from './AssetActionComments';
 import { AssetActionMarket } from './AssetActionMarket';
+import { AssetActionsOwners } from './AssetActionOwners';
 import * as S from './styles';
 import { IProps } from './types';
 
@@ -31,11 +32,13 @@ export default function AssetAction(props: IProps) {
 	const currenciesReducer = useSelector((state: RootState) => state.currenciesReducer);
 
 	const arProvider = useArweaveProvider();
+
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
 
 	const ACTION_TAB_OPTIONS = {
 		market: language.market,
+		owners: language.owners,
 		comments: language.comments,
 		activity: language.activity,
 	};
@@ -44,6 +47,10 @@ export default function AssetAction(props: IProps) {
 		{
 			label: ACTION_TAB_OPTIONS.market,
 			icon: ASSETS.market,
+		},
+		{
+			label: ACTION_TAB_OPTIONS.owners,
+			icon: ASSETS.users,
 		},
 	];
 
@@ -288,6 +295,8 @@ export default function AssetAction(props: IProps) {
 						toggleUpdate={props.toggleUpdate}
 					/>
 				);
+			case ACTION_TAB_OPTIONS.owners:
+				return <AssetActionsOwners asset={props.asset} owners={currentOwners} />;
 			case ACTION_TAB_OPTIONS.comments:
 				return <AssetActionComments asset={props.asset} />;
 			case ACTION_TAB_OPTIONS.activity:

@@ -7,7 +7,7 @@ export const lightTheme = {
 	negative2: '#E52461',
 	neutral1: '#FFFFFF',
 	neutral2: '#F2F2F2',
-	neutral3: '#9E9E9E',
+	neutral3: '#C6C6C6',
 	neutral4: '#C9C9C9',
 	neutral5: '#CCCCCC',
 	neutral6: '#F7F7F7',
@@ -32,6 +32,19 @@ export const lightTheme = {
 	light1: '#FFFFFF',
 	light2: '#DADADA',
 	dark1: '#151515',
+	stats: {
+		primary: '#FFB3B4',
+		alt1: '#C1E6EB',
+		alt2: '#D9D8EF',
+		alt3: '#A5CFE1',
+		alt4: '#87D2F0',
+		alt5: '#B8B7EF',
+		alt6: '#FFD9C5',
+		alt7: '#C6E8EF',
+		alt8: '#FBC5E5',
+		alt9: '#88A9B9',
+		alt10: '#DADADA',
+	},
 };
 
 export const darkTheme = {
@@ -51,7 +64,7 @@ export const darkTheme = {
 	neutralA1: '#FFFFFF',
 	neutralA2: '#F1F1F1',
 	neutralA3: '#E0E0E0',
-	neutralA4: '#C9C9C9',
+	neutralA4: '#CECECE',
 	neutralA5: '#F7F7F7',
 	neutralA6: '#FAFAFA',
 	neutralA7: '#101010',
@@ -67,6 +80,19 @@ export const darkTheme = {
 	light1: '#FFFFFF',
 	light2: '#DADADA',
 	dark1: '#151515',
+	stats: {
+		primary: '#FF8F90',
+		alt1: '#9BD4E0',
+		alt2: '#C2C1E6',
+		alt3: '#7AB3D0',
+		alt4: '#6AC3E7',
+		alt5: '#A1A0E6',
+		alt6: '#FFC1A1',
+		alt7: '#A5E0E8',
+		alt8: '#F29CC8',
+		alt9: '#6794AA',
+		alt10: '#444444',
+	},
 };
 
 export const theme = (currentTheme: any): DefaultTheme => ({
@@ -97,7 +123,7 @@ export const theme = (currentTheme: any): DefaultTheme => ({
 				disabled: {
 					background: currentTheme.neutral3,
 					border: currentTheme.neutral5,
-					color: currentTheme.neutral5,
+					color: currentTheme.neutralA5,
 				},
 			},
 			alt1: {
@@ -263,6 +289,19 @@ export const theme = (currentTheme: any): DefaultTheme => ({
 			primary: currentTheme.semiTransparent5,
 			alt1: currentTheme.neutral4,
 			alt2: currentTheme.neutralA7,
+		},
+		stats: {
+			primary: currentTheme.stats.primary,
+			alt1: currentTheme.stats.alt1,
+			alt2: currentTheme.stats.alt2,
+			alt3: currentTheme.stats.alt3,
+			alt4: currentTheme.stats.alt4,
+			alt5: currentTheme.stats.alt5,
+			alt6: currentTheme.stats.alt6,
+			alt7: currentTheme.stats.alt7,
+			alt8: currentTheme.stats.alt8,
+			alt9: currentTheme.stats.alt9,
+			alt10: currentTheme.stats.alt10,
 		},
 		tabs: {
 			color: currentTheme.neutralA4,
