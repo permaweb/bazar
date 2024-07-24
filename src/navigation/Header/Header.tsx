@@ -54,7 +54,7 @@ export default function Header() {
 								type={'alt1'}
 								src={ASSETS.menu}
 								handlePress={() => setPanelOpen(true)}
-								dimensions={{ wrapper: 35, icon: 20 }}
+								dimensions={{ wrapper: 35, icon: 19.5 }}
 							/>
 						</S.MWrapper>
 					</S.ActionsWrapper>

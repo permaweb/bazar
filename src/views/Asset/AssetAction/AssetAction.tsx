@@ -1,6 +1,7 @@
 import React from 'react';
 import { useSelector } from 'react-redux';
 import { Link } from 'react-router-dom';
+import { ReactSVG } from 'react-svg';
 
 import { getRegistryProfiles } from 'api';
 
@@ -302,37 +303,48 @@ export default function AssetAction(props: IProps) {
 				<S.DataWrapper>
 					<AssetData asset={props.asset} frameMinHeight={550} autoLoad />
 				</S.DataWrapper>
-				<S.Header className={'border-wrapper-alt2'}>
+				<S.Header>
 					<h4>{props.asset.data.title}</h4>
-					<S.ACLink>
-						<Link target={'_blank'} to={getTxEndpoint(props.asset.data.id)}>
-							{language.viewOnArweave}
-						</Link>
-					</S.ACLink>
-					{currentOwners && currentOwners.length > 0 && (
-						<S.OwnerLine>
-							<span>{language.currentlyOwnedBy}</span>
-							<button
-								onClick={() => {
-									setShowCurrentOwnersModal(true);
-								}}
-							>{`${formatCount(currentOwners.length.toString())} ${
-								currentOwners.length > 1 ? `${language.owner.toLowerCase()}s` : language.owner.toLowerCase()
-							}`}</button>
-						</S.OwnerLine>
-					)}
-					{currentListings && currentListings.length > 0 && (
-						<S.OwnerLine>
-							<span>{language.currentlyBeingSoldBy}</span>
-							<button
-								onClick={() => {
-									setShowCurrentListingsModal(true);
-								}}
-							>{`${formatCount(currentListings.length.toString())} ${
-								currentListings.length > 1 ? `${language.owner.toLowerCase()}s` : language.owner.toLowerCase()
-							}`}</button>
-						</S.OwnerLine>
-					)}
+					<S.OwnerLinesWrapper>
+						{currentOwners && currentOwners.length > 0 && (
+							<S.OwnerLine>
+								<span>{language.currentlyOwnedBy}</span>
+								<button
+									onClick={() => {
+										setShowCurrentOwnersModal(true);
+									}}
+								>{`${formatCount(currentOwners.length.toString())} ${
+									currentOwners.length > 1 ? `${language.owner.toLowerCase()}s` : language.owner.toLowerCase()
+								}`}</button>
+							</S.OwnerLine>
+						)}
+						{currentListings && currentListings.length > 0 && (
+							<S.OwnerLine>
+								<span>{language.currentlyBeingSoldBy}</span>
+								<button
+									onClick={() => {
+										setShowCurrentListingsModal(true);
+									}}
+								>{`${formatCount(currentListings.length.toString())} ${
+									currentListings.length > 1 ? `${language.owner.toLowerCase()}s` : language.owner.toLowerCase()
+								}`}</button>
+							</S.OwnerLine>
+						)}
+					</S.OwnerLinesWrapper>
+					<S.ACActionWrapper>
+						<S.ACAction>
+							<button onClick={() => props.toggleViewType()}>
+								<ReactSVG src={ASSETS.zen} />
+								{language.viewInZenMode}
+							</button>
+						</S.ACAction>
+						<S.ACAction>
+							<Link target={'_blank'} to={getTxEndpoint(props.asset.data.id)}>
+								<ReactSVG src={ASSETS.view} />
+								{language.viewOnArweave}
+							</Link>
+						</S.ACAction>
+					</S.ACActionWrapper>
 				</S.Header>
 				<S.TabsWrapper>
 					<Tabs onTabPropClick={(label: string) => setCurrentTab(label)} type={'alt1'}>

@@ -256,3 +256,5 @@ export type NotificationType = {
 	message: string;
 	status: 'success' | 'warning';
 };
+
+export type AssetViewType = 'trading' | 'reading';

@@ -44,8 +44,10 @@ import transfer from 'assets/transfer.svg';
 import unsupported from 'assets/unsupported.svg';
 import user from 'assets/user.svg';
 import video from 'assets/video.svg';
+import view from 'assets/view.svg';
 import wallet from 'assets/wallet.svg';
 import x from 'assets/x.svg';
+import zen from 'assets/zen.svg';
 
 import { SelectOptionType, WalletEnum } from './types';
 
@@ -117,9 +119,11 @@ export const ASSETS = {
 	streak3,
 	streak4,
 	user,
+	view,
 	video,
 	wallet,
 	x,
+	zen,
 };
 
 export const AR_WALLETS = [

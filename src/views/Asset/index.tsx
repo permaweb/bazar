@@ -5,13 +5,17 @@ import { getAssetById } from 'api';
 
 import { Loader } from 'components/atoms/Loader';
 import { Notification } from 'components/atoms/Notification';
-import { URLS } from 'helpers/config';
-import { AssetDetailType } from 'helpers/types';
+import { Portal } from 'components/atoms/Portal';
+import { AssetData } from 'components/organisms/AssetData';
+import { DOM, URLS } from 'helpers/config';
+import { AssetDetailType, AssetViewType } from 'helpers/types';
 import { checkValidAddress } from 'helpers/utils';
+import * as windowUtils from 'helpers/window';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 
 import { AssetAction } from './AssetAction';
 import { AssetInfo } from './AssetInfo';
+import { AssetReadActions } from './AssetReadActions';
 import * as S from './styles';
 
 export default function Asset() {
@@ -25,6 +29,18 @@ export default function Asset() {
 	const [loading, setLoading] = React.useState<boolean>(false);
 	const [toggleUpdate, setToggleUpdate] = React.useState<boolean>(false);
 	const [errorResponse, setErrorResponse] = React.useState<string | null>(null);
+	const [viewType, setViewType] = React.useState<AssetViewType>('trading');
+
+	React.useEffect(() => {
+		if (viewType === 'reading') {
+			windowUtils.hideDocumentBody();
+			return () => {
+				windowUtils.showDocumentBody();
+			};
+		} else {
+			windowUtils.showDocumentBody();
+		}
+	}, [viewType]);
 
 	React.useEffect(() => {
 		if (asset) setAsset(null);
@@ -72,17 +88,39 @@ export default function Asset() {
 
 	function getData() {
 		if (asset) {
-			return (
-				<>
-					<S.InfoWrapper>
-						<AssetInfo asset={asset} />
-					</S.InfoWrapper>
-					<S.ActionWrapper>
-						<AssetAction asset={asset} toggleUpdate={() => setToggleUpdate(!toggleUpdate)} />
-					</S.ActionWrapper>
-					{loading && <Notification message={`${language.updatingAsset}...`} type={'success'} callback={null} />}
-				</>
-			);
+			switch (viewType) {
+				case 'trading':
+					return (
+						<>
+							<S.TradingInfoWrapper className={'fade-in'}>
+								<AssetInfo asset={asset} />
+							</S.TradingInfoWrapper>
+							<S.TradingActionWrapper className={'fade-in'}>
+								<AssetAction
+									asset={asset}
+									toggleUpdate={() => setToggleUpdate(!toggleUpdate)}
+									toggleViewType={() => setViewType('reading')}
+								/>
+							</S.TradingActionWrapper>
+							{loading && <Notification message={`${language.updatingAsset}...`} type={'success'} callback={null} />}
+						</>
+					);
+				case 'reading':
+					return (
+						<Portal node={DOM.overlay}>
+							<S.ReadingOverlay className={'fade-in'}>
+								<S.ReadingWrapper>
+									<S.ReadingActionWrapper className={'fade-in'}>
+										<AssetReadActions toggleViewType={() => setViewType('trading')} />
+									</S.ReadingActionWrapper>
+									<S.ReadingInfoWrapper className={'fade-in'}>
+										<AssetData asset={asset} autoLoad />
+									</S.ReadingInfoWrapper>
+								</S.ReadingWrapper>
+							</S.ReadingOverlay>
+						</Portal>
+					);
+			}
 		} else {
 			if (loading) return <Loader />;
 			else if (errorResponse) return <p>{errorResponse}</p>;
