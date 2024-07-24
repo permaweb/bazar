@@ -237,6 +237,7 @@ export default function ProfileManage(props: IProps) {
 							}
 						}
 					} catch (e: any) {
+						console.error(e);
 						setProfileResponse({
 							message: e.message ?? language.errorUpdatingProfile,
 							status: 'warning',
