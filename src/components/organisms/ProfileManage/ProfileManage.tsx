@@ -36,18 +36,18 @@ export default function ProfileManage(props: IProps) {
 
 	const [name, setName] = React.useState<string>('');
 	const [username, setUsername] = React.useState<string>('');
-	const [bio, setBio] = React.useState<string>('');
-	const [banner, setBanner] = React.useState<any>(null);
-	const [avatar, setAvatar] = React.useState<any>(null);
+	const [bio, setBio] = React.useState<string | null>(null);
+	const [banner, setBanner] = React.useState<string | null>(null);
+	const [avatar, setAvatar] = React.useState<string | null>(null);
 
 	const [loading, setLoading] = React.useState<boolean>(false);
 	const [profileResponse, setProfileResponse] = React.useState<NotificationType | null>(null);
 
 	React.useEffect(() => {
 		if (props.profile) {
-			setUsername(props.profile.username ?? '');
-			setName(props.profile.displayName ?? '');
-			setBio(props.profile.bio ?? '');
+			setUsername(props.profile.username);
+			setName(props.profile.displayName);
+			setBio(props.profile.bio);
 			setBanner(props.profile.banner && checkValidAddress(props.profile.banner) ? props.profile.banner : null);
 			setAvatar(props.profile.avatar && checkValidAddress(props.profile.avatar) ? props.profile.avatar : null);
 		}
@@ -58,15 +58,18 @@ export default function ProfileManage(props: IProps) {
 		if (props.handleUpdate) props.handleUpdate();
 	}
 
+	interface IProfileData {
+		DisplayName?: string;
+		UserName?: string;
+		Description?: string;
+		CoverImage?: string;
+		ProfileImage?: string;
+	}
 	async function handleSubmit() {
 		if (arProvider.wallet) {
 			setLoading(true);
 
-			const data: any = {
-				DisplayName: name,
-				UserName: username,
-				Description: bio,
-			};
+			const data: IProfileData = {};
 
 			let bannerTx: any = null;
 			if (banner) {
@@ -111,9 +114,24 @@ export default function ProfileManage(props: IProps) {
 					}
 				}
 			}
-
-			data.CoverImage = bannerTx || 'None';
-			data.ProfileImage = avatarTx || 'None';
+			// send undefined
+			const getFieldDataChanged = (profileValue, newValue) => {
+				// if new is '' and profilevalue is not empty, then clear
+				if ((newValue === '' || newValue == null) && Boolean(profileValue)) {
+					return '';
+				}
+				if (profileValue !== newValue && typeof newValue === 'string' && newValue.length > 0) {
+					return newValue;
+				} else {
+					return undefined;
+				}
+			};
+			// either send undefined if no change, or '' if clear, or a value.
+			data.UserName = getFieldDataChanged(props.profile?.username, username);
+			data.DisplayName = getFieldDataChanged(props.profile?.displayName, name);
+			data.CoverImage = getFieldDataChanged(props.profile?.banner, bannerTx);
+			data.ProfileImage = getFieldDataChanged(props.profile?.avatar, avatarTx);
+			data.Description = getFieldDataChanged(props.profile?.bio, bio);
 
 			try {
 				if (props.profile && props.profile.id) {
@@ -150,7 +168,8 @@ export default function ProfileManage(props: IProps) {
 
 							const profileTags: { name: string; value: string }[] = [
 								{ name: 'Date-Created', value: dateTime },
-								{ name: 'Action', value: 'CreateProfile' },
+								{ name: 'Action', value: 'Create-Profile' },
+								{ name: 'Authority', value: 'fcoN_xJeisVsPXA-trzVAuIiqO3ydLQxM-L4XbrQKzY' },
 							];
 
 							console.log('Spawning profile process...');
@@ -159,6 +178,7 @@ export default function ProfileManage(props: IProps) {
 								scheduler: AO.scheduler,
 								signer: createDataItemSigner(arProvider.wallet),
 								tags: profileTags,
+								data: JSON.stringify(data),
 							});
 
 							console.log(`Process Id -`, processId);
@@ -182,7 +202,7 @@ export default function ProfileManage(props: IProps) {
 								} else {
 									console.log(`Transaction not found -`, processId);
 									retryCount++;
-									if (retryCount >= 10) {
+									if (retryCount >= 200) {
 										throw new Error(`Profile not found, please try again`);
 									}
 								}
@@ -400,7 +420,7 @@ export default function ProfileManage(props: IProps) {
 								</S.TForm>
 								<TextArea
 									label={language.bio}
-									value={bio}
+									value={bio || ''}
 									onChange={(e: any) => setBio(e.target.value)}
 									disabled={loading}
 									invalid={getInvalidBio()}
