@@ -43,7 +43,12 @@ export default function AssetAction(props: IProps) {
 		activity: language.activity,
 	};
 
+	// TODO
 	const ACTION_TABS = [
+		// {
+		// 	label: ACTION_TAB_OPTIONS.activity,
+		// 	icon: ASSETS.activity,
+		// },
 		{
 			label: ACTION_TAB_OPTIONS.market,
 			icon: ASSETS.market,
