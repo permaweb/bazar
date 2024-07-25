@@ -2,7 +2,7 @@ import styled from 'styled-components';
 
 import { STYLING } from 'helpers/config';
 
-const INFO_DIMENSION = '600px';
+const INFO_DIMENSION = '560px';
 
 export const Wrapper = styled.div`
 	width: 100%;

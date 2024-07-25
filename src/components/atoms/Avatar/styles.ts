@@ -12,7 +12,6 @@ export const Wrapper = styled.div<{
 	width: ${(props) => `${props.dimensions.wrapper.toString()}px`};
 	background: ${(props) =>
 		props.hasOwner ? props.theme.colors.container.primary.background : props.theme.colors.icon.alt1.fill};
-	box-shadow: 0 5px 15px 2.5px ${(props) => props.theme.colors.shadow.primary};
 	border: 1px solid ${(props) => props.theme.colors.border.primary};
 	border-radius: 50%;
 	overflow: hidden;

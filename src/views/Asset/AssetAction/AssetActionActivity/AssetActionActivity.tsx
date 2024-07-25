@@ -4,5 +4,5 @@ import { ActivityTable } from 'components/organisms/ActivityTable';
 import { IProps } from './types';
 
 export default function AssetActionActivity(props: IProps) {
-	return props.asset ? <ActivityTable assetIds={[props.asset.data.id]} /> : <Loader sm relative />;
+	return props.asset ? <ActivityTable asset={props.asset} assetIds={[props.asset.data.id]} /> : <Loader sm relative />;
 }

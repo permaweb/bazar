@@ -38,6 +38,20 @@ export const TableHeader = styled.div`
 			text-align: right;
 		}
 	}
+	.end-value {
+		flex: 0.75;
+		justify-content: flex-end;
+		p {
+			text-align: right;
+		}
+	}
+	.center-value {
+		flex: 0.75;
+		justify-content: center;
+		p {
+			text-align: center;
+		}
+	}
 `;
 
 export const TableHeaderValue = styled.div`
@@ -52,11 +66,11 @@ export const TableHeaderValue = styled.div`
 export const TableBody = styled.div`
 	display: flex;
 	flex-direction: column;
-	padding: 5px 0;
+	padding: 2.5px 0;
 	background: ${(props) => props.theme.colors.container.primary.active};
-	/* > :not(:last-child) {
-		border-bottom: 1px solid ${(props) => props.theme.colors.border.primary};
-	} */
+	> :not(:last-child) {
+		border-bottom: 1px solid ${(props) => props.theme.colors.border.alt4};
+	}
 `;
 
 export const TableRow = styled.div`
@@ -71,6 +85,20 @@ export const TableRow = styled.div`
 		justify-content: flex-end;
 		p {
 			text-align: right;
+		}
+	}
+	.end-value {
+		flex: 0.75;
+		justify-content: flex-end;
+		p {
+			text-align: right;
+		}
+	}
+	.center-value {
+		flex: 0.75;
+		justify-content: center;
+		p {
+			text-align: center;
 		}
 	}
 `;
@@ -89,6 +117,29 @@ export const TableRowValue = styled.div`
 		text-overflow: ellipsis;
 		overflow: hidden;
 	}
+	.end-value {
+		flex: 0.75;
+		justify-content: flex-end;
+		p {
+			text-align: right;
+		}
+	}
+	.center-value {
+		flex: 0.75;
+		justify-content: center;
+		p {
+			text-align: center;
+		}
+	}
+`;
+
+export const OwnerWrapper = styled(TableRowValue)`
+	flex: 1.5 !important;
+`;
+
+export const EventWrapper = styled(TableRowValue)`
+	flex: none;
+	width: 100px;
 `;
 
 export const Event = styled.div<{ type: 'Listed' | 'Sold' }>`
@@ -119,4 +170,25 @@ export const Event = styled.div<{ type: 'Listed' | 'Sold' }>`
 		color: ${(props) => props.theme.colors.font.light1};
 		margin: 6.5px 0 0 0;
 	}
+`;
+
+export const Entity = styled.div<{ type: 'UCM' | 'User' }>`
+	display: flex;
+	align-items: center;
+	background: ${(props) => (props.type === 'UCM' ? props.theme.colors.stats.alt5 : props.theme.colors.stats.primary)};
+	border: 1px solid ${(props) => props.theme.colors.border.primary};
+	border-radius: ${STYLING.dimensions.radius.alt2};
+	padding: 1.5px 7.5px;
+	p {
+		font-size: ${(props) => props.theme.typography.size.xSmall};
+		font-family: ${(props) => props.theme.typography.family.primary};
+		font-weight: ${(props) => props.theme.typography.weight.bold};
+		color: ${(props) => props.theme.colors.font.light1};
+		max-width: 100%;
+	}
+`;
+
+export const LoadingWrapper = styled.div`
+	padding: 20px 0;
+	margin: 22.5px 0 0 0;
 `;
