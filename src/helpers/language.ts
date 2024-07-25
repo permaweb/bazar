@@ -74,6 +74,7 @@ export const language = {
 		noAssetsFound: `No assets found`,
 		noBio: `No bio`,
 		noCollectionsFound: `No collections found`,
+		noActivity: `No activity found`,
 		noListings: `No listings`,
 		orderProcessed: `Your order has been processed`,
 		other: `Other`,

@@ -3,6 +3,7 @@ import { DefaultTheme } from 'styled-components';
 export const lightTheme = {
 	positive1: '#64B686',
 	positive2: '#4EA673',
+	indicatorNeutral1: '#F59500',
 	negative1: '#E94278',
 	negative2: '#E52461',
 	neutral1: '#FFFFFF',
@@ -50,6 +51,7 @@ export const lightTheme = {
 export const darkTheme = {
 	positive1: '#38BD80',
 	positive2: '#2F9D6A',
+	indicatorNeutral1: '#F59500',
 	labelAlt1: `#FFFFFF`,
 	negative1: '#D81E5B',
 	negative2: '#E43A72',
@@ -258,6 +260,7 @@ export const theme = (currentTheme: any): DefaultTheme => ({
 		},
 		indicator: {
 			active: currentTheme.positive1,
+			neutral: currentTheme.indicatorNeutral1,
 		},
 		link: {
 			color: currentTheme.neutralA1,
