@@ -19,7 +19,7 @@ export async function getCollections(creator?: string): Promise<CollectionType[]
 			return response.Collections.map((collection: any) => {
 				return {
 					id: collection.Id,
-					title: collection.Name,
+					title: collection.Name.replace(/\[|\]/g, ''),
 					description: collection.Description,
 					creator: collection.Creator,
 					dateCreated: collection.DateCreated,

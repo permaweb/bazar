@@ -84,19 +84,22 @@ export default function AssetAction(props: IProps) {
 
 	React.useEffect(() => {
 		(async function () {
-			const associatedAddresses = [];
-			if (props.asset && props.asset.state && props.asset.state.balances) {
-				associatedAddresses.push(...Object.keys(props.asset.state.balances).map((address: string) => address));
-			}
-			if (props.asset && props.asset.orders) {
-				associatedAddresses.push(...props.asset.orders.map((order: any) => order.creator));
-			}
-			if (associatedAddresses.length) {
-				const uniqueAddresses = [...new Set(associatedAddresses)];
-				try {
-					setAssociatedProfiles(await getRegistryProfiles({ profileIds: uniqueAddresses }));
-				} catch (e: any) {
-					console.error(e);
+			if (!associatedProfiles) {
+				const associatedAddresses = [];
+				if (props.asset && props.asset.state && props.asset.state.balances) {
+					associatedAddresses.push(...Object.keys(props.asset.state.balances).map((address: string) => address));
+				}
+				if (props.asset && props.asset.orders) {
+					associatedAddresses.push(...props.asset.orders.map((order: any) => order.creator));
+				}
+				if (associatedAddresses.length) {
+					const uniqueAddresses = [...new Set(associatedAddresses)];
+					try {
+						const profiles = await getRegistryProfiles({ profileIds: uniqueAddresses });
+						setAssociatedProfiles(profiles);
+					} catch (e: any) {
+						console.error(e);
+					}
 				}
 			}
 		})();
