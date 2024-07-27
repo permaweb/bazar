@@ -14,26 +14,26 @@ export default function CollectionCard(props: IProps) {
 		<S.Wrapper className={'fade-in'}>
 			<S.InfoWrapper>
 				<S.InfoHeader>
-					<h4>{props.collection.data.title}</h4>
+					<h4>{props.collection.title}</h4>
 				</S.InfoHeader>
 				<S.InfoCreator>
 					<p>{language.createdBy}</p>
 					<OwnerLine
 						owner={{
-							address: props.collection.data.creator,
+							address: props.collection.creator,
 							profile: props.collection.creatorProfile,
 						}}
 						callback={null}
 					/>
 				</S.InfoCreator>
-				{props.collection.data.description && (
+				{props.collection.description && (
 					<S.InfoDescription>
-						<p>{props.collection.data.description}</p>
+						<p>{props.collection.description}</p>
 					</S.InfoDescription>
 				)}
 			</S.InfoWrapper>
 			<S.BannerWrapper className={'border-wrapper-alt2'}>
-				<img src={getTxEndpoint(props.collection.data.banner || DEFAULTS.thumbnail)} alt={'Banner'} />
+				<img src={getTxEndpoint(props.collection.banner || DEFAULTS.thumbnail)} alt={'Banner'} />
 			</S.BannerWrapper>
 		</S.Wrapper>
 	) : null;

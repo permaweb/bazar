@@ -11,7 +11,13 @@ import { Slider } from 'components/atoms/Slider';
 import { Modal } from 'components/molecules/Modal';
 import { AO, ASSETS } from 'helpers/config';
 import { AssetOrderType, OrderbookEntryType } from 'helpers/types';
-import { checkValidAddress, formatCount, formatPercentage, getTotalTokenBalance } from 'helpers/utils';
+import {
+	checkValidAddress,
+	formatCount,
+	formatPercentage,
+	getTotalTokenBalance,
+	reverseDenomination,
+} from 'helpers/utils';
 import * as windowUtils from 'helpers/window';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
@@ -21,6 +27,8 @@ import * as ucmActions from 'store/ucm/actions';
 
 import * as S from './styles';
 import { IProps } from './types';
+
+const MIN_PRICE = 0.000001;
 
 export default function AssetActionMarketOrders(props: IProps) {
 	const dispatch = useDispatch();
@@ -232,10 +240,17 @@ export default function AssetActionMarketOrders(props: IProps) {
 							{ name: 'X-Swap-Token', value: swapToken },
 						];
 						if (unitPrice && Number(unitPrice) > 0) {
-							let calculatedUnitPrice: string | number = unitPrice;
-							if (transferDenomination) calculatedUnitPrice = Number(unitPrice) * transferDenomination;
-							calculatedUnitPrice = calculatedUnitPrice.toString();
-							forwardedTags.push({ name: 'X-Price', value: calculatedUnitPrice });
+							let calculatedUnitPrice = unitPrice as any;
+							if (transferDenomination) {
+								const decimalPlaces = (unitPrice.toString().split('.')[1] || '').length;
+								const updatedUnitPrice =
+									decimalPlaces >= reverseDenomination(transferDenomination)
+										? (unitPrice as any).toFixed(reverseDenomination(transferDenomination))
+										: unitPrice;
+								calculatedUnitPrice = BigInt(Number(updatedUnitPrice) * transferDenomination);
+							}
+
+							forwardedTags.push({ name: 'X-Price', value: calculatedUnitPrice.toString() });
 						}
 						if (denomination && denomination > 1) {
 							forwardedTags.push({ name: 'X-Transfer-Denomination', value: denomination.toString() });
@@ -472,18 +487,36 @@ export default function AssetActionMarketOrders(props: IProps) {
 				return totalPrice;
 			} else return 0;
 		} else {
-			let price: number;
+			let price: bigint = BigInt(0);
 			if (
 				isNaN(Number(unitPrice)) ||
 				isNaN(Number(currentOrderQuantity)) ||
 				Number(currentOrderQuantity) < 0 ||
 				Number(unitPrice) < 0
 			) {
-				price = 0;
+				price = BigInt(0);
 			} else {
 				let calculatedUnitPrice = unitPrice as any;
-				if (transferDenomination) calculatedUnitPrice = Number(unitPrice) * transferDenomination;
-				price = Number(currentOrderQuantity) * calculatedUnitPrice;
+				if (transferDenomination) {
+					const decimalPlaces = (unitPrice.toString().split('.')[1] || '').length;
+					const updatedUnitPrice =
+						decimalPlaces >= reverseDenomination(transferDenomination)
+							? (unitPrice as any).toFixed(reverseDenomination(transferDenomination))
+							: unitPrice;
+
+					calculatedUnitPrice = BigInt(
+						Number(updatedUnitPrice <= MIN_PRICE ? 0 : updatedUnitPrice) * transferDenomination
+					);
+				}
+				try {
+					price =
+						BigInt(currentOrderQuantity) && BigInt(calculatedUnitPrice)
+							? BigInt(currentOrderQuantity) * BigInt(calculatedUnitPrice)
+							: BigInt(0);
+				} catch (e: any) {
+					console.error(e);
+					price = BigInt(0);
+				}
 			}
 			return price;
 		}
@@ -523,7 +556,8 @@ export default function AssetActionMarketOrders(props: IProps) {
 		)
 			return true;
 		if (Number(currentOrderQuantity) > maxOrderQuantity) return true;
-		if (props.type === 'sell' && (Number(unitPrice) <= 0 || isNaN(Number(unitPrice)))) return true;
+		if (props.type === 'sell' && (Number(unitPrice) <= 0 || Number(unitPrice) <= MIN_PRICE || isNaN(Number(unitPrice))))
+			return true;
 		if (props.type === 'transfer' && (!transferRecipient || !checkValidAddress(transferRecipient))) return true;
 		if (insufficientBalance) return true;
 		return false;
@@ -793,7 +827,10 @@ export default function AssetActionMarketOrders(props: IProps) {
 											Number(currentOrderQuantity) <= 0 ||
 											orderLoading
 										}
-										invalid={{ status: Number(unitPrice) < 0, message: null }}
+										invalid={{
+											status: Number(unitPrice) < 0 || (unitPrice && Number(unitPrice) <= MIN_PRICE),
+											message: null,
+										}}
 										hideErrorMessage
 										tooltip={language.saleUnitPriceTooltip}
 									/>

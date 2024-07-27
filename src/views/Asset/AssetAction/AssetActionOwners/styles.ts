@@ -85,7 +85,7 @@ export const ChartKeyText = styled.p`
 
 export const Chart = styled.div`
 	height: auto;
-	width: calc(100% - 260px);
+	width: calc(100% - 270px);
 	display: flex;
 	justify-content: center;
 	align-items: center;

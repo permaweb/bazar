@@ -5,9 +5,14 @@ import { STYLING } from 'helpers/config';
 export const Wrapper = styled.div`
 	height: 100%;
 	width: 100%;
+	background: ${(props) => props.theme.colors.container.primary.background};
+	border: 1px solid ${(props) => props.theme.colors.border.alt4};
 	border-radius: ${STYLING.dimensions.radius.primary};
 	overflow: hidden;
 	position: relative;
+	@media (max-width: ${STYLING.cutoffs.desktop}) {
+		border: none;
+	}
 `;
 
 export const Header = styled.div`
@@ -58,6 +63,7 @@ export const Image = styled.img<{ contain: boolean }>`
 	height: 100%;
 	width: 100%;
 	object-fit: ${(props) => (props.contain ? 'contain' : 'cover')};
+	border-radius: ${STYLING.dimensions.radius.primary};
 	background: ${(props) => props.theme.colors.container.alt2.background};
 `;
 

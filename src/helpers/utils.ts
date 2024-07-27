@@ -56,9 +56,9 @@ export function formatCount(count: string): string {
 			// Otherwise, truncate to the last non-zero digit
 			parts[1] = parts[1].substring(0, index);
 
-			// If the decimal part is longer than 2 digits, truncate to 2 digits
-			if (parts[1].length > 2 && parts[1].substring(0, 2) !== '00') {
-				parts[1] = parts[1].substring(0, 2);
+			// If the decimal part is longer than 4 digits, truncate to 4 digits
+			if (parts[1].length > 4 && parts[1].substring(0, 4) !== '0000') {
+				parts[1] = parts[1].substring(0, 4);
 			}
 		}
 
@@ -300,4 +300,15 @@ export function getTotalTokenBalance(tokenBalances: { profileBalance: number; wa
 
 export function isFirefox(): boolean {
 	return typeof InstallTrigger !== 'undefined';
+}
+
+export function reverseDenomination(number: number) {
+	let count = 0;
+
+	while (number > 0 && number % 10 === 0) {
+		count++;
+		number /= 10;
+	}
+
+	return count;
 }
