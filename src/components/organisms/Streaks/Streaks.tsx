@@ -345,7 +345,7 @@ export default function Streaks(props: IProps) {
 
 	function getAction() {
 		return (
-			<S.Action onClick={handleShowDropdown} className={'border-wrapper-primary'}>
+			<S.Action onClick={handleShowDropdown} className={'border-wrapper-alt2'}>
 				{label}
 			</S.Action>
 		);

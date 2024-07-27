@@ -56,7 +56,7 @@ export default function CollectionsList(props: IProps) {
 								const redirect = `${URLS.collection}${collection.id}`;
 
 								return (
-									<S.CollectionWrapper key={index} className={'border-wrapper-primary fade-in'}>
+									<S.CollectionWrapper key={index} className={'border-wrapper-alt2 fade-in'}>
 										<Link to={redirect}>
 											<S.FlexElement>
 												<S.Index>

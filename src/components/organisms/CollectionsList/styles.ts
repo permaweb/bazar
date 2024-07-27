@@ -37,7 +37,6 @@ export const ListHeader = styled.div`
 export const CollectionWrapper = styled.div`
 	height: 120px;
 	width: 100%;
-	border: 1px solid ${(props) => props.theme.colors.border.alt4};
 	overflow: hidden;
 	a {
 		height: 100%;

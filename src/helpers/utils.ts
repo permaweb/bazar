@@ -312,3 +312,9 @@ export function reverseDenomination(number: number) {
 
 	return count;
 }
+
+export function cleanTagValue(value: string) {
+	let updatedValue: string;
+	updatedValue = value.replace(/\[|\]/g, '');
+	return updatedValue;
+}

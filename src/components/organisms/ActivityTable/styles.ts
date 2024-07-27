@@ -54,6 +54,20 @@ export const HeaderPaginator = styled.div`
 	}
 `;
 
+export const SubHeader = styled.div`
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 15px;
+	margin: 0 0 7.5px 0;
+	p {
+		font-size: ${(props) => props.theme.typography.size.xSmall};
+		font-family: ${(props) => props.theme.typography.family.primary};
+		font-weight: ${(props) => props.theme.typography.weight.bold};
+		color: ${(props) => props.theme.colors.font.alt1};
+	}
+`;
+
 export const EmptyWrapper = styled.div`
 	padding: 20px;
 	span {

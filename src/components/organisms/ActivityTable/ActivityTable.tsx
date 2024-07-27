@@ -18,10 +18,9 @@ import * as S from './styles';
 import { IProps } from './types';
 
 // TODO: quantity denomination
-// TODO: header / sort by
-// TODO: profile / collection activity
+// TODO: profile / collection activityGroup
 
-const GROUP_COUNT = 15;
+const GROUP_COUNT = 50;
 
 export default function ActivityTable(props: IProps) {
 	const languageProvider = useLanguageProvider();
@@ -29,13 +28,13 @@ export default function ActivityTable(props: IProps) {
 
 	const scrollRef = React.useRef(null);
 
+	const [activity, setActivity] = React.useState<any | null>(null);
 	const [activityGroups, setActivityGroups] = React.useState<any | null>(null);
 	const [activityCursor, setActivityCursor] = React.useState<string>('0');
-	const [activity, setActivity] = React.useState<any>(null);
-	const [activityCount, setActivityCount] = React.useState<number>(0);
+	const [activityGroup, setActivityGroup] = React.useState<any>(null);
 	const [activitySortType, setActivitySortType] = React.useState<SelectOptionType | null>(ACTIVITY_SORT_OPTIONS[0]);
 
-	const [scrolling, setScrolling] = React.useState<boolean>(false);
+	const [updating, setUpdating] = React.useState<boolean>(false);
 
 	React.useEffect(() => {
 		(async function () {
@@ -57,33 +56,35 @@ export default function ActivityTable(props: IProps) {
 						if (response.ListedOrders) updatedActivity.push(...mapActivity(response.ListedOrders, 'Listed'));
 						if (response.ExecutedOrders) updatedActivity.push(...mapActivity(response.ExecutedOrders, 'Sold'));
 
-						if (updatedActivity.length > 0) {
-							setActivityCount(updatedActivity.length);
-						}
-
-						// TODO: sort by
-						switch (activitySortType.id) {
-							case 'new-to-old':
-								updatedActivity.sort((a, b) => b.timestamp - a.timestamp);
-								break;
-							case 'old-to-new':
-								updatedActivity.sort((a, b) => a.timestamp - b.timestamp);
-								break;
-						}
-
-						let groups = [];
-						for (let i = 0, j = 0; i < updatedActivity.length; i += GROUP_COUNT, j++) {
-							groups[j] = updatedActivity.slice(i, i + GROUP_COUNT);
-						}
-
-						setActivityGroups(groups);
+						setActivity(updatedActivity);
 					}
 				} catch (e: any) {
 					console.error(e);
 				}
 			}
 		})();
-	}, [props.assetIds, props.address, activitySortType]);
+	}, [props.assetIds, props.address]);
+
+	React.useEffect(() => {
+		if (activity) {
+			setActivityCursor('0');
+			switch (activitySortType.id) {
+				case 'new-to-old':
+					activity.sort((a, b) => b.timestamp - a.timestamp);
+					break;
+				case 'old-to-new':
+					activity.sort((a, b) => a.timestamp - b.timestamp);
+					break;
+			}
+
+			let groups = [];
+			for (let i = 0, j = 0; i < activity.length; i += GROUP_COUNT, j++) {
+				groups[j] = activity.slice(i, i + GROUP_COUNT);
+			}
+
+			setActivityGroups(groups);
+		}
+	}, [activity, activitySortType]);
 
 	React.useEffect(() => {
 		(async function () {
@@ -112,13 +113,14 @@ export default function ActivityTable(props: IProps) {
 					});
 				}
 
-				setActivity(currentGroup);
+				setActivityGroup(currentGroup);
+				setUpdating(false);
 			}
 		})();
 	}, [activityGroups, activityCursor]);
 
 	const handleActivitySortType = React.useCallback((option: SelectOptionType) => {
-		setActivity(null);
+		setActivityGroup(null);
 		setActivityGroups(null);
 		setActivitySortType(option);
 	}, []);
@@ -156,7 +158,7 @@ export default function ActivityTable(props: IProps) {
 
 	// TODO
 	const getPaginationAction = (callback: () => void) => {
-		// setActivity(null);
+		setUpdating(true);
 		callback();
 	};
 
@@ -172,30 +174,21 @@ export default function ActivityTable(props: IProps) {
 			: null;
 	}, [activityGroups, activityCursor]);
 
-	const handlePaginationAction = (type: 'next' | 'previous', useScroll: boolean) => {
+	const handlePaginationAction = (type: 'next' | 'previous') => {
 		const action = type === 'next' ? nextAction : previousAction;
 		if (action) {
 			action();
 			setTimeout(() => {
 				if (scrollRef.current) {
-					if (useScroll) setScrolling(true);
-
-					console.log(scrollRef.current);
-
 					const scrollOptions = isFirefox() ? {} : { behavior: 'smooth' };
 					scrollRef.current.scrollIntoView(scrollOptions);
-					if (useScroll) {
-						setTimeout(() => {
-							setScrolling(false);
-						}, 750);
-					}
 				}
 			}, 1);
 		}
 	};
 
 	const getActivity = React.useMemo(() => {
-		if (!activity) {
+		if (!activityGroup) {
 			return (
 				<S.LoadingWrapper className={'border-wrapper-alt2'}>
 					<Loader sm relative />
@@ -203,7 +196,7 @@ export default function ActivityTable(props: IProps) {
 			);
 		}
 
-		if (activity.length <= 0) {
+		if (activityGroup.length <= 0) {
 			return (
 				<S.EmptyWrapper className={'border-wrapper-alt2'}>
 					<span>{language.noActivity}</span>
@@ -214,7 +207,7 @@ export default function ActivityTable(props: IProps) {
 		return (
 			<S.Wrapper className={'fade-in'} ref={scrollRef}>
 				<S.Header>
-					<h4>{`${language.interactions} (${activityCount})`}</h4>
+					<h4>{`${language.interactions} (${activity.length})`}</h4>
 					<S.HeaderActions>
 						<S.SelectWrapper>
 							<Select
@@ -222,39 +215,44 @@ export default function ActivityTable(props: IProps) {
 								activeOption={activitySortType}
 								setActiveOption={(option: SelectOptionType) => handleActivitySortType(option)}
 								options={ACTIVITY_SORT_OPTIONS.map((option: SelectOptionType) => option)}
-								disabled={false}
+								disabled={!activityGroup || updating}
 							/>
 						</S.SelectWrapper>
 						<S.HeaderPaginator>
 							<IconButton
 								type={'alt1'}
 								src={ASSETS.arrow}
-								handlePress={() => handlePaginationAction('previous', true)}
-								disabled={!activity || !previousAction}
+								handlePress={() => handlePaginationAction('previous')}
+								disabled={!activityGroup || !previousAction || updating}
 								dimensions={{
 									wrapper: 30,
 									icon: 17.5,
 								}}
 								tooltip={language.previous}
-								useBottomToolTip
 								className={'table-previous'}
 							/>
 							<IconButton
 								type={'alt1'}
 								src={ASSETS.arrow}
-								handlePress={() => handlePaginationAction('next', true)}
-								disabled={!activity || !nextAction}
+								handlePress={() => handlePaginationAction('next')}
+								disabled={!activityGroup || !nextAction || updating}
 								dimensions={{
 									wrapper: 30,
 									icon: 17.5,
 								}}
 								tooltip={language.next}
-								useBottomToolTip
 								className={'table-next'}
 							/>
 						</S.HeaderPaginator>
 					</S.HeaderActions>
 				</S.Header>
+				<S.SubHeader>
+					<p>{`Showing: ${Number(activityCursor) * GROUP_COUNT + 1}-${Math.min(
+						(Number(activityCursor) + 1) * GROUP_COUNT,
+						activity.length
+					)}`}</p>
+					{updating && <p>{`${language.updating}...`}</p>}
+				</S.SubHeader>
 				<S.TableWrapper className={'border-wrapper-primary scroll-wrapper'}>
 					<S.TableHeader>
 						<S.EventWrapper>
@@ -277,7 +275,7 @@ export default function ActivityTable(props: IProps) {
 						</S.TableHeaderValue>
 					</S.TableHeader>
 					<S.TableBody>
-						{activity.map((row: any, index: number) => (
+						{activityGroup.map((row: any, index: number) => (
 							<S.TableRow key={index}>
 								<S.EventWrapper>
 									<S.Event type={row.event}>
@@ -340,19 +338,19 @@ export default function ActivityTable(props: IProps) {
 					<Button
 						type={'primary'}
 						label={language.previous}
-						handlePress={() => handlePaginationAction('previous', true)}
-						disabled={!activity || !previousAction}
+						handlePress={() => handlePaginationAction('previous')}
+						disabled={!activityGroup || !previousAction || updating}
 					/>
 					<Button
 						type={'primary'}
 						label={language.next}
-						handlePress={() => handlePaginationAction('next', true)}
-						disabled={!activity || !nextAction}
+						handlePress={() => handlePaginationAction('next')}
+						disabled={!activityGroup || !nextAction || updating}
 					/>
 				</S.Footer>
 			</S.Wrapper>
 		);
-	}, [activity]);
+	}, [activityGroup, updating]);
 
 	return getActivity;
 }
