@@ -4,6 +4,54 @@ import { STYLING } from 'helpers/config';
 
 export const Wrapper = styled.div`
 	margin: 22.5px 0 0 0;
+	scroll-margin-top: 150px;
+`;
+
+export const Header = styled.div`
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 20px;
+	margin: 0 0 10px 0;
+	h4 {
+		font-size: ${(props) => props.theme.typography.size.xLg};
+	}
+`;
+
+export const HeaderActions = styled.div`
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 20px;
+
+	.filter-listings {
+		svg {
+			height: 17.5px;
+			width: 17.5px;
+			color: ${(props) => props.theme.colors.font.light1};
+			margin: 3.5px 0 0 10px;
+		}
+	}
+`;
+
+export const HeaderPaginator = styled.div`
+	display: flex;
+	align-items: center;
+	gap: 15px;
+
+	.table-previous {
+		transform: rotate(180deg);
+		svg {
+			margin: -2.5px 0 0 0;
+		}
+	}
+
+	.table-next {
+		svg {
+			margin: 0 0 0 1.5px;
+		}
+	}
 `;
 
 export const EmptyWrapper = styled.div`
@@ -19,16 +67,16 @@ export const EmptyWrapper = styled.div`
 export const TableWrapper = styled.div`
 	display: flex;
 	flex-direction: column;
-	overflow: hidden;
+	overflow-x: auto;
 `;
 
 export const TableHeader = styled.div`
 	height: 50px;
+	min-width: 100%;
+	width: fit-content;
 	display: flex;
 	align-items: center;
 	padding: 0 15px;
-	background: ${(props) => props.theme.colors.container.primary.background};
-	border-bottom: 1px solid ${(props) => props.theme.colors.border.primary};
 	> * {
 		flex: 1;
 	}
@@ -39,14 +87,14 @@ export const TableHeader = styled.div`
 		}
 	}
 	.end-value {
-		flex: 0.75;
+		flex: 1;
 		justify-content: flex-end;
 		p {
 			text-align: right;
 		}
 	}
 	.center-value {
-		flex: 0.75;
+		flex: 1;
 		justify-content: center;
 		p {
 			text-align: center;
@@ -55,21 +103,26 @@ export const TableHeader = styled.div`
 `;
 
 export const TableHeaderValue = styled.div`
+	min-width: 130px;
 	p {
-		font-size: ${(props) => props.theme.typography.size.base};
-		font-family: ${(props) => props.theme.typography.family.primary};
-		font-weight: ${(props) => props.theme.typography.weight.bold};
-		color: ${(props) => props.theme.colors.font.primary};
+		font-size: ${(props) => props.theme.typography.size.base} !important;
+		font-family: ${(props) => props.theme.typography.family.primary} !important;
+		font-weight: ${(props) => props.theme.typography.weight.bold} !important;
+		color: ${(props) => props.theme.colors.font.primary} !important;
 	}
 `;
 
 export const TableBody = styled.div`
+	min-width: 100%;
+	width: fit-content;
 	display: flex;
 	flex-direction: column;
-	padding: 2.5px 0;
 	background: ${(props) => props.theme.colors.container.primary.active};
 	> :not(:last-child) {
 		border-bottom: 1px solid ${(props) => props.theme.colors.border.alt4};
+	}
+	> :first-child {
+		border-top: 1px solid ${(props) => props.theme.colors.border.primary};
 	}
 `;
 
@@ -88,14 +141,14 @@ export const TableRow = styled.div`
 		}
 	}
 	.end-value {
-		flex: 0.75;
+		flex: 1;
 		justify-content: flex-end;
 		p {
 			text-align: right;
 		}
 	}
 	.center-value {
-		flex: 0.75;
+		flex: 1;
 		justify-content: center;
 		p {
 			text-align: center;
@@ -107,8 +160,9 @@ export const TableRowValue = styled.div`
 	display: flex;
 	align-items: center;
 	overflow: hidden;
+	min-width: 130px;
 	p {
-		font-size: ${(props) => props.theme.typography.size.small};
+		font-size: ${(props) => props.theme.typography.size.base};
 		font-family: ${(props) => props.theme.typography.family.primary};
 		font-weight: ${(props) => props.theme.typography.weight.bold};
 		color: ${(props) => props.theme.colors.font.primary};
@@ -118,14 +172,14 @@ export const TableRowValue = styled.div`
 		overflow: hidden;
 	}
 	.end-value {
-		flex: 0.75;
+		flex: 1;
 		justify-content: flex-end;
 		p {
 			text-align: right;
 		}
 	}
 	.center-value {
-		flex: 0.75;
+		flex: 1;
 		justify-content: center;
 		p {
 			text-align: center;
@@ -134,12 +188,35 @@ export const TableRowValue = styled.div`
 `;
 
 export const OwnerWrapper = styled(TableRowValue)`
-	flex: 1.5 !important;
+	min-width: 175px;
+`;
+
+export const SenderWrapper = styled(OwnerWrapper)`
+	min-width: 185px;
+`;
+
+export const ReceiverWrapper = styled(OwnerWrapper)`
+	min-width: 165px;
+`;
+
+export const QuantityWrapper = styled(TableRowValue)`
+	min-width: 75px;
+	p {
+		font-family: ${(props) => props.theme.typography.family.alt1};
+	}
+	.header {
+		font-family: ${(props) => props.theme.typography.family.primary} !important;
+	}
+`;
+
+export const PriceWrapper = styled(TableRowValue)`
+	min-width: 85px;
 `;
 
 export const EventWrapper = styled(TableRowValue)`
 	flex: none;
-	width: 100px;
+	min-width: 0;
+	width: 105px;
 `;
 
 export const Event = styled.div<{ type: 'Listed' | 'Sold' }>`
@@ -188,7 +265,16 @@ export const Entity = styled.div<{ type: 'UCM' | 'User' }>`
 	}
 `;
 
+export const Footer = styled.div`
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin: 20px 0 0 0;
+`;
+
 export const LoadingWrapper = styled.div`
 	padding: 20px 0;
 	margin: 22.5px 0 0 0;
 `;
+
+export const SelectWrapper = styled.div``;

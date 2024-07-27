@@ -3,7 +3,7 @@ import { DefaultTheme } from 'styled-components';
 export const lightTheme = {
 	positive1: '#64B686',
 	positive2: '#4EA673',
-	indicatorNeutral1: '#F59500',
+	indicatorNeutral1: '#F39D1F',
 	negative1: '#E94278',
 	negative2: '#E52461',
 	neutral1: '#FFFFFF',
@@ -51,7 +51,7 @@ export const lightTheme = {
 export const darkTheme = {
 	positive1: '#38BD80',
 	positive2: '#2F9D6A',
-	indicatorNeutral1: '#F59500',
+	indicatorNeutral1: '#F39D1F',
 	labelAlt1: `#FFFFFF`,
 	negative1: '#D81E5B',
 	negative2: '#E43A72',

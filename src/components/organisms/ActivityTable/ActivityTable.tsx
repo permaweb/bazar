@@ -1,29 +1,127 @@
 import React from 'react';
-// import { useSelector } from 'react-redux';
 import { ReactSVG } from 'react-svg';
 
 import { getRegistryProfiles, readHandler } from 'api';
 
+import { Button } from 'components/atoms/Button';
 import { CurrencyLine } from 'components/atoms/CurrencyLine';
+import { IconButton } from 'components/atoms/IconButton';
 import { Loader } from 'components/atoms/Loader';
+import { Select } from 'components/atoms/Select';
 import { OwnerLine } from 'components/molecules/OwnerLine';
-import { AO, ASSETS } from 'helpers/config';
-import { RegistryProfileType } from 'helpers/types';
-import { formatAddress, formatCount, formatDate } from 'helpers/utils';
+import { ACTIVITY_SORT_OPTIONS, AO, ASSETS } from 'helpers/config';
+import { RegistryProfileType, SelectOptionType } from 'helpers/types';
+import { formatAddress, formatCount, formatDate, isFirefox } from 'helpers/utils';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 
-// import { RootState } from 'store';
 import * as S from './styles';
 import { IProps } from './types';
 
 // TODO: quantity denomination
-// TODO: mobile
+// TODO: header / sort by
 // TODO: profile / collection activity
+
+const GROUP_COUNT = 15;
+
 export default function ActivityTable(props: IProps) {
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
 
+	const scrollRef = React.useRef(null);
+
+	const [activityGroups, setActivityGroups] = React.useState<any | null>(null);
+	const [activityCursor, setActivityCursor] = React.useState<string>('0');
 	const [activity, setActivity] = React.useState<any>(null);
+	const [activityCount, setActivityCount] = React.useState<number>(0);
+	const [activitySortType, setActivitySortType] = React.useState<SelectOptionType | null>(ACTIVITY_SORT_OPTIONS[0]);
+
+	const [scrolling, setScrolling] = React.useState<boolean>(false);
+
+	React.useEffect(() => {
+		(async function () {
+			if (!activity) {
+				try {
+					let data: any = {};
+					if (props.assetIds) data.AssetIds = props.assetIds;
+					if (props.address) data.Address = props.address;
+
+					const response = await readHandler({
+						processId: AO.ucm,
+						action: 'Get-Activity',
+						data: data,
+					});
+
+					if (response) {
+						let updatedActivity = [];
+
+						if (response.ListedOrders) updatedActivity.push(...mapActivity(response.ListedOrders, 'Listed'));
+						if (response.ExecutedOrders) updatedActivity.push(...mapActivity(response.ExecutedOrders, 'Sold'));
+
+						if (updatedActivity.length > 0) {
+							setActivityCount(updatedActivity.length);
+						}
+
+						// TODO: sort by
+						switch (activitySortType.id) {
+							case 'new-to-old':
+								updatedActivity.sort((a, b) => b.timestamp - a.timestamp);
+								break;
+							case 'old-to-new':
+								updatedActivity.sort((a, b) => a.timestamp - b.timestamp);
+								break;
+						}
+
+						let groups = [];
+						for (let i = 0, j = 0; i < updatedActivity.length; i += GROUP_COUNT, j++) {
+							groups[j] = updatedActivity.slice(i, i + GROUP_COUNT);
+						}
+
+						setActivityGroups(groups);
+					}
+				} catch (e: any) {
+					console.error(e);
+				}
+			}
+		})();
+	}, [props.assetIds, props.address, activitySortType]);
+
+	React.useEffect(() => {
+		(async function () {
+			if (activityGroups) {
+				let currentGroup = activityGroups[Number(activityCursor)];
+				const associatedAddresses = [];
+
+				associatedAddresses.push(...currentGroup.map((order: any) => order.sender));
+				associatedAddresses.push(...currentGroup.map((order: any) => order.receiver));
+
+				let associatedProfiles: RegistryProfileType[] | null = null;
+				const uniqueAddresses = [...new Set(associatedAddresses.filter((address) => address !== null))];
+				try {
+					associatedProfiles = await getRegistryProfiles({ profileIds: uniqueAddresses });
+				} catch (e: any) {
+					console.error(e);
+				}
+
+				if (associatedProfiles) {
+					currentGroup = currentGroup.map((order: any) => {
+						return {
+							...order,
+							senderProfile: associatedProfiles.find((profile: RegistryProfileType) => profile.id === order.sender),
+							receiverProfile: associatedProfiles.find((profile: RegistryProfileType) => profile.id === order.receiver),
+						};
+					});
+				}
+
+				setActivity(currentGroup);
+			}
+		})();
+	}, [activityGroups, activityCursor]);
+
+	const handleActivitySortType = React.useCallback((option: SelectOptionType) => {
+		setActivity(null);
+		setActivityGroups(null);
+		setActivitySortType(option);
+	}, []);
 
 	function mapActivity(orders: any, event: 'Listed' | 'Sold') {
 		let updatedActivity = [];
@@ -49,69 +147,52 @@ export default function ActivityTable(props: IProps) {
 		return updatedActivity;
 	}
 
-	React.useEffect(() => {
-		(async function () {
-			if (!activity) {
-				try {
-					let data: any = {};
-					console.log(props.assetIds);
-					if (props.assetIds) data.AssetIds = props.assetIds;
-					if (props.address) data.Address = props.address;
-
-					const response = await readHandler({
-						processId: AO.ucm,
-						action: 'Get-Activity',
-						data: data,
-					});
-
-					if (response) {
-						let updatedActivity = [];
-						const associatedAddresses = [];
-
-						if (response.ListedOrders) updatedActivity.push(...mapActivity(response.ListedOrders, 'Listed'));
-						if (response.ExecutedOrders) updatedActivity.push(...mapActivity(response.ExecutedOrders, 'Sold'));
-
-						if (updatedActivity.length > 0) {
-							associatedAddresses.push(...updatedActivity.map((order: any) => order.sender));
-							associatedAddresses.push(...updatedActivity.map((order: any) => order.receiver));
-						}
-
-						let associatedProfiles: RegistryProfileType[] | null = null;
-						const uniqueAddresses = [...new Set(associatedAddresses.filter((address) => address !== null))];
-						try {
-							associatedProfiles = await getRegistryProfiles({ profileIds: uniqueAddresses });
-						} catch (e: any) {
-							console.error(e);
-						}
-
-						if (associatedProfiles) {
-							updatedActivity = updatedActivity.map((order: any) => {
-								return {
-									...order,
-									senderProfile: associatedProfiles.find((profile: RegistryProfileType) => profile.id === order.sender),
-									receiverProfile: associatedProfiles.find(
-										(profile: RegistryProfileType) => profile.id === order.receiver
-									),
-								};
-							});
-						}
-
-						setActivity(updatedActivity.sort((a, b) => b.timestamp - a.timestamp));
-					}
-				} catch (e: any) {
-					console.error(e);
-				}
-			}
-		})();
-	}, [props.assetIds, props.address]);
-
 	function getDenominatedTokenValue(amount: number) {
 		if (props.asset && props.asset.state && props.asset.state.denomination && props.asset.state.denomination > 1) {
 			const denomination = props.asset.state.denomination;
-			console.log(denomination);
 			return `${formatCount((amount / Math.pow(10, denomination)).toString())}`;
 		} else return formatCount(amount.toString());
 	}
+
+	// TODO
+	const getPaginationAction = (callback: () => void) => {
+		// setActivity(null);
+		callback();
+	};
+
+	const previousAction = React.useMemo(() => {
+		return activityGroups && Number(activityCursor) > 0
+			? () => getPaginationAction(() => setActivityCursor((Number(activityCursor) - 1).toString()))
+			: null;
+	}, [activityGroups, activityCursor]);
+
+	const nextAction = React.useMemo(() => {
+		return activityGroups && Number(activityCursor) < Object.keys(activityGroups).length - 1
+			? () => getPaginationAction(() => setActivityCursor((Number(activityCursor) + 1).toString()))
+			: null;
+	}, [activityGroups, activityCursor]);
+
+	const handlePaginationAction = (type: 'next' | 'previous', useScroll: boolean) => {
+		const action = type === 'next' ? nextAction : previousAction;
+		if (action) {
+			action();
+			setTimeout(() => {
+				if (scrollRef.current) {
+					if (useScroll) setScrolling(true);
+
+					console.log(scrollRef.current);
+
+					const scrollOptions = isFirefox() ? {} : { behavior: 'smooth' };
+					scrollRef.current.scrollIntoView(scrollOptions);
+					if (useScroll) {
+						setTimeout(() => {
+							setScrolling(false);
+						}, 750);
+					}
+				}
+			}, 1);
+		}
+	};
 
 	const getActivity = React.useMemo(() => {
 		if (!activity) {
@@ -131,24 +212,66 @@ export default function ActivityTable(props: IProps) {
 		}
 
 		return (
-			<S.Wrapper className={'fade-in'}>
-				<S.TableWrapper className={'border-wrapper-primary'}>
+			<S.Wrapper className={'fade-in'} ref={scrollRef}>
+				<S.Header>
+					<h4>{`${language.interactions} (${activityCount})`}</h4>
+					<S.HeaderActions>
+						<S.SelectWrapper>
+							<Select
+								label={null}
+								activeOption={activitySortType}
+								setActiveOption={(option: SelectOptionType) => handleActivitySortType(option)}
+								options={ACTIVITY_SORT_OPTIONS.map((option: SelectOptionType) => option)}
+								disabled={false}
+							/>
+						</S.SelectWrapper>
+						<S.HeaderPaginator>
+							<IconButton
+								type={'alt1'}
+								src={ASSETS.arrow}
+								handlePress={() => handlePaginationAction('previous', true)}
+								disabled={!activity || !previousAction}
+								dimensions={{
+									wrapper: 30,
+									icon: 17.5,
+								}}
+								tooltip={language.previous}
+								useBottomToolTip
+								className={'table-previous'}
+							/>
+							<IconButton
+								type={'alt1'}
+								src={ASSETS.arrow}
+								handlePress={() => handlePaginationAction('next', true)}
+								disabled={!activity || !nextAction}
+								dimensions={{
+									wrapper: 30,
+									icon: 17.5,
+								}}
+								tooltip={language.next}
+								useBottomToolTip
+								className={'table-next'}
+							/>
+						</S.HeaderPaginator>
+					</S.HeaderActions>
+				</S.Header>
+				<S.TableWrapper className={'border-wrapper-primary scroll-wrapper'}>
 					<S.TableHeader>
 						<S.EventWrapper>
 							<p>Event</p>
 						</S.EventWrapper>
-						<S.OwnerWrapper>
+						<S.SenderWrapper>
 							<p>By</p>
-						</S.OwnerWrapper>
-						<S.OwnerWrapper>
+						</S.SenderWrapper>
+						<S.ReceiverWrapper>
 							<p>To</p>
-						</S.OwnerWrapper>
-						<S.TableHeaderValue className={'center-value'}>
-							<p>Quantity</p>
-						</S.TableHeaderValue>
-						<S.TableHeaderValue className={'end-value'}>
+						</S.ReceiverWrapper>
+						<S.QuantityWrapper className={'center-value header'}>
+							<p className={'header'}>Quantity</p>
+						</S.QuantityWrapper>
+						<S.PriceWrapper className={'end-value'}>
 							<p>Price</p>
-						</S.TableHeaderValue>
+						</S.PriceWrapper>
 						<S.TableHeaderValue>
 							<p>Date</p>
 						</S.TableHeaderValue>
@@ -162,7 +285,7 @@ export default function ActivityTable(props: IProps) {
 										<p>{row.event}</p>
 									</S.Event>
 								</S.EventWrapper>
-								<S.OwnerWrapper>
+								<S.SenderWrapper>
 									{row.senderProfile ? (
 										<OwnerLine
 											owner={{
@@ -172,10 +295,12 @@ export default function ActivityTable(props: IProps) {
 											callback={null}
 										/>
 									) : (
-										<p>{formatAddress(row.sender, false)}</p>
+										<S.Entity type={'User'}>
+											<p>{formatAddress(row.sender, false)}</p>
+										</S.Entity>
 									)}
-								</S.OwnerWrapper>
-								<S.OwnerWrapper>
+								</S.SenderWrapper>
+								<S.ReceiverWrapper>
 									{row.receiverProfile ? (
 										<OwnerLine
 											owner={{
@@ -197,13 +322,13 @@ export default function ActivityTable(props: IProps) {
 											)}
 										</>
 									)}
-								</S.OwnerWrapper>
-								<S.TableRowValue className={'center-value'}>
+								</S.ReceiverWrapper>
+								<S.QuantityWrapper className={'center-value'}>
 									<p>{getDenominatedTokenValue(row.quantity)}</p>
-								</S.TableRowValue>
-								<S.TableRowValue className={'end-value'}>
+								</S.QuantityWrapper>
+								<S.PriceWrapper className={'end-value'}>
 									<CurrencyLine amount={row.price} currency={row.swapToken} callback={null} />
-								</S.TableRowValue>
+								</S.PriceWrapper>
 								<S.TableRowValue>
 									<p>{formatDate(row.timestamp, 'iso')}</p>
 								</S.TableRowValue>
@@ -211,6 +336,20 @@ export default function ActivityTable(props: IProps) {
 						))}
 					</S.TableBody>
 				</S.TableWrapper>
+				<S.Footer>
+					<Button
+						type={'primary'}
+						label={language.previous}
+						handlePress={() => handlePaginationAction('previous', true)}
+						disabled={!activity || !previousAction}
+					/>
+					<Button
+						type={'primary'}
+						label={language.next}
+						handlePress={() => handlePaginationAction('next', true)}
+						disabled={!activity || !nextAction}
+					/>
+				</S.Footer>
 			</S.Wrapper>
 		);
 	}, [activity]);

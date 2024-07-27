@@ -60,6 +60,7 @@ export const language = {
 		getWrappedAr: `Get Wrapped AR`,
 		goTo: `Go to`,
 		implements: `Implements`,
+		interactions: `Interactions`,
 		leaderboard: `Leaderboard`,
 		learn: `Learn`,
 		license: `License`,

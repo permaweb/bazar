@@ -267,6 +267,11 @@ export const DEFAULTS = {
 	thumbnail: 'lJovHqM9hwNjHV5JoY9NGWtt0WD-5D4gOqNL2VWW5jk',
 };
 
+export const ACTIVITY_SORT_OPTIONS: SelectOptionType[] = [
+	{ id: 'new-to-old', label: 'Newest to oldest' },
+	{ id: 'old-to-new', label: 'Oldest to newest' },
+];
+
 export const ASSET_SORT_OPTIONS: SelectOptionType[] = [
 	{ id: 'recently-listed', label: 'Recently listed' },
 	{ id: 'low-to-high', label: 'Low to high' },
