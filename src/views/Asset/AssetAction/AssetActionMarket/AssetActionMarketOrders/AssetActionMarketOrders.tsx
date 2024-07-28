@@ -13,6 +13,7 @@ import { AO, ASSETS } from 'helpers/config';
 import { AssetOrderType, OrderbookEntryType } from 'helpers/types';
 import {
 	checkValidAddress,
+	formatAddress,
 	formatCount,
 	formatPercentage,
 	getTotalTokenBalance,
@@ -225,7 +226,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 					case 'sell':
 					case 'transfer':
 						if (denomination) {
-							transferQuantity = Number(currentOrderQuantity) * denomination;
+							transferQuantity = Math.floor(Number(currentOrderQuantity) * denomination);
 						}
 						break;
 				}
@@ -269,6 +270,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 				if (forwardedTags) transferTags.push(...forwardedTags);
 
 				setOrderLoading(true);
+
 				try {
 					setCurrentNotification(initialMessage);
 
@@ -658,6 +660,14 @@ export default function AssetActionMarketOrders(props: IProps) {
 						<S.SalesDetail>
 							<span>{language.totalPrice}</span>
 							{getTotalPriceDisplay()}
+						</S.SalesDetail>
+					</S.SalesLine>
+				)}
+				{props.type === 'transfer' && (
+					<S.SalesLine>
+						<S.SalesDetail>
+							<span>{language.recipient}</span>
+							<p>{transferRecipient ? formatAddress(transferRecipient, true) : '-'}</p>
 						</S.SalesDetail>
 					</S.SalesLine>
 				)}

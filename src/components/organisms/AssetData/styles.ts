@@ -11,6 +11,7 @@ export const Wrapper = styled.div`
 	overflow: hidden;
 	position: relative;
 	@media (max-width: ${STYLING.cutoffs.desktop}) {
+		min-height: 400px;
 		border: none;
 	}
 `;
