@@ -139,6 +139,17 @@ export const DBodyWrapper = styled.ul`
 			color: ${(props) => props.theme.colors.font.primary};
 			background: ${(props) => props.theme.colors.container.primary.active};
 		}
+
+		a {
+			height: 100%;
+			width: 100%;
+			display: flex;
+			align-items: center;
+			&:hover {
+				color: ${(props) => props.theme.colors.font.primary};
+				background: ${(props) => props.theme.colors.container.primary.active};
+			}
+		}
 	}
 `;
 

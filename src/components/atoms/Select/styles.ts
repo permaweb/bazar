@@ -91,7 +91,7 @@ export const Options = styled.ul`
 	top: 40px;
 	z-index: 2;
 	padding: 10px 0;
-	border-radius: ${STYLING.dimensions.radius.alt2};
+	border-radius: ${STYLING.dimensions.radius.primary};
 `;
 
 export const Option = styled.li<{ active: boolean }>`

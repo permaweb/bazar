@@ -136,6 +136,7 @@ export const language = {
 		tradePixl: `Trade PIXL`,
 		transaction: `Transaction`,
 		transfer: `Transfer`,
+		transferWar: `Transfer Wrapped AR`,
 		unitPrice: `Unit price`,
 		updating: `Updating`,
 		updatingAsset: `Updating asset`,

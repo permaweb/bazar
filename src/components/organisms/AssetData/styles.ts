@@ -2,6 +2,7 @@ import styled from 'styled-components';
 
 import { STYLING } from 'helpers/config';
 
+// TODO: mobile
 export const Wrapper = styled.div`
 	height: 100%;
 	width: 100%;
@@ -11,7 +12,7 @@ export const Wrapper = styled.div`
 	overflow: hidden;
 	position: relative;
 	@media (max-width: ${STYLING.cutoffs.desktop}) {
-		min-height: 400px;
+		/* min-height: 400px; */
 		border: none;
 	}
 `;

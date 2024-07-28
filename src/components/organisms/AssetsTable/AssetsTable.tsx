@@ -305,7 +305,7 @@ export default function AssetsTable(props: IProps) {
 	return (
 		<S.Wrapper className={'fade-in'} ref={scrollRef}>
 			<S.Header>
-				<h4>{language.assets}</h4>
+				<h4>{`${language.assets}${assets && assets.length ? ` (${assets.length})` : ''}`}</h4>
 				<S.HeaderActions>
 					<Button
 						type={'primary'}

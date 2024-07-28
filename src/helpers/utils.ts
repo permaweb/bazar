@@ -69,6 +69,8 @@ export function formatCount(count: string): string {
 }
 
 export function formatPercentage(percentage: any) {
+	if (isNaN(percentage)) return '0%';
+
 	let multiplied = percentage * 100;
 	let decimalPart = multiplied.toString().split('.')[1];
 

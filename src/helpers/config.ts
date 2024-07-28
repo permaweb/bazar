@@ -2,6 +2,7 @@ import activity from 'assets/activity.svg';
 import ar from 'assets/ar.svg';
 import arconnect from 'assets/arconnect-wallet-logo.png';
 import arrow from 'assets/arrow.svg';
+import asset from 'assets/asset.svg';
 import audio from 'assets/audio.svg';
 import bridge from 'assets/bridge.svg';
 import buy from 'assets/buy.svg';
@@ -63,6 +64,29 @@ export const AO = {
 	profileSrc: 'pbrl1fkS3_SZP3RqqPIjbt3-f81L9vIpV2_OnUmxqGQ',
 };
 
+export const REFORMATTED_ASSETS = {
+	[AO.pixl]: {
+		title: 'PIXL Token',
+		logo: 'czR2tJmSr7upPpReXu6IuOc2H7RuHRRAhI7DXAUlszU',
+		denomination: 6,
+	},
+	['pazXumQI-HPH7iFGfTC-4_7biSnqz_U67oFAGry5zUY']: {
+		title: 'Llama Coin',
+		logo: '9FSEgmUsrug7kTdZJABDekwTGJy7YG7KaN5khcbwcX4',
+		denomination: 12,
+	},
+	['aYrCboXVSl1AXL9gPFe3tfRxRf0ZmkOXH65mKT0HHZw']: {
+		title: 'AR.IO EXP',
+		logo: 'wfI-5PlYXL66_BqquCXm7kq-ic1keu0b2CqRjw82yrU',
+		denomination: 6,
+	},
+	['OT9qTE2467gcozb2g8R6D6N3nQS94ENcaAIJfUzHCww']: {
+		title: 'TRUNK',
+		logo: 'hqg-Em9DdYHYmMysyVi8LuTGF8IF_F7ZacgjYiSpj0k',
+		denomination: 3,
+	},
+};
+
 export const LICENSES = {
 	udl: {
 		address: 'dE0rmDfl9_OWjkDznNEXHaSO_JohJkRolvMzaCroUdw',
@@ -79,6 +103,7 @@ export const ASSETS = {
 	ar,
 	arconnect,
 	arrow,
+	asset,
 	audio,
 	bridge,
 	buy,
@@ -290,15 +315,4 @@ export const UPLOAD_CONFIG = {
 	batchSize: 1,
 	chunkSize: 7500000,
 	dispatchUploadSize: 100 * 1024,
-};
-
-export const REFORMATTED_ASSETS = {
-	[AO.pixl]: {
-		title: 'PIXL Token',
-		logo: 'czR2tJmSr7upPpReXu6IuOc2H7RuHRRAhI7DXAUlszU',
-	},
-	['pazXumQI-HPH7iFGfTC-4_7biSnqz_U67oFAGry5zUY']: {
-		title: 'Llama Coin',
-		logo: '9FSEgmUsrug7kTdZJABDekwTGJy7YG7KaN5khcbwcX4',
-	},
 };

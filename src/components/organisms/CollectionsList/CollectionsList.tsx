@@ -43,7 +43,7 @@ export default function CollectionsList(props: IProps) {
 				return (
 					<S.Wrapper className={'fade-in'}>
 						<S.Header>
-							<h4>{language.collections}</h4>
+							<h4>{`${language.collections}${collections && collections.length ? ` (${collections.length})` : ''}`}</h4>
 						</S.Header>
 						<S.ListHeader>
 							<span>{language.collection}</span>

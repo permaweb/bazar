@@ -107,10 +107,14 @@ export default function AssetAction(props: IProps) {
 	React.useEffect(() => {
 		(async function () {
 			if (props.asset && props.asset.state) {
-				const owners = getOwners(props.asset, associatedProfiles)
-					.filter((owner: OwnerType) => owner.address !== AO.ucm)
-					.filter((owner: OwnerType) => owner.ownerPercentage > 0);
-				setCurrentOwners(owners);
+				let owners = getOwners(props.asset, associatedProfiles);
+
+				if (owners) {
+					owners = owners
+						.filter((owner: OwnerType) => owner.address !== AO.ucm)
+						.filter((owner: OwnerType) => owner.ownerPercentage > 0);
+					setCurrentOwners(owners);
+				}
 			}
 			if (props.asset && props.asset.orders) {
 				const sortedOrders = sortOrders(props.asset.orders, 'low-to-high');

@@ -59,7 +59,7 @@ export const SubHeader = styled.div`
 	align-items: center;
 	justify-content: space-between;
 	gap: 15px;
-	margin: 0 0 7.5px 0;
+	margin: 0 0 10px 0;
 	p {
 		font-size: ${(props) => props.theme.typography.size.xSmall};
 		font-family: ${(props) => props.theme.typography.family.primary};
@@ -91,6 +91,7 @@ export const TableHeader = styled.div`
 	display: flex;
 	align-items: center;
 	padding: 0 15px;
+	background: ${(props) => props.theme.colors.container.primary.active};
 	> * {
 		flex: 1;
 	}
@@ -131,7 +132,7 @@ export const TableBody = styled.div`
 	width: fit-content;
 	display: flex;
 	flex-direction: column;
-	background: ${(props) => props.theme.colors.container.primary.active};
+	background: ${(props) => props.theme.colors.container.primary.background};
 	> :not(:last-child) {
 		border-bottom: 1px solid ${(props) => props.theme.colors.border.alt4};
 	}
@@ -167,6 +168,9 @@ export const TableRow = styled.div`
 		p {
 			text-align: center;
 		}
+	}
+	&:hover {
+		background: ${(props) => props.theme.colors.container.primary.active};
 	}
 `;
 
@@ -210,7 +214,7 @@ export const SenderWrapper = styled(OwnerWrapper)`
 `;
 
 export const ReceiverWrapper = styled(OwnerWrapper)`
-	min-width: 165px;
+	min-width: 145px;
 `;
 
 export const QuantityWrapper = styled(TableRowValue)`
@@ -227,20 +231,59 @@ export const PriceWrapper = styled(TableRowValue)`
 	min-width: 85px;
 `;
 
+export const AssetWrapper = styled(TableRowValue)`
+	flex: 0;
+	min-width: 225px;
+	gap: 10px;
+	a {
+		width: fit-content;
+	}
+	p {
+		max-width: 100%;
+		&:hover {
+			color: ${(props) => props.theme.colors.font.alt1};
+		}
+	}
+`;
+
+export const AssetDataWrapper = styled.div`
+	height: 32.5px;
+	width: 32.5px;
+	position: relative;
+	overflow: hidden;
+	transition: all 100ms;
+	a {
+		width: 100%;
+	}
+	div {
+		border-radius: ${STYLING.dimensions.radius.alt2} !important;
+		img {
+			border-radius: 0 !important;
+		}
+	}
+	&:hover {
+		opacity: 0.75;
+	}
+`;
+
 export const EventWrapper = styled(TableRowValue)`
 	flex: none;
 	min-width: 0;
-	width: 105px;
+	width: 125px;
 `;
 
-export const Event = styled.div<{ type: 'Listed' | 'Sold' }>`
+export const Event = styled.div<{ type: 'Listing' | 'Sale' | 'Purchase' }>`
 	display: flex;
 	align-items: center;
 	gap: 7.5px;
 	overflow: hidden;
-	padding: 0 7.5px;
+	padding: 1.5px 7.5px;
 	background: ${(props) =>
-		props.type === 'Sold' ? props.theme.colors.indicator.active : props.theme.colors.indicator.neutral};
+		props.type === 'Sale'
+			? props.theme.colors.indicator.active
+			: props.type === 'Purchase'
+			? props.theme.colors.stats.primary
+			: props.theme.colors.indicator.neutral};
 	border: 1px solid ${(props) => props.theme.colors.border.primary};
 	border-radius: ${STYLING.dimensions.radius.alt2};
 	p {
@@ -248,7 +291,7 @@ export const Event = styled.div<{ type: 'Listed' | 'Sold' }>`
 		font-family: ${(props) => props.theme.typography.family.primary};
 		font-weight: ${(props) => props.theme.typography.weight.bold};
 		color: ${(props) => props.theme.colors.font.light1};
-		line-height: 1;
+		line-height: 1.5;
 		max-width: 90%;
 		white-space: nowrap;
 		text-overflow: ellipsis;
@@ -287,8 +330,9 @@ export const Footer = styled.div`
 `;
 
 export const LoadingWrapper = styled.div`
-	padding: 20px 0;
-	margin: 22.5px 0 0 0;
+	display: flex;
+	flex-direction: column;
+	gap: 12.5px;
 `;
 
 export const SelectWrapper = styled.div``;

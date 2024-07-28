@@ -4,6 +4,7 @@ import { getAssetIdsByUser } from 'api';
 
 import { AssetsTable } from 'components/organisms/AssetsTable';
 import { PAGINATORS } from 'helpers/config';
+import * as windowUtils from 'helpers/window';
 
 import * as S from './styles';
 import { IProps } from './types';
@@ -16,6 +17,7 @@ const ProfileAssets = React.memo((props: IProps) => {
 			if (props.address && !assetIds) {
 				setAssetIds(await getAssetIdsByUser({ profileId: props.address }));
 			}
+			windowUtils.scrollTo(0, 0, 'smooth');
 		})();
 	}, [props.address]);
 
