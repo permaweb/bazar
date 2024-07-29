@@ -289,9 +289,9 @@ export default function ActivityTable(props: IProps) {
 					<S.PriceWrapper className={'end-value'}>
 						<p>{language.price}</p>
 					</S.PriceWrapper>
-					<S.TableHeaderValue>
+					<S.DateValueWrapper>
 						<p>{language.date}</p>
-					</S.TableHeaderValue>
+					</S.DateValueWrapper>
 				</S.TableHeader>
 				<S.TableBody>
 					{activityGroup.map((row: any, index: number) => (

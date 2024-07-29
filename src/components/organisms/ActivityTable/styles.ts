@@ -240,6 +240,7 @@ export const AssetWrapper = styled(TableRowValue)`
 	flex: 0;
 	min-width: 225px;
 	gap: 10px;
+	margin: 0 20px 0 0;
 	a {
 		width: fit-content;
 	}
@@ -344,6 +345,7 @@ export const SelectWrapper = styled.div``;
 
 export const DateValueWrapper = styled(TableRowValue)`
 	gap: 10px;
+	min-width: 150px;
 `;
 
 export const DateValueTooltip = styled.div`

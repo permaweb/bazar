@@ -1,6 +1,6 @@
 ### How to earn PIXL
 
-PIXL is a rewards token for purchasing atomic assets on the Universal Content Marketplace. When users buy atomic assets via BazAR or any UCM platform, they become eligible to receive PIXL tokens. BazAR tracks buying streaks, which occur when users buy one or more atomic assets on consecutive days. 
+PIXL is a rewards token for purchasing atomic assets on the Universal Content Marketplace. When users buy atomic assets via BazAR or any UCM platform, they become eligible to receive PIXL tokens. BazAR tracks buying streaks, which occur when users buy one or more atomic assets on consecutive days.
 
 After your first purchase, your streak begins. You need to wait 24 hours until you can extend your streak by making another purchase. After this waiting period, you have 24 hours to make another purchase, or your streak will be lost. The longer the streak, the more $PIXL you earn. User's reward share weight starts at one, and each additional day of the streak the $PIXL reward share increases by 0.1, with a maximum weight of 4 for a 30 day streak. Streaks reset back to 1 every 30 days.
 
