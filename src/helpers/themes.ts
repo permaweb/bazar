@@ -3,7 +3,6 @@ import { DefaultTheme } from 'styled-components';
 export const lightTheme = {
 	positive1: '#64B686',
 	positive2: '#4EA673',
-	indicatorNeutral1: '#FCB247',
 	negative1: '#E94278',
 	negative2: '#E52461',
 	neutral1: '#FFFFFF',
@@ -35,23 +34,22 @@ export const lightTheme = {
 	dark1: '#151515',
 	stats: {
 		primary: '#FF8385',
-		alt1: '#A3DEE2', // Adjusted from #C1E6EB
-		alt2: '#B9B8D0', // Adjusted from #D9D8EF
-		alt3: '#8FC2D3', // Adjusted from #A5CFE1
-		alt4: '#6CB9D9', // Adjusted from #87D2F0
-		alt5: '#8886D9', // Adjusted from #A09EEE
-		alt6: '#FFBD9F', // Adjusted from #FFD9C5
-		alt7: '#A8DDE2', // Adjusted from #C6E8EF
-		alt8: '#F2A9D3', // Adjusted from #FBC5E5
-		alt9: '#6D909E', // Adjusted from #88A9B9
-		alt10: '#BFBFBF', // Adjusted from #DADADA
+		alt1: '#A3DEE2',
+		alt2: '#B9B8D0',
+		alt3: '#8FC2D3',
+		alt4: '#6CB9D9',
+		alt5: '#8886D9',
+		alt6: '#FFBD9F',
+		alt7: '#A8DDE2',
+		alt8: '#F2A9D3',
+		alt9: '#6D909E',
+		alt10: '#BFBFBF',
 	},
 };
 
 export const darkTheme = {
 	positive1: '#38BD80',
 	positive2: '#2F9D6A',
-	indicatorNeutral1: '#F39D1F',
 	labelAlt1: `#FFFFFF`,
 	negative1: '#D81E5B',
 	negative2: '#E43A72',
@@ -260,7 +258,6 @@ export const theme = (currentTheme: any): DefaultTheme => ({
 		},
 		indicator: {
 			active: currentTheme.positive1,
-			neutral: currentTheme.indicatorNeutral1,
 		},
 		link: {
 			color: currentTheme.neutralA1,

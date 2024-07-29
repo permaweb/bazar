@@ -260,11 +260,17 @@ export const AssetWrapper = styled(TableRowValue)`
 	min-width: 200px;
 	gap: 10px;
 	margin: 0 20px 0 0;
+	overflow: hidden;
 	a {
 		width: fit-content;
+		max-width: calc(100% - 42.5px);
 	}
 	p {
 		max-width: 100%;
+		white-space: nowrap;
+		text-overflow: ellipsis;
+		display: block;
+		overflow: hidden;
 		&:hover {
 			color: ${(props) => props.theme.colors.font.alt1};
 		}
@@ -272,6 +278,8 @@ export const AssetWrapper = styled(TableRowValue)`
 `;
 
 export const AssetDataWrapper = styled.div`
+	min-height: 32.5px;
+	min-width: 32.5px;
 	height: 32.5px;
 	width: 32.5px;
 	position: relative;
@@ -311,7 +319,7 @@ export const Event = styled.div<{ type: 'Listing' | 'Sale' | 'Purchase' }>`
 			? props.theme.colors.indicator.active
 			: props.type === 'Purchase'
 			? props.theme.colors.stats.primary
-			: props.theme.colors.indicator.neutral};
+			: props.theme.colors.stats.alt5};
 	border: 1px solid ${(props) => props.theme.colors.border.primary};
 	border-radius: ${STYLING.dimensions.radius.alt2};
 	p {
