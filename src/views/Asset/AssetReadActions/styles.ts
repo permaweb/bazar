@@ -10,4 +10,7 @@ export const Wrapper = styled.div`
 	@media (max-width: ${STYLING.cutoffs.desktop}) {
 		flex-direction: row;
 	}
+	svg {
+		margin: 0 0 0.5px 2.5px;
+	}
 `;

@@ -289,9 +289,11 @@ export default function AssetActionMarketOrders(props: IProps) {
 							processId = props.asset.data.id;
 
 							if (connectedBalance)
-								profileBalance = BigInt(denomination ? connectedBalance * denomination : connectedBalance);
+								profileBalance = BigInt(denomination ? Math.floor(connectedBalance * denomination) : connectedBalance);
 							if (connectedWalletBalance)
-								walletBalance = BigInt(denomination ? connectedWalletBalance * denomination : connectedWalletBalance);
+								walletBalance = BigInt(
+									denomination ? Math.floor(connectedWalletBalance * denomination) : connectedWalletBalance
+								);
 							break;
 					}
 

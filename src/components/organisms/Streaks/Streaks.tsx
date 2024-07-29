@@ -298,7 +298,9 @@ export default function Streaks(props: IProps) {
 			);
 		}
 
-		const sortedStreaks = Object.entries(streaksReducer).sort(([, a], [, b]) => (b as any).days - (a as any).days);
+		const sortedStreaks = Object.entries(streaksReducer)
+			.sort(([, a], [, b]) => (b as any).days - (a as any).days)
+			.filter((a) => (a as any)[1].days > 0);
 
 		return (
 			<S.StreaksPanelWrapper>
@@ -345,7 +347,7 @@ export default function Streaks(props: IProps) {
 
 	function getAction() {
 		return (
-			<S.Action onClick={handleShowDropdown} className={'border-wrapper-primary'}>
+			<S.Action onClick={handleShowDropdown} className={'border-wrapper-alt2'}>
 				{label}
 			</S.Action>
 		);

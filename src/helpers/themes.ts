@@ -3,10 +3,11 @@ import { DefaultTheme } from 'styled-components';
 export const lightTheme = {
 	positive1: '#64B686',
 	positive2: '#4EA673',
+	indicatorNeutral1: '#FCB247',
 	negative1: '#E94278',
 	negative2: '#E52461',
 	neutral1: '#FFFFFF',
-	neutral2: '#F2F2F2',
+	neutral2: '#F4F4F4',
 	neutral3: '#C6C6C6',
 	neutral4: '#C9C9C9',
 	neutral5: '#CCCCCC',
@@ -33,29 +34,30 @@ export const lightTheme = {
 	light2: '#DADADA',
 	dark1: '#151515',
 	stats: {
-		primary: '#FFB3B4',
-		alt1: '#C1E6EB',
-		alt2: '#D9D8EF',
-		alt3: '#A5CFE1',
-		alt4: '#87D2F0',
-		alt5: '#B8B7EF',
-		alt6: '#FFD9C5',
-		alt7: '#C6E8EF',
-		alt8: '#FBC5E5',
-		alt9: '#88A9B9',
-		alt10: '#DADADA',
+		primary: '#FF8385',
+		alt1: '#A3DEE2', // Adjusted from #C1E6EB
+		alt2: '#B9B8D0', // Adjusted from #D9D8EF
+		alt3: '#8FC2D3', // Adjusted from #A5CFE1
+		alt4: '#6CB9D9', // Adjusted from #87D2F0
+		alt5: '#8886D9', // Adjusted from #A09EEE
+		alt6: '#FFBD9F', // Adjusted from #FFD9C5
+		alt7: '#A8DDE2', // Adjusted from #C6E8EF
+		alt8: '#F2A9D3', // Adjusted from #FBC5E5
+		alt9: '#6D909E', // Adjusted from #88A9B9
+		alt10: '#BFBFBF', // Adjusted from #DADADA
 	},
 };
 
 export const darkTheme = {
 	positive1: '#38BD80',
 	positive2: '#2F9D6A',
+	indicatorNeutral1: '#F39D1F',
 	labelAlt1: `#FFFFFF`,
 	negative1: '#D81E5B',
 	negative2: '#E43A72',
 	neutral1: '#171717',
 	neutral2: '#202020',
-	neutral3: '#606060',
+	neutral3: '#333333',
 	neutral4: '#5C5C5C',
 	neutral5: '#A4A4A4',
 	neutral6: '#A9A9A9',
@@ -81,7 +83,7 @@ export const darkTheme = {
 	light2: '#DADADA',
 	dark1: '#151515',
 	stats: {
-		primary: '#FF8F90',
+		primary: '#FF8080',
 		alt1: '#9BD4E0',
 		alt2: '#C2C1E6',
 		alt3: '#7AB3D0',
@@ -121,7 +123,7 @@ export const theme = (currentTheme: any): DefaultTheme => ({
 					color: currentTheme.light1,
 				},
 				disabled: {
-					background: currentTheme.neutral3,
+					background: currentTheme.neutral4,
 					border: currentTheme.neutral5,
 					color: currentTheme.neutralA5,
 				},
@@ -136,7 +138,7 @@ export const theme = (currentTheme: any): DefaultTheme => ({
 					color: currentTheme.light1,
 				},
 				disabled: {
-					background: currentTheme.neutral3,
+					background: currentTheme.neutral4,
 					border: currentTheme.neutral5,
 					color: currentTheme.neutral5,
 				},
@@ -151,7 +153,7 @@ export const theme = (currentTheme: any): DefaultTheme => ({
 					color: currentTheme.neutralA4,
 				},
 				disabled: {
-					background: currentTheme.neutral3,
+					background: currentTheme.neutral4,
 					border: currentTheme.neutral3,
 					color: currentTheme.neutralA2,
 				},
@@ -258,6 +260,7 @@ export const theme = (currentTheme: any): DefaultTheme => ({
 		},
 		indicator: {
 			active: currentTheme.positive1,
+			neutral: currentTheme.indicatorNeutral1,
 		},
 		link: {
 			color: currentTheme.neutralA1,

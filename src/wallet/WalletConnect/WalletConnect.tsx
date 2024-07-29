@@ -154,6 +154,12 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 					)}
 				</S.DBodyWrapper>
 				<S.DBodyWrapper>
+					<li onClick={() => setShowWalletDropdown(false)}>
+						<Link to={`${URLS.asset}${AO.defaultToken}`}>
+							<ReactSVG src={ASSETS.activity} />
+							{`${language.transferWar}`}
+						</Link>
+					</li>
 					<li onClick={() => window.open(REDIRECTS.aox)}>
 						<ReactSVG src={ASSETS.bridge} />
 						{`${language.arBridge}`}

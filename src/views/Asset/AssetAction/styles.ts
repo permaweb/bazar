@@ -20,8 +20,8 @@ export const DataWrapper = styled.div`
 
 export const Header = styled.div`
 	h4 {
-		line-height: 1;
-		margin: 0 0 10px 0;
+		line-height: 1.15;
+		margin: -5px 0 10px 0;
 	}
 `;
 

@@ -46,7 +46,6 @@ export const CreatorWrapper = styled.div`
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		// justify-content: space-between;
 		transition: all 100ms;
 		padding: 20px;
 		border: 1px solid transparent;
@@ -66,7 +65,7 @@ export const Avatar = styled.div<{
 	width: 150px;
 	background: ${(props) =>
 		props.hasOwner ? props.theme.colors.container.primary.background : props.theme.colors.icon.alt1.fill};
-	box-shadow: 0 5px 15px 2.5px ${(props) => props.theme.colors.shadow.primary};
+	box-shadow: 0 1px 2px 0.5px ${(props) => props.theme.colors.shadow.primary};
 	border: 1.5px solid ${(props) => props.theme.colors.border.primary};
 	border-radius: 50%;
 	overflow: hidden;

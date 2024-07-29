@@ -3,18 +3,11 @@ import { useNavigate } from 'react-router-dom';
 
 import { readHandler } from 'api';
 
-import { AO, DEFAULTS, URLS } from 'helpers/config';
+import { DEFAULTS, REFORMATTED_ASSETS, URLS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 
 import * as S from './styles';
-
-const TOKEN_PROCESSES = [
-	'pazXumQI-HPH7iFGfTC-4_7biSnqz_U67oFAGry5zUY',
-	AO.pixl,
-	'aYrCboXVSl1AXL9gPFe3tfRxRf0ZmkOXH65mKT0HHZw',
-	'OT9qTE2467gcozb2g8R6D6N3nQS94ENcaAIJfUzHCww',
-];
 
 export default function TrendingTokens() {
 	const navigate = useNavigate();
@@ -32,7 +25,7 @@ export default function TrendingTokens() {
 			if (cachedTokens) {
 				responses = JSON.parse(cachedTokens);
 			} else {
-				for (const tokenProcess of TOKEN_PROCESSES) {
+				for (const tokenProcess of Object.keys(REFORMATTED_ASSETS)) {
 					const tokenResponse = await readHandler({
 						processId: tokenProcess,
 						action: 'Info',
@@ -87,7 +80,7 @@ export default function TrendingTokens() {
 					</>
 				) : (
 					<>
-						{Array.from({ length: TOKEN_PROCESSES.length }, (_, i) => i + 1).map((index) => {
+						{Array.from({ length: Object.keys(REFORMATTED_ASSETS).length }, (_, i) => i + 1).map((index) => {
 							return (
 								<S.TokenLine key={index} disabled={true} onClick={() => {}} className={'fade-in border-wrapper-alt1'} />
 							);

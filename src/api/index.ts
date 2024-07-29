@@ -395,11 +395,12 @@ export async function readHandler(args: {
 }): Promise<any> {
 	const tags = [{ name: 'Action', value: args.action }];
 	if (args.tags) tags.push(...args.tags);
+	let data = JSON.stringify(args.data || {});
 
 	const response = await dryrun({
 		process: args.processId,
 		tags: tags,
-		data: JSON.stringify(args.data || {}),
+		data: data,
 	});
 
 	if (response.Messages && response.Messages.length) {

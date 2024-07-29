@@ -136,8 +136,19 @@ export const DBodyWrapper = styled.ul`
 			margin: 7.5px 12.5px 0 0;
 		}
 		&:hover {
-			color: ${(props) => props.theme.colors.font.light1};
-			background: ${(props) => props.theme.colors.container.alt9.background};
+			color: ${(props) => props.theme.colors.font.primary};
+			background: ${(props) => props.theme.colors.container.primary.active};
+		}
+
+		a {
+			height: 100%;
+			width: 100%;
+			display: flex;
+			align-items: center;
+			&:hover {
+				color: ${(props) => props.theme.colors.font.primary};
+				background: ${(props) => props.theme.colors.container.primary.active};
+			}
 		}
 	}
 `;

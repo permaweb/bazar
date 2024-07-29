@@ -1,5 +1,6 @@
 import React from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { ReactSVG } from 'react-svg';
 
 import NotFound from 'views/NotFound';
 
@@ -12,10 +13,23 @@ function Tab(props: ITProps) {
 		props.handlePress(props.url);
 	}
 
+	// return (
+	// 	<S.Tab active={props.active}>
+	// 		<button onClick={handlePress}>{props.label}</button>
+	// 	</S.Tab>
+	// );
+
 	return (
-		<S.Tab active={props.active}>
-			<button onClick={handlePress}>{props.label}</button>
-		</S.Tab>
+		<S.AltTab>
+			<S.AltTabAction active={props.active} onClick={handlePress} icon={props.icon !== null}>
+				{props.icon && (
+					<S.Icon active={props.active}>
+						<ReactSVG src={props.icon} />
+					</S.Icon>
+				)}
+				{props.label}
+			</S.AltTabAction>
+		</S.AltTab>
 	);
 }
 

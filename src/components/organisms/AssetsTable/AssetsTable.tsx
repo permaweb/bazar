@@ -105,16 +105,25 @@ export default function AssetsTable(props: IProps) {
 			: null;
 	}, [assetIdGroups, assetCursor]);
 
-	function getListing(asset: AssetDetailType) {
-		if (asset && asset.orders && asset.orders.length) {
-			const sortedOrders = sortOrders(asset.orders, assetSortType.id as AssetSortType);
+	const handlePaginationAction = (type: 'next' | 'previous', useScroll: boolean) => {
+		const action = type === 'next' ? nextAction : previousAction;
+		if (action) {
+			action();
+			setTimeout(() => {
+				if (scrollRef.current) {
+					if (useScroll) setScrolling(true);
 
-			if (sortedOrders && sortedOrders.length) {
-				return <CurrencyLine amount={sortedOrders[0].price || '0'} currency={sortedOrders[0].currency} />;
-			}
+					const scrollOptions = isFirefox() ? {} : { behavior: 'smooth' };
+					scrollRef.current.scrollIntoView(scrollOptions);
+					if (useScroll) {
+						setTimeout(() => {
+							setScrolling(false);
+						}, 750);
+					}
+				}
+			}, 1);
 		}
-		return <S.NoListings>{language.noListings}</S.NoListings>;
-	}
+	};
 
 	function getAssetIndexDisplay(assetIndex: number, sectionIndex: number, sectionLength: number) {
 		let index = assetIndex + 1;
@@ -136,32 +145,23 @@ export default function AssetsTable(props: IProps) {
 		setAssetFilterListings((prev) => !prev);
 	}, []);
 
-	const handlePaginationAction = (type: 'next' | 'previous', useScroll: boolean) => {
-		const action = type === 'next' ? nextAction : previousAction;
-		if (action) {
-			action();
-			setTimeout(() => {
-				if (scrollRef.current) {
-					if (useScroll) setScrolling(true);
-
-					const scrollOptions = isFirefox() ? {} : { behavior: 'smooth' };
-					scrollRef.current.scrollIntoView(scrollOptions);
-					if (useScroll) {
-						setTimeout(() => {
-							setScrolling(false);
-						}, 750);
-					}
-				}
-			}, 1);
-		}
-	};
-
 	function getActionDisabled() {
 		if (!assets || !assets.length) return true;
 		if (assetsLoading) return true;
 		if (assets && assets.length) {
 			return assets.every((asset: AssetDetailType) => (asset.orders ? asset.orders.length <= 0 : true));
 		}
+	}
+
+	function getListing(asset: AssetDetailType) {
+		if (asset && asset.orders && asset.orders.length) {
+			const sortedOrders = sortOrders(asset.orders, assetSortType.id as AssetSortType);
+
+			if (sortedOrders && sortedOrders.length) {
+				return <CurrencyLine amount={sortedOrders[0].price || '0'} currency={sortedOrders[0].currency} />;
+			}
+		}
+		return <S.NoListings>{language.noListings}</S.NoListings>;
 	}
 
 	function getSectionHeader() {
@@ -305,7 +305,7 @@ export default function AssetsTable(props: IProps) {
 	return (
 		<S.Wrapper className={'fade-in'} ref={scrollRef}>
 			<S.Header>
-				<h4>{language.assets}</h4>
+				<h4>{`${language.assets}${props.ids && props.ids.length ? ` (${props.ids.length})` : ''}`}</h4>
 				<S.HeaderActions>
 					<Button
 						type={'primary'}

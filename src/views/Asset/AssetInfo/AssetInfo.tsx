@@ -12,7 +12,7 @@ import { AssetData } from 'components/organisms/AssetData';
 import { ASSETS, LICENSES, URLS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import { ProfileHeaderType } from 'helpers/types';
-import { checkValidAddress, formatCount, formatDate, getTagDisplay, splitTagValue } from 'helpers/utils';
+import { checkValidAddress, cleanTagValue, formatCount, formatDate, getTagDisplay, splitTagValue } from 'helpers/utils';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 import { RootState } from 'store';
 
@@ -144,7 +144,9 @@ export default function AssetInfo(props: IProps) {
 							<GS.DrawerContent>
 								<GS.DrawerContentDetail>
 									<Link to={`${URLS.collection}${props.asset.data.collectionId}`}>
-										{props.asset.data.collectionName ?? props.asset.data.collectionId}
+										{props.asset.data.collectionName
+											? cleanTagValue(props.asset.data.collectionName)
+											: props.asset.data.collectionId}
 									</Link>
 								</GS.DrawerContentDetail>
 							</GS.DrawerContent>

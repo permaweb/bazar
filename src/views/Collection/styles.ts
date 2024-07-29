@@ -20,6 +20,7 @@ export const CardWrapper = styled.div<{ backgroundImage: string }>`
 	background-position: center;
 	overflow: hidden;
 	border-radius: ${STYLING.dimensions.radius.primary};
+	margin: 0 0 40px 0;
 	@media (max-width: ${STYLING.cutoffs.initial}) {
 		height: auto;
 	}
@@ -213,5 +214,7 @@ export const DescriptionText = styled.p`
 `;
 
 export const AssetsWrapper = styled.div`
-	margin: 60px 0 0 0;
+	h4 {
+		font-size: ${(props) => props.theme.typography.size.xLg};
+	}
 `;

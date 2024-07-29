@@ -43,7 +43,7 @@ export default function CollectionsList(props: IProps) {
 				return (
 					<S.Wrapper className={'fade-in'}>
 						<S.Header>
-							<h4>{language.collections}</h4>
+							<h4>{`${language.collections}${collections && collections.length ? ` (${collections.length})` : ''}`}</h4>
 						</S.Header>
 						<S.ListHeader>
 							<span>{language.collection}</span>
@@ -56,7 +56,7 @@ export default function CollectionsList(props: IProps) {
 								const redirect = `${URLS.collection}${collection.id}`;
 
 								return (
-									<S.CollectionWrapper key={index} className={'border-wrapper-primary fade-in'}>
+									<S.CollectionWrapper key={index} className={'border-wrapper-alt2 fade-in'}>
 										<Link to={redirect}>
 											<S.FlexElement>
 												<S.Index>

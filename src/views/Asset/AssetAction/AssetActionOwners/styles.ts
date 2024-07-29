@@ -81,8 +81,6 @@ export const ChartKeyText = styled.p`
 	font-family: ${(props) => props.theme.typography.family.primary};
 	font-weight: ${(props) => props.theme.typography.weight.bold};
 	color: ${(props) => props.theme.colors.font.primary};
-	padding: 0 !important;
-	border: none !important;
 `;
 
 export const Chart = styled.div`

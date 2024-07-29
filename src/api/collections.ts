@@ -26,7 +26,7 @@ export async function getCollections(creator?: string): Promise<CollectionType[]
 					banner: collection.Banner,
 					thumbnail: collection.Thumbnail,
 				};
-			});
+			}).sort((a: any, b: any) => b.dateCreated - a.dateCreated);
 		}
 		return null;
 	} catch (e: any) {
