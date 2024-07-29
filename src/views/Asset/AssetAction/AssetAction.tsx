@@ -294,7 +294,7 @@ export default function AssetAction(props: IProps) {
 				</>
 			);
 		} else return null;
-	}, [currentListings, showCurrentListingsModal, mobile]);
+	}, [currentListings, showCurrentListingsModal, mobile, arProvider.profile]);
 
 	function getCurrentTab() {
 		switch (currentTab) {

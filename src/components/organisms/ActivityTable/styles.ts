@@ -4,7 +4,7 @@ import { STYLING } from 'helpers/config';
 
 export const Wrapper = styled.div`
 	margin: 22.5px 0 0 0;
-	scroll-margin-top: 150px;
+	scroll-margin-top: 100px;
 `;
 
 export const Header = styled.div`
@@ -82,6 +82,9 @@ export const TableWrapper = styled.div`
 	display: flex;
 	flex-direction: column;
 	overflow-x: auto;
+	background: ${(props) => props.theme.colors.container.primary.active};
+	border: 1px solid ${(props) => props.theme.colors.border.primary};
+	border-radius: ${STYLING.dimensions.radius.primary};
 `;
 
 export const TableHeader = styled.div`
@@ -91,7 +94,6 @@ export const TableHeader = styled.div`
 	display: flex;
 	align-items: center;
 	padding: 0 15px;
-	background: ${(props) => props.theme.colors.container.primary.active};
 	> * {
 		flex: 1;
 	}
@@ -132,7 +134,6 @@ export const TableBody = styled.div`
 	width: fit-content;
 	display: flex;
 	flex-direction: column;
-	background: ${(props) => props.theme.colors.container.primary.background};
 	> :not(:last-child) {
 		border-bottom: 1px solid ${(props) => props.theme.colors.border.alt4};
 	}
@@ -146,6 +147,7 @@ export const TableRow = styled.div`
 	display: flex;
 	align-items: center;
 	padding: 0 15px;
+	background: ${(props) => props.theme.colors.container.primary.background};
 	> * {
 		flex: 1;
 	}
@@ -174,10 +176,13 @@ export const TableRow = styled.div`
 	}
 `;
 
+export const TableRowLoader = styled(TableRow)`
+	background: ${(props) => props.theme.colors.container.primary.active};
+`;
+
 export const TableRowValue = styled.div`
 	display: flex;
 	align-items: center;
-	overflow: hidden;
 	min-width: 130px;
 	p {
 		font-size: ${(props) => props.theme.typography.size.base};
@@ -269,7 +274,7 @@ export const AssetDataWrapper = styled.div`
 export const EventWrapper = styled(TableRowValue)`
 	flex: none;
 	min-width: 0;
-	width: 125px;
+	width: 120px;
 `;
 
 export const Event = styled.div<{ type: 'Listing' | 'Sale' | 'Purchase' }>`
@@ -336,3 +341,43 @@ export const LoadingWrapper = styled.div`
 `;
 
 export const SelectWrapper = styled.div``;
+
+export const DateValueWrapper = styled(TableRowValue)`
+	gap: 10px;
+`;
+
+export const DateValueTooltip = styled.div`
+	position: relative;
+	.date-tooltip {
+		display: none;
+		position: absolute;
+		top: -22.5px;
+		right: 10px;
+		padding: 2.5px 10px;
+		border-radius: ${STYLING.dimensions.radius.alt2};
+		p {
+			max-width: 100%;
+			font-size: ${(props) => props.theme.typography.size.xxSmall};
+			font-family: ${(props) => props.theme.typography.family.primary};
+			font-weight: ${(props) => props.theme.typography.weight.bold};
+		}
+	}
+	svg {
+		width: 15px;
+		fill: ${(props) => props.theme.colors.font.alt1};
+		color: ${(props) => props.theme.colors.font.alt1};
+		margin: 6.5px 0 0 0;
+		position: relative;
+		transition: all 100ms;
+	}
+
+	&:hover {
+		svg {
+			fill: ${(props) => props.theme.colors.font.primary};
+			color: ${(props) => props.theme.colors.font.primary};
+		}
+		.date-tooltip {
+			display: block;
+		}
+	}
+`;

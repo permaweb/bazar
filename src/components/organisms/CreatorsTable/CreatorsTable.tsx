@@ -22,7 +22,7 @@ export default function CreatorsTable() {
 		(async function () {
 			try {
 				const response = await readHandler({
-					processId: AO.ucm,
+					processId: AO.ucmActivity,
 					action: 'Get-Sales-By-Address',
 				});
 

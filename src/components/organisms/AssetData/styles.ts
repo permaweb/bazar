@@ -2,7 +2,6 @@ import styled from 'styled-components';
 
 import { STYLING } from 'helpers/config';
 
-// TODO: mobile
 export const Wrapper = styled.div`
 	height: 100%;
 	width: 100%;
@@ -12,7 +11,6 @@ export const Wrapper = styled.div`
 	overflow: hidden;
 	position: relative;
 	@media (max-width: ${STYLING.cutoffs.desktop}) {
-		/* min-height: 400px; */
 		border: none;
 	}
 `;
@@ -65,7 +63,7 @@ export const Image = styled.img<{ contain: boolean }>`
 	height: 100%;
 	width: 100%;
 	object-fit: ${(props) => (props.contain ? 'contain' : 'cover')};
-	border-radius: ${STYLING.dimensions.radius.primary};
+	border-radius: ${STYLING.dimensions.radius.alt2};
 	background: ${(props) => props.theme.colors.container.alt2.background};
 `;
 
@@ -77,6 +75,15 @@ export const Logo = styled(Image)`
 	top: 50%;
 	left: 50%;
 	transform: translate(-50%, -50%);
+	@media (max-width: ${STYLING.cutoffs.desktop}) {
+		min-height: 400px;
+		height: 100%;
+		width: 100%;
+		position: relative;
+		top: 0;
+		left: 0;
+		transform: none;
+	}
 `;
 
 export const AudioWrapper = styled.div`

@@ -20,8 +20,6 @@ import { AssetData } from '../AssetData';
 import * as S from './styles';
 import { IProps } from './types';
 
-// TODO: collection activity
-
 const GROUP_COUNT = 50;
 
 export default function ActivityTable(props: IProps) {
@@ -45,21 +43,31 @@ export default function ActivityTable(props: IProps) {
 		(async function () {
 			try {
 				let data: any = {};
-				if (props.assetIds) data.AssetIds = props.assetIds;
-				if (props.address) data.Address = props.address;
+
+				if (props.asset && props.asset.data) {
+					data.AssetIds = [props.asset.data.id];
+				} else {
+					if (props.assetIds) data.AssetIds = props.assetIds;
+					if (props.address) data.Address = props.address;
+				}
 
 				const response = await readHandler({
-					processId: AO.ucm,
+					processId: AO.ucmActivity,
 					action: 'Get-Activity',
 					data: data,
 				});
 
 				if (response) setActivityResponse(response);
+				else {
+					setActivity([]);
+					setActivityGroup([]);
+					setActivityGroups([]);
+				}
 			} catch (e: any) {
 				console.error(e);
 			}
 		})();
-	}, [props.assetIds, props.address, arProvider.profile]);
+	}, [props.asset, props.assetIds, props.address, arProvider.profile]);
 
 	React.useEffect(() => {
 		if (activityResponse) {
@@ -68,6 +76,10 @@ export default function ActivityTable(props: IProps) {
 			if (activityResponse.ExecutedOrders)
 				updatedActivity.push(...mapActivity(activityResponse.ExecutedOrders, 'Sale'));
 			setActivity(updatedActivity);
+			if (updatedActivity.length <= 0) {
+				setActivityGroup([]);
+				setActivityGroups([]);
+			}
 		}
 	}, [activityResponse, arProvider.profile]);
 
@@ -123,7 +135,7 @@ export default function ActivityTable(props: IProps) {
 							});
 						}
 
-						if (props.address) {
+						if (!props.asset) {
 							const uniqueAssetIds: any[] = [...new Set(currentGroup.map((order: any) => order.dominantToken))];
 							try {
 								const assets = await getAssetsByIds({
@@ -232,12 +244,15 @@ export default function ActivityTable(props: IProps) {
 		}
 	};
 
+	const start = activity && activity.length ? Number(activityCursor) * GROUP_COUNT + 1 : '';
+	const end = activity && activity.length ? Math.min((Number(activityCursor) + 1) * GROUP_COUNT, activity.length) : '';
+
 	const getActivity = React.useMemo(() => {
 		if (!activityGroup) {
 			return (
 				<S.LoadingWrapper>
 					{Array.from({ length: GROUP_COUNT }, (_, i) => i + 1).map((index) => (
-						<S.TableRow key={index} className={'fade-in border-wrapper-alt1'} />
+						<S.TableRowLoader key={index} className={'fade-in border-wrapper-alt1'} />
 					))}
 				</S.LoadingWrapper>
 			);
@@ -252,36 +267,36 @@ export default function ActivityTable(props: IProps) {
 		}
 
 		return (
-			<S.TableWrapper className={'border-wrapper-primary scroll-wrapper'}>
+			<S.TableWrapper className={'scroll-wrapper'}>
 				<S.TableHeader>
-					{props.address && (
+					{!props.asset && (
 						<S.AssetWrapper>
-							<p>Asset</p>
+							<p>{language.asset}</p>
 						</S.AssetWrapper>
 					)}
 					<S.EventWrapper>
-						<p>Event</p>
+						<p>{language.event}</p>
 					</S.EventWrapper>
 					<S.SenderWrapper>
-						<p>Seller</p>
+						<p>{language.seller}</p>
 					</S.SenderWrapper>
 					<S.ReceiverWrapper>
-						<p>Buyer</p>
+						<p>{language.buyer}</p>
 					</S.ReceiverWrapper>
 					<S.QuantityWrapper className={'center-value header'}>
-						<p className={'header'}>Quantity</p>
+						<p className={'header'}>{language.quantity}</p>
 					</S.QuantityWrapper>
 					<S.PriceWrapper className={'end-value'}>
-						<p>Price</p>
+						<p>{language.price}</p>
 					</S.PriceWrapper>
 					<S.TableHeaderValue>
-						<p>Date</p>
+						<p>{language.date}</p>
 					</S.TableHeaderValue>
 				</S.TableHeader>
 				<S.TableBody>
 					{activityGroup.map((row: any, index: number) => (
 						<S.TableRow key={index}>
-							{props.address && row.asset && row.asset.data && (
+							{!props.asset && row.asset && row.asset.data && (
 								<S.AssetWrapper>
 									<S.AssetDataWrapper>
 										<Link to={`${URLS.asset}${row.asset.data.id}`}>
@@ -312,7 +327,7 @@ export default function ActivityTable(props: IProps) {
 									/>
 								) : (
 									<S.Entity type={'User'}>
-										<p>{formatAddress(row.sender, false)}</p>
+										<p>{row.sender ? formatAddress(row.sender, false) : '-'}</p>
 									</S.Entity>
 								)}
 							</S.SenderWrapper>
@@ -329,7 +344,7 @@ export default function ActivityTable(props: IProps) {
 									<>
 										{row.receiver ? (
 											<S.Entity type={'User'}>
-												<p>{formatAddress(row.receiver, false)}</p>
+												<p>{row.receiver ? formatAddress(row.receiver, false) : '-'}</p>
 											</S.Entity>
 										) : (
 											<S.Entity type={'UCM'}>
@@ -345,18 +360,21 @@ export default function ActivityTable(props: IProps) {
 							<S.PriceWrapper className={'end-value'}>
 								<CurrencyLine amount={row.price} currency={row.swapToken} callback={null} />
 							</S.PriceWrapper>
-							<S.TableRowValue>
+							<S.DateValueWrapper>
 								<p>{formatDate(row.timestamp, 'iso')}</p>
-							</S.TableRowValue>
+								<S.DateValueTooltip>
+									<ReactSVG src={ASSETS.info} />
+									<div className={'date-tooltip fade-in border-wrapper-alt1'}>
+										<p>{`${formatDate(row.timestamp, 'iso', true)}`}</p>
+									</div>
+								</S.DateValueTooltip>
+							</S.DateValueWrapper>
 						</S.TableRow>
 					))}
 				</S.TableBody>
 			</S.TableWrapper>
 		);
-	}, [activityGroup, updating]);
-
-	const start = activity ? Number(activityCursor) * GROUP_COUNT + 1 : '';
-	const end = activity ? Math.min((Number(activityCursor) + 1) * GROUP_COUNT, activity.length) : '';
+	}, [activityGroup, updating, props.asset, props.assetIds]);
 
 	return (
 		<S.Wrapper className={'fade-in'} ref={scrollRef}>
@@ -369,7 +387,7 @@ export default function ActivityTable(props: IProps) {
 							activeOption={activitySortType}
 							setActiveOption={(option: SelectOptionType) => handleActivitySortType(option)}
 							options={ACTIVITY_SORT_OPTIONS.map((option: SelectOptionType) => option)}
-							disabled={!activityGroup || updating}
+							disabled={!activityGroup || activityGroup.length <= 0 || updating}
 						/>
 					</S.SelectWrapper>
 					<S.HeaderPaginator>

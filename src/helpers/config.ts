@@ -57,6 +57,7 @@ export const AO = {
 	module: 'Pq2Zftrqut0hdisH_MC2pDOT6S4eQFoxGsFUzR6r350',
 	scheduler: '_GQ33BkPtZrqxA84vM8Zk-N2aO0toNNu_C-l-rawrBA',
 	ucm: 'U3TjJAZWJjlWBB4KAXSHKzuky81jtyh0zqH8rUL4Wd0',
+	ucmActivity: 'SNDvAf2RF-jhPmRrGUcs_b1nKlzU6vamN9zl0e9Zi4c',
 	defaultToken: 'xU9zFkq3X2ZQ6olwNVvr1vUWIjc3kXTWr7xKQD6dh10',
 	pixl: 'DM3FoZUq_yebASPhgd8pEIRIzDW6muXEhxz5-JwbZwo',
 	collectionsRegistry: 'TFWDmf8a3_nw43GCm_CuYlYoylHAjCcFGbgHfDaGcsg',
@@ -241,11 +242,14 @@ export const WALLET_PERMISSIONS = ['ACCESS_ADDRESS', 'ACCESS_PUBLIC_KEY', 'SIGN_
 
 function createURLs() {
 	const base = `/`;
+	const collection = `${base}collection/`;
 	const profile = `${base}profile/`;
 	return {
 		base: base,
 		asset: `${base}asset/`,
-		collection: `${base}collection/`,
+		collection: collection,
+		collectionAssets: (id: string) => `${collection}${id}/assets/`,
+		collectionActivity: (id: string) => `${collection}${id}/activity/`,
 		collections: `${base}collections/`,
 		docs: `${base}docs/`,
 		profile: profile,

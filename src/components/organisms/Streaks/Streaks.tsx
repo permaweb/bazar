@@ -298,7 +298,9 @@ export default function Streaks(props: IProps) {
 			);
 		}
 
-		const sortedStreaks = Object.entries(streaksReducer).sort(([, a], [, b]) => (b as any).days - (a as any).days);
+		const sortedStreaks = Object.entries(streaksReducer)
+			.sort(([, a], [, b]) => (b as any).days - (a as any).days)
+			.filter((a) => (a as any)[1].days > 0);
 
 		return (
 			<S.StreaksPanelWrapper>

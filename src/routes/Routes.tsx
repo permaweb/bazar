@@ -16,7 +16,11 @@ export default function _Routes() {
 			<Route path={URLS.base} element={<Landing />} />
 			<Route path={URLS.asset} element={<Asset />} />
 			<Route path={`${URLS.asset}:id`} element={<Asset />} />
+
+			<Route path={URLS.collection} element={<Collection />} />
 			<Route path={`${URLS.collection}:id`} element={<Collection />} />
+			<Route path={`${URLS.collection}:id/:active`} element={<Collection />} />
+
 			<Route path={URLS.collections} element={<Collections />} />
 			<Route path={URLS.profile} element={<Profile />} />
 			<Route path={`${URLS.profile}:address`} element={<Profile />} />

@@ -93,7 +93,7 @@ export function formatPercentage(percentage: any) {
 	return `${multiplied.toFixed(nonZeroIndex)}%`;
 }
 
-export function formatDate(dateArg: string | number | null, dateType: DateType) {
+export function formatDate(dateArg: string | number | null, dateType: DateType, fullTime?: boolean) {
 	if (!dateArg) {
 		return null;
 	}
@@ -112,9 +112,13 @@ export function formatDate(dateArg: string | number | null, dateType: DateType) 
 			break;
 	}
 
-	return `${date.toLocaleString('default', {
-		month: 'long',
-	})} ${date.getDate()}, ${date.getUTCFullYear()}`;
+	return fullTime
+		? `${date.toLocaleString('default', { month: 'long' })} ${date.getDate()}, ${date.getUTCFullYear()} ${
+				date.getHours() % 12 || 12
+		  }:${date.getMinutes().toString().padStart(2, '0')}:${date.getSeconds().toString().padStart(2, '0')} ${
+				date.getHours() >= 12 ? 'PM' : 'AM'
+		  }`
+		: `${date.toLocaleString('default', { month: 'long' })} ${date.getDate()}, ${date.getUTCFullYear()}`;
 }
 
 export function formatRequiredField(field: string) {
