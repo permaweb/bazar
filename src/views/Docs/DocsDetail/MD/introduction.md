@@ -16,7 +16,7 @@ BazAR is built on top of the Universal Content Marketplace (UCM) protocol, a tru
 
 - **Licensable data**: The [Universal Data License](https://udlicense.arweave.net/) (UDL) ensures that value flows equitably to those who create and contribute to the permaweb. This standard framework allows creators to set their own terms for the usage of content they upload to the permaweb. Learn more about UDL [here](#).
 
-- **Earn $PIXL rewards**: Built into the UCM protocol is a rewards token that is awarded when users maintain a buying streak. The longer the buying streak, the larger the daily $PIXL rewards! Learn more about $PIXL [here](#).
+- **Earn $PIXL rewards**: Built into the UCM protocol is a rewards token that is awarded when users maintain a buying streak. The longer the buying streak, the larger the daily $PIXL rewards! Learn more about $PIXL [here](https://ao-bazar.arweave.net/#/docs/collectors/earn-pixl).
 
 #### Early release
 
