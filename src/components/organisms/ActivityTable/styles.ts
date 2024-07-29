@@ -96,9 +96,18 @@ export const TableHeader = styled.div`
 	padding: 0 15px;
 	> * {
 		flex: 1;
+		margin: 0 10px;
+	}
+	> :first-child {
+		justify-content: flex-start;
+		margin: 0 10px 0 0;
+		p {
+			text-align: left;
+		}
 	}
 	> :last-child {
 		justify-content: flex-end;
+		margin: 0 0 0 10px;
 		p {
 			text-align: right;
 		}
@@ -111,7 +120,7 @@ export const TableHeader = styled.div`
 		}
 	}
 	.center-value {
-		flex: 1;
+		flex: 0;
 		justify-content: center;
 		p {
 			text-align: center;
@@ -150,9 +159,18 @@ export const TableRow = styled.div`
 	background: ${(props) => props.theme.colors.container.primary.background};
 	> * {
 		flex: 1;
+		margin: 0 10px;
+	}
+	> :first-child {
+		justify-content: flex-start;
+		margin: 0 10px 0 0;
+		p {
+			text-align: left;
+		}
 	}
 	> :last-child {
 		justify-content: flex-end;
+		margin: 0 0 0 10px;
 		p {
 			text-align: right;
 		}
@@ -165,7 +183,7 @@ export const TableRow = styled.div`
 		}
 	}
 	.center-value {
-		flex: 1;
+		flex: 0;
 		justify-content: center;
 		p {
 			text-align: center;
@@ -202,7 +220,7 @@ export const TableRowValue = styled.div`
 		}
 	}
 	.center-value {
-		flex: 1;
+		flex: 0;
 		justify-content: center;
 		p {
 			text-align: center;
@@ -219,11 +237,12 @@ export const SenderWrapper = styled(OwnerWrapper)`
 `;
 
 export const ReceiverWrapper = styled(OwnerWrapper)`
-	min-width: 145px;
+	min-width: 185px;
 `;
 
 export const QuantityWrapper = styled(TableRowValue)`
 	min-width: 75px;
+	flex: 0;
 	p {
 		font-family: ${(props) => props.theme.typography.family.alt1};
 	}
@@ -238,7 +257,7 @@ export const PriceWrapper = styled(TableRowValue)`
 
 export const AssetWrapper = styled(TableRowValue)`
 	flex: 0;
-	min-width: 225px;
+	min-width: 200px;
 	gap: 10px;
 	margin: 0 20px 0 0;
 	a {
@@ -275,7 +294,7 @@ export const AssetDataWrapper = styled.div`
 export const EventWrapper = styled(TableRowValue)`
 	flex: none;
 	min-width: 0;
-	width: 120px;
+	width: 130px;
 `;
 
 export const Event = styled.div<{ type: 'Listing' | 'Sale' | 'Purchase' }>`

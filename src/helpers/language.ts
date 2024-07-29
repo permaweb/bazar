@@ -118,6 +118,7 @@ export const language = {
 		streakTitle3: `Building the flame`,
 		streakTitle4: `Rising heat`,
 		streakTitle5: `You're on fire`,
+		time: `Time`,
 		title: `Title`,
 		trendingTokens: `Trending Tokens`,
 		topCreators: `Top Creators`,

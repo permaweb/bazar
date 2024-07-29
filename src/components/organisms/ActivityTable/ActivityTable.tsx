@@ -11,7 +11,7 @@ import { Select } from 'components/atoms/Select';
 import { OwnerLine } from 'components/molecules/OwnerLine';
 import { ACTIVITY_SORT_OPTIONS, AO, ASSETS, REFORMATTED_ASSETS, URLS } from 'helpers/config';
 import { RegistryProfileType, SelectOptionType } from 'helpers/types';
-import { formatAddress, formatCount, formatDate, isFirefox } from 'helpers/utils';
+import { formatAddress, formatCount, formatDate, getRelativeDate, isFirefox } from 'helpers/utils';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 
@@ -290,7 +290,7 @@ export default function ActivityTable(props: IProps) {
 						<p>{language.price}</p>
 					</S.PriceWrapper>
 					<S.DateValueWrapper>
-						<p>{language.date}</p>
+						<p>{language.time}</p>
 					</S.DateValueWrapper>
 				</S.TableHeader>
 				<S.TableBody>
@@ -347,9 +347,7 @@ export default function ActivityTable(props: IProps) {
 												<p>{row.receiver ? formatAddress(row.receiver, false) : '-'}</p>
 											</S.Entity>
 										) : (
-											<S.Entity type={'UCM'}>
-												<p>UCM</p>
-											</S.Entity>
+											<p>-</p>
 										)}
 									</>
 								)}
@@ -361,7 +359,7 @@ export default function ActivityTable(props: IProps) {
 								<CurrencyLine amount={row.price} currency={row.swapToken} callback={null} />
 							</S.PriceWrapper>
 							<S.DateValueWrapper>
-								<p>{formatDate(row.timestamp, 'iso')}</p>
+								<p>{getRelativeDate(row.timestamp)}</p>
 								<S.DateValueTooltip>
 									<ReactSVG src={ASSETS.info} />
 									<div className={'date-tooltip fade-in border-wrapper-alt1'}>

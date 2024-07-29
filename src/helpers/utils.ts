@@ -121,11 +121,38 @@ export function formatDate(dateArg: string | number | null, dateType: DateType, 
 		: `${date.toLocaleString('default', { month: 'long' })} ${date.getDate()}, ${date.getUTCFullYear()}`;
 }
 
+export function getRelativeDate(timestamp: number) {
+	const currentDate = new Date();
+	const inputDate = new Date(timestamp);
+
+	const timeDifference: number = currentDate.getTime() - inputDate.getTime();
+	const secondsDifference = Math.floor(timeDifference / 1000);
+	const minutesDifference = Math.floor(secondsDifference / 60);
+	const hoursDifference = Math.floor(minutesDifference / 60);
+	const daysDifference = Math.floor(hoursDifference / 24);
+	const monthsDifference = Math.floor(daysDifference / 30.44); // Average days in a month
+	const yearsDifference = Math.floor(monthsDifference / 12);
+
+	if (yearsDifference > 0) {
+		return `${yearsDifference} year${yearsDifference > 1 ? 's' : ''} ago`;
+	} else if (monthsDifference > 0) {
+		return `${monthsDifference} month${monthsDifference > 1 ? 's' : ''} ago`;
+	} else if (daysDifference > 0) {
+		return `${daysDifference} day${daysDifference > 1 ? 's' : ''} ago`;
+	} else if (hoursDifference > 0) {
+		return `${hoursDifference} hour${hoursDifference > 1 ? 's' : ''} ago`;
+	} else if (minutesDifference > 0) {
+		return `${minutesDifference} minute${minutesDifference > 1 ? 's' : ''} ago`;
+	} else {
+		return `${secondsDifference} second${secondsDifference !== 1 ? 's' : ''} ago`;
+	}
+}
+
 export function formatRequiredField(field: string) {
 	return `${field} *`;
 }
 
-export function splitTagValue(tag) {
+export function splitTagValue(tag: any) {
 	let parts = tag.split('-');
 
 	let lastPart = parts[parts.length - 1];
