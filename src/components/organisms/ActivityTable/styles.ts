@@ -294,12 +294,15 @@ export const AssetDataWrapper = styled.div`
 export const EventWrapper = styled(TableRowValue)`
 	flex: none;
 	min-width: 0;
-	width: 130px;
+	width: 140px;
+	margin: 0 20px;
 `;
 
 export const Event = styled.div<{ type: 'Listing' | 'Sale' | 'Purchase' }>`
+	width: 110px;
 	display: flex;
 	align-items: center;
+	justify-content: center;
 	gap: 7.5px;
 	overflow: hidden;
 	padding: 1.5px 7.5px;
@@ -332,8 +335,10 @@ export const Event = styled.div<{ type: 'Listing' | 'Sale' | 'Purchase' }>`
 `;
 
 export const Entity = styled.div<{ type: 'UCM' | 'User' }>`
+	width: 130px;
 	display: flex;
 	align-items: center;
+	justify-content: center;
 	background: ${(props) => (props.type === 'UCM' ? props.theme.colors.stats.alt5 : props.theme.colors.stats.primary)};
 	border: 1px solid ${(props) => props.theme.colors.border.primary};
 	border-radius: ${STYLING.dimensions.radius.alt2};
