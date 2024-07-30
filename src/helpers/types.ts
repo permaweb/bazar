@@ -106,6 +106,7 @@ export type AOProfileType = {
 	bio: string | null;
 	avatar: string | null;
 	banner: string | null;
+	version: string | null;
 };
 
 export type ProfileHeaderType = AOProfileType;

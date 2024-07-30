@@ -10,6 +10,7 @@ export type AOProfileType = {
 	bio: string | null;
 	avatar: string | null;
 	banner: string | null;
+	version: string | null;
 };
 
 export type ProfileHeaderType = AOProfileType;
@@ -30,6 +31,7 @@ export async function getProfileById(args: { profileId: string }): Promise<Profi
 		bio: null,
 		avatar: null,
 		banner: null,
+		version: null,
 	};
 
 	try {
@@ -48,6 +50,7 @@ export async function getProfileById(args: { profileId: string }): Promise<Profi
 				bio: fetchedProfile.Profile.Description || null,
 				avatar: fetchedProfile.Profile.ProfileImage || null,
 				banner: fetchedProfile.Profile.CoverImage || null,
+				version: fetchedProfile.Profile.Version || null,
 			};
 		} else return emptyProfile;
 	} catch (e: any) {
@@ -64,6 +67,7 @@ export async function getProfileByWalletAddress(args: { address: string }): Prom
 		bio: null,
 		avatar: null,
 		banner: null,
+		version: null,
 	};
 
 	try {
@@ -94,6 +98,7 @@ export async function getProfileByWalletAddress(args: { address: string }): Prom
 					bio: fetchedProfile.Profile.Description || null,
 					avatar: fetchedProfile.Profile.ProfileImage || null,
 					banner: fetchedProfile.Profile.CoverImage || null,
+					version: fetchedProfile.Profile.Version || null,
 				};
 			} else return emptyProfile;
 		} else return emptyProfile;
