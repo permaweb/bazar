@@ -24,7 +24,7 @@ export const lightTheme = {
 	primary1: '#F96E46',
 	primary2: '#E6562C',
 	semiTransparent1: 'rgba(255, 255, 255, 0.575)',
-	semiTransparent2: 'rgba(0, 0, 0, 0.65)',
+	semiTransparent2: 'rgba(0, 0, 0, 0.575)',
 	semiTransparent3: 'rgba(0, 0, 0, 0.55)',
 	semiTransparent4: '#AEAEAE45',
 	semiTransparent5: 'rgb(250, 250, 250, 0)',
