@@ -138,7 +138,7 @@ export const theme = (currentTheme: any): DefaultTheme => ({
 				disabled: {
 					background: currentTheme.neutral4,
 					border: currentTheme.neutral5,
-					color: currentTheme.neutral5,
+					color: currentTheme.neutralA5,
 				},
 			},
 			alt2: {

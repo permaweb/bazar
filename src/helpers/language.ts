@@ -106,6 +106,7 @@ export const language = {
 		save: `Save`,
 		sell: `Sell`,
 		seller: `Seller`,
+		setProfilePicture: `Set as profile picture`,
 		streak: `Streak`,
 		streaks: `Streaks`,
 		streakCountdown1: `You have approximately`,

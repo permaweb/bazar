@@ -206,6 +206,7 @@ export function structureAssets(gqlResponse: DefaultGQLResponseType): AssetType[
 				implementation: getTagValue(element.node.tags, TAGS.keys.implements),
 				collectionId: getTagValue(element.node.tags, TAGS.keys.collectionId),
 				collectionName: getTagValue(element.node.tags, TAGS.keys.collectionName),
+				contentType: getTagValue(element.node.tags, TAGS.keys.contentType),
 			},
 		});
 	});

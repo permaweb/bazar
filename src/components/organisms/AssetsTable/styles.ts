@@ -68,6 +68,54 @@ export const AssetGridElement = styled.div`
 	position: relative;
 `;
 
+export const AssetGridDataActionWrapper = styled.div`
+	position: absolute;
+	z-index: 1;
+	top: 15px;
+	right: 15px;
+	display: none;
+	button {
+		background: ${(props) => props.theme.colors.button.primary.background};
+		border: 1px solid ${(props) => props.theme.colors.button.primary.border};
+		padding: 1.5px 7.5px 2.5px 7.5px;
+		border-radius: ${STYLING.dimensions.radius.alt2};
+		&:hover {
+			background: ${(props) => props.theme.colors.button.primary.active.background};
+			border: 1px solid ${(props) => props.theme.colors.button.primary.active.border};
+			span {
+				color: ${(props) => props.theme.colors.button.primary.active.color} !important;
+			}
+		}
+		&:focus {
+			background: ${(props) => props.theme.colors.button.primary.active.background};
+			border: 1px solid ${(props) => props.theme.colors.button.primary.active.border};
+			span {
+				color: ${(props) => props.theme.colors.button.primary.active.color} !important;
+			}
+		}
+		&:disabled {
+			background: ${(props) => props.theme.colors.button.primary.disabled.background};
+			border: 1px solid ${(props) => props.theme.colors.button.primary.disabled.border};
+			span {
+				color: ${(props) => props.theme.colors.button.primary.disabled.color} !important;
+			}
+			svg {
+				color: ${(props) => props.theme.colors.button.primary.disabled.color} !important;
+			}
+		}
+
+		span {
+			width: fit-content;
+			text-overflow: ellipsis;
+			overflow: hidden;
+			font-family: ${(props) => props.theme.typography.family.primary} !important;
+			font-size: ${(props) => props.theme.typography.size.xxSmall} !important;
+			font-weight: ${(props) => props.theme.typography.weight.bold} !important;
+			color: ${(props) => props.theme.colors.button.primary.color} !important;
+		}
+	}
+`;
+
 export const AssetGridDataWrapper = styled.div<{ disabled: boolean }>`
 	height: 400px;
 	width: 100%;
@@ -97,6 +145,10 @@ export const AssetGridDataWrapper = styled.div<{ disabled: boolean }>`
 
 	&:hover {
 		cursor: ${({ disabled }) => (disabled ? 'default' : 'pointer')};
+
+		${AssetGridDataActionWrapper} {
+			display: block;
+		}
 	}
 `;
 

@@ -1,3 +1,4 @@
+import actions from 'assets/actions.svg';
 import activity from 'assets/activity.svg';
 import ar from 'assets/ar.svg';
 import arconnect from 'assets/arconnect-wallet-logo.png';
@@ -100,6 +101,7 @@ export const APP = {
 };
 
 export const ASSETS = {
+	actions,
 	activity,
 	ar,
 	arconnect,

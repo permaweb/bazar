@@ -75,6 +75,7 @@ export type AssetType = {
 		implementation: string | null;
 		collectionId?: string | null;
 		collectionName?: string | null;
+		contentType?: string | null;
 	};
 };
 

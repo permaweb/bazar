@@ -34,6 +34,7 @@ export default function IconButton(props: IProps) {
 
 	function handlePress(e: any) {
 		e.preventDefault();
+		e.stopPropagation();
 		props.handlePress();
 	}
 
