@@ -122,7 +122,7 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 		(async function () {
 			if (walletAddress) {
 				try {
-					setArBalance(await getARBalance(walletAddress));
+					setArBalance(Number(await getARBalance(walletAddress)));
 				} catch (e: any) {
 					console.error(e);
 				}
