@@ -85,7 +85,7 @@ export default function App() {
 			{ucmReducer ? (
 				<Suspense fallback={<Loader />}>
 					<S.AppWrapper>
-						{/* <Banner /> */}
+						<Banner />
 						<Header />
 						<S.View className={'max-view-wrapper'}>
 							<Routes />
