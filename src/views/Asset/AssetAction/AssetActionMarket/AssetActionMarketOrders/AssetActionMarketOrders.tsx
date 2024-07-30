@@ -469,8 +469,8 @@ export default function AssetActionMarketOrders(props: IProps) {
 				let totalPrice: bigint = BigInt(0);
 
 				for (let i = 0; i < sortedOrders.length; i++) {
-					const quantity = BigInt(sortedOrders[i].quantity);
-					const price = BigInt(sortedOrders[i].price);
+					const quantity = BigInt(Math.floor(Number(sortedOrders[i].quantity)));
+					const price = BigInt(Math.floor(Number(sortedOrders[i].price)));
 
 					let inputQuantity: any;
 					inputQuantity = denomination
