@@ -5,4 +5,5 @@ export interface IProps {
 	handleClose: () => void | null;
 	children: React.ReactNode;
 	open: boolean;
+	width?: number;
 }

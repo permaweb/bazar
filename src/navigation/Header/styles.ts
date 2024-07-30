@@ -10,7 +10,6 @@ export const Wrapper = styled.header`
 	z-index: 2;
 	top: 0;
 	background: ${(props) => props.theme.colors.view.background};
-	border-bottom: 1px solid ${(props) => props.theme.colors.border.primary};
 `;
 
 export const Content = styled.div`
@@ -73,7 +72,7 @@ export const ActionsWrapper = styled.div`
 export const MWrapper = styled.div`
 	display: none;
 	@media (max-width: ${STYLING.cutoffs.secondary}) {
-		display block;
+		display: block;
 	}
 `;
 

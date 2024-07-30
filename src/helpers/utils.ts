@@ -9,6 +9,8 @@ import {
 	RegistryProfileType,
 } from './types';
 
+declare const InstallTrigger: any;
+
 export function checkValidAddress(address: string | null) {
 	if (!address) return false;
 	return /^[a-z0-9_-]{43}$/i.test(address);
@@ -33,6 +35,8 @@ export function getTagValue(list: { [key: string]: any }[], name: string): strin
 }
 
 export function formatCount(count: string): string {
+	if (count === '0' || !Number(count)) return '0';
+
 	if (count.includes('.')) {
 		let parts = count.split('.');
 		parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
@@ -51,6 +55,11 @@ export function formatCount(count: string): string {
 		} else {
 			// Otherwise, truncate to the last non-zero digit
 			parts[1] = parts[1].substring(0, index);
+
+			// If the decimal part is longer than 4 digits, truncate to 4 digits
+			if (parts[1].length > 4 && parts[1].substring(0, 4) !== '0000') {
+				parts[1] = parts[1].substring(0, 4);
+			}
 		}
 
 		return parts.join('.');
@@ -59,7 +68,9 @@ export function formatCount(count: string): string {
 	}
 }
 
-export function formatPercentage(percentage) {
+export function formatPercentage(percentage: any) {
+	if (isNaN(percentage)) return '0%';
+
 	let multiplied = percentage * 100;
 	let decimalPart = multiplied.toString().split('.')[1];
 
@@ -82,7 +93,7 @@ export function formatPercentage(percentage) {
 	return `${multiplied.toFixed(nonZeroIndex)}%`;
 }
 
-export function formatDate(dateArg: string | number | null, dateType: DateType) {
+export function formatDate(dateArg: string | number | null, dateType: DateType, fullTime?: boolean) {
 	if (!dateArg) {
 		return null;
 	}
@@ -101,16 +112,47 @@ export function formatDate(dateArg: string | number | null, dateType: DateType) 
 			break;
 	}
 
-	return `${date.toLocaleString('default', {
-		month: 'long',
-	})} ${date.getDate()}, ${date.getUTCFullYear()}`;
+	return fullTime
+		? `${date.toLocaleString('default', { month: 'long' })} ${date.getDate()}, ${date.getUTCFullYear()} ${
+				date.getHours() % 12 || 12
+		  }:${date.getMinutes().toString().padStart(2, '0')}:${date.getSeconds().toString().padStart(2, '0')} ${
+				date.getHours() >= 12 ? 'PM' : 'AM'
+		  }`
+		: `${date.toLocaleString('default', { month: 'long' })} ${date.getDate()}, ${date.getUTCFullYear()}`;
+}
+
+export function getRelativeDate(timestamp: number) {
+	const currentDate = new Date();
+	const inputDate = new Date(timestamp);
+
+	const timeDifference: number = currentDate.getTime() - inputDate.getTime();
+	const secondsDifference = Math.floor(timeDifference / 1000);
+	const minutesDifference = Math.floor(secondsDifference / 60);
+	const hoursDifference = Math.floor(minutesDifference / 60);
+	const daysDifference = Math.floor(hoursDifference / 24);
+	const monthsDifference = Math.floor(daysDifference / 30.44); // Average days in a month
+	const yearsDifference = Math.floor(monthsDifference / 12);
+
+	if (yearsDifference > 0) {
+		return `${yearsDifference} year${yearsDifference > 1 ? 's' : ''} ago`;
+	} else if (monthsDifference > 0) {
+		return `${monthsDifference} month${monthsDifference > 1 ? 's' : ''} ago`;
+	} else if (daysDifference > 0) {
+		return `${daysDifference} day${daysDifference > 1 ? 's' : ''} ago`;
+	} else if (hoursDifference > 0) {
+		return `${hoursDifference} hour${hoursDifference > 1 ? 's' : ''} ago`;
+	} else if (minutesDifference > 0) {
+		return `${minutesDifference} minute${minutesDifference > 1 ? 's' : ''} ago`;
+	} else {
+		return `${secondsDifference} second${secondsDifference !== 1 ? 's' : ''} ago`;
+	}
 }
 
 export function formatRequiredField(field: string) {
 	return `${field} *`;
 }
 
-export function splitTagValue(tag) {
+export function splitTagValue(tag: any) {
 	let parts = tag.split('-');
 
 	let lastPart = parts[parts.length - 1];
@@ -287,4 +329,25 @@ export function getTotalTokenBalance(tokenBalances: { profileBalance: number; wa
 	if (!tokenBalances) return null;
 	const total = (tokenBalances.profileBalance || 0) + (tokenBalances.walletBalance || 0);
 	return total;
+}
+
+export function isFirefox(): boolean {
+	return typeof InstallTrigger !== 'undefined';
+}
+
+export function reverseDenomination(number: number) {
+	let count = 0;
+
+	while (number > 0 && number % 10 === 0) {
+		count++;
+		number /= 10;
+	}
+
+	return count;
+}
+
+export function cleanTagValue(value: string) {
+	let updatedValue: string;
+	updatedValue = value.replace(/\[|\]/g, '');
+	return updatedValue;
 }

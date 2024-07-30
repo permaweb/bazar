@@ -14,9 +14,9 @@ export default function Panel(props: IProps) {
 	const language = languageProvider.object[languageProvider.current];
 
 	React.useEffect(() => {
-		document.body.style.overflow = 'hidden';
+		hideDocumentBody();
 		return () => {
-			document.body.style.overflow = 'auto';
+			showDocumentBody();
 		};
 	}, []);
 
@@ -40,7 +40,7 @@ export default function Panel(props: IProps) {
 	function getBody() {
 		return (
 			<>
-				<S.Container noHeader={!props.header} className={'border-wrapper-primary'}>
+				<S.Container noHeader={!props.header} className={'border-wrapper-alt2'} width={props.width}>
 					<CloseHandler active={props.open} disabled={!props.open} callback={() => props.handleClose()}>
 						{props.header && (
 							<S.Header>
@@ -81,3 +81,17 @@ export default function Panel(props: IProps) {
 		</Portal>
 	);
 }
+
+let panelOpenCounter = 0;
+
+const showDocumentBody = () => {
+	panelOpenCounter -= 1;
+	if (panelOpenCounter === 0) {
+		document.body.style.overflow = 'auto';
+	}
+};
+
+const hideDocumentBody = () => {
+	panelOpenCounter += 1;
+	document.body.style.overflow = 'hidden';
+};

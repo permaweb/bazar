@@ -56,7 +56,7 @@ export default function ProfileHeader(props: IProps) {
 
 	// 		let processSrc = null;
 	// 		try {
-	// 			const processSrcFetch = await fetch(getTxEndpoint(AOS.profileSrc));
+	// 			const processSrcFetch = await fetch(getTxEndpoint(AO.profileSrc));
 	// 			if (processSrcFetch.ok) {
 	// 				processSrc = await processSrcFetch.text();
 
@@ -93,7 +93,7 @@ export default function ProfileHeader(props: IProps) {
 				<S.HeaderInfoDetail>
 					<span>{`${getHandle()}`}</span>
 				</S.HeaderInfoDetail>
-				{props.profile.bio && (
+				{props.profile.bio ? (
 					<S.HeaderInfoBio>
 						<span>
 							{props.profile.bio.length > MAX_BIO_LENGTH
@@ -103,6 +103,10 @@ export default function ProfileHeader(props: IProps) {
 						{props.profile.bio.length > MAX_BIO_LENGTH && (
 							<button onClick={() => setShowBio(true)}>{language.viewFullBio}</button>
 						)}
+					</S.HeaderInfoBio>
+				) : (
+					<S.HeaderInfoBio>
+						<span>{language.noBio}</span>
 					</S.HeaderInfoBio>
 				)}
 			</S.HeaderHA>
@@ -141,10 +145,11 @@ export default function ProfileHeader(props: IProps) {
 						{arProvider.profile && arProvider.profile.id === props.profile.id && (
 							<S.Action>
 								<Button
-									type={'alt1'}
+									type={'primary'}
 									label={language.editProfile}
 									handlePress={() => setShowProfileManage(true)}
 									className={'fade-in'}
+									height={35}
 								/>
 							</S.Action>
 						)}

@@ -1,6 +1,7 @@
 import React from 'react';
 import { useSelector } from 'react-redux';
 import { Link } from 'react-router-dom';
+import { ReactSVG } from 'react-svg';
 
 import { getRegistryProfiles } from 'api';
 
@@ -11,7 +12,7 @@ import { OwnerLine } from 'components/molecules/OwnerLine';
 import { Tabs } from 'components/molecules/Tabs';
 import { AssetData } from 'components/organisms/AssetData';
 import { OrderCancel } from 'components/organisms/OrderCancel';
-import { AOS, ASSETS, STYLING } from 'helpers/config';
+import { AO, ASSETS, STYLING } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import { ListingType, OwnerType, RegistryProfileType } from 'helpers/types';
 import { formatCount, formatPercentage, getOwners, sortOrders } from 'helpers/utils';
@@ -23,6 +24,7 @@ import { RootState } from 'store';
 import { AssetActionActivity } from './AssetActionActivity';
 import { AssetActionComments } from './AssetActionComments';
 import { AssetActionMarket } from './AssetActionMarket';
+import { AssetActionsOwners } from './AssetActionOwners';
 import * as S from './styles';
 import { IProps } from './types';
 
@@ -30,11 +32,13 @@ export default function AssetAction(props: IProps) {
 	const currenciesReducer = useSelector((state: RootState) => state.currenciesReducer);
 
 	const arProvider = useArweaveProvider();
+
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
 
 	const ACTION_TAB_OPTIONS = {
 		market: language.market,
+		owners: language.owners,
 		comments: language.comments,
 		activity: language.activity,
 	};
@@ -44,14 +48,14 @@ export default function AssetAction(props: IProps) {
 			label: ACTION_TAB_OPTIONS.market,
 			icon: ASSETS.market,
 		},
-		// {
-		// 	label: ACTION_TAB_OPTIONS.comments,
-		// 	icon: ASSETS.comments,
-		// },
-		// {
-		// 	label: ACTION_TAB_OPTIONS.activity,
-		// 	icon: ASSETS.activity,
-		// },
+		{
+			label: ACTION_TAB_OPTIONS.activity,
+			icon: ASSETS.activity,
+		},
+		{
+			label: ACTION_TAB_OPTIONS.owners,
+			icon: ASSETS.users,
+		},
 	];
 
 	const [mobile, setMobile] = React.useState(!windowUtils.checkWindowCutoff(parseInt(STYLING.cutoffs.secondary)));
@@ -79,19 +83,22 @@ export default function AssetAction(props: IProps) {
 
 	React.useEffect(() => {
 		(async function () {
-			const associatedAddresses = [];
-			if (props.asset && props.asset.state && props.asset.state.balances) {
-				associatedAddresses.push(...Object.keys(props.asset.state.balances).map((address: string) => address));
-			}
-			if (props.asset && props.asset.orders) {
-				associatedAddresses.push(...props.asset.orders.map((order: any) => order.creator));
-			}
-			if (associatedAddresses.length) {
-				const uniqueAddresses = [...new Set(associatedAddresses)];
-				try {
-					setAssociatedProfiles(await getRegistryProfiles({ profileIds: uniqueAddresses }));
-				} catch (e: any) {
-					console.error(e);
+			if (!associatedProfiles) {
+				const associatedAddresses = [];
+				if (props.asset && props.asset.state && props.asset.state.balances) {
+					associatedAddresses.push(...Object.keys(props.asset.state.balances).map((address: string) => address));
+				}
+				if (props.asset && props.asset.orders) {
+					associatedAddresses.push(...props.asset.orders.map((order: any) => order.creator));
+				}
+				if (associatedAddresses.length) {
+					const uniqueAddresses = [...new Set(associatedAddresses)];
+					try {
+						const profiles = await getRegistryProfiles({ profileIds: uniqueAddresses });
+						setAssociatedProfiles(profiles);
+					} catch (e: any) {
+						console.error(e);
+					}
 				}
 			}
 		})();
@@ -99,11 +106,15 @@ export default function AssetAction(props: IProps) {
 
 	React.useEffect(() => {
 		(async function () {
-			if (props.asset && props.asset.state && associatedProfiles && associatedProfiles.length > 0) {
-				const owners = getOwners(props.asset, associatedProfiles).filter(
-					(owner: OwnerType) => owner.address !== AOS.ucm
-				);
-				setCurrentOwners(owners);
+			if (props.asset && props.asset.state) {
+				let owners = getOwners(props.asset, associatedProfiles);
+
+				if (owners) {
+					owners = owners
+						.filter((owner: OwnerType) => owner.address !== AO.ucm)
+						.filter((owner: OwnerType) => owner.ownerPercentage > 0);
+					setCurrentOwners(owners);
+				}
 			}
 			if (props.asset && props.asset.orders) {
 				const sortedOrders = sortOrders(props.asset.orders, 'low-to-high');
@@ -150,8 +161,15 @@ export default function AssetAction(props: IProps) {
 		) {
 			const denomination = currenciesReducer[currency].Denomination;
 			return `${formatCount((amount / Math.pow(10, denomination)).toString())}`;
-		}
-		return formatCount(amount.toString());
+		} else if (
+			props.asset &&
+			props.asset.state &&
+			props.asset.state.denomination &&
+			props.asset.state.denomination > 1
+		) {
+			const denomination = props.asset.state.denomination;
+			return `${formatCount((amount / Math.pow(10, denomination)).toString())}`;
+		} else return formatCount(amount.toString());
 	}
 
 	function getOwnerOrder(listing: ListingType) {
@@ -276,7 +294,7 @@ export default function AssetAction(props: IProps) {
 				</>
 			);
 		} else return null;
-	}, [currentListings, showCurrentListingsModal, mobile]);
+	}, [currentListings, showCurrentListingsModal, mobile, arProvider.profile]);
 
 	function getCurrentTab() {
 		switch (currentTab) {
@@ -288,6 +306,8 @@ export default function AssetAction(props: IProps) {
 						toggleUpdate={props.toggleUpdate}
 					/>
 				);
+			case ACTION_TAB_OPTIONS.owners:
+				return <AssetActionsOwners asset={props.asset} owners={currentOwners} />;
 			case ACTION_TAB_OPTIONS.comments:
 				return <AssetActionComments asset={props.asset} />;
 			case ACTION_TAB_OPTIONS.activity:
@@ -303,37 +323,48 @@ export default function AssetAction(props: IProps) {
 				<S.DataWrapper>
 					<AssetData asset={props.asset} frameMinHeight={550} autoLoad />
 				</S.DataWrapper>
-				<S.Header className={'border-wrapper-alt2'}>
+				<S.Header>
 					<h4>{props.asset.data.title}</h4>
-					<S.ACLink>
-						<Link target={'_blank'} to={getTxEndpoint(props.asset.data.id)}>
-							{language.viewOnArweave}
-						</Link>
-					</S.ACLink>
-					{currentOwners && currentOwners.length > 0 && (
-						<S.OwnerLine>
-							<span>{language.currentlyOwnedBy}</span>
-							<button
-								onClick={() => {
-									setShowCurrentOwnersModal(true);
-								}}
-							>{`${currentOwners.length} ${
-								currentOwners.length > 1 ? `${language.owner.toLowerCase()}s` : language.owner.toLowerCase()
-							}`}</button>
-						</S.OwnerLine>
-					)}
-					{currentListings && currentListings.length > 0 && (
-						<S.OwnerLine>
-							<span>{language.currentlyBeingSoldBy}</span>
-							<button
-								onClick={() => {
-									setShowCurrentListingsModal(true);
-								}}
-							>{`${currentListings.length} ${
-								currentListings.length > 1 ? `${language.owner.toLowerCase()}s` : language.owner.toLowerCase()
-							}`}</button>
-						</S.OwnerLine>
-					)}
+					<S.OwnerLinesWrapper>
+						{currentOwners && currentOwners.length > 0 && (
+							<S.OwnerLine>
+								<span>{language.currentlyOwnedBy}</span>
+								<button
+									onClick={() => {
+										setShowCurrentOwnersModal(true);
+									}}
+								>{`${formatCount(currentOwners.length.toString())} ${
+									currentOwners.length > 1 ? `${language.owner.toLowerCase()}s` : language.owner.toLowerCase()
+								}`}</button>
+							</S.OwnerLine>
+						)}
+						{currentListings && currentListings.length > 0 && (
+							<S.OwnerLine>
+								<span>{language.currentlyBeingSoldBy}</span>
+								<button
+									onClick={() => {
+										setShowCurrentListingsModal(true);
+									}}
+								>{`${formatCount(currentListings.length.toString())} ${
+									currentListings.length > 1 ? `${language.owner.toLowerCase()}s` : language.owner.toLowerCase()
+								}`}</button>
+							</S.OwnerLine>
+						)}
+					</S.OwnerLinesWrapper>
+					<S.ACActionWrapper>
+						<S.ACAction>
+							<button onClick={() => props.toggleViewType()}>
+								<ReactSVG src={ASSETS.zen} />
+								{language.viewInZenMode}
+							</button>
+						</S.ACAction>
+						<S.ACAction>
+							<Link target={'_blank'} to={getTxEndpoint(props.asset.data.id)}>
+								<ReactSVG src={ASSETS.view} />
+								{language.viewOnArweave}
+							</Link>
+						</S.ACAction>
+					</S.ACActionWrapper>
 				</S.Header>
 				<S.TabsWrapper>
 					<Tabs onTabPropClick={(label: string) => setCurrentTab(label)} type={'alt1'}>

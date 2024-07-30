@@ -3,4 +3,5 @@ export interface IProps {
 	loadingIds?: boolean;
 	type: 'list' | 'grid';
 	pageCount?: number;
+	setProfileAction?: boolean;
 }

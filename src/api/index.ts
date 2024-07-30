@@ -1,3 +1,5 @@
+import { dispatch } from '@othent/kms';
+
 import Arweave from 'arweave';
 import { ArweaveWebIrys } from '@irys/sdk/build/esm/web/tokens/arweave';
 import { createDataItemSigner, dryrun, message, result, results } from '@permaweb/aoconnect';
@@ -186,6 +188,7 @@ export async function createTransaction(args: {
 	contentType: string;
 	tags: TagType[];
 	uploadMethod?: UploadMethodType;
+	useWindowDispatch?: boolean;
 }) {
 	let finalContent: any;
 	switch (args.contentType) {
@@ -202,7 +205,7 @@ export async function createTransaction(args: {
 	if (contentSize < Number(UPLOAD_CONFIG.dispatchUploadSize)) {
 		const txRes = await Arweave.init({}).createTransaction({ data: finalContent }, 'use_wallet');
 		args.tags.forEach((tag: TagType) => txRes.addTag(tag.name, tag.value));
-		const response = await global.window.arweaveWallet.dispatch(txRes);
+		const response = args.useWindowDispatch ? await global.window.arweaveWallet.dispatch(txRes) : await dispatch(txRes);
 		return response.id;
 	} else {
 		try {
@@ -392,11 +395,12 @@ export async function readHandler(args: {
 }): Promise<any> {
 	const tags = [{ name: 'Action', value: args.action }];
 	if (args.tags) tags.push(...args.tags);
+	let data = JSON.stringify(args.data || {});
 
 	const response = await dryrun({
 		process: args.processId,
 		tags: tags,
-		data: JSON.stringify(args.data || {}),
+		data: data,
 	});
 
 	if (response.Messages && response.Messages.length) {

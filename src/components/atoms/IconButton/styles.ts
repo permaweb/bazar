@@ -70,7 +70,6 @@ export const Alt1 = styled(Primary)`
 				: props.disabled
 				? props.theme.colors.button.primary.disabled.border
 				: props.theme.colors.button.primary.border};
-	// box-shadow: 0px 2.5px 5px 0px ${(props) => props.theme.colors.shadow.alt2};
 	svg {
 		height: ${(props) => (props.dimensions ? `${props.dimensions.icon.toString()}px` : `24.5px`)};
 		width: ${(props) => (props.dimensions ? `${props.dimensions.icon.toString()}px` : `24.5px`)};

@@ -9,7 +9,7 @@ import { Button } from 'components/atoms/Button';
 import { FormField } from 'components/atoms/FormField';
 import { Notification } from 'components/atoms/Notification';
 import { TextArea } from 'components/atoms/TextArea';
-import { AO_VERSIONS, AOS, ASSETS, GATEWAYS, TAGS } from 'helpers/config';
+import { AO, AO_VERSIONS, ASSETS, GATEWAYS, TAGS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import { NotificationType } from 'helpers/types';
 import { checkValidAddress, getBase64Data, getDataURLContentType } from 'helpers/utils';
@@ -84,6 +84,7 @@ export default function ProfileManage(props: IProps) {
 							content: bufferData,
 							contentType: bannerContentType,
 							tags: [{ name: TAGS.keys.contentType, value: bannerContentType }],
+							useWindowDispatch: arProvider.walletType !== 'othent',
 						});
 					} catch (e: any) {
 						console.error(e);
@@ -105,6 +106,7 @@ export default function ProfileManage(props: IProps) {
 							content: bufferData,
 							contentType: avatarContentType,
 							tags: [{ name: TAGS.keys.contentType, value: avatarContentType }],
+							useWindowDispatch: arProvider.walletType !== 'othent',
 						});
 					} catch (e: any) {
 						console.error(e);
@@ -160,7 +162,7 @@ export default function ProfileManage(props: IProps) {
 
 					let processSrc = null;
 					try {
-						const processSrcFetch = await fetch(getTxEndpoint(AOS.profileSrc));
+						const processSrcFetch = await fetch(getTxEndpoint(AO.profileSrc));
 						if (processSrcFetch.ok) {
 							processSrc = await processSrcFetch.text();
 
@@ -174,8 +176,8 @@ export default function ProfileManage(props: IProps) {
 
 							console.log('Spawning profile process...');
 							const processId = await aos.spawn({
-								module: AOS.module,
-								scheduler: AOS.scheduler,
+								module: AO.module,
+								scheduler: AO.scheduler,
 								signer: createDataItemSigner(arProvider.wallet),
 								tags: profileTags,
 								data: JSON.stringify(data),
@@ -258,6 +260,7 @@ export default function ProfileManage(props: IProps) {
 							}
 						}
 					} catch (e: any) {
+						console.error(e);
 						setProfileResponse({
 							message: e.message ?? language.errorUpdatingProfile,
 							status: 'warning',
@@ -291,10 +294,10 @@ export default function ProfileManage(props: IProps) {
 					if (event.target?.result) {
 						switch (type) {
 							case 'banner':
-								setBanner(event.target.result);
+								setBanner(event.target.result as any);
 								break;
 							case 'avatar':
-								setAvatar(event.target.result);
+								setAvatar(event.target.result as any);
 								break;
 							default:
 								break;

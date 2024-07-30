@@ -1,5 +1,5 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { ReactSVG } from 'react-svg';
 
 import { Avatar } from 'components/atoms/Avatar';
@@ -7,13 +7,11 @@ import { Button } from 'components/atoms/Button';
 import { CurrencyLine } from 'components/atoms/CurrencyLine';
 import { Panel } from 'components/molecules/Panel';
 import { ProfileManage } from 'components/organisms/ProfileManage';
-import { ASSETS, REDIRECTS, STYLING, URLS } from 'helpers/config';
+import { AO, ASSETS, REDIRECTS, URLS } from 'helpers/config';
 import { formatAddress, formatCount, getTotalTokenBalance } from 'helpers/utils';
-import * as windowUtils from 'helpers/window';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useCustomThemeProvider } from 'providers/CustomThemeProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
-import { CloseHandler } from 'wrappers/CloseHandler';
 
 import * as S from './styles';
 
@@ -32,18 +30,6 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 
 	const [copied, setCopied] = React.useState<boolean>(false);
 	const [label, setLabel] = React.useState<string | null>(null);
-
-	const [desktop, setDesktop] = React.useState(windowUtils.checkWindowCutoff(parseInt(STYLING.cutoffs.initial)));
-
-	function handleWindowResize() {
-		if (windowUtils.checkWindowCutoff(parseInt(STYLING.cutoffs.initial))) {
-			setDesktop(true);
-		} else {
-			setDesktop(false);
-		}
-	}
-
-	windowUtils.checkWindowResize(handleWindowResize);
 
 	React.useEffect(() => {
 		setTimeout(() => {
@@ -103,6 +89,17 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 		setShowWalletDropdown(false);
 	}
 
+	const tokenLinks = {
+		[AO.defaultToken]: {
+			link: REDIRECTS.warDepot,
+			label: language.getWrappedAr,
+		},
+		[AO.pixl]: {
+			link: `${URLS.asset}${AO.pixl}`,
+			label: language.tradePixl,
+		},
+	};
+
 	function getDropdown() {
 		return (
 			<>
@@ -143,6 +140,13 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 											callback={() => setShowWalletDropdown(false)}
 											useReverseLayout
 										/>
+										{tokenLinks[token] && (
+											<S.TokenLink>
+												<Link to={tokenLinks[token].link} target={'_blank'}>
+													<span>{tokenLinks[token].label}</span>
+												</Link>
+											</S.TokenLink>
+										)}
 									</S.BalanceLine>
 								);
 							})}
@@ -150,9 +154,11 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 					)}
 				</S.DBodyWrapper>
 				<S.DBodyWrapper>
-					<li onClick={() => window.open(REDIRECTS.arswap)}>
-						<ReactSVG src={ASSETS.swap} />
-						{`${language.arSwap}`}
+					<li onClick={() => setShowWalletDropdown(false)}>
+						<Link to={`${URLS.asset}${AO.defaultToken}`}>
+							<ReactSVG src={ASSETS.activity} />
+							{`${language.transferWar}`}
+						</Link>
 					</li>
 					<li onClick={() => window.open(REDIRECTS.aox)}>
 						<ReactSVG src={ASSETS.bridge} />
@@ -226,35 +232,16 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 	}
 
 	function getView() {
-		if (desktop) {
-			return (
-				<CloseHandler
-					callback={() => {
-						setShowWalletDropdown(false);
-					}}
-					active={showWalletDropdown}
-					disabled={false}
-				>
-					<S.Wrapper>
-						{getHeader()}
-						{showWalletDropdown && (
-							<S.Dropdown className={'border-wrapper-alt1 scroll-wrapper'}>{getDropdown()}</S.Dropdown>
-						)}
-					</S.Wrapper>
-				</CloseHandler>
-			);
-		} else {
-			return (
-				<S.Wrapper>
-					{getHeader()}
-					{showWalletDropdown && (
-						<Panel open={showWalletDropdown} header={label} handleClose={() => setShowWalletDropdown(false)}>
-							{getDropdown()}
-						</Panel>
-					)}
-				</S.Wrapper>
-			);
-		}
+		return (
+			<S.Wrapper>
+				{getHeader()}
+				{showWalletDropdown && (
+					<Panel open={showWalletDropdown} header={label} handleClose={() => setShowWalletDropdown(false)} width={375}>
+						{getDropdown()}
+					</Panel>
+				)}
+			</S.Wrapper>
+		);
 	}
 
 	return (

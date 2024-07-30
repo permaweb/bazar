@@ -75,6 +75,7 @@ export type AssetType = {
 		implementation: string | null;
 		collectionId?: string | null;
 		collectionName?: string | null;
+		contentType?: string | null;
 	};
 };
 
@@ -256,3 +257,5 @@ export type NotificationType = {
 	message: string;
 	status: 'success' | 'warning';
 };
+
+export type AssetViewType = 'trading' | 'reading';

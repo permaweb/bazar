@@ -9,8 +9,16 @@ export const Wrapper = styled.div`
 `;
 
 export const Label = styled.div`
+	max-width: 150px;
+	overflow: hidden;
 	margin: 0 0 0 10px;
 	a {
+		width: 100%;
+		overflow: hidden;
+		white-space: nowrap;
+		text-overflow: ellipsis;
+		display: block;
+		font-size: ${(props) => props.theme.typography.size.base};
 		font-weight: ${(props) => props.theme.typography.weight.bold};
 	}
 `;

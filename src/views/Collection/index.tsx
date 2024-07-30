@@ -1,14 +1,16 @@
 import React from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
-import { getCollectionById } from 'api';
+import { getCollectionById, getProfileById } from 'api';
 
 import { CurrencyLine } from 'components/atoms/CurrencyLine';
 import { Loader } from 'components/atoms/Loader';
 import { Modal } from 'components/molecules/Modal';
 import { OwnerLine } from 'components/molecules/OwnerLine';
+import { URLTabs } from 'components/molecules/URLTabs';
+import { ActivityTable } from 'components/organisms/ActivityTable';
 import { AssetsTable } from 'components/organisms/AssetsTable';
-import { DEFAULTS, PAGINATORS, URLS } from 'helpers/config';
+import { ASSETS, DEFAULTS, PAGINATORS, URLS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import { CollectionDetailType } from 'helpers/types';
 import { checkValidAddress, formatDate, formatPercentage } from 'helpers/utils';
@@ -19,7 +21,7 @@ import * as S from './styles';
 const MAX_DESCRIPTION_LENGTH = 50;
 
 export default function Collection() {
-	const { id } = useParams();
+	const { id, active } = useParams();
 	const navigate = useNavigate();
 
 	const languageProvider = useLanguageProvider();
@@ -29,6 +31,11 @@ export default function Collection() {
 	const [collectionLoading, setCollectionLoading] = React.useState<boolean>(false);
 	const [collectionErrorResponse, setCollectionErrorResponse] = React.useState<string | null>(null);
 	const [showFullDescription, setShowFullDescription] = React.useState<boolean>(false);
+
+	React.useEffect(() => {
+		if (!id && !active) navigate(URLS.notFound);
+		if (id && !active) navigate(URLS.collectionAssets(id));
+	}, [id, active, navigate]);
 
 	React.useEffect(() => {
 		(async function () {
@@ -43,6 +50,63 @@ export default function Collection() {
 			} else navigate(URLS.notFound);
 		})();
 	}, [id]);
+
+	React.useEffect(() => {
+		(async function () {
+			if (collection && collection.creator) {
+				try {
+					const creatorProfile = await getProfileById({ profileId: collection.creator });
+					setCollection((prev) => ({ ...prev, creatorProfile }));
+				} catch (e: any) {
+					console.error(e);
+					setCollection((prev) => ({
+						...prev,
+						creatorProfile: {
+							id: collection.creator,
+							walletAddress: null,
+							displayName: null,
+							username: null,
+							bio: null,
+							avatar: null,
+							banner: null,
+						},
+					}));
+				}
+			}
+		})();
+	}, [collection?.creator]);
+
+	const TABS = React.useMemo(
+		() => [
+			{
+				label: language.assets,
+				icon: ASSETS.asset,
+				disabled: false,
+				url: URLS.collectionAssets(id),
+				view: () => (
+					<>
+						<S.AssetsWrapper>
+							{collection.assetIds && (
+								<AssetsTable ids={collection.assetIds} type={'grid'} pageCount={PAGINATORS.collection.assets} />
+							)}
+						</S.AssetsWrapper>
+					</>
+				),
+			},
+			{
+				label: language.activity,
+				icon: ASSETS.activity,
+				disabled: false,
+				url: URLS.collectionActivity(id),
+				view: () => <>{collection.assetIds && <ActivityTable assetIds={collection.assetIds} />}</>,
+			},
+		],
+		[id, collection?.assetIds]
+	);
+
+	const urlTabs = React.useMemo(() => {
+		return <URLTabs tabs={TABS} activeUrl={TABS[0].url} />;
+	}, [TABS]);
 
 	function getData() {
 		if (collection) {
@@ -100,15 +164,21 @@ export default function Collection() {
 							</S.InfoBody>
 							<S.InfoFooter>
 								<S.InfoCreator>
-									<p>{language.createdBy}</p>
-									<OwnerLine
-										owner={{
-											address: collection.creator,
-											profile: collection.creatorProfile,
-										}}
-										callback={null}
-									/>
-									<p>{formatDate(collection.dateCreated, 'epoch')}</p>
+									{collection.creatorProfile ? (
+										<>
+											<p>{language.createdBy}</p>
+											<OwnerLine
+												owner={{
+													address: collection.creator,
+													profile: collection.creatorProfile,
+												}}
+												callback={null}
+											/>
+											<p>{formatDate(collection.dateCreated, 'epoch')}</p>
+										</>
+									) : (
+										<p>{`${language.fetching}...`}</p>
+									)}
 								</S.InfoCreator>
 								{collection.description && (
 									<S.InfoDescription>
@@ -116,21 +186,17 @@ export default function Collection() {
 											{collection.description.length > MAX_DESCRIPTION_LENGTH
 												? collection.description.substring(0, MAX_DESCRIPTION_LENGTH) + '...'
 												: collection.description}
+											{collection.description.length > MAX_DESCRIPTION_LENGTH && (
+												<button onClick={() => setShowFullDescription(true)}>{language.viewFullDescription}</button>
+											)}
 										</S.DescriptionText>
-										{collection.description.length > MAX_DESCRIPTION_LENGTH && (
-											<button onClick={() => setShowFullDescription(true)}>{language.viewFullDescription}</button>
-										)}
 									</S.InfoDescription>
 								)}
 							</S.InfoFooter>
 						</S.InfoWrapper>
 					</S.CardWrapper>
-					<S.AssetsWrapper>
-						{collection.assetIds && (
-							<AssetsTable ids={collection.assetIds} type={'grid'} pageCount={PAGINATORS.collection.assets} />
-						)}
-					</S.AssetsWrapper>
-					{showFullDescription && collection.description && (
+					{urlTabs}
+					{showFullDescription && collection && collection.description && (
 						<Modal header={language.description} handleClose={() => setShowFullDescription(false)}>
 							<div className={'modal-wrapper'}>
 								<p>{collection.description}</p>

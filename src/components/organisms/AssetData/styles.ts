@@ -5,17 +5,22 @@ import { STYLING } from 'helpers/config';
 export const Wrapper = styled.div`
 	height: 100%;
 	width: 100%;
+	background: ${(props) => props.theme.colors.container.primary.background};
+	border: 1px solid ${(props) => props.theme.colors.border.alt4};
 	border-radius: ${STYLING.dimensions.radius.primary};
 	overflow: hidden;
 	position: relative;
+	@media (max-width: ${STYLING.cutoffs.desktop}) {
+		border: none;
+	}
 `;
 
 export const Header = styled.div`
-    height: 60px;
-    width: 100%;
-    display: flex;
-    align-items: end;
-    padding 0 0 0 2.5px;
+	height: 60px;
+	width: 100%;
+	display: flex;
+	align-items: end;
+	padding: 0 0 0 2.5px;
 `;
 
 export const Header1 = styled.h2`
@@ -58,6 +63,7 @@ export const Image = styled.img<{ contain: boolean }>`
 	height: 100%;
 	width: 100%;
 	object-fit: ${(props) => (props.contain ? 'contain' : 'cover')};
+	border-radius: ${STYLING.dimensions.radius.alt2};
 	background: ${(props) => props.theme.colors.container.alt2.background};
 `;
 
@@ -69,6 +75,15 @@ export const Logo = styled(Image)`
 	top: 50%;
 	left: 50%;
 	transform: translate(-50%, -50%);
+	@media (max-width: ${STYLING.cutoffs.desktop}) {
+		min-height: 400px;
+		height: 100%;
+		width: 100%;
+		position: relative;
+		top: 0;
+		left: 0;
+		transform: none;
+	}
 `;
 
 export const AudioWrapper = styled.div`
@@ -100,7 +115,7 @@ export const Audio = styled.audio`
 export const Video = styled.video`
 	height: 100%;
 	width: 100%;
-	background: ${(props) => props.theme.colors.container.alt9.background};
+	background: ${(props) => props.theme.colors.container.alt8.background};
 `;
 
 export const Preview = styled.div`

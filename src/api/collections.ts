@@ -1,6 +1,6 @@
-import { getProfileById, readHandler } from 'api';
+import { readHandler } from 'api';
 
-import { AOS, DEFAULTS } from 'helpers/config';
+import { AO, DEFAULTS } from 'helpers/config';
 import { CollectionDetailType, CollectionMetricsType, CollectionType, OrderbookEntryType } from 'helpers/types';
 import { sortOrderbookEntries } from 'helpers/utils';
 import { store } from 'store';
@@ -10,7 +10,7 @@ export async function getCollections(creator?: string): Promise<CollectionType[]
 
 	try {
 		const response = await readHandler({
-			processId: AOS.collectionsRegistry,
+			processId: AO.collectionsRegistry,
 			action: action,
 			tags: creator ? [{ name: 'Creator', value: creator }] : null,
 		});
@@ -19,14 +19,14 @@ export async function getCollections(creator?: string): Promise<CollectionType[]
 			return response.Collections.map((collection: any) => {
 				return {
 					id: collection.Id,
-					title: collection.Name,
+					title: collection.Name.replace(/\[|\]/g, ''),
 					description: collection.Description,
 					creator: collection.Creator,
 					dateCreated: collection.DateCreated,
 					banner: collection.Banner,
 					thumbnail: collection.Thumbnail,
 				};
-			});
+			}).sort((a: any, b: any) => b.dateCreated - a.dateCreated);
 		}
 		return null;
 	} catch (e: any) {
@@ -52,8 +52,6 @@ export async function getCollectionById(args: { id: string }): Promise<Collectio
 				thumbnail: response.Thumbnail ?? DEFAULTS.thumbnail,
 			};
 
-			const creatorProfile = await getProfileById({ profileId: collection.creator });
-
 			let assetIds: string[] = response.Assets;
 
 			const metrics: CollectionMetricsType = {
@@ -66,7 +64,7 @@ export async function getCollectionById(args: { id: string }): Promise<Collectio
 			const collectionDetail = {
 				...collection,
 				assetIds: assetIds,
-				creatorProfile: creatorProfile,
+				creatorProfile: null, // Async fetch from component level
 				metrics: metrics,
 			};
 			return collectionDetail;
@@ -125,5 +123,5 @@ function getDefaultCurrency(assetIds: string[]): string {
 			}
 		}
 	}
-	return AOS.defaultToken;
+	return AO.defaultToken;
 }

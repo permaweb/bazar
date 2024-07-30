@@ -4,7 +4,7 @@ import { ReactSVG } from 'react-svg';
 
 import { getRegistryProfiles, readHandler } from 'api';
 
-import { AOS, ASSETS, URLS } from 'helpers/config';
+import { AO, ASSETS, URLS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import { RegistryProfileType } from 'helpers/types';
 import { checkValidAddress, formatAddress } from 'helpers/utils';
@@ -22,7 +22,7 @@ export default function CreatorsTable() {
 		(async function () {
 			try {
 				const response = await readHandler({
-					processId: AOS.ucm,
+					processId: AO.ucmActivity,
 					action: 'Get-Sales-By-Address',
 				});
 
@@ -63,7 +63,7 @@ export default function CreatorsTable() {
 												? profile.bio.length > 40
 													? `${profile.bio.substring(0, 40)}...`
 													: profile.bio
-												: 'No bio'}
+												: language.noBio}
 										</span>
 									</S.Bio>
 								</Link>

@@ -6,13 +6,19 @@ import { messageResults, readHandler } from 'api';
 import { Button } from 'components/atoms/Button';
 import { CurrencyLine } from 'components/atoms/CurrencyLine';
 import { FormField } from 'components/atoms/FormField';
-import { IconButton } from 'components/atoms/IconButton';
 import { Notification } from 'components/atoms/Notification';
 import { Slider } from 'components/atoms/Slider';
 import { Modal } from 'components/molecules/Modal';
-import { AOS, ASSETS } from 'helpers/config';
+import { AO, ASSETS } from 'helpers/config';
 import { AssetOrderType, OrderbookEntryType } from 'helpers/types';
-import { checkValidAddress, formatCount, formatPercentage, getTotalTokenBalance } from 'helpers/utils';
+import {
+	checkValidAddress,
+	formatAddress,
+	formatCount,
+	formatPercentage,
+	getTotalTokenBalance,
+	reverseDenomination,
+} from 'helpers/utils';
 import * as windowUtils from 'helpers/window';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
@@ -22,6 +28,8 @@ import * as ucmActions from 'store/ucm/actions';
 
 import * as S from './styles';
 import { IProps } from './types';
+
+const MIN_PRICE = 0.000001;
 
 export default function AssetActionMarketOrders(props: IProps) {
 	const dispatch = useDispatch();
@@ -42,9 +50,10 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 	// Total quantity of asset available to sell or transfer
 	const [connectedBalance, setConnectedBalance] = React.useState<number>(0);
+	const [connectedWalletBalance, setConnectedWalletBalance] = React.useState<number>(0);
 
 	// Total asset quantity available for order creation, based on order type (buy, sell, or transfer)
-	const [currentOrderQuantity, setCurrentOrderQuantity] = React.useState<number>(0);
+	const [currentOrderQuantity, setCurrentOrderQuantity] = React.useState<string | number>('');
 
 	// Total asset quantity available for order creation, based on order type (buy, sell, or transfer)
 	const [maxOrderQuantity, setMaxOrderQuantity] = React.useState<number>(0);
@@ -59,7 +68,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 	const [transferDenomination, setTransferDenomination] = React.useState<number | null>(null);
 
 	// Price on limit orders for quantity of one transfer token
-	const [unitPrice, setUnitPrice] = React.useState<number>(0);
+	const [unitPrice, setUnitPrice] = React.useState<string | number>('');
 
 	// Active after an order is completed and asset is refreshed
 	const [updating, setUpdating] = React.useState<boolean>(false);
@@ -89,19 +98,26 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 					let calculatedTotalBalance = totalBalance;
 
-					if (denomination) calculatedTotalBalance = totalBalance / denomination;
+					if (denomination) {
+						calculatedTotalBalance = totalBalance / denomination;
+					}
 
 					setTotalAssetBalance(calculatedTotalBalance);
 
 					if (arProvider.walletAddress && arProvider.profile && arProvider.profile.id) {
-						const ownerBalance = Number(props.asset.state.balances[arProvider.profile.id]);
-						if (ownerBalance) {
-							let calculatedOwnerBalance = ownerBalance;
+						const profileBalance = Number(props.asset.state.balances[arProvider.profile.id]);
+						const walletBalance = Number(props.asset.state.balances[arProvider.walletAddress]);
 
-							if (denomination) calculatedOwnerBalance = ownerBalance / denomination;
+						let calculatedOwnerBalance = profileBalance;
+						let calculatedWalletBalance = walletBalance;
 
-							setConnectedBalance(calculatedOwnerBalance);
+						if (denomination) {
+							calculatedOwnerBalance = profileBalance / denomination;
+							calculatedWalletBalance = walletBalance / denomination;
 						}
+
+						setConnectedBalance(calculatedOwnerBalance);
+						setConnectedWalletBalance(calculatedWalletBalance);
 					}
 				}
 			}
@@ -121,7 +137,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 			}
 
 			const orderCurrency =
-				props.asset.orders && props.asset.orders.length ? props.asset.orders[0].currency : AOS.defaultToken;
+				props.asset.orders && props.asset.orders.length ? props.asset.orders[0].currency : AO.defaultToken;
 			if (
 				currenciesReducer &&
 				currenciesReducer[orderCurrency] &&
@@ -139,24 +155,25 @@ export default function AssetActionMarketOrders(props: IProps) {
 				setMaxOrderQuantity(totalSalesQuantity);
 				break;
 			case 'sell':
-				setMaxOrderQuantity(connectedBalance);
-				break;
 			case 'transfer':
-				setMaxOrderQuantity(connectedBalance);
+				let totalBalance = 0;
+				if (connectedBalance) totalBalance += connectedBalance;
+				if (connectedWalletBalance) totalBalance += connectedWalletBalance;
+				setMaxOrderQuantity(totalBalance);
 				break;
 		}
-	}, [props.asset, props.type, connectedBalance, totalSalesQuantity]);
+	}, [props.asset, props.type, connectedBalance, connectedWalletBalance, totalSalesQuantity]);
 
 	React.useEffect(() => {
 		if (props.type === 'buy') {
-			if (!arProvider.tokenBalances || !arProvider.tokenBalances[AOS.defaultToken]) {
+			if (!arProvider.tokenBalances || !arProvider.tokenBalances[AO.defaultToken]) {
 				setInsufficientBalance(true);
 			} else {
-				let orderAmount = getTotalOrderAmount();
+				let orderAmount = BigInt(getTotalOrderAmount());
 				if (denomination) {
-					orderAmount = orderAmount / denomination;
+					orderAmount = BigInt(orderAmount) / BigInt(denomination);
 				}
-				setInsufficientBalance(Number(getTotalTokenBalance(arProvider.tokenBalances[AOS.defaultToken])) < orderAmount);
+				setInsufficientBalance(Number(getTotalTokenBalance(arProvider.tokenBalances[AO.defaultToken])) < orderAmount);
 			}
 		} else {
 			setInsufficientBalance(false);
@@ -164,7 +181,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 	}, [arProvider.tokenBalances, props.type, props.asset, currentOrderQuantity, denomination]);
 
 	React.useEffect(() => {
-		setCurrentOrderQuantity(0);
+		if (currentOrderQuantity) setCurrentOrderQuantity('');
 	}, [props.type]);
 
 	async function handleSubmit() {
@@ -177,17 +194,17 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 			switch (props.type) {
 				case 'buy':
-					pair = [AOS.defaultToken, props.asset.data.id];
-					recipient = AOS.ucm;
+					pair = [AO.defaultToken, props.asset.data.id];
+					recipient = AO.ucm;
 					initialMessage = 'Depositing balance...';
 					break;
 				case 'sell':
-					pair = [props.asset.data.id, AOS.defaultToken];
-					recipient = AOS.ucm;
+					pair = [props.asset.data.id, AO.defaultToken];
+					recipient = AO.ucm;
 					initialMessage = 'Depositing balance...';
 					break;
 				case 'transfer':
-					pair = [props.asset.data.id, AOS.defaultToken];
+					pair = [props.asset.data.id, AO.defaultToken];
 					recipient = transferRecipient;
 					initialMessage = 'Transferring balance...';
 					break;
@@ -199,36 +216,49 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 				let transferQuantity: string | number = currentOrderQuantity;
 
-				if (props.type === 'sell' || props.type === 'transfer') {
-					if (denomination) {
-						transferQuantity = currentOrderQuantity * denomination;
-					}
-				}
-
-				if (props.type === 'buy') {
-					transferQuantity = getTotalOrderAmount();
-
-					if (denomination) {
-						transferQuantity = transferQuantity / denomination;
-					}
+				switch (props.type) {
+					case 'buy':
+						transferQuantity = getTotalOrderAmount().toString();
+						if (denomination) {
+							transferQuantity = (BigInt(transferQuantity) / BigInt(denomination)).toString();
+						}
+						break;
+					case 'sell':
+					case 'transfer':
+						if (denomination) {
+							transferQuantity = Math.floor(Number(currentOrderQuantity) * denomination);
+						}
+						break;
 				}
 
 				transferQuantity = transferQuantity.toString();
 
-				if (props.type === 'buy' || props.type === 'sell') {
-					forwardedTags = [
-						{ name: 'X-Order-Action', value: 'Create-Order' },
-						{ name: 'X-Swap-Token', value: swapToken },
-					];
-					if (unitPrice && unitPrice > 0) {
-						let calculatedUnitPrice: string | number = unitPrice;
-						if (transferDenomination) calculatedUnitPrice = unitPrice * transferDenomination;
-						calculatedUnitPrice = calculatedUnitPrice.toString();
-						forwardedTags.push({ name: 'X-Price', value: calculatedUnitPrice });
-					}
-					if (denomination && denomination > 1) {
-						forwardedTags.push({ name: 'X-Transfer-Denomination', value: denomination.toString() });
-					}
+				switch (props.type) {
+					case 'buy':
+					case 'sell':
+						forwardedTags = [
+							{ name: 'X-Order-Action', value: 'Create-Order' },
+							{ name: 'X-Swap-Token', value: swapToken },
+						];
+						if (unitPrice && Number(unitPrice) > 0) {
+							let calculatedUnitPrice = unitPrice as any;
+							if (transferDenomination) {
+								const decimalPlaces = (unitPrice.toString().split('.')[1] || '').length;
+								const updatedUnitPrice =
+									decimalPlaces >= reverseDenomination(transferDenomination)
+										? (unitPrice as any).toFixed(reverseDenomination(transferDenomination))
+										: unitPrice;
+								calculatedUnitPrice = BigInt(Number(updatedUnitPrice) * transferDenomination);
+							}
+
+							forwardedTags.push({ name: 'X-Price', value: calculatedUnitPrice.toString() });
+						}
+						if (denomination && denomination > 1) {
+							forwardedTags.push({ name: 'X-Transfer-Denomination', value: denomination.toString() });
+						}
+						break;
+					case 'transfer':
+						break;
 				}
 
 				const transferTags = [
@@ -240,37 +270,57 @@ export default function AssetActionMarketOrders(props: IProps) {
 				if (forwardedTags) transferTags.push(...forwardedTags);
 
 				setOrderLoading(true);
+
 				try {
 					setCurrentNotification(initialMessage);
 
-					if (props.type === 'buy') {
-						const profileBalance = BigInt(arProvider.tokenBalances[AOS.defaultToken].profileBalance);
-						const walletBalance = BigInt(arProvider.tokenBalances[AOS.defaultToken].walletBalance);
+					let processId: string;
+					let profileBalance: bigint = BigInt(0);
+					let walletBalance: bigint = BigInt(0);
 
-						const transferAmount = BigInt(transferQuantity);
+					switch (props.type) {
+						case 'buy':
+							processId = AO.defaultToken;
+							profileBalance = BigInt(arProvider.tokenBalances[AO.defaultToken].profileBalance);
+							walletBalance = BigInt(arProvider.tokenBalances[AO.defaultToken].walletBalance);
+							break;
+						case 'sell':
+						case 'transfer':
+							processId = props.asset.data.id;
 
-						if (profileBalance < transferAmount) {
-							const differenceNeeded = transferAmount - profileBalance;
+							if (connectedBalance)
+								profileBalance = BigInt(denomination ? Math.floor(connectedBalance * denomination) : connectedBalance);
+							if (connectedWalletBalance)
+								walletBalance = BigInt(
+									denomination ? Math.floor(connectedWalletBalance * denomination) : connectedWalletBalance
+								);
+							break;
+					}
 
-							if (walletBalance < differenceNeeded) {
-								console.error(`Wallet balance is less than difference needed: ${differenceNeeded}`);
-								console.error(`Wallet balance: ${walletBalance}`);
-								return;
-							} else {
-								console.log(`Transferring remainder from wallet balance: ${differenceNeeded.toString()}`);
-								const walletTransferResponse: any = await messageResults({
-									processId: AOS.defaultToken,
-									action: 'Transfer',
-									wallet: arProvider.wallet,
-									tags: [
-										{ name: 'Quantity', value: differenceNeeded.toString() },
-										{ name: 'Recipient', value: arProvider.profile.id },
-									],
-									data: null,
-									responses: ['Transfer-Error'],
-								});
-								if (!walletTransferResponse || walletTransferResponse['Transfer-Error']) return;
-							}
+					if (profileBalance < BigInt(transferQuantity)) {
+						const differenceNeeded = BigInt(transferQuantity) - profileBalance;
+
+						if (walletBalance < differenceNeeded) {
+							console.error(`Wallet balance is less than difference needed: ${differenceNeeded}`);
+							console.error(`Wallet balance: ${walletBalance}`);
+
+							setCurrentNotification('Error executing transfer');
+							setOrderLoading(false);
+							setOrderProcessed(true);
+							return;
+						} else {
+							console.log(`Transferring remainder from wallet balance: ${differenceNeeded.toString()} to profile`);
+							await messageResults({
+								processId: processId,
+								action: 'Transfer',
+								wallet: arProvider.wallet,
+								tags: [
+									{ name: 'Quantity', value: differenceNeeded.toString() },
+									{ name: 'Recipient', value: arProvider.profile.id },
+								],
+								data: null,
+								responses: ['Transfer-Success', 'Transfer-Error'],
+							});
 						}
 					}
 
@@ -300,6 +350,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 								break;
 							case 'transfer':
 								setOrderSuccess(true);
+								setOrderProcessed(true);
 								setCurrentNotification('Balance transferred!');
 								break;
 						}
@@ -313,7 +364,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 				setOrderLoading(false);
 				setOrderProcessed(true);
 
-				await new Promise((r) => setTimeout(r, 1000));
 				await handleAssetUpdate(localSuccess);
 			} else {
 				setCurrentNotification('Invalid order details');
@@ -323,7 +373,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 	async function handleAssetUpdate(handleUpdate: boolean) {
 		if (handleUpdate) {
-			setCurrentOrderQuantity(0);
+			setCurrentOrderQuantity('');
 			setUnitPrice(0);
 			setTransferRecipient('');
 			setCurrentNotification(null);
@@ -337,7 +387,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 					const existingUCM = { ...ucmReducer };
 
 					if (existingUCM && existingUCM.Orderbook && existingUCM.Orderbook.length) {
-						let pair = [props.asset.data.id, AOS.defaultToken];
+						let pair = [props.asset.data.id, AO.defaultToken];
 
 						const currentEntry = existingUCM.Orderbook.find(
 							(entry: OrderbookEntryType) => JSON.stringify(entry.Pair) === JSON.stringify(pair)
@@ -353,7 +403,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 								while (!changeDetected && tries < maxTries) {
 									const ucmState = await readHandler({
-										processId: AOS.ucm,
+										processId: AO.ucm,
 										action: 'Info',
 									});
 
@@ -385,7 +435,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 			if (props.type === 'buy') {
 				const streaks = await readHandler({
-					processId: AOS.pixl,
+					processId: AO.pixl,
 					action: 'Get-Streaks',
 				});
 				dispatch(streakActions.setStreaks(streaks.Streaks));
@@ -401,7 +451,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 	function handleOrderErrorClose() {
 		setShowConfirmation(false);
 		setOrderProcessed(false);
-		setCurrentOrderQuantity(0);
+		setCurrentOrderQuantity('');
 		setUnitPrice(0);
 		setTransferRecipient('');
 		setCurrentNotification(null);
@@ -415,15 +465,17 @@ export default function AssetActionMarketOrders(props: IProps) {
 					(a: AssetOrderType, b: AssetOrderType) => Number(a.price) - Number(b.price)
 				);
 
-				let totalQuantity = 0;
-				let totalPrice = 0;
+				let totalQuantity: bigint = BigInt(0);
+				let totalPrice: bigint = BigInt(0);
 
 				for (let i = 0; i < sortedOrders.length; i++) {
-					const quantity = Number(sortedOrders[i].quantity);
-					const price = Number(sortedOrders[i].price);
+					const quantity = BigInt(sortedOrders[i].quantity);
+					const price = BigInt(sortedOrders[i].price);
 
-					let inputQuantity = Number(currentOrderQuantity);
-					if (denomination) inputQuantity = currentOrderQuantity * denomination;
+					let inputQuantity: any;
+					inputQuantity = denomination
+						? BigInt(Math.floor((currentOrderQuantity as number) * denomination))
+						: BigInt(Math.floor(currentOrderQuantity as any));
 
 					if (quantity >= inputQuantity - totalQuantity) {
 						const remainingQty = inputQuantity - totalQuantity;
@@ -436,17 +488,39 @@ export default function AssetActionMarketOrders(props: IProps) {
 						totalPrice += quantity * price;
 					}
 				}
-
 				return totalPrice;
 			} else return 0;
 		} else {
-			let price: number;
-			if (isNaN(unitPrice) || isNaN(currentOrderQuantity) || currentOrderQuantity < 0 || unitPrice < 0) {
-				price = 0;
+			let price: bigint = BigInt(0);
+			if (
+				isNaN(Number(unitPrice)) ||
+				isNaN(Number(currentOrderQuantity)) ||
+				Number(currentOrderQuantity) < 0 ||
+				Number(unitPrice) < 0
+			) {
+				price = BigInt(0);
 			} else {
-				let calculatedUnitPrice = unitPrice;
-				if (transferDenomination) calculatedUnitPrice = unitPrice * transferDenomination;
-				price = currentOrderQuantity * calculatedUnitPrice;
+				let calculatedUnitPrice = unitPrice as any;
+				if (transferDenomination) {
+					const decimalPlaces = (unitPrice.toString().split('.')[1] || '').length;
+					const updatedUnitPrice =
+						decimalPlaces >= reverseDenomination(transferDenomination)
+							? (unitPrice as any).toFixed(reverseDenomination(transferDenomination))
+							: unitPrice;
+
+					calculatedUnitPrice = BigInt(
+						Number(updatedUnitPrice <= MIN_PRICE ? 0 : updatedUnitPrice) * transferDenomination
+					);
+				}
+				try {
+					price =
+						BigInt(currentOrderQuantity) && BigInt(calculatedUnitPrice)
+							? BigInt(currentOrderQuantity) * BigInt(calculatedUnitPrice)
+							: BigInt(0);
+				} catch (e: any) {
+					console.error(e);
+					price = BigInt(0);
+				}
 			}
 			return price;
 		}
@@ -454,7 +528,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 	function handleQuantityInput(e: React.ChangeEvent<HTMLInputElement>) {
 		if (e.target.value === '' || parseFloat(e.target.value) < 0) {
-			setCurrentOrderQuantity(0);
+			setCurrentOrderQuantity('');
 		} else {
 			if (!isNaN(Number(e.target.value))) setCurrentOrderQuantity(parseFloat(e.target.value));
 		}
@@ -472,34 +546,22 @@ export default function AssetActionMarketOrders(props: IProps) {
 		setTransferRecipient(e.target.value);
 	}
 
-	const handleRecipientPaste = async () => {
-		if (!navigator.clipboard || !navigator.clipboard.readText) {
-			console.error('Clipboard API not supported');
-			return;
-		}
-		try {
-			const clipboardText = await navigator.clipboard.readText();
-			setTransferRecipient(clipboardText);
-		} catch (error) {
-			console.error(error);
-		}
-	};
-
 	function getActionDisabled() {
 		if (!arProvider.walletAddress) return true;
 		if (!arProvider.profile || !arProvider.profile.id) return true;
 		if (orderLoading) return true;
 		if (orderProcessed && !orderSuccess) return true;
 		if (props.asset && !props.asset.state.transferable) return true;
-		if (maxOrderQuantity <= 0 || isNaN(currentOrderQuantity)) return true;
+		if (maxOrderQuantity <= 0 || isNaN(Number(currentOrderQuantity))) return true;
 		if (
-			currentOrderQuantity <= 0 ||
+			Number(currentOrderQuantity) <= 0 ||
 			isNaN(maxOrderQuantity) ||
 			(!Number.isInteger(Number(currentOrderQuantity)) && !denomination)
 		)
 			return true;
-		if (currentOrderQuantity > maxOrderQuantity) return true;
-		if (props.type === 'sell' && (unitPrice <= 0 || isNaN(unitPrice))) return true;
+		if (Number(currentOrderQuantity) > maxOrderQuantity) return true;
+		if (props.type === 'sell' && (Number(unitPrice) <= 0 || Number(unitPrice) <= MIN_PRICE || isNaN(Number(unitPrice))))
+			return true;
 		if (props.type === 'transfer' && (!transferRecipient || !checkValidAddress(transferRecipient))) return true;
 		if (insufficientBalance) return true;
 		return false;
@@ -508,6 +570,8 @@ export default function AssetActionMarketOrders(props: IProps) {
 	const getTotals = React.useMemo(() => {
 		let balanceHeader: string | null = null;
 		let percentageHeader: string | null = null;
+
+		let totalBalance = 0;
 		let quantity: number | null = null;
 
 		switch (props.type) {
@@ -519,39 +583,41 @@ export default function AssetActionMarketOrders(props: IProps) {
 			case 'sell':
 				balanceHeader = language.totalSalesBalanceAvailable;
 				percentageHeader = language.totalSalesPercentageAvailable;
-				quantity = connectedBalance;
+				totalBalance = 0;
+				if (connectedBalance) totalBalance += connectedBalance;
+				if (connectedWalletBalance) totalBalance += connectedWalletBalance;
+				quantity = totalBalance;
 				break;
 			case 'transfer':
 				balanceHeader = language.totalTransferBalanceAvailable;
 				percentageHeader = language.totalTransferPercentageAvailable;
-				quantity = connectedBalance;
+				totalBalance = 0;
+				if (connectedBalance) totalBalance += connectedBalance;
+				if (connectedWalletBalance) totalBalance += connectedWalletBalance;
+				quantity = totalBalance;
 				break;
 		}
 
 		return (
 			<>
 				<S.TotalQuantityLine>
-					<p>
-						{`${balanceHeader}: `}
-						<span>{formatCount(quantity.toString())}</span>
-					</p>
+					<p>{balanceHeader}</p>
+					<span>{formatCount(quantity.toString())}</span>
 				</S.TotalQuantityLine>
 				<S.TotalQuantityLine>
-					<p>
-						{`${percentageHeader}: `}
-						<span>{formatPercentage(!isNaN(quantity / totalAssetBalance) ? quantity / totalAssetBalance : 0)}</span>
-					</p>
+					<p>{percentageHeader}</p>
+					<span>{formatPercentage(!isNaN(quantity / totalAssetBalance) ? quantity / totalAssetBalance : 0)}</span>
 				</S.TotalQuantityLine>
 			</>
 		);
 	}, [props.asset, props.type, totalAssetBalance, totalSalesQuantity, connectedBalance, ucmReducer]);
 
 	function getTotalPriceDisplay() {
-		let amount = getTotalOrderAmount();
-		if (props.type === 'buy' && denomination) amount = amount / denomination;
+		let amount = BigInt(getTotalOrderAmount());
+		if (props.type === 'buy' && denomination) amount = BigInt(amount) / BigInt(denomination);
 		const orderCurrency =
-			props.asset.orders && props.asset.orders.length ? props.asset.orders[0].currency : AOS.defaultToken;
-		return <CurrencyLine amount={amount || '0'} currency={orderCurrency} />;
+			props.asset.orders && props.asset.orders.length ? props.asset.orders[0].currency : AO.defaultToken;
+		return <CurrencyLine amount={amount ? amount.toString() : '0'} currency={orderCurrency} />;
 	}
 
 	function getOrderDetails() {
@@ -584,7 +650,9 @@ export default function AssetActionMarketOrders(props: IProps) {
 						<span>{percentageLabel}</span>
 						<p>
 							{formatPercentage(
-								!isNaN(currentOrderQuantity / totalAssetBalance) ? currentOrderQuantity / totalAssetBalance : 0
+								!isNaN(Number(currentOrderQuantity) / totalAssetBalance)
+									? Number(currentOrderQuantity) / totalAssetBalance
+									: 0
 							)}
 						</p>
 					</S.SalesDetail>
@@ -594,6 +662,14 @@ export default function AssetActionMarketOrders(props: IProps) {
 						<S.SalesDetail>
 							<span>{language.totalPrice}</span>
 							{getTotalPriceDisplay()}
+						</S.SalesDetail>
+					</S.SalesLine>
+				)}
+				{props.type === 'transfer' && (
+					<S.SalesLine>
+						<S.SalesDetail>
+							<span>{language.recipient}</span>
+							<p>{transferRecipient ? formatAddress(transferRecipient, true) : '-'}</p>
 						</S.SalesDetail>
 					</S.SalesLine>
 				)}
@@ -641,8 +717,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 					disabled={getActionDisabled()}
 					loading={false}
 					height={60}
-					width={350}
-					fullWidth={finalizeOrder}
+					fullWidth={true}
 					icon={icon}
 					iconLeftAlign
 				/>
@@ -686,49 +761,51 @@ export default function AssetActionMarketOrders(props: IProps) {
 	return props.asset ? (
 		<>
 			<S.Wrapper>
-				<S.TotalsWrapper>
-					<S.TotalQuantityLine>
-						<p>
-							{`${language.totalAssetBalance}: `}
-							<span>{formatCount(totalAssetBalance.toString())}</span>
-						</p>
-					</S.TotalQuantityLine>
-					{getTotals}
-				</S.TotalsWrapper>
-				{maxOrderQuantity > 0 && (
-					<S.InputWrapper>
-						<Slider
-							value={parseFloat(Number(currentOrderQuantity).toString())}
-							maxValue={maxOrderQuantity}
-							handleChange={(e: React.ChangeEvent<HTMLInputElement>) => handleQuantityInput(e)}
-							label={language.assetQuantityInfo}
+				<S.SalesWrapper>{getOrderDetails()}</S.SalesWrapper>
+				<S.InputWrapper>
+					<Slider
+						value={parseFloat(Number(currentOrderQuantity).toString())}
+						maxValue={maxOrderQuantity}
+						handleChange={(e: React.ChangeEvent<HTMLInputElement>) => handleQuantityInput(e)}
+						label={language.assetQuantityInfo}
+						disabled={
+							!arProvider.walletAddress ||
+							!arProvider.profile ||
+							!arProvider.profile.id ||
+							maxOrderQuantity <= 0 ||
+							orderLoading
+						}
+						invalid={{
+							status: Number(currentOrderQuantity) < 0 || Number(currentOrderQuantity) > maxOrderQuantity,
+							message: null,
+						}}
+						useFractional={denomination !== null}
+					/>
+					<S.MaxQty>
+						<Button
+							type={'primary'}
+							label={language.max}
+							handlePress={() => setCurrentOrderQuantity(maxOrderQuantity)}
 							disabled={
-								!arProvider.walletAddress ||
-								!arProvider.profile ||
-								!arProvider.profile.id ||
-								maxOrderQuantity <= 0 ||
-								orderLoading
+								!arProvider.walletAddress || !arProvider.profile || !arProvider.profile.id || maxOrderQuantity <= 0
 							}
-							invalid={{ status: currentOrderQuantity < 0 || currentOrderQuantity > maxOrderQuantity, message: null }}
-							useFractional={denomination !== null}
+							noMinWidth
 						/>
-						<S.MaxQty>
-							<Button
-								type={'primary'}
-								label={language.max}
-								handlePress={() => setCurrentOrderQuantity(maxOrderQuantity)}
-								disabled={
-									!arProvider.walletAddress || !arProvider.profile || !arProvider.profile.id || maxOrderQuantity <= 0
-								}
-								noMinWidth
-							/>
-						</S.MaxQty>
+					</S.MaxQty>
+					<S.FieldsFlexWrapper>
+						<S.TotalsWrapper>
+							<S.TotalQuantityLine>
+								<p>{`${language.totalAssetBalance}`}</p>
+								<span>{formatCount(totalAssetBalance.toString())}</span>
+							</S.TotalQuantityLine>
+							{getTotals}
+						</S.TotalsWrapper>
 						<S.FieldsWrapper>
 							<S.FieldWrapper>
 								<FormField
 									type={'number'}
 									step={'1'}
-									value={currentOrderQuantity}
+									value={isNaN(Number(currentOrderQuantity)) ? '' : currentOrderQuantity}
 									onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleQuantityInput(e)}
 									label={`${language.assetQuantity} (${language.max}: ${formatCount(maxOrderQuantity.toString())})`}
 									disabled={
@@ -740,8 +817,8 @@ export default function AssetActionMarketOrders(props: IProps) {
 									}
 									invalid={{
 										status:
-											currentOrderQuantity < 0 ||
-											currentOrderQuantity > maxOrderQuantity ||
+											Number(currentOrderQuantity) < 0 ||
+											Number(currentOrderQuantity) > maxOrderQuantity ||
 											(!Number.isInteger(Number(currentOrderQuantity)) && !denomination),
 										message: null,
 									}}
@@ -753,87 +830,72 @@ export default function AssetActionMarketOrders(props: IProps) {
 									<FormField
 										type={'number'}
 										label={language.unitPrice}
-										value={isNaN(unitPrice) ? '' : unitPrice}
+										value={isNaN(Number(unitPrice)) ? '' : unitPrice}
 										onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleUnitPriceInput(e)}
 										disabled={
 											!arProvider.walletAddress ||
 											!arProvider.profile ||
 											!arProvider.profile.id ||
-											currentOrderQuantity <= 0 ||
+											Number(currentOrderQuantity) <= 0 ||
 											orderLoading
 										}
-										invalid={{ status: unitPrice < 0, message: null }}
+										invalid={{
+											status: Number(unitPrice) < 0 || (unitPrice && Number(unitPrice) <= MIN_PRICE),
+											message: null,
+										}}
+										hideErrorMessage
 										tooltip={language.saleUnitPriceTooltip}
 									/>
 								</S.FieldWrapper>
 							)}
 							{props.type === 'transfer' && (
-								<S.RecipientWrapper>
-									<S.FieldWrapper>
-										<FormField
-											label={language.recipient}
-											value={transferRecipient || ''}
-											onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleRecipientInput(e)}
-											disabled={
-												!arProvider.walletAddress || !arProvider.profile || !arProvider.profile.id || orderLoading
-											}
-											invalid={{ status: transferRecipient && !checkValidAddress(transferRecipient), message: null }}
-											hideErrorMessage
-										/>
-									</S.FieldWrapper>
-									{navigator && navigator.clipboard && navigator.clipboard.readText && (
-										<IconButton
-											type={'primary'}
-											src={ASSETS.paste}
-											handlePress={handleRecipientPaste}
-											disabled={
-												!arProvider.walletAddress || !arProvider.profile || !arProvider.profile.id || orderLoading
-											}
-											dimensions={{
-												wrapper: 32.5,
-												icon: 15,
-											}}
-											tooltip={language.pasteFromClipboard}
-											useBottomToolTip
-										/>
-									)}
-								</S.RecipientWrapper>
+								<S.FieldWrapper>
+									<FormField
+										label={language.recipient}
+										value={transferRecipient || ''}
+										onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleRecipientInput(e)}
+										disabled={
+											!arProvider.walletAddress || !arProvider.profile || !arProvider.profile.id || orderLoading
+										}
+										invalid={{ status: transferRecipient && !checkValidAddress(transferRecipient), message: null }}
+										hideErrorMessage
+									/>
+								</S.FieldWrapper>
 							)}
+							<S.ActionWrapper loading={null}>
+								{getAction(false)}
+								{arProvider.tokenBalances &&
+									getTotalTokenBalance(arProvider.tokenBalances[AO.defaultToken]) !== null &&
+									insufficientBalance && (
+										<S.MessageWrapper>
+											<span>Not enough tokens to purchase this asset</span>
+										</S.MessageWrapper>
+									)}
+								{!arProvider.walletAddress && (
+									<S.MessageWrapper>
+										<span>Connect your wallet to continue</span>
+									</S.MessageWrapper>
+								)}
+								{!arProvider.profile ||
+									(!arProvider.profile.id && (
+										<S.MessageWrapper>
+											<span>Create your profile to continue</span>
+										</S.MessageWrapper>
+									))}
+								{!Number.isInteger(Number(currentOrderQuantity)) && !denomination && (
+									<S.MessageWrapper>
+										<span>Quantity must be an integer</span>
+									</S.MessageWrapper>
+								)}
+								{props.asset && !props.asset.state.transferable && (
+									<S.MessageWrapper>
+										<span>This asset cannot be transferred</span>
+									</S.MessageWrapper>
+								)}
+							</S.ActionWrapper>
 						</S.FieldsWrapper>
-					</S.InputWrapper>
-				)}
-				<S.SalesWrapper>{getOrderDetails()}</S.SalesWrapper>
-				<S.ActionWrapper loading={null}>
-					{getAction(false)}
-					{arProvider.tokenBalances &&
-						getTotalTokenBalance(arProvider.tokenBalances[AOS.defaultToken]) !== null &&
-						insufficientBalance && (
-							<S.MessageWrapper>
-								<span>Not enough tokens to purchase this asset</span>
-							</S.MessageWrapper>
-						)}
-					{!arProvider.walletAddress && (
-						<S.MessageWrapper>
-							<span>Connect your wallet to continue</span>
-						</S.MessageWrapper>
-					)}
-					{!arProvider.profile ||
-						(!arProvider.profile.id && (
-							<S.MessageWrapper>
-								<span>Create your profile to continue</span>
-							</S.MessageWrapper>
-						))}
-					{!Number.isInteger(Number(currentOrderQuantity)) && !denomination && (
-						<S.MessageWrapper>
-							<span>Quantity must be an integer</span>
-						</S.MessageWrapper>
-					)}
-					{props.asset && !props.asset.state.transferable && (
-						<S.MessageWrapper>
-							<span>This asset cannot be transferred</span>
-						</S.MessageWrapper>
-					)}
-				</S.ActionWrapper>
+					</S.FieldsFlexWrapper>
+				</S.InputWrapper>
 			</S.Wrapper>
 			{showConfirmation && getConfirmation()}
 			{updating && (

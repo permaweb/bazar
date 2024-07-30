@@ -1,12 +1,13 @@
 import React from 'react';
+import { connect } from '@othent/kms';
+import * as Othent from '@othent/kms';
 
 import { getProfileByWalletAddress, readHandler } from 'api';
 
 import { Modal } from 'components/molecules/Modal';
-import { AOS, AR_WALLETS, WALLET_PERMISSIONS } from 'helpers/config';
+import { AO, AR_WALLETS, REDIRECTS, WALLET_PERMISSIONS } from 'helpers/config';
 import { getARBalanceEndpoint } from 'helpers/endpoints';
 import { ProfileHeaderType, WalletEnum } from 'helpers/types';
-import Othent from 'helpers/wallet';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 
 import * as S from './styles';
@@ -70,6 +71,14 @@ function WalletList(props: { handleConnect: any }) {
 					<span>{wallet.type.charAt(0).toUpperCase() + wallet.type.slice(1)}</span>
 				</S.WalletListItem>
 			))}
+			<S.WalletLink>
+				<span>
+					Don't have an Arweave Wallet? You can create one{' '}
+					<a href={REDIRECTS.arconnect} target={'_blank'}>
+						here.
+					</a>
+				</span>
+			</S.WalletLink>
 		</S.WalletListContainer>
 	);
 }
@@ -89,19 +98,13 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 	const [tokenBalances, setTokenBalances] = React.useState<{
 		[address: string]: { profileBalance: number; walletBalance: number };
 	} | null>({
-		[AOS.defaultToken]: null,
-		[AOS.pixl]: null,
+		[AO.defaultToken]: null,
+		[AO.pixl]: null,
 	});
 	const [toggleTokenBalanceUpdate, setToggleTokenBalanceUpdate] = React.useState<boolean>(false);
 
 	const [profile, setProfile] = React.useState<ProfileHeaderType | null>(null);
 	const [toggleProfileUpdate, setToggleProfileUpdate] = React.useState<boolean>(false);
-
-	React.useEffect(() => {
-		(async function () {
-			await handleWallet();
-		})();
-	}, []);
 
 	React.useEffect(() => {
 		handleWallet();
@@ -180,18 +183,18 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 			const fetchDefaultTokenBalance = async () => {
 				try {
 					const defaultTokenBalance = await readHandler({
-						processId: AOS.defaultToken,
+						processId: AO.defaultToken,
 						action: 'Balance',
 						tags: [{ name: 'Recipient', value: profile.id }],
 					});
 					const defaultTokenWalletBalance = await readHandler({
-						processId: AOS.defaultToken,
+						processId: AO.defaultToken,
 						action: 'Balance',
 						tags: [{ name: 'Recipient', value: walletAddress }],
 					});
 					setTokenBalances((prevBalances) => ({
 						...prevBalances,
-						[AOS.defaultToken]: {
+						[AO.defaultToken]: {
 							profileBalance: defaultTokenBalance || 0,
 							walletBalance: defaultTokenWalletBalance || 0,
 						},
@@ -204,24 +207,24 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 			fetchDefaultTokenBalance();
 		} else {
 			setTokenBalances({
-				[AOS.defaultToken]: { profileBalance: 0, walletBalance: 0 },
-				[AOS.pixl]: { profileBalance: 0, walletBalance: 0 },
+				[AO.defaultToken]: { profileBalance: 0, walletBalance: 0 },
+				[AO.pixl]: { profileBalance: 0, walletBalance: 0 },
 			});
 		}
-	}, [walletAddress && profile, toggleTokenBalanceUpdate]);
+	}, [walletAddress, profile, toggleTokenBalanceUpdate]);
 
 	React.useEffect(() => {
 		if (profile && profile.id) {
 			const fetchPixlTokenBalance = async () => {
 				try {
 					const pixlTokenBalance = await readHandler({
-						processId: AOS.pixl,
+						processId: AO.pixl,
 						action: 'Balance',
 						tags: [{ name: 'Recipient', value: profile.id }],
 					});
 					setTokenBalances((prevBalances) => ({
 						...prevBalances,
-						[AOS.pixl]: { profileBalance: pixlTokenBalance || 0, walletBalance: 0 },
+						[AO.pixl]: { profileBalance: pixlTokenBalance || 0, walletBalance: 0 },
 					}));
 				} catch (e) {
 					console.error(e);
@@ -279,20 +282,24 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 	}
 
 	async function handleOthent() {
-		Othent.init();
-		await window.arweaveWallet.connect(WALLET_PERMISSIONS as any);
-		setWallet(window.arweaveWallet);
-		setWalletAddress(Othent.getUserInfo().walletAddress);
-		setWalletType(WalletEnum.othent);
-		localStorage.setItem('walletType', WalletEnum.othent);
+		try {
+			const othentConnection = await connect();
+			const address = othentConnection.walletAddress;
+			setWallet(Othent);
+			setWalletAddress(address);
+			setWalletType(WalletEnum.othent);
+			localStorage.setItem('walletType', WalletEnum.othent);
+		} catch (e: any) {
+			console.error(e);
+		}
 	}
 
 	async function handleDisconnect() {
+		if (localStorage.getItem('walletType')) localStorage.removeItem('walletType');
 		await global.window?.arweaveWallet?.disconnect();
 		setWallet(null);
 		setWalletAddress(null);
 		setProfile(null);
-		if (localStorage.getItem('walletType')) localStorage.removeItem('walletType');
 	}
 
 	async function getARBalance(walletAddress: string) {

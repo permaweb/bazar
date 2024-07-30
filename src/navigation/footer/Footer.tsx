@@ -9,6 +9,7 @@ export default function Footer() {
 	const socialPaths = [
 		{ icon: ASSETS.x, href: REDIRECTS.x },
 		{ icon: ASSETS.discord, href: REDIRECTS.discord },
+		{ icon: ASSETS.github, href: REDIRECTS.github },
 	];
 
 	return (

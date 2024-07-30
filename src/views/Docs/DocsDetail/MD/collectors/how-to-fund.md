@@ -8,7 +8,7 @@ Before you can send tokens to BazAR, ensure you have a BazAR profile process. If
 
 #### 2. Bridge AR onto AO (AR → wAR)
 
-If you hold AR, you can bridge it onto AO using [AOX](https://aox.arweave.dev/#/).
+If you hold AR, you can bridge it onto AO using [AOX](https://aox.arweave.net/#/).
 
 Follow these steps:
 

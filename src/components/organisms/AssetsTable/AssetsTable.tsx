@@ -1,17 +1,19 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
-import { getAssetIdGroups, getAssetsByIds } from 'api';
+import { getAssetIdGroups, getAssetsByIds, messageResult } from 'api';
 
 import * as GS from 'app/styles';
 import { Button } from 'components/atoms/Button';
 import { CurrencyLine } from 'components/atoms/CurrencyLine';
 import { IconButton } from 'components/atoms/IconButton';
+import { Notification } from 'components/atoms/Notification';
 import { Select } from 'components/atoms/Select';
 import { ASSET_SORT_OPTIONS, ASSETS, PAGINATORS, STYLING, URLS } from 'helpers/config';
-import { AssetDetailType, AssetSortType, IdGroupType, SelectOptionType } from 'helpers/types';
-import { sortOrders } from 'helpers/utils';
+import { AssetDetailType, AssetSortType, IdGroupType, NotificationType, SelectOptionType } from 'helpers/types';
+import { isFirefox, sortOrders } from 'helpers/utils';
 import * as windowUtils from 'helpers/window';
+import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 
 import { AssetData } from '../AssetData';
@@ -21,6 +23,8 @@ import { IProps } from './types';
 
 export default function AssetsTable(props: IProps) {
 	const navigate = useNavigate();
+
+	const arProvider = useArweaveProvider();
 
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
@@ -39,6 +43,9 @@ export default function AssetsTable(props: IProps) {
 	const [viewType, setViewType] = React.useState<'list' | 'grid' | null>(null);
 	const [desktop, setDesktop] = React.useState(windowUtils.checkWindowCutoff(parseInt(STYLING.cutoffs.initial)));
 	const [scrolling, setScrolling] = React.useState<boolean>(false);
+
+	const [profileLoading, setProfileLoading] = React.useState<boolean>(false);
+	const [profileResponse, setProfileResponse] = React.useState<NotificationType | null>(null);
 
 	function handleWindowResize() {
 		if (windowUtils.checkWindowCutoff(parseInt(STYLING.cutoffs.initial))) {
@@ -105,16 +112,25 @@ export default function AssetsTable(props: IProps) {
 			: null;
 	}, [assetIdGroups, assetCursor]);
 
-	function getListing(asset: AssetDetailType) {
-		if (asset && asset.orders && asset.orders.length) {
-			const sortedOrders = sortOrders(asset.orders, assetSortType.id as AssetSortType);
+	const handlePaginationAction = (type: 'next' | 'previous', useScroll: boolean) => {
+		const action = type === 'next' ? nextAction : previousAction;
+		if (action) {
+			action();
+			setTimeout(() => {
+				if (scrollRef.current) {
+					if (useScroll) setScrolling(true);
 
-			if (sortedOrders && sortedOrders.length) {
-				return <CurrencyLine amount={sortedOrders[0].price || '0'} currency={sortedOrders[0].currency} />;
-			}
+					const scrollOptions = isFirefox() ? {} : { behavior: 'smooth' };
+					scrollRef.current.scrollIntoView(scrollOptions);
+					if (useScroll) {
+						setTimeout(() => {
+							setScrolling(false);
+						}, 750);
+					}
+				}
+			}, 1);
 		}
-		return <S.NoListings>{language.noListings}</S.NoListings>;
-	}
+	};
 
 	function getAssetIndexDisplay(assetIndex: number, sectionIndex: number, sectionLength: number) {
 		let index = assetIndex + 1;
@@ -136,33 +152,23 @@ export default function AssetsTable(props: IProps) {
 		setAssetFilterListings((prev) => !prev);
 	}, []);
 
-	const handlePaginationAction = (type: 'next' | 'previous', useScroll: boolean) => {
-		const action = type === 'next' ? nextAction : previousAction;
-		if (action) {
-			action();
-			setTimeout(() => {
-				if (scrollRef.current) {
-					if (useScroll) setScrolling(true);
-					scrollRef.current.scrollIntoView({
-						behavior: 'smooth',
-						block: 'start',
-					});
-					if (useScroll) {
-						setTimeout(() => {
-							setScrolling(false);
-						}, 750);
-					}
-				}
-			}, 1);
-		}
-	};
-
 	function getActionDisabled() {
 		if (!assets || !assets.length) return true;
 		if (assetsLoading) return true;
 		if (assets && assets.length) {
 			return assets.every((asset: AssetDetailType) => (asset.orders ? asset.orders.length <= 0 : true));
 		}
+	}
+
+	function getListing(asset: AssetDetailType) {
+		if (asset && asset.orders && asset.orders.length) {
+			const sortedOrders = sortOrders(asset.orders, assetSortType.id as AssetSortType);
+
+			if (sortedOrders && sortedOrders.length) {
+				return <CurrencyLine amount={sortedOrders[0].price || '0'} currency={sortedOrders[0].currency} />;
+			}
+		}
+		return <S.NoListings>{language.noListings}</S.NoListings>;
 	}
 
 	function getSectionHeader() {
@@ -172,6 +178,52 @@ export default function AssetsTable(props: IProps) {
 				<span>{language.listing}</span>
 			</S.AssetsListSectionHeader>
 		);
+	}
+
+	async function handleProfileActionPress(e: any, asset: AssetDetailType) {
+		if (arProvider.profile && arProvider.profile.id && asset.data && asset.data.id) {
+			e.preventDefault();
+			e.stopPropagation();
+
+			setProfileLoading(true);
+			try {
+				const data: any = {
+					DisplayName: arProvider.profile.displayName,
+					UserName: arProvider.profile.username,
+					Description: arProvider.profile.bio,
+					CoverImage: arProvider.profile.banner,
+					ProfileImage: asset.data.id,
+				};
+
+				let updateResponse = await messageResult({
+					processId: arProvider.profile.id,
+					action: 'Update-Profile',
+					tags: null,
+					data: data,
+					wallet: arProvider.wallet,
+				});
+				if (updateResponse && updateResponse['Profile-Success']) {
+					arProvider.setToggleProfileUpdate(!arProvider.toggleProfileUpdate);
+					setProfileResponse({
+						message: `${language.profileUpdated}!`,
+						status: 'success',
+					});
+				} else {
+					console.log(updateResponse);
+					setProfileResponse({
+						message: language.errorUpdatingProfile,
+						status: 'warning',
+					});
+				}
+			} catch (e: any) {
+				console.error(e);
+				setProfileResponse({
+					message: language.errorUpdatingProfile,
+					status: 'warning',
+				});
+			}
+			setProfileLoading(false);
+		}
 	}
 
 	function getData() {
@@ -266,31 +318,54 @@ export default function AssetsTable(props: IProps) {
 						);
 					case 'grid':
 						return (
-							<S.AssetsGridWrapper>
-								{assets.map((asset: AssetDetailType, index: number) => {
-									const redirect = `${URLS.asset}${asset.data.id}`;
-									return (
-										<S.AssetGridElement key={index} className={'fade-in'}>
-											<Link to={redirect}>
-												<S.AssetGridDataWrapper disabled={false}>
-													<AssetData asset={asset} scrolling={scrolling} />
-												</S.AssetGridDataWrapper>
-											</Link>
-											<S.AssetGridInfoWrapper>
+							<>
+								<S.AssetsGridWrapper>
+									{assets.map((asset: AssetDetailType, index: number) => {
+										const redirect = `${URLS.asset}${asset.data.id}`;
+										return (
+											<S.AssetGridElement key={index} className={'fade-in'}>
 												<Link to={redirect}>
-													<S.Title>
-														<p>{asset.data.title}</p>
-													</S.Title>
+													<S.AssetGridDataWrapper disabled={false}>
+														<AssetData asset={asset} scrolling={scrolling} autoLoad />
+														{props.setProfileAction &&
+															asset.data.contentType &&
+															asset.data.contentType.includes('image') && (
+																<S.AssetGridDataActionWrapper>
+																	<button
+																		onClick={(e: any) => handleProfileActionPress(e, asset)}
+																		disabled={profileLoading}
+																	>
+																		<span>
+																			{profileLoading ? `${language.loading}...` : language.setProfilePicture}
+																		</span>
+																	</button>
+																</S.AssetGridDataActionWrapper>
+															)}
+													</S.AssetGridDataWrapper>
 												</Link>
-												<S.Description>
-													<p>{asset.data.description || asset.data.title}</p>
-												</S.Description>
-												<S.Listings>{getListing(asset)}</S.Listings>
-											</S.AssetGridInfoWrapper>
-										</S.AssetGridElement>
-									);
-								})}
-							</S.AssetsGridWrapper>
+												<S.AssetGridInfoWrapper>
+													<Link to={redirect}>
+														<S.Title>
+															<p>{asset.data.title}</p>
+														</S.Title>
+													</Link>
+													<S.Description>
+														<p>{asset.data.description || asset.data.title}</p>
+													</S.Description>
+													<S.Listings>{getListing(asset)}</S.Listings>
+												</S.AssetGridInfoWrapper>
+											</S.AssetGridElement>
+										);
+									})}
+								</S.AssetsGridWrapper>
+								{profileResponse && (
+									<Notification
+										message={profileResponse.message}
+										type={profileResponse.status}
+										callback={() => setProfileResponse(null)}
+									/>
+								)}
+							</>
 						);
 				}
 			} else {
@@ -306,7 +381,7 @@ export default function AssetsTable(props: IProps) {
 	return (
 		<S.Wrapper className={'fade-in'} ref={scrollRef}>
 			<S.Header>
-				<h4>{language.assets}</h4>
+				<h4>{`${language.assets}${props.ids && props.ids.length ? ` (${props.ids.length})` : ''}`}</h4>
 				<S.HeaderActions>
 					<Button
 						type={'primary'}

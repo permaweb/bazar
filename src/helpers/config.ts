@@ -1,7 +1,9 @@
+import actions from 'assets/actions.svg';
 import activity from 'assets/activity.svg';
 import ar from 'assets/ar.svg';
 import arconnect from 'assets/arconnect-wallet-logo.png';
 import arrow from 'assets/arrow.svg';
+import asset from 'assets/asset.svg';
 import audio from 'assets/audio.svg';
 import bridge from 'assets/bridge.svg';
 import buy from 'assets/buy.svg';
@@ -15,6 +17,7 @@ import disconnect from 'assets/disconnect.svg';
 import discord from 'assets/discord.svg';
 import docs from 'assets/docs.svg';
 import edit from 'assets/edit.svg';
+import github from 'assets/github.svg';
 import grid from 'assets/grid.svg';
 import html from 'assets/html.svg';
 import info from 'assets/info.svg';
@@ -42,17 +45,21 @@ import swap from 'assets/swap.svg';
 import transfer from 'assets/transfer.svg';
 import unsupported from 'assets/unsupported.svg';
 import user from 'assets/user.svg';
+import users from 'assets/users.svg';
 import video from 'assets/video.svg';
+import view from 'assets/view.svg';
 import wallet from 'assets/wallet.svg';
 import x from 'assets/x.svg';
+import zen from 'assets/zen.svg';
 
 import { SelectOptionType, WalletEnum } from './types';
 
-export const AOS = {
+export const AO = {
 	module: 'Pq2Zftrqut0hdisH_MC2pDOT6S4eQFoxGsFUzR6r350',
 	scheduler: '_GQ33BkPtZrqxA84vM8Zk-N2aO0toNNu_C-l-rawrBA',
 	ucm: 'U3TjJAZWJjlWBB4KAXSHKzuky81jtyh0zqH8rUL4Wd0',
-	defaultToken: 'xU9zFkq3X2ZQ6olwNVvr1vUWIjc3kXTWr7xKQD6dh10', // replace when testing upgraded version
+	ucmActivity: 'SNDvAf2RF-jhPmRrGUcs_b1nKlzU6vamN9zl0e9Zi4c',
+	defaultToken: 'xU9zFkq3X2ZQ6olwNVvr1vUWIjc3kXTWr7xKQD6dh10',
 	pixl: 'DM3FoZUq_yebASPhgd8pEIRIzDW6muXEhxz5-JwbZwo',
 	collectionsRegistry: 'jii0UeIWYIr4etclyywNGhZVAOwwzmrK56elffh6dzA', // replace for testing and then put back for production
 	profileRegistry: 'dWdBohXUJ22rfb8sSChdFh6oXJzbAtGe4tC6__52Zk4', // replace for testing and then put back for production
@@ -61,6 +68,29 @@ export const AOS = {
 
 export const AO_VERSIONS = {
 	profileVersion: '0.0.1',
+};
+
+export const REFORMATTED_ASSETS = {
+	[AO.pixl]: {
+		title: 'PIXL Token',
+		logo: 'czR2tJmSr7upPpReXu6IuOc2H7RuHRRAhI7DXAUlszU',
+		denomination: 6,
+	},
+	['pazXumQI-HPH7iFGfTC-4_7biSnqz_U67oFAGry5zUY']: {
+		title: 'Llama Coin',
+		logo: '9FSEgmUsrug7kTdZJABDekwTGJy7YG7KaN5khcbwcX4',
+		denomination: 12,
+	},
+	['aYrCboXVSl1AXL9gPFe3tfRxRf0ZmkOXH65mKT0HHZw']: {
+		title: 'AR.IO EXP',
+		logo: 'wfI-5PlYXL66_BqquCXm7kq-ic1keu0b2CqRjw82yrU',
+		denomination: 6,
+	},
+	['OT9qTE2467gcozb2g8R6D6N3nQS94ENcaAIJfUzHCww']: {
+		title: 'TRUNK',
+		logo: 'hqg-Em9DdYHYmMysyVi8LuTGF8IF_F7ZacgjYiSpj0k',
+		denomination: 3,
+	},
 };
 
 export const LICENSES = {
@@ -75,10 +105,12 @@ export const APP = {
 };
 
 export const ASSETS = {
+	actions,
 	activity,
 	ar,
 	arconnect,
 	arrow,
+	asset,
 	audio,
 	bridge,
 	buy,
@@ -92,6 +124,7 @@ export const ASSETS = {
 	discord,
 	docs,
 	edit,
+	github,
 	grid,
 	html,
 	info,
@@ -119,12 +152,18 @@ export const ASSETS = {
 	streak3,
 	streak4,
 	user,
+	users,
+	view,
 	video,
 	wallet,
 	x,
+	zen,
 };
 
-export const AR_WALLETS = [{ type: WalletEnum.arConnect, logo: ASSETS.arconnect }];
+export const AR_WALLETS = [
+	{ type: WalletEnum.arConnect, logo: ASSETS.arconnect },
+	{ type: WalletEnum.othent, logo: ASSETS.othent },
+];
 
 export const DOM = {
 	loader: 'loader',
@@ -209,11 +248,14 @@ export const WALLET_PERMISSIONS = ['ACCESS_ADDRESS', 'ACCESS_PUBLIC_KEY', 'SIGN_
 
 function createURLs() {
 	const base = `/`;
+	const collection = `${base}collection/`;
 	const profile = `${base}profile/`;
 	return {
 		base: base,
 		asset: `${base}asset/`,
-		collection: `${base}collection/`,
+		collection: collection,
+		collectionAssets: (id: string) => `${collection}${id}/assets/`,
+		collectionActivity: (id: string) => `${collection}${id}/activity/`,
 		collections: `${base}collections/`,
 		docs: `${base}docs/`,
 		profile: profile,
@@ -235,7 +277,7 @@ export const CURSORS = {
 export const PAGINATORS = {
 	default: 100,
 	landing: {
-		assets: 20,
+		assets: 30,
 	},
 	collection: {
 		assets: 15,
@@ -246,17 +288,24 @@ export const PAGINATORS = {
 };
 
 export const REDIRECTS = {
+	github: `https://github.com/permaweb/bazar`,
 	x: `https://x.com/OurBazAR`,
-	discord: `https://discord.gg/yjVaMbmKw4`,
-	helix: `https://helix.arweave.dev`,
-	aox: `https://aox.arweave.dev`,
-	arswap: 'https://arswap.org',
+	discord: `https://discord.gg/weavers`,
+	helix: `https://helix.arweave.net`,
+	aox: `https://aox.arweave.net`,
+	arconnect: `https://arconnect.io`,
+	warDepot: `https://wardepot.arweave.net`,
 };
 
 export const DEFAULTS = {
 	banner: 'eXCtpVbcd_jZ0dmU2PZ8focaKxBGECBQ8wMib7sIVPo',
 	thumbnail: 'lJovHqM9hwNjHV5JoY9NGWtt0WD-5D4gOqNL2VWW5jk',
 };
+
+export const ACTIVITY_SORT_OPTIONS: SelectOptionType[] = [
+	{ id: 'new-to-old', label: 'Newest to oldest' },
+	{ id: 'old-to-new', label: 'Oldest to newest' },
+];
 
 export const ASSET_SORT_OPTIONS: SelectOptionType[] = [
 	{ id: 'recently-listed', label: 'Recently listed' },
@@ -276,11 +325,4 @@ export const UPLOAD_CONFIG = {
 	batchSize: 1,
 	chunkSize: 7500000,
 	dispatchUploadSize: 100 * 1024,
-};
-
-export const REFORMATTED_ASSETS = {
-	[AOS.pixl]: {
-		title: 'PIXL Token',
-		logo: 'czR2tJmSr7upPpReXu6IuOc2H7RuHRRAhI7DXAUlszU',
-	},
 };

@@ -17,6 +17,15 @@ export const PWrapper = styled.div`
 
 export const CAction = styled.div`
 	margin: 0 15px 0 0;
+
+	button {
+		span {
+			font-family: ${(props) => props.theme.typography.family.alt1};
+			font-size: ${(props) => props.theme.typography.size.small};
+			font-weight: ${(props) => props.theme.typography.weight.bold};
+		}
+	}
+
 	@media (max-width: ${STYLING.cutoffs.initial}) {
 		display: none;
 	}
@@ -127,8 +136,19 @@ export const DBodyWrapper = styled.ul`
 			margin: 7.5px 12.5px 0 0;
 		}
 		&:hover {
-			color: ${(props) => props.theme.colors.font.light1};
-			background: ${(props) => props.theme.colors.container.alt9.background};
+			color: ${(props) => props.theme.colors.font.primary};
+			background: ${(props) => props.theme.colors.container.primary.active};
+		}
+
+		a {
+			height: 100%;
+			width: 100%;
+			display: flex;
+			align-items: center;
+			&:hover {
+				color: ${(props) => props.theme.colors.font.primary};
+				background: ${(props) => props.theme.colors.container.primary.active};
+			}
 		}
 	}
 `;
@@ -168,8 +188,52 @@ export const BalanceLine = styled.div`
 	}
 `;
 
+export const TokenLink = styled.div`
+	margin: 0 0 0 auto;
+	a {
+		background: ${(props) => props.theme.colors.button.primary.background};
+		border: 1px solid ${(props) => props.theme.colors.button.primary.border};
+		padding: 1.5px 7.5px 2.5px 7.5px;
+		border-radius: ${STYLING.dimensions.radius.alt2};
+		&:hover {
+			background: ${(props) => props.theme.colors.button.primary.active.background};
+			border: 1px solid ${(props) => props.theme.colors.button.primary.active.border};
+			span {
+				color: ${(props) => props.theme.colors.button.primary.active.color} !important;
+			}
+		}
+		&:focus {
+			background: ${(props) => props.theme.colors.button.primary.active.background};
+			border: 1px solid ${(props) => props.theme.colors.button.primary.active.border};
+			span {
+				color: ${(props) => props.theme.colors.button.primary.active.color} !important;
+			}
+		}
+		&:disabled {
+			background: ${(props) => props.theme.colors.button.primary.disabled.background};
+			border: 1px solid ${(props) => props.theme.colors.button.primary.disabled.border};
+			span {
+				color: ${(props) => props.theme.colors.button.primary.disabled.color} !important;
+			}
+			svg {
+				color: ${(props) => props.theme.colors.button.primary.disabled.color} !important;
+			}
+		}
+
+		span {
+			width: fit-content;
+			text-overflow: ellipsis;
+			overflow: hidden;
+			font-family: ${(props) => props.theme.typography.family.primary} !important;
+			font-size: ${(props) => props.theme.typography.size.xxSmall} !important;
+			font-weight: ${(props) => props.theme.typography.weight.bold} !important;
+			color: ${(props) => props.theme.colors.button.primary.color} !important;
+		}
+	}
+`;
+
 export const DFooterWrapper = styled(DBodyWrapper)`
-	padding: 10px 0 0 0;
+	padding: 10px 0;
 	border-bottom: none;
 	svg {
 		height: 17.5px;
@@ -179,5 +243,5 @@ export const DFooterWrapper = styled(DBodyWrapper)`
 `;
 
 export const PManageWrapper = styled.div`
-	max-width: 575px;
+	max-width: 550px;
 `;

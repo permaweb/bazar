@@ -92,7 +92,7 @@ An atomic asset is a unique digital item stored on Arweave. Unlike traditional N
 
 **How it works**
 
-[AO atomic assets](atomic-asset.lua) follow the token spec designed for exchangeable tokens which can be found [here](https://ao.arweave.dev/#/). The creation of an atomic asset happens with these steps:
+[AO atomic assets](atomic-asset.lua) follow the token spec designed for exchangeable tokens which can be found [here](https://ao.arweave.net/#/). The creation of an atomic asset happens with these steps:
 
 1. The [asset process handlers](https://arweave.net/y9VgAlhHThl-ZiXvzkDzwC5DEjfPegD6VAotpP3WRbs) are fetched from Arweave.
 2. Asset fields are replaced with the values submitted by the user.
@@ -107,7 +107,7 @@ See the following implementation details for how to create atomic assets.
 ```js
 
 try {
-	const processSrcFetch = await fetch(getTxEndpoint(AOS.assetSrc));
+	const processSrcFetch = await fetch(getTxEndpoint(AO.assetSrc));
 	if (processSrcFetch.ok) {
 		processSrc = await processSrcFetch.text();
 	}
@@ -124,8 +124,8 @@ if (processSrc) {
 }
 
 const processId = await aos.spawn({
-	module: AOS.module,
-	scheduler: AOS.scheduler,
+	module: AO.module,
+	scheduler: AO.scheduler,
 	signer: createDataItemSigner(globalThis.arweaveWallet),
 	tags: assetTags,
 	data: buffer,

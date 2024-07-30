@@ -13,32 +13,27 @@ export const DataWrapper = styled.div`
 	margin: 0 0 20px 0;
 	display: none;
 	@media (max-width: ${STYLING.cutoffs.desktop}) {
+		height: auto;
 		display: block;
 	}
 `;
 
 export const Header = styled.div`
-	padding: 15px 20px 20px 20px;
-`;
-
-export const ACLink = styled.div`
-	margin: 5px 0 0 0;
-	display: flex;
-	align-items: center;
-	gap: 5px;
-	a {
-		font-size: ${(props) => props.theme.typography.size.base};
-		font-family: ${(props) => props.theme.typography.family.primary};
-		font-weight: ${(props) => props.theme.typography.weight.medium};
-		text-decoration: underline;
-		&:hover {
-			color: ${(props) => props.theme.colors.font.primary.alt8};
-		}
+	h4 {
+		line-height: 1.15;
+		margin: -5px 0 10px 0;
 	}
 `;
 
+export const OwnerLinesWrapper = styled.div`
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 15px;
+	margin: 5px 0 0 0;
+`;
+
 export const OwnerLine = styled.div`
-	margin: 10px 0 0 0;
 	display: flex;
 	align-items: center;
 	span {
@@ -60,6 +55,35 @@ export const OwnerLine = styled.div`
 		&:hover {
 			color: ${(props) => props.theme.colors.font.alt1};
 		}
+	}
+`;
+
+export const ACActionWrapper = styled.div`
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 25px;
+	margin: 25px 0 0 0;
+`;
+
+export const ACAction = styled.div`
+	a,
+	button {
+		color: ${(props) => props.theme.colors.font.primary};
+		font-size: ${(props) => props.theme.typography.size.base};
+		font-family: ${(props) => props.theme.typography.family.primary};
+		font-weight: ${(props) => props.theme.typography.weight.medium};
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		&:hover {
+			color: ${(props) => props.theme.colors.font.alt1};
+		}
+	}
+	svg {
+		height: 17.5px;
+		width: 17.5px;
+		margin: 5px 0 0 0;
 	}
 `;
 
