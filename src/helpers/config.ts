@@ -61,9 +61,9 @@ export const AO = {
 	ucmActivity: 'SNDvAf2RF-jhPmRrGUcs_b1nKlzU6vamN9zl0e9Zi4c',
 	defaultToken: 'xU9zFkq3X2ZQ6olwNVvr1vUWIjc3kXTWr7xKQD6dh10',
 	pixl: 'DM3FoZUq_yebASPhgd8pEIRIzDW6muXEhxz5-JwbZwo',
-	collectionsRegistry: 'jii0UeIWYIr4etclyywNGhZVAOwwzmrK56elffh6dzA', // replace for testing and then put back for production
-	profileRegistry: 'dWdBohXUJ22rfb8sSChdFh6oXJzbAtGe4tC6__52Zk4', // replace for testing and then put back for production
-	profileSrc: 'pbrl1fkS3_SZP3RqqPIjbt3-f81L9vIpV2_OnUmxqGQ',
+	collectionsRegistry: 'q0QVp2rPXOuqIj6mbRObaC-HMweexSv1Y_Nm9_t1brc', // TODO: replace for testing and then put back for production
+	profileRegistry: 'jndJ0phxOaJJU6CHZVX7zo2Wl5vI2KQ1z4i3VnV4DrM', // TODO: replace for testing and then put back for production
+	profileSrc: '4T1gCHF7bn9_OP0L4OvoKlWdA1l0N5XvgbczWD9Wofc',
 };
 
 export const AO_VERSIONS = {

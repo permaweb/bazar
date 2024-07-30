@@ -35,7 +35,7 @@ export default function ProfileManage(props: IProps) {
 
 	const [name, setName] = React.useState<string>('');
 	const [username, setUsername] = React.useState<string>('');
-	const [bio, setBio] = React.useState<string | null>(null);
+	const [bio, setBio] = React.useState<string | null>('');
 	const [banner, setBanner] = React.useState<string | null>(null);
 	const [avatar, setAvatar] = React.useState<string | null>(null);
 
@@ -44,9 +44,9 @@ export default function ProfileManage(props: IProps) {
 
 	React.useEffect(() => {
 		if (props.profile) {
-			setUsername(props.profile.username);
-			setName(props.profile.displayName);
-			setBio(props.profile.bio);
+			setUsername(props.profile.username || '');
+			setName(props.profile.displayName || '');
+			setBio(props.profile.bio || '');
 			setBanner(props.profile.banner && checkValidAddress(props.profile.banner) ? props.profile.banner : null);
 			setAvatar(props.profile.avatar && checkValidAddress(props.profile.avatar) ? props.profile.avatar : null);
 		}
