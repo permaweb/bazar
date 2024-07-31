@@ -84,20 +84,6 @@ export type AssetDetailType = AssetType & {
 	orders?: AssetOrderType[];
 };
 
-// export type ProfileType = {
-// 	txId: string;
-// 	displayName: string | null;
-// 	handle: string | null;
-// 	avatar: string | null;
-// 	walletAddress: string;
-// 	profileIndex: string | null;
-// 	banner: string | null;
-// };
-
-// export type FullProfileType = ProfileType & {
-// 	bio: string;
-// };
-
 export type AOProfileType = {
 	id: string;
 	walletAddress: string;
@@ -260,3 +246,5 @@ export type NotificationType = {
 };
 
 export type AssetViewType = 'trading' | 'reading';
+
+export type StreakType = { address: string; days: number; lastHeight: number; profile: RegistryProfileType | null };

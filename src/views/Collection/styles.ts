@@ -50,7 +50,9 @@ export const InfoWrapper = styled.div`
 export const Thumbnail = styled.div`
 	height: 85px;
 	width: 85px;
-	background: ${(props) => props.theme.colors.container.primary.background};
+	/* background: ${(props) => props.theme.colors.container.primary.background}; */
+	/* box-shadow: 0 1px 2px 0.5px ${(props) => props.theme.colors.font.dark1}; */
+	border: none;
 	border-radius: ${STYLING.dimensions.radius.primary};
 	margin: 0 20px 0 0;
 	overflow: hidden;
