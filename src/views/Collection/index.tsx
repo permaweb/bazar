@@ -69,6 +69,7 @@ export default function Collection() {
 							bio: null,
 							avatar: null,
 							banner: null,
+							version: null,
 						},
 					}));
 				}
@@ -118,7 +119,7 @@ export default function Collection() {
 					>
 						<S.OverlayWrapper />
 						<S.InfoWrapper>
-							<S.Thumbnail className={'border-wrapper-alt1'}>
+							<S.Thumbnail>
 								<img src={getTxEndpoint(collection.thumbnail || DEFAULTS.thumbnail)} alt={'Thumbnail'} />
 							</S.Thumbnail>
 							<S.InfoBody>

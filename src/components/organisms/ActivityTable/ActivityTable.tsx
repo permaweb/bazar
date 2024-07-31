@@ -33,8 +33,8 @@ export default function ActivityTable(props: IProps) {
 	const [activity, setActivity] = React.useState<any | null>(null);
 	const [activityResponse, setActivityResponse] = React.useState<any | null>(null);
 	const [activityGroups, setActivityGroups] = React.useState<any | null>(null);
-	const [activityCursor, setActivityCursor] = React.useState<string>('0');
 	const [activityGroup, setActivityGroup] = React.useState<any>(null);
+	const [activityCursor, setActivityCursor] = React.useState<string>('0');
 	const [activitySortType, setActivitySortType] = React.useState<SelectOptionType | null>(ACTIVITY_SORT_OPTIONS[0]);
 
 	const [updating, setUpdating] = React.useState<boolean>(false);
