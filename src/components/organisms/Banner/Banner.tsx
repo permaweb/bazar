@@ -38,69 +38,63 @@ function creditNoticeForwarding() {
 	const creditNoticeForwarding = `Handlers.add('Credit-Notice', Handlers.utils.hasMatchingTag('Action', 'Credit-Notice'),
 	function(msg)
 		if not msg.Tags.Sender or not msg.Tags.Quantity then
-			ao.send({
-				Target = msg.From,
-				Action = 'Input-Error',
-				Tags = {
-					Status = 'Error',
-					Message =
-					'Invalid arguments, required { Sender, Quantity }'
-				}
-			})
-			return
-		end
+            ao.send({
+                Target = msg.From,
+                Action = 'Input-Error',
+                Tags = {
+                    Status = 'Error',
+                    Message =
+                    'Invalid arguments, required { Sender, Quantity }'
+                }
+            })
+            return
+        end
 
-		if not check_valid_address(msg.Tags.Sender) then
-			ao.send({ Target = msg.From, Action = 'Validation-Error', Tags = { Status = 'Error', Message = 'Sender must be a valid address' } })
-			return
-		end
-
-		local asset_index = -1
-		for i, asset in ipairs(Assets) do
-			if asset.Id == msg.From then
-				asset_index = i
-				break
-			end
-		end
+        local asset_index = -1
+        for i, asset in ipairs(Assets) do
+            if asset.Id == msg.From then
+                asset_index = i
+                break
+            end
+        end
 
 		if asset_index > -1 then
-			local updated_quantity = tonumber(Assets[asset_index].Quantity) + tonumber(msg.Tags.Quantity)
+            local updated_quantity = tonumber(Assets[asset_index].Quantity) + tonumber(msg.Tags.Quantity)
 
-			Assets[asset_index].Quantity = tostring(updated_quantity)
-		else
-			table.insert(Assets, { Id = msg.From, Quantity = msg.Tags.Quantity })
+            Assets[asset_index].Quantity = tostring(updated_quantity)
+        else
+            table.insert(Assets, { Id = msg.From, Quantity = msg.Tags.Quantity })
 
-			ao.send({
-				Target = Owner,
-				Action = 'Transfer-Success',
-				Tags = {
-					Status = 'Success',
-					Message = 'Balance transferred'
-				}
-			})
-		end
+            ao.send({
+                Target = Owner,
+                Action = 'Transfer-Success',
+                Tags = {
+                    Status = 'Success',
+                    Message = 'Balance transferred'
+                }
+            })
+        end
 
-		local walletTransferTokens = { 'xU9zFkq3X2ZQ6olwNVvr1vUWIjc3kXTWr7xKQD6dh10' }
-		print(walletTransferTokens)
-		print(msg.From)
-		local runWalletTransfer = false
-		for _, value in pairs(walletTransferTokens) do
-			if value == msg.From then
-				runWalletTransfer = true
-				break
+		if msg.Tags.Sender ~= Owner then
+			local walletTransferTokens = { 'xU9zFkq3X2ZQ6olwNVvr1vUWIjc3kXTWr7xKQD6dh10' }
+			local runWalletTransfer = false
+			for _, value in pairs(walletTransferTokens) do
+				if value == msg.From then
+					runWalletTransfer = true
+					break
+				end
 			end
-		end
-		print(runWalletTransfer)
 
-		if runWalletTransfer then
-			ao.send({
-				Target = msg.From,
-				Action = 'Transfer',
-				Tags = {
-					Recipient = Owner,
-					Quantity = msg.Tags.Quantity
-				}
-			})
+			if runWalletTransfer then
+				ao.send({
+					Target = msg.From,
+					Action = 'Transfer',
+					Tags = {
+						Recipient = Owner,
+						Quantity = msg.Tags.Quantity
+					}
+				})
+			end
 		end
 	end)
 	`;
@@ -158,8 +152,6 @@ export default function Banner() {
 		})();
 	}, [arProvider.walletAddress, arProvider.profile]);
 
-	console.log(arProvider.tokenBalances);
-
 	async function handleUpdate() {
 		if (arProvider.wallet && arProvider.profile && arProvider.profile.id) {
 			setLoading(true);
@@ -173,17 +165,26 @@ export default function Banner() {
 				// });
 
 				// Credit notice forwarding
-				const evalMessage = await message({
+				const evalVersionMessage = await message({
+					process: arProvider.profile.id,
+					signer: createDataItemSigner(arProvider.wallet),
+					tags: [{ name: 'Action', value: 'Eval' }],
+					data: `Profile.Version = '0.0.1'`,
+				});
+
+				console.log(evalVersionMessage);
+
+				const evalUpdateMessage = await message({
 					process: arProvider.profile.id,
 					signer: createDataItemSigner(arProvider.wallet),
 					tags: [{ name: 'Action', value: 'Eval' }],
 					data: creditNoticeForwarding(),
 				});
 
-				console.log(evalMessage);
+				console.log(evalUpdateMessage);
 
 				const evalResult = await result({
-					message: evalMessage,
+					message: evalUpdateMessage,
 					process: arProvider.profile.id,
 				});
 
@@ -211,12 +212,14 @@ export default function Banner() {
 		}
 	}
 
-	return !updateApplied ? (
+	return (
 		<>
-			<S.Wrapper>
-				{/* <button onClick={() => setShowInfo(true)}>Welcome to AO BazAR!</button> */}
-				{!updateApplied && <button onClick={() => setShowUpdate(true)}>Update your profile</button>}
-			</S.Wrapper>
+			{!updateApplied && (
+				<S.Wrapper>
+					{/* <button onClick={() => setShowInfo(true)}>Welcome to AO BazAR!</button> */}
+					{!updateApplied && <button onClick={() => setShowUpdate(true)}>Update your profile</button>}
+				</S.Wrapper>
+			)}
 			{!updateApplied && showUpdate && (
 				<Modal header={'Update your profile process!'} handleClose={() => setShowUpdate(false)}>
 					<S.MWrapper className={'modal-wrapper'}>
@@ -288,5 +291,5 @@ export default function Banner() {
 				/>
 			)}
 		</>
-	) : null;
+	);
 }
