@@ -31,7 +31,8 @@ export const Action = styled.button`
 `;
 
 export const SDHeader = styled.div`
-	margin: 0 0 10px 0;
+	max-width: 300px;
+	margin: 0 auto 10px auto;
 	padding: 20px 0 0 0;
 	p {
 		color: ${(props) => props.theme.colors.font.primary};
