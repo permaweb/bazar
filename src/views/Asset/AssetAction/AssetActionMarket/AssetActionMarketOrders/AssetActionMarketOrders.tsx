@@ -509,7 +509,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 							: unitPrice;
 
 					calculatedUnitPrice = BigInt(
-						Number(updatedUnitPrice <= MIN_PRICE ? 0 : updatedUnitPrice) * transferDenomination
+						Math.floor(Number(updatedUnitPrice <= MIN_PRICE ? 0 : updatedUnitPrice) * transferDenomination)
 					);
 				}
 				try {
