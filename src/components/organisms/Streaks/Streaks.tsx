@@ -21,7 +21,7 @@ import { RootState } from 'store';
 import * as S from './styles';
 import { IProps } from './types';
 
-const GROUP_COUNT = 500;
+const GROUP_COUNT = 250;
 
 export default function Streaks(props: IProps) {
 	const navigate = useNavigate();
@@ -38,6 +38,7 @@ export default function Streaks(props: IProps) {
 	const [streakGroups, setStreakGroups] = React.useState<StreakType[][]>([]);
 	const [streaks, setStreaks] = React.useState<StreakType[] | null>(null);
 	const [streakCursor, setStreakCursor] = React.useState<number>(0);
+	const [streakHolderCount, setStreakHolderCount] = React.useState<number | null>(null);
 	const [updating, setUpdating] = React.useState<boolean>(false);
 
 	const [count, setCount] = React.useState<number>(0);
@@ -66,6 +67,8 @@ export default function Streaks(props: IProps) {
 							profile: null,
 						};
 					});
+
+				setStreakHolderCount(sortedStreaks.length);
 
 				let groups = [];
 				for (let i = 0, j = 0; i < sortedStreaks.length; i += GROUP_COUNT, j++) {
@@ -347,7 +350,7 @@ export default function Streaks(props: IProps) {
 		return (
 			<S.StreaksPanelWrapper ref={streaksWrapperRef}>
 				<S.StreaksPanelHeader>
-					<p>{`${streaksReducer ? Object.keys(streaksReducer).length : '-'} ${language.streakHolders}`}</p>
+					<p>{`${streakHolderCount ? streakHolderCount : '-'} ${language.streakHolders}`}</p>
 				</S.StreaksPanelHeader>
 				<S.StreaksWrapper>
 					{streaks.map((streak: StreakType, index: number) => {
