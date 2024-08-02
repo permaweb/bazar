@@ -218,11 +218,11 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 				switch (props.type) {
 					case 'buy':
-						transferQuantity = ((getTotalOrderAmount() as any) + BigInt(1)).toString();
+						transferQuantity = getTotalOrderAmount().toString();
 						if (denomination) {
 							transferQuantity = (BigInt(transferQuantity) / BigInt(denomination)).toString();
 						}
-						console.log(transferQuantity);
+						transferQuantity = (BigInt(transferQuantity) + BigInt(1)).toString();
 						break;
 					case 'sell':
 					case 'transfer':
