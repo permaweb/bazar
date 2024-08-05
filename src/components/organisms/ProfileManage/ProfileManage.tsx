@@ -21,7 +21,7 @@ import * as S from './styles';
 import { IProps } from './types';
 
 const MAX_BIO_LENGTH = 500;
-export const MAX_IMAGE_SIZE = 100000;
+const MAX_IMAGE_SIZE = 100000;
 const ALLOWED_BANNER_TYPES = 'image/png, image/jpeg, image/gif';
 const ALLOWED_AVATAR_TYPES = 'image/png, image/jpeg, image/gif';
 

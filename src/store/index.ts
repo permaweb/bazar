@@ -12,7 +12,7 @@ declare const window: any;
 const persistConfig = {
 	key: 'root',
 	storage,
-	blacklist: ['ucmReducer'],
+	blacklist: ['ucmReducer', 'streaksReducer'],
 };
 
 const rootReducer = combineReducers({
