@@ -55,12 +55,12 @@ import zen from 'assets/zen.svg';
 import { SelectOptionType, WalletEnum } from './types';
 
 export const AO = {
-	module: 'yTyqRSfbD6BuiDra9jDNjq8TLe7rhneDcmQ64CkmkdU',
-	scheduler: '_GQ33BkPtZrqxA84vM8Zk-N2aO0toNNu_C-l-rawrBA',
-	defaultToken: 'xU9zFkq3X2ZQ6olwNVvr1vUWIjc3kXTWr7xKQD6dh10',
-	ucm: 'U3TjJAZWJjlWBB4KAXSHKzuky81jtyh0zqH8rUL4Wd0',
-	ucmActivity: 'SNDvAf2RF-jhPmRrGUcs_b1nKlzU6vamN9zl0e9Zi4c',
-	pixl: 'DM3FoZUq_yebASPhgd8pEIRIzDW6muXEhxz5-JwbZwo',
+	module: process.env.MODULE,
+	scheduler: process.env.SCHEDULER,
+	defaultToken: process.env.DEFAULT_TOKEN,
+	ucm: process.env.UCM,
+	ucmActivity: process.env.UCM_ACTIVITY,
+	pixl: process.env.PIXL,
 	collectionsRegistry: process.env.COLLECTIONS_REGISTRY,
 	profileRegistry: process.env.PROFILE_REGISTRY,
 	profileSrc: process.env.PROFILE_SRC,
