@@ -61,9 +61,9 @@ export const AO = {
 	ucmActivity: 'SNDvAf2RF-jhPmRrGUcs_b1nKlzU6vamN9zl0e9Zi4c',
 	defaultToken: 'xU9zFkq3X2ZQ6olwNVvr1vUWIjc3kXTWr7xKQD6dh10',
 	pixl: 'DM3FoZUq_yebASPhgd8pEIRIzDW6muXEhxz5-JwbZwo',
-	collectionsRegistry: 'jii0UeIWYIr4etclyywNGhZVAOwwzmrK56elffh6dzA',
-	profileRegistry: 'iySPL7MpiZCvei0DIFzjNOudjbCnHHXf9rPgbXH-T90',
-	profileSrc: 'vLNO727uAa3yFu-LlWySyy96oWnJubGzoK6yM5u5smk ',
+	collectionsRegistry: 'q0QVp2rPXOuqIj6mbRObaC-HMweexSv1Y_Nm9_t1brc',
+	profileRegistry: 'jndJ0phxOaJJU6CHZVX7zo2Wl5vI2KQ1z4i3VnV4DrM',
+	profileSrc: '9Tpz5_ZT4RRkF-6JUTdaaTMg0ARfkNuuM5zahXyCqZ4',
 };
 
 export const REFORMATTED_ASSETS = {
