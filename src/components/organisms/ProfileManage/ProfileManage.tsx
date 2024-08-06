@@ -21,6 +21,7 @@ import * as S from './styles';
 import { IProps } from './types';
 
 const MAX_BIO_LENGTH = 500;
+const MAX_IMAGE_SIZE = 100000;
 const ALLOWED_BANNER_TYPES = 'image/png, image/jpeg, image/gif';
 const ALLOWED_AVATAR_TYPES = 'image/png, image/jpeg, image/gif';
 
@@ -271,6 +272,18 @@ export default function ProfileManage(props: IProps) {
 		}
 	}
 
+	function getImageSizeMessage() {
+		if (!avatar && !banner) return null;
+		if (checkValidAddress(avatar) && checkValidAddress(banner)) return null;
+
+		const avatarSize = avatar ? (avatar.length * 3) / 4 : 0;
+		const bannerSize = banner ? (banner.length * 3) / 4 : 0;
+
+		if (avatarSize > MAX_IMAGE_SIZE || bannerSize > MAX_IMAGE_SIZE)
+			return <span>One or more images exceeds max size of 100KB</span>;
+		return null;
+	}
+
 	function getInvalidBio() {
 		if (bio && bio.length > MAX_BIO_LENGTH) {
 			return {
@@ -380,9 +393,12 @@ export default function ProfileManage(props: IProps) {
 										disabled={loading || !banner}
 									/>
 								</S.PActions>
+								<S.PInfoMessage>
+									<span>Images have a max size of 100KB</span>
+								</S.PInfoMessage>
 							</S.PWrapper>
 							<S.Form>
-								<S.TForm className={'border-wrapper-alt2'}>
+								<S.TForm>
 									<FormField
 										label={language.name}
 										value={name}
@@ -429,10 +445,11 @@ export default function ProfileManage(props: IProps) {
 									type={'alt1'}
 									label={language.save}
 									handlePress={handleSubmit}
-									disabled={!username || !name || loading}
+									disabled={!username || !name || loading || getImageSizeMessage() !== null}
 									loading={loading}
 								/>
 							</S.SAction>
+							<S.MInfoWrapper>{getImageSizeMessage()}</S.MInfoWrapper>
 						</S.Body>
 					</S.Wrapper>
 					{profileResponse && (

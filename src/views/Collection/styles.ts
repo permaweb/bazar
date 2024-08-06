@@ -20,6 +20,7 @@ export const CardWrapper = styled.div<{ backgroundImage: string }>`
 	background-position: center;
 	overflow: hidden;
 	border-radius: ${STYLING.dimensions.radius.primary};
+	margin: 0 0 40px 0;
 	@media (max-width: ${STYLING.cutoffs.initial}) {
 		height: auto;
 	}
@@ -49,7 +50,9 @@ export const InfoWrapper = styled.div`
 export const Thumbnail = styled.div`
 	height: 85px;
 	width: 85px;
-	background: ${(props) => props.theme.colors.container.primary.background};
+	/* background: ${(props) => props.theme.colors.container.primary.background}; */
+	/* box-shadow: 0 1px 2px 0.5px ${(props) => props.theme.colors.font.dark1}; */
+	border: none;
 	border-radius: ${STYLING.dimensions.radius.primary};
 	margin: 0 20px 0 0;
 	overflow: hidden;
@@ -213,5 +216,7 @@ export const DescriptionText = styled.p`
 `;
 
 export const AssetsWrapper = styled.div`
-	margin: 60px 0 0 0;
+	h4 {
+		font-size: ${(props) => props.theme.typography.size.xLg};
+	}
 `;

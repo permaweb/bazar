@@ -137,6 +137,23 @@ module.exports = {
 			'global.setImmediate': [require.resolve('timers'), 'setImmediate'],
 		}),
 		new webpack.NoEmitOnErrorsPlugin(),
+		new webpack.DefinePlugin({
+			'process.env.PROFILE_REGISTRY': JSON.stringify(
+				process.env.NODE_ENV === 'production'
+					? 'SNy4m-DrqxWl01YqGM4sxI8qCni-58re8uuJLvZPypY'
+					: 'iySPL7MpiZCvei0DIFzjNOudjbCnHHXf9rPgbXH-T90'
+			),
+			'process.env.PROFILE_SRC': JSON.stringify(
+				process.env.NODE_ENV === 'production'
+					? '_R2XYWDPUXVvQrQKFaQRvDTDcDwnQNbqlTd_qvCRSpQ'
+					: 'vLNO727uAa3yFu-LlWySyy96oWnJubGzoK6yM5u5smk'
+			),
+			'process.env.COLLECTIONS_REGISTRY': JSON.stringify(
+				process.env.NODE_ENV === 'production'
+					? 'TFWDmf8a3_nw43GCm_CuYlYoylHAjCcFGbgHfDaGcsg'
+					: 'jii0UeIWYIr4etclyywNGhZVAOwwzmrK56elffh6dzA'
+			),
+		}),
 	],
 	resolve: {
 		extensions: ['.tsx', '.ts', '.jsx', '.js'],

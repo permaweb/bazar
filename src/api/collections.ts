@@ -19,14 +19,14 @@ export async function getCollections(creator?: string): Promise<CollectionType[]
 			return response.Collections.map((collection: any) => {
 				return {
 					id: collection.Id,
-					title: collection.Name,
+					title: collection.Name.replace(/\[|\]/g, ''),
 					description: collection.Description,
 					creator: collection.Creator,
 					dateCreated: collection.DateCreated,
 					banner: collection.Banner,
 					thumbnail: collection.Thumbnail,
 				};
-			});
+			}).sort((a: any, b: any) => b.dateCreated - a.dateCreated);
 		}
 		return null;
 	} catch (e: any) {

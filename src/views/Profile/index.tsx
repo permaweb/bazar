@@ -5,12 +5,13 @@ import { getProfileById } from 'api';
 
 import { Loader } from 'components/atoms/Loader';
 import { URLTabs } from 'components/molecules/URLTabs';
-import { URLS } from 'helpers/config';
+import { ASSETS, URLS } from 'helpers/config';
 import { ProfileHeaderType } from 'helpers/types';
 import { checkValidAddress } from 'helpers/utils';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 
+import { ProfileActivity } from './ProfileActivity';
 import { ProfileAssets } from './ProfileAssets';
 import { ProfileCollections } from './ProfileCollections';
 import { ProfileHeader } from './ProfileHeader';
@@ -60,32 +61,25 @@ export default function Profile() {
 		() => [
 			{
 				label: language.assets,
-				icon: null,
+				icon: ASSETS.asset,
 				disabled: false,
 				url: URLS.profileAssets(address),
 				view: () => <ProfileAssets address={address} />,
 			},
 			{
 				label: language.collections,
-				icon: null,
+				icon: ASSETS.collection,
 				disabled: false,
 				url: URLS.profileCollections(address),
 				view: () => <ProfileCollections address={address} />,
 			},
-			// {
-			// 	label: language.listings,
-			// 	icon: null,
-			// 	disabled: false,
-			// 	url: URLS.profileListings(address),
-			// 	view: () => <ProfileListings address={address} />
-			// },
-			// {
-			// 	label: language.activity,
-			// 	icon: null,
-			// 	disabled: false,
-			// 	url: URLS.profileActivity(address),
-			// 	view: () => <ProfileActivity address={address} />
-			// },
+			{
+				label: language.activity,
+				icon: ASSETS.activity,
+				disabled: false,
+				url: URLS.profileActivity(address),
+				view: () => <ProfileActivity address={address} />,
+			},
 		],
 		[address]
 	);

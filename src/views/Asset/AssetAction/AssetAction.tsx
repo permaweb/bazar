@@ -43,15 +43,14 @@ export default function AssetAction(props: IProps) {
 		activity: language.activity,
 	};
 
-	// TODO
 	const ACTION_TABS = [
-		// {
-		// 	label: ACTION_TAB_OPTIONS.activity,
-		// 	icon: ASSETS.activity,
-		// },
 		{
 			label: ACTION_TAB_OPTIONS.market,
 			icon: ASSETS.market,
+		},
+		{
+			label: ACTION_TAB_OPTIONS.activity,
+			icon: ASSETS.activity,
 		},
 		{
 			label: ACTION_TAB_OPTIONS.owners,
@@ -84,19 +83,22 @@ export default function AssetAction(props: IProps) {
 
 	React.useEffect(() => {
 		(async function () {
-			const associatedAddresses = [];
-			if (props.asset && props.asset.state && props.asset.state.balances) {
-				associatedAddresses.push(...Object.keys(props.asset.state.balances).map((address: string) => address));
-			}
-			if (props.asset && props.asset.orders) {
-				associatedAddresses.push(...props.asset.orders.map((order: any) => order.creator));
-			}
-			if (associatedAddresses.length) {
-				const uniqueAddresses = [...new Set(associatedAddresses)];
-				try {
-					setAssociatedProfiles(await getRegistryProfiles({ profileIds: uniqueAddresses }));
-				} catch (e: any) {
-					console.error(e);
+			if (!associatedProfiles) {
+				const associatedAddresses = [];
+				if (props.asset && props.asset.state && props.asset.state.balances) {
+					associatedAddresses.push(...Object.keys(props.asset.state.balances).map((address: string) => address));
+				}
+				if (props.asset && props.asset.orders) {
+					associatedAddresses.push(...props.asset.orders.map((order: any) => order.creator));
+				}
+				if (associatedAddresses.length) {
+					const uniqueAddresses = [...new Set(associatedAddresses)];
+					try {
+						const profiles = await getRegistryProfiles({ profileIds: uniqueAddresses });
+						setAssociatedProfiles(profiles);
+					} catch (e: any) {
+						console.error(e);
+					}
 				}
 			}
 		})();
@@ -105,10 +107,14 @@ export default function AssetAction(props: IProps) {
 	React.useEffect(() => {
 		(async function () {
 			if (props.asset && props.asset.state) {
-				const owners = getOwners(props.asset, associatedProfiles)
-					.filter((owner: OwnerType) => owner.address !== AO.ucm)
-					.filter((owner: OwnerType) => owner.ownerPercentage > 0);
-				setCurrentOwners(owners);
+				let owners = getOwners(props.asset, associatedProfiles);
+
+				if (owners) {
+					owners = owners
+						.filter((owner: OwnerType) => owner.address !== AO.ucm)
+						.filter((owner: OwnerType) => owner.ownerPercentage > 0);
+					setCurrentOwners(owners);
+				}
 			}
 			if (props.asset && props.asset.orders) {
 				const sortedOrders = sortOrders(props.asset.orders, 'low-to-high');
@@ -288,7 +294,7 @@ export default function AssetAction(props: IProps) {
 				</>
 			);
 		} else return null;
-	}, [currentListings, showCurrentListingsModal, mobile]);
+	}, [currentListings, showCurrentListingsModal, mobile, arProvider.profile]);
 
 	function getCurrentTab() {
 		switch (currentTab) {

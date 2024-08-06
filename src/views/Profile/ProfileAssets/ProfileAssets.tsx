@@ -21,7 +21,13 @@ const ProfileAssets = React.memo((props: IProps) => {
 
 	return props.address ? (
 		<S.Wrapper>
-			<AssetsTable ids={assetIds} loadingIds={!assetIds} type={'grid'} pageCount={PAGINATORS.profile.assets} />
+			<AssetsTable
+				ids={assetIds}
+				loadingIds={!assetIds}
+				type={'grid'}
+				pageCount={PAGINATORS.profile.assets}
+				setProfileAction={true}
+			/>
 		</S.Wrapper>
 	) : null;
 });

@@ -75,6 +75,7 @@ export type AssetType = {
 		implementation: string | null;
 		collectionId?: string | null;
 		collectionName?: string | null;
+		contentType?: string | null;
 	};
 };
 
@@ -82,20 +83,6 @@ export type AssetDetailType = AssetType & {
 	state?: AssetStateType;
 	orders?: AssetOrderType[];
 };
-
-// export type ProfileType = {
-// 	txId: string;
-// 	displayName: string | null;
-// 	handle: string | null;
-// 	avatar: string | null;
-// 	walletAddress: string;
-// 	profileIndex: string | null;
-// 	banner: string | null;
-// };
-
-// export type FullProfileType = ProfileType & {
-// 	bio: string;
-// };
 
 export type AOProfileType = {
 	id: string;
@@ -105,6 +92,7 @@ export type AOProfileType = {
 	bio: string | null;
 	avatar: string | null;
 	banner: string | null;
+	version: string | null;
 };
 
 export type ProfileHeaderType = AOProfileType;
@@ -258,3 +246,5 @@ export type NotificationType = {
 };
 
 export type AssetViewType = 'trading' | 'reading';
+
+export type StreakType = { address: string; days: number; lastHeight: number; profile: RegistryProfileType | null };

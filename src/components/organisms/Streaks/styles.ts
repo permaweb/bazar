@@ -9,7 +9,7 @@ export const Wrapper = styled.div`
 
 export const Action = styled.button`
 	height: 35px;
-	padding: 0 15px 0 12.5px;
+	padding: 0 15px;
 	display: flex;
 	align-items: center;
 	gap: 10px;
@@ -31,7 +31,8 @@ export const Action = styled.button`
 `;
 
 export const SDHeader = styled.div`
-	margin: 0 0 10px 0;
+	max-width: 300px;
+	margin: 0 auto 10px auto;
 	padding: 20px 0 0 0;
 	p {
 		color: ${(props) => props.theme.colors.font.primary};
@@ -206,8 +207,21 @@ export const StreaksPanelWrapper = styled.div`
 	padding: 0 20px;
 `;
 
+export const StreaksPanelHeader = styled.div`
+	padding: 0 0 10px 0;
+	border-bottom: 1px solid ${(props) => props.theme.colors.border.alt4};
+	p {
+		color: ${(props) => props.theme.colors.font.alt1};
+		font-size: ${(props) => props.theme.typography.size.xSmall};
+		font-weight: ${(props) => props.theme.typography.weight.bold};
+		text-align: left;
+		text-transform: uppercase;
+		display: block;
+	}
+`;
+
 export const StreaksWrapper = styled.div`
-	margin: 20px 0 0 0;
+	margin: 10px 0 0 0;
 	> * {
 		&:not(:last-child) {
 			margin: 0 0 10px 0;
@@ -267,13 +281,18 @@ export const StreakCount = styled.div`
 	}
 `;
 
-export const ReturnWrapper = styled.div`
+export const PanelActionWrapper = styled.div`
 	width: 100%;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 20px;
+	justify-content: space-between;
 	margin: 20px 0 0 0;
 	padding: 0 0 20px 0;
 	button {
+		flex: 1;
 		span {
-			font-size: ${(props) => props.theme.typography.size.lg} !important;
+			font-size: ${(props) => props.theme.typography.size.base} !important;
 			font-family: ${(props) => props.theme.typography.family.alt1} !important;
 		}
 		svg {

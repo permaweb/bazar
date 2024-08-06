@@ -136,8 +136,19 @@ export const DBodyWrapper = styled.ul`
 			margin: 7.5px 12.5px 0 0;
 		}
 		&:hover {
-			color: ${(props) => props.theme.colors.font.light1};
-			background: ${(props) => props.theme.colors.container.alt9.background};
+			color: ${(props) => props.theme.colors.font.primary};
+			background: ${(props) => props.theme.colors.container.primary.active};
+		}
+
+		a {
+			height: 100%;
+			width: 100%;
+			display: flex;
+			align-items: center;
+			&:hover {
+				color: ${(props) => props.theme.colors.font.primary};
+				background: ${(props) => props.theme.colors.container.primary.active};
+			}
 		}
 	}
 `;
@@ -182,7 +193,7 @@ export const TokenLink = styled.div`
 	a {
 		background: ${(props) => props.theme.colors.button.primary.background};
 		border: 1px solid ${(props) => props.theme.colors.button.primary.border};
-		padding: 1.5px 7.5px 2.5px 7.5px;
+		padding: 0.5px 7.5px 2.5px 7.5px;
 		border-radius: ${STYLING.dimensions.radius.alt2};
 		&:hover {
 			background: ${(props) => props.theme.colors.button.primary.active.background};

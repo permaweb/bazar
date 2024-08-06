@@ -30,29 +30,29 @@ export const Dropdown = styled.button<{ active: boolean }>`
 	align-items: center;
 	justify-content: space-between;
 	background: ${(props) =>
-		props.active ? props.theme.colors.button.primary.active.background : props.theme.colors.button.primary.background};
-	border: 1px solid ${(props) => (props.active ? props.theme.colors.border.primary : props.theme.colors.border.primary)};
+		props.active ? props.theme.colors.button.primary.background : props.theme.colors.button.primary.background};
+	border: 1px solid ${(props) => (props.active ? props.theme.colors.border.alt2 : props.theme.colors.border.primary)};
 	border-radius: ${STYLING.dimensions.radius.primary};
 	transition: all 100ms;
 	&:hover {
-		background: ${(props) => props.theme.colors.button.primary.active.background};
-		border: 1px solid ${(props) => props.theme.colors.button.primary.active.border};
-		span {
+		background: ${(props) => props.theme.colors.button.primary.background};
+		border: 1px solid ${(props) => props.theme.colors.border.alt2};
+		/* span {
 			color: ${(props) => props.theme.colors.font.light1} !important;
 		}
 		svg {
 			color: ${(props) => props.theme.colors.font.light1} !important;
-		}
+		} */
 	}
 	&:focus {
-		background: ${(props) => props.theme.colors.button.primary.active.background};
-		border: 1px solid ${(props) => props.theme.colors.button.primary.active.border};
-		span {
+		background: ${(props) => props.theme.colors.button.primary.background};
+		border: 1px solid ${(props) => props.theme.colors.border.alt2};
+		/* span {
 			color: ${(props) => props.theme.colors.font.light1} !important;
 		}
 		svg {
 			color: ${(props) => props.theme.colors.font.light1} !important;
-		}
+		} */
 	}
 	&:disabled {
 		background: ${(props) => props.theme.colors.button.primary.disabled.background};
@@ -72,7 +72,7 @@ export const Dropdown = styled.button<{ active: boolean }>`
 		font-size: ${(props) => props.theme.typography.size.xSmall} !important;
 		font-weight: ${(props) => props.theme.typography.weight.bold} !important;
 		color: ${(props) =>
-			props.active ? props.theme.colors.font.light1 : props.theme.colors.button.primary.color} !important;
+			props.active ? props.theme.colors.button.primary.color : props.theme.colors.button.primary.color} !important;
 	}
 
 	svg {
@@ -81,7 +81,7 @@ export const Dropdown = styled.button<{ active: boolean }>`
 		margin: 5px 0 0 0;
 		transform: rotate(90deg);
 		color: ${(props) =>
-			props.active ? props.theme.colors.font.light1 : props.theme.colors.button.primary.color} !important;
+			props.active ? props.theme.colors.button.primary.color : props.theme.colors.button.primary.color} !important;
 	}
 `;
 
@@ -91,6 +91,7 @@ export const Options = styled.ul`
 	top: 40px;
 	z-index: 2;
 	padding: 10px 0;
+	border-radius: ${STYLING.dimensions.radius.primary};
 `;
 
 export const Option = styled.li<{ active: boolean }>`
@@ -100,16 +101,16 @@ export const Option = styled.li<{ active: boolean }>`
 	align-items: center;
 	cursor: ${(props) => (props.active ? 'default' : 'pointer')};
 	pointer-events: ${(props) => (props.active ? 'none' : 'all')};
-	color: ${(props) => (props.active ? props.theme.colors.font.light1 : props.theme.colors.font.primary)};
+	color: ${(props) => (props.active ? props.theme.colors.font.primary : props.theme.colors.font.primary)};
 	font-size: ${(props) => props.theme.typography.size.xSmall};
 	font-weight: ${(props) => props.theme.typography.weight.bold};
 	background: ${(props) =>
-		props.active ? props.theme.colors.container.alt9.background : props.theme.colors.container.primary.active};
+		props.active ? props.theme.colors.container.primary.active : props.theme.colors.container.primary.background};
 	border: 1px solid transparent;
 	padding: 0 15px;
 	transition: all 100ms;
 	&:hover {
-		color: ${(props) => props.theme.colors.font.light1};
-		background: ${(props) => props.theme.colors.container.alt9.background};
+		color: ${(props) => props.theme.colors.font.primary};
+		background: ${(props) => props.theme.colors.container.primary.active};
 	}
 `;
