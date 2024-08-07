@@ -17,9 +17,7 @@ jobs:
       - run: npm run deploy:main
         env:
           DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
-
   publish-staging:
-    if: github.ref == 'refs/heads/staging'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
