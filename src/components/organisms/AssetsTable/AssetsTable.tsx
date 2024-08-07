@@ -1,5 +1,5 @@
 import React from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 
 import { getAssetIdGroups, getAssetsByIds, messageResult } from 'api';
 
@@ -22,6 +22,8 @@ import * as S from './styles';
 import { IProps } from './types';
 
 export default function AssetsTable(props: IProps) {
+	const { address } = useParams();
+
 	const navigate = useNavigate();
 
 	const arProvider = useArweaveProvider();
@@ -328,6 +330,9 @@ export default function AssetsTable(props: IProps) {
 													<S.AssetGridDataWrapper disabled={false}>
 														<AssetData asset={asset} scrolling={scrolling} autoLoad />
 														{props.setProfileAction &&
+															arProvider.profile &&
+															arProvider.profile.id &&
+															arProvider.profile.id === address &&
 															asset.data.contentType &&
 															asset.data.contentType.includes('image') && (
 																<S.AssetGridDataActionWrapper>

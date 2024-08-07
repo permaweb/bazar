@@ -193,7 +193,7 @@ export const TokenLink = styled.div`
 	a {
 		background: ${(props) => props.theme.colors.button.primary.background};
 		border: 1px solid ${(props) => props.theme.colors.button.primary.border};
-		padding: 1.5px 7.5px 2.5px 7.5px;
+		padding: 0.5px 7.5px 2.5px 7.5px;
 		border-radius: ${STYLING.dimensions.radius.alt2};
 		&:hover {
 			background: ${(props) => props.theme.colors.button.primary.active.background};

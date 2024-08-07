@@ -222,6 +222,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 						if (denomination) {
 							transferQuantity = (BigInt(transferQuantity) / BigInt(denomination)).toString();
 						}
+						transferQuantity = (BigInt(transferQuantity) + BigInt(1)).toString();
 						break;
 					case 'sell':
 					case 'transfer':
@@ -469,8 +470,8 @@ export default function AssetActionMarketOrders(props: IProps) {
 				let totalPrice: bigint = BigInt(0);
 
 				for (let i = 0; i < sortedOrders.length; i++) {
-					const quantity = BigInt(sortedOrders[i].quantity);
-					const price = BigInt(sortedOrders[i].price);
+					const quantity = BigInt(Math.floor(Number(sortedOrders[i].quantity)));
+					const price = BigInt(Math.floor(Number(sortedOrders[i].price)));
 
 					let inputQuantity: any;
 					inputQuantity = denomination
@@ -509,7 +510,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 							: unitPrice;
 
 					calculatedUnitPrice = BigInt(
-						Number(updatedUnitPrice <= MIN_PRICE ? 0 : updatedUnitPrice) * transferDenomination
+						Math.floor(Number(updatedUnitPrice <= MIN_PRICE ? 0 : updatedUnitPrice) * transferDenomination)
 					);
 				}
 				try {

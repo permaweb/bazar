@@ -9,7 +9,7 @@ import { Button } from 'components/atoms/Button';
 import { FormField } from 'components/atoms/FormField';
 import { Notification } from 'components/atoms/Notification';
 import { TextArea } from 'components/atoms/TextArea';
-import { AO, AO_VERSIONS, ASSETS, GATEWAYS, TAGS } from 'helpers/config';
+import { AO, ASSETS, GATEWAYS, TAGS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import { NotificationType } from 'helpers/types';
 import { checkValidAddress, getBase64Data, getDataURLContentType } from 'helpers/utils';
@@ -21,6 +21,7 @@ import * as S from './styles';
 import { IProps } from './types';
 
 const MAX_BIO_LENGTH = 500;
+const MAX_IMAGE_SIZE = 100000;
 const ALLOWED_BANNER_TYPES = 'image/png, image/jpeg, image/gif';
 const ALLOWED_AVATAR_TYPES = 'image/png, image/jpeg, image/gif';
 
@@ -137,10 +138,7 @@ export default function ProfileManage(props: IProps) {
 					let updateResponse = await messageResult({
 						processId: props.profile.id,
 						action: 'Update-Profile',
-						tags: [
-							{ name: 'ProfileProcess', value: props.profile.id },
-							{ name: 'ProfileVersion', value: AO_VERSIONS.profileVersion },
-						],
+						tags: [{ name: 'ProfileProcess', value: props.profile.id }],
 						data: data,
 						wallet: arProvider.wallet,
 					});
@@ -171,7 +169,6 @@ export default function ProfileManage(props: IProps) {
 							const profileTags: { name: string; value: string }[] = [
 								{ name: 'Date-Created', value: dateTime },
 								{ name: 'Action', value: 'Create-Profile' },
-								{ name: 'ProfileVersion', value: AO_VERSIONS.profileVersion },
 							];
 
 							console.log('Spawning profile process...');
@@ -233,7 +230,7 @@ export default function ProfileManage(props: IProps) {
 								let updateResponse = await messageResult({
 									processId: processId,
 									action: 'Update-Profile',
-									tags: [{ name: 'ProfileVersion', value: AO_VERSIONS.profileVersion }],
+									tags: null,
 									data: data,
 									wallet: arProvider.wallet,
 								});
@@ -272,6 +269,18 @@ export default function ProfileManage(props: IProps) {
 			}
 			setLoading(false);
 		}
+	}
+
+	function getImageSizeMessage() {
+		if (!avatar && !banner) return null;
+		if (checkValidAddress(avatar) && checkValidAddress(banner)) return null;
+
+		const avatarSize = avatar ? (avatar.length * 3) / 4 : 0;
+		const bannerSize = banner ? (banner.length * 3) / 4 : 0;
+
+		if (avatarSize > MAX_IMAGE_SIZE || bannerSize > MAX_IMAGE_SIZE)
+			return <span>One or more images exceeds max size of 100KB</span>;
+		return null;
 	}
 
 	function getInvalidBio() {
@@ -383,9 +392,12 @@ export default function ProfileManage(props: IProps) {
 										disabled={loading || !banner}
 									/>
 								</S.PActions>
+								<S.PInfoMessage>
+									<span>Images have a max size of 100KB</span>
+								</S.PInfoMessage>
 							</S.PWrapper>
 							<S.Form>
-								<S.TForm className={'border-wrapper-alt2'}>
+								<S.TForm>
 									<FormField
 										label={language.name}
 										value={name}
@@ -407,7 +419,7 @@ export default function ProfileManage(props: IProps) {
 								</S.TForm>
 								<TextArea
 									label={language.bio}
-									value={bio}
+									value={bio || ''}
 									onChange={(e: any) => setBio(e.target.value)}
 									disabled={loading}
 									invalid={getInvalidBio()}
@@ -432,10 +444,11 @@ export default function ProfileManage(props: IProps) {
 									type={'alt1'}
 									label={language.save}
 									handlePress={handleSubmit}
-									disabled={!username || !name || loading}
+									disabled={!username || !name || loading || getImageSizeMessage() !== null}
 									loading={loading}
 								/>
 							</S.SAction>
+							<S.MInfoWrapper>{getImageSizeMessage()}</S.MInfoWrapper>
 						</S.Body>
 					</S.Wrapper>
 					{profileResponse && (

@@ -40,7 +40,6 @@ export const Form = styled.div`
 
 export const TForm = styled.div`
 	margin: 20px 0 30px 0;
-	padding: 10px 20px 25px 20px;
 	> * {
 		&:last-child {
 			margin: 20px 0 0 0;
@@ -264,6 +263,18 @@ export const PActions = styled.div`
 	}
 `;
 
+export const PInfoMessage = styled.div`
+	margin: 15px 0 0 0;
+	display: flex;
+	justify-content: flex-end;
+	span {
+		color: ${(props) => props.theme.colors.font.alt1};
+		font-size: ${(props) => props.theme.typography.size.xSmall};
+		font-weight: ${(props) => props.theme.typography.weight.medium};
+		line-height: 1.5;
+	}
+`;
+
 export const SAction = styled.div`
 	width: 100%;
 	display: flex;
@@ -306,4 +317,20 @@ export const MActions = styled.div`
 	justify-content: flex-end;
 	flex-wrap: wrap;
 	gap: 15px;
+`;
+
+export const MInfoWrapper = styled.div`
+	width: fit-content;
+	margin: 20px 0 0 auto;
+	span {
+		background: ${(props) => props.theme.colors.warning.primary};
+		color: ${(props) => props.theme.colors.font.light1};
+		font-size: ${(props) => props.theme.typography.size.xxSmall};
+		font-weight: ${(props) => props.theme.typography.weight.bold};
+		border-radius: ${STYLING.dimensions.radius.alt2};
+		text-align: center;
+		display: block;
+		padding: 2.5px 12.5px;
+		margin: 0 0 7.5px 0;
+	}
 `;

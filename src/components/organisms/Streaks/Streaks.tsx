@@ -8,10 +8,11 @@ import { getRegistryProfiles, readHandler } from 'api';
 
 import { Button } from 'components/atoms/Button';
 import { CurrencyLine } from 'components/atoms/CurrencyLine';
+import { Loader } from 'components/atoms/Loader';
 import { OwnerLine } from 'components/molecules/OwnerLine';
 import { Panel } from 'components/molecules/Panel';
 import { AO, ASSETS, URLS } from 'helpers/config';
-import { RegistryProfileType } from 'helpers/types';
+import { RegistryProfileType, StreakType } from 'helpers/types';
 import { formatAddress, getTotalTokenBalance } from 'helpers/utils';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
@@ -19,6 +20,8 @@ import { RootState } from 'store';
 
 import * as S from './styles';
 import { IProps } from './types';
+
+const GROUP_COUNT = 250;
 
 export default function Streaks(props: IProps) {
 	const navigate = useNavigate();
@@ -30,10 +33,17 @@ export default function Streaks(props: IProps) {
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
 
+	const streaksWrapperRef = React.useRef(null);
+
+	const [streakGroups, setStreakGroups] = React.useState<StreakType[][]>([]);
+	const [streaks, setStreaks] = React.useState<StreakType[] | null>(null);
+	const [streakCursor, setStreakCursor] = React.useState<number>(0);
+	const [streakHolderCount, setStreakHolderCount] = React.useState<number | null>(null);
+	const [updating, setUpdating] = React.useState<boolean>(false);
+
 	const [count, setCount] = React.useState<number>(0);
 	const [showDropdown, setShowDropdown] = React.useState<boolean>(false);
 	const [showLeaderboard, setShowLeaderboard] = React.useState<boolean>(false);
-	const [profiles, setProfiles] = React.useState<RegistryProfileType[] | null>(null);
 	const [currentBlockHeight, setCurrentBlockHeight] = React.useState<number | null>(0);
 
 	const [pixlBalance, setPixlBalance] = React.useState<number | null>(null);
@@ -41,59 +51,98 @@ export default function Streaks(props: IProps) {
 
 	React.useEffect(() => {
 		(async function () {
-			if (props.profile && props.profile.id) {
-				if (streaksReducer) {
-					if (streaksReducer[props.profile.id]) {
-						setCount(streaksReducer[props.profile.id].days);
-					}
+			if (streaksReducer) {
+				if (props.profile && props.profile.id && streaksReducer[props.profile.id]) {
+					setCount(streaksReducer[props.profile.id].days);
+				}
 
+				const sortedStreaks = Object.entries(streaksReducer)
+					.sort(([, a], [, b]) => (b as any).days - (a as any).days)
+					.filter((a) => (a as any)[1].days > 0)
+					.map((a: any) => {
+						return {
+							address: a[0],
+							days: a[1].days,
+							lastHeight: a[1].lastHeight,
+							profile: null,
+						};
+					});
+
+				setStreakHolderCount(sortedStreaks.length);
+
+				let groups = [];
+				for (let i = 0, j = 0; i < sortedStreaks.length; i += GROUP_COUNT, j++) {
+					groups[j] = sortedStreaks.slice(i, i + GROUP_COUNT);
+				}
+
+				setStreakGroups(groups);
+			}
+		})();
+	}, [streaksReducer, props.profile]);
+
+	React.useEffect(() => {
+		(async function () {
+			if (streakGroups && streakGroups.length > 0) {
+				setUpdating(true);
+				try {
+					const addresses = streakGroups[streakCursor].map((streak: any) => streak.address);
+					const profiles = await getRegistryProfiles({ profileIds: addresses });
+					const updatedStreakGroup = streakGroups[streakCursor].map((streak: any) => ({
+						...streak,
+						profile: profiles ? profiles.find((profile: RegistryProfileType) => profile.id === streak.address) : null,
+					}));
+
+					setStreaks((prevStreaks) => {
+						const seenAddresses = prevStreaks ? new Set(prevStreaks.map((streak) => streak.address)) : new Set();
+						const filteredStreakGroup = updatedStreakGroup.filter((streak) =>
+							seenAddresses ? !seenAddresses.has(streak.address) : true
+						);
+						return [...(prevStreaks || []), ...filteredStreakGroup].sort((a, b) => b.days - a.days);
+					});
+				} catch (e: any) {
+					console.error(e);
+				}
+				setUpdating(false);
+			}
+		})();
+	}, [streakGroups, streakCursor]);
+
+	React.useEffect(() => {
+		(async function () {
+			if (props.profile && props.profile.id) {
+				if (
+					arProvider.profile &&
+					arProvider.profile.id &&
+					props.profile.id === arProvider.profile.id &&
+					arProvider.tokenBalances &&
+					arProvider.tokenBalances[AO.pixl]
+				) {
+					setPixlBalance(getTotalTokenBalance(arProvider.tokenBalances[AO.pixl]));
+				} else {
 					try {
-						const addresses = Object.keys(streaksReducer).map((address: string) => address);
-						const profiles = await getRegistryProfiles({ profileIds: addresses });
-						setProfiles(profiles);
+						const pixlTokenBalance = await readHandler({
+							processId: AO.pixl,
+							action: 'Balance',
+							tags: [{ name: 'Recipient', value: props.profile.id }],
+						});
+
+						if (pixlTokenBalance) setPixlBalance(pixlTokenBalance);
 					} catch (e: any) {
 						console.error(e);
 					}
 				}
-			}
-		})();
-	}, [streaksReducer, props.profile.id]);
 
-	React.useEffect(() => {
-		(async function () {
-			if (
-				props.profile &&
-				arProvider.profile &&
-				arProvider.profile.id &&
-				props.profile.id === arProvider.profile.id &&
-				arProvider.tokenBalances &&
-				arProvider.tokenBalances[AO.pixl]
-			) {
-				setPixlBalance(getTotalTokenBalance(arProvider.tokenBalances[AO.pixl]));
-			} else {
 				try {
-					const pixlTokenBalance = await readHandler({
+					const currentRewards = await readHandler({
 						processId: AO.pixl,
-						action: 'Balance',
+						action: 'Read-Current-Rewards',
 						tags: [{ name: 'Recipient', value: props.profile.id }],
 					});
 
-					if (pixlTokenBalance) setPixlBalance(pixlTokenBalance);
+					if (currentRewards) setDailyRewards(currentRewards);
 				} catch (e: any) {
 					console.error(e);
 				}
-			}
-
-			try {
-				const currentRewards = await readHandler({
-					processId: AO.pixl,
-					action: 'Read-Current-Rewards',
-					tags: [{ name: 'Recipient', value: props.profile.id }],
-				});
-
-				if (currentRewards) setDailyRewards(currentRewards);
-			} catch (e: any) {
-				console.error(e);
 			}
 		})();
 	}, [arProvider.profile, arProvider.tokenBalances, props.profile]);
@@ -146,7 +195,7 @@ export default function Streaks(props: IProps) {
 		return (
 			<>
 				{getStreakIcon(count)}
-				<span>{count}</span>
+				{arProvider.profile && <span>{count}</span>}
 			</>
 		);
 	}, [count]);
@@ -200,7 +249,7 @@ export default function Streaks(props: IProps) {
 				const blockTime = 2;
 
 				let lastHeightDiff = 0;
-				if (streaksReducer && streaksReducer[props.profile.id]) {
+				if (streaksReducer && props.profile && streaksReducer[props.profile.id]) {
 					lastHeightDiff = currentBlockHeight - streaksReducer[props.profile.id].lastHeight;
 				}
 
@@ -290,23 +339,21 @@ export default function Streaks(props: IProps) {
 	}, [dailyRewards, pixlBalance]);
 
 	const leaderboard = React.useMemo(() => {
-		if (!streaksReducer || !profiles) {
+		if (!streaks) {
 			return (
 				<S.MLoadingWrapper>
-					<span>{`${language.loading}...`}</span>
+					<Loader sm relative />
 				</S.MLoadingWrapper>
 			);
 		}
 
-		const sortedStreaks = Object.entries(streaksReducer)
-			.sort(([, a], [, b]) => (b as any).days - (a as any).days)
-			.filter((a) => (a as any)[1].days > 0);
-
 		return (
-			<S.StreaksPanelWrapper>
+			<S.StreaksPanelWrapper ref={streaksWrapperRef}>
+				<S.StreaksPanelHeader>
+					<p>{`${streakHolderCount ? streakHolderCount : '-'} ${language.streakHolders}`}</p>
+				</S.StreaksPanelHeader>
 				<S.StreaksWrapper>
-					{(sortedStreaks as any).map(([address, { days }], index: number) => {
-						const profile = profiles.find((profile) => profile.id === address);
+					{streaks.map((streak: StreakType, index: number) => {
 						return (
 							<S.StreakLine key={index}>
 								<S.StreakIndex>
@@ -315,8 +362,8 @@ export default function Streaks(props: IProps) {
 								<S.StreakProfile>
 									<OwnerLine
 										owner={{
-											address: address,
-											profile: profile || null,
+											address: streak.address,
+											profile: streak.profile || null,
 										}}
 										callback={() => {
 											setShowDropdown(false);
@@ -325,25 +372,37 @@ export default function Streaks(props: IProps) {
 									/>
 								</S.StreakProfile>
 								<S.StreakCount>
-									<span>{`${language.dayCount(days)}`}</span>
-									{getStreakIcon(days)}
+									<span>{`${language.dayCount(streak.days)}`}</span>
+									{getStreakIcon(streak.days)}
 								</S.StreakCount>
 							</S.StreakLine>
 						);
 					})}
+					{updating && (
+						<S.MLoadingWrapper>
+							<Loader sm relative />
+						</S.MLoadingWrapper>
+					)}
 				</S.StreaksWrapper>
-				<S.ReturnWrapper>
+				<S.PanelActionWrapper>
 					<Button
 						type={'primary'}
-						label={'Go back'}
+						label={language.back}
 						handlePress={() => setShowLeaderboard(false)}
-						height={50}
-						fullWidth
+						disabled={false}
+						height={40}
 					/>
-				</S.ReturnWrapper>
+					<Button
+						type={'alt1'}
+						label={language.loadMore}
+						handlePress={() => setStreakCursor(streakCursor + 1)}
+						disabled={streakCursor >= streakGroups.length - 1}
+						height={40}
+					/>
+				</S.PanelActionWrapper>
 			</S.StreaksPanelWrapper>
 		);
-	}, [streaksReducer, profiles]);
+	}, [streaks, updating]);
 
 	function getAction() {
 		return (
@@ -354,15 +413,16 @@ export default function Streaks(props: IProps) {
 	}
 
 	function getDropdown() {
-		return showLeaderboard ? (
+		return showLeaderboard || !arProvider.profile ? (
 			<>{leaderboard}</>
 		) : (
 			<>
 				<S.SDHeader>{header}</S.SDHeader>
 				<S.SDStreak>{streak}</S.SDStreak>
-				{arProvider.profile && arProvider.profile.id && arProvider.profile.id === props.profile.id && (
-					<S.SDMessage>{message}</S.SDMessage>
-				)}
+				{arProvider.profile &&
+					arProvider.profile.id &&
+					arProvider.profile &&
+					arProvider.profile.id === props.profile.id && <S.SDMessage>{message}</S.SDMessage>}
 				<S.SDAmounts>
 					{amounts}
 					<S.SDLAction>
@@ -411,5 +471,5 @@ export default function Streaks(props: IProps) {
 		);
 	}
 
-	return props.profile && props.profile.id ? <>{getView()}</> : null;
+	return getView();
 }
