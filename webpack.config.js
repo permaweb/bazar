@@ -156,12 +156,12 @@ module.exports = {
 			'process.env.UCM': JSON.stringify(
 				process.env.NODE_ENV === 'production'
 					? 'U3TjJAZWJjlWBB4KAXSHKzuky81jtyh0zqH8rUL4Wd0'
-					: 'U3TjJAZWJjlWBB4KAXSHKzuky81jtyh0zqH8rUL4Wd0'
+					: 'qtDwylCwyhhsGPKIYAi2Ao342mdhvFUPqdbDOudzaiM'
 			),
 			'process.env.UCM_ACTIVITY': JSON.stringify(
 				process.env.NODE_ENV === 'production'
 					? 'SNDvAf2RF-jhPmRrGUcs_b1nKlzU6vamN9zl0e9Zi4c'
-					: 'SNDvAf2RF-jhPmRrGUcs_b1nKlzU6vamN9zl0e9Zi4c'
+					: 'GC9M776w8UEZVkvAGcLqhrH10uumkbQUYrnIo1AiWHo'
 			),
 			'process.env.PIXL': JSON.stringify(
 				process.env.NODE_ENV === 'production'

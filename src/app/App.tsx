@@ -28,8 +28,6 @@ export default function App() {
 	const ucmReducer = useSelector((state: RootState) => state.ucmReducer);
 	const currenciesReducer = useSelector((state: RootState) => state.currenciesReducer);
 
-	console.log(AO);
-
 	React.useEffect(() => {
 		(async function () {
 			try {
