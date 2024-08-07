@@ -171,7 +171,7 @@ module.exports = {
 			'process.env.PROFILE_REGISTRY': JSON.stringify(
 				process.env.NODE_ENV === 'production'
 					? 'SNy4m-DrqxWl01YqGM4sxI8qCni-58re8uuJLvZPypY'
-					: 'iySPL7MpiZCvei0DIFzjNOudjbCnHHXf9rPgbXH-T90'
+					: 'jndJ0phxOaJJU6CHZVX7zo2Wl5vI2KQ1z4i3VnV4DrM'
 			),
 			'process.env.PROFILE_SRC': JSON.stringify(
 				process.env.NODE_ENV === 'production'
@@ -181,7 +181,7 @@ module.exports = {
 			'process.env.COLLECTIONS_REGISTRY': JSON.stringify(
 				process.env.NODE_ENV === 'production'
 					? 'TFWDmf8a3_nw43GCm_CuYlYoylHAjCcFGbgHfDaGcsg'
-					: 'jii0UeIWYIr4etclyywNGhZVAOwwzmrK56elffh6dzA'
+					: 'q0QVp2rPXOuqIj6mbRObaC-HMweexSv1Y_Nm9_t1brc'
 			),
 		}),
 	],
