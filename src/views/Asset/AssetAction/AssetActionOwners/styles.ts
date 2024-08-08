@@ -52,8 +52,6 @@ export const ChartKeyWrapper = styled.div`
 export const ChartKeyLine = styled.div<{ first: boolean }>`
 	display: flex;
 	align-items: center;
-	padding: ${(props) => (props.first ? `0 0 7.5px 0` : '0')};
-	border-bottom: ${(props) => (props.first ? `1px solid ${props.theme.colors.border.primary}` : 'none')};
 `;
 
 export const Percentage = styled.p`
@@ -85,7 +83,7 @@ export const ChartKeyText = styled.p`
 
 export const Chart = styled.div`
 	height: auto;
-	width: calc(100% - 270px);
+	width: calc(100% - 285px);
 	display: flex;
 	justify-content: center;
 	align-items: center;
