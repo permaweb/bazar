@@ -116,16 +116,15 @@ export async function getRegistryProfiles(args: { profileIds: string[] }): Promi
 		});
 
 		if (metadataLookup && metadataLookup.length) {
-			return metadataLookup.map(
-				(profile: { ProfileId: string; Username: string; ProfileImage: string; Description?: string }) => {
-					return {
-						id: profile.ProfileId,
-						username: profile.Username,
-						avatar: profile.ProfileImage,
-						bio: profile.Description ?? null,
-					};
-				}
-			);
+			return args.profileIds.map((profileId: string) => {
+				const profile = metadataLookup.find((profile: { ProfileId: string }) => profile.ProfileId === profileId);
+				return {
+					id: profile ? profile.ProfileId : profileId,
+					username: profile ? profile.Username : null,
+					avatar: profile ? profile.ProfileImage : null,
+					bio: profile ? profile.Description ?? null : null,
+				};
+			});
 		}
 
 		return [];

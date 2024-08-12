@@ -30,6 +30,8 @@ export default function ActivityTable(props: IProps) {
 
 	const scrollRef = React.useRef(null);
 
+	const groupCount = props.groupCount || GROUP_COUNT;
+
 	const [activity, setActivity] = React.useState<any | null>(null);
 	const [activityResponse, setActivityResponse] = React.useState<any | null>(null);
 	const [activityGroups, setActivityGroups] = React.useState<any | null>(null);
@@ -96,8 +98,8 @@ export default function ActivityTable(props: IProps) {
 			}
 
 			let groups = [];
-			for (let i = 0, j = 0; i < activity.length; i += GROUP_COUNT, j++) {
-				groups[j] = activity.slice(i, i + GROUP_COUNT);
+			for (let i = 0, j = 0; i < activity.length; i += groupCount, j++) {
+				groups[j] = activity.slice(i, i + groupCount);
 			}
 
 			setActivityGroups(groups);
@@ -244,14 +246,14 @@ export default function ActivityTable(props: IProps) {
 		}
 	};
 
-	const start = activity && activity.length ? Number(activityCursor) * GROUP_COUNT + 1 : '';
-	const end = activity && activity.length ? Math.min((Number(activityCursor) + 1) * GROUP_COUNT, activity.length) : '';
+	const start = activity && activity.length ? Number(activityCursor) * groupCount + 1 : '';
+	const end = activity && activity.length ? Math.min((Number(activityCursor) + 1) * groupCount, activity.length) : '';
 
 	const getActivity = React.useMemo(() => {
 		if (!activityGroup) {
 			return (
 				<S.LoadingWrapper>
-					{Array.from({ length: GROUP_COUNT }, (_, i) => i + 1).map((index) => (
+					{Array.from({ length: groupCount }, (_, i) => i + 1).map((index) => (
 						<S.TableRowLoader key={index} className={'fade-in border-wrapper-alt1'} />
 					))}
 				</S.LoadingWrapper>
