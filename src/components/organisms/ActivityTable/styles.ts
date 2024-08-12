@@ -1,4 +1,4 @@
-import styled from 'styled-components';
+import styled, { DefaultTheme } from 'styled-components';
 
 import { STYLING } from 'helpers/config';
 
@@ -306,7 +306,20 @@ export const EventWrapper = styled(TableRowValue)`
 	margin: 0 20px;
 `;
 
-export const Event = styled.div<{ type: 'Listing' | 'Sale' | 'Purchase' }>`
+function getEventColor(theme: DefaultTheme, type: 'Listing' | 'Sale' | 'Purchase' | 'Unlisted') {
+	switch (type) {
+		case 'Listing':
+			return theme.colors.stats.alt4;
+		case 'Sale':
+			return theme.colors.indicator.active;
+		case 'Purchase':
+			return theme.colors.stats.alt5;
+		case 'Unlisted':
+			return theme.colors.warning.primary;
+	}
+}
+
+export const Event = styled.div<{ type: 'Listing' | 'Sale' | 'Purchase' | 'Unlisted' }>`
 	width: 110px;
 	display: flex;
 	align-items: center;
@@ -314,12 +327,7 @@ export const Event = styled.div<{ type: 'Listing' | 'Sale' | 'Purchase' }>`
 	gap: 7.5px;
 	overflow: hidden;
 	padding: 1.5px 7.5px;
-	background: ${(props) =>
-		props.type === 'Sale'
-			? props.theme.colors.indicator.active
-			: props.type === 'Purchase'
-			? props.theme.colors.stats.primary
-			: props.theme.colors.stats.alt5};
+	background: ${(props) => getEventColor(props.theme, props.type)};
 	border: 1px solid ${(props) => props.theme.colors.border.primary};
 	border-radius: ${STYLING.dimensions.radius.alt2};
 	p {
