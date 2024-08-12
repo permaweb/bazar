@@ -157,6 +157,13 @@ export default function AssetAction(props: IProps) {
 			if (props.asset && props.asset.orders) {
 				const sortedOrders = sortOrders(props.asset.orders, 'low-to-high');
 
+				setCurrentListings(
+					sortedOrders.map((order: any) => ({
+						profile: order.profile,
+						...order,
+					}))
+				);
+
 				let profiles: RegistryProfileType[] | null = null;
 				try {
 					profiles = await getRegistryProfiles({ profileIds: sortedOrders.map((order: any) => order.creator) });
@@ -398,6 +405,13 @@ export default function AssetAction(props: IProps) {
 			  }`
 			: null;
 
+	function showCurrentlyOwnedBy() {
+		if (!props.asset || !props.asset.state || !props.asset.state.balances) return false;
+		if (Object.keys(props.asset.state.balances).length <= 0) return false;
+		if (Object.keys(props.asset.state.balances).length === 1 && props.asset.state.balances[AO.ucm]) return false;
+		return true;
+	}
+
 	return props.asset ? (
 		<>
 			<S.Wrapper>
@@ -407,21 +421,18 @@ export default function AssetAction(props: IProps) {
 				<S.Header>
 					<h4>{props.asset.data.title}</h4>
 					<S.OwnerLinesWrapper>
-						{props.asset &&
-							props.asset.state &&
-							props.asset.state.balances &&
-							Object.keys(props.asset.state.balances).length > 0 && (
-								<S.OwnerLine>
-									<span>{language.currentlyOwnedBy}</span>
-									<button
-										onClick={() => {
-											setShowCurrentOwnersModal(true);
-										}}
-									>
-										{ownerCountDisplay}
-									</button>
-								</S.OwnerLine>
-							)}
+						{showCurrentlyOwnedBy() && (
+							<S.OwnerLine>
+								<span>{language.currentlyOwnedBy}</span>
+								<button
+									onClick={() => {
+										setShowCurrentOwnersModal(true);
+									}}
+								>
+									{ownerCountDisplay}
+								</button>
+							</S.OwnerLine>
+						)}
 						{currentListings && currentListings.length > 0 && (
 							<S.OwnerLine>
 								<span>{language.currentlyBeingSoldBy}</span>
