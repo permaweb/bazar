@@ -4,6 +4,13 @@ import { STYLING } from 'helpers/config';
 
 export const Wrapper = styled.div`
 	width: 100%;
+	display: flex;
+	flex-direction: column;
+	gap: 60px;
+`;
+
+export const Section = styled.div`
+	width: 100%;
 `;
 
 export const Header = styled.div`
@@ -22,8 +29,7 @@ export const HeaderActions = styled.div`
 	gap: 20px;
 `;
 
-export const CreatorsWrapper = styled.div`
-	padding: 15px;
+export const ProfilesWrapper = styled.div`
 	display: grid;
 	grid-template-columns: repeat(5, 1fr);
 	gap: 30px;
@@ -35,7 +41,7 @@ export const CreatorsWrapper = styled.div`
 	}
 `;
 
-export const CreatorWrapper = styled.div`
+export const ProfileWrapper = styled.div`
 	height: 310px;
 	width: 100%;
 	a {
@@ -52,7 +58,6 @@ export const CreatorWrapper = styled.div`
 		border-radius: ${STYLING.dimensions.radius.primary};
 		&:hover {
 			background: ${(props) => props.theme.colors.container.primary.active};
-			border: 1px solid ${(props) => props.theme.colors.border.primary};
 		}
 	}
 `;
@@ -64,9 +69,8 @@ export const Avatar = styled.div<{
 	height: 150px;
 	width: 150px;
 	background: ${(props) =>
-		props.hasOwner ? props.theme.colors.container.primary.background : props.theme.colors.icon.alt1.fill};
-	box-shadow: 0 1px 2px 0.5px ${(props) => props.theme.colors.shadow.primary};
-	border: 1.5px solid ${(props) => props.theme.colors.border.primary};
+		props.hasOwner ? props.theme.colors.container.primary.background : props.theme.colors.container.primary.background};
+	border: 1px solid ${(props) => props.theme.colors.border.alt4};
 	border-radius: 50%;
 	overflow: hidden;
 	display: flex;

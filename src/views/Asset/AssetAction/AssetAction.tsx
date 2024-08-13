@@ -6,7 +6,9 @@ import { ReactSVG } from 'react-svg';
 import { getRegistryProfiles } from 'api';
 
 import * as GS from 'app/styles';
+import { Button } from 'components/atoms/Button';
 import { CurrencyLine } from 'components/atoms/CurrencyLine';
+import { Loader } from 'components/atoms/Loader';
 import { Modal } from 'components/molecules/Modal';
 import { OwnerLine } from 'components/molecules/OwnerLine';
 import { Tabs } from 'components/molecules/Tabs';
@@ -27,6 +29,8 @@ import { AssetActionMarket } from './AssetActionMarket';
 import { AssetActionsOwners } from './AssetActionOwners';
 import * as S from './styles';
 import { IProps } from './types';
+
+const GROUP_COUNT = 250;
 
 export default function AssetAction(props: IProps) {
 	const currenciesReducer = useSelector((state: RootState) => state.currenciesReducer);
@@ -61,9 +65,14 @@ export default function AssetAction(props: IProps) {
 	const [mobile, setMobile] = React.useState(!windowUtils.checkWindowCutoff(parseInt(STYLING.cutoffs.secondary)));
 
 	const [totalAssetBalance, setTotalAssetBalance] = React.useState<number>(0);
-	const [associatedProfiles, setAssociatedProfiles] = React.useState<RegistryProfileType[] | null>(null);
+
+	const [addressGroups, setAddressGroups] = React.useState<string[][] | null>(null);
+	const [ownerCount, setOwnerCount] = React.useState<number | null>(null);
+	const [ownersCursor, setOwnersCursor] = React.useState<number>(0);
+	const [updating, setUpdating] = React.useState<boolean>(false);
 
 	const [currentOwners, setCurrentOwners] = React.useState<OwnerType[] | null>(null);
+
 	const [currentListings, setCurrentListings] = React.useState<ListingType[] | null>(null);
 
 	const [showCurrentOwnersModal, setShowCurrentOwnersModal] = React.useState<boolean>(false);
@@ -78,51 +87,94 @@ export default function AssetAction(props: IProps) {
 			});
 			const totalBalance = balances.reduce((a: number, b: number) => a + b, 0);
 			setTotalAssetBalance(totalBalance);
+			setOwnerCount(Object.keys(props.asset.state.balances).filter((owner: string) => owner !== AO.ucm).length);
 		}
 	}, [props.asset]);
 
 	React.useEffect(() => {
 		(async function () {
-			if (!associatedProfiles) {
-				const associatedAddresses = [];
-				if (props.asset && props.asset.state && props.asset.state.balances) {
-					associatedAddresses.push(...Object.keys(props.asset.state.balances).map((address: string) => address));
+			const associatedAddresses = [];
+			if (props.asset && props.asset.state && props.asset.state.balances) {
+				associatedAddresses.push(...Object.keys(props.asset.state.balances).map((address: string) => address));
+			}
+			if (props.asset && props.asset.orders) {
+				associatedAddresses.push(...props.asset.orders.map((order: any) => order.creator));
+			}
+			if (associatedAddresses.length) {
+				let groups = [];
+				for (let i = 0, j = 0; i < associatedAddresses.length; i += GROUP_COUNT, j++) {
+					groups[j] = associatedAddresses.slice(i, i + GROUP_COUNT);
 				}
-				if (props.asset && props.asset.orders) {
-					associatedAddresses.push(...props.asset.orders.map((order: any) => order.creator));
-				}
-				if (associatedAddresses.length) {
-					const uniqueAddresses = [...new Set(associatedAddresses)];
-					try {
-						const profiles = await getRegistryProfiles({ profileIds: uniqueAddresses });
-						setAssociatedProfiles(profiles);
-					} catch (e: any) {
-						console.error(e);
-					}
-				}
+				setAddressGroups(groups);
 			}
 		})();
 	}, [props.asset]);
 
 	React.useEffect(() => {
 		(async function () {
-			if (props.asset && props.asset.state) {
-				let owners = getOwners(props.asset, associatedProfiles);
+			if (props.asset && props.asset.state && addressGroups && addressGroups.length > 0) {
+				setUpdating(true);
+				try {
+					let subAddresses = {};
+					addressGroups[ownersCursor].forEach((address: string) => {
+						if (props.asset.state.balances.hasOwnProperty(address)) {
+							subAddresses[address] = props.asset.state.balances[address];
+						}
+					});
 
-				if (owners) {
-					owners = owners
-						.filter((owner: OwnerType) => owner.address !== AO.ucm)
-						.filter((owner: OwnerType) => owner.ownerPercentage > 0);
-					setCurrentOwners(owners);
+					const asset = {
+						data: props.asset.data,
+						state: {
+							name: props.asset.state.name,
+							ticker: props.asset.state.ticker,
+							denomination: props.asset.state.denomination,
+							logo: props.asset.state.logo,
+							transferable: props.asset.state.transferable,
+							balances: subAddresses,
+						},
+						orders: props.asset.orders,
+					};
+
+					const profiles = await getRegistryProfiles({ profileIds: addressGroups[ownersCursor] });
+					let owners = getOwners(asset, profiles);
+
+					if (owners) {
+						owners = owners
+							.filter((owner: OwnerType) => owner.address !== AO.ucm)
+							.filter((owner: OwnerType) => owner.ownerPercentage > 0);
+						setCurrentOwners((prevOwners) => [...(prevOwners || []), ...owners]);
+					}
+				} catch (e: any) {
+					console.error(e);
 				}
+				setUpdating(false);
 			}
+		})();
+	}, [props.asset, addressGroups, ownersCursor]);
+
+	React.useEffect(() => {
+		(async function () {
 			if (props.asset && props.asset.orders) {
 				const sortedOrders = sortOrders(props.asset.orders, 'low-to-high');
 
+				setCurrentListings(
+					sortedOrders.map((order: any) => ({
+						profile: order.profile,
+						...order,
+					}))
+				);
+
+				let profiles: RegistryProfileType[] | null = null;
+				try {
+					profiles = await getRegistryProfiles({ profileIds: sortedOrders.map((order: any) => order.creator) });
+				} catch (e: any) {
+					console.error(e);
+				}
+
 				const mappedListings = sortedOrders.map((order: any) => {
 					let currentProfile = null;
-					if (associatedProfiles) {
-						currentProfile = associatedProfiles.find((profile: RegistryProfileType) => profile.id === order.creator);
+					if (profiles) {
+						currentProfile = profiles.find((profile: RegistryProfileType) => profile.id === order.creator);
 					}
 
 					const currentListing = {
@@ -136,7 +188,7 @@ export default function AssetAction(props: IProps) {
 				setCurrentListings(mappedListings);
 			}
 		})();
-	}, [props.asset, associatedProfiles]);
+	}, [props.asset]);
 
 	React.useEffect(() => {
 		if (currentListings && currentListings.length <= 0) setShowCurrentListingsModal(false);
@@ -179,19 +231,20 @@ export default function AssetAction(props: IProps) {
 	}
 
 	const getCurrentOwners = React.useMemo(() => {
-		if (currentOwners) {
-			return (
-				<>
-					{!mobile && (
-						<GS.DrawerHeaderWrapper>
-							<GS.DrawerContentFlex>
-								{language.owner.charAt(0).toUpperCase() + language.owner.slice(1)}
-							</GS.DrawerContentFlex>
-							<GS.DrawerContentDetail>{language.quantity}</GS.DrawerContentDetail>
-							<GS.DrawerContentDetail>{language.percentage}</GS.DrawerContentDetail>
-						</GS.DrawerHeaderWrapper>
-					)}
-					{currentOwners.map((owner: OwnerType, index: number) => {
+		return (
+			<>
+				{!mobile && (
+					<GS.DrawerHeaderWrapper>
+						<GS.DrawerContentFlex>
+							{language.owner.charAt(0).toUpperCase() + language.owner.slice(1)}
+						</GS.DrawerContentFlex>
+						<GS.DrawerContentDetail>{language.quantity}</GS.DrawerContentDetail>
+						<GS.DrawerContentDetail>{language.percentage}</GS.DrawerContentDetail>
+					</GS.DrawerHeaderWrapper>
+				)}
+				{currentOwners &&
+					currentOwners.length > 0 &&
+					currentOwners.map((owner: OwnerType, index: number) => {
 						return (
 							<S.DrawerContentLine key={index}>
 								{mobile && (
@@ -221,10 +274,32 @@ export default function AssetAction(props: IProps) {
 							</S.DrawerContentLine>
 						);
 					})}
-				</>
-			);
-		} else return null;
-	}, [currentOwners, mobile]);
+				{(!currentOwners || updating) && (
+					<S.MLoadingWrapper>
+						<Loader sm relative />
+					</S.MLoadingWrapper>
+				)}
+				{ownerCount && ownerCount > GROUP_COUNT && (
+					<S.MActionsWrapper>
+						<Button
+							type={'primary'}
+							label={language.close}
+							handlePress={() => setShowCurrentOwnersModal(false)}
+							disabled={false}
+							height={40}
+						/>
+						<Button
+							type={'alt1'}
+							label={language.loadMore}
+							handlePress={() => setOwnersCursor(ownersCursor + 1)}
+							disabled={addressGroups && addressGroups.length > 0 ? ownersCursor >= addressGroups.length - 1 : true}
+							height={40}
+						/>
+					</S.MActionsWrapper>
+				)}
+			</>
+		);
+	}, [currentOwners, mobile, updating]);
 
 	const getCurrentListings = React.useMemo(() => {
 		if (currentListings) {
@@ -307,7 +382,7 @@ export default function AssetAction(props: IProps) {
 					/>
 				);
 			case ACTION_TAB_OPTIONS.owners:
-				return <AssetActionsOwners asset={props.asset} owners={currentOwners} />;
+				return <AssetActionsOwners asset={props.asset} />;
 			case ACTION_TAB_OPTIONS.comments:
 				return <AssetActionComments asset={props.asset} />;
 			case ACTION_TAB_OPTIONS.activity:
@@ -315,6 +390,26 @@ export default function AssetAction(props: IProps) {
 			default:
 				return null;
 		}
+	}
+
+	const ownerCountDisplay = ownerCount
+		? `${formatCount(ownerCount.toString())} ${
+				ownerCount > 1 ? `${language.owner.toLowerCase()}s` : language.owner.toLowerCase()
+		  }`
+		: null;
+
+	const listingCountDisplay =
+		currentListings && currentListings.length > 0
+			? `${formatCount(currentListings.length.toString())} ${
+					currentListings.length > 1 ? `${language.owner.toLowerCase()}s` : language.owner.toLowerCase()
+			  }`
+			: null;
+
+	function showCurrentlyOwnedBy() {
+		if (!props.asset || !props.asset.state || !props.asset.state.balances) return false;
+		if (Object.keys(props.asset.state.balances).length <= 0) return false;
+		if (Object.keys(props.asset.state.balances).length === 1 && props.asset.state.balances[AO.ucm]) return false;
+		return true;
 	}
 
 	return props.asset ? (
@@ -326,16 +421,16 @@ export default function AssetAction(props: IProps) {
 				<S.Header>
 					<h4>{props.asset.data.title}</h4>
 					<S.OwnerLinesWrapper>
-						{currentOwners && currentOwners.length > 0 && (
+						{showCurrentlyOwnedBy() && (
 							<S.OwnerLine>
 								<span>{language.currentlyOwnedBy}</span>
 								<button
 									onClick={() => {
 										setShowCurrentOwnersModal(true);
 									}}
-								>{`${formatCount(currentOwners.length.toString())} ${
-									currentOwners.length > 1 ? `${language.owner.toLowerCase()}s` : language.owner.toLowerCase()
-								}`}</button>
+								>
+									{ownerCountDisplay}
+								</button>
 							</S.OwnerLine>
 						)}
 						{currentListings && currentListings.length > 0 && (
@@ -345,9 +440,9 @@ export default function AssetAction(props: IProps) {
 									onClick={() => {
 										setShowCurrentListingsModal(true);
 									}}
-								>{`${formatCount(currentListings.length.toString())} ${
-									currentListings.length > 1 ? `${language.owner.toLowerCase()}s` : language.owner.toLowerCase()
-								}`}</button>
+								>
+									{listingCountDisplay}
+								</button>
 							</S.OwnerLine>
 						)}
 					</S.OwnerLinesWrapper>
@@ -375,15 +470,21 @@ export default function AssetAction(props: IProps) {
 					<S.TabContent>{getCurrentTab()}</S.TabContent>
 				</S.TabsWrapper>
 			</S.Wrapper>
-			{showCurrentOwnersModal && currentOwners && currentOwners.length > 0 && (
-				<Modal header={language.currentlyOwnedBy} handleClose={() => setShowCurrentOwnersModal(false)}>
+			{showCurrentOwnersModal && (
+				<Modal
+					header={`${language.currentlyOwnedBy} ${ownerCountDisplay}`}
+					handleClose={() => setShowCurrentOwnersModal(false)}
+				>
 					<S.DrawerContent transparent className={'modal-wrapper'}>
 						{getCurrentOwners}
 					</S.DrawerContent>
 				</Modal>
 			)}
 			{showCurrentListingsModal && currentListings && currentListings.length > 0 && (
-				<Modal header={language.currentlyBeingSoldBy} handleClose={() => setShowCurrentListingsModal(false)}>
+				<Modal
+					header={`${language.currentlyBeingSoldBy} ${listingCountDisplay}`}
+					handleClose={() => setShowCurrentListingsModal(false)}
+				>
 					<S.DrawerContent className={'modal-wrapper'}>{getCurrentListings}</S.DrawerContent>
 				</Modal>
 			)}

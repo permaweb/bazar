@@ -333,7 +333,7 @@ export const theme = (currentTheme: any): DefaultTheme => ({
 			xLg: '24px',
 			h1: 'clamp(38px, 4.5vw, 62px)',
 			h2: 'clamp(32px, 3.75vw, 44px)',
-			h4: 'clamp(28px, 2.5vw, 36px)',
+			h4: 'clamp(28px, 2.5vw, 34px)',
 		},
 		weight: {
 			medium: '500',

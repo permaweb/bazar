@@ -107,12 +107,9 @@ export const DrawerContent = styled(GS.DrawerContent)`
 	background: transparent;
 	> * {
 		&:not(:last-child) {
-			margin: 0 0 10px 0;
-			padding: 0 0 10px 0;
-			border-bottom: 1px solid ${(props) => props.theme.colors.border.alt4};
-		}
-		&:last-child {
-			margin: 0;
+			margin: 0 0 15px 0;
+			padding: 0 0 15px 0;
+			/* border-bottom: 1px solid ${(props) => props.theme.colors.border.alt4}; */
 		}
 	}
 	@media (max-width: ${STYLING.cutoffs.secondary}) {
@@ -136,5 +133,34 @@ export const DrawerContentFlex = styled(GS.DrawerContentFlex)`
 export const DrawerContentDetailAlt = styled(GS.DrawerContentDetailAlt)`
 	@media (max-width: ${STYLING.cutoffs.secondary}) {
 		margin: 0 0 10px 0;
+	}
+`;
+
+export const MLoadingWrapper = styled.div`
+	padding: 0 20px;
+	span {
+		font-size: ${(props) => props.theme.typography.size.base};
+		font-weight: ${(props) => props.theme.typography.weight.bold};
+	}
+`;
+
+export const MActionsWrapper = styled.div`
+	width: 100%;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 20px;
+	justify-content: space-between;
+	margin: 20px 0 0 0 !important;
+	button {
+		flex: 1;
+		span {
+			font-size: ${(props) => props.theme.typography.size.base} !important;
+			font-family: ${(props) => props.theme.typography.family.alt1} !important;
+		}
+		svg {
+			height: 20px;
+			width: 20px;
+			margin: 2.5px 12.5px 0 0 !important;
+		}
 	}
 `;

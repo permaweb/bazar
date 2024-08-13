@@ -3,11 +3,13 @@ import { Pie } from 'react-chartjs-2';
 import { ArcElement, Chart as ChartJS, Legend, Tooltip } from 'chart.js';
 import { useTheme } from 'styled-components';
 
+import { getRegistryProfiles } from 'api';
+
+import { Loader } from 'components/atoms/Loader';
 import { OwnerLine } from 'components/molecules/OwnerLine';
 import { AO } from 'helpers/config';
-import { OwnerType } from 'helpers/types';
-import { formatAddress, formatPercentage } from 'helpers/utils';
-import { useArweaveProvider } from 'providers/ArweaveProvider';
+import { OwnerType, RegistryProfileType } from 'helpers/types';
+import { formatAddress, formatPercentage, getOwners } from 'helpers/utils';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 
 import * as S from './styles';
@@ -19,8 +21,6 @@ const MAX_OWNER_LENGTH = 10;
 
 export default function AssetActionsOwners(props: IProps) {
 	const theme = useTheme();
-
-	const arProvider = useArweaveProvider();
 
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
@@ -45,29 +45,48 @@ export default function AssetActionsOwners(props: IProps) {
 	const [sortedOwners, setSortedOwners] = React.useState<OwnerType[] | null>(null);
 
 	React.useEffect(() => {
-		if (props.owners) {
-			const updatedOwners = [...props.owners].sort((a: any, b: any) => {
-				return b.ownerQuantity - a.ownerQuantity;
-			});
+		(async function () {
+			if (props.asset && !sortedOwners) {
+				const owners = getOwners(props.asset, null);
 
-			if (updatedOwners.length > MAX_OWNER_LENGTH) {
-				const others: any = updatedOwners.splice(-(updatedOwners.length - MAX_OWNER_LENGTH));
+				let updatedOwners = [...owners].sort((a: any, b: any) => {
+					return b.ownerQuantity - a.ownerQuantity;
+				});
 
-				const combined = others.reduce(
-					(acc: any, cur: any) => {
-						acc.ownerQuantity += cur.ownerQuantity;
-						acc.ownerPercentage += cur.ownerPercentage;
-						return acc;
-					},
-					{ address: language.other, handle: language.other, avatar: null, ownerQuantity: 0, ownerPercentage: 0 }
-				);
+				if (owners.length) {
+					try {
+						const addresses = [...updatedOwners].splice(0, MAX_OWNER_LENGTH).map((owner: OwnerType) => owner.address);
+						const profiles = await getRegistryProfiles({ profileIds: addresses });
+						updatedOwners = updatedOwners.map((owner: OwnerType) => {
+							const profile = profiles.find((profile: RegistryProfileType) => {
+								return profile.id === owner.address;
+							});
+							return { ...owner, profile };
+						});
+					} catch (e: any) {
+						console.error(e);
+					}
+				}
 
-				setSortedOwners([...updatedOwners, combined]);
-			} else {
-				setSortedOwners(updatedOwners);
+				if (updatedOwners.length > MAX_OWNER_LENGTH) {
+					const others: any = updatedOwners.splice(-(updatedOwners.length - MAX_OWNER_LENGTH));
+
+					const combined = others.reduce(
+						(acc: any, cur: any) => {
+							acc.ownerQuantity += cur.ownerQuantity;
+							acc.ownerPercentage += cur.ownerPercentage;
+							return acc;
+						},
+						{ address: language.other, handle: language.other, avatar: null, ownerQuantity: 0, ownerPercentage: 0 }
+					);
+
+					setSortedOwners([...updatedOwners, combined]);
+				} else {
+					setSortedOwners(updatedOwners);
+				}
 			}
-		}
-	}, [props.owners, arProvider.profile]);
+		})();
+	}, [props.asset]);
 
 	React.useEffect(() => {
 		if (sortedOwners) {
@@ -156,5 +175,9 @@ export default function AssetActionsOwners(props: IProps) {
 				</S.InfoLine>
 			)}
 		</S.Wrapper>
-	) : null;
+	) : (
+		<S.Wrapper className={'border-wrapper-alt2'}>
+			<Loader sm relative />
+		</S.Wrapper>
+	);
 }

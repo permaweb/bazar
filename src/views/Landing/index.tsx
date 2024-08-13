@@ -4,7 +4,7 @@ import { getCollections } from 'api';
 
 import { AssetsTable } from 'components/organisms/AssetsTable';
 import { CollectionsCarousel } from 'components/organisms/CollectionsCarousel';
-import { CreatorsTable } from 'components/organisms/CreatorsTable';
+import { OrderCountsTable } from 'components/organisms/OrderCountsTable';
 import { TrendingTokens } from 'components/organisms/TrendingTokens';
 import { PAGINATORS } from 'helpers/config';
 import { CollectionType } from 'helpers/types';
@@ -43,7 +43,7 @@ export default function Landing() {
 				<TrendingTokens />
 			</S.TokensWrapper>
 			<S.CreatorsWrapper>
-				<CreatorsTable />
+				<OrderCountsTable />
 			</S.CreatorsWrapper>
 			<S.AssetsWrapper>
 				<AssetsTable type={'grid'} pageCount={PAGINATORS.landing.assets} />

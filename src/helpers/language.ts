@@ -125,6 +125,7 @@ export const language = {
 		time: `Time`,
 		title: `Title`,
 		trendingTokens: `Trending Tokens`,
+		topCollectors: `Top Collectors`,
 		topCreators: `Top Creators`,
 		totalAssets: `Total assets`,
 		totalAssetBalance: `Total asset balance`,

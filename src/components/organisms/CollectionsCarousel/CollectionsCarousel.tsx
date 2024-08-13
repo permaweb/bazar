@@ -87,7 +87,7 @@ export default function CollectionsCarousel(props: IProps) {
 									backgroundImage={getTxEndpoint(collection.thumbnail || DEFAULTS.thumbnail)}
 									disabled={false}
 								>
-									<Link to={`${URLS.collection}${collection.id}`}>
+									<Link to={URLS.collectionAssets(collection.id)}>
 										<S.InfoWrapper>
 											<S.InfoTile>
 												<S.InfoDetail>

@@ -117,7 +117,11 @@ export async function getAssetById(args: { id: string }): Promise<AssetDetailTyp
 				if (processState.Denomination || processState.denomination)
 					assetState.denomination = processState.Denomination || processState.denomination;
 				if (processState.Logo || processState.logo) assetState.logo = processState.Logo || processState.logo;
-				if (processState.Balances) assetState.balances = processState.Balances;
+				if (processState.Balances) {
+					assetState.balances = Object.fromEntries(
+						Object.entries(processState.Balances).filter(([_, value]) => Number(value) !== 0)
+					) as any;
+				}
 				if (processState.Transferable !== undefined) {
 					assetState.transferable = processState.Transferable;
 				} else {

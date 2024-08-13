@@ -1,6 +1,5 @@
-import { AssetDetailType, OwnerType } from 'helpers/types';
+import { AssetDetailType } from 'helpers/types';
 
 export interface IProps {
 	asset: AssetDetailType;
-	owners: OwnerType[] | null;
 }

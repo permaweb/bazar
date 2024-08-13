@@ -30,6 +30,8 @@ export default function ActivityTable(props: IProps) {
 
 	const scrollRef = React.useRef(null);
 
+	const groupCount = props.groupCount || GROUP_COUNT;
+
 	const [activity, setActivity] = React.useState<any | null>(null);
 	const [activityResponse, setActivityResponse] = React.useState<any | null>(null);
 	const [activityGroups, setActivityGroups] = React.useState<any | null>(null);
@@ -75,6 +77,8 @@ export default function ActivityTable(props: IProps) {
 			if (activityResponse.ListedOrders) updatedActivity.push(...mapActivity(activityResponse.ListedOrders, 'Listing'));
 			if (activityResponse.ExecutedOrders)
 				updatedActivity.push(...mapActivity(activityResponse.ExecutedOrders, 'Sale'));
+			if (activityResponse.CancelledOrders)
+				updatedActivity.push(...mapActivity(activityResponse.CancelledOrders, 'Unlisted'));
 			setActivity(updatedActivity);
 			if (updatedActivity.length <= 0) {
 				setActivityGroup([]);
@@ -96,8 +100,8 @@ export default function ActivityTable(props: IProps) {
 			}
 
 			let groups = [];
-			for (let i = 0, j = 0; i < activity.length; i += GROUP_COUNT, j++) {
-				groups[j] = activity.slice(i, i + GROUP_COUNT);
+			for (let i = 0, j = 0; i < activity.length; i += groupCount, j++) {
+				groups[j] = activity.slice(i, i + groupCount);
 			}
 
 			setActivityGroups(groups);
@@ -172,7 +176,7 @@ export default function ActivityTable(props: IProps) {
 		setActivitySortType(option);
 	}, []);
 
-	function mapActivity(orders: any, event: 'Listing' | 'Purchase' | 'Sale') {
+	function mapActivity(orders: any, event: 'Listing' | 'Purchase' | 'Sale' | 'Unlisted') {
 		let updatedActivity = [];
 
 		if (orders && orders.length > 0) {
@@ -184,6 +188,7 @@ export default function ActivityTable(props: IProps) {
 				) {
 					orderEvent = 'Purchase';
 				}
+				console.log(orderEvent);
 				return {
 					orderId: order.OrderId,
 					dominantToken: order.DominantToken,
@@ -244,14 +249,14 @@ export default function ActivityTable(props: IProps) {
 		}
 	};
 
-	const start = activity && activity.length ? Number(activityCursor) * GROUP_COUNT + 1 : '';
-	const end = activity && activity.length ? Math.min((Number(activityCursor) + 1) * GROUP_COUNT, activity.length) : '';
+	const start = activity && activity.length ? Number(activityCursor) * groupCount + 1 : '';
+	const end = activity && activity.length ? Math.min((Number(activityCursor) + 1) * groupCount, activity.length) : '';
 
 	const getActivity = React.useMemo(() => {
 		if (!activityGroup) {
 			return (
 				<S.LoadingWrapper>
-					{Array.from({ length: GROUP_COUNT }, (_, i) => i + 1).map((index) => (
+					{Array.from({ length: groupCount }, (_, i) => i + 1).map((index) => (
 						<S.TableRowLoader key={index} className={'fade-in border-wrapper-alt1'} />
 					))}
 				</S.LoadingWrapper>
@@ -264,6 +269,19 @@ export default function ActivityTable(props: IProps) {
 					<span>{language.noActivity}</span>
 				</S.EmptyWrapper>
 			);
+		}
+
+		function getEventIcon(event: string) {
+			switch (event) {
+				case 'Listing':
+					return ASSETS.orders;
+				case 'Sale':
+					return ASSETS.sell;
+				case 'Unlisted':
+					return ASSETS.close;
+				default:
+					return ASSETS.buy;
+			}
 		}
 
 		return (
@@ -294,81 +312,81 @@ export default function ActivityTable(props: IProps) {
 					</S.DateValueWrapper>
 				</S.TableHeader>
 				<S.TableBody>
-					{activityGroup.map((row: any, index: number) => (
-						<S.TableRow key={index}>
-							{!props.asset && row.asset && row.asset.data && (
-								<S.AssetWrapper>
-									<S.AssetDataWrapper>
+					{activityGroup.map((row: any, index: number) => {
+						return (
+							<S.TableRow key={index}>
+								{!props.asset && row.asset && row.asset.data && (
+									<S.AssetWrapper>
+										<S.AssetDataWrapper>
+											<Link to={`${URLS.asset}${row.asset.data.id}`}>
+												<AssetData asset={row.asset} />
+											</Link>
+										</S.AssetDataWrapper>
 										<Link to={`${URLS.asset}${row.asset.data.id}`}>
-											<AssetData asset={row.asset} />
+											<p>{row.asset.data.title || formatAddress(row.asset.data.id, false)}</p>
 										</Link>
-									</S.AssetDataWrapper>
-									<Link to={`${URLS.asset}${row.asset.data.id}`}>
-										<p>{row.asset.data.title || formatAddress(row.asset.data.id, false)}</p>
-									</Link>
-								</S.AssetWrapper>
-							)}
-							<S.EventWrapper>
-								<S.Event type={row.event}>
-									<ReactSVG
-										src={row.event === 'Listing' ? ASSETS.orders : row.event === 'Sale' ? ASSETS.sell : ASSETS.buy}
-									/>
-									<p>{row.event}</p>
-								</S.Event>
-							</S.EventWrapper>
-							<S.SenderWrapper>
-								{row.senderProfile ? (
-									<OwnerLine
-										owner={{
-											address: row.sender,
-											profile: row.senderProfile,
-										}}
-										callback={null}
-									/>
-								) : (
-									<S.Entity type={'User'}>
-										<p>{row.sender ? formatAddress(row.sender, false) : '-'}</p>
-									</S.Entity>
+									</S.AssetWrapper>
 								)}
-							</S.SenderWrapper>
-							<S.ReceiverWrapper>
-								{row.receiverProfile ? (
-									<OwnerLine
-										owner={{
-											address: row.receiver,
-											profile: row.receiverProfile,
-										}}
-										callback={null}
-									/>
-								) : (
-									<>
-										{row.receiver ? (
-											<S.Entity type={'User'}>
-												<p>{row.receiver ? formatAddress(row.receiver, false) : '-'}</p>
-											</S.Entity>
-										) : (
-											<p>-</p>
-										)}
-									</>
-								)}
-							</S.ReceiverWrapper>
-							<S.QuantityWrapper className={'center-value'}>
-								<p>{getDenominatedTokenValue(row.quantity, row.dominantToken)}</p>
-							</S.QuantityWrapper>
-							<S.PriceWrapper className={'end-value'}>
-								<CurrencyLine amount={row.price} currency={row.swapToken} callback={null} />
-							</S.PriceWrapper>
-							<S.DateValueWrapper>
-								<p>{getRelativeDate(row.timestamp)}</p>
-								<S.DateValueTooltip>
-									<ReactSVG src={ASSETS.info} />
-									<div className={'date-tooltip fade-in border-wrapper-alt1'}>
-										<p>{`${formatDate(row.timestamp, 'iso', true)}`}</p>
-									</div>
-								</S.DateValueTooltip>
-							</S.DateValueWrapper>
-						</S.TableRow>
-					))}
+								<S.EventWrapper>
+									<S.Event type={row.event}>
+										<ReactSVG src={getEventIcon(row.event)} />
+										<p>{row.event}</p>
+									</S.Event>
+								</S.EventWrapper>
+								<S.SenderWrapper>
+									{row.senderProfile ? (
+										<OwnerLine
+											owner={{
+												address: row.sender,
+												profile: row.senderProfile,
+											}}
+											callback={null}
+										/>
+									) : (
+										<S.Entity type={'User'}>
+											<p>{row.sender ? formatAddress(row.sender, false) : '-'}</p>
+										</S.Entity>
+									)}
+								</S.SenderWrapper>
+								<S.ReceiverWrapper>
+									{row.receiverProfile ? (
+										<OwnerLine
+											owner={{
+												address: row.receiver,
+												profile: row.receiverProfile,
+											}}
+											callback={null}
+										/>
+									) : (
+										<>
+											{row.receiver ? (
+												<S.Entity type={'User'}>
+													<p>{row.receiver ? formatAddress(row.receiver, false) : '-'}</p>
+												</S.Entity>
+											) : (
+												<p>-</p>
+											)}
+										</>
+									)}
+								</S.ReceiverWrapper>
+								<S.QuantityWrapper className={'center-value'}>
+									<p>{getDenominatedTokenValue(row.quantity, row.dominantToken)}</p>
+								</S.QuantityWrapper>
+								<S.PriceWrapper className={'end-value'}>
+									<CurrencyLine amount={row.price} currency={row.swapToken} callback={null} />
+								</S.PriceWrapper>
+								<S.DateValueWrapper>
+									<p>{getRelativeDate(row.timestamp)}</p>
+									<S.DateValueTooltip>
+										<ReactSVG src={ASSETS.info} />
+										<div className={'date-tooltip fade-in border-wrapper-alt1'}>
+											<p>{`${formatDate(row.timestamp, 'iso', true)}`}</p>
+										</div>
+									</S.DateValueTooltip>
+								</S.DateValueWrapper>
+							</S.TableRow>
+						);
+					})}
 				</S.TableBody>
 			</S.TableWrapper>
 		);
