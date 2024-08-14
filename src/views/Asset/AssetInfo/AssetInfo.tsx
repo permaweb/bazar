@@ -44,9 +44,10 @@ export default function AssetInfo(props: IProps) {
 		const licenseElement = props.asset.data.udl[licenseKey];
 
 		if (typeof licenseElement === 'object') {
+			console.log(licenseElement);
 			return (
 				<GS.DrawerContentDetail>
-					{splitTagValue(licenseElement.value)}{' '}
+					{licenseElement.value ? splitTagValue(licenseElement.value) : '-'}{' '}
 					{props.asset.data.udl.currency &&
 						currenciesReducer &&
 						currenciesReducer[props.asset.data.udl.currency] &&
@@ -57,7 +58,7 @@ export default function AssetInfo(props: IProps) {
 				</GS.DrawerContentDetail>
 			);
 		} else if (checkValidAddress(licenseElement)) {
-			return <TxAddress address={licenseElement} wrap={false} />;
+			return licenseElement ? <TxAddress address={licenseElement} wrap={false} /> : '-';
 		} else {
 			return <GS.DrawerContentDetail>{licenseElement}</GS.DrawerContentDetail>;
 		}
@@ -143,7 +144,7 @@ export default function AssetInfo(props: IProps) {
 						content={
 							<GS.DrawerContent>
 								<GS.DrawerContentDetail>
-									<Link to={`${URLS.collection}${props.asset.data.collectionId}`}>
+									<Link to={URLS.collectionAssets(props.asset.data.collectionId)}>
 										{props.asset.data.collectionName
 											? cleanTagValue(props.asset.data.collectionName)
 											: props.asset.data.collectionId}
