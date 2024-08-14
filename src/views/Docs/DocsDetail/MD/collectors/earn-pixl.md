@@ -1,4 +1,4 @@
-### How to earn PIXL
+## How to earn PIXL
 
 PIXL is a rewards token for purchasing atomic assets on the Universal Content Marketplace. When users buy atomic assets via BazAR or any UCM platform, they become eligible to receive PIXL tokens. BazAR tracks buying streaks, which occur when users buy one or more atomic assets on consecutive days.
 

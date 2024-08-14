@@ -1,10 +1,8 @@
-### BazAR Learn
+## BazAR Learn
 
 Welcome to the permaweb's first fully decentralized atomic asset exchange. BazAR empowers creators and collectors to interact, trade, and transact with any form of digital content, from images and music to videos, papers, components, and even applications.
 
 In these guides, you can learn more about how to use BazAR and why this platform is more than just an NFT marketplace.
-
-![BazAR gif](https://arweave.net/3ysZxYvuYtYKa1LBiT2z1IVwmY7ypKWwfLgMOQu4_Ug)
 
 #### Core functionality
 

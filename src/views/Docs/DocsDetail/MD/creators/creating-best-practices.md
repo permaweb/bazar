@@ -1,4 +1,4 @@
-### Creating best practices
+## Creating best practices
 
 Creating atomic assets may seem daunting at first, but once you understand a few basic tools and concepts, you'll be well on your way to becoming a permaweb pro. Here are a few tips to keep in mind when creating on the permaweb.
 

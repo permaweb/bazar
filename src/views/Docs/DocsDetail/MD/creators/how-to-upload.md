@@ -1,4 +1,4 @@
-### How to upload
+## How to upload
 
 BazAR is a user interface for the UCM protocol, allowing for countless ways to upload content to the permaweb and trade on BazAR. Following the recent migration of UCM onto AO, not all permaweb uploaders support AO atomic assets. This list will expand as more permaweb applications support uploads to the AO UCM.
 

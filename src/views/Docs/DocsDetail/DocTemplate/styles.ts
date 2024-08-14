@@ -23,7 +23,7 @@ export const Wrapper = styled.div<{ isView: boolean }>`
 	h6 {
 		font-size: clamp(32px, 3.75vw, 44px) !important;
 		font-weight: ${(props) => props.theme.typography.weight.bold} !important;
-		font-family: ${(props) => props.theme.typography.family.primary} !important;
+		font-family: ${(props) => props.theme.typography.family.alt1} !important;
 		color: ${(props) => props.theme.colors.font.primary.alt1} !important;
 		margin: 0 0 20px 0;
 		line-height: 1.5 !important;
@@ -39,7 +39,9 @@ export const Wrapper = styled.div<{ isView: boolean }>`
 
 	h2 {
 		font-size: clamp(22px, 3.05vw, 34px) !important;
+		font-family: ${(props) => props.theme.typography.family.alt1} !important;
 		scroll-margin-top: 100px;
+		margin: 0 0 20px 0;
 		a {
 			font-size: clamp(22px, 3.05vw, 34px) !important;
 		}
@@ -53,7 +55,7 @@ export const Wrapper = styled.div<{ isView: boolean }>`
 	h4,
 	h5,
 	h6 {
-		font-size: clamp(13px, 1.95vw, 18px) !important;
+		font-size: clamp(13px, 1.95vw, 24px) !important;
 	}
 
 	strong,
@@ -69,7 +71,7 @@ export const Wrapper = styled.div<{ isView: boolean }>`
 		font-size: ${(props) => props.theme.typography.size.base} !important;
 		font-weight: ${(props) => props.theme.typography.weight.regular} !important;
 		font-family: ${(props) => props.theme.typography.family.primary} !important;
-		color: ${(props) => props.theme.colors.font.primary.alt1} !important;
+		color: ${(props) => props.theme.colors.font.alt1} !important;
 		line-height: 1.65 !important;
 		margin: 10px 0 20px 0;
 	}

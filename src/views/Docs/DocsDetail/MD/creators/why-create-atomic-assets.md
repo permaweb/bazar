@@ -1,4 +1,4 @@
-### Create atomic assets
+## Create atomic assets
 
 Creating atomic assets isn't just about creating digital content; it's about empowering creators to take control of their creative works and create economic value on their own terms. By bringing your content fully onchain, with real-world rights, you're not just showcasing your creativity; you're creating a new internet economy that is owned by the creators and forever preserved on the Arweave network.
 

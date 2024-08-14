@@ -1,4 +1,4 @@
-### Atomic assets
+## Atomic assets
 
 An atomic asset is a unique digital item stored on Arweave. Unlike traditional NFTs, the asset data is uploaded together with a smart contract in a single transaction which is inseparable and does not rely on external components.
 

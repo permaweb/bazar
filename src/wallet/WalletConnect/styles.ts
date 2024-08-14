@@ -131,9 +131,11 @@ export const DBodyWrapper = styled.ul`
 		padding: 0 15px;
 		transition: all 100ms;
 		svg {
-			height: 17.5px;
-			width: 17.5px;
-			margin: 7.5px 12.5px 0 0;
+			height: 15.5px;
+			width: 15.5px;
+			margin: 6.5px 8.5px 0 0;
+			color: ${(props) => props.theme.colors.font.alt1};
+			fill: ${(props) => props.theme.colors.font.alt1};
 		}
 		&:hover {
 			color: ${(props) => props.theme.colors.font.primary};
@@ -176,10 +178,11 @@ export const BalanceLine = styled.div`
 		color: ${(props) => props.theme.colors.font.primary};
 	}
 	svg {
-		height: 17.5px;
-		width: 17.5px;
-		margin: 5.5px 7.5px 0 0;
-		fill: ${(props) => props.theme.colors.icon.alt2.fill};
+		height: 16.5px;
+		width: 16.5px;
+		margin: 7.5px 12.5px 0 0;
+		color: ${(props) => props.theme.colors.font.alt1};
+		fill: ${(props) => props.theme.colors.font.alt1};
 	}
 	.pixl-icon {
 		svg {
@@ -236,9 +239,11 @@ export const DFooterWrapper = styled(DBodyWrapper)`
 	padding: 10px 0;
 	border-bottom: none;
 	svg {
-		height: 17.5px;
-		width: 17.5px;
-		margin: 7.5px 12.5px 0 0;
+		height: 15.5px;
+		width: 15.5px;
+		margin: 6.5px 8.5px 0 0;
+		color: ${(props) => props.theme.colors.font.alt1};
+		fill: ${(props) => props.theme.colors.font.alt1};
 	}
 `;
 

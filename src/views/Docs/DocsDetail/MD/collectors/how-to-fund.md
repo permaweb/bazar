@@ -1,4 +1,4 @@
-### How to fund your account
+## How to fund your account
 
 To engage in transactions on BazAR, you need Wrapped AR (wAR). You can obtain wAR by either bridging AR onto AO or swapping other AO tokens for wAR. Here’s how to do it:
 

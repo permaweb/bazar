@@ -1,4 +1,4 @@
-### Permaweb
+## Permaweb
 
 The permaweb is a permanent and decentralized web built on top of Arweave.
 

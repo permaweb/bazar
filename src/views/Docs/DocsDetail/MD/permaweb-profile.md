@@ -1,4 +1,4 @@
-### How to create a permaweb profile
+## How to create a permaweb profile
 
 1. **Connect your Arweave wallet**: When you enter BazAR, the first step is to connect your Arweave wallet. This wallet holds your unique address on the Arweave network. If you do not have an Arweave wallet, you can create one with [Arconnect](https://www.arconnect.io/) or [Othent](https://othent.io/).
 
