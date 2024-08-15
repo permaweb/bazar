@@ -129,6 +129,7 @@ export default function AssetData(props: IProps) {
 						type: 'setHeight',
 						height: `${props.frameMinHeight}px`,
 						walletConnection: arProvider.walletAddress ? 'connected' : 'none',
+						walletAddress: arProvider.walletAddress,
 					},
 					'*'
 				);
