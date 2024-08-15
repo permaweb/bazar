@@ -17,12 +17,12 @@ export default function AssetData(props: IProps) {
 	const wrapperRef = React.useRef<any>(null);
 
 	const [wrapperVisible, setWrapperVisible] = React.useState<boolean>(false);
-	const [frameLoaded, setFrameLoaded] = React.useState<boolean>(false);
 
 	const [assetRender, setAssetRender] = React.useState<AssetRenderType | null>(null);
 
 	const [loadError, setLoadError] = React.useState<boolean>(false);
 	const [contain, setContain] = React.useState<boolean>(true);
+	const [frameLoaded, setFrameLoaded] = React.useState<boolean>(false);
 
 	const checkVisibility = () => {
 		const element = wrapperRef.current;
@@ -122,8 +122,8 @@ export default function AssetData(props: IProps) {
 	}, [assetRender]);
 
 	React.useEffect(() => {
-		function sendWalletConnection() {
-			if (iframeRef && iframeRef.current) {
+		function sendFrameData() {
+			if (iframeRef.current) {
 				iframeRef.current.contentWindow.postMessage(
 					{
 						type: 'setHeight',
@@ -136,8 +136,10 @@ export default function AssetData(props: IProps) {
 			}
 		}
 
-		sendWalletConnection();
-	}, [arProvider.walletAddress]);
+		if (frameLoaded && iframeRef.current) {
+			sendFrameData();
+		}
+	}, [arProvider.walletAddress, frameLoaded]);
 
 	function getAssetPath(assetResponse: any) {
 		if (props.asset) {
@@ -168,6 +170,21 @@ export default function AssetData(props: IProps) {
 		return <ReactSVG src={ASSETS.renderer} />;
 	}
 
+	function sendFrameData() {
+		if (iframeRef.current && iframeRef.current.contentWindow) {
+			iframeRef.current.contentWindow.postMessage(
+				{
+					type: 'setHeight',
+					height: `${props.frameMinHeight || 0}px`,
+					walletConnection: arProvider.walletAddress ? 'connected' : 'none',
+					connectedAddress: arProvider.walletAddress,
+					processId: props.asset ? props.asset.data.id : null,
+				},
+				'*'
+			);
+		}
+	}
+
 	function getData() {
 		if (assetRender) {
 			switch (assetRender.type) {
@@ -179,15 +196,9 @@ export default function AssetData(props: IProps) {
 								src={assetRender.url}
 								allowFullScreen
 								onLoad={() => {
-									if (iframeRef.current && iframeRef.current.contentWindow && props.frameMinHeight) {
-										iframeRef.current.contentWindow.postMessage(
-											{
-												type: 'setHeight',
-												height: `${props.frameMinHeight}px`,
-												walletConnection: arProvider.walletAddress ? 'connected' : 'none',
-											},
-											'*'
-										);
+									setFrameLoaded(true);
+									if (iframeRef.current) {
+										sendFrameData();
 									}
 								}}
 								onError={handleError}
@@ -224,9 +235,22 @@ export default function AssetData(props: IProps) {
 					}
 
 					if (assetRender.contentType.includes('html')) {
-						if (!props.preview && props.autoLoad)
-							return <S.Frame src={assetRender.url} ref={iframeRef} allowFullScreen onError={handleError} />;
-						else {
+						if (!props.preview && props.autoLoad) {
+							return (
+								<S.Frame
+									src={assetRender.url}
+									ref={iframeRef}
+									allowFullScreen
+									onError={handleError}
+									onLoad={() => {
+										setFrameLoaded(true);
+										if (iframeRef.current) {
+											sendFrameData();
+										}
+									}}
+								/>
+							);
+						} else {
 							return (
 								<S.Preview>
 									<ReactSVG src={ASSETS.html} />
