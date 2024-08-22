@@ -34,6 +34,7 @@ export const Label = styled.div`
 	svg {
 		width: 17.5px !important;
 		fill: ${(props) => props.theme.colors.accordion.color};
+		color: ${(props) => props.theme.colors.accordion.color};
 	}
 `;
 
@@ -41,6 +42,8 @@ export const Arrow = styled.div`
 	margin: 2.5px 0 0 0;
 	svg {
 		transform: rotate(90deg);
+		fill: ${(props) => props.theme.colors.accordion.color};
+		color: ${(props) => props.theme.colors.accordion.color};
 	}
 `;
 

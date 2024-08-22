@@ -24,12 +24,14 @@ export const NContent = styled.div`
 	top: 105px;
 	overflow: auto;
 	margin: 10.5px 0 0 0;
-	padding: 15px 20px 0 20px;
 	@media (max-width: ${STYLING.cutoffs.initial}) {
 		position: relative;
 		top: auto;
 		padding: 0 15px;
 		max-height: none;
+		background: ${(props) => props.theme.colors.container.alt3.background};
+		border: 1px solid ${(props) => props.theme.colors.border.primary};
+		border-radius: ${STYLING.dimensions.radius.primary};
 	}
 `;
 
@@ -39,6 +41,7 @@ export const NTitle = styled.div`
 	justify-content: flex-start;
 	align-items: center;
 	margin: 0 0 10px 0;
+	display: none;
 	p {
 		font-family: ${(props) => props.theme.typography.family.alt1};
 		font-size: 22px !important;
@@ -81,6 +84,9 @@ export const NTitleMobile = styled.button<{ open: boolean }>`
 export const NList = styled.ul`
 	width: 100%;
 	overflow: auto;
+	display: flex;
+	flex-direction: column;
+	gap: 20px;
 	a {
 		width: fit-content;
 		text-decoration: none;
@@ -98,7 +104,7 @@ export const NListItem = styled.li<{ disabled: boolean; active: boolean }>`
 	align-items: center;
 	cursor: pointer;
 	font-size: ${(props) => props.theme.typography.size.small};
-	color: ${(props) => (props.active ? props.theme.colors.font.alt5 : props.theme.colors.font.primary)};
+	color: ${(props) => (props.active ? props.theme.colors.font.alt5 : props.theme.colors.font.alt1)};
 	font-weight: ${(props) => props.theme.typography.weight.bold};
 	margin: 0 0 7.5px 0;
 	line-height: 1.75;
@@ -107,13 +113,11 @@ export const NListItem = styled.li<{ disabled: boolean; active: boolean }>`
 	background: transparent;
 
 	&:hover {
-		color: ${(props) => (props.active ? props.theme.colors.font.alt5 : props.theme.colors.font.alt1)};
+		color: ${(props) => (props.active ? props.theme.colors.font.alt5 : props.theme.colors.font.primary)};
 	}
 `;
 
-export const NGroup = styled.div`
-	margin: 12.5px 0 20px 0;
-`;
+export const NGroup = styled.div``;
 
 export const NSubHeader = styled(NTitle)`
 	height: auto;
@@ -123,8 +127,8 @@ export const NSubHeader = styled(NTitle)`
 	border-top-right-radius: 0;
 	margin: 0 0 10px 0;
 	p {
-		font-size: ${(props) => props.theme.typography.size.small} !important;
-		color: ${(props) => props.theme.colors.font.alt1} !important;
+		font-size: ${(props) => props.theme.typography.size.base} !important;
+		color: ${(props) => props.theme.colors.font.primary} !important;
 	}
 `;
 

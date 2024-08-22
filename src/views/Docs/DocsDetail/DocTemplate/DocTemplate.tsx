@@ -77,7 +77,7 @@ export default function DocTemplate(props: { doc?: string; id?: string }) {
 				.catch((error) => console.error('Error fetching markdown: ', error));
 		} else {
 			if (!active) {
-				navigate(`${URLS.docs}introduction`);
+				navigate(`${URLS.docs}overview/introduction`);
 			} else {
 				import(`../MD/${active}.md`)
 					.then((module) => setMarkdown(module.default))

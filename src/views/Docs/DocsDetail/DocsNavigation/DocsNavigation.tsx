@@ -67,7 +67,7 @@ export default function DocsNavigation() {
 
 		return (
 			<S.NWrapper>
-				<S.NContent className={'border-wrapper-alt1 scroll-wrapper'}>
+				<S.NContent className={'scroll-wrapper'}>
 					<Title onClick={desktop ? () => {} : () => setOpen(!open)} open={open}>
 						<p>
 							{APP.name} {language.learn}
