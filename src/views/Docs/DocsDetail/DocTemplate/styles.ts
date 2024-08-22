@@ -24,9 +24,10 @@ export const Wrapper = styled.div<{ isView: boolean }>`
 		font-size: clamp(32px, 3.75vw, 44px) !important;
 		font-weight: ${(props) => props.theme.typography.weight.bold} !important;
 		font-family: ${(props) => props.theme.typography.family.alt1} !important;
-		color: ${(props) => props.theme.colors.font.primary.alt1} !important;
+		color: ${(props) => props.theme.colors.font.primary} !important;
 		border-bottom: 1px solid ${(props) => props.theme.colors.border.alt4};
 		margin: 0 0 10px 0;
+		padding: 0 0 5px 0;
 	}
 
 	h3,
@@ -37,23 +38,34 @@ export const Wrapper = styled.div<{ isView: boolean }>`
 	}
 
 	h2 {
-		font-size: clamp(22px, 3.05vw, 34px) !important;
+		font-size: clamp(22px, 3.15vw, 38px) !important;
 		font-family: ${(props) => props.theme.typography.family.alt1} !important;
 		scroll-margin-top: 100px;
 		a {
 			font-size: clamp(22px, 3.05vw, 34px) !important;
 		}
 	}
-	h3 {
-		font-size: clamp(18px, 2.05vw, 24px) !important;
-	}
-	h4 {
-		/* margin: 20px 0 10px 0; */
-	}
+
+	h3,
 	h4,
-	h5,
+	h5 {
+		font-size: clamp(18px, 2.5vw, 28px) !important;
+	}
+
 	h6 {
-		font-size: clamp(16px, 1.95vw, 24px) !important;
+		font-size: clamp(16px, 1.95vw, 22px) !important;
+		color: ${(props) => props.theme.colors.font.alt1} !important;
+		border-bottom: 1px solid transparent;
+		margin: 35px 0 0 0;
+
+		a {
+			font-size: clamp(16px, 1.95vw, 22px) !important;
+			text-decoration-thickness: 2px;
+			&:hover {
+				color: ${(props) => props.theme.colors.font.alt1};
+				text-decoration-thickness: 2px;
+			}
+		}
 	}
 
 	strong,
@@ -83,6 +95,7 @@ export const Wrapper = styled.div<{ isView: boolean }>`
 		display: flex;
 		flex-direction: column;
 		gap: 7.5px;
+		margin: 7.5px 0 0 0;
 
 		li {
 			list-style-type: none;

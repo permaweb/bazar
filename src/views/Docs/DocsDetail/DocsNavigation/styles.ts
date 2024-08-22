@@ -41,7 +41,6 @@ export const NTitle = styled.div`
 	justify-content: flex-start;
 	align-items: center;
 	margin: 0 0 10px 0;
-	display: none;
 	p {
 		font-family: ${(props) => props.theme.typography.family.alt1};
 		font-size: 22px !important;

@@ -68,12 +68,14 @@ export default function DocsNavigation() {
 		return (
 			<S.NWrapper>
 				<S.NContent className={'scroll-wrapper'}>
-					<Title onClick={desktop ? () => {} : () => setOpen(!open)} open={open}>
-						<p>
-							{APP.name} {language.learn}
-						</p>
-						{!desktop && <ReactSVG src={ASSETS.arrow} />}
-					</Title>
+					{!desktop && (
+						<Title onClick={desktop ? () => {} : () => setOpen(!open)} open={open}>
+							<p>
+								{APP.name} {language.learn}
+							</p>
+							{!desktop && <ReactSVG src={ASSETS.arrow} />}
+						</Title>
+					)}
 					<S.NList>{open && renderNavItems(desktop ? null : () => setOpen(false))}</S.NList>
 				</S.NContent>
 			</S.NWrapper>
