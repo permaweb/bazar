@@ -11,6 +11,10 @@ export const docsOrder = [
 				name: 'Create a profile',
 				path: 'permaweb-profile',
 			},
+			{
+				name: 'Legacy BazAR migration',
+				path: 'legacy-bazar-migration',
+			},
 		],
 	},
 	{
