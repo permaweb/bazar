@@ -512,10 +512,17 @@ export default function AssetActionMarketOrders(props: IProps) {
 						Math.floor(Number(updatedUnitPrice <= MIN_PRICE ? 0 : updatedUnitPrice) * transferDenomination)
 					);
 				}
+
+				// TODO
+				let calculatedQuantity = currentOrderQuantity;
+				if (denomination && denomination > 1) {
+					calculatedQuantity = Number(currentOrderQuantity) * Number(denomination);
+				}
+
 				try {
 					price =
-						BigInt(currentOrderQuantity) && BigInt(calculatedUnitPrice)
-							? BigInt(currentOrderQuantity) * BigInt(calculatedUnitPrice)
+						BigInt(calculatedQuantity) && BigInt(calculatedUnitPrice)
+							? BigInt(calculatedQuantity) * BigInt(calculatedUnitPrice)
 							: BigInt(0);
 				} catch (e: any) {
 					console.error(e);
@@ -614,7 +621,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 	function getTotalPriceDisplay() {
 		let amount = BigInt(getTotalOrderAmount());
-		if (props.type === 'buy' && denomination) amount = BigInt(amount) / BigInt(denomination);
+		if (denomination && denomination > 1) amount = BigInt(amount) / BigInt(denomination);
 		const orderCurrency =
 			props.asset.orders && props.asset.orders.length ? props.asset.orders[0].currency : AO.defaultToken;
 		return <CurrencyLine amount={amount ? amount.toString() : '0'} currency={orderCurrency} />;
