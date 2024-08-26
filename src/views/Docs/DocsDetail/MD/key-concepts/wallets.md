@@ -14,4 +14,4 @@ An Arweave wallet is your passport to the permaweb. A wallet is needed to create
 - **Decentralized**: Arweave’s decentralized nature means there is no central authority that can access or control your wallet. This decentralization enhances security by removing single points of failure. In other words, if you lose your wallet key file, no one can help you access your wallet.
 - **dApp permissions**: When using the ArConnect wallet plugin, you can determine how your wallet interacts with permaweb applications. This gives you control over what information the app can access and how it can interact with your wallet. This is accessed within the ArConnect plugin by clicking on the three dots on the right, then selecting settings, and applications. There you can see your settings for each connected application.
 
-Once you generate an Arweave wallet, you can create a BazAR profile [here](#).
+###### Once you generate an Arweave wallet, you can create a BazAR profile [here](#).

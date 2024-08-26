@@ -8,6 +8,6 @@ When you enter BazAR, the first step is to connect your Arweave wallet. This wal
 
 After connecting your wallet, you create a permaweb profile. This profile is a unique AO process that you can customize with a name, @handle, profile picture, and header. **Profile and header images must be under 100kb**. As more permaweb applications adopt AO profile specs, this profile will be interoperable across the permaweb. Learn more about the permaweb [here](https://ao-bazar.arweave.net/#/docs/key-concepts/permaweb).
 
-#### Note on permaweb profiles
+###### Note on permaweb profiles
 
 Your permaweb profile is a AO process which is owned by your Arweave wallet. This process carries out interactions with the UCM and holds custody to your atomic assets. All tokens and atomic assets owned by your wallet are visible in your permaweb profile.

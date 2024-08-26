@@ -1,8 +1,6 @@
 ## Legacy BazAR Migration
 
-To all Legacy BazAR users:
-
-As we transition from Legacy BazAR, we're taking steps to ensure a smooth migration process for all users. This includes transferring PIXL balances and streaks, reimbursing U holders with wAR, and enabling creators to move their atomic assets to AO.
+**To all Legacy BazAR users:** As we transition from Legacy BazAR, we're taking steps to ensure a smooth migration process for all users. This includes transferring PIXL balances and streaks, reimbursing U holders with wAR, and enabling creators to move their atomic assets to AO.
 
 #### wAR for U Airdrop
 
@@ -16,7 +14,7 @@ Your PIXL balances and streaks will be seamlessly migrated to AO PIXL. Streaks a
 
 Creators can migrate their collections and single atomic assets to AO BazAR. You'll find a "Migrate to AO" button on your profile page, available for both individual assets and collections.
 
-**Please note:**
+###### Please note:
 
 - **Only assets under 10MB can be migrated to AO**. We're working on a solution to support larger file uploads and will share updates as soon as possible.
 - **Only the original creators of atomic assets can migrate them to AO**. If you own an asset and wish to migrate it, you'll need to contact the creator to initiate the process.

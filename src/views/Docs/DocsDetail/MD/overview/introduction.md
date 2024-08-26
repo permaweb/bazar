@@ -1,16 +1,14 @@
-## BazAR Learn
+## Welcome to BazAR
 
-Welcome to the permaweb’s fully decentralized atomic asset exchange. BazAR empowers creators and collectors to interact, trade, and transact with digital content of all kinds - images, music, videos, papers, components, and even applications. These guides will help you explore how to use BazAR and why this platform is more than just an NFT marketplace.
+Bazar is a decentralized atomic asset exchange built on the permaweb. BazAR empowers creators and collectors to interact, trade, and transact with digital content of all kinds - images, music, videos, papers, components, and even applications. These guides will help you explore how to use BazAR and why this platform is more than just an NFT marketplace.
 
 #### Built on the UCM Protocol
 
-BazAR is the first user interface built on the Universal Content Marketplace (UCM) protocol, a protocol designed to enable trustless exchange of atomic assets on the permaweb. UCM allows creators and users to trade and transact with any form of digital content.
+BazAR is a user interface built on the Universal Content Marketplace (UCM) protocol, a protocol designed to enable trustless exchange of atomic assets on the permaweb. UCM allows creators and users to trade and transact with any form of digital content. A key feature of UCM is its incentivizing token, PIXL. When you buy atomic assets via UCM, you become eligible to receive PIXL tokens. UCM tracks buying streaks, which occur when users purchase one or more atomic assets on consecutive days.
 
-A key feature of UCM is its incentivizing token, PIXL. When you buy atomic assets via UCM, you become eligible to receive PIXL tokens. UCM tracks buying streaks, which occur when users purchase one or more atomic assets on consecutive days.
+###### BazAR does not take any fees
 
-**Please note that BazAR does not take any fees**. Instead, UCM captures a 0.5% fee for using the contract. If the trade involves the $wAR token, the contract purchases PIXL with the fee. It buys available orders, and if no “Sell” orders exist, it initiates a “Buy” order via a reverse Dutch auction. PIXL tokens received from these purchases are burned. The higher the trading volumes and marketplace fees, the more tokens are bought and burned. Read more about PIXL Tokenomics here.
-
-[View the UCM source code here](https://github.com/permaweb/ao-ucm).
+Instead, UCM captures a 0.5% fee for using the contract. If the trade involves the $wAR token, the contract purchases PIXL with the fee. It buys available orders, and if no “Sell” orders exist, it initiates a “Buy” order via a reverse Dutch auction. PIXL tokens received from these purchases are burned. The higher the trading volumes and marketplace fees, the more tokens are bought and burned. Read more about PIXL Tokenomics here. [View the UCM source code here](https://github.com/permaweb/ao-ucm).
 
 #### Core Functionality
 

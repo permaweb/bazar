@@ -8,6 +8,4 @@ BazAR is a user interface for the UCM protocol, allowing for various ways to upl
 
 Content can be uploaded as single atomic assets or within a full collection. Atomic assets can also be 1-1 or a fractionalized token.
 
-Check out the [Helix docs](https://helix.arweave.net/#/docs/introduction) for more information on how to upload your creative work to the permaweb.
-
-**Please note, Helix currently only accepts upload payments through credit card and has a maximum file size limit of 10MB.**
+Check out the [Helix docs](https://helix.arweave.net/#/docs/introduction) for more information on how to upload your creative work to the permaweb. **Please note, Helix currently only accepts upload payments through credit card and has a maximum file size limit of 10MB.**

@@ -63,8 +63,8 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 
 	function handleProfileAction() {
 		if (arProvider.profile && arProvider.profile.id) {
-			navigate(URLS.profileAssets(arProvider.profile.id));
 			setShowWalletDropdown(false);
+			navigate(URLS.profileAssets(arProvider.profile.id));
 		} else {
 			setShowProfileManage(true);
 		}
@@ -85,8 +85,8 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 	}
 
 	function handleDisconnect() {
-		arProvider.handleDisconnect();
 		setShowWalletDropdown(false);
+		arProvider.handleDisconnect();
 	}
 
 	const tokenLinks = {
