@@ -1,12 +1,10 @@
 ## Legacy BazAR Migration
 
-To all Legacy BazAR users:
-
-As we transition from Legacy BazAR, we're taking steps to ensure a smooth migration process for all users. This includes transferring PIXL balances and streaks, reimbursing U holders with wAR, and enabling creators to move their atomic assets to AO.
+To all Legacy BazAR users, as we transition from Legacy BazAR, we're taking steps to ensure a smooth migration process for all users. This includes transferring PIXL balances and streaks, reimbursing U holders with wAR, and enabling creators to move their atomic assets to AO.
 
 #### wAR for U Airdrop
 
-All U holders will receive an equivalent amount of wAR, airdropped to their Arweave wallets, based on the value of U on Permaswap (https://www.permaswap.network/).
+All U holders will receive an equivalent amount of wAR, airdropped to their Arweave wallets, based on the value of U on [Permaswap](https://www.permaswap.network/).
 
 #### PIXL and Streak Migration
 
