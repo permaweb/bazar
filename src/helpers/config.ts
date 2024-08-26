@@ -87,6 +87,11 @@ export const REFORMATTED_ASSETS = {
 		logo: 'hqg-Em9DdYHYmMysyVi8LuTGF8IF_F7ZacgjYiSpj0k',
 		denomination: 3,
 	},
+	['ENNFBJS_TpBTh-xR648Pdpx2Z8YgZkRbiqbuzfVv0M4']: {
+		title: 'Legendary Fish',
+		logo: 'Esm9ZtALCN0oM0GGBUeh90qCV_V_0d21hwobUZ7IWA8',
+		denomination: 0,
+	},
 };
 
 export const LICENSES = {
