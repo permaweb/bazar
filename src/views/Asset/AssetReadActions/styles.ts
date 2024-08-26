@@ -11,6 +11,6 @@ export const Wrapper = styled.div`
 		flex-direction: row;
 	}
 	svg {
-		margin: 0 0 0.5px 2.5px;
+		margin: 0 0 0 2.5px;
 	}
 `;

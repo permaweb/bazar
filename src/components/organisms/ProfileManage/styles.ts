@@ -28,6 +28,9 @@ export const Body = styled.div`
 export const Form = styled.div`
 	height: fit-content;
 	width: 100%;
+	textarea {
+		height: 280px !important;
+	}
 	@media (max-width: calc(${STYLING.cutoffs.initial} + 105px)) {
 		min-width: 0;
 		width: 100%;

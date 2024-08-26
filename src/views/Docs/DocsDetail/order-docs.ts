@@ -1,11 +1,21 @@
 export const docsOrder = [
 	{
-		name: 'Introduction',
-		path: 'introduction',
-	},
-	{
-		name: 'Create a profile',
-		path: 'permaweb-profile',
+		name: 'Overview',
+		path: 'overview',
+		children: [
+			{
+				name: 'Introduction',
+				path: 'introduction',
+			},
+			{
+				name: 'Create a profile',
+				path: 'permaweb-profile',
+			},
+			{
+				name: 'Legacy BazAR migration',
+				path: 'legacy-bazar-migration',
+			},
+		],
 	},
 	{
 		name: 'For creators',

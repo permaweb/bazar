@@ -1,4 +1,4 @@
-### How to collect atomic assets
+## How to collect atomic assets
 
 Collecting atomic assets is how you engage with the permaweb community and support creators. BazAR is the place to discover, collect, and showcase atomic assets. All data transacted on BazAR is stored permanently on Arweave, ensuring that valuable content is preserved for generations.
 

@@ -45,7 +45,7 @@ export const ReadingOverlay = styled.div`
 export const ReadingWrapper = styled.div`
 	height: 100%;
 	width: 100%;
-	max-width: 65vw;
+	max-width: 70vw;
 	display: flex;
 	justify-content: center;
 	align-items: center;

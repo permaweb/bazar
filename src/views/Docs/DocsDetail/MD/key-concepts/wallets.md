@@ -1,4 +1,4 @@
-### Arweave wallets
+## Arweave wallets
 
 An Arweave wallet is your passport to the permaweb. A wallet is needed to create a BazAR profile and to create or collect atomic assets. Wallets can be generated with the [ArConnect](https://www.arconnect.io/) browser plugin or with a Google login using [Othent](https://othent.io/).
 

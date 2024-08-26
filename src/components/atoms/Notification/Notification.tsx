@@ -17,7 +17,9 @@ export default function Notification(props: IProps) {
 
 	function handleClose() {
 		setShow(false);
-		props.callback();
+		if (props.callback) {
+			props.callback();
+		}
 	}
 
 	React.useEffect(() => {

@@ -1,4 +1,4 @@
-### Creating best practices
+## Creating best practices
 
 Creating atomic assets may seem daunting at first, but once you understand a few basic tools and concepts, you'll be well on your way to becoming a permaweb pro. Here are a few tips to keep in mind when creating on the permaweb.
 
@@ -10,20 +10,20 @@ Just like on web2 social media, you wouldn’t want to share content from an inc
 
 Are you uploading a collection of atomic assets or a single atomic asset? This decision will determine how your assets are displayed and discovered.
 
-**Collection page**
+###### Collection page
 
 Collections allow you to create your own custom branding with a header image, thumbnail image, and description. Recommended size for collection images:
 
 - **Header:** 16:9 aspect ratio, 1920 x 1080 pixels.
 - **Thumbnail:** 1:1 aspect ratio, 300 x 300 pixels.
 
-**Collection assets**
+###### Collection assets
 
 When uploading content to your collection, ensure you name the assets, provide a description, and include tags that represent the style and theme you are sharing.
 
 When uploading, your assets will be displayed in the collection from newest to oldest. So, the first asset that you upload to Helix will display first in the collection.
 
-**Single atomic assets**
+###### Single atomic assets
 
 You can also upload as many single atomic assets as you’d like. These atomic assets are standalone and not part of a collection. The upload process is the same for single atomic assets, just without the collection page details.
 

@@ -222,7 +222,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 						if (denomination) {
 							transferQuantity = (BigInt(transferQuantity) / BigInt(denomination)).toString();
 						}
-						transferQuantity = (BigInt(transferQuantity) + BigInt(1)).toString();
 						break;
 					case 'sell':
 					case 'transfer':

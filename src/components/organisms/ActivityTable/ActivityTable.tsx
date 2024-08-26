@@ -301,7 +301,7 @@ export default function ActivityTable(props: IProps) {
 					<S.ReceiverWrapper>
 						<p>{language.buyer}</p>
 					</S.ReceiverWrapper>
-					<S.QuantityWrapper className={'center-value header'}>
+					<S.QuantityWrapper className={'end-value header'}>
 						<p className={'header'}>{language.quantity}</p>
 					</S.QuantityWrapper>
 					<S.PriceWrapper className={'end-value'}>
@@ -369,7 +369,7 @@ export default function ActivityTable(props: IProps) {
 										</>
 									)}
 								</S.ReceiverWrapper>
-								<S.QuantityWrapper className={'center-value'}>
+								<S.QuantityWrapper className={'end-value'}>
 									<p>{getDenominatedTokenValue(row.quantity, row.dominantToken)}</p>
 								</S.QuantityWrapper>
 								<S.PriceWrapper className={'end-value'}>

@@ -241,7 +241,7 @@ export const ReceiverWrapper = styled(OwnerWrapper)`
 `;
 
 export const QuantityWrapper = styled(TableRowValue)`
-	min-width: 75px;
+	/* min-width: 75px; */
 	flex: 0;
 	p {
 		font-family: ${(props) => props.theme.typography.family.alt1};

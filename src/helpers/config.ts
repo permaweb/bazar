@@ -55,15 +55,15 @@ import zen from 'assets/zen.svg';
 import { SelectOptionType, WalletEnum } from './types';
 
 export const AO = {
-	module: 'Pq2Zftrqut0hdisH_MC2pDOT6S4eQFoxGsFUzR6r350',
-	scheduler: '_GQ33BkPtZrqxA84vM8Zk-N2aO0toNNu_C-l-rawrBA',
-	ucm: 'U3TjJAZWJjlWBB4KAXSHKzuky81jtyh0zqH8rUL4Wd0',
-	ucmActivity: 'SNDvAf2RF-jhPmRrGUcs_b1nKlzU6vamN9zl0e9Zi4c',
-	defaultToken: 'xU9zFkq3X2ZQ6olwNVvr1vUWIjc3kXTWr7xKQD6dh10',
-	pixl: 'DM3FoZUq_yebASPhgd8pEIRIzDW6muXEhxz5-JwbZwo',
-	collectionsRegistry: 'TFWDmf8a3_nw43GCm_CuYlYoylHAjCcFGbgHfDaGcsg',
-	profileRegistry: 'SNy4m-DrqxWl01YqGM4sxI8qCni-58re8uuJLvZPypY',
-	profileSrc: '_R2XYWDPUXVvQrQKFaQRvDTDcDwnQNbqlTd_qvCRSpQ',
+	module: process.env.MODULE,
+	scheduler: process.env.SCHEDULER,
+	defaultToken: process.env.DEFAULT_TOKEN,
+	ucm: process.env.UCM,
+	ucmActivity: process.env.UCM_ACTIVITY,
+	pixl: process.env.PIXL,
+	collectionsRegistry: process.env.COLLECTIONS_REGISTRY,
+	profileRegistry: process.env.PROFILE_REGISTRY,
+	profileSrc: process.env.PROFILE_SRC,
 };
 
 export const REFORMATTED_ASSETS = {

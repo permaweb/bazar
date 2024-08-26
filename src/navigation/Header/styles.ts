@@ -74,6 +74,9 @@ export const MWrapper = styled.div`
 	@media (max-width: ${STYLING.cutoffs.secondary}) {
 		display: block;
 	}
+	button {
+		background: transparent;
+	}
 `;
 
 export const PWrapper = styled.div`

@@ -57,12 +57,19 @@ export default function AssetActionsOwners(props: IProps) {
 					try {
 						const addresses = [...updatedOwners].splice(0, MAX_OWNER_LENGTH).map((owner: OwnerType) => owner.address);
 						const profiles = await getRegistryProfiles({ profileIds: addresses });
-						updatedOwners = updatedOwners.map((owner: OwnerType) => {
-							const profile = profiles.find((profile: RegistryProfileType) => {
-								return profile.id === owner.address;
+						updatedOwners = updatedOwners
+							.map((owner: OwnerType) => {
+								const profile = profiles.find((profile: RegistryProfileType) => {
+									return profile.id === owner.address;
+								});
+								return { ...owner, profile };
+							})
+							.sort((a: any, b: any) => {
+								if (a.address === AO.ucm || b.address === AO.ucm) {
+									if (a.address === AO.ucm) return -1;
+									if (b.address === AO.ucm) return 1;
+								}
 							});
-							return { ...owner, profile };
-						});
 					} catch (e: any) {
 						console.error(e);
 					}

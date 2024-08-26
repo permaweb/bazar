@@ -1,4 +1,4 @@
-### Tokens
+## Tokens
 
 The Arweave ecosystem has many different tokens with various utilities. This guide will simplify the most important tokens used on BazAR.
 
