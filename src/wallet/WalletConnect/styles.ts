@@ -180,7 +180,7 @@ export const BalanceLine = styled.div`
 	svg {
 		height: 16.5px;
 		width: 16.5px;
-		margin: 7.5px 12.5px 0 0;
+		margin: 7.5px 7.5px 0 0;
 		color: ${(props) => props.theme.colors.font.alt1};
 		fill: ${(props) => props.theme.colors.font.alt1};
 	}

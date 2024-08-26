@@ -44,7 +44,6 @@ export default function AssetInfo(props: IProps) {
 		const licenseElement = props.asset.data.udl[licenseKey];
 
 		if (typeof licenseElement === 'object') {
-			console.log(licenseElement);
 			return (
 				<GS.DrawerContentDetail>
 					{licenseElement.value ? splitTagValue(licenseElement.value) : '-'}{' '}
