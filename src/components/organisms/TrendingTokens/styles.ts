@@ -17,16 +17,22 @@ export const Header = styled.div`
 
 export const TokensWrapper = styled.div`
 	display: grid;
-	grid-template-columns: repeat(4, 1fr);
+	grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
 	gap: 30px;
-	@media (max-width: ${STYLING.cutoffs.desktop}) {
-		grid-template-columns: repeat(2, 1fr);
+	justify-content: center;
+
+	@media (min-width: ${STYLING.cutoffs.tabletSecondary}) {
+		grid-template-columns: repeat(auto-fit, minmax(200px, calc((100% - 90px) / 4)));
 	}
+
+	@media (max-width: ${STYLING.cutoffs.desktop}) {
+		grid-template-columns: repeat(auto-fit, minmax(200px, calc((100% - 30px) / 2)));
+	}
+
 	@media (max-width: ${STYLING.cutoffs.tabletSecondary}) {
 		grid-template-columns: 1fr;
 	}
 `;
-
 export const TokenWrapper = styled.button`
 	height: 300px;
 	width: 100%;

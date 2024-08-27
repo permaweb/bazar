@@ -101,6 +101,7 @@ export const language = {
 		profileCreatingInfo: `Creating profile`,
 		provenanceDetails: `Provenance Details`,
 		quantity: `Quantity`,
+		recentActivity: `Recent Activity`,
 		recipient: `Recipient`,
 		removeAvatar: `Remove avatar`,
 		removeBanner: `Remove banner`,

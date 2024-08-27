@@ -163,7 +163,7 @@ export const GlobalStyle = createGlobalStyle`
 
   .border-wrapper-alt1 {
     background: ${(props) => props.theme.colors.container.alt3.background};
-    border: 1px solid ${(props) => props.theme.colors.border.primary};
+    border: 1px solid ${(props) => props.theme.colors.border.alt4};
     border-radius: ${STYLING.dimensions.radius.primary};
   }
 

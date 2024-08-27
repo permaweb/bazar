@@ -5,4 +5,6 @@ export interface IProps {
 	assetIds?: string[];
 	address?: string;
 	groupCount?: number;
+	startDate?: number;
+	endDate?: number;
 }
