@@ -142,7 +142,11 @@ export default function AssetAction(props: IProps) {
 						owners = owners
 							.filter((owner: OwnerType) => owner.address !== AO.ucm)
 							.filter((owner: OwnerType) => owner.ownerPercentage > 0);
-						setCurrentOwners((prevOwners) => [...(prevOwners || []), ...owners]);
+						setCurrentOwners((prevOwners) => {
+							const allOwners = [...(prevOwners || []), ...owners];
+							const uniqueOwners = Array.from(new Map(allOwners.map((owner) => [owner.address, owner])).values());
+							return uniqueOwners;
+						});
 					}
 				} catch (e: any) {
 					console.error(e);
