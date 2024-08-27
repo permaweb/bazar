@@ -25,7 +25,9 @@ export default function TrendingTokens() {
 			if (cachedTokens) {
 				responses = JSON.parse(cachedTokens);
 			} else {
-				for (const tokenProcess of Object.keys(REFORMATTED_ASSETS)) {
+				const tokenProcesses = Object.keys(REFORMATTED_ASSETS);
+				tokenProcesses.pop();
+				for (const tokenProcess of tokenProcesses) {
 					const tokenResponse = await readHandler({
 						processId: tokenProcess,
 						action: 'Info',
@@ -77,7 +79,7 @@ export default function TrendingTokens() {
 					</>
 				) : (
 					<>
-						{Array.from({ length: Object.keys(REFORMATTED_ASSETS).length }, (_, i) => i + 1).map((index) => {
+						{Array.from({ length: Object.keys(REFORMATTED_ASSETS).length - 1 }, (_, i) => i + 1).map((index) => {
 							return (
 								<S.TokenWrapper
 									key={index}
