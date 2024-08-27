@@ -34,7 +34,7 @@ export default function Landing() {
 		})();
 	}, []);
 
-	const startDate = Math.floor(Date.now()) - 7 * 24 * 60 * 60 * 1000;
+	const startDate = Math.floor(Date.now()) - 3 * 24 * 60 * 60 * 1000;
 
 	return (
 		<S.Wrapper className={'fade-in'}>

@@ -350,11 +350,11 @@ export const Event = styled.div<{ type: 'Listing' | 'Sale' | 'Purchase' | 'Unlis
 `;
 
 export const Entity = styled.div<{ type: 'UCM' | 'User' }>`
-	width: 130px;
+	width: 110px;
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	background: ${(props) => (props.type === 'UCM' ? props.theme.colors.stats.alt5 : props.theme.colors.stats.primary)};
+	background: ${(props) => (props.type === 'UCM' ? props.theme.colors.stats.primary : props.theme.colors.stats.alt5)};
 	border: 1px solid ${(props) => props.theme.colors.border.alt4};
 	border-radius: ${STYLING.dimensions.radius.alt2};
 	padding: 1.5px 7.5px;
