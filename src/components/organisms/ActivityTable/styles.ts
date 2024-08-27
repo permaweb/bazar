@@ -257,6 +257,7 @@ export const PriceWrapper = styled(TableRowValue)`
 export const AssetWrapper = styled(TableRowValue)`
 	flex: 0;
 	min-width: 200px;
+	width: 200px;
 	gap: 10px;
 	margin: 0 20px 0 0;
 	overflow: hidden;

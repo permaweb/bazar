@@ -94,10 +94,10 @@ export default function ActivityTable(props: IProps) {
 			setActivityCursor('0');
 			switch (activitySortType.id) {
 				case 'new-to-old':
-					activity.sort((a: any, b: any) => b.timestamp - a.timestamp);
+					activity.sort((a: any, b: any) => (b.timestamp ?? 0) - (a.timestamp ?? 0));
 					break;
 				case 'old-to-new':
-					activity.sort((a: any, b: any) => a.timestamp - b.timestamp);
+					activity.sort((a: any, b: any) => (a.timestamp ?? 0) - (b.timestamp ?? 0));
 					break;
 			}
 
