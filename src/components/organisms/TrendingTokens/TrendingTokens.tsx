@@ -1,5 +1,5 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 
 import { readHandler } from 'api';
 
@@ -59,22 +59,19 @@ export default function TrendingTokens() {
 					<>
 						{tokens.map((token: any, index: number) => {
 							return (
-								<S.TokenLine
-									key={index}
-									onClick={() => handleTokenClick(token)}
-									className={'fade-in border-wrapper-alt2'}
-								>
-									<S.TokenImage>
-										<img
-											src={getTxEndpoint(token.Logo || token.logo || DEFAULTS.thumbnail)}
-											alt={token.Name || token.name || 'Token'}
-										/>
-									</S.TokenImage>
-									<span>{token.Name || token.name || 'Token'}</span>
-									<S.TokenTicker>
-										<span>{token.Ticker || token.ticker || 'Token'}</span>
-									</S.TokenTicker>
-								</S.TokenLine>
+								<S.TokenWrapper key={index} onClick={() => handleTokenClick(token)} className={'fade-in'}>
+									<Link to={`${URLS.asset}${token.ProcessId}`}>
+										<S.TokenImage>
+											<img
+												src={getTxEndpoint(token.Logo || token.logo || DEFAULTS.thumbnail)}
+												alt={token.Name || token.name || 'Token'}
+											/>
+										</S.TokenImage>
+										<S.TokenName>
+											<p>{token.Name || token.name || 'Token'}</p>
+										</S.TokenName>
+									</Link>
+								</S.TokenWrapper>
 							);
 						})}
 					</>
@@ -82,7 +79,12 @@ export default function TrendingTokens() {
 					<>
 						{Array.from({ length: Object.keys(REFORMATTED_ASSETS).length }, (_, i) => i + 1).map((index) => {
 							return (
-								<S.TokenLine key={index} disabled={true} onClick={() => {}} className={'fade-in border-wrapper-alt1'} />
+								<S.TokenWrapper
+									key={index}
+									disabled={true}
+									onClick={() => {}}
+									className={'fade-in border-wrapper-alt1'}
+								/>
 							);
 						})}
 					</>

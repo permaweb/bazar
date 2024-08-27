@@ -299,7 +299,9 @@ export default function AssetData(props: IProps) {
 				default:
 					return getUnsupportedWrapper();
 			}
-		} else return null;
+		} else {
+			return <S.LoaderWrapper className={'border-wrapper-alt1'} />;
+		}
 	}
 
 	return <S.Wrapper ref={wrapperRef}>{getData()}</S.Wrapper>;
