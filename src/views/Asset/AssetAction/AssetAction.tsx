@@ -8,6 +8,7 @@ import { getRegistryProfiles } from 'api';
 import * as GS from 'app/styles';
 import { Button } from 'components/atoms/Button';
 import { CurrencyLine } from 'components/atoms/CurrencyLine';
+import { IconButton } from 'components/atoms/IconButton';
 import { Loader } from 'components/atoms/Loader';
 import { Modal } from 'components/molecules/Modal';
 import { OwnerLine } from 'components/molecules/OwnerLine';
@@ -79,6 +80,7 @@ export default function AssetAction(props: IProps) {
 	const [showCurrentListingsModal, setShowCurrentListingsModal] = React.useState<boolean>(false);
 
 	const [currentTab, setCurrentTab] = React.useState<string>(ACTION_TABS[0]!.label);
+	const [urlCopied, setUrlCopied] = React.useState<boolean>(false);
 
 	React.useEffect(() => {
 		if (props.asset && props.asset.state && props.asset.state.balances) {
@@ -233,6 +235,12 @@ export default function AssetAction(props: IProps) {
 		if (!arProvider.profile || !arProvider.profile.id) return false;
 		return listing.creator === arProvider.profile.id;
 	}
+
+	const copyPageUrl = React.useCallback(async () => {
+		await navigator.clipboard.writeText(window.location.href);
+		setUrlCopied(true);
+		setTimeout(() => setUrlCopied(false), 2000);
+	}, []);
 
 	const getCurrentOwners = React.useMemo(() => {
 		return (
@@ -423,7 +431,21 @@ export default function AssetAction(props: IProps) {
 					<AssetData asset={props.asset} frameMinHeight={550} autoLoad />
 				</S.DataWrapper>
 				<S.Header>
-					<h4>{props.asset.data.title}</h4>
+					<S.HeaderTitle>
+						<h4>{props.asset.data.title}</h4>
+						<IconButton
+							type={'alt1'}
+							src={urlCopied ? ASSETS.link : ASSETS.link}
+							handlePress={copyPageUrl}
+							dimensions={{
+								wrapper: 33.5,
+								icon: 17.5,
+							}}
+							disabled={urlCopied}
+							tooltip={urlCopied ? `${language.copied}!` : language.copyPageUrl}
+							useBottomToolTip
+						/>
+					</S.HeaderTitle>
 					<S.OwnerLinesWrapper>
 						{showCurrentlyOwnedBy() && (
 							<S.OwnerLine>
