@@ -3,6 +3,16 @@ import styled, { createGlobalStyle } from 'styled-components';
 import { fadeIn1, open } from 'helpers/animations';
 import { STYLING } from 'helpers/config';
 
+import '@fontsource/inter';
+import '@fontsource/inter/400.css';
+import '@fontsource/inter/500.css';
+import '@fontsource/inter/600.css';
+import '@fontsource/inter/700.css';
+import '@fontsource/inter/800.css';
+import '@fontsource/quantico';
+import '@fontsource/quantico/400.css';
+import '@fontsource/quantico/700.css';
+
 export const GlobalStyle = createGlobalStyle`
   html, body, div, span, applet, object, iframe,
   h1, h2, h3, h4, h5, h6, p, blockquote, pre,
@@ -55,7 +65,7 @@ export const GlobalStyle = createGlobalStyle`
 			margin: 0;
 			color-scheme: ${(props) => props.theme.scheme};
 			font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen",
-			"Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue",
+			"Ubuntu",
 			sans-serif;
 			font-family: ${(props) => props.theme.typography.family.primary};
 			font-weight: ${(props) => props.theme.typography.weight.medium};

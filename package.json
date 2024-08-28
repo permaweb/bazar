@@ -19,6 +19,8 @@
 		"prepare": "husky install"
 	},
 	"dependencies": {
+		"@fontsource/inter": "^5.0.20",
+		"@fontsource/quantico": "^5.0.20",
 		"@irys/sdk": "^0.2.10",
 		"@othent/kms": "^1.0.7",
 		"@permaweb/aoconnect": "^0.0.45",
