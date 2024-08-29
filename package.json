@@ -14,7 +14,7 @@
 		"test:coverage": "CI=true npm test -- --env=jsdom --coverage",
 		"build:staging": "NODE_ENV=staging webpack",
 		"build:production": "NODE_ENV=production webpack",
-		"deploy:main": "npm run build:production && permaweb-deploy --ant-process xL2AfI-Mk-n3WsdP82YLUPxjZvoEtUg7pNxv86BOPhM",
+		"deploy:main": "npm run build:production && permaweb-deploy --ant-process 5hzUyF9djDPUJ0AfXpWOW91XuAzk1xvLYyyPeLvlRyw",
 		"deploy:staging": "npm run build:staging && permaweb-deploy --ant-process 5hzUyF9djDPUJ0AfXpWOW91XuAzk1xvLYyyPeLvlRyw --undername staging",
 		"prepare": "husky install"
 	},
