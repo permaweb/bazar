@@ -12,7 +12,7 @@ export const Wrapper = styled.div<{ top: number; noHeader: boolean }>`
 	top: 0;
 	left: 0;
 	background: ${(props) => props.theme.colors.overlay.primary};
-	backdrop-filter: blur(7.5px);
+	backdrop-filter: blur(5px);
 	animation: ${open} ${fadeIn1};
 `;
 
@@ -20,14 +20,14 @@ export const Container = styled.div<{
 	noHeader: boolean;
 	width?: number;
 }>`
-	height: calc(100dvh - 30px);
+	height: calc(100dvh - 20px);
 	min-width: ${(props) => (props.width ? `${props.width.toString()}px` : '425px')};
 	width: fit-content;
 	max-width: calc(100vw - 30px);
 	position: fixed;
 	overflow: hidden;
-	top: 15px;
-	right: 15px;
+	top: 10px;
+	right: 10px;
 	transition: width 50ms ease-out;
 	box-shadow: none !important;
 	animation: ${openRight} 200ms;

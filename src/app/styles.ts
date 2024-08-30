@@ -225,7 +225,7 @@ export const GlobalStyle = createGlobalStyle`
     top: 0;
     left: 0;
     background: ${(props) => props.theme.colors.overlay.primary};
-    backdrop-filter: blur(7.5px);
+    backdrop-filter: blur(5px);
     animation: ${open} ${fadeIn1};
   }
 
@@ -238,7 +238,7 @@ export const GlobalStyle = createGlobalStyle`
     top: 0;
     left: 0;
     background: ${(props) => props.theme.colors.view.background};
-    backdrop-filter: blur(7.5px);
+    backdrop-filter: blur(5px);
     animation: ${open} ${fadeIn1};
   }
 
