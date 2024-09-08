@@ -93,10 +93,12 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 		[AO.defaultToken]: {
 			link: REDIRECTS.warDepot,
 			label: language.getWrappedAr,
+			target: '_blank',
 		},
 		[AO.pixl]: {
 			link: `${URLS.asset}${AO.pixl}`,
 			label: language.tradePixl,
+			target: '',
 		},
 	};
 
@@ -121,7 +123,7 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 						</S.DHeader>
 					</S.DHeaderFlex>
 				</S.DHeaderWrapper>
-				<S.DBodyWrapper>
+				<S.DBalancesWrapper>
 					<S.DBodyHeader>
 						<span>{language.balances}</span>
 					</S.DBodyHeader>
@@ -142,7 +144,11 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 										/>
 										{tokenLinks[token] && (
 											<S.TokenLink>
-												<Link to={tokenLinks[token].link} target={'_blank'}>
+												<Link
+													to={tokenLinks[token].link}
+													target={tokenLinks[token].target}
+													onClick={() => setShowWalletDropdown(false)}
+												>
 													<span>{tokenLinks[token].label}</span>
 												</Link>
 											</S.TokenLink>
@@ -152,7 +158,7 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 							})}
 						</>
 					)}
-				</S.DBodyWrapper>
+				</S.DBalancesWrapper>
 				<S.DBodyWrapper>
 					<li onClick={() => setShowWalletDropdown(false)}>
 						<Link to={`${URLS.asset}${AO.defaultToken}`}>

@@ -53,7 +53,7 @@ export const SDStreak = styled.div`
 	align-items: center;
 	padding: 0 0 30px 0;
 	margin: 10px 0;
-	border-bottom: 1px solid ${(props) => props.theme.colors.border.primary};
+	border-bottom: 1px solid ${(props) => props.theme.colors.border.alt4};
 	p {
 		color: ${(props) => props.theme.colors.font.primary};
 		font-size: ${(props) => props.theme.typography.size.xLg};
@@ -80,7 +80,7 @@ export const SDAmounts = styled.div`
 	gap: 20px;
 	margin: 30px 0 0 0;
 	padding: 0 0 15px 0;
-	border-bottom: 1px solid ${(props) => props.theme.colors.border.primary};
+	border-bottom: 1px solid ${(props) => props.theme.colors.border.alt4};
 `;
 
 export const SDPIXLMessage = styled.div`
@@ -124,7 +124,7 @@ export const SDMessage = styled.div`
 	gap: 10px;
 	margin: 20px 0;
 	padding: 10px 20px 30px 20px;
-	border-bottom: 1px solid ${(props) => props.theme.colors.border.primary};
+	border-bottom: 1px solid ${(props) => props.theme.colors.border.alt4};
 `;
 
 export const SDMessageInfo = styled.div`

@@ -10,7 +10,7 @@ export default function Drawer(props: IProps) {
 	const [open, setOpen] = React.useState<boolean>(true);
 
 	return (
-		<S.Wrapper>
+		<S.Wrapper className={'border-wrapper-alt2'}>
 			<S.Action onClick={() => setOpen(!open)}>
 				<S.Label>
 					<S.Title>

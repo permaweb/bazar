@@ -29,8 +29,11 @@ export const Container = styled.div<{
 	top: 10px;
 	right: 10px;
 	transition: width 50ms ease-out;
-	box-shadow: none !important;
 	animation: ${openRight} 200ms;
+	background: ${(props) => props.theme.colors.container.primary.background};
+	box-shadow: -1px -1px 10px 1px ${(props) => props.theme.colors.shadow.alt3};
+	border: 1px solid ${(props) => props.theme.colors.border.alt4};
+	border-radius: ${STYLING.dimensions.radius.primary};
 	@media (max-width: ${STYLING.cutoffs.secondary}) {
 		min-width: 82.5vw;
 	}

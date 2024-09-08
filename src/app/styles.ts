@@ -308,7 +308,7 @@ export const DrawerContent = styled.div<{ transparent?: boolean }>`
 	width: 100%;
 	padding: ${(props) => (props.transparent ? `0` : `20px`)};
 	background: ${(props) =>
-		props.transparent ? props.theme.colors.transparent : props.theme.colors.container.alt2.background};
+		props.transparent ? props.theme.colors.transparent : props.theme.colors.container.primary.background};
 	border-bottom-left-radius: ${(props) => (props.transparent ? `0` : STYLING.dimensions.radius.primary)};
 	border-bottom-right-radius: ${(props) => (props.transparent ? `0` : STYLING.dimensions.radius.primary)};
 	> * {
