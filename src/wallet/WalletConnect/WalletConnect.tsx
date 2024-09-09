@@ -123,10 +123,7 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 						</S.DHeader>
 					</S.DHeaderFlex>
 				</S.DHeaderWrapper>
-				<S.DBalancesWrapper>
-					<S.DBodyHeader>
-						<span>{language.balances}</span>
-					</S.DBodyHeader>
+				<S.DBalancesWrapper className={'border-wrapper-alt1'}>
 					<S.BalanceLine>
 						<ReactSVG src={ASSETS.ar} />
 						<span>{formatCount(arProvider.arBalance ? arProvider.arBalance.toString() : '0')}</span>

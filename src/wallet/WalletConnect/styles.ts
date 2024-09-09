@@ -74,8 +74,7 @@ export const Dropdown = styled.ul`
 
 export const DHeaderWrapper = styled.div`
 	width: 100%;
-	padding: 0 15px 15px 15px;
-	border-bottom: 1px solid ${(props) => props.theme.colors.border.alt4};
+	padding: 0 15px 10px 15px;
 `;
 
 export const DHeaderFlex = styled.div`
@@ -114,11 +113,11 @@ export const DHeader = styled.div`
 
 export const DBodyWrapper = styled.ul`
 	width: 100%;
-	padding: 10px 5px;
+	padding: 10px 7.5px;
 	border-bottom: 1px solid ${(props) => props.theme.colors.border.alt4};
 	li {
 		text-align: center;
-		height: 40px;
+		height: 38.5px;
 		display: flex;
 		align-items: center;
 		cursor: pointer;
@@ -127,7 +126,7 @@ export const DBodyWrapper = styled.ul`
 		font-size: ${(props) => props.theme.typography.size.small};
 		font-weight: ${(props) => props.theme.typography.weight.bold};
 		border: 1px solid transparent;
-		border-radius: ${STYLING.dimensions.radius.primary};
+		border-radius: ${STYLING.dimensions.radius.alt2};
 		transition: all 100ms;
 		padding: 0 7.5px;
 		svg {
@@ -157,7 +156,9 @@ export const DBodyWrapper = styled.ul`
 `;
 
 export const DBalancesWrapper = styled(DBodyWrapper)`
-	padding: 10px 15px;
+	width: calc(100% - 20px);
+	padding: 5px 12.5px;
+	margin: 5px auto 0 auto;
 `;
 
 export const DBodyHeader = styled.div`
@@ -199,7 +200,7 @@ export const TokenLink = styled.div`
 	a {
 		background: ${(props) => props.theme.colors.button.primary.background};
 		border: 1px solid ${(props) => props.theme.colors.button.primary.border};
-		padding: 0.5px 10.5px 2.5px 10.5px;
+		padding: 1.5px 10.5px 3.5px 10.5px;
 		border-radius: 36px;
 		&:hover {
 			background: ${(props) => props.theme.colors.button.primary.active.background};
