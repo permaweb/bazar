@@ -13,7 +13,7 @@ export default function AssetReadActions(props: IProps) {
 		<S.Wrapper>
 			<IconButton
 				type={'alt1'}
-				src={ASSETS.disconnect}
+				src={ASSETS.close}
 				handlePress={() => props.toggleViewType()}
 				dimensions={{
 					wrapper: 37.5,

@@ -2,6 +2,7 @@ import React from 'react';
 
 import { getCollections } from 'api';
 
+import { ActivityTable } from 'components/organisms/ActivityTable';
 import { AssetsTable } from 'components/organisms/AssetsTable';
 import { CollectionsCarousel } from 'components/organisms/CollectionsCarousel';
 import { OrderCountsTable } from 'components/organisms/OrderCountsTable';
@@ -33,6 +34,8 @@ export default function Landing() {
 		})();
 	}, []);
 
+	const startDate = Math.floor(Date.now()) - 3 * 24 * 60 * 60 * 1000;
+
 	return (
 		<S.Wrapper className={'fade-in'}>
 			<S.CollectionsWrapper>
@@ -42,6 +45,10 @@ export default function Landing() {
 			<S.TokensWrapper>
 				<TrendingTokens />
 			</S.TokensWrapper>
+			<S.ActivityWrapper>
+				<h4>{language.recentActivity}</h4>
+				<ActivityTable groupCount={15} startDate={startDate} />
+			</S.ActivityWrapper>
 			<S.CreatorsWrapper>
 				<OrderCountsTable />
 			</S.CreatorsWrapper>

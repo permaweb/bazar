@@ -49,3 +49,22 @@ export const WalletLink = styled.div`
 		color: ${(props) => props.theme.colors.font.alt1};
 	}
 `;
+
+export const ErrorBoundaryContainer = styled.div`
+	width: fit-content;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 20px;
+	margin: 20px auto;
+
+	h4 {
+		font-size: ${(props) => props.theme.typography.size.lg};
+		font-family: ${(props) => props.theme.typography.family.alt1};
+		font-weight: ${(props) => props.theme.typography.weight.bold};
+		color: ${(props) => props.theme.colors.font.primary.primary};
+		text-align: center;
+		line-height: 1.5;
+		margin: 0;
+	}
+`;

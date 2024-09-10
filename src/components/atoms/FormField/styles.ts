@@ -61,9 +61,11 @@ export const Input = styled.input<{
 		outline: 0;
 		border: 1px solid
 			${(props) => (props.invalid ? props.theme.colors.form.invalid.outline : props.theme.colors.form.valid.outline)};
-		box-shadow: 0 0 2.5px
+		outline: 0.5px solid
+			${(props) => (props.invalid ? props.theme.colors.form.invalid.outline : props.theme.colors.form.valid.outline)};
+		box-shadow: 0 0 0.5px
 			${(props) => (props.invalid ? props.theme.colors.form.invalid.shadow : props.theme.colors.form.valid.shadow)};
-		transition: box-shadow, border 225ms ease-in-out;
+		transition: box-shadow, border, outline 225ms ease-in-out;
 	}
 	&:disabled {
 		background: ${(props) => props.theme.colors.form.disabled.background};

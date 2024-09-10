@@ -7,6 +7,7 @@ import { App } from 'app';
 import { GlobalStyle } from 'app/styles';
 import { ArweaveProvider } from 'providers/ArweaveProvider';
 import { CustomThemeProvider } from 'providers/CustomThemeProvider';
+import ErrorBoundary from 'providers/ErrorBoundary';
 import { LanguageProvider } from 'providers/LanguageProvider';
 import { persistor, store } from 'store';
 
@@ -15,12 +16,14 @@ ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
 		<PersistGate loading={null} persistor={persistor}>
 			<CustomThemeProvider>
 				<LanguageProvider>
-					<ArweaveProvider>
-						<HashRouter>
-							<GlobalStyle />
-							<App />
-						</HashRouter>
-					</ArweaveProvider>
+					<ErrorBoundary>
+						<ArweaveProvider>
+							<HashRouter>
+								<GlobalStyle />
+								<App />
+							</HashRouter>
+						</ArweaveProvider>
+					</ErrorBoundary>
 				</LanguageProvider>
 			</CustomThemeProvider>
 		</PersistGate>

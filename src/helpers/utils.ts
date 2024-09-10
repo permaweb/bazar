@@ -122,6 +122,7 @@ export function formatDate(dateArg: string | number | null, dateType: DateType, 
 }
 
 export function getRelativeDate(timestamp: number) {
+	if (!timestamp) return '-';
 	const currentDate = new Date();
 	const inputDate = new Date(timestamp);
 

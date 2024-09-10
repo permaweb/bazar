@@ -1,34 +1,34 @@
 import { DefaultTheme } from 'styled-components';
 
 export const lightTheme = {
+	scheme: 'light',
 	positive1: '#64B686',
 	positive2: '#4EA673',
 	negative1: '#E94278',
 	negative2: '#E52461',
 	neutral1: '#FFFFFF',
-	neutral2: '#F4F4F4',
-	neutral3: '#C6C6C6',
+	neutral2: '#F6F6F6',
+	neutral3: '#D6D6D6',
 	neutral4: '#C9C9C9',
 	neutral5: '#CCCCCC',
 	neutral6: '#F7F7F7',
 	neutral7: '#FAFAFA',
-	neutral8: '#C8D4D4',
+	neutral8: '#EEEEEE',
 	neutralA1: '#0A0A0A',
 	neutralA2: '#5F5F5F',
 	neutralA3: '#5C5C5C',
 	neutralA4: '#2D2D2D',
 	neutralA5: '#A4A4A4',
 	neutralA6: '#A9A9A9',
-	neutralA7: '#C3C3C3',
-	overlay1: 'rgb(130, 130, 130, .25)',
+	neutralA7: '#F0F0F0',
+	overlay1: 'rgb(30, 30, 30, .65)',
 	primary1: '#F96E46',
 	primary2: '#E6562C',
 	semiTransparent1: 'rgba(255, 255, 255, 0.575)',
-	semiTransparent2: 'rgba(0, 0, 0, 0.575)',
+	semiTransparent2: 'rgba(40, 40, 40, 0.575)',
 	semiTransparent3: 'rgba(0, 0, 0, 0.55)',
 	semiTransparent4: '#AEAEAE45',
 	semiTransparent5: 'rgb(250, 250, 250, 0)',
-	scheme: 'light',
 	light1: '#FFFFFF',
 	light2: '#DADADA',
 	dark1: '#151515',
@@ -48,6 +48,7 @@ export const lightTheme = {
 };
 
 export const darkTheme = {
+	scheme: 'dark',
 	positive1: '#38BD80',
 	positive2: '#2F9D6A',
 	labelAlt1: `#FFFFFF`,
@@ -65,10 +66,10 @@ export const darkTheme = {
 	neutralA2: '#F1F1F1',
 	neutralA3: '#E0E0E0',
 	neutralA4: '#DEDEDE',
-	neutralA5: '#F7F7F7',
+	neutralA5: '#CCCCCC',
 	neutralA6: '#FAFAFA',
-	neutralA7: '#101010',
-	overlay1: 'rgba(0, 0, 0, 0.5)',
+	neutralA7: '#151515',
+	overlay1: 'rgba(10, 10, 10, 0.65)',
 	primary1: '#F96E46',
 	primary2: '#E6562C',
 	semiTransparent1: 'rgba(0, 0, 0, 0.15)',
@@ -76,7 +77,6 @@ export const darkTheme = {
 	semiTransparent3: 'rgba(20, 20, 20, 0.75)',
 	semiTransparent4: '#AEAEAE45',
 	semiTransparent5: 'rgba(0, 0, 0, 0.5)',
-	scheme: 'dark',
 	light1: '#FFFFFF',
 	light2: '#DADADA',
 	dark1: '#151515',
@@ -98,11 +98,6 @@ export const darkTheme = {
 export const theme = (currentTheme: any): DefaultTheme => ({
 	scheme: currentTheme.scheme,
 	colors: {
-		accordion: {
-			background: currentTheme.neutral1,
-			hover: currentTheme.neutral2,
-			color: currentTheme.neutralA1,
-		},
 		border: {
 			primary: currentTheme.neutral3,
 			alt1: currentTheme.primary1,
@@ -116,9 +111,9 @@ export const theme = (currentTheme: any): DefaultTheme => ({
 				border: currentTheme.neutral3,
 				color: currentTheme.neutralA1,
 				active: {
-					background: currentTheme.primary1,
-					border: currentTheme.primary2,
-					color: currentTheme.light1,
+					background: currentTheme.neutral3,
+					border: currentTheme.neutral3,
+					color: currentTheme.neutralA1,
 				},
 				disabled: {
 					background: currentTheme.neutral4,
@@ -174,7 +169,7 @@ export const theme = (currentTheme: any): DefaultTheme => ({
 				background: currentTheme.neutral3,
 			},
 			alt2: {
-				background: currentTheme.neutral2,
+				background: currentTheme.neutral8,
 			},
 			alt3: {
 				background: currentTheme.neutral2,
@@ -289,6 +284,7 @@ export const theme = (currentTheme: any): DefaultTheme => ({
 			primary: currentTheme.semiTransparent5,
 			alt1: currentTheme.neutral4,
 			alt2: currentTheme.neutralA7,
+			alt3: currentTheme.semiTransparent2,
 		},
 		stats: {
 			primary: currentTheme.stats.primary,

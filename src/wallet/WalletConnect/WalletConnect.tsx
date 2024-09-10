@@ -63,8 +63,8 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 
 	function handleProfileAction() {
 		if (arProvider.profile && arProvider.profile.id) {
-			navigate(URLS.profileAssets(arProvider.profile.id));
 			setShowWalletDropdown(false);
+			navigate(URLS.profileAssets(arProvider.profile.id));
 		} else {
 			setShowProfileManage(true);
 		}
@@ -85,18 +85,20 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 	}
 
 	function handleDisconnect() {
-		arProvider.handleDisconnect();
 		setShowWalletDropdown(false);
+		arProvider.handleDisconnect();
 	}
 
 	const tokenLinks = {
 		[AO.defaultToken]: {
 			link: REDIRECTS.warDepot,
 			label: language.getWrappedAr,
+			target: '_blank',
 		},
 		[AO.pixl]: {
 			link: `${URLS.asset}${AO.pixl}`,
 			label: language.tradePixl,
+			target: '',
 		},
 	};
 
@@ -121,10 +123,7 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 						</S.DHeader>
 					</S.DHeaderFlex>
 				</S.DHeaderWrapper>
-				<S.DBodyWrapper>
-					<S.DBodyHeader>
-						<span>{language.balances}</span>
-					</S.DBodyHeader>
+				<S.DBalancesWrapper className={'border-wrapper-alt1'}>
 					<S.BalanceLine>
 						<ReactSVG src={ASSETS.ar} />
 						<span>{formatCount(arProvider.arBalance ? arProvider.arBalance.toString() : '0')}</span>
@@ -142,7 +141,11 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 										/>
 										{tokenLinks[token] && (
 											<S.TokenLink>
-												<Link to={tokenLinks[token].link} target={'_blank'}>
+												<Link
+													to={tokenLinks[token].link}
+													target={tokenLinks[token].target}
+													onClick={() => setShowWalletDropdown(false)}
+												>
 													<span>{tokenLinks[token].label}</span>
 												</Link>
 											</S.TokenLink>
@@ -152,7 +155,7 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 							})}
 						</>
 					)}
-				</S.DBodyWrapper>
+				</S.DBalancesWrapper>
 				<S.DBodyWrapper>
 					<li onClick={() => setShowWalletDropdown(false)}>
 						<Link to={`${URLS.asset}${AO.defaultToken}`}>

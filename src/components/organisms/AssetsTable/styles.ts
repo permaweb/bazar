@@ -26,7 +26,6 @@ export const HeaderActions = styled.div`
 		svg {
 			height: 17.5px;
 			width: 17.5px;
-			color: ${(props) => props.theme.colors.font.light1};
 			margin: 3.5px 0 0 10px;
 		}
 	}

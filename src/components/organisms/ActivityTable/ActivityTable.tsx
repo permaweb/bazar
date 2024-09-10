@@ -51,6 +51,8 @@ export default function ActivityTable(props: IProps) {
 				} else {
 					if (props.assetIds) data.AssetIds = props.assetIds;
 					if (props.address) data.Address = props.address;
+					if (props.startDate) data.StartDate = props.startDate.toString();
+					if (props.endDate) data.EndDate = props.endDate.toString();
 				}
 
 				const response = await readHandler({
@@ -92,10 +94,10 @@ export default function ActivityTable(props: IProps) {
 			setActivityCursor('0');
 			switch (activitySortType.id) {
 				case 'new-to-old':
-					activity.sort((a: any, b: any) => b.timestamp - a.timestamp);
+					activity.sort((a: any, b: any) => (b.timestamp ?? 0) - (a.timestamp ?? 0));
 					break;
 				case 'old-to-new':
-					activity.sort((a: any, b: any) => a.timestamp - b.timestamp);
+					activity.sort((a: any, b: any) => (a.timestamp ?? 0) - (b.timestamp ?? 0));
 					break;
 			}
 
@@ -188,7 +190,6 @@ export default function ActivityTable(props: IProps) {
 				) {
 					orderEvent = 'Purchase';
 				}
-				console.log(orderEvent);
 				return {
 					orderId: order.OrderId,
 					dominantToken: order.DominantToken,
@@ -251,6 +252,37 @@ export default function ActivityTable(props: IProps) {
 
 	const start = activity && activity.length ? Number(activityCursor) * groupCount + 1 : '';
 	const end = activity && activity.length ? Math.min((Number(activityCursor) + 1) * groupCount, activity.length) : '';
+
+	const getReceiverContent = React.useMemo(
+		() => (row: any) => {
+			if (row.receiverProfile) {
+				if (row.receiverProfile.id === AO.ucm) {
+					return (
+						<S.Entity type={'UCM'}>
+							<p>UCM</p>
+						</S.Entity>
+					);
+				}
+				return (
+					<OwnerLine
+						owner={{
+							address: row.receiver,
+							profile: row.receiverProfile,
+						}}
+						callback={null}
+					/>
+				);
+			} else if (row.receiver) {
+				return (
+					<S.Entity type={'User'}>
+						<p>{formatAddress(row.receiver, false)}</p>
+					</S.Entity>
+				);
+			}
+			return <p>-</p>;
+		},
+		[]
+	);
 
 	const getActivity = React.useMemo(() => {
 		if (!activityGroup) {
@@ -348,27 +380,7 @@ export default function ActivityTable(props: IProps) {
 										</S.Entity>
 									)}
 								</S.SenderWrapper>
-								<S.ReceiverWrapper>
-									{row.receiverProfile ? (
-										<OwnerLine
-											owner={{
-												address: row.receiver,
-												profile: row.receiverProfile,
-											}}
-											callback={null}
-										/>
-									) : (
-										<>
-											{row.receiver ? (
-												<S.Entity type={'User'}>
-													<p>{row.receiver ? formatAddress(row.receiver, false) : '-'}</p>
-												</S.Entity>
-											) : (
-												<p>-</p>
-											)}
-										</>
-									)}
-								</S.ReceiverWrapper>
+								<S.ReceiverWrapper>{getReceiverContent(row)}</S.ReceiverWrapper>
 								<S.QuantityWrapper className={'end-value'}>
 									<p>{getDenominatedTokenValue(row.quantity, row.dominantToken)}</p>
 								</S.QuantityWrapper>
@@ -377,12 +389,14 @@ export default function ActivityTable(props: IProps) {
 								</S.PriceWrapper>
 								<S.DateValueWrapper>
 									<p>{getRelativeDate(row.timestamp)}</p>
-									<S.DateValueTooltip>
-										<ReactSVG src={ASSETS.info} />
-										<div className={'date-tooltip fade-in border-wrapper-alt1'}>
-											<p>{`${formatDate(row.timestamp, 'iso', true)}`}</p>
-										</div>
-									</S.DateValueTooltip>
+									{row.timestamp && (
+										<S.DateValueTooltip>
+											<ReactSVG src={ASSETS.info} />
+											<div className={'date-tooltip fade-in border-wrapper-alt1'}>
+												<p>{`${formatDate(row.timestamp, 'iso', true)}`}</p>
+											</div>
+										</S.DateValueTooltip>
+									)}
 								</S.DateValueWrapper>
 							</S.TableRow>
 						);

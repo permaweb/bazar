@@ -26,10 +26,7 @@ export async function getAssetIdsByUser(args: { profileId: string }): Promise<st
 		});
 
 		if (fetchedProfile) {
-			const swapIds = [AO.defaultToken, AO.pixl];
-			return fetchedProfile.Assets.map((asset: { Id: string; Quantity: string }) => asset.Id).filter(
-				(id: string) => !swapIds.includes(id)
-			);
+			return fetchedProfile.Assets.map((asset: { Id: string; Quantity: string }) => asset.Id);
 		} else return [];
 	} catch (e: any) {
 		console.error(e);

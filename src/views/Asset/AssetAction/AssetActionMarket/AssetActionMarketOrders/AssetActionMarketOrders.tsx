@@ -1,5 +1,6 @@
 import React from 'react';
 import { useDispatch, useSelector } from 'react-redux';
+import { Link } from 'react-router-dom';
 
 import { messageResults, readHandler } from 'api';
 
@@ -9,7 +10,7 @@ import { FormField } from 'components/atoms/FormField';
 import { Notification } from 'components/atoms/Notification';
 import { Slider } from 'components/atoms/Slider';
 import { Modal } from 'components/molecules/Modal';
-import { AO, ASSETS } from 'helpers/config';
+import { AO, ASSETS, URLS } from 'helpers/config';
 import { AssetOrderType, OrderbookEntryType } from 'helpers/types';
 import {
 	checkValidAddress,
@@ -512,10 +513,17 @@ export default function AssetActionMarketOrders(props: IProps) {
 						Math.floor(Number(updatedUnitPrice <= MIN_PRICE ? 0 : updatedUnitPrice) * transferDenomination)
 					);
 				}
+
+				// TODO
+				let calculatedQuantity = currentOrderQuantity;
+				if (denomination && denomination > 1) {
+					calculatedQuantity = Number(currentOrderQuantity) * Number(denomination);
+				}
+
 				try {
 					price =
-						BigInt(currentOrderQuantity) && BigInt(calculatedUnitPrice)
-							? BigInt(currentOrderQuantity) * BigInt(calculatedUnitPrice)
+						BigInt(calculatedQuantity) && BigInt(calculatedUnitPrice)
+							? BigInt(calculatedQuantity) * BigInt(calculatedUnitPrice)
 							: BigInt(0);
 				} catch (e: any) {
 					console.error(e);
@@ -614,7 +622,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 	function getTotalPriceDisplay() {
 		let amount = BigInt(getTotalOrderAmount());
-		if (props.type === 'buy' && denomination) amount = BigInt(amount) / BigInt(denomination);
+		if (denomination && denomination > 1) amount = BigInt(amount) / BigInt(denomination);
 		const orderCurrency =
 			props.asset.orders && props.asset.orders.length ? props.asset.orders[0].currency : AO.defaultToken;
 		return <CurrencyLine amount={amount ? amount.toString() : '0'} currency={orderCurrency} />;
@@ -727,6 +735,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 	function getConfirmation() {
 		let header: string | null = null;
+		let footer: React.ReactNode | null = null;
 
 		switch (props.type) {
 			case 'buy':
@@ -734,6 +743,14 @@ export default function AssetActionMarketOrders(props: IProps) {
 				break;
 			case 'sell':
 				header = language.confirmListing;
+				footer = (
+					<p>
+						{language.sellerFee}{' '}
+						<Link to={URLS.docs} target={'_blank'}>
+							{language.learnMore}
+						</Link>
+					</p>
+				);
 				break;
 			case 'transfer':
 				header = language.confirmTransfer;
@@ -748,6 +765,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 				<S.ConfirmationWrapper className={'modal-wrapper'}>
 					<S.SalesWrapper>{getOrderDetails()}</S.SalesWrapper>
 					<S.ActionWrapperFull loading={orderLoading.toString() || null}>{getAction(true)}</S.ActionWrapperFull>
+					{footer && <S.ConfirmationFooter>{footer}</S.ConfirmationFooter>}
 					<S.ConfirmationMessage>
 						<p>
 							{currentNotification ? currentNotification : orderLoading ? 'Processing...' : language.reviewOrderDetails}
