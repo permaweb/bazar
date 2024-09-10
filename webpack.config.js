@@ -5,6 +5,36 @@ const CopyWebpackPlugin = require('copy-webpack-plugin');
 const TerserPlugin = require('terser-webpack-plugin');
 const { CleanWebpackPlugin } = require('clean-webpack-plugin');
 
+const productionAddresses = {
+	MODULE: 'Pq2Zftrqut0hdisH_MC2pDOT6S4eQFoxGsFUzR6r350',
+	SCHEDULER: '_GQ33BkPtZrqxA84vM8Zk-N2aO0toNNu_C-l-rawrBA',
+	DEFAULT_TOKEN: 'xU9zFkq3X2ZQ6olwNVvr1vUWIjc3kXTWr7xKQD6dh10',
+	UCM: 'U3TjJAZWJjlWBB4KAXSHKzuky81jtyh0zqH8rUL4Wd0',
+	UCM_ACTIVITY: 'SNDvAf2RF-jhPmRrGUcs_b1nKlzU6vamN9zl0e9Zi4c',
+	PIXL: 'DM3FoZUq_yebASPhgd8pEIRIzDW6muXEhxz5-JwbZwo',
+	PROFILE_REGISTRY: 'SNy4m-DrqxWl01YqGM4sxI8qCni-58re8uuJLvZPypY',
+	PROFILE_SRC: '_R2XYWDPUXVvQrQKFaQRvDTDcDwnQNbqlTd_qvCRSpQ',
+	COLLECTIONS_REGISTRY: 'TFWDmf8a3_nw43GCm_CuYlYoylHAjCcFGbgHfDaGcsg',
+};
+
+const nonProductionAddresses = {
+	MODULE: 'Pq2Zftrqut0hdisH_MC2pDOT6S4eQFoxGsFUzR6r350',
+	SCHEDULER: '_GQ33BkPtZrqxA84vM8Zk-N2aO0toNNu_C-l-rawrBA',
+	DEFAULT_TOKEN: 'xU9zFkq3X2ZQ6olwNVvr1vUWIjc3kXTWr7xKQD6dh10',
+	UCM: 'qtDwylCwyhhsGPKIYAi2Ao342mdhvFUPqdbDOudzaiM',
+	UCM_ACTIVITY: 'GC9M776w8UEZVkvAGcLqhrH10uumkbQUYrnIo1AiWHo',
+	PIXL: 'DM3FoZUq_yebASPhgd8pEIRIzDW6muXEhxz5-JwbZwo',
+	PROFILE_REGISTRY: 'jndJ0phxOaJJU6CHZVX7zo2Wl5vI2KQ1z4i3VnV4DrM',
+	PROFILE_SRC: '9Tpz5_ZT4RRkF-6JUTdaaTMg0ARfkNuuM5zahXyCqZ4',
+	COLLECTIONS_REGISTRY: 'q0QVp2rPXOuqIj6mbRObaC-HMweexSv1Y_Nm9_t1brc',
+};
+
+const env = process.env.NODE_ENV || 'development';
+const isProduction = env === 'production';
+const isStaging = env === 'staging';
+
+const addresses = isProduction ? productionAddresses : isStaging ? nonProductionAddresses : productionAddresses;
+
 module.exports = {
 	entry: './src/index.tsx',
 	output: {
@@ -12,7 +42,7 @@ module.exports = {
 		filename: 'bundle.js',
 	},
 	devtool: 'eval',
-	mode: process.env.NODE_ENV || 'development',
+	mode: isProduction || isStaging ? 'production' : 'development',
 	devServer: {
 		static: {
 			directory: path.join(__dirname, 'dist'),
@@ -27,7 +57,7 @@ module.exports = {
 		},
 	},
 	optimization:
-		process.env.NODE_ENV === 'production'
+		isProduction || isStaging
 			? {
 					minimize: true,
 					minimizer: [
@@ -138,51 +168,15 @@ module.exports = {
 		}),
 		new webpack.NoEmitOnErrorsPlugin(),
 		new webpack.DefinePlugin({
-			'process.env.MODULE': JSON.stringify(
-				process.env.NODE_ENV === 'production'
-					? 'yTyqRSfbD6BuiDra9jDNjq8TLe7rhneDcmQ64CkmkdU'
-					: 'yTyqRSfbD6BuiDra9jDNjq8TLe7rhneDcmQ64CkmkdU'
-			),
-			'process.env.SCHEDULER': JSON.stringify(
-				process.env.NODE_ENV === 'production'
-					? '_GQ33BkPtZrqxA84vM8Zk-N2aO0toNNu_C-l-rawrBA'
-					: '_GQ33BkPtZrqxA84vM8Zk-N2aO0toNNu_C-l-rawrBA'
-			),
-			'process.env.DEFAULT_TOKEN': JSON.stringify(
-				process.env.NODE_ENV === 'production'
-					? 'xU9zFkq3X2ZQ6olwNVvr1vUWIjc3kXTWr7xKQD6dh10'
-					: 'xU9zFkq3X2ZQ6olwNVvr1vUWIjc3kXTWr7xKQD6dh10'
-			),
-			'process.env.UCM': JSON.stringify(
-				process.env.NODE_ENV === 'production'
-					? 'U3TjJAZWJjlWBB4KAXSHKzuky81jtyh0zqH8rUL4Wd0'
-					: 'qtDwylCwyhhsGPKIYAi2Ao342mdhvFUPqdbDOudzaiM'
-			),
-			'process.env.UCM_ACTIVITY': JSON.stringify(
-				process.env.NODE_ENV === 'production'
-					? 'SNDvAf2RF-jhPmRrGUcs_b1nKlzU6vamN9zl0e9Zi4c'
-					: 'GC9M776w8UEZVkvAGcLqhrH10uumkbQUYrnIo1AiWHo'
-			),
-			'process.env.PIXL': JSON.stringify(
-				process.env.NODE_ENV === 'production'
-					? 'DM3FoZUq_yebASPhgd8pEIRIzDW6muXEhxz5-JwbZwo'
-					: 'DM3FoZUq_yebASPhgd8pEIRIzDW6muXEhxz5-JwbZwo'
-			),
-			'process.env.PROFILE_REGISTRY': JSON.stringify(
-				process.env.NODE_ENV === 'production'
-					? 'SNy4m-DrqxWl01YqGM4sxI8qCni-58re8uuJLvZPypY'
-					: 'jndJ0phxOaJJU6CHZVX7zo2Wl5vI2KQ1z4i3VnV4DrM'
-			),
-			'process.env.PROFILE_SRC': JSON.stringify(
-				process.env.NODE_ENV === 'production'
-					? '_R2XYWDPUXVvQrQKFaQRvDTDcDwnQNbqlTd_qvCRSpQ'
-					: '9Tpz5_ZT4RRkF-6JUTdaaTMg0ARfkNuuM5zahXyCqZ4'
-			),
-			'process.env.COLLECTIONS_REGISTRY': JSON.stringify(
-				process.env.NODE_ENV === 'production'
-					? 'TFWDmf8a3_nw43GCm_CuYlYoylHAjCcFGbgHfDaGcsg'
-					: 'q0QVp2rPXOuqIj6mbRObaC-HMweexSv1Y_Nm9_t1brc'
-			),
+			'process.env.MODULE': JSON.stringify(addresses.MODULE),
+			'process.env.SCHEDULER': JSON.stringify(addresses.SCHEDULER),
+			'process.env.DEFAULT_TOKEN': JSON.stringify(addresses.DEFAULT_TOKEN),
+			'process.env.UCM': JSON.stringify(addresses.UCM),
+			'process.env.UCM_ACTIVITY': JSON.stringify(addresses.UCM_ACTIVITY),
+			'process.env.PIXL': JSON.stringify(addresses.PIXL),
+			'process.env.PROFILE_REGISTRY': JSON.stringify(addresses.PROFILE_REGISTRY),
+			'process.env.PROFILE_SRC': JSON.stringify(addresses.PROFILE_SRC),
+			'process.env.COLLECTIONS_REGISTRY': JSON.stringify(addresses.COLLECTIONS_REGISTRY),
 		}),
 	],
 	resolve: {

@@ -32,6 +32,8 @@ export const Primary = styled.button<{
 	disabled: boolean | undefined;
 	active: boolean | undefined;
 }>`
+	min-height: ${(props) => (props.dimensions ? `${props.dimensions.wrapper.toString()}px` : `42.5px`)};
+	min-width: ${(props) => (props.dimensions ? `${props.dimensions.wrapper.toString()}px` : `42.5px`)};
 	height: ${(props) => (props.dimensions ? `${props.dimensions.wrapper.toString()}px` : `42.5px`)};
 	width: ${(props) => (props.dimensions ? `${props.dimensions.wrapper.toString()}px` : `42.5px`)};
 	display: flex;
@@ -42,6 +44,8 @@ export const Primary = styled.button<{
 	border-radius: 50%;
 
 	svg {
+		min-height: ${(props) => (props.dimensions ? `${props.dimensions.icon.toString()}px` : `24.5px`)};
+		min-width: ${(props) => (props.dimensions ? `${props.dimensions.icon.toString()}px` : `24.5px`)};
 		height: ${(props) => (props.dimensions ? `${props.dimensions.icon.toString()}px` : `24.5px`)};
 		width: ${(props) => (props.dimensions ? `${props.dimensions.icon.toString()}px` : `24.5px`)};
 		fill: ${(props) =>
@@ -77,17 +81,19 @@ export const Alt1 = styled(Primary)`
 				? props.theme.colors.button.primary.disabled.border
 				: props.theme.colors.button.primary.border};
 	svg {
+		min-height: ${(props) => (props.dimensions ? `${props.dimensions.icon.toString()}px` : `24.5px`)};
+		min-width: ${(props) => (props.dimensions ? `${props.dimensions.icon.toString()}px` : `24.5px`)};
 		height: ${(props) => (props.dimensions ? `${props.dimensions.icon.toString()}px` : `24.5px`)};
 		width: ${(props) => (props.dimensions ? `${props.dimensions.icon.toString()}px` : `24.5px`)};
 		fill: ${(props) =>
 			props.active
-				? props.theme.colors.font.light1
+				? props.theme.colors.button.primary.active.color
 				: props.disabled
 				? props.theme.colors.button.primary.disabled.color
 				: props.theme.colors.button.primary.color};
 		color: ${(props) =>
 			props.active
-				? props.theme.colors.font.light1
+				? props.theme.colors.button.primary.active.color
 				: props.disabled
 				? props.theme.colors.button.primary.disabled.color
 				: props.theme.colors.button.primary.color};
@@ -100,9 +106,13 @@ export const Alt1 = styled(Primary)`
 				: props.theme.colors.button.primary.active.background};
 		svg {
 			fill: ${(props) =>
-				props.disabled ? props.theme.colors.button.primary.disabled.color : props.theme.colors.font.light1};
+				props.disabled
+					? props.theme.colors.button.primary.disabled.color
+					: props.theme.colors.button.primary.active.color};
 			color: ${(props) =>
-				props.disabled ? props.theme.colors.button.primary.disabled.color : props.theme.colors.font.light1};
+				props.disabled
+					? props.theme.colors.button.primary.disabled.color
+					: props.theme.colors.button.primary.active.color};
 		}
 	}
 `;

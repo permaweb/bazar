@@ -8,11 +8,11 @@ export const docsOrder = [
 				path: 'introduction',
 			},
 			{
-				name: 'Create a profile',
-				path: 'permaweb-profile',
+				name: 'Profiles',
+				path: 'profiles',
 			},
 			{
-				name: 'Legacy BazAR migration',
+				name: 'Legacy Bazar migration',
 				path: 'legacy-bazar-migration',
 			},
 		],
@@ -78,7 +78,7 @@ export const docsOrder = [
 				path: 'atomic-asset',
 			},
 			{
-				name: 'BazAR on AO',
+				name: 'Bazar on AO',
 				path: 'bazar-on-ao',
 			},
 		],

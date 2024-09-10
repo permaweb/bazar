@@ -74,15 +74,13 @@ export const Dropdown = styled.ul`
 
 export const DHeaderWrapper = styled.div`
 	width: 100%;
-	padding: 0 0 15px 0;
-	border-bottom: 1px solid ${(props) => props.theme.colors.border.primary};
+	padding: 0 15px 10px 15px;
 `;
 
 export const DHeaderFlex = styled.div`
 	width: 100%;
 	display: flex;
 	align-items: center;
-	padding: 0 15px;
 `;
 
 export const DHeader = styled.div`
@@ -115,11 +113,11 @@ export const DHeader = styled.div`
 
 export const DBodyWrapper = styled.ul`
 	width: 100%;
-	padding: 10px 0;
-	border-bottom: 1px solid ${(props) => props.theme.colors.border.primary};
+	padding: 10px 7.5px;
+	border-bottom: 1px solid ${(props) => props.theme.colors.border.alt4};
 	li {
 		text-align: center;
-		height: 40px;
+		height: 38.5px;
 		display: flex;
 		align-items: center;
 		cursor: pointer;
@@ -128,8 +126,9 @@ export const DBodyWrapper = styled.ul`
 		font-size: ${(props) => props.theme.typography.size.small};
 		font-weight: ${(props) => props.theme.typography.weight.bold};
 		border: 1px solid transparent;
-		padding: 0 15px;
+		border-radius: ${STYLING.dimensions.radius.alt2};
 		transition: all 100ms;
+		padding: 0 7.5px;
 		svg {
 			height: 15.5px;
 			width: 15.5px;
@@ -147,6 +146,7 @@ export const DBodyWrapper = styled.ul`
 			width: 100%;
 			display: flex;
 			align-items: center;
+			border-radius: ${STYLING.dimensions.radius.primary};
 			&:hover {
 				color: ${(props) => props.theme.colors.font.primary};
 				background: ${(props) => props.theme.colors.container.primary.active};
@@ -155,9 +155,14 @@ export const DBodyWrapper = styled.ul`
 	}
 `;
 
+export const DBalancesWrapper = styled(DBodyWrapper)`
+	width: calc(100% - 20px);
+	padding: 5px 12.5px;
+	margin: 5px auto 0 auto;
+`;
+
 export const DBodyHeader = styled.div`
 	margin: 0 0 2.5px 0;
-	padding: 0 15px;
 	span {
 		color: ${(props) => props.theme.colors.font.primary};
 		font-family: ${(props) => props.theme.typography.family.alt1};
@@ -168,7 +173,6 @@ export const DBodyHeader = styled.div`
 
 export const BalanceLine = styled.div`
 	height: 40px;
-	padding: 0 15px;
 	display: flex;
 	align-items: center;
 	span {
@@ -180,7 +184,7 @@ export const BalanceLine = styled.div`
 	svg {
 		height: 16.5px;
 		width: 16.5px;
-		margin: 7.5px 12.5px 0 0;
+		margin: 7.5px 7.5px 0 0;
 		color: ${(props) => props.theme.colors.font.alt1};
 		fill: ${(props) => props.theme.colors.font.alt1};
 	}
@@ -196,8 +200,8 @@ export const TokenLink = styled.div`
 	a {
 		background: ${(props) => props.theme.colors.button.primary.background};
 		border: 1px solid ${(props) => props.theme.colors.button.primary.border};
-		padding: 0.5px 7.5px 2.5px 7.5px;
-		border-radius: ${STYLING.dimensions.radius.alt2};
+		padding: 1.5px 10.5px 3.5px 10.5px;
+		border-radius: 36px;
 		&:hover {
 			background: ${(props) => props.theme.colors.button.primary.active.background};
 			border: 1px solid ${(props) => props.theme.colors.button.primary.active.border};
@@ -236,7 +240,6 @@ export const TokenLink = styled.div`
 `;
 
 export const DFooterWrapper = styled(DBodyWrapper)`
-	padding: 10px 0;
 	border-bottom: none;
 	svg {
 		height: 15.5px;

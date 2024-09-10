@@ -18,10 +18,19 @@ export const DataWrapper = styled.div`
 	}
 `;
 
-export const Header = styled.div`
+export const Header = styled.div``;
+
+export const HeaderTitle = styled.div`
+	display: flex;
+	align-items: flex-start;
+	gap: 10px;
+	justify-content: space-between;
+	margin: -12.5px 0 10px 0;
 	h4 {
-		line-height: 1.15;
-		margin: -5px 0 10px 0;
+		line-height: 1.5;
+	}
+	button {
+		margin: 10px 0 0 0;
 	}
 `;
 

@@ -83,7 +83,7 @@ export const TableWrapper = styled.div`
 	flex-direction: column;
 	overflow-x: auto;
 	background: ${(props) => props.theme.colors.container.primary.active};
-	border: 1px solid ${(props) => props.theme.colors.border.primary};
+	border: 1px solid ${(props) => props.theme.colors.border.alt4};
 	border-radius: ${STYLING.dimensions.radius.primary};
 `;
 
@@ -147,7 +147,7 @@ export const TableBody = styled.div`
 		border-bottom: 1px solid ${(props) => props.theme.colors.border.alt4};
 	}
 	> :first-child {
-		border-top: 1px solid ${(props) => props.theme.colors.border.primary};
+		border-top: 1px solid ${(props) => props.theme.colors.border.alt4};
 	}
 `;
 
@@ -241,7 +241,6 @@ export const ReceiverWrapper = styled(OwnerWrapper)`
 `;
 
 export const QuantityWrapper = styled(TableRowValue)`
-	/* min-width: 75px; */
 	flex: 0;
 	p {
 		font-family: ${(props) => props.theme.typography.family.alt1};
@@ -258,6 +257,7 @@ export const PriceWrapper = styled(TableRowValue)`
 export const AssetWrapper = styled(TableRowValue)`
 	flex: 0;
 	min-width: 200px;
+	width: 200px;
 	gap: 10px;
 	margin: 0 20px 0 0;
 	overflow: hidden;
@@ -328,7 +328,7 @@ export const Event = styled.div<{ type: 'Listing' | 'Sale' | 'Purchase' | 'Unlis
 	overflow: hidden;
 	padding: 1.5px 7.5px;
 	background: ${(props) => getEventColor(props.theme, props.type)};
-	border: 1px solid ${(props) => props.theme.colors.border.primary};
+	border: 1px solid ${(props) => props.theme.colors.border.alt4};
 	border-radius: ${STYLING.dimensions.radius.alt2};
 	p {
 		font-size: ${(props) => props.theme.typography.size.xSmall};
@@ -351,12 +351,12 @@ export const Event = styled.div<{ type: 'Listing' | 'Sale' | 'Purchase' | 'Unlis
 `;
 
 export const Entity = styled.div<{ type: 'UCM' | 'User' }>`
-	width: 130px;
+	width: 110px;
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	background: ${(props) => (props.type === 'UCM' ? props.theme.colors.stats.alt5 : props.theme.colors.stats.primary)};
-	border: 1px solid ${(props) => props.theme.colors.border.primary};
+	background: ${(props) => (props.type === 'UCM' ? props.theme.colors.stats.primary : props.theme.colors.stats.alt5)};
+	border: 1px solid ${(props) => props.theme.colors.border.alt4};
 	border-radius: ${STYLING.dimensions.radius.alt2};
 	padding: 1.5px 7.5px;
 	p {

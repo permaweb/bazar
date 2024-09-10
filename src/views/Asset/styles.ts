@@ -39,7 +39,7 @@ export const ReadingOverlay = styled.div`
 	top: 0;
 	left: 0;
 	background: ${(props) => props.theme.colors.overlay.primary};
-	backdrop-filter: blur(7.5px);
+	backdrop-filter: blur(5px);
 `;
 
 export const ReadingWrapper = styled.div`

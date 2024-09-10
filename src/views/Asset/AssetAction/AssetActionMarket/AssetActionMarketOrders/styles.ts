@@ -205,6 +205,21 @@ export const ActionWrapperFull = styled(ActionWrapper)`
 	margin: 20px 0 0 0;
 `;
 
+export const ConfirmationFooter = styled.div`
+	width: 100%;
+	margin: 10px 0 0 0;
+	p {
+		font-size: ${(props) => props.theme.typography.size.xSmall};
+		font-family: ${(props) => props.theme.typography.family.primary};
+		font-weight: ${(props) => props.theme.typography.weight.bold};
+		color: ${(props) => props.theme.colors.font.alt1};
+		a {
+			text-decoration: underline;
+			text-decoration-thickness: 1.25px;
+		}
+	}
+`;
+
 export const MessageWrapper = styled.div`
 	padding: 2.5px 10px;
 	margin: 15px 0 0 0;

@@ -24,6 +24,7 @@ import info from 'assets/info.svg';
 import leaderboard from 'assets/leaderboard.svg';
 import license from 'assets/license.svg';
 import light from 'assets/light.svg';
+import link from 'assets/link.svg';
 import list from 'assets/list.svg';
 import logo from 'assets/logo.svg';
 import market from 'assets/market.svg';
@@ -87,6 +88,11 @@ export const REFORMATTED_ASSETS = {
 		logo: 'hqg-Em9DdYHYmMysyVi8LuTGF8IF_F7ZacgjYiSpj0k',
 		denomination: 3,
 	},
+	['ENNFBJS_TpBTh-xR648Pdpx2Z8YgZkRbiqbuzfVv0M4']: {
+		title: 'Legendary Fish',
+		logo: 'Esm9ZtALCN0oM0GGBUeh90qCV_V_0d21hwobUZ7IWA8',
+		denomination: 0,
+	},
 };
 
 export const LICENSES = {
@@ -127,6 +133,7 @@ export const ASSETS = {
 	leaderboard,
 	license,
 	light,
+	link,
 	list,
 	logo,
 	market,

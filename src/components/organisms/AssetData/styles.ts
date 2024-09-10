@@ -163,3 +163,12 @@ export const UnsupportedWrapper = styled.div`
 		fill: ${(props) => props.theme.colors.font.alt1};
 	}
 `;
+
+export const LoaderWrapper = styled.div`
+	height: 100%;
+	width: 100%;
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	border: none;
+`;
