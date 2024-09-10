@@ -4,7 +4,7 @@
 
 #### wAR for U Airdrop
 
-All U holders will receive an equivalent amount of wAR, airdropped to their Arweave wallets, based on the value of U on Permaswap (https://www.permaswap.network/).
+All U holders will receive an equivalent amount of wAR, airdropped to their Arweave wallets, based on the value of U on [Permaswap](https://www.permaswap.network/).
 
 #### PIXL and Streak Migration
 
