@@ -298,6 +298,7 @@ export const REDIRECTS = {
 	aox: `https://aox.arweave.net`,
 	arconnect: `https://arconnect.io`,
 	warDepot: `https://wardepot.arweave.net`,
+	aoLink: (messageId: string) => `https://www.ao.link/#/message/${messageId}`,
 };
 
 export const DEFAULTS = {

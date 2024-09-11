@@ -60,7 +60,7 @@ export const ReadingWrapper = styled.div`
 
 export const ReadingInfoWrapper = styled.div`
 	height: calc(100% - 40px);
-	width: calc(100% - 55px);
+	width: calc(100% - 40px);
 	max-width: 100%;
 	@media (max-width: ${STYLING.cutoffs.desktop}) {
 		height: 100%;
@@ -70,7 +70,7 @@ export const ReadingInfoWrapper = styled.div`
 
 export const ReadingActionWrapper = styled.div`
 	height: calc(100% - 40px);
-	width: 55px;
+	width: 40px;
 	max-width: 100%;
 	@media (max-width: ${STYLING.cutoffs.desktop}) {
 		height: fit-content;

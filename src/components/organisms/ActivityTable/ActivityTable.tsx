@@ -9,7 +9,7 @@ import { CurrencyLine } from 'components/atoms/CurrencyLine';
 import { IconButton } from 'components/atoms/IconButton';
 import { Select } from 'components/atoms/Select';
 import { OwnerLine } from 'components/molecules/OwnerLine';
-import { ACTIVITY_SORT_OPTIONS, AO, ASSETS, REFORMATTED_ASSETS, URLS } from 'helpers/config';
+import { ACTIVITY_SORT_OPTIONS, AO, ASSETS, REDIRECTS, REFORMATTED_ASSETS, URLS } from 'helpers/config';
 import { RegistryProfileType, SelectOptionType } from 'helpers/types';
 import { formatAddress, formatCount, formatDate, getRelativeDate, isFirefox } from 'helpers/utils';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
@@ -360,7 +360,7 @@ export default function ActivityTable(props: IProps) {
 									</S.AssetWrapper>
 								)}
 								<S.EventWrapper>
-									<S.Event type={row.event}>
+									<S.Event type={row.event} href={REDIRECTS.aoLink(row.orderId)} target="_blank">
 										<ReactSVG src={getEventIcon(row.event)} />
 										<p>{row.event}</p>
 									</S.Event>

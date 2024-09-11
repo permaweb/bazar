@@ -287,15 +287,37 @@ export const AssetDataWrapper = styled.div`
 	transition: all 100ms;
 	a {
 		width: 100%;
+		position: relative;
+
+		::after {
+			content: '';
+			position: absolute;
+			height: 100%;
+			width: 100%;
+			top: 0;
+			left: 0;
+			right: 0;
+			bottom: 0;
+			background-color: ${(props) => props.theme.colors.overlay.alt1};
+			border-radius: ${STYLING.dimensions.radius.alt2};
+			opacity: 0;
+			transition: all 100ms;
+		}
+		&:hover::after {
+			opacity: 1;
+		}
+		&:focus::after {
+			opacity: 1;
+		}
+		&:hover {
+			cursor: pointer;
+		}
 	}
 	div {
 		border-radius: ${STYLING.dimensions.radius.alt2} !important;
 		img {
 			border-radius: 0 !important;
 		}
-	}
-	&:hover {
-		opacity: 0.75;
 	}
 `;
 
@@ -319,12 +341,13 @@ function getEventColor(theme: DefaultTheme, type: 'Listing' | 'Sale' | 'Purchase
 	}
 }
 
-export const Event = styled.div<{ type: 'Listing' | 'Sale' | 'Purchase' | 'Unlisted' }>`
+export const Event = styled.a<{ type: 'Listing' | 'Sale' | 'Purchase' | 'Unlisted' }>`
 	width: 110px;
 	display: flex;
 	align-items: center;
 	justify-content: center;
 	gap: 7.5px;
+	position: relative;
 	overflow: hidden;
 	padding: 1.5px 7.5px;
 	background: ${(props) => getEventColor(props.theme, props.type)};
@@ -347,6 +370,29 @@ export const Event = styled.div<{ type: 'Listing' | 'Sale' | 'Purchase' | 'Unlis
 		fill: ${(props) => props.theme.colors.font.light1};
 		color: ${(props) => props.theme.colors.font.light1};
 		margin: 6.5px 0 0 0;
+	}
+
+	::after {
+		content: '';
+		position: absolute;
+		height: 100%;
+		width: 100%;
+		top: 0;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		background-color: ${(props) => props.theme.colors.overlay.alt1};
+		opacity: 0;
+		transition: all 100ms;
+	}
+	&:hover::after {
+		opacity: 1;
+	}
+	&:focus::after {
+		opacity: 1;
+	}
+	&:hover {
+		cursor: pointer;
 	}
 `;
 

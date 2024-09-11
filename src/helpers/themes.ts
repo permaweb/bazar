@@ -17,7 +17,7 @@ export const lightTheme = {
 	neutralA1: '#0A0A0A',
 	neutralA2: '#5F5F5F',
 	neutralA3: '#5C5C5C',
-	neutralA4: '#2D2D2D',
+	neutralA4: '#313131',
 	neutralA5: '#A4A4A4',
 	neutralA6: '#A9A9A9',
 	neutralA7: '#F0F0F0',

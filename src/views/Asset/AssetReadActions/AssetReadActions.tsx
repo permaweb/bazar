@@ -16,8 +16,8 @@ export default function AssetReadActions(props: IProps) {
 				src={ASSETS.close}
 				handlePress={() => props.toggleViewType()}
 				dimensions={{
-					wrapper: 37.5,
-					icon: 18.5,
+					wrapper: 27.5,
+					icon: 12.5,
 				}}
 				tooltip={language.return}
 				useBottomToolTip
