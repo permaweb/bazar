@@ -392,7 +392,7 @@ export default function ActivityTable(props: IProps) {
 									{row.timestamp && (
 										<S.DateValueTooltip>
 											<ReactSVG src={ASSETS.info} />
-											<div className={'date-tooltip fade-in border-wrapper-alt1'}>
+											<div className={'date-tooltip fade-in border-wrapper-alt2'}>
 												<p>{`${formatDate(row.timestamp, 'iso', true)}`}</p>
 											</div>
 										</S.DateValueTooltip>
@@ -409,7 +409,9 @@ export default function ActivityTable(props: IProps) {
 	return (
 		<S.Wrapper className={'fade-in'} ref={scrollRef}>
 			<S.Header>
-				<h4>{`${language.interactions}${activity && activity.length ? ` (${activity.length})` : ''}`}</h4>
+				<h4>{`${language.interactions}${
+					activity && activity.length ? ` (${formatCount(activity.length.toString())})` : ''
+				}`}</h4>
 				<S.HeaderActions>
 					<S.SelectWrapper>
 						<Select
