@@ -47,6 +47,11 @@ export default function Header() {
 						</S.DNavWrapper>
 					</S.C1Wrapper>
 					<S.ActionsWrapper>
+						<S.PAction className={'border-wrapper-alt2'}>
+							<Link to={URLS.quest}>
+								<span>Omega Quest</span>
+							</Link>
+						</S.PAction>
 						{arProvider.profile && arProvider.profile.id && <Streaks profile={arProvider.profile} />}
 						<WalletConnect />
 						<S.MWrapper>
@@ -75,6 +80,8 @@ export default function Header() {
 											wrapper: 35,
 											icon: 20,
 										}}
+										tooltip={language.close}
+										useBottomToolTip
 									/>
 								</S.PHeader>
 								<S.MNavWrapper>

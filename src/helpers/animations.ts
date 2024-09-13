@@ -27,6 +27,12 @@ export const openRight = keyframes`
     }
 `;
 
+export const shine = keyframes`
+	to {
+		transform: translate(150%, -150%);
+	}
+`;
+
 export const loaderKeyFrame = keyframes`
   0% {
     opacity: 1;

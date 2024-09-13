@@ -125,3 +125,29 @@ export const MNavWrapper = styled.div`
 		border-bottom: 1px solid ${(props) => props.theme.colors.border.primary};
 	}
 `;
+
+export const PAction = styled.div`
+	height: 35px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	a {
+		height: 100%;
+		width: 100%;
+		color: ${(props) => props.theme.colors.font.primary};
+		font-family: ${(props) => props.theme.typography.family.alt1};
+		font-size: ${(props) => props.theme.typography.size.small};
+		font-weight: ${(props) => props.theme.typography.weight.bold};
+		padding: 0 15px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+	&:hover {
+		background: ${(props) => props.theme.colors.container.primary.active};
+	}
+
+	@media (max-width: ${STYLING.cutoffs.initial}) {
+		display: none;
+	}
+`;
