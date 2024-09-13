@@ -3,7 +3,7 @@ import { ReactSVG } from 'react-svg';
 
 import { Panel } from 'components/molecules/Panel';
 import { ProfileManage } from 'components/organisms/ProfileManage';
-import { ASSET_SORT_OPTIONS, ASSETS } from 'helpers/config';
+import { ASSETS } from 'helpers/config';
 import { formatAddress } from 'helpers/utils';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
@@ -34,12 +34,12 @@ export default function Campaign() {
 	const [showProfileManage, setShowProfileManage] = React.useState<boolean>(false);
 
 	const [assets, setAssets] = React.useState<AssetStateType[]>(
-		ASSET_CONFIG.map((asset: { id: string; description: string }) => ({ ...asset, completed: false, claimable: false }))
+		ASSET_CONFIG.map((asset: { id: string; description: string }) => ({ ...asset, completed: false, claimable: true }))
 	);
 
 	const [claimingAsset, setClaimingAsset] = React.useState<boolean>(false);
 
-	const profile = React.useMemo(() => {
+	const subheader = React.useMemo(() => {
 		let label: string;
 		let action = null;
 
@@ -60,10 +60,17 @@ export default function Campaign() {
 		const completed = arProvider.profile && arProvider.profile.id !== null;
 
 		return (
-			<S.ProfileWrapper onClick={action} completed={completed}>
-				<S.ProfileIndicator completed={completed} />
-				<span>{label}</span>
-			</S.ProfileWrapper>
+			<S.Subheader>
+				<p>
+					Collect five unique atomic assets by completing each quest. Complete the set to unlock the powerful Omega
+					DumDum, the god of our futuristic Mayan temples, and claim rewards including merch and AR prizes. Connect your
+					Arweave wallet, track your progress, and start earning today!
+				</p>
+				<S.ProfileWrapper onClick={action} completed={completed}>
+					<S.ProfileIndicator completed={completed} />
+					<span>{label}</span>
+				</S.ProfileWrapper>
+			</S.Subheader>
 		);
 	}, [arProvider.profile, arProvider.walletAddress]);
 
@@ -92,12 +99,7 @@ export default function Campaign() {
 			<S.Wrapper className={'border-wrapper-alt2 fade-in'}>
 				<S.Header>
 					<h1>DumDum the Omega One</h1>
-					<p>
-						Collect five unique atomic assets by completing each quest. Complete the set to unlock the powerful Omega
-						DumDum, the god of our futuristic Mayan temples, and claim rewards including merch and AR prizes. Connect
-						your Arweave wallet, track your progress, and start earning today!
-					</p>
-					{profile}
+					{subheader}
 				</S.Header>
 				<S.Body>
 					{assets.map((asset: AssetStateType, index: number) => (

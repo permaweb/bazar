@@ -15,27 +15,37 @@ export const Wrapper = styled.div`
 export const Header = styled.div`
 	display: flex;
 	flex-direction: column;
-	gap: 5px;
+	gap: 20px;
 	align-items: center;
-	margin: 20px 0 0 0;
-
-	h1,
-	p {
-		color: ${(props) => props.theme.colors.font.light1};
-		text-align: center;
-	}
 
 	h1 {
+		color: ${(props) => props.theme.colors.font.light1};
+		text-align: center;
 		font-weight: ${(props) => props.theme.typography.weight.xBold};
-		text-shadow: 1.5px 3.5px #80f154;
+		font-family: 'Frank Ruhl Libre', serif;
+		text-shadow: 1.5px 1.5px #80f154;
 	}
+`;
+
+export const Subheader = styled.div`
+	max-width: 90%;
+	background: rgba(10, 10, 10, 0.625);
+	padding: 30px;
+	border-radius: ${STYLING.dimensions.radius.primary};
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 30px;
 
 	p {
 		line-height: 1.5;
 		max-width: 800px;
-		font-family: ${(props) => props.theme.typography.family.alt1};
-		font-size: ${(props) => props.theme.typography.size.base};
-		font-weight: ${(props) => props.theme.typography.weight.bold};
+		color: #d8d6a7;
+		font-size: ${(props) => props.theme.typography.size.lg};
+		font-weight: ${(props) => props.theme.typography.weight.light};
+		font-family: 'Frank Ruhl Libre', serif;
+		text-align: center;
 	}
 `;
 
@@ -43,20 +53,20 @@ export const ProfileWrapper = styled.div<{ completed: boolean }>`
 	max-width: 90%;
 	background: rgba(10, 10, 10, 0.65);
 	padding: 10px 20px;
+	border: 1px solid #7ec9bf;
 	border-radius: ${STYLING.dimensions.radius.alt2};
 	display: flex;
 	align-items: center;
 	justify-content: center;
 	gap: 15px;
-	margin: 20px 0 0 0;
 	pointer-events: ${(props) => (props.completed ? 'none' : 'auto')};
 	transition: all 100ms;
 
 	span {
 		color: #7ec9bf;
-		color: ${(props) => props.theme.colors.font.light1};
 		font-weight: ${(props) => props.theme.typography.weight.bold};
-		font-size: ${(props) => props.theme.typography.size.lg};
+		font-size: ${(props) => props.theme.typography.size.xLg};
+		font-family: 'Frank Ruhl Libre', serif;
 	}
 
 	&:hover {
@@ -145,24 +155,24 @@ export const GridElementAction = styled.button`
 	transition: all 200ms;
 	span {
 		color: #0d3f0a;
-		font-family: ${(props) => props.theme.typography.family.alt1};
 		font-weight: ${(props) => props.theme.typography.weight.xBold};
-		font-size: ${(props) => props.theme.typography.size.lg};
+		font-size: ${(props) => props.theme.typography.size.xLg};
+		font-family: 'Frank Ruhl Libre', serif;
 	}
 
 	&:hover {
-		background: #0d3f0a;
+		background: #7ec9bf;
 		box-shadow: 0 0 25px 5px #666666;
-		border: 1px solid #12580e;
+		border: 1px solid #7ec9bf;
 		span {
 			color: ${(props) => props.theme.colors.font.light1};
 		}
 	}
 
 	&:disabled {
-		background: #0d3f0a;
+		background: #7ec9bf;
 		box-shadow: 0 0 25px 5px #666666;
-		border: 1px solid #12580e;
+		border: 1px solid #7ec9bf;
 		span {
 			color: ${(props) => props.theme.colors.font.light1};
 		}

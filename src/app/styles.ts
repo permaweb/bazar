@@ -3,15 +3,15 @@ import styled, { createGlobalStyle } from 'styled-components';
 import { fadeIn1, open } from 'helpers/animations';
 import { STYLING } from 'helpers/config';
 
-import '@fontsource/inter';
-import '@fontsource/inter/400.css';
-import '@fontsource/inter/500.css';
-import '@fontsource/inter/600.css';
-import '@fontsource/inter/700.css';
-import '@fontsource/inter/800.css';
-import '@fontsource/quantico';
-import '@fontsource/quantico/400.css';
-import '@fontsource/quantico/700.css';
+// import '@fontsource/inter';
+// import '@fontsource/inter/400.css';
+// import '@fontsource/inter/500.css';
+// import '@fontsource/inter/600.css';
+// import '@fontsource/inter/700.css';
+// import '@fontsource/inter/800.css';
+// import '@fontsource/quantico';
+// import '@fontsource/quantico/400.css';
+// import '@fontsource/quantico/700.css';
 
 export const GlobalStyle = createGlobalStyle`
   html, body, div, span, applet, object, iframe,

@@ -49,6 +49,7 @@ export default function Header() {
 					<S.ActionsWrapper>
 						<S.PAction className={'border-wrapper-alt2'}>
 							<Link to={URLS.quest}>
+								<ReactSVG src={ASSETS.star} />
 								<span>Omega Quest</span>
 							</Link>
 						</S.PAction>

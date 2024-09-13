@@ -143,6 +143,13 @@ export const PAction = styled.div`
 		align-items: center;
 		justify-content: center;
 	}
+
+	svg {
+		height: 15px;
+		width: 15px;
+		margin: 7.5px 7.5px 0 0;
+	}
+
 	&:hover {
 		background: ${(props) => props.theme.colors.container.primary.active};
 	}
