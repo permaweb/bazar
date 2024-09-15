@@ -14,7 +14,7 @@ export const Wrapper = styled.div<{ warning: boolean | undefined }>`
 	display: flex;
 	align-items: center;
 	padding: 11.5px 17.5px;
-	background: ${(props) => (props.warning ? props.theme.colors.warning.alt1 : props.theme.colors.indicator.active)};
+	background: ${(props) => (props.warning ? props.theme.colors.warning.alt1 : props.theme.colors.indicator.primary)};
 	border-radius: ${STYLING.dimensions.radius.primary};
 	@media (max-width: ${STYLING.cutoffs.secondary}) {
 		width: 90vw;

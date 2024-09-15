@@ -138,6 +138,8 @@ export const PAction = styled.div`
 		font-family: ${(props) => props.theme.typography.family.alt1};
 		font-size: ${(props) => props.theme.typography.size.small};
 		font-weight: ${(props) => props.theme.typography.weight.bold};
+		background: ${(props) => props.theme.colors.container.primary.background};
+		border-radius: ${STYLING.dimensions.radius.primary};
 		padding: 0 15px;
 		display: flex;
 		align-items: center;
@@ -151,7 +153,9 @@ export const PAction = styled.div`
 	}
 
 	&:hover {
-		background: ${(props) => props.theme.colors.container.primary.active};
+		a {
+			background: ${(props) => props.theme.colors.container.primary.active};
+		}
 	}
 
 	@media (max-width: ${STYLING.cutoffs.initial}) {

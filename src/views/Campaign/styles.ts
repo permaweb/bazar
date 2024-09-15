@@ -25,6 +25,10 @@ export const Header = styled.div`
 		font-family: 'Frank Ruhl Libre', serif;
 		text-shadow: 1.5px 1.5px #80f154;
 	}
+
+	img {
+		width: 70%;
+	}
 `;
 
 export const Subheader = styled.div`
@@ -79,7 +83,7 @@ export const ProfileIndicator = styled.div<{ completed: boolean }>`
 	width: 17.5px;
 	height: 17.5px;
 	background: ${(props) =>
-		props.completed ? props.theme.colors.indicator.active : props.theme.colors.warning.primary};
+		props.completed ? props.theme.colors.indicator.primary : props.theme.colors.warning.primary};
 	background: ${(props) => (props.completed ? '#80F154' : props.theme.colors.warning.primary)};
 	border-radius: 50%;
 `;
@@ -95,13 +99,16 @@ export const Body = styled.div`
 	align-items: center;
 `;
 
-export const GridElement = styled.div`
+export const GridElement = styled.div<{ claimable: boolean }>`
 	position: relative;
 	overflow: hidden;
 
 	img {
 		height: 500px;
 	}
+
+	box-shadow: ${(props) => (props.claimable ? '0 0 25px 5px #80f154' : 'none')};
+	box-shadow: ${(props) => (props.claimable ? 'none' : 'none')};
 
 	&.shine::after {
 		content: '';
@@ -146,7 +153,7 @@ export const GridElementOverlay = styled.div`
 
 export const GridElementAction = styled.button`
 	width: calc(100% - 20px);
-	background: ${(props) => props.theme.colors.indicator.active};
+	background: ${(props) => props.theme.colors.indicator.primary};
 	padding: 10px 20px;
 	border-radius: ${STYLING.dimensions.radius.primary};
 	background: linear-gradient(180deg, #80f154, #bbe948, #efe13e);

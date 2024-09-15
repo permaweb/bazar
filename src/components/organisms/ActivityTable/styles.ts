@@ -333,7 +333,7 @@ function getEventColor(theme: DefaultTheme, type: 'Listing' | 'Sale' | 'Purchase
 		case 'Listing':
 			return theme.colors.stats.alt4;
 		case 'Sale':
-			return theme.colors.indicator.active;
+			return theme.colors.indicator.primary;
 		case 'Purchase':
 			return theme.colors.stats.alt5;
 		case 'Unlisted':
