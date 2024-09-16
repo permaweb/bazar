@@ -1,8 +1,9 @@
 import React from 'react';
 import { ReactSVG } from 'react-svg';
 
-import { messageResult, readHandler } from 'api';
+import { messageResult } from 'api';
 
+import { Modal } from 'components/molecules/Modal';
 import { Panel } from 'components/molecules/Panel';
 import { ProfileManage } from 'components/organisms/ProfileManage';
 import { ASSETS } from 'helpers/config';
@@ -22,22 +23,47 @@ type AssetStateType = {
 };
 
 const ASSET_CONFIG: any = [
-	{ id: 'dJsez6zKRTpC96Xv0Gvxs5vs3DnpG3gzo_IDnDAt9nw', description: 'The Omega One' },
-	{ id: '4rMmuV-DEHNNA5-IP4UbtZw2ZFhlzDi26IkANEocALg', description: 'The Omega One' },
-	{ id: 'IujU_Un0UywV5oGbMECBnJxwhGsrnV9RxccBaYgXui4', description: 'The Omega One' },
-	{ id: 'SWYku9XeLjxnltjz13bBts1c4BeDl-oQVDe95dG3VFk', description: 'The Omega One' },
-	{ id: 'ViOeasxAhmTW-KwWM1CpnPOhAzyexlfJhA1PIZbsH34', description: 'The Omega One' },
+	{
+		id: 'dJsez6zKRTpC96Xv0Gvxs5vs3DnpG3gzo_IDnDAt9nw',
+		description:
+			'As you offer 0.05 stETH to the sacred pre-bridge, the ancient temples stir with newfound energy. A tremor runs through the earth as mystical glyphs illuminate beneath your feet. You have awakened the Left Leg of Omega DumDum—the first step in assembling the legendary deity revered by the ancients. Claim this relic and embark on your epic journey.',
+	},
+	{
+		id: '4rMmuV-DEHNNA5-IP4UbtZw2ZFhlzDi26IkANEocALg',
+		description:
+			'Your tribute of 100 DAI has been accepted by the cosmic forces. Whispering winds carry tales of your valor as the Right Leg of Omega DumDum materializes from the shadows. With both legs now within reach, the path ahead becomes clearer and more resolute. Claim this piece to stride confidently toward your destiny.',
+	},
+	{
+		id: 'IujU_Un0UywV5oGbMECBnJxwhGsrnV9RxccBaYgXui4',
+		description:
+			'After 48 continuous hours of unwavering commitment, the celestial gates part to reveal the Left Arm of Omega DumDum. This mighty limb symbolizes strength and perseverance. Ancient scripts glow brighter, acknowledging your dedication. Claim this powerful artifact and let it empower your quest onward.',
+	},
+	{
+		id: 'SWYku9XeLjxnltjz13bBts1c4BeDl-oQVDe95dG3VFk',
+		description:
+			'Seven days of steadfast devotion have not gone unnoticed by the cosmic overseers. The Right Arm of Omega DumDum emerges, radiating with the energy of a thousand suns. This piece grants you the might to shape destinies. Claim it and wield the strength of legends as you near the culmination of your journey.',
+	},
+	{
+		id: 'ViOeasxAhmTW-KwWM1CpnPOhAzyexlfJhA1PIZbsH34',
+		description:
+			'Fourteen days of unyielding loyalty culminate in this monumental moment. The heavens part as the Head of Omega DumDum descends, eyes ablaze with ancient wisdom and foresight. This final piece completes the sacred collection. Claim the Head and prepare to awaken the ultimate deity.',
+	},
 ];
 
-const OMEGA_ASSET = '4SWaYpBL2A8CPDBowcEUdhls9k_sqSChL0wRJfMPQAk';
+const OMEGA_ASSET = {
+	id: '4SWaYpBL2A8CPDBowcEUdhls9k_sqSChL0wRJfMPQAk',
+	description:
+		'With all five sacred relics united, the time has come to summon Omega DumDum in all his divine glory. The temples resonate with ethereal chants as cosmic energies converge upon you. Stand ready, for you are among the chosen few to witness the rebirth of this legendary god. Claim Omega DumDum and unlock unparalleled rewards and mysteries untold.',
+};
 
 const BACKGROUND_TX = 'D8YXt7eVLQq1v4eZhTQUmO2rfWmoH4vaiBrTFy0Bvtk';
 
+// TODO: Load all sub assets
 // TODO: Claimable check hot update
 // TODO: Description tooltips
-// TODO: Load all sub assets
 // TODO: Handle primary claim
 // TODO: Claim notification
+// TODO: Footer disclaimer
 // TODO: IP blocker
 
 export default function Campaign() {
@@ -53,8 +79,8 @@ export default function Campaign() {
 	);
 
 	const [primaryAsset, setPrimaryAsset] = React.useState<AssetStateType>({
-		id: OMEGA_ASSET,
-		description: 'The Omega One',
+		id: OMEGA_ASSET.id,
+		description: OMEGA_ASSET.description,
 		claimable: false,
 		claimInProgress: false,
 		completed: false,
@@ -63,6 +89,19 @@ export default function Campaign() {
 	const [fetching, setFetching] = React.useState<boolean>(false);
 	const [currentView, setCurrentView] = React.useState<'SubSet' | 'Omega'>('SubSet');
 
+	// const [claimResponse, setClaimResponse] = React.useState<{
+	// 	assetId: string;
+	// 	message: string;
+	// }>(null);
+
+	const [claimResponse, setClaimResponse] = React.useState<{
+		assetId: string;
+		message: string;
+	}>({
+		assetId: ASSET_CONFIG[0].id,
+		message: ASSET_CONFIG[0].description,
+	});
+
 	React.useEffect(() => {
 		(async function () {
 			if (arProvider.walletAddress) {
@@ -70,31 +109,31 @@ export default function Campaign() {
 
 				switch (currentView) {
 					case 'SubSet':
-						// for (const asset of assets) {
-						// 	try {
-						// 		await messageResult({
-						// 			processId: asset.id,
-						// 			wallet: arProvider.wallet,
-						// 			action: 'Get-Mint-Report',
-						// 			tags: [{ name: 'Address', value: arProvider.walletAddress }],
-						// 			data: null,
-						// 		});
-						// 	} catch (e) {
-						// 		console.error(e);
-						// 	}
-						// }
-
-						await new Promise((resolve) => setTimeout(resolve, 0));
-
 						for (const asset of assets) {
 							try {
-								await messageResult({
+								messageResult({
 									processId: asset.id,
 									wallet: arProvider.wallet,
 									action: 'Get-Mint-Report',
 									tags: [{ name: 'Address', value: arProvider.walletAddress }],
 									data: null,
 								});
+							} catch (e) {
+								console.error(e);
+							}
+						}
+
+						// await new Promise((resolve) => setTimeout(resolve, 0));
+
+						for (const asset of assets) {
+							try {
+								// await messageResult({
+								// 	processId: asset.id,
+								// 	wallet: arProvider.wallet,
+								// 	action: 'Get-Mint-Report',
+								// 	tags: [{ name: 'Address', value: arProvider.walletAddress }],
+								// 	data: null,
+								// });
 
 								const response = await messageResult({
 									processId: asset.id,
@@ -147,8 +186,8 @@ export default function Campaign() {
 								const completed = response['Claim-Status-Response'].status === 'Claimed';
 
 								setPrimaryAsset({
-									id: OMEGA_ASSET,
-									description: 'The Omega One',
+									id: OMEGA_ASSET.id,
+									description: OMEGA_ASSET.description,
 									claimable: claimable,
 									claimInProgress: false,
 									completed: completed,
@@ -167,8 +206,8 @@ export default function Campaign() {
 				});
 
 				setPrimaryAsset({
-					id: OMEGA_ASSET,
-					description: 'The Omega One',
+					id: OMEGA_ASSET.id,
+					description: OMEGA_ASSET.description,
 					claimable: false,
 					claimInProgress: false,
 					completed: false,
@@ -200,6 +239,10 @@ export default function Campaign() {
 			if (response && response['Claim-Status-Response'] && response['Claim-Status-Response'].status === 'Claimed') {
 				if (primaryAsset) {
 					setPrimaryAsset((prevAsset) => ({ ...prevAsset, claimable: false, claimInProgress: false, completed: true }));
+					setClaimResponse({
+						assetId: id,
+						message: OMEGA_ASSET.description,
+					});
 				} else {
 					setAssets((prevAssets) => {
 						return prevAssets.map((prevAsset) =>
@@ -207,6 +250,10 @@ export default function Campaign() {
 								? { ...prevAsset, claimable: false, claimInProgress: false, completed: true }
 								: prevAsset
 						);
+					});
+					setClaimResponse({
+						assetId: id,
+						message: ASSET_CONFIG.find((asset: { id: string }) => asset.id === id).description,
 					});
 				}
 			}
@@ -319,6 +366,30 @@ export default function Campaign() {
 		}
 	}, [fetching, currentView, primaryAsset, assets]);
 
+	const notification = React.useMemo(() => {
+		if (claimResponse) {
+			console.log(assets);
+			return (
+				<Modal header={null} handleClose={() => setClaimResponse(null)}>
+					<S.MWrapper>
+						<S.MTextWrapper>
+							<p>Congratulations!</p>
+							<span>You've earned</span>
+						</S.MTextWrapper>
+						<img src={getTxEndpoint(claimResponse.assetId)} alt={'Atomic Asset'} />
+						<S.MDescription>
+							<p>{claimResponse.message}</p>
+						</S.MDescription>
+						<S.MActionWrapper>
+							<button onClick={() => setClaimResponse(null)}>Close</button>
+						</S.MActionWrapper>
+					</S.MWrapper>
+				</Modal>
+			);
+		}
+		return null;
+	}, [claimResponse]);
+
 	return (
 		<>
 			<S.Wrapper className={'border-wrapper-alt2 fade-in'}>
@@ -348,6 +419,7 @@ export default function Campaign() {
 					</S.PManageWrapper>
 				</Panel>
 			)}
+			{claimResponse && notification}
 		</>
 	);
 }
