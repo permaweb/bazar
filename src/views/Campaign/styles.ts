@@ -6,16 +6,16 @@ import { STYLING } from 'helpers/config';
 export const Wrapper = styled.div`
 	min-height: calc(100vh - (${STYLING.dimensions.nav.height} + 20px));
 	width: 100%;
-	background-image: url('https://arweave.net/BX69ET09R9FrjOA69RokJ9pFXuWw7wlAyaLUG269a2g');
+	/* background-image: url('https://arweave.net/BX69ET09R9FrjOA69RokJ9pFXuWw7wlAyaLUG269a2g');
 	background-size: cover;
-	background-position: center;
+	background-position: center; */
+	background: linear-gradient(180deg, #222, #333, #222);
 	padding: 40px 20px;
 `;
 
 export const Header = styled.div`
 	display: flex;
 	flex-direction: column;
-	gap: 20px;
 	align-items: center;
 
 	h1 {
@@ -31,6 +31,25 @@ export const Header = styled.div`
 	}
 `;
 
+export const HeaderAction = styled.div`
+	button {
+		span {
+			color: #5af650;
+			text-shadow: 1.5px 1.5px 7.5px #5af650;
+			font-weight: ${(props) => props.theme.typography.weight.bold};
+			font-size: ${(props) => props.theme.typography.size.xLg};
+			font-family: 'Frank Ruhl Libre', serif;
+		}
+
+		&:hover {
+			span {
+				color: #93f18d;
+				text-shadow: 1.5px 1.5px 7.5px #80f154;
+			}
+		}
+	}
+`;
+
 export const Subheader = styled.div`
 	max-width: 90%;
 	background: rgba(10, 10, 10, 0.625);
@@ -41,6 +60,7 @@ export const Subheader = styled.div`
 	align-items: center;
 	justify-content: center;
 	gap: 30px;
+	margin: 20px 0 0 0;
 
 	p {
 		line-height: 1.5;
@@ -158,8 +178,7 @@ export const GridElementAction = styled.button`
 	border-radius: ${STYLING.dimensions.radius.primary};
 	background: linear-gradient(180deg, #80f154, #bbe948, #efe13e);
 	box-shadow: 0 0 25px 5px #80f154;
-	border: 1px solid #0d3f0a;
-	transition: all 200ms;
+	transition: all 175ms;
 	span {
 		color: #0d3f0a;
 		font-weight: ${(props) => props.theme.typography.weight.xBold};
@@ -170,7 +189,6 @@ export const GridElementAction = styled.button`
 	&:hover {
 		background: #7ec9bf;
 		box-shadow: 0 0 25px 5px #666666;
-		border: 1px solid #7ec9bf;
 		span {
 			color: ${(props) => props.theme.colors.font.light1};
 		}
@@ -183,6 +201,51 @@ export const GridElementAction = styled.button`
 		span {
 			color: ${(props) => props.theme.colors.font.light1};
 		}
+	}
+`;
+
+export const PrimaryAsset = styled(GridElement)`
+	img {
+		height: 550px;
+	}
+`;
+
+export const PrimaryAssetOverlay = styled(GridElementOverlay)`
+	height: 550px;
+	width: 100%;
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	position: absolute;
+	top: 0;
+	left: 0;
+	display: flex;
+	background: rgba(15, 15, 15, 0.55);
+	backdrop-filter: blur(10px);
+	border-radius: 0;
+
+	svg {
+		height: 200px;
+		width: 200px;
+	}
+`;
+
+export const PrimaryAssetAction = styled(GridElementAction)`
+	width: calc(100% - 40px);
+`;
+
+export const BodyLoading = styled.div`
+	width: 100%;
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	margin: 20px 0 0 0;
+
+	span {
+		color: #7ec9bf;
+		font-weight: ${(props) => props.theme.typography.weight.bold};
+		font-size: ${(props) => props.theme.typography.size.xLg};
+		font-family: 'Frank Ruhl Libre', serif;
 	}
 `;
 
