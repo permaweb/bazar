@@ -35,7 +35,7 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
 		if (this.state.hasError) {
 			return (
 				<S.ErrorBoundaryContainer className={'border-wrapper-alt1'}>
-					<h4>{object && current ? object[current].appUpdating : '-'}</h4>
+					<h4>{object && current ? object[current].appError : '-'}</h4>
 				</S.ErrorBoundaryContainer>
 			);
 		}

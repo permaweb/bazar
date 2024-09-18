@@ -6,10 +6,7 @@ import { STYLING } from 'helpers/config';
 export const Wrapper = styled.div`
 	min-height: calc(100vh - (${STYLING.dimensions.nav.height} + 20px));
 	width: 100%;
-	/* background-image: url('https://arweave.net/BX69ET09R9FrjOA69RokJ9pFXuWw7wlAyaLUG269a2g');
-	background-size: cover;
-	background-position: center; */
-	background: linear-gradient(180deg, #003a32, #5ea299, #00322b);
+	background: linear-gradient(180deg, #382c6c, #070027, #22184a);
 	padding: 40px 20px;
 `;
 
@@ -18,33 +15,32 @@ export const Header = styled.div`
 	flex-direction: column;
 	align-items: center;
 
-	h1 {
-		color: ${(props) => props.theme.colors.font.light1};
-		text-align: center;
-		font-weight: ${(props) => props.theme.typography.weight.xBold};
-		font-family: 'Frank Ruhl Libre', serif;
-		text-shadow: 1.5px 1.5px #80f154;
-	}
-
 	img {
 		width: 70%;
 	}
 `;
 
 export const HeaderAction = styled.div`
+	margin: 40px 0 0 0;
 	button {
+		transition: all 175ms;
 		span {
-			color: #5af650;
-			text-shadow: 1.5px 1.5px 7.5px #5af650;
-			font-weight: ${(props) => props.theme.typography.weight.bold};
+			color: #c8c8e5;
+			text-shadow: 0px 0px 20px #6b6ba9;
+			font-weight: ${(props) => props.theme.typography.weight.medium};
 			font-size: ${(props) => props.theme.typography.size.xLg};
 			font-family: 'Frank Ruhl Libre', serif;
 		}
 
 		&:hover {
 			span {
-				color: #93f18d;
-				text-shadow: 1.5px 1.5px 7.5px #80f154;
+				color: #d2d2d8;
+			}
+		}
+
+		&:disabled {
+			span {
+				color: #939393;
 			}
 		}
 	}
@@ -65,7 +61,8 @@ export const Subheader = styled.div`
 	p {
 		line-height: 1.5;
 		max-width: 800px;
-		color: #f1cb6e;
+		color: #f5b700;
+		color: #d8d6a7;
 		font-size: ${(props) => props.theme.typography.size.lg};
 		font-weight: ${(props) => props.theme.typography.weight.medium};
 		font-family: 'Frank Ruhl Libre', serif;
@@ -104,7 +101,7 @@ export const ProfileIndicator = styled.div<{ completed: boolean }>`
 	height: 17.5px;
 	background: ${(props) =>
 		props.completed ? props.theme.colors.indicator.primary : props.theme.colors.warning.primary};
-	background: ${(props) => (props.completed ? '#80F154' : props.theme.colors.warning.primary)};
+	background: ${(props) => (props.completed ? '#5AF650' : props.theme.colors.warning.primary)};
 	border-radius: 50%;
 `;
 
@@ -127,9 +124,9 @@ export const GridElement = styled.div<{ claimable: boolean }>`
 		height: 500px;
 	}
 
-	/* box-shadow: ${(props) => (props.claimable ? '0 0 25px 5px #80f154' : 'none')}; */
-	box-shadow: ${(props) => (props.claimable ? 'none' : 'none')};
-	/* box-shadow: 0 0 25px 5px #80f154; */
+	/* border: 1.5px solid ${(props) => (props.claimable ? '#1fd014' : 'transparent')}; */
+	/* box-shadow: ${(props) =>
+		props.claimable ? '0px 4px 39.3px 0px #5AF650' : '0px 4px 39.3px 0px rgba(255, 255, 255, 0.30)'}; */
 
 	&.shine::after {
 		content: '';
@@ -178,6 +175,7 @@ export const GridElementAction = styled.button`
 	padding: 10px 20px;
 	border-radius: ${STYLING.dimensions.radius.primary};
 	background: linear-gradient(180deg, #80f154, #bbe948, #efe13e);
+	border: 1.5px solid #80f154;
 	box-shadow: 0 0 25px 5px #80f154;
 	transition: all 175ms;
 	span {
@@ -188,17 +186,18 @@ export const GridElementAction = styled.button`
 	}
 
 	&:hover {
-		background: #7ec9bf;
-		box-shadow: 0 0 25px 5px #666666;
+		background: rgba(10, 10, 10, 0.65);
+		border: 1.5px solid #7ec9bf;
+		box-shadow: none;
 		span {
-			color: ${(props) => props.theme.colors.font.light1};
+			color: #7ec9bf;
 		}
 	}
 
 	&:disabled {
-		background: #7ec9bf;
-		box-shadow: 0 0 25px 5px #666666;
-		border: 1px solid #7ec9bf;
+		background: #666666;
+		box-shadow: none;
+		border: 1.5px solid #666666;
 		span {
 			color: ${(props) => props.theme.colors.font.light1};
 		}
@@ -243,8 +242,9 @@ export const BodyLoading = styled.div`
 	margin: 20px 0 0 0;
 
 	span {
-		color: #7ec9bf;
-		font-weight: ${(props) => props.theme.typography.weight.bold};
+		color: #c8c8e5;
+		text-shadow: 0px 0px 20px #6b6ba9;
+		font-weight: ${(props) => props.theme.typography.weight.medium};
 		font-size: ${(props) => props.theme.typography.size.xLg};
 		font-family: 'Frank Ruhl Libre', serif;
 	}
@@ -263,7 +263,7 @@ export const MWrapper = styled.div`
 	position: relative;
 	padding: 60px 20px 40px 20px;
 	background: linear-gradient(180deg, #1b1924, #6147f4, #181624);
-	border: 2.5px solid #a78d49;
+	border: 2.5px solid #ffc000;
 	border-radius: ${STYLING.dimensions.radius.primary};
 	img {
 		height: 400px;
@@ -276,7 +276,7 @@ export const MTextWrapper = styled.div`
 	flex-direction: column;
 	justify-content: center;
 	align-items: center;
-	background: #cfb573;
+	background: #ffc000;
 	background-image: radial-gradient(circle, rgba(0, 0, 0, 0.15) 1px, transparent 1px);
 	background-size: 3px 3px;
 	padding: 7.5px 20px 10px 20px;
@@ -301,9 +301,9 @@ export const MDescription = styled.div`
 	padding: 0 20px;
 	p {
 		line-height: 1.5;
-		color: #e6c35f;
+		color: #f5b700;
 		font-size: ${(props) => props.theme.typography.size.small};
-		font-weight: ${(props) => props.theme.typography.weight.medium};
+		font-weight: ${(props) => props.theme.typography.weight.bold};
 		font-family: 'Frank Ruhl Libre', serif;
 		text-align: center;
 	}

@@ -1,7 +1,7 @@
 import React from 'react';
 import { ReactSVG } from 'react-svg';
 
-import { messageResult } from 'api';
+import { messageResult, readHandler } from 'api';
 
 import { Modal } from 'components/molecules/Modal';
 import { Panel } from 'components/molecules/Panel';
@@ -16,54 +16,25 @@ import * as S from './styles';
 
 type AssetStateType = {
 	id: string;
-	description: string;
+	cover: string;
+	info: string;
+	claimResponse: string;
 	claimable: boolean;
 	claimInProgress: boolean;
 	completed: boolean;
 };
 
-const ASSET_CONFIG: any = [
-	{
-		id: 'dJsez6zKRTpC96Xv0Gvxs5vs3DnpG3gzo_IDnDAt9nw',
-		description:
-			'As you offer 0.05 stETH to the sacred pre-bridge, the ancient temples stir with newfound energy. A tremor runs through the earth as mystical glyphs illuminate beneath your feet. You have awakened the Left Leg of Omega DumDum—the first step in assembling the legendary deity revered by the ancients. Claim this relic and embark on your epic journey.',
-	},
-	{
-		id: '4rMmuV-DEHNNA5-IP4UbtZw2ZFhlzDi26IkANEocALg',
-		description:
-			'Your tribute of 100 DAI has been accepted by the cosmic forces. Whispering winds carry tales of your valor as the Right Leg of Omega DumDum materializes from the shadows. With both legs now within reach, the path ahead becomes clearer and more resolute. Claim this piece to stride confidently toward your destiny.',
-	},
-	{
-		id: 'IujU_Un0UywV5oGbMECBnJxwhGsrnV9RxccBaYgXui4',
-		description:
-			'After 48 continuous hours of unwavering commitment, the celestial gates part to reveal the Left Arm of Omega DumDum. This mighty limb symbolizes strength and perseverance. Ancient scripts glow brighter, acknowledging your dedication. Claim this powerful artifact and let it empower your quest onward.',
-	},
-	{
-		id: 'SWYku9XeLjxnltjz13bBts1c4BeDl-oQVDe95dG3VFk',
-		description:
-			'Seven days of steadfast devotion have not gone unnoticed by the cosmic overseers. The Right Arm of Omega DumDum emerges, radiating with the energy of a thousand suns. This piece grants you the might to shape destinies. Claim it and wield the strength of legends as you near the culmination of your journey.',
-	},
-	{
-		id: 'ViOeasxAhmTW-KwWM1CpnPOhAzyexlfJhA1PIZbsH34',
-		description:
-			'Fourteen days of unyielding loyalty culminate in this monumental moment. The heavens part as the Head of Omega DumDum descends, eyes ablaze with ancient wisdom and foresight. This final piece completes the sacred collection. Claim the Head and prepare to awaken the ultimate deity.',
-	},
-];
+const MAIN_PROCESS = '4SWaYpBL2A8CPDBowcEUdhls9k_sqSChL0wRJfMPQAk';
 
-const OMEGA_ASSET = {
-	id: '4SWaYpBL2A8CPDBowcEUdhls9k_sqSChL0wRJfMPQAk',
-	description:
-		'With all five sacred relics united, the time has come to summon Omega DumDum in all his divine glory. The temples resonate with ethereal chants as cosmic energies converge upon you. Stand ready, for you are among the chosen few to witness the rebirth of this legendary god. Claim Omega DumDum and unlock unparalleled rewards and mysteries untold.',
-};
-
-const BACKGROUND_TX = 'D8YXt7eVLQq1v4eZhTQUmO2rfWmoH4vaiBrTFy0Bvtk';
-
-// TODO: Load all sub assets
+// TODO: Send assets to profile
+// TODO: Load assets from config
+// TODO: Handle primary claim
+// TODO: Silhouettes
 // TODO: Claimable check hot update
 // TODO: Description tooltips
-// TODO: Handle primary claim
 // TODO: Claim notification
 // TODO: Footer disclaimer
+// TODO: Audio
 // TODO: IP blocker
 
 export default function Campaign() {
@@ -74,150 +45,166 @@ export default function Campaign() {
 
 	const [showProfileManage, setShowProfileManage] = React.useState<boolean>(false);
 
-	const [assets, setAssets] = React.useState<AssetStateType[]>(
-		ASSET_CONFIG.map((asset: { id: string; description: string }) => ({ ...asset, claimable: false, completed: false }))
-	);
+	const [assets, setAssets] = React.useState<AssetStateType[] | null>(null);
 
-	const [primaryAsset, setPrimaryAsset] = React.useState<AssetStateType>({
-		id: OMEGA_ASSET.id,
-		description: OMEGA_ASSET.description,
-		claimable: false,
-		claimInProgress: false,
-		completed: false,
-	});
+	const [primaryAsset, setPrimaryAsset] = React.useState<AssetStateType | null>(null);
 
 	const [fetching, setFetching] = React.useState<boolean>(false);
-	const [currentView, setCurrentView] = React.useState<'SubSet' | 'Omega'>('SubSet');
+	const [currentView, setCurrentView] = React.useState<'SubSet' | 'Main' | null>(null);
+
+	// TODO
+	const [claimNotification, setClaimNotification] = React.useState<{
+		assetId: string;
+		message: string;
+	}>(null);
 
 	// const [claimResponse, setClaimResponse] = React.useState<{
 	// 	assetId: string;
 	// 	message: string;
-	// }>(null);
+	// }>({
+	// 	assetId: ASSET_CONFIG[0].id,
+	// 	message: ASSET_CONFIG[0].description,
+	// });
 
-	const [claimResponse, setClaimResponse] = React.useState<{
-		assetId: string;
-		message: string;
-	}>({
-		assetId: ASSET_CONFIG[0].id,
-		message: ASSET_CONFIG[0].description,
-	});
+	React.useEffect(() => {
+		(async function () {
+			setFetching(true);
+			try {
+				if (!localStorage.getItem('drive-config')) {
+					const response = await readHandler({
+						processId: MAIN_PROCESS,
+						action: 'Get-Config',
+					});
+					localStorage.setItem('drive-config', JSON.stringify(response));
+				}
+				const config = JSON.parse(localStorage.getItem('drive-config'));
+
+				try {
+					setPrimaryAsset({
+						id: MAIN_PROCESS,
+						cover: config.Cover,
+						info: config.Info,
+						claimResponse: config.ClaimResponse,
+						claimable: false,
+						claimInProgress: false,
+						completed: false,
+					});
+
+					setAssets(
+						Object.keys(config.Assets)
+							.map((key) => ({
+								index: config.Assets[key].GridPlacement,
+								id: config.Assets[key].Id,
+								cover: config.Assets[key].Cover,
+								info: config.Assets[key].Info,
+								claimResponse: config.Assets[key].ClaimResponse,
+								claimable: false,
+								claimInProgress: false,
+								completed: false,
+							}))
+							.sort((a, b) => {
+								return parseInt(a.index) - parseInt(b.index);
+							})
+					);
+				} catch (e) {
+					console.error(e);
+				}
+			} catch (e) {
+				console.error(e);
+			}
+		})();
+	}, []);
 
 	React.useEffect(() => {
 		(async function () {
 			if (arProvider.walletAddress) {
-				setFetching(true);
-
-				switch (currentView) {
-					case 'SubSet':
-						for (const asset of assets) {
-							try {
-								messageResult({
-									processId: asset.id,
-									wallet: arProvider.wallet,
-									action: 'Get-Mint-Report',
-									tags: [{ name: 'Address', value: arProvider.walletAddress }],
-									data: null,
-								});
-							} catch (e) {
-								console.error(e);
-							}
-						}
-
-						// await new Promise((resolve) => setTimeout(resolve, 0));
-
-						for (const asset of assets) {
-							try {
-								// await messageResult({
-								// 	processId: asset.id,
-								// 	wallet: arProvider.wallet,
-								// 	action: 'Get-Mint-Report',
-								// 	tags: [{ name: 'Address', value: arProvider.walletAddress }],
-								// 	data: null,
-								// });
-
-								const response = await messageResult({
-									processId: asset.id,
-									wallet: arProvider.wallet,
-									action: 'Claim-Status',
-									tags: [{ name: 'Address', value: arProvider.walletAddress }],
-									data: null,
-								});
-								console.log(response);
-								if (response && response['Claim-Status-Response'] && response['Claim-Status-Response'].status) {
-									const claimable = response['Claim-Status-Response'].status === 'Claimable';
-									const completed = response['Claim-Status-Response'].status === 'Claimed';
-
-									setAssets((prevAssets) => {
-										return prevAssets.map((prevAsset) =>
-											prevAsset.id === asset.id
-												? { ...prevAsset, claimable: claimable, completed: completed }
-												: prevAsset
-										);
-									});
-								}
-							} catch (e) {
-								console.error(e);
-							}
-						}
-						break;
-					case 'Omega':
-						try {
-							await messageResult({
-								processId: primaryAsset.id,
-								wallet: arProvider.wallet,
-								action: 'Init-Claim-Check',
-								tags: null,
-								data: null,
-							});
-
-							await new Promise((resolve) => setTimeout(resolve, 1000));
-
-							const response = await messageResult({
-								processId: primaryAsset.id,
-								wallet: arProvider.wallet,
-								action: 'Claim-Status',
-								tags: [{ name: 'Address', value: arProvider.walletAddress }],
-								data: null,
-							});
-
-							console.log(response);
-							if (response && response['Claim-Status-Response'] && response['Claim-Status-Response'].status) {
-								const claimable = response['Claim-Status-Response'].status === 'Claimable';
-								const completed = response['Claim-Status-Response'].status === 'Claimed';
-
-								setPrimaryAsset({
-									id: OMEGA_ASSET.id,
-									description: OMEGA_ASSET.description,
-									claimable: claimable,
-									claimInProgress: false,
-									completed: completed,
-								});
-							}
-						} catch (e) {
-							console.error(e);
-						}
-						break;
+				try {
+					await checkClaimStatus('Main');
+					setFetching(false);
+				} catch (e) {
+					console.error(e);
 				}
-
-				setFetching(false);
-			} else {
-				setAssets((prevAssets) => {
-					return prevAssets.map((prevAsset) => ({ ...prevAsset, claimable: false, completed: false }));
-				});
-
-				setPrimaryAsset({
-					id: OMEGA_ASSET.id,
-					description: OMEGA_ASSET.description,
-					claimable: false,
-					claimInProgress: false,
-					completed: false,
-				});
 			}
 		})();
-	}, [arProvider.walletAddress, currentView]);
+	}, [arProvider.walletAddress]);
 
-	async function handleClaim(id: string, primaryAsset?: boolean) {
-		if (primaryAsset) {
+	React.useEffect(() => {
+		(async function () {
+			if (primaryAsset && (primaryAsset.claimable || primaryAsset.completed)) {
+				setCurrentView('Main');
+			} else {
+				setCurrentView('SubSet');
+			}
+		})();
+	}, [primaryAsset]);
+
+	React.useEffect(() => {
+		(async function () {
+			if (currentView) {
+				switch (currentView) {
+					case 'SubSet':
+						await checkClaimStatus('SubSet');
+						break;
+					case 'Main':
+						break;
+				}
+			}
+		})();
+	}, [currentView]);
+
+	async function checkClaimStatus(type: 'SubSet' | 'Main') {
+		const ids = type === 'SubSet' && assets && assets.length > 0 ? assets.map((asset) => asset.id) : [MAIN_PROCESS];
+
+		try {
+			console.log('Checking claim status');
+			for (const id of ids) {
+				messageResult({
+					processId: id,
+					wallet: arProvider.wallet,
+					action: 'Init-Claim-Check',
+					tags: [{ name: 'Address', value: arProvider.walletAddress }],
+					data: null,
+				});
+			}
+
+			for (let i = 0; i < 2; i++) {
+				for (const id of ids) {
+					const response = await messageResult({
+						processId: id,
+						wallet: arProvider.wallet,
+						action: 'Get-Claim-Status',
+						tags: [{ name: 'Address', value: arProvider.walletAddress }],
+						data: null,
+					});
+					if (response && response['Claim-Status-Response'] && response['Claim-Status-Response'].status) {
+						const claimable = response['Claim-Status-Response'].status === 'Claimable';
+						const completed = response['Claim-Status-Response'].status === 'Claimed';
+
+						console.log(response);
+
+						switch (type) {
+							case 'SubSet':
+								setAssets((prevAssets) => {
+									return prevAssets.map((prevAsset) =>
+										prevAsset.id === id ? { ...prevAsset, claimable: claimable, completed: completed } : prevAsset
+									);
+								});
+								break;
+							case 'Main':
+								setPrimaryAsset((prevAsset) => ({ ...prevAsset, claimable: claimable, completed: completed }));
+								break;
+						}
+					}
+				}
+			}
+			console.log('Checked claim status');
+		} catch (e) {
+			console.error(e);
+		}
+	}
+
+	async function handleClaim(id: string, usePrimaryAsset?: boolean) {
+		if (usePrimaryAsset) {
 			setPrimaryAsset((prevAsset) => ({ ...prevAsset, claimInProgress: true }));
 		} else {
 			setAssets((prevAssets) => {
@@ -227,21 +214,25 @@ export default function Campaign() {
 			});
 		}
 
+		const tags = [{ name: 'Address', value: arProvider.walletAddress }];
+		if (arProvider.profile && arProvider.profile.id) {
+			tags.push({ name: 'ProfileID', value: arProvider.profile.id });
+		}
+
 		try {
 			const response = await messageResult({
 				processId: id,
 				wallet: arProvider.wallet,
 				action: 'Handle-Claim',
-				tags: [{ name: 'Address', value: arProvider.walletAddress }],
+				tags: tags,
 				data: null,
 			});
-			console.log(response);
 			if (response && response['Claim-Status-Response'] && response['Claim-Status-Response'].status === 'Claimed') {
-				if (primaryAsset) {
+				if (usePrimaryAsset) {
 					setPrimaryAsset((prevAsset) => ({ ...prevAsset, claimable: false, claimInProgress: false, completed: true }));
-					setClaimResponse({
+					setClaimNotification({
 						assetId: id,
-						message: OMEGA_ASSET.description,
+						message: primaryAsset.claimResponse,
 					});
 				} else {
 					setAssets((prevAssets) => {
@@ -251,9 +242,9 @@ export default function Campaign() {
 								: prevAsset
 						);
 					});
-					setClaimResponse({
+					setClaimNotification({
 						assetId: id,
-						message: ASSET_CONFIG.find((asset: { id: string }) => asset.id === id).description,
+						message: assets.find((asset: { id: string }) => asset.id === id).claimResponse,
 					});
 				}
 			}
@@ -261,7 +252,7 @@ export default function Campaign() {
 			console.error(e);
 		}
 
-		if (primaryAsset) {
+		if (usePrimaryAsset) {
 			setPrimaryAsset((prevAsset) => ({ ...prevAsset, claimInProgress: false }));
 		} else {
 			setAssets((prevAssets) => {
@@ -308,99 +299,114 @@ export default function Campaign() {
 	}, [arProvider.profile, arProvider.walletAddress]);
 
 	const body = React.useMemo(() => {
-		if (fetching) {
+		if (!arProvider.walletAddress) {
 			return (
-				<S.BodyLoading>
-					<span>{currentView === 'SubSet' ? 'Fetching pieces of the Omega One...' : 'Fetching the Omega One...'}</span>
+				<S.BodyLoading className={'fade-in'}>
+					<span>{language.connectWallet}</span>
 				</S.BodyLoading>
 			);
-		}
-
-		switch (currentView) {
-			case 'SubSet':
-				return (
-					<>
-						{assets.map((asset: AssetStateType, index: number) => (
-							<S.GridElement key={index} className={'fade-in'} id={`grid-element-${index}`} claimable={asset.claimable}>
-								{!asset.completed && (
-									<S.GridElementOverlay>
-										{asset.claimable ? (
-											<S.GridElementAction
-												onClick={() => handleClaim(asset.id)}
-												disabled={asset.claimInProgress}
+		} else if (fetching) {
+			return (
+				<S.BodyLoading className={'fade-in'}>
+					<span>{`${language.fetching}...`}</span>
+				</S.BodyLoading>
+			);
+		} else {
+			if (assets) {
+				switch (currentView) {
+					case 'SubSet':
+						return (
+							<>
+								{assets.map((asset: AssetStateType, index: number) => (
+									<S.GridElement
+										key={index}
+										className={'fade-in'}
+										id={`grid-element-${index}`}
+										claimable={asset.claimable}
+									>
+										{!asset.completed && (
+											<S.GridElementOverlay>
+												{asset.claimable ? (
+													<S.GridElementAction
+														onClick={() => handleClaim(asset.id)}
+														disabled={!assets || asset.claimInProgress}
+														className={'fade-in'}
+													>
+														<span>{asset.claimInProgress ? 'Claiming...' : 'Claim'}</span>
+													</S.GridElementAction>
+												) : (
+													<ReactSVG src={ASSETS.question} className={'fade-in'} />
+												)}
+											</S.GridElementOverlay>
+										)}
+										<img src={getTxEndpoint(asset.id)} alt={'Atomic Asset'} />
+									</S.GridElement>
+								))}
+							</>
+						);
+					case 'Main':
+						return (
+							<S.PrimaryAsset claimable={primaryAsset.claimable}>
+								{!primaryAsset.completed && (
+									<S.PrimaryAssetOverlay>
+										{primaryAsset.claimable ? (
+											<S.PrimaryAssetAction
+												onClick={() => handleClaim(primaryAsset.id, true)}
+												disabled={primaryAsset.claimInProgress}
 												className={'fade-in'}
 											>
-												<span>{asset.claimInProgress ? 'Claiming...' : 'Claim'}</span>
-											</S.GridElementAction>
+												<span>{primaryAsset.claimInProgress ? 'Claiming...' : 'Claim'}</span>
+											</S.PrimaryAssetAction>
 										) : (
 											<ReactSVG src={ASSETS.question} className={'fade-in'} />
 										)}
-									</S.GridElementOverlay>
+									</S.PrimaryAssetOverlay>
 								)}
-								<img src={getTxEndpoint(asset.id)} alt={'Atomic Asset'} />
-							</S.GridElement>
-						))}
-					</>
-				);
-			case 'Omega':
-				return (
-					<S.PrimaryAsset claimable={primaryAsset.claimable}>
-						{!primaryAsset.completed && (
-							<S.PrimaryAssetOverlay>
-								{primaryAsset.claimable ? (
-									<S.PrimaryAssetAction
-										onClick={() => handleClaim(primaryAsset.id, true)}
-										disabled={primaryAsset.claimInProgress}
-										className={'fade-in'}
-									>
-										<span>{primaryAsset.claimInProgress ? 'Claiming...' : 'Claim'}</span>
-									</S.PrimaryAssetAction>
-								) : (
-									<ReactSVG src={ASSETS.question} className={'fade-in'} />
-								)}
-							</S.PrimaryAssetOverlay>
-						)}
-						<img src={getTxEndpoint(primaryAsset.id)} alt={'Atomic Asset'} />
-					</S.PrimaryAsset>
-				);
+								<img src={getTxEndpoint(primaryAsset.id)} alt={'Atomic Asset'} />
+							</S.PrimaryAsset>
+						);
+				}
+			} else return null;
 		}
-	}, [fetching, currentView, primaryAsset, assets]);
+	}, [fetching, currentView, primaryAsset, assets, arProvider.walletAddress]);
 
 	const notification = React.useMemo(() => {
-		if (claimResponse) {
-			console.log(assets);
+		if (claimNotification) {
 			return (
-				<Modal header={null} handleClose={() => setClaimResponse(null)}>
-					<S.MWrapper>
+				<Modal header={null} handleClose={() => setClaimNotification(null)}>
+					<S.MWrapper className={'fade-in'}>
 						<S.MTextWrapper>
 							<p>Congratulations!</p>
 							<span>You've earned</span>
 						</S.MTextWrapper>
-						<img src={getTxEndpoint(claimResponse.assetId)} alt={'Atomic Asset'} />
+						<img src={getTxEndpoint(claimNotification.assetId)} alt={'Atomic Asset'} />
 						<S.MDescription>
-							<p>{claimResponse.message}</p>
+							<p>{claimNotification.message}</p>
 						</S.MDescription>
 						<S.MActionWrapper>
-							<button onClick={() => setClaimResponse(null)}>Close</button>
+							<button onClick={() => setClaimNotification(null)}>Close</button>
 						</S.MActionWrapper>
 					</S.MWrapper>
 				</Modal>
 			);
 		}
 		return null;
-	}, [claimResponse]);
+	}, [claimNotification]);
 
 	return (
 		<>
 			<S.Wrapper className={'border-wrapper-alt2 fade-in'}>
 				<S.Header>
-					<S.HeaderAction>
-						<button onClick={() => setCurrentView(currentView === 'SubSet' ? 'Omega' : 'SubSet')}>
+					<img src={getTxEndpoint('D8YXt7eVLQq1v4eZhTQUmO2rfWmoH4vaiBrTFy0Bvtk')} alt={'Atomic Asset'} />
+					{subheader}
+					<S.HeaderAction className={'fade-in'}>
+						<button
+							onClick={() => setCurrentView(currentView === 'SubSet' ? 'Main' : 'SubSet')}
+							disabled={!assets || fetching || !arProvider.walletAddress}
+						>
 							<span>{currentView === 'SubSet' ? 'Visit the Omega One' : 'Visit pieces of the Omega One'}</span>
 						</button>
 					</S.HeaderAction>
-					<img src={getTxEndpoint(BACKGROUND_TX)} alt={'Atomic Asset'} />
-					{subheader}
 				</S.Header>
 				<S.Body>{body}</S.Body>
 			</S.Wrapper>
@@ -419,7 +425,7 @@ export default function Campaign() {
 					</S.PManageWrapper>
 				</Panel>
 			)}
-			{claimResponse && notification}
+			{claimNotification && notification}
 		</>
 	);
 }
