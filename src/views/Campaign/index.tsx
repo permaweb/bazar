@@ -1,12 +1,14 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import { ReactSVG } from 'react-svg';
 
 import { messageResult, readHandler } from 'api';
 
+import { Loader } from 'components/atoms/Loader';
 import { Modal } from 'components/molecules/Modal';
 import { Panel } from 'components/molecules/Panel';
 import { ProfileManage } from 'components/organisms/ProfileManage';
-import { ASSETS } from 'helpers/config';
+import { ASSETS, URLS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import { formatAddress } from 'helpers/utils';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
@@ -19,6 +21,7 @@ type AssetStateType = {
 	cover: string;
 	info: string;
 	claimResponse: string;
+	claimRedirect: string;
 	claimable: boolean;
 	claimInProgress: boolean;
 	completed: boolean;
@@ -26,19 +29,37 @@ type AssetStateType = {
 
 const MAIN_PROCESS = '4SWaYpBL2A8CPDBowcEUdhls9k_sqSChL0wRJfMPQAk';
 
-// TODO: Send assets to profile
-// TODO: Load assets from config
+// TODO: Silhouettes (done)
+// TODO: Links to mint / war depot (done)
+// TODO: IP blocker (done)
+// TODO: Footer disclaimer (done)
+// TODO: Profile Id only (done)
+// TODO: Send assets to profile (done)
+// TODO: Load assets from config (done)
+// TODO: Claimable check hot update (done)
+// TODO: Claim notification (done)
 // TODO: Handle primary claim
-// TODO: Silhouettes
-// TODO: Claimable check hot update
-// TODO: Description tooltips
-// TODO: Claim notification
-// TODO: Footer disclaimer
 // TODO: Audio
-// TODO: IP blocker
+// TODO: Landing popup
+// TODO: Loading state
+// TODO: Multiple wallet popups
+// TODO: Link to asset when claimed
+
+function BlockMessage() {
+	return (
+		<S.BlockWrapper className={'fade-in'}>
+			<S.BlockMessage>
+				<p>Unfortunately, US persons are not eligible for bridging rewards or prizes on this page.</p>
+			</S.BlockMessage>
+			<Link to={URLS.base}>Go back</Link>
+		</S.BlockWrapper>
+	);
+}
 
 export default function Campaign() {
 	const arProvider = useArweaveProvider();
+
+	const audioRef = React.useRef<HTMLAudioElement | null>(null);
 
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
@@ -46,25 +67,38 @@ export default function Campaign() {
 	const [showProfileManage, setShowProfileManage] = React.useState<boolean>(false);
 
 	const [assets, setAssets] = React.useState<AssetStateType[] | null>(null);
-
 	const [primaryAsset, setPrimaryAsset] = React.useState<AssetStateType | null>(null);
 
 	const [fetching, setFetching] = React.useState<boolean>(false);
 	const [currentView, setCurrentView] = React.useState<'SubSet' | 'Main' | null>(null);
 
-	// TODO
+	const [audioPlaying, setAudioPlaying] = React.useState<boolean>(false);
+
+	const [blockLoading, setBlockLoading] = React.useState<boolean>(false);
+	const [isBlocked, setIsBlocked] = React.useState<boolean>(false);
+
 	const [claimNotification, setClaimNotification] = React.useState<{
 		assetId: string;
 		message: string;
 	}>(null);
 
-	// const [claimResponse, setClaimResponse] = React.useState<{
-	// 	assetId: string;
-	// 	message: string;
-	// }>({
-	// 	assetId: ASSET_CONFIG[0].id,
-	// 	message: ASSET_CONFIG[0].description,
-	// });
+	React.useEffect(() => {
+		const checkLocation = async () => {
+			setBlockLoading(true);
+			try {
+				const response = await fetch(`https://ipinfo.io?token=04c286535ab4dc`);
+				const data = await response.json();
+				if (data.country === 'US') {
+					setIsBlocked(true);
+				}
+			} catch (error) {
+				console.error('Error fetching location data', error.message);
+			}
+			setBlockLoading(false);
+		};
+
+		checkLocation();
+	}, []);
 
 	React.useEffect(() => {
 		(async function () {
@@ -85,6 +119,7 @@ export default function Campaign() {
 						cover: config.Cover,
 						info: config.Info,
 						claimResponse: config.ClaimResponse,
+						claimRedirect: null,
 						claimable: false,
 						claimInProgress: false,
 						completed: false,
@@ -98,6 +133,7 @@ export default function Campaign() {
 								cover: config.Assets[key].Cover,
 								info: config.Assets[key].Info,
 								claimResponse: config.Assets[key].ClaimResponse,
+								claimRedirect: config.Assets[key].ClaimRedirect,
 								claimable: false,
 								claimInProgress: false,
 								completed: false,
@@ -117,7 +153,7 @@ export default function Campaign() {
 
 	React.useEffect(() => {
 		(async function () {
-			if (arProvider.walletAddress) {
+			if (arProvider.profile && arProvider.profile.id) {
 				try {
 					await checkClaimStatus('Main');
 					setFetching(false);
@@ -126,7 +162,7 @@ export default function Campaign() {
 				}
 			}
 		})();
-	}, [arProvider.walletAddress]);
+	}, [arProvider.walletAddress, arProvider.profile]);
 
 	React.useEffect(() => {
 		(async function () {
@@ -140,7 +176,7 @@ export default function Campaign() {
 
 	React.useEffect(() => {
 		(async function () {
-			if (currentView) {
+			if (currentView && arProvider.walletAddress && arProvider.profile && arProvider.profile.id) {
 				switch (currentView) {
 					case 'SubSet':
 						await checkClaimStatus('SubSet');
@@ -150,19 +186,23 @@ export default function Campaign() {
 				}
 			}
 		})();
-	}, [currentView]);
+	}, [currentView, arProvider.walletAddress, arProvider.profile]);
 
 	async function checkClaimStatus(type: 'SubSet' | 'Main') {
 		const ids = type === 'SubSet' && assets && assets.length > 0 ? assets.map((asset) => asset.id) : [MAIN_PROCESS];
 
+		const tags = [{ name: 'Address', value: arProvider.walletAddress }];
+		if (arProvider.profile && arProvider.profile.id) {
+			tags.push({ name: 'ProfileId', value: arProvider.profile.id });
+		}
+
 		try {
-			console.log('Checking claim status');
 			for (const id of ids) {
 				messageResult({
 					processId: id,
 					wallet: arProvider.wallet,
 					action: 'Init-Claim-Check',
-					tags: [{ name: 'Address', value: arProvider.walletAddress }],
+					tags: tags,
 					data: null,
 				});
 			}
@@ -173,14 +213,12 @@ export default function Campaign() {
 						processId: id,
 						wallet: arProvider.wallet,
 						action: 'Get-Claim-Status',
-						tags: [{ name: 'Address', value: arProvider.walletAddress }],
+						tags: tags,
 						data: null,
 					});
 					if (response && response['Claim-Status-Response'] && response['Claim-Status-Response'].status) {
 						const claimable = response['Claim-Status-Response'].status === 'Claimable';
 						const completed = response['Claim-Status-Response'].status === 'Claimed';
-
-						console.log(response);
 
 						switch (type) {
 							case 'SubSet':
@@ -197,7 +235,6 @@ export default function Campaign() {
 					}
 				}
 			}
-			console.log('Checked claim status');
 		} catch (e) {
 			console.error(e);
 		}
@@ -216,7 +253,7 @@ export default function Campaign() {
 
 		const tags = [{ name: 'Address', value: arProvider.walletAddress }];
 		if (arProvider.profile && arProvider.profile.id) {
-			tags.push({ name: 'ProfileID', value: arProvider.profile.id });
+			tags.push({ name: 'ProfileId', value: arProvider.profile.id });
 		}
 
 		try {
@@ -263,6 +300,17 @@ export default function Campaign() {
 		}
 	}
 
+	const toggleAudio = () => {
+		if (audioRef.current) {
+			if (audioPlaying) {
+				audioRef.current.pause();
+			} else {
+				audioRef.current.play();
+			}
+			setAudioPlaying(!audioPlaying);
+		}
+	};
+
 	const subheader = React.useMemo(() => {
 		let label: string;
 		let action = null;
@@ -286,9 +334,9 @@ export default function Campaign() {
 		return (
 			<S.Subheader>
 				<p>
-					Collect five unique atomic assets by completing each quest. Complete the set to unlock the powerful Omega
-					DumDum, the god of our futuristic Mayan temples, and claim rewards including merch and AR prizes. Connect your
-					Arweave wallet, track your progress, and start earning today!
+					A tomb opens, and a legend stirs. Do you have what it takes to awaken The Omega One? Complete each quest
+					below, and claim all 5 pieces of the puzzle to summon the ultra rare Omega Dumdum. Only true Arweavers can
+					finish these tasks. Good luck.
 				</p>
 				<S.ProfileWrapper onClick={action} completed={completed}>
 					<S.ProfileIndicator completed={completed} />
@@ -324,46 +372,66 @@ export default function Campaign() {
 										id={`grid-element-${index}`}
 										claimable={asset.claimable}
 									>
-										{!asset.completed && (
-											<S.GridElementOverlay>
-												{asset.claimable ? (
-													<S.GridElementAction
-														onClick={() => handleClaim(asset.id)}
-														disabled={!assets || asset.claimInProgress}
-														className={'fade-in'}
-													>
-														<span>{asset.claimInProgress ? 'Claiming...' : 'Claim'}</span>
-													</S.GridElementAction>
-												) : (
-													<ReactSVG src={ASSETS.question} className={'fade-in'} />
-												)}
-											</S.GridElementOverlay>
+										{asset.completed ? (
+											<img src={getTxEndpoint(asset.id)} alt={'Atomic Asset'} />
+										) : (
+											<>
+												<S.GridElementOverlay>
+													{asset.claimable ? (
+														<S.GridElementAction
+															onClick={() => handleClaim(asset.id)}
+															disabled={!assets || asset.claimInProgress}
+															className={'fade-in'}
+														>
+															<span>{asset.claimInProgress ? 'Claiming...' : 'Claim'}</span>
+														</S.GridElementAction>
+													) : (
+														<ReactSVG src={ASSETS.question} className={'fade-in'} />
+													)}
+												</S.GridElementOverlay>
+												<img src={getTxEndpoint(asset.cover)} alt={'Atomic Asset'} />
+											</>
 										)}
-										<img src={getTxEndpoint(asset.id)} alt={'Atomic Asset'} />
+										{!asset.claimable && !asset.completed && (
+											<S.GridElementLink href={asset.claimRedirect} target={'_blank'} />
+										)}
 									</S.GridElement>
 								))}
 							</>
 						);
 					case 'Main':
 						return (
-							<S.PrimaryAsset claimable={primaryAsset.claimable}>
-								{!primaryAsset.completed && (
-									<S.PrimaryAssetOverlay>
-										{primaryAsset.claimable ? (
-											<S.PrimaryAssetAction
-												onClick={() => handleClaim(primaryAsset.id, true)}
-												disabled={primaryAsset.claimInProgress}
-												className={'fade-in'}
-											>
-												<span>{primaryAsset.claimInProgress ? 'Claiming...' : 'Claim'}</span>
-											</S.PrimaryAssetAction>
-										) : (
-											<ReactSVG src={ASSETS.question} className={'fade-in'} />
-										)}
-									</S.PrimaryAssetOverlay>
+							<S.PrimaryAssetWrapper>
+								<S.PrimaryAsset claimable={primaryAsset.claimable}>
+									{primaryAsset.completed ? (
+										<img src={getTxEndpoint(primaryAsset.id)} alt={'Atomic Asset'} />
+									) : (
+										<>
+											<S.PrimaryAssetOverlay>
+												{primaryAsset.claimable ? (
+													<S.PrimaryAssetAction
+														onClick={() => handleClaim(primaryAsset.id, true)}
+														disabled={primaryAsset.claimInProgress}
+														className={'fade-in'}
+													>
+														<span>{primaryAsset.claimInProgress ? 'Claiming...' : 'Claim'}</span>
+													</S.PrimaryAssetAction>
+												) : (
+													<ReactSVG src={ASSETS.question} className={'fade-in'} />
+												)}
+											</S.PrimaryAssetOverlay>
+											<img src={getTxEndpoint(primaryAsset.cover)} alt={'Atomic Asset'} />
+										</>
+									)}
+								</S.PrimaryAsset>
+								{primaryAsset.completed && (
+									<S.AssetTextWrapper>
+										<p>Congratulations!</p>
+										<span>You've earned</span>
+										<span>The Legendary DumDum Omega</span>
+									</S.AssetTextWrapper>
 								)}
-								<img src={getTxEndpoint(primaryAsset.id)} alt={'Atomic Asset'} />
-							</S.PrimaryAsset>
+							</S.PrimaryAssetWrapper>
 						);
 				}
 			} else return null;
@@ -374,11 +442,11 @@ export default function Campaign() {
 		if (claimNotification) {
 			return (
 				<Modal header={null} handleClose={() => setClaimNotification(null)}>
-					<S.MWrapper className={'fade-in'}>
-						<S.MTextWrapper>
+					<S.MWrapper className={'fade-in'} primaryAsset={claimNotification.assetId === MAIN_PROCESS}>
+						<S.AssetTextWrapper>
 							<p>Congratulations!</p>
-							<span>You've earned</span>
-						</S.MTextWrapper>
+							<span>You've unlocked</span>
+						</S.AssetTextWrapper>
 						<img src={getTxEndpoint(claimNotification.assetId)} alt={'Atomic Asset'} />
 						<S.MDescription>
 							<p>{claimNotification.message}</p>
@@ -393,39 +461,57 @@ export default function Campaign() {
 		return null;
 	}, [claimNotification]);
 
-	return (
-		<>
-			<S.Wrapper className={'border-wrapper-alt2 fade-in'}>
-				<S.Header>
-					<img src={getTxEndpoint('D8YXt7eVLQq1v4eZhTQUmO2rfWmoH4vaiBrTFy0Bvtk')} alt={'Atomic Asset'} />
-					{subheader}
-					<S.HeaderAction className={'fade-in'}>
-						<button
-							onClick={() => setCurrentView(currentView === 'SubSet' ? 'Main' : 'SubSet')}
-							disabled={!assets || fetching || !arProvider.walletAddress}
-						>
-							<span>{currentView === 'SubSet' ? 'Visit the Omega One' : 'Visit pieces of the Omega One'}</span>
+	function getView() {
+		if (blockLoading) return <Loader />;
+		if (isBlocked) return <BlockMessage />;
+		return (
+			<>
+				<S.Wrapper className={'border-wrapper-alt2 fade-in'}>
+					<S.AudioWrapper>
+						<button onClick={() => toggleAudio()} title={audioPlaying ? 'Pause' : 'Play'}>
+							<ReactSVG src={audioPlaying ? ASSETS.pause : ASSETS.play} />
 						</button>
-					</S.HeaderAction>
-				</S.Header>
-				<S.Body>{body}</S.Body>
-			</S.Wrapper>
-			{showProfileManage && (
-				<Panel
-					open={showProfileManage}
-					header={arProvider.profile && arProvider.profile.id ? language.editProfile : `${language.createProfile}!`}
-					handleClose={() => setShowProfileManage(false)}
-				>
-					<S.PManageWrapper>
-						<ProfileManage
-							profile={arProvider.profile && arProvider.profile.id ? arProvider.profile : null}
-							handleClose={() => setShowProfileManage(false)}
-							handleUpdate={null}
-						/>
-					</S.PManageWrapper>
-				</Panel>
-			)}
-			{claimNotification && notification}
-		</>
-	);
+						<audio ref={audioRef} loop>
+							<source src={`https://arweave.net/YsDMcgdBS-L9d-t1LVd4m45GRZRjSHkiG1Qr6UT9pNw`} type="audio/wav" />
+							Your browser does not support the audio element.
+						</audio>
+					</S.AudioWrapper>
+					<S.Header>
+						<img src={getTxEndpoint('D8YXt7eVLQq1v4eZhTQUmO2rfWmoH4vaiBrTFy0Bvtk')} alt={'Atomic Asset'} />
+						{subheader}
+						<S.HeaderAction className={'fade-in'}>
+							<button
+								onClick={() => setCurrentView(currentView === 'SubSet' ? 'Main' : 'SubSet')}
+								disabled={!assets || fetching || !arProvider.walletAddress}
+							>
+								<span>{currentView === 'SubSet' ? 'Visit the Omega One' : 'Visit relics of the Omega One'}</span>
+							</button>
+						</S.HeaderAction>
+					</S.Header>
+					<S.Body>{body}</S.Body>
+					<S.Footer>
+						<p>US persons not eligible for bridging rewards or prizes on this page.</p>
+					</S.Footer>
+				</S.Wrapper>
+				{showProfileManage && (
+					<Panel
+						open={showProfileManage}
+						header={arProvider.profile && arProvider.profile.id ? language.editProfile : `${language.createProfile}!`}
+						handleClose={() => setShowProfileManage(false)}
+					>
+						<S.PManageWrapper>
+							<ProfileManage
+								profile={arProvider.profile && arProvider.profile.id ? arProvider.profile : null}
+								handleClose={() => setShowProfileManage(false)}
+								handleUpdate={null}
+							/>
+						</S.PManageWrapper>
+					</Panel>
+				)}
+				{claimNotification && notification}
+			</>
+		);
+	}
+
+	return getView();
 }

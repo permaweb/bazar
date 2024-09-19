@@ -34,7 +34,9 @@ import orders from 'assets/orders.svg';
 import othent from 'assets/othent.svg';
 import overview from 'assets/overview.svg';
 import paste from 'assets/paste.svg';
+import pause from 'assets/pause.svg';
 import pixl from 'assets/pixl.svg';
+import play from 'assets/play.svg';
 import provenance from 'assets/provenance.svg';
 import question from 'assets/question.svg';
 import renderer from 'assets/renderer.svg';
@@ -145,7 +147,9 @@ export const ASSETS = {
 	othent,
 	overview,
 	paste,
+	pause,
 	pixl,
+	play,
 	provenance,
 	question,
 	renderer,
