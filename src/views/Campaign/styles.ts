@@ -10,17 +10,69 @@ export const Wrapper = styled.div`
 	align-items: center;
 	padding: 40px 20px;
 	position: relative;
-	background: linear-gradient(180deg, #382c6c, #070027, #22184a);
-	border: 1.5px solid #252251;
-	/* background-image: url('https://arweave.net/BX69ET09R9FrjOA69RokJ9pFXuWw7wlAyaLUG269a2g');
-	background-size: cover;
-	background-position: center; */
+	overflow: hidden;
+	background: linear-gradient(
+		180deg,
+		rgb(3, 22, 26),
+		rgb(12, 38, 44),
+		rgb(15, 44, 54),
+		rgb(13, 37, 36),
+		rgb(12, 36, 29),
+		rgb(13, 38, 28)
+	);
+
+	.floating-image {
+		position: absolute;
+		bottom: -100px;
+		width: 100%;
+		height: auto;
+		animation: floatUp 10s linear infinite;
+		opacity: 0.8;
+		pointer-events: none;
+	}
+
+	@keyframes floatUp {
+		0% {
+			transform: translateY(0);
+			opacity: 0.8;
+		}
+		100% {
+			transform: translateY(-110vh);
+			opacity: 0;
+		}
+	}
+
+	.img1 {
+		left: 20%;
+		animation-duration: 8s;
+		animation-delay: 0s;
+	}
+
+	.img2 {
+		left: 40%;
+		animation-duration: 10s;
+		animation-delay: 2s;
+	}
+
+	.img3 {
+		left: 60%;
+		animation-duration: 12s;
+		animation-delay: 4s;
+	}
+
+	.img4 {
+		left: 80%;
+		animation-duration: 9s;
+		animation-delay: 1s;
+	}
 `;
 
 export const Header = styled.div`
 	display: flex;
 	flex-direction: column;
 	align-items: center;
+	position: relative;
+	z-index: 1;
 
 	img {
 		width: 70%;
@@ -30,24 +82,26 @@ export const Header = styled.div`
 export const HeaderAction = styled.div`
 	margin: 40px 0 0 0;
 	button {
-		transition: all 175ms;
 		span {
-			color: #c8c8e5;
-			text-shadow: 0px 0px 20px #6b6ba9;
+			color: #0ffa00;
+			text-shadow: 0px 0px 20px #10ff00;
 			font-weight: ${(props) => props.theme.typography.weight.medium};
 			font-size: ${(props) => props.theme.typography.size.xLg};
 			font-family: 'Frank Ruhl Libre', serif;
+			transition: all 100ms;
 		}
 
 		&:hover {
 			span {
-				color: #d2d2d8;
+				color: #7ec9bf;
+				text-shadow: 0px 0px 20px #7ec9bf;
 			}
 		}
 
 		&:disabled {
 			span {
 				color: #939393;
+				text-shadow: 0px 0px 20px #939393;
 			}
 		}
 	}
@@ -76,7 +130,7 @@ export const Subheader = styled.div`
 	}
 `;
 
-export const ProfileWrapper = styled.div<{ completed: boolean }>`
+export const ProfileWrapper = styled.div<{ claimed: boolean }>`
 	max-width: 90%;
 	background: rgba(10, 10, 10, 0.65);
 	padding: 10px 20px;
@@ -86,7 +140,7 @@ export const ProfileWrapper = styled.div<{ completed: boolean }>`
 	align-items: center;
 	justify-content: center;
 	gap: 15px;
-	pointer-events: ${(props) => (props.completed ? 'none' : 'auto')};
+	pointer-events: ${(props) => (props.claimed ? 'none' : 'auto')};
 	transition: all 100ms;
 
 	span {
@@ -97,17 +151,16 @@ export const ProfileWrapper = styled.div<{ completed: boolean }>`
 	}
 
 	&:hover {
-		cursor: ${(props) => (props.completed ? 'default' : 'pointer')};
-		background: ${(props) => (props.completed ? 'rgba(10, 10, 10, 0.65)' : 'rgba(30, 30, 30, 0.65)')};
+		cursor: ${(props) => (props.claimed ? 'default' : 'pointer')};
+		background: ${(props) => (props.claimed ? 'rgba(10, 10, 10, 0.65)' : 'rgba(30, 30, 30, 0.65)')};
 	}
 `;
 
-export const ProfileIndicator = styled.div<{ completed: boolean }>`
+export const ProfileIndicator = styled.div<{ claimed: boolean }>`
 	width: 17.5px;
 	height: 17.5px;
-	background: ${(props) =>
-		props.completed ? props.theme.colors.indicator.primary : props.theme.colors.warning.primary};
-	background: ${(props) => (props.completed ? '#5AF650' : props.theme.colors.warning.primary)};
+	background: ${(props) => (props.claimed ? props.theme.colors.indicator.primary : props.theme.colors.warning.primary)};
+	background: ${(props) => (props.claimed ? '#5AF650' : props.theme.colors.warning.primary)};
 	border-radius: 50%;
 `;
 
@@ -116,25 +169,47 @@ export const Body = styled.div`
 	display: flex;
 	gap: 40px;
 	padding: 0 30px;
-	margin: 40px 0 0 0;
+	margin: 45px 0 0 0;
 	flex-wrap: wrap;
 	justify-content: center;
 	align-items: center;
+	position: relative;
+	z-index: 1;
 `;
 
-export const GridElement = styled.div<{ claimable: boolean }>`
+export const GridElement = styled.div<{ claimable: boolean; claimed: boolean }>`
+	height: 500px;
+	min-width: 305.5px;
 	position: relative;
+	background: #5a4a35;
+	border-radius: 12.5px;
 
 	img {
 		height: 500px;
+		min-width: 305.5px;
 		border: 1.5px solid ${(props) => (props.claimable ? '#1fd014' : '#252251')};
-		box-shadow: ${(props) => (props.claimable ? '0px 0px 15px 3.5px #5AF650' : '0 0 10px 3px #232323')};
-		border-radius: 12.5px;
+		box-shadow: ${(props) =>
+			props.claimable
+				? '0px 0px 10px 5.5px #5AF650'
+				: props.claimed
+				? '0 0 5px 3.5px #595959'
+				: '0 0 5px 3.5px #595959'};
+		border-radius: 10px;
+		transition: all 100ms;
+	}
+
+	a {
+		&:hover {
+			img {
+				border: 1.5px solid #1fd014;
+				box-shadow: 0px 0px 5px 3.5px #0b9734;
+			}
+		}
 	}
 `;
 
 export const GridElementOverlay = styled.div`
-	height: 390.5px;
+	height: 389.5px;
 	width: calc(100% - 24.5px);
 	display: flex;
 	justify-content: center;
@@ -145,6 +220,7 @@ export const GridElementOverlay = styled.div`
 	display: flex;
 	background: rgba(10, 10, 10, 0.75);
 	backdrop-filter: blur(7.5px);
+	border-radius: 2.5px;
 
 	svg {
 		height: 185px;
@@ -159,14 +235,15 @@ export const GridElementLink = styled.a`
 	height: 77.5px;
 	width: 276.5px;
 	position: absolute;
-	bottom: 20.5px;
+	bottom: 14.5px;
 	left: 14.5px;
 	background: transparent;
-	border: 1px solid #7ec9bf;
+	border: 1px solid #b5b5b5;
 	border-radius: 5px;
-	box-shadow: 0 0 5px #47ff00;
+	box-shadow: 0 0 5px #e7e7e7;
 
 	&:hover {
+		border: 1px solid #5af650;
 		box-shadow: 0 0 10px #47ff00;
 	}
 `;
@@ -215,13 +292,31 @@ export const PrimaryAssetWrapper = styled.div`
 `;
 
 export const PrimaryAsset = styled(GridElement)`
+	height: auto;
+	min-width: 0;
+	background: transparent;
 	border-radius: 0;
 	box-shadow: none;
+
 	img {
 		height: 550px;
 		border: 1.5px solid ${(props) => (props.claimable ? '#1fd014' : '#252251')};
-		box-shadow: ${(props) => (props.claimable ? '0px 0px 10px 5.5px #5AF650' : '0 0 10px 3px #232323')};
+		box-shadow: ${(props) =>
+			props.claimable
+				? '0px 0px 10px 5.5px #5AF650'
+				: props.claimed
+				? '0 0 5px 3.5px #595959'
+				: '0 0 5px 3.5px #595959'};
 		border-radius: 0;
+	}
+
+	a {
+		&:hover {
+			img {
+				border: 1.5px solid #1fd014;
+				box-shadow: 0px 0px 5px 3.5px #0b9734;
+			}
+		}
 	}
 `;
 
@@ -243,7 +338,7 @@ export const PrimaryAssetOverlay = styled(GridElementOverlay)`
 	svg {
 		height: 250px;
 		width: 250px;
-		margin: 0;
+		margin: -10px 0 0 0;
 	}
 `;
 
@@ -256,8 +351,8 @@ export const AssetTextWrapper = styled.div`
 	flex-direction: column;
 	justify-content: center;
 	align-items: center;
-	background: #f5b700;
-	background-image: radial-gradient(circle, rgba(0, 0, 0, 0.15) 1px, transparent 1px);
+	background: #a79939;
+	background-image: radial-gradient(circle, rgba(0, 0, 0, 0.215) 1px, transparent 1px);
 	background-size: 3px 3px;
 	padding: 7.5px 40px 10px 40px;
 	border-radius: ${STYLING.dimensions.radius.alt2};
@@ -286,11 +381,15 @@ export const BodyLoading = styled.div`
 	margin: 20px 0 0 0;
 
 	span {
-		color: #c8c8e5;
-		text-shadow: 0px 0px 20px #6b6ba9;
+		color: #d3d3d3;
+		text-shadow: 0px 0px 20px #d3d3d3;
 		font-weight: ${(props) => props.theme.typography.weight.medium};
 		font-size: ${(props) => props.theme.typography.size.xLg};
 		font-family: 'Frank Ruhl Libre', serif;
+	}
+
+	img {
+		height: 250px;
 	}
 `;
 
@@ -306,8 +405,16 @@ export const MWrapper = styled.div<{ primaryAsset: boolean }>`
 	align-items: center;
 	position: relative;
 	padding: 60px 20px 40px 20px;
-	background: linear-gradient(180deg, #382c6c, #070027, #22184a);
-	border: 1.5px solid #252251;
+	background: linear-gradient(
+		180deg,
+		rgb(3, 22, 26),
+		rgb(4 20 24),
+		rgb(8 24 29),
+		rgb(6 28 27),
+		rgb(12, 36, 29),
+		rgb(13, 38, 28)
+	);
+	border: 1.5px solid #0f3226;
 	border-radius: ${STYLING.dimensions.radius.primary};
 	img {
 		height: 425px;
@@ -319,12 +426,16 @@ export const MWrapper = styled.div<{ primaryAsset: boolean }>`
 `;
 
 export const MDescription = styled.div`
-	padding: 0 20px;
+	background: rgba(10, 10, 10, 0.625);
+	padding: 15px;
+	border-radius: ${STYLING.dimensions.radius.primary};
+	display: flex;
+
 	p {
 		line-height: 1.5;
-		color: #f5b700;
-		font-size: ${(props) => props.theme.typography.size.small};
-		font-weight: ${(props) => props.theme.typography.weight.bold};
+		color: #d8d6a7;
+		font-size: ${(props) => props.theme.typography.size.xSmall};
+		font-weight: ${(props) => props.theme.typography.weight.medium};
 		font-family: 'Frank Ruhl Libre', serif;
 		text-align: center;
 	}
@@ -355,6 +466,7 @@ export const AudioWrapper = styled.div`
 	position: absolute;
 	top: 15px;
 	right: 15px;
+	z-index: 1;
 	button {
 		height: 30px;
 		width: 30px;
@@ -398,9 +510,11 @@ export const Footer = styled.div`
 	justify-content: center;
 	gap: 30px;
 	margin: 40px 0 0 0;
+	position: relative;
+	z-index: 1;
 
 	p {
-		line-height: 1.5;
+		line-height: 1.55;
 		max-width: 800px;
 		color: #d8d6a7;
 		font-size: ${(props) => props.theme.typography.size.base};

@@ -24,10 +24,10 @@ type AssetStateType = {
 	claimRedirect: string;
 	claimable: boolean;
 	claimInProgress: boolean;
-	completed: boolean;
+	claimed: boolean;
 };
 
-const MAIN_PROCESS = '4SWaYpBL2A8CPDBowcEUdhls9k_sqSChL0wRJfMPQAk';
+const MAIN_PROCESS = 'cbYlVU3oAM61A1BivJOQqtlzBZJ9CbA0LYckoS6CpMc';
 
 // TODO: Silhouettes (done)
 // TODO: Links to mint / war depot (done)
@@ -38,12 +38,24 @@ const MAIN_PROCESS = '4SWaYpBL2A8CPDBowcEUdhls9k_sqSChL0wRJfMPQAk';
 // TODO: Load assets from config (done)
 // TODO: Claimable check hot update (done)
 // TODO: Claim notification (done)
-// TODO: Handle primary claim
+// TODO: Handle primary claim (done)
+// TODO: Loading state (done)
+// TODO: Link to asset when claimed (done)
+// TODO: Background effect (done)
+// TODO: Check bridge withdraw
 // TODO: Audio
 // TODO: Landing popup
-// TODO: Loading state
-// TODO: Multiple wallet popups
-// TODO: Link to asset when claimed
+// TODO: Claim notification
+// TODO: Wallet disconnected show all assets
+// TODO: User query(Send({Target = MIRROR, Action = "Users-By-Recipient", Recipient = "Jr4Q2kdQqmB7_llYg-leC2bmgPnxvELsWSVQ0smR6u8"}))
+// TODO: Global IP blocker
+
+// Visit relics - Back to relics
+// Visit omega one - Summon omega one
+// Disclaimer update
+// n / 5000 claimed
+// Screen recording of all assets locked
+// Remove description from notification
 
 function BlockMessage() {
 	return (
@@ -77,10 +89,19 @@ export default function Campaign() {
 	const [blockLoading, setBlockLoading] = React.useState<boolean>(false);
 	const [isBlocked, setIsBlocked] = React.useState<boolean>(false);
 
+	// TODO
 	const [claimNotification, setClaimNotification] = React.useState<{
 		assetId: string;
 		message: string;
 	}>(null);
+
+	// const [claimNotification, setClaimNotification] = React.useState<{
+	// 	assetId: string;
+	// 	message: string;
+	// }>({
+	// 	assetId: 'WfpWTX4xtUHuVetbovo8CakI9Wtl8qgZ6ucBhDK24e0',
+	// 	message: "Fourteen days of tenacious loyalty culminate in this monumental moment. The heavens part as the Head of Omega DumDum descends, eyes ablaze with ancient wisdom and foresight. This final piece completes the sacred collection. Do you dare awaken the Omega?"
+	// });
 
 	React.useEffect(() => {
 		const checkLocation = async () => {
@@ -102,14 +123,19 @@ export default function Campaign() {
 
 	React.useEffect(() => {
 		(async function () {
+			setCurrentView(null);
 			setFetching(true);
 			try {
 				if (!localStorage.getItem('drive-config')) {
-					const response = await readHandler({
-						processId: MAIN_PROCESS,
-						action: 'Get-Config',
-					});
-					localStorage.setItem('drive-config', JSON.stringify(response));
+					try {
+						const response = await readHandler({
+							processId: MAIN_PROCESS,
+							action: 'Get-Config',
+						});
+						localStorage.setItem('drive-config', JSON.stringify(response));
+					} catch (e) {
+						console.error(e);
+					}
 				}
 				const config = JSON.parse(localStorage.getItem('drive-config'));
 
@@ -122,7 +148,7 @@ export default function Campaign() {
 						claimRedirect: null,
 						claimable: false,
 						claimInProgress: false,
-						completed: false,
+						claimed: false,
 					});
 
 					setAssets(
@@ -136,7 +162,7 @@ export default function Campaign() {
 								claimRedirect: config.Assets[key].ClaimRedirect,
 								claimable: false,
 								claimInProgress: false,
-								completed: false,
+								claimed: false,
 							}))
 							.sort((a, b) => {
 								return parseInt(a.index) - parseInt(b.index);
@@ -149,13 +175,13 @@ export default function Campaign() {
 				console.error(e);
 			}
 		})();
-	}, []);
+	}, [arProvider.walletAddress]);
 
 	React.useEffect(() => {
 		(async function () {
 			if (arProvider.profile && arProvider.profile.id) {
 				try {
-					await checkClaimStatus('Main');
+					await checkClaimStatus('Main', null);
 					setFetching(false);
 				} catch (e) {
 					console.error(e);
@@ -166,7 +192,7 @@ export default function Campaign() {
 
 	React.useEffect(() => {
 		(async function () {
-			if (primaryAsset && (primaryAsset.claimable || primaryAsset.completed)) {
+			if (primaryAsset && (primaryAsset.claimable || primaryAsset.claimed)) {
 				setCurrentView('Main');
 			} else {
 				setCurrentView('SubSet');
@@ -179,7 +205,16 @@ export default function Campaign() {
 			if (currentView && arProvider.walletAddress && arProvider.profile && arProvider.profile.id) {
 				switch (currentView) {
 					case 'SubSet':
-						await checkClaimStatus('SubSet');
+						try {
+							const response = await readHandler({
+								processId: 'ptCu-Un-3FF8sZ5zNMYg43zRgSYAGVkjz2Lb0HZmx2M',
+								action: 'Users-By-Recipient',
+								tags: [{ name: 'Recipient', value: arProvider.walletAddress }],
+							});
+							await checkClaimStatus('SubSet', response && response.length > 0 ? response[0] : null);
+						} catch (e) {
+							console.error(e);
+						}
 						break;
 					case 'Main':
 						break;
@@ -188,17 +223,20 @@ export default function Campaign() {
 		})();
 	}, [currentView, arProvider.walletAddress, arProvider.profile]);
 
-	async function checkClaimStatus(type: 'SubSet' | 'Main') {
+	async function checkClaimStatus(type: 'SubSet' | 'Main', userAddress: string | null) {
 		const ids = type === 'SubSet' && assets && assets.length > 0 ? assets.map((asset) => asset.id) : [MAIN_PROCESS];
 
 		const tags = [{ name: 'Address', value: arProvider.walletAddress }];
 		if (arProvider.profile && arProvider.profile.id) {
 			tags.push({ name: 'ProfileId', value: arProvider.profile.id });
 		}
+		if (userAddress) {
+			tags.push({ name: 'UserAddress', value: userAddress });
+		}
 
 		try {
 			for (const id of ids) {
-				messageResult({
+				await messageResult({
 					processId: id,
 					wallet: arProvider.wallet,
 					action: 'Init-Claim-Check',
@@ -218,18 +256,18 @@ export default function Campaign() {
 					});
 					if (response && response['Claim-Status-Response'] && response['Claim-Status-Response'].status) {
 						const claimable = response['Claim-Status-Response'].status === 'Claimable';
-						const completed = response['Claim-Status-Response'].status === 'Claimed';
+						const claimed = response['Claim-Status-Response'].status === 'Claimed';
 
 						switch (type) {
 							case 'SubSet':
 								setAssets((prevAssets) => {
 									return prevAssets.map((prevAsset) =>
-										prevAsset.id === id ? { ...prevAsset, claimable: claimable, completed: completed } : prevAsset
+										prevAsset.id === id ? { ...prevAsset, claimable: claimable, claimed: claimed } : prevAsset
 									);
 								});
 								break;
 							case 'Main':
-								setPrimaryAsset((prevAsset) => ({ ...prevAsset, claimable: claimable, completed: completed }));
+								setPrimaryAsset((prevAsset) => ({ ...prevAsset, claimable: claimable, claimed: claimed }));
 								break;
 						}
 					}
@@ -266,7 +304,7 @@ export default function Campaign() {
 			});
 			if (response && response['Claim-Status-Response'] && response['Claim-Status-Response'].status === 'Claimed') {
 				if (usePrimaryAsset) {
-					setPrimaryAsset((prevAsset) => ({ ...prevAsset, claimable: false, claimInProgress: false, completed: true }));
+					setPrimaryAsset((prevAsset) => ({ ...prevAsset, claimable: false, claimInProgress: false, claimed: true }));
 					setClaimNotification({
 						assetId: id,
 						message: primaryAsset.claimResponse,
@@ -275,7 +313,7 @@ export default function Campaign() {
 					setAssets((prevAssets) => {
 						return prevAssets.map((prevAsset) =>
 							prevAsset.id === id
-								? { ...prevAsset, claimable: false, claimInProgress: false, completed: true }
+								? { ...prevAsset, claimable: false, claimInProgress: false, claimed: true }
 								: prevAsset
 						);
 					});
@@ -329,7 +367,7 @@ export default function Campaign() {
 			} else label = formatAddress(arProvider.walletAddress, false);
 		}
 
-		const completed = arProvider.profile && arProvider.profile.id !== null;
+		const claimed = arProvider.profile && arProvider.profile.id !== null;
 
 		return (
 			<S.Subheader>
@@ -338,8 +376,8 @@ export default function Campaign() {
 					below, and claim all 5 pieces of the puzzle to summon the ultra rare Omega Dumdum. Only true Arweavers can
 					finish these tasks. Good luck.
 				</p>
-				<S.ProfileWrapper onClick={action} completed={completed}>
-					<S.ProfileIndicator completed={completed} />
+				<S.ProfileWrapper onClick={action} claimed={claimed}>
+					<S.ProfileIndicator claimed={claimed} />
 					<span>{label}</span>
 				</S.ProfileWrapper>
 			</S.Subheader>
@@ -348,15 +386,11 @@ export default function Campaign() {
 
 	const body = React.useMemo(() => {
 		if (!arProvider.walletAddress) {
-			return (
-				<S.BodyLoading className={'fade-in'}>
-					<span>{language.connectWallet}</span>
-				</S.BodyLoading>
-			);
+			return null;
 		} else if (fetching) {
 			return (
 				<S.BodyLoading className={'fade-in'}>
-					<span>{`${language.fetching}...`}</span>
+					<img src={'https://arweave.net/U0k8z-2EDScxE6PYcGbWBJP_7pBlwg1CALZ9-CjvOEY'} alt={'Atomic Asset'} />
 				</S.BodyLoading>
 			);
 		} else {
@@ -371,9 +405,12 @@ export default function Campaign() {
 										className={'fade-in'}
 										id={`grid-element-${index}`}
 										claimable={asset.claimable}
+										claimed={asset.claimed}
 									>
-										{asset.completed ? (
-											<img src={getTxEndpoint(asset.id)} alt={'Atomic Asset'} />
+										{asset.claimed ? (
+											<Link to={`${URLS.asset}${asset.id}`}>
+												<img src={getTxEndpoint(asset.id)} alt={'Atomic Asset'} />
+											</Link>
 										) : (
 											<>
 												<S.GridElementOverlay>
@@ -392,7 +429,7 @@ export default function Campaign() {
 												<img src={getTxEndpoint(asset.cover)} alt={'Atomic Asset'} />
 											</>
 										)}
-										{!asset.claimable && !asset.completed && (
+										{!asset.claimable && !asset.claimed && (
 											<S.GridElementLink href={asset.claimRedirect} target={'_blank'} />
 										)}
 									</S.GridElement>
@@ -402,9 +439,11 @@ export default function Campaign() {
 					case 'Main':
 						return (
 							<S.PrimaryAssetWrapper>
-								<S.PrimaryAsset claimable={primaryAsset.claimable}>
-									{primaryAsset.completed ? (
-										<img src={getTxEndpoint(primaryAsset.id)} alt={'Atomic Asset'} />
+								<S.PrimaryAsset claimable={primaryAsset.claimable} claimed={primaryAsset.claimed}>
+									{primaryAsset.claimed ? (
+										<Link to={`${URLS.asset}${primaryAsset.id}`}>
+											<img src={getTxEndpoint(primaryAsset.id)} alt={'Atomic Asset'} />
+										</Link>
 									) : (
 										<>
 											<S.PrimaryAssetOverlay>
@@ -424,7 +463,7 @@ export default function Campaign() {
 										</>
 									)}
 								</S.PrimaryAsset>
-								{primaryAsset.completed && (
+								{primaryAsset.claimed && (
 									<S.AssetTextWrapper>
 										<p>Congratulations!</p>
 										<span>You've earned</span>
@@ -490,8 +529,15 @@ export default function Campaign() {
 					</S.Header>
 					<S.Body>{body}</S.Body>
 					<S.Footer>
-						<p>US persons not eligible for bridging rewards or prizes on this page.</p>
+						<p>
+							NOTE: Persons in the US cannot participate in AO bridging and are therefore not eligible for these prizes,
+							or for AO bridging rewards.
+						</p>
 					</S.Footer>
+					<img src="https://arweave.net/-ueBro5_uMl5UJ_tFIt9O_I5Z5bLuQXpxqlG1rauwC4" className="floating-image img1" />
+					<img src="https://arweave.net/Ix-qFixf_h2h1GmI5q1LkXHo1hG_xi8bBTQXMIrve0Y" className="floating-image img2" />
+					<img src="https://arweave.net/UFV3MWracPP3RAo20chcI_ZckYE-KqFlho2pgsmTi8I" className="floating-image img3" />
+					<img src="https://arweave.net/BVe57ULkYp7dpfdLUoxA3QbZQyJlwD9RJYkMDxKfRtw" className="floating-image img4" />
 				</S.Wrapper>
 				{showProfileManage && (
 					<Panel
