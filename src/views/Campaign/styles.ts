@@ -20,7 +20,9 @@ export const Wrapper = styled.div`
 		rgb(12, 36, 29),
 		rgb(13, 38, 28)
 	);
+`;
 
+export const BackgroundWrapper = styled.div`
 	.floating-image {
 		position: absolute;
 		bottom: -100px;
@@ -28,7 +30,11 @@ export const Wrapper = styled.div`
 		height: auto;
 		animation: floatUp 10s linear infinite;
 		opacity: 0.8;
+		opacity: 1;
 		pointer-events: none;
+		border: none;
+		box-shadow: none;
+		border-radius: 0;
 	}
 
 	@keyframes floatUp {
@@ -43,25 +49,43 @@ export const Wrapper = styled.div`
 	}
 
 	.img1 {
-		left: 20%;
+		left: 0;
 		animation-duration: 8s;
 		animation-delay: 0s;
 	}
 
 	.img2 {
-		left: 40%;
+		left: 16.5%;
 		animation-duration: 10s;
 		animation-delay: 2s;
 	}
 
 	.img3 {
-		left: 60%;
+		left: 33%;
 		animation-duration: 12s;
 		animation-delay: 4s;
 	}
 
 	.img4 {
-		left: 80%;
+		left: 49.5%;
+		animation-duration: 9s;
+		animation-delay: 1s;
+	}
+
+	.img5 {
+		left: 64.5%;
+		animation-duration: 9s;
+		animation-delay: 1s;
+	}
+
+	.img6 {
+		left: 80.5%;
+		animation-duration: 9s;
+		animation-delay: 1s;
+	}
+
+	.img7 {
+		left: 0.5%;
 		animation-duration: 9s;
 		animation-delay: 1s;
 	}
@@ -79,29 +103,39 @@ export const Header = styled.div`
 	}
 `;
 
-export const HeaderAction = styled.div`
-	margin: 40px 0 0 0;
+export const ViewAction = styled.div`
+	margin: 55px 0 0 0;
+	position: relative;
+	z-index: 1;
 	button {
+		background: rgba(15, 15, 15, 1);
+		padding: 10px 20px;
+		border: 1px solid #7ec9bf;
+		border-radius: ${STYLING.dimensions.radius.alt2};
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 15px;
+		transition: all 100ms;
+
 		span {
-			color: #0ffa00;
-			text-shadow: 0px 0px 20px #10ff00;
-			font-weight: ${(props) => props.theme.typography.weight.medium};
+			color: #7ec9bf;
+			font-weight: ${(props) => props.theme.typography.weight.bold};
 			font-size: ${(props) => props.theme.typography.size.xLg};
 			font-family: 'Frank Ruhl Libre', serif;
-			transition: all 100ms;
 		}
 
 		&:hover {
-			span {
-				color: #7ec9bf;
-				text-shadow: 0px 0px 20px #7ec9bf;
-			}
+			cursor: pointer;
+			background: rgba(30, 30, 30, 1);
 		}
 
 		&:disabled {
+			cursor: default;
+			background: rgba(20, 20, 20, 1);
+			border: 1px solid #595959;
 			span {
-				color: #939393;
-				text-shadow: 0px 0px 20px #939393;
+				color: #595959;
 			}
 		}
 	}
@@ -110,6 +144,7 @@ export const HeaderAction = styled.div`
 export const Subheader = styled.div`
 	max-width: 90%;
 	background: rgba(10, 10, 10, 0.625);
+	backdrop-filter: blur(15px);
 	padding: 30px;
 	border-radius: ${STYLING.dimensions.radius.primary};
 	display: flex;
@@ -169,7 +204,7 @@ export const Body = styled.div`
 	display: flex;
 	gap: 40px;
 	padding: 0 30px;
-	margin: 45px 0 0 0;
+	margin: 60px 0 0 0;
 	flex-wrap: wrap;
 	justify-content: center;
 	align-items: center;
@@ -351,13 +386,14 @@ export const AssetTextWrapper = styled.div`
 	flex-direction: column;
 	justify-content: center;
 	align-items: center;
-	background: #a79939;
-	background-image: radial-gradient(circle, rgba(0, 0, 0, 0.215) 1px, transparent 1px);
+	background: rgb(4 24 22);
+	border: 1px solid rgb(7 83 65);
+	background-image: radial-gradient(circle, rgba(100, 100, 100, 0.215) 1px, transparent 1px);
 	background-size: 3px 3px;
 	padding: 7.5px 40px 10px 40px;
 	border-radius: ${STYLING.dimensions.radius.alt2};
 	p {
-		color: #3e0600;
+		color: #d4d4d4;
 		font-size: 32px;
 		font-weight: 900;
 		font-family: 'Frank Ruhl Libre', serif;
@@ -365,7 +401,7 @@ export const AssetTextWrapper = styled.div`
 	}
 
 	span {
-		color: #54221d;
+		color: #c5c5c5;
 		font-size: ${(props) => props.theme.typography.size.lg};
 		font-weight: 900;
 		font-family: 'Frank Ruhl Libre', serif;
@@ -404,6 +440,7 @@ export const MWrapper = styled.div<{ primaryAsset: boolean }>`
 	justify-content: center;
 	align-items: center;
 	position: relative;
+	overflow: hidden;
 	padding: 60px 20px 40px 20px;
 	background: linear-gradient(
 		180deg,
@@ -414,31 +451,26 @@ export const MWrapper = styled.div<{ primaryAsset: boolean }>`
 		rgb(12, 36, 29),
 		rgb(13, 38, 28)
 	);
+	background: linear-gradient(180deg, rgb(0 11 14), rgb(4 24 22), rgb(0 3 4));
 	border: 1.5px solid #0f3226;
 	border-radius: ${STYLING.dimensions.radius.primary};
 	img {
-		height: 425px;
-		margin: 40px 0;
+		height: 525px;
+		margin: 40px 0 0 0;
 		border: 1.5px solid #1fd014;
-		box-shadow: 0px 0px 15px 3.5px #5af650;
+		box-shadow: 0px 0px 10px 3.5px #5af650;
 		border-radius: ${(props) => (props.primaryAsset ? '0' : '12.5px')};
 	}
 `;
 
-export const MDescription = styled.div`
-	background: rgba(10, 10, 10, 0.625);
-	padding: 15px;
-	border-radius: ${STYLING.dimensions.radius.primary};
+export const MContentWrapper = styled.div`
+	width: 100%;
 	display: flex;
-
-	p {
-		line-height: 1.5;
-		color: #d8d6a7;
-		font-size: ${(props) => props.theme.typography.size.xSmall};
-		font-weight: ${(props) => props.theme.typography.weight.medium};
-		font-family: 'Frank Ruhl Libre', serif;
-		text-align: center;
-	}
+	flex-direction: column;
+	justify-content: center;
+	align-items: center;
+	position: relative;
+	z-index: 1;
 `;
 
 export const MActionWrapper = styled.div`
@@ -456,6 +488,7 @@ export const MActionWrapper = styled.div`
 		border-radius: ${STYLING.dimensions.radius.alt2};
 		transition: all 175ms;
 		&:hover {
+			cursor: pointer;
 			color: #fff;
 			border: 1px solid #fff;
 		}
@@ -502,6 +535,7 @@ export const Footer = styled.div`
 	width: fit-content;
 	max-width: 90%;
 	background: rgba(10, 10, 10, 0.625);
+	backdrop-filter: blur(15px);
 	padding: 12.5px 25px;
 	border-radius: ${STYLING.dimensions.radius.primary};
 	display: flex;
