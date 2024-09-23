@@ -39,7 +39,6 @@ export default function App() {
 
 	React.useEffect(() => {
 		const campaignShown = localStorage.getItem('campaignShown');
-		console.log(locationProvider.country);
 		if (locationProvider.country !== 'US' && !campaignShown) {
 			setShowCampaign(true);
 			localStorage.setItem('campaignShown', 'true');
