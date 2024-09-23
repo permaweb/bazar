@@ -82,10 +82,9 @@ export default function Campaign() {
 		message: string;
 	}>(null);
 
-	// TODO
-	// React.useEffect(() => {
-	// 	toggleAudio();
-	// }, []);
+	React.useEffect(() => {
+		toggleAudio();
+	}, []);
 
 	React.useEffect(() => {
 		(async function () {
