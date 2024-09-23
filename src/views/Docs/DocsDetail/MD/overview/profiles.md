@@ -1,6 +1,6 @@
 ## Profiles
 
-Your permaweb profile is an AO process which is owned by your Arweave wallet. This process carries out interactions with the UCM and holds custody to your atomic assets. All tokens and atomic assets owned by your wallet are visible in your permaweb profile.
+Your permaweb profile is an AO process which is owned by your Arweave wallet. This process carries out interactions with the UCM and holds custody to your atomic assets.
 
 ### How to create a profile
 
