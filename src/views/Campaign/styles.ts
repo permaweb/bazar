@@ -535,7 +535,7 @@ export const Footer = styled.div`
 	max-width: 90%;
 	background: rgba(10, 10, 10, 0.625);
 	backdrop-filter: blur(15px);
-	padding: 20px;
+	padding: 30px;
 	border-radius: ${STYLING.dimensions.radius.primary};
 	display: flex;
 	flex-direction: column;
