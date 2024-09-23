@@ -130,26 +130,18 @@ export const Alt1 = styled(Primary)`
 		props.active ? props.theme.colors.button.alt1.active.background : props.theme.colors.button.alt1.background};
 	border: 1px solid
 		${(props) => (props.active ? props.theme.colors.button.alt1.active.border : props.theme.colors.button.alt1.border)};
+
 	&:hover {
 		background: ${(props) => props.theme.colors.button.alt1.active.background};
 		border: 1px solid ${(props) => props.theme.colors.button.alt1.active.border};
 	}
+
 	&:focus {
 		background: ${(props) =>
 			props.active
 				? props.theme.colors.button.alt1.active.background
 				: props.theme.colors.button.alt1.active.background};
 		border: 1px solid ${(props) => props.theme.colors.button.alt1.active.border};
-	}
-	&:disabled {
-		background: ${(props) => props.theme.colors.button.alt1.disabled.background};
-		border: 1px solid ${(props) => props.theme.colors.button.alt1.disabled.border};
-		span {
-			color: ${(props) => props.theme.colors.button.alt1.disabled.color} !important;
-		}
-		svg {
-			color: ${(props) => props.theme.colors.button.alt1.disabled.color} !important;
-		}
 	}
 
 	span {
@@ -171,6 +163,7 @@ export const Alt1 = styled(Primary)`
 			fill: ${(props) => props.theme.colors.button.alt1.active.color} !important;
 		}
 	}
+
 	&:focus {
 		span {
 			color: ${(props) => props.theme.colors.button.alt1.active.color} !important;
@@ -178,6 +171,17 @@ export const Alt1 = styled(Primary)`
 		svg {
 			color: ${(props) => props.theme.colors.button.alt1.active.color} !important;
 			fill: ${(props) => props.theme.colors.button.alt1.active.color} !important;
+		}
+	}
+
+	&:disabled {
+		background: ${(props) => props.theme.colors.button.alt1.disabled.background};
+		border: 1px solid ${(props) => props.theme.colors.button.alt1.disabled.border};
+		span {
+			color: ${(props) => props.theme.colors.button.alt1.disabled.color} !important;
+		}
+		svg {
+			color: ${(props) => props.theme.colors.button.alt1.disabled.color} !important;
 		}
 	}
 `;
@@ -208,11 +212,13 @@ export const Alt2 = styled(Alt1)`
 			color: ${(props) => props.theme.colors.button.alt2.active.color} !important;
 		}
 	}
+
 	&:focus {
 		span {
 			color: ${(props) => props.theme.colors.button.alt2.active.color} !important;
 		}
 	}
+
 	&:disabled {
 		background: ${(props) => props.theme.colors.button.alt2.disabled.background};
 		border: 1px solid ${(props) => props.theme.colors.button.alt2.disabled.border};
