@@ -75,14 +75,17 @@ export default function Campaign() {
 
 	const [audioPlaying, setAudioPlaying] = React.useState<boolean>(false);
 
+	const [claimsCount, setClaimsCount] = React.useState<{ current: string; total: string } | null>(null);
+
 	const [claimNotification, setClaimNotification] = React.useState<{
 		assetId: string;
 		message: string;
 	}>(null);
 
-	React.useEffect(() => {
-		toggleAudio();
-	}, []);
+	// TODO
+	// React.useEffect(() => {
+	// 	toggleAudio();
+	// }, []);
 
 	React.useEffect(() => {
 		(async function () {
@@ -131,6 +134,15 @@ export default function Campaign() {
 								return parseInt(a.index) - parseInt(b.index);
 							})
 					);
+
+					const claimsResponse = await readHandler({
+						processId: MAIN_PROCESS,
+						action: 'Get-Total-Claims',
+					});
+
+					if (claimsResponse && claimsResponse.CurrentClaims && claimsResponse.TotalSupply) {
+						setClaimsCount({ current: claimsResponse.CurrentClaims, total: claimsResponse.TotalSupply });
+					}
 				} catch (e) {
 					console.error(e);
 				}
@@ -493,6 +505,13 @@ export default function Campaign() {
 					<S.Header>
 						<img src={getTxEndpoint('D8YXt7eVLQq1v4eZhTQUmO2rfWmoH4vaiBrTFy0Bvtk')} alt={'Atomic Asset'} />
 						{subheader}
+						{claimsCount && currentView === 'Main' && (
+							<S.ClaimsWrapper>
+								<p>
+									{claimsCount.current} / {claimsCount.total} claims made
+								</p>
+							</S.ClaimsWrapper>
+						)}
 					</S.Header>
 					<S.Body>{body}</S.Body>
 					<S.ViewAction className={'fade-in'}>

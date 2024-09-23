@@ -110,7 +110,8 @@ export const ViewAction = styled.div`
 	button {
 		background: rgba(15, 15, 15, 1);
 		padding: 10px 20px;
-		border: 1px solid #7ec9bf;
+		border: 1px solid #fb493e;
+		box-shadow: 0 0 20px 1px #ff0f00;
 		border-radius: ${STYLING.dimensions.radius.alt2};
 		display: flex;
 		align-items: center;
@@ -119,7 +120,7 @@ export const ViewAction = styled.div`
 		transition: all 100ms;
 
 		span {
-			color: #7ec9bf;
+			color: #fb493e;
 			font-weight: ${(props) => props.theme.typography.weight.bold};
 			font-size: ${(props) => props.theme.typography.size.xLg};
 			font-family: 'Frank Ruhl Libre', serif;
@@ -134,6 +135,7 @@ export const ViewAction = styled.div`
 			cursor: default;
 			background: rgba(20, 20, 20, 1);
 			border: 1px solid #595959;
+			box-shadow: none;
 			span {
 				color: #595959;
 			}
@@ -449,7 +451,6 @@ export const MWrapper = styled.div<{ primaryAsset: boolean }>`
 		rgb(12, 36, 29),
 		rgb(13, 38, 28)
 	);
-	/* background: linear-gradient(180deg, rgb(0 11 14), rgb(4 24 22), rgb(0 3 4)); */
 	border: 1.5px solid #0f3226;
 	border-radius: ${STYLING.dimensions.radius.primary};
 	img {
@@ -579,6 +580,10 @@ export const BlockWrapper = styled.div`
 			border: 1px solid #444;
 		}
 	}
+`;
+
+export const ClaimsWrapper = styled(AssetTextWrapper)`
+	margin: 50px 0 0 0;
 `;
 
 export const BlockMessage = styled.div`
