@@ -19,7 +19,7 @@ export const Wrapper = styled.div`
 		rgb(13, 37, 36),
 		rgb(12, 36, 29),
 		rgb(13, 38, 28)
-	);
+	) !important;
 `;
 
 export const BackgroundWrapper = styled.div`
@@ -285,7 +285,6 @@ export const GridElementLink = styled.a`
 
 export const GridElementAction = styled.button`
 	width: calc(100% - 20px);
-	background: ${(props) => props.theme.colors.indicator.primary};
 	padding: 10px 20px;
 	border-radius: ${STYLING.dimensions.radius.primary};
 	background: linear-gradient(180deg, #80f154, #bbe948, #efe13e);
@@ -536,13 +535,12 @@ export const Footer = styled.div`
 	max-width: 90%;
 	background: rgba(10, 10, 10, 0.625);
 	backdrop-filter: blur(15px);
-	padding: 12.5px 25px;
+	padding: 20px;
 	border-radius: ${STYLING.dimensions.radius.primary};
 	display: flex;
 	flex-direction: column;
 	align-items: center;
 	justify-content: center;
-	gap: 30px;
 	margin: 40px 0 0 0;
 	position: relative;
 	z-index: 1;
@@ -554,7 +552,7 @@ export const Footer = styled.div`
 		font-size: ${(props) => props.theme.typography.size.base};
 		font-weight: ${(props) => props.theme.typography.weight.medium};
 		font-family: 'Frank Ruhl Libre', serif;
-		text-align: center;
+		text-align: left;
 	}
 `;
 

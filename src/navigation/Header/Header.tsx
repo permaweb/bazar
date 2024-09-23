@@ -51,7 +51,7 @@ export default function Header() {
 					</S.C1Wrapper>
 					<S.ActionsWrapper>
 						{locationProvider.country !== 'US' && (
-							<S.PAction className={'border-wrapper-alt2'}>
+							<S.PAction>
 								<Link to={URLS.quest}>
 									<ReactSVG src={ASSETS.star} />
 									<span>Omega Quest</span>

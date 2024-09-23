@@ -443,3 +443,154 @@ export const FullMessageWrapper = styled.div`
 		text-align: center;
 	}
 `;
+
+export const CampaignWrapper = styled.div`
+	width: 100%;
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	align-items: center;
+	position: relative;
+	overflow: hidden;
+	padding: 20px 20px 40px 20px;
+	background: linear-gradient(
+		180deg,
+		rgb(3, 22, 26),
+		rgb(4 20 24),
+		rgb(8 24 29),
+		rgb(6 28 27),
+		rgb(12, 36, 29),
+		rgb(13, 38, 28)
+	);
+	border: 1.5px solid #0f3226;
+	border-radius: ${STYLING.dimensions.radius.primary};
+	img {
+		height: 525px;
+		margin: 40px 0;
+		border: 1.5px solid #1fd014;
+		box-shadow: 0px 0px 10px 3.5px #5af650;
+	}
+
+	.content {
+		position: relative;
+		z-index: 1;
+		display: flex;
+		flex-direction: column;
+		justify-content: center;
+		align-items: center;
+	}
+`;
+
+export const CampaignSubheader = styled.div`
+	max-width: 90%;
+	background: rgba(10, 10, 10, 0.625);
+	backdrop-filter: blur(15px);
+	padding: 15px 20px;
+	border-radius: ${STYLING.dimensions.radius.primary};
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 30px;
+	margin: 20px 0 0 0;
+
+	p {
+		line-height: 1.5;
+		max-width: 800px;
+		color: #d8d6a7;
+		font-size: ${(props) => props.theme.typography.size.lg};
+		font-weight: ${(props) => props.theme.typography.weight.medium};
+		font-family: 'Frank Ruhl Libre', serif;
+		text-align: center;
+	}
+`;
+
+export const PrimaryAssetWrapper = styled.div`
+	position: relative;
+`;
+
+export const GridElementOverlay = styled.div`
+	height: 389.5px;
+	width: calc(100% - 24.5px);
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	position: absolute;
+	top: 12.5px;
+	left: 12.5px;
+	display: flex;
+	background: rgba(10, 10, 10, 0.75);
+	backdrop-filter: blur(7.5px);
+	border-radius: 2.5px;
+
+	svg {
+		height: 185px;
+		width: 185px;
+		margin: -50px 0 0 0;
+		color: #d7d7d2;
+		fill: #d7d7d2;
+	}
+`;
+
+export const PrimaryAssetOverlay = styled(GridElementOverlay)`
+	height: 525px;
+	width: 100%;
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	position: absolute;
+	top: 40px;
+	left: 0;
+	display: flex;
+	background: rgba(15, 15, 15, 0.55);
+	backdrop-filter: blur(2.5px);
+	border: 1px solid #585858;
+	border-radius: 0;
+
+	svg {
+		height: 250px;
+		width: 250px;
+		margin: -10px 0 0 0;
+	}
+`;
+
+export const CampaignAction = styled.div`
+	display: flex;
+	justify-content: center;
+	a {
+		width: calc(100% - 20px);
+		padding: 10px 20px;
+		border-radius: ${STYLING.dimensions.radius.primary};
+		background: linear-gradient(180deg, #80f154, #bbe948, #efe13e);
+		border: 1.5px solid #80f154;
+		box-shadow: 0 0 10px 2.5px #80f154;
+		display: flex;
+		justify-content: center;
+		align-items: center;
+		transition: all 175ms;
+		span {
+			color: #0d3f0a;
+			font-weight: ${(props) => props.theme.typography.weight.xBold};
+			font-size: ${(props) => props.theme.typography.size.xLg};
+			font-family: 'Frank Ruhl Libre', serif;
+		}
+
+		&:hover {
+			background: rgba(10, 10, 10, 0.65);
+			border: 1.5px solid #7ec9bf;
+			box-shadow: none;
+			span {
+				color: #7ec9bf;
+			}
+		}
+
+		&:disabled {
+			background: #666666;
+			box-shadow: none;
+			border: 1.5px solid #666666;
+			span {
+				color: ${(props) => props.theme.colors.font.light1};
+			}
+		}
+	}
+`;

@@ -144,6 +144,12 @@ export const PAction = styled.div`
 		display: flex;
 		align-items: center;
 		justify-content: center;
+		background: linear-gradient(180deg, #80f154, #bbe948, #efe13e);
+		border: 1px solid #80f154;
+		color: #0d3f0a;
+		font-weight: ${(props) => props.theme.typography.weight.xBold};
+		font-size: ${(props) => props.theme.typography.size.base};
+		font-family: 'Frank Ruhl Libre', serif;
 	}
 
 	svg {
@@ -154,7 +160,10 @@ export const PAction = styled.div`
 
 	&:hover {
 		a {
-			background: ${(props) => props.theme.colors.container.primary.active};
+			background: rgba(30, 30, 30, 1);
+			border: 1px solid #7ec9bf;
+			box-shadow: none;
+			color: #7ec9bf;
 		}
 	}
 

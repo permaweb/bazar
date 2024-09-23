@@ -30,14 +30,6 @@ type AssetStateType = {
 
 const MAIN_PROCESS = 'cbYlVU3oAM61A1BivJOQqtlzBZJ9CbA0LYckoS6CpMc';
 
-// TODO: Audio
-// TODO: Landing popup
-
-// TODO: Updates
-// Header action - Footer action
-// Disclaimer update
-// n / 5000 claimed
-
 function BlockMessage() {
 	return (
 		<S.BlockWrapper className={'fade-in'}>
@@ -46,6 +38,20 @@ function BlockMessage() {
 			</S.BlockMessage>
 			<Link to={URLS.base}>Go back</Link>
 		</S.BlockWrapper>
+	);
+}
+
+export function getCampaignBackground() {
+	return (
+		<S.BackgroundWrapper>
+			<img src={getTxEndpoint('-ueBro5_uMl5UJ_tFIt9O_I5Z5bLuQXpxqlG1rauwC4')} className={'floating-image img1'} />
+			<img src={getTxEndpoint('Ix-qFixf_h2h1GmI5q1LkXHo1hG_xi8bBTQXMIrve0Y')} className={'floating-image img2'} />
+			<img src={getTxEndpoint('UFV3MWracPP3RAo20chcI_ZckYE-KqFlho2pgsmTi8I')} className={'floating-image img3'} />
+			<img src={getTxEndpoint('BVe57ULkYp7dpfdLUoxA3QbZQyJlwD9RJYkMDxKfRtw')} className={'floating-image img4'} />
+			<img src={getTxEndpoint('-ueBro5_uMl5UJ_tFIt9O_I5Z5bLuQXpxqlG1rauwC4')} className={'floating-image img5'} />
+			<img src={getTxEndpoint('BVe57ULkYp7dpfdLUoxA3QbZQyJlwD9RJYkMDxKfRtw')} className={'floating-image img6'} />
+			<img src={getTxEndpoint('Ix-qFixf_h2h1GmI5q1LkXHo1hG_xi8bBTQXMIrve0Y')} className={'floating-image img7'} />
+		</S.BackgroundWrapper>
 	);
 }
 
@@ -69,38 +75,14 @@ export default function Campaign() {
 
 	const [audioPlaying, setAudioPlaying] = React.useState<boolean>(false);
 
-	// TODO
 	const [claimNotification, setClaimNotification] = React.useState<{
 		assetId: string;
 		message: string;
 	}>(null);
 
-	// const [claimNotification, setClaimNotification] = React.useState<{
-	// 	assetId: string;
-	// 	message: string;
-	// }>({
-	// 	assetId: 'WfpWTX4xtUHuVetbovo8CakI9Wtl8qgZ6ucBhDK24e0',
-	// 	message:
-	// 		'Fourteen days of tenacious loyalty culminate in this monumental moment. The heavens part as the Head of Omega DumDum descends, eyes ablaze with ancient wisdom and foresight. This final piece completes the sacred collection. Do you dare awaken the Omega?',
-	// });
-
-	// TODO
-	// React.useEffect(() => {
-	// 	toggleAudio();
-	// 	// // Optionally, listen for user interaction to play if autoplay failed
-	// 	// const handleUserInteraction = () => {
-	// 	// 	if (audioRef.current) {
-	// 	// 		audioRef.current.play();
-	// 	// 		setAudioPlaying(true);
-	// 	// 	}
-	// 	// };
-
-	// 	// window.addEventListener('click', handleUserInteraction);
-
-	// 	// return () => {
-	// 	// 	window.removeEventListener('click', handleUserInteraction);
-	// 	// };
-	// }, []);
+	React.useEffect(() => {
+		toggleAudio();
+	}, []);
 
 	React.useEffect(() => {
 		(async function () {
@@ -337,43 +319,8 @@ export default function Campaign() {
 	function getLoader() {
 		return (
 			<S.BodyLoading className={'fade-in'}>
-				<img src={'https://arweave.net/U0k8z-2EDScxE6PYcGbWBJP_7pBlwg1CALZ9-CjvOEY'} alt={'Atomic Asset'} />
+				<img src={getTxEndpoint('U0k8z-2EDScxE6PYcGbWBJP_7pBlwg1CALZ9-CjvOEY')} alt={'Atomic Asset'} />
 			</S.BodyLoading>
-		);
-	}
-
-	function getBackground() {
-		return (
-			<S.BackgroundWrapper>
-				<img
-					src={'https://arweave.net/-ueBro5_uMl5UJ_tFIt9O_I5Z5bLuQXpxqlG1rauwC4'}
-					className={'floating-image img1'}
-				/>
-				<img
-					src={'https://arweave.net/Ix-qFixf_h2h1GmI5q1LkXHo1hG_xi8bBTQXMIrve0Y'}
-					className={'floating-image img2'}
-				/>
-				<img
-					src={'https://arweave.net/UFV3MWracPP3RAo20chcI_ZckYE-KqFlho2pgsmTi8I'}
-					className={'floating-image img3'}
-				/>
-				<img
-					src={'https://arweave.net/BVe57ULkYp7dpfdLUoxA3QbZQyJlwD9RJYkMDxKfRtw'}
-					className={'floating-image img4'}
-				/>
-				<img
-					src={'https://arweave.net/-ueBro5_uMl5UJ_tFIt9O_I5Z5bLuQXpxqlG1rauwC4'}
-					className={'floating-image img5'}
-				/>
-				<img
-					src={'https://arweave.net/BVe57ULkYp7dpfdLUoxA3QbZQyJlwD9RJYkMDxKfRtw'}
-					className={'floating-image img6'}
-				/>
-				<img
-					src={'https://arweave.net/Ix-qFixf_h2h1GmI5q1LkXHo1hG_xi8bBTQXMIrve0Y'}
-					className={'floating-image img7'}
-				/>
-			</S.BackgroundWrapper>
 		);
 	}
 
@@ -390,7 +337,7 @@ export default function Campaign() {
 							claimed={asset.claimed}
 						>
 							{asset.claimed ? (
-								<Link to={`${URLS.asset}${asset.id}`}>
+								<Link to={`${URLS.asset}${asset.id}`} target={'_blank'}>
 									<img src={getTxEndpoint(asset.id)} alt={'Atomic Asset'} />
 								</Link>
 							) : (
@@ -444,8 +391,8 @@ export default function Campaign() {
 			<S.Subheader>
 				<p>
 					A tomb opens, and a legend stirs. Do you have what it takes to awaken The Omega One? Complete each quest
-					below, and claim all 5 pieces of the puzzle to summon the ultra rare Omega Dumdum. Only true Arweavers can
-					finish these tasks. Good luck.
+					below, and claim all 5 relics to summon the ultra rare Omega Dumdum. Only true Arweavers can finish these
+					tasks. Good luck.
 				</p>
 				<S.ProfileWrapper onClick={action} claimed={claimed}>
 					<S.ProfileIndicator claimed={claimed} />
@@ -470,7 +417,7 @@ export default function Campaign() {
 							<S.PrimaryAssetWrapper>
 								<S.PrimaryAsset claimable={primaryAsset.claimable} claimed={primaryAsset.claimed}>
 									{primaryAsset.claimed ? (
-										<Link to={`${URLS.asset}${primaryAsset.id}`}>
+										<Link to={`${URLS.asset}${primaryAsset.id}`} target={'_blank'}>
 											<img src={getTxEndpoint(primaryAsset.id)} alt={'Atomic Asset'} />
 										</Link>
 									) : (
@@ -521,7 +468,7 @@ export default function Campaign() {
 						<S.MActionWrapper>
 							<button onClick={() => setClaimNotification(null)}>Close</button>
 						</S.MActionWrapper>
-						{getBackground()}
+						{getCampaignBackground()}
 					</S.MWrapper>
 				</Modal>
 			);
@@ -540,7 +487,7 @@ export default function Campaign() {
 							<ReactSVG src={audioPlaying ? ASSETS.pause : ASSETS.play} />
 						</button>
 						<audio ref={audioRef} loop>
-							<source src={`https://arweave.net/YsDMcgdBS-L9d-t1LVd4m45GRZRjSHkiG1Qr6UT9pNw`} type="audio/wav" />
+							<source src={getTxEndpoint('YsDMcgdBS-L9d-t1LVd4m45GRZRjSHkiG1Qr6UT9pNw')} type="audio/wav" />
 							Your browser does not support the audio element.
 						</audio>
 					</S.AudioWrapper>
@@ -559,11 +506,21 @@ export default function Campaign() {
 					</S.ViewAction>
 					<S.Footer>
 						<p>
-							NOTE: Persons in the US cannot participate in AO bridging and are therefore not eligible for these prizes,
-							or for AO bridging rewards.
+							· New DAI deposits and updated wAR balances may take up to 1 hour to trigger eligibility for these atomic
+							assets.
+						</p>
+						<br />
+						<p>
+							· The 5 relics of Omega Dumdum are non transferable (soulbound). However, the final Omega Dumdum atomic
+							asset is transferable and can be traded on BazAR.
+						</p>
+						<br />
+						<p>
+							· Persons in the US cannot participate in AO bridging and are therefore not eligible for these prizes, or
+							for AO bridging rewards.
 						</p>
 					</S.Footer>
-					{getBackground()}
+					{getCampaignBackground()}
 				</S.Wrapper>
 				{showProfileManage && (
 					<Panel
