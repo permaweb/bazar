@@ -22,7 +22,7 @@ export const Container = styled.div<{
 	width: 650px;
 	max-width: ${(props) => (props.noHeader ? '100%' : '90vw')};
 	background: ${(props) => (props.noHeader ? 'transparent' : props.theme.colors.container.primary.background)};
-	border: 1px solid ${(props) => props.theme.colors.border.primary};
+	border: 1px solid ${(props) => (props.noHeader ? 'transparent' : props.theme.colors.border.primary)};
 	border-radius: ${STYLING.dimensions.radius.primary};
 	margin: 20px auto;
 `;
@@ -59,7 +59,7 @@ export const Close = styled.div`
 `;
 
 export const Body = styled.div`
-	max-height: calc(100dvh - 110px);
+	max-height: calc(100dvh - 40px);
 	width: 100%;
 	overflow-y: auto;
 	scrollbar-color: transparent transparent;

@@ -3,7 +3,7 @@ export const language = {
 		activity: `Activity`,
 		activeListings: `Active listings`,
 		activeSaleOrders: `Active Sale Orders`,
-		appUpdating: `BazAR is currently being updated. Please check back soon.`,
+		appError: `An error has occurred. Please check back soon.`,
 		arBridge: `Bridge AR for Wrapped AR`,
 		arSwap: `Swap AO Tokens`,
 		asset: `Asset`,

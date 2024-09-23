@@ -514,7 +514,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 					);
 				}
 
-				// TODO
 				let calculatedQuantity = currentOrderQuantity;
 				if (denomination && denomination > 1) {
 					calculatedQuantity = Number(currentOrderQuantity) * Number(denomination);

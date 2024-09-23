@@ -5,7 +5,7 @@ import { STYLING } from 'helpers/config';
 export const Wrapper = styled.div``;
 
 function getRangeColor(theme: DefaultTheme, invalid: boolean) {
-	return invalid ? theme.colors.warning.primary : theme.colors.indicator.active;
+	return invalid ? theme.colors.warning.primary : theme.colors.indicator.primary;
 }
 
 export const RangeBar = styled.input.attrs({ type: 'range' })<{

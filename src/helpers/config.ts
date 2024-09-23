@@ -34,10 +34,14 @@ import orders from 'assets/orders.svg';
 import othent from 'assets/othent.svg';
 import overview from 'assets/overview.svg';
 import paste from 'assets/paste.svg';
+import pause from 'assets/pause.svg';
 import pixl from 'assets/pixl.svg';
+import play from 'assets/play.svg';
 import provenance from 'assets/provenance.svg';
+import question from 'assets/question.svg';
 import renderer from 'assets/renderer.svg';
 import sell from 'assets/sell.svg';
+import star from 'assets/star.svg';
 import streak1 from 'assets/streak-1-7.svg';
 import streak2 from 'assets/streak-8-14.svg';
 import streak3 from 'assets/streak-15-29.svg';
@@ -143,10 +147,14 @@ export const ASSETS = {
 	othent,
 	overview,
 	paste,
+	pause,
 	pixl,
+	play,
 	provenance,
+	question,
 	renderer,
 	sell,
+	star,
 	swap,
 	transfer,
 	unsupported,
@@ -266,6 +274,7 @@ function createURLs() {
 		profileCollections: (address: string) => `${profile}${address}/collections/`,
 		profileListings: (address: string) => `${profile}${address}/listings/`,
 		profileActivity: (address: string) => `${profile}${address}/activity/`,
+		quest: `${base}quest/`,
 		notFound: `${base}404`,
 	};
 }
