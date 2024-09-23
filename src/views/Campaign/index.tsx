@@ -145,7 +145,6 @@ export default function Campaign() {
 			if (arProvider.profile && arProvider.profile.id) {
 				try {
 					await checkClaimStatus('Main', null);
-					// setFetching(false);
 				} catch (e) {
 					console.error(e);
 				}

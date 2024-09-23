@@ -385,14 +385,13 @@ export const AssetTextWrapper = styled.div`
 	flex-direction: column;
 	justify-content: center;
 	align-items: center;
-	background: rgb(4 24 22);
-	border: 1px solid rgb(7 83 65);
-	background-image: radial-gradient(circle, rgba(100, 100, 100, 0.215) 1px, transparent 1px);
-	background-size: 3px 3px;
+	background-image: url('https://arweave.net/2jAkUCqzksbN5YxwTeUM8WtMiZzV50Bsv3koyKDnNIc');
+	background-size: 100%;
+	background-repeat: no-repeat;
 	padding: 7.5px 40px 10px 40px;
 	border-radius: ${STYLING.dimensions.radius.alt2};
 	p {
-		color: #d4d4d4;
+		color: #3e0600;
 		font-size: 32px;
 		font-weight: 900;
 		font-family: 'Frank Ruhl Libre', serif;
@@ -400,7 +399,7 @@ export const AssetTextWrapper = styled.div`
 	}
 
 	span {
-		color: #c5c5c5;
+		color: #3e0600;
 		font-size: ${(props) => props.theme.typography.size.lg};
 		font-weight: 900;
 		font-family: 'Frank Ruhl Libre', serif;
@@ -450,7 +449,7 @@ export const MWrapper = styled.div<{ primaryAsset: boolean }>`
 		rgb(12, 36, 29),
 		rgb(13, 38, 28)
 	);
-	background: linear-gradient(180deg, rgb(0 11 14), rgb(4 24 22), rgb(0 3 4));
+	/* background: linear-gradient(180deg, rgb(0 11 14), rgb(4 24 22), rgb(0 3 4)); */
 	border: 1.5px solid #0f3226;
 	border-radius: ${STYLING.dimensions.radius.primary};
 	img {

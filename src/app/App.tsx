@@ -125,11 +125,14 @@ export default function App() {
 										<img src={getTxEndpoint('Nt58KmL01idgtiDU2BQFWZObEbejnhfFdVyfCEFkEdU')} />
 										<S.CampaignAction>
 											<Link to={URLS.quest} onClick={() => setShowCampaign(false)}>
-												<span>Join the quest</span>
+												<span>Enter Tomb</span>
 											</Link>
 										</S.CampaignAction>
 									</S.PrimaryAssetWrapper>
 								</div>
+								<S.MActionWrapper>
+									<button onClick={() => setShowCampaign(false)}>Close</button>
+								</S.MActionWrapper>
 								{getCampaignBackground()}
 							</S.CampaignWrapper>
 						</Modal>

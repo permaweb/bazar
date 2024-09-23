@@ -465,7 +465,7 @@ export const CampaignWrapper = styled.div`
 	border: 1.5px solid #0f3226;
 	border-radius: ${STYLING.dimensions.radius.primary};
 	img {
-		height: 525px;
+		height: 425px;
 		margin: 40px 0;
 		border: 1.5px solid #1fd014;
 		box-shadow: 0px 0px 10px 3.5px #5af650;
@@ -492,7 +492,7 @@ export const CampaignSubheader = styled.div`
 	align-items: center;
 	justify-content: center;
 	gap: 30px;
-	margin: 20px 0 0 0;
+	margin: 60px 0 0 0;
 
 	p {
 		line-height: 1.5;
@@ -507,6 +507,28 @@ export const CampaignSubheader = styled.div`
 
 export const PrimaryAssetWrapper = styled.div`
 	position: relative;
+`;
+
+export const MActionWrapper = styled.div`
+	position: absolute;
+	top: 20px;
+	right: 20px;
+	button {
+		font-size: ${(props) => props.theme.typography.size.xSmall};
+		font-weight: ${(props) => props.theme.typography.weight.xBold};
+		font-family: 'Frank Ruhl Libre', serif;
+		background: transparent;
+		border: 1px solid #c0c0c0;
+		color: #c0c0c0;
+		padding: 5px 10px;
+		border-radius: ${STYLING.dimensions.radius.alt2};
+		transition: all 175ms;
+		&:hover {
+			cursor: pointer;
+			color: #fff;
+			border: 1px solid #fff;
+		}
+	}
 `;
 
 export const GridElementOverlay = styled.div`
@@ -533,7 +555,7 @@ export const GridElementOverlay = styled.div`
 `;
 
 export const PrimaryAssetOverlay = styled(GridElementOverlay)`
-	height: 525px;
+	height: 425px;
 	width: 100%;
 	display: flex;
 	justify-content: center;
@@ -548,8 +570,8 @@ export const PrimaryAssetOverlay = styled(GridElementOverlay)`
 	border-radius: 0;
 
 	svg {
-		height: 250px;
-		width: 250px;
+		height: 200px;
+		width: 200px;
 		margin: -10px 0 0 0;
 	}
 `;
