@@ -513,6 +513,7 @@ export const MActionWrapper = styled.div`
 	position: absolute;
 	top: 20px;
 	right: 20px;
+	z-index: 1;
 	button {
 		font-size: ${(props) => props.theme.typography.size.xSmall};
 		font-weight: ${(props) => props.theme.typography.weight.xBold};
