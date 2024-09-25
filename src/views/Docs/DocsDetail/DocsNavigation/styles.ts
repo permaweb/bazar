@@ -21,9 +21,14 @@ export const NContent = styled.div`
 	width: 100%;
 	position: sticky;
 	z-index: 1;
-	top: 105px;
+	top: 85px;
 	overflow: auto;
-	margin: 10.5px 0 0 0;
+	margin: 10px 0 0 0;
+	background: ${(props) => props.theme.colors.container.alt3.background};
+	box-shadow: 0 1px 2px 0.5px ${(props) => props.theme.colors.shadow.primary};
+	border: 1px solid ${(props) => props.theme.colors.border.alt4};
+	border-radius: ${STYLING.dimensions.radius.primary};
+	padding: 15px 20px;
 	@media (max-width: ${STYLING.cutoffs.initial}) {
 		position: relative;
 		top: auto;

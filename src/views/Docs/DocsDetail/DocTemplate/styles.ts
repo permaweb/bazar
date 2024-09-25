@@ -25,9 +25,8 @@ export const Wrapper = styled.div<{ isView: boolean }>`
 		font-weight: ${(props) => props.theme.typography.weight.bold} !important;
 		font-family: ${(props) => props.theme.typography.family.alt1} !important;
 		color: ${(props) => props.theme.colors.font.primary} !important;
-		border-bottom: 1px solid ${(props) => props.theme.colors.border.alt4};
-		margin: 0 0 10px 0;
-		padding: 0 0 5px 0;
+		margin: 0 0 5px 0;
+		padding: 0 0 2.5px 0;
 	}
 
 	h3,

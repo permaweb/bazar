@@ -265,7 +265,7 @@ export const GlobalStyle = createGlobalStyle`
 	
 	#nprogress .bar {
 		background: ${(props) => props.theme.colors.loader.alt1} !important;
-		height: 3px !important;
+		height: 3.15px !important;
 
 		.peg {
 			box-shadow: none !important;

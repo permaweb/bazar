@@ -61,9 +61,8 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 		}
 	}
 
-	async function handleDropdownAction(callback?: () => void) {
+	function handleDropdownAction(callback?: () => void) {
 		if (callback) callback();
-		await new Promise((resolve) => setTimeout(resolve, 250));
 		setShowWalletDropdown(false);
 	}
 
