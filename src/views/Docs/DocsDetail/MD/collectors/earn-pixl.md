@@ -1,6 +1,6 @@
 ## How to earn PIXL
 
-PIXL is a rewards token for purchasing atomic assets on the Universal Content Marketplace. When users buy atomic assets via BazAR or any UCM platform, they become eligible to receive PIXL tokens. BazAR tracks buying streaks, which occur when users buy one or more atomic assets on consecutive days. After your first purchase, your streak begins. You need to wait 24 hours until you can extend your streak by making another purchase. After this waiting period, you have 24 hours to make another purchase, or your streak will be lost. The longer the streak, the more $PIXL you earn. User's reward share weight starts at one, and each additional day of the streak the $PIXL reward share increases by 0.1, with a maximum weight of 4 for a 30 day streak. Streaks reset back to 1 every 30 days. You can see your streak, clock, $PIXL holdings, and daily $PIXL rewards by clicking the flame icon in the top right of the page. See PIXL ownership [here](https://ao-bazar.arweave.net/#/asset/DM3FoZUq_yebASPhgd8pEIRIzDW6muXEhxz5-JwbZwo).
+PIXL is a rewards token for purchasing atomic assets on the Universal Content Marketplace. When users buy atomic assets via Bazar or any UCM platform, they become eligible to receive PIXL tokens. Bazar tracks buying streaks, which occur when users buy one or more atomic assets on consecutive days. After your first purchase, your streak begins. You need to wait 24 hours until you can extend your streak by making another purchase. After this waiting period, you have 24 hours to make another purchase, or your streak will be lost. The longer the streak, the more $PIXL you earn. User's reward share weight starts at one, and each additional day of the streak the $PIXL reward share increases by 0.1, with a maximum weight of 4 for a 30 day streak. Streaks reset back to 1 every 30 days. You can see your streak, clock, $PIXL holdings, and daily $PIXL rewards by clicking the flame icon in the top right of the page. See PIXL ownership [here](https://ao-bazar.arweave.net/#/asset/DM3FoZUq_yebASPhgd8pEIRIzDW6muXEhxz5-JwbZwo).
 
 #### PIXL Tokenomics
 
@@ -30,7 +30,7 @@ PIXL is a rewards token for purchasing atomic assets on the Universal Content Ma
 
 ###### Fee Collection and Burn Mechanism
 
-- UCM Fee: A 0.5% fee is collected for using the contract. **BazAR takes no fee.**
+- UCM Fee: A 0.5% fee is collected for using the contract. **Bazar takes no fee.**
 
 - If $wAR token is involved: The contract uses the fee to purchase $PIXL from available orders. If no “Sell” orders exist, the contract initiates a “Buy” order via a reverse Dutch auction.
 

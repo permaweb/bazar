@@ -1,34 +1,42 @@
 ## How to fund your account
 
-To engage in transactions on BazAR, you need Wrapped AR (wAR). You can obtain wAR by either bridging AR onto AO or swapping other AO tokens for wAR. Here’s how to do it:
+The Wrapped AR (wAR) token is the currency used on Bazar. This guide will walk you through how to purchase AR and bridge it to AO as wAR for use on Bazar and other permaweb applications.
 
-#### 1. Create a BazAR profile process
+#### Bridge AR onto AO (AR → wAR)
 
-Before you can send tokens to BazAR, ensure you have a BazAR profile process. If you don’t have one, you can create it [here](#).
+If you hold AR, you can bridge it onto AO using [AOX](https://aox.arweave.net/#/). The bridged funds will be sent to your Arweave wallet and be accessible from your Bazar profile.
 
-#### 2. Bridge AR onto AO (AR → wAR)
+#### wAR Depot: Swap USDC/ETH for wAR
 
-If you hold AR, you can bridge it onto AO using [AOX](https://aox.arweave.net/#/).
+You can swap USDC or ETH for wAR by using the [Wrapped AR Depot](https://wardepot.arweave.net/). Here’s how:
 
-Follow these steps:
+1. Sign in with your Ethereum wallet.
+2. Input amount of USDC or ETH to swap.
+3. Input the receiving Arweave wallet.
+4. Confirm swap and sign transactions.
 
-1. Bridge your AR onto AO, converting it to wAR.
-2. After bridging, you will be prompted to send your wAR to your BazAR profile process.
-3. Confirm the transaction.
-4. Your wAR balance will now appear in the profile sidebar.
+###### **Note: You must sign 3 transactions to complete this process. It will take about 30 minutes for funds to arrive in your wallet.**
 
-#### 3. Swap AO tokens for wAR
+#### Purchase AR tokens via ArConnect
 
-You can swap AO tokens such as CRED, TRUNK, and others for wAR on [ArSwap](https://arswap.org/swap). Here’s how:
+ArConnect released an easy to use process to purchase AR tokens directly in the Arconnect wallet with [Transak](https://transak.com/). This process is the simplest but may require you to complete KYC (Know Your Customer) steps depending on your location and the amount of AR tokens you want to buy.
 
-1. Swap your AO tokens for wAR.
-2. After swapping, you will be prompted to send your wAR to your BazAR profile process.
-3. Confirm the transaction.
-4. Your wAR balance will now appear in the profile sidebar.
+1. Open your ArConnect wallet.
+2. Click the “Buy AR” button on the ArConnect dashboard.
+3. Enter the amount of AR tokens you want to purchase, the currency you’ll use for payment, and your payment method.
+4. Follow any additional steps in Transak’s interface to complete the transaction.
 
-#### 4. How to purchase $AR
+###### **Note: This process may require you to complete KYC (Know Your Customer) steps depending on your location and the amount of AR tokens you want to buy.**
 
-You can buy $AR directly in your [ArConnect](https://www.arconnect.io/) wallet, on cryptocurrency exchanges, or swap it with other cryptocurrencies using [Permaswap](https://app.permaswap.network/). Here are some popular exchanges to buy AR:
+#### Purchase AR tokens with on-ramp services
+
+On-ramp services offer another simple way to purchase AR tokens. Most services accept multiple currencies and allow purchases with debit/credit cards, wire transfers, or other local payment methods. On-ramp services that support AR tokens include:
+
+- [Onramper](https://onramper.com/).
+
+#### Purchase AR tokens with centralized exchanges
+
+AR tokens are also available on centralized exchanges. Popular exchanges to purchase AR include:
 
 - [Crypto.com](https://crypto.com/price/arweave)
 - [Binance](https://www.binance.com/en/price/arweave)
@@ -36,6 +44,4 @@ You can buy $AR directly in your [ArConnect](https://www.arconnect.io/) wallet, 
 - [Uphold](https://uphold.com/assets/crypto/buy-arweave)
 - [WazirX](https://wazirx.com/exchange/AR-INR)
 
-Once you purchase $AR, send it to your Arweave wallet, and then bridge it onto ao to obtain wAR.
-
-**Please note: This is not financial advice. Please conduct your own research.**
+###### **Note: Not all on-ramp services or exchanges are supported in every country. Always check whether your country supports the exchange or on-ramp service. This is not financial advice. Please conduct your own research.**

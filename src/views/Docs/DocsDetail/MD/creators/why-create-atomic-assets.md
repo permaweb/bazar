@@ -10,7 +10,7 @@ Your digital creations can live forever on Arweave’s permaweb. You no longer h
 
 ###### Atomic assets are fully onchain
 
-Many NFT marketplaces handle transactions onchain, but the art itself often lives on centralized servers. In this case, you do not truly own the digital content. On BazAR, you will see that the full asset (content and metadata) lives fully onchain in one transaction.
+Many NFT marketplaces handle transactions onchain, but the art itself often lives on centralized servers. In this case, you do not truly own the digital content. On Bazar, you will see that the full asset (content and metadata) lives fully onchain in one transaction.
 
 ###### You can leave a lasting digital impact
 
@@ -28,4 +28,4 @@ Creators can also set the terms for how their content can be used with the Unive
 
 ###### Conclusion
 
-Atomic assets on Arweave are about building a fairer and freer internet where creators own and control their content. By creating with BazAR, you're contributing to a decentralized ecosystem where creators are empowered to monetize their creativity on their own terms, free from the constraints of traditional platforms and advertisers. So, why wait? [Create atomic assets](https://helix.arweave.net/) and join us in shaping the future of digital ownership and expression.
+Atomic assets on Arweave are about building a fairer and freer internet where creators own and control their content. By creating with Bazar, you're contributing to a decentralized ecosystem where creators are empowered to monetize their creativity on their own terms, free from the constraints of traditional platforms and advertisers. So, why wait? [Create atomic assets](https://helix.arweave.net/) and join us in shaping the future of digital ownership and expression.
