@@ -216,7 +216,7 @@ export default function Banner() {
 		<>
 			{!updateApplied && (
 				<S.Wrapper>
-					{/* <button onClick={() => setShowInfo(true)}>Welcome to AO BazAR!</button> */}
+					{/* <button onClick={() => setShowInfo(true)}>Welcome to AO Bazar!</button> */}
 					{!updateApplied && <button onClick={() => setShowUpdate(true)}>Update your profile</button>}
 				</S.Wrapper>
 			)}
@@ -250,22 +250,22 @@ export default function Banner() {
 				</Modal>
 			)}
 			{showInfo && (
-				<Modal header={'AO BazAR'} handleClose={() => setShowInfo(false)}>
+				<Modal header={'AO Bazar'} handleClose={() => setShowInfo(false)}>
 					<S.MWrapper className={'modal-wrapper'}>
 						<p>
-							<b>Welcome to AO BazAR!</b>
+							<b>Welcome to AO Bazar!</b>
 							<br />
 							<br />
-							<b>A notable change in AO BazAR is the addition of the permaweb profile process.</b>
+							<b>A notable change in AO Bazar is the addition of the permaweb profile process.</b>
 							<br />
 							<br />
-							To buy and sell assets in AO BazAR and upload through Helix you must create a permaweb profile.
+							To buy and sell assets in AO Bazar and upload through Helix you must create a permaweb profile.
 							<br />
 							<br />
 							<b>How to create a permaweb profile</b>
 							<br />
 							<br />
-							<b>Connect your Arweave wallet</b> - When you enter BazAR, the first step is to connect your Arweave
+							<b>Connect your Arweave wallet</b> - When you enter Bazar, the first step is to connect your Arweave
 							wallet.
 							<br />
 							<br />

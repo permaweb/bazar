@@ -1,6 +1,6 @@
 ## Universal Data License (UDL)
 
-The Universal Data License defines the terms and conditions for using media assets on the permaweb. The UDL establishes a framework for licensing digital media such as images, videos, audio, graphics and more. Instead of platforms setting the terms and conditions, on the permaweb creators define how their media can be utilized. On the asset page under the header "Asset Rights" you will find the license that is imbedded in that specifc asset. Since BazAR is in its "early" release, not all UDL parameters are currently supported. Stay tuned for more updates related to UDL capabilites on BazAR.
+The Universal Data License defines the terms and conditions for using media assets on the permaweb. The UDL establishes a framework for licensing digital media such as images, videos, audio, graphics and more. Instead of platforms setting the terms and conditions, on the permaweb creators define how their media can be utilized. On the asset page under the header "Asset Rights" you will find the license that is imbedded in that specifc asset. Since Bazar is in its "early" release, not all UDL parameters are currently supported. Stay tuned for more updates related to UDL capabilites on Bazar.
 
 #### UDL parameters explained:
 

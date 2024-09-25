@@ -2,9 +2,9 @@
 
 Creating atomic assets may seem daunting at first, but once you understand a few basic tools and concepts, you'll be well on your way to becoming a permaweb pro. Here are a few tips to keep in mind when creating on the permaweb.
 
-#### 1. Set up your permaweb profile
+#### 1. Set up your Bazar profile
 
-Just like on web2 social media, you wouldn’t want to share content from an incomplete profile. The same applies to the permaweb. When you create your permaweb profile, you can set your name, @username, bio, profile picture, and banner image. Learn more about how to create a permaweb profile [here](https://ao-bazar.arweave.net/#/docs/permaweb-profile).
+Just like on web2 social media, you wouldn’t want to share content from an incomplete profile. The same applies to the permaweb. When you create your Bazar profile, you can set your name, @username, bio, profile picture, and banner image. Learn more about how to create a permaweb profile [here](https://ao-bazar.arweave.net/#/docs/permaweb-profile).
 
 #### 2. Decide if you are creating a collection or single uploads
 
@@ -37,6 +37,4 @@ Before uploading, it is important that the order, name, description, fractionali
 
 #### 5. Upload and share with the permaweb community
 
-After uploading your atomic asset, it’s time to share it with the permaweb community. Tag [@OurBazAR](https://x.com/OurBazAR) in posts on X with your newly created atomic asset!
-
-You can also check out other permaweb social platforms to share your work, such as [Typr](https://www.typr.day/#/).
+After uploading your atomic asset, it’s time to share it with the permaweb community. Tag [@OurBazAR](https://x.com/OurBazAR) in posts on X with your newly created atomic asset! Also don't forget to share your newly created atomic asset in the Bazar micro-community in the Weaver's [Discord](https://discord.gg/weavers).
