@@ -16,6 +16,6 @@ AO is a hyper parallel computing system built on the Arweave network, offering a
 
 #### Summary
 
-BazAR, now built on AO, introduces a new paradigm to digital content marketplaces. Leveraging the AO hyper parallel computing system, BazAR establishes a trustless environment for trading digital assets on Arweave's permanent data layer. With BazAR on AO, transactions are executed by trustless smart contracts, enabling secure and transparent asset trading.
+Bazar, now built on AO, introduces a new paradigm to digital content marketplaces. Leveraging the AO hyper parallel computing system, Bazar establishes a trustless environment for trading digital assets on Arweave's permanent data layer. With Bazar on AO, transactions are executed by trustless smart contracts, enabling secure and transparent asset trading.
 
-Additionally, BazAR profiles are now AO processes, providing enhanced security and flexibility in asset ownership. As BazAR integrates into the growing AO ecosystem, it opens up new possibilities for decentralized applications and creative projects. Get ready to explore the future of digital content with BazAR on AO.
+Additionally, Bazar profiles are now AO processes, providing enhanced security and flexibility in asset ownership. As Bazar integrates into the growing AO ecosystem, it opens up new possibilities for decentralized applications and creative projects. Get ready to explore the future of digital content with Bazar on AO.

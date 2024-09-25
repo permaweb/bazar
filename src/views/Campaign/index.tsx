@@ -529,7 +529,7 @@ export default function Campaign() {
 						<br />
 						<p>
 							· The 5 relics of Omega Dumdum are non transferable (soulbound). However, the final Omega Dumdum atomic
-							asset is transferable and can be traded on BazAR.
+							asset is transferable and can be traded on Bazar.
 						</p>
 						<br />
 						<p>

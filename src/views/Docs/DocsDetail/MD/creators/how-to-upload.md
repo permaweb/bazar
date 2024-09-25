@@ -4,7 +4,7 @@ Bazar is a user interface for the UCM protocol, allowing for various ways to upl
 
 #### Upload with Helix
 
-[Helix](https://helix.arweave.net/#/) is an easy-to-use atomic asset uploader. All content uploaded through Helix is stored on Arweave and is tradeable on BazAR.
+[Helix](https://helix.arweave.net/#/) is an easy-to-use atomic asset uploader. All content uploaded through Helix is stored on Arweave and is tradeable on Bazar.
 
 Content can be uploaded as single atomic assets or within a full collection. Atomic assets can also be 1-1 or a fractionalized token.
 
