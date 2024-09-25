@@ -61,9 +61,14 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 		}
 	}
 
+	async function handleDropdownAction(callback?: () => void) {
+		if (callback) callback();
+		await new Promise((resolve) => setTimeout(resolve, 250));
+		setShowWalletDropdown(false);
+	}
+
 	function handleProfileAction() {
 		if (arProvider.profile && arProvider.profile.id) {
-			setShowWalletDropdown(false);
 			navigate(URLS.profileAssets(arProvider.profile.id));
 		} else {
 			setShowProfileManage(true);
@@ -110,11 +115,11 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 						<Avatar
 							owner={arProvider.profile}
 							dimensions={{ wrapper: 35, icon: 21.5 }}
-							callback={handleProfileAction}
+							callback={() => handleDropdownAction(handleProfileAction)}
 						/>
 						<S.DHeader>
-							<p onClick={handleProfileAction}>{label}</p>
-							<span onClick={handleProfileAction}>
+							<p onClick={() => handleDropdownAction(handleProfileAction)}>{label}</p>
+							<span onClick={() => handleDropdownAction(handleProfileAction)}>
 								{formatAddress(
 									arProvider.profile && arProvider.profile.id ? arProvider.profile.id : arProvider.walletAddress,
 									false
@@ -136,7 +141,7 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 										<CurrencyLine
 											amount={getTotalTokenBalance(arProvider.tokenBalances[token])}
 											currency={token}
-											callback={() => setShowWalletDropdown(false)}
+											callback={() => handleDropdownAction(() => setShowWalletDropdown(false))}
 											useReverseLayout
 										/>
 										{tokenLinks[token] && (
@@ -144,7 +149,7 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 												<Link
 													to={tokenLinks[token].link}
 													target={tokenLinks[token].target}
-													onClick={() => setShowWalletDropdown(false)}
+													onClick={() => handleDropdownAction(() => setShowWalletDropdown(false))}
 												>
 													<span>{tokenLinks[token].label}</span>
 												</Link>
@@ -157,19 +162,21 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 					)}
 				</S.DBalancesWrapper>
 				<S.DBodyWrapper>
-					<li onClick={() => setShowWalletDropdown(false)}>
+					<li onClick={() => handleDropdownAction()}>
 						<Link to={`${URLS.asset}${AO.defaultToken}`}>
 							<ReactSVG src={ASSETS.activity} />
 							{`${language.transferWar}`}
 						</Link>
 					</li>
-					<li onClick={() => window.open(REDIRECTS.aox)}>
-						<ReactSVG src={ASSETS.bridge} />
-						{`${language.arBridge}`}
+					<li onClick={() => handleDropdownAction()}>
+						<Link to={REDIRECTS.aox} target={'_blank'}>
+							<ReactSVG src={ASSETS.bridge} />
+							{`${language.arBridge}`}
+						</Link>
 					</li>
 				</S.DBodyWrapper>
 				<S.DBodyWrapper>
-					<li onClick={handleProfileAction}>
+					<li onClick={() => handleDropdownAction(handleProfileAction)}>
 						{arProvider.profile && arProvider.profile.id ? (
 							<>
 								<ReactSVG src={ASSETS.user} />
@@ -184,7 +191,7 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 					</li>
 					{arProvider.profile && arProvider.profile.id && (
 						<>
-							<li onClick={() => setShowProfileManage(true)}>
+							<li onClick={() => handleDropdownAction(() => setShowProfileManage(true))}>
 								<ReactSVG src={ASSETS.edit} />
 								{language.editProfile}
 							</li>
@@ -239,7 +246,12 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 			<S.Wrapper>
 				{getHeader()}
 				{showWalletDropdown && (
-					<Panel open={showWalletDropdown} header={label} handleClose={() => setShowWalletDropdown(false)} width={375}>
+					<Panel
+						open={showWalletDropdown}
+						header={language.profileMenu}
+						handleClose={() => setShowWalletDropdown(false)}
+						width={375}
+					>
 						{getDropdown()}
 					</Panel>
 				)}

@@ -258,12 +258,21 @@ export const GlobalStyle = createGlobalStyle`
 			fill: ${(props) => props.theme.colors.font.primary};
     }
   }
-
-	.fade-in {
+	
+   .fade-in {
 		animation: ${open} ${fadeIn1};
 	}
+	
+	#nprogress .bar {
+		background: ${(props) => props.theme.colors.loader.alt1} !important;
+		height: 3px !important;
 
-  .scroll-wrapper {
+		.peg {
+			box-shadow: none !important;
+		}
+	}
+
+	.scroll-wrapper {
     overflow: auto;
     
     scrollbar-color: transparent transparent;

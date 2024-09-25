@@ -101,6 +101,7 @@ export const language = {
 		profileCreated: `Profile created`,
 		profileUpdated: `Profile updated`,
 		profileCreatingInfo: `Creating profile`,
+		profileMenu: `Profile menu`,
 		provenanceDetails: `Provenance Details`,
 		quantity: `Quantity`,
 		recentActivity: `Recent Activity`,

@@ -108,7 +108,7 @@ export const theme = (currentTheme: any): DefaultTheme => ({
 		button: {
 			primary: {
 				background: currentTheme.neutral2,
-				border: currentTheme.neutral3,
+				border: currentTheme.neutral2,
 				color: currentTheme.neutralA1,
 				active: {
 					background: currentTheme.neutral3,
@@ -261,6 +261,7 @@ export const theme = (currentTheme: any): DefaultTheme => ({
 		},
 		loader: {
 			primary: currentTheme.primary2,
+			alt1: currentTheme.primary1,
 		},
 		overlay: {
 			primary: currentTheme.overlay1,

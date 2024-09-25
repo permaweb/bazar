@@ -76,8 +76,8 @@ export const AssetGridDataActionWrapper = styled.div`
 	button {
 		background: ${(props) => props.theme.colors.button.primary.background};
 		border: 1px solid ${(props) => props.theme.colors.button.primary.border};
-		padding: 2.5px 7.5px;
-		border-radius: ${STYLING.dimensions.radius.alt2};
+		padding: 2.5px 10.5px 2.5px 10.5px;
+		border-radius: 36px;
 		&:hover {
 			background: ${(props) => props.theme.colors.button.primary.active.background};
 			border: 1px solid ${(props) => props.theme.colors.button.primary.active.border};

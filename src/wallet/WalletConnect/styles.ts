@@ -18,14 +18,6 @@ export const PWrapper = styled.div`
 export const CAction = styled.div`
 	margin: 0 15px 0 0;
 
-	button {
-		span {
-			font-family: ${(props) => props.theme.typography.family.alt1};
-			font-size: ${(props) => props.theme.typography.size.small};
-			font-weight: ${(props) => props.theme.typography.weight.bold};
-		}
-	}
-
 	@media (max-width: ${STYLING.cutoffs.initial}) {
 		display: none;
 	}
@@ -88,7 +80,7 @@ export const DHeader = styled.div`
 	p {
 		color: ${(props) => props.theme.colors.font.primary};
 		font-family: ${(props) => props.theme.typography.family.alt1};
-		font-size: ${(props) => props.theme.typography.size.small};
+		font-size: ${(props) => props.theme.typography.size.base};
 		font-weight: ${(props) => props.theme.typography.weight.bold};
 		&:hover {
 			color: ${(props) => props.theme.colors.font.alt1};
@@ -117,7 +109,7 @@ export const DBodyWrapper = styled.ul`
 	border-bottom: 1px solid ${(props) => props.theme.colors.border.alt4};
 	li {
 		text-align: center;
-		height: 38.5px;
+		height: 40.5px;
 		display: flex;
 		align-items: center;
 		cursor: pointer;
