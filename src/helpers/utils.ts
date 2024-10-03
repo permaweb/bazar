@@ -43,7 +43,7 @@ export function formatCount(count: string): string {
 
 		// Find the position of the last non-zero digit within the first 6 decimal places
 		let index = 0;
-		for (let i = 0; i < Math.min(parts[1].length, 6); i++) {
+		for (let i = 0; i < Math.min(parts[1].length, 12); i++) {
 			if (parts[1][i] !== '0') {
 				index = i + 1;
 			}

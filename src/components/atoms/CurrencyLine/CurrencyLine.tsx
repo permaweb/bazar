@@ -25,7 +25,9 @@ export default function CurrencyLine(props: IProps) {
 			currenciesReducer[currency].Denomination > 1
 		) {
 			const denomination = currenciesReducer[currency].Denomination;
-			return `${formatCount((amount / Math.pow(10, denomination)).toString())}`;
+			const factor = Math.pow(10, denomination);
+			const formattedAmount: string = (Math.round(amount) / factor).toFixed(denomination);
+			return formatCount(formattedAmount);
 		}
 		return `${language.fetching}...`;
 	}
