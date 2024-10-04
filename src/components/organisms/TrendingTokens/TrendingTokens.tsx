@@ -20,13 +20,15 @@ export default function TrendingTokens() {
 	React.useEffect(() => {
 		(async function () {
 			let responses = [];
+
+			const tokenProcesses = Object.keys(REFORMATTED_ASSETS);
+			tokenProcesses.pop();
+
 			const cachedTokens = localStorage.getItem('trendingTokens');
 
-			if (cachedTokens) {
+			if (cachedTokens && JSON.parse(cachedTokens).length === tokenProcesses.length) {
 				responses = JSON.parse(cachedTokens);
 			} else {
-				const tokenProcesses = Object.keys(REFORMATTED_ASSETS);
-				tokenProcesses.pop();
 				for (const tokenProcess of tokenProcesses) {
 					const tokenResponse = await readHandler({
 						processId: tokenProcess,

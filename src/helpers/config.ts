@@ -87,7 +87,7 @@ export const REFORMATTED_ASSETS = {
 		logo: 'wfI-5PlYXL66_BqquCXm7kq-ic1keu0b2CqRjw82yrU',
 		denomination: 6,
 	},
-	['OT9qTE2467gcozb2g8R6D6N3nQS94ENcaAIJfUzHCww']: {
+	['wOrb8b_V8QixWyXZub48Ki5B6OIDyf_p1ngoonsaRpQ']: {
 		title: 'TRUNK',
 		logo: 'hqg-Em9DdYHYmMysyVi8LuTGF8IF_F7ZacgjYiSpj0k',
 		denomination: 3,
