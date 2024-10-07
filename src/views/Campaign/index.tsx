@@ -76,6 +76,7 @@ export default function Campaign() {
 	const [audioPlaying, setAudioPlaying] = React.useState<boolean>(false);
 
 	const [claimsCount, setClaimsCount] = React.useState<{ current: string; total: string } | null>(null);
+	const [toggleClaimCheck, setToggleClaimCheck] = React.useState<boolean>(false);
 
 	const [claimNotification, setClaimNotification] = React.useState<{
 		assetId: string;
@@ -179,6 +180,7 @@ export default function Campaign() {
 			if (currentView && arProvider.walletAddress && arProvider.profile && arProvider.profile.id) {
 				switch (currentView) {
 					case 'SubSet':
+						setFetching(true);
 						try {
 							const response = await readHandler({
 								processId: 'ptCu-Un-3FF8sZ5zNMYg43zRgSYAGVkjz2Lb0HZmx2M',
@@ -196,7 +198,7 @@ export default function Campaign() {
 				}
 			}
 		})();
-	}, [currentView, arProvider.walletAddress, arProvider.profile]);
+	}, [currentView, arProvider.walletAddress, arProvider.profile, toggleClaimCheck]);
 
 	async function checkClaimStatus(type: 'SubSet' | 'Main', userAddress: string | null) {
 		const ids = type === 'SubSet' && assets && assets.length > 0 ? assets.map((asset) => asset.id) : [MAIN_PROCESS];
@@ -521,6 +523,16 @@ export default function Campaign() {
 							<span>{currentView === 'SubSet' ? 'Summon the Omega One' : 'Back to relics'}</span>
 						</button>
 					</S.ViewAction>
+					{currentView === 'SubSet' && (
+						<S.SyncAction className={'fade-in'}>
+							<button
+								onClick={() => setToggleClaimCheck(!toggleClaimCheck)}
+								disabled={!assets || fetching || !arProvider.walletAddress}
+							>
+								<span>{fetching ? 'Checking claims...' : 'Run claim checks'}</span>
+							</button>
+						</S.SyncAction>
+					)}
 					<S.Footer>
 						<p>
 							· New DAI deposits and updated wAR balances may take up to 1 hour to trigger eligibility for these atomic

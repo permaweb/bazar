@@ -143,6 +143,41 @@ export const ViewAction = styled.div`
 	}
 `;
 
+export const SyncAction = styled(ViewAction)`
+	margin: 30px 0 0 0;
+
+	button {
+		background: rgba(10, 10, 10, 0.65);
+		padding: 10px 20px;
+		border: 1px solid #7ec9bf;
+		box-shadow: none;
+		border-radius: ${STYLING.dimensions.radius.alt2};
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 15px;
+		pointer-events: auto;
+		transition: all 100ms;
+
+		span {
+			color: #7ec9bf;
+			font-weight: ${(props) => props.theme.typography.weight.bold};
+			font-size: ${(props) => props.theme.typography.size.lg};
+			font-family: 'Frank Ruhl Libre', serif;
+		}
+
+		&:hover {
+			cursor: pointer;
+			background: rgba(30, 30, 30, 0.65);
+		}
+
+		&:disabled {
+			cursor: default;
+			pointer-events: none;
+		}
+	}
+`;
+
 export const Subheader = styled.div`
 	max-width: 90%;
 	background: rgba(10, 10, 10, 0.625);
