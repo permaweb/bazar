@@ -83,8 +83,12 @@ export const docsOrder = [
 			},
 		],
 	},
-	// {
-	// 	name: 'For developers',
-	// 	path: 'developers',
-	// },
+	{
+		name: 'Contact',
+		path: 'contact',
+	},
 ];
+// {
+// 	name: 'For developers',
+// 	path: 'developers',
+// },
