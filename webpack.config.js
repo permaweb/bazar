@@ -21,12 +21,12 @@ const nonProductionAddresses = {
 	MODULE: 'Pq2Zftrqut0hdisH_MC2pDOT6S4eQFoxGsFUzR6r350',
 	SCHEDULER: '_GQ33BkPtZrqxA84vM8Zk-N2aO0toNNu_C-l-rawrBA',
 	DEFAULT_TOKEN: 'xU9zFkq3X2ZQ6olwNVvr1vUWIjc3kXTWr7xKQD6dh10',
-	UCM: 'qtDwylCwyhhsGPKIYAi2Ao342mdhvFUPqdbDOudzaiM',
-	UCM_ACTIVITY: 'GC9M776w8UEZVkvAGcLqhrH10uumkbQUYrnIo1AiWHo',
-	PIXL: 'DM3FoZUq_yebASPhgd8pEIRIzDW6muXEhxz5-JwbZwo',
-	PROFILE_REGISTRY: 'jndJ0phxOaJJU6CHZVX7zo2Wl5vI2KQ1z4i3VnV4DrM',
+	UCM: 'rQYLK3Dzqhl-t6_BRqZ7yMLZmtvLKxkyIUQlzW8xAXg',
+	UCM_ACTIVITY: 'eUj59vBoDOZZBM-o-iqaF30C4bRGOu98EtHGoSI9qRo',
+	PIXL: 'ClWRL89d8J7-QbqkkDDref760IvgjoMuETMnJx8tjyo',
+	PROFILE_REGISTRY: 'SNy4m-DrqxWl01YqGM4sxI8qCni-58re8uuJLvZPypY',
 	PROFILE_SRC: '9Tpz5_ZT4RRkF-6JUTdaaTMg0ARfkNuuM5zahXyCqZ4',
-	COLLECTIONS_REGISTRY: 'q0QVp2rPXOuqIj6mbRObaC-HMweexSv1Y_Nm9_t1brc',
+	COLLECTIONS_REGISTRY: 'b2qdh4bPKoAx9oVY1j1ozd6tS6r4UW_bEj_8SwnlTL8',
 };
 
 const env = process.env.NODE_ENV || 'development';
