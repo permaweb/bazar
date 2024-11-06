@@ -47,5 +47,5 @@ export async function getVouch(args: { address: string; wallet: any }): Promise<
 		}
 	}
 
-	return { score, isVouched: score >= 2 };
+	return { score, isVouched: score >= 5 };
 }
