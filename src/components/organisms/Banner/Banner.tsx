@@ -157,7 +157,7 @@ export default function Banner() {
 	React.useEffect(() => {
 		(async function () {
 			if (arProvider.vouch) {
-				if (!arProvider.vouch.isVouched || true) {
+				if (!arProvider.vouch.isVouched) {
 					setShowVouch(true);
 				}
 			}
@@ -167,7 +167,7 @@ export default function Banner() {
 	React.useEffect(() => {
 		(async function () {
 			if (arProvider.vouch) {
-				if (!arProvider.vouch.isVouched || true) {
+				if (!arProvider.vouch.isVouched) {
 					if (!localStorage.getItem('vouchAlert')) {
 						setShowVouchAlert(true);
 						localStorage.setItem('vouchAlert', 'true');
