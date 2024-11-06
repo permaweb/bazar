@@ -248,3 +248,5 @@ export type NotificationType = {
 export type AssetViewType = 'trading' | 'reading';
 
 export type StreakType = { address: string; days: number; lastHeight: number; profile: RegistryProfileType | null };
+
+export type VouchType = { score: number; isVouched: boolean };
