@@ -339,3 +339,7 @@ export const UPLOAD_CONFIG = {
 	chunkSize: 7500000,
 	dispatchUploadSize: 100 * 1024,
 };
+
+export const FLAGS = {
+	MAINTENANCE: true,
+};

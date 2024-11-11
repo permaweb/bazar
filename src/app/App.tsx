@@ -8,7 +8,7 @@ import { readHandler } from 'api';
 import { Loader } from 'components/atoms/Loader';
 import { Modal } from 'components/molecules/Modal';
 import { Banner } from 'components/organisms/Banner';
-import { AO, ASSETS, DOM, URLS } from 'helpers/config';
+import { AO, ASSETS, DOM, FLAGS, URLS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import { Footer } from 'navigation/footer';
 import { Header } from 'navigation/Header';
@@ -101,7 +101,7 @@ export default function App() {
 			<div id={DOM.loader} />
 			<div id={DOM.notification} />
 			<div id={DOM.overlay} />
-			{ucmReducer ? (
+			{ucmReducer && !FLAGS.MAINTENANCE ? (
 				<Suspense fallback={<Loader />}>
 					<S.AppWrapper>
 						<Banner />
@@ -138,6 +138,11 @@ export default function App() {
 						</Modal>
 					)}
 				</Suspense>
+			) : FLAGS.MAINTENANCE ? (
+				<div className={'app-loader'}>
+					<ReactSVG src={ASSETS.logo} />
+					<div>Bazar is currently offline for maintenance and will return shortly</div>
+				</div>
 			) : (
 				<div className={'app-loader'}>
 					<ReactSVG src={ASSETS.logo} />
