@@ -342,5 +342,5 @@ export const UPLOAD_CONFIG = {
 };
 
 export const FLAGS = {
-	MAINTENANCE: true,
+	MAINTENANCE: false,
 };
