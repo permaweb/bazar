@@ -53,7 +53,7 @@ export async function getVouch(args: { address: string; wallet: any }): Promise<
 		}
 	}
 
-	const result = { score, isVouched: score >= 5 };
-	localStorage.setItem(cacheKey, JSON.stringify(result));
-	return result;
+	const r = { score, isVouched: score >= 5 };
+	localStorage.setItem(cacheKey, JSON.stringify(r));
+	return r;
 }
