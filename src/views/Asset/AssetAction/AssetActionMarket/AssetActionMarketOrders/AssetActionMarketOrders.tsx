@@ -931,7 +931,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 								{!arProvider.vouch ||
 									(!arProvider.vouch.isVouched && (
 										<S.MessageWrapper>
-											<span>User is not vouched</span>
+											<span>You are not vouched</span>
 										</S.MessageWrapper>
 									))}
 							</S.ActionWrapper>

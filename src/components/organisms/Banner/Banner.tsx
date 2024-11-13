@@ -287,7 +287,7 @@ export default function Banner() {
 							<Button type={'warning'} label={'Cancel'} handlePress={() => setShowVouchAlert(false)} height={45} />
 							<Button
 								type={'alt1'}
-								label={'Go to vouch'}
+								label={'Get vouched'}
 								handlePress={() => window.open('https://vouch-portal.arweave.net/#/', '_blank')}
 								height={45}
 							/>
