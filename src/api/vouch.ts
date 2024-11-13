@@ -18,7 +18,9 @@ export async function getVouch(args: { address: string; wallet: any }): Promise<
 	const cacheKey = `vouch_${args.address}`;
 	const cachedResult = localStorage.getItem(cacheKey);
 	if (cachedResult) {
-		return JSON.parse(cachedResult);
+		if (JSON.parse(cachedResult).score >= 5) {
+			return JSON.parse(cachedResult);
+		}
 	}
 
 	const messageId = await message({
