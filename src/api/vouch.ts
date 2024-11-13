@@ -15,6 +15,12 @@ const VOUCHER_WHITELIST = {
 };
 
 export async function getVouch(args: { address: string; wallet: any }): Promise<VouchType> {
+	const cacheKey = `vouch_${args.address}`;
+	const cachedResult = localStorage.getItem(cacheKey);
+	if (cachedResult) {
+		return JSON.parse(cachedResult);
+	}
+
 	const messageId = await message({
 		process: AO.vouch,
 		signer: createDataItemSigner(args.wallet),
@@ -47,5 +53,7 @@ export async function getVouch(args: { address: string; wallet: any }): Promise<
 		}
 	}
 
-	return { score, isVouched: score >= 5 };
+	const result = { score, isVouched: score >= 5 };
+	localStorage.setItem(cacheKey, JSON.stringify(result));
+	return result;
 }
