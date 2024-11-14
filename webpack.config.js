@@ -15,18 +15,20 @@ const productionAddresses = {
 	PROFILE_REGISTRY: 'SNy4m-DrqxWl01YqGM4sxI8qCni-58re8uuJLvZPypY',
 	PROFILE_SRC: '_R2XYWDPUXVvQrQKFaQRvDTDcDwnQNbqlTd_qvCRSpQ',
 	COLLECTIONS_REGISTRY: 'TFWDmf8a3_nw43GCm_CuYlYoylHAjCcFGbgHfDaGcsg',
+	VOUCH: 'ZTTO02BL2P-lseTLUgiIPD9d0CF1sc4LbMA2AQ7e9jo',
 };
 
 const nonProductionAddresses = {
 	MODULE: 'Pq2Zftrqut0hdisH_MC2pDOT6S4eQFoxGsFUzR6r350',
 	SCHEDULER: '_GQ33BkPtZrqxA84vM8Zk-N2aO0toNNu_C-l-rawrBA',
 	DEFAULT_TOKEN: 'xU9zFkq3X2ZQ6olwNVvr1vUWIjc3kXTWr7xKQD6dh10',
-	UCM: 'qtDwylCwyhhsGPKIYAi2Ao342mdhvFUPqdbDOudzaiM',
-	UCM_ACTIVITY: 'GC9M776w8UEZVkvAGcLqhrH10uumkbQUYrnIo1AiWHo',
-	PIXL: 'DM3FoZUq_yebASPhgd8pEIRIzDW6muXEhxz5-JwbZwo',
-	PROFILE_REGISTRY: 'jndJ0phxOaJJU6CHZVX7zo2Wl5vI2KQ1z4i3VnV4DrM',
+	UCM: 'CDxd81DDaJvpzxoyhXn-dVnZhYIFQEKU8FeUHdktFgQ',
+	UCM_ACTIVITY: 'W45ki8vJ0TcsxZAGZIbGj3k38595TA0HfZwCOaqhOa0',
+	PIXL: 'ae90qGO7Q9cg7ieJTBwW6TNO28mrDgcrgQD0_obEBbM',
+	PROFILE_REGISTRY: 'SNy4m-DrqxWl01YqGM4sxI8qCni-58re8uuJLvZPypY',
 	PROFILE_SRC: '9Tpz5_ZT4RRkF-6JUTdaaTMg0ARfkNuuM5zahXyCqZ4',
-	COLLECTIONS_REGISTRY: 'q0QVp2rPXOuqIj6mbRObaC-HMweexSv1Y_Nm9_t1brc',
+	COLLECTIONS_REGISTRY: '1oBtIRAmhLVJFABGKYlhcsACjyh36ahSJ-4lJEuvgzA',
+	VOUCH: 'ZTTO02BL2P-lseTLUgiIPD9d0CF1sc4LbMA2AQ7e9jo',
 };
 
 const env = process.env.NODE_ENV || 'development';
@@ -177,6 +179,7 @@ module.exports = {
 			'process.env.PROFILE_REGISTRY': JSON.stringify(addresses.PROFILE_REGISTRY),
 			'process.env.PROFILE_SRC': JSON.stringify(addresses.PROFILE_SRC),
 			'process.env.COLLECTIONS_REGISTRY': JSON.stringify(addresses.COLLECTIONS_REGISTRY),
+			'process.env.VOUCH': JSON.stringify(addresses.VOUCH),
 		}),
 	],
 	resolve: {

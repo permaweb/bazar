@@ -106,6 +106,8 @@ export default function Banner() {
 
 	const [showInfo, setShowInfo] = React.useState<boolean>(false);
 	const [showUpdate, setShowUpdate] = React.useState<boolean>(false);
+	const [showVouch, setShowVouch] = React.useState<boolean>(false);
+	const [showVouchAlert, setShowVouchAlert] = React.useState<boolean>(false);
 
 	const [updateApplied, setUpdateApplied] = React.useState<boolean>(true);
 
@@ -151,6 +153,29 @@ export default function Banner() {
 			}
 		})();
 	}, [arProvider.walletAddress, arProvider.profile]);
+
+	React.useEffect(() => {
+		(async function () {
+			if (arProvider.vouch) {
+				if (!arProvider.vouch.isVouched) {
+					setShowVouch(true);
+				}
+			}
+		})();
+	}, [arProvider.vouch, arProvider.walletAddress]);
+
+	React.useEffect(() => {
+		(async function () {
+			if (arProvider.vouch) {
+				if (!arProvider.vouch.isVouched) {
+					if (!localStorage.getItem('vouchAlert')) {
+						setShowVouchAlert(true);
+						localStorage.setItem('vouchAlert', 'true');
+					}
+				}
+			}
+		})();
+	}, [arProvider.vouch, arProvider.walletAddress, showVouch]);
 
 	async function handleUpdate() {
 		if (arProvider.wallet && arProvider.profile && arProvider.profile.id) {
@@ -243,6 +268,27 @@ export default function Banner() {
 								handlePress={handleUpdate}
 								disabled={loading || processed}
 								loading={loading}
+								height={45}
+							/>
+						</S.ActionsWrapper>
+					</S.MWrapper>
+				</Modal>
+			)}
+			{showVouch && (
+				<S.Wrapper>
+					<button onClick={() => window.open('https://vouch-portal.arweave.net/#/', '_blank')}>Get vouched</button>
+				</S.Wrapper>
+			)}
+			{showVouch && showVouchAlert && (
+				<Modal header={'You are not vouched!'} handleClose={() => setShowVouchAlert(false)}>
+					<S.MWrapper className={'modal-wrapper'}>
+						<p>Bazar requires users to be vouched in order to earn PIXL and maintain their streaks.</p>
+						<S.ActionsWrapper>
+							<Button type={'warning'} label={'Cancel'} handlePress={() => setShowVouchAlert(false)} height={45} />
+							<Button
+								type={'alt1'}
+								label={'Get vouched'}
+								handlePress={() => window.open('https://vouch-portal.arweave.net/#/', '_blank')}
 								height={45}
 							/>
 						</S.ActionsWrapper>

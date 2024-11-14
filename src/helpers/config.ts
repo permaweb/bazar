@@ -69,6 +69,7 @@ export const AO = {
 	collectionsRegistry: process.env.COLLECTIONS_REGISTRY,
 	profileRegistry: process.env.PROFILE_REGISTRY,
 	profileSrc: process.env.PROFILE_SRC,
+	vouch: process.env.VOUCH,
 };
 
 export const REFORMATTED_ASSETS = {

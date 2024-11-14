@@ -2,12 +2,12 @@ import React from 'react';
 import { connect } from '@othent/kms';
 import * as Othent from '@othent/kms';
 
-import { getProfileByWalletAddress, readHandler } from 'api';
+import { getProfileByWalletAddress, getVouch, readHandler } from 'api';
 
 import { Modal } from 'components/molecules/Modal';
 import { AO, AR_WALLETS, REDIRECTS, WALLET_PERMISSIONS } from 'helpers/config';
 import { getARBalanceEndpoint } from 'helpers/endpoints';
-import { ProfileHeaderType, WalletEnum } from 'helpers/types';
+import { ProfileHeaderType, VouchType, WalletEnum } from 'helpers/types';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 
 import * as S from './styles';
@@ -28,6 +28,7 @@ interface ArweaveContextState {
 	profile: ProfileHeaderType;
 	toggleProfileUpdate: boolean;
 	setToggleProfileUpdate: (toggleUpdate: boolean) => void;
+	vouch: VouchType;
 }
 
 interface ArweaveProviderProps {
@@ -50,6 +51,7 @@ const DEFAULT_CONTEXT = {
 	profile: null,
 	toggleProfileUpdate: false,
 	setToggleProfileUpdate(_toggleUpdate: boolean) {},
+	vouch: null,
 };
 
 const ARContext = React.createContext<ArweaveContextState>(DEFAULT_CONTEXT);
@@ -93,6 +95,7 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 	const [walletType, setWalletType] = React.useState<WalletEnum | null>(null);
 	const [walletModalVisible, setWalletModalVisible] = React.useState<boolean>(false);
 	const [walletAddress, setWalletAddress] = React.useState<string | null>(null);
+	const [vouch, setVouch] = React.useState<VouchType | null>(null);
 
 	const [arBalance, setArBalance] = React.useState<number | null>(null);
 	const [tokenBalances, setTokenBalances] = React.useState<{
@@ -235,6 +238,21 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 		}
 	}, [profile, toggleTokenBalanceUpdate]);
 
+	React.useEffect(() => {
+		if (walletAddress && profile && profile.id) {
+			const fetchVouch = async () => {
+				try {
+					const vouch = await getVouch({ wallet, address: walletAddress });
+					setVouch(vouch);
+				} catch (e) {
+					console.error(e);
+				}
+			};
+
+			fetchVouch();
+		}
+	}, [walletAddress, profile]);
+
 	async function handleWallet() {
 		if (localStorage.getItem('walletType')) {
 			try {
@@ -333,6 +351,7 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 					profile,
 					toggleProfileUpdate,
 					setToggleProfileUpdate,
+					vouch,
 				}}
 			>
 				{props.children}
