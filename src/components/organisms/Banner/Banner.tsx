@@ -162,7 +162,7 @@ export default function Banner() {
 				}
 			}
 		})();
-	}, [arProvider.vouch]);
+	}, [arProvider.vouch, arProvider.walletAddress]);
 
 	React.useEffect(() => {
 		(async function () {
@@ -175,7 +175,7 @@ export default function Banner() {
 				}
 			}
 		})();
-	}, [arProvider.vouch, showVouch]);
+	}, [arProvider.vouch, arProvider.walletAddress, showVouch]);
 
 	async function handleUpdate() {
 		if (arProvider.wallet && arProvider.profile && arProvider.profile.id) {
@@ -282,7 +282,7 @@ export default function Banner() {
 			{showVouch && showVouchAlert && (
 				<Modal header={'You are not vouched!'} handleClose={() => setShowVouchAlert(false)}>
 					<S.MWrapper className={'modal-wrapper'}>
-						<p>Bazar requires users to be vouched in order to earn Pixl and maintain their Streaks.</p>
+						<p>Bazar requires users to be vouched in order to earn PIXL and maintain their streaks.</p>
 						<S.ActionsWrapper>
 							<Button type={'warning'} label={'Cancel'} handlePress={() => setShowVouchAlert(false)} height={45} />
 							<Button

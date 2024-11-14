@@ -117,7 +117,17 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 							callback={() => handleDropdownAction(handleProfileAction)}
 						/>
 						<S.DHeader>
-							<p onClick={() => handleDropdownAction(handleProfileAction)}>{label}</p>
+							<S.DNameWrapper>
+								<p onClick={() => handleDropdownAction(handleProfileAction)}>{label}</p>
+								{arProvider.vouch?.isVouched && (
+									<div id={'vouch-check'}>
+										<ReactSVG src={ASSETS.checkmark} />
+										<S.Tooltip className={'info-text'} useBottom={true}>
+											<span>{'You are vouched'}</span>
+										</S.Tooltip>
+									</div>
+								)}
+							</S.DNameWrapper>
 							<span onClick={() => handleDropdownAction(handleProfileAction)}>
 								{formatAddress(
 									arProvider.profile && arProvider.profile.id ? arProvider.profile.id : arProvider.walletAddress,

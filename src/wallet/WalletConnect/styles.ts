@@ -75,9 +75,55 @@ export const DHeaderFlex = styled.div`
 	align-items: center;
 `;
 
+export const Tooltip = styled.div<{ useBottom: boolean }>`
+	position: absolute;
+	top: ${(props) => (props.useBottom ? 'auto' : '-25px')};
+	bottom: ${(props) => (props.useBottom ? '-25px' : 'auto')};
+	left: 50%;
+	transform: translate(-50%, 0);
+	z-index: 1;
+	display: none;
+	span {
+		display: block;
+		line-height: 1.65;
+	}
+`;
+
+export const DNameWrapper = styled.div`
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	position: relative;
+
+	#vouch-check {
+		height: 17.5px;
+		width: 17.5px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		position: relative;
+		background: ${(props) => props.theme.colors.indicator.primary};
+		border-radius: 50%;
+
+		svg {
+			height: 10.5px;
+			width: 10.5px;
+			color: ${(props) => props.theme.colors.font.light1};
+			fill: ${(props) => props.theme.colors.font.light1};
+		}
+
+		&:hover {
+			${Tooltip} {
+				display: block;
+			}
+		}
+	}
+`;
+
 export const DHeader = styled.div`
 	margin: 0 0 0 10px;
 	p {
+		position: relative;
 		color: ${(props) => props.theme.colors.font.primary};
 		font-family: ${(props) => props.theme.typography.family.alt1};
 		font-size: ${(props) => props.theme.typography.size.base};
