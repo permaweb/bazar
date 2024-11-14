@@ -248,16 +248,6 @@ export const ConfirmationMessage = styled.div`
 		font-family: ${(props) => props.theme.typography.family.alt1};
 		font-weight: ${(props) => props.theme.typography.weight.bold};
 		color: ${(props) => props.theme.colors.font.primary};
-		a {
-			color: ${(props) => props.theme.colors.link.primary};
-			text-decoration: underline;
-			font-weight: ${(props) => props.theme.typography.weight.medium};
-			transition: color 0.3s;
-
-			&:hover {
-				color: ${(props) => props.theme.colors.link.hover};
-			}
-		}
 	}
 `;
 

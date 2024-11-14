@@ -79,7 +79,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 	const [orderSuccess, setOrderSuccess] = React.useState<boolean>(false);
 	const [showConfirmation, setShowConfirmation] = React.useState<boolean>(false);
 	const [currentNotification, setCurrentNotification] = React.useState<string | null>(null);
-	const [currentNotificationLink, setCurrentNotificationLink] = React.useState<string | null>(null);
 	const [insufficientBalance, setInsufficientBalance] = React.useState<boolean>(false);
 
 	React.useEffect(() => {
@@ -276,14 +275,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 				try {
 					setCurrentNotification(initialMessage);
 
-					if (!arProvider.vouch.isVouched) {
-						setCurrentNotification('You must be vouched to place orders in the UCM, you can get vouched ');
-						setCurrentNotificationLink('https://vouch-portal.arweave.net/#/');
-						setOrderLoading(false);
-						setOrderProcessed(true);
-						return;
-					}
-
 					let processId: string;
 					let profileBalance: bigint = BigInt(0);
 					let walletBalance: bigint = BigInt(0);
@@ -387,7 +378,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 			setUnitPrice(0);
 			setTransferRecipient('');
 			setCurrentNotification(null);
-			setCurrentNotificationLink(null);
 			setOrderProcessed(false);
 			setShowConfirmation(false);
 			setUpdating(true);
@@ -466,7 +456,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 		setUnitPrice(0);
 		setTransferRecipient('');
 		setCurrentNotification(null);
-		setCurrentNotificationLink(null);
 		windowUtils.scrollTo(0, 0, 'smooth');
 	}
 
@@ -582,7 +571,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 			return true;
 		if (props.type === 'transfer' && (!transferRecipient || !checkValidAddress(transferRecipient))) return true;
 		if (insufficientBalance) return true;
-		if (!arProvider.vouch || !arProvider.vouch.isVouched) return true;
 		return false;
 	}
 
@@ -780,13 +768,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 					<S.ConfirmationMessage>
 						<p>
 							{currentNotification ? currentNotification : orderLoading ? 'Processing...' : language.reviewOrderDetails}
-							{currentNotification && currentNotificationLink ? (
-								<a href={currentNotificationLink} target={'blank'}>
-									here
-								</a>
-							) : (
-								''
-							)}
 						</p>
 					</S.ConfirmationMessage>
 				</S.ConfirmationWrapper>
@@ -928,12 +909,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 										<span>This asset cannot be transferred</span>
 									</S.MessageWrapper>
 								)}
-								{!arProvider.vouch ||
-									(!arProvider.vouch.isVouched && (
-										<S.MessageWrapper>
-											<span>You are not vouched</span>
-										</S.MessageWrapper>
-									))}
 							</S.ActionWrapper>
 						</S.FieldsWrapper>
 					</S.FieldsFlexWrapper>
