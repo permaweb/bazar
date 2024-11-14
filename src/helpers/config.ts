@@ -41,6 +41,10 @@ import provenance from 'assets/provenance.svg';
 import question from 'assets/question.svg';
 import renderer from 'assets/renderer.svg';
 import sell from 'assets/sell.svg';
+import defaultStampSVG from 'assets/stamp-default.svg';
+import superStampSVG from 'assets/stamp-super.svg';
+import vouchedStampSVG from 'assets/stamp-vouched.svg';
+import stampsSVG from 'assets/stamps.svg';
 import star from 'assets/star.svg';
 import streak1 from 'assets/streak-1-7.svg';
 import streak2 from 'assets/streak-8-14.svg';
@@ -56,6 +60,13 @@ import view from 'assets/view.svg';
 import wallet from 'assets/wallet.svg';
 import x from 'assets/x.svg';
 import zen from 'assets/zen.svg';
+
+const stamps = stampsSVG;
+const stamp = {
+	default: defaultStampSVG,
+	super: superStampSVG,
+	vouched: vouchedStampSVG,
+};
 
 import { SelectOptionType, WalletEnum } from './types';
 
@@ -159,6 +170,8 @@ export const ASSETS = {
 	swap,
 	transfer,
 	unsupported,
+	stamps,
+	stamp,
 	streak1,
 	streak2,
 	streak3,
@@ -202,6 +215,8 @@ export const STYLING = {
 			height: '32.5px',
 			width: 'fit-content',
 		},
+		borderRadiusField: '5px',
+		borderRadiusWrapper: '10px',
 		form: {
 			small: '45px',
 			max: '47.5px',

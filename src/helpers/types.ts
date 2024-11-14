@@ -250,3 +250,5 @@ export type AssetViewType = 'trading' | 'reading';
 export type StreakType = { address: string; days: number; lastHeight: number; profile: RegistryProfileType | null };
 
 export type VouchType = { score: number; isVouched: boolean };
+
+export type ResponseType = { status: boolean; message: string | null };

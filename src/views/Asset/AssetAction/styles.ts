@@ -34,6 +34,12 @@ export const HeaderTitle = styled.div`
 	}
 `;
 
+export const HeaderTitleActions = styled.div`
+	display: flex;
+	align-items: center;
+	gap: 20px;
+`;
+
 export const OwnerLinesWrapper = styled.div`
 	display: flex;
 	flex-wrap: wrap;

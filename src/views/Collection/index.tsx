@@ -10,6 +10,7 @@ import { OwnerLine } from 'components/molecules/OwnerLine';
 import { URLTabs } from 'components/molecules/URLTabs';
 import { ActivityTable } from 'components/organisms/ActivityTable';
 import { AssetsTable } from 'components/organisms/AssetsTable';
+import { StampWidget } from 'components/organisms/StampWidget';
 import { ASSETS, DEFAULTS, PAGINATORS, URLS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import { CollectionDetailType } from 'helpers/types';
@@ -118,6 +119,9 @@ export default function Collection() {
 						className={'border-wrapper-alt2'}
 					>
 						<S.OverlayWrapper />
+						<S.StampWidgetWrapper>
+							<StampWidget assetId={collection.id} title={collection.title} />
+						</S.StampWidgetWrapper>
 						<S.InfoWrapper>
 							<S.Thumbnail>
 								<img src={getTxEndpoint(collection.thumbnail || DEFAULTS.thumbnail)} alt={'Thumbnail'} />

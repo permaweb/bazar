@@ -26,6 +26,13 @@ export const CardWrapper = styled.div<{ backgroundImage: string }>`
 	}
 `;
 
+export const StampWidgetWrapper = styled.div`
+	position: absolute;
+	top: 20px;
+	right: 20px;
+	z-index: 2;
+`;
+
 export const OverlayWrapper = styled.div`
 	height: 100%;
 	width: 100%;
