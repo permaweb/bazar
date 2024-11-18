@@ -7,6 +7,7 @@ import {
 	OrderbookEntryType,
 	OwnerType,
 	RegistryProfileType,
+	StampsType,
 } from './types';
 
 declare const InstallTrigger: any;
@@ -259,7 +260,11 @@ export function sortByAssetOrders(assets: AssetDetailType[], sortType: AssetSort
 	return [...assetsWithOrders, ...assetsWithoutOrders];
 }
 
-export function sortOrderbookEntries(entries: OrderbookEntryType[], sortType: AssetSortType): OrderbookEntryType[] {
+export function sortOrderbookEntries(
+	entries: OrderbookEntryType[],
+	sortType: AssetSortType,
+	stamps: StampsType
+): OrderbookEntryType[] {
 	const getSortKey = (entry: OrderbookEntryType): number => {
 		if (!entry.Orders || entry.Orders.length === 0) return Infinity;
 		return Number(entry.Orders[0].Price);
@@ -268,6 +273,11 @@ export function sortOrderbookEntries(entries: OrderbookEntryType[], sortType: As
 	const getDateKey = (entry: OrderbookEntryType): number => {
 		if (!entry.Orders || entry.Orders.length === 0) return 0;
 		return new Date(entry.Orders[0].DateCreated).getTime();
+	};
+
+	const getStampKey = (entry: OrderbookEntryType): number => {
+		if (!entry.Pair || entry.Pair.length === 0) return 0;
+		return stamps[entry.Pair[0]].total || 0;
 	};
 
 	let direction: number;
@@ -282,6 +292,9 @@ export function sortOrderbookEntries(entries: OrderbookEntryType[], sortType: As
 		case 'recently-listed':
 			direction = -1;
 			break;
+		case 'stamps':
+			direction = -1;
+			break;
 		default:
 			direction = 1;
 	}
@@ -292,6 +305,8 @@ export function sortOrderbookEntries(entries: OrderbookEntryType[], sortType: As
 	entriesWithOrders.sort((a, b) => {
 		if (sortType === 'recently-listed') {
 			return direction * (getDateKey(b) - getDateKey(a));
+		} else if (sortType === 'stamps') {
+			return direction * (getStampKey(b) - getStampKey(a));
 		} else {
 			return direction * (getSortKey(a) - getSortKey(b));
 		}

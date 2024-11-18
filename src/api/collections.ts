@@ -79,11 +79,12 @@ export async function getCollectionById(args: { id: string }): Promise<Collectio
 function getFloorPrice(assetIds: string[]): number {
 	if (store.getState().ucmReducer) {
 		const ucmReducer = store.getState().ucmReducer;
+		const stampsReducer = store.getState().stampsReducer;
 		if (ucmReducer.Orderbook && ucmReducer.Orderbook.length) {
 			const filteredEntries: OrderbookEntryType[] = ucmReducer.Orderbook.filter((entry: OrderbookEntryType) =>
 				assetIds.includes(entry.Pair[0])
 			);
-			const sortedEntries: OrderbookEntryType[] = sortOrderbookEntries(filteredEntries, 'low-to-high');
+			const sortedEntries: OrderbookEntryType[] = sortOrderbookEntries(filteredEntries, 'low-to-high', stampsReducer);
 			if (sortedEntries && sortedEntries.length) {
 				const currentEntry = sortedEntries[0];
 				if (currentEntry.Orders && currentEntry.Orders.length && currentEntry.Orders[0].Price) {
@@ -112,11 +113,12 @@ function getPercentageListed(assetIds: string[]): number {
 function getDefaultCurrency(assetIds: string[]): string {
 	if (store.getState().ucmReducer) {
 		const ucmReducer = store.getState().ucmReducer;
+		const stampsReducer = store.getState().stampsReducer;
 		if (ucmReducer.Orderbook && ucmReducer.Orderbook.length) {
 			const filteredEntries: OrderbookEntryType[] = ucmReducer.Orderbook.filter((entry: OrderbookEntryType) =>
 				assetIds.includes(entry.Pair[0])
 			);
-			const sortedEntries: OrderbookEntryType[] = sortOrderbookEntries(filteredEntries, 'low-to-high');
+			const sortedEntries: OrderbookEntryType[] = sortOrderbookEntries(filteredEntries, 'low-to-high', stampsReducer);
 			if (sortedEntries && sortedEntries.length) {
 				const currentEntry = sortedEntries[0];
 				return currentEntry.Pair[1];

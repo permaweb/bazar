@@ -230,7 +230,7 @@ export type ValidationType = {
 	message: string | null;
 };
 
-export type AssetSortType = 'high-to-low' | 'low-to-high' | 'recently-listed';
+export type AssetSortType = 'high-to-low' | 'low-to-high' | 'recently-listed' | 'stamps';
 
 export type IdGroupType = { [index: string]: string[] };
 
@@ -252,3 +252,5 @@ export type StreakType = { address: string; days: number; lastHeight: number; pr
 export type VouchType = { score: number; isVouched: boolean };
 
 export type ResponseType = { status: boolean; message: string | null };
+
+export type StampsType = Record<string, { total: number; vouched: number }>;

@@ -212,7 +212,6 @@ export default function AssetsTable(props: IProps) {
 						status: 'success',
 					});
 				} else {
-					console.log(updateResponse);
 					setProfileResponse({
 						message: language.errorUpdatingProfile,
 						status: 'warning',

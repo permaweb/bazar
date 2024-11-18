@@ -240,6 +240,7 @@ export function getAssetIdGroups(args: {
 }): IdGroupType {
 	if (store.getState().ucmReducer) {
 		const ucmReducer = store.getState().ucmReducer;
+		const stampsReducer = store.getState().stampsReducer;
 		const idGroup: any = {};
 		const groupCount: number = args.groupCount || PAGINATORS.default;
 
@@ -263,7 +264,7 @@ export function getAssetIdGroups(args: {
 				);
 			}
 
-			const sortedOrderbook = sortOrderbookEntries(currentOrderbook, args.sortType);
+			const sortedOrderbook = sortOrderbookEntries(currentOrderbook, args.sortType, stampsReducer);
 
 			for (let i = 0, j = 0; i < sortedOrderbook.length; i += groupCount, j++) {
 				idGroup[j] = sortedOrderbook.slice(i, i + groupCount).map((entry: OrderbookEntryType) => entry.Pair[0]);
