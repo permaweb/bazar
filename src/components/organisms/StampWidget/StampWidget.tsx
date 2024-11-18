@@ -181,7 +181,16 @@ export default function StampWidget(props: IProps) {
 				if (props.assetId) {
 					setDisabled(true);
 
-					const stamp: any = await stamps.stamp(props.assetId, amount ? amount : 0, [{ name: '', value: '' }]);
+					let stamp: any;
+					try {
+						stamp = await stamps.stamp(props.assetId);
+					} catch (e: any) {
+						console.log(e);
+						return;
+					}
+
+					console.log(stamp);
+
 					let stampSuccess = stamp && stamp.bundlrResponse && stamp.bundlrResponse.id;
 					if (!stampSuccess) {
 						stampSuccess = stamp && stamp.id;
@@ -245,71 +254,73 @@ export default function StampWidget(props: IProps) {
 			)}
 			{showModal && (
 				<Modal header={props.title} handleClose={() => handleModalClose()}>
-					<S.DetailLine>
-						<span>{`${language.stampCount}:`}</span>
-						<p>{count ? count.total.toString() : '0'}</p>
-					</S.DetailLine>
-					<S.DetailLine>
-						<span>{`${language.stampsVouched}:`}</span>
-						<p>{count ? count.vouched.toString() : '0'}</p>
-					</S.DetailLine>
-					{arProvider.walletAddress ? (
-						<S.FlexActions>
-							<Button
-								type={'primary'}
-								label={language.stamp}
-								handlePress={(e: any) => {
-									e.preventDefault();
-									handleStamp();
-								}}
-								disabled={disabled || initLoadingDisabled}
-								icon={ASSETS.stamps}
-							/>
-							<Button
-								type={'primary'}
-								label={language.superStamp}
-								handlePress={(e: any) => {
-									e.preventDefault();
-									setShowStampAction(!showStampAction);
-								}}
-								disabled={disabled || initLoadingDisabled}
-								icon={ASSETS.stamps}
-								width={180}
-							/>
-						</S.FlexActions>
-					) : (
-						<S.WalletBlock>
-							<p>{language.connectWalletToStamp}</p>
-							<WalletConnect />
-						</S.WalletBlock>
-					)}
+					<S.StampModalWrapper className={'modal-wrapper'}>
+						<S.DetailLine>
+							<span>{`${language.stampCount}:`}</span>
+							<p>{count ? count.total.toString() : '0'}</p>
+						</S.DetailLine>
+						<S.DetailLine>
+							<span>{`${language.stampsVouched}:`}</span>
+							<p>{count ? count.vouched.toString() : '0'}</p>
+						</S.DetailLine>
+						{arProvider.walletAddress ? (
+							<S.FlexActions>
+								<Button
+									type={'primary'}
+									label={language.stamp}
+									handlePress={(e: any) => {
+										e.preventDefault();
+										handleStamp();
+									}}
+									disabled={disabled || initLoadingDisabled}
+									icon={ASSETS.stamps}
+								/>
+								<Button
+									type={'primary'}
+									label={language.superStamp}
+									handlePress={(e: any) => {
+										e.preventDefault();
+										setShowStampAction(!showStampAction);
+									}}
+									disabled={disabled || initLoadingDisabled}
+									icon={ASSETS.stamps}
+									width={180}
+								/>
+							</S.FlexActions>
+						) : (
+							<S.WalletBlock>
+								<p>{language.connectWalletToStamp}</p>
+								<WalletConnect />
+							</S.WalletBlock>
+						)}
 
-					{showStampAction && (
-						<StampAction
-							balance={balance}
-							handleClose={() => setShowStampAction(false)}
-							handleSubmit={(amount: number) => handleStampAction(amount)}
-							disabled={stampNotification !== null}
-						/>
-					)}
-					{(hasStamped || loading) && (
-						<S.Message loading={loading ? 'true' : 'false'}>
-							<p>
-								{hasStamped
-									? props.hasStampedMessage
+						{showStampAction && (
+							<StampAction
+								balance={balance}
+								handleClose={() => setShowStampAction(false)}
+								handleSubmit={(amount: number) => handleStampAction(amount)}
+								disabled={stampNotification !== null}
+							/>
+						)}
+						{(hasStamped || loading) && (
+							<S.Message loading={loading ? 'true' : 'false'}>
+								<p>
+									{hasStamped
 										? props.hasStampedMessage
-										: language.assetStamped
-									: `${language.loading}...`}
-							</p>
-						</S.Message>
-					)}
-					{stampNotification && stampNotification.message && (
-						<Notification
-							message={stampNotification.message}
-							type={stampNotification.status ? 'success' : 'warning'}
-							callback={() => setStampNotification(null)}
-						/>
-					)}
+											? props.hasStampedMessage
+											: language.assetStamped
+										: `${language.loading}...`}
+								</p>
+							</S.Message>
+						)}
+						{stampNotification && stampNotification.message && (
+							<Notification
+								message={stampNotification.message}
+								type={stampNotification.status ? 'success' : 'warning'}
+								callback={() => setStampNotification(null)}
+							/>
+						)}
+					</S.StampModalWrapper>
 				</Modal>
 			)}
 		</>

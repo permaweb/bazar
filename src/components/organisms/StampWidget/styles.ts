@@ -161,3 +161,5 @@ export const WalletBlock = styled.div`
 		margin: 0 0 20px 0;
 	}
 `;
+
+export const StampModalWrapper = styled.div``;
