@@ -420,5 +420,5 @@ export async function readHandler(args: {
 export * from './assets';
 export * from './collections';
 export * from './profiles';
-export * from './stamps';
+export * as stamps from './stamps';
 export * from './vouch';

@@ -25,8 +25,8 @@ export default function Landing() {
 		(async function () {
 			setCollectionsLoading(true);
 			try {
-				const collectionsFetch: CollectionType[] = await getCollections();
-				if (collectionsFetch) setCollections(collectionsFetch.reverse());
+				const collectionsFetch: CollectionType[] = await getCollections(null, true);
+				if (collectionsFetch) setCollections(collectionsFetch);
 			} catch (e: any) {
 				setCollectionsErrorResponse(e.message || language.collectionsFetchFailed);
 			}

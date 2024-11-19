@@ -66,6 +66,7 @@ export default function CollectionsCarousel(props: IProps) {
 			<S.CollectionsWrapper previousDisabled={!nextSlideClicked}>
 				{(props.collections || props.loading) && (
 					<Carousel
+						key={props.collections?.length}
 						responsive={responsive}
 						renderButtonGroupOutside={true}
 						draggable={false}
@@ -80,9 +81,9 @@ export default function CollectionsCarousel(props: IProps) {
 						afterChange={handleAfterChange}
 					>
 						{props.collections &&
-							props.collections.map((collection: CollectionType, index: number) => (
+							props.collections.map((collection: CollectionType) => (
 								<S.CollectionWrapper
-									key={index}
+									key={collection.id}
 									className={'fade-in border-wrapper-alt2'}
 									backgroundImage={getTxEndpoint(collection.thumbnail || DEFAULTS.thumbnail)}
 									disabled={false}

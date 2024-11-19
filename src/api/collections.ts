@@ -1,11 +1,17 @@
-import { readHandler } from 'api';
+import { readHandler, stamps } from 'api';
 
 import { AO, DEFAULTS } from 'helpers/config';
-import { CollectionDetailType, CollectionMetricsType, CollectionType, OrderbookEntryType } from 'helpers/types';
+import {
+	CollectionDetailType,
+	CollectionMetricsType,
+	CollectionType,
+	OrderbookEntryType,
+	StampsType,
+} from 'helpers/types';
 import { sortOrderbookEntries } from 'helpers/utils';
 import { store } from 'store';
 
-export async function getCollections(creator?: string): Promise<CollectionType[]> {
+export async function getCollections(creator?: string, filterUnstamped?: boolean): Promise<CollectionType[]> {
 	const action = creator ? 'Get-Collections-By-User' : 'Get-Collections';
 
 	try {
@@ -16,7 +22,7 @@ export async function getCollections(creator?: string): Promise<CollectionType[]
 		});
 
 		if (response && response.Collections && response.Collections.length) {
-			return response.Collections.map((collection: any) => {
+			const collections = response.Collections.map((collection: any) => {
 				return {
 					id: collection.Id,
 					title: collection.Name.replace(/\[|\]/g, ''),
@@ -26,7 +32,26 @@ export async function getCollections(creator?: string): Promise<CollectionType[]
 					banner: collection.Banner,
 					thumbnail: collection.Thumbnail,
 				};
-			}).sort((a: any, b: any) => b.dateCreated - a.dateCreated);
+			});
+
+			const collectionIds = collections.map((collection: any) => collection.id);
+			const stampsFetch: StampsType = await stamps.getStamps({ ids: collectionIds });
+
+			let finalCollections = collections;
+
+			if (filterUnstamped) {
+				finalCollections = finalCollections.filter((c: any) => {
+					return stampsFetch[c.id].total != 0;
+				});
+			}
+
+			finalCollections = finalCollections.sort((a: { id: string | number }, b: { id: string | number }) => {
+				const countA = stampsFetch[a.id]?.total || 0;
+				const countB = stampsFetch[b.id]?.total || 0;
+				return countB - countA; // Descending order of total stamp counts
+			});
+
+			return finalCollections;
 		}
 		return null;
 	} catch (e: any) {
@@ -79,12 +104,11 @@ export async function getCollectionById(args: { id: string }): Promise<Collectio
 function getFloorPrice(assetIds: string[]): number {
 	if (store.getState().ucmReducer) {
 		const ucmReducer = store.getState().ucmReducer;
-		const stampsReducer = store.getState().stampsReducer;
 		if (ucmReducer.Orderbook && ucmReducer.Orderbook.length) {
 			const filteredEntries: OrderbookEntryType[] = ucmReducer.Orderbook.filter((entry: OrderbookEntryType) =>
 				assetIds.includes(entry.Pair[0])
 			);
-			const sortedEntries: OrderbookEntryType[] = sortOrderbookEntries(filteredEntries, 'low-to-high', stampsReducer);
+			const sortedEntries: OrderbookEntryType[] = sortOrderbookEntries(filteredEntries, 'low-to-high', {});
 			if (sortedEntries && sortedEntries.length) {
 				const currentEntry = sortedEntries[0];
 				if (currentEntry.Orders && currentEntry.Orders.length && currentEntry.Orders[0].Price) {
@@ -113,12 +137,11 @@ function getPercentageListed(assetIds: string[]): number {
 function getDefaultCurrency(assetIds: string[]): string {
 	if (store.getState().ucmReducer) {
 		const ucmReducer = store.getState().ucmReducer;
-		const stampsReducer = store.getState().stampsReducer;
 		if (ucmReducer.Orderbook && ucmReducer.Orderbook.length) {
 			const filteredEntries: OrderbookEntryType[] = ucmReducer.Orderbook.filter((entry: OrderbookEntryType) =>
 				assetIds.includes(entry.Pair[0])
 			);
-			const sortedEntries: OrderbookEntryType[] = sortOrderbookEntries(filteredEntries, 'low-to-high', stampsReducer);
+			const sortedEntries: OrderbookEntryType[] = sortOrderbookEntries(filteredEntries, 'low-to-high', {});
 			if (sortedEntries && sortedEntries.length) {
 				const currentEntry = sortedEntries[0];
 				return currentEntry.Pair[1];

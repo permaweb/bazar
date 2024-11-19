@@ -16,3 +16,15 @@ export async function getStamps(args: { ids: string[] }): Promise<StampsType> {
 	}
 	return res;
 }
+
+export async function stamp(txId) {
+	return await stamps.stamp(txId);
+}
+
+export async function hasStamped(txId) {
+	return await stamps.hasStamped(txId);
+}
+
+export async function count(txId) {
+	return await stamps.count(txId);
+}

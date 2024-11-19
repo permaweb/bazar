@@ -3,7 +3,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { Link } from 'react-router-dom';
 import { ReactSVG } from 'react-svg';
 
-import { getStamps, readHandler } from 'api';
+import { readHandler, stamps } from 'api';
 
 import { Loader } from 'components/atoms/Loader';
 import { Modal } from 'components/molecules/Modal';
@@ -61,10 +61,10 @@ export default function App() {
 						? ucmState.Orderbook.map((p: any) => (p.Pair.length > 0 ? p.Pair[0] : null)).filter((p: any) => p !== null)
 						: [];
 
-				const stamps = await getStamps({ ids });
+				const stampsFetch = await stamps.getStamps({ ids });
 
-				if (stamps) {
-					dispatch(stampsActions.setStamps(stamps));
+				if (stampsFetch) {
+					dispatch(stampsActions.setStamps(stampsFetch));
 				}
 
 				dispatch(ucmActions.setUCM(ucmState));

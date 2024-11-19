@@ -44,11 +44,12 @@ export async function getAssetsByIds(args: { ids: string[]; sortType: AssetSortT
 		});
 
 		if (gqlResponse && gqlResponse.data.length) {
-			const finalAssets: AssetDetailType[] = [];
-			const structuredAssets = structureAssets(gqlResponse);
-
 			if (store.getState().ucmReducer) {
 				const ucmReducer = store.getState().ucmReducer;
+				const stampsReducer = store.getState().stampsReducer;
+
+				const finalAssets: AssetDetailType[] = [];
+				const structuredAssets = structureAssets(gqlResponse);
 
 				structuredAssets.forEach((asset: AssetType) => {
 					let assetOrders: AssetOrderType[] | null = null;
@@ -66,9 +67,11 @@ export async function getAssetsByIds(args: { ids: string[]; sortType: AssetSortT
 					if (assetOrders) finalAsset.orders = assetOrders;
 					finalAssets.push(finalAsset);
 				});
+
+				return sortByAssetOrders(finalAssets, args.sortType, stampsReducer);
 			}
 
-			return sortByAssetOrders(finalAssets, args.sortType);
+			return sortByAssetOrders([], args.sortType, {});
 		}
 
 		return null;
