@@ -70,15 +70,16 @@ export default function StampWidget(props: IProps) {
 
 				let stamp: any = await stamps.stamp(props.assetId);
 
-				let stampSuccess = stamp && stamp.bundlrResponse && stamp.bundlrResponse.id;
-				if (!stampSuccess) {
-					stampSuccess = stamp && stamp.id;
-				}
-
-				setUpdateCount(true);
+				let stampSuccess =
+					stamp?.Messages?.length > 0 &&
+					stamp.Messages[0].Tags.find((t: any) => {
+						return t.name === 'Result' && t.value === 'Success';
+					});
 
 				if (!stampSuccess) {
 					setDisabled(false);
+				} else {
+					setUpdateCount(true);
 				}
 			}
 		} catch (e: any) {

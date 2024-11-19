@@ -24,7 +24,7 @@
 		"@irys/sdk": "^0.2.10",
 		"@othent/kms": "^1.0.7",
 		"@permaweb/aoconnect": "^0.0.45",
-		"@permaweb/stampjs": "^1.0.1",
+		"@permaweb/stampjs": "^1.0.3",
 		"jwt-decode": "^4.0.0",
 		"nprogress": "^0.2.0",
 		"react": "^18.2.0",
