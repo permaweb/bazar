@@ -339,7 +339,7 @@ export const ACTIVITY_SORT_OPTIONS: SelectOptionType[] = [
 ];
 
 export const ASSET_SORT_OPTIONS: SelectOptionType[] = [
-	{ id: 'stamps', label: 'Stamps' },
+	{ id: 'stamps', label: 'By stamps' },
 	{ id: 'recently-listed', label: 'Recently listed' },
 	{ id: 'low-to-high', label: 'Low to high' },
 	{ id: 'high-to-low', label: 'High to low' },
