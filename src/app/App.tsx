@@ -61,10 +61,14 @@ export default function App() {
 						? ucmState.Orderbook.map((p: any) => (p.Pair.length > 0 ? p.Pair[0] : null)).filter((p: any) => p !== null)
 						: [];
 
-				const stampsFetch = await stamps.getStamps({ ids });
+				try {
+					const stampsFetch = await stamps.getStamps({ ids });
 
-				if (stampsFetch) {
-					dispatch(stampsActions.setStamps(stampsFetch));
+					if (stampsFetch) {
+						dispatch(stampsActions.setStamps(stampsFetch));
+					}
+				} catch (e: any) {
+					console.log(e);
 				}
 
 				dispatch(ucmActions.setUCM(ucmState));
