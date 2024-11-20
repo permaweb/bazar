@@ -1,8 +1,9 @@
 import Stamps from '@permaweb/stampjs';
 
+import { AO } from 'helpers/config';
 import { StampsType } from 'helpers/types';
 
-const stamps = Stamps.init({ process: 'LaC2VtxqGekpRPuJh-TkI_ByAqCS2_KB3YuhMJ5yBtc' });
+const stamps = Stamps.init({ process: AO.stamps });
 
 export async function getStamps(args: { ids: string[] }): Promise<StampsType> {
 	const counts = await stamps.counts(args.ids);

@@ -16,6 +16,7 @@ const productionAddresses = {
 	PROFILE_SRC: '_R2XYWDPUXVvQrQKFaQRvDTDcDwnQNbqlTd_qvCRSpQ',
 	COLLECTIONS_REGISTRY: 'TFWDmf8a3_nw43GCm_CuYlYoylHAjCcFGbgHfDaGcsg',
 	VOUCH: 'ZTTO02BL2P-lseTLUgiIPD9d0CF1sc4LbMA2AQ7e9jo',
+	STAMPS: 'LaC2VtxqGekpRPuJh-TkI_ByAqCS2_KB3YuhMJ5yBtc',
 };
 
 const nonProductionAddresses = {
@@ -29,6 +30,7 @@ const nonProductionAddresses = {
 	PROFILE_SRC: '9Tpz5_ZT4RRkF-6JUTdaaTMg0ARfkNuuM5zahXyCqZ4',
 	COLLECTIONS_REGISTRY: '1oBtIRAmhLVJFABGKYlhcsACjyh36ahSJ-4lJEuvgzA',
 	VOUCH: 'ZTTO02BL2P-lseTLUgiIPD9d0CF1sc4LbMA2AQ7e9jo',
+	STAMPS: 'LaC2VtxqGekpRPuJh-TkI_ByAqCS2_KB3YuhMJ5yBtc',
 };
 
 const env = process.env.NODE_ENV || 'development';
@@ -180,6 +182,7 @@ module.exports = {
 			'process.env.PROFILE_SRC': JSON.stringify(addresses.PROFILE_SRC),
 			'process.env.COLLECTIONS_REGISTRY': JSON.stringify(addresses.COLLECTIONS_REGISTRY),
 			'process.env.VOUCH': JSON.stringify(addresses.VOUCH),
+			'process.env.STAMPS': JSON.stringify(addresses.STAMPS),
 		}),
 	],
 	resolve: {
