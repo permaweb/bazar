@@ -70,6 +70,10 @@ export const docsOrder = [
 				path: 'wallets',
 			},
 			{
+				name: 'Stamps',
+				path: 'stamps',
+			},
+			{
 				name: 'Tokens',
 				path: 'tokens',
 			},
