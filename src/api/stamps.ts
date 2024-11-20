@@ -2,7 +2,7 @@ import Stamps from '@permaweb/stampjs';
 
 import { StampsType } from 'helpers/types';
 
-const stamps = Stamps.init({ process: 'I6h4GTXBECKaZUv3j8-CsFUZ2PdCSXQj9zUh1XkTQk0' });
+const stamps = Stamps.init({ process: 'LaC2VtxqGekpRPuJh-TkI_ByAqCS2_KB3YuhMJ5yBtc' });
 
 export async function getStamps(args: { ids: string[] }): Promise<StampsType> {
 	const counts = await stamps.counts(args.ids);

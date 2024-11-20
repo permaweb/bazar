@@ -29,7 +29,7 @@ export default function StampWidget(props: IProps) {
 	React.useEffect(() => {
 		(async function () {
 			if (props.assetId) {
-				await new Promise((resolve) => setTimeout(resolve, 2500));
+				await new Promise((resolve) => setTimeout(resolve, 500));
 				const updatedCount = await stamps.count(props.assetId);
 				setCount(updatedCount);
 			}
@@ -49,7 +49,7 @@ export default function StampWidget(props: IProps) {
 			if (props.assetId && arProvider.walletAddress) {
 				setLoading(true);
 				try {
-					await new Promise((r) => setTimeout(r, 2500));
+					await new Promise((r) => setTimeout(r, 500));
 					const hasStamped = await stamps.hasStamped(props.assetId);
 					setHasStamped(hasStamped);
 					setDisabled(hasStamped);
