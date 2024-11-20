@@ -12,6 +12,10 @@ export const docsOrder = [
 				path: 'profiles',
 			},
 			{
+				name: 'Vouch your wallet',
+				path: 'vouch',
+			},
+			{
 				name: 'Legacy Bazar migration',
 				path: 'legacy-bazar-migration',
 			},
@@ -64,6 +68,10 @@ export const docsOrder = [
 			{
 				name: 'Wallets',
 				path: 'wallets',
+			},
+			{
+				name: 'Stamps',
+				path: 'stamps',
 			},
 			{
 				name: 'Tokens',

@@ -10,7 +10,11 @@ When you enter Bazar, the first step is to connect your Arweave wallet. This wal
 
 ###### 2. Create your profile
 
-After connecting your wallet, you create a permaweb profile. This profile is an unique AO process that you can customize with a name, @handle, profile picture, and header. **Profile and header images must be under 100kb**. As more permaweb applications adopt AO profile specs, this profile will be interoperable across the permaweb. Learn more about the permaweb [here](https://ao-bazar.arweave.net/#/docs/key-concepts/permaweb).
+After connecting your wallet, you create a permaweb profile. This profile is an unique AO process that you can customize with a name, @handle, profile picture, and header. **Profile and header images must be under 100kb**. As more permaweb applications adopt AO profile specs, this profile will be interoperable across the permaweb. Learn more about the permaweb [here](https://bazar.arweave.net/#/docs/key-concepts/permaweb).
+
+###### 3. Vouch your Arweave wallet
+
+[Vouch](https://vouch-portal.arweave.net/#/) is now required to earn $PIXL rewards. Learn how to get vouched [here](https://bazar.arweave.net/#/docs/overview/vouch).
 
 ### Transfer assets from your wallet to your profile
 
