@@ -44,11 +44,12 @@ export async function getAssetsByIds(args: { ids: string[]; sortType: AssetSortT
 		});
 
 		if (gqlResponse && gqlResponse.data.length) {
-			const finalAssets: AssetDetailType[] = [];
-			const structuredAssets = structureAssets(gqlResponse);
-
 			if (store.getState().ucmReducer) {
 				const ucmReducer = store.getState().ucmReducer;
+				const stampsReducer = store.getState().stampsReducer;
+
+				const finalAssets: AssetDetailType[] = [];
+				const structuredAssets = structureAssets(gqlResponse);
 
 				structuredAssets.forEach((asset: AssetType) => {
 					let assetOrders: AssetOrderType[] | null = null;
@@ -66,9 +67,11 @@ export async function getAssetsByIds(args: { ids: string[]; sortType: AssetSortT
 					if (assetOrders) finalAsset.orders = assetOrders;
 					finalAssets.push(finalAsset);
 				});
+
+				return sortByAssetOrders(finalAssets, args.sortType, stampsReducer);
 			}
 
-			return sortByAssetOrders(finalAssets, args.sortType);
+			return sortByAssetOrders([], args.sortType, {});
 		}
 
 		return null;
@@ -240,6 +243,7 @@ export function getAssetIdGroups(args: {
 }): IdGroupType {
 	if (store.getState().ucmReducer) {
 		const ucmReducer = store.getState().ucmReducer;
+		const stampsReducer = store.getState().stampsReducer;
 		const idGroup: any = {};
 		const groupCount: number = args.groupCount || PAGINATORS.default;
 
@@ -263,7 +267,7 @@ export function getAssetIdGroups(args: {
 				);
 			}
 
-			const sortedOrderbook = sortOrderbookEntries(currentOrderbook, args.sortType);
+			const sortedOrderbook = sortOrderbookEntries(currentOrderbook, args.sortType, stampsReducer);
 
 			for (let i = 0, j = 0; i < sortedOrderbook.length; i += groupCount, j++) {
 				idGroup[j] = sortedOrderbook.slice(i, i + groupCount).map((entry: OrderbookEntryType) => entry.Pair[0]);

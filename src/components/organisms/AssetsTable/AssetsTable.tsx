@@ -17,6 +17,7 @@ import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 
 import { AssetData } from '../AssetData';
+import { StampWidget } from '../StampWidget';
 
 import * as S from './styles';
 import { IProps } from './types';
@@ -211,7 +212,6 @@ export default function AssetsTable(props: IProps) {
 						status: 'success',
 					});
 				} else {
-					console.log(updateResponse);
 					setProfileResponse({
 						message: language.errorUpdatingProfile,
 						status: 'warning',
@@ -330,35 +330,48 @@ export default function AssetsTable(props: IProps) {
 													<S.AssetGridDataWrapper disabled={false}>
 														<AssetData asset={asset} scrolling={scrolling} autoLoad />
 														{props.setProfileAction &&
-															arProvider.profile &&
-															arProvider.profile.id &&
-															arProvider.profile.id === address &&
-															asset.data.contentType &&
-															asset.data.contentType.includes('image') && (
-																<S.AssetGridDataActionWrapper>
-																	<button
-																		onClick={(e: any) => handleProfileActionPress(e, asset)}
-																		disabled={profileLoading}
-																	>
-																		<span>
-																			{profileLoading ? `${language.loading}...` : language.setProfilePicture}
-																		</span>
-																	</button>
-																</S.AssetGridDataActionWrapper>
-															)}
+														arProvider.profile &&
+														arProvider.profile.id &&
+														arProvider.profile.id === address &&
+														asset.data.contentType &&
+														asset.data.contentType.includes('image') ? (
+															<S.AssetGridDataActionWrapper>
+																<button
+																	onClick={(e: any) => handleProfileActionPress(e, asset)}
+																	disabled={profileLoading}
+																>
+																	<span>{profileLoading ? `${language.loading}...` : language.setProfilePicture}</span>
+																</button>
+																<StampWidget
+																	assetId={asset.data.id}
+																	title={asset.data.title || asset.data.description}
+																	asButton={true}
+																/>
+															</S.AssetGridDataActionWrapper>
+														) : (
+															<S.AssetGridDataActionWrapper>
+																<StampWidget
+																	assetId={asset.data.id}
+																	title={asset.data.title || asset.data.description}
+																	asButton={true}
+																/>
+															</S.AssetGridDataActionWrapper>
+														)}
 													</S.AssetGridDataWrapper>
 												</Link>
-												<S.AssetGridInfoWrapper>
-													<Link to={redirect}>
-														<S.Title>
-															<p>{asset.data.title}</p>
-														</S.Title>
-													</Link>
-													<S.Description>
-														<p>{asset.data.description || asset.data.title}</p>
-													</S.Description>
-													<S.Listings>{getListing(asset)}</S.Listings>
-												</S.AssetGridInfoWrapper>
+												<S.AssetGridBottomWrapper>
+													<S.AssetGridInfoWrapper>
+														<Link to={redirect}>
+															<S.Title>
+																<p>{asset.data.title}</p>
+															</S.Title>
+														</Link>
+														<S.Description>
+															<p>{asset.data.description || asset.data.title}</p>
+														</S.Description>
+														<S.Listings>{getListing(asset)}</S.Listings>
+													</S.AssetGridInfoWrapper>
+												</S.AssetGridBottomWrapper>
 											</S.AssetGridElement>
 										);
 									})}

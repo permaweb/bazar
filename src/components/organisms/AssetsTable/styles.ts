@@ -73,6 +73,7 @@ export const AssetGridDataActionWrapper = styled.div`
 	top: 15px;
 	right: 15px;
 	display: none;
+
 	button {
 		background: ${(props) => props.theme.colors.button.primary.background};
 		border: 1px solid ${(props) => props.theme.colors.button.primary.border};
@@ -146,9 +147,19 @@ export const AssetGridDataWrapper = styled.div<{ disabled: boolean }>`
 		cursor: ${({ disabled }) => (disabled ? 'default' : 'pointer')};
 
 		${AssetGridDataActionWrapper} {
-			display: block;
+			display: flex;
+			flex-direction: column;
+			align-items: flex-end;
+			gap: 10px;
 		}
 	}
+`;
+
+export const AssetGridBottomWrapper = styled.div`
+	width: 100%;
+	display: flex;
+	justify-content: space-between;
+	position: relative; /* Allow positioning within this wrapper */
 `;
 
 export const AssetGridInfoWrapper = styled.div`
@@ -158,6 +169,15 @@ export const AssetGridInfoWrapper = styled.div`
 		display: block;
 		width: fit-content;
 	}
+`;
+
+export const AssetGridActionsWrapper = styled.div`
+	position: absolute; /* Position at the bottom right */
+	bottom: 0;
+	right: 0;
+	padding: 10px; /* Adjust padding as desired */
+	display: flex;
+	align-items: center;
 `;
 
 export const AssetsListWrapper = styled.div`

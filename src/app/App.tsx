@@ -3,7 +3,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { Link } from 'react-router-dom';
 import { ReactSVG } from 'react-svg';
 
-import { readHandler } from 'api';
+import { readHandler, stamps } from 'api';
 
 import { Loader } from 'components/atoms/Loader';
 import { Modal } from 'components/molecules/Modal';
@@ -15,6 +15,7 @@ import { Header } from 'navigation/Header';
 import { useLocationProvider } from 'providers/LocationProvider';
 import { RootState } from 'store';
 import * as currencyActions from 'store/currencies/actions';
+import * as stampsActions from 'store/stamps/actions';
 import * as streakActions from 'store/streaks/actions';
 import * as ucmActions from 'store/ucm/actions';
 import { getCampaignBackground } from 'views/Campaign';
@@ -54,6 +55,22 @@ export default function App() {
 					processId: AO.ucm,
 					action: 'Info',
 				});
+
+				let ids =
+					ucmState && ucmState.Orderbook && ucmState.Orderbook.length > 0
+						? ucmState.Orderbook.map((p: any) => (p.Pair.length > 0 ? p.Pair[0] : null)).filter((p: any) => p !== null)
+						: [];
+
+				try {
+					const stampsFetch = await stamps.getStamps({ ids });
+
+					if (stampsFetch) {
+						dispatch(stampsActions.setStamps(stampsFetch));
+					}
+				} catch (e: any) {
+					console.log(e);
+				}
+
 				dispatch(ucmActions.setUCM(ucmState));
 
 				const streaks = await readHandler({

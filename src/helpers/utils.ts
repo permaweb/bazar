@@ -7,6 +7,7 @@ import {
 	OrderbookEntryType,
 	OwnerType,
 	RegistryProfileType,
+	StampsType,
 } from './types';
 
 declare const InstallTrigger: any;
@@ -218,7 +219,11 @@ export function sortOrders(orders: AssetOrderType[], sortType: AssetSortType) {
 	return sortedOrders;
 }
 
-export function sortByAssetOrders(assets: AssetDetailType[], sortType: AssetSortType): AssetDetailType[] {
+export function sortByAssetOrders(
+	assets: AssetDetailType[],
+	sortType: AssetSortType,
+	stamps: StampsType
+): AssetDetailType[] {
 	const getSortKey = (asset: AssetDetailType): number => {
 		if (!asset.orders || asset.orders.length === 0) return Infinity;
 		return Number(sortOrders(asset.orders, sortType)[0].price);
@@ -227,6 +232,11 @@ export function sortByAssetOrders(assets: AssetDetailType[], sortType: AssetSort
 	const getDateKey = (asset: AssetDetailType): number => {
 		if (!asset.orders || asset.orders.length === 0) return 0;
 		return new Date(asset.orders[0].dateCreated).getTime();
+	};
+
+	const getStampKey = (asset: AssetDetailType): number => {
+		if (!asset.data.id) return -1;
+		return stamps[asset.data.id]?.total ?? -1;
 	};
 
 	let direction: number;
@@ -241,8 +251,24 @@ export function sortByAssetOrders(assets: AssetDetailType[], sortType: AssetSort
 		case 'recently-listed':
 			direction = -1;
 			break;
+		case 'stamps':
+			direction = 1;
+			break;
 		default:
 			direction = 1;
+	}
+
+	if (sortType === 'stamps') {
+		return assets.sort((a, b) => {
+			const stampA = getStampKey(a);
+			const stampB = getStampKey(b);
+
+			if (stampA !== stampB) {
+				return direction * (stampB - stampA);
+			}
+
+			return getDateKey(b) - getDateKey(a);
+		});
 	}
 
 	let assetsWithOrders = assets.filter((asset) => asset.orders && asset.orders.length > 0);
@@ -259,7 +285,11 @@ export function sortByAssetOrders(assets: AssetDetailType[], sortType: AssetSort
 	return [...assetsWithOrders, ...assetsWithoutOrders];
 }
 
-export function sortOrderbookEntries(entries: OrderbookEntryType[], sortType: AssetSortType): OrderbookEntryType[] {
+export function sortOrderbookEntries(
+	entries: OrderbookEntryType[],
+	sortType: AssetSortType,
+	stamps: StampsType
+): OrderbookEntryType[] {
 	const getSortKey = (entry: OrderbookEntryType): number => {
 		if (!entry.Orders || entry.Orders.length === 0) return Infinity;
 		return Number(entry.Orders[0].Price);
@@ -268,6 +298,11 @@ export function sortOrderbookEntries(entries: OrderbookEntryType[], sortType: As
 	const getDateKey = (entry: OrderbookEntryType): number => {
 		if (!entry.Orders || entry.Orders.length === 0) return 0;
 		return new Date(entry.Orders[0].DateCreated).getTime();
+	};
+
+	const getStampKey = (entry: OrderbookEntryType): number => {
+		if (!entry.Pair || entry.Pair.length === 0) return -1;
+		return stamps[entry.Pair[0]]?.total ?? -1;
 	};
 
 	let direction: number;
@@ -282,8 +317,24 @@ export function sortOrderbookEntries(entries: OrderbookEntryType[], sortType: As
 		case 'recently-listed':
 			direction = -1;
 			break;
+		case 'stamps':
+			direction = 1;
+			break;
 		default:
 			direction = 1;
+	}
+
+	if (sortType === 'stamps') {
+		return entries.sort((a, b) => {
+			const stampA = getStampKey(a);
+			const stampB = getStampKey(b);
+
+			if (stampA !== stampB) {
+				return direction * (stampB - stampA);
+			}
+
+			return getDateKey(b) - getDateKey(a);
+		});
 	}
 
 	let entriesWithOrders = entries.filter((entry) => entry.Orders && entry.Orders.length > 0);

@@ -15,6 +15,7 @@ import { OwnerLine } from 'components/molecules/OwnerLine';
 import { Tabs } from 'components/molecules/Tabs';
 import { AssetData } from 'components/organisms/AssetData';
 import { OrderCancel } from 'components/organisms/OrderCancel';
+import { StampWidget } from 'components/organisms/StampWidget';
 import { AO, ASSETS, STYLING } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import { ListingType, OwnerType, RegistryProfileType } from 'helpers/types';
@@ -433,18 +434,24 @@ export default function AssetAction(props: IProps) {
 				<S.Header>
 					<S.HeaderTitle>
 						<h4>{props.asset.data.title}</h4>
-						<IconButton
-							type={'alt1'}
-							src={urlCopied ? ASSETS.link : ASSETS.link}
-							handlePress={copyPageUrl}
-							dimensions={{
-								wrapper: 33.5,
-								icon: 17.5,
-							}}
-							disabled={urlCopied}
-							tooltip={urlCopied ? `${language.copied}!` : language.copyPageUrl}
-							useBottomToolTip
-						/>
+						<S.HeaderTitleActions>
+							<StampWidget
+								assetId={props.asset.data.id}
+								title={props.asset.data.description || props.asset.data.title}
+							/>
+							<IconButton
+								type={'alt1'}
+								src={urlCopied ? ASSETS.link : ASSETS.link}
+								handlePress={copyPageUrl}
+								dimensions={{
+									wrapper: 33.5,
+									icon: 17.5,
+								}}
+								disabled={urlCopied}
+								tooltip={urlCopied ? `${language.copied}!` : language.copyPageUrl}
+								useBottomToolTip
+							/>
+						</S.HeaderTitleActions>
 					</S.HeaderTitle>
 					<S.OwnerLinesWrapper>
 						{showCurrentlyOwnedBy() && (

@@ -41,6 +41,10 @@ import provenance from 'assets/provenance.svg';
 import question from 'assets/question.svg';
 import renderer from 'assets/renderer.svg';
 import sell from 'assets/sell.svg';
+import defaultStampSVG from 'assets/stamp-default.svg';
+import superStampSVG from 'assets/stamp-super.svg';
+import vouchedStampSVG from 'assets/stamp-vouched.svg';
+import stampsSVG from 'assets/stamps.svg';
 import star from 'assets/star.svg';
 import streak1 from 'assets/streak-1-7.svg';
 import streak2 from 'assets/streak-8-14.svg';
@@ -59,6 +63,14 @@ import zen from 'assets/zen.svg';
 
 import { SelectOptionType, WalletEnum } from './types';
 
+const stamps = stampsSVG;
+
+const stamp = {
+	default: defaultStampSVG,
+	super: superStampSVG,
+	vouched: vouchedStampSVG,
+};
+
 export const AO = {
 	module: process.env.MODULE,
 	scheduler: process.env.SCHEDULER,
@@ -70,6 +82,7 @@ export const AO = {
 	profileRegistry: process.env.PROFILE_REGISTRY,
 	profileSrc: process.env.PROFILE_SRC,
 	vouch: process.env.VOUCH,
+	stamps: process.env.STAMPS,
 };
 
 export const REFORMATTED_ASSETS = {
@@ -159,6 +172,8 @@ export const ASSETS = {
 	swap,
 	transfer,
 	unsupported,
+	stamps,
+	stamp,
 	streak1,
 	streak2,
 	streak3,
@@ -202,6 +217,8 @@ export const STYLING = {
 			height: '32.5px',
 			width: 'fit-content',
 		},
+		borderRadiusField: '5px',
+		borderRadiusWrapper: '10px',
 		form: {
 			small: '45px',
 			max: '47.5px',
@@ -322,6 +339,7 @@ export const ACTIVITY_SORT_OPTIONS: SelectOptionType[] = [
 ];
 
 export const ASSET_SORT_OPTIONS: SelectOptionType[] = [
+	{ id: 'stamps', label: 'By stamps' },
 	{ id: 'recently-listed', label: 'Recently listed' },
 	{ id: 'low-to-high', label: 'Low to high' },
 	{ id: 'high-to-low', label: 'High to low' },
