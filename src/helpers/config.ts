@@ -61,14 +61,15 @@ import wallet from 'assets/wallet.svg';
 import x from 'assets/x.svg';
 import zen from 'assets/zen.svg';
 
+import { SelectOptionType, WalletEnum } from './types';
+
 const stamps = stampsSVG;
+
 const stamp = {
 	default: defaultStampSVG,
 	super: superStampSVG,
 	vouched: vouchedStampSVG,
 };
-
-import { SelectOptionType, WalletEnum } from './types';
 
 export const AO = {
 	module: process.env.MODULE,

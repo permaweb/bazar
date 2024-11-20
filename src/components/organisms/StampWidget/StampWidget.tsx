@@ -16,7 +16,7 @@ export default function StampWidget(props: IProps) {
 	const arProvider = useArweaveProvider();
 
 	const [count, setCount] = React.useState<any>(null);
-	const [hasStamped, setHasStamped] = React.useState<boolean>(true);
+	const [hasStamped, setHasStamped] = React.useState<boolean>(false);
 	const [updateCount, setUpdateCount] = React.useState<boolean>(false);
 	const [disabled, setDisabled] = React.useState<boolean>(true);
 	const [loading, setLoading] = React.useState<boolean>(false);
@@ -40,33 +40,27 @@ export default function StampWidget(props: IProps) {
 		if (!arProvider.walletAddress) {
 			setDisabled(true);
 		} else {
-			setDisabled(false);
+			setDisabled(disabled);
 		}
 	}, [arProvider.walletAddress]);
 
 	React.useEffect(() => {
 		(async function () {
 			if (props.assetId && arProvider.walletAddress) {
+				setLoading(true);
 				try {
 					await new Promise((r) => setTimeout(r, 2500));
 					const hasStamped = await stamps.hasStamped(props.assetId);
 					setHasStamped(hasStamped);
-					if (hasStamped) {
-						setDisabled(true);
-					}
+					setDisabled(hasStamped);
 					setUpdateCount(false);
 				} catch (e: any) {
 					console.error(e);
 				}
+				setLoading(false);
 			}
 		})();
 	}, [props.assetId, updateCount, arProvider.walletAddress]);
-
-	React.useEffect(() => {
-		(async function () {
-			setDisabled(hasStamped ? true : false);
-		})();
-	}, [hasStamped]);
 
 	const handleStamp = React.useCallback(async () => {
 		try {
@@ -89,13 +83,14 @@ export default function StampWidget(props: IProps) {
 				} else {
 					setStampNotification({
 						status: true,
-						message: language.stampSuccess,
+						message: `${language.stampSuccess}!`,
 					});
 					setUpdateCount(true);
 				}
 			}
 		} catch (e: any) {
 			setLoading(false);
+			setDisabled(false);
 			setStampNotification({
 				status: false,
 				message: e.toString(),
@@ -104,16 +99,17 @@ export default function StampWidget(props: IProps) {
 	}, [updateCount, props]);
 
 	function getTotalCount() {
-		if (count) return count.total.toString();
-		else if (props.stamps) return props.stamps.total.toString();
-		else return '0';
+		if (!arProvider.wallet || loading) return '';
+		if (count) return `(${count.total.toString()})`;
+		else if (props.stamps) return `(${props.stamps.total.toString()})`;
+		else return '';
 	}
 
-	function getTooltip() {
+	function getActionLabel() {
 		if (loading) return `${language.loading}...`;
-		if (!arProvider.wallet) return `${language.connectWalletToStamp}`;
+		if (!arProvider.wallet) return `${language.connectWallet}`;
 		if (hasStamped) return `${language.stamped}`;
-		return `${language.stamp}`;
+		return language.stamp;
 	}
 
 	return (
@@ -125,13 +121,11 @@ export default function StampWidget(props: IProps) {
 						handleStamp();
 					}}
 					disabled={disabled}
-					title={getTooltip()}
-					sm={props.sm ? props.sm : false}
-					className={'border-wrapper-primary'}
+					title={getActionLabel()}
+					className={'border-wrapper-alt2'}
 				>
-					<S.Tooltip className={'info-text'}>{getTooltip()}</S.Tooltip>
-					<p>{loading ? `...` : getTotalCount()}</p>
 					<ReactSVG src={ASSETS.stamps} />
+					<p>{`${getActionLabel()} ${getTotalCount()}`}</p>
 				</S.Wrapper>
 			)}
 			{props.asButton && (
@@ -142,8 +136,7 @@ export default function StampWidget(props: IProps) {
 					}}
 					disabled={disabled}
 				>
-					<S.Tooltip className={'info-text'}>{getTooltip()}</S.Tooltip>
-					<span>{loading ? `${language.loading}...` : language.stamp}</span>
+					<span>{`${getActionLabel()} ${getTotalCount()}`}</span>
 				</S.Button>
 			)}
 

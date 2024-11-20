@@ -228,11 +228,6 @@ export default function AssetsTable(props: IProps) {
 		}
 	}
 
-	async function handleStampPress(e: any, asset: AssetDetailType) {
-		e.preventDefault();
-		e.stopPropagation();
-	}
-
 	function getData() {
 		if ((assetsLoading || props.loadingIds) && viewType) {
 			let Wrapper: any;
