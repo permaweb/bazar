@@ -23,7 +23,8 @@ export const Header = styled.div``;
 export const HeaderTitle = styled.div`
 	display: flex;
 	align-items: flex-start;
-	gap: 10px;
+	flex-wrap: wrap;
+	gap: 15px;
 	justify-content: space-between;
 	margin: -9.5px 0 10px 0;
 	h4 {

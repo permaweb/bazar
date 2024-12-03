@@ -30,7 +30,7 @@ export const StampWidgetWrapper = styled.div`
 	position: absolute;
 	top: 20px;
 	right: 20px;
-	z-index: 2;
+	z-index: 1;
 `;
 
 export const OverlayWrapper = styled.div`

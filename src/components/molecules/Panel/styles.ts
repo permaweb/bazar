@@ -12,7 +12,7 @@ export const Wrapper = styled.div<{ top: number; noHeader: boolean }>`
 	top: 0;
 	left: 0;
 	background: ${(props) => props.theme.colors.overlay.primary};
-	backdrop-filter: blur(5px);
+	backdrop-filter: blur(2.5px);
 	animation: ${open} ${fadeIn1};
 `;
 
@@ -31,7 +31,8 @@ export const Container = styled.div<{
 	transition: width 50ms ease-out;
 	animation: ${openRight} 200ms;
 	background: ${(props) => props.theme.colors.container.primary.background};
-	box-shadow: -1px -1px 10px 1px ${(props) => props.theme.colors.shadow.alt3};
+	box-shadow: 0 0 0.25rem 0.0625rem ${(props) => props.theme.colors.shadow.alt3},
+		0 0.0625rem 0.0625rem ${(props) => props.theme.colors.shadow.alt3};
 	border: 1px solid ${(props) => props.theme.colors.border.alt4};
 	border-radius: ${STYLING.dimensions.radius.primary};
 	@media (max-width: ${STYLING.cutoffs.secondary}) {
