@@ -249,7 +249,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 									decimalPlaces >= reverseDenomination(transferDenomination)
 										? (unitPrice as any).toFixed(reverseDenomination(transferDenomination))
 										: unitPrice;
-								calculatedUnitPrice = BigInt(Number(updatedUnitPrice) * transferDenomination);
+								calculatedUnitPrice = BigInt(Math.floor(Number(updatedUnitPrice) * transferDenomination));
 							}
 
 							forwardedTags.push({ name: 'X-Price', value: calculatedUnitPrice.toString() });
