@@ -61,22 +61,13 @@ export default function App() {
 						? ucmState.Orderbook.map((p: any) => (p.Pair.length > 0 ? p.Pair[0] : null)).filter((p: any) => p !== null)
 						: [];
 
-				try {
-					const stampsFetch = await stamps.getStamps({ ids });
-
-					if (stampsFetch) {
-						dispatch(stampsActions.setStamps(stampsFetch));
-					}
-				} catch (e: any) {
-					console.log(e);
-				}
-
 				dispatch(ucmActions.setUCM(ucmState));
 
 				const streaks = await readHandler({
 					processId: AO.pixl,
 					action: 'Get-Streaks',
 				});
+
 				if (streaks.Streaks) {
 					for (let key in streaks.Streaks) {
 						if (streaks.Streaks[key].days === 0) {
@@ -106,6 +97,16 @@ export default function App() {
 							},
 						})
 					);
+				}
+
+				try {
+					const stampsFetch = await stamps.getStamps({ ids });
+
+					if (stampsFetch) {
+						dispatch(stampsActions.setStamps(stampsFetch));
+					}
+				} catch (e: any) {
+					console.log(e);
 				}
 			} catch (e: any) {
 				console.error(e);

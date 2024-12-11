@@ -92,12 +92,12 @@ export const Tooltip = styled.div<{ useBottom: boolean }>`
 export const DNameWrapper = styled.div`
 	display: flex;
 	align-items: center;
-	gap: 10px;
+	gap: 12.5px;
 	position: relative;
 
 	#vouch-check {
-		height: 17.5px;
-		width: 17.5px;
+		height: 15.5px;
+		width: 15.5px;
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -106,10 +106,11 @@ export const DNameWrapper = styled.div`
 		border-radius: 50%;
 
 		svg {
-			height: 10.5px;
-			width: 10.5px;
+			height: 8.5px;
+			width: 8.5px;
 			color: ${(props) => props.theme.colors.font.light1};
 			fill: ${(props) => props.theme.colors.font.light1};
+			margin: 0 0 0.5px 0;
 		}
 
 		&:hover {

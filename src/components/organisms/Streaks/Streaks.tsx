@@ -41,7 +41,7 @@ export default function Streaks(props: IProps) {
 	const [streakHolderCount, setStreakHolderCount] = React.useState<number | null>(null);
 	const [updating, setUpdating] = React.useState<boolean>(false);
 
-	const [count, setCount] = React.useState<number>(0);
+	const [count, setCount] = React.useState<number | null>(null);
 	const [showDropdown, setShowDropdown] = React.useState<boolean>(false);
 	const [showLeaderboard, setShowLeaderboard] = React.useState<boolean>(false);
 	const [currentBlockHeight, setCurrentBlockHeight] = React.useState<number | null>(0);
@@ -194,8 +194,8 @@ export default function Streaks(props: IProps) {
 	const label = React.useMemo(() => {
 		return (
 			<>
-				{getStreakIcon(count)}
-				{arProvider.profile && <span>{count}</span>}
+				{getStreakIcon(count ?? 0)}
+				{arProvider.profile && <span>{count ?? '...'}</span>}
 			</>
 		);
 	}, [count]);
@@ -236,8 +236,8 @@ export default function Streaks(props: IProps) {
 	const streak = React.useMemo(() => {
 		return (
 			<>
-				{getStreakIcon(count)}
-				<p>{language.dayStreak(count.toString()).toUpperCase()}</p>
+				{getStreakIcon(count ?? 0)}
+				<p>{count !== null ? language.dayStreak(count.toString()).toUpperCase() : '...'}</p>
 			</>
 		);
 	}, [count]);

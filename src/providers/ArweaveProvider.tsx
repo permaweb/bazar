@@ -101,8 +101,8 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 	const [tokenBalances, setTokenBalances] = React.useState<{
 		[address: string]: { profileBalance: number; walletBalance: number };
 	} | null>({
-		[AO.defaultToken]: null,
-		[AO.pixl]: null,
+		[AO.defaultToken]: { profileBalance: null, walletBalance: null },
+		[AO.pixl]: { profileBalance: null, walletBalance: null },
 	});
 	const [toggleTokenBalanceUpdate, setToggleTokenBalanceUpdate] = React.useState<boolean>(false);
 
@@ -182,61 +182,67 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 	}, [toggleProfileUpdate]);
 
 	React.useEffect(() => {
-		if (walletAddress && profile && profile.id) {
-			const fetchDefaultTokenBalance = async () => {
-				try {
-					const defaultTokenBalance = await readHandler({
-						processId: AO.defaultToken,
-						action: 'Balance',
-						tags: [{ name: 'Recipient', value: profile.id }],
-					});
-					const defaultTokenWalletBalance = await readHandler({
-						processId: AO.defaultToken,
-						action: 'Balance',
-						tags: [{ name: 'Recipient', value: walletAddress }],
-					});
-					setTokenBalances((prevBalances) => ({
-						...prevBalances,
-						[AO.defaultToken]: {
-							profileBalance: defaultTokenBalance || 0,
-							walletBalance: defaultTokenWalletBalance || 0,
-						},
-					}));
-				} catch (e) {
-					console.error(e);
-				}
-			};
+		const fetchWalletBalances = async () => {
+			if (!walletAddress) return;
+			try {
+				const defaultTokenWalletBalance = await readHandler({
+					processId: AO.defaultToken,
+					action: 'Balance',
+					tags: [{ name: 'Recipient', value: walletAddress }],
+				});
+				const pixlTokenWalletBalance = await readHandler({
+					processId: AO.pixl,
+					action: 'Balance',
+					tags: [{ name: 'Recipient', value: walletAddress }],
+				});
+				setTokenBalances((prevBalances) => ({
+					...prevBalances,
+					[AO.defaultToken]: {
+						...prevBalances[AO.defaultToken],
+						walletBalance: defaultTokenWalletBalance ?? null,
+					},
+					[AO.pixl]: {
+						...prevBalances[AO.pixl],
+						walletBalance: pixlTokenWalletBalance ?? null,
+					},
+				}));
+			} catch (e) {
+				console.error(e);
+			}
+		};
 
-			fetchDefaultTokenBalance();
-		} else {
-			setTokenBalances({
-				[AO.defaultToken]: { profileBalance: 0, walletBalance: 0 },
-				[AO.pixl]: { profileBalance: 0, walletBalance: 0 },
-			});
-		}
+		const fetchProfileBalances = async () => {
+			if (!profile || !profile.id) return;
+			try {
+				const defaultTokenProfileBalance = await readHandler({
+					processId: AO.defaultToken,
+					action: 'Balance',
+					tags: [{ name: 'Recipient', value: profile.id }],
+				});
+				const pixlTokenProfileBalance = await readHandler({
+					processId: AO.pixl,
+					action: 'Balance',
+					tags: [{ name: 'Recipient', value: profile.id }],
+				});
+				setTokenBalances((prevBalances) => ({
+					...prevBalances,
+					[AO.defaultToken]: {
+						...prevBalances[AO.defaultToken],
+						profileBalance: defaultTokenProfileBalance ?? null,
+					},
+					[AO.pixl]: {
+						...prevBalances[AO.pixl],
+						profileBalance: pixlTokenProfileBalance ?? null,
+					},
+				}));
+			} catch (e) {
+				console.error(e);
+			}
+		};
+
+		fetchWalletBalances();
+		fetchProfileBalances();
 	}, [walletAddress, profile, toggleTokenBalanceUpdate]);
-
-	React.useEffect(() => {
-		if (profile && profile.id) {
-			const fetchPixlTokenBalance = async () => {
-				try {
-					const pixlTokenBalance = await readHandler({
-						processId: AO.pixl,
-						action: 'Balance',
-						tags: [{ name: 'Recipient', value: profile.id }],
-					});
-					setTokenBalances((prevBalances) => ({
-						...prevBalances,
-						[AO.pixl]: { profileBalance: pixlTokenBalance || 0, walletBalance: 0 },
-					}));
-				} catch (e) {
-					console.error(e);
-				}
-			};
-
-			fetchPixlTokenBalance();
-		}
-	}, [profile, toggleTokenBalanceUpdate]);
 
 	React.useEffect(() => {
 		if (walletAddress && profile && profile.id) {
@@ -256,6 +262,7 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 	async function handleWallet() {
 		if (localStorage.getItem('walletType')) {
 			try {
+				setProfile(null);
 				await handleConnect(localStorage.getItem('walletType') as any);
 			} catch (e: any) {
 				console.error(e);
