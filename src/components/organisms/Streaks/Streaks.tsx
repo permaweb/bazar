@@ -54,7 +54,7 @@ export default function Streaks(props: IProps) {
 			if (streaksReducer) {
 				if (props.profile && props.profile.id && streaksReducer[props.profile.id]) {
 					setCount(streaksReducer[props.profile.id].days);
-				}
+				} else setCount(0);
 
 				const sortedStreaks = Object.entries(streaksReducer)
 					.sort(([, a], [, b]) => (b as any).days - (a as any).days)

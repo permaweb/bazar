@@ -198,7 +198,7 @@ export type DefaultGQLResponseType = {
 export type BatchAGQLResponseType = { [queryKey: string]: DefaultGQLResponseType };
 
 export enum WalletEnum {
-	arConnect = 'arconnect',
+	arConnect = 'arConnect',
 	othent = 'othent',
 }
 
