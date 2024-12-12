@@ -1,4 +1,5 @@
 import React from 'react';
+import { useDispatch, useSelector } from 'react-redux';
 import { ReactSVG } from 'react-svg';
 
 import { stamps } from 'api';
@@ -8,16 +9,21 @@ import { ASSETS } from 'helpers/config';
 import { ResponseType } from 'helpers/types';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
+import { RootState } from 'store';
+import * as stampsActions from 'store/stamps/actions';
 
 import * as S from './styles';
 import { IProps } from './types';
 
 export default function StampWidget(props: IProps) {
+	const dispatch = useDispatch();
+
+	const stampsReducer = useSelector((state: RootState) => state.stampsReducer);
+
 	const arProvider = useArweaveProvider();
 
 	const [count, setCount] = React.useState<any>(null);
 	const [hasStamped, setHasStamped] = React.useState<boolean>(false);
-	const [updateCount, setUpdateCount] = React.useState<boolean>(false);
 	const [disabled, setDisabled] = React.useState<boolean>(true);
 	const [loading, setLoading] = React.useState<boolean>(false);
 
@@ -28,12 +34,11 @@ export default function StampWidget(props: IProps) {
 
 	React.useEffect(() => {
 		(async function () {
-			if (props.assetId) {
-				const updatedCount = await stamps.count(props.assetId);
-				setCount(updatedCount);
+			if (props.assetId && !count) {
+				setCount(stampsReducer?.[props.assetId] ?? 0);
 			}
 		})();
-	}, [props.assetId, updateCount]);
+	}, [props.assetId, stampsReducer]);
 
 	React.useEffect(() => {
 		if (!arProvider.walletAddress) {
@@ -48,17 +53,15 @@ export default function StampWidget(props: IProps) {
 			if (props.assetId && arProvider.walletAddress) {
 				setLoading(true);
 				try {
-					const hasStamped = await stamps.hasStamped(props.assetId);
-					setHasStamped(hasStamped);
-					setDisabled(hasStamped);
-					setUpdateCount(false);
+					setHasStamped(stampsReducer?.[props.assetId].hasStamped ?? false);
+					setDisabled(stampsReducer?.[props.assetId].hasStamped ?? true);
 				} catch (e: any) {
 					console.error(e);
 				}
 				setLoading(false);
 			}
 		})();
-	}, [props.assetId, updateCount, arProvider.walletAddress]);
+	}, [props.assetId, arProvider.walletAddress, stampsReducer]);
 
 	const handleStamp = React.useCallback(async () => {
 		try {
@@ -76,14 +79,29 @@ export default function StampWidget(props: IProps) {
 
 				setLoading(false);
 
-				if (!stampSuccess) {
-					setDisabled(false);
-				} else {
+				if (stampSuccess) {
+					setCount((prev: any) => ({ ...prev, total: prev.total + 1 }));
+					setHasStamped(true);
+
+					const updatedStamps = {};
+					if (stampsReducer) {
+						for (const tx of Object.keys(stampsReducer)) {
+							updatedStamps[tx] = {
+								...(stampsReducer?.[tx] ?? {}),
+								total: stampsReducer[tx]?.total + 1,
+								hasStamped: true,
+							};
+						}
+
+						dispatch(stampsActions.setStamps(updatedStamps));
+					}
+
 					setStampNotification({
 						status: true,
 						message: `${language.stampSuccess}!`,
 					});
-					setUpdateCount(true);
+				} else {
+					setDisabled(false);
 				}
 			}
 		} catch (e: any) {
@@ -94,7 +112,7 @@ export default function StampWidget(props: IProps) {
 				message: e.toString(),
 			});
 		}
-	}, [updateCount, props]);
+	}, [props, stampsReducer]);
 
 	function getTotalCount() {
 		if (!arProvider.wallet || loading) return '';
@@ -142,9 +160,7 @@ export default function StampWidget(props: IProps) {
 				<Notification
 					message={stampNotification.message}
 					type={stampNotification.status ? 'success' : 'warning'}
-					callback={() => {
-						console.log('Close');
-					}}
+					callback={() => setStampNotification(null)}
 				/>
 			)}
 		</>

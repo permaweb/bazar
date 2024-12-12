@@ -66,13 +66,14 @@ export const Dropdown = styled.ul`
 
 export const DHeaderWrapper = styled.div`
 	width: 100%;
-	padding: 0 15px 10px 15px;
+	padding: 0 10px 10px 10px;
 `;
 
 export const DHeaderFlex = styled.div`
 	width: 100%;
 	display: flex;
 	align-items: center;
+	padding: 10px;
 `;
 
 export const Tooltip = styled.div<{ useBottom: boolean }>`

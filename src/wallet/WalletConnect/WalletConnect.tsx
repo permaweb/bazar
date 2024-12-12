@@ -112,7 +112,7 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 		return (
 			<>
 				<S.DHeaderWrapper>
-					<S.DHeaderFlex>
+					<S.DHeaderFlex className={'border-wrapper-alt1'}>
 						<Avatar
 							owner={arProvider.profile}
 							dimensions={{ wrapper: 35, icon: 21.5 }}

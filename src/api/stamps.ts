@@ -22,8 +22,8 @@ export async function stamp(txId) {
 	return await stamps.stamp(txId);
 }
 
-export async function hasStamped(txId) {
-	return await stamps.hasStamped(txId);
+export async function hasStamped(txs) {
+	return await stamps.hasStamped(txs);
 }
 
 export async function count(txId) {

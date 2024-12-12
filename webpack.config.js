@@ -46,7 +46,7 @@ module.exports = {
 		filename: 'bundle.js',
 	},
 	devtool: 'eval',
-	mode: isProduction || isStaging ? 'production' : 'development',
+	mode: isProduction ? 'production' : 'development',
 	devServer: {
 		static: {
 			directory: path.join(__dirname, 'dist'),
@@ -60,18 +60,17 @@ module.exports = {
 			overlay: true,
 		},
 	},
-	optimization:
-		isProduction || isStaging
-			? {
-					minimize: true,
-					minimizer: [
-						new TerserPlugin({
-							extractComments: false,
-						}),
-					],
-					usedExports: true,
-			  }
-			: {},
+	optimization: isProduction
+		? {
+				minimize: true,
+				minimizer: [
+					new TerserPlugin({
+						extractComments: false,
+					}),
+				],
+				usedExports: true,
+		  }
+		: {},
 	ignoreWarnings: [
 		{
 			message:
