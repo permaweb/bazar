@@ -4,6 +4,7 @@ import storage from 'redux-persist/lib/storage';
 import thunk from 'redux-thunk';
 
 import { currenciesReducer } from './currencies/reducers';
+import { profilesReducer } from './profiles/reducers';
 import { stampsReducer } from './stamps/reducers';
 import { streaksReducer } from './streaks/reducers';
 import { ucmReducer } from './ucm/reducers';
@@ -18,6 +19,7 @@ const persistConfig = {
 
 const rootReducer = combineReducers({
 	currenciesReducer,
+	profilesReducer,
 	streaksReducer,
 	ucmReducer,
 	stampsReducer,
