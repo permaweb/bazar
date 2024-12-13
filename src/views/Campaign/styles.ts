@@ -104,14 +104,14 @@ export const Header = styled.div`
 `;
 
 export const ViewAction = styled.div`
-	margin: 55px 0 0 0;
+	margin: 75px 0 0 0;
 	position: relative;
 	z-index: 1;
 	button {
 		background: rgba(15, 15, 15, 1);
 		padding: 10px 20px;
 		border: 1px solid #fb493e;
-		box-shadow: 0 0 20px 1px #ff0f00;
+		box-shadow: 0 0 10px 1px #ff0f00;
 		border-radius: ${STYLING.dimensions.radius.alt2};
 		display: flex;
 		align-items: center;
@@ -630,5 +630,16 @@ export const BlockMessage = styled.div`
 		text-transform: uppercase;
 		text-align: center;
 		line-height: 1.65;
+	}
+`;
+
+export const ClaimLimitReached = styled.div`
+	margin: 2.5px 0 0 0;
+	p {
+		color: #d8d6a7;
+		font-size: ${(props) => props.theme.typography.size.base};
+		font-weight: 700;
+		font-family: 'Frank Ruhl Libre', serif;
+		text-align: center;
 	}
 `;

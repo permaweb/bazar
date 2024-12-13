@@ -30,13 +30,18 @@ export default function TrendingTokens() {
 				responses = JSON.parse(cachedTokens);
 			} else {
 				for (const tokenProcess of tokenProcesses) {
-					const tokenResponse = await readHandler({
-						processId: tokenProcess,
-						action: 'Info',
-					});
+					try {
+						const tokenResponse = await readHandler({
+							processId: tokenProcess,
+							action: 'Info',
+						});
 
-					if (tokenResponse) {
-						responses.push({ ProcessId: tokenProcess, ...tokenResponse });
+						if (tokenResponse) {
+							responses.push({ ProcessId: tokenProcess, ...tokenResponse });
+							setTokens(responses);
+						}
+					} catch (e: any) {
+						console.error(e);
 					}
 				}
 

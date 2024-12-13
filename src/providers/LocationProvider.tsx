@@ -26,7 +26,7 @@ export function LocationProvider(props: LocationProviderProps) {
 		const checkLocation = async () => {
 			setLoading(true);
 			try {
-				const response = await fetch(`https://ipinfo.io?token=04c286535ab4dc`);
+				const response = await fetch(`https://ipinfo.io?token=31d0ff5f3beb9f`);
 				const data = await response.json();
 				setCountry(data.country);
 			} catch (error) {

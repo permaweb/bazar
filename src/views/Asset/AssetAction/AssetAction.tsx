@@ -21,6 +21,7 @@ import { getTxEndpoint } from 'helpers/endpoints';
 import { ListingType, OwnerType, RegistryProfileType } from 'helpers/types';
 import { formatCount, formatPercentage, getOwners, sortOrders } from 'helpers/utils';
 import * as windowUtils from 'helpers/window';
+import { useAppProvider } from 'providers/AppProvider';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 import { RootState } from 'store';
@@ -37,6 +38,7 @@ const GROUP_COUNT = 250;
 export default function AssetAction(props: IProps) {
 	const currenciesReducer = useSelector((state: RootState) => state.currenciesReducer);
 
+	const appProvider = useAppProvider();
 	const arProvider = useArweaveProvider();
 
 	const languageProvider = useLanguageProvider();
@@ -450,32 +452,39 @@ export default function AssetAction(props: IProps) {
 							/>
 						</S.HeaderTitleActions>
 					</S.HeaderTitle>
-					<S.OwnerLinesWrapper>
-						{showCurrentlyOwnedBy() && (
-							<S.OwnerLine>
-								<span>{language.currentlyOwnedBy}</span>
-								<button
-									onClick={() => {
-										setShowCurrentOwnersModal(true);
-									}}
-								>
-									{ownerCountDisplay}
-								</button>
-							</S.OwnerLine>
+					<S.OrdersWrapper>
+						<S.OwnerLinesWrapper>
+							{showCurrentlyOwnedBy() && (
+								<S.OwnerLine>
+									<span>{language.currentlyOwnedBy}</span>
+									<button
+										onClick={() => {
+											setShowCurrentOwnersModal(true);
+										}}
+									>
+										{ownerCountDisplay}
+									</button>
+								</S.OwnerLine>
+							)}
+							{currentListings && currentListings.length > 0 && (
+								<S.OwnerLine>
+									<span>{language.currentlyBeingSoldBy}</span>
+									<button
+										onClick={() => {
+											setShowCurrentListingsModal(true);
+										}}
+									>
+										{listingCountDisplay}
+									</button>
+								</S.OwnerLine>
+							)}
+						</S.OwnerLinesWrapper>
+						{appProvider.ucm.updating && (
+							<S.MessageWrapper>
+								<span>{`${language.ordersUpdating}...`}</span>
+							</S.MessageWrapper>
 						)}
-						{currentListings && currentListings.length > 0 && (
-							<S.OwnerLine>
-								<span>{language.currentlyBeingSoldBy}</span>
-								<button
-									onClick={() => {
-										setShowCurrentListingsModal(true);
-									}}
-								>
-									{listingCountDisplay}
-								</button>
-							</S.OwnerLine>
-						)}
-					</S.OwnerLinesWrapper>
+					</S.OrdersWrapper>
 					<S.ACActionWrapper>
 						<S.ACAction>
 							<button onClick={() => props.toggleViewType()}>

@@ -32,6 +32,7 @@ export const lightTheme = {
 	light1: '#FFFFFF',
 	light2: '#DADADA',
 	dark1: '#151515',
+	dark2: '#333333',
 	stats: {
 		primary: '#FF8385',
 		alt1: '#A3DEE2',
@@ -80,6 +81,7 @@ export const darkTheme = {
 	light1: '#FFFFFF',
 	light2: '#DADADA',
 	dark1: '#151515',
+	dark2: '#333333',
 	stats: {
 		primary: '#FF8080',
 		alt1: '#9BD4E0',
@@ -194,6 +196,9 @@ export const theme = (currentTheme: any): DefaultTheme => ({
 			},
 			alt10: {
 				background: currentTheme.primary2,
+			},
+			alt11: {
+				background: currentTheme.dark2,
 			},
 		},
 		font: {
@@ -331,7 +336,7 @@ export const theme = (currentTheme: any): DefaultTheme => ({
 			xLg: '24px',
 			h1: 'clamp(38px, 4.5vw, 62px)',
 			h2: 'clamp(32px, 3.75vw, 44px)',
-			h4: 'clamp(28px, 2.5vw, 34px)',
+			h4: 'clamp(24px, 2.5vw, 34px)',
 		},
 		weight: {
 			medium: '500',

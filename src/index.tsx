@@ -5,6 +5,7 @@ import { PersistGate } from 'redux-persist/integration/react';
 
 import { App } from 'app';
 import { GlobalStyle } from 'app/styles';
+import { AppProvider } from 'providers/AppProvider';
 import { ArweaveProvider } from 'providers/ArweaveProvider';
 import { CustomThemeProvider } from 'providers/CustomThemeProvider';
 import ErrorBoundary from 'providers/ErrorBoundary';
@@ -20,10 +21,12 @@ ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
 					<LocationProvider>
 						<ErrorBoundary>
 							<ArweaveProvider>
-								<HashRouter>
-									<GlobalStyle />
-									<App />
-								</HashRouter>
+								<AppProvider>
+									<HashRouter>
+										<GlobalStyle />
+										<App />
+									</HashRouter>
+								</AppProvider>
 							</ArweaveProvider>
 						</ErrorBoundary>
 					</LocationProvider>

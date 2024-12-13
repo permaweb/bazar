@@ -371,6 +371,11 @@ export default function Campaign() {
 								</>
 							)}
 							{!asset.claimable && !asset.claimed && <S.GridElementLink href={asset.claimRedirect} target={'_blank'} />}
+							{asset.id === 'x6o-GDJhqsDbithbK4J0BiJt7uwIxtdn7fvGax5MaVI' && (
+								<S.ClaimLimitReached>
+									<p>5000 / 5000 Claimed</p>
+								</S.ClaimLimitReached>
+							)}
 						</S.GridElement>
 					))}
 				</>

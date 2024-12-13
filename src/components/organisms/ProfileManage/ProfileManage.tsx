@@ -25,6 +25,14 @@ const MAX_IMAGE_SIZE = 100000;
 const ALLOWED_BANNER_TYPES = 'image/png, image/jpeg, image/gif';
 const ALLOWED_AVATAR_TYPES = 'image/png, image/jpeg, image/gif';
 
+interface IProfileData {
+	DisplayName?: string;
+	UserName?: string;
+	Description?: string;
+	CoverImage?: string;
+	ProfileImage?: string;
+}
+
 export default function ProfileManage(props: IProps) {
 	const arProvider = useArweaveProvider();
 
@@ -58,13 +66,17 @@ export default function ProfileManage(props: IProps) {
 		if (props.handleUpdate) props.handleUpdate();
 	}
 
-	interface IProfileData {
-		DisplayName?: string;
-		UserName?: string;
-		Description?: string;
-		CoverImage?: string;
-		ProfileImage?: string;
-	}
+	const getFieldDataChanged = (profileValue, newValue) => {
+		if ((newValue === '' || newValue == null) && Boolean(profileValue)) {
+			return '';
+		}
+		if (profileValue !== newValue && typeof newValue === 'string' && newValue.length > 0) {
+			return newValue;
+		} else {
+			return undefined;
+		}
+	};
+
 	async function handleSubmit() {
 		if (arProvider.wallet) {
 			setLoading(true);
@@ -114,19 +126,7 @@ export default function ProfileManage(props: IProps) {
 					}
 				}
 			}
-			// send undefined
-			const getFieldDataChanged = (profileValue, newValue) => {
-				// if new is '' and profilevalue is not empty, then clear
-				if ((newValue === '' || newValue == null) && Boolean(profileValue)) {
-					return '';
-				}
-				if (profileValue !== newValue && typeof newValue === 'string' && newValue.length > 0) {
-					return newValue;
-				} else {
-					return undefined;
-				}
-			};
-			// either send undefined if no change, or '' if clear, or a value.
+
 			data.UserName = getFieldDataChanged(props.profile?.username, username);
 			data.DisplayName = getFieldDataChanged(props.profile?.displayName, name);
 			data.CoverImage = getFieldDataChanged(props.profile?.banner, bannerTx);
