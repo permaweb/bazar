@@ -13,6 +13,7 @@ import { ASSET_SORT_OPTIONS, ASSETS, PAGINATORS, STYLING, URLS } from 'helpers/c
 import { AssetDetailType, AssetSortType, IdGroupType, NotificationType, SelectOptionType } from 'helpers/types';
 import { isFirefox, sortOrders } from 'helpers/utils';
 import * as windowUtils from 'helpers/window';
+import { useAppProvider } from 'providers/AppProvider';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 
@@ -24,9 +25,9 @@ import { IProps } from './types';
 
 export default function AssetsTable(props: IProps) {
 	const { address } = useParams();
-
 	const navigate = useNavigate();
 
+	const appProvider = useAppProvider();
 	const arProvider = useArweaveProvider();
 
 	const languageProvider = useLanguageProvider();
@@ -40,7 +41,7 @@ export default function AssetsTable(props: IProps) {
 	const [assetCursor, setAssetCursor] = React.useState<string>('0');
 
 	const [assets, setAssets] = React.useState<AssetDetailType[] | null>(null);
-	const [assetsLoading, setAssetsLoading] = React.useState<boolean>(false);
+	const [assetsLoading, setAssetsLoading] = React.useState<boolean>(true);
 	const [assetErrorResponse, setAssetErrorResponse] = React.useState<string | null>(null);
 
 	const [viewType, setViewType] = React.useState<'list' | 'grid' | null>(null);
@@ -61,37 +62,42 @@ export default function AssetsTable(props: IProps) {
 	windowUtils.checkWindowResize(handleWindowResize);
 
 	React.useEffect(() => {
-		if (props.ids && !props.ids.length) {
-			setAssets([]);
-		} else {
-			if (!props.loadingIds) {
-				setAssetIdGroups(
-					getAssetIdGroups({
-						ids: props.ids || null,
-						groupCount: props.pageCount || PAGINATORS.default,
-						filterListings: assetFilterListings,
-						sortType: assetSortType.id as AssetSortType,
-					})
-				);
+		if (appProvider.stamps.completed) {
+			if (props.ids && !props.ids.length) {
+				setAssets([]);
+				setAssetsLoading(false);
+			} else {
+				if (!props.loadingIds) {
+					setAssetIdGroups(
+						getAssetIdGroups({
+							ids: props.ids || null,
+							groupCount: props.pageCount || PAGINATORS.default,
+							filterListings: assetFilterListings,
+							sortType: assetSortType.id as AssetSortType,
+						})
+					);
+				}
 			}
 		}
-	}, [assetFilterListings, assetSortType, props.ids, props.loadingIds]);
+	}, [assetFilterListings, assetSortType, props.ids, props.loadingIds, appProvider.stamps.completed]);
 
 	React.useEffect(() => {
 		(async function () {
 			if (assetIdGroups && Object.keys(assetIdGroups).length > 0) {
 				setAssetsLoading(true);
-				try {
-					setAssets(
-						await getAssetsByIds({ ids: assetIdGroups[assetCursor], sortType: assetSortType.id as AssetSortType })
-					);
-				} catch (e: any) {
-					setAssetErrorResponse(e.message || language.assetsFetchFailed);
+				if (appProvider.stamps.completed) {
+					try {
+						setAssets(
+							await getAssetsByIds({ ids: assetIdGroups[assetCursor], sortType: assetSortType.id as AssetSortType })
+						);
+					} catch (e: any) {
+						setAssetErrorResponse(e.message || language.assetsFetchFailed);
+					}
 				}
 				setAssetsLoading(false);
 			}
 		})();
-	}, [assetIdGroups, assetCursor, assetSortType]);
+	}, [assetIdGroups, assetCursor, assetSortType, appProvider.stamps.completed]);
 
 	React.useEffect(() => {
 		if (!desktop) setViewType('grid');
