@@ -338,7 +338,9 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 		<>
 			{walletModalVisible && (
 				<Modal header={language.connectWallet} handleClose={() => setWalletModalVisible(false)}>
-					<WalletList handleConnect={handleConnect} />
+					<WalletList
+						handleConnect={(walletType: WalletEnum.arConnect | WalletEnum.othent) => handleConnect(walletType)}
+					/>
 				</Modal>
 			)}
 			<ARContext.Provider

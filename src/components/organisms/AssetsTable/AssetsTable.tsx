@@ -17,7 +17,7 @@ import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 
 import { AssetData } from '../AssetData';
-import { StampWidget } from '../StampWidget';
+import { Stamps } from '../Stamps';
 
 import * as S from './styles';
 import { IProps } from './types';
@@ -342,16 +342,16 @@ export default function AssetsTable(props: IProps) {
 																>
 																	<span>{profileLoading ? `${language.loading}...` : language.setProfilePicture}</span>
 																</button>
-																<StampWidget
-																	assetId={asset.data.id}
+																<Stamps
+																	txId={asset.data.id}
 																	title={asset.data.title || asset.data.description}
 																	asButton={true}
 																/>
 															</S.AssetGridDataActionWrapper>
 														) : (
 															<S.AssetGridDataActionWrapper>
-																<StampWidget
-																	assetId={asset.data.id}
+																<Stamps
+																	txId={asset.data.id}
 																	title={asset.data.title || asset.data.description}
 																	asButton={true}
 																/>

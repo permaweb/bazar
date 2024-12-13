@@ -1,7 +1,6 @@
 export interface IProps {
-	assetId: string;
+	txId: string;
 	title: string;
-	stamps?: { total: number; vouched: number } | null;
 	hasStampedMessage?: string;
 	getCount?: boolean;
 	sm?: boolean;

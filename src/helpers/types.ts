@@ -253,4 +253,6 @@ export type VouchType = { score: number; isVouched: boolean };
 
 export type ResponseType = { status: boolean; message: string | null };
 
+export type StampType = { total: number; vouched: number; hasStamped?: boolean };
+
 export type StampsType = Record<string, { total: number; vouched: number }>;

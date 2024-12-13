@@ -68,6 +68,7 @@ export const language = {
 		fetchingAsset: `Fetching asset`,
 		floorPrice: `Floor price`,
 		getWrappedAr: `Get Wrapped AR`,
+		gettingStamps: `Getting your stamps`,
 		goTo: `Go to`,
 		implements: `Implements`,
 		interactions: `Interactions`,

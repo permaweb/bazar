@@ -10,7 +10,7 @@ import { OwnerLine } from 'components/molecules/OwnerLine';
 import { URLTabs } from 'components/molecules/URLTabs';
 import { ActivityTable } from 'components/organisms/ActivityTable';
 import { AssetsTable } from 'components/organisms/AssetsTable';
-import { StampWidget } from 'components/organisms/StampWidget';
+import { Stamps } from 'components/organisms/Stamps';
 import { ASSETS, DEFAULTS, PAGINATORS, URLS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import { CollectionDetailType } from 'helpers/types';
@@ -120,7 +120,7 @@ export default function Collection() {
 					>
 						<S.OverlayWrapper />
 						<S.StampWidgetWrapper>
-							<StampWidget assetId={collection.id} title={collection.title} />
+							<Stamps txId={collection.id} title={collection.title} />
 						</S.StampWidgetWrapper>
 						<S.InfoWrapper>
 							<S.Thumbnail>

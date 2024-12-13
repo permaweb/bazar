@@ -236,7 +236,7 @@ export function sortByAssetOrders(
 
 	const getStampKey = (asset: AssetDetailType): number => {
 		if (!asset.data.id) return -1;
-		return stamps[asset.data.id]?.total ?? -1;
+		return stamps?.[asset?.data.id]?.total ?? -1;
 	};
 
 	let direction: number;
@@ -301,7 +301,7 @@ export function sortOrderbookEntries(
 	};
 
 	const getStampKey = (entry: OrderbookEntryType): number => {
-		if (!entry.Pair || entry.Pair.length === 0) return -1;
+		if (!stamps || !entry.Pair || entry.Pair.length === 0) return -1;
 		return stamps[entry.Pair[0]]?.total ?? -1;
 	};
 
@@ -407,4 +407,23 @@ export function cleanTagValue(value: string) {
 	let updatedValue: string;
 	updatedValue = value.replace(/\[|\]/g, '');
 	return updatedValue;
+}
+
+export function checkEqualObjects(obj1: object, obj2: object): boolean {
+	if (!obj1 || !obj2) return false;
+
+	const keys1 = Object.keys(obj1);
+	const keys2 = Object.keys(obj2);
+
+	if (keys1.length !== keys2.length) {
+		return false;
+	}
+
+	for (const key of keys1) {
+		if (obj1[key] !== obj2[key]) {
+			return false;
+		}
+	}
+
+	return true;
 }

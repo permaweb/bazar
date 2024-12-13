@@ -6,7 +6,8 @@ import { stamps } from 'api';
 
 import { Notification } from 'components/atoms/Notification';
 import { ASSETS } from 'helpers/config';
-import { ResponseType } from 'helpers/types';
+import { ResponseType, StampType } from 'helpers/types';
+import { checkEqualObjects } from 'helpers/utils';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 import { RootState } from 'store';
@@ -15,61 +16,76 @@ import * as stampsActions from 'store/stamps/actions';
 import * as S from './styles';
 import { IProps } from './types';
 
-export default function StampWidget(props: IProps) {
+export default function Stamps(props: IProps) {
 	const dispatch = useDispatch();
 
 	const stampsReducer = useSelector((state: RootState) => state.stampsReducer);
 
 	const arProvider = useArweaveProvider();
 
-	const [count, setCount] = React.useState<any>(null);
-	const [hasStamped, setHasStamped] = React.useState<boolean>(false);
-	const [disabled, setDisabled] = React.useState<boolean>(true);
+	const [current, setCurrent] = React.useState<StampType | null>(null);
 	const [loading, setLoading] = React.useState<boolean>(false);
-
-	const [stampNotification, setStampNotification] = React.useState<ResponseType | null>(null);
+	const [response, setResponse] = React.useState<ResponseType | null>(null);
 
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
 
 	React.useEffect(() => {
 		(async function () {
-			if (props.assetId && !count) {
-				setCount(stampsReducer?.[props.assetId] ?? 0);
-			}
-		})();
-	}, [props.assetId, stampsReducer]);
+			if ((props.txId && !current) || !checkEqualObjects(current, stampsReducer?.[props.txId])) {
+				if (stampsReducer) {
+					let currentStamps = stampsReducer?.[props.txId];
 
-	React.useEffect(() => {
-		if (!arProvider.walletAddress) {
-			setDisabled(true);
-		} else {
-			setDisabled(disabled);
-		}
-	}, [arProvider.walletAddress]);
+					if (currentStamps) {
+						setCurrent(currentStamps);
+						setLoading(false);
+					} else {
+						try {
+							if (!current) {
+								setLoading(true);
+								const stampsFetch = await stamps.getStamps({ ids: [props.txId] });
 
-	React.useEffect(() => {
-		(async function () {
-			if (props.assetId && arProvider.walletAddress) {
-				setLoading(true);
-				try {
-					setHasStamped(stampsReducer?.[props.assetId].hasStamped ?? false);
-					setDisabled(stampsReducer?.[props.assetId].hasStamped ?? true);
-				} catch (e: any) {
-					console.error(e);
+								setCurrent(stampsFetch?.[props.txId] ?? null);
+								setLoading(false);
+
+								const hasStampedCheck = await stamps.hasStamped(props.txId);
+
+								currentStamps = {
+									...(stampsFetch?.[props.txId] ?? null),
+									hasStamped: hasStampedCheck?.[props.txId] ?? false,
+								};
+
+								setCurrent(currentStamps);
+
+								const updatedStamps = { ...stampsReducer, [props.txId]: currentStamps };
+								dispatch(stampsActions.setStamps(updatedStamps));
+							}
+						} catch (e: any) {
+							console.error(e);
+						}
+						setLoading(false);
+					}
+				} else {
+					setLoading(true);
 				}
-				setLoading(false);
 			}
 		})();
-	}, [props.assetId, arProvider.walletAddress, stampsReducer]);
+	}, [stampsReducer, props.txId, arProvider.walletAddress]);
 
-	const handleStamp = React.useCallback(async () => {
+	async function handlePress(e: any) {
+		e.preventDefault();
+		e.stopPropagation();
+
+		if (!arProvider.walletAddress) {
+			arProvider.setWalletModalVisible(true);
+			return;
+		}
+
 		try {
-			if (props.assetId) {
-				setDisabled(true);
+			if (props.txId) {
 				setLoading(true);
 
-				let stamp: any = await stamps.stamp(props.assetId);
+				let stamp: any = await stamps.stamp(props.txId);
 
 				let stampSuccess =
 					stamp?.Messages?.length > 0 &&
@@ -80,8 +96,7 @@ export default function StampWidget(props: IProps) {
 				setLoading(false);
 
 				if (stampSuccess) {
-					setCount((prev: any) => ({ ...prev, total: prev.total + 1 }));
-					setHasStamped(true);
+					setCurrent((prev: any) => ({ ...prev, total: prev.total + 1, hasStamped: true }));
 
 					const updatedStamps = {};
 					if (stampsReducer) {
@@ -96,46 +111,42 @@ export default function StampWidget(props: IProps) {
 						dispatch(stampsActions.setStamps(updatedStamps));
 					}
 
-					setStampNotification({
+					setResponse({
 						status: true,
 						message: `${language.stampSuccess}!`,
 					});
-				} else {
-					setDisabled(false);
 				}
 			}
 		} catch (e: any) {
 			setLoading(false);
-			setDisabled(false);
-			setStampNotification({
+			setResponse({
 				status: false,
 				message: e.toString(),
 			});
 		}
-	}, [props, stampsReducer]);
+	}
 
 	function getTotalCount() {
 		if (!arProvider.wallet || loading) return '';
-		if (count) return `(${count.total.toString()})`;
-		else if (props.stamps) return `(${props.stamps.total.toString()})`;
+		if (current) return `(${current.total.toString()})`;
 		else return '';
 	}
 
 	function getActionLabel() {
-		if (loading) return `${language.loading}...`;
 		if (!arProvider.wallet) return `${language.connectWallet}`;
-		if (hasStamped) return `${language.stamped}`;
+		if (loading) return `${language.loading}...`;
+		if (current?.hasStamped === undefined) return `${language.gettingStamps}...`;
+		if (current?.hasStamped) return `${language.stamped}`;
 		return language.stamp;
 	}
+
+	const disabled = arProvider.walletAddress ? !stampsReducer || loading || current?.hasStamped !== false : false;
 
 	return (
 		<>
 			{!props.asButton && (
 				<S.Wrapper
-					onClick={(e: any) => {
-						e.preventDefault();
-						handleStamp();
-					}}
+					onClick={(e: any) => handlePress(e)}
 					disabled={disabled}
 					title={getActionLabel()}
 					className={'border-wrapper-alt2'}
@@ -145,22 +156,15 @@ export default function StampWidget(props: IProps) {
 				</S.Wrapper>
 			)}
 			{props.asButton && (
-				<S.Button
-					onClick={(e: any) => {
-						e.preventDefault();
-						handleStamp();
-					}}
-					disabled={disabled}
-				>
+				<S.Button onClick={(e: any) => handlePress(e)} disabled={disabled}>
 					<span>{`${getActionLabel()} ${getTotalCount()}`}</span>
 				</S.Button>
 			)}
-
-			{stampNotification && (
+			{response && (
 				<Notification
-					message={stampNotification.message}
-					type={stampNotification.status ? 'success' : 'warning'}
-					callback={() => setStampNotification(null)}
+					message={response.message}
+					type={response.status ? 'success' : 'warning'}
+					callback={() => setResponse(null)}
 				/>
 			)}
 		</>
