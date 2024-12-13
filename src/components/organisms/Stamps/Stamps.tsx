@@ -115,6 +115,11 @@ export default function Stamps(props: IProps) {
 						status: true,
 						message: `${language.stampSuccess}!`,
 					});
+				} else {
+					setResponse({
+						status: false,
+						message: stamp?.Messages?.[0].Data,
+					});
 				}
 			}
 		} catch (e: any) {

@@ -16,6 +16,8 @@ export const Wrapper = styled.div<{ warning: boolean | undefined }>`
 	padding: 11.5px 17.5px;
 	background: ${(props) => (props.warning ? props.theme.colors.warning.alt1 : props.theme.colors.indicator.primary)};
 	border-radius: ${STYLING.dimensions.radius.primary};
+	box-shadow: 0 0 0.25rem 0.0225rem ${(props) => props.theme.colors.shadow.alt3},
+		0 0.0225rem 0.0225rem ${(props) => props.theme.colors.shadow.alt3};
 	@media (max-width: ${STYLING.cutoffs.secondary}) {
 		width: 90vw;
 	}

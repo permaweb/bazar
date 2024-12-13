@@ -195,7 +195,7 @@ export default function Streaks(props: IProps) {
 		return (
 			<>
 				{getStreakIcon(count ?? 0)}
-				{arProvider.profile && <span>{count ?? '...'}</span>}
+				{<span>{count ?? '...'}</span>}
 			</>
 		);
 	}, [count]);

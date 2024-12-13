@@ -143,32 +143,10 @@ export async function getAssetById(args: { id: string }): Promise<AssetDetailTyp
 				}
 			}
 
-			let assetOrders: AssetOrderType[] | null = null;
-			if (store.getState().ucmReducer) {
-				const ucmReducer = store.getState().ucmReducer;
-				const existingEntry = ucmReducer.Orderbook.find((entry: any) => {
-					return entry.Pair ? entry.Pair[0] === args.id : null;
-				});
-				if (existingEntry) {
-					assetOrders = existingEntry.Orders.map((order: any) => {
-						let currentAssetOrder: AssetOrderType = {
-							creator: order.Creator,
-							dateCreated: order.DateCreated,
-							id: order.Id,
-							originalQuantity: order.OriginalQuantity,
-							quantity: order.Quantity,
-							token: order.Token,
-							currency: existingEntry.Pair[1],
-						};
-
-						if (order.Price) currentAssetOrder.price = order.Price;
-						return currentAssetOrder;
-					});
-				}
-			}
-
 			const assetDetail: AssetDetailType = { ...structuredAsset, state: assetState };
+			const assetOrders = getAssetOrders({ id: args.id });
 			if (assetOrders) assetDetail.orders = assetOrders;
+
 			return assetDetail;
 		}
 
@@ -176,6 +154,41 @@ export async function getAssetById(args: { id: string }): Promise<AssetDetailTyp
 	} catch (e: any) {
 		throw new Error(e.message || 'Failed to fetch asset');
 	}
+}
+
+export function getExistingEntry(args: { id: string }) {
+	if (store.getState().ucmReducer) {
+		const ucmReducer = store.getState().ucmReducer;
+		return ucmReducer.Orderbook.find((entry: any) => {
+			return entry.Pair ? entry.Pair[0] === args.id : null;
+		});
+	}
+
+	return null;
+}
+
+export function getAssetOrders(args: { id: string }) {
+	let assetOrders: AssetOrderType[] | null = null;
+
+	const existingEntry = getExistingEntry({ id: args.id });
+	if (existingEntry) {
+		assetOrders = existingEntry.Orders.map((order: any) => {
+			let currentAssetOrder: AssetOrderType = {
+				creator: order.Creator,
+				dateCreated: order.DateCreated,
+				id: order.Id,
+				originalQuantity: order.OriginalQuantity,
+				quantity: order.Quantity,
+				token: order.Token,
+				currency: existingEntry.Pair[1],
+			};
+
+			if (order.Price) currentAssetOrder.price = order.Price;
+			return currentAssetOrder;
+		});
+	}
+
+	return assetOrders;
 }
 
 export function structureAssets(gqlResponse: DefaultGQLResponseType): AssetType[] {

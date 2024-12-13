@@ -69,6 +69,12 @@ export const ActionsWrapper = styled.div`
 	gap: 20px;
 `;
 
+export const MessageWrapper = styled.div`
+	@media (max-width: ${STYLING.cutoffs.secondary}) {
+		display: none;
+	}
+`;
+
 export const MWrapper = styled.div`
 	display: none;
 	@media (max-width: ${STYLING.cutoffs.secondary}) {

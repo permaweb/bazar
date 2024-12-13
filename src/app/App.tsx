@@ -17,8 +17,6 @@ import { useLocationProvider } from 'providers/LocationProvider';
 import { RootState } from 'store';
 import * as currencyActions from 'store/currencies/actions';
 import * as stampsActions from 'store/stamps/actions';
-import * as streakActions from 'store/streaks/actions';
-import * as ucmActions from 'store/ucm/actions';
 import { getCampaignBackground } from 'views/Campaign';
 
 import * as S from './styles';
@@ -54,27 +52,6 @@ export default function App() {
 	React.useEffect(() => {
 		(async function () {
 			try {
-				const ucmState = await readHandler({
-					processId: AO.ucm,
-					action: 'Info',
-				});
-
-				dispatch(ucmActions.setUCM(ucmState));
-
-				const streaks = await readHandler({
-					processId: AO.pixl,
-					action: 'Get-Streaks',
-				});
-
-				if (streaks.Streaks) {
-					for (let key in streaks.Streaks) {
-						if (streaks.Streaks[key].days === 0) {
-							delete streaks.Streaks[key];
-						}
-					}
-					dispatch(streakActions.setStreaks(streaks.Streaks));
-				}
-
 				if (!currenciesReducer) {
 					const defaultTokenState = await readHandler({
 						processId: AO.defaultToken,
@@ -100,7 +77,7 @@ export default function App() {
 				console.error(e);
 			}
 		})();
-	}, [currenciesReducer, dispatch]);
+	}, [currenciesReducer]);
 
 	React.useEffect(() => {
 		(async function () {

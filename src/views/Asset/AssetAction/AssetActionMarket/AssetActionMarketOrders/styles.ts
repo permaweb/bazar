@@ -220,15 +220,17 @@ export const ConfirmationFooter = styled.div`
 	}
 `;
 
-export const MessageWrapper = styled.div`
+export const MessageWrapper = styled.div<{ warning?: boolean }>`
 	padding: 2.5px 10px;
 	margin: 15px 0 0 0;
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	background: ${(props) => props.theme.colors.warning.primary};
-	border: 1px solid ${(props) => props.theme.colors.warning.primary};
-	border-radius: ${STYLING.dimensions.radius.alt2};
+	background: ${(props) =>
+		props.warning ? props.theme.colors.warning.primary : props.theme.colors.container.alt11.background};
+	border: 1px solid
+		${(props) => (props.warning ? props.theme.colors.warning.primary : props.theme.colors.border.primary)};
+	border-radius: ${STYLING.dimensions.radius.alt1};
 	span {
 		font-size: ${(props) => props.theme.typography.size.xSmall};
 		font-family: ${(props) => props.theme.typography.family.primary};

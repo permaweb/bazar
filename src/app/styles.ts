@@ -198,9 +198,9 @@ export const GlobalStyle = createGlobalStyle`
     padding: 0 20px;
   }
 
-	.modal-wrapper {
-		padding: 0 20px 20px 20px !important;
-	}
+  .modal-wrapper {
+	padding: 0 20px 20px 20px !important;
+  }
 
   .info-text {
     padding: 0 4.25px;
@@ -213,7 +213,17 @@ export const GlobalStyle = createGlobalStyle`
       font-size: ${(props) => props.theme.typography.size.xxxSmall};
       font-weight: ${(props) => props.theme.typography.weight.medium};
       white-space: nowrap;
-	  }
+	}
+  }
+
+  .message {
+    span {
+      color: ${(props) => props.theme.colors.font.primary};
+      font-size: ${(props) => props.theme.typography.size.xxSmall};
+      font-weight: ${(props) => props.theme.typography.weight.bold};
+	  font-family: ${(props) => props.theme.typography.family.alt1};
+      white-space: nowrap;
+	}
   }
 
   .overlay {
