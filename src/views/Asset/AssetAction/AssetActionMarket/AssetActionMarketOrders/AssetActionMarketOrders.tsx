@@ -239,6 +239,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 					case 'sell':
 						forwardedTags = [
 							{ name: 'X-Order-Action', value: 'Create-Order' },
+							{ name: 'X-Dominant-Token', value: dominantToken },
 							{ name: 'X-Swap-Token', value: swapToken },
 						];
 						if (unitPrice && Number(unitPrice) > 0) {
