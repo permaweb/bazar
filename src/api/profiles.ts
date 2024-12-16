@@ -121,28 +121,31 @@ export async function getProfileByWalletAddress(args: { address: string }): Prom
 	}
 }
 
-// Shared lock variable
 let cacheLock: Promise<void> | null = null;
 
-// Function to acquire and release the lock
 async function withLock<T>(criticalSection: () => Promise<T>): Promise<T> {
 	while (cacheLock) {
-		await cacheLock; // Wait for the current lock to resolve
+		await cacheLock;
 	}
 
 	let release: () => void;
 	cacheLock = new Promise((resolve) => {
-		release = resolve; // Assign resolve to release
+		release = resolve;
 	});
 
 	try {
-		return await criticalSection(); // Run the critical section
+		return await criticalSection();
 	} finally {
-		cacheLock = null; // Release the lock
-		release!(); // Ensure the promise resolves
+		cacheLock = null;
+		release!();
 	}
 }
 
+/*
+  We dont want the logic to overlap when there are
+  many different requests to this function, thats
+  why there is a lock implemented here.
+*/
 export async function getRegistryProfiles(args: { profileIds: string[] }): Promise<RegistryProfileType[]> {
 	return withLock(async () => {
 		try {
@@ -159,6 +162,8 @@ export async function getRegistryProfiles(args: { profileIds: string[] }): Promi
 					!registryProfiles.some((profile: { ProfileId: string }) => profile.ProfileId === profileId) &&
 					!missingProfileIds.includes(profileId)
 			);
+
+			missingProfileIds = missingProfileIds.filter((id: string) => args.profileIds.includes(id));
 
 			if (cachedProfiles.length + missingProfileIds.length === args.profileIds.length) {
 				console.log('All profiles are cached or missing:', cachedProfiles);
