@@ -122,6 +122,7 @@ export async function getProfileByWalletAddress(args: { address: string }): Prom
 }
 
 let cacheLock: Promise<void> | null = null;
+const TTL_MS = 10 * 60 * 1000;
 
 async function withLock<T>(criticalSection: () => Promise<T>): Promise<T> {
 	while (cacheLock) {
@@ -150,17 +151,52 @@ export async function getRegistryProfiles(args: { profileIds: string[] }): Promi
 	return withLock(async () => {
 		try {
 			const state = store.getState().profilesReducer;
-			let registryProfiles = state.registryProfiles || [];
-			let missingProfileIds = state.missingProfileIds || [];
+			let { registryProfiles = [], missingProfileIds = [], cacheTimestamp = 0 } = state;
+
+			const isCacheValid = Date.now() - cacheTimestamp < TTL_MS;
+
+			/*
+        The cache is to old, update all the profiles again
+      */
+			if (!isCacheValid) {
+				console.log('Cache no longer valid');
+
+				const metadataLookup = await readHandler({
+					processId: AO.profileRegistry,
+					action: 'Get-Metadata-By-ProfileIds',
+					data: { ProfileIds: args.profileIds },
+				});
+
+				const fetchedIds = metadataLookup.map((profile: { ProfileId: string }) => profile.ProfileId);
+				const newMissingProfileIds = args.profileIds.filter((id) => !fetchedIds.includes(id));
+
+				store.dispatch(
+					profilesActions.setProfiles({
+						registryProfiles: metadataLookup,
+						missingProfileIds: [...new Set([...newMissingProfileIds])],
+						cacheTimestamp: Date.now(),
+					})
+				);
+
+				return args.profileIds.map((id) => {
+					const profile = metadataLookup.find((profile: { ProfileId: string }) => profile.ProfileId === id);
+					return {
+						id: profile?.ProfileId || id,
+						username: profile?.Username || null,
+						avatar: profile?.ProfileImage || null,
+						bio: profile?.Description ?? null,
+					};
+				});
+			}
 
 			const cachedProfiles = args.profileIds
-				.map((profileId) => registryProfiles.find((profile: { ProfileId: string }) => profile.ProfileId === profileId))
+				.map((id) => registryProfiles.find((profile: { ProfileId: string }) => profile.ProfileId === id))
 				.filter(Boolean) as RegistryProfileType[];
 
 			const filteredIds = args.profileIds.filter(
-				(profileId) =>
-					!registryProfiles.some((profile: { ProfileId: string }) => profile.ProfileId === profileId) &&
-					!missingProfileIds.includes(profileId)
+				(id) =>
+					!registryProfiles.some((profile: { ProfileId: string }) => profile.ProfileId === id) &&
+					!missingProfileIds.includes(id)
 			);
 
 			missingProfileIds = missingProfileIds.filter((id: string) => args.profileIds.includes(id));
@@ -169,6 +205,8 @@ export async function getRegistryProfiles(args: { profileIds: string[] }): Promi
 				console.log('All profiles are cached or missing:', cachedProfiles);
 				return cachedProfiles;
 			}
+
+			console.log('Some or all profiles are not cached');
 
 			const metadataLookup =
 				filteredIds.length > 0
@@ -183,7 +221,7 @@ export async function getRegistryProfiles(args: { profileIds: string[] }): Promi
 			const newMissingProfileIds = filteredIds.filter((id) => !fetchedIds.includes(id));
 
 			const combinedProfiles = [...registryProfiles, ...metadataLookup].reduce<any[]>((uniqueProfiles, profile) => {
-				if (!uniqueProfiles.some((existingProfile) => existingProfile.ProfileId === profile.ProfileId)) {
+				if (!uniqueProfiles.some((existing) => existing.ProfileId === profile.ProfileId)) {
 					uniqueProfiles.push(profile);
 				}
 				return uniqueProfiles;
@@ -193,16 +231,14 @@ export async function getRegistryProfiles(args: { profileIds: string[] }): Promi
 				profilesActions.setProfiles({
 					registryProfiles: combinedProfiles,
 					missingProfileIds: [...new Set([...missingProfileIds, ...newMissingProfileIds])],
+					cacheTimestamp: Date.now(),
 				})
 			);
 
-			registryProfiles = store.getState().profilesReducer.registryProfiles;
-			missingProfileIds = store.getState().profilesReducer.missingProfileIds;
-
-			return args.profileIds.map((profileId) => {
-				const profile = registryProfiles.find((profile) => profile.ProfileId === profileId);
+			return args.profileIds.map((id) => {
+				const profile = combinedProfiles.find((profile: { ProfileId: string }) => profile.ProfileId === id);
 				return {
-					id: profile?.ProfileId || profileId,
+					id: profile?.ProfileId || id,
 					username: profile?.Username || null,
 					avatar: profile?.ProfileImage || null,
 					bio: profile?.Description ?? null,
