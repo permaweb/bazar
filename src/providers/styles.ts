@@ -1,5 +1,7 @@
 import styled from 'styled-components';
 
+import { STYLING } from 'helpers/config';
+
 export const WalletListContainer = styled.div`
 	height: 100%;
 	width: 100%;
@@ -8,12 +10,12 @@ export const WalletListContainer = styled.div`
 	justify-content: center;
 	gap: 20px;
 	flex-wrap: wrap;
-	padding: 20px 0 5px 0;
+	padding: 10px 20px 5px 20px;
 `;
 
 export const WalletListItem = styled.button`
-	width: 200px;
 	display: flex;
+	flex: 1;
 	flex-direction: column;
 	align-items: center;
 	justify-content: center;
@@ -34,16 +36,24 @@ export const WalletListItem = styled.button`
 	&:hover {
 		background: ${(props) => props.theme.colors.container.primary.active};
 	}
+
+	@media (max-width: ${STYLING.cutoffs.secondary}) {
+		flex: none;
+		width: 100%;
+	}
 `;
 
 export const WalletLink = styled.div`
-	margin: 5px 0 20px 0;
+	margin: 10px 0 20px 0;
 	padding: 0 20px;
 	text-align: center;
 	a,
 	span {
 		font-size: ${(props) => props.theme.typography.size.small};
 		font-weight: ${(props) => props.theme.typography.weight.medium};
+	}
+	a {
+		text-decoration: underline;
 	}
 	span {
 		color: ${(props) => props.theme.colors.font.alt1};

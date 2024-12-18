@@ -1,4 +1,5 @@
 import React from 'react';
+import { useSelector } from 'react-redux';
 
 import { getCollections } from 'api';
 
@@ -10,21 +11,29 @@ import { TrendingTokens } from 'components/organisms/TrendingTokens';
 import { PAGINATORS } from 'helpers/config';
 import { CollectionType } from 'helpers/types';
 import { useLanguageProvider } from 'providers/LanguageProvider';
+import { RootState } from 'store';
 
 import * as S from './styles';
 
 export default function Landing() {
+	const collectionsReducer = useSelector((state: RootState) => state.collectionsReducer);
+
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
 
 	const [collections, setCollections] = React.useState<CollectionType[] | null>(null);
-	const [collectionsLoading, setCollectionsLoading] = React.useState<boolean>(false);
+	const [collectionsLoading, setCollectionsLoading] = React.useState<boolean>(true);
 	const [collectionsErrorResponse, setCollectionsErrorResponse] = React.useState<string | null>(null);
 
 	React.useEffect(() => {
 		(async function () {
 			setCollectionsLoading(true);
 			try {
+				if (collectionsReducer?.stamped?.collections?.length) {
+					setCollections(collectionsReducer.stamped.collections);
+					setCollectionsLoading(false);
+				}
+
 				const collectionsFetch: CollectionType[] = await getCollections(null, true);
 				if (collectionsFetch) setCollections(collectionsFetch);
 			} catch (e: any) {
@@ -32,7 +41,7 @@ export default function Landing() {
 			}
 			setCollectionsLoading(false);
 		})();
-	}, []);
+	}, [collectionsReducer?.stamped]);
 
 	const startDate = Math.floor(Date.now()) - 3 * 24 * 60 * 60 * 1000;
 

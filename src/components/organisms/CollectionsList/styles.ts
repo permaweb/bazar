@@ -84,6 +84,22 @@ export const Thumbnail = styled.div`
 	}
 `;
 
+export const Placeholder = styled.div`
+	height: 100%;
+	width: 100%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+
+	span {
+		font-size: ${(props) => props.theme.typography.size.xSmall};
+		font-family: ${(props) => props.theme.typography.family.alt1};
+		font-weight: ${(props) => props.theme.typography.weight.bold};
+		display: block;
+		margin: 0 0 5px 0;
+	}
+`;
+
 export const Title = styled.div`
 	max-width: 200px;
 	p {

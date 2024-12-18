@@ -13,9 +13,9 @@ import * as ucmActions from 'store/ucm/actions';
 import { useArweaveProvider } from './ArweaveProvider';
 
 export interface AppContextState {
-	ucm: { updating: boolean; completed: boolean };
-	streaks: { updating: boolean; completed: boolean };
-	stamps: { updating: boolean; completed: boolean };
+	ucm: { updating: boolean; completed: boolean; lastUpdate?: number };
+	streaks: { updating: boolean; completed: boolean; lastUpdate?: number };
+	stamps: { updating: boolean; completed: boolean; lastUpdate?: number };
 }
 
 export interface AppProviderProps {
@@ -41,37 +41,61 @@ export function AppProvider(props: AppProviderProps) {
 
 	const arProvider = useArweaveProvider();
 
-	const [ucmUpdating, setUCMUpdating] = React.useState<boolean>(false);
-	const [streaksUpdating, setStreaksUpdating] = React.useState<boolean>(false);
+	const [ucmState, setUCMState] = React.useState<AppContextState['ucm']>({
+		updating: false,
+		completed: false,
+		lastUpdate: ucmReducer?.lastUpdate,
+	});
 
-	const [stampsUpdating, setStampsUpdating] = React.useState<boolean>(false);
-	const [stampsCompleted, setStampsCompleted] = React.useState<boolean>(false);
+	const [streaksState, setStreaksState] = React.useState<AppContextState['streaks']>({
+		updating: false,
+		completed: false,
+		lastUpdate: undefined,
+	});
+
+	const [stampsState, setStampsState] = React.useState<AppContextState['stamps']>({
+		updating: false,
+		completed: false,
+		lastUpdate: undefined,
+	});
 
 	React.useEffect(() => {
-		if (stampsReducer) setStampsCompleted(true);
+		if (stampsReducer) setStampsState((prevState) => ({ ...prevState, completed: true }));
 	}, [stampsReducer]);
 
 	React.useEffect(() => {
 		(async function () {
-			setUCMUpdating(true);
+			setUCMState((prevState) => ({ ...prevState, updating: true }));
+
 			try {
 				const ucmState = await readHandler({
 					processId: AO.ucm,
 					action: 'Info',
 				});
 
-				dispatch(ucmActions.setUCM(ucmState));
+				dispatch(
+					ucmActions.setUCM({
+						...ucmState,
+						lastUpdate: Date.now(),
+					})
+				);
+
+				setUCMState({
+					updating: false,
+					completed: true,
+					lastUpdate: Date.now(),
+				});
 			} catch (e: any) {
 				console.error(e);
-			} finally {
-				setUCMUpdating(false);
+				setUCMState((prevState) => ({ ...prevState, updating: false }));
 			}
 		})();
 	}, []);
 
 	React.useEffect(() => {
 		(async function () {
-			setStreaksUpdating(true);
+			setStreaksState((prevState) => ({ ...prevState, updating: true }));
+
 			try {
 				const streaks = await readHandler({
 					processId: AO.pixl,
@@ -85,11 +109,16 @@ export function AppProvider(props: AppProviderProps) {
 						}
 					}
 					dispatch(streakActions.setStreaks(streaks.Streaks));
+
+					setStreaksState({
+						updating: false,
+						completed: true,
+						lastUpdate: Date.now(),
+					});
 				}
 			} catch (e: any) {
 				console.error(e);
-			} finally {
-				setStreaksUpdating(false);
+				setStreaksState((prevState) => ({ ...prevState, updating: false }));
 			}
 		})();
 	}, []);
@@ -97,7 +126,8 @@ export function AppProvider(props: AppProviderProps) {
 	React.useEffect(() => {
 		(async function () {
 			if (ucmReducer) {
-				setStampsUpdating(true);
+				setStampsState((prevState) => ({ ...prevState, updating: true }));
+
 				try {
 					const orderbookIds =
 						ucmReducer && ucmReducer.Orderbook && ucmReducer.Orderbook.length > 0
@@ -119,9 +149,13 @@ export function AppProvider(props: AppProviderProps) {
 						}
 
 						dispatch(stampsActions.setStamps(updatedStamps));
-						setStampsCompleted(true);
+						setStampsState({
+							updating: false,
+							completed: true,
+							lastUpdate: Date.now(),
+						});
 					}
-					setStampsUpdating(false);
+					setStampsState((prevState) => ({ ...prevState, updating: false }));
 
 					if (arProvider.walletAddress && arProvider.profile) {
 						const hasStampedCheck = await stamps.hasStamped(orderbookIds);
@@ -140,7 +174,7 @@ export function AppProvider(props: AppProviderProps) {
 					}
 				} catch (e: any) {
 					console.error(e);
-					setStampsUpdating(false);
+					setStampsState((prevState) => ({ ...prevState, updating: false }));
 				}
 			}
 		})();
@@ -179,9 +213,9 @@ export function AppProvider(props: AppProviderProps) {
 	return (
 		<AppContext.Provider
 			value={{
-				ucm: { updating: ucmUpdating, completed: false },
-				streaks: { updating: streaksUpdating, completed: false },
-				stamps: { updating: stampsUpdating, completed: stampsCompleted },
+				ucm: ucmState,
+				streaks: streaksState,
+				stamps: stampsState,
 			}}
 		>
 			{props.children}

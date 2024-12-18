@@ -480,7 +480,7 @@ export default function AssetAction(props: IProps) {
 							)}
 						</S.OwnerLinesWrapper>
 						{appProvider.ucm.updating && (
-							<S.MessageWrapper>
+							<S.MessageWrapper className={'update-wrapper'}>
 								<span>{`${language.ordersUpdating}...`}</span>
 							</S.MessageWrapper>
 						)}
