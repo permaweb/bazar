@@ -38,6 +38,7 @@ export default function Profile() {
 		else document.body.style.overflow = 'auto';
 	}, []);
 
+	// TODO: Use store
 	React.useEffect(() => {
 		(async function () {
 			if (address && checkValidAddress(address)) {

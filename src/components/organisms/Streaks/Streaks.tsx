@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 
 import Arweave from 'arweave';
 
-import { getRegistryProfiles, readHandler } from 'api';
+import { getAndUpdateRegistryProfiles, readHandler } from 'api';
 
 import { Button } from 'components/atoms/Button';
 import { CurrencyLine } from 'components/atoms/CurrencyLine';
@@ -86,7 +86,7 @@ export default function Streaks(props: IProps) {
 				setUpdating(true);
 				try {
 					const addresses = streakGroups[streakCursor].map((streak: any) => streak.address);
-					const profiles = await getRegistryProfiles({ profileIds: addresses });
+					const profiles = await getAndUpdateRegistryProfiles(addresses);
 					const updatedStreakGroup = streakGroups[streakCursor].map((streak: any) => ({
 						...streak,
 						profile: profiles ? profiles.find((profile: RegistryProfileType) => profile.id === streak.address) : null,

@@ -98,7 +98,7 @@ export const DHeaderFlex = styled.div`
 	width: 100%;
 	display: flex;
 	align-items: center;
-	padding: 15px;
+	padding: 12.5px 15px;
 `;
 
 export const Tooltip = styled.div<{ useBottom: boolean }>`
