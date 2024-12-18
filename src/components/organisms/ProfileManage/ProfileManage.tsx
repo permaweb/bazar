@@ -33,6 +33,7 @@ interface IProfileData {
 	ProfileImage?: string;
 }
 
+// TODO: Handle redux on updates
 export default function ProfileManage(props: IProps) {
 	const arProvider = useArweaveProvider();
 

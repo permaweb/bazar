@@ -9,6 +9,7 @@ import { AO, AR_WALLETS, REDIRECTS, WALLET_PERMISSIONS } from 'helpers/config';
 import { getARBalanceEndpoint } from 'helpers/endpoints';
 import { ProfileHeaderType, VouchType, WalletEnum } from 'helpers/types';
 import { useLanguageProvider } from 'providers/LanguageProvider';
+import * as profilesActions from 'store/profiles/actions';
 
 import * as S from './styles';
 

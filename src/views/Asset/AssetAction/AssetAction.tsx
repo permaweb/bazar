@@ -3,7 +3,7 @@ import { useSelector } from 'react-redux';
 import { Link } from 'react-router-dom';
 import { ReactSVG } from 'react-svg';
 
-import { getRegistryProfiles } from 'api';
+import { getAndUpdateRegistryProfiles } from 'api';
 
 import * as GS from 'app/styles';
 import { Button } from 'components/atoms/Button';
@@ -37,6 +37,7 @@ const GROUP_COUNT = 250;
 
 export default function AssetAction(props: IProps) {
 	const currenciesReducer = useSelector((state: RootState) => state.currenciesReducer);
+	const profilesReducer = useSelector((state: RootState) => state.profilesReducer);
 
 	const appProvider = useAppProvider();
 	const arProvider = useArweaveProvider();
@@ -76,7 +77,6 @@ export default function AssetAction(props: IProps) {
 	const [updating, setUpdating] = React.useState<boolean>(false);
 
 	const [currentOwners, setCurrentOwners] = React.useState<OwnerType[] | null>(null);
-
 	const [currentListings, setCurrentListings] = React.useState<ListingType[] | null>(null);
 
 	const [showCurrentOwnersModal, setShowCurrentOwnersModal] = React.useState<boolean>(false);
@@ -140,7 +140,7 @@ export default function AssetAction(props: IProps) {
 						orders: props.asset.orders,
 					};
 
-					const profiles = await getRegistryProfiles({ profileIds: addressGroups[ownersCursor] });
+					let profiles: RegistryProfileType[] = await getAndUpdateRegistryProfiles(addressGroups[ownersCursor]);
 					let owners = getOwners(asset, profiles);
 
 					if (owners) {
@@ -159,7 +159,7 @@ export default function AssetAction(props: IProps) {
 				setUpdating(false);
 			}
 		})();
-	}, [props.asset, addressGroups, ownersCursor]);
+	}, [props.asset, addressGroups, ownersCursor, profilesReducer?.registryProfiles]);
 
 	React.useEffect(() => {
 		(async function () {
@@ -173,13 +173,9 @@ export default function AssetAction(props: IProps) {
 					}))
 				);
 
-				let profiles: RegistryProfileType[] | null = null;
-				try {
-					profiles = await getRegistryProfiles({ profileIds: sortedOrders.map((order: any) => order.creator) });
-				} catch (e: any) {
-					console.error(e);
-				}
-
+				let profiles: RegistryProfileType[] = await getAndUpdateRegistryProfiles(
+					sortedOrders.map((order: any) => order.creator)
+				);
 				const mappedListings = sortedOrders.map((order: any) => {
 					let currentProfile = null;
 					if (profiles) {
