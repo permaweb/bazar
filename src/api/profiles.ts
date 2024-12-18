@@ -1,8 +1,12 @@
+import AsyncLock from 'async-lock';
+
 import { readHandler } from 'api';
 
 import { AO } from 'helpers/config';
 import { store } from 'store';
 import * as profilesActions from 'store/profiles/actions';
+
+const lock = new AsyncLock();
 
 export type AOProfileType = {
 	id: string;
@@ -23,6 +27,8 @@ export type RegistryProfileType = {
 	username: string;
 	bio?: string;
 };
+
+const TTL_MS = 10 * 60 * 1000;
 
 export async function getProfileById(args: { profileId: string }): Promise<ProfileHeaderType | null> {
 	const emptyProfile = {
@@ -73,7 +79,8 @@ export async function getProfileByWalletAddress(args: { address: string }): Prom
 	};
 
 	try {
-		const cachedProfile = store.getState().profilesReducer.userProfile;
+		const userProfiles = store.getState().profilesReducer.userProfiles;
+		const cachedProfile = userProfiles ? store.getState().profilesReducer.userProfiles[args.address] : null;
 
 		if (cachedProfile) {
 			return cachedProfile;
@@ -110,8 +117,15 @@ export async function getProfileByWalletAddress(args: { address: string }): Prom
 				};
 
 				const registryProfiles = store.getState().profilesReducer.registryProfiles;
+				const newProfile = { [args.address]: userProfile };
 
-				store.dispatch(profilesActions.setProfiles({ userProfile, registryProfiles }));
+				store.dispatch(
+					profilesActions.setProfiles({
+						...store.getState().profilesReducer,
+						userProfiles: { ...userProfiles, ...newProfile },
+						registryProfiles,
+					})
+				);
 
 				return userProfile;
 			} else return emptyProfile;
@@ -121,46 +135,18 @@ export async function getProfileByWalletAddress(args: { address: string }): Prom
 	}
 }
 
-let cacheLock: Promise<void> | null = null;
-const TTL_MS = 10 * 60 * 1000;
-
-async function withLock<T>(criticalSection: () => Promise<T>): Promise<T> {
-	while (cacheLock) {
-		await cacheLock;
-	}
-
-	let release: () => void;
-	cacheLock = new Promise((resolve) => {
-		release = resolve;
-	});
-
-	try {
-		return await criticalSection();
-	} finally {
-		cacheLock = null;
-		release!();
-	}
-}
-
-/*
-  We dont want the logic to overlap when there are
-  many different requests to this function, thats
-  why there is a lock implemented here.
-*/
 export async function getRegistryProfiles(args: { profileIds: string[] }): Promise<RegistryProfileType[]> {
-	return withLock(async () => {
+	return lock.acquire('getRegistryProfiles', async () => {
 		try {
 			const state = store.getState().profilesReducer;
-			let { registryProfiles = [], missingProfileIds = [], cacheTimestamp = 0 } = state;
+			let { registryProfiles = [], missingProfileIds = [], lastUpdate = 0 } = state;
 
-			const isCacheValid = Date.now() - cacheTimestamp < TTL_MS;
+			const isCacheValid = Date.now() - lastUpdate < TTL_MS;
 
 			/*
-        The cache is to old, update all the profiles again
-      */
+            The cache is too old, update all the profiles again
+          */
 			if (!isCacheValid) {
-				console.log('Cache no longer valid');
-
 				const metadataLookup = await readHandler({
 					processId: AO.profileRegistry,
 					action: 'Get-Metadata-By-ProfileIds',
@@ -172,9 +158,10 @@ export async function getRegistryProfiles(args: { profileIds: string[] }): Promi
 
 				store.dispatch(
 					profilesActions.setProfiles({
+						...state,
 						registryProfiles: metadataLookup,
 						missingProfileIds: [...new Set([...newMissingProfileIds])],
-						cacheTimestamp: Date.now(),
+						lastUpdate: Date.now(),
 					})
 				);
 
@@ -191,7 +178,7 @@ export async function getRegistryProfiles(args: { profileIds: string[] }): Promi
 
 			const cachedProfiles = args.profileIds
 				.map((id) => registryProfiles.find((profile: { ProfileId: string }) => profile.ProfileId === id))
-				.filter(Boolean) as RegistryProfileType[];
+				.filter(Boolean);
 
 			const filteredIds = args.profileIds.filter(
 				(id) =>
@@ -202,11 +189,16 @@ export async function getRegistryProfiles(args: { profileIds: string[] }): Promi
 			missingProfileIds = missingProfileIds.filter((id: string) => args.profileIds.includes(id));
 
 			if (cachedProfiles.length + missingProfileIds.length === args.profileIds.length) {
-				console.log('All profiles are cached or missing:', cachedProfiles);
-				return cachedProfiles;
+				return args.profileIds.map((id) => {
+					const profile = cachedProfiles.find((profile: { ProfileId: string }) => profile.ProfileId === id);
+					return {
+						id: profile?.ProfileId || id,
+						username: profile?.Username || null,
+						avatar: profile?.ProfileImage || null,
+						bio: profile?.Description ?? null,
+					};
+				});
 			}
-
-			console.log('Some or all profiles are not cached');
 
 			const metadataLookup =
 				filteredIds.length > 0
@@ -229,9 +221,10 @@ export async function getRegistryProfiles(args: { profileIds: string[] }): Promi
 
 			store.dispatch(
 				profilesActions.setProfiles({
+					...state,
 					registryProfiles: combinedProfiles,
 					missingProfileIds: [...new Set([...missingProfileIds, ...newMissingProfileIds])],
-					cacheTimestamp: Date.now(),
+					lastUpdate: Date.now(),
 				})
 			);
 
