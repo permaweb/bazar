@@ -11,7 +11,7 @@ import { Notification } from 'components/atoms/Notification';
 import { Select } from 'components/atoms/Select';
 import { ASSET_SORT_OPTIONS, ASSETS, PAGINATORS, STYLING, URLS } from 'helpers/config';
 import { AssetDetailType, AssetSortType, IdGroupType, NotificationType, SelectOptionType } from 'helpers/types';
-import { isFirefox, sortOrders } from 'helpers/utils';
+import { formatDate, isFirefox, sortOrders } from 'helpers/utils';
 import * as windowUtils from 'helpers/window';
 import { useAppProvider } from 'providers/AppProvider';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
@@ -405,87 +405,99 @@ export default function AssetsTable(props: IProps) {
 	return (
 		<S.Wrapper className={'fade-in'} ref={scrollRef}>
 			<S.Header>
-				<h4>{`${language.assets}${props.ids && props.ids.length ? ` (${props.ids.length})` : ''}`}</h4>
-				<S.HeaderActions>
-					<Button
-						type={'primary'}
-						label={language.activeListings}
-						handlePress={toggleFilterListings}
-						disabled={getActionDisabled()}
-						active={assetFilterListings}
-						icon={assetFilterListings ? ASSETS.close : null}
-						className={'filter-listings'}
-					/>
-					<S.SelectWrapper>
-						<Select
-							label={null}
-							activeOption={assetSortType}
-							setActiveOption={(option: SelectOptionType) => handleAssetSortType(option)}
-							options={ASSET_SORT_OPTIONS.map((option: SelectOptionType) => option)}
+				<S.HeaderMain>
+					<h4>{`${language.assets}${props.ids && props.ids.length ? ` (${props.ids.length})` : ''}`}</h4>
+					<S.HeaderActions>
+						<Button
+							type={'primary'}
+							label={language.activeListings}
+							handlePress={toggleFilterListings}
 							disabled={getActionDisabled()}
+							active={assetFilterListings}
+							icon={assetFilterListings ? ASSETS.close : null}
+							className={'filter-listings'}
 						/>
-					</S.SelectWrapper>
-					{desktop && (
-						<S.ViewTypeWrapper className={'border-wrapper-alt1'}>
+						<S.SelectWrapper>
+							<Select
+								label={null}
+								activeOption={assetSortType}
+								setActiveOption={(option: SelectOptionType) => handleAssetSortType(option)}
+								options={ASSET_SORT_OPTIONS.map((option: SelectOptionType) => option)}
+								disabled={getActionDisabled()}
+							/>
+						</S.SelectWrapper>
+						{desktop && (
+							<S.ViewTypeWrapper className={'border-wrapper-alt1'}>
+								<IconButton
+									type={'alt1'}
+									src={ASSETS.grid}
+									handlePress={() => setViewType('grid')}
+									disabled={viewType === 'grid'}
+									dimensions={{
+										wrapper: 32.5,
+										icon: 17.5,
+									}}
+									active={viewType === 'grid'}
+									tooltip={'Grid view'}
+									useBottomToolTip
+									className={'start-action'}
+								/>
+								<IconButton
+									type={'alt1'}
+									src={ASSETS.list}
+									handlePress={() => setViewType('list')}
+									disabled={viewType === 'list'}
+									dimensions={{
+										wrapper: 32.5,
+										icon: 17.5,
+									}}
+									active={viewType === 'list'}
+									tooltip={'List view'}
+									useBottomToolTip
+									className={'end-action'}
+								/>
+							</S.ViewTypeWrapper>
+						)}
+						<S.HeaderPaginator>
 							<IconButton
 								type={'alt1'}
-								src={ASSETS.grid}
-								handlePress={() => setViewType('grid')}
-								disabled={viewType === 'grid'}
+								src={ASSETS.arrow}
+								handlePress={() => handlePaginationAction('previous', true)}
+								disabled={!assets || !previousAction}
 								dimensions={{
-									wrapper: 32.5,
+									wrapper: 30,
 									icon: 17.5,
 								}}
-								active={viewType === 'grid'}
-								tooltip={'Grid view'}
+								tooltip={language.previous}
 								useBottomToolTip
-								className={'start-action'}
+								className={'table-previous'}
 							/>
 							<IconButton
 								type={'alt1'}
-								src={ASSETS.list}
-								handlePress={() => setViewType('list')}
-								disabled={viewType === 'list'}
+								src={ASSETS.arrow}
+								handlePress={() => handlePaginationAction('next', true)}
+								disabled={!assets || !nextAction}
 								dimensions={{
-									wrapper: 32.5,
+									wrapper: 30,
 									icon: 17.5,
 								}}
-								active={viewType === 'list'}
-								tooltip={'List view'}
+								tooltip={language.next}
 								useBottomToolTip
-								className={'end-action'}
+								className={'table-next'}
 							/>
-						</S.ViewTypeWrapper>
-					)}
-					<S.HeaderPaginator>
-						<IconButton
-							type={'alt1'}
-							src={ASSETS.arrow}
-							handlePress={() => handlePaginationAction('previous', true)}
-							disabled={!assets || !previousAction}
-							dimensions={{
-								wrapper: 30,
-								icon: 17.5,
-							}}
-							tooltip={language.previous}
-							useBottomToolTip
-							className={'table-previous'}
-						/>
-						<IconButton
-							type={'alt1'}
-							src={ASSETS.arrow}
-							handlePress={() => handlePaginationAction('next', true)}
-							disabled={!assets || !nextAction}
-							dimensions={{
-								wrapper: 30,
-								icon: 17.5,
-							}}
-							tooltip={language.next}
-							useBottomToolTip
-							className={'table-next'}
-						/>
-					</S.HeaderPaginator>
-				</S.HeaderActions>
+						</S.HeaderPaginator>
+					</S.HeaderActions>
+				</S.HeaderMain>
+				{(appProvider.ucm?.lastUpdate || appProvider.ucm?.updating) && (
+					<S.HeaderInfo>
+						{appProvider.ucm?.lastUpdate && (
+							<p>
+								{language.lastUCMUpdate}: <b>{formatDate(appProvider.ucm.lastUpdate, 'iso', true)}</b>
+								{appProvider.ucm?.updating && ` (${language.runningUpdate}...)`}
+							</p>
+						)}
+					</S.HeaderInfo>
+				)}
 			</S.Header>
 			{getData()}
 			<S.Footer>

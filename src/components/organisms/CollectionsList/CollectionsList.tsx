@@ -1,4 +1,5 @@
 import React from 'react';
+import { useSelector } from 'react-redux';
 import { Link } from 'react-router-dom';
 
 import { getCollections } from 'api';
@@ -10,32 +11,118 @@ import { getTxEndpoint } from 'helpers/endpoints';
 import { CollectionType } from 'helpers/types';
 import { formatDate } from 'helpers/utils';
 import { useLanguageProvider } from 'providers/LanguageProvider';
+import { RootState } from 'store';
 
 import * as S from './styles';
 import { IProps } from './types';
 
+function CollectionListItem(props: { index: number; collection: CollectionType }) {
+	const wrapperRef = React.useRef<any>(null);
+
+	const [wrapperVisible, setWrapperVisible] = React.useState<boolean>(false);
+	const [frameLoaded, setFrameLoaded] = React.useState<boolean>(false);
+
+	const checkVisibility = () => {
+		const element = wrapperRef.current;
+		if (!element) return;
+
+		const scroll = window.scrollY || window.pageYOffset;
+		const boundsTop = element.getBoundingClientRect().top + scroll;
+
+		const viewport = {
+			top: scroll,
+			bottom: scroll + window.innerHeight,
+		};
+
+		const bounds = {
+			top: boundsTop,
+			bottom: boundsTop + element.clientHeight,
+		};
+
+		const visible = bounds.bottom >= viewport.top && bounds.top <= viewport.bottom;
+		setWrapperVisible(visible);
+		if (visible) setFrameLoaded(true);
+	};
+
+	React.useEffect(() => {
+		checkVisibility();
+		window.addEventListener('scroll', checkVisibility);
+		window.addEventListener('resize', checkVisibility);
+
+		return () => {
+			window.removeEventListener('scroll', checkVisibility);
+			window.removeEventListener('resize', checkVisibility);
+		};
+	}, [props.collection]);
+
+	return (
+		<S.CollectionWrapper ref={wrapperRef} className={'border-wrapper-alt2 fade-in'}>
+			<Link to={URLS.collectionAssets(props.collection.id)}>
+				<S.FlexElement>
+					<S.Index>
+						<span>{props.index + 1}</span>
+					</S.Index>
+					<S.Thumbnail className={'border-wrapper-primary'}>
+						{wrapperVisible || frameLoaded ? (
+							<img src={getTxEndpoint(props.collection.thumbnail || DEFAULTS.thumbnail)} alt={'Thumbnail'} />
+						) : (
+							<S.Placeholder>
+								<span>...</span>
+							</S.Placeholder>
+						)}
+					</S.Thumbnail>
+					<S.Title>
+						<p>{props.collection.title}</p>
+					</S.Title>
+				</S.FlexElement>
+				<S.DateCreated>
+					<S.FlexElement>
+						<span>{formatDate(props.collection.dateCreated, 'epoch')}</span>
+					</S.FlexElement>
+				</S.DateCreated>
+			</Link>
+		</S.CollectionWrapper>
+	);
+}
+
 export default function CollectionsList(props: IProps) {
+	const collectionsReducer = useSelector((state: RootState) => state.collectionsReducer);
+
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
 
 	const [collections, setCollections] = React.useState<CollectionType[] | null>(null);
-	const [loading, setLoading] = React.useState<boolean>(false);
+	const [loading, setLoading] = React.useState<boolean>(true);
 	const [errorResponse, setErrorResponse] = React.useState<string | null>(null);
 
 	React.useEffect(() => {
 		(async function () {
-			setLoading(true);
-			try {
-				const collectionsFetch: CollectionType[] = await getCollections(props.owner);
-				if (collections) {
-					setCollections([...collections, ...collectionsFetch]);
-				} else setCollections(collectionsFetch);
-			} catch (e: any) {
-				setErrorResponse(e.message || language.collectionsFetchFailed);
+			if (!collections) {
+				setLoading(true);
+				try {
+					if (props.owner) {
+						if (collectionsReducer?.creators?.[props.owner]?.collections?.length) {
+							setCollections(collectionsReducer.creators[props.owner].collections);
+							setLoading(false);
+						}
+					} else {
+						if (collectionsReducer?.all?.collections?.length) {
+							setCollections(collectionsReducer.all.collections);
+							setLoading(false);
+						}
+					}
+
+					const collectionsFetch: CollectionType[] = await getCollections(props.owner);
+					if (collections) {
+						setCollections(collectionsFetch);
+					} else setCollections(collectionsFetch);
+				} catch (e: any) {
+					setErrorResponse(e.message || language.collectionsFetchFailed);
+				}
+				setLoading(false);
 			}
-			setLoading(false);
 		})();
-	}, []);
+	}, [props.owner, collectionsReducer?.all, collectionsReducer?.creators]);
 
 	function getData() {
 		if (collections) {
@@ -53,30 +140,7 @@ export default function CollectionsList(props: IProps) {
 						</S.ListHeader>
 						<S.CollectionsWrapper>
 							{collections.map((collection: CollectionType, index: number) => {
-								const redirect = `${URLS.collection}${collection.id}`;
-
-								return (
-									<S.CollectionWrapper key={index} className={'border-wrapper-alt2 fade-in'}>
-										<Link to={redirect}>
-											<S.FlexElement>
-												<S.Index>
-													<span>{index + 1}</span>
-												</S.Index>
-												<S.Thumbnail className={'border-wrapper-primary'}>
-													<img src={getTxEndpoint(collection.thumbnail || DEFAULTS.thumbnail)} alt={'Thumbnail'} />
-												</S.Thumbnail>
-												<S.Title>
-													<p>{collection.title}</p>
-												</S.Title>
-											</S.FlexElement>
-											<S.DateCreated>
-												<S.FlexElement>
-													<span>{formatDate(collection.dateCreated, 'epoch')}</span>
-												</S.FlexElement>
-											</S.DateCreated>
-										</Link>
-									</S.CollectionWrapper>
-								);
+								return <CollectionListItem key={index} index={index} collection={collection} />;
 							})}
 						</S.CollectionsWrapper>
 					</S.Wrapper>

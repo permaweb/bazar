@@ -10,6 +10,7 @@ import {
 } from 'helpers/types';
 import { sortOrderbookEntries } from 'helpers/utils';
 import { store } from 'store';
+import * as collectionActions from 'store/collections/actions';
 
 export async function getCollections(creator?: string, filterUnstamped?: boolean): Promise<CollectionType[]> {
 	const action = creator ? 'Get-Collections-By-User' : 'Get-Collections';
@@ -48,8 +49,30 @@ export async function getCollections(creator?: string, filterUnstamped?: boolean
 			finalCollections = finalCollections.sort((a: { id: string | number }, b: { id: string | number }) => {
 				const countA = stampsFetch[a.id]?.total || 0;
 				const countB = stampsFetch[b.id]?.total || 0;
-				return countB - countA; // Descending order of total stamp counts
+				return countB - countA;
 			});
+
+			const key = creator ? 'creators' : filterUnstamped ? 'stamped' : 'all';
+			const updatedCollections = {
+				[key]: creator
+					? {
+							[creator]: {
+								collections: finalCollections,
+								lastUpdate: Date.now(),
+							},
+					  }
+					: {
+							collections: finalCollections,
+							lastUpdate: Date.now(),
+					  },
+			};
+
+			store.dispatch(
+				collectionActions.setCollections({
+					...(store.getState().collectionsReducer ?? {}),
+					...updatedCollections,
+				})
+			);
 
 			return finalCollections;
 		}

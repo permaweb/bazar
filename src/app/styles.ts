@@ -226,6 +226,24 @@ export const GlobalStyle = createGlobalStyle`
 	}
   }
 
+  .update-wrapper {
+	width: 100%;
+	padding: 2.5px 40px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: ${(props) => props.theme.colors.container.alt11.background};
+	border: 1px solid ${(props) => props.theme.colors.border.alt3};
+	border-radius: ${STYLING.dimensions.radius.alt1};
+	span {
+		font-size: ${(props) => props.theme.typography.size.xSmall};
+		font-family: ${(props) => props.theme.typography.family.alt1};
+		font-weight: ${(props) => props.theme.typography.weight.bold};
+		color: ${(props) => props.theme.colors.font.light1};
+		text-align: center;
+	}
+  }
+
   .overlay {
     min-height: 100vh;
     height: 100%;

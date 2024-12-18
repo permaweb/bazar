@@ -108,7 +108,14 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 	};
 
 	function getDropdown() {
-		if (!arProvider.profile) return <Loader sm relative />;
+		if (!arProvider.profile) {
+			return (
+				<S.LoadingWrapper>
+					<span>{`${language.fetchingProfile}...`}</span>
+					<Loader sm relative />
+				</S.LoadingWrapper>
+			);
+		}
 		return (
 			<>
 				<S.DHeaderWrapper>
@@ -187,6 +194,18 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 					</li>
 				</S.DBodyWrapper>
 				<S.DBodyWrapper>
+					{arProvider.profile && arProvider.profile.id && (
+						<>
+							<li onClick={() => copyAddress(arProvider.profile.id)}>
+								<ReactSVG src={ASSETS.copy} />
+								{copied ? `${language.copied}!` : language.copyProfileId}
+							</li>
+							<li onClick={() => handleDropdownAction(() => setShowProfileManage(true))}>
+								<ReactSVG src={ASSETS.edit} />
+								{language.editProfile}
+							</li>
+						</>
+					)}
 					<li onClick={() => handleDropdownAction(handleProfileAction)}>
 						{arProvider.profile && arProvider.profile.id ? (
 							<>
@@ -200,18 +219,6 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 							</>
 						)}
 					</li>
-					{arProvider.profile && arProvider.profile.id && (
-						<>
-							<li onClick={() => handleDropdownAction(() => setShowProfileManage(true))}>
-								<ReactSVG src={ASSETS.edit} />
-								{language.editProfile}
-							</li>
-							<li onClick={() => copyAddress(arProvider.profile.id)}>
-								<ReactSVG src={ASSETS.copy} />
-								{copied ? `${language.copied}!` : language.copyProfileAddress}
-							</li>
-						</>
-					)}
 					<li onClick={handleToggleTheme}>
 						{themeProvider.current === 'light' ? (
 							<>
@@ -242,6 +249,11 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 						<Button type={'alt1'} label={language.createProfile} handlePress={handleProfileAction} />
 					</S.CAction>
 				)}
+				{arProvider.walletAddress && !arProvider.profile && (
+					<S.MessageWrapper className={'update-wrapper'}>
+						<span>{`${language.fetchingProfile}...`}</span>
+					</S.MessageWrapper>
+				)}
 				{label && (
 					<S.LAction onClick={handlePress} className={'border-wrapper-primary'}>
 						<span>{label}</span>
@@ -259,7 +271,7 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 				{showWalletDropdown && (
 					<Panel
 						open={showWalletDropdown}
-						header={language.profileMenu}
+						header={language.profile}
 						handleClose={() => setShowWalletDropdown(false)}
 						width={375}
 					>

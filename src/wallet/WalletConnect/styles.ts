@@ -43,6 +43,31 @@ export const LAction = styled.button`
 	}
 `;
 
+export const MessageWrapper = styled.div`
+	margin: 0 15px 0 0;
+
+	@media (max-width: ${STYLING.cutoffs.initial}) {
+		display: none !important;
+	}
+`;
+
+export const LoadingWrapper = styled.div`
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	margin: 15px auto 0 auto;
+	gap: 5px;
+
+	span {
+		color: ${(props) => props.theme.colors.font.primary};
+		font-family: ${(props) => props.theme.typography.family.alt1};
+		font-size: ${(props) => props.theme.typography.size.small};
+		font-weight: ${(props) => props.theme.typography.weight.bold};
+		display: block;
+	}
+`;
+
 export const FlexAction = styled.div`
 	display: flex;
 	align-items: center;
@@ -73,7 +98,7 @@ export const DHeaderFlex = styled.div`
 	width: 100%;
 	display: flex;
 	align-items: center;
-	padding: 10px;
+	padding: 15px;
 `;
 
 export const Tooltip = styled.div<{ useBottom: boolean }>`
@@ -93,7 +118,7 @@ export const Tooltip = styled.div<{ useBottom: boolean }>`
 export const DNameWrapper = styled.div`
 	display: flex;
 	align-items: center;
-	gap: 12.5px;
+	gap: 10px;
 	position: relative;
 
 	#vouch-check {
@@ -163,7 +188,7 @@ export const DBodyWrapper = styled.ul`
 		cursor: pointer;
 		color: ${(props) => props.theme.colors.font.primary};
 		font-family: ${(props) => props.theme.typography.family.primary};
-		font-size: ${(props) => props.theme.typography.size.small};
+		font-size: ${(props) => props.theme.typography.size.xSmall};
 		font-weight: ${(props) => props.theme.typography.weight.bold};
 		border: 1px solid transparent;
 		border-radius: ${STYLING.dimensions.radius.alt2};

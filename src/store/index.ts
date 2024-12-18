@@ -3,6 +3,7 @@ import { persistReducer, persistStore } from 'redux-persist';
 import storage from 'redux-persist/lib/storage';
 import thunk from 'redux-thunk';
 
+import { collectionsReducer } from './collections/reducers';
 import { currenciesReducer } from './currencies/reducers';
 import { stampsReducer } from './stamps/reducers';
 import { streaksReducer } from './streaks/reducers';
@@ -17,10 +18,11 @@ const persistConfig = {
 };
 
 const rootReducer = combineReducers({
+	collectionsReducer,
 	currenciesReducer,
+	stampsReducer,
 	streaksReducer,
 	ucmReducer,
-	stampsReducer,
 });
 
 export type RootState = ReturnType<typeof store.getState>;

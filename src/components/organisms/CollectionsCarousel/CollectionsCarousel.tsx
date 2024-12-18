@@ -76,7 +76,7 @@ export default function CollectionsCarousel(props: IProps) {
 						removeArrowOnDeviceType={['tablet', 'mobile']}
 						customTransition={'transform 500ms ease'}
 						partialVisible
-						autoPlay
+						autoPlay={!props.loading}
 						autoPlaySpeed={5000}
 						afterChange={handleAfterChange}
 					>

@@ -8,12 +8,42 @@ export const Wrapper = styled.div`
 `;
 
 export const Header = styled.div`
+	margin: 0 0 20px 0;
+`;
+
+export const HeaderMain = styled.div`
 	display: flex;
 	justify-content: space-between;
 	align-items: center;
 	flex-wrap: wrap;
 	gap: 20px;
-	margin: 0 0 20px 0;
+
+	h4 {
+		line-height: 1;
+	}
+`;
+
+export const HeaderInfo = styled.div`
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 20px;
+	margin: 7.5px 0 0 0;
+
+	p {
+		color: ${(props) => props.theme.colors.font.alt1};
+		font-size: ${(props) => props.theme.typography.size.xSmall};
+		font-family: ${(props) => props.theme.typography.family.primary};
+		font-weight: ${(props) => props.theme.typography.weight.bold};
+	}
+
+	b {
+		color: ${(props) => props.theme.colors.font.primary};
+		font-size: ${(props) => props.theme.typography.size.xSmall};
+		font-family: ${(props) => props.theme.typography.family.alt1};
+		font-weight: ${(props) => props.theme.typography.weight.bold};
+	}
 `;
 
 export const HeaderActions = styled.div`

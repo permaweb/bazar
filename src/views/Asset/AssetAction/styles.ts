@@ -48,7 +48,7 @@ export const OrdersWrapper = styled.div`
 	flex-wrap: wrap;
 	justify-content: space-between;
 	gap: 15px;
-	margin: 5px 0 0 0;
+	margin: 15px 0 0 0;
 `;
 
 export const OwnerLinesWrapper = styled.div`
@@ -59,21 +59,7 @@ export const OwnerLinesWrapper = styled.div`
 `;
 
 export const MessageWrapper = styled.div`
-	width: 100%;
 	padding: 2.5px 60px;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	background: ${(props) => props.theme.colors.container.alt11.background};
-	border: 1px solid ${(props) => props.theme.colors.border.alt3};
-	border-radius: ${STYLING.dimensions.radius.alt1};
-	span {
-		font-size: ${(props) => props.theme.typography.size.xSmall};
-		font-family: ${(props) => props.theme.typography.family.primary};
-		font-weight: ${(props) => props.theme.typography.weight.bold};
-		color: ${(props) => props.theme.colors.font.light1};
-		text-align: center;
-	}
 `;
 
 export const OwnerLine = styled.div`
