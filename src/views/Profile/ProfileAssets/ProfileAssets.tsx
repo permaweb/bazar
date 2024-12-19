@@ -1,7 +1,5 @@
 import React from 'react';
 
-import { getAssetIdsByUser } from 'api';
-
 import { AssetsTable } from 'components/organisms/AssetsTable';
 import { PAGINATORS } from 'helpers/config';
 
@@ -13,11 +11,11 @@ const ProfileAssets = React.memo((props: IProps) => {
 
 	React.useEffect(() => {
 		(async function () {
-			if (props.address && !assetIds) {
-				setAssetIds(await getAssetIdsByUser({ profileId: props.address }));
+			if (props.profile && !assetIds) {
+				if (props.profile.assets) setAssetIds(props.profile.assets);
 			}
 		})();
-	}, [props.address]);
+	}, [props.profile]);
 
 	return props.address ? (
 		<S.Wrapper>

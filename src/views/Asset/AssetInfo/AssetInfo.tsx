@@ -11,7 +11,7 @@ import { OwnerLine } from 'components/molecules/OwnerLine';
 import { AssetData } from 'components/organisms/AssetData';
 import { ASSETS, LICENSES, URLS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
-import { ProfileHeaderType } from 'helpers/types';
+import { ProfileType } from 'helpers/types';
 import { checkValidAddress, cleanTagValue, formatCount, formatDate, getTagDisplay, splitTagValue } from 'helpers/utils';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 import { RootState } from 'store';
@@ -25,7 +25,7 @@ export default function AssetInfo(props: IProps) {
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
 
-	const [creator, setCreator] = React.useState<ProfileHeaderType | null>(null);
+	const [creator, setCreator] = React.useState<ProfileType | null>(null);
 
 	React.useEffect(() => {
 		(async function () {

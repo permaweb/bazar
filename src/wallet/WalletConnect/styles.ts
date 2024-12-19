@@ -91,7 +91,7 @@ export const Dropdown = styled.ul`
 
 export const DHeaderWrapper = styled.div`
 	width: 100%;
-	padding: 0 10px 10px 10px;
+	padding: 0 15px 10px 15px;
 `;
 
 export const DHeaderFlex = styled.div`
@@ -221,7 +221,7 @@ export const DBodyWrapper = styled.ul`
 `;
 
 export const DBalancesWrapper = styled(DBodyWrapper)`
-	width: calc(100% - 20px);
+	width: calc(100% - 30px);
 	padding: 5px 12.5px;
 	margin: 5px auto 0 auto;
 `;

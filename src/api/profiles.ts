@@ -3,7 +3,7 @@ import AsyncLock from 'async-lock';
 import { readHandler } from 'api';
 
 import { AO } from 'helpers/config';
-import { ProfileHeaderType, RegistryProfileType } from 'helpers/types';
+import { ProfileType, RegistryProfileType } from 'helpers/types';
 import { store } from 'store';
 import * as profilesActions from 'store/profiles/actions';
 
@@ -11,9 +11,9 @@ const TTL_MS = 10 * 60 * 1000;
 
 const lock = new AsyncLock();
 
-let fetchQueue: Set<string> = new Set();
+let registryFetchQueue: Set<string> = new Set();
 
-export async function getProfileById(args: { profileId: string }): Promise<ProfileHeaderType | null> {
+export async function getProfileById(args: { profileId: string }): Promise<ProfileType | null> {
 	const emptyProfile = {
 		id: args.profileId,
 		walletAddress: null,
@@ -42,6 +42,7 @@ export async function getProfileById(args: { profileId: string }): Promise<Profi
 				avatar: fetchedProfile.Profile.ProfileImage || null,
 				banner: fetchedProfile.Profile.CoverImage || null,
 				version: fetchedProfile.Profile.Version || null,
+				assets: fetchedProfile.Assets?.map((asset: { Id: string; Quantity: string }) => asset.Id) ?? [],
 			};
 		} else return emptyProfile;
 	} catch (e: any) {
@@ -49,7 +50,7 @@ export async function getProfileById(args: { profileId: string }): Promise<Profi
 	}
 }
 
-export async function getProfileByWalletAddress(args: { address: string }): Promise<ProfileHeaderType | null> {
+export async function getProfileByWalletAddress(args: { address: string }): Promise<ProfileType | null> {
 	const emptyProfile = {
 		id: null,
 		walletAddress: args.address,
@@ -63,11 +64,6 @@ export async function getProfileByWalletAddress(args: { address: string }): Prom
 
 	try {
 		const userProfiles = store.getState().profilesReducer.userProfiles;
-		const cachedProfile = userProfiles ? store.getState().profilesReducer.userProfiles[args.address] : null;
-
-		if (cachedProfile) {
-			return cachedProfile;
-		}
 
 		const profileLookup = await readHandler({
 			processId: AO.profileRegistry,
@@ -97,6 +93,7 @@ export async function getProfileByWalletAddress(args: { address: string }): Prom
 					avatar: fetchedProfile.Profile.ProfileImage || null,
 					banner: fetchedProfile.Profile.CoverImage || null,
 					version: fetchedProfile.Profile.Version || null,
+					assets: fetchedProfile.Assets?.map((asset: { Id: string; Quantity: string }) => asset.Id) ?? [],
 				};
 
 				const registryProfiles = store.getState().profilesReducer.registryProfiles;
@@ -134,6 +131,7 @@ export async function getRegistryProfiles(args: { profileIds: string[] }): Promi
 					username: profile ? profile.Username : null,
 					avatar: profile ? profile.ProfileImage : null,
 					bio: profile ? profile.Description ?? null : null,
+					lastUpdate: Date.now(),
 				};
 			});
 		}
@@ -162,17 +160,22 @@ export function getExistingRegistryProfiles(ids: string[]): RegistryProfileType[
 export async function getAndUpdateRegistryProfiles(ids: string[]): Promise<RegistryProfileType[]> {
 	const existingProfiles = getExistingRegistryProfiles(ids);
 	let profiles = [...existingProfiles];
-	const missingProfileIds = ids.filter((id) => !existingProfiles.some((profile) => profile.id === id));
 
-	if (missingProfileIds.length > 0) {
-		const newProfileIds = missingProfileIds.filter((id) => !fetchQueue.has(id));
-		newProfileIds.forEach((id) => fetchQueue.add(id));
+	const REGISTRY_TTL = 2 * 24 * 60 * 60 * 1000;
+
+	const outdatedOrMissingProfileIds = ids.filter((id) => {
+		const profile = existingProfiles.find((profile) => profile.id === id);
+		return !profile || (profile.lastUpdate && Date.now() - profile.lastUpdate > REGISTRY_TTL);
+	});
+
+	if (outdatedOrMissingProfileIds.length > 0) {
+		const newProfileIds = outdatedOrMissingProfileIds.filter((id) => !registryFetchQueue.has(id));
+		newProfileIds.forEach((id) => registryFetchQueue.add(id));
 
 		if (newProfileIds.length > 0) {
-			console.log('Fetching missing profiles...');
 			try {
 				const newProfiles = await getRegistryProfiles({ profileIds: newProfileIds });
-				profiles = [...profiles, ...newProfiles];
+				profiles = [...profiles.filter((profile) => !outdatedOrMissingProfileIds.includes(profile.id)), ...newProfiles];
 
 				profiles = profiles.reduce((uniqueProfiles, profile) => {
 					if (!uniqueProfiles.some((p) => p.id === profile.id)) {
@@ -194,7 +197,7 @@ export async function getAndUpdateRegistryProfiles(ids: string[]): Promise<Regis
 					})
 				);
 			} finally {
-				newProfileIds.forEach((id) => fetchQueue.delete(id));
+				newProfileIds.forEach((id) => registryFetchQueue.delete(id));
 			}
 		}
 	}
