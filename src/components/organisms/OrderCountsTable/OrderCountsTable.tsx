@@ -1,18 +1,22 @@
 import React from 'react';
+import { useSelector } from 'react-redux';
 import { Link } from 'react-router-dom';
 import { ReactSVG } from 'react-svg';
 
-import { getRegistryProfiles, readHandler } from 'api';
+import { getAndUpdateRegistryProfiles, readHandler } from 'api';
 
 import { AO, ASSETS, URLS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import { RegistryProfileType } from 'helpers/types';
 import { checkValidAddress, formatAddress } from 'helpers/utils';
 import { useLanguageProvider } from 'providers/LanguageProvider';
+import { RootState } from 'store';
 
 import * as S from './styles';
 
 export default function OrderCountsTable() {
+	const profilesReducer = useSelector((state: RootState) => state.profilesReducer);
+
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
 
@@ -34,21 +38,21 @@ export default function OrderCountsTable() {
 							.sort(([, countA], [, countB]) => Number(countB) - Number(countA))
 							.slice(0, 5)
 							.map(([address]) => address);
-						setTopCreators(await getRegistryProfiles({ profileIds: topCreatorAddresses }));
+						setTopCreators(await getAndUpdateRegistryProfiles(topCreatorAddresses));
 					}
 					if (response.PurchasesByAddress) {
 						const topCollectorAddresses = Object.entries(response.PurchasesByAddress)
 							.sort(([, countA], [, countB]) => Number(countB) - Number(countA))
 							.slice(0, 5)
 							.map(([address]) => address);
-						setTopCollectors(await getRegistryProfiles({ profileIds: topCollectorAddresses }));
+						setTopCollectors(await getAndUpdateRegistryProfiles(topCollectorAddresses));
 					}
 				}
 			} catch (e: any) {
 				console.error(e);
 			}
 		})();
-	}, []);
+	}, [profilesReducer?.registryProfiles]);
 
 	return (
 		<S.Wrapper className={'fade-in'}>

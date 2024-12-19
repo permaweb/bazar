@@ -5,6 +5,7 @@ import thunk from 'redux-thunk';
 
 import { collectionsReducer } from './collections/reducers';
 import { currenciesReducer } from './currencies/reducers';
+import { profilesReducer } from './profiles/reducers';
 import { stampsReducer } from './stamps/reducers';
 import { streaksReducer } from './streaks/reducers';
 import { ucmReducer } from './ucm/reducers';
@@ -20,6 +21,7 @@ const persistConfig = {
 const rootReducer = combineReducers({
 	collectionsReducer,
 	currenciesReducer,
+	profilesReducer,
 	stampsReducer,
 	streaksReducer,
 	ucmReducer,

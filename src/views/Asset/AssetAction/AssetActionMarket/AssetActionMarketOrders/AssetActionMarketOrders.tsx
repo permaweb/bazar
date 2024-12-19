@@ -384,6 +384,8 @@ export default function AssetActionMarketOrders(props: IProps) {
 			setUpdating(true);
 			windowUtils.scrollTo(0, 0, 'smooth');
 
+			arProvider.setToggleProfileUpdate(!arProvider.toggleProfileUpdate);
+
 			if (props.type !== 'transfer') {
 				try {
 					const existingUCM = { ...ucmReducer };

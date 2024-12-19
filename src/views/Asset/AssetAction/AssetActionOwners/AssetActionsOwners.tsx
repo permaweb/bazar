@@ -1,9 +1,10 @@
 import React from 'react';
 import { Pie } from 'react-chartjs-2';
+import { useSelector } from 'react-redux';
 import { ArcElement, Chart as ChartJS, Legend, Tooltip } from 'chart.js';
 import { useTheme } from 'styled-components';
 
-import { getRegistryProfiles } from 'api';
+import { getAndUpdateRegistryProfiles } from 'api';
 
 import { Loader } from 'components/atoms/Loader';
 import { OwnerLine } from 'components/molecules/OwnerLine';
@@ -11,6 +12,7 @@ import { AO } from 'helpers/config';
 import { OwnerType, RegistryProfileType } from 'helpers/types';
 import { formatAddress, formatPercentage, getOwners } from 'helpers/utils';
 import { useLanguageProvider } from 'providers/LanguageProvider';
+import { RootState } from 'store';
 
 import * as S from './styles';
 import { IProps } from './types';
@@ -20,6 +22,8 @@ ChartJS.register(ArcElement, Tooltip, Legend);
 const MAX_OWNER_LENGTH = 10;
 
 export default function AssetActionsOwners(props: IProps) {
+	const profilesReducer = useSelector((state: RootState) => state.profilesReducer);
+
 	const theme = useTheme();
 
 	const languageProvider = useLanguageProvider();
@@ -56,7 +60,8 @@ export default function AssetActionsOwners(props: IProps) {
 				if (owners.length) {
 					try {
 						const addresses = [...updatedOwners].splice(0, MAX_OWNER_LENGTH).map((owner: OwnerType) => owner.address);
-						const profiles = await getRegistryProfiles({ profileIds: addresses });
+						const profiles = await getAndUpdateRegistryProfiles(addresses);
+
 						updatedOwners = updatedOwners
 							.map((owner: OwnerType) => {
 								const profile = profiles.find((profile: RegistryProfileType) => {
@@ -93,7 +98,7 @@ export default function AssetActionsOwners(props: IProps) {
 				}
 			}
 		})();
-	}, [props.asset]);
+	}, [props.asset, profilesReducer?.registryProfiles]);
 
 	React.useEffect(() => {
 		if (sortedOwners) {

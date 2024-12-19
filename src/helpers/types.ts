@@ -84,7 +84,7 @@ export type AssetDetailType = AssetType & {
 	orders?: AssetOrderType[];
 };
 
-export type AOProfileType = {
+export type ProfileType = {
 	id: string;
 	walletAddress: string;
 	displayName: string | null;
@@ -93,15 +93,15 @@ export type AOProfileType = {
 	avatar: string | null;
 	banner: string | null;
 	version: string | null;
+	assets?: string[];
 };
-
-export type ProfileHeaderType = AOProfileType;
 
 export type RegistryProfileType = {
 	id: string;
 	avatar: string | null;
 	username: string;
 	bio?: string;
+	lastUpdate?: number;
 };
 
 export type OwnerType = {
@@ -137,7 +137,7 @@ export type CollectionType = {
 
 export type CollectionDetailType = CollectionType & {
 	assetIds: string[];
-	creatorProfile: ProfileHeaderType;
+	creatorProfile: ProfileType;
 	metrics: CollectionMetricsType;
 };
 

@@ -27,19 +27,21 @@ export default function Landing() {
 
 	React.useEffect(() => {
 		(async function () {
-			setCollectionsLoading(true);
-			try {
-				if (collectionsReducer?.stamped?.collections?.length) {
-					setCollections(collectionsReducer.stamped.collections);
-					setCollectionsLoading(false);
-				}
+			if (!collections) {
+				setCollectionsLoading(true);
+				try {
+					if (collectionsReducer?.stamped?.collections?.length) {
+						setCollections(collectionsReducer.stamped.collections);
+						setCollectionsLoading(false);
+					}
 
-				const collectionsFetch: CollectionType[] = await getCollections(null, true);
-				if (collectionsFetch) setCollections(collectionsFetch);
-			} catch (e: any) {
-				setCollectionsErrorResponse(e.message || language.collectionsFetchFailed);
+					const collectionsFetch: CollectionType[] = await getCollections(null, true);
+					if (collectionsFetch) setCollections(collectionsFetch);
+				} catch (e: any) {
+					setCollectionsErrorResponse(e.message || language.collectionsFetchFailed);
+				}
+				setCollectionsLoading(false);
 			}
-			setCollectionsLoading(false);
 		})();
 	}, [collectionsReducer?.stamped]);
 

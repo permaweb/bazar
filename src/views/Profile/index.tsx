@@ -1,12 +1,12 @@
 import React from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 
 import { getProfileById } from 'api';
 
 import { Loader } from 'components/atoms/Loader';
 import { URLTabs } from 'components/molecules/URLTabs';
 import { ASSETS, URLS } from 'helpers/config';
-import { ProfileHeaderType } from 'helpers/types';
+import { ProfileType } from 'helpers/types';
 import { checkValidAddress } from 'helpers/utils';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
@@ -17,7 +17,9 @@ import { ProfileCollections } from './ProfileCollections';
 import { ProfileHeader } from './ProfileHeader';
 
 export default function Profile() {
+	const location = useLocation();
 	const navigate = useNavigate();
+
 	const { address, active } = useParams();
 
 	const arProvider = useArweaveProvider();
@@ -25,7 +27,7 @@ export default function Profile() {
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
 
-	const [profile, setProfile] = React.useState<ProfileHeaderType | null>(null);
+	const [profile, setProfile] = React.useState<ProfileType | null>(null);
 	const [toggleUpdate, setToggleUpdate] = React.useState<boolean>(false);
 
 	React.useEffect(() => {
@@ -55,7 +57,7 @@ export default function Profile() {
 				navigate(URLS.notFound);
 			}
 		})();
-	}, [address, arProvider, navigate]);
+	}, [address, arProvider.profile, location]);
 
 	const TABS = React.useMemo(
 		() => [
@@ -64,7 +66,7 @@ export default function Profile() {
 				icon: ASSETS.asset,
 				disabled: false,
 				url: URLS.profileAssets(address),
-				view: () => <ProfileAssets address={address} />,
+				view: () => <ProfileAssets address={address} profile={profile} />,
 			},
 			{
 				label: language.collections,
@@ -81,7 +83,7 @@ export default function Profile() {
 				view: () => <ProfileActivity address={address} />,
 			},
 		],
-		[address]
+		[address, profile]
 	);
 
 	const urlTabs = React.useMemo(() => {
