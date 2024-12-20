@@ -114,12 +114,17 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 	React.useEffect(() => {
 		handleWallet();
 
+		function handleWalletSwitch() {
+			setProfile(null);
+			handleWallet();
+		}
+
 		window.addEventListener('arweaveWalletLoaded', handleWallet);
-		window.addEventListener('walletSwitch', handleWallet);
+		window.addEventListener('walletSwitch', handleWalletSwitch);
 
 		return () => {
 			window.removeEventListener('arweaveWalletLoaded', handleWallet);
-			window.removeEventListener('walletSwitch', handleWallet);
+			window.removeEventListener('walletSwitch', handleWalletSwitch);
 		};
 	}, []);
 
@@ -139,8 +144,11 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 		(async function () {
 			if (wallet && walletAddress) {
 				try {
-					if (profilesReducer?.userProfiles?.[walletAddress]) setProfile(profilesReducer.userProfiles[walletAddress]);
-					else setProfile(await getProfileByWalletAddress({ address: walletAddress }));
+					if (profilesReducer?.userProfiles?.[walletAddress]) {
+						setProfile(profilesReducer.userProfiles[walletAddress]);
+					} else {
+						setProfile(await getProfileByWalletAddress({ address: walletAddress }));
+					}
 				} catch (e: any) {
 					console.error(e);
 				}
@@ -265,7 +273,6 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 	async function handleWallet() {
 		if (localStorage.getItem('walletType')) {
 			try {
-				setProfile(null);
 				await handleConnect(localStorage.getItem('walletType') as any);
 			} catch (e: any) {
 				console.error(e);

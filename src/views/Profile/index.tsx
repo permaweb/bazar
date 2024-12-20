@@ -8,7 +8,6 @@ import { URLTabs } from 'components/molecules/URLTabs';
 import { ASSETS, URLS } from 'helpers/config';
 import { ProfileType } from 'helpers/types';
 import { checkValidAddress } from 'helpers/utils';
-import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 
 import { ProfileActivity } from './ProfileActivity';
@@ -21,8 +20,6 @@ export default function Profile() {
 	const navigate = useNavigate();
 
 	const { address, active } = useParams();
-
-	const arProvider = useArweaveProvider();
 
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
@@ -43,21 +40,17 @@ export default function Profile() {
 	React.useEffect(() => {
 		(async function () {
 			if (address && checkValidAddress(address)) {
-				if (arProvider.profile && arProvider.profile.id && arProvider.profile.id === address) {
-					setProfile(arProvider.profile);
-				} else {
-					try {
-						const fetchedProfile = await getProfileById({ profileId: address });
-						setProfile(fetchedProfile);
-					} catch (e: any) {
-						console.error(e);
-					}
+				try {
+					const fetchedProfile = await getProfileById({ profileId: address });
+					setProfile(fetchedProfile);
+				} catch (e: any) {
+					console.error(e);
 				}
 			} else {
 				navigate(URLS.notFound);
 			}
 		})();
-	}, [address, arProvider.profile, location]);
+	}, [address, location]);
 
 	const TABS = React.useMemo(
 		() => [

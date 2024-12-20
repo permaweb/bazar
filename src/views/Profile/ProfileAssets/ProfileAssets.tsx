@@ -17,7 +17,7 @@ const ProfileAssets = React.memo((props: IProps) => {
 		})();
 	}, [props.profile]);
 
-	return props.address ? (
+	return props.profile ? (
 		<S.Wrapper>
 			<AssetsTable
 				ids={assetIds}

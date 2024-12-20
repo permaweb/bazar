@@ -63,7 +63,7 @@ export default function AssetsTable(props: IProps) {
 
 	React.useEffect(() => {
 		if (appProvider.stamps.completed) {
-			if (props.ids && !props.ids.length) {
+			if (props.ids?.length <= 0) {
 				setAssets([]);
 				setAssetsLoading(false);
 			} else {

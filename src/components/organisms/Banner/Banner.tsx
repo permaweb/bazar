@@ -156,6 +156,7 @@ export default function Banner() {
 
 	React.useEffect(() => {
 		(async function () {
+			setShowVouch(false);
 			if (arProvider.vouch) {
 				if (!arProvider.vouch.isVouched) {
 					setShowVouch(true);
@@ -239,10 +240,13 @@ export default function Banner() {
 
 	return (
 		<>
-			{!updateApplied && (
+			{(showVouch || !updateApplied) && (
 				<S.Wrapper>
-					{/* <button onClick={() => setShowInfo(true)}>Welcome to AO Bazar!</button> */}
+					{showVouch && (
+						<button onClick={() => window.open('https://vouch-portal.arweave.net/#/', '_blank')}>Get vouched</button>
+					)}
 					{!updateApplied && <button onClick={() => setShowUpdate(true)}>Update your profile</button>}
+					{/* <button onClick={() => setShowInfo(true)}>Welcome to AO Bazar!</button> */}
 				</S.Wrapper>
 			)}
 			{!updateApplied && showUpdate && (
@@ -273,11 +277,6 @@ export default function Banner() {
 						</S.ActionsWrapper>
 					</S.MWrapper>
 				</Modal>
-			)}
-			{showVouch && (
-				<S.Wrapper>
-					<button onClick={() => window.open('https://vouch-portal.arweave.net/#/', '_blank')}>Get vouched</button>
-				</S.Wrapper>
 			)}
 			{showVouch && showVouchAlert && (
 				<Modal header={'You are not vouched!'} handleClose={() => setShowVouchAlert(false)}>
