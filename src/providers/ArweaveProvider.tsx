@@ -1,4 +1,5 @@
 import React from 'react';
+import { useSelector } from 'react-redux';
 import { connect } from '@othent/kms';
 import * as Othent from '@othent/kms';
 
@@ -7,8 +8,9 @@ import { getProfileByWalletAddress, getVouch, readHandler } from 'api';
 import { Modal } from 'components/molecules/Modal';
 import { AO, AR_WALLETS, REDIRECTS, WALLET_PERMISSIONS } from 'helpers/config';
 import { getARBalanceEndpoint } from 'helpers/endpoints';
-import { ProfileHeaderType, VouchType, WalletEnum } from 'helpers/types';
+import { ProfileType, VouchType, WalletEnum } from 'helpers/types';
 import { useLanguageProvider } from 'providers/LanguageProvider';
+import { RootState } from 'store';
 
 import * as S from './styles';
 
@@ -25,7 +27,7 @@ interface ArweaveContextState {
 	handleDisconnect: () => void;
 	walletModalVisible: boolean;
 	setWalletModalVisible: (open: boolean) => void;
-	profile: ProfileHeaderType;
+	profile: ProfileType;
 	toggleProfileUpdate: boolean;
 	setToggleProfileUpdate: (toggleUpdate: boolean) => void;
 	vouch: VouchType;
@@ -86,10 +88,10 @@ function WalletList(props: { handleConnect: any }) {
 }
 
 export function ArweaveProvider(props: ArweaveProviderProps) {
+	const profilesReducer = useSelector((state: RootState) => state.profilesReducer);
+
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
-
-	const wallets = AR_WALLETS;
 
 	const [wallet, setWallet] = React.useState<any>(null);
 	const [walletType, setWalletType] = React.useState<WalletEnum | null>(null);
@@ -106,7 +108,7 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 	});
 	const [toggleTokenBalanceUpdate, setToggleTokenBalanceUpdate] = React.useState<boolean>(false);
 
-	const [profile, setProfile] = React.useState<ProfileHeaderType | null>(null);
+	const [profile, setProfile] = React.useState<ProfileType | null>(null);
 	const [toggleProfileUpdate, setToggleProfileUpdate] = React.useState<boolean>(false);
 
 	React.useEffect(() => {
@@ -137,13 +139,14 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 		(async function () {
 			if (wallet && walletAddress) {
 				try {
-					setProfile(await getProfileByWalletAddress({ address: walletAddress }));
+					if (profilesReducer?.userProfiles?.[walletAddress]) setProfile(profilesReducer.userProfiles[walletAddress]);
+					else setProfile(await getProfileByWalletAddress({ address: walletAddress }));
 				} catch (e: any) {
 					console.error(e);
 				}
 			}
 		})();
-	}, [wallet, walletAddress, walletType]);
+	}, [wallet, walletAddress, walletType, profilesReducer?.userProfiles]);
 
 	React.useEffect(() => {
 		(async function () {
@@ -354,7 +357,7 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 					setToggleTokenBalanceUpdate,
 					handleConnect,
 					handleDisconnect,
-					wallets,
+					wallets: AR_WALLETS,
 					walletModalVisible,
 					setWalletModalVisible,
 					profile,

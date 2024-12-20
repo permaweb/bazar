@@ -179,6 +179,7 @@ export const language = {
 		uploadAvatar: `Upload avatar`,
 		uploadBanner: `Upload banner`,
 		username: `Handle`,
+		userConnectedVouched: `You are vouched`,
 		useDarkDisplay: `Use Dark Display`,
 		useLightDisplay: `Use Light Display`,
 		viewAllCollections: `View all collections`,

@@ -1,8 +1,9 @@
 import React from 'react';
+import { useSelector } from 'react-redux';
 import { Link } from 'react-router-dom';
 import { ReactSVG } from 'react-svg';
 
-import { getAssetsByIds, getRegistryProfiles, readHandler } from 'api';
+import { getAndUpdateRegistryProfiles, getAssetsByIds, readHandler } from 'api';
 
 import { Button } from 'components/atoms/Button';
 import { CurrencyLine } from 'components/atoms/CurrencyLine';
@@ -14,6 +15,7 @@ import { RegistryProfileType, SelectOptionType } from 'helpers/types';
 import { formatAddress, formatCount, formatDate, getRelativeDate, isFirefox } from 'helpers/utils';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
+import { RootState } from 'store';
 
 import { AssetData } from '../AssetData';
 
@@ -23,6 +25,8 @@ import { IProps } from './types';
 const GROUP_COUNT = 50;
 
 export default function ActivityTable(props: IProps) {
+	const profilesReducer = useSelector((state: RootState) => state.profilesReducer);
+
 	const arProvider = useArweaveProvider();
 
 	const languageProvider = useLanguageProvider();
@@ -123,11 +127,7 @@ export default function ActivityTable(props: IProps) {
 
 						let associatedProfiles: RegistryProfileType[] | null = null;
 						const uniqueAddresses = [...new Set(associatedAddresses.filter((address) => address !== null))];
-						try {
-							associatedProfiles = await getRegistryProfiles({ profileIds: uniqueAddresses });
-						} catch (e: any) {
-							console.error(e);
-						}
+						associatedProfiles = await getAndUpdateRegistryProfiles(uniqueAddresses);
 
 						if (associatedProfiles) {
 							currentGroup = currentGroup.map((order: any) => {
@@ -170,7 +170,7 @@ export default function ActivityTable(props: IProps) {
 				}
 			}
 		})();
-	}, [activityGroups, activityCursor, props.address]);
+	}, [activityGroups, activityCursor, props.address, profilesReducer?.registryProfiles]);
 
 	const handleActivitySortType = React.useCallback((option: SelectOptionType) => {
 		setActivityGroup(null);

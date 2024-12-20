@@ -63,8 +63,10 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 	}
 
 	function handleDropdownAction(callback?: () => void) {
-		if (callback) callback();
-		setShowWalletDropdown(false);
+		setTimeout(() => {
+			callback?.();
+			setShowWalletDropdown(false);
+		}, 200);
 	}
 
 	function handleProfileAction() {
@@ -132,7 +134,7 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 									<div id={'vouch-check'}>
 										<ReactSVG src={ASSETS.checkmark} />
 										<S.Tooltip className={'info-text'} useBottom={true}>
-											<span>{'You are vouched'}</span>
+											<span>{language.userConnectedVouched}</span>
 										</S.Tooltip>
 									</div>
 								)}
