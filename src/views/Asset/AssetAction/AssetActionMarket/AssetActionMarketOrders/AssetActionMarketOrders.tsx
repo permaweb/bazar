@@ -21,6 +21,7 @@ import {
 	reverseDenomination,
 } from 'helpers/utils';
 import * as windowUtils from 'helpers/window';
+import { useAppProvider } from 'providers/AppProvider';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 import { RootState } from 'store';
@@ -35,6 +36,7 @@ const MIN_PRICE = 0.000001;
 export default function AssetActionMarketOrders(props: IProps) {
 	const dispatch = useDispatch();
 
+	const appProvider = useAppProvider();
 	const arProvider = useArweaveProvider();
 
 	const languageProvider = useLanguageProvider();
@@ -559,6 +561,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 	function getActionDisabled() {
 		if (!arProvider.walletAddress) return true;
 		if (!arProvider.profile || !arProvider.profile.id) return true;
+		if (appProvider.ucm.updating) return true;
 		if (orderLoading) return true;
 		if (orderProcessed && !orderSuccess) return true;
 		if (props.asset && !props.asset.state.transferable) return true;
@@ -793,6 +796,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 							!arProvider.profile ||
 							!arProvider.profile.id ||
 							maxOrderQuantity <= 0 ||
+							appProvider.ucm.updating ||
 							orderLoading
 						}
 						invalid={{
@@ -807,7 +811,11 @@ export default function AssetActionMarketOrders(props: IProps) {
 							label={language.max}
 							handlePress={() => setCurrentOrderQuantity(maxOrderQuantity)}
 							disabled={
-								!arProvider.walletAddress || !arProvider.profile || !arProvider.profile.id || maxOrderQuantity <= 0
+								!arProvider.walletAddress ||
+								!arProvider.profile ||
+								!arProvider.profile.id ||
+								appProvider.ucm.updating ||
+								maxOrderQuantity <= 0
 							}
 							noMinWidth
 						/>
@@ -832,6 +840,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 										!arProvider.walletAddress ||
 										!arProvider.profile ||
 										!arProvider.profile.id ||
+										appProvider.ucm.updating ||
 										maxOrderQuantity <= 0 ||
 										orderLoading
 									}
@@ -857,6 +866,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 											!arProvider.profile ||
 											!arProvider.profile.id ||
 											Number(currentOrderQuantity) <= 0 ||
+											appProvider.ucm.updating ||
 											orderLoading
 										}
 										invalid={{
@@ -875,7 +885,11 @@ export default function AssetActionMarketOrders(props: IProps) {
 										value={transferRecipient || ''}
 										onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleRecipientInput(e)}
 										disabled={
-											!arProvider.walletAddress || !arProvider.profile || !arProvider.profile.id || orderLoading
+											!arProvider.walletAddress ||
+											!arProvider.profile ||
+											!arProvider.profile.id ||
+											orderLoading ||
+											appProvider.ucm.updating
 										}
 										invalid={{ status: transferRecipient && !checkValidAddress(transferRecipient), message: null }}
 										hideErrorMessage
@@ -895,6 +909,11 @@ export default function AssetActionMarketOrders(props: IProps) {
 											<span>Create your profile to continue</span>
 										</S.MessageWrapper>
 									))}
+								{appProvider.ucm.updating && (
+									<S.MessageWrapper className={'update-wrapper'}>
+										<span>{`${language.ordersUpdating}...`}</span>
+									</S.MessageWrapper>
+								)}
 								{arProvider.tokenBalances &&
 									getTotalTokenBalance(arProvider.tokenBalances[AO.defaultToken]) !== null &&
 									insufficientBalance && (

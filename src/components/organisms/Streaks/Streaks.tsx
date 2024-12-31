@@ -13,7 +13,7 @@ import { OwnerLine } from 'components/molecules/OwnerLine';
 import { Panel } from 'components/molecules/Panel';
 import { AO, ASSETS, URLS } from 'helpers/config';
 import { RegistryProfileType, StreakType } from 'helpers/types';
-import { formatAddress, getTotalTokenBalance } from 'helpers/utils';
+import { formatAddress, formatCount, getTotalTokenBalance } from 'helpers/utils';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 import { RootState } from 'store';
@@ -350,7 +350,7 @@ export default function Streaks(props: IProps) {
 		return (
 			<S.StreaksPanelWrapper ref={streaksWrapperRef}>
 				<S.StreaksPanelHeader>
-					<p>{`${streakHolderCount ? streakHolderCount : '-'} ${language.streakHolders}`}</p>
+					<p>{`${streakHolderCount ? formatCount(streakHolderCount.toString()) : '-'} ${language.streakHolders}`}</p>
 				</S.StreaksPanelHeader>
 				<S.StreaksWrapper>
 					{streaks.map((streak: StreakType, index: number) => {

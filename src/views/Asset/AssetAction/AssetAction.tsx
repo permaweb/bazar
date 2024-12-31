@@ -449,32 +449,34 @@ export default function AssetAction(props: IProps) {
 						</S.HeaderTitleActions>
 					</S.HeaderTitle>
 					<S.OrdersWrapper>
-						<S.OwnerLinesWrapper>
-							{showCurrentlyOwnedBy() && (
-								<S.OwnerLine>
-									<span>{language.currentlyOwnedBy}</span>
-									<button
-										onClick={() => {
-											setShowCurrentOwnersModal(true);
-										}}
-									>
-										{ownerCountDisplay}
-									</button>
-								</S.OwnerLine>
-							)}
-							{currentListings && currentListings.length > 0 && (
-								<S.OwnerLine>
-									<span>{language.currentlyBeingSoldBy}</span>
-									<button
-										onClick={() => {
-											setShowCurrentListingsModal(true);
-										}}
-									>
-										{listingCountDisplay}
-									</button>
-								</S.OwnerLine>
-							)}
-						</S.OwnerLinesWrapper>
+						{(showCurrentlyOwnedBy() || (currentListings && currentListings.length > 0)) && (
+							<S.OwnerLinesWrapper>
+								{showCurrentlyOwnedBy() && (
+									<S.OwnerLine>
+										<span>{language.currentlyOwnedBy}</span>
+										<button
+											onClick={() => {
+												setShowCurrentOwnersModal(true);
+											}}
+										>
+											{ownerCountDisplay}
+										</button>
+									</S.OwnerLine>
+								)}
+								{currentListings && currentListings.length > 0 && (
+									<S.OwnerLine>
+										<span>{language.currentlyBeingSoldBy}</span>
+										<button
+											onClick={() => {
+												setShowCurrentListingsModal(true);
+											}}
+										>
+											{listingCountDisplay}
+										</button>
+									</S.OwnerLine>
+								)}
+							</S.OwnerLinesWrapper>
+						)}
 						{appProvider.ucm.updating && (
 							<S.MessageWrapper className={'update-wrapper'}>
 								<span>{`${language.ordersUpdating}...`}</span>

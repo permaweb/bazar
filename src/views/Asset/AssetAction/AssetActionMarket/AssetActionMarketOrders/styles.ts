@@ -221,7 +221,7 @@ export const ConfirmationFooter = styled.div`
 `;
 
 export const MessageWrapper = styled.div<{ warning?: boolean }>`
-	padding: 2.5px 10px;
+	padding: 3.5px 10px;
 	margin: 15px 0 0 0;
 	display: flex;
 	align-items: center;
@@ -233,7 +233,7 @@ export const MessageWrapper = styled.div<{ warning?: boolean }>`
 	border-radius: ${STYLING.dimensions.radius.alt1};
 	span {
 		font-size: ${(props) => props.theme.typography.size.xSmall};
-		font-family: ${(props) => props.theme.typography.family.primary};
+		font-family: ${(props) => props.theme.typography.family.alt1};
 		font-weight: ${(props) => props.theme.typography.weight.bold};
 		color: ${(props) => props.theme.colors.font.light1};
 		text-align: center;

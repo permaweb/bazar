@@ -25,13 +25,11 @@ export const HeaderTitle = styled.div`
 	align-items: flex-start;
 	flex-wrap: wrap;
 	gap: 15px;
+	align-items: center;
 	justify-content: space-between;
-	margin: -9.5px 0 10px 0;
+	margin: 0 0 10px 0;
 	h4 {
 		line-height: 1.5;
-	}
-	button {
-		margin: 10px 0 0 0;
 	}
 `;
 
@@ -49,6 +47,10 @@ export const OrdersWrapper = styled.div`
 	justify-content: space-between;
 	gap: 15px;
 	margin: 15px 0 0 0;
+
+	@media (max-width: ${STYLING.cutoffs.secondary}) {
+		width: 100%;
+	}
 `;
 
 export const OwnerLinesWrapper = styled.div`
@@ -138,7 +140,6 @@ export const DrawerContent = styled(GS.DrawerContent)`
 		&:not(:last-child) {
 			margin: 0 0 15px 0;
 			padding: 0 0 15px 0;
-			/* border-bottom: 1px solid ${(props) => props.theme.colors.border.alt4}; */
 		}
 	}
 	@media (max-width: ${STYLING.cutoffs.secondary}) {
