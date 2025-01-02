@@ -228,8 +228,7 @@ export const MessageWrapper = styled.div<{ warning?: boolean }>`
 	justify-content: center;
 	background: ${(props) =>
 		props.warning ? props.theme.colors.warning.primary : props.theme.colors.container.alt11.background};
-	border: 1px solid
-		${(props) => (props.warning ? props.theme.colors.warning.primary : props.theme.colors.border.primary)};
+	border: 1px solid ${(props) => (props.warning ? props.theme.colors.warning.primary : props.theme.colors.border.alt3)};
 	border-radius: ${STYLING.dimensions.radius.alt1};
 	span {
 		font-size: ${(props) => props.theme.typography.size.xSmall};

@@ -900,13 +900,13 @@ export default function AssetActionMarketOrders(props: IProps) {
 								{getAction(false)}
 								{!arProvider.walletAddress && (
 									<S.MessageWrapper>
-										<span>Connect your wallet to continue</span>
+										<span>{language.connectToContinue}</span>
 									</S.MessageWrapper>
 								)}
 								{!arProvider.profile ||
 									(!arProvider.profile.id && (
 										<S.MessageWrapper>
-											<span>Create your profile to continue</span>
+											<span>{language.createProfileToContinue}</span>
 										</S.MessageWrapper>
 									))}
 								{appProvider.ucm.updating && (
@@ -918,17 +918,17 @@ export default function AssetActionMarketOrders(props: IProps) {
 									getTotalTokenBalance(arProvider.tokenBalances[AO.defaultToken]) !== null &&
 									insufficientBalance && (
 										<S.MessageWrapper warning>
-											<span>Not enough tokens to purchase this asset</span>
+											<span>{language.insufficientBalance}</span>
 										</S.MessageWrapper>
 									)}
 								{!Number.isInteger(Number(currentOrderQuantity)) && !denomination && (
 									<S.MessageWrapper warning>
-										<span>Quantity must be an integer</span>
+										<span>{language.quantityMustBeInteger}</span>
 									</S.MessageWrapper>
 								)}
 								{props.asset && !props.asset.state.transferable && (
 									<S.MessageWrapper warning>
-										<span>This asset cannot be transferred</span>
+										<span>{language.nonTransferable}</span>
 									</S.MessageWrapper>
 								)}
 							</S.ActionWrapper>
