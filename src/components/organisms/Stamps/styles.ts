@@ -11,7 +11,6 @@ export const Wrapper = styled.button`
 	gap: 7.5px;
 
 	background: ${(props) => props.theme.colors.container.primary.background};
-	box-shadow: none !important;
 	cursor: pointer;
 	&:hover {
 		background: ${(props) => props.theme.colors.container.primary.active};

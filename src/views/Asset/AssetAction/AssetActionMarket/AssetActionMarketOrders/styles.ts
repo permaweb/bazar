@@ -205,8 +205,24 @@ export const ActionWrapper = styled.div<{ loading: string }>`
 	}
 `;
 
+export const RecipientWrapper = styled.div`
+	width: 100%;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 10px;
+	button {
+		margin: 30.5px 0 0 0;
+	}
+	@media (max-width: ${STYLING.cutoffs.initial}) {
+		button {
+			display: none;
+		}
+	}
+`;
+
 export const ActionWrapperFull = styled(ActionWrapper)`
 	width: 100%;
+	margin: 20px 0 5px 0;
 `;
 
 export const Divider = styled.div`
@@ -325,21 +341,6 @@ export const ConfirmationFooter = styled.div`
 		a {
 			text-decoration: underline;
 			text-decoration-thickness: 1.25px;
-		}
-	}
-`;
-
-export const RecipientWrapper = styled.div`
-	width: 100%;
-	display: flex;
-	flex-wrap: wrap;
-	gap: 10px;
-	button {
-		margin: 30.5px 0 0 0;
-	}
-	@media (max-width: ${STYLING.cutoffs.initial}) {
-		button {
-			display: none;
 		}
 	}
 `;

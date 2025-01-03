@@ -10,7 +10,6 @@ import { messageResults, readHandler } from 'api';
 import { Button } from 'components/atoms/Button';
 import { CurrencyLine } from 'components/atoms/CurrencyLine';
 import { FormField } from 'components/atoms/FormField';
-import { Notification } from 'components/atoms/Notification';
 import { Slider } from 'components/atoms/Slider';
 import { TxAddress } from 'components/atoms/TxAddress';
 import { Modal } from 'components/molecules/Modal';
@@ -75,9 +74,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 	// Price on limit orders for quantity of one transfer token
 	const [unitPrice, setUnitPrice] = React.useState<string | number>('');
-
-	// Active after an order is completed and asset is refreshed
-	const [updating, setUpdating] = React.useState<boolean>(false);
 
 	const [orderLoading, setOrderLoading] = React.useState<boolean>(false);
 	const [orderProcessed, setOrderProcessed] = React.useState<boolean>(false);
@@ -249,7 +245,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 				setOrderId(orderId);
 
 				// TODO: Handle update
-				setUpdating(true);
 				appProvider.refreshUcm();
 				if (props.type === 'buy') {
 					const streaks = await readHandler({
@@ -261,7 +256,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 				arProvider.setToggleProfileUpdate(!arProvider.toggleProfileUpdate);
 				arProvider.setToggleTokenBalanceUpdate(!arProvider.toggleTokenBalanceUpdate);
 				props.toggleUpdate();
-				setUpdating(false);
 			} catch (e: any) {
 				handleStatusUpdate(false, true, false, e.message ?? 'Error creating order in UCM');
 			}
@@ -515,8 +509,8 @@ export default function AssetActionMarketOrders(props: IProps) {
 	function getActionDisabled() {
 		if (!arProvider.walletAddress) return true;
 		if (!arProvider.profile || !arProvider.profile.id) return true;
-		if (appProvider.ucm.updating) return true;
 		if (orderLoading) return true;
+		if (!orderProcessed && appProvider.ucm.updating) return true;
 		if (orderProcessed && !orderSuccess) return true;
 		if (props.asset && !props.asset.state.transferable) return true;
 		if (maxOrderQuantity <= 0 || isNaN(Number(currentOrderQuantity))) return true;
@@ -716,7 +710,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 				break;
 		}
 
-		// TODO: Language
 		return (
 			<Modal
 				header={header}
@@ -926,9 +919,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 				</S.InputWrapper>
 			</S.Wrapper>
 			{showConfirmation && getOrderWindow()}
-			{updating && (
-				<Notification message={`${language.fetchingAsset}...`} type={'success'} callback={() => setUpdating(false)} />
-			)}
 		</>
 	) : null;
 }
