@@ -11,8 +11,9 @@ import { CurrencyLine } from 'components/atoms/CurrencyLine';
 import { FormField } from 'components/atoms/FormField';
 import { Notification } from 'components/atoms/Notification';
 import { Slider } from 'components/atoms/Slider';
+import { TxAddress } from 'components/atoms/TxAddress';
 import { Modal } from 'components/molecules/Modal';
-import { AO, ASSETS, URLS } from 'helpers/config';
+import { AO, ASSETS, REDIRECTS, URLS } from 'helpers/config';
 import { AssetOrderType, OrderbookEntryType } from 'helpers/types';
 import {
 	checkValidAddress,
@@ -81,6 +82,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 	const [orderLoading, setOrderLoading] = React.useState<boolean>(false);
 	const [orderProcessed, setOrderProcessed] = React.useState<boolean>(false);
 	const [orderSuccess, setOrderSuccess] = React.useState<boolean>(false);
+	const [orderId, setOrderId] = React.useState<string | null>(null);
 	const [showConfirmation, setShowConfirmation] = React.useState<boolean>(false);
 	const [currentNotification, setCurrentNotification] = React.useState<string | null>(null);
 	const [insufficientBalance, setInsufficientBalance] = React.useState<boolean>(false);
@@ -271,6 +273,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 						data: null,
 						responses: ['Transfer-Success', 'Transfer-Error'],
 					});
+					console.log('Transfer complete');
 				}
 			}
 		} catch (e: any) {
@@ -282,7 +285,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 		if (props.asset && arProvider.wallet && arProvider.profile?.id) {
 			try {
 				setOrderLoading(true);
-				setCurrentNotification('Processing wallet to profile transfer...');
+				setCurrentNotification('Transferring balance from wallet to profile...');
 				await handleWalletToProfileTransfer();
 			} catch (e: any) {
 				setOrderLoading(false);
@@ -291,7 +294,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 			}
 
 			const transferQuantity = getTransferQuantity().toString();
-			const unitPrice = getUnitPrice().toString();
+			const unitPrice = getUnitPrice()?.toString();
 
 			let dominantToken = null;
 			let swapToken = null;
@@ -330,11 +333,19 @@ export default function AssetActionMarketOrders(props: IProps) {
 					}
 				);
 
-				console.log(`Order ID: ${orderId}`);
+				setOrderId(orderId);
+
+				// await handleAssetUpdate(localSuccess); // TODO
 			} catch (e: any) {
-				setCurrentNotification(e);
+				setOrderLoading(false);
+				setOrderProcessed(true);
+				setOrderSuccess(false);
+				setCurrentNotification(e.message ?? 'Error creating order in UCM');
 			}
 		} else {
+			setOrderLoading(false);
+			setOrderProcessed(true);
+			setOrderSuccess(false);
 			setCurrentNotification('Invalid order details');
 		}
 	}
@@ -876,7 +887,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 		return (
 			<>
 				<Button
-					type={'primary'}
+					type={'alt1'}
 					label={label}
 					handlePress={action}
 					disabled={getActionDisabled()}
@@ -914,20 +925,47 @@ export default function AssetActionMarketOrders(props: IProps) {
 				break;
 		}
 
+		// TODO: Language
 		return (
 			<Modal
-				header={`${header}: ${props.asset.data.title}`}
+				header={header}
 				handleClose={() => (orderProcessed && orderSuccess ? handleAssetUpdate(orderSuccess) : handleOrderErrorClose())}
 			>
 				<S.ConfirmationWrapper className={'modal-wrapper'}>
+					<S.ConfirmationHeader>
+						<p>{props.asset.data.title}</p>
+					</S.ConfirmationHeader>
 					{getOrderDetails(true)}
-					<S.ActionWrapperFull loading={orderLoading.toString() || null}>{getAction(true)}</S.ActionWrapperFull>
-					{footer && <S.ConfirmationFooter>{footer}</S.ConfirmationFooter>}
+					<S.ConfirmationDetails className={'border-wrapper-primary'}>
+						<S.ConfirmationDetailsHeader>
+							<p>Order Confirmation Details</p>
+						</S.ConfirmationDetailsHeader>
+						<S.ConfirmationDetailsLineWrapper>
+							{orderId ? (
+								<S.ConfirmationDetailsFlex>
+									<S.ConfirmationDetailsLine>
+										<p>Order ID: </p>
+										<TxAddress address={orderId} wrap={false} />
+									</S.ConfirmationDetailsLine>
+									<Button
+										type={'alt2'}
+										label={'View'}
+										handlePress={() => window.open(REDIRECTS.aoLink(orderId), '_blank')}
+									/>
+								</S.ConfirmationDetailsFlex>
+							) : (
+								<p>Information related to your order will show here</p>
+							)}
+						</S.ConfirmationDetailsLineWrapper>
+					</S.ConfirmationDetails>
+					<S.Divider />
+					<S.ActionWrapperFull loading={orderLoading.toString()}>{getAction(true)}</S.ActionWrapperFull>
 					<S.ConfirmationMessage>
-						<p>
+						<span>
 							{currentNotification ? currentNotification : orderLoading ? 'Processing...' : language.reviewOrderDetails}
-						</p>
+						</span>
 					</S.ConfirmationMessage>
+					{footer && <S.ConfirmationFooter>{footer}</S.ConfirmationFooter>}
 				</S.ConfirmationWrapper>
 			</Modal>
 		);

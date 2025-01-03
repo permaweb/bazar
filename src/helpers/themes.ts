@@ -125,7 +125,7 @@ export const theme = (currentTheme: any): DefaultTheme => ({
 			},
 			alt1: {
 				background: currentTheme.primary1,
-				border: currentTheme.primary2,
+				border: currentTheme.primary1,
 				color: currentTheme.light1,
 				active: {
 					background: currentTheme.primary2,
