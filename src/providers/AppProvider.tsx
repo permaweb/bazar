@@ -16,6 +16,7 @@ export interface AppContextState {
 	ucm: { updating: boolean; completed: boolean; lastUpdate?: number };
 	streaks: { updating: boolean; completed: boolean; lastUpdate?: number };
 	stamps: { updating: boolean; completed: boolean; lastUpdate?: number };
+	refreshUcm: () => void;
 }
 
 export interface AppProviderProps {
@@ -26,6 +27,7 @@ export const AppContext = React.createContext<AppContextState>({
 	ucm: { updating: false, completed: false },
 	streaks: { updating: false, completed: false },
 	stamps: { updating: false, completed: false },
+	refreshUcm: () => {},
 });
 
 export function useAppProvider(): AppContextState {
@@ -47,6 +49,8 @@ export function AppProvider(props: AppProviderProps) {
 		lastUpdate: ucmReducer?.lastUpdate,
 	});
 
+	const [ucmRefreshTrigger, setUcmRefreshTrigger] = React.useState<boolean>(false);
+
 	const [streaksState, setStreaksState] = React.useState<AppContextState['streaks']>({
 		updating: false,
 		completed: false,
@@ -63,6 +67,7 @@ export function AppProvider(props: AppProviderProps) {
 		if (stampsReducer) setStampsState((prevState) => ({ ...prevState, completed: true }));
 	}, [stampsReducer]);
 
+	// TODO: Fetch until change
 	React.useEffect(() => {
 		(async function () {
 			setUCMState((prevState) => ({ ...prevState, updating: true }));
@@ -90,7 +95,7 @@ export function AppProvider(props: AppProviderProps) {
 				setUCMState((prevState) => ({ ...prevState, updating: false }));
 			}
 		})();
-	}, []);
+	}, [ucmRefreshTrigger]);
 
 	React.useEffect(() => {
 		(async function () {
@@ -216,6 +221,9 @@ export function AppProvider(props: AppProviderProps) {
 				ucm: ucmState,
 				streaks: streaksState,
 				stamps: stampsState,
+				refreshUcm: () => {
+					setUcmRefreshTrigger((prev) => !prev);
+				},
 			}}
 		>
 			{props.children}
