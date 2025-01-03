@@ -82,11 +82,12 @@ export const MaxQty = styled.div`
 	margin: 10px 0 0 auto;
 `;
 
-export const SalesWrapper = styled.div`
+export const SalesWrapper = styled.div<{ useWrapper: boolean }>`
+	padding: ${(props) => (props.useWrapper ? '15px 25px' : '0')};
 	margin: 0 0 20px 0;
 	> * {
 		&:not(:last-child) {
-			margin: 0 0 15px 0;
+			margin: 0 0 20px 0;
 		}
 		&:last-child {
 			margin: 0;
@@ -109,10 +110,11 @@ export const SalesLine = styled.div`
 
 export const SalesDetail = styled.div`
 	span {
-		font-size: ${(props) => props.theme.typography.size.base};
+		font-size: ${(props) => props.theme.typography.size.xxSmall};
 		font-family: ${(props) => props.theme.typography.family.primary};
 		font-weight: ${(props) => props.theme.typography.weight.medium};
 		color: ${(props) => props.theme.colors.font.alt1};
+		text-transform: uppercase;
 	}
 	p {
 		font-size: ${(props) => props.theme.typography.size.xLg};

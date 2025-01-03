@@ -1,7 +1,7 @@
+import { ArweaveWebIrys } from '@irys/sdk/build/esm/web/tokens/arweave';
 import { dispatch } from '@othent/kms';
 
 import Arweave from 'arweave';
-import { ArweaveWebIrys } from '@irys/sdk/build/esm/web/tokens/arweave';
 import { createDataItemSigner, dryrun, message, result, results } from '@permaweb/aoconnect';
 
 import { CONTENT_TYPES, CURSORS, GATEWAYS, PAGINATORS, UPLOAD_CONFIG } from 'helpers/config';

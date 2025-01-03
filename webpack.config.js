@@ -187,11 +187,6 @@ module.exports = {
 	resolve: {
 		extensions: ['.tsx', '.ts', '.jsx', '.js'],
 		preferRelative: true,
-		alias: {
-			process: 'process/browser',
-			crypto: 'crypto-browserify',
-			stream: 'stream-browserify',
-		},
 		fallback: {
 			fs: false,
 			tls: false,
@@ -201,6 +196,8 @@ module.exports = {
 			http: require.resolve('stream-http'),
 			https: require.resolve('https-browserify'),
 			events: require.resolve('events/'),
+			crypto: 'crypto-browserify',
+			stream: 'stream-browserify',
 			process: require.resolve('process/browser'),
 			crypto: require.resolve('crypto-browserify'),
 			stream: require.resolve('stream-browserify'),
