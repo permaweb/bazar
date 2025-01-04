@@ -119,6 +119,7 @@ export default function AssetAction(props: IProps) {
 		(async function () {
 			if (props.asset && props.asset.state && addressGroups && addressGroups.length > 0) {
 				setUpdating(true);
+				console.log(props.asset, addressGroups, ownersCursor, profilesReducer?.registryProfiles);
 				try {
 					let subAddresses = {};
 					addressGroups[ownersCursor].forEach((address: string) => {
@@ -303,7 +304,10 @@ export default function AssetAction(props: IProps) {
 							type={'alt1'}
 							label={language.loadMore}
 							handlePress={() => setOwnersCursor(ownersCursor + 1)}
-							disabled={addressGroups && addressGroups.length > 0 ? ownersCursor >= addressGroups.length - 1 : true}
+							disabled={
+								(addressGroups && addressGroups.length > 0 ? ownersCursor >= addressGroups.length - 1 : true) ||
+								updating
+							}
 							height={40}
 						/>
 					</S.MActionsWrapper>

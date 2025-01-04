@@ -392,8 +392,9 @@ export default function AssetActionMarketOrders(props: IProps) {
 	function handleAssetUpdate() {
 		if (orderSuccess) {
 			setCurrentOrderQuantity('');
-			setUnitPrice(0);
+			setUnitPrice('');
 			setTransferRecipient('');
+			setOrderId(null);
 			windowUtils.scrollTo(0, 0, 'smooth');
 		}
 
@@ -406,7 +407,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 		setShowConfirmation(false);
 		setOrderProcessed(false);
 		setCurrentOrderQuantity('');
-		setUnitPrice(0);
+		setUnitPrice('');
 		setTransferRecipient('');
 		setCurrentNotification(null);
 		windowUtils.scrollTo(0, 0, 'smooth');
