@@ -119,7 +119,6 @@ export default function AssetAction(props: IProps) {
 		(async function () {
 			if (props.asset && props.asset.state && addressGroups && addressGroups.length > 0) {
 				setUpdating(true);
-				console.log(props.asset, addressGroups, ownersCursor, profilesReducer?.registryProfiles);
 				try {
 					let subAddresses = {};
 					addressGroups[ownersCursor].forEach((address: string) => {
