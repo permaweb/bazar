@@ -234,8 +234,8 @@ export default function AssetActionMarketOrders(props: IProps) {
 					quantity: transferQuantity,
 				};
 
-				if (unitPrice) data.unitPrice = unitPrice;
-				if (denomination) data.denomination = unitPrice;
+				if (unitPrice) data.unitPrice = unitPrice.toString();
+				if (denomination && denomination > 1) data.denomination = denomination.toString();
 
 				const orderId = await createOrder(
 					data,
