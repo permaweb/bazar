@@ -6,7 +6,6 @@ import _ from 'lodash';
 import { getAssetById, getAssetOrders } from 'api';
 
 import { Loader } from 'components/atoms/Loader';
-import { Notification } from 'components/atoms/Notification';
 import { Portal } from 'components/atoms/Portal';
 import { AssetData } from 'components/organisms/AssetData';
 import { DOM, URLS } from 'helpers/config';
@@ -120,11 +119,11 @@ export default function Asset() {
 							<S.TradingActionWrapper className={'fade-in'}>
 								<AssetAction
 									asset={asset}
+									updating={loading}
 									toggleUpdate={() => setToggleUpdate(!toggleUpdate)}
 									toggleViewType={() => setViewType('reading')}
 								/>
 							</S.TradingActionWrapper>
-							{loading && <Notification message={`${language.updatingAsset}...`} type={'success'} callback={null} />}
 						</>
 					);
 				case 'reading':

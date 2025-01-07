@@ -1,5 +1,6 @@
 import React from 'react';
 import { useDispatch, useSelector } from 'react-redux';
+import { isEqual } from 'lodash';
 
 import { readHandler, stamps } from 'api';
 
@@ -49,7 +50,7 @@ export function AppProvider(props: AppProviderProps) {
 		lastUpdate: ucmReducer?.lastUpdate,
 	});
 
-	const [ucmRefreshTrigger, setUcmRefreshTrigger] = React.useState<boolean>(false);
+	const [ucmRefreshTrigger, setUcmRefreshTrigger] = React.useState<boolean | null>(null);
 
 	const [streaksState, setStreaksState] = React.useState<AppContextState['streaks']>({
 		updating: false,
@@ -67,7 +68,6 @@ export function AppProvider(props: AppProviderProps) {
 		if (stampsReducer) setStampsState((prevState) => ({ ...prevState, completed: true }));
 	}, [stampsReducer]);
 
-	// TODO: Fetch until change
 	React.useEffect(() => {
 		(async function () {
 			setUCMState((prevState) => ({ ...prevState, updating: true }));
@@ -95,7 +95,95 @@ export function AppProvider(props: AppProviderProps) {
 				setUCMState((prevState) => ({ ...prevState, updating: false }));
 			}
 		})();
-	}, [ucmRefreshTrigger]);
+	}, []);
+
+	React.useEffect(() => {
+		const fetchAndCompareUCM = async () => {
+			setUCMState((prevState) => ({ ...prevState, updating: true }));
+
+			try {
+				const newUCMState = await readHandler({
+					processId: AO.ucm,
+					action: 'Info',
+				});
+
+				const normalizedOrders = (ucm) =>
+					ucm?.Orderbook?.map((entry) => ({
+						Pair: entry.Pair?.sort() || [],
+						PriceData: entry.PriceData
+							? {
+									...entry.PriceData,
+									MatchLogs: entry.PriceData.MatchLogs
+										? entry.PriceData.MatchLogs.map((log) => ({
+												...log,
+										  })).sort((a, b) => a.Id.localeCompare(b.Id))
+										: [],
+							  }
+							: null,
+						Orders: entry.Orders
+							? entry.Orders.map((order) => ({
+									...order,
+							  })).sort((a, b) => a.Id.localeCompare(b.Id))
+							: [],
+					})).sort((a, b) => JSON.stringify(a.Pair).localeCompare(JSON.stringify(b.Pair))) || [];
+
+				const currentOrders = normalizedOrders(ucmReducer);
+				const newOrders = normalizedOrders(newUCMState);
+
+				const hasDifferences = !isEqual(currentOrders, newOrders);
+
+				if (hasDifferences) {
+					dispatch(
+						ucmActions.setUCM({
+							...newUCMState,
+							lastUpdate: Date.now(),
+						})
+					);
+
+					setUCMState({
+						updating: false,
+						completed: true,
+						lastUpdate: Date.now(),
+					});
+
+					setUcmRefreshTrigger(null);
+
+					return true;
+				} else {
+					setUCMState((prevState) => ({
+						...prevState,
+						updating: false,
+					}));
+					return false;
+				}
+			} catch (e) {
+				console.error(e);
+				setUCMState((prevState) => ({ ...prevState, updating: false }));
+				return true;
+			}
+		};
+
+		let isPolling = false;
+
+		const pollUntilDifference = async () => {
+			if (isPolling) return;
+			isPolling = true;
+
+			let differencesDetected = false;
+			do {
+				differencesDetected = await fetchAndCompareUCM();
+				if (!differencesDetected) {
+					await new Promise((resolve) => setTimeout(resolve, 2000));
+				}
+			} while (!differencesDetected);
+
+			isPolling = false;
+		};
+
+		if (ucmRefreshTrigger !== null) {
+			pollUntilDifference();
+		}
+	}, [ucmRefreshTrigger, ucmReducer]);
 
 	React.useEffect(() => {
 		(async function () {
@@ -222,7 +310,7 @@ export function AppProvider(props: AppProviderProps) {
 				streaks: streaksState,
 				stamps: stampsState,
 				refreshUcm: () => {
-					setUcmRefreshTrigger((prev) => !prev);
+					setUcmRefreshTrigger((prev) => (prev === null ? true : !prev));
 				},
 			}}
 		>

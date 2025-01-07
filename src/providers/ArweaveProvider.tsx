@@ -193,56 +193,49 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 	}, [toggleProfileUpdate]);
 
 	React.useEffect(() => {
-		const fetchWalletBalances = async () => {
-			if (!walletAddress) return;
+		const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+		const fetchBalances = async () => {
+			if (!walletAddress || !profile?.id) return;
+
 			try {
 				const defaultTokenWalletBalance = await readHandler({
 					processId: AO.defaultToken,
 					action: 'Balance',
 					tags: [{ name: 'Recipient', value: walletAddress }],
 				});
+				await sleep(500);
+
 				const pixlTokenWalletBalance = await readHandler({
 					processId: AO.pixl,
 					action: 'Balance',
 					tags: [{ name: 'Recipient', value: walletAddress }],
 				});
-				setTokenBalances((prevBalances) => ({
-					...prevBalances,
-					[AO.defaultToken]: {
-						...prevBalances[AO.defaultToken],
-						walletBalance: defaultTokenWalletBalance ?? null,
-					},
-					[AO.pixl]: {
-						...prevBalances[AO.pixl],
-						walletBalance: pixlTokenWalletBalance ?? null,
-					},
-				}));
-			} catch (e) {
-				console.error(e);
-			}
-		};
+				await sleep(500);
 
-		const fetchProfileBalances = async () => {
-			if (!profile || !profile.id) return;
-			try {
 				const defaultTokenProfileBalance = await readHandler({
 					processId: AO.defaultToken,
 					action: 'Balance',
 					tags: [{ name: 'Recipient', value: profile.id }],
 				});
+				await sleep(500);
+
 				const pixlTokenProfileBalance = await readHandler({
 					processId: AO.pixl,
 					action: 'Balance',
 					tags: [{ name: 'Recipient', value: profile.id }],
 				});
+
 				setTokenBalances((prevBalances) => ({
 					...prevBalances,
 					[AO.defaultToken]: {
 						...prevBalances[AO.defaultToken],
+						walletBalance: defaultTokenWalletBalance ?? null,
 						profileBalance: defaultTokenProfileBalance ?? null,
 					},
 					[AO.pixl]: {
 						...prevBalances[AO.pixl],
+						walletBalance: pixlTokenWalletBalance ?? null,
 						profileBalance: pixlTokenProfileBalance ?? null,
 					},
 				}));
@@ -251,8 +244,7 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 			}
 		};
 
-		fetchWalletBalances();
-		fetchProfileBalances();
+		fetchBalances();
 	}, [walletAddress, profile, toggleTokenBalanceUpdate]);
 
 	React.useEffect(() => {

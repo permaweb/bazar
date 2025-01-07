@@ -226,16 +226,19 @@ export default function AssetActionMarketOrders(props: IProps) {
 			}
 
 			try {
+				const data: any = {
+					orderbookId: AO.ucm,
+					profileId: arProvider.profile.id,
+					dominantToken: dominantToken,
+					swapToken: swapToken,
+					quantity: transferQuantity,
+				};
+
+				if (unitPrice) data.unitPrice = unitPrice;
+				if (denomination) data.denomination = unitPrice;
+
 				const orderId = await createOrder(
-					{
-						orderbookId: AO.ucm,
-						profileId: arProvider.profile.id,
-						dominantToken: dominantToken,
-						swapToken: swapToken,
-						quantity: transferQuantity,
-						unitPrice: unitPrice,
-						denomination: denomination,
-					},
+					data,
 					arProvider.wallet,
 					(args: { processing: boolean; success: boolean; message: string }) => {
 						handleStatusUpdate(args.processing, !args.processing, args.success, args.message);
@@ -244,8 +247,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 				setOrderId(orderId);
 
-				// TODO: Handle update
-				appProvider.refreshUcm();
 				if (props.type === 'buy') {
 					const streaks = await readHandler({
 						processId: AO.pixl,
@@ -255,7 +256,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 				}
 				arProvider.setToggleProfileUpdate(!arProvider.toggleProfileUpdate);
 				arProvider.setToggleTokenBalanceUpdate(!arProvider.toggleTokenBalanceUpdate);
-				props.toggleUpdate();
 			} catch (e: any) {
 				handleStatusUpdate(false, true, false, e.message ?? 'Error creating order in UCM');
 			}
@@ -334,7 +334,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 					console.error(`Wallet balance: ${walletBalance}`);
 					throw new Error('Error making wallet to profile transfer');
 				} else {
-					console.log(`Transferring remainder from wallet balance: ${differenceNeeded.toString()} to profile`);
+					console.log(`Transferring remainder from wallet (${differenceNeeded.toString()}) to profile...`);
 					await messageResults({
 						processId: processId,
 						action: 'Transfer',
@@ -391,6 +391,8 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 	function handleAssetUpdate() {
 		if (orderSuccess) {
+			appProvider.refreshUcm();
+			props.toggleUpdate();
 			setCurrentOrderQuantity('');
 			setUnitPrice('');
 			setTransferRecipient('');
@@ -740,7 +742,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 											<TxAddress address={orderId} wrap={false} />
 										</S.ConfirmationDetailsLine>
 										<Button
-											type={'alt2'}
+											type={'alt1'}
 											label={'View'}
 											handlePress={() => window.open(REDIRECTS.aoLink(orderId), '_blank')}
 										/>
@@ -904,9 +906,21 @@ export default function AssetActionMarketOrders(props: IProps) {
 											<span>{language.insufficientBalance}</span>
 										</S.MessageWrapper>
 									)}
+								{arProvider.wallet &&
+									arProvider.profile?.id &&
+									getTotalTokenBalance(arProvider.tokenBalances[AO.defaultToken]) === null && (
+										<S.MessageWrapper>
+											<span>{`${language.fetchingTokenbalances}...`}</span>
+										</S.MessageWrapper>
+									)}
 								{!Number.isInteger(Number(currentOrderQuantity)) && !denomination && (
 									<S.MessageWrapper warning>
 										<span>{language.quantityMustBeInteger}</span>
+									</S.MessageWrapper>
+								)}
+								{props.type === 'sell' && Number(unitPrice) > 0 && Number(unitPrice) <= MIN_PRICE && (
+									<S.MessageWrapper warning>
+										<span>{language.priceTooLow}</span>
 									</S.MessageWrapper>
 								)}
 								{props.asset && !props.asset.state.transferable && (

@@ -480,9 +480,11 @@ export default function AssetAction(props: IProps) {
 								)}
 							</S.OwnerLinesWrapper>
 						)}
-						{appProvider.ucm.updating && (
+						{(appProvider.ucm.updating || props.updating) && (
 							<S.MessageWrapper className={'update-wrapper'}>
-								<span>{`${language.ordersUpdating}...`}</span>
+								<span>
+									{appProvider.ucm.updating ? `${language.ordersUpdating}...` : `${language.updatingAsset}...`}
+								</span>
 							</S.MessageWrapper>
 						)}
 					</S.OrdersWrapper>
