@@ -2,16 +2,19 @@ import React from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { Link } from 'react-router-dom';
 
+import { createDataItemSigner, message, result } from '@permaweb/aoconnect';
+import { createOrder } from '@permaweb/ucm';
+
 import { messageResults, readHandler } from 'api';
 
 import { Button } from 'components/atoms/Button';
 import { CurrencyLine } from 'components/atoms/CurrencyLine';
 import { FormField } from 'components/atoms/FormField';
-import { Notification } from 'components/atoms/Notification';
 import { Slider } from 'components/atoms/Slider';
-import { Modal } from 'components/molecules/Modal';
-import { AO, ASSETS, URLS } from 'helpers/config';
-import { AssetOrderType, OrderbookEntryType } from 'helpers/types';
+import { TxAddress } from 'components/atoms/TxAddress';
+import { Panel } from 'components/molecules/Panel';
+import { AO, ASSETS, REDIRECTS, URLS } from 'helpers/config';
+import { AssetOrderType } from 'helpers/types';
 import {
 	checkValidAddress,
 	formatAddress,
@@ -26,7 +29,6 @@ import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 import { RootState } from 'store';
 import * as streakActions from 'store/streaks/actions';
-import * as ucmActions from 'store/ucm/actions';
 
 import * as S from './styles';
 import { IProps } from './types';
@@ -73,12 +75,10 @@ export default function AssetActionMarketOrders(props: IProps) {
 	// Price on limit orders for quantity of one transfer token
 	const [unitPrice, setUnitPrice] = React.useState<string | number>('');
 
-	// Active after an order is completed and asset is refreshed
-	const [updating, setUpdating] = React.useState<boolean>(false);
-
 	const [orderLoading, setOrderLoading] = React.useState<boolean>(false);
 	const [orderProcessed, setOrderProcessed] = React.useState<boolean>(false);
 	const [orderSuccess, setOrderSuccess] = React.useState<boolean>(false);
+	const [orderId, setOrderId] = React.useState<string | null>(null);
 	const [showConfirmation, setShowConfirmation] = React.useState<boolean>(false);
 	const [currentNotification, setCurrentNotification] = React.useState<string | null>(null);
 	const [insufficientBalance, setInsufficientBalance] = React.useState<boolean>(false);
@@ -185,280 +185,231 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 	React.useEffect(() => {
 		if (currentOrderQuantity) setCurrentOrderQuantity('');
+		if (unitPrice) setUnitPrice('');
 	}, [props.type]);
 
 	async function handleSubmit() {
-		if (props.asset && arProvider.wallet && arProvider.profile && arProvider.profile.id) {
-			let pair = null;
-			let forwardedTags = null;
-			let recipient = null;
-			let localSuccess = false;
-			let initialMessage = null;
+		if (props.asset && arProvider.wallet && arProvider.profile?.id) {
+			try {
+				handleStatusUpdate(true, false, false, 'Transferring balance from wallet to profile...');
+				await handleWalletToProfileTransfer();
+			} catch (e: any) {
+				handleStatusUpdate(false, true, false, e);
+			}
+
+			if (props.type === 'transfer') {
+				try {
+					await handleTransfer();
+				} catch (e: any) {
+					handleStatusUpdate(false, true, false, e.message ?? 'Error executing transfer');
+				}
+				return;
+			}
+
+			const transferQuantity = getTransferQuantity().toString();
+			const unitPrice = getUnitPrice()?.toString();
+
+			let dominantToken = null;
+			let swapToken = null;
 
 			switch (props.type) {
 				case 'buy':
-					pair = [AO.defaultToken, props.asset.data.id];
-					recipient = AO.ucm;
-					initialMessage = 'Depositing balance...';
+					dominantToken = AO.defaultToken;
+					swapToken = props.asset.data.id;
 					break;
 				case 'sell':
-					pair = [props.asset.data.id, AO.defaultToken];
-					recipient = AO.ucm;
-					initialMessage = 'Depositing balance...';
+					dominantToken = props.asset.data.id;
+					swapToken = AO.defaultToken;
 					break;
-				case 'transfer':
-					pair = [props.asset.data.id, AO.defaultToken];
-					recipient = transferRecipient;
-					initialMessage = 'Transferring balance...';
+				default:
 					break;
 			}
 
-			if (pair && recipient) {
-				const dominantToken = pair[0];
-				const swapToken = pair[1];
+			try {
+				const data: any = {
+					orderbookId: AO.ucm,
+					profileId: arProvider.profile.id,
+					dominantToken: dominantToken,
+					swapToken: swapToken,
+					quantity: transferQuantity,
+				};
 
-				let transferQuantity: string | number = currentOrderQuantity;
+				if (unitPrice) data.unitPrice = unitPrice.toString();
+				if (denomination && denomination > 1) data.denomination = denomination.toString();
 
-				switch (props.type) {
-					case 'buy':
-						transferQuantity = getTotalOrderAmount().toString();
-						if (denomination) {
-							transferQuantity = (BigInt(transferQuantity) / BigInt(denomination)).toString();
-						}
-						break;
-					case 'sell':
-					case 'transfer':
-						if (denomination) {
-							transferQuantity = Math.floor(Number(currentOrderQuantity) * denomination);
-						}
-						break;
-				}
-
-				transferQuantity = transferQuantity.toString();
-
-				switch (props.type) {
-					case 'buy':
-					case 'sell':
-						forwardedTags = [
-							{ name: 'X-Order-Action', value: 'Create-Order' },
-							{ name: 'X-Dominant-Token', value: dominantToken },
-							{ name: 'X-Swap-Token', value: swapToken },
-						];
-						if (unitPrice && Number(unitPrice) > 0) {
-							let calculatedUnitPrice = unitPrice as any;
-							if (transferDenomination) {
-								const decimalPlaces = (unitPrice.toString().split('.')[1] || '').length;
-								const updatedUnitPrice =
-									decimalPlaces >= reverseDenomination(transferDenomination)
-										? (unitPrice as any).toFixed(reverseDenomination(transferDenomination))
-										: unitPrice;
-								calculatedUnitPrice = BigInt(Math.floor(Number(updatedUnitPrice) * transferDenomination));
-							}
-
-							forwardedTags.push({ name: 'X-Price', value: calculatedUnitPrice.toString() });
-						}
-						if (denomination && denomination > 1) {
-							forwardedTags.push({ name: 'X-Transfer-Denomination', value: denomination.toString() });
-						}
-						break;
-					case 'transfer':
-						break;
-				}
-
-				const transferTags = [
-					{ name: 'Target', value: dominantToken },
-					{ name: 'Recipient', value: recipient },
-					{ name: 'Quantity', value: transferQuantity },
-				];
-
-				if (forwardedTags) transferTags.push(...forwardedTags);
-
-				setOrderLoading(true);
-
-				try {
-					setCurrentNotification(initialMessage);
-
-					let processId: string;
-					let profileBalance: bigint = BigInt(0);
-					let walletBalance: bigint = BigInt(0);
-
-					switch (props.type) {
-						case 'buy':
-							processId = AO.defaultToken;
-							profileBalance = BigInt(arProvider.tokenBalances[AO.defaultToken].profileBalance);
-							walletBalance = BigInt(arProvider.tokenBalances[AO.defaultToken].walletBalance);
-							break;
-						case 'sell':
-						case 'transfer':
-							processId = props.asset.data.id;
-
-							if (connectedBalance)
-								profileBalance = BigInt(denomination ? Math.floor(connectedBalance * denomination) : connectedBalance);
-							if (connectedWalletBalance)
-								walletBalance = BigInt(
-									denomination ? Math.floor(connectedWalletBalance * denomination) : connectedWalletBalance
-								);
-							break;
+				const orderId = await createOrder(
+					data,
+					arProvider.wallet,
+					(args: { processing: boolean; success: boolean; message: string }) => {
+						handleStatusUpdate(args.processing, !args.processing, args.success, args.message);
 					}
+				);
 
-					if (profileBalance < BigInt(transferQuantity)) {
-						const differenceNeeded = BigInt(transferQuantity) - profileBalance;
+				setOrderId(orderId);
 
-						if (walletBalance < differenceNeeded) {
-							console.error(`Wallet balance is less than difference needed: ${differenceNeeded}`);
-							console.error(`Wallet balance: ${walletBalance}`);
+				if (props.type === 'buy') {
+					const streaks = await readHandler({
+						processId: AO.pixl,
+						action: 'Get-Streaks',
+					});
+					dispatch(streakActions.setStreaks(streaks.Streaks));
+				}
+				arProvider.setToggleProfileUpdate(!arProvider.toggleProfileUpdate);
+				arProvider.setToggleTokenBalanceUpdate(!arProvider.toggleTokenBalanceUpdate);
+			} catch (e: any) {
+				handleStatusUpdate(false, true, false, e.message ?? 'Error creating order in UCM');
+			}
+		} else {
+			handleStatusUpdate(false, true, false, 'Invalid order details');
+		}
+	}
 
-							setCurrentNotification('Error executing transfer');
-							setOrderLoading(false);
-							setOrderProcessed(true);
-							return;
-						} else {
-							console.log(`Transferring remainder from wallet balance: ${differenceNeeded.toString()} to profile`);
-							await messageResults({
-								processId: processId,
-								action: 'Transfer',
-								wallet: arProvider.wallet,
-								tags: [
-									{ name: 'Quantity', value: differenceNeeded.toString() },
-									{ name: 'Recipient', value: arProvider.profile.id },
-								],
-								data: null,
-								responses: ['Transfer-Success', 'Transfer-Error'],
-							});
-						}
-					}
+	function getTransferQuantity() {
+		let transferQuantity = currentOrderQuantity;
 
-					const response: any = await messageResults({
-						processId: arProvider.profile.id,
+		switch (props.type) {
+			case 'buy':
+				transferQuantity = getTotalOrderAmount().toString();
+				if (denomination) transferQuantity = (BigInt(transferQuantity) / BigInt(denomination)).toString();
+				break;
+			case 'sell':
+			case 'transfer':
+				if (denomination) transferQuantity = Math.floor(Number(currentOrderQuantity) * denomination);
+				break;
+		}
+
+		return transferQuantity;
+	}
+
+	function getUnitPrice() {
+		let calculatedUnitPrice = null;
+
+		if (unitPrice && Number(unitPrice) > 0) {
+			calculatedUnitPrice = unitPrice as any;
+			if (transferDenomination) {
+				const decimalPlaces = (unitPrice.toString().split('.')[1] || '').length;
+				const updatedUnitPrice =
+					decimalPlaces >= reverseDenomination(transferDenomination)
+						? (unitPrice as any).toFixed(reverseDenomination(transferDenomination))
+						: unitPrice;
+				calculatedUnitPrice = BigInt(Math.floor(Number(updatedUnitPrice) * transferDenomination));
+			}
+		}
+
+		return calculatedUnitPrice;
+	}
+
+	async function handleWalletToProfileTransfer() {
+		try {
+			let processId: string;
+			let profileBalance: bigint = BigInt(0);
+			let walletBalance: bigint = BigInt(0);
+
+			const transferQuantity = getTransferQuantity();
+
+			switch (props.type) {
+				case 'buy':
+					processId = AO.defaultToken;
+					profileBalance = BigInt(arProvider.tokenBalances[AO.defaultToken].profileBalance);
+					walletBalance = BigInt(arProvider.tokenBalances[AO.defaultToken].walletBalance);
+					break;
+				case 'sell':
+				case 'transfer':
+					processId = props.asset.data.id;
+
+					if (connectedBalance)
+						profileBalance = BigInt(denomination ? Math.floor(connectedBalance * denomination) : connectedBalance);
+					if (connectedWalletBalance)
+						walletBalance = BigInt(
+							denomination ? Math.floor(connectedWalletBalance * denomination) : connectedWalletBalance
+						);
+					break;
+			}
+
+			if (profileBalance < BigInt(transferQuantity)) {
+				const differenceNeeded = BigInt(transferQuantity) - profileBalance;
+
+				if (walletBalance < differenceNeeded) {
+					console.error(`Wallet balance is less than difference needed: ${differenceNeeded}`);
+					console.error(`Wallet balance: ${walletBalance}`);
+					throw new Error('Error making wallet to profile transfer');
+				} else {
+					console.log(`Transferring remainder from wallet (${differenceNeeded.toString()}) to profile...`);
+					await messageResults({
+						processId: processId,
 						action: 'Transfer',
 						wallet: arProvider.wallet,
-						tags: transferTags,
+						tags: [
+							{ name: 'Quantity', value: differenceNeeded.toString() },
+							{ name: 'Recipient', value: arProvider.profile.id },
+						],
 						data: null,
 						responses: ['Transfer-Success', 'Transfer-Error'],
-						handler: 'Create-Order',
 					});
-
-					if (response) {
-						if (response['Transfer-Success'])
-							setCurrentNotification(response['Transfer-Success'].message || 'Balance transferred!');
-						switch (props.type) {
-							case 'buy':
-							case 'sell':
-								setCurrentNotification(
-									response['Action-Response'] && response['Action-Response'].message
-										? response['Action-Response'].message
-										: 'Order created!'
-								);
-								setOrderSuccess(true);
-								localSuccess = true;
-								break;
-							case 'transfer':
-								setOrderSuccess(true);
-								setOrderProcessed(true);
-								setCurrentNotification('Balance transferred!');
-								break;
-						}
-					} else {
-						setCurrentNotification('Error depositing funds');
-					}
-				} catch (e: any) {
-					setCurrentNotification(e.message || 'Error creating order');
+					console.log('Transfer complete');
 				}
+			}
+		} catch (e: any) {
+			throw new Error(e.message ?? 'Error making wallet to profile transfer');
+		}
+	}
 
-				setOrderLoading(false);
-				setOrderProcessed(true);
+	async function handleTransfer() {
+		if (transferRecipient && checkValidAddress(transferRecipient)) {
+			try {
+				const transferId = await message({
+					process: arProvider.profile.id,
+					signer: createDataItemSigner(arProvider.wallet),
+					tags: [
+						{ name: 'Action', value: 'Transfer' },
+						{ name: 'Target', value: props.asset.data.id },
+						{ name: 'Recipient', value: transferRecipient },
+						{ name: 'Quantity', value: getTransferQuantity().toString() },
+					],
+				});
 
-				await handleAssetUpdate(localSuccess);
-			} else {
-				setCurrentNotification('Invalid order details');
+				const { Error } = await result({
+					process: arProvider.profile.id,
+					message: transferId,
+				});
+
+				if (!Error) handleStatusUpdate(false, true, true, 'Balance transferred!');
+
+				console.log(transferId);
+			} catch (e: any) {
+				throw new Error(e);
 			}
 		}
 	}
 
-	async function handleAssetUpdate(handleUpdate: boolean) {
-		if (handleUpdate) {
-			setCurrentOrderQuantity('');
-			setUnitPrice(0);
-			setTransferRecipient('');
-			setCurrentNotification(null);
-			setOrderProcessed(false);
-			setShowConfirmation(false);
-			setUpdating(true);
-			windowUtils.scrollTo(0, 0, 'smooth');
+	function handleStatusUpdate(loading: boolean, processed: boolean, success: boolean, message: string) {
+		setOrderLoading(loading);
+		setOrderProcessed(processed);
+		setOrderSuccess(success);
+		setCurrentNotification(message);
+	}
 
-			arProvider.setToggleProfileUpdate(!arProvider.toggleProfileUpdate);
-
-			if (props.type !== 'transfer') {
-				try {
-					const existingUCM = { ...ucmReducer };
-
-					if (existingUCM && existingUCM.Orderbook && existingUCM.Orderbook.length) {
-						let pair = [props.asset.data.id, AO.defaultToken];
-
-						const currentEntry = existingUCM.Orderbook.find(
-							(entry: OrderbookEntryType) => JSON.stringify(entry.Pair) === JSON.stringify(pair)
-						);
-
-						if (currentEntry && currentEntry.Orders) {
-							const fetchUntilChange = async () => {
-								let changeDetected = false;
-								let tries = 0;
-								const maxTries = 10;
-
-								await new Promise((resolve) => setTimeout(resolve, 1000));
-
-								while (!changeDetected && tries < maxTries) {
-									const ucmState = await readHandler({
-										processId: AO.ucm,
-										action: 'Info',
-									});
-
-									const currentStateEntry = ucmState.Orderbook.find(
-										(entry: OrderbookEntryType) => JSON.stringify(entry.Pair) === JSON.stringify(pair)
-									);
-
-									if (JSON.stringify(currentEntry) !== JSON.stringify(currentStateEntry)) {
-										dispatch(ucmActions.setUCM(ucmState));
-										changeDetected = true;
-									} else {
-										await new Promise((resolve) => setTimeout(resolve, 1000));
-										tries++;
-									}
-								}
-
-								if (!changeDetected) {
-									console.warn(`No changes detected after ${maxTries} attempts`);
-								}
-							};
-
-							await fetchUntilChange();
-						}
-					}
-				} catch (e: any) {
-					console.error(e);
-				}
-			}
-
-			if (props.type === 'buy') {
-				const streaks = await readHandler({
-					processId: AO.pixl,
-					action: 'Get-Streaks',
-				});
-				dispatch(streakActions.setStreaks(streaks.Streaks));
-			}
-
-			arProvider.setToggleTokenBalanceUpdate(!arProvider.toggleTokenBalanceUpdate);
+	function handleAssetUpdate() {
+		if (orderSuccess) {
+			if (props.type !== 'transfer') appProvider.refreshUcm();
 			props.toggleUpdate();
-
-			setUpdating(false);
+			setCurrentOrderQuantity('');
+			setUnitPrice('');
+			setTransferRecipient('');
+			setOrderId(null);
+			windowUtils.scrollTo(0, 0, 'smooth');
 		}
+
+		setCurrentNotification(null);
+		setOrderProcessed(false);
+		setShowConfirmation(false);
 	}
 
 	function handleOrderErrorClose() {
 		setShowConfirmation(false);
 		setOrderProcessed(false);
 		setCurrentOrderQuantity('');
-		setUnitPrice(0);
+		setUnitPrice('');
 		setTransferRecipient('');
 		setCurrentNotification(null);
 		windowUtils.scrollTo(0, 0, 'smooth');
@@ -561,8 +512,8 @@ export default function AssetActionMarketOrders(props: IProps) {
 	function getActionDisabled() {
 		if (!arProvider.walletAddress) return true;
 		if (!arProvider.profile || !arProvider.profile.id) return true;
-		if (appProvider.ucm.updating) return true;
 		if (orderLoading) return true;
+		if (!orderProcessed && appProvider.ucm.updating) return true;
 		if (orderProcessed && !orderSuccess) return true;
 		if (props.asset && !props.asset.state.transferable) return true;
 		if (maxOrderQuantity <= 0 || isNaN(Number(currentOrderQuantity))) return true;
@@ -633,7 +584,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 		return <CurrencyLine amount={amount ? amount.toString() : '0'} currency={orderCurrency} />;
 	}
 
-	function getOrderDetails() {
+	function getOrderDetails(useWrapper: boolean) {
 		let quantityLabel: string | null = null;
 		let percentageLabel: string | null = null;
 
@@ -653,7 +604,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 		}
 
 		return (
-			<>
+			<S.SalesWrapper useWrapper={useWrapper} className={useWrapper ? 'border-wrapper-alt1' : ''}>
 				<S.SalesLine>
 					<S.SalesDetail>
 						<span>{quantityLabel}</span>
@@ -686,7 +637,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 						</S.SalesDetail>
 					</S.SalesLine>
 				)}
-			</>
+			</S.SalesWrapper>
 		);
 	}
 
@@ -710,13 +661,13 @@ export default function AssetActionMarketOrders(props: IProps) {
 		}
 		if (orderLoading) label = finalizeOrder ? `${language.executing}...` : label;
 		if (orderProcessed) {
-			if (orderSuccess) label = `${language.complete}!`;
+			if (orderSuccess) label = language.done;
 			else label = language.error;
 		}
 
 		let action: () => void;
 		if (orderProcessed) {
-			if (orderSuccess) action = () => handleAssetUpdate(orderSuccess);
+			if (orderSuccess) action = () => handleAssetUpdate();
 			else action = () => setShowConfirmation(false);
 		} else if (finalizeOrder) action = () => handleSubmit();
 		else action = () => setShowConfirmation(true);
@@ -724,13 +675,13 @@ export default function AssetActionMarketOrders(props: IProps) {
 		return (
 			<>
 				<Button
-					type={'primary'}
+					type={orderProcessed ? 'primary' : 'alt1'}
 					label={label}
 					handlePress={action}
 					disabled={getActionDisabled()}
 					loading={false}
 					height={60}
-					fullWidth={true}
+					fullWidth={!finalizeOrder}
 					icon={icon}
 					iconLeftAlign
 				/>
@@ -738,19 +689,26 @@ export default function AssetActionMarketOrders(props: IProps) {
 		);
 	}
 
-	function getConfirmation() {
+	function getOrderWindow() {
 		let header: string | null = null;
+		let confirmationHeader: string | null = null;
+		let reviewMessage: string | null = null;
+
 		let footer: React.ReactNode | null = null;
 
 		switch (props.type) {
 			case 'buy':
 				header = language.confirmPurchase;
+				confirmationHeader = language.orderConfirmationDetailsPurchase;
+				reviewMessage = language.orderConfirmationReviewPurchase;
 				break;
 			case 'sell':
 				header = language.confirmListing;
+				confirmationHeader = language.orderConfirmationDetailsListing;
+				reviewMessage = language.orderConfirmationReviewListing;
 				footer = (
 					<p>
-						{language.sellerFee}{' '}
+						· {language.sellerFee}{' '}
 						<Link to={URLS.docs} target={'_blank'}>
 							{language.learnMore}
 						</Link>
@@ -759,32 +717,75 @@ export default function AssetActionMarketOrders(props: IProps) {
 				break;
 			case 'transfer':
 				header = language.confirmTransfer;
+				reviewMessage = language.orderConfirmationReviewTransfer;
 				break;
 		}
 
+		function handleClose() {
+			if (orderProcessed && orderSuccess) {
+				handleAssetUpdate();
+				return;
+			}
+			if (orderProcessed) {
+				handleOrderErrorClose();
+				return;
+			}
+			setShowConfirmation(false);
+		}
+
 		return (
-			<Modal
-				header={`${header}: ${props.asset.data.title}`}
-				handleClose={() => (orderProcessed && orderSuccess ? handleAssetUpdate(orderSuccess) : handleOrderErrorClose())}
+			<Panel
+				open={true}
+				width={525}
+				header={header}
+				handleClose={handleClose}
+				closeHandlerDisabled={orderLoading || orderProcessed}
 			>
 				<S.ConfirmationWrapper className={'modal-wrapper'}>
-					<S.SalesWrapper>{getOrderDetails()}</S.SalesWrapper>
-					<S.ActionWrapperFull loading={orderLoading.toString() || null}>{getAction(true)}</S.ActionWrapperFull>
-					{footer && <S.ConfirmationFooter>{footer}</S.ConfirmationFooter>}
-					<S.ConfirmationMessage>
-						<p>
-							{currentNotification ? currentNotification : orderLoading ? 'Processing...' : language.reviewOrderDetails}
-						</p>
+					<S.ConfirmationHeader>
+						<p>{props.asset.data.title}</p>
+					</S.ConfirmationHeader>
+					{getOrderDetails(true)}
+					{props.type !== 'transfer' && (
+						<S.ConfirmationDetails className={'border-wrapper-primary'}>
+							<S.ConfirmationDetailsHeader>
+								<p>{confirmationHeader}</p>
+							</S.ConfirmationDetailsHeader>
+							<S.ConfirmationDetailsLineWrapper>
+								{orderId ? (
+									<S.ConfirmationDetailsFlex>
+										<S.ConfirmationDetailsLine>
+											<p id={'id-line'}>{`${language.orderId}: `}</p>
+											<TxAddress address={orderId} wrap={false} />
+										</S.ConfirmationDetailsLine>
+										<Button
+											type={'alt1'}
+											label={language.view}
+											handlePress={() => window.open(REDIRECTS.aoLink(orderId), '_blank')}
+											height={27.5}
+										/>
+									</S.ConfirmationDetailsFlex>
+								) : (
+									<p>{language.orderConfirmationInfo}</p>
+								)}
+							</S.ConfirmationDetailsLineWrapper>
+						</S.ConfirmationDetails>
+					)}
+					{footer && <S.ConfirmationFooter className={'border-wrapper-primary'}>{footer}</S.ConfirmationFooter>}
+					<S.ConfirmationMessage success={orderProcessed && orderSuccess} warning={orderProcessed && !orderSuccess}>
+						<span>{currentNotification ? currentNotification : orderLoading ? 'Processing...' : reviewMessage}</span>
 					</S.ConfirmationMessage>
+					<S.Divider />
+					<S.ActionWrapperFull loading={orderLoading.toString()}>{getAction(true)}</S.ActionWrapperFull>
 				</S.ConfirmationWrapper>
-			</Modal>
+			</Panel>
 		);
 	}
 
 	return props.asset ? (
 		<>
 			<S.Wrapper>
-				<S.SalesWrapper>{getOrderDetails()}</S.SalesWrapper>
+				{getOrderDetails(false)}
 				<S.InputWrapper>
 					<Slider
 						value={parseFloat(Number(currentOrderQuantity).toString())}
@@ -921,9 +922,21 @@ export default function AssetActionMarketOrders(props: IProps) {
 											<span>{language.insufficientBalance}</span>
 										</S.MessageWrapper>
 									)}
+								{arProvider.wallet &&
+									arProvider.profile?.id &&
+									getTotalTokenBalance(arProvider.tokenBalances[AO.defaultToken]) === null && (
+										<S.MessageWrapper>
+											<span>{`${language.fetchingTokenbalances}...`}</span>
+										</S.MessageWrapper>
+									)}
 								{!Number.isInteger(Number(currentOrderQuantity)) && !denomination && (
 									<S.MessageWrapper warning>
 										<span>{language.quantityMustBeInteger}</span>
+									</S.MessageWrapper>
+								)}
+								{props.type === 'sell' && Number(unitPrice) > 0 && Number(unitPrice) <= MIN_PRICE && (
+									<S.MessageWrapper warning>
+										<span>{language.priceTooLow}</span>
 									</S.MessageWrapper>
 								)}
 								{props.asset && !props.asset.state.transferable && (
@@ -936,10 +949,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 					</S.FieldsFlexWrapper>
 				</S.InputWrapper>
 			</S.Wrapper>
-			{showConfirmation && getConfirmation()}
-			{updating && (
-				<Notification message={`${language.fetchingAsset}...`} type={'success'} callback={() => setUpdating(false)} />
-			)}
+			{showConfirmation && getOrderWindow()}
 		</>
 	) : null;
 }

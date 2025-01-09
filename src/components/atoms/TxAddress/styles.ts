@@ -4,10 +4,10 @@ export const Wrapper = styled.div<{ disabled: boolean }>`
 	display: flex;
 	align-items: center;
 	p {
-		color: ${(props) => props.theme.colors.font.primary};
+		color: ${(props) => props.theme.colors.font.primary} !important;
 		font-size: ${(props) => props.theme.typography.size.base};
-		font-family: ${(props) => props.theme.typography.family.primary};
-		font-weight: ${(props) => props.theme.typography.weight.bold};
+		font-family: ${(props) => props.theme.typography.family.primary} !important;
+		font-weight: ${(props) => props.theme.typography.weight.bold} !important;
 		text-decoration: ${(props) => (props.disabled ? 'none' : 'underline')};
 
 		&:hover {

@@ -22,21 +22,28 @@ export const Header = styled.div``;
 
 export const HeaderTitle = styled.div`
 	display: flex;
-	align-items: flex-start;
-	flex-wrap: wrap;
 	gap: 15px;
-	align-items: center;
+	align-items: flex-start;
 	justify-content: space-between;
-	margin: 0 0 10px 0;
+	margin: 0 0 5px 0;
 	h4 {
 		line-height: 1.5;
+	}
+
+	@media (max-width: ${STYLING.cutoffs.tablet}) {
+		flex-wrap: wrap;
 	}
 `;
 
 export const HeaderTitleActions = styled.div`
+	min-width: 215px;
 	display: flex;
 	align-items: center;
+	justify-content: flex-end;
 	gap: 20px;
+	@media (max-width: ${STYLING.cutoffs.tablet}) {
+		min-width: 0;
+	}
 `;
 
 export const OrdersWrapper = styled.div`
@@ -46,7 +53,10 @@ export const OrdersWrapper = styled.div`
 	flex-wrap: wrap;
 	justify-content: space-between;
 	gap: 15px;
-	margin: 15px 0 0 0;
+
+	@media (max-width: ${STYLING.cutoffs.tablet}) {
+		margin: 25px 0 20px 0;
+	}
 
 	@media (max-width: ${STYLING.cutoffs.secondary}) {
 		width: 100%;
@@ -61,6 +71,7 @@ export const OwnerLinesWrapper = styled.div`
 `;
 
 export const MessageWrapper = styled.div`
+	width: fit-content;
 	padding: 2.5px 60px;
 `;
 

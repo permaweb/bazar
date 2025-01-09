@@ -29,7 +29,7 @@ export default function CurrencyLine(props: IProps) {
 			const formattedAmount: string = (Math.round(amount) / factor).toFixed(denomination);
 			return formatCount(formattedAmount);
 		}
-		return `${language.fetching}...`;
+		return `${language.loading}...`;
 	}
 
 	function getCurrency() {

@@ -25,6 +25,7 @@
 		"@othent/kms": "^1.0.7",
 		"@permaweb/aoconnect": "^0.0.45",
 		"@permaweb/stampjs": "^1.0.3",
+		"@permaweb/ucm": "0.0.5",
 		"async-lock": "^1.4.1",
 		"jwt-decode": "^4.0.0",
 		"nprogress": "^0.2.0",

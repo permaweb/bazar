@@ -25,7 +25,7 @@ const nonProductionAddresses = {
 	DEFAULT_TOKEN: 'xU9zFkq3X2ZQ6olwNVvr1vUWIjc3kXTWr7xKQD6dh10',
 	UCM: 'CDxd81DDaJvpzxoyhXn-dVnZhYIFQEKU8FeUHdktFgQ',
 	UCM_ACTIVITY: 'W45ki8vJ0TcsxZAGZIbGj3k38595TA0HfZwCOaqhOa0',
-	PIXL: 'ae90qGO7Q9cg7ieJTBwW6TNO28mrDgcrgQD0_obEBbM',
+	PIXL: 'DM3FoZUq_yebASPhgd8pEIRIzDW6muXEhxz5-JwbZwo',
 	PROFILE_REGISTRY: 'SNy4m-DrqxWl01YqGM4sxI8qCni-58re8uuJLvZPypY',
 	PROFILE_SRC: '9Tpz5_ZT4RRkF-6JUTdaaTMg0ARfkNuuM5zahXyCqZ4',
 	COLLECTIONS_REGISTRY: '1oBtIRAmhLVJFABGKYlhcsACjyh36ahSJ-4lJEuvgzA',
@@ -187,11 +187,6 @@ module.exports = {
 	resolve: {
 		extensions: ['.tsx', '.ts', '.jsx', '.js'],
 		preferRelative: true,
-		alias: {
-			process: 'process/browser',
-			crypto: 'crypto-browserify',
-			stream: 'stream-browserify',
-		},
 		fallback: {
 			fs: false,
 			tls: false,
@@ -201,6 +196,8 @@ module.exports = {
 			http: require.resolve('stream-http'),
 			https: require.resolve('https-browserify'),
 			events: require.resolve('events/'),
+			crypto: 'crypto-browserify',
+			stream: 'stream-browserify',
 			process: require.resolve('process/browser'),
 			crypto: require.resolve('crypto-browserify'),
 			stream: require.resolve('stream-browserify'),

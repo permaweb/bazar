@@ -184,18 +184,33 @@ export async function getAndUpdateRegistryProfiles(ids: string[]): Promise<Regis
 					return uniqueProfiles;
 				}, [] as RegistryProfileType[]);
 
+				// Get current Redux state
 				const profilesReducer = store.getState().profilesReducer;
-				store.dispatch(
-					profilesActions.setProfiles({
-						...(profilesReducer ?? {}),
-						registryProfiles: [
-							...(profilesReducer?.registryProfiles || []),
-							...newProfiles.filter(
-								(profile) => !profilesReducer?.registryProfiles?.some((p: RegistryProfileType) => p.id === profile.id)
-							),
-						],
-					})
-				);
+				const currentRegistryProfiles = profilesReducer?.registryProfiles || [];
+
+				// Find profiles that are new or have changed
+				const updatedProfiles = newProfiles.filter((newProfile) => {
+					const existingProfile = currentRegistryProfiles.find((p) => p.id === newProfile.id);
+					return (
+						!existingProfile || // New profile
+						JSON.stringify(existingProfile) !== JSON.stringify(newProfile) // Updated profile
+					);
+				});
+
+				// Only dispatch if there are updates
+				if (updatedProfiles.length > 0) {
+					store.dispatch(
+						profilesActions.setProfiles({
+							...(profilesReducer ?? {}),
+							registryProfiles: [
+								...currentRegistryProfiles.filter(
+									(profile) => !updatedProfiles.some((p: RegistryProfileType) => p.id === profile.id)
+								),
+								...updatedProfiles,
+							],
+						})
+					);
+				}
 			} finally {
 				newProfileIds.forEach((id) => registryFetchQueue.delete(id));
 			}

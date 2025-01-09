@@ -118,7 +118,7 @@ export default function Stamps(props: IProps) {
 				} else {
 					setResponse({
 						status: false,
-						message: stamp?.Messages?.[0].Data,
+						message: stamp?.Messages?.[0].Data ?? 'Error stamping',
 					});
 				}
 			}
@@ -126,7 +126,7 @@ export default function Stamps(props: IProps) {
 			setLoading(false);
 			setResponse({
 				status: false,
-				message: e.toString(),
+				message: e ? e.toString() : 'Error stamping',
 			});
 		}
 	}

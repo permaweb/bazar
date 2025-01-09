@@ -303,7 +303,10 @@ export default function AssetAction(props: IProps) {
 							type={'alt1'}
 							label={language.loadMore}
 							handlePress={() => setOwnersCursor(ownersCursor + 1)}
-							disabled={addressGroups && addressGroups.length > 0 ? ownersCursor >= addressGroups.length - 1 : true}
+							disabled={
+								(addressGroups && addressGroups.length > 0 ? ownersCursor >= addressGroups.length - 1 : true) ||
+								updating
+							}
 							height={40}
 						/>
 					</S.MActionsWrapper>
@@ -477,9 +480,11 @@ export default function AssetAction(props: IProps) {
 								)}
 							</S.OwnerLinesWrapper>
 						)}
-						{appProvider.ucm.updating && (
+						{(appProvider.ucm.updating || props.updating) && (
 							<S.MessageWrapper className={'update-wrapper'}>
-								<span>{`${language.ordersUpdating}...`}</span>
+								<span>
+									{appProvider.ucm.updating ? `${language.ordersUpdating}...` : `${language.updatingAsset}...`}
+								</span>
 							</S.MessageWrapper>
 						)}
 					</S.OrdersWrapper>

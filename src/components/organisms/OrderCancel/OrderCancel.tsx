@@ -1,7 +1,6 @@
 import React from 'react';
-import { useDispatch, useSelector } from 'react-redux';
 
-import { messageResults, readHandler } from 'api';
+import { cancelOrder } from '@permaweb/ucm';
 
 import { Button } from 'components/atoms/Button';
 import { Notification } from 'components/atoms/Notification';
@@ -9,23 +8,19 @@ import { Modal } from 'components/molecules/Modal';
 import { AO } from 'helpers/config';
 import { NotificationType } from 'helpers/types';
 import * as windowUtils from 'helpers/window';
+import { useAppProvider } from 'providers/AppProvider';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
-import { RootState } from 'store';
-import * as ucmActions from 'store/ucm/actions';
 
 import * as S from './styles';
 import { IProps } from './types';
 
 export default function OrderCancel(props: IProps) {
-	const dispatch = useDispatch();
-
+	const appProvider = useAppProvider();
 	const arProvider = useArweaveProvider();
 
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
-
-	const ucmReducer = useSelector((state: RootState) => state.ucmReducer);
 
 	const [loading, setLoading] = React.useState<boolean>(false);
 	const [showConfirmation, setShowConfirmation] = React.useState<boolean>(false);
@@ -36,75 +31,33 @@ export default function OrderCancel(props: IProps) {
 		if (arProvider.wallet && arProvider.profile && arProvider.profile.id) {
 			setLoading(true);
 			try {
-				const response = await messageResults({
-					processId: arProvider.profile.id,
-					action: 'Run-Action',
-					wallet: arProvider.wallet,
-					tags: null,
-					data: {
-						Target: AO.ucm,
-						Action: 'Cancel-Order',
-						Input: JSON.stringify({
-							Pair: [props.listing.token, props.listing.currency],
-							OrderTxId: props.listing.id,
-						}),
+				const cancelOrderId = await cancelOrder(
+					{
+						orderbookId: AO.ucm,
+						orderId: props.listing.id,
+						profileId: arProvider.profile.id,
+						dominantToken: props.listing.token,
+						swapToken: props.listing.currency,
 					},
-					handler: 'Cancel-Order',
-				});
-
-				if (response) {
-					if (response['Action-Response']) {
-						setResponse({
-							message: response['Action-Response'].message,
-							status: response['Action-Response'].status === 'Success' ? 'success' : 'warning',
-						});
-					} else {
-						setResponse({
-							message: 'Order cancelled',
-							status: 'success',
-						});
+					arProvider.wallet,
+					(args: { processing: boolean; success: boolean; message: string }) => {
+						console.log(args.message);
 					}
+				);
 
-					const existingUCM = { ...ucmReducer };
-					const maxTries = 10;
-					let tries = 0;
-					let changeDetected = false;
+				console.log(`Order Cancellation ID: ${cancelOrderId}`);
 
-					const fetchUntilChange = async () => {
-						while (!changeDetected && tries < maxTries) {
-							const ucmState = await readHandler({
-								processId: AO.ucm,
-								action: 'Info',
-							});
+				setResponse({ status: 'success', message: 'Order cancelled' });
 
-							dispatch(ucmActions.setUCM(ucmState));
-
-							if (JSON.stringify(existingUCM) !== JSON.stringify(ucmState)) {
-								changeDetected = true;
-							} else {
-								await new Promise((resolve) => setTimeout(resolve, 1000));
-								tries++;
-							}
-						}
-
-						if (!changeDetected) {
-							console.warn(`No changes detected after ${maxTries} attempts`);
-						}
-					};
-
-					await fetchUntilChange();
-
-					setCancelProcessed(true);
-
-					arProvider.setToggleTokenBalanceUpdate(!arProvider.toggleTokenBalanceUpdate);
-					props.toggleUpdate();
-
-					setShowConfirmation(false);
-					setCancelProcessed(false);
-					windowUtils.scrollTo(0, 0, 'smooth');
-				}
+				setCancelProcessed(true);
+				appProvider.refreshUcm();
+				arProvider.setToggleTokenBalanceUpdate(!arProvider.toggleTokenBalanceUpdate);
+				props.toggleUpdate();
+				setShowConfirmation(false);
+				setCancelProcessed(false);
+				windowUtils.scrollTo(0, 0, 'smooth');
 			} catch (e: any) {
-				console.error(e);
+				setResponse({ status: 'success', message: e.message ?? 'Error cancelling order' });
 			}
 			setLoading(false);
 		}
