@@ -12,7 +12,7 @@ import { CurrencyLine } from 'components/atoms/CurrencyLine';
 import { FormField } from 'components/atoms/FormField';
 import { Slider } from 'components/atoms/Slider';
 import { TxAddress } from 'components/atoms/TxAddress';
-import { Modal } from 'components/molecules/Modal';
+import { Panel } from 'components/molecules/Panel';
 import { AO, ASSETS, REDIRECTS, URLS } from 'helpers/config';
 import { AssetOrderType } from 'helpers/types';
 import {
@@ -391,7 +391,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 	function handleAssetUpdate() {
 		if (orderSuccess) {
-			appProvider.refreshUcm();
+			if (props.type !== 'transfer') appProvider.refreshUcm();
 			props.toggleUpdate();
 			setCurrentOrderQuantity('');
 			setUnitPrice('');
@@ -681,7 +681,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 					disabled={getActionDisabled()}
 					loading={false}
 					height={60}
-					fullWidth={true}
+					fullWidth={!finalizeOrder}
 					icon={icon}
 					iconLeftAlign
 				/>
@@ -691,17 +691,24 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 	function getOrderWindow() {
 		let header: string | null = null;
+		let confirmationHeader: string | null = null;
+		let reviewMessage: string | null = null;
+
 		let footer: React.ReactNode | null = null;
 
 		switch (props.type) {
 			case 'buy':
 				header = language.confirmPurchase;
+				confirmationHeader = language.orderConfirmationDetailsPurchase;
+				reviewMessage = language.orderConfirmationReviewPurchase;
 				break;
 			case 'sell':
 				header = language.confirmListing;
+				confirmationHeader = language.orderConfirmationDetailsListing;
+				reviewMessage = language.orderConfirmationReviewListing;
 				footer = (
 					<p>
-						{language.sellerFee}{' '}
+						· {language.sellerFee}{' '}
 						<Link to={URLS.docs} target={'_blank'}>
 							{language.learnMore}
 						</Link>
@@ -710,19 +717,29 @@ export default function AssetActionMarketOrders(props: IProps) {
 				break;
 			case 'transfer':
 				header = language.confirmTransfer;
+				reviewMessage = language.orderConfirmationReviewTransfer;
 				break;
 		}
 
+		function handleClose() {
+			if (orderProcessed && orderSuccess) {
+				handleAssetUpdate();
+				return;
+			}
+			if (orderProcessed) {
+				handleOrderErrorClose();
+				return;
+			}
+			setShowConfirmation(false);
+		}
+
 		return (
-			<Modal
+			<Panel
+				open={true}
+				width={525}
 				header={header}
-				handleClose={() =>
-					orderProcessed && orderSuccess
-						? handleAssetUpdate()
-						: orderProcessed
-						? handleOrderErrorClose()
-						: setShowConfirmation(false)
-				}
+				handleClose={handleClose}
+				closeHandlerDisabled={orderLoading || orderProcessed}
 			>
 				<S.ConfirmationWrapper className={'modal-wrapper'}>
 					<S.ConfirmationHeader>
@@ -732,19 +749,20 @@ export default function AssetActionMarketOrders(props: IProps) {
 					{props.type !== 'transfer' && (
 						<S.ConfirmationDetails className={'border-wrapper-primary'}>
 							<S.ConfirmationDetailsHeader>
-								<p>{language.orderConfirmationDetails}</p>
+								<p>{confirmationHeader}</p>
 							</S.ConfirmationDetailsHeader>
 							<S.ConfirmationDetailsLineWrapper>
 								{orderId ? (
 									<S.ConfirmationDetailsFlex>
 										<S.ConfirmationDetailsLine>
-											<p>{`${language.orderId}: `}</p>
+											<p id={'id-line'}>{`${language.orderId}: `}</p>
 											<TxAddress address={orderId} wrap={false} />
 										</S.ConfirmationDetailsLine>
 										<Button
 											type={'alt1'}
-											label={'View'}
+											label={language.view}
 											handlePress={() => window.open(REDIRECTS.aoLink(orderId), '_blank')}
+											height={27.5}
 										/>
 									</S.ConfirmationDetailsFlex>
 								) : (
@@ -753,16 +771,14 @@ export default function AssetActionMarketOrders(props: IProps) {
 							</S.ConfirmationDetailsLineWrapper>
 						</S.ConfirmationDetails>
 					)}
+					{footer && <S.ConfirmationFooter className={'border-wrapper-primary'}>{footer}</S.ConfirmationFooter>}
 					<S.ConfirmationMessage success={orderProcessed && orderSuccess} warning={orderProcessed && !orderSuccess}>
-						<span>
-							{currentNotification ? currentNotification : orderLoading ? 'Processing...' : language.reviewOrderDetails}
-						</span>
+						<span>{currentNotification ? currentNotification : orderLoading ? 'Processing...' : reviewMessage}</span>
 					</S.ConfirmationMessage>
 					<S.Divider />
 					<S.ActionWrapperFull loading={orderLoading.toString()}>{getAction(true)}</S.ActionWrapperFull>
-					{footer && <S.ConfirmationFooter>{footer}</S.ConfirmationFooter>}
 				</S.ConfirmationWrapper>
-			</Modal>
+			</Panel>
 		);
 	}
 

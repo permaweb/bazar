@@ -6,4 +6,5 @@ export interface IProps {
 	children: React.ReactNode;
 	open: boolean;
 	width?: number;
+	closeHandlerDisabled?: boolean;
 }

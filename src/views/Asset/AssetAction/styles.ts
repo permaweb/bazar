@@ -71,6 +71,7 @@ export const OwnerLinesWrapper = styled.div`
 `;
 
 export const MessageWrapper = styled.div`
+	width: fit-content;
 	padding: 2.5px 60px;
 `;
 

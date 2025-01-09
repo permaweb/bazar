@@ -225,6 +225,17 @@ export const ActionWrapperFull = styled(ActionWrapper)`
 	margin: 20px 0 5px 0;
 `;
 
+// display: flex;
+// justify-content: flex-end;
+// margin: 20px 0 5px 0;
+
+// button {
+// 	min-width: 315px;
+// 	width: fit-content;
+// 	max-width: 100%;
+// 	padding: 0 60px;
+// }
+
 export const Divider = styled.div`
 	height: 1px;
 	width: 100%;
@@ -251,7 +262,9 @@ export const MessageWrapper = styled.div<{ warning?: boolean }>`
 	}
 `;
 
-export const ConfirmationWrapper = styled.div``;
+export const ConfirmationWrapper = styled.div`
+	max-width: 525px;
+`;
 
 export const ConfirmationHeader = styled.div`
 	margin: 0 0 7.5px 0;
@@ -264,7 +277,6 @@ export const ConfirmationHeader = styled.div`
 `;
 
 export const ConfirmationMessage = styled(MessageWrapper)<{ success?: boolean }>`
-	margin: 15px 0 10px 0;
 	width: fit-content;
 	margin: 35px auto;
 	padding: 4.5px 52.5px;
@@ -289,11 +301,11 @@ export const ConfirmationMessage = styled(MessageWrapper)<{ success?: boolean }>
 
 export const ConfirmationDetails = styled.div`
 	margin: 20px 0 0 0;
-	padding: 12.5px 15px;
+	padding: 12.5px 15px 15px 15px;
 `;
 
 export const ConfirmationDetailsHeader = styled.div`
-	margin: 0 0 12.5px 0;
+	margin: 0 0 8.5px 0;
 	p {
 		font-size: ${(props) => props.theme.typography.size.base};
 		font-family: ${(props) => props.theme.typography.family.alt1};
@@ -306,8 +318,8 @@ export const ConfirmationDetailsLineWrapper = styled.div`
 	p {
 		font-size: ${(props) => props.theme.typography.size.small};
 		font-family: ${(props) => props.theme.typography.family.primary};
-		font-weight: ${(props) => props.theme.typography.weight.bold};
-		color: ${(props) => props.theme.colors.font.primary};
+		font-weight: ${(props) => props.theme.typography.weight.medium};
+		color: ${(props) => props.theme.colors.font.alt1};
 	}
 	span {
 		font-size: ${(props) => props.theme.typography.size.small};
@@ -315,13 +327,23 @@ export const ConfirmationDetailsLineWrapper = styled.div`
 		font-weight: ${(props) => props.theme.typography.weight.medium};
 		color: ${(props) => props.theme.colors.font.primary};
 	}
+
+	#id-line {
+		margin: 2.5px 0 0 0;
+	}
 `;
 
 export const ConfirmationDetailsFlex = styled.div`
 	width: 100%;
 	display: flex;
+	flex-wrap: wrap;
+	gap: 10px;
 	align-items: center;
 	justify-content: space-between;
+
+	button {
+		border-radius: ${STYLING.dimensions.radius.alt1};
+	}
 `;
 
 export const ConfirmationDetailsLine = styled.div`
@@ -331,8 +353,11 @@ export const ConfirmationDetailsLine = styled.div`
 `;
 
 export const ConfirmationFooter = styled.div`
-	margin: 15px 0 0 0;
-	width: 100%;
+	padding: 11.5px 10px;
+	margin: 22.5px 0 0 0;
+	display: flex;
+	flex-direction: column;
+	gap: 7.5px;
 	p {
 		font-size: ${(props) => props.theme.typography.size.xSmall};
 		font-family: ${(props) => props.theme.typography.family.primary};
