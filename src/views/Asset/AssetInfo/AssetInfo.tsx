@@ -2,7 +2,8 @@ import React from 'react';
 import { useSelector } from 'react-redux';
 import { Link } from 'react-router-dom';
 
-import { getProfileById } from 'api';
+import { connect } from '@permaweb/aoconnect';
+import AOProfile, { ProfileType } from '@permaweb/aoprofile';
 
 import * as GS from 'app/styles';
 import { Drawer } from 'components/atoms/Drawer';
@@ -11,7 +12,6 @@ import { OwnerLine } from 'components/molecules/OwnerLine';
 import { AssetData } from 'components/organisms/AssetData';
 import { ASSETS, LICENSES, URLS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
-import { ProfileType } from 'helpers/types';
 import { checkValidAddress, cleanTagValue, formatCount, formatDate, getTagDisplay, splitTagValue } from 'helpers/utils';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 import { RootState } from 'store';
@@ -20,6 +20,8 @@ import * as S from './styles';
 import { IProps } from './types';
 
 export default function AssetInfo(props: IProps) {
+	const { getProfileById } = AOProfile.init({ ao: connect() });
+
 	const currenciesReducer = useSelector((state: RootState) => state.currenciesReducer);
 
 	const languageProvider = useLanguageProvider();

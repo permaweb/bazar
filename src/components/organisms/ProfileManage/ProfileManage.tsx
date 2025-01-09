@@ -1,18 +1,18 @@
 import React from 'react';
 import { ReactSVG } from 'react-svg';
 
+import Arweave from 'arweave';
 import { connect, createDataItemSigner } from '@permaweb/aoconnect';
-
-import { createTransaction, getGQLData, messageResult } from 'api';
+import AOProfile from '@permaweb/aoprofile';
 
 import { Button } from 'components/atoms/Button';
 import { FormField } from 'components/atoms/FormField';
 import { Notification } from 'components/atoms/Notification';
 import { TextArea } from 'components/atoms/TextArea';
-import { AO, ASSETS, GATEWAYS, TAGS } from 'helpers/config';
+import { ASSETS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import { NotificationType } from 'helpers/types';
-import { checkValidAddress, getBase64Data, getDataURLContentType } from 'helpers/utils';
+import { checkValidAddress } from 'helpers/utils';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 import { WalletBlock } from 'wallet/WalletBlock';
@@ -24,14 +24,6 @@ const MAX_BIO_LENGTH = 500;
 const MAX_IMAGE_SIZE = 100000;
 const ALLOWED_BANNER_TYPES = 'image/png, image/jpeg, image/gif';
 const ALLOWED_AVATAR_TYPES = 'image/png, image/jpeg, image/gif';
-
-interface IProfileData {
-	DisplayName?: string;
-	UserName?: string;
-	Description?: string;
-	CoverImage?: string;
-	ProfileImage?: string;
-}
 
 export default function ProfileManage(props: IProps) {
 	const arProvider = useArweaveProvider();
@@ -55,9 +47,9 @@ export default function ProfileManage(props: IProps) {
 		if (props.profile) {
 			setUsername(props.profile.username || '');
 			setName(props.profile.displayName || '');
-			setBio(props.profile.bio || '');
+			setBio(props.profile.description || '');
 			setBanner(props.profile.banner && checkValidAddress(props.profile.banner) ? props.profile.banner : null);
-			setAvatar(props.profile.avatar && checkValidAddress(props.profile.avatar) ? props.profile.avatar : null);
+			setAvatar(props.profile.thumbnail && checkValidAddress(props.profile.thumbnail) ? props.profile.thumbnail : null);
 		}
 	}, [props.profile]);
 
@@ -66,83 +58,32 @@ export default function ProfileManage(props: IProps) {
 		if (props.handleUpdate) props.handleUpdate();
 	}
 
-	const getFieldDataChanged = (profileValue, newValue) => {
-		if ((newValue === '' || newValue == null) && Boolean(profileValue)) {
-			return '';
-		}
-		if (profileValue !== newValue && typeof newValue === 'string' && newValue.length > 0) {
-			return newValue;
-		} else {
-			return undefined;
-		}
-	};
-
 	async function handleSubmit() {
 		if (arProvider.wallet) {
 			setLoading(true);
 
-			const data: IProfileData = {};
+			const ao = connect();
+			const signer = createDataItemSigner(arProvider.wallet);
 
-			let bannerTx: any = null;
-			if (banner) {
-				if (checkValidAddress(banner)) {
-					bannerTx = banner;
-				} else {
-					try {
-						const bannerContentType = getDataURLContentType(banner);
-						const base64Data = getBase64Data(banner);
-						const bufferData = Buffer.from(base64Data, 'base64');
-
-						bannerTx = await createTransaction({
-							content: bufferData,
-							contentType: bannerContentType,
-							tags: [{ name: TAGS.keys.contentType, value: bannerContentType }],
-							useWindowDispatch: arProvider.walletType !== 'othent',
-						});
-					} catch (e: any) {
-						console.error(e);
-					}
-				}
-			}
-
-			let avatarTx: any = null;
-			if (avatar) {
-				if (checkValidAddress(avatar)) {
-					avatarTx = avatar;
-				} else {
-					try {
-						const avatarContentType = getDataURLContentType(avatar);
-						const base64Data = getBase64Data(avatar);
-						const bufferData = Buffer.from(base64Data, 'base64');
-
-						avatarTx = await createTransaction({
-							content: bufferData,
-							contentType: avatarContentType,
-							tags: [{ name: TAGS.keys.contentType, value: avatarContentType }],
-							useWindowDispatch: arProvider.walletType !== 'othent',
-						});
-					} catch (e: any) {
-						console.error(e);
-					}
-				}
-			}
-
-			data.UserName = getFieldDataChanged(props.profile?.username, username);
-			data.DisplayName = getFieldDataChanged(props.profile?.displayName, name);
-			data.CoverImage = getFieldDataChanged(props.profile?.banner, bannerTx);
-			data.ProfileImage = getFieldDataChanged(props.profile?.avatar, avatarTx);
-			data.Description = getFieldDataChanged(props.profile?.bio, bio);
+			const { createProfile, updateProfile } = AOProfile.init({
+				ao,
+				signer,
+				arweave: Arweave.init({}),
+			});
 
 			try {
 				if (props.profile && props.profile.id) {
-					let updateResponse = await messageResult({
-						processId: props.profile.id,
-						action: 'Update-Profile',
-						tags: [{ name: 'ProfileProcess', value: props.profile.id }],
-						data: data,
-						wallet: arProvider.wallet,
+					const updateResponse = await updateProfile({
+						profileId: props.profile.id,
+						data: {
+							userName: username,
+							displayName: name,
+							description: bio,
+							thumbnail: avatar,
+							banner: banner,
+						},
 					});
-					if (updateResponse && updateResponse['Profile-Success']) {
+					if (updateResponse) {
 						setProfileResponse({
 							message: `${language.profileUpdated}!`,
 							status: 'success',
@@ -156,110 +97,25 @@ export default function ProfileManage(props: IProps) {
 						});
 					}
 				} else {
-					const aos = connect();
+					const createResponse = await createProfile({
+						data: {
+							userName: username,
+							displayName: name,
+							description: bio,
+							thumbnail: avatar,
+							banner: banner,
+						},
+					});
 
-					let processSrc = null;
-					try {
-						const processSrcFetch = await fetch(getTxEndpoint(AO.profileSrc));
-						if (processSrcFetch.ok) {
-							processSrc = await processSrcFetch.text();
-
-							const dateTime = new Date().getTime().toString();
-
-							const profileTags: { name: string; value: string }[] = [
-								{ name: 'Date-Created', value: dateTime },
-								{ name: 'Action', value: 'Create-Profile' },
-							];
-
-							console.log('Spawning profile process...');
-							const processId = await aos.spawn({
-								module: AO.module,
-								scheduler: AO.scheduler,
-								signer: createDataItemSigner(arProvider.wallet),
-								tags: profileTags,
-								data: JSON.stringify(data),
-							});
-
-							console.log(`Process Id -`, processId);
-
-							console.log('Fetching profile process...');
-							let fetchedAssetId: string;
-							let retryCount: number = 0;
-							while (!fetchedAssetId) {
-								await new Promise((r) => setTimeout(r, 2000));
-								const gqlResponse = await getGQLData({
-									gateway: GATEWAYS.goldsky,
-									ids: [processId],
-									tagFilters: null,
-									owners: null,
-									cursor: null,
-								});
-
-								if (gqlResponse && gqlResponse.data.length) {
-									console.log(`Fetched transaction -`, gqlResponse.data[0].node.id);
-									fetchedAssetId = gqlResponse.data[0].node.id;
-								} else {
-									console.log(`Transaction not found -`, processId);
-									retryCount++;
-									if (retryCount >= 200) {
-										throw new Error(`Profile not found, please try again`);
-									}
-								}
-							}
-							if (fetchedAssetId) {
-								console.log('Sending source eval...');
-								const evalMessage = await aos.message({
-									process: processId,
-									signer: createDataItemSigner(arProvider.wallet),
-									tags: [{ name: 'Action', value: 'Eval' }],
-									data: processSrc,
-								});
-
-								console.log(evalMessage);
-
-								const evalResult = await aos.result({
-									message: evalMessage,
-									process: processId,
-								});
-
-								console.log(evalResult);
-
-								await new Promise((r) => setTimeout(r, 1000));
-
-								console.log('Updating profile data...');
-								let updateResponse = await messageResult({
-									processId: processId,
-									action: 'Update-Profile',
-									tags: null,
-									data: data,
-									wallet: arProvider.wallet,
-								});
-
-								if (updateResponse && updateResponse['Profile-Success']) {
-									setProfileResponse({
-										message: `${language.profileCreated}!`,
-										status: 'success',
-									});
-									handleUpdate();
-								} else {
-									console.log(updateResponse);
-									setProfileResponse(language.errorUpdatingProfile);
-									setProfileResponse({
-										message: language.errorUpdatingProfile,
-										status: 'warning',
-									});
-								}
-							} else {
-								setProfileResponse({
-									message: language.errorUpdatingProfile,
-									status: 'warning',
-								});
-							}
-						}
-					} catch (e: any) {
-						console.error(e);
+					if (createResponse) {
 						setProfileResponse({
-							message: e.message ?? language.errorUpdatingProfile,
+							message: `${language.profileCreated}!`,
+							status: 'success',
+						});
+						handleUpdate();
+					} else {
+						setProfileResponse({
+							message: language.errorUpdatingProfile,
 							status: 'warning',
 						});
 					}
