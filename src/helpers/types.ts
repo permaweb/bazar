@@ -1,3 +1,5 @@
+import { ProfileType, RegistryProfileType } from '@permaweb/aoprofile';
+
 export type EntryOrderType = {
 	DepositTxId: string;
 	DateCreated: string;
@@ -82,26 +84,6 @@ export type AssetType = {
 export type AssetDetailType = AssetType & {
 	state?: AssetStateType;
 	orders?: AssetOrderType[];
-};
-
-export type ProfileType = {
-	id: string;
-	walletAddress: string;
-	displayName: string | null;
-	username: string | null;
-	bio: string | null;
-	avatar: string | null;
-	banner: string | null;
-	version: string | null;
-	assets?: string[];
-};
-
-export type RegistryProfileType = {
-	id: string;
-	avatar: string | null;
-	username: string;
-	bio?: string;
-	lastUpdate?: number;
 };
 
 export type OwnerType = {

@@ -1,9 +1,10 @@
 import AsyncLock from 'async-lock';
 
+import * as AOProfile from '@permaweb/aoprofile';
+
 import { readHandler } from 'api';
 
 import { AO } from 'helpers/config';
-import { ProfileType, RegistryProfileType } from 'helpers/types';
 import { store } from 'store';
 import * as profilesActions from 'store/profiles/actions';
 
@@ -13,18 +14,7 @@ const lock = new AsyncLock();
 
 let registryFetchQueue: Set<string> = new Set();
 
-export async function getProfileById(args: { profileId: string }): Promise<ProfileType | null> {
-	const emptyProfile = {
-		id: args.profileId,
-		walletAddress: null,
-		displayName: null,
-		username: null,
-		bio: null,
-		avatar: null,
-		banner: null,
-		version: null,
-	};
-
+export async function getProfileById(args: { profileId: string }): Promise<AOProfile.ProfileType | null> {
 	try {
 		const fetchedProfile = await readHandler({
 			processId: args.profileId,
@@ -50,7 +40,7 @@ export async function getProfileById(args: { profileId: string }): Promise<Profi
 	}
 }
 
-export async function getProfileByWalletAddress(args: { address: string }): Promise<ProfileType | null> {
+export async function getProfileByWalletAddress(args: { address: string }): Promise<AOProfile.ProfileType | null> {
 	const emptyProfile = {
 		id: null,
 		walletAddress: args.address,
@@ -115,7 +105,7 @@ export async function getProfileByWalletAddress(args: { address: string }): Prom
 	}
 }
 
-export async function getRegistryProfiles(args: { profileIds: string[] }): Promise<RegistryProfileType[]> {
+export async function getRegistryProfiles(args: { profileIds: string[] }): Promise<AOProfile.RegistryProfileType[]> {
 	try {
 		const metadataLookup = await readHandler({
 			processId: AO.profileRegistry,
@@ -142,14 +132,14 @@ export async function getRegistryProfiles(args: { profileIds: string[] }): Promi
 	}
 }
 
-export function getExistingRegistryProfiles(ids: string[]): RegistryProfileType[] {
+export function getExistingRegistryProfiles(ids: string[]): AOProfile.RegistryProfileType[] {
 	const profilesReducer = store.getState().profilesReducer;
 	if (!profilesReducer?.registryProfiles || !profilesReducer?.registryProfiles.length) return [];
 
-	const profiles: RegistryProfileType[] = [];
+	const profiles: AOProfile.RegistryProfileType[] = [];
 	for (const id of ids) {
 		const existingProfile = profilesReducer?.registryProfiles?.find(
-			(profile: RegistryProfileType) => profile.id === id
+			(profile: AOProfile.RegistryProfileType) => profile.id === id
 		);
 		if (existingProfile) profiles.push(existingProfile);
 	}
@@ -157,7 +147,7 @@ export function getExistingRegistryProfiles(ids: string[]): RegistryProfileType[
 	return profiles;
 }
 
-export async function getAndUpdateRegistryProfiles(ids: string[]): Promise<RegistryProfileType[]> {
+export async function getAndUpdateRegistryProfiles(ids: string[]): Promise<AOProfile.RegistryProfileType[]> {
 	const existingProfiles = getExistingRegistryProfiles(ids);
 	let profiles = [...existingProfiles];
 
@@ -182,7 +172,7 @@ export async function getAndUpdateRegistryProfiles(ids: string[]): Promise<Regis
 						uniqueProfiles.push(profile);
 					}
 					return uniqueProfiles;
-				}, [] as RegistryProfileType[]);
+				}, [] as AOProfile.RegistryProfileType[]);
 
 				// Get current Redux state
 				const profilesReducer = store.getState().profilesReducer;
@@ -204,7 +194,7 @@ export async function getAndUpdateRegistryProfiles(ids: string[]): Promise<Regis
 							...(profilesReducer ?? {}),
 							registryProfiles: [
 								...currentRegistryProfiles.filter(
-									(profile) => !updatedProfiles.some((p: RegistryProfileType) => p.id === profile.id)
+									(profile) => !updatedProfiles.some((p: AOProfile.RegistryProfileType) => p.id === profile.id)
 								),
 								...updatedProfiles,
 							],
@@ -220,7 +210,9 @@ export async function getAndUpdateRegistryProfiles(ids: string[]): Promise<Regis
 	return profiles;
 }
 
-export async function handleProfileRegistryCache(args: { profileIds: string[] }): Promise<RegistryProfileType[]> {
+export async function handleProfileRegistryCache(args: {
+	profileIds: string[];
+}): Promise<AOProfile.RegistryProfileType[]> {
 	return lock.acquire('handleProfileRegistryCache', async () => {
 		try {
 			const state = store.getState().profilesReducer;
