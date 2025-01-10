@@ -51,7 +51,6 @@ export default function Landing() {
 		<S.Wrapper className={'fade-in'}>
 			<S.CollectionsWrapper>
 				<CollectionsCarousel collections={collections} loading={collectionsLoading} />
-				{collectionsErrorResponse && <p>{collectionsErrorResponse}</p>}
 			</S.CollectionsWrapper>
 			<S.TokensWrapper>
 				<TrendingTokens />
