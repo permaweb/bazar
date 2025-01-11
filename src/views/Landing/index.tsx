@@ -15,6 +15,7 @@ import { RootState } from 'store';
 
 import * as S from './styles';
 
+// TODO
 export default function Landing() {
 	const collectionsReducer = useSelector((state: RootState) => state.collectionsReducer);
 
@@ -23,7 +24,6 @@ export default function Landing() {
 
 	const [collections, setCollections] = React.useState<CollectionType[] | null>(null);
 	const [collectionsLoading, setCollectionsLoading] = React.useState<boolean>(true);
-	const [collectionsErrorResponse, setCollectionsErrorResponse] = React.useState<string | null>(null);
 
 	React.useEffect(() => {
 		(async function () {
@@ -38,7 +38,7 @@ export default function Landing() {
 					const collectionsFetch: CollectionType[] = await getCollections(null, true);
 					if (collectionsFetch) setCollections(collectionsFetch);
 				} catch (e: any) {
-					setCollectionsErrorResponse(e.message || language.collectionsFetchFailed);
+					console.error(e.message || language.collectionsFetchFailed);
 				}
 				setCollectionsLoading(false);
 			}
@@ -49,7 +49,7 @@ export default function Landing() {
 
 	return (
 		<S.Wrapper className={'fade-in'}>
-			<S.CollectionsWrapper>
+			{/* <S.CollectionsWrapper>
 				<CollectionsCarousel collections={collections} loading={collectionsLoading} />
 			</S.CollectionsWrapper>
 			<S.TokensWrapper>
@@ -61,10 +61,10 @@ export default function Landing() {
 			</S.ActivityWrapper>
 			<S.CreatorsWrapper>
 				<OrderCountsTable />
-			</S.CreatorsWrapper>
-			<S.AssetsWrapper>
+			</S.CreatorsWrapper> */}
+			{/* <S.AssetsWrapper>
 				<AssetsTable type={'grid'} pageCount={PAGINATORS.landing.assets} />
-			</S.AssetsWrapper>
+			</S.AssetsWrapper> */}
 		</S.Wrapper>
 	);
 }

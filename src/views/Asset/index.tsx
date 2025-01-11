@@ -35,6 +35,8 @@ export default function Asset() {
 	const [errorResponse, setErrorResponse] = React.useState<string | null>(null);
 	const [viewType, setViewType] = React.useState<AssetViewType>('trading');
 
+	// TODO: Query gateway for orderbook
+
 	React.useEffect(() => {
 		if (viewType === 'reading') {
 			windowUtils.hideDocumentBody();
