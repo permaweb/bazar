@@ -1,9 +1,8 @@
 import React from 'react';
-import { useSelector } from 'react-redux';
 import { useNavigate, useParams } from 'react-router-dom';
 import _ from 'lodash';
 
-import { getAssetById, getAssetOrders } from 'api';
+import { getAssetById, getAssetOrders, readHandler } from 'api';
 
 import { Loader } from 'components/atoms/Loader';
 import { Portal } from 'components/atoms/Portal';
@@ -13,7 +12,6 @@ import { AssetDetailType, AssetViewType } from 'helpers/types';
 import { checkValidAddress } from 'helpers/utils';
 import * as windowUtils from 'helpers/window';
 import { useLanguageProvider } from 'providers/LanguageProvider';
-import { RootState } from 'store';
 
 import { AssetAction } from './AssetAction';
 import { AssetInfo } from './AssetInfo';
@@ -24,8 +22,6 @@ export default function Asset() {
 	const { id } = useParams();
 	const navigate = useNavigate();
 
-	const ucmReducer = useSelector((state: RootState) => state.ucmReducer);
-
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
 
@@ -34,8 +30,6 @@ export default function Asset() {
 	const [toggleUpdate, setToggleUpdate] = React.useState<boolean>(false);
 	const [errorResponse, setErrorResponse] = React.useState<string | null>(null);
 	const [viewType, setViewType] = React.useState<AssetViewType>('trading');
-
-	// TODO: Query gateway for orderbook
 
 	React.useEffect(() => {
 		if (viewType === 'reading') {
@@ -92,22 +86,48 @@ export default function Asset() {
 		})();
 	}, [id, toggleUpdate]);
 
+	// TODO: Toggle update
 	React.useEffect(() => {
-		if (asset && ucmReducer) {
-			const updatedOrders = getAssetOrders({ id: asset.data.id });
+		(async function () {
+			if (asset?.state?.orderbookId && !asset.orders) {
+				setLoading(true);
+				try {
+					const response = await readHandler({
+						processId: asset.state.orderbookId,
+						action: 'Info',
+					});
 
-			const sortedCurrentOrders = _.sortBy(asset.orders, 'id');
-			const sortedUpdatedOrders = _.sortBy(updatedOrders, 'id');
-
-			if (!_.isEqual(sortedCurrentOrders, sortedUpdatedOrders)) {
-				console.log('Orders are different, updating asset state...');
-				setAsset((prev) => ({
-					...prev,
-					orders: updatedOrders,
-				}));
+					if (response?.Orderbook?.length > 0) {
+						setAsset((prevAsset) => ({
+							...prevAsset,
+							orderbookId: asset.state.orderbookId,
+							orders: getAssetOrders(response.Orderbook[0]),
+						}));
+					}
+				} catch (e: any) {
+					console.error(e);
+				}
+				setLoading(false);
 			}
-		}
-	}, [ucmReducer]);
+		})();
+	}, [asset]);
+
+	// React.useEffect(() => {
+	// 	if (asset && ucmReducer) {
+	// 		const updatedOrders = getAssetOrders({ id: asset.data.id });
+
+	// 		const sortedCurrentOrders = _.sortBy(asset.orders, 'id');
+	// 		const sortedUpdatedOrders = _.sortBy(updatedOrders, 'id');
+
+	// 		if (!_.isEqual(sortedCurrentOrders, sortedUpdatedOrders)) {
+	// 			console.log('Orders are different, updating asset state...');
+	// 			setAsset((prev) => ({
+	// 				...prev,
+	// 				orders: updatedOrders,
+	// 			}));
+	// 		}
+	// 	}
+	// }, [ucmReducer]);
 
 	function getData() {
 		if (asset) {

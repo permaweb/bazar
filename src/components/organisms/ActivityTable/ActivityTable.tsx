@@ -47,6 +47,7 @@ export default function ActivityTable(props: IProps) {
 
 	React.useEffect(() => {
 		(async function () {
+			// if (props.asset?.state?.orderbookId) {} // TODO: Get orderbook activity
 			try {
 				let data: any = {};
 

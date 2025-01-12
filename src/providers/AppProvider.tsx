@@ -61,7 +61,7 @@ export function AppProvider(props: AppProviderProps) {
 
 	const [stampsState, setStampsState] = React.useState<AppContextState['stamps']>({
 		updating: false,
-		completed: false,
+		completed: true, // TODO: Init false
 		lastUpdate: undefined,
 	});
 
@@ -97,6 +97,35 @@ export function AppProvider(props: AppProviderProps) {
 	// 		}
 	// 	})();
 	// }, []);
+
+	React.useEffect(() => {
+		(async function () {
+			setUCMState((prevState) => ({ ...prevState, updating: true }));
+
+			try {
+				// const ucmState = await readHandler({
+				// 	processId: AO.ucm,
+				// 	action: 'Info',
+				// });
+
+				dispatch(
+					ucmActions.setUCM({
+						Orderbook: [],
+						lastUpdate: Date.now(),
+					})
+				);
+
+				setUCMState({
+					updating: false,
+					completed: true,
+					lastUpdate: Date.now(),
+				});
+			} catch (e: any) {
+				console.error(e);
+				setUCMState((prevState) => ({ ...prevState, updating: false }));
+			}
+		})();
+	}, []);
 
 	// React.useEffect(() => {
 	// 	const fetchAndCompareUCM = async () => {

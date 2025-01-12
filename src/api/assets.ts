@@ -82,7 +82,7 @@ export async function getAssetsByIds(args: { ids: string[]; sortType: AssetSortT
 
 export async function getAssetById(args: { id: string }): Promise<AssetDetailType> {
 	try {
-		const gqlResponse = await getGQLData({
+		const assetLookupResponse = await getGQLData({
 			gateway: GATEWAYS.arweave,
 			ids: [args.id],
 			tagFilters: null,
@@ -90,7 +90,7 @@ export async function getAssetById(args: { id: string }): Promise<AssetDetailTyp
 			cursor: null,
 		});
 
-		if (gqlResponse && gqlResponse.data.length) {
+		if (assetLookupResponse && assetLookupResponse.data.length) {
 			let assetState: AssetStateType = {
 				name: null,
 				ticker: null,
@@ -98,9 +98,10 @@ export async function getAssetById(args: { id: string }): Promise<AssetDetailTyp
 				logo: null,
 				balances: null,
 				transferable: null,
+				orderbookId: null,
 			};
 
-			const structuredAsset = structureAssets(gqlResponse)[0];
+			const structuredAsset = structureAssets(assetLookupResponse)[0];
 
 			const processState = await readHandler({
 				processId: structuredAsset.data.id,
@@ -127,6 +128,8 @@ export async function getAssetById(args: { id: string }): Promise<AssetDetailTyp
 				} else {
 					assetState.transferable = true;
 				}
+				if (processState.OrderbookId || processState.orderbookId)
+					assetState.orderbookId = processState.OrderbookId || processState.orderbookId;
 			}
 
 			if (!assetState.balances) {
@@ -143,11 +146,7 @@ export async function getAssetById(args: { id: string }): Promise<AssetDetailTyp
 				}
 			}
 
-			const assetDetail: AssetDetailType = { ...structuredAsset, state: assetState };
-			const assetOrders = getAssetOrders({ id: args.id });
-			if (assetOrders) assetDetail.orders = assetOrders;
-
-			return assetDetail;
+			return { ...structuredAsset, state: assetState };
 		}
 
 		return null;
@@ -167,26 +166,23 @@ export function getExistingEntry(args: { id: string }) {
 	return null;
 }
 
-export function getAssetOrders(args: { id: string }) {
+export function getAssetOrders(orderbook: { Pair: string[]; Orders: any }) {
 	let assetOrders: AssetOrderType[] | null = null;
 
-	const existingEntry = getExistingEntry({ id: args.id });
-	if (existingEntry) {
-		assetOrders = existingEntry.Orders.map((order: any) => {
-			let currentAssetOrder: AssetOrderType = {
-				creator: order.Creator,
-				dateCreated: order.DateCreated,
-				id: order.Id,
-				originalQuantity: order.OriginalQuantity,
-				quantity: order.Quantity,
-				token: order.Token,
-				currency: existingEntry.Pair[1],
-			};
+	assetOrders = orderbook.Orders.map((order: any) => {
+		let currentAssetOrder: AssetOrderType = {
+			creator: order.Creator,
+			dateCreated: order.DateCreated,
+			id: order.Id,
+			originalQuantity: order.OriginalQuantity,
+			quantity: order.Quantity,
+			token: order.Token,
+			currency: orderbook.Pair[1],
+		};
 
-			if (order.Price) currentAssetOrder.price = order.Price;
-			return currentAssetOrder;
-		});
-	}
+		if (order.Price) currentAssetOrder.price = order.Price;
+		return currentAssetOrder;
+	});
 
 	return assetOrders;
 }

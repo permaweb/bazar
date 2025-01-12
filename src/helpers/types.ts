@@ -31,6 +31,7 @@ export type AssetStateType = {
 	logo: string | null;
 	transferable: boolean;
 	balances: { [address: string]: string } | null;
+	orderbookId: string | null;
 };
 
 export type AssetOrderType = {

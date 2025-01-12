@@ -2,8 +2,9 @@ import React from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { Link } from 'react-router-dom';
 
+import Arweave from 'arweave';
 import { createDataItemSigner, message, result } from '@permaweb/aoconnect';
-import { createOrder } from '@permaweb/ucm';
+import { createOrder, createOrderbook } from '@permaweb/ucm';
 
 import { messageResults, readHandler } from 'api';
 
@@ -190,6 +191,25 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 	async function handleSubmit() {
 		if (props.asset && arProvider.wallet && arProvider.profile?.id) {
+			let currentOrderbook = props.asset.state?.orderbookId;
+
+			if (!currentOrderbook) {
+				try {
+					const newOrderbook = await createOrderbook(
+						{ wallet: arProvider.wallet, arweave: Arweave.init({}) },
+						{ assetId: props.asset.data.id },
+						(args: { processing: boolean; success: boolean; message: string }) => {
+							handleStatusUpdate(args.processing, !args.processing, args.success, args.message);
+						}
+					);
+
+					currentOrderbook = newOrderbook;
+				} catch (e: any) {
+					console.error(e);
+					return;
+				}
+			}
+
 			try {
 				handleStatusUpdate(true, false, false, 'Transferring balance from wallet to profile...');
 				await handleWalletToProfileTransfer();
@@ -227,7 +247,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 			try {
 				const data: any = {
-					orderbookId: AO.ucm,
+					orderbookId: currentOrderbook,
 					creatorId: arProvider.profile.id,
 					dominantToken: dominantToken,
 					swapToken: swapToken,
@@ -238,8 +258,8 @@ export default function AssetActionMarketOrders(props: IProps) {
 				if (denomination && denomination > 1) data.denomination = denomination.toString();
 
 				const orderId = await createOrder(
+					{ wallet: arProvider.wallet },
 					data,
-					arProvider.wallet,
 					(args: { processing: boolean; success: boolean; message: string }) => {
 						handleStatusUpdate(args.processing, !args.processing, args.success, args.message);
 					}

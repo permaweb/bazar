@@ -16,7 +16,7 @@ import { Tabs } from 'components/molecules/Tabs';
 import { AssetData } from 'components/organisms/AssetData';
 import { OrderCancel } from 'components/organisms/OrderCancel';
 import { Stamps } from 'components/organisms/Stamps';
-import { AO, ASSETS, STYLING } from 'helpers/config';
+import { ASSETS, STYLING } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import { ListingType, OwnerType, RegistryProfileType } from 'helpers/types';
 import { formatCount, formatPercentage, getOwners, sortOrders } from 'helpers/utils';
@@ -92,7 +92,10 @@ export default function AssetAction(props: IProps) {
 			});
 			const totalBalance = balances.reduce((a: number, b: number) => a + b, 0);
 			setTotalAssetBalance(totalBalance);
-			setOwnerCount(Object.keys(props.asset.state.balances).filter((owner: string) => owner !== AO.ucm).length);
+			setOwnerCount(
+				Object.keys(props.asset.state.balances).filter((owner: string) => owner !== props.asset.state.orderbookId)
+					.length
+			);
 		}
 	}, [props.asset]);
 
@@ -136,6 +139,7 @@ export default function AssetAction(props: IProps) {
 							logo: props.asset.state.logo,
 							transferable: props.asset.state.transferable,
 							balances: subAddresses,
+							orderbookId: props.asset.state.orderbookId,
 						},
 						orders: props.asset.orders,
 					};
@@ -145,7 +149,7 @@ export default function AssetAction(props: IProps) {
 
 					if (owners) {
 						owners = owners
-							.filter((owner: OwnerType) => owner.address !== AO.ucm)
+							.filter((owner: OwnerType) => owner.address !== props.asset.state.orderbookId)
 							.filter((owner: OwnerType) => owner.ownerPercentage > 0);
 						setCurrentOwners((prevOwners) => {
 							const allOwners = [...(prevOwners || []), ...owners];
@@ -422,7 +426,11 @@ export default function AssetAction(props: IProps) {
 	function showCurrentlyOwnedBy() {
 		if (!props.asset || !props.asset.state || !props.asset.state.balances) return false;
 		if (Object.keys(props.asset.state.balances).length <= 0) return false;
-		if (Object.keys(props.asset.state.balances).length === 1 && props.asset.state.balances[AO.ucm]) return false;
+		if (
+			Object.keys(props.asset.state.balances).length === 1 &&
+			props.asset.state.balances[props.asset.state.orderbookId]
+		)
+			return false;
 		return true;
 	}
 
