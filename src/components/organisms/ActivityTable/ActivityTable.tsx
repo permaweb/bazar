@@ -10,7 +10,7 @@ import { CurrencyLine } from 'components/atoms/CurrencyLine';
 import { IconButton } from 'components/atoms/IconButton';
 import { Select } from 'components/atoms/Select';
 import { OwnerLine } from 'components/molecules/OwnerLine';
-import { ACTIVITY_SORT_OPTIONS, AO, ASSETS, REDIRECTS, REFORMATTED_ASSETS, URLS } from 'helpers/config';
+import { ACTIVITY_SORT_OPTIONS, ASSETS, REDIRECTS, REFORMATTED_ASSETS, URLS } from 'helpers/config';
 import { RegistryProfileType, SelectOptionType } from 'helpers/types';
 import { formatAddress, formatCount, formatDate, getRelativeDate, isFirefox } from 'helpers/utils';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
@@ -47,33 +47,34 @@ export default function ActivityTable(props: IProps) {
 
 	React.useEffect(() => {
 		(async function () {
-			// if (props.asset?.state?.orderbookId) {} // TODO: Get orderbook activity
-			try {
-				let data: any = {};
+			if (props.asset?.orderbook?.activityId) {
+				try {
+					let data: any = {};
 
-				if (props.asset && props.asset.data) {
-					data.AssetIds = [props.asset.data.id];
-				} else {
-					if (props.assetIds) data.AssetIds = props.assetIds;
-					if (props.address) data.Address = props.address;
-					if (props.startDate) data.StartDate = props.startDate.toString();
-					if (props.endDate) data.EndDate = props.endDate.toString();
+					if (props.asset && props.asset.data) {
+						data.AssetIds = [props.asset.data.id];
+					} else {
+						if (props.assetIds) data.AssetIds = props.assetIds;
+						if (props.address) data.Address = props.address;
+						if (props.startDate) data.StartDate = props.startDate.toString();
+						if (props.endDate) data.EndDate = props.endDate.toString();
+					}
+
+					const response = await readHandler({
+						processId: props.asset.orderbook.activityId,
+						action: 'Get-Activity',
+						data: data,
+					});
+
+					if (response) setActivityResponse(response);
+					else {
+						setActivity([]);
+						setActivityGroup([]);
+						setActivityGroups([]);
+					}
+				} catch (e: any) {
+					console.error(e);
 				}
-
-				const response = await readHandler({
-					processId: AO.ucmActivity,
-					action: 'Get-Activity',
-					data: data,
-				});
-
-				if (response) setActivityResponse(response);
-				else {
-					setActivity([]);
-					setActivityGroup([]);
-					setActivityGroups([]);
-				}
-			} catch (e: any) {
-				console.error(e);
 			}
 		})();
 	}, [props.asset, props.assetIds, props.address, arProvider.profile]);
@@ -257,7 +258,7 @@ export default function ActivityTable(props: IProps) {
 	const getReceiverContent = React.useMemo(
 		() => (row: any) => {
 			if (row.receiverProfile) {
-				if (row.receiverProfile.id === AO.ucm) {
+				if (row.receiverProfile.id === props.asset?.orderbook?.id) {
 					return (
 						<S.Entity type={'UCM'}>
 							<p>UCM</p>
@@ -282,7 +283,7 @@ export default function ActivityTable(props: IProps) {
 			}
 			return <p>-</p>;
 		},
-		[]
+		[props.asset?.orderbook?.id]
 	);
 
 	const getActivity = React.useMemo(() => {

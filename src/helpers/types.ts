@@ -31,7 +31,6 @@ export type AssetStateType = {
 	logo: string | null;
 	transferable: boolean;
 	balances: { [address: string]: string } | null;
-	orderbookId: string | null;
 };
 
 export type AssetOrderType = {
@@ -82,7 +81,11 @@ export type AssetType = {
 
 export type AssetDetailType = AssetType & {
 	state?: AssetStateType;
-	orders?: AssetOrderType[];
+	orderbook?: {
+		id: string;
+		activityId?: string;
+		orders?: AssetOrderType[];
+	};
 };
 
 export type ProfileType = {
@@ -112,7 +115,7 @@ export type OwnerType = {
 	ownerPercentage?: number;
 };
 
-export type ListingType = AssetOrderType & { profile: RegistryProfileType };
+export type ListingType = AssetOrderType & { orderbookId: string; profile: RegistryProfileType };
 
 export type CollectionManifestType = {
 	type: string;

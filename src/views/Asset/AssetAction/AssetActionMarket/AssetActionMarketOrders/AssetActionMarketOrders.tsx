@@ -126,8 +126,8 @@ export default function AssetActionMarketOrders(props: IProps) {
 				}
 			}
 
-			if (props.asset.orders && props.asset.orders.length > 0) {
-				const salesBalances = props.asset.orders.map((order: AssetOrderType) => {
+			if (props.asset.orderbook?.orders && props.asset.orderbook?.orders.length > 0) {
+				const salesBalances = props.asset.orderbook?.orders.map((order: AssetOrderType) => {
 					return Number(order.quantity);
 				});
 
@@ -141,7 +141,9 @@ export default function AssetActionMarketOrders(props: IProps) {
 			}
 
 			const orderCurrency =
-				props.asset.orders && props.asset.orders.length ? props.asset.orders[0].currency : AO.defaultToken;
+				props.asset.orderbook?.orders && props.asset.orderbook?.orders.length
+					? props.asset.orderbook?.orders[0].currency
+					: AO.defaultToken;
 			if (
 				currenciesReducer &&
 				currenciesReducer[orderCurrency] &&
@@ -191,7 +193,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 	async function handleSubmit() {
 		if (props.asset && arProvider.wallet && arProvider.profile?.id) {
-			let currentOrderbook = props.asset.state?.orderbookId;
+			let currentOrderbook = props.asset.orderbook?.id;
 
 			if (!currentOrderbook) {
 				try {
@@ -274,8 +276,8 @@ export default function AssetActionMarketOrders(props: IProps) {
 					});
 					dispatch(streakActions.setStreaks(streaks.Streaks));
 				}
-				arProvider.setToggleProfileUpdate(!arProvider.toggleProfileUpdate);
-				arProvider.setToggleTokenBalanceUpdate(!arProvider.toggleTokenBalanceUpdate);
+				if (props.type === 'buy') arProvider.refreshBalances();
+				// arProvider.refreshProfile();
 			} catch (e: any) {
 				handleStatusUpdate(false, true, false, e.message ?? 'Error creating order in UCM');
 			}
@@ -437,8 +439,8 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 	function getTotalOrderAmount() {
 		if (props.type === 'buy') {
-			if (props.asset && props.asset.orders) {
-				let sortedOrders = props.asset.orders.sort(
+			if (props.asset && props.asset.orderbook?.orders) {
+				let sortedOrders = props.asset.orderbook?.orders.sort(
 					(a: AssetOrderType, b: AssetOrderType) => Number(a.price) - Number(b.price)
 				);
 
@@ -600,7 +602,9 @@ export default function AssetActionMarketOrders(props: IProps) {
 		let amount = BigInt(getTotalOrderAmount());
 		if (denomination && denomination > 1) amount = BigInt(amount) / BigInt(denomination);
 		const orderCurrency =
-			props.asset.orders && props.asset.orders.length ? props.asset.orders[0].currency : AO.defaultToken;
+			props.asset.orderbook?.orders && props.asset.orderbook?.orders.length
+				? props.asset.orderbook?.orders[0].currency
+				: AO.defaultToken;
 		return <CurrencyLine amount={amount ? amount.toString() : '0'} currency={orderCurrency} />;
 	}
 

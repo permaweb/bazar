@@ -165,13 +165,15 @@ export default function AssetsTable(props: IProps) {
 		if (!assets || !assets.length) return true;
 		if (assetsLoading) return true;
 		if (assets && assets.length) {
-			return assets.every((asset: AssetDetailType) => (asset.orders ? asset.orders.length <= 0 : true));
+			return assets.every((asset: AssetDetailType) =>
+				asset.orderbook?.orders ? asset.orderbook?.orders.length <= 0 : true
+			);
 		}
 	}
 
 	function getListing(asset: AssetDetailType) {
-		if (asset && asset.orders && asset.orders.length) {
-			const sortedOrders = sortOrders(asset.orders, assetSortType.id as AssetSortType);
+		if (asset && asset.orderbook?.orders && asset.orderbook?.orders.length) {
+			const sortedOrders = sortOrders(asset.orderbook?.orders, assetSortType.id as AssetSortType);
 
 			if (sortedOrders && sortedOrders.length) {
 				return <CurrencyLine amount={sortedOrders[0].price || '0'} currency={sortedOrders[0].currency} />;

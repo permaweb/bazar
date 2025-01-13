@@ -23,6 +23,7 @@ interface ArweaveContextState {
 	tokenBalances: { [address: string]: { profileBalance: number; walletBalance: number } } | null;
 	toggleTokenBalanceUpdate: boolean;
 	setToggleTokenBalanceUpdate: (toggleUpdate: boolean) => void;
+	refreshBalances: () => void;
 	handleConnect: any;
 	handleDisconnect: () => void;
 	walletModalVisible: boolean;
@@ -30,6 +31,7 @@ interface ArweaveContextState {
 	profile: ProfileType;
 	toggleProfileUpdate: boolean;
 	setToggleProfileUpdate: (toggleUpdate: boolean) => void;
+	refreshProfile: () => void;
 	vouch: VouchType;
 }
 
@@ -46,6 +48,7 @@ const DEFAULT_CONTEXT = {
 	tokenBalances: null,
 	toggleTokenBalanceUpdate: false,
 	setToggleTokenBalanceUpdate(_toggleUpdate: boolean) {},
+	refreshBalances() {},
 	handleConnect() {},
 	handleDisconnect() {},
 	walletModalVisible: false,
@@ -53,6 +56,7 @@ const DEFAULT_CONTEXT = {
 	profile: null,
 	toggleProfileUpdate: false,
 	setToggleProfileUpdate(_toggleUpdate: boolean) {},
+	refreshProfile() {},
 	vouch: null,
 };
 
@@ -199,15 +203,31 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 			if (!walletAddress || !profile?.id) return;
 
 			try {
-				const defaultTokenWalletBalance = await readHandler({
-					processId: AO.defaultToken,
+				const pixlTokenWalletBalance = await readHandler({
+					processId: AO.pixl,
 					action: 'Balance',
 					tags: [{ name: 'Recipient', value: walletAddress }],
 				});
 				await sleep(500);
 
-				const pixlTokenWalletBalance = await readHandler({
+				const pixlTokenProfileBalance = await readHandler({
 					processId: AO.pixl,
+					action: 'Balance',
+					tags: [{ name: 'Recipient', value: profile.id }],
+				});
+				await sleep(500);
+
+				setTokenBalances((prevBalances) => ({
+					...prevBalances,
+					[AO.pixl]: {
+						...prevBalances[AO.pixl],
+						walletBalance: pixlTokenWalletBalance ?? null,
+						profileBalance: pixlTokenProfileBalance ?? null,
+					},
+				}));
+
+				const defaultTokenWalletBalance = await readHandler({
+					processId: AO.defaultToken,
 					action: 'Balance',
 					tags: [{ name: 'Recipient', value: walletAddress }],
 				});
@@ -218,13 +238,6 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 					action: 'Balance',
 					tags: [{ name: 'Recipient', value: profile.id }],
 				});
-				await sleep(500);
-
-				const pixlTokenProfileBalance = await readHandler({
-					processId: AO.pixl,
-					action: 'Balance',
-					tags: [{ name: 'Recipient', value: profile.id }],
-				});
 
 				setTokenBalances((prevBalances) => ({
 					...prevBalances,
@@ -232,11 +245,6 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 						...prevBalances[AO.defaultToken],
 						walletBalance: defaultTokenWalletBalance ?? null,
 						profileBalance: defaultTokenProfileBalance ?? null,
-					},
-					[AO.pixl]: {
-						...prevBalances[AO.pixl],
-						walletBalance: pixlTokenWalletBalance ?? null,
-						profileBalance: pixlTokenProfileBalance ?? null,
 					},
 				}));
 			} catch (e) {
@@ -354,6 +362,9 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 					tokenBalances,
 					toggleTokenBalanceUpdate,
 					setToggleTokenBalanceUpdate,
+					refreshBalances: () => {
+						setToggleTokenBalanceUpdate((prev) => !prev);
+					},
 					handleConnect,
 					handleDisconnect,
 					wallets: AR_WALLETS,
@@ -362,6 +373,9 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 					profile,
 					toggleProfileUpdate,
 					setToggleProfileUpdate,
+					refreshProfile: () => {
+						setToggleProfileUpdate((prev) => !prev);
+					},
 					vouch,
 				}}
 			>

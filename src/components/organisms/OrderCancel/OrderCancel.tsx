@@ -5,10 +5,8 @@ import { cancelOrder } from '@permaweb/ucm';
 import { Button } from 'components/atoms/Button';
 import { Notification } from 'components/atoms/Notification';
 import { Modal } from 'components/molecules/Modal';
-import { AO } from 'helpers/config';
 import { NotificationType } from 'helpers/types';
 import * as windowUtils from 'helpers/window';
-import { useAppProvider } from 'providers/AppProvider';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 
@@ -16,7 +14,6 @@ import * as S from './styles';
 import { IProps } from './types';
 
 export default function OrderCancel(props: IProps) {
-	const appProvider = useAppProvider();
 	const arProvider = useArweaveProvider();
 
 	const languageProvider = useLanguageProvider();
@@ -33,7 +30,7 @@ export default function OrderCancel(props: IProps) {
 			try {
 				const cancelOrderId = await cancelOrder(
 					{
-						orderbookId: AO.ucm,
+						orderbookId: props.listing.orderbookId,
 						orderId: props.listing.id,
 						creatorId: arProvider.profile.id,
 						dominantToken: props.listing.token,
@@ -50,8 +47,7 @@ export default function OrderCancel(props: IProps) {
 				setResponse({ status: 'success', message: 'Order cancelled' });
 
 				setCancelProcessed(true);
-				appProvider.refreshUcm();
-				arProvider.setToggleTokenBalanceUpdate(!arProvider.toggleTokenBalanceUpdate);
+				arProvider.refreshBalances();
 				props.toggleUpdate();
 				setShowConfirmation(false);
 				setCancelProcessed(false);

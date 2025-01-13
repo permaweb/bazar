@@ -81,7 +81,7 @@ export default function AssetActionMarket(props: IProps) {
 				</Tabs>
 				<S.TabContent>{getCurrentTab()}</S.TabContent>
 			</S.TabsWrapper>
-			{props.asset.orders && props.asset.orders.length > 0 && (
+			{props.asset.orderbook?.orders && props.asset.orderbook?.orders.length > 0 && (
 				<GS.DrawerWrapper>
 					<Drawer
 						title={language.activeSaleOrders}

@@ -4,4 +4,5 @@ export interface IProps {
 	type: 'list' | 'grid';
 	pageCount?: number;
 	setProfileAction?: boolean;
+	noListings?: boolean;
 }

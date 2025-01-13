@@ -1,5 +1,5 @@
 import React from 'react';
-import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 
 import { getProfileById } from 'api';
 
@@ -16,7 +16,6 @@ import { ProfileCollections } from './ProfileCollections';
 import { ProfileHeader } from './ProfileHeader';
 
 export default function Profile() {
-	const location = useLocation();
 	const navigate = useNavigate();
 
 	const { address, active } = useParams();
@@ -50,7 +49,7 @@ export default function Profile() {
 				navigate(URLS.notFound);
 			}
 		})();
-	}, [address, location]);
+	}, [address]);
 
 	const TABS = React.useMemo(
 		() => [

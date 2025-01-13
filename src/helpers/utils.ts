@@ -225,13 +225,13 @@ export function sortByAssetOrders(
 	stamps: StampsType
 ): AssetDetailType[] {
 	const getSortKey = (asset: AssetDetailType): number => {
-		if (!asset.orders || asset.orders.length === 0) return Infinity;
-		return Number(sortOrders(asset.orders, sortType)[0].price);
+		if (!asset.orderbook?.orders || asset.orderbook?.orders.length === 0) return Infinity;
+		return Number(sortOrders(asset.orderbook?.orders, sortType)[0].price);
 	};
 
 	const getDateKey = (asset: AssetDetailType): number => {
-		if (!asset.orders || asset.orders.length === 0) return 0;
-		return new Date(asset.orders[0].dateCreated).getTime();
+		if (!asset.orderbook?.orders || asset.orderbook?.orders.length === 0) return 0;
+		return new Date(asset.orderbook?.orders[0].dateCreated).getTime();
 	};
 
 	const getStampKey = (asset: AssetDetailType): number => {
@@ -271,8 +271,10 @@ export function sortByAssetOrders(
 		});
 	}
 
-	let assetsWithOrders = assets.filter((asset) => asset.orders && asset.orders.length > 0);
-	const assetsWithoutOrders = assets.filter((asset) => !asset.orders || asset.orders.length === 0);
+	let assetsWithOrders = assets.filter((asset) => asset.orderbook?.orders && asset.orderbook?.orders.length > 0);
+	const assetsWithoutOrders = assets.filter(
+		(asset) => !asset.orderbook?.orders || asset.orderbook?.orders.length === 0
+	);
 
 	assetsWithOrders.sort((a, b) => {
 		if (sortType === 'recently-listed') {

@@ -8,13 +8,12 @@ import {
 	AssetStateType,
 	AssetType,
 	DefaultGQLResponseType,
-	EntryOrderType,
 	GQLNodeResponseType,
 	IdGroupType,
 	LicenseType,
 	OrderbookEntryType,
 } from 'helpers/types';
-import { formatAddress, getAssetOrderType, getTagValue, sortByAssetOrders, sortOrderbookEntries } from 'helpers/utils';
+import { formatAddress, getTagValue, sortByAssetOrders, sortOrderbookEntries } from 'helpers/utils';
 import { store } from 'store';
 
 export async function getAssetIdsByUser(args: { profileId: string }): Promise<string[]> {
@@ -45,26 +44,27 @@ export async function getAssetsByIds(args: { ids: string[]; sortType: AssetSortT
 
 		if (gqlResponse && gqlResponse.data.length) {
 			if (store.getState().ucmReducer) {
-				const ucmReducer = store.getState().ucmReducer;
+				// const ucmReducer = store.getState().ucmReducer;
 				const stampsReducer = store.getState().stampsReducer;
 
 				const finalAssets: AssetDetailType[] = [];
 				const structuredAssets = structureAssets(gqlResponse);
 
 				structuredAssets.forEach((asset: AssetType) => {
-					let assetOrders: AssetOrderType[] | null = null;
-					const existingEntry = ucmReducer.Orderbook.find((entry: OrderbookEntryType) => {
-						return entry.Pair ? entry.Pair[0] === asset.data.id : null;
-					});
+					// let assetOrders: AssetOrderType[] | null = null;
+					// const existingEntry = ucmReducer.Orderbook.find((entry: OrderbookEntryType) => {
+					// 	return entry.Pair ? entry.Pair[0] === asset.data.id : null;
+					// });
 
-					if (existingEntry) {
-						assetOrders = existingEntry.Orders.map((order: EntryOrderType) => {
-							return getAssetOrderType(order, existingEntry.Pair[1]);
-						});
-					}
+					// if (existingEntry) {
+					// 	assetOrders = existingEntry.Orders.map((order: EntryOrderType) => {
+					// 		return getAssetOrderType(order, existingEntry.Pair[1]);
+					// 	});
+					// }
 
 					const finalAsset: AssetDetailType = { ...asset };
-					if (assetOrders) finalAsset.orders = assetOrders;
+					// if (assetOrders) finalAsset.orders = assetOrders; // TODO
+
 					finalAssets.push(finalAsset);
 				});
 
@@ -98,7 +98,6 @@ export async function getAssetById(args: { id: string }): Promise<AssetDetailTyp
 				logo: null,
 				balances: null,
 				transferable: null,
-				orderbookId: null,
 			};
 
 			const structuredAsset = structureAssets(assetLookupResponse)[0];
@@ -128,8 +127,6 @@ export async function getAssetById(args: { id: string }): Promise<AssetDetailTyp
 				} else {
 					assetState.transferable = true;
 				}
-				if (processState.OrderbookId || processState.orderbookId)
-					assetState.orderbookId = processState.OrderbookId || processState.orderbookId;
 			}
 
 			if (!assetState.balances) {
@@ -146,7 +143,14 @@ export async function getAssetById(args: { id: string }): Promise<AssetDetailTyp
 				}
 			}
 
-			return { ...structuredAsset, state: assetState };
+			let assetOrderbook = null;
+			if (processState.OrderbookId) assetOrderbook = { id: processState.OrderbookId };
+
+			return {
+				...structuredAsset,
+				state: assetState,
+				orderbook: assetOrderbook,
+			};
 		}
 
 		return null;

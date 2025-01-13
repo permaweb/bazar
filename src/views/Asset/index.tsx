@@ -86,37 +86,37 @@ export default function Asset() {
 		})();
 	}, [id, toggleUpdate]);
 
-	// TODO: Toggle update
 	React.useEffect(() => {
 		(async function () {
-			if (asset?.state?.orderbookId && !asset.orders) {
+			if (asset?.orderbook?.id) {
 				setLoading(true);
 				try {
 					const response = await readHandler({
-						processId: asset.state.orderbookId,
+						processId: asset.orderbook.id,
 						action: 'Info',
 					});
 
-					if (response?.Orderbook?.length > 0) {
-						setAsset((prevAsset) => ({
-							...prevAsset,
-							orderbookId: asset.state.orderbookId,
-							orders: getAssetOrders(response.Orderbook[0]),
-						}));
-					}
+					setAsset((prevAsset) => ({
+						...prevAsset,
+						orderbook: {
+							...prevAsset.orderbook,
+							activityId: response?.ActivityProcess,
+							orders: getAssetOrders(response?.Orderbook?.[0]),
+						},
+					}));
 				} catch (e: any) {
 					console.error(e);
 				}
 				setLoading(false);
 			}
 		})();
-	}, [asset]);
+	}, [asset?.orderbook?.id, toggleUpdate]);
 
 	// React.useEffect(() => {
 	// 	if (asset && ucmReducer) {
 	// 		const updatedOrders = getAssetOrders({ id: asset.data.id });
 
-	// 		const sortedCurrentOrders = _.sortBy(asset.orders, 'id');
+	// 		const sortedCurrentOrders = _.sortBy(asset.orderbook?.orders, 'id');
 	// 		const sortedUpdatedOrders = _.sortBy(updatedOrders, 'id');
 
 	// 		if (!_.isEqual(sortedCurrentOrders, sortedUpdatedOrders)) {
