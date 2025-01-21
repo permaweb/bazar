@@ -8,14 +8,12 @@ If you hold AR, you can bridge it onto AO using [AOX](https://aox.arweave.net/#/
 
 #### wAR Depot: Swap USDC/ETH for wAR
 
-You can swap USDC or ETH for wAR by using the [Wrapped AR Depot](https://wardepot.arweave.net/). Here’s how:
+You can also swap USDC or ETH for wAR by using [AOX](https://wardepot.arweave.net/). Here’s how:
 
 1. Sign in with your Ethereum wallet.
 2. Input amount of USDC or ETH to swap.
 3. Input the receiving Arweave wallet.
 4. Confirm swap and sign transactions.
-
-###### **Note: You must sign 3 transactions to complete this process. It will take about 30 minutes for funds to arrive in your wallet.**
 
 #### Purchase AR tokens via ArConnect
 
