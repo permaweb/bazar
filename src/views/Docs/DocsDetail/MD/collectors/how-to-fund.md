@@ -8,7 +8,7 @@ If you hold AR, you can bridge it onto AO using [AOX](https://aox.arweave.net/#/
 
 #### wAR Depot: Swap USDC/ETH for wAR
 
-You can also swap USDC or ETH for wAR by using [AOX](https://wardepot.arweave.net/). Here’s how:
+You can also swap USDC or ETH for wAR by using [AOX](https://aox.arweave.net/#/). Here’s how:
 
 1. Sign in with your Ethereum wallet.
 2. Input amount of USDC or ETH to swap.
