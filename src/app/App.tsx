@@ -6,7 +6,7 @@ import { Loader } from 'components/atoms/Loader';
 import { Banner } from 'components/organisms/Banner';
 import { ASSETS, DOM, FLAGS } from 'helpers/config';
 import { Footer } from 'navigation/footer';
-import { Header } from 'navigation/Header';
+import { Header } from 'navigation/header';
 import { RootState } from 'store';
 
 import * as S from './styles';
