@@ -5,8 +5,8 @@ import { ReactSVG } from 'react-svg';
 import { Loader } from 'components/atoms/Loader';
 import { Banner } from 'components/organisms/Banner';
 import { ASSETS, DOM, FLAGS } from 'helpers/config';
-import { Footer } from 'navigation/footer';
-import { Header } from 'navigation/header';
+import { Footer } from 'navigation/Footer';
+import { Header } from 'navigation/Header';
 import { RootState } from 'store';
 
 import * as S from './styles';
