@@ -92,11 +92,13 @@ export const docsOrder = [
 		],
 	},
 	{
-		name: 'Contact',
-		path: 'contact',
+		name: 'Resources',
+		path: 'resources',
+		children: [
+			{
+				name: 'Contact',
+				path: 'contact',
+			},
+		],
 	},
 ];
-// {
-// 	name: 'For developers',
-// 	path: 'developers',
-// },

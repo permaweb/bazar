@@ -17,18 +17,13 @@ export const NWrapper = styled.div`
 `;
 
 export const NContent = styled.div`
-	max-height: calc(100vh - 160px);
+	height: calc(100vh - 125px);
 	width: 100%;
 	position: sticky;
 	z-index: 1;
-	top: 85px;
+	top: 90px;
 	overflow: auto;
-	margin: 10px 0 0 0;
-	background: ${(props) => props.theme.colors.container.alt3.background};
-	box-shadow: 0 1px 2px 0.5px ${(props) => props.theme.colors.shadow.primary};
-	border: 1px solid ${(props) => props.theme.colors.border.alt4};
-	border-radius: ${STYLING.dimensions.radius.primary};
-	padding: 15px 20px;
+	border-right: 1px solid ${(props) => props.theme.colors.border.primary};
 	@media (max-width: ${STYLING.cutoffs.initial}) {
 		position: relative;
 		top: auto;

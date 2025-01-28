@@ -277,7 +277,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 					dispatch(streakActions.setStreaks(streaks.Streaks));
 				}
 				if (props.type === 'buy') arProvider.refreshBalances();
-				// arProvider.refreshProfile();
+				// arProvider.refreshProfile(); // TODO
 			} catch (e: any) {
 				handleStatusUpdate(false, true, false, e.message ?? 'Error creating order in UCM');
 			}
