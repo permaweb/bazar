@@ -7,7 +7,6 @@ import { Streaks } from 'components/organisms/Streaks';
 import { ASSETS, REDIRECTS, URLS } from 'helpers/config';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
-import { useLocationProvider } from 'providers/LocationProvider';
 import { WalletConnect } from 'wallet/WalletConnect';
 import { CloseHandler } from 'wrappers/CloseHandler';
 
@@ -18,8 +17,6 @@ export default function Header() {
 
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
-
-	const locationProvider = useLocationProvider();
 
 	const paths: { path: string; label: string; target?: '_blank' }[] = [
 		{ path: URLS.collections, label: language.collections },
@@ -50,14 +47,6 @@ export default function Header() {
 						</S.DNavWrapper>
 					</S.C1Wrapper>
 					<S.ActionsWrapper>
-						{locationProvider.country !== 'US' && (
-							<S.PAction>
-								<Link to={URLS.quest}>
-									<ReactSVG src={ASSETS.star} />
-									<span>Omega Quest</span>
-								</Link>
-							</S.PAction>
-						)}
 						{arProvider.profile && arProvider.profile.id && <Streaks profile={arProvider.profile} />}
 						<WalletConnect />
 						<S.MWrapper>

@@ -45,13 +45,12 @@ export default function Landing() {
 		})();
 	}, [collectionsReducer?.stamped]);
 
-	const startDate = Math.floor(Date.now()) - 3 * 24 * 60 * 60 * 1000;
+	const startDate = Math.floor(Date.now()) - 1 * 12 * 60 * 60 * 1000;
 
 	return (
 		<S.Wrapper className={'fade-in'}>
 			<S.CollectionsWrapper>
 				<CollectionsCarousel collections={collections} loading={collectionsLoading} />
-				{collectionsErrorResponse && <p>{collectionsErrorResponse}</p>}
 			</S.CollectionsWrapper>
 			<S.TokensWrapper>
 				<TrendingTokens />
