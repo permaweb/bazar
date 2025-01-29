@@ -196,6 +196,7 @@ export function structureAssets(gqlResponse: DefaultGQLResponseType): AssetType[
 
 	gqlResponse.data.forEach((element: GQLNodeResponseType) => {
 		let title =
+			getTagValue(element.node.tags, 'Bootloader-Name') ||
 			getTagValue(element.node.tags, TAGS.keys.title) ||
 			getTagValue(element.node.tags, TAGS.keys.name) ||
 			formatAddress(element.node.id, false);
@@ -207,7 +208,9 @@ export function structureAssets(gqlResponse: DefaultGQLResponseType): AssetType[
 				id: element.node.id,
 				creator: getTagValue(element.node.tags, TAGS.keys.creator),
 				title: title,
-				description: getTagValue(element.node.tags, TAGS.keys.description),
+				description:
+					getTagValue(element.node.tags, TAGS.keys.description) ||
+					getTagValue(element.node.tags, 'Bootloader-Description'),
 				dateCreated: element.node.block
 					? element.node.block.timestamp * 1000
 					: element.node.timestamp

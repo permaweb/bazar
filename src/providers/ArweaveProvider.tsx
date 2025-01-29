@@ -1,14 +1,17 @@
 import React from 'react';
 import { useSelector } from 'react-redux';
-import { connect } from '@othent/kms';
+import { connect as othentConnect } from '@othent/kms';
 import * as Othent from '@othent/kms';
 
-import { getProfileByWalletAddress, getVouch, readHandler } from 'api';
+import { connect } from '@permaweb/aoconnect';
+import AOProfile, { ProfileType } from '@permaweb/aoprofile';
+
+import { getVouch, readHandler } from 'api';
 
 import { Modal } from 'components/molecules/Modal';
 import { AO, AR_WALLETS, REDIRECTS, WALLET_PERMISSIONS } from 'helpers/config';
 import { getARBalanceEndpoint } from 'helpers/endpoints';
-import { ProfileType, VouchType, WalletEnum } from 'helpers/types';
+import { VouchType, WalletEnum } from 'helpers/types';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 import { RootState } from 'store';
 
@@ -88,6 +91,8 @@ function WalletList(props: { handleConnect: any }) {
 }
 
 export function ArweaveProvider(props: ArweaveProviderProps) {
+	const { getProfileByWalletAddress } = AOProfile.init({ ao: connect() });
+
 	const profilesReducer = useSelector((state: RootState) => state.profilesReducer);
 
 	const languageProvider = useLanguageProvider();
@@ -310,7 +315,7 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 
 	async function handleOthent() {
 		try {
-			const othentConnection = await connect();
+			const othentConnection = await othentConnect();
 			const address = othentConnection.walletAddress;
 			setWallet(Othent);
 			setWalletAddress(address);

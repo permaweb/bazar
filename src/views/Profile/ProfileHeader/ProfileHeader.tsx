@@ -40,8 +40,8 @@ export default function ProfileHeader(props: IProps) {
 	}, [props.profile]);
 
 	function getAvatar() {
-		if (props.profile && props.profile.avatar && checkValidAddress(props.profile.avatar))
-			return <img src={getTxEndpoint(props.profile.avatar)} />;
+		if (props.profile && props.profile.thumbnail && checkValidAddress(props.profile.thumbnail))
+			return <img src={getTxEndpoint(props.profile.thumbnail)} />;
 		return <ReactSVG src={ASSETS.user} />;
 	}
 
@@ -93,14 +93,14 @@ export default function ProfileHeader(props: IProps) {
 				<S.HeaderInfoDetail>
 					<span>{`${getHandle()}`}</span>
 				</S.HeaderInfoDetail>
-				{props.profile.bio ? (
+				{props.profile.description ? (
 					<S.HeaderInfoBio>
 						<span>
-							{props.profile.bio.length > MAX_BIO_LENGTH
-								? props.profile.bio.substring(0, MAX_BIO_LENGTH) + '...'
-								: props.profile.bio}
+							{props.profile.description.length > MAX_BIO_LENGTH
+								? props.profile.description.substring(0, MAX_BIO_LENGTH) + '...'
+								: props.profile.description}
 						</span>
-						{props.profile.bio.length > MAX_BIO_LENGTH && (
+						{props.profile.description.length > MAX_BIO_LENGTH && (
 							<button onClick={() => setShowBio(true)}>{language.viewFullBio}</button>
 						)}
 					</S.HeaderInfoBio>
@@ -171,10 +171,10 @@ export default function ProfileHeader(props: IProps) {
 					</S.PManageWrapper>
 				</Panel>
 			)}
-			{showBio && props.profile && props.profile.bio && (
+			{showBio && props.profile && props.profile.description && (
 				<Modal header={language.bio} handleClose={() => setShowBio(false)}>
 					<div className={'modal-wrapper'}>
-						<p>{props.profile.bio}</p>
+						<p>{props.profile.description}</p>
 					</div>
 				</Modal>
 			)}

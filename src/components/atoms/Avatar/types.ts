@@ -1,4 +1,4 @@
-import { ProfileType, RegistryProfileType } from 'helpers/types';
+import { ProfileType, RegistryProfileType } from '@permaweb/aoprofile';
 
 export interface IProps {
 	owner: ProfileType | RegistryProfileType | null;

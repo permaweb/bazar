@@ -199,7 +199,7 @@ export default function AssetsTable(props: IProps) {
 				const data: any = {
 					DisplayName: arProvider.profile.displayName,
 					UserName: arProvider.profile.username,
-					Description: arProvider.profile.bio,
+					Description: arProvider.profile.description,
 					CoverImage: arProvider.profile.banner,
 					ProfileImage: asset.data.id,
 				};
