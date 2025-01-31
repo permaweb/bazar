@@ -15,10 +15,6 @@ export const docsOrder = [
 				name: 'Vouch your wallet',
 				path: 'vouch',
 			},
-			{
-				name: 'Legacy Bazar migration',
-				path: 'legacy-bazar-migration',
-			},
 		],
 	},
 	{

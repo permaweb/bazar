@@ -1,9 +1,11 @@
 ## Atomic assets
 
-An atomic asset is a unique digital item stored on Arweave. Unlike traditional NFTs, the asset data is uploaded together with a smart contract in a single transaction which is inseparable and does not rely on external components. On other chains, the asset data, metadata, and smart contract are typically separate from each other with the smart contract linking to the other components. Atomic assets ensure that all data is stored together onchain to ensure permanence and accessibility. Atomic assets can also be 1-1 or fractionalized, meaning users can purchase portions of an asset. The creator can determine the number of fractional shares for an atomic asset before uploading
+Atomic Assets are unique digital items stored on the permaweb, designed to simplify the ownership and transfer of digital assets while ensuring security and permanence. Unlike traditional NFTs, the data of an atomic asset—its metadata and smart contract—are uploaded together in a single, inseparable transaction. This eliminates reliance on external components, unlike other blockchains where these elements are often stored separately and linked by the smart contract.
+
+Atomic Assets can represent anything from art, music, and videos to applications, domain names, or memberships. Read the full atomic asset specification [here](https://github.com/permaweb/permaweb-libs/blob/main/specs/spec-atomic-assets.md).
 
 #### Atomic asset collections
 
-Atomic asset collections are groups of atomic assets bundled together and displayed as a collection on the UCM. These collections can consist of existing atomic assets owned by the user, newly uploaded assets, or a combination of both.
+Atomic asset collections are groups of atomic assets bundled together and displayed as a collection on the UCM. These collections can consist of existing atomic assets owned by the user, newly uploaded assets, or a combination of both. Read the atomic asset collection specification [here](https://github.com/permaweb/permaweb-libs/blob/main/specs/spec-collections.md).
 
-###### Upload your first atomic asset [here](https://helix.arweave.net/).
+###### Upload your first atomic asset [here](https://studio_bazar.arweave.net/#/).

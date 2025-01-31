@@ -1,6 +1,6 @@
 ## Profiles
 
-Your permaweb profile is an AO process which is owned by your Arweave wallet. This process carries out interactions with the UCM and holds custody to your atomic assets.
+Your permaweb profile is an AO process which is owned by your Arweave wallet. This process carries out interactions with the UCM and holds custody to your atomic assets. AO Profiles are an example of a [Zone](https://github.com/permaweb/permaweb-libs/blob/main/specs/spec-zones.md) on Arweave/AO.
 
 ### How to create a profile
 
