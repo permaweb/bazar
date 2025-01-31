@@ -98,7 +98,7 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 
 	const tokenLinks = {
 		[AO.defaultToken]: {
-			link: REDIRECTS.warDepot,
+			link: REDIRECTS.aox,
 			label: language.getWrappedAr,
 			target: '_blank',
 		},

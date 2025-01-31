@@ -24,6 +24,7 @@
 		"@irys/sdk": "^0.2.10",
 		"@othent/kms": "^1.0.7",
 		"@permaweb/aoconnect": "^0.0.45",
+		"@permaweb/aoprofile": "^0.0.9",
 		"@permaweb/stampjs": "^1.0.3",
 		"@permaweb/ucm": "0.0.5",
 		"async-lock": "^1.4.1",
