@@ -55,7 +55,7 @@ export const darkTheme = {
 	labelAlt1: `#FFFFFF`,
 	negative1: '#D81E5B',
 	negative2: '#E43A72',
-	neutral1: '#171717',
+	neutral1: '#1A1A1A',
 	neutral2: '#202020',
 	neutral3: '#333333',
 	neutral4: '#5C5C5C',
