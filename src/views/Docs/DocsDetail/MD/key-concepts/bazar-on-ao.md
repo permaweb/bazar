@@ -10,9 +10,9 @@ AO is a hyper parallel computing system built on the Arweave network, offering a
 
 - **Horizontally scalable UCM**. Bazar is a user-facing application on the Universal Content Marketplace (UCM) protocol. UCM provides a secure and transparent environment to trade assets without relying on third parties. Now that UCM is built within its own AO process, the protocol can horizontally scale across multiple processes, allowing for unbounded speed and efficiency.
 
-- **Your Bazar profile is an AO process**. Your digital assets sit in your AO profile process which is owned by your Arweave wallet. Your wallet address is the "owner" of the AO process, but the process itself holds the assets. This AO process is like a unique agent in AOS, that acts based on your instructions and manages your assets securely.
+- **Your Bazar profile is an AO process**. Your digital assets sit in your AO profile process which is owned by your Arweave wallet. Your wallet address is the "owner" of the AO process, but the process itself holds the assets. AO Profiles are an example of a [Zone](https://github.com/permaweb/permaweb-libs/blob/main/specs/spec-zones.md) on Arweave/AO.
 
-- **Integration into the AO ecosystem**. Since the launch of the AO testnet in February 2024, an ecosystem of technical and creative projects have emerged using AO. These range from [social media platforms](https://www.typr.day/#/), [3D metaverses](https://dumdum.arweave.net/), [Reality Protocol worlds](https://llamaland.arweave.net/) [meme-coins](https://trunkao.xyz/#/) and many more. Bazar on AO provides a platform to trade digital content with [real-world rights](https://x.com/OurBazAR/status/1729577502631195127).
+- **Integration into the AO ecosystem**. Since the launch of the AO testnet in February 2024, a wide range of technical and creative projects have emerged in the [AO ecosystem](https://list.weavescan.com/map). Bazar on AO provides a platform for creatives and developers to trade digital content with [real-world rights](https://x.com/OurBazAR/status/1729577502631195127).
 
 #### Summary
 

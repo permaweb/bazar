@@ -1,6 +1,6 @@
 ## Stamps
 
-Stamps serve as the universal “like” button on the permaweb. With a [vouched wallet](#), users can support content by stamping it, rewarding both content creators and stampers with $STAMP tokens daily. Essentially, you earn rewards for creating accessible content on the permaweb that the community appreciates and endorses.
+Stamps serve as the universal “like” button on the permaweb. With a [vouched wallet](https://vouch-portal.arweave.net/#/), users can support content by stamping it, rewarding both content creators and stampers with $STAMP tokens daily. Essentially, you earn rewards for creating accessible content on the permaweb that the community appreciates and endorses.
 
 ###### $STAMP Token
 

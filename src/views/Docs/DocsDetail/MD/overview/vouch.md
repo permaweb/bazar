@@ -1,6 +1,6 @@
 ## Vouch your Arweave wallet
 
-Bazar now uses [Vouch](https://vouch-portal.arweave.net/#/) to enhance platform security and prevent sybil attacks on the Universal Content Marketplace (UCM) orderbook. This integration ensures better platform performance by curbing bot activity, enabling genuine users to maintain PIXL streaks and earn rewards.
+Bazar now uses [Vouch](https://vouch-portal.arweave.net/#/) to enhance platform security and prevent sybil attacks on the Universal Content Marketplace (UCM) orderbook. This integration ensures better platform performance by curbing bot activity, enabling genuine users to maintain PIXL streaks and earn rewards. **See the vouch tutorial video [here](https://www.youtube.com/watch?v=1KRvrdVXWq4).**
 
 ### Key Details
 
@@ -14,7 +14,7 @@ To earn $PIXL tokens, users need a vouched wallet. PIXL is a rewards token earne
 
 ###### Unchanged features
 
-Non-vouched wallets retain full access to upload with [Helix](https://helix.arweave.net/) and trade atomic assets on Bazar.
+Non-vouched wallets retain full access to upload with [Bazar Studio](https://studio_bazar.arweave.net/) and trade atomic assets on Bazar.
 
 ### What is Vouch?
 
