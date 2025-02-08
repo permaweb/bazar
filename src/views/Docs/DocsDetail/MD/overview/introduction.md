@@ -17,6 +17,10 @@ Instead, UCM captures a 0.5% fee for using the contract. If the trade involves t
 - **Licensable Data**: The [Universal Data License](https://udlicense.arweave.net/) (UDL) ensures that value flows equitably to creators and contributors on the permaweb. This standard framework allows creators to set their own terms for the usage of content they upload. Learn more about UDL [here](https://ao-bazar.arweave.net/#/docs/creators/universal-data-license).
 - **Earn $PIXL Rewards**: The UCM protocol rewards users with PIXL tokens for maintaining a buying streak. The longer the streak, the larger the daily PIXL rewards! Learn more about earning PIXL [here](https://ao-bazar.arweave.net/#/docs/collectors/earn-pixl).
 
-#### Early Release
+#### UCM/Bazar “Early” Release
 
-In this “early” release, Bazar showcases the possibilities for transacting digital content on the permaweb. Bazar will continue to undergo updates to fix bugs and enhance the UX/UI. If you have any questions or encounter technical challenges, please reach out to our team on [X](https://x.com/OurBazAR) or in the Bazar channel of the Weavers [Discord](https://discord.gg/weavers). We also welcome your feedback and suggestions to help us improve the platform. Stay tuned for future updates and new features designed to enhance your experience on Bazar.
+UCM and Bazar are currently in an **“early” release**, meaning they are considered functionally complete, though minor adjustments may still be necessary.
+
+Although AO is live on mainnet, Bazar is still running on AO testnet infrastructure until further notice. The Bazar team will provide updates on UCM/Bazar developments and the fair launch token to fund ongoing development.
+
+For questions or technical issues, reach out on [X](https://x.com/OurBazAR) or the Bazar channel in the Weavers [Discord](https://discord.gg/weavers). Your feedback is always welcome as we continue improving the platform.
