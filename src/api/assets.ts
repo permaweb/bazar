@@ -122,8 +122,9 @@ export async function getAssetById(args: { id: string }): Promise<AssetDetailTyp
 						Object.entries(processState.Balances).filter(([_, value]) => Number(value) !== 0)
 					) as any;
 				}
+				console.log(processState);
 				if (processState.Transferable !== undefined) {
-					assetState.transferable = processState.Transferable === 'true';
+					assetState.transferable = processState.Transferable.toString() === 'true';
 				} else {
 					assetState.transferable = true;
 				}
