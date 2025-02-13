@@ -86,7 +86,7 @@ export default function AssetAction(props: IProps) {
 	const [urlCopied, setUrlCopied] = React.useState<boolean>(false);
 
 	React.useEffect(() => {
-		if (props.asset && props.asset.state && props.asset.state.balances) {
+		if (props.asset && props.asset.state.balances) {
 			const balances: any = Object.keys(props.asset.state.balances).map((address: string) => {
 				return Number(props.asset.state.balances[address]);
 			});
