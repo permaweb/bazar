@@ -74,7 +74,7 @@ function WalletList(props: { handleConnect: any }) {
 					onClick={() => props.handleConnect(wallet.type)}
 					className={'border-wrapper-alt2'}
 				>
-					<img src={`${wallet.logo}`} alt={''} />
+					<S.WalletItemImageWrapper>{wallet.logo && <img src={`${wallet.logo}`} alt={''} />}</S.WalletItemImageWrapper>
 					<span>{wallet.type.charAt(0).toUpperCase() + wallet.type.slice(1)}</span>
 				</S.WalletListItem>
 			))}
@@ -277,17 +277,17 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 		}
 	}
 
-	async function handleConnect(walletType: WalletEnum.arConnect | WalletEnum.othent) {
+	async function handleConnect(walletType: WalletEnum.wander | WalletEnum.othent) {
 		let walletObj: any = null;
 		switch (walletType) {
-			case WalletEnum.arConnect:
+			case WalletEnum.wander:
 				handleArConnect();
 				break;
 			case WalletEnum.othent:
 				handleOthent();
 				break;
 			default:
-				if (window.arweaveWallet || walletType === WalletEnum.arConnect) {
+				if (window.arweaveWallet || walletType === WalletEnum.wander) {
 					handleArConnect();
 					break;
 				}
@@ -303,9 +303,9 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 					await global.window?.arweaveWallet?.connect(WALLET_PERMISSIONS as any);
 					setWalletAddress(await global.window.arweaveWallet.getActiveAddress());
 					setWallet(window.arweaveWallet);
-					setWalletType(WalletEnum.arConnect);
+					setWalletType(WalletEnum.wander);
 					setWalletModalVisible(false);
-					localStorage.setItem('walletType', WalletEnum.arConnect);
+					localStorage.setItem('walletType', WalletEnum.wander);
 				} catch (e: any) {
 					console.error(e);
 				}
@@ -346,7 +346,7 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 			{walletModalVisible && (
 				<Modal header={language.connectWallet} handleClose={() => setWalletModalVisible(false)}>
 					<WalletList
-						handleConnect={(walletType: WalletEnum.arConnect | WalletEnum.othent) => handleConnect(walletType)}
+						handleConnect={(walletType: WalletEnum.wander | WalletEnum.othent) => handleConnect(walletType)}
 					/>
 				</Modal>
 			)}

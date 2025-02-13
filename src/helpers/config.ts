@@ -58,6 +58,7 @@ import users from 'assets/users.svg';
 import video from 'assets/video.svg';
 import view from 'assets/view.svg';
 import wallet from 'assets/wallet.svg';
+import wander from 'assets/wander.png';
 import x from 'assets/x.svg';
 import zen from 'assets/zen.svg';
 
@@ -183,12 +184,13 @@ export const ASSETS = {
 	view,
 	video,
 	wallet,
+	wander,
 	x,
 	zen,
 };
 
 export const AR_WALLETS = [
-	{ type: WalletEnum.arConnect, logo: ASSETS.arconnect },
+	{ type: WalletEnum.wander, logo: ASSETS.wander },
 	{ type: WalletEnum.othent, logo: ASSETS.othent },
 ];
 

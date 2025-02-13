@@ -14,6 +14,7 @@ export const WalletListContainer = styled.div`
 `;
 
 export const WalletListItem = styled.button`
+	min-height: 105px;
 	display: flex;
 	flex: 1;
 	flex-direction: column;
@@ -40,6 +41,16 @@ export const WalletListItem = styled.button`
 	@media (max-width: ${STYLING.cutoffs.secondary}) {
 		flex: none;
 		width: 100%;
+	}
+`;
+
+export const WalletItemImageWrapper = styled.div`
+	min-height: 40px;
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	img {
+		width: 30px;
 	}
 `;
 
