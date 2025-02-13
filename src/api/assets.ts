@@ -123,7 +123,7 @@ export async function getAssetById(args: { id: string }): Promise<AssetDetailTyp
 					) as any;
 				}
 				if (processState.Transferable !== undefined) {
-					assetState.transferable = processState.Transferable;
+					assetState.transferable = processState.Transferable === 'true';
 				} else {
 					assetState.transferable = true;
 				}
