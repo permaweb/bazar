@@ -137,6 +137,7 @@ export type CollectionType = {
 	dateCreated: string;
 	banner: string | null;
 	thumbnail: string | null;
+	activityProcess: string | null;
 };
 
 export type CollectionDetailType = CollectionType & {

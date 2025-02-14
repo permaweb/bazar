@@ -52,6 +52,8 @@ export default function Collection() {
 		})();
 	}, [id]);
 
+	console.log(collection);
+
 	React.useEffect(() => {
 		(async function () {
 			if (collection && collection.creator) {
@@ -100,10 +102,10 @@ export default function Collection() {
 				icon: ASSETS.activity,
 				disabled: false,
 				url: URLS.collectionActivity(id),
-				view: () => <>{collection.assetIds && <ActivityTable assetIds={collection.assetIds} />}</>,
+				view: () => <>{collection.activityProcess && <ActivityTable activityId={collection.activityProcess} />}</>,
 			},
 		],
-		[id, collection?.assetIds]
+		[id, collection?.assetIds, collection?.activityProcess]
 	);
 
 	const urlTabs = React.useMemo(() => {

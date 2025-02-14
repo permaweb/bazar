@@ -3,7 +3,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { Link } from 'react-router-dom';
 
 import Arweave from 'arweave';
-import { createDataItemSigner, message, result } from '@permaweb/aoconnect';
+import { connect, createDataItemSigner, message, result } from '@permaweb/aoconnect';
 import { createOrder, createOrderbook } from '@permaweb/ucm';
 
 import { messageResults, readHandler } from 'api';
@@ -193,13 +193,22 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 	async function handleSubmit() {
 		if (props.asset && arProvider.wallet && arProvider.profile?.id) {
+			const dependencies = {
+				ao: connect(),
+				arweave: Arweave.init({}),
+				signer: createDataItemSigner(arProvider.wallet),
+			};
+
 			let currentOrderbook = props.asset.orderbook?.id;
 
 			if (!currentOrderbook) {
 				try {
 					const newOrderbook = await createOrderbook(
-						{ wallet: arProvider.wallet, arweave: Arweave.init({}) },
-						{ assetId: props.asset.data.id },
+						dependencies,
+						{
+							assetId: props.asset.data.id,
+							collectionId: 'gbi_NxzbalC-Rv9hluWIBghSBpm2iN2u7mfm7S1K5M0', // TODO: Add collection id
+						},
 						(args: { processing: boolean; success: boolean; message: string }) => {
 							handleStatusUpdate(args.processing, !args.processing, args.success, args.message);
 						}
@@ -260,7 +269,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 				if (denomination && denomination > 1) data.denomination = denomination.toString();
 
 				const orderId = await createOrder(
-					{ wallet: arProvider.wallet },
+					dependencies,
 					data,
 					(args: { processing: boolean; success: boolean; message: string }) => {
 						handleStatusUpdate(args.processing, !args.processing, args.success, args.message);

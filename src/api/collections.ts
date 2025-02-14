@@ -98,6 +98,7 @@ export async function getCollectionById(args: { id: string }): Promise<Collectio
 				dateCreated: response.DateCreated,
 				banner: response.Banner ?? DEFAULTS.banner,
 				thumbnail: response.Thumbnail ?? DEFAULTS.thumbnail,
+				activityProcess: response.ActivityProcess,
 			};
 
 			let assetIds: string[] = response.Assets;

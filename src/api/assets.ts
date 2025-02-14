@@ -144,7 +144,7 @@ export async function getAssetById(args: { id: string }): Promise<AssetDetailTyp
 			}
 
 			let assetOrderbook = null;
-			if (processState.OrderbookId) assetOrderbook = { id: processState.OrderbookId };
+			if (processState.Metadata?.OrderbookId) assetOrderbook = { id: processState.Metadata.OrderbookId };
 
 			return {
 				...structuredAsset,
@@ -198,6 +198,7 @@ export function structureAssets(gqlResponse: DefaultGQLResponseType): AssetType[
 		let title =
 			getTagValue(element.node.tags, TAGS.keys.title) ||
 			getTagValue(element.node.tags, TAGS.keys.name) ||
+			getTagValue(element.node.tags, 'Bootloader-Name') ||
 			formatAddress(element.node.id, false);
 
 		if (REFORMATTED_ASSETS[element.node.id]) title = REFORMATTED_ASSETS[element.node.id].title;
@@ -207,7 +208,9 @@ export function structureAssets(gqlResponse: DefaultGQLResponseType): AssetType[
 				id: element.node.id,
 				creator: getTagValue(element.node.tags, TAGS.keys.creator),
 				title: title,
-				description: getTagValue(element.node.tags, TAGS.keys.description),
+				description:
+					getTagValue(element.node.tags, TAGS.keys.description) ||
+					getTagValue(element.node.tags, 'Bootloader-Description'),
 				dateCreated: element.node.block
 					? element.node.block.timestamp * 1000
 					: element.node.timestamp

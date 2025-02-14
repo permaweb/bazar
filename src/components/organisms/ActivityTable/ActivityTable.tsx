@@ -47,7 +47,7 @@ export default function ActivityTable(props: IProps) {
 
 	React.useEffect(() => {
 		(async function () {
-			if (props.asset?.orderbook?.activityId) {
+			if (props.activityId || props.asset?.orderbook?.activityId) {
 				try {
 					let data: any = {};
 
@@ -61,7 +61,7 @@ export default function ActivityTable(props: IProps) {
 					}
 
 					const response = await readHandler({
-						processId: props.asset.orderbook.activityId,
+						processId: props.activityId ?? props.asset.orderbook.activityId,
 						action: 'Get-Activity',
 						data: data,
 					});
@@ -77,7 +77,7 @@ export default function ActivityTable(props: IProps) {
 				}
 			}
 		})();
-	}, [props.asset, props.assetIds, props.address, arProvider.profile]);
+	}, [props.activityId, props.asset, props.assetIds, props.address, arProvider.profile]);
 
 	React.useEffect(() => {
 		if (activityResponse) {
