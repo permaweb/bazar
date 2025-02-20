@@ -29,9 +29,9 @@ export default function AssetInfo(props: IProps) {
 
 	React.useEffect(() => {
 		(async function () {
-			if (props.asset && props.asset.creator && checkValidAddress(props.asset.creator)) {
+			if (props.asset && props.asset.data.creator && checkValidAddress(props.asset.data.creator)) {
 				try {
-					setCreator(await getProfileById({ profileId: props.asset.creator }));
+					setCreator(await getProfileById({ profileId: props.asset.data.creator }));
 				} catch (e: any) {
 					console.error(e);
 				}
@@ -40,19 +40,19 @@ export default function AssetInfo(props: IProps) {
 	}, [props.asset]);
 
 	function getLicenseValue(licenseKey: string) {
-		if (!props.asset || !props.asset?.metadata?.udl?.[licenseKey]) return null;
-		const licenseElement = props.asset.metadata.udl[licenseKey];
+		if (!props.asset || !props.asset.data.udl || !props.asset.data.udl[licenseKey]) return null;
+		const licenseElement = props.asset.data.udl[licenseKey];
 
 		if (typeof licenseElement === 'object') {
 			return (
 				<GS.DrawerContentDetail>
 					{licenseElement.value ? splitTagValue(licenseElement.value) : '-'}{' '}
-					{props.asset.metadata.udl.currency &&
+					{props.asset.data.udl.currency &&
 						currenciesReducer &&
-						currenciesReducer[props.asset.metadata.udl.currency] &&
-						currenciesReducer[props.asset.metadata.udl.currency].Logo &&
+						currenciesReducer[props.asset.data.udl.currency] &&
+						currenciesReducer[props.asset.data.udl.currency].Logo &&
 						/\d/.test(licenseElement.value) && (
-							<S.CurrencyIcon src={getTxEndpoint(currenciesReducer[props.asset.metadata.udl.currency].Logo)} />
+							<S.CurrencyIcon src={getTxEndpoint(currenciesReducer[props.asset.data.udl.currency].Logo)} />
 						)}
 				</GS.DrawerContentDetail>
 			);
@@ -64,11 +64,11 @@ export default function AssetInfo(props: IProps) {
 	}
 
 	function getLicense() {
-		if (props.asset && props.asset.metadata.license) {
+		if (props.asset && props.asset.data.license) {
 			let licenseDisplay: string | null = null;
 
 			Object.keys(LICENSES).forEach((license: string) => {
-				if (props.asset.metadata.license === LICENSES[license].address) {
+				if (props.asset.data.license === LICENSES[license].address) {
 					licenseDisplay = LICENSES[license].label;
 				}
 			});
@@ -78,16 +78,16 @@ export default function AssetInfo(props: IProps) {
 					<GS.DrawerContentLine>
 						<GS.DrawerContentHeader>{language.license}</GS.DrawerContentHeader>
 						{licenseDisplay ? (
-							<GS.DrawerContentLink href={getTxEndpoint(props.asset.metadata.license)} target={'_blank'}>
+							<GS.DrawerContentLink href={getTxEndpoint(props.asset.data.license)} target={'_blank'}>
 								{licenseDisplay}
 							</GS.DrawerContentLink>
 						) : (
-							<TxAddress address={props.asset.metadata.license} wrap={false} />
+							<TxAddress address={props.asset.data.license} wrap={false} />
 						)}
 					</GS.DrawerContentLine>
-					{props.asset.metadata.udl && (
+					{props.asset.data.udl && (
 						<>
-							{Object.keys(props.asset.metadata.udl).map((element: string, index: number) => {
+							{Object.keys(props.asset.data.udl).map((element: string, index: number) => {
 								return (
 									<GS.DrawerContentLine key={index}>
 										<GS.DrawerContentHeader>{getTagDisplay(element)}</GS.DrawerContentHeader>
@@ -113,9 +113,9 @@ export default function AssetInfo(props: IProps) {
 					icon={ASSETS.overview}
 					content={
 						<GS.DrawerContent>
-							<GS.DrawerHeader>{props.asset.name}</GS.DrawerHeader>
-							{props.asset.metadata?.description && (
-								<GS.DrawerContentDescription>{props.asset.metadata.description}</GS.DrawerContentDescription>
+							<GS.DrawerHeader>{props.asset.data.title}</GS.DrawerHeader>
+							{props.asset.data.description && (
+								<GS.DrawerContentDescription>{props.asset.data.description}</GS.DrawerContentDescription>
 							)}
 							{creator && (
 								<GS.DrawerContentFlex>
@@ -123,7 +123,7 @@ export default function AssetInfo(props: IProps) {
 										<GS.DrawerContentDetail>{language.createdBy}</GS.DrawerContentDetail>
 										<OwnerLine
 											owner={{
-												address: props.asset.creator,
+												address: props.asset.data.creator,
 												profile: creator,
 											}}
 											callback={null}
@@ -135,7 +135,7 @@ export default function AssetInfo(props: IProps) {
 					}
 				/>
 			</GS.DrawerWrapper>
-			{props.asset.metadata?.collectionId && checkValidAddress(props.asset.metadata.collectionId) && (
+			{props.asset.data.collectionId && checkValidAddress(props.asset.data.collectionId) && (
 				<GS.DrawerWrapper>
 					<Drawer
 						title={language.collection}
@@ -143,10 +143,10 @@ export default function AssetInfo(props: IProps) {
 						content={
 							<GS.DrawerContent>
 								<GS.DrawerContentDetail>
-									<Link to={URLS.collectionAssets(props.asset.metadata.collectionId)}>
-										{props.asset.metadata.collectionName
-											? cleanTagValue(props.asset.metadata.collectionName)
-											: props.asset.metadata.collectionId}
+									<Link to={URLS.collectionAssets(props.asset.data.collectionId)}>
+										{props.asset.data.collectionName
+											? cleanTagValue(props.asset.data.collectionName)
+											: props.asset.data.collectionId}
 									</Link>
 								</GS.DrawerContentDetail>
 							</GS.DrawerContent>
@@ -160,27 +160,35 @@ export default function AssetInfo(props: IProps) {
 					icon={ASSETS.provenance}
 					content={
 						<GS.DrawerContent>
-							{parseInt(props.asset.dateCreated) !== 0 && (
+							{props.asset.data.dateCreated !== 0 && (
 								<GS.DrawerContentLine>
 									<GS.DrawerContentHeader>{language.dateCreated}</GS.DrawerContentHeader>
-									<GS.DrawerContentDetail>{formatDate(props.asset.dateCreated, 'iso')}</GS.DrawerContentDetail>
+									<GS.DrawerContentDetail>{formatDate(props.asset.data.dateCreated, 'iso')}</GS.DrawerContentDetail>
 								</GS.DrawerContentLine>
 							)}
-							{parseInt(props.asset.metadata?.blockHeight ?? 0) !== 0 && (
+							{props.asset.data.blockHeight !== 0 && (
 								<GS.DrawerContentLine>
 									<GS.DrawerContentHeader>{language.blockHeight}</GS.DrawerContentHeader>
-									<GS.DrawerContentDetail>{formatCount(props.asset.metadata.blockHeight)}</GS.DrawerContentDetail>
+									<GS.DrawerContentDetail>
+										{formatCount(props.asset.data.blockHeight.toString())}
+									</GS.DrawerContentDetail>
 								</GS.DrawerContentLine>
 							)}
 							<GS.DrawerContentLine>
 								<GS.DrawerContentHeader>{language.transaction}</GS.DrawerContentHeader>
-								<TxAddress address={props.asset.id} wrap={false} />
+								<TxAddress address={props.asset.data.id} wrap={false} />
 							</GS.DrawerContentLine>
+							{props.asset.data.implementation && (
+								<GS.DrawerContentLine>
+									<GS.DrawerContentHeader>{language.implements}</GS.DrawerContentHeader>
+									<GS.DrawerContentDetail>{props.asset.data.implementation}</GS.DrawerContentDetail>
+								</GS.DrawerContentLine>
+							)}
 						</GS.DrawerContent>
 					}
 				/>
 			</GS.DrawerWrapper>
-			{props.asset.metadata?.license && (
+			{props.asset.data.license && (
 				<GS.DrawerWrapper>
 					<Drawer
 						title={language.assetRights}

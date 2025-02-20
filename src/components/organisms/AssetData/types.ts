@@ -1,6 +1,4 @@
-import { AssetDetailType } from '@permaweb/libs';
-
-import { AssetRenderType } from 'helpers/types';
+import { AssetDetailType, AssetRenderType } from 'helpers/types';
 
 export interface IProps {
 	asset: AssetDetailType;

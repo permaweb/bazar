@@ -2,19 +2,16 @@ import React from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import _ from 'lodash';
 
-import { AssetDetailType } from '@permaweb/libs';
-
 import { getAssetById, getAssetOrders, readHandler } from 'api';
 
 import { Loader } from 'components/atoms/Loader';
 import { Portal } from 'components/atoms/Portal';
 import { AssetData } from 'components/organisms/AssetData';
 import { DOM, URLS } from 'helpers/config';
-import { AssetViewType } from 'helpers/types';
+import { AssetDetailType, AssetViewType } from 'helpers/types';
 import { checkValidAddress } from 'helpers/utils';
 import * as windowUtils from 'helpers/window';
 import { useLanguageProvider } from 'providers/LanguageProvider';
-import { usePermawebProvider } from 'providers/PermawebProvider';
 
 import { AssetAction } from './AssetAction';
 import { AssetInfo } from './AssetInfo';
@@ -25,11 +22,10 @@ export default function Asset() {
 	const { id } = useParams();
 	const navigate = useNavigate();
 
-	const permawebProvider = usePermawebProvider();
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
 
-	const [asset, setAsset] = React.useState<(AssetDetailType & { orderbook?: any }) | null>(null); // TODO: Create asset orderbook type
+	const [asset, setAsset] = React.useState<AssetDetailType | null>(null);
 	const [loading, setLoading] = React.useState<boolean>(false);
 	const [toggleUpdate, setToggleUpdate] = React.useState<boolean>(false);
 	const [errorResponse, setErrorResponse] = React.useState<string | null>(null);
@@ -61,7 +57,7 @@ export default function Asset() {
 				const fetchUntilChange = async () => {
 					while (!assetFetched && tries < maxTries) {
 						try {
-							const fetchedAsset = await permawebProvider.libs.getAtomicAsset(id);
+							const fetchedAsset = await getAssetById({ id });
 							setAsset(fetchedAsset);
 
 							if (fetchedAsset !== null) {
