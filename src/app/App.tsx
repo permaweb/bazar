@@ -1,5 +1,4 @@
 import { lazy, Suspense } from 'react';
-import { useSelector } from 'react-redux';
 import { ReactSVG } from 'react-svg';
 
 import { Loader } from 'components/atoms/Loader';
@@ -7,7 +6,6 @@ import { Banner } from 'components/organisms/Banner';
 import { ASSETS, DOM, FLAGS } from 'helpers/config';
 import { Footer } from 'navigation/footer';
 import { Header } from 'navigation/Header';
-import { RootState } from 'store';
 
 import * as S from './styles';
 
@@ -18,14 +16,12 @@ const Routes = lazy(() =>
 );
 
 export default function App() {
-	const ucmReducer = useSelector((state: RootState) => state.ucmReducer);
-
 	return (
 		<>
 			<div id={DOM.loader} />
 			<div id={DOM.notification} />
 			<div id={DOM.overlay} />
-			{ucmReducer && !FLAGS.MAINTENANCE ? (
+			{!FLAGS.MAINTENANCE ? (
 				<Suspense fallback={<Loader />}>
 					<S.AppWrapper>
 						<Banner />
