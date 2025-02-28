@@ -87,11 +87,7 @@ export default function Stamps(props: IProps) {
 
 				let stamp: any = await stamps.stamp(props.txId);
 
-				let stampSuccess =
-					stamp?.Messages?.length > 0 &&
-					stamp.Messages[0].Tags.find((t: any) => {
-						return t.name === 'Result' && t.value === 'Success';
-					});
+				let stampSuccess = stamp?.Messages?.length > 0;
 
 				setLoading(false);
 

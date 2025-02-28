@@ -281,11 +281,7 @@ export default function AssetData(props: IProps) {
 					}
 					if (assetRender.contentType.includes('video')) {
 						if (!props.preview && props.autoLoad) {
-							return (
-								<S.Video controls onError={handleError}>
-									<source src={assetRender.url} type={assetRender.contentType} />
-								</S.Video>
-							);
+							return <S.Video src={assetRender.url} muted autoPlay loop onError={handleError} />;
 						} else {
 							return (
 								<S.Preview>
