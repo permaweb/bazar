@@ -189,10 +189,7 @@ export const ASSETS = {
 	zen,
 };
 
-export const AR_WALLETS = [
-	{ type: WalletEnum.wander, logo: ASSETS.wander },
-	{ type: WalletEnum.othent, logo: ASSETS.othent },
-];
+export const AR_WALLETS = [{ type: WalletEnum.wander, logo: ASSETS.wander }];
 
 export const DOM = {
 	loader: 'loader',
