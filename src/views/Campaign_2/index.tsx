@@ -81,7 +81,7 @@ export default function Campaign() {
 				try {
 					setPrimaryAsset({
 						id: MAIN_PROCESS,
-						name: config.Name,
+						name: config.Name ?? 'Platinum DumDum',
 						cover: config.Cover,
 						info: config.Info,
 						claimRedirect: null,
