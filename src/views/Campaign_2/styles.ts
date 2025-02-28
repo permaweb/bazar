@@ -148,7 +148,12 @@ export const Subheader = styled.div`
 	}
 
 	a {
+		color: ${(props) => props.theme.colors.font.light1};
 		text-decoration: underline;
+
+		&:hover {
+			color: ${(props) => props.theme.colors.font.light2};
+		}
 	}
 `;
 
