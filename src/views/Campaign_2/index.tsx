@@ -136,7 +136,7 @@ export default function Campaign() {
 				}
 			}
 		})();
-	}, [arProvider.walletAddress, arProvider.profile]);
+	}, [arProvider.walletAddress, arProvider.profile, toggleClaimCheck]);
 
 	React.useEffect(() => {
 		(async function () {
@@ -423,17 +423,22 @@ export default function Campaign() {
 
 	const notification = React.useMemo(() => {
 		if (claimNotification) {
+			const isMainAsset = claimNotification.assetId === MAIN_PROCESS;
 			return (
 				<Modal header={null} handleClose={() => setClaimNotification(null)}>
-					<S.MWrapper className={'fade-in'} primaryAsset={claimNotification.assetId === MAIN_PROCESS}>
+					<S.MWrapper className={'fade-in'} primaryAsset={isMainAsset}>
 						<S.MContentWrapper>
 							<S.AssetTextWrapper>
 								<p>Congratulations!</p>
 								<span>You've unlocked</span>
 							</S.AssetTextWrapper>
-							<img src={getTxEndpoint(claimNotification.assetId)} alt={'Atomic Asset'} />
+							{isMainAsset ? (
+								<video src={getTxEndpoint(primaryAsset.id)} muted autoPlay loop />
+							) : (
+								<img src={getTxEndpoint(claimNotification.assetId)} alt={'Atomic Asset'} />
+							)}
 							<S.AssetTextWrapper>
-								<span>{getAssetName(claimNotification.assetId, claimNotification.assetId === MAIN_PROCESS)}</span>
+								<span>{getAssetName(claimNotification.assetId, isMainAsset)}</span>
 							</S.AssetTextWrapper>
 						</S.MContentWrapper>
 						<S.MActionWrapper>
