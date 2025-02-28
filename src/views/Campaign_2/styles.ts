@@ -31,10 +31,6 @@ export const Header = styled.div`
 	align-items: center;
 	position: relative;
 	z-index: 1;
-
-	img {
-		width: 70%;
-	}
 `;
 
 export const HeaderMain = styled.div`
@@ -44,11 +40,23 @@ export const HeaderMain = styled.div`
 
 	h1 {
 		color: ${(props) => props.theme.colors.font.light1};
+		text-shadow: 0 0 5px ${ACCENT_COLOR};
+	}
+
+	h1 {
+		color: #ffffff;
+		font-weight: 900;
+		text-transform: uppercase;
+		font-size: 3rem;
+		text-align: center;
+
+		text-shadow: -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff, -2px -2px 0 gray, 2px -2px 0 gray,
+			-2px 2px 0 gray, 2px 2px 0 gray, 0 0 5px #5af650, 0 0 10px #5af650, 0 0 15px #5af650, 0 0 20px #5af650;
 	}
 `;
 
 export const ViewAction = styled.div`
-	margin: 75px 0 0 0;
+	margin: 35px 0 0 0;
 	position: relative;
 	z-index: 1;
 	button {
@@ -138,6 +146,10 @@ export const Subheader = styled.div`
 		font-family: ${(props) => props.theme.typography.family.alt1};
 		text-align: center;
 	}
+
+	a {
+		text-decoration: underline;
+	}
 `;
 
 export const ProfileWrapper = styled.div<{ active: boolean }>`
@@ -156,8 +168,9 @@ export const ProfileWrapper = styled.div<{ active: boolean }>`
 	span {
 		color: ${ACCENT_COLOR};
 		font-weight: ${(props) => props.theme.typography.weight.bold};
-		font-size: ${(props) => props.theme.typography.size.xLg};
+		font-size: ${(props) => props.theme.typography.size.lg};
 		font-family: ${(props) => props.theme.typography.family.alt1};
+		text-align: center;
 	}
 
 	&:hover {
@@ -342,6 +355,7 @@ export const PrimaryAssetAction = styled(GridElementAction)`
 `;
 
 export const AssetTextWrapper = styled.div`
+	max-width: 100%;
 	display: flex;
 	flex-direction: column;
 	justify-content: center;
@@ -411,11 +425,12 @@ export const MWrapper = styled.div<{ primaryAsset: boolean }>`
 	);
 	border: 1.5px solid #1fd014;
 	border-radius: ${STYLING.dimensions.radius.primary};
-	img {
+	img,
+	video {
 		width: 100%;
 		border: 1.5px solid #1fd014;
 		box-shadow: 0px 0px 10px 3.5px #5af650;
-		border-radius: ${(props) => (props.primaryAsset ? '0' : '12.5px')};
+		border-radius: 12.5px;
 	}
 `;
 
@@ -494,14 +509,14 @@ export const Footer = styled.div`
 	flex-direction: column;
 	align-items: center;
 	justify-content: center;
-	margin: 40px 0 0 0;
+	margin: 60px 0 0 0;
 	position: relative;
 	z-index: 1;
 
 	p {
 		line-height: 1.55;
 		max-width: 800px;
-		color: ${(props) => props.theme.colors.font.light1};
+		color: ${(props) => props.theme.colors.font.light2};
 		font-size: ${(props) => props.theme.typography.size.base};
 		font-weight: ${(props) => props.theme.typography.weight.medium};
 		font-family: ${(props) => props.theme.typography.family.alt1};

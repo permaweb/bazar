@@ -154,29 +154,29 @@ export default function Banner() {
 		})();
 	}, [arProvider.walletAddress, arProvider.profile]);
 
-	React.useEffect(() => {
-		(async function () {
-			setShowVouch(false);
-			if (arProvider.vouch) {
-				if (!arProvider.vouch.isVouched) {
-					setShowVouch(true);
-				}
-			}
-		})();
-	}, [arProvider.vouch, arProvider.walletAddress]);
+	// React.useEffect(() => {
+	// 	(async function () {
+	// 		setShowVouch(false);
+	// 		if (arProvider.vouch) {
+	// 			if (!arProvider.vouch.isVouched) {
+	// 				setShowVouch(true);
+	// 			}
+	// 		}
+	// 	})();
+	// }, [arProvider.vouch, arProvider.walletAddress]);
 
-	React.useEffect(() => {
-		(async function () {
-			if (arProvider.vouch) {
-				if (!arProvider.vouch.isVouched) {
-					if (!localStorage.getItem('vouchAlert')) {
-						setShowVouchAlert(true);
-						localStorage.setItem('vouchAlert', 'true');
-					}
-				}
-			}
-		})();
-	}, [arProvider.vouch, arProvider.walletAddress, showVouch]);
+	// React.useEffect(() => {
+	// 	(async function () {
+	// 		if (arProvider.vouch) {
+	// 			if (!arProvider.vouch.isVouched) {
+	// 				if (!localStorage.getItem('vouchAlert')) {
+	// 					setShowVouchAlert(true);
+	// 					localStorage.setItem('vouchAlert', 'true');
+	// 				}
+	// 			}
+	// 		}
+	// 	})();
+	// }, [arProvider.vouch, arProvider.walletAddress, showVouch]);
 
 	async function handleUpdate() {
 		if (arProvider.wallet && arProvider.profile && arProvider.profile.id) {
@@ -278,7 +278,7 @@ export default function Banner() {
 					</S.MWrapper>
 				</Modal>
 			)}
-			{showVouch && showVouchAlert && (
+			{/* {showVouch && showVouchAlert && (
 				<Modal header={'You are not vouched!'} handleClose={() => setShowVouchAlert(false)}>
 					<S.MWrapper className={'modal-wrapper'}>
 						<p>Bazar requires users to be vouched in order to earn PIXL and maintain their streaks.</p>
@@ -293,7 +293,7 @@ export default function Banner() {
 						</S.ActionsWrapper>
 					</S.MWrapper>
 				</Modal>
-			)}
+			)} */}
 			{showInfo && (
 				<Modal header={'AO Bazar'} handleClose={() => setShowInfo(false)}>
 					<S.MWrapper className={'modal-wrapper'}>

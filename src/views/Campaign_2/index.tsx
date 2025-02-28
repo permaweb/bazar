@@ -29,7 +29,7 @@ type AssetStateType = {
 const MAIN_PROCESS = 'paQoFK6zVdqjHSY_s-O0Hzu_HD50zOUAWk-WibMDe8g';
 
 const BRIDGE_DRIVE_VERSION_KEY = 'bridge-drive-version';
-const CURRENT_VERSION = '2.4';
+const CURRENT_VERSION = '2.5';
 const DRIVE_CONFIG_KEY = 'drive-config';
 
 export default function Campaign() {
@@ -54,7 +54,6 @@ export default function Campaign() {
 	React.useEffect(() => {
 		(async function () {
 			setCurrentView(null);
-			setFetching(true);
 			try {
 				let config: any;
 				const storedVersion = localStorage.getItem(BRIDGE_DRIVE_VERSION_KEY);
@@ -359,10 +358,14 @@ export default function Campaign() {
 			<S.Subheader>
 				<p>
 					The Dumdum trials are here! Unlock the Bronze, Silver, and Gold Dumdum to reveal the ultra-rare Platinum
-					Dumdum. A challenge fit for the ultimate collector. Are you up for it?
+					Dumdum. A challenge fit for the ultimate collector. Are you up for it? To complete the quest, you must open
+					this page in the{' '}
+					<a href={'https://wander.app'} target={'_blank'}>
+						Wander
+					</a>{' '}
+					wallet browser.
 				</p>
 				<S.ProfileWrapper onClick={action} active={active}>
-					<S.ProfileIndicator active={active} />
 					<span>{label}</span>
 				</S.ProfileWrapper>
 			</S.Subheader>
@@ -468,7 +471,6 @@ export default function Campaign() {
 							</S.ClaimsWrapper>
 						)}
 					</S.Header>
-					<S.Body>{body}</S.Body>
 					<S.ViewAction className={'fade-in'}>
 						<button
 							onClick={() => setCurrentView(currentView === 'SubSet' ? 'Main' : 'SubSet')}
@@ -487,22 +489,43 @@ export default function Campaign() {
 							</button>
 						</S.SyncAction>
 					)}
-					{/* <S.Footer>
+					<S.Body>{body}</S.Body>
+					<S.Footer>
+						<p>Official Rules</p>
+						<br />
 						<p>
-							· New DAI deposits and updated wAR balances may take up to 1 hour to trigger eligibility for these atomic
-							assets.
+							Quest Period: The ETHDenver Dumdum Quest begins on February 27 at 11:00 AM MST and ends on March 2 at
+							11:00 AM MST. It is open exclusively to participants of the ETHDenver conference. Entries received outside
+							this period will not be considered.
 						</p>
 						<br />
 						<p>
-							· The 5 relics of Omega Dumdum are non transferable (soulbound). However, the final Omega Dumdum atomic
-							asset is transferable and can be traded on Bazar.
+							How to Enter: During the Quest Period, participants can enter by completing the designated tasks on the
+							Bazar Quest page at the ETHDenver event. No purchase is necessary to enter. Limit one entry per
+							person/household.
 						</p>
 						<br />
 						<p>
-							· Persons in the US cannot participate in AO bridging and are therefore not eligible for these prizes, or
-							for AO bridging rewards.
+							Upon completing the tasks, participants must select the “Claim” button to receive the assets directly in
+							their profile. If a winner does not claim their prize before March 2 at 11:00 AM MST, the prize may be
+							forfeited and awarded to an alternate participant. No cash or other substitutions will be provided.
 						</p>
-					</S.Footer> */}
+						<br />
+						<p>
+							Dumdum Prize: All participants who complete the quest tasks will receive a Platinum Dumdum, with a total
+							of 5,000 available. The odds of receiving a Platinum Dumdum depend on the total number of eligible
+							participants during the Quest Period. The Bronze, Silver, and Gold Dumdum assets are non-transferable
+							(soulbound) and do not have financial value. The Platinum Dumdum atomic asset is transferable but does not
+							necessarily have financial value.
+						</p>
+						<br />
+						<p>
+							Sponsor Information: This Quest is sponsored by the Bazar team (Centigro LLC). Sponsor’s address: 435
+							Market ST Souderton, PA 18964. By participating in this Quest, entrants agree to be bound by these
+							Official Rules and the decisions of the Sponsor, which are final and binding in all matters related to the
+							Quest.
+						</p>
+					</S.Footer>
 				</S.Wrapper>
 				{showProfileManage && (
 					<Panel
