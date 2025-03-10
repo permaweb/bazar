@@ -1,6 +1,6 @@
 ## Create atomic assets
 
-Creating atomic assets isn't just about creating digital content; it's about empowering creators to take control of their creative works and create economic value on their own terms. By bringing your content fully onchain, with real-world rights, you're not just showcasing your creativity; you're creating a new internet economy that is owned by the creators and forever preserved on the Arweave network. You can start creating atomic assets with [Helix](https://helix.arweave.net/).
+Creating atomic assets isn't just about creating digital content; it's about empowering creators to take control of their creative works and create economic value on their own terms. By bringing your content fully onchain, with real-world rights, you're not just showcasing your creativity; you're creating a new internet economy that is owned by the creators and forever preserved on the Arweave network. You can start creating atomic assets with [Bazar Studio](https://studio_bazar.arweave.net/#/).
 
 #### Why create atomic assets?
 
@@ -28,4 +28,4 @@ Creators can also set the terms for how their content can be used with the Unive
 
 ###### Conclusion
 
-Atomic assets on Arweave are about building a fairer and freer internet where creators own and control their content. By creating with Bazar, you're contributing to a decentralized ecosystem where creators are empowered to monetize their creativity on their own terms, free from the constraints of traditional platforms and advertisers. So, why wait? [Create atomic assets](https://helix.arweave.net/) and join us in shaping the future of digital ownership and expression.
+Atomic assets on Arweave are about building a fairer and freer internet where creators own and control their content. By creating with Bazar, you're contributing to a decentralized ecosystem where creators are empowered to monetize their creativity on their own terms, free from the constraints of traditional platforms and advertisers. So, why wait? [Create atomic assets](https://studio_bazar.arweave.net/#/) and join us in shaping the future of digital ownership and expression.

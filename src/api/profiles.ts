@@ -1,9 +1,11 @@
 import AsyncLock from 'async-lock';
 
+import { connect } from '@permaweb/aoconnect';
+import AOProfile, { RegistryProfileType } from '@permaweb/aoprofile';
+
 import { readHandler } from 'api';
 
 import { AO } from 'helpers/config';
-import { ProfileType, RegistryProfileType } from 'helpers/types';
 import { store } from 'store';
 import * as profilesActions from 'store/profiles/actions';
 
@@ -13,134 +15,7 @@ const lock = new AsyncLock();
 
 let registryFetchQueue: Set<string> = new Set();
 
-export async function getProfileById(args: { profileId: string }): Promise<ProfileType | null> {
-	const emptyProfile = {
-		id: args.profileId,
-		walletAddress: null,
-		displayName: null,
-		username: null,
-		bio: null,
-		avatar: null,
-		banner: null,
-		version: null,
-	};
-
-	try {
-		const fetchedProfile = await readHandler({
-			processId: args.profileId,
-			action: 'Info',
-			data: null,
-		});
-
-		if (fetchedProfile) {
-			return {
-				id: args.profileId,
-				walletAddress: fetchedProfile.Owner || null,
-				displayName: fetchedProfile.Profile.DisplayName || null,
-				username: fetchedProfile.Profile.UserName || null,
-				bio: fetchedProfile.Profile.Description || null,
-				avatar: fetchedProfile.Profile.ProfileImage || null,
-				banner: fetchedProfile.Profile.CoverImage || null,
-				version: fetchedProfile.Profile.Version || null,
-				assets: fetchedProfile.Assets?.map((asset: { Id: string; Quantity: string }) => asset.Id) ?? [],
-			};
-		} else return emptyProfile;
-	} catch (e: any) {
-		throw new Error(e);
-	}
-}
-
-export async function getProfileByWalletAddress(args: { address: string }): Promise<ProfileType | null> {
-	const emptyProfile = {
-		id: null,
-		walletAddress: args.address,
-		displayName: null,
-		username: null,
-		bio: null,
-		avatar: null,
-		banner: null,
-		version: null,
-	};
-
-	try {
-		const userProfiles = store.getState().profilesReducer.userProfiles;
-
-		const profileLookup = await readHandler({
-			processId: AO.profileRegistry,
-			action: 'Get-Profiles-By-Delegate',
-			data: { Address: args.address },
-		});
-
-		let activeProfileId: string;
-		if (profileLookup && profileLookup.length > 0 && profileLookup[0].ProfileId) {
-			activeProfileId = profileLookup[0].ProfileId;
-		}
-
-		if (activeProfileId) {
-			const fetchedProfile = await readHandler({
-				processId: activeProfileId,
-				action: 'Info',
-				data: null,
-			});
-
-			if (fetchedProfile) {
-				const userProfile = {
-					id: activeProfileId,
-					walletAddress: fetchedProfile.Owner || null,
-					displayName: fetchedProfile.Profile.DisplayName || null,
-					username: fetchedProfile.Profile.UserName || null,
-					bio: fetchedProfile.Profile.Description || null,
-					avatar: fetchedProfile.Profile.ProfileImage || null,
-					banner: fetchedProfile.Profile.CoverImage || null,
-					version: fetchedProfile.Profile.Version || null,
-					assets: fetchedProfile.Assets?.map((asset: { Id: string; Quantity: string }) => asset.Id) ?? [],
-				};
-
-				const registryProfiles = store.getState().profilesReducer.registryProfiles;
-				const newProfile = { [args.address]: userProfile };
-
-				store.dispatch(
-					profilesActions.setProfiles({
-						...store.getState().profilesReducer,
-						userProfiles: { ...userProfiles, ...newProfile },
-						registryProfiles,
-					})
-				);
-
-				return userProfile;
-			} else return emptyProfile;
-		} else return emptyProfile;
-	} catch (e: any) {
-		throw new Error(e);
-	}
-}
-
-export async function getRegistryProfiles(args: { profileIds: string[] }): Promise<RegistryProfileType[]> {
-	try {
-		const metadataLookup = await readHandler({
-			processId: AO.profileRegistry,
-			action: 'Get-Metadata-By-ProfileIds',
-			data: { ProfileIds: args.profileIds },
-		});
-
-		if (metadataLookup && metadataLookup.length) {
-			return args.profileIds.map((profileId: string) => {
-				const profile = metadataLookup.find((profile: { ProfileId: string }) => profile.ProfileId === profileId);
-				return {
-					id: profile ? profile.ProfileId : profileId,
-					username: profile ? profile.Username : null,
-					avatar: profile ? profile.ProfileImage : null,
-					bio: profile ? profile.Description ?? null : null,
-					lastUpdate: Date.now(),
-				};
-			});
-		}
-
-		return [];
-	} catch (e: any) {
-		throw new Error(e);
-	}
-}
+const { getRegistryProfiles } = AOProfile.init({ ao: connect() });
 
 export function getExistingRegistryProfiles(ids: string[]): RegistryProfileType[] {
 	const profilesReducer = store.getState().profilesReducer;
@@ -165,7 +40,7 @@ export async function getAndUpdateRegistryProfiles(ids: string[]): Promise<Regis
 
 	const outdatedOrMissingProfileIds = ids.filter((id) => {
 		const profile = existingProfiles.find((profile) => profile.id === id);
-		return !profile || (profile.lastUpdate && Date.now() - profile.lastUpdate > REGISTRY_TTL);
+		return !profile || (profile.lastUpdate && Date.now() - Number(profile.lastUpdate) > REGISTRY_TTL);
 	});
 
 	if (outdatedOrMissingProfileIds.length > 0) {
@@ -229,8 +104,8 @@ export async function handleProfileRegistryCache(args: { profileIds: string[] })
 			const isCacheValid = Date.now() - lastUpdate < TTL_MS;
 
 			/*
-			The cache is too old, update all the profiles again
-		  */
+				The cache is too old, update all the profiles again
+		  	*/
 			if (!isCacheValid) {
 				const metadataLookup = await readHandler({
 					processId: AO.profileRegistry,
@@ -255,8 +130,8 @@ export async function handleProfileRegistryCache(args: { profileIds: string[] })
 					return {
 						id: profile?.ProfileId || id,
 						username: profile?.Username || null,
-						avatar: profile?.ProfileImage || null,
-						bio: profile?.Description ?? null,
+						thumbnail: profile?.ProfileImage || null,
+						description: profile?.Description ?? null,
 					};
 				});
 			}
@@ -279,8 +154,8 @@ export async function handleProfileRegistryCache(args: { profileIds: string[] })
 					return {
 						id: profile?.ProfileId || id,
 						username: profile?.Username || null,
-						avatar: profile?.ProfileImage || null,
-						bio: profile?.Description ?? null,
+						thumbnail: profile?.ProfileImage || null,
+						description: profile?.Description ?? null,
 					};
 				});
 			}
@@ -302,8 +177,8 @@ export async function handleProfileRegistryCache(args: { profileIds: string[] })
 					uniqueProfiles.push({
 						id: profile?.ProfileId,
 						username: profile?.Username || null,
-						avatar: profile?.ProfileImage || null,
-						bio: profile?.Description ?? null,
+						thumbnail: profile?.ProfileImage || null,
+						description: profile?.Description ?? null,
 					});
 				}
 				return uniqueProfiles;
@@ -323,8 +198,8 @@ export async function handleProfileRegistryCache(args: { profileIds: string[] })
 				return {
 					id: profile?.ProfileId || id,
 					username: profile?.Username || null,
-					avatar: profile?.ProfileImage || null,
-					bio: profile?.Description ?? null,
+					thumbnail: profile?.ProfileImage || null,
+					description: profile?.Description ?? null,
 				};
 			});
 		} catch (e: any) {

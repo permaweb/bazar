@@ -79,7 +79,7 @@ export const Alt1 = styled(Primary)`
 				? props.theme.colors.button.primary.active.border
 				: props.disabled
 				? props.theme.colors.button.primary.disabled.border
-				: props.theme.colors.button.primary.border};
+				: props.theme.colors.button.primary.active.border};
 	svg {
 		min-height: ${(props) => (props.dimensions ? `${props.dimensions.icon.toString()}px` : `24.5px`)};
 		min-width: ${(props) => (props.dimensions ? `${props.dimensions.icon.toString()}px` : `24.5px`)};

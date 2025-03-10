@@ -21,7 +21,7 @@ export default function Header() {
 	const paths: { path: string; label: string; target?: '_blank' }[] = [
 		{ path: URLS.collections, label: language.collections },
 		{ path: URLS.docs, label: language.learn },
-		{ path: REDIRECTS.helix, label: language.create, target: '_blank' },
+		{ path: REDIRECTS.bazarStudio, label: language.create, target: '_blank' },
 	];
 
 	const [panelOpen, setPanelOpen] = React.useState<boolean>(false);

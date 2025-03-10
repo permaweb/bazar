@@ -11,11 +11,11 @@ import { IProps } from './types';
 export default function Avatar(props: IProps) {
 	const [hasError, setHasError] = React.useState(false);
 
-	const hasImage = props.owner && props.owner.avatar && checkValidAddress(props.owner.avatar);
+	const hasImage = props.owner && props.owner.thumbnail && checkValidAddress(props.owner.thumbnail);
 
 	const avatar = React.useMemo(() => {
-		if (!hasError && props.owner && props.owner.avatar && checkValidAddress(props.owner.avatar)) {
-			return <img src={getTxEndpoint(props.owner.avatar)} onError={() => setHasError(true)} />;
+		if (!hasError && props.owner && props.owner.thumbnail && checkValidAddress(props.owner.thumbnail)) {
+			return <img src={getTxEndpoint(props.owner.thumbnail)} onError={() => setHasError(true)} />;
 		} else return <ReactSVG src={ASSETS.user} />;
 	}, [props.owner, hasError]);
 

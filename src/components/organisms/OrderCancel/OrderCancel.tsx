@@ -1,5 +1,7 @@
 import React from 'react';
 
+import Arweave from 'arweave';
+import { connect, createDataItemSigner } from '@permaweb/aoconnect';
 import { cancelOrder } from '@permaweb/ucm';
 
 import { Button } from 'components/atoms/Button';
@@ -26,9 +28,16 @@ export default function OrderCancel(props: IProps) {
 
 	async function handleOrderCancel() {
 		if (arProvider.wallet && arProvider.profile && arProvider.profile.id) {
+			const dependencies = {
+				ao: connect({ MODE: 'legacy' }),
+				arweave: Arweave.init({}),
+				signer: createDataItemSigner(arProvider.wallet),
+			};
+
 			setLoading(true);
 			try {
 				const cancelOrderId = await cancelOrder(
+					dependencies,
 					{
 						orderbookId: props.listing.orderbookId,
 						orderId: props.listing.id,
@@ -36,7 +45,6 @@ export default function OrderCancel(props: IProps) {
 						dominantToken: props.listing.token,
 						swapToken: props.listing.currency,
 					},
-					arProvider.wallet,
 					(args: { processing: boolean; success: boolean; message: string }) => {
 						console.log(args.message);
 					}
@@ -53,7 +61,8 @@ export default function OrderCancel(props: IProps) {
 				setCancelProcessed(false);
 				windowUtils.scrollTo(0, 0, 'smooth');
 			} catch (e: any) {
-				setResponse({ status: 'success', message: e.message ?? 'Error cancelling order' });
+				console.error(e);
+				setResponse({ status: 'warning', message: e.message ?? 'Error cancelling order' });
 			}
 			setLoading(false);
 		}

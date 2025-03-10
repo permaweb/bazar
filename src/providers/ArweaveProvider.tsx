@@ -1,14 +1,17 @@
 import React from 'react';
 import { useSelector } from 'react-redux';
-import { connect } from '@othent/kms';
+import { connect as othentConnect } from '@othent/kms';
 import * as Othent from '@othent/kms';
 
-import { getProfileByWalletAddress, getVouch, readHandler } from 'api';
+import { connect } from '@permaweb/aoconnect';
+import AOProfile, { ProfileType } from '@permaweb/aoprofile';
+
+import { getVouch, readHandler } from 'api';
 
 import { Modal } from 'components/molecules/Modal';
 import { AO, AR_WALLETS, REDIRECTS, WALLET_PERMISSIONS } from 'helpers/config';
 import { getARBalanceEndpoint } from 'helpers/endpoints';
-import { ProfileType, VouchType, WalletEnum } from 'helpers/types';
+import { VouchType, WalletEnum } from 'helpers/types';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 import { RootState } from 'store';
 
@@ -75,7 +78,7 @@ function WalletList(props: { handleConnect: any }) {
 					onClick={() => props.handleConnect(wallet.type)}
 					className={'border-wrapper-alt2'}
 				>
-					<img src={`${wallet.logo}`} alt={''} />
+					<S.WalletItemImageWrapper>{wallet.logo && <img src={`${wallet.logo}`} alt={''} />}</S.WalletItemImageWrapper>
 					<span>{wallet.type.charAt(0).toUpperCase() + wallet.type.slice(1)}</span>
 				</S.WalletListItem>
 			))}
@@ -92,6 +95,8 @@ function WalletList(props: { handleConnect: any }) {
 }
 
 export function ArweaveProvider(props: ArweaveProviderProps) {
+	const { getProfileByWalletAddress } = AOProfile.init({ ao: connect({ MODE: 'legacy' }) });
+
 	const profilesReducer = useSelector((state: RootState) => state.profilesReducer);
 
 	const languageProvider = useLanguageProvider();
@@ -280,17 +285,17 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 		}
 	}
 
-	async function handleConnect(walletType: WalletEnum.arConnect | WalletEnum.othent) {
+	async function handleConnect(walletType: WalletEnum.wander | WalletEnum.othent) {
 		let walletObj: any = null;
 		switch (walletType) {
-			case WalletEnum.arConnect:
+			case WalletEnum.wander:
 				handleArConnect();
 				break;
 			case WalletEnum.othent:
 				handleOthent();
 				break;
 			default:
-				if (window.arweaveWallet || walletType === WalletEnum.arConnect) {
+				if (window.arweaveWallet || walletType === WalletEnum.wander) {
 					handleArConnect();
 					break;
 				}
@@ -306,9 +311,9 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 					await global.window?.arweaveWallet?.connect(WALLET_PERMISSIONS as any);
 					setWalletAddress(await global.window.arweaveWallet.getActiveAddress());
 					setWallet(window.arweaveWallet);
-					setWalletType(WalletEnum.arConnect);
+					setWalletType(WalletEnum.wander);
 					setWalletModalVisible(false);
-					localStorage.setItem('walletType', WalletEnum.arConnect);
+					localStorage.setItem('walletType', WalletEnum.wander);
 				} catch (e: any) {
 					console.error(e);
 				}
@@ -318,7 +323,7 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 
 	async function handleOthent() {
 		try {
-			const othentConnection = await connect();
+			const othentConnection = await othentConnect();
 			const address = othentConnection.walletAddress;
 			setWallet(Othent);
 			setWalletAddress(address);
@@ -349,7 +354,7 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 			{walletModalVisible && (
 				<Modal header={language.connectWallet} handleClose={() => setWalletModalVisible(false)}>
 					<WalletList
-						handleConnect={(walletType: WalletEnum.arConnect | WalletEnum.othent) => handleConnect(walletType)}
+						handleConnect={(walletType: WalletEnum.wander | WalletEnum.othent) => handleConnect(walletType)}
 					/>
 				</Modal>
 			)}

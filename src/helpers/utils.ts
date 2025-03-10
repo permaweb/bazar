@@ -1,3 +1,5 @@
+import { RegistryProfileType } from '@permaweb/aoprofile';
+
 import {
 	AssetDetailType,
 	AssetOrderType,
@@ -6,7 +8,6 @@ import {
 	EntryOrderType,
 	OrderbookEntryType,
 	OwnerType,
-	RegistryProfileType,
 	StampsType,
 } from './types';
 

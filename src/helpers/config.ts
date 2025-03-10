@@ -58,6 +58,7 @@ import users from 'assets/users.svg';
 import video from 'assets/video.svg';
 import view from 'assets/view.svg';
 import wallet from 'assets/wallet.svg';
+import wander from 'assets/wander.png';
 import x from 'assets/x.svg';
 import zen from 'assets/zen.svg';
 
@@ -183,14 +184,12 @@ export const ASSETS = {
 	view,
 	video,
 	wallet,
+	wander,
 	x,
 	zen,
 };
 
-export const AR_WALLETS = [
-	{ type: WalletEnum.arConnect, logo: ASSETS.arconnect },
-	{ type: WalletEnum.othent, logo: ASSETS.othent },
-];
+export const AR_WALLETS = [{ type: WalletEnum.wander, logo: ASSETS.wander }];
 
 export const DOM = {
 	loader: 'loader',
@@ -321,7 +320,7 @@ export const REDIRECTS = {
 	github: `https://github.com/permaweb/bazar`,
 	x: `https://x.com/OurBazAR`,
 	discord: `https://discord.gg/weavers`,
-	helix: `https://helix.arweave.net`,
+	bazarStudio: `https://studio_bazar.arweave.net`,
 	aox: `https://aox.arweave.net`,
 	arconnect: `https://arconnect.io`,
 	warDepot: `https://wardepot.arweave.net`,

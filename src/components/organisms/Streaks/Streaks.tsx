@@ -12,7 +12,7 @@ import { Loader } from 'components/atoms/Loader';
 import { OwnerLine } from 'components/molecules/OwnerLine';
 import { Panel } from 'components/molecules/Panel';
 import { AO, ASSETS, URLS } from 'helpers/config';
-import { RegistryProfileType, StreakType } from 'helpers/types';
+import { StreakType } from 'helpers/types';
 import { formatAddress, formatCount, getTotalTokenBalance } from 'helpers/utils';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
@@ -89,7 +89,7 @@ export default function Streaks(props: IProps) {
 					const profiles = await getAndUpdateRegistryProfiles(addresses);
 					const updatedStreakGroup = streakGroups[streakCursor].map((streak: any) => ({
 						...streak,
-						profile: profiles ? profiles.find((profile: RegistryProfileType) => profile.id === streak.address) : null,
+						profile: profiles ? profiles.find((profile: any) => profile.id === streak.address) : null,
 					}));
 
 					setStreaks((prevStreaks) => {
@@ -406,7 +406,7 @@ export default function Streaks(props: IProps) {
 
 	function getAction() {
 		return (
-			<S.Action onClick={handleShowDropdown} className={'border-wrapper-alt2'}>
+			<S.Action onClick={handleShowDropdown} className={'border-wrapper-primary'}>
 				{label}
 			</S.Action>
 		);

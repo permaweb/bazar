@@ -194,7 +194,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 	async function handleSubmit() {
 		if (props.asset && arProvider.wallet && arProvider.profile?.id) {
 			const dependencies = {
-				ao: connect(),
+				ao: connect({ MODE: 'legacy' }),
 				arweave: Arweave.init({}),
 				signer: createDataItemSigner(arProvider.wallet),
 			};
@@ -203,12 +203,14 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 			if (!currentOrderbook) {
 				try {
+					const args: any = { assetId: props.asset.data.id };
+					if (props.asset.data.collectionId) args.collectionId = props.asset.data.collectionId;
+
+					console.log(args);
+
 					const newOrderbook = await createOrderbook(
 						dependencies,
-						{
-							assetId: props.asset.data.id,
-							collectionId: 'gbi_NxzbalC-Rv9hluWIBghSBpm2iN2u7mfm7S1K5M0', // TODO: Add collection id
-						},
+						args,
 						(args: { processing: boolean; success: boolean; message: string }) => {
 							handleStatusUpdate(args.processing, !args.processing, args.success, args.message);
 						}

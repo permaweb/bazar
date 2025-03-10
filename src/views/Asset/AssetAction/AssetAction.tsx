@@ -18,7 +18,7 @@ import { OrderCancel } from 'components/organisms/OrderCancel';
 import { Stamps } from 'components/organisms/Stamps';
 import { ASSETS, STYLING } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
-import { ListingType, OwnerType, RegistryProfileType } from 'helpers/types';
+import { ListingType, OwnerType } from 'helpers/types';
 import { formatCount, formatPercentage, getOwners, sortOrders } from 'helpers/utils';
 import * as windowUtils from 'helpers/window';
 import { useAppProvider } from 'providers/AppProvider';
@@ -145,7 +145,7 @@ export default function AssetAction(props: IProps) {
 						},
 					};
 
-					let profiles: RegistryProfileType[] = await getAndUpdateRegistryProfiles(addressGroups[ownersCursor]);
+					let profiles: any[] = await getAndUpdateRegistryProfiles(addressGroups[ownersCursor]);
 					let owners = getOwners(asset, profiles);
 
 					if (owners) {
@@ -179,13 +179,11 @@ export default function AssetAction(props: IProps) {
 					}))
 				);
 
-				let profiles: RegistryProfileType[] = await getAndUpdateRegistryProfiles(
-					sortedOrders.map((order: any) => order.creator)
-				);
+				let profiles: any[] = await getAndUpdateRegistryProfiles(sortedOrders.map((order: any) => order.creator));
 				const mappedListings = sortedOrders.map((order: any) => {
 					let currentProfile = null;
 					if (profiles) {
-						currentProfile = profiles.find((profile: RegistryProfileType) => profile.id === order.creator);
+						currentProfile = profiles.find((profile: any) => profile.id === order.creator);
 					}
 
 					const currentListing = {

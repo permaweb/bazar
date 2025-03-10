@@ -1,6 +1,6 @@
+import localForage from 'localforage';
 import { applyMiddleware, combineReducers, compose, legacy_createStore as createStore } from 'redux';
 import { persistReducer, persistStore } from 'redux-persist';
-import storage from 'redux-persist/lib/storage';
 import thunk from 'redux-thunk';
 
 import { collectionsReducer } from './collections/reducers';
@@ -14,7 +14,7 @@ declare const window: any;
 
 const persistConfig = {
 	key: 'root',
-	storage,
+	storage: localForage,
 	blacklist: [],
 };
 

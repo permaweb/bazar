@@ -122,8 +122,9 @@ export async function getAssetById(args: { id: string }): Promise<AssetDetailTyp
 						Object.entries(processState.Balances).filter(([_, value]) => Number(value) !== 0)
 					) as any;
 				}
+				console.log(processState);
 				if (processState.Transferable !== undefined) {
-					assetState.transferable = processState.Transferable;
+					assetState.transferable = processState.Transferable.toString() === 'true';
 				} else {
 					assetState.transferable = true;
 				}
@@ -143,8 +144,11 @@ export async function getAssetById(args: { id: string }): Promise<AssetDetailTyp
 				}
 			}
 
+			if (processState.Metadata?.CollectionId) structuredAsset.data.collectionId = processState.Metadata.CollectionId;
+
 			let assetOrderbook = null;
 			if (processState.Metadata?.OrderbookId) assetOrderbook = { id: processState.Metadata.OrderbookId };
+			else assetOrderbook = { id: AO.ucm, activityId: AO.ucmActivity };
 
 			return {
 				...structuredAsset,
@@ -196,6 +200,7 @@ export function structureAssets(gqlResponse: DefaultGQLResponseType): AssetType[
 
 	gqlResponse.data.forEach((element: GQLNodeResponseType) => {
 		let title =
+			getTagValue(element.node.tags, 'Bootloader-Name') ||
 			getTagValue(element.node.tags, TAGS.keys.title) ||
 			getTagValue(element.node.tags, TAGS.keys.name) ||
 			getTagValue(element.node.tags, 'Bootloader-Name') ||

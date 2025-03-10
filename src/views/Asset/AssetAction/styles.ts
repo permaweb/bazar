@@ -31,7 +31,7 @@ export const HeaderTitle = styled.div`
 	}
 
 	@media (max-width: ${STYLING.cutoffs.tablet}) {
-		flex-wrap: wrap;
+		flex-direction: column;
 	}
 `;
 

@@ -1,8 +1,8 @@
 import React from 'react';
+import Permaweb from '@permaweb/libs';
 
 import Arweave from 'arweave';
 import { connect, createDataItemSigner } from '@permaweb/aoconnect';
-import Permaweb from '@permaweb/libs';
 
 import { useArweaveProvider } from './ArweaveProvider';
 
@@ -24,7 +24,7 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 	const [libs, setLibs] = React.useState<any>(null);
 
 	React.useEffect(() => {
-		const dependencies: any = { ao: connect(), arweave: Arweave.init({}) };
+		const dependencies: any = { ao: connect({ MODE: 'legacy' }), arweave: Arweave.init({}) };
 		if (arProvider.wallet) {
 			dependencies.signer = createDataItemSigner(arProvider.wallet);
 		}

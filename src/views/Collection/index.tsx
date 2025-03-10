@@ -1,7 +1,10 @@
 import React from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
-import { getCollectionById, getProfileById } from 'api';
+import { connect } from '@permaweb/aoconnect';
+import AOProfile from '@permaweb/aoprofile';
+
+import { getCollectionById } from 'api';
 
 import { CurrencyLine } from 'components/atoms/CurrencyLine';
 import { Loader } from 'components/atoms/Loader';
@@ -21,7 +24,11 @@ import * as S from './styles';
 
 const MAX_DESCRIPTION_LENGTH = 50;
 
+// TODO: Listing index in collection process
+// TODO: Get activity from collection activity
 export default function Collection() {
+	const { getProfileById } = AOProfile.init({ ao: connect({ MODE: 'legacy' }) });
+
 	const { id, active } = useParams();
 	const navigate = useNavigate();
 
@@ -69,8 +76,8 @@ export default function Collection() {
 							walletAddress: null,
 							displayName: null,
 							username: null,
-							bio: null,
-							avatar: null,
+							description: null,
+							thumbnail: null,
 							banner: null,
 							version: null,
 						},

@@ -1,12 +1,12 @@
 import React from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
-import { getProfileById } from 'api';
+import { connect } from '@permaweb/aoconnect';
+import AOProfile, { ProfileType } from '@permaweb/aoprofile';
 
 import { Loader } from 'components/atoms/Loader';
 import { URLTabs } from 'components/molecules/URLTabs';
 import { ASSETS, URLS } from 'helpers/config';
-import { ProfileType } from 'helpers/types';
 import { checkValidAddress } from 'helpers/utils';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 
@@ -15,7 +15,10 @@ import { ProfileAssets } from './ProfileAssets';
 import { ProfileCollections } from './ProfileCollections';
 import { ProfileHeader } from './ProfileHeader';
 
+// TODO: Profile listings / activity
 export default function Profile() {
+	const { getProfileById } = AOProfile.init({ ao: connect({ MODE: 'legacy' }) });
+
 	const navigate = useNavigate();
 
 	const { address, active } = useParams();

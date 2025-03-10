@@ -1,3 +1,5 @@
+import { ProfileType, RegistryProfileType } from '@permaweb/aoprofile';
+
 export type EntryOrderType = {
 	DepositTxId: string;
 	DateCreated: string;
@@ -86,26 +88,6 @@ export type AssetDetailType = AssetType & {
 		activityId?: string;
 		orders?: AssetOrderType[];
 	};
-};
-
-export type ProfileType = {
-	id: string;
-	walletAddress: string;
-	displayName: string | null;
-	username: string | null;
-	bio: string | null;
-	avatar: string | null;
-	banner: string | null;
-	version: string | null;
-	assets?: string[];
-};
-
-export type RegistryProfileType = {
-	id: string;
-	avatar: string | null;
-	username: string;
-	bio?: string;
-	lastUpdate?: number;
 };
 
 export type OwnerType = {
@@ -203,7 +185,7 @@ export type DefaultGQLResponseType = {
 export type BatchAGQLResponseType = { [queryKey: string]: DefaultGQLResponseType };
 
 export enum WalletEnum {
-	arConnect = 'arConnect',
+	wander = 'wander',
 	othent = 'othent',
 }
 

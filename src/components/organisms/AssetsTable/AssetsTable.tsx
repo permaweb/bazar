@@ -201,7 +201,7 @@ export default function AssetsTable(props: IProps) {
 				const data: any = {
 					DisplayName: arProvider.profile.displayName,
 					UserName: arProvider.profile.username,
-					Description: arProvider.profile.bio,
+					Description: arProvider.profile.description,
 					CoverImage: arProvider.profile.banner,
 					ProfileImage: asset.data.id,
 				};
@@ -314,9 +314,11 @@ export default function AssetsTable(props: IProps) {
 																	<p>{asset.data.title}</p>
 																</S.Title>
 															</S.FlexElement>
-															<S.FlexElement>
-																<S.Listings>{getListing(asset)}</S.Listings>
-															</S.FlexElement>
+															{!props.noListings && (
+																<S.FlexElement>
+																	<S.Listings>{getListing(asset)}</S.Listings>
+																</S.FlexElement>
+															)}
 														</S.AssetsListSectionElement>
 													);
 												})}
@@ -377,7 +379,7 @@ export default function AssetsTable(props: IProps) {
 														<S.Description>
 															<p>{asset.data.description || asset.data.title}</p>
 														</S.Description>
-														<S.Listings>{getListing(asset)}</S.Listings>
+														{!props.noListings && <S.Listings>{getListing(asset)}</S.Listings>}
 													</S.AssetGridInfoWrapper>
 												</S.AssetGridBottomWrapper>
 											</S.AssetGridElement>

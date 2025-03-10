@@ -21,8 +21,6 @@ Collections allow you to create your own custom branding with a header image, th
 
 When uploading content to your collection, ensure you name the assets, provide a description, and include tags that represent the style and theme you are sharing.
 
-When uploading, your assets will be displayed in the collection from newest to oldest. So, the first asset that you upload to Helix will display first in the collection.
-
 ###### Single atomic assets
 
 You can also upload as many single atomic assets as you’d like. These atomic assets are standalone and not part of a collection. The upload process is the same for single atomic assets, just without the collection page details.

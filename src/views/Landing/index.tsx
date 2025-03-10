@@ -3,12 +3,12 @@ import { useSelector } from 'react-redux';
 
 import { getCollections } from 'api';
 
-import { ActivityTable } from 'components/organisms/ActivityTable';
-import { AssetsTable } from 'components/organisms/AssetsTable';
+// import { ActivityTable } from 'components/organisms/ActivityTable';
+// import { AssetsTable } from 'components/organisms/AssetsTable';
 import { CollectionsCarousel } from 'components/organisms/CollectionsCarousel';
-import { OrderCountsTable } from 'components/organisms/OrderCountsTable';
+// import { OrderCountsTable } from 'components/organisms/OrderCountsTable';
 import { TrendingTokens } from 'components/organisms/TrendingTokens';
-import { PAGINATORS } from 'helpers/config';
+// import { PAGINATORS } from 'helpers/config';
 import { CollectionType } from 'helpers/types';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 import { RootState } from 'store';
@@ -45,17 +45,17 @@ export default function Landing() {
 		})();
 	}, [collectionsReducer?.stamped]);
 
-	const startDate = Math.floor(Date.now()) - 1 * 12 * 60 * 60 * 1000;
+	// const startDate = Math.floor(Date.now()) - 1 * 12 * 60 * 60 * 1000;
 
 	return (
 		<S.Wrapper className={'fade-in'}>
-			{/* <S.CollectionsWrapper>
+			<S.CollectionsWrapper>
 				<CollectionsCarousel collections={collections} loading={collectionsLoading} />
 			</S.CollectionsWrapper>
 			<S.TokensWrapper>
 				<TrendingTokens />
 			</S.TokensWrapper>
-			<S.ActivityWrapper>
+			{/* <S.ActivityWrapper>
 				<h4>{language.recentActivity}</h4>
 				<ActivityTable groupCount={15} startDate={startDate} />
 			</S.ActivityWrapper>

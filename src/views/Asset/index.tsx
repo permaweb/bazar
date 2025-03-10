@@ -7,7 +7,7 @@ import { getAssetById, getAssetOrders, readHandler } from 'api';
 import { Loader } from 'components/atoms/Loader';
 import { Portal } from 'components/atoms/Portal';
 import { AssetData } from 'components/organisms/AssetData';
-import { DOM, URLS } from 'helpers/config';
+import { AO, DOM, URLS } from 'helpers/config';
 import { AssetDetailType, AssetViewType } from 'helpers/types';
 import { checkValidAddress } from 'helpers/utils';
 import * as windowUtils from 'helpers/window';
@@ -91,19 +91,47 @@ export default function Asset() {
 			if (asset?.orderbook?.id) {
 				setLoading(true);
 				try {
-					const response = await readHandler({
-						processId: asset.orderbook.id,
-						action: 'Info',
-					});
+					if (asset.orderbook.id === AO.ucm) {
+						const response = await readHandler({
+							processId: asset.orderbook.id,
+							action: 'Get-Orderbook-By-Pair',
+							tags: [
+								{ name: 'DominantToken', value: asset.data.id },
+								{ name: 'SwapToken', value: AO.defaultToken },
+							],
+						});
 
-					setAsset((prevAsset) => ({
-						...prevAsset,
-						orderbook: {
-							...prevAsset.orderbook,
-							activityId: response?.ActivityProcess,
-							orders: getAssetOrders(response?.Orderbook?.[0]),
-						},
-					}));
+						if (response) {
+							setAsset((prevAsset) => ({
+								...prevAsset,
+								orderbook: {
+									...prevAsset.orderbook,
+									orders: response?.Orderbook ? getAssetOrders(response.Orderbook) : [],
+								},
+							}));
+						} else {
+							setAsset((prevAsset) => ({
+								...prevAsset,
+								orderbook: null,
+							}));
+						}
+					} else {
+						const response = await readHandler({
+							processId: asset.orderbook.id,
+							action: 'Info',
+						});
+
+						console.log(response);
+
+						setAsset((prevAsset) => ({
+							...prevAsset,
+							orderbook: {
+								...prevAsset.orderbook,
+								activityId: response?.ActivityProcess,
+								orders: getAssetOrders(response?.Orderbook?.[0]),
+							},
+						}));
+					}
 				} catch (e: any) {
 					console.error(e);
 				}

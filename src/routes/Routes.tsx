@@ -4,6 +4,7 @@ import { Route, Routes } from 'react-router-dom';
 import { URLS } from 'helpers/config';
 const Asset = getLazyImport('Asset');
 const Landing = getLazyImport('Landing');
+const Campaign = getLazyImport('Campaign_2');
 const Collection = getLazyImport('Collection');
 const Collections = getLazyImport('Collections');
 const Profile = getLazyImport('Profile');
@@ -52,6 +53,7 @@ export default function _Routes() {
 			<Route path={URLS.profile} element={<Profile />} />
 			<Route path={`${URLS.profile}:address`} element={<Profile />} />
 			<Route path={`${URLS.profile}:address/:active`} element={<Profile />} />
+			<Route path={URLS.quest} element={<Campaign />} />
 			<Route path={URLS.docs} element={<Docs />} />
 			<Route path={`${URLS.docs}:active/*`} element={<Docs />} />
 			<Route path={URLS.notFound} element={<NotFound />} />
