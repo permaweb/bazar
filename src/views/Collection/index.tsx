@@ -25,7 +25,6 @@ import * as S from './styles';
 const MAX_DESCRIPTION_LENGTH = 50;
 
 // TODO: Listing index in collection process
-// TODO: Get activity from collection activity
 export default function Collection() {
 	const { getProfileById } = AOProfile.init({ ao: connect({ MODE: 'legacy' }) });
 

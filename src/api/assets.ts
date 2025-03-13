@@ -148,7 +148,7 @@ export async function getAssetById(args: { id: string }): Promise<AssetDetailTyp
 
 			let assetOrderbook = null;
 			if (processState.Metadata?.OrderbookId) assetOrderbook = { id: processState.Metadata.OrderbookId };
-			else assetOrderbook = { id: AO.ucm, activityId: AO.ucmActivity };
+			// else assetOrderbook = { id: AO.ucm, activityId: AO.ucmActivity }; // TODO
 
 			return {
 				...structuredAsset,
