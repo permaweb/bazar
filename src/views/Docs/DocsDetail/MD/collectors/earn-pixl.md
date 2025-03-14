@@ -32,7 +32,7 @@ PIXL is a rewards token for purchasing atomic assets on the Universal Content Ma
 
 - UCM Fee: A 0.5% fee is collected for using the contract. **Bazar takes no fee.**
 
-- If $wAR token is involved: The contract uses the fee to purchase $PIXL from available orders. If no “Sell” orders exist, the contract initiates a “Buy” order via a reverse Dutch auction.
+- If $wAR token is involved: The contract uses the fee to purchase $PIXL from available orders.
 
 - Burning $PIXL: The $PIXL acquired through this process is burned, reducing the total supply. Higher trading volumes and marketplace fees lead to more tokens being bought and burned.
 

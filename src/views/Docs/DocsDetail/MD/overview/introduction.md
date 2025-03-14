@@ -8,7 +8,7 @@ Bazar is a user interface built on the Universal Content Marketplace (UCM) proto
 
 ###### Bazar does not take any fees
 
-Instead, UCM captures a 0.5% fee for using the contract. If the trade involves the $wAR token, the contract purchases PIXL with the fee. It buys available orders, and if no “Sell” orders exist, it initiates a “Buy” order via a reverse Dutch auction. PIXL tokens received from these purchases are burned. The higher the trading volumes and marketplace fees, the more tokens are bought and burned. Read more about PIXL Tokenomics here. [View the UCM source code here](https://github.com/permaweb/ao-ucm).
+Instead, UCM captures a 0.5% fee for using the contract. If the trade involves the $wAR token, the contract purchases available PIXL orders with the fee. PIXL tokens received from these purchases are burned. The higher the trading volumes and marketplace fees, the more tokens are bought and burned.
 
 #### Core Functionality
 
@@ -21,6 +21,6 @@ Instead, UCM captures a 0.5% fee for using the contract. If the trade involves t
 
 UCM and Bazar are currently in an **“early” release**, meaning they are considered functionally complete, though minor adjustments may still be necessary.
 
-Although AO is live on mainnet, Bazar is still running on AO testnet infrastructure until further notice. The Bazar team will provide updates on UCM/Bazar developments and the fair launch token to fund ongoing development.
+Although AO is live on mainnet, Bazar is still running on AO testnet infrastructure until further notice.
 
 For questions or technical issues, reach out on [X](https://x.com/OurBazAR) or the Bazar channel in the Weavers [Discord](https://discord.gg/weavers). Your feedback is always welcome as we continue improving the platform.
