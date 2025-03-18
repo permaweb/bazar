@@ -10,11 +10,13 @@ PIXL is a rewards token for purchasing atomic assets on the Universal Content Ma
 
 ###### Yearly Reward Distribution:
 
-- Year 1: 36,000 $PIXL per day
-- Year 2: 18,000 $PIXL per day
-- Year 3: 9,000 $PIXL per day
-- Year 4: 4,500 $PIXL per day
-- Year 5: 2,250 $PIXL per day
+PIXL launched on **August 2, 2023**, at [block height 1,232,228](https://viewblock.io/arweave/block/1232228). It follows a daily minting cycle with a halving mechanism, ensuring a gradual and predictable token distribution. Now that the remaining daily rewards allocation is **2,687,167.3528 PIXL**, this is the updated yearly rewards distribution.
+
+- **Year 1**: 7,360 PIXL per day
+- **Year 2**: 3,680 PIXL per day
+- **Year 3**: 1,840 PIXL per day
+- **Year 4**: 920 PIXL per day
+- **Year 5**: 460 PIXL per day
 
 ###### Reward Distribution Mechanism
 
