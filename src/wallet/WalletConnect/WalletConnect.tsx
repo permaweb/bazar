@@ -139,12 +139,24 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 									</div>
 								)}
 							</S.DNameWrapper>
-							<span onClick={() => handleDropdownAction(handleProfileAction)}>
-								{formatAddress(
-									arProvider.profile && arProvider.profile.id ? arProvider.profile.id : arProvider.walletAddress,
-									false
-								)}
-							</span>
+							<S.AddressWrapper>
+								<span onClick={() => handleDropdownAction(handleProfileAction)}>
+									{formatAddress(
+										arProvider.profile && arProvider.profile.id ? arProvider.profile.id : arProvider.walletAddress,
+										false
+									)}
+								</span>
+								<S.CopyIconWrapper
+									onClick={() =>
+										copyAddress(
+											arProvider.profile && arProvider.profile.id ? arProvider.profile.id : arProvider.walletAddress
+										)
+									}
+									title={copied ? language.copied : language.copyProfileId}
+								>
+									<ReactSVG src={ASSETS.copy} />
+								</S.CopyIconWrapper>
+							</S.AddressWrapper>
 						</S.DHeader>
 					</S.DHeaderFlex>
 				</S.DHeaderWrapper>
@@ -196,18 +208,6 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 					</li>
 				</S.DBodyWrapper>
 				<S.DBodyWrapper>
-					{arProvider.profile && arProvider.profile.id && (
-						<>
-							<li onClick={() => copyAddress(arProvider.profile.id)}>
-								<ReactSVG src={ASSETS.copy} />
-								{copied ? `${language.copied}!` : language.copyProfileId}
-							</li>
-							<li onClick={() => handleDropdownAction(() => setShowProfileManage(true))}>
-								<ReactSVG src={ASSETS.edit} />
-								{language.editProfile}
-							</li>
-						</>
-					)}
 					<li onClick={() => handleDropdownAction(handleProfileAction)}>
 						{arProvider.profile && arProvider.profile.id ? (
 							<>
@@ -221,6 +221,18 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 							</>
 						)}
 					</li>
+					{arProvider.profile && arProvider.profile.id && (
+						<>
+							<li onClick={() => copyAddress(arProvider.profile.id)}>
+								<ReactSVG src={ASSETS.copy} />
+								{copied ? `${language.copied}!` : language.copyProfileId}
+							</li>
+							<li onClick={() => handleDropdownAction(() => setShowProfileManage(true))}>
+								<ReactSVG src={ASSETS.edit} />
+								{language.editProfile}
+							</li>
+						</>
+					)}
 					<li onClick={handleToggleTheme}>
 						{themeProvider.current === 'light' ? (
 							<>

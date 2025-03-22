@@ -172,6 +172,50 @@ export const DHeader = styled.div`
 	}
 `;
 
+export const AddressWrapper = styled.div`
+	display: flex;
+	align-items: center;
+	gap: 5px;
+`;
+
+export const CopyIconWrapper = styled.div`
+	cursor: pointer;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	height: 16px;
+	width: 16px;
+	border-radius: 50%;
+	transition: all 150ms ease;
+
+	svg {
+		height: 12px;
+		width: 12px;
+		color: ${(props) => props.theme.colors.font.alt1};
+		fill: ${(props) => props.theme.colors.font.alt1};
+		transition: all 100ms;
+	}
+
+	&:hover {
+		background-color: ${(props) => props.theme.colors.container.primary.active};
+
+		svg {
+			color: ${(props) => props.theme.colors.font.primary};
+			fill: ${(props) => props.theme.colors.font.primary};
+		}
+	}
+
+	&:active {
+		background-color: ${(props) => props.theme.colors.border.alt4};
+		transform: scale(0.9);
+
+		svg {
+			color: ${(props) => props.theme.colors.font.primary};
+			fill: ${(props) => props.theme.colors.font.primary};
+		}
+	}
+`;
+
 export const DBodyWrapper = styled.ul`
 	width: 100%;
 	padding: 10px 7.5px;
