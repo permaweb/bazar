@@ -40,6 +40,16 @@ export const docsOrder = [
 		],
 	},
 	{
+		name: 'AOS Integration',
+		path: 'aos',
+		children: [
+			{
+				name: 'Commands Reference',
+				path: 'commands',
+			},
+		],
+	},
+	{
 		name: 'For collectors',
 		path: 'collectors',
 		children: [
