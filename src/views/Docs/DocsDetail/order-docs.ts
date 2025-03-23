@@ -40,6 +40,32 @@ export const docsOrder = [
 		],
 	},
 	{
+		name: 'For developers',
+		path: 'developers',
+		children: [
+			{
+				name: 'Universal Content Marketplace',
+				path: 'universal-content-marketplace',
+			},
+			{
+				name: 'Atomic Assets',
+				path: 'atomic-assets',
+			},
+			{
+				name: 'Collections',
+				path: 'collections',
+			},
+			{
+				name: 'AO Profile',
+				path: 'ao-profile',
+			},
+			{
+				name: 'Integrations',
+				path: 'integrations',
+			},
+		],
+	},
+	{
 		name: 'AOS Integration',
 		path: 'aos',
 		children: [
