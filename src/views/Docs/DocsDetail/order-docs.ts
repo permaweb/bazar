@@ -18,6 +18,24 @@ export const docsOrder = [
 		],
 	},
 	{
+		name: 'For collectors',
+		path: 'collectors',
+		children: [
+			{
+				name: 'How to fund your account',
+				path: 'how-to-fund',
+			},
+			{
+				name: 'How to collect',
+				path: 'how-to-collect',
+			},
+			{
+				name: 'How to earn PIXL',
+				path: 'earn-pixl',
+			},
+		],
+	},
+	{
 		name: 'For creators',
 		path: 'creators',
 		children: [
@@ -72,24 +90,6 @@ export const docsOrder = [
 			{
 				name: 'Commands Reference',
 				path: 'commands',
-			},
-		],
-	},
-	{
-		name: 'For collectors',
-		path: 'collectors',
-		children: [
-			{
-				name: 'How to fund your account',
-				path: 'how-to-fund',
-			},
-			{
-				name: 'How to collect',
-				path: 'how-to-collect',
-			},
-			{
-				name: 'How to earn PIXL',
-				path: 'earn-pixl',
 			},
 		],
 	},
