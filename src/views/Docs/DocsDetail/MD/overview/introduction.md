@@ -23,4 +23,4 @@ UCM and Bazar are currently in an **“early” release**, meaning they are cons
 
 Although AO is live on mainnet, Bazar is still running on AO testnet infrastructure until further notice.
 
-For questions or technical issues, reach out on [X](https://x.com/OurBazAR) or the Bazar channel in the Weavers [Discord](https://discord.gg/weavers). Your feedback is always welcome as we continue improving the platform.
+For questions or technical issues, reach out on [X](https://x.com/OurBazAR) or the Bazar channel in the Weavers [Discord](https://discord.gg/vS2fYJNucN). Your feedback is always welcome as we continue improving the platform.
