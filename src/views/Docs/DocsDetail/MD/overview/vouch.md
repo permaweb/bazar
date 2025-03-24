@@ -74,7 +74,7 @@ The Vouch Portal shows how many Vouch Points your wallet has. 2 points are requi
 
 If you need assistance with Vouch or Bazar, join the **Bazar Micro-Community** on Discord:
 
-1. Join the [Weavers Discord](https://discord.gg/weavers).
+1. Join the [Weavers Discord](https://discord.gg/vS2fYJNucN).
 2. Opt-in to the Bazar channel via **#opt-in**.
 3. Submit support tickets in **#eco-ticket**.
 
