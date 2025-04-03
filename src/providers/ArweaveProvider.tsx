@@ -2,6 +2,7 @@ import React from 'react';
 import { useSelector } from 'react-redux';
 import { connect as othentConnect } from '@othent/kms';
 import * as Othent from '@othent/kms';
+import { useWallet as useAOsyncWallet } from '@vela-ventures/aosync-sdk-react';
 
 import { connect } from '@permaweb/aoconnect';
 import AOProfile, { ProfileType } from '@permaweb/aoprofile';
@@ -115,6 +116,12 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 
 	const [profile, setProfile] = React.useState<ProfileType | null>(null);
 	const [toggleProfileUpdate, setToggleProfileUpdate] = React.useState<boolean>(false);
+	const {
+		isConnected: isAOsyncConnected,
+		connect: connectAOsync,
+		getAddress: aosyncGetAddress,
+		isSessionActive: aoSyncSessionActive,
+	} = useAOsyncWallet();
 
 	React.useEffect(() => {
 		handleWallet();
@@ -277,7 +284,7 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 		}
 	}
 
-	async function handleConnect(walletType: WalletEnum.wander | WalletEnum.othent) {
+	async function handleConnect(walletType: WalletEnum.wander | WalletEnum.othent | WalletEnum.beacon) {
 		let walletObj: any = null;
 		switch (walletType) {
 			case WalletEnum.wander:
@@ -285,6 +292,9 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 				break;
 			case WalletEnum.othent:
 				handleOthent();
+				break;
+			case WalletEnum.beacon:
+				handleAOsyncConnect();
 				break;
 			default:
 				if (window.arweaveWallet || walletType === WalletEnum.wander) {
@@ -294,6 +304,45 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 		}
 		setWalletModalVisible(false);
 		return walletObj;
+	}
+
+	React.useEffect(() => {
+		(async function () {
+			await checkAOsyncConnection();
+		})();
+	}, [isAOsyncConnected]);
+
+	async function checkAOsyncConnection() {
+		if (localStorage.getItem('walletType') === WalletEnum.beacon && !isAOsyncConnected) {
+			try {
+				setWallet(null);
+				setWalletAddress(null);
+				setProfile(null);
+				if (localStorage.getItem('walletType')) localStorage.removeItem('walletType');
+			} catch (error) {}
+		}
+	}
+
+	async function handleAOsyncConnect() {
+		if (!walletAddress) {
+			try {
+				const localItem = localStorage.getItem('walletType');
+				if (localItem !== WalletEnum.beacon) {
+					await connectAOsync();
+				}
+
+				if (aoSyncSessionActive || localItem !== WalletEnum.beacon) {
+					const walletAddress = await aosyncGetAddress();
+					setWalletAddress(walletAddress);
+					setWalletType(WalletEnum.beacon);
+					setWalletModalVisible(false);
+					localStorage.setItem('walletType', WalletEnum.beacon);
+					setWallet(window.arweaveWallet);
+				}
+			} catch (e: any) {
+				console.error(e);
+			}
+		}
 	}
 
 	async function handleArConnect() {
