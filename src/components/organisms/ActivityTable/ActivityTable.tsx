@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { ReactSVG } from 'react-svg';
 
 import { getAndUpdateRegistryProfiles, getAssetsByIds, readHandler } from 'api';
+import { getUserActivity } from 'api/activity';
 
 import { Button } from 'components/atoms/Button';
 import { CurrencyLine } from 'components/atoms/CurrencyLine';
@@ -11,7 +12,7 @@ import { IconButton } from 'components/atoms/IconButton';
 import { Select } from 'components/atoms/Select';
 import { OwnerLine } from 'components/molecules/OwnerLine';
 import { ACTIVITY_SORT_OPTIONS, AO, ASSETS, REDIRECTS, REFORMATTED_ASSETS, URLS } from 'helpers/config';
-import { RegistryProfileType, SelectOptionType } from 'helpers/types';
+import { SelectOptionType } from 'helpers/types';
 import { formatAddress, formatCount, formatDate, getRelativeDate, isFirefox } from 'helpers/utils';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
@@ -23,6 +24,15 @@ import * as S from './styles';
 import { IProps } from './types';
 
 const GROUP_COUNT = 50;
+
+// Define RegistryProfileType locally since it's not exported from helpers/types
+interface RegistryProfileType {
+	id: string;
+	name?: string;
+	handle?: string;
+	avatar?: string;
+	[key: string]: any;
+}
 
 export default function ActivityTable(props: IProps) {
 	const profilesReducer = useSelector((state: RootState) => state.profilesReducer);
@@ -48,34 +58,105 @@ export default function ActivityTable(props: IProps) {
 	React.useEffect(() => {
 		(async function () {
 			try {
-				let data: any = {};
+				setUpdating(true);
 
 				if (props.asset && props.asset.data) {
-					data.AssetIds = [props.asset.data.id];
+					// If we have a specific asset, use the UCM process
+					const response = await readHandler({
+						processId: AO.ucmActivity,
+						action: 'Get-Activity',
+						data: { AssetIds: [props.asset.data.id] },
+					});
+
+					if (response) setActivityResponse(response);
+					else {
+						setActivity([]);
+						setActivityGroup([]);
+						setActivityGroups([]);
+					}
+				} else if (props.address) {
+					// If we have an address, use the new gateway-based activity fetching
+					const userActivity = await getUserActivity(
+						props.address,
+						props.startDate ? new Date(props.startDate) : undefined,
+						props.endDate ? new Date(props.endDate) : undefined
+					);
+
+					// Format the response to match what the component expects
+					const formattedResponse = {
+						ListedOrders: userActivity.listedOrders.map((order) => ({
+							OrderId: order.orderId,
+							DominantToken: order.dominantToken,
+							SwapToken: order.swapToken,
+							Price: order.price,
+							Quantity: order.quantity,
+							Sender: order.sender,
+							Receiver: order.receiver,
+							Timestamp: order.timestamp,
+						})),
+						ExecutedOrders: userActivity.executedOrders.map((order) => ({
+							OrderId: order.orderId,
+							DominantToken: order.dominantToken,
+							SwapToken: order.swapToken,
+							Price: order.price,
+							Quantity: order.quantity,
+							Sender: order.sender,
+							Receiver: order.receiver,
+							Timestamp: order.timestamp,
+						})),
+						CancelledOrders: userActivity.cancelledOrders.map((order) => ({
+							OrderId: order.orderId,
+							DominantToken: order.dominantToken,
+							SwapToken: order.swapToken,
+							Price: order.price,
+							Quantity: order.quantity,
+							Sender: order.sender,
+							Receiver: order.receiver,
+							Timestamp: order.timestamp,
+						})),
+						DirectTransfers: userActivity.directTransfers
+							? userActivity.directTransfers.map((order) => ({
+									OrderId: order.orderId,
+									DominantToken: order.dominantToken,
+									SwapToken: order.swapToken,
+									Price: order.price,
+									Quantity: order.quantity,
+									Sender: order.sender,
+									Receiver: order.receiver,
+									Timestamp: order.timestamp,
+									IsDirectTransfer: true,
+							  }))
+							: [],
+					};
+
+					setActivityResponse(formattedResponse);
+				} else if (props.assetIds) {
+					// If we have asset IDs, use the UCM process
+					const response = await readHandler({
+						processId: AO.ucmActivity,
+						action: 'Get-Activity',
+						data: { AssetIds: props.assetIds },
+					});
+
+					if (response) setActivityResponse(response);
+					else {
+						setActivity([]);
+						setActivityGroup([]);
+						setActivityGroups([]);
+					}
 				} else {
-					if (props.assetIds) data.AssetIds = props.assetIds;
-					if (props.address) data.Address = props.address;
-					if (props.startDate) data.StartDate = props.startDate.toString();
-					if (props.endDate) data.EndDate = props.endDate.toString();
-				}
-
-				const response = await readHandler({
-					processId: AO.ucmActivity,
-					action: 'Get-Activity',
-					data: data,
-				});
-
-				if (response) setActivityResponse(response);
-				else {
 					setActivity([]);
 					setActivityGroup([]);
 					setActivityGroups([]);
 				}
+
+				setUpdating(false);
 			} catch (e: any) {
 				console.error(e);
+				setUpdating(false);
 			}
 		})();
-	}, [props.asset, props.assetIds, props.address, arProvider.profile]);
+	}, [props.asset, props.assetIds, props.address, props.startDate, props.endDate, arProvider.profile]);
 
 	React.useEffect(() => {
 		if (activityResponse) {
@@ -85,6 +166,9 @@ export default function ActivityTable(props: IProps) {
 				updatedActivity.push(...mapActivity(activityResponse.ExecutedOrders, 'Sale'));
 			if (activityResponse.CancelledOrders)
 				updatedActivity.push(...mapActivity(activityResponse.CancelledOrders, 'Unlisted'));
+			if (activityResponse.DirectTransfers)
+				updatedActivity.push(...mapActivity(activityResponse.DirectTransfers, 'Transfer'));
+
 			setActivity(updatedActivity);
 			if (updatedActivity.length <= 0) {
 				setActivityGroup([]);
@@ -122,44 +206,45 @@ export default function ActivityTable(props: IProps) {
 					const associatedAddresses = [];
 
 					if (currentGroup) {
+						// Get all unique addresses for profiles
 						associatedAddresses.push(...currentGroup.map((order: any) => order.sender));
 						associatedAddresses.push(...currentGroup.map((order: any) => order.receiver));
-
-						let associatedProfiles: RegistryProfileType[] | null = null;
 						const uniqueAddresses = [...new Set(associatedAddresses.filter((address) => address !== null))];
-						associatedProfiles = await getAndUpdateRegistryProfiles(uniqueAddresses);
 
-						if (associatedProfiles) {
-							currentGroup = currentGroup.map((order: any) => {
-								return {
-									...order,
-									senderProfile: associatedProfiles.find((profile: RegistryProfileType) => profile.id === order.sender),
-									receiverProfile: associatedProfiles.find(
-										(profile: RegistryProfileType) => profile.id === order.receiver
-									),
-								};
-							});
-						}
+						// Get all unique asset IDs
+						const uniqueAssetIds = [...new Set(currentGroup.map((order: any) => order.dominantToken))] as string[];
 
-						if (!props.asset) {
-							const uniqueAssetIds: any[] = [...new Set(currentGroup.map((order: any) => order.dominantToken))];
-							try {
-								const assets = await getAssetsByIds({
-									ids: uniqueAssetIds,
-									sortType: 'recently-listed',
-								});
-								if (assets && assets.length > 0) {
-									currentGroup = currentGroup.map((order: any) => {
-										return {
-											...order,
-											asset: assets.find((asset: any) => asset.data.id === order.dominantToken),
-										};
-									});
+						// Fetch profiles and assets in parallel
+						const [associatedProfiles, assets] = await Promise.all([
+							getAndUpdateRegistryProfiles(uniqueAddresses),
+							!props.asset
+								? getAssetsByIds({
+										ids: uniqueAssetIds,
+										sortType: 'recently-listed',
+								  })
+								: null,
+						]);
+
+						// Update the current group with profiles and assets
+						currentGroup = currentGroup.map((order: any) => {
+							const updatedOrder = {
+								...order,
+								senderProfile: associatedProfiles?.find((profile: RegistryProfileType) => profile.id === order.sender),
+								receiverProfile: associatedProfiles?.find(
+									(profile: RegistryProfileType) => profile.id === order.receiver
+								),
+							};
+
+							if (assets && assets.length > 0) {
+								const matchedAsset = assets.find((asset: any) => asset.data.id === order.dominantToken);
+								if (matchedAsset) {
+									// Keep the original asset data structure
+									updatedOrder.asset = matchedAsset;
 								}
-							} catch (e: any) {
-								console.error(e);
 							}
-						}
+
+							return updatedOrder;
+						});
 
 						setActivityGroup(currentGroup);
 						setUpdating(false);
@@ -170,7 +255,7 @@ export default function ActivityTable(props: IProps) {
 				}
 			}
 		})();
-	}, [activityGroups, activityCursor, props.address, profilesReducer?.registryProfiles]);
+	}, [activityGroups, activityCursor, props.address, props.asset, profilesReducer?.registryProfiles]);
 
 	const handleActivitySortType = React.useCallback((option: SelectOptionType) => {
 		setActivityGroup(null);
@@ -178,28 +263,36 @@ export default function ActivityTable(props: IProps) {
 		setActivitySortType(option);
 	}, []);
 
-	function mapActivity(orders: any, event: 'Listing' | 'Purchase' | 'Sale' | 'Unlisted') {
+	function mapActivity(orders: any, event: 'Listing' | 'Purchase' | 'Sale' | 'Unlisted' | 'Transfer') {
 		let updatedActivity = [];
 
 		if (orders && orders.length > 0) {
 			const mappedActivity = orders.map((order: any) => {
 				let orderEvent = event;
-				if (
-					(props.address && order.Receiver === props.address) ||
-					(arProvider && arProvider.profile && arProvider.profile.id && arProvider.profile.id === order.Receiver)
-				) {
-					orderEvent = 'Purchase';
+				if (event === 'Sale') {
+					if (
+						(props.address && order.Receiver === props.address) ||
+						(arProvider && arProvider.profile && arProvider.profile.id && arProvider.profile.id === order.Receiver)
+					) {
+						orderEvent = 'Purchase';
+					}
 				}
+
+				const price = parseInt(order.Price || '0', 10);
+				const quantity = parseInt(order.Quantity || '0', 10);
+				const timestamp = parseInt(order.Timestamp || '0', 10);
+
 				return {
 					orderId: order.OrderId,
 					dominantToken: order.DominantToken,
 					swapToken: order.SwapToken,
-					price: order.Price.toString(),
-					quantity: order.Quantity.toString(),
+					price: price,
+					quantity: quantity,
 					sender: order.Sender || null,
 					receiver: order.Receiver || null,
-					timestamp: order.Timestamp,
+					timestamp: timestamp,
 					event: orderEvent,
+					asset: null, // Will be populated later with asset data
 				};
 			});
 
@@ -210,13 +303,27 @@ export default function ActivityTable(props: IProps) {
 	}
 
 	function getDenominatedTokenValue(amount: number, assetId?: string) {
+		// Handle extremely large numbers
+		if (amount > 1e12) {
+			return formatCount((amount / 1e12).toString()) + 'T';
+		} else if (amount > 1e9) {
+			return formatCount((amount / 1e9).toString()) + 'B';
+		} else if (amount > 1e6) {
+			return formatCount((amount / 1e6).toString()) + 'M';
+		} else if (amount > 1e3) {
+			return formatCount((amount / 1e3).toString()) + 'K';
+		}
+
+		// Handle normal numbers with denomination
 		if (props.asset && props.asset.state && props.asset.state.denomination && props.asset.state.denomination > 1) {
 			const denomination = props.asset.state.denomination;
-			return `${formatCount((amount / Math.pow(10, denomination)).toString())}`;
+			return formatCount((amount / Math.pow(10, denomination)).toString());
 		} else if (assetId && REFORMATTED_ASSETS[assetId] && REFORMATTED_ASSETS[assetId].denomination) {
 			const denomination = REFORMATTED_ASSETS[assetId].denomination;
-			return `${formatCount((amount / Math.pow(10, denomination)).toString())}`;
-		} else return formatCount(amount.toString());
+			return formatCount((amount / Math.pow(10, denomination)).toString());
+		}
+
+		return formatCount(amount.toString());
 	}
 
 	const getPaginationAction = (callback: () => void) => {
@@ -319,11 +426,9 @@ export default function ActivityTable(props: IProps) {
 		return (
 			<S.TableWrapper className={'scroll-wrapper'}>
 				<S.TableHeader>
-					{!props.asset && (
-						<S.AssetWrapper>
-							<p>{language.asset}</p>
-						</S.AssetWrapper>
-					)}
+					<S.AssetWrapper>
+						<p>{language.asset}</p>
+					</S.AssetWrapper>
 					<S.EventWrapper>
 						<p>{language.event}</p>
 					</S.EventWrapper>
@@ -347,18 +452,25 @@ export default function ActivityTable(props: IProps) {
 					{activityGroup.map((row: any, index: number) => {
 						return (
 							<S.TableRow key={index}>
-								{!props.asset && row.asset && row.asset.data && (
-									<S.AssetWrapper>
-										<S.AssetDataWrapper>
-											<Link to={`${URLS.asset}${row.asset.data.id}`}>
-												<AssetData asset={row.asset} />
+								<S.AssetWrapper>
+									{row.asset && row.asset.data && (
+										<>
+											<S.AssetDataWrapper>
+												<Link to={`${URLS.asset}${row.dominantToken}`}>
+													<AssetData asset={row.asset} />
+												</Link>
+											</S.AssetDataWrapper>
+											<Link to={`${URLS.asset}${row.dominantToken}`}>
+												<p>{row.asset.data.title || formatAddress(row.dominantToken, false)}</p>
 											</Link>
-										</S.AssetDataWrapper>
-										<Link to={`${URLS.asset}${row.asset.data.id}`}>
-											<p>{row.asset.data.title || formatAddress(row.asset.data.id, false)}</p>
+										</>
+									)}
+									{!row.asset && (
+										<Link to={`${URLS.asset}${row.dominantToken}`}>
+											<p>{formatAddress(row.dominantToken, false)}</p>
 										</Link>
-									</S.AssetWrapper>
-								)}
+									)}
+								</S.AssetWrapper>
 								<S.EventWrapper>
 									<S.Event type={row.event} href={REDIRECTS.aoLink(row.orderId)} target="_blank">
 										<ReactSVG src={getEventIcon(row.event)} />

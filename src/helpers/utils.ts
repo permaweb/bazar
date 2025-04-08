@@ -126,7 +126,8 @@ export function formatDate(dateArg: string | number | null, dateType: DateType, 
 export function getRelativeDate(timestamp: number) {
 	if (!timestamp) return '-';
 	const currentDate = new Date();
-	const inputDate = new Date(timestamp);
+	// Arweave timestamps are in seconds, so multiply by 1000 to get milliseconds
+	const inputDate = new Date(timestamp * 1000);
 
 	const timeDifference: number = currentDate.getTime() - inputDate.getTime();
 	const secondsDifference = Math.floor(timeDifference / 1000);
