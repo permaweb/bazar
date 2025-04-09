@@ -34,6 +34,18 @@ interface RegistryProfileType {
 	[key: string]: any;
 }
 
+// Define common order type
+interface OrderType {
+	OrderId: string;
+	DominantToken: string;
+	SwapToken: string;
+	Sender: string;
+	Receiver: string | null;
+	Quantity: string;
+	Price: string;
+	Timestamp: string;
+}
+
 export default function ActivityTable(props: IProps) {
 	const profilesReducer = useSelector((state: RootState) => state.profilesReducer);
 
@@ -60,9 +72,29 @@ export default function ActivityTable(props: IProps) {
 			try {
 				setUpdating(true);
 
+				const getAssetActivityByAssetId = async ({
+					assetId,
+					processId = AO.ucmActivity,
+				}: {
+					assetId: string;
+					processId?: string;
+				}) => {
+					const response = await readHandler<{
+						ListedOrders: Array<OrderType>;
+						ExecutedOrders: Array<OrderType>;
+						CancelledOrders: Array<OrderType>;
+					}>({
+						processId,
+						action: 'Get-Activity',
+						data: { AssetIds: [assetId] },
+					});
+
+					return response;
+				};
+
 				if (props.asset && props.asset.data) {
 					// If we have a specific asset, use the UCM process
-					const response = await readHandler({
+					const response = await readHandler<{ [key: string]: number }>({
 						processId: AO.ucmActivity,
 						action: 'Get-Activity',
 						data: { AssetIds: [props.asset.data.id] },

@@ -387,12 +387,12 @@ export async function messageResults(args: {
 	}
 }
 
-export async function readHandler(args: {
+export async function readHandler<T extends { [key: string]: any }>(args: {
 	processId: string;
 	action: string;
 	tags?: TagType[];
 	data?: any;
-}): Promise<any> {
+}): Promise<T> {
 	const tags = [{ name: 'Action', value: args.action }];
 	if (args.tags) tags.push(...args.tags);
 	let data = JSON.stringify(args.data || {});
