@@ -23,7 +23,7 @@
 		"@fontsource/quantico": "^5.0.20",
 		"@irys/sdk": "^0.2.10",
 		"@othent/kms": "^1.0.7",
-		"@permaweb/aoconnect": "^0.0.78",
+		"@permaweb/aoconnect": "^0.0.79",
 		"@permaweb/aoprofile": "^0.0.11",
 		"@permaweb/libs": "^0.0.25",
 		"@permaweb/stampjs": "^1.0.4",

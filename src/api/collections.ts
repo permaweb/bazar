@@ -13,17 +13,27 @@ import { store } from 'store';
 import * as collectionActions from 'store/collections/actions';
 
 export async function getCollections(creator?: string, filterUnstamped?: boolean): Promise<CollectionType[]> {
-	const action = creator ? 'Get-Collections-By-User' : 'Get-Collections';
+	const dryrun = Math.random() < 0.1;
 
 	try {
-		const response = await readHandler({
-			processId: AO.collectionsRegistry,
-			action: action,
-			tags: creator ? [{ name: 'Creator', value: creator }] : null,
-		});
+		const response = dryrun
+			? await readHandler({
+					processId: AO.collectionsRegistry,
+					action: creator ? 'Get-Collections-By-User' : 'Get-Collections',
+					tags: creator ? [{ name: 'Creator', value: creator }] : null,
+			  })
+			: await (
+					await fetch(`https://router-1.forward.computer/${AO.collectionsRegistry}~process@1.0/compute/cache`)
+			  ).json();
 
-		if (response && response.Collections && response.Collections.length) {
-			const collections = response.Collections.map((collection: any) => {
+		if (response?.Collections?.length) {
+			let filteredCollections = [...response.Collections];
+			if (!dryrun && creator && response.CollectionsByUser?.[creator]) {
+				const creatorCollectionIds = [...response.CollectionsByUser[creator]];
+				filteredCollections = filteredCollections.filter((collection) => creatorCollectionIds.includes(collection.Id));
+			}
+
+			const collections = filteredCollections.map((collection: any) => {
 				return {
 					id: collection.Id,
 					title: collection.Name.replace(/\[|\]/g, ''),
