@@ -62,7 +62,7 @@ export default function ProfileManage(props: IProps) {
 		if (arProvider.wallet) {
 			setLoading(true);
 
-			const ao = connect();
+			const ao = connect({ MODE: 'legacy' });
 			const signer = createDataItemSigner(arProvider.wallet);
 
 			const { createProfile, updateProfile } = AOProfile.init({
@@ -97,6 +97,8 @@ export default function ProfileManage(props: IProps) {
 						});
 					}
 				} else {
+					console.log(language.profileCreated);
+					console.log('creating profile');
 					const createResponse = await createProfile({
 						data: {
 							userName: username,
@@ -106,6 +108,8 @@ export default function ProfileManage(props: IProps) {
 							banner: banner,
 						},
 					});
+
+					console.log(createResponse);
 
 					if (createResponse) {
 						setProfileResponse({
@@ -121,7 +125,11 @@ export default function ProfileManage(props: IProps) {
 					}
 				}
 			} catch (e: any) {
-				setProfileResponse(e.message ?? e);
+				console.log(e);
+				setProfileResponse({
+					message: e.message ?? e,
+					status: 'warning',
+				});
 			}
 			setLoading(false);
 		}
