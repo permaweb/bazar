@@ -16,4 +16,4 @@ PIXL is a rewards token for purchasing atomic assets on the Universal Content Ma
 
 ### Conclusion
 
-None of this information about tokens is financial advice. Please remember to do your own research. Our team is working to support more tokens on Bazar, which will be updated in this guide. If you have any questions, please reach out to our team on [X](https://x.com/OurBazAR) or in the Bazar channel of the Weaver's [Discord](https://discord.com/invite/qhztcN3PsA).
+None of this information about tokens is financial advice. Please remember to do your own research. Our team is working to support more tokens on Bazar, which will be updated in this guide. If you have any questions, please reach out to our team on [X](https://x.com/OurBazAR) or in the Bazar channel of the Weaver's [Discord](https://discord.gg/vS2fYJNucN).

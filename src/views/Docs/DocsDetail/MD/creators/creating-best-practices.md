@@ -35,4 +35,4 @@ Before uploading, it is important that the order, name, description, fractionali
 
 #### 5. Upload and share with the permaweb community
 
-After uploading your atomic asset, it’s time to share it with the permaweb community. Tag [@OurBazAR](https://x.com/OurBazAR) in posts on X with your newly created atomic asset! Also don't forget to share your newly created atomic asset in the Bazar micro-community in the Weaver's [Discord](https://discord.gg/weavers).
+After uploading your atomic asset, it’s time to share it with the permaweb community. Tag [@OurBazAR](https://x.com/OurBazAR) in posts on X with your newly created atomic asset! Also don't forget to share your newly created atomic asset in the Bazar micro-community in the Weaver's [Discord](https://discord.gg/vS2fYJNucN).
