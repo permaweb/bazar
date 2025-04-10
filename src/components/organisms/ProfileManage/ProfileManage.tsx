@@ -97,8 +97,6 @@ export default function ProfileManage(props: IProps) {
 						});
 					}
 				} else {
-					console.log(language.profileCreated);
-					console.log('creating profile');
 					const createResponse = await createProfile({
 						data: {
 							userName: username,
