@@ -15,6 +15,30 @@ import * as collectionActions from 'store/collections/actions';
 export async function getCollections(creator?: string, filterUnstamped?: boolean): Promise<CollectionType[]> {
 	const dryrun = Math.random() < 0.1;
 
+	// Define a key to use in localStorage for our TTL.
+	const modeKey = 'fetchModeTTL';
+	const currentTime = Date.now();
+	let fetchMode;
+
+	const storedData = localStorage.getItem(modeKey);
+	if (storedData) {
+		try {
+			const parsedData = JSON.parse(storedData);
+			if (currentTime - parsedData.timestamp < 60 * 60 * 1000) {
+				fetchMode = 'compute';
+			} else {
+				fetchMode = 'now';
+				localStorage.setItem(modeKey, JSON.stringify({ timestamp: currentTime }));
+			}
+		} catch (error) {
+			fetchMode = 'now';
+			localStorage.setItem(modeKey, JSON.stringify({ timestamp: currentTime }));
+		}
+	} else {
+		fetchMode = 'now';
+		localStorage.setItem(modeKey, JSON.stringify({ timestamp: currentTime }));
+	}
+
 	try {
 		const response = dryrun
 			? await readHandler({
@@ -23,7 +47,7 @@ export async function getCollections(creator?: string, filterUnstamped?: boolean
 					tags: creator ? [{ name: 'Creator', value: creator }] : null,
 			  })
 			: await (
-					await fetch(`https://router-1.forward.computer/${AO.collectionsRegistry}~process@1.0/compute/cache`)
+					await fetch(`https://router-1.forward.computer/${AO.collectionsRegistry}~process@1.0/${fetchMode}/cache`)
 			  ).json();
 
 		if (response?.Collections?.length) {
