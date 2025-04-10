@@ -16,67 +16,75 @@ export async function getCollections(creator?: string, filterUnstamped?: boolean
 	const action = creator ? 'Get-Collections-By-User' : 'Get-Collections';
 
 	try {
-		const response = await readHandler({
-			processId: AO.collectionsRegistry,
-			action: action,
-			tags: creator ? [{ name: 'Creator', value: creator }] : null,
-		});
+		// https://tee-1.forward.computer/GMa4EMmJ03Tm-mucQosR8Kdrsv7Gtwnp3tl4PBHSXeo~process@1.0/now/cache
+		const response = await fetch(
+			`https://router-1.forward.computer/Gt9kGraAVUCLokbwNH1p2pm9jGDNNh6VHiEHF9t4Oic~process@1.0/compute/cache`
+		);
+		console.log(await response.text());
 
-		if (response && response.Collections && response.Collections.length) {
-			const collections = response.Collections.map((collection: any) => {
-				return {
-					id: collection.Id,
-					title: collection.Name.replace(/\[|\]/g, ''),
-					description: collection.Description,
-					creator: collection.Creator,
-					dateCreated: collection.DateCreated,
-					banner: collection.Banner,
-					thumbnail: collection.Thumbnail,
-				};
-			});
+		return [];
 
-			const collectionIds = collections.map((collection: any) => collection.id);
-			const stampsFetch: StampsType = await stamps.getStamps({ ids: collectionIds });
+		// const response = await readHandler({
+		// 	processId: AO.collectionsRegistry,
+		// 	action: action,
+		// 	tags: creator ? [{ name: 'Creator', value: creator }] : null,
+		// });
 
-			let finalCollections = collections;
+		// if (response && response.Collections && response.Collections.length) {
+		// 	const collections = response.Collections.map((collection: any) => {
+		// 		return {
+		// 			id: collection.Id,
+		// 			title: collection.Name.replace(/\[|\]/g, ''),
+		// 			description: collection.Description,
+		// 			creator: collection.Creator,
+		// 			dateCreated: collection.DateCreated,
+		// 			banner: collection.Banner,
+		// 			thumbnail: collection.Thumbnail,
+		// 		};
+		// 	});
 
-			if (filterUnstamped) {
-				finalCollections = finalCollections.filter((c: any) => {
-					return stampsFetch[c.id].total != 0;
-				});
-			}
+		// 	const collectionIds = collections.map((collection: any) => collection.id);
+		// 	const stampsFetch: StampsType = await stamps.getStamps({ ids: collectionIds });
 
-			finalCollections = finalCollections.sort((a: { id: string | number }, b: { id: string | number }) => {
-				const countA = stampsFetch[a.id]?.total || 0;
-				const countB = stampsFetch[b.id]?.total || 0;
-				return countB - countA;
-			});
+		// 	let finalCollections = collections;
 
-			const key = creator ? 'creators' : filterUnstamped ? 'stamped' : 'all';
-			const updatedCollections = {
-				[key]: creator
-					? {
-							[creator]: {
-								collections: finalCollections,
-								lastUpdate: Date.now(),
-							},
-					  }
-					: {
-							collections: finalCollections,
-							lastUpdate: Date.now(),
-					  },
-			};
+		// 	if (filterUnstamped) {
+		// 		finalCollections = finalCollections.filter((c: any) => {
+		// 			return stampsFetch[c.id].total != 0;
+		// 		});
+		// 	}
 
-			store.dispatch(
-				collectionActions.setCollections({
-					...(store.getState().collectionsReducer ?? {}),
-					...updatedCollections,
-				})
-			);
+		// 	finalCollections = finalCollections.sort((a: { id: string | number }, b: { id: string | number }) => {
+		// 		const countA = stampsFetch[a.id]?.total || 0;
+		// 		const countB = stampsFetch[b.id]?.total || 0;
+		// 		return countB - countA;
+		// 	});
 
-			return finalCollections;
-		}
-		return null;
+		// 	const key = creator ? 'creators' : filterUnstamped ? 'stamped' : 'all';
+		// 	const updatedCollections = {
+		// 		[key]: creator
+		// 			? {
+		// 					[creator]: {
+		// 						collections: finalCollections,
+		// 						lastUpdate: Date.now(),
+		// 					},
+		// 			  }
+		// 			: {
+		// 					collections: finalCollections,
+		// 					lastUpdate: Date.now(),
+		// 			  },
+		// 	};
+
+		// 	store.dispatch(
+		// 		collectionActions.setCollections({
+		// 			...(store.getState().collectionsReducer ?? {}),
+		// 			...updatedCollections,
+		// 		})
+		// 	);
+
+		// 	return finalCollections;
+		// }
+		// return null;
 	} catch (e: any) {
 		throw new Error(e.message || 'Failed to fetch collections');
 	}
