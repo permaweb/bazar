@@ -91,7 +91,7 @@ function WalletList(props: { handleConnect: any }) {
 }
 
 export function ArweaveProvider(props: ArweaveProviderProps) {
-	const { getProfileByWalletAddress } = AOProfile.init({ ao: connect() });
+	const { getProfileByWalletAddress } = AOProfile.init({ ao: connect({ MODE: 'legacy' }) });
 
 	const profilesReducer = useSelector((state: RootState) => state.profilesReducer);
 

@@ -15,7 +15,7 @@ const lock = new AsyncLock();
 
 let registryFetchQueue: Set<string> = new Set();
 
-const { getRegistryProfiles } = AOProfile.init({ ao: connect() });
+const { getRegistryProfiles } = AOProfile.init({ ao: connect({ MODE: 'legacy' }) });
 
 export function getExistingRegistryProfiles(ids: string[]): RegistryProfileType[] {
 	const profilesReducer = store.getState().profilesReducer;

@@ -16,7 +16,7 @@ import { ProfileCollections } from './ProfileCollections';
 import { ProfileHeader } from './ProfileHeader';
 
 export default function Profile() {
-	const { getProfileById } = AOProfile.init({ ao: connect() });
+	const { getProfileById } = AOProfile.init({ ao: connect({ MODE: 'legacy' }) });
 
 	const location = useLocation();
 	const navigate = useNavigate();

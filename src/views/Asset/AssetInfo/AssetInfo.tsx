@@ -20,7 +20,7 @@ import * as S from './styles';
 import { IProps } from './types';
 
 export default function AssetInfo(props: IProps) {
-	const { getProfileById } = AOProfile.init({ ao: connect() });
+	const { getProfileById } = AOProfile.init({ ao: connect({ MODE: 'legacy' }) });
 
 	const currenciesReducer = useSelector((state: RootState) => state.currenciesReducer);
 

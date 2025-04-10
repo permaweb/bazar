@@ -25,7 +25,7 @@ import * as S from './styles';
 const MAX_DESCRIPTION_LENGTH = 50;
 
 export default function Collection() {
-	const { getProfileById } = AOProfile.init({ ao: connect() });
+	const { getProfileById } = AOProfile.init({ ao: connect({ MODE: 'legacy' }) });
 
 	const { id, active } = useParams();
 	const navigate = useNavigate();
