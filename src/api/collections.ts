@@ -13,17 +13,51 @@ import { store } from 'store';
 import * as collectionActions from 'store/collections/actions';
 
 export async function getCollections(creator?: string, filterUnstamped?: boolean): Promise<CollectionType[]> {
-	const action = creator ? 'Get-Collections-By-User' : 'Get-Collections';
+	const dryrun = Math.random() < 0.1;
+
+	// Define a key to use in localStorage for our TTL.
+	const modeKey = 'fetchModeTTL';
+	const currentTime = Date.now();
+	let fetchMode;
+
+	const storedData = localStorage.getItem(modeKey);
+	if (storedData) {
+		try {
+			const parsedData = JSON.parse(storedData);
+			if (currentTime - parsedData.timestamp < 60 * 60 * 1000) {
+				fetchMode = 'compute';
+			} else {
+				fetchMode = 'now';
+				localStorage.setItem(modeKey, JSON.stringify({ timestamp: currentTime }));
+			}
+		} catch (error) {
+			fetchMode = 'now';
+			localStorage.setItem(modeKey, JSON.stringify({ timestamp: currentTime }));
+		}
+	} else {
+		fetchMode = 'now';
+		localStorage.setItem(modeKey, JSON.stringify({ timestamp: currentTime }));
+	}
 
 	try {
-		const response = await readHandler({
-			processId: AO.collectionsRegistry,
-			action: action,
-			tags: creator ? [{ name: 'Creator', value: creator }] : null,
-		});
+		const response = dryrun
+			? await readHandler({
+					processId: AO.collectionsRegistry,
+					action: creator ? 'Get-Collections-By-User' : 'Get-Collections',
+					tags: creator ? [{ name: 'Creator', value: creator }] : null,
+			  })
+			: await (
+					await fetch(`https://router-1.forward.computer/${AO.collectionsRegistry}~process@1.0/${fetchMode}/cache`)
+			  ).json();
 
-		if (response && response.Collections && response.Collections.length) {
-			const collections = response.Collections.map((collection: any) => {
+		if (response?.Collections?.length) {
+			let filteredCollections = [...response.Collections];
+			if (!dryrun && creator && response.CollectionsByUser?.[creator]) {
+				const creatorCollectionIds = [...response.CollectionsByUser[creator]];
+				filteredCollections = filteredCollections.filter((collection) => creatorCollectionIds.includes(collection.Id));
+			}
+
+			const collections = filteredCollections.map((collection: any) => {
 				return {
 					id: collection.Id,
 					title: collection.Name.replace(/\[|\]/g, ''),
