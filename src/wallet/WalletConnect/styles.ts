@@ -189,8 +189,8 @@ export const CopyIconWrapper = styled.div`
 	transition: all 150ms ease;
 
 	svg {
-		height: 12px;
-		width: 12px;
+		height: 16px;
+		width: 16px;
 		color: ${(props) => props.theme.colors.font.alt1};
 		fill: ${(props) => props.theme.colors.font.alt1};
 		transition: all 100ms;

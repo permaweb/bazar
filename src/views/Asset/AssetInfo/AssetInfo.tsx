@@ -5,6 +5,8 @@ import { Link } from 'react-router-dom';
 import { connect } from '@permaweb/aoconnect';
 import AOProfile, { ProfileType } from '@permaweb/aoprofile';
 
+import { getCollectionById } from 'api/collections';
+
 import * as GS from 'app/styles';
 import { Drawer } from 'components/atoms/Drawer';
 import { TxAddress } from 'components/atoms/TxAddress';
@@ -12,6 +14,7 @@ import { OwnerLine } from 'components/molecules/OwnerLine';
 import { AssetData } from 'components/organisms/AssetData';
 import { ASSETS, LICENSES, URLS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
+import { CollectionDetailType } from 'helpers/types';
 import { checkValidAddress, cleanTagValue, formatCount, formatDate, getTagDisplay, splitTagValue } from 'helpers/utils';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 import { RootState } from 'store';
@@ -19,9 +22,8 @@ import { RootState } from 'store';
 import * as S from './styles';
 import { IProps } from './types';
 
-// TODO: If collection id get full collection details
 export default function AssetInfo(props: IProps) {
-	const { getProfileById } = AOProfile.init({ ao: connect({ MODE: 'legacy' }) });
+	const { getProfileById } = AOProfile.init({ ao: connect() });
 
 	const currenciesReducer = useSelector((state: RootState) => state.currenciesReducer);
 
@@ -29,7 +31,11 @@ export default function AssetInfo(props: IProps) {
 	const language = languageProvider.object[languageProvider.current];
 
 	const [creator, setCreator] = React.useState<ProfileType | null>(null);
+	const [collectionDetails, setCollectionDetails] = React.useState<CollectionDetailType | null>(null);
+	const [isLoadingCollection, setIsLoadingCollection] = React.useState<boolean>(false);
+	const [collectionError, setCollectionError] = React.useState<string | null>(null);
 
+	// Fetch creator profile
 	React.useEffect(() => {
 		(async function () {
 			if (props.asset && props.asset.data.creator && checkValidAddress(props.asset.data.creator)) {
@@ -38,6 +44,38 @@ export default function AssetInfo(props: IProps) {
 				} catch (e: any) {
 					console.error(e);
 				}
+			}
+		})();
+	}, [props.asset]);
+
+	// Fetch collection details if needed
+	React.useEffect(() => {
+		(async function () {
+			try {
+				if (!props.asset) {
+					return;
+				}
+
+				// Only fetch if we have a collectionId but no collectionName
+				if (
+					props.asset.data.collectionId &&
+					checkValidAddress(props.asset.data.collectionId) &&
+					!props.asset.data.collectionName
+				) {
+					setIsLoadingCollection(true);
+					setCollectionError(null);
+
+					const collection = await getCollectionById({ id: props.asset.data.collectionId });
+
+					if (collection) {
+						setCollectionDetails(collection);
+					}
+				}
+			} catch (e: any) {
+				console.error('Error in collection effect:', e);
+				setCollectionError(e.message || 'Failed to fetch collection details');
+			} finally {
+				setIsLoadingCollection(false);
 			}
 		})();
 	}, [props.asset]);
@@ -105,6 +143,27 @@ export default function AssetInfo(props: IProps) {
 		} else return null;
 	}
 
+	// Helper function to render collection name
+	const renderCollectionName = () => {
+		if (isLoadingCollection) {
+			return <span>Loading...</span>;
+		}
+
+		if (collectionError) {
+			return <span title={collectionError}>{props.asset.data.collectionId}</span>;
+		}
+
+		if (props.asset.data.collectionName) {
+			return cleanTagValue(props.asset.data.collectionName);
+		}
+
+		if (collectionDetails) {
+			return cleanTagValue(collectionDetails.title);
+		}
+
+		return props.asset.data.collectionId;
+	};
+
 	return props.asset ? (
 		<S.Wrapper>
 			<S.DataWrapper>
@@ -146,11 +205,7 @@ export default function AssetInfo(props: IProps) {
 						content={
 							<GS.DrawerContent>
 								<GS.DrawerContentDetail>
-									<Link to={URLS.collectionAssets(props.asset.data.collectionId)}>
-										{props.asset.data.collectionName
-											? cleanTagValue(props.asset.data.collectionName)
-											: props.asset.data.collectionId}
-									</Link>
+									<Link to={URLS.collectionAssets(props.asset.data.collectionId)}>{renderCollectionName()}</Link>
 								</GS.DrawerContentDetail>
 							</GS.DrawerContent>
 						}
