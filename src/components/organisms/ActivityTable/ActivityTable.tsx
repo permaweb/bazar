@@ -315,13 +315,21 @@ export default function ActivityTable(props: IProps) {
 		}
 	}
 
-	function getEventLabel(event: string, transactionType?: string) {
-		// First check transaction types
+	function getEventLabel(event: string, transactionType?: string, order?: any) {
+		// First check if this is a sale by looking at the transaction type
+		if (transactionType === 'UCM_SALE') {
+			return 'Sale';
+		}
+
+		// If this is a direct transfer but has a positive price, it's likely a sale
+		if (order && order.price > 0 && event === 'TRANSFER-OUT') {
+			return 'Sale';
+		}
+
+		// Then check other transaction types
 		switch (transactionType) {
 			case 'UCM_LISTING':
 				return 'Listed';
-			case 'UCM_SALE':
-				return 'Sale';
 			case 'UCM_UNLISTING':
 				return 'Unlisted';
 			case 'WALLET_TRANSFER':
@@ -600,12 +608,27 @@ export default function ActivityTable(props: IProps) {
 								</S.AssetWrapper>
 								<S.EventWrapper>
 									<S.Event
-										type={getEventLabel(row.event, row.transactionType)}
+										type={getEventLabel(row.event, row.transactionType, row)}
 										href={REDIRECTS.aoLink(row.orderId)}
 										target="_blank"
+										style={
+											getEventLabel(row.event, row.transactionType, row).toLowerCase() === 'sale' ||
+											getEventLabel(row.event, row.transactionType, row).toLowerCase() === 'sold'
+												? { color: '#38BD80', backgroundColor: 'rgba(56, 189, 128, 0.15)' }
+												: undefined
+										}
 									>
 										<ReactSVG src={getEventIcon(row.event, row.transactionType)} />
-										<p>{getEventLabel(row.event, row.transactionType)}</p>
+										<p
+											style={
+												getEventLabel(row.event, row.transactionType, row).toLowerCase() === 'sale' ||
+												getEventLabel(row.event, row.transactionType, row).toLowerCase() === 'sold'
+													? { color: '#38BD80', fontWeight: 'bold' }
+													: undefined
+											}
+										>
+											{getEventLabel(row.event, row.transactionType, row)}
+										</p>
 										{row.relatedTxs && row.relatedTxs.length > 0 && (
 											<S.RelatedTxs>+{row.relatedTxs.length} related</S.RelatedTxs>
 										)}

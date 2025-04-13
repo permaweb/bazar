@@ -333,7 +333,14 @@ export const Event = styled.a<{ type: string }>`
 	align-items: center;
 	justify-content: center;
 	text-decoration: none;
-	color: inherit;
+	color: ${(props) => {
+		const type = props.type.toLowerCase();
+		// Explicitly override the text color at the top level
+		if (type === 'sale' || type === 'sold') {
+			return 'var(--color-success)';
+		}
+		return 'inherit';
+	}};
 	padding: 3px 10px;
 	border-radius: 5px;
 	min-width: 90px;
@@ -352,7 +359,7 @@ export const Event = styled.a<{ type: string }>`
 			return 'var(--color-success-bg)';
 		}
 		if (type === 'sale' || type === 'sold') {
-			return 'var(--color-warning-bg)';
+			return 'var(--color-success-bg)';
 		}
 		if (type === 'listing') {
 			return props.theme.colors.stats.primary;
@@ -381,7 +388,11 @@ export const Event = styled.a<{ type: string }>`
 					return 'var(--color-success)';
 				}
 				// Sale events
-				if (type === 'sale' || type === 'sold' || type === 'sent') {
+				if (type === 'sale' || type === 'sold') {
+					return 'var(--color-success)';
+				}
+				// Sent events
+				if (type === 'sent') {
 					return 'var(--color-warning)';
 				}
 				// Listing events
@@ -412,7 +423,11 @@ export const Event = styled.a<{ type: string }>`
 				return 'var(--color-success)';
 			}
 			// Sale events
-			if (type === 'sale' || type === 'sold' || type === 'sent') {
+			if (type === 'sale' || type === 'sold') {
+				return 'var(--color-success)';
+			}
+			// Sent events
+			if (type === 'sent') {
 				return 'var(--color-warning)';
 			}
 			// Listing events
