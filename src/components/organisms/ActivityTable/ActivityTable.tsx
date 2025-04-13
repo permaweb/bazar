@@ -18,12 +18,14 @@ import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 import { RootState } from 'store';
 
+import { getDenominatedTokenValue } from '../../../helpers/token';
 import { AssetData } from '../AssetData';
 
 import * as S from './styles';
 import { IProps } from './types';
 
 const GROUP_COUNT = 50;
+const DEBUG_MODE = process.env.NODE_ENV === 'development';
 
 // Define RegistryProfileType locally since it's not exported from helpers/types
 interface RegistryProfileType {
@@ -39,11 +41,20 @@ interface OrderType {
 	OrderId: string;
 	DominantToken: string;
 	SwapToken: string;
-	Sender: string;
+	Sender: string | null;
 	Receiver: string | null;
 	Quantity: string;
 	Price: string;
 	Timestamp: string;
+	isDirectTransfer?: boolean;
+	XOrderAction?: string; // Add field for X-Order-Action
+}
+
+interface ActivityResponse {
+	ListedOrders: OrderType[];
+	ExecutedOrders: OrderType[];
+	CancelledOrders: OrderType[];
+	DirectTransfers: OrderType[];
 }
 
 export default function ActivityTable(props: IProps) {
@@ -72,26 +83,6 @@ export default function ActivityTable(props: IProps) {
 			try {
 				setUpdating(true);
 
-				const getAssetActivityByAssetId = async ({
-					assetId,
-					processId = AO.ucmActivity,
-				}: {
-					assetId: string;
-					processId?: string;
-				}) => {
-					const response = await readHandler<{
-						ListedOrders: Array<OrderType>;
-						ExecutedOrders: Array<OrderType>;
-						CancelledOrders: Array<OrderType>;
-					}>({
-						processId,
-						action: 'Get-Activity',
-						data: { AssetIds: [assetId] },
-					});
-
-					return response;
-				};
-
 				if (props.asset && props.asset.data) {
 					// If we have a specific asset, use the UCM process
 					const response = await readHandler<{ [key: string]: number }>({
@@ -110,58 +101,22 @@ export default function ActivityTable(props: IProps) {
 					// If we have an address, use the new gateway-based activity fetching
 					const userActivity = await getUserActivity(
 						props.address,
+						arProvider.profile?.id, // Pass user profile ID for better matching
 						props.startDate ? new Date(props.startDate) : undefined,
 						props.endDate ? new Date(props.endDate) : undefined
 					);
 
-					// Format the response to match what the component expects
-					const formattedResponse = {
-						ListedOrders: userActivity.listedOrders.map((order) => ({
-							OrderId: order.orderId,
-							DominantToken: order.dominantToken,
-							SwapToken: order.swapToken,
-							Price: order.price,
-							Quantity: order.quantity,
-							Sender: order.sender,
-							Receiver: order.receiver,
-							Timestamp: order.timestamp,
-						})),
-						ExecutedOrders: userActivity.executedOrders.map((order) => ({
-							OrderId: order.orderId,
-							DominantToken: order.dominantToken,
-							SwapToken: order.swapToken,
-							Price: order.price,
-							Quantity: order.quantity,
-							Sender: order.sender,
-							Receiver: order.receiver,
-							Timestamp: order.timestamp,
-						})),
-						CancelledOrders: userActivity.cancelledOrders.map((order) => ({
-							OrderId: order.orderId,
-							DominantToken: order.dominantToken,
-							SwapToken: order.swapToken,
-							Price: order.price,
-							Quantity: order.quantity,
-							Sender: order.sender,
-							Receiver: order.receiver,
-							Timestamp: order.timestamp,
-						})),
-						DirectTransfers: userActivity.directTransfers
-							? userActivity.directTransfers.map((order) => ({
-									OrderId: order.orderId,
-									DominantToken: order.dominantToken,
-									SwapToken: order.swapToken,
-									Price: order.price,
-									Quantity: order.quantity,
-									Sender: order.sender,
-									Receiver: order.receiver,
-									Timestamp: order.timestamp,
-									IsDirectTransfer: true,
-							  }))
-							: [],
-					};
+					if (DEBUG_MODE) {
+						console.log('User activity response:', userActivity);
+					}
 
-					setActivityResponse(formattedResponse);
+					if (userActivity) {
+						setActivityResponse(userActivity);
+					} else {
+						setActivity([]);
+						setActivityGroup([]);
+						setActivityGroups([]);
+					}
 				} else if (props.assetIds) {
 					// If we have asset IDs, use the UCM process
 					const response = await readHandler({
@@ -184,7 +139,10 @@ export default function ActivityTable(props: IProps) {
 
 				setUpdating(false);
 			} catch (e: any) {
-				console.error(e);
+				console.error('Error fetching activity:', e);
+				setActivity([]);
+				setActivityGroup([]);
+				setActivityGroups([]);
 				setUpdating(false);
 			}
 		})();
@@ -192,17 +150,33 @@ export default function ActivityTable(props: IProps) {
 
 	React.useEffect(() => {
 		if (activityResponse) {
-			let updatedActivity = [];
-			if (activityResponse.ListedOrders) updatedActivity.push(...mapActivity(activityResponse.ListedOrders, 'Listing'));
-			if (activityResponse.ExecutedOrders)
-				updatedActivity.push(...mapActivity(activityResponse.ExecutedOrders, 'Sale'));
-			if (activityResponse.CancelledOrders)
-				updatedActivity.push(...mapActivity(activityResponse.CancelledOrders, 'Unlisted'));
-			if (activityResponse.DirectTransfers)
-				updatedActivity.push(...mapActivity(activityResponse.DirectTransfers, 'Transfer'));
+			try {
+				let updatedActivity = [];
+				if (activityResponse.ListedOrders && Array.isArray(activityResponse.ListedOrders)) {
+					updatedActivity.push(...mapActivity(activityResponse.ListedOrders, 'Listing'));
+				}
+				if (activityResponse.ExecutedOrders && Array.isArray(activityResponse.ExecutedOrders)) {
+					updatedActivity.push(...mapActivity(activityResponse.ExecutedOrders, 'Sale'));
+				}
+				if (activityResponse.CancelledOrders && Array.isArray(activityResponse.CancelledOrders)) {
+					updatedActivity.push(...mapActivity(activityResponse.CancelledOrders, 'Unlisted'));
+				}
+				if (activityResponse.DirectTransfers && Array.isArray(activityResponse.DirectTransfers)) {
+					updatedActivity.push(...mapActivity(activityResponse.DirectTransfers, 'Transfer'));
+				}
 
-			setActivity(updatedActivity);
-			if (updatedActivity.length <= 0) {
+				if (DEBUG_MODE) {
+					console.log('Mapped activity:', updatedActivity);
+				}
+
+				setActivity(updatedActivity);
+				if (updatedActivity.length <= 0) {
+					setActivityGroup([]);
+					setActivityGroups([]);
+				}
+			} catch (e: any) {
+				console.error('Error mapping activity:', e);
+				setActivity([]);
 				setActivityGroup([]);
 				setActivityGroups([]);
 			}
@@ -295,24 +269,180 @@ export default function ActivityTable(props: IProps) {
 		setActivitySortType(option);
 	}, []);
 
-	function mapActivity(orders: any, event: 'Listing' | 'Purchase' | 'Sale' | 'Unlisted' | 'Transfer') {
+	function getEventIcon(event: string, transactionType?: string) {
+		// First check for transaction type-specific icons
+		switch (transactionType) {
+			case 'UCM_LISTING':
+				return ASSETS.orders;
+			case 'UCM_UNLISTING':
+				return ASSETS.close;
+			case 'UCM_SALE':
+				return ASSETS.sell;
+			case 'WALLET_TRANSFER':
+				return ASSETS.transfer;
+			case 'DIRECT_TRANSFER':
+				return ASSETS.transfer;
+		}
+
+		// Then check for specific event types
+		switch (event) {
+			case 'Listing':
+			case 'LISTED':
+				return ASSETS.orders;
+			case 'Purchase':
+			case 'PURCHASED':
+				return ASSETS.buy;
+			case 'Sale':
+			case 'SOLD':
+				return ASSETS.sell;
+			case 'Unlisted':
+			case 'CANCELLED':
+				return ASSETS.close;
+			case 'Transfer':
+			case 'TRANSFER-IN':
+			case 'TRANSFER-OUT':
+				return ASSETS.transfer;
+			default:
+				// Fallback to appropriate icon based on name
+				if (event.toLowerCase().includes('list')) return ASSETS.orders;
+				if (event.toLowerCase().includes('buy') || event.toLowerCase().includes('purchase')) return ASSETS.buy;
+				if (event.toLowerCase().includes('sell') || event.toLowerCase().includes('sale')) return ASSETS.sell;
+				if (event.toLowerCase().includes('cancel') || event.toLowerCase().includes('unlist')) return ASSETS.close;
+				if (event.toLowerCase().includes('transfer')) return ASSETS.transfer;
+
+				// Default to buy icon if nothing else matches
+				return ASSETS.buy;
+		}
+	}
+
+	function getEventLabel(event: string, transactionType?: string) {
+		// First check transaction types
+		switch (transactionType) {
+			case 'UCM_LISTING':
+				return 'Listed';
+			case 'UCM_SALE':
+				return 'Sale';
+			case 'UCM_UNLISTING':
+				return 'Unlisted';
+			case 'WALLET_TRANSFER':
+				return 'Wallet Transfer';
+			case 'DIRECT_TRANSFER':
+				// For direct transfers, we need to be more specific based on event
+				if (event === 'TRANSFER-IN') return 'Received';
+				if (event === 'TRANSFER-OUT') return 'Sent';
+				break;
+		}
+
+		// Then map API event types to user-friendly labels
+		switch (event) {
+			case 'LISTED':
+				return 'Listed';
+			case 'PURCHASED':
+				return 'Purchase';
+			case 'SOLD':
+				return 'Sale';
+			case 'CANCELLED':
+				return 'Unlisted';
+			case 'TRANSFER-IN':
+				return 'Received';
+			case 'TRANSFER-OUT':
+				return 'Sent';
+			default:
+				// If it's already a display-friendly string, just return it
+				return event;
+		}
+	}
+
+	function mapActivity(orders: any[], defaultEvent: 'Listing' | 'Purchase' | 'Sale' | 'Unlisted' | 'Transfer') {
 		let updatedActivity = [];
 
 		if (orders && orders.length > 0) {
 			const mappedActivity = orders.map((order: any) => {
-				let orderEvent = event;
-				if (event === 'Sale') {
+				// Start with the explicit Type from the API or use the default event type
+				let orderEvent = order.Type || defaultEvent;
+				let transactionType = order.TransactionType;
+
+				// Determine if UCM is involved
+				const isUCMReceiver = order.Receiver === AO.ucm;
+				const isUCMSender = order.Sender === AO.ucm;
+
+				// Check for X-Order-Action: Create-Order which is a definite sign of listing
+				const hasCreateOrderAction = order.XOrderAction === 'Create-Order';
+
+				// CRITICAL: Check for explicitly listed orders first (high priority rule)
+				if (hasCreateOrderAction || defaultEvent === 'Listing') {
+					// This is definitely a listing to UCM (highest priority rule)
+					orderEvent = 'LISTED';
+					transactionType = 'UCM_LISTING';
+				}
+				// For transfers where receiver is UCM, it's also a listing
+				else if (defaultEvent === 'Transfer' && isUCMReceiver) {
+					orderEvent = 'LISTED';
+					transactionType = 'UCM_LISTING';
+				}
+				// For sale events
+				else if (defaultEvent === 'Sale') {
+					// If UCM is sending to the user, it's a purchase
+					if (isUCMSender) {
+						if (
+							(props.address && order.Receiver === props.address) ||
+							(arProvider && arProvider.profile && arProvider.profile.id === order.Receiver)
+						) {
+							orderEvent = 'PURCHASED';
+							transactionType = 'UCM_SALE';
+						} else {
+							// Otherwise it's a general sale
+							orderEvent = 'SOLD';
+							transactionType = 'UCM_SALE';
+						}
+					} else if (isUCMReceiver) {
+						// Special case: If it's in the Executed orders AND receiver is UCM, this is a special case
+						// It should be a listing, not a sale
+						orderEvent = 'LISTED';
+						transactionType = 'UCM_LISTING';
+					}
+				}
+				// For unlisted events
+				else if (defaultEvent === 'Unlisted') {
+					orderEvent = 'CANCELLED';
+					transactionType = 'UCM_UNLISTING';
+				}
+				// For any other direct transfers between users (no UCM)
+				else if (!isUCMReceiver && !isUCMSender) {
+					transactionType = 'DIRECT_TRANSFER';
+					// If the user is the receiver, it's an incoming transfer
 					if (
 						(props.address && order.Receiver === props.address) ||
-						(arProvider && arProvider.profile && arProvider.profile.id && arProvider.profile.id === order.Receiver)
+						(arProvider && arProvider.profile && arProvider.profile.id === order.Receiver)
 					) {
-						orderEvent = 'Purchase';
+						orderEvent = 'TRANSFER-IN';
+					} else {
+						orderEvent = 'TRANSFER-OUT';
 					}
 				}
 
-				const price = parseInt(order.Price || '0', 10);
-				const quantity = parseInt(order.Quantity || '0', 10);
+				const price = parseFloat(order.Price || '0');
+				const quantity = parseFloat(order.Quantity || '0');
 				const timestamp = parseInt(order.Timestamp || '0', 10);
+
+				if (DEBUG_MODE) {
+					console.log('Mapping order:', {
+						id: order.OrderId,
+						event: orderEvent,
+						transactionType,
+						defaultEvent,
+						price,
+						quantity,
+						timestamp,
+						sender: order.Sender,
+						receiver: order.Receiver,
+						isUCMReceiver,
+						isUCMSender,
+						hasCreateOrderAction,
+						isDirectTransfer: order.isDirectTransfer,
+						relatedTxs: order.RelatedTxs,
+					});
+				}
 
 				return {
 					orderId: order.OrderId,
@@ -324,6 +454,8 @@ export default function ActivityTable(props: IProps) {
 					receiver: order.Receiver || null,
 					timestamp: timestamp,
 					event: orderEvent,
+					transactionType: transactionType,
+					relatedTxs: order.RelatedTxs,
 					asset: null, // Will be populated later with asset data
 				};
 			});
@@ -332,30 +464,6 @@ export default function ActivityTable(props: IProps) {
 		}
 
 		return updatedActivity;
-	}
-
-	function getDenominatedTokenValue(amount: number, assetId?: string) {
-		// Handle extremely large numbers
-		if (amount > 1e12) {
-			return formatCount((amount / 1e12).toString()) + 'T';
-		} else if (amount > 1e9) {
-			return formatCount((amount / 1e9).toString()) + 'B';
-		} else if (amount > 1e6) {
-			return formatCount((amount / 1e6).toString()) + 'M';
-		} else if (amount > 1e3) {
-			return formatCount((amount / 1e3).toString()) + 'K';
-		}
-
-		// Handle normal numbers with denomination
-		if (props.asset && props.asset.state && props.asset.state.denomination && props.asset.state.denomination > 1) {
-			const denomination = props.asset.state.denomination;
-			return formatCount((amount / Math.pow(10, denomination)).toString());
-		} else if (assetId && REFORMATTED_ASSETS[assetId] && REFORMATTED_ASSETS[assetId].denomination) {
-			const denomination = REFORMATTED_ASSETS[assetId].denomination;
-			return formatCount((amount / Math.pow(10, denomination)).toString());
-		}
-
-		return formatCount(amount.toString());
 	}
 
 	const getPaginationAction = (callback: () => void) => {
@@ -442,19 +550,6 @@ export default function ActivityTable(props: IProps) {
 			);
 		}
 
-		function getEventIcon(event: string) {
-			switch (event) {
-				case 'Listing':
-					return ASSETS.orders;
-				case 'Sale':
-					return ASSETS.sell;
-				case 'Unlisted':
-					return ASSETS.close;
-				default:
-					return ASSETS.buy;
-			}
-		}
-
 		return (
 			<S.TableWrapper className={'scroll-wrapper'}>
 				<S.TableHeader>
@@ -504,9 +599,16 @@ export default function ActivityTable(props: IProps) {
 									)}
 								</S.AssetWrapper>
 								<S.EventWrapper>
-									<S.Event type={row.event} href={REDIRECTS.aoLink(row.orderId)} target="_blank">
-										<ReactSVG src={getEventIcon(row.event)} />
-										<p>{row.event}</p>
+									<S.Event
+										type={getEventLabel(row.event, row.transactionType)}
+										href={REDIRECTS.aoLink(row.orderId)}
+										target="_blank"
+									>
+										<ReactSVG src={getEventIcon(row.event, row.transactionType)} />
+										<p>{getEventLabel(row.event, row.transactionType)}</p>
+										{row.relatedTxs && row.relatedTxs.length > 0 && (
+											<S.RelatedTxs>+{row.relatedTxs.length} related</S.RelatedTxs>
+										)}
 									</S.Event>
 								</S.EventWrapper>
 								<S.SenderWrapper>

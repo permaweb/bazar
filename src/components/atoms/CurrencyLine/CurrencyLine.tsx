@@ -7,6 +7,8 @@ import { formatCount } from 'helpers/utils';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 import { RootState } from 'store';
 
+import { getDenominatedTokenValue } from '../../../helpers/token';
+
 import * as S from './styles';
 import { IProps } from './types';
 
@@ -15,22 +17,6 @@ export default function CurrencyLine(props: IProps) {
 
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
-
-	function getDenominatedTokenValue(amount: number, currency: string) {
-		if (
-			props.amount !== null &&
-			currenciesReducer &&
-			currenciesReducer[currency] &&
-			currenciesReducer[currency].Denomination &&
-			currenciesReducer[currency].Denomination > 1
-		) {
-			const denomination = currenciesReducer[currency].Denomination;
-			const factor = Math.pow(10, denomination);
-			const formattedAmount: string = (Math.round(amount) / factor).toFixed(denomination);
-			return formatCount(formattedAmount);
-		}
-		return `${language.loading}...`;
-	}
 
 	function getCurrency() {
 		if (props.currency && currenciesReducer && currenciesReducer[props.currency]) {
@@ -61,7 +47,7 @@ export default function CurrencyLine(props: IProps) {
 
 	return props.currency ? (
 		<S.Wrapper useReverseLayout={props.useReverseLayout}>
-			<span>{getDenominatedTokenValue(Number(props.amount), props.currency)}</span>
+			<span>{getDenominatedTokenValue(props.amount, props.currency, currenciesReducer)}</span>
 			{getCurrency()}
 		</S.Wrapper>
 	) : null;

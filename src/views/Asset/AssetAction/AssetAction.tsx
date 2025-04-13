@@ -26,6 +26,8 @@ import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 import { RootState } from 'store';
 
+import { getDenominatedTokenValue } from '../../../helpers/token';
+
 import { AssetActionActivity } from './AssetActionActivity';
 import { AssetActionComments } from './AssetActionComments';
 import { AssetActionMarket } from './AssetActionMarket';
@@ -207,26 +209,6 @@ export default function AssetAction(props: IProps) {
 
 	windowUtils.checkWindowResize(handleWindowResize);
 
-	function getDenominatedTokenValue(amount: number, currency: string) {
-		if (
-			currenciesReducer &&
-			currenciesReducer[currency] &&
-			currenciesReducer[currency].Denomination &&
-			currenciesReducer[currency].Denomination > 1
-		) {
-			const denomination = currenciesReducer[currency].Denomination;
-			return `${formatCount((amount / Math.pow(10, denomination)).toString())}`;
-		} else if (
-			props.asset &&
-			props.asset.state &&
-			props.asset.state.denomination &&
-			props.asset.state.denomination > 1
-		) {
-			const denomination = props.asset.state.denomination;
-			return `${formatCount((amount / Math.pow(10, denomination)).toString())}`;
-		} else return formatCount(amount.toString());
-	}
-
 	function getOwnerOrder(listing: ListingType) {
 		if (!arProvider.walletAddress) return false;
 		if (!arProvider.profile || !arProvider.profile.id) return false;
@@ -272,7 +254,12 @@ export default function AssetAction(props: IProps) {
 									</S.MDrawerHeader>
 								)}
 								<S.DrawerContentDetailAlt>
-									{getDenominatedTokenValue(owner.ownerQuantity, props.asset.data.id)}
+									{getDenominatedTokenValue(
+										owner.ownerQuantity,
+										props.asset.data.id,
+										currenciesReducer,
+										props.asset.state
+									)}
 								</S.DrawerContentDetailAlt>
 								{mobile && (
 									<S.MDrawerHeader>
@@ -353,7 +340,12 @@ export default function AssetAction(props: IProps) {
 									</S.MDrawerHeader>
 								)}
 								<S.DrawerContentDetailAlt>
-									{getDenominatedTokenValue(Number(listing.quantity), props.asset.data.id)}
+									{getDenominatedTokenValue(
+										Number(listing.quantity),
+										props.asset.data.id,
+										currenciesReducer,
+										props.asset.state
+									)}
 								</S.DrawerContentDetailAlt>
 								{mobile && (
 									<S.MDrawerHeader>

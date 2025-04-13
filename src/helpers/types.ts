@@ -238,3 +238,22 @@ export type ResponseType = { status: boolean; message: string | null };
 export type StampType = { total: number; vouched: number; hasStamped?: boolean };
 
 export type StampsType = Record<string, { total: number; vouched: number }>;
+
+// Activity event types used in ActivityTable
+export type ActivityEventType =
+	| 'LISTED'
+	| 'PURCHASED'
+	| 'SOLD'
+	| 'CANCELLED'
+	| 'TRANSFER-IN'
+	| 'TRANSFER-OUT'
+	| 'Listing'
+	| 'Purchase'
+	| 'Sale'
+	| 'Unlisted'
+	| 'Transfer'
+	| 'Received'
+	| 'Sent';
+
+// Transaction types used in ActivityTable
+export type ActivityTransactionType = 'UCM_LISTING' | 'UCM_UNLISTING' | 'WALLET_TRANSFER' | 'DIRECT_TRANSFER';

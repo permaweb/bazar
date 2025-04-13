@@ -324,75 +324,116 @@ export const AssetDataWrapper = styled.div`
 export const EventWrapper = styled(TableRowValue)`
 	flex: none;
 	min-width: 0;
-	width: 140px;
+	width: 150px;
 	margin: 0 20px;
 `;
 
-function getEventColor(theme: DefaultTheme, type: 'Listing' | 'Sale' | 'Purchase' | 'Unlisted') {
-	switch (type) {
-		case 'Listing':
-			return theme.colors.stats.alt4;
-		case 'Sale':
-			return theme.colors.indicator.primary;
-		case 'Purchase':
-			return theme.colors.stats.alt5;
-		case 'Unlisted':
-			return theme.colors.warning.primary;
-	}
-}
-
-export const Event = styled.a<{ type: 'Listing' | 'Sale' | 'Purchase' | 'Unlisted' }>`
-	width: 110px;
+export const Event = styled.a<{ type: string }>`
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	gap: 7.5px;
-	position: relative;
-	overflow: hidden;
-	padding: 1.5px 7.5px;
-	background: ${(props) => getEventColor(props.theme, props.type)};
+	text-decoration: none;
+	color: inherit;
+	padding: 3px 10px;
+	border-radius: 5px;
+	min-width: 90px;
+	font-weight: bold;
+	text-align: center;
 	border: 1px solid ${(props) => props.theme.colors.border.alt4};
-	border-radius: ${STYLING.dimensions.radius.alt2};
-	p {
-		font-size: ${(props) => props.theme.typography.size.xSmall};
-		font-family: ${(props) => props.theme.typography.family.primary};
-		font-weight: ${(props) => props.theme.typography.weight.bold};
-		color: ${(props) => props.theme.colors.font.light1};
-		line-height: 1.5;
-		max-width: 90%;
-		white-space: nowrap;
-		text-overflow: ellipsis;
-		overflow: hidden;
-	}
+	background: ${(props) => {
+		const type = props.type.toLowerCase();
+
+		// Direct checks for the exact text shown in the UI
+		if (type === 'sent') return props.theme.colors.stats.alt10;
+		if (type === 'listed') return props.theme.colors.stats.alt9;
+
+		// Other event checks
+		if (type === 'purchase' || type === 'purchased' || type === 'received') {
+			return 'var(--color-success-bg)';
+		}
+		if (type === 'sale' || type === 'sold') {
+			return 'var(--color-warning-bg)';
+		}
+		if (type === 'listing') {
+			return props.theme.colors.stats.primary;
+		}
+		if (type === 'unlisted' || type === 'cancelled') {
+			return 'var(--color-error-bg)';
+		}
+		if (type.includes('transfer') || type === 'direct transfer' || type === 'wallet transfer') {
+			return 'var(--color-primary-bg)';
+		}
+
+		// Default fallback - use the same style as UCM label
+		return props.theme.colors.stats.alt3;
+	}};
 
 	svg {
-		width: 15px;
-		fill: ${(props) => props.theme.colors.font.light1};
-		color: ${(props) => props.theme.colors.font.light1};
-		margin: 6.5px 0 0 0;
+		width: 17.5px;
+		height: 17.5px;
+		margin-right: 7.5px;
+
+		path {
+			fill: ${(props) => {
+				const type = props.type.toLowerCase();
+				// Purchase events
+				if (type === 'purchase' || type === 'purchased' || type === 'received') {
+					return 'var(--color-success)';
+				}
+				// Sale events
+				if (type === 'sale' || type === 'sold' || type === 'sent') {
+					return 'var(--color-warning)';
+				}
+				// Listing events
+				if (type === 'listing' || type === 'listed' || type === 'listed to ucm') {
+					return 'var(--color-info)';
+				}
+				// Unlisting events
+				if (type === 'unlisted' || type === 'cancelled' || type === 'unlisted from ucm') {
+					return 'var(--color-error)';
+				}
+				// Transfer events
+				if (type.includes('transfer') || type === 'direct transfer' || type === 'wallet transfer') {
+					return 'var(--color-primary)';
+				}
+				// Default fallback
+				return 'var(--color-text)';
+			}};
+		}
 	}
 
-	::after {
-		content: '';
-		position: absolute;
-		height: 100%;
-		width: 100%;
-		top: 0;
-		left: 0;
-		right: 0;
-		bottom: 0;
-		background-color: ${(props) => props.theme.colors.overlay.alt1};
-		opacity: 0;
-		transition: all 100ms;
+	p {
+		font-size: 14px;
+		font-weight: ${(props) => props.theme.typography.weight.bold};
+		color: ${(props) => {
+			const type = props.type.toLowerCase();
+			// Purchase events
+			if (type === 'purchase' || type === 'purchased' || type === 'received') {
+				return 'var(--color-success)';
+			}
+			// Sale events
+			if (type === 'sale' || type === 'sold' || type === 'sent') {
+				return 'var(--color-warning)';
+			}
+			// Listing events
+			if (type === 'listing' || type === 'listed' || type === 'listed to ucm') {
+				return 'var(--color-info)';
+			}
+			// Unlisting events
+			if (type === 'unlisted' || type === 'cancelled' || type === 'unlisted from ucm') {
+				return 'var(--color-error)';
+			}
+			// Transfer events
+			if (type.includes('transfer') || type === 'direct transfer' || type === 'wallet transfer') {
+				return 'var(--color-primary)';
+			}
+			// Default fallback
+			return 'var(--color-text)';
+		}};
 	}
-	&:hover::after {
-		opacity: 1;
-	}
-	&:focus::after {
-		opacity: 1;
-	}
+
 	&:hover {
-		cursor: pointer;
+		opacity: 0.85;
 	}
 `;
 
@@ -468,4 +509,13 @@ export const DateValueTooltip = styled.div`
 			display: block;
 		}
 	}
+`;
+
+export const RelatedTxs = styled.span`
+	font-size: 0.8em;
+	color: var(--color-text-alt2);
+	margin-left: 8px;
+	padding: 2px 6px;
+	background: var(--color-bg-alt1);
+	border-radius: 4px;
 `;
