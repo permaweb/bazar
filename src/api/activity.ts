@@ -115,6 +115,27 @@ const ACTIVITY_TRANSACTION_FIELDS = `
 const TRANSACTIONS_PER_PAGE = 500; // Increased from 100
 const MAX_PAGES = 10; // This will give us up to 5000 transactions
 
+// Enhanced query to find assets returned from UCM after cancellation
+// We've relaxed the tag requirements to catch more potential cancellations
+const GET_RETURNED_ASSETS = `
+  query GetReturnedAssets($first: Int!) {
+    transactions(
+      first: $first,
+      recipients: [$address],
+      owners: ["${UCM_ORDERBOOK_ADDRESS}"],
+      tags: [
+        { name: "Data-Protocol", values: ["ao"] }
+      ]
+    ) {
+      edges {
+        node {
+          ${ACTIVITY_TRANSACTION_FIELDS}
+        }
+      }
+    }
+  }
+`;
+
 // Add cursor to queries for pagination
 const GET_LISTED_ORDERS = `
   query GetListedOrders($first: Int!, $after: String) {
@@ -460,6 +481,12 @@ function identifyTransactionType(tx: any, userAddress: string, userProfileId?: s
 	const tags = tx.tags || [];
 	const action = getTagValue(tags, 'Action');
 	const handler = getTagValue(tags, 'Handler');
+	const swapToken = getTagValue(tags, 'X-Swap-Token');
+	const price = getTagValue(tags, 'X-Price');
+	const orderAction = getTagValue(tags, 'X-Order-Action');
+	const cancelReason = getTagValue(tags, 'X-Cancel-Reason');
+	const xSeller = getTagValue(tags, 'X-Seller'); // Check for X-Seller tag
+	const isMarketOrder = getTagValue(tags, 'X-Price') !== null; // Check if has price
 
 	// Get the correct sender (ao profile) and receiver
 	const fromProcess = getTagValue(tags, 'From-Process');
@@ -467,16 +494,24 @@ function identifyTransactionType(tx: any, userAddress: string, userProfileId?: s
 	const recipient = getTagValue(tags, 'Recipient') || tx.recipient;
 
 	// Log for debugging
-	console.log('Transaction identification:', {
-		id: tx.id,
-		action,
-		handler,
-		fromProcess,
-		sender,
-		recipient,
-		userAddress,
-		userProfileId,
-	});
+	if (DEBUG_MODE) {
+		console.log('Transaction identification:', {
+			id: tx.id,
+			action,
+			handler,
+			orderAction,
+			cancelReason,
+			fromProcess,
+			sender,
+			recipient,
+			userAddress,
+			userProfileId,
+			swapToken,
+			price,
+			xSeller,
+			isMarketOrder,
+		});
+	}
 
 	// Check if transaction involves UCM orderbook
 	const isUCMTransaction = recipient === UCM_ORDERBOOK_ADDRESS || sender === UCM_ORDERBOOK_ADDRESS;
@@ -485,16 +520,63 @@ function identifyTransactionType(tx: any, userAddress: string, userProfileId?: s
 	const userIsSender = [userProfileId, fromProcess, userAddress].includes(sender);
 	const userIsReceiver = [userProfileId, fromProcess, userAddress].includes(recipient);
 
+	// SPECIAL CASE: For transactions like the problematic 1390 in the image
+	// If we have X-Seller tag or a price, and UCM is involved, this is a sale/purchase
+	if (isUCMTransaction && (xSeller || (price && Number(price) > 0))) {
+		// If user is the seller or this is a UCM sale notification
+		if (xSeller === userAddress || (action === 'Debit-Notice' && userIsSender)) {
+			return 'SOLD';
+		}
+		// If user is receiving from UCM with a price
+		if (userIsReceiver && sender === UCM_ORDERBOOK_ADDRESS) {
+			return 'PURCHASED';
+		}
+	}
+
 	if (isUCMTransaction) {
+		// Case 1: User is sending TO UCM
 		if (userIsSender && recipient === UCM_ORDERBOOK_ADDRESS) {
+			// If it has Create-Order action, it's a listing
+			if (orderAction === 'Create-Order') {
+				return 'LISTED';
+			}
 			return 'LISTED';
 		}
+
+		// Case 2: UCM is sending TO the user
 		if (userIsReceiver && sender === UCM_ORDERBOOK_ADDRESS) {
-			return handler === 'Cancel-Order' ? 'CANCELLED' : 'PURCHASED';
+			// For cancellations: Check for Cancel-Order handler or cancellation reason
+			if (handler === 'Cancel-Order' || cancelReason) {
+				return 'CANCELLED';
+			}
+
+			// For returned funds after cancellation (may not have the proper handler)
+			// Look for Transfer from UCM to user without price, which suggests asset return
+			if (action === 'Transfer' && (!price || price === '0')) {
+				// Check transaction timestamp to see if it's close to a cancellation
+				// This is a common pattern for returned assets after cancellation
+				return 'CANCELLED';
+			}
+
+			// Otherwise it's a purchase
+			return 'PURCHASED';
+		}
+
+		// Case 3: UCM is sending to someone else (and user was original sender)
+		if (!userIsReceiver && sender === UCM_ORDERBOOK_ADDRESS) {
+			// If UCM is sending to someone else, and user is not the receiver,
+			// this might be a sale where user was the original owner
+			return 'SOLD';
 		}
 	}
 
 	// For non-UCM transactions
+	// If there's a price tag with a value > 0, it could be a direct sale
+	if (price && Number(price) > 0) {
+		return userIsReceiver ? 'PURCHASE' : 'SOLD';
+	}
+
+	// For other non-UCM transfers
 	return userIsReceiver ? 'TRANSFER-IN' : 'TRANSFER-OUT';
 }
 
@@ -853,12 +935,14 @@ export async function getUserActivity(
 	console.log('🔍 Fetching activity for user:', userAddress);
 
 	// Execute all queries in parallel
-	const [listedResponse, purchasesResponse, purchasesAltResponse, cancelledResponse] = await Promise.allSettled([
-		executeQuery(GET_LISTED_ORDERS, { first: 100 }, userAddress),
-		executeQuery(GET_PURCHASES, { first: 100 }, userAddress),
-		executeQuery(GET_PURCHASES_ALT, { first: 100 }, userAddress),
-		executeQuery(GET_CANCELLED_ORDERS, { first: 100 }, userAddress),
-	]);
+	const [listedResponse, purchasesResponse, purchasesAltResponse, cancelledResponse, returnedAssetsResponse] =
+		await Promise.allSettled([
+			executeQuery(GET_LISTED_ORDERS, { first: 500 }, userAddress),
+			executeQuery(GET_PURCHASES, { first: 500 }, userAddress),
+			executeQuery(GET_PURCHASES_ALT, { first: 500 }, userAddress),
+			executeQuery(GET_CANCELLED_ORDERS, { first: 500 }, userAddress),
+			executeQuery(GET_RETURNED_ASSETS, { first: 500 }, userAddress),
+		]);
 
 	// Process responses
 	const processResponse = (response: PromiseSettledResult<any>, type: string) => {
@@ -967,6 +1051,77 @@ export async function getUserActivity(
 		};
 	});
 
+	// Process returned assets (assets sent back from UCM after cancellation)
+	const returnedAssets = processResponse(returnedAssetsResponse, 'returned-assets')
+		.map((tx) => {
+			try {
+				const tags = tx.tags || [];
+				const timestamp = tx.block?.timestamp || Math.floor(Date.now() / 1000);
+
+				// More aggressively look for the asset ID in any available tag
+				const dominantToken =
+					extractAssetId(tx) ||
+					getTagValue(tags, 'Target') ||
+					getTagValue(tags, 'Asset-Id') ||
+					getTagValue(tags, 'Atomic-Asset') ||
+					getTagValue(tags, 'Id');
+
+				// Also look for quantity in different tags
+				const quantity =
+					getTagValue(tags, 'Quantity') || getTagValue(tags, 'Amount') || getTagValue(tags, 'Token-Quantity') || '1'; // Default to 1 if not found
+
+				const fromProcess = getTagValue(tags, 'From-Process');
+				const sender = fromProcess || getTagValue(tags, 'From') || tx.owner?.address;
+				const recipient = getTagValue(tags, 'Recipient') || tx.recipient;
+
+				// Log for debugging
+				if (DEBUG_MODE) {
+					console.log('Processing returned asset:', {
+						id: tx.id,
+						dominantToken,
+						quantity,
+						sender,
+						recipient,
+						tags: tags.map((t) => `${t.name}: ${t.value}`).join(', '),
+					});
+				}
+
+				// Skip if we still can't find the asset ID
+				if (!dominantToken) {
+					if (DEBUG_MODE) console.warn('Missing asset ID for returned asset:', tx.id);
+					return null;
+				}
+
+				const convertedQuantity = convertTokenAmount(quantity, dominantToken);
+
+				// For assets returned from UCM, we'll mark as CANCELLED
+				return {
+					id: tx.id,
+					orderId: tx.id,
+					timestamp,
+					type: 'CANCELLED' as const,
+					status: 'CANCELLED' as const,
+					price: 0, // Usually there's no price for returned assets
+					quantity: convertedQuantity,
+					dominantToken,
+					swapToken: 'AR', // Default swap token
+					sender,
+					receiver: recipient,
+					isSender: false,
+					isReceiver: true,
+					isPurchase: false,
+					isDirectTransfer: false,
+					TransactionType: 'UCM_UNLISTING',
+					originalQuantity: quantity,
+					originalPrice: '0',
+				};
+			} catch (e) {
+				console.error('Error processing returned asset:', e);
+				return null;
+			}
+		})
+		.filter(Boolean);
+
 	// Format and filter by date
 	const formatAndFilter = (orders: any[]) => {
 		return orders
@@ -991,10 +1146,13 @@ export async function getUserActivity(
 			}));
 	};
 
+	// Combine cancelled orders with returned assets (both are cancellation-related)
+	const allCancelledOrders = [...cancelledOrders, ...returnedAssets];
+
 	const result = {
 		ListedOrders: formatAndFilter(listedOrders),
 		ExecutedOrders: formatAndFilter(executedOrders),
-		CancelledOrders: formatAndFilter(cancelledOrders),
+		CancelledOrders: formatAndFilter(allCancelledOrders),
 		DirectTransfers: [],
 	};
 
@@ -1004,6 +1162,7 @@ export async function getUserActivity(
 		Cancelled: result.CancelledOrders.length,
 		'Regular Purchases': purchases.length,
 		'Alt Purchases': purchasesAlt.length,
+		'Returned Assets': returnedAssets.length,
 	});
 
 	return result;

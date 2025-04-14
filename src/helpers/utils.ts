@@ -126,8 +126,23 @@ export function formatDate(dateArg: string | number | null, dateType: DateType, 
 export function getRelativeDate(timestamp: number) {
 	if (!timestamp) return '-';
 	const currentDate = new Date();
-	// Arweave timestamps are in seconds, so multiply by 1000 to get milliseconds
-	const inputDate = new Date(timestamp * 1000);
+
+	// Validate timestamp and ensure proper conversion
+	// If timestamp is from 1970-2000, it's likely seconds; otherwise, it might be milliseconds
+	let inputDate: Date;
+	if (timestamp < 1000000000000) {
+		// Timestamp is in seconds (smaller numbers), multiply by 1000 to get milliseconds
+		inputDate = new Date(timestamp * 1000);
+	} else {
+		// Timestamp is already in milliseconds
+		inputDate = new Date(timestamp);
+	}
+
+	// Sanity check: if date is too old (before 2020) or in the future, use current date
+	if (inputDate.getFullYear() < 2020 || inputDate > currentDate) {
+		console.warn('Invalid timestamp detected:', timestamp, 'Converted to:', inputDate);
+		return '-';
+	}
 
 	const timeDifference: number = currentDate.getTime() - inputDate.getTime();
 	const secondsDifference = Math.floor(timeDifference / 1000);

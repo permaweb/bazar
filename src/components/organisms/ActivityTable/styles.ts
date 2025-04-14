@@ -435,7 +435,7 @@ export const Event = styled.a<{ type: string }>`
 				return 'var(--color-info)';
 			}
 			// Unlisting events
-			if (type === 'unlisted' || type === 'cancelled' || type === 'unlisted from ucm') {
+			if (type === 'unlisted' || type === 'cancelled' || type === 'unlisted from ucm' || type === 'listing cancelled') {
 				return 'var(--color-error)';
 			}
 			// Transfer events

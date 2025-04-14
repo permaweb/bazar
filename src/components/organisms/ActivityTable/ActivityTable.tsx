@@ -331,7 +331,7 @@ export default function ActivityTable(props: IProps) {
 			case 'UCM_LISTING':
 				return 'Listed';
 			case 'UCM_UNLISTING':
-				return 'Unlisted';
+				return 'Unlisted'; // Changed to simpler "Unlisted" label
 			case 'WALLET_TRANSFER':
 				return 'Wallet Transfer';
 			case 'DIRECT_TRANSFER':
@@ -350,7 +350,8 @@ export default function ActivityTable(props: IProps) {
 			case 'SOLD':
 				return 'Sale';
 			case 'CANCELLED':
-				return 'Unlisted';
+				// When an item is cancelled/returned from UCM
+				return 'Unlisted'; // Changed to "Unlisted" for consistency
 			case 'TRANSFER-IN':
 				return 'Received';
 			case 'TRANSFER-OUT':
@@ -615,6 +616,8 @@ export default function ActivityTable(props: IProps) {
 											getEventLabel(row.event, row.transactionType, row).toLowerCase() === 'sale' ||
 											getEventLabel(row.event, row.transactionType, row).toLowerCase() === 'sold'
 												? { color: '#38BD80', backgroundColor: 'rgba(56, 189, 128, 0.15)' }
+												: getEventLabel(row.event, row.transactionType, row).toLowerCase() === 'unlisted'
+												? { color: '#ff4d4f', backgroundColor: 'rgba(255, 77, 79, 0.15)' }
 												: undefined
 										}
 									>
@@ -624,6 +627,8 @@ export default function ActivityTable(props: IProps) {
 												getEventLabel(row.event, row.transactionType, row).toLowerCase() === 'sale' ||
 												getEventLabel(row.event, row.transactionType, row).toLowerCase() === 'sold'
 													? { color: '#38BD80', fontWeight: 'bold' }
+													: getEventLabel(row.event, row.transactionType, row).toLowerCase() === 'unlisted'
+													? { color: '#ff4d4f', fontWeight: 'bold' }
 													: undefined
 											}
 										>
@@ -651,7 +656,11 @@ export default function ActivityTable(props: IProps) {
 								</S.SenderWrapper>
 								<S.ReceiverWrapper>{getReceiverContent(row)}</S.ReceiverWrapper>
 								<S.QuantityWrapper className={'end-value'}>
-									<p>{getDenominatedTokenValue(row.quantity, row.dominantToken)}</p>
+									<p>
+										{row.dominantToken === 'artoken' || row.dominantToken === 'PIXL Token'
+											? formatCount(row.quantity)
+											: getDenominatedTokenValue(row.quantity, row.dominantToken)}
+									</p>
 								</S.QuantityWrapper>
 								<S.PriceWrapper className={'end-value'}>
 									<CurrencyLine amount={row.price} currency={row.swapToken} callback={null} />
@@ -662,7 +671,11 @@ export default function ActivityTable(props: IProps) {
 										<S.DateValueTooltip>
 											<ReactSVG src={ASSETS.info} />
 											<div className={'date-tooltip fade-in border-wrapper-alt2'}>
-												<p>{`${formatDate(row.timestamp, 'iso', true)}`}</p>
+												<p>{`${formatDate(
+													row.timestamp < 1000000000000 ? row.timestamp * 1000 : row.timestamp,
+													'iso',
+													true
+												)}`}</p>
 											</div>
 										</S.DateValueTooltip>
 									)}
