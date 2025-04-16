@@ -6,12 +6,10 @@ import * as Othent from '@othent/kms';
 import { connect } from '@permaweb/aoconnect';
 import AOProfile, { ProfileType } from '@permaweb/aoprofile';
 
-import { getVouch, readHandler } from 'api';
-
 import { Modal } from 'components/molecules/Modal';
-import { AO, AR_WALLETS, REDIRECTS, WALLET_PERMISSIONS } from 'helpers/config';
+import { AR_WALLETS, REDIRECTS, WALLET_PERMISSIONS } from 'helpers/config';
 import { getARBalanceEndpoint } from 'helpers/endpoints';
-import { VouchType, WalletEnum } from 'helpers/types';
+import { WalletEnum } from 'helpers/types';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 import { RootState } from 'store';
 
@@ -23,9 +21,9 @@ interface ArweaveContextState {
 	walletAddress: string | null;
 	walletType: WalletEnum | null;
 	arBalance: number | null;
-	tokenBalances: { [address: string]: { profileBalance: number; walletBalance: number } } | null;
-	toggleTokenBalanceUpdate: boolean;
-	setToggleTokenBalanceUpdate: (toggleUpdate: boolean) => void;
+	// tokenBalances: { [address: string]: { profileBalance: number; walletBalance: number } } | null;
+	// toggleTokenBalanceUpdate: boolean;
+	// setToggleTokenBalanceUpdate: (toggleUpdate: boolean) => void;
 	handleConnect: any;
 	handleDisconnect: () => void;
 	walletModalVisible: boolean;
@@ -33,7 +31,7 @@ interface ArweaveContextState {
 	profile: ProfileType;
 	toggleProfileUpdate: boolean;
 	setToggleProfileUpdate: (toggleUpdate: boolean) => void;
-	vouch: VouchType;
+	// vouch: VouchType;
 }
 
 interface ArweaveProviderProps {
@@ -46,9 +44,9 @@ const DEFAULT_CONTEXT = {
 	walletAddress: null,
 	walletType: null,
 	arBalance: null,
-	tokenBalances: null,
-	toggleTokenBalanceUpdate: false,
-	setToggleTokenBalanceUpdate(_toggleUpdate: boolean) {},
+	// tokenBalances: null,
+	// toggleTokenBalanceUpdate: false,
+	// setToggleTokenBalanceUpdate(_toggleUpdate: boolean) {},
 	handleConnect() {},
 	handleDisconnect() {},
 	walletModalVisible: false,
@@ -56,7 +54,7 @@ const DEFAULT_CONTEXT = {
 	profile: null,
 	toggleProfileUpdate: false,
 	setToggleProfileUpdate(_toggleUpdate: boolean) {},
-	vouch: null,
+	// vouch: null,
 };
 
 const ARContext = React.createContext<ArweaveContextState>(DEFAULT_CONTEXT);
@@ -102,16 +100,16 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 	const [walletType, setWalletType] = React.useState<WalletEnum | null>(null);
 	const [walletModalVisible, setWalletModalVisible] = React.useState<boolean>(false);
 	const [walletAddress, setWalletAddress] = React.useState<string | null>(null);
-	const [vouch, setVouch] = React.useState<VouchType | null>(null);
+	// const [vouch, setVouch] = React.useState<VouchType | null>(null);
 
 	const [arBalance, setArBalance] = React.useState<number | null>(null);
-	const [tokenBalances, setTokenBalances] = React.useState<{
-		[address: string]: { profileBalance: number; walletBalance: number };
-	} | null>({
-		[AO.defaultToken]: { profileBalance: null, walletBalance: null },
-		[AO.pixl]: { profileBalance: null, walletBalance: null },
-	});
-	const [toggleTokenBalanceUpdate, setToggleTokenBalanceUpdate] = React.useState<boolean>(false);
+	// const [tokenBalances, setTokenBalances] = React.useState<{
+	// 	[address: string]: { profileBalance: number; walletBalance: number };
+	// } | null>({
+	// 	[AO.defaultToken]: { profileBalance: null, walletBalance: null },
+	// 	[AO.pixl]: { profileBalance: null, walletBalance: null },
+	// });
+	// const [toggleTokenBalanceUpdate, setToggleTokenBalanceUpdate] = React.useState<boolean>(false);
 
 	const [profile, setProfile] = React.useState<ProfileType | null>(null);
 	const [toggleProfileUpdate, setToggleProfileUpdate] = React.useState<boolean>(false);
@@ -197,75 +195,75 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 		})();
 	}, [toggleProfileUpdate]);
 
-	React.useEffect(() => {
-		const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+	// React.useEffect(() => {
+	// 	const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-		const fetchBalances = async () => {
-			if (!walletAddress || !profile?.id) return;
+	// 	const fetchBalances = async () => {
+	// 		if (!walletAddress || !profile?.id) return;
 
-			try {
-				const defaultTokenWalletBalance = await readHandler({
-					processId: AO.defaultToken,
-					action: 'Balance',
-					tags: [{ name: 'Recipient', value: walletAddress }],
-				});
-				await sleep(500);
+	// 		try {
+	// 			const defaultTokenWalletBalance = await readHandler({
+	// 				processId: AO.defaultToken,
+	// 				action: 'Balance',
+	// 				tags: [{ name: 'Recipient', value: walletAddress }],
+	// 			});
+	// 			await sleep(500);
 
-				const pixlTokenWalletBalance = await readHandler({
-					processId: AO.pixl,
-					action: 'Balance',
-					tags: [{ name: 'Recipient', value: walletAddress }],
-				});
-				await sleep(500);
+	// 			const pixlTokenWalletBalance = await readHandler({
+	// 				processId: AO.pixl,
+	// 				action: 'Balance',
+	// 				tags: [{ name: 'Recipient', value: walletAddress }],
+	// 			});
+	// 			await sleep(500);
 
-				const defaultTokenProfileBalance = await readHandler({
-					processId: AO.defaultToken,
-					action: 'Balance',
-					tags: [{ name: 'Recipient', value: profile.id }],
-				});
-				await sleep(500);
+	// 			const defaultTokenProfileBalance = await readHandler({
+	// 				processId: AO.defaultToken,
+	// 				action: 'Balance',
+	// 				tags: [{ name: 'Recipient', value: profile.id }],
+	// 			});
+	// 			await sleep(500);
 
-				const pixlTokenProfileBalance = await readHandler({
-					processId: AO.pixl,
-					action: 'Balance',
-					tags: [{ name: 'Recipient', value: profile.id }],
-				});
+	// 			const pixlTokenProfileBalance = await readHandler({
+	// 				processId: AO.pixl,
+	// 				action: 'Balance',
+	// 				tags: [{ name: 'Recipient', value: profile.id }],
+	// 			});
 
-				setTokenBalances((prevBalances) => ({
-					...prevBalances,
-					[AO.defaultToken]: {
-						...prevBalances[AO.defaultToken],
-						walletBalance: defaultTokenWalletBalance ?? null,
-						profileBalance: defaultTokenProfileBalance ?? null,
-					},
-					[AO.pixl]: {
-						...prevBalances[AO.pixl],
-						walletBalance: pixlTokenWalletBalance ?? null,
-						profileBalance: pixlTokenProfileBalance ?? null,
-					},
-				}));
-			} catch (e) {
-				console.error(e);
-			}
-		};
+	// 			setTokenBalances((prevBalances) => ({
+	// 				...prevBalances,
+	// 				[AO.defaultToken]: {
+	// 					...prevBalances[AO.defaultToken],
+	// 					walletBalance: defaultTokenWalletBalance ?? null,
+	// 					profileBalance: defaultTokenProfileBalance ?? null,
+	// 				},
+	// 				[AO.pixl]: {
+	// 					...prevBalances[AO.pixl],
+	// 					walletBalance: pixlTokenWalletBalance ?? null,
+	// 					profileBalance: pixlTokenProfileBalance ?? null,
+	// 				},
+	// 			}));
+	// 		} catch (e) {
+	// 			console.error(e);
+	// 		}
+	// 	};
 
-		fetchBalances();
-	}, [walletAddress, profile, toggleTokenBalanceUpdate]);
+	// 	fetchBalances();
+	// }, [walletAddress, profile, toggleTokenBalanceUpdate]);
 
-	React.useEffect(() => {
-		if (walletAddress && profile && profile.id) {
-			const fetchVouch = async () => {
-				try {
-					const vouch = await getVouch({ wallet, address: walletAddress });
-					setVouch(vouch);
-				} catch (e) {
-					console.error(e);
-				}
-			};
+	// React.useEffect(() => {
+	// 	if (walletAddress && profile && profile.id) {
+	// 		const fetchVouch = async () => {
+	// 			try {
+	// 				const vouch = await getVouch({ wallet, address: walletAddress });
+	// 				setVouch(vouch);
+	// 			} catch (e) {
+	// 				console.error(e);
+	// 			}
+	// 		};
 
-			fetchVouch();
-		}
-	}, [walletAddress, profile]);
+	// 		fetchVouch();
+	// 	}
+	// }, [walletAddress, profile]);
 
 	async function handleWallet() {
 		if (localStorage.getItem('walletType')) {
@@ -356,9 +354,9 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 					walletAddress,
 					walletType,
 					arBalance,
-					tokenBalances,
-					toggleTokenBalanceUpdate,
-					setToggleTokenBalanceUpdate,
+					// tokenBalances,
+					// toggleTokenBalanceUpdate,
+					// setToggleTokenBalanceUpdate,
 					handleConnect,
 					handleDisconnect,
 					wallets: AR_WALLETS,
@@ -367,7 +365,7 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 					profile,
 					toggleProfileUpdate,
 					setToggleProfileUpdate,
-					vouch,
+					// vouch,
 				}}
 			>
 				{props.children}

@@ -3,7 +3,7 @@ import { useSelector } from 'react-redux';
 import { Link } from 'react-router-dom';
 import { ReactSVG } from 'react-svg';
 
-import { getAndUpdateRegistryProfiles, getAssetsByIds, readHandler } from 'api';
+import { getAssetsByIds, getProfiles, readHandler } from 'api';
 
 import { Button } from 'components/atoms/Button';
 import { CurrencyLine } from 'components/atoms/CurrencyLine';
@@ -11,10 +11,11 @@ import { IconButton } from 'components/atoms/IconButton';
 import { Select } from 'components/atoms/Select';
 import { OwnerLine } from 'components/molecules/OwnerLine';
 import { ACTIVITY_SORT_OPTIONS, AO, ASSETS, REDIRECTS, REFORMATTED_ASSETS, URLS } from 'helpers/config';
-import { RegistryProfileType, SelectOptionType } from 'helpers/types';
+import { SelectOptionType } from 'helpers/types';
 import { formatAddress, formatCount, formatDate, getRelativeDate, isFirefox } from 'helpers/utils';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
+import { usePermawebProvider } from 'providers/PermawebProvider';
 import { RootState } from 'store';
 
 import { AssetData } from '../AssetData';
@@ -27,6 +28,7 @@ const GROUP_COUNT = 50;
 export default function ActivityTable(props: IProps) {
 	const profilesReducer = useSelector((state: RootState) => state.profilesReducer);
 
+	const permawebProvider = usePermawebProvider();
 	const arProvider = useArweaveProvider();
 
 	const languageProvider = useLanguageProvider();
@@ -75,7 +77,7 @@ export default function ActivityTable(props: IProps) {
 				console.error(e);
 			}
 		})();
-	}, [props.asset, props.assetIds, props.address, arProvider.profile]);
+	}, [props.asset, props.assetIds, props.address, permawebProvider.profile]);
 
 	React.useEffect(() => {
 		if (activityResponse) {
@@ -91,7 +93,7 @@ export default function ActivityTable(props: IProps) {
 				setActivityGroups([]);
 			}
 		}
-	}, [activityResponse, arProvider.profile]);
+	}, [activityResponse, permawebProvider.profile]);
 
 	React.useEffect(() => {
 		if (activity && activity.length > 0) {
@@ -125,18 +127,16 @@ export default function ActivityTable(props: IProps) {
 						associatedAddresses.push(...currentGroup.map((order: any) => order.sender));
 						associatedAddresses.push(...currentGroup.map((order: any) => order.receiver));
 
-						let associatedProfiles: RegistryProfileType[] | null = null;
+						let associatedProfiles: any[] | null = null;
 						const uniqueAddresses = [...new Set(associatedAddresses.filter((address) => address !== null))];
-						associatedProfiles = await getAndUpdateRegistryProfiles(uniqueAddresses);
+						associatedProfiles = await getProfiles(uniqueAddresses);
 
 						if (associatedProfiles) {
 							currentGroup = currentGroup.map((order: any) => {
 								return {
 									...order,
-									senderProfile: associatedProfiles.find((profile: RegistryProfileType) => profile.id === order.sender),
-									receiverProfile: associatedProfiles.find(
-										(profile: RegistryProfileType) => profile.id === order.receiver
-									),
+									senderProfile: associatedProfiles.find((profile: any) => profile.id === order.sender),
+									receiverProfile: associatedProfiles.find((profile: any) => profile.id === order.receiver),
 								};
 							});
 						}
@@ -186,7 +186,10 @@ export default function ActivityTable(props: IProps) {
 				let orderEvent = event;
 				if (
 					(props.address && order.Receiver === props.address) ||
-					(arProvider && arProvider.profile && arProvider.profile.id && arProvider.profile.id === order.Receiver)
+					(arProvider &&
+						permawebProvider.profile &&
+						permawebProvider.profile.id &&
+						permawebProvider.profile.id === order.Receiver)
 				) {
 					orderEvent = 'Purchase';
 				}

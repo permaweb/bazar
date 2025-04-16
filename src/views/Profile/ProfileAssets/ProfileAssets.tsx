@@ -12,7 +12,10 @@ const ProfileAssets = React.memo((props: IProps) => {
 	React.useEffect(() => {
 		(async function () {
 			if (props.profile && !assetIds) {
-				if (props.profile.assets) setAssetIds(props.profile.assets);
+				if (props.profile.assets) {
+					if (props.profile.isLegacyProfile) setAssetIds(props.profile.assets);
+					else setAssetIds(props.profile.assets.map((asset: any) => asset.id));
+				}
 			}
 		})();
 	}, [props.profile]);

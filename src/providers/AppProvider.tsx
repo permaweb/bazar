@@ -12,6 +12,7 @@ import * as streakActions from 'store/streaks/actions';
 import * as ucmActions from 'store/ucm/actions';
 
 import { useArweaveProvider } from './ArweaveProvider';
+import { usePermawebProvider } from './PermawebProvider';
 
 export interface AppContextState {
 	ucm: { updating: boolean; completed: boolean; lastUpdate?: number };
@@ -42,6 +43,7 @@ export function AppProvider(props: AppProviderProps) {
 	const stampsReducer = useSelector((state: RootState) => state.stampsReducer);
 	const ucmReducer = useSelector((state: RootState) => state.ucmReducer);
 
+	const permawebProvider = usePermawebProvider();
 	const arProvider = useArweaveProvider();
 
 	const [ucmState, setUCMState] = React.useState<AppContextState['ucm']>({
@@ -250,7 +252,7 @@ export function AppProvider(props: AppProviderProps) {
 					}
 					setStampsState((prevState) => ({ ...prevState, updating: false }));
 
-					if (arProvider.walletAddress && arProvider.profile) {
+					if (arProvider.walletAddress && permawebProvider.profile) {
 						const hasStampedCheck = await stamps.hasStamped(orderbookIds);
 
 						const updatedStampCheck = {};
@@ -271,7 +273,7 @@ export function AppProvider(props: AppProviderProps) {
 				}
 			}
 		})();
-	}, [ucmReducer, arProvider.walletAddress, arProvider.profile]);
+	}, [ucmReducer, arProvider.walletAddress, permawebProvider.profile]);
 
 	React.useEffect(() => {
 		(async function () {

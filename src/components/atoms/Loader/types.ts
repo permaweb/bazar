@@ -3,5 +3,7 @@ export interface IProps {
 	xSm?: boolean;
 	disabled?: boolean;
 	placeholder?: boolean;
+	message?: string;
 	relative?: boolean;
+	noOverlay?: boolean;
 }

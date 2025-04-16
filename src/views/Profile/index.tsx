@@ -9,6 +9,7 @@ import { URLTabs } from 'components/molecules/URLTabs';
 import { ASSETS, URLS } from 'helpers/config';
 import { checkValidAddress } from 'helpers/utils';
 import { useLanguageProvider } from 'providers/LanguageProvider';
+import { usePermawebProvider } from 'providers/PermawebProvider';
 
 import { ProfileActivity } from './ProfileActivity';
 import { ProfileAssets } from './ProfileAssets';
@@ -16,7 +17,7 @@ import { ProfileCollections } from './ProfileCollections';
 import { ProfileHeader } from './ProfileHeader';
 
 export default function Profile() {
-	const { getProfileById } = AOProfile.init({ ao: connect({ MODE: 'legacy' }) });
+	const permawebProvider = usePermawebProvider();
 
 	const location = useLocation();
 	const navigate = useNavigate();
@@ -43,8 +44,20 @@ export default function Profile() {
 		(async function () {
 			if (address && checkValidAddress(address)) {
 				try {
-					const fetchedProfile = await getProfileById({ profileId: address });
-					setProfile(fetchedProfile);
+					let fetchedProfile = null;
+					let isLegacyProfile = false;
+
+					fetchedProfile = await permawebProvider.libs.getProfileById(address);
+
+					if (!fetchedProfile?.id || !fetchedProfile?.username) {
+						await new Promise((r) => setTimeout(r, 1000));
+						console.log('Fetching legacy profile...');
+						isLegacyProfile = true;
+						const aoProfile = AOProfile.init({ ao: connect({ MODE: 'legacy' }) });
+						fetchedProfile = await aoProfile.getProfileById({ profileId: address });
+					}
+
+					setProfile({ ...fetchedProfile, isLegacyProfile });
 				} catch (e: any) {
 					console.error(e);
 				}
