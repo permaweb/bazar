@@ -280,7 +280,7 @@ export default function Banner() {
 	}
 
 	async function handleUpdate() {
-		if (arProvider.wallet && permawebProvider.profile?.isLegacyProfile && ucmReducer?.Orderbook?.length > 0) {
+		if (arProvider.wallet && permawebProvider.profile?.isLegacyProfile) {
 			setLoading(true);
 			try {
 				console.log('Creating new profile...');
@@ -401,14 +401,17 @@ export default function Banner() {
 			)}
 
 			{!updateApplied && showUpdate && (
-				<Modal header={'Update your profile process!'} handleClose={() => setShowUpdate(false)}>
+				<Modal header={'Bring your profile to HyperBEAM!'} handleClose={() => setShowUpdate(false)}>
 					<S.MWrapper className={'modal-wrapper'}>
-						<p>An important update has been added to enhance the functionality of your profile.</p>
+						<p>An important update is available to enhance your profile’s functionality.</p>
 						<p>
-							This update will create a new profile process which will contain AO Mainnet Patch. With this update there
-							will no longer be a need to dry run your profile process. All of your currently owned assets will be
-							transferred to your new profile process as well as your streak. Any of your open listings will be migrated
-							to your new profile as well.
+							This update will create a new profile process on AO utilizing HyperBEAM. After the update:
+							<br />
+							<br />
+							- You’ll no longer need to dry-run your profile.
+							<br />
+							- Your assets, collections, and streak will transfer automatically.
+							<br />- Any open listings will be migrated to your new profile.
 						</p>
 						<p>Would you like to continue and apply this update ?</p>
 						<S.ActionsWrapper>
