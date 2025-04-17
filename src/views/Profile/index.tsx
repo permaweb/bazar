@@ -81,7 +81,12 @@ export default function Profile() {
 				icon: ASSETS.collection,
 				disabled: false,
 				url: URLS.profileCollections(address),
-				view: () => <ProfileCollections address={address} />,
+				view: () => (
+					<ProfileCollections
+						address={address}
+						collectionIds={!(profile as any).isLegacyProfile ? (profile as any)?.collections ?? null : null}
+					/>
+				),
 			},
 			{
 				label: language.activity,

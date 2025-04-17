@@ -56,7 +56,6 @@ export default function ProfileManage(props: IProps) {
 	}, [props.profile]);
 
 	function handleUpdate() {
-		arProvider.setToggleProfileUpdate(!arProvider.toggleProfileUpdate);
 		if (props.handleUpdate) props.handleUpdate();
 	}
 
@@ -82,23 +81,19 @@ export default function ProfileManage(props: IProps) {
 			if (avatar) data.thumbnail = avatar;
 			if (banner) data.banner = banner;
 
-			if (props.profile.isLegacyProfile) {
-				data = {
-					userName: username,
-					displayName: name,
-					description: bio,
-					thumbnail: avatar,
-					banner: banner,
-				};
-			}
-
 			try {
 				if (props.profile && props.profile.id) {
 					let updateResponse = null;
 					if (props.profile.isLegacyProfile) {
 						updateResponse = await updateProfile({
 							profileId: props.profile.id,
-							data: data,
+							data: {
+								userName: username,
+								displayName: name,
+								description: bio,
+								thumbnail: avatar,
+								banner: banner,
+							},
 						});
 					} else {
 						updateResponse = await permawebProvider.libs.updateProfile(data, props.profile.id, (status: any) =>
@@ -124,13 +119,12 @@ export default function ProfileManage(props: IProps) {
 
 					console.log(`Profile ID: ${profileId}`);
 
-					console.log(profileId);
-
 					if (profileId) {
 						setProfileResponse({
 							message: `${language.profileCreated}!`,
 							status: 'success',
 						});
+						permawebProvider.handleInitialProfileCache(arProvider.walletAddress, profileId);
 						handleUpdate();
 					} else {
 						setProfileResponse({

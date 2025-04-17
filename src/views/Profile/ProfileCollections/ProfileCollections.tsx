@@ -6,7 +6,7 @@ import { IProps } from './types';
 export default function ProfileCollections(props: IProps) {
 	return props.address ? (
 		<S.Wrapper>
-			<CollectionsList owner={props.address} />
+			<CollectionsList owner={props.address} collectionIds={props.collectionIds} />
 		</S.Wrapper>
 	) : null;
 }

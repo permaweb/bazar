@@ -15,6 +15,7 @@ import { useLanguageProvider } from './LanguageProvider';
 
 interface PermawebContextState {
 	libs: any;
+	deps: any;
 	profile: ProfileType;
 	showProfileManager: boolean;
 	setShowProfileManager: (toggle: boolean) => void;
@@ -27,6 +28,7 @@ interface PermawebContextState {
 
 const DEFAULT_CONTEXT = {
 	libs: null,
+	deps: null,
 	profile: null,
 	showProfileManager: false,
 	setShowProfileManager(_toggle: boolean) {},
@@ -50,6 +52,7 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 	const language = languageProvider.object[languageProvider.current];
 
 	const [libs, setLibs] = React.useState<any>(null);
+	const [deps, setDeps] = React.useState<any>(null);
 	const [profile, setProfile] = React.useState<ProfileType | null>(null);
 	const [showProfileManager, setShowProfileManager] = React.useState<boolean>(false);
 	const [refreshProfileTrigger, setRefreshProfileTrigger] = React.useState<boolean>(false);
@@ -64,13 +67,14 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 	const [toggleTokenBalanceUpdate, setToggleTokenBalanceUpdate] = React.useState<boolean>(false);
 
 	React.useEffect(() => {
-		setLibs(
-			PermawebLibs.init({
-				ao: connect({ MODE: 'legacy' }),
-				arweave: Arweave.init({}),
-				signer: arProvider.wallet ? createSigner(arProvider.wallet) : null,
-			})
-		);
+		const deps = {
+			ao: connect({ MODE: 'legacy' }),
+			arweave: Arweave.init({}),
+			signer: arProvider.wallet ? createSigner(arProvider.wallet) : null,
+		};
+
+		setLibs(PermawebLibs.init(deps));
+		setDeps(deps);
 	}, [arProvider.wallet]);
 
 	React.useEffect(() => {
@@ -87,7 +91,7 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 
 					setProfile(cachedProfile);
 				}
-
+				await new Promise((r) => setTimeout(r, 2000));
 				setProfile(await resolveProfile());
 			}
 		})();
@@ -213,12 +217,12 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 
 			let isLegacyProfile = false;
 
-			if (cachedProfile?.id) fetchedProfile = await libs.getProfileById(cachedProfile.id);
+			if (cachedProfile?.id && !cachedProfile.isLegacyProfile)
+				fetchedProfile = await libs.getProfileById(cachedProfile.id);
 			else {
 				fetchedProfile = await libs.getProfileByWalletAddress(arProvider.walletAddress);
 
 				if (!fetchedProfile?.id) {
-					await new Promise((r) => setTimeout(r, 1000));
 					console.log('Fetching legacy profile...');
 					isLegacyProfile = true;
 					const aoProfile = AOProfile.init({ ao: connect({ MODE: 'legacy' }) });
@@ -256,6 +260,7 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 		<PermawebContext.Provider
 			value={{
 				libs: libs,
+				deps: deps,
 				profile: profile,
 				showProfileManager,
 				setShowProfileManager,

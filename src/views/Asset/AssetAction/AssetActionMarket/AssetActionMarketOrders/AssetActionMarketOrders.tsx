@@ -248,8 +248,8 @@ export default function AssetActionMarketOrders(props: IProps) {
 				if (denomination && denomination > 1) data.denomination = denomination.toString();
 
 				const orderId = await createOrder(
+					permawebProvider.deps,
 					data,
-					arProvider.wallet,
 					(args: { processing: boolean; success: boolean; message: string }) => {
 						handleStatusUpdate(args.processing, !args.processing, args.success, args.message);
 					}

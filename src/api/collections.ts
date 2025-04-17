@@ -52,8 +52,8 @@ export async function getCollections(creator?: string, filterUnstamped?: boolean
 
 		if (response?.Collections?.length) {
 			let filteredCollections = [...response.Collections];
-			if (!dryrun && creator && response.CollectionsByUser?.[creator]) {
-				const creatorCollectionIds = [...response.CollectionsByUser[creator]];
+			if (!dryrun && creator) {
+				const creatorCollectionIds = [...(response.CollectionsByUser?.[creator] ?? [])];
 				filteredCollections = filteredCollections.filter((collection) => creatorCollectionIds.includes(collection.Id));
 			}
 

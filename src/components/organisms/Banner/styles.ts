@@ -24,6 +24,9 @@ export const Wrapper = styled.div`
 		&:hover {
 			color: ${(props) => props.theme.colors.font.light2};
 		}
+		&:disabled {
+			color: ${(props) => props.theme.colors.font.light2};
+		}
 	}
 `;
 
@@ -81,5 +84,13 @@ export const ActionsWrapper = styled.div`
 			text-transform: uppercase;
 			white-space: nowrap;
 		}
+	}
+`;
+
+export const MessageWrapper = styled.div`
+	margin: 20px 0 0 0;
+
+	p {
+		margin: 0;
 	}
 `;

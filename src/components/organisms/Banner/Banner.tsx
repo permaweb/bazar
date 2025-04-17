@@ -93,6 +93,9 @@ export default function Banner() {
 	// const [showVouch, setShowVouch] = React.useState<boolean>(false);
 	// const [showVouchAlert, setShowVouchAlert] = React.useState<boolean>(false);
 
+	const [legacyProfile, setLegacyProfile] = React.useState<any>(null);
+	const [showLegacyAssetMigration, setShowLegacyAssetMigration] = React.useState<boolean>(false);
+
 	const [loading, setLoading] = React.useState<boolean>(false);
 	const [updateApplied, setUpdateApplied] = React.useState<boolean>(true);
 	const [response, setResponse] = React.useState<NotificationType | null>(null);
@@ -102,12 +105,42 @@ export default function Banner() {
 	// Profile Migration
 	React.useEffect(() => {
 		(async function () {
-			if (permawebProvider.profile?.isLegacyProfile) {
+			if (permawebProvider.profile?.id && permawebProvider.profile?.isLegacyProfile) {
 				setUpdateApplied(false);
 				setShowUpdate(true);
 			}
 		})();
 	}, [permawebProvider.profile]);
+
+	React.useEffect(() => {
+		(async function () {
+			if (arProvider.walletAddress && permawebProvider.profile?.id && !permawebProvider.profile.isLegacyProfile) {
+				try {
+					const legacyLookup = await permawebProvider.libs.readProcess({
+						processId: AO.profileRegistry,
+						action: 'Get-Profiles-By-Delegate',
+						data: { Address: arProvider.walletAddress },
+					});
+
+					let legacyProfileId: string;
+					if (legacyLookup && legacyLookup.length > 0 && legacyLookup[0].ProfileId) {
+						legacyProfileId = legacyLookup[0].ProfileId;
+						const legacyProfileLookup = await permawebProvider.libs.readProcess({
+							processId: legacyProfileId,
+							action: 'Info',
+						});
+
+						if (legacyProfileLookup?.Assets?.length > 0) {
+							setLegacyProfile({ ...legacyProfileLookup, Id: legacyProfileId });
+							setShowLegacyAssetMigration(true);
+						}
+					}
+				} catch (e: any) {
+					console.error(e);
+				}
+			}
+		})();
+	}, [arProvider.walletAddress, permawebProvider.profile]);
 
 	// Credit notice forwarding
 	// React.useEffect(() => {
@@ -205,6 +238,47 @@ export default function Banner() {
 	// 	}
 	// }
 
+	async function handleAssetMigration() {
+		if (legacyProfile?.Id && permawebProvider.profile?.id) {
+			setLoading(true);
+			for (const asset of legacyProfile.Assets) {
+				console.log(`Getting balance of asset: ${asset.Id}`);
+				try {
+					const assetBalance = await permawebProvider.libs.readProcess({
+						processId: asset.Id,
+						action: 'Balance',
+						tags: [
+							{ name: 'Recipient', value: legacyProfile.Id },
+							{ name: 'Target', value: legacyProfile.Id },
+							{ name: 'Account', value: legacyProfile.Id },
+						],
+						data: {
+							Target: legacyProfile.Id,
+						},
+					});
+
+					const quantity = assetBalance ? assetBalance.toString() : '1';
+					console.log(`Transferring ${quantity} to new profile...`);
+					const transferResponse = await permawebProvider.libs.sendMessage({
+						processId: legacyProfile.Id,
+						action: 'Transfer',
+						tags: [
+							{ name: 'Target', value: asset.Id },
+							{ name: 'Recipient', value: permawebProvider.profile.id },
+							{ name: 'Quantity', value: quantity },
+						],
+					});
+
+					console.log(`Transfer: ${transferResponse}`);
+				} catch (e: any) {
+					console.error(e);
+				}
+			}
+			setLoading(false);
+			setShowLegacyAssetMigration(false);
+		}
+	}
+
 	async function handleUpdate() {
 		if (arProvider.wallet && permawebProvider.profile?.isLegacyProfile && ucmReducer?.Orderbook?.length > 0) {
 			setLoading(true);
@@ -256,42 +330,52 @@ export default function Banner() {
 				});
 				console.log(`Streak migration: ${streakMigrationResult}`);
 
-				console.log('Transferring assets...');
-				for (const asset of permawebProvider.profile.assets) {
-					console.log(`Getting balance of asset: ${asset}`);
-					const assetBalance = await permawebProvider.libs.readProcess({
-						processId: asset,
-						action: 'Balance',
-						tags: [{ name: 'Recipient', value: permawebProvider.profile.id }],
-					});
-
-					if (assetBalance !== null) {
-						console.log(`Transferring balance to new profile...`);
-						const transferResponse = await permawebProvider.libs.sendMessage({
-							processId: permawebProvider.profile.id,
-							action: 'Transfer',
-							tags: [
-								{ name: 'Target', value: asset },
-								{ name: 'Recipient', value: newProfileId },
-								{ name: 'Quantity', value: assetBalance.toString() },
-							],
-						});
-
-						console.log(`Transfer: ${transferResponse}`);
-					}
-				}
-
 				console.log('Checking collections...');
 				const collectionsByUser = await getCollections(permawebProvider.profile.id);
 
 				if (collectionsByUser?.length > 0) {
-					console.log('Adding collections');
+					console.log('Adding collections...');
 					const collectionUpdateId = await permawebProvider.libs.updateZone(
 						{ Collections: collectionsByUser.map((collection: any) => collection.id) },
 						newProfileId,
 						arProvider.wallet
 					);
 					console.log(`Collection update: ${collectionUpdateId}`);
+				}
+
+				console.log('Transferring assets...');
+				for (const asset of permawebProvider.profile.assets) {
+					console.log(`Getting balance of asset: ${asset}`);
+					try {
+						const assetBalance = await permawebProvider.libs.readProcess({
+							processId: asset,
+							action: 'Balance',
+							tags: [
+								{ name: 'Recipient', value: permawebProvider.profile.id },
+								{ name: 'Target', value: permawebProvider.profile.id },
+								{ name: 'Account', value: permawebProvider.profile.id },
+							],
+							data: {
+								Target: permawebProvider.profile.id,
+							},
+						});
+
+						const quantity = assetBalance ? assetBalance.toString() : '1';
+						console.log(`Transferring ${quantity} to new profile...`);
+						const transferResponse = await permawebProvider.libs.sendMessage({
+							processId: permawebProvider.profile.id,
+							action: 'Transfer',
+							tags: [
+								{ name: 'Target', value: asset },
+								{ name: 'Recipient', value: newProfileId },
+								{ name: 'Quantity', value: quantity },
+							],
+						});
+
+						console.log(`Transfer: ${transferResponse}`);
+					} catch (e: any) {
+						console.error(e);
+					}
 				}
 
 				setUpdateApplied(true);
@@ -305,11 +389,13 @@ export default function Banner() {
 
 	return (
 		<>
-			{!updateApplied && (
+			{(!updateApplied || showLegacyAssetMigration) && (
 				<S.Wrapper>
-					{/* {showVouch && (
-						<button onClick={() => window.open('https://vouch-portal.arweave.net/#/', '_blank')}>Get vouched</button>
-					)} */}
+					{showLegacyAssetMigration && (
+						<button onClick={handleAssetMigration} disabled={loading}>
+							{loading ? 'Migrating...' : 'Migrate Assets'}
+						</button>
+					)}
 					{!updateApplied && <button onClick={() => setShowUpdate(true)}>Update your profile</button>}
 				</S.Wrapper>
 			)}
@@ -342,6 +428,11 @@ export default function Banner() {
 								height={45}
 							/>
 						</S.ActionsWrapper>
+						{loading && (
+							<S.MessageWrapper>
+								<p>This migration will take some time, please stay on this screen.</p>
+							</S.MessageWrapper>
+						)}
 					</S.MWrapper>
 				</Modal>
 			)}
