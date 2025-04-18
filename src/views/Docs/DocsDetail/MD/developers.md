@@ -54,7 +54,7 @@ Send({
 
 ```js
 const response = await messageResults({
-	processId: arProvider.profile.id,
+	processId: permawebProvider.profile.id,
 	action: 'Transfer',
 	wallet: arProvider.wallet,
 	tags: transferTags,
@@ -116,7 +116,7 @@ try {
 }
 
 if (processSrc) {
-	processSrc = processSrc.replace('[Owner]', `['${arProvider.profile.id}']`);
+	processSrc = processSrc.replace('[Owner]', `['${permawebProvider.profile.id}']`);
 	processSrc = processSrc.replaceAll('<NAME>', title);
 	processSrc = processSrc.replaceAll('<TICKER>', 'ATOMIC');
 	processSrc = processSrc.replaceAll('<DENOMINATION>', '1');

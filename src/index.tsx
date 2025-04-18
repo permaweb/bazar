@@ -10,6 +10,7 @@ import { ArweaveProvider } from 'providers/ArweaveProvider';
 import { CustomThemeProvider } from 'providers/CustomThemeProvider';
 import ErrorBoundary from 'providers/ErrorBoundary';
 import { LanguageProvider } from 'providers/LanguageProvider';
+import { PermawebProvider } from 'providers/PermawebProvider';
 import { persistor, store } from 'store';
 
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
@@ -19,12 +20,14 @@ ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
 				<LanguageProvider>
 					<ErrorBoundary>
 						<ArweaveProvider>
-							<AppProvider>
-								<HashRouter>
-									<GlobalStyle />
-									<App />
-								</HashRouter>
-							</AppProvider>
+							<PermawebProvider>
+								<AppProvider>
+									<HashRouter>
+										<GlobalStyle />
+										<App />
+									</HashRouter>
+								</AppProvider>
+							</PermawebProvider>
 						</ArweaveProvider>
 					</ErrorBoundary>
 				</LanguageProvider>

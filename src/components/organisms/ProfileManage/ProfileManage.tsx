@@ -15,6 +15,7 @@ import { NotificationType } from 'helpers/types';
 import { checkValidAddress } from 'helpers/utils';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
+import { usePermawebProvider } from 'providers/PermawebProvider';
 import { WalletBlock } from 'wallet/WalletBlock';
 
 import * as S from './styles';
@@ -26,6 +27,7 @@ const ALLOWED_BANNER_TYPES = 'image/png, image/jpeg, image/gif';
 const ALLOWED_AVATAR_TYPES = 'image/png, image/jpeg, image/gif';
 
 export default function ProfileManage(props: IProps) {
+	const permawebProvider = usePermawebProvider();
 	const arProvider = useArweaveProvider();
 
 	const languageProvider = useLanguageProvider();
@@ -54,7 +56,6 @@ export default function ProfileManage(props: IProps) {
 	}, [props.profile]);
 
 	function handleUpdate() {
-		arProvider.setToggleProfileUpdate(!arProvider.toggleProfileUpdate);
 		if (props.handleUpdate) props.handleUpdate();
 	}
 
@@ -65,24 +66,41 @@ export default function ProfileManage(props: IProps) {
 			const ao = connect({ MODE: 'legacy' });
 			const signer = createDataItemSigner(arProvider.wallet);
 
-			const { createProfile, updateProfile } = AOProfile.init({
+			const { updateProfile } = AOProfile.init({
 				ao,
 				signer,
 				arweave: Arweave.init({}),
 			});
 
+			let data: any = {
+				username: username,
+				displayName: name,
+				description: bio,
+			};
+
+			if (avatar) data.thumbnail = avatar;
+			if (banner) data.banner = banner;
+
 			try {
 				if (props.profile && props.profile.id) {
-					const updateResponse = await updateProfile({
-						profileId: props.profile.id,
-						data: {
-							userName: username,
-							displayName: name,
-							description: bio,
-							thumbnail: avatar,
-							banner: banner,
-						},
-					});
+					let updateResponse = null;
+					if (props.profile.isLegacyProfile) {
+						updateResponse = await updateProfile({
+							profileId: props.profile.id,
+							data: {
+								userName: username,
+								displayName: name,
+								description: bio,
+								thumbnail: avatar,
+								banner: banner,
+							},
+						});
+					} else {
+						updateResponse = await permawebProvider.libs.updateProfile(data, props.profile.id, (status: any) =>
+							console.log(status)
+						);
+					}
+
 					if (updateResponse) {
 						setProfileResponse({
 							message: `${language.profileUpdated}!`,
@@ -97,23 +115,16 @@ export default function ProfileManage(props: IProps) {
 						});
 					}
 				} else {
-					const createResponse = await createProfile({
-						data: {
-							userName: username,
-							displayName: name,
-							description: bio,
-							thumbnail: avatar,
-							banner: banner,
-						},
-					});
+					const profileId = await permawebProvider.libs.createProfile(data, (status: any) => console.log(status));
 
-					console.log(createResponse);
+					console.log(`Profile ID: ${profileId}`);
 
-					if (createResponse) {
+					if (profileId) {
 						setProfileResponse({
 							message: `${language.profileCreated}!`,
 							status: 'success',
 						});
+						permawebProvider.handleInitialProfileCache(arProvider.walletAddress, profileId);
 						handleUpdate();
 					} else {
 						setProfileResponse({

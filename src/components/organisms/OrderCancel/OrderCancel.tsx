@@ -11,12 +11,14 @@ import * as windowUtils from 'helpers/window';
 import { useAppProvider } from 'providers/AppProvider';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
+import { usePermawebProvider } from 'providers/PermawebProvider';
 
 import * as S from './styles';
 import { IProps } from './types';
 
 export default function OrderCancel(props: IProps) {
 	const appProvider = useAppProvider();
+	const permawebProvider = usePermawebProvider();
 	const arProvider = useArweaveProvider();
 
 	const languageProvider = useLanguageProvider();
@@ -28,14 +30,14 @@ export default function OrderCancel(props: IProps) {
 	const [response, setResponse] = React.useState<NotificationType | null>(null);
 
 	async function handleOrderCancel() {
-		if (arProvider.wallet && arProvider.profile && arProvider.profile.id) {
+		if (arProvider.wallet && permawebProvider.profile && permawebProvider.profile.id) {
 			setLoading(true);
 			try {
 				const cancelOrderId = await cancelOrder(
 					{
 						orderbookId: AO.ucm,
 						orderId: props.listing.id,
-						profileId: arProvider.profile.id,
+						profileId: permawebProvider.profile.id,
 						dominantToken: props.listing.token,
 						swapToken: props.listing.currency,
 					},
@@ -51,7 +53,7 @@ export default function OrderCancel(props: IProps) {
 
 				setCancelProcessed(true);
 				appProvider.refreshUcm();
-				arProvider.setToggleTokenBalanceUpdate(!arProvider.toggleTokenBalanceUpdate);
+				permawebProvider.setToggleTokenBalanceUpdate(!permawebProvider.toggleTokenBalanceUpdate);
 				props.toggleUpdate();
 				setShowConfirmation(false);
 				setCancelProcessed(false);

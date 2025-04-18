@@ -359,3 +359,8 @@ export const UPLOAD_CONFIG = {
 export const FLAGS = {
 	MAINTENANCE: false,
 };
+
+export const STORAGE = {
+	walletType: `wallet-type`,
+	profile: (id: string) => `profile-${id}`,
+};
