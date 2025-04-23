@@ -97,7 +97,12 @@ export default function Collection() {
 					<>
 						<S.AssetsWrapper>
 							{collection.assetIds && (
-								<AssetsTable ids={collection.assetIds} type={'grid'} pageCount={PAGINATORS.collection.assets} />
+								<AssetsTable
+									ids={collection.assetIds}
+									type={'grid'}
+									pageCount={PAGINATORS.collection.assets}
+									currentListings={collection.currentListings}
+								/>
 							)}
 						</S.AssetsWrapper>
 					</>

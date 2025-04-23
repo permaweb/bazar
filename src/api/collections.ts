@@ -1,3 +1,5 @@
+import { connect } from '@permaweb/aoconnect';
+
 import { readHandler, stamps } from 'api';
 
 import { AO, DEFAULTS } from 'helpers/config';
@@ -103,6 +105,19 @@ export async function getCollectionById(args: { id: string }): Promise<Collectio
 
 			let assetIds: string[] = response.Assets;
 
+			let currentListings = {};
+			if (collection.activityProcess) {
+				try {
+					const ao = connect({ MODE: 'legacy' });
+					const activityResult = await ao.results({ process: collection.activityProcess });
+					currentListings = activityResult?.edges?.[0]?.node?.Messages?.[0]?.Data
+						? JSON.parse(activityResult.edges[0].node.Messages[0].Data)
+						: {};
+				} catch (e) {
+					console.error('Failed to fetch CurrentListings:', e);
+				}
+			}
+
 			const metrics: CollectionMetricsType = {
 				assetCount: assetIds.length,
 				floorPrice: getFloorPrice(assetIds),
@@ -115,6 +130,7 @@ export async function getCollectionById(args: { id: string }): Promise<Collectio
 				assetIds: assetIds,
 				creatorProfile: null, // Async fetch from component level
 				metrics: metrics,
+				currentListings: currentListings,
 			};
 			return collectionDetail;
 		}

@@ -172,6 +172,20 @@ export default function AssetsTable(props: IProps) {
 	}
 
 	function getListing(asset: AssetDetailType) {
+		if (props.currentListings) {
+			const assetListings = Object.values(props.currentListings).filter(
+				(listing) => listing.SwapToken === asset.data.id
+			);
+			if (assetListings.length > 0) {
+				const sortedListings = assetListings.sort((a, b) =>
+					assetSortType.id === 'price_asc' ? Number(a.Price) - Number(b.Price) : Number(b.Price) - Number(a.Price)
+				);
+				return (
+					<CurrencyLine amount={sortedListings[0].Price} currency={asset.orderbook?.orders?.[0]?.currency || 'U'} />
+				);
+			}
+		}
+
 		if (asset && asset.orderbook?.orders && asset.orderbook?.orders.length) {
 			const sortedOrders = sortOrders(asset.orderbook?.orders, assetSortType.id as AssetSortType);
 

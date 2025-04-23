@@ -126,6 +126,18 @@ export type CollectionDetailType = CollectionType & {
 	assetIds: string[];
 	creatorProfile: ProfileType;
 	metrics: CollectionMetricsType;
+
+	currentListings?: {
+		[orderId: string]: {
+			OrderId: string;
+			DominantToken: string;
+			SwapToken: string;
+			Sender: string;
+			Quantity: string;
+			Price: string;
+			Timestamp: string;
+		};
+	};
 };
 
 export type TagType = { name: string; value: string };
