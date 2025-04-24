@@ -5,6 +5,8 @@ import { Link } from 'react-router-dom';
 import { connect } from '@permaweb/aoconnect';
 import AOProfile, { ProfileType } from '@permaweb/aoprofile';
 
+import { getCollectionById } from 'api/collections';
+
 import * as GS from 'app/styles';
 import { Drawer } from 'components/atoms/Drawer';
 import { TxAddress } from 'components/atoms/TxAddress';
@@ -29,6 +31,9 @@ export default function AssetInfo(props: IProps) {
 	const language = languageProvider.object[languageProvider.current];
 
 	const [creator, setCreator] = React.useState<ProfileType | null>(null);
+	const [collection, setCollection] = React.useState<{ title: string } | null>(null);
+	const [isCollectionLoading, setIsCollectionLoading] = React.useState<boolean>(false);
+	const [collectionError, setCollectionError] = React.useState<string | null>(null);
 
 	React.useEffect(() => {
 		(async function () {
@@ -37,6 +42,35 @@ export default function AssetInfo(props: IProps) {
 					setCreator(await getProfileById({ profileId: props.asset.data.creator }));
 				} catch (e: any) {
 					console.error(e);
+				}
+			}
+		})();
+	}, [props.asset]);
+
+	React.useEffect(() => {
+		(async function () {
+			if (
+				props.asset &&
+				props.asset.data.collectionId &&
+				!props.asset.data.collectionName &&
+				checkValidAddress(props.asset.data.collectionId)
+			) {
+				try {
+					setIsCollectionLoading(true);
+					setCollectionError(null);
+
+					const collectionData = await getCollectionById({ id: props.asset.data.collectionId });
+
+					if (collectionData) {
+						setCollection(collectionData);
+					} else {
+						setCollectionError('Collection not found');
+					}
+				} catch (e: any) {
+					const errorMessage = e.message || 'Unknown error fetching collection';
+					setCollectionError(errorMessage);
+				} finally {
+					setIsCollectionLoading(false);
 				}
 			}
 		})();
@@ -149,8 +183,17 @@ export default function AssetInfo(props: IProps) {
 									<Link to={URLS.collectionAssets(props.asset.data.collectionId)}>
 										{props.asset.data.collectionName
 											? cleanTagValue(props.asset.data.collectionName)
+											: isCollectionLoading
+											? `${props.asset.data.collectionId} (loading...)`
+											: collection && collection.title
+											? cleanTagValue(collection.title)
 											: props.asset.data.collectionId}
 									</Link>
+									{collectionError && (
+										<GS.DrawerContentDetail style={{ fontSize: '0.8em', color: 'red', marginTop: '4px' }}>
+											Error: {collectionError}
+										</GS.DrawerContentDetail>
+									)}
 								</GS.DrawerContentDetail>
 							</GS.DrawerContent>
 						}
