@@ -201,6 +201,11 @@ export const theme = (currentTheme: any): DefaultTheme => ({
 				background: currentTheme.dark2,
 			},
 		},
+		contrast: {
+			background: currentTheme.dark2,
+			border: currentTheme.neutral9,
+			color: currentTheme.light1,
+		},
 		font: {
 			primary: currentTheme.neutralA1,
 			alt1: currentTheme.neutralA4,

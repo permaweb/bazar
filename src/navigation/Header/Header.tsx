@@ -5,15 +5,15 @@ import { ReactSVG } from 'react-svg';
 import { IconButton } from 'components/atoms/IconButton';
 import { Streaks } from 'components/organisms/Streaks';
 import { ASSETS, REDIRECTS, URLS } from 'helpers/config';
-import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
+import { usePermawebProvider } from 'providers/PermawebProvider';
 import { WalletConnect } from 'wallet/WalletConnect';
 import { CloseHandler } from 'wrappers/CloseHandler';
 
 import * as S from './styles';
 
 export default function Header() {
-	const arProvider = useArweaveProvider();
+	const permawebProvider = usePermawebProvider();
 
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
@@ -47,7 +47,7 @@ export default function Header() {
 						</S.DNavWrapper>
 					</S.C1Wrapper>
 					<S.ActionsWrapper>
-						{arProvider.profile && arProvider.profile.id && <Streaks profile={arProvider.profile} />}
+						{permawebProvider.profile && permawebProvider.profile.id && <Streaks profile={permawebProvider.profile} />}
 						<WalletConnect />
 						<S.MWrapper>
 							<IconButton

@@ -3,11 +3,10 @@ import { useSelector } from 'react-redux';
 import { Link } from 'react-router-dom';
 import { ReactSVG } from 'react-svg';
 
-import { getAndUpdateRegistryProfiles, readHandler } from 'api';
+import { getProfiles, readHandler } from 'api';
 
 import { AO, ASSETS, URLS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
-import { RegistryProfileType } from 'helpers/types';
 import { checkValidAddress, formatAddress } from 'helpers/utils';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 import { RootState } from 'store';
@@ -20,8 +19,8 @@ export default function OrderCountsTable() {
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
 
-	const [topCreators, setTopCreators] = React.useState<RegistryProfileType[] | null>(null);
-	const [topCollectors, setTopCollectors] = React.useState<RegistryProfileType[] | null>(null);
+	const [topCreators, setTopCreators] = React.useState<any[] | null>(null);
+	const [topCollectors, setTopCollectors] = React.useState<any[] | null>(null);
 
 	React.useEffect(() => {
 		(async function () {
@@ -38,14 +37,14 @@ export default function OrderCountsTable() {
 							.sort(([, countA], [, countB]) => Number(countB) - Number(countA))
 							.slice(0, 5)
 							.map(([address]) => address);
-						setTopCreators(await getAndUpdateRegistryProfiles(topCreatorAddresses));
+						setTopCreators(await getProfiles(topCreatorAddresses));
 					}
 					if (response.PurchasesByAddress) {
 						const topCollectorAddresses = Object.entries(response.PurchasesByAddress)
 							.sort(([, countA], [, countB]) => Number(countB) - Number(countA))
 							.slice(0, 5)
 							.map(([address]) => address);
-						setTopCollectors(await getAndUpdateRegistryProfiles(topCollectorAddresses));
+						setTopCollectors(await getProfiles(topCollectorAddresses));
 					}
 				}
 			} catch (e: any) {
@@ -62,7 +61,7 @@ export default function OrderCountsTable() {
 				</S.Header>
 				<S.ProfilesWrapper>
 					{topCreators ? (
-						topCreators.map((profile: RegistryProfileType, index: number) => {
+						topCreators.map((profile: any, index: number) => {
 							const hasImage = profile.thumbnail && checkValidAddress(profile.thumbnail);
 							return (
 								<S.ProfileWrapper key={index} className={'fade-in'}>
@@ -101,7 +100,7 @@ export default function OrderCountsTable() {
 				</S.Header>
 				<S.ProfilesWrapper>
 					{topCollectors ? (
-						topCollectors.map((profile: RegistryProfileType, index: number) => {
+						topCollectors.map((profile: any, index: number) => {
 							const hasImage = profile.thumbnail && checkValidAddress(profile.thumbnail);
 							return (
 								<S.ProfileWrapper key={index} className={'fade-in'}>

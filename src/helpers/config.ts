@@ -189,6 +189,7 @@ export const ASSETS = {
 export const AR_WALLETS = [
 	{ type: WalletEnum.wander, logo: ASSETS.wander },
 	{ type: WalletEnum.beacon, logo: ASSETS.beacon },
+	{ type: WalletEnum.othent, logo: ASSETS.othent },
 ];
 
 export const DOM = {
@@ -360,4 +361,9 @@ export const UPLOAD_CONFIG = {
 
 export const FLAGS = {
 	MAINTENANCE: false,
+};
+
+export const STORAGE = {
+	walletType: `wallet-type`,
+	profile: (id: string) => `profile-${id}`,
 };
