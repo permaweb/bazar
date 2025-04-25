@@ -182,6 +182,7 @@ export type BatchAGQLResponseType = { [queryKey: string]: DefaultGQLResponseType
 export enum WalletEnum {
 	wander = 'wander',
 	othent = 'othent',
+	beacon = 'beacon',
 }
 
 export type RenderType = 'renderer' | 'raw';

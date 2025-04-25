@@ -5,6 +5,7 @@ import arconnect from 'assets/arconnect-wallet-logo.png';
 import arrow from 'assets/arrow.svg';
 import asset from 'assets/asset.svg';
 import audio from 'assets/audio.svg';
+import beacon from 'assets/beacon-logo.svg';
 import bridge from 'assets/bridge.svg';
 import buy from 'assets/buy.svg';
 import checkmark from 'assets/checkmark.svg';
@@ -182,10 +183,12 @@ export const ASSETS = {
 	wander,
 	x,
 	zen,
+	beacon,
 };
 
 export const AR_WALLETS = [
 	{ type: WalletEnum.wander, logo: ASSETS.wander },
+	{ type: WalletEnum.beacon, logo: ASSETS.beacon },
 	{ type: WalletEnum.othent, logo: ASSETS.othent },
 ];
 
