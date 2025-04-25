@@ -1,3 +1,5 @@
+import { CollectionDetailType } from 'helpers/types';
+
 export interface IProps {
 	ids?: string[];
 	loadingIds?: boolean;
@@ -5,4 +7,5 @@ export interface IProps {
 	pageCount?: number;
 	setProfileAction?: boolean;
 	noListings?: boolean;
+	currentListings?: CollectionDetailType['currentListings'];
 }
