@@ -29,15 +29,15 @@ ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
 							appInfo={{ name: 'Bazar' }}
 							muUrl="https://mu.ao-testnet.xyz"
 						>
-						<ArweaveProvider>
-							<PermawebProvider>
-								<AppProvider>
-									<HashRouter>
-										<GlobalStyle />
-										<App />
-									</HashRouter>
-								</AppProvider>
-               </PermawebProvider>
+							<ArweaveProvider>
+								<PermawebProvider>
+									<AppProvider>
+										<HashRouter>
+											<GlobalStyle />
+											<App />
+										</HashRouter>
+									</AppProvider>
+								</PermawebProvider>
 							</ArweaveProvider>
 						</AOSyncProvider>
 					</ErrorBoundary>

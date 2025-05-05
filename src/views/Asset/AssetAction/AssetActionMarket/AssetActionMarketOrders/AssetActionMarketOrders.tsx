@@ -242,8 +242,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 					action: action,
 				};
 
-				console.log(data);
-
 				if (unitPrice) data.unitPrice = unitPrice.toString();
 				if (denomination && denomination > 1) data.denomination = denomination.toString();
 
