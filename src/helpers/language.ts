@@ -97,6 +97,7 @@ export const language = {
 		noActivity: `No activity found`,
 		noListings: `No listings`,
 		nonTransferable: `This asset cannot be transferred`,
+		orderCancelled: `Order cancelled`,
 		orderConfirmationDetailsListing: `Listing Confirmation Details`,
 		orderConfirmationDetailsPurchase: `Purchase Confirmation Details`,
 		orderConfirmationReviewListing: `Review your listing details above`,
