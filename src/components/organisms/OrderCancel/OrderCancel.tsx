@@ -49,7 +49,7 @@ export default function OrderCancel(props: IProps) {
 
 				console.log(`Order Cancellation ID: ${cancelOrderId}`);
 
-				setResponse({ status: 'success', message: 'Order cancelled' });
+				setResponse({ status: 'success', message: `${language.orderCancelled}!` });
 
 				setCancelProcessed(true);
 				appProvider.refreshUcm();
