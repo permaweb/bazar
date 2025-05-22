@@ -3,7 +3,7 @@ import { useSelector } from 'react-redux';
 import { Link } from 'react-router-dom';
 import { ReactSVG } from 'react-svg';
 
-import { getAndUpdateRegistryProfiles } from 'api';
+import { getProfiles } from 'api';
 
 import * as GS from 'app/styles';
 import { Button } from 'components/atoms/Button';
@@ -24,6 +24,7 @@ import * as windowUtils from 'helpers/window';
 import { useAppProvider } from 'providers/AppProvider';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
+import { usePermawebProvider } from 'providers/PermawebProvider';
 import { RootState } from 'store';
 
 import { AssetActionActivity } from './AssetActionActivity';
@@ -40,6 +41,7 @@ export default function AssetAction(props: IProps) {
 	const profilesReducer = useSelector((state: RootState) => state.profilesReducer);
 
 	const appProvider = useAppProvider();
+	const permawebProvider = usePermawebProvider();
 	const arProvider = useArweaveProvider();
 
 	const languageProvider = useLanguageProvider();
@@ -145,7 +147,7 @@ export default function AssetAction(props: IProps) {
 						},
 					};
 
-					let profiles: any[] = await getAndUpdateRegistryProfiles(addressGroups[ownersCursor]);
+					let profiles: any[] = await getProfiles(addressGroups[ownersCursor]);
 					let owners = getOwners(asset, profiles);
 
 					if (owners) {
@@ -179,7 +181,7 @@ export default function AssetAction(props: IProps) {
 					}))
 				);
 
-				let profiles: any[] = await getAndUpdateRegistryProfiles(sortedOrders.map((order: any) => order.creator));
+				let profiles: any[] = await getProfiles(sortedOrders.map((order: any) => order.creator));
 				const mappedListings = sortedOrders.map((order: any) => {
 					let currentProfile = null;
 					if (profiles) {
@@ -236,8 +238,8 @@ export default function AssetAction(props: IProps) {
 
 	function getOwnerOrder(listing: ListingType) {
 		if (!arProvider.walletAddress) return false;
-		if (!arProvider.profile || !arProvider.profile.id) return false;
-		return listing.creator === arProvider.profile.id;
+		if (!permawebProvider.profile || !permawebProvider.profile.id) return false;
+		return listing.creator === permawebProvider.profile.id;
 	}
 
 	const copyPageUrl = React.useCallback(async () => {
@@ -388,7 +390,7 @@ export default function AssetAction(props: IProps) {
 				</>
 			);
 		} else return null;
-	}, [currentListings, showCurrentListingsModal, mobile, arProvider.profile]);
+	}, [currentListings, showCurrentListingsModal, mobile, permawebProvider.profile]);
 
 	function getCurrentTab() {
 		switch (currentTab) {

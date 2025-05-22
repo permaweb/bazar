@@ -2,9 +2,6 @@ import React from 'react';
 import { useSelector } from 'react-redux';
 import { Link } from 'react-router-dom';
 
-import { connect } from '@permaweb/aoconnect';
-import AOProfile, { ProfileType } from '@permaweb/aoprofile';
-
 import { getCollectionById } from 'api/collections';
 
 import * as GS from 'app/styles';
@@ -17,20 +14,21 @@ import { getTxEndpoint } from 'helpers/endpoints';
 import { CollectionDetailType } from 'helpers/types';
 import { checkValidAddress, cleanTagValue, formatCount, formatDate, getTagDisplay, splitTagValue } from 'helpers/utils';
 import { useLanguageProvider } from 'providers/LanguageProvider';
+import { usePermawebProvider } from 'providers/PermawebProvider';
 import { RootState } from 'store';
 
 import * as S from './styles';
 import { IProps } from './types';
 
 export default function AssetInfo(props: IProps) {
-	const { getProfileById } = AOProfile.init({ ao: connect() });
-
 	const currenciesReducer = useSelector((state: RootState) => state.currenciesReducer);
+
+	const permawebProvider = usePermawebProvider();
 
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
 
-	const [creator, setCreator] = React.useState<ProfileType | null>(null);
+	const [creator, setCreator] = React.useState<any | null>(null);
 	const [collectionDetails, setCollectionDetails] = React.useState<CollectionDetailType | null>(null);
 	const [isLoadingCollection, setIsLoadingCollection] = React.useState<boolean>(false);
 	const [collectionError, setCollectionError] = React.useState<string | null>(null);
@@ -40,7 +38,7 @@ export default function AssetInfo(props: IProps) {
 		(async function () {
 			if (props.asset && props.asset.data.creator && checkValidAddress(props.asset.data.creator)) {
 				try {
-					setCreator(await getProfileById({ profileId: props.asset.data.creator }));
+					setCreator(await permawebProvider.libs.getProfileById(props.asset.data.creator));
 				} catch (e: any) {
 					console.error(e);
 				}

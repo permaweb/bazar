@@ -1,9 +1,6 @@
 import React from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
-import { connect } from '@permaweb/aoconnect';
-import AOProfile from '@permaweb/aoprofile';
-
 import { getCollectionById } from 'api';
 
 import { CurrencyLine } from 'components/atoms/CurrencyLine';
@@ -19,6 +16,7 @@ import { getTxEndpoint } from 'helpers/endpoints';
 import { CollectionDetailType } from 'helpers/types';
 import { checkValidAddress, formatDate, formatPercentage } from 'helpers/utils';
 import { useLanguageProvider } from 'providers/LanguageProvider';
+import { usePermawebProvider } from 'providers/PermawebProvider';
 
 import * as S from './styles';
 
@@ -26,10 +24,10 @@ const MAX_DESCRIPTION_LENGTH = 50;
 
 // TODO: Listing index in collection process
 export default function Collection() {
-	const { getProfileById } = AOProfile.init({ ao: connect({ MODE: 'legacy' }) });
-
 	const { id, active } = useParams();
 	const navigate = useNavigate();
+
+	const permawebProvider = usePermawebProvider();
 
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
@@ -49,7 +47,7 @@ export default function Collection() {
 			if (id && checkValidAddress(id)) {
 				setCollectionLoading(true);
 				try {
-					setCollection(await getCollectionById({ id: id }));
+					setCollection(await getCollectionById({ id: id, libs: permawebProvider.libs }));
 				} catch (e: any) {
 					setCollectionErrorResponse(e.message || language.collectionFetchFailed);
 				}
@@ -58,13 +56,11 @@ export default function Collection() {
 		})();
 	}, [id]);
 
-	console.log(collection);
-
 	React.useEffect(() => {
 		(async function () {
 			if (collection && collection.creator) {
 				try {
-					const creatorProfile = await getProfileById({ profileId: collection.creator });
+					const creatorProfile = await permawebProvider.libs.getProfileById(collection.creator);
 					setCollection((prev) => ({ ...prev, creatorProfile }));
 				} catch (e: any) {
 					console.error(e);
@@ -123,6 +119,8 @@ export default function Collection() {
 		return <URLTabs tabs={TABS} activeUrl={TABS[0].url} />;
 	}, [TABS]);
 
+	console.log(collection);
+
 	function getData() {
 		if (collection) {
 			return (
@@ -133,7 +131,7 @@ export default function Collection() {
 					>
 						<S.OverlayWrapper />
 						<S.StampWidgetWrapper>
-							<Stamps txId={collection.id} title={collection.title} />
+							<Stamps txId={collection.id} title={collection.title ?? collection.name ?? '-'} />
 						</S.StampWidgetWrapper>
 						<S.InfoWrapper>
 							<S.Thumbnail>
@@ -145,7 +143,7 @@ export default function Collection() {
 										<span>{language.title}</span>
 									</S.InfoHeaderFlex2>
 									<S.InfoDetailFlex2>
-										<span>{collection.title}</span>
+										<span>{collection.title ?? collection.name ?? '-'}</span>
 									</S.InfoDetailFlex2>
 								</S.InfoBodyTile>
 								{collection.metrics && (

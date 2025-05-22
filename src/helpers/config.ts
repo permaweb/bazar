@@ -5,6 +5,7 @@ import arconnect from 'assets/arconnect-wallet-logo.png';
 import arrow from 'assets/arrow.svg';
 import asset from 'assets/asset.svg';
 import audio from 'assets/audio.svg';
+import beacon from 'assets/beacon-logo.svg';
 import bridge from 'assets/bridge.svg';
 import buy from 'assets/buy.svg';
 import checkmark from 'assets/checkmark.svg';
@@ -97,11 +98,6 @@ export const REFORMATTED_ASSETS = {
 		logo: '9FSEgmUsrug7kTdZJABDekwTGJy7YG7KaN5khcbwcX4',
 		denomination: 12,
 	},
-	['aYrCboXVSl1AXL9gPFe3tfRxRf0ZmkOXH65mKT0HHZw']: {
-		title: 'AR.IO EXP',
-		logo: 'wfI-5PlYXL66_BqquCXm7kq-ic1keu0b2CqRjw82yrU',
-		denomination: 6,
-	},
 	['wOrb8b_V8QixWyXZub48Ki5B6OIDyf_p1ngoonsaRpQ']: {
 		title: 'TRUNK',
 		logo: 'hqg-Em9DdYHYmMysyVi8LuTGF8IF_F7ZacgjYiSpj0k',
@@ -187,10 +183,12 @@ export const ASSETS = {
 	wander,
 	x,
 	zen,
+	beacon,
 };
 
 export const AR_WALLETS = [
 	{ type: WalletEnum.wander, logo: ASSETS.wander },
+	{ type: WalletEnum.beacon, logo: ASSETS.beacon },
 	{ type: WalletEnum.othent, logo: ASSETS.othent },
 ];
 
@@ -322,12 +320,12 @@ export const PAGINATORS = {
 export const REDIRECTS = {
 	github: `https://github.com/permaweb/bazar`,
 	x: `https://x.com/OurBazAR`,
-	discord: `https://discord.gg/weavers`,
+	discord: `https://discord.gg/vS2fYJNucN`,
 	bazarStudio: `https://studio_bazar.arweave.net`,
 	aox: `https://aox.arweave.net`,
 	arconnect: `https://arconnect.io`,
 	warDepot: `https://wardepot.arweave.net`,
-	aoLink: (messageId: string) => `https://www.ao.link/#/message/${messageId}`,
+	aoLink: (messageId: string) => `https://lunar.arweave.net/#/explorer/${messageId}`,
 };
 
 export const DEFAULTS = {
@@ -341,8 +339,8 @@ export const ACTIVITY_SORT_OPTIONS: SelectOptionType[] = [
 ];
 
 export const ASSET_SORT_OPTIONS: SelectOptionType[] = [
-	{ id: 'stamps', label: 'By stamps' },
 	{ id: 'recently-listed', label: 'Recently listed' },
+	{ id: 'stamps', label: 'By stamps' },
 	{ id: 'low-to-high', label: 'Low to high' },
 	{ id: 'high-to-low', label: 'High to low' },
 ];
@@ -363,4 +361,9 @@ export const UPLOAD_CONFIG = {
 
 export const FLAGS = {
 	MAINTENANCE: false,
+};
+
+export const STORAGE = {
+	walletType: `wallet-type`,
+	profile: (id: string) => `profile-${id}`,
 };

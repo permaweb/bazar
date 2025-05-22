@@ -1,8 +1,6 @@
-import { connect } from '@permaweb/aoconnect';
-
 import { readHandler, stamps } from 'api';
 
-import { AO, DEFAULTS } from 'helpers/config';
+import { AO } from 'helpers/config';
 import {
 	CollectionDetailType,
 	CollectionMetricsType,
@@ -14,18 +12,51 @@ import { sortOrderbookEntries } from 'helpers/utils';
 import { store } from 'store';
 import * as collectionActions from 'store/collections/actions';
 
-export async function getCollections(creator?: string, filterUnstamped?: boolean): Promise<CollectionType[]> {
-	const action = creator ? 'Get-Collections-By-User' : 'Get-Collections';
+export async function getCollections(creator?: string, filterUnstamped?: boolean): Promise<any[]> {
+	const dryrun = Math.random() < 0.1;
+
+	const modeKey = 'fetchModeTTL';
+	const currentTime = Date.now();
+	let fetchMode;
+
+	const storedData = localStorage.getItem(modeKey);
+	if (storedData) {
+		try {
+			const parsedData = JSON.parse(storedData);
+			if (currentTime - parsedData.timestamp < 60 * 60 * 1000) {
+				fetchMode = 'compute';
+			} else {
+				fetchMode = 'now';
+				localStorage.setItem(modeKey, JSON.stringify({ timestamp: currentTime }));
+			}
+		} catch (error) {
+			fetchMode = 'now';
+			localStorage.setItem(modeKey, JSON.stringify({ timestamp: currentTime }));
+		}
+	} else {
+		fetchMode = 'now';
+		localStorage.setItem(modeKey, JSON.stringify({ timestamp: currentTime }));
+	}
 
 	try {
-		const response = await readHandler({
-			processId: AO.collectionsRegistry,
-			action: action,
-			tags: creator ? [{ name: 'Creator', value: creator }] : null,
-		});
+		const response = dryrun
+			? await readHandler({
+					processId: AO.collectionsRegistry,
+					action: creator ? 'Get-Collections-By-User' : 'Get-Collections',
+					tags: creator ? [{ name: 'Creator', value: creator }] : null,
+			  })
+			: await (
+					await fetch(`https://router-1.forward.computer/${AO.collectionsRegistry}~process@1.0/${fetchMode}/cache`)
+			  ).json();
 
-		if (response && response.Collections && response.Collections.length) {
-			const collections = response.Collections.map((collection: any) => {
+		if (response?.Collections?.length) {
+			let filteredCollections = [...response.Collections];
+			if (!dryrun && creator) {
+				const creatorCollectionIds = [...(response.CollectionsByUser?.[creator] ?? [])];
+				filteredCollections = filteredCollections.filter((collection) => creatorCollectionIds.includes(collection.Id));
+			}
+
+			const collections = filteredCollections.map((collection: any) => {
 				return {
 					id: collection.Id,
 					title: collection.Name.replace(/\[|\]/g, ''),
@@ -84,46 +115,82 @@ export async function getCollections(creator?: string, filterUnstamped?: boolean
 	}
 }
 
-export async function getCollectionById(args: { id: string }): Promise<CollectionDetailType> {
+export async function getCollectionById(args: { id: string; libs?: any }): Promise<CollectionDetailType> {
 	try {
-		const response = await readHandler({
-			processId: args.id,
-			action: 'Info',
-		});
+		let response: any = null;
+		if (args.libs) {
+			response = await args.libs.getCollection(args.id);
+		} else {
+			response = await readHandler({
+				processId: args.id,
+				action: 'Info',
+			});
+		}
 
 		if (response) {
 			const collection: CollectionType = {
 				id: args.id,
-				title: response.Name,
-				description: response.Description,
-				creator: response.Creator,
-				dateCreated: response.DateCreated,
-				banner: response.Banner ?? DEFAULTS.banner,
-				thumbnail: response.Thumbnail ?? DEFAULTS.thumbnail,
-				activityProcess: response.ActivityProcess,
+				...args.libs.mapFromProcessCase(response),
 			};
 
-			let assetIds: string[] = response.Assets;
+			console.log(collection);
+
+			let assetIds: string[] = response.assets;
 
 			let currentListings = {};
-			if (collection.activityProcess) {
+			if (collection.activityProcess && args.libs) {
 				try {
-					const ao = connect({ MODE: 'legacy' });
-					const activityResult = await ao.results({ process: collection.activityProcess });
-					currentListings = activityResult?.edges?.[0]?.node?.Messages?.[0]?.Data
-						? JSON.parse(activityResult.edges[0].node.Messages[0].Data)
-						: {};
+					// TODO: Patch activity
+					const activityResponse = await args.libs.readProcess({
+						processId: collection.activityProcess,
+						action: 'Info',
+					});
+					if (activityResponse) currentListings = activityResponse;
 				} catch (e) {
 					console.error('Failed to fetch CurrentListings:', e);
 				}
 			}
 
-			const metrics: CollectionMetricsType = {
-				assetCount: assetIds.length,
-				floorPrice: getFloorPrice(assetIds),
-				percentageListed: getPercentageListed(assetIds),
-				defaultCurrency: getDefaultCurrency(assetIds),
-			};
+			let metrics: CollectionMetricsType;
+			const totalAssets = assetIds.length;
+
+			if (Object.keys(currentListings).length > 0) {
+				let globalFloor = Infinity;
+				let globalCurrency = getDefaultCurrency(assetIds);
+				let listedCount = 0;
+
+				for (const assetId of assetIds) {
+					const entry = currentListings[assetId];
+					if (entry) {
+						listedCount++;
+						const raw = currentListings[assetId];
+						if (!raw) continue;
+						const bucket = raw as Record<string, { quantity: string; floorPrice: string }>;
+
+						for (const [currency, { floorPrice }] of Object.entries(bucket)) {
+							const priceNum = Number(floorPrice);
+							if (priceNum < globalFloor) {
+								globalFloor = priceNum;
+								globalCurrency = currency;
+							}
+						}
+					}
+				}
+
+				metrics = {
+					assetCount: totalAssets,
+					floorPrice: globalFloor === Infinity ? 0 : globalFloor,
+					percentageListed: totalAssets === 0 ? 0 : listedCount / totalAssets,
+					defaultCurrency: globalCurrency,
+				};
+			} else {
+				metrics = {
+					assetCount: totalAssets,
+					floorPrice: getFloorPrice(assetIds),
+					percentageListed: getPercentageListed(assetIds),
+					defaultCurrency: getDefaultCurrency(assetIds),
+				};
+			}
 
 			const collectionDetail = {
 				...collection,

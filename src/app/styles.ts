@@ -1,17 +1,7 @@
 import styled, { createGlobalStyle } from 'styled-components';
 
-import { fadeIn1, open } from 'helpers/animations';
+import { fadeIn1, fadeIn2, open } from 'helpers/animations';
 import { STYLING } from 'helpers/config';
-
-// import '@fontsource/inter';
-// import '@fontsource/inter/400.css';
-// import '@fontsource/inter/500.css';
-// import '@fontsource/inter/600.css';
-// import '@fontsource/inter/700.css';
-// import '@fontsource/inter/800.css';
-// import '@fontsource/quantico';
-// import '@fontsource/quantico/400.css';
-// import '@fontsource/quantico/700.css';
 
 export const GlobalStyle = createGlobalStyle`
   html, body, div, span, applet, object, iframe,
@@ -200,6 +190,19 @@ export const GlobalStyle = createGlobalStyle`
 
   .modal-wrapper {
 	padding: 0 20px 20px 20px !important;
+  }
+
+	.info {
+    padding: 0 5px 0.5px 5px;
+    background: ${(props) => props.theme.colors.contrast.background};
+    border-radius: ${STYLING.dimensions.radius.alt2};
+    animation: ${open} ${fadeIn2};
+    span {
+      color: ${(props) => props.theme.colors.contrast.color};
+      font-size: ${(props) => props.theme.typography.size.xxxSmall};
+      font-weight: ${(props) => props.theme.typography.weight.bold};
+      white-space: nowrap;
+	  }
   }
 
   .info-text {

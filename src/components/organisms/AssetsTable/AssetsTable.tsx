@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 
-import { getAssetIdGroups, getAssetsByIds, messageResult } from 'api';
+import { getAssetIdGroups, getAssetsByIds } from 'api';
 
 import * as GS from 'app/styles';
 import { Button } from 'components/atoms/Button';
@@ -14,8 +14,8 @@ import { AssetDetailType, AssetSortType, IdGroupType, NotificationType, SelectOp
 import { formatDate, isFirefox, sortOrders } from 'helpers/utils';
 import * as windowUtils from 'helpers/window';
 import { useAppProvider } from 'providers/AppProvider';
-import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
+import { usePermawebProvider } from 'providers/PermawebProvider';
 
 import { AssetData } from '../AssetData';
 import { Stamps } from '../Stamps';
@@ -28,7 +28,7 @@ export default function AssetsTable(props: IProps) {
 	const navigate = useNavigate();
 
 	const appProvider = useAppProvider();
-	const arProvider = useArweaveProvider();
+	const permawebProvider = usePermawebProvider();
 
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
@@ -48,7 +48,7 @@ export default function AssetsTable(props: IProps) {
 	const [desktop, setDesktop] = React.useState(windowUtils.checkWindowCutoff(parseInt(STYLING.cutoffs.initial)));
 	const [scrolling, setScrolling] = React.useState<boolean>(false);
 
-	const [profileLoading, setProfileLoading] = React.useState<boolean>(false);
+	// const [profileLoading, setProfileLoading] = React.useState<boolean>(false);
 	const [profileResponse, setProfileResponse] = React.useState<NotificationType | null>(null);
 
 	function handleWindowResize() {
@@ -205,50 +205,51 @@ export default function AssetsTable(props: IProps) {
 		);
 	}
 
-	async function handleProfileActionPress(e: any, asset: AssetDetailType) {
-		if (arProvider.profile && arProvider.profile.id && asset.data && asset.data.id) {
-			e.preventDefault();
-			e.stopPropagation();
+	// TODO: PFP
+	// async function handleProfileActionPress(e: any, asset: AssetDetailType) {
+	// 	if (permawebProvider.profile && permawebProvider.profile.id && asset.data && asset.data.id) {
+	// 		e.preventDefault();
+	// 		e.stopPropagation();
 
-			setProfileLoading(true);
-			try {
-				const data: any = {
-					DisplayName: arProvider.profile.displayName,
-					UserName: arProvider.profile.username,
-					Description: arProvider.profile.description,
-					CoverImage: arProvider.profile.banner,
-					ProfileImage: asset.data.id,
-				};
+	// 		setProfileLoading(true);
+	// 		try {
+	// 			const data: any = {
+	// 				DisplayName: permawebProvider.profile.displayName,
+	// 				UserName: permawebProvider.profile.username,
+	// 				Description: permawebProvider.profile.description,
+	// 				CoverImage: permawebProvider.profile.banner,
+	// 				ProfileImage: asset.data.id,
+	// 			};
 
-				let updateResponse = await messageResult({
-					processId: arProvider.profile.id,
-					action: 'Update-Profile',
-					tags: null,
-					data: data,
-					wallet: arProvider.wallet,
-				});
-				if (updateResponse && updateResponse['Profile-Success']) {
-					arProvider.setToggleProfileUpdate(!arProvider.toggleProfileUpdate);
-					setProfileResponse({
-						message: `${language.profileUpdated}!`,
-						status: 'success',
-					});
-				} else {
-					setProfileResponse({
-						message: language.errorUpdatingProfile,
-						status: 'warning',
-					});
-				}
-			} catch (e: any) {
-				console.error(e);
-				setProfileResponse({
-					message: language.errorUpdatingProfile,
-					status: 'warning',
-				});
-			}
-			setProfileLoading(false);
-		}
-	}
+	// 			let updateResponse = await messageResult({
+	// 				processId: permawebProvider.profile.id,
+	// 				action: 'Update-Profile',
+	// 				tags: null,
+	// 				data: data,
+	// 				wallet: arProvider.wallet,
+	// 			});
+	// 			if (updateResponse && updateResponse['Profile-Success']) {
+	// 				arProvider.setToggleProfileUpdate(!arProvider.toggleProfileUpdate);
+	// 				setProfileResponse({
+	// 					message: `${language.profileUpdated}!`,
+	// 					status: 'success',
+	// 				});
+	// 			} else {
+	// 				setProfileResponse({
+	// 					message: language.errorUpdatingProfile,
+	// 					status: 'warning',
+	// 				});
+	// 			}
+	// 		} catch (e: any) {
+	// 			console.error(e);
+	// 			setProfileResponse({
+	// 				message: language.errorUpdatingProfile,
+	// 				status: 'warning',
+	// 			});
+	// 		}
+	// 		setProfileLoading(false);
+	// 	}
+	// }
 
 	function getData() {
 		if ((assetsLoading || props.loadingIds) && viewType) {
@@ -354,18 +355,18 @@ export default function AssetsTable(props: IProps) {
 													<S.AssetGridDataWrapper disabled={false}>
 														<AssetData asset={asset} scrolling={scrolling} autoLoad />
 														{props.setProfileAction &&
-														arProvider.profile &&
-														arProvider.profile.id &&
-														arProvider.profile.id === address &&
+														permawebProvider.profile &&
+														permawebProvider.profile.id &&
+														permawebProvider.profile.id === address &&
 														asset.data.contentType &&
 														asset.data.contentType.includes('image') ? (
 															<S.AssetGridDataActionWrapper>
-																<button
+																{/* <button
 																	onClick={(e: any) => handleProfileActionPress(e, asset)}
 																	disabled={profileLoading}
 																>
 																	<span>{profileLoading ? `${language.loading}...` : language.setProfilePicture}</span>
-																</button>
+																</button> */}
 																<Stamps
 																	txId={asset.data.id}
 																	title={asset.data.title || asset.data.description}

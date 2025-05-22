@@ -122,7 +122,6 @@ export async function getAssetById(args: { id: string }): Promise<AssetDetailTyp
 						Object.entries(processState.Balances).filter(([_, value]) => Number(value) !== 0)
 					) as any;
 				}
-				console.log(processState);
 				if (processState.Transferable !== undefined) {
 					assetState.transferable = processState.Transferable.toString() === 'true';
 				} else {
@@ -131,12 +130,15 @@ export async function getAssetById(args: { id: string }): Promise<AssetDetailTyp
 			}
 
 			if (!assetState.balances) {
+				console.log('Getting balances...');
 				try {
+					await new Promise((r) => setTimeout(r, 1000));
 					const processBalances = await readHandler({
 						processId: structuredAsset.data.id,
 						action: 'Balances',
 						data: null,
 					});
+					console.log(processBalances);
 
 					if (processBalances) assetState.balances = processBalances;
 				} catch (e: any) {
@@ -147,8 +149,12 @@ export async function getAssetById(args: { id: string }): Promise<AssetDetailTyp
 			if (processState.Metadata?.CollectionId) structuredAsset.data.collectionId = processState.Metadata.CollectionId;
 
 			let assetOrderbook = null;
-			if (processState.Metadata?.OrderbookId) assetOrderbook = { id: processState.Metadata.OrderbookId };
-			// else assetOrderbook = { id: AO.ucm, activityId: AO.ucmActivity }; // TODO
+
+			/* Check if metadata field is present to detect current assets. 
+				Set legacy orderbook on legacy assets */
+			if (processState.Metadata) {
+				if (processState.Metadata.OrderbookId) assetOrderbook = { id: processState.Metadata.OrderbookId };
+			} else assetOrderbook = { id: AO.ucm, activityId: AO.ucmActivity }; // TODO
 
 			return {
 				...structuredAsset,

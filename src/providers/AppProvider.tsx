@@ -12,6 +12,7 @@ import * as streakActions from 'store/streaks/actions';
 import * as ucmActions from 'store/ucm/actions';
 
 import { useArweaveProvider } from './ArweaveProvider';
+import { usePermawebProvider } from './PermawebProvider';
 
 export interface AppContextState {
 	ucm: { updating: boolean; completed: boolean; lastUpdate?: number };
@@ -43,6 +44,7 @@ export function AppProvider(props: AppProviderProps) {
 	const stampsReducer = useSelector((state: RootState) => state.stampsReducer);
 	const ucmReducer = useSelector((state: RootState) => state.ucmReducer);
 
+	const permawebProvider = usePermawebProvider();
 	const arProvider = useArweaveProvider();
 
 	const [ucmState, setUCMState] = React.useState<AppContextState['ucm']>({
@@ -69,34 +71,34 @@ export function AppProvider(props: AppProviderProps) {
 	// 	if (stampsReducer) setStampsState((prevState) => ({ ...prevState, completed: true }));
 	// }, [stampsReducer]);
 
-	// React.useEffect(() => {
-	// 	(async function () {
-	// 		setUCMState((prevState) => ({ ...prevState, updating: true }));
+	React.useEffect(() => {
+		(async function () {
+			setUCMState((prevState) => ({ ...prevState, updating: true }));
 
-	// 		try {
-	// 			const ucmState = await readHandler({
-	// 				processId: AO.ucm,
-	// 				action: 'Info',
-	// 			});
+			try {
+				const ucmState = await readHandler({
+					processId: AO.ucm,
+					action: 'Info',
+				});
 
-	// 			dispatch(
-	// 				ucmActions.setUCM({
-	// 					...ucmState,
-	// 					lastUpdate: Date.now(),
-	// 				})
-	// 			);
+				dispatch(
+					ucmActions.setUCM({
+						...ucmState,
+						lastUpdate: Date.now(),
+					})
+				);
 
-	// 			setUCMState({
-	// 				updating: false,
-	// 				completed: true,
-	// 				lastUpdate: Date.now(),
-	// 			});
-	// 		} catch (e: any) {
-	// 			console.error(e);
-	// 			setUCMState((prevState) => ({ ...prevState, updating: false }));
-	// 		}
-	// 	})();
-	// }, []);
+				setUCMState({
+					updating: false,
+					completed: true,
+					lastUpdate: Date.now(),
+				});
+			} catch (e: any) {
+				console.error(e);
+				setUCMState((prevState) => ({ ...prevState, updating: false }));
+			}
+		})();
+	}, []);
 
 	React.useEffect(() => {
 		(async function () {

@@ -114,6 +114,7 @@ export type CollectionMetricsType = {
 export type CollectionType = {
 	id: string;
 	title: string;
+	name?: string;
 	description: string | null;
 	creator: string;
 	dateCreated: string;
@@ -126,18 +127,7 @@ export type CollectionDetailType = CollectionType & {
 	assetIds: string[];
 	creatorProfile: ProfileType;
 	metrics: CollectionMetricsType;
-
-	currentListings?: {
-		[orderId: string]: {
-			OrderId: string;
-			DominantToken: string;
-			SwapToken: string;
-			Sender: string;
-			Quantity: string;
-			Price: string;
-			Timestamp: string;
-		};
-	};
+	currentListings?: any;
 };
 
 export type TagType = { name: string; value: string };
@@ -199,6 +189,7 @@ export type BatchAGQLResponseType = { [queryKey: string]: DefaultGQLResponseType
 export enum WalletEnum {
 	wander = 'wander',
 	othent = 'othent',
+	beacon = 'beacon',
 }
 
 export type RenderType = 'renderer' | 'raw';

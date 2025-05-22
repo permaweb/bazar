@@ -11,6 +11,7 @@ import { getTxEndpoint } from 'helpers/endpoints';
 import { CollectionType } from 'helpers/types';
 import { formatDate } from 'helpers/utils';
 import { useLanguageProvider } from 'providers/LanguageProvider';
+import { usePermawebProvider } from 'providers/PermawebProvider';
 import { RootState } from 'store';
 
 import * as S from './styles';
@@ -88,6 +89,7 @@ function CollectionListItem(props: { index: number; collection: CollectionType }
 export default function CollectionsList(props: IProps) {
 	const collectionsReducer = useSelector((state: RootState) => state.collectionsReducer);
 
+	const permawebProvider = usePermawebProvider();
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
 
@@ -100,22 +102,33 @@ export default function CollectionsList(props: IProps) {
 			if (!collections) {
 				setLoading(true);
 				try {
-					if (props.owner) {
-						if (collectionsReducer?.creators?.[props.owner]?.collections?.length) {
-							setCollections(collectionsReducer.creators[props.owner].collections);
-							setLoading(false);
-						}
+					if (props.collectionIds) {
+						props.collectionIds.forEach(async (collectionId) => {
+							const collection = await permawebProvider.libs.getCollection(collectionId);
+							if (collection) {
+								setCollections((prev) => [...(prev ?? []), collection]);
+							}
+						});
 					} else {
-						if (collectionsReducer?.all?.collections?.length) {
-							setCollections(collectionsReducer.all.collections);
-							setLoading(false);
+						if (props.owner) {
+							if (collectionsReducer?.creators?.[props.owner]?.collections?.length) {
+								setCollections(collectionsReducer.creators[props.owner].collections);
+								setLoading(false);
+							}
+						} else {
+							if (collectionsReducer?.all?.collections?.length) {
+								setCollections(collectionsReducer.all.collections);
+								setLoading(false);
+							}
 						}
 					}
 
-					const collectionsFetch: CollectionType[] = await getCollections(props.owner);
-					if (collections) {
-						setCollections(collectionsFetch);
-					} else setCollections(collectionsFetch);
+					if (!props.collectionIds) {
+						const collectionsFetch: CollectionType[] = await getCollections(props.owner);
+						if (props.owner) {
+							setCollections(collectionsFetch.filter((collection) => collection.creator === props.owner));
+						} else setCollections(collectionsFetch);
+					}
 				} catch (e: any) {
 					setErrorResponse(e.message || language.collectionsFetchFailed);
 				}
@@ -153,7 +166,7 @@ export default function CollectionsList(props: IProps) {
 				);
 			}
 		} else {
-			if (loading) return <Loader />;
+			if (loading) return <Loader sm relative />;
 			else if (errorResponse) return <p>{errorResponse}</p>;
 			else {
 				return (

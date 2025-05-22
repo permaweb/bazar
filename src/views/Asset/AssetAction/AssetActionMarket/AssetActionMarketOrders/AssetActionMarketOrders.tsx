@@ -2,8 +2,7 @@ import React from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { Link } from 'react-router-dom';
 
-import Arweave from 'arweave';
-import { connect, createDataItemSigner, message, result } from '@permaweb/aoconnect';
+import { createDataItemSigner, message, result } from '@permaweb/aoconnect';
 import { createOrder, createOrderbook } from '@permaweb/ucm';
 
 import { messageResults, readHandler } from 'api';
@@ -28,6 +27,7 @@ import * as windowUtils from 'helpers/window';
 import { useAppProvider } from 'providers/AppProvider';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
+import { usePermawebProvider } from 'providers/PermawebProvider';
 import { RootState } from 'store';
 import * as streakActions from 'store/streaks/actions';
 
@@ -40,6 +40,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 	const dispatch = useDispatch();
 
 	const appProvider = useAppProvider();
+	const permawebProvider = usePermawebProvider();
 	const arProvider = useArweaveProvider();
 
 	const languageProvider = useLanguageProvider();
@@ -108,8 +109,8 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 					setTotalAssetBalance(calculatedTotalBalance);
 
-					if (arProvider.walletAddress && arProvider.profile && arProvider.profile.id) {
-						const profileBalance = Number(props.asset.state.balances[arProvider.profile.id]);
+					if (arProvider.walletAddress && permawebProvider.profile && permawebProvider.profile.id) {
+						const profileBalance = Number(props.asset.state.balances[permawebProvider.profile.id]);
 						const walletBalance = Number(props.asset.state.balances[arProvider.walletAddress]);
 
 						let calculatedOwnerBalance = profileBalance;
@@ -153,7 +154,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 				setTransferDenomination(Math.pow(10, currenciesReducer[orderCurrency].Denomination));
 			}
 		}
-	}, [props.asset, arProvider.walletAddress, arProvider.profile, denomination, ucmReducer]);
+	}, [props.asset, arProvider.walletAddress, permawebProvider.profile, denomination, ucmReducer]);
 
 	React.useEffect(() => {
 		switch (props.type) {
@@ -172,19 +173,21 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 	React.useEffect(() => {
 		if (props.type === 'buy') {
-			if (!arProvider.tokenBalances || !arProvider.tokenBalances[AO.defaultToken]) {
+			if (!permawebProvider.tokenBalances || !permawebProvider.tokenBalances[AO.defaultToken]) {
 				setInsufficientBalance(true);
 			} else {
 				let orderAmount = BigInt(getTotalOrderAmount());
 				if (denomination) {
 					orderAmount = BigInt(orderAmount) / BigInt(denomination);
 				}
-				setInsufficientBalance(Number(getTotalTokenBalance(arProvider.tokenBalances[AO.defaultToken])) < orderAmount);
+				setInsufficientBalance(
+					Number(getTotalTokenBalance(permawebProvider.tokenBalances[AO.defaultToken])) < orderAmount
+				);
 			}
 		} else {
 			setInsufficientBalance(false);
 		}
-	}, [arProvider.tokenBalances, props.type, props.asset, currentOrderQuantity, denomination]);
+	}, [permawebProvider.tokenBalances, props.type, props.asset, currentOrderQuantity, denomination]);
 
 	React.useEffect(() => {
 		if (currentOrderQuantity) setCurrentOrderQuantity('');
@@ -193,12 +196,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 	async function handleSubmit() {
 		if (props.asset && arProvider.wallet && arProvider.profile?.id) {
-			const dependencies = {
-				ao: connect({ MODE: 'legacy' }),
-				arweave: Arweave.init({}),
-				signer: createDataItemSigner(arProvider.wallet),
-			};
-
 			let currentOrderbook = props.asset.orderbook?.id;
 
 			if (!currentOrderbook) {
@@ -209,7 +206,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 					console.log(args);
 
 					const newOrderbook = await createOrderbook(
-						dependencies,
+						permawebProvider.deps,
 						args,
 						(args: { processing: boolean; success: boolean; message: string }) => {
 							handleStatusUpdate(args.processing, !args.processing, args.success, args.message);
@@ -259,19 +256,23 @@ export default function AssetActionMarketOrders(props: IProps) {
 			}
 
 			try {
+				let action = 'Run-Action';
+				if (permawebProvider.profile.isLegacyProfile) action = 'Transfer';
+
 				const data: any = {
 					orderbookId: currentOrderbook,
-					creatorId: arProvider.profile.id,
+					creatorId: permawebProvider.profile.id,
 					dominantToken: dominantToken,
 					swapToken: swapToken,
 					quantity: transferQuantity,
+					action: action,
 				};
 
 				if (unitPrice) data.unitPrice = unitPrice.toString();
 				if (denomination && denomination > 1) data.denomination = denomination.toString();
 
 				const orderId = await createOrder(
-					dependencies,
+					permawebProvider.deps,
 					data,
 					(args: { processing: boolean; success: boolean; message: string }) => {
 						handleStatusUpdate(args.processing, !args.processing, args.success, args.message);
@@ -287,8 +288,8 @@ export default function AssetActionMarketOrders(props: IProps) {
 					});
 					dispatch(streakActions.setStreaks(streaks.Streaks));
 				}
-				if (props.type === 'buy') arProvider.refreshBalances();
-				// arProvider.refreshProfile(); // TODO
+				arProvider.setToggleProfileUpdate(!arProvider.toggleProfileUpdate);
+				permawebProvider.setToggleTokenBalanceUpdate(!permawebProvider.toggleTokenBalanceUpdate);
 			} catch (e: any) {
 				handleStatusUpdate(false, true, false, e.message ?? 'Error creating order in UCM');
 			}
@@ -343,8 +344,8 @@ export default function AssetActionMarketOrders(props: IProps) {
 			switch (props.type) {
 				case 'buy':
 					processId = AO.defaultToken;
-					profileBalance = BigInt(arProvider.tokenBalances[AO.defaultToken].profileBalance);
-					walletBalance = BigInt(arProvider.tokenBalances[AO.defaultToken].walletBalance);
+					profileBalance = BigInt(permawebProvider.tokenBalances[AO.defaultToken].profileBalance);
+					walletBalance = BigInt(permawebProvider.tokenBalances[AO.defaultToken].walletBalance);
 					break;
 				case 'sell':
 				case 'transfer':
@@ -374,7 +375,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 						wallet: arProvider.wallet,
 						tags: [
 							{ name: 'Quantity', value: differenceNeeded.toString() },
-							{ name: 'Recipient', value: arProvider.profile.id },
+							{ name: 'Recipient', value: permawebProvider.profile.id },
 						],
 						data: null,
 						responses: ['Transfer-Success', 'Transfer-Error'],
@@ -391,7 +392,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 		if (transferRecipient && checkValidAddress(transferRecipient)) {
 			try {
 				const transferId = await message({
-					process: arProvider.profile.id,
+					process: permawebProvider.profile.id,
 					signer: createDataItemSigner(arProvider.wallet),
 					tags: [
 						{ name: 'Action', value: 'Transfer' },
@@ -402,7 +403,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 				});
 
 				const { Error } = await result({
-					process: arProvider.profile.id,
+					process: permawebProvider.profile.id,
 					message: transferId,
 				});
 
@@ -544,7 +545,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 	function getActionDisabled() {
 		if (!arProvider.walletAddress) return true;
-		if (!arProvider.profile || !arProvider.profile.id) return true;
+		if (!permawebProvider.profile || !permawebProvider.profile.id) return true;
 		if (orderLoading) return true;
 		if (!orderProcessed && appProvider.ucm.updating) return true;
 		if (orderProcessed && !orderSuccess) return true;
@@ -829,8 +830,8 @@ export default function AssetActionMarketOrders(props: IProps) {
 						label={language.assetQuantityInfo}
 						disabled={
 							!arProvider.walletAddress ||
-							!arProvider.profile ||
-							!arProvider.profile.id ||
+							!permawebProvider.profile ||
+							!permawebProvider.profile.id ||
 							maxOrderQuantity <= 0 ||
 							appProvider.ucm.updating ||
 							orderLoading
@@ -848,8 +849,8 @@ export default function AssetActionMarketOrders(props: IProps) {
 							handlePress={() => setCurrentOrderQuantity(maxOrderQuantity)}
 							disabled={
 								!arProvider.walletAddress ||
-								!arProvider.profile ||
-								!arProvider.profile.id ||
+								!permawebProvider.profile ||
+								!permawebProvider.profile.id ||
 								appProvider.ucm.updating ||
 								maxOrderQuantity <= 0
 							}
@@ -874,8 +875,8 @@ export default function AssetActionMarketOrders(props: IProps) {
 									label={`${language.assetQuantity} (${language.max}: ${formatCount(maxOrderQuantity.toString())})`}
 									disabled={
 										!arProvider.walletAddress ||
-										!arProvider.profile ||
-										!arProvider.profile.id ||
+										!permawebProvider.profile ||
+										!permawebProvider.profile.id ||
 										appProvider.ucm.updating ||
 										maxOrderQuantity <= 0 ||
 										orderLoading
@@ -899,8 +900,8 @@ export default function AssetActionMarketOrders(props: IProps) {
 										onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleUnitPriceInput(e)}
 										disabled={
 											!arProvider.walletAddress ||
-											!arProvider.profile ||
-											!arProvider.profile.id ||
+											!permawebProvider.profile ||
+											!permawebProvider.profile.id ||
 											Number(currentOrderQuantity) <= 0 ||
 											appProvider.ucm.updating ||
 											orderLoading
@@ -922,8 +923,8 @@ export default function AssetActionMarketOrders(props: IProps) {
 										onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleRecipientInput(e)}
 										disabled={
 											!arProvider.walletAddress ||
-											!arProvider.profile ||
-											!arProvider.profile.id ||
+											!permawebProvider.profile ||
+											!permawebProvider.profile.id ||
 											orderLoading ||
 											appProvider.ucm.updating
 										}
@@ -939,8 +940,8 @@ export default function AssetActionMarketOrders(props: IProps) {
 										<span>{language.connectToContinue}</span>
 									</S.MessageWrapper>
 								)}
-								{!arProvider.profile ||
-									(!arProvider.profile.id && (
+								{!permawebProvider.profile ||
+									(!permawebProvider.profile.id && (
 										<S.MessageWrapper>
 											<span>{language.createProfileToContinue}</span>
 										</S.MessageWrapper>
@@ -950,16 +951,16 @@ export default function AssetActionMarketOrders(props: IProps) {
 										<span>{`${language.ordersUpdating}...`}</span>
 									</S.MessageWrapper>
 								)}
-								{arProvider.tokenBalances &&
-									getTotalTokenBalance(arProvider.tokenBalances[AO.defaultToken]) !== null &&
+								{permawebProvider.tokenBalances &&
+									getTotalTokenBalance(permawebProvider.tokenBalances[AO.defaultToken]) !== null &&
 									insufficientBalance && (
 										<S.MessageWrapper warning>
 											<span>{language.insufficientBalance}</span>
 										</S.MessageWrapper>
 									)}
 								{arProvider.wallet &&
-									arProvider.profile?.id &&
-									getTotalTokenBalance(arProvider.tokenBalances[AO.defaultToken]) === null && (
+									permawebProvider.profile?.id &&
+									getTotalTokenBalance(permawebProvider.tokenBalances[AO.defaultToken]) === null && (
 										<S.MessageWrapper>
 											<span>{`${language.fetchingTokenbalances}...`}</span>
 										</S.MessageWrapper>

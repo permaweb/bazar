@@ -15,6 +15,10 @@ export const docsOrder = [
 				name: 'Vouch your wallet',
 				path: 'vouch',
 			},
+			{
+				name: 'PIXL Fair Launch',
+				path: 'pixl-fair-launch',
+			},
 		],
 	},
 	{

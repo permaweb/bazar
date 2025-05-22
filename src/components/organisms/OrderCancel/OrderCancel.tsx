@@ -1,7 +1,5 @@
 import React from 'react';
 
-import Arweave from 'arweave';
-import { connect, createDataItemSigner } from '@permaweb/aoconnect';
 import { cancelOrder } from '@permaweb/ucm';
 
 import { Button } from 'components/atoms/Button';
@@ -11,11 +9,13 @@ import { NotificationType } from 'helpers/types';
 import * as windowUtils from 'helpers/window';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
+import { usePermawebProvider } from 'providers/PermawebProvider';
 
 import * as S from './styles';
 import { IProps } from './types';
 
 export default function OrderCancel(props: IProps) {
+	const permawebProvider = usePermawebProvider();
 	const arProvider = useArweaveProvider();
 
 	const languageProvider = useLanguageProvider();
@@ -27,21 +27,15 @@ export default function OrderCancel(props: IProps) {
 	const [response, setResponse] = React.useState<NotificationType | null>(null);
 
 	async function handleOrderCancel() {
-		if (arProvider.wallet && arProvider.profile && arProvider.profile.id) {
-			const dependencies = {
-				ao: connect({ MODE: 'legacy' }),
-				arweave: Arweave.init({}),
-				signer: createDataItemSigner(arProvider.wallet),
-			};
-
+		if (arProvider.wallet && permawebProvider.profile?.id && permawebProvider.deps) {
 			setLoading(true);
 			try {
 				const cancelOrderId = await cancelOrder(
-					dependencies,
+					permawebProvider.deps,
 					{
 						orderbookId: props.listing.orderbookId,
 						orderId: props.listing.id,
-						creatorId: arProvider.profile.id,
+						creatorId: permawebProvider.profile.id,
 						dominantToken: props.listing.token,
 						swapToken: props.listing.currency,
 					},
@@ -52,10 +46,10 @@ export default function OrderCancel(props: IProps) {
 
 				console.log(`Order Cancellation ID: ${cancelOrderId}`);
 
-				setResponse({ status: 'success', message: 'Order cancelled' });
+				setResponse({ status: 'success', message: `${language.orderCancelled}!` });
 
 				setCancelProcessed(true);
-				arProvider.refreshBalances();
+				permawebProvider.setToggleTokenBalanceUpdate(!permawebProvider.toggleTokenBalanceUpdate);
 				props.toggleUpdate();
 				setShowConfirmation(false);
 				setCancelProcessed(false);
