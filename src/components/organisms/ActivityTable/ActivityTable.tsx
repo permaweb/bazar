@@ -3,7 +3,7 @@ import { useSelector } from 'react-redux';
 import { Link } from 'react-router-dom';
 import { ReactSVG } from 'react-svg';
 
-import { getAssetsByIds, getProfiles, readHandler } from 'api';
+import { getAssetsByIds, getProfiles } from 'api';
 
 import { Button } from 'components/atoms/Button';
 import { CurrencyLine } from 'components/atoms/CurrencyLine';
@@ -51,21 +51,10 @@ export default function ActivityTable(props: IProps) {
 		(async function () {
 			if (props.activityId || props.asset?.orderbook?.activityId) {
 				try {
-					let data: any = {};
-
-					if (props.asset && props.asset.data) {
-						data.AssetIds = [props.asset.data.id];
-					} else {
-						if (props.assetIds) data.AssetIds = props.assetIds;
-						if (props.address) data.Address = props.address;
-						if (props.startDate) data.StartDate = props.startDate.toString();
-						if (props.endDate) data.EndDate = props.endDate.toString();
-					}
-
-					const response = await readHandler({
+					const response = await permawebProvider.libs.readState({
 						processId: props.activityId ?? props.asset.orderbook.activityId,
-						action: 'Get-Activity',
-						data: data,
+						path: 'activity',
+						fallbackAction: 'Info',
 					});
 
 					if (response) setActivityResponse(response);

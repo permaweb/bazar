@@ -133,19 +133,17 @@ export async function getCollectionById(args: { id: string; libs?: any }): Promi
 				...args.libs.mapFromProcessCase(response),
 			};
 
-			console.log(collection);
-
 			let assetIds: string[] = response.assets;
 
-			let currentListings = {};
+			let activity: any = {};
 			if (collection.activityProcess && args.libs) {
 				try {
-					// TODO: Patch activity
-					const activityResponse = await args.libs.readProcess({
+					const activityResponse = await args.libs.readState({
 						processId: collection.activityProcess,
-						action: 'Info',
+						path: 'activity',
+						fallbackAction: 'Info',
 					});
-					if (activityResponse) currentListings = activityResponse;
+					if (activityResponse) activity = args.libs.mapFromProcessCase({ ...activityResponse });
 				} catch (e) {
 					console.error('Failed to fetch CurrentListings:', e);
 				}
@@ -154,16 +152,16 @@ export async function getCollectionById(args: { id: string; libs?: any }): Promi
 			let metrics: CollectionMetricsType;
 			const totalAssets = assetIds.length;
 
-			if (Object.keys(currentListings).length > 0) {
+			if (activity?.currentListings && Object.keys(activity?.currentListings).length > 0) {
 				let globalFloor = Infinity;
 				let globalCurrency = getDefaultCurrency(assetIds);
 				let listedCount = 0;
 
 				for (const assetId of assetIds) {
-					const entry = currentListings[assetId];
+					const entry = activity?.currentListings[assetId];
 					if (entry) {
 						listedCount++;
-						const raw = currentListings[assetId];
+						const raw = activity?.currentListings[assetId];
 						if (!raw) continue;
 						const bucket = raw as Record<string, { quantity: string; floorPrice: string }>;
 
@@ -197,8 +195,9 @@ export async function getCollectionById(args: { id: string; libs?: any }): Promi
 				assetIds: assetIds,
 				creatorProfile: null, // Async fetch from component level
 				metrics: metrics,
-				currentListings: currentListings,
+				activity: activity,
 			};
+
 			return collectionDetail;
 		}
 

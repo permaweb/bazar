@@ -203,8 +203,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 					const args: any = { assetId: props.asset.data.id };
 					if (props.asset.data.collectionId) args.collectionId = props.asset.data.collectionId;
 
-					console.log(args);
-
 					const newOrderbook = await createOrderbook(
 						permawebProvider.deps,
 						args,

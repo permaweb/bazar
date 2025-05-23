@@ -12,7 +12,15 @@ import { AssetData } from 'components/organisms/AssetData';
 import { ASSETS, LICENSES, URLS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import { CollectionDetailType } from 'helpers/types';
-import { checkValidAddress, cleanTagValue, formatCount, formatDate, getTagDisplay, splitTagValue } from 'helpers/utils';
+import {
+	checkValidAddress,
+	cleanTagValue,
+	formatAddress,
+	formatCount,
+	formatDate,
+	getTagDisplay,
+	splitTagValue,
+} from 'helpers/utils';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 import { usePermawebProvider } from 'providers/PermawebProvider';
 import { RootState } from 'store';
@@ -63,7 +71,10 @@ export default function AssetInfo(props: IProps) {
 					setIsLoadingCollection(true);
 					setCollectionError(null);
 
-					const collection = await getCollectionById({ id: props.asset.data.collectionId });
+					const collection = await getCollectionById({
+						id: props.asset.data.collectionId,
+						libs: permawebProvider.libs,
+					});
 
 					if (collection) {
 						setCollectionDetails(collection);
@@ -148,7 +159,7 @@ export default function AssetInfo(props: IProps) {
 		}
 
 		if (collectionError) {
-			return <span title={collectionError}>{props.asset.data.collectionId}</span>;
+			return <span title={collectionError}>{formatAddress(props.asset.data.collectionId, false)}</span>;
 		}
 
 		if (props.asset.data.collectionName) {
@@ -156,10 +167,10 @@ export default function AssetInfo(props: IProps) {
 		}
 
 		if (collectionDetails) {
-			return cleanTagValue(collectionDetails.title);
+			return collectionDetails.title ?? collectionDetails.name ?? formatAddress(collectionDetails.id, false);
 		}
 
-		return props.asset.data.collectionId;
+		return formatAddress(props.asset.data.collectionId, false);
 	};
 
 	return props.asset ? (

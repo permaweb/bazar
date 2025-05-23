@@ -9,7 +9,7 @@ import { Loader } from 'components/atoms/Loader';
 import { DEFAULTS, URLS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import { CollectionType } from 'helpers/types';
-import { formatDate } from 'helpers/utils';
+import { formatAddress, formatDate } from 'helpers/utils';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 import { usePermawebProvider } from 'providers/PermawebProvider';
 import { RootState } from 'store';
@@ -73,7 +73,7 @@ function CollectionListItem(props: { index: number; collection: CollectionType }
 						)}
 					</S.Thumbnail>
 					<S.Title>
-						<p>{props.collection.title}</p>
+						<p>{props.collection.title ?? props.collection.name ?? formatAddress(props.collection.id, false)}</p>
 					</S.Title>
 				</S.FlexElement>
 				<S.DateCreated>
@@ -106,7 +106,7 @@ export default function CollectionsList(props: IProps) {
 						props.collectionIds.forEach(async (collectionId) => {
 							const collection = await permawebProvider.libs.getCollection(collectionId);
 							if (collection) {
-								setCollections((prev) => [...(prev ?? []), collection]);
+								setCollections((prev) => [...(prev ?? []), { id: collectionId, ...collection }]);
 							}
 						});
 					} else {
@@ -159,6 +159,7 @@ export default function CollectionsList(props: IProps) {
 					</S.Wrapper>
 				);
 			} else {
+				if (loading) return <Loader sm relative />;
 				return (
 					<GS.FullMessageWrapper className={'fade-in border-wrapper-alt2'}>
 						<p>{language.noCollectionsFound}</p>

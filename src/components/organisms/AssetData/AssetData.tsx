@@ -10,10 +10,6 @@ import { useArweaveProvider } from 'providers/ArweaveProvider';
 import * as S from './styles';
 import { IProps } from './types';
 
-// TODO: Just imported @permaweb/libs
-// Need to fix asset type and create an order to test collection activity
-// If collection activity is getting the correct orderbook ids, the last piece
-// would be to get individiual orders into the collection activity
 export default function AssetData(props: IProps) {
 	const arProvider = useArweaveProvider();
 

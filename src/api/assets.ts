@@ -8,12 +8,13 @@ import {
 	AssetStateType,
 	AssetType,
 	DefaultGQLResponseType,
+	EntryOrderType,
 	GQLNodeResponseType,
 	IdGroupType,
 	LicenseType,
 	OrderbookEntryType,
 } from 'helpers/types';
-import { formatAddress, getTagValue, sortByAssetOrders, sortOrderbookEntries } from 'helpers/utils';
+import { formatAddress, getAssetOrderType, getTagValue, sortByAssetOrders, sortOrderbookEntries } from 'helpers/utils';
 import { store } from 'store';
 
 export async function getAssetIdsByUser(args: { profileId: string }): Promise<string[]> {
@@ -44,26 +45,31 @@ export async function getAssetsByIds(args: { ids: string[]; sortType: AssetSortT
 
 		if (gqlResponse && gqlResponse.data.length) {
 			if (store.getState().ucmReducer) {
-				// const ucmReducer = store.getState().ucmReducer;
+				const ucmReducer = store.getState().ucmReducer;
 				const stampsReducer = store.getState().stampsReducer;
 
 				const finalAssets: AssetDetailType[] = [];
 				const structuredAssets = structureAssets(gqlResponse);
 
 				structuredAssets.forEach((asset: AssetType) => {
-					// let assetOrders: AssetOrderType[] | null = null;
-					// const existingEntry = ucmReducer.Orderbook.find((entry: OrderbookEntryType) => {
-					// 	return entry.Pair ? entry.Pair[0] === asset.data.id : null;
-					// });
+					let assetOrders: AssetOrderType[] | null = null;
+					const existingEntry = ucmReducer.Orderbook.find((entry: OrderbookEntryType) => {
+						return entry.Pair ? entry.Pair[0] === asset.data.id : null;
+					});
 
-					// if (existingEntry) {
-					// 	assetOrders = existingEntry.Orders.map((order: EntryOrderType) => {
-					// 		return getAssetOrderType(order, existingEntry.Pair[1]);
-					// 	});
-					// }
+					if (existingEntry) {
+						assetOrders = existingEntry.Orders.map((order: EntryOrderType) => {
+							return getAssetOrderType(order, existingEntry.Pair[1]);
+						});
+					}
 
 					const finalAsset: AssetDetailType = { ...asset };
-					// if (assetOrders) finalAsset.orders = assetOrders; // TODO
+					if (assetOrders) {
+						finalAsset.orderbook = {
+							id: AO.ucm,
+							orders: assetOrders,
+						};
+					}
 
 					finalAssets.push(finalAsset);
 				});
@@ -80,7 +86,7 @@ export async function getAssetsByIds(args: { ids: string[]; sortType: AssetSortT
 	}
 }
 
-export async function getAssetById(args: { id: string }): Promise<AssetDetailType> {
+export async function getAssetById(args: { id: string; libs?: any }): Promise<AssetDetailType> {
 	try {
 		const assetLookupResponse = await getGQLData({
 			gateway: GATEWAYS.arweave,
@@ -102,11 +108,20 @@ export async function getAssetById(args: { id: string }): Promise<AssetDetailTyp
 
 			const structuredAsset = structureAssets(assetLookupResponse)[0];
 
-			const processState = await readHandler({
-				processId: structuredAsset.data.id,
-				action: 'Info',
-				data: null,
-			});
+			let processState: any;
+			if (args.libs) {
+				processState = await args.libs.readState({
+					processId: structuredAsset.data.id,
+					path: 'asset',
+					fallbackAction: 'Info',
+				});
+			} else {
+				processState = await readHandler({
+					processId: structuredAsset.data.id,
+					action: 'Info',
+					data: null,
+				});
+			}
 
 			if (processState) {
 				if (processState.Name || processState.name) {
@@ -138,7 +153,6 @@ export async function getAssetById(args: { id: string }): Promise<AssetDetailTyp
 						action: 'Balances',
 						data: null,
 					});
-					console.log(processBalances);
 
 					if (processBalances) assetState.balances = processBalances;
 				} catch (e: any) {
@@ -154,7 +168,7 @@ export async function getAssetById(args: { id: string }): Promise<AssetDetailTyp
 				Set legacy orderbook on legacy assets */
 			if (processState.Metadata) {
 				if (processState.Metadata.OrderbookId) assetOrderbook = { id: processState.Metadata.OrderbookId };
-			} else assetOrderbook = { id: AO.ucm, activityId: AO.ucmActivity }; // TODO
+			} else assetOrderbook = { id: AO.ucm, activityId: AO.ucmActivity };
 
 			return {
 				...structuredAsset,

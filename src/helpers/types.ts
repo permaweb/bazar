@@ -127,7 +127,7 @@ export type CollectionDetailType = CollectionType & {
 	assetIds: string[];
 	creatorProfile: ProfileType;
 	metrics: CollectionMetricsType;
-	currentListings?: any;
+	activity?: any;
 };
 
 export type TagType = { name: string; value: string };

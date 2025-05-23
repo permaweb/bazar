@@ -172,27 +172,27 @@ export default function AssetsTable(props: IProps) {
 	}
 
 	function getListing(asset: AssetDetailType) {
-		if (props.currentListings) {
-			const assetListings = Object.values(props.currentListings).filter(
-				(listing) => listing.SwapToken === asset.data.id
+		const listingsMap = props.currentListings?.[asset.data.id];
+		if (listingsMap && Object.keys(listingsMap).length > 0) {
+			const entries = Object.entries(listingsMap) as [string, { quantity: string; floorPrice: string }][];
+
+			const [bestCurrency, bestEntry] = entries.reduce(
+				([minCur, minEnt], [cur, ent]) =>
+					BigInt(ent.floorPrice) < BigInt(minEnt.floorPrice) ? [cur, ent] : [minCur, minEnt],
+				entries[0]
 			);
-			if (assetListings.length > 0) {
-				const sortedListings = assetListings.sort((a, b) =>
-					assetSortType.id === 'price_asc' ? Number(a.Price) - Number(b.Price) : Number(b.Price) - Number(a.Price)
-				);
-				return (
-					<CurrencyLine amount={sortedListings[0].Price} currency={asset.orderbook?.orders?.[0]?.currency || 'U'} />
-				);
+
+			return <CurrencyLine amount={bestEntry.floorPrice} currency={bestCurrency} />;
+		}
+
+		const orders = asset.orderbook?.orders ?? [];
+		if (orders.length > 0) {
+			const sorted = sortOrders(orders, assetSortType.id as AssetSortType);
+			if (sorted.length > 0) {
+				return <CurrencyLine amount={sorted[0].price || '0'} currency={sorted[0].currency} />;
 			}
 		}
 
-		if (asset && asset.orderbook?.orders && asset.orderbook?.orders.length) {
-			const sortedOrders = sortOrders(asset.orderbook?.orders, assetSortType.id as AssetSortType);
-
-			if (sortedOrders && sortedOrders.length) {
-				return <CurrencyLine amount={sortedOrders[0].price || '0'} currency={sortedOrders[0].currency} />;
-			}
-		}
 		return <S.NoListings>{language.noListings}</S.NoListings>;
 	}
 

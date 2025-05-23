@@ -22,7 +22,6 @@ import * as S from './styles';
 
 const MAX_DESCRIPTION_LENGTH = 50;
 
-// TODO: Listing index in collection process
 export default function Collection() {
 	const { id, active } = useParams();
 	const navigate = useNavigate();
@@ -82,6 +81,8 @@ export default function Collection() {
 		})();
 	}, [collection?.creator]);
 
+	console.log(collection);
+
 	const TABS = React.useMemo(
 		() => [
 			{
@@ -97,7 +98,7 @@ export default function Collection() {
 									ids={collection.assetIds}
 									type={'grid'}
 									pageCount={PAGINATORS.collection.assets}
-									currentListings={collection.currentListings}
+									currentListings={collection.activity?.currentListings}
 								/>
 							)}
 						</S.AssetsWrapper>
@@ -118,8 +119,6 @@ export default function Collection() {
 	const urlTabs = React.useMemo(() => {
 		return <URLTabs tabs={TABS} activeUrl={TABS[0].url} />;
 	}, [TABS]);
-
-	console.log(collection);
 
 	function getData() {
 		if (collection) {

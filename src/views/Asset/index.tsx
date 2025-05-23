@@ -12,6 +12,7 @@ import { AssetDetailType, AssetViewType } from 'helpers/types';
 import { checkValidAddress } from 'helpers/utils';
 import * as windowUtils from 'helpers/window';
 import { useLanguageProvider } from 'providers/LanguageProvider';
+import { usePermawebProvider } from 'providers/PermawebProvider';
 
 import { AssetAction } from './AssetAction';
 import { AssetInfo } from './AssetInfo';
@@ -21,6 +22,8 @@ import * as S from './styles';
 export default function Asset() {
 	const { id } = useParams();
 	const navigate = useNavigate();
+
+	const permawebProvider = usePermawebProvider();
 
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
@@ -49,6 +52,8 @@ export default function Asset() {
 	React.useEffect(() => {
 		(async function () {
 			if (id && checkValidAddress(id)) {
+				console.log('Fetching asset...');
+
 				setLoading(true);
 				let tries = 0;
 				const maxTries = 10;
@@ -57,7 +62,7 @@ export default function Asset() {
 				const fetchUntilChange = async () => {
 					while (!assetFetched && tries < maxTries) {
 						try {
-							const fetchedAsset = await getAssetById({ id });
+							const fetchedAsset = await getAssetById({ id: id, libs: permawebProvider.libs });
 							setAsset(fetchedAsset);
 
 							if (fetchedAsset !== null) {
@@ -116,12 +121,11 @@ export default function Asset() {
 							}));
 						}
 					} else {
-						const response = await readHandler({
+						const response = await permawebProvider.libs.readState({
 							processId: asset.orderbook.id,
-							action: 'Info',
+							path: 'orderbook',
+							fallbackAction: 'Info',
 						});
-
-						console.log(response);
 
 						setAsset((prevAsset) => ({
 							...prevAsset,
@@ -139,8 +143,6 @@ export default function Asset() {
 			}
 		})();
 	}, [asset?.orderbook?.id, toggleUpdate]);
-
-	console.log(asset);
 
 	// TODO
 	// React.useEffect(() => {
