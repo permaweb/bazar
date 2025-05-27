@@ -99,3 +99,11 @@ export const SDMessageInfo = styled.div`
 		display: block;
 	}
 `;
+
+export const ARNSMetadataWrapper = styled.div`
+	margin-top: 8px;
+	padding: 8px;
+	background: ${(props) => props.theme.colors.container.alt3.background};
+	border: 1px solid ${(props) => props.theme.colors.border.alt4};
+	border-radius: ${STYLING.dimensions.radius.primary};
+`;

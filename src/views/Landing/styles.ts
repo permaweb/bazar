@@ -21,3 +21,8 @@ export const CreatorsWrapper = styled.div`
 `;
 
 export const AssetsWrapper = styled.div``;
+
+export const ARNSWrapper = styled.div`
+	width: 100%;
+	margin-top: 40px;
+`;

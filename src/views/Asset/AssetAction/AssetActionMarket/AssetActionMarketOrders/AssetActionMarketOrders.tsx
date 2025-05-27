@@ -194,7 +194,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 	async function handleSubmit() {
 		if (props.asset && arProvider.wallet && arProvider.profile?.id) {
 			const dependencies = {
-				ao: connect({ MODE: 'legacy' }),
+				ao: connect(),
 				arweave: Arweave.init({}),
 				signer: createDataItemSigner(arProvider.wallet),
 			};

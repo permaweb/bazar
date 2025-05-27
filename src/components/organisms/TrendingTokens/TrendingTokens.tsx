@@ -3,6 +3,9 @@ import { Link, useNavigate } from 'react-router-dom';
 
 import { readHandler } from 'api';
 
+import ARNSMetadata from 'components/atoms/ARNSMetadata';
+import { IconButton } from 'components/atoms/IconButton';
+import { Notification } from 'components/atoms/Notification';
 import { DEFAULTS, REFORMATTED_ASSETS, URLS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import { useLanguageProvider } from 'providers/LanguageProvider';
@@ -79,6 +82,11 @@ export default function TrendingTokens() {
 										<S.TokenName>
 											<p>{token.Name || token.name || 'Token'}</p>
 										</S.TokenName>
+										{token.arnsMetadata && (
+											<S.ARNSMetadataWrapper>
+												<ARNSMetadata metadata={token.arnsMetadata} />
+											</S.ARNSMetadataWrapper>
+										)}
 									</Link>
 								</S.TokenWrapper>
 							);

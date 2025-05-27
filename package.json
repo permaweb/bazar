@@ -25,9 +25,9 @@
 		"@othent/kms": "^1.0.7",
 		"@permaweb/aoconnect": "^0.0.77",
 		"@permaweb/aoprofile": "^0.0.9",
-		"@permaweb/libs": "^0.0.29",
+		"@permaweb/libs": "file:../permaweb-libs/sdk",
 		"@permaweb/stampjs": "^1.0.4",
-		"@permaweb/ucm": "^0.0.6",
+		"@permaweb/ucm": "file:../ao-ucm/sdk",
 		"async-lock": "^1.4.1",
 		"jwt-decode": "^4.0.0",
 		"localforage": "^1.10.0",
@@ -89,5 +89,6 @@
 		"webpack": "^5.75.0",
 		"webpack-cli": "^5.0.1",
 		"webpack-dev-server": "^4.13.2"
-	}
+	},
+	"type": "module"
 }

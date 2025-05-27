@@ -4,11 +4,37 @@ import { progressAnimation } from 'helpers/animations';
 import { STYLING } from 'helpers/config';
 
 export const Wrapper = styled.div`
-	margin: 30px 0 0 0;
+	width: 100%;
+	display: flex;
+	flex-direction: column;
+	gap: 20px;
 `;
 
 export const InputWrapper = styled.div`
-	margin: 30px 0 0 0;
+	width: 100%;
+	display: flex;
+	flex-direction: column;
+	gap: 20px;
+`;
+
+export const FieldsWrapper = styled.div`
+	width: 100%;
+	display: flex;
+	flex-direction: column;
+	gap: 20px;
+`;
+
+export const ActionWrapper = styled.div`
+	width: 100%;
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+`;
+
+export const ErrorMessage = styled.div`
+	color: red;
+	font-size: 14px;
+	margin-top: 10px;
 `;
 
 export const FieldsFlexWrapper = styled.div`
@@ -51,17 +77,6 @@ export const TotalQuantityLine = styled.div`
 		color: ${(props) => props.theme.colors.font.primary};
 		font-family: ${(props) => props.theme.typography.family.alt1};
 		font-weight: ${(props) => props.theme.typography.weight.bold};
-	}
-`;
-
-export const FieldsWrapper = styled.div`
-	width: 50%;
-	display: flex;
-	flex-direction: column;
-	align-items: flex-end;
-	flex-wrap: wrap;
-	@media (max-width: ${STYLING.cutoffs.tablet}) {
-		width: 100%;
 	}
 `;
 
@@ -132,76 +147,6 @@ export const SalesDetail = styled.div`
 			font-weight: ${(props) => props.theme.typography.weight.bold};
 			color: ${(props) => props.theme.colors.font.primary};
 		}
-	}
-`;
-
-export const ActionWrapper = styled.div<{ loading: string }>`
-	width: 100%;
-	position: relative;
-	margin: 20px 0 0 0;
-	button {
-		${(props) =>
-			props.loading === 'true' &&
-			css`
-				&::after {
-					content: '';
-					display: block;
-					position: absolute;
-					top: 0;
-					left: 0;
-					right: 0;
-					bottom: 0;
-					z-index: 0;
-					background-image: linear-gradient(
-						-45deg,
-						${props.theme.colors.container.alt9.background} 25%,
-						${props.theme.colors.container.alt10.background} 25%,
-						${props.theme.colors.container.alt10.background} 50%,
-						${props.theme.colors.container.alt9.background} 50%,
-						${props.theme.colors.container.alt9.background} 75%,
-						${props.theme.colors.container.alt10.background} 75%,
-						${props.theme.colors.container.alt10.background}
-					);
-					background-size: 60px 60px;
-					animation: ${progressAnimation} 2s linear infinite;
-				}
-			`}
-
-		span,
-		svg {
-			position: relative;
-			z-index: 1;
-		}
-		span {
-			font-size: clamp(18px, 2vw, 24px) !important;
-			font-family: ${(props) => props.theme.typography.family.alt1};
-			text-transform: uppercase;
-			white-space: nowrap;
-		}
-		svg {
-			height: 25px;
-			width: 25px;
-			margin: 0 15px 0 0;
-		}
-
-		&:disabled {
-			span {
-				color: ${(props) =>
-					props.loading === 'true'
-						? props.theme.colors.font.light1
-						: props.theme.colors.button.primary.disabled.color} !important;
-			}
-			svg {
-				color: ${(props) =>
-					props.loading === 'true'
-						? props.theme.colors.font.light1
-						: props.theme.colors.button.primary.disabled.color} !important;
-			}
-		}
-	}
-	button {
-		min-width: 0;
-		width: 100%;
 	}
 `;
 

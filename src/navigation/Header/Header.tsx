@@ -20,6 +20,7 @@ export default function Header() {
 
 	const paths: { path: string; label: string; target?: '_blank' }[] = [
 		{ path: URLS.collections, label: language.collections },
+		{ path: '/arns', label: language.arnsMarketplace },
 		{ path: URLS.docs, label: language.learn },
 		{ path: REDIRECTS.bazarStudio, label: language.create, target: '_blank' },
 	];

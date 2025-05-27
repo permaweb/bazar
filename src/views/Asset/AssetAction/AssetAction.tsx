@@ -6,6 +6,7 @@ import { ReactSVG } from 'react-svg';
 import { getAndUpdateRegistryProfiles } from 'api';
 
 import * as GS from 'app/styles';
+import ARNSMetadata from 'components/atoms/ARNSMetadata';
 import { Button } from 'components/atoms/Button';
 import { CurrencyLine } from 'components/atoms/CurrencyLine';
 import { IconButton } from 'components/atoms/IconButton';
@@ -441,6 +442,11 @@ export default function AssetAction(props: IProps) {
 				<S.Header>
 					<S.HeaderTitle>
 						<h4>{props.asset.data.title}</h4>
+						{props.asset.data.arnsMetadata && (
+							<S.ARNSMetadataWrapper>
+								<ARNSMetadata metadata={props.asset.data.arnsMetadata} />
+							</S.ARNSMetadataWrapper>
+						)}
 						<S.HeaderTitleActions>
 							<Stamps txId={props.asset.data.id} title={props.asset.data.description || props.asset.data.title} />
 							<IconButton

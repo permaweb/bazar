@@ -2,7 +2,20 @@
 	"compilerOptions": {
 		"baseUrl": "./src",
 		"paths": {
-			"*": ["*"]
+			"components/*": ["components/*"],
+			"providers/*": ["providers/*"],
+			"helpers/*": ["helpers/*"],
+			"hooks/*": ["hooks/*"],
+			"navigation/*": ["navigation/*"],
+			"store/*": ["store/*"],
+			"views/*": ["views/*"],
+			"assets/*": ["assets/*"],
+			"api/*": ["api/*"],
+			"app/*": ["app/*"],
+			"root/*": ["root/*"],
+			"routes/*": ["routes/*"],
+			"wallet/*": ["wallet/*"],
+			"wrappers/*": ["wrappers/*"]
 		},
 		"target": "es5",
 		"lib": ["dom", "dom.iterable", "esnext"],
@@ -12,8 +25,8 @@
 		"allowSyntheticDefaultImports": true,
 		"strict": false,
 		"forceConsistentCasingInFileNames": true,
-		"module": "CommonJS",
-		"moduleResolution": "node",
+		"module": "nodenext",
+		"moduleResolution": "nodenext",
 		"resolveJsonModule": true,
 		"isolatedModules": true,
 		"noUnusedLocals": true,
@@ -23,6 +36,6 @@
 		"jsx": "react-jsx",
 		"downlevelIteration": true
 	},
-	"include": ["src/**/*.ts", "src/**/*.tsx"],
+	"include": ["src/**/*.ts", "src/**/*.tsx", "../ao-ucm/src/**/*.ts", "../ao-ucm/src/**/*.tsx"],
 	"exclude": ["./tests", "./dist"]
 }

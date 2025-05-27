@@ -10,6 +10,7 @@ import { ASSETS, URLS } from 'helpers/config';
 import { checkValidAddress } from 'helpers/utils';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 
+import ProfileArNS from './ProfileArNS/ProfileArNS';
 import { ProfileActivity } from './ProfileActivity';
 import { ProfileAssets } from './ProfileAssets';
 import { ProfileCollections } from './ProfileCollections';
@@ -69,6 +70,13 @@ export default function Profile() {
 				disabled: false,
 				url: URLS.profileCollections(address),
 				view: () => <ProfileCollections address={address} />,
+			},
+			{
+				label: 'ArNS',
+				icon: ASSETS.user,
+				disabled: false,
+				url: `/profile/${address}/arns`,
+				view: () => <ProfileArNS address={address} />,
 			},
 			{
 				label: language.activity,

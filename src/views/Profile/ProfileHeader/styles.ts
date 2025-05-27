@@ -184,3 +184,14 @@ export const Action = styled.div`
 export const PManageWrapper = styled.div`
 	max-width: 550px;
 `;
+
+export const ARNSWrapper = styled.div`
+	margin-top: 20px;
+	width: 100%;
+	max-width: 600px;
+	background: ${(props) => props.theme.colors.container.alt2.background};
+	border: 1px solid ${(props) => props.theme.colors.border.primary};
+	border-radius: ${STYLING.dimensions.radius.primary};
+	padding: 15px;
+	box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+`;

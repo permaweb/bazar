@@ -202,5 +202,6 @@ export const language = {
 		viewInZenMode: `Zen Mode`,
 		viewOnArweave: `View on Arweave`,
 		viewProfile: `View Profile`,
+		arnsMarketplace: `ARNS Marketplace`,
 	},
 };

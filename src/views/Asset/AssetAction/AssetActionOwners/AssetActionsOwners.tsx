@@ -52,30 +52,43 @@ export default function AssetActionsOwners(props: IProps) {
 			if (props.asset && !sortedOwners) {
 				const owners = getOwners(props.asset, null);
 
+				if (!owners || !Array.isArray(owners)) {
+					console.error('Invalid owners data:', owners);
+					setSortedOwners([]);
+					return;
+				}
+
 				let updatedOwners = [...owners].sort((a: any, b: any) => {
 					return b.ownerQuantity - a.ownerQuantity;
 				});
 
 				if (owners.length) {
 					try {
-						const addresses = [...updatedOwners].splice(0, MAX_OWNER_LENGTH).map((owner: OwnerType) => owner.address);
-						const profiles = await getAndUpdateRegistryProfiles(addresses);
+						const addresses = [...updatedOwners]
+							.splice(0, MAX_OWNER_LENGTH)
+							.map((owner: OwnerType) => owner?.address)
+							.filter(Boolean);
 
-						updatedOwners = updatedOwners
-							.map((owner: OwnerType) => {
-								const profile = profiles.find((profile: RegistryProfileType) => {
-									return profile.id === owner.address;
+						if (addresses.length > 0) {
+							const profiles = await getAndUpdateRegistryProfiles(addresses);
+
+							updatedOwners = updatedOwners
+								.map((owner: OwnerType) => {
+									const profile = profiles.find((profile: RegistryProfileType) => {
+										return profile.id === owner.address;
+									});
+									return { ...owner, profile };
+								})
+								.sort((a: any, b: any) => {
+									if (a.address === props.asset?.orderbook?.id || b.address === props.asset?.orderbook?.id) {
+										if (a.address === props.asset?.orderbook?.id) return -1;
+										if (b.address === props.asset?.orderbook?.id) return 1;
+									}
+									return b.ownerQuantity - a.ownerQuantity;
 								});
-								return { ...owner, profile };
-							})
-							.sort((a: any, b: any) => {
-								if (a.address === props.asset?.orderbook?.id || b.address === props.asset?.orderbook?.id) {
-									if (a.address === props.asset?.orderbook?.id) return -1;
-									if (b.address === props.asset?.orderbook?.id) return 1;
-								}
-							});
+						}
 					} catch (e: any) {
-						console.error(e);
+						console.error('Error fetching profiles:', e);
 					}
 				}
 

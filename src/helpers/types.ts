@@ -62,6 +62,15 @@ export type LicenseType = {
 	currency: string | null;
 };
 
+export type ARNSTokenInfo = {
+	Name: string;
+	Ticker: string;
+	Owner: string;
+	Logo?: string;
+	Description?: string;
+	Keywords?: string[];
+};
+
 export type AssetType = {
 	data: {
 		id: string;
@@ -78,6 +87,7 @@ export type AssetType = {
 		collectionId?: string | null;
 		collectionName?: string | null;
 		contentType?: string | null;
+		arnsMetadata?: ARNSTokenInfo;
 	};
 };
 

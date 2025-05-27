@@ -6,6 +6,7 @@ import { getCollections } from 'api';
 // import { ActivityTable } from 'components/organisms/ActivityTable';
 // import { AssetsTable } from 'components/organisms/AssetsTable';
 import { CollectionsCarousel } from 'components/organisms/CollectionsCarousel';
+import { TrendingARNS } from 'components/organisms/TrendingARNS';
 // import { OrderCountsTable } from 'components/organisms/OrderCountsTable';
 import { TrendingTokens } from 'components/organisms/TrendingTokens';
 // import { PAGINATORS } from 'helpers/config';
@@ -27,21 +28,22 @@ export default function Landing() {
 
 	React.useEffect(() => {
 		(async function () {
-			if (!collections) {
-				setCollectionsLoading(true);
-				try {
-					if (collectionsReducer?.stamped?.collections?.length) {
-						setCollections(collectionsReducer.stamped.collections);
-						setCollectionsLoading(false);
-					}
-
-					const collectionsFetch: CollectionType[] = await getCollections(null, true);
-					if (collectionsFetch) setCollections(collectionsFetch);
-				} catch (e: any) {
-					console.error(e.message || language.collectionsFetchFailed);
+			setCollectionsLoading(true);
+			try {
+				if (collectionsReducer?.stamped?.collections?.length) {
+					setCollections(collectionsReducer.stamped.collections);
+					setCollectionsLoading(false);
+					return;
 				}
-				setCollectionsLoading(false);
+
+				const collectionsFetch: CollectionType[] = await getCollections(null, true);
+				if (collectionsFetch) {
+					setCollections(collectionsFetch);
+				}
+			} catch (e: any) {
+				console.error(e.message || language.collectionsFetchFailed);
 			}
+			setCollectionsLoading(false);
 		})();
 	}, [collectionsReducer?.stamped]);
 
@@ -55,6 +57,9 @@ export default function Landing() {
 			<S.TokensWrapper>
 				<TrendingTokens />
 			</S.TokensWrapper>
+			<S.ARNSWrapper>
+				<TrendingARNS />
+			</S.ARNSWrapper>
 			{/* <S.ActivityWrapper>
 				<h4>{language.recentActivity}</h4>
 				<ActivityTable groupCount={15} startDate={startDate} />

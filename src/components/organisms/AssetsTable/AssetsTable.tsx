@@ -4,6 +4,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { getAssetIdGroups, getAssetsByIds, messageResult } from 'api';
 
 import * as GS from 'app/styles';
+import ARNSMetadata from 'components/atoms/ARNSMetadata';
 import { Button } from 'components/atoms/Button';
 import { CurrencyLine } from 'components/atoms/CurrencyLine';
 import { IconButton } from 'components/atoms/IconButton';
@@ -318,21 +319,25 @@ export default function AssetsTable(props: IProps) {
 															disabled={false}
 														>
 															<S.FlexElement>
-																<S.Index>
-																	<p>{getAssetIndexDisplay(index, sectionIndex, splitSections[0].length)}</p>
-																</S.Index>
-																<S.Thumbnail>
-																	<AssetData asset={asset} scrolling={scrolling} preview />
-																</S.Thumbnail>
-																<S.Title>
-																	<p>{asset.data.title}</p>
-																</S.Title>
+																<S.AssetGridDataWrapper disabled={false}>
+																	<AssetData asset={asset} frameMinHeight={0} autoLoad />
+																</S.AssetGridDataWrapper>
+																{asset.data.arnsMetadata && (
+																	<S.ARNSMetadataWrapper>
+																		<ARNSMetadata metadata={asset.data.arnsMetadata} />
+																	</S.ARNSMetadataWrapper>
+																)}
 															</S.FlexElement>
-															{!props.noListings && (
-																<S.FlexElement>
-																	<S.Listings>{getListing(asset)}</S.Listings>
-																</S.FlexElement>
-															)}
+															<S.FlexElement>
+																<S.AssetGridDataWrapper disabled={false}>{getListing(asset)}</S.AssetGridDataWrapper>
+															</S.FlexElement>
+															<S.FlexElement>
+																<S.AssetGridDataWrapper disabled={false}>
+																	<div>
+																		<p>{formatDate(asset.data.dateCreated, 'iso')}</p>
+																	</div>
+																</S.AssetGridDataWrapper>
+															</S.FlexElement>
 														</S.AssetsListSectionElement>
 													);
 												})}

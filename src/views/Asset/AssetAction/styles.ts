@@ -205,3 +205,11 @@ export const MActionsWrapper = styled.div`
 		}
 	}
 `;
+
+export const ARNSMetadataWrapper = styled.div`
+	margin: 10px 0;
+	padding: 10px;
+	background: ${(props) => props.theme.colors.container.alt3.background};
+	border: 1px solid ${(props) => props.theme.colors.border.alt4};
+	border-radius: ${STYLING.dimensions.radius.primary};
+`;
