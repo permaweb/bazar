@@ -12,46 +12,17 @@ import { sortOrderbookEntries } from 'helpers/utils';
 import { store } from 'store';
 import * as collectionActions from 'store/collections/actions';
 
-export async function getCollections(creator?: string, filterUnstamped?: boolean): Promise<any[]> {
-	const dryrun = Math.random() < 0.1;
-
-	const modeKey = 'fetchModeTTL';
-	const currentTime = Date.now();
-	let fetchMode;
-
-	const storedData = localStorage.getItem(modeKey);
-	if (storedData) {
-		try {
-			const parsedData = JSON.parse(storedData);
-			if (currentTime - parsedData.timestamp < 60 * 60 * 1000) {
-				fetchMode = 'compute';
-			} else {
-				fetchMode = 'now';
-				localStorage.setItem(modeKey, JSON.stringify({ timestamp: currentTime }));
-			}
-		} catch (error) {
-			fetchMode = 'now';
-			localStorage.setItem(modeKey, JSON.stringify({ timestamp: currentTime }));
-		}
-	} else {
-		fetchMode = 'now';
-		localStorage.setItem(modeKey, JSON.stringify({ timestamp: currentTime }));
-	}
-
+export async function getCollections(creator: string, libs: any): Promise<any[]> {
 	try {
-		const response = dryrun
-			? await readHandler({
-					processId: AO.collectionsRegistry,
-					action: creator ? 'Get-Collections-By-User' : 'Get-Collections',
-					tags: creator ? [{ name: 'Creator', value: creator }] : null,
-			  })
-			: await (
-					await fetch(`https://router-1.forward.computer/${AO.collectionsRegistry}~process@1.0/${fetchMode}/cache`)
-			  ).json();
+		const response = await libs.readState({
+			processId: AO.collectionsRegistry,
+			path: 'cache',
+			fallbackAction: 'Get-Collections',
+		});
 
 		if (response?.Collections?.length) {
 			let filteredCollections = [...response.Collections];
-			if (!dryrun && creator) {
+			if (creator) {
 				const creatorCollectionIds = [...(response.CollectionsByUser?.[creator] ?? [])];
 				filteredCollections = filteredCollections.filter((collection) => creatorCollectionIds.includes(collection.Id));
 			}
@@ -73,11 +44,9 @@ export async function getCollections(creator?: string, filterUnstamped?: boolean
 
 			let finalCollections = collections;
 
-			if (filterUnstamped) {
-				finalCollections = finalCollections.filter((c: any) => {
-					return stampsFetch[c.id].total != 0;
-				});
-			}
+			finalCollections = finalCollections.filter((c: any) => {
+				return stampsFetch[c.id].total != 0;
+			});
 
 			finalCollections = finalCollections.sort((a: { id: string | number }, b: { id: string | number }) => {
 				const countA = stampsFetch[a.id]?.total || 0;
@@ -85,7 +54,7 @@ export async function getCollections(creator?: string, filterUnstamped?: boolean
 				return countB - countA;
 			});
 
-			const key = creator ? 'creators' : filterUnstamped ? 'stamped' : 'all';
+			const key = creator ? 'creators' : 'stamped';
 			const updatedCollections = {
 				[key]: creator
 					? {
@@ -114,6 +83,19 @@ export async function getCollections(creator?: string, filterUnstamped?: boolean
 		throw new Error(e.message || 'Failed to fetch collections');
 	}
 }
+
+// export async function getCollections(libs: any) {
+// 	try {
+// 		const response = await libs.readState({
+// 			processId: AO.collectionsRegistry,
+// 			path: 'cache',
+// 			fallbackAction: 'Get-Collections',
+// 		});
+// 	}
+// 	catch (e: any) {
+// 		throw new Error(e.message ?? 'Error fetching collections')
+// 	}
+// }
 
 export async function getCollectionById(args: { id: string; libs?: any }): Promise<CollectionDetailType> {
 	try {

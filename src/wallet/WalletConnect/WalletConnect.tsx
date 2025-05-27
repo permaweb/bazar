@@ -225,18 +225,6 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 							</>
 						)}
 					</li>
-					{arProvider.profile && arProvider.profile.id && (
-						<>
-							<li onClick={() => handleDropdownAction(() => setShowProfileManage(true))}>
-								<ReactSVG src={ASSETS.edit} />
-								{language.editProfile}
-							</li>
-							<li onClick={() => copyAddress(arProvider.profile.id)}>
-								<ReactSVG src={ASSETS.copy} />
-								{copied ? `${language.copied}!` : language.copyProfileId}
-							</li>
-						</>
-					)}
 					<li onClick={handleToggleTheme}>
 						{themeProvider.current === 'light' ? (
 							<>

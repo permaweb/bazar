@@ -81,8 +81,6 @@ export default function Collection() {
 		})();
 	}, [collection?.creator]);
 
-	console.log(collection);
-
 	const TABS = React.useMemo(
 		() => [
 			{

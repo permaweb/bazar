@@ -3,21 +3,19 @@ import { useSelector } from 'react-redux';
 
 import { getCollections } from 'api';
 
-// import { ActivityTable } from 'components/organisms/ActivityTable';
-// import { AssetsTable } from 'components/organisms/AssetsTable';
+import { ActivityTable } from 'components/organisms/ActivityTable';
 import { CollectionsCarousel } from 'components/organisms/CollectionsCarousel';
-// import { OrderCountsTable } from 'components/organisms/OrderCountsTable';
-import { TrendingTokens } from 'components/organisms/TrendingTokens';
-// import { PAGINATORS } from 'helpers/config';
 import { CollectionType } from 'helpers/types';
 import { useLanguageProvider } from 'providers/LanguageProvider';
+import { usePermawebProvider } from 'providers/PermawebProvider';
 import { RootState } from 'store';
 
 import * as S from './styles';
 
-// TODO
 export default function Landing() {
 	const collectionsReducer = useSelector((state: RootState) => state.collectionsReducer);
+
+	const permawebProvider = usePermawebProvider();
 
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
@@ -35,7 +33,7 @@ export default function Landing() {
 						setCollectionsLoading(false);
 					}
 
-					const collectionsFetch: CollectionType[] = await getCollections(null, true);
+					const collectionsFetch: CollectionType[] = await getCollections(null, permawebProvider.libs);
 					if (collectionsFetch) setCollections(collectionsFetch);
 				} catch (e: any) {
 					console.error(e.message || language.collectionsFetchFailed);
@@ -45,26 +43,15 @@ export default function Landing() {
 		})();
 	}, [collectionsReducer?.stamped]);
 
-	// const startDate = Math.floor(Date.now()) - 1 * 12 * 60 * 60 * 1000;
-
 	return (
 		<S.Wrapper className={'fade-in'}>
 			<S.CollectionsWrapper>
 				<CollectionsCarousel collections={collections} loading={collectionsLoading} />
 			</S.CollectionsWrapper>
-			<S.TokensWrapper>
-				<TrendingTokens />
-			</S.TokensWrapper>
-			{/* <S.ActivityWrapper>
+			<S.ActivityWrapper>
 				<h4>{language.recentActivity}</h4>
-				<ActivityTable groupCount={15} startDate={startDate} />
+				<ActivityTable />
 			</S.ActivityWrapper>
-			<S.CreatorsWrapper>
-				<OrderCountsTable />
-			</S.CreatorsWrapper> */}
-			{/* <S.AssetsWrapper>
-				<AssetsTable type={'grid'} pageCount={PAGINATORS.landing.assets} />
-			</S.AssetsWrapper> */}
 		</S.Wrapper>
 	);
 }

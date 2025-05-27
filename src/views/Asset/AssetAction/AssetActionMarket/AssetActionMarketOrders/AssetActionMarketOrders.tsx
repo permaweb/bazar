@@ -795,7 +795,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 										<Button
 											type={'alt1'}
 											label={language.view}
-											handlePress={() => window.open(REDIRECTS.aoLink(orderId), '_blank')}
+											handlePress={() => window.open(REDIRECTS.explorer(orderId), '_blank')}
 											height={27.5}
 										/>
 									</S.ConfirmationDetailsFlex>

@@ -124,8 +124,8 @@ export default function CollectionsList(props: IProps) {
 					}
 
 					if (!props.collectionIds) {
-						const collectionsFetch: CollectionType[] = await getCollections(props.owner);
-						if (props.owner) {
+						const collectionsFetch: CollectionType[] = await getCollections(props.owner, permawebProvider.libs);
+						if (props.owner && collectionsFetch) {
 							setCollections(collectionsFetch.filter((collection) => collection.creator === props.owner));
 						} else setCollections(collectionsFetch);
 					}

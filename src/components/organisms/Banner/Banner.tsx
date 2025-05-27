@@ -1,7 +1,5 @@
 import React from 'react';
 
-import { getCollections } from 'api';
-
 import { Button } from 'components/atoms/Button';
 import { Notification } from 'components/atoms/Notification';
 import { Modal } from 'components/molecules/Modal';
@@ -327,19 +325,6 @@ export default function Banner() {
 					},
 				});
 				console.log(`Streak migration: ${streakMigrationResult}`);
-
-				console.log('Checking collections...');
-				const collectionsByUser = await getCollections(permawebProvider.profile.id);
-
-				if (collectionsByUser?.length > 0) {
-					console.log('Adding collections...');
-					const collectionUpdateId = await permawebProvider.libs.updateZone(
-						{ Collections: collectionsByUser.map((collection: any) => collection.id) },
-						newProfileId,
-						arProvider.wallet
-					);
-					console.log(`Collection update: ${collectionUpdateId}`);
-				}
 
 				console.log('Transferring assets...');
 				for (const asset of permawebProvider.profile.assets) {

@@ -246,3 +246,39 @@ export type ResponseType = { status: boolean; message: string | null };
 export type StampType = { total: number; vouched: number; hasStamped?: boolean };
 
 export type StampsType = Record<string, { total: number; vouched: number }>;
+
+export type GqlEdge = {
+	cursor: string;
+	node: {
+		id: string;
+		tags: { name: string; value: string }[];
+		block: { timestamp: number };
+		recipient: string;
+	};
+};
+
+export interface FormattedActivity {
+	ListedOrders: Array<{
+		OrderId: string;
+		Timestamp: number;
+		Quantity: string;
+		DominantToken: string;
+		SwapToken: string;
+		Price: string;
+		Sender: string;
+	}>;
+	PurchasesByAddress: Record<string, number>;
+	TotalVolume: Record<string, string>;
+	SalesByAddress: Record<string, number>;
+	CancelledOrders: string[];
+	ExecutedOrders: Array<{
+		OrderId: string;
+		Receiver: string;
+		Quantity: string;
+		DominantToken: string;
+		Timestamp: number;
+		SwapToken: string;
+		Price: string;
+		Sender: string;
+	}>;
+}
