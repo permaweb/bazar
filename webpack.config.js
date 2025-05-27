@@ -183,6 +183,9 @@ module.exports = {
 			'process.env.VOUCH': JSON.stringify(addresses.VOUCH),
 			'process.env.STAMPS': JSON.stringify(addresses.STAMPS),
 		}),
+		new webpack.ProvidePlugin({
+			Buffer: ['buffer', 'Buffer'],
+		}),
 	],
 	resolve: {
 		extensions: ['.tsx', '.ts', '.jsx', '.js'],
@@ -230,6 +233,7 @@ module.exports = {
 			wrappers: path.resolve(__dirname, 'src/wrappers/'),
 			'asn1.js': path.resolve(__dirname, 'node_modules/asn1.js'),
 			elliptic: path.resolve(__dirname, 'node_modules/elliptic'),
+			'node:buffer': require.resolve('buffer/'),
 		},
 	},
 	output: {

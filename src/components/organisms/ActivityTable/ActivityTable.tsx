@@ -228,7 +228,7 @@ export default function ActivityTable(props: IProps) {
 				return m;
 			}, {});
 
-			const tsMs = node.block.timestamp * 1000;
+			const tsMs = node?.block?.timestamp ? node.block.timestamp * 1000 : '-';
 			const action = t['Action'];
 
 			if (action === 'Order-Success') {
@@ -479,14 +479,18 @@ export default function ActivityTable(props: IProps) {
 									)}
 								</S.PriceWrapper>
 								<S.DateValueWrapper>
-									<p>{getRelativeDate(row.timestamp)}</p>
-									{row.timestamp && (
-										<S.DateValueTooltip>
-											<ReactSVG src={ASSETS.info} />
-											<div className={'date-tooltip fade-in border-wrapper-alt2'}>
-												<p>{`${formatDate(row.timestamp, 'iso', true)}`}</p>
-											</div>
-										</S.DateValueTooltip>
+									{row.timestamp !== '-' ? (
+										<>
+											<p>{getRelativeDate(row.timestamp)}</p>
+											<S.DateValueTooltip>
+												<ReactSVG src={ASSETS.info} />
+												<div className={'date-tooltip fade-in border-wrapper-alt2'}>
+													<p>{`${formatDate(row.timestamp, 'iso', true)}`}</p>
+												</div>
+											</S.DateValueTooltip>
+										</>
+									) : (
+										<p>-</p>
 									)}
 								</S.DateValueWrapper>
 							</S.TableRow>
