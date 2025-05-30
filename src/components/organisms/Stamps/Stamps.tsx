@@ -33,44 +33,39 @@ export default function Stamps(props: IProps) {
 	React.useEffect(() => {
 		(async function () {
 			if ((props.txId && !current) || !checkEqualObjects(current, stampsReducer?.[props.txId])) {
-				if (stampsReducer) {
-					let currentStamps = stampsReducer?.[props.txId];
-
-					if (currentStamps) {
-						setCurrent(currentStamps);
-						setLoading(false);
-					} else {
-						try {
-							if (!current) {
-								setLoading(true);
-								const stampsFetch = await stamps.getStamps({ ids: [props.txId] });
-
-								setCurrent(stampsFetch?.[props.txId] ?? null);
-								setLoading(false);
-
-								const hasStampedCheck = await stamps.hasStamped(props.txId);
-
-								currentStamps = {
-									...(stampsFetch?.[props.txId] ?? null),
-									hasStamped: hasStampedCheck?.[props.txId] ?? false,
-								};
-
-								setCurrent(currentStamps);
-
-								const updatedStamps = { ...stampsReducer, [props.txId]: currentStamps };
-								dispatch(stampsActions.setStamps(updatedStamps));
-							}
-						} catch (e: any) {
-							console.error(e);
-						}
-						setLoading(false);
-					}
+				let currentStamps = stampsReducer?.[props.txId];
+				if (currentStamps) {
+					setCurrent(currentStamps);
+					setLoading(false);
 				} else {
-					setLoading(true);
+					try {
+						if (!current && !props.noAutoFetch) {
+							setLoading(true);
+							const stampsFetch = await stamps.getStamps({ ids: [props.txId] });
+
+							setCurrent(stampsFetch?.[props.txId] ?? null);
+							setLoading(false);
+
+							const hasStampedCheck = await stamps.hasStamped(props.txId);
+
+							currentStamps = {
+								...(stampsFetch?.[props.txId] ?? null),
+								hasStamped: hasStampedCheck?.[props.txId] ?? false,
+							};
+
+							setCurrent(currentStamps);
+
+							const updatedStamps = { ...stampsReducer, [props.txId]: currentStamps };
+							dispatch(stampsActions.setStamps(updatedStamps));
+						}
+					} catch (e: any) {
+						console.error(e);
+					}
+					setLoading(false);
 				}
 			}
 		})();
-	}, [stampsReducer, props.txId, arProvider.walletAddress]);
+	}, [stampsReducer, props.txId, arProvider.walletAddress, props.noAutoFetch]);
 
 	async function handlePress(e: any) {
 		e.preventDefault();

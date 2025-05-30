@@ -5,4 +5,5 @@ export interface IProps {
 	getCount?: boolean;
 	sm?: boolean;
 	asButton?: boolean;
+	noAutoFetch?: boolean;
 }

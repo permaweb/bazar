@@ -1,6 +1,6 @@
 import { getGQLData, readHandler } from 'api';
 
-import { AO, GATEWAYS, LICENSES, PAGINATORS, REFORMATTED_ASSETS, TAGS } from 'helpers/config';
+import { AO, GATEWAYS, HB, LICENSES, PAGINATORS, REFORMATTED_ASSETS, TAGS } from 'helpers/config';
 import {
 	AssetDetailType,
 	AssetOrderType,
@@ -44,40 +44,36 @@ export async function getAssetsByIds(args: { ids: string[]; sortType: AssetSortT
 		});
 
 		if (gqlResponse && gqlResponse.data.length) {
-			if (store.getState().ucmReducer) {
-				const ucmReducer = store.getState().ucmReducer;
-				const stampsReducer = store.getState().stampsReducer;
+			const ucmReducer = store.getState().ucmReducer;
+			const stampsReducer = store.getState().stampsReducer;
 
-				const finalAssets: AssetDetailType[] = [];
-				const structuredAssets = structureAssets(gqlResponse);
+			const finalAssets: AssetDetailType[] = [];
+			const structuredAssets = structureAssets(gqlResponse);
 
-				structuredAssets.forEach((asset: AssetType) => {
-					let assetOrders: AssetOrderType[] | null = null;
-					const existingEntry = ucmReducer.Orderbook.find((entry: OrderbookEntryType) => {
-						return entry.Pair ? entry.Pair[0] === asset.data.id : null;
-					});
-
-					if (existingEntry) {
-						assetOrders = existingEntry.Orders.map((order: EntryOrderType) => {
-							return getAssetOrderType(order, existingEntry.Pair[1]);
-						});
-					}
-
-					const finalAsset: AssetDetailType = { ...asset };
-					if (assetOrders) {
-						finalAsset.orderbook = {
-							id: AO.ucm,
-							orders: assetOrders,
-						};
-					}
-
-					finalAssets.push(finalAsset);
+			structuredAssets.forEach((asset: AssetType) => {
+				let assetOrders: AssetOrderType[] | null = null;
+				const existingEntry = ucmReducer?.Orderbook.find((entry: OrderbookEntryType) => {
+					return entry.Pair ? entry.Pair[0] === asset.data.id : null;
 				});
 
-				return sortByAssetOrders(finalAssets, args.sortType, stampsReducer);
-			}
+				if (existingEntry) {
+					assetOrders = existingEntry.Orders.map((order: EntryOrderType) => {
+						return getAssetOrderType(order, existingEntry.Pair[1]);
+					});
+				}
 
-			return sortByAssetOrders([], args.sortType, {});
+				const finalAsset: AssetDetailType = { ...asset };
+				if (assetOrders) {
+					finalAsset.orderbook = {
+						id: AO.ucm,
+						orders: assetOrders,
+					};
+				}
+
+				finalAssets.push(finalAsset);
+			});
+
+			return sortByAssetOrders(finalAssets, args.sortType, stampsReducer);
 		}
 
 		return null;
@@ -109,19 +105,25 @@ export async function getAssetById(args: { id: string; libs?: any }): Promise<As
 			const structuredAsset = structureAssets(assetLookupResponse)[0];
 
 			let processState: any;
-			if (args.libs) {
-				processState = await args.libs.readState({
-					processId: structuredAsset.data.id,
-					path: 'asset',
-					fallbackAction: 'Info',
-				});
-			} else {
-				processState = await readHandler({
-					processId: structuredAsset.data.id,
-					action: 'Info',
-					data: null,
-				});
-			}
+			processState = await readHandler({
+				processId: structuredAsset.data.id,
+				action: 'Info',
+				data: null,
+			});
+			// if (args.libs) {
+			// 	processState = await args.libs.readState({
+			// 		processId: structuredAsset.data.id,
+			// 		path: 'asset',
+			// 		fallbackAction: 'Info',
+			// 		node: HB.defaultNode
+			// 	});
+			// } else {
+			// 	processState = await readHandler({
+			// 		processId: structuredAsset.data.id,
+			// 		action: 'Info',
+			// 		data: null,
+			// 	});
+			// }
 
 			if (processState) {
 				if (processState.Name || processState.name) {
@@ -276,45 +278,63 @@ function getLicense(element: GQLNodeResponseType): LicenseType | null {
 	return null;
 }
 
+// export function getAssetIdGroups(args: {
+// 	ids?: string[];
+// 	groupCount: number | null;
+// 	filterListings: boolean;
+// 	sortType: AssetSortType;
+// }): IdGroupType {
+// 	const idGroup: any = {};
+
+// 	const groupCount: number = args.groupCount || PAGINATORS.default;
+
+// 	for (let i = 0, j = 0; i < args.ids.length; i += groupCount, j++) {
+// 		idGroup[j] = args.ids.slice(i, i + groupCount).map((id) => id);
+// 	}
+
+// 	return idGroup;
+// }
+
 export function getAssetIdGroups(args: {
 	ids?: string[];
 	groupCount: number | null;
 	filterListings: boolean;
 	sortType: AssetSortType;
 }): IdGroupType {
-	if (store.getState().ucmReducer) {
-		const ucmReducer = store.getState().ucmReducer;
-		const stampsReducer = store.getState().stampsReducer;
-		const idGroup: any = {};
-		const groupCount: number = args.groupCount || PAGINATORS.default;
+	const ucmReducer = store.getState().ucmReducer;
+	const stampsReducer = store.getState().stampsReducer;
+	const idGroup: any = {};
+	const groupCount: number = args.groupCount || PAGINATORS.default;
 
-		if (ucmReducer.Orderbook) {
-			let currentOrderbook = ucmReducer.Orderbook;
+	if (ucmReducer?.Orderbook) {
+		let currentOrderbook = ucmReducer.Orderbook;
 
-			if (args.ids) {
-				currentOrderbook = currentOrderbook.filter((entry: OrderbookEntryType) => args.ids.includes(entry.Pair[0]));
+		if (args.ids) {
+			currentOrderbook = currentOrderbook.filter((entry: OrderbookEntryType) => args.ids.includes(entry.Pair[0]));
 
-				const orderbookIds = currentOrderbook.map((entry: OrderbookEntryType) => entry.Pair[0]);
-				const missingIds = args.ids.filter((id) => !orderbookIds.includes(id));
+			const orderbookIds = currentOrderbook.map((entry: OrderbookEntryType) => entry.Pair[0]);
+			const missingIds = args.ids.filter((id) => !orderbookIds.includes(id));
 
-				missingIds.forEach((missingId) => {
-					currentOrderbook.push({ Pair: [missingId, AO.defaultToken], Orders: [] });
-				});
-			}
+			missingIds.forEach((missingId) => {
+				currentOrderbook.push({ Pair: [missingId, AO.defaultToken], Orders: [] });
+			});
+		}
 
-			if (args.filterListings) {
-				currentOrderbook = currentOrderbook.filter(
-					(entry: OrderbookEntryType) => entry.Orders && entry.Orders.length > 0
-				);
-			}
+		if (args.filterListings) {
+			currentOrderbook = currentOrderbook.filter(
+				(entry: OrderbookEntryType) => entry.Orders && entry.Orders.length > 0
+			);
+		}
 
-			const sortedOrderbook = sortOrderbookEntries(currentOrderbook, args.sortType, stampsReducer);
+		const sortedOrderbook = sortOrderbookEntries(currentOrderbook, args.sortType, stampsReducer);
 
-			for (let i = 0, j = 0; i < sortedOrderbook.length; i += groupCount, j++) {
-				idGroup[j] = sortedOrderbook.slice(i, i + groupCount).map((entry: OrderbookEntryType) => entry.Pair[0]);
-			}
-			return idGroup;
+		for (let i = 0, j = 0; i < sortedOrderbook.length; i += groupCount, j++) {
+			idGroup[j] = sortedOrderbook.slice(i, i + groupCount).map((entry: OrderbookEntryType) => entry.Pair[0]);
+		}
+	} else {
+		for (let i = 0, j = 0; i < args.ids.length; i += groupCount, j++) {
+			idGroup[j] = args.ids.slice(i, i + groupCount).map((id) => id);
 		}
 	}
-	return { '0': [] };
+	return idGroup;
 }

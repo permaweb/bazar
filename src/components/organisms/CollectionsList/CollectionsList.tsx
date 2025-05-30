@@ -9,7 +9,7 @@ import { Loader } from 'components/atoms/Loader';
 import { DEFAULTS, URLS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import { CollectionType } from 'helpers/types';
-import { formatAddress, formatDate } from 'helpers/utils';
+import { formatAddress, formatDate, getTagValue } from 'helpers/utils';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 import { usePermawebProvider } from 'providers/PermawebProvider';
 import { RootState } from 'store';
@@ -103,12 +103,36 @@ export default function CollectionsList(props: IProps) {
 				setLoading(true);
 				try {
 					if (props.collectionIds) {
-						props.collectionIds.forEach(async (collectionId) => {
-							const collection = await permawebProvider.libs.getCollection(collectionId);
-							if (collection) {
-								setCollections((prev) => [...(prev ?? []), { id: collectionId, ...collection }]);
+						try {
+							const response = await permawebProvider.libs.getAggregatedGQLData({
+								ids: props.collectionIds,
+							});
+
+							const returnedIds = response?.map((edge) => edge.node.id) ?? [];
+
+							const missingIds = props.collectionIds.filter((id) => !returnedIds.includes(id));
+
+							const collections =
+								response?.map((edge) => ({
+									id: edge.node.id,
+									name: getTagValue(edge.node.tags, 'Name'),
+									title: getTagValue(edge.node.tags, 'Title'),
+								})) ?? [];
+
+							setCollections(collections);
+
+							if (missingIds.length > 0) {
+								for (const id of missingIds) {
+									const collection = await permawebProvider.libs.getCollection(id);
+									if (collection) {
+										setCollections((prev) => [...(prev ?? []), { id: id, ...collection }]);
+									}
+								}
 							}
-						});
+						} catch (e: any) {
+							console.error(e);
+							setCollections([]);
+						}
 					} else {
 						if (props.owner) {
 							if (collectionsReducer?.creators?.[props.owner]?.collections?.length) {

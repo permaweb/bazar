@@ -78,8 +78,6 @@ import * as S from './styles';
 // }
 
 export default function Banner() {
-	// const ucmReducer = useSelector((state: RootState) => state.ucmReducer);
-
 	const arProvider = useArweaveProvider();
 	const permawebProvider = usePermawebProvider();
 

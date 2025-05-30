@@ -21,7 +21,6 @@ import { getTxEndpoint } from 'helpers/endpoints';
 import { ListingType, OwnerType } from 'helpers/types';
 import { formatCount, formatPercentage, getOwners, sortOrders } from 'helpers/utils';
 import * as windowUtils from 'helpers/window';
-import { useAppProvider } from 'providers/AppProvider';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 import { usePermawebProvider } from 'providers/PermawebProvider';
@@ -40,7 +39,6 @@ export default function AssetAction(props: IProps) {
 	const currenciesReducer = useSelector((state: RootState) => state.currenciesReducer);
 	const profilesReducer = useSelector((state: RootState) => state.profilesReducer);
 
-	const appProvider = useAppProvider();
 	const permawebProvider = usePermawebProvider();
 	const arProvider = useArweaveProvider();
 
@@ -323,7 +321,7 @@ export default function AssetAction(props: IProps) {
 	}, [currentOwners, mobile, updating]);
 
 	const getCurrentListings = React.useMemo(() => {
-		if (currentListings) {
+		if (currentListings?.length > 0) {
 			return (
 				<>
 					{!mobile && (
@@ -389,7 +387,7 @@ export default function AssetAction(props: IProps) {
 					})}
 				</>
 			);
-		} else return null;
+		} else return <p>None</p>;
 	}, [currentListings, showCurrentListingsModal, mobile, permawebProvider.profile]);
 
 	function getCurrentTab() {
@@ -488,11 +486,9 @@ export default function AssetAction(props: IProps) {
 								)}
 							</S.OwnerLinesWrapper>
 						)}
-						{(appProvider.ucm.updating || props.updating) && (
+						{props.updating && (
 							<S.MessageWrapper className={'update-wrapper'}>
-								<span>
-									{appProvider.ucm.updating ? `${language.ordersUpdating}...` : `${language.updatingAsset}...`}
-								</span>
+								<span>{`${language.updatingAsset}...`}</span>
 							</S.MessageWrapper>
 						)}
 					</S.OrdersWrapper>

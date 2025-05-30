@@ -10,7 +10,7 @@ import { CurrencyLine } from 'components/atoms/CurrencyLine';
 import { IconButton } from 'components/atoms/IconButton';
 import { Select } from 'components/atoms/Select';
 import { OwnerLine } from 'components/molecules/OwnerLine';
-import { ACTIVITY_SORT_OPTIONS, AO, ASSETS, REDIRECTS, REFORMATTED_ASSETS, URLS } from 'helpers/config';
+import { ACTIVITY_SORT_OPTIONS, AO, ASSETS, HB, REDIRECTS, REFORMATTED_ASSETS, URLS } from 'helpers/config';
 import { FormattedActivity, GqlEdge, SelectOptionType } from 'helpers/types';
 import { formatAddress, formatCount, formatDate, getRelativeDate, isFirefox } from 'helpers/utils';
 import { useLanguageProvider } from 'providers/LanguageProvider';
@@ -53,9 +53,8 @@ export default function ActivityTable(props: IProps) {
 						processId: props.activityId,
 						path: 'activity',
 						fallbackAction: 'Info',
+						node: HB.defaultNode,
 					});
-
-					console.log(response);
 
 					if (response) setActivityResponse(response);
 					else {
@@ -70,48 +69,35 @@ export default function ActivityTable(props: IProps) {
 					setActivityGroups([]);
 				}
 			} else {
-				if (props.address) {
-					try {
-						const gqlResponse = await permawebProvider.libs.getAggregatedGQLData({
-							tags: [
-								{ name: 'Action', values: ['Order-Success'] },
-								{ name: 'Status', values: ['Success'] },
-								{ name: 'Handler', values: ['Create-Order'] },
-								{ name: 'Data-Protocol', values: ['ao'] },
-								{ name: 'Type', values: ['Message'] },
-								{ name: 'Variant', values: ['ao.TN.1'] },
-							],
-							recipients: [props.address],
-						});
+				try {
+					const gqlArgs: any = {
+						tags: [
+							{ name: 'Action', values: ['Order-Success'] },
+							{ name: 'Status', values: ['Success'] },
+							{ name: 'Handler', values: ['Create-Order'] },
+							{ name: 'Data-Protocol', values: ['ao'] },
+							{ name: 'Type', values: ['Message'] },
+							{ name: 'Variant', values: ['ao.TN.1'] },
+						],
+					};
 
-						const formatted = transformGqlResponse(gqlResponse);
-						setActivityResponse(formatted);
-					} catch (e: any) {
-						console.error(e);
-						setActivity([]);
-						setActivityGroup([]);
-						setActivityGroups([]);
+					let gqlFetch;
+					if (props.address) {
+						gqlFetch = permawebProvider.libs.getAggregatedGQLData;
+						gqlArgs.recipients = [props.address];
+					} else {
+						gqlFetch = permawebProvider.libs.getGQLData;
 					}
-				} else {
-					try {
-						const gqlResponse = await permawebProvider.libs.getGQLData({
-							tags: [
-								{ name: 'Action', values: ['Order-Success'] },
-								{ name: 'Status', values: ['Success'] },
-								{ name: 'Handler', values: ['Create-Order'] },
-								{ name: 'Data-Protocol', values: ['ao'] },
-								{ name: 'Type', values: ['Message'] },
-								{ name: 'Variant', values: ['ao.TN.1'] },
-							],
-						});
-						const formatted = transformGqlResponse(gqlResponse.data);
-						setActivityResponse(formatted);
-					} catch (e: any) {
-						console.error(e);
-						setActivity([]);
-						setActivityGroup([]);
-						setActivityGroups([]);
-					}
+
+					const gqlResponse = await gqlFetch(gqlArgs);
+
+					const formatted = transformGqlResponse(props.address ? gqlResponse : gqlResponse.data);
+					setActivityResponse(formatted);
+				} catch (e: any) {
+					console.error(e);
+					setActivity([]);
+					setActivityGroup([]);
+					setActivityGroups([]);
 				}
 			}
 		})();
@@ -274,7 +260,10 @@ export default function ActivityTable(props: IProps) {
 		if (orders && orders.length > 0) {
 			const mappedActivity = orders.map((order: any) => {
 				let orderEvent = event;
-				if ((props.address && order.Receiver === props.address) || permawebProvider.profile?.id === order.Receiver) {
+				if (
+					order.Receiver &&
+					((props.address && order.Receiver === props.address) || permawebProvider.profile?.id === order.Receiver)
+				) {
 					orderEvent = 'Purchase';
 				}
 				return {

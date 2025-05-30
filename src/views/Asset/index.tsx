@@ -7,7 +7,7 @@ import { getAssetById, getAssetOrders, readHandler } from 'api';
 import { Loader } from 'components/atoms/Loader';
 import { Portal } from 'components/atoms/Portal';
 import { AssetData } from 'components/organisms/AssetData';
-import { AO, DOM, URLS } from 'helpers/config';
+import { AO, DOM, HB, URLS } from 'helpers/config';
 import { AssetDetailType, AssetViewType } from 'helpers/types';
 import { checkValidAddress } from 'helpers/utils';
 import * as windowUtils from 'helpers/window';
@@ -125,6 +125,7 @@ export default function Asset() {
 							processId: asset.orderbook.id,
 							path: 'orderbook',
 							fallbackAction: 'Info',
+							node: HB.defaultNode,
 						});
 
 						setAsset((prevAsset) => ({
@@ -143,24 +144,6 @@ export default function Asset() {
 			}
 		})();
 	}, [asset?.orderbook?.id, toggleUpdate]);
-
-	// TODO
-	// React.useEffect(() => {
-	// 	if (asset && ucmReducer) {
-	// 		const updatedOrders = getAssetOrders({ id: asset.data.id });
-
-	// 		const sortedCurrentOrders = _.sortBy(asset.orderbook?.orders, 'id');
-	// 		const sortedUpdatedOrders = _.sortBy(updatedOrders, 'id');
-
-	// 		if (!_.isEqual(sortedCurrentOrders, sortedUpdatedOrders)) {
-	// 			console.log('Orders are different, updating asset state...');
-	// 			setAsset((prev) => ({
-	// 				...prev,
-	// 				orders: updatedOrders,
-	// 			}));
-	// 		}
-	// 	}
-	// }, [ucmReducer]);
 
 	function getData() {
 		if (asset) {

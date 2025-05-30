@@ -103,19 +103,19 @@ export default function Streaks(props: IProps) {
 					console.error(e);
 				}
 				setUpdating(false);
+			} else {
+				setStreaks([]);
 			}
 		})();
 	}, [streakGroups, streakCursor]);
 
 	React.useEffect(() => {
 		(async function () {
-			if (props.profile && props.profile.id) {
+			if (props.profile?.id) {
 				if (
-					permawebProvider.profile &&
-					permawebProvider.profile.id &&
+					permawebProvider.profile?.id &&
 					props.profile.id === permawebProvider.profile.id &&
-					permawebProvider.tokenBalances &&
-					permawebProvider.tokenBalances[AO.pixl]
+					permawebProvider.tokenBalances?.[AO.pixl]
 				) {
 					setPixlBalance(getTotalTokenBalance(permawebProvider.tokenBalances[AO.pixl]));
 				} else {
@@ -139,13 +139,13 @@ export default function Streaks(props: IProps) {
 						tags: [{ name: 'Recipient', value: props.profile.id }],
 					});
 
-					if (currentRewards) setDailyRewards(currentRewards);
+					if (currentRewards !== null) setDailyRewards(currentRewards);
 				} catch (e: any) {
 					console.error(e);
 				}
 			}
 		})();
-	}, [permawebProvider.profile, permawebProvider.tokenBalances, props.profile]);
+	}, [permawebProvider.profile?.id, permawebProvider.tokenBalances?.[AO.pixl], props.profile]);
 
 	React.useEffect(() => {
 		(async function () {

@@ -11,7 +11,7 @@ import { Notification } from 'components/atoms/Notification';
 import { Select } from 'components/atoms/Select';
 import { ASSET_SORT_OPTIONS, ASSETS, PAGINATORS, STYLING, URLS } from 'helpers/config';
 import { AssetDetailType, AssetSortType, IdGroupType, NotificationType, SelectOptionType } from 'helpers/types';
-import { formatDate, isFirefox, sortOrders } from 'helpers/utils';
+import { isFirefox, sortOrders } from 'helpers/utils';
 import * as windowUtils from 'helpers/window';
 import { useAppProvider } from 'providers/AppProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
@@ -85,15 +85,15 @@ export default function AssetsTable(props: IProps) {
 		(async function () {
 			if (assetIdGroups && Object.keys(assetIdGroups).length > 0) {
 				setAssetsLoading(true);
-				if (appProvider.stamps.completed) {
-					try {
-						setAssets(
-							await getAssetsByIds({ ids: assetIdGroups[assetCursor], sortType: assetSortType.id as AssetSortType })
-						);
-					} catch (e: any) {
-						setAssetErrorResponse(e.message || language.assetsFetchFailed);
-					}
+
+				try {
+					setAssets(
+						await getAssetsByIds({ ids: assetIdGroups[assetCursor], sortType: assetSortType.id as AssetSortType })
+					);
+				} catch (e: any) {
+					setAssetErrorResponse(e.message || language.assetsFetchFailed);
 				}
+
 				setAssetsLoading(false);
 			}
 		})();
@@ -205,7 +205,7 @@ export default function AssetsTable(props: IProps) {
 		);
 	}
 
-	// TODO: PFP
+	// PFP
 	// async function handleProfileActionPress(e: any, asset: AssetDetailType) {
 	// 	if (permawebProvider.profile && permawebProvider.profile.id && asset.data && asset.data.id) {
 	// 		e.preventDefault();
@@ -370,7 +370,8 @@ export default function AssetsTable(props: IProps) {
 																<Stamps
 																	txId={asset.data.id}
 																	title={asset.data.title || asset.data.description}
-																	asButton={true}
+																	asButton
+																	noAutoFetch
 																/>
 															</S.AssetGridDataActionWrapper>
 														) : (
@@ -378,7 +379,8 @@ export default function AssetsTable(props: IProps) {
 																<Stamps
 																	txId={asset.data.id}
 																	title={asset.data.title || asset.data.description}
-																	asButton={true}
+																	asButton
+																	noAutoFetch
 																/>
 															</S.AssetGridDataActionWrapper>
 														)}
@@ -507,16 +509,6 @@ export default function AssetsTable(props: IProps) {
 						</S.HeaderPaginator>
 					</S.HeaderActions>
 				</S.HeaderMain>
-				{(appProvider.ucm?.lastUpdate || appProvider.ucm?.updating) && (
-					<S.HeaderInfo>
-						{appProvider.ucm?.lastUpdate && (
-							<p>
-								{language.lastUCMUpdate}: <b>{formatDate(appProvider.ucm.lastUpdate, 'iso', true)}</b>
-								{appProvider.ucm?.updating && ` (${language.runningUpdate}...)`}
-							</p>
-						)}
-					</S.HeaderInfo>
-				)}
 			</S.Header>
 			{getData()}
 			<S.Footer>

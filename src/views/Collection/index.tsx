@@ -1,7 +1,8 @@
 import React from 'react';
+import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate, useParams } from 'react-router-dom';
 
-import { getCollectionById } from 'api';
+import { getCollectionById, stamps } from 'api';
 
 import { CurrencyLine } from 'components/atoms/CurrencyLine';
 import { Loader } from 'components/atoms/Loader';
@@ -17,6 +18,8 @@ import { CollectionDetailType } from 'helpers/types';
 import { checkValidAddress, formatDate, formatPercentage } from 'helpers/utils';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 import { usePermawebProvider } from 'providers/PermawebProvider';
+import { RootState } from 'store';
+import * as stampsActions from 'store/stamps/actions';
 
 import * as S from './styles';
 
@@ -25,6 +28,9 @@ const MAX_DESCRIPTION_LENGTH = 50;
 export default function Collection() {
 	const { id, active } = useParams();
 	const navigate = useNavigate();
+	const dispatch = useDispatch();
+
+	const stampsReducer = useSelector((state: RootState) => state.stampsReducer);
 
 	const permawebProvider = usePermawebProvider();
 
@@ -57,7 +63,7 @@ export default function Collection() {
 
 	React.useEffect(() => {
 		(async function () {
-			if (collection && collection.creator) {
+			if (collection?.creator) {
 				try {
 					const creatorProfile = await permawebProvider.libs.getProfileById(collection.creator);
 					setCollection((prev) => ({ ...prev, creatorProfile }));
@@ -80,6 +86,29 @@ export default function Collection() {
 			}
 		})();
 	}, [collection?.creator]);
+
+	React.useEffect(() => {
+		(async function () {
+			if (collection?.assetIds.length > 0) {
+				try {
+					const updatedStampCounts = await stamps.getStamps({ ids: collection.assetIds });
+					const updatedStamps = {};
+					if (updatedStampCounts) {
+						for (const tx of Object.keys(updatedStampCounts)) {
+							updatedStamps[tx] = {
+								...(stampsReducer?.[tx] ?? {}),
+								total: updatedStampCounts[tx].total,
+								vouched: updatedStampCounts[tx].vouched,
+							};
+						}
+						dispatch(stampsActions.setStamps(updatedStamps));
+					}
+				} catch (e: any) {
+					console.error(e);
+				}
+			}
+		})();
+	}, [collection?.assetIds]);
 
 	const TABS = React.useMemo(
 		() => [

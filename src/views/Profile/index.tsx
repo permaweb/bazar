@@ -16,7 +16,6 @@ import { ProfileAssets } from './ProfileAssets';
 import { ProfileCollections } from './ProfileCollections';
 import { ProfileHeader } from './ProfileHeader';
 
-// TODO: Profile listings / activity
 export default function Profile() {
 	const permawebProvider = usePermawebProvider();
 

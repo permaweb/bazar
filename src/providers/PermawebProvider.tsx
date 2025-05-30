@@ -45,7 +45,6 @@ export function usePermawebProvider(): PermawebContextState {
 	return React.useContext(PermawebContext);
 }
 
-// TODO: Reset profile on arProvider.wallet change / disconnect
 export function PermawebProvider(props: { children: React.ReactNode }) {
 	const arProvider = useArweaveProvider();
 	const languageProvider = useLanguageProvider();

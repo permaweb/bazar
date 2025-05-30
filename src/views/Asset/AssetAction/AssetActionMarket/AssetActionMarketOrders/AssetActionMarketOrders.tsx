@@ -24,7 +24,6 @@ import {
 	reverseDenomination,
 } from 'helpers/utils';
 import * as windowUtils from 'helpers/window';
-import { useAppProvider } from 'providers/AppProvider';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 import { usePermawebProvider } from 'providers/PermawebProvider';
@@ -39,7 +38,6 @@ const MIN_PRICE = 0.000001;
 export default function AssetActionMarketOrders(props: IProps) {
 	const dispatch = useDispatch();
 
-	const appProvider = useAppProvider();
 	const permawebProvider = usePermawebProvider();
 	const arProvider = useArweaveProvider();
 
@@ -47,7 +45,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 	const language = languageProvider.object[languageProvider.current];
 
 	const currenciesReducer = useSelector((state: RootState) => state.currenciesReducer);
-	const ucmReducer = useSelector((state: RootState) => state.ucmReducer);
 
 	// Total quantity of asset
 	const [totalAssetBalance, setTotalAssetBalance] = React.useState<number>(0);
@@ -154,7 +151,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 				setTransferDenomination(Math.pow(10, currenciesReducer[orderCurrency].Denomination));
 			}
 		}
-	}, [props.asset, arProvider.walletAddress, permawebProvider.profile, denomination, ucmReducer]);
+	}, [props.asset, arProvider.walletAddress, permawebProvider.profile, denomination]);
 
 	React.useEffect(() => {
 		switch (props.type) {
@@ -195,7 +192,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 	}, [props.type]);
 
 	async function handleSubmit() {
-		if (props.asset && arProvider.wallet && arProvider.profile?.id) {
+		if (props.asset && arProvider.wallet && permawebProvider.profile?.id) {
 			let currentOrderbook = props.asset.orderbook?.id;
 
 			if (!currentOrderbook) {
@@ -423,7 +420,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 	function handleAssetUpdate() {
 		if (orderSuccess) {
-			if (props.type !== 'transfer') appProvider.refreshUcm();
 			props.toggleUpdate();
 			setCurrentOrderQuantity('');
 			setUnitPrice('');
@@ -545,7 +541,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 		if (!arProvider.walletAddress) return true;
 		if (!permawebProvider.profile || !permawebProvider.profile.id) return true;
 		if (orderLoading) return true;
-		if (!orderProcessed && appProvider.ucm.updating) return true;
 		if (orderProcessed && !orderSuccess) return true;
 		if (props.asset && !props.asset.state.transferable) return true;
 		if (maxOrderQuantity <= 0 || isNaN(Number(currentOrderQuantity))) return true;
@@ -606,7 +601,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 				</S.TotalQuantityLine>
 			</>
 		);
-	}, [props.asset, props.type, totalAssetBalance, totalSalesQuantity, connectedBalance, ucmReducer]);
+	}, [props.asset, props.type, totalAssetBalance, totalSalesQuantity, connectedBalance]);
 
 	function getTotalPriceDisplay() {
 		let amount = BigInt(getTotalOrderAmount());
@@ -831,7 +826,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 							!permawebProvider.profile ||
 							!permawebProvider.profile.id ||
 							maxOrderQuantity <= 0 ||
-							appProvider.ucm.updating ||
 							orderLoading
 						}
 						invalid={{
@@ -849,7 +843,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 								!arProvider.walletAddress ||
 								!permawebProvider.profile ||
 								!permawebProvider.profile.id ||
-								appProvider.ucm.updating ||
 								maxOrderQuantity <= 0
 							}
 							noMinWidth
@@ -875,7 +868,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 										!arProvider.walletAddress ||
 										!permawebProvider.profile ||
 										!permawebProvider.profile.id ||
-										appProvider.ucm.updating ||
 										maxOrderQuantity <= 0 ||
 										orderLoading
 									}
@@ -901,7 +893,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 											!permawebProvider.profile ||
 											!permawebProvider.profile.id ||
 											Number(currentOrderQuantity) <= 0 ||
-											appProvider.ucm.updating ||
 											orderLoading
 										}
 										invalid={{
@@ -923,8 +914,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 											!arProvider.walletAddress ||
 											!permawebProvider.profile ||
 											!permawebProvider.profile.id ||
-											orderLoading ||
-											appProvider.ucm.updating
+											orderLoading
 										}
 										invalid={{ status: transferRecipient && !checkValidAddress(transferRecipient), message: null }}
 										hideErrorMessage
@@ -944,11 +934,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 											<span>{language.createProfileToContinue}</span>
 										</S.MessageWrapper>
 									))}
-								{appProvider.ucm.updating && (
-									<S.MessageWrapper className={'update-wrapper'}>
-										<span>{`${language.ordersUpdating}...`}</span>
-									</S.MessageWrapper>
-								)}
 								{permawebProvider.tokenBalances &&
 									getTotalTokenBalance(permawebProvider.tokenBalances[AO.defaultToken]) !== null &&
 									insufficientBalance && (

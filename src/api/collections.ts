@@ -1,6 +1,6 @@
 import { readHandler, stamps } from 'api';
 
-import { AO } from 'helpers/config';
+import { AO, HB } from 'helpers/config';
 import {
 	CollectionDetailType,
 	CollectionMetricsType,
@@ -18,6 +18,7 @@ export async function getCollections(creator: string, libs: any): Promise<any[]>
 			processId: AO.collectionsRegistry,
 			path: 'cache',
 			fallbackAction: 'Get-Collections',
+			node: HB.defaultNode,
 		});
 
 		if (response?.Collections?.length) {
@@ -84,19 +85,6 @@ export async function getCollections(creator: string, libs: any): Promise<any[]>
 	}
 }
 
-// export async function getCollections(libs: any) {
-// 	try {
-// 		const response = await libs.readState({
-// 			processId: AO.collectionsRegistry,
-// 			path: 'cache',
-// 			fallbackAction: 'Get-Collections',
-// 		});
-// 	}
-// 	catch (e: any) {
-// 		throw new Error(e.message ?? 'Error fetching collections')
-// 	}
-// }
-
 export async function getCollectionById(args: { id: string; libs?: any }): Promise<CollectionDetailType> {
 	try {
 		let response: any = null;
@@ -124,6 +112,7 @@ export async function getCollectionById(args: { id: string; libs?: any }): Promi
 						processId: collection.activityProcess,
 						path: 'activity',
 						fallbackAction: 'Info',
+						node: HB.defaultNode,
 					});
 					if (activityResponse) activity = args.libs.mapFromProcessCase({ ...activityResponse });
 				} catch (e) {
@@ -175,7 +164,7 @@ export async function getCollectionById(args: { id: string; libs?: any }): Promi
 			const collectionDetail = {
 				...collection,
 				assetIds: assetIds,
-				creatorProfile: null, // Async fetch from component level
+				creatorProfile: null,
 				metrics: metrics,
 				activity: activity,
 			};

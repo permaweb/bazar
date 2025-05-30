@@ -30,6 +30,7 @@ import { IProps } from './types';
 
 export default function AssetInfo(props: IProps) {
 	const currenciesReducer = useSelector((state: RootState) => state.currenciesReducer);
+	const collectionsReducer = useSelector((state: RootState) => state.collectionsReducer);
 
 	const permawebProvider = usePermawebProvider();
 
@@ -62,7 +63,6 @@ export default function AssetInfo(props: IProps) {
 					return;
 				}
 
-				// Only fetch if we have a collectionId but no collectionName
 				if (
 					props.asset.data.collectionId &&
 					checkValidAddress(props.asset.data.collectionId) &&
@@ -71,10 +71,16 @@ export default function AssetInfo(props: IProps) {
 					setIsLoadingCollection(true);
 					setCollectionError(null);
 
-					const collection = await getCollectionById({
-						id: props.asset.data.collectionId,
-						libs: permawebProvider.libs,
-					});
+					let collection = collectionsReducer?.stamped?.collections.find(
+						(collection) => collection.id === props.asset.data.collectionId
+					);
+
+					if (!collection) {
+						collection = await getCollectionById({
+							id: props.asset.data.collectionId,
+							libs: permawebProvider.libs,
+						});
+					}
 
 					if (collection) {
 						setCollectionDetails(collection);
