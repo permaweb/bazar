@@ -12,7 +12,7 @@ import { Select } from 'components/atoms/Select';
 import { OwnerLine } from 'components/molecules/OwnerLine';
 import { ACTIVITY_SORT_OPTIONS, AO, ASSETS, HB, REDIRECTS, REFORMATTED_ASSETS, URLS } from 'helpers/config';
 import { FormattedActivity, GqlEdge, SelectOptionType } from 'helpers/types';
-import { formatAddress, formatCount, formatDate, getRelativeDate, isFirefox } from 'helpers/utils';
+import { checkValidAddress, formatAddress, formatCount, formatDate, getRelativeDate, isFirefox } from 'helpers/utils';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 import { usePermawebProvider } from 'providers/PermawebProvider';
 import { RootState } from 'store';
@@ -48,22 +48,28 @@ export default function ActivityTable(props: IProps) {
 	React.useEffect(() => {
 		(async function () {
 			if (props.activityId) {
-				try {
-					const response = await permawebProvider.libs.readState({
-						processId: props.activityId,
-						path: 'activity',
-						fallbackAction: 'Info',
-						node: HB.defaultNode,
-					});
+				if (checkValidAddress(props.activityId)) {
+					try {
+						const response = await permawebProvider.libs.readState({
+							processId: props.activityId,
+							path: 'activity',
+							fallbackAction: 'Info',
+							node: HB.defaultNode,
+						});
 
-					if (response) setActivityResponse(response);
-					else {
+						if (response) setActivityResponse(response);
+						else {
+							setActivity([]);
+							setActivityGroup([]);
+							setActivityGroups([]);
+						}
+					} catch (e: any) {
+						console.error(e);
 						setActivity([]);
 						setActivityGroup([]);
 						setActivityGroups([]);
 					}
-				} catch (e: any) {
-					console.error(e);
+				} else {
 					setActivity([]);
 					setActivityGroup([]);
 					setActivityGroups([]);
