@@ -3,6 +3,7 @@ import { applyMiddleware, combineReducers, compose, legacy_createStore as create
 import { persistReducer, persistStore } from 'redux-persist';
 import thunk from 'redux-thunk';
 
+import { arnsReducer } from './arns/reducers';
 import { collectionsReducer } from './collections/reducers';
 import { currenciesReducer } from './currencies/reducers';
 import { profilesReducer } from './profiles/reducers';
@@ -25,6 +26,7 @@ const rootReducer = combineReducers({
 	stampsReducer,
 	streaksReducer,
 	ucmReducer,
+	arnsReducer,
 });
 
 export type RootState = ReturnType<typeof store.getState>;

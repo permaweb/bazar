@@ -5,6 +5,7 @@ export const Wrapper = styled.div`
 	display: flex;
 	flex-direction: column;
 	gap: 20px;
+	min-height: 220px;
 `;
 
 export const Header = styled.div`
@@ -34,6 +35,7 @@ export const DomainsWrapper = styled.div`
 	display: grid;
 	grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
 	gap: 20px;
+	min-height: 120px;
 `;
 
 export const DomainCard = styled.div`
@@ -104,4 +106,23 @@ export const LoadingWrapper = styled.div`
 	justify-content: center;
 	align-items: center;
 	min-height: 200px;
+`;
+
+export const ErrorWrapper = styled.div`
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	min-height: 100px;
+	color: red;
+	font-size: 16px;
+	font-weight: 500;
+`;
+
+export const EmptyWrapper = styled.div`
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	min-height: 100px;
+	color: ${({ theme }) => theme.colors.text.alt1 || '#888'};
+	font-size: 16px;
 `;

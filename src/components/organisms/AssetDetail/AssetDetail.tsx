@@ -30,6 +30,15 @@ export default function AssetDetail({ asset }: IProps) {
 		);
 	}
 
+	// Merge asset.data.arnsMetadata with processId and Owner if missing
+	const arnsMetadata = asset.data.arnsMetadata
+		? {
+				...(asset.data.arnsMetadata as any),
+				processId: (asset.data.arnsMetadata as any).processId || asset.data.id,
+				Owner: (asset.data.arnsMetadata as any).Owner || asset.data.creator,
+		  }
+		: undefined;
+
 	return (
 		<S.Wrapper>
 			<S.Header>
@@ -38,12 +47,12 @@ export default function AssetDetail({ asset }: IProps) {
 			</S.Header>
 
 			<S.Content>
-				{asset.data.arnsMetadata && (
+				{arnsMetadata && (
 					<S.ARNSMetadataWrapper role="region" aria-labelledby="arns-metadata-title">
 						<h2 id="arns-metadata-title" className="visually-hidden">
 							{language.arnsMetadata}
 						</h2>
-						<ARNSMetadata metadata={asset.data.arnsMetadata} />
+						<ARNSMetadata metadata={arnsMetadata} />
 					</S.ARNSMetadataWrapper>
 				)}
 			</S.Content>

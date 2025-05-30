@@ -19,6 +19,7 @@
 		"prepare": "husky install"
 	},
 	"dependencies": {
+		"@ar.io/sdk": "^3.12.1",
 		"@fontsource/inter": "^5.0.20",
 		"@fontsource/quantico": "^5.0.20",
 		"@irys/sdk": "^0.2.10",

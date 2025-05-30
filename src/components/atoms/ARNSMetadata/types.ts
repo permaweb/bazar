@@ -7,4 +7,5 @@ export interface ARNSTokenInfo {
 	Logo?: string;
 	Description?: string;
 	Keywords?: string[];
+	processId: string;
 }

@@ -65,3 +65,38 @@ export const Badge = styled.span`
 	border-radius: ${STYLING.dimensions.radius.primary};
 	font-size: ${(props) => props.theme.typography.size.xSmall};
 `;
+
+export const LogoPlaceholder = styled.div`
+	width: 50px;
+	height: 50px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: ${(props) => props.theme.colors.container.alt3.background};
+	border-radius: ${STYLING.dimensions.radius.primary};
+	color: ${(props) => props.theme.colors.font.secondary};
+	font-size: ${(props) => props.theme.typography.size.xSmall};
+`;
+
+export const TransferButton = styled.button`
+	margin-top: 10px;
+	padding: 8px 16px;
+	background: ${(props) => props.theme.colors.button.primary.background};
+	color: ${(props) => props.theme.colors.button.primary.color};
+	border: none;
+	border-radius: ${STYLING.dimensions.radius.primary};
+	font-size: ${(props) => props.theme.typography.size.small};
+	font-weight: ${(props) => props.theme.typography.weight.bold};
+	cursor: pointer;
+	transition: background 0.2s;
+	&:disabled {
+		background: ${(props) => props.theme.colors.button.primary.disabled};
+		cursor: not-allowed;
+	}
+`;
+
+export const ErrorMsg = styled.div`
+	color: ${(props) => props.theme.colors.status.error};
+	margin-top: 8px;
+	font-size: ${(props) => props.theme.typography.size.xSmall};
+`;

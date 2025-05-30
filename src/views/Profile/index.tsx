@@ -76,7 +76,7 @@ export default function Profile() {
 				icon: ASSETS.user,
 				disabled: false,
 				url: `/profile/${address}/arns`,
-				view: () => <ProfileArNS address={address} />,
+				view: () => <ProfileArNS walletAddress={profile?.walletAddress || ''} profileId={profile?.id || ''} />,
 			},
 			{
 				label: language.activity,
