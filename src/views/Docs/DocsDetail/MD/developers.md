@@ -2,11 +2,11 @@
 
 This guide provides all information needed to incorporate UCM on AO into your permaweb project.
 
-- [UCM](/#/docs/developers/#universal-content-marketplace)
-- [Atomic Assets](/#/docs/developers/#atomic-assets)
-- [AO Collections](/#/docs/developers/#collections)
-- [AO Profile](/#/docs/developers/#ao-profile)
-- [Integrations](/#/docs/developers/#integrations)
+- [Universal Content Marketplace](/#/docs/developers/universal-content-marketplace)
+- [Atomic Assets](/#/docs/developers/atomic-assets)
+- [AO Collections](/#/docs/developers/collections)
+- [AO Profile](/#/docs/developers/ao-profile)
+- [Integrations](/#/docs/developers/integrations)
 
 #### ⚠⚠ WARNING ⚠ ⚠
 

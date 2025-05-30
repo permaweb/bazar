@@ -18,7 +18,6 @@ export interface AppContextState {
 	ucm: { updating: boolean; completed: boolean; lastUpdate?: number };
 	streaks: { updating: boolean; completed: boolean; lastUpdate?: number };
 	stamps: { updating: boolean; completed: boolean; lastUpdate?: number };
-	refreshUcm: () => void;
 }
 
 export interface AppProviderProps {
@@ -29,7 +28,6 @@ export const AppContext = React.createContext<AppContextState>({
 	ucm: { updating: false, completed: false },
 	streaks: { updating: false, completed: false },
 	stamps: { updating: false, completed: false },
-	refreshUcm: () => {},
 });
 
 export function useAppProvider(): AppContextState {
@@ -39,9 +37,9 @@ export function useAppProvider(): AppContextState {
 export function AppProvider(props: AppProviderProps) {
 	const dispatch = useDispatch();
 
+	const ucmReducer = useSelector((state: RootState) => state.ucmReducer);
 	const currenciesReducer = useSelector((state: RootState) => state.currenciesReducer);
 	const stampsReducer = useSelector((state: RootState) => state.stampsReducer);
-	const ucmReducer = useSelector((state: RootState) => state.ucmReducer);
 
 	const permawebProvider = usePermawebProvider();
 	const arProvider = useArweaveProvider();
@@ -51,8 +49,6 @@ export function AppProvider(props: AppProviderProps) {
 		completed: false,
 		lastUpdate: ucmReducer?.lastUpdate,
 	});
-
-	const [ucmRefreshTrigger, setUcmRefreshTrigger] = React.useState<boolean | null>(null);
 
 	const [streaksState, setStreaksState] = React.useState<AppContextState['streaks']>({
 		updating: false,
@@ -65,6 +61,8 @@ export function AppProvider(props: AppProviderProps) {
 		completed: false,
 		lastUpdate: undefined,
 	});
+
+	const [ucmRefreshTrigger, setUcmRefreshTrigger] = React.useState<boolean | null>(null);
 
 	React.useEffect(() => {
 		if (stampsReducer) setStampsState((prevState) => ({ ...prevState, completed: true }));
@@ -203,14 +201,15 @@ export function AppProvider(props: AppProviderProps) {
 							delete streaks.Streaks[key];
 						}
 					}
-					dispatch(streakActions.setStreaks(streaks.Streaks));
-
-					setStreaksState({
-						updating: false,
-						completed: true,
-						lastUpdate: Date.now(),
-					});
 				}
+
+				dispatch(streakActions.setStreaks(streaks.Streaks ?? {}));
+
+				setStreaksState({
+					updating: false,
+					completed: true,
+					lastUpdate: Date.now(),
+				});
 			} catch (e: any) {
 				console.error(e);
 				setStreaksState((prevState) => ({ ...prevState, updating: false }));
@@ -220,19 +219,16 @@ export function AppProvider(props: AppProviderProps) {
 
 	React.useEffect(() => {
 		(async function () {
-			if (ucmReducer) {
+			let stampIdsToCheck = [];
+			if (permawebProvider.profile?.assets) {
+				stampIdsToCheck.push(...permawebProvider.profile.assets.map((asset) => asset.id));
+			}
+
+			if (stampIdsToCheck.length > 0) {
 				setStampsState((prevState) => ({ ...prevState, updating: true }));
 
 				try {
-					const orderbookIds =
-						ucmReducer && ucmReducer.Orderbook && ucmReducer.Orderbook.length > 0
-							? ucmReducer.Orderbook.map((p: any) => (p.Pair.length > 0 ? p.Pair[0] : null)).filter(
-									(p: any) => p !== null
-							  )
-							: [];
-
-					const updatedStampCounts = await stamps.getStamps({ ids: orderbookIds });
-
+					const updatedStampCounts = await stamps.getStamps({ ids: stampIdsToCheck });
 					const updatedStamps = {};
 					if (updatedStampCounts) {
 						for (const tx of Object.keys(updatedStampCounts)) {
@@ -242,7 +238,6 @@ export function AppProvider(props: AppProviderProps) {
 								vouched: updatedStampCounts[tx].vouched,
 							};
 						}
-
 						dispatch(stampsActions.setStamps(updatedStamps));
 						setStampsState({
 							updating: false,
@@ -251,12 +246,9 @@ export function AppProvider(props: AppProviderProps) {
 						});
 					}
 					setStampsState((prevState) => ({ ...prevState, updating: false }));
-
-					if (arProvider.walletAddress && permawebProvider.profile) {
-						const hasStampedCheck = await stamps.hasStamped(orderbookIds);
-
+					if (arProvider.walletAddress) {
+						const hasStampedCheck = await stamps.hasStamped(stampIdsToCheck);
 						const updatedStampCheck = {};
-
 						for (const tx of Object.keys(updatedStampCounts)) {
 							updatedStampCheck[tx] = {
 								total: updatedStampCounts[tx].total,
@@ -264,7 +256,6 @@ export function AppProvider(props: AppProviderProps) {
 								hasStamped: hasStampedCheck?.[tx] ?? false,
 							};
 						}
-
 						dispatch(stampsActions.setStamps(updatedStampCheck));
 					}
 				} catch (e: any) {
@@ -273,7 +264,7 @@ export function AppProvider(props: AppProviderProps) {
 				}
 			}
 		})();
-	}, [ucmReducer, arProvider.walletAddress, permawebProvider.profile]);
+	}, [arProvider.walletAddress, permawebProvider.profile?.assets]);
 
 	React.useEffect(() => {
 		(async function () {
@@ -311,9 +302,6 @@ export function AppProvider(props: AppProviderProps) {
 				ucm: ucmState,
 				streaks: streaksState,
 				stamps: stampsState,
-				refreshUcm: () => {
-					setUcmRefreshTrigger((prev) => (prev === null ? true : !prev));
-				},
 			}}
 		>
 			{props.children}

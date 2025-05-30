@@ -83,7 +83,11 @@ export type AssetType = {
 
 export type AssetDetailType = AssetType & {
 	state?: AssetStateType;
-	orders?: AssetOrderType[];
+	orderbook?: {
+		id: string;
+		activityId?: string;
+		orders?: AssetOrderType[];
+	};
 };
 
 export type OwnerType = {
@@ -93,7 +97,7 @@ export type OwnerType = {
 	ownerPercentage?: number;
 };
 
-export type ListingType = AssetOrderType & { profile: RegistryProfileType };
+export type ListingType = AssetOrderType & { orderbookId: string; profile: RegistryProfileType };
 
 export type CollectionManifestType = {
 	type: string;
@@ -110,17 +114,20 @@ export type CollectionMetricsType = {
 export type CollectionType = {
 	id: string;
 	title: string;
+	name?: string;
 	description: string | null;
 	creator: string;
 	dateCreated: string;
 	banner: string | null;
 	thumbnail: string | null;
+	activityProcess: string | null;
 };
 
 export type CollectionDetailType = CollectionType & {
 	assetIds: string[];
 	creatorProfile: ProfileType;
 	metrics: CollectionMetricsType;
+	activity?: any;
 };
 
 export type TagType = { name: string; value: string };
@@ -239,3 +246,39 @@ export type ResponseType = { status: boolean; message: string | null };
 export type StampType = { total: number; vouched: number; hasStamped?: boolean };
 
 export type StampsType = Record<string, { total: number; vouched: number }>;
+
+export type GqlEdge = {
+	cursor: string;
+	node: {
+		id: string;
+		tags: { name: string; value: string }[];
+		block: { timestamp: number };
+		recipient: string;
+	};
+};
+
+export interface FormattedActivity {
+	ListedOrders: Array<{
+		OrderId: string;
+		Timestamp: number;
+		Quantity: string;
+		DominantToken: string;
+		SwapToken: string;
+		Price: string;
+		Sender: string;
+	}>;
+	PurchasesByAddress: Record<string, number>;
+	TotalVolume: Record<string, string>;
+	SalesByAddress: Record<string, number>;
+	CancelledOrders: string[];
+	ExecutedOrders: Array<{
+		OrderId: string;
+		Receiver: string;
+		Quantity: string;
+		DominantToken: string;
+		Timestamp: number;
+		SwapToken: string;
+		Price: string;
+		Sender: string;
+	}>;
+}

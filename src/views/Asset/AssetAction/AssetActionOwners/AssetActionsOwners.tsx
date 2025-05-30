@@ -8,7 +8,6 @@ import { getProfiles } from 'api';
 
 import { Loader } from 'components/atoms/Loader';
 import { OwnerLine } from 'components/molecules/OwnerLine';
-import { AO } from 'helpers/config';
 import { OwnerType } from 'helpers/types';
 import { formatAddress, formatPercentage, getOwners } from 'helpers/utils';
 import { useLanguageProvider } from 'providers/LanguageProvider';
@@ -70,9 +69,9 @@ export default function AssetActionsOwners(props: IProps) {
 								return { ...owner, profile };
 							})
 							.sort((a: any, b: any) => {
-								if (a.address === AO.ucm || b.address === AO.ucm) {
-									if (a.address === AO.ucm) return -1;
-									if (b.address === AO.ucm) return 1;
+								if (a.address === props.asset?.orderbook?.id || b.address === props.asset?.orderbook?.id) {
+									if (a.address === props.asset?.orderbook?.id) return -1;
+									if (b.address === props.asset?.orderbook?.id) return 1;
 								}
 							});
 					} catch (e: any) {
@@ -104,7 +103,7 @@ export default function AssetActionsOwners(props: IProps) {
 		if (sortedOwners) {
 			const pieData: any = {
 				labels: sortedOwners.map((owner: OwnerType) =>
-					owner.address === AO.ucm
+					owner.address === props.asset?.orderbook?.id
 						? language.totalSalesPercentage
 						: owner.profile
 						? owner.profile.username
@@ -122,7 +121,7 @@ export default function AssetActionsOwners(props: IProps) {
 
 			setData(pieData);
 		}
-	}, [sortedOwners, theme]);
+	}, [props.asset?.orderbook?.id, sortedOwners, theme]);
 
 	return props.asset && data ? (
 		<S.Wrapper className={'border-wrapper-alt2'}>
@@ -140,9 +139,9 @@ export default function AssetActionsOwners(props: IProps) {
 						<S.ChartKeyWrapper>
 							{sortedOwners.map((owner: OwnerType, index: number) => {
 								return (
-									<S.ChartKeyLine key={index} first={index === 0 && owner.address === AO.ucm}>
+									<S.ChartKeyLine key={index} first={index === 0 && owner.address === props.asset?.orderbook?.id}>
 										<S.ChartKey background={keys[index] ? keys[index] : theme.colors.stats.alt10} />
-										{owner.address !== AO.ucm && owner.address !== language.other ? (
+										{owner.address !== props.asset?.orderbook?.id && owner.address !== language.other ? (
 											<>
 												<OwnerLine owner={owner} callback={null} />
 												<S.Percentage>{formatPercentage(owner.ownerPercentage)}</S.Percentage>
@@ -150,7 +149,7 @@ export default function AssetActionsOwners(props: IProps) {
 										) : (
 											<>
 												<S.ChartKeyText>{`${
-													owner.address === AO.ucm ? language.totalSalesPercentage : language.other
+													owner.address === props.asset?.orderbook?.id ? language.totalSalesPercentage : language.other
 												}`}</S.ChartKeyText>
 												<S.Percentage>{`(${formatPercentage(owner.ownerPercentage)})`}</S.Percentage>
 											</>

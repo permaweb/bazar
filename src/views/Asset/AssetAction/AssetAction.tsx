@@ -16,12 +16,11 @@ import { Tabs } from 'components/molecules/Tabs';
 import { AssetData } from 'components/organisms/AssetData';
 import { OrderCancel } from 'components/organisms/OrderCancel';
 import { Stamps } from 'components/organisms/Stamps';
-import { AO, ASSETS, STYLING } from 'helpers/config';
+import { ASSETS, STYLING } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import { ListingType, OwnerType } from 'helpers/types';
 import { formatCount, formatPercentage, getOwners, sortOrders } from 'helpers/utils';
 import * as windowUtils from 'helpers/window';
-import { useAppProvider } from 'providers/AppProvider';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 import { usePermawebProvider } from 'providers/PermawebProvider';
@@ -40,7 +39,6 @@ export default function AssetAction(props: IProps) {
 	const currenciesReducer = useSelector((state: RootState) => state.currenciesReducer);
 	const profilesReducer = useSelector((state: RootState) => state.profilesReducer);
 
-	const appProvider = useAppProvider();
 	const permawebProvider = usePermawebProvider();
 	const arProvider = useArweaveProvider();
 
@@ -88,13 +86,15 @@ export default function AssetAction(props: IProps) {
 	const [urlCopied, setUrlCopied] = React.useState<boolean>(false);
 
 	React.useEffect(() => {
-		if (props.asset && props.asset.state && props.asset.state.balances) {
+		if (props.asset && props.asset.state.balances) {
 			const balances: any = Object.keys(props.asset.state.balances).map((address: string) => {
 				return Number(props.asset.state.balances[address]);
 			});
 			const totalBalance = balances.reduce((a: number, b: number) => a + b, 0);
 			setTotalAssetBalance(totalBalance);
-			setOwnerCount(Object.keys(props.asset.state.balances).filter((owner: string) => owner !== AO.ucm).length);
+			setOwnerCount(
+				Object.keys(props.asset.state.balances).filter((owner: string) => owner !== props.asset.orderbook?.id).length
+			);
 		}
 	}, [props.asset]);
 
@@ -104,8 +104,8 @@ export default function AssetAction(props: IProps) {
 			if (props.asset && props.asset.state && props.asset.state.balances) {
 				associatedAddresses.push(...Object.keys(props.asset.state.balances).map((address: string) => address));
 			}
-			if (props.asset && props.asset.orders) {
-				associatedAddresses.push(...props.asset.orders.map((order: any) => order.creator));
+			if (props.asset && props.asset.orderbook?.orders) {
+				associatedAddresses.push(...props.asset.orderbook?.orders.map((order: any) => order.creator));
 			}
 			if (associatedAddresses.length) {
 				let groups = [];
@@ -139,7 +139,10 @@ export default function AssetAction(props: IProps) {
 							transferable: props.asset.state.transferable,
 							balances: subAddresses,
 						},
-						orders: props.asset.orders,
+						orderbook: {
+							id: props.asset.orderbook?.id,
+							orders: props.asset.orderbook?.orders,
+						},
 					};
 
 					let profiles: any[] = await getProfiles(addressGroups[ownersCursor]);
@@ -147,7 +150,7 @@ export default function AssetAction(props: IProps) {
 
 					if (owners) {
 						owners = owners
-							.filter((owner: OwnerType) => owner.address !== AO.ucm)
+							.filter((owner: OwnerType) => owner.address !== props.asset.orderbook?.id)
 							.filter((owner: OwnerType) => owner.ownerPercentage > 0);
 						setCurrentOwners((prevOwners) => {
 							const allOwners = [...(prevOwners || []), ...owners];
@@ -165,12 +168,13 @@ export default function AssetAction(props: IProps) {
 
 	React.useEffect(() => {
 		(async function () {
-			if (props.asset && props.asset.orders) {
-				const sortedOrders = sortOrders(props.asset.orders, 'low-to-high');
+			if (props.asset && props.asset.orderbook?.id && props.asset.orderbook?.orders) {
+				const sortedOrders = sortOrders(props.asset.orderbook?.orders, 'low-to-high');
 
 				setCurrentListings(
 					sortedOrders.map((order: any) => ({
 						profile: order.profile,
+						orderbookId: props.asset.orderbook.id,
 						...order,
 					}))
 				);
@@ -184,6 +188,7 @@ export default function AssetAction(props: IProps) {
 
 					const currentListing = {
 						profile: currentProfile || null,
+						orderbookId: props.asset.orderbook.id,
 						...order,
 					};
 
@@ -316,7 +321,7 @@ export default function AssetAction(props: IProps) {
 	}, [currentOwners, mobile, updating]);
 
 	const getCurrentListings = React.useMemo(() => {
-		if (currentListings) {
+		if (currentListings?.length > 0) {
 			return (
 				<>
 					{!mobile && (
@@ -382,7 +387,7 @@ export default function AssetAction(props: IProps) {
 					})}
 				</>
 			);
-		} else return null;
+		} else return <p>None</p>;
 	}, [currentListings, showCurrentListingsModal, mobile, permawebProvider.profile]);
 
 	function getCurrentTab() {
@@ -422,7 +427,8 @@ export default function AssetAction(props: IProps) {
 	function showCurrentlyOwnedBy() {
 		if (!props.asset || !props.asset.state || !props.asset.state.balances) return false;
 		if (Object.keys(props.asset.state.balances).length <= 0) return false;
-		if (Object.keys(props.asset.state.balances).length === 1 && props.asset.state.balances[AO.ucm]) return false;
+		if (Object.keys(props.asset.state.balances).length === 1 && props.asset.state.balances[props.asset.orderbook?.id])
+			return false;
 		return true;
 	}
 
@@ -480,11 +486,9 @@ export default function AssetAction(props: IProps) {
 								)}
 							</S.OwnerLinesWrapper>
 						)}
-						{(appProvider.ucm.updating || props.updating) && (
+						{props.updating && (
 							<S.MessageWrapper className={'update-wrapper'}>
-								<span>
-									{appProvider.ucm.updating ? `${language.ordersUpdating}...` : `${language.updatingAsset}...`}
-								</span>
+								<span>{`${language.updatingAsset}...`}</span>
 							</S.MessageWrapper>
 						)}
 					</S.OrdersWrapper>

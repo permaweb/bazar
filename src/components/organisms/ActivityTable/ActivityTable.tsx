@@ -3,17 +3,16 @@ import { useSelector } from 'react-redux';
 import { Link } from 'react-router-dom';
 import { ReactSVG } from 'react-svg';
 
-import { getAssetsByIds, getProfiles, readHandler } from 'api';
+import { getAssetsByIds, getProfiles } from 'api';
 
 import { Button } from 'components/atoms/Button';
 import { CurrencyLine } from 'components/atoms/CurrencyLine';
 import { IconButton } from 'components/atoms/IconButton';
 import { Select } from 'components/atoms/Select';
 import { OwnerLine } from 'components/molecules/OwnerLine';
-import { ACTIVITY_SORT_OPTIONS, AO, ASSETS, REDIRECTS, REFORMATTED_ASSETS, URLS } from 'helpers/config';
-import { SelectOptionType } from 'helpers/types';
-import { formatAddress, formatCount, formatDate, getRelativeDate, isFirefox } from 'helpers/utils';
-import { useArweaveProvider } from 'providers/ArweaveProvider';
+import { ACTIVITY_SORT_OPTIONS, AO, ASSETS, HB, REDIRECTS, REFORMATTED_ASSETS, URLS } from 'helpers/config';
+import { FormattedActivity, GqlEdge, SelectOptionType } from 'helpers/types';
+import { checkValidAddress, formatAddress, formatCount, formatDate, getRelativeDate, isFirefox } from 'helpers/utils';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 import { usePermawebProvider } from 'providers/PermawebProvider';
 import { RootState } from 'store';
@@ -29,7 +28,6 @@ export default function ActivityTable(props: IProps) {
 	const profilesReducer = useSelector((state: RootState) => state.profilesReducer);
 
 	const permawebProvider = usePermawebProvider();
-	const arProvider = useArweaveProvider();
 
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
@@ -49,35 +47,67 @@ export default function ActivityTable(props: IProps) {
 
 	React.useEffect(() => {
 		(async function () {
-			try {
-				let data: any = {};
+			if (props.activityId) {
+				if (checkValidAddress(props.activityId)) {
+					try {
+						const response = await permawebProvider.libs.readState({
+							processId: props.activityId,
+							path: 'activity',
+							fallbackAction: 'Info',
+							node: HB.defaultNode,
+						});
 
-				if (props.asset && props.asset.data) {
-					data.AssetIds = [props.asset.data.id];
+						if (response) setActivityResponse(response);
+						else {
+							setActivity([]);
+							setActivityGroup([]);
+							setActivityGroups([]);
+						}
+					} catch (e: any) {
+						console.error(e);
+						setActivity([]);
+						setActivityGroup([]);
+						setActivityGroups([]);
+					}
 				} else {
-					if (props.assetIds) data.AssetIds = props.assetIds;
-					if (props.address) data.Address = props.address;
-					if (props.startDate) data.StartDate = props.startDate.toString();
-					if (props.endDate) data.EndDate = props.endDate.toString();
-				}
-
-				const response = await readHandler({
-					processId: AO.ucmActivity,
-					action: 'Get-Activity',
-					data: data,
-				});
-
-				if (response) setActivityResponse(response);
-				else {
 					setActivity([]);
 					setActivityGroup([]);
 					setActivityGroups([]);
 				}
-			} catch (e: any) {
-				console.error(e);
+			} else {
+				try {
+					const gqlArgs: any = {
+						tags: [
+							{ name: 'Action', values: ['Order-Success'] },
+							{ name: 'Status', values: ['Success'] },
+							{ name: 'Handler', values: ['Create-Order'] },
+							{ name: 'Data-Protocol', values: ['ao'] },
+							{ name: 'Type', values: ['Message'] },
+							{ name: 'Variant', values: ['ao.TN.1'] },
+						],
+					};
+
+					let gqlFetch;
+					if (props.address) {
+						gqlFetch = permawebProvider.libs.getAggregatedGQLData;
+						gqlArgs.recipients = [props.address];
+					} else {
+						gqlFetch = permawebProvider.libs.getGQLData;
+					}
+
+					const gqlResponse = await gqlFetch(gqlArgs);
+
+					const formatted = transformGqlResponse(props.address ? gqlResponse : gqlResponse.data);
+					setActivityResponse(formatted);
+				} catch (e: any) {
+					console.error(e);
+					setActivity([]);
+					setActivityGroup([]);
+					setActivityGroups([]);
+				}
 			}
 		})();
-	}, [props.asset, props.assetIds, props.address, permawebProvider.profile]);
+	}, [props.activityId, props.address]);
 
 	React.useEffect(() => {
 		if (activityResponse) {
@@ -172,6 +202,58 @@ export default function ActivityTable(props: IProps) {
 		})();
 	}, [activityGroups, activityCursor, props.address, profilesReducer?.registryProfiles]);
 
+	function transformGqlResponse(edges: GqlEdge[]): FormattedActivity {
+		const out: FormattedActivity = {
+			ListedOrders: [],
+			PurchasesByAddress: {},
+			TotalVolume: {},
+			SalesByAddress: {},
+			CancelledOrders: [],
+			ExecutedOrders: [],
+		};
+
+		const swapTokens = [AO.defaultToken];
+
+		for (const { node } of edges) {
+			const t = node.tags.reduce<Record<string, string>>((m, { name, value }) => {
+				m[name] = value;
+				return m;
+			}, {});
+
+			const tsMs = node?.block?.timestamp ? node.block.timestamp * 1000 : '-';
+			const action = t['Action'];
+
+			if (action === 'Order-Success') {
+				let order: any = {
+					OrderId: node.id,
+					Timestamp: tsMs,
+					Quantity: t['Quantity'],
+					Price: t['Price'],
+				};
+
+				if (swapTokens.includes(t['DominantToken'])) {
+					order.Receiver = props.address ?? node.recipient;
+					order.DominantToken = t['SwapToken'];
+					order.SwapToken = t['DominantToken'];
+					order.Sender = t['Sender'] ?? t['From-Process'];
+					out.ExecutedOrders.push(order);
+					out.PurchasesByAddress[node.recipient] = (out.PurchasesByAddress[node.recipient] || 0) + 1;
+				} else {
+					order.Sender = node.recipient;
+					order.DominantToken = t['DominantToken'];
+					order.SwapToken = t['SwapToken'];
+
+					out.ListedOrders.push(order);
+					out.SalesByAddress[node.recipient] = (out.SalesByAddress[node.recipient] || 0) + 1;
+				}
+			} else if (action === 'Cancel-Order') {
+				out.CancelledOrders.push(node.id);
+			}
+		}
+
+		return out;
+	}
+
 	const handleActivitySortType = React.useCallback((option: SelectOptionType) => {
 		setActivityGroup(null);
 		setActivityGroups(null);
@@ -185,11 +267,8 @@ export default function ActivityTable(props: IProps) {
 			const mappedActivity = orders.map((order: any) => {
 				let orderEvent = event;
 				if (
-					(props.address && order.Receiver === props.address) ||
-					(arProvider &&
-						permawebProvider.profile &&
-						permawebProvider.profile.id &&
-						permawebProvider.profile.id === order.Receiver)
+					order.Receiver &&
+					((props.address && order.Receiver === props.address) || permawebProvider.profile?.id === order.Receiver)
 				) {
 					orderEvent = 'Purchase';
 				}
@@ -197,8 +276,8 @@ export default function ActivityTable(props: IProps) {
 					orderId: order.OrderId,
 					dominantToken: order.DominantToken,
 					swapToken: order.SwapToken,
-					price: order.Price.toString(),
-					quantity: order.Quantity.toString(),
+					price: order.Price ? order.Price.toString() : '-',
+					quantity: order.Quantity ? order.Quantity.toString() : '-',
 					sender: order.Sender || null,
 					receiver: order.Receiver || null,
 					timestamp: order.Timestamp,
@@ -259,9 +338,9 @@ export default function ActivityTable(props: IProps) {
 	const getReceiverContent = React.useMemo(
 		() => (row: any) => {
 			if (row.receiverProfile) {
-				if (row.receiverProfile.id === AO.ucm) {
+				if (row.receiverProfile.id === props.asset?.orderbook?.id) {
 					return (
-						<S.Entity type={'UCM'}>
+						<S.Entity type={'UCM'} href={REDIRECTS.explorer(row.receiverProfile.id)} target={'_blank'}>
 							<p>UCM</p>
 						</S.Entity>
 					);
@@ -277,14 +356,14 @@ export default function ActivityTable(props: IProps) {
 				);
 			} else if (row.receiver) {
 				return (
-					<S.Entity type={'User'}>
+					<S.Entity type={'User'} href={REDIRECTS.explorer(row.receiver)} target={'_blank'}>
 						<p>{formatAddress(row.receiver, false)}</p>
 					</S.Entity>
 				);
 			}
 			return <p>-</p>;
 		},
-		[]
+		[props.asset?.orderbook?.id]
 	);
 
 	const getActivity = React.useMemo(() => {
@@ -363,7 +442,7 @@ export default function ActivityTable(props: IProps) {
 									</S.AssetWrapper>
 								)}
 								<S.EventWrapper>
-									<S.Event type={row.event} href={REDIRECTS.aoLink(row.orderId)} target="_blank">
+									<S.Event type={row.event} href={REDIRECTS.explorer(row.orderId)} target={'_blank'}>
 										<ReactSVG src={getEventIcon(row.event)} />
 										<p>{row.event}</p>
 									</S.Event>
@@ -378,7 +457,7 @@ export default function ActivityTable(props: IProps) {
 											callback={null}
 										/>
 									) : (
-										<S.Entity type={'User'}>
+										<S.Entity type={'User'} href={REDIRECTS.explorer(row.sender)} target={'_blank'}>
 											<p>{row.sender ? formatAddress(row.sender, false) : '-'}</p>
 										</S.Entity>
 									)}
@@ -388,17 +467,25 @@ export default function ActivityTable(props: IProps) {
 									<p>{getDenominatedTokenValue(row.quantity, row.dominantToken)}</p>
 								</S.QuantityWrapper>
 								<S.PriceWrapper className={'end-value'}>
-									<CurrencyLine amount={row.price} currency={row.swapToken} callback={null} />
+									{!isNaN(Number(row.price)) ? (
+										<CurrencyLine amount={row.price} currency={row.swapToken} callback={null} />
+									) : (
+										<p>-</p>
+									)}
 								</S.PriceWrapper>
 								<S.DateValueWrapper>
-									<p>{getRelativeDate(row.timestamp)}</p>
-									{row.timestamp && (
-										<S.DateValueTooltip>
-											<ReactSVG src={ASSETS.info} />
-											<div className={'date-tooltip fade-in border-wrapper-alt2'}>
-												<p>{`${formatDate(row.timestamp, 'iso', true)}`}</p>
-											</div>
-										</S.DateValueTooltip>
+									{row.timestamp !== '-' ? (
+										<>
+											<p>{getRelativeDate(row.timestamp)}</p>
+											<S.DateValueTooltip>
+												<ReactSVG src={ASSETS.info} />
+												<div className={'date-tooltip fade-in border-wrapper-alt2'}>
+													<p>{`${formatDate(row.timestamp, 'iso', true)}`}</p>
+												</div>
+											</S.DateValueTooltip>
+										</>
+									) : (
+										<p>-</p>
 									)}
 								</S.DateValueWrapper>
 							</S.TableRow>

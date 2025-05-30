@@ -1,19 +1,18 @@
 import React from 'react';
-import { useSelector } from 'react-redux';
 import { useNavigate, useParams } from 'react-router-dom';
 import _ from 'lodash';
 
-import { getAssetById, getAssetOrders } from 'api';
+import { getAssetById, getAssetOrders, readHandler } from 'api';
 
 import { Loader } from 'components/atoms/Loader';
 import { Portal } from 'components/atoms/Portal';
 import { AssetData } from 'components/organisms/AssetData';
-import { DOM, URLS } from 'helpers/config';
+import { AO, DOM, HB, URLS } from 'helpers/config';
 import { AssetDetailType, AssetViewType } from 'helpers/types';
 import { checkValidAddress } from 'helpers/utils';
 import * as windowUtils from 'helpers/window';
 import { useLanguageProvider } from 'providers/LanguageProvider';
-import { RootState } from 'store';
+import { usePermawebProvider } from 'providers/PermawebProvider';
 
 import { AssetAction } from './AssetAction';
 import { AssetInfo } from './AssetInfo';
@@ -24,7 +23,7 @@ export default function Asset() {
 	const { id } = useParams();
 	const navigate = useNavigate();
 
-	const ucmReducer = useSelector((state: RootState) => state.ucmReducer);
+	const permawebProvider = usePermawebProvider();
 
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
@@ -53,6 +52,8 @@ export default function Asset() {
 	React.useEffect(() => {
 		(async function () {
 			if (id && checkValidAddress(id)) {
+				console.log('Fetching asset...');
+
 				setLoading(true);
 				let tries = 0;
 				const maxTries = 10;
@@ -61,7 +62,7 @@ export default function Asset() {
 				const fetchUntilChange = async () => {
 					while (!assetFetched && tries < maxTries) {
 						try {
-							const fetchedAsset = await getAssetById({ id: id });
+							const fetchedAsset = await getAssetById({ id: id, libs: permawebProvider.libs });
 							setAsset(fetchedAsset);
 
 							if (fetchedAsset !== null) {
@@ -91,21 +92,58 @@ export default function Asset() {
 	}, [id, toggleUpdate]);
 
 	React.useEffect(() => {
-		if (asset && ucmReducer) {
-			const updatedOrders = getAssetOrders({ id: asset.data.id });
+		(async function () {
+			if (asset?.orderbook?.id) {
+				setLoading(true);
+				try {
+					if (asset.orderbook.id === AO.ucm) {
+						const response = await readHandler({
+							processId: asset.orderbook.id,
+							action: 'Get-Orderbook-By-Pair',
+							tags: [
+								{ name: 'DominantToken', value: asset.data.id },
+								{ name: 'SwapToken', value: AO.defaultToken },
+							],
+						});
 
-			const sortedCurrentOrders = _.sortBy(asset.orders, 'id');
-			const sortedUpdatedOrders = _.sortBy(updatedOrders, 'id');
+						if (response) {
+							setAsset((prevAsset) => ({
+								...prevAsset,
+								orderbook: {
+									...prevAsset.orderbook,
+									orders: response?.Orderbook ? getAssetOrders(response.Orderbook) : [],
+								},
+							}));
+						} else {
+							setAsset((prevAsset) => ({
+								...prevAsset,
+								orderbook: null,
+							}));
+						}
+					} else {
+						const response = await permawebProvider.libs.readState({
+							processId: asset.orderbook.id,
+							path: 'orderbook',
+							fallbackAction: 'Info',
+							node: HB.defaultNode,
+						});
 
-			if (!_.isEqual(sortedCurrentOrders, sortedUpdatedOrders)) {
-				console.log('Orders are different, updating asset state...');
-				setAsset((prev) => ({
-					...prev,
-					orders: updatedOrders,
-				}));
+						setAsset((prevAsset) => ({
+							...prevAsset,
+							orderbook: {
+								...prevAsset.orderbook,
+								activityId: response?.ActivityProcess,
+								orders: getAssetOrders(response?.Orderbook?.[0]),
+							},
+						}));
+					}
+				} catch (e: any) {
+					console.error(e);
+				}
+				setLoading(false);
 			}
-		}
-	}, [ucmReducer]);
+		})();
+	}, [asset?.orderbook?.id, toggleUpdate]);
 
 	function getData() {
 		if (asset) {

@@ -22,6 +22,24 @@ export const docsOrder = [
 		],
 	},
 	{
+		name: 'For collectors',
+		path: 'collectors',
+		children: [
+			{
+				name: 'How to fund your account',
+				path: 'how-to-fund',
+			},
+			{
+				name: 'How to collect',
+				path: 'how-to-collect',
+			},
+			{
+				name: 'How to earn PIXL',
+				path: 'earn-pixl',
+			},
+		],
+	},
+	{
 		name: 'For creators',
 		path: 'creators',
 		children: [
@@ -44,20 +62,74 @@ export const docsOrder = [
 		],
 	},
 	{
-		name: 'For collectors',
-		path: 'collectors',
+		name: 'For developers',
+		path: 'developers',
 		children: [
 			{
-				name: 'How to fund your account',
-				path: 'how-to-fund',
+				name: 'Universal Content Marketplace',
+				path: 'universal-content-marketplace',
 			},
 			{
-				name: 'How to collect',
-				path: 'how-to-collect',
+				name: 'Atomic Assets',
+				path: 'atomic-assets',
 			},
 			{
-				name: 'How to earn PIXL',
-				path: 'earn-pixl',
+				name: 'Collections',
+				path: 'collections',
+			},
+			{
+				name: 'AO Profile',
+				path: 'ao-profile',
+			},
+			{
+				name: 'Integrations',
+				path: 'integrations',
+			},
+		],
+	},
+	{
+		name: 'AOS Integration',
+		path: 'aos',
+		children: [
+			{
+				name: 'Commands Reference',
+				path: 'commands',
+			},
+		],
+	},
+	{
+		name: 'For developers',
+		path: 'developers',
+		children: [
+			{
+				name: 'Universal Content Marketplace',
+				path: 'universal-content-marketplace',
+			},
+			{
+				name: 'Atomic Assets',
+				path: 'atomic-assets',
+			},
+			{
+				name: 'Collections',
+				path: 'collections',
+			},
+			{
+				name: 'AO Profile',
+				path: 'ao-profile',
+			},
+			{
+				name: 'Integrations',
+				path: 'integrations',
+			},
+		],
+	},
+	{
+		name: 'AOS Integration',
+		path: 'aos',
+		children: [
+			{
+				name: 'Commands Reference',
+				path: 'commands',
 			},
 		],
 	},
@@ -92,11 +164,13 @@ export const docsOrder = [
 		],
 	},
 	{
-		name: 'Contact',
-		path: 'contact',
+		name: 'Resources',
+		path: 'resources',
+		children: [
+			{
+				name: 'Contact',
+				path: 'contact',
+			},
+		],
 	},
 ];
-// {
-// 	name: 'For developers',
-// 	path: 'developers',
-// },

@@ -1,5 +1,5 @@
 import React from 'react';
-import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 
 import { connect } from '@permaweb/aoconnect';
 import AOProfile, { ProfileType } from '@permaweb/aoprofile';
@@ -19,7 +19,6 @@ import { ProfileHeader } from './ProfileHeader';
 export default function Profile() {
 	const permawebProvider = usePermawebProvider();
 
-	const location = useLocation();
 	const navigate = useNavigate();
 
 	const { address, active } = useParams();
@@ -65,7 +64,7 @@ export default function Profile() {
 				navigate(URLS.notFound);
 			}
 		})();
-	}, [address, location]);
+	}, [address]);
 
 	const TABS = React.useMemo(
 		() => [

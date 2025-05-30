@@ -5,10 +5,8 @@ import { cancelOrder } from '@permaweb/ucm';
 import { Button } from 'components/atoms/Button';
 import { Notification } from 'components/atoms/Notification';
 import { Modal } from 'components/molecules/Modal';
-import { AO } from 'helpers/config';
 import { NotificationType } from 'helpers/types';
 import * as windowUtils from 'helpers/window';
-import { useAppProvider } from 'providers/AppProvider';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 import { usePermawebProvider } from 'providers/PermawebProvider';
@@ -17,7 +15,6 @@ import * as S from './styles';
 import { IProps } from './types';
 
 export default function OrderCancel(props: IProps) {
-	const appProvider = useAppProvider();
 	const permawebProvider = usePermawebProvider();
 	const arProvider = useArweaveProvider();
 
@@ -36,7 +33,7 @@ export default function OrderCancel(props: IProps) {
 				const cancelOrderId = await cancelOrder(
 					permawebProvider.deps,
 					{
-						orderbookId: AO.ucm,
+						orderbookId: props.listing.orderbookId,
 						orderId: props.listing.id,
 						creatorId: permawebProvider.profile.id,
 						dominantToken: props.listing.token,
@@ -52,14 +49,14 @@ export default function OrderCancel(props: IProps) {
 				setResponse({ status: 'success', message: `${language.orderCancelled}!` });
 
 				setCancelProcessed(true);
-				appProvider.refreshUcm();
 				permawebProvider.setToggleTokenBalanceUpdate(!permawebProvider.toggleTokenBalanceUpdate);
 				props.toggleUpdate();
 				setShowConfirmation(false);
 				setCancelProcessed(false);
 				windowUtils.scrollTo(0, 0, 'smooth');
 			} catch (e: any) {
-				setResponse({ status: 'success', message: e.message ?? 'Error cancelling order' });
+				console.error(e);
+				setResponse({ status: 'warning', message: e.message ?? 'Error cancelling order' });
 			}
 			setLoading(false);
 		}

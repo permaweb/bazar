@@ -28,6 +28,7 @@ const ProfileAssets = React.memo((props: IProps) => {
 				type={'grid'}
 				pageCount={PAGINATORS.profile.assets}
 				setProfileAction={true}
+				noListings
 			/>
 		</S.Wrapper>
 	) : null;

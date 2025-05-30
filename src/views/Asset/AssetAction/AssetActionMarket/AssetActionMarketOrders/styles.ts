@@ -225,17 +225,6 @@ export const ActionWrapperFull = styled(ActionWrapper)`
 	margin: 20px 0 5px 0;
 `;
 
-// display: flex;
-// justify-content: flex-end;
-// margin: 20px 0 5px 0;
-
-// button {
-// 	min-width: 315px;
-// 	width: fit-content;
-// 	max-width: 100%;
-// 	padding: 0 60px;
-// }
-
 export const Divider = styled.div`
 	height: 1px;
 	width: 100%;
@@ -278,6 +267,7 @@ export const ConfirmationHeader = styled.div`
 
 export const ConfirmationMessage = styled(MessageWrapper)<{ success?: boolean }>`
 	width: fit-content;
+	max-width: 100%;
 	margin: 35px auto;
 	padding: 4.5px 52.5px;
 	background: ${(props) =>
@@ -296,6 +286,10 @@ export const ConfirmationMessage = styled(MessageWrapper)<{ success?: boolean }>
 
 	span {
 		font-size: ${(props) => props.theme.typography.size.small};
+		white-space: nowrap;
+		overflow: hidden;
+		max-width: 100%;
+		text-overflow: ellipsis;
 	}
 `;
 

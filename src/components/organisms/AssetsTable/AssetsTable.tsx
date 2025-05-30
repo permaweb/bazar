@@ -11,7 +11,7 @@ import { Notification } from 'components/atoms/Notification';
 import { Select } from 'components/atoms/Select';
 import { ASSET_SORT_OPTIONS, ASSETS, PAGINATORS, STYLING, URLS } from 'helpers/config';
 import { AssetDetailType, AssetSortType, IdGroupType, NotificationType, SelectOptionType } from 'helpers/types';
-import { formatDate, isFirefox, sortOrders } from 'helpers/utils';
+import { isFirefox, sortOrders } from 'helpers/utils';
 import * as windowUtils from 'helpers/window';
 import { useAppProvider } from 'providers/AppProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
@@ -85,15 +85,15 @@ export default function AssetsTable(props: IProps) {
 		(async function () {
 			if (assetIdGroups && Object.keys(assetIdGroups).length > 0) {
 				setAssetsLoading(true);
-				if (appProvider.stamps.completed) {
-					try {
-						setAssets(
-							await getAssetsByIds({ ids: assetIdGroups[assetCursor], sortType: assetSortType.id as AssetSortType })
-						);
-					} catch (e: any) {
-						setAssetErrorResponse(e.message || language.assetsFetchFailed);
-					}
+
+				try {
+					setAssets(
+						await getAssetsByIds({ ids: assetIdGroups[assetCursor], sortType: assetSortType.id as AssetSortType })
+					);
+				} catch (e: any) {
+					setAssetErrorResponse(e.message || language.assetsFetchFailed);
 				}
+
 				setAssetsLoading(false);
 			}
 		})();
@@ -165,18 +165,34 @@ export default function AssetsTable(props: IProps) {
 		if (!assets || !assets.length) return true;
 		if (assetsLoading) return true;
 		if (assets && assets.length) {
-			return assets.every((asset: AssetDetailType) => (asset.orders ? asset.orders.length <= 0 : true));
+			return assets.every((asset: AssetDetailType) =>
+				asset.orderbook?.orders ? asset.orderbook?.orders.length <= 0 : true
+			);
 		}
 	}
 
 	function getListing(asset: AssetDetailType) {
-		if (asset && asset.orders && asset.orders.length) {
-			const sortedOrders = sortOrders(asset.orders, assetSortType.id as AssetSortType);
+		const listingsMap = props.currentListings?.[asset.data.id];
+		if (listingsMap && Object.keys(listingsMap).length > 0) {
+			const entries = Object.entries(listingsMap) as [string, { quantity: string; floorPrice: string }][];
 
-			if (sortedOrders && sortedOrders.length) {
-				return <CurrencyLine amount={sortedOrders[0].price || '0'} currency={sortedOrders[0].currency} />;
+			const [bestCurrency, bestEntry] = entries.reduce(
+				([minCur, minEnt], [cur, ent]) =>
+					BigInt(ent.floorPrice) < BigInt(minEnt.floorPrice) ? [cur, ent] : [minCur, minEnt],
+				entries[0]
+			);
+
+			return <CurrencyLine amount={bestEntry.floorPrice} currency={bestCurrency} />;
+		}
+
+		const orders = asset.orderbook?.orders ?? [];
+		if (orders.length > 0) {
+			const sorted = sortOrders(orders, assetSortType.id as AssetSortType);
+			if (sorted.length > 0) {
+				return <CurrencyLine amount={sorted[0].price || '0'} currency={sorted[0].currency} />;
 			}
 		}
+
 		return <S.NoListings>{language.noListings}</S.NoListings>;
 	}
 
@@ -189,7 +205,7 @@ export default function AssetsTable(props: IProps) {
 		);
 	}
 
-	// TODO: PFP
+	// PFP
 	// async function handleProfileActionPress(e: any, asset: AssetDetailType) {
 	// 	if (permawebProvider.profile && permawebProvider.profile.id && asset.data && asset.data.id) {
 	// 		e.preventDefault();
@@ -313,9 +329,11 @@ export default function AssetsTable(props: IProps) {
 																	<p>{asset.data.title}</p>
 																</S.Title>
 															</S.FlexElement>
-															<S.FlexElement>
-																<S.Listings>{getListing(asset)}</S.Listings>
-															</S.FlexElement>
+															{!props.noListings && (
+																<S.FlexElement>
+																	<S.Listings>{getListing(asset)}</S.Listings>
+																</S.FlexElement>
+															)}
 														</S.AssetsListSectionElement>
 													);
 												})}
@@ -352,7 +370,8 @@ export default function AssetsTable(props: IProps) {
 																<Stamps
 																	txId={asset.data.id}
 																	title={asset.data.title || asset.data.description}
-																	asButton={true}
+																	asButton
+																	noAutoFetch
 																/>
 															</S.AssetGridDataActionWrapper>
 														) : (
@@ -360,7 +379,8 @@ export default function AssetsTable(props: IProps) {
 																<Stamps
 																	txId={asset.data.id}
 																	title={asset.data.title || asset.data.description}
-																	asButton={true}
+																	asButton
+																	noAutoFetch
 																/>
 															</S.AssetGridDataActionWrapper>
 														)}
@@ -376,7 +396,7 @@ export default function AssetsTable(props: IProps) {
 														<S.Description>
 															<p>{asset.data.description || asset.data.title}</p>
 														</S.Description>
-														<S.Listings>{getListing(asset)}</S.Listings>
+														{!props.noListings && <S.Listings>{getListing(asset)}</S.Listings>}
 													</S.AssetGridInfoWrapper>
 												</S.AssetGridBottomWrapper>
 											</S.AssetGridElement>
@@ -489,16 +509,6 @@ export default function AssetsTable(props: IProps) {
 						</S.HeaderPaginator>
 					</S.HeaderActions>
 				</S.HeaderMain>
-				{(appProvider.ucm?.lastUpdate || appProvider.ucm?.updating) && (
-					<S.HeaderInfo>
-						{appProvider.ucm?.lastUpdate && (
-							<p>
-								{language.lastUCMUpdate}: <b>{formatDate(appProvider.ucm.lastUpdate, 'iso', true)}</b>
-								{appProvider.ucm?.updating && ` (${language.runningUpdate}...)`}
-							</p>
-						)}
-					</S.HeaderInfo>
-				)}
 			</S.Header>
 			{getData()}
 			<S.Footer>

@@ -9,7 +9,7 @@ import { Loader } from 'components/atoms/Loader';
 import { DEFAULTS, URLS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import { CollectionType } from 'helpers/types';
-import { formatDate } from 'helpers/utils';
+import { formatAddress, formatDate, getTagValue } from 'helpers/utils';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 import { usePermawebProvider } from 'providers/PermawebProvider';
 import { RootState } from 'store';
@@ -73,7 +73,7 @@ function CollectionListItem(props: { index: number; collection: CollectionType }
 						)}
 					</S.Thumbnail>
 					<S.Title>
-						<p>{props.collection.title}</p>
+						<p>{props.collection.title ?? props.collection.name ?? formatAddress(props.collection.id, false)}</p>
 					</S.Title>
 				</S.FlexElement>
 				<S.DateCreated>
@@ -103,13 +103,36 @@ export default function CollectionsList(props: IProps) {
 				setLoading(true);
 				try {
 					if (props.collectionIds) {
-						const fetchedCollections = [];
-						for (const collectionId of props.collectionIds) {
-							await new Promise((r) => setTimeout(r, 200));
-							const collection = await permawebProvider.libs.getCollection(collectionId);
-							fetchedCollections.push(collection);
+						try {
+							const response = await permawebProvider.libs.getAggregatedGQLData({
+								ids: props.collectionIds,
+							});
+
+							const returnedIds = response?.map((edge) => edge.node.id) ?? [];
+
+							const missingIds = props.collectionIds.filter((id) => !returnedIds.includes(id));
+
+							const collections =
+								response?.map((edge) => ({
+									id: edge.node.id,
+									name: getTagValue(edge.node.tags, 'Name'),
+									title: getTagValue(edge.node.tags, 'Title'),
+								})) ?? [];
+
+							setCollections(collections);
+
+							if (missingIds.length > 0) {
+								for (const id of missingIds) {
+									const collection = await permawebProvider.libs.getCollection(id);
+									if (collection) {
+										setCollections((prev) => [...(prev ?? []), { id: id, ...collection }]);
+									}
+								}
+							}
+						} catch (e: any) {
+							console.error(e);
+							setCollections([]);
 						}
-						setCollections(fetchedCollections);
 					} else {
 						if (props.owner) {
 							if (collectionsReducer?.creators?.[props.owner]?.collections?.length) {
@@ -125,8 +148,8 @@ export default function CollectionsList(props: IProps) {
 					}
 
 					if (!props.collectionIds) {
-						const collectionsFetch: CollectionType[] = await getCollections(props.owner);
-						if (props.owner) {
+						const collectionsFetch: CollectionType[] = await getCollections(props.owner, permawebProvider.libs);
+						if (props.owner && collectionsFetch) {
 							setCollections(collectionsFetch.filter((collection) => collection.creator === props.owner));
 						} else setCollections(collectionsFetch);
 					}
@@ -160,6 +183,7 @@ export default function CollectionsList(props: IProps) {
 					</S.Wrapper>
 				);
 			} else {
+				if (loading) return <Loader sm relative />;
 				return (
 					<GS.FullMessageWrapper className={'fade-in border-wrapper-alt2'}>
 						<p>{language.noCollectionsFound}</p>

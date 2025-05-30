@@ -1,5 +1,5 @@
 import React from 'react';
-import PermawebLibs, { ProfileType } from '@permaweb/libs';
+import PermawebLibs from '@permaweb/libs';
 
 import Arweave from 'arweave';
 import { connect, createSigner } from '@permaweb/aoconnect';
@@ -16,7 +16,7 @@ import { useLanguageProvider } from './LanguageProvider';
 interface PermawebContextState {
 	libs: any;
 	deps: any;
-	profile: ProfileType;
+	profile: any;
 	showProfileManager: boolean;
 	setShowProfileManager: (toggle: boolean) => void;
 	tokenBalances: { [address: string]: { profileBalance: number; walletBalance: number } } | null;
@@ -45,7 +45,6 @@ export function usePermawebProvider(): PermawebContextState {
 	return React.useContext(PermawebContext);
 }
 
-// TODO: Reset profile on arProvider.wallet change / disconnect
 export function PermawebProvider(props: { children: React.ReactNode }) {
 	const arProvider = useArweaveProvider();
 	const languageProvider = useLanguageProvider();
@@ -53,7 +52,7 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 
 	const [libs, setLibs] = React.useState<any>(null);
 	const [deps, setDeps] = React.useState<any>(null);
-	const [profile, setProfile] = React.useState<ProfileType | null>(null);
+	const [profile, setProfile] = React.useState<any | null>(null);
 	const [showProfileManager, setShowProfileManager] = React.useState<boolean>(false);
 	const [refreshProfileTrigger, setRefreshProfileTrigger] = React.useState<boolean>(false);
 	const [profilePending, setProfilePending] = React.useState<boolean>(false);

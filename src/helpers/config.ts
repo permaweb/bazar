@@ -45,7 +45,7 @@ import sell from 'assets/sell.svg';
 import defaultStampSVG from 'assets/stamp-default.svg';
 import superStampSVG from 'assets/stamp-super.svg';
 import vouchedStampSVG from 'assets/stamp-vouched.svg';
-import stampsSVG from 'assets/stamps.svg';
+import stamps from 'assets/stamps.svg';
 import star from 'assets/star.svg';
 import streak1 from 'assets/streak-1-7.svg';
 import streak2 from 'assets/streak-8-14.svg';
@@ -65,8 +65,6 @@ import zen from 'assets/zen.svg';
 
 import { SelectOptionType, WalletEnum } from './types';
 
-const stamps = stampsSVG;
-
 const stamp = {
 	default: defaultStampSVG,
 	super: superStampSVG,
@@ -85,6 +83,10 @@ export const AO = {
 	profileSrc: process.env.PROFILE_SRC,
 	vouch: process.env.VOUCH,
 	stamps: process.env.STAMPS,
+};
+
+export const HB = {
+	defaultNode: 'https://tee-4.forward.computer',
 };
 
 export const REFORMATTED_ASSETS = {
@@ -325,7 +327,7 @@ export const REDIRECTS = {
 	aox: `https://aox.arweave.net`,
 	arconnect: `https://arconnect.io`,
 	warDepot: `https://wardepot.arweave.net`,
-	aoLink: (messageId: string) => `https://www.ao.link/#/message/${messageId}`,
+	explorer: (messageId: string) => `https://lunar.arweave.net/#/explorer/${messageId}`,
 };
 
 export const DEFAULTS = {

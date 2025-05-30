@@ -2,8 +2,7 @@ import React from 'react';
 import { useSelector } from 'react-redux';
 import { Link } from 'react-router-dom';
 
-import { connect } from '@permaweb/aoconnect';
-import AOProfile, { ProfileType } from '@permaweb/aoprofile';
+import { getCollectionById } from 'api/collections';
 
 import * as GS from 'app/styles';
 import { Drawer } from 'components/atoms/Drawer';
@@ -12,31 +11,86 @@ import { OwnerLine } from 'components/molecules/OwnerLine';
 import { AssetData } from 'components/organisms/AssetData';
 import { ASSETS, LICENSES, URLS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
-import { checkValidAddress, cleanTagValue, formatCount, formatDate, getTagDisplay, splitTagValue } from 'helpers/utils';
+import { CollectionDetailType } from 'helpers/types';
+import {
+	checkValidAddress,
+	cleanTagValue,
+	formatAddress,
+	formatCount,
+	formatDate,
+	getTagDisplay,
+	splitTagValue,
+} from 'helpers/utils';
 import { useLanguageProvider } from 'providers/LanguageProvider';
+import { usePermawebProvider } from 'providers/PermawebProvider';
 import { RootState } from 'store';
 
 import * as S from './styles';
 import { IProps } from './types';
 
 export default function AssetInfo(props: IProps) {
-	const { getProfileById } = AOProfile.init({ ao: connect({ MODE: 'legacy' }) });
-
 	const currenciesReducer = useSelector((state: RootState) => state.currenciesReducer);
+	const collectionsReducer = useSelector((state: RootState) => state.collectionsReducer);
+
+	const permawebProvider = usePermawebProvider();
 
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
 
-	const [creator, setCreator] = React.useState<ProfileType | null>(null);
+	const [creator, setCreator] = React.useState<any | null>(null);
+	const [collectionDetails, setCollectionDetails] = React.useState<CollectionDetailType | null>(null);
+	const [isLoadingCollection, setIsLoadingCollection] = React.useState<boolean>(false);
+	const [collectionError, setCollectionError] = React.useState<string | null>(null);
 
+	// Fetch creator profile
 	React.useEffect(() => {
 		(async function () {
 			if (props.asset && props.asset.data.creator && checkValidAddress(props.asset.data.creator)) {
 				try {
-					setCreator(await getProfileById({ profileId: props.asset.data.creator }));
+					setCreator(await permawebProvider.libs.getProfileById(props.asset.data.creator));
 				} catch (e: any) {
 					console.error(e);
 				}
+			}
+		})();
+	}, [props.asset]);
+
+	// Fetch collection details if needed
+	React.useEffect(() => {
+		(async function () {
+			try {
+				if (!props.asset) {
+					return;
+				}
+
+				if (
+					props.asset.data.collectionId &&
+					checkValidAddress(props.asset.data.collectionId) &&
+					!props.asset.data.collectionName
+				) {
+					setIsLoadingCollection(true);
+					setCollectionError(null);
+
+					let collection = collectionsReducer?.stamped?.collections.find(
+						(collection) => collection.id === props.asset.data.collectionId
+					);
+
+					if (!collection) {
+						collection = await getCollectionById({
+							id: props.asset.data.collectionId,
+							libs: permawebProvider.libs,
+						});
+					}
+
+					if (collection) {
+						setCollectionDetails(collection);
+					}
+				}
+			} catch (e: any) {
+				console.error('Error in collection effect:', e);
+				setCollectionError(e.message || 'Failed to fetch collection details');
+			} finally {
+				setIsLoadingCollection(false);
 			}
 		})();
 	}, [props.asset]);
@@ -104,6 +158,27 @@ export default function AssetInfo(props: IProps) {
 		} else return null;
 	}
 
+	// Helper function to render collection name
+	const renderCollectionName = () => {
+		if (isLoadingCollection) {
+			return <span>Loading...</span>;
+		}
+
+		if (collectionError) {
+			return <span title={collectionError}>{formatAddress(props.asset.data.collectionId, false)}</span>;
+		}
+
+		if (props.asset.data.collectionName) {
+			return cleanTagValue(props.asset.data.collectionName);
+		}
+
+		if (collectionDetails) {
+			return collectionDetails.title ?? collectionDetails.name ?? formatAddress(collectionDetails.id, false);
+		}
+
+		return formatAddress(props.asset.data.collectionId, false);
+	};
+
 	return props.asset ? (
 		<S.Wrapper>
 			<S.DataWrapper>
@@ -145,11 +220,7 @@ export default function AssetInfo(props: IProps) {
 						content={
 							<GS.DrawerContent>
 								<GS.DrawerContentDetail>
-									<Link to={URLS.collectionAssets(props.asset.data.collectionId)}>
-										{props.asset.data.collectionName
-											? cleanTagValue(props.asset.data.collectionName)
-											: props.asset.data.collectionId}
-									</Link>
+									<Link to={URLS.collectionAssets(props.asset.data.collectionId)}>{renderCollectionName()}</Link>
 								</GS.DrawerContentDetail>
 							</GS.DrawerContent>
 						}

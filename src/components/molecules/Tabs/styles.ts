@@ -10,8 +10,12 @@ export const Container = styled.div`
 
 export const List = styled.div`
 	display: flex;
-	flex-wrap: wrap;
 	gap: 20px;
+
+	@media (max-width: ${STYLING.cutoffs.secondary}) {
+		overflow-x: auto;
+		overflow-y: hidden;
+	}
 `;
 
 export const Content = styled.div`

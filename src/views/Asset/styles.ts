@@ -38,7 +38,7 @@ export const ReadingOverlay = styled.div`
 	z-index: 11;
 	top: 0;
 	left: 0;
-	background: ${(props) => props.theme.colors.overlay.primary};
+	background: ${(props) => props.theme.colors.view.background};
 	backdrop-filter: blur(2.5px);
 `;
 

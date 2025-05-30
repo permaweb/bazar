@@ -54,7 +54,7 @@ Vouch is currently used by Bazar, Llama Land, and Permaverse. Other permaweb app
 ###### **4. Stake wAR**
 
 - Earn additional points by staking wAR in the [Vouch Portal](https://vouch-portal.arweave.net/#/).
-- Points vary by staking duration and AR price. Tokens are securely stored and can be withdrawn after the lock period. See the staking contract [here](https://www.ao.link/#/entity/zYBcGWB4KJeB4pc04XiNOKrD0DQBPelvNBbfDnqiunQ)
+- Points vary by staking duration and AR price. Tokens are securely stored and can be withdrawn after the lock period. See the staking contract [here](https://lunar/arweave.net/#/explorer/zYBcGWB4KJeB4pc04XiNOKrD0DQBPelvNBbfDnqiunQ)
 
 ### FAQs
 

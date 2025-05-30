@@ -1,10 +1,8 @@
 import React from 'react';
+import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate, useParams } from 'react-router-dom';
 
-import { connect } from '@permaweb/aoconnect';
-import AOProfile from '@permaweb/aoprofile';
-
-import { getCollectionById } from 'api';
+import { getCollectionById, stamps } from 'api';
 
 import { CurrencyLine } from 'components/atoms/CurrencyLine';
 import { Loader } from 'components/atoms/Loader';
@@ -19,16 +17,22 @@ import { getTxEndpoint } from 'helpers/endpoints';
 import { CollectionDetailType } from 'helpers/types';
 import { checkValidAddress, formatDate, formatPercentage } from 'helpers/utils';
 import { useLanguageProvider } from 'providers/LanguageProvider';
+import { usePermawebProvider } from 'providers/PermawebProvider';
+import { RootState } from 'store';
+import * as stampsActions from 'store/stamps/actions';
 
 import * as S from './styles';
 
 const MAX_DESCRIPTION_LENGTH = 50;
 
 export default function Collection() {
-	const { getProfileById } = AOProfile.init({ ao: connect({ MODE: 'legacy' }) });
-
 	const { id, active } = useParams();
 	const navigate = useNavigate();
+	const dispatch = useDispatch();
+
+	const stampsReducer = useSelector((state: RootState) => state.stampsReducer);
+
+	const permawebProvider = usePermawebProvider();
 
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
@@ -48,7 +52,7 @@ export default function Collection() {
 			if (id && checkValidAddress(id)) {
 				setCollectionLoading(true);
 				try {
-					setCollection(await getCollectionById({ id: id }));
+					setCollection(await getCollectionById({ id: id, libs: permawebProvider.libs }));
 				} catch (e: any) {
 					setCollectionErrorResponse(e.message || language.collectionFetchFailed);
 				}
@@ -59,9 +63,9 @@ export default function Collection() {
 
 	React.useEffect(() => {
 		(async function () {
-			if (collection && collection.creator) {
+			if (collection?.creator) {
 				try {
-					const creatorProfile = await getProfileById({ profileId: collection.creator });
+					const creatorProfile = await permawebProvider.libs.getProfileById(collection.creator);
 					setCollection((prev) => ({ ...prev, creatorProfile }));
 				} catch (e: any) {
 					console.error(e);
@@ -83,6 +87,29 @@ export default function Collection() {
 		})();
 	}, [collection?.creator]);
 
+	React.useEffect(() => {
+		(async function () {
+			if (collection?.assetIds.length > 0) {
+				try {
+					const updatedStampCounts = await stamps.getStamps({ ids: collection.assetIds });
+					const updatedStamps = {};
+					if (updatedStampCounts) {
+						for (const tx of Object.keys(updatedStampCounts)) {
+							updatedStamps[tx] = {
+								...(stampsReducer?.[tx] ?? {}),
+								total: updatedStampCounts[tx].total,
+								vouched: updatedStampCounts[tx].vouched,
+							};
+						}
+						dispatch(stampsActions.setStamps(updatedStamps));
+					}
+				} catch (e: any) {
+					console.error(e);
+				}
+			}
+		})();
+	}, [collection?.assetIds]);
+
 	const TABS = React.useMemo(
 		() => [
 			{
@@ -94,7 +121,12 @@ export default function Collection() {
 					<>
 						<S.AssetsWrapper>
 							{collection.assetIds && (
-								<AssetsTable ids={collection.assetIds} type={'grid'} pageCount={PAGINATORS.collection.assets} />
+								<AssetsTable
+									ids={collection.assetIds}
+									type={'grid'}
+									pageCount={PAGINATORS.collection.assets}
+									currentListings={collection.activity?.currentListings}
+								/>
 							)}
 						</S.AssetsWrapper>
 					</>
@@ -105,10 +137,10 @@ export default function Collection() {
 				icon: ASSETS.activity,
 				disabled: false,
 				url: URLS.collectionActivity(id),
-				view: () => <>{collection.assetIds && <ActivityTable assetIds={collection.assetIds} />}</>,
+				view: () => <>{collection.activityProcess && <ActivityTable activityId={collection.activityProcess} />}</>,
 			},
 		],
-		[id, collection?.assetIds]
+		[id, collection?.assetIds, collection?.activityProcess]
 	);
 
 	const urlTabs = React.useMemo(() => {
@@ -125,7 +157,7 @@ export default function Collection() {
 					>
 						<S.OverlayWrapper />
 						<S.StampWidgetWrapper>
-							<Stamps txId={collection.id} title={collection.title} />
+							<Stamps txId={collection.id} title={collection.title ?? collection.name ?? '-'} />
 						</S.StampWidgetWrapper>
 						<S.InfoWrapper>
 							<S.Thumbnail>
@@ -137,7 +169,7 @@ export default function Collection() {
 										<span>{language.title}</span>
 									</S.InfoHeaderFlex2>
 									<S.InfoDetailFlex2>
-										<span>{collection.title}</span>
+										<span>{collection.title ?? collection.name ?? '-'}</span>
 									</S.InfoDetailFlex2>
 								</S.InfoBodyTile>
 								{collection.metrics && (
