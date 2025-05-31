@@ -59,6 +59,11 @@ module.exports = {
 		client: {
 			overlay: true,
 		},
+		headers: {
+			'Access-Control-Allow-Origin': '*',
+			'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, PATCH, OPTIONS',
+			'Access-Control-Allow-Headers': 'X-Requested-With, content-type, Authorization',
+		},
 	},
 	optimization: isProduction
 		? {
@@ -139,6 +144,34 @@ module.exports = {
 				],
 			},
 			{
+				test: /\.(mp4|webm)$/,
+				use: [
+					{
+						loader: 'file-loader',
+						options: {
+							name: '[name].[ext]',
+							outputPath: 'campaign3/',
+							publicPath: '/campaign3/',
+							esModule: false,
+						},
+					},
+				],
+			},
+			{
+				test: /\.(avif)$/,
+				use: [
+					{
+						loader: 'file-loader',
+						options: {
+							name: '[name].[ext]',
+							outputPath: 'campaign3/',
+							publicPath: '/campaign3/',
+							esModule: false,
+						},
+					},
+				],
+			},
+			{
 				test: /\.svg$/,
 				use: [
 					{
@@ -160,6 +193,13 @@ module.exports = {
 			patterns: [
 				{ from: 'public/favicon.svg', to: 'favicon.svg' },
 				{ from: 'public/manifest.json', to: 'manifest.json' },
+				{
+					from: 'src/views/Campaign_3',
+					to: 'campaign3',
+					globOptions: {
+						ignore: ['**/*.tsx', '**/*.ts', '**/*.js', '**/*.jsx'],
+					},
+				},
 			],
 		}),
 		new CleanWebpackPlugin(),

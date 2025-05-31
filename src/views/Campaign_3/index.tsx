@@ -1,9 +1,27 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 
+// Import images
 import glasseaterImg from './glasseater.png';
+import glasseatersVideo from './Glasseaters.mp4';
+import survivedAoFallback from './I-Survived-Testnet_Fallback.avif';
+// Import videos and fallback images
+import survivedAoVideo from './I-Survived-Testnet_Video.mp4';
 import survivedAoImg from './survivedao.png';
+
+// Add these TypeScript module declarations at the top of the file
+declare module '*.mp4';
+declare module '*.avif';
+
+// Media URLs
+const MEDIA_URLS = {
+	glasseaterImg: '/campaign3/glasseater.png',
+	survivedAoImg: '/campaign3/survivedao.png',
+	survivedAoVideo: '/campaign3/I-Survived-Testnet_Video.mp4',
+	survivedAoFallback: '/campaign3/I-Survived-Testnet_Fallback.avif',
+	glasseatersVideo: '/campaign3/Glasseaters.mp4',
+};
 
 // Consistent button style
 function ConnectButton({
@@ -26,7 +44,6 @@ function ConnectButton({
 				fontWeight: 700,
 				fontSize: 16,
 				fontFamily: 'Inter',
-				marginTop: 0,
 				letterSpacing: -0.5,
 				cursor: disabled ? 'default' : 'pointer',
 				opacity: disabled ? 0.7 : 1,
@@ -43,67 +60,147 @@ function ConnectButton({
 
 // Reward card (background panel)
 function RewardCard({
+	video,
+	fallbackImage,
 	image,
 	title,
 	collected,
 	bgColor,
+	cardBgColor,
+	connected,
+	overlayStyle,
+	isLeft,
+	isRight,
+	requirements,
+	guide,
 }: {
+	video?: string;
+	fallbackImage?: string;
 	image: string;
 	title: string;
 	collected: string;
 	bgColor: string;
+	cardBgColor: string;
+	connected: boolean;
+	overlayStyle: React.CSSProperties;
+	isLeft?: boolean;
+	isRight?: boolean;
+	requirements?: { text: string; met: boolean }[];
+	guide?: string[];
 }) {
+	const [videoError, setVideoError] = useState(false);
+
+	// Adjust overlay style for seamless inner corners
+	const customOverlayStyle = {
+		...overlayStyle,
+		borderTopRightRadius: isLeft ? 0 : overlayStyle.borderRadius,
+		borderTopLeftRadius: isRight ? 0 : overlayStyle.borderRadius,
+		borderBottomRightRadius: isLeft ? 0 : overlayStyle.borderRadius,
+		borderBottomLeftRadius: isRight ? 0 : overlayStyle.borderRadius,
+	};
+	// Adjust cardBgColor container for seamless inner and bottom corners
+	const cardBgRadius = `${isLeft ? '16px 0 0 16px' : isRight ? '0 16px 16px 0' : '16px'}`;
 	return (
 		<div
 			style={{
-				background: bgColor,
-				borderRadius: 24,
-				boxShadow: '0 4px 32px rgba(0,0,0,0.10)',
-				padding: 24,
-				width: 360,
-				maxWidth: '90vw',
+				background: cardBgColor,
+				borderRadius: cardBgRadius,
+				width: 743.5,
 				display: 'flex',
 				flexDirection: 'column',
-				alignItems: 'center',
-				margin: 16,
 				justifyContent: 'flex-start',
-				aspectRatio: '1/1.2',
+				alignItems: 'center',
+				margin: 0,
+				position: 'relative',
 			}}
 		>
+			{!connected && <div style={customOverlayStyle} />}
 			<div
 				style={{
-					width: '100%',
-					aspectRatio: '1/1',
-					background: '#eaeaea',
+					background: '#fff',
 					borderRadius: 16,
-					overflow: 'hidden',
-					marginBottom: 20,
+					width: 503.5,
+					marginTop: 100,
+					marginBottom: 48,
+					padding: '8px 0',
 					display: 'flex',
 					alignItems: 'center',
-					justifyContent: 'center',
-				}}
-			>
-				<img src={image} alt={title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-			</div>
-			<div
-				style={{
-					width: '100%',
-					background: '#f1f1f1',
-					borderRadius: 16,
-					padding: '16px',
-					marginTop: 8,
-					display: 'flex',
 					flexDirection: 'column',
-					alignItems: 'flex-start',
 				}}
 			>
-				<div style={{ fontWeight: 700, fontSize: 16, marginBottom: 4, color: '#262A1A', fontFamily: 'Inter' }}>
-					{title}
+				<div
+					style={{
+						width: 487.5,
+						height: 487.5,
+						borderRadius: 16,
+						overflow: 'hidden',
+						marginBottom: 24,
+						display: 'flex',
+						justifyContent: 'center',
+						alignItems: 'center',
+					}}
+				>
+					{video && !videoError ? (
+						<video
+							width="100%"
+							height="100%"
+							style={{
+								objectFit: 'cover',
+								borderRadius: 16,
+								width: '100%',
+								height: '100%',
+							}}
+							autoPlay
+							loop
+							muted
+							playsInline
+							controls={false}
+							poster={fallbackImage || image}
+							onError={() => setVideoError(true)}
+						>
+							<source src={video} type="video/mp4" />
+						</video>
+					) : (
+						<img
+							src={fallbackImage || image}
+							alt={title}
+							style={{
+								width: '100%',
+								height: '100%',
+								objectFit: 'cover',
+								borderRadius: 16,
+							}}
+						/>
+					)}
 				</div>
-				<div style={{ color: '#262A1A', fontSize: 13, fontFamily: 'Inter', marginBottom: 12 }}>
-					{collected} Collected
+				<div
+					style={{
+						width: 486.5,
+						height: 83,
+						padding: '0 16px',
+						borderRadius: 16,
+						background: '#F1F1F1',
+						display: 'flex',
+						alignItems: 'center',
+						marginBottom: 24,
+					}}
+				>
+					<div style={{ width: 157, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+						<div style={{ color: '#202416', fontSize: 16, fontWeight: 700, fontFamily: 'Inter', whiteSpace: 'nowrap' }}>
+							{title}
+						</div>
+						<div style={{ color: '#000', fontSize: 13, fontFamily: 'Inter', whiteSpace: 'nowrap' }}>
+							{collected} Collected
+						</div>
+					</div>
+					<div style={{ marginLeft: 'auto' }}>
+						<ConnectButton disabled={connected}>{connected ? 'Wallet Connected' : 'Connect Wallet'}</ConnectButton>
+					</div>
 				</div>
-				<ConnectButton disabled>Wallet Connected</ConnectButton>
+				{connected && requirements && (
+					<RequirementsBox requirements={requirements} style={{ marginTop: 0, marginBottom: guide ? 16 : 2 }} />
+				)}
+				{connected && guide && <GuideBox steps={guide} style={{ marginTop: 16 }} />}
 			</div>
 		</div>
 	);
@@ -128,70 +225,157 @@ function HeroSection({ onConnect }: { onConnect: () => void }) {
 				overflow: 'hidden',
 			}}
 		>
-			{/* Text content */}
+			{/* Light gray inner area */}
 			<div
 				style={{
-					position: 'absolute',
-					left: 32,
-					top: 32,
-					width: 423.5,
-					height: 141,
+					background: '#F1F1F1',
+					borderRadius: 12,
+					margin: 8,
+					padding: 16,
+					height: 'calc(100% - 16px)',
+					width: 'calc(100% - 16px)',
 					display: 'flex',
 					flexDirection: 'column',
-					zIndex: 2,
+					alignItems: 'flex-start',
+					justifyContent: 'flex-start',
 				}}
 			>
-				<span
+				{/* Text content */}
+				<div style={{ width: '100%' }}>
+					<span
+						style={{
+							fontSize: 22,
+							fontWeight: 700,
+							color: '#262A1A',
+							fontFamily: 'Inter',
+							marginBottom: 12,
+							display: 'block',
+						}}
+					>
+						Glasseaters: Collections
+					</span>
+					<p style={{ fontSize: 15, color: '#262A1A', fontFamily: 'Inter', margin: 0, marginBottom: 16 }}>
+						To start your journey, connect your wallet to check if you are eligible for <b>"I Survived AO Testnet"</b>{' '}
+						or <b>"Hyperbeam Glasseaters"</b>.
+					</p>
+					<p style={{ fontSize: 15, color: '#262A1A', fontFamily: 'Inter', margin: 0, marginBottom: 16 }}>
+						Make sure to read through the requirements and reach out on <b>AO discord</b> if you have any questions.
+					</p>
+				</div>
+				{/* Image and button row */}
+				<div
 					style={{
-						fontSize: 24,
-						fontWeight: 700,
-						color: '#262A1A',
-						fontFamily: 'Inter',
-						letterSpacing: 0,
-						marginBottom: 0,
-						whiteSpace: 'nowrap',
+						display: 'flex',
+						flexDirection: 'row',
+						alignItems: 'center',
+						width: '100%',
+						marginTop: 2,
+						minHeight: 180,
 					}}
 				>
-					Glasseaters: Collections
-				</span>
-				<span style={{ fontSize: 13, color: '#262A1A', fontFamily: 'Inter', marginTop: 24, whiteSpace: 'nowrap' }}>
-					To start your journey, connect your wallet to check if you are eligible <br /> for "I Survived AO Testnet" or
-					"Hyperbeam Glasseaters".
-				</span>
-				<span style={{ fontSize: 13, color: '#262A1A', fontFamily: 'Inter', marginTop: 24, whiteSpace: 'nowrap' }}>
-					Make sure to read through the requirements and reach out on{' '}
-					<b>
-						AO <br /> discord
-					</b>{' '}
-					if you have any questions.
-				</span>
+					<img
+						src={MEDIA_URLS.survivedAoImg}
+						alt="I Survived AO Testnet"
+						style={{ width: 228, height: 228, borderRadius: 12, objectFit: 'cover', marginRight: 32 }}
+					/>
+					<ConnectButton onClick={onConnect}>
+						<span
+							style={{
+								color: '#fff',
+								fontSize: 14,
+								fontWeight: 700,
+								fontFamily: 'Inter',
+								letterSpacing: 0,
+								marginTop: 140,
+								marginLeft: 10,
+							}}
+						>
+							Connect Wallet
+						</span>
+					</ConnectButton>
+				</div>
 			</div>
-			{/* Connect Wallet button */}
-			<div
-				style={{
-					position: 'absolute',
-					left: 324.5,
-					top: 343,
-					width: 131,
-					height: 47,
-					display: 'flex',
-					justifyContent: 'center',
-					alignItems: 'center',
-					zIndex: 2,
-				}}
-			>
-				<ConnectButton onClick={onConnect}>
-					<span style={{ color: '#fff', fontSize: 12, fontWeight: 700, fontFamily: 'Inter', letterSpacing: 0 }}>
-						Connect Wallet
+		</div>
+	);
+}
+
+// Requirements box component
+function RequirementsBox({
+	requirements,
+	style = {},
+}: {
+	requirements: { text: string; met: boolean }[];
+	style?: React.CSSProperties;
+}) {
+	return (
+		<div
+			style={{
+				background: '#F1F1F1',
+				borderRadius: 16,
+				padding: 20,
+				width: 486.5,
+				display: 'flex',
+				flexDirection: 'column',
+				...style,
+			}}
+		>
+			<div style={{ fontWeight: 700, fontSize: 16, color: '#202416', fontFamily: 'Inter', marginBottom: 8 }}>
+				Requirements
+			</div>
+			<div style={{ fontSize: 13, color: '#808080', fontFamily: 'Inter', marginBottom: 12 }}>
+				Only one required to claim
+			</div>
+			{requirements.map((req, idx) => (
+				<div key={idx} style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+					<span
+						style={{
+							display: 'inline-block',
+							width: 16,
+							height: 16,
+							borderRadius: 8,
+							background: req.met ? '#5AF650' : '#E0E0E0',
+							color: req.met ? '#fff' : '#B0B0B0',
+							fontWeight: 700,
+							fontSize: 12,
+							textAlign: 'center',
+							lineHeight: '16px',
+							marginRight: 8,
+						}}
+					>
+						{req.met ? '✓' : ''}
 					</span>
-				</ConnectButton>
+					<span style={{ color: req.met ? '#202416' : '#808080' }}>{req.text}</span>
+				</div>
+			))}
+		</div>
+	);
+}
+
+// Guide box component (for right card)
+function GuideBox({ steps, style = {} }: { steps: string[]; style?: React.CSSProperties }) {
+	return (
+		<div
+			style={{
+				background: '#F1F1F1',
+				borderRadius: 16,
+				padding: 20,
+				width: 486.5,
+				display: 'flex',
+				flexDirection: 'column',
+				...style,
+			}}
+		>
+			<div style={{ fontWeight: 700, fontSize: 16, color: '#202416', fontFamily: 'Inter', marginBottom: 8 }}>Guide</div>
+			<div style={{ fontSize: 13, color: '#808080', fontFamily: 'Inter', marginBottom: 12 }}>
+				How to Create A New Device on Hyperbeam
 			</div>
-			{/* Image in bottom left, overlapping */}
-			<img
-				src={survivedAoImg}
-				alt="I Survived AO Testnet"
-				style={{ position: 'absolute', left: 0, top: 170, width: 279, height: 252, zIndex: 1 }}
-			/>
+			<ul style={{ paddingLeft: 18, margin: 0 }}>
+				{steps.map((step, idx) => (
+					<li key={idx} style={{ color: '#202416', fontSize: 13, fontFamily: 'Inter', marginBottom: 8 }}>
+						{step}
+					</li>
+				))}
+			</ul>
 		</div>
 	);
 }
@@ -207,21 +391,29 @@ export default function Campaign() {
 		top: 0,
 		width: '100%',
 		height: '100%',
-		background: 'rgba(220,220,220,0.55)',
+		background: 'rgba(13, 12, 12, 0.47)',
 		zIndex: 2,
 		pointerEvents: 'none' as const,
 		backdropFilter: 'blur(8px)',
 		transition: 'opacity 0.3s',
 		opacity: !connected ? 1 : 0,
-		borderRadius: 32,
+		borderRadius: 16,
 	};
+
+	useEffect(() => {
+		document.body.classList.add('body-campaign-3');
+		return () => {
+			document.body.classList.remove('body-campaign-3');
+		};
+	}, []);
 
 	return (
 		<div
+			className="campaign3-main-wrapper"
 			style={{
-				minHeight: '100vh',
-				width: '100vw',
-				background: '#f5f7fa',
+				minHeight: 'calc(100vh - 75px - 50px)',
+				width: '100%',
+				background: '#ffffff',
 				display: 'flex',
 				flexDirection: 'column',
 				alignItems: 'center',
@@ -236,17 +428,51 @@ export default function Campaign() {
 					display: 'flex',
 					flexDirection: 'row',
 					justifyContent: 'center',
-					alignItems: 'flex-start',
+					alignItems: 'stretch',
 					width: '100%',
-					marginTop: 60,
+					// marginTop: 60,
 					position: 'relative',
 					minHeight: 420,
 				}}
 			>
-				{/* Blur overlay (visible when not connected) */}
-				<div style={overlayStyle} />
-				<RewardCard image={survivedAoImg} title="I Survived AO Testnet" collected="0/1984" bgColor="#f7f7f7" />
-				<RewardCard image={glasseaterImg} title="Hyperbeam Glasseaters" collected="0/100" bgColor="#f3f5f2" />
+				<RewardCard
+					video={MEDIA_URLS.survivedAoVideo}
+					fallbackImage={MEDIA_URLS.survivedAoFallback}
+					image={MEDIA_URLS.survivedAoImg}
+					title="I Survived AO Testnet"
+					collected="0/1984"
+					bgColor="#f7f7f7"
+					cardBgColor="#F1F1F1"
+					connected={connected}
+					overlayStyle={overlayStyle}
+					isLeft
+					requirements={[
+						{ text: 'Transacted on Bazar (Buy, or Sell)', met: true },
+						{ text: 'Transacted on Botega (Buy, Sell, Agents, etc...)', met: false },
+						{ text: 'Transacted on Permawasp (Swap)', met: false },
+						{ text: 'Spawned an AO Process', met: false },
+					]}
+				/>
+				<RewardCard
+					video={MEDIA_URLS.glasseatersVideo}
+					fallbackImage={MEDIA_URLS.glasseaterImg}
+					image={MEDIA_URLS.glasseaterImg}
+					title="Hyperbeam Glasseaters"
+					collected="0/100"
+					bgColor="#f3f5f2"
+					cardBgColor="#CFCFCF"
+					connected={connected}
+					overlayStyle={overlayStyle}
+					isRight
+					requirements={[{ text: 'Whitelisted and verified to have created a new device and merged PR', met: true }]}
+					guide={[
+						'Start by reading up on what a device is and how to start creating by diving into the Documentation.',
+						'Make a fork of the repo, and start a new branch.',
+						'Submit your Pull Request in the repo with your Discord ID notated in the PR submission for verification.',
+						'Once your PR is approved by the AO core team head on over to the AO Discord. Head to #Glasseaters channel and post the link to your PR and your wallet address.',
+						'Success! Once verified, allow some time to come back to claim your 1/1 glasseater.',
+					]}
+				/>
 				{/* HeroSection modal/dialog, only when not connected */}
 				{!connected && (
 					<div

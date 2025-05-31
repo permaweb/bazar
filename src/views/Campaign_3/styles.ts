@@ -594,7 +594,6 @@ export const InfoText = styled.div`
 		font-weight: 700;
 		font-family: Inter;
 		line-height: 1.4;
-		letter-spacing: -4px;
 		white-space: nowrap;
 	}
 
