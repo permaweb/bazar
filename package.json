@@ -19,6 +19,7 @@
 		"prepare": "husky install"
 	},
 	"dependencies": {
+		"@ar.io/sdk": "^3.12.2",
 		"@othent/kms": "^1.0.7",
 		"@permaweb/aoconnect": "^0.0.85",
 		"@permaweb/aoprofile": "^0.0.11",
