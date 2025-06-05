@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { createGlobalStyle } from 'styled-components';
 
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 
@@ -22,6 +23,16 @@ const MEDIA_URLS = {
 	survivedAoFallback: '/campaign3/I-Survived-Testnet_Fallback.avif',
 	glasseatersVideo: '/campaign3/Glasseaters.mp4',
 };
+
+const Campaign3Responsive = createGlobalStyle`
+	@media (max-width: 900px) {
+		.campaign3-cards-row {
+			flex-direction: column !important;
+			align-items: center !important;
+			gap: 32px;
+		}
+	}
+`;
 
 // Consistent button style
 function ConnectButton({
@@ -287,7 +298,6 @@ function HeroSection({ onConnect }: { onConnect: () => void }) {
 								fontFamily: 'Inter',
 								letterSpacing: 0,
 								marginTop: 140,
-								marginLeft: 10,
 							}}
 						>
 							Connect Wallet
@@ -408,90 +418,94 @@ export default function Campaign() {
 	}, []);
 
 	return (
-		<div
-			className="campaign3-main-wrapper"
-			style={{
-				minHeight: 'calc(100vh - 75px - 50px)',
-				width: '100%',
-				background: '#ffffff',
-				display: 'flex',
-				flexDirection: 'column',
-				alignItems: 'center',
-				justifyContent: 'center',
-				position: 'relative',
-				overflow: 'auto',
-			}}
-		>
-			{/* Background cards row, always visible and centered */}
+		<>
+			<Campaign3Responsive />
 			<div
+				className="campaign3-main-wrapper"
 				style={{
-					display: 'flex',
-					flexDirection: 'row',
-					justifyContent: 'center',
-					alignItems: 'stretch',
+					minHeight: 'calc(100vh - 75px - 50px)',
 					width: '100%',
-					// marginTop: 60,
+					background: '#ffffff',
+					display: 'flex',
+					flexDirection: 'column',
+					alignItems: 'center',
+					justifyContent: 'center',
 					position: 'relative',
-					minHeight: 420,
+					overflow: 'auto',
 				}}
 			>
-				<RewardCard
-					video={MEDIA_URLS.survivedAoVideo}
-					fallbackImage={MEDIA_URLS.survivedAoFallback}
-					image={MEDIA_URLS.survivedAoImg}
-					title="I Survived AO Testnet"
-					collected="0/1984"
-					bgColor="#f7f7f7"
-					cardBgColor="#F1F1F1"
-					connected={connected}
-					overlayStyle={overlayStyle}
-					isLeft
-					requirements={[
-						{ text: 'Transacted on Bazar (Buy, or Sell)', met: true },
-						{ text: 'Transacted on Botega (Buy, Sell, Agents, etc...)', met: false },
-						{ text: 'Transacted on Permawasp (Swap)', met: false },
-						{ text: 'Spawned an AO Process', met: false },
-					]}
-				/>
-				<RewardCard
-					video={MEDIA_URLS.glasseatersVideo}
-					fallbackImage={MEDIA_URLS.glasseaterImg}
-					image={MEDIA_URLS.glasseaterImg}
-					title="Hyperbeam Glasseaters"
-					collected="0/100"
-					bgColor="#f3f5f2"
-					cardBgColor="#CFCFCF"
-					connected={connected}
-					overlayStyle={overlayStyle}
-					isRight
-					requirements={[{ text: 'Whitelisted and verified to have created a new device and merged PR', met: true }]}
-					guide={[
-						'Start by reading up on what a device is and how to start creating by diving into the Documentation.',
-						'Make a fork of the repo, and start a new branch.',
-						'Submit your Pull Request in the repo with your Discord ID notated in the PR submission for verification.',
-						'Once your PR is approved by the AO core team head on over to the AO Discord. Head to #Glasseaters channel and post the link to your PR and your wallet address.',
-						'Success! Once verified, allow some time to come back to claim your 1/1 glasseater.',
-					]}
-				/>
-				{/* HeroSection modal/dialog, only when not connected */}
-				{!connected && (
-					<div
-						style={{
-							position: 'absolute',
-							left: '50%',
-							top: '50%',
-							transform: 'translate(-50%, -50%)',
-							zIndex: 3,
-							display: 'flex',
-							alignItems: 'center',
-							justifyContent: 'center',
-							width: '100%',
-						}}
-					>
-						<HeroSection onConnect={() => arProvider.setWalletModalVisible(true)} />
-					</div>
-				)}
+				{/* Background cards row, always visible and centered */}
+				<div
+					className="campaign3-cards-row"
+					style={{
+						display: 'flex',
+						flexDirection: 'row',
+						justifyContent: 'center',
+						alignItems: 'stretch',
+						width: '100%',
+						// marginTop: 60,
+						position: 'relative',
+						minHeight: 420,
+					}}
+				>
+					<RewardCard
+						video={MEDIA_URLS.survivedAoVideo}
+						fallbackImage={MEDIA_URLS.survivedAoFallback}
+						image={MEDIA_URLS.survivedAoImg}
+						title="I Survived AO Testnet"
+						collected="0/1984"
+						bgColor="#f7f7f7"
+						cardBgColor="#F1F1F1"
+						connected={connected}
+						overlayStyle={overlayStyle}
+						isLeft
+						requirements={[
+							{ text: 'Transacted on Bazar (Buy, or Sell)', met: true },
+							{ text: 'Transacted on Botega (Buy, Sell, Agents, etc...)', met: false },
+							{ text: 'Transacted on Permawasp (Swap)', met: false },
+							{ text: 'Spawned an AO Process', met: false },
+						]}
+					/>
+					<RewardCard
+						video={MEDIA_URLS.glasseatersVideo}
+						fallbackImage={MEDIA_URLS.glasseaterImg}
+						image={MEDIA_URLS.glasseaterImg}
+						title="Hyperbeam Glasseaters"
+						collected="0/100"
+						bgColor="#f3f5f2"
+						cardBgColor="#CFCFCF"
+						connected={connected}
+						overlayStyle={overlayStyle}
+						isRight
+						requirements={[{ text: 'Whitelisted & created a new device and merged PR', met: true }]}
+						guide={[
+							'Start by reading up on what a device is and how to start creating by diving into the Documentation.',
+							'Make a fork of the repo, and start a new branch.',
+							'Submit your Pull Request in the repo with your Discord ID notated in the PR submission for verification.',
+							'Once your PR is approved by the AO core team head on over to the AO Discord. Head to #Glasseaters channel and post the link to your PR and your wallet address.',
+							'Success! Once verified, allow some time to come back to claim your 1/1 glasseater.',
+						]}
+					/>
+					{/* HeroSection modal/dialog, only when not connected */}
+					{!connected && (
+						<div
+							style={{
+								position: 'absolute',
+								left: '50%',
+								top: '50%',
+								transform: 'translate(-50%, -50%)',
+								zIndex: 3,
+								display: 'flex',
+								alignItems: 'center',
+								justifyContent: 'center',
+								width: '100%',
+							}}
+						>
+							<HeroSection onConnect={() => arProvider.setWalletModalVisible(true)} />
+						</div>
+					)}
+				</div>
 			</div>
-		</div>
+		</>
 	);
 }
