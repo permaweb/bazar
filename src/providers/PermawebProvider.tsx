@@ -8,7 +8,9 @@ import AOProfile from '@permaweb/aoprofile';
 import { Loader } from 'components/atoms/Loader';
 import { Panel } from 'components/molecules/Panel';
 import { ProfileManage } from 'components/organisms/ProfileManage';
+import { getArNSDataForAddress } from 'helpers/arns';
 import { AO, STORAGE } from 'helpers/config';
+import { getTxEndpoint } from 'helpers/endpoints';
 
 import { useArweaveProvider } from './ArweaveProvider';
 import { useLanguageProvider } from './LanguageProvider';
@@ -24,6 +26,8 @@ interface PermawebContextState {
 	setToggleTokenBalanceUpdate: (toggleUpdate: boolean) => void;
 	handleInitialProfileCache: (address: string, profileId: string) => void;
 	refreshProfile: () => void;
+	arnsPrimaryName?: string | null;
+	arnsAvatarUrl?: string | null;
 }
 
 const DEFAULT_CONTEXT = {
@@ -37,6 +41,8 @@ const DEFAULT_CONTEXT = {
 	setToggleTokenBalanceUpdate(_toggleUpdate: boolean) {},
 	handleInitialProfileCache(_address: string, _profileId: string) {},
 	refreshProfile() {},
+	arnsPrimaryName: null,
+	arnsAvatarUrl: null,
 };
 
 const PermawebContext = React.createContext<PermawebContextState>(DEFAULT_CONTEXT);
@@ -56,6 +62,8 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 	const [showProfileManager, setShowProfileManager] = React.useState<boolean>(false);
 	const [refreshProfileTrigger, setRefreshProfileTrigger] = React.useState<boolean>(false);
 	const [profilePending, setProfilePending] = React.useState<boolean>(false);
+	const [arnsPrimaryName, setArnsPrimaryName] = React.useState<string | null>(null);
+	const [arnsAvatarUrl, setArnsAvatarUrl] = React.useState<string | null>(null);
 
 	const [tokenBalances, setTokenBalances] = React.useState<{
 		[address: string]: { profileBalance: number; walletBalance: number };
@@ -108,7 +116,9 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 						setProfile(fetchedProfile);
 						cacheProfile(arProvider.walletAddress, fetchedProfile);
 					} catch (e: any) {
-						console.error(e);
+						if (process.env.NODE_ENV === 'development') {
+							console.error('Error fetching profile:', e);
+						}
 					}
 
 					setProfilePending(false);
@@ -138,13 +148,17 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 								tries++;
 							}
 						} catch (error) {
-							console.error(error);
+							if (process.env.NODE_ENV === 'development') {
+								console.error('Error during profile update:', error);
+							}
 							break;
 						}
 					}
 
 					if (!changeDetected) {
-						console.warn(`No changes detected after ${maxTries} attempts`);
+						if (process.env.NODE_ENV === 'development') {
+							console.warn(`No changes detected after ${maxTries} attempts`);
+						}
 					}
 				};
 
@@ -201,12 +215,39 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 					},
 				}));
 			} catch (e) {
-				console.error(e);
+				if (process.env.NODE_ENV === 'development') {
+					console.error('Error fetching ArNS data:', e);
+				}
 			}
 		};
 
 		fetchBalances();
 	}, [arProvider.walletAddress, profile, toggleTokenBalanceUpdate]);
+
+	React.useEffect(() => {
+		if (!arProvider.walletAddress) {
+			setArnsPrimaryName(null);
+			setArnsAvatarUrl(null);
+			return;
+		}
+
+		(async function () {
+			try {
+				const arnsData = await getArNSDataForAddress(arProvider.walletAddress);
+
+				console.log('PermawebProvider - ArNS data:', arnsData);
+
+				setArnsPrimaryName(arnsData.primaryName);
+				const avatarUrl = arnsData.logo ? getTxEndpoint(arnsData.logo) : null;
+				console.log('PermawebProvider - Setting avatar URL:', avatarUrl);
+				setArnsAvatarUrl(avatarUrl);
+			} catch (err) {
+				console.error('PermawebProvider - ArNS error:', err);
+				setArnsPrimaryName(null);
+				setArnsAvatarUrl(null);
+			}
+		})();
+	}, [arProvider.walletAddress]);
 
 	async function resolveProfile() {
 		try {
@@ -222,7 +263,9 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 				fetchedProfile = await libs.getProfileByWalletAddress(arProvider.walletAddress);
 
 				if (!fetchedProfile?.id) {
-					console.log('Fetching legacy profile...');
+					if (process.env.NODE_ENV === 'development') {
+						console.log('Fetching legacy profile...');
+					}
 					isLegacyProfile = true;
 					const aoProfile = AOProfile.init({ ao: connect({ MODE: 'legacy' }) });
 					fetchedProfile = await aoProfile.getProfileByWalletAddress({ address: arProvider.walletAddress });
@@ -237,7 +280,9 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 
 			return profileToUse;
 		} catch (e: any) {
-			console.error(e);
+			if (process.env.NODE_ENV === 'development') {
+				console.error('Error in getProfile:', e);
+			}
 		}
 	}
 
@@ -269,6 +314,8 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 				handleInitialProfileCache: (address: string, profileId: string) =>
 					handleInitialProfileCache(address, profileId),
 				refreshProfile: () => setRefreshProfileTrigger((prev) => !prev),
+				arnsPrimaryName,
+				arnsAvatarUrl,
 			}}
 		>
 			{props.children}

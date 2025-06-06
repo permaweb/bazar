@@ -365,7 +365,13 @@ export const FLAGS = {
 	MAINTENANCE: false,
 };
 
+export const ARNS = {
+	CACHE_DURATION: 24 * 60 * 60 * 1000, // 24 hours
+	DEFAULT_DISPLAY_LENGTH: 20,
+};
+
 export const STORAGE = {
 	walletType: `wallet-type`,
 	profile: (id: string) => `profile-${id}`,
+	arns: (address: string) => `arns::${address}`,
 };

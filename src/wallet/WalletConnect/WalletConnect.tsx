@@ -45,7 +45,10 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 			setLabel(`${language.fetching}...`);
 		} else {
 			if (arProvider.walletAddress) {
-				if (permawebProvider.profile && permawebProvider.profile.username) {
+				// Priority: ArNS name > Profile username > Address
+				if (permawebProvider.arnsPrimaryName) {
+					setLabel(permawebProvider.arnsPrimaryName);
+				} else if (permawebProvider.profile && permawebProvider.profile.username) {
 					setLabel(permawebProvider.profile.username);
 				} else {
 					setLabel(formatAddress(arProvider.walletAddress, false));
@@ -54,7 +57,7 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 				setLabel(language.connect);
 			}
 		}
-	}, [showWallet, arProvider.walletAddress, permawebProvider.profile]);
+	}, [showWallet, arProvider.walletAddress, permawebProvider.profile, permawebProvider.arnsPrimaryName]);
 
 	function handlePress() {
 		if (arProvider.walletAddress) {
@@ -142,12 +145,14 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 								)} */}
 							</S.DNameWrapper>
 							<span onClick={() => handleDropdownAction(handleProfileAction)}>
-								{formatAddress(
-									permawebProvider.profile && permawebProvider.profile.id
-										? permawebProvider.profile.id
-										: arProvider.walletAddress,
-									false
-								)}
+								{permawebProvider.arnsPrimaryName
+									? formatAddress(arProvider.walletAddress, false)
+									: formatAddress(
+											permawebProvider.profile && permawebProvider.profile.id
+												? permawebProvider.profile.id
+												: arProvider.walletAddress,
+											false
+									  )}
 							</span>
 						</S.DHeader>
 					</S.DHeaderFlex>
