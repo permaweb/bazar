@@ -3,6 +3,7 @@ import { createGlobalStyle } from 'styled-components';
 
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 
+import { ConnectWallet } from './components/ConnectWallet';
 // Import images
 import glasseaterImg from './glasseater.png';
 import glasseatersVideo from './Glasseaters.mp4';
@@ -33,41 +34,6 @@ const Campaign3Responsive = createGlobalStyle`
 		}
 	}
 `;
-
-// Consistent button style
-function ConnectButton({
-	onClick,
-	disabled,
-	children,
-}: {
-	onClick?: () => void;
-	disabled?: boolean;
-	children: React.ReactNode;
-}) {
-	return (
-		<button
-			style={{
-				background: '#202416',
-				color: '#fff',
-				border: 'none',
-				borderRadius: 75,
-				padding: '16px 32px',
-				fontWeight: 700,
-				fontSize: 16,
-				fontFamily: 'Inter',
-				letterSpacing: -0.5,
-				cursor: disabled ? 'default' : 'pointer',
-				opacity: disabled ? 0.7 : 1,
-				minWidth: 154,
-				transition: 'opacity 0.2s',
-			}}
-			onClick={onClick}
-			disabled={disabled}
-		>
-			{children}
-		</button>
-	);
-}
 
 // Reward card (background panel)
 function RewardCard({
@@ -205,7 +171,7 @@ function RewardCard({
 						</div>
 					</div>
 					<div style={{ marginLeft: 'auto' }}>
-						<ConnectButton disabled={connected}>{connected ? 'Wallet Connected' : 'Connect Wallet'}</ConnectButton>
+						<ConnectWallet />
 					</div>
 				</div>
 				{connected && requirements && (
@@ -289,20 +255,9 @@ function HeroSection({ onConnect }: { onConnect: () => void }) {
 						alt="I Survived AO Testnet"
 						style={{ width: 228, height: 228, borderRadius: 12, objectFit: 'cover', marginRight: 32 }}
 					/>
-					<ConnectButton onClick={onConnect}>
-						<span
-							style={{
-								color: '#fff',
-								fontSize: 14,
-								fontWeight: 700,
-								fontFamily: 'Inter',
-								letterSpacing: 0,
-								marginTop: 140,
-							}}
-						>
-							Connect Wallet
-						</span>
-					</ConnectButton>
+					<div style={{ marginTop: 140 }}>
+						<ConnectWallet />
+					</div>
 				</div>
 			</div>
 		</div>
