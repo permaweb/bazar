@@ -1,14 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import { createGlobalStyle } from 'styled-components';
 
+import { GATEWAYS } from 'helpers/config';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
+import { usePermawebProvider } from 'providers/PermawebProvider';
 
 import { ConnectWallet } from './components/ConnectWallet';
 // Import images
 import glasseaterImg from './glasseater.png';
 import glasseatersVideo from './Glasseaters.mp4';
 import survivedAoFallback from './I-Survived-Testnet_Fallback.avif';
-// Import videos and fallback images
 import survivedAoVideo from './I-Survived-Testnet_Video.mp4';
 import survivedAoImg from './survivedao.png';
 
@@ -33,7 +34,87 @@ const Campaign3Responsive = createGlobalStyle`
 			gap: 32px;
 		}
 	}
+
+	@keyframes spin {
+		0% {
+			transform: rotate(0deg);
+		}
+		100% {
+			transform: rotate(360deg);
+		}
+	}
 `;
+
+// Loading state component
+function LoadingState() {
+	return (
+		<div
+			style={{
+				width: 503.5,
+				height: 438,
+				background: '#fff',
+				borderRadius: 16,
+				boxShadow: '0 4px 32px rgba(0,0,0,0.18)',
+				display: 'flex',
+				flexDirection: 'column',
+				justifyContent: 'center',
+				alignItems: 'center',
+				padding: 0,
+				overflow: 'hidden',
+			}}
+		>
+			<div
+				style={{
+					background: '#F1F1F1',
+					borderRadius: 12,
+					margin: 8,
+					padding: 16,
+					height: 'calc(100% - 16px)',
+					width: 'calc(100% - 16px)',
+					display: 'flex',
+					flexDirection: 'column',
+					alignItems: 'center',
+					justifyContent: 'center',
+				}}
+			>
+				<div
+					style={{
+						width: 48,
+						height: 48,
+						border: '3px solid #000',
+						borderTopColor: 'transparent',
+						borderRadius: '50%',
+						animation: 'spin 1s linear infinite',
+						marginBottom: 24,
+					}}
+				/>
+				<span
+					style={{
+						color: '#262A1A',
+						fontSize: 18,
+						fontWeight: 700,
+						fontFamily: 'Inter',
+						textAlign: 'center',
+					}}
+				>
+					Checking Eligibility
+				</span>
+				<span
+					style={{
+						color: '#262A1A',
+						fontSize: 14,
+						fontFamily: 'Inter',
+						textAlign: 'center',
+						marginTop: 8,
+						maxWidth: 300,
+					}}
+				>
+					Please wait while we verify your wallet activity...
+				</span>
+			</div>
+		</div>
+	);
+}
 
 // Reward card (background panel)
 function RewardCard({
@@ -184,7 +265,7 @@ function RewardCard({
 }
 
 // Hero section (main panel/modal)
-function HeroSection({ onConnect }: { onConnect: () => void }) {
+function HeroSection({ onConnect, isVerifying }: { onConnect: () => void; isVerifying?: boolean }) {
 	return (
 		<div
 			style={{
@@ -251,12 +332,63 @@ function HeroSection({ onConnect }: { onConnect: () => void }) {
 					}}
 				>
 					<img
-						src={MEDIA_URLS.survivedAoImg}
+						src={survivedAoImg}
 						alt="I Survived AO Testnet"
-						style={{ width: 228, height: 228, borderRadius: 12, objectFit: 'cover', marginRight: 32 }}
+						style={{
+							width: 180,
+							height: 180,
+							borderRadius: 12,
+							marginRight: 16,
+						}}
 					/>
-					<div style={{ marginTop: 140 }}>
-						<ConnectWallet />
+					<div
+						style={{
+							display: 'flex',
+							flexDirection: 'column',
+							justifyContent: 'flex-end',
+							height: 180,
+							flex: 1,
+						}}
+					>
+						<button
+							onClick={onConnect}
+							disabled={isVerifying}
+							style={{
+								background: '#000',
+								color: '#fff',
+								border: 'none',
+								borderRadius: 8,
+								padding: '12px 25px',
+								fontSize: 14,
+								fontWeight: 700,
+								fontFamily: 'Inter',
+								cursor: isVerifying ? 'default' : 'pointer',
+								transition: 'all 200ms ease',
+								display: 'flex',
+								alignItems: 'center',
+								justifyContent: 'center',
+								minWidth: 179,
+							}}
+						>
+							{isVerifying ? (
+								<>
+									<div
+										style={{
+											width: 18,
+											height: 18,
+											border: '2px solid #fff',
+											borderTopColor: 'transparent',
+											borderRadius: '50%',
+											animation: 'spin 1s linear infinite',
+											marginRight: 9,
+										}}
+									/>
+									Checking Eligibility
+								</>
+							) : (
+								'Connect Wallet'
+							)}
+						</button>
 					</div>
 				</div>
 			</div>
@@ -346,8 +478,80 @@ function GuideBox({ steps, style = {} }: { steps: string[]; style?: React.CSSPro
 }
 
 export default function Campaign() {
-	const arProvider = useArweaveProvider();
-	const connected = !!arProvider.walletAddress;
+	const { walletAddress, setWalletModalVisible } = useArweaveProvider();
+	const { libs } = usePermawebProvider();
+	const [isVerifying, setIsVerifying] = useState(false);
+	const [verificationResults, setVerificationResults] = useState({
+		hasBazarTransaction: false,
+		hasBotegaSwap: false,
+		hasPermaswapTransaction: false,
+		hasAOProcess: false,
+	});
+
+	useEffect(() => {
+		if (walletAddress && libs) {
+			verifyWallet();
+		}
+	}, [walletAddress, libs]);
+
+	const verifyWallet = async () => {
+		if (!libs) return;
+
+		setIsVerifying(true);
+		try {
+			// Check Bazar transactions
+			const bazarData = await libs.getGQLData({
+				gateway: GATEWAYS.arweave,
+				owners: [walletAddress],
+				tags: [
+					{ name: 'Data-Protocol', values: ['ao'] },
+					{ name: 'Type', values: ['Message'] },
+					{ name: 'Variant', values: ['ao.TN.1'] },
+					{ name: 'X-Order-Action', values: ['Create-Order'] },
+				],
+			});
+
+			// Check Swap transactions
+			const swapData = await libs.getGQLData({
+				gateway: GATEWAYS.arweave,
+				owners: [walletAddress],
+				tags: [
+					{ name: 'X-Action', values: ['Multi-Hop-Swap'] },
+					{ name: 'Data-Protocol', values: ['ao'] },
+					{ name: 'Type', values: ['Message'] },
+					{ name: 'Variant', values: ['ao.TN.1'] },
+				],
+			});
+
+			// Check AO Process
+			const aoProcessData = await libs.getGQLData({
+				gateway: GATEWAYS.arweave,
+				owners: [walletAddress],
+				tags: [
+					{ name: 'Data-Protocol', values: ['ao'] },
+					{ name: 'Type', values: ['Process'] },
+				],
+			});
+
+			setVerificationResults({
+				hasBazarTransaction: bazarData.data.length > 0,
+				hasBotegaSwap: false, // TODO: Implement Botega swap check
+				hasPermaswapTransaction: swapData.data.length > 0,
+				hasAOProcess: aoProcessData.data.length > 0,
+			});
+		} catch (error) {
+			console.error('Verification error:', error);
+		} finally {
+			setIsVerifying(false);
+		}
+	};
+
+	useEffect(() => {
+		document.body.classList.add('body-campaign-3');
+		return () => {
+			document.body.classList.remove('body-campaign-3');
+		};
+	}, []);
 
 	// Blur overlay for background cards
 	const overlayStyle = {
@@ -361,16 +565,9 @@ export default function Campaign() {
 		pointerEvents: 'none' as const,
 		backdropFilter: 'blur(8px)',
 		transition: 'opacity 0.3s',
-		opacity: !connected ? 1 : 0,
+		opacity: !walletAddress ? 1 : 0,
 		borderRadius: 16,
 	};
-
-	useEffect(() => {
-		document.body.classList.add('body-campaign-3');
-		return () => {
-			document.body.classList.remove('body-campaign-3');
-		};
-	}, []);
 
 	return (
 		<>
@@ -389,7 +586,6 @@ export default function Campaign() {
 					overflow: 'auto',
 				}}
 			>
-				{/* Background cards row, always visible and centered */}
 				<div
 					className="campaign3-cards-row"
 					style={{
@@ -398,7 +594,6 @@ export default function Campaign() {
 						justifyContent: 'center',
 						alignItems: 'stretch',
 						width: '100%',
-						// marginTop: 60,
 						position: 'relative',
 						minHeight: 420,
 					}}
@@ -411,14 +606,14 @@ export default function Campaign() {
 						collected="0/1984"
 						bgColor="#f7f7f7"
 						cardBgColor="#F1F1F1"
-						connected={connected}
+						connected={!!walletAddress}
 						overlayStyle={overlayStyle}
 						isLeft
 						requirements={[
-							{ text: 'Transacted on Bazar (Buy, or Sell)', met: true },
-							{ text: 'Transacted on Botega (Buy, Sell, Agents, etc...)', met: false },
-							{ text: 'Transacted on Permawasp (Swap)', met: false },
-							{ text: 'Spawned an AO Process', met: false },
+							{ text: 'Transacted on Bazar (Buy, or Sell)', met: verificationResults.hasBazarTransaction },
+							{ text: 'Transacted on Botega (Buy, Sell, Agents, etc...)', met: verificationResults.hasBotegaSwap },
+							{ text: 'Transacted on Permawasp (Swap)', met: verificationResults.hasPermaswapTransaction },
+							{ text: 'Spawned an AO Process', met: verificationResults.hasAOProcess },
 						]}
 					/>
 					<RewardCard
@@ -429,7 +624,7 @@ export default function Campaign() {
 						collected="0/100"
 						bgColor="#f3f5f2"
 						cardBgColor="#CFCFCF"
-						connected={connected}
+						connected={!!walletAddress}
 						overlayStyle={overlayStyle}
 						isRight
 						requirements={[{ text: 'Whitelisted & created a new device and merged PR', met: true }]}
@@ -441,11 +636,12 @@ export default function Campaign() {
 							'Success! Once verified, allow some time to come back to claim your 1/1 glasseater.',
 						]}
 					/>
-					{/* HeroSection modal/dialog, only when not connected */}
-					{!connected && (
+
+					{/* Show modal for both unconnected and verifying states */}
+					{(!walletAddress || isVerifying) && (
 						<div
 							style={{
-								position: 'absolute',
+								position: 'fixed',
 								left: '50%',
 								top: '50%',
 								transform: 'translate(-50%, -50%)',
@@ -456,7 +652,7 @@ export default function Campaign() {
 								width: '100%',
 							}}
 						>
-							<HeroSection onConnect={() => arProvider.setWalletModalVisible(true)} />
+							<HeroSection onConnect={() => setWalletModalVisible(true)} isVerifying={isVerifying} />
 						</div>
 					)}
 				</div>
