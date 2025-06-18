@@ -223,6 +223,10 @@ export default function Campaign() {
 		}
 	}
 
+	const handleClaimClick = async (e: any, id: string, usePrimaryAsset?: boolean) => {
+		await handleClaim(e, id, usePrimaryAsset);
+	};
+
 	async function handleClaim(e: any, id: string, usePrimaryAsset?: boolean) {
 		e.preventDefault();
 		e.stopPropagation();
@@ -308,7 +312,7 @@ export default function Campaign() {
 									<S.GridElementOverlay>
 										{asset.claimable ? (
 											<S.GridElementAction
-												onClick={(e) => handleClaim(e, asset.id)}
+												onClick={(e) => handleClaimClick(e, asset.id)}
 												disabled={!assets || asset.claimInProgress}
 												className={'fade-in'}
 											>
@@ -391,7 +395,7 @@ export default function Campaign() {
 											<S.GridElementOverlay>
 												{primaryAsset.claimable ? (
 													<S.GridElementAction
-														onClick={(e) => handleClaim(e, primaryAsset.id)}
+														onClick={(e) => handleClaimClick(e, primaryAsset.id)}
 														disabled={!assets || primaryAsset.claimInProgress}
 														className={'fade-in'}
 													>
@@ -473,7 +477,7 @@ export default function Campaign() {
 					</S.Header>
 					<S.ViewAction className={'fade-in'}>
 						<button
-							onClick={() => setCurrentView(currentView === 'SubSet' ? 'Main' : 'SubSet')}
+							onClick={(e) => setCurrentView(currentView === 'SubSet' ? 'Main' : 'SubSet')}
 							disabled={!assets || fetching || !arProvider.walletAddress}
 						>
 							<span>{currentView === 'SubSet' ? 'Reveal Platinum DumDum' : 'Go Back'}</span>
@@ -482,7 +486,7 @@ export default function Campaign() {
 					{currentView === 'SubSet' && (
 						<S.SyncAction className={'fade-in'}>
 							<button
-								onClick={() => setToggleClaimCheck(!toggleClaimCheck)}
+								onClick={(e) => setToggleClaimCheck(!toggleClaimCheck)}
 								disabled={!assets || fetching || !arProvider.walletAddress}
 							>
 								<span>{fetching ? 'Checking claims...' : 'Run claim checks'}</span>
@@ -506,7 +510,7 @@ export default function Campaign() {
 						</p>
 						<br />
 						<p>
-							Upon completing the tasks, participants must select the “Claim” button to receive the assets directly in
+							Upon completing the tasks, participants must select the "Claim" button to receive the assets directly in
 							their profile. If a winner does not claim their prize before March 2 at 11:00 AM MST, the prize may be
 							forfeited and awarded to an alternate participant. No cash or other substitutions will be provided.
 						</p>
@@ -520,7 +524,7 @@ export default function Campaign() {
 						</p>
 						<br />
 						<p>
-							Sponsor Information: This Quest is sponsored by the Bazar team (Centigro LLC). Sponsor’s address: 435
+							Sponsor Information: This Quest is sponsored by the Bazar team (Centigro LLC). Sponsor's address: 435
 							Market ST Souderton, PA 18964. By participating in this Quest, entrants agree to be bound by these
 							Official Rules and the decisions of the Sponsor, which are final and binding in all matters related to the
 							Quest.

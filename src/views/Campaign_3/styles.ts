@@ -37,6 +37,15 @@ export const Wrapper = styled.div`
 	padding: 40px 20px;
 	position: relative;
 	overflow: hidden;
+	background: linear-gradient(
+		180deg,
+		rgb(37 37 37),
+		rgb(26 26 26),
+		rgb(9 9 9),
+		rgb(16 16 16),
+		rgb(28 28 28),
+		rgb(31 31 31)
+	) !important;
 `;
 
 export const Header = styled.div`
@@ -774,4 +783,67 @@ export const text_37 = styled.span`
 	font-family: Inter;
 	line-height: 1.4;
 	white-space: nowrap;
+`;
+
+export const LoadingWrapper = styled.div`
+	width: 503.5px;
+	height: 438px;
+	background: #fff;
+	border-radius: 16px;
+	box-shadow: 0 4px 32px rgba(0, 0, 0, 0.18);
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	align-items: center;
+	padding: 0;
+	overflow: hidden;
+`;
+
+export const LoadingContent = styled.div`
+	background: #f1f1f1;
+	border-radius: 12px;
+	margin: 8px;
+	padding: 16px;
+	height: calc(100% - 16px);
+	width: calc(100% - 16px);
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+`;
+
+export const LoadingSpinner = styled.div`
+	width: 48px;
+	height: 48px;
+	border: 3px solid #000;
+	border-top-color: transparent;
+	border-radius: 50%;
+	animation: spin 1s linear infinite;
+	margin-bottom: 24px;
+
+	@keyframes spin {
+		0% {
+			transform: rotate(0deg);
+		}
+		100% {
+			transform: rotate(360deg);
+		}
+	}
+`;
+
+export const LoadingText = styled.span`
+	color: #262a1a;
+	font-size: 18px;
+	font-weight: 700;
+	font-family: Inter;
+	text-align: center;
+`;
+
+export const LoadingSubtext = styled.span`
+	color: #262a1a;
+	font-size: 14px;
+	font-family: Inter;
+	text-align: center;
+	margin-top: 8px;
+	max-width: 300px;
 `;
