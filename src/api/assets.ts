@@ -196,7 +196,11 @@ export function getExistingEntry(args: { id: string }) {
 	return null;
 }
 
-export function getAssetOrders(orderbook: { Pair: string[]; Orders: any }) {
+export function getAssetOrders(orderbook: { Pair: string[]; Orders: any } | null | undefined) {
+	if (!orderbook || !orderbook.Orders) {
+		return [];
+	}
+
 	let assetOrders: AssetOrderType[] | null = null;
 
 	assetOrders = orderbook.Orders.map((order: any) => {

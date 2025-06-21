@@ -386,25 +386,64 @@ export default function AssetActionMarketOrders(props: IProps) {
 	async function handleTransfer() {
 		if (transferRecipient && checkValidAddress(transferRecipient)) {
 			try {
-				const transferId = await message({
-					process: permawebProvider.profile.id,
-					signer: createDataItemSigner(arProvider.wallet),
-					tags: [
-						{ name: 'Action', value: 'Transfer' },
-						{ name: 'Target', value: props.asset.data.id },
-						{ name: 'Recipient', value: transferRecipient },
-						{ name: 'Quantity', value: getTransferQuantity().toString() },
-					],
-				});
+				let action = 'Run-Action';
+				if (permawebProvider.profile.isLegacyProfile) {
+					action = 'Transfer';
+				}
 
-				const { Error } = await result({
-					process: permawebProvider.profile.id,
-					message: transferId,
-				});
+				if (action === 'Run-Action') {
+					// New profile using Run-Action
+					const data = JSON.stringify({
+						Target: props.asset.data.id,
+						Action: 'Transfer',
+						Input: {
+							Recipient: transferRecipient,
+							Quantity: getTransferQuantity().toString(),
+						},
+					});
 
-				if (!Error) handleStatusUpdate(false, true, true, 'Balance transferred!');
+					const transferId = await message({
+						process: permawebProvider.profile.id,
+						signer: createDataItemSigner(arProvider.wallet),
+						tags: [
+							{ name: 'Action', value: 'Run-Action' },
+							{ name: 'Target', value: props.asset.data.id },
+							{ name: 'ForwardTo', value: props.asset.data.id },
+							{ name: 'ForwardAction', value: 'Transfer' },
+							{ name: 'Recipient', value: transferRecipient },
+							{ name: 'Quantity', value: getTransferQuantity().toString() },
+						],
+						data: data,
+					});
 
-				console.log(transferId);
+					const { Error } = await result({
+						process: permawebProvider.profile.id,
+						message: transferId,
+					});
+
+					if (!Error) handleStatusUpdate(false, true, true, 'Balance transferred!');
+					console.log(transferId);
+				} else {
+					// Legacy profile using direct Transfer
+					const transferId = await message({
+						process: permawebProvider.profile.id,
+						signer: createDataItemSigner(arProvider.wallet),
+						tags: [
+							{ name: 'Action', value: 'Transfer' },
+							{ name: 'Target', value: props.asset.data.id },
+							{ name: 'Recipient', value: transferRecipient },
+							{ name: 'Quantity', value: getTransferQuantity().toString() },
+						],
+					});
+
+					const { Error } = await result({
+						process: permawebProvider.profile.id,
+						message: transferId,
+					});
+
+					if (!Error) handleStatusUpdate(false, true, true, 'Balance transferred!');
+					console.log(transferId);
+				}
 			} catch (e: any) {
 				throw new Error(e);
 			}
