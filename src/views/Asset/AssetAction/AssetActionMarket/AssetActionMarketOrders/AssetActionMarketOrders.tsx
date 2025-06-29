@@ -433,7 +433,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 				});
 
 				if (!Error) handleStatusUpdate(false, true, true, 'Balance transferred!');
-
 				console.log(transferId);
 			} catch (e: any) {
 				throw new Error(e);

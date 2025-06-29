@@ -106,18 +106,22 @@ export default function Asset() {
 							],
 						});
 
-						if (response) {
+						if (response?.Orderbook) {
 							setAsset((prevAsset) => ({
 								...prevAsset,
 								orderbook: {
 									...prevAsset.orderbook,
-									orders: response?.Orderbook ? getAssetOrders(response.Orderbook) : [],
+									orders: getAssetOrders(response.Orderbook),
 								},
 							}));
 						} else {
+							// Initialize with empty orders if no orderbook exists
 							setAsset((prevAsset) => ({
 								...prevAsset,
-								orderbook: null,
+								orderbook: {
+									...prevAsset.orderbook,
+									orders: [],
+								},
 							}));
 						}
 					} else {
@@ -139,6 +143,14 @@ export default function Asset() {
 					}
 				} catch (e: any) {
 					console.error(e);
+					// Initialize with empty orders on error
+					setAsset((prevAsset) => ({
+						...prevAsset,
+						orderbook: {
+							...prevAsset.orderbook,
+							orders: [],
+						},
+					}));
 				}
 				setLoading(false);
 			}
