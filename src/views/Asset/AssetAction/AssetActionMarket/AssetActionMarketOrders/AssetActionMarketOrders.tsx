@@ -386,15 +386,45 @@ export default function AssetActionMarketOrders(props: IProps) {
 	async function handleTransfer() {
 		if (transferRecipient && checkValidAddress(transferRecipient)) {
 			try {
-				const transferId = await message({
-					process: permawebProvider.profile.id,
-					signer: createDataItemSigner(arProvider.wallet),
-					tags: [
+				// Use Run-Action for new Zone Profiles, Transfer for legacy profiles
+				let action = 'Run-Action';
+				let tags = [];
+				let data = null;
+
+				if (permawebProvider.profile.isLegacyProfile) {
+					// Legacy profile: use direct Transfer
+					action = 'Transfer';
+					tags = [
 						{ name: 'Action', value: 'Transfer' },
 						{ name: 'Target', value: props.asset.data.id },
 						{ name: 'Recipient', value: transferRecipient },
 						{ name: 'Quantity', value: getTransferQuantity().toString() },
-					],
+					];
+				} else {
+					// New Zone Profile: use Run-Action pattern
+					tags = [
+						{ name: 'Action', value: 'Run-Action' },
+						{ name: 'ForwardTo', value: props.asset.data.id },
+						{ name: 'ForwardAction', value: 'Transfer' },
+						{ name: 'Recipient', value: transferRecipient },
+						{ name: 'Quantity', value: getTransferQuantity().toString() },
+					];
+					// For Run-Action, we need to pass data in the expected format
+					data = {
+						Target: props.asset.data.id,
+						Action: 'Transfer',
+						Input: {
+							Recipient: transferRecipient,
+							Quantity: getTransferQuantity().toString(),
+						},
+					};
+				}
+
+				const transferId = await message({
+					process: permawebProvider.profile.id,
+					signer: createDataItemSigner(arProvider.wallet),
+					tags: tags,
+					data: data ? JSON.stringify(data) : null,
 				});
 
 				const { Error } = await result({
