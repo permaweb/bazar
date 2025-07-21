@@ -12,6 +12,8 @@ import { CustomThemeProvider } from 'providers/CustomThemeProvider';
 import ErrorBoundary from 'providers/ErrorBoundary';
 import { LanguageProvider } from 'providers/LanguageProvider';
 import { PermawebProvider } from 'providers/PermawebProvider';
+import { TokenProvider } from 'providers/TokenProvider';
+import { TokenValidationProvider } from 'providers/TokenValidationProvider';
 import { persistor, store } from 'store';
 
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
@@ -31,12 +33,16 @@ ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
 						>
 							<ArweaveProvider>
 								<PermawebProvider>
-									<AppProvider>
-										<HashRouter>
-											<GlobalStyle />
-											<App />
-										</HashRouter>
-									</AppProvider>
+									<TokenProvider>
+										<TokenValidationProvider>
+											<AppProvider>
+												<HashRouter>
+													<GlobalStyle />
+													<App />
+												</HashRouter>
+											</AppProvider>
+										</TokenValidationProvider>
+									</TokenProvider>
 								</PermawebProvider>
 							</ArweaveProvider>
 						</AOSyncProvider>

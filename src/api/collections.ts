@@ -1,6 +1,6 @@
 import { readHandler, stamps } from 'api';
 
-import { AO, HB } from 'helpers/config';
+import { AO, getDefaultToken, HB } from 'helpers/config';
 import {
 	CollectionDetailType,
 	CollectionMetricsType,
@@ -225,5 +225,5 @@ function getDefaultCurrency(assetIds: string[]): string {
 			}
 		}
 	}
-	return AO.defaultToken;
+	return getDefaultToken().id;
 }

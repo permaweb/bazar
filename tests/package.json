@@ -1,0 +1,41 @@
+{
+	"name": "bazar-tests",
+	"version": "1.0.0",
+	"description": "Token balance and order tests for Bazar",
+	"main": "token-balance-order.test.ts",
+	"scripts": {
+		"test": "ts-node token-balance-order.test.ts",
+		"test:balance": "ts-node -e \"import('./token-balance-order.test').then(m => m.runTokenBalanceTests())\"",
+		"test:info": "ts-node -e \"import('./token-balance-order.test').then(m => m.runTokenInfoTests())\"",
+		"test:orders": "ts-node -e \"import('./token-balance-order.test').then(m => m.runOrderTests())\"",
+		"test:real": "ts-node real-integration.test.ts",
+		"test:real:balance": "ts-node -e \"import('./real-integration.test').then(m => m.runRealTokenBalanceTests())\"",
+		"test:real:info": "ts-node -e \"import('./real-integration.test').then(m => m.runRealTokenInfoTests())\"",
+		"test:real:orders": "ts-node -e \"import('./real-integration.test').then(m => m.runRealOrderTests())\"",
+		"test:debug": "ts-node debug-token-issues.test.ts",
+		"test:debug:balance": "ts-node -e \"import('./debug-token-issues.test').then(m => m.debugTokenBalanceIssues())\"",
+		"test:debug:metadata": "ts-node -e \"import('./debug-token-issues.test').then(m => m.debugWanderMetadataIssue())\"",
+		"test:debug:orders": "ts-node -e \"import('./debug-token-issues.test').then(m => m.debugOrderCreationIssues())\"",
+		"test:network": "ts-node network-analysis.test.ts",
+		"test:network:balance": "ts-node -e \"import('./network-analysis.test').then(m => m.analyzeTokenBalanceResponses())\"",
+		"test:network:info": "ts-node -e \"import('./network-analysis.test').then(m => m.analyzeTokenInfoResponses())\"",
+		"test:network:ucm": "ts-node -e \"import('./network-analysis.test').then(m => m.analyzeUCMContract())\""
+	},
+	"keywords": [
+		"bazar",
+		"tests",
+		"tokens",
+		"orders"
+	],
+	"author": "",
+	"license": "ISC",
+	"dependencies": {
+		"@permaweb/aoconnect": "^0.0.85",
+		"@types/node": "^20.14.6",
+		"ts-node": "^10.9.2",
+		"typescript": "^5.5.2"
+	},
+	"devDependencies": {
+		"@types/node": "^20.14.6"
+	}
+}

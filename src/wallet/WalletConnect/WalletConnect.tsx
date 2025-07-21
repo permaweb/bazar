@@ -8,7 +8,7 @@ import { CurrencyLine } from 'components/atoms/CurrencyLine';
 import { Loader } from 'components/atoms/Loader';
 import { Panel } from 'components/molecules/Panel';
 import { ProfileManage } from 'components/organisms/ProfileManage';
-import { AO, ASSETS, REDIRECTS, URLS } from 'helpers/config';
+import { AO, ASSETS, REDIRECTS, TOKEN_REGISTRY, URLS } from 'helpers/config';
 import { formatAddress, formatCount, getTotalTokenBalance } from 'helpers/utils';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useCustomThemeProvider } from 'providers/CustomThemeProvider';
@@ -110,6 +110,11 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 		[AO.pixl]: {
 			link: `${URLS.asset}${AO.pixl}`,
 			label: language.tradePixl,
+			target: '',
+		},
+		'7GoQfmSOct_aUOWKM4xbKGg6DzAmOgdKwg8Kf-CbHm4': {
+			link: `${URLS.asset}7GoQfmSOct_aUOWKM4xbKGg6DzAmOgdKwg8Kf-CbHm4`,
+			label: language.tradeWander,
 			target: '',
 		},
 	};

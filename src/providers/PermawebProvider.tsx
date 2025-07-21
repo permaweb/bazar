@@ -9,8 +9,14 @@ import { Loader } from 'components/atoms/Loader';
 import { Panel } from 'components/molecules/Panel';
 import { ProfileManage } from 'components/organisms/ProfileManage';
 import { getArNSDataForAddress } from 'helpers/arns';
-import { AO, STORAGE } from 'helpers/config';
+import { AO, STORAGE, TOKEN_REGISTRY } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
+import {
+	clearTokenStatusCache,
+	handleBalanceResponse,
+	isTokenSupported,
+	updateTokenStatus,
+} from 'helpers/tokenValidation';
 
 import { useArweaveProvider } from './ArweaveProvider';
 import { useLanguageProvider } from './LanguageProvider';
@@ -21,7 +27,7 @@ interface PermawebContextState {
 	profile: any;
 	showProfileManager: boolean;
 	setShowProfileManager: (toggle: boolean) => void;
-	tokenBalances: { [address: string]: { profileBalance: number; walletBalance: number } } | null;
+	tokenBalances: { [address: string]: { profileBalance: string | number; walletBalance: string | number } } | null;
 	toggleTokenBalanceUpdate: boolean;
 	setToggleTokenBalanceUpdate: (toggleUpdate: boolean) => void;
 	handleInitialProfileCache: (address: string, profileId: string) => void;
@@ -66,10 +72,15 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 	const [arnsAvatarUrl, setArnsAvatarUrl] = React.useState<string | null>(null);
 
 	const [tokenBalances, setTokenBalances] = React.useState<{
-		[address: string]: { profileBalance: number; walletBalance: number };
-	} | null>({
-		[AO.defaultToken]: { profileBalance: null, walletBalance: null },
-		[AO.pixl]: { profileBalance: null, walletBalance: null },
+		[address: string]: { profileBalance: string | number; walletBalance: string | number };
+	} | null>(() => {
+		// Initialize with all available tokens
+		const initialBalances: { [address: string]: { profileBalance: string | number; walletBalance: string | number } } =
+			{};
+		Object.keys(TOKEN_REGISTRY).forEach((tokenId) => {
+			initialBalances[tokenId] = { profileBalance: '0', walletBalance: '0' };
+		});
+		return initialBalances;
 	});
 	const [toggleTokenBalanceUpdate, setToggleTokenBalanceUpdate] = React.useState<boolean>(false);
 
@@ -82,6 +93,12 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 
 		setLibs(PermawebLibs.init(deps));
 		setDeps(deps);
+
+		// Clear token status cache to ensure fresh data
+		clearTokenStatusCache();
+
+		// Force refresh token balances
+		setToggleTokenBalanceUpdate((prev) => !prev);
 	}, [arProvider.wallet]);
 
 	React.useEffect(() => {
@@ -174,49 +191,84 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 			if (!arProvider.walletAddress || !profile?.id) return;
 
 			try {
-				const defaultTokenWalletBalance = await libs.readProcess({
-					processId: AO.defaultToken,
-					action: 'Balance',
-					tags: [{ name: 'Recipient', value: arProvider.walletAddress }],
-				});
-				await sleep(500);
+				const newBalances = { ...tokenBalances };
 
-				const pixlTokenWalletBalance = await libs.readProcess({
-					processId: AO.pixl,
-					action: 'Balance',
-					tags: [{ name: 'Recipient', value: arProvider.walletAddress }],
-				});
-				await sleep(500);
+				// Fetch balances for all available tokens
+				for (const tokenId of Object.keys(TOKEN_REGISTRY)) {
+					try {
+						// Check if token supports balance operations
+						if (!isTokenSupported(tokenId, 'balance')) {
+							console.warn(`Token ${tokenId} does not support balance operations`);
+							newBalances[tokenId] = {
+								walletBalance: '0',
+								profileBalance: '0',
+							};
+							continue;
+						}
 
-				const defaultTokenProfileBalance = await libs.readProcess({
-					processId: AO.defaultToken,
-					action: 'Balance',
-					tags: [{ name: 'Recipient', value: profile.id }],
-				});
-				await sleep(500);
+						const walletBalance = await libs.readProcess({
+							processId: tokenId,
+							action: 'Balance',
+							tags: [{ name: 'Recipient', value: arProvider.walletAddress }],
+						});
+						await sleep(500);
 
-				const pixlTokenProfileBalance = await libs.readProcess({
-					processId: AO.pixl,
-					action: 'Balance',
-					tags: [{ name: 'Recipient', value: profile.id }],
-				});
+						const profileBalance = await libs.readProcess({
+							processId: tokenId,
+							action: 'Balance',
+							tags: [{ name: 'Recipient', value: profile.id }],
+						});
+						await sleep(500);
 
-				setTokenBalances((prevBalances) => ({
-					...prevBalances,
-					[AO.defaultToken]: {
-						...prevBalances[AO.defaultToken],
-						walletBalance: defaultTokenWalletBalance ?? null,
-						profileBalance: defaultTokenProfileBalance ?? null,
-					},
-					[AO.pixl]: {
-						...prevBalances[AO.pixl],
-						walletBalance: pixlTokenWalletBalance ?? null,
-						profileBalance: pixlTokenProfileBalance ?? null,
-					},
-				}));
+						// Debug logging for PIXL balance
+						if (tokenId === AO.pixl) {
+							console.log('🔍 PIXL Balance Debug:');
+							console.log('  Raw wallet balance:', walletBalance);
+							console.log('  Raw profile balance:', profileBalance);
+							console.log('  Token denomination:', TOKEN_REGISTRY[tokenId]?.denomination);
+						}
+
+						// Handle null responses gracefully
+						const processedWalletBalance = handleBalanceResponse(tokenId, walletBalance, arProvider.walletAddress);
+						const processedProfileBalance = handleBalanceResponse(tokenId, profileBalance, profile.id);
+
+						// Debug logging for processed PIXL balance
+						if (tokenId === AO.pixl) {
+							console.log('  Processed wallet balance:', processedWalletBalance);
+							console.log('  Processed profile balance:', processedProfileBalance);
+						}
+
+						newBalances[tokenId] = {
+							walletBalance: processedWalletBalance,
+							profileBalance: processedProfileBalance,
+						};
+
+						// Update token status based on response
+						updateTokenStatus(tokenId, {
+							hasBalance: walletBalance !== null || profileBalance !== null,
+						});
+					} catch (e) {
+						if (process.env.NODE_ENV === 'development') {
+							console.error(`Error fetching balance for token ${tokenId}:`, e);
+						}
+
+						// Handle errors gracefully with fallback values
+						newBalances[tokenId] = {
+							walletBalance: '0',
+							profileBalance: '0',
+						};
+
+						// Update token status to reflect the error
+						updateTokenStatus(tokenId, {
+							hasBalance: false,
+						});
+					}
+				}
+
+				setTokenBalances(newBalances);
 			} catch (e) {
 				if (process.env.NODE_ENV === 'development') {
-					console.error('Error fetching ArNS data:', e);
+					console.error('Error fetching token balances:', e);
 				}
 			}
 		};

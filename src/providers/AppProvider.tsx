@@ -269,32 +269,34 @@ export function AppProvider(props: AppProviderProps) {
 	React.useEffect(() => {
 		(async function () {
 			try {
-				if (!currenciesReducer) {
-					const defaultTokenState = await readHandler({
-						processId: AO.defaultToken,
-						action: 'Info',
-					});
-					const pixlState = await readHandler({
-						processId: AO.pixl,
-						action: 'Info',
-					});
+				// Clear existing currencies state to ensure fresh data
+				dispatch(currencyActions.setCurrencies(null));
 
-					dispatch(
-						currencyActions.setCurrencies({
-							[AO.defaultToken]: {
-								...defaultTokenState,
-							},
-							[AO.pixl]: {
-								...pixlState,
-							},
-						})
-					);
-				}
+				// Always fetch fresh currency data to ensure correct denominations
+				const defaultTokenState = await readHandler({
+					processId: AO.defaultToken,
+					action: 'Info',
+				});
+				const pixlState = await readHandler({
+					processId: AO.pixl,
+					action: 'Info',
+				});
+
+				dispatch(
+					currencyActions.setCurrencies({
+						[AO.defaultToken]: {
+							...defaultTokenState,
+						},
+						[AO.pixl]: {
+							...pixlState,
+						},
+					})
+				);
 			} catch (e: any) {
 				console.error(e);
 			}
 		})();
-	}, [currenciesReducer]);
+	}, []); // Remove currenciesReducer dependency to always fetch fresh data
 
 	return (
 		<AppContext.Provider

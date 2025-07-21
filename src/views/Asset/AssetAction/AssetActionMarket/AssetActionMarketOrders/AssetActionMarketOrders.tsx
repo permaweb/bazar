@@ -11,9 +11,10 @@ import { Button } from 'components/atoms/Button';
 import { CurrencyLine } from 'components/atoms/CurrencyLine';
 import { FormField } from 'components/atoms/FormField';
 import { Slider } from 'components/atoms/Slider';
+import TokenSelector from 'components/atoms/TokenSelector';
 import { TxAddress } from 'components/atoms/TxAddress';
 import { Panel } from 'components/molecules/Panel';
-import { AO, ASSETS, REDIRECTS, URLS } from 'helpers/config';
+import { AO, ASSETS, getTokenById, REDIRECTS, URLS } from 'helpers/config';
 import { AssetOrderType } from 'helpers/types';
 import {
 	checkValidAddress,
@@ -27,6 +28,7 @@ import * as windowUtils from 'helpers/window';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 import { usePermawebProvider } from 'providers/PermawebProvider';
+import { useTokenProvider } from 'providers/TokenProvider';
 import { RootState } from 'store';
 import * as streakActions from 'store/streaks/actions';
 
@@ -40,6 +42,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 	const permawebProvider = usePermawebProvider();
 	const arProvider = useArweaveProvider();
+	const tokenProvider = useTokenProvider();
 
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
@@ -141,14 +144,27 @@ export default function AssetActionMarketOrders(props: IProps) {
 			const orderCurrency =
 				props.asset.orderbook?.orders && props.asset.orderbook?.orders.length
 					? props.asset.orderbook?.orders[0].currency
-					: AO.defaultToken;
+					: tokenProvider.selectedToken.id;
+
+			// Try to get denomination from currenciesReducer first, then fallback to token registry
+			let denominationValue = null;
 			if (
 				currenciesReducer &&
 				currenciesReducer[orderCurrency] &&
 				currenciesReducer[orderCurrency].Denomination &&
 				currenciesReducer[orderCurrency].Denomination > 1
 			) {
-				setTransferDenomination(Math.pow(10, currenciesReducer[orderCurrency].Denomination));
+				denominationValue = currenciesReducer[orderCurrency].Denomination;
+			} else {
+				// Fallback to token registry
+				const tokenInfo = getTokenById(orderCurrency);
+				if (tokenInfo && tokenInfo.denomination && tokenInfo.denomination > 1) {
+					denominationValue = tokenInfo.denomination;
+				}
+			}
+
+			if (denominationValue) {
+				setTransferDenomination(Math.pow(10, denominationValue));
 			}
 		}
 	}, [props.asset, arProvider.walletAddress, permawebProvider.profile, denomination]);
@@ -170,7 +186,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 	React.useEffect(() => {
 		if (props.type === 'buy') {
-			if (!permawebProvider.tokenBalances || !permawebProvider.tokenBalances[AO.defaultToken]) {
+			if (!permawebProvider.tokenBalances || !permawebProvider.tokenBalances[tokenProvider.selectedToken.id]) {
 				setInsufficientBalance(true);
 			} else {
 				let orderAmount = BigInt(getTotalOrderAmount());
@@ -178,13 +194,20 @@ export default function AssetActionMarketOrders(props: IProps) {
 					orderAmount = BigInt(orderAmount) / BigInt(denomination);
 				}
 				setInsufficientBalance(
-					Number(getTotalTokenBalance(permawebProvider.tokenBalances[AO.defaultToken])) < orderAmount
+					Number(getTotalTokenBalance(permawebProvider.tokenBalances[tokenProvider.selectedToken.id])) < orderAmount
 				);
 			}
 		} else {
 			setInsufficientBalance(false);
 		}
-	}, [permawebProvider.tokenBalances, props.type, props.asset, currentOrderQuantity, denomination]);
+	}, [
+		permawebProvider.tokenBalances,
+		tokenProvider.selectedToken.id,
+		props.type,
+		props.asset,
+		currentOrderQuantity,
+		denomination,
+	]);
 
 	React.useEffect(() => {
 		if (currentOrderQuantity) setCurrentOrderQuantity('');
@@ -192,6 +215,19 @@ export default function AssetActionMarketOrders(props: IProps) {
 	}, [props.type]);
 
 	async function handleSubmit() {
+		// Token validation
+		if (!tokenProvider.selectedToken || !tokenProvider.selectedToken.id) {
+			handleStatusUpdate(false, true, false, language.invalidTokenSelection);
+			return;
+		}
+
+		// Check if selected token exists in available tokens
+		const isValidToken = tokenProvider.availableTokens.some((token) => token.id === tokenProvider.selectedToken.id);
+		if (!isValidToken) {
+			handleStatusUpdate(false, true, false, language.tokenValidationError);
+			return;
+		}
+
 		if (props.asset && arProvider.wallet && permawebProvider.profile?.id) {
 			let currentOrderbook = props.asset.orderbook?.id;
 
@@ -239,12 +275,12 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 			switch (props.type) {
 				case 'buy':
-					dominantToken = AO.defaultToken;
+					dominantToken = tokenProvider.selectedToken.id;
 					swapToken = props.asset.data.id;
 					break;
 				case 'sell':
 					dominantToken = props.asset.data.id;
-					swapToken = AO.defaultToken;
+					swapToken = tokenProvider.selectedToken.id;
 					break;
 				default:
 					break;
@@ -338,9 +374,9 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 			switch (props.type) {
 				case 'buy':
-					processId = AO.defaultToken;
-					profileBalance = BigInt(permawebProvider.tokenBalances[AO.defaultToken].profileBalance);
-					walletBalance = BigInt(permawebProvider.tokenBalances[AO.defaultToken].walletBalance);
+					processId = tokenProvider.selectedToken.id;
+					profileBalance = BigInt(permawebProvider.tokenBalances[tokenProvider.selectedToken.id].profileBalance);
+					walletBalance = BigInt(permawebProvider.tokenBalances[tokenProvider.selectedToken.id].walletBalance);
 					break;
 				case 'sell':
 				case 'transfer':
@@ -635,11 +671,15 @@ export default function AssetActionMarketOrders(props: IProps) {
 	function getTotalPriceDisplay() {
 		let amount = BigInt(getTotalOrderAmount());
 		if (denomination && denomination > 1) amount = BigInt(amount) / BigInt(denomination);
-		const orderCurrency =
-			props.asset.orderbook?.orders && props.asset.orderbook?.orders.length
-				? props.asset.orderbook?.orders[0].currency
-				: AO.defaultToken;
-		return <CurrencyLine amount={amount ? amount.toString() : '0'} currency={orderCurrency} />;
+		const orderCurrency = tokenProvider.selectedToken.id;
+		return (
+			<CurrencyLine
+				amount={amount ? amount.toString() : '0'}
+				currency={orderCurrency}
+				tokenLogo={tokenProvider.selectedToken.logo}
+				tokenSymbol={tokenProvider.selectedToken.symbol}
+			/>
+		);
 	}
 
 	function getOrderDetails(useWrapper: boolean) {
@@ -886,6 +926,11 @@ export default function AssetActionMarketOrders(props: IProps) {
 							{getTotals}
 						</S.TotalsWrapper>
 						<S.FieldsWrapper>
+							{props.type === 'buy' && (
+								<S.FieldWrapper>
+									<TokenSelector showLabel={true} />
+								</S.FieldWrapper>
+							)}
 							<S.FieldWrapper>
 								<FormField
 									type={'number'}
@@ -964,7 +1009,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 										</S.MessageWrapper>
 									))}
 								{permawebProvider.tokenBalances &&
-									getTotalTokenBalance(permawebProvider.tokenBalances[AO.defaultToken]) !== null &&
+									getTotalTokenBalance(permawebProvider.tokenBalances[tokenProvider.selectedToken.id]) !== null &&
 									insufficientBalance && (
 										<S.MessageWrapper warning>
 											<span>{language.insufficientBalance}</span>
@@ -972,7 +1017,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 									)}
 								{arProvider.wallet &&
 									permawebProvider.profile?.id &&
-									getTotalTokenBalance(permawebProvider.tokenBalances[AO.defaultToken]) === null && (
+									getTotalTokenBalance(permawebProvider.tokenBalances[tokenProvider.selectedToken.id]) === null && (
 										<S.MessageWrapper>
 											<span>{`${language.fetchingTokenbalances}...`}</span>
 										</S.MessageWrapper>

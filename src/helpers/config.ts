@@ -59,7 +59,6 @@ import users from 'assets/users.svg';
 import video from 'assets/video.svg';
 import view from 'assets/view.svg';
 import wallet from 'assets/wallet.svg';
-import wander from 'assets/wander.png';
 import x from 'assets/x.svg';
 import zen from 'assets/zen.svg';
 
@@ -90,11 +89,6 @@ export const HB = {
 };
 
 export const REFORMATTED_ASSETS = {
-	[AO.pixl]: {
-		title: 'PIXL Token',
-		logo: 'czR2tJmSr7upPpReXu6IuOc2H7RuHRRAhI7DXAUlszU',
-		denomination: 6,
-	},
 	['pazXumQI-HPH7iFGfTC-4_7biSnqz_U67oFAGry5zUY']: {
 		title: 'Llama Coin',
 		logo: '9FSEgmUsrug7kTdZJABDekwTGJy7YG7KaN5khcbwcX4',
@@ -182,14 +176,13 @@ export const ASSETS = {
 	view,
 	video,
 	wallet,
-	wander,
 	x,
 	zen,
 	beacon,
 };
 
 export const AR_WALLETS = [
-	{ type: WalletEnum.wander, logo: ASSETS.wander },
+	{ type: WalletEnum.wander, logo: ASSETS.beacon }, // Using beacon logo for wander wallet
 	{ type: WalletEnum.beacon, logo: ASSETS.beacon },
 	{ type: WalletEnum.othent, logo: ASSETS.othent },
 ];
@@ -374,4 +367,53 @@ export const STORAGE = {
 	walletType: `wallet-type`,
 	profile: (id: string) => `profile-${id}`,
 	arns: (address: string) => `arns::${address}`,
+};
+
+// Token Registry - Easy to add new tokens
+export const TOKEN_REGISTRY = {
+	[AO.defaultToken]: {
+		id: AO.defaultToken,
+		name: 'Wrapped AR',
+		symbol: 'wAR',
+		logo: 'L99jaxRKQKJt9CqoJtPaieGPEhJD3wNhR4iGqc8amXs', // Correct wAR logo
+		denomination: 12,
+		description: 'Wrapped Arweave token',
+		priority: 1, // Primary token
+	},
+	'7GoQfmSOct_aUOWKM4xbKGg6DzAmOgdKwg8Kf-CbHm4': {
+		id: '7GoQfmSOct_aUOWKM4xbKGg6DzAmOgdKwg8Kf-CbHm4',
+		name: 'Wander Token',
+		symbol: 'WNDR',
+		logo: 'xUO2tQglSYsW89aLYN8ErGivZqezoDaEn95JniaCBZk', // WANDER token logo on Arweave
+		denomination: 18,
+		description: 'Wander protocol token',
+		priority: 2,
+	},
+	[AO.pixl]: {
+		id: AO.pixl,
+		name: 'PIXL Token',
+		symbol: 'PIXL',
+		logo: 'czR2tJmSr7upPpReXu6IuOc2H7RuHRRAhI7DXAUlszU', // PIXL logo
+		denomination: 6,
+		description: 'PIXL protocol token',
+		priority: 3,
+	},
+	// AO token removed due to incorrect process ID
+};
+
+// NOTE: All tokens in this registry will have their balances fetched for both profile and wallet, and the UI will display the combined total (profileBalance + walletBalance) for each token. This applies to wAR, PIXL, Wander, AO, and any future tokens.
+
+// Helper function to get available tokens
+export const getAvailableTokens = () => {
+	return Object.values(TOKEN_REGISTRY).sort((a, b) => a.priority - b.priority);
+};
+
+// Helper function to get token by ID
+export const getTokenById = (tokenId: string) => {
+	return TOKEN_REGISTRY[tokenId] || null;
+};
+
+// Helper function to get default token
+export const getDefaultToken = () => {
+	return TOKEN_REGISTRY[AO.defaultToken];
 };

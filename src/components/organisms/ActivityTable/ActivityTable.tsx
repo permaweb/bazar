@@ -10,7 +10,16 @@ import { CurrencyLine } from 'components/atoms/CurrencyLine';
 import { IconButton } from 'components/atoms/IconButton';
 import { Select } from 'components/atoms/Select';
 import { OwnerLine } from 'components/molecules/OwnerLine';
-import { ACTIVITY_SORT_OPTIONS, AO, ASSETS, HB, REDIRECTS, REFORMATTED_ASSETS, URLS } from 'helpers/config';
+import {
+	ACTIVITY_SORT_OPTIONS,
+	AO,
+	ASSETS,
+	getDefaultToken,
+	HB,
+	REDIRECTS,
+	REFORMATTED_ASSETS,
+	URLS,
+} from 'helpers/config';
 import { FormattedActivity, GqlEdge, SelectOptionType } from 'helpers/types';
 import { checkValidAddress, formatAddress, formatCount, formatDate, getRelativeDate, isFirefox } from 'helpers/utils';
 import { useLanguageProvider } from 'providers/LanguageProvider';
@@ -212,7 +221,7 @@ export default function ActivityTable(props: IProps) {
 			ExecutedOrders: [],
 		};
 
-		const swapTokens = [AO.defaultToken];
+		const swapTokens = [getDefaultToken().id];
 
 		for (const { node } of edges) {
 			const t = node.tags.reduce<Record<string, string>>((m, { name, value }) => {

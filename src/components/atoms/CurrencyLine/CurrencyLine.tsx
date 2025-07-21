@@ -1,59 +1,46 @@
 import { useSelector } from 'react-redux';
 import { Link } from 'react-router-dom';
 
-import { URLS } from 'helpers/config';
+import { TOKEN_REGISTRY, URLS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import { formatCount } from 'helpers/utils';
 import { useLanguageProvider } from 'providers/LanguageProvider';
+import { useTokenProvider } from 'providers/TokenProvider';
 import { RootState } from 'store';
 
 import * as S from './styles';
 import { IProps } from './types';
 
-export default function CurrencyLine(props: IProps) {
+export default function CurrencyLine(props: IProps & { tokenLogo?: string; tokenSymbol?: string }) {
 	const currenciesReducer = useSelector((state: RootState) => state.currenciesReducer);
-
+	const { selectedToken } = useTokenProvider();
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
 
 	function getDenominatedTokenValue(amount: number, currency: string) {
-		if (
-			props.amount !== null &&
-			currenciesReducer &&
-			currenciesReducer[currency] &&
-			currenciesReducer[currency].Denomination &&
-			currenciesReducer[currency].Denomination > 1
-		) {
-			const denomination = currenciesReducer[currency].Denomination;
+		if (props.amount === null) {
+			return `${language.loading}...`;
+		}
+		// Always use denomination from TOKEN_REGISTRY
+		const tokenInfo = TOKEN_REGISTRY[currency];
+		const denomination = tokenInfo && tokenInfo.denomination ? tokenInfo.denomination : 0;
+		if (denomination > 0) {
 			const factor = Math.pow(10, denomination);
 			const formattedAmount: string = (Math.round(amount) / factor).toFixed(denomination);
 			return formatCount(formattedAmount);
 		}
-		return `${language.loading}...`;
+		return formatCount(amount.toString());
 	}
 
 	function getCurrency() {
-		if (props.currency && currenciesReducer && currenciesReducer[props.currency]) {
-			let currency = null;
-			if (currenciesReducer[props.currency].Ticker) {
-				currency = <span>{currenciesReducer[props.currency].Ticker}</span>;
-			}
-			if (currenciesReducer[props.currency].Logo) {
-				currency = (
-					<img
-						src={getTxEndpoint(currenciesReducer[props.currency].Logo)}
-						alt={currenciesReducer[props.currency].Ticker}
-					/>
-				);
-			}
-
+		// Always use logo and symbol from TOKEN_REGISTRY
+		const tokenInfo = TOKEN_REGISTRY[props.currency];
+		if (tokenInfo) {
 			return (
-				<Link
-					to={`${URLS.asset}${props.currency}`}
-					onClick={(e: any) => (props.callback ? props.callback() : e.stopPropagation())}
-				>
-					<S.Currency>{currency}</S.Currency>
-				</Link>
+				<span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+					{tokenInfo.logo && <img src={`https://arweave.net/${tokenInfo.logo}`} alt={tokenInfo.symbol || ''} />}
+					{tokenInfo.symbol && <span>{tokenInfo.symbol}</span>}
+				</span>
 			);
 		}
 		return null;
