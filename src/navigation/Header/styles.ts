@@ -69,6 +69,29 @@ export const ActionsWrapper = styled.div`
 	gap: 20px;
 `;
 
+export const DelegationButtonWrapper = styled.div`
+	display: flex;
+	align-items: center;
+`;
+
+export const DelegationButton = styled.button`
+	height: 35px;
+	padding: 0 17.5px;
+	background: ${(props) => props.theme.colors.container.primary.background};
+	border: 1px solid ${(props) => props.theme.colors.border.primary};
+	border-radius: ${STYLING.dimensions.radius.primary};
+	color: ${(props) => props.theme.colors.font.primary};
+	font-family: ${(props) => props.theme.typography.family.alt1};
+	font-size: ${(props) => props.theme.typography.size.small};
+	font-weight: ${(props) => props.theme.typography.weight.bold};
+	cursor: pointer;
+	transition: all 0.2s ease;
+
+	&:hover {
+		background: ${(props) => props.theme.colors.container.primary.active};
+	}
+`;
+
 export const MessageWrapper = styled.div`
 	@media (max-width: ${STYLING.cutoffs.secondary}) {
 		display: none;

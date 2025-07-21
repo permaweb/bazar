@@ -7,6 +7,7 @@ import { Banner } from 'components/organisms/Banner';
 import { ASSETS, DOM, FLAGS } from 'helpers/config';
 import { Footer } from 'navigation/footer';
 import { Header } from 'navigation/Header';
+import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { usePermawebProvider } from 'providers/PermawebProvider';
 
 import * as S from './styles';
@@ -19,6 +20,7 @@ const Routes = lazy(() =>
 
 export default function App() {
 	const permawebProvider = usePermawebProvider();
+	const arweaveProvider = useArweaveProvider();
 
 	const hasCheckedProfileRef = React.useRef(false);
 
@@ -41,6 +43,11 @@ export default function App() {
 			}
 		})();
 	}, [permawebProvider.profile]);
+
+	// Debug: Log wallet address changes
+	React.useEffect(() => {
+		console.log('App: arweaveProvider.walletAddress =', arweaveProvider.walletAddress);
+	}, [arweaveProvider.walletAddress]);
 
 	return (
 		<>
