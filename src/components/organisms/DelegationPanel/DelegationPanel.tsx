@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import styled from 'styled-components';
 
 import { Button } from 'components/atoms/Button';
@@ -7,6 +8,7 @@ import { Notification } from 'components/atoms/Notification';
 import { Panel } from 'components/molecules/Panel';
 import { DELEGATION } from 'helpers/config';
 import {
+	adjustOtherDelegations,
 	calculateDelegationLimits,
 	DelegationLimits,
 	DelegationPreference,
@@ -34,6 +36,7 @@ interface DelegationPanelState {
 	processInfo: Record<string, ProcessInfo>;
 	transactionId: string | null;
 	verifying: boolean;
+	isEligible: boolean;
 }
 
 const PanelContent = styled.div`
@@ -516,6 +519,7 @@ export function DelegationPanel({ walletAddress, isOpen, onClose }: DelegationPa
 		processInfo: {},
 		transactionId: null,
 		verifying: false,
+		isEligible: true,
 	});
 
 	useEffect(() => {
@@ -531,34 +535,36 @@ export function DelegationPanel({ walletAddress, isOpen, onClose }: DelegationPa
 
 		try {
 			const delegations = await getDelegations(walletAddress);
-			console.log('Delegation panel data:', delegations);
-			const limits = calculateDelegationLimits(delegations);
-			console.log('Calculated limits:', limits);
+			const limits = calculateDelegationLimits(delegations, DELEGATION.PIXL_PROCESS, walletAddress);
 
 			const processInfo: Record<string, ProcessInfo> = {};
-
+			// Fetch process info for both the delegation process and its Token-Process if present
 			const processInfoPromises = delegations.map(async (delegation) => {
 				try {
 					const info = await getProcessInfo(delegation.walletTo);
+					if (info) {
+						processInfo[delegation.walletTo] = info;
+						if (info['Token-Process']) {
+							const tokenInfo = await getProcessInfo(info['Token-Process']);
+							if (tokenInfo) {
+								processInfo[info['Token-Process']] = tokenInfo;
+							}
+						}
+					}
 					return { processId: delegation.walletTo, info };
 				} catch (error) {
 					console.warn(`Failed to load process info for ${delegation.walletTo}:`, error);
 					return { processId: delegation.walletTo, info: null };
 				}
 			});
-
-			const processInfoResults = await Promise.all(processInfoPromises);
-			processInfoResults.forEach(({ processId, info }) => {
-				if (info) {
-					processInfo[processId] = info;
-				}
-			});
+			await Promise.all(processInfoPromises);
 
 			const processNames: Record<string, string> = {};
 			Object.entries(processInfo).forEach(([processId, info]) => {
 				processNames[processId] = info.name;
 			});
 
+			const isEligible = delegations.length > 0 || limits.currentPixlDelegation > 0 || limits.totalOtherDelegations > 0;
 			setState((prev) => ({
 				...prev,
 				currentDelegations: delegations,
@@ -567,6 +573,7 @@ export function DelegationPanel({ walletAddress, isOpen, onClose }: DelegationPa
 				processNames,
 				processInfo,
 				loading: false,
+				isEligible,
 			}));
 		} catch (error) {
 			console.error('Failed to load delegations:', error);
@@ -598,12 +605,16 @@ export function DelegationPanel({ walletAddress, isOpen, onClose }: DelegationPa
 		setState((prev) => ({ ...prev, loading: true, error: null, success: null, transactionId: null }));
 
 		try {
-			// Check if we need auto-adjust
 			const needsAutoAdjust =
 				state.currentLimits && state.selectedPercentage > state.currentLimits.maxPossibleDelegation;
 
-			// Submit delegation and get transaction ID
-			const transactionId = await setPixlDelegation(walletAddress, state.selectedPercentage, state.adjustOthers);
+			// If auto-adjust is needed and checked, adjust other delegations first
+			if (needsAutoAdjust && state.adjustOthers) {
+				await adjustOtherDelegations(walletAddress, state.selectedPercentage);
+			}
+
+			// Now set the PIXL delegation
+			const transactionId = await setPixlDelegation(walletAddress, state.selectedPercentage);
 
 			setState((prev) => ({
 				...prev,
@@ -612,10 +623,7 @@ export function DelegationPanel({ walletAddress, isOpen, onClose }: DelegationPa
 				verifying: true,
 			}));
 
-			// Wait a moment for the transaction to be processed
 			await new Promise((resolve) => setTimeout(resolve, 2000));
-
-			// Verify the changes by reloading delegations
 			await loadDelegations();
 
 			let successMessage = `Delegation submitted successfully! Transaction: ${transactionId.substring(0, 8)}...`;
@@ -708,65 +716,70 @@ export function DelegationPanel({ walletAddress, isOpen, onClose }: DelegationPa
 							<PieChart>
 								<svg width="120" height="120" viewBox="0 0 120 120">
 									{(() => {
+										// Only include delegations with factor > 0
+										const filteredDelegations = state.currentDelegations.filter((d) => d.factor > 0);
+										if (filteredDelegations.length === 1) {
+											// Single token at 100%: render a solid circle
+											const color = getTokenColor(filteredDelegations[0], state.processInfo);
+											return <circle cx="60" cy="60" r="60" fill={color} />;
+										}
 										let currentAngle = 0;
-										const totalDelegations = state.currentDelegations.reduce((sum, d) => sum + d.factor / 100, 0);
-
-										return state.currentDelegations.map((delegation, index) => {
+										const totalDelegations = filteredDelegations.reduce((sum, d) => sum + d.factor / 100, 0);
+										return filteredDelegations.map((delegation, index) => {
 											const percentage = delegation.factor / 100;
 											const angle = (percentage / totalDelegations) * 2 * Math.PI;
-
 											if (percentage === 0) return null;
-
 											const startAngle = currentAngle;
 											const endAngle = currentAngle + angle;
-
 											const x1 = 60 + 60 * Math.cos(startAngle);
 											const y1 = 60 + 60 * Math.sin(startAngle);
 											const x2 = 60 + 60 * Math.cos(endAngle);
 											const y2 = 60 + 60 * Math.sin(endAngle);
-
 											const largeArcFlag = angle > Math.PI ? 1 : 0;
 											const path = `M 60 60 L ${x1} ${y1} A 60 60 0 ${largeArcFlag} 1 ${x2} ${y2} Z`;
-
 											currentAngle = endAngle;
-
 											const color = getTokenColor(delegation, state.processInfo);
-
 											return <path key={`delegation-${index}`} d={path} fill={color} />;
 										});
 									})()}
 								</svg>
 							</PieChart>
 							<PieChartLegend>
-								{state.currentDelegations.map((delegation, index) => {
-									const percentage = delegation.factor / 100;
-									if (percentage === 0) return null;
-
-									const isPixl = delegation.walletTo === DELEGATION.PIXL_PROCESS;
-									const isAO = delegation.walletTo === '0syT13r0s0tgPmIed95bJnuSqaD29HQNN8D3ElLSrsc';
-									const isOwnWallet = delegation.walletTo === walletAddress;
-
-									// Only show PIXL and AO in the legend
-									if (!isPixl && !isAO && !isOwnWallet) return null;
-
-									let name = 'Unknown';
-									if (isPixl) {
-										name = 'PIXL';
-									} else if (isAO || isOwnWallet) {
-										name = 'AO (Self)';
-									}
-
-									const color = getTokenColor(delegation, state.processInfo);
-
-									return (
-										<LegendItem key={`legend-${index}`}>
-											<LegendColor color={color} />
-											<span>
-												{name}: {percentage}%
-											</span>
-										</LegendItem>
-									);
-								})}
+								{state.currentDelegations
+									.filter((d) => d.factor > 0)
+									.map((delegation, index) => {
+										const percentage = delegation.factor / 100;
+										if (percentage === 0) return null;
+										const isPixl = delegation.walletTo === DELEGATION.PIXL_PROCESS;
+										const isAO = delegation.walletTo === '0syT13r0s0tgPmIed95bJnuSqaD29HQNN8D3ElLSrsc';
+										const isOwnWallet = delegation.walletTo === walletAddress;
+										// Only show PIXL and AO in the legend
+										if (!isPixl && !isAO && !isOwnWallet) return null;
+										let name = 'Unknown';
+										if (isPixl) {
+											name = 'PIXL';
+										} else if (isAO || isOwnWallet) {
+											name = 'AO (Self)';
+										}
+										const color = getTokenColor(delegation, state.processInfo);
+										return (
+											<LegendItem key={`legend-${index}`}>
+												<LegendColor color={color} />
+												{isPixl ? (
+													<a
+														href="/#/asset/DM3FoZUq_yebASPhgd8pEIRIzDW6muXEhxz5-JwbZwo"
+														style={{ color, textDecoration: 'underline' }}
+													>
+														{name}: {percentage}%
+													</a>
+												) : (
+													<span>
+														{name}: {percentage}%
+													</span>
+												)}
+											</LegendItem>
+										);
+									})}
 							</PieChartLegend>
 						</PieChartContainer>
 
@@ -827,16 +840,19 @@ export function DelegationPanel({ walletAddress, isOpen, onClose }: DelegationPa
 							<OtherDelegationsText>
 								Maximum possible delegation to PIXL: <strong>{state.currentLimits.maxPossibleDelegation}%</strong>
 							</OtherDelegationsText>
-							<CheckboxWrapper isHighlighted={needsAdjustment && !state.adjustOthers}>
-								<Checkbox
-									type="checkbox"
-									id="adjust-delegations"
-									checked={state.adjustOthers}
-									onChange={(e) => setState((prev) => ({ ...prev, adjustOthers: e.target.checked }))}
-									style={{ display: 'none' }}
-								/>
-								<span>{state.adjustOthers ? '✅' : '🔳'} Automatically adjust other delegations if needed</span>
-							</CheckboxWrapper>
+							{/* Only show adjust others checkbox if there are actual other token delegations */}
+							{state.currentLimits.totalOtherDelegations > 0 && (
+								<CheckboxWrapper isHighlighted={needsAdjustment && !state.adjustOthers}>
+									<Checkbox
+										type="checkbox"
+										id="adjust-delegations"
+										checked={state.adjustOthers}
+										onChange={(e) => setState((prev) => ({ ...prev, adjustOthers: e.target.checked }))}
+										style={{ display: 'none' }}
+									/>
+									<span>{state.adjustOthers ? '✅' : '🔳'} Automatically adjust other delegations if needed</span>
+								</CheckboxWrapper>
+							)}
 						</OtherDelegationsBox>
 
 						{/* Your Delegations List */}
@@ -912,18 +928,38 @@ export function DelegationPanel({ walletAddress, isOpen, onClose }: DelegationPa
 						</DelegationsListSection>
 
 						{/* Warning Message */}
-						{needsAdjustment && !state.adjustOthers && (
-							<WarningMessage>
-								⚠️ Over limit: {state.selectedPercentage}% &gt; {state.currentLimits.maxPossibleDelegation}%
-							</WarningMessage>
-						)}
+						{needsAdjustment &&
+							state.currentLimits &&
+							state.currentLimits.totalOtherDelegations > 0 &&
+							!state.adjustOthers && (
+								<WarningMessage>
+									⚠️ Over limit: {state.selectedPercentage}% &gt; {state.currentLimits.maxPossibleDelegation}%
+								</WarningMessage>
+							)}
 
 						{/* Confirm Button */}
+						{state.currentLimits && state.currentLimits.maxPossibleDelegation <= 0 && (
+							<WarningMessage>You have no available balance to delegate.</WarningMessage>
+						)}
+						{!state.isEligible && (
+							<WarningMessage>
+								You are not eligible to delegate. You must have staked DAI, stETH, AR, or be participating in an AO
+								yield pool to delegate to PIXL.
+							</WarningMessage>
+						)}
 						<ConfirmButton
 							type="primary"
 							label="Confirm delegation"
 							handlePress={handleDelegationSubmit}
-							disabled={state.loading || (needsAdjustment && !state.adjustOthers)}
+							disabled={
+								state.loading ||
+								(needsAdjustment &&
+									state.currentLimits &&
+									state.currentLimits.totalOtherDelegations > 0 &&
+									!state.adjustOthers) ||
+								(state.currentLimits && state.currentLimits.maxPossibleDelegation <= 0) ||
+								!state.isEligible
+							}
 						/>
 					</>
 				)}

@@ -64,7 +64,8 @@ export const getDelegations = async (walletAddress: string): Promise<DelegationP
  */
 export const calculateDelegationLimits = (
 	currentDelegations: DelegationPreference[],
-	pixlProcessId: string = DELEGATION.PIXL_PROCESS
+	pixlProcessId: string = DELEGATION.PIXL_PROCESS,
+	walletAddress?: string
 ): DelegationLimits => {
 	let totalOtherDelegations = 0;
 	let currentPixlDelegation = 0;
@@ -72,7 +73,8 @@ export const calculateDelegationLimits = (
 	currentDelegations.forEach((pref) => {
 		if (pref.walletTo === pixlProcessId) {
 			currentPixlDelegation = pref.factor / 100; // Convert to percentage
-		} else {
+		} else if (pref.walletTo !== walletAddress) {
+			// Don't count AO self-delegation as "other" - it's available space
 			totalOtherDelegations += pref.factor / 100;
 		}
 	});
@@ -90,49 +92,53 @@ export const calculateDelegationLimits = (
 /**
  * Set delegation for PIXL token
  */
-export const setPixlDelegation = async (
-	walletAddress: string,
-	percentage: number,
-	adjustOthers = false
-): Promise<string> => {
+export const setPixlDelegation = async (walletAddress: string, percentage: number): Promise<string> => {
 	const signer = createDataItemSigner(window.arweaveWallet);
-	const factor = percentage * 100; // Convert percentage to basis points
+	const factor = percentage * 100;
 
-	try {
-		// Get current delegations to check if we need to adjust
-		const currentDelegations = await getDelegations(walletAddress);
-		const limits = calculateDelegationLimits(currentDelegations);
+	console.log(`=== DELEGATION DEBUG ===`);
+	console.log(`Setting PIXL delegation: ${percentage}% (${factor} basis points)`);
 
-		// If user wants to exceed available space and chose to adjust others
-		if (percentage > limits.maxPossibleDelegation && adjustOthers) {
-			await adjustOtherDelegations(walletAddress, percentage);
-		}
+	// 1. Get current delegations
+	const currentDelegations = await getDelegations(walletAddress);
+	console.log('Current delegations before update:', currentDelegations);
 
-		// Set the main delegation
-		const data = JSON.stringify({
-			walletFrom: walletAddress,
-			walletTo: DELEGATION.PIXL_PROCESS,
-			factor: factor,
-		});
+	// 2. Set the PIXL delegation (let AO system handle the remainder)
+	console.log(`Setting PIXL delegation to ${factor} basis points`);
+	const data = JSON.stringify({
+		walletFrom: walletAddress,
+		walletTo: DELEGATION.PIXL_PROCESS,
+		factor: factor,
+	});
 
-		const messageId = await message({
-			process: DELEGATION.CONTROLLER,
-			signer: signer,
-			data: data,
-			tags: [
-				{ name: 'Action', value: 'Set-Delegation' },
-				{ name: 'Data-Protocol', value: 'ao' },
-				{ name: 'Type', value: 'Message' },
-				{ name: 'Variant', value: 'ao.TN.1' },
-			],
-			anchor: DELEGATION.ANCHOR,
-		});
+	const messageId = await message({
+		process: DELEGATION.CONTROLLER,
+		signer: signer,
+		data: data,
+		tags: [
+			{ name: 'Action', value: 'Set-Delegation' },
+			{ name: 'Data-Protocol', value: 'ao' },
+			{ name: 'Type', value: 'Message' },
+			{ name: 'Variant', value: 'ao.TN.1' },
+		],
+		anchor: DELEGATION.ANCHOR,
+	});
+	console.log('PIXL delegation message ID:', messageId);
 
-		return messageId;
-	} catch (error) {
-		console.error('Error setting delegation:', error);
-		throw error;
-	}
+	// 3. Wait for the message to be processed
+	console.log('Waiting for message to be processed...');
+	await new Promise((resolve) => setTimeout(resolve, 3000));
+
+	// 4. Verify the final state
+	const finalDelegations = await getDelegations(walletAddress);
+	console.log('Final delegations after update:', finalDelegations);
+
+	// Calculate total from final state
+	const totalFactor = finalDelegations.reduce((sum, pref) => sum + pref.factor, 0);
+	console.log(`Final total factor: ${totalFactor} (should be 10000)`);
+	console.log(`=== END DELEGATION DEBUG ===`);
+
+	return messageId;
 };
 
 /**
@@ -216,6 +222,7 @@ export const getProcessInfo = async (processId: string): Promise<ProcessInfo> =>
 			const tokenLogoTag = tags.find((tag) => tag.name === 'Token-Logo');
 			const tickerTag = tags.find((tag) => tag.name === 'Ticker');
 			const denominationTag = tags.find((tag) => tag.name === 'Denomination');
+			const tokenProcessTag = tags.find((tag) => tag.name === 'Token-Process');
 
 			const logoValue = logoTag?.value || tokenLogoTag?.value;
 
@@ -225,6 +232,8 @@ export const getProcessInfo = async (processId: string): Promise<ProcessInfo> =>
 				logo: logoValue,
 				ticker: tickerTag?.value,
 				denomination: denominationTag?.value ? parseInt(denominationTag.value) : undefined,
+				// Add Token-Process for asset linking
+				...(tokenProcessTag ? { ['Token-Process']: tokenProcessTag.value } : {}),
 			};
 		}
 	} catch (error) {

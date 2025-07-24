@@ -379,7 +379,7 @@ export const STORAGE = {
 // Delegation Configuration
 export const DELEGATION = {
 	CONTROLLER: 'cuxSKjGJ-WDB9PzSkVkVVrIBSh3DrYHYz44usQOj5yE',
-	PIXL_PROCESS: '3eZ6_ry6FD9CB58ImCQs6Qx_rJdDUGhz-D2W1AqzHD8',
+	PIXL_PROCESS: '3eZ6_ry6FD9CB58ImCQs6Qx_rJdDUGhz-D2W1AqzHD8', // PIXL Fair Launch Process (from Decent Land walkthrough)
 	ANCHOR: '00000000000000000000000000007046',
 	BASIS_POINTS: {
 		FULL: 10000, // 100%
