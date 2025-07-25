@@ -1,5 +1,6 @@
 import React from 'react';
 
+import { TOKEN_REGISTRY } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import { formatCount, getTotalTokenBalance } from 'helpers/utils';
 import { useLanguageProvider } from 'providers/LanguageProvider';
@@ -47,7 +48,16 @@ export default function TokenSelector(props: TokenSelectorProps) {
 		const walletBalance =
 			typeof balance.walletBalance === 'string' ? Number(balance.walletBalance) : balance.walletBalance;
 
-		return getTotalTokenBalance({ profileBalance, walletBalance });
+		const totalRawBalance = getTotalTokenBalance({ profileBalance, walletBalance });
+
+		// Convert raw balance to human-readable amount using token denomination
+		const tokenInfo = TOKEN_REGISTRY[tokenId];
+		if (tokenInfo && tokenInfo.denomination && totalRawBalance !== null) {
+			const humanReadableBalance = totalRawBalance / Math.pow(10, tokenInfo.denomination);
+			return humanReadableBalance;
+		}
+
+		return totalRawBalance;
 	};
 
 	return (
@@ -61,7 +71,7 @@ export default function TokenSelector(props: TokenSelectorProps) {
 								<img src={getTxEndpoint(selectedToken.logo)} alt={selectedToken.name} />
 							</S.TokenLogo>
 							<S.TokenInfo>
-								<S.TokenName>{selectedToken.name}</S.TokenName>
+								<S.TokenName>{selectedToken.name.replace(' Token', '')}</S.TokenName>
 								<S.TokenSymbol>{selectedToken.symbol}</S.TokenSymbol>
 							</S.TokenInfo>
 							<S.HealthWrapper>
@@ -93,13 +103,15 @@ export default function TokenSelector(props: TokenSelectorProps) {
 												<img src={getTxEndpoint(token.logo)} alt={token.name} />
 											</S.TokenLogo>
 											<S.TokenInfo>
-												<S.TokenName>{token.name}</S.TokenName>
+												<S.TokenName>{token.name.replace(' Token', '')}</S.TokenName>
 												<S.TokenSymbol>{token.symbol}</S.TokenSymbol>
-												{balance !== null && <S.TokenBalance>{formatCount(balance.toString())}</S.TokenBalance>}
 											</S.TokenInfo>
-											<S.HealthWrapper>
-												<TokenHealthIndicator tokenId={token.id} operation="orders" showDetails={false} />
-											</S.HealthWrapper>
+											<S.BalanceAndHealth>
+												{balance !== null && <S.TokenBalance>{formatCount(balance.toString())}</S.TokenBalance>}
+												<S.HealthWrapper>
+													<TokenHealthIndicator tokenId={token.id} operation="orders" showDetails={false} />
+												</S.HealthWrapper>
+											</S.BalanceAndHealth>
 										</S.TokenOption>
 									</S.DropdownOption>
 								);

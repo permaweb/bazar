@@ -350,14 +350,25 @@ export default function AssetActionMarketOrders(props: IProps) {
 		let calculatedUnitPrice = null;
 
 		if (unitPrice && Number(unitPrice) > 0) {
-			calculatedUnitPrice = unitPrice as any;
-			if (transferDenomination) {
-				const decimalPlaces = (unitPrice.toString().split('.')[1] || '').length;
-				const updatedUnitPrice =
-					decimalPlaces >= reverseDenomination(transferDenomination)
-						? (unitPrice as any).toFixed(reverseDenomination(transferDenomination))
-						: unitPrice;
-				calculatedUnitPrice = BigInt(Math.floor(Number(updatedUnitPrice) * transferDenomination));
+			if (props.type === 'sell') {
+				// For sell orders, unit price is already in the token being received (e.g., PIXL)
+				// No conversion needed - just convert to raw units using transferDenomination
+				if (transferDenomination) {
+					calculatedUnitPrice = BigInt(Math.floor(Number(unitPrice) * transferDenomination));
+				} else {
+					calculatedUnitPrice = BigInt(Math.floor(Number(unitPrice)));
+				}
+			} else {
+				// For buy orders, convert unit price to raw units
+				calculatedUnitPrice = unitPrice as any;
+				if (transferDenomination) {
+					const decimalPlaces = (unitPrice.toString().split('.')[1] || '').length;
+					const updatedUnitPrice =
+						decimalPlaces >= reverseDenomination(transferDenomination)
+							? (unitPrice as any).toFixed(reverseDenomination(transferDenomination))
+							: unitPrice;
+					calculatedUnitPrice = BigInt(Math.floor(Number(updatedUnitPrice) * transferDenomination));
+				}
 			}
 		}
 
@@ -550,28 +561,23 @@ export default function AssetActionMarketOrders(props: IProps) {
 			) {
 				price = BigInt(0);
 			} else {
-				let calculatedUnitPrice = unitPrice as any;
-				if (transferDenomination) {
-					const decimalPlaces = (unitPrice.toString().split('.')[1] || '').length;
-					const updatedUnitPrice =
-						decimalPlaces >= reverseDenomination(transferDenomination)
-							? (unitPrice as any).toFixed(reverseDenomination(transferDenomination))
-							: unitPrice;
+				// Get the unit price in raw units (already converted by getUnitPrice)
+				const calculatedUnitPrice = getUnitPrice();
 
-					calculatedUnitPrice = BigInt(
-						Math.floor(Number(updatedUnitPrice <= MIN_PRICE ? 0 : updatedUnitPrice) * transferDenomination)
-					);
-				}
-
+				// Get the quantity in raw units
 				let calculatedQuantity = currentOrderQuantity;
-				if (denomination && denomination > 1) {
+				if (props.type === 'sell' && transferDenomination && transferDenomination > 1) {
+					// For sell orders, use transferDenomination (token being received)
+					calculatedQuantity = Number(currentOrderQuantity) * Number(transferDenomination);
+				} else if (denomination && denomination > 1) {
+					// For other orders (transfer), use denomination (asset being transferred)
 					calculatedQuantity = Number(currentOrderQuantity) * Number(denomination);
 				}
 
 				try {
 					price =
-						BigInt(calculatedQuantity) && BigInt(calculatedUnitPrice)
-							? BigInt(calculatedQuantity) * BigInt(calculatedUnitPrice)
+						calculatedUnitPrice && BigInt(calculatedQuantity)
+							? calculatedUnitPrice * BigInt(calculatedQuantity)
 							: BigInt(0);
 				} catch (e: any) {
 					console.error(e);
@@ -670,8 +676,12 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 	function getTotalPriceDisplay() {
 		let amount = BigInt(getTotalOrderAmount());
-		if (denomination && denomination > 1) amount = BigInt(amount) / BigInt(denomination);
+
+		// CurrencyLine component already handles denomination conversion
+		// So we don't need to convert here - just pass the raw amount
+
 		const orderCurrency = tokenProvider.selectedToken.id;
+
 		return (
 			<CurrencyLine
 				amount={amount ? amount.toString() : '0'}
@@ -927,6 +937,11 @@ export default function AssetActionMarketOrders(props: IProps) {
 						</S.TotalsWrapper>
 						<S.FieldsWrapper>
 							{props.type === 'buy' && (
+								<S.FieldWrapper>
+									<TokenSelector showLabel={true} />
+								</S.FieldWrapper>
+							)}
+							{props.type === 'sell' && (
 								<S.FieldWrapper>
 									<TokenSelector showLabel={true} />
 								</S.FieldWrapper>

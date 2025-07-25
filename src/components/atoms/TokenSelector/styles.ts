@@ -86,11 +86,19 @@ export const TokenSymbol = styled.span`
 `;
 
 export const TokenBalance = styled.span`
-	font-size: 11px;
-	color: #999999;
-	font-weight: 400;
+	font-size: 13px;
+	color: #ffffff;
+	font-weight: 500;
 	line-height: 1.2;
-	opacity: 0.8;
+	opacity: 0.9;
+`;
+
+export const BalanceAndHealth = styled.div`
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	gap: 4px;
+	margin-left: auto;
 `;
 
 export const HealthWrapper = styled.div`
@@ -107,10 +115,10 @@ export const CustomSelectWrapper = styled.div`
 export const CustomSelect = styled.div`
 	width: 100%;
 	padding: 12px 16px;
-	border: 1px solid var(--border-primary);
+	border: 1px solid #333;
 	border-radius: 8px;
-	background: var(--background-primary);
-	color: var(--text-primary);
+	background: #1a1a1a;
+	color: #ffffff;
 	font-size: 14px;
 	cursor: pointer;
 	display: flex;
@@ -122,13 +130,13 @@ export const CustomSelect = styled.div`
 
 	&:hover {
 		border-color: var(--accent-primary);
-		background: var(--background-secondary);
+		background: #2a2a2a;
 	}
 
 	&.active {
 		border-color: var(--accent-primary);
 		box-shadow: 0 0 0 2px var(--accent-primary-alpha);
-		background: var(--background-secondary);
+		background: #2a2a2a;
 	}
 `;
 
@@ -143,7 +151,7 @@ export const DropdownArrow = styled.div`
 	display: flex;
 	align-items: center;
 	transition: transform 0.2s ease;
-	color: var(--text-secondary);
+	color: #cccccc;
 
 	&.open {
 		transform: rotate(180deg);
@@ -181,19 +189,41 @@ export const DropdownOption = styled.div`
 	cursor: pointer;
 	transition: background-color 0.2s ease;
 	border-bottom: 1px solid #333;
-	background: #1a1a1a;
+	background: #1a1a1a !important;
+	color: #ffffff !important;
 
 	&:hover {
-		background: #2a2a2a;
+		background: #2a2a2a !important;
+		color: #ffffff !important;
 	}
 
 	&.selected {
-		background: #3a3a3a;
+		background: #3a3a3a !important;
 		border-left: 3px solid var(--accent-primary);
+		color: #ffffff !important;
+	}
+
+	&:first-child {
+		background: #1a1a1a !important;
+		color: #ffffff !important;
 	}
 
 	&:last-child {
 		border-radius: 0 0 6px 6px;
 		border-bottom: none;
+	}
+
+	* {
+		color: inherit !important;
+	}
+
+	&.selected * {
+		color: #ffffff !important;
+	}
+
+	&.selected .TokenName,
+	&.selected .TokenSymbol,
+	&.selected .TokenBalance {
+		color: #ffffff !important;
 	}
 `;
