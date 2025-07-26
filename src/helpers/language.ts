@@ -187,6 +187,8 @@ export const language = {
 		transfer: `Transfer`,
 		transferWar: `Transfer Wrapped AR`,
 		unitPrice: `Unit price`,
+		saleUnitPriceTooltip: `Set the price per unit for your listing`,
+		buyUnitPriceTooltip: `Set a maximum price you are willing to pay per unit. Leave empty for market order.`,
 		updating: `Updating`,
 		updatingAsset: `Updating asset`,
 		updatingUCM: `Updating UCM`,

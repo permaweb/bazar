@@ -5,6 +5,7 @@ import { cancelOrder } from '@permaweb/ucm';
 import { Button } from 'components/atoms/Button';
 import { Notification } from 'components/atoms/Notification';
 import { Modal } from 'components/molecules/Modal';
+import { AO } from 'helpers/config';
 import { NotificationType } from 'helpers/types';
 import * as windowUtils from 'helpers/window';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
@@ -33,7 +34,7 @@ export default function OrderCancel(props: IProps) {
 				const cancelOrderId = await cancelOrder(
 					permawebProvider.deps,
 					{
-						orderbookId: props.listing.orderbookId,
+						orderbookId: AO.ucm, // Use UCM process ID for UCM orders
 						orderId: props.listing.id,
 						creatorId: permawebProvider.profile.id,
 						dominantToken: props.listing.token,
@@ -41,19 +42,21 @@ export default function OrderCancel(props: IProps) {
 					},
 					(args: { processing: boolean; success: boolean; message: string }) => {
 						console.log(args.message);
+						if (args.success) {
+							setResponse({ status: 'success', message: `${language.orderCancelled}!` });
+							setCancelProcessed(true);
+							permawebProvider.setToggleTokenBalanceUpdate(!permawebProvider.toggleTokenBalanceUpdate);
+							props.toggleUpdate();
+							setShowConfirmation(false);
+							setCancelProcessed(false);
+							windowUtils.scrollTo(0, 0, 'smooth');
+						} else {
+							setResponse({ status: 'warning', message: args.message ?? 'Error cancelling order' });
+						}
 					}
 				);
 
 				console.log(`Order Cancellation ID: ${cancelOrderId}`);
-
-				setResponse({ status: 'success', message: `${language.orderCancelled}!` });
-
-				setCancelProcessed(true);
-				permawebProvider.setToggleTokenBalanceUpdate(!permawebProvider.toggleTokenBalanceUpdate);
-				props.toggleUpdate();
-				setShowConfirmation(false);
-				setCancelProcessed(false);
-				windowUtils.scrollTo(0, 0, 'smooth');
 			} catch (e: any) {
 				console.error(e);
 				setResponse({ status: 'warning', message: e.message ?? 'Error cancelling order' });

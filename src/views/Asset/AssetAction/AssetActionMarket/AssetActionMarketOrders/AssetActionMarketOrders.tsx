@@ -125,7 +125,14 @@ export default function AssetActionMarketOrders(props: IProps) {
 			}
 
 			if (props.asset.orderbook?.orders && props.asset.orderbook?.orders.length > 0) {
-				const salesBalances = props.asset.orderbook?.orders.map((order: AssetOrderType) => {
+				// Only include sell orders (where the creator is selling the asset token)
+				const sellOrders = props.asset.orderbook?.orders.filter((order: AssetOrderType) => {
+					// Sell orders have the asset token as the dominant token (order.token)
+					// Buy orders have the asset token as the swap token (order.currency)
+					return order.token === props.asset.data.id;
+				});
+
+				const salesBalances = sellOrders.map((order: AssetOrderType) => {
 					return Number(order.quantity);
 				});
 
@@ -236,15 +243,23 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 			let dominantToken = null;
 			let swapToken = null;
+			let orderQuantity = null;
 
 			switch (props.type) {
 				case 'buy':
+					// For buy orders: we're selling AR to buy the asset
+					// dominantToken = what we're selling (AR), swapToken = what we're buying (asset)
 					dominantToken = AO.defaultToken;
 					swapToken = props.asset.data.id;
+					// For buy orders, send the asset quantity we want to buy, not the AR cost
+					orderQuantity = currentOrderQuantity.toString();
 					break;
 				case 'sell':
+					// For sell orders: we're selling the asset to buy AR
+					// dominantToken = what we're selling (asset), swapToken = what we're buying (AR)
 					dominantToken = props.asset.data.id;
 					swapToken = AO.defaultToken;
+					orderQuantity = transferQuantity;
 					break;
 				default:
 					break;
@@ -259,7 +274,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 					creatorId: permawebProvider.profile.id,
 					dominantToken: dominantToken,
 					swapToken: swapToken,
-					quantity: transferQuantity,
+					quantity: orderQuantity,
 					action: action,
 				};
 
@@ -298,11 +313,13 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 		switch (props.type) {
 			case 'buy':
+				// For buy orders: send the quantity of AR tokens (total cost)
 				transferQuantity = getTotalOrderAmount().toString();
 				if (denomination) transferQuantity = (BigInt(transferQuantity) / BigInt(denomination)).toString();
 				break;
 			case 'sell':
 			case 'transfer':
+				// For sell orders: send the quantity of asset tokens
 				if (denomination) transferQuantity = Math.floor(Number(currentOrderQuantity) * denomination);
 				break;
 		}
@@ -474,36 +491,79 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 	function getTotalOrderAmount() {
 		if (props.type === 'buy') {
-			if (props.asset && props.asset.orderbook?.orders) {
-				let sortedOrders = props.asset.orderbook?.orders.sort(
-					(a: AssetOrderType, b: AssetOrderType) => Number(a.price) - Number(b.price)
-				);
+			// If user specified a price, this is a limit buy order
+			if (unitPrice && Number(unitPrice) > 0) {
+				let price: bigint = BigInt(0);
+				if (
+					isNaN(Number(unitPrice)) ||
+					isNaN(Number(currentOrderQuantity)) ||
+					Number(currentOrderQuantity) < 0 ||
+					Number(unitPrice) < 0
+				) {
+					price = BigInt(0);
+				} else {
+					let calculatedUnitPrice = unitPrice as any;
+					if (transferDenomination) {
+						const decimalPlaces = (unitPrice.toString().split('.')[1] || '').length;
+						const updatedUnitPrice =
+							decimalPlaces >= reverseDenomination(transferDenomination)
+								? (unitPrice as any).toFixed(reverseDenomination(transferDenomination))
+								: unitPrice;
 
-				let totalQuantity: bigint = BigInt(0);
-				let totalPrice: bigint = BigInt(0);
+						calculatedUnitPrice = BigInt(
+							Math.floor(Number(updatedUnitPrice <= MIN_PRICE ? 0 : updatedUnitPrice) * transferDenomination)
+						);
+					}
 
-				for (let i = 0; i < sortedOrders.length; i++) {
-					const quantity = BigInt(Math.floor(Number(sortedOrders[i].quantity)));
-					const price = BigInt(Math.floor(Number(sortedOrders[i].price)));
+					let calculatedQuantity = currentOrderQuantity;
+					if (denomination && denomination > 1) {
+						calculatedQuantity = Number(currentOrderQuantity) * Number(denomination);
+					}
 
-					let inputQuantity: any;
-					inputQuantity = denomination
-						? BigInt(Math.floor((currentOrderQuantity as number) * denomination))
-						: BigInt(Math.floor(currentOrderQuantity as any));
-
-					if (quantity >= inputQuantity - totalQuantity) {
-						const remainingQty = inputQuantity - totalQuantity;
-
-						totalQuantity += remainingQty;
-						totalPrice += remainingQty * price;
-						break;
-					} else {
-						totalQuantity += quantity;
-						totalPrice += quantity * price;
+					try {
+						price =
+							BigInt(calculatedQuantity) && BigInt(calculatedUnitPrice)
+								? BigInt(calculatedQuantity) * BigInt(calculatedUnitPrice)
+								: BigInt(0);
+					} catch (e: any) {
+						console.error(e);
+						price = BigInt(0);
 					}
 				}
-				return totalPrice;
-			} else return 0;
+				return price;
+			} else {
+				// Market buy order - calculate based on existing sell orders
+				if (props.asset && props.asset.orderbook?.orders) {
+					let sortedOrders = props.asset.orderbook?.orders.sort(
+						(a: AssetOrderType, b: AssetOrderType) => Number(a.price) - Number(b.price)
+					);
+
+					let totalQuantity: bigint = BigInt(0);
+					let totalPrice: bigint = BigInt(0);
+
+					for (let i = 0; i < sortedOrders.length; i++) {
+						const quantity = BigInt(Math.floor(Number(sortedOrders[i].quantity)));
+						const price = BigInt(Math.floor(Number(sortedOrders[i].price)));
+
+						let inputQuantity: any;
+						inputQuantity = denomination
+							? BigInt(Math.floor((currentOrderQuantity as number) * denomination))
+							: BigInt(Math.floor(currentOrderQuantity as any));
+
+						if (quantity >= inputQuantity - totalQuantity) {
+							const remainingQty = inputQuantity - totalQuantity;
+
+							totalQuantity += remainingQty;
+							totalPrice += remainingQty * price;
+							break;
+						} else {
+							totalQuantity += quantity;
+							totalPrice += quantity * price;
+						}
+					}
+					return totalPrice;
+				} else return 0;
+			}
 		} else {
 			let price: bigint = BigInt(0);
 			if (
@@ -580,7 +640,11 @@ export default function AssetActionMarketOrders(props: IProps) {
 		)
 			return true;
 		if (Number(currentOrderQuantity) > maxOrderQuantity) return true;
-		if (props.type === 'sell' && (Number(unitPrice) <= 0 || Number(unitPrice) <= MIN_PRICE || isNaN(Number(unitPrice))))
+		if (
+			(props.type === 'sell' || props.type === 'buy') &&
+			unitPrice &&
+			(Number(unitPrice) <= 0 || Number(unitPrice) <= MIN_PRICE || isNaN(Number(unitPrice)))
+		)
 			return true;
 		if (props.type === 'transfer' && (!transferRecipient || !checkValidAddress(transferRecipient))) return true;
 		if (insufficientBalance) return true;
@@ -933,6 +997,29 @@ export default function AssetActionMarketOrders(props: IProps) {
 									/>
 								</S.FieldWrapper>
 							)}
+							{props.type === 'buy' && (
+								<S.FieldWrapper>
+									<FormField
+										type={'number'}
+										label={language.unitPrice}
+										value={isNaN(Number(unitPrice)) ? '' : unitPrice}
+										onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleUnitPriceInput(e)}
+										disabled={
+											!arProvider.walletAddress ||
+											!permawebProvider.profile ||
+											!permawebProvider.profile.id ||
+											Number(currentOrderQuantity) <= 0 ||
+											orderLoading
+										}
+										invalid={{
+											status: Number(unitPrice) < 0 || (unitPrice && Number(unitPrice) <= MIN_PRICE),
+											message: null,
+										}}
+										hideErrorMessage
+										tooltip={language.buyUnitPriceTooltip}
+									/>
+								</S.FieldWrapper>
+							)}
 							{props.type === 'transfer' && (
 								<S.FieldWrapper>
 									<FormField
@@ -982,11 +1069,13 @@ export default function AssetActionMarketOrders(props: IProps) {
 										<span>{language.quantityMustBeInteger}</span>
 									</S.MessageWrapper>
 								)}
-								{props.type === 'sell' && Number(unitPrice) > 0 && Number(unitPrice) <= MIN_PRICE && (
-									<S.MessageWrapper warning>
-										<span>{language.priceTooLow}</span>
-									</S.MessageWrapper>
-								)}
+								{(props.type === 'sell' || props.type === 'buy') &&
+									Number(unitPrice) > 0 &&
+									Number(unitPrice) <= MIN_PRICE && (
+										<S.MessageWrapper warning>
+											<span>{language.priceTooLow}</span>
+										</S.MessageWrapper>
+									)}
 								{props.asset && !props.asset.state.transferable && (
 									<S.MessageWrapper warning>
 										<span>{language.nonTransferable}</span>
