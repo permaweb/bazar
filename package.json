@@ -13,6 +13,9 @@
 		"build:production": "NODE_ENV=production webpack",
 		"deploy:main": "npm run build:production && permaweb-deploy --ant-process zaUCX1hkMgshabvP0IJigY8AZ59aytGkUimXWu87eik",
 		"deploy:staging": "npm run build:staging && permaweb-deploy --ant-process zaUCX1hkMgshabvP0IJigY8AZ59aytGkUimXWu87eik --undername staging",
+		"test": "npm test",
+		"test:verbose": "npm test -- --verbose",
+		"test:coverage": "CI=true npm test -- --env=jsdom --coverage",
 		"prepare": "husky install"
 	},
 	"dependencies": {
