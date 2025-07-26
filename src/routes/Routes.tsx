@@ -9,6 +9,7 @@ const Collection = getLazyImport('Collection');
 const Collections = getLazyImport('Collections');
 const Profile = getLazyImport('Profile');
 const Docs = getLazyImport('Docs');
+const Terms = getLazyImport('Terms');
 const NotFound = getLazyImport('NotFound');
 
 // import NProgress from 'nprogress';
@@ -56,6 +57,7 @@ export default function _Routes() {
 			<Route path={URLS.quest} element={<Campaign />} />
 			<Route path={URLS.docs} element={<Docs />} />
 			<Route path={`${URLS.docs}:active/*`} element={<Docs />} />
+			<Route path={URLS.terms} element={<Terms />} />
 			<Route path={URLS.notFound} element={<NotFound />} />
 			<Route path={'*'} element={<NotFound />} />
 		</Routes>

@@ -16,6 +16,49 @@ export const Container = styled.div`
 	bottom: 0;
 `;
 
+export const LeftSection = styled.div`
+	display: flex;
+	align-items: center;
+`;
+
+export const CenterSection = styled.div`
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex: 1;
+`;
+
+export const RightSection = styled.div`
+	display: flex;
+	align-items: center;
+	> * {
+		&:not(:last-child) {
+			margin: 0 20px 0 0;
+		}
+		&:last-child {
+			margin: 0;
+		}
+	}
+	a,
+	button {
+		font-family: ${(props) => props.theme.typography.family.primary};
+		font-size: ${(props) => props.theme.typography.size.xSmall};
+		font-weight: ${(props) => props.theme.typography.weight.medium};
+		text-decoration: none !important;
+		&:hover {
+			color: ${(props) => props.theme.colors.font.primary.alt8};
+		}
+	}
+	svg {
+		height: 17.5px;
+		width: 17.5px;
+		fill: ${(props) => props.theme.colors.icon.alt2.fill};
+		&:hover {
+			fill: ${(props) => props.theme.colors.icon.alt2.active};
+		}
+	}
+`;
+
 export const Content = styled.p`
 	color: ${(props) => props.theme.colors.font.primary};
 	font-family: ${(props) => props.theme.typography.family.alt1};
