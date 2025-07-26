@@ -363,7 +363,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 					console.error(`Wallet balance: ${walletBalance}`);
 					throw new Error('Error making wallet to profile transfer');
 				} else {
-					console.log(`Transferring remainder from wallet (${differenceNeeded.toString()}) to profile...`);
+					// console.log(`Transferring remainder from wallet (${differenceNeeded.toString()}) to profile...`);
 					await messageResults({
 						processId: processId,
 						action: 'Transfer',
@@ -375,7 +375,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 						data: null,
 						responses: ['Transfer-Success', 'Transfer-Error'],
 					});
-					console.log('Transfer complete');
+					// console.log('Transfer complete');
 				}
 			}
 		} catch (e: any) {
@@ -433,7 +433,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 				});
 
 				if (!Error) handleStatusUpdate(false, true, true, 'Balance transferred!');
-				console.log(transferId);
+				// console.log(transferId);
 			} catch (e: any) {
 				throw new Error(e);
 			}

@@ -25,20 +25,20 @@ export default function Avatar(props: IProps) {
 
 	// Determine image source: ArNS logo (for current user) > profile thumbnail > default
 	const imageUrl = React.useMemo(() => {
-		console.log('Avatar Debug - isCurrentUser:', isCurrentUser);
-		console.log('Avatar Debug - arnsAvatarUrl:', permawebProvider.arnsAvatarUrl);
-		console.log('Avatar Debug - hasError:', hasError);
-		console.log('Avatar Debug - owner:', props.owner);
+		// console.log('Avatar Debug - isCurrentUser:', isCurrentUser);
+		// console.log('Avatar Debug - arnsAvatarUrl:', permawebProvider.arnsAvatarUrl);
+		// console.log('Avatar Debug - hasError:', hasError);
+		// console.log('Avatar Debug - owner:', props.owner);
 
 		if (isCurrentUser && permawebProvider.arnsAvatarUrl && !hasError) {
-			console.log('Avatar Debug - Using ArNS avatar:', permawebProvider.arnsAvatarUrl);
+			// console.log('Avatar Debug - Using ArNS avatar:', permawebProvider.arnsAvatarUrl);
 			return permawebProvider.arnsAvatarUrl;
 		} else if (props.owner && props.owner.thumbnail && checkValidAddress(props.owner.thumbnail)) {
 			const thumbnailUrl = getTxEndpoint(props.owner.thumbnail);
-			console.log('Avatar Debug - Using profile thumbnail:', thumbnailUrl);
+			// console.log('Avatar Debug - Using profile thumbnail:', thumbnailUrl);
 			return thumbnailUrl;
 		}
-		console.log('Avatar Debug - Using default avatar');
+		// console.log('Avatar Debug - Using default avatar');
 		return null;
 	}, [isCurrentUser, permawebProvider.arnsAvatarUrl, props.owner, hasError]);
 
