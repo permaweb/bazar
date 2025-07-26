@@ -162,6 +162,7 @@ export const language = {
 		streakTitle5: `You're on fire`,
 		submit: `Submit`,
 		superStamp: `Super STAMP`,
+		terms: `Terms`,
 		time: `Time`,
 		title: `Title`,
 		trendingTokens: `Trending Tokens`,

@@ -289,6 +289,7 @@ function createURLs() {
 		collectionActivity: (id: string) => `${collection}${id}/activity/`,
 		collections: `${base}collections/`,
 		docs: `${base}docs/`,
+		terms: `${base}terms/`,
 		profile: profile,
 		profileAssets: (address: string) => `${profile}${address}/assets/`,
 		profileCollections: (address: string) => `${profile}${address}/collections/`,
