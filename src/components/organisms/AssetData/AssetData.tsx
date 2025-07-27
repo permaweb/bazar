@@ -1,6 +1,8 @@
 import React from 'react';
 import { ReactSVG } from 'react-svg';
 
+import { readHandler } from 'api';
+
 import { ASSETS, REFORMATTED_ASSETS } from 'helpers/config';
 import { getRendererEndpoint, getTxEndpoint } from 'helpers/endpoints';
 import { AssetRenderType } from 'helpers/types';
@@ -23,6 +25,8 @@ export default function AssetData(props: IProps) {
 	const [loadError, setLoadError] = React.useState<boolean>(false);
 	const [contain, setContain] = React.useState<boolean>(true);
 	const [frameLoaded, setFrameLoaded] = React.useState<boolean>(false);
+	const [assetMetadata, setAssetMetadata] = React.useState<any>(null);
+	const [metadataLoading, setMetadataLoading] = React.useState<boolean>(false);
 
 	const checkVisibility = () => {
 		const element = wrapperRef.current;
@@ -68,6 +72,27 @@ export default function AssetData(props: IProps) {
 				type: 'raw',
 				contentType: contentType,
 			};
+		}
+	}
+
+	async function fetchAssetMetadata(assetId: string) {
+		if (metadataLoading || assetMetadata) return;
+
+		setMetadataLoading(true);
+		try {
+			const processState = await readHandler({
+				processId: assetId,
+				action: 'Info',
+				data: null,
+			});
+
+			if (processState?.Metadata) {
+				setAssetMetadata(processState.Metadata);
+			}
+		} catch (e: any) {
+			console.error('Failed to fetch asset metadata:', e);
+		} finally {
+			setMetadataLoading(false);
 		}
 	}
 
@@ -262,10 +287,19 @@ export default function AssetData(props: IProps) {
 						return <S.Image src={assetRender.url} contain={contain} onError={handleError} loading={'lazy'} />;
 					}
 					if (assetRender.contentType.includes('audio')) {
-						if (!props.preview) {
-							// Check if cover art is available in metadata
-							const coverArtId = props.asset?.state?.metadata?.CoverArt;
+						// Check for cover art in existing state metadata first, then lazy-loaded metadata
+						const coverArtId =
+							props.asset?.state?.metadata?.CoverArt ||
+							props.asset?.state?.metadata?.coverArt ||
+							assetMetadata?.CoverArt ||
+							assetMetadata?.coverArt;
 
+						// If no cover art found and we haven't tried to fetch metadata yet, fetch it
+						if (!coverArtId && !metadataLoading && !assetMetadata && props.asset?.data?.id) {
+							fetchAssetMetadata(props.asset.data.id);
+						}
+
+						if (!props.preview) {
 							return (
 								<S.AudioWrapper>
 									{coverArtId && checkValidAddress(coverArtId) ? (
@@ -284,9 +318,6 @@ export default function AssetData(props: IProps) {
 								</S.AudioWrapper>
 							);
 						} else {
-							// For preview mode, show cover art if available
-							const coverArtId = props.asset?.state?.metadata?.CoverArt;
-
 							return (
 								<S.Preview>
 									{coverArtId && checkValidAddress(coverArtId) ? (
