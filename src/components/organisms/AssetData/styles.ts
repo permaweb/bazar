@@ -112,6 +112,20 @@ export const Audio = styled.audio`
 	transform: translate(-50%, 0);
 `;
 
+export const CoverArtImage = styled.img`
+	width: 100%;
+	height: calc(100% - 70px);
+	object-fit: cover;
+	border-radius: ${STYLING.dimensions.radius.primary};
+`;
+
+export const CoverArtPreview = styled.img`
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	border-radius: ${STYLING.dimensions.radius.primary};
+`;
+
 export const Video = styled.video`
 	height: 100%;
 	width: 100%;

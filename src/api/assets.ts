@@ -144,6 +144,11 @@ export async function getAssetById(args: { id: string; libs?: any }): Promise<As
 				} else {
 					assetState.transferable = true;
 				}
+
+				// Include metadata in asset state
+				if (processState.Metadata) {
+					assetState.metadata = processState.Metadata;
+				}
 			}
 
 			if (!assetState.balances) {

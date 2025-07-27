@@ -263,18 +263,42 @@ export default function AssetData(props: IProps) {
 					}
 					if (assetRender.contentType.includes('audio')) {
 						if (!props.preview) {
+							// Check if cover art is available in metadata
+							const coverArtId = props.asset?.state?.metadata?.CoverArt;
+
 							return (
 								<S.AudioWrapper>
-									<ReactSVG src={ASSETS.audio} />
+									{coverArtId && checkValidAddress(coverArtId) ? (
+										<S.CoverArtImage
+											src={getTxEndpoint(coverArtId)}
+											alt="Cover Art"
+											onError={handleError}
+											loading={'lazy'}
+										/>
+									) : (
+										<ReactSVG src={ASSETS.audio} />
+									)}
 									<S.Audio controls onError={handleError}>
 										<source src={assetRender.url} type={assetRender.contentType} />
 									</S.Audio>
 								</S.AudioWrapper>
 							);
 						} else {
+							// For preview mode, show cover art if available
+							const coverArtId = props.asset?.state?.metadata?.CoverArt;
+
 							return (
 								<S.Preview>
-									<ReactSVG src={ASSETS.audio} />
+									{coverArtId && checkValidAddress(coverArtId) ? (
+										<S.CoverArtPreview
+											src={getTxEndpoint(coverArtId)}
+											alt="Cover Art"
+											onError={handleError}
+											loading={'lazy'}
+										/>
+									) : (
+										<ReactSVG src={ASSETS.audio} />
+									)}
 								</S.Preview>
 							);
 						}
