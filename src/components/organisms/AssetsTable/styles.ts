@@ -182,6 +182,16 @@ export const AssetGridDataWrapper = styled.div<{ disabled: boolean }>`
 			align-items: flex-end;
 			gap: 10px;
 		}
+
+		/* Show play button on hover for audio files */
+		[data-play-button] {
+			opacity: 1;
+		}
+
+		/* Show play button on hover for list view thumbnails */
+		&:hover [data-play-button] {
+			opacity: 1;
+		}
 	}
 `;
 
@@ -273,6 +283,11 @@ export const AssetsListSectionElement = styled.button<{ disabled: boolean }>`
 	&:hover {
 		cursor: pointer;
 		background: ${(props) => props.theme.colors.container.primary.active};
+
+		/* Show play button on hover for list view */
+		[data-play-button] {
+			opacity: 1;
+		}
 	}
 	&:disabled {
 		cursor: default;

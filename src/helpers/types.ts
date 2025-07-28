@@ -33,6 +33,12 @@ export type AssetStateType = {
 	logo: string | null;
 	transferable: boolean;
 	balances: { [address: string]: string } | null;
+	metadata?: {
+		CoverArt?: string;
+		CollectionId?: string;
+		OrderbookId?: string;
+		[key: string]: any;
+	};
 };
 
 export type AssetOrderType = {
