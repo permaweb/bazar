@@ -9,13 +9,13 @@
 		"start:development": "NODE_ENV=development webpack serve --port 3000",
 		"start:staging": "NODE_ENV=staging webpack serve --port 3000",
 		"format": "eslint --fix . && npx prettier --write .",
-		"test": "npm test",
-		"test:verbose": "npm test -- --verbose",
-		"test:coverage": "CI=true npm test -- --env=jsdom --coverage",
 		"build:staging": "NODE_ENV=staging webpack",
 		"build:production": "NODE_ENV=production webpack",
 		"deploy:main": "npm run build:production && permaweb-deploy --ant-process zaUCX1hkMgshabvP0IJigY8AZ59aytGkUimXWu87eik",
 		"deploy:staging": "npm run build:staging && permaweb-deploy --ant-process zaUCX1hkMgshabvP0IJigY8AZ59aytGkUimXWu87eik --undername staging",
+		"test": "npm test",
+		"test:verbose": "npm test -- --verbose",
+		"test:coverage": "CI=true npm test -- --env=jsdom --coverage",
 		"prepare": "husky install"
 	},
 	"dependencies": {
