@@ -126,6 +126,30 @@ export const CoverArtPreview = styled.img`
 	border-radius: ${STYLING.dimensions.radius.primary};
 `;
 
+export const CoverArtFullSection = styled.div`
+	height: 100%;
+	width: 100%;
+	position: relative;
+	overflow: hidden;
+	border-radius: ${STYLING.dimensions.radius.primary};
+
+	img {
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+		border-radius: ${STYLING.dimensions.radius.primary};
+	}
+
+	svg {
+		width: 100%;
+		height: 100%;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		color: ${(props) => props.theme.colors.font.alt1};
+	}
+`;
+
 export const Video = styled.video`
 	height: 100%;
 	width: 100%;
@@ -138,6 +162,8 @@ export const Preview = styled.div`
 	display: flex;
 	justify-content: center;
 	align-items: center;
+	position: relative;
+
 	img,
 	svg {
 		height: 57.5px;
@@ -145,7 +171,12 @@ export const Preview = styled.div`
 		border-radius: ${STYLING.dimensions.radius.primary};
 		fill: ${(props) => props.theme.colors.font.alt1};
 	}
-	img {
+
+	/* Cover art images should take full size */
+	img[alt='Cover Art'] {
+		height: 100%;
+		width: 100%;
+		object-fit: cover;
 		border-radius: ${STYLING.dimensions.radius.primary};
 	}
 `;

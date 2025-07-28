@@ -117,6 +117,11 @@ export default function CollectionsList(props: IProps) {
 									id: edge.node.id,
 									name: getTagValue(edge.node.tags, 'Name'),
 									title: getTagValue(edge.node.tags, 'Title'),
+									thumbnail: getTagValue(edge.node.tags, 'Thumbnail'),
+									banner: getTagValue(edge.node.tags, 'Banner'),
+									description: getTagValue(edge.node.tags, 'Description'),
+									creator: getTagValue(edge.node.tags, 'Creator'),
+									dateCreated: getTagValue(edge.node.tags, 'Date-Created'),
 								})) ?? [];
 
 							setCollections(collections);

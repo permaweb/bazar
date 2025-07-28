@@ -299,7 +299,9 @@ export default function AssetData(props: IProps) {
 							fetchAssetMetadata(props.asset.data.id);
 						}
 
+						// Show different layouts based on preview mode
 						if (!props.preview) {
+							// Full asset page - show cover art with audio controls
 							return (
 								<S.AudioWrapper>
 									{coverArtId && checkValidAddress(coverArtId) ? (
@@ -318,19 +320,15 @@ export default function AssetData(props: IProps) {
 								</S.AudioWrapper>
 							);
 						} else {
+							// Collection page preview - show cover art that fills entire section
 							return (
-								<S.Preview>
+								<S.CoverArtFullSection>
 									{coverArtId && checkValidAddress(coverArtId) ? (
-										<S.CoverArtPreview
-											src={getTxEndpoint(coverArtId)}
-											alt="Cover Art"
-											onError={handleError}
-											loading={'lazy'}
-										/>
+										<img src={getTxEndpoint(coverArtId)} alt="Cover Art" onError={handleError} loading={'lazy'} />
 									) : (
 										<ReactSVG src={ASSETS.audio} />
 									)}
-								</S.Preview>
+								</S.CoverArtFullSection>
 							);
 						}
 					}
