@@ -114,7 +114,7 @@ module.exports = {
 				test: /\.(png|jpg|gif|riv)$/,
 				use: [
 					'url-loader',
-					// Temporarily disabled image-webpack-loader to fix build errors
+					// Temporarily disabled image optimization to fix build errors
 					// {
 					// 	loader: 'image-webpack-loader',
 					// 	options: {
