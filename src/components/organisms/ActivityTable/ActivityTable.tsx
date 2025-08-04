@@ -356,9 +356,11 @@ export default function ActivityTable(props: IProps) {
 				);
 			} else if (row.receiver) {
 				return (
-					<S.Entity type={'User'} href={REDIRECTS.explorer(row.receiver)} target={'_blank'}>
-						<p>{formatAddress(row.receiver, false)}</p>
-					</S.Entity>
+					<Link to={URLS.profileAssets(row.receiver)}>
+						<S.UserEntity type={'User'}>
+							<p>{formatAddress(row.receiver, false)}</p>
+						</S.UserEntity>
+					</Link>
 				);
 			}
 			return <p>-</p>;
@@ -456,10 +458,14 @@ export default function ActivityTable(props: IProps) {
 											}}
 											callback={null}
 										/>
+									) : row.sender ? (
+										<Link to={URLS.profileAssets(row.sender)}>
+											<S.UserEntity type={'User'}>
+												<p>{formatAddress(row.sender, false)}</p>
+											</S.UserEntity>
+										</Link>
 									) : (
-										<S.Entity type={'User'} href={REDIRECTS.explorer(row.sender)} target={'_blank'}>
-											<p>{row.sender ? formatAddress(row.sender, false) : '-'}</p>
-										</S.Entity>
+										<p>-</p>
 									)}
 								</S.SenderWrapper>
 								<S.ReceiverWrapper>{getReceiverContent(row)}</S.ReceiverWrapper>
