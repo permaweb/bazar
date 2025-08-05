@@ -112,6 +112,11 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 			label: language.tradePixl,
 			target: '',
 		},
+		[AO.stamps]: {
+			link: `${URLS.asset}${AO.stamps}`,
+			label: language.tradeStamp,
+			target: '',
+		},
 	};
 
 	function getDropdown() {

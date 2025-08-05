@@ -1,3 +1,4 @@
+import React from 'react';
 import { useSelector } from 'react-redux';
 import { Link } from 'react-router-dom';
 
@@ -16,20 +17,37 @@ export default function CurrencyLine(props: IProps) {
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
 
+	const [timedOut, setTimedOut] = React.useState(false);
+
+	React.useEffect(() => {
+		const timer = setTimeout(() => {
+			if (props.amount === null || props.amount === undefined || isNaN(Number(props.amount))) {
+				setTimedOut(true);
+			}
+		}, 5000); // 5 seconds timeout
+
+		return () => clearTimeout(timer);
+	}, [props.amount]);
+
 	function getDenominatedTokenValue(amount: number, currency: string) {
-		if (
-			props.amount !== null &&
-			currenciesReducer &&
-			currenciesReducer[currency] &&
-			currenciesReducer[currency].Denomination &&
-			currenciesReducer[currency].Denomination > 1
-		) {
+		// Check if amount is a valid number
+		if (props.amount === null || props.amount === undefined || isNaN(Number(props.amount))) {
+			return timedOut ? 'N/A' : `${language.loading}...`;
+		}
+
+		// Check if currency data is available
+		if (!currenciesReducer || !currenciesReducer[currency]) {
+			return timedOut ? 'N/A' : `${language.loading}...`;
+		}
+
+		if (currenciesReducer[currency].Denomination && currenciesReducer[currency].Denomination > 1) {
 			const denomination = currenciesReducer[currency].Denomination;
 			const factor = Math.pow(10, denomination);
 			const formattedAmount: string = (Math.round(amount) / factor).toFixed(denomination);
 			return formatCount(formattedAmount);
 		}
-		return `${language.loading}...`;
+
+		return timedOut ? 'N/A' : `${language.loading}...`;
 	}
 
 	function getCurrency() {

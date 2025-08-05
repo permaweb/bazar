@@ -70,6 +70,7 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 	} | null>({
 		[AO.defaultToken]: { profileBalance: null, walletBalance: null },
 		[AO.pixl]: { profileBalance: null, walletBalance: null },
+		[AO.stamps]: { profileBalance: null, walletBalance: null },
 	});
 	const [toggleTokenBalanceUpdate, setToggleTokenBalanceUpdate] = React.useState<boolean>(false);
 
@@ -188,6 +189,13 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 				});
 				await sleep(500);
 
+				const stampTokenWalletBalance = await libs.readProcess({
+					processId: AO.stamps,
+					action: 'Balance',
+					tags: [{ name: 'Recipient', value: arProvider.walletAddress }],
+				});
+				await sleep(500);
+
 				const defaultTokenProfileBalance = await libs.readProcess({
 					processId: AO.defaultToken,
 					action: 'Balance',
@@ -197,6 +205,13 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 
 				const pixlTokenProfileBalance = await libs.readProcess({
 					processId: AO.pixl,
+					action: 'Balance',
+					tags: [{ name: 'Recipient', value: profile.id }],
+				});
+				await sleep(500);
+
+				const stampTokenProfileBalance = await libs.readProcess({
+					processId: AO.stamps,
 					action: 'Balance',
 					tags: [{ name: 'Recipient', value: profile.id }],
 				});
@@ -212,6 +227,11 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 						...prevBalances[AO.pixl],
 						walletBalance: pixlTokenWalletBalance ?? null,
 						profileBalance: pixlTokenProfileBalance ?? null,
+					},
+					[AO.stamps]: {
+						...prevBalances[AO.stamps],
+						walletBalance: stampTokenWalletBalance ?? null,
+						profileBalance: stampTokenProfileBalance ?? null,
 					},
 				}));
 			} catch (e) {
