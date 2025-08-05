@@ -30,6 +30,8 @@ import { usePermawebProvider } from 'providers/PermawebProvider';
 import { RootState } from 'store';
 import * as streakActions from 'store/streaks/actions';
 
+import { createOrderWithRoyaltyEnforcement } from '../../../../../services/royaltyEnforcement';
+
 import * as S from './styles';
 import { IProps } from './types';
 
@@ -266,7 +268,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 				if (unitPrice) data.unitPrice = unitPrice.toString();
 				if (denomination && denomination > 1) data.denomination = denomination.toString();
 
-				const orderId = await createOrder(
+				const result = await createOrderWithRoyaltyEnforcement(
 					permawebProvider.deps,
 					data,
 					(args: { processing: boolean; success: boolean; message: string }) => {
@@ -274,7 +276,16 @@ export default function AssetActionMarketOrders(props: IProps) {
 					}
 				);
 
-				setOrderId(orderId);
+				if (result.success) {
+					setOrderId(result.orderId);
+
+					// Log royalty information if applicable
+					if (result.royaltyPaid && result.creatorAddress) {
+						console.log(`Royalty paid: ${result.royaltyPaid} to ${result.creatorAddress}`);
+					}
+				} else {
+					throw new Error(result.error || 'Order creation failed');
+				}
 
 				if (props.type === 'buy') {
 					const streaks = await readHandler({
@@ -684,6 +695,14 @@ export default function AssetActionMarketOrders(props: IProps) {
 						<S.SalesDetail>
 							<span>{language.totalPrice}</span>
 							{getTotalPriceDisplay()}
+						</S.SalesDetail>
+					</S.SalesLine>
+				)}
+				{props.type === 'sell' && props.asset?.state?.metadata?.HasRoyalties && (
+					<S.SalesLine>
+						<S.SalesDetail>
+							<span>Creator Royalty</span>
+							<p>{props.asset.state.metadata.RoyaltyPercentage}% of sale price</p>
 						</S.SalesDetail>
 					</S.SalesLine>
 				)}

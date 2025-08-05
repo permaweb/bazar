@@ -228,6 +228,7 @@ module.exports = {
 			providers: path.resolve(__dirname, 'src/providers/'),
 			root: path.resolve(__dirname, 'src/root/'),
 			routes: path.resolve(__dirname, 'src/routes/'),
+			services: path.resolve(__dirname, 'src/services/'),
 			store: path.resolve(__dirname, 'src/store/'),
 			views: path.resolve(__dirname, 'src/views/'),
 			wallet: path.resolve(__dirname, 'src/wallet/'),

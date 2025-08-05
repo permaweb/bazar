@@ -227,6 +227,28 @@ export default function AssetInfo(props: IProps) {
 					/>
 				</GS.DrawerWrapper>
 			)}
+			{props.asset.state?.metadata?.HasRoyalties && (
+				<GS.DrawerWrapper>
+					<Drawer
+						title="Creator Royalties"
+						icon={ASSETS.license}
+						content={
+							<GS.DrawerContent>
+								<GS.DrawerContentLine>
+									<GS.DrawerContentHeader>Royalty Percentage</GS.DrawerContentHeader>
+									<GS.DrawerContentDetail>{props.asset.state.metadata.RoyaltyPercentage}%</GS.DrawerContentDetail>
+								</GS.DrawerContentLine>
+								<GS.DrawerContentLine>
+									<GS.DrawerContentHeader>Description</GS.DrawerContentHeader>
+									<GS.DrawerContentDetail>
+										The creator receives {props.asset.state.metadata.RoyaltyPercentage}% of each secondary sale.
+									</GS.DrawerContentDetail>
+								</GS.DrawerContentLine>
+							</GS.DrawerContent>
+						}
+					/>
+				</GS.DrawerWrapper>
+			)}
 			<GS.DrawerWrapper>
 				<Drawer
 					title={language.provenanceDetails}
