@@ -22,6 +22,7 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 
 	const arProvider = useArweaveProvider();
 	const permawebProvider = usePermawebProvider();
+
 	const themeProvider = useCustomThemeProvider();
 
 	const languageProvider = useLanguageProvider();

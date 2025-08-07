@@ -274,21 +274,30 @@ export function AppProvider(props: AppProviderProps) {
 						processId: AO.defaultToken,
 						action: 'Info',
 					});
+
 					const pixlState = await readHandler({
 						processId: AO.pixl,
 						action: 'Info',
 					});
 
-					dispatch(
-						currencyActions.setCurrencies({
-							[AO.defaultToken]: {
-								...defaultTokenState,
-							},
-							[AO.pixl]: {
-								...pixlState,
-							},
-						})
-					);
+					const stampState = await readHandler({
+						processId: AO.stamps,
+						action: 'Info',
+					});
+
+					const currencies = {
+						[AO.defaultToken]: {
+							...defaultTokenState,
+						},
+						[AO.pixl]: {
+							...pixlState,
+						},
+						[AO.stamps]: {
+							...stampState,
+						},
+					};
+
+					dispatch(currencyActions.setCurrencies(currencies));
 				}
 			} catch (e: any) {
 				console.error(e);

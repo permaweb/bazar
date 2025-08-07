@@ -216,24 +216,50 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 					tags: [{ name: 'Recipient', value: profile.id }],
 				});
 
-				setTokenBalances((prevBalances) => ({
-					...prevBalances,
-					[AO.defaultToken]: {
-						...prevBalances[AO.defaultToken],
-						walletBalance: defaultTokenWalletBalance ?? null,
-						profileBalance: defaultTokenProfileBalance ?? null,
-					},
-					[AO.pixl]: {
-						...prevBalances[AO.pixl],
-						walletBalance: pixlTokenWalletBalance ?? null,
-						profileBalance: pixlTokenProfileBalance ?? null,
-					},
-					[AO.stamps]: {
-						...prevBalances[AO.stamps],
-						walletBalance: stampTokenWalletBalance ?? null,
-						profileBalance: stampTokenProfileBalance ?? null,
-					},
-				}));
+				// Helper function to normalize balance response
+				const normalizeBalance = (balanceResponse: any) => {
+					if (balanceResponse === null || balanceResponse === undefined) {
+						return null;
+					}
+
+					// If response has Balance property, use that
+					if (typeof balanceResponse === 'object' && balanceResponse.Balance !== undefined) {
+						const balanceValue = balanceResponse.Balance;
+						if (balanceValue === '0' || balanceValue === 0) {
+							return 0;
+						}
+						return Number(balanceValue) || null;
+					}
+
+					// Otherwise, treat the response itself as the balance
+					if (balanceResponse === '0' || balanceResponse === 0) {
+						return 0;
+					}
+					return Number(balanceResponse) || null;
+				};
+
+				setTokenBalances((prevBalances) => {
+					const newTokenBalances = {
+						...prevBalances,
+						[AO.defaultToken]: {
+							...prevBalances[AO.defaultToken],
+							walletBalance: normalizeBalance(defaultTokenWalletBalance),
+							profileBalance: normalizeBalance(defaultTokenProfileBalance),
+						},
+						[AO.pixl]: {
+							...prevBalances[AO.pixl],
+							walletBalance: normalizeBalance(pixlTokenWalletBalance),
+							profileBalance: normalizeBalance(pixlTokenProfileBalance),
+						},
+						[AO.stamps]: {
+							...prevBalances[AO.stamps],
+							walletBalance: normalizeBalance(stampTokenWalletBalance),
+							profileBalance: normalizeBalance(stampTokenProfileBalance),
+						},
+					};
+
+					return newTokenBalances;
+				});
 			} catch (e) {
 				if (process.env.NODE_ENV === 'development') {
 					console.error('Error fetching ArNS data:', e);
