@@ -20,16 +20,8 @@ export default function MusicCollectionsCarousel(props: IProps) {
 	const [nextSlideClicked, setNextSlideClicked] = React.useState<boolean>(false);
 	const [firstClick, setFirstClick] = React.useState<boolean>(false);
 
-	// Debug logging
+	// Force carousel refresh when collections change
 	React.useEffect(() => {
-		console.log('🎵 MusicCollectionsCarousel - Collections received:', props.collections?.length || 0);
-		if (props.collections) {
-			props.collections.forEach((col, i) => {
-				console.log(`  ${i + 1}. ${col.title} (ID: ${col.id})`);
-			});
-		}
-
-		// Force carousel refresh when collections change
 		setTimeout(() => {
 			window.dispatchEvent(new Event('resize'));
 		}, 100);
@@ -55,9 +47,6 @@ export default function MusicCollectionsCarousel(props: IProps) {
 		},
 	};
 
-	console.log('🎵 Carousel responsive config:', responsive);
-	console.log('🎵 Current window width:', window.innerWidth);
-
 	const triggerResize = () => {
 		window.dispatchEvent(new Event('resize'));
 	};
@@ -76,13 +65,6 @@ export default function MusicCollectionsCarousel(props: IProps) {
 				<h4>Music/Casts</h4>
 			</S.Header>
 			<S.CollectionsWrapper previousDisabled={!nextSlideClicked}>
-				{console.log(
-					'🎵 Carousel visibility check:',
-					'collections:',
-					props.collections?.length || 0,
-					'loading:',
-					props.loading
-				)}
 				{(props.collections || props.loading) && (
 					<Carousel
 						key={`music-carousel-${props.collections?.length || 0}-${props.loading}`}
@@ -98,34 +80,29 @@ export default function MusicCollectionsCarousel(props: IProps) {
 						autoPlay={!props.loading}
 						autoPlaySpeed={5000}
 						afterChange={handleAfterChange}
-						onChange={(currentSlide) => console.log('🎵 Carousel changed to slide:', currentSlide)}
 					>
 						{props.collections &&
-							(() => {
-								console.log('🎵 Rendering collections in carousel:', props.collections.length);
-								return props.collections.map((collection: CollectionType, index: number) => (
-									<S.CollectionWrapper
-										key={collection.id}
-										className={'fade-in border-wrapper-alt2'}
-										backgroundImage={getTxEndpoint(collection.thumbnail || DEFAULTS.thumbnail)}
-										disabled={false}
-										onClick={() => console.log('🎵 Clicked collection:', collection.title, '(Index:', index, ')')}
-									>
-										<Link to={URLS.collectionAssets(collection.id)}>
-											<S.InfoWrapper>
-												<S.InfoTile>
-													<S.InfoDetail>
-														<span>{collection.title}</span>
-													</S.InfoDetail>
-													<S.InfoDetailAlt>
-														<span>{`${language.createdOn} ${formatDate(collection.dateCreated, 'epoch')}`}</span>
-													</S.InfoDetailAlt>
-												</S.InfoTile>
-											</S.InfoWrapper>
-										</Link>
-									</S.CollectionWrapper>
-								));
-							})()}
+							props.collections.map((collection: CollectionType, index: number) => (
+								<S.CollectionWrapper
+									key={collection.id}
+									className={'fade-in border-wrapper-alt2'}
+									backgroundImage={getTxEndpoint(collection.thumbnail || DEFAULTS.thumbnail)}
+									disabled={false}
+								>
+									<Link to={URLS.collectionAssets(collection.id)}>
+										<S.InfoWrapper>
+											<S.InfoTile>
+												<S.InfoDetail>
+													<span>{collection.title}</span>
+												</S.InfoDetail>
+												<S.InfoDetailAlt>
+													<span>{`${language.createdOn} ${formatDate(collection.dateCreated, 'epoch')}`}</span>
+												</S.InfoDetailAlt>
+											</S.InfoTile>
+										</S.InfoWrapper>
+									</Link>
+								</S.CollectionWrapper>
+							))}
 						{props.loading &&
 							Array.from({ length: 5 }, (_, i) => i + 1).map((index) => (
 								<S.CollectionWrapper

@@ -64,14 +64,8 @@ export default function Landing() {
 			if (!musicCollections) {
 				setMusicCollectionsLoading(true);
 				try {
-					console.log('🎵 Landing: About to call getAllMusicCollections...');
 					// Use comprehensive search for all music collections
 					let musicCollectionsFetch: CollectionType[] = await getAllMusicCollections(permawebProvider.libs);
-					console.log(
-						'🎵 Landing: getAllMusicCollections returned:',
-						musicCollectionsFetch?.length || 0,
-						'collections'
-					);
 
 					// If comprehensive search fails, fall back to direct fetch
 					if (!musicCollectionsFetch || musicCollectionsFetch.length === 0) {

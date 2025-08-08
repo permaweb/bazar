@@ -799,7 +799,6 @@ export async function getMusicCollectionsFromRedux(): Promise<CollectionType[]> 
 }
 
 export async function getAllMusicCollections(libs: any): Promise<CollectionType[]> {
-	console.log('🎵 getAllMusicCollections function called!');
 	try {
 		// Check Redux cache first
 		const state = store.getState().collectionsReducer;
