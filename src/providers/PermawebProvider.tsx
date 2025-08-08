@@ -8,7 +8,8 @@ import AOProfile from '@permaweb/aoprofile';
 import { Loader } from 'components/atoms/Loader';
 import { Panel } from 'components/molecules/Panel';
 import { ProfileManage } from 'components/organisms/ProfileManage';
-import { getArNSDataForAddress } from 'helpers/arns';
+// Lazy load ArNS functionality to avoid build issues
+let getArNSDataForAddress: any = null;
 import { AO, STORAGE } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 
@@ -55,6 +56,19 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 	const arProvider = useArweaveProvider();
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
+
+	// Load ArNS functionality when needed
+	const loadArNSFunctionality = async () => {
+		if (!getArNSDataForAddress) {
+			try {
+				const arnsModule = await import('helpers/arns');
+				getArNSDataForAddress = arnsModule.getArNSDataForAddress;
+				console.log('ArNS functionality loaded successfully');
+			} catch (error) {
+				console.warn('Failed to load ArNS functionality:', error);
+			}
+		}
+	};
 
 	const [libs, setLibs] = React.useState<any>(null);
 	const [deps, setDeps] = React.useState<any>(null);
@@ -233,12 +247,21 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 
 		(async function () {
 			try {
-				const arnsData = await getArNSDataForAddress(arProvider.walletAddress);
+				// Load ArNS functionality if not already loaded
+				await loadArNSFunctionality();
 
-				setArnsPrimaryName(arnsData.primaryName);
-				const avatarUrl = arnsData.logo ? getTxEndpoint(arnsData.logo) : null;
+				if (getArNSDataForAddress) {
+					console.log('Fetching ArNS data for address:', arProvider.walletAddress);
+					const arnsData = await getArNSDataForAddress(arProvider.walletAddress);
+					console.log('ArNS data received:', arnsData);
 
-				setArnsAvatarUrl(avatarUrl);
+					setArnsPrimaryName(arnsData.primaryName);
+					const avatarUrl = arnsData.logo ? getTxEndpoint(arnsData.logo) : null;
+
+					setArnsAvatarUrl(avatarUrl);
+				} else {
+					console.log('ArNS functionality not loaded');
+				}
 			} catch (err) {
 				console.error('PermawebProvider - ArNS error:', err);
 				setArnsPrimaryName(null);
