@@ -181,19 +181,14 @@ export async function getCollectionById(args: { id: string; libs?: any }): Promi
 
 export async function getMusicCollections(creator: string, libs: any): Promise<any[]> {
 	try {
-		console.log('🎵 Starting music collections fetch...');
 		// First get all collections
 		const allCollections = await getCollections(creator, libs);
 
-		console.log(`🎵 Found ${allCollections?.length || 0} total collections`);
-
 		if (!allCollections || allCollections.length === 0) {
-			console.log('🎵 No collections found, returning empty array');
 			return [];
 		}
 
 		const musicCollections = [];
-		console.log('🎵 Starting to check collections for music assets...');
 
 		// Check each collection for music assets
 		for (let i = 0; i < allCollections.length; i++) {
@@ -725,7 +720,6 @@ export async function getMusicCollectionsFromRedux(): Promise<CollectionType[]> 
 		}
 
 		// Also search for audio content types as backup
-		console.log('🎵 Searching for audio content types...');
 		try {
 			const audioResponse = await getGQLData({
 				gateway: GATEWAYS.arweave,
@@ -737,8 +731,6 @@ export async function getMusicCollectionsFromRedux(): Promise<CollectionType[]> 
 			});
 
 			if (audioResponse && audioResponse.data && audioResponse.data.length > 0) {
-				console.log(`🎵 Found ${audioResponse.data.length} audio assets`);
-
 				for (const element of audioResponse.data) {
 					try {
 						// Get collection ID from Bootloader-CollectionId tag
@@ -750,18 +742,13 @@ export async function getMusicCollectionsFromRedux(): Promise<CollectionType[]> 
 							element.node.id;
 
 						if (collectionId) {
-							console.log(`🎵 Audio asset ${assetTitle} belongs to collection: ${collectionId}`);
 							musicCollectionIds.add(collectionId);
-						} else {
-							console.log(`🎵 Audio asset ${assetTitle} has no Bootloader-CollectionId`);
 						}
 					} catch (e) {
 						console.error(`Error processing audio asset ${element.node.id}:`, e);
 						continue;
 					}
 				}
-			} else {
-				console.log('🎵 No audio assets found');
 			}
 		} catch (e) {
 			console.error('Error searching for audio content types:', e);

@@ -63,7 +63,6 @@ export default function Landing() {
 
 			// Use cache if it's fresh
 			if (cachedMusic?.collections && cacheAge < cacheDuration) {
-				console.log('🎵 Using cached music collections:', cachedMusic.collections.length);
 				setMusicCollections(cachedMusic.collections);
 				setMusicCollectionsLoading(false);
 				setMusicFetchAttempted(true);
@@ -73,7 +72,6 @@ export default function Landing() {
 			// Mark as attempted and start loading
 			setMusicFetchAttempted(true);
 			setMusicCollectionsLoading(true);
-			console.log('🎵 Starting music collections fetch...');
 
 			try {
 				// Use comprehensive search for all music collections
@@ -90,10 +88,7 @@ export default function Landing() {
 				}
 
 				if (musicCollectionsFetch && musicCollectionsFetch.length > 0) {
-					console.log('🎵 Successfully fetched music collections:', musicCollectionsFetch.length);
 					setMusicCollections(musicCollectionsFetch);
-				} else {
-					console.log('🎵 No music collections found');
 				}
 			} catch (e: any) {
 				console.error('Failed to fetch music collections:', e);

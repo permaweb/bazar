@@ -14,13 +14,6 @@ import * as S from './styles';
 import { IProps } from './types';
 
 export default function MusicCollectionsCarousel(props: IProps) {
-	// Debug logging
-	console.log('🎵 MusicCollectionsCarousel render:', {
-		collections: props.collections?.length || 0,
-		loading: props.loading,
-		collectionTitles: props.collections?.map((c) => c.title) || [],
-	});
-
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
 
