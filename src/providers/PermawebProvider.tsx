@@ -8,8 +8,7 @@ import AOProfile from '@permaweb/aoprofile';
 import { Loader } from 'components/atoms/Loader';
 import { Panel } from 'components/molecules/Panel';
 import { ProfileManage } from 'components/organisms/ProfileManage';
-// Lazy load ArNS functionality to avoid build issues
-let getArNSDataForAddress: any = null;
+import { getArNSDataForAddress } from 'helpers/arns';
 import { AO, STORAGE } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 
@@ -56,19 +55,6 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 	const arProvider = useArweaveProvider();
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
-
-	// Load ArNS functionality when needed
-	const loadArNSFunctionality = async () => {
-		if (!getArNSDataForAddress) {
-			try {
-				const arnsModule = await import('helpers/arns');
-				getArNSDataForAddress = arnsModule.getArNSDataForAddress;
-				console.log('ArNS functionality loaded successfully');
-			} catch (error) {
-				console.warn('Failed to load ArNS functionality:', error);
-			}
-		}
-	};
 
 	const [libs, setLibs] = React.useState<any>(null);
 	const [deps, setDeps] = React.useState<any>(null);
@@ -157,29 +143,22 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 								setProfile(newProfile);
 								cacheProfile(arProvider.walletAddress, newProfile);
 								changeDetected = true;
-							} else {
-								await new Promise((resolve) => setTimeout(resolve, 1000));
-								tries++;
 							}
-						} catch (error) {
+						} catch (e: any) {
 							if (process.env.NODE_ENV === 'development') {
-								console.error('Error during profile update:', error);
+								console.error('Error in fetchProfileUntilChange:', e);
 							}
-							break;
 						}
-					}
 
-					if (!changeDetected) {
-						if (process.env.NODE_ENV === 'development') {
-							console.warn(`No changes detected after ${maxTries} attempts`);
-						}
+						tries++;
+						await new Promise((r) => setTimeout(r, 2000));
 					}
 				};
 
 				await fetchProfileUntilChange();
 			}
 		})();
-	}, [refreshProfileTrigger]);
+	}, [arProvider.wallet, arProvider.walletAddress, refreshProfileTrigger]);
 
 	React.useEffect(() => {
 		const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -230,7 +209,7 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 				}));
 			} catch (e) {
 				if (process.env.NODE_ENV === 'development') {
-					console.error('Error fetching ArNS data:', e);
+					console.error('Error fetching token balances:', e);
 				}
 			}
 		};
@@ -247,21 +226,14 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 
 		(async function () {
 			try {
-				// Load ArNS functionality if not already loaded
-				await loadArNSFunctionality();
+				const arnsData = await getArNSDataForAddress(arProvider.walletAddress);
 
-				if (getArNSDataForAddress) {
-					console.log('Fetching ArNS data for address:', arProvider.walletAddress);
-					const arnsData = await getArNSDataForAddress(arProvider.walletAddress);
-					console.log('ArNS data received:', arnsData);
+				console.log('PermawebProvider - ArNS data:', arnsData);
 
-					setArnsPrimaryName(arnsData.primaryName);
-					const avatarUrl = arnsData.logo ? getTxEndpoint(arnsData.logo) : null;
-
-					setArnsAvatarUrl(avatarUrl);
-				} else {
-					console.log('ArNS functionality not loaded');
-				}
+				setArnsPrimaryName(arnsData.primaryName);
+				const avatarUrl = arnsData.logo ? getTxEndpoint(arnsData.logo) : null;
+				console.log('PermawebProvider - Setting avatar URL:', avatarUrl);
+				setArnsAvatarUrl(avatarUrl);
 			} catch (err) {
 				console.error('PermawebProvider - ArNS error:', err);
 				setArnsPrimaryName(null);
@@ -308,8 +280,15 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 	}
 
 	function getCachedProfile(address: string) {
-		const cached = localStorage.getItem(STORAGE.profile(address));
-		return cached ? JSON.parse(cached) : null;
+		try {
+			const cached = localStorage.getItem(STORAGE.profile(address));
+			return cached ? JSON.parse(cached) : null;
+		} catch (error) {
+			console.warn('Error parsing cached profile:', error);
+			// Clear the corrupted cache
+			localStorage.removeItem(STORAGE.profile(address));
+			return null;
+		}
 	}
 
 	function cacheProfile(address: string, profileData: any) {
