@@ -46,47 +46,61 @@ export default function Landing() {
 		})();
 	}, [collectionsReducer?.stamped]);
 
+	// State to track if we've already attempted to fetch music collections
+	const [musicFetchAttempted, setMusicFetchAttempted] = React.useState(false);
+
 	React.useEffect(() => {
 		(async function () {
-			// Check Redux cache first for better performance
-			const state = collectionsReducer;
-			const cachedMusic = state?.music;
-			const cacheAge = cachedMusic?.lastUpdate ? Date.now() - cachedMusic.lastUpdate : Infinity;
-			const cacheDuration = 5 * 60 * 1000; // 5 minutes
-
-			if (cachedMusic?.collections && cacheAge < cacheDuration) {
-				setMusicCollections(cachedMusic.collections);
-				setMusicCollectionsLoading(false);
+			// Skip if we already have music collections or have attempted to fetch
+			if (musicCollections || musicFetchAttempted) {
 				return;
 			}
 
-			// Only fetch if we don't have music collections yet
-			if (!musicCollections) {
-				setMusicCollectionsLoading(true);
-				try {
-					// Use comprehensive search for all music collections
-					let musicCollectionsFetch: CollectionType[] = await getAllMusicCollections(permawebProvider.libs);
+			// Check Redux cache first
+			const cachedMusic = collectionsReducer?.music;
+			const cacheAge = cachedMusic?.lastUpdate ? Date.now() - cachedMusic.lastUpdate : Infinity;
+			const cacheDuration = 5 * 60 * 1000; // 5 minutes
 
-					// If comprehensive search fails, fall back to direct fetch
-					if (!musicCollectionsFetch || musicCollectionsFetch.length === 0) {
-						musicCollectionsFetch = await getMusicCollectionDirect(permawebProvider.libs);
-					}
-
-					// If direct fetch fails, fall back to simple approach
-					if (!musicCollectionsFetch || musicCollectionsFetch.length === 0) {
-						musicCollectionsFetch = await getMusicCollectionsSimple();
-					}
-
-					if (musicCollectionsFetch && musicCollectionsFetch.length > 0) {
-						setMusicCollections(musicCollectionsFetch);
-					}
-				} catch (e: any) {
-					console.error('Failed to fetch music collections:', e);
-				}
+			// Use cache if it's fresh
+			if (cachedMusic?.collections && cacheAge < cacheDuration) {
+				console.log('🎵 Using cached music collections:', cachedMusic.collections.length);
+				setMusicCollections(cachedMusic.collections);
 				setMusicCollectionsLoading(false);
+				setMusicFetchAttempted(true);
+				return;
 			}
+
+			// Mark as attempted and start loading
+			setMusicFetchAttempted(true);
+			setMusicCollectionsLoading(true);
+			console.log('🎵 Starting music collections fetch...');
+
+			try {
+				// Use comprehensive search for all music collections
+				let musicCollectionsFetch: CollectionType[] = await getAllMusicCollections(permawebProvider.libs);
+
+				// If comprehensive search fails, fall back to direct fetch
+				if (!musicCollectionsFetch || musicCollectionsFetch.length === 0) {
+					musicCollectionsFetch = await getMusicCollectionDirect(permawebProvider.libs);
+				}
+
+				// If direct fetch fails, fall back to simple approach
+				if (!musicCollectionsFetch || musicCollectionsFetch.length === 0) {
+					musicCollectionsFetch = await getMusicCollectionsSimple();
+				}
+
+				if (musicCollectionsFetch && musicCollectionsFetch.length > 0) {
+					console.log('🎵 Successfully fetched music collections:', musicCollectionsFetch.length);
+					setMusicCollections(musicCollectionsFetch);
+				} else {
+					console.log('🎵 No music collections found');
+				}
+			} catch (e: any) {
+				console.error('Failed to fetch music collections:', e);
+			}
+			setMusicCollectionsLoading(false);
 		})();
-	}, [musicCollections, collectionsReducer]); // Depend on both state and Redux cache
+	}, [musicCollections, musicFetchAttempted, collectionsReducer?.music, permawebProvider.libs]);
 
 	return (
 		<S.Wrapper className={'fade-in'}>
