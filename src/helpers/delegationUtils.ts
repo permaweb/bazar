@@ -33,7 +33,6 @@ export interface ProcessInfo {
  */
 export const getDelegations = async (walletAddress: string): Promise<DelegationPreference[]> => {
 	try {
-		console.log('Fetching delegations for wallet:', walletAddress);
 		const result = await dryrun({
 			process: DELEGATION.CONTROLLER,
 			data: walletAddress,
@@ -49,7 +48,6 @@ export const getDelegations = async (walletAddress: string): Promise<DelegationP
 
 		if (result?.Messages?.length > 0) {
 			const delegationData = JSON.parse(result.Messages[0].Data);
-			console.log('Delegation data from AO:', delegationData);
 			return delegationData.delegationPrefs || [];
 		}
 		return [];
@@ -96,15 +94,10 @@ export const setPixlDelegation = async (walletAddress: string, percentage: numbe
 	const signer = createDataItemSigner(window.arweaveWallet);
 	const factor = percentage * 100;
 
-	console.log(`=== DELEGATION DEBUG ===`);
-	console.log(`Setting PIXL delegation: ${percentage}% (${factor} basis points)`);
-
 	// 1. Get current delegations
 	const currentDelegations = await getDelegations(walletAddress);
-	console.log('Current delegations before update:', currentDelegations);
 
 	// 2. Set the PIXL delegation (let AO system handle the remainder)
-	console.log(`Setting PIXL delegation to ${factor} basis points`);
 	const data = JSON.stringify({
 		walletFrom: walletAddress,
 		walletTo: DELEGATION.PIXL_PROCESS,
@@ -123,20 +116,15 @@ export const setPixlDelegation = async (walletAddress: string, percentage: numbe
 		],
 		anchor: DELEGATION.ANCHOR,
 	});
-	console.log('PIXL delegation message ID:', messageId);
 
 	// 3. Wait for the message to be processed
-	console.log('Waiting for message to be processed...');
 	await new Promise((resolve) => setTimeout(resolve, 3000));
 
 	// 4. Verify the final state
 	const finalDelegations = await getDelegations(walletAddress);
-	console.log('Final delegations after update:', finalDelegations);
 
 	// Calculate total from final state
 	const totalFactor = finalDelegations.reduce((sum, pref) => sum + pref.factor, 0);
-	console.log(`Final total factor: ${totalFactor} (should be 10000)`);
-	console.log(`=== END DELEGATION DEBUG ===`);
 
 	return messageId;
 };

@@ -34,26 +34,14 @@ export default function App() {
 			) {
 				const userVersion = permawebProvider.profile.version;
 				if (!userVersion || userVersion !== CurrentZoneVersion) {
-					console.log(
-						'Calling updateProfileVersion with:',
-						permawebProvider.profile,
-						'processId:',
-						permawebProvider.profile.id
-					);
 					await permawebProvider.libs.updateProfileVersion({
 						profileId: permawebProvider.profile.id,
 					});
-					console.log('Updated profile version.');
 					hasCheckedProfileRef.current = true;
 				}
 			}
 		})();
 	}, [permawebProvider.profile]);
-
-	// Debug: Log wallet address changes
-	React.useEffect(() => {
-		console.log('App: arweaveProvider.walletAddress =', arweaveProvider.walletAddress);
-	}, [arweaveProvider.walletAddress]);
 
 	return (
 		<>

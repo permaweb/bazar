@@ -1,8 +1,7 @@
 import React from 'react';
 import Carousel from 'react-multi-carousel';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 
-import { Button } from 'components/atoms/Button';
 import { DEFAULTS, URLS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import { CollectionType } from 'helpers/types';
@@ -15,18 +14,31 @@ import * as S from './styles';
 import { IProps } from './types';
 
 export default function MusicCollectionsCarousel(props: IProps) {
-	const navigate = useNavigate();
-
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
 
 	const [nextSlideClicked, setNextSlideClicked] = React.useState<boolean>(false);
 	const [firstClick, setFirstClick] = React.useState<boolean>(false);
 
+	// Debug logging
+	React.useEffect(() => {
+		console.log('🎵 MusicCollectionsCarousel - Collections received:', props.collections?.length || 0);
+		if (props.collections) {
+			props.collections.forEach((col, i) => {
+				console.log(`  ${i + 1}. ${col.title} (ID: ${col.id})`);
+			});
+		}
+
+		// Force carousel refresh when collections change
+		setTimeout(() => {
+			window.dispatchEvent(new Event('resize'));
+		}, 100);
+	}, [props.collections]);
+
 	const responsive = {
 		desktopInitial: {
 			breakpoint: { max: 3000, min: 1325 },
-			items: 4,
+			items: 3, // Changed from 4 to 3 to show all collections
 			partialVisibilityGutter: 10,
 		},
 		desktopSecondary: {
@@ -42,6 +54,9 @@ export default function MusicCollectionsCarousel(props: IProps) {
 			items: 1,
 		},
 	};
+
+	console.log('🎵 Carousel responsive config:', responsive);
+	console.log('🎵 Current window width:', window.innerWidth);
 
 	const triggerResize = () => {
 		window.dispatchEvent(new Event('resize'));
@@ -59,14 +74,18 @@ export default function MusicCollectionsCarousel(props: IProps) {
 		<S.Wrapper className={'fade-in'}>
 			<S.Header>
 				<h4>Music/Casts</h4>
-				<S.HeaderActions>
-					<Button type={'primary'} label="View All Music" handlePress={() => navigate(URLS.collections)} />
-				</S.HeaderActions>
 			</S.Header>
 			<S.CollectionsWrapper previousDisabled={!nextSlideClicked}>
+				{console.log(
+					'🎵 Carousel visibility check:',
+					'collections:',
+					props.collections?.length || 0,
+					'loading:',
+					props.loading
+				)}
 				{(props.collections || props.loading) && (
 					<Carousel
-						key={props.collections?.length}
+						key={`music-carousel-${props.collections?.length || 0}-${props.loading}`}
 						responsive={responsive}
 						renderButtonGroupOutside={true}
 						draggable={false}
@@ -79,29 +98,34 @@ export default function MusicCollectionsCarousel(props: IProps) {
 						autoPlay={!props.loading}
 						autoPlaySpeed={5000}
 						afterChange={handleAfterChange}
+						onChange={(currentSlide) => console.log('🎵 Carousel changed to slide:', currentSlide)}
 					>
 						{props.collections &&
-							props.collections.map((collection: CollectionType) => (
-								<S.CollectionWrapper
-									key={collection.id}
-									className={'fade-in border-wrapper-alt2'}
-									backgroundImage={getTxEndpoint(collection.thumbnail || DEFAULTS.thumbnail)}
-									disabled={false}
-								>
-									<Link to={URLS.collectionAssets(collection.id)}>
-										<S.InfoWrapper>
-											<S.InfoTile>
-												<S.InfoDetail>
-													<span>{collection.title}</span>
-												</S.InfoDetail>
-												<S.InfoDetailAlt>
-													<span>{`${language.createdOn} ${formatDate(collection.dateCreated, 'epoch')}`}</span>
-												</S.InfoDetailAlt>
-											</S.InfoTile>
-										</S.InfoWrapper>
-									</Link>
-								</S.CollectionWrapper>
-							))}
+							(() => {
+								console.log('🎵 Rendering collections in carousel:', props.collections.length);
+								return props.collections.map((collection: CollectionType, index: number) => (
+									<S.CollectionWrapper
+										key={collection.id}
+										className={'fade-in border-wrapper-alt2'}
+										backgroundImage={getTxEndpoint(collection.thumbnail || DEFAULTS.thumbnail)}
+										disabled={false}
+										onClick={() => console.log('🎵 Clicked collection:', collection.title, '(Index:', index, ')')}
+									>
+										<Link to={URLS.collectionAssets(collection.id)}>
+											<S.InfoWrapper>
+												<S.InfoTile>
+													<S.InfoDetail>
+														<span>{collection.title}</span>
+													</S.InfoDetail>
+													<S.InfoDetailAlt>
+														<span>{`${language.createdOn} ${formatDate(collection.dateCreated, 'epoch')}`}</span>
+													</S.InfoDetailAlt>
+												</S.InfoTile>
+											</S.InfoWrapper>
+										</Link>
+									</S.CollectionWrapper>
+								));
+							})()}
 						{props.loading &&
 							Array.from({ length: 5 }, (_, i) => i + 1).map((index) => (
 								<S.CollectionWrapper
