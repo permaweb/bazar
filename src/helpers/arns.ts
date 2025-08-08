@@ -69,26 +69,35 @@ export async function getArNSRecord(name: string): Promise<{ processId: string |
 		// Get the ArNS record
 		const record = await ario.getArNSRecord({ name });
 
+		console.log('ArNS Debug - Record for', name, ':', record);
+
 		if (record && record.processId) {
 			// Initialize ANT client for this record
 			const ant = ANT.init({ processId: record.processId });
 
+			console.log('ArNS Debug - ANT initialized for processId:', record.processId);
+
 			// Get the logo transaction ID
 			const logoTxId = await ant.getLogo();
 
+			console.log('ArNS Debug - Logo TxId for', name, ':', logoTxId);
+
 			if (logoTxId && checkValidAddress(logoTxId)) {
+				console.log('ArNS Debug - Valid logo found:', logoTxId);
 				return {
 					processId: record.processId,
 					logo: logoTxId,
 				};
 			}
 
+			console.log('ArNS Debug - No valid logo found for', name);
 			return {
 				processId: record.processId,
 				logo: null,
 			};
 		}
 
+		console.log('ArNS Debug - No record or processId found for', name);
 		return { processId: null, logo: null };
 	} catch (error) {
 		console.error('Error fetching ArNS record for', name, ':', error);
@@ -104,6 +113,8 @@ export async function getArNSDataForAddress(address: string): Promise<ArNSData> 
 		// First get the primary name
 		const primaryName = await getPrimaryNameForAddress(address);
 
+		console.log('ArNS Debug - Primary name for', address, ':', primaryName);
+
 		if (!primaryName) {
 			return { primaryName: null, logo: null };
 		}
@@ -111,11 +122,14 @@ export async function getArNSDataForAddress(address: string): Promise<ArNSData> 
 		// Check cache for logo
 		const cached = arnsCache.get(address);
 		if (cached && cached.logo !== undefined && Date.now() - cached.timestamp < ARNS.CACHE_DURATION) {
+			console.log('ArNS Debug - Using cached logo for', primaryName, ':', cached.logo);
 			return { primaryName, logo: cached.logo };
 		}
 
 		// Get the ArNS record details including logo
 		const { logo } = await getArNSRecord(primaryName);
+
+		console.log('ArNS Debug - Fetched logo for', primaryName, ':', logo);
 
 		// Update cache with logo
 		arnsCache.set(address, {
