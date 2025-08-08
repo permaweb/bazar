@@ -1,10 +1,26 @@
-import { ANT, ARIO } from '@ar.io/sdk'; // The SDK should auto-detect web environment
-
 import { ARNS } from 'helpers/config';
 import { checkValidAddress } from 'helpers/utils';
 
-// Initialize ARIO client for mainnet
-const ario = ARIO.mainnet();
+// Lazy load the SDK to avoid build issues
+let ario: any = null;
+let ANT: any = null;
+let ARIO: any = null;
+
+// Initialize SDK only when needed
+const initializeSDK = async () => {
+	if (!ario) {
+		try {
+			const sdk = await import('@ar.io/sdk');
+			ANT = sdk.ANT;
+			ARIO = sdk.ARIO;
+			ario = ARIO.mainnet();
+		} catch (error) {
+			console.warn('Failed to load ArNS SDK:', error);
+			return false;
+		}
+	}
+	return true;
+};
 
 // Cache for ArNS data to minimize API calls
 const arnsCache = new Map<
@@ -30,6 +46,12 @@ export async function getPrimaryNameForAddress(address: string): Promise<string 
 		const cached = arnsCache.get(address);
 		if (cached && Date.now() - cached.timestamp < ARNS.CACHE_DURATION && cached.primaryName !== undefined) {
 			return cached.primaryName || null;
+		}
+
+		// Initialize SDK if needed
+		const sdkLoaded = await initializeSDK();
+		if (!sdkLoaded || !ario) {
+			return null;
 		}
 
 		// Fetch primary name from ARIO
@@ -66,6 +88,12 @@ export async function getPrimaryNameForAddress(address: string): Promise<string 
  */
 export async function getArNSRecord(name: string): Promise<{ processId: string | null; logo: string | null }> {
 	try {
+		// Initialize SDK if needed
+		const sdkLoaded = await initializeSDK();
+		if (!sdkLoaded || !ario || !ANT) {
+			return { processId: null, logo: null };
+		}
+
 		// Get the ArNS record
 		const record = await ario.getArNSRecord({ name });
 
@@ -101,6 +129,15 @@ export async function getArNSRecord(name: string): Promise<{ processId: string |
  */
 export async function getArNSDataForAddress(address: string): Promise<ArNSData> {
 	try {
+		// Initialize SDK if needed
+		const sdkLoaded = await initializeSDK();
+		if (!sdkLoaded) {
+			return {
+				primaryName: null,
+				logo: null,
+			};
+		}
+
 		// First get the primary name
 		const primaryName = await getPrimaryNameForAddress(address);
 
