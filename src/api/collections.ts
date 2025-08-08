@@ -1,4 +1,5 @@
 import { readHandler, stamps } from 'api';
+import { getAssetById } from 'api/assets';
 
 import { AO, HB } from 'helpers/config';
 import {
@@ -175,6 +176,289 @@ export async function getCollectionById(args: { id: string; libs?: any }): Promi
 		return null;
 	} catch (e: any) {
 		throw new Error(e.message || 'Failed to fetch collection');
+	}
+}
+
+export async function getMusicCollections(creator: string, libs: any): Promise<any[]> {
+	try {
+		// First get all collections
+		const allCollections = await getCollections(creator, libs);
+
+		if (!allCollections || allCollections.length === 0) {
+			return [];
+		}
+
+		const musicCollections = [];
+
+		// Check each collection for music assets
+		for (let i = 0; i < allCollections.length; i++) {
+			const collection = allCollections[i];
+
+			try {
+				const collectionDetail = await getCollectionById({ id: collection.id, libs });
+
+				if (collectionDetail && collectionDetail.assetIds && collectionDetail.assetIds.length > 0) {
+					// Check if any assets in the collection are music or podcast-related
+					let hasMusicOrPodcastAssets = false;
+
+					// Sample a few assets to check for music/podcasts (to avoid too many API calls)
+					const sampleSize = Math.min(5, collectionDetail.assetIds.length);
+					const sampleAssetIds = collectionDetail.assetIds.slice(0, sampleSize);
+
+					for (const assetId of sampleAssetIds) {
+						try {
+							const asset = await getAssetById({ id: assetId, libs });
+
+							if (asset && asset.data) {
+								// Check if it's an audio file
+								const isAudio = asset.data.contentType && asset.data.contentType.startsWith('audio/');
+
+								// Check if it has music or podcast-related topics
+								const hasMusicOrPodcastTopics =
+									asset.data.topics &&
+									(asset.data.topics.includes('Music') ||
+										asset.data.topics.includes('Bazar Music') ||
+										asset.data.topics.includes('ALBUM') ||
+										asset.data.topics.includes('Cover Art') ||
+										asset.data.topics.includes('podcast') ||
+										asset.data.topics.includes('bazar podcast'));
+
+								if (isAudio || hasMusicOrPodcastTopics) {
+									hasMusicOrPodcastAssets = true;
+									break;
+								}
+							}
+						} catch (e) {
+							console.error(`Error checking asset ${assetId}:`, e);
+							continue;
+						}
+					}
+
+					if (hasMusicOrPodcastAssets) {
+						musicCollections.push(collection);
+					}
+				}
+			} catch (e) {
+				console.error(`Error checking collection ${collection.id}:`, e);
+				continue;
+			}
+		}
+
+		return musicCollections;
+	} catch (e: any) {
+		throw new Error(e.message || 'Failed to fetch music collections');
+	}
+}
+
+export async function getAllMusicCollections(libs: any): Promise<CollectionType[]> {
+	try {
+		// Check Redux cache first
+		const state = store.getState().collectionsReducer;
+		const cachedMusic = state?.music;
+		const cacheAge = cachedMusic?.lastUpdate ? Date.now() - cachedMusic.lastUpdate : Infinity;
+		const cacheDuration = 5 * 60 * 1000; // 5 minutes
+
+		if (cachedMusic?.collections && cacheAge < cacheDuration) {
+			return cachedMusic.collections;
+		}
+
+		// Import the necessary functions
+		const { GATEWAYS } = await import('helpers/config');
+		const { getTagValue } = await import('helpers/utils');
+
+		// Set to store unique music collection IDs
+		const musicCollectionIds = new Set<string>();
+
+		// Use a more targeted search for Bazar Music assets with cover art
+
+		try {
+			// Search for assets that have both Bootloader-CoverArt and Bazar Music topics
+			const query = `{
+				transactions(
+					tags: [
+						{ name: "Bootloader-CoverArt" }
+					]
+					first: 50
+					sort: HEIGHT_DESC
+				) {
+					edges {
+						node {
+							id
+							tags {
+								name
+								value
+							}
+							block {
+								height
+								timestamp
+							}
+						}
+					}
+				}
+			}`;
+
+			// Try different GraphQL endpoints
+			const endpoints = [
+				'https://arweave.net/graphql',
+				'https://arweave-search.goldsky.com/graphql',
+				'https://g8way.io/graphql',
+			];
+
+			let success = false;
+
+			for (const endpoint of endpoints) {
+				try {
+					const response = await fetch(endpoint, {
+						method: 'POST',
+						headers: {
+							'Content-Type': 'application/json',
+							Accept: 'application/json',
+						},
+						body: JSON.stringify({ query }),
+					});
+
+					if (response.ok) {
+						const result = await response.json();
+
+						if (result.data && result.data.transactions && result.data.transactions.edges) {
+							const assets = result.data.transactions.edges;
+
+							// Process each asset to get its collection ID
+							for (const edge of assets) {
+								try {
+									const node = edge.node;
+									const collectionId = getTagValue(node.tags, 'Bootloader-CollectionId');
+									const assetTitle = getTagValue(node.tags, 'Bootloader-Name') || node.id;
+									const topicsTag = node.tags.find((tag: any) => tag.name === 'Bootloader-Topics');
+
+									if (collectionId) {
+										// Check if this is a music or podcast asset
+										let isMusicOrPodcast = false;
+
+										if (topicsTag && topicsTag.value) {
+											const topics = topicsTag.value.toLowerCase();
+
+											// Check specifically for Bazar Music and podcast topics
+											const hasBazarMusic = topics.includes('bazar music');
+											const hasPodcast = topics.includes('podcast') || topics.includes('bazar podcast');
+
+											isMusicOrPodcast = hasBazarMusic || hasPodcast;
+										}
+
+										if (isMusicOrPodcast) {
+											musicCollectionIds.add(collectionId);
+										}
+									}
+								} catch (e) {
+									console.error(`Error processing asset ${edge.node.id}:`, e);
+									continue;
+								}
+							}
+
+							success = true;
+							break; // Success, stop trying other endpoints
+						}
+					} else {
+						const errorText = await response.text();
+					}
+				} catch (e) {
+					continue;
+				}
+			}
+
+			if (!success) {
+				// Fallback to known music assets
+				const knownMusicAssetIds = [
+					'qN_E5p_dVs5MP8oukTZH25z0yh_BCIVuVCPv6kO7Dqg', // Back Then
+				];
+
+				for (const assetId of knownMusicAssetIds) {
+					musicCollectionIds.add('3oz9r4M8aT1-wcbKmv5rYixUdWdCKYRmMMmfsqbTgCQ'); // Known collection ID
+				}
+			}
+		} catch (e) {
+			console.error('Error in GraphQL search:', e);
+			// Fallback to known collection
+			musicCollectionIds.add('3oz9r4M8aT1-wcbKmv5rYixUdWdCKYRmMMmfsqbTgCQ');
+		}
+
+		// Fetch all the music collections
+		const musicCollections: CollectionType[] = [];
+
+		for (const collectionId of musicCollectionIds) {
+			try {
+				// Try to get collection data, but don't fail if HyperBEAM is down
+				let collection;
+				try {
+					collection = await libs.getCollection(collectionId);
+				} catch (hyperbeamError) {
+					// Create fallback collection data
+					collection = {
+						id: collectionId,
+						title: `Podcast Collection ${collectionId.slice(0, 8)}`,
+						name: `Podcast Collection ${collectionId.slice(0, 8)}`,
+						description: 'Podcast collection from Arweave',
+						creator: '',
+						dateCreated: Date.now(),
+						banner: null,
+						thumbnail: null,
+						activityProcess: null,
+					};
+				}
+
+				if (collection) {
+					// Remove emojis from title (simple approach)
+					const cleanTitle = (collection.title || collection.name || 'Music Collection')
+						.replace(/[^\x00-\x7F]/g, '') // Remove non-ASCII characters (including emojis)
+						.trim();
+
+					// Filter out test collections
+					if (cleanTitle.toLowerCase().includes('test')) {
+						continue;
+					}
+
+					const mappedCollection: CollectionType = {
+						id: collection.id || collectionId,
+						title: cleanTitle || 'Music Collection',
+						description: collection.description || '',
+						creator: collection.creator || '',
+						dateCreated: collection.dateCreated || Date.now(),
+						banner: collection.banner || null,
+						thumbnail: collection.thumbnail || null,
+						activityProcess: collection.activityProcess || null,
+					};
+
+					// Ensure we're only adding collections, not individual assets
+					if (
+						mappedCollection.title &&
+						!mappedCollection.title.includes('Back Then') &&
+						!mappedCollection.title.includes('Echoes of Wisdom') &&
+						!mappedCollection.title.toLowerCase().includes('test')
+					) {
+						musicCollections.push(mappedCollection);
+					}
+				}
+			} catch (e) {
+				console.error(`Error fetching collection ${collectionId}:`, e);
+				continue;
+			}
+		}
+
+		// Update Redux cache
+		store.dispatch(
+			collectionActions.setCollections({
+				...(store.getState().collectionsReducer ?? {}),
+				music: {
+					collections: musicCollections,
+					lastUpdate: Date.now(),
+				},
+			})
+		);
+
+		return musicCollections;
+	} catch (e: any) {
+		console.error('Error in getAllMusicCollections:', e);
+		return [];
 	}
 }
 

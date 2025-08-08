@@ -235,11 +235,9 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 			try {
 				const arnsData = await getArNSDataForAddress(arProvider.walletAddress);
 
-				console.log('PermawebProvider - ArNS data:', arnsData);
-
 				setArnsPrimaryName(arnsData.primaryName);
 				const avatarUrl = arnsData.logo ? getTxEndpoint(arnsData.logo) : null;
-				console.log('PermawebProvider - Setting avatar URL:', avatarUrl);
+
 				setArnsAvatarUrl(avatarUrl);
 			} catch (err) {
 				console.error('PermawebProvider - ArNS error:', err);

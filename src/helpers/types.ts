@@ -84,6 +84,7 @@ export type AssetType = {
 		collectionId?: string | null;
 		collectionName?: string | null;
 		contentType?: string | null;
+		topics?: string[];
 	};
 };
 
