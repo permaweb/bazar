@@ -20,13 +20,6 @@ export default function MusicCollectionsCarousel(props: IProps) {
 	const [nextSlideClicked, setNextSlideClicked] = React.useState<boolean>(false);
 	const [firstClick, setFirstClick] = React.useState<boolean>(false);
 
-	// Force carousel refresh when collections change
-	React.useEffect(() => {
-		setTimeout(() => {
-			window.dispatchEvent(new Event('resize'));
-		}, 100);
-	}, [props.collections]);
-
 	const responsive = {
 		desktopInitial: {
 			breakpoint: { max: 3000, min: 1325 },

@@ -809,15 +809,7 @@ export async function getAllMusicCollections(libs: any): Promise<CollectionType[
 		// Temporary: Force cache refresh to debug Crypto Chronicles issue
 		const forceRefresh = true; // Set to false to use cache again
 
-		console.log('🎵 Cache check - cachedMusic:', cachedMusic?.collections?.length || 0, 'collections');
-		console.log('🎵 Cache age:', cacheAge, 'ms, duration:', cacheDuration, 'ms');
-		console.log('🎵 Force refresh:', forceRefresh);
-
 		if (cachedMusic?.collections && cacheAge < cacheDuration && !forceRefresh) {
-			console.log('🎵 Using cached music collections:', cachedMusic.collections.length, 'collections');
-			cachedMusic.collections.forEach((col: any, i: number) => {
-				console.log(`  ${i + 1}. ${col.title} (ID: ${col.id})`);
-			});
 			return cachedMusic.collections;
 		}
 
@@ -903,14 +895,6 @@ export async function getAllMusicCollections(libs: any): Promise<CollectionType[
 											hasPodcast = topics.includes('podcast') || topics.includes('bazar podcast');
 
 											isMusicOrPodcast = hasBazarMusic || hasPodcast;
-
-											// Debug: Log what we're finding
-											if (assetTitle.includes('Crypto') || assetTitle.includes('Chronicles')) {
-												console.log('🔍 Found potential Crypto Chronicles asset:', assetTitle);
-												console.log('  - Collection ID:', collectionId);
-												console.log('  - Topics:', topicsTag.value);
-												console.log('  - Is music/podcast:', isMusicOrPodcast);
-											}
 										}
 
 										if (isMusicOrPodcast) {
@@ -953,37 +937,37 @@ export async function getAllMusicCollections(libs: any): Promise<CollectionType[
 		// Fetch all the music collections
 		const musicCollections: CollectionType[] = [];
 
-		console.log('🎵 Found collection IDs to process:', Array.from(musicCollectionIds));
-
 		for (const collectionId of musicCollectionIds) {
 			try {
-				console.log('🎵 Fetching collection:', collectionId);
-
 				// Try to get collection data, but don't fail if HyperBEAM is down
 				let collection;
+				let isFallback = false;
+
 				try {
 					collection = await libs.getCollection(collectionId);
-					console.log(
-						'🎵 Successfully fetched collection:',
-						collectionId,
-						'Title:',
-						collection?.title || collection?.name
-					);
 				} catch (hyperbeamError) {
-					console.log('🎵 HyperBEAM failed for collection:', collectionId, 'Error:', hyperbeamError.message);
-
-					// Create fallback collection data
-					collection = {
-						id: collectionId,
-						title: `Podcast Collection ${collectionId.slice(0, 8)}`,
-						name: `Podcast Collection ${collectionId.slice(0, 8)}`,
-						description: 'Podcast collection from Arweave',
-						creator: '',
-						dateCreated: Date.now(),
-						banner: null,
-						thumbnail: null,
-						activityProcess: null,
-					};
+					// Only create fallback for known valid collection IDs
+					if (
+						collectionId === '3oz9r4M8aT1-wcbKmv5rYixUdWdCKYRmMMmfsqbTgCQ' ||
+						collectionId === 'ieKDAby6MXF1qUkgSZrhDdJXd2Psd8557I7iTTzew2k' ||
+						collectionId === '9pjqOGyMJyiukrWOq8BySZcEBKeMhvX9dJHyiCwEmas'
+					) {
+						collection = {
+							id: collectionId,
+							title: `Podcast Collection ${collectionId.slice(0, 8)}`,
+							name: `Podcast Collection ${collectionId.slice(0, 8)}`,
+							description: 'Podcast collection from Arweave',
+							creator: '',
+							dateCreated: Date.now(),
+							banner: null,
+							thumbnail: null,
+							activityProcess: null,
+						};
+						isFallback = true;
+					} else {
+						// Skip unknown collection IDs to avoid showing individual assets
+						continue;
+					}
 				}
 
 				if (collection) {
@@ -992,11 +976,8 @@ export async function getAllMusicCollections(libs: any): Promise<CollectionType[
 						.replace(/[^\x00-\x7F]/g, '') // Remove non-ASCII characters (including emojis)
 						.trim();
 
-					console.log('🎵 Processing collection:', cleanTitle, '(ID:', collectionId, ')');
-
 					// Filter out test collections
 					if (cleanTitle.toLowerCase().includes('test')) {
-						console.log('🎵 Skipping test collection:', cleanTitle);
 						continue;
 					}
 
@@ -1019,18 +1000,6 @@ export async function getAllMusicCollections(libs: any): Promise<CollectionType[
 						!mappedCollection.title.toLowerCase().includes('test')
 					) {
 						musicCollections.push(mappedCollection);
-						console.log('🎵 Added collection to result:', mappedCollection.title, '(ID:', mappedCollection.id, ')');
-					} else {
-						console.log('🎵 Skipped collection:', mappedCollection.title, '(Reason: filtered out)');
-						if (mappedCollection.title.includes('Back Then')) {
-							console.log('  - Reason: Contains "Back Then"');
-						}
-						if (mappedCollection.title.includes('Echoes of Wisdom')) {
-							console.log('  - Reason: Contains "Echoes of Wisdom"');
-						}
-						if (mappedCollection.title.toLowerCase().includes('test')) {
-							console.log('  - Reason: Contains "test"');
-						}
 					}
 				}
 			} catch (e) {
@@ -1038,11 +1007,6 @@ export async function getAllMusicCollections(libs: any): Promise<CollectionType[
 				continue;
 			}
 		}
-
-		console.log('🎵 Final music collections result:', musicCollections.length, 'collections');
-		musicCollections.forEach((collection, index) => {
-			console.log(`  ${index + 1}. ${collection.title} (ID: ${collection.id})`);
-		});
 
 		// Update Redux cache
 		store.dispatch(
