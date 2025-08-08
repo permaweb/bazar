@@ -60,6 +60,14 @@ export default function MusicPlayer(props: IProps) {
 		}
 	}, [props.volume]);
 
+	// Handle external currentTime changes (e.g., from skip previous button)
+	React.useEffect(() => {
+		if (audioRef.current && Math.abs(audioRef.current.currentTime - props.currentTime) > 1) {
+			// Only seek if there's a significant difference to avoid infinite loops
+			audioRef.current.currentTime = props.currentTime;
+		}
+	}, [props.currentTime]);
+
 	const handleTimeUpdate = () => {
 		if (audioRef.current) {
 			props.onSeek(audioRef.current.currentTime);
@@ -103,18 +111,13 @@ export default function MusicPlayer(props: IProps) {
 		if (metadataLoading || assetMetadata) return;
 		setMetadataLoading(true);
 		try {
-			console.log('Fetching metadata for asset:', assetId);
 			const processState = await readHandler({
 				processId: assetId,
 				action: 'Info',
 				data: null,
 			});
-			console.log('Process state received:', processState);
 			if (processState?.Metadata) {
-				console.log('Metadata found:', processState.Metadata);
 				setAssetMetadata(processState.Metadata);
-			} else {
-				console.log('No metadata found in process state');
 			}
 		} catch (e: any) {
 			console.error('Failed to fetch asset metadata:', e);

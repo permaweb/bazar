@@ -1,7 +1,16 @@
-import styled from 'styled-components';
+import styled, { keyframes } from 'styled-components';
 
 import { fadeIn1, open } from 'helpers/animations';
 import { STYLING } from 'helpers/config';
+
+const spin = keyframes`
+	0% {
+		transform: rotate(0deg);
+	}
+	100% {
+		transform: rotate(360deg);
+	}
+`;
 
 export const Wrapper = styled.div`
 	width: 100%;
@@ -158,4 +167,13 @@ export const InfoDetailAlt = styled.div`
 		color: ${(props) => props.theme.colors.font.primary.alt2};
 		line-height: 1.2;
 	}
+`;
+
+export const LoadingSpinner = styled.div`
+	width: 12px;
+	height: 12px;
+	border: 2px solid #fff;
+	border-top: 2px solid transparent;
+	border-radius: 50%;
+	animation: ${spin} 1s linear infinite;
 `;

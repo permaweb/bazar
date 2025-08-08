@@ -193,7 +193,6 @@ export async function getMusicCollections(creator: string, libs: any): Promise<a
 		// Check each collection for music assets
 		for (let i = 0; i < allCollections.length; i++) {
 			const collection = allCollections[i];
-			console.log(`🎵 Checking collection ${i + 1}/${allCollections.length}: ${collection.title}`);
 
 			try {
 				const collectionDetail = await getCollectionById({ id: collection.id, libs });
@@ -236,7 +235,6 @@ export async function getMusicCollections(creator: string, libs: any): Promise<a
 					}
 
 					if (hasMusicOrPodcastAssets) {
-						console.log(`🎵 Found music/podcast collection: ${collection.title}`);
 						musicCollections.push(collection);
 					}
 				}
@@ -246,542 +244,9 @@ export async function getMusicCollections(creator: string, libs: any): Promise<a
 			}
 		}
 
-		console.log(`🎵 Music collections fetch complete. Found ${musicCollections.length} music collections`);
 		return musicCollections;
 	} catch (e: any) {
 		throw new Error(e.message || 'Failed to fetch music collections');
-	}
-}
-
-export async function getMusicCollectionsFromExisting(
-	collections: CollectionType[],
-	libs: any
-): Promise<CollectionType[]> {
-	try {
-		console.log('🎵 Filtering existing collections for music...');
-
-		if (!collections || collections.length === 0) {
-			console.log('🎵 No collections to filter');
-			return [];
-		}
-
-		const musicCollectionIds = new Set<string>();
-
-		// Check each collection for music assets
-		for (let i = 0; i < collections.length; i++) {
-			const collection = collections[i];
-			console.log(`🎵 Checking collection ${i + 1}/${collections.length}: ${collection.title}`);
-
-			try {
-				const collectionDetail = await getCollectionById({ id: collection.id, libs });
-
-				if (collectionDetail && collectionDetail.assetIds && collectionDetail.assetIds.length > 0) {
-					// Sample a few assets to check for music (to avoid too many API calls)
-					const sampleSize = Math.min(3, collectionDetail.assetIds.length);
-					const sampleAssetIds = collectionDetail.assetIds.slice(0, sampleSize);
-
-					for (const assetId of sampleAssetIds) {
-						try {
-							const asset = await getAssetById({ id: assetId, libs });
-
-							if (asset && asset.data) {
-								// Check if it has music or podcast-related topics
-								const hasMusicOrPodcastTopics =
-									asset.data.topics &&
-									(asset.data.topics.includes('Music') ||
-										asset.data.topics.includes('Bazar Music') ||
-										asset.data.topics.includes('ALBUM') ||
-										asset.data.topics.includes('Cover Art') ||
-										asset.data.topics.includes('podcast') ||
-										asset.data.topics.includes('bazar podcast'));
-
-								// Check if it's an audio file
-								const isAudio = asset.data.contentType && asset.data.contentType.startsWith('audio/');
-
-								if (hasMusicOrPodcastTopics || isAudio) {
-									console.log(`🎵 Found music/podcast asset in collection ${collection.title}: ${asset.data.title}`);
-									musicCollectionIds.add(collection.id);
-									break; // Found music/podcast in this collection, move to next collection
-								}
-							}
-						} catch (e) {
-							console.error(`Error checking asset ${assetId}:`, e);
-							continue;
-						}
-					}
-				}
-			} catch (e) {
-				console.error(`Error checking collection ${collection.id}:`, e);
-				continue;
-			}
-		}
-
-		// Filter collections to only include those with music assets
-		const musicCollections = collections.filter((collection) => musicCollectionIds.has(collection.id));
-
-		console.log(
-			`🎵 Found ${musicCollections.length} music collections:`,
-			musicCollections.map((c) => c.title)
-		);
-		return musicCollections;
-	} catch (e: any) {
-		console.error('Error filtering music collections:', e);
-		return [];
-	}
-}
-
-export async function getMusicCollectionsEfficient(libs: any): Promise<CollectionType[]> {
-	try {
-		console.log('🎵 Efficiently searching for music collections...');
-
-		// First, let's get all collections
-		const allCollections = await getCollections(null, libs);
-
-		if (!allCollections || allCollections.length === 0) {
-			console.log('🎵 No collections found');
-			return [];
-		}
-
-		// For now, let's search for collections that might contain music or podcasts
-		// We'll look for collections with music/podcast-related names or descriptions
-		const musicCollections = allCollections.filter((collection) => {
-			const title = collection.title?.toLowerCase() || '';
-			const description = collection.description?.toLowerCase() || '';
-
-			const musicAndPodcastKeywords = [
-				'music',
-				'album',
-				'track',
-				'song',
-				'audio',
-				'sound',
-				'beat',
-				'mix',
-				'playlist',
-				'ep',
-				'single',
-				'remix',
-				'instrumental',
-				'vocal',
-				'podcast',
-				'episode',
-				'show',
-				'radio',
-				'broadcast',
-				'stream',
-			];
-
-			return musicAndPodcastKeywords.some((keyword) => title.includes(keyword) || description.includes(keyword));
-		});
-
-		console.log(`🎵 Found ${musicCollections.length} potential music/podcast collections by keyword search`);
-
-		// If we don't find any by keywords, return empty array
-		if (musicCollections.length === 0) {
-			console.log('🎵 No music collections found by keywords');
-			return [];
-		}
-
-		return musicCollections;
-	} catch (e: any) {
-		console.error('Error in efficient music collections search:', e);
-		return [];
-	}
-}
-
-export async function getMusicCollectionsByAssetTopics(libs: any): Promise<CollectionType[]> {
-	try {
-		console.log('🎵 Searching for music assets by topics...');
-
-		// First, let's get all collections to have them ready
-		const allCollections = await getCollections(null, libs);
-
-		if (!allCollections || allCollections.length === 0) {
-			console.log('🎵 No collections found');
-			return [];
-		}
-
-		// Create a map of collection ID to collection for quick lookup
-		const collectionsMap = new Map<string, CollectionType>();
-		allCollections.forEach((collection) => {
-			collectionsMap.set(collection.id, collection);
-		});
-
-		console.log(`🎵 Loaded ${allCollections.length} collections for lookup`);
-
-		// Set to store unique collection IDs that contain music assets
-		const musicCollectionIds = new Set<string>();
-
-		// Search for assets with music topics
-		// We'll search through a subset of collections to find music assets
-		const searchLimit = Math.min(20, allCollections.length); // Limit to first 20 collections for performance
-
-		for (let i = 0; i < searchLimit; i++) {
-			const collection = allCollections[i];
-			console.log(`🎵 Searching collection ${i + 1}/${searchLimit}: ${collection.title}`);
-
-			try {
-				const collectionDetail = await getCollectionById({ id: collection.id, libs });
-
-				if (collectionDetail && collectionDetail.assetIds && collectionDetail.assetIds.length > 0) {
-					// Check each asset in the collection for music topics
-					for (const assetId of collectionDetail.assetIds) {
-						try {
-							const asset = await getAssetById({ id: assetId, libs });
-
-							if (asset && asset.data && asset.data.topics) {
-								const topics = asset.data.topics;
-
-								// Check for music-related topics
-								const musicTopics = ['Music', 'Bazar Music', 'ALBUM', 'Cover Art'];
-								const hasMusicTopics = musicTopics.some((topic) => topics.includes(topic));
-
-								// Also check for audio content type
-								const isAudio = asset.data.contentType && asset.data.contentType.startsWith('audio/');
-
-								if (hasMusicTopics || isAudio) {
-									console.log(`🎵 Found music asset: ${asset.data.title}`);
-									console.log(`🎵 Topics: ${topics.join(', ')}`);
-									console.log(`🎵 Content type: ${asset.data.contentType}`);
-									console.log(`🎵 Collection: ${collection.title}`);
-
-									musicCollectionIds.add(collection.id);
-									break; // Found music in this collection, move to next collection
-								}
-							}
-						} catch (e) {
-							console.error(`Error checking asset ${assetId}:`, e);
-							continue;
-						}
-					}
-				}
-			} catch (e) {
-				console.error(`Error searching collection ${collection.id}:`, e);
-				continue;
-			}
-		}
-
-		// Get the collections that contain music assets
-		let musicCollections = Array.from(musicCollectionIds)
-			.map((id) => collectionsMap.get(id))
-			.filter(Boolean);
-
-		// If we didn't find any, return empty array
-		if (musicCollections.length === 0) {
-			console.log('🎵 No music collections found by asset topics');
-		}
-
-		console.log(
-			`🎵 Found ${musicCollections.length} music collections by asset topics:`,
-			musicCollections.map((c) => c.title)
-		);
-		return musicCollections;
-	} catch (e: any) {
-		console.error('Error in music collections search by asset topics:', e);
-		return [];
-	}
-}
-
-export async function getMusicCollectionsByGraphQL(libs: any): Promise<CollectionType[]> {
-	try {
-		console.log('🎵 Searching for music assets using GraphQL...');
-
-		// Import the necessary functions
-		const { getGQLData } = await import('api');
-		const { GATEWAYS, TAGS } = await import('helpers/config');
-		const { getTagValue } = await import('helpers/utils');
-
-		// For debugging, let's first try a simple search to see if GraphQL is working
-		console.log('🎵 Testing GraphQL connection...');
-		try {
-			const testResponse = await getGQLData({
-				gateway: GATEWAYS.arweave,
-				ids: null,
-				tagFilters: null,
-				owners: null,
-				cursor: null,
-				paginator: 5, // Just get 5 assets to test
-			});
-			console.log(`🎵 GraphQL test successful, found ${testResponse?.data?.length || 0} assets`);
-		} catch (e) {
-			console.error('🎵 GraphQL test failed:', e);
-		}
-
-		// Search for assets with music topics using GraphQL
-		const musicTopics = ['Music', 'Bazar Music', 'ALBUM', 'Cover Art'];
-		const musicCollectionIds = new Set<string>();
-
-		// Search for each music topic
-		for (const topic of musicTopics) {
-			console.log(`🎵 Searching for assets with topic: ${topic}`);
-
-			try {
-				const gqlResponse = await getGQLData({
-					gateway: GATEWAYS.arweave,
-					ids: null,
-					tagFilters: [{ name: 'Topic', values: [topic], match: 'FUZZY_OR' }],
-					owners: null,
-					cursor: null,
-					paginator: 50, // Get up to 50 assets per topic
-				});
-
-				if (gqlResponse && gqlResponse.data && gqlResponse.data.length > 0) {
-					console.log(`🎵 Found ${gqlResponse.data.length} assets with topic: ${topic}`);
-
-					// Process each asset to get its collection ID directly from tags
-					for (const element of gqlResponse.data) {
-						try {
-							// Get collection ID directly from the asset's tags
-							const collectionId = getTagValue(element.node.tags, TAGS.keys.collectionId);
-							const assetTitle =
-								getTagValue(element.node.tags, TAGS.keys.title) ||
-								getTagValue(element.node.tags, TAGS.keys.name) ||
-								element.node.id;
-
-							if (collectionId) {
-								console.log(`🎵 Asset ${assetTitle} belongs to collection: ${collectionId}`);
-								musicCollectionIds.add(collectionId);
-							} else {
-								console.log(`🎵 Asset ${assetTitle} has no collection ID`);
-							}
-						} catch (e) {
-							console.error(`Error processing asset ${element.node.id}:`, e);
-							continue;
-						}
-					}
-				}
-			} catch (e) {
-				console.error(`Error searching for topic ${topic}:`, e);
-				continue;
-			}
-		}
-
-		// Also search for audio content types
-		console.log('🎵 Searching for audio content types...');
-		try {
-			const audioResponse = await getGQLData({
-				gateway: GATEWAYS.arweave,
-				ids: null,
-				tagFilters: [{ name: 'Content-Type', values: ['audio/mpeg', 'audio/wav', 'audio/ogg'], match: 'FUZZY_OR' }],
-				owners: null,
-				cursor: null,
-				paginator: 50,
-			});
-
-			if (audioResponse && audioResponse.data && audioResponse.data.length > 0) {
-				console.log(`🎵 Found ${audioResponse.data.length} audio assets`);
-
-				for (const element of audioResponse.data) {
-					try {
-						// Get collection ID directly from the asset's tags
-						const collectionId = getTagValue(element.node.tags, TAGS.keys.collectionId);
-						const assetTitle =
-							getTagValue(element.node.tags, TAGS.keys.title) ||
-							getTagValue(element.node.tags, TAGS.keys.name) ||
-							element.node.id;
-
-						if (collectionId) {
-							console.log(`🎵 Audio asset ${assetTitle} belongs to collection: ${collectionId}`);
-							musicCollectionIds.add(collectionId);
-						} else {
-							console.log(`🎵 Audio asset ${assetTitle} has no collection ID`);
-						}
-					} catch (e) {
-						console.error(`Error processing audio asset ${element.node.id}:`, e);
-						continue;
-					}
-				}
-			}
-		} catch (e) {
-			console.error('Error searching for audio content types:', e);
-		}
-
-		// Get the collections that contain music assets
-		if (musicCollectionIds.size === 0) {
-			console.log('🎵 No music collections found via GraphQL search');
-			return [];
-		}
-
-		console.log(`🎵 Found ${musicCollectionIds.size} unique music collection IDs`);
-
-		// Get all collections and filter for the music ones
-		const allCollections = await getCollections(null, libs);
-		const musicCollections = allCollections.filter((collection) => musicCollectionIds.has(collection.id));
-
-		console.log(
-			`🎵 Found ${musicCollections.length} music collections via GraphQL:`,
-			musicCollections.map((c) => c.title)
-		);
-		return musicCollections;
-	} catch (e: any) {
-		console.error('Error in GraphQL music collections search:', e);
-		return [];
-	}
-}
-
-export async function getMusicCollectionsTest(libs: any): Promise<CollectionType[]> {
-	try {
-		console.log('🎵 Testing with known music collection...');
-
-		// Get all collections first
-		const allCollections = await getCollections(null, libs);
-
-		if (!allCollections || allCollections.length === 0) {
-			console.log('🎵 No collections found');
-			return [];
-		}
-
-		// Return empty array for test function
-		console.log('🎵 Test function - returning empty array');
-		return [];
-	} catch (e: any) {
-		console.error('Error in test music collections:', e);
-		return [];
-	}
-}
-
-export async function getMusicCollectionsFromRedux(): Promise<CollectionType[]> {
-	try {
-		console.log('🎵 Searching for music assets using GraphQL...');
-
-		// Import the necessary functions
-		const { getGQLData } = await import('api');
-		const { GATEWAYS, TAGS } = await import('helpers/config');
-		const { getTagValue } = await import('helpers/utils');
-
-		// Search for assets with music and podcast topics using GraphQL
-		// These are the exact values from the JSON array: ["Music","Bazar Music","Cover Art","ALBUM","hip-hop/rap","Mixes","podcast","bazar podcast"]
-		const musicAndPodcastTopics = [
-			'Music',
-			'Bazar Music',
-			'Cover Art',
-			'ALBUM',
-			'hip-hop/rap',
-			'Mixes',
-			'podcast',
-			'bazar podcast',
-		];
-		const musicCollectionIds = new Set<string>();
-
-		console.log('🎵 Searching for music and podcast assets by Bootloader-Topics values...');
-
-		// Search for each music and podcast topic value within Bootloader-Topics
-		for (const topic of musicAndPodcastTopics) {
-			console.log(`🎵 Searching for music/podcast assets with Bootloader-Topics containing: ${topic}`);
-
-			try {
-				const gqlResponse = await getGQLData({
-					gateway: GATEWAYS.arweave,
-					ids: null,
-					tagFilters: [{ name: 'Bootloader-Topics', values: [topic], match: 'FUZZY_OR' }],
-					owners: null,
-					cursor: null,
-					paginator: 20, // Get up to 20 assets per topic
-				});
-
-				if (gqlResponse && gqlResponse.data && gqlResponse.data.length > 0) {
-					console.log(
-						`🎵 Found ${gqlResponse.data.length} music/podcast assets with Bootloader-Topics containing: ${topic}`
-					);
-
-					// Process each asset to get its collection ID directly from tags
-					for (const element of gqlResponse.data) {
-						try {
-							// Get collection ID from Bootloader-CollectionId tag (not Collection-Id)
-							const collectionId = getTagValue(element.node.tags, 'Bootloader-CollectionId');
-							const assetTitle =
-								getTagValue(element.node.tags, 'Bootloader-Name') ||
-								getTagValue(element.node.tags, TAGS.keys.title) ||
-								getTagValue(element.node.tags, TAGS.keys.name) ||
-								element.node.id;
-
-							// Also check the Bootloader-Topics value to confirm it contains music
-							const bootloaderTopics = getTagValue(element.node.tags, 'Bootloader-Topics');
-							console.log(`🎵 Asset ${assetTitle} Bootloader-Topics: ${bootloaderTopics}`);
-
-							if (collectionId) {
-								console.log(`🎵 Asset ${assetTitle} belongs to collection: ${collectionId}`);
-								musicCollectionIds.add(collectionId);
-							} else {
-								console.log(`🎵 Asset ${assetTitle} has no Bootloader-CollectionId`);
-							}
-						} catch (e) {
-							console.error(`Error processing asset ${element.node.id}:`, e);
-							continue;
-						}
-					}
-				} else {
-					console.log(`🎵 No music/podcast assets found with Bootloader-Topics containing: ${topic}`);
-				}
-			} catch (e) {
-				console.error(`Error searching for music/podcast Bootloader-Topics containing ${topic}:`, e);
-				continue;
-			}
-		}
-
-		// Also search for audio content types as backup
-		try {
-			const audioResponse = await getGQLData({
-				gateway: GATEWAYS.arweave,
-				ids: null,
-				tagFilters: [{ name: 'Content-Type', values: ['audio/mpeg', 'audio/wav', 'audio/ogg'], match: 'FUZZY_OR' }],
-				owners: null,
-				cursor: null,
-				paginator: 20,
-			});
-
-			if (audioResponse && audioResponse.data && audioResponse.data.length > 0) {
-				for (const element of audioResponse.data) {
-					try {
-						// Get collection ID from Bootloader-CollectionId tag
-						const collectionId = getTagValue(element.node.tags, 'Bootloader-CollectionId');
-						const assetTitle =
-							getTagValue(element.node.tags, 'Bootloader-Name') ||
-							getTagValue(element.node.tags, TAGS.keys.title) ||
-							getTagValue(element.node.tags, TAGS.keys.name) ||
-							element.node.id;
-
-						if (collectionId) {
-							musicCollectionIds.add(collectionId);
-						}
-					} catch (e) {
-						console.error(`Error processing audio asset ${element.node.id}:`, e);
-						continue;
-					}
-				}
-			}
-		} catch (e) {
-			console.error('Error searching for audio content types:', e);
-		}
-
-		// Get the collections that contain music assets
-		if (musicCollectionIds.size === 0) {
-			console.log('🎵 No music collections found via GraphQL search');
-			return [];
-		}
-
-		console.log(`🎵 Found ${musicCollectionIds.size} unique music collection IDs:`, Array.from(musicCollectionIds));
-
-		// Get collections from Redux store and filter for the music ones
-		const { store } = await import('store');
-		const collectionsReducer = store.getState().collectionsReducer;
-		const allCollections = collectionsReducer?.stamped?.collections || [];
-
-		if (allCollections.length === 0) {
-			console.log('🎵 No collections found in Redux store');
-			return [];
-		}
-
-		const musicCollections = allCollections.filter((collection) => musicCollectionIds.has(collection.id));
-
-		console.log(
-			`🎵 Found ${musicCollections.length} music collections:`,
-			musicCollections.map((c) => c.title)
-		);
-		return musicCollections;
-	} catch (e: any) {
-		console.error('Error in GraphQL music collections search:', e);
-		return [];
 	}
 }
 
@@ -793,10 +258,7 @@ export async function getAllMusicCollections(libs: any): Promise<CollectionType[
 		const cacheAge = cachedMusic?.lastUpdate ? Date.now() - cachedMusic.lastUpdate : Infinity;
 		const cacheDuration = 5 * 60 * 1000; // 5 minutes
 
-		// Temporary: Force cache refresh to debug Crypto Chronicles issue
-		const forceRefresh = true; // Set to false to use cache again
-
-		if (cachedMusic?.collections && cacheAge < cacheDuration && !forceRefresh) {
+		if (cachedMusic?.collections && cacheAge < cacheDuration) {
 			return cachedMusic.collections;
 		}
 
@@ -872,14 +334,13 @@ export async function getAllMusicCollections(libs: any): Promise<CollectionType[
 									if (collectionId) {
 										// Check if this is a music or podcast asset
 										let isMusicOrPodcast = false;
-										let hasPodcast = false;
 
 										if (topicsTag && topicsTag.value) {
 											const topics = topicsTag.value.toLowerCase();
 
 											// Check specifically for Bazar Music and podcast topics
 											const hasBazarMusic = topics.includes('bazar music');
-											hasPodcast = topics.includes('podcast') || topics.includes('bazar podcast');
+											const hasPodcast = topics.includes('podcast') || topics.includes('bazar podcast');
 
 											isMusicOrPodcast = hasBazarMusic || hasPodcast;
 										}
@@ -928,33 +389,21 @@ export async function getAllMusicCollections(libs: any): Promise<CollectionType[
 			try {
 				// Try to get collection data, but don't fail if HyperBEAM is down
 				let collection;
-				let isFallback = false;
-
 				try {
 					collection = await libs.getCollection(collectionId);
 				} catch (hyperbeamError) {
-					// Only create fallback for known valid collection IDs
-					if (
-						collectionId === '3oz9r4M8aT1-wcbKmv5rYixUdWdCKYRmMMmfsqbTgCQ' ||
-						collectionId === 'ieKDAby6MXF1qUkgSZrhDdJXd2Psd8557I7iTTzew2k' ||
-						collectionId === '9pjqOGyMJyiukrWOq8BySZcEBKeMhvX9dJHyiCwEmas'
-					) {
-						collection = {
-							id: collectionId,
-							title: `Podcast Collection ${collectionId.slice(0, 8)}`,
-							name: `Podcast Collection ${collectionId.slice(0, 8)}`,
-							description: 'Podcast collection from Arweave',
-							creator: '',
-							dateCreated: Date.now(),
-							banner: null,
-							thumbnail: null,
-							activityProcess: null,
-						};
-						isFallback = true;
-					} else {
-						// Skip unknown collection IDs to avoid showing individual assets
-						continue;
-					}
+					// Create fallback collection data
+					collection = {
+						id: collectionId,
+						title: `Podcast Collection ${collectionId.slice(0, 8)}`,
+						name: `Podcast Collection ${collectionId.slice(0, 8)}`,
+						description: 'Podcast collection from Arweave',
+						creator: '',
+						dateCreated: Date.now(),
+						banner: null,
+						thumbnail: null,
+						activityProcess: null,
+					};
 				}
 
 				if (collection) {
@@ -1009,58 +458,6 @@ export async function getAllMusicCollections(libs: any): Promise<CollectionType[
 		return musicCollections;
 	} catch (e: any) {
 		console.error('Error in getAllMusicCollections:', e);
-		return [];
-	}
-}
-
-export async function getMusicCollectionsSimple(): Promise<CollectionType[]> {
-	try {
-		// Import the store
-		const { store } = await import('store');
-
-		// Get collections from Redux store
-		const collectionsReducer = store.getState().collectionsReducer;
-		const allCollections = collectionsReducer?.stamped?.collections || [];
-
-		if (allCollections.length === 0) {
-			return [];
-		}
-
-		// Return empty array for simple function
-		return [];
-	} catch (e: any) {
-		console.error('Error getting music collections (simple):', e);
-		return [];
-	}
-}
-
-export async function getMusicCollectionDirect(libs: any): Promise<CollectionType[]> {
-	try {
-		// We know this collection ID from the test asset
-		const knownMusicCollectionId = '3oz9r4M8aT1-wcbKmv5rYixUdWdCKYRmMMmfsqbTgCQ';
-
-		// Use permaweb-libs getCollection method
-		const musicCollection = await libs.getCollection(knownMusicCollectionId);
-
-		if (musicCollection) {
-			// Map the collection data to the expected format
-			const mappedCollection: CollectionType = {
-				id: musicCollection.id || knownMusicCollectionId,
-				title: musicCollection.title || musicCollection.name || 'Music Collection',
-				description: musicCollection.description || '',
-				creator: musicCollection.creator || '',
-				dateCreated: musicCollection.dateCreated || Date.now(),
-				banner: musicCollection.banner || null,
-				thumbnail: musicCollection.thumbnail || null,
-				activityProcess: musicCollection.activityProcess || null,
-			};
-
-			return [mappedCollection];
-		} else {
-			return [];
-		}
-	} catch (e: any) {
-		console.error('Error fetching music collection directly:', e);
 		return [];
 	}
 }
