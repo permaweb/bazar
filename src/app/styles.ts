@@ -337,6 +337,8 @@ export const View = styled.main`
 	min-height: calc(100vh - ${STYLING.dimensions.nav.height});
 	width: 100%;
 	padding: 0 20px 20px 20px;
+	/* Add padding bottom to account for fixed global music player */
+	margin-bottom: 100px;
 `;
 
 export const DrawerWrapper = styled.div`
