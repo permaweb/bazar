@@ -101,7 +101,24 @@ export default function CurrencyLine(props: IProps) {
 				</Link>
 			);
 		} else if (props.currency) {
-			// Fallback: show a generic token indicator when currency metadata isn't loaded yet
+			// Fallback: use REFORMATTED_ASSETS data when currency metadata isn't loaded yet
+			if (REFORMATTED_ASSETS[props.currency]?.logo) {
+				return (
+					<Link
+						to={`${URLS.asset}${props.currency}`}
+						onClick={(e: any) => (props.callback ? props.callback() : e.stopPropagation())}
+					>
+						<S.Currency>
+							<img
+								src={getTxEndpoint(REFORMATTED_ASSETS[props.currency].logo)}
+								alt={REFORMATTED_ASSETS[props.currency].title || props.currency}
+							/>
+						</S.Currency>
+					</Link>
+				);
+			}
+
+			// Final fallback: show a generic token indicator
 			return (
 				<Link
 					to={`${URLS.asset}${props.currency}`}

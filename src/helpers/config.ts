@@ -97,7 +97,7 @@ export const REFORMATTED_ASSETS = {
 	},
 	[AO.stamps]: {
 		title: 'STAMP Token',
-		logo: 'bLK9hMjx3jsJ4Ldjn-tvuTB1_PHzYV6ivPkv7_D8zKg',
+		logo: 'kg0d-QRW1kD9lwBErRD9CGQogTp5hgPfkf1i7ApE4WU',
 		denomination: 12,
 	},
 	['pazXumQI-HPH7iFGfTC-4_7biSnqz_U67oFAGry5zUY']: {

@@ -70,7 +70,6 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 	} | null>({
 		[AO.defaultToken]: { profileBalance: null, walletBalance: null },
 		[AO.pixl]: { profileBalance: null, walletBalance: null },
-		[AO.stamps]: { profileBalance: null, walletBalance: null },
 	});
 	const [toggleTokenBalanceUpdate, setToggleTokenBalanceUpdate] = React.useState<boolean>(false);
 
@@ -189,13 +188,6 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 				});
 				await sleep(500);
 
-				const stampTokenWalletBalance = await libs.readProcess({
-					processId: AO.stamps,
-					action: 'Balance',
-					tags: [{ name: 'Recipient', value: arProvider.walletAddress }],
-				});
-				await sleep(500);
-
 				const defaultTokenProfileBalance = await libs.readProcess({
 					processId: AO.defaultToken,
 					action: 'Balance',
@@ -208,58 +200,20 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 					action: 'Balance',
 					tags: [{ name: 'Recipient', value: profile.id }],
 				});
-				await sleep(500);
 
-				const stampTokenProfileBalance = await libs.readProcess({
-					processId: AO.stamps,
-					action: 'Balance',
-					tags: [{ name: 'Recipient', value: profile.id }],
-				});
-
-				// Helper function to normalize balance response
-				const normalizeBalance = (balanceResponse: any) => {
-					if (balanceResponse === null || balanceResponse === undefined) {
-						return null;
-					}
-
-					// If response has Balance property, use that
-					if (typeof balanceResponse === 'object' && balanceResponse.Balance !== undefined) {
-						const balanceValue = balanceResponse.Balance;
-						if (balanceValue === '0' || balanceValue === 0) {
-							return 0;
-						}
-						return Number(balanceValue) || null;
-					}
-
-					// Otherwise, treat the response itself as the balance
-					if (balanceResponse === '0' || balanceResponse === 0) {
-						return 0;
-					}
-					return Number(balanceResponse) || null;
-				};
-
-				setTokenBalances((prevBalances) => {
-					const newTokenBalances = {
-						...prevBalances,
-						[AO.defaultToken]: {
-							...prevBalances[AO.defaultToken],
-							walletBalance: normalizeBalance(defaultTokenWalletBalance),
-							profileBalance: normalizeBalance(defaultTokenProfileBalance),
-						},
-						[AO.pixl]: {
-							...prevBalances[AO.pixl],
-							walletBalance: normalizeBalance(pixlTokenWalletBalance),
-							profileBalance: normalizeBalance(pixlTokenProfileBalance),
-						},
-						[AO.stamps]: {
-							...prevBalances[AO.stamps],
-							walletBalance: normalizeBalance(stampTokenWalletBalance),
-							profileBalance: normalizeBalance(stampTokenProfileBalance),
-						},
-					};
-
-					return newTokenBalances;
-				});
+				setTokenBalances((prevBalances) => ({
+					...prevBalances,
+					[AO.defaultToken]: {
+						...prevBalances[AO.defaultToken],
+						walletBalance: defaultTokenWalletBalance ?? null,
+						profileBalance: defaultTokenProfileBalance ?? null,
+					},
+					[AO.pixl]: {
+						...prevBalances[AO.pixl],
+						walletBalance: pixlTokenWalletBalance ?? null,
+						profileBalance: pixlTokenProfileBalance ?? null,
+					},
+				}));
 			} catch (e) {
 				if (process.env.NODE_ENV === 'development') {
 					console.error('Error fetching ArNS data:', e);
@@ -281,11 +235,9 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 			try {
 				const arnsData = await getArNSDataForAddress(arProvider.walletAddress);
 
-				console.log('PermawebProvider - ArNS data:', arnsData);
-
 				setArnsPrimaryName(arnsData.primaryName);
 				const avatarUrl = arnsData.logo ? getTxEndpoint(arnsData.logo) : null;
-				console.log('PermawebProvider - Setting avatar URL:', avatarUrl);
+
 				setArnsAvatarUrl(avatarUrl);
 			} catch (err) {
 				console.error('PermawebProvider - ArNS error:', err);
