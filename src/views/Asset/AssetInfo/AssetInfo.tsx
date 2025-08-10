@@ -9,6 +9,7 @@ import { Drawer } from 'components/atoms/Drawer';
 import { TxAddress } from 'components/atoms/TxAddress';
 import { OwnerLine } from 'components/molecules/OwnerLine';
 import { AssetData } from 'components/organisms/AssetData';
+import { MetadataSection } from 'components/organisms/MetadataSection';
 import { ASSETS, LICENSES, URLS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import { CollectionDetailType } from 'helpers/types';
@@ -227,6 +228,7 @@ export default function AssetInfo(props: IProps) {
 					/>
 				</GS.DrawerWrapper>
 			)}
+			{props.asset.state?.metadata && <MetadataSection metadata={props.asset.state.metadata} />}
 			<GS.DrawerWrapper>
 				<Drawer
 					title={language.provenanceDetails}
