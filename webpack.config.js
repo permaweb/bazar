@@ -112,7 +112,32 @@ module.exports = {
 			},
 			{
 				test: /\.(png|jpg|gif|riv)$/,
-				use: ['url-loader'],
+				use: [
+					'url-loader',
+					// Temporarily disabled image optimization to fix build errors
+					// {
+					// 	loader: 'image-webpack-loader',
+					// 	options: {
+					// 		mozjpeg: {
+					// 			progressive: true,
+					// 			quality: 65,
+					// 		},
+					// 		optipng: {
+					// 			enabled: false,
+					// 		},
+					// 		pngquant: {
+					// 			quality: [0.65, 0.9],
+					// 			speed: 4,
+					// 		},
+					// 		gifsicle: {
+					// 			interlaced: false,
+					// 		},
+					// 		webp: {
+					// 			quality: 75,
+					// 		},
+					// 	},
+					// },
+				],
 			},
 			{
 				test: /\.svg$/,
@@ -170,18 +195,15 @@ module.exports = {
 			fs: false,
 			tls: false,
 			net: false,
-			path: false,
+			path: require.resolve('path-browserify'),
 			zlib: require.resolve('browserify-zlib'),
 			http: require.resolve('stream-http'),
 			https: require.resolve('https-browserify'),
 			events: require.resolve('events/'),
-			crypto: 'crypto-browserify',
-			stream: 'stream-browserify',
-			process: require.resolve('process/browser'),
 			crypto: require.resolve('crypto-browserify'),
 			stream: require.resolve('stream-browserify'),
+			process: require.resolve('process/browser'),
 			constants: require.resolve('constants-browserify'),
-			path: require.resolve('path-browserify'),
 			os: require.resolve('os-browserify'),
 			util: require.resolve('util'),
 			assert: require.resolve('assert'),
