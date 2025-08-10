@@ -18,13 +18,30 @@ export default function MetadataSection(props: IProps) {
 
 	const renderTraits = () => {
 		const originalMetadata = props.metadata?.OriginalMetadata;
-		if (!originalMetadata || !originalMetadata.attributes) {
+		if (!originalMetadata) {
+			return null;
+		}
+
+		// Handle both object and JSON string formats
+		let parsedMetadata;
+		if (typeof originalMetadata === 'string') {
+			try {
+				parsedMetadata = JSON.parse(originalMetadata);
+			} catch (e) {
+				console.error('Failed to parse OriginalMetadata:', e);
+				return null;
+			}
+		} else {
+			parsedMetadata = originalMetadata;
+		}
+
+		if (!parsedMetadata.attributes) {
 			return null;
 		}
 
 		return (
 			<S.TraitsGrid>
-				{originalMetadata.attributes.map((trait: any, index: number) => (
+				{parsedMetadata.attributes.map((trait: any, index: number) => (
 					<S.TraitCard key={index}>
 						<S.TraitType>{trait.trait_type}</S.TraitType>
 						<S.TraitValue>{trait.value}</S.TraitValue>
@@ -60,7 +77,7 @@ export default function MetadataSection(props: IProps) {
 					<GS.DrawerContent>
 						{renderTopics()}
 
-						{props.metadata?.OriginalMetadata?.attributes && (
+						{props.metadata?.OriginalMetadata && (
 							<S.AttributesWrapper>
 								<S.SectionTitle>Attributes</S.SectionTitle>
 								{renderTraits()}
