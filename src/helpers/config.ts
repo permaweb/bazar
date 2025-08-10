@@ -95,6 +95,11 @@ export const REFORMATTED_ASSETS = {
 		logo: 'czR2tJmSr7upPpReXu6IuOc2H7RuHRRAhI7DXAUlszU',
 		denomination: 6,
 	},
+	[AO.stamps]: {
+		title: 'STAMP Token',
+		logo: 'kg0d-QRW1kD9lwBErRD9CGQogTp5hgPfkf1i7ApE4WU',
+		denomination: 12,
+	},
 	['pazXumQI-HPH7iFGfTC-4_7biSnqz_U67oFAGry5zUY']: {
 		title: 'Llama Coin',
 		logo: '9FSEgmUsrug7kTdZJABDekwTGJy7YG7KaN5khcbwcX4',

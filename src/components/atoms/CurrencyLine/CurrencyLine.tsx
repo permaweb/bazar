@@ -1,7 +1,8 @@
+import React from 'react';
 import { useSelector } from 'react-redux';
 import { Link } from 'react-router-dom';
 
-import { URLS } from 'helpers/config';
+import { REFORMATTED_ASSETS, URLS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import { formatCount } from 'helpers/utils';
 import { useLanguageProvider } from 'providers/LanguageProvider';
@@ -16,20 +17,64 @@ export default function CurrencyLine(props: IProps) {
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
 
+	const [timedOut, setTimedOut] = React.useState(false);
+
+	React.useEffect(() => {
+		const timer = setTimeout(() => {
+			if (props.amount === null || props.amount === undefined || isNaN(Number(props.amount))) {
+				setTimedOut(true);
+			}
+		}, 5000); // 5 seconds timeout
+
+		return () => clearTimeout(timer);
+	}, [props.amount]);
+
 	function getDenominatedTokenValue(amount: number, currency: string) {
-		if (
-			props.amount !== null &&
-			currenciesReducer &&
-			currenciesReducer[currency] &&
-			currenciesReducer[currency].Denomination &&
-			currenciesReducer[currency].Denomination > 1
-		) {
+		// Check if amount is a valid number (but allow zero)
+		if (props.amount === null || props.amount === undefined) {
+			return timedOut ? 'N/A' : `${language.loading}...`;
+		}
+
+		// Handle zero balance explicitly
+		if (props.amount === 0 || props.amount === '0') {
+			return '0';
+		}
+
+		if (isNaN(Number(props.amount))) {
+			return timedOut ? 'N/A' : `${language.loading}...`;
+		}
+
+		// If we have a valid amount but no currency data yet, check for fallback denomination
+		if (!currenciesReducer || !currenciesReducer[currency]) {
+			// Check if we have fallback denomination info in REFORMATTED_ASSETS
+			if (REFORMATTED_ASSETS[currency]?.denomination) {
+				const denomination = REFORMATTED_ASSETS[currency].denomination;
+				const factor = Math.pow(10, denomination);
+				const formattedAmount: string = (amount / factor).toFixed(denomination > 4 ? 4 : denomination);
+				return formatCount(formattedAmount);
+			}
+
+			// Show the raw balance while currency metadata loads
+			if (amount !== null && amount !== undefined && !isNaN(Number(amount))) {
+				return formatCount(amount.toString());
+			}
+			return timedOut ? 'N/A' : `${language.loading}...`;
+		}
+
+		// Handle token with denomination
+		if (currenciesReducer[currency].Denomination && currenciesReducer[currency].Denomination > 1) {
 			const denomination = currenciesReducer[currency].Denomination;
 			const factor = Math.pow(10, denomination);
 			const formattedAmount: string = (Math.round(amount) / factor).toFixed(denomination);
 			return formatCount(formattedAmount);
 		}
-		return `${language.loading}...`;
+
+		// Handle token without denomination - just return formatted amount
+		if (amount !== null && amount !== undefined && !isNaN(Number(amount))) {
+			return formatCount(amount.toString());
+		}
+
+		return timedOut ? 'N/A' : `${language.loading}...`;
 	}
 
 	function getCurrency() {
@@ -53,6 +98,35 @@ export default function CurrencyLine(props: IProps) {
 					onClick={(e: any) => (props.callback ? props.callback() : e.stopPropagation())}
 				>
 					<S.Currency>{currency}</S.Currency>
+				</Link>
+			);
+		} else if (props.currency) {
+			// Fallback: use REFORMATTED_ASSETS data when currency metadata isn't loaded yet
+			if (REFORMATTED_ASSETS[props.currency]?.logo) {
+				return (
+					<Link
+						to={`${URLS.asset}${props.currency}`}
+						onClick={(e: any) => (props.callback ? props.callback() : e.stopPropagation())}
+					>
+						<S.Currency>
+							<img
+								src={getTxEndpoint(REFORMATTED_ASSETS[props.currency].logo)}
+								alt={REFORMATTED_ASSETS[props.currency].title || props.currency}
+							/>
+						</S.Currency>
+					</Link>
+				);
+			}
+
+			// Final fallback: show a generic token indicator
+			return (
+				<Link
+					to={`${URLS.asset}${props.currency}`}
+					onClick={(e: any) => (props.callback ? props.callback() : e.stopPropagation())}
+				>
+					<S.Currency>
+						<span>🪙</span> {/* Generic token emoji as fallback */}
+					</S.Currency>
 				</Link>
 			);
 		}
