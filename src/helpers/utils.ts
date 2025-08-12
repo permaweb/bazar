@@ -380,13 +380,19 @@ export function getByteSize(input: string | Buffer): number {
 	return sizeInBytes;
 }
 
-export function getTotalTokenBalance(tokenBalances: { profileBalance: number; walletBalance: number } | null) {
+export function getTotalTokenBalance(
+	tokenBalances: { profileBalance: number | string; walletBalance: number | string } | null
+) {
 	if (!tokenBalances) return null;
 
-	let total = null;
+	let total = 0;
 
-	if (tokenBalances.profileBalance !== null) total = tokenBalances.profileBalance;
-	if (tokenBalances.walletBalance !== null) total += tokenBalances.walletBalance;
+	if (tokenBalances.profileBalance !== null && tokenBalances.profileBalance !== undefined) {
+		total += Number(tokenBalances.profileBalance);
+	}
+	if (tokenBalances.walletBalance !== null && tokenBalances.walletBalance !== undefined) {
+		total += Number(tokenBalances.walletBalance);
+	}
 
 	return total;
 }

@@ -1,7 +1,7 @@
 import { useSelector } from 'react-redux';
 import { Link } from 'react-router-dom';
 
-import { TOKEN_REGISTRY, URLS } from 'helpers/config';
+import { AO, TOKEN_REGISTRY, URLS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import { formatCount } from 'helpers/utils';
 import { useLanguageProvider } from 'providers/LanguageProvider';
@@ -24,9 +24,11 @@ export default function CurrencyLine(props: IProps & { tokenLogo?: string; token
 		// Always use denomination from TOKEN_REGISTRY
 		const tokenInfo = TOKEN_REGISTRY[currency];
 		const denomination = tokenInfo && tokenInfo.denomination ? tokenInfo.denomination : 0;
+
 		if (denomination > 0) {
 			const factor = Math.pow(10, denomination);
 			const formattedAmount: string = (Math.round(amount) / factor).toFixed(denomination);
+
 			return formatCount(formattedAmount);
 		}
 		return formatCount(amount.toString());

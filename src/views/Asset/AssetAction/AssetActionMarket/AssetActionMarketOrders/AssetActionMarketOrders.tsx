@@ -214,6 +214,11 @@ export default function AssetActionMarketOrders(props: IProps) {
 		if (unitPrice) setUnitPrice('');
 	}, [props.type]);
 
+	// Clear unit price when selected token changes to prevent denomination confusion
+	React.useEffect(() => {
+		if (unitPrice) setUnitPrice('');
+	}, [tokenProvider.selectedToken.id]);
+
 	async function handleSubmit() {
 		// Token validation
 		if (!tokenProvider.selectedToken || !tokenProvider.selectedToken.id) {
@@ -339,7 +344,8 @@ export default function AssetActionMarketOrders(props: IProps) {
 				break;
 			case 'sell':
 			case 'transfer':
-				if (denomination) transferQuantity = Math.floor(Number(currentOrderQuantity) * denomination);
+				// For sell orders, use transferDenomination (token being received) instead of asset denomination
+				if (transferDenomination) transferQuantity = Math.floor(Number(currentOrderQuantity) * transferDenomination);
 				break;
 		}
 
@@ -566,9 +572,9 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 				// Get the quantity in raw units
 				let calculatedQuantity = currentOrderQuantity;
-				if (props.type === 'sell' && transferDenomination && transferDenomination > 1) {
-					// For sell orders, use transferDenomination (token being received)
-					calculatedQuantity = Number(currentOrderQuantity) * Number(transferDenomination);
+				if (props.type === 'sell') {
+					// For sell orders, unit price is already in raw units, so keep quantity as display units
+					calculatedQuantity = Number(currentOrderQuantity);
 				} else if (denomination && denomination > 1) {
 					// For other orders (transfer), use denomination (asset being transferred)
 					calculatedQuantity = Number(currentOrderQuantity) * Number(denomination);
@@ -677,8 +683,8 @@ export default function AssetActionMarketOrders(props: IProps) {
 	function getTotalPriceDisplay() {
 		let amount = BigInt(getTotalOrderAmount());
 
-		// CurrencyLine component already handles denomination conversion
-		// So we don't need to convert here - just pass the raw amount
+		// getTotalOrderAmount() now returns the correct raw amount
+		// CurrencyLine will handle denomination conversion automatically
 
 		const orderCurrency = tokenProvider.selectedToken.id;
 

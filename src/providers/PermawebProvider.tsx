@@ -220,23 +220,9 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 						});
 						await sleep(500);
 
-						// Debug logging for PIXL balance
-						if (tokenId === AO.pixl) {
-							console.log('🔍 PIXL Balance Debug:');
-							console.log('  Raw wallet balance:', walletBalance);
-							console.log('  Raw profile balance:', profileBalance);
-							console.log('  Token denomination:', TOKEN_REGISTRY[tokenId]?.denomination);
-						}
-
 						// Handle null responses gracefully
 						const processedWalletBalance = handleBalanceResponse(tokenId, walletBalance, arProvider.walletAddress);
 						const processedProfileBalance = handleBalanceResponse(tokenId, profileBalance, profile.id);
-
-						// Debug logging for processed PIXL balance
-						if (tokenId === AO.pixl) {
-							console.log('  Processed wallet balance:', processedWalletBalance);
-							console.log('  Processed profile balance:', processedProfileBalance);
-						}
 
 						newBalances[tokenId] = {
 							walletBalance: processedWalletBalance,
