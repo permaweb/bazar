@@ -14,6 +14,7 @@ import { Slider } from 'components/atoms/Slider';
 import { TxAddress } from 'components/atoms/TxAddress';
 import { Panel } from 'components/molecules/Panel';
 import { AO, ASSETS, REDIRECTS, URLS } from 'helpers/config';
+import { questTracker } from 'helpers/questTracker';
 import { AssetOrderType } from 'helpers/types';
 import {
 	checkValidAddress,
@@ -282,6 +283,15 @@ export default function AssetActionMarketOrders(props: IProps) {
 						action: 'Get-Streaks',
 					});
 					dispatch(streakActions.setStreaks(streaks.Streaks));
+
+					// Track quest progress for purchase
+					if (permawebProvider.profile?.id) {
+						await questTracker.trackPurchase(
+							props.asset.data.id,
+							permawebProvider.profile.id,
+							getTransferQuantity().toString()
+						);
+					}
 				}
 				arProvider.setToggleProfileUpdate(!arProvider.toggleProfileUpdate);
 				permawebProvider.setToggleTokenBalanceUpdate(!permawebProvider.toggleTokenBalanceUpdate);

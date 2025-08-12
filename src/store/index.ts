@@ -6,6 +6,7 @@ import thunk from 'redux-thunk';
 import { collectionsReducer } from './collections/reducers';
 import { currenciesReducer } from './currencies/reducers';
 import { profilesReducer } from './profiles/reducers';
+import { questsReducer } from './quests/reducers';
 import { stampsReducer } from './stamps/reducers';
 import { streaksReducer } from './streaks/reducers';
 import { ucmReducer } from './ucm/reducers';
@@ -25,6 +26,7 @@ const rootReducer = combineReducers({
 	stampsReducer,
 	streaksReducer,
 	ucmReducer,
+	questsReducer,
 });
 
 export type RootState = ReturnType<typeof store.getState>;
