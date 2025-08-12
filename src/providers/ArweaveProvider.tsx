@@ -12,6 +12,7 @@ import { AR_WALLETS, REDIRECTS, WALLET_PERMISSIONS } from 'helpers/config';
 import { getARBalanceEndpoint } from 'helpers/endpoints';
 import { WalletEnum } from 'helpers/types';
 import { useLanguageProvider } from 'providers/LanguageProvider';
+import { useWayfinderProvider } from 'providers/WayfinderProvider';
 import { RootState } from 'store';
 
 import * as S from './styles';
@@ -91,6 +92,7 @@ function WalletList(props: { handleConnect: any }) {
 
 export function ArweaveProvider(props: ArweaveProviderProps) {
 	const { getProfileByWalletAddress } = AOProfile.init({ ao: connect({ MODE: 'legacy' }) });
+	const { isInitialized: wayfinderInitialized } = useWayfinderProvider();
 
 	const profilesReducer = useSelector((state: RootState) => state.profilesReducer);
 
@@ -142,7 +144,9 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 		(async function () {
 			if (walletAddress) {
 				try {
-					setArBalance(Number(await getARBalance(walletAddress)));
+					// Use sync version for immediate response
+					const balance = await getARBalance(walletAddress);
+					setArBalance(balance);
 				} catch (e: any) {
 					console.error(e);
 				}
@@ -385,7 +389,7 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 		const rawBalance = await fetch(getARBalanceEndpoint(walletAddress));
 		const jsonBalance = await rawBalance.json();
 		const balance = jsonBalance / 1e12;
-		return balance.toFixed(12);
+		return Number(balance.toFixed(12));
 	}
 
 	return (

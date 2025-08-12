@@ -1,6 +1,8 @@
 import { getGQLData, readHandler } from 'api';
 
-import { AO, GATEWAYS, HB, LICENSES, PAGINATORS, REFORMATTED_ASSETS, TAGS } from 'helpers/config';
+import { AO, HB, LICENSES, PAGINATORS, REFORMATTED_ASSETS, TAGS } from 'helpers/config';
+import { getBestGatewayForGraphQL } from 'helpers/endpoints';
+import { getGraphQLEndpoint } from 'helpers/graphql';
 import {
 	AssetDetailType,
 	AssetOrderType,
@@ -36,13 +38,19 @@ export async function getAssetIdsByUser(args: { profileId: string }): Promise<st
 
 export async function getAssetsByIds(args: { ids: string[]; sortType: AssetSortType }): Promise<AssetDetailType[]> {
 	try {
+		console.log('🔍 getAssetsByIds: Fetching assets for IDs:', args.ids);
+		const gateway = getBestGatewayForGraphQL();
+		console.log('🔍 getAssetsByIds: Using gateway:', gateway);
+
 		const gqlResponse = await getGQLData({
-			gateway: GATEWAYS.arweave,
+			gateway: gateway, // Use Wayfinder if available
 			ids: args.ids,
 			tagFilters: null,
 			owners: null,
 			cursor: null,
 		});
+
+		console.log('🔍 getAssetsByIds: GQL response:', gqlResponse);
 
 		if (gqlResponse && gqlResponse.data.length) {
 			const ucmReducer = store.getState().ucmReducer;
@@ -86,7 +94,7 @@ export async function getAssetsByIds(args: { ids: string[]; sortType: AssetSortT
 export async function getAssetById(args: { id: string; libs?: any }): Promise<AssetDetailType> {
 	try {
 		const assetLookupResponse = await getGQLData({
-			gateway: GATEWAYS.arweave,
+			gateway: getBestGatewayForGraphQL(), // Use Wayfinder if available
 			ids: [args.id],
 			tagFilters: null,
 			owners: null,

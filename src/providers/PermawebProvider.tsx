@@ -9,6 +9,7 @@ import { Loader } from 'components/atoms/Loader';
 import { Panel } from 'components/molecules/Panel';
 import { ProfileManage } from 'components/organisms/ProfileManage';
 import { getArNSDataForAddress } from 'helpers/arns';
+import { createArweaveInstance } from 'helpers/arweave';
 import { AO, STORAGE } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 
@@ -74,14 +75,30 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 	const [toggleTokenBalanceUpdate, setToggleTokenBalanceUpdate] = React.useState<boolean>(false);
 
 	React.useEffect(() => {
-		const deps = {
-			ao: connect({ MODE: 'legacy' }),
-			arweave: Arweave.init({}),
-			signer: arProvider.wallet ? createSigner(arProvider.wallet) : null,
-		};
+		(async function () {
+			try {
+				const arweave = await createArweaveInstance();
+				const deps = {
+					ao: connect({ MODE: 'legacy' }),
+					arweave: arweave,
+					signer: arProvider.wallet ? createSigner(arProvider.wallet) : null,
+				};
 
-		setLibs(PermawebLibs.init(deps));
-		setDeps(deps);
+				setLibs(PermawebLibs.init(deps));
+				setDeps(deps);
+			} catch (error) {
+				console.error('❌ Failed to initialize PermawebProvider with Wayfinder:', error);
+				// Fallback to default Arweave instance
+				const deps = {
+					ao: connect({ MODE: 'legacy' }),
+					arweave: Arweave.init({}),
+					signer: arProvider.wallet ? createSigner(arProvider.wallet) : null,
+				};
+
+				setLibs(PermawebLibs.init(deps));
+				setDeps(deps);
+			}
+		})();
 	}, [arProvider.wallet]);
 
 	React.useEffect(() => {

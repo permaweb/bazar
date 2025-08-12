@@ -63,15 +63,27 @@ export default function AssetData(props: IProps) {
 	}, [props.asset, props.scrolling]);
 
 	async function handleGetAssetRender(assetId: string): Promise<AssetRenderType> {
-		const assetResponse = await fetch(getTxEndpoint(assetId));
-		const contentType = assetResponse.headers.get('content-type');
+		console.log('🔍 AssetData: handleGetAssetRender called for ID:', assetId);
+		try {
+			const endpoint = getTxEndpoint(assetId);
+			console.log('🔍 AssetData: Using endpoint:', endpoint);
+			const assetResponse = await fetch(endpoint);
+			const contentType = assetResponse.headers.get('content-type');
+			console.log('🔍 AssetData: Response status:', assetResponse.status, 'Content-Type:', contentType);
 
-		if (assetResponse.status === 200 && contentType) {
-			return {
-				url: getAssetPath(assetResponse),
-				type: 'raw',
-				contentType: contentType,
-			};
+			if (assetResponse.status === 200 && contentType) {
+				const result = {
+					url: getAssetPath(assetResponse),
+					type: 'raw',
+					contentType: contentType,
+				};
+				console.log('🔍 AssetData: Returning result:', result);
+				return result;
+			}
+			console.log('🔍 AssetData: No valid response, returning undefined');
+		} catch (error) {
+			console.error('🔍 AssetData: Error fetching asset:', error);
+			// Return undefined to trigger fallback behavior
 		}
 	}
 
@@ -98,11 +110,18 @@ export default function AssetData(props: IProps) {
 
 	React.useEffect(() => {
 		(async function () {
+			console.log('🔍 AssetData: Props received:', {
+				asset: props.asset,
+				assetRender: props.assetRender,
+				wrapperVisible,
+			});
 			if (!assetRender && wrapperVisible) {
 				if (props.assetRender) {
+					console.log('🔍 AssetData: Using provided assetRender');
 					setAssetRender(props.assetRender);
 				} else {
 					if (props.asset && !props.assetRender) {
+						console.log('🔍 AssetData: Processing asset:', props.asset);
 						const renderWith = props.asset.data?.renderWith ? props.asset.data.renderWith : '[]';
 						let parsedRenderWith: string | null = null;
 						try {
@@ -111,13 +130,16 @@ export default function AssetData(props: IProps) {
 							parsedRenderWith = renderWith;
 						}
 						if (parsedRenderWith && parsedRenderWith.length) {
+							console.log('🔍 AssetData: Using renderer endpoint');
 							setAssetRender({
 								url: getRendererEndpoint(parsedRenderWith, props.asset.data.id),
 								type: 'renderer',
 								contentType: 'renderer',
 							});
 						} else {
+							console.log('🔍 AssetData: Fetching asset render for ID:', props.asset.data.id);
 							const renderFetch = await handleGetAssetRender(props.asset.data.id);
+							console.log('🔍 AssetData: Render fetch result:', renderFetch);
 							setAssetRender(renderFetch);
 						}
 					}

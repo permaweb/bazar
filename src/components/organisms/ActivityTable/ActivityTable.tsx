@@ -173,21 +173,25 @@ export default function ActivityTable(props: IProps) {
 
 						if (!props.asset) {
 							const uniqueAssetIds: any[] = [...new Set(currentGroup.map((order: any) => order.dominantToken))];
+							console.log('🔍 Activity: Fetching assets for IDs:', uniqueAssetIds);
 							try {
 								const assets = await getAssetsByIds({
 									ids: uniqueAssetIds,
 									sortType: 'recently-listed',
 								});
+								console.log('🔍 Activity: Fetched assets:', assets);
 								if (assets && assets.length > 0) {
 									currentGroup = currentGroup.map((order: any) => {
+										const asset = assets.find((asset: any) => asset.data.id === order.dominantToken);
+										console.log(`🔍 Activity: Matching asset for ${order.dominantToken}:`, asset);
 										return {
 											...order,
-											asset: assets.find((asset: any) => asset.data.id === order.dominantToken),
+											asset: asset,
 										};
 									});
 								}
 							} catch (e: any) {
-								console.error(e);
+								console.error('🔍 Activity: Error fetching assets:', e);
 							}
 						}
 
