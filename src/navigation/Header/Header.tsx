@@ -62,6 +62,7 @@ export default function Header() {
 						{arweaveProvider.walletAddress && (
 							<S.DelegationButtonWrapper>
 								<S.DelegationButton
+									data-delegation-button
 									onClick={(e) => {
 										e.preventDefault();
 										e.stopPropagation();

@@ -6,10 +6,12 @@ import { Avatar } from 'components/atoms/Avatar';
 import { Button } from 'components/atoms/Button';
 import { CurrencyLine } from 'components/atoms/CurrencyLine';
 import { Loader } from 'components/atoms/Loader';
+import WanderProfileAvatar from 'components/atoms/WanderProfileAvatar';
 import { Panel } from 'components/molecules/Panel';
 import { ProfileManage } from 'components/organisms/ProfileManage';
 import { AO, ASSETS, REDIRECTS, URLS } from 'helpers/config';
 import { formatAddress, formatCount, getTotalTokenBalance } from 'helpers/utils';
+import { getCurrentWanderTier } from 'helpers/wanderTier';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useCustomThemeProvider } from 'providers/CustomThemeProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
@@ -33,11 +35,27 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 
 	const [copied, setCopied] = React.useState<boolean>(false);
 	const [label, setLabel] = React.useState<string | null>(null);
+	const [wanderTier, setWanderTier] = React.useState<string | null>(null);
 
 	React.useEffect(() => {
 		setTimeout(() => {
 			setShowWallet(true);
 		}, 200);
+	}, [arProvider.walletAddress]);
+
+	// Fetch Wander tier for profile ring
+	React.useEffect(() => {
+		if (arProvider.walletAddress) {
+			getCurrentWanderTier(arProvider.walletAddress)
+				.then((tier) => {
+					console.log('User Wander tier:', tier);
+					setWanderTier(tier);
+				})
+				.catch((error) => {
+					console.log('Failed to get Wander tier:', error);
+					setWanderTier(null);
+				});
+		}
 	}, [arProvider.walletAddress]);
 
 	React.useEffect(() => {
@@ -127,10 +145,19 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 			<>
 				<S.DHeaderWrapper>
 					<S.DHeaderFlex className={'border-wrapper-alt1'}>
-						<Avatar
-							owner={permawebProvider.profile}
-							dimensions={{ wrapper: 35, icon: 21.5 }}
-							callback={() => handleDropdownAction(handleProfileAction)}
+						<WanderProfileAvatar
+							src={
+								permawebProvider.arnsAvatarUrl ||
+								(permawebProvider.profile?.thumbnail
+									? `https://arweave.net/${permawebProvider.profile.thumbnail}`
+									: ASSETS.user)
+							}
+							alt="Profile Avatar"
+							size={35}
+							wanderTier={wanderTier}
+							isGlowing={true}
+							onClick={() => handleDropdownAction(handleProfileAction)}
+							style={{ cursor: 'pointer' }}
 						/>
 						<S.DHeader>
 							<S.DNameWrapper>
@@ -270,7 +297,20 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 						<span>{label}</span>
 					</S.LAction>
 				)}
-				<Avatar owner={permawebProvider.profile} dimensions={{ wrapper: 35, icon: 21.5 }} callback={handlePress} />
+				<WanderProfileAvatar
+					src={
+						permawebProvider.arnsAvatarUrl ||
+						(permawebProvider.profile?.thumbnail
+							? `https://arweave.net/${permawebProvider.profile.thumbnail}`
+							: ASSETS.user)
+					}
+					alt="Profile Avatar"
+					size={35}
+					wanderTier={wanderTier}
+					isGlowing={true}
+					onClick={handlePress}
+					style={{ cursor: 'pointer' }}
+				/>
 			</S.PWrapper>
 		);
 	}

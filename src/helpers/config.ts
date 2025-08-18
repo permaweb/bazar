@@ -60,6 +60,7 @@ import video from 'assets/video.svg';
 import view from 'assets/view.svg';
 import wallet from 'assets/wallet.svg';
 import wander from 'assets/wander.png';
+import wanderIconMain from 'assets/wander_icon_main.png';
 import x from 'assets/x.svg';
 import zen from 'assets/zen.svg';
 
@@ -183,6 +184,7 @@ export const ASSETS = {
 	video,
 	wallet,
 	wander,
+	wanderIconMain,
 	x,
 	zen,
 	beacon,

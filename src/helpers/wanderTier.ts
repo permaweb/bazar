@@ -2,6 +2,47 @@ import { dryrun } from '@permaweb/aoconnect';
 
 export type Tier = 'Prime' | 'Edge' | 'Reserve' | 'Select' | 'Core';
 
+// WNDR Token ID
+export const WNDR_TOKEN_ID = '7GoQfmSOct_aUOWKM4xbKGg6DzAmOgdKwg8Kf-CbHm4';
+
+// Profile ring colors for Wander quest achievements
+export const WANDER_PROFILE_RINGS = {
+	'wander-explorer': {
+		id: 'wander-explorer',
+		name: 'Wander Explorer',
+		description: 'Created profile - Welcome to the Wander ecosystem',
+		color: '#8B4513', // Brown
+		tier: 'Core',
+		questId: 'create-profile',
+	},
+	'wander-creator': {
+		id: 'wander-creator',
+		name: 'Wander Creator',
+		description: 'Created first asset - Building the future',
+		color: '#C0C0C0', // Silver
+		tier: 'Select',
+		questId: 'create-asset',
+	},
+	'wander-trader': {
+		id: 'wander-trader',
+		name: 'Wander Trader',
+		description: 'Made first purchase - Active in marketplace',
+		color: '#FFD700', // Gold
+		tier: 'Reserve',
+		questId: 'make-purchase',
+	},
+	'wander-champion': {
+		id: 'wander-champion',
+		name: 'Wander Champion',
+		description: 'Delegated to PIXL - Supporting the ecosystem',
+		color: '#9D4EDD', // Purple
+		tier: 'Edge',
+		questId: 'delegate-pixl',
+	},
+} as const;
+
+export type WanderProfileRing = keyof typeof WANDER_PROFILE_RINGS;
+
 export interface WanderTierInfo {
 	tier: Tier;
 	balance: string;
@@ -30,6 +71,17 @@ const TIER_MULTIPLIERS = {
 /**
  * Get Wander tier information for a wallet address using dryrun
  */
+// Get current user's Wander tier for profile ring display
+export async function getCurrentWanderTier(walletAddress: string): Promise<string | null> {
+	try {
+		const tierInfo = await getWanderTierInfo(walletAddress);
+		return tierInfo?.tier || null;
+	} catch (error) {
+		console.log('Failed to get current Wander tier:', error);
+		return null;
+	}
+}
+
 export async function getWanderTierInfo(walletAddress: string): Promise<WanderTierInfo> {
 	try {
 		const dryrunRes = await dryrun({
@@ -71,8 +123,8 @@ export async function getWanderTierInfo(walletAddress: string): Promise<WanderTi
 export async function getWanderTierInfoInjected(): Promise<WanderTierInfo | null> {
 	try {
 		// Check if Wander wallet is available
-		if (typeof window !== 'undefined' && window.arweaveWallet && window.arweaveWallet.getWanderTierInfo) {
-			const tierInfo = await window.arweaveWallet.getWanderTierInfo();
+		if (typeof window !== 'undefined' && window.arweaveWallet && (window.arweaveWallet as any).getWanderTierInfo) {
+			const tierInfo = await (window.arweaveWallet as any).getWanderTierInfo();
 			return tierInfo;
 		}
 		return null;
@@ -92,11 +144,10 @@ export function getTierMultiplier(tier: Tier): number {
 /**
  * Calculate enhanced rewards based on user's Wander tier
  */
-export function calculateTierRewards(baseWndr: number, basePixel: number, tier: Tier) {
+export function calculateTierRewards(baseWndr: number, tier: Tier) {
 	const multiplier = getTierMultiplier(tier);
 	return {
 		wndr: Math.floor(baseWndr * multiplier),
-		pixel: Math.floor(basePixel * multiplier),
 		multiplier,
 		tier,
 	};
@@ -185,11 +236,114 @@ export function getTierQuestDescription(questId: string, tier: Tier): string {
 	}
 }
 
-// Extend window interface for TypeScript
-declare global {
-	interface Window {
-		arweaveWallet?: {
-			getWanderTierInfo?: () => Promise<WanderTierInfo>;
-		};
+/**
+ * Get profile ring for a completed quest
+ */
+export function getProfileRingForQuest(questId: string): (typeof WANDER_PROFILE_RINGS)[WanderProfileRing] | null {
+	const ring = Object.values(WANDER_PROFILE_RINGS).find((r) => r.questId === questId);
+	return ring || null;
+}
+
+/**
+ * Get all profile rings earned by completing quests
+ */
+export function getEarnedProfileRings(
+	completedQuests: string[]
+): Array<(typeof WANDER_PROFILE_RINGS)[WanderProfileRing]> {
+	return completedQuests.map((questId) => getProfileRingForQuest(questId)).filter(Boolean) as Array<
+		(typeof WANDER_PROFILE_RINGS)[WanderProfileRing]
+	>;
+}
+
+/**
+ * Get the highest tier profile ring earned
+ */
+export function getHighestProfileRing(
+	completedQuests: string[]
+): (typeof WANDER_PROFILE_RINGS)[WanderProfileRing] | null {
+	const earnedRings = getEarnedProfileRings(completedQuests);
+	if (earnedRings.length === 0) return null;
+
+	// Order by tier hierarchy: Core < Select < Reserve < Edge < Prime
+	const tierOrder = ['Core', 'Select', 'Reserve', 'Edge', 'Prime'];
+
+	return earnedRings.reduce((highest, current) => {
+		const highestTierIndex = tierOrder.indexOf(highest.tier);
+		const currentTierIndex = tierOrder.indexOf(current.tier);
+		return currentTierIndex > highestTierIndex ? current : highest;
+	});
+}
+
+/**
+ * Submit tier advancement request to Wander team
+ * This would need to be implemented in coordination with the Wander team
+ */
+export async function requestTierAdvancement(walletAddress: string, campaignData: any): Promise<boolean> {
+	try {
+		console.log('Requesting tier advancement for:', walletAddress);
+		console.log('Campaign completion data:', campaignData);
+
+		// TODO: Implement actual API call to Wander team's tier advancement endpoint
+		// This could be:
+		// 1. A direct API call to Wander's backend
+		// 2. An on-chain transaction to a Wander smart contract
+		// 3. A message to a Wander AO process
+
+		// Example of what this might look like:
+		/*
+		const response = await fetch('https://api.wander.app/tier-advancement', {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				'Authorization': `Bearer ${await getAuthToken()}`
+			},
+			body: JSON.stringify({
+				walletAddress,
+				campaignType: 'bazar-quest-completion',
+				completionData: campaignData,
+				timestamp: Date.now()
+			})
+		});
+		
+		return response.ok;
+		*/
+
+		// For now, return true to indicate the request was "submitted"
+		return true;
+	} catch (error) {
+		console.error('Error requesting tier advancement:', error);
+		return false;
 	}
 }
+
+/**
+ * Get tier advancement eligibility
+ */
+export function getTierAdvancementEligibility(currentTier: Tier): {
+	canAdvance: boolean;
+	nextTier?: Tier;
+	requirements?: string[];
+} {
+	const tierOrder: Tier[] = ['Core', 'Select', 'Reserve', 'Edge', 'Prime'];
+	const currentIndex = tierOrder.indexOf(currentTier);
+
+	if (currentIndex === -1 || currentIndex === tierOrder.length - 1) {
+		return { canAdvance: false };
+	}
+
+	const nextTier = tierOrder[currentIndex + 1];
+	const requirements = [
+		'Complete all Bazar quest campaign tasks',
+		'Maintain WNDR token balance',
+		'Demonstrate platform engagement',
+	];
+
+	return {
+		canAdvance: true,
+		nextTier,
+		requirements,
+	};
+}
+
+// Note: Using 'any' type casting for Wander wallet extensions
+// to avoid conflicts with existing ArConnect wallet types

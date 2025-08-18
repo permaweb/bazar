@@ -13,10 +13,10 @@ export interface Quest {
 
 export interface QuestReward {
 	wndr: number;
-	pixel: number;
 	description: string;
 	multiplier?: number;
 	tier?: string;
+	profileRing?: string; // Profile ring ID that gets unlocked
 }
 
 export type QuestTier = 'bronze' | 'silver' | 'gold' | 'platinum';
@@ -26,10 +26,13 @@ export interface QuestProgress {
 	firstAssetCreated: boolean;
 	firstCollectionCreated: boolean;
 	firstPurchaseMade: boolean;
-	pixelStaked: boolean;
+	pixelDelegated: boolean;
 	totalPurchases: number;
 	totalAssets: number;
 	totalCollections: number;
+	pixelDelegationPercentage?: number;
+	hasStampedAsset?: boolean;
+	hasStampedSilverDumDum?: boolean;
 	wanderTier?: string;
 	wanderBalance?: string;
 	wanderRank?: string | number;
@@ -42,4 +45,5 @@ export interface QuestState {
 	loading: boolean;
 	error: string | null;
 	wanderTierInfo?: any;
+	earnedProfileRings?: string[]; // Array of profile ring IDs earned
 }

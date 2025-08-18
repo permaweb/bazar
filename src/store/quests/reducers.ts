@@ -10,7 +10,7 @@ export const initStateQuests: QuestState = {
 		firstAssetCreated: false,
 		firstCollectionCreated: false,
 		firstPurchaseMade: false,
-		pixelStaked: false,
+		pixelDelegated: false,
 		totalPurchases: 0,
 		totalAssets: 0,
 		totalCollections: 0,

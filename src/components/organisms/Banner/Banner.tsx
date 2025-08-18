@@ -99,6 +99,14 @@ export default function Banner() {
 	// Profile Migration
 	React.useEffect(() => {
 		(async function () {
+			console.log('Banner - Profile check:', {
+				profileId: permawebProvider.profile?.id,
+				isLegacyProfile: permawebProvider.profile?.isLegacyProfile,
+				username: permawebProvider.profile?.username,
+			});
+
+			// Show migration banner for legacy profiles only
+			// A profile with isLegacyProfile=true needs migration regardless of username
 			if (permawebProvider.profile?.id && permawebProvider.profile?.isLegacyProfile) {
 				setUpdateApplied(false);
 				setShowUpdate(true);

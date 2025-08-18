@@ -35,6 +35,47 @@ export const IconWrapper = styled.div`
 	}
 `;
 
+export const WanderButton = styled.button`
+	background: none;
+	border: none;
+	cursor: pointer;
+	position: relative;
+	padding: 6px;
+	border-radius: 50%;
+	transition: all 0.2s ease;
+	width: 40px;
+	height: 40px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+
+	&:hover {
+		background-color: rgba(139, 92, 246, 0.1);
+		transform: scale(1.05);
+	}
+
+	&:focus {
+		outline: none;
+		box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.3);
+	}
+`;
+
+export const WanderIconWrapper = styled.div`
+	position: relative;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 28px;
+	height: 28px;
+
+	img {
+		width: 100%;
+		height: 100%;
+		object-fit: contain;
+		border-radius: 50%;
+	}
+`;
+
 export const NotificationBadge = styled.div`
 	position: absolute;
 	top: -4px;
@@ -57,13 +98,17 @@ export const Dropdown = styled.div`
 	top: 100%;
 	right: 0;
 	background: var(--background-primary);
-	border: 1px solid var(--border-color);
+	border: 2px solid var(--border-color);
 	border-radius: 12px;
 	padding: 16px;
 	min-width: 280px;
-	box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-	z-index: 1000;
+	box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+	z-index: 9999;
 	margin-top: 8px;
+	backdrop-filter: blur(8px);
+
+	/* Ensure proper text contrast */
+	color: var(--text-primary);
 `;
 
 export const DropdownHeader = styled.div`
@@ -81,6 +126,21 @@ export const ProgressText = styled.div`
 	font-size: 0.85rem;
 	color: var(--text-secondary);
 	font-weight: 500;
+`;
+
+export const TierBadge = styled.span<{ tierColor: string }>`
+	display: inline-block;
+	background: ${(props) => props.tierColor};
+	color: white;
+	padding: 4px 12px;
+	border-radius: 16px;
+	font-size: 0.8rem;
+	font-weight: 600;
+	text-transform: capitalize;
+	letter-spacing: 0.02em;
+	font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+	margin-top: 2px;
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 `;
 
 export const ProgressBar = styled.div`
@@ -132,7 +192,7 @@ export const ActionSection = styled.div`
 
 export const ViewQuestsButton = styled.div`
 	padding: 8px 16px;
-	background: var(--primary-color);
+	background: #3b82f6;
 	color: white;
 	border-radius: 8px;
 	font-size: 0.85rem;
@@ -140,9 +200,12 @@ export const ViewQuestsButton = styled.div`
 	cursor: pointer;
 	transition: all 0.2s ease;
 	text-decoration: none;
+	border: 1px solid #3b82f6;
 
 	&:hover {
+		background: #2563eb;
+		border-color: #2563eb;
 		transform: translateY(-1px);
-		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+		box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25);
 	}
 `;

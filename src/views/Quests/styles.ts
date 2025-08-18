@@ -35,6 +35,30 @@ export const HeaderMain = styled.div`
 	}
 `;
 
+export const TitleWithLogo = styled.div`
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 16px;
+	flex-wrap: wrap;
+
+	@media (max-width: 640px) {
+		gap: 12px;
+	}
+`;
+
+export const WanderLogo = styled.img`
+	width: 40px;
+	height: 40px;
+	border-radius: 50%;
+	object-fit: contain;
+
+	@media (max-width: 640px) {
+		width: 32px;
+		height: 32px;
+	}
+`;
+
 export const Subheader = styled.div`
 	display: flex;
 	flex-direction: column;
@@ -74,11 +98,192 @@ export const Body = styled.div`
 	margin-bottom: 40px;
 `;
 
+export const CampaignCompleteBanner = styled.div`
+	background: linear-gradient(135deg, #10b981, #34d399);
+	border-radius: 16px;
+	padding: 24px;
+	margin-bottom: 32px;
+	color: white;
+	text-align: center;
+	box-shadow: 0 8px 32px rgba(16, 185, 129, 0.3);
+`;
+
+export const CampaignCompleteContent = styled.div`
+	h3 {
+		font-size: 1.5rem;
+		font-weight: 700;
+		margin: 0 0 12px 0;
+	}
+
+	p {
+		font-size: 1.1rem;
+		margin: 0 0 16px 0;
+		line-height: 1.5;
+	}
+`;
+
+export const CurrentTierInfo = styled.div`
+	font-size: 1rem;
+	font-weight: 600;
+	opacity: 0.9;
+
+	strong {
+		color: #ffd700;
+	}
+`;
+
 export const QuestsGrid = styled.div`
 	display: grid;
 	grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
 	gap: 24px;
 	margin-bottom: 40px;
+`;
+
+export const ProfileRingsSection = styled.div`
+	margin-top: 48px;
+	padding-top: 32px;
+	border-top: 2px solid var(--border-color);
+`;
+
+export const ProfileRingsHeader = styled.div`
+	text-align: center;
+	margin-bottom: 32px;
+
+	h2 {
+		font-size: 2rem;
+		font-weight: 700;
+		color: var(--text-primary);
+		margin: 0 0 12px 0;
+		background: linear-gradient(135deg, #9d4edd 0%, #c77dff 100%);
+		-webkit-background-clip: text;
+		-webkit-text-fill-color: transparent;
+		background-clip: text;
+	}
+
+	p {
+		font-size: 1.1rem;
+		color: var(--text-secondary);
+		margin: 0 0 16px 0;
+	}
+`;
+
+export const CurrentRingIndicator = styled.div`
+	font-size: 1rem;
+	color: var(--text-primary);
+	padding: 8px 16px;
+	background: var(--background-secondary);
+	border-radius: 20px;
+	display: inline-block;
+
+	strong {
+		color: #9d4edd;
+	}
+`;
+
+export const ProfileRingsGrid = styled.div`
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+	gap: 24px;
+`;
+
+export const ProfileRingCard = styled.div`
+	background: var(--background-primary);
+	border: 2px solid var(--border-color);
+	border-radius: 16px;
+	overflow: hidden;
+	transition: all 0.3s ease;
+	position: relative;
+
+	&:hover {
+		transform: translateY(-4px);
+		box-shadow: 0 12px 40px rgba(0, 0, 0, 0.1);
+	}
+`;
+
+export const ProfileRingPreview = styled.div`
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	padding: 24px;
+	background: var(--background-secondary);
+`;
+
+export const ProfileRingAvatar = styled.div`
+	position: relative;
+	width: 80px;
+	height: 80px;
+	border-radius: 50%;
+	overflow: hidden;
+	margin-bottom: 12px;
+
+	img {
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+	}
+`;
+
+export const ProfileRingBorder = styled.div<{ color: string }>`
+	position: absolute;
+	top: -4px;
+	left: -4px;
+	right: -4px;
+	bottom: -4px;
+	border: 4px solid ${(props) => props.color};
+	border-radius: 50%;
+	z-index: 1;
+`;
+
+export const ProfileRingActive = styled.div<{ isActive: boolean }>`
+	padding: 4px 12px;
+	border-radius: 12px;
+	font-size: 0.8rem;
+	font-weight: 600;
+	color: white;
+	background: ${(props) => (props.isActive ? '#10b981' : '#6b7280')};
+`;
+
+export const ProfileRingInfo = styled.div`
+	padding: 20px;
+`;
+
+export const ProfileRingName = styled.h3`
+	font-size: 1.1rem;
+	font-weight: 600;
+	color: var(--text-primary);
+	margin: 0 0 8px 0;
+`;
+
+export const ProfileRingDescription = styled.p`
+	font-size: 0.9rem;
+	color: var(--text-secondary);
+	margin: 0 0 12px 0;
+	line-height: 1.4;
+`;
+
+export const ProfileRingTier = styled.div<{ tier: string }>`
+	padding: 4px 12px;
+	border-radius: 8px;
+	font-size: 0.8rem;
+	font-weight: 600;
+	color: white;
+	background: ${(props) => {
+		switch (props.tier) {
+			case 'Core':
+				return '#8B4513';
+			case 'Select':
+				return '#C0C0C0';
+			case 'Reserve':
+				return '#FFD700';
+			case 'Edge':
+				return '#9D4EDD';
+			case 'Prime':
+				return '#FF6B6B';
+			default:
+				return '#6b7280';
+		}
+	}};
+	display: inline-block;
 `;
 
 export const QuestCard = styled.div<{ completed: boolean; claimed: boolean }>`
@@ -303,6 +508,35 @@ export const ClaimedBadge = styled.div`
 	}
 `;
 
+export const DelegationAction = styled.div`
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+`;
+
+export const DelegationButton = styled.button`
+	background: linear-gradient(135deg, #9d4edd, #c77dff);
+	color: white;
+	border: none;
+	border-radius: 12px;
+	padding: 10px 16px;
+	font-size: 0.85rem;
+	font-weight: 600;
+	cursor: pointer;
+	transition: all 0.2s ease;
+
+	&:hover {
+		transform: translateY(-2px);
+		box-shadow: 0 8px 25px rgba(157, 78, 221, 0.3);
+	}
+`;
+
+export const DelegationStatus = styled.div`
+	font-size: 0.8rem;
+	color: var(--text-secondary);
+	text-align: center;
+`;
+
 export const ProgressBar = styled.div`
 	width: 100%;
 	height: 8px;
@@ -395,6 +629,35 @@ export const RewardItem = styled.div`
 	color: #b8860b;
 	font-weight: 600;
 	font-size: 0.9rem;
+`;
+
+export const CampaignRewardDisplay = styled.div`
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 16px;
+	padding: 20px;
+	background: linear-gradient(135deg, #10b981, #34d399);
+	border-radius: 12px;
+	color: white;
+	text-align: center;
+`;
+
+export const CampaignRewardText = styled.div`
+	font-size: 1.1rem;
+	font-weight: 600;
+	line-height: 1.4;
+`;
+
+export const CampaignCurrentTier = styled.div`
+	font-size: 1rem;
+	font-weight: 500;
+	opacity: 0.9;
+
+	strong {
+		color: #ffd700;
+		font-weight: 700;
+	}
 `;
 
 export const MActionWrapper = styled.div`

@@ -245,19 +245,27 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 	async function resolveProfile() {
 		try {
 			let fetchedProfile: any;
+			let isLegacyProfile = false;
 
 			const cachedProfile = getCachedProfile(arProvider.walletAddress);
 
-			let isLegacyProfile = false;
+			// ALWAYS try to fetch HyperBeam zone profile first, regardless of cache
+			console.log('PermawebProvider - Attempting to fetch HyperBeam zone profile...');
+			fetchedProfile = await libs.getProfileByWalletAddress(arProvider.walletAddress);
 
-			if (cachedProfile?.id && !cachedProfile.isLegacyProfile)
-				fetchedProfile = await libs.getProfileById(cachedProfile.id);
-			else {
-				fetchedProfile = await libs.getProfileByWalletAddress(arProvider.walletAddress);
-
-				if (!fetchedProfile?.id) {
+			if (fetchedProfile?.id) {
+				console.log('PermawebProvider - ✅ Found HyperBeam zone profile:', fetchedProfile.id);
+				isLegacyProfile = false;
+			} else {
+				// Only use cached HyperBeam profile if available
+				if (cachedProfile?.id && !cachedProfile.isLegacyProfile) {
+					console.log('PermawebProvider - Using cached HyperBeam profile:', cachedProfile.id);
+					fetchedProfile = await libs.getProfileById(cachedProfile.id);
+					isLegacyProfile = false;
+				} else {
+					// Last resort: fetch legacy profile
 					if (process.env.NODE_ENV === 'development') {
-						console.log('Fetching legacy profile...');
+						console.log('PermawebProvider - Falling back to legacy profile...');
 					}
 					isLegacyProfile = true;
 					const aoProfile = AOProfile.init({ ao: connect({ MODE: 'legacy' }) });
@@ -267,7 +275,19 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 
 			let profileToUse = { ...fetchedProfile, isLegacyProfile };
 
-			if (!fetchedProfile?.id && cachedProfile) profileToUse = cachedProfile;
+			// Only use cached profile as absolute last fallback
+			if (!fetchedProfile?.id && cachedProfile) {
+				console.log('PermawebProvider - Using cached profile as last fallback:', cachedProfile.id);
+				profileToUse = cachedProfile;
+			}
+
+			console.log('PermawebProvider - Profile resolved:', {
+				profileId: profileToUse?.id,
+				username: profileToUse?.username,
+				isLegacyProfile: profileToUse?.isLegacyProfile,
+				walletAddress: arProvider.walletAddress,
+				source: fetchedProfile?.id ? 'Fresh fetch' : 'Cache fallback',
+			});
 
 			cacheProfile(arProvider.walletAddress, profileToUse);
 
