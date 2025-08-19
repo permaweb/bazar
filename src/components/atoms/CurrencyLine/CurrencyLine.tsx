@@ -35,12 +35,33 @@ export default function CurrencyLine(props: IProps & { tokenLogo?: string; token
 	}
 
 	function getCurrency() {
-		// Always use logo and symbol from TOKEN_REGISTRY
-		const tokenInfo = TOKEN_REGISTRY[props.currency];
+		// Use the token from the provider which may have dynamic metadata
+		const providerToken = useTokenProvider().availableTokens.find((token) => token.id === props.currency);
+		const tokenInfo = providerToken || TOKEN_REGISTRY[props.currency];
+
 		if (tokenInfo) {
 			return (
 				<span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-					{tokenInfo.logo && <img src={`https://arweave.net/${tokenInfo.logo}`} alt={tokenInfo.symbol || ''} />}
+					{tokenInfo.logo ? (
+						<img src={getTxEndpoint(tokenInfo.logo)} alt={tokenInfo.symbol || ''} />
+					) : (
+						<div
+							style={{
+								width: '16px',
+								height: '16px',
+								backgroundColor: '#e5e5e5',
+								borderRadius: '50%',
+								display: 'flex',
+								alignItems: 'center',
+								justifyContent: 'center',
+								fontSize: '8px',
+								fontWeight: 'bold',
+								color: '#666',
+							}}
+						>
+							{tokenInfo.symbol?.charAt(0) || '?'}
+						</div>
+					)}
 					{tokenInfo.symbol && <span>{tokenInfo.symbol}</span>}
 				</span>
 			);

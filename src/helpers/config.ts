@@ -398,10 +398,19 @@ export const TOKEN_REGISTRY = {
 		description: 'PIXL protocol token',
 		priority: 3,
 	},
+	'4hXj_E-5fAKmo4E8KjgQvuDJKAFk9P2grhycVmISDLs': {
+		id: '4hXj_E-5fAKmo4E8KjgQvuDJKAFk9P2grhycVmISDLs',
+		name: 'PI Token',
+		symbol: 'PI',
+		logo: 'dynamicLogo', // Logo will be fetched dynamically from token metadata
+		denomination: 18, // Common denomination, can be adjusted
+		description: 'Permaweb Index token',
+		priority: 4,
+	},
 	// AO token removed due to incorrect process ID
 };
 
-// NOTE: All tokens in this registry will have their balances fetched for both profile and wallet, and the UI will display the combined total (profileBalance + walletBalance) for each token. This applies to wAR, PIXL, Wander, AO, and any future tokens.
+// NOTE: All tokens in this registry will have their balances fetched for both profile and wallet, and the UI will display the combined total (profileBalance + walletBalance) for each token. This applies to wAR, PIXL, Wander, PI, and any future tokens.
 
 // Helper function to get available tokens
 export const getAvailableTokens = () => {

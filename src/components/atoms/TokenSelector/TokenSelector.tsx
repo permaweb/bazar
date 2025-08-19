@@ -68,7 +68,26 @@ export default function TokenSelector(props: TokenSelectorProps) {
 					<S.CustomSelect onClick={() => setIsOpen(!isOpen)} className={isOpen ? 'active' : ''}>
 						<S.SelectedToken>
 							<S.TokenLogo>
-								<img src={getTxEndpoint(selectedToken.logo)} alt={selectedToken.name} />
+								{selectedToken.logo ? (
+									<img src={getTxEndpoint(selectedToken.logo)} alt={selectedToken.name} />
+								) : (
+									<div
+										style={{
+											width: '24px',
+											height: '24px',
+											backgroundColor: '#e5e5e5',
+											borderRadius: '50%',
+											display: 'flex',
+											alignItems: 'center',
+											justifyContent: 'center',
+											fontSize: '12px',
+											fontWeight: 'bold',
+											color: '#666',
+										}}
+									>
+										{selectedToken.symbol.charAt(0)}
+									</div>
+								)}
 							</S.TokenLogo>
 							<S.TokenInfo>
 								<S.TokenName>{selectedToken.name.replace(' Token', '')}</S.TokenName>
@@ -100,7 +119,26 @@ export default function TokenSelector(props: TokenSelectorProps) {
 									>
 										<S.TokenOption>
 											<S.TokenLogo>
-												<img src={getTxEndpoint(token.logo)} alt={token.name} />
+												{token.logo ? (
+													<img src={getTxEndpoint(token.logo)} alt={token.name} />
+												) : (
+													<div
+														style={{
+															width: '24px',
+															height: '24px',
+															backgroundColor: '#e5e5e5',
+															borderRadius: '50%',
+															display: 'flex',
+															alignItems: 'center',
+															justifyContent: 'center',
+															fontSize: '12px',
+															fontWeight: 'bold',
+															color: '#666',
+														}}
+													>
+														{token.symbol.charAt(0)}
+													</div>
+												)}
 											</S.TokenLogo>
 											<S.TokenInfo>
 												<S.TokenName>{token.name.replace(' Token', '')}</S.TokenName>
