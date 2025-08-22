@@ -269,7 +269,15 @@ export function AppProvider(props: AppProviderProps) {
 	React.useEffect(() => {
 		(async function () {
 			try {
+				// Check if AO values are defined
+				if (!AO.defaultToken || !AO.pixl) {
+					console.error('AO configuration missing:', { defaultToken: AO.defaultToken, pixl: AO.pixl });
+					return;
+				}
+
 				if (!currenciesReducer) {
+					console.log('Fetching currency states for:', { defaultToken: AO.defaultToken, pixl: AO.pixl });
+
 					const defaultTokenState = await readHandler({
 						processId: AO.defaultToken,
 						action: 'Info',
@@ -279,22 +287,26 @@ export function AppProvider(props: AppProviderProps) {
 						action: 'Info',
 					});
 
-					dispatch(
-						currencyActions.setCurrencies({
-							[AO.defaultToken]: {
-								...defaultTokenState,
-							},
-							[AO.pixl]: {
-								...pixlState,
-							},
-						})
-					);
+					console.log('Currency states fetched:', { defaultTokenState, pixlState });
+
+					const currencyPayload = {
+						[AO.defaultToken]: {
+							...defaultTokenState,
+						},
+						[AO.pixl]: {
+							...pixlState,
+						},
+					};
+
+					console.log('Dispatching setCurrencies with payload:', currencyPayload);
+
+					dispatch(currencyActions.setCurrencies(currencyPayload));
 				}
 			} catch (e: any) {
-				console.error(e);
+				console.error('Error in currency initialization:', e);
 			}
 		})();
-	}, [currenciesReducer]);
+	}, [currenciesReducer, dispatch]);
 
 	return (
 		<AppContext.Provider

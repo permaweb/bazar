@@ -23,10 +23,10 @@ const rootReducer = combineReducers({
 	collectionsReducer,
 	currenciesReducer,
 	profilesReducer,
+	questsReducer,
 	stampsReducer,
 	streaksReducer,
 	ucmReducer,
-	questsReducer,
 });
 
 export type RootState = ReturnType<typeof store.getState>;
