@@ -1895,7 +1895,6 @@ export default function Quests() {
 						{/* Wander Tier Quest Section - 5-tier progression leading to Bronze DumDum */}
 						<S.ProfileRingsSection>
 							<S.ProfileRingsHeader>
-								https://docs.google.com/document/d/11cNCcOmZCAeLZ-JoDkUH2tAr6pC7oPVF3jGOWOMfvxM/edit?usp=sharingCSXAZDVFERGT4DWSCAXFVEss
 								<p>
 									<strong>Complete all 5 quests to earn your exclusive Bronze DumDum!</strong> This special quest
 									progression rewards you with WNDR tokens and Explorer Rings as you advance through the tiers.
