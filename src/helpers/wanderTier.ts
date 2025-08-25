@@ -5,39 +5,42 @@ export type Tier = 'Prime' | 'Edge' | 'Reserve' | 'Select' | 'Core';
 // WNDR Token ID
 export const WNDR_TOKEN_ID = '7GoQfmSOct_aUOWKM4xbKGg6DzAmOgdKwg8Kf-CbHm4';
 
-// Profile ring colors for Wander quest achievements
+// Profile ring colors for Wander wallet tiers
 export const WANDER_PROFILE_RINGS = {
-	'wander-explorer': {
-		id: 'wander-explorer',
-		name: 'Wander Explorer',
-		description: 'Created profile - Welcome to the Wander ecosystem',
-		color: '#8B4513', // Brown
+	'wander-core': {
+		id: 'wander-core',
+		name: 'Wander Ring',
+		description: 'Core tier - Starting your Wander journey',
+		color: '#9D4EDD', // Purple to match the Core badge
 		tier: 'Core',
-		questId: 'create-profile',
 	},
-	'wander-creator': {
-		id: 'wander-creator',
-		name: 'Wander Creator',
-		description: 'Created first asset - Building the future',
-		color: '#C0C0C0', // Silver
+	'wander-select': {
+		id: 'wander-select',
+		name: 'Wander Ring',
+		description: 'Select tier - Growing your WNDR balance',
+		color: '#4B5563', // Dark blue-grey to match Select badge background
 		tier: 'Select',
-		questId: 'create-asset',
 	},
-	'wander-trader': {
-		id: 'wander-trader',
-		name: 'Wander Trader',
-		description: 'Made first purchase - Active in marketplace',
-		color: '#FFD700', // Gold
+	'wander-reserve': {
+		id: 'wander-reserve',
+		name: 'Wander Ring',
+		description: 'Reserve tier - Active WNDR holder',
+		color: '#6B7280', // Dark muted greenish-gray to match Reserve badge background
 		tier: 'Reserve',
-		questId: 'make-purchase',
 	},
-	'wander-champion': {
-		id: 'wander-champion',
-		name: 'Wander Champion',
-		description: 'Delegated to PIXL - Supporting the ecosystem',
-		color: '#9D4EDD', // Purple
+	'wander-edge': {
+		id: 'wander-edge',
+		name: 'Wander Ring',
+		description: 'Edge tier - Significant WNDR holdings',
+		color: '#374151', // Dark gray to match Edge badge background
 		tier: 'Edge',
-		questId: 'delegate-pixl',
+	},
+	'wander-prime': {
+		id: 'wander-prime',
+		name: 'Wander Ring',
+		description: 'Prime tier - Elite WNDR holder',
+		color: '#D97706', // Golden-brown to match Prime badge background
+		tier: 'Prime',
 	},
 } as const;
 
@@ -239,8 +242,8 @@ export function getTierQuestDescription(questId: string, tier: Tier): string {
 /**
  * Get profile ring for a completed quest
  */
-export function getProfileRingForQuest(questId: string): (typeof WANDER_PROFILE_RINGS)[WanderProfileRing] | null {
-	const ring = Object.values(WANDER_PROFILE_RINGS).find((r) => r.questId === questId);
+export function getProfileRingForTier(tier: string): (typeof WANDER_PROFILE_RINGS)[WanderProfileRing] | null {
+	const ring = Object.values(WANDER_PROFILE_RINGS).find((r) => r.tier === tier);
 	return ring || null;
 }
 
@@ -250,7 +253,7 @@ export function getProfileRingForQuest(questId: string): (typeof WANDER_PROFILE_
 export function getEarnedProfileRings(
 	completedQuests: string[]
 ): Array<(typeof WANDER_PROFILE_RINGS)[WanderProfileRing]> {
-	return completedQuests.map((questId) => getProfileRingForQuest(questId)).filter(Boolean) as Array<
+	return completedQuests.map((questId) => getProfileRingForTier(questId)).filter(Boolean) as Array<
 		(typeof WANDER_PROFILE_RINGS)[WanderProfileRing]
 	>;
 }

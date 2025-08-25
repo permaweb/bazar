@@ -16,11 +16,12 @@ import {
 	calculateTierRewards,
 	getEarnedProfileRings,
 	getHighestProfileRing,
-	getProfileRingForQuest,
+	getProfileRingForTier,
 	getTierMultiplier,
 	getTierQuestDescription,
 	WANDER_PROFILE_RINGS,
 } from 'helpers/wanderTier';
+import { formatWanderBalance, getWanderTierBadge, getWanderTierIcon } from 'helpers/wanderTierBadges';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 import { usePermawebProvider } from 'providers/PermawebProvider';
@@ -59,8 +60,7 @@ const QUEST_CONFIG = {
 		tier: 'bronze' as const,
 		reward: {
 			wndr: 10,
-			description: '10 WNDR + Bronze & Silver DumDums',
-			profileRing: 'wander-explorer',
+			description: '10 WNDR',
 		},
 	},
 	createAsset: {
@@ -73,7 +73,6 @@ const QUEST_CONFIG = {
 		reward: {
 			wndr: 25,
 			description: '25 WNDR',
-			profileRing: 'wander-creator',
 		},
 	},
 	createCollection: {
@@ -85,7 +84,7 @@ const QUEST_CONFIG = {
 		tier: 'silver' as const,
 		reward: {
 			wndr: 25,
-			description: '25 WNDR (Collection bonus)',
+			description: '25 WNDR',
 		},
 	},
 	makePurchase: {
@@ -97,24 +96,77 @@ const QUEST_CONFIG = {
 		tier: 'gold' as const,
 		reward: {
 			wndr: 50,
-			description: '50 WNDR + Fourth DumDum',
-			profileRing: 'wander-trader',
+			description: '50 WNDR',
 		},
 	},
 	delegatePixl: {
 		id: 'delegate-pixl',
 		title: 'Delegate to PIXL',
-		description: 'Delegate at least 10% voting power to PIXL + stamp your Silver DumDum',
+		description: 'Delegate at least 10% voting power to PIXL',
 		icon: ASSETS.star,
 		required: 1,
 		tier: 'platinum' as const,
 		reward: {
 			wndr: 100,
-			description: '100 WNDR + Platinum DumDum',
-			profileRing: 'wander-champion',
+			description: '100 WNDR',
 		},
 	},
 };
+
+// Performance optimization: Add request caching and deduplication
+const requestCache = new Map<string, { data: any; timestamp: number; error?: boolean }>();
+const CACHE_DURATION = 30000; // 30 seconds cache
+const ERROR_CACHE_DURATION = 60000; // 1 minute for failed requests
+
+// Debounce function for API calls
+function debounce(func: Function, wait: number) {
+	let timeout: NodeJS.Timeout;
+	return function executedFunction(...args: any[]) {
+		const later = () => {
+			clearTimeout(timeout);
+			func(...args);
+		};
+		clearTimeout(timeout);
+		timeout = setTimeout(later, wait);
+	};
+}
+
+// Cached API call wrapper with error handling
+async function cachedApiCall(key: string, apiCall: () => Promise<any>) {
+	const cached = requestCache.get(key);
+	const now = Date.now();
+
+	// Check if we have a cached result
+	if (cached) {
+		const cacheAge = now - cached.timestamp;
+		const maxAge = cached.error ? ERROR_CACHE_DURATION : CACHE_DURATION;
+
+		if (cacheAge < maxAge) {
+			return cached.data;
+		}
+	}
+
+	try {
+		const data = await apiCall();
+		requestCache.set(key, { data, timestamp: now, error: false });
+		return data;
+	} catch (error) {
+		// Cache failed requests to prevent repeated failures
+		requestCache.set(key, { data: null, timestamp: now, error: true });
+		throw error;
+	}
+}
+
+// MOVED OUTSIDE COMPONENT: Quest utility functions to prevent re-creation
+function getQuestProgress(questId: string, quests: Quest[]): number {
+	const quest = quests.find((q) => q.id === questId);
+	return quest?.isCompleted ? 1 : 0;
+}
+
+function isQuestCompleted(questId: string, quests: Quest[]): boolean {
+	const quest = quests.find((q) => q.id === questId);
+	return quest?.isCompleted || false;
+}
 
 export default function Quests() {
 	const navigate = useNavigate();
@@ -128,7 +180,14 @@ export default function Quests() {
 	const questsState = useSelector((state: RootState) => state.questsReducer);
 	const { quests, progress } = questsState;
 
+	// REMOVED: Debug logging on every render - causes 3000+ messages
+	// Only log once when component mounts or when quest completion actually changes
+	const totalQuests = quests.length;
+	const completedQuests = quests.filter((quest) => quest.isCompleted).length;
+	const claimedQuests = quests.filter((quest) => quest.isClaimed).length;
+
 	const [showProfileManage, setShowProfileManage] = React.useState<boolean>(false);
+	const [profileCreationInProgress, setProfileCreationInProgress] = React.useState<boolean>(false);
 	const [claimingQuest, setClaimingQuest] = React.useState<string | null>(null);
 	const [claimNotification, setClaimNotification] = React.useState<{ questId: string; reward: any } | null>(null);
 	const [wanderTierInfo, setWanderTierInfo] = React.useState<any>(null);
@@ -155,6 +214,8 @@ export default function Quests() {
 		}>
 	>([]);
 	const [campaign2Loading, setCampaign2Loading] = React.useState<boolean>(true);
+	const [questDataLoading, setQuestDataLoading] = React.useState<boolean>(false);
+	const [profileLoading, setProfileLoading] = React.useState<boolean>(false);
 
 	// Initialize quests on component mount
 	React.useEffect(() => {
@@ -174,160 +235,500 @@ export default function Quests() {
 		questTracker.setDispatch(dispatch);
 	}, [dispatch]);
 
-	// Check quest progress when profile or wallet changes - made optional
+	// ULTRA-OPTIMIZED: Synchronous first-paint data loading
 	React.useEffect(() => {
-		if (ENABLE_QUEST_SYSTEM && arProvider.walletAddress && permawebProvider.profile) {
-			try {
-				checkQuestProgress();
-				checkDelegationStatus();
-			} catch (error) {
-				console.log('Quest tracking failed:', error);
-				// Fail silently - don't break the app
-			}
-		}
-	}, [arProvider.walletAddress, permawebProvider.profile, permawebProvider.tokenBalances]);
+		if (!ENABLE_QUEST_SYSTEM || !arProvider.walletAddress) return;
 
-	// Periodic delegation check - made optional
-	React.useEffect(() => {
-		if (ENABLE_QUEST_SYSTEM && arProvider.walletAddress) {
-			const interval = setInterval(() => {
-				try {
-					checkDelegationStatus();
-				} catch (error) {
-					console.log('Delegation check failed:', error);
-					// Fail silently
+		console.log('Profile loading check:', {
+			hasProfile: !!permawebProvider.profile,
+			hasLibs: !!permawebProvider.libs,
+			profileId: permawebProvider.profile?.id,
+			walletAddress: arProvider.walletAddress,
+		});
+
+		// Wait for profile to be available before proceeding
+		if (!permawebProvider.profile && !permawebProvider.libs) {
+			console.log('⏳ Waiting for profile data to load...');
+			setProfileLoading(true);
+			return;
+		}
+
+		// Profile is available, proceed with quest verification
+		setProfileLoading(false);
+
+		// console.log('Quests - Starting ULTRA-OPTIMIZED data fetch...');
+
+		// Single function to fetch ALL data synchronously for first paint
+		const fetchAllDataSynchronously = async () => {
+			setQuestDataLoading(true);
+			try {
+				// STEP 1: SIMPLIFIED Profile Check (like Campaign_2)
+
+				// Use the same simple approach as Campaign_2
+				const profileData = {
+					id: permawebProvider.profile?.id || null,
+					profileType: permawebProvider.profile?.id ? 'active' : 'none',
+					isLegacyProfile: permawebProvider.profile?.isLegacyProfile || false,
+				};
+
+				console.log('Profile data check:', profileData);
+
+				// Profile verification result
+				if (!profileData?.id) {
+					console.log('❌ No Bazar profile found - Quest system requires a profile');
+					// Still update quest progress to show "Create Profile" quest
+					const noProfileProgress = {
+						profileCreated: false,
+						firstAssetCreated: false,
+						firstCollectionCreated: false,
+						firstPurchaseMade: false,
+						pixelDelegated: false,
+						totalAssets: 0,
+						totalCollections: 0,
+						totalPurchases: 0,
+					};
+					dispatch(updateQuestProgress(noProfileProgress));
+					return;
 				}
-			}, 60000); // Reduced frequency to every 60 seconds
 
-			return () => clearInterval(interval);
-		}
-	}, [arProvider.walletAddress]);
+				// Update quest progress to reflect profile status (simplified)
+				const profileStatus = {
+					profileCreated: !!profileData.id,
+					hasLegacyProfile: profileData.isLegacyProfile,
+					needsMigration: false, // Simplified approach like Campaign_2
+				};
 
-	// Load Campaign 2 assets when component mounts
-	React.useEffect(() => {
-		if (ENABLE_QUEST_SYSTEM) {
-			try {
-				loadCampaign2Assets();
+				// console.log('📊 Profile status for quests:', profileStatus);
+
+				// console.log('✅ Bazar profile verified successfully:', {
+				// 	profileId: profileData.id,
+				// 	profileType: profileData.profileType,
+				// 	isLegacy: profileData.isLegacyProfile
+				// });
+
+				// STEP 2: Get quest progress with IMMEDIATE first paint data
+				const progressKey = `progress-${profileData.id}-${arProvider.walletAddress}`;
+				const freshProgress = await cachedApiCall(progressKey, async () => {
+					// Use preload for immediate data, then get full data
+					const immediateData = await questTracker.preloadQuestData(profileData.id, arProvider.walletAddress);
+					const fullData = await questTracker.getQuestProgress(profileData.id, arProvider.walletAddress);
+					return fullData;
+				});
+
+				// STEP 3: Update ALL Redux state IMMEDIATELY for first paint
+				dispatch(updateQuestProgress(freshProgress));
+
+				// STEP 4: Auto-complete quests IMMEDIATELY based on profile verification
+				const questUpdates = [];
+
+				// Profile creation quest completion - SIMPLIFIED (like Campaign_2)
+				// console.log('🔍 Profile verification for quest completion:', {
+				// 	profileId: profileData.id,
+				// 	profileType: profileData.profileType,
+				// 	isLegacy: profileData.isLegacyProfile
+				// });
+
+				// Simple check: if user has a profile, auto-complete quests (like Campaign_2)
+				if (profileData.id) {
+					console.log('✅ Profile found, auto-completing create-profile quest');
+					questUpdates.push('create-profile');
+					// Auto-complete Bronze DumDum (Wander wallet) and Silver DumDum (Profile creation)
+					questUpdates.push('create-asset'); // Bronze DumDum - Having Wander wallet
+					questUpdates.push('create-collection'); // Silver DumDum - Create profile on Bazar
+				} else {
+					console.log('❌ "Create Profile" quest not completed - No profile found');
+				}
+				if (freshProgress.firstAssetCreated) {
+					questUpdates.push('create-asset');
+				}
+				if (freshProgress.firstCollectionCreated) {
+					questUpdates.push('create-collection');
+				}
+				if (freshProgress.firstPurchaseMade) {
+					questUpdates.push('make-purchase');
+				}
+				if (freshProgress.pixelDelegated && freshProgress.hasStampedSilverDumDum) {
+					questUpdates.push('delegate-pixl');
+				}
+
+				// Batch dispatch ALL quest completions at once
+				// console.log('🎯 Quest updates to dispatch:', questUpdates);
+				questUpdates.forEach((questId) => {
+					const existingQuest = quests.find((q) => q.id === questId);
+					if (!existingQuest?.isCompleted) {
+						// console.log(`✅ Dispatching quest completion: ${questId}`);
+						dispatch(completeQuest(questId));
+					} else {
+						// console.log(`⏭️ Skipping already completed quest: ${questId}`);
+					}
+				});
+
+				// Debug: Log current quest completion status
+				// console.log('🔍 Current quest completion status:', {
+				// 	createProfile: quests.find(q => q.id === 'create-profile')?.isCompleted,
+				// 	createAsset: quests.find(q => q.id === 'create-asset')?.isCompleted,
+				// 	createCollection: quests.find(q => q.id === 'create-collection')?.isCompleted,
+				// 	totalQuests: quests.length,
+				// 	completedQuests: quests.filter(q => q.isCompleted).length,
+				// 	allQuests: quests.map(q => ({ id: q.id, isCompleted: q.isCompleted }))
+				// });
+
+				// STEP 5: Update Wander tier info IMMEDIATELY
+				if (freshProgress.wanderTier) {
+					setWanderTierInfo({
+						tier: freshProgress.wanderTier,
+						balance: freshProgress.wanderBalance,
+						rank: freshProgress.wanderRank,
+					});
+				}
+
+				// STEP 6: Check campaign completion (cached, fast)
+				const campaignKey = `campaign-${profileData.id}`;
+				const campaignCompleted = await cachedApiCall(campaignKey, () =>
+					questTracker.hasCompletedWanderCampaign(profileData.id)
+				);
+				setCampaignCompleted(campaignCompleted);
+
+				// STEP 6.5: Trigger Bronze DumDum claiming if all quests are completed
+				if (campaignCompleted) {
+					setTimeout(() => {
+						autoClaimBronzeDumDum();
+					}, 1000); // Small delay to ensure quest completion is processed
+				}
+
+				// STEP 7: Check delegation status (cached, fast)
+				const delegationKey = `delegation-${arProvider.walletAddress}`;
+				await cachedApiCall(delegationKey, async () => {
+					if (typeof getDelegations === 'function') {
+						await questTracker.trackPixelDelegation(arProvider.walletAddress);
+					}
+				});
+
+				// console.log('Quests - ULTRA-OPTIMIZED: All data loaded synchronously for first paint');
 			} catch (error) {
-				console.log('Campaign 2 asset loading failed:', error);
-				// Fail silently
+				console.error('Error in ultra-optimized quest data fetch:', error);
+			} finally {
+				setQuestDataLoading(false);
 			}
-		}
+		};
+
+		// IMMEDIATE fetch for first paint
+		fetchAllDataSynchronously();
+
+		// Debounced refresh for subsequent updates
+		const debouncedRefresh = debounce(fetchAllDataSynchronously, 1000);
+
+		// AGGRESSIVE ERROR HANDLING: Reduced retry attempts to prevent server overload
+		let profileRetryCount = 0;
+		const maxProfileRetries = 3; // Reduced from 10 to 3 to prevent server spam
+
+		const profileRetryInterval = setInterval(() => {
+			if (!permawebProvider.profile && !permawebProvider.libs && profileRetryCount < maxProfileRetries) {
+				profileRetryCount++;
+				// console.log(`⏳ Profile loading retry ${profileRetryCount}/${maxProfileRetries}...`);
+				return;
+			}
+
+			if (permawebProvider.profile || permawebProvider.libs) {
+				// console.log('✅ Profile data available, proceeding with quest verification');
+				clearInterval(profileRetryInterval);
+				fetchAllDataSynchronously();
+			} else if (profileRetryCount >= maxProfileRetries) {
+				// console.log('❌ Profile loading timeout - using fallback data to prevent server overload');
+				clearInterval(profileRetryInterval);
+				setProfileLoading(false);
+
+				// Use fallback data instead of failing completely
+				const fallbackProgress = {
+					profileCreated: false,
+					firstAssetCreated: false,
+					firstCollectionCreated: false,
+					firstPurchaseMade: false,
+					pixelDelegated: false,
+					totalAssets: 0,
+					totalCollections: 0,
+					totalPurchases: 0,
+				};
+				dispatch(updateQuestProgress(fallbackProgress));
+			}
+		}, 2000); // Increased from 1 second to 2 seconds to reduce server load
+
+		// Set up interval for periodic updates (AGGRESSIVELY REDUCED frequency to prevent server overload)
+		const interval = setInterval(() => {
+			// Only clear successful cache entries, keep error cache to prevent repeated failures
+			const now = Date.now();
+			for (const [key, value] of requestCache.entries()) {
+				const cacheAge = now - value.timestamp;
+				const maxAge = value.error ? ERROR_CACHE_DURATION : CACHE_DURATION;
+				if (cacheAge >= maxAge) {
+					requestCache.delete(key);
+				}
+			}
+
+			// Only refresh if we haven't had recent errors
+			const recentErrors = Array.from(requestCache.values()).filter((v) => v.error && now - v.timestamp < 60000).length;
+			if (recentErrors < 3) {
+				debouncedRefresh();
+			} else {
+				// console.log('⚠️ Skipping periodic refresh due to recent errors - preventing server overload');
+			}
+		}, 600000); // Increased from 5 minutes to 10 minutes to reduce server load
+
+		return () => {
+			clearInterval(interval);
+			clearInterval(profileRetryInterval);
+		};
+	}, [arProvider.walletAddress, permawebProvider.profile?.id]); // REMOVED quests dependency - was causing infinite loop
+
+	// OPTIMIZED: Load Campaign 2 assets once on mount
+	React.useEffect(() => {
+		if (!ENABLE_QUEST_SYSTEM || campaign2Assets.length > 0) return;
+
+		const loadAssets = async () => {
+			setCampaign2Loading(true);
+			try {
+				await loadCampaign2Assets();
+			} catch (error) {
+				// console.log('Campaign 2 asset loading failed:', error);
+			} finally {
+				setCampaign2Loading(false);
+			}
+		};
+
+		loadAssets();
 	}, []);
 
-	// Check Campaign 2 asset claim status when assets are loaded and quests change (debounced)
+	// OPTIMIZED: Check Campaign 2 claim status only when necessary - REDUCED FREQUENCY
 	React.useEffect(() => {
 		if (
-			ENABLE_QUEST_SYSTEM &&
-			arProvider.walletAddress &&
-			permawebProvider.profile &&
-			campaign2Assets.length > 0 &&
-			quests.length > 0
-		) {
-			// Debounce claim status checks to avoid rapid API calls
-			const timeoutId = setTimeout(() => {
-				try {
-					checkCampaign2ClaimStatus();
-				} catch (error) {
-					console.log('Campaign 2 asset check failed:', error);
-					// Fail silently
-				}
-			}, 1000); // 1 second debounce
+			!ENABLE_QUEST_SYSTEM ||
+			!arProvider.walletAddress ||
+			!permawebProvider.profile ||
+			campaign2Assets.length === 0 ||
+			quests.length === 0
+		)
+			return;
 
-			return () => clearTimeout(timeoutId);
-		} else {
-			// Reduced logging frequency
-			if (Math.random() < 0.1) {
-				// Only log 10% of the time
-				console.log('Campaign 2 claim check skipped - missing requirements');
+		// Heavily debounced claim status check to prevent excessive API calls
+		const debouncedClaimCheck = debounce(async () => {
+			try {
+				await checkCampaign2ClaimStatus();
+			} catch (error) {
+				// Silently fail to prevent console spam
 			}
-		}
-	}, [arProvider.walletAddress, permawebProvider.profile, campaign2Assets.length, quests]);
+		}, 10000); // Increased from 2 seconds to 10 seconds
 
-	// Update quests with tier-based rewards when Wander tier info is available
+		debouncedClaimCheck();
+	}, [arProvider.walletAddress, permawebProvider.profile?.id, campaign2Assets.length]); // REMOVED quests.length dependency
+
+	// OPTIMIZED: Update quests with tier rewards (no API calls)
 	React.useEffect(() => {
 		if (wanderTierInfo && quests.length > 0) {
 			updateQuestsWithTierRewards();
 		}
 	}, [wanderTierInfo, quests.length]);
 
-	// Check campaign completion status
+	// Force refresh quests on mount to ensure clean state
 	React.useEffect(() => {
-		if (arProvider.walletAddress) {
-			checkCampaignCompletion();
+		// Clear quests and force refresh to remove any old ring descriptions
+		dispatch(setQuests([]));
+		const timer = setTimeout(() => {
+			if (wanderTierInfo) {
+				updateQuestsWithTierRewards();
+			}
+		}, 100);
+		return () => clearTimeout(timer);
+	}, []);
+
+	// Check campaign completion status - REDUCED FREQUENCY
+	React.useEffect(() => {
+		if (arProvider.walletAddress && completedQuests >= 5) {
+			// Only check when all quests might be completed
+			const debouncedCampaignCheck = debounce(checkCampaignCompletion, 5000); // 5 second debounce
+			debouncedCampaignCheck();
 		}
-	}, [progress, arProvider.walletAddress, permawebProvider.profile?.id]);
+	}, [completedQuests, arProvider.walletAddress]); // SIMPLIFIED dependencies
+
+	// Reset profile creation state when profile is successfully detected
+	React.useEffect(() => {
+		if (profileCreationInProgress && permawebProvider.profile?.id) {
+			// console.log('✅ Profile created successfully, resetting creation state');
+			setProfileCreationInProgress(false);
+		}
+	}, [permawebProvider.profile?.id, profileCreationInProgress]);
+
+	// Auto-reset profile creation state after timeout (fallback)
+	React.useEffect(() => {
+		if (profileCreationInProgress) {
+			const timeout = setTimeout(() => {
+				// console.log('⏰ Profile creation timeout, resetting state');
+				setProfileCreationInProgress(false);
+			}, 30000); // 30 seconds timeout
+
+			return () => clearTimeout(timeout);
+		}
+	}, [profileCreationInProgress]);
+
+	// Auto-claim Bronze DumDum when all quests are completed
+	async function autoClaimBronzeDumDum() {
+		if (!arProvider.walletAddress || !permawebProvider.profile?.id) {
+			return;
+		}
+
+		// Check if all quests are completed
+		const allQuestsCompleted = quests.every((quest) => quest.isCompleted);
+
+		if (!allQuestsCompleted) {
+			return; // Only claim when all quests are done
+		}
+
+		try {
+			// Find Bronze DumDum asset (GridPlacement '1')
+			const bronzeDumDum = campaign2Assets.find(
+				(asset) => asset.questRequirement === 'create-asset' && asset.requirementType === 'wander'
+			);
+
+			if (!bronzeDumDum) {
+				return;
+			}
+
+			// Try direct AO call first, then fallback to dryrun
+			try {
+				const tags = [
+					{ name: 'Address', value: arProvider.walletAddress },
+					{ name: 'ProfileId', value: permawebProvider.profile.id },
+				];
+
+				// Check if already claimed
+				const statusResponse = await messageResult({
+					processId: bronzeDumDum.id,
+					wallet: arProvider.wallet,
+					action: 'Get-Claim-Status',
+					tags: tags,
+					data: null,
+				});
+
+				if (
+					statusResponse &&
+					statusResponse['Claim-Status-Response'] &&
+					statusResponse['Claim-Status-Response'].status === 'Claimed'
+				) {
+					// Already claimed, update UI state
+					setCampaign2Assets((prevAssets) =>
+						prevAssets.map((asset) =>
+							asset.id === bronzeDumDum.id ? { ...asset, claimable: false, claimed: true } : asset
+						)
+					);
+				} else {
+					// Attempt to claim Bronze DumDum
+					const response = await messageResult({
+						processId: bronzeDumDum.id,
+						wallet: arProvider.wallet,
+						action: 'Handle-Claim',
+						tags: tags,
+						data: null,
+					});
+
+					if (response && response['Claim-Status-Response'] && response['Claim-Status-Response'].status === 'Claimed') {
+						// Successfully claimed, update UI state
+						setCampaign2Assets((prevAssets) =>
+							prevAssets.map((asset) =>
+								asset.id === bronzeDumDum.id ? { ...asset, claimable: false, claimed: true } : asset
+							)
+						);
+					}
+				}
+			} catch (aoError) {
+				// Fallback: Use permaweb-libs dryrun
+				try {
+					await permawebProvider.libs?.dryrun({
+						processId: bronzeDumDum.id,
+						action: 'Handle-Claim',
+						tags: [
+							{ name: 'Address', value: arProvider.walletAddress },
+							{ name: 'ProfileId', value: permawebProvider.profile.id },
+						],
+						data: null,
+					});
+				} catch (dryrunError) {
+					// Silent error handling
+				}
+			}
+		} catch (error) {
+			// Silent error handling
+		}
+	}
 
 	async function checkQuestProgress() {
 		if (!arProvider.walletAddress) return;
 
-		console.log('Quests - checkQuestProgress called with:', {
-			walletAddress: arProvider.walletAddress,
-			permawebProfileId: permawebProvider.profile?.id,
-			isLegacyProfile: permawebProvider.profile?.isLegacyProfile,
-		});
+		// console.log('Quests - checkQuestProgress called with:', {
+		// 	walletAddress: arProvider.walletAddress,
+		// 	permawebProfileId: permawebProvider.profile?.id,
+		// 	isLegacyProfile: permawebProvider.profile?.isLegacyProfile,
+		// });
 
 		// ALWAYS try to fetch the HyperBeam zone profile first, since legacy profiles are deprecated
-		console.log('Quests - Attempting to fetch HyperBeam zone profile directly...');
+		// console.log('Quests - Attempting to fetch HyperBeam zone profile directly...');
 		let profileIdToUse = null;
 
 		try {
 			// Always try to get the zone profile first (HyperBeam profiles)
 			const zoneProfile = await permawebProvider.libs?.getProfileByWalletAddress(arProvider.walletAddress);
 			if (zoneProfile?.id) {
-				console.log('Quests - ✅ Found HyperBeam zone profile ID:', zoneProfile.id);
-				console.log('Quests - Zone profile type:', zoneProfile.isLegacyProfile ? 'Legacy' : 'HyperBeam');
+				// console.log('Quests - ✅ Found HyperBeam zone profile ID:', zoneProfile.id);
+				// console.log('Quests - Zone profile type:', zoneProfile.isLegacyProfile ? 'Legacy' : 'HyperBeam');
 				profileIdToUse = zoneProfile.id;
 			} else {
-				console.log('Quests - ❌ HyperBeam zone profile not found');
+				// console.log('Quests - ❌ HyperBeam zone profile not found');
 			}
 		} catch (error) {
-			console.log('Quests - ❌ HyperBeam zone profile fetch failed:', error);
+			// console.log('Quests - ❌ HyperBeam zone profile fetch failed:', error);
 		}
 
 		// Only fall back to provider profile if zone profile fetch completely failed
 		if (!profileIdToUse) {
-			console.log('Quests - Falling back to PermawebProvider profile ID...');
+			// console.log('Quests - Falling back to PermawebProvider profile ID...');
 			profileIdToUse = permawebProvider.profile?.id;
-			console.log(
-				'Quests - Fallback profile type:',
-				permawebProvider.profile?.isLegacyProfile ? 'Legacy' : 'HyperBeam'
-			);
+			// console.log(
+			// 	'Quests - Fallback profile type:',
+			// 	permawebProvider.profile?.isLegacyProfile ? 'Legacy' : 'HyperBeam'
+			// );
 		}
 
-		console.log('Quests - Using profile ID for quest tracking:', profileIdToUse);
-		console.log('Quests - Current Redux progress state before update:', progress);
-		console.log('Quests - PermawebProvider profile ID:', permawebProvider.profile?.id);
-		console.log('Quests - PermawebProvider profile isLegacy:', permawebProvider.profile?.isLegacyProfile);
+		// console.log('Quests - Using profile ID for quest tracking:', profileIdToUse);
+		// console.log('Quests - Current Redux progress state before update:', progress);
+		// console.log('Quests - PermawebProvider profile ID:', permawebProvider.profile?.id);
+		// console.log('Quests - PermawebProvider profile isLegacy:', permawebProvider.profile?.isLegacyProfile);
 
 		// Use the quest tracker to get comprehensive progress
 		const freshProgress = await questTracker.getQuestProgress(profileIdToUse, arProvider.walletAddress);
-		console.log('Quests - Fresh progress from quest tracker:', freshProgress);
+		// console.log('Quests - Fresh progress from quest tracker:', freshProgress);
 
 		dispatch(updateQuestProgress(freshProgress));
 
 		// Auto-complete quests based on FRESH progress data
-		console.log('Quests - Auto-completing quests based on fresh progress...');
+		// console.log('Quests - Auto-completing quests based on fresh progress...');
 
 		// Profile quest - use direct provider check as fallback
 		if (freshProgress.profileCreated || permawebProvider.profile?.id) {
 			if (!quests.find((q) => q.id === 'create-profile')?.isCompleted) {
-				console.log('Quests - Completing create-profile quest');
+				// console.log('Quests - Completing create-profile quest');
 				dispatch(completeQuest('create-profile'));
 			}
 		}
 
 		// Other quests based on fresh progress data
 		if (freshProgress.firstAssetCreated && !quests.find((q) => q.id === 'create-asset')?.isCompleted) {
-			console.log('Quests - Completing create-asset quest');
+			// console.log('Quests - Completing create-asset quest');
 			dispatch(completeQuest('create-asset'));
 		}
 		if (freshProgress.firstCollectionCreated && !quests.find((q) => q.id === 'create-collection')?.isCompleted) {
-			console.log('Quests - Completing create-collection quest');
+			// console.log('Quests - Completing create-collection quest');
 			dispatch(completeQuest('create-collection'));
 		}
 		if (freshProgress.firstPurchaseMade && !quests.find((q) => q.id === 'make-purchase')?.isCompleted) {
-			console.log('Quests - Completing make-purchase quest');
+			// console.log('Quests - Completing make-purchase quest');
 			dispatch(completeQuest('make-purchase'));
 		}
 		if (
@@ -335,13 +736,13 @@ export default function Quests() {
 			freshProgress.hasStampedSilverDumDum &&
 			!quests.find((q) => q.id === 'delegate-pixl')?.isCompleted
 		) {
-			console.log('Quests - Completing delegate-pixl quest (both delegation and Silver DumDum stamping completed)');
+			// console.log('Quests - Completing delegate-pixl quest (both delegation and Silver DumDum stamping completed)');
 			dispatch(completeQuest('delegate-pixl'));
 		}
 
 		// Store Wander tier info for quest updates
 		if (freshProgress.wanderTier) {
-			console.log('Quests - Setting Wander tier info:', freshProgress.wanderTier);
+			// console.log('Quests - Setting Wander tier info:', freshProgress.wanderTier);
 			setWanderTierInfo({
 				tier: freshProgress.wanderTier,
 				balance: freshProgress.wanderBalance,
@@ -359,7 +760,7 @@ export default function Quests() {
 				await questTracker.trackPixelDelegation(arProvider.walletAddress);
 			}
 		} catch (error) {
-			console.log('Delegation check unavailable:', error);
+			// console.log('Delegation check unavailable:', error);
 			// Fail silently - delegation features are optional
 		}
 	}
@@ -379,9 +780,7 @@ export default function Quests() {
 				description: tierDescription,
 				reward: {
 					wndr: tierRewards.wndr,
-					description: `${tierRewards.wndr} WNDR (${wanderTierInfo.tier} tier - ${tierRewards.multiplier}x)${
-						(baseReward.reward as any).profileRing ? ' + Profile Ring' : ''
-					}`,
+					description: `${tierRewards.wndr} WNDR`,
 					multiplier: tierRewards.multiplier,
 					tier: wanderTierInfo.tier,
 					...((baseReward.reward as any).profileRing && { profileRing: (baseReward.reward as any).profileRing }),
@@ -395,26 +794,26 @@ export default function Quests() {
 	async function checkCampaignCompletion() {
 		if (!arProvider.walletAddress) return;
 
-		console.log('Quests - checkCampaignCompletion called');
+		// console.log('Quests - checkCampaignCompletion called');
 
 		// ALWAYS try to get the HyperBeam zone profile for campaign completion
-		console.log('Quests - Fetching HyperBeam zone profile for campaign completion...');
+		// console.log('Quests - Fetching HyperBeam zone profile for campaign completion...');
 		let profileIdToUse = null;
 
 		try {
 			const zoneProfile = await permawebProvider.libs?.getProfileByWalletAddress(arProvider.walletAddress);
 			if (zoneProfile?.id) {
 				profileIdToUse = zoneProfile.id;
-				console.log('Quests - ✅ Using HyperBeam zone profile for campaign completion:', profileIdToUse);
+				// console.log('Quests - ✅ Using HyperBeam zone profile for campaign completion:', profileIdToUse);
 			}
 		} catch (error) {
-			console.log('Quests - ❌ HyperBeam zone profile fetch failed for campaign completion:', error);
+			// console.log('Quests - ❌ HyperBeam zone profile fetch failed for campaign completion:', error);
 		}
 
 		// Only fall back if zone profile fetch failed
 		if (!profileIdToUse) {
 			profileIdToUse = permawebProvider.profile?.id;
-			console.log('Quests - Using fallback profile for campaign completion:', profileIdToUse);
+			// console.log('Quests - Using fallback profile for campaign completion:', profileIdToUse);
 		}
 
 		if (!profileIdToUse) return;
@@ -480,11 +879,12 @@ export default function Quests() {
 			if (prev.includes(ringId)) return prev;
 			const newRings = [...prev, ringId];
 
-			// Update current profile ring to the highest tier ring earned
-			const completedQuests = quests.filter((q) => q.isClaimed).map((q) => q.id);
-			const highestRing = getHighestProfileRing(completedQuests);
-			if (highestRing) {
-				setCurrentProfileRing(highestRing.id);
+			// Update current profile ring to match the user's current Wander tier
+			if (wanderTierInfo?.tier) {
+				const ring = Object.values(WANDER_PROFILE_RINGS).find((r) => r.tier === wanderTierInfo.tier);
+				if (ring) {
+					setCurrentProfileRing(ring.id);
+				}
 			}
 
 			return newRings;
@@ -496,29 +896,34 @@ export default function Quests() {
 		localStorage.setItem(storageKey, JSON.stringify(updatedRings));
 	}
 
-	// Campaign 2 Configuration Loading (DumDum Trials)
+	// OPTIMIZED: Campaign 2 Configuration Loading (DumDum Trials)
 	async function loadCampaign2Assets() {
+		// Check if already loaded
+		if (campaign2Assets.length > 0) {
+			// console.log('Campaign 2 assets already loaded, skipping...');
+			return;
+		}
+
 		setCampaign2Loading(true);
 		try {
-			// Load Campaign 2 configuration (same logic as Campaign 2 component)
-			let config: any;
-			const storedVersion = localStorage.getItem(BRIDGE_DRIVE_VERSION_KEY);
-			const storedConfig = localStorage.getItem(DRIVE_CONFIG_KEY);
+			// Use cached API call for config loading
+			const configKey = `campaign2-config-${CAMPAIGN_2_MAIN}`;
+			const config = await cachedApiCall(configKey, async () => {
+				let configData: any;
+				const storedVersion = localStorage.getItem(BRIDGE_DRIVE_VERSION_KEY);
+				const storedConfig = localStorage.getItem(DRIVE_CONFIG_KEY);
 
-			// Clear old Campaign 1 config if it exists
-			if (localStorage.getItem('drive-config')) {
-				console.log('Clearing old Campaign 1 config...');
-				localStorage.removeItem('drive-config');
-			}
+				// Clear old Campaign 1 config if it exists
+				if (localStorage.getItem('drive-config')) {
+					// console.log('Clearing old Campaign 1 config...');
+					localStorage.removeItem('drive-config');
+				}
 
-			if (storedConfig) {
-				config = JSON.parse(storedConfig);
-				console.log('Using stored Campaign 2 config:', config);
-			}
-
-			if (!storedConfig || storedVersion !== CURRENT_VERSION) {
-				try {
-					console.log('Loading Campaign 2 (DumDum Trials) config from process...');
+				if (storedConfig && storedVersion === CURRENT_VERSION) {
+					configData = JSON.parse(storedConfig);
+					// console.log('Using stored Campaign 2 config');
+				} else {
+					// console.log('Loading Campaign 2 (DumDum Trials) config from process...');
 					const response = await readHandler({
 						processId: CAMPAIGN_2_MAIN,
 						action: 'Get-Config',
@@ -526,32 +931,27 @@ export default function Quests() {
 
 					localStorage.setItem(DRIVE_CONFIG_KEY, JSON.stringify(response));
 					localStorage.setItem(BRIDGE_DRIVE_VERSION_KEY, CURRENT_VERSION);
-					config = JSON.parse(localStorage.getItem(DRIVE_CONFIG_KEY));
-				} catch (e) {
-					console.error('Failed to fetch Campaign 2 drive config:', e);
+					configData = response;
 				}
-			}
+
+				return configData;
+			});
 
 			if (config && config.Assets) {
-				// Updated mapping to align with DumDum Trials requirements:
-				// Bronze: Wander wallet (covered by profile creation), Silver: Create profile, Gold: Stamp asset, Platinum: Complete all
+				// Updated mapping to only show Bronze DumDum for all quests completion
 				const questToAssetMap = [
-					{ questId: 'create-profile', assetIndex: '0', requirement: 'wander' }, // Bronze DumDum - Having Wander wallet (prerequisite for profile)
-					{ questId: 'create-profile', assetIndex: '1', requirement: 'wander' }, // Silver DumDum - Create profile on Bazar
-					{ questId: 'create-profile', assetIndex: '2', requirement: 'stamping' }, // Gold DumDum - Need to stamp an asset (shown in profile quest for convenience)
-					{ questId: 'make-purchase', assetIndex: '3', requirement: 'wander' }, // Fourth DumDum - Make purchase aligns
-					{ questId: 'delegate-pixl', assetIndex: 'main', requirement: 'wander' }, // Platinum DumDum - Complete all Wander quests
+					{ questId: 'create-asset', assetIndex: '1', requirement: 'wander' }, // Bronze DumDum - Only claimable after completing all quests
 				];
 
 				const assets = [];
 
 				// Add main asset (Platinum DumDum)
-				console.log('Main asset config:', {
-					id: CAMPAIGN_2_MAIN,
-					name: config.Name,
-					cover: config.Cover,
-					hasValidCover: !!config.Cover && config.Cover !== 'undefined',
-				});
+				// console.log('Main asset config:', {
+				// 	id: CAMPAIGN_2_MAIN,
+				// 	name: config.Name,
+				// 	cover: config.Cover,
+				// 	hasValidCover: !!config.Cover && config.Cover !== 'undefined',
+				// });
 
 				assets.push({
 					id: CAMPAIGN_2_MAIN,
@@ -567,43 +967,30 @@ export default function Quests() {
 				});
 
 				// Add sub assets (Colored DumDums)
+				// console.log('🏗️ Building Campaign 2 assets from config:', {
+				// 	configKeys: Object.keys(config.Assets),
+				// 	questToAssetMap: questToAssetMap
+				// });
+
 				Object.keys(config.Assets).forEach((key, index) => {
 					const asset = config.Assets[key];
 					const questMapping = questToAssetMap.find((q) => q.assetIndex === asset.GridPlacement);
 
-					console.log(`Campaign 2 Asset ${key}:`, {
-						id: asset.Id,
-						name: asset.Name,
-						cover: asset.Cover,
-						gridPlacement: asset.GridPlacement,
-						questMapping: questMapping,
-					});
+					// console.log(`🔍 Campaign 2 Asset ${key}:`, {
+					// 	id: asset.Id,
+					// 	name: asset.Name,
+					// 	cover: asset.Cover,
+					// 	gridPlacement: asset.GridPlacement,
+					// 	questMapping: questMapping,
+					// 	questId: questMapping?.questId,
+					// 	requirement: questMapping?.requirement,
+					// 	index: index
+					// });
 
 					if (questMapping) {
-						let description;
-						if (questMapping.requirement === 'wander') {
-							// Specific descriptions for each DumDum based on their requirements
-							if (questMapping.assetIndex === '0') {
-								description = `Bronze ${asset.Name || 'DumDum'} - Create a Wander wallet (unlocked with Bazar profile)`;
-							} else if (questMapping.assetIndex === '1') {
-								description = `Silver ${asset.Name || 'DumDum'} - Create your Bazar profile`;
-							} else if (questMapping.assetIndex === '2') {
-								description = `Gold ${asset.Name || 'DumDum'} - Create your first asset`;
-							} else if (questMapping.assetIndex === '3') {
-								description = `${asset.Name || 'DumDum'} - Make your first purchase`;
-							} else {
-								description = `Exclusive ${asset.Name || 'DumDum'} for completing Wander quest: ${
-									questMapping.questId
-								}`;
-							}
-						} else {
-							// Original/modified DumDum requirements
-							if (questMapping.assetIndex === '2') {
-								description = `Gold ${asset.Name || 'DumDum'} - Stamp (like) any asset to unlock`;
-							} else {
-								description = `Exclusive ${asset.Name || 'DumDum'} - Complete original DumDum Trials requirement`;
-							}
-						}
+						let description = `Bronze ${
+							asset.Name || 'DumDum'
+						} - Complete all quests to claim this exclusive collectible!`;
 
 						assets.push({
 							id: asset.Id,
@@ -619,12 +1006,12 @@ export default function Quests() {
 							isMainAsset: false,
 						});
 					} else {
-						console.log(`No quest mapping found for asset with GridPlacement: ${asset.GridPlacement}`);
+						// console.log(`No quest mapping found for asset with GridPlacement: ${asset.GridPlacement}`);
 					}
 				});
 
 				setCampaign2Assets(assets);
-				console.log('Loaded Campaign 2 (DumDum Trials) assets:', assets);
+				// console.log('Loaded Campaign 2 (DumDum Trials) assets:', assets);
 			}
 		} catch (error) {
 			console.error('Error loading Campaign 2 assets:', error);
@@ -633,115 +1020,178 @@ export default function Quests() {
 		}
 	}
 
-	// Campaign 2 Asset Claiming Functions (using existing Campaign system logic)
+	// OPTIMIZED: Campaign 2 Asset Claiming Functions with better caching and fallback
 	async function checkCampaign2ClaimStatus() {
 		if (!arProvider.walletAddress || !permawebProvider.profile || campaign2Assets.length === 0) {
-			console.log('Skipping claim status check - missing requirements');
+			// console.log('❌ Cannot check claim status:', {
+			// 	hasWallet: !!arProvider.walletAddress,
+			// 	hasProfile: !!permawebProvider.profile,
+			// 	assetsCount: campaign2Assets.length,
+			// 	walletAddress: arProvider.walletAddress,
+			// 	profileId: permawebProvider.profile?.id
+			// });
 			return;
 		}
 
-		// Use caching to avoid excessive API calls
-		const cacheKey = `campaign2-claims-${arProvider.walletAddress}-${permawebProvider.profile.id}`;
-		const cachedResult = sessionStorage.getItem(cacheKey);
-		const cacheTime = sessionStorage.getItem(`${cacheKey}-time`);
-		const now = Date.now();
+		// console.log('🚀 Starting Campaign 2 claim status check...', {
+		// 	walletAddress: arProvider.walletAddress,
+		// 	profileId: permawebProvider.profile.id,
+		// 	assetsCount: campaign2Assets.length
+		// });
 
-		// Use 5-minute cache for claim status
-		if (cachedResult && cacheTime && now - parseInt(cacheTime) < 300000) {
-			console.log('Using cached Campaign 2 claim status');
-			setCampaign2Assets(JSON.parse(cachedResult));
-			return;
-		}
-
-		console.log('Checking Campaign 2 claim status for', campaign2Assets.length, 'assets');
+		// Use cached API call for claim status
+		const claimStatusKey = `campaign2-claim-status-${arProvider.walletAddress}-${permawebProvider.profile.id}`;
 
 		try {
-			const updatedAssets = await Promise.all(
-				campaign2Assets.map(async (asset) => {
-					// Use the same claim checking logic as Campaign 2
-					const tags = [
-						{ name: 'Address', value: arProvider.walletAddress },
-						{ name: 'ProfileId', value: permawebProvider.profile.id },
-					];
+			const updatedAssets = await cachedApiCall(claimStatusKey, async () => {
+				// console.log('🔍 Checking Campaign 2 claim status for', campaign2Assets.length, 'assets');
 
-					try {
-						// Initialize claim check silently
-						await messageResult({
-							processId: asset.id,
-							wallet: arProvider.wallet,
-							action: 'Init-Claim-Check',
-							tags: tags,
-							data: null,
-						});
+				const results = await Promise.all(
+					campaign2Assets.map(async (asset, index) => {
+						// console.log(`📋 Processing asset ${index + 1}/${campaign2Assets.length}:`, {
+						// 	id: asset.id,
+						// 	title: asset.title,
+						// 	questRequirement: asset.questRequirement,
+						// 	requirementType: asset.requirementType
+						// });
 
-						// Get claim status
-						const response = await messageResult({
-							processId: asset.id,
-							wallet: arProvider.wallet,
-							action: 'Get-Claim-Status',
-							tags: tags,
-							data: null,
-						});
-
-						console.log(`Claim status response for ${asset.title}:`, response);
+						const tags = [
+							{ name: 'Address', value: arProvider.walletAddress },
+							{ name: 'ProfileId', value: permawebProvider.profile.id },
+						];
 
 						let claimable = false;
 						let claimed = false;
+						let aoResponse = null;
+						let dryrunResult = null;
 
-						if (response && response['Claim-Status-Response'] && response['Claim-Status-Response'].status) {
-							claimable = response['Claim-Status-Response'].status === 'Claimable';
-							claimed = response['Claim-Status-Response'].status === 'Claimed';
-							console.log(`${asset.title} status: claimable=${claimable}, claimed=${claimed}`);
-						} else {
-							console.log(`No valid claim response for ${asset.title}`);
+						try {
+							// console.log(`🌐 Making AO call for ${asset.title}...`);
+							// Try direct AO call first
+							aoResponse = await messageResult({
+								processId: asset.id,
+								wallet: arProvider.wallet,
+								action: 'Get-Claim-Status',
+								tags: tags,
+								data: null,
+							});
+
+							// console.log(`✅ AO response for ${asset.title}:`, aoResponse);
+
+							if (aoResponse && aoResponse['Claim-Status-Response'] && aoResponse['Claim-Status-Response'].status) {
+								claimable = aoResponse['Claim-Status-Response'].status === 'Claimable';
+								claimed = aoResponse['Claim-Status-Response'].status === 'Claimed';
+								// console.log(`🎯 ${asset.title} AO status:`, {
+								// 	status: aoResponse['Claim-Status-Response'].status,
+								// 	claimable: claimable,
+								// 	claimed: claimed
+								// });
+							} else {
+								// console.log(`⚠️ ${asset.title} AO response missing status:`, aoResponse);
+							}
+						} catch (aoError) {
+							// console.log(`❌ AO call failed for ${asset.title}:`, aoError);
+
+							// Fallback: Use permaweb-libs dryrun
+							try {
+								// console.log(`🔄 Trying dryrun fallback for ${asset.title}...`);
+								dryrunResult = await permawebProvider.libs?.dryrun({
+									processId: asset.id,
+									action: 'Get-Claim-Status',
+									tags: tags,
+									data: null,
+								});
+
+								// console.log(`📊 Dryrun result for ${asset.title}:`, dryrunResult);
+
+								if (dryrunResult && dryrunResult.success) {
+									// console.log(`✅ ${asset.title} dryrun successful`);
+									// Parse dryrun result to determine claim status
+									// For now, we'll use a simple heuristic
+									if (dryrunResult.result && dryrunResult.result.includes('Claimable')) {
+										claimable = true;
+									} else if (dryrunResult.result && dryrunResult.result.includes('Claimed')) {
+										claimed = true;
+									}
+								} else {
+									// console.log(`❌ ${asset.title} dryrun failed:`, dryrunResult);
+								}
+							} catch (dryrunError) {
+								console.error(`💥 Dryrun also failed for ${asset.title}:`, dryrunError);
+							}
 						}
 
 						// Check if requirements are met based on type
 						let requirementMet = false;
 						if (asset.requirementType === 'wander') {
-							// Check Wander quest completion
 							const correspondingQuest = quests.find((q) => q.id === asset.questRequirement);
 							requirementMet = correspondingQuest && correspondingQuest.isCompleted;
-							console.log(`${asset.title} Wander quest (${asset.questRequirement}) completed: ${requirementMet}`);
+
+							// console.log(`🔍 ${asset.title} requirement check:`, {
+							// 	assetTitle: asset.title,
+							// 	questId: asset.questRequirement,
+							// 	correspondingQuest: correspondingQuest,
+							// 	questCompleted: correspondingQuest?.isCompleted,
+							// 	requirementMet: requirementMet,
+							// 	claimable: claimable,
+							// 	claimed: claimed,
+							// 	finalClaimable: claimable && requirementMet,
+							// 	aoResponse: aoResponse,
+							// 	dryrunResult: dryrunResult
+							// });
 						} else if (asset.requirementType === 'stamping') {
-							// Check if user has stamped any asset (for Gold DumDum)
 							requirementMet = progress.hasStampedAsset === true;
-							console.log(`${asset.title} stamping requirement met: ${requirementMet}`);
+							// console.log(`🔍 ${asset.title} stamping requirement:`, {
+							// 	hasStampedAsset: progress.hasStampedAsset,
+							// 	requirementMet: requirementMet,
+							// 	claimable: claimable,
+							// 	claimed: claimed
+							// });
+						} else if (asset.requirementType === 'auto-gold') {
+							// Platinum DumDum is auto-completed when Gold DumDum is claimed
+							const createProfileQuest = quests.find((q) => q.id === 'create-profile');
+							requirementMet = createProfileQuest && createProfileQuest.isCompleted;
+							// console.log(`🔍 ${asset.title} auto-gold requirement:`, {
+							// 	createProfileQuest: createProfileQuest,
+							// 	questCompleted: createProfileQuest?.isCompleted,
+							// 	requirementMet: requirementMet,
+							// 	claimable: claimable,
+							// 	claimed: claimed
+							// });
 						} else {
-							// Original DumDum requirements - let the original claim system handle it
-							requirementMet = claimable; // If Campaign 2 says it's claimable, trust it
-							console.log(`${asset.title} original requirement met: ${requirementMet}`);
+							requirementMet = claimable;
 						}
 
-						const finalState = {
+						const finalAsset = {
 							...asset,
 							claimable: claimable && requirementMet,
 							claimed: claimed,
 							claimInProgress: false,
 						};
 
-						// Final state determined
-						return finalState;
-					} catch (error) {
-						console.error(`Error checking claim status for ${asset.title}:`, error);
-						return {
-							...asset,
-							claimable: false,
-							claimed: false,
-							claimInProgress: false,
-						};
-					}
-				})
-			);
+						// console.log(`📝 Final asset state for ${asset.title}:`, {
+						// 	claimable: finalAsset.claimable,
+						// 	claimed: finalAsset.claimed,
+						// 	requirementMet: requirementMet
+						// });
 
-			// Cache the result for 5 minutes
-			sessionStorage.setItem(cacheKey, JSON.stringify(updatedAssets));
-			sessionStorage.setItem(`${cacheKey}-time`, now.toString());
+						return finalAsset;
+					})
+				);
+
+				// console.log('🎯 All assets processed. Final results:', results.map(r => ({
+				// 	title: r.title,
+				// 	claimable: r.claimable,
+				// 	claimed: r.claimed
+				// })));
+
+				return results;
+			});
 
 			setCampaign2Assets(updatedAssets);
-			console.log('Campaign 2 claim status updated and cached');
+			// console.log('✅ Campaign 2 claim status updated successfully');
 		} catch (error) {
-			console.error('Error checking Campaign 2 asset claim status:', error);
+			console.error('💥 Error checking Campaign 2 asset claim status:', error);
 		}
 	}
 
@@ -804,11 +1254,15 @@ export default function Quests() {
 					const rings = JSON.parse(storedRings);
 					setEarnedProfileRings(rings);
 
-					// Set current profile ring to highest tier
-					const completedQuests = quests.filter((q) => q.isClaimed).map((q) => q.id);
-					const highestRing = getHighestProfileRing(completedQuests);
-					if (highestRing) {
-						setCurrentProfileRing(highestRing.id);
+					// Set current profile ring to match the user's current Wander tier
+					if (wanderTierInfo?.tier) {
+						const ring = Object.values(WANDER_PROFILE_RINGS).find((r) => r.tier === wanderTierInfo.tier);
+						if (ring) {
+							setCurrentProfileRing(ring.id);
+						} else {
+							// Default to Core if tier not found
+							setCurrentProfileRing('wander-core');
+						}
 					}
 				} catch (error) {
 					console.error('Error loading profile rings:', error);
@@ -820,30 +1274,11 @@ export default function Quests() {
 		}
 	}, [arProvider.walletAddress, quests]);
 
-	function getQuestProgress(questId: string): number {
-		switch (questId) {
-			case 'create-profile':
-				return progress.profileCreated ? 1 : 0;
-			case 'create-asset':
-				return progress.firstAssetCreated ? 1 : 0;
-			case 'create-collection':
-				return progress.firstCollectionCreated ? 1 : 0;
-			case 'make-purchase':
-				return progress.firstPurchaseMade ? 1 : 0;
-			case 'delegate-pixl':
-				return progress.pixelDelegated ? 1 : 0;
-			default:
-				return 0;
-		}
-	}
-
-	function isQuestCompleted(questId: string): boolean {
-		return getQuestProgress(questId) >= QUEST_CONFIG[questId as keyof typeof QUEST_CONFIG]?.required;
-	}
+	// REMOVED: Moved quest utility functions outside component to prevent re-creation
 
 	function getQuestCard(quest: Quest) {
-		const questProgress = getQuestProgress(quest.id);
-		const completed = isQuestCompleted(quest.id);
+		const questProgress = getQuestProgress(quest.id, quests);
+		const completed = isQuestCompleted(quest.id, quests);
 		const isClaiming = claimingQuest === quest.id;
 		const hasTierMultiplier = quest.reward.multiplier && quest.reward.multiplier > 1;
 
@@ -860,112 +1295,32 @@ export default function Quests() {
 					<S.QuestInfo>
 						<S.QuestTitle>{quest.title}</S.QuestTitle>
 						<S.QuestDescription>{quest.description}</S.QuestDescription>
-						{correspondingAsset && (
-							<div style={{ marginTop: '8px' }}>
-								<small style={{ color: '#9ca3af' }}>Unlocks: {correspondingAsset.title}</small>
-							</div>
-						)}
+
 						<S.QuestProgress>
 							{questProgress} / {quest.required}
 						</S.QuestProgress>
 					</S.QuestInfo>
-					<S.QuestTier tier={quest.tier}>
-						{quest.tier.toUpperCase()}
-						{hasTierMultiplier && <S.TierMultiplier>{quest.reward.multiplier}x</S.TierMultiplier>}
-					</S.QuestTier>
+					{/* Removed tier badge - not relevant for quest tiles */}
+					{hasTierMultiplier && <S.TierMultiplier>{quest.reward.multiplier}x</S.TierMultiplier>}
 				</S.QuestHeader>
 
 				<S.QuestReward>
 					<S.RewardIcon>
-						<img src={ASSETS.star} alt="Reward" />
+						<img
+							src={getWanderTierIcon(quest.tier)}
+							alt={`${quest.tier} tier`}
+							onError={(e) => {
+								// Fallback to star if tier icon not found
+								e.currentTarget.src = ASSETS.star;
+							}}
+						/>
 					</S.RewardIcon>
 					<div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1 }}>
 						<div style={{ flex: 1 }}>
 							<S.RewardText>{quest.reward.description}</S.RewardText>
-							{correspondingAssets.length > 0 && (
-								<div style={{ marginTop: '4px', fontSize: '0.8rem', color: '#9ca3af' }}>
-									{correspondingAssets.map((asset) => asset.title).join(' + ')}
-								</div>
-							)}
+
 							{hasTierMultiplier && <S.TierBoost>🎯 {quest.reward.tier} Boost Active!</S.TierBoost>}
 						</div>
-						{correspondingAssets.length > 0 && (
-							<div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-								{correspondingAssets.map((asset) => (
-									<div
-										key={asset.id}
-										style={{
-											width: correspondingAssets.length > 1 ? '24px' : '50px',
-											height: correspondingAssets.length > 1 ? '24px' : '50px',
-											borderRadius: '4px',
-											overflow: 'hidden',
-											border: asset.claimable ? '1px solid #1fd014' : '1px solid #595959',
-											boxShadow: asset.claimable ? '0 0 3px 1px #5AF650' : '0 0 2px 1px #595959',
-											transition: 'all 0.2s ease',
-										}}
-										title={`Preview: ${asset.title}`}
-									>
-										{(() => {
-											// Validate asset ID/cover before creating URL
-											const assetId = asset.claimed ? asset.id : asset.cover;
-											if (!assetId || assetId === 'undefined') {
-												return (
-													<div
-														style={{
-															width: '100%',
-															height: '100%',
-															backgroundColor: '#374151',
-															display: 'flex',
-															alignItems: 'center',
-															justifyContent: 'center',
-															color: '#9ca3af',
-															fontSize: '10px',
-															textAlign: 'center',
-														}}
-													>
-														Asset Loading...
-													</div>
-												);
-											}
-
-											return (asset.contentType && asset.contentType.includes('video')) ||
-												(asset.isMainAsset && asset.title.includes('Platinum')) ? (
-												<video
-													src={getTxEndpoint(assetId)}
-													style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-													muted
-													autoPlay
-													loop
-													onError={() => {
-														if (shouldLogError(assetId + '_video')) {
-															console.warn(`Failed to load quest preview video for ${asset.title}, using fallback`);
-														}
-													}}
-												/>
-											) : (
-												<img
-													src={getTxEndpoint(assetId)}
-													alt={asset.title}
-													style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-													onError={(e) => {
-														// Prevent infinite loop by checking if we're already showing fallback
-														if (e.currentTarget.src.includes('star')) {
-															return;
-														}
-														// Debounced error logging
-														if (shouldLogError(assetId + '_image')) {
-															console.warn(`Failed to load quest preview image for ${asset.title}, using fallback`);
-														}
-														// Set fallback image only once
-														e.currentTarget.src = ASSETS.star;
-													}}
-												/>
-											);
-										})()}
-									</div>
-								))}
-							</div>
-						)}
 					</div>
 				</S.QuestReward>
 
@@ -1005,7 +1360,6 @@ export default function Quests() {
 								{progress.pixelDelegationPercentage !== undefined && (
 									<div>Delegation: {progress.pixelDelegationPercentage.toFixed(1)}% (need 10%+)</div>
 								)}
-								<div>Silver DumDum Stamping: {progress.hasStampedSilverDumDum ? '✅ Done' : '❌ Pending'}</div>
 							</S.DelegationStatus>
 						</S.DelegationAction>
 					) : (
@@ -1022,21 +1376,32 @@ export default function Quests() {
 		const ring = WANDER_PROFILE_RINGS[ringId as keyof typeof WANDER_PROFILE_RINGS];
 		if (!ring) return null;
 
+		// Check if this ring matches the user's current Wander tier
+		const isEarned = ring.tier === wanderTierInfo?.tier;
+		const isActive = currentProfileRing === ring.id || (wanderTierInfo?.tier && ring.tier === wanderTierInfo.tier);
+
 		return (
 			<S.ProfileRingCard key={ring.id}>
 				<S.ProfileRingPreview>
 					<S.ProfileRingAvatar>
-						<S.ProfileRingBorder color={ring.color} />
+						{isActive ? <S.ProfileRingBorder color={ring.color} /> : <S.ProfileRingBorderInactive color={ring.color} />}
 						<img src={ASSETS.user} alt="Profile Preview" />
 					</S.ProfileRingAvatar>
-					<S.ProfileRingActive isActive={currentProfileRing === ring.id}>
-						{currentProfileRing === ring.id ? 'ACTIVE' : 'EARNED'}
+					<S.ProfileRingActive isActive={isActive}>
+						{isActive ? 'ACTIVE' : isEarned ? 'EARNED' : 'LOCKED'}
 					</S.ProfileRingActive>
 				</S.ProfileRingPreview>
 				<S.ProfileRingInfo>
-					<S.ProfileRingName>{ring.name}</S.ProfileRingName>
+					<div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+						<S.ProfileRingName>{ring.name}</S.ProfileRingName>
+						<img src={getWanderTierBadge(ring.tier, true)} alt={ring.tier} style={{ height: '28px', width: 'auto' }} />
+					</div>
 					<S.ProfileRingDescription>{ring.description}</S.ProfileRingDescription>
-					<S.ProfileRingTier tier={ring.tier}>{ring.tier} Tier</S.ProfileRingTier>
+					{!isEarned && (
+						<div style={{ marginTop: '8px', fontSize: '0.8rem', color: '#9ca3af' }}>
+							Reach {ring.tier} tier in your Wander wallet to unlock this ring
+						</div>
+					)}
 				</S.ProfileRingInfo>
 			</S.ProfileRingCard>
 		);
@@ -1181,19 +1546,164 @@ export default function Quests() {
 		);
 	}
 
-	// Helper function to format Wander balance for human readability
-	const formatWanderBalance = (balance: string) => {
-		const num = parseFloat(balance);
-		if (num >= 1e9) {
-			return (num / 1e9).toFixed(2) + 'B';
-		} else if (num >= 1e6) {
-			return (num / 1e6).toFixed(2) + 'M';
-		} else if (num >= 1e3) {
-			return (num / 1e3).toFixed(1) + 'K';
-		} else {
-			return num.toLocaleString();
-		}
-	};
+	function getBronzeDumDumCard(asset: (typeof campaign2Assets)[0]) {
+		return (
+			<div
+				key={asset.id}
+				style={{
+					background: 'linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%)',
+					borderRadius: '20px',
+					padding: '30px',
+					boxShadow: '0 10px 30px rgba(251, 191, 36, 0.3)',
+					border: '3px solid #d97706',
+					maxWidth: '400px',
+					width: '100%',
+					textAlign: 'center',
+					position: 'relative',
+					overflow: 'hidden',
+				}}
+				className={'fade-in'}
+			>
+				{/* Bronze DumDum Image */}
+				<div
+					style={{
+						marginBottom: '20px',
+					}}
+				>
+					<img
+						src="https://arweave.net/aTJROeqDmiAglMdsrubdBcdewn69K1wqguUwIweZVZI"
+						alt={asset.title}
+						style={{
+							width: '240px',
+							height: '240px',
+							borderRadius: '20px',
+							border: '6px solid #d97706',
+							boxShadow: '0 12px 30px rgba(0,0,0,0.3)',
+							objectFit: 'cover',
+						}}
+						onError={(e) => {
+							e.currentTarget.style.display = 'none';
+							const nextElement = e.currentTarget.nextElementSibling as HTMLElement;
+							if (nextElement) {
+								nextElement.style.display = 'flex';
+							}
+						}}
+					/>
+					<div
+						style={{
+							width: '120px',
+							height: '120px',
+							borderRadius: '15px',
+							border: '4px solid #d97706',
+							boxShadow: '0 8px 20px rgba(0,0,0,0.2)',
+							background: 'linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%)',
+							display: 'none',
+							alignItems: 'center',
+							justifyContent: 'center',
+							fontSize: '3rem',
+							color: '#92400e',
+							fontWeight: 'bold',
+						}}
+					>
+						🏆
+					</div>
+				</div>
+
+				{/* Title */}
+				<h3
+					style={{
+						color: '#92400e',
+						fontSize: '1.8rem',
+						fontWeight: 'bold',
+						marginBottom: '10px',
+						textShadow: '0 2px 4px rgba(0,0,0,0.1)',
+					}}
+				>
+					{asset.title}
+				</h3>
+
+				{/* Description */}
+				<p
+					style={{
+						color: '#78350f',
+						fontSize: '1.1rem',
+						marginBottom: '25px',
+						lineHeight: '1.4',
+					}}
+				>
+					{asset.description}
+				</p>
+
+				{/* Claim Button or Status */}
+				{asset.claimable && !asset.claimed && (
+					<button
+						onClick={() => handleClaimCampaign2Asset(asset.id)}
+						disabled={asset.claimInProgress}
+						style={{
+							background: 'linear-gradient(135deg, #dc2626 0%, #b91c1c 100%)',
+							color: 'white',
+							border: 'none',
+							borderRadius: '12px',
+							padding: '15px 30px',
+							fontSize: '1.2rem',
+							fontWeight: 'bold',
+							cursor: asset.claimInProgress ? 'not-allowed' : 'pointer',
+							boxShadow: '0 6px 15px rgba(220, 38, 38, 0.4)',
+							transition: 'all 0.3s ease',
+							opacity: asset.claimInProgress ? 0.7 : 1,
+							transform: asset.claimInProgress ? 'scale(0.95)' : 'scale(1)',
+						}}
+						onMouseEnter={(e) => {
+							if (!asset.claimInProgress) {
+								e.currentTarget.style.transform = 'scale(1.05)';
+								e.currentTarget.style.boxShadow = '0 8px 20px rgba(220, 38, 38, 0.6)';
+							}
+						}}
+						onMouseLeave={(e) => {
+							if (!asset.claimInProgress) {
+								e.currentTarget.style.transform = 'scale(1)';
+								e.currentTarget.style.boxShadow = '0 6px 15px rgba(220, 38, 38, 0.4)';
+							}
+						}}
+					>
+						{asset.claimInProgress ? '🎯 Claiming...' : '🎯 Claim Bronze DumDum'}
+					</button>
+				)}
+
+				{asset.claimed && (
+					<div
+						style={{
+							background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+							color: 'white',
+							borderRadius: '12px',
+							padding: '15px 30px',
+							fontSize: '1.2rem',
+							fontWeight: 'bold',
+							boxShadow: '0 6px 15px rgba(16, 185, 129, 0.4)',
+						}}
+					>
+						✅ Bronze DumDum Claimed!
+					</div>
+				)}
+
+				{!asset.claimable && !asset.claimed && (
+					<div
+						style={{
+							background: 'linear-gradient(135deg, #6b7280 0%, #4b5563 100%)',
+							color: 'white',
+							borderRadius: '12px',
+							padding: '15px 30px',
+							fontSize: '1.1rem',
+							fontWeight: 'bold',
+							boxShadow: '0 6px 15px rgba(107, 114, 128, 0.4)',
+						}}
+					>
+						🔒 Complete all quests to unlock
+					</div>
+				)}
+			</div>
+		);
+	}
 
 	const subheader = React.useMemo(() => {
 		let label: string;
@@ -1203,14 +1713,23 @@ export default function Quests() {
 			label = language.connectWallet;
 			action = () => arProvider.setWalletModalVisible(true);
 		} else {
-			if (permawebProvider.profile) {
+			// Check if profile creation is in progress
+			if (profileCreationInProgress) {
+				label = 'Creating Profile...';
+				action = null; // Disable action while creating
+			} else if (permawebProvider.profile) {
 				if (permawebProvider.profile.id) {
 					label = permawebProvider.profile.username;
 				} else {
 					label = language.createProfile;
-					action = () => setShowProfileManage(true);
+					action = () => {
+						setProfileCreationInProgress(true);
+						setShowProfileManage(true);
+					};
 				}
-			} else label = formatAddress(arProvider.walletAddress, false);
+			} else {
+				label = formatAddress(arProvider.walletAddress, false);
+			}
 		}
 
 		const active = arProvider.walletAddress !== null;
@@ -1227,7 +1746,11 @@ export default function Quests() {
 							{wanderTierInfo.rank && wanderTierInfo.rank !== '' && <> • Rank: #{wanderTierInfo.rank}</>}
 							{wanderTierInfo.balance && <> • Balance: {formatWanderBalance(wanderTierInfo.balance)} WNDR</>}
 							<br />
-							<strong>Tier: {wanderTierInfo.tier}</strong>
+							<img
+								src={getWanderTierBadge(wanderTierInfo.tier, true)}
+								alt={wanderTierInfo.tier}
+								style={{ height: '40px', width: 'auto', marginTop: '4px' }}
+							/>
 						</>
 					)}
 				</p>
@@ -1278,7 +1801,12 @@ export default function Quests() {
 									<S.CampaignRewardText>🚀 Tier advancement request submitted to Wander team!</S.CampaignRewardText>
 									{wanderTierInfo && (
 										<S.CampaignCurrentTier>
-											Current Tier: <strong>{wanderTierInfo.tier}</strong>
+											Current Tier:
+											<img
+												src={getWanderTierBadge(wanderTierInfo.tier, true)}
+												alt={wanderTierInfo.tier}
+												style={{ height: '20px', width: 'auto', marginLeft: '8px' }}
+											/>
 										</S.CampaignCurrentTier>
 									)}
 								</S.CampaignRewardDisplay>
@@ -1296,7 +1824,7 @@ export default function Quests() {
 
 	// Force refresh Campaign 2 cache
 	function forceRefreshCampaign2Cache() {
-		console.log('Force refreshing Campaign 2 cache...');
+		// console.log('🔄 Force refreshing Campaign 2 cache...');
 		// Clear all Campaign 2 related cache
 		localStorage.removeItem(DRIVE_CONFIG_KEY);
 		localStorage.removeItem(BRIDGE_DRIVE_VERSION_KEY);
@@ -1307,47 +1835,10 @@ export default function Quests() {
 		loadCampaign2Assets();
 	}
 
-	// Debug function to manually complete quests based on current status
-	function forceCompleteEligibleQuests() {
-		console.log('Force completing eligible quests...');
-		console.log('Current progress:', progress);
-		console.log('Profile provider:', permawebProvider.profile);
-		console.log('AR provider:', arProvider.walletAddress);
-		console.log('Quests state:', quests);
+	// Manual trigger for claim status checking
 
-		// Force complete based on what we can detect directly
-
-		// Profile quest - if we have a profile connected, complete it
-		if (permawebProvider.profile?.id && !quests.find((q) => q.id === 'create-profile')?.isCompleted) {
-			console.log('Force completing create-profile quest');
-			dispatch(completeQuest('create-profile'));
-		}
-
-		// Use progress data for other quests
-		if (progress.firstAssetCreated && !quests.find((q) => q.id === 'create-asset')?.isCompleted) {
-			dispatch(completeQuest('create-asset'));
-		}
-		if (progress.firstCollectionCreated && !quests.find((q) => q.id === 'create-collection')?.isCompleted) {
-			dispatch(completeQuest('create-collection'));
-		}
-		if (progress.firstPurchaseMade && !quests.find((q) => q.id === 'make-purchase')?.isCompleted) {
-			dispatch(completeQuest('make-purchase'));
-		}
-		if (progress.pixelDelegated && !quests.find((q) => q.id === 'delegate-pixl')?.isCompleted) {
-			dispatch(completeQuest('delegate-pixl'));
-		}
-	}
-
-	// Auto-complete profile quest immediately when profile is available
-	React.useEffect(() => {
-		if (ENABLE_QUEST_SYSTEM && permawebProvider.profile?.id && quests.length > 0) {
-			const profileQuest = quests.find((q) => q.id === 'create-profile');
-			if (profileQuest && !profileQuest.isCompleted) {
-				console.log('Auto-completing profile quest for existing user');
-				dispatch(completeQuest('create-profile'));
-			}
-		}
-	}, [permawebProvider.profile?.id, quests.length, dispatch]);
+	// DISABLED: Auto-complete effect was causing excessive re-renders
+	// Profile quest completion is now handled in the main data fetch function
 
 	function getView() {
 		return (
@@ -1356,197 +1847,43 @@ export default function Quests() {
 					<S.Header>
 						<S.HeaderMain>
 							<h1>Wander Tier Quest</h1>
-							{process.env.NODE_ENV === 'development' && (
-								<>
-									<button
-										onClick={forceCompleteEligibleQuests}
-										style={{
-											padding: '8px 16px',
-											background: '#10b981',
-											color: 'white',
-											border: 'none',
-											borderRadius: '8px',
-											cursor: 'pointer',
-											fontSize: '12px',
-											marginLeft: '16px',
-										}}
-									>
-										Debug: Complete Eligible Quests
-									</button>
-									<button
-										onClick={forceRefreshCampaign2Cache}
-										style={{
-											padding: '8px 16px',
-											background: '#f59e0b',
-											color: 'white',
-											border: 'none',
-											borderRadius: '8px',
-											cursor: 'pointer',
-											fontSize: '12px',
-											marginLeft: '8px',
-										}}
-									>
-										Force Refresh Assets
-									</button>
-									<button
-										onClick={() => {
-											questTracker.clearCache();
-											// Force re-fetch quest progress
-											if (permawebProvider.profile?.id) {
-												questTracker
-													.getQuestProgress(permawebProvider.profile.id, arProvider.walletAddress)
-													.then((newProgress) => {
-														console.log('Fresh quest progress:', newProgress);
-													});
-											}
-										}}
-										style={{
-											padding: '8px 16px',
-											background: '#8b5cf6',
-											color: 'white',
-											border: 'none',
-											borderRadius: '8px',
-											cursor: 'pointer',
-											fontSize: '12px',
-											marginLeft: '8px',
-										}}
-									>
-										Clear Cache & Refresh
-									</button>
-									<button
-										onClick={async () => {
-											if (permawebProvider.profile?.id) {
-												console.log('🔍 DEBUGGING PURCHASE DETECTION...');
-												console.log('Using profile ID:', permawebProvider.profile.id);
-
-												// Directly call hasMadePurchase to see debug output
-												const result = await (questTracker as any).hasMadePurchase(permawebProvider.profile.id);
-												console.log('🎯 Direct purchase detection result:', result);
-											}
-										}}
-										style={{
-											padding: '8px 16px',
-											background: '#f59e0b',
-											color: 'white',
-											border: 'none',
-											borderRadius: '8px',
-											cursor: 'pointer',
-											fontSize: '12px',
-											marginLeft: '8px',
-										}}
-									>
-										Debug Purchase Detection
-									</button>
-									<button
-										onClick={async () => {
-											if (permawebProvider.profile?.id) {
-												console.log('🎨 DEBUGGING ASSET CREATION DETECTION...');
-												console.log('Using profile ID:', permawebProvider.profile.id);
-												console.log('Using wallet address:', arProvider.walletAddress);
-
-												// Directly call getQuestProgress to see asset detection debug output
-												const progress = await questTracker.getQuestProgress(
-													permawebProvider.profile.id,
-													arProvider.walletAddress
-												);
-												console.log('🎯 Asset detection in progress:', {
-													totalAssets: progress.totalAssets,
-													firstAssetCreated: progress.firstAssetCreated,
-												});
-											}
-										}}
-										style={{
-											padding: '8px 16px',
-											background: '#10b981',
-											color: 'white',
-											border: 'none',
-											borderRadius: '8px',
-											cursor: 'pointer',
-											fontSize: '12px',
-											marginLeft: '8px',
-										}}
-									>
-										Debug Asset Creation
-									</button>
-									<button
-										onClick={async () => {
-											console.log('💎 DEBUGGING PIXL DELEGATION DETECTION...');
-											console.log('Using wallet address:', arProvider.walletAddress);
-
-											// Directly call hasPixelDelegation to see debug output
-											const result = await (questTracker as any).hasPixelDelegation(arProvider.walletAddress);
-											console.log('🎯 Direct PIXL delegation detection result:', result);
-										}}
-										style={{
-											padding: '8px 16px',
-											background: '#8b5cf6',
-											color: 'white',
-											border: 'none',
-											borderRadius: '8px',
-											cursor: 'pointer',
-											fontSize: '12px',
-											marginLeft: '8px',
-										}}
-									>
-										Debug PIXL Delegation
-									</button>
-									<button
-										onClick={async () => {
-											console.log('🔄 RESETTING QUEST STATE & FORCING FRESH DATA...');
-
-											// Clear quest tracker cache
-											questTracker.clearCache();
-
-											// Reset Redux quest state to initial
-											const initialQuests: Quest[] = Object.values(QUEST_CONFIG).map((config) => ({
-												...config,
-												completed: 0,
-												isCompleted: false,
-												isClaimed: false,
-											}));
-											dispatch(setQuests(initialQuests));
-
-											// Force fresh quest progress check
-											await checkQuestProgress();
-
-											console.log('🎯 Quest state reset complete');
-										}}
-										style={{
-											padding: '8px 16px',
-											background: '#dc2626',
-											color: 'white',
-											border: 'none',
-											borderRadius: '8px',
-											cursor: 'pointer',
-											fontSize: '12px',
-											marginLeft: '8px',
-										}}
-									>
-										Reset Quest State
-									</button>
-								</>
-							)}
 						</S.HeaderMain>
 						{subheader}
 					</S.Header>
 
 					<S.Body>
+						{/* Profile Loading Indicator */}
+						{profileLoading && (
+							<S.CampaignCompleteBanner
+								className={'fade-in'}
+								style={{ background: '#1f2937', border: '1px solid #374151' }}
+							>
+								<S.CampaignCompleteContent>
+									<h3>⏳ Loading Your Profile...</h3>
+									<p>Please wait while we load your Bazar profile data. This ensures accurate quest verification.</p>
+								</S.CampaignCompleteContent>
+							</S.CampaignCompleteBanner>
+						)}
+
 						{campaignCompleted && (
 							<S.CampaignCompleteBanner className={'fade-in'}>
 								<S.CampaignCompleteContent>
 									<h3>🎉 Wander Campaign Completed!</h3>
 									<p>
-										Congratulations! You've completed all campaign quests.
+										Congratulations! You've completed all campaign quests and can now claim your Bronze DumDum!
 										{tierAdvancementAttempted
 											? ' Tier advancement has been requested!'
 											: ' Processing tier advancement...'}
 									</p>
 									{wanderTierInfo && (
 										<S.CurrentTierInfo>
-											Current Tier: <strong>{wanderTierInfo.tier}</strong>
-											{wanderTierInfo.balance && (
-												<> • Balance: {parseFloat(wanderTierInfo.balance).toLocaleString()} WNDR</>
-											)}
+											Current Tier:
+											<img
+												src={getWanderTierBadge(wanderTierInfo.tier, true)}
+												alt={wanderTierInfo.tier}
+												style={{ height: '20px', width: 'auto', marginLeft: '8px' }}
+											/>
+											{wanderTierInfo.balance && <> • Balance: {formatWanderBalance(wanderTierInfo.balance)} WNDR</>}
 										</S.CurrentTierInfo>
 									)}
 								</S.CampaignCompleteContent>
@@ -1555,33 +1892,40 @@ export default function Quests() {
 
 						<S.QuestsGrid>{quests.map((quest) => getQuestCard(quest))}</S.QuestsGrid>
 
-						{earnedProfileRings.length > 0 && (
-							<S.ProfileRingsSection>
-								<S.ProfileRingsHeader>
-									<h2>🎯 Earned Wander Profile Rings</h2>
-									<p>Your colored profile rings show your achievements in the Wander ecosystem!</p>
-									{currentProfileRing && (
-										<S.CurrentRingIndicator>
-											Current Active Ring:{' '}
-											<strong>
-												{WANDER_PROFILE_RINGS[currentProfileRing as keyof typeof WANDER_PROFILE_RINGS]?.name}
-											</strong>
-										</S.CurrentRingIndicator>
-									)}
-								</S.ProfileRingsHeader>
-								<S.ProfileRingsGrid>
-									{earnedProfileRings.map((ringId) => getProfileRingCard(ringId))}
-								</S.ProfileRingsGrid>
-							</S.ProfileRingsSection>
-						)}
+						{/* Always show profile rings section - display all possible rings */}
+						<S.ProfileRingsSection>
+							<S.ProfileRingsHeader>
+								<h2>Wander Profile Rings</h2>
+								<p>
+									<strong>🌟 Special Feature:</strong> Your Wander profile rings match your current Wander wallet tier!
+									These rings are permanent rewards that you keep on Bazar - your avatar will display your special badge
+									of honor!
+								</p>
+								<S.CurrentRingIndicator>
+									Current Active Ring:{' '}
+									<strong>
+										{currentProfileRing
+											? WANDER_PROFILE_RINGS[currentProfileRing as keyof typeof WANDER_PROFILE_RINGS]?.name ||
+											  'Wander Core'
+											: wanderTierInfo?.tier
+											? `Wander ${wanderTierInfo.tier}`
+											: 'Wander Core'}
+									</strong>
+								</S.CurrentRingIndicator>
+							</S.ProfileRingsHeader>
+							<S.ProfileRingsGrid>
+								{/* Show all possible Wander profile rings */}
+								{Object.keys(WANDER_PROFILE_RINGS).map((ringId) => getProfileRingCard(ringId))}
+							</S.ProfileRingsGrid>
+						</S.ProfileRingsSection>
 
 						{(campaign2Loading || campaign2Assets.length > 0) && (
 							<S.ProfileRingsSection>
 								<S.ProfileRingsHeader>
-									<h2>DumDum Trials Atomic Assets</h2>
+									<h2>🏆 Bronze DumDum Reward</h2>
 									<p>
-										Claim exclusive DumDum Trials atomic assets as you complete Wander quests - these are rare
-										collectible DumDums stored permanently on Arweave!
+										<strong>🌟 Ultimate Reward:</strong> Complete all 5 quests to claim your exclusive Bronze DumDum
+										atomic asset! This is a special collectible that you can keep forever on Arweave!
 									</p>
 								</S.ProfileRingsHeader>
 								{campaign2Loading ? (
@@ -1595,12 +1939,22 @@ export default function Quests() {
 											fontSize: '1.1rem',
 										}}
 									>
-										Loading DumDum Trials assets...
+										Loading Bronze DumDum...
 									</div>
 								) : (
-									<S.ProfileRingsGrid>
-										{campaign2Assets.map((asset) => getCampaign2AssetCard(asset))}
-									</S.ProfileRingsGrid>
+									<div
+										style={{
+											display: 'flex',
+											justifyContent: 'center',
+											padding: '20px',
+										}}
+									>
+										{campaign2Assets
+											.filter(
+												(asset) => asset.questRequirement === 'create-asset' && asset.requirementType === 'wander'
+											)
+											.map((asset) => getBronzeDumDumCard(asset))}
+									</div>
 								)}
 							</S.ProfileRingsSection>
 						)}
@@ -1611,23 +1965,22 @@ export default function Quests() {
 						<br />
 						<p>
 							Complete one or more tasks to earn rewards. Rewards include WNDR tokens and exclusive colored profile
-							rings that increase by tier. All quests must be completed with the same wallet address. Rewards are
-							distributed automatically upon claiming.
+							rings that increase by tier! Complete all 5 quests to unlock the ultimate Bronze DumDum collectible. All
+							quests must be completed with the same wallet address. Rewards are distributed automatically upon
+							claiming.
 						</p>
 						<br />
 						<p>
-							Bronze Tier: Basic profile and asset creation
+							🌟 <strong>Special Features:</strong>
 							<br />
-							Silver Tier: Collection creation and asset management
+							• Profile rings are permanent rewards you keep on Bazar
 							<br />
-							Gold Tier: Marketplace participation and purchases
-							<br />
-							Platinum Tier: Advanced features like staking
+							• Bronze DumDum is a collectible atomic asset on Arweave
+							<br />• Complete all quests to unlock the ultimate reward!
 						</p>
 						<br />
 						<p>
-							<strong>Powered by Wander Team</strong> - Earn WNDR tokens and exclusive profile rings based on your
-							Wander tier!
+							<strong>Powered by Wander Team</strong> - Earn WNDR tokens, profile rings, and exclusive collectibles!
 						</p>
 					</S.Footer>
 				</S.Wrapper>
@@ -1640,12 +1993,18 @@ export default function Quests() {
 								? language.editProfile
 								: `${language.createProfile}!`
 						}
-						handleClose={() => setShowProfileManage(false)}
+						handleClose={() => {
+							setShowProfileManage(false);
+							setProfileCreationInProgress(false);
+						}}
 					>
 						<S.PManageWrapper>
 							<ProfileManage
 								profile={permawebProvider.profile && permawebProvider.profile.id ? permawebProvider.profile : null}
-								handleClose={() => setShowProfileManage(false)}
+								handleClose={() => {
+									setShowProfileManage(false);
+									setProfileCreationInProgress(false);
+								}}
 								handleUpdate={null}
 							/>
 						</S.PManageWrapper>

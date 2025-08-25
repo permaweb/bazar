@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 
 import { ASSETS, URLS } from 'helpers/config';
 import { getTierMultiplier } from 'helpers/wanderTier';
+import { getWanderTierBadge } from 'helpers/wanderTierBadges';
 import { RootState } from 'store';
 
 import * as S from './styles';
@@ -33,6 +34,20 @@ export default function QuestNotification(props: IProps) {
 	const completedQuests = quests.filter((quest) => quest.isCompleted).length;
 	const claimedQuests = quests.filter((quest) => quest.isClaimed).length;
 	const availableRewards = quests.filter((quest) => quest.isCompleted && !quest.isClaimed).length;
+
+	// Debug quest completion status
+	console.log('🔍 Wander Dropdown - Quest Completion Debug:', {
+		totalQuests,
+		completedQuests,
+		claimedQuests,
+		availableRewards,
+		questDetails: quests.map((q) => ({
+			id: q.id,
+			isCompleted: q.isCompleted,
+			isClaimed: q.isClaimed,
+			title: q.title,
+		})),
+	});
 
 	const totalWndrReward = quests
 		.filter((quest) => quest.isCompleted && !quest.isClaimed)
@@ -82,17 +97,18 @@ export default function QuestNotification(props: IProps) {
 				<S.Dropdown>
 					<div style={{ position: 'relative', width: '100%', height: '100%' }}>
 						{progress.wanderTier && (
-							<S.TierBadge
-								tierColor={TIER_COLORS[progress.wanderTier as keyof typeof TIER_COLORS] || '#9333ea'}
+							<img
+								src={getWanderTierBadge(progress.wanderTier, true)}
+								alt={progress.wanderTier}
 								style={{
 									position: 'absolute',
-									top: '-4px',
-									right: '-4px',
+									top: '-6px',
+									right: '-6px',
 									zIndex: 1,
+									height: '32px',
+									width: 'auto',
 								}}
-							>
-								{progress.wanderTier}
-							</S.TierBadge>
+							/>
 						)}
 						<S.DropdownHeader>
 							<h4>Quest Progress</h4>

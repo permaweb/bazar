@@ -51,6 +51,7 @@ export default function _Routes() {
 			<Route path={`${URLS.collection}:id`} element={<Collection />} />
 			<Route path={`${URLS.collection}:id/:active`} element={<Collection />} />
 			<Route path={URLS.collections} element={<Collections />} />
+			<Route path={URLS.campaign} element={<Campaign />} />
 			<Route path={URLS.profile} element={<Profile />} />
 			<Route path={`${URLS.profile}:address`} element={<Profile />} />
 			<Route path={`${URLS.profile}:address/:active`} element={<Profile />} />

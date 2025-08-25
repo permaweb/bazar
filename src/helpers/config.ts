@@ -290,6 +290,7 @@ function createURLs() {
 		collectionAssets: (id: string) => `${collection}${id}/assets/`,
 		collectionActivity: (id: string) => `${collection}${id}/activity/`,
 		collections: `${base}collections/`,
+		campaign: `${base}campaign/`,
 		docs: `${base}docs/`,
 		profile: profile,
 		profileAssets: (address: string) => `${profile}${address}/assets/`,
@@ -327,7 +328,7 @@ export const REDIRECTS = {
 	discord: `https://discord.gg/vS2fYJNucN`,
 	bazarStudio: `https://studio_bazar.arweave.net`,
 	aox: `https://aox.arweave.net`,
-	arconnect: `https://arconnect.io`,
+	arconnect: `https://wander.app`,
 	warDepot: `https://wardepot.arweave.net`,
 	explorer: (messageId: string) => `https://lunar.arweave.net/#/explorer/${messageId}`,
 };

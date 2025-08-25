@@ -168,15 +168,16 @@ export const ProfileRingsHeader = styled.div`
 `;
 
 export const CurrentRingIndicator = styled.div`
-	font-size: 1rem;
+	font-size: 1.3rem;
 	color: var(--text-primary);
-	padding: 8px 16px;
+	padding: 12px 20px;
 	background: var(--background-secondary);
 	border-radius: 20px;
 	display: inline-block;
 
 	strong {
 		color: #9d4edd;
+		font-weight: 700;
 	}
 `;
 
@@ -204,43 +205,81 @@ export const ProfileRingPreview = styled.div`
 	display: flex;
 	flex-direction: column;
 	align-items: center;
-	padding: 24px;
-	background: var(--background-secondary);
+	padding: 32px 24px;
+	background: linear-gradient(135deg, var(--background-secondary), var(--background-primary));
+	border-radius: 16px;
+	box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
 `;
 
 export const ProfileRingAvatar = styled.div`
 	position: relative;
-	width: 80px;
-	height: 80px;
+	width: 100px;
+	height: 100px;
 	border-radius: 50%;
-	overflow: hidden;
-	margin-bottom: 12px;
+	overflow: visible;
+	margin-bottom: 16px;
+	background: linear-gradient(135deg, #374151, #4b5563);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
 
 	img {
-		width: 100%;
-		height: 100%;
-		object-fit: cover;
+		width: 60%;
+		height: 60%;
+		object-fit: contain;
+		filter: brightness(0.9);
 	}
 `;
 
 export const ProfileRingBorder = styled.div<{ color: string }>`
 	position: absolute;
+	top: -8px;
+	left: -8px;
+	right: -8px;
+	bottom: -8px;
+	border: 3px solid ${(props) => props.color};
+	border-radius: 50%;
+	z-index: 1;
+	box-shadow: 0 0 30px ${(props) => props.color}80, 0 0 60px ${(props) => props.color}60,
+		0 0 90px ${(props) => props.color}40, 0 0 120px ${(props) => props.color}20;
+	animation: ringGlow 3s ease-in-out infinite alternate;
+
+	@keyframes ringGlow {
+		0% {
+			box-shadow: 0 0 30px ${(props) => props.color}80, 0 0 60px ${(props) => props.color}60,
+				0 0 90px ${(props) => props.color}40, 0 0 120px ${(props) => props.color}20;
+		}
+		100% {
+			box-shadow: 0 0 40px ${(props) => props.color}90, 0 0 80px ${(props) => props.color}70,
+				0 0 120px ${(props) => props.color}50, 0 0 160px ${(props) => props.color}30;
+		}
+	}
+`;
+
+export const ProfileRingBorderInactive = styled.div<{ color: string }>`
+	position: absolute;
 	top: -4px;
 	left: -4px;
 	right: -4px;
 	bottom: -4px;
-	border: 4px solid ${(props) => props.color};
+	border: 2px solid ${(props) => props.color}60;
 	border-radius: 50%;
 	z-index: 1;
 `;
 
 export const ProfileRingActive = styled.div<{ isActive: boolean }>`
-	padding: 4px 12px;
-	border-radius: 12px;
+	padding: 6px 16px;
+	border-radius: 20px;
 	font-size: 0.8rem;
-	font-weight: 600;
+	font-weight: 700;
 	color: white;
-	background: ${(props) => (props.isActive ? '#10b981' : '#6b7280')};
+	background: ${(props) =>
+		props.isActive ? 'linear-gradient(135deg, #10b981, #34d399)' : 'linear-gradient(135deg, #6b7280, #9ca3af)'};
+	box-shadow: ${(props) =>
+		props.isActive ? '0 4px 15px rgba(16, 185, 129, 0.3)' : '0 2px 8px rgba(107, 114, 128, 0.2)'};
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
 `;
 
 export const ProfileRingInfo = styled.div`
@@ -248,7 +287,7 @@ export const ProfileRingInfo = styled.div`
 `;
 
 export const ProfileRingName = styled.h3`
-	font-size: 1.1rem;
+	font-size: 1.3rem;
 	font-weight: 600;
 	color: var(--text-primary);
 	margin: 0 0 8px 0;
@@ -262,28 +301,11 @@ export const ProfileRingDescription = styled.p`
 `;
 
 export const ProfileRingTier = styled.div<{ tier: string }>`
-	padding: 4px 12px;
+	padding: 4px 8px;
 	border-radius: 8px;
-	font-size: 0.8rem;
-	font-weight: 600;
-	color: white;
-	background: ${(props) => {
-		switch (props.tier) {
-			case 'Core':
-				return '#8B4513';
-			case 'Select':
-				return '#C0C0C0';
-			case 'Reserve':
-				return '#FFD700';
-			case 'Edge':
-				return '#9D4EDD';
-			case 'Prime':
-				return '#FF6B6B';
-			default:
-				return '#6b7280';
-		}
-	}};
-	display: inline-block;
+	display: flex;
+	align-items: center;
+	justify-content: center;
 `;
 
 export const QuestCard = styled.div<{ completed: boolean; claimed: boolean }>`
@@ -299,6 +321,9 @@ export const QuestCard = styled.div<{ completed: boolean; claimed: boolean }>`
 	transition: all 0.3s ease;
 	position: relative;
 	overflow: hidden;
+	display: flex;
+	flex-direction: column;
+	min-height: 280px;
 
 	&:hover {
 		transform: translateY(-4px);
@@ -324,12 +349,12 @@ export const QuestHeader = styled.div`
 	display: flex;
 	align-items: flex-start;
 	gap: 16px;
-	margin-bottom: 20px;
+	margin-bottom: 16px;
 `;
 
 export const QuestIcon = styled.div`
-	width: 48px;
-	height: 48px;
+	width: 56px;
+	height: 56px;
 	background: var(--background-secondary);
 	border-radius: 12px;
 	display: flex;
@@ -338,9 +363,9 @@ export const QuestIcon = styled.div`
 	flex-shrink: 0;
 
 	img {
-		width: 24px;
-		height: 24px;
-		filter: var(--icon-filter);
+		width: 32px;
+		height: 32px;
+		filter: brightness(0) invert(1);
 	}
 `;
 
@@ -370,41 +395,12 @@ export const QuestProgress = styled.div`
 `;
 
 export const QuestTier = styled.div<{ tier: string }>`
-	padding: 4px 12px;
-	border-radius: 20px;
-	font-size: 0.75rem;
-	font-weight: 600;
-	text-transform: uppercase;
-	letter-spacing: 0.5px;
+	padding: 4px 8px;
+	border-radius: 8px;
 	position: relative;
-	background: ${(props) => {
-		switch (props.tier) {
-			case 'bronze':
-				return 'linear-gradient(135deg, #cd7f32, #daa520)';
-			case 'silver':
-				return 'linear-gradient(135deg, #c0c0c0, #e5e4e2)';
-			case 'gold':
-				return 'linear-gradient(135deg, #ffd700, #ffed4e)';
-			case 'platinum':
-				return 'linear-gradient(135deg, #e5e4e2, #b4b4b4)';
-			default:
-				return 'var(--background-secondary)';
-		}
-	}};
-	color: ${(props) => {
-		switch (props.tier) {
-			case 'bronze':
-				return '#8b4513';
-			case 'silver':
-				return '#696969';
-			case 'gold':
-				return '#b8860b';
-			case 'platinum':
-				return '#696969';
-			default:
-				return 'var(--text-primary)';
-		}
-	}};
+	display: flex;
+	align-items: center;
+	justify-content: center;
 `;
 
 export const TierMultiplier = styled.div`
@@ -428,25 +424,25 @@ export const QuestReward = styled.div`
 	display: flex;
 	align-items: center;
 	gap: 12px;
-	padding: 16px;
+	padding: 12px 16px;
 	background: var(--background-secondary);
 	border-radius: 12px;
-	margin-bottom: 20px;
+	margin-top: auto;
+	margin-bottom: 12px;
 `;
 
 export const RewardIcon = styled.div`
 	width: 32px;
 	height: 32px;
-	background: linear-gradient(135deg, #ffd700, #ffed4e);
+	background: transparent;
 	border-radius: 8px;
 	display: flex;
 	align-items: center;
 	justify-content: center;
 
 	img {
-		width: 16px;
-		height: 16px;
-		filter: brightness(0) saturate(100%) invert(20%) sepia(100%) saturate(1000%) hue-rotate(0deg) brightness(0.8);
+		width: 24px;
+		height: 24px;
 	}
 `;
 
