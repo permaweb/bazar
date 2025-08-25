@@ -403,7 +403,7 @@ export const TOKEN_REGISTRY = {
 		name: 'PI Token',
 		symbol: 'PI',
 		logo: 'dynamicLogo', // Logo will be fetched dynamically from token metadata
-		denomination: 18, // Common denomination, can be adjusted
+		denomination: 12, // Fixed denomination
 		description: 'Permaweb Index token',
 		priority: 4,
 	},
@@ -425,4 +425,10 @@ export const getTokenById = (tokenId: string) => {
 // Helper function to get default token
 export const getDefaultToken = () => {
 	return TOKEN_REGISTRY[AO.defaultToken];
+};
+
+// Delegation configuration
+export const DELEGATION = {
+	PIXL_PROCESS: 'DM3FoZUq_yebASPhgd8pEIRIzDW6muXEhxz5-JwbZwo', // PIXL token process ID
+	DELEGATION_CONTROLLER: 'cuxSKjGJ-WDB9PzSkVkVVrIBSh3DrYHYz44usQOj5yE', // Global delegation controller
 };

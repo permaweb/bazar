@@ -117,6 +117,11 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 			label: language.tradeWander,
 			target: '',
 		},
+		'4hXj_E-5fAKmo4E8KjgQvuDJKAFk9P2grhycVmISDLs': {
+			link: `${URLS.asset}4hXj_E-5fAKmo4E8KjgQvuDJKAFk9P2grhycVmISDLs`,
+			label: language.tradePi,
+			target: '',
+		},
 	};
 
 	function getDropdown() {
