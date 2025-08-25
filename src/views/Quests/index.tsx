@@ -1892,6 +1892,107 @@ export default function Quests() {
 
 						<S.QuestsGrid>{quests.map((quest) => getQuestCard(quest))}</S.QuestsGrid>
 
+						{/* Wander Tier Quest Section - 5-tier progression leading to Bronze DumDum */}
+						<S.ProfileRingsSection>
+							<S.ProfileRingsHeader>
+								https://docs.google.com/document/d/11cNCcOmZCAeLZ-JoDkUH2tAr6pC7oPVF3jGOWOMfvxM/edit?usp=sharingCSXAZDVFERGT4DWSCAXFVEss
+								<p>
+									<strong>Complete all 5 quests to earn your exclusive Bronze DumDum!</strong> This special quest
+									progression rewards you with WNDR tokens and Explorer Rings as you advance through the tiers.
+								</p>
+							</S.ProfileRingsHeader>
+							<S.ProfileRingsGrid>
+								{/* Quest 1: Create Profile */}
+								<S.QuestCard completed={isQuestCompleted('create-profile', quests)} claimed={false}>
+									<S.QuestHeader>
+										<S.QuestIcon>
+											<img src={ASSETS.user} alt="Create Profile" />
+										</S.QuestIcon>
+										<S.QuestInfo>
+											<S.QuestTitle>Quest 1: Create Profile</S.QuestTitle>
+											<S.QuestDescription>Create your Bazar profile to start your journey</S.QuestDescription>
+											<S.QuestProgress>{getQuestProgress('create-profile', quests)} / 1</S.QuestProgress>
+										</S.QuestInfo>
+									</S.QuestHeader>
+									<S.QuestReward>
+										<S.RewardText>10 WNDR + Brown Explorer Ring</S.RewardText>
+									</S.QuestReward>
+								</S.QuestCard>
+
+								{/* Quest 2: Make First Purchase */}
+								<S.QuestCard completed={isQuestCompleted('make-purchase', quests)} claimed={false}>
+									<S.QuestHeader>
+										<S.QuestIcon>
+											<img src={ASSETS.buy} alt="Make Purchase" />
+										</S.QuestIcon>
+										<S.QuestInfo>
+											<S.QuestTitle>Quest 2: Make First Purchase</S.QuestTitle>
+											<S.QuestDescription>Buy your first atomic asset from the marketplace</S.QuestDescription>
+											<S.QuestProgress>{getQuestProgress('make-purchase', quests)} / 1</S.QuestProgress>
+										</S.QuestInfo>
+									</S.QuestHeader>
+									<S.QuestReward>
+										<S.RewardText>50 WNDR + Silver Explorer Ring</S.RewardText>
+									</S.QuestReward>
+								</S.QuestCard>
+
+								{/* Quest 3: Complete 3 Trades */}
+								<S.QuestCard completed={progress.totalPurchases >= 3} claimed={false}>
+									<S.QuestHeader>
+										<S.QuestIcon>
+											<img src={ASSETS.star} alt="Complete Trades" />
+										</S.QuestIcon>
+										<S.QuestInfo>
+											<S.QuestTitle>Quest 3: Complete 3 Trades</S.QuestTitle>
+											<S.QuestDescription>Complete 3 successful trades on the marketplace</S.QuestDescription>
+											<S.QuestProgress>{Math.min(progress.totalPurchases, 3)} / 3</S.QuestProgress>
+										</S.QuestInfo>
+									</S.QuestHeader>
+									<S.QuestReward>
+										<S.RewardText>100 WNDR + Gold Explorer Ring</S.RewardText>
+									</S.QuestReward>
+								</S.QuestCard>
+
+								{/* Quest 4: Reach 10 Trades */}
+								<S.QuestCard completed={progress.totalPurchases >= 10} claimed={false}>
+									<S.QuestHeader>
+										<S.QuestIcon>
+											<img src={ASSETS.star} alt="Reach 10 Trades" />
+										</S.QuestIcon>
+										<S.QuestInfo>
+											<S.QuestTitle>Quest 4: Reach 10 Trades</S.QuestTitle>
+											<S.QuestDescription>Complete 10 successful trades on the marketplace</S.QuestDescription>
+											<S.QuestProgress>{Math.min(progress.totalPurchases, 10)} / 10</S.QuestProgress>
+										</S.QuestInfo>
+									</S.QuestHeader>
+									<S.QuestReward>
+										<S.RewardText>250 WNDR + Platinum Explorer Ring</S.RewardText>
+									</S.QuestReward>
+								</S.QuestCard>
+
+								{/* Quest 5: Complete All Quests */}
+								<S.QuestCard completed={campaignCompleted} claimed={false}>
+									<S.QuestHeader>
+										<S.QuestIcon>
+											<img src={ASSETS.star} alt="Complete All" />
+										</S.QuestIcon>
+										<S.QuestInfo>
+											<S.QuestTitle>Quest 5: Complete All Quests</S.QuestTitle>
+											<S.QuestDescription>
+												Complete all previous quests to unlock the ultimate reward
+											</S.QuestDescription>
+											<S.QuestProgress>
+												{completedQuests} / {totalQuests}
+											</S.QuestProgress>
+										</S.QuestInfo>
+									</S.QuestHeader>
+									<S.QuestReward>
+										<S.RewardText>500 WNDR + Diamond Explorer Ring + Bronze DumDum</S.RewardText>
+									</S.QuestReward>
+								</S.QuestCard>
+							</S.ProfileRingsGrid>
+						</S.ProfileRingsSection>
+
 						{/* Always show profile rings section - display all possible rings */}
 						<S.ProfileRingsSection>
 							<S.ProfileRingsHeader>
