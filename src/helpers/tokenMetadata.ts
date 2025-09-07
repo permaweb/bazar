@@ -29,8 +29,6 @@ export async function fetchTokenMetadata(tokenId: string): Promise<TokenMetadata
 	}
 
 	try {
-		console.log(`Fetching metadata for token ${tokenId}...`);
-
 		const response = await readHandler({
 			processId: tokenId,
 			action: 'Info',
@@ -62,10 +60,7 @@ export async function fetchTokenMetadata(tokenId: string): Promise<TokenMetadata
 						: true,
 				creator: data.Creator || data.creator || response.Creator || response.creator,
 			};
-
-			console.log(`✅ Fetched metadata for ${tokenId}:`, metadata);
 		} else {
-			console.warn(`No metadata response for token ${tokenId}`);
 		}
 
 		// Cache the result
@@ -76,8 +71,6 @@ export async function fetchTokenMetadata(tokenId: string): Promise<TokenMetadata
 
 		return metadata;
 	} catch (error) {
-		console.error(`Failed to fetch metadata for token ${tokenId}:`, error);
-
 		// Return fallback from registry if available
 		const registryToken = TOKEN_REGISTRY[tokenId];
 		if (registryToken) {
@@ -103,7 +96,6 @@ export async function getTokenLogo(tokenId: string): Promise<string | null> {
 
 		// If we got a logo from metadata, return it
 		if (metadata.logo) {
-			console.log(`Using dynamic logo for ${tokenId}: ${metadata.logo}`);
 			return metadata.logo;
 		}
 
@@ -115,7 +107,6 @@ export async function getTokenLogo(tokenId: string): Promise<string | null> {
 			registryToken.logo !== 'defaultLogo' &&
 			registryToken.logo !== 'dynamicLogo'
 		) {
-			console.log(`Using registry logo for ${tokenId}: ${registryToken.logo}`);
 			return registryToken.logo;
 		}
 
@@ -177,8 +168,6 @@ export function clearMetadataCache(tokenId?: string): void {
 export async function preloadTokenMetadata(): Promise<void> {
 	const tokenIds = Object.keys(TOKEN_REGISTRY);
 
-	console.log('Preloading metadata for tokens:', tokenIds);
-
 	// Fetch all metadata in parallel
 	const promises = tokenIds.map(async (tokenId) => {
 		try {
@@ -189,5 +178,4 @@ export async function preloadTokenMetadata(): Promise<void> {
 	});
 
 	await Promise.all(promises);
-	console.log('Token metadata preloading complete');
 }

@@ -206,22 +206,11 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 							continue;
 						}
 
-						// Debug logging for Wander token
-						if (tokenId === '7GoQfmSOct_aUOWKM4xbKGg6DzAmOgdKwg8Kf-CbHm4') {
-							console.log('🔍 Fetching Wander token balance for wallet:', arProvider.walletAddress);
-						}
-
 						const walletBalance = await libs.readProcess({
 							processId: tokenId,
 							action: 'Balance',
 							tags: [{ name: 'Recipient', value: arProvider.walletAddress }],
 						});
-
-						// Debug logging for Wander token
-						if (tokenId === '7GoQfmSOct_aUOWKM4xbKGg6DzAmOgdKwg8Kf-CbHm4') {
-							console.log('🔍 Wander wallet balance response:', walletBalance);
-						}
-
 						await sleep(500);
 
 						const profileBalance = await libs.readProcess({
@@ -229,26 +218,11 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 							action: 'Balance',
 							tags: [{ name: 'Recipient', value: profile.id }],
 						});
-
-						// Debug logging for Wander token
-						if (tokenId === '7GoQfmSOct_aUOWKM4xbKGg6DzAmOgdKwg8Kf-CbHm4') {
-							console.log('🔍 Wander profile balance response:', profileBalance);
-						}
-
 						await sleep(500);
 
 						// Handle null responses gracefully
 						const processedWalletBalance = handleBalanceResponse(tokenId, walletBalance, arProvider.walletAddress);
 						const processedProfileBalance = handleBalanceResponse(tokenId, profileBalance, profile.id);
-
-						// Debug logging for Wander token
-						if (tokenId === '7GoQfmSOct_aUOWKM4xbKGg6DzAmOgdKwg8Kf-CbHm4') {
-							console.log('🔍 Wander processed balances:', {
-								walletBalance: processedWalletBalance,
-								profileBalance: processedProfileBalance,
-							});
-							console.log('🔍 Wander final balance object:', newBalances[tokenId]);
-						}
 
 						newBalances[tokenId] = {
 							walletBalance: processedWalletBalance,
@@ -299,11 +273,8 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 			try {
 				const arnsData = await getArNSDataForAddress(arProvider.walletAddress);
 
-				console.log('PermawebProvider - ArNS data:', arnsData);
-
 				setArnsPrimaryName(arnsData.primaryName);
 				const avatarUrl = arnsData.logo ? getTxEndpoint(arnsData.logo) : null;
-				console.log('PermawebProvider - Setting avatar URL:', avatarUrl);
 				setArnsAvatarUrl(avatarUrl);
 			} catch (err) {
 				console.error('PermawebProvider - ArNS error:', err);
@@ -328,7 +299,6 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 
 				if (!fetchedProfile?.id) {
 					if (process.env.NODE_ENV === 'development') {
-						console.log('Fetching legacy profile...');
 					}
 					isLegacyProfile = true;
 					const aoProfile = AOProfile.init({ ao: connect({ MODE: 'legacy' }) });

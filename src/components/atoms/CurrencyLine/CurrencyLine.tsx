@@ -12,10 +12,11 @@ import * as S from './styles';
 import { IProps } from './types';
 
 export default function CurrencyLine(props: IProps & { tokenLogo?: string; tokenSymbol?: string }) {
-	const currenciesReducer = useSelector((state: RootState) => state.currenciesReducer);
-	const { selectedToken } = useTokenProvider();
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
+
+	const currenciesReducer = useSelector((state: RootState) => state.currenciesReducer);
+	const { selectedToken } = useTokenProvider();
 
 	function getDenominatedTokenValue(amount: number, currency: string) {
 		if (props.amount === null) {
@@ -27,6 +28,7 @@ export default function CurrencyLine(props: IProps & { tokenLogo?: string; token
 
 		if (denomination > 0) {
 			const factor = Math.pow(10, denomination);
+			// Use proper formatting with the denomination
 			const formattedAmount: string = (Math.round(amount) / factor).toFixed(denomination);
 
 			return formatCount(formattedAmount);
@@ -62,7 +64,7 @@ export default function CurrencyLine(props: IProps & { tokenLogo?: string; token
 							{tokenInfo.symbol?.charAt(0) || '?'}
 						</div>
 					)}
-					{tokenInfo.symbol && <span>{tokenInfo.symbol}</span>}
+					{tokenInfo.symbol && !props.hideSymbol && <span>{tokenInfo.symbol}</span>}
 				</span>
 			);
 		}

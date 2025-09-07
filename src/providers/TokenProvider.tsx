@@ -1,7 +1,7 @@
 import React from 'react';
 
 import { getDefaultToken, TOKEN_REGISTRY } from 'helpers/config';
-import { getEnhancedTokenMetadata, preloadTokenMetadata, TokenMetadata } from 'helpers/tokenMetadata';
+import { getEnhancedTokenMetadata, preloadTokenMetadata } from 'helpers/tokenMetadata';
 
 interface TokenType {
 	id: string;
@@ -46,8 +46,6 @@ export function TokenProvider(props: { children: React.ReactNode }) {
 	const refreshTokenMetadata = React.useCallback(async () => {
 		setIsLoadingMetadata(true);
 		try {
-			console.log('Refreshing token metadata...');
-
 			// Get all token IDs from registry
 			const tokenIds = Object.keys(TOKEN_REGISTRY);
 
@@ -89,8 +87,6 @@ export function TokenProvider(props: { children: React.ReactNode }) {
 			if (updatedSelectedToken) {
 				setSelectedToken(updatedSelectedToken);
 			}
-
-			console.log('✅ Token metadata refresh complete');
 		} catch (error) {
 			console.error('Failed to refresh token metadata:', error);
 		} finally {

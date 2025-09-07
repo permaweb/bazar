@@ -1,5 +1,5 @@
 import React from 'react';
-import { useDispatch, useSelector } from 'react-redux';
+import { useDispatch } from 'react-redux';
 import { Link } from 'react-router-dom';
 
 import { createDataItemSigner, message, result } from '@permaweb/aoconnect';
@@ -14,7 +14,7 @@ import { Slider } from 'components/atoms/Slider';
 import TokenSelector from 'components/atoms/TokenSelector';
 import { TxAddress } from 'components/atoms/TxAddress';
 import { Panel } from 'components/molecules/Panel';
-import { AO, ASSETS, getTokenById, REDIRECTS, URLS } from 'helpers/config';
+import { AO, ASSETS, REDIRECTS, TOKEN_REGISTRY, URLS } from 'helpers/config';
 import { AssetOrderType } from 'helpers/types';
 import {
 	checkValidAddress,
@@ -29,7 +29,6 @@ import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 import { usePermawebProvider } from 'providers/PermawebProvider';
 import { useTokenProvider } from 'providers/TokenProvider';
-import { RootState } from 'store';
 import * as streakActions from 'store/streaks/actions';
 
 import * as S from './styles';
@@ -46,8 +45,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
-
-	const currenciesReducer = useSelector((state: RootState) => state.currenciesReducer);
 
 	// Total quantity of asset
 	const [totalAssetBalance, setTotalAssetBalance] = React.useState<number>(0);
@@ -141,33 +138,34 @@ export default function AssetActionMarketOrders(props: IProps) {
 				setTotalSalesQuantity(calculatedTotalSalesBalance);
 			}
 
-			const orderCurrency =
-				props.asset.orderbook?.orders && props.asset.orderbook?.orders.length
-					? props.asset.orderbook?.orders[0].currency
-					: tokenProvider.selectedToken.id;
+			// Use TOKEN_REGISTRY denominations instead of currenciesReducer
 
-			// Try to get denomination from currenciesReducer first, then fallback to token registry
-			let denominationValue = null;
-			if (
-				currenciesReducer &&
-				currenciesReducer[orderCurrency] &&
-				currenciesReducer[orderCurrency].Denomination &&
-				currenciesReducer[orderCurrency].Denomination > 1
-			) {
-				denominationValue = currenciesReducer[orderCurrency].Denomination;
-			} else {
-				// Fallback to token registry
-				const tokenInfo = getTokenById(orderCurrency);
-				if (tokenInfo && tokenInfo.denomination && tokenInfo.denomination > 1) {
-					denominationValue = tokenInfo.denomination;
-				}
-			}
-
-			if (denominationValue) {
-				setTransferDenomination(Math.pow(10, denominationValue));
-			}
+			// NOTE: transferDenomination is now set by dedicated effects based on selectedToken
+			// This effect only handles asset-related state, not token denomination
 		}
 	}, [props.asset, arProvider.walletAddress, permawebProvider.profile, denomination]);
+
+	// Set initial transferDenomination based on current selected token
+	React.useEffect(() => {
+		if (tokenProvider.selectedToken && tokenProvider.selectedToken.id) {
+			const tokenInfo = TOKEN_REGISTRY[tokenProvider.selectedToken.id];
+			if (tokenInfo && tokenInfo.denomination && tokenInfo.denomination > 0) {
+				const calculatedDenomination = Math.pow(10, tokenInfo.denomination);
+				setTransferDenomination(calculatedDenomination);
+			}
+		}
+	}, []); // Empty dependency array - runs only on initial load
+
+	// Update transferDenomination when selected token changes (for sell orders)
+	React.useEffect(() => {
+		if (tokenProvider.selectedToken && tokenProvider.selectedToken.id) {
+			const tokenInfo = TOKEN_REGISTRY[tokenProvider.selectedToken.id];
+			if (tokenInfo && tokenInfo.denomination && tokenInfo.denomination > 0) {
+				const calculatedDenomination = Math.pow(10, tokenInfo.denomination);
+				setTransferDenomination(calculatedDenomination);
+			}
+		}
+	}, [tokenProvider.selectedToken]);
 
 	React.useEffect(() => {
 		switch (props.type) {
@@ -189,7 +187,8 @@ export default function AssetActionMarketOrders(props: IProps) {
 			if (!permawebProvider.tokenBalances || !permawebProvider.tokenBalances[tokenProvider.selectedToken.id]) {
 				setInsufficientBalance(true);
 			} else {
-				let orderAmount = BigInt(getTotalOrderAmount());
+				const totalAmount = getTotalOrderAmount();
+				let orderAmount = isNaN(Number(totalAmount)) ? BigInt(0) : BigInt(totalAmount);
 				if (denomination) {
 					orderAmount = BigInt(orderAmount) / BigInt(denomination);
 				}
@@ -202,11 +201,11 @@ export default function AssetActionMarketOrders(props: IProps) {
 		}
 	}, [
 		permawebProvider.tokenBalances,
-		tokenProvider.selectedToken.id,
 		props.type,
 		props.asset,
 		currentOrderQuantity,
 		denomination,
+		tokenProvider.selectedToken.id,
 	]);
 
 	React.useEffect(() => {
@@ -214,25 +213,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 		if (unitPrice) setUnitPrice('');
 	}, [props.type]);
 
-	// Clear unit price when selected token changes to prevent denomination confusion
-	React.useEffect(() => {
-		if (unitPrice) setUnitPrice('');
-	}, [tokenProvider.selectedToken.id]);
-
 	async function handleSubmit() {
-		// Token validation
-		if (!tokenProvider.selectedToken || !tokenProvider.selectedToken.id) {
-			handleStatusUpdate(false, true, false, language.invalidTokenSelection);
-			return;
-		}
-
-		// Check if selected token exists in available tokens
-		const isValidToken = tokenProvider.availableTokens.some((token) => token.id === tokenProvider.selectedToken.id);
-		if (!isValidToken) {
-			handleStatusUpdate(false, true, false, language.tokenValidationError);
-			return;
-		}
-
 		if (props.asset && arProvider.wallet && permawebProvider.profile?.id) {
 			let currentOrderbook = props.asset.orderbook?.id;
 
@@ -305,7 +286,14 @@ export default function AssetActionMarketOrders(props: IProps) {
 				};
 
 				if (unitPrice) data.unitPrice = unitPrice.toString();
-				if (denomination && denomination > 1) data.denomination = denomination.toString();
+
+				// UCM needs both asset and token denominations for proper order handling
+				if (denomination && denomination > 1) {
+					data.denomination = denomination.toString(); // Asset denomination
+				}
+				if (transferDenomination && transferDenomination > 1) {
+					data.tokenDenomination = transferDenomination.toString(); // Token denomination
+				}
 
 				const orderId = await createOrder(
 					permawebProvider.deps,
@@ -324,6 +312,9 @@ export default function AssetActionMarketOrders(props: IProps) {
 					});
 					dispatch(streakActions.setStreaks(streaks.Streaks));
 				}
+
+				// Trigger asset and orderbook refresh to show the new order
+				props.toggleUpdate();
 				arProvider.setToggleProfileUpdate(!arProvider.toggleProfileUpdate);
 				permawebProvider.setToggleTokenBalanceUpdate(!permawebProvider.toggleTokenBalanceUpdate);
 			} catch (e: any) {
@@ -339,13 +330,13 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 		switch (props.type) {
 			case 'buy':
-				transferQuantity = getTotalOrderAmount().toString();
+				const totalAmount = getTotalOrderAmount();
+				transferQuantity = isNaN(Number(totalAmount)) ? '0' : totalAmount.toString();
 				if (denomination) transferQuantity = (BigInt(transferQuantity) / BigInt(denomination)).toString();
 				break;
 			case 'sell':
 			case 'transfer':
-				// For sell orders, use transferDenomination (token being received) instead of asset denomination
-				if (transferDenomination) transferQuantity = Math.floor(Number(currentOrderQuantity) * transferDenomination);
+				if (denomination) transferQuantity = Math.floor(Number(currentOrderQuantity) * denomination);
 				break;
 		}
 
@@ -356,25 +347,14 @@ export default function AssetActionMarketOrders(props: IProps) {
 		let calculatedUnitPrice = null;
 
 		if (unitPrice && Number(unitPrice) > 0) {
-			if (props.type === 'sell') {
-				// For sell orders, unit price is already in the token being received (e.g., PIXL)
-				// No conversion needed - just convert to raw units using transferDenomination
-				if (transferDenomination) {
-					calculatedUnitPrice = BigInt(Math.floor(Number(unitPrice) * transferDenomination));
-				} else {
-					calculatedUnitPrice = BigInt(Math.floor(Number(unitPrice)));
-				}
-			} else {
-				// For buy orders, convert unit price to raw units
-				calculatedUnitPrice = unitPrice as any;
-				if (transferDenomination) {
-					const decimalPlaces = (unitPrice.toString().split('.')[1] || '').length;
-					const updatedUnitPrice =
-						decimalPlaces >= reverseDenomination(transferDenomination)
-							? (unitPrice as any).toFixed(reverseDenomination(transferDenomination))
-							: unitPrice;
-					calculatedUnitPrice = BigInt(Math.floor(Number(updatedUnitPrice) * transferDenomination));
-				}
+			calculatedUnitPrice = unitPrice as any;
+			if (transferDenomination) {
+				const decimalPlaces = (unitPrice.toString().split('.')[1] || '').length;
+				const updatedUnitPrice =
+					decimalPlaces >= reverseDenomination(transferDenomination)
+						? (unitPrice as any).toFixed(reverseDenomination(transferDenomination))
+						: unitPrice;
+				calculatedUnitPrice = BigInt(Math.floor(Number(updatedUnitPrice) * transferDenomination));
 			}
 		}
 
@@ -416,7 +396,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 					console.error(`Wallet balance: ${walletBalance}`);
 					throw new Error('Error making wallet to profile transfer');
 				} else {
-					console.log(`Transferring remainder from wallet (${differenceNeeded.toString()}) to profile...`);
+					// console.log(`Transferring remainder from wallet (${differenceNeeded.toString()}) to profile...`);
 					await messageResults({
 						processId: processId,
 						action: 'Transfer',
@@ -428,7 +408,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 						data: null,
 						responses: ['Transfer-Success', 'Transfer-Error'],
 					});
-					console.log('Transfer complete');
+					// console.log('Transfer complete');
 				}
 			}
 		} catch (e: any) {
@@ -440,13 +420,11 @@ export default function AssetActionMarketOrders(props: IProps) {
 		if (transferRecipient && checkValidAddress(transferRecipient)) {
 			try {
 				// Use Run-Action for new Zone Profiles, Transfer for legacy profiles
-				let action = 'Run-Action';
 				let tags = [];
 				let data = null;
 
 				if (permawebProvider.profile.isLegacyProfile) {
 					// Legacy profile: use direct Transfer
-					action = 'Transfer';
 					tags = [
 						{ name: 'Action', value: 'Transfer' },
 						{ name: 'Target', value: props.asset.data.id },
@@ -486,7 +464,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 				});
 
 				if (!Error) handleStatusUpdate(false, true, true, 'Balance transferred!');
-				console.log(transferId);
+				// console.log(transferId);
 			} catch (e: any) {
 				throw new Error(e);
 			}
@@ -528,16 +506,28 @@ export default function AssetActionMarketOrders(props: IProps) {
 	function getTotalOrderAmount() {
 		if (props.type === 'buy') {
 			if (props.asset && props.asset.orderbook?.orders) {
-				let sortedOrders = props.asset.orderbook?.orders.sort(
-					(a: AssetOrderType, b: AssetOrderType) => Number(a.price) - Number(b.price)
-				);
+				let sortedOrders = props.asset.orderbook?.orders
+					.filter((order: AssetOrderType) => {
+						const price = Number(order.price);
+						const quantity = Number(order.quantity);
+						return !isNaN(price) && !isNaN(quantity) && price > 0 && quantity > 0;
+					})
+					.sort((a: AssetOrderType, b: AssetOrderType) => Number(a.price) - Number(b.price));
 
 				let totalQuantity: bigint = BigInt(0);
 				let totalPrice: bigint = BigInt(0);
 
 				for (let i = 0; i < sortedOrders.length; i++) {
-					const quantity = BigInt(Math.floor(Number(sortedOrders[i].quantity)));
-					const price = BigInt(Math.floor(Number(sortedOrders[i].price)));
+					const orderQuantity = Number(sortedOrders[i].quantity);
+					const orderPrice = Number(sortedOrders[i].price);
+
+					// Skip orders with invalid quantity or price
+					if (isNaN(orderQuantity) || isNaN(orderPrice) || orderQuantity <= 0 || orderPrice <= 0) {
+						continue;
+					}
+
+					const quantity = BigInt(Math.floor(orderQuantity));
+					const price = BigInt(Math.floor(orderPrice));
 
 					let inputQuantity: any;
 					inputQuantity = denomination
@@ -557,7 +547,8 @@ export default function AssetActionMarketOrders(props: IProps) {
 				}
 				return totalPrice;
 			} else return 0;
-		} else {
+		} else if (props.type === 'sell') {
+			// For SELL orders: Calculate the total amount of the receiving token in raw units
 			let price: bigint = BigInt(0);
 			if (
 				isNaN(Number(unitPrice)) ||
@@ -567,29 +558,58 @@ export default function AssetActionMarketOrders(props: IProps) {
 			) {
 				price = BigInt(0);
 			} else {
-				// Get the unit price in raw units (already converted by getUnitPrice)
-				const calculatedUnitPrice = getUnitPrice();
+				// Calculate the total amount of the receiving token in display units
+				const totalDisplayAmount = Number(currentOrderQuantity) * Number(unitPrice);
 
-				// Get the quantity in raw units
+				// Convert this total display amount to raw units using transferDenomination
+				if (transferDenomination) {
+					price = BigInt(Math.floor(totalDisplayAmount * transferDenomination));
+				} else {
+					price = BigInt(Math.floor(totalDisplayAmount));
+				}
+			}
+
+			return price;
+		} else {
+			// This block now only handles 'transfer'
+			let price: bigint = BigInt(0);
+			if (
+				isNaN(Number(unitPrice)) ||
+				isNaN(Number(currentOrderQuantity)) ||
+				Number(currentOrderQuantity) < 0 ||
+				Number(unitPrice) < 0
+			) {
+				price = BigInt(0);
+			} else {
+				let calculatedUnitPrice = unitPrice as any;
+				if (transferDenomination) {
+					const decimalPlaces = (unitPrice.toString().split('.')[1] || '').length;
+					const updatedUnitPrice =
+						decimalPlaces >= reverseDenomination(transferDenomination)
+							? (unitPrice as any).toFixed(reverseDenomination(transferDenomination))
+							: unitPrice;
+
+					calculatedUnitPrice = BigInt(
+						Math.floor(Number(updatedUnitPrice <= MIN_PRICE ? 0 : updatedUnitPrice) * transferDenomination)
+					);
+				}
+
 				let calculatedQuantity = currentOrderQuantity;
-				if (props.type === 'sell') {
-					// For sell orders, unit price is already in raw units, so keep quantity as display units
-					calculatedQuantity = Number(currentOrderQuantity);
-				} else if (denomination && denomination > 1) {
-					// For other orders (transfer), use denomination (asset being transferred)
+				if (denomination && denomination > 1) {
 					calculatedQuantity = Number(currentOrderQuantity) * Number(denomination);
 				}
 
 				try {
 					price =
-						calculatedUnitPrice && BigInt(calculatedQuantity)
-							? calculatedUnitPrice * BigInt(calculatedQuantity)
+						BigInt(calculatedQuantity) && BigInt(calculatedUnitPrice)
+							? BigInt(calculatedQuantity) * BigInt(calculatedUnitPrice)
 							: BigInt(0);
 				} catch (e: any) {
 					console.error(e);
 					price = BigInt(0);
 				}
 			}
+
 			return price;
 		}
 	}
@@ -632,6 +652,22 @@ export default function AssetActionMarketOrders(props: IProps) {
 			return true;
 		if (props.type === 'transfer' && (!transferRecipient || !checkValidAddress(transferRecipient))) return true;
 		if (insufficientBalance) return true;
+
+		// For BUY orders: Check if there are existing orders to buy from
+		// For SELL orders: Allow any token (creating new liquidity)
+		if (props.type === 'buy') {
+			const hasUCMOrders = props.asset?.orderbook?.orders && props.asset.orderbook.orders.length > 0;
+			const selectedTokenId = tokenProvider.selectedToken.id;
+			const hasMatchingOrders =
+				hasUCMOrders &&
+				props.asset.orderbook.orders.some((order: AssetOrderType) => order.currency === selectedTokenId);
+
+			if (!hasMatchingOrders) {
+				return true;
+			}
+		}
+		// For sell orders, we don't restrict - users can create new liquidity
+
 		return false;
 	}
 
@@ -681,12 +717,30 @@ export default function AssetActionMarketOrders(props: IProps) {
 	}, [props.asset, props.type, totalAssetBalance, totalSalesQuantity, connectedBalance]);
 
 	function getTotalPriceDisplay() {
-		let amount = BigInt(getTotalOrderAmount());
+		const selectedTokenId = tokenProvider.selectedToken.id;
 
-		// getTotalOrderAmount() now returns the correct raw amount
-		// CurrencyLine will handle denomination conversion automatically
+		if (props.type === 'buy') {
+			// For BUY orders: Check if there are existing orders to buy from
+			const hasUCMOrders = props.asset?.orderbook?.orders && props.asset.orderbook.orders.length > 0;
+			const hasMatchingOrders =
+				hasUCMOrders &&
+				props.asset.orderbook.orders.some((order: AssetOrderType) => order.currency === selectedTokenId);
 
-		const orderCurrency = tokenProvider.selectedToken.id;
+			if (!hasMatchingOrders) {
+				return (
+					<S.MessageWrapper warning>
+						<span>No orders available to buy with {tokenProvider.selectedToken.symbol}</span>
+					</S.MessageWrapper>
+				);
+			}
+		} else if (props.type === 'sell') {
+			// For SELL orders: Allow any token (creating new liquidity)
+		}
+
+		// UCM works with raw units - send raw amount to CurrencyLine
+		const totalAmount = getTotalOrderAmount();
+		const amount = isNaN(Number(totalAmount)) ? BigInt(0) : BigInt(totalAmount);
+		const orderCurrency = selectedTokenId;
 
 		return (
 			<CurrencyLine
@@ -942,16 +996,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 							{getTotals}
 						</S.TotalsWrapper>
 						<S.FieldsWrapper>
-							{props.type === 'buy' && (
-								<S.FieldWrapper>
-									<TokenSelector showLabel={true} />
-								</S.FieldWrapper>
-							)}
-							{props.type === 'sell' && (
-								<S.FieldWrapper>
-									<TokenSelector showLabel={true} />
-								</S.FieldWrapper>
-							)}
 							<S.FieldWrapper>
 								<FormField
 									type={'number'}
@@ -997,6 +1041,16 @@ export default function AssetActionMarketOrders(props: IProps) {
 										hideErrorMessage
 										tooltip={language.saleUnitPriceTooltip}
 									/>
+								</S.FieldWrapper>
+							)}
+							{props.type === 'sell' && (
+								<S.FieldWrapper>
+									<TokenSelector showLabel={true} />
+								</S.FieldWrapper>
+							)}
+							{props.type === 'buy' && (
+								<S.FieldWrapper>
+									<TokenSelector showLabel={true} />
 								</S.FieldWrapper>
 							)}
 							{props.type === 'transfer' && (

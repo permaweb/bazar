@@ -189,9 +189,10 @@ export default function ActivityTable(props: IProps) {
 								});
 								if (assets && assets.length > 0) {
 									currentGroup = currentGroup.map((order: any) => {
+										const asset = assets.find((asset: any) => asset.data.id === order.dominantToken);
 										return {
 											...order,
-											asset: assets.find((asset: any) => asset.data.id === order.dominantToken),
+											asset: asset,
 										};
 									});
 								}
@@ -436,9 +437,10 @@ export default function ActivityTable(props: IProps) {
 				</S.TableHeader>
 				<S.TableBody>
 					{activityGroup.map((row: any, index: number) => {
+						const shouldShowAsset = !props.asset && row.asset && row.asset.data;
 						return (
 							<S.TableRow key={index}>
-								{!props.asset && row.asset && row.asset.data && (
+								{shouldShowAsset && (
 									<S.AssetWrapper>
 										<S.AssetDataWrapper>
 											<Link to={`${URLS.asset}${row.asset.data.id}`}>

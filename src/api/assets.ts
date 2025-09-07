@@ -1,6 +1,6 @@
 import { getGQLData, readHandler } from 'api';
 
-import { AO, GATEWAYS, HB, LICENSES, PAGINATORS, REFORMATTED_ASSETS, TAGS } from 'helpers/config';
+import { AO, GATEWAYS, LICENSES, PAGINATORS, REFORMATTED_ASSETS, TAGS } from 'helpers/config';
 import {
 	AssetDetailType,
 	AssetOrderType,
@@ -52,7 +52,7 @@ export async function getAssetsByIds(args: { ids: string[]; sortType: AssetSortT
 
 			structuredAssets.forEach((asset: AssetType) => {
 				let assetOrders: AssetOrderType[] | null = null;
-				const existingEntry = ucmReducer?.Orderbook.find((entry: OrderbookEntryType) => {
+				const existingEntry = ucmReducer?.Orderbook?.find((entry: OrderbookEntryType) => {
 					return entry.Pair ? entry.Pair[0] === asset.data.id : null;
 				});
 
@@ -73,7 +73,8 @@ export async function getAssetsByIds(args: { ids: string[]; sortType: AssetSortT
 				finalAssets.push(finalAsset);
 			});
 
-			return sortByAssetOrders(finalAssets, args.sortType, stampsReducer);
+			const sortedAssets = sortByAssetOrders(finalAssets, args.sortType, stampsReducer);
+			return sortedAssets;
 		}
 
 		return null;
@@ -170,8 +171,9 @@ export async function getAssetById(args: { id: string; libs?: any }): Promise<As
 				Set legacy orderbook on legacy assets */
 			if (processState.Metadata) {
 				if (processState.Metadata.OrderbookId) assetOrderbook = { id: processState.Metadata.OrderbookId };
-			} else assetOrderbook = { id: AO.ucm, activityId: AO.ucmActivity };
-
+			} else {
+				assetOrderbook = { id: AO.ucm, activityId: AO.ucmActivity };
+			}
 			return {
 				...structuredAsset,
 				state: assetState,
@@ -214,7 +216,8 @@ export function getAssetOrders(orderbook: { Pair: string[]; Orders: any } | null
 			currency: orderbook.Pair[1],
 		};
 
-		if (order.Price) currentAssetOrder.price = order.Price;
+		// Always set price field, default to '0' if not provided
+		currentAssetOrder.price = order.Price || '0';
 		return currentAssetOrder;
 	});
 

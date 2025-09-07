@@ -8,7 +8,7 @@ import { CurrencyLine } from 'components/atoms/CurrencyLine';
 import { Loader } from 'components/atoms/Loader';
 import { Panel } from 'components/molecules/Panel';
 import { ProfileManage } from 'components/organisms/ProfileManage';
-import { AO, ASSETS, REDIRECTS, TOKEN_REGISTRY, URLS } from 'helpers/config';
+import { AO, ASSETS, REDIRECTS, URLS } from 'helpers/config';
 import { formatAddress, formatCount, getTotalTokenBalance } from 'helpers/utils';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useCustomThemeProvider } from 'providers/CustomThemeProvider';
@@ -112,14 +112,29 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 			label: language.tradePixl,
 			target: '',
 		},
-		'7GoQfmSOct_aUOWKM4xbKGg6DzAmOgdKwg8Kf-CbHm4': {
-			link: `${URLS.asset}7GoQfmSOct_aUOWKM4xbKGg6DzAmOgdKwg8Kf-CbHm4`,
+		[AO.wndr]: {
+			link: `${URLS.asset}${AO.wndr}`,
 			label: language.tradeWander,
 			target: '',
 		},
-		'4hXj_E-5fAKmo4E8KjgQvuDJKAFk9P2grhycVmISDLs': {
-			link: `${URLS.asset}4hXj_E-5fAKmo4E8KjgQvuDJKAFk9P2grhycVmISDLs`,
+		[AO.pi]: {
+			link: `${URLS.asset}${AO.pi}`,
 			label: language.tradePi,
+			target: '',
+		},
+		[AO.ario]: {
+			link: `${URLS.asset}${AO.ario}`,
+			label: language.tradeArio,
+			target: '',
+		},
+		[AO.usda]: {
+			link: `${URLS.asset}${AO.usda}`,
+			label: language.tradeUsda,
+			target: '',
+		},
+		[AO.game]: {
+			link: `${URLS.asset}${AO.game}`,
+			label: language.tradeGame,
 			target: '',
 		},
 	};
@@ -171,6 +186,15 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 					<S.BalanceLine>
 						<ReactSVG src={ASSETS.ar} />
 						<span>{formatCount(arProvider.arBalance ? arProvider.arBalance.toString() : '0')}</span>
+						<S.TokenLink>
+							<Link
+								to="https://viewblock.io/arweave/"
+								target="_blank"
+								onClick={() => handleDropdownAction(() => setShowWalletDropdown(false))}
+							>
+								<span>{language.viewAr}</span>
+							</Link>
+						</S.TokenLink>
 					</S.BalanceLine>
 					{permawebProvider.tokenBalances && Object.keys(permawebProvider.tokenBalances).length > 0 && (
 						<>
@@ -182,6 +206,7 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 											currency={token}
 											callback={() => handleDropdownAction(() => setShowWalletDropdown(false))}
 											useReverseLayout
+											hideSymbol
 										/>
 										{tokenLinks[token] && (
 											<S.TokenLink>
