@@ -1,6 +1,6 @@
 import { getGQLData, readHandler } from 'api';
 
-import { AO, GATEWAYS, LICENSES, PAGINATORS, REFORMATTED_ASSETS, TAGS } from 'helpers/config';
+import { AO, GATEWAYS, HB, LICENSES, PAGINATORS, REFORMATTED_ASSETS, TAGS } from 'helpers/config';
 import {
 	AssetDetailType,
 	AssetOrderType,
@@ -106,25 +106,20 @@ export async function getAssetById(args: { id: string; libs?: any }): Promise<As
 			const structuredAsset = structureAssets(assetLookupResponse)[0];
 
 			let processState: any;
-			processState = await readHandler({
-				processId: structuredAsset.data.id,
-				action: 'Info',
-				data: null,
-			});
-			// if (args.libs) {
-			// 	processState = await args.libs.readState({
-			// 		processId: structuredAsset.data.id,
-			// 		path: 'asset',
-			// 		fallbackAction: 'Info',
-			// 		node: HB.defaultNode
-			// 	});
-			// } else {
-			// 	processState = await readHandler({
-			// 		processId: structuredAsset.data.id,
-			// 		action: 'Info',
-			// 		data: null,
-			// 	});
-			// }
+			if (args.libs) {
+				processState = await args.libs.readState({
+					processId: structuredAsset.data.id,
+					path: 'asset',
+					fallbackAction: 'Info',
+					node: HB.defaultNode,
+				});
+			} else {
+				processState = await readHandler({
+					processId: structuredAsset.data.id,
+					action: 'Info',
+					data: null,
+				});
+			}
 
 			if (processState) {
 				if (processState.Name || processState.name) {
