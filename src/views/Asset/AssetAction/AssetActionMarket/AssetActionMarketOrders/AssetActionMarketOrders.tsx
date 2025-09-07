@@ -125,9 +125,14 @@ export default function AssetActionMarketOrders(props: IProps) {
 			}
 
 			if (props.asset.orderbook?.orders && props.asset.orderbook?.orders.length > 0) {
-				const salesBalances = props.asset.orderbook?.orders.map((order: AssetOrderType) => {
-					return Number(order.quantity);
-				});
+				const selectedTokenId = tokenProvider.selectedToken.id;
+
+				// CRITICAL FIX: Only include orders that match the selected token
+				const salesBalances = props.asset.orderbook?.orders
+					.filter((order: AssetOrderType) => order.currency === selectedTokenId)
+					.map((order: AssetOrderType) => {
+						return Number(order.quantity);
+					});
 
 				const totalSalesBalance = salesBalances.reduce((a: number, b: number) => a + b, 0);
 
@@ -143,7 +148,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 			// NOTE: transferDenomination is now set by dedicated effects based on selectedToken
 			// This effect only handles asset-related state, not token denomination
 		}
-	}, [props.asset, arProvider.walletAddress, permawebProvider.profile, denomination]);
+	}, [props.asset, arProvider.walletAddress, permawebProvider.profile, denomination, tokenProvider.selectedToken.id]);
 
 	// Set initial transferDenomination based on current selected token
 	React.useEffect(() => {
@@ -506,11 +511,14 @@ export default function AssetActionMarketOrders(props: IProps) {
 	function getTotalOrderAmount() {
 		if (props.type === 'buy') {
 			if (props.asset && props.asset.orderbook?.orders) {
+				const selectedTokenId = tokenProvider.selectedToken.id;
+
 				let sortedOrders = props.asset.orderbook?.orders
 					.filter((order: AssetOrderType) => {
 						const price = Number(order.price);
 						const quantity = Number(order.quantity);
-						return !isNaN(price) && !isNaN(quantity) && price > 0 && quantity > 0;
+						// CRITICAL FIX: Only include orders that match the selected token
+						return !isNaN(price) && !isNaN(quantity) && price > 0 && quantity > 0 && order.currency === selectedTokenId;
 					})
 					.sort((a: AssetOrderType, b: AssetOrderType) => Number(a.price) - Number(b.price));
 
