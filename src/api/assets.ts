@@ -13,6 +13,7 @@ import {
 	IdGroupType,
 	LicenseType,
 	OrderbookEntryType,
+	TagType,
 } from 'helpers/types';
 import { formatAddress, getAssetOrderType, getTagValue, sortByAssetOrders, sortOrderbookEntries } from 'helpers/utils';
 import { store } from 'store';
@@ -140,6 +141,11 @@ export async function getAssetById(args: { id: string; libs?: any }): Promise<As
 				} else {
 					assetState.transferable = true;
 				}
+
+				// Include metadata in asset state
+				if (processState.Metadata) {
+					assetState.metadata = processState.Metadata;
+				}
 			}
 
 			if (!assetState.balances) {
@@ -232,6 +238,11 @@ export function structureAssets(gqlResponse: DefaultGQLResponseType): AssetType[
 
 		if (REFORMATTED_ASSETS[element.node.id]) title = REFORMATTED_ASSETS[element.node.id].title;
 
+		// Extract topics from tags
+		const topics = element.node.tags
+			.filter((tag: TagType) => tag.name.includes('topic'))
+			.map((tag: TagType) => tag.value);
+
 		structuredAssets.push({
 			data: {
 				id: element.node.id,
@@ -256,6 +267,7 @@ export function structureAssets(gqlResponse: DefaultGQLResponseType): AssetType[
 				collectionId: getTagValue(element.node.tags, TAGS.keys.collectionId),
 				collectionName: getTagValue(element.node.tags, TAGS.keys.collectionName),
 				contentType: getTagValue(element.node.tags, TAGS.keys.contentType),
+				topics: topics,
 			},
 		});
 	});

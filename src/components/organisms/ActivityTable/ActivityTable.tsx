@@ -3,7 +3,7 @@ import { useSelector } from 'react-redux';
 import { Link } from 'react-router-dom';
 import { ReactSVG } from 'react-svg';
 
-import { getAssetsByIds, getProfiles } from 'api';
+import { getAssetsByIds, getProfiles, readHandler } from 'api';
 
 import { Button } from 'components/atoms/Button';
 import { CurrencyLine } from 'components/atoms/CurrencyLine';
@@ -444,7 +444,7 @@ export default function ActivityTable(props: IProps) {
 									<S.AssetWrapper>
 										<S.AssetDataWrapper>
 											<Link to={`${URLS.asset}${row.asset.data.id}`}>
-												<AssetData asset={row.asset} />
+												<AssetData asset={row.asset} preview autoLoad />
 											</Link>
 										</S.AssetDataWrapper>
 										<Link to={`${URLS.asset}${row.asset.data.id}`}>

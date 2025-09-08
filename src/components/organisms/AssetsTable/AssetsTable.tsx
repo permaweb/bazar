@@ -17,13 +17,70 @@ import { useAppProvider } from 'providers/AppProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 import { usePermawebProvider } from 'providers/PermawebProvider';
 
+import { PlayButton } from '../../atoms/PlayButton';
 import { AssetData } from '../AssetData';
+import { MusicPlayer } from '../MusicPlayer';
 import { Stamps } from '../Stamps';
 
 import * as S from './styles';
 import { IProps } from './types';
 
 export default function AssetsTable(props: IProps) {
+	const [currentTrack, setCurrentTrack] = React.useState<AssetDetailType | null>(null);
+	const [isPlaying, setIsPlaying] = React.useState<boolean>(false);
+	const [currentTime, setCurrentTime] = React.useState<number>(0);
+	const [duration, setDuration] = React.useState<number>(0);
+	const [volume, setVolume] = React.useState<number>(0.7);
+	const [currentIndex, setCurrentIndex] = React.useState<number>(-1);
+
+	const handlePlayTrack = (asset: AssetDetailType, index: number) => {
+		if (currentTrack?.data.id === asset.data.id) {
+			// Same track - toggle play/pause
+			setIsPlaying(!isPlaying);
+		} else {
+			// New track - start playing
+			setCurrentTrack(asset);
+			setCurrentIndex(index);
+			setIsPlaying(true);
+			setCurrentTime(0);
+		}
+	};
+
+	const handlePlayPause = () => {
+		setIsPlaying(!isPlaying);
+	};
+
+	const handleSkipNext = () => {
+		if (assets && currentIndex < assets.length - 1) {
+			const nextIndex = currentIndex + 1;
+			setCurrentTrack(assets[nextIndex]);
+			setCurrentIndex(nextIndex);
+			setIsPlaying(true);
+			setCurrentTime(0);
+		}
+	};
+
+	const handleSkipPrevious = () => {
+		if (assets && currentIndex > 0) {
+			const prevIndex = currentIndex - 1;
+			setCurrentTrack(assets[prevIndex]);
+			setCurrentIndex(prevIndex);
+			setIsPlaying(true);
+			setCurrentTime(0);
+		}
+	};
+
+	const handleVolumeChange = (newVolume: number) => {
+		setVolume(newVolume);
+	};
+
+	const handleSeek = (newTime: number) => {
+		setCurrentTime(newTime);
+	};
+
+	const handleDurationChange = (newDuration: number) => {
+		setDuration(newDuration);
+	};
 	const { address } = useParams();
 	const navigate = useNavigate();
 
@@ -311,6 +368,10 @@ export default function AssetsTable(props: IProps) {
 											<S.AssetsListSectionElements>
 												{section.map((asset: AssetDetailType, index: number) => {
 													const redirect = `${URLS.asset}${asset.data.id}`;
+													const isAudioFile = asset.data.contentType && asset.data.contentType.includes('audio/');
+													const isCurrentTrack = currentTrack?.data.id === asset.data.id;
+													const globalIndex = sectionIndex * splitSections[0].length + index;
+
 													return (
 														<S.AssetsListSectionElement
 															key={index}
@@ -324,6 +385,15 @@ export default function AssetsTable(props: IProps) {
 																</S.Index>
 																<S.Thumbnail>
 																	<AssetData asset={asset} scrolling={scrolling} preview />
+
+																	{/* Play button overlay for audio files in list view */}
+																	{isAudioFile && (
+																		<PlayButton
+																			onClick={() => handlePlayTrack(asset, globalIndex)}
+																			isPlaying={isCurrentTrack && isPlaying}
+																			size="small"
+																		/>
+																	)}
 																</S.Thumbnail>
 																<S.Title>
 																	<p>{asset.data.title}</p>
@@ -349,43 +419,55 @@ export default function AssetsTable(props: IProps) {
 								<S.AssetsGridWrapper>
 									{assets.map((asset: AssetDetailType, index: number) => {
 										const redirect = `${URLS.asset}${asset.data.id}`;
+										const isAudioFile = asset.data.contentType && asset.data.contentType.includes('audio/');
+										const isCurrentTrack = currentTrack?.data.id === asset.data.id;
+
 										return (
 											<S.AssetGridElement key={index} className={'fade-in'}>
-												<Link to={redirect}>
-													<S.AssetGridDataWrapper disabled={false}>
-														<AssetData asset={asset} scrolling={scrolling} autoLoad />
-														{props.setProfileAction &&
-														permawebProvider.profile &&
-														permawebProvider.profile.id &&
-														permawebProvider.profile.id === address &&
-														asset.data.contentType &&
-														asset.data.contentType.includes('image') ? (
-															<S.AssetGridDataActionWrapper>
-																{/* <button
-																	onClick={(e: any) => handleProfileActionPress(e, asset)}
-																	disabled={profileLoading}
-																>
-																	<span>{profileLoading ? `${language.loading}...` : language.setProfilePicture}</span>
-																</button> */}
-																<Stamps
-																	txId={asset.data.id}
-																	title={asset.data.title || asset.data.description}
-																	asButton
-																	noAutoFetch
-																/>
-															</S.AssetGridDataActionWrapper>
-														) : (
-															<S.AssetGridDataActionWrapper>
-																<Stamps
-																	txId={asset.data.id}
-																	title={asset.data.title || asset.data.description}
-																	asButton
-																	noAutoFetch
-																/>
-															</S.AssetGridDataActionWrapper>
-														)}
-													</S.AssetGridDataWrapper>
-												</Link>
+												<S.AssetGridDataWrapper disabled={false}>
+													<AssetData asset={asset} scrolling={scrolling} preview />
+
+													{/* Link wrapper for non-play button areas */}
+													<Link
+														to={redirect}
+														style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 1 }}
+													>
+														<div style={{ width: '100%', height: '100%' }} />
+													</Link>
+
+													{/* Play button overlay for audio files - must be above link */}
+													{isAudioFile && (
+														<PlayButton
+															onClick={() => handlePlayTrack(asset, index)}
+															isPlaying={isCurrentTrack && isPlaying}
+														/>
+													)}
+
+													{props.setProfileAction &&
+													permawebProvider.profile &&
+													permawebProvider.profile.id &&
+													permawebProvider.profile.id === address &&
+													asset.data.contentType &&
+													asset.data.contentType.includes('image') ? (
+														<S.AssetGridDataActionWrapper>
+															<Stamps
+																txId={asset.data.id}
+																title={asset.data.title || asset.data.description}
+																asButton
+																noAutoFetch
+															/>
+														</S.AssetGridDataActionWrapper>
+													) : (
+														<S.AssetGridDataActionWrapper>
+															<Stamps
+																txId={asset.data.id}
+																title={asset.data.title || asset.data.description}
+																asButton
+																noAutoFetch
+															/>
+														</S.AssetGridDataActionWrapper>
+													)}
+												</S.AssetGridDataWrapper>
 												<S.AssetGridBottomWrapper>
 													<S.AssetGridInfoWrapper>
 														<Link to={redirect}>
@@ -424,108 +506,127 @@ export default function AssetsTable(props: IProps) {
 	}
 
 	return (
-		<S.Wrapper className={'fade-in'} ref={scrollRef}>
-			<S.Header>
-				<S.HeaderMain>
-					<h4>{`${language.assets}${props.ids && props.ids.length ? ` (${props.ids.length})` : ''}`}</h4>
-					<S.HeaderActions>
-						<Button
-							type={'primary'}
-							label={language.activeListings}
-							handlePress={toggleFilterListings}
-							disabled={getActionDisabled()}
-							active={assetFilterListings}
-							icon={assetFilterListings ? ASSETS.close : null}
-							className={'filter-listings'}
-						/>
-						<S.SelectWrapper>
-							<Select
-								label={null}
-								activeOption={assetSortType}
-								setActiveOption={(option: SelectOptionType) => handleAssetSortType(option)}
-								options={ASSET_SORT_OPTIONS.map((option: SelectOptionType) => option)}
+		<>
+			<S.Wrapper className={'fade-in'} ref={scrollRef}>
+				<S.Header>
+					<S.HeaderMain>
+						<h4>{`${language.assets}${props.ids && props.ids.length ? ` (${props.ids.length})` : ''}`}</h4>
+						<S.HeaderActions>
+							<Button
+								type={'primary'}
+								label={language.activeListings}
+								handlePress={toggleFilterListings}
 								disabled={getActionDisabled()}
+								active={assetFilterListings}
+								icon={assetFilterListings ? ASSETS.close : null}
+								className={'filter-listings'}
 							/>
-						</S.SelectWrapper>
-						{desktop && (
-							<S.ViewTypeWrapper className={'border-wrapper-alt1'}>
+							<S.SelectWrapper>
+								<Select
+									label={null}
+									activeOption={assetSortType}
+									setActiveOption={(option: SelectOptionType) => handleAssetSortType(option)}
+									options={ASSET_SORT_OPTIONS.map((option: SelectOptionType) => option)}
+									disabled={getActionDisabled()}
+								/>
+							</S.SelectWrapper>
+							{desktop && (
+								<S.ViewTypeWrapper className={'border-wrapper-alt1'}>
+									<IconButton
+										type={'alt1'}
+										src={ASSETS.grid}
+										handlePress={() => setViewType('grid')}
+										disabled={viewType === 'grid'}
+										dimensions={{
+											wrapper: 32.5,
+											icon: 17.5,
+										}}
+										active={viewType === 'grid'}
+										tooltip={'Grid view'}
+										useBottomToolTip
+										className={'start-action'}
+									/>
+									<IconButton
+										type={'alt1'}
+										src={ASSETS.list}
+										handlePress={() => setViewType('list')}
+										disabled={viewType === 'list'}
+										dimensions={{
+											wrapper: 32.5,
+											icon: 17.5,
+										}}
+										active={viewType === 'list'}
+										tooltip={'List view'}
+										useBottomToolTip
+										className={'end-action'}
+									/>
+								</S.ViewTypeWrapper>
+							)}
+							<S.HeaderPaginator>
 								<IconButton
 									type={'alt1'}
-									src={ASSETS.grid}
-									handlePress={() => setViewType('grid')}
-									disabled={viewType === 'grid'}
+									src={ASSETS.arrow}
+									handlePress={() => handlePaginationAction('previous', true)}
+									disabled={!assets || !previousAction}
 									dimensions={{
-										wrapper: 32.5,
+										wrapper: 30,
 										icon: 17.5,
 									}}
-									active={viewType === 'grid'}
-									tooltip={'Grid view'}
+									tooltip={language.previous}
 									useBottomToolTip
-									className={'start-action'}
+									className={'table-previous'}
 								/>
 								<IconButton
 									type={'alt1'}
-									src={ASSETS.list}
-									handlePress={() => setViewType('list')}
-									disabled={viewType === 'list'}
+									src={ASSETS.arrow}
+									handlePress={() => handlePaginationAction('next', true)}
+									disabled={!assets || !nextAction}
 									dimensions={{
-										wrapper: 32.5,
+										wrapper: 30,
 										icon: 17.5,
 									}}
-									active={viewType === 'list'}
-									tooltip={'List view'}
+									tooltip={language.next}
 									useBottomToolTip
-									className={'end-action'}
+									className={'table-next'}
 								/>
-							</S.ViewTypeWrapper>
-						)}
-						<S.HeaderPaginator>
-							<IconButton
-								type={'alt1'}
-								src={ASSETS.arrow}
-								handlePress={() => handlePaginationAction('previous', true)}
-								disabled={!assets || !previousAction}
-								dimensions={{
-									wrapper: 30,
-									icon: 17.5,
-								}}
-								tooltip={language.previous}
-								useBottomToolTip
-								className={'table-previous'}
-							/>
-							<IconButton
-								type={'alt1'}
-								src={ASSETS.arrow}
-								handlePress={() => handlePaginationAction('next', true)}
-								disabled={!assets || !nextAction}
-								dimensions={{
-									wrapper: 30,
-									icon: 17.5,
-								}}
-								tooltip={language.next}
-								useBottomToolTip
-								className={'table-next'}
-							/>
-						</S.HeaderPaginator>
-					</S.HeaderActions>
-				</S.HeaderMain>
-			</S.Header>
-			{getData()}
-			<S.Footer>
-				<Button
-					type={'primary'}
-					label={language.previous}
-					handlePress={() => handlePaginationAction('previous', true)}
-					disabled={!assets || !previousAction}
-				/>
-				<Button
-					type={'primary'}
-					label={language.next}
-					handlePress={() => handlePaginationAction('next', true)}
-					disabled={!assets || !nextAction}
-				/>
-			</S.Footer>
-			{assetErrorResponse && <p>{assetErrorResponse}</p>}
-		</S.Wrapper>
+							</S.HeaderPaginator>
+						</S.HeaderActions>
+					</S.HeaderMain>
+				</S.Header>
+				{getData()}
+				<S.Footer>
+					<Button
+						type={'primary'}
+						label={language.previous}
+						handlePress={() => handlePaginationAction('previous', true)}
+						disabled={!assets || !previousAction}
+					/>
+					<Button
+						type={'primary'}
+						label={language.next}
+						handlePress={() => handlePaginationAction('next', true)}
+						disabled={!assets || !nextAction}
+					/>
+				</S.Footer>
+				{assetErrorResponse && <p>{assetErrorResponse}</p>}
+			</S.Wrapper>
+
+			{/* Global Music Player */}
+			<MusicPlayer
+				currentTrack={currentTrack}
+				isPlaying={isPlaying}
+				onPlayPause={handlePlayPause}
+				onSkipNext={handleSkipNext}
+				onSkipPrevious={handleSkipPrevious}
+				onVolumeChange={handleVolumeChange}
+				onSeek={handleSeek}
+				onDurationChange={handleDurationChange}
+				currentTime={currentTime}
+				duration={duration}
+				volume={volume}
+				playlist={assets || []}
+				currentIndex={currentIndex}
+			/>
+		</>
 	);
 }

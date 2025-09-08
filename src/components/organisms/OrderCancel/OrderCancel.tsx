@@ -40,11 +40,11 @@ export default function OrderCancel(props: IProps) {
 						swapToken: props.listing.currency,
 					},
 					(args: { processing: boolean; success: boolean; message: string }) => {
-						console.log(args.message);
+						// console.log(args.message);
 					}
 				);
 
-				console.log(`Order Cancellation ID: ${cancelOrderId}`);
+				// console.log(`Order Cancellation ID: ${cancelOrderId}`);
 
 				setResponse({ status: 'success', message: `${language.orderCancelled}!` });
 

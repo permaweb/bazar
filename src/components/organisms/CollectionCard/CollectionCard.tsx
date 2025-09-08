@@ -33,7 +33,16 @@ export default function CollectionCard(props: IProps) {
 				)}
 			</S.InfoWrapper>
 			<S.BannerWrapper className={'border-wrapper-alt2'}>
-				<img src={getTxEndpoint(props.collection.banner || DEFAULTS.thumbnail)} alt={'Banner'} />
+				<img
+					src={getTxEndpoint(props.collection.banner || props.collection.thumbnail || DEFAULTS.banner)}
+					alt={props.collection.title || 'Collection Banner'}
+					onError={(e) => {
+						// Try fallback to default banner
+						if (!e.currentTarget.src.includes(DEFAULTS.banner)) {
+							e.currentTarget.src = getTxEndpoint(DEFAULTS.banner);
+						}
+					}}
+				/>
 			</S.BannerWrapper>
 		</S.Wrapper>
 	) : null;

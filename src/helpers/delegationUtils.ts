@@ -1,10 +1,17 @@
-import { readHandler } from 'api';
+import { connect, createDataItemSigner } from '@permaweb/aoconnect';
 
 import { DELEGATION } from './config';
 
+const { dryrun, message } = connect({
+	MODE: 'legacy',
+	MU_URL: 'https://mu.ao-testnet.xyz',
+	CU_URL: 'https://cu.ao-testnet.xyz',
+	GATEWAY_URL: 'https://arweave.net',
+});
+
 export interface DelegationPreference {
 	walletTo: string;
-	factor: number; // Percentage as integer (e.g., 1000 = 10%)
+	factor: number;
 }
 
 export interface DelegationLimits {
@@ -13,44 +20,62 @@ export interface DelegationLimits {
 	maxPossibleDelegation: number;
 }
 
+export interface ProcessInfo {
+	name: string;
+	processId: string;
+	logo?: string;
+	ticker?: string;
+	denomination?: number;
+}
+
 /**
  * Get current delegations for a wallet address
  */
-export async function getDelegations(walletAddress: string): Promise<DelegationPreference[]> {
+export const getDelegations = async (walletAddress: string): Promise<DelegationPreference[]> => {
 	try {
-		const result = await readHandler({
-			processId: DELEGATION.DELEGATION_CONTROLLER,
-			action: 'Get-Delegations',
-			tags: [{ name: 'Wallet-From', value: walletAddress }],
+		const result = await dryrun({
+			process: DELEGATION.CONTROLLER,
+			data: walletAddress,
+			tags: [
+				{ name: 'Action', value: 'Get-Delegations' },
+				{ name: 'Wallet', value: walletAddress },
+				{ name: 'Data-Protocol', value: 'ao' },
+				{ name: 'Type', value: 'Message' },
+				{ name: 'Variant', value: 'ao.TN.1' },
+			],
+			anchor: DELEGATION.ANCHOR,
 		});
 
-		if (result && result.Messages && result.Messages[0] && result.Messages[0].Data) {
+		if (result?.Messages?.length > 0) {
 			const delegationData = JSON.parse(result.Messages[0].Data);
-			return delegationData.delegationPrefs || [];
+			const delegations = delegationData.delegationPrefs || [];
+			console.log('DEBUG: Fetched delegations:', delegations);
+			console.log('DEBUG: Looking for PIXL process:', DELEGATION.PIXL_PROCESS);
+			return delegations;
 		}
-
 		return [];
 	} catch (error) {
 		console.error('Error fetching delegations:', error);
 		return [];
 	}
-}
+};
 
 /**
- * Calculate delegation limits and current PIXL delegation
+ * Calculate delegation limits and current state
  */
-export function calculateDelegationLimits(
-	delegations: DelegationPreference[],
-	pixlProcessId: string,
-	walletAddress: string
-): DelegationLimits {
+export const calculateDelegationLimits = (
+	currentDelegations: DelegationPreference[],
+	pixlProcessId: string = DELEGATION.PIXL_PROCESS,
+	walletAddress?: string
+): DelegationLimits => {
 	let totalOtherDelegations = 0;
 	let currentPixlDelegation = 0;
 
-	delegations.forEach((pref) => {
+	currentDelegations.forEach((pref) => {
 		if (pref.walletTo === pixlProcessId) {
 			currentPixlDelegation = pref.factor / 100; // Convert to percentage
-		} else {
+		} else if (pref.walletTo !== walletAddress) {
+			// Don't count AO self-delegation as "other" - it's available space
 			totalOtherDelegations += pref.factor / 100;
 		}
 	});
@@ -63,87 +88,164 @@ export function calculateDelegationLimits(
 		totalOtherDelegations,
 		maxPossibleDelegation,
 	};
-}
+};
 
 /**
- * Set delegation for a specific token
+ * Set delegation for PIXL token
  */
-export async function setDelegation(
-	walletAddress: string,
-	tokenProcessId: string,
-	percentage: number,
-	adjustOthers: boolean = false
-): Promise<boolean> {
-	try {
-		if (adjustOthers) {
-			await adjustOtherDelegations(walletAddress, percentage);
-		}
+export const setPixlDelegation = async (walletAddress: string, percentage: number): Promise<string> => {
+	const signer = createDataItemSigner(window.arweaveWallet);
+	const factor = percentage * 100;
 
-		// Set the main delegation
-		const result = await readHandler({
-			processId: DELEGATION.DELEGATION_CONTROLLER,
-			action: 'Set-Delegation',
-			tags: [
-				{ name: 'Wallet-From', value: walletAddress },
-				{ name: 'Wallet-To', value: tokenProcessId },
-				{ name: 'Factor', value: (percentage * 100).toString() }, // Convert to integer
-			],
-		});
+	// 1. Get current delegations
+	const currentDelegations = await getDelegations(walletAddress);
 
-		return result && result.Messages && result.Messages.length > 0;
-	} catch (error) {
-		console.error('Error setting delegation:', error);
-		return false;
-	}
-}
+	// 2. Set the PIXL delegation (let AO system handle the remainder)
+	const data = JSON.stringify({
+		walletFrom: walletAddress,
+		walletTo: DELEGATION.PIXL_PROCESS,
+		factor: factor,
+	});
+
+	const messageId = await message({
+		process: DELEGATION.CONTROLLER,
+		signer: signer,
+		data: data,
+		tags: [
+			{ name: 'Action', value: 'Set-Delegation' },
+			{ name: 'Data-Protocol', value: 'ao' },
+			{ name: 'Type', value: 'Message' },
+			{ name: 'Variant', value: 'ao.TN.1' },
+		],
+		anchor: DELEGATION.ANCHOR,
+	});
+
+	// 3. Wait for the message to be processed
+	await new Promise((resolve) => setTimeout(resolve, 3000));
+
+	// 4. Verify the final state
+	const finalDelegations = await getDelegations(walletAddress);
+
+	// Calculate total from final state
+	const totalFactor = finalDelegations.reduce((sum, pref) => sum + pref.factor, 0);
+
+	return messageId;
+};
 
 /**
- * Adjust other delegations to make room for new delegation
+ * Adjust other delegations to make room for PIXL
  */
-async function adjustOtherDelegations(walletAddress: string, desiredPercentage: number): Promise<void> {
-	try {
-		const currentDelegations = await getDelegations(walletAddress);
-		const availableSpace = 100 - desiredPercentage;
+export const adjustOtherDelegations = async (walletAddress: string, desiredPercentage: number): Promise<void> => {
+	const currentDelegations = await getDelegations(walletAddress);
+	const signer = createDataItemSigner(window.arweaveWallet);
 
-		// First, reduce delegations to other tokens
+	// If user wants 100%, zero out all others
+	if (desiredPercentage === 100) {
 		for (const pref of currentDelegations) {
 			if (pref.walletTo !== DELEGATION.PIXL_PROCESS) {
-				await readHandler({
-					processId: DELEGATION.DELEGATION_CONTROLLER,
-					action: 'Set-Delegation',
+				await message({
+					process: DELEGATION.CONTROLLER,
+					signer: signer,
+					data: JSON.stringify({
+						walletFrom: walletAddress,
+						walletTo: pref.walletTo,
+						factor: 0,
+					}),
 					tags: [
-						{ name: 'Wallet-From', value: walletAddress },
-						{ name: 'Wallet-To', value: pref.walletTo },
-						{ name: 'Factor', value: '0' }, // Remove delegation
+						{ name: 'Action', value: 'Set-Delegation' },
+						{ name: 'Data-Protocol', value: 'ao' },
+						{ name: 'Type', value: 'Message' },
+						{ name: 'Variant', value: 'ao.TN.1' },
 					],
+					anchor: DELEGATION.ANCHOR,
 				});
 			}
 		}
-
+	} else {
 		// Proportionally reduce other delegations
 		const otherDelegationsTotal = currentDelegations
 			.filter((pref) => pref.walletTo !== DELEGATION.PIXL_PROCESS)
-			.reduce((sum, pref) => sum + pref.factor / 100, 0);
+			.reduce((sum, pref) => sum + pref.factor, 0);
 
-		if (otherDelegationsTotal > 0) {
-			const reductionFactor = availableSpace / otherDelegationsTotal;
+		const availableSpace = DELEGATION.BASIS_POINTS.FULL - desiredPercentage * 100;
+		const reductionFactor = availableSpace / otherDelegationsTotal;
 
-			for (const pref of currentDelegations) {
-				if (pref.walletTo !== DELEGATION.PIXL_PROCESS) {
-					const newPercentage = (pref.factor / 100) * reductionFactor;
-					await readHandler({
-						processId: DELEGATION.DELEGATION_CONTROLLER,
-						action: 'Set-Delegation',
-						tags: [
-							{ name: 'Wallet-From', value: walletAddress },
-							{ name: 'Wallet-To', value: pref.walletTo },
-							{ name: 'Factor', value: (newPercentage * 100).toString() },
-						],
-					});
-				}
+		for (const pref of currentDelegations) {
+			if (pref.walletTo !== DELEGATION.PIXL_PROCESS) {
+				const newFactor = Math.floor(pref.factor * reductionFactor);
+				await message({
+					process: DELEGATION.CONTROLLER,
+					signer: signer,
+					data: JSON.stringify({
+						walletFrom: walletAddress,
+						walletTo: pref.walletTo,
+						factor: newFactor,
+					}),
+					tags: [
+						{ name: 'Action', value: 'Set-Delegation' },
+						{ name: 'Data-Protocol', value: 'ao' },
+						{ name: 'Type', value: 'Message' },
+						{ name: 'Variant', value: 'ao.TN.1' },
+					],
+					anchor: DELEGATION.ANCHOR,
+				});
 			}
 		}
-	} catch (error) {
-		console.error('Error adjusting other delegations:', error);
 	}
-}
+};
+
+/**
+ * Get process information for delegation display
+ */
+
+export const getProcessInfo = async (processId: string): Promise<ProcessInfo> => {
+	try {
+		const result = await dryrun({
+			process: processId,
+			data: '',
+			tags: [{ name: 'Action', value: 'Info' }],
+		});
+
+		if (result?.Messages?.length > 0) {
+			const tags = result.Messages[0].Tags;
+			const nameTag = tags.find((tag) => tag.name === 'Token-Name');
+			const logoTag = tags.find((tag) => tag.name === 'Logo');
+			const tokenLogoTag = tags.find((tag) => tag.name === 'Token-Logo');
+			const tickerTag = tags.find((tag) => tag.name === 'Ticker');
+			const denominationTag = tags.find((tag) => tag.name === 'Denomination');
+			const tokenProcessTag = tags.find((tag) => tag.name === 'Token-Process');
+
+			const logoValue = logoTag?.value || tokenLogoTag?.value;
+
+			return {
+				name: nameTag?.value || `${processId.substring(0, 6)}...`,
+				processId,
+				logo: logoValue,
+				ticker: tickerTag?.value,
+				denomination: denominationTag?.value ? parseInt(denominationTag.value) : undefined,
+				// Add Token-Process for asset linking
+				...(tokenProcessTag ? { ['Token-Process']: tokenProcessTag.value } : {}),
+			};
+		}
+	} catch (error) {
+		console.error('Error fetching process info:', error);
+	}
+	return {
+		name: `${processId.substring(0, 6)}...`,
+		processId,
+	};
+};
+
+/**
+ * Convert basis points to percentage
+ */
+export const basisPointsToPercentage = (basisPoints: number): number => {
+	return basisPoints / 100;
+};
+
+/**
+ * Convert percentage to basis points
+ */
+export const percentageToBasisPoints = (percentage: number): number => {
+	return percentage * 100;
+};

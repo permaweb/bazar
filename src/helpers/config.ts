@@ -461,8 +461,14 @@ export const getDefaultToken = () => {
 	return TOKEN_REGISTRY[AO.defaultToken];
 };
 
-// Delegation configuration
+// Delegation Configuration
 export const DELEGATION = {
-	PIXL_PROCESS: 'DM3FoZUq_yebASPhgd8pEIRIzDW6muXEhxz5-JwbZwo', // PIXL token process ID
-	DELEGATION_CONTROLLER: 'cuxSKjGJ-WDB9PzSkVkVVrIBSh3DrYHYz44usQOj5yE', // Global delegation controller
+	CONTROLLER: 'cuxSKjGJ-WDB9PzSkVkVVrIBSh3DrYHYz44usQOj5yE',
+	PIXL_PROCESS: '3eZ6_ry6FD9CB58ImCQs6Qx_rJdDUGhz-D2W1AqzHD8', // PIXL Fair Launch Process (from Decent Land walkthrough)
+	ANCHOR: '00000000000000000000000000007046',
+	BASIS_POINTS: {
+		FULL: 10000, // 100%
+		HALF: 5000, // 50%
+		QUARTER: 2500, // 25%
+	},
 };

@@ -160,29 +160,22 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 								setProfile(newProfile);
 								cacheProfile(arProvider.walletAddress, newProfile);
 								changeDetected = true;
-							} else {
-								await new Promise((resolve) => setTimeout(resolve, 1000));
-								tries++;
 							}
-						} catch (error) {
+						} catch (e: any) {
 							if (process.env.NODE_ENV === 'development') {
-								console.error('Error during profile update:', error);
+								console.error('Error in fetchProfileUntilChange:', e);
 							}
-							break;
 						}
-					}
 
-					if (!changeDetected) {
-						if (process.env.NODE_ENV === 'development') {
-							console.warn(`No changes detected after ${maxTries} attempts`);
-						}
+						tries++;
+						await new Promise((r) => setTimeout(r, 2000));
 					}
 				};
 
 				await fetchProfileUntilChange();
 			}
 		})();
-	}, [refreshProfileTrigger]);
+	}, [arProvider.wallet, arProvider.walletAddress, refreshProfileTrigger]);
 
 	React.useEffect(() => {
 		const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -321,8 +314,15 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 	}
 
 	function getCachedProfile(address: string) {
-		const cached = localStorage.getItem(STORAGE.profile(address));
-		return cached ? JSON.parse(cached) : null;
+		try {
+			const cached = localStorage.getItem(STORAGE.profile(address));
+			return cached ? JSON.parse(cached) : null;
+		} catch (error) {
+			console.warn('Error parsing cached profile:', error);
+			// Clear the corrupted cache
+			localStorage.removeItem(STORAGE.profile(address));
+			return null;
+		}
 	}
 
 	function cacheProfile(address: string, profileData: any) {

@@ -2,7 +2,11 @@ import { ReduxActionType } from 'helpers/types';
 
 import { SET_COLLECTIONS } from './constants';
 
-export const initStateCollections: any = null;
+export const initStateCollections: any = {
+	stamped: null,
+	creators: {},
+	music: null,
+};
 
 export function collectionsReducer(state: any = initStateCollections, action: ReduxActionType) {
 	switch (action.type) {
