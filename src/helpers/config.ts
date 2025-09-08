@@ -59,6 +59,7 @@ import users from 'assets/users.svg';
 import video from 'assets/video.svg';
 import view from 'assets/view.svg';
 import wallet from 'assets/wallet.svg';
+import wander from 'assets/wander.png';
 import x from 'assets/x.svg';
 import zen from 'assets/zen.svg';
 
@@ -181,13 +182,14 @@ export const ASSETS = {
 	view,
 	video,
 	wallet,
+	wander,
 	x,
 	zen,
 	beacon,
 };
 
 export const AR_WALLETS = [
-	{ type: WalletEnum.wander, logo: ASSETS.beacon }, // Using beacon logo for wander wallet
+	{ type: WalletEnum.wander, logo: ASSETS.wander },
 	{ type: WalletEnum.beacon, logo: ASSETS.beacon },
 	{ type: WalletEnum.othent, logo: ASSETS.othent },
 ];
@@ -323,7 +325,7 @@ export const REDIRECTS = {
 	discord: `https://discord.gg/vS2fYJNucN`,
 	bazarStudio: `https://studio_bazar.arweave.net`,
 	aox: `https://aox.arweave.net`,
-	arconnect: `https://arconnect.io`,
+	arconnect: `https://wander.app`,
 	warDepot: `https://wardepot.arweave.net`,
 	explorer: (messageId: string) => `https://lunar.arweave.net/#/explorer/${messageId}`,
 };
