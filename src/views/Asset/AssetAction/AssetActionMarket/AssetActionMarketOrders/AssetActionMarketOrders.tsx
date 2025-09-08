@@ -66,7 +66,7 @@ async function createOrderWithExtendedTimeout(
 
 	// Calculate max attempts based on timeout (assuming 1 second delay between attempts)
 	const maxAttempts = Math.floor(timeoutMs / 1000);
-	console.log(`🔍 Legacy asset timeout: ${timeoutMs}ms, maxAttempts: ${maxAttempts}`);
+	// Legacy asset timeout configuration
 
 	const permaweb = Permaweb.init(deps);
 
@@ -105,7 +105,7 @@ async function createOrderWithExtendedTimeout(
 			tags: tags,
 			data: data,
 		});
-		console.log(`✅ Message sent successfully`);
+		// Message sent successfully
 
 		const successMatch = ['Order-Success'];
 		const errorMatch = ['Order-Error'];
@@ -187,7 +187,7 @@ async function getMatchingMessagesWithExtendedTimeout(
 			messagesByGroupId = await getMessagesByGroupId(processes, groupId, deps);
 		} catch (error) {
 			// For network errors, just log and continue waiting - don't fail immediately
-			console.log(`⚠️ Network error on attempt ${attempts}, continuing to wait...`, error.message);
+			// Network error on attempt, continuing to wait
 			messagesByGroupId = []; // Set empty array to continue the loop
 		}
 
@@ -517,7 +517,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 				let orderId;
 				if (isLegacyAsset) {
 					// For legacy assets, show warning and use extended timeout
-					console.log('🔍 Using custom createOrderWithExtendedTimeout for legacy asset');
+					// Using custom createOrderWithExtendedTimeout for legacy asset
 					handleStatusUpdate(
 						true,
 						false,
