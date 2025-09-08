@@ -12,9 +12,6 @@ export interface QuestProgress {
 	totalPurchases: number;
 	pixelDelegationPercentage?: number;
 	hasStampedAsset?: boolean;
-	wanderTier?: string;
-	wanderBalance?: number;
-	wanderRank?: number;
 }
 
 export class QuestTracker {
