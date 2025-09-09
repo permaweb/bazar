@@ -20,8 +20,8 @@ export function testWanderTierIntegration() {
 	const tiers: Array<'Prime' | 'Edge' | 'Reserve' | 'Select' | 'Core'> = ['Prime', 'Edge', 'Reserve', 'Select', 'Core'];
 
 	tiers.forEach((tier) => {
-		const rewards = calculateTierRewards(baseWndr, basePixel, tier);
-		console.log(`${tier}: ${rewards.wndr} WNDR + ${rewards.pixel} PIXL (${rewards.multiplier}x)`);
+		const rewards = calculateTierRewards(baseWndr, tier);
+		console.log(`${tier}: ${rewards.wndr} WNDR (${rewards.multiplier}x)`);
 	});
 
 	// Test quest descriptions
