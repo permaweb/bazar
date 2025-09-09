@@ -48,7 +48,10 @@ export const getDelegations = async (walletAddress: string): Promise<DelegationP
 
 		if (result?.Messages?.length > 0) {
 			const delegationData = JSON.parse(result.Messages[0].Data);
-			return delegationData.delegationPrefs || [];
+			const delegations = delegationData.delegationPrefs || [];
+			console.log('DEBUG: Fetched delegations:', delegations);
+			console.log('DEBUG: Looking for PIXL process:', DELEGATION.PIXL_PROCESS);
+			return delegations;
 		}
 		return [];
 	} catch (error) {

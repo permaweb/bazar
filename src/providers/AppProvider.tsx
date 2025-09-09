@@ -282,31 +282,36 @@ export function AppProvider(props: AppProviderProps) {
 						processId: AO.defaultToken,
 						action: 'Info',
 					});
+
 					const pixlState = await readHandler({
 						processId: AO.pixl,
 						action: 'Info',
 					});
 
-					console.log('Currency states fetched:', { defaultTokenState, pixlState });
+					const stampState = await readHandler({
+						processId: AO.stamps,
+						action: 'Info',
+					});
 
-					const currencyPayload = {
+					const currencies = {
 						[AO.defaultToken]: {
 							...defaultTokenState,
 						},
 						[AO.pixl]: {
 							...pixlState,
 						},
+						[AO.stamps]: {
+							...stampState,
+						},
 					};
 
-					console.log('Dispatching setCurrencies with payload:', currencyPayload);
-
-					dispatch(currencyActions.setCurrencies(currencyPayload));
+					dispatch(currencyActions.setCurrencies(currencies));
 				}
 			} catch (e: any) {
 				console.error('Error in currency initialization:', e);
 			}
 		})();
-	}, [currenciesReducer, dispatch]);
+	}, []); // Remove currenciesReducer dependency to always fetch fresh data
 
 	return (
 		<AppContext.Provider

@@ -53,7 +53,7 @@ export async function getAssetsByIds(args: { ids: string[]; sortType: AssetSortT
 
 			structuredAssets.forEach((asset: AssetType) => {
 				let assetOrders: AssetOrderType[] | null = null;
-				const existingEntry = ucmReducer?.Orderbook.find((entry: OrderbookEntryType) => {
+				const existingEntry = ucmReducer?.Orderbook?.find((entry: OrderbookEntryType) => {
 					return entry.Pair ? entry.Pair[0] === asset.data.id : null;
 				});
 
@@ -74,7 +74,8 @@ export async function getAssetsByIds(args: { ids: string[]; sortType: AssetSortT
 				finalAssets.push(finalAsset);
 			});
 
-			return sortByAssetOrders(finalAssets, args.sortType, stampsReducer);
+			const sortedAssets = sortByAssetOrders(finalAssets, args.sortType, stampsReducer);
+			return sortedAssets;
 		}
 
 		return null;
@@ -106,25 +107,31 @@ export async function getAssetById(args: { id: string; libs?: any }): Promise<As
 			const structuredAsset = structureAssets(assetLookupResponse)[0];
 
 			let processState: any;
-			processState = await readHandler({
-				processId: structuredAsset.data.id,
-				action: 'Info',
-				data: null,
-			});
-			// if (args.libs) {
-			// 	processState = await args.libs.readState({
-			// 		processId: structuredAsset.data.id,
-			// 		path: 'asset',
-			// 		fallbackAction: 'Info',
-			// 		node: HB.defaultNode
-			// 	});
-			// } else {
-			// 	processState = await readHandler({
-			// 		processId: structuredAsset.data.id,
-			// 		action: 'Info',
-			// 		data: null,
-			// 	});
-			// }
+
+			// Try Hyperbean first (more efficient), fall back to dryrun if it fails
+			if (args.libs) {
+				try {
+					processState = await args.libs.readState({
+						processId: structuredAsset.data.id,
+						path: 'asset',
+						fallbackAction: 'Info',
+						node: HB.defaultNode,
+					});
+				} catch (e) {
+					console.log('Hyperbean failed, falling back to dryrun:', e);
+					processState = await readHandler({
+						processId: structuredAsset.data.id,
+						action: 'Info',
+						data: null,
+					});
+				}
+			} else {
+				processState = await readHandler({
+					processId: structuredAsset.data.id,
+					action: 'Info',
+					data: null,
+				});
+			}
 
 			if (processState) {
 				if (processState.Name || processState.name) {
@@ -156,11 +163,32 @@ export async function getAssetById(args: { id: string; libs?: any }): Promise<As
 				console.log('Getting balances...');
 				try {
 					await new Promise((r) => setTimeout(r, 1000));
-					const processBalances = await readHandler({
-						processId: structuredAsset.data.id,
-						action: 'Balances',
-						data: null,
-					});
+
+					// Try Hyperbean first for balances too
+					let processBalances: any;
+					if (args.libs) {
+						try {
+							processBalances = await args.libs.readState({
+								processId: structuredAsset.data.id,
+								path: 'balances',
+								fallbackAction: 'Balances',
+								node: HB.defaultNode,
+							});
+						} catch (e) {
+							console.log('Hyperbean balances failed, falling back to dryrun:', e);
+							processBalances = await readHandler({
+								processId: structuredAsset.data.id,
+								action: 'Balances',
+								data: null,
+							});
+						}
+					} else {
+						processBalances = await readHandler({
+							processId: structuredAsset.data.id,
+							action: 'Balances',
+							data: null,
+						});
+					}
 
 					if (processBalances) assetState.balances = processBalances;
 				} catch (e: any) {
@@ -176,8 +204,9 @@ export async function getAssetById(args: { id: string; libs?: any }): Promise<As
 				Set legacy orderbook on legacy assets */
 			if (processState.Metadata) {
 				if (processState.Metadata.OrderbookId) assetOrderbook = { id: processState.Metadata.OrderbookId };
-			} else assetOrderbook = { id: AO.ucm, activityId: AO.ucmActivity };
-
+			} else {
+				assetOrderbook = { id: AO.ucm, activityId: AO.ucmActivity };
+			}
 			return {
 				...structuredAsset,
 				state: assetState,
@@ -220,7 +249,8 @@ export function getAssetOrders(orderbook: { Pair: string[]; Orders: any } | null
 			currency: orderbook.Pair[1],
 		};
 
-		if (order.Price) currentAssetOrder.price = order.Price;
+		// Always set price field, default to '0' if not provided
+		currentAssetOrder.price = order.Price || '0';
 		return currentAssetOrder;
 	});
 

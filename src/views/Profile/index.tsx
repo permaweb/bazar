@@ -50,7 +50,7 @@ export default function Profile() {
 
 					if (!fetchedProfile?.id || !fetchedProfile?.username) {
 						await new Promise((r) => setTimeout(r, 1000));
-						console.log('Fetching legacy profile...');
+						// Fetching legacy profile
 						isLegacyProfile = true;
 						const aoProfile = AOProfile.init({ ao: connect({ MODE: 'legacy' }) });
 						fetchedProfile = await aoProfile.getProfileById({ profileId: address });
