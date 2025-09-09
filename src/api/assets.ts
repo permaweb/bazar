@@ -107,13 +107,24 @@ export async function getAssetById(args: { id: string; libs?: any }): Promise<As
 			const structuredAsset = structureAssets(assetLookupResponse)[0];
 
 			let processState: any;
+
+			// Try Hyperbean first (more efficient), fall back to dryrun if it fails
 			if (args.libs) {
-				processState = await args.libs.readState({
-					processId: structuredAsset.data.id,
-					path: 'asset',
-					fallbackAction: 'Info',
-					node: HB.defaultNode,
-				});
+				try {
+					processState = await args.libs.readState({
+						processId: structuredAsset.data.id,
+						path: 'asset',
+						fallbackAction: 'Info',
+						node: HB.defaultNode,
+					});
+				} catch (e) {
+					console.log('Hyperbean failed, falling back to dryrun:', e);
+					processState = await readHandler({
+						processId: structuredAsset.data.id,
+						action: 'Info',
+						data: null,
+					});
+				}
 			} else {
 				processState = await readHandler({
 					processId: structuredAsset.data.id,
@@ -152,11 +163,32 @@ export async function getAssetById(args: { id: string; libs?: any }): Promise<As
 				console.log('Getting balances...');
 				try {
 					await new Promise((r) => setTimeout(r, 1000));
-					const processBalances = await readHandler({
-						processId: structuredAsset.data.id,
-						action: 'Balances',
-						data: null,
-					});
+
+					// Try Hyperbean first for balances too
+					let processBalances: any;
+					if (args.libs) {
+						try {
+							processBalances = await args.libs.readState({
+								processId: structuredAsset.data.id,
+								path: 'balances',
+								fallbackAction: 'Balances',
+								node: HB.defaultNode,
+							});
+						} catch (e) {
+							console.log('Hyperbean balances failed, falling back to dryrun:', e);
+							processBalances = await readHandler({
+								processId: structuredAsset.data.id,
+								action: 'Balances',
+								data: null,
+							});
+						}
+					} else {
+						processBalances = await readHandler({
+							processId: structuredAsset.data.id,
+							action: 'Balances',
+							data: null,
+						});
+					}
 
 					if (processBalances) assetState.balances = processBalances;
 				} catch (e: any) {

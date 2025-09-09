@@ -95,6 +95,16 @@ export const HB = {
 };
 
 export const REFORMATTED_ASSETS = {
+	[AO.pixl]: {
+		title: 'PIXL Token',
+		logo: 'czR2tJmSr7upPpReXu6IuOc2H7RuHRRAhI7DXAUlszU',
+		denomination: 6,
+	},
+	[AO.stamps]: {
+		title: 'STAMP Token',
+		logo: 'kg0d-QRW1kD9lwBErRD9CGQogTp5hgPfkf1i7ApE4WU',
+		denomination: 12,
+	},
 	['pazXumQI-HPH7iFGfTC-4_7biSnqz_U67oFAGry5zUY']: {
 		title: 'Llama Coin',
 		logo: '9FSEgmUsrug7kTdZJABDekwTGJy7YG7KaN5khcbwcX4',
@@ -289,6 +299,7 @@ function createURLs() {
 		collectionActivity: (id: string) => `${collection}${id}/activity/`,
 		collections: `${base}collections/`,
 		docs: `${base}docs/`,
+		terms: `${base}terms/`,
 		profile: profile,
 		profileAssets: (address: string) => `${profile}${address}/assets/`,
 		profileCollections: (address: string) => `${profile}${address}/collections/`,

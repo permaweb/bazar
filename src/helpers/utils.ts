@@ -387,12 +387,8 @@ export function getTotalTokenBalance(
 
 	let total = 0;
 
-	if (tokenBalances.profileBalance !== null && tokenBalances.profileBalance !== undefined) {
-		total += Number(tokenBalances.profileBalance);
-	}
-	if (tokenBalances.walletBalance !== null && tokenBalances.walletBalance !== undefined) {
-		total += Number(tokenBalances.walletBalance);
-	}
+	if (tokenBalances.profileBalance !== null) total += tokenBalances.profileBalance;
+	if (tokenBalances.walletBalance !== null) total += tokenBalances.walletBalance;
 
 	return total;
 }

@@ -33,6 +33,9 @@ import { IProps } from './types';
 
 const GROUP_COUNT = 50;
 
+// Spam address to filter out from Recent Activity
+const SPAM_ADDRESS = 'DwYZmjS7l6NHwojaH7-LzRBb4RiwjshGQm7-1ApDObw';
+
 export default function ActivityTable(props: IProps) {
 	const profilesReducer = useSelector((state: RootState) => state.profilesReducer);
 
@@ -213,6 +216,8 @@ export default function ActivityTable(props: IProps) {
 	}, [activityGroups, activityCursor, props.address, profilesReducer?.registryProfiles]);
 
 	function transformGqlResponse(edges: GqlEdge[]): FormattedActivity {
+		console.log('Processing', edges.length, 'activities for spam filtering');
+
 		const out: FormattedActivity = {
 			ListedOrders: [],
 			PurchasesByAddress: {},
@@ -223,12 +228,100 @@ export default function ActivityTable(props: IProps) {
 		};
 
 		const swapTokens = [getDefaultToken().id];
+		let spamFilteredCount = 0;
 
 		for (const { node } of edges) {
 			const t = node.tags.reduce<Record<string, string>>((m, { name, value }) => {
 				m[name] = value;
 				return m;
 			}, {});
+
+			// Debug: Log all addresses to see what we're working with
+			if (node.recipient && node.recipient.includes('DwYZmjS7l6NHwojaH7-LzRBb4RiwjshGQm7-1ApDObw')) {
+				console.log('Found spam address in node.recipient:', node.recipient);
+			}
+			if (t['Sender'] && t['Sender'].includes('DwYZmjS7l6NHwojaH7-LzRBb4RiwjshGQm7-1ApDObw')) {
+				console.log('Found spam address in t.Sender:', t['Sender']);
+			}
+
+			// Debug: Log all tag values to see what fields are available
+			if (Object.values(t).some((value) => value && value.includes('DwYZmjS7l6NHwojaH7-LzRBb4RiwjshGQm7-1ApDObw'))) {
+				console.log('Found spam address in tags:', t);
+				console.log('Node recipient:', node.recipient);
+			}
+
+			// Debug: Log a sample of addresses to see what we're working with
+			if (Math.random() < 0.05) {
+				// Log 5% of activities to see sample data
+				console.log('Sample activity data:', {
+					nodeId: node.id,
+					recipient: node.recipient,
+					tags: t,
+					action: t['Action'],
+					price: t['Price'],
+					swapToken: t['SwapToken'],
+					message: t['Message'],
+				});
+			}
+
+			// Debug: Log activities that might be spam based on price or content
+			if (t['Price'] === 'None' || t['Price'] === '0' || (t['Message'] && t['Message'].includes('🐙'))) {
+				console.log('Potential spam activity detected:', {
+					nodeId: node.id,
+					price: t['Price'],
+					swapToken: t['SwapToken'],
+					message: t['Message'],
+					sender: t['Sender'],
+					recipient: node.recipient,
+				});
+			}
+
+			// Debug: Check if spam address appears anywhere in the data (partial match)
+			const allDataString = JSON.stringify({ node, tags: t });
+			if (allDataString.includes('DwYZmjS7l6NHwojaH7-LzRBb4RiwjshGQm7-1ApDObw')) {
+				console.log('Found spam address in activity data:', { node, tags: t });
+			}
+
+			// Filter out activities from spam address
+			// Check multiple fields where the spam address might appear
+			const isSpamActivity =
+				node.recipient === SPAM_ADDRESS ||
+				t['Sender'] === SPAM_ADDRESS ||
+				t['From-Process'] === SPAM_ADDRESS ||
+				t['Recipient'] === SPAM_ADDRESS ||
+				t['To-Process'] === SPAM_ADDRESS ||
+				t['Owner'] === SPAM_ADDRESS ||
+				t['Creator'] === SPAM_ADDRESS;
+
+			// Additional filter: Check if this is a spam activity based on very low denomination values
+			// Spam collections often have extremely low prices that aren't visible in UI
+			const price = t['Price'];
+			const isLowDenominationSpam =
+				price &&
+				price === 'None'; // Only filter out "None" prices, not "0" or small values
+
+			// Check if this looks like emoji/animal spam based on asset data
+			// Only filter if we have strong evidence it's spam
+			const isEmojiAnimalSpam =
+				t['Message'] &&
+				// Only filter if the message contains multiple emojis (spam pattern)
+				((t['Message'].includes('🐙') && t['Message'].includes('🦑')) || // Octopus + squid pattern
+					(t['Message'].includes('🐬') && t['Message'].includes('🐋')) || // Dolphin + whale pattern
+					// Or if it contains very specific spam patterns
+					t['Message'].includes('🐙🦑') ||
+					t['Message'].includes('🐬🐋'));
+
+			if (isSpamActivity || isLowDenominationSpam || isEmojiAnimalSpam) {
+				spamFilteredCount++;
+				if (isSpamActivity) {
+					console.log('Filtering out spam activity from address:', SPAM_ADDRESS, 'in node:', node.id);
+				} else if (isLowDenominationSpam) {
+					console.log('Filtering out low denomination spam activity with price:', price, 'in node:', node.id);
+				} else if (isEmojiAnimalSpam) {
+					console.log('Filtering out emoji/animal spam activity in node:', node.id);
+				}
+				continue;
+			}
 
 			const tsMs = node?.block?.timestamp ? node.block.timestamp * 1000 : '-';
 			const action = t['Action'];
@@ -261,6 +354,18 @@ export default function ActivityTable(props: IProps) {
 			}
 		}
 
+		console.log(
+			`Spam filtering summary: ${spamFilteredCount} activities filtered out of ${edges.length} total activities`
+		);
+		console.log(`Remaining activities after filtering: ${edges.length - spamFilteredCount}`);
+
+		// Debug: Show what types of filtering are happening
+		if (spamFilteredCount > 0) {
+			console.log('Filtering breakdown:');
+			console.log('- Address-based filtering: Check console for "Filtering out spam activity from address"');
+			console.log('- Low denomination filtering: Check console for "Filtering out low denomination spam activity"');
+			console.log('- Emoji/animal filtering: Check console for "Filtering out emoji/animal spam activity"');
+		}
 		return out;
 	}
 

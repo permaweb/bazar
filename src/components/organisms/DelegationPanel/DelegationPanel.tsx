@@ -718,17 +718,27 @@ export function DelegationPanel({ walletAddress, isOpen, onClose }: DelegationPa
 									{(() => {
 										// Only include delegations with factor > 0
 										const filteredDelegations = state.currentDelegations.filter((d) => d.factor > 0);
-										if (filteredDelegations.length === 1) {
-											// Single token at 100%: render a solid circle
-											const color = getTokenColor(filteredDelegations[0], state.processInfo);
-											return <circle cx="60" cy="60" r="60" fill={color} />;
+
+										// If no delegations, show empty circle
+										if (filteredDelegations.length === 0) {
+											return <circle cx="60" cy="60" r="60" fill="transparent" stroke="#666" strokeWidth="2" />;
 										}
-										let currentAngle = 0;
+
+										// Calculate total delegations (should be 100% for a full circle)
 										const totalDelegations = filteredDelegations.reduce((sum, d) => sum + d.factor / 100, 0);
+
+										// If total is 0, show empty circle
+										if (totalDelegations === 0) {
+											return <circle cx="60" cy="60" r="60" fill="transparent" stroke="#666" strokeWidth="2" />;
+										}
+
+										let currentAngle = -Math.PI / 2; // Start from top (12 o'clock position)
 										return filteredDelegations.map((delegation, index) => {
 											const percentage = delegation.factor / 100;
-											const angle = (percentage / totalDelegations) * 2 * Math.PI;
+											// Calculate angle based on percentage of 100% (full circle)
+											const angle = (percentage / 100) * 2 * Math.PI;
 											if (percentage === 0) return null;
+
 											const startAngle = currentAngle;
 											const endAngle = currentAngle + angle;
 											const x1 = 60 + 60 * Math.cos(startAngle);

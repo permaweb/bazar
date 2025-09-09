@@ -22,6 +22,7 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 
 	const arProvider = useArweaveProvider();
 	const permawebProvider = usePermawebProvider();
+
 	const themeProvider = useCustomThemeProvider();
 
 	const languageProvider = useLanguageProvider();
@@ -135,6 +136,11 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 		[AO.game]: {
 			link: `${URLS.asset}${AO.game}`,
 			label: language.tradeGame,
+			target: '',
+		},
+		[AO.stamps]: {
+			link: `${URLS.asset}${AO.stamps}`,
+			label: language.tradeStamp,
 			target: '',
 		},
 	};
