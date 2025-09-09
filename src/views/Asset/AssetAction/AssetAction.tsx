@@ -168,34 +168,91 @@ export default function AssetAction(props: IProps) {
 
 	React.useEffect(() => {
 		(async function () {
-			if (props.asset && props.asset.orderbook?.id && props.asset.orderbook?.orders) {
-				const sortedOrders = sortOrders(props.asset.orderbook?.orders, 'low-to-high');
+			if (props.asset && props.asset.orderbook?.id) {
+				// Check if orders are already available
+				if (props.asset.orderbook?.orders && props.asset.orderbook.orders.length > 0) {
+					const sortedOrders = sortOrders(props.asset.orderbook.orders, 'low-to-high');
 
-				setCurrentListings(
-					sortedOrders.map((order: any) => ({
-						profile: order.profile,
-						orderbookId: props.asset.orderbook.id,
-						...order,
-					}))
-				);
+					let profiles: any[] = await getProfiles(sortedOrders.map((order: any) => order.creator));
+					const mappedListings = sortedOrders.map((order: any) => {
+						let currentProfile = null;
+						if (profiles) {
+							currentProfile = profiles.find((profile: any) => profile.id === order.creator);
+						}
 
-				let profiles: any[] = await getProfiles(sortedOrders.map((order: any) => order.creator));
-				const mappedListings = sortedOrders.map((order: any) => {
-					let currentProfile = null;
-					if (profiles) {
-						currentProfile = profiles.find((profile: any) => profile.id === order.creator);
+						const currentListing = {
+							profile: currentProfile || null,
+							orderbookId: props.asset.orderbook.id,
+							...order,
+						};
+
+						return currentListing;
+					});
+
+					setCurrentListings(mappedListings);
+				} else {
+					// Fetch orders from orderbook (for global orderbook or when orders not loaded)
+					try {
+						const response = await permawebProvider.libs.readState({
+							processId: props.asset.orderbook.id,
+							path: 'asset',
+							fallbackAction: 'Info',
+						});
+
+						if (response?.Orderbook) {
+							const assetPairs = response.Orderbook.filter(
+								(pair: any) => pair.Pair && pair.Pair.includes(props.asset.data.id)
+							);
+
+							let allOrders: any[] = [];
+
+							assetPairs.forEach((pair: any) => {
+								if (pair.Orders && Array.isArray(pair.Orders)) {
+									const pairOrders = pair.Orders.map((order: any) => ({
+										creator: order.Creator || order.creator,
+										dateCreated: order.DateCreated || order.dateCreated,
+										id: order.Id || order.id,
+										originalQuantity: order.OriginalQuantity || order.originalQuantity,
+										quantity: order.Quantity || order.quantity,
+										token: order.Token || order.token,
+										currency: pair.Pair[1],
+										price: order.Price || order.price || '0',
+									}));
+									allOrders = allOrders.concat(pairOrders);
+								}
+							});
+
+							if (allOrders.length > 0) {
+								const sortedOrders = sortOrders(allOrders, 'low-to-high');
+
+								let profiles: any[] = await getProfiles(sortedOrders.map((order: any) => order.creator));
+								const mappedListings = sortedOrders.map((order: any) => {
+									let currentProfile = null;
+									if (profiles) {
+										currentProfile = profiles.find((profile: any) => profile.id === order.creator);
+									}
+
+									const currentListing = {
+										profile: currentProfile || null,
+										orderbookId: props.asset.orderbook.id,
+										...order,
+									};
+
+									return currentListing;
+								});
+
+								setCurrentListings(mappedListings);
+							} else {
+								setCurrentListings([]);
+							}
+						} else {
+							setCurrentListings([]);
+						}
+					} catch (error) {
+						console.error('Error fetching orderbook orders:', error);
+						setCurrentListings([]);
 					}
-
-					const currentListing = {
-						profile: currentProfile || null,
-						orderbookId: props.asset.orderbook.id,
-						...order,
-					};
-
-					return currentListing;
-				});
-
-				setCurrentListings(mappedListings);
+				}
 			}
 		})();
 	}, [props.asset]);

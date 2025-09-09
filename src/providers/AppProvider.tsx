@@ -303,7 +303,7 @@ export function AppProvider(props: AppProviderProps) {
 				console.error(e);
 			}
 		})();
-	}, [currenciesReducer]);
+	}, []); // Remove currenciesReducer dependency to always fetch fresh data
 
 	return (
 		<AppContext.Provider

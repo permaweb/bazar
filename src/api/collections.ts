@@ -1,7 +1,10 @@
 import { readHandler, stamps } from 'api';
 import { getAssetById } from 'api/assets';
 
-import { AO, HB } from 'helpers/config';
+import { AO, getDefaultToken, HB } from 'helpers/config';
+
+// Spam address to filter out from collections
+const SPAM_ADDRESS = 'DwYZmjS7l6NHwojaH7-LzRBb4RiwjshGQm7-1ApDObw';
 import {
 	CollectionDetailType,
 	CollectionMetricsType,
@@ -23,6 +26,7 @@ export async function getCollections(creator: string, libs: any): Promise<any[]>
 		});
 
 		if (response?.Collections?.length) {
+			console.log('Processing', response.Collections.length, 'collections for spam filtering');
 			let filteredCollections = [...response.Collections];
 			if (creator) {
 				const creatorCollectionIds = [...(response.CollectionsByUser?.[creator] ?? [])];
@@ -41,10 +45,52 @@ export async function getCollections(creator: string, libs: any): Promise<any[]>
 				};
 			});
 
-			const collectionIds = collections.map((collection: any) => collection.id);
+			// Filter out collections from spam address
+			const spamFilteredCollections = collections.filter((collection: any) => {
+				if (collection.creator === SPAM_ADDRESS) {
+					console.log('Filtering out spam collection:', collection.title, 'from creator:', collection.creator);
+					return false;
+				}
+				return true;
+			});
+
+			console.log(
+				`Collections spam filtering: ${
+					collections.length - spamFilteredCollections.length
+				} collections filtered out of ${collections.length} total collections`
+			);
+
+			// Debug: Log a sample of creators to see what we're working with
+			const sampleCreators = collections.slice(0, 5).map((c) => ({ title: c.title, creator: c.creator }));
+			console.log('Sample collection creators:', sampleCreators);
+
+			// Debug: Check if spam address appears anywhere in the collections data
+			const spamCollections = collections.filter((c) =>
+				JSON.stringify(c).includes('DwYZmjS7l6NHwojaH7-LzRBb4RiwjshGQm7-1ApDObw')
+			);
+			if (spamCollections.length > 0) {
+				console.log('Found collections with spam address:', spamCollections);
+			}
+
+			// Debug: Look for emoji/animal collections that might be spam
+			const emojiAnimalCollections = collections.filter(
+				(c) =>
+					c.title &&
+					(c.title.includes('emoji') ||
+						c.title.includes('animal') ||
+						c.title.includes('🐶') ||
+						c.title.includes('🐱') ||
+						c.title.includes('🦄') ||
+						c.title.includes('🎭'))
+			);
+			if (emojiAnimalCollections.length > 0) {
+				console.log('Found emoji/animal collections:', emojiAnimalCollections);
+			}
+
+			const collectionIds = spamFilteredCollections.map((collection: any) => collection.id);
 			const stampsFetch: StampsType = await stamps.getStamps({ ids: collectionIds });
 
-			let finalCollections = collections;
+			let finalCollections = spamFilteredCollections;
 
 			finalCollections = finalCollections.filter((c: any) => {
 				return stampsFetch[c.id].total != 0;
@@ -429,11 +475,13 @@ export async function getAllMusicCollections(libs: any): Promise<CollectionType[
 					};
 
 					// Ensure we're only adding collections, not individual assets
+					// Also filter out collections from spam address
 					if (
 						mappedCollection.title &&
 						!mappedCollection.title.includes('Back Then') &&
 						!mappedCollection.title.includes('Echoes of Wisdom') &&
-						!mappedCollection.title.toLowerCase().includes('test')
+						!mappedCollection.title.toLowerCase().includes('test') &&
+						mappedCollection.creator !== SPAM_ADDRESS
 					) {
 						musicCollections.push(mappedCollection);
 					}
@@ -509,5 +557,5 @@ function getDefaultCurrency(assetIds: string[]): string {
 			}
 		}
 	}
-	return AO.defaultToken;
+	return getDefaultToken().id;
 }

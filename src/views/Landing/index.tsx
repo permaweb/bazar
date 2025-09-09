@@ -107,7 +107,12 @@ export default function Landing() {
 				setCollectionsLoading(true);
 				try {
 					if (collectionsReducer?.stamped?.collections?.length) {
-						setCollections(collectionsReducer.stamped.collections);
+						// Filter cached collections for spam
+						const SPAM_ADDRESS = 'DwYZmjS7l6NHwojaH7-LzRBb4RiwjshGQm7-1ApDObw';
+						const filteredCachedCollections = collectionsReducer.stamped.collections.filter(
+							(collection: any) => collection.creator !== SPAM_ADDRESS
+						);
+						setCollections(filteredCachedCollections);
 						setCollectionsLoading(false);
 					}
 
@@ -130,7 +135,12 @@ export default function Landing() {
 			const cacheDuration = 5 * 60 * 1000; // 5 minutes
 
 			if (cachedMusic?.collections && cacheAge < cacheDuration) {
-				setMusicCollections(cachedMusic.collections);
+				// Filter cached music collections for spam
+				const SPAM_ADDRESS = 'DwYZmjS7l6NHwojaH7-LzRBb4RiwjshGQm7-1ApDObw';
+				const filteredCachedMusicCollections = cachedMusic.collections.filter(
+					(collection: any) => collection.creator !== SPAM_ADDRESS
+				);
+				setMusicCollections(filteredCachedMusicCollections);
 				setMusicCollectionsLoading(false);
 				return;
 			}

@@ -2,18 +2,22 @@ import React from 'react';
 import { useSelector } from 'react-redux';
 import { Link } from 'react-router-dom';
 
-import { REFORMATTED_ASSETS, URLS } from 'helpers/config';
+import { AO, REFORMATTED_ASSETS, TOKEN_REGISTRY, URLS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import { formatCount } from 'helpers/utils';
 import { useLanguageProvider } from 'providers/LanguageProvider';
+import { useTokenProvider } from 'providers/TokenProvider';
 import { RootState } from 'store';
 
 import * as S from './styles';
-import { IProps } from './types';
 
-export default function CurrencyLine(props: IProps) {
-	const currenciesReducer = useSelector((state: RootState) => state.currenciesReducer);
+interface IProps {
+	amount: number | string | null;
+	currency: string;
+	callback?: () => void;
+}
 
+export default function CurrencyLine(props: IProps & { tokenLogo?: string; tokenSymbol?: string }) {
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
 
@@ -44,28 +48,20 @@ export default function CurrencyLine(props: IProps) {
 			return timedOut ? 'N/A' : `${language.loading}...`;
 		}
 
-		// If we have a valid amount but no currency data yet, check for fallback denomination
-		if (!currenciesReducer || !currenciesReducer[currency]) {
-			// Check if we have fallback denomination info in REFORMATTED_ASSETS
-			if (REFORMATTED_ASSETS[currency]?.denomination) {
-				const denomination = REFORMATTED_ASSETS[currency].denomination;
-				const factor = Math.pow(10, denomination);
-				const formattedAmount: string = (amount / factor).toFixed(denomination > 4 ? 4 : denomination);
-				return formatCount(formattedAmount);
-			}
-
-			// Show the raw balance while currency metadata loads
-			if (amount !== null && amount !== undefined && !isNaN(Number(amount))) {
-				return formatCount(amount.toString());
-			}
-			return timedOut ? 'N/A' : `${language.loading}...`;
+		// Check TOKEN_REGISTRY first for dynamic tokens
+		const tokenInfo = TOKEN_REGISTRY[currency];
+		if (tokenInfo && tokenInfo.denomination) {
+			const denomination = tokenInfo.denomination;
+			const factor = Math.pow(10, denomination);
+			const formattedAmount: string = (amount / factor).toFixed(denomination > 4 ? 4 : denomination);
+			return formatCount(formattedAmount);
 		}
 
-		// Handle token with denomination
-		if (currenciesReducer[currency].Denomination && currenciesReducer[currency].Denomination > 1) {
-			const denomination = currenciesReducer[currency].Denomination;
+		// Check REFORMATTED_ASSETS for fallback denomination
+		if (REFORMATTED_ASSETS[currency]?.denomination) {
+			const denomination = REFORMATTED_ASSETS[currency].denomination;
 			const factor = Math.pow(10, denomination);
-			const formattedAmount: string = (Math.round(amount) / factor).toFixed(denomination);
+			const formattedAmount: string = (amount / factor).toFixed(denomination > 4 ? 4 : denomination);
 			return formatCount(formattedAmount);
 		}
 
@@ -78,26 +74,18 @@ export default function CurrencyLine(props: IProps) {
 	}
 
 	function getCurrency() {
-		if (props.currency && currenciesReducer && currenciesReducer[props.currency]) {
-			let currency = null;
-			if (currenciesReducer[props.currency].Ticker) {
-				currency = <span>{currenciesReducer[props.currency].Ticker}</span>;
-			}
-			if (currenciesReducer[props.currency].Logo) {
-				currency = (
-					<img
-						src={getTxEndpoint(currenciesReducer[props.currency].Logo)}
-						alt={currenciesReducer[props.currency].Ticker}
-					/>
-				);
-			}
+		// Use the token from the provider which may have dynamic metadata
+		const providerToken = useTokenProvider().availableTokens.find((token) => token.id === props.currency);
 
+		if (providerToken) {
 			return (
 				<Link
 					to={`${URLS.asset}${props.currency}`}
 					onClick={(e: any) => (props.callback ? props.callback() : e.stopPropagation())}
 				>
-					<S.Currency>{currency}</S.Currency>
+					<S.Currency>
+						<img src={getTxEndpoint(providerToken.logo)} alt={providerToken.symbol || props.currency} />
+					</S.Currency>
 				</Link>
 			);
 		} else if (props.currency) {
@@ -133,10 +121,10 @@ export default function CurrencyLine(props: IProps) {
 		return null;
 	}
 
-	return props.currency ? (
-		<S.Wrapper useReverseLayout={props.useReverseLayout}>
-			<span>{getDenominatedTokenValue(Number(props.amount), props.currency)}</span>
+	return (
+		<S.Wrapper useReverseLayout={false}>
 			{getCurrency()}
+			<span>{getDenominatedTokenValue(Number(props.amount), props.currency)}</span>
 		</S.Wrapper>
-	) : null;
+	);
 }
