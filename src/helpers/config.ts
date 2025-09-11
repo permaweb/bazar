@@ -376,6 +376,17 @@ export const FLAGS = {
 	MAINTENANCE: false,
 };
 
+// WNDR Quest Event Configuration - Simple 2-week delay
+export const WNDR_EVENT = {
+	// Enable quest claiming after this timestamp (2 weeks from deployment)
+	enableTimestamp: Date.now() + 14 * 24 * 60 * 60 * 1000, // 2 weeks
+	title: 'WNDR Quest Rewards Coming Soon!',
+	subtitle: 'Complete quests and claim exclusive DumDum collectibles + WNDR tokens',
+	isEnabled: function () {
+		return Date.now() >= this.enableTimestamp;
+	},
+};
+
 export const ARNS = {
 	CACHE_DURATION: 24 * 60 * 60 * 1000, // 24 hours
 	DEFAULT_DISPLAY_LENGTH: 20,

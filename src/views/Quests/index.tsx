@@ -7,7 +7,7 @@ import { messageResult, readHandler } from 'api';
 import { Modal } from 'components/molecules/Modal';
 import { Panel } from 'components/molecules/Panel';
 import { ProfileManage } from 'components/organisms/ProfileManage';
-import { ASSETS, DELEGATION, URLS } from 'helpers/config';
+import { ASSETS, DELEGATION, URLS, WNDR_EVENT } from 'helpers/config';
 import { calculateDelegationLimits, getDelegations } from 'helpers/delegationUtils';
 import { getTxEndpoint } from 'helpers/endpoints';
 import { questTracker } from 'helpers/questTracker';
@@ -192,6 +192,10 @@ export default function Quests() {
 	const [earnedProfileRings, setEarnedProfileRings] = React.useState<string[]>([]);
 	const [currentProfileRing, setCurrentProfileRing] = React.useState<string | null>(null);
 
+	// WNDR Event State - Countdown timer and event status
+	const [timeUntilEvent, setTimeUntilEvent] = React.useState<string>('');
+	const [isEventActive, setIsEventActive] = React.useState<boolean>(WNDR_EVENT.isEnabled());
+
 	// Campaign 2 Assets State (DumDum Trials)
 	const [campaign2Assets, setCampaign2Assets] = React.useState<
 		Array<{
@@ -243,6 +247,32 @@ export default function Quests() {
 	React.useEffect(() => {
 		questTracker.setDispatch(dispatch);
 	}, [dispatch]);
+
+	// WNDR Event Countdown Timer
+	React.useEffect(() => {
+		const updateCountdown = () => {
+			const now = Date.now();
+			const timeLeft = WNDR_EVENT.enableTimestamp - now;
+
+			if (timeLeft <= 0) {
+				setTimeUntilEvent('');
+				setIsEventActive(true);
+				return;
+			}
+
+			const days = Math.floor(timeLeft / (24 * 60 * 60 * 1000));
+			const hours = Math.floor((timeLeft % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000));
+			const minutes = Math.floor((timeLeft % (60 * 60 * 1000)) / (60 * 1000));
+
+			setTimeUntilEvent(`${days}d ${hours}h ${minutes}m`);
+			setIsEventActive(false);
+		};
+
+		updateCountdown();
+		const interval = setInterval(updateCountdown, 60000); // Update every minute
+
+		return () => clearInterval(interval);
+	}, []);
 
 	// ULTRA-OPTIMIZED: Synchronous first-paint data loading
 	React.useEffect(() => {
@@ -1691,7 +1721,7 @@ export default function Quests() {
 				{/* Button Area - Fixed at bottom */}
 				<div style={{ marginTop: 'auto' }}>
 					{/* Claim Button or Status */}
-					{isClaimable && !isClaimed && (
+					{isClaimable && !isClaimed && isEventActive && (
 						<button
 							onClick={() => handleClaimDumDum(dumDumTier)}
 							disabled={reward.claimInProgress}
@@ -1729,6 +1759,25 @@ export default function Quests() {
 								? `Claim Platinum DumDum + ${getWNDRRewardForTier(100, wanderTierInfo?.tier || 'Core')} WNDR`
 								: `Claim ${dumDumTier.charAt(0).toUpperCase() + dumDumTier.slice(1)} DumDum`}
 						</button>
+					)}
+
+					{/* Coming Soon Message when event is not active */}
+					{!isEventActive && !isClaimed && (
+						<div
+							style={{
+								background: 'linear-gradient(135deg, #374151 0%, #1f2937 100%)',
+								color: '#9ca3af',
+								borderRadius: '12px',
+								padding: '12px 24px',
+								fontSize: '1.1rem',
+								fontWeight: 'bold',
+								textAlign: 'center',
+								border: '2px solid #4b5563',
+								boxShadow: '0 4px 10px rgba(0, 0, 0, 0.3)',
+							}}
+						>
+							Coming Soon
+						</div>
 					)}
 
 					{isClaimed && (
@@ -2923,8 +2972,90 @@ export default function Quests() {
 								</S.CampaignCompleteContent>
 							</S.CampaignCompleteBanner>
 						)}
+
+						{/* WNDR Event Coming Soon Overlay */}
+						{!isEventActive && (
+							<div
+								style={{
+									position: 'relative',
+									background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)',
+									border: '2px solid #9d4edd',
+									borderRadius: '12px',
+									padding: '40px 20px',
+									textAlign: 'center',
+									color: 'white',
+									marginBottom: '32px',
+									boxShadow: '0 8px 32px rgba(157, 78, 221, 0.3)',
+								}}
+							>
+								<div
+									style={{
+										background: 'linear-gradient(135deg, #9d4edd 0%, #c77dff 100%)',
+										WebkitBackgroundClip: 'text',
+										WebkitTextFillColor: 'transparent',
+										fontSize: '2.5rem',
+										fontWeight: 'bold',
+										marginBottom: '16px',
+									}}
+								>
+									{WNDR_EVENT.title}
+								</div>
+
+								<div
+									style={{
+										fontSize: '1.2rem',
+										marginBottom: '24px',
+										opacity: 0.9,
+									}}
+								>
+									{WNDR_EVENT.subtitle}
+								</div>
+
+								<div
+									style={{
+										fontSize: '1rem',
+										marginBottom: '16px',
+										opacity: 0.7,
+									}}
+								>
+									Quest rewards will be available in:
+								</div>
+
+								<div
+									style={{
+										fontSize: '2rem',
+										fontWeight: 'bold',
+										color: '#f59e0b',
+										textShadow: '0 0 10px rgba(245, 158, 11, 0.3)',
+										marginBottom: '20px',
+									}}
+								>
+									{timeUntilEvent || 'Loading...'}
+								</div>
+
+								<div
+									style={{
+										fontSize: '0.9rem',
+										opacity: 0.6,
+									}}
+								>
+									Get your Wander wallet ready and create your profile!
+								</div>
+							</div>
+						)}
+
 						{/* Combined Quest + DumDum Rewards Section - Now at the top */}
-						<S.ProfileRingsSection>
+						<S.ProfileRingsSection
+							style={{
+								...(isEventActive
+									? {}
+									: {
+											filter: 'blur(3px)',
+											pointerEvents: 'none',
+											opacity: 0.6,
+									  }),
+							}}
+						>
 							<S.ProfileRingsHeader>
 								<h2>Quest Rewards</h2>
 								<p>
