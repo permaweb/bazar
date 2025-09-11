@@ -216,8 +216,6 @@ export default function ActivityTable(props: IProps) {
 	}, [activityGroups, activityCursor, props.address, profilesReducer?.registryProfiles]);
 
 	function transformGqlResponse(edges: GqlEdge[]): FormattedActivity {
-		console.log('Processing', edges.length, 'activities for spam filtering');
-
 		const out: FormattedActivity = {
 			ListedOrders: [],
 			PurchasesByAddress: {},
@@ -236,51 +234,9 @@ export default function ActivityTable(props: IProps) {
 				return m;
 			}, {});
 
-			// Debug: Log all addresses to see what we're working with
-			if (node.recipient && node.recipient.includes('DwYZmjS7l6NHwojaH7-LzRBb4RiwjshGQm7-1ApDObw')) {
-				console.log('Found spam address in node.recipient:', node.recipient);
-			}
-			if (t['Sender'] && t['Sender'].includes('DwYZmjS7l6NHwojaH7-LzRBb4RiwjshGQm7-1ApDObw')) {
-				console.log('Found spam address in t.Sender:', t['Sender']);
-			}
+			// Spam filtering logic (debug logs removed)
 
-			// Debug: Log all tag values to see what fields are available
-			if (Object.values(t).some((value) => value && value.includes('DwYZmjS7l6NHwojaH7-LzRBb4RiwjshGQm7-1ApDObw'))) {
-				console.log('Found spam address in tags:', t);
-				console.log('Node recipient:', node.recipient);
-			}
-
-			// Debug: Log a sample of addresses to see what we're working with
-			if (Math.random() < 0.05) {
-				// Log 5% of activities to see sample data
-				console.log('Sample activity data:', {
-					nodeId: node.id,
-					recipient: node.recipient,
-					tags: t,
-					action: t['Action'],
-					price: t['Price'],
-					swapToken: t['SwapToken'],
-					message: t['Message'],
-				});
-			}
-
-			// Debug: Log activities that might be spam based on price or content
-			if (t['Price'] === 'None' || t['Price'] === '0' || (t['Message'] && t['Message'].includes('🐙'))) {
-				console.log('Potential spam activity detected:', {
-					nodeId: node.id,
-					price: t['Price'],
-					swapToken: t['SwapToken'],
-					message: t['Message'],
-					sender: t['Sender'],
-					recipient: node.recipient,
-				});
-			}
-
-			// Debug: Check if spam address appears anywhere in the data (partial match)
-			const allDataString = JSON.stringify({ node, tags: t });
-			if (allDataString.includes('DwYZmjS7l6NHwojaH7-LzRBb4RiwjshGQm7-1ApDObw')) {
-				console.log('Found spam address in activity data:', { node, tags: t });
-			}
+			// Spam detection logic (debug logs removed for cleaner console)
 
 			// Filter out activities from spam address
 			// Check multiple fields where the spam address might appear
@@ -311,13 +267,7 @@ export default function ActivityTable(props: IProps) {
 
 			if (isSpamActivity || isLowDenominationSpam || isEmojiAnimalSpam) {
 				spamFilteredCount++;
-				if (isSpamActivity) {
-					console.log('Filtering out spam activity from address:', SPAM_ADDRESS, 'in node:', node.id);
-				} else if (isLowDenominationSpam) {
-					console.log('Filtering out low denomination spam activity with price:', price, 'in node:', node.id);
-				} else if (isEmojiAnimalSpam) {
-					console.log('Filtering out emoji/animal spam activity in node:', node.id);
-				}
+				// Spam filtering (debug logs removed for cleaner console)
 				continue;
 			}
 
@@ -352,18 +302,7 @@ export default function ActivityTable(props: IProps) {
 			}
 		}
 
-		console.log(
-			`Spam filtering summary: ${spamFilteredCount} activities filtered out of ${edges.length} total activities`
-		);
-		console.log(`Remaining activities after filtering: ${edges.length - spamFilteredCount}`);
-
-		// Debug: Show what types of filtering are happening
-		if (spamFilteredCount > 0) {
-			console.log('Filtering breakdown:');
-			console.log('- Address-based filtering: Check console for "Filtering out spam activity from address"');
-			console.log('- Low denomination filtering: Check console for "Filtering out low denomination spam activity"');
-			console.log('- Emoji/animal filtering: Check console for "Filtering out emoji/animal spam activity"');
-		}
+		// Spam filtering summary (debug logs removed for cleaner console)
 		return out;
 	}
 

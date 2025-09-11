@@ -2,7 +2,7 @@ import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ReactSVG } from 'react-svg';
 
-import { Avatar } from 'components/atoms/Avatar';
+// import { Avatar } from 'components/atoms/Avatar';
 import { Button } from 'components/atoms/Button';
 import { CurrencyLine } from 'components/atoms/CurrencyLine';
 import { Loader } from 'components/atoms/Loader';
@@ -69,7 +69,11 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 					setLabel(permawebProvider.arnsPrimaryName);
 				} else if (permawebProvider.profile && permawebProvider.profile.username) {
 					setLabel(permawebProvider.profile.username);
+				} else if (permawebProvider.profile && permawebProvider.profile.id) {
+					// If we have a profile but no username, show formatted address
+					setLabel(formatAddress(arProvider.walletAddress, false));
 				} else {
+					// If wallet is connected but profile is still loading, show formatted address instead of "Fetching profile..."
 					setLabel(formatAddress(arProvider.walletAddress, false));
 				}
 			} else {
@@ -238,8 +242,6 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 											amount={getTotalTokenBalance(permawebProvider.tokenBalances[token])}
 											currency={token}
 											callback={() => handleDropdownAction(() => setShowWalletDropdown(false))}
-											useReverseLayout
-											hideSymbol
 										/>
 										{tokenLinks[token] && (
 											<S.TokenLink>

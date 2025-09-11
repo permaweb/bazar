@@ -140,8 +140,8 @@ export const QuestsGrid = styled.div`
 `;
 
 export const ProfileRingsSection = styled.div`
-	margin-top: 48px;
-	padding-top: 32px;
+	margin-top: 16px;
+	padding-top: 16px;
 	border-top: 2px solid var(--border-color);
 `;
 

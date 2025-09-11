@@ -39,6 +39,14 @@ const BRIDGE_DRIVE_VERSION_KEY = 'bridge-drive-version';
 const CURRENT_VERSION = '2.5';
 const DRIVE_CONFIG_KEY = 'drive-config';
 
+// DumDum Process IDs - Real DumDum token contracts from Campaign_2
+const DUMDUM_PROCESS_IDS = {
+	bronze: 'aTJROeqDmiAglMdsrubdBcdewn69K1wqguUwIweZVZI', // Bronze DumDum process ID
+	silver: 'DdAkEvcERqRVoi3EpfsZvvcMa8tljtLN011WsIhVIXg', // Silver DumDum process ID
+	gold: 'pWd7algai8B7FM4-lU57VrUd5uLtPSvKDj4-somgrZw', // Gold DumDum process ID
+	platinum: CAMPAIGN_2_MAIN, // Platinum DumDum uses Campaign 2 main process
+};
+
 // Will be populated dynamically from Campaign 2 config (DumDum Trials)
 let CAMPAIGN_2_ASSETS: Array<{
 	id: string;
@@ -51,11 +59,11 @@ let CAMPAIGN_2_ASSETS: Array<{
 }> = [];
 
 const QUEST_CONFIG = {
-	createProfile: {
-		id: 'create-profile',
-		title: 'Create Profile',
-		description: 'Create your Bazar profile (requires Wander wallet)',
-		icon: ASSETS.user,
+	getWanderWallet: {
+		id: 'get-wander-wallet',
+		title: 'Get a Wander Wallet',
+		description: 'Create a wallet with Wander and claim your first atomic asset',
+		icon: ASSETS.wander,
 		required: 1,
 		tier: 'bronze' as const,
 		reward: {
@@ -63,11 +71,11 @@ const QUEST_CONFIG = {
 			description: '10 WNDR',
 		},
 	},
-	createAsset: {
-		id: 'create-asset',
-		title: 'Create Your First Asset',
-		description: 'Upload and create your first atomic asset',
-		icon: ASSETS.asset,
+	createProfile: {
+		id: 'create-profile',
+		title: 'Create Profile',
+		description: 'Create a profile on Bazar',
+		icon: ASSETS.user,
 		required: 1,
 		tier: 'silver' as const,
 		reward: {
@@ -75,23 +83,11 @@ const QUEST_CONFIG = {
 			description: '25 WNDR',
 		},
 	},
-	createCollection: {
-		id: 'create-collection',
-		title: 'Create Your First Collection',
-		description: 'Create a collection to organize your assets',
-		icon: ASSETS.collection,
-		required: 1,
-		tier: 'silver' as const,
-		reward: {
-			wndr: 25,
-			description: '25 WNDR',
-		},
-	},
-	makePurchase: {
-		id: 'make-purchase',
-		title: 'Make Your First Purchase',
-		description: 'Buy your first atomic asset from marketplace',
-		icon: ASSETS.buy,
+	stampSilverDumDum: {
+		id: 'stamp-silver-dumdum',
+		title: 'Stamp Silver DumDum',
+		description: "Leave a stamp (like) on the Silver DumDum. Stamping can be done on the asset's page on Bazar",
+		icon: ASSETS.star,
 		required: 1,
 		tier: 'gold' as const,
 		reward: {
@@ -99,10 +95,10 @@ const QUEST_CONFIG = {
 			description: '50 WNDR',
 		},
 	},
-	delegatePixl: {
-		id: 'delegate-pixl',
-		title: 'Delegate to PIXL',
-		description: 'Delegate at least 10% voting power to PIXL',
+	claimOmegaDumDum: {
+		id: 'claim-omega-dumdum',
+		title: 'Claim Omega DumDum',
+		description: 'Claim the Bronze, Silver, and Gold DumDum in order to claim the final Omega DumDum',
 		icon: ASSETS.star,
 		required: 1,
 		tier: 'platinum' as const,
@@ -217,6 +213,19 @@ export default function Quests() {
 	const [questDataLoading, setQuestDataLoading] = React.useState<boolean>(false);
 	const [profileLoading, setProfileLoading] = React.useState<boolean>(false);
 
+	// DumDum Rewards State
+	const [dumDumRewards, setDumDumRewards] = React.useState<{
+		bronze: { claimable: boolean; claimed: boolean; claimInProgress: boolean };
+		silver: { claimable: boolean; claimed: boolean; claimInProgress: boolean };
+		gold: { claimable: boolean; claimed: boolean; claimInProgress: boolean };
+		platinum: { claimable: boolean; claimed: boolean; claimInProgress: boolean };
+	}>({
+		bronze: { claimable: false, claimed: false, claimInProgress: false },
+		silver: { claimable: false, claimed: false, claimInProgress: false },
+		gold: { claimable: false, claimed: false, claimInProgress: false },
+		platinum: { claimable: false, claimed: false, claimInProgress: false },
+	});
+
 	// Initialize quests on component mount
 	React.useEffect(() => {
 		if (quests.length === 0) {
@@ -328,31 +337,35 @@ export default function Quests() {
 				// 	isLegacy: profileData.isLegacyProfile
 				// });
 
-				// Simple check: if user has a profile, auto-complete quests (like Campaign_2)
+				// Get Wander Wallet quest (Bronze DumDum) - Auto-complete if user has Wander wallet
+				if (arProvider.walletAddress) {
+					console.log('✅ Wander wallet found, auto-completing get-wander-wallet quest');
+					questUpdates.push('get-wander-wallet');
+				} else {
+					console.log('❌ "Get Wander Wallet" quest not completed - No wallet connected');
+				}
+
+				// Profile creation quest (Silver DumDum)
 				if (profileData.id) {
 					console.log('✅ Profile found, auto-completing create-profile quest');
 					questUpdates.push('create-profile');
-					// Auto-complete Bronze DumDum (Wander wallet) and Silver DumDum (Profile creation)
-					questUpdates.push('create-asset'); // Bronze DumDum - Having Wander wallet
-					questUpdates.push('create-collection'); // Silver DumDum - Create profile on Bazar
 				} else {
 					console.log('❌ "Create Profile" quest not completed - No profile found');
 				}
-				if (freshProgress.firstAssetCreated) {
-					questUpdates.push('create-asset');
-				}
-				if (freshProgress.firstCollectionCreated) {
-					questUpdates.push('create-collection');
-				}
-				if (freshProgress.firstPurchaseMade) {
-					questUpdates.push('make-purchase');
-				}
-				if (freshProgress.pixelDelegated && freshProgress.hasStampedSilverDumDum) {
-					questUpdates.push('delegate-pixl');
+
+				// Stamp Silver DumDum quest (Gold DumDum) - Check if user has stamped Silver DumDum
+				if (freshProgress.hasStampedSilverDumDum) {
+					console.log('✅ Silver DumDum stamped, auto-completing stamp-silver-dumdum quest');
+					questUpdates.push('stamp-silver-dumdum');
+				} else {
+					console.log('❌ "Stamp Silver DumDum" quest not completed - Silver DumDum not stamped');
 				}
 
+				// Claim Omega DumDum quest (Platinum DumDum) - Only available after all previous quests are completed
+				// This will be handled by the DumDum claimability logic
+
 				// Batch dispatch ALL quest completions at once
-				// console.log('🎯 Quest updates to dispatch:', questUpdates);
+				// console.log('Quest updates to dispatch:', questUpdates);
 				questUpdates.forEach((questId) => {
 					const existingQuest = quests.find((q) => q.id === questId);
 					if (!existingQuest?.isCompleted) {
@@ -708,35 +721,42 @@ export default function Quests() {
 		dispatch(updateQuestProgress(freshProgress));
 
 		// Auto-complete quests based on FRESH progress data
-		// console.log('Quests - Auto-completing quests based on fresh progress...');
+		console.log('🔍 Quest Qualification Debug - Fresh Progress:', {
+			profileCreated: freshProgress.profileCreated,
+			firstAssetCreated: freshProgress.firstAssetCreated,
+			firstCollectionCreated: freshProgress.firstCollectionCreated,
+			firstPurchaseMade: freshProgress.firstPurchaseMade,
+			pixelDelegated: freshProgress.pixelDelegated,
+			hasStampedSilverDumDum: freshProgress.hasStampedSilverDumDum,
+			totalAssets: freshProgress.totalAssets,
+			totalCollections: freshProgress.totalCollections,
+			totalPurchases: freshProgress.totalPurchases,
+		});
 
 		// Profile quest - use direct provider check as fallback
 		if (freshProgress.profileCreated || permawebProvider.profile?.id) {
 			if (!quests.find((q) => q.id === 'create-profile')?.isCompleted) {
-				// console.log('Quests - Completing create-profile quest');
+				console.log('✅ Quest Qualification: Completing create-profile quest');
 				dispatch(completeQuest('create-profile'));
 			}
 		}
 
 		// Other quests based on fresh progress data
 		if (freshProgress.firstAssetCreated && !quests.find((q) => q.id === 'create-asset')?.isCompleted) {
-			// console.log('Quests - Completing create-asset quest');
+			console.log('✅ Quest Qualification: Completing create-asset quest');
 			dispatch(completeQuest('create-asset'));
 		}
 		if (freshProgress.firstCollectionCreated && !quests.find((q) => q.id === 'create-collection')?.isCompleted) {
-			// console.log('Quests - Completing create-collection quest');
+			console.log('✅ Quest Qualification: Completing create-collection quest');
 			dispatch(completeQuest('create-collection'));
 		}
 		if (freshProgress.firstPurchaseMade && !quests.find((q) => q.id === 'make-purchase')?.isCompleted) {
-			// console.log('Quests - Completing make-purchase quest');
+			console.log('✅ Quest Qualification: Completing make-purchase quest');
 			dispatch(completeQuest('make-purchase'));
 		}
-		if (
-			freshProgress.pixelDelegated &&
-			freshProgress.hasStampedSilverDumDum &&
-			!quests.find((q) => q.id === 'delegate-pixl')?.isCompleted
-		) {
-			// console.log('Quests - Completing delegate-pixl quest (both delegation and Silver DumDum stamping completed)');
+		// Simplified PIXL delegation quest - only require delegation, not stamping
+		if (freshProgress.pixelDelegated && !quests.find((q) => q.id === 'delegate-pixl')?.isCompleted) {
+			console.log('✅ Quest Qualification: Completing delegate-pixl quest (PIXL delegation completed)');
 			dispatch(completeQuest('delegate-pixl'));
 		}
 
@@ -749,6 +769,1020 @@ export default function Quests() {
 				rank: freshProgress.wanderRank,
 			});
 		}
+
+		// Update DumDum claimability based on quest completion
+		updateDumDumClaimability();
+	}
+
+	// Update DumDum claimability when quests change
+	React.useEffect(() => {
+		updateDumDumClaimability();
+	}, [quests]);
+
+	// Auto-complete quests when DumDums are claimed
+	React.useEffect(() => {
+		console.log('🔍 Checking DumDum claim status for quest completion:', dumDumRewards);
+
+		// If Bronze DumDum is claimed, mark "Get Wander Wallet" quest as completed
+		if (dumDumRewards.bronze.claimed) {
+			console.log('✅ Bronze DumDum claimed - marking get-wander-wallet quest as completed');
+			dispatch(
+				updateQuestProgress({
+					profileCreated: true,
+					firstAssetCreated: true,
+					firstCollectionCreated: true,
+					firstPurchaseMade: true,
+					pixelDelegated: true,
+					hasStampedSilverDumDum: true,
+					wanderRank: 0,
+				})
+			);
+		}
+
+		// If Silver DumDum is claimed, mark "Create Profile" quest as completed
+		if (dumDumRewards.silver.claimed) {
+			console.log('✅ Silver DumDum claimed - marking create-profile quest as completed');
+			dispatch(
+				updateQuestProgress({
+					profileCreated: true,
+					firstAssetCreated: true,
+					firstCollectionCreated: true,
+					firstPurchaseMade: true,
+					pixelDelegated: true,
+					hasStampedSilverDumDum: true,
+					wanderRank: 0,
+				})
+			);
+		}
+
+		// If Gold DumDum is claimed, mark "Stamp Silver DumDum" quest as completed
+		if (dumDumRewards.gold.claimed) {
+			console.log('✅ Gold DumDum claimed - marking stamp-silver-dumdum quest as completed');
+			dispatch(
+				updateQuestProgress({
+					profileCreated: true,
+					firstAssetCreated: true,
+					firstCollectionCreated: true,
+					firstPurchaseMade: true,
+					pixelDelegated: true,
+					hasStampedSilverDumDum: true,
+					wanderRank: 0,
+				})
+			);
+		}
+
+		// If Platinum DumDum is claimed, mark "Claim Omega DumDum" quest as completed
+		if (dumDumRewards.platinum.claimed) {
+			console.log('✅ Platinum DumDum claimed - marking claim-omega-dumdum quest as completed');
+			dispatch(
+				updateQuestProgress({
+					profileCreated: true,
+					firstAssetCreated: true,
+					firstCollectionCreated: true,
+					firstPurchaseMade: true,
+					pixelDelegated: true,
+					hasStampedSilverDumDum: true,
+					wanderRank: 0,
+				})
+			);
+		}
+	}, [dumDumRewards, dispatch]);
+
+	// Check real DumDum claim status on component mount
+	React.useEffect(() => {
+		if (arProvider.walletAddress) {
+			checkDumDumClaimStatus();
+		}
+	}, [arProvider.walletAddress, permawebProvider.profile?.id]);
+
+	// Update DumDum claimability based on quest completion
+	function updateDumDumClaimability() {
+		const currentQuests = quests;
+		setDumDumRewards((prev) => ({
+			bronze: {
+				...prev.bronze,
+				claimable: isQuestCompleted('get-wander-wallet', currentQuests) && !prev.bronze.claimed,
+			},
+			silver: {
+				...prev.silver,
+				claimable: isQuestCompleted('create-profile', currentQuests) && !prev.silver.claimed,
+			},
+			gold: {
+				...prev.gold,
+				claimable: isQuestCompleted('stamp-silver-dumdum', currentQuests) && !prev.gold.claimed,
+			},
+			platinum: {
+				...prev.platinum,
+				claimable:
+					isQuestCompleted('get-wander-wallet', currentQuests) &&
+					isQuestCompleted('create-profile', currentQuests) &&
+					isQuestCompleted('stamp-silver-dumdum', currentQuests) &&
+					!prev.platinum.claimed,
+			},
+		}));
+	}
+
+	// Check real DumDum claim status from contracts
+	async function checkDumDumClaimStatus() {
+		if (!arProvider.walletAddress) {
+			return;
+		}
+
+		console.log('🔍 Checking real DumDum claim status...');
+
+		const tiers: Array<'bronze' | 'silver' | 'gold' | 'platinum'> = ['bronze', 'silver', 'gold', 'platinum'];
+
+		for (const tier of tiers) {
+			const processId = DUMDUM_PROCESS_IDS[tier];
+			console.log(`🔍 Checking ${tier} DumDum claim status with process ID: ${processId}`);
+
+			// Try multiple tag combinations to find the right one
+			const tagCombinations = [
+				// Current approach
+				tier === 'bronze'
+					? [{ name: 'Address', value: arProvider.walletAddress }]
+					: [
+							{ name: 'Address', value: arProvider.walletAddress },
+							{ name: 'ProfileId', value: permawebProvider.profile?.id || arProvider.walletAddress },
+							{ name: 'Tier', value: tier },
+							{ name: 'Quest-System', value: 'wander-tier-integration' },
+					  ],
+				// Alternative: Just Address for all
+				[{ name: 'Address', value: arProvider.walletAddress }],
+				// Alternative: Just ProfileId for all (if available)
+				...(permawebProvider.profile?.id ? [[{ name: 'ProfileId', value: permawebProvider.profile.id }]] : []),
+				// Alternative: No tags at all
+				[],
+			];
+
+			let foundClaimed = false;
+			for (let i = 0; i < tagCombinations.length; i++) {
+				const tags = tagCombinations[i];
+				console.log(`🔍 Trying tag combination ${i + 1} for ${tier} DumDum:`, tags);
+
+				try {
+					// CRITICAL: First initialize the claim check
+					await messageResult({
+						processId: processId,
+						wallet: arProvider.wallet,
+						action: 'Init-Claim-Check',
+						tags: tags,
+						data: null,
+					});
+
+					// Then check the status
+					const statusResponse = await messageResult({
+						processId: processId,
+						wallet: arProvider.wallet,
+						action: 'Get-Claim-Status',
+						tags: tags,
+						data: null,
+					});
+
+					console.log(`🔍 Tag combo ${i + 1} response for ${tier} DumDum:`, statusResponse);
+
+					if (
+						statusResponse &&
+						statusResponse['Claim-Status-Response'] &&
+						statusResponse['Claim-Status-Response'].status === 'Claimed'
+					) {
+						console.log(`✅ ${tier} DumDum already claimed (found with tag combo ${i + 1})`);
+						setDumDumRewards((prev) => ({
+							...prev,
+							[tier]: { ...prev[tier], claimed: true, claimable: false },
+						}));
+						foundClaimed = true;
+						break; // Found the right tag combination, stop trying others
+					} else if (
+						statusResponse &&
+						statusResponse['Claim-Status-Response'] &&
+						statusResponse['Claim-Status-Response'].status === 'Claimable'
+					) {
+						console.log(`⏳ ${tier} DumDum is claimable (tag combo ${i + 1})`);
+					} else if (
+						statusResponse &&
+						statusResponse['Claim-Status-Response'] &&
+						statusResponse['Claim-Status-Response'].status === 'Non-Claimable'
+					) {
+						console.log(`🔒 ${tier} DumDum not claimable (tag combo ${i + 1})`);
+					} else if (statusResponse === null) {
+						console.log(`⚠️ ${tier} DumDum status check returned null (tag combo ${i + 1})`);
+					} else {
+						console.log(`⏳ ${tier} DumDum status unknown (tag combo ${i + 1}):`, statusResponse);
+					}
+				} catch (error) {
+					console.error(`❌ Error checking ${tier} DumDum status with tag combo ${i + 1}:`, error);
+				}
+			}
+
+			if (!foundClaimed) {
+				console.log(`⚠️ No tag combination found ${tier} DumDum as claimed`);
+			}
+		}
+	}
+
+	// Handle DumDum claiming - Real implementation using DumDum contracts
+	async function handleClaimDumDum(tier: 'bronze' | 'silver' | 'gold' | 'platinum') {
+		if (!arProvider.walletAddress) {
+			console.error('Cannot claim DumDum: Missing wallet address');
+			return;
+		}
+
+		// For Silver, Gold, and Platinum DumDums, we need a profile
+		if (tier !== 'bronze' && !permawebProvider.profile?.id) {
+			console.error(`Cannot claim ${tier} DumDum: Missing profile`);
+			return;
+		}
+
+		const processId = DUMDUM_PROCESS_IDS[tier];
+		console.log(`Claiming ${tier} DumDum from process: ${processId}`);
+
+		// Set claiming in progress
+		setDumDumRewards((prev) => ({
+			...prev,
+			[tier]: { ...prev[tier], claimInProgress: true },
+		}));
+
+		try {
+			// Prepare tags for the claim request - Bronze DumDum uses simpler tags
+			const tags =
+				tier === 'bronze'
+					? [{ name: 'Address', value: arProvider.walletAddress }]
+					: [
+							{ name: 'Address', value: arProvider.walletAddress },
+							{ name: 'ProfileId', value: permawebProvider.profile?.id || arProvider.walletAddress },
+							{ name: 'Tier', value: tier },
+							{ name: 'Quest-System', value: 'wander-tier-integration' },
+					  ];
+
+			// For Bronze DumDum, test contract responsiveness first
+			if (tier === 'bronze') {
+				console.log(`🔍 Testing Bronze DumDum contract responsiveness...`);
+				try {
+					// Try readHandler first (more reliable for Get-Config)
+					const configResponse = await readHandler({
+						processId: processId,
+						action: 'Get-Config',
+					});
+					console.log(`🔍 Bronze DumDum config response (readHandler):`, configResponse);
+
+					if (!configResponse) {
+						// Fallback to messageResult
+						console.log(`🔍 Trying messageResult for Get-Config...`);
+						const configResponse2 = await messageResult({
+							processId: processId,
+							wallet: arProvider.wallet,
+							action: 'Get-Config',
+							tags: [],
+							data: null,
+						});
+						console.log(`🔍 Bronze DumDum config response (messageResult):`, configResponse2);
+
+						if (!configResponse2) {
+							throw new Error('Bronze DumDum contract not responding to Get-Config');
+						}
+					}
+				} catch (configError) {
+					console.log(`❌ Bronze DumDum contract not responsive:`, configError);
+					throw new Error(`Bronze DumDum contract not responding: ${configError.message}`);
+				}
+			}
+
+			// CRITICAL: First initialize the claim check (this is what we were missing!)
+			console.log(`🔍 Initializing claim check for ${tier} DumDum with tags:`, tags);
+			await messageResult({
+				processId: processId,
+				wallet: arProvider.wallet,
+				action: 'Init-Claim-Check',
+				tags: tags,
+				data: null,
+			});
+			console.log(`✅ Init-Claim-Check completed for ${tier} DumDum`);
+
+			// Now check if already claimed
+			console.log(`🔍 Checking claim status for ${tier} DumDum with tags:`, tags);
+			const statusResponse = await messageResult({
+				processId: processId,
+				wallet: arProvider.wallet,
+				action: 'Get-Claim-Status',
+				tags: tags,
+				data: null,
+			});
+			console.log(`🔍 Status response for ${tier} DumDum:`, statusResponse);
+			console.log(`🔍 Status response details:`, JSON.stringify(statusResponse, null, 2));
+
+			if (
+				statusResponse &&
+				statusResponse['Claim-Status-Response'] &&
+				statusResponse['Claim-Status-Response'].status === 'Claimed'
+			) {
+				console.log(`✅ ${tier} DumDum already claimed`);
+				setDumDumRewards((prev) => ({
+					...prev,
+					[tier]: { ...prev[tier], claimed: true, claimInProgress: false, claimable: false },
+				}));
+				return;
+			}
+
+			// Attempt to claim the DumDum
+			console.log(`Attempting to claim ${tier} DumDum with Handle-Claim action...`);
+			const response = await messageResult({
+				processId: processId,
+				wallet: arProvider.wallet,
+				action: 'Handle-Claim',
+				tags: tags,
+				data: null,
+			});
+
+			console.log(`🔍 Claim response for ${tier} DumDum:`, response);
+			console.log(`🔍 Claim response details:`, JSON.stringify(response, null, 2));
+			console.log(`🔍 Tags sent to ${tier} DumDum:`, tags);
+			console.log(`🔍 Wallet address: ${arProvider.walletAddress}`);
+			console.log(`🔍 Profile ID: ${permawebProvider.profile?.id || 'N/A (Bronze DumDum only needs wallet)'}`);
+
+			// Handle undefined response
+			if (response === undefined || response === null) {
+				console.log(`❌ ${tier} DumDum Handle-Claim returned undefined/null - contract may not be responding`);
+				throw new Error(
+					`${tier} DumDum contract not responding to Handle-Claim action. The contract may be down or not properly deployed.`
+				);
+			}
+
+			if (response && response['Claim-Status-Response'] && response['Claim-Status-Response'].status === 'Claimed') {
+				console.log(`✅ ${tier} DumDum claimed successfully!`);
+
+				// Mark as claimed
+				setDumDumRewards((prev) => ({
+					...prev,
+					[tier]: { ...prev[tier], claimed: true, claimInProgress: false, claimable: false },
+				}));
+
+				// Show success notification
+				setClaimNotification({
+					questId: `${tier}-dumdum`,
+					reward: { type: 'DumDum', tier, processId },
+				});
+			} else if (
+				response &&
+				response['Claim-Status-Response'] &&
+				response['Claim-Status-Response'].status === 'Error'
+			) {
+				// Handle specific error messages from the process
+				const errorMessage = response['Claim-Status-Response'].Message || 'Unknown error';
+				console.log(`🔍 Error details for ${tier} DumDum:`, response['Claim-Status-Response']);
+
+				// For Bronze DumDum, try alternative claiming method
+				if (tier === 'bronze') {
+					console.log(`🔄 Trying alternative Bronze DumDum claiming method...`);
+					try {
+						// Try with no tags at all for Bronze DumDum
+						const altResponse = await messageResult({
+							processId: processId,
+							wallet: arProvider.wallet,
+							action: 'Handle-Claim',
+							tags: [],
+							data: null,
+						});
+						console.log(`🔍 Alternative Bronze DumDum response:`, altResponse);
+
+						if (
+							altResponse &&
+							altResponse['Claim-Status-Response'] &&
+							altResponse['Claim-Status-Response'].status === 'Claimed'
+						) {
+							console.log(`✅ Bronze DumDum claimed successfully with alternative method!`);
+							setDumDumRewards((prev) => ({
+								...prev,
+								[tier]: { ...prev[tier], claimed: true, claimInProgress: false, claimable: false },
+							}));
+							return;
+						}
+					} catch (altError) {
+						console.log(`❌ Alternative Bronze DumDum method also failed:`, altError);
+					}
+				}
+
+				throw new Error(`Process error: ${errorMessage}`);
+			} else if (response === null) {
+				// Handle null response - likely means process doesn't have asset or user doesn't meet requirements
+				if (tier === 'platinum') {
+					throw new Error(
+						'Platinum DumDum not available. You may need to claim Bronze, Silver, and Gold DumDums first, or the process may not have the asset.'
+					);
+				} else {
+					throw new Error(
+						`${tier} DumDum not available. The process may not have the asset or you may not meet the requirements.`
+					);
+				}
+			} else {
+				throw new Error(`Unexpected response: ${JSON.stringify(response)}`);
+			}
+		} catch (error) {
+			console.error(`❌ Failed to claim ${tier} DumDum:`, error);
+
+			// Reset claiming state on error
+			setDumDumRewards((prev) => ({
+				...prev,
+				[tier]: { ...prev[tier], claimInProgress: false },
+			}));
+
+			// Show error notification
+			setClaimNotification({
+				questId: `${tier}-dumdum-error`,
+				reward: { type: 'Error', message: `Failed to claim ${tier} DumDum: ${error.message}` },
+			});
+		}
+	}
+
+	// Fallback simulation for DumDum claiming (when real process IDs aren't available)
+	async function simulateDumDumClaim(tier: 'bronze' | 'silver' | 'gold' | 'platinum') {
+		// Set claiming in progress
+		setDumDumRewards((prev) => ({
+			...prev,
+			[tier]: { ...prev[tier], claimInProgress: true },
+		}));
+
+		try {
+			console.log(`Simulating ${tier} DumDum claim...`);
+
+			// Simulate claiming process
+			await new Promise((resolve) => setTimeout(resolve, 2000));
+
+			// Mark as claimed
+			setDumDumRewards((prev) => ({
+				...prev,
+				[tier]: { ...prev[tier], claimed: true, claimInProgress: false, claimable: false },
+			}));
+
+			console.log(`✅ ${tier} DumDum claimed successfully! (simulated)`);
+
+			// Show success notification
+			setClaimNotification({
+				questId: `${tier}-dumdum-simulated`,
+				reward: { type: 'DumDum', tier, simulated: true },
+			});
+		} catch (error) {
+			console.error(`❌ Failed to simulate ${tier} DumDum claim:`, error);
+
+			// Reset claiming state on error
+			setDumDumRewards((prev) => ({
+				...prev,
+				[tier]: { ...prev[tier], claimInProgress: false },
+			}));
+		}
+	}
+
+	// DumDum Reward Card Component
+	function getDumDumRewardCard(
+		tier: 'bronze' | 'silver' | 'gold' | 'platinum',
+		title: string,
+		description: string,
+		icon: string,
+		questCompleted: boolean
+	) {
+		const reward = dumDumRewards[tier];
+		const tierColors = {
+			bronze: '#cd7f32',
+			silver: '#c0c0c0',
+			gold: '#ffd700',
+			platinum: '#e5e4e2',
+		};
+
+		return (
+			<div
+				key={tier}
+				style={{
+					background: 'linear-gradient(135deg, #1f2937 0%, #374151 100%)',
+					border: `3px solid ${tierColors[tier]}`,
+					borderRadius: '16px',
+					padding: '20px',
+					textAlign: 'center',
+					position: 'relative',
+					overflow: 'hidden',
+					boxShadow: `0 8px 25px rgba(0,0,0,0.3), 0 0 20px ${tierColors[tier]}40`,
+					transition: 'all 0.3s ease',
+				}}
+			>
+				{/* Tier Badge */}
+				<div
+					style={{
+						position: 'absolute',
+						top: '10px',
+						right: '10px',
+						background: tierColors[tier],
+						color: 'white',
+						padding: '4px 8px',
+						borderRadius: '8px',
+						fontSize: '0.8rem',
+						fontWeight: 'bold',
+						textTransform: 'uppercase',
+					}}
+				>
+					{tier}
+				</div>
+
+				{/* DumDum Asset Image/Video */}
+				<div style={{ marginBottom: '15px' }}>
+					{tier === 'platinum' ? (
+						// Platinum DumDum is a video
+						<video
+							src={getTxEndpoint(DUMDUM_PROCESS_IDS[tier])}
+							style={{
+								width: '120px',
+								height: '120px',
+								objectFit: 'cover',
+								borderRadius: '12px',
+								border: `2px solid ${tierColors[tier]}`,
+								boxShadow: `0 4px 12px ${tierColors[tier]}40`,
+							}}
+							muted
+							autoPlay
+							loop
+							onError={(e) => {
+								// Fallback to icon if video fails to load
+								const img = document.createElement('img');
+								img.src = icon;
+								img.style.width = '48px';
+								img.style.height = '48px';
+								img.style.objectFit = 'contain';
+								e.currentTarget.parentNode.replaceChild(img, e.currentTarget);
+							}}
+						/>
+					) : (
+						// Bronze, Silver, Gold DumDums are images
+						<img
+							src={getTxEndpoint(DUMDUM_PROCESS_IDS[tier])}
+							alt={title}
+							style={{
+								width: '120px',
+								height: '120px',
+								objectFit: 'cover',
+								borderRadius: '12px',
+								border: `2px solid ${tierColors[tier]}`,
+								boxShadow: `0 4px 12px ${tierColors[tier]}40`,
+							}}
+							onError={(e) => {
+								// Fallback to icon if image fails to load
+								e.currentTarget.src = icon;
+								e.currentTarget.style.width = '48px';
+								e.currentTarget.style.height = '48px';
+								e.currentTarget.style.objectFit = 'contain';
+							}}
+						/>
+					)}
+				</div>
+
+				{/* Title */}
+				<h3
+					style={{
+						color: 'white',
+						fontSize: '1.3rem',
+						fontWeight: 'bold',
+						marginBottom: '10px',
+						textShadow: '0 2px 4px rgba(0,0,0,0.3)',
+					}}
+				>
+					{title}
+				</h3>
+
+				{/* Description */}
+				<p
+					style={{
+						color: '#d1d5db',
+						fontSize: '0.9rem',
+						marginBottom: '20px',
+						lineHeight: '1.4',
+					}}
+				>
+					{description}
+				</p>
+
+				{/* Quest Status */}
+				<div
+					style={{
+						background: questCompleted ? '#10b981' : '#6b7280',
+						color: 'white',
+						padding: '8px 16px',
+						borderRadius: '20px',
+						fontSize: '0.9rem',
+						fontWeight: 'bold',
+						marginBottom: '20px',
+						display: 'inline-block',
+					}}
+				>
+					{questCompleted ? '✅ Quest Completed' : '⏳ Quest Pending'}
+				</div>
+
+				{/* Claim Button or Status */}
+				{reward.claimable && !reward.claimed && (
+					<button
+						onClick={() => handleClaimDumDum(tier)}
+						disabled={reward.claimInProgress}
+						style={{
+							background: `linear-gradient(135deg, ${tierColors[tier]} 0%, ${tierColors[tier]}dd 100%)`,
+							color: 'white',
+							border: 'none',
+							borderRadius: '12px',
+							padding: '12px 24px',
+							fontSize: '1.1rem',
+							fontWeight: 'bold',
+							cursor: reward.claimInProgress ? 'not-allowed' : 'pointer',
+							boxShadow: `0 6px 15px ${tierColors[tier]}40`,
+							transition: 'all 0.3s ease',
+							opacity: reward.claimInProgress ? 0.7 : 1,
+							transform: reward.claimInProgress ? 'scale(0.95)' : 'scale(1)',
+							width: '100%',
+						}}
+						onMouseEnter={(e) => {
+							if (!reward.claimInProgress) {
+								e.currentTarget.style.transform = 'scale(1.05)';
+								e.currentTarget.style.boxShadow = `0 8px 20px ${tierColors[tier]}60`;
+							}
+						}}
+						onMouseLeave={(e) => {
+							if (!reward.claimInProgress) {
+								e.currentTarget.style.transform = 'scale(1)';
+								e.currentTarget.style.boxShadow = `0 6px 15px ${tierColors[tier]}40`;
+							}
+						}}
+					>
+						{reward.claimInProgress ? 'Claiming...' : `Claim ${tier.charAt(0).toUpperCase() + tier.slice(1)} DumDum`}
+					</button>
+				)}
+
+				{reward.claimed && (
+					<div
+						style={{
+							background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+							color: 'white',
+							borderRadius: '12px',
+							padding: '12px 24px',
+							fontSize: '1.1rem',
+							fontWeight: 'bold',
+							boxShadow: '0 6px 15px rgba(16, 185, 129, 0.4)',
+						}}
+					>
+						✅ {tier.charAt(0).toUpperCase() + tier.slice(1)} DumDum Claimed!
+					</div>
+				)}
+
+				{!reward.claimable && !reward.claimed && questCompleted && (
+					<div
+						style={{
+							background: 'linear-gradient(135deg, #6b7280 0%, #4b5563 100%)',
+							color: 'white',
+							borderRadius: '12px',
+							padding: '12px 24px',
+							fontSize: '1.1rem',
+							fontWeight: 'bold',
+							boxShadow: '0 6px 15px rgba(107, 114, 128, 0.4)',
+						}}
+					>
+						🔒 Already Claimed
+					</div>
+				)}
+
+				{!questCompleted && (
+					<div
+						style={{
+							background: 'linear-gradient(135deg, #6b7280 0%, #4b5563 100%)',
+							color: 'white',
+							borderRadius: '12px',
+							padding: '12px 24px',
+							fontSize: '1.1rem',
+							fontWeight: 'bold',
+							boxShadow: '0 6px 15px rgba(107, 114, 128, 0.4)',
+						}}
+					>
+						🔒 Complete quest to unlock
+					</div>
+				)}
+			</div>
+		);
+	}
+
+	// Calculate WNDR reward based on Wander tier
+	const getWNDRRewardForTier = (baseReward: number, tier: string) => {
+		const tierMultipliers = {
+			Core: 1.0, // 100% of base reward
+			Select: 1.25, // 125% of base reward
+			Reserve: 1.5, // 150% of base reward
+			Edge: 1.75, // 175% of base reward
+			Prime: 2.0, // 200% of base reward
+		};
+
+		const multiplier = tierMultipliers[tier as keyof typeof tierMultipliers] || 1.0;
+		return Math.round(baseReward * multiplier);
+	};
+
+	// Combined Quest + DumDum Reward Card Component
+	function getCombinedQuestDumDumCard(
+		questId: string,
+		dumDumTier: 'bronze' | 'silver' | 'gold' | 'platinum',
+		title: string,
+		description: string,
+		icon: string
+	) {
+		const quest = quests.find((q) => q.id === questId);
+		const isQuestCompleted = quest?.completed || false;
+		const reward = dumDumRewards[dumDumTier];
+		const isClaimable = reward?.claimable || false;
+		const isClaimed = reward?.claimed || false;
+		const processId = DUMDUM_PROCESS_IDS[dumDumTier];
+
+		const tierColors = {
+			bronze: '#cd7f32',
+			silver: '#c0c0c0',
+			gold: '#ffd700',
+			platinum: '#e5e4e2',
+		};
+
+		return (
+			<div
+				key={`${questId}-${dumDumTier}`}
+				style={{
+					background: 'linear-gradient(135deg, #1f2937 0%, #374151 100%)',
+					border: `3px solid ${tierColors[dumDumTier]}`,
+					borderRadius: '16px',
+					padding: '20px',
+					textAlign: 'center',
+					position: 'relative',
+					overflow: 'hidden',
+					boxShadow: `0 8px 25px rgba(0,0,0,0.3), 0 0 20px ${tierColors[dumDumTier]}40`,
+					transition: 'all 0.3s ease',
+					display: 'flex',
+					flexDirection: 'column',
+					height: '100%',
+					minHeight: '500px', // Ensure consistent minimum height
+				}}
+			>
+				{/* Tier Badge */}
+				<div
+					style={{
+						position: 'absolute',
+						top: '10px',
+						right: '10px',
+						background: tierColors[dumDumTier],
+						color: 'white',
+						padding: '4px 8px',
+						borderRadius: '8px',
+						fontSize: '0.8rem',
+						fontWeight: 'bold',
+						textTransform: 'uppercase',
+					}}
+				>
+					{dumDumTier}
+				</div>
+
+				{/* Main Content Area - Flex grow to fill space */}
+				<div style={{ flex: '1', display: 'flex', flexDirection: 'column' }}>
+					{/* DumDum Asset Image/Video - All clickable links to Bazar asset pages */}
+					<div style={{ marginBottom: '15px' }}>
+						{dumDumTier === 'platinum' ? (
+							// Platinum DumDum is a clickable video - links to Bazar asset page
+							<a
+								href={`https://bazar.arweave.net/#/asset/${DUMDUM_PROCESS_IDS.platinum}`}
+								target="_blank"
+								rel="noopener noreferrer"
+								style={{ textDecoration: 'none' }}
+							>
+								<video
+									src={getTxEndpoint(processId)}
+									style={{
+										width: '120px',
+										height: '120px',
+										objectFit: 'cover',
+										borderRadius: '12px',
+										border: `2px solid ${tierColors[dumDumTier]}`,
+										boxShadow: `0 4px 12px ${tierColors[dumDumTier]}40`,
+										cursor: 'pointer',
+										transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+									}}
+									muted
+									autoPlay
+									loop
+									onMouseEnter={(e) => {
+										e.currentTarget.style.transform = 'scale(1.05)';
+										e.currentTarget.style.boxShadow = `0 6px 16px ${tierColors[dumDumTier]}60`;
+									}}
+									onMouseLeave={(e) => {
+										e.currentTarget.style.transform = 'scale(1)';
+										e.currentTarget.style.boxShadow = `0 4px 12px ${tierColors[dumDumTier]}40`;
+									}}
+									onError={(e) => {
+										// Fallback to icon if video fails to load
+										const img = document.createElement('img');
+										img.src = icon;
+										img.style.width = '48px';
+										img.style.height = '48px';
+										img.style.objectFit = 'contain';
+										e.currentTarget.parentNode.replaceChild(img, e.currentTarget);
+									}}
+								/>
+							</a>
+						) : (
+							// Bronze, Silver, and Gold DumDums are clickable images - links to Bazar asset pages
+							<a
+								href={`https://bazar.arweave.net/#/asset/${processId}`}
+								target="_blank"
+								rel="noopener noreferrer"
+								style={{ textDecoration: 'none' }}
+							>
+								<img
+									src={getTxEndpoint(processId)}
+									alt={title}
+									style={{
+										width: '120px',
+										height: '120px',
+										objectFit: 'cover',
+										borderRadius: '12px',
+										border: `2px solid ${tierColors[dumDumTier]}`,
+										boxShadow: `0 4px 12px ${tierColors[dumDumTier]}40`,
+										cursor: 'pointer',
+										transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+									}}
+									onMouseEnter={(e) => {
+										e.currentTarget.style.transform = 'scale(1.05)';
+										e.currentTarget.style.boxShadow = `0 6px 16px ${tierColors[dumDumTier]}60`;
+									}}
+									onMouseLeave={(e) => {
+										e.currentTarget.style.transform = 'scale(1)';
+										e.currentTarget.style.boxShadow = `0 4px 12px ${tierColors[dumDumTier]}40`;
+									}}
+									onError={(e) => {
+										// Fallback to icon if image fails to load
+										e.currentTarget.src = icon;
+										e.currentTarget.style.width = '48px';
+										e.currentTarget.style.height = '48px';
+										e.currentTarget.style.objectFit = 'contain';
+									}}
+								/>
+							</a>
+						)}
+					</div>
+
+					{/* Title */}
+					<h3
+						style={{
+							color: 'white',
+							fontSize: '1.3rem',
+							fontWeight: 'bold',
+							marginBottom: '10px',
+							textShadow: '0 2px 4px rgba(0,0,0,0.3)',
+						}}
+					>
+						{title}
+					</h3>
+
+					{/* Description */}
+					<p
+						style={{
+							color: '#d1d5db',
+							fontSize: '0.9rem',
+							marginBottom: '15px',
+							lineHeight: '1.4',
+						}}
+					>
+						{description}
+					</p>
+
+					{/* WNDR Reward Information */}
+					{dumDumTier === 'platinum' && (
+						<div
+							style={{
+								background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+								color: 'white',
+								padding: '8px 12px',
+								borderRadius: '8px',
+								fontSize: '0.85rem',
+								fontWeight: 'bold',
+								marginBottom: '15px',
+								textAlign: 'center',
+							}}
+						>
+							💰 WNDR Reward: {getWNDRRewardForTier(100, wanderTierInfo?.tier || 'Core')} WNDR
+							{wanderTierInfo?.tier && wanderTierInfo.tier !== 'Core' && (
+								<div style={{ fontSize: '0.75rem', opacity: 0.9, marginTop: '2px' }}>
+									({wanderTierInfo.tier} Tier Bonus!)
+								</div>
+							)}
+						</div>
+					)}
+
+					{/* Quest Status - Only show if not claimed */}
+					{!isClaimed && (
+						<div
+							style={{
+								background: isQuestCompleted ? '#10b981' : '#6b7280',
+								color: 'white',
+								padding: '8px 16px',
+								borderRadius: '20px',
+								fontSize: '0.9rem',
+								fontWeight: 'bold',
+								marginBottom: '20px',
+								display: 'inline-block',
+							}}
+						>
+							{isQuestCompleted ? '✅ Quest Completed' : '⏳ Quest Pending'}
+						</div>
+					)}
+				</div>
+
+				{/* Button Area - Fixed at bottom */}
+				<div style={{ marginTop: 'auto' }}>
+					{/* Claim Button or Status */}
+					{isClaimable && !isClaimed && (
+						<button
+							onClick={() => handleClaimDumDum(dumDumTier)}
+							disabled={reward.claimInProgress}
+							style={{
+								background: `linear-gradient(135deg, ${tierColors[dumDumTier]} 0%, ${tierColors[dumDumTier]}dd 100%)`,
+								color: 'white',
+								border: 'none',
+								borderRadius: '12px',
+								padding: '12px 24px',
+								fontSize: '1.1rem',
+								fontWeight: 'bold',
+								cursor: reward.claimInProgress ? 'not-allowed' : 'pointer',
+								boxShadow: `0 6px 15px ${tierColors[dumDumTier]}40`,
+								transition: 'all 0.3s ease',
+								opacity: reward.claimInProgress ? 0.7 : 1,
+								transform: reward.claimInProgress ? 'scale(0.95)' : 'scale(1)',
+								width: '100%',
+							}}
+							onMouseEnter={(e) => {
+								if (!reward.claimInProgress) {
+									e.currentTarget.style.transform = 'scale(1.05)';
+									e.currentTarget.style.boxShadow = `0 8px 20px ${tierColors[dumDumTier]}60`;
+								}
+							}}
+							onMouseLeave={(e) => {
+								if (!reward.claimInProgress) {
+									e.currentTarget.style.transform = 'scale(1)';
+									e.currentTarget.style.boxShadow = `0 6px 15px ${tierColors[dumDumTier]}40`;
+								}
+							}}
+						>
+							{reward.claimInProgress
+								? 'Claiming...'
+								: dumDumTier === 'platinum'
+								? `Claim Platinum DumDum + ${getWNDRRewardForTier(100, wanderTierInfo?.tier || 'Core')} WNDR`
+								: `Claim ${dumDumTier.charAt(0).toUpperCase() + dumDumTier.slice(1)} DumDum`}
+						</button>
+					)}
+
+					{isClaimed && (
+						<div
+							style={{
+								background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+								color: 'white',
+								borderRadius: '12px',
+								padding: '12px 24px',
+								fontSize: '1.1rem',
+								fontWeight: 'bold',
+								boxShadow: '0 6px 15px rgba(16, 185, 129, 0.4)',
+							}}
+						>
+							{dumDumTier === 'platinum'
+								? `✅ Platinum DumDum + ${getWNDRRewardForTier(100, wanderTierInfo?.tier || 'Core')} WNDR Claimed!`
+								: `✅ ${dumDumTier.charAt(0).toUpperCase() + dumDumTier.slice(1)} DumDum Claimed!`}
+						</div>
+					)}
+
+					{!isClaimable && !isClaimed && isQuestCompleted && (
+						<div
+							style={{
+								background: 'linear-gradient(135deg, #6b7280 0%, #4b5563 100%)',
+								color: 'white',
+								borderRadius: '12px',
+								padding: '12px 24px',
+								fontSize: '1.1rem',
+								fontWeight: 'bold',
+								boxShadow: '0 6px 15px rgba(107, 114, 128, 0.4)',
+							}}
+						>
+							🔒 Already Claimed
+						</div>
+					)}
+
+					{!isQuestCompleted && !isClaimed && (
+						<div
+							style={{
+								background: 'linear-gradient(135deg, #6b7280 0%, #4b5563 100%)',
+								color: 'white',
+								borderRadius: '12px',
+								padding: '12px 24px',
+								fontSize: '1.1rem',
+								fontWeight: 'bold',
+								boxShadow: '0 6px 15px rgba(107, 114, 128, 0.4)',
+							}}
+						>
+							🔒 Complete quest to unlock
+						</div>
+					)}
+				</div>
+			</div>
+		);
 	}
 
 	async function checkDelegationStatus() {
@@ -1081,7 +2115,7 @@ export default function Quests() {
 							if (aoResponse && aoResponse['Claim-Status-Response'] && aoResponse['Claim-Status-Response'].status) {
 								claimable = aoResponse['Claim-Status-Response'].status === 'Claimable';
 								claimed = aoResponse['Claim-Status-Response'].status === 'Claimed';
-								// console.log(`🎯 ${asset.title} AO status:`, {
+								// console.log(`${asset.title} AO status:`, {
 								// 	status: aoResponse['Claim-Status-Response'].status,
 								// 	claimable: claimable,
 								// 	claimed: claimed
@@ -1179,7 +2213,7 @@ export default function Quests() {
 					})
 				);
 
-				// console.log('🎯 All assets processed. Final results:', results.map(r => ({
+				// console.log('All assets processed. Final results:', results.map(r => ({
 				// 	title: r.title,
 				// 	claimable: r.claimable,
 				// 	claimed: r.claimed
@@ -1319,7 +2353,7 @@ export default function Quests() {
 						<div style={{ flex: 1 }}>
 							<S.RewardText>{quest.reward.description}</S.RewardText>
 
-							{hasTierMultiplier && <S.TierBoost>🎯 {quest.reward.tier} Boost Active!</S.TierBoost>}
+							{hasTierMultiplier && <S.TierBoost>{quest.reward.tier} Boost Active!</S.TierBoost>}
 						</div>
 					</div>
 				</S.QuestReward>
@@ -1605,7 +2639,7 @@ export default function Quests() {
 							fontWeight: 'bold',
 						}}
 					>
-						🏆
+						★
 					</div>
 				</div>
 
@@ -1666,7 +2700,7 @@ export default function Quests() {
 							}
 						}}
 					>
-						{asset.claimInProgress ? '🎯 Claiming...' : '🎯 Claim Bronze DumDum'}
+						{asset.claimInProgress ? 'Claiming...' : 'Claim Bronze DumDum'}
 					</button>
 				)}
 
@@ -1889,115 +2923,68 @@ export default function Quests() {
 								</S.CampaignCompleteContent>
 							</S.CampaignCompleteBanner>
 						)}
-
-						<S.QuestsGrid>{quests.map((quest) => getQuestCard(quest))}</S.QuestsGrid>
-
-						{/* Wander Tier Quest Section - 5-tier progression leading to Bronze DumDum */}
+						{/* Combined Quest + DumDum Rewards Section - Now at the top */}
 						<S.ProfileRingsSection>
 							<S.ProfileRingsHeader>
+								<h2>Quest Rewards</h2>
 								<p>
-									<strong>Complete all 5 quests to earn your exclusive Bronze DumDum!</strong> This special quest
-									progression rewards you with WNDR tokens and Explorer Rings as you advance through the tiers.
+									<strong>Complete Quest + Claim DumDum:</strong> Each quest unlocks a corresponding DumDum collectible!
+									Complete the quest and claim your exclusive DumDum atomic asset that you can keep forever on Arweave!
 								</p>
+								<div
+									style={{
+										background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+										color: 'white',
+										padding: '12px 16px',
+										borderRadius: '8px',
+										marginTop: '12px',
+										fontSize: '0.9rem',
+									}}
+								>
+									<strong>WNDR Tier Multiplier:</strong> Your Wander tier determines how many WNDR tokens you earn! Core
+									(100%), Select (125%), Reserve (150%), Edge (175%), Prime (200%). Higher tiers = more WNDR rewards
+									when claiming the Platinum DumDum!
+								</div>
 							</S.ProfileRingsHeader>
 							<S.ProfileRingsGrid>
-								{/* Quest 1: Create Profile */}
-								<S.QuestCard completed={isQuestCompleted('create-profile', quests)} claimed={false}>
-									<S.QuestHeader>
-										<S.QuestIcon>
-											<img src={ASSETS.user} alt="Create Profile" />
-										</S.QuestIcon>
-										<S.QuestInfo>
-											<S.QuestTitle>Quest 1: Create Profile</S.QuestTitle>
-											<S.QuestDescription>Create your Bazar profile to start your journey</S.QuestDescription>
-											<S.QuestProgress>{getQuestProgress('create-profile', quests)} / 1</S.QuestProgress>
-										</S.QuestInfo>
-									</S.QuestHeader>
-									<S.QuestReward>
-										<S.RewardText>10 WNDR + Brown Explorer Ring</S.RewardText>
-									</S.QuestReward>
-								</S.QuestCard>
-
-								{/* Quest 2: Make First Purchase */}
-								<S.QuestCard completed={isQuestCompleted('make-purchase', quests)} claimed={false}>
-									<S.QuestHeader>
-										<S.QuestIcon>
-											<img src={ASSETS.buy} alt="Make Purchase" />
-										</S.QuestIcon>
-										<S.QuestInfo>
-											<S.QuestTitle>Quest 2: Make First Purchase</S.QuestTitle>
-											<S.QuestDescription>Buy your first atomic asset from the marketplace</S.QuestDescription>
-											<S.QuestProgress>{getQuestProgress('make-purchase', quests)} / 1</S.QuestProgress>
-										</S.QuestInfo>
-									</S.QuestHeader>
-									<S.QuestReward>
-										<S.RewardText>50 WNDR + Silver Explorer Ring</S.RewardText>
-									</S.QuestReward>
-								</S.QuestCard>
-
-								{/* Quest 3: Complete 3 Trades */}
-								<S.QuestCard completed={progress.totalPurchases >= 3} claimed={false}>
-									<S.QuestHeader>
-										<S.QuestIcon>
-											<img src={ASSETS.star} alt="Complete Trades" />
-										</S.QuestIcon>
-										<S.QuestInfo>
-											<S.QuestTitle>Quest 3: Complete 3 Trades</S.QuestTitle>
-											<S.QuestDescription>Complete 3 successful trades on the marketplace</S.QuestDescription>
-											<S.QuestProgress>{Math.min(progress.totalPurchases, 3)} / 3</S.QuestProgress>
-										</S.QuestInfo>
-									</S.QuestHeader>
-									<S.QuestReward>
-										<S.RewardText>100 WNDR + Gold Explorer Ring</S.RewardText>
-									</S.QuestReward>
-								</S.QuestCard>
-
-								{/* Quest 4: Reach 10 Trades */}
-								<S.QuestCard completed={progress.totalPurchases >= 10} claimed={false}>
-									<S.QuestHeader>
-										<S.QuestIcon>
-											<img src={ASSETS.star} alt="Reach 10 Trades" />
-										</S.QuestIcon>
-										<S.QuestInfo>
-											<S.QuestTitle>Quest 4: Reach 10 Trades</S.QuestTitle>
-											<S.QuestDescription>Complete 10 successful trades on the marketplace</S.QuestDescription>
-											<S.QuestProgress>{Math.min(progress.totalPurchases, 10)} / 10</S.QuestProgress>
-										</S.QuestInfo>
-									</S.QuestHeader>
-									<S.QuestReward>
-										<S.RewardText>250 WNDR + Platinum Explorer Ring</S.RewardText>
-									</S.QuestReward>
-								</S.QuestCard>
-
-								{/* Quest 5: Complete All Quests */}
-								<S.QuestCard completed={campaignCompleted} claimed={false}>
-									<S.QuestHeader>
-										<S.QuestIcon>
-											<img src={ASSETS.star} alt="Complete All" />
-										</S.QuestIcon>
-										<S.QuestInfo>
-											<S.QuestTitle>Quest 5: Complete All Quests</S.QuestTitle>
-											<S.QuestDescription>
-												Complete all previous quests to unlock the ultimate reward
-											</S.QuestDescription>
-											<S.QuestProgress>
-												{completedQuests} / {totalQuests}
-											</S.QuestProgress>
-										</S.QuestInfo>
-									</S.QuestHeader>
-									<S.QuestReward>
-										<S.RewardText>500 WNDR + Diamond Explorer Ring + Bronze DumDum</S.RewardText>
-									</S.QuestReward>
-								</S.QuestCard>
+								{/* Combined Quest + DumDum Tiles */}
+								{getCombinedQuestDumDumCard(
+									'get-wander-wallet',
+									'bronze',
+									'Get Wander Wallet + Bronze DumDum',
+									'Create a wallet with Wander and claim your first atomic asset',
+									ASSETS.wander
+								)}
+								{getCombinedQuestDumDumCard(
+									'create-profile',
+									'silver',
+									'Create Profile + Silver DumDum',
+									'Create a profile on Bazar',
+									ASSETS.user
+								)}
+								{getCombinedQuestDumDumCard(
+									'stamp-silver-dumdum',
+									'gold',
+									'Stamp Silver DumDum + Gold DumDum',
+									'Leave a stamp (like) on the Silver DumDum',
+									ASSETS.star
+								)}
+								{getCombinedQuestDumDumCard(
+									'claim-omega-dumdum',
+									'platinum',
+									'Claim All + Platinum DumDum',
+									'Claim the Bronze, Silver, and Gold DumDum to unlock Platinum',
+									ASSETS.star
+								)}
 							</S.ProfileRingsGrid>
 						</S.ProfileRingsSection>
 
-						{/* Always show profile rings section - display all possible rings */}
+						{/* Always show profile rings section - display all possible rings - Now at the bottom */}
 						<S.ProfileRingsSection>
 							<S.ProfileRingsHeader>
 								<h2>Wander Profile Rings</h2>
 								<p>
-									<strong>🌟 Special Feature:</strong> Your Wander profile rings match your current Wander wallet tier!
+									<strong>Special Feature:</strong> Your Wander profile rings match your current Wander wallet tier!
 									These rings are permanent rewards that you keep on Bazar - your avatar will display your special badge
 									of honor!
 								</p>
@@ -2018,46 +3005,6 @@ export default function Quests() {
 								{Object.keys(WANDER_PROFILE_RINGS).map((ringId) => getProfileRingCard(ringId))}
 							</S.ProfileRingsGrid>
 						</S.ProfileRingsSection>
-
-						{(campaign2Loading || campaign2Assets.length > 0) && (
-							<S.ProfileRingsSection>
-								<S.ProfileRingsHeader>
-									<h2>🏆 Bronze DumDum Reward</h2>
-									<p>
-										<strong>🌟 Ultimate Reward:</strong> Complete all 5 quests to claim your exclusive Bronze DumDum
-										atomic asset! This is a special collectible that you can keep forever on Arweave!
-									</p>
-								</S.ProfileRingsHeader>
-								{campaign2Loading ? (
-									<div
-										style={{
-											display: 'flex',
-											justifyContent: 'center',
-											alignItems: 'center',
-											padding: '40px',
-											color: 'var(--text-secondary)',
-											fontSize: '1.1rem',
-										}}
-									>
-										Loading Bronze DumDum...
-									</div>
-								) : (
-									<div
-										style={{
-											display: 'flex',
-											justifyContent: 'center',
-											padding: '20px',
-										}}
-									>
-										{campaign2Assets
-											.filter(
-												(asset) => asset.questRequirement === 'create-asset' && asset.requirementType === 'wander'
-											)
-											.map((asset) => getBronzeDumDumCard(asset))}
-									</div>
-								)}
-							</S.ProfileRingsSection>
-						)}
 					</S.Body>
 
 					<S.Footer>
@@ -2071,7 +3018,7 @@ export default function Quests() {
 						</p>
 						<br />
 						<p>
-							🌟 <strong>Special Features:</strong>
+							<strong>Special Features:</strong>
 							<br />
 							• Profile rings are permanent rewards you keep on Bazar
 							<br />
