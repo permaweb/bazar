@@ -84,21 +84,6 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 								/>
 							</S.FormGroup>
 
-							<S.FormGroup>
-								<S.Label>Message Unit (MU) URL</S.Label>
-								<span>Coming Soon</span>
-							</S.FormGroup>
-
-							<S.FormGroup>
-								<S.Label>Arweave Gateway</S.Label>
-								<span>Coming Soon</span>
-							</S.FormGroup>
-
-							<S.FormGroup>
-								<S.Label>Hyperbeam Node URL</S.Label>
-								<span>Coming Soon</span>
-							</S.FormGroup>
-
 							<S.StatusWrapper>
 								{isUsingDefaults && !hasChanges ? (
 									<S.StatusText>Using default settings</S.StatusText>

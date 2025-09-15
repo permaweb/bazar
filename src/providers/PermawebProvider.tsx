@@ -9,7 +9,7 @@ import { Panel } from 'components/molecules/Panel';
 import { ProfileManage } from 'components/organisms/ProfileManage';
 import { connect, createSigner } from 'helpers/aoconnect';
 import { getArNSDataForAddress } from 'helpers/arns';
-import { AO, HB, STORAGE, TOKEN_REGISTRY } from 'helpers/config';
+import { AO, STORAGE, TOKEN_REGISTRY } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import {
 	clearTokenStatusCache,
@@ -85,7 +85,6 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 			ao: connect({ MODE: 'legacy' }),
 			arweave: Arweave.init({}),
 			signer: arProvider.wallet ? createSigner(arProvider.wallet) : null,
-			network: HB.defaultNode,
 		};
 
 		setLibs(PermawebLibs.init(deps));
