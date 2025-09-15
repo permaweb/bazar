@@ -91,13 +91,10 @@ export const AO = {
 };
 
 export const HB = {
-	defaultNode: 'https://hb.randao.net',
+	defaultNode: 'https://tee-4.forward.computer',
 };
 export const AOCONFIG = {
 	cu_url: 'https://ur-cu.randao.net',
-	mu_url: 'https://mu.ao-testnet.xyz',
-	gateway: 'https://arweave.net',
-	hb_node: 'https://hb.randao.net',
 };
 
 // Helper function to get current AO settings (with user overrides if available)
