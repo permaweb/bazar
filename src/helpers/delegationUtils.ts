@@ -1,13 +1,6 @@
-import { connect, createDataItemSigner } from '@permaweb/aoconnect';
+import { createDataItemSigner, dryrun, message } from 'helpers/aoconnect';
 
 import { DELEGATION } from './config';
-
-const { dryrun, message } = connect({
-	MODE: 'legacy',
-	MU_URL: 'https://mu.ao-testnet.xyz',
-	CU_URL: 'https://cu.ao-testnet.xyz',
-	GATEWAY_URL: 'https://arweave.net',
-});
 
 export interface DelegationPreference {
 	walletTo: string;

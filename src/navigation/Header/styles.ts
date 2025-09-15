@@ -74,6 +74,14 @@ export const DelegationButtonWrapper = styled.div`
 	align-items: center;
 `;
 
+export const SettingsButtonWrapper = styled.div`
+	display: flex;
+	align-items: center;
+	@media (max-width: ${STYLING.cutoffs.secondary}) {
+		display: none;
+	}
+`;
+
 export const DelegationButton = styled.button`
 	height: 35px;
 	padding: 0 17.5px;

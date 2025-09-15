@@ -296,9 +296,7 @@ export default function ActivityTable(props: IProps) {
 			// Additional filter: Check if this is a spam activity based on very low denomination values
 			// Spam collections often have extremely low prices that aren't visible in UI
 			const price = t['Price'];
-			const isLowDenominationSpam =
-				price &&
-				price === 'None'; // Only filter out "None" prices, not "0" or small values
+			const isLowDenominationSpam = price && price === 'None'; // Only filter out "None" prices, not "0" or small values
 
 			// Check if this looks like emoji/animal spam based on asset data
 			// Only filter if we have strong evidence it's spam

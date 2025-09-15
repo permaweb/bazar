@@ -2,7 +2,6 @@ import React from 'react';
 import { useDispatch } from 'react-redux';
 import { Link } from 'react-router-dom';
 
-import { createDataItemSigner, message, result } from '@permaweb/aoconnect';
 import { createOrder, createOrderbook } from '@permaweb/ucm';
 
 import { messageResults, readHandler } from 'api';
@@ -14,6 +13,7 @@ import { Slider } from 'components/atoms/Slider';
 import TokenSelector from 'components/atoms/TokenSelector';
 import { TxAddress } from 'components/atoms/TxAddress';
 import { Panel } from 'components/molecules/Panel';
+import { createDataItemSigner, message, result } from 'helpers/aoconnect';
 import { AO, ASSETS, REDIRECTS, TOKEN_REGISTRY, URLS } from 'helpers/config';
 import { AssetOrderType } from 'helpers/types';
 import {

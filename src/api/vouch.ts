@@ -1,5 +1,4 @@
-import { createDataItemSigner, message, result } from '@permaweb/aoconnect';
-
+import { createDataItemSigner, message, result } from 'helpers/aoconnect';
 import { AO } from 'helpers/config';
 import { VouchType } from 'helpers/types';
 
