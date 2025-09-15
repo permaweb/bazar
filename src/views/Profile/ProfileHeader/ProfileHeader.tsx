@@ -2,6 +2,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ReactSVG } from 'react-svg';
 
+// import { connect, createDataItemSigner } from '@permaweb/aoconnect';
 import { Button } from 'components/atoms/Button';
 import { Modal } from 'components/molecules/Modal';
 import { Panel } from 'components/molecules/Panel';

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 
 import { Button } from 'components/atoms/Button';
 import { IconButton } from 'components/atoms/IconButton';
-import { ASSETS } from 'helpers/config';
+import { AOCONFIG, ASSETS } from 'helpers/config';
 import { AOSettings, useAOSettings } from 'providers/AOSettingsProvider';
 import { CloseHandler } from 'wrappers/CloseHandler';
 
@@ -80,38 +80,23 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 									type="text"
 									value={formData.cu_url}
 									onChange={(e) => handleInputChange('cu_url', e.target.value)}
-									placeholder="https://ur-cu.randao.net"
+									placeholder={AOCONFIG.cu_url}
 								/>
 							</S.FormGroup>
 
 							<S.FormGroup>
 								<S.Label>Message Unit (MU) URL</S.Label>
-								<S.Input
-									type="text"
-									value={formData.mu_url}
-									onChange={(e) => handleInputChange('mu_url', e.target.value)}
-									placeholder="https://mu.ao-testnet.xyz"
-								/>
+								<span>Coming Soon</span>
 							</S.FormGroup>
 
 							<S.FormGroup>
 								<S.Label>Arweave Gateway</S.Label>
-								<S.Input
-									type="text"
-									value={formData.gateway}
-									onChange={(e) => handleInputChange('gateway', e.target.value)}
-									placeholder="https://arweave.net"
-								/>
+								<span>Coming Soon</span>
 							</S.FormGroup>
 
 							<S.FormGroup>
 								<S.Label>Hyperbeam Node URL</S.Label>
-								<S.Input
-									type="text"
-									value={formData.hb_node}
-									onChange={(e) => handleInputChange('hb_node', e.target.value)}
-									placeholder="https://hb.randao.net"
-								/>
+								<span>Coming Soon</span>
 							</S.FormGroup>
 
 							<S.StatusWrapper>
