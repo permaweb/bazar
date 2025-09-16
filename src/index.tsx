@@ -6,6 +6,7 @@ import { PersistGate } from 'redux-persist/integration/react';
 
 import { App } from 'app';
 import { GlobalStyle } from 'app/styles';
+import { AOSettingsProvider } from 'providers/AOSettingsProvider';
 import { AppProvider } from 'providers/AppProvider';
 import { ArweaveProvider } from 'providers/ArweaveProvider';
 import { CustomThemeProvider } from 'providers/CustomThemeProvider';
@@ -22,30 +23,32 @@ ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
 			<CustomThemeProvider>
 				<LanguageProvider>
 					<ErrorBoundary>
-						<AOSyncProvider
-							gatewayConfig={{
-								host: 'arweave.net',
-								port: 443,
-								protocol: 'https',
-							}}
-							appInfo={{ name: 'Bazar' }}
-							muUrl="https://mu.ao-testnet.xyz"
-						>
-							<ArweaveProvider>
-								<PermawebProvider>
-									<TokenProvider>
-										<TokenValidationProvider>
-											<AppProvider>
-												<HashRouter>
-													<GlobalStyle />
-													<App />
-												</HashRouter>
-											</AppProvider>
-										</TokenValidationProvider>
-									</TokenProvider>
-								</PermawebProvider>
-							</ArweaveProvider>
-						</AOSyncProvider>
+						<AOSettingsProvider>
+							<AOSyncProvider
+								gatewayConfig={{
+									host: 'arweave.net',
+									port: 443,
+									protocol: 'https',
+								}}
+								appInfo={{ name: 'Bazar' }}
+								muUrl="https://mu.ao-testnet.xyz"
+							>
+								<ArweaveProvider>
+									<PermawebProvider>
+										<TokenProvider>
+											<TokenValidationProvider>
+												<AppProvider>
+													<HashRouter>
+														<GlobalStyle />
+														<App />
+													</HashRouter>
+												</AppProvider>
+											</TokenValidationProvider>
+										</TokenProvider>
+									</PermawebProvider>
+								</ArweaveProvider>
+							</AOSyncProvider>
+						</AOSettingsProvider>
 					</ErrorBoundary>
 				</LanguageProvider>
 			</CustomThemeProvider>

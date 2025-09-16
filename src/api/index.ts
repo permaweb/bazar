@@ -1,5 +1,4 @@
-import { createDataItemSigner, dryrun, message, result, results } from '@permaweb/aoconnect';
-
+import { createDataItemSigner, dryrun, message, result, results } from 'helpers/aoconnect';
 import { CURSORS, GATEWAYS, PAGINATORS } from 'helpers/config';
 import {
 	BatchAGQLResponseType,

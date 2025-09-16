@@ -93,6 +93,23 @@ export const AO = {
 export const HB = {
 	defaultNode: 'https://tee-4.forward.computer',
 };
+export const AOCONFIG = {
+	cu_url: 'https://ur-cu.randao.net',
+};
+
+// Helper function to get current AO settings (with user overrides if available)
+export const getAOConfig = () => {
+	try {
+		const savedSettings = localStorage.getItem('ao_settings');
+		if (savedSettings) {
+			const parsed = JSON.parse(savedSettings);
+			return { ...AOCONFIG, ...parsed };
+		}
+	} catch (error) {
+		console.error('Failed to parse saved AO settings:', error);
+	}
+	return AOCONFIG;
+};
 
 export const REFORMATTED_ASSETS = {
 	[AO.pixl]: {
