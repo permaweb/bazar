@@ -3,14 +3,41 @@ import { getBestGatewayEndpoint } from './wayfinder';
 
 const debug = (..._args: any[]) => {};
 
+function normalizeGateway(gateway: string): string {
+	return gateway.endsWith('/') ? gateway.slice(0, -1) : gateway;
+}
+
+async function getGraphQLEndpointCandidates(): Promise<string[]> {
+	const endpoints = new Set<string>();
+
+	try {
+		const gateway = normalizeGateway(getBestGatewayForAssets());
+		endpoints.add(`${gateway}/graphql`);
+	} catch (error) {
+		debug('Wayfinder: Failed to derive synchronous GraphQL endpoint candidate', error);
+	}
+
+	try {
+		const asyncGateway = normalizeGateway(await getBestGatewayEndpoint());
+		endpoints.add(`${asyncGateway}/graphql`);
+	} catch (error) {
+		debug('Wayfinder: Failed to derive async GraphQL endpoint candidate', error);
+	}
+
+	endpoints.add('https://arweave.net/graphql');
+	endpoints.add('https://arweave-search.goldsky.com/graphql');
+	endpoints.add('https://g8way.io/graphql');
+
+	return Array.from(endpoints);
+}
+
 /**
  * Gets the best GraphQL endpoint using Wayfinder
  * @returns Promise<string> - GraphQL endpoint URL
  */
 export async function getGraphQLEndpoint(): Promise<string> {
-	// Use the cached working gateway if available, otherwise fallback to arweave.net
-	const gateway = getBestGatewayForAssets();
-	const endpoint = `${gateway}/graphql`;
+	const candidates = await getGraphQLEndpointCandidates();
+	const endpoint = candidates[0] ?? 'https://arweave.net/graphql';
 	debug('Wayfinder: Using GraphQL endpoint:', endpoint);
 	return endpoint;
 }
@@ -22,33 +49,41 @@ export async function getGraphQLEndpoint(): Promise<string> {
  * @returns Promise<any> - GraphQL response
  */
 export async function executeGraphQLQuery(query: string, variables?: any): Promise<any> {
-	try {
-		const endpoint = await getGraphQLEndpoint();
+	const endpoints = await getGraphQLEndpointCandidates();
+	const errors: { endpoint: string; error: any }[] = [];
 
-		debug('Executing GraphQL query on:', endpoint);
+	for (const endpoint of endpoints) {
+		try {
+			debug('Executing GraphQL query on:', endpoint);
+			const response = await fetch(endpoint, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ query, variables }),
+			});
 
-		const response = await fetch(endpoint, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ query, variables }),
-		});
+			if (!response.ok) {
+				errors.push({ endpoint, error: `HTTP ${response.status}` });
+				continue;
+			}
 
-		if (!response.ok) {
-			throw new Error(`GraphQL request failed with status ${response.status}`);
+			const data = await response.json();
+
+			if (data.errors) {
+				const graphQLError = new Error(`GraphQL errors: ${JSON.stringify(data.errors)}`);
+				errors.push({ endpoint, error: graphQLError });
+				continue;
+			}
+
+			return data;
+		} catch (error) {
+			errors.push({ endpoint, error });
 		}
-
-		const data = await response.json();
-
-		if (data.errors) {
-			console.error('❌ GraphQL errors:', data.errors);
-			throw new Error(`GraphQL errors: ${JSON.stringify(data.errors)}`);
-		}
-
-		return data;
-	} catch (error) {
-		console.error('❌ GraphQL query failed:', error);
-		throw error;
 	}
+
+	const error = new Error(`GraphQL request failed on endpoints: ${endpoints.join(', ')}`);
+	(error as any).details = errors;
+	console.error('❌ GraphQL query failed across all endpoints:', errors);
+	throw error;
 }
 
 /**

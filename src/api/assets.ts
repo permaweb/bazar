@@ -2,7 +2,6 @@ import { getGQLData, readHandler } from 'api';
 
 import { AO, HB, LICENSES, PAGINATORS, REFORMATTED_ASSETS, TAGS } from 'helpers/config';
 import { getBestGatewayForGraphQL } from 'helpers/endpoints';
-import { getGraphQLEndpoint } from 'helpers/graphql';
 import {
 	AssetDetailType,
 	AssetOrderType,

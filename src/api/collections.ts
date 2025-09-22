@@ -5,6 +5,7 @@ import { AO, getDefaultToken, HB } from 'helpers/config';
 
 // Spam address to filter out from collections
 const SPAM_ADDRESS = 'DwYZmjS7l6NHwojaH7-LzRBb4RiwjshGQm7-1ApDObw';
+import { executeGraphQLQueryWithRetry } from 'helpers/graphql';
 import {
 	CollectionDetailType,
 	CollectionMetricsType,
@@ -12,7 +13,7 @@ import {
 	OrderbookEntryType,
 	StampsType,
 } from 'helpers/types';
-import { sortOrderbookEntries } from 'helpers/utils';
+import { getTagValue, sortOrderbookEntries } from 'helpers/utils';
 import { store } from 'store';
 import * as collectionActions from 'store/collections/actions';
 
@@ -26,7 +27,6 @@ export async function getCollections(creator: string, libs: any): Promise<any[]>
 		});
 
 		if (response?.Collections?.length) {
-			console.log('Processing', response.Collections.length, 'collections for spam filtering');
 			let filteredCollections = [...response.Collections];
 			if (creator) {
 				const creatorCollectionIds = [...(response.CollectionsByUser?.[creator] ?? [])];
@@ -46,46 +46,7 @@ export async function getCollections(creator: string, libs: any): Promise<any[]>
 			});
 
 			// Filter out collections from spam address
-			const spamFilteredCollections = collections.filter((collection: any) => {
-				if (collection.creator === SPAM_ADDRESS) {
-					console.log('Filtering out spam collection:', collection.title, 'from creator:', collection.creator);
-					return false;
-				}
-				return true;
-			});
-
-			console.log(
-				`Collections spam filtering: ${
-					collections.length - spamFilteredCollections.length
-				} collections filtered out of ${collections.length} total collections`
-			);
-
-			// Debug: Log a sample of creators to see what we're working with
-			const sampleCreators = collections.slice(0, 5).map((c) => ({ title: c.title, creator: c.creator }));
-			console.log('Sample collection creators:', sampleCreators);
-
-			// Debug: Check if spam address appears anywhere in the collections data
-			const spamCollections = collections.filter((c) =>
-				JSON.stringify(c).includes('DwYZmjS7l6NHwojaH7-LzRBb4RiwjshGQm7-1ApDObw')
-			);
-			if (spamCollections.length > 0) {
-				console.log('Found collections with spam address:', spamCollections);
-			}
-
-			// Debug: Look for emoji/animal collections that might be spam
-			const emojiAnimalCollections = collections.filter(
-				(c) =>
-					c.title &&
-					(c.title.includes('emoji') ||
-						c.title.includes('animal') ||
-						c.title.includes('🐶') ||
-						c.title.includes('🐱') ||
-						c.title.includes('🦄') ||
-						c.title.includes('🎭'))
-			);
-			if (emojiAnimalCollections.length > 0) {
-				console.log('Found emoji/animal collections:', emojiAnimalCollections);
-			}
+			const spamFilteredCollections = collections.filter((collection: any) => collection.creator !== SPAM_ADDRESS);
 
 			const collectionIds = spamFilteredCollections.map((collection: any) => collection.id);
 			const stampsFetch: StampsType = await stamps.getStamps({ ids: collectionIds });
@@ -308,10 +269,6 @@ export async function getAllMusicCollections(libs: any): Promise<CollectionType[
 			return cachedMusic.collections;
 		}
 
-		// Import the necessary functions
-		const { GATEWAYS } = await import('helpers/config');
-		const { getTagValue } = await import('helpers/utils');
-
 		// Set to store unique music collection IDs
 		const musicCollectionIds = new Set<string>();
 
@@ -343,73 +300,43 @@ export async function getAllMusicCollections(libs: any): Promise<CollectionType[
 				}
 			}`;
 
-			// Try different GraphQL endpoints
-			const endpoints = [
-				'https://arweave.net/graphql',
-				'https://arweave-search.goldsky.com/graphql',
-				'https://g8way.io/graphql',
-			];
-
 			let success = false;
 
-			for (const endpoint of endpoints) {
-				try {
-					const response = await fetch(endpoint, {
-						method: 'POST',
-						headers: {
-							'Content-Type': 'application/json',
-							Accept: 'application/json',
-						},
-						body: JSON.stringify({ query }),
-					});
+			try {
+				const result = await executeGraphQLQueryWithRetry(query, undefined, 2);
+				const edges = result?.data?.transactions?.edges ?? [];
 
-					if (response.ok) {
-						const result = await response.json();
+				if (edges.length) {
+					success = true;
+				}
 
-						if (result.data && result.data.transactions && result.data.transactions.edges) {
-							const assets = result.data.transactions.edges;
+				for (const edge of edges) {
+					try {
+						const node = edge.node;
+						const collectionId = getTagValue(node.tags, 'Bootloader-CollectionId');
+						const topicsTag = node.tags.find((tag: any) => tag.name === 'Bootloader-Topics');
 
-							// Process each asset to get its collection ID
-							for (const edge of assets) {
-								try {
-									const node = edge.node;
-									const collectionId = getTagValue(node.tags, 'Bootloader-CollectionId');
-									const assetTitle = getTagValue(node.tags, 'Bootloader-Name') || node.id;
-									const topicsTag = node.tags.find((tag: any) => tag.name === 'Bootloader-Topics');
+						if (collectionId) {
+							let isMusicOrPodcast = false;
 
-									if (collectionId) {
-										// Check if this is a music or podcast asset
-										let isMusicOrPodcast = false;
-
-										if (topicsTag && topicsTag.value) {
-											const topics = topicsTag.value.toLowerCase();
-
-											// Check specifically for Bazar Music and podcast topics
-											const hasBazarMusic = topics.includes('bazar music');
-											const hasPodcast = topics.includes('podcast') || topics.includes('bazar podcast');
-
-											isMusicOrPodcast = hasBazarMusic || hasPodcast;
-										}
-
-										if (isMusicOrPodcast) {
-											musicCollectionIds.add(collectionId);
-										}
-									}
-								} catch (e) {
-									console.error(`Error processing asset ${edge.node.id}:`, e);
-									continue;
-								}
+							if (topicsTag && topicsTag.value) {
+								const topics = topicsTag.value.toLowerCase();
+								const hasBazarMusic = topics.includes('bazar music');
+								const hasPodcast = topics.includes('podcast') || topics.includes('bazar podcast');
+								isMusicOrPodcast = hasBazarMusic || hasPodcast;
 							}
 
-							success = true;
-							break; // Success, stop trying other endpoints
+							if (isMusicOrPodcast) {
+								musicCollectionIds.add(collectionId);
+							}
 						}
-					} else {
-						const errorText = await response.text();
+					} catch (e) {
+						console.error(`Error processing asset ${edge.node.id}:`, e);
+						continue;
 					}
-				} catch (e) {
-					continue;
 				}
+			} catch (graphQLError) {
+				console.error('Error executing music collections GraphQL query:', graphQLError);
 			}
 
 			if (!success) {
