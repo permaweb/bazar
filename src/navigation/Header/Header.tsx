@@ -5,6 +5,7 @@ import { ReactSVG } from 'react-svg';
 import { Button } from 'components/atoms/Button';
 import { IconButton } from 'components/atoms/IconButton';
 import { DelegationPanel } from 'components/organisms/DelegationPanel';
+import { SettingsModal } from 'components/organisms/SettingsModal';
 import { Streaks } from 'components/organisms/Streaks';
 import { ASSETS, REDIRECTS, URLS } from 'helpers/config';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
@@ -23,6 +24,7 @@ export default function Header() {
 	const language = languageProvider.object[languageProvider.current];
 
 	const [delegationPanelOpen, setDelegationPanelOpen] = React.useState(false);
+	const [settingsModalOpen, setSettingsModalOpen] = React.useState(false);
 
 	const paths: { path: string; label: string; target?: '_blank' }[] = [
 		{ path: URLS.collections, label: language.collections },
@@ -67,6 +69,16 @@ export default function Header() {
 								</S.DelegationButton>
 							</S.DelegationButtonWrapper>
 						)}
+						<S.SettingsButtonWrapper>
+							<IconButton
+								type={'alt1'}
+								src={ASSETS.edit}
+								handlePress={() => setSettingsModalOpen(true)}
+								dimensions={{ wrapper: 35, icon: 19.5 }}
+								tooltip={'AO Settings'}
+								useBottomToolTip
+							/>
+						</S.SettingsButtonWrapper>
 						<WalletConnect />
 						<S.MWrapper>
 							<IconButton
@@ -122,6 +134,7 @@ export default function Header() {
 				isOpen={delegationPanelOpen}
 				onClose={() => setDelegationPanelOpen(false)}
 			/>
+			<SettingsModal isOpen={settingsModalOpen} onClose={() => setSettingsModalOpen(false)} />
 		</>
 	);
 }

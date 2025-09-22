@@ -22,6 +22,7 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 
 	const arProvider = useArweaveProvider();
 	const permawebProvider = usePermawebProvider();
+
 	const themeProvider = useCustomThemeProvider();
 
 	const languageProvider = useLanguageProvider();
@@ -112,6 +113,36 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 			label: language.tradePixl,
 			target: '',
 		},
+		[AO.wndr]: {
+			link: `${URLS.asset}${AO.wndr}`,
+			label: language.tradeWander,
+			target: '',
+		},
+		[AO.pi]: {
+			link: `${URLS.asset}${AO.pi}`,
+			label: language.tradePi,
+			target: '',
+		},
+		[AO.ario]: {
+			link: `${URLS.asset}${AO.ario}`,
+			label: language.tradeArio,
+			target: '',
+		},
+		[AO.usda]: {
+			link: `${URLS.asset}${AO.usda}`,
+			label: language.tradeUsda,
+			target: '',
+		},
+		[AO.game]: {
+			link: `${URLS.asset}${AO.game}`,
+			label: language.tradeGame,
+			target: '',
+		},
+		[AO.stamps]: {
+			link: `${URLS.asset}${AO.stamps}`,
+			label: language.tradeStamp,
+			target: '',
+		},
 	};
 
 	function getDropdown() {
@@ -161,6 +192,15 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 					<S.BalanceLine>
 						<ReactSVG src={ASSETS.ar} />
 						<span>{formatCount(arProvider.arBalance ? arProvider.arBalance.toString() : '0')}</span>
+						<S.TokenLink>
+							<Link
+								to="https://viewblock.io/arweave/"
+								target="_blank"
+								onClick={() => handleDropdownAction(() => setShowWalletDropdown(false))}
+							>
+								<span>{language.viewAr}</span>
+							</Link>
+						</S.TokenLink>
 					</S.BalanceLine>
 					{permawebProvider.tokenBalances && Object.keys(permawebProvider.tokenBalances).length > 0 && (
 						<>
@@ -172,6 +212,7 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 											currency={token}
 											callback={() => handleDropdownAction(() => setShowWalletDropdown(false))}
 											useReverseLayout
+											hideSymbol
 										/>
 										{tokenLinks[token] && (
 											<S.TokenLink>

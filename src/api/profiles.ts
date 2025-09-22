@@ -1,11 +1,10 @@
 import PermawebLibs from '@permaweb/libs';
 import AsyncLock from 'async-lock';
 
-import { connect } from '@permaweb/aoconnect';
-
 // import AOProfile, { any } from '@permaweb/aoprofile';
 import { readHandler } from 'api';
 
+import { connect } from 'helpers/aoconnect';
 import { AO } from 'helpers/config';
 import { store } from 'store';
 import * as profilesActions from 'store/profiles/actions';

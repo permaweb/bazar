@@ -4,10 +4,10 @@ import { connect as othentConnect } from '@othent/kms';
 import * as Othent from '@othent/kms';
 import { useWallet as useAOsyncWallet } from '@vela-ventures/aosync-sdk-react';
 
-import { connect } from '@permaweb/aoconnect';
 import AOProfile, { ProfileType } from '@permaweb/aoprofile';
 
 import { Modal } from 'components/molecules/Modal';
+import { connect } from 'helpers/aoconnect';
 import { AR_WALLETS, REDIRECTS, WALLET_PERMISSIONS } from 'helpers/config';
 import { getARBalanceEndpoint } from 'helpers/endpoints';
 import { WalletEnum } from 'helpers/types';

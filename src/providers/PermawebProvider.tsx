@@ -2,21 +2,24 @@ import React from 'react';
 import PermawebLibs from '@permaweb/libs';
 
 import Arweave from 'arweave';
-import { connect, createSigner } from '@permaweb/aoconnect';
 import AOProfile from '@permaweb/aoprofile';
 
 import { Loader } from 'components/atoms/Loader';
 import { Panel } from 'components/molecules/Panel';
 import { ProfileManage } from 'components/organisms/ProfileManage';
+import { connect, createSigner } from 'helpers/aoconnect';
 import { getArNSDataForAddress } from 'helpers/arns';
-import { createArweaveInstance } from 'helpers/arweave';
-import { AO, STORAGE } from 'helpers/config';
+import { AO, STORAGE, TOKEN_REGISTRY } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
+import {
+	clearTokenStatusCache,
+	handleBalanceResponse,
+	isTokenSupported,
+	updateTokenStatus,
+} from 'helpers/tokenValidation';
 
 import { useArweaveProvider } from './ArweaveProvider';
 import { useLanguageProvider } from './LanguageProvider';
-
-const debug = (..._args: any[]) => {};
 
 interface PermawebContextState {
 	libs: any;
@@ -24,7 +27,7 @@ interface PermawebContextState {
 	profile: any;
 	showProfileManager: boolean;
 	setShowProfileManager: (toggle: boolean) => void;
-	tokenBalances: { [address: string]: { profileBalance: number; walletBalance: number } } | null;
+	tokenBalances: { [address: string]: { profileBalance: string | number; walletBalance: string | number } } | null;
 	toggleTokenBalanceUpdate: boolean;
 	setToggleTokenBalanceUpdate: (toggleUpdate: boolean) => void;
 	handleInitialProfileCache: (address: string, profileId: string) => void;
@@ -73,34 +76,25 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 	} | null>({
 		[AO.defaultToken]: { profileBalance: null, walletBalance: null },
 		[AO.pixl]: { profileBalance: null, walletBalance: null },
+		[AO.stamps]: { profileBalance: null, walletBalance: null },
 	});
 	const [toggleTokenBalanceUpdate, setToggleTokenBalanceUpdate] = React.useState<boolean>(false);
 
 	React.useEffect(() => {
-		(async function () {
-			try {
-				const arweave = await createArweaveInstance();
-				const deps = {
-					ao: connect({ MODE: 'legacy' }),
-					arweave: arweave,
-					signer: arProvider.wallet ? createSigner(arProvider.wallet) : null,
-				};
+		const deps = {
+			ao: connect({ MODE: 'legacy' }),
+			arweave: Arweave.init({}),
+			signer: arProvider.wallet ? createSigner(arProvider.wallet) : null,
+		};
 
-				setLibs(PermawebLibs.init(deps));
-				setDeps(deps);
-			} catch (error) {
-				console.error('❌ Failed to initialize PermawebProvider with Wayfinder:', error);
-				// Fallback to default Arweave instance
-				const deps = {
-					ao: connect({ MODE: 'legacy' }),
-					arweave: Arweave.init({}),
-					signer: arProvider.wallet ? createSigner(arProvider.wallet) : null,
-				};
+		setLibs(PermawebLibs.init(deps));
+		setDeps(deps);
 
-				setLibs(PermawebLibs.init(deps));
-				setDeps(deps);
-			}
-		})();
+		// Clear token status cache to ensure fresh data
+		clearTokenStatusCache();
+
+		// Force refresh token balances
+		setToggleTokenBalanceUpdate((prev) => !prev);
 	}, [arProvider.wallet]);
 
 	React.useEffect(() => {
@@ -186,6 +180,69 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 			if (!arProvider.walletAddress || !profile?.id) return;
 
 			try {
+				const newBalances = { ...tokenBalances };
+
+				// Fetch balances for all available tokens
+				for (const tokenId of Object.keys(TOKEN_REGISTRY)) {
+					try {
+						// Check if token supports balance operations
+						if (!isTokenSupported(tokenId, 'balance')) {
+							console.warn(`Token ${tokenId} does not support balance operations`);
+							newBalances[tokenId] = {
+								walletBalance: '0',
+								profileBalance: '0',
+							};
+							continue;
+						}
+
+						const walletBalance = await libs.readProcess({
+							processId: tokenId,
+							action: 'Balance',
+							tags: [{ name: 'Recipient', value: arProvider.walletAddress }],
+						});
+						await sleep(500);
+
+						const profileBalance = await libs.readProcess({
+							processId: tokenId,
+							action: 'Balance',
+							tags: [{ name: 'Recipient', value: profile.id }],
+						});
+						await sleep(500);
+
+						// Handle null responses gracefully
+						const processedWalletBalance = handleBalanceResponse(tokenId, walletBalance, arProvider.walletAddress);
+						const processedProfileBalance = handleBalanceResponse(tokenId, profileBalance, profile.id);
+
+						newBalances[tokenId] = {
+							walletBalance: processedWalletBalance,
+							profileBalance: processedProfileBalance,
+						};
+
+						// Update token status based on response
+						updateTokenStatus(tokenId, {
+							hasBalance: walletBalance !== null || profileBalance !== null,
+						});
+					} catch (e) {
+						if (process.env.NODE_ENV === 'development') {
+							console.error(`Error fetching balance for token ${tokenId}:`, e);
+						}
+
+						// Handle errors gracefully with fallback values
+						newBalances[tokenId] = {
+							walletBalance: '0',
+							profileBalance: '0',
+						};
+
+						// Update token status to reflect the error
+						updateTokenStatus(tokenId, {
+							hasBalance: false,
+						});
+					}
+				}
+
+				setTokenBalances(newBalances);
+				await sleep(500);
+
 				const defaultTokenWalletBalance = await libs.readProcess({
 					processId: AO.defaultToken,
 					action: 'Balance',
@@ -212,20 +269,65 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 					action: 'Balance',
 					tags: [{ name: 'Recipient', value: profile.id }],
 				});
+				await sleep(500);
 
-				setTokenBalances((prevBalances) => ({
-					...prevBalances,
-					[AO.defaultToken]: {
-						...prevBalances[AO.defaultToken],
-						walletBalance: defaultTokenWalletBalance ?? null,
-						profileBalance: defaultTokenProfileBalance ?? null,
-					},
-					[AO.pixl]: {
-						...prevBalances[AO.pixl],
-						walletBalance: pixlTokenWalletBalance ?? null,
-						profileBalance: pixlTokenProfileBalance ?? null,
-					},
-				}));
+				const stampsTokenWalletBalance = await libs.readProcess({
+					processId: AO.stamps,
+					action: 'Balance',
+					tags: [{ name: 'Recipient', value: arProvider.walletAddress }],
+				});
+				await sleep(500);
+
+				const stampsTokenProfileBalance = await libs.readProcess({
+					processId: AO.stamps,
+					action: 'Balance',
+					tags: [{ name: 'Recipient', value: profile.id }],
+				});
+
+				// Helper function to normalize balance response
+				const normalizeBalance = (balanceResponse: any) => {
+					if (balanceResponse === null || balanceResponse === undefined) {
+						return null;
+					}
+
+					// If response has Balance property, use that
+					if (typeof balanceResponse === 'object' && balanceResponse.Balance !== undefined) {
+						const balanceValue = balanceResponse.Balance;
+						if (balanceValue === '0' || balanceValue === 0) {
+							return 0;
+						}
+						return Number(balanceValue) || null;
+					}
+
+					// Otherwise, treat the response itself as the balance
+					if (balanceResponse === '0' || balanceResponse === 0) {
+						return 0;
+					}
+					return Number(balanceResponse) || null;
+				};
+
+				setTokenBalances((prevBalances) => {
+					const newTokenBalances = {
+						...prevBalances,
+						[AO.defaultToken]: {
+							...prevBalances[AO.defaultToken],
+							walletBalance: normalizeBalance(defaultTokenWalletBalance),
+							profileBalance: normalizeBalance(defaultTokenProfileBalance),
+						},
+						[AO.pixl]: {
+							...prevBalances[AO.pixl],
+							walletBalance: normalizeBalance(pixlTokenWalletBalance),
+							profileBalance: normalizeBalance(pixlTokenProfileBalance),
+						},
+						[AO.stamps]: {
+							...prevBalances[AO.stamps],
+							walletBalance: normalizeBalance(stampsTokenWalletBalance),
+							profileBalance: normalizeBalance(stampsTokenProfileBalance),
+						},
+					};
+
+					return newTokenBalances;
+				});
 			} catch (e) {
 				if (process.env.NODE_ENV === 'development') {
 					console.error('Error fetching token balances:', e);
@@ -247,11 +349,8 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 			try {
 				const arnsData = await getArNSDataForAddress(arProvider.walletAddress);
 
-				debug('PermawebProvider - ArNS data', arnsData);
-
 				setArnsPrimaryName(arnsData.primaryName);
 				const avatarUrl = arnsData.logo ? getTxEndpoint(arnsData.logo) : null;
-				debug('PermawebProvider - Setting avatar URL', avatarUrl);
 				setArnsAvatarUrl(avatarUrl);
 			} catch (err) {
 				console.error('PermawebProvider - ArNS error:', err);
@@ -276,7 +375,6 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 
 				if (!fetchedProfile?.id) {
 					if (process.env.NODE_ENV === 'development') {
-						debug('Fetching legacy profile...');
 					}
 					isLegacyProfile = true;
 					const aoProfile = AOProfile.init({ ao: connect({ MODE: 'legacy' }) });

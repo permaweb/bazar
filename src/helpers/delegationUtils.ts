@@ -1,34 +1,6 @@
-import { connect, createDataItemSigner } from '@permaweb/aoconnect';
+import { createDataItemSigner, dryrun, message } from 'helpers/aoconnect';
 
 import { DELEGATION } from './config';
-import { getBestGatewayEndpoint } from './wayfinder';
-
-// Initialize connection with dynamic gateway
-let connection: any = null;
-
-async function getConnection() {
-	if (!connection) {
-		try {
-			const gateway = await getBestGatewayEndpoint();
-			connection = connect({
-				MODE: 'legacy',
-				MU_URL: 'https://mu.ao-testnet.xyz',
-				CU_URL: 'https://cu.ao-testnet.xyz',
-				GATEWAY_URL: gateway,
-			});
-		} catch (error) {
-			console.error('❌ Failed to initialize delegation connection with Wayfinder:', error);
-			// Fallback to default gateway
-			connection = connect({
-				MODE: 'legacy',
-				MU_URL: 'https://mu.ao-testnet.xyz',
-				CU_URL: 'https://cu.ao-testnet.xyz',
-				GATEWAY_URL: 'https://arweave.net',
-			});
-		}
-	}
-	return connection;
-}
 
 export interface DelegationPreference {
 	walletTo: string;
@@ -54,7 +26,6 @@ export interface ProcessInfo {
  */
 export const getDelegations = async (walletAddress: string): Promise<DelegationPreference[]> => {
 	try {
-		const { dryrun } = await getConnection();
 		const result = await dryrun({
 			process: DELEGATION.CONTROLLER,
 			data: walletAddress,
@@ -70,7 +41,10 @@ export const getDelegations = async (walletAddress: string): Promise<DelegationP
 
 		if (result?.Messages?.length > 0) {
 			const delegationData = JSON.parse(result.Messages[0].Data);
-			return delegationData.delegationPrefs || [];
+			const delegations = delegationData.delegationPrefs || [];
+			console.log('DEBUG: Fetched delegations:', delegations);
+			console.log('DEBUG: Looking for PIXL process:', DELEGATION.PIXL_PROCESS);
+			return delegations;
 		}
 		return [];
 	} catch (error) {
@@ -126,7 +100,6 @@ export const setPixlDelegation = async (walletAddress: string, percentage: numbe
 		factor: factor,
 	});
 
-	const { message } = await getConnection();
 	const messageId = await message({
 		process: DELEGATION.CONTROLLER,
 		signer: signer,
@@ -161,7 +134,6 @@ export const adjustOtherDelegations = async (walletAddress: string, desiredPerce
 
 	// If user wants 100%, zero out all others
 	if (desiredPercentage === 100) {
-		const { message } = await getConnection();
 		for (const pref of currentDelegations) {
 			if (pref.walletTo !== DELEGATION.PIXL_PROCESS) {
 				await message({
@@ -191,7 +163,6 @@ export const adjustOtherDelegations = async (walletAddress: string, desiredPerce
 		const availableSpace = DELEGATION.BASIS_POINTS.FULL - desiredPercentage * 100;
 		const reductionFactor = availableSpace / otherDelegationsTotal;
 
-		const { message } = await getConnection();
 		for (const pref of currentDelegations) {
 			if (pref.walletTo !== DELEGATION.PIXL_PROCESS) {
 				const newFactor = Math.floor(pref.factor * reductionFactor);
@@ -222,7 +193,6 @@ export const adjustOtherDelegations = async (walletAddress: string, desiredPerce
 
 export const getProcessInfo = async (processId: string): Promise<ProcessInfo> => {
 	try {
-		const { dryrun } = await getConnection();
 		const result = await dryrun({
 			process: processId,
 			data: '',

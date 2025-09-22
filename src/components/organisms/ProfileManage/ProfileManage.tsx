@@ -2,13 +2,13 @@ import React from 'react';
 import { ReactSVG } from 'react-svg';
 
 import Arweave from 'arweave';
-import { connect, createDataItemSigner } from '@permaweb/aoconnect';
 import AOProfile from '@permaweb/aoprofile';
 
 import { Button } from 'components/atoms/Button';
 import { FormField } from 'components/atoms/FormField';
 import { Notification } from 'components/atoms/Notification';
 import { TextArea } from 'components/atoms/TextArea';
+import { connect, createDataItemSigner } from 'helpers/aoconnect';
 import { ASSETS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import { NotificationType } from 'helpers/types';

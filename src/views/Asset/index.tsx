@@ -15,6 +15,7 @@ import { checkValidAddress } from 'helpers/utils';
 import * as windowUtils from 'helpers/window';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 import { usePermawebProvider } from 'providers/PermawebProvider';
+import { useTokenProvider } from 'providers/TokenProvider';
 
 import { AssetAction } from './AssetAction';
 import { AssetInfo } from './AssetInfo';
@@ -26,6 +27,7 @@ export default function Asset() {
 	const navigate = useNavigate();
 
 	const permawebProvider = usePermawebProvider();
+	const tokenProvider = useTokenProvider();
 
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
@@ -99,21 +101,42 @@ export default function Asset() {
 				setLoading(true);
 				try {
 					if (asset.orderbook.id === AO.ucm) {
+						// Fetch ALL orders for this asset using Info action (like AppProvider does)
 						const response = await readHandler({
 							processId: asset.orderbook.id,
-							action: 'Get-Orderbook-By-Pair',
-							tags: [
-								{ name: 'DominantToken', value: asset.data.id },
-								{ name: 'SwapToken', value: AO.defaultToken },
-							],
+							action: 'Info',
 						});
 
 						if (response?.Orderbook) {
+							// Find all pairs that include this asset
+							const assetPairs = response.Orderbook.filter(
+								(pair: any) => pair.Pair && pair.Pair.includes(asset.data.id)
+							);
+
+							// Process all pairs for this asset to get all orders
+							let allOrders: any[] = [];
+
+							assetPairs.forEach((pair: any) => {
+								if (pair.Orders && Array.isArray(pair.Orders)) {
+									const pairOrders = pair.Orders.map((order: any) => ({
+										creator: order.Creator || order.creator,
+										dateCreated: order.DateCreated || order.dateCreated,
+										id: order.Id || order.id,
+										originalQuantity: order.OriginalQuantity || order.originalQuantity,
+										quantity: order.Quantity || order.quantity,
+										token: order.Token || order.token,
+										currency: pair.Pair[1], // The token being received
+										price: order.Price || order.price || '0', // Ensure price is always set
+									}));
+									allOrders = allOrders.concat(pairOrders);
+								}
+							});
+
 							setAsset((prevAsset) => ({
 								...prevAsset,
 								orderbook: {
 									...prevAsset.orderbook,
-									orders: getAssetOrders(response.Orderbook),
+									orders: allOrders,
 								},
 							}));
 						} else {
@@ -134,12 +157,28 @@ export default function Asset() {
 							node: HB.defaultNode,
 						});
 
+						// Process ALL pairs in the orderbook, not just the first one
+						let allOrders: any[] = [];
+
+						if (response?.Orderbook) {
+							// Handle both array and single object structures
+							const orderbookData = Array.isArray(response.Orderbook) ? response.Orderbook : [response.Orderbook];
+
+							// Process each pair and concatenate orders
+							orderbookData.forEach((pair: any) => {
+								if (pair && pair.Pair) {
+									const pairOrders = getAssetOrders(pair);
+									allOrders = allOrders.concat(pairOrders);
+								}
+							});
+						}
+
 						setAsset((prevAsset) => ({
 							...prevAsset,
 							orderbook: {
 								...prevAsset.orderbook,
 								activityId: response?.ActivityProcess,
-								orders: getAssetOrders(response?.Orderbook?.[0]),
+								orders: allOrders,
 							},
 						}));
 					}

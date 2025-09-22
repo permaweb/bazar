@@ -1,5 +1,4 @@
-import { createDataItemSigner, dryrun, message, result, results } from '@permaweb/aoconnect';
-
+import { createDataItemSigner, dryrun, message, result, results } from 'helpers/aoconnect';
 import { CURSORS, GATEWAYS, PAGINATORS } from 'helpers/config';
 import {
 	BatchAGQLResponseType,
@@ -255,6 +254,7 @@ export async function messageResults(args: {
 	data: any;
 	responses?: string[];
 	handler?: string;
+	timeout?: number; // Add timeout parameter for legacy assets
 }): Promise<any> {
 	try {
 		const tags = [{ name: 'Action', value: args.action }];
@@ -267,7 +267,9 @@ export async function messageResults(args: {
 			data: JSON.stringify(args.data),
 		});
 
-		await new Promise((resolve) => setTimeout(resolve, 1000));
+		// Use custom timeout for legacy assets, default to 1 second for regular assets
+		const timeoutMs = args.timeout || 1000;
+		await new Promise((resolve) => setTimeout(resolve, timeoutMs));
 
 		const messageResults = await results({
 			process: args.processId,
