@@ -1,4 +1,3 @@
-import localForage from 'localforage';
 import { applyMiddleware, combineReducers, compose, legacy_createStore as createStore } from 'redux';
 import { persistReducer, persistStore } from 'redux-persist';
 import thunk from 'redux-thunk';
@@ -9,12 +8,13 @@ import { profilesReducer } from './profiles/reducers';
 import { stampsReducer } from './stamps/reducers';
 import { streaksReducer } from './streaks/reducers';
 import { ucmReducer } from './ucm/reducers';
+import { safeStorage } from './utils/safeStorage';
 
 declare const window: any;
 
 const persistConfig = {
 	key: 'root',
-	storage: localForage,
+	storage: safeStorage,
 	blacklist: [],
 };
 

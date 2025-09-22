@@ -18,6 +18,8 @@ import { useLanguageProvider } from 'providers/LanguageProvider';
 import { usePermawebProvider } from 'providers/PermawebProvider';
 import { WalletBlock } from 'wallet/WalletBlock';
 
+const debug = (..._args: any[]) => {};
+
 import * as S from './styles';
 import { IProps } from './types';
 
@@ -97,7 +99,7 @@ export default function ProfileManage(props: IProps) {
 						});
 					} else {
 						updateResponse = await permawebProvider.libs.updateProfile(data, props.profile.id, (status: any) =>
-							console.log(status)
+							debug(status)
 						);
 					}
 
@@ -108,16 +110,16 @@ export default function ProfileManage(props: IProps) {
 						});
 						handleUpdate();
 					} else {
-						console.log(updateResponse);
+						debug(updateResponse);
 						setProfileResponse({
 							message: language.errorUpdatingProfile,
 							status: 'warning',
 						});
 					}
 				} else {
-					const profileId = await permawebProvider.libs.createProfile(data, (status: any) => console.log(status));
+					const profileId = await permawebProvider.libs.createProfile(data, (status: any) => debug(status));
 
-					console.log(`Profile ID: ${profileId}`);
+					debug(`Profile ID: ${profileId}`);
 
 					if (profileId) {
 						setProfileResponse({
@@ -134,7 +136,7 @@ export default function ProfileManage(props: IProps) {
 					}
 				}
 			} catch (e: any) {
-				console.log(e);
+				debug(e);
 				setProfileResponse({
 					message: e.message ?? e,
 					status: 'warning',

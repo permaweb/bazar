@@ -7,6 +7,7 @@ import { ActivityTable } from 'components/organisms/ActivityTable';
 import { CollectionsCarousel } from 'components/organisms/CollectionsCarousel';
 import MusicCollectionsCarousel from 'components/organisms/MusicCollectionsCarousel';
 import { MusicPlayer } from 'components/organisms/MusicPlayer';
+import { getTxEndpoint } from 'helpers/endpoints';
 import { AssetDetailType, CollectionType } from 'helpers/types';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 import { usePermawebProvider } from 'providers/PermawebProvider';
@@ -37,7 +38,7 @@ const preloadAudioAssets = async (collections: CollectionType[], libs: any) => {
 								const audio = new Audio();
 								audio.preload = 'metadata'; // Just load metadata for faster response
 								// Use the asset ID to construct the Arweave URL
-								audio.src = `https://arweave.net/${assetId}`;
+								audio.src = getTxEndpoint(assetId);
 								audio.load();
 							}
 						} catch (e) {
@@ -68,6 +69,11 @@ export default function Landing() {
 	const [collectionsLoading, setCollectionsLoading] = React.useState<boolean>(true);
 	const [musicCollections, setMusicCollections] = React.useState<CollectionType[] | null>(null);
 	const [musicCollectionsLoading, setMusicCollectionsLoading] = React.useState<boolean>(true);
+	const [hasFetchedCollections, setHasFetchedCollections] = React.useState(false);
+	const [hasFetchedMusicCollections, setHasFetchedMusicCollections] = React.useState(false);
+
+	const stampedCollections = collectionsReducer?.stamped?.collections;
+	const cachedMusicCollections = collectionsReducer?.music?.collections;
 
 	// Local Music Player State (non-persistent)
 	const [currentTrack, setCurrentTrack] = React.useState<AssetDetailType | null>(null);
@@ -102,69 +108,110 @@ export default function Landing() {
 	const handleDurationChange = (newDuration: number) => setDuration(newDuration);
 
 	React.useEffect(() => {
-		(async function () {
-			if (!collections) {
-				setCollectionsLoading(true);
-				try {
-					if (collectionsReducer?.stamped?.collections?.length) {
-						// Filter cached collections for spam
-						const SPAM_ADDRESS = 'DwYZmjS7l6NHwojaH7-LzRBb4RiwjshGQm7-1ApDObw';
-						const filteredCachedCollections = collectionsReducer.stamped.collections.filter(
-							(collection: any) => collection.creator !== SPAM_ADDRESS
-						);
-						setCollections(filteredCachedCollections);
-						setCollectionsLoading(false);
-					}
+		if (!stampedCollections?.length) {
+			return;
+		}
 
-					const collectionsFetch: CollectionType[] = await getCollections(null, permawebProvider.libs);
-					if (collectionsFetch) setCollections(collectionsFetch);
-				} catch (e: any) {
+		const SPAM_ADDRESS = 'DwYZmjS7l6NHwojaH7-LzRBb4RiwjshGQm7-1ApDObw';
+		const filteredCachedCollections = stampedCollections.filter(
+			(collection: any) => collection.creator !== SPAM_ADDRESS
+		);
+		setCollections(filteredCachedCollections);
+		setCollectionsLoading(false);
+	}, [stampedCollections]);
+
+	React.useEffect(() => {
+		if (!permawebProvider.libs || hasFetchedCollections || stampedCollections?.length) {
+			if (stampedCollections?.length) {
+				setCollectionsLoading(false);
+				setHasFetchedCollections(true);
+			}
+			return;
+		}
+
+		let cancelled = false;
+
+		(async function () {
+			setCollectionsLoading(true);
+			try {
+				const collectionsFetch: CollectionType[] = await getCollections(null, permawebProvider.libs);
+				if (!cancelled && collectionsFetch) {
+					setCollections(collectionsFetch);
+				}
+			} catch (e: any) {
+				if (!cancelled) {
 					console.error(e.message || language.collectionsFetchFailed);
 				}
-				setCollectionsLoading(false);
+			} finally {
+				if (!cancelled) {
+					setCollectionsLoading(false);
+					setHasFetchedCollections(true);
+				}
 			}
 		})();
-	}, [collectionsReducer?.stamped]);
+
+		return () => {
+			cancelled = true;
+		};
+	}, [hasFetchedCollections, permawebProvider.libs, stampedCollections?.length, language.collectionsFetchFailed]);
 
 	React.useEffect(() => {
 		(async function () {
-			// Check Redux cache first for better performance
-			const state = collectionsReducer;
-			const cachedMusic = state?.music;
-			const cacheAge = cachedMusic?.lastUpdate ? Date.now() - cachedMusic.lastUpdate : Infinity;
-			const cacheDuration = 5 * 60 * 1000; // 5 minutes
-
-			if (cachedMusic?.collections && cacheAge < cacheDuration) {
-				// Filter cached music collections for spam
-				const SPAM_ADDRESS = 'DwYZmjS7l6NHwojaH7-LzRBb4RiwjshGQm7-1ApDObw';
-				const filteredCachedMusicCollections = cachedMusic.collections.filter(
-					(collection: any) => collection.creator !== SPAM_ADDRESS
-				);
-				setMusicCollections(filteredCachedMusicCollections);
-				setMusicCollectionsLoading(false);
+			if (!cachedMusicCollections?.length) {
 				return;
 			}
 
-			// Only fetch if we don't have music collections yet
-			if (!musicCollections) {
-				setMusicCollectionsLoading(true);
-				try {
-					// Use comprehensive search for all music collections
-					let musicCollectionsFetch: CollectionType[] = await getAllMusicCollections(permawebProvider.libs);
+			const SPAM_ADDRESS = 'DwYZmjS7l6NHwojaH7-LzRBb4RiwjshGQm7-1ApDObw';
+			const filteredCachedMusicCollections = cachedMusicCollections.filter(
+				(collection: any) => collection.creator !== SPAM_ADDRESS
+			);
+			setMusicCollections(filteredCachedMusicCollections);
+			setMusicCollectionsLoading(false);
+		})();
+	}, [cachedMusicCollections]);
 
-					if (musicCollectionsFetch && musicCollectionsFetch.length > 0) {
-						setMusicCollections(musicCollectionsFetch);
+	React.useEffect(() => {
+		if (!permawebProvider.libs || hasFetchedMusicCollections) {
+			return;
+		}
 
-						// Preload audio assets for faster playback
-						preloadAudioAssets(musicCollectionsFetch, permawebProvider.libs);
-					}
-				} catch (e: any) {
+		if (cachedMusicCollections?.length) {
+			setHasFetchedMusicCollections(true);
+			return;
+		}
+
+		if (musicCollections && musicCollections.length > 0) {
+			setHasFetchedMusicCollections(true);
+			return;
+		}
+
+		let cancelled = false;
+
+		(async function () {
+			setMusicCollectionsLoading(true);
+			try {
+				const musicCollectionsFetch: CollectionType[] = await getAllMusicCollections(permawebProvider.libs);
+
+				if (!cancelled && musicCollectionsFetch && musicCollectionsFetch.length > 0) {
+					setMusicCollections(musicCollectionsFetch);
+					preloadAudioAssets(musicCollectionsFetch, permawebProvider.libs);
+				}
+			} catch (e: any) {
+				if (!cancelled) {
 					console.error('Failed to fetch music collections:', e);
 				}
-				setMusicCollectionsLoading(false);
+			} finally {
+				if (!cancelled) {
+					setMusicCollectionsLoading(false);
+					setHasFetchedMusicCollections(true);
+				}
 			}
 		})();
-	}, [musicCollections, collectionsReducer]); // Depend on both state and Redux cache
+
+		return () => {
+			cancelled = true;
+		};
+	}, [cachedMusicCollections?.length, hasFetchedMusicCollections, musicCollections, permawebProvider.libs]);
 
 	return (
 		<S.Wrapper className={'fade-in'}>

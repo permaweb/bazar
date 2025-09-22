@@ -1,6 +1,7 @@
 import { getGQLData, readHandler } from 'api';
 
-import { AO, GATEWAYS, HB, LICENSES, PAGINATORS, REFORMATTED_ASSETS, TAGS } from 'helpers/config';
+import { AO, HB, LICENSES, PAGINATORS, REFORMATTED_ASSETS, TAGS } from 'helpers/config';
+import { getBestGatewayForGraphQL } from 'helpers/endpoints';
 import {
 	AssetDetailType,
 	AssetOrderType,
@@ -17,6 +18,8 @@ import {
 } from 'helpers/types';
 import { formatAddress, getAssetOrderType, getTagValue, sortByAssetOrders, sortOrderbookEntries } from 'helpers/utils';
 import { store } from 'store';
+
+const debug = (..._args: any[]) => {};
 
 export async function getAssetIdsByUser(args: { profileId: string }): Promise<string[]> {
 	try {
@@ -36,8 +39,10 @@ export async function getAssetIdsByUser(args: { profileId: string }): Promise<st
 
 export async function getAssetsByIds(args: { ids: string[]; sortType: AssetSortType }): Promise<AssetDetailType[]> {
 	try {
+		const gateway = getBestGatewayForGraphQL();
+
 		const gqlResponse = await getGQLData({
-			gateway: GATEWAYS.arweave,
+			gateway: gateway, // Use Wayfinder if available
 			ids: args.ids,
 			tagFilters: null,
 			owners: null,
@@ -87,7 +92,7 @@ export async function getAssetsByIds(args: { ids: string[]; sortType: AssetSortT
 export async function getAssetById(args: { id: string; libs?: any }): Promise<AssetDetailType> {
 	try {
 		const assetLookupResponse = await getGQLData({
-			gateway: GATEWAYS.arweave,
+			gateway: getBestGatewayForGraphQL(), // Use Wayfinder if available
 			ids: [args.id],
 			tagFilters: null,
 			owners: null,
@@ -160,7 +165,7 @@ export async function getAssetById(args: { id: string; libs?: any }): Promise<As
 			}
 
 			if (!assetState.balances) {
-				console.log('Getting balances...');
+				debug('Getting balances...');
 				try {
 					await new Promise((r) => setTimeout(r, 1000));
 
@@ -221,14 +226,8 @@ export async function getAssetById(args: { id: string; libs?: any }): Promise<As
 }
 
 export function getExistingEntry(args: { id: string }) {
-	if (store.getState().ucmReducer) {
-		const ucmReducer = store.getState().ucmReducer;
-		return ucmReducer.Orderbook.find((entry: any) => {
-			return entry.Pair ? entry.Pair[0] === args.id : null;
-		});
-	}
-
-	return null;
+	const { ucmReducer } = store.getState();
+	return ucmReducer?.Orderbook?.find((entry: any) => (entry.Pair ? entry.Pair[0] === args.id : null)) || null;
 }
 
 export function getAssetOrders(orderbook: { Pair: string[]; Orders: any } | null | undefined) {

@@ -10,6 +10,8 @@ import { usePermawebProvider } from 'providers/PermawebProvider';
 
 import * as S from './styles';
 
+const debug = (..._args: any[]) => {};
+
 // function creditNoticeForwarding() {
 // 	const creditNoticeForwarding = `Handlers.add('Credit-Notice', Handlers.utils.hasMatchingTag('Action', 'Credit-Notice'),
 // 	function(msg)
@@ -192,7 +194,7 @@ export default function Banner() {
 	// 				data: `Profile.Version = '0.0.1'`,
 	// 			});
 
-	// 			console.log(evalVersionMessage);
+	// 			debug(evalVersionMessage);
 
 	// 			const evalUpdateMessage = await message({
 	// 				process: permawebProvider.profile.id,
@@ -201,14 +203,14 @@ export default function Banner() {
 	// 				data: creditNoticeForwarding(),
 	// 			});
 
-	// 			console.log(evalUpdateMessage);
+	// 			debug(evalUpdateMessage);
 
 	// 			const evalResult = await result({
 	// 				message: evalUpdateMessage,
 	// 				process: permawebProvider.profile.id,
 	// 			});
 
-	// 			console.log(evalResult);
+	// 			debug(evalResult);
 
 	// 			setProcessed(true);
 
@@ -236,7 +238,7 @@ export default function Banner() {
 	// 	if (legacyProfile?.Id && permawebProvider.profile?.id) {
 	// 		setLoading(true);
 	// 		for (const asset of legacyProfile.Assets) {
-	// 			console.log(`Getting balance of asset: ${asset.Id}`);
+	// 			debug(`Getting balance of asset: ${asset.Id}`);
 	// 			try {
 	// 				const assetBalance = await permawebProvider.libs.readProcess({
 	// 					processId: asset.Id,
@@ -252,7 +254,7 @@ export default function Banner() {
 	// 				});
 
 	// 				const quantity = assetBalance ? assetBalance.toString() : '1';
-	// 				console.log(`Transferring ${quantity} to new profile...`);
+	// 				debug(`Transferring ${quantity} to new profile...`);
 	// 				const transferResponse = await permawebProvider.libs.sendMessage({
 	// 					processId: legacyProfile.Id,
 	// 					action: 'Transfer',
@@ -263,7 +265,7 @@ export default function Banner() {
 	// 					],
 	// 				});
 
-	// 				console.log(`Transfer: ${transferResponse}`);
+	// 				debug(`Transfer: ${transferResponse}`);
 	// 			} catch (e: any) {
 	// 				console.error(e);
 	// 			}
@@ -277,7 +279,7 @@ export default function Banner() {
 		if (arProvider.wallet && permawebProvider.profile?.isLegacyProfile) {
 			setLoading(true);
 			try {
-				console.log('Creating new profile...');
+				debug('Creating new profile...');
 
 				const args: any = {
 					username: permawebProvider.profile.username,
@@ -289,14 +291,14 @@ export default function Banner() {
 				if (permawebProvider.profile.thumbnail) args.thumbnail = permawebProvider.profile.thumbnail;
 
 				const newProfileId = await permawebProvider.libs.createProfile(args, (status: any) =>
-					console.log(`Callback: ${status}`)
+					debug(`Callback: ${status}`)
 				);
 
 				permawebProvider.handleInitialProfileCache(arProvider.walletAddress, newProfileId);
 
-				console.log(`Profile ID: ${newProfileId}`);
+				debug(`Profile ID: ${newProfileId}`);
 
-				console.log('Migrating listings...');
+				debug('Migrating listings...');
 				const listingMigrationResult = await permawebProvider.libs.sendMessage({
 					processId: permawebProvider.profile.id,
 					action: 'Run-Action',
@@ -308,9 +310,9 @@ export default function Banner() {
 						},
 					},
 				});
-				console.log(`Listing migration: ${listingMigrationResult}`);
+				debug(`Listing migration: ${listingMigrationResult}`);
 
-				console.log('Migrating streak...');
+				debug('Migrating streak...');
 				const streakMigrationResult = await permawebProvider.libs.sendMessage({
 					processId: permawebProvider.profile.id,
 					action: 'Run-Action',
@@ -322,11 +324,11 @@ export default function Banner() {
 						},
 					},
 				});
-				console.log(`Streak migration: ${streakMigrationResult}`);
+				debug(`Streak migration: ${streakMigrationResult}`);
 
-				console.log('Transferring assets...');
+				debug('Transferring assets...');
 				for (const asset of permawebProvider.profile.assets) {
-					console.log(`Getting balance of asset: ${asset}`);
+					debug(`Getting balance of asset: ${asset}`);
 					try {
 						const assetBalance = await permawebProvider.libs.readProcess({
 							processId: asset,
@@ -342,7 +344,7 @@ export default function Banner() {
 						});
 
 						const quantity = assetBalance ? assetBalance.toString() : '1';
-						console.log(`Transferring ${quantity} to new profile...`);
+						debug(`Transferring ${quantity} to new profile...`);
 						const transferResponse = await permawebProvider.libs.sendMessage({
 							processId: permawebProvider.profile.id,
 							action: 'Transfer',
@@ -353,7 +355,7 @@ export default function Banner() {
 							],
 						});
 
-						console.log(`Transfer: ${transferResponse}`);
+						debug(`Transfer: ${transferResponse}`);
 					} catch (e: any) {
 						console.error(e);
 					}

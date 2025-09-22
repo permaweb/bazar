@@ -18,6 +18,8 @@ import { usePermawebProvider } from 'providers/PermawebProvider';
 
 import * as S from './styles';
 
+const debug = (..._args: any[]) => {};
+
 type AssetStateType = {
 	id: string;
 	cover: string;
@@ -323,7 +325,7 @@ export default function Campaign() {
 			} else {
 				setAudioPlaying(true);
 				audioRef.current.play().catch((error) => {
-					console.log('Autoplay failed:', error);
+					debug('Autoplay failed', error);
 					setAudioPlaying(false);
 				});
 			}

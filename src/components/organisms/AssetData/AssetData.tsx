@@ -12,6 +12,8 @@ import { useArweaveProvider } from 'providers/ArweaveProvider';
 import * as S from './styles';
 import { IProps } from './types';
 
+const debug = (..._args: any[]) => {};
+
 export default function AssetData(props: IProps) {
 	const arProvider = useArweaveProvider();
 
@@ -63,15 +65,27 @@ export default function AssetData(props: IProps) {
 	}, [props.asset, props.scrolling]);
 
 	async function handleGetAssetRender(assetId: string): Promise<AssetRenderType> {
-		const assetResponse = await fetch(getTxEndpoint(assetId));
-		const contentType = assetResponse.headers.get('content-type');
+		debug('🔍 AssetData: handleGetAssetRender called for ID:', assetId);
+		try {
+			const endpoint = getTxEndpoint(assetId);
+			debug('🔍 AssetData: Using endpoint:', endpoint);
+			const assetResponse = await fetch(endpoint);
+			const contentType = assetResponse.headers.get('content-type');
+			debug('🔍 AssetData: Response status:', assetResponse.status, 'Content-Type:', contentType);
 
-		if (assetResponse.status === 200 && contentType) {
-			return {
-				url: getAssetPath(assetResponse),
-				type: 'raw',
-				contentType: contentType,
-			};
+			if (assetResponse.status === 200 && contentType) {
+				const result = {
+					url: getAssetPath(assetResponse),
+					type: 'raw',
+					contentType: contentType,
+				};
+				debug('🔍 AssetData: Returning result:', result);
+				return result;
+			}
+			debug('🔍 AssetData: No valid response, returning undefined');
+		} catch (error) {
+			console.error('🔍 AssetData: Error fetching asset:', error);
+			// Return undefined to trigger fallback behavior
 		}
 	}
 
@@ -98,11 +112,18 @@ export default function AssetData(props: IProps) {
 
 	React.useEffect(() => {
 		(async function () {
+			debug('🔍 AssetData: Props received:', {
+				asset: props.asset,
+				assetRender: props.assetRender,
+				wrapperVisible,
+			});
 			if (!assetRender && wrapperVisible) {
 				if (props.assetRender) {
+					debug('🔍 AssetData: Using provided assetRender');
 					setAssetRender(props.assetRender);
 				} else {
 					if (props.asset && !props.assetRender) {
+						debug('🔍 AssetData: Processing asset:', props.asset);
 						const renderWith = props.asset.data?.renderWith ? props.asset.data.renderWith : '[]';
 						let parsedRenderWith: string | null = null;
 						try {
@@ -111,13 +132,16 @@ export default function AssetData(props: IProps) {
 							parsedRenderWith = renderWith;
 						}
 						if (parsedRenderWith && parsedRenderWith.length) {
+							debug('🔍 AssetData: Using renderer endpoint');
 							setAssetRender({
 								url: getRendererEndpoint(parsedRenderWith, props.asset.data.id),
 								type: 'renderer',
 								contentType: 'renderer',
 							});
 						} else {
+							debug('🔍 AssetData: Fetching asset render for ID:', props.asset.data.id);
 							const renderFetch = await handleGetAssetRender(props.asset.data.id);
+							debug('🔍 AssetData: Render fetch result:', renderFetch);
 							setAssetRender(renderFetch);
 						}
 					}

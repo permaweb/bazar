@@ -19,7 +19,7 @@
 		"prepare": "husky install"
 	},
 	"dependencies": {
-		"@ar.io/sdk": "^3.14.0",
+		"@ar.io/sdk": "^3.18.0-alpha.2",
 		"@othent/kms": "^1.0.7",
 		"@permaweb/aoconnect": "^0.0.85",
 		"@permaweb/aoprofile": "^0.0.11",
@@ -28,6 +28,7 @@
 		"@permaweb/ucm": "0.0.11",
 		"@vela-ventures/aosync-sdk-react": "^1.0.26",
 		"async-lock": "^1.4.1",
+		"codex": "^0.2.3",
 		"jwt-decode": "^4.0.0",
 		"localforage": "^1.10.0",
 		"nprogress": "^0.2.0",
