@@ -1,17 +1,5 @@
-import { connect, createDataItemSigner } from '@permaweb/aoconnect';
-
+import { createDataItemSigner, dryrun, message, result, results } from 'helpers/aoconnect';
 import { CURSORS, GATEWAYS, PAGINATORS } from 'helpers/config';
-
-// Create custom AO connection with mainnet endpoints to avoid CORS issues
-const aoConnection = connect({
-	MODE: 'legacy',
-	MU_URL: 'https://mu.ao.xyz', // Use mainnet instead of testnet
-	CU_URL: 'https://cu.ao.xyz', // Use mainnet instead of testnet
-	GATEWAY_URL: 'https://arweave.net',
-});
-
-// Override the default functions with our custom connection
-const { dryrun: customDryrun, message: customMessage, result: customResult, results: customResults } = aoConnection;
 import {
 	BatchAGQLResponseType,
 	BatchGQLArgsType,
@@ -203,14 +191,14 @@ export async function messageResult(args: {
 
 		const data = args.useRawData ? args.data : JSON.stringify(args.data);
 
-		const txId = await customMessage({
+		const txId = await message({
 			process: args.processId,
 			signer: createDataItemSigner(args.wallet),
 			tags: tags,
 			data: data,
 		});
 
-		const { Messages } = await customResult({ message: txId, process: args.processId });
+		const { Messages } = await result({ message: txId, process: args.processId });
 
 		if (Messages && Messages.length) {
 			const response = {};
@@ -261,7 +249,7 @@ export async function messageResults(args: {
 		const tags = [{ name: 'Action', value: args.action }];
 		if (args.tags) tags.push(...args.tags);
 
-		await customMessage({
+		await message({
 			process: args.processId,
 			signer: createDataItemSigner(args.wallet),
 			tags: tags,
@@ -272,7 +260,7 @@ export async function messageResults(args: {
 		const timeoutMs = args.timeout || 1000;
 		await new Promise((resolve) => setTimeout(resolve, timeoutMs));
 
-		const messageResults = await customResults({
+		const messageResults = await results({
 			process: args.processId,
 			sort: 'DESC',
 			limit: 100,
@@ -348,7 +336,7 @@ export async function readHandler(args: {
 	if (args.tags) tags.push(...args.tags);
 	let data = JSON.stringify(args.data || {});
 
-	const response = await customDryrun({
+	const response = await dryrun({
 		process: args.processId,
 		tags: tags,
 		data: data,
