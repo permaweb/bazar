@@ -16,6 +16,8 @@ import { getTxEndpoint } from 'helpers/endpoints';
 import { useArweaveProvider } from './ArweaveProvider';
 import { useLanguageProvider } from './LanguageProvider';
 
+const debug = (..._args: any[]) => {};
+
 interface PermawebContextState {
 	libs: any;
 	deps: any;
@@ -245,11 +247,11 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 			try {
 				const arnsData = await getArNSDataForAddress(arProvider.walletAddress);
 
-				console.log('PermawebProvider - ArNS data:', arnsData);
+				debug('PermawebProvider - ArNS data', arnsData);
 
 				setArnsPrimaryName(arnsData.primaryName);
 				const avatarUrl = arnsData.logo ? getTxEndpoint(arnsData.logo) : null;
-				console.log('PermawebProvider - Setting avatar URL:', avatarUrl);
+				debug('PermawebProvider - Setting avatar URL', avatarUrl);
 				setArnsAvatarUrl(avatarUrl);
 			} catch (err) {
 				console.error('PermawebProvider - ArNS error:', err);
@@ -274,7 +276,7 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 
 				if (!fetchedProfile?.id) {
 					if (process.env.NODE_ENV === 'development') {
-						console.log('Fetching legacy profile...');
+						debug('Fetching legacy profile...');
 					}
 					isLegacyProfile = true;
 					const aoProfile = AOProfile.init({ ao: connect({ MODE: 'legacy' }) });

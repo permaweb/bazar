@@ -1,4 +1,7 @@
+import { getBestGatewayForAssets } from './endpoints';
 import { getBestGatewayEndpoint } from './wayfinder';
+
+const debug = (..._args: any[]) => {};
 
 /**
  * Gets the best GraphQL endpoint using Wayfinder
@@ -8,7 +11,7 @@ export async function getGraphQLEndpoint(): Promise<string> {
 	// Use the cached working gateway if available, otherwise fallback to arweave.net
 	const gateway = getBestGatewayForAssets();
 	const endpoint = `${gateway}/graphql`;
-	console.log(`🔗 Wayfinder: Using GraphQL endpoint: ${endpoint}`);
+	debug('Wayfinder: Using GraphQL endpoint:', endpoint);
 	return endpoint;
 }
 
@@ -22,7 +25,7 @@ export async function executeGraphQLQuery(query: string, variables?: any): Promi
 	try {
 		const endpoint = await getGraphQLEndpoint();
 
-		console.log(`🔍 Executing GraphQL query on: ${endpoint}`);
+		debug('Executing GraphQL query on:', endpoint);
 
 		const response = await fetch(endpoint, {
 			method: 'POST',

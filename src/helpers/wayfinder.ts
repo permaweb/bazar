@@ -1,5 +1,7 @@
 import { ARIO } from '@ar.io/sdk';
 
+const debug = (..._args: any[]) => {};
+
 // Global gateway management
 let globalGateways: string[] = []; // Start empty, will be populated by Wayfinder
 let currentGatewayIndex = 0;
@@ -23,26 +25,26 @@ export async function initializeWayfinder(): Promise<string[]> {
 	isInitializing = true;
 	initializationPromise = (async () => {
 		try {
-			console.log('🔗 Wayfinder: Starting initialization...');
+			debug('Wayfinder: Starting initialization...');
 			// Initialize ARIO client for mainnet
 			const ario = ARIO.mainnet();
-			console.log('🔗 Wayfinder: ARIO client initialized');
+			debug('Wayfinder: ARIO client initialized');
 
 			// Get gateways from ARIO network
-			console.log('🔗 Wayfinder: Fetching gateways from ARIO...');
+			debug('Wayfinder: Fetching gateways from ARIO...');
 			const gatewaysResponse = await ario.getGateways({
 				limit: 10,
 				sortBy: 'totalDelegatedStake',
 				sortOrder: 'desc',
 			});
-			console.log('🔗 Wayfinder: ARIO response:', gatewaysResponse);
+			debug('Wayfinder: ARIO response', gatewaysResponse);
 
 			// Extract gateway URLs from the response
 			const gatewayUrls = gatewaysResponse.items
 				.filter((gateway) => gateway.settings?.fqdn && gateway.status === 'joined')
 				.map((gateway) => `https://${gateway.settings.fqdn}`)
 				.slice(0, 5); // Take top 5 gateways
-			console.log('🔗 Wayfinder: Extracted gateway URLs:', gatewayUrls);
+			debug('Wayfinder: Extracted gateway URLs', gatewayUrls);
 
 			// Add fallback gateways
 			const fallbackGateways = ['https://arweave.net', 'https://ar-io.net'];
@@ -61,13 +63,13 @@ export async function initializeWayfinder(): Promise<string[]> {
 				};
 			}
 
-			console.log('🔗 Wayfinder: Global gateways initialized successfully:', globalGateways);
-			console.log('🔗 Wayfinder: Top gateway is:', globalGateways[0]);
+			debug('Wayfinder: Global gateways initialized successfully', globalGateways);
+			debug('Wayfinder: Top gateway is', globalGateways[0]);
 
 			// Immediately test and cache a working gateway
-			console.log('🔗 Wayfinder: Testing gateways for immediate use...');
+			debug('Wayfinder: Testing gateways for immediate use...');
 			const workingGateway = await getWorkingGateway();
-			console.log('🔗 Wayfinder: Initial working gateway cached:', workingGateway);
+			debug('Wayfinder: Initial working gateway cached', workingGateway);
 		} catch (error) {
 			console.error('Failed to initialize global gateways:', error);
 			// Fallback to basic gateways
@@ -95,7 +97,7 @@ function getNextGateway(): string {
 // Test if a gateway is working
 async function testGateway(gateway: string): Promise<boolean> {
 	try {
-		console.log(`🔗 Wayfinder: Testing gateway: ${gateway}`);
+		debug('Wayfinder: Testing gateway', gateway);
 		const response = await fetch(`${gateway}/info`, {
 			method: 'GET',
 			headers: {
@@ -105,12 +107,10 @@ async function testGateway(gateway: string): Promise<boolean> {
 			signal: AbortSignal.timeout(5000),
 		});
 		const isWorking = response.ok;
-		console.log(
-			`🔗 Wayfinder: Gateway ${gateway} test result: ${isWorking ? 'SUCCESS' : 'FAILED'} (${response.status})`
-		);
+		debug('Wayfinder: Gateway test result', gateway, response.status);
 		return isWorking;
 	} catch (error) {
-		console.log(`🔗 Wayfinder: Gateway ${gateway} failed test:`, error);
+		debug('Wayfinder: Gateway failed test', gateway, error);
 		return false;
 	}
 }
@@ -120,7 +120,7 @@ export async function getWorkingGateway(): Promise<string> {
 	// Check cache first
 	const now = Date.now();
 	if (workingGatewayCache && now - lastGatewayTest < GATEWAY_CACHE_DURATION) {
-		console.log(`🔗 Wayfinder: Using cached working gateway: ${workingGatewayCache}`);
+		debug('Wayfinder: Using cached working gateway', workingGatewayCache);
 		return workingGatewayCache;
 	}
 
@@ -130,10 +130,10 @@ export async function getWorkingGateway(): Promise<string> {
 
 	for (let attempt = 0; attempt < maxAttempts; attempt++) {
 		const gateway = globalGateways[currentIndex];
-		console.log(`🔗 Wayfinder: Testing gateway ${attempt + 1}/${maxAttempts}: ${gateway}`);
+		debug('Wayfinder: Testing gateway', attempt + 1, '/', maxAttempts, gateway);
 
 		if (await testGateway(gateway)) {
-			console.log(`🔗 Wayfinder: Found working gateway: ${gateway}`);
+			debug('Wayfinder: Found working gateway', gateway);
 			// Cache the working gateway
 			workingGatewayCache = gateway;
 			lastGatewayTest = now;
@@ -145,7 +145,7 @@ export async function getWorkingGateway(): Promise<string> {
 	}
 
 	// If all gateways fail, fall back to arweave.net
-	console.log(`🔗 Wayfinder: All gateways failed, using fallback: https://arweave.net`);
+	debug('Wayfinder: All gateways failed, using fallback https://arweave.net');
 	workingGatewayCache = 'https://arweave.net';
 	lastGatewayTest = now;
 	return 'https://arweave.net';
@@ -155,10 +155,10 @@ export async function getWorkingGateway(): Promise<string> {
 export function getGateways(): string[] {
 	// If gateways aren't initialized yet, return fallback gateways
 	if (globalGateways.length === 0) {
-		console.log('🔗 Wayfinder: getGateways - no gateways available, using fallbacks');
+		debug('Wayfinder: getGateways - no gateways available, using fallbacks');
 		return ['https://arweave.net', 'https://ar-io.net'];
 	}
-	console.log('🔗 Wayfinder: getGateways - returning', globalGateways.length, 'gateways');
+	debug('Wayfinder: getGateways - returning gateways', globalGateways.length);
 	return globalGateways;
 }
 

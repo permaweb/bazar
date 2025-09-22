@@ -27,11 +27,7 @@ async function initializeApp() {
 					<CustomThemeProvider>
 						<LanguageProvider>
 							<ErrorBoundary>
-								<AOSyncProvider
-									gatewayConfig={gatewayConfig}
-									appInfo={{ name: 'Bazar' }}
-									muUrl="https://mu.ao-testnet.xyz"
-								>
+								<AOSyncProvider gatewayConfig={gatewayConfig} appInfo={{ name: 'Bazar' }} muUrl="https://mu.ao.xyz">
 									<WayfinderProvider>
 										<ArweaveProvider>
 											<PermawebProvider>
@@ -67,7 +63,7 @@ async function initializeApp() {
 										protocol: 'https',
 									}}
 									appInfo={{ name: 'Bazar' }}
-									muUrl="https://mu.ao-testnet.xyz"
+									muUrl="https://mu.ao.xyz"
 								>
 									<WayfinderProvider>
 										<ArweaveProvider>

@@ -12,6 +12,8 @@ import {
 } from 'helpers/types';
 import { getTagValue } from 'helpers/utils';
 
+const debug = (..._args: any[]) => {};
+
 export async function getGQLData(args: GQLArgsType): Promise<DefaultGQLResponseType> {
 	const paginator = args.paginator ? args.paginator : PAGINATORS.default;
 
@@ -24,11 +26,11 @@ export async function getGQLData(args: GQLArgsType): Promise<DefaultGQLResponseT
 	}
 
 	try {
-		console.log('🔍 getGQLData: Starting query with args:', args);
+		debug('getGQLData: Starting query with args', args);
 		let queryBody: string = getQueryBody(args);
-		console.log('🔍 getGQLData: Query body:', queryBody);
+		debug('getGQLData: Query body', queryBody);
 		const response = await getResponse({ gateway: args.gateway, query: getQuery(queryBody) });
-		console.log('🔍 getGQLData: Response:', response);
+		debug('getGQLData: Response', response);
 
 		if (response.data.transactions.edges.length) {
 			data = [...response.data.transactions.edges];
@@ -170,16 +172,16 @@ function getQueryBody(args: QueryBodyGQLArgsType): string {
 
 async function getResponse(args: { gateway: string; query: string }): Promise<any> {
 	try {
-		console.log('🔍 getResponse: Making request to:', `https://${args.gateway}/graphql`);
-		console.log('🔍 getResponse: Query:', args.query);
+		debug('getResponse: Making request to', `https://${args.gateway}/graphql`);
+		debug('getResponse: Query', args.query);
 		const response = await fetch(`https://${args.gateway}/graphql`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
 			body: args.query,
 		});
-		console.log('🔍 getResponse: Response status:', response.status);
+		debug('getResponse: Response status', response.status);
 		const result = await response.json();
-		console.log('🔍 getResponse: Response data:', result);
+		debug('getResponse: Response data', result);
 		return result;
 	} catch (e: any) {
 		console.error('🔍 getResponse: Error:', e);

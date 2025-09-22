@@ -15,6 +15,7 @@ import { ProfileActivity } from './ProfileActivity';
 import { ProfileAssets } from './ProfileAssets';
 import { ProfileCollections } from './ProfileCollections';
 import { ProfileHeader } from './ProfileHeader';
+const debug = (..._args: any[]) => {};
 
 export default function Profile() {
 	const permawebProvider = usePermawebProvider();
@@ -50,7 +51,7 @@ export default function Profile() {
 
 					if (!fetchedProfile?.id || !fetchedProfile?.username) {
 						await new Promise((r) => setTimeout(r, 1000));
-						console.log('Fetching legacy profile...');
+						debug('Fetching legacy profile...');
 						isLegacyProfile = true;
 						const aoProfile = AOProfile.init({ ao: connect({ MODE: 'legacy' }) });
 						fetchedProfile = await aoProfile.getProfileById({ profileId: address });

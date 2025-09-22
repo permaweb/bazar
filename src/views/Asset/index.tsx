@@ -4,6 +4,8 @@ import _ from 'lodash';
 
 import { getAssetById, getAssetOrders, readHandler } from 'api';
 
+const debug = (..._args: any[]) => {};
+
 import { Loader } from 'components/atoms/Loader';
 import { Portal } from 'components/atoms/Portal';
 import { AssetData } from 'components/organisms/AssetData';
@@ -52,7 +54,7 @@ export default function Asset() {
 	React.useEffect(() => {
 		(async function () {
 			if (id && checkValidAddress(id)) {
-				console.log('Fetching asset...');
+				debug('Fetching asset...');
 
 				setLoading(true);
 				let tries = 0;

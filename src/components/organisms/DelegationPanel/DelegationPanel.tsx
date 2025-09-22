@@ -17,6 +17,7 @@ import {
 	ProcessInfo,
 	setPixlDelegation,
 } from 'helpers/delegationUtils';
+import { getTxEndpoint } from 'helpers/endpoints';
 
 interface DelegationPanelProps {
 	walletAddress?: string;
@@ -872,20 +873,20 @@ export function DelegationPanel({ walletAddress, isOpen, onClose }: DelegationPa
 
 									if (isPixl) {
 										name = 'PIXL Token';
-										logoUrl = 'https://arweave.net/czR2tJmSr7upPpReXu6IuOc2H7RuHRRAhI7DXAUlszU';
+										logoUrl = getTxEndpoint('czR2tJmSr7upPpReXu6IuOc2H7RuHRRAhI7DXAUlszU');
 										fallbackText = 'P';
 									} else if (isAO) {
 										name = 'AO';
-										logoUrl = 'https://arweave.net/UkS-mdoiG8hcAClhKK8ch4ZhEzla0mCPDOix9hpdSFE';
+										logoUrl = getTxEndpoint('UkS-mdoiG8hcAClhKK8ch4ZhEzla0mCPDOix9hpdSFE');
 										fallbackText = 'A';
 									} else if (isOwnWallet) {
 										name = 'AO (Self)';
-										logoUrl = 'https://arweave.net/UkS-mdoiG8hcAClhKK8ch4ZhEzla0mCPDOix9hpdSFE';
+										logoUrl = getTxEndpoint('UkS-mdoiG8hcAClhKK8ch4ZhEzla0mCPDOix9hpdSFE');
 										fallbackText = 'A';
 									} else {
 										if (processInfo?.name) {
 											name = processInfo.name;
-											logoUrl = processInfo.logo ? `https://arweave.net/${processInfo.logo}` : null;
+											logoUrl = processInfo.logo ? getTxEndpoint(processInfo.logo) : null;
 											fallbackText = processInfo.ticker?.[0] || name[0] || 'T';
 										} else {
 											name = `${delegation.walletTo.substring(0, 6)}...`;

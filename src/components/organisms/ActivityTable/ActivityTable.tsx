@@ -22,6 +22,8 @@ import { AssetData } from '../AssetData';
 import * as S from './styles';
 import { IProps } from './types';
 
+const debug = (..._args: any[]) => {};
+
 const GROUP_COUNT = 50;
 
 export default function ActivityTable(props: IProps) {
@@ -173,17 +175,17 @@ export default function ActivityTable(props: IProps) {
 
 						if (!props.asset) {
 							const uniqueAssetIds: any[] = [...new Set(currentGroup.map((order: any) => order.dominantToken))];
-							console.log('🔍 Activity: Fetching assets for IDs:', uniqueAssetIds);
+							debug('Activity: Fetching assets for IDs', uniqueAssetIds);
 							try {
 								const assets = await getAssetsByIds({
 									ids: uniqueAssetIds,
 									sortType: 'recently-listed',
 								});
-								console.log('🔍 Activity: Fetched assets:', assets);
+								debug('Activity: Fetched assets', assets);
 								if (assets && assets.length > 0) {
 									currentGroup = currentGroup.map((order: any) => {
 										const asset = assets.find((asset: any) => asset.data.id === order.dominantToken);
-										console.log(`🔍 Activity: Matching asset for ${order.dominantToken}:`, asset);
+										debug('Activity: Matching asset for', order.dominantToken, asset);
 										return {
 											...order,
 											asset: asset,

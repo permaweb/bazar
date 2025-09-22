@@ -37,7 +37,7 @@ const preloadAudioAssets = async (collections: CollectionType[], libs: any) => {
 								const audio = new Audio();
 								audio.preload = 'metadata'; // Just load metadata for faster response
 								// Use the asset ID to construct the Arweave URL
-								audio.src = `https://arweave.net/${assetId}`;
+								audio.src = getTxEndpoint(assetId);
 								audio.load();
 							}
 						} catch (e) {

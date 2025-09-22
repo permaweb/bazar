@@ -31,8 +31,9 @@ export function WayfinderProvider(props: WayfinderProviderProps) {
 				// Initialize global gateways (this now includes testing and caching a working gateway)
 				await initializeWayfinder();
 
+				const gateway = await getWorkingGateway();
+				console.log(`WayfinderProvider initialized; working gateway: ${gateway}`);
 				setIsInitialized(true);
-				console.log('✅ WayfinderProvider initialized successfully with working gateway');
 			} catch (error) {
 				console.error('❌ Failed to initialize WayfinderProvider:', error);
 				// Still mark as initialized to allow fallback behavior

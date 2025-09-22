@@ -4,6 +4,8 @@ import { getBestGatewayEndpoint, getCachedWorkingGateway, getGateways, getWorkin
 // Default fallback endpoint
 const DEFAULT_ARWEAVE_ENDPOINT = 'https://arweave.net';
 
+const debug = (..._args: any[]) => {};
+
 // Get the current best gateway endpoint (sync version)
 function getCurrentGatewayEndpoint(): string {
 	const gateways = getGateways();
@@ -25,7 +27,7 @@ export function getTxEndpoint(txId: string): string {
 	// Use the cached working gateway if available, otherwise fallback to arweave.net
 	const gateway = getBestGatewayForAssets();
 	const url = `${gateway}/${txId}`;
-	console.log(`🔗 Wayfinder: getTxEndpoint using gateway: ${gateway} for txId: ${txId}`);
+	debug('Wayfinder: getTxEndpoint using gateway', gateway, 'for txId', txId);
 	return url;
 }
 
@@ -34,7 +36,7 @@ export async function getTxEndpointAsync(txId: string): Promise<string> {
 	// Try to use a working Wayfinder gateway, otherwise fallback to arweave.net
 	const gateway = await getBestGatewayForAssetsAsync();
 	const url = `${gateway}/${txId}`;
-	console.log(`🔗 Wayfinder: getTxEndpointAsync using working gateway: ${gateway} for txId: ${txId}`);
+	debug('Wayfinder: getTxEndpointAsync using working gateway', gateway, 'for txId', txId);
 	return url;
 }
 
@@ -67,60 +69,43 @@ export async function getRendererEndpointAsync(renderWith: string, tx: string): 
 
 // Helper function to get the best gateway for GraphQL operations
 export function getBestGatewayForGraphQL(): string {
-	// Use the cached working gateway if available, otherwise fallback to arweave.net
-	const cachedGateway = getCachedWorkingGateway();
-	if (cachedGateway) {
-		console.log(`🔗 Wayfinder: getBestGatewayForGraphQL using cached gateway: ${cachedGateway}`);
-		return cachedGateway.replace('https://', '');
-	}
-
-	const gateways = getGateways();
-	if (gateways.length > 0) {
-		// Use the first available gateway from Wayfinder
-		const gateway = gateways[0].replace('https://', '');
-		console.log(`🔗 Wayfinder: getBestGatewayForGraphQL using first gateway: ${gateway}`);
-		return gateway;
-	}
-	// Fallback to arweave.net if Wayfinder isn't initialized
-	console.log(`🔗 Wayfinder: getBestGatewayForGraphQL using fallback: arweave.net`);
+	// GraphQL is reliably available on the canonical gateway only.
 	return 'arweave.net';
 }
 
 // Helper function to get the best gateway for asset loading (with fallback)
 export async function getBestGatewayForAssetsAsync(): Promise<string> {
 	const gateways = getGateways();
-	console.log(`🔗 Wayfinder: getBestGatewayForAssetsAsync - available gateways:`, gateways);
+	debug('Wayfinder: getBestGatewayForAssetsAsync - available gateways', gateways);
 	if (gateways.length > 0) {
 		// Use a working gateway from Wayfinder
 		const gateway = await getWorkingGateway();
-		console.log(`🔗 Wayfinder: getBestGatewayForAssetsAsync - selected working gateway: ${gateway}`);
+		debug('Wayfinder: getBestGatewayForAssetsAsync - selected working gateway', gateway);
 		return gateway;
 	}
 	// Fallback to arweave.net if Wayfinder isn't initialized
-	console.log(`🔗 Wayfinder: getBestGatewayForAssetsAsync - using fallback: https://arweave.net`);
 	return 'https://arweave.net';
 }
 
 // Synchronous version for backward compatibility (uses cached working gateway or first gateway)
 export function getBestGatewayForAssets(): string {
 	const gateways = getGateways();
-	console.log(`🔗 Wayfinder: getBestGatewayForAssets - available gateways:`, gateways);
+	debug('Wayfinder: getBestGatewayForAssets - available gateways', gateways);
 
 	// If we have a cached working gateway, use it
 	const cachedGateway = getCachedWorkingGateway();
 	if (cachedGateway) {
-		console.log(`🔗 Wayfinder: getBestGatewayForAssets - using cached working gateway: ${cachedGateway}`);
+		debug('Wayfinder: getBestGatewayForAssets - using cached working gateway', cachedGateway);
 		return cachedGateway;
 	}
 
 	if (gateways.length > 0) {
 		// Use the first available gateway from Wayfinder
 		const gateway = gateways[0];
-		console.log(`🔗 Wayfinder: getBestGatewayForAssets - selected gateway: ${gateway}`);
+		debug('Wayfinder: getBestGatewayForAssets - selected gateway', gateway);
 		return gateway;
 	}
 	// Fallback to arweave.net if Wayfinder isn't initialized
-	console.log(`🔗 Wayfinder: getBestGatewayForAssets - using fallback: https://arweave.net`);
 	return 'https://arweave.net';
 }
 
