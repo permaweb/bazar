@@ -1,222 +1,114 @@
 import { ARIO } from '@ar.io/sdk';
 
-const debug = (..._args: any[]) => {};
+const FALLBACK_GATEWAYS = ['https://arweave.net', 'https://ar-io.net'];
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
-// Global gateway management
-let globalGateways: string[] = []; // Start empty, will be populated by Wayfinder
-let currentGatewayIndex = 0;
-let isInitializing = false;
-let initializationPromise: Promise<void> | null = null;
-let workingGatewayCache: string | null = null; // Cache for working gateway
-let lastGatewayTest = 0; // Timestamp of last gateway test
-const GATEWAY_CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+// ARIO client instance reused across calls
+let arioClient: ReturnType<typeof ARIO.mainnet> | null = null;
+let gatewayCache: string[] = [];
+let lastGatewayFetch = 0;
+let initializationPromise: Promise<string[]> | null = null;
 
-// Initialize gateway list using ARIO
-export async function initializeWayfinder(): Promise<string[]> {
-	if (globalGateways.length > 0) {
-		return globalGateways;
-	}
-
-	if (isInitializing && initializationPromise) {
-		await initializationPromise;
-		return globalGateways;
-	}
-
-	isInitializing = true;
-	initializationPromise = (async () => {
-		try {
-			debug('Wayfinder: Starting initialization...');
-			// Initialize ARIO client for mainnet
-			const ario = ARIO.mainnet();
-			debug('Wayfinder: ARIO client initialized');
-
-			// Get gateways from ARIO network
-			debug('Wayfinder: Fetching gateways from ARIO...');
-			const gatewaysResponse = await ario.getGateways({
-				limit: 10,
-				sortBy: 'totalDelegatedStake',
-				sortOrder: 'desc',
-			});
-			debug('Wayfinder: ARIO response', gatewaysResponse);
-
-			// Extract gateway URLs from the response
-			const gatewayUrls = gatewaysResponse.items
-				.filter((gateway) => gateway.settings?.fqdn && gateway.status === 'joined')
-				.map((gateway) => `https://${gateway.settings.fqdn}`)
-				.slice(0, 5); // Take top 5 gateways
-			debug('Wayfinder: Extracted gateway URLs', gatewayUrls);
-
-			// Add fallback gateways
-			const fallbackGateways = ['https://arweave.net', 'https://ar-io.net'];
-
-			// Replace fallback gateways with real ones, but keep fallbacks at the end
-			globalGateways = [...gatewayUrls, ...fallbackGateways];
-
-			// Make resolveGateway available globally for endpoints.ts
-			if (typeof window !== 'undefined') {
-				(window as any).__WAYFINDER_RESOLVE__ = async (url: string) => {
-					if (url.startsWith('ar://')) {
-						const gateway = getNextGateway();
-						return url.replace('ar://', `${gateway}/`);
-					}
-					return url;
-				};
-			}
-
-			debug('Wayfinder: Global gateways initialized successfully', globalGateways);
-			debug('Wayfinder: Top gateway is', globalGateways[0]);
-
-			// Immediately test and cache a working gateway
-			debug('Wayfinder: Testing gateways for immediate use...');
-			const workingGateway = await getWorkingGateway();
-			debug('Wayfinder: Initial working gateway cached', workingGateway);
-		} catch (error) {
-			console.error('Failed to initialize global gateways:', error);
-			// Fallback to basic gateways
-			globalGateways = ['https://arweave.net', 'https://ar-io.net'];
-		} finally {
-			isInitializing = false;
-		}
-	})();
-
-	await initializationPromise;
-	return globalGateways;
-}
-
-// Get the next gateway in round-robin fashion
-function getNextGateway(): string {
-	if (globalGateways.length === 0) {
-		return 'https://arweave.net';
-	}
-
-	const gateway = globalGateways[currentGatewayIndex];
-	currentGatewayIndex = (currentGatewayIndex + 1) % globalGateways.length;
-	return gateway;
-}
-
-// Test if a gateway is working
-async function testGateway(gateway: string): Promise<boolean> {
+async function fetchGateways(): Promise<string[]> {
 	try {
-		debug('Wayfinder: Testing gateway', gateway);
-		const response = await fetch(`${gateway}/info`, {
-			method: 'GET',
-			headers: {
-				Accept: 'application/json',
-			},
-			// Add a timeout to prevent hanging
-			signal: AbortSignal.timeout(5000),
+		if (!arioClient) {
+			arioClient = ARIO.mainnet();
+		}
+
+		const gatewaysResponse = await arioClient.getGateways({
+			limit: 5,
+			sortBy: 'totalDelegatedStake',
+			sortOrder: 'desc',
 		});
-		const isWorking = response.ok;
-		debug('Wayfinder: Gateway test result', gateway, response.status);
-		return isWorking;
+
+		const discoveredGateways = gatewaysResponse.items
+			.filter((gateway) => gateway.settings?.fqdn && gateway.status === 'joined')
+			.map((gateway) => `https://${gateway.settings.fqdn}`);
+
+		// Ensure fallbacks are always available and avoid duplicates
+		const dedupedGateways = Array.from(new Set([...discoveredGateways, ...FALLBACK_GATEWAYS]));
+		return dedupedGateways;
 	} catch (error) {
-		debug('Wayfinder: Gateway failed test', gateway, error);
-		return false;
+		console.error('❌ Failed to fetch gateways from ARIO:', error);
+		return [...FALLBACK_GATEWAYS];
 	}
 }
 
-// Get a working gateway with fallback
-export async function getWorkingGateway(): Promise<string> {
-	// Check cache first
+async function ensureGateways(): Promise<string[]> {
 	const now = Date.now();
-	if (workingGatewayCache && now - lastGatewayTest < GATEWAY_CACHE_DURATION) {
-		debug('Wayfinder: Using cached working gateway', workingGatewayCache);
-		return workingGatewayCache;
+
+	if (gatewayCache.length > 0 && now - lastGatewayFetch < CACHE_DURATION) {
+		return gatewayCache;
 	}
 
-	// Start with the first gateway
-	let currentIndex = 0;
-	const maxAttempts = Math.min(globalGateways.length, 5); // Try up to 5 gateways
-
-	for (let attempt = 0; attempt < maxAttempts; attempt++) {
-		const gateway = globalGateways[currentIndex];
-		debug('Wayfinder: Testing gateway', attempt + 1, '/', maxAttempts, gateway);
-
-		if (await testGateway(gateway)) {
-			debug('Wayfinder: Found working gateway', gateway);
-			// Cache the working gateway
-			workingGatewayCache = gateway;
-			lastGatewayTest = now;
-			return gateway;
-		}
-
-		// Move to next gateway
-		currentIndex = (currentIndex + 1) % globalGateways.length;
+	if (initializationPromise) {
+		return initializationPromise;
 	}
 
-	// If all gateways fail, fall back to arweave.net
-	debug('Wayfinder: All gateways failed, using fallback https://arweave.net');
-	workingGatewayCache = 'https://arweave.net';
-	lastGatewayTest = now;
-	return 'https://arweave.net';
+	initializationPromise = (async () => {
+		const gateways = await fetchGateways();
+		gatewayCache = gateways;
+		lastGatewayFetch = Date.now();
+		return gatewayCache;
+	})().finally(() => {
+		initializationPromise = null;
+	});
+
+	return initializationPromise;
 }
 
-// Get the global gateways list
+// Initializes the gateway cache and returns the current list for backward compatibility
+export async function initializeWayfinder(): Promise<string[]> {
+	return ensureGateways();
+}
+
 export function getGateways(): string[] {
-	// If gateways aren't initialized yet, return fallback gateways
-	if (globalGateways.length === 0) {
-		debug('Wayfinder: getGateways - no gateways available, using fallbacks');
-		return ['https://arweave.net', 'https://ar-io.net'];
-	}
-	debug('Wayfinder: getGateways - returning gateways', globalGateways.length);
-	return globalGateways;
+	return gatewayCache.length > 0 ? gatewayCache : [...FALLBACK_GATEWAYS];
 }
 
-// Get the cached working gateway
 export function getCachedWorkingGateway(): string | null {
-	return workingGatewayCache;
+	return gatewayCache.length > 0 ? gatewayCache[0] : null;
 }
 
-// Resolve gateway URL using round-robin selection
+export async function getWorkingGateway(): Promise<string> {
+	return getBestGatewayUrl();
+}
+
+export async function getBestGatewayUrl(): Promise<string> {
+	const gateways = await ensureGateways();
+	return gateways[0] ?? FALLBACK_GATEWAYS[0];
+}
+
+export async function getBestGatewayEndpoint(): Promise<string> {
+	return getBestGatewayUrl();
+}
+
 export async function resolveGatewayUrl(url: string): Promise<string> {
-	try {
-		if (globalGateways.length === 0) {
-			await initializeWayfinder();
-		}
-
-		if (url.startsWith('ar://')) {
-			const gateway = getNextGateway();
-			return url.replace('ar://', `${gateway}/`);
-		}
-
+	if (!url.startsWith('ar://')) {
 		return url;
+	}
+
+	try {
+		const gateway = await getBestGatewayUrl();
+		return url.replace('ar://', `${gateway}/`);
 	} catch (error) {
 		console.error('❌ Failed to resolve gateway URL:', url, error);
-		// Fallback to arweave.net
-		return url.replace('ar://', 'https://arweave.net/');
+		return url.replace('ar://', `${FALLBACK_GATEWAYS[0]}/`);
 	}
 }
 
-// Get the best gateway endpoint
-export async function getBestGatewayEndpoint(): Promise<string> {
-	try {
-		if (globalGateways.length === 0) {
-			await initializeWayfinder();
-		}
-		return getNextGateway();
-	} catch (error) {
-		console.warn('Gateways not available, using fallback gateway:', error);
-		return 'https://arweave.net';
-	}
-}
-
-// Test gateway performance
 export async function testGatewayPerformance(): Promise<Record<string, number>> {
+	const gateways = await ensureGateways();
 	const results: Record<string, number> = {};
 
-	for (const gateway of globalGateways) {
+	for (const gateway of gateways) {
 		try {
 			const start = performance.now();
 			const response = await fetch(`${gateway}/info`);
 			const duration = performance.now() - start;
-
-			if (response.ok) {
-				results[gateway] = duration;
-			} else {
-				results[gateway] = Infinity;
-			}
+			results[gateway] = response.ok ? duration : Number.POSITIVE_INFINITY;
 		} catch (error) {
-			results[gateway] = Infinity;
+			results[gateway] = Number.POSITIVE_INFINITY;
 		}
 	}
 
