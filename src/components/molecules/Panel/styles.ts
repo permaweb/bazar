@@ -22,7 +22,7 @@ export const Container = styled.div<{
 }>`
 	height: calc(100dvh - 20px);
 	min-width: ${(props) => (props.width ? `${props.width.toString()}px` : '425px')};
-	width: fit-content;
+	width: ${(props) => (props.width ? `${props.width.toString()}px` : '425px')};
 	max-width: calc(100vw - 30px);
 	position: fixed;
 	overflow: hidden;

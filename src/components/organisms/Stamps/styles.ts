@@ -25,6 +25,7 @@ export const Wrapper = styled.button`
 		font-family: ${(props) => props.theme.typography.family.alt1};
 		font-size: ${(props) => props.theme.typography.size.xSmall};
 		font-weight: ${(props) => props.theme.typography.weight.bold};
+		white-space: nowrap;
 	}
 	svg {
 		transition: all 300ms;

@@ -91,23 +91,13 @@ export const AO = {
 };
 
 export const HB = {
-	defaultNode: 'https://tee-4.forward.computer',
+	defaultNode: 'http://localhost:8734',
 };
 export const AOCONFIG = {
-	cu_url: 'https://ur-cu.randao.net',
+	cu_url: 'https://cu.ao-testnet.xyz',
 };
 
-// Helper function to get current AO settings (with user overrides if available)
 export const getAOConfig = () => {
-	try {
-		const savedSettings = localStorage.getItem('ao_settings');
-		if (savedSettings) {
-			const parsed = JSON.parse(savedSettings);
-			return { ...AOCONFIG, ...parsed };
-		}
-	} catch (error) {
-		console.error('Failed to parse saved AO settings:', error);
-	}
 	return AOCONFIG;
 };
 

@@ -211,8 +211,6 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 											amount={getTotalTokenBalance(permawebProvider.tokenBalances[token])}
 											currency={token}
 											callback={() => handleDropdownAction(() => setShowWalletDropdown(false))}
-											useReverseLayout
-											hideSymbol
 										/>
 										{tokenLinks[token] && (
 											<S.TokenLink>

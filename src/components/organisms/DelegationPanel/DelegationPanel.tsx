@@ -1,5 +1,4 @@
-import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useState } from 'react';
 import styled from 'styled-components';
 
 import { Button } from 'components/atoms/Button';
@@ -42,26 +41,6 @@ interface DelegationPanelState {
 
 const PanelContent = styled.div`
 	padding: 20px;
-`;
-
-const Title = styled.h2`
-	margin: 0 0 20px 0;
-	color: ${({ theme }) => theme.colors.text};
-	font-size: 24px;
-	font-weight: 600;
-`;
-
-const PercentageSlider = styled.input`
-	width: 100%;
-	margin: 20px 0;
-`;
-
-const PercentageDisplay = styled.div`
-	text-align: center;
-	font-size: 32px;
-	font-weight: bold;
-	color: ${({ theme }) => theme.colors.primary};
-	margin: 10px 0;
 `;
 
 const QuickButtons = styled.div`
@@ -125,15 +104,6 @@ const TransactionInfo = styled.div`
 	}
 `;
 
-const WarningBox = styled.div`
-	background: ${({ theme }) => theme.colors.warning}20;
-	border: 1px solid ${({ theme }) => theme.colors.warning};
-	border-radius: 5px;
-	padding: 15px;
-	margin: 20px 0;
-	color: ${({ theme }) => theme.colors.warning};
-`;
-
 const CheckboxWrapper = styled.label<{ isHighlighted?: boolean }>`
 	display: flex;
 	align-items: center;
@@ -182,33 +152,6 @@ const PieChart = styled.div`
 	margin-bottom: 15px;
 `;
 
-const PieSlice = styled.div<{ percentage: number; color: string; startAngle?: number }>`
-	position: absolute;
-	width: 100%;
-	height: 100%;
-	border-radius: 50%;
-	background: conic-gradient(
-		${({ color, startAngle = 0, percentage }) =>
-			`${color} ${startAngle}deg ${startAngle + percentage * 3.6}deg, transparent ${
-				startAngle + percentage * 3.6
-			}deg 360deg`}
-	);
-
-	/* Fallback for browsers that don't support conic-gradient */
-	@supports not (background: conic-gradient(from 0deg, red, blue)) {
-		background: ${({ color }) => color};
-		clip-path: ${({ startAngle = 0, percentage }) => {
-			const endAngle = startAngle + percentage * 3.6;
-			const x1 = 50 + 50 * Math.cos(((startAngle - 90) * Math.PI) / 180);
-			const y1 = 50 + 50 * Math.sin(((startAngle - 90) * Math.PI) / 180);
-			const x2 = 50 + 50 * Math.cos(((endAngle - 90) * Math.PI) / 180);
-			const y2 = 50 + 50 * Math.sin(((endAngle - 90) * Math.PI) / 180);
-			const largeArcFlag = percentage > 50 ? 1 : 0;
-			return `path('M 50 50 L ${x1} ${y1} A 50 50 0 ${largeArcFlag} 1 ${x2} ${y2} Z')`;
-		}};
-	}
-`;
-
 const PieChartLegend = styled.div`
 	display: flex;
 	flex-direction: column;
@@ -252,7 +195,7 @@ const HeaderWithLink = styled.div`
 		color: ${({ theme }) => theme.colors.primary};
 		text-decoration: none;
 		font-size: 12px;
-		font-weight: 500;
+		font-weight: 600;
 		transition: color 0.2s ease;
 		margin-left: 10px;
 
@@ -663,12 +606,12 @@ export function DelegationPanel({ walletAddress, isOpen, onClose }: DelegationPa
 				<HeaderWithLink>
 					<span>Delegate to PIXL</span>
 					<a href="#/docs/overview/pixl-fair-launch" target="_blank" rel="noopener noreferrer">
-						ℹ️ Learn More
+						Learn More
 					</a>
 				</HeaderWithLink>
 			}
 			handleClose={onClose}
-			width={500}
+			width={550}
 		>
 			<PanelContent>
 				{state.loading && <Loader />}

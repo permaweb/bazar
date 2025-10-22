@@ -15,7 +15,6 @@ import { checkValidAddress } from 'helpers/utils';
 import * as windowUtils from 'helpers/window';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 import { usePermawebProvider } from 'providers/PermawebProvider';
-import { useTokenProvider } from 'providers/TokenProvider';
 
 import { AssetAction } from './AssetAction';
 import { AssetInfo } from './AssetInfo';
@@ -27,7 +26,6 @@ export default function Asset() {
 	const navigate = useNavigate();
 
 	const permawebProvider = usePermawebProvider();
-	const tokenProvider = useTokenProvider();
 
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];

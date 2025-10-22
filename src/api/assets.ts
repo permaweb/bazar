@@ -113,7 +113,6 @@ export async function getAssetById(args: { id: string; libs?: any }): Promise<As
 
 			let processState: any;
 
-			// Try Hyperbean first (more efficient), fall back to dryrun if it fails
 			if (args.libs) {
 				try {
 					processState = await args.libs.readState({

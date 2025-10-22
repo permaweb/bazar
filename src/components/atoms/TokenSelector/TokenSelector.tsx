@@ -6,7 +6,6 @@ import { formatCount, getTotalTokenBalance } from 'helpers/utils';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 import { usePermawebProvider } from 'providers/PermawebProvider';
 import { useTokenProvider } from 'providers/TokenProvider';
-import { useTokenValidation } from 'providers/TokenValidationProvider';
 import { CloseHandler } from 'wrappers/CloseHandler';
 
 import TokenHealthIndicator from '../TokenHealthIndicator';
@@ -21,7 +20,6 @@ interface TokenSelectorProps {
 
 export default function TokenSelector(props: TokenSelectorProps) {
 	const { selectedToken, setSelectedToken, availableTokens } = useTokenProvider();
-	const tokenValidation = useTokenValidation();
 	const permawebProvider = usePermawebProvider();
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
@@ -107,8 +105,6 @@ export default function TokenSelector(props: TokenSelectorProps) {
 					{isOpen && (
 						<S.DropdownOptions>
 							{availableTokens.map((token) => {
-								const health = tokenValidation.getTokenHealth(token.id);
-								const isSupported = tokenValidation.isTokenSupported(token.id, 'orders');
 								const balance = getTokenBalance(token.id);
 
 								return (

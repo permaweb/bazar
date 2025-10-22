@@ -10,7 +10,7 @@ import { Button } from 'components/atoms/Button';
 import { CurrencyLine } from 'components/atoms/CurrencyLine';
 import { FormField } from 'components/atoms/FormField';
 import { Slider } from 'components/atoms/Slider';
-import TokenSelector from 'components/atoms/TokenSelector';
+import { TokenSelector } from 'components/atoms/TokenSelector';
 import { TxAddress } from 'components/atoms/TxAddress';
 import { Panel } from 'components/molecules/Panel';
 import { createDataItemSigner, message, result } from 'helpers/aoconnect';
@@ -547,6 +547,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 				setOrderId(orderId);
 
+				// TODO: Transfer back to wallet if token denomination > 1
 				if (props.type === 'buy') {
 					const streaks = await readHandler({
 						processId: AO.pixl,

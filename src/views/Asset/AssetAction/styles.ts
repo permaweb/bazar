@@ -28,6 +28,7 @@ export const HeaderTitle = styled.div`
 	margin: 0 0 5px 0;
 	h4 {
 		line-height: 1.5;
+		white-space: break-spaces;
 	}
 
 	@media (max-width: ${STYLING.cutoffs.tablet}) {
