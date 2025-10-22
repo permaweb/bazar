@@ -440,11 +440,11 @@ function HeroSection({ onConnect, isVerifying }: { onConnect: () => void; isVeri
 					>
 						Glasseaters: Collections
 					</span>
-					<p style={{ fontSize: 15, color: '#262A1A', fontFamily: 'Inter', margin: 0, marginBottom: 16 }}>
+					<p style={{ fontSize: 13, color: '#262A1A', fontFamily: 'Inter', margin: 0, marginBottom: 16 }}>
 						To start your journey, connect your wallet to check if you are eligible for <b>"I Survived AO Testnet"</b>{' '}
 						or <b>"Hyperbeam Glasseaters"</b>.
 					</p>
-					<p style={{ fontSize: 15, color: '#262A1A', fontFamily: 'Inter', margin: 0, marginBottom: 16 }}>
+					<p style={{ fontSize: 13, color: '#262A1A', fontFamily: 'Inter', margin: 0, marginBottom: 16 }}>
 						Make sure to read through the requirements and reach out on <b>AO discord</b> if you have any questions.
 					</p>
 				</div>
@@ -463,10 +463,9 @@ function HeroSection({ onConnect, isVerifying }: { onConnect: () => void; isVeri
 						src={survivedAoImg}
 						alt="I Survived AO Testnet"
 						style={{
-							width: 180,
-							height: 180,
+							width: 260,
 							borderRadius: 12,
-							marginRight: 16,
+							marginRight: 4,
 						}}
 					/>
 					<div
