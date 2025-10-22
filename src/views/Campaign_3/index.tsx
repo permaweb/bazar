@@ -3,16 +3,12 @@ import { createGlobalStyle } from 'styled-components';
 
 import { messageResults } from 'api';
 
-import { GATEWAYS } from 'helpers/config';
+import { ASSETS, GATEWAYS } from 'helpers/config';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { usePermawebProvider } from 'providers/PermawebProvider';
 
 import { ConnectWallet } from './components/ConnectWallet';
 // Import images
-import glasseaterImg from './glasseater.png';
-import glasseatersVideo from './Glasseaters.mp4';
-import survivedAoFallback from './I-Survived-Testnet_Fallback.avif';
-import survivedAoVideo from './I-Survived-Testnet_Video.mp4';
 import survivedAoImg from './survivedao.png';
 
 // Add these TypeScript module declarations at the top of the file
@@ -137,6 +133,7 @@ function RewardCard({
 	image,
 	title,
 	collected,
+	collectedSuffix = 'Collected',
 	bgColor,
 	cardBgColor,
 	connected,
@@ -144,14 +141,18 @@ function RewardCard({
 	isLeft,
 	isRight,
 	requirements,
+	requirementsSubheader,
 	guide,
 	onClaim,
+	showConnectWallet = true,
+	cta,
 }: {
 	video?: string;
 	fallbackImage?: string;
 	image: string;
 	title: string;
 	collected: string;
+	collectedSuffix?: string;
 	bgColor: string;
 	cardBgColor: string;
 	connected: boolean;
@@ -159,8 +160,11 @@ function RewardCard({
 	isLeft?: boolean;
 	isRight?: boolean;
 	requirements?: { text: string; met: boolean }[];
+	requirementsSubheader?: string;
 	guide?: string[];
 	onClaim?: () => Promise<void>;
+	showConnectWallet?: boolean;
+	cta?: { label: string; href: string; iconSrc?: string };
 }) {
 	const [videoError, setVideoError] = useState(false);
 	const [isLoading, setIsLoading] = useState(false);
@@ -283,33 +287,39 @@ function RewardCard({
 							{title}
 						</div>
 						<div style={{ color: '#000', fontSize: 13, fontFamily: 'Inter', whiteSpace: 'nowrap' }}>
-							{collected} Collected
+							{collected}
+							{collectedSuffix ? ` ${collectedSuffix}` : ''}
 						</div>
 					</div>
-					<div style={{ marginLeft: 'auto' }}>
-						<ConnectWallet />
-					</div>
+					{showConnectWallet && (
+						<div style={{ marginLeft: 'auto' }}>
+							<ConnectWallet />
+						</div>
+					)}
 				</div>
 				{connected && requirements && (
-					<RequirementsBox requirements={requirements} style={{ marginTop: 0, marginBottom: guide ? 16 : 2 }} />
+					<RequirementsBox
+						requirements={requirements}
+						subheaderText={requirementsSubheader}
+						style={{ marginTop: 0, marginBottom: guide ? 16 : 2 }}
+					/>
 				)}
 				{connected && guide && <GuideBox steps={guide} style={{ marginTop: 16 }} />}
-				{connected && atLeastOneRequirementMet && onClaim && (
+				{connected && !cta && atLeastOneRequirementMet && onClaim && (
 					<button
 						onClick={handleClaim}
 						disabled={isLoading}
 						style={{
 							width: 'calc(100% - 32px)',
-							padding: '12px',
+							padding: '20px 12px',
 							border: 'none',
 							borderRadius: 8,
-							background: '#4299E1',
+							background: '#000',
 							color: '#FFFFFF',
 							fontSize: 14,
-							fontWeight: 700,
 							cursor: isLoading ? 'wait' : 'pointer',
 							opacity: isLoading ? 0.7 : 1,
-							transition: 'all 0.2s ease',
+							transition: 'all 80ms ease-out',
 							display: 'flex',
 							justifyContent: 'center',
 							alignItems: 'center',
@@ -335,6 +345,33 @@ function RewardCard({
 							'Claim Reward'
 						)}
 					</button>
+				)}
+				{cta && (
+					<a
+						href={cta.href}
+						target={'_blank'}
+						rel={'noreferrer'}
+						style={{
+							width: 'calc(100% - 32px)',
+							padding: '20px 12px',
+							border: 'none',
+							borderRadius: 8,
+							background: '#000',
+							color: '#FFFFFF',
+							fontSize: 14,
+							textDecoration: 'none',
+							textAlign: 'center',
+							transition: 'all 80ms ease-out',
+							display: 'flex',
+							justifyContent: 'center',
+							alignItems: 'center',
+							gap: 8,
+							margin: '16px',
+						}}
+					>
+						{cta.iconSrc && <img src={cta.iconSrc} alt={cta.label} style={{ width: 16, height: 16, marginRight: 8 }} />}
+						{cta.label}
+					</a>
 				)}
 				{error && (
 					<div
@@ -448,30 +485,29 @@ function HeroSection({ onConnect, isVerifying }: { onConnect: () => void; isVeri
 								background: '#000',
 								color: '#fff',
 								border: 'none',
-								borderRadius: 8,
-								padding: '12px 25px',
+								borderRadius: 9999,
+								padding: '20px 0px',
 								fontSize: 14,
 								fontWeight: 700,
 								fontFamily: 'Inter',
 								cursor: isVerifying ? 'default' : 'pointer',
-								transition: 'all 200ms ease',
+								transition: 'all 200ms ease-out',
 								display: 'flex',
 								alignItems: 'center',
 								justifyContent: 'center',
-								minWidth: 179,
 							}}
 						>
 							{isVerifying ? (
 								<>
 									<div
 										style={{
-											width: 18,
-											height: 18,
+											width: 16,
+											height: 16,
 											border: '2px solid #fff',
 											borderTopColor: 'transparent',
 											borderRadius: '50%',
 											animation: 'spin 1s linear infinite',
-											marginRight: 9,
+											marginRight: 16,
 										}}
 									/>
 									Checking Eligibility
@@ -490,9 +526,11 @@ function HeroSection({ onConnect, isVerifying }: { onConnect: () => void; isVeri
 // Requirements box component
 function RequirementsBox({
 	requirements,
+	subheaderText = 'Only one required to claim',
 	style = {},
 }: {
 	requirements: { text: string; met: boolean }[];
+	subheaderText?: string;
 	style?: React.CSSProperties;
 }) {
 	return (
@@ -507,32 +545,45 @@ function RequirementsBox({
 				...style,
 			}}
 		>
-			<div style={{ fontWeight: 700, fontSize: 16, color: '#202416', fontFamily: 'Inter', marginBottom: 8 }}>
+			<div style={{ fontWeight: 700, fontSize: 16, color: '#202416', fontFamily: 'Inter', marginBottom: 0 }}>
 				Requirements
 			</div>
-			<div style={{ fontSize: 13, color: '#808080', fontFamily: 'Inter', marginBottom: 12 }}>
-				Only one required to claim
+			<div style={{ fontSize: 13, color: '#808080', fontFamily: 'Inter', marginBottom: 12, marginTop: 0 }}>
+				{subheaderText}
 			</div>
 			{requirements.map((req, idx) => (
-				<div key={idx} style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+				<div key={idx} style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
 					<span
 						style={{
-							display: 'inline-block',
-							width: 16,
-							height: 16,
-							borderRadius: 8,
-							background: req.met ? '#5AF650' : '#E0E0E0',
-							color: req.met ? '#fff' : '#B0B0B0',
+							display: 'inline-flex',
+							alignItems: 'center',
+							justifyContent: 'center',
+							width: 18,
+							height: 18,
+							borderRadius: 6,
+							background: req.met ? '#D6EACF' : '#EDEDED',
+							color: req.met ? '#22C55E' : '#B0B0B0',
+							border: req.met ? '1px solid rgba(167, 243, 208, 0)' : '1px solid #E0E0E0',
 							fontWeight: 700,
-							fontSize: 12,
+							fontSize: 13,
 							textAlign: 'center',
-							lineHeight: '16px',
-							marginRight: 8,
+							lineHeight: '18px',
+							marginRight: 10,
 						}}
 					>
-						{req.met ? '✓' : ''}
+						{req.met ? (
+							<svg width={11} height={8} viewBox={'0 0 11 8'} fill={'none'} xmlns={'http://www.w3.org/2000/svg'}>
+								<path
+									d={'M1 4.375L3.73913 7L10 1'}
+									stroke={'#2CBB00'}
+									strokeWidth={2}
+									strokeLinecap={'round'}
+									strokeLinejoin={'round'}
+								/>
+							</svg>
+						) : null}
 					</span>
-					<span style={{ color: req.met ? '#202416' : '#808080' }}>{req.text}</span>
+					<span style={{ color: req.met ? '#202416' : '#808080', fontSize: 13 }}>{req.text}</span>
 				</div>
 			))}
 		</div>
@@ -553,14 +604,17 @@ function GuideBox({ steps, style = {} }: { steps: string[]; style?: React.CSSPro
 				...style,
 			}}
 		>
-			<div style={{ fontWeight: 700, fontSize: 16, color: '#202416', fontFamily: 'Inter', marginBottom: 8 }}>Guide</div>
-			<div style={{ fontSize: 13, color: '#808080', fontFamily: 'Inter', marginBottom: 12 }}>
-				How to Create A New Device on Hyperbeam
+			<div style={{ fontWeight: 700, fontSize: 16, color: '#202416', fontFamily: 'Inter', marginBottom: 0 }}>Guide</div>
+			<div style={{ fontSize: 13, color: '#808080', fontFamily: 'Inter', marginBottom: 12, marginTop: 0 }}>
+				How to get started running a node on AO / Hyperbeam
 			</div>
-			<ul style={{ paddingLeft: 18, margin: 0 }}>
+			<ul style={{ paddingLeft: 0, margin: 0, listStyle: 'none' }}>
 				{steps.map((step, idx) => (
-					<li key={idx} style={{ color: '#202416', fontSize: 13, fontFamily: 'Inter', marginBottom: 8 }}>
-						{step}
+					<li key={idx} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 28, marginTop: 12 }}>
+						<span
+							style={{ width: 6, height: 6, background: '#202416', borderRadius: 2, marginTop: 7, flex: '0 0 auto' }}
+						/>
+						<span style={{ color: '#202416', fontSize: 13, fontFamily: 'Inter' }}>{step}</span>
 					</li>
 				))}
 			</ul>
@@ -954,19 +1008,29 @@ export default function Campaign() {
 						fallbackImage={MEDIA_URLS.glasseaterImg}
 						image={MEDIA_URLS.glasseaterImg}
 						title="Hyperbeam Glasseaters"
-						collected="0/100"
+						collected="100 Total Supply"
+						collectedSuffix=""
 						bgColor="#f3f5f2"
 						cardBgColor="#CFCFCF"
 						connected={!!arProvider.walletAddress}
 						overlayStyle={overlayStyle}
 						isRight
-						requirements={[{ text: 'Whitelisted & created a new device and merged PR', met: true }]}
+						showConnectWallet={false}
+						cta={{
+							label: 'Join Competition Via Discord',
+							href: 'https://discord.gg/kDWWbjj7Fm',
+							iconSrc: ASSETS.discord,
+						}}
+						requirements={[{ text: 'Run node for 20+ consecutive days', met: true }]}
+						requirementsSubheader={'Complete all requirements to claim'}
 						guide={[
-							'Start by reading up on what a device is and how to start creating by diving into the Documentation.',
-							'Make a fork of the repo, and start a new branch.',
-							'Submit your Pull Request in the repo with your Discord ID notated in the PR submission for verification.',
-							'Once your PR is approved by the AO core team head on over to the AO Discord. Head to #Glasseaters channel and post the link to your PR and your wallet address.',
-							'Success! Once verified, allow some time to come back to claim your 1/1 glasseater.',
+							'Run node for 20+ consecutive days by November 21, 2025 (qualification deadline)',
+							'Consecutive runtime starting from any date (before or after announcement)',
+							'Operators already running count their current streak (if uninterrupted)',
+							'Any downtime resets the counter - must have uninterrupted 20-day streak',
+							'Verified via on-chain logs/uptime data',
+							'Submit wallet address via Discord',
+							'First 100 eligible operators (if more apply)',
 						]}
 						onClaim={() => handleClaim(ATOMIC_ASSET_ID)}
 					/>
