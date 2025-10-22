@@ -91,7 +91,13 @@ export const AO = {
 };
 
 export const HB = {
-	defaultNode: 'https://tee-4.forward.computer',
+	defaultNode: 'http://localhost:8734',
+};
+
+export const AO_NODE = {
+	url: 'http://localhost:8734',
+	authority: 'fcoN_xJeisVsPXA-trzVAuIiqO3ydLQxM-L4XbrQKzY',
+	scheduler: '_GQ33BkPtZrqxA84vM8Zk-N2aO0toNNu_C-l-rawrBA',
 };
 export const AOCONFIG = {
 	cu_url: 'https://ur-cu.randao.net',
@@ -401,6 +407,7 @@ export const ARNS = {
 export const STORAGE = {
 	walletType: `wallet-type`,
 	profile: (id: string) => `profile-${id}`,
+	profileByWallet: (address: string) => `profile-by-wallet-${address}`,
 	arns: (address: string) => `arns::${address}`,
 };
 

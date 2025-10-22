@@ -7,6 +7,7 @@ import { Loader } from 'components/atoms/Loader';
 import { URLTabs } from 'components/molecules/URLTabs';
 import { connect } from 'helpers/aoconnect';
 import { ASSETS, URLS } from 'helpers/config';
+import { fetchProfileZone } from 'helpers/hyperbeam';
 import { checkValidAddress } from 'helpers/utils';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 import { usePermawebProvider } from 'providers/PermawebProvider';
@@ -47,7 +48,33 @@ export default function Profile() {
 					let fetchedProfile = null;
 					let isLegacyProfile = false;
 
-					fetchedProfile = await permawebProvider.libs.getProfileById(address);
+					// Try HyperBEAM first for hydrated processes
+					try {
+						console.log('🚀 Attempting to fetch profile from HyperBEAM...');
+						const zoneData = await fetchProfileZone(address);
+						console.log('✅ HyperBEAM profile data:', zoneData);
+
+						// Transform HyperBEAM zone data to profile format
+						if (zoneData) {
+							fetchedProfile = {
+								id: address,
+								username: zoneData.Username || zoneData.username || null,
+								displayName: zoneData.DisplayName || zoneData.displayName || null,
+								thumbnail: zoneData.ProfileImage || zoneData.thumbnail || null,
+								banner: zoneData.CoverImage || zoneData.banner || null,
+								description: zoneData.Bio || zoneData.description || null,
+								collections: zoneData.Collections || zoneData.collections || [],
+							};
+							console.log('✅ Using HyperBEAM profile data!');
+						}
+					} catch (hbError) {
+						console.log('⚠️ HyperBEAM fetch failed, falling back to permaweb-libs:', hbError);
+					}
+
+					// Fallback to permaweb-libs if HyperBEAM didn't work
+					if (!fetchedProfile) {
+						fetchedProfile = await permawebProvider.libs.getProfileById(address);
+					}
 
 					if (!fetchedProfile?.id || !fetchedProfile?.username) {
 						await new Promise((r) => setTimeout(r, 1000));
