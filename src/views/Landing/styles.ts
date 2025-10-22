@@ -8,6 +8,10 @@ export const CollectionsWrapper = styled.div`
 	margin: 0 0 60px 0;
 `;
 
+export const MusicCollectionsWrapper = styled.div`
+	margin: 0 0 60px 0;
+`;
+
 export const ActivityWrapper = styled.div`
 	margin: 0 0 60px 0;
 `;

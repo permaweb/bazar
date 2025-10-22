@@ -1,10 +1,10 @@
+import PermawebLibs from '@permaweb/libs';
 import AsyncLock from 'async-lock';
 
-import { connect } from '@permaweb/aoconnect';
-import AOProfile, { RegistryProfileType } from '@permaweb/aoprofile';
-
+// import AOProfile, { any } from '@permaweb/aoprofile';
 import { readHandler } from 'api';
 
+import { connect } from 'helpers/aoconnect';
 import { AO } from 'helpers/config';
 import { store } from 'store';
 import * as profilesActions from 'store/profiles/actions';
@@ -15,88 +15,98 @@ const lock = new AsyncLock();
 
 let registryFetchQueue: Set<string> = new Set();
 
-const { getRegistryProfiles } = AOProfile.init({ ao: connect() });
+// const { getRegistryProfiles } = AOProfile.init({ ao: connect({ MODE: 'legacy' }) });
 
-export function getExistingRegistryProfiles(ids: string[]): RegistryProfileType[] {
+export function getExistingProfiles(ids: string[]): any[] {
 	const profilesReducer = store.getState().profilesReducer;
 	if (!profilesReducer?.registryProfiles || !profilesReducer?.registryProfiles.length) return [];
 
-	const profiles: RegistryProfileType[] = [];
+	const profiles: any[] = [];
 	for (const id of ids) {
-		const existingProfile = profilesReducer?.registryProfiles?.find(
-			(profile: RegistryProfileType) => profile.id === id
-		);
+		const existingProfile = profilesReducer?.registryProfiles?.find((profile: any) => profile.id === id);
 		if (existingProfile) profiles.push(existingProfile);
 	}
 
 	return profiles;
 }
 
-export async function getAndUpdateRegistryProfiles(ids: string[]): Promise<RegistryProfileType[]> {
-	const existingProfiles = getExistingRegistryProfiles(ids);
-	let profiles = [...existingProfiles];
+export async function getProfiles(_ids: string[]): Promise<any[]> {
+	return [];
+	// const existingProfiles = getExistingProfiles(ids);
+	// let profiles = [...existingProfiles];
 
-	const REGISTRY_TTL = 2 * 24 * 60 * 60 * 1000;
+	// // const REGISTRY_TTL = 2 * 24 * 60 * 60 * 1000;
+	// const REGISTRY_TTL = 0;
 
-	const outdatedOrMissingProfileIds = ids.filter((id) => {
-		const profile = existingProfiles.find((profile) => profile.id === id);
-		return !profile || (profile.lastUpdate && Date.now() - Number(profile.lastUpdate) > REGISTRY_TTL);
-	});
+	// const outdatedOrMissingProfileIds = ids.filter((id) => {
+	// 	const profile = existingProfiles.find((profile) => profile.id === id);
+	// 	return !profile || (profile.lastUpdate && Date.now() - Number(profile.lastUpdate) > REGISTRY_TTL);
+	// });
 
-	if (outdatedOrMissingProfileIds.length > 0) {
-		const newProfileIds = outdatedOrMissingProfileIds.filter((id) => !registryFetchQueue.has(id));
-		newProfileIds.forEach((id) => registryFetchQueue.add(id));
+	// if (outdatedOrMissingProfileIds.length > 0) {
+	// 	const newProfileIds = outdatedOrMissingProfileIds.filter((id) => !registryFetchQueue.has(id));
 
-		if (newProfileIds.length > 0) {
-			try {
-				const newProfiles = await getRegistryProfiles({ profileIds: newProfileIds });
-				profiles = [...profiles.filter((profile) => !outdatedOrMissingProfileIds.includes(profile.id)), ...newProfiles];
+	// 	newProfileIds.forEach((id) => registryFetchQueue.add(id));
 
-				profiles = profiles.reduce((uniqueProfiles, profile) => {
-					if (!uniqueProfiles.some((p) => p.id === profile.id)) {
-						uniqueProfiles.push(profile);
-					}
-					return uniqueProfiles;
-				}, [] as RegistryProfileType[]);
+	// 	if (newProfileIds.length > 0) {
+	// 		try {
+	// 			// const newProfiles = await getRegistryProfiles({ profileIds: newProfileIds });
 
-				// Get current Redux state
-				const profilesReducer = store.getState().profilesReducer;
-				const currentRegistryProfiles = profilesReducer?.registryProfiles || [];
+	// 			const newProfiles = [];
+	// 			const permaweb = PermawebLibs.init({ ao: connect({ MODE: 'legacy' }) });
 
-				// Find profiles that are new or have changed
-				const updatedProfiles = newProfiles.filter((newProfile) => {
-					const existingProfile = currentRegistryProfiles.find((p) => p.id === newProfile.id);
-					return (
-						!existingProfile || // New profile
-						JSON.stringify(existingProfile) !== JSON.stringify(newProfile) // Updated profile
-					);
-				});
+	// 			for (const profileId of newProfileIds) {
+	// 				const newProfile = await permaweb.getProfileById(profileId);
+	// 				console.log(newProfile);
+	// 			}
 
-				// Only dispatch if there are updates
-				if (updatedProfiles.length > 0) {
-					store.dispatch(
-						profilesActions.setProfiles({
-							...(profilesReducer ?? {}),
-							registryProfiles: [
-								...currentRegistryProfiles.filter(
-									(profile) => !updatedProfiles.some((p: RegistryProfileType) => p.id === profile.id)
-								),
-								...updatedProfiles,
-							],
-						})
-					);
-				}
-			} finally {
-				newProfileIds.forEach((id) => registryFetchQueue.delete(id));
-			}
-		}
-	}
+	// 			profiles = [...profiles.filter((profile) => !outdatedOrMissingProfileIds.includes(profile.id)), ...newProfiles];
 
-	return profiles;
+	// 			profiles = profiles.reduce((uniqueProfiles, profile) => {
+	// 				if (!uniqueProfiles.some((p) => p.id === profile.id)) {
+	// 					uniqueProfiles.push(profile);
+	// 				}
+	// 				return uniqueProfiles;
+	// 			}, [] as any[]);
+
+	// 			// Get current Redux state
+	// 			const profilesReducer = store.getState().profilesReducer;
+	// 			const currentRegistryProfiles = profilesReducer?.registryProfiles || [];
+
+	// 			// Find profiles that are new or have changed
+	// 			const updatedProfiles = newProfiles.filter((newProfile) => {
+	// 				const existingProfile = currentRegistryProfiles.find((p) => p.id === newProfile.id);
+	// 				return (
+	// 					!existingProfile || // New profile
+	// 					JSON.stringify(existingProfile) !== JSON.stringify(newProfile) // Updated profile
+	// 				);
+	// 			});
+
+	// 			// Only dispatch if there are updates
+	// 			if (updatedProfiles.length > 0) {
+	// 				store.dispatch(
+	// 					profilesActions.setProfiles({
+	// 						...(profilesReducer ?? {}),
+	// 						registryProfiles: [
+	// 							...currentRegistryProfiles.filter(
+	// 								(profile) => !updatedProfiles.some((p: any) => p.id === profile.id)
+	// 							),
+	// 							...updatedProfiles,
+	// 						],
+	// 					})
+	// 				);
+	// 			}
+	// 		} finally {
+	// 			newProfileIds.forEach((id) => registryFetchQueue.delete(id));
+	// 		}
+	// 	}
+	// }
+
+	// return profiles;
 }
 
-export async function handleProfileRegistryCache(args: { profileIds: string[] }): Promise<RegistryProfileType[]> {
-	return lock.acquire('handleProfileRegistryCache', async () => {
+export async function handleBatchProfileCache(args: { profileIds: string[] }): Promise<any[]> {
+	return lock.acquire('handleBatchProfileCache', async () => {
 		try {
 			const state = store.getState().profilesReducer;
 			let { registryProfiles = [], missingProfileIds = [], lastUpdate = 0 } = state;
@@ -105,7 +115,7 @@ export async function handleProfileRegistryCache(args: { profileIds: string[] })
 
 			/*
 				The cache is too old, update all the profiles again
-		  	*/
+				*/
 			if (!isCacheValid) {
 				const metadataLookup = await readHandler({
 					processId: AO.profileRegistry,
@@ -203,7 +213,7 @@ export async function handleProfileRegistryCache(args: { profileIds: string[] })
 				};
 			});
 		} catch (e: any) {
-			console.error('Error in handleProfileRegistryCache:', e);
+			console.error('Error in handleBatchProfileCache:', e);
 			throw new Error(e.message);
 		}
 	});

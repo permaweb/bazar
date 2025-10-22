@@ -4,14 +4,18 @@ import _ from 'lodash';
 
 import { getAssetById, getAssetOrders, readHandler } from 'api';
 
+const debug = (..._args: any[]) => {};
+
 import { Loader } from 'components/atoms/Loader';
 import { Portal } from 'components/atoms/Portal';
 import { AssetData } from 'components/organisms/AssetData';
-import { AO, DOM, URLS } from 'helpers/config';
+import { AO, DOM, HB, URLS } from 'helpers/config';
 import { AssetDetailType, AssetViewType } from 'helpers/types';
 import { checkValidAddress } from 'helpers/utils';
 import * as windowUtils from 'helpers/window';
 import { useLanguageProvider } from 'providers/LanguageProvider';
+import { usePermawebProvider } from 'providers/PermawebProvider';
+import { useTokenProvider } from 'providers/TokenProvider';
 
 import { AssetAction } from './AssetAction';
 import { AssetInfo } from './AssetInfo';
@@ -21,6 +25,9 @@ import * as S from './styles';
 export default function Asset() {
 	const { id } = useParams();
 	const navigate = useNavigate();
+
+	const permawebProvider = usePermawebProvider();
+	const tokenProvider = useTokenProvider();
 
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
@@ -49,6 +56,8 @@ export default function Asset() {
 	React.useEffect(() => {
 		(async function () {
 			if (id && checkValidAddress(id)) {
+				debug('Fetching asset...');
+
 				setLoading(true);
 				let tries = 0;
 				const maxTries = 10;
@@ -57,7 +66,7 @@ export default function Asset() {
 				const fetchUntilChange = async () => {
 					while (!assetFetched && tries < maxTries) {
 						try {
-							const fetchedAsset = await getAssetById({ id });
+							const fetchedAsset = await getAssetById({ id: id, libs: permawebProvider.libs });
 							setAsset(fetchedAsset);
 
 							if (fetchedAsset !== null) {
@@ -92,73 +101,102 @@ export default function Asset() {
 				setLoading(true);
 				try {
 					if (asset.orderbook.id === AO.ucm) {
-						const response = await readHandler({
-							processId: asset.orderbook.id,
-							action: 'Get-Orderbook-By-Pair',
-							tags: [
-								{ name: 'DominantToken', value: asset.data.id },
-								{ name: 'SwapToken', value: AO.defaultToken },
-							],
-						});
-
-						if (response) {
-							setAsset((prevAsset) => ({
-								...prevAsset,
-								orderbook: {
-									...prevAsset.orderbook,
-									orders: response?.Orderbook ? getAssetOrders(response.Orderbook) : [],
-								},
-							}));
-						} else {
-							setAsset((prevAsset) => ({
-								...prevAsset,
-								orderbook: null,
-							}));
-						}
-					} else {
+						// Fetch ALL orders for this asset using Info action (like AppProvider does)
 						const response = await readHandler({
 							processId: asset.orderbook.id,
 							action: 'Info',
 						});
 
-						console.log(response);
+						if (response?.Orderbook) {
+							// Find all pairs that include this asset
+							const assetPairs = response.Orderbook.filter(
+								(pair: any) => pair.Pair && pair.Pair.includes(asset.data.id)
+							);
+
+							// Process all pairs for this asset to get all orders
+							let allOrders: any[] = [];
+
+							assetPairs.forEach((pair: any) => {
+								if (pair.Orders && Array.isArray(pair.Orders)) {
+									const pairOrders = pair.Orders.map((order: any) => ({
+										creator: order.Creator || order.creator,
+										dateCreated: order.DateCreated || order.dateCreated,
+										id: order.Id || order.id,
+										originalQuantity: order.OriginalQuantity || order.originalQuantity,
+										quantity: order.Quantity || order.quantity,
+										token: order.Token || order.token,
+										currency: pair.Pair[1], // The token being received
+										price: order.Price || order.price || '0', // Ensure price is always set
+									}));
+									allOrders = allOrders.concat(pairOrders);
+								}
+							});
+
+							setAsset((prevAsset) => ({
+								...prevAsset,
+								orderbook: {
+									...prevAsset.orderbook,
+									orders: allOrders,
+								},
+							}));
+						} else {
+							// Initialize with empty orders if no orderbook exists
+							setAsset((prevAsset) => ({
+								...prevAsset,
+								orderbook: {
+									...prevAsset.orderbook,
+									orders: [],
+								},
+							}));
+						}
+					} else {
+						const response = await permawebProvider.libs.readState({
+							processId: asset.orderbook.id,
+							path: 'orderbook',
+							fallbackAction: 'Info',
+							node: HB.defaultNode,
+						});
+
+						// Process ALL pairs in the orderbook, not just the first one
+						let allOrders: any[] = [];
+
+						if (response?.Orderbook) {
+							// Handle both array and single object structures
+							const orderbookData = Array.isArray(response.Orderbook) ? response.Orderbook : [response.Orderbook];
+
+							// Process each pair and concatenate orders
+							orderbookData.forEach((pair: any) => {
+								if (pair && pair.Pair) {
+									const pairOrders = getAssetOrders(pair);
+									allOrders = allOrders.concat(pairOrders);
+								}
+							});
+						}
 
 						setAsset((prevAsset) => ({
 							...prevAsset,
 							orderbook: {
 								...prevAsset.orderbook,
 								activityId: response?.ActivityProcess,
-								orders: getAssetOrders(response?.Orderbook?.[0]),
+								orders: allOrders,
 							},
 						}));
 					}
 				} catch (e: any) {
 					console.error(e);
+					// Initialize with empty orders on error
+					setAsset((prevAsset) => ({
+						...prevAsset,
+						orderbook: {
+							...prevAsset.orderbook,
+							orders: [],
+						},
+					}));
 				}
 				setLoading(false);
 			}
 		})();
 	}, [asset?.orderbook?.id, toggleUpdate]);
-
-	console.log(asset);
-
-	// TODO
-	// React.useEffect(() => {
-	// 	if (asset && ucmReducer) {
-	// 		const updatedOrders = getAssetOrders({ id: asset.data.id });
-
-	// 		const sortedCurrentOrders = _.sortBy(asset.orderbook?.orders, 'id');
-	// 		const sortedUpdatedOrders = _.sortBy(updatedOrders, 'id');
-
-	// 		if (!_.isEqual(sortedCurrentOrders, sortedUpdatedOrders)) {
-	// 			console.log('Orders are different, updating asset state...');
-	// 			setAsset((prev) => ({
-	// 				...prev,
-	// 				orders: updatedOrders,
-	// 			}));
-	// 		}
-	// 	}
-	// }, [ucmReducer]);
 
 	function getData() {
 		if (asset) {

@@ -1,23 +1,24 @@
 import React from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
-import { connect } from '@permaweb/aoconnect';
 import AOProfile, { ProfileType } from '@permaweb/aoprofile';
 
 import { Loader } from 'components/atoms/Loader';
 import { URLTabs } from 'components/molecules/URLTabs';
+import { connect } from 'helpers/aoconnect';
 import { ASSETS, URLS } from 'helpers/config';
 import { checkValidAddress } from 'helpers/utils';
 import { useLanguageProvider } from 'providers/LanguageProvider';
+import { usePermawebProvider } from 'providers/PermawebProvider';
 
 import { ProfileActivity } from './ProfileActivity';
 import { ProfileAssets } from './ProfileAssets';
 import { ProfileCollections } from './ProfileCollections';
 import { ProfileHeader } from './ProfileHeader';
+const debug = (..._args: any[]) => {};
 
-// TODO: Profile listings / activity
 export default function Profile() {
-	const { getProfileById } = AOProfile.init({ ao: connect({ MODE: 'legacy' }) });
+	const permawebProvider = usePermawebProvider();
 
 	const navigate = useNavigate();
 
@@ -43,8 +44,20 @@ export default function Profile() {
 		(async function () {
 			if (address && checkValidAddress(address)) {
 				try {
-					const fetchedProfile = await getProfileById({ profileId: address });
-					setProfile(fetchedProfile);
+					let fetchedProfile = null;
+					let isLegacyProfile = false;
+
+					fetchedProfile = await permawebProvider.libs.getProfileById(address);
+
+					if (!fetchedProfile?.id || !fetchedProfile?.username) {
+						await new Promise((r) => setTimeout(r, 1000));
+						debug('Fetching legacy profile...');
+						isLegacyProfile = true;
+						const aoProfile = AOProfile.init({ ao: connect({ MODE: 'legacy' }) });
+						fetchedProfile = await aoProfile.getProfileById({ profileId: address });
+					}
+
+					setProfile({ ...fetchedProfile, isLegacyProfile });
 				} catch (e: any) {
 					console.error(e);
 				}
@@ -68,7 +81,12 @@ export default function Profile() {
 				icon: ASSETS.collection,
 				disabled: false,
 				url: URLS.profileCollections(address),
-				view: () => <ProfileCollections address={address} />,
+				view: () => (
+					<ProfileCollections
+						address={address}
+						collectionIds={!(profile as any).isLegacyProfile ? (profile as any)?.collections ?? null : null}
+					/>
+				),
 			},
 			{
 				label: language.activity,

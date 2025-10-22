@@ -13,6 +13,7 @@ import { formatAddress, formatCount, getTotalTokenBalance } from 'helpers/utils'
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useCustomThemeProvider } from 'providers/CustomThemeProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
+import { usePermawebProvider } from 'providers/PermawebProvider';
 
 import * as S from './styles';
 
@@ -20,6 +21,8 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 	const navigate = useNavigate();
 
 	const arProvider = useArweaveProvider();
+	const permawebProvider = usePermawebProvider();
+
 	const themeProvider = useCustomThemeProvider();
 
 	const languageProvider = useLanguageProvider();
@@ -43,8 +46,11 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 			setLabel(`${language.fetching}...`);
 		} else {
 			if (arProvider.walletAddress) {
-				if (arProvider.profile && arProvider.profile.username) {
-					setLabel(arProvider.profile.username);
+				// Priority: ArNS name > Profile username > Address
+				if (permawebProvider.arnsPrimaryName) {
+					setLabel(permawebProvider.arnsPrimaryName);
+				} else if (permawebProvider.profile && permawebProvider.profile.username) {
+					setLabel(permawebProvider.profile.username);
 				} else {
 					setLabel(formatAddress(arProvider.walletAddress, false));
 				}
@@ -52,7 +58,7 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 				setLabel(language.connect);
 			}
 		}
-	}, [showWallet, arProvider.walletAddress, arProvider.profile]);
+	}, [showWallet, arProvider.walletAddress, permawebProvider.profile, permawebProvider.arnsPrimaryName]);
 
 	function handlePress() {
 		if (arProvider.walletAddress) {
@@ -70,8 +76,8 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 	}
 
 	function handleProfileAction() {
-		if (arProvider.profile && arProvider.profile.id) {
-			navigate(URLS.profileAssets(arProvider.profile.id));
+		if (permawebProvider.profile && permawebProvider.profile.id) {
+			navigate(URLS.profileAssets(permawebProvider.profile.id));
 		} else {
 			setShowProfileManage(true);
 		}
@@ -107,10 +113,40 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 			label: language.tradePixl,
 			target: '',
 		},
+		[AO.wndr]: {
+			link: `${URLS.asset}${AO.wndr}`,
+			label: language.tradeWander,
+			target: '',
+		},
+		[AO.pi]: {
+			link: `${URLS.asset}${AO.pi}`,
+			label: language.tradePi,
+			target: '',
+		},
+		[AO.ario]: {
+			link: `${URLS.asset}${AO.ario}`,
+			label: language.tradeArio,
+			target: '',
+		},
+		[AO.usda]: {
+			link: `${URLS.asset}${AO.usda}`,
+			label: language.tradeUsda,
+			target: '',
+		},
+		[AO.game]: {
+			link: `${URLS.asset}${AO.game}`,
+			label: language.tradeGame,
+			target: '',
+		},
+		[AO.stamps]: {
+			link: `${URLS.asset}${AO.stamps}`,
+			label: language.tradeStamp,
+			target: '',
+		},
 	};
 
 	function getDropdown() {
-		if (!arProvider.profile) {
+		if (!permawebProvider.profile) {
 			return (
 				<S.LoadingWrapper>
 					<span>{`${language.fetchingProfile}...`}</span>
@@ -123,40 +159,32 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 				<S.DHeaderWrapper>
 					<S.DHeaderFlex className={'border-wrapper-alt1'}>
 						<Avatar
-							owner={arProvider.profile}
+							owner={permawebProvider.profile}
 							dimensions={{ wrapper: 35, icon: 21.5 }}
 							callback={() => handleDropdownAction(handleProfileAction)}
 						/>
 						<S.DHeader>
 							<S.DNameWrapper>
 								<p onClick={() => handleDropdownAction(handleProfileAction)}>{label}</p>
-								{arProvider.vouch?.isVouched && (
+								{/* {arProvider.vouch?.isVouched && (
 									<div id={'vouch-check'}>
 										<ReactSVG src={ASSETS.checkmark} />
 										<S.Tooltip className={'info-text'} useBottom={true}>
 											<span>{language.userConnectedVouched}</span>
 										</S.Tooltip>
 									</div>
-								)}
+								)} */}
 							</S.DNameWrapper>
-							<S.AddressWrapper>
-								<span onClick={() => handleDropdownAction(handleProfileAction)}>
-									{formatAddress(
-										arProvider.profile && arProvider.profile.id ? arProvider.profile.id : arProvider.walletAddress,
-										false
-									)}
-								</span>
-								<S.CopyIconWrapper
-									onClick={() =>
-										copyAddress(
-											arProvider.profile && arProvider.profile.id ? arProvider.profile.id : arProvider.walletAddress
-										)
-									}
-									title={copied ? language.copied : language.copyProfileId}
-								>
-									<ReactSVG src={ASSETS.copy} />
-								</S.CopyIconWrapper>
-							</S.AddressWrapper>
+							<span onClick={() => handleDropdownAction(handleProfileAction)}>
+								{permawebProvider.arnsPrimaryName
+									? formatAddress(arProvider.walletAddress, false)
+									: formatAddress(
+											permawebProvider.profile && permawebProvider.profile.id
+												? permawebProvider.profile.id
+												: arProvider.walletAddress,
+											false
+									  )}
+							</span>
 						</S.DHeader>
 					</S.DHeaderFlex>
 				</S.DHeaderWrapper>
@@ -164,17 +192,27 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 					<S.BalanceLine>
 						<ReactSVG src={ASSETS.ar} />
 						<span>{formatCount(arProvider.arBalance ? arProvider.arBalance.toString() : '0')}</span>
+						<S.TokenLink>
+							<Link
+								to="https://viewblock.io/arweave/"
+								target="_blank"
+								onClick={() => handleDropdownAction(() => setShowWalletDropdown(false))}
+							>
+								<span>{language.viewAr}</span>
+							</Link>
+						</S.TokenLink>
 					</S.BalanceLine>
-					{arProvider.tokenBalances && Object.keys(arProvider.tokenBalances).length > 0 && (
+					{permawebProvider.tokenBalances && Object.keys(permawebProvider.tokenBalances).length > 0 && (
 						<>
-							{Object.keys(arProvider.tokenBalances).map((token: string) => {
+							{Object.keys(permawebProvider.tokenBalances).map((token: string) => {
 								return (
 									<S.BalanceLine key={token}>
 										<CurrencyLine
-											amount={getTotalTokenBalance(arProvider.tokenBalances[token])}
+											amount={getTotalTokenBalance(permawebProvider.tokenBalances[token])}
 											currency={token}
 											callback={() => handleDropdownAction(() => setShowWalletDropdown(false))}
 											useReverseLayout
+											hideSymbol
 										/>
 										{tokenLinks[token] && (
 											<S.TokenLink>
@@ -208,8 +246,20 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 					</li>
 				</S.DBodyWrapper>
 				<S.DBodyWrapper>
+					{permawebProvider.profile && permawebProvider.profile.id && (
+						<>
+							<li onClick={() => copyAddress(permawebProvider.profile.id)}>
+								<ReactSVG src={ASSETS.copy} />
+								{copied ? `${language.copied}!` : language.copyProfileId}
+							</li>
+							<li onClick={() => handleDropdownAction(() => setShowProfileManage(true))}>
+								<ReactSVG src={ASSETS.edit} />
+								{language.editProfile}
+							</li>
+						</>
+					)}
 					<li onClick={() => handleDropdownAction(handleProfileAction)}>
-						{arProvider.profile && arProvider.profile.id ? (
+						{permawebProvider.profile && permawebProvider.profile.id ? (
 							<>
 								<ReactSVG src={ASSETS.user} />
 								{`${language.viewProfile}`}
@@ -221,18 +271,6 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 							</>
 						)}
 					</li>
-					{arProvider.profile && arProvider.profile.id && (
-						<>
-							<li onClick={() => handleDropdownAction(() => setShowProfileManage(true))}>
-								<ReactSVG src={ASSETS.edit} />
-								{language.editProfile}
-							</li>
-							<li onClick={() => copyAddress(arProvider.profile.id)}>
-								<ReactSVG src={ASSETS.copy} />
-								{copied ? `${language.copied}!` : language.copyProfileId}
-							</li>
-						</>
-					)}
 					<li onClick={handleToggleTheme}>
 						{themeProvider.current === 'light' ? (
 							<>
@@ -258,12 +296,12 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 	function getHeader() {
 		return (
 			<S.PWrapper>
-				{arProvider.profile && !arProvider.profile.id && (
+				{permawebProvider.profile && !permawebProvider.profile.id && (
 					<S.CAction className={'fade-in'}>
 						<Button type={'alt1'} label={language.createProfile} handlePress={handleProfileAction} />
 					</S.CAction>
 				)}
-				{arProvider.walletAddress && !arProvider.profile && (
+				{arProvider.walletAddress && !permawebProvider.profile && (
 					<S.MessageWrapper className={'update-wrapper'}>
 						<span>{`${language.fetchingProfile}...`}</span>
 					</S.MessageWrapper>
@@ -273,7 +311,7 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 						<span>{label}</span>
 					</S.LAction>
 				)}
-				<Avatar owner={arProvider.profile} dimensions={{ wrapper: 35, icon: 21.5 }} callback={handlePress} />
+				<Avatar owner={permawebProvider.profile} dimensions={{ wrapper: 35, icon: 21.5 }} callback={handlePress} />
 			</S.PWrapper>
 		);
 	}
@@ -302,12 +340,16 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 			{showProfileManage && (
 				<Panel
 					open={showProfileManage}
-					header={arProvider.profile && arProvider.profile.id ? language.editProfile : `${language.createProfile}!`}
+					header={
+						permawebProvider.profile && permawebProvider.profile.id
+							? language.editProfile
+							: `${language.createProfile}!`
+					}
 					handleClose={() => setShowProfileManage(false)}
 				>
 					<S.PManageWrapper>
 						<ProfileManage
-							profile={arProvider.profile && arProvider.profile.id ? arProvider.profile : null}
+							profile={permawebProvider.profile && permawebProvider.profile.id ? permawebProvider.profile : null}
 							handleClose={() => setShowProfileManage(false)}
 							handleUpdate={null}
 						/>

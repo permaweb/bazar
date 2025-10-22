@@ -33,6 +33,12 @@ export type AssetStateType = {
 	logo: string | null;
 	transferable: boolean;
 	balances: { [address: string]: string } | null;
+	metadata?: {
+		CoverArt?: string;
+		CollectionId?: string;
+		OrderbookId?: string;
+		[key: string]: any;
+	};
 };
 
 export type AssetOrderType = {
@@ -78,6 +84,7 @@ export type AssetType = {
 		collectionId?: string | null;
 		collectionName?: string | null;
 		contentType?: string | null;
+		topics?: string[];
 	};
 };
 
@@ -114,6 +121,7 @@ export type CollectionMetricsType = {
 export type CollectionType = {
 	id: string;
 	title: string;
+	name?: string;
 	description: string | null;
 	creator: string;
 	dateCreated: string;
@@ -126,18 +134,7 @@ export type CollectionDetailType = CollectionType & {
 	assetIds: string[];
 	creatorProfile: ProfileType;
 	metrics: CollectionMetricsType;
-
-	currentListings?: {
-		[orderId: string]: {
-			OrderId: string;
-			DominantToken: string;
-			SwapToken: string;
-			Sender: string;
-			Quantity: string;
-			Price: string;
-			Timestamp: string;
-		};
-	};
+	activity?: any;
 };
 
 export type TagType = { name: string; value: string };
@@ -199,6 +196,7 @@ export type BatchAGQLResponseType = { [queryKey: string]: DefaultGQLResponseType
 export enum WalletEnum {
 	wander = 'wander',
 	othent = 'othent',
+	beacon = 'beacon',
 }
 
 export type RenderType = 'renderer' | 'raw';
@@ -255,3 +253,39 @@ export type ResponseType = { status: boolean; message: string | null };
 export type StampType = { total: number; vouched: number; hasStamped?: boolean };
 
 export type StampsType = Record<string, { total: number; vouched: number }>;
+
+export type GqlEdge = {
+	cursor: string;
+	node: {
+		id: string;
+		tags: { name: string; value: string }[];
+		block: { timestamp: number };
+		recipient: string;
+	};
+};
+
+export interface FormattedActivity {
+	ListedOrders: Array<{
+		OrderId: string;
+		Timestamp: number;
+		Quantity: string;
+		DominantToken: string;
+		SwapToken: string;
+		Price: string;
+		Sender: string;
+	}>;
+	PurchasesByAddress: Record<string, number>;
+	TotalVolume: Record<string, string>;
+	SalesByAddress: Record<string, number>;
+	CancelledOrders: string[];
+	ExecutedOrders: Array<{
+		OrderId: string;
+		Receiver: string;
+		Quantity: string;
+		DominantToken: string;
+		Timestamp: number;
+		SwapToken: string;
+		Price: string;
+		Sender: string;
+	}>;
+}

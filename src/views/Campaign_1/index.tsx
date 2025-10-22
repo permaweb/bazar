@@ -14,8 +14,11 @@ import { formatAddress } from 'helpers/utils';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 import { useLocationProvider } from 'providers/LocationProvider';
+import { usePermawebProvider } from 'providers/PermawebProvider';
 
 import * as S from './styles';
+
+const debug = (..._args: any[]) => {};
 
 type AssetStateType = {
 	id: string;
@@ -56,6 +59,7 @@ export function getCampaignBackground() {
 }
 
 export default function Campaign() {
+	const permawebProvider = usePermawebProvider();
 	const arProvider = useArweaveProvider();
 
 	const audioRef = React.useRef<HTMLAudioElement | null>(null);
@@ -154,7 +158,7 @@ export default function Campaign() {
 
 	React.useEffect(() => {
 		(async function () {
-			if (arProvider.profile && arProvider.profile.id) {
+			if (permawebProvider.profile && permawebProvider.profile.id) {
 				try {
 					await checkClaimStatus('Main', null);
 				} catch (e) {
@@ -162,7 +166,7 @@ export default function Campaign() {
 				}
 			}
 		})();
-	}, [arProvider.walletAddress, arProvider.profile]);
+	}, [arProvider.walletAddress, permawebProvider.profile]);
 
 	React.useEffect(() => {
 		(async function () {
@@ -177,7 +181,7 @@ export default function Campaign() {
 
 	React.useEffect(() => {
 		(async function () {
-			if (currentView && arProvider.walletAddress && arProvider.profile && arProvider.profile.id) {
+			if (currentView && arProvider.walletAddress && permawebProvider.profile && permawebProvider.profile.id) {
 				switch (currentView) {
 					case 'SubSet':
 						setFetching(true);
@@ -198,14 +202,14 @@ export default function Campaign() {
 				}
 			}
 		})();
-	}, [currentView, arProvider.walletAddress, arProvider.profile, toggleClaimCheck]);
+	}, [currentView, arProvider.walletAddress, permawebProvider.profile, toggleClaimCheck]);
 
 	async function checkClaimStatus(type: 'SubSet' | 'Main', userAddress: string | null) {
 		const ids = type === 'SubSet' && assets && assets.length > 0 ? assets.map((asset) => asset.id) : [MAIN_PROCESS];
 
 		const tags = [{ name: 'Address', value: arProvider.walletAddress }];
-		if (arProvider.profile && arProvider.profile.id) {
-			tags.push({ name: 'ProfileId', value: arProvider.profile.id });
+		if (permawebProvider.profile && permawebProvider.profile.id) {
+			tags.push({ name: 'ProfileId', value: permawebProvider.profile.id });
 		}
 		if (userAddress) {
 			tags.push({ name: 'UserAddress', value: userAddress });
@@ -265,8 +269,8 @@ export default function Campaign() {
 		}
 
 		const tags = [{ name: 'Address', value: arProvider.walletAddress }];
-		if (arProvider.profile && arProvider.profile.id) {
-			tags.push({ name: 'ProfileId', value: arProvider.profile.id });
+		if (permawebProvider.profile && permawebProvider.profile.id) {
+			tags.push({ name: 'ProfileId', value: permawebProvider.profile.id });
 		}
 
 		try {
@@ -321,7 +325,7 @@ export default function Campaign() {
 			} else {
 				setAudioPlaying(true);
 				audioRef.current.play().catch((error) => {
-					console.log('Autoplay failed:', error);
+					debug('Autoplay failed', error);
 					setAudioPlaying(false);
 				});
 			}
@@ -392,9 +396,9 @@ export default function Campaign() {
 			label = language.connectWallet;
 			action = () => arProvider.setWalletModalVisible(true);
 		} else {
-			if (arProvider.profile) {
-				if (arProvider.profile.id) {
-					label = arProvider.profile.username;
+			if (permawebProvider.profile) {
+				if (permawebProvider.profile.id) {
+					label = permawebProvider.profile.username;
 				} else {
 					label = language.createProfile;
 					action = () => setShowProfileManage(true);
@@ -402,7 +406,7 @@ export default function Campaign() {
 			} else label = formatAddress(arProvider.walletAddress, false);
 		}
 
-		const claimed = arProvider.profile && arProvider.profile.id !== null;
+		const claimed = permawebProvider.profile && permawebProvider.profile.id !== null;
 
 		return (
 			<S.Subheader>
@@ -417,7 +421,7 @@ export default function Campaign() {
 				</S.ProfileWrapper>
 			</S.Subheader>
 		);
-	}, [arProvider.profile, arProvider.walletAddress]);
+	}, [permawebProvider.profile, arProvider.walletAddress]);
 
 	const body = React.useMemo(() => {
 		if (!arProvider.walletAddress) {
@@ -559,12 +563,16 @@ export default function Campaign() {
 				{showProfileManage && (
 					<Panel
 						open={showProfileManage}
-						header={arProvider.profile && arProvider.profile.id ? language.editProfile : `${language.createProfile}!`}
+						header={
+							permawebProvider.profile && permawebProvider.profile.id
+								? language.editProfile
+								: `${language.createProfile}!`
+						}
 						handleClose={() => setShowProfileManage(false)}
 					>
 						<S.PManageWrapper>
 							<ProfileManage
-								profile={arProvider.profile && arProvider.profile.id ? arProvider.profile : null}
+								profile={permawebProvider.profile && permawebProvider.profile.id ? permawebProvider.profile : null}
 								handleClose={() => setShowProfileManage(false)}
 								handleUpdate={null}
 							/>

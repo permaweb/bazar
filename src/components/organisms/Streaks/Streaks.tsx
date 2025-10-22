@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 
 import Arweave from 'arweave';
 
-import { getAndUpdateRegistryProfiles, readHandler } from 'api';
+import { getProfiles, readHandler } from 'api';
 
 import { Button } from 'components/atoms/Button';
 import { CurrencyLine } from 'components/atoms/CurrencyLine';
@@ -14,21 +14,21 @@ import { Panel } from 'components/molecules/Panel';
 import { AO, ASSETS, URLS } from 'helpers/config';
 import { StreakType } from 'helpers/types';
 import { formatAddress, formatCount, getTotalTokenBalance } from 'helpers/utils';
-import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
+import { usePermawebProvider } from 'providers/PermawebProvider';
 import { RootState } from 'store';
 
 import * as S from './styles';
 import { IProps } from './types';
 
-const GROUP_COUNT = 250;
+const GROUP_COUNT = 15;
 
 export default function Streaks(props: IProps) {
 	const navigate = useNavigate();
 
 	const streaksReducer = useSelector((state: RootState) => state.streaksReducer);
 
-	const arProvider = useArweaveProvider();
+	const permawebProvider = usePermawebProvider();
 
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
@@ -86,7 +86,7 @@ export default function Streaks(props: IProps) {
 				setUpdating(true);
 				try {
 					const addresses = streakGroups[streakCursor].map((streak: any) => streak.address);
-					const profiles = await getAndUpdateRegistryProfiles(addresses);
+					const profiles = await getProfiles(addresses);
 					const updatedStreakGroup = streakGroups[streakCursor].map((streak: any) => ({
 						...streak,
 						profile: profiles ? profiles.find((profile: any) => profile.id === streak.address) : null,
@@ -103,21 +103,21 @@ export default function Streaks(props: IProps) {
 					console.error(e);
 				}
 				setUpdating(false);
+			} else {
+				setStreaks([]);
 			}
 		})();
 	}, [streakGroups, streakCursor]);
 
 	React.useEffect(() => {
 		(async function () {
-			if (props.profile && props.profile.id) {
+			if (props.profile?.id) {
 				if (
-					arProvider.profile &&
-					arProvider.profile.id &&
-					props.profile.id === arProvider.profile.id &&
-					arProvider.tokenBalances &&
-					arProvider.tokenBalances[AO.pixl]
+					permawebProvider.profile?.id &&
+					props.profile.id === permawebProvider.profile.id &&
+					permawebProvider.tokenBalances?.[AO.pixl]
 				) {
-					setPixlBalance(getTotalTokenBalance(arProvider.tokenBalances[AO.pixl]));
+					setPixlBalance(getTotalTokenBalance(permawebProvider.tokenBalances[AO.pixl]));
 				} else {
 					try {
 						const pixlTokenBalance = await readHandler({
@@ -139,13 +139,13 @@ export default function Streaks(props: IProps) {
 						tags: [{ name: 'Recipient', value: props.profile.id }],
 					});
 
-					if (currentRewards) setDailyRewards(currentRewards);
+					if (currentRewards !== null) setDailyRewards(currentRewards);
 				} catch (e: any) {
 					console.error(e);
 				}
 			}
 		})();
-	}, [arProvider.profile, arProvider.tokenBalances, props.profile]);
+	}, [permawebProvider.profile?.id, permawebProvider.tokenBalances?.[AO.pixl], props.profile]);
 
 	React.useEffect(() => {
 		(async function () {
@@ -204,7 +204,7 @@ export default function Streaks(props: IProps) {
 		if (props.profile && count !== null) {
 			let title: string = '';
 			let endText: string = '';
-			if (arProvider.profile && arProvider.profile.id && arProvider.profile.id === props.profile.id) {
+			if (permawebProvider.profile && permawebProvider.profile.id && permawebProvider.profile.id === props.profile.id) {
 				endText = '!';
 				switch (getRangeLabel(count)) {
 					case '0-7':
@@ -231,7 +231,7 @@ export default function Streaks(props: IProps) {
 				}${endText}`}</p>
 			);
 		} else return null;
-	}, [count, props.profile, arProvider.profile]);
+	}, [count, props.profile, permawebProvider.profile]);
 
 	const streak = React.useMemo(() => {
 		return (
@@ -413,16 +413,16 @@ export default function Streaks(props: IProps) {
 	}
 
 	function getDropdown() {
-		return showLeaderboard || !arProvider.profile ? (
+		return showLeaderboard || !permawebProvider.profile ? (
 			<>{leaderboard}</>
 		) : (
 			<>
 				<S.SDHeader>{header}</S.SDHeader>
 				<S.SDStreak>{streak}</S.SDStreak>
-				{arProvider.profile &&
-					arProvider.profile.id &&
-					arProvider.profile &&
-					arProvider.profile.id === props.profile.id && <S.SDMessage>{message}</S.SDMessage>}
+				{permawebProvider.profile &&
+					permawebProvider.profile.id &&
+					permawebProvider.profile &&
+					permawebProvider.profile.id === props.profile.id && <S.SDMessage>{message}</S.SDMessage>}
 				<S.SDAmounts>
 					{amounts}
 					<S.SDLAction>

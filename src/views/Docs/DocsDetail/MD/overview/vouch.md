@@ -54,7 +54,7 @@ Vouch is currently used by Bazar, Llama Land, and Permaverse. Other permaweb app
 ###### **4. Stake wAR**
 
 - Earn additional points by staking wAR in the [Vouch Portal](https://vouch-portal.arweave.net/#/).
-- Points vary by staking duration and AR price. Tokens are securely stored and can be withdrawn after the lock period. See the staking contract [here](https://www.ao.link/#/entity/zYBcGWB4KJeB4pc04XiNOKrD0DQBPelvNBbfDnqiunQ)
+- Points vary by staking duration and AR price. Tokens are securely stored and can be withdrawn after the lock period. See the staking contract [here](https://lunar/arweave.net/#/explorer/zYBcGWB4KJeB4pc04XiNOKrD0DQBPelvNBbfDnqiunQ)
 
 ### FAQs
 
@@ -74,7 +74,7 @@ The Vouch Portal shows how many Vouch Points your wallet has. 2 points are requi
 
 If you need assistance with Vouch or Bazar, join the **Bazar Micro-Community** on Discord:
 
-1. Join the [Weavers Discord](https://discord.gg/weavers).
+1. Join the [Weavers Discord](https://discord.gg/vS2fYJNucN).
 2. Opt-in to the Bazar channel via **#opt-in**.
 3. Submit support tickets in **#eco-ticket**.
 

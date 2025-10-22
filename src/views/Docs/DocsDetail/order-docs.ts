@@ -15,6 +15,10 @@ export const docsOrder = [
 				name: 'Vouch your wallet',
 				path: 'vouch',
 			},
+			{
+				name: 'PIXL Fair Launch',
+				path: 'pixl-fair-launch',
+			},
 		],
 	},
 	{
@@ -54,42 +58,6 @@ export const docsOrder = [
 			{
 				name: 'Universal Data License (UDL)',
 				path: 'universal-data-license',
-			},
-		],
-	},
-	{
-		name: 'For developers',
-		path: 'developers',
-		children: [
-			{
-				name: 'Universal Content Marketplace',
-				path: 'universal-content-marketplace',
-			},
-			{
-				name: 'Atomic Assets',
-				path: 'atomic-assets',
-			},
-			{
-				name: 'Collections',
-				path: 'collections',
-			},
-			{
-				name: 'AO Profile',
-				path: 'ao-profile',
-			},
-			{
-				name: 'Integrations',
-				path: 'integrations',
-			},
-		],
-	},
-	{
-		name: 'AOS Integration',
-		path: 'aos',
-		children: [
-			{
-				name: 'Commands Reference',
-				path: 'commands',
 			},
 		],
 	},

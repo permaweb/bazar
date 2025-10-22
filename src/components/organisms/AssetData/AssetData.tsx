@@ -1,6 +1,8 @@
 import React from 'react';
 import { ReactSVG } from 'react-svg';
 
+import { readHandler } from 'api';
+
 import { ASSETS, REFORMATTED_ASSETS } from 'helpers/config';
 import { getRendererEndpoint, getTxEndpoint } from 'helpers/endpoints';
 import { AssetRenderType } from 'helpers/types';
@@ -10,10 +12,8 @@ import { useArweaveProvider } from 'providers/ArweaveProvider';
 import * as S from './styles';
 import { IProps } from './types';
 
-// TODO: Just imported @permaweb/libs
-// Need to fix asset type and create an order to test collection activity
-// If collection activity is getting the correct orderbook ids, the last piece
-// would be to get individiual orders into the collection activity
+const debug = (..._args: any[]) => {};
+
 export default function AssetData(props: IProps) {
 	const arProvider = useArweaveProvider();
 
@@ -27,6 +27,8 @@ export default function AssetData(props: IProps) {
 	const [loadError, setLoadError] = React.useState<boolean>(false);
 	const [contain, setContain] = React.useState<boolean>(true);
 	const [frameLoaded, setFrameLoaded] = React.useState<boolean>(false);
+	const [assetMetadata, setAssetMetadata] = React.useState<any>(null);
+	const [metadataLoading, setMetadataLoading] = React.useState<boolean>(false);
 
 	const checkVisibility = () => {
 		const element = wrapperRef.current;
@@ -63,25 +65,65 @@ export default function AssetData(props: IProps) {
 	}, [props.asset, props.scrolling]);
 
 	async function handleGetAssetRender(assetId: string): Promise<AssetRenderType> {
-		const assetResponse = await fetch(getTxEndpoint(assetId));
-		const contentType = assetResponse.headers.get('content-type');
+		debug('🔍 AssetData: handleGetAssetRender called for ID:', assetId);
+		try {
+			const endpoint = getTxEndpoint(assetId);
+			debug('🔍 AssetData: Using endpoint:', endpoint);
+			const assetResponse = await fetch(endpoint);
+			const contentType = assetResponse.headers.get('content-type');
+			debug('🔍 AssetData: Response status:', assetResponse.status, 'Content-Type:', contentType);
 
-		if (assetResponse.status === 200 && contentType) {
-			return {
-				url: getAssetPath(assetResponse),
-				type: 'raw',
-				contentType: contentType,
-			};
+			if (assetResponse.status === 200 && contentType) {
+				const result = {
+					url: getAssetPath(assetResponse),
+					type: 'raw',
+					contentType: contentType,
+				};
+				debug('🔍 AssetData: Returning result:', result);
+				return result;
+			}
+			debug('🔍 AssetData: No valid response, returning undefined');
+		} catch (error) {
+			console.error('🔍 AssetData: Error fetching asset:', error);
+			// Return undefined to trigger fallback behavior
+		}
+	}
+
+	async function fetchAssetMetadata(assetId: string) {
+		if (metadataLoading || assetMetadata) return;
+
+		setMetadataLoading(true);
+		try {
+			const processState = await readHandler({
+				processId: assetId,
+				action: 'Info',
+				data: null,
+			});
+
+			if (processState?.Metadata) {
+				setAssetMetadata(processState.Metadata);
+			}
+		} catch (e: any) {
+			console.error('Failed to fetch asset metadata:', e);
+		} finally {
+			setMetadataLoading(false);
 		}
 	}
 
 	React.useEffect(() => {
 		(async function () {
+			debug('🔍 AssetData: Props received:', {
+				asset: props.asset,
+				assetRender: props.assetRender,
+				wrapperVisible,
+			});
 			if (!assetRender && wrapperVisible) {
 				if (props.assetRender) {
+					debug('🔍 AssetData: Using provided assetRender');
 					setAssetRender(props.assetRender);
 				} else {
 					if (props.asset && !props.assetRender) {
+						debug('🔍 AssetData: Processing asset:', props.asset);
 						const renderWith = props.asset.data?.renderWith ? props.asset.data.renderWith : '[]';
 						let parsedRenderWith: string | null = null;
 						try {
@@ -90,13 +132,16 @@ export default function AssetData(props: IProps) {
 							parsedRenderWith = renderWith;
 						}
 						if (parsedRenderWith && parsedRenderWith.length) {
+							debug('🔍 AssetData: Using renderer endpoint');
 							setAssetRender({
 								url: getRendererEndpoint(parsedRenderWith, props.asset.data.id),
 								type: 'renderer',
 								contentType: 'renderer',
 							});
 						} else {
+							debug('🔍 AssetData: Fetching asset render for ID:', props.asset.data.id);
 							const renderFetch = await handleGetAssetRender(props.asset.data.id);
+							debug('🔍 AssetData: Render fetch result:', renderFetch);
 							setAssetRender(renderFetch);
 						}
 					}
@@ -266,20 +311,48 @@ export default function AssetData(props: IProps) {
 						return <S.Image src={assetRender.url} contain={contain} onError={handleError} loading={'lazy'} />;
 					}
 					if (assetRender.contentType.includes('audio')) {
+						// Check for cover art in existing state metadata first, then lazy-loaded metadata
+						const coverArtId =
+							props.asset?.state?.metadata?.CoverArt ||
+							props.asset?.state?.metadata?.coverArt ||
+							assetMetadata?.CoverArt ||
+							assetMetadata?.coverArt;
+
+						// If no cover art found and we haven't tried to fetch metadata yet, fetch it
+						if (!coverArtId && !metadataLoading && !assetMetadata && props.asset?.data?.id) {
+							fetchAssetMetadata(props.asset.data.id);
+						}
+
+						// Show different layouts based on preview mode
 						if (!props.preview) {
+							// Full asset page - show cover art with audio controls
 							return (
 								<S.AudioWrapper>
-									<ReactSVG src={ASSETS.audio} />
+									{coverArtId && checkValidAddress(coverArtId) ? (
+										<S.CoverArtImage
+											src={getTxEndpoint(coverArtId)}
+											alt="Cover Art"
+											onError={handleError}
+											loading={'lazy'}
+										/>
+									) : (
+										<ReactSVG src={ASSETS.audio} />
+									)}
 									<S.Audio controls onError={handleError}>
 										<source src={assetRender.url} type={assetRender.contentType} />
 									</S.Audio>
 								</S.AudioWrapper>
 							);
 						} else {
+							// Collection page preview - show cover art that fills entire section
 							return (
-								<S.Preview>
-									<ReactSVG src={ASSETS.audio} />
-								</S.Preview>
+								<S.CoverArtFullSection>
+									{coverArtId && checkValidAddress(coverArtId) ? (
+										<img src={getTxEndpoint(coverArtId)} alt="Cover Art" onError={handleError} loading={'lazy'} />
+									) : (
+										<ReactSVG src={ASSETS.audio} />
+									)}
+								</S.CoverArtFullSection>
 							);
 						}
 					}

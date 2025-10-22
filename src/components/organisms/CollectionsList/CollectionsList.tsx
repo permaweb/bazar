@@ -9,8 +9,9 @@ import { Loader } from 'components/atoms/Loader';
 import { DEFAULTS, URLS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import { CollectionType } from 'helpers/types';
-import { formatDate } from 'helpers/utils';
+import { formatAddress, formatDate, getTagValue } from 'helpers/utils';
 import { useLanguageProvider } from 'providers/LanguageProvider';
+import { usePermawebProvider } from 'providers/PermawebProvider';
 import { RootState } from 'store';
 
 import * as S from './styles';
@@ -72,7 +73,7 @@ function CollectionListItem(props: { index: number; collection: CollectionType }
 						)}
 					</S.Thumbnail>
 					<S.Title>
-						<p>{props.collection.title}</p>
+						<p>{props.collection.title ?? props.collection.name ?? formatAddress(props.collection.id, false)}</p>
 					</S.Title>
 				</S.FlexElement>
 				<S.DateCreated>
@@ -88,6 +89,7 @@ function CollectionListItem(props: { index: number; collection: CollectionType }
 export default function CollectionsList(props: IProps) {
 	const collectionsReducer = useSelector((state: RootState) => state.collectionsReducer);
 
+	const permawebProvider = usePermawebProvider();
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
 
@@ -100,22 +102,62 @@ export default function CollectionsList(props: IProps) {
 			if (!collections) {
 				setLoading(true);
 				try {
-					if (props.owner) {
-						if (collectionsReducer?.creators?.[props.owner]?.collections?.length) {
-							setCollections(collectionsReducer.creators[props.owner].collections);
-							setLoading(false);
+					if (props.collectionIds) {
+						try {
+							const response = await permawebProvider.libs.getAggregatedGQLData({
+								ids: props.collectionIds,
+							});
+
+							const returnedIds = response?.map((edge) => edge.node.id) ?? [];
+
+							const missingIds = props.collectionIds.filter((id) => !returnedIds.includes(id));
+
+							const collections =
+								response?.map((edge) => ({
+									id: edge.node.id,
+									name: getTagValue(edge.node.tags, 'Name'),
+									title: getTagValue(edge.node.tags, 'Title'),
+									thumbnail: getTagValue(edge.node.tags, 'Thumbnail'),
+									banner: getTagValue(edge.node.tags, 'Banner'),
+									description: getTagValue(edge.node.tags, 'Description'),
+									creator: getTagValue(edge.node.tags, 'Creator'),
+									dateCreated: getTagValue(edge.node.tags, 'Date-Created'),
+								})) ?? [];
+
+							setCollections(collections);
+
+							if (missingIds.length > 0) {
+								for (const id of missingIds) {
+									const collection = await permawebProvider.libs.getCollection(id);
+									if (collection) {
+										setCollections((prev) => [...(prev ?? []), { id: id, ...collection }]);
+									}
+								}
+							}
+						} catch (e: any) {
+							console.error(e);
+							setCollections([]);
 						}
 					} else {
-						if (collectionsReducer?.all?.collections?.length) {
-							setCollections(collectionsReducer.all.collections);
-							setLoading(false);
+						if (props.owner) {
+							if (collectionsReducer?.creators?.[props.owner]?.collections?.length) {
+								setCollections(collectionsReducer.creators[props.owner].collections);
+								setLoading(false);
+							}
+						} else {
+							if (collectionsReducer?.all?.collections?.length) {
+								setCollections(collectionsReducer.all.collections);
+								setLoading(false);
+							}
 						}
 					}
 
-					const collectionsFetch: CollectionType[] = await getCollections(props.owner);
-					if (collections) {
-						setCollections(collectionsFetch);
-					} else setCollections(collectionsFetch);
+					if (!props.collectionIds) {
+						const collectionsFetch: CollectionType[] = await getCollections(props.owner, permawebProvider.libs);
+						if (props.owner && collectionsFetch) {
+							setCollections(collectionsFetch.filter((collection) => collection.creator === props.owner));
+						} else setCollections(collectionsFetch);
+					}
 				} catch (e: any) {
 					setErrorResponse(e.message || language.collectionsFetchFailed);
 				}
@@ -146,6 +188,7 @@ export default function CollectionsList(props: IProps) {
 					</S.Wrapper>
 				);
 			} else {
+				if (loading) return <Loader sm relative />;
 				return (
 					<GS.FullMessageWrapper className={'fade-in border-wrapper-alt2'}>
 						<p>{language.noCollectionsFound}</p>
@@ -153,7 +196,7 @@ export default function CollectionsList(props: IProps) {
 				);
 			}
 		} else {
-			if (loading) return <Loader />;
+			if (loading) return <Loader sm relative />;
 			else if (errorResponse) return <p>{errorResponse}</p>;
 			else {
 				return (

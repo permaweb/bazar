@@ -4,20 +4,43 @@ import { ReactSVG } from 'react-svg';
 import { ASSETS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import { checkValidAddress } from 'helpers/utils';
+import { useArweaveProvider } from 'providers/ArweaveProvider';
+import { usePermawebProvider } from 'providers/PermawebProvider';
 
 import * as S from './styles';
 import { IProps } from './types';
 
 export default function Avatar(props: IProps) {
+	const arProvider = useArweaveProvider();
+	const permawebProvider = usePermawebProvider();
 	const [hasError, setHasError] = React.useState(false);
 
-	const hasImage = props.owner && props.owner.thumbnail && checkValidAddress(props.owner.thumbnail);
+	// Check if this is the current user's avatar and if we have an ArNS avatar URL
+	// We only use ArNS logos for the current user to avoid fetching ArNS data for every user
+	const isCurrentUser =
+		props.owner &&
+		permawebProvider.profile &&
+		(props.owner.id === permawebProvider.profile.id ||
+			('walletAddress' in props.owner && props.owner.walletAddress === arProvider.walletAddress));
+
+	// Determine image source: ArNS logo (for current user) > profile thumbnail > default
+	const imageUrl = React.useMemo(() => {
+		if (isCurrentUser && permawebProvider.arnsAvatarUrl && !hasError) {
+			return permawebProvider.arnsAvatarUrl;
+		} else if (props.owner && props.owner.thumbnail && checkValidAddress(props.owner.thumbnail)) {
+			const thumbnailUrl = getTxEndpoint(props.owner.thumbnail);
+			return thumbnailUrl;
+		}
+		return null;
+	}, [isCurrentUser, permawebProvider.arnsAvatarUrl, props.owner, hasError]);
+
+	const hasImage = imageUrl !== null;
 
 	const avatar = React.useMemo(() => {
-		if (!hasError && props.owner && props.owner.thumbnail && checkValidAddress(props.owner.thumbnail)) {
-			return <img src={getTxEndpoint(props.owner.thumbnail)} onError={() => setHasError(true)} />;
+		if (!hasError && imageUrl) {
+			return <img src={imageUrl} onError={() => setHasError(true)} />;
 		} else return <ReactSVG src={ASSETS.user} />;
-	}, [props.owner, hasError]);
+	}, [imageUrl, hasError]);
 
 	return (
 		<S.Wrapper

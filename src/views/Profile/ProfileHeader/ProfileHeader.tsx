@@ -11,8 +11,8 @@ import { Streaks } from 'components/organisms/Streaks';
 import { ASSETS, DEFAULTS, URLS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import { checkValidAddress, formatAddress } from 'helpers/utils';
-import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
+import { usePermawebProvider } from 'providers/PermawebProvider';
 
 import * as S from './styles';
 import { IProps } from './types';
@@ -22,7 +22,7 @@ const MAX_BIO_LENGTH = 80;
 export default function ProfileHeader(props: IProps) {
 	const navigate = useNavigate();
 
-	const arProvider = useArweaveProvider();
+	const permawebProvider = usePermawebProvider();
 
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
@@ -50,7 +50,7 @@ export default function ProfileHeader(props: IProps) {
 	}
 
 	// async function handleProfileSrcUpdate() {
-	// 	if (arProvider.profile && arProvider.profile.id) {
+	// 	if (permawebProvider.profile && permawebProvider.profile.id) {
 	// 		setProfileUpdating(true);
 	// 		const aos = connect();
 
@@ -62,7 +62,7 @@ export default function ProfileHeader(props: IProps) {
 
 	// 				console.log('Sending source eval...');
 	// 				const evalMessage = await aos.message({
-	// 					process: arProvider.profile.id,
+	// 					process: permawebProvider.profile.id,
 	// 					signer: createDataItemSigner(arProvider.wallet),
 	// 					tags: [{ name: 'Action', value: 'Eval' }],
 	// 					data: processSrc,
@@ -72,7 +72,7 @@ export default function ProfileHeader(props: IProps) {
 
 	// 				const evalResult = await aos.result({
 	// 					message: evalMessage,
-	// 					process: arProvider.profile.id,
+	// 					process: permawebProvider.profile.id,
 	// 				});
 
 	// 				console.log(evalResult);
@@ -131,7 +131,7 @@ export default function ProfileHeader(props: IProps) {
 						<S.Action>
 							<Streaks profile={props.profile} />
 						</S.Action>
-						{/* {arProvider.profile && arProvider.profile.id && arProvider.profile.id === props.profile.id && (
+						{/* {permawebProvider.profile && permawebProvider.profile.id && permawebProvider.profile.id === props.profile.id && (
 							<S.Action>
 								<Button
 									type={'primary'}
@@ -142,7 +142,7 @@ export default function ProfileHeader(props: IProps) {
 								/>
 							</S.Action>
 						)} */}
-						{arProvider.profile && arProvider.profile.id === props.profile.id && (
+						{permawebProvider.profile && permawebProvider.profile.id === props.profile.id && (
 							<S.Action>
 								<Button
 									type={'primary'}
@@ -156,7 +156,7 @@ export default function ProfileHeader(props: IProps) {
 					</S.HeaderActions>
 				</S.HeaderWrapper>
 			</S.Wrapper>
-			{showProfileManage && arProvider.profile && arProvider.profile.id === props.profile.id && (
+			{showProfileManage && permawebProvider.profile && permawebProvider.profile.id === props.profile.id && (
 				<Panel
 					open={showProfileManage}
 					header={props.profile.id ? language.editProfile : `${language.createProfile}!`}

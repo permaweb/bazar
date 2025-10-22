@@ -396,7 +396,7 @@ export const Event = styled.a<{ type: 'Listing' | 'Sale' | 'Purchase' | 'Unliste
 	}
 `;
 
-export const Entity = styled.div<{ type: 'UCM' | 'User' }>`
+export const Entity = styled.a<{ type: 'UCM' | 'User' }>`
 	width: 110px;
 	display: flex;
 	align-items: center;
@@ -404,6 +404,8 @@ export const Entity = styled.div<{ type: 'UCM' | 'User' }>`
 	background: ${(props) => (props.type === 'UCM' ? props.theme.colors.stats.primary : props.theme.colors.stats.alt5)};
 	border: 1px solid ${(props) => props.theme.colors.border.alt4};
 	border-radius: ${STYLING.dimensions.radius.alt2};
+	position: relative;
+	overflow: hidden;
 	padding: 1.5px 7.5px;
 	p {
 		font-size: ${(props) => props.theme.typography.size.xSmall};
@@ -411,6 +413,29 @@ export const Entity = styled.div<{ type: 'UCM' | 'User' }>`
 		font-weight: ${(props) => props.theme.typography.weight.bold};
 		color: ${(props) => props.theme.colors.font.light1};
 		max-width: 100%;
+	}
+
+	::after {
+		content: '';
+		position: absolute;
+		height: 100%;
+		width: 100%;
+		top: 0;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		background-color: ${(props) => props.theme.colors.overlay.alt1};
+		opacity: 0;
+		transition: all 100ms;
+	}
+	&:hover::after {
+		opacity: 1;
+	}
+	&:focus::after {
+		opacity: 1;
+	}
+	&:hover {
+		cursor: pointer;
 	}
 `;
 

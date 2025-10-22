@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 
-import { getAssetIdGroups, getAssetsByIds, messageResult } from 'api';
+import { getAssetIdGroups, getAssetsByIds } from 'api';
 
 import * as GS from 'app/styles';
 import { Button } from 'components/atoms/Button';
@@ -11,24 +11,81 @@ import { Notification } from 'components/atoms/Notification';
 import { Select } from 'components/atoms/Select';
 import { ASSET_SORT_OPTIONS, ASSETS, PAGINATORS, STYLING, URLS } from 'helpers/config';
 import { AssetDetailType, AssetSortType, IdGroupType, NotificationType, SelectOptionType } from 'helpers/types';
-import { formatDate, isFirefox, sortOrders } from 'helpers/utils';
+import { isFirefox, sortOrders } from 'helpers/utils';
 import * as windowUtils from 'helpers/window';
 import { useAppProvider } from 'providers/AppProvider';
-import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
+import { usePermawebProvider } from 'providers/PermawebProvider';
 
+import { PlayButton } from '../../atoms/PlayButton';
 import { AssetData } from '../AssetData';
+import { MusicPlayer } from '../MusicPlayer';
 import { Stamps } from '../Stamps';
 
 import * as S from './styles';
 import { IProps } from './types';
 
 export default function AssetsTable(props: IProps) {
+	const [currentTrack, setCurrentTrack] = React.useState<AssetDetailType | null>(null);
+	const [isPlaying, setIsPlaying] = React.useState<boolean>(false);
+	const [currentTime, setCurrentTime] = React.useState<number>(0);
+	const [duration, setDuration] = React.useState<number>(0);
+	const [volume, setVolume] = React.useState<number>(0.7);
+	const [currentIndex, setCurrentIndex] = React.useState<number>(-1);
+
+	const handlePlayTrack = (asset: AssetDetailType, index: number) => {
+		if (currentTrack?.data.id === asset.data.id) {
+			// Same track - toggle play/pause
+			setIsPlaying(!isPlaying);
+		} else {
+			// New track - start playing
+			setCurrentTrack(asset);
+			setCurrentIndex(index);
+			setIsPlaying(true);
+			setCurrentTime(0);
+		}
+	};
+
+	const handlePlayPause = () => {
+		setIsPlaying(!isPlaying);
+	};
+
+	const handleSkipNext = () => {
+		if (assets && currentIndex < assets.length - 1) {
+			const nextIndex = currentIndex + 1;
+			setCurrentTrack(assets[nextIndex]);
+			setCurrentIndex(nextIndex);
+			setIsPlaying(true);
+			setCurrentTime(0);
+		}
+	};
+
+	const handleSkipPrevious = () => {
+		if (assets && currentIndex > 0) {
+			const prevIndex = currentIndex - 1;
+			setCurrentTrack(assets[prevIndex]);
+			setCurrentIndex(prevIndex);
+			setIsPlaying(true);
+			setCurrentTime(0);
+		}
+	};
+
+	const handleVolumeChange = (newVolume: number) => {
+		setVolume(newVolume);
+	};
+
+	const handleSeek = (newTime: number) => {
+		setCurrentTime(newTime);
+	};
+
+	const handleDurationChange = (newDuration: number) => {
+		setDuration(newDuration);
+	};
 	const { address } = useParams();
 	const navigate = useNavigate();
 
 	const appProvider = useAppProvider();
-	const arProvider = useArweaveProvider();
+	const permawebProvider = usePermawebProvider();
 
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
@@ -48,7 +105,7 @@ export default function AssetsTable(props: IProps) {
 	const [desktop, setDesktop] = React.useState(windowUtils.checkWindowCutoff(parseInt(STYLING.cutoffs.initial)));
 	const [scrolling, setScrolling] = React.useState<boolean>(false);
 
-	const [profileLoading, setProfileLoading] = React.useState<boolean>(false);
+	// const [profileLoading, setProfileLoading] = React.useState<boolean>(false);
 	const [profileResponse, setProfileResponse] = React.useState<NotificationType | null>(null);
 
 	function handleWindowResize() {
@@ -85,15 +142,15 @@ export default function AssetsTable(props: IProps) {
 		(async function () {
 			if (assetIdGroups && Object.keys(assetIdGroups).length > 0) {
 				setAssetsLoading(true);
-				if (appProvider.stamps.completed) {
-					try {
-						setAssets(
-							await getAssetsByIds({ ids: assetIdGroups[assetCursor], sortType: assetSortType.id as AssetSortType })
-						);
-					} catch (e: any) {
-						setAssetErrorResponse(e.message || language.assetsFetchFailed);
-					}
+
+				try {
+					setAssets(
+						await getAssetsByIds({ ids: assetIdGroups[assetCursor], sortType: assetSortType.id as AssetSortType })
+					);
+				} catch (e: any) {
+					setAssetErrorResponse(e.message || language.assetsFetchFailed);
 				}
+
 				setAssetsLoading(false);
 			}
 		})();
@@ -172,27 +229,27 @@ export default function AssetsTable(props: IProps) {
 	}
 
 	function getListing(asset: AssetDetailType) {
-		if (props.currentListings) {
-			const assetListings = Object.values(props.currentListings).filter(
-				(listing) => listing.SwapToken === asset.data.id
+		const listingsMap = props.currentListings?.[asset.data.id];
+		if (listingsMap && Object.keys(listingsMap).length > 0) {
+			const entries = Object.entries(listingsMap) as [string, { quantity: string; floorPrice: string }][];
+
+			const [bestCurrency, bestEntry] = entries.reduce(
+				([minCur, minEnt], [cur, ent]) =>
+					BigInt(ent.floorPrice) < BigInt(minEnt.floorPrice) ? [cur, ent] : [minCur, minEnt],
+				entries[0]
 			);
-			if (assetListings.length > 0) {
-				const sortedListings = assetListings.sort((a, b) =>
-					assetSortType.id === 'price_asc' ? Number(a.Price) - Number(b.Price) : Number(b.Price) - Number(a.Price)
-				);
-				return (
-					<CurrencyLine amount={sortedListings[0].Price} currency={asset.orderbook?.orders?.[0]?.currency || 'U'} />
-				);
+
+			return <CurrencyLine amount={bestEntry.floorPrice} currency={bestCurrency} />;
+		}
+
+		const orders = asset.orderbook?.orders ?? [];
+		if (orders.length > 0) {
+			const sorted = sortOrders(orders, assetSortType.id as AssetSortType);
+			if (sorted.length > 0) {
+				return <CurrencyLine amount={sorted[0].price || '0'} currency={sorted[0].currency} />;
 			}
 		}
 
-		if (asset && asset.orderbook?.orders && asset.orderbook?.orders.length) {
-			const sortedOrders = sortOrders(asset.orderbook?.orders, assetSortType.id as AssetSortType);
-
-			if (sortedOrders && sortedOrders.length) {
-				return <CurrencyLine amount={sortedOrders[0].price || '0'} currency={sortedOrders[0].currency} />;
-			}
-		}
 		return <S.NoListings>{language.noListings}</S.NoListings>;
 	}
 
@@ -205,50 +262,51 @@ export default function AssetsTable(props: IProps) {
 		);
 	}
 
-	async function handleProfileActionPress(e: any, asset: AssetDetailType) {
-		if (arProvider.profile && arProvider.profile.id && asset.data && asset.data.id) {
-			e.preventDefault();
-			e.stopPropagation();
+	// PFP
+	// async function handleProfileActionPress(e: any, asset: AssetDetailType) {
+	// 	if (permawebProvider.profile && permawebProvider.profile.id && asset.data && asset.data.id) {
+	// 		e.preventDefault();
+	// 		e.stopPropagation();
 
-			setProfileLoading(true);
-			try {
-				const data: any = {
-					DisplayName: arProvider.profile.displayName,
-					UserName: arProvider.profile.username,
-					Description: arProvider.profile.description,
-					CoverImage: arProvider.profile.banner,
-					ProfileImage: asset.data.id,
-				};
+	// 		setProfileLoading(true);
+	// 		try {
+	// 			const data: any = {
+	// 				DisplayName: permawebProvider.profile.displayName,
+	// 				UserName: permawebProvider.profile.username,
+	// 				Description: permawebProvider.profile.description,
+	// 				CoverImage: permawebProvider.profile.banner,
+	// 				ProfileImage: asset.data.id,
+	// 			};
 
-				let updateResponse = await messageResult({
-					processId: arProvider.profile.id,
-					action: 'Update-Profile',
-					tags: null,
-					data: data,
-					wallet: arProvider.wallet,
-				});
-				if (updateResponse && updateResponse['Profile-Success']) {
-					arProvider.setToggleProfileUpdate(!arProvider.toggleProfileUpdate);
-					setProfileResponse({
-						message: `${language.profileUpdated}!`,
-						status: 'success',
-					});
-				} else {
-					setProfileResponse({
-						message: language.errorUpdatingProfile,
-						status: 'warning',
-					});
-				}
-			} catch (e: any) {
-				console.error(e);
-				setProfileResponse({
-					message: language.errorUpdatingProfile,
-					status: 'warning',
-				});
-			}
-			setProfileLoading(false);
-		}
-	}
+	// 			let updateResponse = await messageResult({
+	// 				processId: permawebProvider.profile.id,
+	// 				action: 'Update-Profile',
+	// 				tags: null,
+	// 				data: data,
+	// 				wallet: arProvider.wallet,
+	// 			});
+	// 			if (updateResponse && updateResponse['Profile-Success']) {
+	// 				arProvider.setToggleProfileUpdate(!arProvider.toggleProfileUpdate);
+	// 				setProfileResponse({
+	// 					message: `${language.profileUpdated}!`,
+	// 					status: 'success',
+	// 				});
+	// 			} else {
+	// 				setProfileResponse({
+	// 					message: language.errorUpdatingProfile,
+	// 					status: 'warning',
+	// 				});
+	// 			}
+	// 		} catch (e: any) {
+	// 			console.error(e);
+	// 			setProfileResponse({
+	// 				message: language.errorUpdatingProfile,
+	// 				status: 'warning',
+	// 			});
+	// 		}
+	// 		setProfileLoading(false);
+	// 	}
+	// }
 
 	function getData() {
 		if ((assetsLoading || props.loadingIds) && viewType) {
@@ -310,6 +368,10 @@ export default function AssetsTable(props: IProps) {
 											<S.AssetsListSectionElements>
 												{section.map((asset: AssetDetailType, index: number) => {
 													const redirect = `${URLS.asset}${asset.data.id}`;
+													const isAudioFile = asset.data.contentType && asset.data.contentType.includes('audio/');
+													const isCurrentTrack = currentTrack?.data.id === asset.data.id;
+													const globalIndex = sectionIndex * splitSections[0].length + index;
+
 													return (
 														<S.AssetsListSectionElement
 															key={index}
@@ -323,6 +385,15 @@ export default function AssetsTable(props: IProps) {
 																</S.Index>
 																<S.Thumbnail>
 																	<AssetData asset={asset} scrolling={scrolling} preview />
+
+																	{/* Play button overlay for audio files in list view */}
+																	{isAudioFile && (
+																		<PlayButton
+																			onClick={() => handlePlayTrack(asset, globalIndex)}
+																			isPlaying={isCurrentTrack && isPlaying}
+																			size="small"
+																		/>
+																	)}
 																</S.Thumbnail>
 																<S.Title>
 																	<p>{asset.data.title}</p>
@@ -348,41 +419,55 @@ export default function AssetsTable(props: IProps) {
 								<S.AssetsGridWrapper>
 									{assets.map((asset: AssetDetailType, index: number) => {
 										const redirect = `${URLS.asset}${asset.data.id}`;
+										const isAudioFile = asset.data.contentType && asset.data.contentType.includes('audio/');
+										const isCurrentTrack = currentTrack?.data.id === asset.data.id;
+
 										return (
 											<S.AssetGridElement key={index} className={'fade-in'}>
-												<Link to={redirect}>
-													<S.AssetGridDataWrapper disabled={false}>
-														<AssetData asset={asset} scrolling={scrolling} autoLoad />
-														{props.setProfileAction &&
-														arProvider.profile &&
-														arProvider.profile.id &&
-														arProvider.profile.id === address &&
-														asset.data.contentType &&
-														asset.data.contentType.includes('image') ? (
-															<S.AssetGridDataActionWrapper>
-																<button
-																	onClick={(e: any) => handleProfileActionPress(e, asset)}
-																	disabled={profileLoading}
-																>
-																	<span>{profileLoading ? `${language.loading}...` : language.setProfilePicture}</span>
-																</button>
-																<Stamps
-																	txId={asset.data.id}
-																	title={asset.data.title || asset.data.description}
-																	asButton={true}
-																/>
-															</S.AssetGridDataActionWrapper>
-														) : (
-															<S.AssetGridDataActionWrapper>
-																<Stamps
-																	txId={asset.data.id}
-																	title={asset.data.title || asset.data.description}
-																	asButton={true}
-																/>
-															</S.AssetGridDataActionWrapper>
-														)}
-													</S.AssetGridDataWrapper>
-												</Link>
+												<S.AssetGridDataWrapper disabled={false}>
+													<AssetData asset={asset} scrolling={scrolling} preview />
+
+													{/* Link wrapper for non-play button areas */}
+													<Link
+														to={redirect}
+														style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 1 }}
+													>
+														<div style={{ width: '100%', height: '100%' }} />
+													</Link>
+
+													{/* Play button overlay for audio files - must be above link */}
+													{isAudioFile && (
+														<PlayButton
+															onClick={() => handlePlayTrack(asset, index)}
+															isPlaying={isCurrentTrack && isPlaying}
+														/>
+													)}
+
+													{props.setProfileAction &&
+													permawebProvider.profile &&
+													permawebProvider.profile.id &&
+													permawebProvider.profile.id === address &&
+													asset.data.contentType &&
+													asset.data.contentType.includes('image') ? (
+														<S.AssetGridDataActionWrapper>
+															<Stamps
+																txId={asset.data.id}
+																title={asset.data.title || asset.data.description}
+																asButton
+																noAutoFetch
+															/>
+														</S.AssetGridDataActionWrapper>
+													) : (
+														<S.AssetGridDataActionWrapper>
+															<Stamps
+																txId={asset.data.id}
+																title={asset.data.title || asset.data.description}
+																asButton
+																noAutoFetch
+															/>
+														</S.AssetGridDataActionWrapper>
+													)}
+												</S.AssetGridDataWrapper>
 												<S.AssetGridBottomWrapper>
 													<S.AssetGridInfoWrapper>
 														<Link to={redirect}>
@@ -421,118 +506,127 @@ export default function AssetsTable(props: IProps) {
 	}
 
 	return (
-		<S.Wrapper className={'fade-in'} ref={scrollRef}>
-			<S.Header>
-				<S.HeaderMain>
-					<h4>{`${language.assets}${props.ids && props.ids.length ? ` (${props.ids.length})` : ''}`}</h4>
-					<S.HeaderActions>
-						<Button
-							type={'primary'}
-							label={language.activeListings}
-							handlePress={toggleFilterListings}
-							disabled={getActionDisabled()}
-							active={assetFilterListings}
-							icon={assetFilterListings ? ASSETS.close : null}
-							className={'filter-listings'}
-						/>
-						<S.SelectWrapper>
-							<Select
-								label={null}
-								activeOption={assetSortType}
-								setActiveOption={(option: SelectOptionType) => handleAssetSortType(option)}
-								options={ASSET_SORT_OPTIONS.map((option: SelectOptionType) => option)}
+		<>
+			<S.Wrapper className={'fade-in'} ref={scrollRef}>
+				<S.Header>
+					<S.HeaderMain>
+						<h4>{`${language.assets}${props.ids && props.ids.length ? ` (${props.ids.length})` : ''}`}</h4>
+						<S.HeaderActions>
+							<Button
+								type={'primary'}
+								label={language.activeListings}
+								handlePress={toggleFilterListings}
 								disabled={getActionDisabled()}
+								active={assetFilterListings}
+								icon={assetFilterListings ? ASSETS.close : null}
+								className={'filter-listings'}
 							/>
-						</S.SelectWrapper>
-						{desktop && (
-							<S.ViewTypeWrapper className={'border-wrapper-alt1'}>
+							<S.SelectWrapper>
+								<Select
+									label={null}
+									activeOption={assetSortType}
+									setActiveOption={(option: SelectOptionType) => handleAssetSortType(option)}
+									options={ASSET_SORT_OPTIONS.map((option: SelectOptionType) => option)}
+									disabled={getActionDisabled()}
+								/>
+							</S.SelectWrapper>
+							{desktop && (
+								<S.ViewTypeWrapper className={'border-wrapper-alt1'}>
+									<IconButton
+										type={'alt1'}
+										src={ASSETS.grid}
+										handlePress={() => setViewType('grid')}
+										disabled={viewType === 'grid'}
+										dimensions={{
+											wrapper: 32.5,
+											icon: 17.5,
+										}}
+										active={viewType === 'grid'}
+										tooltip={'Grid view'}
+										useBottomToolTip
+										className={'start-action'}
+									/>
+									<IconButton
+										type={'alt1'}
+										src={ASSETS.list}
+										handlePress={() => setViewType('list')}
+										disabled={viewType === 'list'}
+										dimensions={{
+											wrapper: 32.5,
+											icon: 17.5,
+										}}
+										active={viewType === 'list'}
+										tooltip={'List view'}
+										useBottomToolTip
+										className={'end-action'}
+									/>
+								</S.ViewTypeWrapper>
+							)}
+							<S.HeaderPaginator>
 								<IconButton
 									type={'alt1'}
-									src={ASSETS.grid}
-									handlePress={() => setViewType('grid')}
-									disabled={viewType === 'grid'}
+									src={ASSETS.arrow}
+									handlePress={() => handlePaginationAction('previous', true)}
+									disabled={!assets || !previousAction}
 									dimensions={{
-										wrapper: 32.5,
+										wrapper: 30,
 										icon: 17.5,
 									}}
-									active={viewType === 'grid'}
-									tooltip={'Grid view'}
+									tooltip={language.previous}
 									useBottomToolTip
-									className={'start-action'}
+									className={'table-previous'}
 								/>
 								<IconButton
 									type={'alt1'}
-									src={ASSETS.list}
-									handlePress={() => setViewType('list')}
-									disabled={viewType === 'list'}
+									src={ASSETS.arrow}
+									handlePress={() => handlePaginationAction('next', true)}
+									disabled={!assets || !nextAction}
 									dimensions={{
-										wrapper: 32.5,
+										wrapper: 30,
 										icon: 17.5,
 									}}
-									active={viewType === 'list'}
-									tooltip={'List view'}
+									tooltip={language.next}
 									useBottomToolTip
-									className={'end-action'}
+									className={'table-next'}
 								/>
-							</S.ViewTypeWrapper>
-						)}
-						<S.HeaderPaginator>
-							<IconButton
-								type={'alt1'}
-								src={ASSETS.arrow}
-								handlePress={() => handlePaginationAction('previous', true)}
-								disabled={!assets || !previousAction}
-								dimensions={{
-									wrapper: 30,
-									icon: 17.5,
-								}}
-								tooltip={language.previous}
-								useBottomToolTip
-								className={'table-previous'}
-							/>
-							<IconButton
-								type={'alt1'}
-								src={ASSETS.arrow}
-								handlePress={() => handlePaginationAction('next', true)}
-								disabled={!assets || !nextAction}
-								dimensions={{
-									wrapper: 30,
-									icon: 17.5,
-								}}
-								tooltip={language.next}
-								useBottomToolTip
-								className={'table-next'}
-							/>
-						</S.HeaderPaginator>
-					</S.HeaderActions>
-				</S.HeaderMain>
-				{(appProvider.ucm?.lastUpdate || appProvider.ucm?.updating) && (
-					<S.HeaderInfo>
-						{appProvider.ucm?.lastUpdate && (
-							<p>
-								{language.lastUCMUpdate}: <b>{formatDate(appProvider.ucm.lastUpdate, 'iso', true)}</b>
-								{appProvider.ucm?.updating && ` (${language.runningUpdate}...)`}
-							</p>
-						)}
-					</S.HeaderInfo>
-				)}
-			</S.Header>
-			{getData()}
-			<S.Footer>
-				<Button
-					type={'primary'}
-					label={language.previous}
-					handlePress={() => handlePaginationAction('previous', true)}
-					disabled={!assets || !previousAction}
-				/>
-				<Button
-					type={'primary'}
-					label={language.next}
-					handlePress={() => handlePaginationAction('next', true)}
-					disabled={!assets || !nextAction}
-				/>
-			</S.Footer>
-			{assetErrorResponse && <p>{assetErrorResponse}</p>}
-		</S.Wrapper>
+							</S.HeaderPaginator>
+						</S.HeaderActions>
+					</S.HeaderMain>
+				</S.Header>
+				{getData()}
+				<S.Footer>
+					<Button
+						type={'primary'}
+						label={language.previous}
+						handlePress={() => handlePaginationAction('previous', true)}
+						disabled={!assets || !previousAction}
+					/>
+					<Button
+						type={'primary'}
+						label={language.next}
+						handlePress={() => handlePaginationAction('next', true)}
+						disabled={!assets || !nextAction}
+					/>
+				</S.Footer>
+				{assetErrorResponse && <p>{assetErrorResponse}</p>}
+			</S.Wrapper>
+
+			{/* Global Music Player */}
+			<MusicPlayer
+				currentTrack={currentTrack}
+				isPlaying={isPlaying}
+				onPlayPause={handlePlayPause}
+				onSkipNext={handleSkipNext}
+				onSkipPrevious={handleSkipPrevious}
+				onVolumeChange={handleVolumeChange}
+				onSeek={handleSeek}
+				onDurationChange={handleDurationChange}
+				currentTime={currentTime}
+				duration={duration}
+				volume={volume}
+				playlist={assets || []}
+				currentIndex={currentIndex}
+			/>
+		</>
 	);
 }

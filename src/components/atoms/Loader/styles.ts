@@ -1,6 +1,6 @@
 import styled from 'styled-components';
 
-import { fadeIn1, loaderKeyFrame, open } from 'helpers/animations';
+import { loaderKeyFrame } from 'helpers/animations';
 
 export const Wrapper = styled.div`
 	height: 100%;
@@ -10,22 +10,22 @@ export const Wrapper = styled.div`
 	top: 0;
 	left: 0;
 	background: ${(props) => props.theme.colors.view.background};
-	// animation: ${open} ${fadeIn1};
 `;
 
-export const Container = styled.div<{ relative: boolean }>`
-	height: 50px;
-	width: 50px;
-	position: ${(props) => (props.relative ? 'relative' : 'fixed')};
-	top: ${(props) => (props.relative ? 'auto' : '50%')};
-	left: ${(props) => (props.relative ? 'auto' : '50%')};
-	transform: ${(props) => (props.relative ? 'translate(0, 0)' : 'translate(-50%, -50%)')};
-	margin: ${(props) => (props.relative ? 'auto' : '0')};
+export const Container = styled.div<{ relative: boolean; noPosition?: boolean }>`
+	height: ${(props) => (props.noPosition ? 'auto' : '50px')};
+	width: ${(props) => (props.noPosition ? 'auto' : '50px')};
+	position: ${(props) => (props.noPosition ? 'static' : props.relative ? 'relative' : 'fixed')};
+	top: ${(props) => (props.noPosition ? 'auto' : props.relative ? 'auto' : '50%')};
+	left: ${(props) => (props.noPosition ? 'auto' : props.relative ? 'auto' : '50%')};
+	transform: ${(props) => (props.noPosition ? 'none' : props.relative ? 'translate(0, 0)' : 'translate(-50%, -50%)')};
+	margin: ${(props) => (props.noPosition ? '7.5px 0 0 0' : props.relative ? 'auto' : '0')};
 	z-index: 3;
 `;
 
-export const Blade = styled.div`
-	background-color: ${(props) => props.theme.colors.loader.primary};
+export const Blade = styled.div<{ noPosition?: boolean }>`
+	background-color: ${(props) =>
+		props.noPosition ? props.theme.colors.font.light3 : props.theme.colors.loader.primary};
 	position: absolute;
 	left: 0.4629em;
 	bottom: 0;
@@ -34,23 +34,23 @@ export const Blade = styled.div`
 	-webkit-animation: ${loaderKeyFrame} 0.75s linear infinite;
 	animation: ${loaderKeyFrame} 0.75s linear infinite;
 `;
-
 export const Spinner = styled.div<{
 	size: number;
 	height: number;
 	width: number;
+	noPosition?: boolean;
 }>`
 	font-size: ${(props) => `${props.size.toString()}px`};
 	position: relative;
 	display: inline-block;
 	width: 1em;
 	height: 1em;
-	position: absolute;
-	left: 0;
-	right: 0;
-	top: 0;
-	bottom: 0;
-	margin: auto;
+	position: ${(props) => (props.noPosition ? 'relative' : 'absolute')};
+	left: ${(props) => (props.noPosition ? 'auto' : '0')};
+	right: ${(props) => (props.noPosition ? 'auto' : '0')};
+	top: ${(props) => (props.noPosition ? 'auto' : '0')};
+	bottom: ${(props) => (props.noPosition ? 'auto' : '0')};
+	margin: ${(props) => (props.noPosition ? '0' : 'auto')};
 	& ${Blade}:nth-child(1) {
 		transform: rotate(0deg);
 		animation-delay: -0.6875s;
@@ -130,4 +130,22 @@ export const Placeholder = styled.div`
 	width: 100%;
 	position: relative;
 	background: ${(props) => props.theme.colors.container.alt1.background};
+`;
+
+export const MessageWrapper = styled.div`
+	max-width: 90vw;
+	padding: 11.5px 40px !important;
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	transform: translate(-50%, -50%);
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	gap: 20px;
+	border: none !important;
+
+	span {
+		font-size: ${(props) => props.theme.typography.size.xSmall} !important;
+	}
 `;

@@ -1,6 +1,7 @@
 import { getGQLData, readHandler } from 'api';
 
-import { AO, GATEWAYS, LICENSES, PAGINATORS, REFORMATTED_ASSETS, TAGS } from 'helpers/config';
+import { AO, HB, LICENSES, PAGINATORS, REFORMATTED_ASSETS, TAGS } from 'helpers/config';
+import { getBestGatewayForGraphQL } from 'helpers/endpoints';
 import {
 	AssetDetailType,
 	AssetOrderType,
@@ -8,13 +9,17 @@ import {
 	AssetStateType,
 	AssetType,
 	DefaultGQLResponseType,
+	EntryOrderType,
 	GQLNodeResponseType,
 	IdGroupType,
 	LicenseType,
 	OrderbookEntryType,
+	TagType,
 } from 'helpers/types';
-import { formatAddress, getTagValue, sortByAssetOrders, sortOrderbookEntries } from 'helpers/utils';
+import { formatAddress, getAssetOrderType, getTagValue, sortByAssetOrders, sortOrderbookEntries } from 'helpers/utils';
 import { store } from 'store';
+
+const debug = (..._args: any[]) => {};
 
 export async function getAssetIdsByUser(args: { profileId: string }): Promise<string[]> {
 	try {
@@ -34,8 +39,10 @@ export async function getAssetIdsByUser(args: { profileId: string }): Promise<st
 
 export async function getAssetsByIds(args: { ids: string[]; sortType: AssetSortType }): Promise<AssetDetailType[]> {
 	try {
+		const gateway = getBestGatewayForGraphQL();
+
 		const gqlResponse = await getGQLData({
-			gateway: GATEWAYS.arweave,
+			gateway: gateway, // Use Wayfinder if available
 			ids: args.ids,
 			tagFilters: null,
 			owners: null,
@@ -43,35 +50,37 @@ export async function getAssetsByIds(args: { ids: string[]; sortType: AssetSortT
 		});
 
 		if (gqlResponse && gqlResponse.data.length) {
-			if (store.getState().ucmReducer) {
-				// const ucmReducer = store.getState().ucmReducer;
-				const stampsReducer = store.getState().stampsReducer;
+			const ucmReducer = store.getState().ucmReducer;
+			const stampsReducer = store.getState().stampsReducer;
 
-				const finalAssets: AssetDetailType[] = [];
-				const structuredAssets = structureAssets(gqlResponse);
+			const finalAssets: AssetDetailType[] = [];
+			const structuredAssets = structureAssets(gqlResponse);
 
-				structuredAssets.forEach((asset: AssetType) => {
-					// let assetOrders: AssetOrderType[] | null = null;
-					// const existingEntry = ucmReducer.Orderbook.find((entry: OrderbookEntryType) => {
-					// 	return entry.Pair ? entry.Pair[0] === asset.data.id : null;
-					// });
-
-					// if (existingEntry) {
-					// 	assetOrders = existingEntry.Orders.map((order: EntryOrderType) => {
-					// 		return getAssetOrderType(order, existingEntry.Pair[1]);
-					// 	});
-					// }
-
-					const finalAsset: AssetDetailType = { ...asset };
-					// if (assetOrders) finalAsset.orders = assetOrders; // TODO
-
-					finalAssets.push(finalAsset);
+			structuredAssets.forEach((asset: AssetType) => {
+				let assetOrders: AssetOrderType[] | null = null;
+				const existingEntry = ucmReducer?.Orderbook?.find((entry: OrderbookEntryType) => {
+					return entry.Pair ? entry.Pair[0] === asset.data.id : null;
 				});
 
-				return sortByAssetOrders(finalAssets, args.sortType, stampsReducer);
-			}
+				if (existingEntry) {
+					assetOrders = existingEntry.Orders.map((order: EntryOrderType) => {
+						return getAssetOrderType(order, existingEntry.Pair[1]);
+					});
+				}
 
-			return sortByAssetOrders([], args.sortType, {});
+				const finalAsset: AssetDetailType = { ...asset };
+				if (assetOrders) {
+					finalAsset.orderbook = {
+						id: AO.ucm,
+						orders: assetOrders,
+					};
+				}
+
+				finalAssets.push(finalAsset);
+			});
+
+			const sortedAssets = sortByAssetOrders(finalAssets, args.sortType, stampsReducer);
+			return sortedAssets;
 		}
 
 		return null;
@@ -80,10 +89,10 @@ export async function getAssetsByIds(args: { ids: string[]; sortType: AssetSortT
 	}
 }
 
-export async function getAssetById(args: { id: string }): Promise<AssetDetailType> {
+export async function getAssetById(args: { id: string; libs?: any }): Promise<AssetDetailType> {
 	try {
 		const assetLookupResponse = await getGQLData({
-			gateway: GATEWAYS.arweave,
+			gateway: getBestGatewayForGraphQL(), // Use Wayfinder if available
 			ids: [args.id],
 			tagFilters: null,
 			owners: null,
@@ -102,11 +111,32 @@ export async function getAssetById(args: { id: string }): Promise<AssetDetailTyp
 
 			const structuredAsset = structureAssets(assetLookupResponse)[0];
 
-			const processState = await readHandler({
-				processId: structuredAsset.data.id,
-				action: 'Info',
-				data: null,
-			});
+			let processState: any;
+
+			// Try Hyperbean first (more efficient), fall back to dryrun if it fails
+			if (args.libs) {
+				try {
+					processState = await args.libs.readState({
+						processId: structuredAsset.data.id,
+						path: 'asset',
+						fallbackAction: 'Info',
+						node: HB.defaultNode,
+					});
+				} catch (e) {
+					console.log('Hyperbean failed, falling back to dryrun:', e);
+					processState = await readHandler({
+						processId: structuredAsset.data.id,
+						action: 'Info',
+						data: null,
+					});
+				}
+			} else {
+				processState = await readHandler({
+					processId: structuredAsset.data.id,
+					action: 'Info',
+					data: null,
+				});
+			}
 
 			if (processState) {
 				if (processState.Name || processState.name) {
@@ -122,21 +152,48 @@ export async function getAssetById(args: { id: string }): Promise<AssetDetailTyp
 						Object.entries(processState.Balances).filter(([_, value]) => Number(value) !== 0)
 					) as any;
 				}
-				console.log(processState);
 				if (processState.Transferable !== undefined) {
 					assetState.transferable = processState.Transferable.toString() === 'true';
 				} else {
 					assetState.transferable = true;
 				}
+
+				// Include metadata in asset state
+				if (processState.Metadata) {
+					assetState.metadata = processState.Metadata;
+				}
 			}
 
 			if (!assetState.balances) {
+				debug('Getting balances...');
 				try {
-					const processBalances = await readHandler({
-						processId: structuredAsset.data.id,
-						action: 'Balances',
-						data: null,
-					});
+					await new Promise((r) => setTimeout(r, 1000));
+
+					// Try Hyperbean first for balances too
+					let processBalances: any;
+					if (args.libs) {
+						try {
+							processBalances = await args.libs.readState({
+								processId: structuredAsset.data.id,
+								path: 'balances',
+								fallbackAction: 'Balances',
+								node: HB.defaultNode,
+							});
+						} catch (e) {
+							console.log('Hyperbean balances failed, falling back to dryrun:', e);
+							processBalances = await readHandler({
+								processId: structuredAsset.data.id,
+								action: 'Balances',
+								data: null,
+							});
+						}
+					} else {
+						processBalances = await readHandler({
+							processId: structuredAsset.data.id,
+							action: 'Balances',
+							data: null,
+						});
+					}
 
 					if (processBalances) assetState.balances = processBalances;
 				} catch (e: any) {
@@ -147,9 +204,14 @@ export async function getAssetById(args: { id: string }): Promise<AssetDetailTyp
 			if (processState.Metadata?.CollectionId) structuredAsset.data.collectionId = processState.Metadata.CollectionId;
 
 			let assetOrderbook = null;
-			if (processState.Metadata?.OrderbookId) assetOrderbook = { id: processState.Metadata.OrderbookId };
-			// else assetOrderbook = { id: AO.ucm, activityId: AO.ucmActivity }; // TODO
 
+			/* Check if metadata field is present to detect current assets. 
+				Set legacy orderbook on legacy assets */
+			if (processState.Metadata) {
+				if (processState.Metadata.OrderbookId) assetOrderbook = { id: processState.Metadata.OrderbookId };
+			} else {
+				assetOrderbook = { id: AO.ucm, activityId: AO.ucmActivity };
+			}
 			return {
 				...structuredAsset,
 				state: assetState,
@@ -164,17 +226,15 @@ export async function getAssetById(args: { id: string }): Promise<AssetDetailTyp
 }
 
 export function getExistingEntry(args: { id: string }) {
-	if (store.getState().ucmReducer) {
-		const ucmReducer = store.getState().ucmReducer;
-		return ucmReducer.Orderbook.find((entry: any) => {
-			return entry.Pair ? entry.Pair[0] === args.id : null;
-		});
-	}
-
-	return null;
+	const { ucmReducer } = store.getState();
+	return ucmReducer?.Orderbook?.find((entry: any) => (entry.Pair ? entry.Pair[0] === args.id : null)) || null;
 }
 
-export function getAssetOrders(orderbook: { Pair: string[]; Orders: any }) {
+export function getAssetOrders(orderbook: { Pair: string[]; Orders: any } | null | undefined) {
+	if (!orderbook || !orderbook.Orders) {
+		return [];
+	}
+
 	let assetOrders: AssetOrderType[] | null = null;
 
 	assetOrders = orderbook.Orders.map((order: any) => {
@@ -188,7 +248,8 @@ export function getAssetOrders(orderbook: { Pair: string[]; Orders: any }) {
 			currency: orderbook.Pair[1],
 		};
 
-		if (order.Price) currentAssetOrder.price = order.Price;
+		// Always set price field, default to '0' if not provided
+		currentAssetOrder.price = order.Price || '0';
 		return currentAssetOrder;
 	});
 
@@ -207,6 +268,11 @@ export function structureAssets(gqlResponse: DefaultGQLResponseType): AssetType[
 			formatAddress(element.node.id, false);
 
 		if (REFORMATTED_ASSETS[element.node.id]) title = REFORMATTED_ASSETS[element.node.id].title;
+
+		// Extract topics from tags
+		const topics = element.node.tags
+			.filter((tag: TagType) => tag.name.includes('topic'))
+			.map((tag: TagType) => tag.value);
 
 		structuredAssets.push({
 			data: {
@@ -232,6 +298,7 @@ export function structureAssets(gqlResponse: DefaultGQLResponseType): AssetType[
 				collectionId: getTagValue(element.node.tags, TAGS.keys.collectionId),
 				collectionName: getTagValue(element.node.tags, TAGS.keys.collectionName),
 				contentType: getTagValue(element.node.tags, TAGS.keys.contentType),
+				topics: topics,
 			},
 		});
 	});
@@ -256,45 +323,63 @@ function getLicense(element: GQLNodeResponseType): LicenseType | null {
 	return null;
 }
 
+// export function getAssetIdGroups(args: {
+// 	ids?: string[];
+// 	groupCount: number | null;
+// 	filterListings: boolean;
+// 	sortType: AssetSortType;
+// }): IdGroupType {
+// 	const idGroup: any = {};
+
+// 	const groupCount: number = args.groupCount || PAGINATORS.default;
+
+// 	for (let i = 0, j = 0; i < args.ids.length; i += groupCount, j++) {
+// 		idGroup[j] = args.ids.slice(i, i + groupCount).map((id) => id);
+// 	}
+
+// 	return idGroup;
+// }
+
 export function getAssetIdGroups(args: {
 	ids?: string[];
 	groupCount: number | null;
 	filterListings: boolean;
 	sortType: AssetSortType;
 }): IdGroupType {
-	if (store.getState().ucmReducer) {
-		const ucmReducer = store.getState().ucmReducer;
-		const stampsReducer = store.getState().stampsReducer;
-		const idGroup: any = {};
-		const groupCount: number = args.groupCount || PAGINATORS.default;
+	const ucmReducer = store.getState().ucmReducer;
+	const stampsReducer = store.getState().stampsReducer;
+	const idGroup: any = {};
+	const groupCount: number = args.groupCount || PAGINATORS.default;
 
-		if (ucmReducer.Orderbook) {
-			let currentOrderbook = ucmReducer.Orderbook;
+	if (ucmReducer?.Orderbook) {
+		let currentOrderbook = ucmReducer.Orderbook;
 
-			if (args.ids) {
-				currentOrderbook = currentOrderbook.filter((entry: OrderbookEntryType) => args.ids.includes(entry.Pair[0]));
+		if (args.ids) {
+			currentOrderbook = currentOrderbook.filter((entry: OrderbookEntryType) => args.ids.includes(entry.Pair[0]));
 
-				const orderbookIds = currentOrderbook.map((entry: OrderbookEntryType) => entry.Pair[0]);
-				const missingIds = args.ids.filter((id) => !orderbookIds.includes(id));
+			const orderbookIds = currentOrderbook.map((entry: OrderbookEntryType) => entry.Pair[0]);
+			const missingIds = args.ids.filter((id) => !orderbookIds.includes(id));
 
-				missingIds.forEach((missingId) => {
-					currentOrderbook.push({ Pair: [missingId, AO.defaultToken], Orders: [] });
-				});
-			}
+			missingIds.forEach((missingId) => {
+				currentOrderbook.push({ Pair: [missingId, AO.defaultToken], Orders: [] });
+			});
+		}
 
-			if (args.filterListings) {
-				currentOrderbook = currentOrderbook.filter(
-					(entry: OrderbookEntryType) => entry.Orders && entry.Orders.length > 0
-				);
-			}
+		if (args.filterListings) {
+			currentOrderbook = currentOrderbook.filter(
+				(entry: OrderbookEntryType) => entry.Orders && entry.Orders.length > 0
+			);
+		}
 
-			const sortedOrderbook = sortOrderbookEntries(currentOrderbook, args.sortType, stampsReducer);
+		const sortedOrderbook = sortOrderbookEntries(currentOrderbook, args.sortType, stampsReducer);
 
-			for (let i = 0, j = 0; i < sortedOrderbook.length; i += groupCount, j++) {
-				idGroup[j] = sortedOrderbook.slice(i, i + groupCount).map((entry: OrderbookEntryType) => entry.Pair[0]);
-			}
-			return idGroup;
+		for (let i = 0, j = 0; i < sortedOrderbook.length; i += groupCount, j++) {
+			idGroup[j] = sortedOrderbook.slice(i, i + groupCount).map((entry: OrderbookEntryType) => entry.Pair[0]);
+		}
+	} else {
+		for (let i = 0, j = 0; i < args.ids.length; i += groupCount, j++) {
+			idGroup[j] = args.ids.slice(i, i + groupCount).map((id) => id);
 		}
 	}
-	return { '0': [] };
+	return idGroup;
 }

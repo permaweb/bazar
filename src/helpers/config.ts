@@ -5,6 +5,7 @@ import arconnect from 'assets/arconnect-wallet-logo.png';
 import arrow from 'assets/arrow.svg';
 import asset from 'assets/asset.svg';
 import audio from 'assets/audio.svg';
+import beacon from 'assets/beacon-logo.svg';
 import bridge from 'assets/bridge.svg';
 import buy from 'assets/buy.svg';
 import checkmark from 'assets/checkmark.svg';
@@ -44,7 +45,7 @@ import sell from 'assets/sell.svg';
 import defaultStampSVG from 'assets/stamp-default.svg';
 import superStampSVG from 'assets/stamp-super.svg';
 import vouchedStampSVG from 'assets/stamp-vouched.svg';
-import stampsSVG from 'assets/stamps.svg';
+import stamps from 'assets/stamps.svg';
 import star from 'assets/star.svg';
 import streak1 from 'assets/streak-1-7.svg';
 import streak2 from 'assets/streak-8-14.svg';
@@ -64,8 +65,6 @@ import zen from 'assets/zen.svg';
 
 import { SelectOptionType, WalletEnum } from './types';
 
-const stamps = stampsSVG;
-
 const stamp = {
 	default: defaultStampSVG,
 	super: superStampSVG,
@@ -84,6 +83,32 @@ export const AO = {
 	profileSrc: process.env.PROFILE_SRC,
 	vouch: process.env.VOUCH,
 	stamps: process.env.STAMPS,
+	wndr: '7GoQfmSOct_aUOWKM4xbKGg6DzAmOgdKwg8Kf-CbHm4',
+	pi: '4hXj_E-5fAKmo4E8KjgQvuDJKAFk9P2grhycVmISDLs',
+	ario: 'qNvAoz0TgcH7DMg8BCVn8jF32QH5L6T29VjHxhHqqGE',
+	usda: 'FBt9A5GA_KXMMSxA2DJ0xZbAq8sLLU2ak-YJe9zDvg8',
+	game: 's6jcB3ctSbiDNwR-paJgy5iOAhahXahLul8exSLHbGE',
+};
+
+export const HB = {
+	defaultNode: 'https://tee-4.forward.computer',
+};
+export const AOCONFIG = {
+	cu_url: 'https://ur-cu.randao.net',
+};
+
+// Helper function to get current AO settings (with user overrides if available)
+export const getAOConfig = () => {
+	try {
+		const savedSettings = localStorage.getItem('ao_settings');
+		if (savedSettings) {
+			const parsed = JSON.parse(savedSettings);
+			return { ...AOCONFIG, ...parsed };
+		}
+	} catch (error) {
+		console.error('Failed to parse saved AO settings:', error);
+	}
+	return AOCONFIG;
 };
 
 export const REFORMATTED_ASSETS = {
@@ -92,15 +117,15 @@ export const REFORMATTED_ASSETS = {
 		logo: 'czR2tJmSr7upPpReXu6IuOc2H7RuHRRAhI7DXAUlszU',
 		denomination: 6,
 	},
+	[AO.stamps]: {
+		title: 'STAMP Token',
+		logo: 'kg0d-QRW1kD9lwBErRD9CGQogTp5hgPfkf1i7ApE4WU',
+		denomination: 12,
+	},
 	['pazXumQI-HPH7iFGfTC-4_7biSnqz_U67oFAGry5zUY']: {
 		title: 'Llama Coin',
 		logo: '9FSEgmUsrug7kTdZJABDekwTGJy7YG7KaN5khcbwcX4',
 		denomination: 12,
-	},
-	['aYrCboXVSl1AXL9gPFe3tfRxRf0ZmkOXH65mKT0HHZw']: {
-		title: 'AR.IO EXP',
-		logo: 'wfI-5PlYXL66_BqquCXm7kq-ic1keu0b2CqRjw82yrU',
-		denomination: 6,
 	},
 	['wOrb8b_V8QixWyXZub48Ki5B6OIDyf_p1ngoonsaRpQ']: {
 		title: 'TRUNK',
@@ -187,10 +212,12 @@ export const ASSETS = {
 	wander,
 	x,
 	zen,
+	beacon,
 };
 
 export const AR_WALLETS = [
 	{ type: WalletEnum.wander, logo: ASSETS.wander },
+	{ type: WalletEnum.beacon, logo: ASSETS.beacon },
 	{ type: WalletEnum.othent, logo: ASSETS.othent },
 ];
 
@@ -289,6 +316,7 @@ function createURLs() {
 		collectionActivity: (id: string) => `${collection}${id}/activity/`,
 		collections: `${base}collections/`,
 		docs: `${base}docs/`,
+		terms: `${base}terms/`,
 		profile: profile,
 		profileAssets: (address: string) => `${profile}${address}/assets/`,
 		profileCollections: (address: string) => `${profile}${address}/collections/`,
@@ -322,12 +350,12 @@ export const PAGINATORS = {
 export const REDIRECTS = {
 	github: `https://github.com/permaweb/bazar`,
 	x: `https://x.com/OurBazAR`,
-	discord: `https://discord.gg/weavers`,
+	discord: `https://discord.gg/vS2fYJNucN`,
 	bazarStudio: `https://studio_bazar.arweave.net`,
 	aox: `https://aox.arweave.net`,
-	arconnect: `https://arconnect.io`,
+	arconnect: `https://wander.app`,
 	warDepot: `https://wardepot.arweave.net`,
-	aoLink: (messageId: string) => `https://www.ao.link/#/message/${messageId}`,
+	explorer: (messageId: string) => `https://lunar.arweave.net/#/explorer/${messageId}`,
 };
 
 export const DEFAULTS = {
@@ -341,8 +369,8 @@ export const ACTIVITY_SORT_OPTIONS: SelectOptionType[] = [
 ];
 
 export const ASSET_SORT_OPTIONS: SelectOptionType[] = [
-	{ id: 'stamps', label: 'By stamps' },
 	{ id: 'recently-listed', label: 'Recently listed' },
+	{ id: 'stamps', label: 'By stamps' },
 	{ id: 'low-to-high', label: 'Low to high' },
 	{ id: 'high-to-low', label: 'High to low' },
 ];
@@ -363,4 +391,112 @@ export const UPLOAD_CONFIG = {
 
 export const FLAGS = {
 	MAINTENANCE: false,
+};
+
+export const ARNS = {
+	CACHE_DURATION: 24 * 60 * 60 * 1000, // 24 hours
+	DEFAULT_DISPLAY_LENGTH: 20,
+};
+
+export const STORAGE = {
+	walletType: `wallet-type`,
+	profile: (id: string) => `profile-${id}`,
+	arns: (address: string) => `arns::${address}`,
+};
+
+// Token Registry - Easy to add new tokens
+export const TOKEN_REGISTRY = {
+	[AO.defaultToken]: {
+		id: AO.defaultToken,
+		name: 'Wrapped AR',
+		symbol: 'wAR',
+		logo: 'L99jaxRKQKJt9CqoJtPaieGPEhJD3wNhR4iGqc8amXs', // Correct wAR logo
+		denomination: 12,
+		description: 'Wrapped Arweave token',
+		priority: 1, // Primary token
+	},
+	[AO.wndr]: {
+		id: AO.wndr,
+		name: 'Wander Token',
+		symbol: 'WNDR',
+		logo: 'xUO2tQglSYsW89aLYN8ErGivZqezoDaEn95JniaCBZk', // WANDER token logo on Arweave
+		denomination: 18,
+		description: 'Wander protocol token',
+		priority: 2,
+	},
+	[AO.pixl]: {
+		id: AO.pixl,
+		name: 'PIXL Token',
+		symbol: 'PIXL',
+		logo: 'czR2tJmSr7upPpReXu6IuOc2H7RuHRRAhI7DXAUlszU', // PIXL logo
+		denomination: 6,
+		description: 'PIXL protocol token',
+		priority: 3,
+	},
+	[AO.pi]: {
+		id: AO.pi,
+		name: 'PI Token',
+		symbol: 'PI',
+		logo: 'zmQwyD6QiZge10OG2HasBqu27Zg0znGkdFRufOq6rv0', // Logo will be fetched dynamically from token metadata
+		denomination: 12, // PI token denomination from metadata
+		description: 'Permaweb Index token',
+		priority: 4,
+	},
+	[AO.ario]: {
+		id: AO.ario,
+		name: 'ARIO Token',
+		symbol: 'ARIO',
+		logo: 'GIayVyo49wof1hOtgLcJ_XAE6OuF5MeYiYsgu3z4gxk', // Logo will be fetched dynamically from token metadata
+		denomination: 6, // Default denomination, will be updated from metadata
+		description: 'ARIO protocol token',
+		priority: 5,
+	},
+	[AO.usda]: {
+		id: AO.usda,
+		name: 'USDA Token',
+		symbol: 'USDA',
+		logo: 'seXozJrsP0OgI0gvAnr8zmfxiHHb5iSlI9wMI8SdamE', // Logo will be fetched dynamically from token metadata
+		denomination: 12, // Default denomination, will be updated from metadata
+		description: 'USDA stablecoin token',
+		priority: 6,
+	},
+	[AO.game]: {
+		id: AO.game,
+		name: 'Game Token',
+		symbol: 'GAME',
+		logo: '-c4VdpgmfuS4YadtLuxVZzTd2DQ3ipodA6cz8pwjn20', // Provided logo
+		denomination: 18, // Correct denomination
+		description: 'Game protocol token',
+		priority: 7,
+	},
+	// AO token removed due to incorrect process ID
+};
+
+// NOTE: All tokens in this registry will have their balances fetched for both profile and wallet, and the UI will display the combined total (profileBalance + walletBalance) for each token. This applies to wAR, PIXL, Wander, PI, and any future tokens.
+
+// Helper function to get available tokens
+export const getAvailableTokens = () => {
+	return Object.values(TOKEN_REGISTRY).sort((a, b) => a.priority - b.priority);
+};
+
+// Helper function to get token by ID
+export const getTokenById = (tokenId: string) => {
+	return TOKEN_REGISTRY[tokenId] || null;
+};
+
+// Helper function to get default token
+export const getDefaultToken = () => {
+	return TOKEN_REGISTRY[AO.defaultToken];
+};
+
+// Delegation Configuration
+export const DELEGATION = {
+	CONTROLLER: 'cuxSKjGJ-WDB9PzSkVkVVrIBSh3DrYHYz44usQOj5yE',
+	PIXL_PROCESS: '3eZ6_ry6FD9CB58ImCQs6Qx_rJdDUGhz-D2W1AqzHD8', // PIXL Fair Launch Process (from Decent Land walkthrough)
+	ANCHOR: '00000000000000000000000000007046',
+	BASIS_POINTS: {
+		FULL: 10000, // 100%
+		HALF: 5000, // 50%
+		QUARTER: 2500, // 25%
+	},
 };

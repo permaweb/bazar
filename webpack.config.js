@@ -14,7 +14,7 @@ const productionAddresses = {
 	PIXL: 'DM3FoZUq_yebASPhgd8pEIRIzDW6muXEhxz5-JwbZwo',
 	PROFILE_REGISTRY: 'SNy4m-DrqxWl01YqGM4sxI8qCni-58re8uuJLvZPypY',
 	PROFILE_SRC: '_R2XYWDPUXVvQrQKFaQRvDTDcDwnQNbqlTd_qvCRSpQ',
-	COLLECTIONS_REGISTRY: 'TFWDmf8a3_nw43GCm_CuYlYoylHAjCcFGbgHfDaGcsg',
+	COLLECTIONS_REGISTRY: 'Kv6jQCcs8GwNpioj6tkTt06zD130YgqIHX7QNnZQYQc',
 	VOUCH: 'ZTTO02BL2P-lseTLUgiIPD9d0CF1sc4LbMA2AQ7e9jo',
 	STAMPS: 'LaC2VtxqGekpRPuJh-TkI_ByAqCS2_KB3YuhMJ5yBtc',
 };
@@ -119,28 +119,29 @@ module.exports = {
 				test: /\.(png|jpg|gif|riv)$/,
 				use: [
 					'url-loader',
-					{
-						loader: 'image-webpack-loader',
-						options: {
-							mozjpeg: {
-								progressive: true,
-								quality: 65,
-							},
-							optipng: {
-								enabled: false,
-							},
-							pngquant: {
-								quality: [0.65, 0.9],
-								speed: 4,
-							},
-							gifsicle: {
-								interlaced: false,
-							},
-							webp: {
-								quality: 75,
-							},
-						},
-					},
+					// Temporarily disabled image optimization to fix build errors
+					// {
+					// 	loader: 'image-webpack-loader',
+					// 	options: {
+					// 		mozjpeg: {
+					// 			progressive: true,
+					// 			quality: 65,
+					// 		},
+					// 		optipng: {
+					// 			enabled: false,
+					// 		},
+					// 		pngquant: {
+					// 			quality: [0.65, 0.9],
+					// 			speed: 4,
+					// 		},
+					// 		gifsicle: {
+					// 			interlaced: false,
+					// 		},
+					// 		webp: {
+					// 			quality: 75,
+					// 		},
+					// 	},
+					// },
 				],
 			},
 			{
@@ -223,6 +224,9 @@ module.exports = {
 			'process.env.VOUCH': JSON.stringify(addresses.VOUCH),
 			'process.env.STAMPS': JSON.stringify(addresses.STAMPS),
 		}),
+		new webpack.ProvidePlugin({
+			Buffer: ['buffer', 'Buffer'],
+		}),
 	],
 	resolve: {
 		extensions: ['.tsx', '.ts', '.jsx', '.js'],
@@ -231,18 +235,15 @@ module.exports = {
 			fs: false,
 			tls: false,
 			net: false,
-			path: false,
+			path: require.resolve('path-browserify'),
 			zlib: require.resolve('browserify-zlib'),
 			http: require.resolve('stream-http'),
 			https: require.resolve('https-browserify'),
 			events: require.resolve('events/'),
-			crypto: 'crypto-browserify',
-			stream: 'stream-browserify',
-			process: require.resolve('process/browser'),
 			crypto: require.resolve('crypto-browserify'),
 			stream: require.resolve('stream-browserify'),
+			process: require.resolve('process/browser'),
 			constants: require.resolve('constants-browserify'),
-			path: require.resolve('path-browserify'),
 			os: require.resolve('os-browserify'),
 			util: require.resolve('util'),
 			assert: require.resolve('assert'),
@@ -270,6 +271,7 @@ module.exports = {
 			wrappers: path.resolve(__dirname, 'src/wrappers/'),
 			'asn1.js': path.resolve(__dirname, 'node_modules/asn1.js'),
 			elliptic: path.resolve(__dirname, 'node_modules/elliptic'),
+			'node:buffer': require.resolve('buffer/'),
 		},
 	},
 	output: {

@@ -4,11 +4,11 @@ import { useSelector } from 'react-redux';
 import { ArcElement, Chart as ChartJS, Legend, Tooltip } from 'chart.js';
 import { useTheme } from 'styled-components';
 
-import { getAndUpdateRegistryProfiles } from 'api';
+import { getProfiles } from 'api';
 
 import { Loader } from 'components/atoms/Loader';
 import { OwnerLine } from 'components/molecules/OwnerLine';
-import { OwnerType, RegistryProfileType } from 'helpers/types';
+import { OwnerType } from 'helpers/types';
 import { formatAddress, formatPercentage, getOwners } from 'helpers/utils';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 import { RootState } from 'store';
@@ -59,11 +59,11 @@ export default function AssetActionsOwners(props: IProps) {
 				if (owners.length) {
 					try {
 						const addresses = [...updatedOwners].splice(0, MAX_OWNER_LENGTH).map((owner: OwnerType) => owner.address);
-						const profiles = await getAndUpdateRegistryProfiles(addresses);
+						const profiles = await getProfiles(addresses);
 
 						updatedOwners = updatedOwners
 							.map((owner: OwnerType) => {
-								const profile = profiles.find((profile: RegistryProfileType) => {
+								const profile = profiles.find((profile: any) => {
 									return profile.id === owner.address;
 								});
 								return { ...owner, profile };

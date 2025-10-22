@@ -3,4 +3,5 @@ export interface IProps {
 	currency: string;
 	callback?: () => void;
 	useReverseLayout?: boolean;
+	hideSymbol?: boolean;
 }

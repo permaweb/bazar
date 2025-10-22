@@ -1,6 +1,9 @@
 import styled from 'styled-components';
 
 import { STYLING } from 'helpers/config';
+import { getTxEndpoint } from 'helpers/endpoints';
+
+const AUDIO_BACKGROUND = getTxEndpoint('2jAkUCqzksbN5YxwTeUM8WtMiZzV50Bsv3koyKDnNIc');
 
 export const Wrapper = styled.div`
 	min-height: calc(100vh - (${STYLING.dimensions.nav.height} + 20px));
@@ -422,7 +425,7 @@ export const AssetTextWrapper = styled.div`
 	flex-direction: column;
 	justify-content: center;
 	align-items: center;
-	background-image: url('https://arweave.net/2jAkUCqzksbN5YxwTeUM8WtMiZzV50Bsv3koyKDnNIc');
+	background-image: url('${AUDIO_BACKGROUND}');
 	background-size: 100%;
 	background-repeat: no-repeat;
 	padding: 7.5px 40px 10px 40px;
