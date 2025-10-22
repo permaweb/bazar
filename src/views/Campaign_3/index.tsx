@@ -53,6 +53,11 @@ const Campaign3Responsive = createGlobalStyle`
 			transform: rotate(360deg);
 		}
 	}
+
+	.campaign3-cta:active {
+		transform: scale(0.97);
+		transition: transform 300ms ease-out;
+	}
 `;
 
 // Loading state component
@@ -143,6 +148,7 @@ function RewardCard({
 	requirements,
 	requirementsSubheader,
 	guide,
+	guideSubheader,
 	onClaim,
 	showConnectWallet = true,
 	cta,
@@ -161,7 +167,8 @@ function RewardCard({
 	isRight?: boolean;
 	requirements?: { text: string; met: boolean }[];
 	requirementsSubheader?: string;
-	guide?: string[];
+	guide?: (string | { text: string; href?: string })[];
+	guideSubheader?: string;
 	onClaim?: () => Promise<void>;
 	showConnectWallet?: boolean;
 	cta?: { label: string; href: string; iconSrc?: string };
@@ -304,9 +311,10 @@ function RewardCard({
 						style={{ marginTop: 0, marginBottom: guide ? 16 : 2 }}
 					/>
 				)}
-				{connected && guide && <GuideBox steps={guide} style={{ marginTop: 16 }} />}
+				{connected && guide && <GuideBox steps={guide} subheaderText={guideSubheader} style={{ marginTop: 16 }} />}
 				{connected && !cta && atLeastOneRequirementMet && onClaim && (
 					<button
+						className={'campaign3-cta'}
 						onClick={handleClaim}
 						disabled={isLoading}
 						style={{
@@ -314,7 +322,7 @@ function RewardCard({
 							padding: '20px 12px',
 							border: 'none',
 							borderRadius: 8,
-							background: '#000',
+							background: '#1a1a1a',
 							color: '#FFFFFF',
 							fontSize: 14,
 							cursor: isLoading ? 'wait' : 'pointer',
@@ -348,6 +356,7 @@ function RewardCard({
 				)}
 				{cta && (
 					<a
+						className={'campaign3-cta'}
 						href={cta.href}
 						target={'_blank'}
 						rel={'noreferrer'}
@@ -356,7 +365,7 @@ function RewardCard({
 							padding: '20px 12px',
 							border: 'none',
 							borderRadius: 8,
-							background: '#000',
+							background: '#1a1a1a',
 							color: '#FFFFFF',
 							fontSize: 14,
 							textDecoration: 'none',
@@ -369,7 +378,13 @@ function RewardCard({
 							margin: '16px',
 						}}
 					>
-						{cta.iconSrc && <img src={cta.iconSrc} alt={cta.label} style={{ width: 16, height: 16, marginRight: 8 }} />}
+						{cta.iconSrc && (
+							<img
+								src={cta.iconSrc}
+								alt={cta.label}
+								style={{ width: 16, height: 16, marginRight: 8, filter: 'invert(1)' }}
+							/>
+						)}
 						{cta.label}
 					</a>
 				)}
@@ -481,7 +496,7 @@ function HeroSection({ onConnect, isVerifying }: { onConnect: () => void; isVeri
 							onClick={onConnect}
 							disabled={isVerifying}
 							style={{
-								background: '#000',
+								background: '#1a1a1a',
 								color: '#fff',
 								border: 'none',
 								borderRadius: 9999,
@@ -525,7 +540,7 @@ function HeroSection({ onConnect, isVerifying }: { onConnect: () => void; isVeri
 // Requirements box component
 function RequirementsBox({
 	requirements,
-	subheaderText = 'Only one required to claim',
+	subheaderText = 'Two or more requirements must be met to claim',
 	style = {},
 }: {
 	requirements: { text: string; met: boolean }[];
@@ -551,7 +566,14 @@ function RequirementsBox({
 				{subheaderText}
 			</div>
 			{requirements.map((req, idx) => (
-				<div key={idx} style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
+				<div
+					key={idx}
+					style={{
+						display: 'flex',
+						alignItems: 'center',
+						marginBottom: idx === requirements.length - 1 ? 0 : 16,
+					}}
+				>
 					<span
 						style={{
 							display: 'inline-flex',
@@ -590,7 +612,15 @@ function RequirementsBox({
 }
 
 // Guide box component (for right card)
-function GuideBox({ steps, style = {} }: { steps: string[]; style?: React.CSSProperties }) {
+function GuideBox({
+	steps,
+	style = {},
+	subheaderText = 'How to get started running a node on AO / Hyperbeam',
+}: {
+	steps: (string | { text: string; href?: string })[];
+	style?: React.CSSProperties;
+	subheaderText?: string;
+}) {
 	return (
 		<div
 			style={{
@@ -604,16 +634,42 @@ function GuideBox({ steps, style = {} }: { steps: string[]; style?: React.CSSPro
 			}}
 		>
 			<div style={{ fontWeight: 700, fontSize: 16, color: '#202416', fontFamily: 'Inter', marginBottom: 0 }}>Guide</div>
-			<div style={{ fontSize: 13, color: '#808080', fontFamily: 'Inter', marginBottom: 12, marginTop: 0 }}>
-				How to get started running a node on AO / Hyperbeam
-			</div>
+			{subheaderText && (
+				<div style={{ fontSize: 13, color: '#808080', fontFamily: 'Inter', marginBottom: 12, marginTop: 0 }}>
+					{subheaderText}
+				</div>
+			)}
 			<ul style={{ paddingLeft: 0, margin: 0, listStyle: 'none' }}>
 				{steps.map((step, idx) => (
-					<li key={idx} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 28, marginTop: 12 }}>
+					<li
+						key={idx}
+						style={{
+							display: 'flex',
+							alignItems: 'flex-start',
+							gap: 10,
+							marginBottom: idx === steps.length - 1 ? 0 : 28,
+							marginTop: 12,
+						}}
+					>
 						<span
 							style={{ width: 6, height: 6, background: '#202416', borderRadius: 2, marginTop: 7, flex: '0 0 auto' }}
 						/>
-						<span style={{ color: '#202416', fontSize: 13, fontFamily: 'Inter' }}>{step}</span>
+						<span style={{ color: '#202416', fontSize: 13, fontFamily: 'Inter' }}>
+							{typeof step === 'string' ? (
+								step
+							) : step.href ? (
+								<a
+									href={step.href}
+									target={'_blank'}
+									rel={'noreferrer'}
+									style={{ color: '#202416', textDecoration: 'underline', fontWeight: 600 }}
+								>
+									{step.text}
+								</a>
+							) : (
+								step.text
+							)}
+						</span>
 					</li>
 				))}
 			</ul>
@@ -1001,6 +1057,12 @@ export default function Campaign() {
 							{ text: 'Spawned an AO Process', met: verificationResults.hasAOProcess },
 						]}
 						onClaim={() => handleClaim(ATOMIC_ASSET_ID)}
+						guideSubheader={'More info on how to claim your Atomic Asset'}
+						guide={[
+							'Transactions must be from the start of legacynet up to February 8, 2025 (mainnet launch)',
+							'First 1,984 wallets get to claim. (first come, first serve)',
+							'One atomic asset per wallet.',
+						]}
 					/>
 					<RewardCard
 						video={MEDIA_URLS.glasseatersVideo}
@@ -1023,6 +1085,10 @@ export default function Campaign() {
 						requirements={[{ text: 'Run node for 20+ consecutive days', met: true }]}
 						requirementsSubheader={'Complete all requirements to claim'}
 						guide={[
+							{
+								text: 'You can read up on the docs here',
+								href: 'https://hyperbeam.ar.io/run/running-a-hyperbeam-node.html',
+							},
 							'Run node for 20+ consecutive days by November 21, 2025 (qualification deadline)',
 							'Consecutive runtime starting from any date (before or after announcement)',
 							'Operators already running count their current streak (if uninterrupted)',

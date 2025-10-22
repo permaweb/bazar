@@ -695,10 +695,13 @@ export const ConnectWalletButton = styled.button`
 	border: none;
 	font-size: 14px;
 	cursor: pointer;
-	transition: all 80ms ease-out;
+	transition: background 100ms ease-out;
 
+	&:active {
+		scale: 0.97;
+		transition: scale 300ms ease-out;
+	}
 	&:hover {
-		transform: translateY(-1px);
 		background: #333;
 	}
 `;
