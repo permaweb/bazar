@@ -49,7 +49,8 @@ export async function getCollections(creator: string, libs: any): Promise<any[]>
 			const spamFilteredCollections = collections.filter((collection: any) => collection.creator !== SPAM_ADDRESS);
 
 			const collectionIds = spamFilteredCollections.map((collection: any) => collection.id);
-			const stampsFetch: StampsType = await stamps.getStamps({ ids: collectionIds });
+			// const stampsFetch: StampsType = await stamps.getStamps({ ids: collectionIds });
+			const stampsFetch: StampsType = {};
 
 			let finalCollections = spamFilteredCollections;
 
@@ -360,7 +361,6 @@ export async function getAllMusicCollections(libs: any): Promise<CollectionType[
 
 		for (const collectionId of musicCollectionIds) {
 			try {
-				// Try to get collection data, but don't fail if HyperBEAM is down
 				let collection;
 				try {
 					collection = await libs.getCollection(collectionId);

@@ -280,10 +280,10 @@ export function AppProvider(props: AppProviderProps) {
 						action: 'Info',
 					});
 
-					const stampState = await readHandler({
-						processId: AO.stamps,
-						action: 'Info',
-					});
+					// const stampState = await readHandler({
+					// 	processId: AO.stamps,
+					// 	action: 'Info',
+					// });
 
 					const currencies = {
 						[AO.defaultToken]: {
@@ -292,9 +292,9 @@ export function AppProvider(props: AppProviderProps) {
 						[AO.pixl]: {
 							...pixlState,
 						},
-						[AO.stamps]: {
-							...stampState,
-						},
+						// [AO.stamps]: {
+						// 	...stampState,
+						// },
 					};
 
 					dispatch(currencyActions.setCurrencies(currencies));

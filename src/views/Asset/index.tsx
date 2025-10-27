@@ -4,12 +4,10 @@ import _ from 'lodash';
 
 import { getAssetById, getAssetOrders, readHandler } from 'api';
 
-const debug = (..._args: any[]) => {};
-
 import { Loader } from 'components/atoms/Loader';
 import { Portal } from 'components/atoms/Portal';
 import { AssetData } from 'components/organisms/AssetData';
-import { AO, DOM, HB, URLS } from 'helpers/config';
+import { AO, DOM, HB, TOKEN_REGISTRY, URLS } from 'helpers/config';
 import { AssetDetailType, AssetViewType } from 'helpers/types';
 import { checkValidAddress } from 'helpers/utils';
 import * as windowUtils from 'helpers/window';
@@ -54,7 +52,7 @@ export default function Asset() {
 	React.useEffect(() => {
 		(async function () {
 			if (id && checkValidAddress(id)) {
-				debug('Fetching asset...');
+				console.log('Fetching asset...');
 
 				setLoading(true);
 				let tries = 0;
@@ -93,23 +91,29 @@ export default function Asset() {
 		})();
 	}, [id, toggleUpdate]);
 
+	// TODO: Repatch global ucm process pairs with new trie
+	// TODO: Fetch orderbook pair
 	React.useEffect(() => {
 		(async function () {
 			if (asset?.orderbook?.id) {
 				setLoading(true);
 				try {
 					if (asset.orderbook.id === AO.ucm) {
-						// Fetch ALL orders for this asset using Info action (like AppProvider does)
-						const response = await readHandler({
-							processId: asset.orderbook.id,
-							action: 'Info',
-						});
+						let Orderbook = [];
+						for (const id of Object.keys(TOKEN_REGISTRY)) {
+							try {
+								const response = await permawebProvider.libs.readState({
+									processId: asset.orderbook.id,
+									path: `orderbooks/${asset.data.id}:${id}`,
+								});
 
-						if (response?.Orderbook) {
+								if (response) Orderbook.push(response);
+							} catch (e: any) {}
+						}
+
+						if (Orderbook) {
 							// Find all pairs that include this asset
-							const assetPairs = response.Orderbook.filter(
-								(pair: any) => pair.Pair && pair.Pair.includes(asset.data.id)
-							);
+							const assetPairs = Orderbook.filter((pair: any) => pair.Pair && pair.Pair.includes(asset.data.id));
 
 							// Process all pairs for this asset to get all orders
 							let allOrders: any[] = [];

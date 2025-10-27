@@ -26,7 +26,7 @@
 		"@permaweb/aoprofile": "^0.0.11",
 		"@permaweb/libs": "0.0.64",
 		"@permaweb/stampjs": "^1.0.4",
-		"@permaweb/ucm": "0.0.11",
+		"@permaweb/ucm": "file:../ao-ucm/sdk",
 		"@vela-ventures/aosync-sdk-react": "^1.0.26",
 		"async-lock": "^1.4.1",
 		"codex": "^0.2.3",

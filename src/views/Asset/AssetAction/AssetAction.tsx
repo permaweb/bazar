@@ -15,11 +15,10 @@ import { OwnerLine } from 'components/molecules/OwnerLine';
 import { Tabs } from 'components/molecules/Tabs';
 import { AssetData } from 'components/organisms/AssetData';
 import { OrderCancel } from 'components/organisms/OrderCancel';
-import { Stamps } from 'components/organisms/Stamps';
 import { ASSETS, STYLING } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import { ListingType, OwnerType } from 'helpers/types';
-import { formatCount, formatPercentage, getOwners, sortOrders } from 'helpers/utils';
+import { formatCount, getOwners, sortOrders } from 'helpers/utils';
 import * as windowUtils from 'helpers/window';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
@@ -69,7 +68,7 @@ export default function AssetAction(props: IProps) {
 
 	const [mobile, setMobile] = React.useState(!windowUtils.checkWindowCutoff(parseInt(STYLING.cutoffs.secondary)));
 
-	const [totalAssetBalance, setTotalAssetBalance] = React.useState<number>(0);
+	const [_totalAssetBalance, setTotalAssetBalance] = React.useState<number>(0);
 
 	const [addressGroups, setAddressGroups] = React.useState<string[][] | null>(null);
 	const [ownerCount, setOwnerCount] = React.useState<number | null>(null);
@@ -124,7 +123,7 @@ export default function AssetAction(props: IProps) {
 				try {
 					let subAddresses = {};
 					addressGroups[ownersCursor].forEach((address: string) => {
-						if (props.asset.state.balances.hasOwnProperty(address)) {
+						if (props.asset.state?.balances?.hasOwnProperty(address)) {
 							subAddresses[address] = props.asset.state.balances[address];
 						}
 					});
@@ -190,69 +189,70 @@ export default function AssetAction(props: IProps) {
 					});
 
 					setCurrentListings(mappedListings);
-				} else {
-					// Fetch orders from orderbook (for global orderbook or when orders not loaded)
-					try {
-						const response = await permawebProvider.libs.readState({
-							processId: props.asset.orderbook.id,
-							path: 'asset',
-							fallbackAction: 'Info',
-						});
-
-						if (response?.Orderbook) {
-							const assetPairs = response.Orderbook.filter(
-								(pair: any) => pair.Pair && pair.Pair.includes(props.asset.data.id)
-							);
-
-							let allOrders: any[] = [];
-
-							assetPairs.forEach((pair: any) => {
-								if (pair.Orders && Array.isArray(pair.Orders)) {
-									const pairOrders = pair.Orders.map((order: any) => ({
-										creator: order.Creator || order.creator,
-										dateCreated: order.DateCreated || order.dateCreated,
-										id: order.Id || order.id,
-										originalQuantity: order.OriginalQuantity || order.originalQuantity,
-										quantity: order.Quantity || order.quantity,
-										token: order.Token || order.token,
-										currency: pair.Pair[1],
-										price: order.Price || order.price || '0',
-									}));
-									allOrders = allOrders.concat(pairOrders);
-								}
-							});
-
-							if (allOrders.length > 0) {
-								const sortedOrders = sortOrders(allOrders, 'low-to-high');
-
-								let profiles: any[] = await getProfiles(sortedOrders.map((order: any) => order.creator));
-								const mappedListings = sortedOrders.map((order: any) => {
-									let currentProfile = null;
-									if (profiles) {
-										currentProfile = profiles.find((profile: any) => profile.id === order.creator);
-									}
-
-									const currentListing = {
-										profile: currentProfile || null,
-										orderbookId: props.asset.orderbook.id,
-										...order,
-									};
-
-									return currentListing;
-								});
-
-								setCurrentListings(mappedListings);
-							} else {
-								setCurrentListings([]);
-							}
-						} else {
-							setCurrentListings([]);
-						}
-					} catch (error) {
-						console.error('Error fetching orderbook orders:', error);
-						setCurrentListings([]);
-					}
 				}
+				// else {
+				// 	// Fetch orders from orderbook (for global orderbook or when orders not loaded)
+				// 	try {
+				// 		const response = await permawebProvider.libs.readState({
+				// 			processId: props.asset.orderbook.id,
+				// 			path: 'asset',
+				// 			fallbackAction: 'Info',
+				// 		});
+
+				// 		if (response?.Orderbook) {
+				// 			const assetPairs = response.Orderbook.filter(
+				// 				(pair: any) => pair.Pair && pair.Pair.includes(props.asset.data.id)
+				// 			);
+
+				// 			let allOrders: any[] = [];
+
+				// 			assetPairs.forEach((pair: any) => {
+				// 				if (pair.Orders && Array.isArray(pair.Orders)) {
+				// 					const pairOrders = pair.Orders.map((order: any) => ({
+				// 						creator: order.Creator || order.creator,
+				// 						dateCreated: order.DateCreated || order.dateCreated,
+				// 						id: order.Id || order.id,
+				// 						originalQuantity: order.OriginalQuantity || order.originalQuantity,
+				// 						quantity: order.Quantity || order.quantity,
+				// 						token: order.Token || order.token,
+				// 						currency: pair.Pair[1],
+				// 						price: order.Price || order.price || '0',
+				// 					}));
+				// 					allOrders = allOrders.concat(pairOrders);
+				// 				}
+				// 			});
+
+				// 			if (allOrders.length > 0) {
+				// 				const sortedOrders = sortOrders(allOrders, 'low-to-high');
+
+				// 				let profiles: any[] = await getProfiles(sortedOrders.map((order: any) => order.creator));
+				// 				const mappedListings = sortedOrders.map((order: any) => {
+				// 					let currentProfile = null;
+				// 					if (profiles) {
+				// 						currentProfile = profiles.find((profile: any) => profile.id === order.creator);
+				// 					}
+
+				// 					const currentListing = {
+				// 						profile: currentProfile || null,
+				// 						orderbookId: props.asset.orderbook.id,
+				// 						...order,
+				// 					};
+
+				// 					return currentListing;
+				// 				});
+
+				// 				setCurrentListings(mappedListings);
+				// 			} else {
+				// 				setCurrentListings([]);
+				// 			}
+				// 		} else {
+				// 			setCurrentListings([]);
+				// 		}
+				// 	} catch (error) {
+				// 		console.error('Error fetching orderbook orders:', error);
+				// 		setCurrentListings([]);
+				// 	}
+				// }
 			}
 		})();
 	}, [props.asset]);
@@ -312,7 +312,7 @@ export default function AssetAction(props: IProps) {
 							{language.owner.charAt(0).toUpperCase() + language.owner.slice(1)}
 						</GS.DrawerContentFlex>
 						<GS.DrawerContentDetail>{language.quantity}</GS.DrawerContentDetail>
-						<GS.DrawerContentDetail>{language.percentage}</GS.DrawerContentDetail>
+						{/* <GS.DrawerContentDetail>{language.percentage}</GS.DrawerContentDetail> */}
 					</GS.DrawerHeaderWrapper>
 				)}
 				{currentOwners &&
@@ -338,12 +338,12 @@ export default function AssetAction(props: IProps) {
 								<S.DrawerContentDetailAlt>
 									{getDenominatedTokenValue(owner.ownerQuantity, props.asset.data.id)}
 								</S.DrawerContentDetailAlt>
-								{mobile && (
+								{/* {mobile && (
 									<S.MDrawerHeader>
 										<GS.DrawerContentHeader>{language.percentage}</GS.DrawerContentHeader>
 									</S.MDrawerHeader>
-								)}
-								<S.DrawerContentDetailAlt>{formatPercentage(owner.ownerPercentage)}</S.DrawerContentDetailAlt>
+								)} */}
+								{/* <S.DrawerContentDetailAlt>{formatPercentage(owner.ownerPercentage)}</S.DrawerContentDetailAlt> */}
 							</S.DrawerContentLine>
 						);
 					})}
@@ -385,7 +385,7 @@ export default function AssetAction(props: IProps) {
 						<GS.DrawerHeaderWrapper>
 							<GS.DrawerContentFlex>{language.seller}</GS.DrawerContentFlex>
 							<GS.DrawerContentDetail>{language.quantity}</GS.DrawerContentDetail>
-							<GS.DrawerContentDetail>{language.percentage}</GS.DrawerContentDetail>
+							{/* <GS.DrawerContentDetail>{language.percentage}</GS.DrawerContentDetail> */}
 							<GS.DrawerContentDetail>{language.price}</GS.DrawerContentDetail>
 						</GS.DrawerHeaderWrapper>
 					)}
@@ -419,14 +419,14 @@ export default function AssetAction(props: IProps) {
 								<S.DrawerContentDetailAlt>
 									{getDenominatedTokenValue(Number(listing.quantity), props.asset.data.id)}
 								</S.DrawerContentDetailAlt>
-								{mobile && (
+								{/* {mobile && (
 									<S.MDrawerHeader>
 										<GS.DrawerContentHeader>{language.percentage}</GS.DrawerContentHeader>
 									</S.MDrawerHeader>
 								)}
 								<S.DrawerContentDetailAlt>
 									{formatPercentage(Number(listing.quantity) / totalAssetBalance)}
-								</S.DrawerContentDetailAlt>
+								</S.DrawerContentDetailAlt> */}
 								{mobile && (
 									<S.MDrawerHeader>
 										<GS.DrawerContentHeader>{language.price}</GS.DrawerContentHeader>
@@ -499,7 +499,7 @@ export default function AssetAction(props: IProps) {
 					<S.HeaderTitle>
 						<h4>{props.asset.data.title}</h4>
 						<S.HeaderTitleActions>
-							<Stamps txId={props.asset.data.id} title={props.asset.data.description || props.asset.data.title} />
+							{/* <Stamps txId={props.asset.data.id} title={props.asset.data.description || props.asset.data.title} /> */}
 							<IconButton
 								type={'alt1'}
 								src={urlCopied ? ASSETS.link : ASSETS.link}

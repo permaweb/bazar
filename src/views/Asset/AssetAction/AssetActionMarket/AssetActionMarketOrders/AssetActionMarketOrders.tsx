@@ -20,7 +20,6 @@ import {
 	checkValidAddress,
 	formatAddress,
 	formatCount,
-	formatPercentage,
 	getTotalTokenBalance,
 	reverseDenomination,
 } from 'helpers/utils';
@@ -77,6 +76,8 @@ async function createOrderWithExtendedTimeout(
 			{ name: 'Target', value: args.dominantToken },
 			{ name: 'ForwardTo', value: args.dominantToken },
 			{ name: 'ForwardAction', value: 'Transfer' },
+			{ name: 'Forward-To', value: args.dominantToken },
+			{ name: 'Forward-Action', value: 'Transfer' },
 			{ name: 'Recipient', value: args.orderbookId },
 			{ name: 'Quantity', value: args.quantity },
 		];
@@ -98,14 +99,14 @@ async function createOrderWithExtendedTimeout(
 		globalLog('Processing order...');
 		callback({ processing: true, success: false, message: 'Processing your order...' });
 
-		// Send message ONCE - no retries to avoid multiple orders
 		const transferId = await permaweb.sendMessage({
 			processId: args.creatorId,
 			action: args.action,
 			tags: tags,
 			data: data,
 		});
-		// Message sent successfully
+
+		globalLog(`Transfer ID: ${transferId}`);
 
 		const successMatch = ['Order-Success'];
 		const errorMatch = ['Order-Error'];
@@ -258,7 +259,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 	const language = languageProvider.object[languageProvider.current];
 
 	// Total quantity of asset
-	const [totalAssetBalance, setTotalAssetBalance] = React.useState<number>(0);
+	const [totalAssetBalance, _setTotalAssetBalance] = React.useState<number>(0);
 
 	// Total quantity of asset for sale
 	const [totalSalesQuantity, setTotalSalesQuantity] = React.useState<number>(0);
@@ -302,43 +303,65 @@ export default function AssetActionMarketOrders(props: IProps) {
 					}
 				}
 
-				if (props.asset.state.balances) {
-					const balances: any = Object.keys(props.asset.state.balances).map((address: string) => {
-						return Number(props.asset.state.balances[address]);
-					});
+				if (
+					arProvider.walletAddress &&
+					permawebProvider.profile?.id &&
+					permawebProvider.tokenBalances?.[props.asset.data.id]
+				) {
+					const profileBalance = Number(permawebProvider.tokenBalances?.[props.asset.data.id].profileBalance);
+					const walletBalance = Number(permawebProvider.tokenBalances?.[props.asset.data.id].walletBalance);
 
-					const totalBalance = balances.reduce((a: number, b: number) => a + b, 0);
-
-					let calculatedTotalBalance = totalBalance;
+					let calculatedOwnerBalance = profileBalance;
+					let calculatedWalletBalance = walletBalance;
 
 					if (denomination) {
-						calculatedTotalBalance = totalBalance / denomination;
+						calculatedOwnerBalance = profileBalance / denomination;
+						calculatedWalletBalance = walletBalance / denomination;
 					}
 
-					setTotalAssetBalance(calculatedTotalBalance);
-
-					if (arProvider.walletAddress && permawebProvider.profile && permawebProvider.profile.id) {
-						const profileBalance = Number(props.asset.state.balances[permawebProvider.profile.id]);
-						const walletBalance = Number(props.asset.state.balances[arProvider.walletAddress]);
-
-						let calculatedOwnerBalance = profileBalance;
-						let calculatedWalletBalance = walletBalance;
-
-						if (denomination) {
-							calculatedOwnerBalance = profileBalance / denomination;
-							calculatedWalletBalance = walletBalance / denomination;
-						}
-
-						setConnectedBalance(calculatedOwnerBalance);
-						setConnectedWalletBalance(calculatedWalletBalance);
-					}
+					setConnectedBalance(calculatedOwnerBalance);
+					setConnectedWalletBalance(calculatedWalletBalance);
 				}
+
+				// if (props.asset.state.balances) {
+				// 	const balances: any = Object.keys(props.asset.state.balances).map((address: string) => {
+				// 		return Number(props.asset.state.balances[address]);
+				// 	});
+
+				// 	const totalBalance = balances.reduce((a: number, b: number) => a + b, 0);
+
+				// 	let calculatedTotalBalance = totalBalance;
+
+				// 	if (denomination) {
+				// 		calculatedTotalBalance = totalBalance / denomination;
+				// 	}
+
+				// 	setTotalAssetBalance(calculatedTotalBalance);
+
+				// 	if (arProvider.walletAddress && permawebProvider.profile && permawebProvider.profile.id) {
+				// 		const profileBalance = Number(props.asset.state.balances[permawebProvider.profile.id]);
+				// 		const walletBalance = Number(props.asset.state.balances[arProvider.walletAddress]);
+
+				// let calculatedOwnerBalance = profileBalance;
+				// let calculatedWalletBalance = walletBalance;
+
+				// if (denomination) {
+				// 	calculatedOwnerBalance = profileBalance / denomination;
+				// 	calculatedWalletBalance = walletBalance / denomination;
+				// }
+
+				// 		setConnectedBalance(calculatedOwnerBalance);
+				// 		setConnectedWalletBalance(calculatedWalletBalance);
+				// 	}
+				// }
 			}
+
+			// setConnectedBalance(calculatedOwnerBalance);
+			// setConnectedWalletBalance(calculatedWalletBalance);
 
 			if (props.asset.orderbook?.orders && props.asset.orderbook?.orders.length > 0) {
 				const selectedTokenId = tokenProvider.selectedToken.id;
 
-				// CRITICAL FIX: Only include orders that match the selected token
 				const salesBalances = props.asset.orderbook?.orders
 					.filter((order: AssetOrderType) => order.currency === selectedTokenId)
 					.map((order: AssetOrderType) => {
@@ -353,11 +376,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 				setTotalSalesQuantity(calculatedTotalSalesBalance);
 			}
-
-			// Use TOKEN_REGISTRY denominations instead of currenciesReducer
-
-			// NOTE: transferDenomination is now set by dedicated effects based on selectedToken
-			// This effect only handles asset-related state, not token denomination
 		}
 	}, [props.asset, arProvider.walletAddress, permawebProvider.profile, denomination, tokenProvider.selectedToken.id]);
 
@@ -755,7 +773,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 					.filter((order: AssetOrderType) => {
 						const price = Number(order.price);
 						const quantity = Number(order.quantity);
-						// CRITICAL FIX: Only include orders that match the selected token
 						return !isNaN(price) && !isNaN(quantity) && price > 0 && quantity > 0 && order.currency === selectedTokenId;
 					})
 					.sort((a: AssetOrderType, b: AssetOrderType) => Number(a.price) - Number(b.price));
@@ -954,10 +971,10 @@ export default function AssetActionMarketOrders(props: IProps) {
 					<p>{balanceHeader}</p>
 					<span>{formatCount(quantity.toString())}</span>
 				</S.TotalQuantityLine>
-				<S.TotalQuantityLine>
+				{/* <S.TotalQuantityLine>
 					<p>{percentageHeader}</p>
 					<span>{formatPercentage(!isNaN(quantity / totalAssetBalance) ? quantity / totalAssetBalance : 0)}</span>
-				</S.TotalQuantityLine>
+				</S.TotalQuantityLine> */}
 			</>
 		);
 	}, [props.asset, props.type, totalAssetBalance, totalSalesQuantity, connectedBalance]);
@@ -966,7 +983,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 		const selectedTokenId = tokenProvider.selectedToken.id;
 
 		if (props.type === 'buy') {
-			// For BUY orders: Check if there are existing orders to buy from
 			const hasUCMOrders = props.asset?.orderbook?.orders && props.asset.orderbook.orders.length > 0;
 			const hasMatchingOrders =
 				hasUCMOrders &&
@@ -980,11 +996,11 @@ export default function AssetActionMarketOrders(props: IProps) {
 				);
 			}
 		} else if (props.type === 'sell') {
-			// For SELL orders: Allow any token (creating new liquidity)
 		}
 
-		// UCM works with raw units - send raw amount to CurrencyLine
-		const totalAmount = getTotalOrderAmount();
+		let totalAmount = getTotalOrderAmount();
+		if (denomination && denomination > 1) totalAmount = BigInt(totalAmount) / BigInt(denomination);
+
 		const amount = isNaN(Number(totalAmount)) ? BigInt(0) : BigInt(totalAmount);
 		const orderCurrency = selectedTokenId;
 
@@ -1024,7 +1040,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 						<span>{quantityLabel}</span>
 						<p>{formatCount(currentOrderQuantity.toString())}</p>
 					</S.SalesDetail>
-					<S.SalesDetail>
+					{/* <S.SalesDetail>
 						<span>{percentageLabel}</span>
 						<p>
 							{formatPercentage(
@@ -1033,7 +1049,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 									: 0
 							)}
 						</p>
-					</S.SalesDetail>
+					</S.SalesDetail> */}
 				</S.SalesLine>
 				{props.type !== 'transfer' && (
 					<S.SalesLine>
@@ -1189,16 +1205,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 					<S.ConfirmationMessage success={orderProcessed && orderSuccess} warning={orderProcessed && !orderSuccess}>
 						<span>{currentNotification ? currentNotification : orderLoading ? 'Processing...' : reviewMessage}</span>
 					</S.ConfirmationMessage>
-					{/* Show warning for legacy assets during processing or when there's an error */}
-					{((orderLoading && props.asset.orderbook?.id === AO.ucm) ||
-						(orderProcessed && !orderSuccess && props.asset.orderbook?.id === AO.ucm)) && (
-						<S.MessageWrapper warning>
-							<span>
-								Assets built during legacynet may take longer to clear on-chain now that we've switched to micro
-								orderbooks.
-							</span>
-						</S.MessageWrapper>
-					)}
 					<S.Divider />
 					<S.ActionWrapperFull loading={orderLoading.toString()}>{getAction(true)}</S.ActionWrapperFull>
 				</S.ConfirmationWrapper>

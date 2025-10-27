@@ -163,42 +163,43 @@ export async function getAssetById(args: { id: string; libs?: any }): Promise<As
 				}
 			}
 
-			if (!assetState.balances) {
-				debug('Getting balances...');
-				try {
-					await new Promise((r) => setTimeout(r, 1000));
+			// TODO
+			// if (!assetState.balances) {
+			// 	debug('Getting balances...');
+			// 	try {
+			// 		await new Promise((r) => setTimeout(r, 1000));
 
-					// Try Hyperbean first for balances too
-					let processBalances: any;
-					if (args.libs) {
-						try {
-							processBalances = await args.libs.readState({
-								processId: structuredAsset.data.id,
-								path: 'balances',
-								fallbackAction: 'Balances',
-								node: HB.defaultNode,
-							});
-						} catch (e) {
-							console.log('Hyperbean balances failed, falling back to dryrun:', e);
-							processBalances = await readHandler({
-								processId: structuredAsset.data.id,
-								action: 'Balances',
-								data: null,
-							});
-						}
-					} else {
-						processBalances = await readHandler({
-							processId: structuredAsset.data.id,
-							action: 'Balances',
-							data: null,
-						});
-					}
+			// 		// Try Hyperbean first for balances too
+			// 		let processBalances: any;
+			// 		if (args.libs) {
+			// 			try {
+			// 				processBalances = await args.libs.readState({
+			// 					processId: structuredAsset.data.id,
+			// 					path: 'balances',
+			// 					fallbackAction: 'Balances',
+			// 					node: HB.defaultNode,
+			// 				});
+			// 			} catch (e) {
+			// 				console.log('Hyperbean balances failed, falling back to dryrun:', e);
+			// 				processBalances = await readHandler({
+			// 					processId: structuredAsset.data.id,
+			// 					action: 'Balances',
+			// 					data: null,
+			// 				});
+			// 			}
+			// 		} else {
+			// 			processBalances = await readHandler({
+			// 				processId: structuredAsset.data.id,
+			// 				action: 'Balances',
+			// 				data: null,
+			// 			});
+			// 		}
 
-					if (processBalances) assetState.balances = processBalances;
-				} catch (e: any) {
-					console.error(e);
-				}
-			}
+			// 		if (processBalances) assetState.balances = processBalances;
+			// 	} catch (e: any) {
+			// 		console.error(e);
+			// 	}
+			// }
 
 			if (processState.Metadata?.CollectionId) structuredAsset.data.collectionId = processState.Metadata.CollectionId;
 
