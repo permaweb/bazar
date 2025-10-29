@@ -299,6 +299,9 @@ export const ConfirmationDetails = styled.div`
 `;
 
 export const ConfirmationDetailsHeader = styled.div`
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
 	margin: 0 0 8.5px 0;
 	p {
 		font-size: ${(props) => props.theme.typography.size.base};
@@ -324,6 +327,39 @@ export const ConfirmationDetailsLineWrapper = styled.div`
 
 	#id-line {
 		margin: 2.5px 0 0 0;
+	}
+`;
+
+export const ConfirmationDetailsAction = styled(ConfirmationDetails)<{ active: boolean }>`
+	cursor: pointer;
+	transition: all 100ms;
+	background: ${(props) =>
+		props.active ? props.theme.colors.indicator.primary : props.theme.colors.container.primary.background} !important;
+
+	p {
+		color: ${(props) => (props.active ? props.theme.colors.font.light1 : props.theme.colors.font.primary)} !important;
+	}
+
+	&:hover {
+		background: ${(props) =>
+			props.active ? props.theme.colors.indicator.primary : props.theme.colors.container.primary.active} !important;
+	}
+`;
+
+export const ConfirmationDetailsActionIndicator = styled.div<{ active: boolean }>`
+	height: 20px;
+	width: 20px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	border: 1.5px solid ${(props) => (props.active ? props.theme.colors.font.light1 : props.theme.colors.border.primary)};
+	border-radius: 50%;
+
+	svg {
+		height: 10px;
+		width: 10px;
+		color: ${(props) => props.theme.colors.font.light1};
+		fill: ${(props) => props.theme.colors.font.light1};
 	}
 `;
 

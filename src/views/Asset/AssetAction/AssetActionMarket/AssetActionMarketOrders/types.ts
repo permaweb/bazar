@@ -4,4 +4,5 @@ export interface IProps {
 	asset: AssetDetailType;
 	type: AssetMarketActionOrderType;
 	toggleUpdate: () => void;
+	updating: boolean;
 }

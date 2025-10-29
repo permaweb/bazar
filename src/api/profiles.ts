@@ -105,116 +105,116 @@ export async function getProfiles(_ids: string[]): Promise<any[]> {
 	// return profiles;
 }
 
-export async function handleBatchProfileCache(args: { profileIds: string[] }): Promise<any[]> {
-	return lock.acquire('handleBatchProfileCache', async () => {
-		try {
-			const state = store.getState().profilesReducer;
-			let { registryProfiles = [], missingProfileIds = [], lastUpdate = 0 } = state;
+// export async function handleBatchProfileCache(args: { profileIds: string[] }): Promise<any[]> {
+// 	return lock.acquire('handleBatchProfileCache', async () => {
+// 		try {
+// 			const state = store.getState().profilesReducer;
+// 			let { registryProfiles = [], missingProfileIds = [], lastUpdate = 0 } = state;
 
-			const isCacheValid = Date.now() - lastUpdate < TTL_MS;
+// 			const isCacheValid = Date.now() - lastUpdate < TTL_MS;
 
-			/*
-				The cache is too old, update all the profiles again
-				*/
-			if (!isCacheValid) {
-				const metadataLookup = await readHandler({
-					processId: AO.profileRegistry,
-					action: 'Get-Metadata-By-ProfileIds',
-					data: { ProfileIds: args.profileIds },
-				});
+// 			/*
+// 				The cache is too old, update all the profiles again
+// 				*/
+// 			if (!isCacheValid) {
+// 				const metadataLookup = await readHandler({
+// 					processId: AO.profileRegistry,
+// 					action: 'Get-Metadata-By-ProfileIds',
+// 					data: { ProfileIds: args.profileIds },
+// 				});
 
-				const fetchedIds = metadataLookup.map((profile: { ProfileId: string }) => profile.ProfileId);
-				const newMissingProfileIds = args.profileIds.filter((id) => !fetchedIds.includes(id));
+// 				const fetchedIds = metadataLookup.map((profile: { ProfileId: string }) => profile.ProfileId);
+// 				const newMissingProfileIds = args.profileIds.filter((id) => !fetchedIds.includes(id));
 
-				store.dispatch(
-					profilesActions.setProfiles({
-						...state,
-						registryProfiles: metadataLookup,
-						missingProfileIds: [...new Set([...newMissingProfileIds])],
-						lastUpdate: Date.now(),
-					})
-				);
+// 				store.dispatch(
+// 					profilesActions.setProfiles({
+// 						...state,
+// 						registryProfiles: metadataLookup,
+// 						missingProfileIds: [...new Set([...newMissingProfileIds])],
+// 						lastUpdate: Date.now(),
+// 					})
+// 				);
 
-				return args.profileIds.map((id) => {
-					const profile = metadataLookup.find((profile: { ProfileId: string }) => profile.ProfileId === id);
-					return {
-						id: profile?.ProfileId || id,
-						username: profile?.Username || null,
-						thumbnail: profile?.ProfileImage || null,
-						description: profile?.Description ?? null,
-					};
-				});
-			}
+// 				return args.profileIds.map((id) => {
+// 					const profile = metadataLookup.find((profile: { ProfileId: string }) => profile.ProfileId === id);
+// 					return {
+// 						id: profile?.ProfileId || id,
+// 						username: profile?.Username || null,
+// 						thumbnail: profile?.ProfileImage || null,
+// 						description: profile?.Description ?? null,
+// 					};
+// 				});
+// 			}
 
-			const cachedProfiles = args.profileIds
-				.map((id) => registryProfiles.find((profile: { ProfileId: string }) => profile.ProfileId === id))
-				.filter(Boolean);
+// 			const cachedProfiles = args.profileIds
+// 				.map((id) => registryProfiles.find((profile: { ProfileId: string }) => profile.ProfileId === id))
+// 				.filter(Boolean);
 
-			const filteredIds = args.profileIds.filter(
-				(id) =>
-					!registryProfiles.some((profile: { ProfileId: string }) => profile.ProfileId === id) &&
-					!missingProfileIds.includes(id)
-			);
+// 			const filteredIds = args.profileIds.filter(
+// 				(id) =>
+// 					!registryProfiles.some((profile: { ProfileId: string }) => profile.ProfileId === id) &&
+// 					!missingProfileIds.includes(id)
+// 			);
 
-			missingProfileIds = missingProfileIds.filter((id: string) => args.profileIds.includes(id));
+// 			missingProfileIds = missingProfileIds.filter((id: string) => args.profileIds.includes(id));
 
-			if (cachedProfiles.length + missingProfileIds.length === args.profileIds.length) {
-				return args.profileIds.map((id) => {
-					const profile = cachedProfiles.find((profile: { ProfileId: string }) => profile.ProfileId === id);
-					return {
-						id: profile?.ProfileId || id,
-						username: profile?.Username || null,
-						thumbnail: profile?.ProfileImage || null,
-						description: profile?.Description ?? null,
-					};
-				});
-			}
+// 			if (cachedProfiles.length + missingProfileIds.length === args.profileIds.length) {
+// 				return args.profileIds.map((id) => {
+// 					const profile = cachedProfiles.find((profile: { ProfileId: string }) => profile.ProfileId === id);
+// 					return {
+// 						id: profile?.ProfileId || id,
+// 						username: profile?.Username || null,
+// 						thumbnail: profile?.ProfileImage || null,
+// 						description: profile?.Description ?? null,
+// 					};
+// 				});
+// 			}
 
-			const metadataLookup =
-				filteredIds.length > 0
-					? await readHandler({
-							processId: AO.profileRegistry,
-							action: 'Get-Metadata-By-ProfileIds',
-							data: { ProfileIds: filteredIds },
-					  })
-					: [];
+// 			const metadataLookup =
+// 				filteredIds.length > 0
+// 					? await readHandler({
+// 							processId: AO.profileRegistry,
+// 							action: 'Get-Metadata-By-ProfileIds',
+// 							data: { ProfileIds: filteredIds },
+// 					  })
+// 					: [];
 
-			const fetchedIds = metadataLookup.map((profile: { ProfileId: string }) => profile.ProfileId);
-			const newMissingProfileIds = filteredIds.filter((id) => !fetchedIds.includes(id));
+// 			const fetchedIds = metadataLookup.map((profile: { ProfileId: string }) => profile.ProfileId);
+// 			const newMissingProfileIds = filteredIds.filter((id) => !fetchedIds.includes(id));
 
-			const combinedProfiles = [...registryProfiles, ...metadataLookup].reduce<any[]>((uniqueProfiles, profile) => {
-				if (!uniqueProfiles.some((existing) => existing.ProfileId === profile.ProfileId)) {
-					uniqueProfiles.push({
-						id: profile?.ProfileId,
-						username: profile?.Username || null,
-						thumbnail: profile?.ProfileImage || null,
-						description: profile?.Description ?? null,
-					});
-				}
-				return uniqueProfiles;
-			}, []);
+// 			const combinedProfiles = [...registryProfiles, ...metadataLookup].reduce<any[]>((uniqueProfiles, profile) => {
+// 				if (!uniqueProfiles.some((existing) => existing.ProfileId === profile.ProfileId)) {
+// 					uniqueProfiles.push({
+// 						id: profile?.ProfileId,
+// 						username: profile?.Username || null,
+// 						thumbnail: profile?.ProfileImage || null,
+// 						description: profile?.Description ?? null,
+// 					});
+// 				}
+// 				return uniqueProfiles;
+// 			}, []);
 
-			store.dispatch(
-				profilesActions.setProfiles({
-					...state,
-					registryProfiles: combinedProfiles,
-					missingProfileIds: [...new Set([...missingProfileIds, ...newMissingProfileIds])],
-					lastUpdate: Date.now(),
-				})
-			);
+// 			store.dispatch(
+// 				profilesActions.setProfiles({
+// 					...state,
+// 					registryProfiles: combinedProfiles,
+// 					missingProfileIds: [...new Set([...missingProfileIds, ...newMissingProfileIds])],
+// 					lastUpdate: Date.now(),
+// 				})
+// 			);
 
-			return args.profileIds.map((id) => {
-				const profile = combinedProfiles.find((profile: { ProfileId: string }) => profile.ProfileId === id);
-				return {
-					id: profile?.ProfileId || id,
-					username: profile?.Username || null,
-					thumbnail: profile?.ProfileImage || null,
-					description: profile?.Description ?? null,
-				};
-			});
-		} catch (e: any) {
-			console.error('Error in handleBatchProfileCache:', e);
-			throw new Error(e.message);
-		}
-	});
-}
+// 			return args.profileIds.map((id) => {
+// 				const profile = combinedProfiles.find((profile: { ProfileId: string }) => profile.ProfileId === id);
+// 				return {
+// 					id: profile?.ProfileId || id,
+// 					username: profile?.Username || null,
+// 					thumbnail: profile?.ProfileImage || null,
+// 					description: profile?.Description ?? null,
+// 				};
+// 			});
+// 		} catch (e: any) {
+// 			console.error('Error in handleBatchProfileCache:', e);
+// 			throw new Error(e.message);
+// 		}
+// 	});
+// }

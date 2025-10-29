@@ -484,21 +484,23 @@ export function DelegationPanel({ walletAddress, isOpen, onClose }: DelegationPa
 			const processInfo: Record<string, ProcessInfo> = {};
 			// Fetch process info for both the delegation process and its Token-Process if present
 			const processInfoPromises = delegations.map(async (delegation) => {
-				try {
-					const info = await getProcessInfo(delegation.walletTo);
-					if (info) {
-						processInfo[delegation.walletTo] = info;
-						if (info['Token-Process']) {
-							const tokenInfo = await getProcessInfo(info['Token-Process']);
-							if (tokenInfo) {
-								processInfo[info['Token-Process']] = tokenInfo;
+				if (delegation.walletTo !== walletAddress) {
+					try {
+						const info = await getProcessInfo(delegation.walletTo);
+						if (info) {
+							processInfo[delegation.walletTo] = info;
+							if (info['Token-Process']) {
+								const tokenInfo = await getProcessInfo(info['Token-Process']);
+								if (tokenInfo) {
+									processInfo[info['Token-Process']] = tokenInfo;
+								}
 							}
 						}
+						return { processId: delegation.walletTo, info };
+					} catch (error) {
+						console.warn(`Failed to load process info for ${delegation.walletTo}:`, error);
+						return { processId: delegation.walletTo, info: null };
 					}
-					return { processId: delegation.walletTo, info };
-				} catch (error) {
-					console.warn(`Failed to load process info for ${delegation.walletTo}:`, error);
-					return { processId: delegation.walletTo, info: null };
 				}
 			});
 			await Promise.all(processInfoPromises);

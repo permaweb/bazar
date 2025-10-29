@@ -8,9 +8,7 @@ import { Loader } from 'components/atoms/Loader';
 import { Panel } from 'components/molecules/Panel';
 import { ProfileManage } from 'components/organisms/ProfileManage';
 import { connect, createSigner } from 'helpers/aoconnect';
-import { getArNSDataForAddress } from 'helpers/arns';
 import { AO, HB, STORAGE } from 'helpers/config';
-import { getTxEndpoint } from 'helpers/endpoints';
 import { clearTokenStatusCache } from 'helpers/tokenValidation';
 
 import { useArweaveProvider } from './ArweaveProvider';
@@ -63,8 +61,8 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 	const [showProfileManager, setShowProfileManager] = React.useState<boolean>(false);
 	const [refreshProfileTrigger, setRefreshProfileTrigger] = React.useState<boolean>(false);
 	const [profilePending, setProfilePending] = React.useState<boolean>(false);
-	const [arnsPrimaryName, setArnsPrimaryName] = React.useState<string | null>(null);
-	const [arnsAvatarUrl, setArnsAvatarUrl] = React.useState<string | null>(null);
+	const [arnsPrimaryName, _setArnsPrimaryName] = React.useState<string | null>(null);
+	const [arnsAvatarUrl, _setArnsAvatarUrl] = React.useState<string | null>(null);
 
 	const [tokenBalances, setTokenBalances] = React.useState<{
 		[address: string]: { profileBalance: number; walletBalance: number };
@@ -170,74 +168,10 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 	}, [arProvider.wallet, arProvider.walletAddress, refreshProfileTrigger]);
 
 	React.useEffect(() => {
-		// const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
 		const fetchBalances = async () => {
 			if (!arProvider.walletAddress || !profile?.id) return;
 
 			try {
-				// const newBalances: any = { ...tokenBalances };
-
-				// // Fetch balances for all available tokens
-				// for (const tokenId of Object.keys(TOKEN_REGISTRY)) {
-				// 	try {
-				// 		// Check if token supports balance operations
-				// 		if (!isTokenSupported(tokenId, 'balance')) {
-				// 			console.warn(`Token ${tokenId} does not support balance operations`);
-				// 			newBalances[tokenId] = {
-				// 				walletBalance: '0',
-				// 				profileBalance: '0',
-				// 			};
-				// 			continue;
-				// 		}
-
-				// 		const walletBalance = await libs.readProcess({
-				// 			processId: tokenId,
-				// 			action: 'Balance',
-				// 			tags: [{ name: 'Recipient', value: arProvider.walletAddress }],
-				// 		});
-				// 		await sleep(500);
-
-				// 		const profileBalance = await libs.readProcess({
-				// 			processId: tokenId,
-				// 			action: 'Balance',
-				// 			tags: [{ name: 'Recipient', value: profile.id }],
-				// 		});
-				// 		await sleep(500);
-
-				// 		// Handle null responses gracefully
-				// 		const processedWalletBalance = handleBalanceResponse(tokenId, walletBalance, arProvider.walletAddress);
-				// 		const processedProfileBalance = handleBalanceResponse(tokenId, profileBalance, profile.id);
-
-				// 		newBalances[tokenId] = {
-				// 			walletBalance: processedWalletBalance,
-				// 			profileBalance: processedProfileBalance,
-				// 		};
-
-				// 		// Update token status based on response
-				// 		updateTokenStatus(tokenId, {
-				// 			hasBalance: walletBalance !== null || profileBalance !== null,
-				// 		});
-				// 	} catch (e) {
-				// 		if (process.env.NODE_ENV === 'development') {
-				// 			console.error(`Error fetching balance for token ${tokenId}:`, e);
-				// 		}
-
-				// 		// Handle errors gracefully with fallback values
-				// 		newBalances[tokenId] = {
-				// 			walletBalance: '0',
-				// 			profileBalance: '0',
-				// 		};
-
-				// 		// Update token status to reflect the error
-				// 		updateTokenStatus(tokenId, {
-				// 			hasBalance: false,
-				// 		});
-				// 	}
-				// }
-
-				// setTokenBalances(newBalances);
-
 				// Helper function to normalize balance response
 				const normalizeBalance = (balanceResponse: any) => {
 					if (balanceResponse === null || balanceResponse === undefined) {
@@ -260,61 +194,45 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 					return Number(balanceResponse) || null;
 				};
 
-				// Fetch balances in parallel and update state immediately as each completes
-				Promise.all([
-					libs.readProcess({
-						processId: AO.defaultToken,
-						action: 'Balance',
-						tags: [{ name: 'Recipient', value: arProvider.walletAddress }],
-					}),
-					libs.readProcess({
-						processId: AO.defaultToken,
-						action: 'Balance',
-						tags: [{ name: 'Recipient', value: profile.id }],
-					}),
-				]).then(([walletBalance, profileBalance]) => {
+				const fetchBalance = async (
+					processId: string,
+					recipient: string,
+					field: 'walletBalance' | 'profileBalance'
+				) => {
+					try {
+						const resp = await libs.readProcess({
+							processId,
+							action: 'Balance',
+							tags: [{ name: 'Recipient', value: recipient }],
+						});
+						setTokenField(processId, field, normalizeBalance(resp));
+					} catch (err) {
+						console;
+						console.error('Balance fetch failed:', { processId, recipient, err });
+						setTokenField(processId, field, 0);
+					}
+				};
+
+				const setTokenField = (
+					tokenId: string,
+					field: 'walletBalance' | 'profileBalance',
+					value?: number,
+					_error?: unknown
+				) => {
 					setTokenBalances((prev) => ({
 						...prev,
-						[AO.defaultToken]: {
-							walletBalance: normalizeBalance(walletBalance),
-							profileBalance: normalizeBalance(profileBalance),
+						[tokenId]: {
+							...prev[tokenId],
+							[field]: value,
 						},
 					}));
-				});
+				};
 
-				Promise.all([
-					libs.readProcess({
-						processId: AO.pixl,
-						action: 'Balance',
-						tags: [{ name: 'Recipient', value: arProvider.walletAddress }],
-					}),
-					libs.readProcess({
-						processId: AO.pixl,
-						action: 'Balance',
-						tags: [{ name: 'Recipient', value: profile.id }],
-					}),
-				]).then(([walletBalance, profileBalance]) => {
-					setTokenBalances((prev) => ({
-						...prev,
-						[AO.pixl]: {
-							walletBalance: normalizeBalance(walletBalance),
-							profileBalance: normalizeBalance(profileBalance),
-						},
-					}));
-				});
+				fetchBalance(AO.defaultToken, arProvider.walletAddress, 'walletBalance');
+				fetchBalance(AO.defaultToken, profile.id, 'profileBalance');
 
-				// const stampsTokenWalletBalance = await libs.readProcess({
-				// 	processId: AO.stamps,
-				// 	action: 'Balance',
-				// 	tags: [{ name: 'Recipient', value: arProvider.walletAddress }],
-				// });
-				// await sleep(500);
-
-				// const stampsTokenProfileBalance = await libs.readProcess({
-				// 	processId: AO.stamps,
-				// 	action: 'Balance',
-				// 	tags: [{ name: 'Recipient', value: profile.id }],
-				// });
+				fetchBalance(AO.pixl, arProvider.walletAddress, 'walletBalance');
+				fetchBalance(AO.pixl, profile.id, 'profileBalance');
 			} catch (e) {
 				if (process.env.NODE_ENV === 'development') {
 					console.error('Error fetching token balances:', e);
@@ -325,27 +243,27 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 		fetchBalances();
 	}, [arProvider.walletAddress, profile, toggleTokenBalanceUpdate]);
 
-	React.useEffect(() => {
-		if (!arProvider.walletAddress) {
-			setArnsPrimaryName(null);
-			setArnsAvatarUrl(null);
-			return;
-		}
+	// React.useEffect(() => {
+	// 	if (!arProvider.walletAddress) {
+	// 		setArnsPrimaryName(null);
+	// 		setArnsAvatarUrl(null);
+	// 		return;
+	// 	}
 
-		(async function () {
-			try {
-				const arnsData = await getArNSDataForAddress(arProvider.walletAddress);
+	// 	(async function () {
+	// 		try {
+	// 			const arnsData = await getArNSDataForAddress(arProvider.walletAddress);
 
-				setArnsPrimaryName(arnsData.primaryName);
-				const avatarUrl = arnsData.logo ? getTxEndpoint(arnsData.logo) : null;
-				setArnsAvatarUrl(avatarUrl);
-			} catch (err) {
-				console.error('PermawebProvider - ArNS error:', err);
-				setArnsPrimaryName(null);
-				setArnsAvatarUrl(null);
-			}
-		})();
-	}, [arProvider.walletAddress]);
+	// 			setArnsPrimaryName(arnsData.primaryName);
+	// 			const avatarUrl = arnsData.logo ? getTxEndpoint(arnsData.logo) : null;
+	// 			setArnsAvatarUrl(avatarUrl);
+	// 		} catch (err) {
+	// 			console.error('PermawebProvider - ArNS error:', err);
+	// 			setArnsPrimaryName(null);
+	// 			setArnsAvatarUrl(null);
+	// 		}
+	// 	})();
+	// }, [arProvider.walletAddress]);
 
 	async function resolveProfile() {
 		try {

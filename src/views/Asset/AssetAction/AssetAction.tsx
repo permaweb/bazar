@@ -444,7 +444,7 @@ export default function AssetAction(props: IProps) {
 					})}
 				</>
 			);
-		} else return <p>None</p>;
+		} else return <p>{props.updating ? `${language.updating}...` : 'None'}</p>;
 	}, [currentListings, showCurrentListingsModal, mobile, permawebProvider.profile]);
 
 	function getCurrentTab() {
@@ -455,6 +455,7 @@ export default function AssetAction(props: IProps) {
 						asset={props.asset}
 						getCurrentListings={getCurrentListings}
 						toggleUpdate={props.toggleUpdate}
+						updating={props.updating}
 					/>
 				);
 			case ACTION_TAB_OPTIONS.owners:
@@ -517,7 +518,7 @@ export default function AssetAction(props: IProps) {
 					<S.OrdersWrapper>
 						{(showCurrentlyOwnedBy() || (currentListings && currentListings.length > 0)) && (
 							<S.OwnerLinesWrapper>
-								{showCurrentlyOwnedBy() && (
+								{/* {showCurrentlyOwnedBy() && (
 									<S.OwnerLine>
 										<span>{language.currentlyOwnedBy}</span>
 										<button
@@ -528,7 +529,7 @@ export default function AssetAction(props: IProps) {
 											{ownerCountDisplay}
 										</button>
 									</S.OwnerLine>
-								)}
+								)} */}
 								{currentListings && currentListings.length > 0 && (
 									<S.OwnerLine>
 										<span>{language.currentlyBeingSoldBy}</span>

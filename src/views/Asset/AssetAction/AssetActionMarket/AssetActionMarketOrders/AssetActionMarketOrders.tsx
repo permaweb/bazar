@@ -1,10 +1,10 @@
 import React from 'react';
-import { useDispatch } from 'react-redux';
 import { Link } from 'react-router-dom';
+import { ReactSVG } from 'react-svg';
 
 import { createOrder, createOrderbook } from '@permaweb/ucm';
 
-import { messageResults, readHandler } from 'api';
+import { messageResults } from 'api';
 
 import { Button } from 'components/atoms/Button';
 import { CurrencyLine } from 'components/atoms/CurrencyLine';
@@ -14,7 +14,7 @@ import { TokenSelector } from 'components/atoms/TokenSelector';
 import { TxAddress } from 'components/atoms/TxAddress';
 import { Panel } from 'components/molecules/Panel';
 import { createDataItemSigner, message, result } from 'helpers/aoconnect';
-import { AO, ASSETS, REDIRECTS, TOKEN_REGISTRY, URLS } from 'helpers/config';
+import { ASSETS, REDIRECTS, TOKEN_REGISTRY, URLS } from 'helpers/config';
 import { AssetOrderType } from 'helpers/types';
 import {
 	checkValidAddress,
@@ -28,229 +28,15 @@ import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 import { usePermawebProvider } from 'providers/PermawebProvider';
 import { useTokenProvider } from 'providers/TokenProvider';
-import * as streakActions from 'store/streaks/actions';
 
 import * as S from './styles';
 import { IProps } from './types';
 
 const MIN_PRICE = 0.000001;
 
-// Custom createOrder function with extended timeout for legacy assets
-async function createOrderWithExtendedTimeout(
-	deps: any,
-	args: any,
-	callback: (args: { processing: boolean; success: boolean; message: string }) => void,
-	timeoutMs: number
-): Promise<string> {
-	// Import required modules
-	const Permaweb = (await import('@permaweb/libs')).default;
-	const { getTagValue } = await import('helpers/utils');
-
-	// Import UCM utility functions - these are not exported from the main UCM package
-	// We'll need to implement them locally or use alternatives
-	const getTagValueForAction = (messages: any[], tagName: string, action: string, defaultValue: string): string => {
-		for (const message of messages) {
-			const actionTag = message.Tags.find((tag: any) => tag.name === 'Action' && tag.value === action);
-			if (actionTag) {
-				const messageTag = message.Tags.find((tag: any) => tag.name === tagName);
-				if (messageTag) return messageTag.value;
-			}
-		}
-		return defaultValue;
-	};
-
-	const globalLog = (...args: any[]) => {
-		console.log('[@permaweb/ucm]', ...args);
-	};
-
-	// Calculate max attempts based on timeout (assuming 1 second delay between attempts)
-	const maxAttempts = Math.floor(timeoutMs / 1000);
-	// Legacy asset timeout configuration
-
-	const permaweb = Permaweb.init(deps);
-
-	try {
-		const MESSAGE_GROUP_ID = Date.now().toString();
-
-		const tags = [
-			{ name: 'Target', value: args.dominantToken },
-			{ name: 'ForwardTo', value: args.dominantToken },
-			{ name: 'ForwardAction', value: 'Transfer' },
-			{ name: 'Forward-To', value: args.dominantToken },
-			{ name: 'Forward-Action', value: 'Transfer' },
-			{ name: 'Recipient', value: args.orderbookId },
-			{ name: 'Quantity', value: args.quantity },
-		];
-
-		const forwardedTags = [
-			{ name: 'X-Order-Action', value: 'Create-Order' },
-			{ name: 'X-Dominant-Token', value: args.dominantToken },
-			{ name: 'X-Swap-Token', value: args.swapToken },
-			{ name: 'X-Group-ID', value: MESSAGE_GROUP_ID },
-		];
-
-		const data = { Target: args.dominantToken, Action: 'Transfer', Input: {} };
-
-		if (args.unitPrice) forwardedTags.push({ name: 'X-Price', value: args.unitPrice.toString() });
-		if (args.denomination) forwardedTags.push({ name: 'X-Transfer-Denomination', value: args.denomination.toString() });
-
-		tags.push(...forwardedTags);
-
-		globalLog('Processing order...');
-		callback({ processing: true, success: false, message: 'Processing your order...' });
-
-		const transferId = await permaweb.sendMessage({
-			processId: args.creatorId,
-			action: args.action,
-			tags: tags,
-			data: data,
-		});
-
-		globalLog(`Transfer ID: ${transferId}`);
-
-		const successMatch = ['Order-Success'];
-		const errorMatch = ['Order-Error'];
-
-		// Use our custom getMatchingMessages with extended timeout
-		const messagesByGroupId = await getMatchingMessagesWithExtendedTimeout(
-			[args.orderbookId],
-			MESSAGE_GROUP_ID,
-			successMatch,
-			errorMatch,
-			deps,
-			maxAttempts
-		);
-
-		const currentMatchActions = messagesByGroupId
-			.map((message: any) => getTagValue(message.Tags, 'Action'))
-			.filter((action): action is string => action !== null);
-
-		const isSuccess = successMatch.every((action) => currentMatchActions.includes(action));
-		const isError = errorMatch.every((action) => currentMatchActions.includes(action));
-
-		if (isSuccess) {
-			const successMessage = getTagValueForAction(messagesByGroupId, 'Message', 'Order-Success', 'Order created!');
-			callback({ processing: false, success: true, message: successMessage });
-		} else if (isError) {
-			const errorMessage = getTagValueForAction(messagesByGroupId, 'Message', 'Order-Error', 'Order failed');
-			callback({ processing: false, success: false, message: errorMessage });
-		} else {
-			throw new Error('Unexpected state: Order not fully processed.');
-		}
-
-		return getTagValueForAction(messagesByGroupId, 'OrderId', 'Order-Success', transferId);
-	} catch (e: any) {
-		// For legacy assets, if we hit the timeout, show a more helpful message
-		if (e.message && e.message.includes('Failed to match actions within retry limit')) {
-			callback({
-				processing: false,
-				success: false,
-				message: 'Legacy asset order is processing. This can take up to 20 minutes. Please check your orders later.',
-			});
-			throw new Error(
-				'Legacy asset order is processing. This can take up to 20 minutes. Please check your orders later.'
-			);
-		}
-		throw new Error(e.message ?? 'Error creating order in UCM');
-	}
-}
-
-// Custom getMatchingMessages with extended timeout
-async function getMatchingMessagesWithExtendedTimeout(
-	processes: string[],
-	groupId: string,
-	successMatch: string[],
-	errorMatch: string[],
-	deps: any,
-	maxAttempts: number,
-	delayMs: number = 1000
-): Promise<any[]> {
-	let currentMatchActions: string[] = [];
-	let attempts = 0;
-
-	function isMatch(currentMatchActions: string[], successMatch: string[], errorMatch: string[]): boolean {
-		const currentSet = new Set(currentMatchActions);
-		const successSet = new Set(successMatch);
-		const errorSet = new Set(errorMatch);
-
-		return (
-			(successSet.size === currentSet.size && [...successSet].every((action) => currentSet.has(action))) ||
-			(errorSet.size === currentSet.size && [...errorSet].every((action) => currentSet.has(action)))
-		);
-	}
-
-	let messagesByGroupId = null;
-
-	do {
-		attempts++;
-
-		try {
-			messagesByGroupId = await getMessagesByGroupId(processes, groupId, deps);
-		} catch (error) {
-			// For network errors, just log and continue waiting - don't fail immediately
-			// Network error on attempt, continuing to wait
-			messagesByGroupId = []; // Set empty array to continue the loop
-		}
-
-		const { getTagValue } = await import('helpers/utils');
-		currentMatchActions = messagesByGroupId
-			.map((message: any) => getTagValue(message.Tags, 'Action'))
-			.filter((action): action is string => action !== null);
-
-		const globalLog = (...args: any[]) => {
-			console.log('[@permaweb/ucm]', ...args);
-		};
-		globalLog(`Attempt ${attempts} for results...`);
-
-		if (!isMatch(currentMatchActions, successMatch, errorMatch)) {
-			await new Promise((resolve) => setTimeout(resolve, delayMs));
-		}
-	} while (!isMatch(currentMatchActions, successMatch, errorMatch) && attempts < maxAttempts);
-
-	if (!isMatch(currentMatchActions, successMatch, errorMatch)) {
-		throw new Error('Failed to match actions within retry limit.');
-	}
-
-	const globalLog = (...args: any[]) => {
-		console.log('[@permaweb/ucm]', ...args);
-	};
-	for (const match of currentMatchActions) {
-		globalLog('Match found:', match);
-	}
-
-	return messagesByGroupId;
-}
-
-// Helper function to get messages by group ID
-async function getMessagesByGroupId(processes: string[], groupId: string, deps: any): Promise<any[]> {
-	const { getTagValue } = await import('helpers/utils');
-
-	const resultsByGroupId = [];
-	for (const process of processes) {
-		const messageResults = await deps.ao.results({
-			process: process,
-			sort: 'DESC',
-			limit: 100,
-		});
-
-		if (messageResults?.edges?.length) {
-			for (const result of messageResults.edges) {
-				if (result.node?.Messages?.length) {
-					for (const message of result.node.Messages) {
-						const messageGroupId = getTagValue(message.Tags, 'X-Group-ID');
-						if (messageGroupId === groupId) resultsByGroupId.push(message);
-					}
-				}
-			}
-		}
-	}
-
-	return resultsByGroupId;
-}
+// TODO: Forward to wallet option
 
 export default function AssetActionMarketOrders(props: IProps) {
-	const dispatch = useDispatch();
-
 	const permawebProvider = usePermawebProvider();
 	const arProvider = useArweaveProvider();
 	const tokenProvider = useTokenProvider();
@@ -294,12 +80,18 @@ export default function AssetActionMarketOrders(props: IProps) {
 	const [currentNotification, setCurrentNotification] = React.useState<string | null>(null);
 	const [insufficientBalance, setInsufficientBalance] = React.useState<boolean>(false);
 
+	// Buy / Sell tokens through wallet directly, bypass profile
+	const [sendToWallet, setSendToWallet] = React.useState<boolean>(false);
+
 	React.useEffect(() => {
 		if (props.asset) {
 			if (props.asset.state) {
 				if (props.asset.state.denomination) {
 					if (!denomination && props.asset.state.denomination && Number(props.asset.state.denomination) > 1) {
 						setDenomination(Math.pow(10, props.asset.state.denomination));
+
+						/* Default to wallet if it is a denominated token */
+						setSendToWallet(true);
 					}
 				}
 
@@ -378,6 +170,8 @@ export default function AssetActionMarketOrders(props: IProps) {
 			}
 		}
 	}, [props.asset, arProvider.walletAddress, permawebProvider.profile, denomination, tokenProvider.selectedToken.id]);
+
+	console.log(permawebProvider.tokenBalances);
 
 	// Set initial transferDenomination based on current selected token
 	React.useEffect(() => {
@@ -512,12 +306,17 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 				const data: any = {
 					orderbookId: currentOrderbook,
-					creatorId: permawebProvider.profile.id,
 					dominantToken: dominantToken,
 					swapToken: swapToken,
 					quantity: transferQuantity,
 					action: action,
 				};
+
+				if (props.type === 'buy' && sendToWallet) {
+					data.walletAddress = arProvider.walletAddress;
+				} else data.creatorId = permawebProvider.profile.id;
+
+				console.log(data);
 
 				if (unitPrice) data.unitPrice = unitPrice.toString();
 
@@ -529,50 +328,24 @@ export default function AssetActionMarketOrders(props: IProps) {
 					data.tokenDenomination = transferDenomination.toString(); // Token denomination
 				}
 
-				// Check if this is a legacy asset (using global orderbook)
-				const isLegacyAsset = props.asset.orderbook?.id === AO.ucm;
-
-				let orderId;
-				if (isLegacyAsset) {
-					// For legacy assets, show warning and use extended timeout
-					// Using custom createOrderWithExtendedTimeout for legacy asset
-					handleStatusUpdate(
-						true,
-						false,
-						false,
-						'Processing order for legacy asset (this may take up to 20 minutes)...'
-					);
-
-					// Create a custom createOrder with extended timeout for legacy assets
-					orderId = await createOrderWithExtendedTimeout(
-						permawebProvider.deps,
-						data,
-						(args: { processing: boolean; success: boolean; message: string }) => {
-							handleStatusUpdate(args.processing, !args.processing, args.success, args.message);
-						},
-						20 * 60 * 1000 // 20 minutes timeout
-					);
-				} else {
-					// Regular assets use normal timeout
-					orderId = await createOrder(
-						permawebProvider.deps,
-						data,
-						(args: { processing: boolean; success: boolean; message: string }) => {
-							handleStatusUpdate(args.processing, !args.processing, args.success, args.message);
-						}
-					);
-				}
+				const orderId = await createOrder(
+					permawebProvider.deps,
+					data,
+					(args: { processing: boolean; success: boolean; message: string }) => {
+						handleStatusUpdate(args.processing, !args.processing, args.success, args.message);
+					}
+				);
 
 				setOrderId(orderId);
 
-				// TODO: Transfer back to wallet if token denomination > 1
-				if (props.type === 'buy') {
-					const streaks = await readHandler({
-						processId: AO.pixl,
-						action: 'Get-Streaks',
-					});
-					dispatch(streakActions.setStreaks(streaks.Streaks));
-				}
+				// // TODO: Transfer back to wallet if token denomination > 1
+				// if (props.type === 'buy') {
+				// 	const streaks = await readHandler({
+				// 		processId: AO.pixl,
+				// 		action: 'Get-Streaks',
+				// 	});
+				// 	dispatch(streakActions.setStreaks(streaks.Streaks));
+				// }
 
 				// Trigger asset and orderbook refresh to show the new order
 				props.toggleUpdate();
@@ -741,7 +514,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 	function handleAssetUpdate() {
 		if (orderSuccess) {
-			props.toggleUpdate();
 			setCurrentOrderQuantity('');
 			setUnitPrice('');
 			setTransferRecipient('');
@@ -969,7 +741,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 			<>
 				<S.TotalQuantityLine>
 					<p>{balanceHeader}</p>
-					<span>{formatCount(quantity.toString())}</span>
+					<span>{props.updating ? `${language.updating}...` : formatCount(quantity.toString())}</span>
 				</S.TotalQuantityLine>
 				{/* <S.TotalQuantityLine>
 					<p>{percentageHeader}</p>
@@ -990,8 +762,8 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 			if (!hasMatchingOrders) {
 				return (
-					<S.MessageWrapper warning>
-						<span>No orders available to buy with {tokenProvider.selectedToken.symbol}</span>
+					<S.MessageWrapper>
+						<span>-</span>
 					</S.MessageWrapper>
 				);
 			}
@@ -999,7 +771,8 @@ export default function AssetActionMarketOrders(props: IProps) {
 		}
 
 		let totalAmount = getTotalOrderAmount();
-		if (denomination && denomination > 1) totalAmount = BigInt(totalAmount) / BigInt(denomination);
+		if (props.type === 'buy' && denomination && denomination > 1)
+			totalAmount = BigInt(totalAmount) / BigInt(denomination);
 
 		const amount = isNaN(Number(totalAmount)) ? BigInt(0) : BigInt(totalAmount);
 		const orderCurrency = selectedTokenId;
@@ -1176,6 +949,29 @@ export default function AssetActionMarketOrders(props: IProps) {
 						<p>{props.asset.data.title}</p>
 					</S.ConfirmationHeader>
 					{getOrderDetails(true)}
+
+					{props.type === 'buy' && (
+						<S.ConfirmationDetailsAction
+							className={'border-wrapper-primary'}
+							active={sendToWallet}
+							onClick={() => setSendToWallet((prev) => !prev)}
+						>
+							<S.ConfirmationDetailsHeader>
+								<p>Send Tokens To Wallet</p>
+
+								<S.ConfirmationDetailsActionIndicator active={sendToWallet}>
+									{sendToWallet && <ReactSVG src={ASSETS.checkmark} />}
+								</S.ConfirmationDetailsActionIndicator>
+							</S.ConfirmationDetailsHeader>
+							<S.ConfirmationDetailsLineWrapper>
+								<p>
+									If checked, this order will send the tokens to your wallet directly for easier access in other
+									exchanges. Note that if this is selected, the tokens will not appear in your profile.
+								</p>
+							</S.ConfirmationDetailsLineWrapper>
+						</S.ConfirmationDetailsAction>
+					)}
+
 					{props.type !== 'transfer' && (
 						<S.ConfirmationDetails className={'border-wrapper-primary'}>
 							<S.ConfirmationDetailsHeader>
@@ -1251,10 +1047,10 @@ export default function AssetActionMarketOrders(props: IProps) {
 					</S.MaxQty>
 					<S.FieldsFlexWrapper>
 						<S.TotalsWrapper>
-							<S.TotalQuantityLine>
+							{/* <S.TotalQuantityLine>
 								<p>{`${language.totalAssetBalance}`}</p>
 								<span>{formatCount(totalAssetBalance.toString())}</span>
-							</S.TotalQuantityLine>
+							</S.TotalQuantityLine> */}
 							{getTotals}
 						</S.TotalsWrapper>
 						<S.FieldsWrapper>

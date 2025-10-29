@@ -2,7 +2,7 @@ import React from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import _ from 'lodash';
 
-import { getAssetById, getAssetOrders, readHandler } from 'api';
+import { getAssetById, getAssetOrders } from 'api';
 
 import { Loader } from 'components/atoms/Loader';
 import { Portal } from 'components/atoms/Portal';
@@ -52,8 +52,6 @@ export default function Asset() {
 	React.useEffect(() => {
 		(async function () {
 			if (id && checkValidAddress(id)) {
-				console.log('Fetching asset...');
-
 				setLoading(true);
 				let tries = 0;
 				const maxTries = 10;
@@ -89,112 +87,122 @@ export default function Asset() {
 				navigate(URLS.notFound);
 			}
 		})();
-	}, [id, toggleUpdate]);
+	}, [id]);
 
-	// TODO: Repatch global ucm process pairs with new trie
-	// TODO: Fetch orderbook pair
 	React.useEffect(() => {
 		(async function () {
 			if (asset?.orderbook?.id) {
 				setLoading(true);
-				try {
-					if (asset.orderbook.id === AO.ucm) {
-						let Orderbook = [];
-						for (const id of Object.keys(TOKEN_REGISTRY)) {
-							try {
-								const response = await permawebProvider.libs.readState({
-									processId: asset.orderbook.id,
-									path: `orderbooks/${asset.data.id}:${id}`,
-								});
+				const currentOrders = asset.orderbook.orders || [];
+				let tries = 0;
+				const maxTries = 50;
+				let ordersChanged = false;
 
-								if (response) Orderbook.push(response);
-							} catch (e: any) {}
-						}
+				// Helper to sort orders for consistent comparison
+				const sortOrders = (orders: any[]) => {
+					return _.orderBy(orders, ['id'], ['asc']);
+				};
 
-						if (Orderbook) {
-							// Find all pairs that include this asset
-							const assetPairs = Orderbook.filter((pair: any) => pair.Pair && pair.Pair.includes(asset.data.id));
-
-							// Process all pairs for this asset to get all orders
+				const fetchUntilOrderbookChanges = async () => {
+					while (!ordersChanged && tries < maxTries) {
+						try {
 							let allOrders: any[] = [];
 
-							assetPairs.forEach((pair: any) => {
-								if (pair.Orders && Array.isArray(pair.Orders)) {
-									const pairOrders = pair.Orders.map((order: any) => ({
-										creator: order.Creator || order.creator,
-										dateCreated: order.DateCreated || order.dateCreated,
-										id: order.Id || order.id,
-										originalQuantity: order.OriginalQuantity || order.originalQuantity,
-										quantity: order.Quantity || order.quantity,
-										token: order.Token || order.token,
-										currency: pair.Pair[1], // The token being received
-										price: order.Price || order.price || '0', // Ensure price is always set
-									}));
-									allOrders = allOrders.concat(pairOrders);
+							if (asset.orderbook.id === AO.ucm) {
+								let Orderbook = [];
+								for (const id of Object.keys(TOKEN_REGISTRY)) {
+									try {
+										const response = await permawebProvider.libs.readState({
+											processId: asset.orderbook.id,
+											path: `orderbooks/${asset.data.id}:${id}`,
+										});
+
+										if (response) Orderbook.push(response);
+									} catch (e: any) {}
 								}
-							});
 
-							setAsset((prevAsset) => ({
-								...prevAsset,
-								orderbook: {
-									...prevAsset.orderbook,
-									orders: allOrders,
-								},
-							}));
-						} else {
-							// Initialize with empty orders if no orderbook exists
-							setAsset((prevAsset) => ({
-								...prevAsset,
-								orderbook: {
-									...prevAsset.orderbook,
-									orders: [],
-								},
-							}));
-						}
-					} else {
-						const response = await permawebProvider.libs.readState({
-							processId: asset.orderbook.id,
-							path: 'orderbook',
-							fallbackAction: 'Info',
-							node: HB.defaultNode,
-						});
+								if (Orderbook) {
+									// Find all pairs that include this asset
+									const assetPairs = Orderbook.filter((pair: any) => pair.Pair && pair.Pair.includes(asset.data.id));
 
-						// Process ALL pairs in the orderbook, not just the first one
-						let allOrders: any[] = [];
-
-						if (response?.Orderbook) {
-							// Handle both array and single object structures
-							const orderbookData = Array.isArray(response.Orderbook) ? response.Orderbook : [response.Orderbook];
-
-							// Process each pair and concatenate orders
-							orderbookData.forEach((pair: any) => {
-								if (pair && pair.Pair) {
-									const pairOrders = getAssetOrders(pair);
-									allOrders = allOrders.concat(pairOrders);
+									// Process all pairs for this asset to get all orders
+									assetPairs.forEach((pair: any) => {
+										if (pair.Orders && Array.isArray(pair.Orders)) {
+											const pairOrders = pair.Orders.map((order: any) => ({
+												creator: order.Creator || order.creator,
+												dateCreated: order.DateCreated || order.dateCreated,
+												id: order.Id || order.id,
+												originalQuantity: order.OriginalQuantity || order.originalQuantity,
+												quantity: order.Quantity || order.quantity,
+												token: order.Token || order.token,
+												currency: pair.Pair[1], // The token being received
+												price: order.Price || order.price || '0', // Ensure price is always set
+											}));
+											allOrders = allOrders.concat(pairOrders);
+										}
+									});
 								}
-							});
-						}
+							} else {
+								const response = await permawebProvider.libs.readState({
+									processId: asset.orderbook.id,
+									path: 'orderbook',
+									fallbackAction: 'Info',
+									node: HB.defaultNode,
+								});
 
+								if (response?.Orderbook) {
+									// Handle both array and single object structures
+									const orderbookData = Array.isArray(response.Orderbook) ? response.Orderbook : [response.Orderbook];
+
+									// Process each pair and concatenate orders
+									orderbookData.forEach((pair: any) => {
+										if (pair && pair.Pair) {
+											const pairOrders = getAssetOrders(pair);
+											allOrders = allOrders.concat(pairOrders);
+										}
+									});
+								}
+							}
+
+							// Sort both arrays before deep comparison to handle order differences
+							const sortedCurrent = sortOrders(currentOrders);
+							const sortedNew = sortOrders(allOrders);
+
+							// Deep compare current orders with newly fetched orders
+							if (!_.isEqual(sortedCurrent, sortedNew)) {
+								ordersChanged = true;
+								setAsset((prevAsset) => ({
+									...prevAsset,
+									orderbook: {
+										...prevAsset.orderbook,
+										orders: allOrders,
+									},
+								}));
+							} else {
+								await new Promise((resolve) => setTimeout(resolve, 2000));
+								tries++;
+							}
+						} catch (e: any) {
+							console.error(e);
+							await new Promise((resolve) => setTimeout(resolve, 2000));
+							tries++;
+						}
+					}
+
+					if (!ordersChanged && tries >= maxTries) {
+						console.warn(`No orderbook changes detected after ${maxTries} attempts`);
+						// Initialize with empty orders on timeout
 						setAsset((prevAsset) => ({
 							...prevAsset,
 							orderbook: {
 								...prevAsset.orderbook,
-								activityId: response?.ActivityProcess,
-								orders: allOrders,
+								orders: [],
 							},
 						}));
 					}
-				} catch (e: any) {
-					console.error(e);
-					// Initialize with empty orders on error
-					setAsset((prevAsset) => ({
-						...prevAsset,
-						orderbook: {
-							...prevAsset.orderbook,
-							orders: [],
-						},
-					}));
-				}
+				};
+
+				await fetchUntilOrderbookChanges();
 				setLoading(false);
 			}
 		})();

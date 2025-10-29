@@ -128,9 +128,9 @@ export default function ProfileHeader(props: IProps) {
 						{getHeaderDetails()}
 					</S.HeaderInfo>
 					<S.HeaderActions>
-						<S.Action>
+						{/* <S.Action>
 							<Streaks profile={props.profile} />
-						</S.Action>
+						</S.Action> */}
 						{/* {permawebProvider.profile && permawebProvider.profile.id && permawebProvider.profile.id === props.profile.id && (
 							<S.Action>
 								<Button
@@ -161,6 +161,7 @@ export default function ProfileHeader(props: IProps) {
 					open={showProfileManage}
 					header={props.profile.id ? language.editProfile : `${language.createProfile}!`}
 					handleClose={props.profile.id ? () => setShowProfileManage(false) : () => navigate(URLS.base)}
+					width={550}
 				>
 					<S.PManageWrapper>
 						<ProfileManage
