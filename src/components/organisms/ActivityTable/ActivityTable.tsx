@@ -3,7 +3,7 @@ import { useSelector } from 'react-redux';
 import { Link } from 'react-router-dom';
 import { ReactSVG } from 'react-svg';
 
-import { getAssetsByIds, getProfiles, readHandler } from 'api';
+import { getAssetsByIds, getProfiles } from 'api';
 
 import { Button } from 'components/atoms/Button';
 import { CurrencyLine } from 'components/atoms/CurrencyLine';
@@ -12,12 +12,12 @@ import { Select } from 'components/atoms/Select';
 import { OwnerLine } from 'components/molecules/OwnerLine';
 import {
 	ACTIVITY_SORT_OPTIONS,
-	AO,
 	ASSETS,
 	getDefaultToken,
 	HB,
 	REDIRECTS,
 	REFORMATTED_ASSETS,
+	TOKEN_REGISTRY,
 	URLS,
 } from 'helpers/config';
 import { FormattedActivity, GqlEdge, SelectOptionType } from 'helpers/types';
@@ -342,6 +342,9 @@ export default function ActivityTable(props: IProps) {
 		} else if (assetId && REFORMATTED_ASSETS[assetId] && REFORMATTED_ASSETS[assetId].denomination) {
 			const denomination = REFORMATTED_ASSETS[assetId].denomination;
 			return `${formatCount((amount / Math.pow(10, denomination)).toString())}`;
+		} else if (assetId && TOKEN_REGISTRY[assetId] && TOKEN_REGISTRY[assetId].denomination) {
+			const denomination = TOKEN_REGISTRY[assetId].denomination;
+			return `${formatCount((amount / Math.pow(10, denomination)).toString())}`;
 		} else return formatCount(amount.toString());
 	}
 
@@ -405,7 +408,11 @@ export default function ActivityTable(props: IProps) {
 					</S.Entity>
 				);
 			}
-			return <p>-</p>;
+			return (
+				<S.Event type={'Listing'}>
+					<p>Listing</p>
+				</S.Event>
+			);
 		},
 		[props.asset?.orderbook?.id]
 	);

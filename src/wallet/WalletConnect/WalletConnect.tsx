@@ -157,7 +157,7 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 		return (
 			<>
 				<S.DHeaderWrapper>
-					<S.DHeaderFlex className={'border-wrapper-alt1'}>
+					<S.DHeaderFlex>
 						<Avatar
 							owner={permawebProvider.profile}
 							dimensions={{ wrapper: 35, icon: 21.5 }}

@@ -1,6 +1,6 @@
 import { getGQLData, readHandler } from 'api';
 
-import { AO, HB, LICENSES, PAGINATORS, REFORMATTED_ASSETS, TAGS } from 'helpers/config';
+import { AO, CUSTOM_ORDERBOOKS, HB, LICENSES, PAGINATORS, REFORMATTED_ASSETS, TAGS } from 'helpers/config';
 import { getBestGatewayForGraphQL } from 'helpers/endpoints';
 import {
 	AssetDetailType,
@@ -18,8 +18,6 @@ import {
 } from 'helpers/types';
 import { formatAddress, getAssetOrderType, getTagValue, sortByAssetOrders, sortOrderbookEntries } from 'helpers/utils';
 import { store } from 'store';
-
-const debug = (..._args: any[]) => {};
 
 export async function getAssetIdsByUser(args: { profileId: string }): Promise<string[]> {
 	try {
@@ -163,7 +161,6 @@ export async function getAssetById(args: { id: string; libs?: any }): Promise<As
 				}
 			}
 
-			// TODO
 			// if (!assetState.balances) {
 			// 	debug('Getting balances...');
 			// 	try {
@@ -205,13 +202,18 @@ export async function getAssetById(args: { id: string; libs?: any }): Promise<As
 
 			let assetOrderbook = null;
 
-			/* Check if metadata field is present to detect current assets. 
+			/* First check for custom orderbook creation, then if metadata field is present to detect current assets. 
 				Set legacy orderbook on legacy assets */
-			if (processState.Metadata) {
-				if (processState.Metadata.OrderbookId) assetOrderbook = { id: processState.Metadata.OrderbookId };
+			if (CUSTOM_ORDERBOOKS[args.id]) {
+				assetOrderbook = { id: CUSTOM_ORDERBOOKS[args.id] };
 			} else {
-				assetOrderbook = { id: AO.ucm, activityId: AO.ucmActivity };
+				if (processState.Metadata) {
+					if (processState.Metadata.OrderbookId) assetOrderbook = { id: processState.Metadata.OrderbookId };
+				} else {
+					assetOrderbook = { id: AO.ucm, activityId: AO.ucmActivity };
+				}
 			}
+
 			return {
 				...structuredAsset,
 				state: assetState,

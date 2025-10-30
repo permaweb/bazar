@@ -34,8 +34,6 @@ import { IProps } from './types';
 
 const MIN_PRICE = 0.000001;
 
-// TODO: Forward to wallet option
-
 export default function AssetActionMarketOrders(props: IProps) {
 	const permawebProvider = usePermawebProvider();
 	const arProvider = useArweaveProvider();
@@ -113,8 +111,74 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 					setConnectedBalance(calculatedOwnerBalance);
 					setConnectedWalletBalance(calculatedWalletBalance);
+				} else {
+					// Helper function to normalize balance response
+					const normalizeBalance = (balanceResponse: any) => {
+						if (balanceResponse === null || balanceResponse === undefined) {
+							return null;
+						}
+
+						// If response has Balance property, use that
+						if (typeof balanceResponse === 'object' && balanceResponse.Balance !== undefined) {
+							const balanceValue = balanceResponse.Balance;
+							if (balanceValue === '0' || balanceValue === 0) {
+								return 0;
+							}
+							return Number(balanceValue) || null;
+						}
+
+						// Otherwise, treat the response itself as the balance
+						if (balanceResponse === '0' || balanceResponse === 0) {
+							return 0;
+						}
+						return Number(balanceResponse) || null;
+					};
+
+					const fetchBalance = async (processId: string, recipient: string) => {
+						try {
+							const resp = await permawebProvider.libs.readProcess({
+								processId,
+								action: 'Balance',
+								tags: [{ name: 'Recipient', value: recipient }],
+							});
+							return normalizeBalance(resp);
+						} catch (err) {
+							console;
+							console.error('Balance fetch failed:', { processId, recipient, err });
+							return normalizeBalance(0);
+						}
+					};
+
+					(async function () {
+						if (permawebProvider.profile?.id) {
+							let calculatedOwnerBalance = await fetchBalance(props.asset.data.id, permawebProvider.profile?.id);
+							let calculatedWalletBalance = await fetchBalance(props.asset.data.id, arProvider.walletAddress);
+
+							if (denomination) {
+								calculatedOwnerBalance = calculatedOwnerBalance / denomination;
+								calculatedWalletBalance = calculatedWalletBalance / denomination;
+							}
+
+							setConnectedBalance(calculatedOwnerBalance);
+							setConnectedWalletBalance(calculatedWalletBalance);
+						}
+					})();
 				}
 
+				// if (props.asset.state.balances) {
+				// 	const balances: any = Object.keys(props.asset.state.balances).map((address: string) => {
+				// 		return Number(props.asset.state.balances[address]);
+				// 	});
+
+				// 	const totalBalance = balances.reduce((a: number, b: number) => a + b, 0);
+
+				// 	let calculatedTotalBalance = totalBalance;
+
+				// 	if (denomination) {
+				// 		calculatedTotalBalance = totalBalance / denomination;
+				// 	}
+
+				// 	setTotalAssetBalance(calculatedTotalBalance);
 				// if (props.asset.state.balances) {
 				// 	const balances: any = Object.keys(props.asset.state.balances).map((address: string) => {
 				// 		return Number(props.asset.state.balances[address]);
@@ -148,9 +212,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 				// }
 			}
 
-			// setConnectedBalance(calculatedOwnerBalance);
-			// setConnectedWalletBalance(calculatedWalletBalance);
-
 			if (props.asset.orderbook?.orders && props.asset.orderbook?.orders.length > 0) {
 				const selectedTokenId = tokenProvider.selectedToken.id;
 
@@ -169,9 +230,14 @@ export default function AssetActionMarketOrders(props: IProps) {
 				setTotalSalesQuantity(calculatedTotalSalesBalance);
 			}
 		}
-	}, [props.asset, arProvider.walletAddress, permawebProvider.profile, denomination, tokenProvider.selectedToken.id]);
-
-	console.log(permawebProvider.tokenBalances);
+	}, [
+		props.asset,
+		arProvider.walletAddress,
+		permawebProvider.profile,
+		permawebProvider.libs?.readProcess,
+		denomination,
+		tokenProvider.selectedToken.id,
+	]);
 
 	// Set initial transferDenomination based on current selected token
 	React.useEffect(() => {
@@ -243,11 +309,20 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 	async function handleSubmit() {
 		if (props.asset && arProvider.wallet && permawebProvider.profile?.id) {
+			if (props.type === 'transfer') {
+				try {
+					await handleTransfer();
+				} catch (e: any) {
+					handleStatusUpdate(false, true, false, e.message ?? 'Error executing transfer');
+				}
+				return;
+			}
+
 			let currentOrderbook = props.asset.orderbook?.id;
 
 			if (!currentOrderbook) {
 				try {
-					const args: any = { assetId: props.asset.data.id };
+					const args: any = { assetId: props.asset.data.id, writeToProcess: true };
 					if (props.asset.data.collectionId) args.collectionId = props.asset.data.collectionId;
 
 					const newOrderbook = await createOrderbook(
@@ -270,15 +345,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 				await handleWalletToProfileTransfer();
 			} catch (e: any) {
 				handleStatusUpdate(false, true, false, e);
-			}
-
-			if (props.type === 'transfer') {
-				try {
-					await handleTransfer();
-				} catch (e: any) {
-					handleStatusUpdate(false, true, false, e.message ?? 'Error executing transfer');
-				}
-				return;
 			}
 
 			const transferQuantity = getTransferQuantity().toString();
@@ -316,8 +382,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 					data.walletAddress = arProvider.walletAddress;
 				} else data.creatorId = permawebProvider.profile.id;
 
-				console.log(data);
-
 				if (unitPrice) data.unitPrice = unitPrice.toString();
 
 				// UCM needs both asset and token denominations for proper order handling
@@ -338,7 +402,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 				setOrderId(orderId);
 
-				// // TODO: Transfer back to wallet if token denomination > 1
 				// if (props.type === 'buy') {
 				// 	const streaks = await readHandler({
 				// 		processId: AO.pixl,
@@ -430,7 +493,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 					console.error(`Wallet balance: ${walletBalance}`);
 					throw new Error('Error making wallet to profile transfer');
 				} else {
-					// console.log(`Transferring remainder from wallet (${differenceNeeded.toString()}) to profile...`);
+					console.log(`Transferring remainder from wallet (${differenceNeeded.toString()}) to profile...`);
 					await messageResults({
 						processId: processId,
 						action: 'Transfer',
@@ -442,7 +505,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 						data: null,
 						responses: ['Transfer-Success', 'Transfer-Error'],
 					});
-					// console.log('Transfer complete');
+					console.log('Transfer complete');
 				}
 			}
 		} catch (e: any) {
@@ -708,7 +771,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 	const getTotals = React.useMemo(() => {
 		let balanceHeader: string | null = null;
-		let percentageHeader: string | null = null;
+		// let percentageHeader: string | null = null;
 
 		let totalBalance = 0;
 		let quantity: number | null = null;
@@ -716,12 +779,12 @@ export default function AssetActionMarketOrders(props: IProps) {
 		switch (props.type) {
 			case 'buy':
 				balanceHeader = language.totalSalesBalance;
-				percentageHeader = language.totalSalesPercentage;
+				// percentageHeader = language.totalSalesPercentage;
 				quantity = totalSalesQuantity;
 				break;
 			case 'sell':
 				balanceHeader = language.totalSalesBalanceAvailable;
-				percentageHeader = language.totalSalesPercentageAvailable;
+				// percentageHeader = language.totalSalesPercentageAvailable;
 				totalBalance = 0;
 				if (connectedBalance) totalBalance += connectedBalance;
 				if (connectedWalletBalance) totalBalance += connectedWalletBalance;
@@ -729,7 +792,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 				break;
 			case 'transfer':
 				balanceHeader = language.totalTransferBalanceAvailable;
-				percentageHeader = language.totalTransferPercentageAvailable;
+				// percentageHeader = language.totalTransferPercentageAvailable;
 				totalBalance = 0;
 				if (connectedBalance) totalBalance += connectedBalance;
 				if (connectedWalletBalance) totalBalance += connectedWalletBalance;
@@ -754,21 +817,21 @@ export default function AssetActionMarketOrders(props: IProps) {
 	function getTotalPriceDisplay() {
 		const selectedTokenId = tokenProvider.selectedToken.id;
 
-		if (props.type === 'buy') {
-			const hasUCMOrders = props.asset?.orderbook?.orders && props.asset.orderbook.orders.length > 0;
-			const hasMatchingOrders =
-				hasUCMOrders &&
-				props.asset.orderbook.orders.some((order: AssetOrderType) => order.currency === selectedTokenId);
+		// if (props.type === 'buy') {
+		// 	const hasUCMOrders = props.asset?.orderbook?.orders && props.asset.orderbook.orders.length > 0;
+		// 	const hasMatchingOrders =
+		// 		hasUCMOrders &&
+		// 		props.asset.orderbook.orders.some((order: AssetOrderType) => order.currency === selectedTokenId);
 
-			if (!hasMatchingOrders) {
-				return (
-					<S.MessageWrapper>
-						<span>-</span>
-					</S.MessageWrapper>
-				);
-			}
-		} else if (props.type === 'sell') {
-		}
+		// 	if (!hasMatchingOrders) {
+		// 		return (
+		// 			<S.MessageWrapperAlt>
+		// 				<span>{props.updating ? `${language.updating}...` : 'No Orders Available'}</span>
+		// 			</S.MessageWrapperAlt>
+		// 		);
+		// 	}
+		// } else if (props.type === 'sell') {
+		// }
 
 		let totalAmount = getTotalOrderAmount();
 		if (props.type === 'buy' && denomination && denomination > 1)
@@ -789,20 +852,20 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 	function getOrderDetails(useWrapper: boolean) {
 		let quantityLabel: string | null = null;
-		let percentageLabel: string | null = null;
+		// let percentageLabel: string | null = null;
 
 		switch (props.type) {
 			case 'buy':
 				quantityLabel = language.totalPurchaseQuantity;
-				percentageLabel = language.totalPurchasePercentage;
+				// percentageLabel = language.totalPurchasePercentage;
 				break;
 			case 'sell':
 				quantityLabel = language.totalListingQuantity;
-				percentageLabel = language.totalListingPercentage;
+				// percentageLabel = language.totalListingPercentage;
 				break;
 			case 'transfer':
 				quantityLabel = language.totalTransferQuantity;
-				percentageLabel = language.totalTransferPercentage;
+				// percentageLabel = language.totalTransferPercentage;
 				break;
 		}
 
@@ -1029,7 +1092,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 							status: Number(currentOrderQuantity) < 0 || Number(currentOrderQuantity) > maxOrderQuantity,
 							message: null,
 						}}
-						useFractional={denomination !== null}
 					/>
 					<S.MaxQty>
 						<Button

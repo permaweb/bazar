@@ -8,8 +8,6 @@ import { usePermawebProvider } from 'providers/PermawebProvider';
 import { useTokenProvider } from 'providers/TokenProvider';
 import { CloseHandler } from 'wrappers/CloseHandler';
 
-import TokenHealthIndicator from '../TokenHealthIndicator';
-
 import * as S from './styles';
 
 interface TokenSelectorProps {
@@ -91,9 +89,9 @@ export default function TokenSelector(props: TokenSelectorProps) {
 								<S.TokenName>{selectedToken.name.replace(' Token', '')}</S.TokenName>
 								<S.TokenSymbol>{selectedToken.symbol}</S.TokenSymbol>
 							</S.TokenInfo>
-							<S.HealthWrapper>
+							{/* <S.HealthWrapper>
 								<TokenHealthIndicator tokenId={selectedToken.id} operation="orders" showDetails={false} />
-							</S.HealthWrapper>
+							</S.HealthWrapper> */}
 						</S.SelectedToken>
 						<S.DropdownArrow className={isOpen ? 'open' : ''}>
 							<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -103,7 +101,7 @@ export default function TokenSelector(props: TokenSelectorProps) {
 					</S.CustomSelect>
 
 					{isOpen && (
-						<S.DropdownOptions>
+						<S.DropdownOptions className={'border-wrapper-alt2 scroll-wrapper-hidden'}>
 							{availableTokens.map((token) => {
 								const balance = getTokenBalance(token.id);
 
@@ -141,10 +139,7 @@ export default function TokenSelector(props: TokenSelectorProps) {
 												<S.TokenSymbol>{token.symbol}</S.TokenSymbol>
 											</S.TokenInfo>
 											<S.BalanceAndHealth>
-												{balance !== null && <S.TokenBalance>{formatCount(balance.toString())}</S.TokenBalance>}
-												<S.HealthWrapper>
-													<TokenHealthIndicator tokenId={token.id} operation="orders" showDetails={false} />
-												</S.HealthWrapper>
+												<S.TokenBalance>{balance !== null ? formatCount(balance.toString()) : '-'}</S.TokenBalance>
 											</S.BalanceAndHealth>
 										</S.TokenOption>
 									</S.DropdownOption>

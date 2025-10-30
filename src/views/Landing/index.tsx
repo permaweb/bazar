@@ -67,7 +67,7 @@ export default function Landing() {
 	const [collections, setCollections] = React.useState<CollectionType[] | null>(null);
 	const [collectionsLoading, setCollectionsLoading] = React.useState<boolean>(true);
 	const [musicCollections, setMusicCollections] = React.useState<CollectionType[] | null>(null);
-	const [musicCollectionsLoading, setMusicCollectionsLoading] = React.useState<boolean>(true);
+	const [_musicCollectionsLoading, setMusicCollectionsLoading] = React.useState<boolean>(true);
 	const [hasFetchedCollections, setHasFetchedCollections] = React.useState(false);
 	const [hasFetchedMusicCollections, setHasFetchedMusicCollections] = React.useState(false);
 
@@ -75,53 +75,41 @@ export default function Landing() {
 	const cachedMusicCollections = collectionsReducer?.music?.collections;
 
 	// Local Music Player State (non-persistent)
-	const [currentTrack, setCurrentTrack] = React.useState<AssetDetailType | null>(null);
-	const [isPlaying, setIsPlaying] = React.useState<boolean>(false);
-	const [currentTime, setCurrentTime] = React.useState<number>(0);
-	const [duration, setDuration] = React.useState<number>(0);
-	const [volume, setVolume] = React.useState<number>(0.7);
+	// const [currentTrack, setCurrentTrack] = React.useState<AssetDetailType | null>(null);
+	// const [isPlaying, setIsPlaying] = React.useState<boolean>(false);
+	// const [currentTime, setCurrentTime] = React.useState<number>(0);
+	// const [duration, setDuration] = React.useState<number>(0);
+	// const [volume, setVolume] = React.useState<number>(0.7);
 
 	// Local play track function - will be passed to MusicCollectionsCarousel
-	const handlePlayTrack = React.useCallback(
-		(asset: AssetDetailType) => {
-			if (currentTrack?.data?.id === asset?.data?.id) {
-				// Same track - toggle play/pause
-				setIsPlaying(!isPlaying);
-			} else {
-				// New track - start playing
-				setCurrentTrack(asset);
-				setIsPlaying(true);
-				setCurrentTime(0);
-				setDuration(0);
-			}
-		},
-		[currentTrack?.data?.id, isPlaying]
-	);
+	// const handlePlayTrack = React.useCallback(
+	// 	(asset: AssetDetailType) => {
+	// 		if (currentTrack?.data?.id === asset?.data?.id) {
+	// 			// Same track - toggle play/pause
+	// 			setIsPlaying(!isPlaying);
+	// 		} else {
+	// 			// New track - start playing
+	// 			setCurrentTrack(asset);
+	// 			setIsPlaying(true);
+	// 			setCurrentTime(0);
+	// 			setDuration(0);
+	// 		}
+	// 	},
+	// 	[currentTrack?.data?.id, isPlaying]
+	// );
 
 	// Music player control handlers
-	const handlePlayPause = () => setIsPlaying(!isPlaying);
-	const handleSkipNext = () => setIsPlaying(false);
-	const handleSkipPrevious = () => setCurrentTime(0);
-	const handleVolumeChange = (newVolume: number) => setVolume(newVolume);
-	const handleSeek = (time: number) => setCurrentTime(time);
-	const handleDurationChange = (newDuration: number) => setDuration(newDuration);
-
-	React.useEffect(() => {
-		if (!stampedCollections?.length) {
-			return;
-		}
-
-		const SPAM_ADDRESS = 'DwYZmjS7l6NHwojaH7-LzRBb4RiwjshGQm7-1ApDObw';
-		const filteredCachedCollections = stampedCollections.filter(
-			(collection: any) => collection.creator !== SPAM_ADDRESS
-		);
-		setCollections(filteredCachedCollections);
-		setCollectionsLoading(false);
-	}, [stampedCollections]);
+	// const handlePlayPause = () => setIsPlaying(!isPlaying);
+	// const handleSkipNext = () => setIsPlaying(false);
+	// const handleSkipPrevious = () => setCurrentTime(0);
+	// const handleVolumeChange = (newVolume: number) => setVolume(newVolume);
+	// const handleSeek = (time: number) => setCurrentTime(time);
+	// const handleDurationChange = (newDuration: number) => setDuration(newDuration);
 
 	React.useEffect(() => {
 		if (!permawebProvider.libs || hasFetchedCollections || stampedCollections?.length) {
 			if (stampedCollections?.length) {
+				setCollections(stampedCollections);
 				setCollectionsLoading(false);
 				setHasFetchedCollections(true);
 			}
@@ -217,11 +205,9 @@ export default function Landing() {
 			<S.CollectionsWrapper>
 				<CollectionsCarousel collections={collections} loading={collectionsLoading} />
 			</S.CollectionsWrapper>
-
 			<S.TokensWrapper>
 				<TrendingTokens />
 			</S.TokensWrapper>
-
 			<S.ActivityWrapper>
 				<h4>{language.recentActivity}</h4>
 				<ActivityTable />

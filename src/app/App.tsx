@@ -8,7 +8,6 @@ import { ASSETS, DOM, FLAGS } from 'helpers/config';
 import { isVersionGreater } from 'helpers/utils';
 import { Footer } from 'navigation/footer';
 import { Header } from 'navigation/Header';
-import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { usePermawebProvider } from 'providers/PermawebProvider';
 
 import * as S from './styles';

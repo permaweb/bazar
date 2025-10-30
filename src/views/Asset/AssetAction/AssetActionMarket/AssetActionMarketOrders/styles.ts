@@ -251,6 +251,11 @@ export const MessageWrapper = styled.div<{ warning?: boolean }>`
 	}
 `;
 
+export const MessageWrapperAlt = styled(MessageWrapper)`
+	padding: 3.5px 12.5px;
+	margin: 5px 0 0 0;
+`;
+
 export const ConfirmationWrapper = styled.div`
 	max-width: 525px;
 `;

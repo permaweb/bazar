@@ -1,4 +1,4 @@
-import { readHandler, stamps } from 'api';
+import { readHandler } from 'api';
 import { getAssetById } from 'api/assets';
 
 import { AO, getDefaultToken, HB } from 'helpers/config';
@@ -45,17 +45,13 @@ export async function getCollections(creator: string, libs: any): Promise<any[]>
 				};
 			});
 
-			// Filter out collections from spam address
-			const spamFilteredCollections = collections.filter((collection: any) => collection.creator !== SPAM_ADDRESS);
-
-			const collectionIds = spamFilteredCollections.map((collection: any) => collection.id);
 			// const stampsFetch: StampsType = await stamps.getStamps({ ids: collectionIds });
 			const stampsFetch: StampsType = {};
 
-			let finalCollections = spamFilteredCollections;
+			let finalCollections = collections;
 
 			finalCollections = finalCollections.filter((c: any) => {
-				return stampsFetch[c.id].total != 0;
+				return stampsFetch[c.id]?.total != 0;
 			});
 
 			finalCollections = finalCollections.sort((a: { id: string | number }, b: { id: string | number }) => {

@@ -60,10 +60,10 @@ export default function AssetAction(props: IProps) {
 			label: ACTION_TAB_OPTIONS.activity,
 			icon: ASSETS.activity,
 		},
-		{
-			label: ACTION_TAB_OPTIONS.owners,
-			icon: ASSETS.users,
-		},
+		// {
+		// 	label: ACTION_TAB_OPTIONS.owners,
+		// 	icon: ASSETS.users,
+		// },
 	];
 
 	const [mobile, setMobile] = React.useState(!windowUtils.checkWindowCutoff(parseInt(STYLING.cutoffs.secondary)));
@@ -169,26 +169,28 @@ export default function AssetAction(props: IProps) {
 		(async function () {
 			if (props.asset && props.asset.orderbook?.id) {
 				// Check if orders are already available
-				if (props.asset.orderbook?.orders && props.asset.orderbook.orders.length > 0) {
-					const sortedOrders = sortOrders(props.asset.orderbook.orders, 'low-to-high');
+				if (props.asset.orderbook?.orders) {
+					if (props.asset.orderbook.orders.length > 0) {
+						const sortedOrders = sortOrders(props.asset.orderbook.orders, 'low-to-high');
 
-					let profiles: any[] = await getProfiles(sortedOrders.map((order: any) => order.creator));
-					const mappedListings = sortedOrders.map((order: any) => {
-						let currentProfile = null;
-						if (profiles) {
-							currentProfile = profiles.find((profile: any) => profile.id === order.creator);
-						}
+						let profiles: any[] = await getProfiles(sortedOrders.map((order: any) => order.creator));
+						const mappedListings = sortedOrders.map((order: any) => {
+							let currentProfile = null;
+							if (profiles) {
+								currentProfile = profiles.find((profile: any) => profile.id === order.creator);
+							}
 
-						const currentListing = {
-							profile: currentProfile || null,
-							orderbookId: props.asset.orderbook.id,
-							...order,
-						};
+							const currentListing = {
+								profile: currentProfile || null,
+								orderbookId: props.asset.orderbook.id,
+								...order,
+							};
 
-						return currentListing;
-					});
+							return currentListing;
+						});
 
-					setCurrentListings(mappedListings);
+						setCurrentListings(mappedListings);
+					} else setCurrentListings([]);
 				}
 				// else {
 				// 	// Fetch orders from orderbook (for global orderbook or when orders not loaded)
@@ -445,7 +447,7 @@ export default function AssetAction(props: IProps) {
 				</>
 			);
 		} else return <p>{props.updating ? `${language.updating}...` : 'None'}</p>;
-	}, [currentListings, showCurrentListingsModal, mobile, permawebProvider.profile]);
+	}, [currentListings, showCurrentListingsModal, mobile, permawebProvider.profile, props.updating]);
 
 	function getCurrentTab() {
 		switch (currentTab) {
@@ -516,7 +518,7 @@ export default function AssetAction(props: IProps) {
 						</S.HeaderTitleActions>
 					</S.HeaderTitle>
 					<S.OrdersWrapper>
-						{(showCurrentlyOwnedBy() || (currentListings && currentListings.length > 0)) && (
+						{currentListings && !props.updating && (
 							<S.OwnerLinesWrapper>
 								{/* {showCurrentlyOwnedBy() && (
 									<S.OwnerLine>
@@ -530,16 +532,24 @@ export default function AssetAction(props: IProps) {
 										</button>
 									</S.OwnerLine>
 								)} */}
-								{currentListings && currentListings.length > 0 && (
+								{currentListings && (
 									<S.OwnerLine>
-										<span>{language.currentlyBeingSoldBy}</span>
-										<button
-											onClick={() => {
-												setShowCurrentListingsModal(true);
-											}}
-										>
-											{listingCountDisplay}
-										</button>
+										{currentListings.length > 0 ? (
+											<>
+												<span>{language.currentlyBeingSoldBy}</span>
+												<button
+													onClick={() => {
+														setShowCurrentListingsModal(true);
+													}}
+												>
+													{listingCountDisplay}
+												</button>
+											</>
+										) : (
+											<S.MessageWrapper className={'update-wrapper'}>
+												<span>{'No Orders Available'}</span>
+											</S.MessageWrapper>
+										)}
 									</S.OwnerLine>
 								)}
 							</S.OwnerLinesWrapper>

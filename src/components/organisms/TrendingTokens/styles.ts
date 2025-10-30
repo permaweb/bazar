@@ -36,6 +36,7 @@ export const TokensWrapper = styled.div`
 export const TokenWrapper = styled.button`
 	height: 300px;
 	width: 100%;
+	overflow: hidden;
 	a {
 		min-height: 100%;
 		min-width: 100%;
@@ -44,13 +45,14 @@ export const TokenWrapper = styled.button`
 		display: flex;
 		flex-direction: column;
 		align-items: center;
+		justify-content: center;
 		transition: all 100ms;
 		padding: 20px;
 		border: 1px solid transparent;
-		border-radius: ${STYLING.dimensions.radius.primary};
-		&:hover {
-			background: ${(props) => props.theme.colors.container.primary.active};
-		}
+	}
+	&:hover {
+		background: ${(props) => props.theme.colors.container.alt1.background} !important;
+		border: 1px solid ${(props) => props.theme.colors.border.alt2} !important;
 	}
 `;
 
@@ -74,7 +76,6 @@ export const TokenImage = styled.div<{}>`
 
 export const TokenName = styled.div`
 	width: 100%;
-	margin: 0 0 10px 0;
 	p {
 		color: ${(props) => props.theme.colors.font.primary};
 		font-size: ${(props) => props.theme.typography.size.xLg};

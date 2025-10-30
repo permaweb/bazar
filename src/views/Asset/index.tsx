@@ -60,7 +60,7 @@ export default function Asset() {
 				const fetchUntilChange = async () => {
 					while (!assetFetched && tries < maxTries) {
 						try {
-							const fetchedAsset = await getAssetById({ id: id, libs: permawebProvider.libs });
+							const fetchedAsset = await getAssetById({ id: id });
 							setAsset(fetchedAsset);
 
 							if (fetchedAsset !== null) {
@@ -143,25 +143,62 @@ export default function Asset() {
 									});
 								}
 							} else {
-								const response = await permawebProvider.libs.readState({
-									processId: asset.orderbook.id,
-									path: 'orderbook',
-									fallbackAction: 'Info',
-									node: HB.defaultNode,
-								});
-
-								if (response?.Orderbook) {
-									// Handle both array and single object structures
-									const orderbookData = Array.isArray(response.Orderbook) ? response.Orderbook : [response.Orderbook];
-
-									// Process each pair and concatenate orders
-									orderbookData.forEach((pair: any) => {
-										if (pair && pair.Pair) {
-											const pairOrders = getAssetOrders(pair);
-											allOrders = allOrders.concat(pairOrders);
-										}
+								try {
+									const response = await permawebProvider.libs.readState({
+										processId: asset.orderbook.id,
+										path: 'orderbook',
+										fallbackAction: 'Info',
+										node: HB.defaultNode,
 									});
+
+									if (response?.Orderbook) {
+										// Handle both array and single object structures
+										const orderbookData = Array.isArray(response.Orderbook) ? response.Orderbook : [response.Orderbook];
+
+										// Process each pair and concatenate orders
+										orderbookData.forEach((pair: any) => {
+											if (pair && pair.Pair) {
+												const pairOrders = getAssetOrders(pair);
+												allOrders = allOrders.concat(pairOrders);
+											}
+										});
+									} else {
+										setLoading(false);
+										ordersChanged = true;
+										setAsset((prevAsset) => ({
+											...prevAsset,
+											orderbook: {
+												...prevAsset.orderbook,
+												orders: allOrders,
+											},
+										}));
+										return;
+									}
+								} catch (e: any) {
+									setLoading(false);
+									ordersChanged = true;
+									setAsset((prevAsset) => ({
+										...prevAsset,
+										orderbook: {
+											...prevAsset.orderbook,
+											orders: allOrders,
+										},
+									}));
+									return;
 								}
+							}
+
+							if (currentOrders.length <= 0 || allOrders.length <= 0) {
+								setLoading(false);
+								ordersChanged = true;
+								setAsset((prevAsset) => ({
+									...prevAsset,
+									orderbook: {
+										...prevAsset.orderbook,
+										orders: allOrders,
+									},
+								}));
+								return;
 							}
 
 							// Sort both arrays before deep comparison to handle order differences

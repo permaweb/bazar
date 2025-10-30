@@ -1,5 +1,7 @@
 import styled from 'styled-components';
 
+import { STYLING } from 'helpers/config';
+
 export const Wrapper = styled.div`
 	display: flex;
 	flex-direction: column;
@@ -88,7 +90,8 @@ export const TokenSymbol = styled.span`
 export const TokenBalance = styled.span`
 	font-size: 13px;
 	color: ${(props) => props.theme.colors.font.primary};
-	font-weight: 500;
+	font-weight: ${(props) => props.theme.typography.weight.bold};
+	font-family: ${(props) => props.theme.typography.family.alt1};
 	line-height: 1.2;
 	opacity: 0.9;
 `;
@@ -160,18 +163,15 @@ export const DropdownArrow = styled.div`
 
 export const DropdownOptions = styled.div`
 	position: absolute;
-	top: 100%;
+	top: calc(100% + 5px);
 	left: 0;
 	right: 0;
 	background: ${(props) => props.theme.colors.container.primary.background};
-	border: 2px solid ${(props) => props.theme.colors.border.primary};
-	border-top: none;
-	border-radius: 0 0 8px 8px;
-	box-shadow: 0 8px 32px ${(props) => props.theme.colors.overlay.alt2};
-	z-index: 1000;
-	max-height: 200px;
+	border: 1px solid ${(props) => props.theme.colors.border.alt2} !important;
+	border-radius: ${STYLING.dimensions.radius.primary} !important;
+	z-index: 2;
+	max-height: 300px;
 	overflow-y: auto;
-	margin-top: -1px;
 `;
 
 export const DropdownBackdrop = styled.div`

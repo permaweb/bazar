@@ -8,7 +8,7 @@ import { Loader } from 'components/atoms/Loader';
 import { Panel } from 'components/molecules/Panel';
 import { ProfileManage } from 'components/organisms/ProfileManage';
 import { connect, createSigner } from 'helpers/aoconnect';
-import { AO, HB, STORAGE } from 'helpers/config';
+import { AO, HB, STORAGE, TOKEN_REGISTRY } from 'helpers/config';
 import { clearTokenStatusCache } from 'helpers/tokenValidation';
 
 import { useArweaveProvider } from './ArweaveProvider';
@@ -228,11 +228,17 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 					}));
 				};
 
-				fetchBalance(AO.defaultToken, arProvider.walletAddress, 'walletBalance');
-				fetchBalance(AO.defaultToken, profile.id, 'profileBalance');
+				// fetchBalance(AO.defaultToken, arProvider.walletAddress, 'walletBalance');
+				// fetchBalance(AO.defaultToken, profile.id, 'profileBalance');
 
-				fetchBalance(AO.pixl, arProvider.walletAddress, 'walletBalance');
-				fetchBalance(AO.pixl, profile.id, 'profileBalance');
+				// fetchBalance(AO.pixl, arProvider.walletAddress, 'walletBalance');
+				// fetchBalance(AO.pixl, profile.id, 'profileBalance');
+
+				for (const token in TOKEN_REGISTRY) {
+					fetchBalance(token, arProvider.walletAddress, 'walletBalance');
+					fetchBalance(token, profile.id, 'profileBalance');
+					await new Promise((r) => setTimeout(r, 200));
+				}
 			} catch (e) {
 				if (process.env.NODE_ENV === 'development') {
 					console.error('Error fetching token balances:', e);
