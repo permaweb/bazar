@@ -243,7 +243,7 @@ export const STYLING = {
 		button: {
 			height: '32.5px',
 			width: 'fit-content',
-			radius: '25px',
+			radius: '30px',
 		},
 		borderRadiusField: '5px',
 		borderRadiusWrapper: '10px',

@@ -202,6 +202,7 @@ export const ActionWrapper = styled.div<{ loading: string }>`
 	button {
 		min-width: 0;
 		width: 100%;
+		padding: 2.5px 15px 0 15px !important;
 	}
 `;
 
