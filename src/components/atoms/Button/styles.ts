@@ -61,7 +61,7 @@ export const Primary = styled.button<{
 	border: 1px solid
 		${(props) =>
 			props.active ? props.theme.colors.button.primary.active.border : props.theme.colors.button.primary.border};
-	border-radius: ${STYLING.dimensions.radius.primary};
+	border-radius: ${STYLING.dimensions.button.radius};
 	&:hover {
 		background: ${(props) => props.theme.colors.button.primary.active.background};
 		border: 1px solid ${(props) => props.theme.colors.button.primary.active.border};

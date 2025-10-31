@@ -1,13 +1,11 @@
 import React from 'react';
-import { useSelector } from 'react-redux';
 import { Link } from 'react-router-dom';
 
-import { AO, REFORMATTED_ASSETS, TOKEN_REGISTRY, URLS } from 'helpers/config';
+import { REFORMATTED_ASSETS, TOKEN_REGISTRY, URLS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import { formatCount } from 'helpers/utils';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 import { useTokenProvider } from 'providers/TokenProvider';
-import { RootState } from 'store';
 
 import * as S from './styles';
 
@@ -21,7 +19,7 @@ export default function CurrencyLine(props: IProps & { tokenLogo?: string; token
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
 
-	const [timedOut, setTimedOut] = React.useState(false);
+	const [_timedOut, setTimedOut] = React.useState(false);
 
 	React.useEffect(() => {
 		const timer = setTimeout(() => {
@@ -36,7 +34,7 @@ export default function CurrencyLine(props: IProps & { tokenLogo?: string; token
 	function getDenominatedTokenValue(amount: number, currency: string) {
 		// Check if amount is a valid number (but allow zero)
 		if (props.amount === null || props.amount === undefined) {
-			return timedOut ? 'N/A' : `${language.loading}...`;
+			return `${language.loading}...`;
 		}
 
 		// Handle zero balance explicitly
@@ -45,7 +43,7 @@ export default function CurrencyLine(props: IProps & { tokenLogo?: string; token
 		}
 
 		if (isNaN(Number(props.amount))) {
-			return timedOut ? 'N/A' : `${language.loading}...`;
+			return `${language.loading}...`;
 		}
 
 		// Check TOKEN_REGISTRY first for dynamic tokens
@@ -70,7 +68,7 @@ export default function CurrencyLine(props: IProps & { tokenLogo?: string; token
 			return formatCount(amount.toString());
 		}
 
-		return timedOut ? 'N/A' : `${language.loading}...`;
+		return `${language.loading}...`;
 	}
 
 	function getCurrency() {

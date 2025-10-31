@@ -1,14 +1,11 @@
 import Arweave from 'arweave';
 
-import { getBestGatewayEndpoint } from './wayfinder';
-
 /**
  * Creates an Arweave instance using the best available gateway from Wayfinder
  * @returns Promise<Arweave> - Initialized Arweave instance
  */
 export async function createArweaveInstance(): Promise<Arweave> {
 	// For now, use a known working gateway
-	// TODO: Implement proper Wayfinder integration once gateway testing is stable
 	return Arweave.init({
 		host: 'arweave.net',
 		protocol: 'https',
@@ -29,7 +26,6 @@ export async function createArweaveInstanceWithConfig(config: {
 	port?: number;
 }): Promise<Arweave> {
 	// For now, use a known working gateway
-	// TODO: Implement proper Wayfinder integration once gateway testing is stable
 	return Arweave.init({
 		host: 'arweave.net',
 		protocol: 'https',
@@ -45,6 +41,5 @@ export async function createArweaveInstanceWithConfig(config: {
  */
 export async function getCurrentGatewayHost(): Promise<string> {
 	// For now, use a known working gateway host
-	// TODO: Implement proper Wayfinder integration once gateway testing is stable
 	return 'arweave.net';
 }

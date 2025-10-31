@@ -32,10 +32,9 @@ export function WayfinderProvider(props: WayfinderProviderProps) {
 				await initializeWayfinder();
 
 				const gateway = await getWorkingGateway();
-				console.log(`WayfinderProvider initialized; working gateway: ${gateway}`);
 				setIsInitialized(true);
 			} catch (error) {
-				console.error('❌ Failed to initialize WayfinderProvider:', error);
+				console.error('Failed to initialize WayfinderProvider:', error);
 				// Still mark as initialized to allow fallback behavior
 				setIsInitialized(true);
 			}
@@ -46,7 +45,7 @@ export function WayfinderProvider(props: WayfinderProviderProps) {
 		try {
 			return await resolveGatewayUrl(url);
 		} catch (error) {
-			console.error('❌ Failed to resolve gateway for URL:', url, error);
+			console.error('Failed to resolve gateway for URL:', url, error);
 			// Fallback to arweave.net
 			return url.replace('ar://', 'https://arweave.net/');
 		}

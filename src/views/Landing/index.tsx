@@ -5,8 +5,8 @@ import { getAllMusicCollections, getAssetById, getCollectionById, getCollections
 
 import { ActivityTable } from 'components/organisms/ActivityTable';
 import { CollectionsCarousel } from 'components/organisms/CollectionsCarousel';
-import MusicCollectionsCarousel from 'components/organisms/MusicCollectionsCarousel';
-import { MusicPlayer } from 'components/organisms/MusicPlayer';
+import { MusicCollectionsCarousel } from 'components/organisms/MusicCollectionsCarousel';
+import { TrendingTokens } from 'components/organisms/TrendingTokens';
 import { getTxEndpoint } from 'helpers/endpoints';
 import { AssetDetailType, CollectionType } from 'helpers/types';
 import { useLanguageProvider } from 'providers/LanguageProvider';
@@ -108,21 +108,9 @@ export default function Landing() {
 	const handleDurationChange = (newDuration: number) => setDuration(newDuration);
 
 	React.useEffect(() => {
-		if (!stampedCollections?.length) {
-			return;
-		}
-
-		const SPAM_ADDRESS = 'DwYZmjS7l6NHwojaH7-LzRBb4RiwjshGQm7-1ApDObw';
-		const filteredCachedCollections = stampedCollections.filter(
-			(collection: any) => collection.creator !== SPAM_ADDRESS
-		);
-		setCollections(filteredCachedCollections);
-		setCollectionsLoading(false);
-	}, [stampedCollections]);
-
-	React.useEffect(() => {
 		if (!permawebProvider.libs || hasFetchedCollections || stampedCollections?.length) {
 			if (stampedCollections?.length) {
+				setCollections(stampedCollections);
 				setCollectionsLoading(false);
 				setHasFetchedCollections(true);
 			}
@@ -218,8 +206,10 @@ export default function Landing() {
 			<S.CollectionsWrapper>
 				<CollectionsCarousel collections={collections} loading={collectionsLoading} />
 			</S.CollectionsWrapper>
-
-			<S.MusicCollectionsWrapper>
+			<S.TokensWrapper>
+				<TrendingTokens />
+			</S.TokensWrapper>
+			{/* <S.MusicCollectionsWrapper>
 				<MusicCollectionsCarousel
 					collections={musicCollections}
 					loading={musicCollectionsLoading}
@@ -227,43 +217,11 @@ export default function Landing() {
 					currentTrack={currentTrack}
 					isPlaying={isPlaying}
 				/>
-			</S.MusicCollectionsWrapper>
+			</S.MusicCollectionsWrapper> */}
 			<S.ActivityWrapper>
 				<h4>{language.recentActivity}</h4>
 				<ActivityTable />
 			</S.ActivityWrapper>
-
-			{/* Local Music Player - only shows when a track is selected */}
-			{currentTrack && (
-				<div
-					style={{
-						position: 'fixed',
-						bottom: 0,
-						left: 0,
-						right: 0,
-						zIndex: 1000,
-						backgroundColor: 'white',
-						borderTop: '1px solid #e5e5e5',
-						boxShadow: '0 -2px 8px rgba(0,0,0,0.1)',
-					}}
-				>
-					<MusicPlayer
-						currentTrack={currentTrack}
-						isPlaying={isPlaying}
-						onPlayPause={handlePlayPause}
-						onSkipNext={handleSkipNext}
-						onSkipPrevious={handleSkipPrevious}
-						onVolumeChange={handleVolumeChange}
-						onSeek={handleSeek}
-						onDurationChange={handleDurationChange}
-						currentTime={currentTime}
-						duration={duration}
-						volume={volume}
-						playlist={currentTrack ? [currentTrack] : []}
-						currentIndex={0}
-					/>
-				</div>
-			)}
 		</S.Wrapper>
 	);
 }

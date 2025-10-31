@@ -14,12 +14,14 @@ import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useCustomThemeProvider } from 'providers/CustomThemeProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 import { usePermawebProvider } from 'providers/PermawebProvider';
+import { useTokenProvider } from 'providers/TokenProvider';
 
 import * as S from './styles';
 
 export default function WalletConnect(_props: { callback?: () => void }) {
 	const navigate = useNavigate();
 
+	const { availableTokens } = useTokenProvider();
 	const arProvider = useArweaveProvider();
 	const permawebProvider = usePermawebProvider();
 
@@ -123,6 +125,11 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 			label: language.tradePi,
 			target: '',
 		},
+		[AO.ao]: {
+			link: `${URLS.asset}${AO.ao}`,
+			label: language.tradeAO,
+			target: '',
+		},
 		[AO.ario]: {
 			link: `${URLS.asset}${AO.ario}`,
 			label: language.tradeArio,
@@ -157,7 +164,7 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 		return (
 			<>
 				<S.DHeaderWrapper>
-					<S.DHeaderFlex className={'border-wrapper-alt1'}>
+					<S.DHeaderFlex>
 						<Avatar
 							owner={permawebProvider.profile}
 							dimensions={{ wrapper: 35, icon: 21.5 }}
@@ -175,7 +182,7 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 									</div>
 								)} */}
 							</S.DNameWrapper>
-							<span onClick={() => handleDropdownAction(handleProfileAction)}>
+							{/* <span onClick={() => handleDropdownAction(handleProfileAction)}>
 								{permawebProvider.arnsPrimaryName
 									? formatAddress(arProvider.walletAddress, false)
 									: formatAddress(
@@ -184,7 +191,7 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 												: arProvider.walletAddress,
 											false
 									  )}
-							</span>
+							</span> */}
 						</S.DHeader>
 					</S.DHeaderFlex>
 				</S.DHeaderWrapper>
@@ -194,57 +201,57 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 						<span>{formatCount(arProvider.arBalance ? arProvider.arBalance.toString() : '0')}</span>
 						<S.TokenLink>
 							<Link
-								to="https://viewblock.io/arweave/"
-								target="_blank"
+								to={'https://viewblock.io/arweave/'}
+								target={'_blank'}
 								onClick={() => handleDropdownAction(() => setShowWalletDropdown(false))}
 							>
 								<span>{language.viewAr}</span>
 							</Link>
 						</S.TokenLink>
 					</S.BalanceLine>
-					{permawebProvider.tokenBalances && Object.keys(permawebProvider.tokenBalances).length > 0 && (
+					{availableTokens && (
 						<>
-							{Object.keys(permawebProvider.tokenBalances).map((token: string) => {
-								return (
-									<S.BalanceLine key={token}>
-										<CurrencyLine
-											amount={getTotalTokenBalance(permawebProvider.tokenBalances[token])}
-											currency={token}
-											callback={() => handleDropdownAction(() => setShowWalletDropdown(false))}
-											useReverseLayout
-											hideSymbol
-										/>
-										{tokenLinks[token] && (
-											<S.TokenLink>
-												<Link
-													to={tokenLinks[token].link}
-													target={tokenLinks[token].target}
-													onClick={() => handleDropdownAction(() => setShowWalletDropdown(false))}
-												>
-													<span>{tokenLinks[token].label}</span>
-												</Link>
-											</S.TokenLink>
-										)}
-									</S.BalanceLine>
-								);
-							})}
+							{availableTokens
+								.filter((token: any) => {
+									// Only show tokens that have been loaded (have balance data)
+									return permawebProvider.tokenBalances && permawebProvider.tokenBalances[token.id];
+								})
+								.map((token: any) => {
+									return (
+										<S.BalanceLine key={token.id}>
+											<CurrencyLine
+												amount={getTotalTokenBalance(permawebProvider.tokenBalances[token.id])}
+												currency={token.id}
+												callback={() => handleDropdownAction(() => setShowWalletDropdown(false))}
+											/>
+											{tokenLinks[token.id] && (
+												<S.TokenLink>
+													<Link
+														to={tokenLinks[token.id].link}
+														target={tokenLinks[token.id].target}
+														onClick={() => handleDropdownAction(() => setShowWalletDropdown(false))}
+													>
+														<span>{tokenLinks[token.id].label}</span>
+													</Link>
+												</S.TokenLink>
+											)}
+										</S.BalanceLine>
+									);
+								})}
 						</>
 					)}
 				</S.DBalancesWrapper>
-				<S.DBodyWrapper>
-					<li onClick={() => handleDropdownAction()}>
-						<Link to={`${URLS.asset}${AO.defaultToken}`}>
-							<ReactSVG src={ASSETS.activity} />
-							{`${language.transferWar}`}
-						</Link>
-					</li>
-					<li onClick={() => handleDropdownAction()}>
-						<Link to={REDIRECTS.aox} target={'_blank'}>
-							<ReactSVG src={ASSETS.bridge} />
-							{`${language.arBridge}`}
-						</Link>
-					</li>
-				</S.DBodyWrapper>
+				{!permawebProvider.allTokensLoaded && (
+					<S.DBalancesAction>
+						<Button
+							type={'primary'}
+							label={'Show More'}
+							handlePress={() => permawebProvider.loadAllTokens()}
+							height={40}
+							fullWidth
+						/>
+					</S.DBalancesAction>
+				)}
 				<S.DBodyWrapper>
 					{permawebProvider.profile && permawebProvider.profile.id && (
 						<>

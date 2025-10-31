@@ -21,16 +21,16 @@ export const HealthDot = styled.div<HealthProps>`
 	width: 8px;
 	height: 8px;
 	border-radius: 50%;
-	background-color: ${({ health }) => {
+	background-color: ${({ health, theme }) => {
 		switch (health) {
 			case 'healthy':
-				return '#22c55e'; // green
+				return theme.colors.indicator.primary;
 			case 'degraded':
-				return '#f59e0b'; // amber
+				return theme.colors.stats.alt6;
 			case 'unhealthy':
-				return '#ef4444'; // red
+				return theme.colors.warning.primary;
 			default:
-				return '#6b7280'; // gray
+				return theme.colors.font.alt3;
 		}
 	}};
 	flex-shrink: 0;
@@ -43,28 +43,28 @@ export const Details = styled.div`
 `;
 
 export const HealthText = styled.span<HealthProps>`
-	color: ${({ health }) => {
+	color: ${({ health, theme }) => {
 		switch (health) {
 			case 'healthy':
-				return '#22c55e';
+				return theme.colors.indicator.primary;
 			case 'degraded':
-				return '#f59e0b';
+				return theme.colors.stats.alt6;
 			case 'unhealthy':
-				return '#ef4444';
+				return theme.colors.warning.primary;
 			default:
-				return '#6b7280';
+				return theme.colors.font.alt3;
 		}
 	}};
 	font-weight: 500;
 `;
 
 export const Recommendation = styled.span`
-	color: #6b7280;
+	color: ${(props) => props.theme.colors.font.alt3};
 	font-size: 11px;
 `;
 
 export const OperationStatus = styled.span<SupportedProps>`
-	color: ${({ supported }) => (supported ? '#22c55e' : '#ef4444')};
+	color: ${({ supported, theme }) => (supported ? theme.colors.indicator.primary : theme.colors.warning.primary)};
 	font-size: 11px;
 	font-weight: 500;
 `;

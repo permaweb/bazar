@@ -68,7 +68,14 @@ export default function AssetActionMarket(props: IProps) {
 			default:
 				break;
 		}
-		return <AssetActionMarketOrders asset={props.asset} type={type} toggleUpdate={props.toggleUpdate} />;
+		return (
+			<AssetActionMarketOrders
+				asset={props.asset}
+				type={type}
+				toggleUpdate={props.toggleUpdate}
+				updating={props.updating}
+			/>
+		);
 	}
 
 	return tabs && currentTab ? (

@@ -42,8 +42,6 @@ export const getDelegations = async (walletAddress: string): Promise<DelegationP
 		if (result?.Messages?.length > 0) {
 			const delegationData = JSON.parse(result.Messages[0].Data);
 			const delegations = delegationData.delegationPrefs || [];
-			console.log('DEBUG: Fetched delegations:', delegations);
-			console.log('DEBUG: Looking for PIXL process:', DELEGATION.PIXL_PROCESS);
 			return delegations;
 		}
 		return [];
@@ -91,7 +89,7 @@ export const setPixlDelegation = async (walletAddress: string, percentage: numbe
 	const factor = percentage * 100;
 
 	// 1. Get current delegations
-	const currentDelegations = await getDelegations(walletAddress);
+	// const currentDelegations = await getDelegations(walletAddress);
 
 	// 2. Set the PIXL delegation (let AO system handle the remainder)
 	const data = JSON.stringify({
@@ -117,10 +115,10 @@ export const setPixlDelegation = async (walletAddress: string, percentage: numbe
 	await new Promise((resolve) => setTimeout(resolve, 3000));
 
 	// 4. Verify the final state
-	const finalDelegations = await getDelegations(walletAddress);
+	// const finalDelegations = await getDelegations(walletAddress);
 
 	// Calculate total from final state
-	const totalFactor = finalDelegations.reduce((sum, pref) => sum + pref.factor, 0);
+	// const totalFactor = finalDelegations.reduce((sum, pref) => sum + pref.factor, 0);
 
 	return messageId;
 };

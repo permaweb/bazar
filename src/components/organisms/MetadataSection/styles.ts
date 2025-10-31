@@ -36,7 +36,7 @@ export const TraitCard = styled.div`
 export const TraitType = styled.div`
 	color: ${(props) => props.theme.colors.font.alt1};
 	font-size: 11px;
-	font-weight: ${(props) => props.theme.typography.weight.medium};
+	font-weight: ${(props) => props.theme.typography.weight.bold};
 	text-transform: uppercase;
 	letter-spacing: 0.5px;
 	margin-bottom: 4px;
@@ -65,7 +65,7 @@ export const TopicTag = styled.span`
 	padding: 6px 12px;
 	border-radius: ${STYLING.dimensions.radius.alt2};
 	font-size: 12px;
-	font-weight: ${(props) => props.theme.typography.weight.medium};
+	font-weight: ${(props) => props.theme.typography.weight.bold};
 
 	animation: ${open} ${fadeIn2};
 `;

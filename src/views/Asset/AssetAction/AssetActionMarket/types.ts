@@ -4,4 +4,5 @@ export interface IProps {
 	asset: AssetDetailType;
 	getCurrentListings: any;
 	toggleUpdate: () => void;
+	updating: boolean;
 }

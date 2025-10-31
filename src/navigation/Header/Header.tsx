@@ -1,11 +1,10 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { ReactSVG } from 'react-svg';
+import { useTheme } from 'styled-components';
 
-import { Button } from 'components/atoms/Button';
 import { IconButton } from 'components/atoms/IconButton';
 import { DelegationPanel } from 'components/organisms/DelegationPanel';
-import { SettingsModal } from 'components/organisms/SettingsModal';
 import { Streaks } from 'components/organisms/Streaks';
 import { ASSETS, REDIRECTS, URLS } from 'helpers/config';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
@@ -17,6 +16,8 @@ import { CloseHandler } from 'wrappers/CloseHandler';
 import * as S from './styles';
 
 export default function Header() {
+	const theme = useTheme();
+
 	const permawebProvider = usePermawebProvider();
 	const arweaveProvider = useArweaveProvider();
 
@@ -24,7 +25,6 @@ export default function Header() {
 	const language = languageProvider.object[languageProvider.current];
 
 	const [delegationPanelOpen, setDelegationPanelOpen] = React.useState(false);
-	const [settingsModalOpen, setSettingsModalOpen] = React.useState(false);
 
 	const paths: { path: string; label: string; target?: '_blank' }[] = [
 		{ path: URLS.collections, label: language.collections },
@@ -34,9 +34,37 @@ export default function Header() {
 
 	const [panelOpen, setPanelOpen] = React.useState<boolean>(false);
 
+	React.useEffect(() => {
+		const header = document.getElementById('navigation-header');
+		if (!header) return;
+
+		let lastScrollY = 0;
+		let ticking = false;
+		const borderColor = theme.colors.border.primary;
+
+		const handleScroll = () => {
+			lastScrollY = window.scrollY;
+			if (!ticking) {
+				window.requestAnimationFrame(() => {
+					const parts = window.location.href.split('/');
+					const isEditorPage = parts.some((part) => part === 'post' || part === 'page');
+					header.style.borderBottom =
+						!isEditorPage && lastScrollY > 0 ? `1px solid ${borderColor}` : '1px solid transparent';
+					ticking = false;
+				});
+				ticking = true;
+			}
+		};
+
+		window.addEventListener('scroll', handleScroll, { passive: true });
+		handleScroll();
+
+		return () => window.removeEventListener('scroll', handleScroll);
+	}, [theme.colors.border.primary]);
+
 	return (
 		<>
-			<S.Wrapper>
+			<S.Wrapper id={'navigation-header'}>
 				<S.Content className={'max-view-wrapper'}>
 					<S.C1Wrapper>
 						<S.LogoWrapper>
@@ -45,6 +73,9 @@ export default function Header() {
 							</Link>
 						</S.LogoWrapper>
 						<S.DNavWrapper>
+							<S.AppTag>
+								<span>HyperBEAM BETA</span>
+							</S.AppTag>
 							{paths.map((element: { path: string; label: string; target?: '_blank' }, index: number) => {
 								return (
 									<Link key={index} to={element.path} target={element.target || ''}>
@@ -55,8 +86,8 @@ export default function Header() {
 						</S.DNavWrapper>
 					</S.C1Wrapper>
 					<S.ActionsWrapper>
-						{permawebProvider.profile && permawebProvider.profile.id && <Streaks profile={permawebProvider.profile} />}
-						{arweaveProvider.walletAddress && (
+						{/* {permawebProvider.profile && permawebProvider.profile.id && <Streaks profile={permawebProvider.profile} />} */}
+						{/* {arweaveProvider.walletAddress && (
 							<S.DelegationButtonWrapper>
 								<S.DelegationButton
 									onClick={(e) => {
@@ -68,17 +99,7 @@ export default function Header() {
 									Delegate
 								</S.DelegationButton>
 							</S.DelegationButtonWrapper>
-						)}
-						<S.SettingsButtonWrapper>
-							<IconButton
-								type={'alt1'}
-								src={ASSETS.edit}
-								handlePress={() => setSettingsModalOpen(true)}
-								dimensions={{ wrapper: 35, icon: 19.5 }}
-								tooltip={'AO Settings'}
-								useBottomToolTip
-							/>
-						</S.SettingsButtonWrapper>
+						)} */}
 						<WalletConnect />
 						<S.MWrapper>
 							<IconButton
@@ -134,7 +155,6 @@ export default function Header() {
 				isOpen={delegationPanelOpen}
 				onClose={() => setDelegationPanelOpen(false)}
 			/>
-			<SettingsModal isOpen={settingsModalOpen} onClose={() => setSettingsModalOpen(false)} />
 		</>
 	);
 }

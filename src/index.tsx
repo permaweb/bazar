@@ -32,7 +32,7 @@ ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
 									protocol: 'https',
 								}}
 								appInfo={{ name: 'Bazar' }}
-								muUrl="https://mu.ao-testnet.xyz"
+								muUrl={'https://mu.ao-testnet.xyz'}
 							>
 								<WayfinderProvider>
 									<ArweaveProvider>
