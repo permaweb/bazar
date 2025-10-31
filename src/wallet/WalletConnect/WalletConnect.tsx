@@ -8,7 +8,7 @@ import { CurrencyLine } from 'components/atoms/CurrencyLine';
 import { Loader } from 'components/atoms/Loader';
 import { Panel } from 'components/molecules/Panel';
 import { ProfileManage } from 'components/organisms/ProfileManage';
-import { AO, ASSETS, getAvailableTokens, REDIRECTS, URLS } from 'helpers/config';
+import { AO, ASSETS, REDIRECTS, URLS } from 'helpers/config';
 import { formatAddress, formatCount, getTotalTokenBalance } from 'helpers/utils';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useCustomThemeProvider } from 'providers/CustomThemeProvider';
@@ -18,7 +18,6 @@ import { useTokenProvider } from 'providers/TokenProvider';
 
 import * as S from './styles';
 
-// TODO: Sort tokens by priority, only fetch top 3 initially
 export default function WalletConnect(_props: { callback?: () => void }) {
 	const navigate = useNavigate();
 
