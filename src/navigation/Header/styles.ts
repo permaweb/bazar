@@ -28,6 +28,7 @@ export const C1Wrapper = styled.div`
 export const LogoWrapper = styled.div`
 	height: 35px;
 	width: 35px;
+	position: relative;
 	svg {
 		height: 35px;
 		width: 35px;
@@ -38,11 +39,27 @@ export const LogoWrapper = styled.div`
 	}
 `;
 
+export const AppTag = styled.div`
+	display: flex;
+	padding: 2.5px 6.5px;
+	background: ${(props) => props.theme.colors.container.alt11.background};
+	border: 1px solid ${(props) => props.theme.colors.border.alt3};
+	border-radius: ${STYLING.dimensions.radius.alt2};
+
+	span {
+		font-size: 10px !important;
+		font-family: ${(props) => props.theme.typography.family.alt1} !important;
+		font-weight: ${(props) => props.theme.typography.weight.bold} !important;
+		color: ${(props) => props.theme.colors.font.light1} !important;
+		white-space: nowrap;
+	}
+`;
+
 export const DNavWrapper = styled.div`
 	height: 35px;
 	display: flex;
 	align-items: center;
-	margin: 0 0 0 15px;
+	margin: 0 0 0 5px;
 	padding: 0 0 0 15px;
 	> * {
 		&:not(:last-child) {

@@ -19,6 +19,10 @@ export const HeaderActions = styled.div`
 	align-items: center;
 	flex-wrap: wrap;
 	gap: 20px;
+
+	button {
+		padding: 2.5px 15px 0 15px !important;
+	}
 `;
 
 export const CollectionsWrapper = styled.div<{ previousDisabled: boolean }>`

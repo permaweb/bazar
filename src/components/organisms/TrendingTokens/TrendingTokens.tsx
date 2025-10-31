@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 
 import { connect } from '@permaweb/aoconnect/browser';
 
-import { AO, AOCONFIG, DEFAULTS, REFORMATTED_ASSETS, URLS } from 'helpers/config';
+import { AO, AOCONFIG, CUSTOM_ORDERBOOKS, DEFAULTS, URLS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 
@@ -43,6 +43,7 @@ export default function TrendingTokens() {
 							Ticker: token.flp_token_ticker,
 							Logo: token.flp_token_logo,
 						}))
+						.filter((token) => [...Object.keys(CUSTOM_ORDERBOOKS)].includes(token.ProcessId))
 				);
 			} catch (e: any) {
 				console.error(e);
@@ -68,6 +69,7 @@ export default function TrendingTokens() {
 									key={index}
 									onClick={() => handleTokenClick(token)}
 									className={'fade-in border-wrapper-alt1'}
+									disabled={false}
 								>
 									<Link to={`${URLS.asset}${token.ProcessId}`}>
 										<S.TokenImage>
@@ -86,7 +88,7 @@ export default function TrendingTokens() {
 					</>
 				) : (
 					<>
-						{Array.from({ length: Object.keys(REFORMATTED_ASSETS).length - 1 }, (_, i) => i + 1).map((index) => {
+						{Array.from({ length: 8 }, (_, i) => i + 1).map((index) => {
 							return (
 								<S.TokenWrapper
 									key={index}

@@ -194,6 +194,7 @@ export const language = {
 		totalSalesPercentageAvailable: `Total Percentage Available for Sale`,
 		totalTransferBalanceAvailable: `Total Balance Available for Transfer`,
 		totalTransferPercentageAvailable: `Total Percentage Available for Transfer`,
+		tradeAO: `Trade AO`,
 		tradePixl: `Trade PIXL`,
 		tradePi: `Trade PI`,
 		tradeArio: `Trade ARIO`,

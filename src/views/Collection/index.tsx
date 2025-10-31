@@ -87,28 +87,28 @@ export default function Collection() {
 		})();
 	}, [collection?.creator]);
 
-	React.useEffect(() => {
-		(async function () {
-			if (collection?.assetIds.length > 0) {
-				try {
-					const updatedStampCounts = await stamps.getStamps({ ids: collection.assetIds });
-					const updatedStamps = {};
-					if (updatedStampCounts) {
-						for (const tx of Object.keys(updatedStampCounts)) {
-							updatedStamps[tx] = {
-								...(stampsReducer?.[tx] ?? {}),
-								total: updatedStampCounts[tx].total,
-								vouched: updatedStampCounts[tx].vouched,
-							};
-						}
-						dispatch(stampsActions.setStamps(updatedStamps));
-					}
-				} catch (e: any) {
-					console.error(e);
-				}
-			}
-		})();
-	}, [collection?.assetIds]);
+	// React.useEffect(() => {
+	// 	(async function () {
+	// 		if (collection?.assetIds.length > 0) {
+	// 			try {
+	// 				const updatedStampCounts = await stamps.getStamps({ ids: collection.assetIds });
+	// 				const updatedStamps = {};
+	// 				if (updatedStampCounts) {
+	// 					for (const tx of Object.keys(updatedStampCounts)) {
+	// 						updatedStamps[tx] = {
+	// 							...(stampsReducer?.[tx] ?? {}),
+	// 							total: updatedStampCounts[tx].total,
+	// 							vouched: updatedStampCounts[tx].vouched,
+	// 						};
+	// 					}
+	// 					dispatch(stampsActions.setStamps(updatedStamps));
+	// 				}
+	// 			} catch (e: any) {
+	// 				console.error(e);
+	// 			}
+	// 		}
+	// 	})();
+	// }, [collection?.assetIds]);
 
 	const TABS = React.useMemo(
 		() => [
@@ -123,6 +123,7 @@ export default function Collection() {
 							{collection.assetIds && (
 								<AssetsTable
 									ids={collection.assetIds}
+									loadingIds={false}
 									type={'grid'}
 									pageCount={PAGINATORS.collection.assets}
 									currentListings={collection.activity?.currentListings}
@@ -156,9 +157,9 @@ export default function Collection() {
 						className={'border-wrapper-alt2'}
 					>
 						<S.OverlayWrapper />
-						<S.StampWidgetWrapper>
+						{/* <S.StampWidgetWrapper>
 							<Stamps txId={collection.id} title={collection.title ?? collection.name ?? '-'} />
-						</S.StampWidgetWrapper>
+						</S.StampWidgetWrapper> */}
 						<S.InfoWrapper>
 							<S.Thumbnail>
 								<img src={getTxEndpoint(collection.thumbnail || DEFAULTS.thumbnail)} alt={'Thumbnail'} />

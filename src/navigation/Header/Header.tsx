@@ -73,6 +73,9 @@ export default function Header() {
 							</Link>
 						</S.LogoWrapper>
 						<S.DNavWrapper>
+							<S.AppTag>
+								<span>HyperBEAM BETA</span>
+							</S.AppTag>
 							{paths.map((element: { path: string; label: string; target?: '_blank' }, index: number) => {
 								return (
 									<Link key={index} to={element.path} target={element.target || ''}>
@@ -84,7 +87,7 @@ export default function Header() {
 					</S.C1Wrapper>
 					<S.ActionsWrapper>
 						{/* {permawebProvider.profile && permawebProvider.profile.id && <Streaks profile={permawebProvider.profile} />} */}
-						{arweaveProvider.walletAddress && (
+						{/* {arweaveProvider.walletAddress && (
 							<S.DelegationButtonWrapper>
 								<S.DelegationButton
 									onClick={(e) => {
@@ -96,7 +99,7 @@ export default function Header() {
 									Delegate
 								</S.DelegationButton>
 							</S.DelegationButtonWrapper>
-						)}
+						)} */}
 						<WalletConnect />
 						<S.MWrapper>
 							<IconButton

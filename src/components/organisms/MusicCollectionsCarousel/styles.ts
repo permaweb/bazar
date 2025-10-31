@@ -22,12 +22,6 @@ export const Header = styled.div`
 	align-items: center;
 	justify-content: space-between;
 	margin: 0 0 20px 0;
-
-	h4 {
-		font-size: 16px;
-		font-weight: 500;
-		color: ${(props) => props.theme.colors.font.primary.alt1};
-	}
 `;
 
 export const HeaderActions = styled.div`
@@ -95,6 +89,7 @@ export const CollectionWrapper = styled.div<{ backgroundImage: string; disabled:
 	background-size: cover;
 	background-repeat: no-repeat;
 	background-position: center;
+	flex: 1;
 
 	img {
 		height: 100%;

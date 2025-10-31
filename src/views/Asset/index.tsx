@@ -151,6 +151,16 @@ export default function Asset() {
 										node: HB.defaultNode,
 									});
 
+									if (response?.ActivityProcess) {
+										setAsset((prevAsset) => ({
+											...prevAsset,
+											orderbook: {
+												...prevAsset.orderbook,
+												activityId: response.ActivityProcess,
+											},
+										}));
+									}
+
 									if (response?.Orderbook) {
 										// Handle both array and single object structures
 										const orderbookData = Array.isArray(response.Orderbook) ? response.Orderbook : [response.Orderbook];

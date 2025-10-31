@@ -1165,12 +1165,12 @@ export default function AssetActionMarketOrders(props: IProps) {
 							)}
 							{props.type === 'sell' && (
 								<S.FieldWrapper>
-									<TokenSelector showLabel={true} />
+									<TokenSelector showLabel={true} disabledTokens={[props.asset.data.id]} />
 								</S.FieldWrapper>
 							)}
 							{props.type === 'buy' && (
 								<S.FieldWrapper>
-									<TokenSelector showLabel={true} />
+									<TokenSelector showLabel={true} disabledTokens={[props.asset.data.id]} />
 								</S.FieldWrapper>
 							)}
 							{props.type === 'transfer' && (

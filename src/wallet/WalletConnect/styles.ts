@@ -264,7 +264,15 @@ export const DBodyWrapper = styled.ul`
 export const DBalancesWrapper = styled(DBodyWrapper)`
 	width: calc(100% - 30px);
 	padding: 5px 12.5px;
-	margin: 5px auto 0 auto;
+	margin: 0 auto;
+`;
+
+export const DBalancesAction = styled.div`
+	width: calc(100% - 30px);
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	margin: 15px auto 5px auto;
 `;
 
 export const DBodyHeader = styled.div`

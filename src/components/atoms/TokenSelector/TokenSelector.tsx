@@ -14,6 +14,7 @@ interface TokenSelectorProps {
 	onTokenChange?: (tokenId: string) => void;
 	className?: string;
 	showLabel?: boolean;
+	disabledTokens?: string[];
 }
 
 export default function TokenSelector(props: TokenSelectorProps) {
@@ -24,11 +25,38 @@ export default function TokenSelector(props: TokenSelectorProps) {
 
 	const [isOpen, setIsOpen] = React.useState(false);
 
+	// If the currently selected token is disabled, switch to the first available non-disabled token
+	React.useEffect(() => {
+		if (props.disabledTokens?.includes(selectedToken.id)) {
+			const firstAvailableToken = availableTokens.find((token) => !props.disabledTokens?.includes(token.id));
+			if (firstAvailableToken) {
+				setSelectedToken(firstAvailableToken);
+				props.onTokenChange?.(firstAvailableToken.id);
+			}
+		}
+	}, [props.disabledTokens, selectedToken.id, availableTokens]);
+
+	// Fetch balance for selected token if not already loaded
+	React.useEffect(() => {
+		if (selectedToken.id && (!permawebProvider.tokenBalances || !permawebProvider.tokenBalances[selectedToken.id])) {
+			permawebProvider.fetchTokenBalance(selectedToken.id);
+		}
+	}, [selectedToken.id, permawebProvider.tokenBalances]);
+
 	const handleTokenSelect = (tokenId: string) => {
+		// Don't allow selection of disabled tokens
+		if (props.disabledTokens?.includes(tokenId)) {
+			return;
+		}
 		const newToken = availableTokens.find((token) => token.id === tokenId);
 		if (newToken) {
 			setSelectedToken(newToken);
 			props.onTokenChange?.(tokenId);
+
+			// Fetch balance if not already loaded
+			if (!permawebProvider.tokenBalances || !permawebProvider.tokenBalances[tokenId]) {
+				permawebProvider.fetchTokenBalance(tokenId);
+			}
 		}
 		setIsOpen(false);
 	};
@@ -104,12 +132,18 @@ export default function TokenSelector(props: TokenSelectorProps) {
 						<S.DropdownOptions className={'border-wrapper-alt2 scroll-wrapper-hidden'}>
 							{availableTokens.map((token) => {
 								const balance = getTokenBalance(token.id);
+								const isDisabled = props.disabledTokens?.includes(token.id);
 
 								return (
 									<S.DropdownOption
 										key={token.id}
 										onClick={() => handleTokenSelect(token.id)}
 										className={token.id === selectedToken.id ? 'selected' : ''}
+										style={{
+											opacity: isDisabled ? 0.5 : 1,
+											cursor: isDisabled ? 'not-allowed' : 'pointer',
+											pointerEvents: isDisabled ? 'none' : 'auto',
+										}}
 									>
 										<S.TokenOption>
 											<S.TokenLogo>

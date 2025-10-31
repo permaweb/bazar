@@ -83,6 +83,7 @@ export const AO = {
 	profileSrc: process.env.PROFILE_SRC,
 	vouch: process.env.VOUCH,
 	stamps: process.env.STAMPS,
+	ao: '0syT13r0s0tgPmIed95bJnuSqaD29HQNN8D3ElLSrsc',
 	wndr: '7GoQfmSOct_aUOWKM4xbKGg6DzAmOgdKwg8Kf-CbHm4',
 	pi: '4hXj_E-5fAKmo4E8KjgQvuDJKAFk9P2grhycVmISDLs',
 	ario: 'qNvAoz0TgcH7DMg8BCVn8jF32QH5L6T29VjHxhHqqGE',
@@ -242,6 +243,7 @@ export const STYLING = {
 		button: {
 			height: '32.5px',
 			width: 'fit-content',
+			radius: '25px',
 		},
 		borderRadiusField: '5px',
 		borderRadiusWrapper: '10px',
@@ -403,6 +405,24 @@ export const STORAGE = {
 
 // Token Registry - Easy to add new tokens
 export const TOKEN_REGISTRY = {
+	[AO.pi]: {
+		id: AO.pi,
+		name: 'PI Token',
+		symbol: 'PI',
+		logo: 'zmQwyD6QiZge10OG2HasBqu27Zg0znGkdFRufOq6rv0', // Logo will be fetched dynamically from token metadata
+		denomination: 12, // PI token denomination from metadata
+		description: 'Permaweb Index token',
+		priority: 1,
+	},
+	[AO.ao]: {
+		id: AO.ao,
+		name: 'AO',
+		symbol: 'AO',
+		logo: 'UkS-mdoiG8hcAClhKK8ch4ZhEzla0mCPDOix9hpdSFE', // Logo will be fetched dynamically from token metadata
+		denomination: 12, // PI token denomination from metadata
+		description: 'AO Token',
+		priority: 2,
+	},
 	[AO.defaultToken]: {
 		id: AO.defaultToken,
 		name: 'Wrapped AR',
@@ -410,7 +430,7 @@ export const TOKEN_REGISTRY = {
 		logo: 'L99jaxRKQKJt9CqoJtPaieGPEhJD3wNhR4iGqc8amXs', // Correct wAR logo
 		denomination: 12,
 		description: 'Wrapped Arweave token',
-		priority: 1, // Primary token
+		priority: 3, // Primary token
 	},
 	[AO.pixl]: {
 		id: AO.pixl,
@@ -419,7 +439,7 @@ export const TOKEN_REGISTRY = {
 		logo: 'czR2tJmSr7upPpReXu6IuOc2H7RuHRRAhI7DXAUlszU', // PIXL logo
 		denomination: 6,
 		description: 'PIXL protocol token',
-		priority: 3,
+		priority: 4,
 	},
 	[AO.wndr]: {
 		id: AO.wndr,
@@ -428,16 +448,7 @@ export const TOKEN_REGISTRY = {
 		logo: 'xUO2tQglSYsW89aLYN8ErGivZqezoDaEn95JniaCBZk', // WANDER token logo on Arweave
 		denomination: 18,
 		description: 'Wander protocol token',
-		priority: 2,
-	},
-	[AO.pi]: {
-		id: AO.pi,
-		name: 'PI Token',
-		symbol: 'PI',
-		logo: 'zmQwyD6QiZge10OG2HasBqu27Zg0znGkdFRufOq6rv0', // Logo will be fetched dynamically from token metadata
-		denomination: 12, // PI token denomination from metadata
-		description: 'Permaweb Index token',
-		priority: 4,
+		priority: 5,
 	},
 	[AO.ario]: {
 		id: AO.ario,
@@ -446,7 +457,7 @@ export const TOKEN_REGISTRY = {
 		logo: 'GIayVyo49wof1hOtgLcJ_XAE6OuF5MeYiYsgu3z4gxk', // Logo will be fetched dynamically from token metadata
 		denomination: 6, // Default denomination, will be updated from metadata
 		description: 'ARIO protocol token',
-		priority: 5,
+		priority: 6,
 	},
 	[AO.usda]: {
 		id: AO.usda,
@@ -455,7 +466,7 @@ export const TOKEN_REGISTRY = {
 		logo: 'seXozJrsP0OgI0gvAnr8zmfxiHHb5iSlI9wMI8SdamE', // Logo will be fetched dynamically from token metadata
 		denomination: 12, // Default denomination, will be updated from metadata
 		description: 'USDA stablecoin token',
-		priority: 6,
+		priority: 7,
 	},
 	[AO.game]: {
 		id: AO.game,
@@ -464,7 +475,7 @@ export const TOKEN_REGISTRY = {
 		logo: '-c4VdpgmfuS4YadtLuxVZzTd2DQ3ipodA6cz8pwjn20', // Provided logo
 		denomination: 18, // Correct denomination
 		description: 'Game protocol token',
-		priority: 7,
+		priority: 8,
 	},
 };
 
@@ -499,7 +510,7 @@ export const DELEGATION = {
 
 export const CUSTOM_ORDERBOOKS = {
 	mqBYxpDsolZmJyBdTK8TJp_ftOuIUXVYcSQ8MYZdJg0: 'tb8W1Cn9ZiSuK-84x0h7fIUJoltD8C8j3eIU9IKgM70',
-	'gx_jKk-hy8-sB4Wv5WEuvTTVyIRWW3We7rRHthcohBQ': 't8wHK3HjEvdD30CdgbSZ7IIkxB3T50C0XO954CNF_fA',
+	// 'gx_jKk-hy8-sB4Wv5WEuvTTVyIRWW3We7rRHthcohBQ': 't8wHK3HjEvdD30CdgbSZ7IIkxB3T50C0XO954CNF_fA',
 	'Nx-_Ichdp-9uO_ZKg2DLWPiRlg-DWrSa2uGvINxOjaE': 'q_sB3jK0QdHcempCcmOSqxO_vwID_FsYCkMo0zaQt5E',
 	'GegJSRSQptBJEF5lcr4XEqWLYFUnNr3_zKQ-P_DnDQs': 'IOD6GBbHBBKOy07IfKFdmAeCFB0_xxhfTFa5H90QPL8',
 	'7GoQfmSOct_aUOWKM4xbKGg6DzAmOgdKwg8Kf-CbHm4': 'C3MbGmYaXLOZN0Ujxz0sZY2ycUBCC2wgmDoWGIVVQPk',
@@ -510,8 +521,8 @@ export const CUSTOM_ORDERBOOKS = {
 	's6jcB3ctSbiDNwR-paJgy5iOAhahXahLul8exSLHbGE': 'AgSUvl5MRT8X1j-d5ywmpkQ27_SK3yaPju2qjTS5zYY',
 	'5IrQh9aoWTLlLTXogXdGd7FcVubFKOaw7NCRGnkyXCM': '4krW8tYJhC15dAmXm5zdaQMItM1ZAu3xwB-OwrYjJXQ',
 	qNvAoz0TgcH7DMg8BCVn8jF32QH5L6T29VjHxhHqqGE: 'cmJVjh6ADoTsrYWSwqztGt73sD4MOmE00l2fuT17vFU',
-	'kfq7JKVeu-Z9qA0y-0YKXbgNqKJzENqVl0KSrPDOBl4': 'oicS7bqcRFF1fWiwGARPJTkA7dyccXmaMji7mNHIXME',
-	aKmI800gM1Gk12JvwBe2MPxAvXT1ZPfRBxmkUpLJv7g: 'O0-SAOn67j6C8CJEnYsRkWCMH_FrUZxxntemuR8fP6s',
-	OsK9Vgjxo0ypX_HLz2iJJuh4hp3I80yA9KArsJjIloU: '6Pv23ob3yEafK2bPcI4cg8mCkpRliYdZAMymEG7tKJk',
+	// 'kfq7JKVeu-Z9qA0y-0YKXbgNqKJzENqVl0KSrPDOBl4': 'oicS7bqcRFF1fWiwGARPJTkA7dyccXmaMji7mNHIXME',
+	// aKmI800gM1Gk12JvwBe2MPxAvXT1ZPfRBxmkUpLJv7g: 'O0-SAOn67j6C8CJEnYsRkWCMH_FrUZxxntemuR8fP6s',
+	// OsK9Vgjxo0ypX_HLz2iJJuh4hp3I80yA9KArsJjIloU: '6Pv23ob3yEafK2bPcI4cg8mCkpRliYdZAMymEG7tKJk',
 	'DM3FoZUq_yebASPhgd8pEIRIzDW6muXEhxz5-JwbZwo': 'd1p2oTsZM8mZ-zR5m65VPK15qzqvGJjyor2Qhs0v7Es',
 };

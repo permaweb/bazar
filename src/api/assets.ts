@@ -1,6 +1,17 @@
+import { connect } from '@permaweb/aoconnect/browser';
+
 import { getGQLData, readHandler } from 'api';
 
-import { AO, CUSTOM_ORDERBOOKS, HB, LICENSES, PAGINATORS, REFORMATTED_ASSETS, TAGS } from 'helpers/config';
+import {
+	AO,
+	CUSTOM_ORDERBOOKS,
+	HB,
+	LICENSES,
+	PAGINATORS,
+	REFORMATTED_ASSETS,
+	TAGS,
+	TOKEN_REGISTRY,
+} from 'helpers/config';
 import { getBestGatewayForGraphQL } from 'helpers/endpoints';
 import {
 	AssetDetailType,
@@ -111,28 +122,44 @@ export async function getAssetById(args: { id: string; libs?: any }): Promise<As
 
 			let processState: any;
 
-			if (args.libs) {
+			if (CUSTOM_ORDERBOOKS[args.id] || TOKEN_REGISTRY[args.id]) {
+				const ao = connect({ MODE: 'legacy' });
 				try {
-					processState = await args.libs.readState({
-						processId: structuredAsset.data.id,
-						path: 'asset',
-						fallbackAction: 'Info',
-						node: HB.defaultNode,
-					});
-				} catch (e) {
-					console.log('Hyperbean failed, falling back to dryrun:', e);
+					const response = await ao.dryrun({ process: args.id, tags: [{ name: 'Action', value: 'Info' }] });
+					const tags = response.Messages?.[0]?.Tags;
+
+					processState = {
+						Name: getTagValue(tags, 'Name'),
+						Logo: getTagValue(tags, 'Logo'),
+						Denomination: getTagValue(tags, 'Denomination'),
+					};
+				} catch (e: any) {
+					throw new Error(e);
+				}
+			} else {
+				if (args.libs) {
+					try {
+						processState = await args.libs.readState({
+							processId: structuredAsset.data.id,
+							path: 'asset',
+							fallbackAction: 'Info',
+							node: HB.defaultNode,
+						});
+					} catch (e) {
+						console.log('Hyperbean failed, falling back to dryrun:', e);
+						processState = await readHandler({
+							processId: structuredAsset.data.id,
+							action: 'Info',
+							data: null,
+						});
+					}
+				} else {
 					processState = await readHandler({
 						processId: structuredAsset.data.id,
 						action: 'Info',
 						data: null,
 					});
 				}
-			} else {
-				processState = await readHandler({
-					processId: structuredAsset.data.id,
-					action: 'Info',
-					data: null,
-				});
 			}
 
 			if (processState) {
@@ -166,7 +193,6 @@ export async function getAssetById(args: { id: string; libs?: any }): Promise<As
 			// 	try {
 			// 		await new Promise((r) => setTimeout(r, 1000));
 
-			// 		// Try Hyperbean first for balances too
 			// 		let processBalances: any;
 			// 		if (args.libs) {
 			// 			try {
@@ -198,7 +224,7 @@ export async function getAssetById(args: { id: string; libs?: any }): Promise<As
 			// 	}
 			// }
 
-			if (processState.Metadata?.CollectionId) structuredAsset.data.collectionId = processState.Metadata.CollectionId;
+			if (processState?.Metadata?.CollectionId) structuredAsset.data.collectionId = processState.Metadata.CollectionId;
 
 			let assetOrderbook = null;
 

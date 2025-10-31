@@ -58,7 +58,7 @@ export function AppProvider(props: AppProviderProps) {
 
 	const [stampsState, setStampsState] = React.useState<AppContextState['stamps']>({
 		updating: false,
-		completed: false,
+		completed: true,
 		lastUpdate: undefined,
 	});
 

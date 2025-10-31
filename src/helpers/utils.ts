@@ -383,7 +383,9 @@ export function getByteSize(input: string | Buffer): number {
 export function getTotalTokenBalance(
 	tokenBalances: { profileBalance: number | string; walletBalance: number | string } | null
 ) {
-	if (!tokenBalances || (!tokenBalances.profileBalance && !tokenBalances.walletBalance)) return null;
+	if (!tokenBalances || (tokenBalances.profileBalance === null && tokenBalances.walletBalance === null)) {
+		return null;
+	}
 
 	let total = 0;
 
