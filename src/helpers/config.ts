@@ -135,6 +135,11 @@ export const REFORMATTED_ASSETS = {
 		logo: 'Esm9ZtALCN0oM0GGBUeh90qCV_V_0d21hwobUZ7IWA8',
 		denomination: 0,
 	},
+	['Jc2bcfEbwHFQ-qY4jqm8L5hc-SggeVA1zlW6DOICWgo']: {
+		title: 'Protocol Land',
+		logo: 'DvtICU2c-wM41VZIcrMutHmo5b6WV1CDXaavOJ4a5YU',
+		denomination: 18,
+	},
 };
 
 export const LICENSES = {
