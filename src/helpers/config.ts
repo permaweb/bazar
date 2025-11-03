@@ -105,6 +105,11 @@ export const getAOConfig = () => {
 };
 
 export const REFORMATTED_ASSETS = {
+	[AO.defaultToken]: {
+		title: 'Wrapped AR',
+		logo: 'L99jaxRKQKJt9CqoJtPaieGPEhJD3wNhR4iGqc8amXs',
+		denomination: 12,
+	},
 	[AO.pixl]: {
 		title: 'PIXL Token',
 		logo: 'czR2tJmSr7upPpReXu6IuOc2H7RuHRRAhI7DXAUlszU',
@@ -113,6 +118,41 @@ export const REFORMATTED_ASSETS = {
 	[AO.stamps]: {
 		title: 'STAMP Token',
 		logo: 'kg0d-QRW1kD9lwBErRD9CGQogTp5hgPfkf1i7ApE4WU',
+		denomination: 12,
+	},
+	[AO.pi]: {
+		title: 'PI Token',
+		logo: 'zmQwyD6QiZge10OG2HasBqu27Zg0znGkdFRufOq6rv0',
+		denomination: 12,
+	},
+	[AO.ao]: {
+		title: 'AO',
+		logo: 'UkS-mdoiG8hcAClhKK8ch4ZhEzla0mCPDOix9hpdSFE',
+		denomination: 12,
+	},
+	[AO.wndr]: {
+		title: 'Wander Token',
+		logo: 'xUO2tQglSYsW89aLYN8ErGivZqezoDaEn95JniaCBZk',
+		denomination: 18,
+	},
+	[AO.ario]: {
+		title: 'ARIO Token',
+		logo: 'GIayVyo49wof1hOtgLcJ_XAE6OuF5MeYiYsgu3z4gxk',
+		denomination: 6,
+	},
+	[AO.usda]: {
+		title: 'USDA Token',
+		logo: 'seXozJrsP0OgI0gvAnr8zmfxiHHb5iSlI9wMI8SdamE',
+		denomination: 12,
+	},
+	[AO.game]: {
+		title: 'Game Token',
+		logo: '-c4VdpgmfuS4YadtLuxVZzTd2DQ3ipodA6cz8pwjn20',
+		denomination: 18,
+	},
+	[AO.flps]: {
+		title: 'FLPS Token',
+		logo: 'VoI5dCNcl9PYu0xrRYaFk9i8sUMKFBRKcQqOb8uRPOw',
 		denomination: 12,
 	},
 	['K59Wi9uKXBQfTn3zw7L_t-lwHAoq3Fx-V9sCyOY3dFE']: {
