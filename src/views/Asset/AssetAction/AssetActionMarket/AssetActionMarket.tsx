@@ -17,6 +17,7 @@ export default function AssetActionMarket(props: IProps) {
 	const MARKET_ACTION_TAB_OPTIONS = {
 		buy: language.buy,
 		sell: language.sell,
+		bid: 'Bid',
 		transfer: language.transfer,
 	};
 
@@ -32,6 +33,10 @@ export default function AssetActionMarket(props: IProps) {
 			{
 				label: MARKET_ACTION_TAB_OPTIONS.sell,
 				icon: ASSETS.sell,
+			},
+			{
+				label: MARKET_ACTION_TAB_OPTIONS.bid,
+				icon: ASSETS.bid,
 			},
 			{
 				label: MARKET_ACTION_TAB_OPTIONS.transfer,
@@ -60,6 +65,9 @@ export default function AssetActionMarket(props: IProps) {
 				break;
 			case MARKET_ACTION_TAB_OPTIONS.sell:
 				type = 'sell';
+				break;
+			case MARKET_ACTION_TAB_OPTIONS.bid:
+				type = 'bid';
 				break;
 			case MARKET_ACTION_TAB_OPTIONS.transfer:
 				type = 'transfer';

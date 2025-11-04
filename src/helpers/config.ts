@@ -6,6 +6,7 @@ import arrow from 'assets/arrow.svg';
 import asset from 'assets/asset.svg';
 import audio from 'assets/audio.svg';
 import beacon from 'assets/beacon-logo.svg';
+import bid from 'assets/bid.svg';
 import bridge from 'assets/bridge.svg';
 import buy from 'assets/buy.svg';
 import checkmark from 'assets/checkmark.svg';
@@ -156,6 +157,7 @@ export const ASSETS = {
 	arrow,
 	asset,
 	audio,
+	bid,
 	bridge,
 	buy,
 	checkmark,

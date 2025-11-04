@@ -127,8 +127,9 @@ export default function Asset() {
 
 									// Process all pairs for this asset to get all orders
 									assetPairs.forEach((pair: any) => {
-										if (pair.Orders && Array.isArray(pair.Orders)) {
-											const pairOrders = pair.Orders.map((order: any) => ({
+										// Helper to map orders with side info
+										const mapOrders = (orders: any[], side?: string) => {
+											return orders.map((order: any) => ({
 												creator: order.Creator || order.creator,
 												dateCreated: order.DateCreated || order.dateCreated,
 												id: order.Id || order.id,
@@ -137,7 +138,24 @@ export default function Asset() {
 												token: order.Token || order.token,
 												currency: pair.Pair[1], // The token being received
 												price: order.Price || order.price || '0', // Ensure price is always set
+												side: side || order.Side, // Include side information
 											}));
+										};
+
+										// New structure: Asks and Bids
+										if (pair.Asks || pair.Bids) {
+											if (pair.Asks && Array.isArray(pair.Asks)) {
+												const askOrders = mapOrders(pair.Asks, 'Ask');
+												allOrders = allOrders.concat(askOrders);
+											}
+											if (pair.Bids && Array.isArray(pair.Bids)) {
+												const bidOrders = mapOrders(pair.Bids, 'Bid');
+												allOrders = allOrders.concat(bidOrders);
+											}
+										}
+										// Legacy structure: Orders array (backward compatibility)
+										else if (pair.Orders && Array.isArray(pair.Orders)) {
+											const pairOrders = mapOrders(pair.Orders);
 											allOrders = allOrders.concat(pairOrders);
 										}
 									});
@@ -254,6 +272,8 @@ export default function Asset() {
 			}
 		})();
 	}, [asset?.orderbook?.id, toggleUpdate]);
+
+	console.log(asset);
 
 	function getData() {
 		if (asset) {

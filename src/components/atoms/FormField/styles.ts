@@ -18,7 +18,6 @@ export const TWrapper = styled.div`
 	display: flex;
 	justify-content: space-between;
 	align-items: center;
-	padding: 0 2.5px 0 0;
 	button {
 		svg {
 			margin: 0 0 1.5px 0;

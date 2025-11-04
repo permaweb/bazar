@@ -34,6 +34,7 @@ import { IProps } from './types';
 
 const MIN_PRICE = 0.000001;
 
+// TODO: Bid orders are sending with the same tokens in a pair pair
 export default function AssetActionMarketOrders(props: IProps) {
 	const permawebProvider = usePermawebProvider();
 	const arProvider = useArweaveProvider();
@@ -215,8 +216,14 @@ export default function AssetActionMarketOrders(props: IProps) {
 			if (props.asset.orderbook?.orders && props.asset.orderbook?.orders.length > 0) {
 				const selectedTokenId = tokenProvider.selectedToken.id;
 
+				// For buy orders: only count Ask orders (assets available for sale)
+				// For legacy orderbooks without side info, treat all orders as asks
 				const salesBalances = props.asset.orderbook?.orders
-					.filter((order: AssetOrderType) => order.currency === selectedTokenId)
+					.filter((order: AssetOrderType) => {
+						const matchesCurrency = order.currency === selectedTokenId;
+						const isAsk = !order.side || order.side === 'Ask'; // Backward compatible: no side = ask
+						return matchesCurrency && isAsk;
+					})
 					.map((order: AssetOrderType) => {
 						return Number(order.quantity);
 					});
@@ -266,6 +273,12 @@ export default function AssetActionMarketOrders(props: IProps) {
 			case 'buy':
 				setMaxOrderQuantity(totalSalesQuantity);
 				break;
+			case 'bid':
+				// For bids, user can bid any quantity they want
+				// The real limit is their currency balance and the price they set (quantity × price)
+				// Use a reasonable number for slider, but don't enforce as hard limit
+				setMaxOrderQuantity(10000000); // 10M for slider range, validation is by total cost
+				break;
 			case 'sell':
 			case 'transfer':
 				let totalBalance = 0;
@@ -274,16 +287,26 @@ export default function AssetActionMarketOrders(props: IProps) {
 				setMaxOrderQuantity(totalBalance);
 				break;
 		}
-	}, [props.asset, props.type, connectedBalance, connectedWalletBalance, totalSalesQuantity]);
+	}, [
+		props.asset,
+		props.type,
+		connectedBalance,
+		connectedWalletBalance,
+		totalSalesQuantity,
+		permawebProvider.tokenBalances,
+		tokenProvider.selectedToken.id,
+		transferDenomination,
+		denomination,
+	]);
 
 	React.useEffect(() => {
-		if (props.type === 'buy') {
+		if (props.type === 'buy' || props.type === 'bid') {
 			if (!permawebProvider.tokenBalances || !permawebProvider.tokenBalances[tokenProvider.selectedToken.id]) {
 				setInsufficientBalance(true);
 			} else {
 				const totalAmount = getTotalOrderAmount();
 				let orderAmount = isNaN(Number(totalAmount)) ? BigInt(0) : BigInt(totalAmount);
-				if (denomination) {
+				if (props.type === 'buy' && denomination) {
 					orderAmount = BigInt(orderAmount) / BigInt(denomination);
 				}
 				setInsufficientBalance(
@@ -298,6 +321,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 		props.type,
 		props.asset,
 		currentOrderQuantity,
+		unitPrice,
 		denomination,
 		tokenProvider.selectedToken.id,
 	]);
@@ -362,6 +386,11 @@ export default function AssetActionMarketOrders(props: IProps) {
 					dominantToken = props.asset.data.id;
 					swapToken = tokenProvider.selectedToken.id;
 					break;
+				case 'bid':
+					// Bid: Send currency (quote token), receive asset (base token)
+					dominantToken = tokenProvider.selectedToken.id;
+					swapToken = props.asset.data.id;
+					break;
 				default:
 					break;
 			}
@@ -384,12 +413,14 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 				if (unitPrice) data.unitPrice = unitPrice.toString();
 
-				// UCM needs both asset and token denominations for proper order handling
-				if (denomination && denomination > 1) {
+				// UCM needs the denomination of the dominant token (token being sent)
+				// For sell orders: denomination is the asset's denomination
+				// For buy/bid orders: denomination is the currency token's denomination
+				if (props.type === 'sell' && denomination && denomination > 1) {
 					data.denomination = denomination.toString(); // Asset denomination
 				}
-				if (transferDenomination && transferDenomination > 1) {
-					data.tokenDenomination = transferDenomination.toString(); // Token denomination
+				if ((props.type === 'buy' || props.type === 'bid') && transferDenomination && transferDenomination > 1) {
+					data.denomination = transferDenomination.toString(); // Currency token denomination
 				}
 
 				const orderId = await createOrder(
@@ -431,6 +462,11 @@ export default function AssetActionMarketOrders(props: IProps) {
 				transferQuantity = isNaN(Number(totalAmount)) ? '0' : totalAmount.toString();
 				if (denomination) transferQuantity = (BigInt(transferQuantity) / BigInt(denomination)).toString();
 				break;
+			case 'bid':
+				// Bid: Transfer the total currency amount (price * quantity)
+				const bidTotalAmount = getTotalOrderAmount();
+				transferQuantity = isNaN(Number(bidTotalAmount)) ? '0' : bidTotalAmount.toString();
+				break;
 			case 'sell':
 			case 'transfer':
 				if (denomination) transferQuantity = Math.floor(Number(currentOrderQuantity) * denomination);
@@ -468,6 +504,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 			switch (props.type) {
 				case 'buy':
+				case 'bid':
 					processId = tokenProvider.selectedToken.id;
 					profileBalance = BigInt(permawebProvider.tokenBalances[tokenProvider.selectedToken.id].profileBalance);
 					walletBalance = BigInt(permawebProvider.tokenBalances[tokenProvider.selectedToken.id].walletBalance);
@@ -608,7 +645,9 @@ export default function AssetActionMarketOrders(props: IProps) {
 					.filter((order: AssetOrderType) => {
 						const price = Number(order.price);
 						const quantity = Number(order.quantity);
-						return !isNaN(price) && !isNaN(quantity) && price > 0 && quantity > 0 && order.currency === selectedTokenId;
+						const matchesCurrency = order.currency === selectedTokenId;
+						const isAsk = !order.side || order.side === 'Ask'; // Backward compatible: no side = ask
+						return !isNaN(price) && !isNaN(quantity) && price > 0 && quantity > 0 && matchesCurrency && isAsk;
 					})
 					.sort((a: AssetOrderType, b: AssetOrderType) => Number(a.price) - Number(b.price));
 
@@ -660,6 +699,29 @@ export default function AssetActionMarketOrders(props: IProps) {
 				const totalDisplayAmount = Number(currentOrderQuantity) * Number(unitPrice);
 
 				// Convert this total display amount to raw units using transferDenomination
+				if (transferDenomination) {
+					price = BigInt(Math.floor(totalDisplayAmount * transferDenomination));
+				} else {
+					price = BigInt(Math.floor(totalDisplayAmount));
+				}
+			}
+
+			return price;
+		} else if (props.type === 'bid') {
+			// For BID orders: Calculate the total amount of currency needed (price * quantity)
+			let price: bigint = BigInt(0);
+			if (
+				isNaN(Number(unitPrice)) ||
+				isNaN(Number(currentOrderQuantity)) ||
+				Number(currentOrderQuantity) < 0 ||
+				Number(unitPrice) < 0
+			) {
+				price = BigInt(0);
+			} else {
+				// Calculate the total amount of currency in display units
+				const totalDisplayAmount = Number(currentOrderQuantity) * Number(unitPrice);
+
+				// Convert to raw units using transferDenomination
 				if (transferDenomination) {
 					price = BigInt(Math.floor(totalDisplayAmount * transferDenomination));
 				} else {
@@ -745,26 +807,33 @@ export default function AssetActionMarketOrders(props: IProps) {
 			(!Number.isInteger(Number(currentOrderQuantity)) && !denomination)
 		)
 			return true;
-		if (Number(currentOrderQuantity) > maxOrderQuantity) return true;
-		if (props.type === 'sell' && (Number(unitPrice) <= 0 || Number(unitPrice) <= MIN_PRICE || isNaN(Number(unitPrice))))
+		if (props.type !== 'bid' && Number(currentOrderQuantity) > maxOrderQuantity) return true;
+		if (
+			(props.type === 'sell' || props.type === 'bid') &&
+			(Number(unitPrice) <= 0 || Number(unitPrice) <= MIN_PRICE || isNaN(Number(unitPrice)))
+		)
 			return true;
 		if (props.type === 'transfer' && (!transferRecipient || !checkValidAddress(transferRecipient))) return true;
 		if (insufficientBalance) return true;
 
-		// For BUY orders: Check if there are existing orders to buy from
-		// For SELL orders: Allow any token (creating new liquidity)
+		// For BUY orders: Check if there are existing Ask orders to buy from
+		// For SELL/BID orders: Allow any token (creating new liquidity)
 		if (props.type === 'buy') {
 			const hasUCMOrders = props.asset?.orderbook?.orders && props.asset.orderbook.orders.length > 0;
 			const selectedTokenId = tokenProvider.selectedToken.id;
 			const hasMatchingOrders =
 				hasUCMOrders &&
-				props.asset.orderbook.orders.some((order: AssetOrderType) => order.currency === selectedTokenId);
+				props.asset.orderbook.orders.some((order: AssetOrderType) => {
+					const matchesCurrency = order.currency === selectedTokenId;
+					const isAsk = !order.side || order.side === 'Ask'; // Backward compatible: no side = ask
+					return matchesCurrency && isAsk;
+				});
 
 			if (!hasMatchingOrders) {
 				return true;
 			}
 		}
-		// For sell orders, we don't restrict - users can create new liquidity
+		// For sell/bid orders, we don't restrict - users can create new liquidity
 
 		return false;
 	}
@@ -781,6 +850,10 @@ export default function AssetActionMarketOrders(props: IProps) {
 				balanceHeader = language.totalSalesBalance;
 				// percentageHeader = language.totalSalesPercentage;
 				quantity = totalSalesQuantity;
+				break;
+			case 'bid':
+				balanceHeader = 'Available to Bid';
+				quantity = 0; // Bids are limited by total cost (price * quantity), not just quantity
 				break;
 			case 'sell':
 				balanceHeader = language.totalSalesBalanceAvailable;
@@ -859,6 +932,9 @@ export default function AssetActionMarketOrders(props: IProps) {
 				quantityLabel = language.totalPurchaseQuantity;
 				// percentageLabel = language.totalPurchasePercentage;
 				break;
+			case 'bid':
+				quantityLabel = 'Total Bid Quantity';
+				break;
 			case 'sell':
 				quantityLabel = language.totalListingQuantity;
 				// percentageLabel = language.totalListingPercentage;
@@ -916,6 +992,10 @@ export default function AssetActionMarketOrders(props: IProps) {
 				label = finalizeOrder ? language.confirmPurchase : language.buy;
 				icon = ASSETS.buy;
 				break;
+			case 'bid':
+				label = finalizeOrder ? 'Confirm Bid' : 'Bid';
+				icon = ASSETS.bid;
+				break;
 			case 'sell':
 				label = finalizeOrder ? language.confirmListing : language.sell;
 				icon = ASSETS.sell;
@@ -967,6 +1047,11 @@ export default function AssetActionMarketOrders(props: IProps) {
 				header = language.confirmPurchase;
 				confirmationHeader = language.orderConfirmationDetailsPurchase;
 				reviewMessage = language.orderConfirmationReviewPurchase;
+				break;
+			case 'bid':
+				header = 'Confirm Bid';
+				confirmationHeader = 'Bid Order Details';
+				reviewMessage = 'Review your bid details';
 				break;
 			case 'sell':
 				header = language.confirmListing;
@@ -1085,28 +1170,32 @@ export default function AssetActionMarketOrders(props: IProps) {
 							!arProvider.walletAddress ||
 							!permawebProvider.profile ||
 							!permawebProvider.profile.id ||
-							maxOrderQuantity <= 0 ||
+							(props.type !== 'bid' && maxOrderQuantity <= 0) ||
 							orderLoading
 						}
 						invalid={{
-							status: Number(currentOrderQuantity) < 0 || Number(currentOrderQuantity) > maxOrderQuantity,
+							status:
+								Number(currentOrderQuantity) < 0 ||
+								(props.type !== 'bid' && Number(currentOrderQuantity) > maxOrderQuantity),
 							message: null,
 						}}
 					/>
-					<S.MaxQty>
-						<Button
-							type={'primary'}
-							label={language.max}
-							handlePress={() => setCurrentOrderQuantity(maxOrderQuantity)}
-							disabled={
-								!arProvider.walletAddress ||
-								!permawebProvider.profile ||
-								!permawebProvider.profile.id ||
-								maxOrderQuantity <= 0
-							}
-							noMinWidth
-						/>
-					</S.MaxQty>
+					{props.type !== 'bid' && (
+						<S.MaxQty>
+							<Button
+								type={'primary'}
+								label={language.max}
+								handlePress={() => setCurrentOrderQuantity(maxOrderQuantity)}
+								disabled={
+									!arProvider.walletAddress ||
+									!permawebProvider.profile ||
+									!permawebProvider.profile.id ||
+									maxOrderQuantity <= 0
+								}
+								noMinWidth
+							/>
+						</S.MaxQty>
+					)}
 					<S.FieldsFlexWrapper>
 						<S.TotalsWrapper>
 							{/* <S.TotalQuantityLine>
@@ -1122,25 +1211,29 @@ export default function AssetActionMarketOrders(props: IProps) {
 									step={'1'}
 									value={isNaN(Number(currentOrderQuantity)) ? '' : currentOrderQuantity}
 									onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleQuantityInput(e)}
-									label={`${language.assetQuantity} (${language.max}: ${formatCount(maxOrderQuantity.toString())})`}
+									label={
+										props.type === 'bid'
+											? language.assetQuantity
+											: `${language.assetQuantity} (${language.max}: ${formatCount(maxOrderQuantity.toString())})`
+									}
 									disabled={
 										!arProvider.walletAddress ||
 										!permawebProvider.profile ||
 										!permawebProvider.profile.id ||
-										maxOrderQuantity <= 0 ||
+										(props.type !== 'bid' && maxOrderQuantity <= 0) ||
 										orderLoading
 									}
 									invalid={{
 										status:
 											Number(currentOrderQuantity) < 0 ||
-											Number(currentOrderQuantity) > maxOrderQuantity ||
+											(props.type !== 'bid' && Number(currentOrderQuantity) > maxOrderQuantity) ||
 											(!Number.isInteger(Number(currentOrderQuantity)) && !denomination),
 										message: null,
 									}}
 									hideErrorMessage
 								/>
 							</S.FieldWrapper>
-							{props.type === 'sell' && (
+							{(props.type === 'sell' || props.type === 'bid') && (
 								<S.FieldWrapper>
 									<FormField
 										type={'number'}
@@ -1159,11 +1252,15 @@ export default function AssetActionMarketOrders(props: IProps) {
 											message: null,
 										}}
 										hideErrorMessage
-										tooltip={language.saleUnitPriceTooltip}
+										tooltip={
+											props.type === 'bid'
+												? 'Price per unit you are willing to pay.'
+												: 'Price per unit you are listing your asset for.'
+										}
 									/>
 								</S.FieldWrapper>
 							)}
-							{props.type === 'sell' && (
+							{(props.type === 'sell' || props.type === 'bid') && (
 								<S.FieldWrapper>
 									<TokenSelector showLabel={true} disabledTokens={[props.asset.data.id]} />
 								</S.FieldWrapper>
@@ -1222,11 +1319,13 @@ export default function AssetActionMarketOrders(props: IProps) {
 										<span>{language.quantityMustBeInteger}</span>
 									</S.MessageWrapper>
 								)}
-								{props.type === 'sell' && Number(unitPrice) > 0 && Number(unitPrice) <= MIN_PRICE && (
-									<S.MessageWrapper warning>
-										<span>{language.priceTooLow}</span>
-									</S.MessageWrapper>
-								)}
+								{(props.type === 'sell' || props.type === 'bid') &&
+									Number(unitPrice) > 0 &&
+									Number(unitPrice) <= MIN_PRICE && (
+										<S.MessageWrapper warning>
+											<span>{language.priceTooLow}</span>
+										</S.MessageWrapper>
+									)}
 								{props.asset && !props.asset.state.transferable && (
 									<S.MessageWrapper warning>
 										<span>{language.nonTransferable}</span>

@@ -258,28 +258,49 @@ export function getExistingEntry(args: { id: string }) {
 	return ucmReducer?.Orderbook?.find((entry: any) => (entry.Pair ? entry.Pair[0] === args.id : null)) || null;
 }
 
-export function getAssetOrders(orderbook: { Pair: string[]; Orders: any } | null | undefined) {
-	if (!orderbook || !orderbook.Orders) {
+export function getAssetOrders(orderbook: { Pair: string[]; Orders?: any; Asks?: any; Bids?: any } | null | undefined) {
+	if (!orderbook) {
 		return [];
 	}
 
-	let assetOrders: AssetOrderType[] | null = null;
+	let assetOrders: AssetOrderType[] = [];
 
-	assetOrders = orderbook.Orders.map((order: any) => {
-		let currentAssetOrder: AssetOrderType = {
-			creator: order.Creator,
-			dateCreated: order.DateCreated,
-			id: order.Id,
-			originalQuantity: order.OriginalQuantity,
-			quantity: order.Quantity,
-			token: order.Token,
-			currency: orderbook.Pair[1],
-		};
+	// Helper function to map orders
+	const mapOrders = (orders: any[], currency: string, side?: string) => {
+		return orders.map((order: any) => {
+			let currentAssetOrder: AssetOrderType = {
+				creator: order.Creator,
+				dateCreated: order.DateCreated,
+				id: order.Id,
+				originalQuantity: order.OriginalQuantity,
+				quantity: order.Quantity,
+				token: order.Token,
+				currency: currency,
+				price: order.Price || '0',
+			};
 
-		// Always set price field, default to '0' if not provided
-		currentAssetOrder.price = order.Price || '0';
-		return currentAssetOrder;
-	});
+			// Add side information if available
+			if (side || order.Side) {
+				currentAssetOrder.side = side || order.Side;
+			}
+
+			return currentAssetOrder;
+		});
+	};
+
+	// New structure: Asks and Bids arrays
+	if (orderbook.Asks || orderbook.Bids) {
+		if (orderbook.Asks && Array.isArray(orderbook.Asks)) {
+			assetOrders = assetOrders.concat(mapOrders(orderbook.Asks, orderbook.Pair[1], 'Ask'));
+		}
+		if (orderbook.Bids && Array.isArray(orderbook.Bids)) {
+			assetOrders = assetOrders.concat(mapOrders(orderbook.Bids, orderbook.Pair[1], 'Bid'));
+		}
+	}
+	// Legacy structure: Orders array (backward compatibility)
+	else if (orderbook.Orders && Array.isArray(orderbook.Orders)) {
+		assetOrders = mapOrders(orderbook.Orders, orderbook.Pair[1]);
+	}
 
 	return assetOrders;
 }
