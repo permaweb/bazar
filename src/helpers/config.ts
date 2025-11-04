@@ -90,6 +90,10 @@ export const AO = {
 	usda: 'FBt9A5GA_KXMMSxA2DJ0xZbAq8sLLU2ak-YJe9zDvg8',
 	game: 's6jcB3ctSbiDNwR-paJgy5iOAhahXahLul8exSLHbGE',
 	pland: 'Jc2bcfEbwHFQ-qY4jqm8L5hc-SggeVA1zlW6DOICWgo',
+	smoney: 'K59Wi9uKXBQfTn3zw7L_t-lwHAoq3Fx-V9sCyOY3dFE',
+	llamac: 'pazXumQI-HPH7iFGfTC-4_7biSnqz_U67oFAGry5zUY',
+	trunk: 'wOrb8b_V8QixWyXZub48Ki5B6OIDyf_p1ngoonsaRpQ',
+	lfish: 'ENNFBJS_TpBTh-xR648Pdpx2Z8YgZkRbiqbuzfVv0M4',
 	flps: 'It-_AKlEfARBmJdbJew1nG9_hIaZt0t20wQc28mFGBE',
 };
 
@@ -156,22 +160,22 @@ export const REFORMATTED_ASSETS = {
 		logo: 'VoI5dCNcl9PYu0xrRYaFk9i8sUMKFBRKcQqOb8uRPOw',
 		denomination: 12,
 	},
-	['K59Wi9uKXBQfTn3zw7L_t-lwHAoq3Fx-V9sCyOY3dFE']: {
+	[AO.smoney]: {
 		title: 'Space Money',
 		logo: 'Jr8gjPMCE1aTgN73tRfseL1ZD-OFbGHoA__MWl0QxI4',
 		denomination: 18,
 	},
-	['pazXumQI-HPH7iFGfTC-4_7biSnqz_U67oFAGry5zUY']: {
+	[AO.llamac]: {
 		title: 'Llama Coin',
 		logo: '9FSEgmUsrug7kTdZJABDekwTGJy7YG7KaN5khcbwcX4',
 		denomination: 12,
 	},
-	['wOrb8b_V8QixWyXZub48Ki5B6OIDyf_p1ngoonsaRpQ']: {
+	[AO.trunk]: {
 		title: 'TRUNK',
 		logo: 'hqg-Em9DdYHYmMysyVi8LuTGF8IF_F7ZacgjYiSpj0k',
 		denomination: 3,
 	},
-	['ENNFBJS_TpBTh-xR648Pdpx2Z8YgZkRbiqbuzfVv0M4']: {
+	[AO.lfish]: {
 		title: 'Legendary Fish',
 		logo: 'Esm9ZtALCN0oM0GGBUeh90qCV_V_0d21hwobUZ7IWA8',
 		denomination: 0,
