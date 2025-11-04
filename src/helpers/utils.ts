@@ -383,12 +383,14 @@ export function getByteSize(input: string | Buffer): number {
 export function getTotalTokenBalance(
 	tokenBalances: { profileBalance: number | string; walletBalance: number | string } | null
 ) {
-	if (!tokenBalances) return null;
+	if (!tokenBalances || (tokenBalances.profileBalance === null && tokenBalances.walletBalance === null)) {
+		return null;
+	}
 
 	let total = 0;
 
-	if (tokenBalances.profileBalance !== null) total += tokenBalances.profileBalance;
-	if (tokenBalances.walletBalance !== null) total += tokenBalances.walletBalance;
+	if (tokenBalances.profileBalance !== null) total += Number(tokenBalances.profileBalance);
+	if (tokenBalances.walletBalance !== null) total += Number(tokenBalances.walletBalance);
 
 	return total;
 }
@@ -431,4 +433,17 @@ export function checkEqualObjects(obj1: object, obj2: object): boolean {
 	}
 
 	return true;
+}
+
+export function isVersionGreater(v1, v2) {
+	const a = v1.split('.').map(Number);
+	const b = v2.split('.').map(Number);
+
+	for (let i = 0; i < Math.max(a.length, b.length); i++) {
+		const num1 = a[i] || 0;
+		const num2 = b[i] || 0;
+		if (num1 > num2) return true;
+		if (num1 < num2) return false;
+	}
+	return false;
 }

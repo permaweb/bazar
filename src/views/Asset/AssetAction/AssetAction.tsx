@@ -15,11 +15,10 @@ import { OwnerLine } from 'components/molecules/OwnerLine';
 import { Tabs } from 'components/molecules/Tabs';
 import { AssetData } from 'components/organisms/AssetData';
 import { OrderCancel } from 'components/organisms/OrderCancel';
-import { Stamps } from 'components/organisms/Stamps';
 import { ASSETS, STYLING } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import { ListingType, OwnerType } from 'helpers/types';
-import { formatCount, formatPercentage, getOwners, sortOrders } from 'helpers/utils';
+import { formatCount, getOwners, sortOrders } from 'helpers/utils';
 import * as windowUtils from 'helpers/window';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
@@ -61,15 +60,15 @@ export default function AssetAction(props: IProps) {
 			label: ACTION_TAB_OPTIONS.activity,
 			icon: ASSETS.activity,
 		},
-		{
-			label: ACTION_TAB_OPTIONS.owners,
-			icon: ASSETS.users,
-		},
+		// {
+		// 	label: ACTION_TAB_OPTIONS.owners,
+		// 	icon: ASSETS.users,
+		// },
 	];
 
 	const [mobile, setMobile] = React.useState(!windowUtils.checkWindowCutoff(parseInt(STYLING.cutoffs.secondary)));
 
-	const [totalAssetBalance, setTotalAssetBalance] = React.useState<number>(0);
+	const [_totalAssetBalance, setTotalAssetBalance] = React.useState<number>(0);
 
 	const [addressGroups, setAddressGroups] = React.useState<string[][] | null>(null);
 	const [ownerCount, setOwnerCount] = React.useState<number | null>(null);
@@ -124,7 +123,7 @@ export default function AssetAction(props: IProps) {
 				try {
 					let subAddresses = {};
 					addressGroups[ownersCursor].forEach((address: string) => {
-						if (props.asset.state.balances.hasOwnProperty(address)) {
+						if (props.asset.state?.balances?.hasOwnProperty(address)) {
 							subAddresses[address] = props.asset.state.balances[address];
 						}
 					});
@@ -170,89 +169,92 @@ export default function AssetAction(props: IProps) {
 		(async function () {
 			if (props.asset && props.asset.orderbook?.id) {
 				// Check if orders are already available
-				if (props.asset.orderbook?.orders && props.asset.orderbook.orders.length > 0) {
-					const sortedOrders = sortOrders(props.asset.orderbook.orders, 'low-to-high');
+				if (props.asset.orderbook?.orders) {
+					if (props.asset.orderbook.orders.length > 0) {
+						const sortedOrders = sortOrders(props.asset.orderbook.orders, 'low-to-high');
 
-					let profiles: any[] = await getProfiles(sortedOrders.map((order: any) => order.creator));
-					const mappedListings = sortedOrders.map((order: any) => {
-						let currentProfile = null;
-						if (profiles) {
-							currentProfile = profiles.find((profile: any) => profile.id === order.creator);
-						}
+						let profiles: any[] = await getProfiles(sortedOrders.map((order: any) => order.creator));
+						const mappedListings = sortedOrders.map((order: any) => {
+							let currentProfile = null;
+							if (profiles) {
+								currentProfile = profiles.find((profile: any) => profile.id === order.creator);
+							}
 
-						const currentListing = {
-							profile: currentProfile || null,
-							orderbookId: props.asset.orderbook.id,
-							...order,
-						};
+							const currentListing = {
+								profile: currentProfile || null,
+								orderbookId: props.asset.orderbook.id,
+								...order,
+							};
 
-						return currentListing;
-					});
-
-					setCurrentListings(mappedListings);
-				} else {
-					// Fetch orders from orderbook (for global orderbook or when orders not loaded)
-					try {
-						const response = await permawebProvider.libs.readState({
-							processId: props.asset.orderbook.id,
-							path: 'asset',
-							fallbackAction: 'Info',
+							return currentListing;
 						});
 
-						if (response?.Orderbook) {
-							const assetPairs = response.Orderbook.filter(
-								(pair: any) => pair.Pair && pair.Pair.includes(props.asset.data.id)
-							);
-
-							let allOrders: any[] = [];
-
-							assetPairs.forEach((pair: any) => {
-								if (pair.Orders && Array.isArray(pair.Orders)) {
-									const pairOrders = pair.Orders.map((order: any) => ({
-										creator: order.Creator || order.creator,
-										dateCreated: order.DateCreated || order.dateCreated,
-										id: order.Id || order.id,
-										originalQuantity: order.OriginalQuantity || order.originalQuantity,
-										quantity: order.Quantity || order.quantity,
-										token: order.Token || order.token,
-										currency: pair.Pair[1],
-										price: order.Price || order.price || '0',
-									}));
-									allOrders = allOrders.concat(pairOrders);
-								}
-							});
-
-							if (allOrders.length > 0) {
-								const sortedOrders = sortOrders(allOrders, 'low-to-high');
-
-								let profiles: any[] = await getProfiles(sortedOrders.map((order: any) => order.creator));
-								const mappedListings = sortedOrders.map((order: any) => {
-									let currentProfile = null;
-									if (profiles) {
-										currentProfile = profiles.find((profile: any) => profile.id === order.creator);
-									}
-
-									const currentListing = {
-										profile: currentProfile || null,
-										orderbookId: props.asset.orderbook.id,
-										...order,
-									};
-
-									return currentListing;
-								});
-
-								setCurrentListings(mappedListings);
-							} else {
-								setCurrentListings([]);
-							}
-						} else {
-							setCurrentListings([]);
-						}
-					} catch (error) {
-						console.error('Error fetching orderbook orders:', error);
-						setCurrentListings([]);
-					}
+						setCurrentListings(mappedListings);
+					} else setCurrentListings([]);
 				}
+				// else {
+				// 	// Fetch orders from orderbook (for global orderbook or when orders not loaded)
+				// 	try {
+				// 		const response = await permawebProvider.libs.readState({
+				// 			processId: props.asset.orderbook.id,
+				// 			path: 'asset',
+				// 			fallbackAction: 'Info',
+				// 		});
+
+				// 		if (response?.Orderbook) {
+				// 			const assetPairs = response.Orderbook.filter(
+				// 				(pair: any) => pair.Pair && pair.Pair.includes(props.asset.data.id)
+				// 			);
+
+				// 			let allOrders: any[] = [];
+
+				// 			assetPairs.forEach((pair: any) => {
+				// 				if (pair.Orders && Array.isArray(pair.Orders)) {
+				// 					const pairOrders = pair.Orders.map((order: any) => ({
+				// 						creator: order.Creator || order.creator,
+				// 						dateCreated: order.DateCreated || order.dateCreated,
+				// 						id: order.Id || order.id,
+				// 						originalQuantity: order.OriginalQuantity || order.originalQuantity,
+				// 						quantity: order.Quantity || order.quantity,
+				// 						token: order.Token || order.token,
+				// 						currency: pair.Pair[1],
+				// 						price: order.Price || order.price || '0',
+				// 					}));
+				// 					allOrders = allOrders.concat(pairOrders);
+				// 				}
+				// 			});
+
+				// 			if (allOrders.length > 0) {
+				// 				const sortedOrders = sortOrders(allOrders, 'low-to-high');
+
+				// 				let profiles: any[] = await getProfiles(sortedOrders.map((order: any) => order.creator));
+				// 				const mappedListings = sortedOrders.map((order: any) => {
+				// 					let currentProfile = null;
+				// 					if (profiles) {
+				// 						currentProfile = profiles.find((profile: any) => profile.id === order.creator);
+				// 					}
+
+				// 					const currentListing = {
+				// 						profile: currentProfile || null,
+				// 						orderbookId: props.asset.orderbook.id,
+				// 						...order,
+				// 					};
+
+				// 					return currentListing;
+				// 				});
+
+				// 				setCurrentListings(mappedListings);
+				// 			} else {
+				// 				setCurrentListings([]);
+				// 			}
+				// 		} else {
+				// 			setCurrentListings([]);
+				// 		}
+				// 	} catch (error) {
+				// 		console.error('Error fetching orderbook orders:', error);
+				// 		setCurrentListings([]);
+				// 	}
+				// }
 			}
 		})();
 	}, [props.asset]);
@@ -312,7 +314,7 @@ export default function AssetAction(props: IProps) {
 							{language.owner.charAt(0).toUpperCase() + language.owner.slice(1)}
 						</GS.DrawerContentFlex>
 						<GS.DrawerContentDetail>{language.quantity}</GS.DrawerContentDetail>
-						<GS.DrawerContentDetail>{language.percentage}</GS.DrawerContentDetail>
+						{/* <GS.DrawerContentDetail>{language.percentage}</GS.DrawerContentDetail> */}
 					</GS.DrawerHeaderWrapper>
 				)}
 				{currentOwners &&
@@ -338,12 +340,12 @@ export default function AssetAction(props: IProps) {
 								<S.DrawerContentDetailAlt>
 									{getDenominatedTokenValue(owner.ownerQuantity, props.asset.data.id)}
 								</S.DrawerContentDetailAlt>
-								{mobile && (
+								{/* {mobile && (
 									<S.MDrawerHeader>
 										<GS.DrawerContentHeader>{language.percentage}</GS.DrawerContentHeader>
 									</S.MDrawerHeader>
-								)}
-								<S.DrawerContentDetailAlt>{formatPercentage(owner.ownerPercentage)}</S.DrawerContentDetailAlt>
+								)} */}
+								{/* <S.DrawerContentDetailAlt>{formatPercentage(owner.ownerPercentage)}</S.DrawerContentDetailAlt> */}
 							</S.DrawerContentLine>
 						);
 					})}
@@ -385,7 +387,7 @@ export default function AssetAction(props: IProps) {
 						<GS.DrawerHeaderWrapper>
 							<GS.DrawerContentFlex>{language.seller}</GS.DrawerContentFlex>
 							<GS.DrawerContentDetail>{language.quantity}</GS.DrawerContentDetail>
-							<GS.DrawerContentDetail>{language.percentage}</GS.DrawerContentDetail>
+							{/* <GS.DrawerContentDetail>{language.percentage}</GS.DrawerContentDetail> */}
 							<GS.DrawerContentDetail>{language.price}</GS.DrawerContentDetail>
 						</GS.DrawerHeaderWrapper>
 					)}
@@ -419,14 +421,14 @@ export default function AssetAction(props: IProps) {
 								<S.DrawerContentDetailAlt>
 									{getDenominatedTokenValue(Number(listing.quantity), props.asset.data.id)}
 								</S.DrawerContentDetailAlt>
-								{mobile && (
+								{/* {mobile && (
 									<S.MDrawerHeader>
 										<GS.DrawerContentHeader>{language.percentage}</GS.DrawerContentHeader>
 									</S.MDrawerHeader>
 								)}
 								<S.DrawerContentDetailAlt>
 									{formatPercentage(Number(listing.quantity) / totalAssetBalance)}
-								</S.DrawerContentDetailAlt>
+								</S.DrawerContentDetailAlt> */}
 								{mobile && (
 									<S.MDrawerHeader>
 										<GS.DrawerContentHeader>{language.price}</GS.DrawerContentHeader>
@@ -444,8 +446,8 @@ export default function AssetAction(props: IProps) {
 					})}
 				</>
 			);
-		} else return <p>None</p>;
-	}, [currentListings, showCurrentListingsModal, mobile, permawebProvider.profile]);
+		} else return <p>{props.updating ? `${language.updating}...` : 'None'}</p>;
+	}, [currentListings, showCurrentListingsModal, mobile, permawebProvider.profile, props.updating]);
 
 	function getCurrentTab() {
 		switch (currentTab) {
@@ -455,6 +457,7 @@ export default function AssetAction(props: IProps) {
 						asset={props.asset}
 						getCurrentListings={getCurrentListings}
 						toggleUpdate={props.toggleUpdate}
+						updating={props.updating}
 					/>
 				);
 			case ACTION_TAB_OPTIONS.owners:
@@ -499,7 +502,7 @@ export default function AssetAction(props: IProps) {
 					<S.HeaderTitle>
 						<h4>{props.asset.data.title}</h4>
 						<S.HeaderTitleActions>
-							<Stamps txId={props.asset.data.id} title={props.asset.data.description || props.asset.data.title} />
+							{/* <Stamps txId={props.asset.data.id} title={props.asset.data.description || props.asset.data.title} /> */}
 							<IconButton
 								type={'alt1'}
 								src={urlCopied ? ASSETS.link : ASSETS.link}
@@ -515,9 +518,9 @@ export default function AssetAction(props: IProps) {
 						</S.HeaderTitleActions>
 					</S.HeaderTitle>
 					<S.OrdersWrapper>
-						{(showCurrentlyOwnedBy() || (currentListings && currentListings.length > 0)) && (
+						{currentListings && !props.updating && (
 							<S.OwnerLinesWrapper>
-								{showCurrentlyOwnedBy() && (
+								{/* {showCurrentlyOwnedBy() && (
 									<S.OwnerLine>
 										<span>{language.currentlyOwnedBy}</span>
 										<button
@@ -528,17 +531,25 @@ export default function AssetAction(props: IProps) {
 											{ownerCountDisplay}
 										</button>
 									</S.OwnerLine>
-								)}
-								{currentListings && currentListings.length > 0 && (
+								)} */}
+								{currentListings && (
 									<S.OwnerLine>
-										<span>{language.currentlyBeingSoldBy}</span>
-										<button
-											onClick={() => {
-												setShowCurrentListingsModal(true);
-											}}
-										>
-											{listingCountDisplay}
-										</button>
+										{currentListings.length > 0 ? (
+											<>
+												<span>{language.currentlyBeingSoldBy}</span>
+												<button
+													onClick={() => {
+														setShowCurrentListingsModal(true);
+													}}
+												>
+													{listingCountDisplay}
+												</button>
+											</>
+										) : (
+											<S.MessageWrapper className={'update-wrapper'}>
+												<span>{'No Orders Available'}</span>
+											</S.MessageWrapper>
+										)}
 									</S.OwnerLine>
 								)}
 							</S.OwnerLinesWrapper>

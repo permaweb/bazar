@@ -1,6 +1,17 @@
+import { connect } from '@permaweb/aoconnect/browser';
+
 import { getGQLData, readHandler } from 'api';
 
-import { AO, HB, LICENSES, PAGINATORS, REFORMATTED_ASSETS, TAGS } from 'helpers/config';
+import {
+	AO,
+	CUSTOM_ORDERBOOKS,
+	HB,
+	LICENSES,
+	PAGINATORS,
+	REFORMATTED_ASSETS,
+	TAGS,
+	TOKEN_REGISTRY,
+} from 'helpers/config';
 import { getBestGatewayForGraphQL } from 'helpers/endpoints';
 import {
 	AssetDetailType,
@@ -18,8 +29,6 @@ import {
 } from 'helpers/types';
 import { formatAddress, getAssetOrderType, getTagValue, sortByAssetOrders, sortOrderbookEntries } from 'helpers/utils';
 import { store } from 'store';
-
-const debug = (..._args: any[]) => {};
 
 export async function getAssetIdsByUser(args: { profileId: string }): Promise<string[]> {
 	try {
@@ -51,7 +60,7 @@ export async function getAssetsByIds(args: { ids: string[]; sortType: AssetSortT
 
 		if (gqlResponse && gqlResponse.data.length) {
 			const ucmReducer = store.getState().ucmReducer;
-			const stampsReducer = store.getState().stampsReducer;
+			// const stampsReducer = store.getState().stampsReducer;
 
 			const finalAssets: AssetDetailType[] = [];
 			const structuredAssets = structureAssets(gqlResponse);
@@ -79,7 +88,7 @@ export async function getAssetsByIds(args: { ids: string[]; sortType: AssetSortT
 				finalAssets.push(finalAsset);
 			});
 
-			const sortedAssets = sortByAssetOrders(finalAssets, args.sortType, stampsReducer);
+			const sortedAssets = sortByAssetOrders(finalAssets, args.sortType, {});
 			return sortedAssets;
 		}
 
@@ -113,29 +122,44 @@ export async function getAssetById(args: { id: string; libs?: any }): Promise<As
 
 			let processState: any;
 
-			// Try Hyperbean first (more efficient), fall back to dryrun if it fails
-			if (args.libs) {
+			if (CUSTOM_ORDERBOOKS[args.id] || TOKEN_REGISTRY[args.id]) {
+				const ao = connect({ MODE: 'legacy' });
 				try {
-					processState = await args.libs.readState({
-						processId: structuredAsset.data.id,
-						path: 'asset',
-						fallbackAction: 'Info',
-						node: HB.defaultNode,
-					});
-				} catch (e) {
-					console.log('Hyperbean failed, falling back to dryrun:', e);
+					const response = await ao.dryrun({ process: args.id, tags: [{ name: 'Action', value: 'Info' }] });
+					const tags = response.Messages?.[0]?.Tags;
+
+					processState = {
+						Name: getTagValue(tags, 'Name'),
+						Logo: getTagValue(tags, 'Logo'),
+						Denomination: getTagValue(tags, 'Denomination'),
+					};
+				} catch (e: any) {
+					throw new Error(e);
+				}
+			} else {
+				if (args.libs) {
+					try {
+						processState = await args.libs.readState({
+							processId: structuredAsset.data.id,
+							path: 'asset',
+							fallbackAction: 'Info',
+							node: HB.defaultNode,
+						});
+					} catch (e) {
+						console.log('Hyperbean failed, falling back to dryrun:', e);
+						processState = await readHandler({
+							processId: structuredAsset.data.id,
+							action: 'Info',
+							data: null,
+						});
+					}
+				} else {
 					processState = await readHandler({
 						processId: structuredAsset.data.id,
 						action: 'Info',
 						data: null,
 					});
 				}
-			} else {
-				processState = await readHandler({
-					processId: structuredAsset.data.id,
-					action: 'Info',
-					data: null,
-				});
 			}
 
 			if (processState) {
@@ -164,54 +188,58 @@ export async function getAssetById(args: { id: string; libs?: any }): Promise<As
 				}
 			}
 
-			if (!assetState.balances) {
-				debug('Getting balances...');
-				try {
-					await new Promise((r) => setTimeout(r, 1000));
+			// if (!assetState.balances) {
+			// 	debug('Getting balances...');
+			// 	try {
+			// 		await new Promise((r) => setTimeout(r, 1000));
 
-					// Try Hyperbean first for balances too
-					let processBalances: any;
-					if (args.libs) {
-						try {
-							processBalances = await args.libs.readState({
-								processId: structuredAsset.data.id,
-								path: 'balances',
-								fallbackAction: 'Balances',
-								node: HB.defaultNode,
-							});
-						} catch (e) {
-							console.log('Hyperbean balances failed, falling back to dryrun:', e);
-							processBalances = await readHandler({
-								processId: structuredAsset.data.id,
-								action: 'Balances',
-								data: null,
-							});
-						}
-					} else {
-						processBalances = await readHandler({
-							processId: structuredAsset.data.id,
-							action: 'Balances',
-							data: null,
-						});
-					}
+			// 		let processBalances: any;
+			// 		if (args.libs) {
+			// 			try {
+			// 				processBalances = await args.libs.readState({
+			// 					processId: structuredAsset.data.id,
+			// 					path: 'balances',
+			// 					fallbackAction: 'Balances',
+			// 					node: HB.defaultNode,
+			// 				});
+			// 			} catch (e) {
+			// 				console.log('Hyperbean balances failed, falling back to dryrun:', e);
+			// 				processBalances = await readHandler({
+			// 					processId: structuredAsset.data.id,
+			// 					action: 'Balances',
+			// 					data: null,
+			// 				});
+			// 			}
+			// 		} else {
+			// 			processBalances = await readHandler({
+			// 				processId: structuredAsset.data.id,
+			// 				action: 'Balances',
+			// 				data: null,
+			// 			});
+			// 		}
 
-					if (processBalances) assetState.balances = processBalances;
-				} catch (e: any) {
-					console.error(e);
-				}
-			}
+			// 		if (processBalances) assetState.balances = processBalances;
+			// 	} catch (e: any) {
+			// 		console.error(e);
+			// 	}
+			// }
 
-			if (processState.Metadata?.CollectionId) structuredAsset.data.collectionId = processState.Metadata.CollectionId;
+			if (processState?.Metadata?.CollectionId) structuredAsset.data.collectionId = processState.Metadata.CollectionId;
 
 			let assetOrderbook = null;
 
-			/* Check if metadata field is present to detect current assets. 
+			/* First check for custom orderbook creation, then if metadata field is present to detect current assets. 
 				Set legacy orderbook on legacy assets */
-			if (processState.Metadata) {
-				if (processState.Metadata.OrderbookId) assetOrderbook = { id: processState.Metadata.OrderbookId };
+			if (CUSTOM_ORDERBOOKS[args.id]) {
+				assetOrderbook = { id: CUSTOM_ORDERBOOKS[args.id] };
 			} else {
-				assetOrderbook = { id: AO.ucm, activityId: AO.ucmActivity };
+				if (processState.Metadata) {
+					if (processState.Metadata.OrderbookId) assetOrderbook = { id: processState.Metadata.OrderbookId };
+				} else {
+					assetOrderbook = { id: AO.ucm, activityId: AO.ucmActivity };
+				}
 			}
+
 			return {
 				...structuredAsset,
 				state: assetState,

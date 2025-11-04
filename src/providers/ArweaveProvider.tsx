@@ -154,57 +154,57 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 		})();
 	}, [walletAddress]);
 
-	React.useEffect(() => {
-		(async function () {
-			if (wallet && walletAddress) {
-				try {
-					if (profilesReducer?.userProfiles?.[walletAddress]) {
-						setProfile(profilesReducer.userProfiles[walletAddress]);
-					} else {
-						setProfile(await getProfileByWalletAddress({ address: walletAddress }));
-					}
-				} catch (e: any) {
-					console.error(e);
-				}
-			}
-		})();
-	}, [wallet, walletAddress, walletType, profilesReducer?.userProfiles]);
+	// React.useEffect(() => {
+	// 	(async function () {
+	// 		if (wallet && walletAddress) {
+	// 			try {
+	// 				if (profilesReducer?.userProfiles?.[walletAddress]) {
+	// 					setProfile(profilesReducer.userProfiles[walletAddress]);
+	// 				} else {
+	// 					setProfile(await getProfileByWalletAddress({ address: walletAddress }));
+	// 				}
+	// 			} catch (e: any) {
+	// 				console.error(e);
+	// 			}
+	// 		}
+	// 	})();
+	// }, [wallet, walletAddress, walletType, profilesReducer?.userProfiles]);
 
-	React.useEffect(() => {
-		(async function () {
-			if (wallet && walletAddress) {
-				const fetchProfileUntilChange = async () => {
-					let changeDetected = false;
-					let tries = 0;
-					const maxTries = 10;
+	// React.useEffect(() => {
+	// 	(async function () {
+	// 		if (wallet && walletAddress) {
+	// 			const fetchProfileUntilChange = async () => {
+	// 				let changeDetected = false;
+	// 				let tries = 0;
+	// 				const maxTries = 10;
 
-					while (!changeDetected && tries < maxTries) {
-						try {
-							const existingProfile = profile;
-							const newProfile = await getProfileByWalletAddress({ address: walletAddress });
+	// 				while (!changeDetected && tries < maxTries) {
+	// 					try {
+	// 						const existingProfile = profile;
+	// 						const newProfile = await getProfileByWalletAddress({ address: walletAddress });
 
-							if (JSON.stringify(existingProfile) !== JSON.stringify(newProfile)) {
-								setProfile(newProfile);
-								changeDetected = true;
-							} else {
-								await new Promise((resolve) => setTimeout(resolve, 1000));
-								tries++;
-							}
-						} catch (error) {
-							console.error(error);
-							break;
-						}
-					}
+	// 						if (JSON.stringify(existingProfile) !== JSON.stringify(newProfile)) {
+	// 							setProfile(newProfile);
+	// 							changeDetected = true;
+	// 						} else {
+	// 							await new Promise((resolve) => setTimeout(resolve, 1000));
+	// 							tries++;
+	// 						}
+	// 					} catch (error) {
+	// 						console.error(error);
+	// 						break;
+	// 					}
+	// 				}
 
-					if (!changeDetected) {
-						console.warn(`No changes detected after ${maxTries} attempts`);
-					}
-				};
+	// 				if (!changeDetected) {
+	// 					console.warn(`No changes detected after ${maxTries} attempts`);
+	// 				}
+	// 			};
 
-				await fetchProfileUntilChange();
-			}
-		})();
-	}, [toggleProfileUpdate]);
+	// 			await fetchProfileUntilChange();
+	// 		}
+	// 	})();
+	// }, [toggleProfileUpdate]);
 
 	// React.useEffect(() => {
 	// 	const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));

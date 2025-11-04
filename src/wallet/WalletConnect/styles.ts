@@ -87,14 +87,15 @@ export const Dropdown = styled.ul`
 
 export const DHeaderWrapper = styled.div`
 	width: 100%;
-	padding: 0 15px 10px 15px;
+	padding: 0 0 10px 0;
 `;
 
 export const DHeaderFlex = styled.div`
 	width: 100%;
 	display: flex;
 	align-items: center;
-	padding: 12.5px 15px;
+	padding: 0 15px;
+	margin: 0 auto;
 `;
 
 export const Tooltip = styled.div<{ useBottom: boolean }>`
@@ -263,7 +264,15 @@ export const DBodyWrapper = styled.ul`
 export const DBalancesWrapper = styled(DBodyWrapper)`
 	width: calc(100% - 30px);
 	padding: 5px 12.5px;
-	margin: 5px auto 0 auto;
+	margin: 0 auto;
+`;
+
+export const DBalancesAction = styled.div`
+	width: calc(100% - 30px);
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	margin: 15px auto 5px auto;
 `;
 
 export const DBodyHeader = styled.div`

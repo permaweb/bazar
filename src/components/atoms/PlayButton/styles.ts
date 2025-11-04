@@ -1,7 +1,5 @@
 import styled from 'styled-components';
 
-import { STYLING } from 'helpers/config';
-
 export const Wrapper = styled.div`
 	position: absolute;
 	top: 50%;
@@ -53,4 +51,5 @@ export const PlayIcon = styled.div`
 	display: flex;
 	align-items: center;
 	justify-content: center;
+	margin: 7.5px 0 0 0;
 `;

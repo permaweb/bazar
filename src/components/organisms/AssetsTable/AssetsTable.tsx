@@ -443,7 +443,7 @@ export default function AssetsTable(props: IProps) {
 														/>
 													)}
 
-													{props.setProfileAction &&
+													{/* {props.setProfileAction &&
 													permawebProvider.profile &&
 													permawebProvider.profile.id &&
 													permawebProvider.profile.id === address &&
@@ -466,7 +466,7 @@ export default function AssetsTable(props: IProps) {
 																noAutoFetch
 															/>
 														</S.AssetGridDataActionWrapper>
-													)}
+													)} */}
 												</S.AssetGridDataWrapper>
 												<S.AssetGridBottomWrapper>
 													<S.AssetGridInfoWrapper>

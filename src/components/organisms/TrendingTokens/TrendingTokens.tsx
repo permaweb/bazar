@@ -1,9 +1,9 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
-import { readHandler } from 'api';
+import { connect } from '@permaweb/aoconnect/browser';
 
-import { DEFAULTS, REFORMATTED_ASSETS, URLS } from 'helpers/config';
+import { AO, AOCONFIG, CUSTOM_ORDERBOOKS, DEFAULTS, URLS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 
@@ -19,38 +19,35 @@ export default function TrendingTokens() {
 
 	React.useEffect(() => {
 		(async function () {
-			let responses = [];
+			try {
+				const ao = connect({
+					MODE: 'legacy',
+					CU_URL: AOCONFIG.cu_af_url,
+				});
 
-			const tokenProcesses = Object.keys(REFORMATTED_ASSETS);
-			tokenProcesses.pop();
+				const response = await ao.dryrun({
+					process: AO.flps,
+					tags: [{ name: 'Action', value: 'Get-FLPs' }],
+				});
 
-			const cachedTokens = localStorage.getItem('trendingTokens');
+				const data = JSON.parse(response?.Messages?.[0].Data);
 
-			if (cachedTokens && JSON.parse(cachedTokens).length === tokenProcesses.length) {
-				responses = JSON.parse(cachedTokens);
-			} else {
-				for (const tokenProcess of tokenProcesses) {
-					try {
-						const tokenResponse = await readHandler({
-							processId: tokenProcess,
-							action: 'Info',
-						});
-
-						if (tokenResponse) {
-							responses.push({ ProcessId: tokenProcess, ...tokenResponse });
-							setTokens(responses);
-						}
-					} catch (e: any) {
-						console.error(e);
-					}
-				}
-
-				if (responses && responses.length) {
-					localStorage.setItem('trendingTokens', JSON.stringify(responses));
-				}
+				setTokens(
+					data
+						.slice()
+						.sort((a, b) => (b.accumulated_qty ?? 0) - (a.accumulated_qty ?? 0))
+						.slice(0, 16)
+						.map((token) => ({
+							ProcessId: token.flp_token_process,
+							Name: token.flp_token_name,
+							Ticker: token.flp_token_ticker,
+							Logo: token.flp_token_logo,
+						}))
+						.filter((token) => [...Object.keys(CUSTOM_ORDERBOOKS)].includes(token.ProcessId))
+				);
+			} catch (e: any) {
+				console.error(e);
 			}
-
-			setTokens(responses);
 		})();
 	}, []);
 
@@ -68,7 +65,12 @@ export default function TrendingTokens() {
 					<>
 						{tokens.map((token: any, index: number) => {
 							return (
-								<S.TokenWrapper key={index} onClick={() => handleTokenClick(token)} className={'fade-in'}>
+								<S.TokenWrapper
+									key={index}
+									onClick={() => handleTokenClick(token)}
+									className={'fade-in border-wrapper-alt1'}
+									disabled={false}
+								>
 									<Link to={`${URLS.asset}${token.ProcessId}`}>
 										<S.TokenImage>
 											<img
@@ -77,7 +79,7 @@ export default function TrendingTokens() {
 											/>
 										</S.TokenImage>
 										<S.TokenName>
-											<p>{token.Name || token.name || 'Token'}</p>
+											<p>{token.Ticker || token.ticker || 'Token'}</p>
 										</S.TokenName>
 									</Link>
 								</S.TokenWrapper>
@@ -86,7 +88,7 @@ export default function TrendingTokens() {
 					</>
 				) : (
 					<>
-						{Array.from({ length: Object.keys(REFORMATTED_ASSETS).length - 1 }, (_, i) => i + 1).map((index) => {
+						{Array.from({ length: 8 }, (_, i) => i + 1).map((index) => {
 							return (
 								<S.TokenWrapper
 									key={index}

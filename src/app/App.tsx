@@ -5,9 +5,9 @@ import { CurrentZoneVersion } from '@permaweb/libs/browser';
 import { Loader } from 'components/atoms/Loader';
 import { Banner } from 'components/organisms/Banner';
 import { ASSETS, DOM, FLAGS } from 'helpers/config';
+import { isVersionGreater } from 'helpers/utils';
 import { Footer } from 'navigation/footer';
 import { Header } from 'navigation/Header';
-import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { usePermawebProvider } from 'providers/PermawebProvider';
 
 import * as S from './styles';
@@ -20,8 +20,6 @@ const Routes = lazy(() =>
 
 export default function App() {
 	const permawebProvider = usePermawebProvider();
-	const arweaveProvider = useArweaveProvider();
-
 	const hasCheckedProfileRef = React.useRef(false);
 
 	React.useEffect(() => {
@@ -33,7 +31,7 @@ export default function App() {
 				permawebProvider.profile.id.length === 43
 			) {
 				const userVersion = permawebProvider.profile.version;
-				if (!userVersion || userVersion !== CurrentZoneVersion) {
+				if (!userVersion || isVersionGreater(CurrentZoneVersion, userVersion)) {
 					await permawebProvider.libs.updateProfileVersion({
 						profileId: permawebProvider.profile.id,
 					});

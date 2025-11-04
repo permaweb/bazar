@@ -23,10 +23,6 @@ export default function Footer() {
 					<S.Content>{`${APP.name} ${new Date().getFullYear()}`}</S.Content>
 				</S.LeftSection>
 
-				<S.CenterSection>
-					<Link to={URLS.terms}>{language.terms}</Link>
-				</S.CenterSection>
-
 				<S.RightSection>
 					{socialPaths.map((path, index) => (
 						<a key={index} target={'_blank'} rel={'noreferrer'} href={path.href}>
@@ -35,6 +31,9 @@ export default function Footer() {
 					))}
 					<Link to={URLS.docs}>
 						<ReactSVG src={ASSETS.docs} />
+					</Link>
+					<Link to={URLS.terms}>
+						<ReactSVG src={ASSETS.info} />
 					</Link>
 				</S.RightSection>
 			</S.Container>

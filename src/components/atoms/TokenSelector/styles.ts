@@ -1,5 +1,7 @@
 import styled from 'styled-components';
 
+import { STYLING } from 'helpers/config';
+
 export const Wrapper = styled.div`
 	display: flex;
 	flex-direction: column;
@@ -74,21 +76,22 @@ export const TokenInfo = styled.div`
 export const TokenName = styled.span`
 	font-size: 14px;
 	font-weight: 600;
-	color: #ffffff;
+	color: ${(props) => props.theme.colors.font.primary};
 	line-height: 1.2;
 `;
 
 export const TokenSymbol = styled.span`
 	font-size: 12px;
-	color: #cccccc;
+	color: ${(props) => props.theme.colors.font.alt1};
 	font-weight: 500;
 	line-height: 1.2;
 `;
 
 export const TokenBalance = styled.span`
 	font-size: 13px;
-	color: #ffffff;
-	font-weight: 500;
+	color: ${(props) => props.theme.colors.font.primary};
+	font-weight: ${(props) => props.theme.typography.weight.bold};
+	font-family: ${(props) => props.theme.typography.family.alt1};
 	line-height: 1.2;
 	opacity: 0.9;
 `;
@@ -115,10 +118,10 @@ export const CustomSelectWrapper = styled.div`
 export const CustomSelect = styled.div`
 	width: 100%;
 	padding: 12px 16px;
-	border: 1px solid #333;
+	border: 1px solid ${(props) => props.theme.colors.border.primary};
 	border-radius: 8px;
-	background: #1a1a1a;
-	color: #ffffff;
+	background: ${(props) => props.theme.colors.container.primary.background};
+	color: ${(props) => props.theme.colors.font.primary};
 	font-size: 14px;
 	cursor: pointer;
 	display: flex;
@@ -126,17 +129,16 @@ export const CustomSelect = styled.div`
 	justify-content: space-between;
 	transition: all 0.2s ease;
 	position: relative;
-	z-index: 10;
 
 	&:hover {
 		border-color: var(--accent-primary);
-		background: #2a2a2a;
+		background: ${(props) => props.theme.colors.container.primary.active};
 	}
 
 	&.active {
 		border-color: var(--accent-primary);
 		box-shadow: 0 0 0 2px var(--accent-primary-alpha);
-		background: #2a2a2a;
+		background: ${(props) => props.theme.colors.container.primary.active};
 	}
 `;
 
@@ -151,7 +153,8 @@ export const DropdownArrow = styled.div`
 	display: flex;
 	align-items: center;
 	transition: transform 0.2s ease;
-	color: #cccccc;
+	color: ${(props) => props.theme.colors.font.alt1};
+	margin: 0 0 0 5px;
 
 	&.open {
 		transform: rotate(180deg);
@@ -160,18 +163,15 @@ export const DropdownArrow = styled.div`
 
 export const DropdownOptions = styled.div`
 	position: absolute;
-	top: 100%;
+	top: calc(100% + 5px);
 	left: 0;
 	right: 0;
-	background: #1a1a1a;
-	border: 2px solid #333;
-	border-top: none;
-	border-radius: 0 0 8px 8px;
-	box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8);
-	z-index: 1000;
-	max-height: 200px;
+	background: ${(props) => props.theme.colors.container.primary.background};
+	border: 1px solid ${(props) => props.theme.colors.border.alt2} !important;
+	border-radius: ${STYLING.dimensions.radius.primary} !important;
+	z-index: 2;
+	max-height: 300px;
 	overflow-y: auto;
-	margin-top: -1px;
 `;
 
 export const DropdownBackdrop = styled.div`
@@ -180,7 +180,7 @@ export const DropdownBackdrop = styled.div`
 	left: 0;
 	right: 0;
 	bottom: 0;
-	background: rgba(0, 0, 0, 0.1);
+	background: ${(props) => props.theme.colors.overlay.alt3};
 	z-index: 999;
 `;
 
@@ -188,24 +188,24 @@ export const DropdownOption = styled.div`
 	padding: 12px 16px;
 	cursor: pointer;
 	transition: background-color 0.2s ease;
-	border-bottom: 1px solid #333;
-	background: #1a1a1a !important;
-	color: #ffffff !important;
+	border-bottom: 1px solid ${(props) => props.theme.colors.border.primary};
+	background: ${(props) => props.theme.colors.container.primary.background} !important;
+	color: ${(props) => props.theme.colors.font.primary} !important;
 
 	&:hover {
-		background: #2a2a2a !important;
-		color: #ffffff !important;
+		background: ${(props) => props.theme.colors.row.hover.background} !important;
+		color: ${(props) => props.theme.colors.font.primary} !important;
 	}
 
 	&.selected {
-		background: #3a3a3a !important;
+		background: ${(props) => props.theme.colors.row.active.background} !important;
 		border-left: 3px solid var(--accent-primary);
-		color: #ffffff !important;
+		color: ${(props) => props.theme.colors.font.primary} !important;
 	}
 
 	&:first-child {
-		background: #1a1a1a !important;
-		color: #ffffff !important;
+		background: ${(props) => props.theme.colors.container.primary.background} !important;
+		color: ${(props) => props.theme.colors.font.primary} !important;
 	}
 
 	&:last-child {
@@ -218,12 +218,12 @@ export const DropdownOption = styled.div`
 	}
 
 	&.selected * {
-		color: #ffffff !important;
+		color: ${(props) => props.theme.colors.font.primary} !important;
 	}
 
 	&.selected .TokenName,
 	&.selected .TokenSymbol,
 	&.selected .TokenBalance {
-		color: #ffffff !important;
+		color: ${(props) => props.theme.colors.font.primary} !important;
 	}
 `;

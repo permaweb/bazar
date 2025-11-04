@@ -123,6 +123,34 @@ export async function getTokenLogo(tokenId: string): Promise<string | null> {
 	}
 }
 
+// /**
+//  * Enhanced token metadata that merges registry data with dynamic data
+//  */
+// export async function getEnhancedTokenMetadata(
+// 	tokenId: string
+// ): Promise<TokenMetadata & { id: string; priority: number }> {
+// 	const registryToken = TOKEN_REGISTRY[tokenId];
+// 	const dynamicMetadata = await fetchTokenMetadata(tokenId);
+
+// 	return {
+// 		id: tokenId,
+// 		name: dynamicMetadata.name || registryToken?.name || 'Unknown Token',
+// 		symbol: dynamicMetadata.symbol || registryToken?.symbol || 'UNKNOWN',
+// 		ticker: dynamicMetadata.ticker || dynamicMetadata.symbol || registryToken?.symbol || 'UNKNOWN',
+// 		denomination: dynamicMetadata.denomination || registryToken?.denomination || 12,
+// 		logo:
+// 			dynamicMetadata.logo ||
+// 			(registryToken?.logo !== 'defaultLogo' && registryToken?.logo !== 'dynamicLogo'
+// 				? registryToken?.logo
+// 				: undefined),
+// 		description: dynamicMetadata.description || registryToken?.description || 'Token information unavailable',
+// 		totalSupply: dynamicMetadata.totalSupply,
+// 		transferable: dynamicMetadata.transferable,
+// 		creator: dynamicMetadata.creator,
+// 		priority: registryToken?.priority || 999,
+// 	};
+// }
+
 /**
  * Enhanced token metadata that merges registry data with dynamic data
  */
@@ -130,24 +158,17 @@ export async function getEnhancedTokenMetadata(
 	tokenId: string
 ): Promise<TokenMetadata & { id: string; priority: number }> {
 	const registryToken = TOKEN_REGISTRY[tokenId];
-	const dynamicMetadata = await fetchTokenMetadata(tokenId);
 
 	return {
 		id: tokenId,
-		name: dynamicMetadata.name || registryToken?.name || 'Unknown Token',
-		symbol: dynamicMetadata.symbol || registryToken?.symbol || 'UNKNOWN',
-		ticker: dynamicMetadata.ticker || dynamicMetadata.symbol || registryToken?.symbol || 'UNKNOWN',
-		denomination: dynamicMetadata.denomination || registryToken?.denomination || 12,
+		name: registryToken?.name || 'Unknown Token',
+		symbol: registryToken?.symbol || 'UNKNOWN',
+		ticker: registryToken?.symbol || 'UNKNOWN',
+		denomination: registryToken?.denomination || 12,
 		logo:
-			dynamicMetadata.logo ||
-			(registryToken?.logo !== 'defaultLogo' && registryToken?.logo !== 'dynamicLogo'
-				? registryToken?.logo
-				: undefined),
-		description: dynamicMetadata.description || registryToken?.description || 'Token information unavailable',
-		totalSupply: dynamicMetadata.totalSupply,
-		transferable: dynamicMetadata.transferable,
-		creator: dynamicMetadata.creator,
-		priority: registryToken?.priority || 999,
+			registryToken?.logo !== 'defaultLogo' && registryToken?.logo !== 'dynamicLogo' ? registryToken?.logo : undefined,
+		description: registryToken?.description || 'Token information unavailable',
+		priority: registryToken?.priority || 0,
 	};
 }
 

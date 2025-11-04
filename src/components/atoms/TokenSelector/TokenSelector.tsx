@@ -6,10 +6,7 @@ import { formatCount, getTotalTokenBalance } from 'helpers/utils';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 import { usePermawebProvider } from 'providers/PermawebProvider';
 import { useTokenProvider } from 'providers/TokenProvider';
-import { useTokenValidation } from 'providers/TokenValidationProvider';
 import { CloseHandler } from 'wrappers/CloseHandler';
-
-import TokenHealthIndicator from '../TokenHealthIndicator';
 
 import * as S from './styles';
 
@@ -17,22 +14,49 @@ interface TokenSelectorProps {
 	onTokenChange?: (tokenId: string) => void;
 	className?: string;
 	showLabel?: boolean;
+	disabledTokens?: string[];
 }
 
 export default function TokenSelector(props: TokenSelectorProps) {
 	const { selectedToken, setSelectedToken, availableTokens } = useTokenProvider();
-	const tokenValidation = useTokenValidation();
 	const permawebProvider = usePermawebProvider();
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
 
 	const [isOpen, setIsOpen] = React.useState(false);
 
+	// If the currently selected token is disabled, switch to the first available non-disabled token
+	React.useEffect(() => {
+		if (props.disabledTokens?.includes(selectedToken.id)) {
+			const firstAvailableToken = availableTokens.find((token) => !props.disabledTokens?.includes(token.id));
+			if (firstAvailableToken) {
+				setSelectedToken(firstAvailableToken);
+				props.onTokenChange?.(firstAvailableToken.id);
+			}
+		}
+	}, [props.disabledTokens, selectedToken.id, availableTokens]);
+
+	// Fetch balance for selected token if not already loaded
+	React.useEffect(() => {
+		if (selectedToken.id && (!permawebProvider.tokenBalances || !permawebProvider.tokenBalances[selectedToken.id])) {
+			permawebProvider.fetchTokenBalance(selectedToken.id);
+		}
+	}, [selectedToken.id, permawebProvider.tokenBalances]);
+
 	const handleTokenSelect = (tokenId: string) => {
+		// Don't allow selection of disabled tokens
+		if (props.disabledTokens?.includes(tokenId)) {
+			return;
+		}
 		const newToken = availableTokens.find((token) => token.id === tokenId);
 		if (newToken) {
 			setSelectedToken(newToken);
 			props.onTokenChange?.(tokenId);
+
+			// Fetch balance if not already loaded
+			if (!permawebProvider.tokenBalances || !permawebProvider.tokenBalances[tokenId]) {
+				permawebProvider.fetchTokenBalance(tokenId);
+			}
 		}
 		setIsOpen(false);
 	};
@@ -93,9 +117,9 @@ export default function TokenSelector(props: TokenSelectorProps) {
 								<S.TokenName>{selectedToken.name.replace(' Token', '')}</S.TokenName>
 								<S.TokenSymbol>{selectedToken.symbol}</S.TokenSymbol>
 							</S.TokenInfo>
-							<S.HealthWrapper>
+							{/* <S.HealthWrapper>
 								<TokenHealthIndicator tokenId={selectedToken.id} operation="orders" showDetails={false} />
-							</S.HealthWrapper>
+							</S.HealthWrapper> */}
 						</S.SelectedToken>
 						<S.DropdownArrow className={isOpen ? 'open' : ''}>
 							<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -105,17 +129,21 @@ export default function TokenSelector(props: TokenSelectorProps) {
 					</S.CustomSelect>
 
 					{isOpen && (
-						<S.DropdownOptions>
+						<S.DropdownOptions className={'border-wrapper-alt2 scroll-wrapper-hidden'}>
 							{availableTokens.map((token) => {
-								const health = tokenValidation.getTokenHealth(token.id);
-								const isSupported = tokenValidation.isTokenSupported(token.id, 'orders');
 								const balance = getTokenBalance(token.id);
+								const isDisabled = props.disabledTokens?.includes(token.id);
 
 								return (
 									<S.DropdownOption
 										key={token.id}
 										onClick={() => handleTokenSelect(token.id)}
 										className={token.id === selectedToken.id ? 'selected' : ''}
+										style={{
+											opacity: isDisabled ? 0.5 : 1,
+											cursor: isDisabled ? 'not-allowed' : 'pointer',
+											pointerEvents: isDisabled ? 'none' : 'auto',
+										}}
 									>
 										<S.TokenOption>
 											<S.TokenLogo>
@@ -145,10 +173,7 @@ export default function TokenSelector(props: TokenSelectorProps) {
 												<S.TokenSymbol>{token.symbol}</S.TokenSymbol>
 											</S.TokenInfo>
 											<S.BalanceAndHealth>
-												{balance !== null && <S.TokenBalance>{formatCount(balance.toString())}</S.TokenBalance>}
-												<S.HealthWrapper>
-													<TokenHealthIndicator tokenId={token.id} operation="orders" showDetails={false} />
-												</S.HealthWrapper>
+												<S.TokenBalance>{balance !== null ? formatCount(balance.toString()) : '-'}</S.TokenBalance>
 											</S.BalanceAndHealth>
 										</S.TokenOption>
 									</S.DropdownOption>

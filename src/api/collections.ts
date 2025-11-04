@@ -1,4 +1,4 @@
-import { readHandler, stamps } from 'api';
+import { readHandler } from 'api';
 import { getAssetById } from 'api/assets';
 
 import { AO, getDefaultToken, HB } from 'helpers/config';
@@ -45,16 +45,13 @@ export async function getCollections(creator: string, libs: any): Promise<any[]>
 				};
 			});
 
-			// Filter out collections from spam address
-			const spamFilteredCollections = collections.filter((collection: any) => collection.creator !== SPAM_ADDRESS);
+			// const stampsFetch: StampsType = await stamps.getStamps({ ids: collectionIds });
+			const stampsFetch: StampsType = {};
 
-			const collectionIds = spamFilteredCollections.map((collection: any) => collection.id);
-			const stampsFetch: StampsType = await stamps.getStamps({ ids: collectionIds });
-
-			let finalCollections = spamFilteredCollections;
+			let finalCollections = collections;
 
 			finalCollections = finalCollections.filter((c: any) => {
-				return stampsFetch[c.id].total != 0;
+				return stampsFetch[c.id]?.total != 0;
 			});
 
 			finalCollections = finalCollections.sort((a: { id: string | number }, b: { id: string | number }) => {
@@ -360,7 +357,6 @@ export async function getAllMusicCollections(libs: any): Promise<CollectionType[
 
 		for (const collectionId of musicCollectionIds) {
 			try {
-				// Try to get collection data, but don't fail if HyperBEAM is down
 				let collection;
 				try {
 					collection = await libs.getCollection(collectionId);

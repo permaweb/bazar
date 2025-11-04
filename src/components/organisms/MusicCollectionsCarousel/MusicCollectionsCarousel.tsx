@@ -120,7 +120,7 @@ export default function MusicCollectionsCarousel(props: IProps) {
 				<h4>Music/Casts</h4>
 			</S.Header>
 			<S.CollectionsWrapper previousDisabled={!nextSlideClicked}>
-				{(props.collections || props.loading) && (
+				{/* {(props.collections || props.loading) && (
 					<Carousel
 						key={`music-carousel-${props.collections?.length || 0}-${props.loading}`}
 						responsive={responsive}
@@ -135,65 +135,65 @@ export default function MusicCollectionsCarousel(props: IProps) {
 						autoPlay={!props.loading}
 						autoPlaySpeed={5000}
 						afterChange={handleAfterChange}
-					>
-						{props.collections &&
-							props.collections.map((collection: CollectionType, index: number) => {
-								const isCurrentlyPlaying = props.currentTrack && props.isPlaying;
-								const isLoadingTrack = loadingTracks.has(collection.id);
+					> */}
+				{props.collections &&
+					props.collections.map((collection: CollectionType, index: number) => {
+						const isCurrentlyPlaying = props.currentTrack && props.isPlaying;
+						const isLoadingTrack = loadingTracks.has(collection.id);
 
-								return (
-									<S.CollectionWrapper
-										key={collection.id}
-										className={'fade-in border-wrapper-alt2'}
-										backgroundImage={getTxEndpoint(collection.thumbnail || DEFAULTS.thumbnail)}
-										disabled={false}
+						return (
+							<S.CollectionWrapper
+								key={collection.id}
+								className={'fade-in border-wrapper-alt2'}
+								backgroundImage={getTxEndpoint(collection.thumbnail || DEFAULTS.thumbnail)}
+								disabled={false}
+							>
+								{/* Centered Play Button overlay like in collection page */}
+								{props.onPlayTrack && !isLoadingTrack && (
+									<PlayButton onClick={(e) => handlePlayCollection(e, collection)} isPlaying={false} />
+								)}
+
+								{/* Loading spinner for when searching for tracks */}
+								{isLoadingTrack && (
+									<div
+										style={{
+											position: 'absolute',
+											top: '50%',
+											left: '50%',
+											transform: 'translate(-50%, -50%)',
+											zIndex: 20,
+										}}
 									>
-										{/* Centered Play Button overlay like in collection page */}
-										{props.onPlayTrack && !isLoadingTrack && (
-											<PlayButton onClick={(e) => handlePlayCollection(e, collection)} isPlaying={false} />
-										)}
+										<S.LoadingSpinner />
+									</div>
+								)}
 
-										{/* Loading spinner for when searching for tracks */}
-										{isLoadingTrack && (
-											<div
-												style={{
-													position: 'absolute',
-													top: '50%',
-													left: '50%',
-													transform: 'translate(-50%, -50%)',
-													zIndex: 20,
-												}}
-											>
-												<S.LoadingSpinner />
-											</div>
-										)}
-
-										<Link to={URLS.collectionAssets(collection.id)}>
-											<S.InfoWrapper>
-												<S.InfoTile>
-													<S.InfoDetail>
-														<span>{collection.title}</span>
-													</S.InfoDetail>
-													<S.InfoDetailAlt>
-														<span>{`${language.createdOn} ${formatDate(collection.dateCreated, 'epoch')}`}</span>
-													</S.InfoDetailAlt>
-												</S.InfoTile>
-											</S.InfoWrapper>
-										</Link>
-									</S.CollectionWrapper>
-								);
-							})}
-						{props.loading &&
-							Array.from({ length: 5 }, (_, i) => i + 1).map((index) => (
-								<S.CollectionWrapper
-									key={`loading-${index}`}
-									className={'fade-in border-wrapper-alt1'}
-									backgroundImage={null}
-									disabled={true}
-								/>
-							))}
-					</Carousel>
-				)}
+								<Link to={URLS.collectionAssets(collection.id)}>
+									<S.InfoWrapper>
+										<S.InfoTile>
+											<S.InfoDetail>
+												<span>{collection.title}</span>
+											</S.InfoDetail>
+											<S.InfoDetailAlt>
+												<span>{`${language.createdOn} ${formatDate(collection.dateCreated, 'epoch')}`}</span>
+											</S.InfoDetailAlt>
+										</S.InfoTile>
+									</S.InfoWrapper>
+								</Link>
+							</S.CollectionWrapper>
+						);
+					})}
+				{props.loading &&
+					Array.from({ length: 5 }, (_, i) => i + 1).map((index) => (
+						<S.CollectionWrapper
+							key={`loading-${index}`}
+							className={'fade-in border-wrapper-alt1'}
+							backgroundImage={null}
+							disabled={true}
+						/>
+					))}
+				{/* </Carousel>
+				)} */}
 			</S.CollectionsWrapper>
 		</S.Wrapper>
 	);

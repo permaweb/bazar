@@ -20,6 +20,7 @@ export const TokensWrapper = styled.div`
 	grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
 	gap: 30px;
 	justify-content: center;
+	align-items: center;
 
 	@media (min-width: ${STYLING.cutoffs.tabletSecondary}) {
 		grid-template-columns: repeat(auto-fit, minmax(200px, calc((100% - 90px) / 4)));
@@ -33,9 +34,10 @@ export const TokensWrapper = styled.div`
 		grid-template-columns: 1fr;
 	}
 `;
-export const TokenWrapper = styled.button`
+export const TokenWrapper = styled.button<{ disabled: boolean }>`
 	height: 300px;
 	width: 100%;
+	overflow: hidden;
 	a {
 		min-height: 100%;
 		min-width: 100%;
@@ -44,13 +46,18 @@ export const TokenWrapper = styled.button`
 		display: flex;
 		flex-direction: column;
 		align-items: center;
+		justify-content: center;
 		transition: all 100ms;
 		padding: 20px;
 		border: 1px solid transparent;
-		border-radius: ${STYLING.dimensions.radius.primary};
-		&:hover {
-			background: ${(props) => props.theme.colors.container.primary.active};
-		}
+	}
+	&:hover {
+		background: ${(props) =>
+			props.disabled
+				? props.theme.colors.container.primary.active
+				: props.theme.colors.container.alt1.background} !important;
+		border: 1px solid
+			${(props) => (props.disabled ? props.theme.colors.border.primary : props.theme.colors.border.alt2)} !important;
 	}
 `;
 
@@ -74,7 +81,6 @@ export const TokenImage = styled.div<{}>`
 
 export const TokenName = styled.div`
 	width: 100%;
-	margin: 0 0 10px 0;
 	p {
 		color: ${(props) => props.theme.colors.font.primary};
 		font-size: ${(props) => props.theme.typography.size.xLg};

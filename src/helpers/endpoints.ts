@@ -47,7 +47,7 @@ export async function getRendererEndpointAsync(renderWith: string, tx: string): 
 }
 
 export function getBestGatewayForGraphQL(): string {
-	return 'arweave.net';
+	return 'ao-search-gateway.goldsky.com';
 }
 
 export async function getBestGatewayForAssetsAsync(): Promise<string> {

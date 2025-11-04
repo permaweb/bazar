@@ -1,1 +1,1 @@
-export { default } from './MusicCollectionsCarousel';
+export { default as MusicCollectionsCarousel } from './MusicCollectionsCarousel';
