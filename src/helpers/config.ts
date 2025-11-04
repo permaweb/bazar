@@ -89,6 +89,11 @@ export const AO = {
 	ario: 'qNvAoz0TgcH7DMg8BCVn8jF32QH5L6T29VjHxhHqqGE',
 	usda: 'FBt9A5GA_KXMMSxA2DJ0xZbAq8sLLU2ak-YJe9zDvg8',
 	game: 's6jcB3ctSbiDNwR-paJgy5iOAhahXahLul8exSLHbGE',
+	pland: 'Jc2bcfEbwHFQ-qY4jqm8L5hc-SggeVA1zlW6DOICWgo',
+	smoney: 'K59Wi9uKXBQfTn3zw7L_t-lwHAoq3Fx-V9sCyOY3dFE',
+	llamac: 'pazXumQI-HPH7iFGfTC-4_7biSnqz_U67oFAGry5zUY',
+	trunk: 'wOrb8b_V8QixWyXZub48Ki5B6OIDyf_p1ngoonsaRpQ',
+	lfish: 'ENNFBJS_TpBTh-xR648Pdpx2Z8YgZkRbiqbuzfVv0M4',
 	flps: 'It-_AKlEfARBmJdbJew1nG9_hIaZt0t20wQc28mFGBE',
 };
 
@@ -105,6 +110,11 @@ export const getAOConfig = () => {
 };
 
 export const REFORMATTED_ASSETS = {
+	[AO.defaultToken]: {
+		title: 'Wrapped AR',
+		logo: 'L99jaxRKQKJt9CqoJtPaieGPEhJD3wNhR4iGqc8amXs',
+		denomination: 12,
+	},
 	[AO.pixl]: {
 		title: 'PIXL Token',
 		logo: 'czR2tJmSr7upPpReXu6IuOc2H7RuHRRAhI7DXAUlszU',
@@ -115,25 +125,65 @@ export const REFORMATTED_ASSETS = {
 		logo: 'kg0d-QRW1kD9lwBErRD9CGQogTp5hgPfkf1i7ApE4WU',
 		denomination: 12,
 	},
-	['K59Wi9uKXBQfTn3zw7L_t-lwHAoq3Fx-V9sCyOY3dFE']: {
+	[AO.pi]: {
+		title: 'PI Token',
+		logo: 'zmQwyD6QiZge10OG2HasBqu27Zg0znGkdFRufOq6rv0',
+		denomination: 12,
+	},
+	[AO.ao]: {
+		title: 'AO',
+		logo: 'UkS-mdoiG8hcAClhKK8ch4ZhEzla0mCPDOix9hpdSFE',
+		denomination: 12,
+	},
+	[AO.wndr]: {
+		title: 'Wander Token',
+		logo: 'xUO2tQglSYsW89aLYN8ErGivZqezoDaEn95JniaCBZk',
+		denomination: 18,
+	},
+	[AO.ario]: {
+		title: 'ARIO Token',
+		logo: 'GIayVyo49wof1hOtgLcJ_XAE6OuF5MeYiYsgu3z4gxk',
+		denomination: 6,
+	},
+	[AO.usda]: {
+		title: 'USDA Token',
+		logo: 'seXozJrsP0OgI0gvAnr8zmfxiHHb5iSlI9wMI8SdamE',
+		denomination: 12,
+	},
+	[AO.game]: {
+		title: 'Game Token',
+		logo: '-c4VdpgmfuS4YadtLuxVZzTd2DQ3ipodA6cz8pwjn20',
+		denomination: 18,
+	},
+	[AO.flps]: {
+		title: 'FLPS Token',
+		logo: 'VoI5dCNcl9PYu0xrRYaFk9i8sUMKFBRKcQqOb8uRPOw',
+		denomination: 12,
+	},
+	[AO.smoney]: {
 		title: 'Space Money',
 		logo: 'Jr8gjPMCE1aTgN73tRfseL1ZD-OFbGHoA__MWl0QxI4',
 		denomination: 18,
 	},
-	['pazXumQI-HPH7iFGfTC-4_7biSnqz_U67oFAGry5zUY']: {
+	[AO.llamac]: {
 		title: 'Llama Coin',
 		logo: '9FSEgmUsrug7kTdZJABDekwTGJy7YG7KaN5khcbwcX4',
 		denomination: 12,
 	},
-	['wOrb8b_V8QixWyXZub48Ki5B6OIDyf_p1ngoonsaRpQ']: {
+	[AO.trunk]: {
 		title: 'TRUNK',
 		logo: 'hqg-Em9DdYHYmMysyVi8LuTGF8IF_F7ZacgjYiSpj0k',
 		denomination: 3,
 	},
-	['ENNFBJS_TpBTh-xR648Pdpx2Z8YgZkRbiqbuzfVv0M4']: {
+	[AO.lfish]: {
 		title: 'Legendary Fish',
 		logo: 'Esm9ZtALCN0oM0GGBUeh90qCV_V_0d21hwobUZ7IWA8',
 		denomination: 0,
+	},
+	[AO.pland]: {
+		title: 'Protocol Land',
+		logo: 'DvtICU2c-wM41VZIcrMutHmo5b6WV1CDXaavOJ4a5YU',
+		denomination: 18,
 	},
 };
 
