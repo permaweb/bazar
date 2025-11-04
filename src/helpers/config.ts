@@ -89,6 +89,7 @@ export const AO = {
 	ario: 'qNvAoz0TgcH7DMg8BCVn8jF32QH5L6T29VjHxhHqqGE',
 	usda: 'FBt9A5GA_KXMMSxA2DJ0xZbAq8sLLU2ak-YJe9zDvg8',
 	game: 's6jcB3ctSbiDNwR-paJgy5iOAhahXahLul8exSLHbGE',
+	pland: 'Jc2bcfEbwHFQ-qY4jqm8L5hc-SggeVA1zlW6DOICWgo',
 	flps: 'It-_AKlEfARBmJdbJew1nG9_hIaZt0t20wQc28mFGBE',
 };
 
@@ -174,6 +175,11 @@ export const REFORMATTED_ASSETS = {
 		title: 'Legendary Fish',
 		logo: 'Esm9ZtALCN0oM0GGBUeh90qCV_V_0d21hwobUZ7IWA8',
 		denomination: 0,
+	},
+	[AO.pland]: {
+		title: 'Protocol Land',
+		logo: 'DvtICU2c-wM41VZIcrMutHmo5b6WV1CDXaavOJ4a5YU',
+		denomination: 18,
 	},
 };
 
