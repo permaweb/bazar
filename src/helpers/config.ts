@@ -185,6 +185,11 @@ export const REFORMATTED_ASSETS = {
 		logo: 'DvtICU2c-wM41VZIcrMutHmo5b6WV1CDXaavOJ4a5YU',
 		denomination: 18,
 	},
+	mqBYxpDsolZmJyBdTK8TJp_ftOuIUXVYcSQ8MYZdJg0: {
+		title: 'APUS Token',
+		logo: 'sixqgAh5MEevkhwH4JuCYwmumaYMTOBi3N5_N1GQ6Uc',
+		denomination: 12,
+	},
 };
 
 export const LICENSES = {
