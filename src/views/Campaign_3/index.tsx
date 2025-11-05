@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { createGlobalStyle } from 'styled-components';
 
-import { messageResults } from 'api';
+import { messageResults, readHandler } from 'api';
 
 import { ASSETS, GATEWAYS } from 'helpers/config';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
@@ -15,17 +15,9 @@ import survivedAoImg from './survivedao.png';
 declare module '*.mp4';
 declare module '*.avif';
 
-// Constants for the Bazarro Red collection
-const ATOMIC_ASSET_ID = 'p9i8Mqo_MupYIKDyF7xq36qlirgA5W1L1AB8ZID8Njs'; // Bazarro Red
-const COLLECTION_ID = 'zOVczA4Zibo6olPAkmEaOcUBB_BdISkk3-G3czMS2GE';
-
-// Zone roles
-const ZONE_ROLES = {
-	ADMIN: 'Admin',
-	CONTRIBUTOR: 'Contributor',
-	MODERATOR: 'Moderator',
-	EXTERNAL_CONTRIBUTOR: 'ExternalContributor',
-} as const;
+// Constants for the I Survived AO Testnet campaign
+// Using UNIFIED approach - Claim logic is in the atomic asset process itself!
+const ATOMIC_ASSET_ID = 'rSehf8qeKDDDnrnOiwKT_NWSCFED_q5PouLpXMNHxl8'; // I Survived AO Testnet Asset (also handles claims)
 
 // Media URLs
 const MEDIA_URLS = {
@@ -689,232 +681,113 @@ export default function Campaign() {
 		claimProcessed: false,
 		aoProcesses: [] as any[],
 	});
-
-	// First check if user has access to the collection
-	async function checkCollectionAccess(profileId: string): Promise<boolean> {
-		try {
-			console.log('Starting collection access check:', {
-				profileId,
-				collectionId: COLLECTION_ID,
-				wallet: arProvider.walletAddress,
-			});
-
-			// First try to get collection info
-			const infoResponse = await messageResults({
-				processId: COLLECTION_ID,
-				wallet: arProvider.wallet,
-				action: 'Info',
-				tags: [{ name: 'Action', value: 'Info' }],
-				data: null,
-				responses: ['Info-Response', 'Error'],
-			});
-
-			console.log('Collection info response:', infoResponse);
-
-			// If info fails, we need to wait for an invite and then join
-			if (!infoResponse?.['Info-Response']) {
-				console.log('No info response, waiting for invite...');
-				// Wait for invite (this should be sent by admin)
-				await new Promise((resolve) => setTimeout(resolve, 2000));
-			}
-
-			// Try to join the collection
-			console.log('Attempting to join collection...');
-			const joinResponse = await messageResults({
-				processId: COLLECTION_ID,
-				wallet: arProvider.wallet,
-				action: 'Zone-Join',
-				tags: [
-					{ name: 'Action', value: 'Zone-Join' },
-					{ name: 'ZoneId', value: COLLECTION_ID },
-				],
-				data: null,
-				responses: ['Joined-Zone', 'Error'],
-			});
-
-			console.log('Join response:', joinResponse);
-
-			// Check if we successfully joined
-			const hasAccess = !!infoResponse?.['Info-Response'] || !!joinResponse?.['Joined-Zone'];
-			console.log('Access check result:', { hasAccess });
-
-			return hasAccess;
-		} catch (error) {
-			console.error('Error in collection access check:', error);
-			return false;
-		}
-	}
-
-	async function setupUserZoneAccess(userProfileId: string, hasMetRequirements: boolean) {
-		if (!hasMetRequirements) {
-			throw new Error('You must meet all requirements to claim this asset');
-		}
-
-		console.log('Setting up zone access for user:', {
-			profileId: userProfileId,
-			roles: [ZONE_ROLES.ADMIN, ZONE_ROLES.CONTRIBUTOR],
-			collection: COLLECTION_ID,
-		});
-
-		// First check if we have access
-		const hasAccess = await checkCollectionAccess(userProfileId);
-		if (!hasAccess) {
-			throw new Error('Unable to access collection. Please check your permissions.');
-		}
-
-		// Now set up the roles - request both Admin and Contributor roles
-		const response = await messageResults({
-			processId: COLLECTION_ID,
-			wallet: arProvider.wallet,
-			action: 'Zone-Role-Set',
-			tags: [
-				{ name: 'Action', value: 'Zone-Role-Set' },
-				{ name: 'Target', value: COLLECTION_ID },
-			],
-			data: JSON.stringify([
-				{
-					Id: userProfileId,
-					Roles: [ZONE_ROLES.ADMIN, ZONE_ROLES.CONTRIBUTOR],
-					Type: 'process',
-					SendInvite: true,
-				},
-			]),
-		});
-
-		console.log('Zone role setup response:', response);
-
-		// Check for specific error responses
-		if (response?.Error) {
-			console.error('Zone role setup error:', response.Error);
-			throw new Error(response.Error.message || 'Failed to set up zone access');
-		}
-
-		// Verify we got the needed role
-		const verifyResponse = await messageResults({
-			processId: COLLECTION_ID,
-			wallet: arProvider.wallet,
-			action: 'Info',
-			tags: [{ name: 'Action', value: 'Info' }],
-			data: null,
-			responses: ['Info-Response', 'Error'],
-		});
-
-		console.log('Role verification response:', verifyResponse);
-
-		if (!verifyResponse?.['Info-Response']?.roles?.includes(ZONE_ROLES.ADMIN)) {
-			throw new Error('Failed to obtain required Admin role for transfer');
-		}
-
-		return response;
-	}
+	const [campaignStats, setCampaignStats] = useState<{
+		claimed: number;
+		remaining: number;
+		total: number;
+	} | null>(null);
 
 	async function handleClaim(processId: string): Promise<void> {
 		try {
-			if (!arProvider.profile?.id) {
+			if (!permawebProvider.profile?.id) {
 				console.error('No Bazar profile found');
 				throw new Error('You must have a Bazar profile to claim this asset');
 			}
 
 			console.log('Starting claim process:', {
 				walletAddress: arProvider.walletAddress,
-				profileId: arProvider.profile.id,
+				profileId: permawebProvider.profile.id,
 				processId: processId,
 				atomicAssetId: ATOMIC_ASSET_ID,
-				collectionId: COLLECTION_ID,
 			});
 
-			const hasMetRequirements = verificationResults.aoProcesses.length >= 5;
+			// Count how many requirements are met
+			const requirementsMet = [
+				verificationResults.hasBazarTransaction,
+				verificationResults.hasBotegaSwap,
+				verificationResults.hasPermaswapTransaction,
+				verificationResults.hasAOProcess,
+			].filter(Boolean).length;
+
+			const hasMetRequirements = requirementsMet >= 2;
 			console.log('Requirement check:', {
-				aoProcesses: verificationResults.aoProcesses.length,
+				bazarTransaction: verificationResults.hasBazarTransaction,
+				botegaSwap: verificationResults.hasBotegaSwap,
+				permaswapTransaction: verificationResults.hasPermaswapTransaction,
+				aoProcess: verificationResults.hasAOProcess,
+				totalMet: requirementsMet,
 				hasMetRequirements,
 			});
 
-			// First try to set up zone access
-			try {
-				await setupUserZoneAccess(arProvider.profile.id, hasMetRequirements);
-			} catch (error) {
-				console.error('Failed to set up zone access:', error);
-				throw new Error('Unable to access collection. Please check your permissions.');
+			if (!hasMetRequirements) {
+				throw new Error('You must meet at least 2 of the 4 requirements to claim this asset');
 			}
 
-			// Double check collection access before proceeding
-			const hasAccess = await checkCollectionAccess(arProvider.profile.id);
-			if (!hasAccess) {
-				throw new Error('Unable to access collection. Please check your permissions.');
-			}
+			// Send claim message using Zone Profile Run-Action pattern
+			console.log('Sending claim request via Zone Profile Run-Action...');
 
-			// Now do the transfer using profile forwarding through the collection
-			console.log('Initiating atomic asset transfer via collection...');
-			const response = await messageResults({
-				processId: arProvider.profile.id,
-				wallet: arProvider.wallet,
-				action: 'Run-Action',
-				tags: [
+			// Use Run-Action for new Zone Profiles (routes through profile to asset)
+			const isLegacyProfile = permawebProvider.profile?.isLegacyProfile;
+
+			let tags = [];
+			let targetProcessId = '';
+			let action = '';
+
+			if (isLegacyProfile) {
+				// Legacy profile: send directly to atomic asset
+				targetProcessId = ATOMIC_ASSET_ID;
+				action = 'Claim';
+				tags = [
+					{ name: 'Action', value: 'Claim' },
+					{ name: 'Recipient', value: permawebProvider.profile.id },
+					{ name: 'Wallet-Address', value: arProvider.walletAddress },
+				];
+			} else {
+				// New Zone Profile: use Run-Action pattern (profile forwards to asset)
+				targetProcessId = permawebProvider.profile.id; // Send to profile first
+				action = 'Run-Action';
+				tags = [
 					{ name: 'Action', value: 'Run-Action' },
-					{ name: 'ForwardTo', value: COLLECTION_ID },
-					{ name: 'ForwardAction', value: 'Transfer' },
-					{ name: 'Target', value: ATOMIC_ASSET_ID },
-					{ name: 'Recipient', value: arProvider.profile.id },
-					{ name: 'Quantity', value: '1' },
-				],
+					{ name: 'ForwardTo', value: ATOMIC_ASSET_ID },
+					{ name: 'ForwardAction', value: 'Claim' },
+					{ name: 'Recipient', value: permawebProvider.profile.id },
+					{ name: 'Wallet-Address', value: arProvider.walletAddress },
+				];
+			}
+
+			const response = await messageResults({
+				processId: targetProcessId,
+				wallet: arProvider.wallet,
+				action: action,
+				tags: tags,
 				data: {
-					Target: ATOMIC_ASSET_ID,
-					Action: 'Transfer',
-					Input: {
-						Collection: COLLECTION_ID,
+					requirements: {
+						bazarTransaction: verificationResults.hasBazarTransaction,
+						botegaSwap: verificationResults.hasBotegaSwap,
+						permaswapTransaction: verificationResults.hasPermaswapTransaction,
+						aoProcess: verificationResults.hasAOProcess,
 					},
+					recipient: permawebProvider.profile.id,
 				},
-				responses: ['Transfer-Success', 'Transfer-Error', 'Debit-Notice', 'Credit-Notice', 'Error', 'Zone-Error'],
+				responses: ['Claim-Success', 'Claim-Error', 'Error'],
 			});
 
-			console.log('=== Transfer Response Analysis ===');
+			console.log('=== Claim Response ===');
 			console.log('Raw response:', response);
 
-			// Analyze the response
-			const responseAnalysis = {
-				hasTransferSuccess: !!response?.['Transfer-Success'],
-				hasDebitNotice: !!response?.['Debit-Notice'],
-				hasCreditNotice: !!response?.['Credit-Notice'],
-				hasError: !!response?.['Error'] || !!response?.['Transfer-Error'] || !!response?.['Zone-Error'],
-				transferSuccessDetails: response?.['Transfer-Success'] || null,
-				debitNoticeDetails: response?.['Debit-Notice'] || null,
-				creditNoticeDetails: response?.['Credit-Notice'] || null,
-				errorDetails: response?.['Error'] || response?.['Transfer-Error'] || response?.['Zone-Error'] || null,
-				transferId: response?.['Transfer-Success']?.id || response?.['Credit-Notice']?.id,
-			};
-			console.log('Response Analysis:', responseAnalysis);
-
-			if (
-				responseAnalysis.hasTransferSuccess ||
-				(responseAnalysis.hasDebitNotice && responseAnalysis.hasCreditNotice)
-			) {
-				console.log('Transfer successful - Transaction Details:', {
-					success: responseAnalysis.hasTransferSuccess ? 'Transfer-Success' : 'Notice-Based',
-					transactionId: responseAnalysis.transferId,
-					debitNotice: responseAnalysis.hasDebitNotice,
-					creditNotice: responseAnalysis.hasCreditNotice,
-				});
-
+			if (response?.['Claim-Success']) {
+				console.log('Claim successful!', response['Claim-Success']);
 				setVerificationResults((prev) => ({
 					...prev,
 					claimProcessed: true,
 				}));
-			} else if (responseAnalysis.hasError) {
-				const errorMessage =
-					responseAnalysis.errorDetails?.message || responseAnalysis.errorDetails?.error || 'Transfer failed';
-
-				// If it's a zone error, try to refresh access
-				if (response?.['Zone-Error']) {
-					console.log('Zone error detected, attempting to refresh access...');
-					await setupUserZoneAccess(arProvider.profile.id, hasMetRequirements);
-					throw new Error(`${errorMessage} - Please try again.`);
-				}
-
+				// Refresh campaign stats after successful claim
+				await fetchCampaignStats();
+			} else if (response?.['Claim-Error'] || response?.['Error']) {
+				const errorMessage = response?.['Claim-Error']?.message || response?.['Error']?.message || 'Claim failed';
 				throw new Error(errorMessage);
-			} else if (Object.keys(response).length === 0) {
-				throw new Error('No response received - please check your Bazar profile status');
 			} else {
-				throw new Error('Unexpected transfer response structure');
+				throw new Error('No response received from claim process');
 			}
 		} catch (error) {
 			console.error('Claim error:', error);
@@ -926,7 +799,34 @@ export default function Campaign() {
 		if (arProvider.walletAddress && permawebProvider.libs) {
 			verifyWallet();
 		}
+		// Fetch campaign stats on mount
+		fetchCampaignStats();
 	}, [arProvider.walletAddress, permawebProvider.libs]);
+
+	const fetchCampaignStats = async () => {
+		try {
+			// Use readHandler for campaign stats (will use dryrun)
+			const statsData = await readHandler({
+				processId: ATOMIC_ASSET_ID,
+				action: 'Get-Campaign-Stats',
+			});
+
+			if (statsData) {
+				// Handle case-insensitive field names (TotalSupply vs Totalsupply)
+				const totalSupply = statsData.TotalSupply || statsData.Totalsupply || statsData.totalSupply || 1984;
+				const claimed = statsData.Claimed || statsData.claimed || 0;
+				const remaining = statsData.Remaining || statsData.remaining || totalSupply - claimed;
+
+				setCampaignStats({
+					claimed: parseInt(claimed),
+					remaining: parseInt(remaining),
+					total: parseInt(totalSupply),
+				});
+			}
+		} catch (error) {
+			console.error('Failed to fetch campaign stats:', error);
+		}
+	};
 
 	const verifyWallet = async () => {
 		if (!permawebProvider.libs) return;
@@ -1044,7 +944,7 @@ export default function Campaign() {
 						fallbackImage={MEDIA_URLS.survivedAoFallback}
 						image={MEDIA_URLS.survivedAoImg}
 						title="I Survived AO Testnet"
-						collected="0/1984"
+						collected={campaignStats ? `${campaignStats.claimed}/${campaignStats.total}` : '0/1984'}
 						bgColor="#f7f7f7"
 						cardBgColor="#F1F1F1"
 						connected={!!arProvider.walletAddress}

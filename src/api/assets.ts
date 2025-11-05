@@ -120,19 +120,33 @@ export async function getAssetById(args: { id: string; libs?: any }): Promise<As
 
 			const structuredAsset = structureAssets(assetLookupResponse)[0];
 
+			// Extract bootloader tags from raw GQL data for fallback
+			const rawNode = assetLookupResponse.data[0].node;
+			const bootloaderTotalSupply = getTagValue(rawNode.tags, 'Bootloader-TotalSupply');
+
 			let processState: any;
 
 			if (CUSTOM_ORDERBOOKS[args.id] || TOKEN_REGISTRY[args.id]) {
-				const ao = connect({ MODE: 'legacy' });
 				try {
-					const response = await ao.dryrun({ process: args.id, tags: [{ name: 'Action', value: 'Info' }] });
-					const tags = response.Messages?.[0]?.Tags;
+					// Use readHandler for custom orderbooks (will use dryrun)
+					processState = await readHandler({
+						processId: args.id,
+						action: 'Info',
+						data: null,
+					});
 
-					processState = {
-						Name: getTagValue(tags, 'Name'),
-						Logo: getTagValue(tags, 'Logo'),
-						Denomination: getTagValue(tags, 'Denomination'),
-					};
+					// If we didn't get expected fields, try legacy mode
+					if (!processState || (!processState.Name && !processState.name)) {
+						const ao = connect({ MODE: 'legacy' });
+						const response = await ao.dryrun({ process: args.id, tags: [{ name: 'Action', value: 'Info' }] });
+						const tags = response.Messages?.[0]?.Tags;
+
+						processState = {
+							Name: getTagValue(tags, 'Name'),
+							Logo: getTagValue(tags, 'Logo'),
+							Denomination: getTagValue(tags, 'Denomination'),
+						};
+					}
 				} catch (e: any) {
 					throw new Error(e);
 				}
@@ -171,6 +185,26 @@ export async function getAssetById(args: { id: string; libs?: any }): Promise<As
 				if (processState.Denomination || processState.denomination)
 					assetState.denomination = processState.Denomination || processState.denomination;
 				if (processState.Logo || processState.logo) assetState.logo = processState.Logo || processState.logo;
+
+				// Handle TotalSupply with multiple fallbacks:
+				// 1. Check process state (root level, all casings)
+				// 2. Check Metadata object (all casings)
+				// 3. Fallback to Bootloader-TotalSupply tag
+				const totalSupply =
+					processState.TotalSupply ||
+					processState.Totalsupply ||
+					processState.totalSupply ||
+					processState.Metadata?.TotalSupply ||
+					processState.Metadata?.Totalsupply ||
+					processState.Metadata?.totalSupply ||
+					processState.metadata?.TotalSupply ||
+					processState.metadata?.Totalsupply ||
+					processState.metadata?.totalSupply ||
+					bootloaderTotalSupply; // Bootloader tag fallback
+
+				if (totalSupply) {
+					assetState.totalSupply = totalSupply.toString();
+				}
 				if (processState.Balances) {
 					assetState.balances = Object.fromEntries(
 						Object.entries(processState.Balances).filter(([_, value]) => Number(value) !== 0)
