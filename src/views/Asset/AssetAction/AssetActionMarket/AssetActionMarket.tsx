@@ -17,6 +17,7 @@ export default function AssetActionMarket(props: IProps) {
 	const MARKET_ACTION_TAB_OPTIONS = {
 		buy: language.buy,
 		sell: language.sell,
+		list: 'List',
 		bid: 'Bid',
 		transfer: language.transfer,
 	};
@@ -37,6 +38,10 @@ export default function AssetActionMarket(props: IProps) {
 			{
 				label: MARKET_ACTION_TAB_OPTIONS.bid,
 				icon: ASSETS.bid,
+			},
+			{
+				label: MARKET_ACTION_TAB_OPTIONS.list,
+				icon: ASSETS.listing,
 			},
 			{
 				label: MARKET_ACTION_TAB_OPTIONS.transfer,
@@ -65,6 +70,9 @@ export default function AssetActionMarket(props: IProps) {
 				break;
 			case MARKET_ACTION_TAB_OPTIONS.sell:
 				type = 'sell';
+				break;
+			case MARKET_ACTION_TAB_OPTIONS.list:
+				type = 'list';
 				break;
 			case MARKET_ACTION_TAB_OPTIONS.bid:
 				type = 'bid';
@@ -96,13 +104,24 @@ export default function AssetActionMarket(props: IProps) {
 				</Tabs>
 				<S.TabContent>{getCurrentTab()}</S.TabContent>
 			</S.TabsWrapper>
-			<GS.DrawerWrapper>
-				<Drawer
-					title={language.activeSaleOrders}
-					icon={ASSETS.orders}
-					content={<S.DrawerContent>{props.getCurrentListings}</S.DrawerContent>}
-				/>
-			</GS.DrawerWrapper>
+			{(currentTab === MARKET_ACTION_TAB_OPTIONS.buy || currentTab === MARKET_ACTION_TAB_OPTIONS.list) && (
+				<GS.DrawerWrapper>
+					<Drawer
+						title={language.activeSaleOrders}
+						icon={ASSETS.orders}
+						content={<S.DrawerContent>{props.getCurrentListings}</S.DrawerContent>}
+					/>
+				</GS.DrawerWrapper>
+			)}
+			{(currentTab === MARKET_ACTION_TAB_OPTIONS.sell || currentTab === MARKET_ACTION_TAB_OPTIONS.bid) && (
+				<GS.DrawerWrapper>
+					<Drawer
+						title={'Active Bids'}
+						icon={ASSETS.orders}
+						content={<S.DrawerContent>{props.getCurrentBids}</S.DrawerContent>}
+					/>
+				</GS.DrawerWrapper>
+			)}
 		</S.Wrapper>
 	) : null;
 }

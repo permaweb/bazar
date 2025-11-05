@@ -216,7 +216,7 @@ export type FormFieldType = 'number' | 'password';
 
 export type TabType = 'primary' | 'alt1';
 
-export type AssetMarketActionOrderType = 'buy' | 'sell' | 'bid' | 'transfer';
+export type AssetMarketActionOrderType = 'buy' | 'sell' | 'list' | 'bid' | 'transfer';
 
 export type ReduxActionType = {
 	type: string;

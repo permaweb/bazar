@@ -530,7 +530,7 @@ export default function ActivityTable(props: IProps) {
 										<>
 											<p>{getRelativeDate(row.timestamp)}</p>
 											<S.DateValueTooltip>
-												<ReactSVG src={ASSETS.info} />
+												<ReactSVG src={ASSETS.time} />
 												<div className={'date-tooltip fade-in border-wrapper-alt2'}>
 													<p>{`${formatDate(row.timestamp, 'iso', true)}`}</p>
 												</div>

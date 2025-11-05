@@ -28,6 +28,7 @@ import license from 'assets/license.svg';
 import light from 'assets/light.svg';
 import link from 'assets/link.svg';
 import list from 'assets/list.svg';
+import listing from 'assets/listing.svg';
 import logo from 'assets/logo.svg';
 import market from 'assets/market.svg';
 import media from 'assets/media.svg';
@@ -53,6 +54,7 @@ import streak2 from 'assets/streak-8-14.svg';
 import streak3 from 'assets/streak-15-29.svg';
 import streak4 from 'assets/streak-30.svg';
 import swap from 'assets/swap.svg';
+import time from 'assets/time.svg';
 import transfer from 'assets/transfer.svg';
 import unsupported from 'assets/unsupported.svg';
 import user from 'assets/user.svg';
@@ -179,6 +181,7 @@ export const ASSETS = {
 	light,
 	link,
 	list,
+	listing,
 	logo,
 	market,
 	media,
@@ -196,6 +199,7 @@ export const ASSETS = {
 	sell,
 	star,
 	swap,
+	time,
 	transfer,
 	unsupported,
 	stamps,

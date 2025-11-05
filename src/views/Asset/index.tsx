@@ -127,8 +127,8 @@ export default function Asset() {
 
 									// Process all pairs for this asset to get all orders
 									assetPairs.forEach((pair: any) => {
-										// Helper to map orders with side info
-										const mapOrders = (orders: any[], side?: string) => {
+										// Helper to map orders with side info and proper currency
+										const mapOrders = (orders: any[], side?: string, currency?: string) => {
 											return orders.map((order: any) => ({
 												creator: order.Creator || order.creator,
 												dateCreated: order.DateCreated || order.dateCreated,
@@ -136,7 +136,7 @@ export default function Asset() {
 												originalQuantity: order.OriginalQuantity || order.originalQuantity,
 												quantity: order.Quantity || order.quantity,
 												token: order.Token || order.token,
-												currency: pair.Pair[1], // The token being received
+												currency: currency || pair.Pair[1], // The token being received
 												price: order.Price || order.price || '0', // Ensure price is always set
 												side: side || order.Side, // Include side information
 											}));
@@ -145,11 +145,13 @@ export default function Asset() {
 										// New structure: Asks and Bids
 										if (pair.Asks || pair.Bids) {
 											if (pair.Asks && Array.isArray(pair.Asks)) {
-												const askOrders = mapOrders(pair.Asks, 'Ask');
+												// Ask: Selling Pair[0] for Pair[1] - currency is Pair[1] (what you receive)
+												const askOrders = mapOrders(pair.Asks, 'Ask', pair.Pair[1]);
 												allOrders = allOrders.concat(askOrders);
 											}
 											if (pair.Bids && Array.isArray(pair.Bids)) {
-												const bidOrders = mapOrders(pair.Bids, 'Bid');
+												// Bid: Buying Pair[0] with Pair[1] - currency is Pair[0] (what you receive)
+												const bidOrders = mapOrders(pair.Bids, 'Bid', pair.Pair[0]);
 												allOrders = allOrders.concat(bidOrders);
 											}
 										}

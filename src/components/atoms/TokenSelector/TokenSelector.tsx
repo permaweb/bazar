@@ -87,7 +87,7 @@ export default function TokenSelector(props: TokenSelectorProps) {
 	return (
 		<CloseHandler active={isOpen} disabled={!isOpen} callback={() => setIsOpen(false)}>
 			<S.Wrapper className={props.className}>
-				{props.showLabel && <S.Label>{language.selectToken}:</S.Label>}
+				{props.showLabel && <S.Label>{language.selectToken}</S.Label>}
 				<S.CustomSelectWrapper>
 					<S.CustomSelect onClick={() => setIsOpen(!isOpen)} className={isOpen ? 'active' : ''}>
 						<S.SelectedToken>

@@ -291,10 +291,12 @@ export function getAssetOrders(orderbook: { Pair: string[]; Orders?: any; Asks?:
 	// New structure: Asks and Bids arrays
 	if (orderbook.Asks || orderbook.Bids) {
 		if (orderbook.Asks && Array.isArray(orderbook.Asks)) {
+			// Ask: Selling Pair[0] (base) for Pair[1] (quote) - currency is what you receive (Pair[1])
 			assetOrders = assetOrders.concat(mapOrders(orderbook.Asks, orderbook.Pair[1], 'Ask'));
 		}
 		if (orderbook.Bids && Array.isArray(orderbook.Bids)) {
-			assetOrders = assetOrders.concat(mapOrders(orderbook.Bids, orderbook.Pair[1], 'Bid'));
+			// Bid: Buying Pair[0] (base) with Pair[1] (quote) - currency is what you receive (Pair[0])
+			assetOrders = assetOrders.concat(mapOrders(orderbook.Bids, orderbook.Pair[0], 'Bid'));
 		}
 	}
 	// Legacy structure: Orders array (backward compatibility)

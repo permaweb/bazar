@@ -5,7 +5,7 @@ import { STYLING } from 'helpers/config';
 export const Wrapper = styled.div`
 	height: 100%;
 	width: 100%;
-	background: ${(props) => props.theme.colors.container.primary.background};
+	background: ${(props) => props.theme.colors.container.primary.active};
 	border: 1px solid ${(props) => props.theme.colors.border.alt4};
 	border-radius: ${STYLING.dimensions.radius.primary};
 	overflow: hidden;

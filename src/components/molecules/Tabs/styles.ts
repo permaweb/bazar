@@ -28,6 +28,7 @@ export const Tab = styled.div``;
 export const AltTab = styled.div`
 	position: relative;
 	display: flex;
+	flex: 1;
 	justify-content: center;
 `;
 
@@ -39,6 +40,7 @@ export const AltTabAction = styled.button<{ active: boolean; icon: boolean }>`
 	border-radius: ${STYLING.dimensions.radius.primary};
 	color: ${(props) => props.theme.colors.font.primary};
 	cursor: pointer;
+	flex: 1;
 	background: ${(props) =>
 		props.active ? props.theme.colors.container.primary.active : props.theme.colors.container.primary.background};
 	border: 1px solid ${(props) => props.theme.colors.border.primary};
