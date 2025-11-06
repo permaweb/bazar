@@ -554,6 +554,7 @@ export default function AssetAction(props: IProps) {
 						getCurrentBids={getCurrentBids}
 						toggleUpdate={props.toggleUpdate}
 						updating={props.updating}
+						hasLegacyOrderbook={props.hasLegacyOrderbook}
 					/>
 				);
 			case ACTION_TAB_OPTIONS.owners:
@@ -572,28 +573,6 @@ export default function AssetAction(props: IProps) {
 				ownerCount > 1 ? `${language.owner.toLowerCase()}s` : language.owner.toLowerCase()
 		  }`
 		: null;
-
-	const listingCountDisplay =
-		currentListings && currentListings.length > 0
-			? `${formatCount(currentListings.length.toString())} ${
-					currentListings.length > 1 ? `${language.owner.toLowerCase()}s` : language.owner.toLowerCase()
-			  }`
-			: null;
-
-	const bidCountDisplay =
-		currentBids && currentBids.length > 0
-			? `${formatCount(currentBids.length.toString())} ${
-					currentBids.length > 1 ? `${language.owner.toLowerCase()}s` : language.owner.toLowerCase()
-			  }`
-			: null;
-
-	function showCurrentlyOwnedBy() {
-		if (!props.asset || !props.asset.state || !props.asset.state.balances) return false;
-		if (Object.keys(props.asset.state.balances).length <= 0) return false;
-		if (Object.keys(props.asset.state.balances).length === 1 && props.asset.state.balances[props.asset.orderbook?.id])
-			return false;
-		return true;
-	}
 
 	return props.asset ? (
 		<>
@@ -621,7 +600,7 @@ export default function AssetAction(props: IProps) {
 						</S.HeaderTitleActions>
 					</S.HeaderTitle>
 					<S.OrdersWrapper>
-						{currentListings && !props.updating && (
+						{!props.updating && (
 							<S.OwnerLinesWrapper>
 								{/* {showCurrentlyOwnedBy() && (
 									<S.OwnerLine>
@@ -648,12 +627,11 @@ export default function AssetAction(props: IProps) {
 												</button>
 											</>
 										) : (
-											<S.MessageWrapper className={'update-wrapper'}>
-												<span>{'No Sale Orders Available'}</span>
-											</S.MessageWrapper>
+											<span>{'No Sale Orders Available'}</span>
 										)}
 									</S.OwnerLine>
 								)}
+								{currentListings && currentBids && <span>|</span>}
 								{currentBids && (
 									<S.OwnerLine>
 										{currentBids.length > 0 ? (
@@ -667,18 +645,16 @@ export default function AssetAction(props: IProps) {
 												</button>
 											</>
 										) : (
-											<S.MessageWrapper className={'update-wrapper'}>
-												<span>{'No Bid Orders Available'}</span>
-											</S.MessageWrapper>
+											<span>{'No Bid Orders Available'}</span>
 										)}
 									</S.OwnerLine>
 								)}
 							</S.OwnerLinesWrapper>
 						)}
 						{props.updating && (
-							<S.MessageWrapper className={'update-wrapper'}>
+							<S.OwnerLine>
 								<span>{`${language.updatingAsset}...`}</span>
-							</S.MessageWrapper>
+							</S.OwnerLine>
 						)}
 					</S.OrdersWrapper>
 					<S.ACActionWrapper>

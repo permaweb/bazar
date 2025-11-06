@@ -80,23 +80,23 @@ export const OwnerLine = styled.div`
 	display: flex;
 	align-items: center;
 	span {
-		font-size: ${(props) => props.theme.typography.size.base};
+		font-size: ${(props) => props.theme.typography.size.small};
 		font-family: ${(props) => props.theme.typography.family.primary};
-		font-weight: ${(props) => props.theme.typography.weight.medium};
+		font-weight: ${(props) => props.theme.typography.weight.bold};
 		color: ${(props) => props.theme.colors.font.alt1};
 		overflow-x: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
 	button {
-		color: ${(props) => props.theme.colors.font.primary};
-		font-size: ${(props) => props.theme.typography.size.base};
-		font-family: ${(props) => props.theme.typography.family.alt1};
+		color: ${(props) => props.theme.colors.font.alt1};
+		font-size: ${(props) => props.theme.typography.size.small};
+		font-family: ${(props) => props.theme.typography.family.primary};
 		font-weight: ${(props) => props.theme.typography.weight.bold};
 		text-decoration: underline;
 		margin: 0 0 0 5px;
 		&:hover {
-			color: ${(props) => props.theme.colors.font.alt1};
+			color: ${(props) => props.theme.colors.font.primary};
 		}
 	}
 `;

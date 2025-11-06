@@ -6,4 +6,5 @@ export interface IProps {
 	getCurrentBids: any;
 	toggleUpdate: () => void;
 	updating: boolean;
+	hasLegacyOrderbook: boolean;
 }

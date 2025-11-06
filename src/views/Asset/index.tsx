@@ -33,6 +33,7 @@ export default function Asset() {
 	const [toggleUpdate, setToggleUpdate] = React.useState<boolean>(false);
 	const [errorResponse, setErrorResponse] = React.useState<string | null>(null);
 	const [viewType, setViewType] = React.useState<AssetViewType>('trading');
+	const [hasLegacyOrderbook, setHasLegacyOrderbook] = React.useState<boolean>(true);
 
 	React.useEffect(() => {
 		if (viewType === 'reading') {
@@ -107,6 +108,7 @@ export default function Asset() {
 					while (!ordersChanged && tries < maxTries) {
 						try {
 							let allOrders: any[] = [];
+							let hasLegacy = false;
 
 							if (asset.orderbook.id === AO.ucm) {
 								let Orderbook = [];
@@ -157,6 +159,7 @@ export default function Asset() {
 										}
 										// Legacy structure: Orders array (backward compatibility)
 										else if (pair.Orders && Array.isArray(pair.Orders)) {
+											hasLegacy = true;
 											const pairOrders = mapOrders(pair.Orders);
 											allOrders = allOrders.concat(pairOrders);
 										}
@@ -164,12 +167,18 @@ export default function Asset() {
 								}
 							} else {
 								try {
-									const response = await permawebProvider.libs.readState({
-										processId: asset.orderbook.id,
-										path: 'orderbook',
-										fallbackAction: 'Info',
-										node: HB.defaultNode,
-									});
+									// const response = await permawebProvider.libs.readState({
+									// 	processId: asset.orderbook.id,
+									// 	path: 'orderbook',
+									// 	fallbackAction: 'Info',
+									// 	node: HB.defaultNode,
+									// });
+
+									const response = (
+										await permawebProvider.libs.readState({
+											processId: asset.orderbook.id,
+										})
+									).orderbook;
 
 									if (response?.ActivityProcess) {
 										setAsset((prevAsset) => ({
@@ -188,6 +197,10 @@ export default function Asset() {
 										// Process each pair and concatenate orders
 										orderbookData.forEach((pair: any) => {
 											if (pair && pair.Pair) {
+												if (pair.Asks && pair.Bids) {
+													hasLegacy = false;
+												}
+
 												const pairOrders = getAssetOrders(pair);
 												allOrders = allOrders.concat(pairOrders);
 											}
@@ -221,6 +234,7 @@ export default function Asset() {
 							if (currentOrders.length <= 0 || allOrders.length <= 0) {
 								setLoading(false);
 								ordersChanged = true;
+								setHasLegacyOrderbook(hasLegacy);
 								setAsset((prevAsset) => ({
 									...prevAsset,
 									orderbook: {
@@ -238,6 +252,7 @@ export default function Asset() {
 							// Deep compare current orders with newly fetched orders
 							if (!_.isEqual(sortedCurrent, sortedNew)) {
 								ordersChanged = true;
+								setHasLegacyOrderbook(hasLegacy);
 								setAsset((prevAsset) => ({
 									...prevAsset,
 									orderbook: {
@@ -292,6 +307,7 @@ export default function Asset() {
 									updating={loading}
 									toggleUpdate={() => setToggleUpdate(!toggleUpdate)}
 									toggleViewType={() => setViewType('reading')}
+									hasLegacyOrderbook={hasLegacyOrderbook}
 								/>
 							</S.TradingActionWrapper>
 						</>

@@ -226,7 +226,6 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 						...prev,
 						[tokenId]: {
 							...prev[tokenId],
-							profileBalance: null,
 							[field]: value,
 						},
 					}));
@@ -240,7 +239,7 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 
 				for (const [token] of tokensToLoad) {
 					fetchBalance(token, arProvider.walletAddress, 'walletBalance');
-					// fetchBalance(token, profile.id, 'profileBalance');
+					fetchBalance(token, profile.id, 'profileBalance');
 					await new Promise((r) => setTimeout(r, 200));
 				}
 			} catch (e) {
@@ -312,7 +311,14 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 	function getCachedProfile(address: string) {
 		try {
 			const cached = localStorage.getItem(STORAGE.profile(address));
-			return cached ? JSON.parse(cached) : null;
+			try {
+				return cached ? JSON.parse(cached) : null;
+			} catch (error) {
+				console.warn('Error parsing cached profile:', error);
+				// Clear the corrupted cache
+				localStorage.removeItem(STORAGE.profile(address));
+				return null;
+			}
 		} catch (error) {
 			console.warn('Error parsing cached profile:', error);
 			// Clear the corrupted cache
@@ -387,6 +393,7 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 
 		// Fetch balance for the specific token
 		await fetchBalance(tokenId, arProvider.walletAddress, 'walletBalance');
+		await fetchBalance(tokenId, profile.id, 'profileBalance');
 	}
 
 	return (

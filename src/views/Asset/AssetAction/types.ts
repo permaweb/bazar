@@ -5,4 +5,5 @@ export interface IProps {
 	updating: boolean;
 	toggleUpdate: () => void;
 	toggleViewType: () => void;
+	hasLegacyOrderbook: boolean;
 }
