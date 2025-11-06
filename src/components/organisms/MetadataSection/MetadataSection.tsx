@@ -16,8 +16,22 @@ export default function MetadataSection(props: IProps) {
 		return null;
 	}
 
+	// Helper to get OriginalMetadata with case-insensitive key lookup
+	const getOriginalMetadata = () => {
+		if (!props.metadata) return null;
+
+		// Check all possible casings of OriginalMetadata
+		return (
+			props.metadata.OriginalMetadata ||
+			props.metadata.Originalmetadata ||
+			props.metadata.originalMetadata ||
+			props.metadata.originalmetadata ||
+			null
+		);
+	};
+
 	const renderTraits = () => {
-		const originalMetadata = props.metadata?.OriginalMetadata;
+		const originalMetadata = getOriginalMetadata();
 		if (!originalMetadata) {
 			return null;
 		}
@@ -77,7 +91,7 @@ export default function MetadataSection(props: IProps) {
 					<GS.DrawerContent>
 						{renderTopics()}
 
-						{props.metadata?.OriginalMetadata && (
+						{getOriginalMetadata() && (
 							<S.AttributesWrapper>
 								<S.SectionTitle>Attributes</S.SectionTitle>
 								{renderTraits()}
