@@ -33,7 +33,6 @@ import { IProps } from './types';
 
 const MIN_PRICE = 0.000001;
 
-// TODO: Check if wallet to profile transfer is necessary for buys / bids
 export default function AssetActionMarketOrders(props: IProps) {
 	const permawebProvider = usePermawebProvider();
 	const arProvider = useArweaveProvider();
@@ -434,17 +433,14 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 				const data: any = {
 					orderbookId: currentOrderbook,
+					creatorId: permawebProvider.profile.id,
 					baseToken: props.asset.data.id, // Always the primary token in the pair
 					quoteToken: tokenProvider.selectedToken.id, // Always the secondary token in the pair
-					dominantToken: dominantToken,
-					swapToken: swapToken,
+					dominantToken: dominantToken, // The dominant token of this specific order
+					swapToken: swapToken, // The swap token of this specific order
 					quantity: transferQuantity,
 					action: action,
 				};
-
-				if ((props.type === 'buy' || props.type === 'bid') && sendToWallet) {
-					data.walletAddress = arProvider.walletAddress;
-				} else data.creatorId = permawebProvider.profile.id;
 
 				if (unitPrice) data.unitPrice = unitPrice.toString();
 

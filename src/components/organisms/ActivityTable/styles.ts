@@ -328,10 +328,12 @@ export const EventWrapper = styled(TableRowValue)`
 	margin: 0 20px;
 `;
 
-function getEventColor(theme: DefaultTheme, type: 'Listing' | 'Sale' | 'Purchase' | 'Unlisted') {
+function getEventColor(theme: DefaultTheme, type: 'Listing' | 'Bid' | 'Sale' | 'Purchase' | 'Unlisted') {
 	switch (type) {
 		case 'Listing':
 			return theme.colors.stats.alt4;
+		case 'Bid':
+			return theme.colors.stats.alt6;
 		case 'Sale':
 			return theme.colors.indicator.primary;
 		case 'Purchase':
@@ -341,7 +343,8 @@ function getEventColor(theme: DefaultTheme, type: 'Listing' | 'Sale' | 'Purchase
 	}
 }
 
-export const Event = styled.a<{ type: 'Listing' | 'Sale' | 'Purchase' | 'Unlisted' }>`
+export const Event = styled.a<{ type?: 'Listing' | 'Sale' | 'Purchase' | 'Unlisted' }>`
+	height: 32.5px;
 	width: 110px;
 	display: flex;
 	align-items: center;
@@ -350,7 +353,8 @@ export const Event = styled.a<{ type: 'Listing' | 'Sale' | 'Purchase' | 'Unliste
 	position: relative;
 	overflow: hidden;
 	padding: 1.5px 7.5px;
-	background: ${(props) => getEventColor(props.theme, props.type)};
+	background: ${(props) =>
+		props.type ? getEventColor(props.theme, props.type) : props.theme.colors.container.alt1.background};
 	border: 1px solid ${(props) => props.theme.colors.border.alt4};
 	border-radius: ${STYLING.dimensions.radius.alt2};
 	p {
@@ -397,10 +401,12 @@ export const Event = styled.a<{ type: 'Listing' | 'Sale' | 'Purchase' | 'Unliste
 `;
 
 export const Entity = styled.a<{ type: 'UCM' | 'User' }>`
+	height: 32.5px;
 	width: 110px;
 	display: flex;
 	align-items: center;
 	justify-content: center;
+	gap: 7.5px;
 	background: ${(props) => (props.type === 'UCM' ? props.theme.colors.stats.primary : props.theme.colors.stats.alt5)};
 	border: 1px solid ${(props) => props.theme.colors.border.alt4};
 	border-radius: ${STYLING.dimensions.radius.alt2};
@@ -413,6 +419,13 @@ export const Entity = styled.a<{ type: 'UCM' | 'User' }>`
 		font-weight: ${(props) => props.theme.typography.weight.bold};
 		color: ${(props) => props.theme.colors.font.light1};
 		max-width: 100%;
+	}
+
+	svg {
+		width: 15px;
+		fill: ${(props) => props.theme.colors.font.light1};
+		color: ${(props) => props.theme.colors.font.light1};
+		margin: 6.5px 0 0 0;
 	}
 
 	::after {

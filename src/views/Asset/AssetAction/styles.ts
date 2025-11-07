@@ -105,7 +105,7 @@ export const ACActionWrapper = styled.div`
 	display: flex;
 	flex-wrap: wrap;
 	align-items: center;
-	gap: 25px;
+	gap: 20px;
 	margin: 25px 0 0 0;
 `;
 

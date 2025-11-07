@@ -15,6 +15,7 @@ import collection from 'assets/collection.svg';
 import comments from 'assets/comments.svg';
 import copy from 'assets/copy.svg';
 import dark from 'assets/dark.svg';
+import dim from 'assets/dim.svg';
 import disconnect from 'assets/disconnect.svg';
 import discord from 'assets/discord.svg';
 import docs from 'assets/docs.svg';
@@ -54,6 +55,7 @@ import streak2 from 'assets/streak-8-14.svg';
 import streak3 from 'assets/streak-15-29.svg';
 import streak4 from 'assets/streak-30.svg';
 import swap from 'assets/swap.svg';
+import system from 'assets/system.svg';
 import time from 'assets/time.svg';
 import transfer from 'assets/transfer.svg';
 import unsupported from 'assets/unsupported.svg';
@@ -168,6 +170,7 @@ export const ASSETS = {
 	comments,
 	copy,
 	dark,
+	dim,
 	disconnect,
 	discord,
 	docs,
@@ -208,6 +211,7 @@ export const ASSETS = {
 	streak2,
 	streak3,
 	streak4,
+	system,
 	user,
 	users,
 	view,

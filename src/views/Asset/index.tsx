@@ -167,18 +167,12 @@ export default function Asset() {
 								}
 							} else {
 								try {
-									// const response = await permawebProvider.libs.readState({
-									// 	processId: asset.orderbook.id,
-									// 	path: 'orderbook',
-									// 	fallbackAction: 'Info',
-									// 	node: HB.defaultNode,
-									// });
-
-									const response = (
-										await permawebProvider.libs.readState({
-											processId: asset.orderbook.id,
-										})
-									).orderbook;
+									const response = await permawebProvider.libs.readState({
+										processId: asset.orderbook.id,
+										path: 'orderbook',
+										fallbackAction: 'Info',
+										node: HB.defaultNode,
+									});
 
 									if (response?.ActivityProcess) {
 										setAsset((prevAsset) => ({
@@ -289,8 +283,6 @@ export default function Asset() {
 			}
 		})();
 	}, [asset?.orderbook?.id, toggleUpdate]);
-
-	console.log(asset);
 
 	function getData() {
 		if (asset) {

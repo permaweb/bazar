@@ -57,6 +57,8 @@ export default function ActivityTable(props: IProps) {
 
 	const [updating, setUpdating] = React.useState<boolean>(false);
 
+	console.log(activity);
+
 	React.useEffect(() => {
 		(async function () {
 			if (props.activityId) {
@@ -309,13 +311,26 @@ export default function ActivityTable(props: IProps) {
 
 		if (orders && orders.length > 0) {
 			const mappedActivity = orders.map((order: any) => {
-				let orderEvent = event;
-				if (
+				let orderEvent: any = event;
+
+				// Use IncomingSide/Side to determine event type if available
+				if (event === 'Listing' && order.Side) {
+					// const side = order.IncomingSide || order.Side;
+					const side = order.Side;
+					console.log(side);
+					if (side === 'Bid') {
+						orderEvent = 'Bid';
+					} else if (side === 'Ask') {
+						// orderEvent = event === 'Sale' ? 'Sale' : 'Listing';
+						orderEvent = 'Listing';
+					}
+				} else if (
 					order.Receiver &&
 					((props.address && order.Receiver === props.address) || permawebProvider.profile?.id === order.Receiver)
 				) {
 					orderEvent = 'Purchase';
 				}
+
 				return {
 					orderId: order.OrderId,
 					dominantToken: order.DominantToken,
@@ -326,6 +341,8 @@ export default function ActivityTable(props: IProps) {
 					receiver: order.Receiver || null,
 					timestamp: order.Timestamp,
 					event: orderEvent,
+					side: order.Side || null,
+					incomingSide: order.IncomingSide || null,
 				};
 			});
 
@@ -404,13 +421,14 @@ export default function ActivityTable(props: IProps) {
 			} else if (row.receiver) {
 				return (
 					<S.Entity type={'User'} href={REDIRECTS.explorer(row.receiver)} target={'_blank'}>
+						<ReactSVG src={ASSETS.user} />
 						<p>{formatAddress(row.receiver, false)}</p>
 					</S.Entity>
 				);
 			}
 			return (
-				<S.Event type={'Listing'}>
-					<p>Listing</p>
+				<S.Event>
+					<p>N/A</p>
 				</S.Event>
 			);
 		},
@@ -439,7 +457,9 @@ export default function ActivityTable(props: IProps) {
 		function getEventIcon(event: string) {
 			switch (event) {
 				case 'Listing':
-					return ASSETS.orders;
+					return ASSETS.listing;
+				case 'Bid':
+					return ASSETS.bid;
 				case 'Sale':
 					return ASSETS.sell;
 				case 'Unlisted':
@@ -510,6 +530,7 @@ export default function ActivityTable(props: IProps) {
 										/>
 									) : (
 										<S.Entity type={'User'} href={REDIRECTS.explorer(row.sender)} target={'_blank'}>
+											<ReactSVG src={ASSETS.user} />
 											<p>{row.sender ? formatAddress(row.sender, false) : '-'}</p>
 										</S.Entity>
 									)}
