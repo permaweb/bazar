@@ -233,8 +233,6 @@ export default function ActivityTable(props: IProps) {
 				return m;
 			}, {});
 
-			console.log(node);
-
 			// Filter out activities from spam address
 			// Check multiple fields where the spam address might appear
 			const isSpamActivity =
