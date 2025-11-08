@@ -1,7 +1,7 @@
 import React from 'react';
 import { useSelector } from 'react-redux';
 
-import { getAllMusicCollections, getAssetById, getCollectionById, getCollections } from 'api';
+import { getAllMusicCollections, getAssetByIdGQL, getAssetStateById, getCollectionById, getCollections } from 'api';
 
 import { ActivityTable } from 'components/organisms/ActivityTable';
 import { CollectionsCarousel } from 'components/organisms/CollectionsCarousel';
@@ -30,10 +30,10 @@ const preloadAudioAssets = async (collections: CollectionType[], libs: any) => {
 					for (const assetId of audioAssetIds) {
 						try {
 							// Fetch asset data to resolve audio URL
-							const asset = await getAssetById({ id: assetId, libs });
+							const structuredAsset = await getAssetByIdGQL({ id: assetId });
 
 							// If it's an audio asset, preload the actual audio file
-							if (asset?.data?.contentType?.startsWith('audio/')) {
+							if (structuredAsset?.data?.contentType?.startsWith('audio/')) {
 								// Create a hidden audio element to preload
 								const audio = new Audio();
 								audio.preload = 'metadata'; // Just load metadata for faster response

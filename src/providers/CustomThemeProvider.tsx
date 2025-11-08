@@ -1,9 +1,9 @@
 import React from 'react';
 import { ThemeProvider } from 'styled-components';
 
-import { darkTheme, lightTheme, theme } from 'helpers/themes';
+import { darkTheme, dimmedTheme, lightTheme, theme } from 'helpers/themes';
 
-type ThemeType = 'light' | 'dark';
+type ThemeType = 'light' | 'dark' | 'dimmed';
 
 interface CustomThemeContextState {
 	current: ThemeType;
@@ -56,6 +56,9 @@ export function CustomThemeProvider(props: CustomThemeProviderProps) {
 				break;
 			case 'dark':
 				themeObject = darkTheme;
+				break;
+			case 'dimmed':
+				themeObject = dimmedTheme;
 				break;
 		}
 		return theme(themeObject);

@@ -6,6 +6,7 @@ import arrow from 'assets/arrow.svg';
 import asset from 'assets/asset.svg';
 import audio from 'assets/audio.svg';
 import beacon from 'assets/beacon-logo.svg';
+import bid from 'assets/bid.svg';
 import bridge from 'assets/bridge.svg';
 import buy from 'assets/buy.svg';
 import checkmark from 'assets/checkmark.svg';
@@ -14,6 +15,7 @@ import collection from 'assets/collection.svg';
 import comments from 'assets/comments.svg';
 import copy from 'assets/copy.svg';
 import dark from 'assets/dark.svg';
+import dim from 'assets/dim.svg';
 import disconnect from 'assets/disconnect.svg';
 import discord from 'assets/discord.svg';
 import docs from 'assets/docs.svg';
@@ -27,6 +29,7 @@ import license from 'assets/license.svg';
 import light from 'assets/light.svg';
 import link from 'assets/link.svg';
 import list from 'assets/list.svg';
+import listing from 'assets/listing.svg';
 import logo from 'assets/logo.svg';
 import market from 'assets/market.svg';
 import media from 'assets/media.svg';
@@ -52,6 +55,8 @@ import streak2 from 'assets/streak-8-14.svg';
 import streak3 from 'assets/streak-15-29.svg';
 import streak4 from 'assets/streak-30.svg';
 import swap from 'assets/swap.svg';
+import system from 'assets/system.svg';
+import time from 'assets/time.svg';
 import transfer from 'assets/transfer.svg';
 import unsupported from 'assets/unsupported.svg';
 import user from 'assets/user.svg';
@@ -206,6 +211,7 @@ export const ASSETS = {
 	arrow,
 	asset,
 	audio,
+	bid,
 	bridge,
 	buy,
 	checkmark,
@@ -214,6 +220,7 @@ export const ASSETS = {
 	comments,
 	copy,
 	dark,
+	dim,
 	disconnect,
 	discord,
 	docs,
@@ -227,6 +234,7 @@ export const ASSETS = {
 	light,
 	link,
 	list,
+	listing,
 	logo,
 	market,
 	media,
@@ -244,6 +252,7 @@ export const ASSETS = {
 	sell,
 	star,
 	swap,
+	time,
 	transfer,
 	unsupported,
 	stamps,
@@ -252,6 +261,7 @@ export const ASSETS = {
 	streak2,
 	streak3,
 	streak4,
+	system,
 	user,
 	users,
 	view,

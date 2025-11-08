@@ -87,15 +87,15 @@ export const Dropdown = styled.ul`
 
 export const DHeaderWrapper = styled.div`
 	width: 100%;
-	padding: 0 0 10px 0;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 0 15px 5px 15px;
 `;
 
 export const DHeaderFlex = styled.div`
-	width: 100%;
 	display: flex;
 	align-items: center;
-	padding: 0 15px;
-	margin: 0 auto;
 `;
 
 export const Tooltip = styled.div<{ useBottom: boolean }>`
@@ -220,7 +220,7 @@ export const CopyIconWrapper = styled.div`
 export const DBodyWrapper = styled.ul`
 	width: 100%;
 	padding: 10px 7.5px;
-	border-bottom: 1px solid ${(props) => props.theme.colors.border.alt4};
+	border-bottom: 1px solid ${(props) => props.theme.colors.border.primary};
 	li {
 		text-align: center;
 		height: 40.5px;
@@ -235,6 +235,7 @@ export const DBodyWrapper = styled.ul`
 		border-radius: ${STYLING.dimensions.radius.alt2};
 		transition: all 100ms;
 		padding: 0 7.5px;
+		position: relative;
 		svg {
 			height: 15.5px;
 			width: 15.5px;
@@ -245,6 +246,16 @@ export const DBodyWrapper = styled.ul`
 		&:hover {
 			color: ${(props) => props.theme.colors.font.primary};
 			background: ${(props) => props.theme.colors.container.primary.active};
+		}
+
+		&.active::after {
+			content: '';
+			position: absolute;
+			right: 10px;
+			width: 10px;
+			height: 10px;
+			background: ${(props) => props.theme.colors.indicator.primary};
+			border-radius: 50%;
 		}
 
 		a {
@@ -259,12 +270,35 @@ export const DBodyWrapper = styled.ul`
 			}
 		}
 	}
+
+	p {
+		color: ${(props) => props.theme.colors.font.alt1};
+		font-family: ${(props) => props.theme.typography.family.primary};
+		font-size: ${(props) => props.theme.typography.size.xSmall};
+		font-weight: ${(props) => props.theme.typography.weight.bold};
+		padding: 7.5px;
+	}
 `;
 
 export const DBalancesWrapper = styled(DBodyWrapper)`
-	width: calc(100% - 30px);
-	padding: 5px 12.5px;
-	margin: 0 auto;
+	padding: 0 7.5px 10px 7.5px;
+`;
+
+export const DBalancesHeaderWrapper = styled.div`
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	gap: 15px;
+	margin: 0 0 1.5px 0;
+
+	button {
+		padding: 7.5px 15.5px 7.5px 15.5px;
+		margin: 0 7.5px 0 0;
+
+		span {
+			font-size: ${(props) => props.theme.typography.size.xxSmall} !important;
+		}
+	}
 `;
 
 export const DBalancesAction = styled.div`
@@ -289,6 +323,7 @@ export const BalanceLine = styled.div`
 	height: 40px;
 	display: flex;
 	align-items: center;
+	padding: 0 7.5px;
 	span {
 		font-size: ${(props) => props.theme.typography.size.base};
 		font-family: ${(props) => props.theme.typography.family.alt1};
@@ -312,6 +347,10 @@ export const BalanceLine = styled.div`
 export const TokenLink = styled.div`
 	margin: 0 0 0 auto;
 	a {
+		width: 105px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
 		background: ${(props) => props.theme.colors.button.primary.background};
 		border: 1px solid ${(props) => props.theme.colors.button.primary.border};
 		padding: 1.5px 10.5px 3.5px 10.5px;
@@ -349,12 +388,15 @@ export const TokenLink = styled.div`
 			font-size: ${(props) => props.theme.typography.size.xxSmall} !important;
 			font-weight: ${(props) => props.theme.typography.weight.bold} !important;
 			color: ${(props) => props.theme.colors.button.primary.color} !important;
+			text-align: center;
+			padding: 2.5px 0 0 0;
 		}
 	}
 `;
 
 export const DFooterWrapper = styled(DBodyWrapper)`
 	border-bottom: none;
+	padding: 0 7.5px 10px 7.5px;
 	svg {
 		height: 15.5px;
 		width: 15.5px;

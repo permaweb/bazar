@@ -22,7 +22,7 @@ export const Label = styled.div<{ disabled: boolean }>`
 `;
 
 export const Dropdown = styled.button<{ active: boolean }>`
-	height: 32.5px;
+	height: 35px;
 	width: 100%;
 	text-align: left;
 	padding: 0 12.5px;
@@ -31,8 +31,7 @@ export const Dropdown = styled.button<{ active: boolean }>`
 	justify-content: space-between;
 	background: ${(props) =>
 		props.active ? props.theme.colors.button.primary.background : props.theme.colors.button.primary.background};
-	border: 1px solid
-		${(props) => (props.active ? props.theme.colors.border.alt2 : props.theme.colors.button.primary.border)};
+	border: 1px solid ${(props) => (props.active ? props.theme.colors.border.alt2 : props.theme.colors.border.primary)};
 	border-radius: ${STYLING.dimensions.radius.primary};
 	transition: all 100ms;
 	&:hover {

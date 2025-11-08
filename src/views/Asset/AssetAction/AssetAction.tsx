@@ -77,9 +77,11 @@ export default function AssetAction(props: IProps) {
 
 	const [currentOwners, setCurrentOwners] = React.useState<OwnerType[] | null>(null);
 	const [currentListings, setCurrentListings] = React.useState<ListingType[] | null>(null);
+	const [currentBids, setCurrentBids] = React.useState<ListingType[] | null>(null);
 
 	const [showCurrentOwnersModal, setShowCurrentOwnersModal] = React.useState<boolean>(false);
 	const [showCurrentListingsModal, setShowCurrentListingsModal] = React.useState<boolean>(false);
+	const [showCurrentBidsModal, setShowCurrentBidsModal] = React.useState<boolean>(false);
 
 	const [currentTab, setCurrentTab] = React.useState<string>(ACTION_TABS[0]!.label);
 	const [urlCopied, setUrlCopied] = React.useState<boolean>(false);
@@ -171,26 +173,51 @@ export default function AssetAction(props: IProps) {
 				// Check if orders are already available
 				if (props.asset.orderbook?.orders) {
 					if (props.asset.orderbook.orders.length > 0) {
-						const sortedOrders = sortOrders(props.asset.orderbook.orders, 'low-to-high');
+						// Separate asks and bids
+						const askOrders = props.asset.orderbook.orders.filter((order: any) => !order.side || order.side === 'Ask');
+						const bidOrders = props.asset.orderbook.orders.filter((order: any) => order.side === 'Bid');
 
-						let profiles: any[] = await getProfiles(sortedOrders.map((order: any) => order.creator));
-						const mappedListings = sortedOrders.map((order: any) => {
+						const sortedAsks = sortOrders(askOrders, 'low-to-high');
+						const sortedBids = sortOrders(bidOrders, 'high-to-low');
+
+						// Get profiles for all orders
+						const allCreators = [...sortedAsks, ...sortedBids].map((order: any) => order.creator);
+						let profiles: any[] = await getProfiles(allCreators);
+
+						// Map asks
+						const mappedListings = sortedAsks.map((order: any) => {
 							let currentProfile = null;
 							if (profiles) {
 								currentProfile = profiles.find((profile: any) => profile.id === order.creator);
 							}
 
-							const currentListing = {
+							return {
 								profile: currentProfile || null,
 								orderbookId: props.asset.orderbook.id,
 								...order,
 							};
+						});
 
-							return currentListing;
+						// Map bids
+						const mappedBids = sortedBids.map((order: any) => {
+							let currentProfile = null;
+							if (profiles) {
+								currentProfile = profiles.find((profile: any) => profile.id === order.creator);
+							}
+
+							return {
+								profile: currentProfile || null,
+								orderbookId: props.asset.orderbook.id,
+								...order,
+							};
 						});
 
 						setCurrentListings(mappedListings);
-					} else setCurrentListings([]);
+						setCurrentBids(mappedBids);
+					} else {
+						setCurrentListings([]);
+						setCurrentBids([]);
+					}
 				}
 				// else {
 				// 	// Fetch orders from orderbook (for global orderbook or when orders not loaded)
@@ -262,6 +289,10 @@ export default function AssetAction(props: IProps) {
 	React.useEffect(() => {
 		if (currentListings && currentListings.length <= 0) setShowCurrentListingsModal(false);
 	}, [currentListings]);
+
+	React.useEffect(() => {
+		if (currentBids && currentBids.length <= 0) setShowCurrentBidsModal(false);
+	}, [currentBids]);
 
 	function handleWindowResize() {
 		if (windowUtils.checkWindowCutoff(parseInt(STYLING.cutoffs.secondary))) {
@@ -449,6 +480,70 @@ export default function AssetAction(props: IProps) {
 		} else return <p>{props.updating ? `${language.updating}...` : 'None'}</p>;
 	}, [currentListings, showCurrentListingsModal, mobile, permawebProvider.profile, props.updating]);
 
+	const getCurrentBids = React.useMemo(() => {
+		if (currentBids?.length > 0) {
+			return (
+				<>
+					{!mobile && (
+						<GS.DrawerHeaderWrapper>
+							<GS.DrawerContentFlex>{language.bidder || 'Bidder'}</GS.DrawerContentFlex>
+							<GS.DrawerContentDetail>{language.quantity}</GS.DrawerContentDetail>
+							<GS.DrawerContentDetail>{language.price}</GS.DrawerContentDetail>
+						</GS.DrawerHeaderWrapper>
+					)}
+					{currentBids.map((bid: ListingType, index: number) => {
+						return (
+							<S.DrawerContentLine key={index}>
+								{mobile && (
+									<S.MDrawerHeader>
+										<GS.DrawerContentHeader>{language.bidder || 'Bidder'}</GS.DrawerContentHeader>
+									</S.MDrawerHeader>
+								)}
+								<S.DrawerContentFlex>
+									<OwnerLine
+										owner={{
+											address: bid.creator,
+											profile: bid.profile,
+										}}
+										callback={() => setShowCurrentBidsModal(false)}
+									/>
+									{getOwnerOrder(bid) && (
+										<S.OrderCancel>
+											<OrderCancel listing={bid} toggleUpdate={props.toggleUpdate} />
+										</S.OrderCancel>
+									)}
+								</S.DrawerContentFlex>
+								{mobile && (
+									<S.MDrawerHeader>
+										<GS.DrawerContentHeader>{language.quantity}</GS.DrawerContentHeader>
+									</S.MDrawerHeader>
+								)}
+								<S.DrawerContentDetailAlt>
+									{getDenominatedTokenValue(
+										(Number(bid.quantity) / Number(bid.price)) * Math.pow(10, props.asset?.state?.denomination ?? 0),
+										props.asset.data.id
+									)}
+								</S.DrawerContentDetailAlt>
+								{mobile && (
+									<S.MDrawerHeader>
+										<GS.DrawerContentHeader>{language.price}</GS.DrawerContentHeader>
+									</S.MDrawerHeader>
+								)}
+								<GS.DrawerContentFlexEnd>
+									<CurrencyLine
+										amount={bid.price}
+										currency={bid.token}
+										callback={() => setShowCurrentBidsModal(false)}
+									/>
+								</GS.DrawerContentFlexEnd>
+							</S.DrawerContentLine>
+						);
+					})}
+				</>
+			);
+		} else return <p>{props.updating ? `${language.updating}...` : 'None'}</p>;
+	}, [currentBids, showCurrentBidsModal, mobile, permawebProvider.profile, props.updating]);
+
 	function getCurrentTab() {
 		switch (currentTab) {
 			case ACTION_TAB_OPTIONS.market:
@@ -456,8 +551,10 @@ export default function AssetAction(props: IProps) {
 					<AssetActionMarket
 						asset={props.asset}
 						getCurrentListings={getCurrentListings}
+						getCurrentBids={getCurrentBids}
 						toggleUpdate={props.toggleUpdate}
 						updating={props.updating}
+						hasLegacyOrderbook={props.hasLegacyOrderbook}
 					/>
 				);
 			case ACTION_TAB_OPTIONS.owners:
@@ -476,21 +573,6 @@ export default function AssetAction(props: IProps) {
 				ownerCount > 1 ? `${language.owner.toLowerCase()}s` : language.owner.toLowerCase()
 		  }`
 		: null;
-
-	const listingCountDisplay =
-		currentListings && currentListings.length > 0
-			? `${formatCount(currentListings.length.toString())} ${
-					currentListings.length > 1 ? `${language.owner.toLowerCase()}s` : language.owner.toLowerCase()
-			  }`
-			: null;
-
-	function showCurrentlyOwnedBy() {
-		if (!props.asset || !props.asset.state || !props.asset.state.balances) return false;
-		if (Object.keys(props.asset.state.balances).length <= 0) return false;
-		if (Object.keys(props.asset.state.balances).length === 1 && props.asset.state.balances[props.asset.orderbook?.id])
-			return false;
-		return true;
-	}
 
 	return props.asset ? (
 		<>
@@ -518,7 +600,7 @@ export default function AssetAction(props: IProps) {
 						</S.HeaderTitleActions>
 					</S.HeaderTitle>
 					<S.OrdersWrapper>
-						{currentListings && !props.updating && (
+						{!props.updating && (
 							<S.OwnerLinesWrapper>
 								{/* {showCurrentlyOwnedBy() && (
 									<S.OwnerLine>
@@ -536,28 +618,43 @@ export default function AssetAction(props: IProps) {
 									<S.OwnerLine>
 										{currentListings.length > 0 ? (
 											<>
-												<span>{language.currentlyBeingSoldBy}</span>
 												<button
 													onClick={() => {
 														setShowCurrentListingsModal(true);
 													}}
 												>
-													{listingCountDisplay}
+													{currentListings.length} {`Active Listing${currentListings.length > 1 ? 's' : ''}`}
 												</button>
 											</>
 										) : (
-											<S.MessageWrapper className={'update-wrapper'}>
-												<span>{'No Orders Available'}</span>
-											</S.MessageWrapper>
+											<span>{'No Sale Orders Available'}</span>
+										)}
+									</S.OwnerLine>
+								)}
+								{currentListings && currentBids && <span>|</span>}
+								{currentBids && (
+									<S.OwnerLine>
+										{currentBids.length > 0 ? (
+											<>
+												<button
+													onClick={() => {
+														setShowCurrentBidsModal(true);
+													}}
+												>
+													{currentBids.length} {`Active Bid${currentBids.length > 1 ? 's' : ''}`}
+												</button>
+											</>
+										) : (
+											<span>{'No Bid Orders Available'}</span>
 										)}
 									</S.OwnerLine>
 								)}
 							</S.OwnerLinesWrapper>
 						)}
 						{props.updating && (
-							<S.MessageWrapper className={'update-wrapper'}>
+							<S.OwnerLine>
 								<span>{`${language.updatingAsset}...`}</span>
-							</S.MessageWrapper>
+							</S.OwnerLine>
 						)}
 					</S.OrdersWrapper>
 					<S.ACActionWrapper>
@@ -596,10 +693,15 @@ export default function AssetAction(props: IProps) {
 			)}
 			{showCurrentListingsModal && currentListings && currentListings.length > 0 && (
 				<Modal
-					header={`${language.currentlyBeingSoldBy} ${listingCountDisplay}`}
+					header={`${currentListings.length} Active Listings`}
 					handleClose={() => setShowCurrentListingsModal(false)}
 				>
 					<S.DrawerContent className={'modal-wrapper'}>{getCurrentListings}</S.DrawerContent>
+				</Modal>
+			)}
+			{showCurrentBidsModal && currentBids && currentBids.length > 0 && (
+				<Modal header={`${currentBids.length} Active Bids`} handleClose={() => setShowCurrentBidsModal(false)}>
+					<S.DrawerContent className={'modal-wrapper'}>{getCurrentBids}</S.DrawerContent>
 				</Modal>
 			)}
 		</>

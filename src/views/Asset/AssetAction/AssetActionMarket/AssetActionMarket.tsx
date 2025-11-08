@@ -17,6 +17,8 @@ export default function AssetActionMarket(props: IProps) {
 	const MARKET_ACTION_TAB_OPTIONS = {
 		buy: language.buy,
 		sell: language.sell,
+		list: 'List',
+		bid: 'Bid',
 		transfer: language.transfer,
 	};
 
@@ -24,29 +26,60 @@ export default function AssetActionMarket(props: IProps) {
 	const [currentTab, setCurrentTab] = React.useState<string | null>(null);
 
 	React.useEffect(() => {
-		const MARKET_ACTION_TABS = [
-			{
-				label: MARKET_ACTION_TAB_OPTIONS.buy,
-				icon: ASSETS.buy,
-			},
-			{
-				label: MARKET_ACTION_TAB_OPTIONS.sell,
-				icon: ASSETS.sell,
-			},
-			{
-				label: MARKET_ACTION_TAB_OPTIONS.transfer,
-				icon: ASSETS.transfer,
-			},
-		];
-
 		const TRANSFER_ONLY_ASSETS = [AO.defaultToken];
 
 		if (props.asset && TRANSFER_ONLY_ASSETS.includes(props.asset.data.id)) {
-			setTabs(MARKET_ACTION_TABS.filter((tab: any) => tab.label === MARKET_ACTION_TAB_OPTIONS.transfer));
+			const MARKET_ACTION_TABS = [
+				{
+					label: MARKET_ACTION_TAB_OPTIONS.transfer,
+					icon: ASSETS.transfer,
+				},
+			];
+			setTabs(MARKET_ACTION_TABS);
+		} else if (props.hasLegacyOrderbook) {
+			// Legacy orderbook: show buy, list, transfer tabs
+			const MARKET_ACTION_TABS = [
+				{
+					label: MARKET_ACTION_TAB_OPTIONS.buy,
+					icon: ASSETS.buy,
+				},
+				{
+					label: MARKET_ACTION_TAB_OPTIONS.list,
+					icon: ASSETS.listing,
+				},
+				{
+					label: MARKET_ACTION_TAB_OPTIONS.transfer,
+					icon: ASSETS.transfer,
+				},
+			];
+			setTabs(MARKET_ACTION_TABS);
 		} else {
+			// New orderbook: show all 5 tabs
+			const MARKET_ACTION_TABS = [
+				{
+					label: MARKET_ACTION_TAB_OPTIONS.buy,
+					icon: ASSETS.buy,
+				},
+				{
+					label: MARKET_ACTION_TAB_OPTIONS.sell,
+					icon: ASSETS.sell,
+				},
+				{
+					label: MARKET_ACTION_TAB_OPTIONS.bid,
+					icon: ASSETS.bid,
+				},
+				{
+					label: MARKET_ACTION_TAB_OPTIONS.list,
+					icon: ASSETS.listing,
+				},
+				{
+					label: MARKET_ACTION_TAB_OPTIONS.transfer,
+					icon: ASSETS.transfer,
+				},
+			];
 			setTabs(MARKET_ACTION_TABS);
 		}
-	}, [props.asset]);
+	}, [props.asset, props.hasLegacyOrderbook]);
 
 	React.useEffect(() => {
 		if (tabs && tabs.length > 0 && !currentTab) setCurrentTab(tabs[0].label);
@@ -60,6 +93,12 @@ export default function AssetActionMarket(props: IProps) {
 				break;
 			case MARKET_ACTION_TAB_OPTIONS.sell:
 				type = 'sell';
+				break;
+			case MARKET_ACTION_TAB_OPTIONS.list:
+				type = 'list';
+				break;
+			case MARKET_ACTION_TAB_OPTIONS.bid:
+				type = 'bid';
 				break;
 			case MARKET_ACTION_TAB_OPTIONS.transfer:
 				type = 'transfer';
@@ -88,13 +127,24 @@ export default function AssetActionMarket(props: IProps) {
 				</Tabs>
 				<S.TabContent>{getCurrentTab()}</S.TabContent>
 			</S.TabsWrapper>
-			<GS.DrawerWrapper>
-				<Drawer
-					title={language.activeSaleOrders}
-					icon={ASSETS.orders}
-					content={<S.DrawerContent>{props.getCurrentListings}</S.DrawerContent>}
-				/>
-			</GS.DrawerWrapper>
+			{(currentTab === MARKET_ACTION_TAB_OPTIONS.buy || currentTab === MARKET_ACTION_TAB_OPTIONS.list) && (
+				<GS.DrawerWrapper>
+					<Drawer
+						title={language.activeSaleOrders}
+						icon={ASSETS.orders}
+						content={<S.DrawerContent>{props.getCurrentListings}</S.DrawerContent>}
+					/>
+				</GS.DrawerWrapper>
+			)}
+			{(currentTab === MARKET_ACTION_TAB_OPTIONS.sell || currentTab === MARKET_ACTION_TAB_OPTIONS.bid) && (
+				<GS.DrawerWrapper>
+					<Drawer
+						title={'Active Bids'}
+						icon={ASSETS.orders}
+						content={<S.DrawerContent>{props.getCurrentBids}</S.DrawerContent>}
+					/>
+				</GS.DrawerWrapper>
+			)}
 		</S.Wrapper>
 	) : null;
 }

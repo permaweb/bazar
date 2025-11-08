@@ -1,5 +1,5 @@
 import { readHandler } from 'api';
-import { getAssetById } from 'api/assets';
+import { getAssetByIdGQL, getAssetStateById } from 'api/assets';
 
 import { AO, getDefaultToken, HB } from 'helpers/config';
 
@@ -211,21 +211,22 @@ export async function getMusicCollections(creator: string, libs: any): Promise<a
 
 					for (const assetId of sampleAssetIds) {
 						try {
-							const asset = await getAssetById({ id: assetId, libs });
+							const structuredAsset = await getAssetByIdGQL({ id: assetId });
 
-							if (asset && asset.data) {
+							if (structuredAsset && structuredAsset.data) {
 								// Check if it's an audio file
-								const isAudio = asset.data.contentType && asset.data.contentType.startsWith('audio/');
+								const isAudio =
+									structuredAsset.data.contentType && structuredAsset.data.contentType.startsWith('audio/');
 
 								// Check if it has music or podcast-related topics
 								const hasMusicOrPodcastTopics =
-									asset.data.topics &&
-									(asset.data.topics.includes('Music') ||
-										asset.data.topics.includes('Bazar Music') ||
-										asset.data.topics.includes('ALBUM') ||
-										asset.data.topics.includes('Cover Art') ||
-										asset.data.topics.includes('podcast') ||
-										asset.data.topics.includes('bazar podcast'));
+									structuredAsset.data.topics &&
+									(structuredAsset.data.topics.includes('Music') ||
+										structuredAsset.data.topics.includes('Bazar Music') ||
+										structuredAsset.data.topics.includes('ALBUM') ||
+										structuredAsset.data.topics.includes('Cover Art') ||
+										structuredAsset.data.topics.includes('podcast') ||
+										structuredAsset.data.topics.includes('bazar podcast'));
 
 								if (isAudio || hasMusicOrPodcastTopics) {
 									hasMusicOrPodcastAssets = true;

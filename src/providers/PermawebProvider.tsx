@@ -76,6 +76,8 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 	const [toggleTokenBalanceUpdate, setToggleTokenBalanceUpdate] = React.useState<boolean>(false);
 	const [allTokensLoaded, setAllTokensLoaded] = React.useState<boolean>(false);
 
+	const isInitialMount = React.useRef(true);
+
 	React.useEffect(() => {
 		const deps: any = {
 			ao: connect({ MODE: 'legacy' }),
@@ -137,38 +139,38 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 		})();
 	}, [arProvider.walletAddress, profilePending]);
 
-	React.useEffect(() => {
-		(async function () {
-			if (arProvider.wallet && arProvider.walletAddress) {
-				const fetchProfileUntilChange = async () => {
-					let changeDetected = false;
-					let tries = 0;
-					const maxTries = 10;
+	const fetchProfileUntilChange = async () => {
+		if (!arProvider.wallet || !arProvider.walletAddress) return;
 
-					while (!changeDetected && tries < maxTries) {
-						try {
-							const existingProfile = profile;
-							const newProfile = await resolveProfile();
-							if (JSON.stringify(existingProfile) !== JSON.stringify(newProfile)) {
-								setProfile(newProfile);
-								cacheProfile(arProvider.walletAddress, newProfile);
-								changeDetected = true;
-							}
-						} catch (e: any) {
-							if (process.env.NODE_ENV === 'development') {
-								console.error('Error in fetchProfileUntilChange:', e);
-							}
-						}
+		let changeDetected = false;
+		let tries = 0;
+		const maxTries = 10;
 
-						tries++;
-						await new Promise((r) => setTimeout(r, 2000));
-					}
-				};
-
-				await fetchProfileUntilChange();
+		while (!changeDetected && tries < maxTries) {
+			try {
+				const existingProfile = profile;
+				const newProfile = await resolveProfile({ hydrate: true });
+				if (JSON.stringify(existingProfile) !== JSON.stringify(newProfile)) {
+					setProfile(newProfile);
+					cacheProfile(arProvider.walletAddress, newProfile);
+					changeDetected = true;
+				}
+			} catch (e: any) {
+				if (process.env.NODE_ENV === 'development') {
+					console.error('Error in fetchProfileUntilChange:', e);
+				}
 			}
-		})();
-	}, [arProvider.wallet, arProvider.walletAddress, refreshProfileTrigger]);
+
+			tries++;
+			await new Promise((r) => setTimeout(r, 2000));
+		}
+	};
+
+	React.useEffect(() => {
+		if (refreshProfileTrigger) {
+			fetchProfileUntilChange();
+		}
+	}, [refreshProfileTrigger]);
 
 	React.useEffect(() => {
 		const fetchBalances = async () => {
@@ -226,7 +228,6 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 						...prev,
 						[tokenId]: {
 							...prev[tokenId],
-							profileBalance: null,
 							[field]: value,
 						},
 					}));
@@ -240,7 +241,7 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 
 				for (const [token] of tokensToLoad) {
 					fetchBalance(token, arProvider.walletAddress, 'walletBalance');
-					// fetchBalance(token, profile.id, 'profileBalance');
+					fetchBalance(token, profile.id, 'profileBalance');
 					await new Promise((r) => setTimeout(r, 200));
 				}
 			} catch (e) {
@@ -275,7 +276,7 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 	// 	})();
 	// }, [arProvider.walletAddress]);
 
-	async function resolveProfile() {
+	async function resolveProfile(opts?: { hydrate?: boolean }) {
 		try {
 			let fetchedProfile: any;
 
@@ -284,7 +285,7 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 			let isLegacyProfile = false;
 
 			if (cachedProfile?.id && !cachedProfile.isLegacyProfile)
-				fetchedProfile = await libs.getProfileById(cachedProfile.id);
+				fetchedProfile = await libs.getProfileById(cachedProfile.id, opts);
 			else {
 				fetchedProfile = await libs.getProfileByWalletAddress(arProvider.walletAddress);
 
@@ -312,7 +313,14 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 	function getCachedProfile(address: string) {
 		try {
 			const cached = localStorage.getItem(STORAGE.profile(address));
-			return cached ? JSON.parse(cached) : null;
+			try {
+				return cached ? JSON.parse(cached) : null;
+			} catch (error) {
+				console.warn('Error parsing cached profile:', error);
+				// Clear the corrupted cache
+				localStorage.removeItem(STORAGE.profile(address));
+				return null;
+			}
 		} catch (error) {
 			console.warn('Error parsing cached profile:', error);
 			// Clear the corrupted cache
@@ -387,6 +395,7 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 
 		// Fetch balance for the specific token
 		await fetchBalance(tokenId, arProvider.walletAddress, 'walletBalance');
+		await fetchBalance(tokenId, profile.id, 'profileBalance');
 	}
 
 	return (

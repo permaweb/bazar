@@ -28,16 +28,19 @@ export const Tab = styled.div``;
 export const AltTab = styled.div`
 	position: relative;
 	display: flex;
+	flex: 1;
 	justify-content: center;
 `;
 
 export const AltTabAction = styled.button<{ active: boolean; icon: boolean }>`
 	padding: ${(props) => (props.icon ? '8.15px 25px 8.15px 22.5px' : '8.15px 25px')};
+	font-family: ${(props) => props.theme.typography.family.primary};
 	font-size: ${(props) => props.theme.typography.size.small};
 	font-weight: ${(props) => props.theme.typography.weight.bold};
 	border-radius: ${STYLING.dimensions.radius.primary};
 	color: ${(props) => props.theme.colors.font.primary};
 	cursor: pointer;
+	flex: 1;
 	background: ${(props) =>
 		props.active ? props.theme.colors.container.primary.active : props.theme.colors.container.primary.background};
 	border: 1px solid ${(props) => props.theme.colors.border.primary};

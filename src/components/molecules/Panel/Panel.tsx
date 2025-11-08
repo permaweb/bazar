@@ -70,7 +70,7 @@ export default function Panel(props: IProps) {
 								)}
 							</S.Header>
 						)}
-						<S.Body className={'scroll-wrapper'}>{props.children}</S.Body>
+						<S.Body className={'scroll-wrapper-hidden'}>{props.children}</S.Body>
 					</CloseHandler>
 				</S.Container>
 			</>

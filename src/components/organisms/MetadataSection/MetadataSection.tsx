@@ -86,7 +86,7 @@ export default function MetadataSection(props: IProps) {
 		<GS.DrawerWrapper>
 			<Drawer
 				title="Metadata"
-				icon={ASSETS.info}
+				icon={ASSETS.grid}
 				content={
 					<GS.DrawerContent>
 						{renderTopics()}
