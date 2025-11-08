@@ -997,7 +997,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 		if (!arProvider.walletAddress) return true;
 		if (!permawebProvider.profile || !permawebProvider.profile.id) return true;
 		if (orderLoading) return true;
-		if (orderProcessed && !orderSuccess) return true;
 		if (props.asset && !props.asset.state.transferable) return true;
 		if (maxOrderQuantity <= 0 || isNaN(Number(currentOrderQuantity))) return true;
 		if (

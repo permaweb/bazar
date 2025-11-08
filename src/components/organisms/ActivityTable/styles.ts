@@ -353,8 +353,7 @@ export const Event = styled.a<{ type?: 'Listing' | 'Sale' | 'Purchase' | 'Unlist
 	position: relative;
 	overflow: hidden;
 	padding: 1.5px 7.5px;
-	background: ${(props) =>
-		props.type ? getEventColor(props.theme, props.type) : props.theme.colors.container.alt1.background};
+	background: ${(props) => (props.type ? getEventColor(props.theme, props.type) : props.theme.colors.stats.alt10)};
 	border: 1px solid ${(props) => props.theme.colors.border.alt4};
 	border-radius: ${STYLING.dimensions.radius.alt2};
 	p {

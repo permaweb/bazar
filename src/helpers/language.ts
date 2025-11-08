@@ -77,7 +77,7 @@ export const language = {
 		goTo: `Go To`,
 		implements: `Implements`,
 		interactions: `Interactions`,
-		insufficientBalance: `Not Enough Tokens to Purchase This Asset`,
+		insufficientBalance: `Insufficient Balance`,
 		lastUCMUpdate: `Last UCM Update`,
 		leaderboard: `Leaderboard`,
 		learn: `Learn`,

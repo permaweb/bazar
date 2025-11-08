@@ -57,8 +57,6 @@ export default function ActivityTable(props: IProps) {
 
 	const [updating, setUpdating] = React.useState<boolean>(false);
 
-	console.log(activity);
-
 	React.useEffect(() => {
 		(async function () {
 			if (props.activityId) {
@@ -235,6 +233,8 @@ export default function ActivityTable(props: IProps) {
 				return m;
 			}, {});
 
+			console.log(node);
+
 			// Filter out activities from spam address
 			// Check multiple fields where the spam address might appear
 			const isSpamActivity =
@@ -275,9 +275,22 @@ export default function ActivityTable(props: IProps) {
 					Timestamp: tsMs,
 					Quantity: t['Quantity'],
 					Price: t['Price'],
+					Side: t['Side'] || null,
+					IncomingSide: t['IncomingSide'] || null,
 				};
 
-				if (swapTokens.includes(t['DominantToken'])) {
+				// Use IncomingSide to determine if this is an executed order (market order)
+				// If IncomingSide exists, it means this was a market order that matched against the orderbook
+				if (t['IncomingSide']) {
+					// This is an executed/matched order
+					order.Sender = t['Sender'] ?? t['From-Process'];
+					order.Receiver = props.address ?? node.recipient;
+					order.DominantToken = t['DominantToken'];
+					order.SwapToken = t['SwapToken'];
+					out.ExecutedOrders.push(order);
+					out.PurchasesByAddress[node.recipient] = (out.PurchasesByAddress[node.recipient] || 0) + 1;
+				} else if (swapTokens.includes(t['DominantToken'])) {
+					// Legacy logic: if dominant token is a swap token, it's an executed order
 					order.Receiver = props.address ?? node.recipient;
 					order.DominantToken = t['SwapToken'];
 					order.SwapToken = t['DominantToken'];
@@ -285,6 +298,7 @@ export default function ActivityTable(props: IProps) {
 					out.ExecutedOrders.push(order);
 					out.PurchasesByAddress[node.recipient] = (out.PurchasesByAddress[node.recipient] || 0) + 1;
 				} else {
+					// This is a limit order (listing or bid)
 					order.Sender = node.recipient;
 					order.DominantToken = t['DominantToken'];
 					order.SwapToken = t['SwapToken'];
@@ -312,17 +326,41 @@ export default function ActivityTable(props: IProps) {
 		if (orders && orders.length > 0) {
 			const mappedActivity = orders.map((order: any) => {
 				let orderEvent: any = event;
+				let dominantToken = order.DominantToken;
+				let swapToken = order.SwapToken;
+
+				// let price = order.Price ? order.Price.toString() : '-';
+				// if (price !== '-') price = getDenominatedTokenValue(order.Quantity, order.DominantToken);
+
+				let quantity = order.Quantity ? order.Quantity.toString() : '-';
+				if (quantity !== '-') quantity = getDenominatedTokenValue(order.Quantity, order.DominantToken);
+
+				let sender = order.Sender || null;
+				let receiver = order.Receiver || null;
 
 				// Use IncomingSide/Side to determine event type if available
 				if (event === 'Listing' && order.Side) {
-					// const side = order.IncomingSide || order.Side;
 					const side = order.Side;
-					console.log(side);
 					if (side === 'Bid') {
 						orderEvent = 'Bid';
+						quantity = getDenominatedTokenValue(
+							(Number(order.Quantity) / Number(order.Price)) * Math.pow(10, props.asset?.state?.denomination ?? 0),
+							props.asset?.data?.id
+						);
 					} else if (side === 'Ask') {
-						// orderEvent = event === 'Sale' ? 'Sale' : 'Listing';
 						orderEvent = 'Listing';
+					}
+				}
+				if (event === 'Sale' && order.Side) {
+					if (order.IncomingSide === 'Ask') {
+						sender = order.Receiver;
+						receiver = order.Sender;
+						quantity = getDenominatedTokenValue(
+							(Number(order.Quantity) / Number(order.Price)) * Math.pow(10, props.asset?.state?.denomination ?? 0),
+							props.asset?.data?.id
+						);
+						dominantToken = order.SwapToken;
+						swapToken = order.DominantToken;
 					}
 				} else if (
 					order.Receiver &&
@@ -333,12 +371,12 @@ export default function ActivityTable(props: IProps) {
 
 				return {
 					orderId: order.OrderId,
-					dominantToken: order.DominantToken,
-					swapToken: order.SwapToken,
+					dominantToken: dominantToken,
+					swapToken: swapToken,
 					price: order.Price ? order.Price.toString() : '-',
-					quantity: order.Quantity ? order.Quantity.toString() : '-',
-					sender: order.Sender || null,
-					receiver: order.Receiver || null,
+					quantity: quantity,
+					sender: sender,
+					receiver: receiver,
 					timestamp: order.Timestamp,
 					event: orderEvent,
 					side: order.Side || null,
@@ -537,7 +575,7 @@ export default function ActivityTable(props: IProps) {
 								</S.SenderWrapper>
 								<S.ReceiverWrapper>{getReceiverContent(row)}</S.ReceiverWrapper>
 								<S.QuantityWrapper className={'end-value'}>
-									<p>{getDenominatedTokenValue(row.quantity, row.dominantToken)}</p>
+									<p>{row.quantity}</p>
 								</S.QuantityWrapper>
 								<S.PriceWrapper className={'end-value'}>
 									{!isNaN(Number(row.price)) ? (

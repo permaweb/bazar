@@ -294,6 +294,10 @@ export const DBalancesHeaderWrapper = styled.div`
 	button {
 		padding: 7.5px 15.5px 7.5px 15.5px;
 		margin: 0 7.5px 0 0;
+
+		span {
+			font-size: ${(props) => props.theme.typography.size.xxSmall} !important;
+		}
 	}
 `;
 

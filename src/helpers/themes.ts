@@ -44,7 +44,7 @@ export const lightTheme = {
 		alt7: '#A8DDE2',
 		alt8: '#F2A9D3',
 		alt9: '#6D909E',
-		alt10: '#BFBFBF',
+		alt10: '#adadad',
 	},
 };
 
