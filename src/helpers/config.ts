@@ -266,7 +266,6 @@ export const ASSETS = {
 export const AR_WALLETS = [
 	{ type: WalletEnum.wander, logo: ASSETS.wander },
 	{ type: WalletEnum.beacon, logo: ASSETS.beacon },
-	{ type: WalletEnum.othent, logo: ASSETS.othent },
 ];
 
 export const DOM = {

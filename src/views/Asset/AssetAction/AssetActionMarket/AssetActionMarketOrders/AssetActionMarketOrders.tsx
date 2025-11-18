@@ -515,54 +515,161 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 	async function handleTransfer() {
 		if (transferRecipient && checkValidAddress(transferRecipient)) {
+			setOrderLoading(true);
 			try {
-				// Use Run-Action for new Zone Profiles, Transfer for legacy profiles
-				let tags = [];
-				let data = null;
-
-				if (permawebProvider.profile.isLegacyProfile) {
-					// Legacy profile: use direct Transfer
-					tags = [
-						{ name: 'Action', value: 'Transfer' },
-						{ name: 'Target', value: props.asset.data.id },
-						{ name: 'Recipient', value: transferRecipient },
-						{ name: 'Quantity', value: getTransferQuantity().toString() },
-					];
-				} else {
-					// New Zone Profile: use Run-Action pattern
-					tags = [
-						{ name: 'Action', value: 'Run-Action' },
-						{ name: 'ForwardTo', value: props.asset.data.id },
-						{ name: 'ForwardAction', value: 'Transfer' },
-						{ name: 'Recipient', value: transferRecipient },
-						{ name: 'Quantity', value: getTransferQuantity().toString() },
-					];
-					// For Run-Action, we need to pass data in the expected format
-					data = {
-						Target: props.asset.data.id,
-						Action: 'Transfer',
-						Input: {
-							Recipient: transferRecipient,
-							Quantity: getTransferQuantity().toString(),
-						},
-					};
+				// Validate required values
+				if (!props.asset?.data?.id) {
+					throw new Error('Asset ID is required for transfer');
+				}
+				if (!permawebProvider.profile?.id) {
+					throw new Error('Profile ID is required for transfer');
 				}
 
-				const transferId = await message({
-					process: permawebProvider.profile.id,
-					signer: createDataItemSigner(arProvider.wallet),
-					tags: tags,
-					data: data ? JSON.stringify(data) : null,
-				});
+				// Determine if we need to transfer from wallet to profile first
+				const transferQuantity = getTransferQuantity().toString();
+				const processId = props.asset.data.id;
 
-				const { Error } = await result({
-					process: permawebProvider.profile.id,
-					message: transferId,
-				});
+				let profileBalance = BigInt(0);
+				let walletBalance = BigInt(0);
 
-				if (!Error) handleStatusUpdate(false, true, true, 'Balance transferred!');
-				// console.log(transferId);
+				if (connectedBalance)
+					profileBalance = BigInt(denomination ? Math.floor(connectedBalance * denomination) : connectedBalance);
+				if (connectedWalletBalance)
+					walletBalance = BigInt(
+						denomination ? Math.floor(connectedWalletBalance * denomination) : connectedWalletBalance
+					);
+
+				console.log(`Transfer quantity: ${transferQuantity}`);
+				console.log(`Profile balance: ${profileBalance.toString()}`);
+				console.log(`Wallet balance: ${walletBalance.toString()}`);
+
+				if (walletBalance + profileBalance < BigInt(transferQuantity)) {
+					console.error('Insufficient total balance (wallet + profile) for transfer');
+					throw new Error('Insufficient total balance (wallet + profile) for transfer');
+				}
+
+				let transferId: string;
+
+				if (walletBalance >= BigInt(transferQuantity)) {
+					transferId = await permawebProvider.libs.sendMessage({
+						processId: processId,
+						action: 'Transfer',
+						tags: [
+							{ name: 'Quantity', value: transferQuantity },
+							{ name: 'Recipient', value: transferRecipient },
+						],
+					});
+				} else if (profileBalance >= BigInt(transferQuantity)) {
+					// Use Run-Action for new Zone Profiles, Transfer for legacy profiles
+					let tags = [];
+					let data = null;
+
+					if (permawebProvider.profile.isLegacyProfile) {
+						// Legacy profile: use direct Transfer
+						tags = [
+							{ name: 'Target', value: props.asset.data.id },
+							{ name: 'Recipient', value: transferRecipient },
+							{ name: 'Quantity', value: transferQuantity },
+						];
+					} else {
+						// New Zone Profile: use Run-Action pattern
+						tags = [
+							{ name: 'ForwardTo', value: props.asset.data.id },
+							{ name: 'ForwardAction', value: 'Transfer' },
+							{ name: 'Forward-To', value: props.asset.data.id },
+							{ name: 'Forward-Action', value: 'Transfer' },
+							{ name: 'Recipient', value: transferRecipient },
+							{ name: 'Quantity', value: transferQuantity },
+						];
+						// For Run-Action, we need to pass data in the expected format
+						data = {
+							Target: props.asset.data.id,
+							Action: 'Transfer',
+							Input: {
+								Recipient: transferRecipient,
+								Quantity: transferQuantity,
+							},
+						};
+					}
+
+					const messageArgs: any = {
+						processId: permawebProvider.profile.id,
+						action: permawebProvider.profile.isLegacyProfile ? 'Transfer' : 'Run-Action',
+						tags: tags,
+					};
+					if (data) messageArgs.data = data;
+
+					transferId = await permawebProvider.libs.sendMessage(messageArgs);
+				} else {
+					const differenceNeeded = BigInt(transferQuantity) - profileBalance;
+
+					if (walletBalance < differenceNeeded) {
+						console.error(`Wallet balance is less than difference needed: ${differenceNeeded}`);
+						console.error(`Wallet balance: ${walletBalance}`);
+						throw new Error('Insufficient balance for transfer');
+					} else {
+						console.log(`Transferring remainder from wallet (${differenceNeeded.toString()}) to profile...`);
+						await messageResults({
+							processId: processId,
+							action: 'Transfer',
+							wallet: arProvider.wallet,
+							tags: [
+								{ name: 'Quantity', value: differenceNeeded.toString() },
+								{ name: 'Recipient', value: permawebProvider.profile.id },
+							],
+							data: null,
+							responses: ['Transfer-Success', 'Transfer-Error'],
+						});
+
+						// Use Run-Action for new Zone Profiles, Transfer for legacy profiles
+						let tags = [];
+						let data = null;
+
+						if (permawebProvider.profile.isLegacyProfile) {
+							// Legacy profile: use direct Transfer
+							tags = [
+								{ name: 'Target', value: props.asset.data.id },
+								{ name: 'Recipient', value: transferRecipient },
+								{ name: 'Quantity', value: transferQuantity },
+							];
+						} else {
+							// New Zone Profile: use Run-Action pattern
+							tags = [
+								{ name: 'ForwardTo', value: props.asset.data.id },
+								{ name: 'ForwardAction', value: 'Transfer' },
+								{ name: 'Forward-To', value: props.asset.data.id },
+								{ name: 'Forward-Action', value: 'Transfer' },
+								{ name: 'Recipient', value: transferRecipient },
+								{ name: 'Quantity', value: transferQuantity },
+							];
+							// For Run-Action, we need to pass data in the expected format
+							data = {
+								Target: props.asset.data.id,
+								Action: 'Transfer',
+								Input: {
+									Recipient: transferRecipient,
+									Quantity: transferQuantity,
+								},
+							};
+						}
+
+						const messageArgs: any = {
+							processId: permawebProvider.profile.id,
+							action: permawebProvider.profile.isLegacyProfile ? 'Transfer' : 'Run-Action',
+							tags: tags,
+						};
+						if (data) messageArgs.data = data;
+
+						transferId = await permawebProvider.libs.sendMessage(messageArgs);
+					}
+				}
+
+				console.log(`Transfer: ${transferId}`);
+				setOrderId(transferId);
+				setOrderLoading(false);
+				handleStatusUpdate(false, true, true, 'Balance Transferred!');
 			} catch (e: any) {
+				setOrderLoading(false);
 				throw new Error(e);
 			}
 		}
