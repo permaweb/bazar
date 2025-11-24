@@ -482,15 +482,6 @@ export const TOKEN_REGISTRY = {
 		description: 'AO Token',
 		priority: 2,
 	},
-	[AO.defaultToken]: {
-		id: AO.defaultToken,
-		name: 'Wrapped AR',
-		symbol: 'wAR',
-		logo: 'L99jaxRKQKJt9CqoJtPaieGPEhJD3wNhR4iGqc8amXs', // Correct wAR logo
-		denomination: 12,
-		description: 'Wrapped Arweave token',
-		priority: 3, // Primary token
-	},
 	[AO.pixl]: {
 		id: AO.pixl,
 		name: 'PIXL Token',
@@ -498,6 +489,15 @@ export const TOKEN_REGISTRY = {
 		logo: 'czR2tJmSr7upPpReXu6IuOc2H7RuHRRAhI7DXAUlszU', // PIXL logo
 		denomination: 6,
 		description: 'PIXL protocol token',
+		priority: 3,
+	},
+	[AO.defaultToken]: {
+		id: AO.defaultToken,
+		name: 'Wrapped AR',
+		symbol: 'wAR',
+		logo: 'L99jaxRKQKJt9CqoJtPaieGPEhJD3wNhR4iGqc8amXs', // Correct wAR logo
+		denomination: 12,
+		description: 'Wrapped Arweave token',
 		priority: 4,
 	},
 	[AO.wndr]: {
@@ -552,7 +552,7 @@ export const getTokenById = (tokenId: string) => {
 
 // Helper function to get default token
 export const getDefaultToken = () => {
-	return TOKEN_REGISTRY[AO.defaultToken];
+	return TOKEN_REGISTRY[AO.pi];
 };
 
 // Delegation Configuration
@@ -584,4 +584,6 @@ export const CUSTOM_ORDERBOOKS = {
 	// aKmI800gM1Gk12JvwBe2MPxAvXT1ZPfRBxmkUpLJv7g: 'O0-SAOn67j6C8CJEnYsRkWCMH_FrUZxxntemuR8fP6s',
 	// OsK9Vgjxo0ypX_HLz2iJJuh4hp3I80yA9KArsJjIloU: '6Pv23ob3yEafK2bPcI4cg8mCkpRliYdZAMymEG7tKJk',
 	'DM3FoZUq_yebASPhgd8pEIRIzDW6muXEhxz5-JwbZwo': 'd1p2oTsZM8mZ-zR5m65VPK15qzqvGJjyor2Qhs0v7Es',
+	'0syT13r0s0tgPmIed95bJnuSqaD29HQNN8D3ElLSrsc': 'lCRs8yNdib9l2FpAwSo8HFB3HZD9a-o50vnLkj0SEOc',
+	'4hXj_E-5fAKmo4E8KjgQvuDJKAFk9P2grhycVmISDLs': 'IXVq2_AM8MFFRV2bUixgo7X2l8SBqE0pQbhZQQsvXCw',
 };

@@ -23,6 +23,7 @@ import * as windowUtils from 'helpers/window';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 import { usePermawebProvider } from 'providers/PermawebProvider';
+import { useTokenProvider } from 'providers/TokenProvider';
 import { RootState } from 'store';
 
 import { AssetActionActivity } from './AssetActionActivity';
@@ -40,6 +41,7 @@ export default function AssetAction(props: IProps) {
 
 	const permawebProvider = usePermawebProvider();
 	const arProvider = useArweaveProvider();
+	const tokenProvider = useTokenProvider();
 
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
@@ -411,23 +413,26 @@ export default function AssetAction(props: IProps) {
 	}, [currentOwners, mobile, updating]);
 
 	const getCurrentListings = React.useMemo(() => {
-		if (currentListings?.length > 0) {
+		const filteredListings = currentListings?.filter(
+			(listing: ListingType) => listing.currency === tokenProvider.selectedToken.id
+		);
+		if (filteredListings?.length > 0) {
 			return (
 				<>
 					{!mobile && (
 						<GS.DrawerHeaderWrapper>
-							<GS.DrawerContentFlex>{language.seller}</GS.DrawerContentFlex>
+							<GS.DrawerContentFlex>{'Asks'}</GS.DrawerContentFlex>
 							<GS.DrawerContentDetail>{language.quantity}</GS.DrawerContentDetail>
 							{/* <GS.DrawerContentDetail>{language.percentage}</GS.DrawerContentDetail> */}
-							<GS.DrawerContentDetail>{language.price}</GS.DrawerContentDetail>
+							<GS.DrawerContentDetail>{language.unitPrice}</GS.DrawerContentDetail>
 						</GS.DrawerHeaderWrapper>
 					)}
-					{currentListings.map((listing: ListingType, index: number) => {
+					{filteredListings.map((listing: ListingType, index: number) => {
 						return (
 							<S.DrawerContentLine key={index}>
 								{mobile && (
 									<S.MDrawerHeader>
-										<GS.DrawerContentHeader>{language.seller}</GS.DrawerContentHeader>
+										<GS.DrawerContentHeader>{'Asks'}</GS.DrawerContentHeader>
 									</S.MDrawerHeader>
 								)}
 								<S.DrawerContentFlex>
@@ -462,7 +467,7 @@ export default function AssetAction(props: IProps) {
 								</S.DrawerContentDetailAlt> */}
 								{mobile && (
 									<S.MDrawerHeader>
-										<GS.DrawerContentHeader>{language.price}</GS.DrawerContentHeader>
+										<GS.DrawerContentHeader>{language.unitPrice}</GS.DrawerContentHeader>
 									</S.MDrawerHeader>
 								)}
 								<GS.DrawerContentFlexEnd>
@@ -477,26 +482,34 @@ export default function AssetAction(props: IProps) {
 					})}
 				</>
 			);
-		} else return <p>{props.updating ? `${language.updating}...` : 'None'}</p>;
-	}, [currentListings, showCurrentListingsModal, mobile, permawebProvider.profile, props.updating]);
+		} else return <p>{props.updating ? `${language.updating}...` : 'No Active Listings'}</p>;
+	}, [
+		currentListings,
+		showCurrentListingsModal,
+		mobile,
+		permawebProvider.profile,
+		props.updating,
+		tokenProvider.selectedToken.id,
+	]);
 
 	const getCurrentBids = React.useMemo(() => {
-		if (currentBids?.length > 0) {
+		const filteredBids = currentBids?.filter((bid: ListingType) => bid.token === tokenProvider.selectedToken.id);
+		if (filteredBids?.length > 0) {
 			return (
 				<>
 					{!mobile && (
 						<GS.DrawerHeaderWrapper>
-							<GS.DrawerContentFlex>{language.bidder || 'Bidder'}</GS.DrawerContentFlex>
+							<GS.DrawerContentFlex>{'Bids'}</GS.DrawerContentFlex>
 							<GS.DrawerContentDetail>{language.quantity}</GS.DrawerContentDetail>
-							<GS.DrawerContentDetail>{language.price}</GS.DrawerContentDetail>
+							<GS.DrawerContentDetail>{language.unitPrice}</GS.DrawerContentDetail>
 						</GS.DrawerHeaderWrapper>
 					)}
-					{currentBids.map((bid: ListingType, index: number) => {
+					{filteredBids.map((bid: ListingType, index: number) => {
 						return (
 							<S.DrawerContentLine key={index}>
 								{mobile && (
 									<S.MDrawerHeader>
-										<GS.DrawerContentHeader>{language.bidder || 'Bidder'}</GS.DrawerContentHeader>
+										<GS.DrawerContentHeader>{'Bids'}</GS.DrawerContentHeader>
 									</S.MDrawerHeader>
 								)}
 								<S.DrawerContentFlex>
@@ -526,7 +539,7 @@ export default function AssetAction(props: IProps) {
 								</S.DrawerContentDetailAlt>
 								{mobile && (
 									<S.MDrawerHeader>
-										<GS.DrawerContentHeader>{language.price}</GS.DrawerContentHeader>
+										<GS.DrawerContentHeader>{language.unitPrice}</GS.DrawerContentHeader>
 									</S.MDrawerHeader>
 								)}
 								<GS.DrawerContentFlexEnd>
@@ -541,8 +554,15 @@ export default function AssetAction(props: IProps) {
 					})}
 				</>
 			);
-		} else return <p>{props.updating ? `${language.updating}...` : 'None'}</p>;
-	}, [currentBids, showCurrentBidsModal, mobile, permawebProvider.profile, props.updating]);
+		} else return <p>{props.updating ? `${language.updating}...` : 'No Active Bids'}</p>;
+	}, [
+		currentBids,
+		showCurrentBidsModal,
+		mobile,
+		permawebProvider.profile,
+		props.updating,
+		tokenProvider.selectedToken.id,
+	]);
 
 	function getCurrentTab() {
 		switch (currentTab) {
@@ -616,37 +636,49 @@ export default function AssetAction(props: IProps) {
 								)} */}
 								{currentListings && (
 									<S.OwnerLine>
-										{currentListings.length > 0 ? (
-											<>
-												<button
-													onClick={() => {
-														setShowCurrentListingsModal(true);
-													}}
-												>
-													{currentListings.length} {`Active Listing${currentListings.length > 1 ? 's' : ''}`}
-												</button>
-											</>
-										) : (
-											<span>{'No Sale Orders Available'}</span>
-										)}
+										{(() => {
+											const filteredCount = currentListings.filter(
+												(listing: ListingType) => listing.currency === tokenProvider.selectedToken.id
+											).length;
+											return filteredCount > 0 ? (
+												<>
+													<button
+														onClick={() => {
+															setShowCurrentListingsModal(true);
+														}}
+													>
+														{filteredCount}{' '}
+														{`Active ${tokenProvider.selectedToken.symbol} Listing${filteredCount > 1 ? 's' : ''}`}
+													</button>
+												</>
+											) : (
+												<span>{'No Asks Available'}</span>
+											);
+										})()}
 									</S.OwnerLine>
 								)}
 								{currentListings && currentBids && <span>|</span>}
 								{currentBids && (
 									<S.OwnerLine>
-										{currentBids.length > 0 ? (
-											<>
-												<button
-													onClick={() => {
-														setShowCurrentBidsModal(true);
-													}}
-												>
-													{currentBids.length} {`Active Bid${currentBids.length > 1 ? 's' : ''}`}
-												</button>
-											</>
-										) : (
-											<span>{'No Bid Orders Available'}</span>
-										)}
+										{(() => {
+											const filteredCount = currentBids.filter(
+												(bid: ListingType) => bid.token === tokenProvider.selectedToken.id
+											).length;
+											return filteredCount > 0 ? (
+												<>
+													<button
+														onClick={() => {
+															setShowCurrentBidsModal(true);
+														}}
+													>
+														{filteredCount}{' '}
+														{`Active ${tokenProvider.selectedToken.symbol} Bid${filteredCount > 1 ? 's' : ''}`}
+													</button>
+												</>
+											) : (
+												<span>{'No Bids Available'}</span>
+											);
+										})()}
 									</S.OwnerLine>
 								)}
 							</S.OwnerLinesWrapper>
@@ -693,14 +725,21 @@ export default function AssetAction(props: IProps) {
 			)}
 			{showCurrentListingsModal && currentListings && currentListings.length > 0 && (
 				<Modal
-					header={`${currentListings.length} Active Listings`}
+					header={`${
+						currentListings.filter((listing: ListingType) => listing.currency === tokenProvider.selectedToken.id).length
+					} Active ${tokenProvider.selectedToken.symbol} Listings`}
 					handleClose={() => setShowCurrentListingsModal(false)}
 				>
 					<S.DrawerContent className={'modal-wrapper'}>{getCurrentListings}</S.DrawerContent>
 				</Modal>
 			)}
 			{showCurrentBidsModal && currentBids && currentBids.length > 0 && (
-				<Modal header={`${currentBids.length} Active Bids`} handleClose={() => setShowCurrentBidsModal(false)}>
+				<Modal
+					header={`${
+						currentBids.filter((bid: ListingType) => bid.token === tokenProvider.selectedToken.id).length
+					} Active ${tokenProvider.selectedToken.symbol} Bids`}
+					handleClose={() => setShowCurrentBidsModal(false)}
+				>
 					<S.DrawerContent className={'modal-wrapper'}>{getCurrentBids}</S.DrawerContent>
 				</Modal>
 			)}

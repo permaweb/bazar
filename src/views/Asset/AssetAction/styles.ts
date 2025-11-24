@@ -29,6 +29,8 @@ export const HeaderTitle = styled.div`
 	h4 {
 		line-height: 1.5;
 		white-space: break-spaces;
+		font-weight: ${(props) => props.theme.typography.weight.xBold};
+		text-shadow: 1px 1px 5px ${(props) => props.theme.colors.font.alt4};
 	}
 
 	@media (max-width: ${STYLING.cutoffs.tablet}) {

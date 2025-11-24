@@ -379,6 +379,7 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 						header={language.profile}
 						handleClose={() => setShowWalletDropdown(false)}
 						width={375}
+						type={'alt1'}
 					>
 						{getDropdown()}
 					</Panel>

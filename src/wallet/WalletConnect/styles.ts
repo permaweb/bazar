@@ -245,7 +245,7 @@ export const DBodyWrapper = styled.ul`
 		}
 		&:hover {
 			color: ${(props) => props.theme.colors.font.primary};
-			background: ${(props) => props.theme.colors.container.primary.active};
+			background: ${(props) => props.theme.colors.container.alt1.background};
 		}
 
 		&.active::after {
@@ -266,7 +266,7 @@ export const DBodyWrapper = styled.ul`
 			border-radius: ${STYLING.dimensions.radius.primary};
 			&:hover {
 				color: ${(props) => props.theme.colors.font.primary};
-				background: ${(props) => props.theme.colors.container.primary.active};
+				background: ${(props) => props.theme.colors.container.alt1.background};
 			}
 		}
 	}

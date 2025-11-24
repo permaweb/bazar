@@ -8,7 +8,7 @@ import { Loader } from 'components/atoms/Loader';
 import { Panel } from 'components/molecules/Panel';
 import { ProfileManage } from 'components/organisms/ProfileManage';
 import { connect, createSigner } from 'helpers/aoconnect';
-import { AO, HB, STORAGE, TOKEN_REGISTRY } from 'helpers/config';
+import { HB, STORAGE, TOKEN_REGISTRY } from 'helpers/config';
 import { clearTokenStatusCache } from 'helpers/tokenValidation';
 
 import { useArweaveProvider } from './ArweaveProvider';
@@ -76,7 +76,7 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 	const [toggleTokenBalanceUpdate, setToggleTokenBalanceUpdate] = React.useState<boolean>(false);
 	const [allTokensLoaded, setAllTokensLoaded] = React.useState<boolean>(false);
 
-	const isInitialMount = React.useRef(true);
+	// const isInitialMount = React.useRef(true);
 
 	React.useEffect(() => {
 		const deps: any = {
@@ -284,9 +284,9 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 
 			let isLegacyProfile = false;
 
-			if (cachedProfile?.id && !cachedProfile.isLegacyProfile)
+			if (cachedProfile?.id && !cachedProfile.isLegacyProfile) {
 				fetchedProfile = await libs.getProfileById(cachedProfile.id, opts);
-			else {
+			} else {
 				fetchedProfile = await libs.getProfileByWalletAddress(arProvider.walletAddress);
 
 				if (!fetchedProfile?.id) {

@@ -14,6 +14,7 @@ import { TokenSelector } from 'components/atoms/TokenSelector';
 import { TxAddress } from 'components/atoms/TxAddress';
 import { Panel } from 'components/molecules/Panel';
 import { ASSETS, REDIRECTS, TOKEN_REGISTRY, URLS } from 'helpers/config';
+import { getTxEndpoint } from 'helpers/endpoints';
 import { AssetOrderType } from 'helpers/types';
 import {
 	checkValidAddress,
@@ -390,14 +391,34 @@ export default function AssetActionMarketOrders(props: IProps) {
 				}
 			}
 
-			try {
-				handleStatusUpdate(true, false, false, 'Transferring balance from wallet to profile...');
-				await handleWalletToProfileTransfer();
-			} catch (e: any) {
-				handleStatusUpdate(false, true, false, e);
+			// Determine if we need to transfer from wallet to profile
+			const transferQuantity = getTransferQuantity().toString();
+			let useWalletAddress = false;
+
+			// For list/bid orders, check if wallet has sufficient balance
+			if (props.type === 'list' || props.type === 'bid') {
+				// @ts-ignore
+				let _processId: string;
+				let walletBalance: bigint = BigInt(0);
+
+				if (props.type === 'bid') {
+					_processId = tokenProvider.selectedToken.id;
+					walletBalance = BigInt(permawebProvider.tokenBalances[tokenProvider.selectedToken.id]?.walletBalance || 0);
+				} else if (props.type === 'list') {
+					_processId = props.asset.data.id;
+					if (connectedWalletBalance)
+						walletBalance = BigInt(
+							denomination ? Math.floor(connectedWalletBalance * denomination) : connectedWalletBalance
+						);
+				}
+
+				// If wallet has sufficient balance, use wallet address directly
+				if (walletBalance >= BigInt(transferQuantity)) {
+					useWalletAddress = true;
+					console.log('Using wallet address directly for order creation (sufficient balance)');
+				}
 			}
 
-			const transferQuantity = getTransferQuantity().toString();
 			const unitPrice = getUnitPrice()?.toString();
 
 			let dominantToken = null;
@@ -433,7 +454,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 				const data: any = {
 					orderbookId: currentOrderbook,
-					creatorId: permawebProvider.profile.id,
 					baseToken: props.asset.data.id, // Always the primary token in the pair
 					quoteToken: tokenProvider.selectedToken.id, // Always the secondary token in the pair
 					dominantToken: dominantToken, // The dominant token of this specific order
@@ -441,6 +461,18 @@ export default function AssetActionMarketOrders(props: IProps) {
 					quantity: transferQuantity,
 					action: action,
 				};
+
+				// For buy orders, if sendToWallet is true, set walletAddress to receive tokens directly to wallet
+				if (props.type === 'buy' && sendToWallet) {
+					data.walletAddress = arProvider.walletAddress;
+				} else {
+					if (props.type === 'list' || props.type === 'bid') {
+						if (useWalletAddress) data.walletAddress = arProvider.walletAddress;
+						else data.creatorId = permawebProvider.profile.id;
+					} else {
+						data.creatorId = permawebProvider.profile.id;
+					}
+				}
 
 				if (unitPrice) data.unitPrice = unitPrice.toString();
 
@@ -455,8 +487,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 					data.quoteTokenDenomination = transferDenomination.toString();
 				}
 
-				console.log(data);
-
 				const orderId = await createOrder(
 					permawebProvider.deps,
 					data,
@@ -467,6 +497,10 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 				setOrderId(orderId);
 
+				props.toggleUpdate();
+				arProvider.setToggleProfileUpdate(!arProvider.toggleProfileUpdate);
+				permawebProvider.setToggleTokenBalanceUpdate(!permawebProvider.toggleTokenBalanceUpdate);
+
 				// if (props.type === 'buy') {
 				// 	const streaks = await readHandler({
 				// 		processId: AO.pixl,
@@ -474,11 +508,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 				// 	});
 				// 	dispatch(streakActions.setStreaks(streaks.Streaks));
 				// }
-
-				// Trigger asset and orderbook refresh to show the new order
-				props.toggleUpdate();
-				arProvider.setToggleProfileUpdate(!arProvider.toggleProfileUpdate);
-				permawebProvider.setToggleTokenBalanceUpdate(!permawebProvider.toggleTokenBalanceUpdate);
 			} catch (e: any) {
 				handleStatusUpdate(false, true, false, e.message ?? 'Error creating order in UCM');
 			}
@@ -505,7 +534,13 @@ export default function AssetActionMarketOrders(props: IProps) {
 			case 'sell':
 			case 'list':
 			case 'transfer':
-				if (denomination) transferQuantity = (BigInt(currentOrderQuantity) * BigInt(denomination)).toString();
+				if (denomination) {
+					if (Number(currentOrderQuantity) > 1) {
+						transferQuantity = (BigInt(currentOrderQuantity) * BigInt(denomination)).toString();
+					} else {
+						transferQuantity = (Number(currentOrderQuantity) * denomination).toString();
+					}
+				}
 				break;
 		}
 
@@ -527,66 +562,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 			}
 		}
 
-		console.log(calculatedUnitPrice);
-
 		return calculatedUnitPrice;
-	}
-
-	async function handleWalletToProfileTransfer() {
-		try {
-			let processId: string;
-			let profileBalance: bigint = BigInt(0);
-			let walletBalance: bigint = BigInt(0);
-
-			const transferQuantity = getTransferQuantity();
-
-			switch (props.type) {
-				case 'buy':
-				case 'bid':
-					processId = tokenProvider.selectedToken.id;
-					profileBalance = BigInt(permawebProvider.tokenBalances[tokenProvider.selectedToken.id].profileBalance);
-					walletBalance = BigInt(permawebProvider.tokenBalances[tokenProvider.selectedToken.id].walletBalance);
-					break;
-				case 'sell':
-				case 'list':
-				case 'transfer':
-					processId = props.asset.data.id;
-
-					if (connectedBalance)
-						profileBalance = BigInt(denomination ? Math.floor(connectedBalance * denomination) : connectedBalance);
-					if (connectedWalletBalance)
-						walletBalance = BigInt(
-							denomination ? Math.floor(connectedWalletBalance * denomination) : connectedWalletBalance
-						);
-					break;
-			}
-
-			if (profileBalance < BigInt(transferQuantity)) {
-				const differenceNeeded = BigInt(transferQuantity) - profileBalance;
-
-				if (walletBalance < differenceNeeded) {
-					console.error(`Wallet balance is less than difference needed: ${differenceNeeded}`);
-					console.error(`Wallet balance: ${walletBalance}`);
-					throw new Error('Error making wallet to profile transfer');
-				} else {
-					console.log(`Transferring remainder from wallet (${differenceNeeded.toString()}) to profile...`);
-					await messageResults({
-						processId: processId,
-						action: 'Transfer',
-						wallet: arProvider.wallet,
-						tags: [
-							{ name: 'Quantity', value: differenceNeeded.toString() },
-							{ name: 'Recipient', value: permawebProvider.profile.id },
-						],
-						data: null,
-						responses: ['Transfer-Success', 'Transfer-Error'],
-					});
-					console.log('Transfer complete');
-				}
-			}
-		} catch (e: any) {
-			throw new Error(e.message ?? 'Error making wallet to profile transfer');
-		}
 	}
 
 	async function handleTransfer() {
@@ -1142,37 +1118,50 @@ export default function AssetActionMarketOrders(props: IProps) {
 		);
 	}
 
-	function getOrderDetails(useWrapper: boolean) {
+	let dominantToken = null;
+	// let swapToken = null;
+
+	function getOrderDetails(_useWrapper: boolean) {
 		let quantityLabel: string | null = null;
 		// let percentageLabel: string | null = null;
 
 		switch (props.type) {
 			case 'buy':
 				quantityLabel = language.totalPurchaseQuantity;
+				dominantToken = props.asset.data.id;
+				// swapToken = props.asset.data.id;
 				// percentageLabel = language.totalPurchasePercentage;
 				break;
 			case 'bid':
 				quantityLabel = 'Total Bid Quantity';
+				dominantToken = props.asset.data.id;
+				// swapToken = props.asset.data.id;
 				break;
 			case 'sell':
 				quantityLabel = 'Total Sale Quantity';
+				dominantToken = props.asset.data.id;
 				break;
 			case 'list':
 				quantityLabel = language.totalListingQuantity;
+				dominantToken = props.asset.data.id;
 				// percentageLabel = language.totalListingPercentage;
 				break;
 			case 'transfer':
 				quantityLabel = language.totalTransferQuantity;
+				dominantToken = props.asset.data.id;
 				// percentageLabel = language.totalTransferPercentage;
 				break;
 		}
 
 		return (
-			<S.SalesWrapper useWrapper={useWrapper} className={useWrapper ? 'border-wrapper-alt1' : ''}>
+			<S.SalesWrapper useWrapper={false}>
 				<S.SalesLine>
 					<S.SalesDetail>
 						<span>{quantityLabel}</span>
-						<p>{formatCount(currentOrderQuantity.toString())}</p>
+						<S.SalesDetailValue>
+							{TOKEN_REGISTRY[dominantToken] && <img src={getTxEndpoint(TOKEN_REGISTRY[dominantToken].logo)} />}
+							<p>{formatCount(currentOrderQuantity.toString())}</p>
+						</S.SalesDetailValue>
 					</S.SalesDetail>
 					{/* <S.SalesDetail>
 						<span>{percentageLabel}</span>
@@ -1330,11 +1319,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 					{getOrderDetails(true)}
 
 					{props.type === 'buy' && (
-						<S.ConfirmationDetailsAction
-							className={'border-wrapper-primary'}
-							active={sendToWallet}
-							onClick={() => setSendToWallet((prev) => !prev)}
-						>
+						<S.ConfirmationDetailsAction active={sendToWallet} onClick={() => setSendToWallet((prev) => !prev)}>
 							<S.ConfirmationDetailsHeader>
 								<p>Send Tokens To Wallet</p>
 
@@ -1351,7 +1336,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 						</S.ConfirmationDetailsAction>
 					)}
 
-					<S.ConfirmationDetails className={'border-wrapper-primary'}>
+					<S.ConfirmationDetails>
 						<S.ConfirmationDetailsHeader>
 							<p>{props.type === 'transfer' ? 'Transfer Details' : confirmationHeader}</p>
 						</S.ConfirmationDetailsHeader>
@@ -1377,7 +1362,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 						</S.ConfirmationDetailsLineWrapper>
 					</S.ConfirmationDetails>
 
-					{footer && <S.ConfirmationFooter className={'border-wrapper-primary'}>{footer}</S.ConfirmationFooter>}
+					{footer && <S.ConfirmationFooter>{footer}</S.ConfirmationFooter>}
 					<S.ConfirmationMessage success={orderProcessed && orderSuccess} warning={orderProcessed && !orderSuccess}>
 						<span>{currentNotification ? currentNotification : orderLoading ? 'Processing...' : reviewMessage}</span>
 					</S.ConfirmationMessage>
@@ -1411,6 +1396,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 								(props.type !== 'bid' && Number(currentOrderQuantity) > maxOrderQuantity),
 							message: null,
 						}}
+						useFractional={maxOrderQuantity < 1}
 					/>
 					{props.type !== 'bid' && (
 						<S.MaxQty>

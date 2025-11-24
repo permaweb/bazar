@@ -42,10 +42,10 @@ export const AltTabAction = styled.button<{ active: boolean; icon: boolean }>`
 	cursor: pointer;
 	flex: 1;
 	background: ${(props) =>
-		props.active ? props.theme.colors.container.primary.active : props.theme.colors.container.primary.background};
+		props.active ? props.theme.colors.container.alt1.background : props.theme.colors.container.primary.active};
 	border: 1px solid ${(props) => props.theme.colors.border.primary};
 	&:hover {
-		background: ${(props) => props.theme.colors.container.primary.active};
+		background: ${(props) => props.theme.colors.container.alt1.background};
 	}
 
 	display: flex;

@@ -26,3 +26,10 @@ export const DrawerContent = styled(GS.DrawerContent)`
 		}
 	}
 `;
+
+export const Divider = styled.div`
+	height: 1px;
+	width: 100%;
+	border-top: 1px dotted ${(props) => props.theme.colors.border.primary};
+	margin: 22.5px 0 15px 0 !important;
+`;

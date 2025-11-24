@@ -24,7 +24,7 @@
 		"@othent/kms": "^1.0.7",
 		"@permaweb/aoconnect": "^0.0.85",
 		"@permaweb/aoprofile": "^0.0.11",
-		"@permaweb/libs": "0.0.69",
+		"@permaweb/libs": "0.0.73",
 		"@permaweb/stampjs": "^1.0.4",
 		"@permaweb/ucm": "0.0.13",
 		"@vela-ventures/aosync-sdk-react": "^1.0.26",
