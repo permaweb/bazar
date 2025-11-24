@@ -33,6 +33,27 @@ import { IProps } from './types';
 
 const MIN_PRICE = 0.000001;
 
+function safeBigInt(value: any): bigint {
+	if (value === null || value === undefined || value === '') return BigInt(0);
+	if (typeof value === 'bigint') return value;
+
+	try {
+		const num = typeof value === 'string' ? parseFloat(value) : Number(value);
+		if (isNaN(num) || !isFinite(num) || num < 0) return BigInt(0);
+
+		const floored = Math.floor(num);
+		if (floored > Number.MAX_SAFE_INTEGER) {
+			console.warn('Number too large for safe BigInt conversion:', floored);
+			return BigInt(0);
+		}
+
+		return BigInt(floored);
+	} catch (e) {
+		console.error('Error converting to BigInt:', value, e);
+		return BigInt(0);
+	}
+}
+
 export default function AssetActionMarketOrders(props: IProps) {
 	const permawebProvider = usePermawebProvider();
 	const arProvider = useArweaveProvider();
@@ -42,7 +63,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 	const language = languageProvider.object[languageProvider.current];
 
 	// Total quantity of asset
-	const [totalAssetBalance, _setTotalAssetBalance] = React.useState<number>(0);
+	const [totalAssetBalance, setTotalAssetBalance] = React.useState<number>(0);
 
 	// Total quantity of asset for sale (Asks available to buy)
 	const [totalSalesQuantity, setTotalSalesQuantity] = React.useState<number>(0);
@@ -167,51 +188,21 @@ export default function AssetActionMarketOrders(props: IProps) {
 					})();
 				}
 
-				// if (props.asset.state.balances) {
-				// 	const balances: any = Object.keys(props.asset.state.balances).map((address: string) => {
-				// 		return Number(props.asset.state.balances[address]);
-				// 	});
+				if (props.asset.state.balances) {
+					const balances: any = Object.keys(props.asset.state.balances).map((address: string) => {
+						return Number(props.asset.state.balances[address]);
+					});
 
-				// 	const totalBalance = balances.reduce((a: number, b: number) => a + b, 0);
+					const totalBalance = balances.reduce((a: number, b: number) => a + b, 0);
 
-				// 	let calculatedTotalBalance = totalBalance;
+					let calculatedTotalBalance = totalBalance;
 
-				// 	if (denomination) {
-				// 		calculatedTotalBalance = totalBalance / denomination;
-				// 	}
+					if (denomination) {
+						calculatedTotalBalance = totalBalance / denomination;
+					}
 
-				// 	setTotalAssetBalance(calculatedTotalBalance);
-				// if (props.asset.state.balances) {
-				// 	const balances: any = Object.keys(props.asset.state.balances).map((address: string) => {
-				// 		return Number(props.asset.state.balances[address]);
-				// 	});
-
-				// 	const totalBalance = balances.reduce((a: number, b: number) => a + b, 0);
-
-				// 	let calculatedTotalBalance = totalBalance;
-
-				// 	if (denomination) {
-				// 		calculatedTotalBalance = totalBalance / denomination;
-				// 	}
-
-				// 	setTotalAssetBalance(calculatedTotalBalance);
-
-				// 	if (arProvider.walletAddress && permawebProvider.profile && permawebProvider.profile.id) {
-				// 		const profileBalance = Number(props.asset.state.balances[permawebProvider.profile.id]);
-				// 		const walletBalance = Number(props.asset.state.balances[arProvider.walletAddress]);
-
-				// let calculatedOwnerBalance = profileBalance;
-				// let calculatedWalletBalance = walletBalance;
-
-				// if (denomination) {
-				// 	calculatedOwnerBalance = profileBalance / denomination;
-				// 	calculatedWalletBalance = walletBalance / denomination;
-				// }
-
-				// 		setConnectedBalance(calculatedOwnerBalance);
-				// 		setConnectedWalletBalance(calculatedWalletBalance);
-				// 	}
-				// }
+					setTotalAssetBalance(calculatedTotalBalance);
+				}
 			}
 
 			if (props.asset.orderbook?.orders && props.asset.orderbook?.orders.length > 0) {
@@ -299,10 +290,12 @@ export default function AssetActionMarketOrders(props: IProps) {
 				setMaxOrderQuantity(totalBidQuantity);
 				break;
 			case 'bid':
-				// For bids, user can bid any quantity they want
-				// The real limit is their currency balance and the price they set (quantity × price)
-				// Use a reasonable number for slider, but don't enforce as hard limit
-				setMaxOrderQuantity(10000000); // 10M for slider range, validation is by total cost
+				// Nick's suggestion: Remove hardcoded 10K placeholder for bids
+				// For bids, the max quantity is not limited by total supply
+				// Users can bid for any reasonable amount (limited by what they can afford, not asset supply)
+				// Original had: setMaxOrderQuantity(totalAssetBalance > 0 ? totalAssetBalance : 10000000);
+				// Fixed to: setMaxOrderQuantity(totalAssetBalance > 0 ? totalAssetBalance : 0);
+				setMaxOrderQuantity(totalAssetBalance > 0 ? totalAssetBalance : 0);
 				break;
 			case 'list':
 			case 'transfer':
@@ -319,6 +312,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 		connectedWalletBalance,
 		totalSalesQuantity,
 		totalBidQuantity,
+		totalAssetBalance,
 		permawebProvider.tokenBalances,
 		tokenProvider.selectedToken.id,
 		transferDenomination,
@@ -331,12 +325,14 @@ export default function AssetActionMarketOrders(props: IProps) {
 				setInsufficientBalance(true);
 			} else {
 				const totalAmount = getTotalOrderAmount();
-				let orderAmount = isNaN(Number(totalAmount)) ? BigInt(0) : BigInt(totalAmount);
+				let orderAmount = safeBigInt(totalAmount);
 				if (props.type === 'buy' && denomination) {
-					orderAmount = BigInt(orderAmount) / BigInt(denomination);
+					const denom = safeBigInt(denomination);
+					orderAmount = denom > BigInt(0) ? orderAmount / denom : orderAmount;
 				}
 				setInsufficientBalance(
-					Number(getTotalTokenBalance(permawebProvider.tokenBalances[tokenProvider.selectedToken.id])) < orderAmount
+					Number(getTotalTokenBalance(permawebProvider.tokenBalances[tokenProvider.selectedToken.id])) <
+						Number(orderAmount)
 				);
 			}
 		} else {
@@ -397,8 +393,8 @@ export default function AssetActionMarketOrders(props: IProps) {
 				handleStatusUpdate(false, true, false, e);
 			}
 
-			const transferQuantity = getTransferQuantity().toString();
-			const unitPrice = getUnitPrice()?.toString();
+			const transferQuantity = getTransferQuantity();
+			const unitPrice = getUnitPrice() ?? undefined;
 
 			let dominantToken = null;
 			let swapToken = null;
@@ -442,7 +438,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 					action: action,
 				};
 
-				if (unitPrice) data.unitPrice = unitPrice.toString();
+				if (unitPrice) data.unitPrice = unitPrice;
 
 				// Pass both denominations to UCM for proper matching calculations
 				// baseTokenDenomination is always the asset's denomination (base token in pair)
@@ -487,14 +483,18 @@ export default function AssetActionMarketOrders(props: IProps) {
 		}
 	}
 
-	function getTransferQuantity() {
-		let transferQuantity = currentOrderQuantity;
+	function getTransferQuantity(): string {
+		let transferQuantity: string | number = currentOrderQuantity;
 
 		switch (props.type) {
 			case 'buy':
 				const totalAmount = getTotalOrderAmount();
 				transferQuantity = isNaN(Number(totalAmount)) ? '0' : totalAmount.toString();
-				if (denomination) transferQuantity = (BigInt(transferQuantity) / BigInt(denomination)).toString();
+				if (denomination) {
+					const amount = safeBigInt(transferQuantity);
+					const denom = safeBigInt(denomination);
+					transferQuantity = denom > BigInt(0) ? (amount / denom).toString() : '0';
+				}
 				break;
 			case 'bid':
 				// Bid: Transfer the total currency amount (price * quantity)
@@ -505,31 +505,42 @@ export default function AssetActionMarketOrders(props: IProps) {
 			case 'sell':
 			case 'list':
 			case 'transfer':
-				if (denomination) transferQuantity = (BigInt(currentOrderQuantity) * BigInt(denomination)).toString();
+				if (denomination) {
+					const qty = safeBigInt(currentOrderQuantity);
+					const denom = safeBigInt(denomination);
+					transferQuantity = (qty * denom).toString();
+				} else {
+					transferQuantity = String(currentOrderQuantity);
+				}
 				break;
 		}
 
-		return transferQuantity;
+		return String(transferQuantity);
 	}
 
-	function getUnitPrice() {
-		let calculatedUnitPrice = null;
-
-		if (unitPrice && Number(unitPrice) > 0) {
-			calculatedUnitPrice = unitPrice as any;
-			if (transferDenomination) {
-				const decimalPlaces = (unitPrice.toString().split('.')[1] || '').length;
-				const updatedUnitPrice =
-					decimalPlaces >= reverseDenomination(transferDenomination)
-						? (unitPrice as any).toFixed(reverseDenomination(transferDenomination))
-						: unitPrice;
-				calculatedUnitPrice = BigInt(Math.floor(Number(updatedUnitPrice) * transferDenomination));
-			}
+	function getUnitPrice(): string | null {
+		if (
+			unitPrice === '' ||
+			unitPrice === null ||
+			unitPrice === undefined ||
+			isNaN(Number(unitPrice)) ||
+			Number(unitPrice) <= 0
+		) {
+			return null;
 		}
 
-		console.log(calculatedUnitPrice);
+		if (transferDenomination) {
+			const decimalPlaces = (unitPrice.toString().split('.')[1] || '').length;
+			const updatedUnitPrice =
+				decimalPlaces >= reverseDenomination(transferDenomination)
+					? (unitPrice as any).toFixed(reverseDenomination(transferDenomination))
+					: unitPrice;
+			const rawPrice = Number(updatedUnitPrice) * transferDenomination;
+			const normalizedUnitPrice = safeBigInt(rawPrice);
+			return normalizedUnitPrice.toString();
+		}
 
-		return calculatedUnitPrice;
+		return String(unitPrice);
 	}
 
 	async function handleWalletToProfileTransfer() {
@@ -544,20 +555,22 @@ export default function AssetActionMarketOrders(props: IProps) {
 				case 'buy':
 				case 'bid':
 					processId = tokenProvider.selectedToken.id;
-					profileBalance = BigInt(permawebProvider.tokenBalances[tokenProvider.selectedToken.id].profileBalance);
-					walletBalance = BigInt(permawebProvider.tokenBalances[tokenProvider.selectedToken.id].walletBalance);
+					profileBalance = safeBigInt(permawebProvider.tokenBalances[tokenProvider.selectedToken.id].profileBalance);
+					walletBalance = safeBigInt(permawebProvider.tokenBalances[tokenProvider.selectedToken.id].walletBalance);
 					break;
 				case 'sell':
 				case 'list':
 				case 'transfer':
 					processId = props.asset.data.id;
 
-					if (connectedBalance)
-						profileBalance = BigInt(denomination ? Math.floor(connectedBalance * denomination) : connectedBalance);
-					if (connectedWalletBalance)
-						walletBalance = BigInt(
-							denomination ? Math.floor(connectedWalletBalance * denomination) : connectedWalletBalance
-						);
+					if (connectedBalance) {
+						const rawBalance = denomination ? connectedBalance * denomination : connectedBalance;
+						profileBalance = safeBigInt(rawBalance);
+					}
+					if (connectedWalletBalance) {
+						const rawBalance = denomination ? connectedWalletBalance * denomination : connectedWalletBalance;
+						walletBalance = safeBigInt(rawBalance);
+					}
 					break;
 			}
 
@@ -600,12 +613,14 @@ export default function AssetActionMarketOrders(props: IProps) {
 				let profileBalance = BigInt(0);
 				let walletBalance = BigInt(0);
 
-				if (connectedBalance)
-					profileBalance = BigInt(denomination ? Math.floor(connectedBalance * denomination) : connectedBalance);
-				if (connectedWalletBalance)
-					walletBalance = BigInt(
-						denomination ? Math.floor(connectedWalletBalance * denomination) : connectedWalletBalance
-					);
+				if (connectedBalance) {
+					const rawBalance = denomination ? connectedBalance * denomination : connectedBalance;
+					profileBalance = safeBigInt(rawBalance);
+				}
+				if (connectedWalletBalance) {
+					const rawBalance = denomination ? connectedWalletBalance * denomination : connectedWalletBalance;
+					walletBalance = safeBigInt(rawBalance);
+				}
 
 				console.log(`Transfer quantity: ${transferQuantity}`);
 				console.log(`Profile balance: ${profileBalance.toString()}`);
@@ -800,13 +815,16 @@ export default function AssetActionMarketOrders(props: IProps) {
 						continue;
 					}
 
-					const quantity = BigInt(Math.floor(orderQuantity));
-					const price = BigInt(Math.floor(orderPrice));
+					const quantity = safeBigInt(orderQuantity);
+					const price = safeBigInt(orderPrice);
 
-					let inputQuantity: any;
-					inputQuantity = denomination
-						? BigInt(Math.floor((currentOrderQuantity as number) * denomination))
-						: BigInt(Math.floor(currentOrderQuantity as any));
+					let inputQuantity: bigint;
+					if (denomination) {
+						const rawQty = (currentOrderQuantity as number) * denomination;
+						inputQuantity = safeBigInt(rawQty);
+					} else {
+						inputQuantity = safeBigInt(currentOrderQuantity);
+					}
 
 					if (quantity >= inputQuantity - totalQuantity) {
 						const remainingQty = inputQuantity - totalQuantity;
@@ -837,9 +855,10 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 				// Convert this total display amount to raw units using transferDenomination
 				if (transferDenomination) {
-					price = BigInt(Math.floor(totalDisplayAmount * transferDenomination));
+					const rawAmount = totalDisplayAmount * transferDenomination;
+					price = safeBigInt(rawAmount);
 				} else {
-					price = BigInt(Math.floor(totalDisplayAmount));
+					price = safeBigInt(totalDisplayAmount);
 				}
 			}
 
@@ -860,9 +879,10 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 				// Convert to raw units using transferDenomination
 				if (transferDenomination) {
-					price = BigInt(Math.floor(totalDisplayAmount * transferDenomination));
+					const rawAmount = totalDisplayAmount * transferDenomination;
+					price = safeBigInt(rawAmount);
 				} else {
-					price = BigInt(Math.floor(totalDisplayAmount));
+					price = safeBigInt(totalDisplayAmount);
 				}
 			}
 
@@ -927,7 +947,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 				// Convert to denominated integer for display
 				const result = denomination ? totalQuoteReceived : totalQuoteReceived;
-				return BigInt(Math.floor(result));
+				return safeBigInt(result);
 			} else return 0;
 		} else {
 			// This block now only handles 'transfer'
@@ -940,7 +960,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 			) {
 				price = BigInt(0);
 			} else {
-				let calculatedUnitPrice = unitPrice as any;
+				let calculatedUnitPrice: bigint;
 				if (transferDenomination) {
 					const decimalPlaces = (unitPrice.toString().split('.')[1] || '').length;
 					const updatedUnitPrice =
@@ -948,21 +968,20 @@ export default function AssetActionMarketOrders(props: IProps) {
 							? (unitPrice as any).toFixed(reverseDenomination(transferDenomination))
 							: unitPrice;
 
-					calculatedUnitPrice = BigInt(
-						Math.floor(Number(updatedUnitPrice <= MIN_PRICE ? 0 : updatedUnitPrice) * transferDenomination)
-					);
+					const rawPrice = Number(updatedUnitPrice <= MIN_PRICE ? 0 : updatedUnitPrice) * transferDenomination;
+					calculatedUnitPrice = safeBigInt(rawPrice);
+				} else {
+					calculatedUnitPrice = safeBigInt(unitPrice);
 				}
 
-				let calculatedQuantity = currentOrderQuantity;
+				let calculatedQuantity: number = currentOrderQuantity as number;
 				if (denomination && denomination > 1) {
 					calculatedQuantity = Number(currentOrderQuantity) * Number(denomination);
 				}
 
 				try {
-					price =
-						BigInt(calculatedQuantity) && BigInt(calculatedUnitPrice)
-							? BigInt(calculatedQuantity) * BigInt(calculatedUnitPrice)
-							: BigInt(0);
+					const qty = safeBigInt(calculatedQuantity);
+					price = qty > BigInt(0) && calculatedUnitPrice > BigInt(0) ? qty * calculatedUnitPrice : BigInt(0);
 				} catch (e: any) {
 					console.error(e);
 					price = BigInt(0);
@@ -998,13 +1017,13 @@ export default function AssetActionMarketOrders(props: IProps) {
 		if (!permawebProvider.profile || !permawebProvider.profile.id) return true;
 		if (orderLoading) return true;
 		if (props.asset && !props.asset.state.transferable) return true;
-		if (maxOrderQuantity <= 0 || isNaN(Number(currentOrderQuantity))) return true;
-		if (
-			Number(currentOrderQuantity) <= 0 ||
-			isNaN(maxOrderQuantity) ||
-			(!Number.isInteger(Number(currentOrderQuantity)) && !denomination)
-		)
+		// Nick's suggestion: Bids should not be limited by maxOrderQuantity (they're limited by affordability, not supply)
+		// So we exclude 'bid' from this check
+		if (props.type !== 'bid' && maxOrderQuantity <= 0) return true;
+		if (isNaN(Number(currentOrderQuantity))) return true;
+		if (Number(currentOrderQuantity) <= 0 || (!Number.isInteger(Number(currentOrderQuantity)) && !denomination))
 			return true;
+		// Nick's suggestion: Bids can exceed maxOrderQuantity (they're not limited by asset supply)
 		if (props.type !== 'bid' && Number(currentOrderQuantity) > maxOrderQuantity) return true;
 		if (
 			(props.type === 'list' || props.type === 'bid') &&
@@ -1126,10 +1145,13 @@ export default function AssetActionMarketOrders(props: IProps) {
 		const selectedTokenId = tokenProvider.selectedToken.id;
 
 		let totalAmount = getTotalOrderAmount();
-		if (props.type === 'buy' && denomination && denomination > 1)
-			totalAmount = BigInt(totalAmount) / BigInt(denomination);
+		if (props.type === 'buy' && denomination && denomination > 1) {
+			const amt = safeBigInt(totalAmount);
+			const denom = safeBigInt(denomination);
+			totalAmount = denom > BigInt(0) ? amt / denom : amt;
+		}
 
-		const amount = isNaN(Number(totalAmount)) ? BigInt(0) : BigInt(totalAmount);
+		const amount = isNaN(Number(totalAmount)) ? BigInt(0) : safeBigInt(totalAmount);
 		const orderCurrency = selectedTokenId;
 
 		return (

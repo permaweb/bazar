@@ -331,7 +331,7 @@ export default function ActivityTable(props: IProps) {
 				// if (price !== '-') price = getDenominatedTokenValue(order.Quantity, order.DominantToken);
 
 				let quantity = order.Quantity ? order.Quantity.toString() : '-';
-				if (quantity !== '-') quantity = getDenominatedTokenValue(order.Quantity, order.DominantToken);
+				let price = order.Price ? order.Price.toString() : '-';
 
 				let sender = order.Sender || null;
 				let receiver = order.Receiver || null;
@@ -341,13 +341,55 @@ export default function ActivityTable(props: IProps) {
 					const side = order.Side;
 					if (side === 'Bid') {
 						orderEvent = 'Bid';
-						quantity = getDenominatedTokenValue(
-							(Number(order.Quantity) / Number(order.Price)) * Math.pow(10, props.asset?.state?.denomination ?? 0),
-							props.asset?.data?.id
-						);
+						// For bids: order.Quantity = total quote tokens (payment currency in raw)
+						// order.Price = quote raw per base display unit
+						// So order.Quantity / order.Price = base token quantity in display units
+						// We need to convert to raw units before passing to getDenominatedTokenValue
+						const baseTokenId = order.SwapToken; // For bids, SwapToken is the base asset
+						const quoteTokenId = order.DominantToken; // For bids, DominantToken is the payment currency
+						const baseDisplayQuantity = Number(order.Quantity) / Number(order.Price);
+
+						// Get base token denomination from registry or asset state
+						let baseDenomination = 0;
+						if (props.asset?.state?.denomination) {
+							baseDenomination = props.asset.state.denomination;
+						} else if (baseTokenId && TOKEN_REGISTRY[baseTokenId]?.denomination) {
+							baseDenomination = TOKEN_REGISTRY[baseTokenId].denomination;
+						} else if (baseTokenId && REFORMATTED_ASSETS[baseTokenId]?.denomination) {
+							baseDenomination = REFORMATTED_ASSETS[baseTokenId].denomination;
+						}
+
+						// Convert display to raw units
+						const baseRawQuantity = baseDisplayQuantity * Math.pow(10, baseDenomination);
+						quantity = getDenominatedTokenValue(baseRawQuantity, baseTokenId);
+
+						// For bids, price is in quote token units, so format it using quote token denomination
+						// Price is stored as "quote raw per base display", so we need to denominate using quote token
+						if (price !== '-') {
+							let quoteDenomination = 0;
+							if (quoteTokenId && TOKEN_REGISTRY[quoteTokenId]?.denomination) {
+								quoteDenomination = TOKEN_REGISTRY[quoteTokenId].denomination;
+							} else if (quoteTokenId && REFORMATTED_ASSETS[quoteTokenId]?.denomination) {
+								quoteDenomination = REFORMATTED_ASSETS[quoteTokenId].denomination;
+							}
+							// Price is already in raw quote units per base display, so we just need to format it
+							// But actually, for display, we want to show "price per base token" in quote display units
+							// So: price (quote raw per base display) / quoteDenomination = price in quote display units
+							const priceDisplay = Number(price) / Math.pow(10, quoteDenomination);
+							price = priceDisplay.toString();
+							// Swap tokens for bids so price currency is correct in UI
+							// For bids: we want price to show in quote token, so swapToken should be quote token
+							const temp = dominantToken;
+							dominantToken = swapToken; // Base asset becomes dominant for display
+							swapToken = temp; // Quote token becomes swap for price display
+						}
 					} else if (side === 'Ask') {
 						orderEvent = 'Listing';
+						if (quantity !== '-') quantity = getDenominatedTokenValue(order.Quantity, order.DominantToken);
 					}
+				} else {
+					// For non-bid orders, use standard denomination
+					if (quantity !== '-') quantity = getDenominatedTokenValue(order.Quantity, order.DominantToken);
 				}
 				if (event === 'Sale' && order.Side) {
 					if (order.IncomingSide === 'Ask') {
@@ -371,7 +413,7 @@ export default function ActivityTable(props: IProps) {
 					orderId: order.OrderId,
 					dominantToken: dominantToken,
 					swapToken: swapToken,
-					price: order.Price ? order.Price.toString() : '-',
+					price: price,
 					quantity: quantity,
 					sender: sender,
 					receiver: receiver,
