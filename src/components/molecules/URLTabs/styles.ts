@@ -75,10 +75,10 @@ export const AltTabAction = styled.button<{ active: boolean; icon: boolean }>`
 	color: ${(props) => props.theme.colors.font.primary};
 	cursor: pointer;
 	background: ${(props) =>
-		props.active ? props.theme.colors.container.primary.active : props.theme.colors.container.primary.background};
+		props.active ? props.theme.colors.container.alt1.background : props.theme.colors.container.primary.active};
 	border: 1px solid ${(props) => props.theme.colors.border.primary};
 	&:hover {
-		background: ${(props) => props.theme.colors.container.primary.active};
+		background: ${(props) => props.theme.colors.container.alt1.background};
 	}
 
 	display: flex;

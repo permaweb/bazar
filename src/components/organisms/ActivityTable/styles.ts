@@ -157,7 +157,7 @@ export const TableRow = styled.div`
 	display: flex;
 	align-items: center;
 	padding: 0 15px;
-	background: ${(props) => props.theme.colors.container.primary.background};
+	background: ${(props) => props.theme.colors.container.primary.active};
 	> * {
 		flex: 1;
 		margin: 0 10px;

@@ -46,7 +46,7 @@ export const TokenImage = styled.div<{}>`
 	justify-content: center;
 	align-items: center;
 	position: relative;
-	margin: 40px 0;
+	margin: 60px 0;
 	img {
 		height: 100%;
 		width: 100%;

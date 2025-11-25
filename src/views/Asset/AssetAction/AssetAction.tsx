@@ -482,7 +482,7 @@ export default function AssetAction(props: IProps) {
 					})}
 				</>
 			);
-		} else return <p>{props.updating ? `${language.updating}...` : 'No Active Listings'}</p>;
+		} else return <p>{props.updating ? `${language.updating}...` : 'No Active Asks'}</p>;
 	}, [
 		currentListings,
 		showCurrentListingsModal,

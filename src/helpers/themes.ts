@@ -1,11 +1,27 @@
 import { DefaultTheme } from 'styled-components';
 
-export const lightTheme = {
-	scheme: 'light',
+const common = {
 	positive1: '#64B686',
 	positive2: '#4EA673',
 	negative1: '#E94278',
 	negative2: '#E52461',
+	stats: {
+		primary: '#FF8385',
+		alt1: '#A3DEE2',
+		alt2: '#B9B8D0',
+		alt3: '#8FC2D3',
+		alt4: '#6CB9D9',
+		alt5: '#8886D9',
+		alt6: '#FFBD9F',
+		alt7: '#A8DDE2',
+		alt8: '#F2A9D3',
+		alt9: '#6D909E',
+		alt10: '#9E9E9E',
+	},
+};
+
+export const lightTheme = {
+	scheme: 'light',
 	neutral1: '#FFFFFF',
 	neutral2: '#F6F6F6',
 	neutral3: '#D6D6D6',
@@ -33,28 +49,11 @@ export const lightTheme = {
 	light2: '#DADADA',
 	dark1: '#151515',
 	dark2: '#333333',
-	stats: {
-		primary: '#FF8385',
-		alt1: '#A3DEE2',
-		alt2: '#B9B8D0',
-		alt3: '#8FC2D3',
-		alt4: '#6CB9D9',
-		alt5: '#8886D9',
-		alt6: '#FFBD9F',
-		alt7: '#A8DDE2',
-		alt8: '#F2A9D3',
-		alt9: '#6D909E',
-		alt10: '#adadad',
-	},
+	...common,
 };
 
 export const dimmedTheme = {
 	scheme: 'dark',
-	positive1: '#38BD80',
-	positive2: '#2F9D6A',
-	labelAlt1: `#E8E8E8`,
-	negative1: '#D81E5B',
-	negative2: '#E43A72',
 	neutral1: '#1A1A1A',
 	neutral2: '#202020',
 	neutral3: '#333333',
@@ -82,28 +81,11 @@ export const dimmedTheme = {
 	light2: '#DADADA',
 	dark1: '#0A0A0A',
 	dark2: '#1F1F1F',
-	stats: {
-		primary: '#FF8080',
-		alt1: '#9BD4E0',
-		alt2: '#C2C1E6',
-		alt3: '#7AB3D0',
-		alt4: '#6AC3E7',
-		alt5: '#A1A0E6',
-		alt6: '#ffa374',
-		alt7: '#A5E0E8',
-		alt8: '#F29CC8',
-		alt9: '#6794AA',
-		alt10: '#2A2A2A',
-	},
+	...common,
 };
 
 export const darkTheme = {
 	scheme: 'dark',
-	positive1: '#38BD80',
-	positive2: '#2F9D6A',
-	labelAlt1: `#FFFFFF`,
-	negative1: '#D81E5B',
-	negative2: '#E43A72',
 	neutral1: '#090A0B',
 	neutral2: '#16171A',
 	neutral3: '#292A2D',
@@ -111,7 +93,7 @@ export const darkTheme = {
 	neutral5: '#70717D',
 	neutral6: '#80818D',
 	neutral7: '#A0A1AD',
-	neutral8: '#141414',
+	neutral8: '#1B1C20',
 	neutralA1: '#FFFFFF',
 	neutralA2: '#EAEAED',
 	neutralA3: '#D9D9DC',
@@ -131,19 +113,7 @@ export const darkTheme = {
 	light2: '#DADADA',
 	dark1: '#151515',
 	dark2: '#333333',
-	stats: {
-		primary: '#FF8080',
-		alt1: '#9BD4E0',
-		alt2: '#C2C1E6',
-		alt3: '#7AB3D0',
-		alt4: '#6AC3E7',
-		alt5: '#A1A0E6',
-		alt6: '#ffa374',
-		alt7: '#A5E0E8',
-		alt8: '#F29CC8',
-		alt9: '#6794AA',
-		alt10: '#444444',
-	},
+	...common,
 };
 
 export const theme = (currentTheme: any): DefaultTheme => ({

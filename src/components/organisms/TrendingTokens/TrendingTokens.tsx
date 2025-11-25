@@ -1,9 +1,7 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
-import { connect } from '@permaweb/aoconnect/browser';
-
-import { AO, AOCONFIG, CUSTOM_ORDERBOOKS, DEFAULTS, URLS } from 'helpers/config';
+import { DEFAULTS, FLP_TOKENS, URLS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 
@@ -15,41 +13,41 @@ export default function TrendingTokens() {
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
 
-	const [tokens, setTokens] = React.useState<any[] | null>(null);
+	const [tokens, _setTokens] = React.useState<any[] | null>(FLP_TOKENS);
 
-	React.useEffect(() => {
-		(async function () {
-			try {
-				const ao = connect({
-					MODE: 'legacy',
-					CU_URL: AOCONFIG.cu_af_url,
-				});
+	// React.useEffect(() => {
+	// 	(async function () {
+	// 		try {
+	// 			const ao = connect({
+	// 				MODE: 'legacy',
+	// 				CU_URL: AOCONFIG.cu_af_url,
+	// 			});
 
-				const response = await ao.dryrun({
-					process: AO.flps,
-					tags: [{ name: 'Action', value: 'Get-FLPs' }],
-				});
+	// 			const response = await ao.dryrun({
+	// 				process: AO.flps,
+	// 				tags: [{ name: 'Action', value: 'Get-FLPs' }],
+	// 			});
 
-				const data = JSON.parse(response?.Messages?.[0].Data);
+	// 			const data = JSON.parse(response?.Messages?.[0].Data);
 
-				setTokens(
-					data
-						.slice()
-						.sort((a, b) => (b.accumulated_qty ?? 0) - (a.accumulated_qty ?? 0))
-						.slice(0, 16)
-						.map((token) => ({
-							ProcessId: token.flp_token_process,
-							Name: token.flp_token_name,
-							Ticker: token.flp_token_ticker,
-							Logo: token.flp_token_logo,
-						}))
-						.filter((token) => [...Object.keys(CUSTOM_ORDERBOOKS)].includes(token.ProcessId))
-				);
-			} catch (e: any) {
-				console.error(e);
-			}
-		})();
-	}, []);
+	// 			setTokens(
+	// 				data
+	// 					.slice()
+	// 					.sort((a, b) => (b.accumulated_qty ?? 0) - (a.accumulated_qty ?? 0))
+	// 					.slice(0, 16)
+	// 					.map((token) => ({
+	// 						ProcessId: token.flp_token_process,
+	// 						Name: token.flp_token_name,
+	// 						Ticker: token.flp_token_ticker,
+	// 						Logo: token.flp_token_logo,
+	// 					}))
+	// 					.filter((token) => [...Object.keys(CUSTOM_ORDERBOOKS)].includes(token.ProcessId))
+	// 			);
+	// 		} catch (e: any) {
+	// 			console.error(e);
+	// 		}
+	// 	})();
+	// }, []);
 
 	function handleTokenClick(token: any) {
 		navigate(`${URLS.asset}${token.ProcessId}`);
