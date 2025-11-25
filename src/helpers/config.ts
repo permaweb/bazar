@@ -21,6 +21,7 @@ import discord from 'assets/discord.svg';
 import docs from 'assets/docs.svg';
 import edit from 'assets/edit.svg';
 import github from 'assets/github.svg';
+import glasseaterIcon from 'assets/glasseater-icon.svg';
 import grid from 'assets/grid.svg';
 import html from 'assets/html.svg';
 import info from 'assets/info.svg';
@@ -226,6 +227,7 @@ export const ASSETS = {
 	docs,
 	edit,
 	github,
+	glasseaterIcon,
 	grid,
 	html,
 	info,

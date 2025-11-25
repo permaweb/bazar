@@ -203,23 +203,6 @@ export default function Landing() {
 
 	return (
 		<S.Wrapper className={'fade-in'}>
-			<div style={{ display: 'flex', justifyContent: 'center', margin: '24px 0' }}>
-				<a
-					href="/#/campaign-3"
-					style={{
-						background: '#222',
-						color: '#fff',
-						padding: '16px 32px',
-						borderRadius: '8px',
-						fontWeight: 'bold',
-						fontSize: '1.2rem',
-						textDecoration: 'none',
-						boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-					}}
-				>
-					Glasseaters Atomic Asset Campaign
-				</a>
-			</div>
 			<S.CollectionsWrapper>
 				<CollectionsCarousel collections={collections} loading={collectionsLoading} />
 			</S.CollectionsWrapper>

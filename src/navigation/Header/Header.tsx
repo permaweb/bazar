@@ -100,6 +100,18 @@ export default function Header() {
 								</S.DelegationButton>
 							</S.DelegationButtonWrapper>
 						)} */}
+						<S.CampaignButton href="/#/campaign-3">
+							<S.CampaignIcon>
+								<ReactSVG src={ASSETS.glasseaterIcon} />
+							</S.CampaignIcon>
+							<span>View Glasseaters</span>
+							<S.Particle delay={0} top={80} left={20} />
+							<S.Particle delay={0.5} top={60} left={50} />
+							<S.Particle delay={1.0} top={70} left={80} />
+							<S.Particle delay={1.5} top={90} left={30} />
+							<S.Particle delay={0.2} top={50} left={10} />
+							<S.Particle delay={0.8} top={85} left={70} />
+						</S.CampaignButton>
 						<WalletConnect />
 						<S.MWrapper>
 							<IconButton
