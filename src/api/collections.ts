@@ -1,5 +1,5 @@
 import { readHandler } from 'api';
-import { getAssetByIdGQL, getAssetStateById } from 'api/assets';
+import { getAssetByIdGQL } from 'api/assets';
 
 import { AO, getDefaultToken, HB } from 'helpers/config';
 
@@ -261,7 +261,7 @@ export async function getAllMusicCollections(libs: any): Promise<CollectionType[
 		const state = store.getState().collectionsReducer;
 		const cachedMusic = state?.music;
 		const cacheAge = cachedMusic?.lastUpdate ? Date.now() - cachedMusic.lastUpdate : Infinity;
-		const cacheDuration = 5 * 60 * 1000; // 5 minutes
+		const cacheDuration = 2 * 60 * 1000; // 2 minutes (reduced for faster updates)
 
 		if (cachedMusic?.collections && cacheAge < cacheDuration) {
 			return cachedMusic.collections;
@@ -273,16 +273,21 @@ export async function getAllMusicCollections(libs: any): Promise<CollectionType[
 		// Use a more targeted search for Bazar Music assets with cover art
 
 		try {
-			// Search for assets that have both Bootloader-CoverArt and Bazar Music topics
-			const query = `{
+			// Search for all assets with Bootloader-CoverArt tag using pagination
+			const query = `query BootloaderCoverArt($cursor: String) {
 				transactions(
 					tags: [
-						{ name: "Bootloader-CoverArt" }
+						{ name: "Bootloader-CoverArt", values: [""] }
 					]
 					first: 50
 					sort: HEIGHT_DESC
+					after: $cursor
 				) {
+					pageInfo {
+						hasNextPage
+					}
 					edges {
+						cursor
 						node {
 							id
 							tags {
@@ -299,53 +304,69 @@ export async function getAllMusicCollections(libs: any): Promise<CollectionType[
 			}`;
 
 			let success = false;
+			let cursor: string | null = null;
+			let hasNextPage = true;
+			let pageCount = 0;
+			const maxPages = 10; // Limit to prevent infinite loops, fetch up to 500 assets (10 pages * 50)
 
-			try {
-				const result = await executeGraphQLQueryWithRetry(query, undefined, 2);
-				const edges = result?.data?.transactions?.edges ?? [];
+			// Fetch all pages
+			while (hasNextPage && pageCount < maxPages) {
+				try {
+					const variables = cursor ? { cursor } : {};
+					const result = await executeGraphQLQueryWithRetry(query, variables, 2);
+					const data = result?.data?.transactions;
+					const edges = data?.edges ?? [];
+					const pageInfo = data?.pageInfo;
 
-				if (edges.length) {
-					success = true;
-				}
+					console.log(
+						`[Music Collections] Page ${pageCount + 1}: Found ${edges.length} assets, hasNextPage: ${
+							pageInfo?.hasNextPage
+						}`
+					);
 
-				for (const edge of edges) {
-					try {
-						const node = edge.node;
-						const collectionId = getTagValue(node.tags, 'Bootloader-CollectionId');
-						const topicsTag = node.tags.find((tag: any) => tag.name === 'Bootloader-Topics');
+					if (edges.length) {
+						success = true;
+					}
 
-						if (collectionId) {
-							let isMusicOrPodcast = false;
+					for (const edge of edges) {
+						try {
+							const node = edge.node;
+							const collectionId = getTagValue(node.tags, 'Bootloader-CollectionId');
 
-							if (topicsTag && topicsTag.value) {
-								const topics = topicsTag.value.toLowerCase();
-								const hasBazarMusic = topics.includes('bazar music');
-								const hasPodcast = topics.includes('podcast') || topics.includes('bazar podcast');
-								isMusicOrPodcast = hasBazarMusic || hasPodcast;
-							}
-
-							if (isMusicOrPodcast) {
+							if (collectionId) {
+								// Include all collections with Cover Art assets
+								// The presence of Bootloader-CoverArt tag already indicates it's music/podcast related
 								musicCollectionIds.add(collectionId);
 							}
+						} catch (e) {
+							console.error(`Error processing asset ${edge.node.id}:`, e);
+							continue;
 						}
-					} catch (e) {
-						console.error(`Error processing asset ${edge.node.id}:`, e);
-						continue;
 					}
+
+					// Check if there are more pages
+					pageCount++;
+					hasNextPage = pageInfo?.hasNextPage ?? false;
+					if (hasNextPage && edges.length > 0) {
+						cursor = edges[edges.length - 1].cursor;
+					} else {
+						hasNextPage = false;
+					}
+
+					console.log(`[Music Collections] Total unique collections found so far: ${musicCollectionIds.size}`);
+				} catch (graphQLError) {
+					console.error('Error executing music collections GraphQL query:', graphQLError);
+					hasNextPage = false; // Stop pagination on error
 				}
-			} catch (graphQLError) {
-				console.error('Error executing music collections GraphQL query:', graphQLError);
 			}
 
-			if (!success) {
-				// Fallback to known music assets
-				const knownMusicAssetIds = [
-					'qN_E5p_dVs5MP8oukTZH25z0yh_BCIVuVCPv6kO7Dqg', // Back Then
-				];
+			console.log(
+				`[Music Collections] GraphQL search complete. Found ${musicCollectionIds.size} unique collection IDs`
+			);
 
-				for (const assetId of knownMusicAssetIds) {
-					musicCollectionIds.add('3oz9r4M8aT1-wcbKmv5rYixUdWdCKYRmMMmfsqbTgCQ'); // Known collection ID
-				}
+			if (!success) {
+				// Fallback to known music collection
+				musicCollectionIds.add('3oz9r4M8aT1-wcbKmv5rYixUdWdCKYRmMMmfsqbTgCQ'); // Known collection ID
 			}
 		} catch (e) {
 			console.error('Error in GraphQL search:', e);
@@ -355,13 +376,16 @@ export async function getAllMusicCollections(libs: any): Promise<CollectionType[
 
 		// Fetch all the music collections
 		const musicCollections: CollectionType[] = [];
+		console.log(`[Music Collections] Fetching ${musicCollectionIds.size} collections...`);
 
 		for (const collectionId of musicCollectionIds) {
 			try {
 				let collection;
 				try {
 					collection = await libs.getCollection(collectionId);
+					console.log(`[Music Collections] Fetched collection: ${collection?.title || collectionId}`);
 				} catch (hyperbeamError) {
+					console.warn(`[Music Collections] HyperBEAM failed for ${collectionId}, using fallback:`, hyperbeamError);
 					// Create fallback collection data
 					collection = {
 						id: collectionId,
@@ -427,6 +451,7 @@ export async function getAllMusicCollections(libs: any): Promise<CollectionType[
 			})
 		);
 
+		console.log(`[Music Collections] Returning ${musicCollections.length} collections`);
 		return musicCollections;
 	} catch (e: any) {
 		console.error('Error in getAllMusicCollections:', e);
