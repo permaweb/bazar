@@ -97,257 +97,262 @@ export const darkTheme = {
 	},
 };
 
-export const theme = (currentTheme: any): DefaultTheme => ({
-	scheme: currentTheme.scheme,
-	colors: {
-		border: {
-			primary: currentTheme.neutral3,
-			alt1: currentTheme.primary1,
-			alt2: currentTheme.neutralA6,
-			alt3: currentTheme.neutral5,
-			alt4: currentTheme.neutral3,
-		},
-		button: {
-			primary: {
-				background: currentTheme.neutral2,
-				border: currentTheme.neutral2,
-				color: currentTheme.neutralA1,
-				active: {
-					background: currentTheme.neutral3,
-					border: currentTheme.neutral3,
+export const theme = (currentTheme: any): DefaultTheme => {
+	if (!currentTheme) {
+		currentTheme = lightTheme;
+	}
+	return {
+		scheme: currentTheme.scheme,
+		colors: {
+			border: {
+				primary: currentTheme.neutral3,
+				alt1: currentTheme.primary1,
+				alt2: currentTheme.neutralA6,
+				alt3: currentTheme.neutral5,
+				alt4: currentTheme.neutral3,
+			},
+			button: {
+				primary: {
+					background: currentTheme.neutral2,
+					border: currentTheme.neutral2,
 					color: currentTheme.neutralA1,
+					active: {
+						background: currentTheme.neutral3,
+						border: currentTheme.neutral3,
+						color: currentTheme.neutralA1,
+					},
+					disabled: {
+						background: currentTheme.neutral4,
+						border: currentTheme.neutral5,
+						color: currentTheme.neutralA2,
+					},
 				},
-				disabled: {
-					background: currentTheme.neutral4,
-					border: currentTheme.neutral5,
-					color: currentTheme.neutralA2,
+				alt1: {
+					background: currentTheme.primary1,
+					border: currentTheme.primary1,
+					color: currentTheme.light1,
+					active: {
+						background: currentTheme.primary2,
+						border: currentTheme.primary2,
+						color: currentTheme.light1,
+					},
+					disabled: {
+						background: currentTheme.neutral4,
+						border: currentTheme.neutral5,
+						color: currentTheme.neutralA5,
+					},
+				},
+				alt2: {
+					background: currentTheme.neutralA1,
+					border: currentTheme.neutralA1,
+					color: currentTheme.neutralA1,
+					active: {
+						background: currentTheme.neutralA4,
+						border: currentTheme.neutralA4,
+						color: currentTheme.neutralA4,
+					},
+					disabled: {
+						background: currentTheme.neutral4,
+						border: currentTheme.neutral3,
+						color: currentTheme.neutralA2,
+					},
 				},
 			},
-			alt1: {
-				background: currentTheme.primary1,
-				border: currentTheme.primary1,
-				color: currentTheme.light1,
+			checkbox: {
 				active: {
 					background: currentTheme.primary2,
-					border: currentTheme.primary2,
-					color: currentTheme.light1,
 				},
-				disabled: {
-					background: currentTheme.neutral4,
-					border: currentTheme.neutral5,
-					color: currentTheme.neutralA5,
-				},
-			},
-			alt2: {
-				background: currentTheme.neutralA1,
-				border: currentTheme.neutralA1,
-				color: currentTheme.neutralA1,
-				active: {
-					background: currentTheme.neutralA4,
-					border: currentTheme.neutralA4,
-					color: currentTheme.neutralA4,
-				},
-				disabled: {
-					background: currentTheme.neutral4,
-					border: currentTheme.neutral3,
-					color: currentTheme.neutralA2,
-				},
-			},
-		},
-		checkbox: {
-			active: {
-				background: currentTheme.primary2,
-			},
-			background: currentTheme.neutral1,
-			hover: currentTheme.neutral3,
-			disabled: currentTheme.neutral5,
-		},
-		container: {
-			primary: {
 				background: currentTheme.neutral1,
-				active: currentTheme.neutral2,
+				hover: currentTheme.neutral3,
+				disabled: currentTheme.neutral5,
 			},
-			alt1: {
-				background: currentTheme.neutral3,
+			container: {
+				primary: {
+					background: currentTheme.neutral1,
+					active: currentTheme.neutral2,
+				},
+				alt1: {
+					background: currentTheme.neutral3,
+				},
+				alt2: {
+					background: currentTheme.neutral8,
+				},
+				alt3: {
+					background: currentTheme.neutral2,
+				},
+				alt4: {
+					background: currentTheme.neutral2,
+				},
+				alt5: {
+					background: currentTheme.neutralA4,
+				},
+				alt6: {
+					background: currentTheme.primary1,
+				},
+				alt7: {
+					background: currentTheme.neutralA3,
+				},
+				alt8: {
+					background: currentTheme.dark1,
+				},
+				alt9: {
+					background: currentTheme.primary1,
+				},
+				alt10: {
+					background: currentTheme.primary2,
+				},
+				alt11: {
+					background: currentTheme.dark2,
+				},
 			},
-			alt2: {
-				background: currentTheme.neutral8,
-			},
-			alt3: {
-				background: currentTheme.neutral2,
-			},
-			alt4: {
-				background: currentTheme.neutral2,
-			},
-			alt5: {
-				background: currentTheme.neutralA4,
-			},
-			alt6: {
-				background: currentTheme.primary1,
-			},
-			alt7: {
-				background: currentTheme.neutralA3,
-			},
-			alt8: {
-				background: currentTheme.dark1,
-			},
-			alt9: {
-				background: currentTheme.primary1,
-			},
-			alt10: {
-				background: currentTheme.primary2,
-			},
-			alt11: {
+			contrast: {
 				background: currentTheme.dark2,
+				border: currentTheme.neutral9,
+				color: currentTheme.light1,
 			},
-		},
-		contrast: {
-			background: currentTheme.dark2,
-			border: currentTheme.neutral9,
-			color: currentTheme.light1,
-		},
-		font: {
-			primary: currentTheme.neutralA1,
-			alt1: currentTheme.neutralA4,
-			alt2: currentTheme.neutralA4,
-			alt3: currentTheme.neutral5,
-			alt4: currentTheme.neutral1,
-			alt5: currentTheme.primary1,
-			light1: currentTheme.light1,
-			light2: currentTheme.light2,
-			dark1: currentTheme.dark1,
-		},
-		form: {
-			background: currentTheme.neutral1,
-			border: currentTheme.neutral4,
-			invalid: {
-				outline: currentTheme.negative1,
-				shadow: currentTheme.negative2,
+			font: {
+				primary: currentTheme.neutralA1,
+				alt1: currentTheme.neutralA4,
+				alt2: currentTheme.neutralA4,
+				alt3: currentTheme.neutral5,
+				alt4: currentTheme.neutral1,
+				alt5: currentTheme.primary1,
+				light1: currentTheme.light1,
+				light2: currentTheme.light2,
+				dark1: currentTheme.dark1,
 			},
-			valid: {
-				outline: currentTheme.neutralA4,
-				shadow: currentTheme.neutral3,
+			form: {
+				background: currentTheme.neutral1,
+				border: currentTheme.neutral4,
+				invalid: {
+					outline: currentTheme.negative1,
+					shadow: currentTheme.negative2,
+				},
+				valid: {
+					outline: currentTheme.neutralA4,
+					shadow: currentTheme.neutral3,
+				},
+				disabled: {
+					background: currentTheme.neutral2,
+					border: currentTheme.neutral5,
+					label: currentTheme.neutralA2,
+				},
 			},
-			disabled: {
-				background: currentTheme.neutral2,
-				border: currentTheme.neutral5,
-				label: currentTheme.neutralA2,
+			gradient: {
+				start: currentTheme.primary1,
+				middle: currentTheme.primary1,
+				end: currentTheme.primary2,
 			},
-		},
-		gradient: {
-			start: currentTheme.primary1,
-			middle: currentTheme.primary1,
-			end: currentTheme.primary2,
-		},
-		icon: {
-			primary: {
-				fill: currentTheme.neutralA1,
-				active: currentTheme.neutral4,
-				disabled: currentTheme.neutralA3,
+			icon: {
+				primary: {
+					fill: currentTheme.neutralA1,
+					active: currentTheme.neutral4,
+					disabled: currentTheme.neutralA3,
+				},
+				alt1: {
+					fill: currentTheme.neutral4,
+					active: currentTheme.semiTransparent4,
+					disabled: currentTheme.neutral3,
+				},
+				alt2: {
+					fill: currentTheme.neutralA1,
+					active: currentTheme.neutralA4,
+					disabled: currentTheme.neutral3,
+				},
+				alt3: {
+					fill: currentTheme.neutralA2,
+					active: currentTheme.neutral1,
+					disabled: currentTheme.neutral3,
+				},
 			},
-			alt1: {
-				fill: currentTheme.neutral4,
-				active: currentTheme.semiTransparent4,
-				disabled: currentTheme.neutral3,
+			indicator: {
+				primary: currentTheme.positive1,
+				alt1: currentTheme.positive2,
 			},
-			alt2: {
-				fill: currentTheme.neutralA1,
-				active: currentTheme.neutralA4,
-				disabled: currentTheme.neutral3,
-			},
-			alt3: {
-				fill: currentTheme.neutralA2,
-				active: currentTheme.neutral1,
-				disabled: currentTheme.neutral3,
-			},
-		},
-		indicator: {
-			primary: currentTheme.positive1,
-			alt1: currentTheme.positive2,
-		},
-		link: {
-			color: currentTheme.neutralA1,
-			active: currentTheme.neutralA4,
-		},
-		loader: {
-			primary: currentTheme.primary2,
-			alt1: currentTheme.primary1,
-		},
-		overlay: {
-			primary: currentTheme.overlay1,
-			alt1: currentTheme.semiTransparent2,
-			alt2: currentTheme.semiTransparent3,
-			alt3: currentTheme.semiTransparent1,
-		},
-		row: {
-			active: {
-				background: currentTheme.neutral3,
-				border: currentTheme.neutral2,
-			},
-			hover: {
-				background: currentTheme.neutral2,
-			},
-		},
-		scrollbar: {
-			track: currentTheme.neutral2,
-			thumb: currentTheme.neutral3,
-		},
-		shadow: {
-			primary: currentTheme.semiTransparent5,
-			alt1: currentTheme.neutral4,
-			alt2: currentTheme.neutralA7,
-			alt3: currentTheme.semiTransparent2,
-		},
-		stats: {
-			primary: currentTheme.stats.primary,
-			alt1: currentTheme.stats.alt1,
-			alt2: currentTheme.stats.alt2,
-			alt3: currentTheme.stats.alt3,
-			alt4: currentTheme.stats.alt4,
-			alt5: currentTheme.stats.alt5,
-			alt6: currentTheme.stats.alt6,
-			alt7: currentTheme.stats.alt7,
-			alt8: currentTheme.stats.alt8,
-			alt9: currentTheme.stats.alt9,
-			alt10: currentTheme.stats.alt10,
-		},
-		tabs: {
-			color: currentTheme.neutralA4,
-			active: {
-				background: currentTheme.primary1,
+			link: {
 				color: currentTheme.neutralA1,
+				active: currentTheme.neutralA4,
+			},
+			loader: {
+				primary: currentTheme.primary2,
+				alt1: currentTheme.primary1,
+			},
+			overlay: {
+				primary: currentTheme.overlay1,
+				alt1: currentTheme.semiTransparent2,
+				alt2: currentTheme.semiTransparent3,
+				alt3: currentTheme.semiTransparent1,
+			},
+			row: {
+				active: {
+					background: currentTheme.neutral3,
+					border: currentTheme.neutral2,
+				},
+				hover: {
+					background: currentTheme.neutral2,
+				},
+			},
+			scrollbar: {
+				track: currentTheme.neutral2,
+				thumb: currentTheme.neutral3,
+			},
+			shadow: {
+				primary: currentTheme.semiTransparent5,
+				alt1: currentTheme.neutral4,
+				alt2: currentTheme.neutralA7,
+				alt3: currentTheme.semiTransparent2,
+			},
+			stats: {
+				primary: currentTheme.stats.primary,
+				alt1: currentTheme.stats.alt1,
+				alt2: currentTheme.stats.alt2,
+				alt3: currentTheme.stats.alt3,
+				alt4: currentTheme.stats.alt4,
+				alt5: currentTheme.stats.alt5,
+				alt6: currentTheme.stats.alt6,
+				alt7: currentTheme.stats.alt7,
+				alt8: currentTheme.stats.alt8,
+				alt9: currentTheme.stats.alt9,
+				alt10: currentTheme.stats.alt10,
+			},
+			tabs: {
+				color: currentTheme.neutralA4,
+				active: {
+					background: currentTheme.primary1,
+					color: currentTheme.neutralA1,
+				},
+			},
+			view: {
+				background: currentTheme.neutral1,
+			},
+			warning: {
+				primary: currentTheme.negative1,
+				alt1: currentTheme.negative2,
 			},
 		},
-		view: {
-			background: currentTheme.neutral1,
+		typography: {
+			family: {
+				primary: `'Inter', sans-serif`,
+				alt1: `'Quantico', sans-serif`,
+			},
+			size: {
+				xxxSmall: '12px',
+				xxSmall: '13px',
+				xSmall: '14px',
+				small: '15px',
+				base: '16px',
+				lg: '18px',
+				xLg: '24px',
+				h1: 'clamp(38px, 4.5vw, 62px)',
+				h2: 'clamp(32px, 3.75vw, 44px)',
+				h4: 'clamp(24px, 2.5vw, 34px)',
+			},
+			weight: {
+				medium: '500',
+				bold: '600',
+				xBold: '700',
+				xxBold: '800',
+			},
 		},
-		warning: {
-			primary: currentTheme.negative1,
-			alt1: currentTheme.negative2,
-		},
-	},
-	typography: {
-		family: {
-			primary: `'Inter', sans-serif`,
-			alt1: `'Quantico', sans-serif`,
-		},
-		size: {
-			xxxSmall: '12px',
-			xxSmall: '13px',
-			xSmall: '14px',
-			small: '15px',
-			base: '16px',
-			lg: '18px',
-			xLg: '24px',
-			h1: 'clamp(38px, 4.5vw, 62px)',
-			h2: 'clamp(32px, 3.75vw, 44px)',
-			h4: 'clamp(24px, 2.5vw, 34px)',
-		},
-		weight: {
-			medium: '500',
-			bold: '600',
-			xBold: '700',
-			xxBold: '800',
-		},
-	},
-});
+	};
+};

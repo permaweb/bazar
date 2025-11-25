@@ -50,12 +50,16 @@ export function CustomThemeProvider(props: CustomThemeProviderProps) {
 
 	function getTheme() {
 		let themeObject: any;
-		switch (current) {
+		const themeType = current || 'light';
+		switch (themeType) {
 			case 'light':
 				themeObject = lightTheme;
 				break;
 			case 'dark':
 				themeObject = darkTheme;
+				break;
+			default:
+				themeObject = lightTheme;
 				break;
 		}
 		return theme(themeObject);
