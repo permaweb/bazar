@@ -32,7 +32,7 @@ export const language = {
 		complete: `Complete`,
 		confirmListing: `Confirm Listing`,
 		confirmOrderCancel: `Confirm Order Cancellation`,
-		confirmOrderCancelInfo: `This Will Remove the Active Listing That You Have Created on This Asset. The Asset Will Be Removed from the UCM and Sent Back to Your Profile.`,
+		confirmOrderCancelInfo: `This will remove the active listing you have created on this asset. The amount the listing was created for will be transferred back to you.`,
 		confirmPurchase: `Confirm Purchase`,
 		confirmTransfer: `Confirm Transfer`,
 		connect: `Connect`,

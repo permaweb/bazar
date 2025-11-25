@@ -2,7 +2,6 @@ import React from 'react';
 import PermawebLibs from '@permaweb/libs';
 
 import Arweave from 'arweave';
-import AOProfile from '@permaweb/aoprofile';
 
 import { Loader } from 'components/atoms/Loader';
 import { Panel } from 'components/molecules/Panel';
@@ -71,7 +70,7 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 	const [arnsAvatarUrl, _setArnsAvatarUrl] = React.useState<string | null>(null);
 
 	const [tokenBalances, setTokenBalances] = React.useState<{
-		[address: string]: { profileBalance: number; walletBalance: number };
+		[address: string]: { profileBalance: string; walletBalance: string };
 	} | null>({});
 	const [toggleTokenBalanceUpdate, setToggleTokenBalanceUpdate] = React.useState<boolean>(false);
 	const [allTokensLoaded, setAllTokensLoaded] = React.useState<boolean>(false);
@@ -174,8 +173,6 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 
 	React.useEffect(() => {
 		const fetchBalances = async () => {
-			if (!arProvider.walletAddress || !profile?.id) return;
-
 			try {
 				// Helper function to normalize balance response
 				const normalizeBalance = (balanceResponse: any) => {
@@ -187,16 +184,16 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 					if (typeof balanceResponse === 'object' && balanceResponse.Balance !== undefined) {
 						const balanceValue = balanceResponse.Balance;
 						if (balanceValue === '0' || balanceValue === 0) {
-							return 0;
+							return '0';
 						}
-						return Number(balanceValue) || null;
+						return BigInt(balanceValue).toString() || null;
 					}
 
 					// Otherwise, treat the response itself as the balance
 					if (balanceResponse === '0' || balanceResponse === 0) {
-						return 0;
+						return '0';
 					}
-					return Number(balanceResponse) || null;
+					return BigInt(balanceResponse).toString() || null;
 				};
 
 				const fetchBalance = async (
@@ -214,14 +211,14 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 					} catch (err) {
 						console;
 						console.error('Balance fetch failed:', { processId, recipient, err });
-						setTokenField(processId, field, 0);
+						setTokenField(processId, field, '0');
 					}
 				};
 
 				const setTokenField = (
 					tokenId: string,
 					field: 'walletBalance' | 'profileBalance',
-					value?: number,
+					value?: string,
 					_error?: unknown
 				) => {
 					setTokenBalances((prev) => ({
@@ -240,9 +237,17 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 				const tokensToLoad = allTokensLoaded ? allTokens : allTokens.slice(0, 3);
 
 				for (const [token] of tokensToLoad) {
-					fetchBalance(token, arProvider.walletAddress, 'walletBalance');
-					fetchBalance(token, profile.id, 'profileBalance');
-					await new Promise((r) => setTimeout(r, 200));
+					if (arProvider.walletAddress) {
+						fetchBalance(token, arProvider.walletAddress, 'walletBalance');
+					} else {
+						setTokenField(token, 'walletBalance', '0');
+					}
+
+					if (profile?.id) {
+						fetchBalance(token, profile.id, 'profileBalance');
+					} else {
+						setTokenField(token, 'profileBalance', '0');
+					}
 				}
 			} catch (e) {
 				if (process.env.NODE_ENV === 'development') {
@@ -252,29 +257,7 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 		};
 
 		fetchBalances();
-	}, [arProvider.walletAddress, profile, toggleTokenBalanceUpdate, allTokensLoaded]);
-
-	// React.useEffect(() => {
-	// 	if (!arProvider.walletAddress) {
-	// 		setArnsPrimaryName(null);
-	// 		setArnsAvatarUrl(null);
-	// 		return;
-	// 	}
-
-	// 	(async function () {
-	// 		try {
-	// 			const arnsData = await getArNSDataForAddress(arProvider.walletAddress);
-
-	// 			setArnsPrimaryName(arnsData.primaryName);
-	// 			const avatarUrl = arnsData.logo ? getTxEndpoint(arnsData.logo) : null;
-	// 			setArnsAvatarUrl(avatarUrl);
-	// 		} catch (err) {
-	// 			console.error('PermawebProvider - ArNS error:', err);
-	// 			setArnsPrimaryName(null);
-	// 			setArnsAvatarUrl(null);
-	// 		}
-	// 	})();
-	// }, [arProvider.walletAddress]);
+	}, [arProvider.walletAddress, profile?.id, toggleTokenBalanceUpdate, allTokensLoaded]);
 
 	async function resolveProfile(opts?: { hydrate?: boolean }) {
 		try {
@@ -288,12 +271,6 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 				fetchedProfile = await libs.getProfileById(cachedProfile.id, opts);
 			} else {
 				fetchedProfile = await libs.getProfileByWalletAddress(arProvider.walletAddress);
-
-				if (!fetchedProfile?.id) {
-					isLegacyProfile = true;
-					const aoProfile = AOProfile.init({ ao: connect({ MODE: 'legacy' }) });
-					fetchedProfile = await aoProfile.getProfileByWalletAddress({ address: arProvider.walletAddress });
-				}
 			}
 
 			let profileToUse = { ...fetchedProfile, isLegacyProfile };

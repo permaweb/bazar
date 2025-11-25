@@ -9,7 +9,7 @@ import { Loader } from 'components/atoms/Loader';
 import { Panel } from 'components/molecules/Panel';
 import { ProfileManage } from 'components/organisms/ProfileManage';
 import { AO, ASSETS, REDIRECTS, URLS } from 'helpers/config';
-import { formatAddress, formatCount, getTotalTokenBalance } from 'helpers/utils';
+import { formatAddress, getTotalTokenBalance } from 'helpers/utils';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useCustomThemeProvider } from 'providers/CustomThemeProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
@@ -34,7 +34,8 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 	const [showWalletDropdown, setShowWalletDropdown] = React.useState<boolean>(false);
 	const [showProfileManage, setShowProfileManage] = React.useState<boolean>(false);
 
-	const [copied, setCopied] = React.useState<boolean>(false);
+	const [copiedWalletAddress, setCopiedWalletAddress] = React.useState<boolean>(false);
+	const [copiedProfileId, setCopiedProfileId] = React.useState<boolean>(false);
 	const [label, setLabel] = React.useState<string | null>(null);
 	const [isSystemTheme, setIsSystemTheme] = React.useState<boolean>(
 		!localStorage.getItem('preferredTheme') || localStorage.getItem('isSystemTheme') === 'true'
@@ -108,15 +109,21 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 		}
 	}
 
-	const copyAddress = React.useCallback(async (address: string) => {
-		if (address) {
-			if (address.length > 0) {
-				await navigator.clipboard.writeText(address);
-				setCopied(true);
-				setTimeout(() => setCopied(false), 2000);
-			}
+	const copyWalletAddress = React.useCallback(async () => {
+		if (arProvider.walletAddress) {
+			await navigator.clipboard.writeText(arProvider.walletAddress);
+			setCopiedWalletAddress(true);
+			setTimeout(() => setCopiedWalletAddress(false), 2000);
 		}
-	}, []);
+	}, [arProvider.walletAddress]);
+
+	const copyProfileId = React.useCallback(async () => {
+		if (permawebProvider.profile?.id) {
+			await navigator.clipboard.writeText(permawebProvider.profile.id);
+			setCopiedProfileId(true);
+			setTimeout(() => setCopiedProfileId(false), 2000);
+		}
+	}, [permawebProvider.profile?.id]);
 
 	function handleThemeChange(theme: 'light' | 'dark' | 'dimmed') {
 		setIsSystemTheme(false);
@@ -240,7 +247,7 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 							/>
 						)}
 					</S.DBalancesHeaderWrapper>
-					<S.BalanceLine>
+					{/* <S.BalanceLine>
 						<ReactSVG src={ASSETS.ar} />
 						<span>{formatCount(arProvider.arBalance ? arProvider.arBalance.toString() : '0')}</span>
 						<S.TokenLink>
@@ -252,7 +259,7 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 								<span>{language.viewAr}</span>
 							</Link>
 						</S.TokenLink>
-					</S.BalanceLine>
+					</S.BalanceLine> */}
 					{availableTokens && (
 						<>
 							{availableTokens
@@ -286,18 +293,10 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 					)}
 				</S.DBalancesWrapper>
 				<S.DBodyWrapper>
-					{permawebProvider.profile && permawebProvider.profile.id && (
-						<>
-							<li onClick={() => copyAddress(permawebProvider.profile.id)}>
-								<ReactSVG src={ASSETS.copy} />
-								{copied ? `${language.copied}!` : language.copyProfileId}
-							</li>
-							<li onClick={() => handleDropdownAction(() => setShowProfileManage(true))}>
-								<ReactSVG src={ASSETS.edit} />
-								{language.editProfile}
-							</li>
-						</>
-					)}
+					<li onClick={copyWalletAddress}>
+						<ReactSVG src={ASSETS.wallet} />
+						{copiedWalletAddress ? `${language.copied}!` : language.copyWalletAddress}
+					</li>
 					<li onClick={() => handleDropdownAction(handleProfileAction)}>
 						{permawebProvider.profile && permawebProvider.profile.id ? (
 							<>
@@ -311,6 +310,18 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 							</>
 						)}
 					</li>
+					{permawebProvider.profile && permawebProvider.profile.id && (
+						<>
+							<li onClick={() => handleDropdownAction(() => setShowProfileManage(true))}>
+								<ReactSVG src={ASSETS.edit} />
+								{language.editProfile}
+							</li>
+							<li onClick={copyProfileId}>
+								<ReactSVG src={ASSETS.copy} />
+								{copiedProfileId ? `${language.copied}!` : language.copyProfileId}
+							</li>
+						</>
+					)}
 				</S.DBodyWrapper>
 				<S.DBodyWrapper>
 					<p>Appearance</p>

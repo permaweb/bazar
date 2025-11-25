@@ -6,6 +6,8 @@ export const Container = styled.div`
 	height: fit-content;
 	margin: auto 0 0 0;
 	position: relative;
+	overflow-x: auto;
+	padding-bottom: 15px;
 `;
 
 export const List = styled.div`

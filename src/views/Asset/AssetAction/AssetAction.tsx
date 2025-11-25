@@ -89,7 +89,7 @@ export default function AssetAction(props: IProps) {
 	const [urlCopied, setUrlCopied] = React.useState<boolean>(false);
 
 	React.useEffect(() => {
-		if (props.asset && props.asset.state.balances) {
+		if (props.asset && props.asset.state?.balances) {
 			const balances: any = Object.keys(props.asset.state.balances).map((address: string) => {
 				return Number(props.asset.state.balances[address]);
 			});
@@ -104,7 +104,7 @@ export default function AssetAction(props: IProps) {
 	React.useEffect(() => {
 		(async function () {
 			const associatedAddresses = [];
-			if (props.asset && props.asset.state && props.asset.state.balances) {
+			if (props.asset && props.asset.state && props.asset.state?.balances) {
 				associatedAddresses.push(...Object.keys(props.asset.state.balances).map((address: string) => address));
 			}
 			if (props.asset && props.asset.orderbook?.orders) {
@@ -329,7 +329,7 @@ export default function AssetAction(props: IProps) {
 	function getOwnerOrder(listing: ListingType) {
 		if (!arProvider.walletAddress) return false;
 		if (!permawebProvider.profile || !permawebProvider.profile.id) return false;
-		return listing.creator === permawebProvider.profile.id;
+		return listing.creator === permawebProvider.profile.id || listing.creator === arProvider.walletAddress;
 	}
 
 	const copyPageUrl = React.useCallback(async () => {

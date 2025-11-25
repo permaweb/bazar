@@ -84,7 +84,7 @@ export const GlobalStyle = createGlobalStyle`
 
   h1, h2, h3, h4, h5, h6 {
     font-family: ${(props) => props.theme.typography.family.alt1};
-		font-weight: ${(props) => props.theme.typography.weight.bold};
+		font-weight: ${(props) => props.theme.typography.weight.xBold};
     color: ${(props) => props.theme.colors.font.primary};
 		overflow-wrap: anywhere;
   }

@@ -16,6 +16,7 @@ export const Header = styled.div`
 	margin: 0 0 10px 0;
 	h4 {
 		font-size: ${(props) => props.theme.typography.size.xLg};
+		font-family: ${(props) => props.theme.typography.family.alt1};
 	}
 `;
 
@@ -156,7 +157,7 @@ export const TableRow = styled.div`
 	display: flex;
 	align-items: center;
 	padding: 0 15px;
-	background: ${(props) => props.theme.colors.container.primary.active};
+	background: ${(props) => props.theme.colors.container.primary.background};
 	> * {
 		flex: 1;
 		margin: 0 10px;
@@ -285,6 +286,7 @@ export const AssetDataWrapper = styled.div`
 	position: relative;
 	overflow: hidden;
 	transition: all 100ms;
+	background: ${(props) => props.theme.colors.container.primary.active};
 	a {
 		width: 100%;
 		position: relative;
