@@ -115,6 +115,15 @@ export const CampaignButton = styled.a`
 	position: relative;
 	overflow: hidden;
 
+
+	@media (max-width: 720px) {
+		span {
+		    padding: 0px 0px 0px 0px !important;
+			display: none !important;
+		}
+	}
+
+	
 	&:hover {
 		opacity: 0.8;
 		color: #fff; !important
@@ -126,7 +135,7 @@ export const CampaignButton = styled.a`
 	}
 
 	@media (max-width: ${STYLING.cutoffs.secondary}) {
-		display: none;
+		display: flex;
 	}
 `;
 
@@ -156,6 +165,10 @@ export const CampaignIcon = styled.div`
 		width: 100%;
 		fill: #fff;
 		transform: translateY(2px);
+	}
+	@media (max-width: 720px) {
+		height: 16px;
+		width: 16px;
 	}
 `;
 

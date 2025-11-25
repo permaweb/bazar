@@ -29,11 +29,20 @@ const MEDIA_URLS = {
 };
 
 const Campaign3Responsive = createGlobalStyle`
-	@media (max-width: 900px) {
+	@media (max-width: 1120px) {
 		.campaign3-cards-row {
 			flex-direction: column !important;
 			align-items: center !important;
 			gap: 32px;
+		}
+	}
+
+	@media (max-width: 543px) {
+		.campaign3-outer-card {
+			background: transparent !important;
+		}
+		.campaign3-inner-card {
+			margin-top: 0 !important;
 		}
 	}
 
@@ -66,7 +75,8 @@ function LoadingState() {
 	return (
 		<div
 			style={{
-				width: 503.5,
+				width: '100%',
+				maxWidth: 503.5,
 				height: 438,
 				background: '#fff',
 				borderRadius: 16,
@@ -207,10 +217,12 @@ function RewardCard({
 
 	return (
 		<div
+			className="campaign3-outer-card"
 			style={{
 				background: cardBgColor,
 				borderRadius: cardBgRadius,
-				width: 743.5,
+				width: '100%',
+				maxWidth: 743.5,
 				display: 'flex',
 				flexDirection: 'column',
 				justifyContent: 'flex-start',
@@ -221,10 +233,12 @@ function RewardCard({
 		>
 			{!connected && <div style={customOverlayStyle} />}
 			<div
+				className="campaign3-inner-card"
 				style={{
 					background: '#fff',
 					borderRadius: 16,
-					width: 503.5,
+					width: '100%',
+					maxWidth: 503.5,
 					marginTop: 100,
 					marginBottom: 48,
 					padding: '8px 0',
@@ -235,8 +249,9 @@ function RewardCard({
 			>
 				<div
 					style={{
-						width: 487.5,
-						height: 487.5,
+						width: '100%',
+						maxWidth: 487.5,
+						aspectRatio: '1/1',
 						borderRadius: 16,
 						overflow: 'hidden',
 						marginBottom: 24,
@@ -280,7 +295,9 @@ function RewardCard({
 				</div>
 				<div
 					style={{
-						width: 486.5,
+						width: '100%',
+						maxWidth: 486.5,
+						boxSizing: 'border-box',
 						height: 83,
 						padding: '0 16px',
 						borderRadius: 16,
@@ -319,7 +336,7 @@ function RewardCard({
 						onClick={handleClaim}
 						disabled={isLoading}
 						style={{
-							width: 'calc(100% - 32px)',
+							width: 'calc(100% - 16px)',
 							padding: '20px 12px',
 							border: 'none',
 							borderRadius: 8,
@@ -333,7 +350,7 @@ function RewardCard({
 							justifyContent: 'center',
 							alignItems: 'center',
 							gap: 8,
-							margin: '16px',
+							margin: '16px 0px 16px 0px',
 						}}
 					>
 						{isLoading ? (
@@ -362,7 +379,7 @@ function RewardCard({
 						target={'_blank'}
 						rel={'noreferrer'}
 						style={{
-							width: 'calc(100% - 32px)',
+							width: 'calc(100% - 16px)',
 							padding: '20px 12px',
 							border: 'none',
 							borderRadius: 8,
@@ -376,7 +393,7 @@ function RewardCard({
 							justifyContent: 'center',
 							alignItems: 'center',
 							gap: 8,
-							margin: '16px',
+							margin: '16px 0px 16px 0px',
 						}}
 					>
 						{cta.iconSrc && (
@@ -554,7 +571,9 @@ function RequirementsBox({
 				background: '#F1F1F1',
 				borderRadius: 16,
 				padding: 20,
-				width: 486.5,
+				width: '100%',
+				maxWidth: 486.5,
+				boxSizing: 'border-box',
 				display: 'flex',
 				flexDirection: 'column',
 				...style,
@@ -630,7 +649,9 @@ function GuideBox({
 				background: '#F1F1F1',
 				borderRadius: 16,
 				padding: 20,
-				width: 486.5,
+				width: '100%',
+				maxWidth: 486.5,
+				boxSizing: 'border-box',
 				display: 'flex',
 				flexDirection: 'column',
 				...style,
