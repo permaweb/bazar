@@ -245,6 +245,7 @@ function RewardCard({
 					display: 'flex',
 					alignItems: 'center',
 					flexDirection: 'column',
+					gap: 12,
 				}}
 			>
 				<div
@@ -254,7 +255,6 @@ function RewardCard({
 						aspectRatio: '1/1',
 						borderRadius: 16,
 						overflow: 'hidden',
-						marginBottom: 24,
 						display: 'flex',
 						justifyContent: 'center',
 						alignItems: 'center',
@@ -266,7 +266,7 @@ function RewardCard({
 							height="100%"
 							style={{
 								objectFit: 'cover',
-								borderRadius: 16,
+								borderRadius: 8,
 								width: '100%',
 								height: '100%',
 							}}
@@ -288,7 +288,7 @@ function RewardCard({
 								width: '100%',
 								height: '100%',
 								objectFit: 'cover',
-								borderRadius: 16,
+								borderRadius: 8,
 							}}
 						/>
 					)}
@@ -300,11 +300,10 @@ function RewardCard({
 						boxSizing: 'border-box',
 						height: 83,
 						padding: '0 16px',
-						borderRadius: 16,
+						borderRadius: 8,
 						background: '#F1F1F1',
 						display: 'flex',
 						alignItems: 'center',
-						marginBottom: 24,
 					}}
 				>
 					<div style={{ width: 157, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
@@ -326,10 +325,10 @@ function RewardCard({
 					<RequirementsBox
 						requirements={requirements}
 						subheaderText={requirementsSubheader}
-						style={{ marginTop: 0, marginBottom: guide ? 16 : 2 }}
+						style={{ marginTop: 0, marginBottom: guide ? 0 : 2 }}
 					/>
 				)}
-				{connected && guide && <GuideBox steps={guide} subheaderText={guideSubheader} style={{ marginTop: 16 }} />}
+				{connected && guide && <GuideBox steps={guide} subheaderText={guideSubheader} style={{ marginTop: 0 }} />}
 				{connected && !cta && atLeastOneRequirementMet && onClaim && (
 					<button
 						className={'campaign3-cta'}
@@ -350,7 +349,7 @@ function RewardCard({
 							justifyContent: 'center',
 							alignItems: 'center',
 							gap: 8,
-							margin: '16px 0px 16px 0px',
+							margin: '0px 0px 0px 0px',
 						}}
 					>
 						{isLoading ? (
@@ -393,7 +392,7 @@ function RewardCard({
 							justifyContent: 'center',
 							alignItems: 'center',
 							gap: 8,
-							margin: '16px 0px 16px 0px',
+							margin: '0px 0px 0px 0px',
 						}}
 					>
 						{cta.iconSrc && (
@@ -434,7 +433,7 @@ function HeroSection({ onConnect, isVerifying }: { onConnect: () => void; isVeri
 				width: 503.5,
 				height: 438,
 				background: '#fff',
-				borderRadius: 16,
+				borderRadius: 8,
 				boxShadow: '0 4px 32px rgba(0,0,0,0.18)',
 				display: 'flex',
 				flexDirection: 'column',
@@ -448,7 +447,7 @@ function HeroSection({ onConnect, isVerifying }: { onConnect: () => void; isVeri
 			<div
 				style={{
 					background: '#F1F1F1',
-					borderRadius: 12,
+					borderRadius: 8,
 					margin: 8,
 					padding: 16,
 					height: 'calc(100% - 16px)',
@@ -497,7 +496,7 @@ function HeroSection({ onConnect, isVerifying }: { onConnect: () => void; isVeri
 						alt="I Survived AO Testnet"
 						style={{
 							width: 260,
-							borderRadius: 12,
+							borderRadius: 8,
 							marginRight: 4,
 						}}
 					/>
@@ -517,7 +516,7 @@ function HeroSection({ onConnect, isVerifying }: { onConnect: () => void; isVeri
 								background: '#1a1a1a',
 								color: '#fff',
 								border: 'none',
-								borderRadius: 16,
+								borderRadius: 8,
 								padding: '16px 0px',
 								fontSize: 14,
 								fontWeight: 500,
@@ -569,7 +568,7 @@ function RequirementsBox({
 		<div
 			style={{
 				background: '#F1F1F1',
-				borderRadius: 16,
+				borderRadius: 8,
 				padding: 20,
 				width: '100%',
 				maxWidth: 486.5,
@@ -647,7 +646,7 @@ function GuideBox({
 		<div
 			style={{
 				background: '#F1F1F1',
-				borderRadius: 16,
+				borderRadius: 8,
 				padding: 20,
 				width: '100%',
 				maxWidth: 486.5,
@@ -939,7 +938,7 @@ export default function Campaign() {
 		backdropFilter: 'blur(8px)',
 		transition: 'opacity 0.3s',
 		opacity: !arProvider.walletAddress ? 1 : 0,
-		borderRadius: 16,
+		borderRadius: 8,
 	};
 
 	return (
