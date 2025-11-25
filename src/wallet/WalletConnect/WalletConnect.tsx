@@ -36,12 +36,35 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 
 	const [copied, setCopied] = React.useState<boolean>(false);
 	const [label, setLabel] = React.useState<string | null>(null);
+	const [isSystemTheme, setIsSystemTheme] = React.useState<boolean>(
+		!localStorage.getItem('preferredTheme') || localStorage.getItem('isSystemTheme') === 'true'
+	);
 
 	React.useEffect(() => {
 		setTimeout(() => {
 			setShowWallet(true);
 		}, 200);
 	}, [arProvider.walletAddress]);
+
+	React.useEffect(() => {
+		if (!isSystemTheme) return;
+
+		const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+		const handleChange = (e: MediaQueryListEvent | MediaQueryList) => {
+			const newTheme = e.matches ? 'dark' : 'light';
+			themeProvider.setCurrent(newTheme);
+		};
+
+		// Set initial theme
+		handleChange(mediaQuery);
+
+		// Listen for changes
+		mediaQuery.addEventListener('change', handleChange);
+
+		return () => {
+			mediaQuery.removeEventListener('change', handleChange);
+		};
+	}, [isSystemTheme, themeProvider]);
 
 	React.useEffect(() => {
 		if (!showWallet) {
@@ -95,8 +118,18 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 		}
 	}, []);
 
-	function handleToggleTheme() {
-		themeProvider.setCurrent(themeProvider.current === 'light' ? 'dark' : 'light');
+	function handleThemeChange(theme: 'light' | 'dark' | 'dimmed') {
+		setIsSystemTheme(false);
+		localStorage.setItem('isSystemTheme', 'false');
+		themeProvider.setCurrent(theme);
+	}
+
+	function handleSystemTheme() {
+		setIsSystemTheme(true);
+		localStorage.setItem('isSystemTheme', 'true');
+		const preferredTheme =
+			window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+		themeProvider.setCurrent(preferredTheme);
 	}
 
 	function handleDisconnect() {
@@ -195,7 +228,18 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 						</S.DHeader>
 					</S.DHeaderFlex>
 				</S.DHeaderWrapper>
-				<S.DBalancesWrapper className={'border-wrapper-alt1'}>
+				<S.DBalancesWrapper>
+					<S.DBalancesHeaderWrapper>
+						<p>Token Balances</p>
+						{!permawebProvider.allTokensLoaded && (
+							<Button
+								type={'alt3'}
+								label={'Show More'}
+								handlePress={() => permawebProvider.loadAllTokens()}
+								height={30}
+							/>
+						)}
+					</S.DBalancesHeaderWrapper>
 					<S.BalanceLine>
 						<ReactSVG src={ASSETS.ar} />
 						<span>{formatCount(arProvider.arBalance ? arProvider.arBalance.toString() : '0')}</span>
@@ -241,17 +285,6 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 						</>
 					)}
 				</S.DBalancesWrapper>
-				{!permawebProvider.allTokensLoaded && (
-					<S.DBalancesAction>
-						<Button
-							type={'primary'}
-							label={'Show More'}
-							handlePress={() => permawebProvider.loadAllTokens()}
-							height={40}
-							fullWidth
-						/>
-					</S.DBalancesAction>
-				)}
 				<S.DBodyWrapper>
 					{permawebProvider.profile && permawebProvider.profile.id && (
 						<>
@@ -278,16 +311,29 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 							</>
 						)}
 					</li>
-					<li onClick={handleToggleTheme}>
-						{themeProvider.current === 'light' ? (
-							<>
-								<ReactSVG src={ASSETS.dark} /> {`${language.useDarkDisplay}`}
-							</>
-						) : (
-							<>
-								<ReactSVG src={ASSETS.light} /> {`${language.useLightDisplay}`}
-							</>
-						)}
+				</S.DBodyWrapper>
+				<S.DBodyWrapper>
+					<p>Appearance</p>
+					<li onClick={handleSystemTheme} className={isSystemTheme ? 'active' : ''}>
+						<ReactSVG src={ASSETS.system} /> {`System`}
+					</li>
+					<li
+						onClick={() => handleThemeChange('light')}
+						className={!isSystemTheme && themeProvider.current === 'light' ? 'active' : ''}
+					>
+						<ReactSVG src={ASSETS.light} /> {`Light`}
+					</li>
+					<li
+						onClick={() => handleThemeChange('dimmed')}
+						className={!isSystemTheme && themeProvider.current === 'dimmed' ? 'active' : ''}
+					>
+						<ReactSVG src={ASSETS.dim} /> {`Dimmed`}
+					</li>
+					<li
+						onClick={() => handleThemeChange('dark')}
+						className={!isSystemTheme && themeProvider.current === 'dark' ? 'active' : ''}
+					>
+						<ReactSVG src={ASSETS.dark} /> {`Dark`}
 					</li>
 				</S.DBodyWrapper>
 				<S.DFooterWrapper>
@@ -353,6 +399,8 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 							: `${language.createProfile}!`
 					}
 					handleClose={() => setShowProfileManage(false)}
+					width={555}
+					closeHandlerDisabled
 				>
 					<S.PManageWrapper>
 						<ProfileManage

@@ -51,6 +51,7 @@ export type AssetOrderType = {
 	quantity: string | null;
 	token: string | null;
 	currency: string | null;
+	side?: 'Ask' | 'Bid' | string;
 };
 
 export type LicenseValueType = {
@@ -216,7 +217,7 @@ export type FormFieldType = 'number' | 'password';
 
 export type TabType = 'primary' | 'alt1';
 
-export type AssetMarketActionOrderType = 'buy' | 'sell' | 'transfer';
+export type AssetMarketActionOrderType = 'buy' | 'sell' | 'list' | 'bid' | 'transfer';
 
 export type ReduxActionType = {
 	type: string;

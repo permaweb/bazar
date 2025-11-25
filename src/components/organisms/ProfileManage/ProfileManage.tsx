@@ -108,6 +108,7 @@ export default function ProfileManage(props: IProps) {
 							message: `${language.profileUpdated}!`,
 							status: 'success',
 						});
+						permawebProvider.refreshProfile();
 						handleUpdate();
 					} else {
 						debug(updateResponse);

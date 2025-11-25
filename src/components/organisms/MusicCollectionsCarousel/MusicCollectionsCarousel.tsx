@@ -3,7 +3,7 @@ import Carousel from 'react-multi-carousel';
 import { Link } from 'react-router-dom';
 import { ReactSVG } from 'react-svg';
 
-import { getAssetById, getCollectionById } from 'api';
+import { getAssetByIdGQL, getAssetStateById, getCollectionById } from 'api';
 
 import { PlayButton } from 'components/atoms/PlayButton';
 import { ASSETS, DEFAULTS, URLS } from 'helpers/config';
@@ -58,9 +58,36 @@ export default function MusicCollectionsCarousel(props: IProps) {
 
 				for (const assetId of assetsToCheck) {
 					try {
-						const asset = await getAssetById({ id: assetId, libs: permawebProvider.libs });
+						const [structuredAsset, processState] = await Promise.all([
+							getAssetByIdGQL({ id: assetId }),
+							getAssetStateById({ id: assetId, libs: permawebProvider.libs }),
+						]);
 
-						if (asset && asset.data && asset.data.contentType && asset.data.contentType.startsWith('audio/')) {
+						if (
+							structuredAsset &&
+							structuredAsset.data &&
+							structuredAsset.data.contentType &&
+							structuredAsset.data.contentType.startsWith('audio/')
+						) {
+							// Construct full asset detail
+							const asset: any = {
+								...structuredAsset,
+								state: processState
+									? {
+											name: processState.Name || processState.name || null,
+											ticker: processState.Ticker || processState.ticker || null,
+											denomination: processState.Denomination || processState.denomination || null,
+											logo: processState.Logo || processState.logo || null,
+											balances: processState.Balances || null,
+											transferable:
+												processState.Transferable !== undefined
+													? processState.Transferable.toString() === 'true'
+													: true,
+											metadata: processState.Metadata || null,
+									  }
+									: null,
+								orderbook: null,
+							};
 							// Found an audio asset, play it
 							props.onPlayTrack(asset);
 							break;

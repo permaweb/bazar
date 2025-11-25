@@ -5,6 +5,8 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Loader } from 'components/atoms/Loader';
 import { URLS } from 'helpers/config';
 
+import { loadDoc } from '../load-docs';
+
 import * as S from './styles';
 
 export default function DocTemplate(props: { doc?: string; id?: string }) {
@@ -71,20 +73,24 @@ export default function DocTemplate(props: { doc?: string; id?: string }) {
 	}, [hashState]);
 
 	React.useEffect(() => {
-		if (props.doc) {
-			import(`../MD/${props.doc}.md`)
-				.then((module) => setMarkdown(module.default))
-				.catch((error) => console.error('Error fetching markdown: ', error));
-		} else {
-			if (!active) {
-				navigate(`${URLS.docs}overview/introduction`);
-			} else {
-				import(`../MD/${active}.md`)
-					.then((module) => setMarkdown(module.default))
-					.catch((error) => console.error('Error fetching markdown: ', error));
+		(async () => {
+			try {
+				if (props.doc) {
+					const content = await loadDoc(props.doc);
+					setMarkdown(content as string);
+				} else {
+					if (!active) {
+						navigate(`${URLS.docs}overview/introduction`);
+					} else {
+						const content = await loadDoc(active);
+						setMarkdown(content as string);
+					}
+				}
+			} catch (error) {
+				console.error('Error fetching markdown: ', error);
 			}
-		}
-	}, [active]);
+		})();
+	}, [active, props.doc]);
 
 	const renderers = {
 		h2: (props: any) => {

@@ -34,7 +34,7 @@ export default function FormField(props: IProps) {
 					{props.label && <S.Label>{props.required ? formatRequiredField(props.label) : props.label}</S.Label>}
 					{props.tooltip && (
 						<IconButton
-							type={'primary'}
+							type={'alt1'}
 							active={false}
 							src={ASSETS.info}
 							handlePress={() => setShowTooltip(!showTooltip)}

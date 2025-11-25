@@ -1,10 +1,16 @@
-const readDirectory = (ctx: any) => {
+// Import all markdown files using Vite's glob import
+// Destructure import.meta to satisfy static analysis requirements
+const { glob } = import.meta;
+const docsModules = glob('./MD/**/*.md', { as: 'raw' });
+
+const buildDirectory = () => {
 	const dir = {};
-	ctx.keys().forEach((key: any) => {
-		const parts = key.slice(2).split('/');
+	Object.keys(docsModules).forEach((key: string) => {
+		// Remove './MD/' prefix and split by '/'
+		const parts = key.replace('./MD/', '').split('/');
 		let currentLevel: any = dir;
-		parts.forEach((part: any) => {
-			const isFile = /\.md$/.test(part);
+		parts.forEach((part: string, index: number) => {
+			const isFile = index === parts.length - 1 && /\.md$/.test(part);
 			const name = isFile ? part.slice(0, -3) : part;
 			if (isFile) {
 				if (!currentLevel.files) {
@@ -22,12 +28,15 @@ const readDirectory = (ctx: any) => {
 	return dir;
 };
 
-const docsContext: any = (require as any).context('./MD', true, /\.md$/);
-
 export const getDocTree = () => {
-	return readDirectory(docsContext);
+	return buildDirectory();
 };
 
-export const loadDoc = (docPath: any) => {
-	return docsContext(`./${docPath}.md`).default;
+export const loadDoc = async (docPath: string) => {
+	const path = `./MD/${docPath}.md`;
+	const loader = docsModules[path];
+	if (loader) {
+		return await loader();
+	}
+	return '';
 };
