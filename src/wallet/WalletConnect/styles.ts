@@ -397,6 +397,7 @@ export const TokenLink = styled.div`
 export const DFooterWrapper = styled(DBodyWrapper)`
 	border-bottom: none;
 	padding: 0 7.5px 10px 7.5px;
+	margin: 10px 0 0 0;
 	svg {
 		height: 15.5px;
 		width: 15.5px;
