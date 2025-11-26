@@ -245,7 +245,7 @@ export const DBodyWrapper = styled.ul`
 		}
 		&:hover {
 			color: ${(props) => props.theme.colors.font.primary};
-			background: ${(props) => props.theme.colors.container.primary.active};
+			background: ${(props) => props.theme.colors.container.alt1.background};
 		}
 
 		&.active::after {
@@ -266,7 +266,7 @@ export const DBodyWrapper = styled.ul`
 			border-radius: ${STYLING.dimensions.radius.primary};
 			&:hover {
 				color: ${(props) => props.theme.colors.font.primary};
-				background: ${(props) => props.theme.colors.container.primary.active};
+				background: ${(props) => props.theme.colors.container.alt1.background};
 			}
 		}
 	}
@@ -289,7 +289,7 @@ export const DBalancesHeaderWrapper = styled.div`
 	justify-content: space-between;
 	align-items: center;
 	gap: 15px;
-	margin: 0 0 1.5px 0;
+	margin: 7.5px 0 1.5px 0;
 
 	button {
 		padding: 7.5px 15.5px 7.5px 15.5px;

@@ -2,13 +2,12 @@ import React from 'react';
 import PermawebLibs from '@permaweb/libs';
 
 import Arweave from 'arweave';
-import AOProfile from '@permaweb/aoprofile';
 
 import { Loader } from 'components/atoms/Loader';
 import { Panel } from 'components/molecules/Panel';
 import { ProfileManage } from 'components/organisms/ProfileManage';
 import { connect, createSigner } from 'helpers/aoconnect';
-import { AO, HB, STORAGE, TOKEN_REGISTRY } from 'helpers/config';
+import { HB, STORAGE, TOKEN_REGISTRY } from 'helpers/config';
 import { clearTokenStatusCache } from 'helpers/tokenValidation';
 
 import { useArweaveProvider } from './ArweaveProvider';
@@ -20,7 +19,9 @@ interface PermawebContextState {
 	profile: any;
 	showProfileManager: boolean;
 	setShowProfileManager: (toggle: boolean) => void;
-	tokenBalances: { [address: string]: { profileBalance: string | number; walletBalance: string | number } } | null;
+	tokenBalances: {
+		[address: string]: { profileBalance: string | number | null; walletBalance: string | number | null };
+	} | null;
 	toggleTokenBalanceUpdate: boolean;
 	setToggleTokenBalanceUpdate: (toggleUpdate: boolean) => void;
 	handleInitialProfileCache: (address: string, profileId: string) => void;
@@ -71,12 +72,12 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 	const [arnsAvatarUrl, _setArnsAvatarUrl] = React.useState<string | null>(null);
 
 	const [tokenBalances, setTokenBalances] = React.useState<{
-		[address: string]: { profileBalance: number; walletBalance: number };
+		[address: string]: { profileBalance: string | null; walletBalance: string | null };
 	} | null>({});
 	const [toggleTokenBalanceUpdate, setToggleTokenBalanceUpdate] = React.useState<boolean>(false);
 	const [allTokensLoaded, setAllTokensLoaded] = React.useState<boolean>(false);
 
-	const isInitialMount = React.useRef(true);
+	// const isInitialMount = React.useRef(true);
 
 	React.useEffect(() => {
 		const deps: any = {
@@ -174,8 +175,6 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 
 	React.useEffect(() => {
 		const fetchBalances = async () => {
-			if (!arProvider.walletAddress || !profile?.id) return;
-
 			try {
 				// Helper function to normalize balance response
 				const normalizeBalance = (balanceResponse: any) => {
@@ -187,16 +186,18 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 					if (typeof balanceResponse === 'object' && balanceResponse.Balance !== undefined) {
 						const balanceValue = balanceResponse.Balance;
 						if (balanceValue === '0' || balanceValue === 0) {
-							return 0;
+							return '0';
 						}
-						return Number(balanceValue) || null;
+						const result = BigInt(balanceValue).toString();
+						return result;
 					}
 
 					// Otherwise, treat the response itself as the balance
 					if (balanceResponse === '0' || balanceResponse === 0) {
-						return 0;
+						return '0';
 					}
-					return Number(balanceResponse) || null;
+					const result = BigInt(balanceResponse).toString();
+					return result;
 				};
 
 				const fetchBalance = async (
@@ -210,27 +211,40 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 							action: 'Balance',
 							tags: [{ name: 'Recipient', value: recipient }],
 						});
-						setTokenField(processId, field, normalizeBalance(resp));
+						const normalized = normalizeBalance(resp);
+						setTokenField(processId, field, normalized);
 					} catch (err) {
-						console;
 						console.error('Balance fetch failed:', { processId, recipient, err });
-						setTokenField(processId, field, 0);
+						setTokenField(processId, field, '0');
 					}
 				};
 
 				const setTokenField = (
 					tokenId: string,
 					field: 'walletBalance' | 'profileBalance',
-					value?: number,
+					value?: string | null,
 					_error?: unknown
 				) => {
-					setTokenBalances((prev) => ({
-						...prev,
-						[tokenId]: {
-							...prev[tokenId],
+					setTokenBalances((prev) => {
+						const existingToken: any = prev?.[tokenId] || {};
+						const newToken: any = {
+							walletBalance: existingToken.walletBalance ?? null,
+							profileBalance: existingToken.profileBalance ?? null,
 							[field]: value,
-						},
-					}));
+						};
+
+						// If wallet balance just loaded and there's no profile, set profile balance to '0'
+						if (field === 'walletBalance' && value !== null && value !== undefined && !profile?.id) {
+							if (newToken.profileBalance === null || newToken.profileBalance === undefined) {
+								newToken.profileBalance = '0';
+							}
+						}
+
+						return {
+							...prev,
+							[tokenId]: newToken,
+						};
+					});
 				};
 
 				// Get all tokens sorted by priority
@@ -240,9 +254,27 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 				const tokensToLoad = allTokensLoaded ? allTokens : allTokens.slice(0, 3);
 
 				for (const [token] of tokensToLoad) {
-					fetchBalance(token, arProvider.walletAddress, 'walletBalance');
-					fetchBalance(token, profile.id, 'profileBalance');
-					await new Promise((r) => setTimeout(r, 200));
+					// Check if this token already has balance data loaded (not null and not undefined)
+					const hasWalletBalance =
+						tokenBalances?.[token]?.walletBalance !== undefined && tokenBalances?.[token]?.walletBalance !== null;
+					const hasProfileBalance =
+						tokenBalances?.[token]?.profileBalance !== undefined && tokenBalances?.[token]?.profileBalance !== null;
+
+					// Handle wallet balance
+					if (arProvider.walletAddress) {
+						if (!hasWalletBalance) {
+							setTokenField(token, 'walletBalance', null);
+						}
+						fetchBalance(token, arProvider.walletAddress, 'walletBalance');
+					}
+
+					// Handle profile balance
+					if (profile?.id) {
+						if (!hasProfileBalance) {
+							setTokenField(token, 'profileBalance', null);
+						}
+						fetchBalance(token, profile.id, 'profileBalance');
+					}
 				}
 			} catch (e) {
 				if (process.env.NODE_ENV === 'development') {
@@ -252,29 +284,7 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 		};
 
 		fetchBalances();
-	}, [arProvider.walletAddress, profile, toggleTokenBalanceUpdate, allTokensLoaded]);
-
-	// React.useEffect(() => {
-	// 	if (!arProvider.walletAddress) {
-	// 		setArnsPrimaryName(null);
-	// 		setArnsAvatarUrl(null);
-	// 		return;
-	// 	}
-
-	// 	(async function () {
-	// 		try {
-	// 			const arnsData = await getArNSDataForAddress(arProvider.walletAddress);
-
-	// 			setArnsPrimaryName(arnsData.primaryName);
-	// 			const avatarUrl = arnsData.logo ? getTxEndpoint(arnsData.logo) : null;
-	// 			setArnsAvatarUrl(avatarUrl);
-	// 		} catch (err) {
-	// 			console.error('PermawebProvider - ArNS error:', err);
-	// 			setArnsPrimaryName(null);
-	// 			setArnsAvatarUrl(null);
-	// 		}
-	// 	})();
-	// }, [arProvider.walletAddress]);
+	}, [arProvider.walletAddress, profile?.id, toggleTokenBalanceUpdate, allTokensLoaded]);
 
 	async function resolveProfile(opts?: { hydrate?: boolean }) {
 		try {
@@ -284,16 +294,10 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 
 			let isLegacyProfile = false;
 
-			if (cachedProfile?.id && !cachedProfile.isLegacyProfile)
+			if (cachedProfile?.id && !cachedProfile.isLegacyProfile) {
 				fetchedProfile = await libs.getProfileById(cachedProfile.id, opts);
-			else {
+			} else {
 				fetchedProfile = await libs.getProfileByWalletAddress(arProvider.walletAddress);
-
-				if (!fetchedProfile?.id) {
-					isLegacyProfile = true;
-					const aoProfile = AOProfile.init({ ao: connect({ MODE: 'legacy' }) });
-					fetchedProfile = await aoProfile.getProfileByWalletAddress({ address: arProvider.walletAddress });
-				}
 			}
 
 			let profileToUse = { ...fetchedProfile, isLegacyProfile };
@@ -382,16 +386,19 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 			}
 		};
 
-		const setTokenField = (tokenId: string, field: 'walletBalance' | 'profileBalance', value?: number) => {
+		const setTokenField = (tokenId: string, field: 'walletBalance' | 'profileBalance', value?: number | null) => {
 			setTokenBalances((prev) => ({
 				...prev,
 				[tokenId]: {
 					...prev?.[tokenId],
-					profileBalance: null,
 					[field]: value,
 				},
 			}));
 		};
+
+		// Set loading state before fetching
+		setTokenField(tokenId, 'walletBalance', null);
+		setTokenField(tokenId, 'profileBalance', null);
 
 		// Fetch balance for the specific token
 		await fetchBalance(tokenId, arProvider.walletAddress, 'walletBalance');

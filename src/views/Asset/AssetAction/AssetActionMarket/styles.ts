@@ -6,15 +6,13 @@ import { STYLING } from 'helpers/config';
 export const Wrapper = styled.div``;
 
 export const TabsWrapper = styled.div`
-	margin: 22.5px 0 0 0;
+	margin: 7.5px 0 0 0;
 	padding: 20px;
 `;
 
 export const TabWrapper = styled.div<{ label: string; icon?: string }>``;
 
-export const TabContent = styled.div`
-	margin: 20px 0 0 0;
-`;
+export const TabContent = styled.div``;
 
 export const DrawerContent = styled(GS.DrawerContent)`
 	@media (max-width: ${STYLING.cutoffs.secondary}) {
@@ -25,4 +23,11 @@ export const DrawerContent = styled(GS.DrawerContent)`
 			}
 		}
 	}
+`;
+
+export const Divider = styled.div`
+	height: 1px;
+	width: 100%;
+	border-top: 1px dotted ${(props) => props.theme.colors.border.primary};
+	margin: 22.5px 0 15px 0 !important;
 `;

@@ -44,10 +44,6 @@ export default function TokenSelector(props: TokenSelectorProps) {
 	}, [selectedToken.id, permawebProvider.tokenBalances]);
 
 	const handleTokenSelect = (tokenId: string) => {
-		// Don't allow selection of disabled tokens
-		if (props.disabledTokens?.includes(tokenId)) {
-			return;
-		}
 		const newToken = availableTokens.find((token) => token.id === tokenId);
 		if (newToken) {
 			setSelectedToken(newToken);
@@ -130,55 +126,52 @@ export default function TokenSelector(props: TokenSelectorProps) {
 
 					{isOpen && (
 						<S.DropdownOptions className={'border-wrapper-alt2 scroll-wrapper-hidden'}>
-							{availableTokens.map((token) => {
-								const balance = getTokenBalance(token.id);
-								const isDisabled = props.disabledTokens?.includes(token.id);
+							{availableTokens
+								.filter((token) => !props.disabledTokens?.includes(token.id))
+								.map((token) => {
+									const balance = getTokenBalance(token.id);
 
-								return (
-									<S.DropdownOption
-										key={token.id}
-										onClick={() => handleTokenSelect(token.id)}
-										className={token.id === selectedToken.id ? 'selected' : ''}
-										style={{
-											opacity: isDisabled ? 0.5 : 1,
-											cursor: isDisabled ? 'not-allowed' : 'pointer',
-											pointerEvents: isDisabled ? 'none' : 'auto',
-										}}
-									>
-										<S.TokenOption>
-											<S.TokenLogo>
-												{token.logo ? (
-													<img src={getTxEndpoint(token.logo)} alt={token.name} />
-												) : (
-													<div
-														style={{
-															width: '24px',
-															height: '24px',
-															backgroundColor: '#e5e5e5',
-															borderRadius: '50%',
-															display: 'flex',
-															alignItems: 'center',
-															justifyContent: 'center',
-															fontSize: '12px',
-															fontWeight: 'bold',
-															color: '#666',
-														}}
-													>
-														{token.symbol.charAt(0)}
-													</div>
-												)}
-											</S.TokenLogo>
-											<S.TokenInfo>
-												<S.TokenName>{token.name.replace(' Token', '')}</S.TokenName>
-												<S.TokenSymbol>{token.symbol}</S.TokenSymbol>
-											</S.TokenInfo>
-											<S.BalanceAndHealth>
-												<S.TokenBalance>{balance !== null ? formatCount(balance.toString()) : '-'}</S.TokenBalance>
-											</S.BalanceAndHealth>
-										</S.TokenOption>
-									</S.DropdownOption>
-								);
-							})}
+									return (
+										<S.DropdownOption
+											key={token.id}
+											onClick={() => handleTokenSelect(token.id)}
+											active={token.id === selectedToken.id}
+											className={token.id === selectedToken.id ? 'selected' : ''}
+										>
+											<S.TokenOption>
+												<S.TokenLogo>
+													{token.logo ? (
+														<img src={getTxEndpoint(token.logo)} alt={token.name} />
+													) : (
+														<div
+															style={{
+																width: '24px',
+																height: '24px',
+																backgroundColor: '#e5e5e5',
+																borderRadius: '50%',
+																display: 'flex',
+																alignItems: 'center',
+																justifyContent: 'center',
+																fontSize: '12px',
+																fontWeight: 'bold',
+																color: '#666',
+															}}
+														>
+															{token.symbol.charAt(0)}
+														</div>
+													)}
+												</S.TokenLogo>
+												<S.TokenInfo>
+													<S.TokenName>{token.name.replace(' Token', '')}</S.TokenName>
+													<S.TokenSymbol>{token.symbol}</S.TokenSymbol>
+												</S.TokenInfo>
+												<S.BalanceAndHealth>
+													<S.TokenBalance>{balance !== null ? formatCount(balance.toString()) : '-'}</S.TokenBalance>
+												</S.BalanceAndHealth>
+											</S.TokenOption>
+										</S.DropdownOption>
+									);
+								})}
 						</S.DropdownOptions>
 					)}
 				</S.CustomSelectWrapper>

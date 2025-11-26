@@ -127,21 +127,18 @@ export default function AssetActionMarket(props: IProps) {
 				</Tabs>
 				<S.TabContent>{getCurrentTab()}</S.TabContent>
 			</S.TabsWrapper>
-			{(currentTab === MARKET_ACTION_TAB_OPTIONS.buy || currentTab === MARKET_ACTION_TAB_OPTIONS.list) && (
+			{currentTab !== MARKET_ACTION_TAB_OPTIONS.transfer && (
 				<GS.DrawerWrapper>
 					<Drawer
-						title={language.activeSaleOrders}
+						title={'Active Orders'}
 						icon={ASSETS.orders}
-						content={<S.DrawerContent>{props.getCurrentListings}</S.DrawerContent>}
-					/>
-				</GS.DrawerWrapper>
-			)}
-			{(currentTab === MARKET_ACTION_TAB_OPTIONS.sell || currentTab === MARKET_ACTION_TAB_OPTIONS.bid) && (
-				<GS.DrawerWrapper>
-					<Drawer
-						title={'Active Bids'}
-						icon={ASSETS.orders}
-						content={<S.DrawerContent>{props.getCurrentBids}</S.DrawerContent>}
+						content={
+							<S.DrawerContent>
+								{props.getCurrentListings}
+								<S.Divider />
+								{props.getCurrentBids}
+							</S.DrawerContent>
+						}
 					/>
 				</GS.DrawerWrapper>
 			)}

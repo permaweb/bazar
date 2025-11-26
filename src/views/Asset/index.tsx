@@ -168,8 +168,8 @@ export default function Asset() {
 							...prevAsset,
 							data: {
 								...structuredAsset.data,
-								title: prevAsset.state?.name || structuredAsset.data.title,
-								collectionId: prevAsset.state?.metadata?.CollectionId || structuredAsset.data.collectionId,
+								title: prevAsset?.state?.name || structuredAsset?.data?.title,
+								collectionId: prevAsset?.state?.metadata?.CollectionId || structuredAsset.data.collectionId,
 							},
 						}));
 					}

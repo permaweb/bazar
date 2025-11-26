@@ -10,9 +10,9 @@ export const Wrapper = styled.div`
 export const Action = styled.button`
 	height: 55.5px;
 	width: 100%;
-	background: ${(props) => props.theme.colors.container.alt3.background};
+	background: ${(props) => props.theme.colors.container.primary.active};
 	&:hover {
-		background: ${(props) => props.theme.colors.container.alt2.background};
+		background: ${(props) => props.theme.colors.container.alt1.background};
 	}
 `;
 

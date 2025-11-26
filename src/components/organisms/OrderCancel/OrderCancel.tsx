@@ -27,18 +27,22 @@ export default function OrderCancel(props: IProps) {
 	const [response, setResponse] = React.useState<NotificationType | null>(null);
 
 	async function handleOrderCancel() {
-		if (arProvider.wallet && permawebProvider.profile?.id && permawebProvider.deps) {
+		if (arProvider.wallet && permawebProvider.deps) {
 			setLoading(true);
 			try {
+				let args: any = {
+					orderbookId: props.listing.orderbookId,
+					orderId: props.listing.id,
+					dominantToken: props.listing.token,
+					swapToken: props.listing.currency,
+				};
+
+				if (props.listing.creator === permawebProvider.profile.id) args.creatorId = permawebProvider.profile.id;
+				else args.walletAddress = arProvider.walletAddress;
+
 				const cancelOrderId = await cancelOrder(
 					permawebProvider.deps,
-					{
-						orderbookId: props.listing.orderbookId,
-						orderId: props.listing.id,
-						creatorId: permawebProvider.profile.id,
-						dominantToken: props.listing.token,
-						swapToken: props.listing.currency,
-					},
+					args,
 					(args: { processing: boolean; success: boolean; message: string }) => {
 						console.log(args.message);
 					}

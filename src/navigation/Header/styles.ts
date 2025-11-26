@@ -71,9 +71,14 @@ export const DNavWrapper = styled.div`
 	}
 	a {
 		color: ${(props) => props.theme.colors.font.primary};
-		font-family: ${(props) => props.theme.typography.family.primary};
+		font-family: ${(props) => props.theme.typography.family.alt2};
 		font-size: ${(props) => props.theme.typography.size.small};
-		font-weight: ${(props) => props.theme.typography.weight.xBold};
+		font-weight: ${(props) => props.theme.typography.weight.bold};
+		letter-spacing: 0.25px;
+
+		&:hover {
+			color: ${(props) => props.theme.colors.font.alt5};
+		}
 	}
 	@media (max-width: ${STYLING.cutoffs.secondary}) {
 		display: none;
