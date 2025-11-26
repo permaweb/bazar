@@ -16,7 +16,14 @@ const common = {
 		alt7: '#A8DDE2',
 		alt8: '#F2A9D3',
 		alt9: '#6D909E',
-		alt10: '#9E9E9E',
+		alt10: '#8e8e8e',
+	},
+	events: {
+		listing: '#b86ac2',
+		bid: '#eb9330',
+		sale: '#51af88',
+		purchase: '#667eea',
+		unlisted: '#d43b7a',
 	},
 };
 
@@ -344,6 +351,7 @@ export const theme = (currentTheme: any): DefaultTheme => ({
 			primary: currentTheme.negative1,
 			alt1: currentTheme.negative2,
 		},
+		events: { ...currentTheme.events },
 	},
 	typography: {
 		family: {

@@ -386,10 +386,10 @@ export function getTotalTokenBalance(
 ) {
 	if (
 		!tokenBalances ||
-		(tokenBalances.profileBalance === null &&
-			tokenBalances.profileBalance === undefined &&
-			tokenBalances.walletBalance === null &&
-			tokenBalances.walletBalance === undefined)
+		tokenBalances.profileBalance === null ||
+		tokenBalances.profileBalance === undefined ||
+		tokenBalances.walletBalance === null ||
+		tokenBalances.walletBalance === undefined
 	) {
 		return null;
 	}

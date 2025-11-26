@@ -22,6 +22,7 @@ export const WalletListItem = styled.button`
 	justify-content: center;
 	text-align: center;
 	padding: 15px;
+	background: ${(props) => props.theme.colors.container.primary.active} !important;
 	border: 1px solid ${(props) => props.theme.colors.border.primary} !important;
 	img {
 		width: 30px;
@@ -35,7 +36,7 @@ export const WalletListItem = styled.button`
 		font-family: ${(props) => props.theme.typography.family.alt1};
 	}
 	&:hover {
-		background: ${(props) => props.theme.colors.container.primary.active};
+		background: ${(props) => props.theme.colors.container.alt1.background} !important;
 	}
 
 	@media (max-width: ${STYLING.cutoffs.secondary}) {

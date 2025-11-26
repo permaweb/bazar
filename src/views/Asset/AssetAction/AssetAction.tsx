@@ -327,9 +327,7 @@ export default function AssetAction(props: IProps) {
 	}
 
 	function getOwnerOrder(listing: ListingType) {
-		if (!arProvider.walletAddress) return false;
-		if (!permawebProvider.profile || !permawebProvider.profile.id) return false;
-		return listing.creator === permawebProvider.profile.id || listing.creator === arProvider.walletAddress;
+		return listing.creator === permawebProvider?.profile?.id || listing.creator === arProvider.walletAddress;
 	}
 
 	const copyPageUrl = React.useCallback(async () => {

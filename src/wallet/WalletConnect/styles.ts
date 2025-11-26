@@ -289,7 +289,7 @@ export const DBalancesHeaderWrapper = styled.div`
 	justify-content: space-between;
 	align-items: center;
 	gap: 15px;
-	margin: 0 0 1.5px 0;
+	margin: 7.5px 0 1.5px 0;
 
 	button {
 		padding: 7.5px 15.5px 7.5px 15.5px;

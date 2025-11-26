@@ -259,6 +259,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 		props.asset,
 		arProvider.walletAddress,
 		permawebProvider.profile,
+		permawebProvider.tokenBalances,
 		permawebProvider.libs?.readProcess,
 		denomination,
 		tokenProvider.selectedToken.id,
@@ -1033,7 +1034,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 	function getActionDisabled() {
 		if (!arProvider.walletAddress) return true;
-		// if (!permawebProvider.profile || !permawebProvider.profile.id) return true;
+		if (orderProcessed) return false;
 		if (orderLoading) return true;
 		if (props.asset && !props.asset.state?.transferable) return true;
 		if (maxOrderQuantity <= 0 || isNaN(Number(currentOrderQuantity))) return true;
@@ -1087,7 +1088,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 				return true;
 			}
 		}
-		// For list/bid orders, we don't restrict - users can create new liquidity
 
 		return false;
 	}
@@ -1343,12 +1343,12 @@ export default function AssetActionMarketOrders(props: IProps) {
 				confirmationHeader = language.orderConfirmationDetailsListing;
 				reviewMessage = language.orderConfirmationReviewListing;
 				footer = (
-					<p>
-						· {language.sellerFee}{' '}
+					<li>
+						{language.sellerFee}{' '}
 						<Link to={URLS.docs} target={'_blank'}>
 							{language.learnMore}
 						</Link>
-					</p>
+					</li>
 				);
 				break;
 			case 'transfer':
@@ -1384,7 +1384,11 @@ export default function AssetActionMarketOrders(props: IProps) {
 					{getOrderDetails(true)}
 
 					{props.type === 'buy' && (
-						<S.ConfirmationDetailsAction active={sendToWallet} onClick={() => setSendToWallet((prev) => !prev)}>
+						<S.ConfirmationDetailsAction
+							active={sendToWallet}
+							disabled={orderProcessed}
+							onClick={() => setSendToWallet((prev) => !prev)}
+						>
 							<S.ConfirmationDetailsHeader>
 								<p>Send Tokens To Wallet</p>
 
@@ -1427,7 +1431,12 @@ export default function AssetActionMarketOrders(props: IProps) {
 						</S.ConfirmationDetailsLineWrapper>
 					</S.ConfirmationDetails>
 
-					{footer && <S.ConfirmationFooter>{footer}</S.ConfirmationFooter>}
+					<S.ConfirmationFooter>
+						{footer && <>{footer}</>}
+						<li>
+							Token Balance updates may take some time. To see your updated balances please check back in a few minutes.
+						</li>
+					</S.ConfirmationFooter>
 					<S.ConfirmationMessage success={orderProcessed && orderSuccess} warning={orderProcessed && !orderSuccess}>
 						<span>{currentNotification ? currentNotification : orderLoading ? 'Processing...' : reviewMessage}</span>
 					</S.ConfirmationMessage>

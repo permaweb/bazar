@@ -150,11 +150,11 @@ export default function Header() {
 					</S.PWrapper>
 				</div>
 			)}
-			<DelegationPanel
+			{/* <DelegationPanel
 				walletAddress={arweaveProvider.walletAddress}
 				isOpen={delegationPanelOpen}
 				onClose={() => setDelegationPanelOpen(false)}
-			/>
+			/> */}
 		</>
 	);
 }
