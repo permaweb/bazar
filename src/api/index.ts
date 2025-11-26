@@ -255,6 +255,7 @@ export async function messageResults(args: {
 	responses?: string[];
 	handler?: string;
 	timeout?: number; // Add timeout parameter for legacy assets
+	resultProcessId?: string; // Optional: query results from a different process (e.g., when using Zone Profile forwarding)
 }): Promise<any> {
 	try {
 		const tags = [{ name: 'Action', value: args.action }];
@@ -271,22 +272,85 @@ export async function messageResults(args: {
 		const timeoutMs = args.timeout || 1000;
 		await new Promise((resolve) => setTimeout(resolve, timeoutMs));
 
-		const messageResults = await results({
-			process: args.processId,
-			sort: 'DESC',
-			limit: 100,
-		});
+		// Query results from the resultProcessId if provided (for Zone Profile forwarding),
+		// otherwise query from the process we sent the message to
+		const resultProcessId = args.resultProcessId || args.processId;
 
-		if (messageResults && messageResults.edges && messageResults.edges.length) {
+		// Determine which actions to look for in results
+		const isDifferentProcess = args.resultProcessId && args.resultProcessId !== args.processId;
+		const expectedActions = isDifferentProcess ? args.responses || [] : [args.action, ...(args.responses || [])];
+
+		if (process.env.NODE_ENV === 'development') {
+			console.log('[messageResults] Querying results from process:', resultProcessId);
+			console.log('[messageResults] Looking for actions:', expectedActions);
+			console.log('[messageResults] Is different process:', isDifferentProcess);
+		}
+
+		// Retry logic for rate limiting (429 errors)
+		let messageResults = null;
+		let retries = 3;
+		let delay = 1000; // Start with 1 second delay
+
+		while (retries > 0) {
+			try {
+				messageResults = await results({
+					process: resultProcessId,
+					sort: 'DESC',
+					limit: 100,
+				});
+				break; // Success, exit retry loop
+			} catch (error: any) {
+				retries--;
+				if (error?.message?.includes('429') || error?.message?.includes('Too Many Requests')) {
+					if (retries > 0) {
+						if (process.env.NODE_ENV === 'development') {
+							console.log(`[messageResults] Rate limited, retrying in ${delay}ms... (${retries} retries left)`);
+						}
+						await new Promise((resolve) => setTimeout(resolve, delay));
+						delay *= 2; // Exponential backoff
+					} else {
+						throw error; // Re-throw if out of retries
+					}
+				} else {
+					throw error; // Re-throw non-rate-limit errors immediately
+				}
+			}
+		}
+
+		if (process.env.NODE_ENV === 'development') {
+			console.log('[messageResults] Found', messageResults?.edges?.length || 0, 'result edges');
+		}
+
+		if (!messageResults) {
+			if (process.env.NODE_ENV === 'development') {
+				console.warn('[messageResults] No results returned after retries');
+			}
+			return null;
+		}
+
+		if (messageResults.edges && messageResults.edges.length) {
 			const response = {};
 
 			for (const result of messageResults.edges) {
 				if (result.node && result.node.Messages && result.node.Messages.length) {
-					const resultSet = [args.action];
-					if (args.responses) resultSet.push(...args.responses);
+					// When querying results from a different process (Zone Profile forwarding),
+					// don't include the original action in the resultSet since it won't be in those results
+					const resultSet: string[] = [];
+					if (args.resultProcessId && args.resultProcessId !== args.processId) {
+						// Querying from different process - only look for response actions
+						if (args.responses) resultSet.push(...args.responses);
+					} else {
+						// Querying from same process - include original action
+						resultSet.push(args.action);
+						if (args.responses) resultSet.push(...args.responses);
+					}
 
 					for (const message of result.node.Messages) {
 						const action = getTagValue(message.Tags, 'Action');
+
+						if (process.env.NODE_ENV === 'development' && action) {
+							console.log('[messageResults] Found message with Action:', action);
+						}
 
 						if (action) {
 							let responseData = null;
@@ -322,7 +386,10 @@ export async function messageResults(args: {
 								}
 							}
 
-							if (Object.keys(response).length === resultSet.length) break;
+							// Break if we found all expected responses (or at least one if we're only looking for responses)
+							if (resultSet.length > 0 && Object.keys(response).length >= resultSet.length) break;
+							// If we found any response action, that's good enough
+							if (Object.keys(response).length > 0 && isDifferentProcess) break;
 						}
 					}
 				}

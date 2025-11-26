@@ -755,8 +755,18 @@ export default function Campaign() {
 				];
 			}
 
+			// When using Zone Profile forwarding, the response comes from the asset process,
+			// not the profile process, so we need to query results from the asset process
+			console.log('=== Sending Claim Request ===');
+			console.log('Target Process (message):', targetProcessId);
+			console.log('Result Process (query):', ATOMIC_ASSET_ID);
+			console.log('Action:', action);
+			console.log('Tags:', tags);
+			console.log('Is Legacy Profile:', isLegacyProfile);
+
 			const response = await messageResults({
-				processId: targetProcessId,
+				processId: targetProcessId, // Send message to profile (if new) or asset (if legacy)
+				resultProcessId: ATOMIC_ASSET_ID, // Always query results from the asset process
 				wallet: arProvider.wallet,
 				action: action,
 				tags: tags,
@@ -770,6 +780,7 @@ export default function Campaign() {
 					recipient: permawebProvider.profile.id,
 				},
 				responses: ['Claim-Success', 'Claim-Error', 'Error'],
+				timeout: 5000, // Increase timeout to 5 seconds for claim processing
 			});
 
 			console.log('=== Claim Response ===');
