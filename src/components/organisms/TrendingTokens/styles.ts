@@ -23,7 +23,7 @@ export const TokensWrapper = styled.div`
 	align-items: center;
 
 	@media (min-width: ${STYLING.cutoffs.tabletSecondary}) {
-		grid-template-columns: repeat(auto-fit, minmax(200px, calc((100% - 90px) / 4)));
+		grid-template-columns: repeat(auto-fit, minmax(200px, calc((100% - 60px) / 3)));
 	}
 
 	@media (max-width: ${STYLING.cutoffs.desktop}) {
@@ -35,7 +35,7 @@ export const TokensWrapper = styled.div`
 	}
 `;
 export const TokenWrapper = styled.button<{ disabled: boolean }>`
-	height: 300px;
+	height: 350px;
 	width: 100%;
 	overflow: hidden;
 	a {
@@ -62,8 +62,8 @@ export const TokenWrapper = styled.button<{ disabled: boolean }>`
 `;
 
 export const TokenImage = styled.div<{}>`
-	height: 150px;
-	width: 150px;
+	height: 175px;
+	width: 175px;
 	border: 1px solid ${(props) => props.theme.colors.border.primary};
 	border-radius: 50%;
 	overflow: hidden;

@@ -16,6 +16,8 @@ export const Header = styled.div`
 	margin: 0 0 10px 0;
 	h4 {
 		font-size: ${(props) => props.theme.typography.size.xLg};
+		font-family: ${(props) => props.theme.typography.family.alt1};
+		text-shadow: none;
 	}
 `;
 
@@ -93,6 +95,7 @@ export const TableHeader = styled.div`
 	width: fit-content;
 	display: flex;
 	align-items: center;
+	background: ${(props) => props.theme.colors.container.primary.active};
 	padding: 0 15px;
 	> * {
 		flex: 1;
@@ -156,7 +159,8 @@ export const TableRow = styled.div`
 	display: flex;
 	align-items: center;
 	padding: 0 15px;
-	background: ${(props) => props.theme.colors.container.primary.background};
+	background: ${(props) => props.theme.colors.container.primary.active};
+	transition: all 75ms;
 	> * {
 		flex: 1;
 		margin: 0 10px;
@@ -190,7 +194,7 @@ export const TableRow = styled.div`
 		}
 	}
 	&:hover {
-		background: ${(props) => props.theme.colors.container.primary.active};
+		background: ${(props) => props.theme.colors.container.alt1.background};
 	}
 `;
 
@@ -285,6 +289,8 @@ export const AssetDataWrapper = styled.div`
 	position: relative;
 	overflow: hidden;
 	transition: all 100ms;
+	background: ${(props) => props.theme.colors.container.primary.active};
+	border-radius: ${STYLING.dimensions.radius.alt2};
 	a {
 		width: 100%;
 		position: relative;
@@ -299,7 +305,7 @@ export const AssetDataWrapper = styled.div`
 			right: 0;
 			bottom: 0;
 			background-color: ${(props) => props.theme.colors.overlay.alt1};
-			border-radius: ${STYLING.dimensions.radius.alt2};
+			border-radius: ${STYLING.dimensions.radius.alt3};
 			opacity: 0;
 			transition: all 100ms;
 		}
@@ -331,19 +337,22 @@ export const EventWrapper = styled(TableRowValue)`
 function getEventColor(theme: DefaultTheme, type: 'Listing' | 'Bid' | 'Sale' | 'Purchase' | 'Unlisted') {
 	switch (type) {
 		case 'Listing':
-			return theme.colors.stats.alt4;
+			return theme.colors.events.listing;
 		case 'Bid':
-			return theme.colors.stats.alt6;
+			return theme.colors.events.bid;
 		case 'Sale':
-			return theme.colors.indicator.primary;
+			return theme.colors.events.sale;
 		case 'Purchase':
-			return theme.colors.stats.alt5;
+			return theme.colors.events.purchase;
 		case 'Unlisted':
-			return theme.colors.warning.primary;
+			return theme.colors.events.unlisted;
 	}
 }
 
-export const Event = styled.a<{ type?: 'Listing' | 'Sale' | 'Purchase' | 'Unlisted' }>`
+export const Event = styled.a<{
+	type?: 'Listing' | 'Sale' | 'Purchase' | 'Unlisted';
+	noAction?: boolean;
+}>`
 	height: 32.5px;
 	width: 110px;
 	display: flex;
@@ -354,8 +363,8 @@ export const Event = styled.a<{ type?: 'Listing' | 'Sale' | 'Purchase' | 'Unlist
 	overflow: hidden;
 	padding: 1.5px 7.5px;
 	background: ${(props) => (props.type ? getEventColor(props.theme, props.type) : props.theme.colors.stats.alt10)};
-	border: 1px solid ${(props) => props.theme.colors.border.alt4};
 	border-radius: ${STYLING.dimensions.radius.alt2};
+
 	p {
 		font-size: ${(props) => props.theme.typography.size.xSmall};
 		font-family: ${(props) => props.theme.typography.family.primary};
@@ -375,28 +384,33 @@ export const Event = styled.a<{ type?: 'Listing' | 'Sale' | 'Purchase' | 'Unlist
 		margin: 6.5px 0 0 0;
 	}
 
-	::after {
-		content: '';
-		position: absolute;
-		height: 100%;
-		width: 100%;
-		top: 0;
-		left: 0;
-		right: 0;
-		bottom: 0;
-		background-color: ${(props) => props.theme.colors.overlay.alt1};
-		opacity: 0;
-		transition: all 100ms;
-	}
-	&:hover::after {
-		opacity: 1;
-	}
-	&:focus::after {
-		opacity: 1;
-	}
-	&:hover {
-		cursor: pointer;
-	}
+	${(props) =>
+		!props.noAction &&
+		`
+		::after {
+			content: '';
+			position: absolute;
+			height: 100%;
+			width: 100%;
+			top: 0;
+			left: 0;
+			right: 0;
+			bottom: 0;
+			background-color: ${props.theme.colors.overlay.alt1};
+			opacity: 0;
+			transition: all 100ms;
+		}
+		&:hover::after { opacity: 1; }
+		&:focus::after { opacity: 1; }
+		&:hover { cursor: pointer; }
+	`}
+
+	${(props) =>
+		props.noAction &&
+		`
+		pointer-events: none;
+		cursor: default;
+	`}
 `;
 
 export const Entity = styled.a<{ type: 'UCM' | 'User' }>`

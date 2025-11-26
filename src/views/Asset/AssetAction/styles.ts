@@ -25,10 +25,13 @@ export const HeaderTitle = styled.div`
 	gap: 15px;
 	align-items: flex-start;
 	justify-content: space-between;
-	margin: 0 0 5px 0;
+	margin: 0 0 10px 0;
 	h4 {
 		line-height: 1.5;
+		margin: -10.5px 0 0 0;
 		white-space: break-spaces;
+		font-weight: ${(props) => props.theme.typography.weight.bold};
+		text-shadow: 1px 1px 1px ${(props) => props.theme.colors.font.alt3};
 	}
 
 	@media (max-width: ${STYLING.cutoffs.tablet}) {
@@ -136,9 +139,7 @@ export const TabsWrapper = styled.div`
 
 export const TabWrapper = styled.div<{ label: string; icon?: string }>``;
 
-export const TabContent = styled.div`
-	margin: 20px 0 0 0;
-`;
+export const TabContent = styled.div``;
 
 export const OrderCancel = styled.div`
 	margin: 0 0 0 5px;

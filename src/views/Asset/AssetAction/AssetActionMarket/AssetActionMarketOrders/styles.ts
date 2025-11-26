@@ -135,6 +135,24 @@ export const SalesDetail = styled.div`
 	}
 `;
 
+export const SalesDetailValue = styled.div`
+	display: flex;
+	align-items: center;
+	gap: 7.5px;
+
+	img {
+		height: 22.5px;
+		width: 22.5px;
+	}
+
+	p {
+		font-size: ${(props) => props.theme.typography.size.xLg};
+		font-family: ${(props) => props.theme.typography.family.alt1};
+		font-weight: ${(props) => props.theme.typography.weight.bold};
+		color: ${(props) => props.theme.colors.font.primary};
+	}
+`;
+
 export const ActionWrapper = styled.div<{ loading: string }>`
 	width: 100%;
 	position: relative;
@@ -301,7 +319,6 @@ export const ConfirmationMessage = styled(MessageWrapper)<{ success?: boolean }>
 
 export const ConfirmationDetails = styled.div`
 	margin: 20px 0 0 0;
-	padding: 12.5px 15px 15px 15px;
 `;
 
 export const ConfirmationDetailsHeader = styled.div`
@@ -336,11 +353,16 @@ export const ConfirmationDetailsLineWrapper = styled.div`
 	}
 `;
 
-export const ConfirmationDetailsAction = styled(ConfirmationDetails)<{ active: boolean }>`
+export const ConfirmationDetailsAction = styled(ConfirmationDetails)<{ active: boolean; disabled: boolean }>`
 	cursor: pointer;
 	transition: all 100ms;
+	padding: 15px;
+	border-radius: ${STYLING.dimensions.radius.primary};
+	pointer-events: ${(props) => (props.disabled ? 'none' : 'all')};
 	background: ${(props) =>
-		props.active ? props.theme.colors.indicator.primary : props.theme.colors.container.primary.background} !important;
+		props.active ? props.theme.colors.indicator.primary : props.theme.colors.container.primary.active} !important;
+	border: 1px solid
+		${(props) => (props.active ? props.theme.colors.indicator.primary : props.theme.colors.border.primary)} !important;
 
 	p {
 		color: ${(props) => (props.active ? props.theme.colors.font.light1 : props.theme.colors.font.primary)} !important;
@@ -348,7 +370,7 @@ export const ConfirmationDetailsAction = styled(ConfirmationDetails)<{ active: b
 
 	&:hover {
 		background: ${(props) =>
-			props.active ? props.theme.colors.indicator.primary : props.theme.colors.container.primary.active} !important;
+			props.active ? props.theme.colors.indicator.primary : props.theme.colors.container.alt1.background} !important;
 	}
 `;
 
@@ -388,17 +410,21 @@ export const ConfirmationDetailsLine = styled.div`
 	gap: 7.5px;
 `;
 
-export const ConfirmationFooter = styled.div`
-	padding: 11.5px 10px;
+export const ConfirmationFooter = styled.ul`
 	margin: 22.5px 0 0 0;
 	display: flex;
 	flex-direction: column;
 	gap: 7.5px;
-	p {
+	list-style: square;
+	list-style-position: inside;
+
+	li {
 		font-size: ${(props) => props.theme.typography.size.xSmall};
 		font-family: ${(props) => props.theme.typography.family.primary};
 		font-weight: ${(props) => props.theme.typography.weight.bold};
 		color: ${(props) => props.theme.colors.font.alt1};
+		line-height: 1.65;
+
 		a {
 			text-decoration: underline;
 			text-decoration-thickness: 1.25px;

@@ -381,18 +381,32 @@ export function getByteSize(input: string | Buffer): number {
 }
 
 export function getTotalTokenBalance(
-	tokenBalances: { profileBalance: number | string; walletBalance: number | string } | null
+	tokenBalances: { profileBalance: number | string; walletBalance: number | string } | null,
+	opts?: { denominated?: boolean }
 ) {
-	if (!tokenBalances || (tokenBalances.profileBalance === null && tokenBalances.walletBalance === null)) {
+	if (
+		!tokenBalances ||
+		tokenBalances.profileBalance === null ||
+		tokenBalances.profileBalance === undefined ||
+		tokenBalances.walletBalance === null ||
+		tokenBalances.walletBalance === undefined
+	) {
 		return null;
 	}
 
-	let total = 0;
+	let total: any;
 
-	if (tokenBalances.profileBalance !== null) total += Number(tokenBalances.profileBalance);
-	if (tokenBalances.walletBalance !== null) total += Number(tokenBalances.walletBalance);
+	if (opts?.denominated) {
+		total = 0;
+		if (tokenBalances.profileBalance) total += Number(tokenBalances.profileBalance);
+		if (tokenBalances.walletBalance) total += Number(tokenBalances.walletBalance);
+	} else {
+		total = BigInt(0);
+		if (tokenBalances.profileBalance) total += BigInt(tokenBalances.profileBalance);
+		if (tokenBalances.walletBalance) total += BigInt(tokenBalances.walletBalance);
+	}
 
-	return total;
+	return total.toString();
 }
 
 export function isFirefox(): boolean {

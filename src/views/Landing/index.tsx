@@ -1,5 +1,6 @@
 import React from 'react';
 import { useSelector } from 'react-redux';
+import { Link } from 'react-router-dom';
 
 import { getAllMusicCollections, getAssetByIdGQL, getCollectionById, getCollections } from 'api';
 
@@ -8,6 +9,7 @@ import { CollectionsCarousel } from 'components/organisms/CollectionsCarousel';
 import { MusicCollectionsCarousel } from 'components/organisms/MusicCollectionsCarousel';
 import { MusicPlayer } from 'components/organisms/MusicPlayer';
 import { TrendingTokens } from 'components/organisms/TrendingTokens';
+import { AO, TOKEN_REGISTRY, URLS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import { AssetDetailType, CollectionType } from 'helpers/types';
 import { useLanguageProvider } from 'providers/LanguageProvider';
@@ -245,6 +247,16 @@ export default function Landing() {
 
 	return (
 		<S.Wrapper className={'fade-in'}>
+			<S.FeaturedWrapper>
+				<h4>{'Trade AO'}</h4>
+				<S.TokenWrapper className={'fade-in border-wrapper-alt1'} disabled={false}>
+					<Link to={`${URLS.asset}${AO.ao}`}>
+						<S.TokenImage>
+							<img src={getTxEndpoint(TOKEN_REGISTRY[AO.ao].logo)} alt={'AO'} />
+						</S.TokenImage>
+					</Link>
+				</S.TokenWrapper>
+			</S.FeaturedWrapper>
 			<S.CollectionsWrapper>
 				<CollectionsCarousel collections={collections} loading={collectionsLoading} />
 			</S.CollectionsWrapper>

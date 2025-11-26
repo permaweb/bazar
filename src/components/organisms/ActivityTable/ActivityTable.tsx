@@ -327,9 +327,6 @@ export default function ActivityTable(props: IProps) {
 				let dominantToken = order.DominantToken;
 				let swapToken = order.SwapToken;
 
-				// let price = order.Price ? order.Price.toString() : '-';
-				// if (price !== '-') price = getDenominatedTokenValue(order.Quantity, order.DominantToken);
-
 				let quantity = order.Quantity ? order.Quantity.toString() : '-';
 				if (quantity !== '-') quantity = getDenominatedTokenValue(order.Quantity, order.DominantToken);
 
@@ -357,6 +354,13 @@ export default function ActivityTable(props: IProps) {
 							(Number(order.Quantity) / Number(order.Price)) * Math.pow(10, props.asset?.state?.denomination ?? 0),
 							props.asset?.data?.id
 						);
+						dominantToken = order.SwapToken;
+						swapToken = order.DominantToken;
+					}
+					if (order.IncomingSide === 'Bid') {
+						sender = order.Sender;
+						receiver = order.Receiver;
+						quantity = getDenominatedTokenValue(Number(order.Quantity), order.SwapToken);
 						dominantToken = order.SwapToken;
 						swapToken = order.DominantToken;
 					}
@@ -463,7 +467,7 @@ export default function ActivityTable(props: IProps) {
 				);
 			}
 			return (
-				<S.Event>
+				<S.Event noAction>
 					<p>N/A</p>
 				</S.Event>
 			);
@@ -506,7 +510,7 @@ export default function ActivityTable(props: IProps) {
 		}
 
 		return (
-			<S.TableWrapper className={'scroll-wrapper'}>
+			<S.TableWrapper className={'scroll-wrapper-hidden'}>
 				<S.TableHeader>
 					{!props.asset && (
 						<S.AssetWrapper>

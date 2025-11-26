@@ -15,7 +15,6 @@ import { LanguageProvider } from 'providers/LanguageProvider';
 import { PermawebProvider } from 'providers/PermawebProvider';
 import { TokenProvider } from 'providers/TokenProvider';
 import { TokenValidationProvider } from 'providers/TokenValidationProvider';
-import { WayfinderProvider } from 'providers/WayfinderProvider';
 import { persistor, store } from 'store';
 
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
@@ -34,22 +33,22 @@ ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
 								appInfo={{ name: 'Bazar' }}
 								muUrl={'https://mu.ao-testnet.xyz'}
 							>
-								<WayfinderProvider>
-									<ArweaveProvider>
-										<PermawebProvider>
-											<TokenProvider>
-												<TokenValidationProvider>
-													<AppProvider>
-														<HashRouter>
-															<GlobalStyle />
-															<App />
-														</HashRouter>
-													</AppProvider>
-												</TokenValidationProvider>
-											</TokenProvider>
-										</PermawebProvider>
-									</ArweaveProvider>
-								</WayfinderProvider>
+								{/* <WayfinderProvider> */}
+								<ArweaveProvider>
+									<PermawebProvider>
+										<TokenProvider>
+											<TokenValidationProvider>
+												<AppProvider>
+													<HashRouter>
+														<GlobalStyle />
+														<App />
+													</HashRouter>
+												</AppProvider>
+											</TokenValidationProvider>
+										</TokenProvider>
+									</PermawebProvider>
+								</ArweaveProvider>
+								{/* </WayfinderProvider> */}
 							</AOSyncProvider>
 						</AOSettingsProvider>
 					</ErrorBoundary>

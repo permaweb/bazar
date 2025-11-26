@@ -13,12 +13,14 @@ import { Slider } from 'components/atoms/Slider';
 import { TokenSelector } from 'components/atoms/TokenSelector';
 import { TxAddress } from 'components/atoms/TxAddress';
 import { Panel } from 'components/molecules/Panel';
-import { ASSETS, REDIRECTS, TOKEN_REGISTRY, URLS } from 'helpers/config';
+import { AO, ASSETS, REDIRECTS, TOKEN_REGISTRY, URLS } from 'helpers/config';
+import { getTxEndpoint } from 'helpers/endpoints';
 import { AssetOrderType } from 'helpers/types';
 import {
 	checkValidAddress,
 	formatAddress,
 	formatCount,
+	getTagValue,
 	getTotalTokenBalance,
 	reverseDenomination,
 } from 'helpers/utils';
@@ -83,6 +85,106 @@ export default function AssetActionMarketOrders(props: IProps) {
 	// Buy / Sell tokens through wallet directly, bypass profile
 	const [sendToWallet, setSendToWallet] = React.useState<boolean>(false);
 
+	// Track tokens currently being hydrated
+	const [hydratingTokens, setHydratingTokens] = React.useState<string[]>([]);
+
+	// Track hydration progress for each token (tokenId -> percentage)
+	const [hydrationProgress, setHydrationProgress] = React.useState<{ [key: string]: number }>({});
+
+	const CURRENT_AO_NODE = 'https://state.forward.computer';
+	const CURRENT_TOKEN_NODE = 'https://state-1.forward.computer';
+	const SU_URL = 'https://su-router.ao-testnet.xyz';
+
+	// Hydrate tokens on page load
+	React.useEffect(() => {
+		const assetId = props.asset?.data?.id;
+		if (assetId) {
+			hydrateProcess(assetId, resolveHBNode(assetId));
+		}
+
+		// Cleanup: remove from hydration state if asset changes
+		return () => {
+			if (assetId) {
+				setHydratingTokens((prev) => prev.filter((id) => id !== assetId));
+				setHydrationProgress((prev) => {
+					const next = { ...prev };
+					delete next[assetId];
+					return next;
+				});
+			}
+		};
+	}, [props.asset?.data?.id]);
+
+	React.useEffect(() => {
+		const tokenId = tokenProvider.selectedToken?.id;
+		if (tokenId) {
+			hydrateProcess(tokenId, resolveHBNode(tokenId));
+		}
+
+		// Cleanup: remove from hydration state if token changes
+		return () => {
+			if (tokenId) {
+				setHydratingTokens((prev) => prev.filter((id) => id !== tokenId));
+				setHydrationProgress((prev) => {
+					const next = { ...prev };
+					delete next[tokenId];
+					return next;
+				});
+			}
+		};
+	}, [tokenProvider.selectedToken?.id]);
+
+	function resolveHBNode(processId: string) {
+		return processId === AO.ao ? CURRENT_AO_NODE : CURRENT_TOKEN_NODE;
+	}
+
+	async function hydrateProcess(processId: string, node: string) {
+		console.log(`Running hydration for ${processId}...`);
+
+		try {
+			const latestSlotResponse = await fetch(`${SU_URL}/${processId}/latest`);
+			const latestSlotParsed = await latestSlotResponse.json();
+			const latestSlot = getTagValue(latestSlotParsed.assignment.tags, 'Nonce');
+
+			const currentHBSlotResponse = await fetch(`${node}/${processId}~process@1.0/compute/at-slot`);
+			const currentHBSlot = await currentHBSlotResponse.text();
+
+			if (Number(currentHBSlot) < Number(latestSlot)) {
+				setHydratingTokens((prev) => (prev.includes(processId) ? prev : [...prev, processId]));
+
+				// Set initial progress
+				const initialProgress = Math.floor((Number(currentHBSlot) / Number(latestSlot)) * 100);
+				setHydrationProgress((prev) => ({ ...prev, [processId]: initialProgress }));
+
+				await fetch(`${node}/${processId}~process@1.0/now`);
+
+				let updatedHBSlot = currentHBSlot;
+				while (Number(updatedHBSlot) < Number(latestSlot)) {
+					await new Promise((resolve) => setTimeout(resolve, 1000));
+					const polledResponse = await fetch(`${node}/${processId}~process@1.0/compute/at-slot`);
+					updatedHBSlot = await polledResponse.text();
+
+					// Calculate and update progress percentage using the newly fetched slot
+					const progress = Math.floor((Number(currentHBSlot) / Number(latestSlot)) * 100);
+					console.log(`Hydration progress for ${processId}: ${progress}%`);
+					setHydrationProgress((prev) => ({ ...prev, [processId]: progress }));
+				}
+
+				// Set to 100% when complete
+				setHydrationProgress((prev) => ({ ...prev, [processId]: 100 }));
+			}
+		} catch (e: any) {
+			console.error(e);
+		} finally {
+			setHydratingTokens((prev) => prev.filter((id) => id !== processId));
+			setHydrationProgress((prev) => {
+				const next = { ...prev };
+				delete next[processId];
+				return next;
+			});
+		}
+	}
+
 	React.useEffect(() => {
 		if (props.asset) {
 			if (props.asset.state) {
@@ -95,11 +197,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 					}
 				}
 
-				if (
-					arProvider.walletAddress &&
-					permawebProvider.profile?.id &&
-					permawebProvider.tokenBalances?.[props.asset.data.id]
-				) {
+				if (arProvider.walletAddress && permawebProvider.tokenBalances?.[props.asset.data.id]) {
 					const profileBalance = Number(permawebProvider.tokenBalances?.[props.asset.data.id].profileBalance);
 					const walletBalance = Number(permawebProvider.tokenBalances?.[props.asset.data.id].walletBalance);
 
@@ -152,18 +250,18 @@ export default function AssetActionMarketOrders(props: IProps) {
 					};
 
 					(async function () {
-						if (permawebProvider.profile?.id) {
-							let calculatedOwnerBalance = await fetchBalance(props.asset.data.id, permawebProvider.profile?.id);
-							let calculatedWalletBalance = await fetchBalance(props.asset.data.id, arProvider.walletAddress);
+						let calculatedOwnerBalance = 0;
+						if (permawebProvider.profile?.id)
+							calculatedOwnerBalance = await fetchBalance(props.asset.data.id, permawebProvider.profile?.id);
+						let calculatedWalletBalance = await fetchBalance(props.asset.data.id, arProvider.walletAddress);
 
-							if (denomination) {
-								calculatedOwnerBalance = calculatedOwnerBalance / denomination;
-								calculatedWalletBalance = calculatedWalletBalance / denomination;
-							}
-
-							setConnectedBalance(calculatedOwnerBalance);
-							setConnectedWalletBalance(calculatedWalletBalance);
+						if (denomination) {
+							calculatedOwnerBalance = calculatedOwnerBalance / denomination;
+							calculatedWalletBalance = calculatedWalletBalance / denomination;
 						}
+
+						setConnectedBalance(calculatedOwnerBalance);
+						setConnectedWalletBalance(calculatedWalletBalance);
 					})();
 				}
 
@@ -262,6 +360,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 		props.asset,
 		arProvider.walletAddress,
 		permawebProvider.profile,
+		permawebProvider.tokenBalances,
 		permawebProvider.libs?.readProcess,
 		denomination,
 		tokenProvider.selectedToken.id,
@@ -331,7 +430,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 				setInsufficientBalance(true);
 			} else {
 				const totalAmount = getTotalOrderAmount();
-				let orderAmount = isNaN(Number(totalAmount)) ? BigInt(0) : BigInt(totalAmount);
+				let orderAmount = isNaN(Number(totalAmount)) ? BigInt(0) : BigInt(Math.floor(Number(totalAmount)));
 				if (props.type === 'buy' && denomination) {
 					orderAmount = BigInt(orderAmount) / BigInt(denomination);
 				}
@@ -358,7 +457,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 	}, [props.type]);
 
 	async function handleSubmit() {
-		if (props.asset && arProvider.wallet && permawebProvider.profile?.id) {
+		if (props.asset && arProvider.wallet) {
 			if (props.type === 'transfer') {
 				try {
 					await handleTransfer();
@@ -390,14 +489,43 @@ export default function AssetActionMarketOrders(props: IProps) {
 				}
 			}
 
-			try {
-				handleStatusUpdate(true, false, false, 'Transferring balance from wallet to profile...');
-				await handleWalletToProfileTransfer();
-			} catch (e: any) {
-				handleStatusUpdate(false, true, false, e);
+			// Determine if we need to transfer from wallet to profile
+			const transferQuantity = getTransferQuantity().toString();
+			let useWalletAddress = false;
+
+			// For list/bid orders, check if wallet has sufficient balance
+			// if (props.type === 'list' || props.type === 'bid') {
+			// @ts-ignore
+			let _processId: string;
+			let walletBalance: bigint = BigInt(0);
+
+			if (props.type === 'bid') {
+				_processId = tokenProvider.selectedToken.id;
+				walletBalance = BigInt(permawebProvider.tokenBalances[tokenProvider.selectedToken.id]?.walletBalance || 0);
+			} else if (props.type === 'list') {
+				_processId = props.asset.data.id;
+				if (connectedWalletBalance)
+					walletBalance = BigInt(
+						denomination ? Math.floor(connectedWalletBalance * denomination) : connectedWalletBalance
+					);
 			}
 
-			const transferQuantity = getTransferQuantity().toString();
+			// If wallet has sufficient balance, use wallet address directly
+			if (walletBalance >= BigInt(transferQuantity)) {
+				useWalletAddress = true;
+				console.log('Using wallet address directly for order creation (sufficient balance)');
+			}
+			// }
+
+			if (!useWalletAddress) {
+				try {
+					handleStatusUpdate(true, false, false, 'Transferring balance from wallet to profile...');
+					await handleWalletToProfileTransfer();
+				} catch (e: any) {
+					handleStatusUpdate(false, true, false, e);
+				}
+			}
+
 			const unitPrice = getUnitPrice()?.toString();
 
 			let dominantToken = null;
@@ -429,11 +557,10 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 			try {
 				let action = 'Run-Action';
-				if (permawebProvider.profile.isLegacyProfile) action = 'Transfer';
+				if (permawebProvider.profile?.isLegacyProfile) action = 'Transfer';
 
 				const data: any = {
 					orderbookId: currentOrderbook,
-					creatorId: permawebProvider.profile.id,
 					baseToken: props.asset.data.id, // Always the primary token in the pair
 					quoteToken: tokenProvider.selectedToken.id, // Always the secondary token in the pair
 					dominantToken: dominantToken, // The dominant token of this specific order
@@ -441,6 +568,18 @@ export default function AssetActionMarketOrders(props: IProps) {
 					quantity: transferQuantity,
 					action: action,
 				};
+
+				// For buy orders, if sendToWallet is true, set walletAddress to receive tokens directly to wallet
+				if (props.type === 'buy' && sendToWallet) {
+					data.walletAddress = arProvider.walletAddress;
+				} else {
+					if (props.type === 'list' || props.type === 'bid') {
+						if (useWalletAddress) data.walletAddress = arProvider.walletAddress;
+						else data.creatorId = permawebProvider.profile?.id;
+					} else {
+						data.creatorId = permawebProvider.profile?.id;
+					}
+				}
 
 				if (unitPrice) data.unitPrice = unitPrice.toString();
 
@@ -455,8 +594,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 					data.quoteTokenDenomination = transferDenomination.toString();
 				}
 
-				console.log(data);
-
 				const orderId = await createOrder(
 					permawebProvider.deps,
 					data,
@@ -467,6 +604,10 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 				setOrderId(orderId);
 
+				props.toggleUpdate();
+				arProvider.setToggleProfileUpdate(!arProvider.toggleProfileUpdate);
+				permawebProvider.setToggleTokenBalanceUpdate(!permawebProvider.toggleTokenBalanceUpdate);
+
 				// if (props.type === 'buy') {
 				// 	const streaks = await readHandler({
 				// 		processId: AO.pixl,
@@ -474,11 +615,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 				// 	});
 				// 	dispatch(streakActions.setStreaks(streaks.Streaks));
 				// }
-
-				// Trigger asset and orderbook refresh to show the new order
-				props.toggleUpdate();
-				arProvider.setToggleProfileUpdate(!arProvider.toggleProfileUpdate);
-				permawebProvider.setToggleTokenBalanceUpdate(!permawebProvider.toggleTokenBalanceUpdate);
 			} catch (e: any) {
 				handleStatusUpdate(false, true, false, e.message ?? 'Error creating order in UCM');
 			}
@@ -494,18 +630,20 @@ export default function AssetActionMarketOrders(props: IProps) {
 			case 'buy':
 				const totalAmount = getTotalOrderAmount();
 				transferQuantity = isNaN(Number(totalAmount)) ? '0' : totalAmount.toString();
-				if (denomination) transferQuantity = (BigInt(transferQuantity) / BigInt(denomination)).toString();
+				if (denomination)
+					transferQuantity = (BigInt(Math.floor(Number(transferQuantity))) / BigInt(denomination)).toString();
 				break;
 			case 'bid':
 				// Bid: Transfer the total currency amount (price * quantity)
 				const bidTotalAmount = getTotalOrderAmount();
 				transferQuantity = isNaN(Number(bidTotalAmount)) ? '0' : bidTotalAmount.toString();
-				// if (denomination) transferQuantity = (BigInt(transferQuantity) * BigInt(denomination)).toString();
 				break;
 			case 'sell':
 			case 'list':
 			case 'transfer':
-				if (denomination) transferQuantity = (BigInt(currentOrderQuantity) * BigInt(denomination)).toString();
+				if (denomination) {
+					transferQuantity = BigInt(Math.floor(Number(currentOrderQuantity) * Number(denomination))).toString();
+				}
 				break;
 		}
 
@@ -526,8 +664,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 				calculatedUnitPrice = BigInt(Math.floor(Number(updatedUnitPrice) * transferDenomination));
 			}
 		}
-
-		console.log(calculatedUnitPrice);
 
 		return calculatedUnitPrice;
 	}
@@ -995,9 +1131,9 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 	function getActionDisabled() {
 		if (!arProvider.walletAddress) return true;
-		if (!permawebProvider.profile || !permawebProvider.profile.id) return true;
+		if (orderProcessed) return false;
 		if (orderLoading) return true;
-		if (props.asset && !props.asset.state.transferable) return true;
+		if (props.asset && !props.asset.state?.transferable) return true;
 		if (maxOrderQuantity <= 0 || isNaN(Number(currentOrderQuantity))) return true;
 		if (
 			Number(currentOrderQuantity) <= 0 ||
@@ -1049,7 +1185,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 				return true;
 			}
 		}
-		// For list/bid orders, we don't restrict - users can create new liquidity
 
 		return false;
 	}
@@ -1106,10 +1241,13 @@ export default function AssetActionMarketOrders(props: IProps) {
 						<p>{'Your Balance'}</p>
 						<span>
 							{formatCount(
-								getTotalTokenBalance({
-									profileBalance: connectedBalance,
-									walletBalance: connectedWalletBalance,
-								}).toString()
+								getTotalTokenBalance(
+									{
+										profileBalance: connectedBalance,
+										walletBalance: connectedWalletBalance,
+									},
+									{ denominated: true }
+								).toString()
 							)}
 						</span>
 					</S.TotalQuantityLine>
@@ -1127,9 +1265,9 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 		let totalAmount = getTotalOrderAmount();
 		if (props.type === 'buy' && denomination && denomination > 1)
-			totalAmount = BigInt(totalAmount) / BigInt(denomination);
+			totalAmount = BigInt(Math.floor(Number(totalAmount))) / BigInt(denomination);
 
-		const amount = isNaN(Number(totalAmount)) ? BigInt(0) : BigInt(totalAmount);
+		const amount = isNaN(Number(totalAmount)) ? BigInt(0) : BigInt(Math.floor(Number(totalAmount)));
 		const orderCurrency = selectedTokenId;
 
 		return (
@@ -1142,37 +1280,50 @@ export default function AssetActionMarketOrders(props: IProps) {
 		);
 	}
 
-	function getOrderDetails(useWrapper: boolean) {
+	let dominantToken = null;
+	// let swapToken = null;
+
+	function getOrderDetails(_useWrapper: boolean) {
 		let quantityLabel: string | null = null;
 		// let percentageLabel: string | null = null;
 
 		switch (props.type) {
 			case 'buy':
 				quantityLabel = language.totalPurchaseQuantity;
+				dominantToken = props.asset.data.id;
+				// swapToken = props.asset.data.id;
 				// percentageLabel = language.totalPurchasePercentage;
 				break;
 			case 'bid':
 				quantityLabel = 'Total Bid Quantity';
+				dominantToken = props.asset.data.id;
+				// swapToken = props.asset.data.id;
 				break;
 			case 'sell':
 				quantityLabel = 'Total Sale Quantity';
+				dominantToken = props.asset.data.id;
 				break;
 			case 'list':
 				quantityLabel = language.totalListingQuantity;
+				dominantToken = props.asset.data.id;
 				// percentageLabel = language.totalListingPercentage;
 				break;
 			case 'transfer':
 				quantityLabel = language.totalTransferQuantity;
+				dominantToken = props.asset.data.id;
 				// percentageLabel = language.totalTransferPercentage;
 				break;
 		}
 
 		return (
-			<S.SalesWrapper useWrapper={useWrapper} className={useWrapper ? 'border-wrapper-alt1' : ''}>
+			<S.SalesWrapper useWrapper={false}>
 				<S.SalesLine>
 					<S.SalesDetail>
 						<span>{quantityLabel}</span>
-						<p>{formatCount(currentOrderQuantity.toString())}</p>
+						<S.SalesDetailValue>
+							{TOKEN_REGISTRY[dominantToken] && <img src={getTxEndpoint(TOKEN_REGISTRY[dominantToken].logo)} />}
+							<p>{formatCount(currentOrderQuantity.toString())}</p>
+						</S.SalesDetailValue>
 					</S.SalesDetail>
 					{/* <S.SalesDetail>
 						<span>{percentageLabel}</span>
@@ -1289,12 +1440,12 @@ export default function AssetActionMarketOrders(props: IProps) {
 				confirmationHeader = language.orderConfirmationDetailsListing;
 				reviewMessage = language.orderConfirmationReviewListing;
 				footer = (
-					<p>
-						· {language.sellerFee}{' '}
+					<li>
+						{language.sellerFee}{' '}
 						<Link to={URLS.docs} target={'_blank'}>
 							{language.learnMore}
 						</Link>
-					</p>
+					</li>
 				);
 				break;
 			case 'transfer':
@@ -1331,8 +1482,8 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 					{props.type === 'buy' && (
 						<S.ConfirmationDetailsAction
-							className={'border-wrapper-primary'}
 							active={sendToWallet}
+							disabled={orderProcessed}
 							onClick={() => setSendToWallet((prev) => !prev)}
 						>
 							<S.ConfirmationDetailsHeader>
@@ -1351,7 +1502,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 						</S.ConfirmationDetailsAction>
 					)}
 
-					<S.ConfirmationDetails className={'border-wrapper-primary'}>
+					<S.ConfirmationDetails>
 						<S.ConfirmationDetailsHeader>
 							<p>{props.type === 'transfer' ? 'Transfer Details' : confirmationHeader}</p>
 						</S.ConfirmationDetailsHeader>
@@ -1377,7 +1528,12 @@ export default function AssetActionMarketOrders(props: IProps) {
 						</S.ConfirmationDetailsLineWrapper>
 					</S.ConfirmationDetails>
 
-					{footer && <S.ConfirmationFooter className={'border-wrapper-primary'}>{footer}</S.ConfirmationFooter>}
+					<S.ConfirmationFooter>
+						{footer && <>{footer}</>}
+						<li>
+							Token Balance updates may take some time. To see your updated balances please check back in a few minutes.
+						</li>
+					</S.ConfirmationFooter>
 					<S.ConfirmationMessage success={orderProcessed && orderSuccess} warning={orderProcessed && !orderSuccess}>
 						<span>{currentNotification ? currentNotification : orderLoading ? 'Processing...' : reviewMessage}</span>
 					</S.ConfirmationMessage>
@@ -1398,19 +1554,14 @@ export default function AssetActionMarketOrders(props: IProps) {
 						maxValue={maxOrderQuantity}
 						handleChange={(e: React.ChangeEvent<HTMLInputElement>) => handleQuantityInput(e)}
 						label={language.assetQuantityInfo}
-						disabled={
-							!arProvider.walletAddress ||
-							!permawebProvider.profile ||
-							!permawebProvider.profile.id ||
-							(props.type !== 'bid' && maxOrderQuantity <= 0) ||
-							orderLoading
-						}
+						disabled={!arProvider.walletAddress || (props.type !== 'bid' && maxOrderQuantity <= 0) || orderLoading}
 						invalid={{
 							status:
 								Number(currentOrderQuantity) < 0 ||
 								(props.type !== 'bid' && Number(currentOrderQuantity) > maxOrderQuantity),
 							message: null,
 						}}
+						useFractional={maxOrderQuantity < 1}
 					/>
 					{props.type !== 'bid' && (
 						<S.MaxQty>
@@ -1418,12 +1569,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 								type={'primary'}
 								label={language.max}
 								handlePress={() => setCurrentOrderQuantity(maxOrderQuantity)}
-								disabled={
-									!arProvider.walletAddress ||
-									!permawebProvider.profile ||
-									!permawebProvider.profile.id ||
-									maxOrderQuantity <= 0
-								}
+								disabled={!arProvider.walletAddress || maxOrderQuantity <= 0}
 								noMinWidth
 							/>
 						</S.MaxQty>
@@ -1449,11 +1595,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 											: `${language.assetQuantity} (${language.max}: ${formatCount(maxOrderQuantity.toString())})`
 									}
 									disabled={
-										!arProvider.walletAddress ||
-										!permawebProvider.profile ||
-										!permawebProvider.profile.id ||
-										(props.type !== 'bid' && maxOrderQuantity <= 0) ||
-										orderLoading
+										!arProvider.walletAddress || (props.type !== 'bid' && maxOrderQuantity <= 0) || orderLoading
 									}
 									invalid={{
 										status:
@@ -1472,13 +1614,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 										label={language.unitPrice}
 										value={isNaN(Number(unitPrice)) ? '' : unitPrice}
 										onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleUnitPriceInput(e)}
-										disabled={
-											!arProvider.walletAddress ||
-											!permawebProvider.profile ||
-											!permawebProvider.profile.id ||
-											Number(currentOrderQuantity) <= 0 ||
-											orderLoading
-										}
+										disabled={!arProvider.walletAddress || Number(currentOrderQuantity) <= 0 || orderLoading}
 										invalid={{
 											status: Number(unitPrice) < 0 || (unitPrice && Number(unitPrice) <= MIN_PRICE),
 											message: null,
@@ -1508,12 +1644,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 										label={language.recipient}
 										value={transferRecipient || ''}
 										onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleRecipientInput(e)}
-										disabled={
-											!arProvider.walletAddress ||
-											!permawebProvider.profile ||
-											!permawebProvider.profile.id ||
-											orderLoading
-										}
+										disabled={!arProvider.walletAddress || orderLoading}
 										invalid={{ status: transferRecipient && !checkValidAddress(transferRecipient), message: null }}
 										hideErrorMessage
 									/>
@@ -1526,12 +1657,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 										<span>{language.connectToContinue}</span>
 									</S.MessageWrapper>
 								)}
-								{!permawebProvider.profile ||
-									(!permawebProvider.profile.id && (
-										<S.MessageWrapper>
-											<span>{language.createProfileToContinue}</span>
-										</S.MessageWrapper>
-									))}
 								{permawebProvider.tokenBalances &&
 									getTotalTokenBalance(permawebProvider.tokenBalances[tokenProvider.selectedToken.id]) !== null &&
 									insufficientBalance && (
@@ -1540,7 +1665,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 										</S.MessageWrapper>
 									)}
 								{arProvider.wallet &&
-									permawebProvider.profile?.id &&
 									getTotalTokenBalance(permawebProvider.tokenBalances[tokenProvider.selectedToken.id]) === null && (
 										<S.MessageWrapper>
 											<span>{`${language.fetchingTokenbalances}...`}</span>
@@ -1558,11 +1682,24 @@ export default function AssetActionMarketOrders(props: IProps) {
 											<span>{language.priceTooLow}</span>
 										</S.MessageWrapper>
 									)}
-								{props.asset && !props.asset.state.transferable && (
+								{props.asset && !props.asset.state?.transferable && (
 									<S.MessageWrapper warning>
 										<span>{language.nonTransferable}</span>
 									</S.MessageWrapper>
 								)}
+								{hydratingTokens.length > 0 &&
+									hydratingTokens.map((tokenId) => {
+										const tokenInfo = TOKEN_REGISTRY[tokenId];
+										const tokenName = tokenInfo ? tokenInfo.name : formatAddress(tokenId, false);
+										const progress = hydrationProgress[tokenId] || 0;
+										return (
+											<S.MessageWrapper key={tokenId}>
+												<span>
+													Fetching Latest {tokenName}... ({progress}%)
+												</span>
+											</S.MessageWrapper>
+										);
+									})}
 							</S.ActionWrapper>
 						</S.FieldsWrapper>
 					</S.FieldsFlexWrapper>

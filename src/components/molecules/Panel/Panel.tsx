@@ -40,7 +40,7 @@ export default function Panel(props: IProps) {
 	function getBody() {
 		return (
 			<>
-				<S.Container noHeader={!props.header} width={props.width}>
+				<S.Container noHeader={!props.header} width={props.width} type={props.type}>
 					<CloseHandler
 						active={props.open && !props.closeHandlerDisabled}
 						disabled={!props.open || props.closeHandlerDisabled}
