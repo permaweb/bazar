@@ -5,7 +5,6 @@ import { ReactSVG } from 'react-svg';
 import { Avatar } from 'components/atoms/Avatar';
 import { Button } from 'components/atoms/Button';
 import { CurrencyLine } from 'components/atoms/CurrencyLine';
-import { Loader } from 'components/atoms/Loader';
 import { Panel } from 'components/molecules/Panel';
 import { ProfileManage } from 'components/organisms/ProfileManage';
 import { AO, ASSETS, REDIRECTS, URLS } from 'helpers/config';
@@ -193,14 +192,6 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 	};
 
 	function getDropdown() {
-		if (!permawebProvider.profile) {
-			return (
-				<S.LoadingWrapper>
-					<span>{`${language.fetchingProfile}...`}</span>
-					<Loader sm relative />
-				</S.LoadingWrapper>
-			);
-		}
 		return (
 			<>
 				<S.DHeaderWrapper>
