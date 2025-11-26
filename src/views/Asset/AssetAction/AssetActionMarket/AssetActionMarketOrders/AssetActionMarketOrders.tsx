@@ -13,13 +13,14 @@ import { Slider } from 'components/atoms/Slider';
 import { TokenSelector } from 'components/atoms/TokenSelector';
 import { TxAddress } from 'components/atoms/TxAddress';
 import { Panel } from 'components/molecules/Panel';
-import { ASSETS, REDIRECTS, TOKEN_REGISTRY, URLS } from 'helpers/config';
+import { AO, ASSETS, REDIRECTS, TOKEN_REGISTRY, URLS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import { AssetOrderType } from 'helpers/types';
 import {
 	checkValidAddress,
 	formatAddress,
 	formatCount,
+	getTagValue,
 	getTotalTokenBalance,
 	reverseDenomination,
 } from 'helpers/utils';
@@ -83,6 +84,106 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 	// Buy / Sell tokens through wallet directly, bypass profile
 	const [sendToWallet, setSendToWallet] = React.useState<boolean>(false);
+
+	// Track tokens currently being hydrated
+	const [hydratingTokens, setHydratingTokens] = React.useState<string[]>([]);
+
+	// Track hydration progress for each token (tokenId -> percentage)
+	const [hydrationProgress, setHydrationProgress] = React.useState<{ [key: string]: number }>({});
+
+	const CURRENT_AO_NODE = 'https://state.forward.computer';
+	const CURRENT_TOKEN_NODE = 'https://state-1.forward.computer';
+	const SU_URL = 'https://su-router.ao-testnet.xyz';
+
+	// Hydrate tokens on page load
+	React.useEffect(() => {
+		const assetId = props.asset?.data?.id;
+		if (assetId) {
+			hydrateProcess(assetId, resolveHBNode(assetId));
+		}
+
+		// Cleanup: remove from hydration state if asset changes
+		return () => {
+			if (assetId) {
+				setHydratingTokens((prev) => prev.filter((id) => id !== assetId));
+				setHydrationProgress((prev) => {
+					const next = { ...prev };
+					delete next[assetId];
+					return next;
+				});
+			}
+		};
+	}, [props.asset?.data?.id]);
+
+	React.useEffect(() => {
+		const tokenId = tokenProvider.selectedToken?.id;
+		if (tokenId) {
+			hydrateProcess(tokenId, resolveHBNode(tokenId));
+		}
+
+		// Cleanup: remove from hydration state if token changes
+		return () => {
+			if (tokenId) {
+				setHydratingTokens((prev) => prev.filter((id) => id !== tokenId));
+				setHydrationProgress((prev) => {
+					const next = { ...prev };
+					delete next[tokenId];
+					return next;
+				});
+			}
+		};
+	}, [tokenProvider.selectedToken?.id]);
+
+	function resolveHBNode(processId: string) {
+		return processId === AO.ao ? CURRENT_AO_NODE : CURRENT_TOKEN_NODE;
+	}
+
+	async function hydrateProcess(processId: string, node: string) {
+		console.log(`Running hydration for ${processId}...`);
+
+		try {
+			const latestSlotResponse = await fetch(`${SU_URL}/${processId}/latest`);
+			const latestSlotParsed = await latestSlotResponse.json();
+			const latestSlot = getTagValue(latestSlotParsed.assignment.tags, 'Nonce');
+
+			const currentHBSlotResponse = await fetch(`${node}/${processId}~process@1.0/compute/at-slot`);
+			const currentHBSlot = await currentHBSlotResponse.text();
+
+			if (Number(currentHBSlot) < Number(latestSlot)) {
+				setHydratingTokens((prev) => (prev.includes(processId) ? prev : [...prev, processId]));
+
+				// Set initial progress
+				const initialProgress = Math.floor((Number(currentHBSlot) / Number(latestSlot)) * 100);
+				setHydrationProgress((prev) => ({ ...prev, [processId]: initialProgress }));
+
+				await fetch(`${node}/${processId}~process@1.0/now`);
+
+				let updatedHBSlot = currentHBSlot;
+				while (Number(updatedHBSlot) < Number(latestSlot)) {
+					await new Promise((resolve) => setTimeout(resolve, 1000));
+					const polledResponse = await fetch(`${node}/${processId}~process@1.0/compute/at-slot`);
+					updatedHBSlot = await polledResponse.text();
+
+					// Calculate and update progress percentage using the newly fetched slot
+					const progress = Math.floor((Number(currentHBSlot) / Number(latestSlot)) * 100);
+					console.log(`Hydration progress for ${processId}: ${progress}%`);
+					setHydrationProgress((prev) => ({ ...prev, [processId]: progress }));
+				}
+
+				// Set to 100% when complete
+				setHydrationProgress((prev) => ({ ...prev, [processId]: 100 }));
+			}
+		} catch (e: any) {
+			console.error(e);
+		} finally {
+			setHydratingTokens((prev) => prev.filter((id) => id !== processId));
+			setHydrationProgress((prev) => {
+				const next = { ...prev };
+				delete next[processId];
+				return next;
+			});
+		}
+	}
 
 	React.useEffect(() => {
 		if (props.asset) {
@@ -1586,6 +1687,19 @@ export default function AssetActionMarketOrders(props: IProps) {
 										<span>{language.nonTransferable}</span>
 									</S.MessageWrapper>
 								)}
+								{hydratingTokens.length > 0 &&
+									hydratingTokens.map((tokenId) => {
+										const tokenInfo = TOKEN_REGISTRY[tokenId];
+										const tokenName = tokenInfo ? tokenInfo.name : formatAddress(tokenId, false);
+										const progress = hydrationProgress[tokenId] || 0;
+										return (
+											<S.MessageWrapper key={tokenId}>
+												<span>
+													Fetching Latest {tokenName}... ({progress}%)
+												</span>
+											</S.MessageWrapper>
+										);
+									})}
 							</S.ActionWrapper>
 						</S.FieldsWrapper>
 					</S.FieldsFlexWrapper>

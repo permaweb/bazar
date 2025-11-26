@@ -1,3 +1,5 @@
+import { connect } from '@permaweb/aoconnect';
+
 import { getGQLData, readHandler } from 'api';
 
 import {
@@ -96,30 +98,6 @@ export async function getAssetsByIds(args: { ids: string[]; sortType: AssetSortT
 	}
 }
 
-// if (CUSTOM_ORDERBOOKS[args.id] || TOKEN_REGISTRY[args.id]) {
-// 			const ao = connect({ MODE: 'legacy' });
-// 			try {
-// 				const response = await ao.dryrun({ process: args.id, tags: [{ name: 'Action', value: 'Info' }] });
-// 				const tags = response.Messages?.[0]?.Tags;
-
-// 				const processState = {
-// 					name: getTagValue(tags, 'Name'),
-// 					logo: getTagValue(tags, 'Logo'),
-// 					denomination: getTagValue(tags, 'Denomination'),
-// 				};
-
-// 				const assetOrderbook = { id: CUSTOM_ORDERBOOKS[args.id] };
-
-// 				return {
-// 					data: {} as any,
-// 					state: processState as any,
-// 					orderbook: assetOrderbook,
-// 				};
-// 			} catch (e: any) {
-// 				throw new Error(e);
-// 			}
-// 		}
-
 export async function getAssetByIdGQL(args: { id: string }): Promise<AssetType | null> {
 	try {
 		const assetLookupResponse = await getGQLData({
@@ -146,22 +124,24 @@ export async function getAssetStateById(args: { id: string; libs?: any }): Promi
 		let processState: any;
 
 		if (CUSTOM_ORDERBOOKS[args.id] || TOKEN_REGISTRY[args.id]) {
-			// const ao = connect({ MODE: 'legacy' });
+			const ao = connect({ MODE: 'legacy' });
 			try {
-				// const response = await ao.dryrun({ process: args.id, tags: [{ name: 'Action', value: 'Info' }] });
-				// const tags = response.Messages?.[0]?.Tags;
+				if (TOKEN_REGISTRY[args.id]) {
+					processState = {
+						Name: TOKEN_REGISTRY[args.id].name,
+						Logo: TOKEN_REGISTRY[args.id].logo,
+						Denomination: TOKEN_REGISTRY[args.id].denomination,
+					};
+				} else {
+					const response = await ao.dryrun({ process: args.id, tags: [{ name: 'Action', value: 'Info' }] });
+					const tags = response.Messages?.[0]?.Tags;
 
-				// processState = {
-				// 	Name: getTagValue(tags, 'Name') || TOKEN_REGISTRY[args.id].name,
-				// 	Logo: getTagValue(tags, 'Logo') || TOKEN_REGISTRY[args.id].logo,
-				// 	Denomination: getTagValue(tags, 'Denomination') || TOKEN_REGISTRY[args.id].denomination,
-				// };
-
-				processState = {
-					Name: TOKEN_REGISTRY[args.id].name,
-					Logo: TOKEN_REGISTRY[args.id].logo,
-					Denomination: TOKEN_REGISTRY[args.id].denomination,
-				};
+					processState = {
+						Name: getTagValue(tags, 'Name') || TOKEN_REGISTRY[args.id].name,
+						Logo: getTagValue(tags, 'Logo') || TOKEN_REGISTRY[args.id].logo,
+						Denomination: getTagValue(tags, 'Denomination') || TOKEN_REGISTRY[args.id].denomination,
+					};
+				}
 			} catch (e: any) {
 				throw new Error(e);
 			}

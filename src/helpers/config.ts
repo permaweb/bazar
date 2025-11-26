@@ -463,15 +463,6 @@ export const STORAGE = {
 };
 
 export const TOKEN_REGISTRY = {
-	[AO.pi]: {
-		id: AO.pi,
-		name: 'PI Token',
-		symbol: 'PI',
-		logo: 'zmQwyD6QiZge10OG2HasBqu27Zg0znGkdFRufOq6rv0',
-		denomination: 12,
-		description: 'Permaweb Index token',
-		priority: 1,
-	},
 	[AO.ao]: {
 		id: AO.ao,
 		name: 'AO',
@@ -479,7 +470,25 @@ export const TOKEN_REGISTRY = {
 		logo: 'UkS-mdoiG8hcAClhKK8ch4ZhEzla0mCPDOix9hpdSFE',
 		denomination: 12,
 		description: 'AO Token',
+		priority: 1,
+	},
+	[AO.pi]: {
+		id: AO.pi,
+		name: 'PI Token',
+		symbol: 'PI',
+		logo: 'zmQwyD6QiZge10OG2HasBqu27Zg0znGkdFRufOq6rv0',
+		denomination: 12,
+		description: 'Permaweb Index token',
 		priority: 2,
+	},
+	[AO.usda]: {
+		id: AO.usda,
+		name: 'USDA Token',
+		symbol: 'USDA',
+		logo: 'seXozJrsP0OgI0gvAnr8zmfxiHHb5iSlI9wMI8SdamE',
+		denomination: 12,
+		description: 'USDA stablecoin token',
+		priority: 3,
 	},
 	[AO.pixl]: {
 		id: AO.pixl,
@@ -488,7 +497,7 @@ export const TOKEN_REGISTRY = {
 		logo: 'czR2tJmSr7upPpReXu6IuOc2H7RuHRRAhI7DXAUlszU',
 		denomination: 6,
 		description: 'PIXL protocol token',
-		priority: 3,
+		priority: 4,
 	},
 	[AO.defaultToken]: {
 		id: AO.defaultToken,
@@ -508,24 +517,15 @@ export const TOKEN_REGISTRY = {
 		description: 'Wander protocol token',
 		priority: 5,
 	},
-	[AO.ario]: {
-		id: AO.ario,
-		name: 'ARIO Token',
-		symbol: 'ARIO',
-		logo: 'GIayVyo49wof1hOtgLcJ_XAE6OuF5MeYiYsgu3z4gxk',
-		denomination: 6,
-		description: 'ARIO protocol token',
-		priority: 6,
-	},
-	[AO.usda]: {
-		id: AO.usda,
-		name: 'USDA Token',
-		symbol: 'USDA',
-		logo: 'seXozJrsP0OgI0gvAnr8zmfxiHHb5iSlI9wMI8SdamE',
-		denomination: 12,
-		description: 'USDA stablecoin token',
-		priority: 7,
-	},
+	// [AO.ario]: {
+	// 	id: AO.ario,
+	// 	name: 'ARIO Token',
+	// 	symbol: 'ARIO',
+	// 	logo: 'GIayVyo49wof1hOtgLcJ_XAE6OuF5MeYiYsgu3z4gxk',
+	// 	denomination: 6,
+	// 	description: 'ARIO protocol token',
+	// 	priority: 6,
+	// },
 	[AO.game]: {
 		id: AO.game,
 		name: 'Game Token',
@@ -632,4 +632,5 @@ export const CUSTOM_ORDERBOOKS = {
 	'DM3FoZUq_yebASPhgd8pEIRIzDW6muXEhxz5-JwbZwo': 'd1p2oTsZM8mZ-zR5m65VPK15qzqvGJjyor2Qhs0v7Es',
 	'0syT13r0s0tgPmIed95bJnuSqaD29HQNN8D3ElLSrsc': 'lCRs8yNdib9l2FpAwSo8HFB3HZD9a-o50vnLkj0SEOc',
 	'4hXj_E-5fAKmo4E8KjgQvuDJKAFk9P2grhycVmISDLs': 'IXVq2_AM8MFFRV2bUixgo7X2l8SBqE0pQbhZQQsvXCw',
+	'FBt9A5GA_KXMMSxA2DJ0xZbAq8sLLU2ak-YJe9zDvg8': '4SG5SuzBHGtkeGesqbDS7bZLgNABMuzCnBhdWD5Jp4w',
 };
