@@ -358,7 +358,6 @@ export default function ActivityTable(props: IProps) {
 						swapToken = order.DominantToken;
 					}
 					if (order.IncomingSide === 'Bid') {
-						console.log(order);
 						sender = order.Sender;
 						receiver = order.Receiver;
 						quantity = getDenominatedTokenValue(Number(order.Quantity), order.SwapToken);

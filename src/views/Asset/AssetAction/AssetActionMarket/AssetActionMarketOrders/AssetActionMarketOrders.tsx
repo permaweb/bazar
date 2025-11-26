@@ -329,7 +329,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 				setInsufficientBalance(true);
 			} else {
 				const totalAmount = getTotalOrderAmount();
-				let orderAmount = isNaN(Number(totalAmount)) ? BigInt(0) : BigInt(totalAmount);
+				let orderAmount = isNaN(Number(totalAmount)) ? BigInt(0) : BigInt(Math.floor(Number(totalAmount)));
 				if (props.type === 'buy' && denomination) {
 					orderAmount = BigInt(orderAmount) / BigInt(denomination);
 				}
@@ -529,23 +529,19 @@ export default function AssetActionMarketOrders(props: IProps) {
 			case 'buy':
 				const totalAmount = getTotalOrderAmount();
 				transferQuantity = isNaN(Number(totalAmount)) ? '0' : totalAmount.toString();
-				if (denomination) transferQuantity = (BigInt(transferQuantity) / BigInt(denomination)).toString();
+				if (denomination)
+					transferQuantity = (BigInt(Math.floor(Number(transferQuantity))) / BigInt(denomination)).toString();
 				break;
 			case 'bid':
 				// Bid: Transfer the total currency amount (price * quantity)
 				const bidTotalAmount = getTotalOrderAmount();
 				transferQuantity = isNaN(Number(bidTotalAmount)) ? '0' : bidTotalAmount.toString();
-				// if (denomination) transferQuantity = (BigInt(transferQuantity) * BigInt(denomination)).toString();
 				break;
 			case 'sell':
 			case 'list':
 			case 'transfer':
 				if (denomination) {
-					if (Number(currentOrderQuantity) > 1) {
-						transferQuantity = (BigInt(currentOrderQuantity) * BigInt(denomination)).toString();
-					} else {
-						transferQuantity = (Number(currentOrderQuantity) * denomination).toString();
-					}
+					transferQuantity = BigInt(Math.floor(Number(currentOrderQuantity) * Number(denomination))).toString();
 				}
 				break;
 		}
@@ -1168,9 +1164,9 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 		let totalAmount = getTotalOrderAmount();
 		if (props.type === 'buy' && denomination && denomination > 1)
-			totalAmount = BigInt(totalAmount) / BigInt(denomination);
+			totalAmount = BigInt(Math.floor(Number(totalAmount))) / BigInt(denomination);
 
-		const amount = isNaN(Number(totalAmount)) ? BigInt(0) : BigInt(totalAmount);
+		const amount = isNaN(Number(totalAmount)) ? BigInt(0) : BigInt(Math.floor(Number(totalAmount)));
 		const orderCurrency = selectedTokenId;
 
 		return (

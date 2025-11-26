@@ -27,6 +27,82 @@
 
 	<body>
 		<div id="root"></div>
+		<div id="page-loader">
+			<?xml version="1.0" encoding="utf-8"?>
+			<svg
+				viewBox="663.048 -0.809 1684.0001 1471.6731"
+				width="1684.0001"
+				height="1471.6731"
+				xmlns="http://www.w3.org/2000/svg"
+			>
+				<path
+					fill-rule="evenodd"
+					clip-rule="evenodd"
+					d="M 1483.326 82.213 L 1314.422 290.222 L 1453.73 506.56 L 1637.283 506.56 L 1779.398 294.102 L 1483.326 82.213 Z M 1820.568 232.563 L 1507.263 8.346 C 1486.197 -6.73 1457.037 -2.804 1440.707 17.306 L 1272.262 224.75 L 1145.027 27.16 C 1125.962 -2.446 1082.826 -2.878 1063.172 26.339 L 738.552 508.907 C 695.338 518.604 663.05 557.204 663.05 603.344 L 663.048 1025.574 C 663.048 1062.984 687.055 1094.794 720.503 1106.424 C 684.821 1145.184 663.048 1197.104 663.048 1254.004 C 663.048 1373.404 758.904 1470.864 877.983 1470.864 C 997.062 1470.864 1092.918 1373.404 1092.918 1254.004 C 1092.918 1199.394 1072.857 1149.364 1039.689 1111.154 L 1970.408 1111.154 C 1937.238 1149.364 1917.178 1199.394 1917.178 1254.004 C 1917.178 1373.404 2013.038 1470.864 2132.118 1470.864 C 2251.188 1470.864 2347.048 1373.404 2347.048 1254.004 C 2347.048 1197.464 2325.548 1145.844 2290.268 1107.154 C 2323.218 1096.474 2347.048 1065.514 2347.048 1029.004 L 2347.048 643.56 C 2347.048 569.136 2287.708 508.573 2213.758 506.609 L 2015.888 136.345 C 1989.558 87.06 1920.188 83.631 1889.118 130.078 L 1820.568 232.563 Z M 2210.288 580.561 C 2210.208 580.56 2210.128 580.56 2210.048 580.56 L 759.834 580.56 C 747.251 580.56 737.05 590.761 737.05 603.345 L 737.048 1025.574 C 737.048 1031.964 742.231 1037.154 748.624 1037.154 L 2264.898 1037.154 C 2269.398 1037.154 2273.048 1033.504 2273.048 1029.004 L 2273.048 643.56 C 2273.048 608.845 2244.968 580.688 2210.288 580.561 Z M 2129.828 506.559 L 1726.308 506.559 L 1950.628 171.222 L 2129.828 506.559 Z M 877.983 1111.154 C 955.445 1111.154 1018.918 1174.734 1018.918 1254.004 C 1018.918 1333.284 955.446 1396.864 877.983 1396.864 C 800.52 1396.864 737.048 1333.284 737.048 1254.004 C 737.048 1174.734 800.521 1111.154 877.983 1111.154 Z M 829.316 506.56 L 1365.715 506.56 L 1103.373 99.157 L 829.316 506.56 Z M 2132.118 1111.154 C 2054.648 1111.154 1991.178 1174.734 1991.178 1254.004 C 1991.178 1333.284 2054.648 1396.864 2132.118 1396.864 C 2209.578 1396.864 2273.048 1333.284 2273.048 1254.004 C 2273.048 1174.734 2209.578 1111.154 2132.118 1111.154 Z"
+				/>
+			</svg>
+		</div>
+		<style>
+			#page-loader {
+				position: fixed;
+				top: 50%;
+				left: 50%;
+				transform: translate(-50%, -50%);
+				z-index: 9999;
+			}
+
+			#page-loader svg {
+				width: 50px;
+				height: 50px;
+				animation: open 150ms cubic-bezier(0, 0, 0.2, 1) 0ms;
+			}
+
+			@keyframes open {
+				0% {
+					opacity: 0;
+				}
+				100% {
+					opacity: 1;
+				}
+			}
+		</style>
+		<script>
+			const themeBackgrounds = {
+				light: '#FFFFFF',
+				dark: '#090A0B',
+				dimmed: '#1A1A1A',
+			};
+
+			function getTheme() {
+				try {
+					const theme = localStorage.getItem('preferredTheme');
+					if (theme) return theme;
+					else return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+				} catch (e) {}
+
+				return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+			}
+
+			const theme = getTheme();
+			const backgroundColor = themeBackgrounds[theme] || themeBackgrounds['dark'];
+			document.body.style.backgroundColor = backgroundColor;
+
+			const isDarkTheme = theme === 'dark' || theme === 'dimmed';
+			const iconColor = isDarkTheme ? '#EBEBEB' : '#444444';
+			const loaderIcon = document.querySelector('#page-loader svg');
+
+			if (loaderIcon) {
+				loaderIcon.style.color = iconColor;
+				loaderIcon.style.fill = iconColor;
+			}
+
+			window.hideAppLoader = function () {
+				const loader = document.getElementById('page-loader');
+				if (loader) {
+					loader.style.display = 'none';
+				}
+			};
+		</script>
 		<script type="module" src="/src/index.tsx"></script>
 		<script
 			async

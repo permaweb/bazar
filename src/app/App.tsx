@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react';
+import React, { lazy, Suspense } from 'react';
 import { ReactSVG } from 'react-svg';
 
 import { Loader } from 'components/atoms/Loader';
@@ -16,6 +16,14 @@ const Routes = lazy(() =>
 );
 
 export default function App() {
+	React.useEffect(() => {
+		document.body.style = '';
+		const loader = document.getElementById('page-loader');
+		if (loader) {
+			loader.style.display = 'none';
+		}
+	}, []);
+
 	return (
 		<>
 			<div id={DOM.loader} />
