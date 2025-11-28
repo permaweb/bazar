@@ -288,15 +288,13 @@ export default function ActivityTable(props: IProps) {
 					out.ExecutedOrders.push(order);
 					out.PurchasesByAddress[node.recipient] = (out.PurchasesByAddress[node.recipient] || 0) + 1;
 				} else if (swapTokens.includes(t['DominantToken'])) {
-					// Legacy logic: if dominant token is a swap token, it's an executed order
-					order.Receiver = props.address ?? node.recipient;
+					order.Sender = node.recipient;
 					order.DominantToken = t['SwapToken'];
 					order.SwapToken = t['DominantToken'];
-					order.Sender = t['Sender'] ?? t['From-Process'];
-					out.ExecutedOrders.push(order);
-					out.PurchasesByAddress[node.recipient] = (out.PurchasesByAddress[node.recipient] || 0) + 1;
+					out.ListedOrders.push(order);
+					out.SalesByAddress[node.recipient] = (out.SalesByAddress[node.recipient] || 0) + 1;
 				} else {
-					// This is a limit order (listing or bid)
+					// This is a limit order (listing or bid) for an asset
 					order.Sender = node.recipient;
 					order.DominantToken = t['DominantToken'];
 					order.SwapToken = t['SwapToken'];
