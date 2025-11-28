@@ -1,7 +1,24 @@
-import styled from 'styled-components';
+import styled, { keyframes } from 'styled-components';
 
 import { openRight } from 'helpers/animations';
 import { STYLING } from 'helpers/config';
+
+const float = keyframes`
+	0% {
+		transform: translateY(0) translateX(0) rotate(0deg);
+		opacity: 0;
+	}
+	20% {
+		opacity: 0.8;
+	}
+	80% {
+		opacity: 0.6;
+	}
+	100% {
+		transform: translateY(-20px) translateX(10px) rotate(360deg);
+		opacity: 0;
+	}
+`;
 
 export const Wrapper = styled.header`
 	height: ${STYLING.dimensions.nav.height};
@@ -77,6 +94,81 @@ export const DNavWrapper = styled.div`
 	}
 	@media (max-width: ${STYLING.cutoffs.secondary}) {
 		display: none;
+	}
+`;
+
+export const CampaignButton = styled.a`
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 8px 8px 8px;
+    background: rgb(26, 26, 26);	
+	color: #fff;
+	border-radius: 8px;
+	font-family: ${(props) => props.theme.typography.family.alt1};
+	font-size: ${(props) => props.theme.typography.size.xxSmall};
+	font-weight: ${(props) => props.theme.typography.weight.regular};
+	text-decoration: none;
+	white-space: nowrap;
+	cursor: pointer;
+	transition: opacity 0.2s ease;
+	position: relative;
+	overflow: hidden;
+
+
+	@media (max-width: 720px) {
+		span {
+		    padding: 0px 0px 0px 0px !important;
+			display: none !important;
+		}
+	}
+
+	
+	&:hover {
+		opacity: 0.8;
+		color: #fff; !important
+	}
+
+    &:active {
+		transform: scale(0.98);
+		transition: transform 150ms ease-out;
+	}
+
+	@media (max-width: ${STYLING.cutoffs.secondary}) {
+		display: flex;
+	}
+`;
+
+export const Particle = styled.div<{ delay: number; top: number; left: number }>`
+	position: absolute;
+	width: 3px;
+	height: 4px;
+	background: rgba(255, 255, 255, 0.9);
+	clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
+	pointer-events: none;
+	top: ${(props) => props.top}%;
+	left: ${(props) => props.left}%;
+	animation: ${float} 3s infinite linear;
+	animation-delay: ${(props) => props.delay}s;
+	opacity: 0;
+`;
+
+export const CampaignIcon = styled.div`
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	height: 24px;
+	width: 24px;
+
+	svg {
+		height: 100%;
+		width: 100%;
+		fill: #fff;
+		transform: translateY(2px);
+	}
+	@media (max-width: 720px) {
+		height: 16px;
+		width: 16px;
 	}
 `;
 

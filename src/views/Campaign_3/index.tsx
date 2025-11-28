@@ -29,11 +29,20 @@ const MEDIA_URLS = {
 };
 
 const Campaign3Responsive = createGlobalStyle`
-	@media (max-width: 900px) {
+	@media (max-width: 1120px) {
 		.campaign3-cards-row {
 			flex-direction: column !important;
 			align-items: center !important;
 			gap: 32px;
+		}
+	}
+
+	@media (max-width: 543px) {
+		.campaign3-outer-card {
+			background: transparent !important;
+		}
+		.campaign3-inner-card {
+			margin-top: 0 !important;
 		}
 	}
 
@@ -46,9 +55,18 @@ const Campaign3Responsive = createGlobalStyle`
 		}
 	}
 
+	.campaign3-cta:hover {
+		opacity: 0.9;
+		transition: transform 150ms ease-out;
+	}
+
 	.campaign3-cta:active {
-		transform: scale(0.97);
-		transition: transform 300ms ease-out;
+		transform: scale(0.98);
+		transition: transform 150ms ease-out;
+	}
+	.campaign3-cta:disabled {
+		opacity: 0.5
+		cursor: not-allowed;
 	}
 `;
 
@@ -57,7 +75,8 @@ function LoadingState() {
 	return (
 		<div
 			style={{
-				width: 503.5,
+				width: '100%',
+				maxWidth: 503.5,
 				height: 438,
 				background: '#fff',
 				borderRadius: 16,
@@ -157,7 +176,7 @@ function RewardCard({
 	overlayStyle: React.CSSProperties;
 	isLeft?: boolean;
 	isRight?: boolean;
-	requirements?: { text: string; met: boolean }[];
+	requirements?: { text: string; met: boolean; hideCheckbox?: boolean }[];
 	requirementsSubheader?: string;
 	guide?: (string | { text: string; href?: string })[];
 	guideSubheader?: string;
@@ -198,10 +217,12 @@ function RewardCard({
 
 	return (
 		<div
+			className="campaign3-outer-card"
 			style={{
 				background: cardBgColor,
 				borderRadius: cardBgRadius,
-				width: 743.5,
+				width: '100%',
+				maxWidth: 743.5,
 				display: 'flex',
 				flexDirection: 'column',
 				justifyContent: 'flex-start',
@@ -212,25 +233,28 @@ function RewardCard({
 		>
 			{!connected && <div style={customOverlayStyle} />}
 			<div
+				className="campaign3-inner-card"
 				style={{
 					background: '#fff',
 					borderRadius: 16,
-					width: 503.5,
+					width: '100%',
+					maxWidth: 503.5,
 					marginTop: 100,
 					marginBottom: 48,
 					padding: '8px 0',
 					display: 'flex',
 					alignItems: 'center',
 					flexDirection: 'column',
+					gap: 12,
 				}}
 			>
 				<div
 					style={{
-						width: 487.5,
-						height: 487.5,
+						width: '100%',
+						maxWidth: 487.5,
+						aspectRatio: '1/1',
 						borderRadius: 16,
 						overflow: 'hidden',
-						marginBottom: 24,
 						display: 'flex',
 						justifyContent: 'center',
 						alignItems: 'center',
@@ -242,7 +266,7 @@ function RewardCard({
 							height="100%"
 							style={{
 								objectFit: 'cover',
-								borderRadius: 16,
+								borderRadius: 8,
 								width: '100%',
 								height: '100%',
 							}}
@@ -264,21 +288,22 @@ function RewardCard({
 								width: '100%',
 								height: '100%',
 								objectFit: 'cover',
-								borderRadius: 16,
+								borderRadius: 8,
 							}}
 						/>
 					)}
 				</div>
 				<div
 					style={{
-						width: 486.5,
+						width: '100%',
+						maxWidth: 486.5,
+						boxSizing: 'border-box',
 						height: 83,
 						padding: '0 16px',
-						borderRadius: 16,
+						borderRadius: 8,
 						background: '#F1F1F1',
 						display: 'flex',
 						alignItems: 'center',
-						marginBottom: 24,
 					}}
 				>
 					<div style={{ width: 157, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
@@ -300,17 +325,17 @@ function RewardCard({
 					<RequirementsBox
 						requirements={requirements}
 						subheaderText={requirementsSubheader}
-						style={{ marginTop: 0, marginBottom: guide ? 16 : 2 }}
+						style={{ marginTop: 0, marginBottom: guide ? 0 : 2 }}
 					/>
 				)}
-				{connected && guide && <GuideBox steps={guide} subheaderText={guideSubheader} style={{ marginTop: 16 }} />}
+				{connected && guide && <GuideBox steps={guide} subheaderText={guideSubheader} style={{ marginTop: 0 }} />}
 				{connected && !cta && atLeastOneRequirementMet && onClaim && (
 					<button
 						className={'campaign3-cta'}
 						onClick={handleClaim}
 						disabled={isLoading}
 						style={{
-							width: 'calc(100% - 32px)',
+							width: 'calc(100% - 16px)',
 							padding: '20px 12px',
 							border: 'none',
 							borderRadius: 8,
@@ -324,7 +349,7 @@ function RewardCard({
 							justifyContent: 'center',
 							alignItems: 'center',
 							gap: 8,
-							margin: '16px',
+							margin: '0px 0px 0px 0px',
 						}}
 					>
 						{isLoading ? (
@@ -353,7 +378,7 @@ function RewardCard({
 						target={'_blank'}
 						rel={'noreferrer'}
 						style={{
-							width: 'calc(100% - 32px)',
+							width: 'calc(100% - 16px)',
 							padding: '20px 12px',
 							border: 'none',
 							borderRadius: 8,
@@ -367,7 +392,7 @@ function RewardCard({
 							justifyContent: 'center',
 							alignItems: 'center',
 							gap: 8,
-							margin: '16px',
+							margin: '0px 0px 0px 0px',
 						}}
 					>
 						{cta.iconSrc && (
@@ -408,7 +433,7 @@ function HeroSection({ onConnect, isVerifying }: { onConnect: () => void; isVeri
 				width: 503.5,
 				height: 438,
 				background: '#fff',
-				borderRadius: 16,
+				borderRadius: 8,
 				boxShadow: '0 4px 32px rgba(0,0,0,0.18)',
 				display: 'flex',
 				flexDirection: 'column',
@@ -422,7 +447,7 @@ function HeroSection({ onConnect, isVerifying }: { onConnect: () => void; isVeri
 			<div
 				style={{
 					background: '#F1F1F1',
-					borderRadius: 12,
+					borderRadius: 8,
 					margin: 8,
 					padding: 16,
 					height: 'calc(100% - 16px)',
@@ -471,7 +496,7 @@ function HeroSection({ onConnect, isVerifying }: { onConnect: () => void; isVeri
 						alt="I Survived AO Testnet"
 						style={{
 							width: 260,
-							borderRadius: 12,
+							borderRadius: 8,
 							marginRight: 4,
 						}}
 					/>
@@ -491,10 +516,10 @@ function HeroSection({ onConnect, isVerifying }: { onConnect: () => void; isVeri
 								background: '#1a1a1a',
 								color: '#fff',
 								border: 'none',
-								borderRadius: 9999,
-								padding: '20px 0px',
+								borderRadius: 8,
+								padding: '16px 0px',
 								fontSize: 14,
-								fontWeight: 700,
+								fontWeight: 500,
 								fontFamily: 'Inter',
 								cursor: isVerifying ? 'default' : 'pointer',
 								transition: 'all 200ms ease-out',
@@ -535,7 +560,7 @@ function RequirementsBox({
 	subheaderText = 'Two or more requirements must be met to claim',
 	style = {},
 }: {
-	requirements: { text: string; met: boolean }[];
+	requirements: { text: string; met: boolean; hideCheckbox?: boolean }[];
 	subheaderText?: string;
 	style?: React.CSSProperties;
 }) {
@@ -543,9 +568,11 @@ function RequirementsBox({
 		<div
 			style={{
 				background: '#F1F1F1',
-				borderRadius: 16,
+				borderRadius: 8,
 				padding: 20,
-				width: 486.5,
+				width: '100%',
+				maxWidth: 486.5,
+				boxSizing: 'border-box',
 				display: 'flex',
 				flexDirection: 'column',
 				...style,
@@ -566,36 +593,38 @@ function RequirementsBox({
 						marginBottom: idx === requirements.length - 1 ? 0 : 16,
 					}}
 				>
-					<span
-						style={{
-							display: 'inline-flex',
-							alignItems: 'center',
-							justifyContent: 'center',
-							width: 18,
-							height: 18,
-							borderRadius: 6,
-							background: req.met ? '#D6EACF' : '#EDEDED',
-							color: req.met ? '#22C55E' : '#B0B0B0',
-							border: req.met ? '1px solid rgba(167, 243, 208, 0)' : '1px solid #E0E0E0',
-							fontWeight: 700,
-							fontSize: 13,
-							textAlign: 'center',
-							lineHeight: '18px',
-							marginRight: 10,
-						}}
-					>
-						{req.met ? (
-							<svg width={11} height={8} viewBox={'0 0 11 8'} fill={'none'} xmlns={'http://www.w3.org/2000/svg'}>
-								<path
-									d={'M1 4.375L3.73913 7L10 1'}
-									stroke={'#2CBB00'}
-									strokeWidth={2}
-									strokeLinecap={'round'}
-									strokeLinejoin={'round'}
-								/>
-							</svg>
-						) : null}
-					</span>
+					{!req.hideCheckbox && (
+						<span
+							style={{
+								display: 'inline-flex',
+								alignItems: 'center',
+								justifyContent: 'center',
+								width: 18,
+								height: 18,
+								borderRadius: 6,
+								background: req.met ? '#D6EACF' : '#EDEDED',
+								color: req.met ? '#22C55E' : '#B0B0B0',
+								border: req.met ? '1px solid rgba(167, 243, 208, 0)' : '1px solid #E0E0E0',
+								fontWeight: 700,
+								fontSize: 13,
+								textAlign: 'center',
+								lineHeight: '18px',
+								marginRight: 10,
+							}}
+						>
+							{req.met ? (
+								<svg width={11} height={8} viewBox={'0 0 11 8'} fill={'none'} xmlns={'http://www.w3.org/2000/svg'}>
+									<path
+										d={'M1 4.375L3.73913 7L10 1'}
+										stroke={'#2CBB00'}
+										strokeWidth={2}
+										strokeLinecap={'round'}
+										strokeLinejoin={'round'}
+									/>
+								</svg>
+							) : null}
+						</span>
+					)}
 					<span style={{ color: req.met ? '#202416' : '#808080', fontSize: 13 }}>{req.text}</span>
 				</div>
 			))}
@@ -617,9 +646,11 @@ function GuideBox({
 		<div
 			style={{
 				background: '#F1F1F1',
-				borderRadius: 16,
+				borderRadius: 8,
 				padding: 20,
-				width: 486.5,
+				width: '100%',
+				maxWidth: 486.5,
+				boxSizing: 'border-box',
 				display: 'flex',
 				flexDirection: 'column',
 				...style,
@@ -918,7 +949,7 @@ export default function Campaign() {
 		backdropFilter: 'blur(8px)',
 		transition: 'opacity 0.3s',
 		opacity: !arProvider.walletAddress ? 1 : 0,
-		borderRadius: 16,
+		borderRadius: 8,
 	};
 
 	return (
@@ -993,7 +1024,7 @@ export default function Campaign() {
 							href: 'https://discord.gg/kDWWbjj7Fm',
 							iconSrc: ASSETS.discord,
 						}}
-						requirements={[{ text: 'Run node for 20+ consecutive days', met: true }]}
+						requirements={[{ text: 'Run node for 20+ consecutive days', met: true, hideCheckbox: true }]}
 						requirementsSubheader={'Complete all requirements to claim'}
 						guide={[
 							{
