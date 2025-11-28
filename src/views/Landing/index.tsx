@@ -2,7 +2,7 @@ import React from 'react';
 import { useSelector } from 'react-redux';
 import { Link } from 'react-router-dom';
 
-import { getAllMusicCollections, getAssetByIdGQL, getCollectionById, getCollections } from 'api';
+import { getAllMusicCollections, getAssetByIdGQL, getAssetStateById, getCollectionById, getCollections } from 'api';
 
 import { ActivityTable } from 'components/organisms/ActivityTable';
 import { CollectionsCarousel } from 'components/organisms/CollectionsCarousel';

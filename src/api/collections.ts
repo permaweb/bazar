@@ -1,5 +1,5 @@
 import { readHandler } from 'api';
-import { getAssetByIdGQL } from 'api/assets';
+import { getAssetByIdGQL, getAssetStateById } from 'api/assets';
 
 import { AO, getDefaultToken, HB } from 'helpers/config';
 
