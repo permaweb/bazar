@@ -7,6 +7,7 @@ import { getAllMusicCollections, getAssetByIdGQL, getAssetStateById, getCollecti
 import { ActivityTable } from 'components/organisms/ActivityTable';
 import { CollectionsCarousel } from 'components/organisms/CollectionsCarousel';
 import { MusicCollectionsCarousel } from 'components/organisms/MusicCollectionsCarousel';
+import { MusicPlayer } from 'components/organisms/MusicPlayer';
 import { TrendingTokens } from 'components/organisms/TrendingTokens';
 import { AO, TOKEN_REGISTRY, URLS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
@@ -79,10 +80,17 @@ export default function Landing() {
 
 	// Local Music Player State (non-persistent)
 	const [currentTrack, setCurrentTrack] = React.useState<AssetDetailType | null>(null);
+	const [playlist, setPlaylist] = React.useState<AssetDetailType[]>([]);
 	const [isPlaying, setIsPlaying] = React.useState<boolean>(false);
 	const [currentTime, setCurrentTime] = React.useState<number>(0);
 	const [duration, setDuration] = React.useState<number>(0);
 	const [volume, setVolume] = React.useState<number>(0.7);
+
+	// Calculate current index in playlist
+	const currentIndex = React.useMemo(() => {
+		if (!currentTrack || playlist.length === 0) return -1;
+		return playlist.findIndex((track) => track.data.id === currentTrack.data.id);
+	}, [currentTrack, playlist]);
 
 	// Local play track function - will be passed to MusicCollectionsCarousel
 	const handlePlayTrack = React.useCallback(
@@ -96,6 +104,14 @@ export default function Landing() {
 				setIsPlaying(true);
 				setCurrentTime(0);
 				setDuration(0);
+
+				// Add to playlist if not already there
+				setPlaylist((prev) => {
+					if (!prev.find((track) => track.data.id === asset.data.id)) {
+						return [...prev, asset];
+					}
+					return prev;
+				});
 			}
 		},
 		[currentTrack?.data?.id, isPlaying]
@@ -103,8 +119,34 @@ export default function Landing() {
 
 	// Music player control handlers
 	const handlePlayPause = () => setIsPlaying(!isPlaying);
-	const handleSkipNext = () => setIsPlaying(false);
-	const handleSkipPrevious = () => setCurrentTime(0);
+	const handleSkipNext = () => {
+		if (!currentTrack) {
+			setIsPlaying(false);
+			return;
+		}
+		const index = playlist.findIndex((track) => track.data.id === currentTrack.data.id);
+		if (index >= 0 && index < playlist.length - 1) {
+			setCurrentTrack(playlist[index + 1]);
+			setCurrentTime(0);
+			setDuration(0);
+		} else {
+			setIsPlaying(false);
+		}
+	};
+	const handleSkipPrevious = () => {
+		if (!currentTrack) {
+			setCurrentTime(0);
+			return;
+		}
+		const index = playlist.findIndex((track) => track.data.id === currentTrack.data.id);
+		if (index > 0) {
+			setCurrentTrack(playlist[index - 1]);
+			setCurrentTime(0);
+			setDuration(0);
+		} else {
+			setCurrentTime(0);
+		}
+	};
 	const handleVolumeChange = (newVolume: number) => setVolume(newVolume);
 	const handleSeek = (time: number) => setCurrentTime(time);
 	const handleDurationChange = (newDuration: number) => setDuration(newDuration);
@@ -218,10 +260,7 @@ export default function Landing() {
 			<S.CollectionsWrapper>
 				<CollectionsCarousel collections={collections} loading={collectionsLoading} />
 			</S.CollectionsWrapper>
-			<S.TokensWrapper>
-				<TrendingTokens />
-			</S.TokensWrapper>
-			{/* <S.MusicCollectionsWrapper>
+			<S.MusicCollectionsWrapper>
 				<MusicCollectionsCarousel
 					collections={musicCollections}
 					loading={musicCollectionsLoading}
@@ -229,11 +268,31 @@ export default function Landing() {
 					currentTrack={currentTrack}
 					isPlaying={isPlaying}
 				/>
-			</S.MusicCollectionsWrapper> */}
+			</S.MusicCollectionsWrapper>
+			<S.TokensWrapper>
+				<TrendingTokens />
+			</S.TokensWrapper>
 			<S.ActivityWrapper>
 				<h4>{language.recentActivity}</h4>
 				<ActivityTable />
 			</S.ActivityWrapper>
+			{currentTrack && (
+				<MusicPlayer
+					currentTrack={currentTrack}
+					isPlaying={isPlaying}
+					onPlayPause={handlePlayPause}
+					onSkipNext={handleSkipNext}
+					onSkipPrevious={handleSkipPrevious}
+					onVolumeChange={handleVolumeChange}
+					onSeek={handleSeek}
+					onDurationChange={handleDurationChange}
+					currentTime={currentTime}
+					duration={duration}
+					volume={volume}
+					playlist={playlist}
+					currentIndex={currentIndex}
+				/>
+			)}
 		</S.Wrapper>
 	);
 }

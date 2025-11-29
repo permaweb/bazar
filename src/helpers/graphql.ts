@@ -61,12 +61,26 @@ export async function executeGraphQLQuery(query: string, variables?: any): Promi
 				body: JSON.stringify({ query, variables }),
 			});
 
+			const responseText = await response.text();
+
 			if (!response.ok) {
-				errors.push({ endpoint, error: `HTTP ${response.status}` });
+				const preview = responseText ? responseText.slice(0, 200) : '';
+				const errorMessage = preview
+					? `HTTP ${response.status}: ${preview}`
+					: `HTTP ${response.status}: ${response.statusText}`;
+				errors.push({ endpoint, error: errorMessage });
 				continue;
 			}
 
-			const data = await response.json();
+			let data: any;
+			try {
+				data = JSON.parse(responseText);
+			} catch (parseError) {
+				const preview = responseText ? responseText.slice(0, 200) : '';
+				const errorMessage = preview ? `Invalid JSON response: ${preview}` : 'Invalid JSON response with empty body';
+				errors.push({ endpoint, error: new Error(errorMessage) });
+				continue;
+			}
 
 			if (data.errors) {
 				const graphQLError = new Error(`GraphQL errors: ${JSON.stringify(data.errors)}`);
