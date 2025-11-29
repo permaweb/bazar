@@ -127,18 +127,18 @@ export const CustomSelect = styled.div`
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	transition: all 0.2s ease;
+	transition: all 100ms;
 	position: relative;
 
 	&:hover {
 		border-color: var(--accent-primary);
-		background: ${(props) => props.theme.colors.container.primary.active};
+		background: ${(props) => props.theme.colors.container.alt1.background};
 	}
 
 	&.active {
 		border-color: var(--accent-primary);
 		box-shadow: 0 0 0 2px var(--accent-primary-alpha);
-		background: ${(props) => props.theme.colors.container.primary.active};
+		background: ${(props) => props.theme.colors.container.alt1.background};
 	}
 `;
 
@@ -184,27 +184,19 @@ export const DropdownBackdrop = styled.div`
 	z-index: 999;
 `;
 
-export const DropdownOption = styled.div`
+export const DropdownOption = styled.div<{ active: boolean }>`
 	padding: 12px 16px;
 	cursor: pointer;
-	transition: background-color 0.2s ease;
+	transition: all 100ms;
 	border-bottom: 1px solid ${(props) => props.theme.colors.border.primary};
-	background: ${(props) => props.theme.colors.container.primary.background} !important;
+	background: ${(props) =>
+		props.active
+			? props.theme.colors.container.alt1.background
+			: props.theme.colors.container.primary.background} !important;
 	color: ${(props) => props.theme.colors.font.primary} !important;
 
 	&:hover {
-		background: ${(props) => props.theme.colors.row.hover.background} !important;
-		color: ${(props) => props.theme.colors.font.primary} !important;
-	}
-
-	&.selected {
-		background: ${(props) => props.theme.colors.row.active.background} !important;
-		border-left: 3px solid var(--accent-primary);
-		color: ${(props) => props.theme.colors.font.primary} !important;
-	}
-
-	&:first-child {
-		background: ${(props) => props.theme.colors.container.primary.background} !important;
+		background: ${(props) => props.theme.colors.container.alt1.background} !important;
 		color: ${(props) => props.theme.colors.font.primary} !important;
 	}
 

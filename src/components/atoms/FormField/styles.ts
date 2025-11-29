@@ -52,7 +52,7 @@ export const Input = styled.input<{
 	font-size: ${(props) => props.theme.typography.size.base};
 	font-weight: ${(props) => props.theme.typography.weight.bold};
 	margin: 10px 0 0 0;
-	background: ${(props) => props.theme.colors.form.background};
+	background: 'transparent';
 	border: 1px solid
 		${(props) => (props.invalid ? props.theme.colors.form.invalid.outline : props.theme.colors.form.border)};
 	border-radius: ${STYLING.dimensions.radius.alt2};

@@ -16,9 +16,21 @@ export const Wrapper = styled.div<{ top: number; noHeader: boolean }>`
 	animation: ${open} ${fadeIn1};
 `;
 
+function getBackground(type: string, theme: any) {
+	switch (type) {
+		case 'primary':
+			return theme.colors.container.primary.background;
+		case 'alt1':
+			return theme.colors.container.primary.active;
+		default:
+			return theme.colors.container.primary.active;
+	}
+}
+
 export const Container = styled.div<{
 	noHeader: boolean;
 	width?: number;
+	type?: string;
 }>`
 	height: calc(100dvh - 20px);
 	min-width: ${(props) => (props.width ? `${props.width.toString()}px` : '425px')};
@@ -30,7 +42,7 @@ export const Container = styled.div<{
 	right: 10px;
 	transition: width 50ms ease-out;
 	animation: ${openRight} 200ms;
-	background: ${(props) => props.theme.colors.container.primary.background};
+	background: ${(props) => getBackground(props.type, props.theme)};
 	box-shadow: 0 0 0.25rem 0.0625rem ${(props) => props.theme.colors.shadow.alt3},
 		0 0.0625rem 0.0625rem ${(props) => props.theme.colors.shadow.alt3};
 	border: 1px solid ${(props) => props.theme.colors.border.alt4};

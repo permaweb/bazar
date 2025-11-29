@@ -288,15 +288,13 @@ export default function ActivityTable(props: IProps) {
 					out.ExecutedOrders.push(order);
 					out.PurchasesByAddress[node.recipient] = (out.PurchasesByAddress[node.recipient] || 0) + 1;
 				} else if (swapTokens.includes(t['DominantToken'])) {
-					// Legacy logic: if dominant token is a swap token, it's an executed order
-					order.Receiver = props.address ?? node.recipient;
+					order.Sender = node.recipient;
 					order.DominantToken = t['SwapToken'];
 					order.SwapToken = t['DominantToken'];
-					order.Sender = t['Sender'] ?? t['From-Process'];
-					out.ExecutedOrders.push(order);
-					out.PurchasesByAddress[node.recipient] = (out.PurchasesByAddress[node.recipient] || 0) + 1;
+					out.ListedOrders.push(order);
+					out.SalesByAddress[node.recipient] = (out.SalesByAddress[node.recipient] || 0) + 1;
 				} else {
-					// This is a limit order (listing or bid)
+					// This is a limit order (listing or bid) for an asset
 					order.Sender = node.recipient;
 					order.DominantToken = t['DominantToken'];
 					order.SwapToken = t['SwapToken'];
@@ -327,9 +325,6 @@ export default function ActivityTable(props: IProps) {
 				let dominantToken = order.DominantToken;
 				let swapToken = order.SwapToken;
 
-				// let price = order.Price ? order.Price.toString() : '-';
-				// if (price !== '-') price = getDenominatedTokenValue(order.Quantity, order.DominantToken);
-
 				let quantity = order.Quantity ? order.Quantity.toString() : '-';
 				if (quantity !== '-') quantity = getDenominatedTokenValue(order.Quantity, order.DominantToken);
 
@@ -357,6 +352,13 @@ export default function ActivityTable(props: IProps) {
 							(Number(order.Quantity) / Number(order.Price)) * Math.pow(10, props.asset?.state?.denomination ?? 0),
 							props.asset?.data?.id
 						);
+						dominantToken = order.SwapToken;
+						swapToken = order.DominantToken;
+					}
+					if (order.IncomingSide === 'Bid') {
+						sender = order.Sender;
+						receiver = order.Receiver;
+						quantity = getDenominatedTokenValue(Number(order.Quantity), order.SwapToken);
 						dominantToken = order.SwapToken;
 						swapToken = order.DominantToken;
 					}
@@ -463,7 +465,7 @@ export default function ActivityTable(props: IProps) {
 				);
 			}
 			return (
-				<S.Event>
+				<S.Event noAction>
 					<p>N/A</p>
 				</S.Event>
 			);
@@ -506,7 +508,7 @@ export default function ActivityTable(props: IProps) {
 		}
 
 		return (
-			<S.TableWrapper className={'scroll-wrapper'}>
+			<S.TableWrapper className={'scroll-wrapper-hidden'}>
 				<S.TableHeader>
 					{!props.asset && (
 						<S.AssetWrapper>

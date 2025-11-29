@@ -44,54 +44,46 @@ export function TokenProvider(props: { children: React.ReactNode }) {
 
 	// Enhanced function to refresh token metadata
 	const refreshTokenMetadata = React.useCallback(async () => {
-		setIsLoadingMetadata(true);
-		try {
-			// Get all token IDs from registry
-			const tokenIds = Object.keys(TOKEN_REGISTRY);
-
-			// Fetch enhanced metadata for all tokens
-			const enhancedTokens = await Promise.all(
-				tokenIds.map(async (tokenId) => {
-					try {
-						const enhanced = await getEnhancedTokenMetadata(tokenId);
-						return {
-							id: enhanced.id,
-							name: enhanced.name,
-							symbol: enhanced.symbol,
-							logo: enhanced.logo,
-							denomination: enhanced.denomination,
-							description: enhanced.description,
-							priority: enhanced.priority,
-						};
-					} catch (error) {
-						console.warn(`Failed to enhance metadata for ${tokenId}:`, error);
-						// Fallback to registry data
-						const registryToken = TOKEN_REGISTRY[tokenId];
-						return {
-							...registryToken,
-							logo:
-								registryToken.logo !== 'defaultLogo' && registryToken.logo !== 'dynamicLogo'
-									? registryToken.logo
-									: undefined,
-						};
-					}
-				})
-			);
-
-			// Sort by priority and update state
-			const sortedTokens = enhancedTokens.sort((a, b) => a.priority - b.priority);
-			setAvailableTokens(sortedTokens);
-
-			// Update selected token if it has new metadata
-			const updatedSelectedToken = sortedTokens.find((token) => token.id === selectedToken.id);
-			if (updatedSelectedToken) {
-				setSelectedToken(updatedSelectedToken);
-			}
-		} catch (error) {
-			console.error('Failed to refresh token metadata:', error);
-		} finally {
-			setIsLoadingMetadata(false);
-		}
+		// setIsLoadingMetadata(true);
+		// try {
+		// 	// Get all token IDs from registry
+		// 	const tokenIds = Object.keys(TOKEN_REGISTRY);
+		// 	// Fetch enhanced metadata for all tokens
+		// 	const enhancedTokens = await Promise.all(
+		// 		tokenIds.map(async (tokenId) => {
+		// 			try {
+		// 				const enhanced = await getEnhancedTokenMetadata(tokenId);
+		// 				return {
+		// 					id: enhanced.id,
+		// 					name: enhanced.name,
+		// 					symbol: enhanced.symbol,
+		// 					logo: enhanced.logo,
+		// 					denomination: enhanced.denomination,
+		// 					description: enhanced.description,
+		// 					priority: enhanced.priority,
+		// 				};
+		// 			} catch (error) {
+		// 				console.warn(`Failed to enhance metadata for ${tokenId}:`, error);
+		// 				// Fallback to registry data
+		// 				const registryToken = TOKEN_REGISTRY[tokenId];
+		// 				return {
+		// 					...registryToken,
+		// 					logo:
+		// 						registryToken.logo !== 'defaultLogo' && registryToken.logo !== 'dynamicLogo'
+		// 							? registryToken.logo
+		// 							: undefined,
+		// 				};
+		// 			}
+		// 		})
+		// 	);
+		// 	// Sort by priority and update state
+		// 	const sortedTokens = enhancedTokens.sort((a, b) => a.priority - b.priority);
+		// 	setAvailableTokens(sortedTokens);
+		// } catch (error) {
+		// 	console.error('Failed to refresh token metadata:', error);
+		// } finally {
+		// 	setIsLoadingMetadata(false);
+		// }
 	}, [selectedToken.id]);
 
 	// Load selected token from localStorage and preload metadata on mount

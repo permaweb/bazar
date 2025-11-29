@@ -87,7 +87,7 @@ export default class Tabs extends React.Component<{ children: any; onTabPropClic
 		} = this;
 
 		return singleChild ? (
-			<S.Container>
+			<S.Container className={'scroll-wrapper'}>
 				<S.List>
 					<Tab
 						activeTab={activeTab}
@@ -100,7 +100,7 @@ export default class Tabs extends React.Component<{ children: any; onTabPropClic
 				<S.Content>{this.props.children!.props.children}</S.Content>
 			</S.Container>
 		) : (
-			<S.Container>
+			<S.Container className={'scroll-wrapper'}>
 				<S.List>
 					{children!.map((child: any) => {
 						const { label, icon } = child.props;

@@ -54,7 +54,7 @@ export const Primary = styled.button<{
 	max-width: ${(props) => (props.useMaxWidth ? STYLING.dimensions.button.width : '100%')};
 	overflow: hidden;
 	text-overflow: ellipsis;
-	padding: 0 15px;
+	padding: 1.5px 15px 0 15px;
 	display: flex;
 	align-items: center;
 	justify-content: center;
