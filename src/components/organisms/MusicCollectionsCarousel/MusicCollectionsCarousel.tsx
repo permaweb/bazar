@@ -30,6 +30,35 @@ export default function MusicCollectionsCarousel(props: IProps) {
 	// Cache for collection details to reduce API calls
 	const [collectionsCache, setCollectionsCache] = React.useState<Map<string, any>>(new Map());
 
+	// Pre-fetch collection details when collections load for faster play response
+	React.useEffect(() => {
+		if (!props.collections || props.collections.length === 0 || !permawebProvider.libs) {
+			return;
+		}
+
+		// Pre-fetch details for first 3 visible collections (most likely to be played)
+		const collectionsToPreload = props.collections.slice(0, 3);
+
+		collectionsToPreload.forEach(async (collection: CollectionType) => {
+			// Skip if already cached
+			if (collectionsCache.has(collection.id)) {
+				return;
+			}
+
+			// Fetch in background
+			try {
+				const collectionDetail = await getCollectionById({ id: collection.id, libs: permawebProvider.libs });
+				if (collectionDetail) {
+					setCollectionsCache((prev) => new Map(prev).set(collection.id, collectionDetail));
+				}
+			} catch (e) {
+				// Silent fail - preloading is optional
+				console.debug(`Failed to preload collection ${collection.id}:`, e);
+			}
+		});
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [props.collections?.length, permawebProvider.libs]);
+
 	// Function to handle play button click - optimized version
 	const handlePlayCollection = async (e: React.MouseEvent, collection: CollectionType) => {
 		e.preventDefault();
@@ -53,11 +82,13 @@ export default function MusicCollectionsCarousel(props: IProps) {
 			}
 
 			if (collectionDetail && collectionDetail.assetIds && collectionDetail.assetIds.length > 0) {
-				// Check only first few assets to reduce delay
-				const assetsToCheck = collectionDetail.assetIds.slice(0, 3); // Check only first 3 assets
+				// Check first 5 assets in parallel for faster loading
+				const assetsToCheck = collectionDetail.assetIds.slice(0, 5);
 
-				for (const assetId of assetsToCheck) {
+				// Check all assets in parallel for faster response
+				const assetChecks = assetsToCheck.map(async (assetId: string) => {
 					try {
+						// Use HyperBEAM state fetching for faster response
 						const [structuredAsset, processState] = await Promise.all([
 							getAssetByIdGQL({ id: assetId }),
 							getAssetStateById({ id: assetId, libs: permawebProvider.libs }),
@@ -69,33 +100,51 @@ export default function MusicCollectionsCarousel(props: IProps) {
 							structuredAsset.data.contentType &&
 							structuredAsset.data.contentType.startsWith('audio/')
 						) {
-							// Construct full asset detail
-							const asset: any = {
-								...structuredAsset,
-								state: processState
-									? {
-											name: processState.Name || processState.name || null,
-											ticker: processState.Ticker || processState.ticker || null,
-											denomination: processState.Denomination || processState.denomination || null,
-											logo: processState.Logo || processState.logo || null,
-											balances: processState.Balances || null,
-											transferable:
-												processState.Transferable !== undefined
-													? processState.Transferable.toString() === 'true'
-													: true,
-											metadata: processState.Metadata || null,
-									  }
-									: null,
-								orderbook: null,
+							return {
+								assetId,
+								structuredAsset,
+								processState,
 							};
-							// Found an audio asset, play it
-							props.onPlayTrack(asset);
-							break;
 						}
 					} catch (assetError) {
 						console.error(`Error fetching asset ${assetId}:`, assetError);
-						continue;
+						return null;
 					}
+					return null;
+				});
+
+				// Wait for all checks to complete in parallel
+				const results = await Promise.all(assetChecks);
+
+				// Filter out null results and get first audio asset found
+				const audioAssets = results.filter((result) => result !== null);
+
+				if (audioAssets.length > 0) {
+					// Select random audio asset from found assets for variety
+					const randomIndex = Math.floor(Math.random() * audioAssets.length);
+					const selected = audioAssets[randomIndex];
+
+					// Construct full asset detail
+					const asset: any = {
+						...selected.structuredAsset,
+						state: selected.processState
+							? {
+									name: selected.processState.Name || selected.processState.name || null,
+									ticker: selected.processState.Ticker || selected.processState.ticker || null,
+									denomination: selected.processState.Denomination || selected.processState.denomination || null,
+									logo: selected.processState.Logo || selected.processState.logo || null,
+									balances: selected.processState.Balances || null,
+									transferable:
+										selected.processState.Transferable !== undefined
+											? selected.processState.Transferable.toString() === 'true'
+											: true,
+									metadata: selected.processState.Metadata || null,
+							  }
+							: null,
+						orderbook: null,
+					};
+					// Found an audio asset, play it
+					props.onPlayTrack(asset);
 				}
 			}
 		} catch (error) {
@@ -147,7 +196,7 @@ export default function MusicCollectionsCarousel(props: IProps) {
 				<h4>Music/Casts</h4>
 			</S.Header>
 			<S.CollectionsWrapper previousDisabled={!nextSlideClicked}>
-				{/* {(props.collections || props.loading) && (
+				{(props.collections || props.loading) && (
 					<Carousel
 						key={`music-carousel-${props.collections?.length || 0}-${props.loading}`}
 						responsive={responsive}
@@ -162,65 +211,65 @@ export default function MusicCollectionsCarousel(props: IProps) {
 						autoPlay={!props.loading}
 						autoPlaySpeed={5000}
 						afterChange={handleAfterChange}
-					> */}
-				{props.collections &&
-					props.collections.map((collection: CollectionType, index: number) => {
-						const isCurrentlyPlaying = props.currentTrack && props.isPlaying;
-						const isLoadingTrack = loadingTracks.has(collection.id);
+					>
+						{props.collections &&
+							props.collections.map((collection: CollectionType, index: number) => {
+								const isCurrentlyPlaying = props.currentTrack && props.isPlaying;
+								const isLoadingTrack = loadingTracks.has(collection.id);
 
-						return (
-							<S.CollectionWrapper
-								key={collection.id}
-								className={'fade-in border-wrapper-alt2'}
-								backgroundImage={getTxEndpoint(collection.thumbnail || DEFAULTS.thumbnail)}
-								disabled={false}
-							>
-								{/* Centered Play Button overlay like in collection page */}
-								{props.onPlayTrack && !isLoadingTrack && (
-									<PlayButton onClick={(e) => handlePlayCollection(e, collection)} isPlaying={false} />
-								)}
-
-								{/* Loading spinner for when searching for tracks */}
-								{isLoadingTrack && (
-									<div
-										style={{
-											position: 'absolute',
-											top: '50%',
-											left: '50%',
-											transform: 'translate(-50%, -50%)',
-											zIndex: 20,
-										}}
+								return (
+									<S.CollectionWrapper
+										key={collection.id}
+										className={'fade-in border-wrapper-alt2'}
+										backgroundImage={getTxEndpoint(collection.thumbnail || DEFAULTS.thumbnail)}
+										disabled={false}
 									>
-										<S.LoadingSpinner />
-									</div>
-								)}
+										{/* Centered Play Button overlay like in collection page */}
+										{props.onPlayTrack && !isLoadingTrack && (
+											<PlayButton onClick={(e) => handlePlayCollection(e, collection)} isPlaying={false} />
+										)}
 
-								<Link to={URLS.collectionAssets(collection.id)}>
-									<S.InfoWrapper>
-										<S.InfoTile>
-											<S.InfoDetail>
-												<span>{collection.title}</span>
-											</S.InfoDetail>
-											<S.InfoDetailAlt>
-												<span>{`${language.createdOn} ${formatDate(collection.dateCreated, 'epoch')}`}</span>
-											</S.InfoDetailAlt>
-										</S.InfoTile>
-									</S.InfoWrapper>
-								</Link>
-							</S.CollectionWrapper>
-						);
-					})}
-				{props.loading &&
-					Array.from({ length: 5 }, (_, i) => i + 1).map((index) => (
-						<S.CollectionWrapper
-							key={`loading-${index}`}
-							className={'fade-in border-wrapper-alt1'}
-							backgroundImage={null}
-							disabled={true}
-						/>
-					))}
-				{/* </Carousel>
-				)} */}
+										{/* Loading spinner for when searching for tracks */}
+										{isLoadingTrack && (
+											<div
+												style={{
+													position: 'absolute',
+													top: '50%',
+													left: '50%',
+													transform: 'translate(-50%, -50%)',
+													zIndex: 20,
+												}}
+											>
+												<S.LoadingSpinner />
+											</div>
+										)}
+
+										<Link to={URLS.collectionAssets(collection.id)}>
+											<S.InfoWrapper>
+												<S.InfoTile>
+													<S.InfoDetail>
+														<span>{collection.title}</span>
+													</S.InfoDetail>
+													<S.InfoDetailAlt>
+														<span>{`${language.createdOn} ${formatDate(collection.dateCreated, 'epoch')}`}</span>
+													</S.InfoDetailAlt>
+												</S.InfoTile>
+											</S.InfoWrapper>
+										</Link>
+									</S.CollectionWrapper>
+								);
+							})}
+						{props.loading &&
+							Array.from({ length: 3 }, (_, i) => i + 1).map((index) => (
+								<S.CollectionWrapper
+									key={`loading-${index}`}
+									className={'fade-in border-wrapper-alt1'}
+									backgroundImage={null}
+									disabled={true}
+								/>
+							))}
+					</Carousel>
+				)}
 			</S.CollectionsWrapper>
 		</S.Wrapper>
 	);
