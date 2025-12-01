@@ -178,7 +178,7 @@ function RewardCard({
 	isRight?: boolean;
 	requirements?: { text: string; met: boolean; hideCheckbox?: boolean }[];
 	requirementsSubheader?: string;
-	guide?: (string | { text: string; href?: string })[];
+	guide?: (string | { text: string; href?: string } | { parts: (string | { text: string; href: string })[] })[];
 	guideSubheader?: string;
 	onClaim?: () => Promise<void>;
 	showConnectWallet?: boolean;
@@ -589,11 +589,16 @@ function RequirementsBox({
 					key={idx}
 					style={{
 						display: 'flex',
-						alignItems: 'center',
+						alignItems: req.hideCheckbox ? 'flex-start' : 'center',
+						gap: 10,
 						marginBottom: idx === requirements.length - 1 ? 0 : 16,
 					}}
 				>
-					{!req.hideCheckbox && (
+					{req.hideCheckbox ? (
+						<span
+							style={{ width: 6, height: 6, background: '#202416', borderRadius: 2, marginTop: 7, flex: '0 0 auto' }}
+						/>
+					) : (
 						<span
 							style={{
 								display: 'inline-flex',
@@ -609,7 +614,7 @@ function RequirementsBox({
 								fontSize: 13,
 								textAlign: 'center',
 								lineHeight: '18px',
-								marginRight: 10,
+								flex: '0 0 auto',
 							}}
 						>
 							{req.met ? (
@@ -625,7 +630,14 @@ function RequirementsBox({
 							) : null}
 						</span>
 					)}
-					<span style={{ color: req.met ? '#202416' : '#808080', fontSize: 13 }}>{req.text}</span>
+					<span
+						style={{
+							color: req.hideCheckbox ? '#000' : req.met ? '#202416' : '#808080',
+							fontSize: 13,
+						}}
+					>
+						{req.text}
+					</span>
 				</div>
 			))}
 		</div>
@@ -636,12 +648,54 @@ function RequirementsBox({
 function GuideBox({
 	steps,
 	style = {},
-	subheaderText = 'How to get started running a node on AO / Hyperbeam',
+	subheaderText = 'Additional information on how to particpate',
 }: {
-	steps: (string | { text: string; href?: string })[];
+	steps: (string | { text: string; href?: string } | { parts: (string | { text: string; href: string })[] })[];
 	style?: React.CSSProperties;
 	subheaderText?: string;
 }) {
+	const renderStepContent = (
+		step: string | { text: string; href?: string } | { parts: (string | { text: string; href: string })[] }
+	) => {
+		if (typeof step === 'string') {
+			return step;
+		}
+		if ('parts' in step) {
+			return (
+				<>
+					{step.parts.map((part, partIdx) =>
+						typeof part === 'string' ? (
+							<span key={partIdx}>{part}</span>
+						) : (
+							<a
+								key={partIdx}
+								href={part.href}
+								target={'_blank'}
+								rel={'noreferrer'}
+								style={{ color: '#202416', textDecoration: 'underline', fontWeight: 600 }}
+							>
+								{part.text}
+							</a>
+						)
+					)}
+				</>
+			);
+		}
+		if (step.href) {
+			return (
+				<a
+					href={step.href}
+					target={'_blank'}
+					rel={'noreferrer'}
+					style={{ color: '#202416', textDecoration: 'underline', fontWeight: 600 }}
+				>
+					{step.text}
+				</a>
+			);
+		}
+		return step.text;
+	};
+
 	return (
 		<div
 			style={{
@@ -677,22 +731,7 @@ function GuideBox({
 						<span
 							style={{ width: 6, height: 6, background: '#202416', borderRadius: 2, marginTop: 7, flex: '0 0 auto' }}
 						/>
-						<span style={{ color: '#202416', fontSize: 13, fontFamily: 'Inter' }}>
-							{typeof step === 'string' ? (
-								step
-							) : step.href ? (
-								<a
-									href={step.href}
-									target={'_blank'}
-									rel={'noreferrer'}
-									style={{ color: '#202416', textDecoration: 'underline', fontWeight: 600 }}
-								>
-									{step.text}
-								</a>
-							) : (
-								step.text
-							)}
-						</span>
+						<span style={{ color: '#202416', fontSize: 13, fontFamily: 'Inter' }}>{renderStepContent(step)}</span>
 					</li>
 				))}
 			</ul>
@@ -1024,20 +1063,41 @@ export default function Campaign() {
 							href: 'https://discord.gg/kDWWbjj7Fm',
 							iconSrc: ASSETS.discord,
 						}}
-						requirements={[{ text: 'Run node for 20+ consecutive days', met: true, hideCheckbox: true }]}
+						requirements={[
+							{ text: 'Participated actively in AO Testnet', met: false, hideCheckbox: true },
+							{
+								text: 'Selected by one of the 10 partner projects for standout testnet contributions',
+								met: false,
+								hideCheckbox: true,
+							},
+						]}
 						requirementsSubheader={'Complete all requirements to claim'}
 						guide={[
 							{
-								text: 'You can read up on the docs here',
-								href: 'https://hyperbeam.ar.io/run/running-a-hyperbeam-node.html',
+								parts: [
+									'Projects include: ',
+									{ text: 'Apus Network', href: 'https://apus.network/' },
+									', ',
+									{ text: 'Protocol Land', href: 'https://protocol.land' },
+									', ',
+									{ text: 'Wander', href: 'https://wander.app' },
+									', ',
+									{ text: 'ARIO', href: 'https://ar.io' },
+									', ',
+									{ text: 'RandAO', href: 'https://randao.org' },
+									', ',
+									{ text: 'StarGrid Battle Tactics', href: 'https://stargrid.ar.io/' },
+									', ',
+									{ text: 'Arweave Oasis', href: 'https://arweaveoasis.com' },
+									', ',
+									{ text: 'Arweave India', href: 'https://arweaveindia.com' },
+									', ',
+									{ text: 'Bazar Marketplace', href: 'https://bazar.arweave.net' },
+									', ',
+									{ text: 'Load Network', href: 'https://load.network' },
+								],
 							},
-							'Run node for 20+ consecutive days by November 21, 2025 (qualification deadline)',
-							'Consecutive runtime starting from any date (before or after announcement)',
-							'Operators already running count their current streak (if uninterrupted)',
-							'Any downtime resets the counter - must have uninterrupted 20-day streak',
-							'Verified via on-chain logs/uptime data',
-							'Submit wallet address via Discord',
-							'First 100 eligible operators (if more apply)',
+							'Throughout Dec 31–Jan 6 the Glasseaters will be distributed to selected winners',
 						]}
 						onClaim={() => handleClaim(ATOMIC_ASSET_ID)}
 					/>
