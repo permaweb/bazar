@@ -5,7 +5,21 @@
 -- Load dependencies
 -- Note: Your main process has these as 'local', so we need to require them again here
 local json = require('json')
-local bint = require('.bint')(256)
+
+-- bint should be available from the main process blueprint
+-- Try to use it from global scope first, otherwise require it
+local bint
+if type(_G.bint) == 'function' then
+	bint = _G.bint
+else
+	local bintSuccess, bintResult = pcall(function() return require('.bint')(256) end)
+	if bintSuccess and bintResult then
+		bint = bintResult
+	else
+		print('WARNING: bint not available, some functions may not work')
+		bint = nil
+	end
+end
 
 -- Utility functions (define if not already available)
 -- Note: The standard blueprint defines these as 'local', so we need to define them globally
@@ -87,7 +101,7 @@ end
 
 if not Claims then Claims = {} end
 
--- Campaign Utils
+-- Campaign Utils (define these first, before ensureOwnerBalance)
 local function countMetRequirements(requirements)
 	local count = 0
 	if requirements.bazarTransaction then count = count + 1 end
@@ -99,6 +113,19 @@ end
 
 local function hasAlreadyClaimed(address)
 	return Claims[address] ~= nil
+end
+
+-- Check if profile has already claimed (additional safety check)
+local function hasProfileClaimed(profileId)
+	if not Claims or not profileId then
+		return false, nil
+	end
+	for walletAddr, claimData in pairs(Claims) do
+		if claimData and claimData.ProfileId == profileId then
+			return true, walletAddr
+		end
+	end
+	return false, nil
 end
 
 local function getRemainingSupply()
@@ -117,6 +144,82 @@ local function getOwnerBalance()
 		return '0'
 	end
 	return Token.Balances[owner] or '0'
+end
+
+-- Initialize Owner balance if missing (fix for processes that weren't initialized correctly)
+local function ensureOwnerBalance()
+	-- Safety check: ensure Token exists
+	if not Token then
+		print('WARNING: Token not initialized yet, skipping balance check')
+		return false
+	end
+	
+	local owner = Owner or Token.Creator
+	if not owner then
+		print('WARNING: No Owner or Creator found, cannot initialize balance')
+		return false
+	end
+	
+	-- Check if owner has balance
+	local ownerBalance = getOwnerBalance()
+	
+	-- Safety check: ensure bint is available
+	if not bint then
+		-- Try to use the global bint if available
+		if type(_G.bint) == 'function' then
+			bint = _G.bint
+		else
+			print('WARNING: bint not available, skipping balance initialization')
+			return false
+		end
+	end
+	
+	local ownerBalanceBint = bint(ownerBalance)
+	
+	if ownerBalanceBint <= bint(0) then
+		print('WARNING: Owner balance is 0, initializing with TotalSupply...')
+		print('Owner: ' .. tostring(owner))
+		print('TotalSupply: ' .. tostring(CampaignConfig.TotalSupply))
+		
+		-- Initialize balances if needed
+		if not Token.Balances then
+			Token.Balances = {}
+		end
+		
+		-- Set owner balance to TotalSupply
+		Token.Balances[owner] = tostring(CampaignConfig.TotalSupply)
+		Token.TotalSupply = tostring(CampaignConfig.TotalSupply)
+		
+		-- Ensure Token.Creator is set
+		if not Token.Creator then
+			Token.Creator = owner
+		end
+		
+		print('Owner balance initialized to: ' .. tostring(Token.Balances[owner]))
+		-- Try to sync state, but don't fail if it doesn't work
+		local syncSuccess, syncErr = pcall(syncState)
+		if not syncSuccess then
+			print('WARNING: State sync failed during initialization: ' .. tostring(syncErr))
+		end
+		return true
+	end
+	
+	return false
+end
+
+-- Run initialization check on load (with error handling)
+-- Defer initialization to avoid errors during module load
+local function runInitialization()
+	local initSuccess, initErr = pcall(ensureOwnerBalance)
+	if not initSuccess then
+		print('WARNING: Balance initialization check failed: ' .. tostring(initErr))
+	end
+end
+
+-- Run initialization safely
+local initSuccess, initErr = pcall(runInitialization)
+if not initSuccess then
+	print('WARNING: Failed to run initialization: ' .. tostring(initErr))
 end
 
 -- Handler: Get claim status
@@ -202,6 +305,12 @@ Handlers.add(
 		
 		-- Use xpcall to catch errors and ensure we always reply
 		local function claimHandler()
+			-- Ensure Claims table exists
+			if not Claims then
+				print('WARNING: Claims table is nil at handler start, initializing...')
+				Claims = {}
+			end
+			
 			-- Parse requirements data
 			local decodeSuccess, data = decodeMessageData(msg.Data)
 			if not decodeSuccess or not data or not data.requirements then
@@ -218,6 +327,11 @@ Handlers.add(
 
 			local walletAddress = msg.Tags['Wallet-Address'] or msg.From
 			local recipient = data.recipient or msg.Tags.Recipient
+			
+			print('=== DUPLICATE CHECK START ===')
+			print('Wallet Address: ' .. tostring(walletAddress))
+			print('Recipient/Profile: ' .. tostring(recipient))
+			print('Message From: ' .. tostring(msg.From))
 
 			if not recipient then
 				print('No recipient specified')
@@ -244,9 +358,41 @@ Handlers.add(
 				return
 			end
 
-			-- Check if already claimed
+			-- Check if already claimed by wallet address
+			print('=== DUPLICATE CHECK ===')
+			print('Checking duplicate claim for wallet: ' .. walletAddress)
+			if not Claims then
+				print('WARNING: Claims table is nil, initializing...')
+				Claims = {}
+			end
+			local claimsCount = 0
+			for k, v in pairs(Claims) do 
+				claimsCount = claimsCount + 1
+				local encodeSuccess, encoded = pcall(json.encode, v)
+				if encodeSuccess then
+					print('  Claims[' .. tostring(k) .. '] = ' .. encoded)
+				else
+					print('  Claims[' .. tostring(k) .. '] = [unable to encode]')
+				end
+			end
+			print('Current Claims table size: ' .. tostring(claimsCount))
+			print('Checking if wallet exists in Claims: ' .. tostring(Claims[walletAddress] ~= nil))
+			print('Wallet address type: ' .. type(walletAddress))
+			print('Wallet address value: "' .. tostring(walletAddress) .. '"')
+			
+			-- Check all keys in Claims to see if there's a match
+			for key, _ in pairs(Claims) do
+				print('  Comparing: "' .. tostring(key) .. '" == "' .. tostring(walletAddress) .. '" = ' .. tostring(key == walletAddress))
+			end
+			
 			if hasAlreadyClaimed(walletAddress) then
-				print('Already claimed: ' .. walletAddress)
+				print('*** ALREADY CLAIMED by wallet: ' .. walletAddress .. ' ***')
+				local encodeSuccess, encoded = pcall(json.encode, Claims[walletAddress])
+				if encodeSuccess then
+					print('Existing claim data: ' .. encoded)
+				else
+					print('Existing claim data: [unable to encode]')
+				end
 				msg.reply({
 					Action = 'Claim-Error',
 					Tags = {
@@ -256,6 +402,23 @@ Handlers.add(
 				})
 				return
 			end
+			print('Wallet NOT found in Claims, proceeding...')
+			
+			-- Additional check: prevent same profile from claiming multiple times
+			local profileAlreadyClaimed, existingWallet = hasProfileClaimed(recipient)
+			if profileAlreadyClaimed then
+				print('ALREADY CLAIMED by profile: ' .. recipient .. ' (by wallet: ' .. existingWallet .. ')')
+				msg.reply({
+					Action = 'Claim-Error',
+					Tags = {
+						Status = 'Already-Claimed',
+						Message = 'This profile has already claimed an asset'
+					}
+				})
+				return
+			end
+			
+			print('No duplicate found, proceeding with claim...')
 
 			-- Check supply
 			local remaining = getRemainingSupply()
@@ -271,6 +434,9 @@ Handlers.add(
 				return
 			end
 
+		-- Ensure owner balance is initialized (fix for processes that weren't initialized correctly)
+		ensureOwnerBalance()
+		
 		-- Check owner has balance (this check is done again in the transfer section, but we check early here)
 		local ownerBalance = getOwnerBalance()
 		local ownerBalanceBint = bint(ownerBalance)
@@ -363,6 +529,11 @@ Handlers.add(
 				Requirements = data.requirements,
 				MetCount = metCount
 			}
+			
+			print('Claim recorded in Claims table for wallet: ' .. walletAddress)
+			local claimsCount = 0
+			for _ in pairs(Claims) do claimsCount = claimsCount + 1 end
+			print('Claims table now has ' .. tostring(claimsCount) .. ' entries')
 
 			-- Send credit notice to recipient
 			ao.send({
@@ -432,6 +603,43 @@ Handlers.add(
 			-- Error handler should have replied, but double-check
 			print('Claim handler failed, error response should have been sent')
 		end
+	end
+)
+
+-- Handler: Admin - Initialize Owner Balance (fix for processes that weren't initialized correctly)
+Handlers.add(
+	'Initialize-Owner-Balance',
+	Handlers.utils.hasMatchingTag('Action', 'Initialize-Owner-Balance'),
+	function(msg)
+		-- Only owner can initialize balance
+		local owner = Owner or Token.Creator
+		if msg.From ~= owner then
+			msg.reply({
+				Action = 'Authorization-Error',
+				Tags = {
+					Status = 'Error',
+					Message = 'Only the process owner can initialize balance'
+				}
+			})
+			return
+		end
+
+		local wasInitialized = ensureOwnerBalance()
+		local currentBalance = getOwnerBalance()
+		
+		msg.reply({
+			Action = 'Initialize-Balance-Response',
+			Data = json.encode({
+				initialized = wasInitialized,
+				ownerBalance = currentBalance,
+				totalSupply = CampaignConfig.TotalSupply,
+				owner = owner
+			}),
+			Tags = {
+				Status = wasInitialized and 'Initialized' or 'Already-Initialized',
+				Message = wasInitialized and 'Owner balance initialized' or 'Owner balance already set'
+			}
+		})
 	end
 )
 
