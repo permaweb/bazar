@@ -1,7 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { createGlobalStyle } from 'styled-components';
 
-import { messageResults, readHandler } from 'api';
+import { readHandler } from 'api';
+import { message, results as getResults } from 'helpers/aoconnect';
+import { createDataItemSigner } from 'helpers/aoconnect';
+import { getTagValue } from 'helpers/utils';
+import { HB } from 'helpers/config';
 
 import { ASSETS, GATEWAYS } from 'helpers/config';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
@@ -21,11 +25,11 @@ const ATOMIC_ASSET_ID = 'rSehf8qeKDDDnrnOiwKT_NWSCFED_q5PouLpXMNHxl8'; // I Surv
 
 // Media URLs
 const MEDIA_URLS = {
-	glasseaterImg: '/campaign3/glasseater.png',
-	survivedAoImg: '/campaign3/survivedao.png',
-	survivedAoVideo: '/campaign3/I-Survived-Testnet_Video.mp4',
-	survivedAoFallback: '/campaign3/I-Survived-Testnet_Fallback.avif',
-	glasseatersVideo: '/campaign3/Glasseaters.mp4',
+	glasseaterImg: './campaign3/glasseater.png',
+	survivedAoImg: './campaign3/survivedao.png',
+	survivedAoVideo: './campaign3/I-Survived-Testnet_Video.mp4',
+	survivedAoFallback: './campaign3/I-Survived-Testnet_Fallback.avif',
+	glasseatersVideo: './campaign3/Glasseaters.mp4',
 };
 
 const Campaign3Responsive = createGlobalStyle`
@@ -163,6 +167,7 @@ function RewardCard({
 	onClaim,
 	showConnectWallet = true,
 	cta,
+	claimStatus,
 }: {
 	video?: string;
 	fallbackImage?: string;
@@ -183,6 +188,11 @@ function RewardCard({
 	onClaim?: () => Promise<void>;
 	showConnectWallet?: boolean;
 	cta?: { label: string; href: string; iconSrc?: string };
+	claimStatus?: {
+		hasClaimed: boolean;
+		status: 'Available' | 'Already-Claimed' | 'Sold-Out' | 'Checking' | null;
+		claimedAt?: string;
+	};
 }) {
 	const [videoError, setVideoError] = useState(false);
 	const [isLoading, setIsLoading] = useState(false);
@@ -330,46 +340,83 @@ function RewardCard({
 				)}
 				{connected && guide && <GuideBox steps={guide} subheaderText={guideSubheader} style={{ marginTop: 0 }} />}
 				{connected && !cta && atLeastOneRequirementMet && onClaim && (
-					<button
-						className={'campaign3-cta'}
-						onClick={handleClaim}
-						disabled={isLoading}
-						style={{
-							width: 'calc(100% - 16px)',
-							padding: '20px 12px',
-							border: 'none',
-							borderRadius: 8,
-							background: '#1a1a1a',
-							color: '#FFFFFF',
-							fontSize: 14,
-							cursor: isLoading ? 'wait' : 'pointer',
-							opacity: isLoading ? 0.7 : 1,
-							transition: 'all 80ms ease-out',
-							display: 'flex',
-							justifyContent: 'center',
-							alignItems: 'center',
-							gap: 8,
-							margin: '0px 0px 0px 0px',
-						}}
-					>
-						{isLoading ? (
-							<>
-								<div
-									style={{
-										width: 16,
-										height: 16,
-										border: '2px solid #ffffff',
-										borderTopColor: 'transparent',
-										borderRadius: '50%',
-										animation: 'spin 1s linear infinite',
-									}}
-								/>
-								Claiming...
-							</>
+					<>
+						{claimStatus?.status === 'Already-Claimed' ? (
+							<div
+								style={{
+									width: 'calc(100% - 16px)',
+									padding: '20px 12px',
+									border: 'none',
+									borderRadius: 8,
+									background: '#4A5568',
+									color: '#FFFFFF',
+									fontSize: 14,
+									textAlign: 'center',
+									margin: '0px 0px 0px 0px',
+								}}
+							>
+								✓ Already Claimed
+							</div>
+						) : claimStatus?.status === 'Checking' ? (
+							<div
+								style={{
+									width: 'calc(100% - 16px)',
+									padding: '20px 12px',
+									border: 'none',
+									borderRadius: 8,
+									background: '#1a1a1a',
+									color: '#FFFFFF',
+									fontSize: 14,
+									textAlign: 'center',
+									margin: '0px 0px 0px 0px',
+									opacity: 0.7,
+								}}
+							>
+								Checking claim status...
+							</div>
 						) : (
-							'Claim Reward'
+							<button
+								className={'campaign3-cta'}
+								onClick={handleClaim}
+								disabled={isLoading || claimStatus?.hasClaimed}
+								style={{
+									width: 'calc(100% - 16px)',
+									padding: '20px 12px',
+									border: 'none',
+									borderRadius: 8,
+									background: '#1a1a1a',
+									color: '#FFFFFF',
+									fontSize: 14,
+									cursor: isLoading || claimStatus?.hasClaimed ? 'not-allowed' : 'pointer',
+									opacity: isLoading || claimStatus?.hasClaimed ? 0.5 : 1,
+									transition: 'all 80ms ease-out',
+									display: 'flex',
+									justifyContent: 'center',
+									alignItems: 'center',
+									gap: 8,
+									margin: '0px 0px 0px 0px',
+								}}
+							>
+								{isLoading ? (
+									<>
+										<div
+											style={{
+												width: 16,
+												height: 16,
+												border: '2px solid #ffffff',
+												borderTopColor: 'transparent',
+												borderRadius: '50%',
+												animation: 'spin 1s linear infinite',
+											}}
+										/>
+										Claiming...
+									</>
+								) : (
+									'Claim Reward'
+								)}
+							</button>
 						)}
-					</button>
+					</>
 				)}
 				{cta && (
 					<a
@@ -704,6 +751,14 @@ export default function Campaign() {
 	const arProvider = useArweaveProvider();
 	const permawebProvider = usePermawebProvider();
 	const [isVerifying, setIsVerifying] = useState(false);
+	const [claimStatus, setClaimStatus] = useState<{
+		hasClaimed: boolean;
+		status: 'Available' | 'Already-Claimed' | 'Sold-Out' | 'Checking' | null;
+		claimedAt?: string;
+	}>({
+		hasClaimed: false,
+		status: null,
+	});
 	const [verificationResults, setVerificationResults] = useState({
 		hasBazarTransaction: false,
 		hasBotegaSwap: false,
@@ -720,6 +775,11 @@ export default function Campaign() {
 
 	async function handleClaim(processId: string): Promise<void> {
 		try {
+			// Check if already claimed before attempting
+			if (claimStatus?.hasClaimed) {
+				throw new Error('You have already claimed your asset');
+			}
+
 			if (!permawebProvider.profile?.id) {
 				console.error('No Bazar profile found');
 				throw new Error('You must have a Bazar profile to claim this asset');
@@ -779,8 +839,8 @@ export default function Campaign() {
 				action = 'Run-Action';
 				tags = [
 					{ name: 'Action', value: 'Run-Action' },
-					{ name: 'ForwardTo', value: ATOMIC_ASSET_ID },
-					{ name: 'ForwardAction', value: 'Claim' },
+					{ name: 'Forward-To', value: ATOMIC_ASSET_ID }, // Zone Profile expects hyphenated tag name
+					{ name: 'Forward-Action', value: 'Claim' }, // Zone Profile expects hyphenated tag name
 					{ name: 'Recipient', value: permawebProvider.profile.id },
 					{ name: 'Wallet-Address', value: arProvider.walletAddress },
 				];
@@ -794,28 +854,284 @@ export default function Campaign() {
 			console.log('Action:', action);
 			console.log('Tags:', tags);
 			console.log('Is Legacy Profile:', isLegacyProfile);
-
-			const response = await messageResults({
-				processId: targetProcessId, // Send message to profile (if new) or asset (if legacy)
-				resultProcessId: ATOMIC_ASSET_ID, // Always query results from the asset process
-				wallet: arProvider.wallet,
-				action: action,
-				tags: tags,
-				data: {
-					requirements: {
-						bazarTransaction: verificationResults.hasBazarTransaction,
-						botegaSwap: verificationResults.hasBotegaSwap,
-						permaswapTransaction: verificationResults.hasPermaswapTransaction,
-						aoProcess: verificationResults.hasAOProcess,
-					},
-					recipient: permawebProvider.profile.id,
+			console.log('Data being sent:', {
+				requirements: {
+					bazarTransaction: verificationResults.hasBazarTransaction,
+					botegaSwap: verificationResults.hasBotegaSwap,
+					permaswapTransaction: verificationResults.hasPermaswapTransaction,
+					aoProcess: verificationResults.hasAOProcess,
 				},
-				responses: ['Claim-Success', 'Claim-Error', 'Error'],
-				timeout: 5000, // Increase timeout to 5 seconds for claim processing
+				recipient: permawebProvider.profile.id,
 			});
+
+			// Use messageResult (singular) with specific message ID instead of messageResults (plural)
+			// This avoids rate limiting from querying all results and is more efficient
+			console.log('=== Using messageResult with specific message ID ===');
+
+			// First, send the message and get the message ID
+			const messageTags = [{ name: 'Action', value: action }, ...tags];
+
+			// For Zone Profile Run-Action, wrap data in Input field
+			// For legacy profiles, send data directly
+			const claimData = {
+				requirements: {
+					bazarTransaction: verificationResults.hasBazarTransaction,
+					botegaSwap: verificationResults.hasBotegaSwap,
+					permaswapTransaction: verificationResults.hasPermaswapTransaction,
+					aoProcess: verificationResults.hasAOProcess,
+				},
+				recipient: permawebProvider.profile.id,
+			};
+
+			// Zone Profile expects data wrapped in Input field
+			const messageData = isLegacyProfile ? claimData : { Input: claimData };
+
+			const messageTxId = await message({
+				process: targetProcessId,
+				signer: createDataItemSigner(arProvider.wallet),
+				tags: messageTags,
+				data: JSON.stringify(messageData),
+			});
+
+			console.log('[handleClaim] Message sent, txId:', messageTxId);
+			console.log('[handleClaim] Waiting for response...');
+
+			// Wait for the process to respond
+			await new Promise((resolve) => setTimeout(resolve, 12000)); // 12 second wait for claim processing
+
+			// Query response using HyperBEAM to avoid CU rate limiting
+			// For Zone Profile forwarding, the response is sent back to the profile process via msg.reply()
+			// But we should check both the asset process (where handler runs) and profile process (where reply goes)
+			const assetProcessId = ATOMIC_ASSET_ID;
+			const profileProcessId = permawebProvider.profile.id;
+
+			console.log('[handleClaim] Querying response from HyperBEAM for asset process:', assetProcessId);
+			console.log('[handleClaim] Also checking profile process for reply:', profileProcessId);
+
+			let response = null;
+			let retries = 8; // More retries since we're using HyperBEAM
+			let delay = 3000; // Start with 3 second delay
+
+			// Helper function to query HyperBEAM for process state
+			const queryHyperBEAMState = async (processId: string): Promise<any> => {
+				const url = `${HB.defaultNode}/${processId}~process@1.0/now`;
+				const headers = {
+					'require-codec': 'application/json',
+					'accept-bundle': 'true',
+				};
+
+				try {
+					const res = await fetch(url, { headers });
+					if (res.ok) {
+						return await res.json();
+					}
+					throw new Error(`HyperBEAM returned status ${res.status}`);
+				} catch (error: any) {
+					console.error('[handleClaim] HyperBEAM query error:', error);
+					throw error;
+				}
+			};
+
+			while (retries > 0 && !response) {
+				try {
+					// Try HyperBEAM first (no rate limiting)
+					// Check both asset process and profile process for the response
+					const processesToCheck = [assetProcessId, profileProcessId];
+
+					for (const processId of processesToCheck) {
+						if (response) break; // Already found response
+
+						try {
+							const state = await queryHyperBEAMState(processId);
+
+							// Check if state has Results key with messages
+							if (state?.Results && Array.isArray(state.Results)) {
+								// Look through Results for Claim-Success, Claim-Error, or Error actions
+								// Prioritize Claim-Error over Claim-Success (to catch duplicate attempts)
+								const foundResponses: any[] = [];
+
+								for (const result of state.Results) {
+									if (result?.Messages && Array.isArray(result.Messages)) {
+										for (const msg of result.Messages) {
+											const action = getTagValue(msg.Tags, 'Action');
+											if (action === 'Claim-Success' || action === 'Claim-Error' || action === 'Error') {
+												// For profile process, check if Target matches our profile
+												// For asset process, check if Recipient matches our profile
+												const target = getTagValue(msg.Tags, 'Target');
+												const recipient = getTagValue(msg.Tags, 'Recipient');
+												const isForUs = target === profileProcessId || recipient === profileProcessId;
+
+												if (isForUs) {
+													let responseData = null;
+													if (msg.Data) {
+														try {
+															responseData = JSON.parse(msg.Data);
+														} catch {
+															responseData = msg.Data;
+														}
+													}
+
+													foundResponses.push({
+														action,
+														response: {
+															[action]: {
+																status: getTagValue(msg.Tags, 'Status'),
+																message: getTagValue(msg.Tags, 'Message'),
+																data: responseData,
+															},
+														},
+														timestamp: msg.Timestamp || 0,
+													});
+												}
+											}
+										}
+									}
+								}
+
+								// Prioritize Claim-Error responses (duplicate attempts), then take most recent
+								if (foundResponses.length > 0) {
+									// Sort: Claim-Error first, then by timestamp (most recent first)
+									foundResponses.sort((a, b) => {
+										if (a.action === 'Claim-Error' && b.action !== 'Claim-Error') return -1;
+										if (a.action !== 'Claim-Error' && b.action === 'Claim-Error') return 1;
+										return (b.timestamp || 0) - (a.timestamp || 0);
+									});
+
+									response = foundResponses[0].response;
+									console.log(`[handleClaim] Found response via HyperBEAM from ${processId}:`, response);
+									console.log(
+										`[handleClaim] Total matching responses found: ${foundResponses.length}, selected: ${foundResponses[0].action}`
+									);
+								}
+							}
+						} catch (hyperbeamError: any) {
+							console.warn(`[handleClaim] HyperBEAM query failed for ${processId}:`, hyperbeamError);
+						}
+					}
+
+					// If HyperBEAM didn't find it, try CU results as fallback
+					if (!response) {
+						console.log("[handleClaim] HyperBEAM didn't find response, trying CU results...");
+
+						for (const processId of processesToCheck) {
+							if (response) break; // Already found response
+
+							try {
+								const resultsData = await getResults({
+									process: processId,
+									sort: 'DESC',
+									limit: 10,
+								});
+
+								if (resultsData?.edges && resultsData.edges.length > 0) {
+									// Look through recent results for Claim-Success, Claim-Error, or Error actions
+									// Prioritize Claim-Error over Claim-Success (to catch duplicate attempts)
+									const foundResponses: any[] = [];
+
+									for (const edge of resultsData.edges) {
+										if (edge.node?.Messages && edge.node.Messages.length > 0) {
+											for (const msg of edge.node.Messages) {
+												const action = getTagValue(msg.Tags, 'Action');
+												if (action === 'Claim-Success' || action === 'Claim-Error' || action === 'Error') {
+													// For profile process, check if Target matches our profile
+													// For asset process, check if Recipient matches our profile
+													const target = getTagValue(msg.Tags, 'Target');
+													const recipient = getTagValue(msg.Tags, 'Recipient');
+													const isForUs = target === profileProcessId || recipient === profileProcessId;
+
+													if (isForUs) {
+														let responseData = null;
+														if (msg.Data) {
+															try {
+																responseData = JSON.parse(msg.Data);
+															} catch {
+																responseData = msg.Data;
+															}
+														}
+
+														foundResponses.push({
+															action,
+															response: {
+																[action]: {
+																	status: getTagValue(msg.Tags, 'Status'),
+																	message: getTagValue(msg.Tags, 'Message'),
+																	data: responseData,
+																},
+															},
+															// Use message timestamp or order to determine recency
+															timestamp: msg.Timestamp || edge.node.Output?.timestamp || 0,
+														});
+													}
+												}
+											}
+										}
+									}
+
+									// Prioritize Claim-Error responses (duplicate attempts), then take most recent
+									if (foundResponses.length > 0) {
+										// Sort: Claim-Error first, then by timestamp (most recent first)
+										foundResponses.sort((a, b) => {
+											if (a.action === 'Claim-Error' && b.action !== 'Claim-Error') return -1;
+											if (a.action !== 'Claim-Error' && b.action === 'Claim-Error') return 1;
+											return (b.timestamp || 0) - (a.timestamp || 0);
+										});
+
+										response = foundResponses[0].response;
+										console.log(`[handleClaim] Found response via CU from ${processId}:`, response);
+										console.log(
+											`[handleClaim] Total matching responses found: ${foundResponses.length}, selected: ${foundResponses[0].action}`
+										);
+									}
+								}
+							} catch (cuError: any) {
+								console.warn(`[handleClaim] CU query failed for ${processId}:`, cuError);
+							}
+						}
+					}
+
+					if (response) break;
+
+					// If no response found, wait and retry
+					if (retries > 1) {
+						console.log(
+							`[handleClaim] Response not found yet, retrying in ${delay}ms... (${retries - 1} retries left)`
+						);
+						await new Promise((resolve) => setTimeout(resolve, delay));
+						delay *= 1.2; // Gradual backoff
+					}
+					retries--;
+				} catch (error: any) {
+					console.error('[handleClaim] Error querying results:', error);
+					// If rate limited, wait longer before retrying
+					if (error?.message?.includes('429') || error?.message?.includes('Too Many Requests')) {
+						if (retries > 1) {
+							console.log(`[handleClaim] Rate limited, waiting ${delay * 2}ms before retry...`);
+							await new Promise((resolve) => setTimeout(resolve, delay * 2));
+							delay *= 2;
+						}
+					} else if (retries > 1) {
+						await new Promise((resolve) => setTimeout(resolve, delay));
+						delay *= 1.2;
+					}
+					retries--;
+				}
+			}
 
 			console.log('=== Claim Response ===');
 			console.log('Raw response:', response);
+			console.log('Response type:', typeof response);
+			console.log('Response keys:', response ? Object.keys(response) : 'null');
+			console.log('Response is null?', response === null);
+			console.log('Response is undefined?', response === undefined);
+
+			if (!response) {
+				console.error('No response received - this could mean:');
+				console.error('1. Handler not loaded in process');
+				console.error('2. Timeout too short');
+				console.error('3. Process not responding');
+				console.error('4. Message format incorrect');
+				throw new Error('No response received from claim process. Check console for details.');
+			}
 
 			if (response?.['Claim-Success']) {
 				console.log('Claim successful!', response['Claim-Success']);
@@ -823,13 +1139,27 @@ export default function Campaign() {
 					...prev,
 					claimProcessed: true,
 				}));
+				// Update claim status to reflect successful claim
+				setClaimStatus({
+					hasClaimed: true,
+					status: 'Already-Claimed',
+					claimedAt: response['Claim-Success']?.data?.claimedAt?.toString(),
+				});
 				// Refresh campaign stats after successful claim
 				await fetchCampaignStats();
 			} else if (response?.['Claim-Error'] || response?.['Error']) {
-				const errorMessage = response?.['Claim-Error']?.message || response?.['Error']?.message || 'Claim failed';
+				const errorMessage =
+					response?.['Claim-Error']?.message ||
+					response?.['Claim-Error']?.Tags?.Message ||
+					response?.['Error']?.message ||
+					response?.['Error']?.Tags?.Message ||
+					'Claim failed';
+				console.error('Claim error response:', response);
 				throw new Error(errorMessage);
 			} else {
-				throw new Error('No response received from claim process');
+				console.error('Unexpected response format:', response);
+				console.error('Expected one of: Claim-Success, Claim-Error, Error');
+				throw new Error('Unexpected response format from claim process');
 			}
 		} catch (error) {
 			console.error('Claim error:', error);
@@ -837,9 +1167,60 @@ export default function Campaign() {
 		}
 	}
 
+	// Check claim status when wallet connects
+	const checkClaimStatus = async () => {
+		if (!arProvider.walletAddress) {
+			return;
+		}
+
+		try {
+			setClaimStatus((prev) => ({ ...prev, status: 'Checking' }));
+			console.log('[checkClaimStatus] Checking claim status for wallet:', arProvider.walletAddress);
+
+			const statusData = await readHandler({
+				processId: ATOMIC_ASSET_ID,
+				action: 'Get-Claim-Status',
+				tags: [{ name: 'Wallet-Address', value: arProvider.walletAddress }],
+				data: null,
+			});
+
+			console.log('[checkClaimStatus] Received status:', statusData);
+
+			if (statusData) {
+				// readHandler returns tags as an object, so Status will be a property
+				const status = statusData.Status || statusData.status;
+				if (status === 'Already-Claimed') {
+					setClaimStatus({
+						hasClaimed: true,
+						status: 'Already-Claimed',
+						claimedAt: statusData.ClaimedAt || statusData.claimedAt,
+					});
+				} else if (status === 'Sold-Out') {
+					setClaimStatus({
+						hasClaimed: false,
+						status: 'Sold-Out',
+					});
+				} else if (status === 'Available') {
+					setClaimStatus({
+						hasClaimed: false,
+						status: 'Available',
+					});
+				}
+			}
+		} catch (error) {
+			console.error('[checkClaimStatus] Error checking claim status:', error);
+			// Don't set error status, just log it - user can still try to claim
+			setClaimStatus({
+				hasClaimed: false,
+				status: null,
+			});
+		}
+	};
+
 	useEffect(() => {
 		if (arProvider.walletAddress && permawebProvider.libs) {
 			verifyWallet();
+			checkClaimStatus(); // Check if user has already claimed
 		}
 		// Fetch campaign stats on mount
 		fetchCampaignStats();
@@ -847,11 +1228,14 @@ export default function Campaign() {
 
 	const fetchCampaignStats = async () => {
 		try {
+			console.log('[fetchCampaignStats] Fetching stats from process:', ATOMIC_ASSET_ID);
 			// Use readHandler for campaign stats (will use dryrun)
 			const statsData = await readHandler({
 				processId: ATOMIC_ASSET_ID,
 				action: 'Get-Campaign-Stats',
 			});
+
+			console.log('[fetchCampaignStats] Received stats data:', statsData);
 
 			if (statsData) {
 				// Handle case-insensitive field names (TotalSupply vs Totalsupply)
@@ -864,9 +1248,12 @@ export default function Campaign() {
 					remaining: parseInt(remaining),
 					total: parseInt(totalSupply),
 				});
+				console.log('[fetchCampaignStats] Stats set:', { claimed, remaining, total: totalSupply });
+			} else {
+				console.warn('[fetchCampaignStats] No stats data received - handler may not be loaded');
 			}
 		} catch (error) {
-			console.error('Failed to fetch campaign stats:', error);
+			console.error('[fetchCampaignStats] Failed to fetch campaign stats:', error);
 		}
 	};
 
@@ -999,6 +1386,7 @@ export default function Campaign() {
 							{ text: 'Spawned an AO Process', met: verificationResults.hasAOProcess },
 						]}
 						onClaim={() => handleClaim(ATOMIC_ASSET_ID)}
+						claimStatus={claimStatus}
 						guideSubheader={'More info on how to claim your Atomic Asset'}
 						guide={[
 							'Transactions must be from the start of legacynet up to February 8, 2025 (mainnet launch)',

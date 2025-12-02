@@ -100,7 +100,7 @@ export default function Header() {
 								</S.DelegationButton>
 							</S.DelegationButtonWrapper>
 						)} */}
-						<S.CampaignButton href="/#/campaign-3">
+						<S.CampaignButton as={Link} to="/campaign-3">
 							<S.CampaignIcon>
 								<ReactSVG src={ASSETS.glasseaterIcon} />
 							</S.CampaignIcon>
