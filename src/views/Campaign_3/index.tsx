@@ -470,14 +470,14 @@ function HeroSection({ onConnect, isVerifying }: { onConnect: () => void; isVeri
 							display: 'block',
 						}}
 					>
-						Glasseaters: Collections
+						AO Testnet Legends
 					</span>
 					<p style={{ fontSize: 13, color: '#262A1A', fontFamily: 'Inter', margin: 0, marginBottom: 16 }}>
 						To start your journey, connect your wallet to check if you are eligible for <b>"I Survived AO Testnet"</b>{' '}
-						or <b>"Hyperbeam Glasseaters"</b>.
+						or view the requirements and guide for <b>"Hyperbeam Glasseaters"</b>.
 					</p>
 					<p style={{ fontSize: 13, color: '#262A1A', fontFamily: 'Inter', margin: 0, marginBottom: 16 }}>
-						Make sure to read through the requirements and reach out on <b>AO discord</b> if you have any questions.
+						Make sure to reach out on <b>AO discord</b> if you have any questions.
 					</p>
 				</div>
 				{/* Image and button row */}
@@ -507,6 +507,7 @@ function HeroSection({ onConnect, isVerifying }: { onConnect: () => void; isVeri
 							justifyContent: 'flex-end',
 							height: 180,
 							flex: 1,
+							gap: 12,
 						}}
 					>
 						<button
@@ -522,10 +523,20 @@ function HeroSection({ onConnect, isVerifying }: { onConnect: () => void; isVeri
 								fontWeight: 500,
 								fontFamily: 'Inter',
 								cursor: isVerifying ? 'default' : 'pointer',
-								transition: 'all 200ms ease-out',
 								display: 'flex',
 								alignItems: 'center',
 								justifyContent: 'center',
+								boxSizing: 'border-box',
+								height: 48,
+								opacity: 1,
+							}}
+							onMouseEnter={(e) => {
+								if (!isVerifying) {
+									e.currentTarget.style.opacity = '0.8';
+								}
+							}}
+							onMouseLeave={(e) => {
+								e.currentTarget.style.opacity = '1';
 							}}
 						>
 							{isVerifying ? (
@@ -547,6 +558,35 @@ function HeroSection({ onConnect, isVerifying }: { onConnect: () => void; isVeri
 								'Connect Wallet'
 							)}
 						</button>
+						<a
+							href="/#/ao-testnet-legends"
+							style={{
+								background: 'transparent',
+								color: '#1a1a1a',
+								border: '1px solid #1a1a1a',
+								borderRadius: 8,
+								padding: '16px 0px',
+								fontSize: 14,
+								fontWeight: 500,
+								fontFamily: 'Inter',
+								cursor: 'pointer',
+								display: 'flex',
+								alignItems: 'center',
+								justifyContent: 'center',
+								textDecoration: 'none',
+								boxSizing: 'border-box',
+								height: 48,
+								opacity: 1,
+							}}
+							onMouseEnter={(e) => {
+								e.currentTarget.style.opacity = '0.8';
+							}}
+							onMouseLeave={(e) => {
+								e.currentTarget.style.opacity = '1';
+							}}
+						>
+							View Campaign
+						</a>
 					</div>
 				</div>
 			</div>
