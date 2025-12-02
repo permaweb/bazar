@@ -165,7 +165,9 @@ function RewardCard({
 	guide,
 	guideSubheader,
 	onClaim,
+	onConnectWallet,
 	showConnectWallet = true,
+	showBlur = false,
 	cta,
 	claimStatus,
 }: {
@@ -187,6 +189,8 @@ function RewardCard({
 	guideSubheader?: string;
 	onClaim?: () => Promise<void>;
 	showConnectWallet?: boolean;
+	showBlur?: boolean;
+	onConnectWallet?: () => void;
 	cta?: { label: string; href: string; iconSrc?: string };
 	claimStatus?: {
 		hasClaimed: boolean;
@@ -241,7 +245,7 @@ function RewardCard({
 				position: 'relative',
 			}}
 		>
-			{!connected && <div style={customOverlayStyle} />}
+			{!connected && showBlur && <div style={customOverlayStyle} />}
 			<div
 				className="campaign3-inner-card"
 				style={{
@@ -331,14 +335,37 @@ function RewardCard({
 						</div>
 					)}
 				</div>
-				{connected && requirements && (
+				{requirements && (
 					<RequirementsBox
 						requirements={requirements}
 						subheaderText={requirementsSubheader}
 						style={{ marginTop: 0, marginBottom: guide ? 0 : 2 }}
 					/>
 				)}
-				{connected && guide && <GuideBox steps={guide} subheaderText={guideSubheader} style={{ marginTop: 0 }} />}
+				{guide && <GuideBox steps={guide} subheaderText={guideSubheader} style={{ marginTop: 0 }} />}
+				{!connected && !cta && onClaim && onConnectWallet && (
+					<button
+						onClick={onConnectWallet}
+						style={{
+							width: 'calc(100% - 16px)',
+							padding: '20px 12px',
+							border: 'none',
+							borderRadius: 8,
+							background: '#1a1a1a',
+							color: '#FFFFFF',
+							fontSize: 14,
+							cursor: 'pointer',
+							transition: 'all 80ms ease-out',
+							display: 'flex',
+							justifyContent: 'center',
+							alignItems: 'center',
+							gap: 8,
+							margin: '0px 0px 0px 0px',
+						}}
+					>
+						Connect Wallet
+					</button>
+				)}
 				{connected && !cta && atLeastOneRequirementMet && onClaim && (
 					<>
 						{claimStatus?.status === 'Already-Claimed' ? (
@@ -472,7 +499,17 @@ function RewardCard({
 }
 
 // Hero section (main panel/modal)
-function HeroSection({ onConnect, isVerifying }: { onConnect: () => void; isVerifying?: boolean }) {
+function HeroSection({
+	onConnect,
+	onViewCampaign,
+	isVerifying,
+	isCheckingEligibility,
+}: {
+	onConnect: () => void;
+	onViewCampaign: () => void;
+	isVerifying?: boolean;
+	isCheckingEligibility?: boolean;
+}) {
 	return (
 		<div
 			style={{
@@ -586,7 +623,7 @@ function HeroSection({ onConnect, isVerifying }: { onConnect: () => void; isVeri
 								e.currentTarget.style.opacity = '1';
 							}}
 						>
-							{isVerifying ? (
+							{isVerifying || isCheckingEligibility ? (
 								<>
 									<div
 										style={{
@@ -605,8 +642,8 @@ function HeroSection({ onConnect, isVerifying }: { onConnect: () => void; isVeri
 								'Connect Wallet'
 							)}
 						</button>
-						<a
-							href="/#/ao-testnet-legends"
+						<button
+							onClick={onViewCampaign}
 							style={{
 								background: 'transparent',
 								color: '#1a1a1a',
@@ -633,7 +670,7 @@ function HeroSection({ onConnect, isVerifying }: { onConnect: () => void; isVeri
 							}}
 						>
 							View Campaign
-						</a>
+						</button>
 					</div>
 				</div>
 			</div>
@@ -830,6 +867,8 @@ export default function Campaign() {
 	const arProvider = useArweaveProvider();
 	const permawebProvider = usePermawebProvider();
 	const [isVerifying, setIsVerifying] = useState(false);
+	const [showModal, setShowModal] = useState(true);
+	const [isCheckingEligibility, setIsCheckingEligibility] = useState(false);
 	const [claimStatus, setClaimStatus] = useState<{
 		hasClaimed: boolean;
 		status: 'Available' | 'Already-Claimed' | 'Sold-Out' | 'Checking' | null;
@@ -1298,8 +1337,10 @@ export default function Campaign() {
 
 	useEffect(() => {
 		if (arProvider.walletAddress && permawebProvider.libs) {
-			verifyWallet();
-			checkClaimStatus(); // Check if user has already claimed
+			setIsCheckingEligibility(true);
+			Promise.all([verifyWallet(), checkClaimStatus()]).finally(() => {
+				setIsCheckingEligibility(false);
+			});
 		}
 		// Fetch campaign stats on mount
 		fetchCampaignStats();
@@ -1458,6 +1499,8 @@ export default function Campaign() {
 						connected={!!arProvider.walletAddress}
 						overlayStyle={overlayStyle}
 						isLeft
+						showConnectWallet={true}
+						showBlur={showModal || isCheckingEligibility}
 						requirements={[
 							{ text: 'Transacted on Bazar (Buy, or Sell)', met: verificationResults.hasBazarTransaction },
 							{ text: 'Transacted on Botega (Buy, Sell, Agents, etc...)', met: verificationResults.hasBotegaSwap },
@@ -1465,6 +1508,7 @@ export default function Campaign() {
 							{ text: 'Spawned an AO Process', met: verificationResults.hasAOProcess },
 						]}
 						onClaim={() => handleClaim(ATOMIC_ASSET_ID)}
+						onConnectWallet={() => arProvider.setWalletModalVisible(true)}
 						claimStatus={claimStatus}
 						guideSubheader={'More info on how to claim your Atomic Asset'}
 						guide={[
@@ -1486,6 +1530,7 @@ export default function Campaign() {
 						overlayStyle={overlayStyle}
 						isRight
 						showConnectWallet={false}
+						showBlur={showModal || isCheckingEligibility}
 						cta={{
 							label: 'Join Competition Via Discord',
 							href: 'https://discord.gg/kDWWbjj7Fm',
@@ -1530,8 +1575,8 @@ export default function Campaign() {
 						onClaim={() => handleClaim(ATOMIC_ASSET_ID)}
 					/>
 
-					{/* Show modal for both unconnected and verifying states */}
-					{(!arProvider.walletAddress || isVerifying) && (
+					{/* Show modal for both unconnected and verifying states, but allow user to dismiss */}
+					{((showModal && (!arProvider.walletAddress || isVerifying)) || isCheckingEligibility) && (
 						<div
 							style={{
 								position: 'fixed',
@@ -1545,7 +1590,12 @@ export default function Campaign() {
 								width: '100%',
 							}}
 						>
-							<HeroSection onConnect={() => arProvider.setWalletModalVisible(true)} isVerifying={isVerifying} />
+							<HeroSection
+								onConnect={() => arProvider.setWalletModalVisible(true)}
+								onViewCampaign={() => setShowModal(false)}
+								isVerifying={isVerifying}
+								isCheckingEligibility={isCheckingEligibility}
+							/>
 						</div>
 					)}
 				</div>

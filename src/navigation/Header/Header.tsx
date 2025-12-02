@@ -100,11 +100,11 @@ export default function Header() {
 								</S.DelegationButton>
 							</S.DelegationButtonWrapper>
 						)} */}
-						<S.CampaignButton href="/#/ao-testnet-legends">
+						<S.CampaignButton as={Link} to="/ao-testnet-legends">
 							<S.CampaignIcon>
 								<ReactSVG src={ASSETS.glasseaterIcon} />
 							</S.CampaignIcon>
-							<span>View Glasseaters</span>
+							<span>AO Testnet Legends</span>
 							<S.Particle delay={0} top={80} left={20} />
 							<S.Particle delay={0.5} top={60} left={50} />
 							<S.Particle delay={1.0} top={70} left={80} />
