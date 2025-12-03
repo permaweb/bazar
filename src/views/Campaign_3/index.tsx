@@ -1600,11 +1600,8 @@ export default function Campaign() {
 			}
 		} catch (error) {
 			console.error('[checkClaimStatus] Error checking claim status:', error);
-			// Don't set error status, just log it - user can still try to claim
-			setClaimStatus({
-				hasClaimed: false,
-				status: null,
-			});
+			// Don't reset claim status on error - keep previous state
+			// If we can't check, user can try to claim and AO process will reject if already claimed
 		}
 	};
 
@@ -1655,6 +1652,10 @@ export default function Campaign() {
 
 		setIsVerifying(true);
 		try {
+			// Feb 8, 2025 (mainnet launch) cutoff
+			// Block 1605347, timestamp: 1738972847027
+			const maxBlock = 1605347;
+
 			// Check Bazar transactions
 			const bazarData = await permawebProvider.libs.getGQLData({
 				gateway: GATEWAYS.arweave,
@@ -1664,18 +1665,33 @@ export default function Campaign() {
 					{ name: 'Variant', values: ['ao.TN.1'] },
 					{ name: 'X-Order-Action', values: ['Create-Order'] },
 				],
+				maxBlock,
 			});
 
-			// Check Swap transactions
-			const swapData = await permawebProvider.libs.getGQLData({
+			// Check Permaswap transactions (uses X-PS-For tag to identify)
+			const permaswapData = await permawebProvider.libs.getGQLData({
 				gateway: GATEWAYS.arweave,
 				owners: [arProvider.walletAddress],
 				tags: [
-					{ name: 'X-Action', values: ['Multi-Hop-Swap'] },
+					{ name: 'X-PS-For', values: ['Swap'] },
 					{ name: 'Data-Protocol', values: ['ao'] },
 					{ name: 'Type', values: ['Message'] },
 					{ name: 'Variant', values: ['ao.TN.1'] },
 				],
+				maxBlock,
+			});
+
+			// Check Botega swap transactions (uses X-Action: Swap without X-PS-For)
+			const botegaData = await permawebProvider.libs.getGQLData({
+				gateway: GATEWAYS.arweave,
+				owners: [arProvider.walletAddress],
+				tags: [
+					{ name: 'X-Action', values: ['Swap'] },
+					{ name: 'Data-Protocol', values: ['ao'] },
+					{ name: 'Type', values: ['Message'] },
+					{ name: 'Variant', values: ['ao.TN.1'] },
+				],
+				maxBlock,
 			});
 
 			// Check AO Process
@@ -1686,21 +1702,23 @@ export default function Campaign() {
 					{ name: 'Data-Protocol', values: ['ao'] },
 					{ name: 'Type', values: ['Process'] },
 				],
+				maxBlock,
 			});
 
 			console.log('Verification results:', {
 				bazarTransactions: bazarData.data,
-				swapTransactions: swapData.data,
+				permaswapTransactions: permaswapData.data,
+				botegaTransactions: botegaData.data,
 				aoProcesses: aoProcessData.data,
 			});
 
 			setVerificationResults((prev) => ({
 				...prev,
 				hasBazarTransaction: bazarData.data.length > 0,
-				hasBotegaSwap: false, // TODO: Implement Botega swap check
-				hasPermaswapTransaction: swapData.data.length > 0,
+				hasBotegaSwap: botegaData.data.length > 0,
+				hasPermaswapTransaction: permaswapData.data.length > 0,
 				hasAOProcess: aoProcessData.data.length > 0,
-				aoProcesses: aoProcessData.data, // Store the actual processes
+				aoProcesses: aoProcessData.data,
 			}));
 
 			// Check claim status as part of eligibility verification

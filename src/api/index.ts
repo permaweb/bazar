@@ -511,9 +511,8 @@ export async function readHandler(args: {
 	tags?: TagType[];
 	data?: any;
 }): Promise<any> {
-	// Try HyperBEAM first for Get-Campaign-Stats only (faster for reading standard Token state)
-	// Always use dryrun for Get-Claim-Status (needs custom Claims table that may not be in HyperBEAM state)
-	if (args.action === 'Get-Campaign-Stats') {
+	// Try HyperBEAM first for Get-Campaign-Stats and Get-Claim-Status (faster, avoids CU rate limits)
+	if (args.action === 'Get-Campaign-Stats' || args.action === 'Get-Claim-Status') {
 		try {
 			const { HB } = await import('helpers/config');
 			const url = `${HB.defaultNode}/${args.processId}~process@1.0/now`;
@@ -526,32 +525,65 @@ export async function readHandler(args: {
 			if (res.ok) {
 				const state = await res.json();
 
-				// Handle Get-Campaign-Stats by reading state
-				const claims = state.Claims || state.claims || {};
-				const claimsCount = claims ? Object.keys(claims).length : 0;
-				const totalSupply = state.CampaignConfig?.TotalSupply || state.CampaignConfig?.totalSupply || 1984;
+				// Handle Get-Claim-Status by reading Claims table from state
+				if (args.action === 'Get-Claim-Status') {
+					const walletAddress = args.tags?.find((t) => t.name === 'Wallet-Address')?.value;
+					const claims = state.Claims || state.claims || {};
 
-				// Token.Balances might be at state.Token.Balances or state.Balances
-				const tokenBalances = state.Token?.Balances || state.Token?.balances || state.Balances || state.balances || {};
-				const owner = state.Owner || state.owner || state.Token?.Creator || state.Token?.creator;
-				const ownerBalance = owner && tokenBalances[owner] ? tokenBalances[owner] : '0';
+					if (walletAddress && claims[walletAddress]) {
+						return {
+							Status: 'Already-Claimed',
+							ClaimedAt: claims[walletAddress].Timestamp?.toString() || claims[walletAddress].timestamp?.toString(),
+						};
+					}
 
-				if (process.env.NODE_ENV === 'development') {
-					console.log('[readHandler] Campaign stats from HyperBEAM:', {
-						claimsCount,
-						totalSupply,
-						owner,
-						ownerBalance,
-						hasTokenBalances: !!tokenBalances,
-					});
+					// Check if sold out
+					const claimsCount = Object.keys(claims).length;
+					const totalSupply = state.CampaignConfig?.TotalSupply || 1984;
+					if (claimsCount >= totalSupply) {
+						return {
+							Status: 'Sold-Out',
+							Message: 'All 1984 assets have been claimed',
+						};
+					}
+
+					// Available
+					return {
+						Status: 'Available',
+						Remaining: (totalSupply - claimsCount).toString(),
+						Total: totalSupply.toString(),
+					};
 				}
 
-				return {
-					TotalSupply: totalSupply,
-					Claimed: claimsCount,
-					Remaining: totalSupply - claimsCount,
-					OwnerBalance: ownerBalance,
-				};
+				// Handle Get-Campaign-Stats by reading state
+				if (args.action === 'Get-Campaign-Stats') {
+					const claims = state.Claims || state.claims || {};
+					const claimsCount = Object.keys(claims).length;
+					const totalSupply = state.CampaignConfig?.TotalSupply || state.CampaignConfig?.totalSupply || 1984;
+
+					// Token.Balances might be at state.Token.Balances or state.Balances
+					const tokenBalances =
+						state.Token?.Balances || state.Token?.balances || state.Balances || state.balances || {};
+					const owner = state.Owner || state.owner || state.Token?.Creator || state.Token?.creator;
+					const ownerBalance = owner && tokenBalances[owner] ? tokenBalances[owner] : '0';
+
+					if (process.env.NODE_ENV === 'development') {
+						console.log('[readHandler] Campaign stats from HyperBEAM:', {
+							claimsCount,
+							totalSupply,
+							owner,
+							ownerBalance,
+							hasTokenBalances: !!tokenBalances,
+						});
+					}
+
+					return {
+						TotalSupply: totalSupply,
+						Claimed: claimsCount,
+						Remaining: totalSupply - claimsCount,
+						OwnerBalance: ownerBalance,
+					};
+				}
 			}
 		} catch (error) {
 			console.log('[readHandler] HyperBEAM read failed, falling back to dryrun:', error);
