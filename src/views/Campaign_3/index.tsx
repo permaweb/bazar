@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { createGlobalStyle } from 'styled-components';
 
 import { readHandler } from 'api';
@@ -56,6 +57,17 @@ const Campaign3Responsive = createGlobalStyle`
 		}
 		100% {
 			transform: rotate(360deg);
+		}
+	}
+
+	@keyframes confetti-fall {
+		0% {
+			transform: translateY(-100vh) rotate(0deg);
+			opacity: 1;
+		}
+		100% {
+			transform: translateY(100vh) rotate(720deg);
+			opacity: 0;
 		}
 	}
 
@@ -152,6 +164,7 @@ function RewardCard({
 	fallbackImage,
 	image,
 	title,
+	titleLink,
 	collected,
 	collectedSuffix = 'Collected',
 	bgColor,
@@ -175,6 +188,7 @@ function RewardCard({
 	fallbackImage?: string;
 	image: string;
 	title: string;
+	titleLink?: string;
 	collected: string;
 	collectedSuffix?: string;
 	bgColor: string;
@@ -321,9 +335,30 @@ function RewardCard({
 					}}
 				>
 					<div style={{ width: 157, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-						<div style={{ color: '#202416', fontSize: 16, fontWeight: 700, fontFamily: 'Inter', whiteSpace: 'nowrap' }}>
-							{title}
-						</div>
+						{titleLink ? (
+							<Link
+								to={titleLink}
+								style={{
+									color: '#202416',
+									fontSize: 16,
+									fontWeight: 700,
+									fontFamily: 'Inter',
+									whiteSpace: 'nowrap',
+									textDecoration: 'none',
+									transition: 'color 0.2s',
+								}}
+								onMouseEnter={(e) => (e.currentTarget.style.color = '#c4c20d')}
+								onMouseLeave={(e) => (e.currentTarget.style.color = '#202416')}
+							>
+								{title}
+							</Link>
+						) : (
+							<div
+								style={{ color: '#202416', fontSize: 16, fontWeight: 700, fontFamily: 'Inter', whiteSpace: 'nowrap' }}
+							>
+								{title}
+							</div>
+						)}
 						<div style={{ color: '#000', fontSize: 13, fontFamily: 'Inter', whiteSpace: 'nowrap' }}>
 							{collected}
 							{collectedSuffix ? ` ${collectedSuffix}` : ''}
@@ -493,6 +528,234 @@ function RewardCard({
 						{error}
 					</div>
 				)}
+			</div>
+		</div>
+	);
+}
+
+// Processing modal
+function ProcessingModal() {
+	return (
+		<div
+			style={{
+				position: 'relative',
+				width: 503.5,
+				height: 438,
+				background: '#fff',
+				borderRadius: 8,
+				boxShadow: '0 4px 32px rgba(0,0,0,0.18)',
+				display: 'flex',
+				flexDirection: 'column',
+				padding: 0,
+				overflow: 'hidden',
+			}}
+		>
+			<div
+				style={{
+					background: '#F1F1F1',
+					borderRadius: 8,
+					margin: 8,
+					padding: 16,
+					height: 'calc(100% - 16px)',
+					width: 'calc(100% - 16px)',
+					display: 'flex',
+					flexDirection: 'column',
+					alignItems: 'flex-start',
+					justifyContent: 'space-between',
+				}}
+			>
+				<div style={{ width: '100%' }}>
+					<span
+						style={{
+							fontSize: 22,
+							fontWeight: 700,
+							color: '#262A1A',
+							fontFamily: 'Inter',
+							marginBottom: 12,
+							display: 'block',
+						}}
+					>
+						Processing
+					</span>
+					<p style={{ fontSize: 13, color: '#262A1A', fontFamily: 'Inter', margin: 0 }}>
+						Your atomic asset is being sent to your wallet as soon as it is verified on chain.
+					</p>
+				</div>
+				<div
+					style={{
+						display: 'flex',
+						flexDirection: 'row',
+						alignItems: 'center',
+						width: '100%',
+						marginTop: 2,
+						minHeight: 180,
+					}}
+				>
+					<img
+						src={survivedAoImg}
+						alt="I Survived AO Testnet"
+						style={{
+							width: 260,
+							borderRadius: 8,
+							marginRight: 4,
+						}}
+					/>
+					<div
+						style={{
+							display: 'flex',
+							flexDirection: 'column',
+							justifyContent: 'flex-end',
+							height: 180,
+							flex: 1,
+							gap: 12,
+						}}
+					>
+						<button
+							disabled
+							style={{
+								background: '#1a1a1a',
+								color: '#fff',
+								border: 'none',
+								borderRadius: 8,
+								padding: '16px 0px',
+								fontSize: 14,
+								fontWeight: 500,
+								fontFamily: 'Inter',
+								cursor: 'default',
+								display: 'flex',
+								alignItems: 'center',
+								justifyContent: 'center',
+								boxSizing: 'border-box',
+								height: 48,
+								opacity: 1,
+								gap: 8,
+							}}
+						>
+							<div
+								style={{
+									width: 16,
+									height: 16,
+									border: '2px solid #fff',
+									borderTopColor: 'transparent',
+									borderRadius: '50%',
+									animation: 'spin 1s linear infinite',
+								}}
+							/>
+							Processing...
+						</button>
+					</div>
+				</div>
+			</div>
+		</div>
+	);
+}
+
+// Success modal
+function SuccessModal({ onVisitAsset }: { onVisitAsset: () => void }) {
+	return (
+		<div
+			style={{
+				position: 'relative',
+				width: 503.5,
+				height: 438,
+				background: '#fff',
+				borderRadius: 8,
+				boxShadow: '0 4px 32px rgba(0,0,0,0.18)',
+				display: 'flex',
+				flexDirection: 'column',
+				padding: 0,
+				overflow: 'hidden',
+			}}
+		>
+			<div
+				style={{
+					background: '#F1F1F1',
+					borderRadius: 8,
+					margin: 8,
+					padding: 16,
+					height: 'calc(100% - 16px)',
+					width: 'calc(100% - 16px)',
+					display: 'flex',
+					flexDirection: 'column',
+					alignItems: 'flex-start',
+					justifyContent: 'space-between',
+				}}
+			>
+				<div style={{ width: '100%' }}>
+					<span
+						style={{
+							fontSize: 22,
+							fontWeight: 700,
+							color: '#262A1A',
+							fontFamily: 'Inter',
+							marginBottom: 12,
+							display: 'block',
+						}}
+					>
+						Congratulations!
+					</span>
+					<p style={{ fontSize: 13, color: '#262A1A', fontFamily: 'Inter', margin: 0 }}>
+						View your asset in your wallet on Bazar!
+					</p>
+				</div>
+				<div
+					style={{
+						display: 'flex',
+						flexDirection: 'row',
+						alignItems: 'flex-end',
+						justifyContent: 'space-between',
+						width: '100%',
+					}}
+				>
+					<img
+						src={survivedAoImg}
+						alt="I Survived AO Testnet"
+						style={{
+							width: 260,
+							borderRadius: 8,
+							marginRight: 4,
+						}}
+					/>
+					<div
+						style={{
+							display: 'flex',
+							flexDirection: 'column',
+							justifyContent: 'flex-end',
+							height: 180,
+							flex: 1,
+							gap: 12,
+						}}
+					>
+						<button
+							onClick={onVisitAsset}
+							style={{
+								background: '#1a1a1a',
+								color: '#fff',
+								border: 'none',
+								borderRadius: 8,
+								padding: '16px 0px',
+								fontSize: 14,
+								fontWeight: 500,
+								fontFamily: 'Inter',
+								cursor: 'pointer',
+								display: 'flex',
+								alignItems: 'center',
+								justifyContent: 'center',
+								boxSizing: 'border-box',
+								height: 48,
+								opacity: 1,
+							}}
+							onMouseEnter={(e) => {
+								e.currentTarget.style.opacity = '0.8';
+							}}
+							onMouseLeave={(e) => {
+								e.currentTarget.style.opacity = '1';
+							}}
+						>
+							Visit your Atomic Asset
+						</button>
+					</div>
+				</div>
 			</div>
 		</div>
 	);
@@ -869,6 +1132,8 @@ export default function Campaign() {
 	const [isVerifying, setIsVerifying] = useState(false);
 	const [showModal, setShowModal] = useState(true);
 	const [isCheckingEligibility, setIsCheckingEligibility] = useState(false);
+	const [showProcessingModal, setShowProcessingModal] = useState(false);
+	const [showSuccessModal, setShowSuccessModal] = useState(false);
 	const [claimStatus, setClaimStatus] = useState<{
 		hasClaimed: boolean;
 		status: 'Available' | 'Already-Claimed' | 'Sold-Out' | 'Checking' | null;
@@ -902,6 +1167,9 @@ export default function Campaign() {
 				console.error('No Bazar profile found');
 				throw new Error('You must have a Bazar profile to claim this asset');
 			}
+
+			// Show processing modal
+			setShowProcessingModal(true);
 
 			console.log('Starting claim process:', {
 				walletAddress: arProvider.walletAddress,
@@ -1265,6 +1533,10 @@ export default function Campaign() {
 				});
 				// Refresh campaign stats after successful claim
 				await fetchCampaignStats();
+
+				// Hide processing modal and show success modal
+				setShowProcessingModal(false);
+				setShowSuccessModal(true);
 			} else if (response?.['Claim-Error'] || response?.['Error']) {
 				const errorMessage =
 					response?.['Claim-Error']?.message ||
@@ -1281,6 +1553,7 @@ export default function Campaign() {
 			}
 		} catch (error) {
 			console.error('Claim error:', error);
+			setShowProcessingModal(false);
 			throw error;
 		}
 	}
@@ -1338,7 +1611,7 @@ export default function Campaign() {
 	useEffect(() => {
 		if (arProvider.walletAddress && permawebProvider.libs) {
 			setIsCheckingEligibility(true);
-			Promise.all([verifyWallet(), checkClaimStatus()]).finally(() => {
+			verifyWallet().finally(() => {
 				setIsCheckingEligibility(false);
 			});
 		}
@@ -1429,6 +1702,9 @@ export default function Campaign() {
 				hasAOProcess: aoProcessData.data.length > 0,
 				aoProcesses: aoProcessData.data, // Store the actual processes
 			}));
+
+			// Check claim status as part of eligibility verification
+			await checkClaimStatus();
 		} catch (error) {
 			console.error('Verification error:', error);
 		} finally {
@@ -1493,6 +1769,7 @@ export default function Campaign() {
 						fallbackImage={MEDIA_URLS.survivedAoFallback}
 						image={MEDIA_URLS.survivedAoImg}
 						title="I Survived AO Testnet"
+						titleLink={`/asset/${ATOMIC_ASSET_ID}`}
 						collected={campaignStats ? `${campaignStats.claimed}/${campaignStats.total}` : '0/1984'}
 						bgColor="#f7f7f7"
 						cardBgColor="#F1F1F1"
@@ -1577,26 +1854,129 @@ export default function Campaign() {
 
 					{/* Show modal for both unconnected and verifying states, but allow user to dismiss */}
 					{((showModal && (!arProvider.walletAddress || isVerifying)) || isCheckingEligibility) && (
-						<div
-							style={{
-								position: 'fixed',
-								left: '50%',
-								top: '50%',
-								transform: 'translate(-50%, -50%)',
-								zIndex: 3,
-								display: 'flex',
-								alignItems: 'center',
-								justifyContent: 'center',
-								width: '100%',
-							}}
-						>
-							<HeroSection
-								onConnect={() => arProvider.setWalletModalVisible(true)}
-								onViewCampaign={() => setShowModal(false)}
-								isVerifying={isVerifying}
-								isCheckingEligibility={isCheckingEligibility}
+						<>
+							{/* Backdrop blur */}
+							<div
+								style={{
+									position: 'fixed',
+									top: 0,
+									left: 0,
+									right: 0,
+									bottom: 0,
+									background: 'rgba(0, 0, 0, 0.3)',
+									backdropFilter: 'blur(8px)',
+									zIndex: 2,
+								}}
 							/>
-						</div>
+							{/* Modal */}
+							<div
+								style={{
+									position: 'fixed',
+									left: '50%',
+									top: '50%',
+									transform: 'translate(-50%, -50%)',
+									zIndex: 3,
+									display: 'flex',
+									alignItems: 'center',
+									justifyContent: 'center',
+									width: '100%',
+								}}
+							>
+								<HeroSection
+									onConnect={() => arProvider.setWalletModalVisible(true)}
+									onViewCampaign={() => setShowModal(false)}
+									isVerifying={isVerifying}
+									isCheckingEligibility={isCheckingEligibility}
+								/>
+							</div>
+						</>
+					)}
+
+					{/* Processing modal */}
+					{showProcessingModal && (
+						<>
+							<div
+								style={{
+									position: 'fixed',
+									top: 0,
+									left: 0,
+									right: 0,
+									bottom: 0,
+									background: 'rgba(0, 0, 0, 0.3)',
+									backdropFilter: 'blur(8px)',
+									zIndex: 2,
+								}}
+							/>
+							<div
+								style={{
+									position: 'fixed',
+									left: '50%',
+									top: '50%',
+									transform: 'translate(-50%, -50%)',
+									zIndex: 3,
+								}}
+							>
+								<ProcessingModal />
+							</div>
+						</>
+					)}
+
+					{/* Success modal with confetti */}
+					{showSuccessModal && (
+						<>
+							<div
+								style={{
+									position: 'fixed',
+									top: 0,
+									left: 0,
+									right: 0,
+									bottom: 0,
+									background: 'rgba(0, 0, 0, 0.3)',
+									backdropFilter: 'blur(8px)',
+									zIndex: 2,
+								}}
+							/>
+							{/* Confetti */}
+							<div
+								style={{
+									position: 'fixed',
+									top: 0,
+									left: 0,
+									right: 0,
+									bottom: 0,
+									pointerEvents: 'none',
+									zIndex: 3,
+								}}
+							>
+								{Array.from({ length: 50 }).map((_, i) => (
+									<div
+										key={i}
+										style={{
+											position: 'absolute',
+											width: 10,
+											height: 10,
+											background: ['#FF6B9D', '#4ECDC4', '#FFE66D', '#95E1D3', '#FF8B94', '#C7CEEA'][i % 6],
+											left: `${Math.random() * 100}%`,
+											top: `${Math.random() * 100}%`,
+											transform: `rotate(${Math.random() * 360}deg)`,
+											animation: `confetti-fall ${2 + Math.random() * 2}s linear infinite`,
+											animationDelay: `${Math.random() * 2}s`,
+										}}
+									/>
+								))}
+							</div>
+							<div
+								style={{
+									position: 'fixed',
+									left: '50%',
+									top: '50%',
+									transform: 'translate(-50%, -50%)',
+									zIndex: 4,
+								}}
+							>
+								<SuccessModal onVisitAsset={() => (window.location.href = `/#/asset/${ATOMIC_ASSET_ID}`)} />
+							</div>
+						</>
 					)}
 				</div>
 			</div>
