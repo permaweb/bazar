@@ -349,9 +349,11 @@ export default function AssetData(props: IProps) {
 						}
 					}
 					if (assetRender.contentType.includes('video')) {
-						if (!props.preview && props.autoLoad) {
+						if (props.preview || props.autoLoad) {
+							// Preview mode or autoload: render video with autoplay for better UX
 							return <S.Video src={assetRender.url} muted autoPlay loop onError={handleError} />;
 						} else {
+							// No autoload and no preview: show icon preview
 							return (
 								<S.Preview>
 									<ReactSVG src={ASSETS.video} />
