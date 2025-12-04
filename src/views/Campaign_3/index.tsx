@@ -651,7 +651,7 @@ function ProcessingModal() {
 }
 
 // Success modal
-function SuccessModal({ onVisitAsset }: { onVisitAsset: () => void }) {
+function SuccessModal() {
 	return (
 		<div
 			style={{
@@ -727,7 +727,9 @@ function SuccessModal({ onVisitAsset }: { onVisitAsset: () => void }) {
 						}}
 					>
 						<button
-							onClick={onVisitAsset}
+							onClick={() => {
+								window.location.href = `https://bazar.ar.io/#/asset/${ATOMIC_ASSET_ID}`;
+							}}
 							style={{
 								background: '#1a1a1a',
 								color: '#fff',
@@ -752,7 +754,7 @@ function SuccessModal({ onVisitAsset }: { onVisitAsset: () => void }) {
 								e.currentTarget.style.opacity = '1';
 							}}
 						>
-							Visit your Atomic Asset
+							Visit Your Atomic Asset
 						</button>
 					</div>
 				</div>
@@ -1992,7 +1994,7 @@ export default function Campaign() {
 									zIndex: 4,
 								}}
 							>
-								<SuccessModal onVisitAsset={() => (window.location.href = `/#/asset/${ATOMIC_ASSET_ID}`)} />
+								<SuccessModal />
 							</div>
 						</>
 					)}
