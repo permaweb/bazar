@@ -511,24 +511,157 @@ export async function readHandler(args: {
 	tags?: TagType[];
 	data?: any;
 }): Promise<any> {
-	// Try HyperBEAM first for Get-Campaign-Stats and Get-Claim-Status (faster, avoids CU rate limits)
-	if (args.action === 'Get-Campaign-Stats' || args.action === 'Get-Claim-Status') {
+	// Try HyperBEAM first for Get-Campaign-Stats, Get-Claim-Status, and Get-Balance (faster, avoids CU rate limits)
+	if (args.action === 'Get-Campaign-Stats' || args.action === 'Get-Claim-Status' || args.action === 'Get-Balance') {
 		try {
 			const { HB } = await import('helpers/config');
-			const url = `${HB.defaultNode}/${args.processId}~process@1.0/now`;
+
+			// Build list of nodes to try: primary first, then fallbacks
+			const nodesToTry = [HB.defaultNode, ...(HB.fallbackNodes || [])];
+
 			const headers = {
 				'require-codec': 'application/json',
 				'accept-bundle': 'true',
 			};
 
-			const res = await fetch(url, { headers });
-			if (res.ok) {
-				const state = await res.json();
+			// Increase timeout to 10 seconds - HyperBEAM can take 4-8 seconds to respond
+			const timeoutMs = 10000;
+
+			let res: Response | undefined;
+			let state: any;
+			let lastError: Error | null = null;
+
+			// Try each node in sequence
+			for (const node of nodesToTry) {
+				try {
+					const nodeUrl = `${node}/${args.processId}~process@1.0/now`;
+
+					const controller = new AbortController();
+					const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+					try {
+						// Try /asset path first (where patch@1.0 exports campaign state with key 'asset')
+						const assetUrl = `${nodeUrl}/asset`;
+						res = await fetch(assetUrl, { headers, signal: controller.signal });
+
+						if (res.ok) {
+							state = await res.json();
+							clearTimeout(timeoutId);
+							break; // Success! Exit the loop
+						} else {
+							// Fallback to full state at /now
+							res = await fetch(nodeUrl, { headers, signal: controller.signal });
+							if (res.ok) {
+								state = await res.json();
+								clearTimeout(timeoutId);
+								break; // Success! Exit the loop
+							}
+						}
+						clearTimeout(timeoutId);
+					} catch (fetchError: any) {
+						clearTimeout(timeoutId);
+						if (fetchError.name === 'AbortError') {
+							lastError = new Error(`HyperBEAM request to ${node} timed out after ${timeoutMs}ms`);
+							console.warn(`[${new Date().toISOString()}] [readHandler] Node ${node} timed out, trying next node...`);
+							continue; // Try next node
+						}
+						lastError = fetchError;
+						console.warn(`[${new Date().toISOString()}] [readHandler] Node ${node} failed:`, fetchError.message);
+						continue; // Try next node
+					}
+				} catch (nodeError: any) {
+					lastError = nodeError;
+					console.warn(`[${new Date().toISOString()}] [readHandler] Node ${node} error:`, nodeError.message);
+					continue; // Try next node
+				}
+			}
+
+			// If we didn't get a successful response from any node, throw the last error
+			if (!res || !res.ok || !state) {
+				if (lastError) {
+					throw lastError;
+				}
+				throw new Error(`All HyperBEAM nodes failed. Last node tried: ${nodesToTry[nodesToTry.length - 1]}`);
+			}
+
+			if (res.ok && state) {
+				// HyperBEAM may wrap the state in different structures - try to extract the actual state
+				// The state from patch@1.0 is sent as JSON-encoded, so it might be in 'body' as a string
+				let actualState = state;
+
+				// First, check if state is directly accessible (has Claims or CampaignConfig)
+				if (state.Claims || state.CampaignConfig || (state.Balances && state.Token)) {
+					actualState = state;
+				}
+				// Check body field (most common location for patch@1.0 exports)
+				else if (state.body) {
+					if (typeof state.body === 'string') {
+						try {
+							const parsedBody = JSON.parse(state.body);
+							if (parsedBody.Claims || parsedBody.CampaignConfig || parsedBody.Balances || parsedBody.Token) {
+								actualState = parsedBody;
+							} else {
+								// Body might contain the state nested further - try using it anyway
+								actualState = parsedBody;
+							}
+						} catch (e) {
+							console.warn(`[readHandler] Failed to parse body as JSON:`, e);
+						}
+					} else if (typeof state.body === 'object') {
+						if (state.body.Claims || state.body.CampaignConfig || state.body.Balances || state.body.Token) {
+							actualState = state.body;
+						} else {
+							// Try using body anyway
+							actualState = state.body;
+						}
+					}
+				}
+				// Check ao-result field
+				else if (state['ao-result'] && typeof state['ao-result'] === 'object') {
+					if (
+						state['ao-result'].Claims ||
+						state['ao-result'].CampaignConfig ||
+						(state['ao-result'].Balances && state['ao-result'].Token)
+					) {
+						actualState = state['ao-result'];
+					}
+				}
+				// Check asset field
+				else if (state.asset && typeof state.asset === 'object') {
+					if (state.asset.Claims || state.asset.CampaignConfig || (state.asset.Balances && state.asset.Token)) {
+						actualState = state.asset;
+					}
+				}
+
+				// If still not found, try parsing the entire state as JSON string
+				if (!actualState.Claims && !actualState.CampaignConfig && typeof state === 'string') {
+					try {
+						actualState = JSON.parse(state);
+					} catch (e) {
+						console.warn(`[readHandler] Failed to parse state as JSON:`, e);
+					}
+				}
 
 				// Handle Get-Claim-Status by reading Claims table from state
 				if (args.action === 'Get-Claim-Status') {
 					const walletAddress = args.tags?.find((t) => t.name === 'Wallet-Address')?.value;
-					const claims = state.Claims || state.claims || {};
+
+					// Claims table is exported via patch@1.0, accessible at various paths
+					const claims =
+						actualState.Claims ||
+						actualState.claims ||
+						state.Claims ||
+						state.claims ||
+						state.asset?.Claims ||
+						state.asset?.claims ||
+						{};
+					const claimsCount = Object.keys(claims).length;
+					const totalSupply =
+						actualState.CampaignConfig?.TotalSupply ||
+						actualState.CampaignConfig?.totalSupply ||
+						state.CampaignConfig?.TotalSupply ||
+						state.asset?.CampaignConfig?.TotalSupply ||
+						1984;
 
 					if (walletAddress && claims[walletAddress]) {
 						return {
@@ -538,8 +671,6 @@ export async function readHandler(args: {
 					}
 
 					// Check if sold out
-					const claimsCount = Object.keys(claims).length;
-					const totalSupply = state.CampaignConfig?.TotalSupply || 1984;
 					if (claimsCount >= totalSupply) {
 						return {
 							Status: 'Sold-Out',
@@ -555,27 +686,94 @@ export async function readHandler(args: {
 					};
 				}
 
+				// Handle Get-Balance by reading balance from state
+				if (args.action === 'Get-Balance') {
+					const walletAddress = args.tags?.find((t) => t.name === 'Wallet-Address')?.value;
+					const profileId = args.tags?.find((t) => t.name === 'Profile-Id')?.value;
+
+					// Token.Balances might be at various paths
+					const tokenBalances =
+						actualState.Token?.Balances ||
+						actualState.Token?.balances ||
+						actualState.Balances ||
+						actualState.balances ||
+						state.Token?.Balances ||
+						state.Token?.balances ||
+						state.Balances ||
+						state.balances ||
+						state.asset?.Balances ||
+						state.asset?.balances ||
+						{};
+
+					// Check Claims table
+					const claims =
+						actualState.Claims ||
+						actualState.claims ||
+						state.Claims ||
+						state.claims ||
+						state.asset?.Claims ||
+						state.asset?.claims ||
+						{};
+
+					const walletBalance = walletAddress ? tokenBalances[walletAddress] || '0' : '0';
+					const profileBalance = profileId ? tokenBalances[profileId] || '0' : '0';
+					const hasBalance = Number(walletBalance) > 0 || Number(profileBalance) > 0;
+					const hasClaimed = walletAddress ? !!claims[walletAddress] : false;
+
+					return {
+						walletAddress,
+						profileId,
+						walletBalance,
+						profileBalance,
+						hasBalance,
+						hasClaimed: hasClaimed || hasBalance,
+					};
+				}
+
 				// Handle Get-Campaign-Stats by reading state
 				if (args.action === 'Get-Campaign-Stats') {
-					const claims = state.Claims || state.claims || {};
+					// Claims table is exported via patch@1.0, accessible at various paths
+					const claims =
+						actualState.Claims ||
+						actualState.claims ||
+						state.Claims ||
+						state.claims ||
+						state.asset?.Claims ||
+						state.asset?.claims ||
+						{};
 					const claimsCount = Object.keys(claims).length;
-					const totalSupply = state.CampaignConfig?.TotalSupply || state.CampaignConfig?.totalSupply || 1984;
+					const totalSupply =
+						actualState.CampaignConfig?.TotalSupply ||
+						actualState.CampaignConfig?.totalSupply ||
+						state.CampaignConfig?.TotalSupply ||
+						state.asset?.CampaignConfig?.TotalSupply ||
+						1984;
 
-					// Token.Balances might be at state.Token.Balances or state.Balances
+					// Token.Balances might be at various paths
 					const tokenBalances =
-						state.Token?.Balances || state.Token?.balances || state.Balances || state.balances || {};
-					const owner = state.Owner || state.owner || state.Token?.Creator || state.Token?.creator;
+						actualState.Token?.Balances ||
+						actualState.Token?.balances ||
+						actualState.Balances ||
+						actualState.balances ||
+						state.Token?.Balances ||
+						state.Token?.balances ||
+						state.Balances ||
+						state.balances ||
+						state.asset?.Balances ||
+						state.asset?.balances ||
+						{};
+					const owner =
+						actualState.Owner ||
+						actualState.owner ||
+						actualState.Token?.Creator ||
+						actualState.Token?.creator ||
+						state.Owner ||
+						state.owner ||
+						state.Token?.Creator ||
+						state.Token?.creator ||
+						state.asset?.Creator ||
+						state.asset?.creator;
 					const ownerBalance = owner && tokenBalances[owner] ? tokenBalances[owner] : '0';
-
-					if (process.env.NODE_ENV === 'development') {
-						console.log('[readHandler] Campaign stats from HyperBEAM:', {
-							claimsCount,
-							totalSupply,
-							owner,
-							ownerBalance,
-							hasTokenBalances: !!tokenBalances,
-						});
-					}
 
 					return {
 						TotalSupply: totalSupply,
@@ -586,33 +784,56 @@ export async function readHandler(args: {
 				}
 			}
 		} catch (error) {
-			console.log('[readHandler] HyperBEAM read failed, falling back to dryrun:', error);
-			// Fall through to dryrun
+			// For claim status checks, prefer HyperBEAM only - don't fall back to dry-run
+			// Dry-runs are slow and rate-limited. HyperBEAM is more reliable even if slower.
+			if (args.action === 'Get-Claim-Status' || args.action === 'Get-Balance' || args.action === 'Get-Campaign-Stats') {
+				console.warn(`[readHandler] HyperBEAM-only action failed, not falling back to dry-run to avoid rate limits`);
+				throw error; // Re-throw to let caller handle it
+			}
+
+			// For other actions, fall through to dryrun
 		}
 	}
 
 	// Fallback to dryrun (CU) if HyperBEAM fails or for other actions
+
 	const tags = [{ name: 'Action', value: args.action }];
 	if (args.tags) tags.push(...args.tags);
 	let data = JSON.stringify(args.data || {});
 
-	const response = await dryrun({
-		process: args.processId,
-		tags: tags,
-		data: data,
-	});
+	try {
+		// Add 10 second timeout for CU/dryrun
+		const timeoutMs = 10000;
+		const timeoutPromise = new Promise((_, reject) => {
+			setTimeout(() => reject(new Error(`Dryrun request timed out after ${timeoutMs}ms`)), timeoutMs);
+		});
 
-	if (response.Messages && response.Messages.length) {
-		if (response.Messages[0].Data) {
-			return JSON.parse(response.Messages[0].Data);
-		} else {
-			if (response.Messages[0].Tags) {
-				return response.Messages[0].Tags.reduce((acc: any, item: any) => {
-					acc[item.name] = item.value;
-					return acc;
-				}, {});
+		const response = (await Promise.race([
+			dryrun({
+				process: args.processId,
+				tags: tags,
+				data: data,
+			}),
+			timeoutPromise,
+		])) as any;
+
+		if (response.Messages && response.Messages.length) {
+			if (response.Messages[0].Data) {
+				const parsed = JSON.parse(response.Messages[0].Data);
+				return parsed;
+			} else {
+				if (response.Messages[0].Tags) {
+					const result = response.Messages[0].Tags.reduce((acc: any, item: any) => {
+						acc[item.name] = item.value;
+						return acc;
+					}, {});
+					return result;
+				}
 			}
 		}
+	} catch (error) {
+		console.error('[readHandler] Dryrun failed:', error);
+		throw error;
 	}
 }
 

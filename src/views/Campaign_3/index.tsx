@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { createGlobalStyle } from 'styled-components';
 
@@ -419,7 +419,7 @@ function RewardCard({
 							>
 								✓ Already Claimed
 							</div>
-						) : claimStatus?.status === 'Checking' ? (
+						) : claimStatus?.status === 'Checking' || claimStatus?.status === null ? (
 							<div
 								style={{
 									width: 'calc(100% - 16px)',
@@ -762,185 +762,6 @@ function SuccessModal({ onVisitAsset }: { onVisitAsset: () => void }) {
 }
 
 // Hero section (main panel/modal)
-function HeroSection({
-	onConnect,
-	onViewCampaign,
-	isVerifying,
-	isCheckingEligibility,
-}: {
-	onConnect: () => void;
-	onViewCampaign: () => void;
-	isVerifying?: boolean;
-	isCheckingEligibility?: boolean;
-}) {
-	return (
-		<div
-			style={{
-				position: 'relative',
-				width: 503.5,
-				height: 438,
-				background: '#fff',
-				borderRadius: 8,
-				boxShadow: '0 4px 32px rgba(0,0,0,0.18)',
-				display: 'flex',
-				flexDirection: 'column',
-				justifyContent: 'flex-start',
-				alignItems: 'flex-start',
-				padding: 0,
-				overflow: 'hidden',
-			}}
-		>
-			{/* Light gray inner area */}
-			<div
-				style={{
-					background: '#F1F1F1',
-					borderRadius: 8,
-					margin: 8,
-					padding: 16,
-					height: 'calc(100% - 16px)',
-					width: 'calc(100% - 16px)',
-					display: 'flex',
-					flexDirection: 'column',
-					alignItems: 'flex-start',
-					justifyContent: 'flex-start',
-				}}
-			>
-				{/* Text content */}
-				<div style={{ width: '100%' }}>
-					<span
-						style={{
-							fontSize: 22,
-							fontWeight: 700,
-							color: '#262A1A',
-							fontFamily: 'Inter',
-							marginBottom: 12,
-							display: 'block',
-						}}
-					>
-						AO Testnet Legends
-					</span>
-					<p style={{ fontSize: 13, color: '#262A1A', fontFamily: 'Inter', margin: 0, marginBottom: 16 }}>
-						To start your journey, connect your wallet to check if you are eligible for <b>"I Survived AO Testnet"</b>{' '}
-						or view the requirements and guide for <b>"Hyperbeam Glasseaters"</b>.
-					</p>
-					<p style={{ fontSize: 13, color: '#262A1A', fontFamily: 'Inter', margin: 0, marginBottom: 16 }}>
-						Make sure to reach out on <b>AO discord</b> if you have any questions.
-					</p>
-				</div>
-				{/* Image and button row */}
-				<div
-					style={{
-						display: 'flex',
-						flexDirection: 'row',
-						alignItems: 'center',
-						width: '100%',
-						marginTop: 2,
-						minHeight: 180,
-					}}
-				>
-					<img
-						src={survivedAoImg}
-						alt="I Survived AO Testnet"
-						style={{
-							width: 260,
-							borderRadius: 8,
-							marginRight: 4,
-						}}
-					/>
-					<div
-						style={{
-							display: 'flex',
-							flexDirection: 'column',
-							justifyContent: 'flex-end',
-							height: 180,
-							flex: 1,
-							gap: 12,
-						}}
-					>
-						<button
-							onClick={onConnect}
-							disabled={isVerifying}
-							style={{
-								background: '#1a1a1a',
-								color: '#fff',
-								border: 'none',
-								borderRadius: 8,
-								padding: '16px 0px',
-								fontSize: 14,
-								fontWeight: 500,
-								fontFamily: 'Inter',
-								cursor: isVerifying ? 'default' : 'pointer',
-								display: 'flex',
-								alignItems: 'center',
-								justifyContent: 'center',
-								boxSizing: 'border-box',
-								height: 48,
-								opacity: 1,
-							}}
-							onMouseEnter={(e) => {
-								if (!isVerifying) {
-									e.currentTarget.style.opacity = '0.8';
-								}
-							}}
-							onMouseLeave={(e) => {
-								e.currentTarget.style.opacity = '1';
-							}}
-						>
-							{isVerifying || isCheckingEligibility ? (
-								<>
-									<div
-										style={{
-											width: 16,
-											height: 16,
-											border: '2px solid #fff',
-											borderTopColor: 'transparent',
-											borderRadius: '50%',
-											animation: 'spin 1s linear infinite',
-											marginRight: 16,
-										}}
-									/>
-									Checking Eligibility
-								</>
-							) : (
-								'Connect Wallet'
-							)}
-						</button>
-						<button
-							onClick={onViewCampaign}
-							style={{
-								background: 'transparent',
-								color: '#1a1a1a',
-								border: '1px solid #1a1a1a',
-								borderRadius: 8,
-								padding: '16px 0px',
-								fontSize: 14,
-								fontWeight: 500,
-								fontFamily: 'Inter',
-								cursor: 'pointer',
-								display: 'flex',
-								alignItems: 'center',
-								justifyContent: 'center',
-								textDecoration: 'none',
-								boxSizing: 'border-box',
-								height: 48,
-								opacity: 1,
-							}}
-							onMouseEnter={(e) => {
-								e.currentTarget.style.opacity = '0.8';
-							}}
-							onMouseLeave={(e) => {
-								e.currentTarget.style.opacity = '1';
-							}}
-						>
-							View Campaign
-						</button>
-					</div>
-				</div>
-			</div>
-		</div>
-	);
-}
-
 // Requirements box component
 function RequirementsBox({
 	requirements,
@@ -1130,8 +951,8 @@ export default function Campaign() {
 	const arProvider = useArweaveProvider();
 	const permawebProvider = usePermawebProvider();
 	const [isVerifying, setIsVerifying] = useState(false);
-	const [showModal, setShowModal] = useState(true);
 	const [isCheckingEligibility, setIsCheckingEligibility] = useState(false);
+	const verificationInProgressRef = useRef(false);
 	const [showProcessingModal, setShowProcessingModal] = useState(false);
 	const [showSuccessModal, setShowSuccessModal] = useState(false);
 	const [claimStatus, setClaimStatus] = useState<{
@@ -1159,8 +980,44 @@ export default function Campaign() {
 	async function handleClaim(processId: string): Promise<void> {
 		try {
 			// Check if already claimed before attempting
-			if (claimStatus?.hasClaimed) {
+			if (claimStatus?.hasClaimed || claimStatus?.status === 'Already-Claimed') {
 				throw new Error('You have already claimed your asset');
+			}
+
+			// Try a quick claim status check before claiming (with short timeout)
+			if (!claimStatus || claimStatus.status === null || claimStatus.status === 'Checking') {
+				console.log('[handleClaim] Claim status unknown, performing quick check before claiming...');
+				try {
+					const quickStatusCheck = await Promise.race([
+						readHandler({
+							processId: ATOMIC_ASSET_ID,
+							action: 'Get-Claim-Status',
+							tags: [{ name: 'Wallet-Address', value: arProvider.walletAddress }],
+							data: null,
+						}),
+						new Promise((_, reject) => setTimeout(() => reject(new Error('Quick check timeout')), 3000)), // 3 second timeout
+					]);
+
+					if (quickStatusCheck?.Status === 'Already-Claimed' || quickStatusCheck?.status === 'Already-Claimed') {
+						setClaimStatus({
+							hasClaimed: true,
+							status: 'Already-Claimed',
+							claimedAt: quickStatusCheck.ClaimedAt || quickStatusCheck.claimedAt,
+						});
+						throw new Error('You have already claimed your asset');
+					}
+					console.log('[handleClaim] Quick status check passed - not already claimed');
+				} catch (quickCheckError) {
+					if (quickCheckError instanceof Error && quickCheckError.message === 'You have already claimed your asset') {
+						throw quickCheckError; // Re-throw if already claimed
+					}
+					// If quick check fails (timeout, etc.), continue with claim attempt
+					// AO process will reject if already claimed
+					console.warn(
+						'[handleClaim] Quick status check failed, proceeding with claim (AO will reject if already claimed):',
+						quickCheckError
+					);
+				}
 			}
 
 			if (!permawebProvider.profile?.id) {
@@ -1298,24 +1155,43 @@ export default function Campaign() {
 			let retries = 8; // More retries since we're using HyperBEAM
 			let delay = 3000; // Start with 3 second delay
 
-			// Helper function to query HyperBEAM for process state
+			// Helper function to query HyperBEAM for process state (with fallback nodes)
 			const queryHyperBEAMState = async (processId: string): Promise<any> => {
-				const url = `${HB.defaultNode}/${processId}~process@1.0/now`;
+				const nodesToTry = [HB.defaultNode, ...(HB.fallbackNodes || [])];
 				const headers = {
 					'require-codec': 'application/json',
 					'accept-bundle': 'true',
 				};
 
-				try {
-					const res = await fetch(url, { headers });
-					if (res.ok) {
-						return await res.json();
+				let lastError: Error | null = null;
+
+				// Try each node in sequence
+				for (const node of nodesToTry) {
+					try {
+						const url = `${node}/${processId}~process@1.0/now`;
+						console.log(`[handleClaim] Querying HyperBEAM state from node: ${node}`);
+
+						const res = await fetch(url, { headers });
+						if (res.ok) {
+							console.log(`[handleClaim] Successfully fetched from node: ${node}`);
+							return await res.json();
+						}
+						lastError = new Error(`HyperBEAM returned status ${res.status} from ${node}`);
+						console.warn(`[handleClaim] Node ${node} returned ${res.status}, trying next node...`);
+						continue; // Try next node
+					} catch (error: any) {
+						lastError = error;
+						console.warn(`[handleClaim] Node ${node} failed:`, error.message);
+						continue; // Try next node
 					}
-					throw new Error(`HyperBEAM returned status ${res.status}`);
-				} catch (error: any) {
-					console.error('[handleClaim] HyperBEAM query error:', error);
-					throw error;
 				}
+
+				// If all nodes failed, throw the last error
+				if (lastError) {
+					console.error('[handleClaim] All HyperBEAM nodes failed');
+					throw lastError;
+				}
+				throw new Error('All HyperBEAM nodes failed');
 			};
 
 			while (retries > 0 && !response) {
@@ -1545,6 +1421,26 @@ export default function Campaign() {
 					response?.['Error']?.Tags?.Message ||
 					'Claim failed';
 				console.error('Claim error response:', response);
+
+				// Check if error indicates already claimed
+				const errorMsgLower = errorMessage.toLowerCase();
+				if (
+					errorMsgLower.includes('already claimed') ||
+					errorMsgLower.includes('already-claimed') ||
+					errorMsgLower.includes('already_claimed') ||
+					errorMsgLower.includes('duplicate') ||
+					response?.['Claim-Error']?.Status === 'Already-Claimed' ||
+					response?.['Error']?.Status === 'Already-Claimed'
+				) {
+					// Update claim status to reflect already claimed
+					setClaimStatus({
+						hasClaimed: true,
+						status: 'Already-Claimed',
+					});
+					setShowProcessingModal(false);
+					throw new Error('You have already claimed your asset');
+				}
+
 				throw new Error(errorMessage);
 			} else {
 				console.error('Unexpected response format:', response);
@@ -1554,6 +1450,22 @@ export default function Campaign() {
 		} catch (error) {
 			console.error('Claim error:', error);
 			setShowProcessingModal(false);
+
+			// If error message indicates already claimed, update status
+			if (error instanceof Error) {
+				const errorMsgLower = error.message.toLowerCase();
+				if (
+					errorMsgLower.includes('already claimed') ||
+					errorMsgLower.includes('already-claimed') ||
+					errorMsgLower.includes('already_claimed')
+				) {
+					setClaimStatus({
+						hasClaimed: true,
+						status: 'Already-Claimed',
+					});
+				}
+			}
+
 			throw error;
 		}
 	}
@@ -1561,12 +1473,155 @@ export default function Campaign() {
 	// Check claim status when wallet connects
 	const checkClaimStatus = async () => {
 		if (!arProvider.walletAddress) {
+			console.log('[checkClaimStatus] No wallet address, skipping');
 			return;
 		}
 
+		// Set a timeout to clear "Checking" state after 20 seconds if still checking
+		const checkingTimeout = setTimeout(() => {
+			console.warn(`[${new Date().toISOString()}] [checkClaimStatus] Timeout - clearing checking state after 20s`);
+			setClaimStatus((prev) => {
+				if (prev?.status === 'Checking') {
+					return {
+						hasClaimed: false,
+						status: null, // Allow claiming attempt
+					};
+				}
+				return prev;
+			});
+		}, 20000);
+
 		try {
 			setClaimStatus((prev) => ({ ...prev, status: 'Checking' }));
-			console.log('[checkClaimStatus] Checking claim status for wallet:', arProvider.walletAddress);
+
+			// Quick balance check first - if user has balance, they've claimed (fastest method)
+			try {
+				const { HB } = await import('helpers/config');
+				const nodesToTry = [HB.defaultNode, ...(HB.fallbackNodes || [])];
+
+				let balanceRes: Response | undefined;
+				let lastError: Error | null = null;
+
+				// Try each node in sequence
+				for (const node of nodesToTry) {
+					try {
+						const balanceUrl = `${node}/${ATOMIC_ASSET_ID}~process@1.0/now/asset`;
+
+						const quickBalanceCheck = Promise.race([
+							fetch(balanceUrl, {
+								headers: { 'require-codec': 'application/json' },
+							}),
+							new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Quick balance timeout')), 10000)), // 10 seconds (HyperBEAM can take 4-8 seconds)
+						]);
+
+						balanceRes = (await quickBalanceCheck) as Response;
+
+						if (balanceRes.ok) {
+							break; // Success! Exit the loop
+						} else {
+							console.warn(
+								`[${new Date().toISOString()}] [checkClaimStatus] Quick balance check returned ${
+									balanceRes.status
+								} on ${node}, trying next node...`
+							);
+							continue; // Try next node
+						}
+					} catch (nodeError: any) {
+						lastError = nodeError;
+						console.warn(
+							`[${new Date().toISOString()}] [checkClaimStatus] Quick balance check failed on ${node}:`,
+							nodeError.message
+						);
+						continue; // Try next node
+					}
+				}
+
+				if (!balanceRes || !balanceRes.ok) {
+					if (lastError) {
+						throw lastError;
+					}
+					throw new Error('All HyperBEAM nodes failed for quick balance check');
+				}
+				if (balanceRes.ok) {
+					const state = await balanceRes.json();
+
+					// Parse state from body if needed
+					let actualState = state;
+					if (state.body) {
+						if (typeof state.body === 'string') {
+							try {
+								actualState = JSON.parse(state.body);
+							} catch (e) {
+								// Use state directly
+							}
+						} else if (typeof state.body === 'object') {
+							actualState = state.body;
+						}
+					}
+
+					// FIRST: Check Claims table directly (most reliable)
+					const claims = actualState.Claims || actualState.claims || {};
+					const profileId = permawebProvider.profile?.id;
+					const walletAddress = arProvider.walletAddress;
+
+					if (walletAddress && claims[walletAddress]) {
+						console.log(
+							`[${new Date().toISOString()}] [checkClaimStatus] Quick check: Wallet found in Claims table - already claimed`
+						);
+						setClaimStatus({
+							hasClaimed: true,
+							status: 'Already-Claimed',
+							claimedAt:
+								claims[walletAddress].Timestamp?.toString() || claims[walletAddress].timestamp?.toString() || null,
+						});
+						clearTimeout(checkingTimeout);
+						return;
+					}
+
+					// Check if profile has claimed
+					if (profileId) {
+						for (const [, claimData] of Object.entries(claims)) {
+							if (claimData && (claimData as any).ProfileId === profileId) {
+								console.log(
+									`[${new Date().toISOString()}] [checkClaimStatus] Quick check: Profile found in Claims table - already claimed`
+								);
+								setClaimStatus({
+									hasClaimed: true,
+									status: 'Already-Claimed',
+									claimedAt:
+										(claimData as any).Timestamp?.toString() || (claimData as any).timestamp?.toString() || null,
+								});
+								clearTimeout(checkingTimeout);
+								return;
+							}
+						}
+					}
+
+					// SECOND: Check balance as fallback
+					const tokenBalances = actualState.Balances || actualState.balances || {};
+					const profileBalance = profileId ? Number(tokenBalances[profileId]) || 0 : 0;
+					const walletBalance = walletAddress ? Number(tokenBalances[walletAddress]) || 0 : 0;
+
+					if (profileBalance > 0 || walletBalance > 0) {
+						console.log(
+							`[${new Date().toISOString()}] [checkClaimStatus] Quick balance check: User has balance - already claimed`
+						);
+						setClaimStatus({
+							hasClaimed: true,
+							status: 'Already-Claimed',
+							claimedAt: null,
+						});
+						clearTimeout(checkingTimeout);
+						return;
+					}
+				}
+			} catch (quickBalanceError) {
+				console.log(
+					`[${new Date().toISOString()}] [checkClaimStatus] Quick balance check failed (non-critical), continuing to full check:`,
+					quickBalanceError
+				);
+				// Continue to full check
+			}
 
 			const statusData = await readHandler({
 				processId: ATOMIC_ASSET_ID,
@@ -1575,11 +1630,10 @@ export default function Campaign() {
 				data: null,
 			});
 
-			console.log('[checkClaimStatus] Received status:', statusData);
-
 			if (statusData) {
 				// readHandler returns tags as an object, so Status will be a property
 				const status = statusData.Status || statusData.status;
+
 				if (status === 'Already-Claimed') {
 					setClaimStatus({
 						hasClaimed: true,
@@ -1596,24 +1650,236 @@ export default function Campaign() {
 						hasClaimed: false,
 						status: 'Available',
 					});
+				} else {
+					console.warn(`[${new Date().toISOString()}] [checkClaimStatus] Unknown status received:`, status);
 				}
+			} else {
+				console.warn(`[${new Date().toISOString()}] [checkClaimStatus] No status data received`);
 			}
+
+			clearTimeout(checkingTimeout);
 		} catch (error) {
-			console.error('[checkClaimStatus] Error checking claim status:', error);
-			// Don't reset claim status on error - keep previous state
-			// If we can't check, user can try to claim and AO process will reject if already claimed
+			console.error('[checkClaimStatus] ERROR:', error);
+			console.error('[checkClaimStatus] Error details:', {
+				message: error instanceof Error ? error.message : String(error),
+				stack: error instanceof Error ? error.stack : undefined,
+				name: error instanceof Error ? error.name : undefined,
+			});
+
+			// Fallback 1: Try to check balance using Get-Balance action (faster, simpler)
+			try {
+				const balanceData = await Promise.race([
+					readHandler({
+						processId: ATOMIC_ASSET_ID,
+						action: 'Get-Balance',
+						tags: [
+							{ name: 'Wallet-Address', value: arProvider.walletAddress },
+							...(permawebProvider.profile?.id ? [{ name: 'Profile-Id', value: permawebProvider.profile.id }] : []),
+						],
+						data: null,
+					}),
+					new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Balance check timeout')), 10000)), // 10 second timeout (HyperBEAM can take 4-8 seconds)
+				]);
+
+				// Parse response - could be in Data field (JSON) or Tags
+				let balanceInfo: any = {};
+				if (balanceData.Data) {
+					try {
+						balanceInfo = typeof balanceData.Data === 'string' ? JSON.parse(balanceData.Data) : balanceData.Data;
+					} catch (e) {
+						balanceInfo = balanceData;
+					}
+				} else {
+					balanceInfo = balanceData;
+				}
+
+				const hasBalance =
+					balanceInfo.hasBalance ||
+					balanceInfo.hasClaimed ||
+					(Number(balanceInfo.walletBalance) || 0) > 0 ||
+					(Number(balanceInfo.profileBalance) || 0) > 0;
+
+				if (hasBalance || balanceInfo.hasClaimed) {
+					setClaimStatus({
+						hasClaimed: true,
+						status: 'Already-Claimed',
+						claimedAt: null,
+					});
+					clearTimeout(checkingTimeout);
+					return;
+				}
+			} catch (balanceError) {
+				console.warn(`[${new Date().toISOString()}] [checkClaimStatus] Balance check fallback 1 failed:`, balanceError);
+			}
+
+			// Fallback 2: Try to check balance from HyperBEAM state directly (with better parsing)
+			try {
+				const { HB } = await import('helpers/config');
+				const nodesToTry = [HB.defaultNode, ...(HB.fallbackNodes || [])];
+
+				let balanceRes: Response | undefined;
+				let lastError: Error | null = null;
+
+				// Try each node in sequence
+				for (const node of nodesToTry) {
+					try {
+						const hyperbeamUrl = `${node}/${ATOMIC_ASSET_ID}~process@1.0/now/asset`;
+
+						balanceRes = (await Promise.race([
+							fetch(hyperbeamUrl, {
+								headers: {
+									'require-codec': 'application/json',
+								},
+							}),
+							new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Balance check timeout')), 10000)), // 10 second timeout (HyperBEAM can take 4-8 seconds)
+						])) as Response;
+
+						if (balanceRes.ok) {
+							break; // Success! Exit the loop
+						} else {
+							console.warn(
+								`[${new Date().toISOString()}] [checkClaimStatus] Fallback 2 returned ${
+									balanceRes.status
+								} on ${node}, trying next node...`
+							);
+							continue; // Try next node
+						}
+					} catch (nodeError: any) {
+						lastError = nodeError;
+						console.warn(
+							`[${new Date().toISOString()}] [checkClaimStatus] Fallback 2 failed on ${node}:`,
+							nodeError.message
+						);
+						continue; // Try next node
+					}
+				}
+
+				if (!balanceRes || !balanceRes.ok) {
+					if (lastError) {
+						throw lastError;
+					}
+					throw new Error('All HyperBEAM nodes failed for fallback 2');
+				}
+
+				if (balanceRes.ok) {
+					const state = await balanceRes.json();
+
+					// Parse state - check body field if it exists
+					let actualState = state;
+					if (state.body) {
+						if (typeof state.body === 'string') {
+							try {
+								actualState = JSON.parse(state.body);
+							} catch (e) {
+								// If parsing fails, use state directly
+							}
+						} else if (typeof state.body === 'object') {
+							actualState = state.body;
+						}
+					}
+
+					// FIRST: Check Claims table directly (most reliable)
+					const claims = actualState.Claims || actualState.claims || {};
+					const walletAddress = arProvider.walletAddress;
+					const profileId = permawebProvider.profile?.id;
+
+					if (walletAddress && claims[walletAddress]) {
+						setClaimStatus({
+							hasClaimed: true,
+							status: 'Already-Claimed',
+							claimedAt:
+								claims[walletAddress].Timestamp?.toString() || claims[walletAddress].timestamp?.toString() || null,
+						});
+						clearTimeout(checkingTimeout);
+						return;
+					}
+
+					// SECOND: Check if profile has claimed
+					if (profileId) {
+						for (const [, claimData] of Object.entries(claims)) {
+							if (claimData && (claimData as any).ProfileId === profileId) {
+								console.log(
+									`[${new Date().toISOString()}] [checkClaimStatus] Profile found in Claims table - already claimed`
+								);
+								setClaimStatus({
+									hasClaimed: true,
+									status: 'Already-Claimed',
+									claimedAt:
+										(claimData as any).Timestamp?.toString() || (claimData as any).timestamp?.toString() || null,
+								});
+								clearTimeout(checkingTimeout);
+								return;
+							}
+						}
+					}
+
+					// THIRD: Check if user has balance (either via profile ID or wallet address)
+					const tokenBalances =
+						actualState.Token?.Balances ||
+						actualState.Token?.balances ||
+						actualState.Balances ||
+						actualState.balances ||
+						{};
+
+					const profileBalance = profileId ? Number(tokenBalances[profileId]) || 0 : 0;
+					const walletBalance = walletAddress ? Number(tokenBalances[walletAddress]) || 0 : 0;
+
+					const hasBalance = profileBalance > 0 || walletBalance > 0;
+
+					if (hasBalance) {
+						setClaimStatus({
+							hasClaimed: true,
+							status: 'Already-Claimed',
+							claimedAt: null,
+						});
+						clearTimeout(checkingTimeout);
+						return;
+					}
+				}
+			} catch (balanceError) {
+				console.warn(
+					`[${new Date().toISOString()}] [checkClaimStatus] Balance check fallback 2 also failed:`,
+					balanceError
+				);
+			}
+
+			// If all checks fail, set status to null so button shows "Claim" instead of "Checking..."
+			// User can try to claim - AO process will reject if already claimed
+			setClaimStatus({
+				hasClaimed: false,
+				status: null, // null means "unknown" - allow claiming attempt
+			});
+			clearTimeout(checkingTimeout);
 		}
 	};
 
 	useEffect(() => {
-		if (arProvider.walletAddress && permawebProvider.libs) {
+		// Reset claim status when wallet address changes or disconnects
+		if (!arProvider.walletAddress) {
+			setClaimStatus({
+				hasClaimed: false,
+				status: null,
+			});
+			return;
+		}
+
+		if (arProvider.walletAddress && permawebProvider.libs && !verificationInProgressRef.current) {
+			verificationInProgressRef.current = true;
 			setIsCheckingEligibility(true);
+			// Set status to 'Checking' immediately when wallet connects
+			setClaimStatus({
+				hasClaimed: false,
+				status: 'Checking',
+			});
 			verifyWallet().finally(() => {
 				setIsCheckingEligibility(false);
+				verificationInProgressRef.current = false;
 			});
 		}
-		// Fetch campaign stats on mount
-		fetchCampaignStats();
+		// Fetch campaign stats on mount (non-blocking)
+		fetchCampaignStats().catch((error) => {
+			console.error('[Campaign] Failed to fetch campaign stats:', error);
+		});
 	}, [arProvider.walletAddress, permawebProvider.libs]);
 
 	const fetchCampaignStats = async () => {
@@ -1648,7 +1914,10 @@ export default function Campaign() {
 	};
 
 	const verifyWallet = async () => {
-		if (!permawebProvider.libs) return;
+		if (!permawebProvider.libs) {
+			console.log('[verifyWallet] No permawebProvider.libs, skipping');
+			return;
+		}
 
 		setIsVerifying(true);
 		try {
@@ -1705,13 +1974,6 @@ export default function Campaign() {
 				maxBlock,
 			});
 
-			console.log('Verification results:', {
-				bazarTransactions: bazarData.data,
-				permaswapTransactions: permaswapData.data,
-				botegaTransactions: botegaData.data,
-				aoProcesses: aoProcessData.data,
-			});
-
 			setVerificationResults((prev) => ({
 				...prev,
 				hasBazarTransaction: bazarData.data.length > 0,
@@ -1721,10 +1983,14 @@ export default function Campaign() {
 				aoProcesses: aoProcessData.data,
 			}));
 
-			// Check claim status as part of eligibility verification
-			await checkClaimStatus();
+			// Check claim status as part of eligibility verification (non-blocking)
+			// Note: Status is already set to 'Checking' in useEffect when wallet connects
+			// Don't await - let it run in background
+			checkClaimStatus().catch((error) => {
+				console.error(`[${new Date().toISOString()}] [verifyWallet] Background claim status check failed:`, error);
+			});
 		} catch (error) {
-			console.error('Verification error:', error);
+			console.error('[verifyWallet] Error:', error);
 		} finally {
 			setIsVerifying(false);
 		}
@@ -1795,7 +2061,7 @@ export default function Campaign() {
 						overlayStyle={overlayStyle}
 						isLeft
 						showConnectWallet={true}
-						showBlur={showModal || isCheckingEligibility}
+						showBlur={isCheckingEligibility}
 						requirements={[
 							{ text: 'Transacted on Bazar (Buy, or Sell)', met: verificationResults.hasBazarTransaction },
 							{ text: 'Transacted on Botega (Buy, Sell, Agents, etc...)', met: verificationResults.hasBotegaSwap },
@@ -1825,7 +2091,7 @@ export default function Campaign() {
 						overlayStyle={overlayStyle}
 						isRight
 						showConnectWallet={false}
-						showBlur={showModal || isCheckingEligibility}
+						showBlur={isCheckingEligibility}
 						cta={{
 							label: 'Join Competition Via Discord',
 							href: 'https://discord.gg/kDWWbjj7Fm',
@@ -1869,46 +2135,6 @@ export default function Campaign() {
 						]}
 						onClaim={() => handleClaim(ATOMIC_ASSET_ID)}
 					/>
-
-					{/* Show modal for both unconnected and verifying states, but allow user to dismiss */}
-					{((showModal && (!arProvider.walletAddress || isVerifying)) || isCheckingEligibility) && (
-						<>
-							{/* Backdrop blur */}
-							<div
-								style={{
-									position: 'fixed',
-									top: 0,
-									left: 0,
-									right: 0,
-									bottom: 0,
-									background: 'rgba(0, 0, 0, 0.3)',
-									backdropFilter: 'blur(8px)',
-									zIndex: 2,
-								}}
-							/>
-							{/* Modal */}
-							<div
-								style={{
-									position: 'fixed',
-									left: '50%',
-									top: '50%',
-									transform: 'translate(-50%, -50%)',
-									zIndex: 3,
-									display: 'flex',
-									alignItems: 'center',
-									justifyContent: 'center',
-									width: '100%',
-								}}
-							>
-								<HeroSection
-									onConnect={() => arProvider.setWalletModalVisible(true)}
-									onViewCampaign={() => setShowModal(false)}
-									isVerifying={isVerifying}
-									isCheckingEligibility={isCheckingEligibility}
-								/>
-							</div>
-						</>
-					)}
 
 					{/* Processing modal */}
 					{showProcessingModal && (

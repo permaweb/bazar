@@ -106,6 +106,10 @@ export const AO = {
 
 export const HB = {
 	defaultNode: 'https://app-1.forward.computer',
+	// Fallback nodes (tried in order if primary fails)
+	fallbackNodes: [
+		'https://arweave.nyc', // Personal test node (fallback only)
+	],
 };
 export const AOCONFIG = {
 	cu_url: 'https://cu.ao-testnet.xyz',

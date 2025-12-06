@@ -56,29 +56,48 @@ if not _G.checkValidAmount then
 	end
 end
 
-if not _G.syncState then
-	_G.syncState = function()
-		-- Try to use the standard blueprint's syncState pattern if available
-		-- The standard blueprint uses: Send({ device = 'patch@1.0', asset = json.encode(getState()) })
-		if type(Send) == 'function' and Token and json then
-			local state = {
-				Name = Token.Name,
-				Ticker = Token.Ticker,
-				Denomination = tostring(Token.Denomination),
-				Balances = Token.Balances,
-				TotalSupply = Token.TotalSupply,
-				Transferable = Token.Transferable,
-				Creator = Token.Creator,
-				Metadata = Metadata or {},
-				AuthUsers = AuthUsers or {},
-				IndexRecipients = IndexRecipients or {},
-				DateCreated = DateCreated and tostring(DateCreated) or nil,
-				LastUpdate = LastUpdate and tostring(LastUpdate) or nil,
-			}
-			Send({ device = 'patch@1.0', asset = json.encode(state) })
+-- Override syncState to include Claims and CampaignConfig
+-- Store the original if it exists
+local originalSyncState = _G.syncState
+
+_G.syncState = function()
+	-- Export state to patch@1.0 for HyperBEAM access
+	-- This includes both Token state and Campaign Claims table
+	if type(Send) == 'function' and Token and json then
+		local state = {
+			Name = Token.Name,
+			Ticker = Token.Ticker,
+			Denomination = tostring(Token.Denomination),
+			Balances = Token.Balances,
+			TotalSupply = Token.TotalSupply,
+			Transferable = Token.Transferable,
+			Creator = Token.Creator,
+			Metadata = Metadata or {},
+			AuthUsers = AuthUsers or {},
+			IndexRecipients = IndexRecipients or {},
+			DateCreated = DateCreated and tostring(DateCreated) or nil,
+			LastUpdate = LastUpdate and tostring(LastUpdate) or nil,
+			-- Export campaign-specific state for HyperBEAM access
+			Claims = Claims or {},
+			CampaignConfig = CampaignConfig or {},
+		}
+		print('=== SYNCING STATE TO HYPERBEAM ===')
+		print('Claims count: ' .. tostring((Claims and #Claims) or (Claims and next(Claims) and 'has entries') or '0'))
+		local claimsCount = 0
+		if Claims then
+			for _ in pairs(Claims) do
+				claimsCount = claimsCount + 1
+			end
+		end
+		print('Claims table size: ' .. tostring(claimsCount))
+		print('CampaignConfig TotalSupply: ' .. tostring(CampaignConfig and CampaignConfig.TotalSupply or 'nil'))
+		Send({ device = 'patch@1.0', asset = json.encode(state) })
+		print('State synced to HyperBEAM with Claims and CampaignConfig')
+	else
+		-- If Send is not available, try original syncState if it exists
+		if originalSyncState and type(originalSyncState) == 'function' then
+			originalSyncState()
 		else
-			-- If Send is not available, the blueprint's syncState might handle it
-			-- This is a no-op fallback
 			print('State sync called (Send function not available)')
 		end
 	end
@@ -214,6 +233,12 @@ local function runInitialization()
 	if not initSuccess then
 		print('WARNING: Balance initialization check failed: ' .. tostring(initErr))
 	end
+	
+	-- Export initial state to patch@1.0 (including Claims table)
+	local syncSuccess, syncErr = pcall(syncState)
+	if not syncSuccess then
+		print('WARNING: Initial state sync failed: ' .. tostring(syncErr))
+	end
 end
 
 -- Run initialization safely
@@ -221,6 +246,51 @@ local initSuccess, initErr = pcall(runInitialization)
 if not initSuccess then
 	print('WARNING: Failed to run initialization: ' .. tostring(initErr))
 end
+
+-- Handler: Get balance for a wallet/profile (fast check for claim status)
+Handlers.add(
+	'Get-Balance',
+	Handlers.utils.hasMatchingTag('Action', 'Get-Balance'),
+	function(msg)
+		local address = msg.Tags['Wallet-Address'] or msg.Tags['Recipient'] or msg.From
+		local profileId = msg.Tags['Profile-Id']
+		
+		-- Check wallet balance
+		local walletBalance = '0'
+		if address and Token.Balances[address] then
+			walletBalance = Token.Balances[address]
+		end
+		
+		-- Check profile balance
+		local profileBalance = '0'
+		if profileId and Token.Balances[profileId] then
+			profileBalance = Token.Balances[profileId]
+		end
+		
+		-- Check if already claimed (either by wallet or profile)
+		local hasClaimed = false
+		if address and hasAlreadyClaimed(address) then
+			hasClaimed = true
+		elseif profileId then
+			local profileClaimed, existingWallet = hasProfileClaimed(profileId)
+			if profileClaimed then
+				hasClaimed = true
+			end
+		end
+		
+		msg.reply({
+			Action = 'Balance-Response',
+			Data = json.encode({
+				walletAddress = address,
+				profileId = profileId,
+				walletBalance = walletBalance,
+				profileBalance = profileBalance,
+				hasClaimed = hasClaimed,
+				hasBalance = (tonumber(walletBalance) or 0) > 0 or (tonumber(profileBalance) or 0) > 0
+			})
+		})
+	end
+)
 
 -- Handler: Get claim status
 Handlers.add(
@@ -570,8 +640,23 @@ Handlers.add(
 				}
 			})
 
-			-- Sync state with HyperBEAM
-			syncState()
+			-- Sync state with HyperBEAM (ensure Claims is included)
+			print('=== SYNCING STATE AFTER CLAIM ===')
+			print('Claims table exists: ' .. tostring(Claims ~= nil))
+			if Claims then
+				local claimsCount = 0
+				for _ in pairs(Claims) do
+					claimsCount = claimsCount + 1
+				end
+				print('Claims table size before sync: ' .. tostring(claimsCount))
+				print('Current wallet in Claims: ' .. tostring(Claims[walletAddress] ~= nil))
+			end
+			local syncSuccess, syncErr = pcall(syncState)
+			if not syncSuccess then
+				print('ERROR: State sync failed: ' .. tostring(syncErr))
+			else
+				print('State sync completed successfully')
+			end
 
 			print('Claim processed successfully')
 		end
@@ -664,6 +749,41 @@ Handlers.add(
 			Action = 'All-Claims-Response',
 			Data = json.encode(Claims)
 		})
+	end
+)
+
+-- Handler: Sync state to HyperBEAM (can be called by anyone, useful for debugging)
+Handlers.add(
+	'Sync-State',
+	Handlers.utils.hasMatchingTag('Action', 'Sync-State'),
+	function(msg)
+		print('=== MANUAL STATE SYNC TRIGGERED ===')
+		local syncSuccess, syncErr = pcall(syncState)
+		if syncSuccess then
+			local claimsCount = 0
+			for _ in pairs(Claims) do
+				claimsCount = claimsCount + 1
+			end
+			msg.reply({
+				Action = 'Sync-State-Response',
+				Tags = {
+					Status = 'Success',
+					Message = 'State synced to HyperBEAM',
+					ClaimsCount = tostring(claimsCount),
+					TotalSupply = tostring(CampaignConfig.TotalSupply)
+				}
+			})
+			print('State sync completed successfully. Claims count: ' .. tostring(claimsCount))
+		else
+			msg.reply({
+				Action = 'Sync-State-Response',
+				Tags = {
+					Status = 'Error',
+					Message = 'State sync failed: ' .. tostring(syncErr)
+				}
+			})
+			print('State sync failed: ' .. tostring(syncErr))
+		end
 	end
 )
 
