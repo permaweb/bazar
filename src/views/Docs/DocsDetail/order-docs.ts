@@ -70,6 +70,10 @@ export const docsOrder = [
 				path: 'universal-content-marketplace',
 			},
 			{
+				name: 'AO Token Trading System',
+				path: 'ao-token-trading-system',
+			},
+			{
 				name: 'Atomic Assets',
 				path: 'atomic-assets',
 			},
