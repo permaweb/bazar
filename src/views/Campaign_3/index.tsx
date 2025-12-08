@@ -628,7 +628,7 @@ function ProcessingModal() {
 								boxSizing: 'border-box',
 								height: 48,
 								opacity: 1,
-								gap: 8,
+								gap: 12,
 							}}
 						>
 							<div
