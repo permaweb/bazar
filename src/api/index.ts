@@ -110,8 +110,12 @@ function getQueryBody(args: QueryBodyGQLArgsType): string {
 	const ids = args.ids ? JSON.stringify(args.ids) : null;
 	let blockFilter: { min?: number; max?: number } | null = null;
 	if (args.minBlock !== undefined && args.minBlock !== null) {
-		blockFilter = {};
+		blockFilter = blockFilter || {};
 		blockFilter.min = args.minBlock;
+	}
+	if (args.maxBlock !== undefined && args.maxBlock !== null) {
+		blockFilter = blockFilter || {};
+		blockFilter.max = args.maxBlock;
 	}
 	const blockFilterStr = blockFilter ? JSON.stringify(blockFilter).replace(/"([^"]+)":/g, '$1:') : null;
 	const tagFilters = args.tagFilters
@@ -511,8 +515,14 @@ export async function readHandler(args: {
 	tags?: TagType[];
 	data?: any;
 }): Promise<any> {
-	// Try HyperBEAM first for Get-Campaign-Stats, Get-Claim-Status, and Get-Balance (faster, avoids CU rate limits)
-	if (args.action === 'Get-Campaign-Stats' || args.action === 'Get-Claim-Status' || args.action === 'Get-Balance') {
+	// Try HyperBEAM first for Get-Campaign-Stats, Get-Claim-Status, Get-Balance, and Info (faster, avoids CU rate limits)
+	// Info is used for asset state reads, which should use HyperBEAM if the process has patch@1.0 enabled
+	if (
+		args.action === 'Get-Campaign-Stats' ||
+		args.action === 'Get-Claim-Status' ||
+		args.action === 'Get-Balance' ||
+		args.action === 'Info'
+	) {
 		try {
 			const { HB } = await import('helpers/config');
 
@@ -530,6 +540,7 @@ export async function readHandler(args: {
 			let res: Response | undefined;
 			let state: any;
 			let lastError: Error | null = null;
+			let successfulNode: string | null = null;
 
 			// Try each node in sequence
 			for (const node of nodesToTry) {
@@ -546,6 +557,7 @@ export async function readHandler(args: {
 
 						if (res.ok) {
 							state = await res.json();
+							successfulNode = node;
 							clearTimeout(timeoutId);
 							break; // Success! Exit the loop
 						} else {
@@ -553,6 +565,7 @@ export async function readHandler(args: {
 							res = await fetch(nodeUrl, { headers, signal: controller.signal });
 							if (res.ok) {
 								state = await res.json();
+								successfulNode = node;
 								clearTimeout(timeoutId);
 								break; // Success! Exit the loop
 							}
@@ -562,17 +575,22 @@ export async function readHandler(args: {
 						clearTimeout(timeoutId);
 						if (fetchError.name === 'AbortError') {
 							lastError = new Error(`HyperBEAM request to ${node} timed out after ${timeoutMs}ms`);
-							console.warn(`[${new Date().toISOString()}] [readHandler] Node ${node} timed out, trying next node...`);
 							continue; // Try next node
 						}
 						lastError = fetchError;
-						console.warn(`[${new Date().toISOString()}] [readHandler] Node ${node} failed:`, fetchError.message);
 						continue; // Try next node
 					}
 				} catch (nodeError: any) {
 					lastError = nodeError;
-					console.warn(`[${new Date().toISOString()}] [readHandler] Node ${node} error:`, nodeError.message);
 					continue; // Try next node
+				}
+			}
+
+			// Log success only if we got a response
+			if (res?.ok && state && successfulNode) {
+				// Only log for non-Info actions to reduce noise
+				if (args.action !== 'Info') {
+					console.log(`[readHandler] Successfully fetched ${args.action} from ${successfulNode}`);
 				}
 			}
 
@@ -782,6 +800,23 @@ export async function readHandler(args: {
 						OwnerBalance: ownerBalance,
 					};
 				}
+
+				// Handle Info action - return the full state (used for asset state reads)
+				if (args.action === 'Info') {
+					console.log(`[readHandler] Returning Info state for process ${args.processId}`);
+					console.log(`[readHandler] State structure:`, {
+						hasName: !!actualState.Name || !!actualState.name,
+						hasTicker: !!actualState.Ticker || !!actualState.ticker,
+						hasDenomination: !!actualState.Denomination || !!actualState.denomination,
+						hasLogo: !!actualState.Logo || !!actualState.logo,
+						hasBalances: !!actualState.Balances || !!actualState.balances,
+						hasTransferable: actualState.Transferable !== undefined || actualState.transferable !== undefined,
+						allKeys: Object.keys(actualState || {}).slice(0, 20), // First 20 keys
+					});
+					// Return the actualState which contains the full process state
+					// This includes Name, Ticker, Denomination, Logo, Balances, Transferable, etc.
+					return actualState;
+				}
 			}
 		} catch (error) {
 			// For claim status checks, prefer HyperBEAM only - don't fall back to dry-run
@@ -791,6 +826,7 @@ export async function readHandler(args: {
 				throw error; // Re-throw to let caller handle it
 			}
 
+			// For Info action, if HyperBEAM fails, fall through to dryrun (Info is used for asset state)
 			// For other actions, fall through to dryrun
 		}
 	}
