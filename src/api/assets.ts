@@ -202,6 +202,24 @@ export async function getAssetById(args: { id: string; libs?: any }): Promise<As
 				if (processState.Denomination || processState.denomination)
 					assetState.denomination = processState.Denomination || processState.denomination;
 				if (processState.Logo || processState.logo) assetState.logo = processState.Logo || processState.logo;
+
+				// Handle TotalSupply with multiple fallbacks:
+				// 1. Check process state (root level, all casings)
+				// 2. Check Metadata object (all casings)
+				const totalSupply =
+					processState.TotalSupply ||
+					processState.Totalsupply ||
+					processState.totalSupply ||
+					processState.Metadata?.TotalSupply ||
+					processState.Metadata?.Totalsupply ||
+					processState.Metadata?.totalSupply ||
+					processState.metadata?.TotalSupply ||
+					processState.metadata?.Totalsupply ||
+					processState.metadata?.totalSupply;
+
+				if (totalSupply) {
+					assetState.totalSupply = totalSupply.toString();
+				}
 				if (processState.Balances) {
 					assetState.balances = Object.fromEntries(
 						Object.entries(processState.Balances).filter(([_, value]) => Number(value) !== 0)

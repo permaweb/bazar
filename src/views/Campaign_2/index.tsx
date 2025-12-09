@@ -225,6 +225,10 @@ export default function Campaign() {
 		}
 	}
 
+	const handleClaimClick = async (e: any, id: string, usePrimaryAsset?: boolean) => {
+		await handleClaim(e, id, usePrimaryAsset);
+	};
+
 	async function handleClaim(e: any, id: string, usePrimaryAsset?: boolean) {
 		e.preventDefault();
 		e.stopPropagation();
@@ -310,7 +314,7 @@ export default function Campaign() {
 									<S.GridElementOverlay>
 										{asset.claimable ? (
 											<S.GridElementAction
-												onClick={(e) => handleClaim(e, asset.id)}
+												onClick={(e) => handleClaimClick(e, asset.id)}
 												disabled={!assets || asset.claimInProgress}
 												className={'fade-in'}
 											>
@@ -404,7 +408,7 @@ export default function Campaign() {
 											<S.GridElementOverlay>
 												{primaryAsset.claimable ? (
 													<S.GridElementAction
-														onClick={(e) => handleClaim(e, primaryAsset.id)}
+														onClick={(e) => handleClaimClick(e, primaryAsset.id)}
 														disabled={!assets || primaryAsset.claimInProgress}
 														className={'fade-in'}
 													>
@@ -486,7 +490,7 @@ export default function Campaign() {
 					</S.Header>
 					<S.ViewAction className={'fade-in'}>
 						<button
-							onClick={() => setCurrentView(currentView === 'SubSet' ? 'Main' : 'SubSet')}
+							onClick={(e) => setCurrentView(currentView === 'SubSet' ? 'Main' : 'SubSet')}
 							disabled={!assets || fetching || !arProvider.walletAddress}
 						>
 							<span>{currentView === 'SubSet' ? 'Reveal Platinum DumDum' : 'Go Back'}</span>
@@ -495,7 +499,7 @@ export default function Campaign() {
 					{currentView === 'SubSet' && (
 						<S.SyncAction className={'fade-in'}>
 							<button
-								onClick={() => setToggleClaimCheck(!toggleClaimCheck)}
+								onClick={(e) => setToggleClaimCheck(!toggleClaimCheck)}
 								disabled={!assets || fetching || !arProvider.walletAddress}
 							>
 								<span>{fetching ? 'Checking claims...' : 'Run claim checks'}</span>

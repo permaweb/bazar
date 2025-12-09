@@ -99,7 +99,7 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 
 	React.useEffect(() => {
 		(async function () {
-			if (arProvider.walletAddress) {
+			if (arProvider.walletAddress && libs) {
 				const cachedProfile = getCachedProfile(arProvider.walletAddress);
 
 				if (cachedProfile) {
@@ -112,22 +112,31 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 					setProfile(cachedProfile);
 				}
 				await new Promise((r) => setTimeout(r, 2000));
-				setProfile(await resolveProfile());
+				const resolvedProfile = await resolveProfile();
+				// Only update profile if we got a valid result, otherwise keep cached profile
+				if (resolvedProfile) {
+					setProfile(resolvedProfile);
+				} else if (!cachedProfile) {
+					// Only set to null if we have no cached profile and resolution failed
+					setProfile(null);
+				}
 			}
 		})();
-	}, [arProvider.walletAddress]);
+	}, [arProvider.walletAddress, libs]);
 
 	React.useEffect(() => {
 		(async function () {
-			if (arProvider.walletAddress && profilePending) {
+			if (arProvider.walletAddress && profilePending && libs) {
 				const cachedProfile = getCachedProfile(arProvider.walletAddress);
 
 				if (cachedProfile?.id) {
 					try {
 						const fetchedProfile = await libs.getProfileById(cachedProfile.id);
 
-						setProfile(fetchedProfile);
-						cacheProfile(arProvider.walletAddress, fetchedProfile);
+						if (fetchedProfile) {
+							setProfile(fetchedProfile);
+							cacheProfile(arProvider.walletAddress, fetchedProfile);
+						}
 					} catch (e: any) {
 						if (process.env.NODE_ENV === 'development') {
 							console.error('Error fetching profile:', e);
@@ -138,7 +147,7 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 				}
 			}
 		})();
-	}, [arProvider.walletAddress, profilePending]);
+	}, [arProvider.walletAddress, profilePending, libs]);
 
 	const fetchProfileUntilChange = async () => {
 		if (!arProvider.wallet || !arProvider.walletAddress) return;
@@ -288,6 +297,12 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 
 	async function resolveProfile(opts?: { hydrate?: boolean }) {
 		try {
+			// Ensure libs is initialized before trying to resolve profile
+			if (!libs) {
+				console.warn('PermawebProvider: libs not initialized, cannot resolve profile');
+				return null;
+			}
+
 			let fetchedProfile: any;
 
 			const cachedProfile = getCachedProfile(arProvider.walletAddress);
@@ -302,15 +317,25 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 
 			let profileToUse = { ...fetchedProfile, isLegacyProfile };
 
-			if (!fetchedProfile?.id && cachedProfile) profileToUse = cachedProfile;
+			// If we couldn't fetch a profile but have a cached one, use the cached one
+			// This handles the case where the profile isn't hydrated yet on app-1
+			if (!fetchedProfile?.id && cachedProfile) {
+				profileToUse = cachedProfile;
+			}
 
-			cacheProfile(arProvider.walletAddress, profileToUse);
+			// Only cache if we got a valid profile with an ID
+			if (profileToUse?.id) {
+				cacheProfile(arProvider.walletAddress, profileToUse);
+			}
 
 			return profileToUse;
 		} catch (e: any) {
 			if (process.env.NODE_ENV === 'development') {
-				console.error('Error in getProfile:', e);
+				console.error('Error in resolveProfile:', e);
 			}
+			// Return cached profile if available, otherwise null
+			const cachedProfile = getCachedProfile(arProvider.walletAddress);
+			return cachedProfile || null;
 		}
 	}
 

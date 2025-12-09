@@ -1,5 +1,7 @@
 // Import all markdown files using Vite's glob import
-const docsModules = import.meta.glob('./MD/**/*.md', { as: 'raw' });
+// Destructure import.meta to satisfy static analysis requirements
+const { glob } = import.meta;
+const docsModules = glob('./MD/**/*.md', { as: 'raw' });
 
 const buildDirectory = () => {
 	const dir = {};

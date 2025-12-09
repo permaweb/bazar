@@ -21,6 +21,7 @@ import discord from 'assets/discord.svg';
 import docs from 'assets/docs.svg';
 import edit from 'assets/edit.svg';
 import github from 'assets/github.svg';
+import glasseaterIcon from 'assets/glasseater-icon.svg';
 import grid from 'assets/grid.svg';
 import html from 'assets/html.svg';
 import info from 'assets/info.svg';
@@ -105,6 +106,10 @@ export const AO = {
 
 export const HB = {
 	defaultNode: 'https://app-1.forward.computer',
+	// Fallback nodes (tried in order if primary fails)
+	fallbackNodes: [
+		'https://arweave.nyc', // Personal test node (fallback only)
+	],
 };
 export const AOCONFIG = {
 	cu_url: 'https://cu.ao-testnet.xyz',
@@ -237,6 +242,7 @@ export const ASSETS = {
 	docs,
 	edit,
 	github,
+	glasseaterIcon,
 	grid,
 	html,
 	info,

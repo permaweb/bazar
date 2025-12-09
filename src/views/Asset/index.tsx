@@ -56,6 +56,7 @@ export default function Asset() {
 		(async function () {
 			if (id && checkValidAddress(id)) {
 				setLoading(true);
+				setErrorResponse(null); // Clear any previous errors
 				let tries = 0;
 				const maxTries = 10;
 				let assetFetched = false;
@@ -83,6 +84,25 @@ export default function Asset() {
 								if (processState.Denomination || processState.denomination)
 									assetState.denomination = processState.Denomination || processState.denomination;
 								if (processState.Logo || processState.logo) assetState.logo = processState.Logo || processState.logo;
+
+								// Handle TotalSupply with multiple fallbacks:
+								// 1. Check process state (root level, all casings)
+								// 2. Check Metadata object (all casings)
+								const totalSupply =
+									processState.TotalSupply ||
+									processState.Totalsupply ||
+									processState.totalSupply ||
+									processState.Metadata?.TotalSupply ||
+									processState.Metadata?.Totalsupply ||
+									processState.Metadata?.totalSupply ||
+									processState.metadata?.TotalSupply ||
+									processState.metadata?.Totalsupply ||
+									processState.metadata?.totalSupply;
+
+								if (totalSupply) {
+									assetState.totalSupply = totalSupply.toString();
+								}
+
 								if (processState.Balances) {
 									assetState.balances = Object.fromEntries(
 										Object.entries(processState.Balances).filter(([_, value]) => Number(value) !== 0)
@@ -147,15 +167,28 @@ export default function Asset() {
 
 					if (!assetFetched) {
 						console.warn(`No changes detected after ${maxTries} attempts`);
+						if (!errorResponse) {
+							setErrorResponse(language.assetFetchFailed || 'Failed to load asset. Please try again.');
+						}
 					}
 				};
 
-				await fetchUntilChange();
-				setLoading(false);
+				try {
+					await fetchUntilChange();
+				} catch (error: any) {
+					console.error('[Asset] Error in fetchUntilChange:', error);
+					setErrorResponse(error?.message || language.assetFetchFailed || 'Failed to load asset. Please try again.');
+				} finally {
+					setLoading(false);
+				}
 			} else {
 				navigate(URLS.notFound);
 			}
-		})();
+		})().catch((error) => {
+			console.error('[Asset] Unhandled error in useEffect:', error);
+			setErrorResponse(error?.message || language.assetFetchFailed || 'Failed to load asset. Please try again.');
+			setLoading(false);
+		});
 	}, [id]);
 
 	React.useEffect(() => {

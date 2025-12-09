@@ -338,7 +338,7 @@ export const GlobalStyle = createGlobalStyle`
 `;
 
 export const AppWrapper = styled.div`
-	min-height: 100vh;
+	min-height: 100%;
 	display: flex;
 	flex-direction: column;
 	justify-content: space-between;

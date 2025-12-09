@@ -209,6 +209,14 @@ export default function AssetInfo(props: IProps) {
 									</S.OwnerLine>
 								</GS.DrawerContentFlex>
 							)}
+							{props.asset.state?.totalSupply && (
+								<GS.DrawerContentLine>
+									<GS.DrawerContentDetail>Total Supply</GS.DrawerContentDetail>
+									<GS.DrawerContentDetail>
+										{formatCount(props.asset.state.totalSupply.toString())}
+									</GS.DrawerContentDetail>
+								</GS.DrawerContentLine>
+							)}
 						</GS.DrawerContent>
 					}
 				/>
