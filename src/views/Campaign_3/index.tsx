@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { createGlobalStyle } from 'styled-components';
 
 import { readHandler } from 'api';
@@ -8,7 +8,7 @@ import { createDataItemSigner } from 'helpers/aoconnect';
 import { getTagValue } from 'helpers/utils';
 import { HB } from 'helpers/config';
 
-import { ASSETS, GATEWAYS } from 'helpers/config';
+import { ASSETS, GATEWAYS, URLS } from 'helpers/config';
 import { getGateways, initializeWayfinder } from 'helpers/wayfinder';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { usePermawebProvider } from 'providers/PermawebProvider';
@@ -984,6 +984,7 @@ function GuideBox({
 }
 
 export default function Campaign() {
+	const navigate = useNavigate();
 	const arProvider = useArweaveProvider();
 	const permawebProvider = usePermawebProvider();
 	const [isVerifying, setIsVerifying] = useState(false);
@@ -2729,8 +2730,33 @@ export default function Campaign() {
 									zIndex: 4,
 								}}
 							>
-								<SuccessModal onVisitAsset={() => (window.location.href = `/#/asset/${ATOMIC_ASSET_ID}`)} />
+								<SuccessModal
+									onVisitAsset={() => {
+										// Use React Router navigation (works with both ArNS links and transaction ID URLs)
+										navigate(`${URLS.asset}${ATOMIC_ASSET_ID}`);
+										setShowSuccessModal(false);
+									}}
+								/>
 							</div>
+							{/* Close button for testing */}
+							<button
+								onClick={() => setShowSuccessModal(false)}
+								style={{
+									position: 'fixed',
+									top: 20,
+									right: 20,
+									zIndex: 5,
+									padding: '8px 16px',
+									background: 'rgba(0, 0, 0, 0.7)',
+									color: '#fff',
+									border: 'none',
+									borderRadius: 8,
+									cursor: 'pointer',
+									fontSize: 14,
+								}}
+							>
+								✕ Close
+							</button>
 						</>
 					)}
 				</div>
