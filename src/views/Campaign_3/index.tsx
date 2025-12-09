@@ -61,6 +61,15 @@ const Campaign3Responsive = createGlobalStyle`
 		}
 	}
 
+	@keyframes shimmer {
+		0% {
+			background-position: -200% 0;
+		}
+		100% {
+			background-position: 200% 0;
+		}
+	}
+
 	@keyframes confetti-fall {
 		0% {
 			transform: translateY(-100vh) rotate(0deg);
@@ -572,7 +581,7 @@ function RewardCard({
 }
 
 // Processing modal
-function ProcessingModal() {
+function ProcessingModal({ milestones }: { milestones: string[] }) {
 	return (
 		<div
 			style={{
@@ -681,6 +690,40 @@ function ProcessingModal() {
 							/>
 							Processing...
 						</button>
+						{milestones.length > 0 && (
+							<div
+								style={{
+									display: 'flex',
+									flexDirection: 'column',
+									alignItems: 'flex-end',
+									gap: 2,
+									marginTop: 4,
+									width: '100%',
+								}}
+							>
+								{milestones.map((milestone, idx) => (
+									<div
+										key={idx}
+										style={{
+											fontSize: 8,
+											fontFamily: 'Inter',
+											textAlign: 'right',
+											lineHeight: 1.2,
+											position: 'relative',
+											overflow: 'hidden',
+											background: 'linear-gradient(90deg, #666 0%, #999 50%, #666 100%)',
+											backgroundSize: '200% 100%',
+											WebkitBackgroundClip: 'text',
+											WebkitTextFillColor: 'transparent',
+											backgroundClip: 'text',
+											animation: 'shimmer 2s linear infinite',
+										}}
+									>
+										{milestone}
+									</div>
+								))}
+							</div>
+						)}
 					</div>
 				</div>
 			</div>
@@ -1015,6 +1058,11 @@ export default function Campaign() {
 		remaining: number;
 		total: number;
 	} | null>(null);
+	const [progressMilestones, setProgressMilestones] = useState<string[]>([]);
+
+	const addMilestone = (message: string) => {
+		setProgressMilestones((prev) => [...prev, message]);
+	};
 
 	async function handleClaim(processId: string): Promise<void> {
 		try {
@@ -1026,6 +1074,7 @@ export default function Campaign() {
 			// Try a quick claim status check before claiming (with short timeout)
 			if (!claimStatus || claimStatus.status === null || claimStatus.status === 'Checking') {
 				console.log('[handleClaim] Claim status unknown, performing quick check before claiming...');
+				addMilestone('[handleClaim] Claim status unknown, performing quick check before claiming...');
 				try {
 					const quickStatusCheck = await Promise.race([
 						readHandler({
@@ -1046,6 +1095,7 @@ export default function Campaign() {
 						throw new Error('You have already claimed your asset');
 					}
 					console.log('[handleClaim] Quick status check passed - not already claimed');
+					addMilestone('[handleClaim] Quick status check passed - not already claimed');
 				} catch (quickCheckError) {
 					if (quickCheckError instanceof Error && quickCheckError.message === 'You have already claimed your asset') {
 						throw quickCheckError; // Re-throw if already claimed
@@ -1065,6 +1115,7 @@ export default function Campaign() {
 			}
 
 			// Show processing modal
+			setProgressMilestones([]);
 			setShowProcessingModal(true);
 
 			console.log('Starting claim process:', {
@@ -1073,6 +1124,7 @@ export default function Campaign() {
 				processId: processId,
 				atomicAssetId: ATOMIC_ASSET_ID,
 			});
+			addMilestone('Starting claim process...');
 
 			// Count how many requirements are met
 			const requirementsMet = [
@@ -1098,6 +1150,7 @@ export default function Campaign() {
 
 			// Send claim message using Zone Profile Run-Action pattern
 			console.log('Sending claim request via Zone Profile Run-Action...');
+			addMilestone('Sending claim request via Zone Profile Run-Action...');
 
 			// Use Run-Action for new Zone Profiles (routes through profile to asset)
 			const isLegacyProfile = permawebProvider.profile?.isLegacyProfile;
@@ -1132,6 +1185,7 @@ export default function Campaign() {
 			// not the profile process, so we need to query results from the asset process
 			// Sending claim request
 			console.log('[handleClaim] Sending claim to process:', targetProcessId);
+			addMilestone(`[handleClaim] Sending claim to process: ${targetProcessId}`);
 
 			// First, send the message and get the message ID
 			const messageTags = [{ name: 'Action', value: action }, ...tags];
@@ -1159,7 +1213,9 @@ export default function Campaign() {
 			});
 
 			console.log('[handleClaim] Message sent, txId:', messageTxId);
+			addMilestone(`[handleClaim] Message sent, txId: ${messageTxId}`);
 			console.log('[handleClaim] Waiting for response...');
+			addMilestone('[handleClaim] Waiting for response...');
 
 			// Wait for the process to respond
 			await new Promise((resolve) => setTimeout(resolve, 12000)); // 12 second wait for claim processing
@@ -1195,10 +1251,12 @@ export default function Campaign() {
 					try {
 						const url = `${node}/${processId}~process@1.0/now`;
 						console.log(`[handleClaim] Querying HyperBEAM state from node: ${node}`);
+						addMilestone(`[handleClaim] Querying HyperBEAM state from node: ${node}`);
 
 						const res = await fetch(url, { headers });
 						if (res.ok) {
 							console.log(`[handleClaim] Successfully fetched from node: ${node}`);
+							addMilestone(`[handleClaim] Successfully fetched from node: ${node}`);
 							return await res.json();
 						} else if (res.status === 404) {
 							// 404 means process doesn't export state to HyperBEAM (older profiles)
@@ -1271,6 +1329,7 @@ export default function Campaign() {
 
 							if (claims[walletAddress] || (profileId && claims[profileId])) {
 								console.log(`[handleClaim] Found in Claims table during polling - already claimed`);
+								addMilestone(`[handleClaim] Found in Claims table during polling - already claimed`);
 								setClaimStatus({
 									hasClaimed: true,
 									status: 'Already-Claimed',
@@ -1287,6 +1346,7 @@ export default function Campaign() {
 
 							if (Number(walletBalance) > 0 || Number(profileBalance) > 0) {
 								console.log(`[handleClaim] Found balance > 0 during polling - already claimed`);
+								addMilestone(`[handleClaim] Found balance > 0 during polling - already claimed`);
 								setClaimStatus({
 									hasClaimed: true,
 									status: 'Already-Claimed',
@@ -1350,6 +1410,7 @@ export default function Campaign() {
 
 									response = foundResponses[0].response;
 									console.log(`[handleClaim] Found ${foundResponses[0].action} response via HyperBEAM`);
+									addMilestone(`[handleClaim] Found ${foundResponses[0].action} response via HyperBEAM`);
 								}
 							}
 						} catch (hyperbeamError: any) {
@@ -1435,6 +1496,7 @@ export default function Campaign() {
 
 										response = foundResponses[0].response;
 										console.log(`[handleClaim] Found ${foundResponses[0].action} response via CU`);
+										addMilestone(`[handleClaim] Found ${foundResponses[0].action} response via CU`);
 									}
 								}
 							} catch (cuError: any) {
@@ -1486,6 +1548,7 @@ export default function Campaign() {
 						// Check if wallet or profile is in Claims table
 						if (claims[walletAddress] || (profileId && claims[profileId])) {
 							console.log('[handleClaim] Found in Claims table - already claimed');
+							addMilestone('[handleClaim] Found in Claims table - already claimed');
 							setClaimStatus({
 								hasClaimed: true,
 								status: 'Already-Claimed',
@@ -1503,6 +1566,7 @@ export default function Campaign() {
 
 						if (Number(walletBalance) > 0 || Number(profileBalance) > 0) {
 							console.log('[handleClaim] Found balance > 0 - already claimed');
+							addMilestone('[handleClaim] Found balance > 0 - already claimed');
 							setClaimStatus({
 								hasClaimed: true,
 								status: 'Already-Claimed',
@@ -1531,6 +1595,7 @@ export default function Campaign() {
 
 			if (response?.['Claim-Success']) {
 				console.log('Claim successful!', response['Claim-Success']);
+				addMilestone('Claim successful!');
 				setVerificationResults((prev) => ({
 					...prev,
 					claimProcessed: true,
@@ -2661,7 +2726,7 @@ export default function Campaign() {
 									zIndex: 3,
 								}}
 							>
-								<ProcessingModal />
+								<ProcessingModal milestones={progressMilestones} />
 							</div>
 						</>
 					)}
