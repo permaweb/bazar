@@ -429,14 +429,16 @@ function RewardCard({
 									padding: '20px 12px',
 									border: 'none',
 									borderRadius: 8,
-									background: '#4A5568',
+									background: '#1a1a1a',
 									color: '#FFFFFF',
 									fontSize: 14,
 									textAlign: 'center',
 									margin: '0px 0px 0px 0px',
+									opacity: 0.9,
+									cursor: 'not-allowed',
 								}}
 							>
-								✓ Already Claimed
+								✓ Claimed
 							</div>
 						) : claimStatus?.status === 'Checking' || claimStatus?.status === null ? (
 							<div
