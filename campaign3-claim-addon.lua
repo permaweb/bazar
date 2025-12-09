@@ -1,6 +1,7 @@
 -- I Survived AO Testnet - 1984 Campaign Claim Handler
 -- ADD THIS TO THE BOTTOM OF YOUR ATOMIC ASSET PROCESS
--- Process ID: rSehf8qeKDDDnrnOiwKT_NWSCFED_q5PouLpXMNHxl8
+-- Test1 Process ID: rSehf8qeKDDDnrnOiwKT_NWSCFED_q5PouLpXMNHxl8
+-- Test2 Process ID: mOWgeQqgp8oWF8Kyc4rBDSszlBZgLkm2TlytxksSalI
 
 -- Load dependencies
 -- Note: Your main process has these as 'local', so we need to require them again here
@@ -60,23 +61,23 @@ end
 -- Store the original if it exists
 local originalSyncState = _G.syncState
 
-_G.syncState = function()
+	_G.syncState = function()
 	-- Export state to patch@1.0 for HyperBEAM access
 	-- This includes both Token state and Campaign Claims table
-	if type(Send) == 'function' and Token and json then
-		local state = {
-			Name = Token.Name,
-			Ticker = Token.Ticker,
-			Denomination = tostring(Token.Denomination),
-			Balances = Token.Balances,
-			TotalSupply = Token.TotalSupply,
-			Transferable = Token.Transferable,
-			Creator = Token.Creator,
-			Metadata = Metadata or {},
-			AuthUsers = AuthUsers or {},
-			IndexRecipients = IndexRecipients or {},
-			DateCreated = DateCreated and tostring(DateCreated) or nil,
-			LastUpdate = LastUpdate and tostring(LastUpdate) or nil,
+		if type(Send) == 'function' and Token and json then
+			local state = {
+				Name = Token.Name,
+				Ticker = Token.Ticker,
+				Denomination = tostring(Token.Denomination),
+				Balances = Token.Balances,
+				TotalSupply = Token.TotalSupply,
+				Transferable = Token.Transferable,
+				Creator = Token.Creator,
+				Metadata = Metadata or {},
+				AuthUsers = AuthUsers or {},
+				IndexRecipients = IndexRecipients or {},
+				DateCreated = DateCreated and tostring(DateCreated) or nil,
+				LastUpdate = LastUpdate and tostring(LastUpdate) or nil,
 			-- Export campaign-specific state for HyperBEAM access
 			Claims = Claims or {},
 			CampaignConfig = CampaignConfig or {},
@@ -91,7 +92,7 @@ _G.syncState = function()
 		end
 		print('Claims table size: ' .. tostring(claimsCount))
 		print('CampaignConfig TotalSupply: ' .. tostring(CampaignConfig and CampaignConfig.TotalSupply or 'nil'))
-		Send({ device = 'patch@1.0', asset = json.encode(state) })
+			Send({ device = 'patch@1.0', asset = json.encode(state) })
 		print('State synced to HyperBEAM with Claims and CampaignConfig')
 	else
 		-- If Send is not available, try original syncState if it exists
@@ -506,7 +507,7 @@ Handlers.add(
 
 		-- Ensure owner balance is initialized (fix for processes that weren't initialized correctly)
 		ensureOwnerBalance()
-		
+
 		-- Check owner has balance (this check is done again in the transfer section, but we check early here)
 		local ownerBalance = getOwnerBalance()
 		local ownerBalanceBint = bint(ownerBalance)

@@ -9,6 +9,7 @@ import { getTagValue } from 'helpers/utils';
 import { HB } from 'helpers/config';
 
 import { ASSETS, GATEWAYS } from 'helpers/config';
+import { getGateways, initializeWayfinder } from 'helpers/wayfinder';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { usePermawebProvider } from 'providers/PermawebProvider';
 
@@ -22,7 +23,7 @@ declare module '*.avif';
 
 // Constants for the I Survived AO Testnet campaign
 // Using UNIFIED approach - Claim logic is in the atomic asset process itself!
-const ATOMIC_ASSET_ID = 'rSehf8qeKDDDnrnOiwKT_NWSCFED_q5PouLpXMNHxl8'; // I Survived AO Testnet Asset (also handles claims)
+const ATOMIC_ASSET_ID = 'mOWgeQqgp8oWF8Kyc4rBDSszlBZgLkm2TlytxksSalI'; // I Survived AO Testnet Asset (also handles claims) - TEST ASSET
 
 // Media URLs
 const MEDIA_URLS = {
@@ -230,6 +231,7 @@ function RewardCard({
 	};
 
 	const atLeastOneRequirementMet = requirements?.some((req) => req.met) || false;
+	const requirementsMetCount = requirements?.filter((req) => req.met).length || 0;
 
 	// Adjust overlay style for seamless inner corners
 	const customOverlayStyle = {
@@ -401,9 +403,26 @@ function RewardCard({
 						Connect Wallet
 					</button>
 				)}
-				{connected && !cta && atLeastOneRequirementMet && onClaim && (
+				{connected && !cta && onClaim && (
 					<>
-						{claimStatus?.status === 'Already-Claimed' ? (
+						{requirementsMetCount === 0 && !claimStatus?.status ? (
+							<div
+								style={{
+									width: 'calc(100% - 16px)',
+									padding: '20px 12px',
+									border: 'none',
+									borderRadius: 8,
+									background: '#F96E46',
+									color: '#FFFFFF',
+									fontSize: 14,
+									textAlign: 'center',
+									margin: '0px 0px 0px 0px',
+									cursor: 'not-allowed',
+								}}
+							>
+								Not Eligible
+							</div>
+						) : claimStatus?.status === 'Already-Claimed' ? (
 							<div
 								style={{
 									width: 'calc(100% - 16px)',
@@ -435,6 +454,23 @@ function RewardCard({
 								}}
 							>
 								Checking claim status...
+							</div>
+						) : !atLeastOneRequirementMet ? (
+							<div
+								style={{
+									width: 'calc(100% - 16px)',
+									padding: '20px 12px',
+									border: 'none',
+									borderRadius: 8,
+									background: '#F96E46',
+									color: '#FFFFFF',
+									fontSize: 14,
+									textAlign: 'center',
+									margin: '0px 0px 0px 0px',
+									cursor: 'not-allowed',
+								}}
+							>
+								Not Eligible
 							</div>
 						) : (
 							<button
@@ -1091,25 +1127,8 @@ export default function Campaign() {
 
 			// When using Zone Profile forwarding, the response comes from the asset process,
 			// not the profile process, so we need to query results from the asset process
-			console.log('=== Sending Claim Request ===');
-			console.log('Target Process (message):', targetProcessId);
-			console.log('Result Process (query):', ATOMIC_ASSET_ID);
-			console.log('Action:', action);
-			console.log('Tags:', tags);
-			console.log('Is Legacy Profile:', isLegacyProfile);
-			console.log('Data being sent:', {
-				requirements: {
-					bazarTransaction: verificationResults.hasBazarTransaction,
-					botegaSwap: verificationResults.hasBotegaSwap,
-					permaswapTransaction: verificationResults.hasPermaswapTransaction,
-					aoProcess: verificationResults.hasAOProcess,
-				},
-				recipient: permawebProvider.profile.id,
-			});
-
-			// Use messageResult (singular) with specific message ID instead of messageResults (plural)
-			// This avoids rate limiting from querying all results and is more efficient
-			console.log('=== Using messageResult with specific message ID ===');
+			// Sending claim request
+			console.log('[handleClaim] Sending claim to process:', targetProcessId);
 
 			// First, send the message and get the message ID
 			const messageTags = [{ name: 'Action', value: action }, ...tags];
@@ -1148,15 +1167,17 @@ export default function Campaign() {
 			const assetProcessId = ATOMIC_ASSET_ID;
 			const profileProcessId = permawebProvider.profile.id;
 
-			console.log('[handleClaim] Querying response from HyperBEAM for asset process:', assetProcessId);
-			console.log('[handleClaim] Also checking profile process for reply:', profileProcessId);
+			// Querying response from HyperBEAM
 
 			let response = null;
 			let retries = 8; // More retries since we're using HyperBEAM
 			let delay = 3000; // Start with 3 second delay
+			const maxWaitTime = 60000; // Maximum 60 seconds total wait time
+			const startTime = Date.now();
 
 			// Helper function to query HyperBEAM for process state (with fallback nodes)
-			const queryHyperBEAMState = async (processId: string): Promise<any> => {
+			// Returns null if process doesn't export state (404), throws for other errors
+			const queryHyperBEAMState = async (processId: string): Promise<any | null> => {
 				const nodesToTry = [HB.defaultNode, ...(HB.fallbackNodes || [])];
 				const headers = {
 					'require-codec': 'application/json',
@@ -1164,6 +1185,7 @@ export default function Campaign() {
 				};
 
 				let lastError: Error | null = null;
+				let all404 = true; // Track if all nodes returned 404
 
 				// Try each node in sequence
 				for (const node of nodesToTry) {
@@ -1175,36 +1197,100 @@ export default function Campaign() {
 						if (res.ok) {
 							console.log(`[handleClaim] Successfully fetched from node: ${node}`);
 							return await res.json();
+						} else if (res.status === 404) {
+							// 404 means process doesn't export state to HyperBEAM (older profiles)
+							// This is expected for older profile processes, not an error
+							console.log(
+								`[handleClaim] Process ${processId} not found in HyperBEAM on ${node} (expected for older profiles)`
+							);
+							// Continue to next node to be sure
+							continue;
+						} else {
+							// Non-404 error - log and try next node
+							all404 = false;
+							lastError = new Error(`HyperBEAM returned status ${res.status} from ${node}`);
+							console.warn(`[handleClaim] Node ${node} returned ${res.status}, trying next node...`);
+							continue; // Try next node
 						}
-						lastError = new Error(`HyperBEAM returned status ${res.status} from ${node}`);
-						console.warn(`[handleClaim] Node ${node} returned ${res.status}, trying next node...`);
-						continue; // Try next node
 					} catch (error: any) {
+						all404 = false;
 						lastError = error;
 						console.warn(`[handleClaim] Node ${node} failed:`, error.message);
 						continue; // Try next node
 					}
 				}
 
-				// If all nodes failed, throw the last error
+				// If all nodes returned 404, return null (process doesn't export state)
+				if (all404) {
+					return null;
+				}
+
+				// If we got non-404 errors from all nodes, throw
 				if (lastError) {
-					console.error('[handleClaim] All HyperBEAM nodes failed');
+					console.error('[handleClaim] All HyperBEAM nodes failed with non-404 errors');
 					throw lastError;
 				}
 				throw new Error('All HyperBEAM nodes failed');
 			};
 
 			while (retries > 0 && !response) {
+				// Check if we've exceeded maximum wait time
+				const elapsedTime = Date.now() - startTime;
+				if (elapsedTime > maxWaitTime) {
+					console.warn(`[handleClaim] Exceeded maximum wait time (${maxWaitTime}ms), stopping polling`);
+					break;
+				}
+
 				try {
 					// Try HyperBEAM first (no rate limiting)
 					// Check both asset process and profile process for the response
+					// Newer profiles export state, older ones don't (404) and will fall back to CU
 					const processesToCheck = [assetProcessId, profileProcessId];
+					const processesNeedingCU: string[] = []; // Track which processes need CU fallback
 
 					for (const processId of processesToCheck) {
 						if (response) break; // Already found response
 
 						try {
 							const state = await queryHyperBEAMState(processId);
+
+							// If state is null, it means 404 (process doesn't export state)
+							if (state === null) {
+								processesNeedingCU.push(processId);
+								continue; // Skip to CU fallback for this process
+							}
+
+							// First, check Claims table to see if already claimed (before checking Results)
+							// This catches duplicate claims immediately
+							const claims = state.Claims || state.claims || state.body?.Claims || {};
+							const walletAddress = arProvider.walletAddress;
+							const profileId = permawebProvider.profile?.id;
+
+							if (claims[walletAddress] || (profileId && claims[profileId])) {
+								console.log(`[handleClaim] Found in Claims table during polling - already claimed`);
+								setClaimStatus({
+									hasClaimed: true,
+									status: 'Already-Claimed',
+									claimedAt: claims[walletAddress]?.Timestamp?.toString() || claims[profileId]?.Timestamp?.toString(),
+								});
+								setShowProcessingModal(false);
+								throw new Error('You have already claimed your asset');
+							}
+
+							// Also check Balances table
+							const balances = state.Balances || state.balances || state.body?.Balances || {};
+							const walletBalance = balances[walletAddress] || '0';
+							const profileBalance = profileId ? balances[profileId] || '0' : '0';
+
+							if (Number(walletBalance) > 0 || Number(profileBalance) > 0) {
+								console.log(`[handleClaim] Found balance > 0 during polling - already claimed`);
+								setClaimStatus({
+									hasClaimed: true,
+									status: 'Already-Claimed',
+								});
+								setShowProcessingModal(false);
+								throw new Error('You have already claimed your asset');
+							}
 
 							// Check if state has Results key with messages
 							if (state?.Results && Array.isArray(state.Results)) {
@@ -1260,22 +1346,28 @@ export default function Campaign() {
 									});
 
 									response = foundResponses[0].response;
-									console.log(`[handleClaim] Found response via HyperBEAM from ${processId}:`, response);
-									console.log(
-										`[handleClaim] Total matching responses found: ${foundResponses.length}, selected: ${foundResponses[0].action}`
-									);
+									console.log(`[handleClaim] Found ${foundResponses[0].action} response via HyperBEAM`);
 								}
 							}
 						} catch (hyperbeamError: any) {
-							console.warn(`[handleClaim] HyperBEAM query failed for ${processId}:`, hyperbeamError);
+							// Only log non-404 errors as warnings (404s are handled in queryHyperBEAMState)
+							if (!hyperbeamError.message?.includes('404')) {
+								console.warn(`[handleClaim] HyperBEAM query failed for ${processId}:`, hyperbeamError);
+							}
+							processesNeedingCU.push(processId);
 						}
 					}
 
 					// If HyperBEAM didn't find it, try CU results as fallback
+					// Only check processes that returned 404 or failed (older profiles that don't export state)
 					if (!response) {
-						console.log("[handleClaim] HyperBEAM didn't find response, trying CU results...");
+						const processesToCheckCU = processesNeedingCU.length > 0 ? processesNeedingCU : processesToCheck; // Fallback to checking all if no 404s detected
 
-						for (const processId of processesToCheck) {
+						console.log(
+							`[handleClaim] HyperBEAM didn't find response, trying CU results for ${processesToCheckCU.length} process(es)...`
+						);
+
+						for (const processId of processesToCheckCU) {
 							if (response) break; // Already found response
 
 							try {
@@ -1339,10 +1431,7 @@ export default function Campaign() {
 										});
 
 										response = foundResponses[0].response;
-										console.log(`[handleClaim] Found response via CU from ${processId}:`, response);
-										console.log(
-											`[handleClaim] Total matching responses found: ${foundResponses.length}, selected: ${foundResponses[0].action}`
-										);
+										console.log(`[handleClaim] Found ${foundResponses[0].action} response via CU`);
 									}
 								}
 							} catch (cuError: any) {
@@ -1355,9 +1444,6 @@ export default function Campaign() {
 
 					// If no response found, wait and retry
 					if (retries > 1) {
-						console.log(
-							`[handleClaim] Response not found yet, retrying in ${delay}ms... (${retries - 1} retries left)`
-						);
 						await new Promise((resolve) => setTimeout(resolve, delay));
 						delay *= 1.2; // Gradual backoff
 					}
@@ -1367,7 +1453,7 @@ export default function Campaign() {
 					// If rate limited, wait longer before retrying
 					if (error?.message?.includes('429') || error?.message?.includes('Too Many Requests')) {
 						if (retries > 1) {
-							console.log(`[handleClaim] Rate limited, waiting ${delay * 2}ms before retry...`);
+							// Rate limited, waiting before retry
 							await new Promise((resolve) => setTimeout(resolve, delay * 2));
 							delay *= 2;
 						}
@@ -1379,20 +1465,65 @@ export default function Campaign() {
 				}
 			}
 
-			console.log('=== Claim Response ===');
-			console.log('Raw response:', response);
-			console.log('Response type:', typeof response);
-			console.log('Response keys:', response ? Object.keys(response) : 'null');
-			console.log('Response is null?', response === null);
-			console.log('Response is undefined?', response === undefined);
+			// Process claim response
 
 			if (!response) {
+				console.warn('[handleClaim] No response found after polling, checking process state directly...');
+
+				try {
+					// Check the Claims table directly to see if this profile/wallet already claimed
+					const finalStateCheck = await queryHyperBEAMState(assetProcessId);
+
+					if (finalStateCheck) {
+						// Check Claims table for this profile/wallet
+						const claims = finalStateCheck.Claims || finalStateCheck.claims || finalStateCheck.body?.Claims || {};
+						const walletAddress = arProvider.walletAddress;
+						const profileId = permawebProvider.profile?.id;
+
+						// Check if wallet or profile is in Claims table
+						if (claims[walletAddress] || (profileId && claims[profileId])) {
+							console.log('[handleClaim] Found in Claims table - already claimed');
+							setClaimStatus({
+								hasClaimed: true,
+								status: 'Already-Claimed',
+								claimedAt: claims[walletAddress]?.Timestamp?.toString() || claims[profileId]?.Timestamp?.toString(),
+							});
+							setShowProcessingModal(false);
+							throw new Error('You have already claimed your asset');
+						}
+
+						// Also check Balances table
+						const balances =
+							finalStateCheck.Balances || finalStateCheck.balances || finalStateCheck.body?.Balances || {};
+						const walletBalance = balances[walletAddress] || '0';
+						const profileBalance = profileId ? balances[profileId] || '0' : '0';
+
+						if (Number(walletBalance) > 0 || Number(profileBalance) > 0) {
+							console.log('[handleClaim] Found balance > 0 - already claimed');
+							setClaimStatus({
+								hasClaimed: true,
+								status: 'Already-Claimed',
+							});
+							setShowProcessingModal(false);
+							throw new Error('You have already claimed your asset');
+						}
+					}
+				} catch (finalCheckError: any) {
+					if (finalCheckError.message === 'You have already claimed your asset') {
+						throw finalCheckError; // Re-throw already claimed errors
+					}
+					console.warn('[handleClaim] Final state check failed:', finalCheckError);
+				}
+
 				console.error('No response received - this could mean:');
 				console.error('1. Handler not loaded in process');
 				console.error('2. Timeout too short');
 				console.error('3. Process not responding');
 				console.error('4. Message format incorrect');
-				throw new Error('No response received from claim process. Check console for details.');
+				setShowProcessingModal(false);
+				throw new Error(
+					'No response received from claim process. Please try again or check if you have already claimed.'
+				);
 			}
 
 			if (response?.['Claim-Success']) {
@@ -1884,14 +2015,14 @@ export default function Campaign() {
 
 	const fetchCampaignStats = async () => {
 		try {
-			console.log('[fetchCampaignStats] Fetching stats from process:', ATOMIC_ASSET_ID);
+			// Fetching campaign stats
 			// Use readHandler for campaign stats (will use dryrun)
 			const statsData = await readHandler({
 				processId: ATOMIC_ASSET_ID,
 				action: 'Get-Campaign-Stats',
 			});
 
-			console.log('[fetchCampaignStats] Received stats data:', statsData);
+			// Campaign stats received
 
 			if (statsData) {
 				// Handle case-insensitive field names (TotalSupply vs Totalsupply)
@@ -1904,7 +2035,6 @@ export default function Campaign() {
 					remaining: parseInt(remaining),
 					total: parseInt(totalSupply),
 				});
-				console.log('[fetchCampaignStats] Stats set:', { claimed, remaining, total: totalSupply });
 			} else {
 				console.warn('[fetchCampaignStats] No stats data received - handler may not be loaded');
 			}
@@ -1919,69 +2049,450 @@ export default function Campaign() {
 			return;
 		}
 
+		if (!arProvider.walletAddress) {
+			console.log('[verifyWallet] No wallet address, skipping');
+			return;
+		}
+
 		setIsVerifying(true);
 		try {
 			// Feb 8, 2025 (mainnet launch) cutoff
 			// Block 1605347, timestamp: 1738972847027
 			const maxBlock = 1605347;
 
-			// Check Bazar transactions
-			const bazarData = await permawebProvider.libs.getGQLData({
-				gateway: GATEWAYS.arweave,
-				owners: [arProvider.walletAddress],
-				tags: [
-					{ name: 'Type', values: ['Message'] },
-					{ name: 'Variant', values: ['ao.TN.1'] },
-					{ name: 'X-Order-Action', values: ['Create-Order'] },
-				],
-				maxBlock,
-			});
+			console.log(`[verifyWallet] Starting eligibility checks for wallet: ${arProvider.walletAddress}`);
 
-			// Check Permaswap transactions (uses X-PS-For tag to identify)
-			const permaswapData = await permawebProvider.libs.getGQLData({
-				gateway: GATEWAYS.arweave,
-				owners: [arProvider.walletAddress],
-				tags: [
-					{ name: 'X-PS-For', values: ['Swap'] },
-					{ name: 'Data-Protocol', values: ['ao'] },
-					{ name: 'Type', values: ['Message'] },
-					{ name: 'Variant', values: ['ao.TN.1'] },
-				],
-				maxBlock,
-			});
+			// Check each requirement independently so one failure doesn't break others
+			// Add timeout wrapper to prevent indefinite hanging
+			const queryWithTimeout = async <T,>(queryPromise: Promise<T>, timeoutMs: number = 30000): Promise<T> => {
+				return Promise.race([
+					queryPromise,
+					new Promise<T>((_, reject) =>
+						setTimeout(() => reject(new Error(`Query timeout after ${timeoutMs}ms`)), timeoutMs)
+					),
+				]);
+			};
 
-			// Check Botega swap transactions (uses X-Action: Swap without X-PS-For)
-			const botegaData = await permawebProvider.libs.getGQLData({
-				gateway: GATEWAYS.arweave,
-				owners: [arProvider.walletAddress],
-				tags: [
-					{ name: 'X-Action', values: ['Swap'] },
-					{ name: 'Data-Protocol', values: ['ao'] },
-					{ name: 'Type', values: ['Message'] },
-					{ name: 'Variant', values: ['ao.TN.1'] },
-				],
-				maxBlock,
-			});
+			// Get available gateways using Wayfinder (with fallback to arweave.net)
+			// Prioritize well-known public gateways that are less likely to be blocked
+			const publicGateways = [
+				GATEWAYS.arweave, // arweave.net - most reliable, least likely to be blocked
+				GATEWAYS.goldsky, // arweave-search.goldsky.com - public search gateway
+			];
 
-			// Check AO Process
-			const aoProcessData = await permawebProvider.libs.getGQLData({
-				gateway: GATEWAYS.arweave,
-				owners: [arProvider.walletAddress],
-				tags: [
-					{ name: 'Data-Protocol', values: ['ao'] },
-					{ name: 'Type', values: ['Process'] },
-				],
-				maxBlock,
-			});
+			let gatewaysToTry: string[] = [...publicGateways]; // Start with public gateways
+			try {
+				await initializeWayfinder(); // Ensure gateways are loaded
+				const gatewayUrls = getGateways();
+				// Extract hostnames from URLs (e.g., "https://arweave.net" -> "arweave.net")
+				const wayfinderGateways = gatewayUrls.map((url) => {
+					try {
+						return new URL(url).hostname;
+					} catch {
+						return url.replace(/^https?:\/\//, '').replace(/\/$/, '');
+					}
+				});
 
-			setVerificationResults((prev) => ({
-				...prev,
-				hasBazarTransaction: bazarData.data.length > 0,
-				hasBotegaSwap: botegaData.data.length > 0,
-				hasPermaswapTransaction: permaswapData.data.length > 0,
-				hasAOProcess: aoProcessData.data.length > 0,
-				aoProcesses: aoProcessData.data,
-			}));
+				// Add Wayfinder gateways after public ones (they might be blocked by some ISPs)
+				// But remove duplicates
+				for (const gateway of wayfinderGateways) {
+					if (!gatewaysToTry.includes(gateway)) {
+						gatewaysToTry.push(gateway);
+					}
+				}
+
+				// Using multiple gateways for reliability
+			} catch (error) {
+				console.warn('[verifyWallet] Failed to get Wayfinder gateways, using public gateways only:', error);
+			}
+
+			// Helper function to filter transactions by maxBlock (Feb 8, 2025 cutoff)
+			const filterByMaxBlock = (data: any[], maxBlock: number): any[] => {
+				if (!data || !Array.isArray(data)) return [];
+				return data.filter((item) => {
+					const blockHeight = item?.node?.block?.height;
+					if (blockHeight === undefined || blockHeight === null) return false;
+					return Number(blockHeight) <= maxBlock;
+				});
+			};
+
+			// Helper function to try query on multiple gateways until we get results or all fail
+			const tryQueryOnMultipleGateways = async (
+				queryFn: (gateway: string) => Promise<{ data: any[] }>,
+				queryName: string
+			): Promise<{ data: any[] }> => {
+				const errors: Array<{ gateway: string; error: string }> = [];
+
+				for (const gateway of gatewaysToTry) {
+					try {
+						const result = await queryWithTimeout(queryFn(gateway), 30000);
+						// Filter results by maxBlock to ensure only transactions before Feb 8, 2025
+						const filteredData = filterByMaxBlock(result.data || [], maxBlock);
+						if (filteredData.length > 0) {
+							console.log(
+								`[verifyWallet] ${queryName} found ${filteredData.length} results on ${gateway} (filtered from ${
+									result.data?.length || 0
+								} total)`
+							);
+							return { data: filteredData };
+						}
+						// If we got 0 results after filtering, try next gateway (some gateways might not have all data)
+						// Silently continue to next gateway
+					} catch (error: any) {
+						// Log detailed error information for debugging network issues
+						const errorMessage = error?.message || String(error);
+						const errorType = error?.name || 'Unknown';
+
+						// Check for common network issues
+						if (errorMessage.includes('Failed to fetch') || errorMessage.includes('NetworkError')) {
+							console.warn(
+								`[verifyWallet] ${queryName} network error on ${gateway}: ${errorMessage} (This might indicate ISP blocking or DNS issues)`
+							);
+						} else if (errorMessage.includes('timeout')) {
+							console.warn(`[verifyWallet] ${queryName} timeout on ${gateway}: ${errorMessage}`);
+						} else if (errorMessage.includes('CORS')) {
+							console.warn(`[verifyWallet] ${queryName} CORS error on ${gateway}: ${errorMessage}`);
+						} else {
+							console.warn(`[verifyWallet] ${queryName} failed on ${gateway} (${errorType}):`, errorMessage);
+						}
+
+						errors.push({ gateway, error: `${errorType}: ${errorMessage}` });
+						// Continue to next gateway
+					}
+				}
+
+				// All gateways failed or returned 0 results
+				if (errors.length > 0) {
+					console.warn(`[verifyWallet] ${queryName} failed on all gateways`);
+				}
+
+				return { data: [] };
+			};
+
+			// Run all queries in parallel for maximum efficiency
+			// Each query will try multiple gateways and stop at first success
+			const [bazarData, permaswapData, botegaData, aoProcessData] = await Promise.all([
+				// Check Bazar transactions (try multiple gateways)
+				// Bazar orders are sent through the profile, so check both wallet and profile
+				tryQueryOnMultipleGateways((gateway) => {
+					// Build owners array - include both wallet and profile if profile exists
+					const owners = [arProvider.walletAddress];
+					if (permawebProvider.profile?.id) {
+						owners.push(permawebProvider.profile.id);
+					}
+
+					return permawebProvider.libs.getGQLData({
+						gateway,
+						owners: owners,
+						tags: [
+							{ name: 'Type', values: ['Message'] },
+							{ name: 'Variant', values: ['ao.TN.1'] },
+							{ name: 'X-Order-Action', values: ['Create-Order'] },
+						],
+						maxBlock,
+					});
+				}, 'Bazar transactions').then((result) => {
+					// Update UI immediately when this query completes
+					setVerificationResults((prev) => ({
+						...prev,
+						hasBazarTransaction: result.data && result.data.length > 0,
+					}));
+					return result;
+				}),
+
+				// Check Permaswap transactions (uses X-PS-For tag to identify)
+				tryQueryOnMultipleGateways(
+					(gateway) =>
+						permawebProvider.libs.getGQLData({
+							gateway,
+							owners: [arProvider.walletAddress],
+							tags: [
+								{ name: 'X-PS-For', values: ['Swap'] },
+								{ name: 'Data-Protocol', values: ['ao'] },
+								{ name: 'Type', values: ['Message'] },
+								{ name: 'Variant', values: ['ao.TN.1'] },
+							],
+							maxBlock,
+						}),
+					'Permaswap transactions'
+				).then((result) => {
+					// Update UI immediately when this query completes
+					setVerificationResults((prev) => ({
+						...prev,
+						hasPermaswapTransaction: result.data && result.data.length > 0,
+					}));
+					return result;
+				}),
+
+				// Check Botega swap transactions (uses X-Action: Swap without X-PS-For)
+				tryQueryOnMultipleGateways(
+					(gateway) =>
+						permawebProvider.libs.getGQLData({
+							gateway,
+							owners: [arProvider.walletAddress],
+							tags: [
+								{ name: 'X-Action', values: ['Swap'] },
+								{ name: 'Data-Protocol', values: ['ao'] },
+								{ name: 'Type', values: ['Message'] },
+								{ name: 'Variant', values: ['ao.TN.1'] },
+							],
+							maxBlock,
+						}),
+					'Botega transactions'
+				).then((result) => {
+					// Update UI immediately when this query completes
+					setVerificationResults((prev) => ({
+						...prev,
+						hasBotegaSwap: result.data && result.data.length > 0,
+					}));
+					return result;
+				}),
+
+				// Check AO Process (check both wallet address and profile ID)
+				// Processes can be spawned by either the wallet directly or through a profile
+				// Note: Profile spawns can have different tags:
+				//   - Older profiles: Action: CreateProfile, Date-Created (may not have Data-Protocol or Type)
+				//   - Newer profiles: Type: 'profile', Data-Protocol: 'ao'
+				//   - Regular processes: Type: 'Process', Data-Protocol: 'ao'
+				// We need to check all variations since creating a profile IS spawning a process
+				// OPTIMIZATION: Run all 4 queries in parallel and stop as soon as ANY finds a result
+				// This makes the check complete much faster (similar to Permaswap)
+				Promise.race([
+					// Check for Profile spawns with Action: CreateProfile (older profiles - most likely to find quickly)
+					// This is prioritized first since it's the most common case
+					tryQueryOnMultipleGateways(
+						(gateway) =>
+							permawebProvider.libs.getGQLData({
+								gateway,
+								owners: [arProvider.walletAddress], // Profile spawns are owned by the wallet
+								tags: [{ name: 'Action', values: ['CreateProfile'] }],
+								maxBlock,
+							}),
+						'AO Processes (Action: CreateProfile)'
+					).then((result) => {
+						if (result.data && result.data.length > 0) {
+							// Found a result! Update UI immediately and return early
+							setVerificationResults((prev) => ({
+								...prev,
+								hasAOProcess: true,
+								aoProcesses: result.data,
+							}));
+							return { found: true, data: result.data, source: 'CreateProfile' };
+						}
+						return { found: false, data: [], source: 'CreateProfile' };
+					}),
+					// Check for Profile spawns with Type: 'profile' (newer profiles)
+					tryQueryOnMultipleGateways(
+						(gateway) =>
+							permawebProvider.libs.getGQLData({
+								gateway,
+								owners: [arProvider.walletAddress], // Profile spawns are owned by the wallet
+								tags: [
+									{ name: 'Data-Protocol', values: ['ao'] },
+									{ name: 'Type', values: ['profile'] },
+								],
+								maxBlock,
+							}),
+						'AO Processes (Type: profile)'
+					).then((result) => {
+						if (result.data && result.data.length > 0) {
+							// Found a result! Update UI immediately and return early
+							setVerificationResults((prev) => ({
+								...prev,
+								hasAOProcess: true,
+								aoProcesses: result.data,
+							}));
+							return { found: true, data: result.data, source: 'profile' };
+						}
+						return { found: false, data: [], source: 'profile' };
+					}),
+					// Check for regular Process spawns (Type: Process, Data-Protocol: ao)
+					tryQueryOnMultipleGateways((gateway) => {
+						// Build owners array - include both wallet and profile if profile exists
+						const owners = [arProvider.walletAddress];
+						if (permawebProvider.profile?.id) {
+							owners.push(permawebProvider.profile.id);
+						}
+
+						return permawebProvider.libs.getGQLData({
+							gateway,
+							owners: owners,
+							tags: [
+								{ name: 'Data-Protocol', values: ['ao'] },
+								{ name: 'Type', values: ['Process'] },
+							],
+							maxBlock,
+						});
+					}, 'AO Processes (Type: Process)').then((result) => {
+						if (result.data && result.data.length > 0) {
+							// Found a result! Update UI immediately and return early
+							setVerificationResults((prev) => ({
+								...prev,
+								hasAOProcess: true,
+								aoProcesses: result.data,
+							}));
+							return { found: true, data: result.data, source: 'Process' };
+						}
+						return { found: false, data: [], source: 'Process' };
+					}),
+					// Check for any process spawn with Data-Protocol: ao (catch-all for any Type variations)
+					tryQueryOnMultipleGateways(
+						(gateway) =>
+							permawebProvider.libs.getGQLData({
+								gateway,
+								owners: [arProvider.walletAddress],
+								tags: [
+									{ name: 'Data-Protocol', values: ['ao'] },
+									{ name: 'Type', values: ['Process', 'profile'] }, // Check both types
+								],
+								maxBlock,
+							}),
+						'AO Processes (Data-Protocol: ao, any Type)'
+					).then((result) => {
+						if (result.data && result.data.length > 0) {
+							// Found a result! Update UI immediately and return early
+							setVerificationResults((prev) => ({
+								...prev,
+								hasAOProcess: true,
+								aoProcesses: result.data,
+							}));
+							return { found: true, data: result.data, source: 'DataProtocol' };
+						}
+						return { found: false, data: [], source: 'DataProtocol' };
+					}),
+				]).then(async (firstResult) => {
+					// If we found a result, use it immediately (other queries will continue in background)
+					if (firstResult.found) {
+						console.log(`[verifyWallet] AO Process found via ${firstResult.source}, returning early`);
+						return { data: firstResult.data };
+					}
+
+					// If no result found yet, wait for all queries to complete and combine results
+					// (This should be rare since most profiles will be found by one of the queries above)
+					const [processResults, profileTypeResults, createProfileResults, dataProtocolResults] = await Promise.all([
+						// These queries are already running in the background from Promise.race above
+						// We just need to wait for them to complete
+						tryQueryOnMultipleGateways((gateway) => {
+							const owners = [arProvider.walletAddress];
+							if (permawebProvider.profile?.id) {
+								owners.push(permawebProvider.profile.id);
+							}
+							return permawebProvider.libs.getGQLData({
+								gateway,
+								owners: owners,
+								tags: [
+									{ name: 'Data-Protocol', values: ['ao'] },
+									{ name: 'Type', values: ['Process'] },
+								],
+								maxBlock,
+							});
+						}, 'AO Processes (Type: Process) - fallback'),
+						tryQueryOnMultipleGateways(
+							(gateway) =>
+								permawebProvider.libs.getGQLData({
+									gateway,
+									owners: [arProvider.walletAddress],
+									tags: [
+										{ name: 'Data-Protocol', values: ['ao'] },
+										{ name: 'Type', values: ['profile'] },
+									],
+									maxBlock,
+								}),
+							'AO Processes (Type: profile) - fallback'
+						),
+						tryQueryOnMultipleGateways(
+							(gateway) =>
+								permawebProvider.libs.getGQLData({
+									gateway,
+									owners: [arProvider.walletAddress],
+									tags: [{ name: 'Action', values: ['CreateProfile'] }],
+									maxBlock,
+								}),
+							'AO Processes (Action: CreateProfile) - fallback'
+						),
+						tryQueryOnMultipleGateways(
+							(gateway) =>
+								permawebProvider.libs.getGQLData({
+									gateway,
+									owners: [arProvider.walletAddress],
+									tags: [
+										{ name: 'Data-Protocol', values: ['ao'] },
+										{ name: 'Type', values: ['Process', 'profile'] },
+									],
+									maxBlock,
+								}),
+							'AO Processes (Data-Protocol: ao, any Type) - fallback'
+						),
+					]);
+
+					// Combine results from all queries
+					let combinedData = [
+						...(processResults.data || []),
+						...(profileTypeResults.data || []),
+						...(createProfileResults.data || []),
+						...(dataProtocolResults.data || []),
+					];
+
+					// Additional check: If user has a profile, check if the profile process itself
+					// was created before Feb 8, 2025 (the profile ID IS the spawned process)
+					if (permawebProvider.profile?.id && combinedData.length === 0) {
+						try {
+							// Query for the profile process ID directly to get its creation block
+							const profileProcessQuery = await tryQueryOnMultipleGateways(
+								(gateway) =>
+									permawebProvider.libs.getGQLData({
+										gateway,
+										ids: [permawebProvider.profile.id], // Query by process ID
+										tags: null, // No tag filters, just check if it exists
+										maxBlock,
+									}),
+								'Profile Process ID check'
+							);
+
+							// If we found the profile process and it was created before maxBlock, count it
+							if (profileProcessQuery.data && profileProcessQuery.data.length > 0) {
+								const profileProcess = profileProcessQuery.data[0];
+								const blockHeight = profileProcess?.node?.block?.height;
+								if (blockHeight && Number(blockHeight) <= maxBlock) {
+									console.log(
+										`[verifyWallet] Profile process ${permawebProvider.profile.id} was created at block ${blockHeight} (before ${maxBlock}), counting as spawned process`
+									);
+									combinedData.push(profileProcess);
+								}
+							}
+						} catch (error) {
+							console.warn('[verifyWallet] Failed to check profile process creation date:', error);
+						}
+					}
+
+					// Remove duplicates based on transaction ID
+					const uniqueData = combinedData.filter(
+						(item, index, self) => index === self.findIndex((t) => t.node?.id === item.node?.id)
+					);
+
+					const hasProcess = uniqueData.length > 0;
+
+					// Update UI immediately when this query completes
+					setVerificationResults((prev) => ({
+						...prev,
+						hasAOProcess: hasProcess,
+						aoProcesses: uniqueData,
+					}));
+
+					return { data: uniqueData };
+				}),
+			]);
+
+			// Final results summary (all queries completed)
+			const results = {
+				hasBazarTransaction: bazarData.data && bazarData.data.length > 0,
+				hasBotegaSwap: botegaData.data && botegaData.data.length > 0,
+				hasPermaswapTransaction: permaswapData.data && permaswapData.data.length > 0,
+				hasAOProcess: aoProcessData.data && aoProcessData.data.length > 0,
+				aoProcesses: aoProcessData.data || [],
+			};
+
+			console.log('[verifyWallet] Eligibility results (final):', results);
 
 			// Check claim status as part of eligibility verification (non-blocking)
 			// Note: Status is already set to 'Checking' in useEffect when wallet connects
