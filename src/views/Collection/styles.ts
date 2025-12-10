@@ -227,3 +227,14 @@ export const AssetsWrapper = styled.div`
 		font-size: ${(props) => props.theme.typography.size.xLg};
 	}
 `;
+
+export const EditButtonWrapper = styled.div`
+	position: absolute;
+	top: 20px;
+	right: 20px;
+	z-index: 2;
+`;
+
+export const CollectionManageWrapper = styled.div`
+	padding: 20px;
+`;

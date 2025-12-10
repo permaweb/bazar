@@ -4,18 +4,22 @@ import { useNavigate, useParams } from 'react-router-dom';
 
 import { getCollectionById, stamps } from 'api';
 
+import { Button } from 'components/atoms/Button';
 import { CurrencyLine } from 'components/atoms/CurrencyLine';
 import { Loader } from 'components/atoms/Loader';
 import { Modal } from 'components/molecules/Modal';
 import { OwnerLine } from 'components/molecules/OwnerLine';
+import { Panel } from 'components/molecules/Panel';
 import { URLTabs } from 'components/molecules/URLTabs';
 import { ActivityTable } from 'components/organisms/ActivityTable';
 import { AssetsTable } from 'components/organisms/AssetsTable';
+import { CollectionManage } from 'components/organisms/CollectionManage';
 import { Stamps } from 'components/organisms/Stamps';
 import { ASSETS, DEFAULTS, PAGINATORS, URLS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import { CollectionDetailType } from 'helpers/types';
 import { checkValidAddress, formatDate, formatPercentage } from 'helpers/utils';
+import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 import { usePermawebProvider } from 'providers/PermawebProvider';
 import { RootState } from 'store';
@@ -33,6 +37,7 @@ export default function Collection() {
 	const stampsReducer = useSelector((state: RootState) => state.stampsReducer);
 
 	const permawebProvider = usePermawebProvider();
+	const arProvider = useArweaveProvider();
 
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
@@ -41,6 +46,7 @@ export default function Collection() {
 	const [collectionLoading, setCollectionLoading] = React.useState<boolean>(false);
 	const [collectionErrorResponse, setCollectionErrorResponse] = React.useState<string | null>(null);
 	const [showFullDescription, setShowFullDescription] = React.useState<boolean>(false);
+	const [showCollectionManage, setShowCollectionManage] = React.useState<boolean>(false);
 
 	React.useEffect(() => {
 		if (!id && !active) navigate(URLS.notFound);
@@ -160,6 +166,21 @@ export default function Collection() {
 						{/* <S.StampWidgetWrapper>
 							<Stamps txId={collection.id} title={collection.title ?? collection.name ?? '-'} />
 						</S.StampWidgetWrapper> */}
+						{/* Edit button for collection owner */}
+						{collection.creator &&
+							arProvider.walletAddress &&
+							(collection.creator === arProvider.walletAddress ||
+								(permawebProvider.profile && permawebProvider.profile.id === collection.creator)) && (
+								<S.EditButtonWrapper>
+									<Button
+										type={'primary'}
+										label={'Edit'}
+										handlePress={() => setShowCollectionManage(true)}
+										className={'fade-in'}
+										height={35}
+									/>
+								</S.EditButtonWrapper>
+							)}
 						<S.InfoWrapper>
 							<S.Thumbnail>
 								<img src={getTxEndpoint(collection.thumbnail || DEFAULTS.thumbnail)} alt={'Thumbnail'} />
@@ -245,6 +266,31 @@ export default function Collection() {
 								<p>{collection.description}</p>
 							</div>
 						</Modal>
+					)}
+					{showCollectionManage && collection && (
+						<Panel
+							open={showCollectionManage}
+							header={'Edit Collection Images'}
+							handleClose={() => setShowCollectionManage(false)}
+							width={550}
+						>
+							<S.CollectionManageWrapper>
+								<CollectionManage
+									collection={collection}
+									handleClose={() => setShowCollectionManage(false)}
+									handleUpdate={async () => {
+										// Refresh collection data
+										if (id && checkValidAddress(id)) {
+											try {
+												setCollection(await getCollectionById({ id: id, libs: permawebProvider.libs }));
+											} catch (e: any) {
+												console.error('Error refreshing collection:', e);
+											}
+										}
+									}}
+								/>
+							</S.CollectionManageWrapper>
+						</Panel>
 					)}
 				</>
 			);
