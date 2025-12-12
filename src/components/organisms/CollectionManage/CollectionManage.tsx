@@ -1,10 +1,7 @@
 import React from 'react';
 import { ReactSVG } from 'react-svg';
-
 import { Button } from 'components/atoms/Button';
 import { Notification } from 'components/atoms/Notification';
-import { message, result } from 'helpers/aoconnect';
-import { createDataItemSigner } from 'helpers/aoconnect';
 import { ASSETS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import { NotificationType } from 'helpers/types';
@@ -73,54 +70,80 @@ export default function CollectionManage(props: IProps) {
 					thumbnailTxId = thumbnail;
 				}
 
-				// According to Nick's instructions: use Eval to directly set variables
-				// Just do: Thumbnail = '<new tx id>' and Banner = '<new tx id>', then syncState()
-				// This bypasses handlers and directly updates the process state
+				// Use Eval to directly update Banner and Thumbnail variables, then sync state to HyperBEAM
+				// This follows the same pattern as ActivityProcess updates (line 137 in collections.ts)
+				// We use Send() directly since syncState() is a local function not available in Eval context
+				const { message } = await import('helpers/aoconnect');
+				const { createDataItemSigner } = await import('helpers/aoconnect');
 				const signer = createDataItemSigner(arProvider.wallet);
-				const currentTimestamp = Date.now().toString();
 				let hasUpdates = false;
 
-				// Build Eval code to update variables directly
-				let evalCode = '';
+				// Build Eval code to update variables and sync state
+				const evalLines: string[] = [];
 
 				// Update Banner if changed
 				if (bannerTxId && bannerTxId !== props.collection.banner) {
-					evalCode += `Banner = '${bannerTxId}'\n`;
+					evalLines.push(`Banner = '${bannerTxId}'`);
 					hasUpdates = true;
 				}
 
 				// Update Thumbnail if changed
 				if (thumbnailTxId && thumbnailTxId !== props.collection.thumbnail) {
-					evalCode += `Thumbnail = '${thumbnailTxId}'\n`;
+					evalLines.push(`Thumbnail = '${thumbnailTxId}'`);
 					hasUpdates = true;
 				}
 
-				// Update LastUpdate and sync state
+				// Only send if there are updates
 				if (hasUpdates) {
-					evalCode += `LastUpdate = '${currentTimestamp}'\n`;
-					evalCode += `syncState()\n`;
+					// Call Send directly to sync state with HyperBEAM
+					// syncState() is a local function not available in Eval, so we construct the Send call manually
+					// We'll build the state object in JavaScript, encode it to JSON, then pass it to Lua
 
-					// Send Eval message to directly update the variables
-					// This bypasses any handler authorization checks
-					await message({
-						process: props.collection.id,
-						signer: signer,
-						tags: [{ name: 'Action', value: 'Eval' }],
-						data: evalCode,
-					});
-					// Wait for eval to complete
-					await new Promise((resolve) => setTimeout(resolve, 3000));
-				}
+					// Build the state object with updated values
+					const stateObj = {
+						Name: props.collection.title || '',
+						Description: props.collection.description || '',
+						Creator: props.collection.creator || '',
+						Banner: bannerTxId || props.collection.banner || '',
+						Thumbnail: thumbnailTxId || props.collection.thumbnail || '',
+						DateCreated: props.collection.dateCreated || '',
+						Assets: props.collection.assetIds || [],
+						ActivityProcess: props.collection.activityProcess || '',
+					};
 
-				if (
-					(bannerTxId && bannerTxId !== props.collection.banner) ||
-					(thumbnailTxId && thumbnailTxId !== props.collection.thumbnail)
-				) {
-					setCollectionResponse({
-						message: 'Collection images updated successfully!',
-						status: 'success',
-					});
-					handleUpdate();
+					// Encode to JSON string in JavaScript
+					const stateJson = JSON.stringify(stateObj);
+
+					// Escape single quotes for Lua string
+					const escapedJson = stateJson.replace(/'/g, "\\'");
+
+					// Build Eval code: update variables and sync state to HyperBEAM
+					// We pass the JSON string directly to Send (encoded in JavaScript, not Lua)
+					const evalCode = `${evalLines.join('\n')}\nSend({ device = 'patch@1.0', collection = '${escapedJson}' })`;
+
+					try {
+						// Send Eval message to update variables and sync state
+						const messageId = await message({
+							process: props.collection.id,
+							signer: signer,
+							tags: [{ name: 'Action', value: 'Eval' }],
+							data: evalCode,
+						});
+
+						setCollectionResponse({
+							message: 'Collection images updated successfully! State is syncing...',
+							status: 'success',
+						});
+						// Wait a bit for state to sync before refreshing
+						await new Promise((resolve) => setTimeout(resolve, 5000));
+						handleUpdate();
+					} catch (evalError: any) {
+						console.error('Eval error:', evalError);
+						setCollectionResponse({
+							message: evalError.message ?? 'Failed to update collection images',
+							status: 'warning',
+						});
+					}
 				} else {
 					setCollectionResponse({
 						message: 'No changes to save',
