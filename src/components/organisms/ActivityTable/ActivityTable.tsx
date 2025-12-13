@@ -173,15 +173,13 @@ export default function ActivityTable(props: IProps) {
 						const uniqueAddresses = [...new Set(associatedAddresses.filter((address) => address !== null))];
 						associatedProfiles = await getProfiles(uniqueAddresses);
 
-						if (associatedProfiles) {
-							currentGroup = currentGroup.map((order: any) => {
-								return {
-									...order,
-									senderProfile: associatedProfiles.find((profile: any) => profile.id === order.sender),
-									receiverProfile: associatedProfiles.find((profile: any) => profile.id === order.receiver),
-								};
-							});
-						}
+						currentGroup = currentGroup.map((order: any) => {
+							return {
+								...order,
+								senderProfile: associatedProfiles?.find((profile: any) => profile.id === order.sender),
+								receiverProfile: associatedProfiles?.find((profile: any) => profile.id === order.receiver),
+							};
+						});
 
 						if (!props.asset) {
 							const uniqueAssetIds: any[] = [...new Set(currentGroup.map((order: any) => order.dominantToken))];
@@ -536,18 +534,24 @@ export default function ActivityTable(props: IProps) {
 				</S.TableHeader>
 				<S.TableBody>
 					{activityGroup.map((row: any, index: number) => {
-						const shouldShowAsset = !props.asset && row.asset && row.asset.data;
+						let asset = row.asset;
+						if (!row.asset?.data) {
+							asset = {
+								data: { id: row.dominantToken },
+							};
+						}
+
 						return (
 							<S.TableRow key={index}>
-								{shouldShowAsset && (
+								{true && (
 									<S.AssetWrapper>
 										<S.AssetDataWrapper>
-											<Link to={`${URLS.asset}${row.asset.data.id}`}>
-												<AssetData asset={row.asset} preview autoLoad />
+											<Link to={`${URLS.asset}${asset.data.id}`}>
+												<AssetData asset={asset} preview autoLoad />
 											</Link>
 										</S.AssetDataWrapper>
-										<Link to={`${URLS.asset}${row.asset.data.id}`}>
-											<p>{row.asset.data.title || formatAddress(row.asset.data.id, false)}</p>
+										<Link to={`${URLS.asset}${asset.data.id}`}>
+											<p>{asset.data.title || formatAddress(asset.data.id, false)}</p>
 										</Link>
 									</S.AssetWrapper>
 								)}
