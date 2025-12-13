@@ -88,6 +88,11 @@ export default defineConfig(({ mode }) => {
 		},
 		optimizeDeps: {
 			include: ['buffer', 'process', 'crypto', 'stream', 'util'],
+			esbuildOptions: {
+				define: {
+					global: 'globalThis',
+				},
+			},
 		},
 		define: {
 			'process.env.MODULE': JSON.stringify(addresses.MODULE),
@@ -101,6 +106,9 @@ export default defineConfig(({ mode }) => {
 			'process.env.COLLECTIONS_REGISTRY': JSON.stringify(addresses.COLLECTIONS_REGISTRY),
 			'process.env.VOUCH': JSON.stringify(addresses.VOUCH),
 			'process.env.STAMPS': JSON.stringify(addresses.STAMPS),
+			'process.version': JSON.stringify('v18.0.0'),
+			'process.browser': JSON.stringify(true),
+			global: 'globalThis',
 		},
 		build: {
 			sourcemap: false,
