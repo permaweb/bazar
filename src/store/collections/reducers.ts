@@ -6,6 +6,7 @@ export const initStateCollections: any = {
 	stamped: null,
 	creators: {},
 	music: null,
+	ebooks: null,
 };
 
 export function collectionsReducer(state: any = initStateCollections, action: ReduxActionType) {

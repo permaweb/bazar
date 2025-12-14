@@ -228,5 +228,10 @@ export const language = {
 		viewInZenMode: `Zen Mode`,
 		viewOnArweave: `View on Arweave`,
 		viewProfile: `View Profile`,
+		author: `Author`,
+		bookLanguage: `Language`,
+		isbn: `ISBN`,
+		genre: `Genre`,
+		publicationDate: `Book Publication Date`,
 	},
 };
