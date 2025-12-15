@@ -7,6 +7,39 @@ export const Wrapper = styled.div`
 	margin: 30px 0 0 0;
 `;
 
+export const LearnMoreWrapper = styled.div`
+	margin: 15px 0 0 0;
+	display: flex;
+	align-items: center;
+	justify-content: flex-start;
+
+	a {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		text-decoration: none;
+		opacity: 0.6;
+		transition: opacity 0.2s ease;
+		font-size: ${(props) => props.theme.typography.size.small};
+		color: ${(props) => props.theme.colors.font.alt1};
+
+		&:hover {
+			opacity: 1;
+		}
+
+		svg {
+			width: 14px;
+			height: 14px;
+			fill: ${(props) => props.theme.colors.font.alt1};
+		}
+
+		span {
+			font-size: ${(props) => props.theme.typography.size.small};
+			color: ${(props) => props.theme.colors.font.alt1};
+		}
+	}
+`;
+
 export const InputWrapper = styled.div`
 	margin: 30px 0 0 0;
 `;
