@@ -2,10 +2,18 @@ import React from 'react';
 import { useSelector } from 'react-redux';
 import { Link } from 'react-router-dom';
 
-import { getAllMusicCollections, getAssetByIdGQL, getAssetStateById, getCollectionById, getCollections } from 'api';
+import {
+	getAllEbookCollections,
+	getAllMusicCollections,
+	getAssetByIdGQL,
+	getAssetStateById,
+	getCollectionById,
+	getCollections,
+} from 'api';
 
 import { ActivityTable } from 'components/organisms/ActivityTable';
 import { CollectionsCarousel } from 'components/organisms/CollectionsCarousel';
+import { EbookCollectionsCarousel } from 'components/organisms/EbookCollectionsCarousel';
 import { MusicCollectionsCarousel } from 'components/organisms/MusicCollectionsCarousel';
 import { MusicPlayer } from 'components/organisms/MusicPlayer';
 import { TrendingTokens } from 'components/organisms/TrendingTokens';
@@ -72,11 +80,15 @@ export default function Landing() {
 	const [collectionsLoading, setCollectionsLoading] = React.useState<boolean>(true);
 	const [musicCollections, setMusicCollections] = React.useState<CollectionType[] | null>(null);
 	const [musicCollectionsLoading, setMusicCollectionsLoading] = React.useState<boolean>(true);
+	const [ebookCollections, setEbookCollections] = React.useState<CollectionType[] | null>(null);
+	const [ebookCollectionsLoading, setEbookCollectionsLoading] = React.useState<boolean>(true);
 	const [hasFetchedCollections, setHasFetchedCollections] = React.useState(false);
 	const [hasFetchedMusicCollections, setHasFetchedMusicCollections] = React.useState(false);
+	const [hasFetchedEbookCollections, setHasFetchedEbookCollections] = React.useState(false);
 
 	const stampedCollections = collectionsReducer?.stamped?.collections;
 	const cachedMusicCollections = collectionsReducer?.music?.collections;
+	const cachedEbookCollections = collectionsReducer?.ebooks?.collections;
 
 	// Local Music Player State (non-persistent)
 	const [currentTrack, setCurrentTrack] = React.useState<AssetDetailType | null>(null);
@@ -245,6 +257,59 @@ export default function Landing() {
 		};
 	}, [cachedMusicCollections?.length, hasFetchedMusicCollections, musicCollections, permawebProvider.libs]);
 
+	// Fetch ebook collections (similar to music collections)
+	React.useEffect(() => {
+		if (cachedEbookCollections?.length) {
+			const filteredCachedEbookCollections = cachedEbookCollections.filter(
+				(collection: CollectionType) => collection.title && !collection.title.toLowerCase().includes('test')
+			);
+			setEbookCollections(filteredCachedEbookCollections);
+			setEbookCollectionsLoading(false);
+		}
+	}, [cachedEbookCollections]);
+
+	React.useEffect(() => {
+		if (!permawebProvider.libs || hasFetchedEbookCollections) {
+			return;
+		}
+
+		if (cachedEbookCollections?.length) {
+			setHasFetchedEbookCollections(true);
+			return;
+		}
+
+		if (ebookCollections && ebookCollections.length > 0) {
+			setHasFetchedEbookCollections(true);
+			return;
+		}
+
+		let cancelled = false;
+
+		(async function () {
+			setEbookCollectionsLoading(true);
+			try {
+				const ebookCollectionsFetch: CollectionType[] = await getAllEbookCollections(permawebProvider.libs);
+
+				if (!cancelled && ebookCollectionsFetch && ebookCollectionsFetch.length > 0) {
+					setEbookCollections(ebookCollectionsFetch);
+				}
+			} catch (e: any) {
+				if (!cancelled) {
+					console.error('Failed to fetch ebook collections:', e);
+				}
+			} finally {
+				if (!cancelled) {
+					setEbookCollectionsLoading(false);
+					setHasFetchedEbookCollections(true);
+				}
+			}
+		})();
+
+		return () => {
+			cancelled = true;
+		};
+	}, [cachedEbookCollections?.length, hasFetchedEbookCollections, ebookCollections, permawebProvider.libs]);
+
 	return (
 		<S.Wrapper className={'fade-in'}>
 			<S.FeaturedWrapper>
@@ -269,6 +334,9 @@ export default function Landing() {
 					isPlaying={isPlaying}
 				/>
 			</S.MusicCollectionsWrapper>
+			<S.EbookCollectionsWrapper>
+				<EbookCollectionsCarousel collections={ebookCollections} loading={ebookCollectionsLoading} />
+			</S.EbookCollectionsWrapper>
 			<S.TokensWrapper>
 				<TrendingTokens />
 			</S.TokensWrapper>
