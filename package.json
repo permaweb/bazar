@@ -10,8 +10,8 @@
 		"start:development": "NODE_ENV=development vite",
 		"start:staging": "NODE_ENV=staging vite",
 		"format": "eslint --fix . && npx prettier --write .",
-		"build:staging": "NODE_ENV=staging vite build",
-		"build:production": "NODE_ENV=production vite build",
+		"build:staging": "NODE_ENV=staging rm -rf dist* || true && vite build",
+		"build:production": "NODE_ENV=production rm -rf dist* || true && vite build",
 		"deploy:main": "npm run build:production && permaweb-deploy --arns-name bazar --ttl-seconds 60 --deploy-folder ./dist",
 		"deploy:staging": "npm run build:staging && permaweb-deploy --arns-name bazar --ttl-seconds 60 --undername staging --deploy-folder ./dist",
 		"test": "npm test",
@@ -20,13 +20,13 @@
 		"prepare": "husky install"
 	},
 	"dependencies": {
-		"@ar.io/sdk": "^3.18.0-alpha.2",
+		"@ar.io/sdk": "^3.16.0-alpha.1",
 		"@othent/kms": "^1.0.7",
 		"@permaweb/aoconnect": "^0.0.93",
 		"@permaweb/aoprofile": "^0.0.11",
 		"@permaweb/libs": "0.0.74",
 		"@permaweb/stampjs": "^1.0.4",
-		"@permaweb/ucm": "0.0.16",
+		"@permaweb/ucm": "0.0.17",
 		"@vela-ventures/aosync-sdk-react": "^1.0.26",
 		"async-lock": "^1.4.1",
 		"codex": "^0.2.3",
@@ -67,5 +67,8 @@
 		"vite": "^6.3.5",
 		"vite-plugin-node-polyfills": "^0.23.0",
 		"vite-plugin-svgr": "^4.3.0"
+	},
+	"overrides": {
+		"@dha-team/arbundles": "1.0.4"
 	}
 }

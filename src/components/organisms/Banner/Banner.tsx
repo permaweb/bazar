@@ -1,5 +1,5 @@
 import React from 'react';
-import { CurrentZoneVersion } from '@permaweb/libs/browser';
+import { CurrentZoneVersion } from '@permaweb/libs';
 
 import { Notification } from 'components/atoms/Notification';
 import { NotificationType } from 'helpers/types';
