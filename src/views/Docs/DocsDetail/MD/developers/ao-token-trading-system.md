@@ -41,12 +41,7 @@ The original trading system had a simpler structure with only **3 trading action
 
 **Legacy Orderbook Structure:**
 
-```typescript
-{
-  Pair: [baseToken, quoteToken],
-  Orders: [...] // Simple array without Ask/Bid distinction
-}
-```
+The legacy orderbook used a simple structure with a `Pair` array containing base and quote tokens, and an `Orders` array without distinction between Ask and Bid orders. For implementation details, see the source code on GitHub.
 
 ### New System (Current)
 
@@ -68,13 +63,7 @@ The updated system introduces **5 trading actions** with clearer separation of m
 
 **New Orderbook Structure:**
 
-```typescript
-{
-  Pair: [baseToken, quoteToken],
-  Asks: [...],  // Sell orders (listings)
-  Bids: [...]   // Buy orders (bids)
-}
-```
+The new orderbook structure separates orders into `Asks` (sell orders/listings) and `Bids` (buy orders), providing clearer distinction between order types. For implementation details, see the source code on GitHub.
 
 ### Key Differences
 
@@ -139,25 +128,7 @@ The system provides five main trading actions, each serving a specific purpose:
 
 **When to use**: When you want to purchase assets immediately at current market price
 
-**Implementation**:
-
-```typescript
-// Buy order: Send currency (quote token), receive asset (base token)
-dominantToken = tokenProvider.selectedToken.id; // Payment token
-swapToken = props.asset.data.id; // Asset being purchased
-
-// Transfer quantity is the total payment amount
-transferQuantity = quantity * averagePrice;
-```
-
-**Code Reference**:
-
-```572:576:bazar/src/views/Asset/AssetAction/AssetActionMarket/AssetActionMarketOrders/AssetActionMarketOrders.tsx
-			case 'buy':
-				dominantToken = tokenProvider.selectedToken.id;
-				swapToken = props.asset.data.id;
-				break;
-```
+**How it's implemented**: Buy orders send the payment token (quote token) and receive the asset (base token). The system calculates the total payment amount based on quantity and average price. For implementation details, see the source code on GitHub.
 
 ### 2. Sell (Market Order) - NEW
 
@@ -180,93 +151,7 @@ transferQuantity = quantity * averagePrice;
 
 **When to use**: When you want to sell assets immediately at current market price (requires existing bids)
 
-**Implementation**:
-
-```typescript
-// Sell order: Send asset (base token), receive currency (quote token)
-dominantToken = props.asset.data.id; // Asset being sold
-swapToken = tokenProvider.selectedToken.id; // Payment token
-
-// System calculates total received by matching against highest bids first
-sortedOrders = bids.sort((a, b) => b.price - a.price);
-```
-
-**Code Reference**:
-
-```577:581:bazar/src/views/Asset/AssetAction/AssetActionMarket/AssetActionMarketOrders/AssetActionMarketOrders.tsx
-			case 'sell':
-				// Sell: Market order - send asset (base token), receive currency (quote token)
-				dominantToken = props.asset.data.id;
-				swapToken = tokenProvider.selectedToken.id;
-				break;
-```
-
-**Bid Matching Logic**:
-
-```1044:1105:bazar/src/views/Asset/AssetAction/AssetActionMarket/AssetActionMarketOrders/AssetActionMarketOrders.tsx
-		} else if (props.type === 'sell') {
-			// For SELL orders: Market order - calculate total amount based on available bids
-			if (props.asset && props.asset.orderbook?.orders) {
-				const selectedTokenId = tokenProvider.selectedToken.id;
-
-				let sortedOrders = props.asset.orderbook?.orders
-					.filter((order: AssetOrderType) => {
-						const price = Number(order.price);
-						const quantity = Number(order.quantity);
-						const matchesCurrency = order.currency === props.asset.data.id; // Bids have base token as currency
-						const matchesSelectedToken = order.token === selectedTokenId; // Bid is offering the selected token
-						const isBid = order.side === 'Bid';
-						return (
-							!isNaN(price) &&
-							!isNaN(quantity) &&
-							price > 0 &&
-							quantity > 0 &&
-							matchesCurrency &&
-							matchesSelectedToken &&
-							isBid
-						);
-					})
-					.sort((a: AssetOrderType, b: AssetOrderType) => Number(b.price) - Number(a.price)); // Highest price first
-
-				let totalQuantitySold = 0; // Track how much we've sold (in base token)
-				let totalQuoteReceived = 0; // Track how much quote token we receive
-
-				const inputQuantity = currentOrderQuantity as number; // Amount we want to sell
-
-				for (let i = 0; i < sortedOrders.length; i++) {
-					const orderQuantity = Number(sortedOrders[i].quantity); // Total quote tokens in bid
-					const orderPrice = Number(sortedOrders[i].price); // Price per base token
-
-					// Skip orders with invalid quantity or price
-					if (isNaN(orderQuantity) || isNaN(orderPrice) || orderQuantity <= 0 || orderPrice <= 0) {
-						continue;
-					}
-
-					// For bids: quantity field is total quote tokens, divide by price to get base token quantity available
-					const baseTokenAvailable = orderQuantity / orderPrice;
-
-					// How much more do we need to sell?
-					const remainingToSell = inputQuantity - totalQuantitySold;
-
-					if (baseTokenAvailable >= remainingToSell) {
-						// This bid can fulfill the rest of our sell order
-						const quoteReceived = remainingToSell * orderPrice;
-						totalQuoteReceived += quoteReceived;
-						totalQuantitySold += remainingToSell;
-						break;
-					} else {
-						// Sell as much as this bid can take
-						const quoteReceived = baseTokenAvailable * orderPrice; // Should equal orderQuantity
-						totalQuoteReceived += quoteReceived;
-						totalQuantitySold += baseTokenAvailable;
-					}
-				}
-
-				// Convert to denominated integer for display
-				const result = denomination ? totalQuoteReceived : totalQuoteReceived;
-				return BigInt(Math.floor(result));
-			} else return 0;
-```
+**How it's implemented**: Sell orders send the asset (base token) and receive the payment token (quote token). The system matches against existing bids, sorting them by highest price first to get the best price for the seller. The matching logic handles partial fills and calculates the total quote tokens received. For implementation details, see the source code on GitHub.
 
 ### 3. Bid (Limit Order) - NEW
 
@@ -283,26 +168,7 @@ sortedOrders = bids.sort((a, b) => b.price - a.price);
 
 **When to use**: When you want to buy at a specific price and are willing to wait for sellers to fill your bid
 
-**Implementation**:
-
-```typescript
-// Bid: Send currency (quote token), receive asset (base token) at specified price
-dominantToken = tokenProvider.selectedToken.id; // Payment token
-swapToken = props.asset.data.id; // Asset being bid on
-
-// Transfer quantity is total payment amount (quantity * price)
-transferQuantity = quantity * unitPrice;
-```
-
-**Code Reference**:
-
-```587:591:bazar/src/views/Asset/AssetAction/AssetActionMarket/AssetActionMarketOrders/AssetActionMarketOrders.tsx
-			case 'bid':
-				// Bid: Send currency (quote token), receive asset (base token)
-				dominantToken = tokenProvider.selectedToken.id;
-				swapToken = props.asset.data.id;
-				break;
-```
+**How it's implemented**: Bid orders send the payment token (quote token) and receive the asset (base token) at the specified price. The transfer quantity is the total payment amount (quantity \* unit price). For implementation details, see the source code on GitHub.
 
 ### 4. List (Limit Order)
 
@@ -324,26 +190,7 @@ transferQuantity = quantity * unitPrice;
 
 **When to use**: When you want to sell at a specific price and are willing to wait for buyers to purchase from your listing
 
-**Implementation**:
-
-```typescript
-// List: Send asset (base token), receive currency (quote token) at specified price
-dominantToken = props.asset.data.id; // Asset being listed
-swapToken = tokenProvider.selectedToken.id; // Payment token
-
-// Transfer quantity is the asset amount being listed
-transferQuantity = quantity;
-```
-
-**Code Reference**:
-
-```582:586:bazar/src/views/Asset/AssetAction/AssetActionMarket/AssetActionMarketOrders/AssetActionMarketOrders.tsx
-			case 'list':
-				// List: Limit ask - send asset (base token), receive currency (quote token)
-				dominantToken = props.asset.data.id;
-				swapToken = tokenProvider.selectedToken.id;
-				break;
-```
+**How it's implemented**: List orders send the asset (base token) and receive the payment token (quote token) at the specified price. The transfer quantity is the asset amount being listed. For implementation details, see the source code on GitHub.
 
 ### 5. Transfer
 
@@ -356,20 +203,7 @@ transferQuantity = quantity;
 - No orderbook interaction required
 - Useful for gifting or moving assets between wallets
 
-**Implementation**:
-
-```typescript
-// Direct transfer - no orderbook involved
-await messageResults({
-	processId: assetId,
-	action: 'Transfer',
-	wallet: arProvider.wallet,
-	tags: [
-		{ name: 'Quantity', value: quantity },
-		{ name: 'Recipient', value: recipientAddress },
-	],
-});
-```
+**How it's implemented**: Transfer operations send a direct message to the asset process with the Transfer action, including quantity and recipient address in the message tags. No orderbook is involved in this operation. For implementation details, see the source code on GitHub.
 
 ## System Flow Diagram
 
@@ -472,61 +306,15 @@ The UCM protocol handles order matching automatically:
 
 ### Order Creation
 
-All orders are created through the UCM protocol using the `createOrder` function from `@permaweb/ucm`:
-
-```typescript
-const orderId = await createOrder(
-	permawebProvider.deps,
-	{
-		orderbookId: currentOrderbook,
-		baseToken: props.asset.data.id, // Asset token
-		quoteToken: tokenProvider.selectedToken.id, // Payment token
-		dominantToken: dominantToken, // Token being sent
-		swapToken: swapToken, // Token being received
-		quantity: transferQuantity, // Amount to transfer
-		unitPrice: unitPrice, // Price (for limit orders)
-		action: 'Run-Action',
-		creatorId: permawebProvider.profile?.id,
-	},
-	(statusCallback) => {
-		// Handle status updates
-	}
-);
-```
+All orders are created through the UCM protocol using the `createOrder` function from `@permaweb/ucm`. The function takes orderbook details, token information, quantity, and price parameters, along with a status callback for tracking order creation progress. For implementation details, see the source code on GitHub.
 
 ### Orderbook Creation
 
-If an asset doesn't have an orderbook, one is created automatically:
-
-```typescript
-const newOrderbook = await createOrderbook(
-	permawebProvider.deps,
-	{
-		assetId: props.asset.data.id,
-		writeToProcess: true,
-		collectionId: props.asset.data.collectionId, // Optional
-	},
-	(statusCallback) => {
-		// Handle status updates
-	}
-);
-```
+If an asset doesn't have an orderbook, one is created automatically using the `createOrderbook` function. The orderbook can optionally be associated with a collection. For implementation details, see the source code on GitHub.
 
 ### Token Denominations
 
-The system handles tokens with different denominations (decimals):
-
-```typescript
-// Base token denomination (asset)
-if (denomination && denomination > 1) {
-	data.baseTokenDenomination = denomination.toString();
-}
-
-// Quote token denomination (payment token)
-if (transferDenomination && transferDenomination > 1) {
-	data.quoteTokenDenomination = transferDenomination.toString();
-}
-```
+The system handles tokens with different denominations (decimals), setting appropriate denomination values for both base tokens (assets) and quote tokens (payment tokens) when they differ from the default. For implementation details, see the source code on GitHub.
 
 ### Balance Management
 
@@ -535,17 +323,7 @@ The system supports both wallet and profile balances:
 - **Profile Balance**: Tokens stored in user's AO profile
 - **Wallet Balance**: Tokens stored directly in wallet
 
-The system automatically transfers from wallet to profile when needed:
-
-```typescript
-// Check if wallet has sufficient balance
-if (walletBalance >= BigInt(transferQuantity)) {
-	useWalletAddress = true; // Use wallet directly
-} else {
-	// Transfer from wallet to profile first
-	await handleWalletToProfileTransfer();
-}
-```
+The system automatically transfers from wallet to profile when needed, checking wallet balance first and falling back to profile balance if insufficient. For implementation details, see the source code on GitHub.
 
 ## Differences from Traditional DEX
 
@@ -566,20 +344,7 @@ if (walletBalance >= BigInt(transferQuantity)) {
 
 ## Code Structure
 
-The main implementation is located in:
-
-```
-bazar/src/views/Asset/AssetAction/AssetActionMarket/AssetActionMarketOrders/
-├── AssetActionMarketOrders.tsx  # Main component with all trading logic
-└── types.ts                     # TypeScript type definitions
-```
-
-Key functions:
-
-- `handleSubmit()`: Creates orders via UCM
-- `getTransferQuantity()`: Calculates transfer amounts based on order type
-- `getTotalOrderAmount()`: Calculates total cost/received for orders
-- `getActionDisabled()`: Validates order parameters
+The main implementation is located in `bazar/src/views/Asset/AssetAction/AssetActionMarket/AssetActionMarketOrders/`, with the primary component handling all trading logic and a types file for TypeScript definitions. Key functions include order creation, transfer quantity calculation, total order amount calculation, and order parameter validation. For complete implementation details, see the source code on GitHub.
 
 ## Best Practices
 
