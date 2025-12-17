@@ -2673,7 +2673,7 @@ export default function Campaign() {
 						showBlur={isCheckingEligibility}
 						cta={{
 							label: 'Join Competition Via Discord',
-							href: 'https://discord.gg/kDWWbjj7Fm',
+							href: 'https://discord.gg/KynB35UBjT',
 							iconSrc: ASSETS.discord,
 						}}
 						requirements={[
@@ -2697,7 +2697,7 @@ export default function Campaign() {
 									', and more.',
 								],
 							},
-							'Throughout Dec 31–Jan 6 the Glasseaters will be distributed to selected winners',
+							'Throughout Q1 of 2026 the Glasseaters will be distributed to selected winners',
 						]}
 						onClaim={() => handleClaim(ATOMIC_ASSET_ID)}
 					/>
