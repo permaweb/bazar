@@ -1,4 +1,5 @@
 import React from 'react';
+import ReactDOM from 'react-dom';
 import { useSelector } from 'react-redux';
 import { connect as othentConnect } from '@othent/kms';
 import * as Othent from '@othent/kms';
@@ -7,6 +8,7 @@ import { useWallet as useAOsyncWallet } from '@vela-ventures/aosync-sdk-react';
 import AOProfile, { ProfileType } from '@permaweb/aoprofile';
 
 import { Modal } from 'components/molecules/Modal';
+import { EthWalletConnect } from 'components/molecules/EthWalletConnect/EthWalletConnect';
 import { connect } from 'helpers/aoconnect';
 import { AR_WALLETS, REDIRECTS, WALLET_PERMISSIONS } from 'helpers/config';
 import { getARBalanceEndpoint } from 'helpers/endpoints';
@@ -65,19 +67,32 @@ export function useArweaveProvider(): ArweaveContextState {
 	return React.useContext(ARContext);
 }
 
-function WalletList(props: { handleConnect: any }) {
+const WalletList = React.memo(function WalletList(props: { handleConnect: any; onClose: () => void }) {
 	return (
 		<S.WalletListContainer>
-			{AR_WALLETS.map((wallet: any, index: number) => (
-				<S.WalletListItem
-					key={index}
-					onClick={() => props.handleConnect(wallet.type)}
-					className={'border-wrapper-alt2'}
-				>
-					<S.WalletItemImageWrapper>{wallet.logo && <img src={`${wallet.logo}`} alt={''} />}</S.WalletItemImageWrapper>
-					<span>{wallet.type.charAt(0).toUpperCase() + wallet.type.slice(1)}</span>
-				</S.WalletListItem>
-			))}
+			<S.WalletSectionTitle>Arweave Wallets</S.WalletSectionTitle>
+			<S.WalletGridRow>
+				{AR_WALLETS.map((wallet: any, index: number) => (
+					<S.WalletListItem
+						key={index}
+						onClick={() => props.handleConnect(wallet.type)}
+						className={'border-wrapper-alt2'}
+					>
+						<S.WalletItemImageWrapper>
+							{wallet.logo && <img src={`${wallet.logo}`} alt={''} />}
+						</S.WalletItemImageWrapper>
+						<span>{wallet.type.charAt(0).toUpperCase() + wallet.type.slice(1)}</span>
+					</S.WalletListItem>
+				))}
+			</S.WalletGridRow>
+
+			<S.WalletDivider>
+				<span>or</span>
+			</S.WalletDivider>
+
+			<S.WalletSectionTitle>Ethereum Wallets</S.WalletSectionTitle>
+			<EthWalletConnect />
+
 			<S.WalletLink>
 				<span>
 					Don't have an Arweave Wallet? You can create one{' '}
@@ -88,7 +103,7 @@ function WalletList(props: { handleConnect: any }) {
 			</S.WalletLink>
 		</S.WalletListContainer>
 	);
-}
+});
 
 export function ArweaveProvider(props: ArweaveProviderProps) {
 	const { getProfileByWalletAddress } = AOProfile.init({ ao: connect({ MODE: 'legacy' }) });
@@ -398,6 +413,7 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 				<Modal header={language.connectWallet} handleClose={() => setWalletModalVisible(false)}>
 					<WalletList
 						handleConnect={(walletType: WalletEnum.wander | WalletEnum.othent) => handleConnect(walletType)}
+						onClose={() => setWalletModalVisible(false)}
 					/>
 				</Modal>
 			)}

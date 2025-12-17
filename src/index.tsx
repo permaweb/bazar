@@ -11,6 +11,7 @@ import { AppProvider } from 'providers/AppProvider';
 import { ArweaveProvider } from 'providers/ArweaveProvider';
 import { CustomThemeProvider } from 'providers/CustomThemeProvider';
 import ErrorBoundary from 'providers/ErrorBoundary';
+import { EvmWalletProvider } from 'providers/EvmWalletProvider';
 import { LanguageProvider } from 'providers/LanguageProvider';
 import { PermawebProvider } from 'providers/PermawebProvider';
 import { TokenProvider } from 'providers/TokenProvider';
@@ -34,20 +35,22 @@ ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
 								muUrl={'https://mu.ao-testnet.xyz'}
 							>
 								{/* <WayfinderProvider> */}
-								<ArweaveProvider>
-									<PermawebProvider>
-										<TokenProvider>
-											<TokenValidationProvider>
-												<AppProvider>
-													<HashRouter>
-														<GlobalStyle />
-														<App />
-													</HashRouter>
-												</AppProvider>
-											</TokenValidationProvider>
-										</TokenProvider>
-									</PermawebProvider>
-								</ArweaveProvider>
+								<EvmWalletProvider>
+									<ArweaveProvider>
+										<PermawebProvider>
+											<TokenProvider>
+												<TokenValidationProvider>
+													<AppProvider>
+														<HashRouter>
+															<GlobalStyle />
+															<App />
+														</HashRouter>
+													</AppProvider>
+												</TokenValidationProvider>
+											</TokenProvider>
+										</PermawebProvider>
+									</ArweaveProvider>
+								</EvmWalletProvider>
 								{/* </WayfinderProvider> */}
 							</AOSyncProvider>
 						</AOSettingsProvider>

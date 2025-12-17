@@ -8,6 +8,7 @@ import { DelegationPanel } from 'components/organisms/DelegationPanel';
 import { Streaks } from 'components/organisms/Streaks';
 import { ASSETS, REDIRECTS, URLS } from 'helpers/config';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
+import { useEvmWallet } from 'providers/EvmWalletProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 import { usePermawebProvider } from 'providers/PermawebProvider';
 import { WalletConnect } from 'wallet/WalletConnect';
@@ -20,14 +21,19 @@ export default function Header() {
 
 	const permawebProvider = usePermawebProvider();
 	const arweaveProvider = useArweaveProvider();
+	const evmWallet = useEvmWallet();
 
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
 
 	const [delegationPanelOpen, setDelegationPanelOpen] = React.useState(false);
 
+	const currentWalletAddress = arweaveProvider.walletAddress || evmWallet.evmAddress;
+	const currentWalletType = arweaveProvider.walletAddress ? 'arweave' : evmWallet.evmAddress ? 'evm' : null;
+
 	const paths: { path: string; label: string; target?: '_blank' }[] = [
 		{ path: URLS.collections, label: language.collections },
+		{ path: URLS.bazarBridge, label: language.bazarBridge || 'Bazar Bridge' },
 		{ path: URLS.docs, label: language.learn },
 		{ path: REDIRECTS.bazarStudio, label: language.create, target: '_blank' },
 	];
@@ -87,7 +93,7 @@ export default function Header() {
 					</S.C1Wrapper>
 					<S.ActionsWrapper>
 						{/* {permawebProvider.profile && permawebProvider.profile.id && <Streaks profile={permawebProvider.profile} />} */}
-						{/* {arweaveProvider.walletAddress && (
+						{currentWalletAddress && (
 							<S.DelegationButtonWrapper>
 								<S.DelegationButton
 									onClick={(e) => {
@@ -96,10 +102,10 @@ export default function Header() {
 										setDelegationPanelOpen(true);
 									}}
 								>
-									Delegate
+									{language.delegate || 'Delegate'}
 								</S.DelegationButton>
 							</S.DelegationButtonWrapper>
-						)} */}
+						)}
 						<WalletConnect />
 						<S.MWrapper>
 							<IconButton
@@ -150,11 +156,14 @@ export default function Header() {
 					</S.PWrapper>
 				</div>
 			)}
-			{/* <DelegationPanel
-				walletAddress={arweaveProvider.walletAddress}
-				isOpen={delegationPanelOpen}
-				onClose={() => setDelegationPanelOpen(false)}
-			/> */}
+			{delegationPanelOpen && currentWalletAddress && currentWalletType && (
+				<DelegationPanel
+					walletAddress={currentWalletAddress}
+					walletType={currentWalletType}
+					isOpen={delegationPanelOpen}
+					onClose={() => setDelegationPanelOpen(false)}
+				/>
+			)}
 		</>
 	);
 }

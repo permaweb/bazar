@@ -392,6 +392,7 @@ function createURLs() {
 		profileListings: (address: string) => `${profile}${address}/listings/`,
 		profileActivity: (address: string) => `${profile}${address}/activity/`,
 		quest: `${base}quest/`,
+		bazarBridge: `${base}bazar-bridge/`,
 		notFound: `${base}404`,
 	};
 }

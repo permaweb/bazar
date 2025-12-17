@@ -13,7 +13,9 @@ import { ASSETS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import { NotificationType } from 'helpers/types';
 import { checkValidAddress } from 'helpers/utils';
+import { updateProfileMetadata } from 'helpers/profileUpdate';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
+import { useEvmWallet } from 'providers/EvmWalletProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 import { usePermawebProvider } from 'providers/PermawebProvider';
 import { WalletBlock } from 'wallet/WalletBlock';
@@ -31,6 +33,7 @@ const ALLOWED_AVATAR_TYPES = 'image/png, image/jpeg, image/gif';
 export default function ProfileManage(props: IProps) {
 	const permawebProvider = usePermawebProvider();
 	const arProvider = useArweaveProvider();
+	const evmWallet = useEvmWallet();
 
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
@@ -62,7 +65,221 @@ export default function ProfileManage(props: IProps) {
 	}
 
 	async function handleSubmit() {
-		if (arProvider.wallet) {
+		// Determine wallet type: if Arweave wallet is connected, use Arweave; otherwise use EVM
+		const isEvmProfile = !arProvider.walletAddress && evmWallet.evmAddress && props.profile?.id;
+
+		// #region agent log
+		fetch('http://127.0.0.1:7242/ingest/5c5bd03e-3b23-4d26-96d2-4949305ee115', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				location: 'ProfileManage.tsx:67',
+				message: 'handleSubmit: Determining wallet type',
+				data: {
+					hasArweave: !!arProvider.walletAddress,
+					hasEvm: !!evmWallet.evmAddress,
+					profileId: props.profile?.id,
+					isEvmProfile,
+				},
+				timestamp: Date.now(),
+				sessionId: 'debug-session',
+				runId: 'run2',
+				hypothesisId: 'K',
+			}),
+		}).catch(() => {});
+		// #endregion
+
+		if (isEvmProfile) {
+			// EVM wallet profile update
+			if (!evmWallet.evmAddress || !props.profile?.id) {
+				setProfileResponse({
+					message: 'Ethereum wallet not connected',
+					status: 'warning',
+				});
+				return;
+			}
+
+			setLoading(true);
+			try {
+				const result = await updateProfileMetadata({
+					profileId: props.profile.id,
+					walletAddress: evmWallet.evmAddress,
+					walletType: 'evm',
+					metadata: {
+						DisplayName: name,
+						Username: username,
+						Description: bio || undefined,
+						Thumbnail: avatar || undefined,
+						Banner: banner || undefined,
+					},
+				});
+
+				// #region agent log
+				fetch('http://127.0.0.1:7242/ingest/5c5bd03e-3b23-4d26-96d2-4949305ee115', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						location: 'ProfileManage.tsx:90',
+						message: 'handleSubmit: EVM profile update result',
+						data: { success: result.success, error: result.error },
+						timestamp: Date.now(),
+						sessionId: 'debug-session',
+						runId: 'run2',
+						hypothesisId: 'I',
+					}),
+				}).catch(() => {});
+				// #endregion
+
+				if (result.success) {
+					setProfileResponse({
+						message: `${language.profileUpdated}!`,
+						status: 'success',
+					});
+					handleUpdate();
+
+					// For ETH profiles, manually fetch the updated profile
+					// since refreshProfile() only works for Arweave wallets
+					if (props.profile?.id) {
+						// Wait for gateway to index the update (longer wait for EVM)
+						setTimeout(async () => {
+							try {
+								// #region agent log
+								fetch('http://127.0.0.1:7242/ingest/5c5bd03e-3b23-4d26-96d2-4949305ee115', {
+									method: 'POST',
+									headers: { 'Content-Type': 'application/json' },
+									body: JSON.stringify({
+										location: 'ProfileManage.tsx:115',
+										message: 'Fetching updated ETH profile',
+										data: { profileId: props.profile.id },
+										timestamp: Date.now(),
+										sessionId: 'debug-session',
+										runId: 'run2',
+										hypothesisId: 'R',
+									}),
+								}).catch(() => {});
+								// #endregion
+
+								const updatedProfile = await permawebProvider.libs.getProfileById(props.profile.id);
+
+								// #region agent log
+								fetch('http://127.0.0.1:7242/ingest/5c5bd03e-3b23-4d26-96d2-4949305ee115', {
+									method: 'POST',
+									headers: { 'Content-Type': 'application/json' },
+									body: JSON.stringify({
+										location: 'ProfileManage.tsx:120',
+										message: 'Updated ETH profile fetched',
+										data: {
+											profileId: updatedProfile?.id,
+											displayName: updatedProfile?.DisplayName,
+											username: updatedProfile?.Username,
+										},
+										timestamp: Date.now(),
+										sessionId: 'debug-session',
+										runId: 'run2',
+										hypothesisId: 'R',
+									}),
+								}).catch(() => {});
+								// #endregion
+
+								if (updatedProfile) {
+									// Update local state to reflect the new profile data
+									setName(updatedProfile.DisplayName || '');
+									setUsername(updatedProfile.Username || '');
+									setBio(updatedProfile.Description || '');
+									setBanner(
+										updatedProfile.Banner && checkValidAddress(updatedProfile.Banner) ? updatedProfile.Banner : null
+									);
+									setAvatar(
+										updatedProfile.Thumbnail && checkValidAddress(updatedProfile.Thumbnail)
+											? updatedProfile.Thumbnail
+											: null
+									);
+
+									// For ETH profiles, the profile will be refreshed in WalletConnect
+									// via the useEffect that watches ethProfileId
+									// The updated profile data will show up in the navbar automatically
+
+									// #region agent log
+									fetch('http://127.0.0.1:7242/ingest/5c5bd03e-3b23-4d26-96d2-4949305ee115', {
+										method: 'POST',
+										headers: { 'Content-Type': 'application/json' },
+										body: JSON.stringify({
+											location: 'ProfileManage.tsx:140',
+											message: 'ETH profile updated successfully',
+											data: {
+												profileId: updatedProfile.id,
+												displayName: updatedProfile.DisplayName,
+												username: updatedProfile.Username,
+											},
+											timestamp: Date.now(),
+											sessionId: 'debug-session',
+											runId: 'run2',
+											hypothesisId: 'R',
+										}),
+									}).catch(() => {});
+									// #endregion
+
+									// Trigger a re-fetch of the profile in WalletConnect by toggling a state
+									// This will cause WalletConnect to re-fetch the profile data
+									// We'll do this by calling handleUpdate which might trigger a refresh
+									handleUpdate();
+								}
+							} catch (fetchError) {
+								// #region agent log
+								fetch('http://127.0.0.1:7242/ingest/5c5bd03e-3b23-4d26-96d2-4949305ee115', {
+									method: 'POST',
+									headers: { 'Content-Type': 'application/json' },
+									body: JSON.stringify({
+										location: 'ProfileManage.tsx:135',
+										message: 'Error fetching updated ETH profile',
+										data: { error: fetchError instanceof Error ? fetchError.message : 'Unknown error' },
+										timestamp: Date.now(),
+										sessionId: 'debug-session',
+										runId: 'run2',
+										hypothesisId: 'R',
+									}),
+								}).catch(() => {});
+								// #endregion
+								console.warn('Failed to fetch updated profile, but update was successful:', fetchError);
+							}
+						}, 5000); // Wait 5 seconds for gateway to index
+					} else {
+						// For Arweave profiles, use the standard refresh
+						setTimeout(() => {
+							permawebProvider.refreshProfile();
+						}, 2000);
+					}
+				} else {
+					setProfileResponse({
+						message: result.error || language.errorUpdatingProfile,
+						status: 'warning',
+					});
+				}
+			} catch (e: any) {
+				// #region agent log
+				fetch('http://127.0.0.1:7242/ingest/5c5bd03e-3b23-4d26-96d2-4949305ee115', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						location: 'ProfileManage.tsx:115',
+						message: 'handleSubmit: EVM profile update error',
+						data: { error: e.message },
+						timestamp: Date.now(),
+						sessionId: 'debug-session',
+						runId: 'run2',
+						hypothesisId: 'I',
+					}),
+				}).catch(() => {});
+				// #endregion
+				setProfileResponse({
+					message: e.message ?? e,
+					status: 'warning',
+				});
+			} finally {
+				setLoading(false);
+			}
+		} else if (arProvider.wallet) {
+			// Arweave wallet profile update (original logic)
 			setLoading(true);
 
 			const ao = connect({ MODE: 'legacy' });
@@ -144,6 +361,11 @@ export default function ProfileManage(props: IProps) {
 				});
 			}
 			setLoading(false);
+		} else {
+			setProfileResponse({
+				message: 'No wallet connected',
+				status: 'warning',
+			});
 		}
 	}
 
@@ -217,7 +439,23 @@ export default function ProfileManage(props: IProps) {
 	}
 
 	function getConnectedView() {
-		if (!arProvider.walletAddress) return <WalletBlock />;
+		// Show wallet connection prompt only if neither Arweave nor EVM wallet is connected
+		// #region agent log
+		fetch('http://127.0.0.1:7242/ingest/5c5bd03e-3b23-4d26-96d2-4949305ee115', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				location: 'ProfileManage.tsx:291',
+				message: 'getConnectedView: Checking wallet connection',
+				data: { hasArweave: !!arProvider.walletAddress, hasEvm: !!evmWallet.evmAddress, profileId: props.profile?.id },
+				timestamp: Date.now(),
+				sessionId: 'debug-session',
+				runId: 'run2',
+				hypothesisId: 'J',
+			}),
+		}).catch(() => {});
+		// #endregion
+		if (!arProvider.walletAddress && !evmWallet.evmAddress) return <WalletBlock />;
 		else {
 			return (
 				<>

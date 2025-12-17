@@ -6,11 +6,71 @@ export const WalletListContainer = styled.div`
 	height: 100%;
 	width: 100%;
 	display: flex;
+	flex-direction: column;
 	align-items: center;
 	justify-content: center;
+	gap: 15px;
+	padding: 10px 20px 5px 20px;
+`;
+
+export const WalletSectionTitle = styled.h3`
+	width: 100%;
+	font-size: ${(props) => props.theme.typography.size.base};
+	font-family: ${(props) => props.theme.typography.family.primary};
+	font-weight: ${(props) => props.theme.typography.weight.bold};
+	color: ${(props) => props.theme.colors.font.primary};
+	margin: 10px 0 5px 0;
+	text-align: center;
+`;
+
+export const WalletDivider = styled.div`
+	width: 100%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	margin: 10px 0;
+	position: relative;
+
+	&::before,
+	&::after {
+		content: '';
+		flex: 1;
+		height: 1px;
+		background: ${(props) => props.theme.colors.border.primary};
+	}
+
+	span {
+		padding: 0 15px;
+		font-size: ${(props) => props.theme.typography.size.small};
+		font-family: ${(props) => props.theme.typography.family.primary};
+		color: ${(props) => props.theme.colors.font.alt1};
+		font-weight: ${(props) => props.theme.typography.weight.medium};
+	}
+`;
+
+export const WalletGridRow = styled.div`
+	width: 100%;
+	display: flex;
 	gap: 20px;
 	flex-wrap: wrap;
-	padding: 10px 20px 5px 20px;
+	justify-content: center;
+
+	@media (max-width: ${STYLING.cutoffs.secondary}) {
+		flex-direction: column;
+	}
+`;
+
+export const EthWalletWrapper = styled.div`
+	width: 100%;
+	display: flex;
+	justify-content: center;
+	padding: 5px 0;
+
+	button {
+		width: 100%;
+		max-width: 300px;
+		justify-content: center;
+	}
 `;
 
 export const WalletListItem = styled.button`
