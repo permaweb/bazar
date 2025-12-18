@@ -12,6 +12,29 @@ export const Body = styled.div`
 	padding: 20px;
 `;
 
+export const Form = styled.div`
+	height: fit-content;
+	width: 100%;
+	margin: 0 0 20px 0;
+	textarea {
+		height: 165px !important;
+	}
+	@media (max-width: calc(${STYLING.cutoffs.initial} + 105px)) {
+		min-width: 0;
+		width: 100%;
+		flex: none;
+	}
+`;
+
+export const TForm = styled.div`
+	margin: 0 0 20px 0;
+	> * {
+		&:last-child {
+			margin: 20px 0 0 0;
+		}
+	}
+`;
+
 export const PWrapper = styled.div`
 	height: fit-content;
 	min-width: 500px;
