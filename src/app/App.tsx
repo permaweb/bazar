@@ -4,6 +4,7 @@ import { ReactSVG } from 'react-svg';
 import { Loader } from 'components/atoms/Loader';
 import { Banner } from 'components/organisms/Banner';
 import { ASSETS, DOM, FLAGS } from 'helpers/config';
+import { serviceWorkerManager } from 'helpers/serviceWorkerManager';
 import { Footer } from 'navigation/footer';
 import { Header } from 'navigation/Header';
 
@@ -16,11 +17,22 @@ const Routes = lazy(() =>
 );
 
 export default function App() {
+	const hasInitializedServiceWorkerRef = React.useRef(false);
+
 	React.useEffect(() => {
 		document.body.style = '';
 		const loader = document.getElementById('page-loader');
 		if (loader) {
 			loader.style.display = 'none';
+		}
+
+		// Register service worker and check for updates
+		if (!hasInitializedServiceWorkerRef.current) {
+			hasInitializedServiceWorkerRef.current = true;
+			(async () => {
+				await serviceWorkerManager.register();
+				await serviceWorkerManager.checkArNSUpdate();
+			})();
 		}
 	}, []);
 

@@ -70,6 +70,10 @@ export const docsOrder = [
 				path: 'universal-content-marketplace',
 			},
 			{
+				name: 'AO Token Trading System',
+				path: 'ao-token-trading-system',
+			},
+			{
 				name: 'Atomic Assets',
 				path: 'atomic-assets',
 			},
@@ -131,6 +135,10 @@ export const docsOrder = [
 		name: 'Resources',
 		path: 'resources',
 		children: [
+			{
+				name: 'Branding Kit',
+				path: 'branding-kit',
+			},
 			{
 				name: 'Contact',
 				path: 'contact',

@@ -12,6 +12,7 @@ export const Wrapper = styled.div`
 	position: relative;
 	@media (max-width: ${STYLING.cutoffs.desktop}) {
 		border: none;
+		background: transparent;
 	}
 `;
 

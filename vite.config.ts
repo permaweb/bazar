@@ -41,6 +41,7 @@ export default defineConfig(({ mode }) => {
 	const addresses = isProduction ? productionAddresses : isStaging ? nonProductionAddresses : productionAddresses;
 
 	return {
+		root: './',
 		base: './',
 		plugins: [
 			nodePolyfills({
@@ -55,6 +56,7 @@ export default defineConfig(({ mode }) => {
 		],
 		resolve: {
 			alias: {
+				'@permaweb/ucm': path.resolve(__dirname, 'node_modules/@permaweb/ucm/dist/browser.js'),
 				api: path.resolve(__dirname, 'src/api'),
 				app: path.resolve(__dirname, 'src/app'),
 				arweave: path.resolve(__dirname, 'node_modules/arweave'),
@@ -88,11 +90,6 @@ export default defineConfig(({ mode }) => {
 		},
 		optimizeDeps: {
 			include: ['buffer', 'process', 'crypto', 'stream', 'util'],
-			esbuildOptions: {
-				define: {
-					global: 'globalThis',
-				},
-			},
 		},
 		define: {
 			'process.env.MODULE': JSON.stringify(addresses.MODULE),
@@ -108,32 +105,49 @@ export default defineConfig(({ mode }) => {
 			'process.env.STAMPS': JSON.stringify(addresses.STAMPS),
 			'process.version': JSON.stringify('v18.0.0'),
 			'process.browser': JSON.stringify(true),
-			global: 'globalThis',
 		},
 		build: {
 			sourcemap: false,
 			outDir: path.resolve(__dirname, 'dist'),
 			emptyOutDir: true,
+			commonjsOptions: {
+				transformMixedEsModules: true,
+			},
 			rollupOptions: {
-				plugins: [polyfillNode()],
-				output: {
-					manualChunks: (id: string) => {
-						if (id.includes('react') || id.includes('react-dom') || id.includes('react-router-dom')) {
-							return 'vendor';
-						}
-						if (id.includes('@permaweb/aoconnect')) {
-							return 'ao-connect';
-						}
-						if (id.includes('@permaweb/libs') || id.includes('arweave')) {
-							return 'permaweb-libs';
-						}
-						if (id.includes('react-svg') || id.includes('react-markdown')) {
-							return 'utils';
-						}
-
-						return undefined;
+				input: path.resolve('', 'index.html'),
+				plugins: [
+					polyfillNode(),
+					{
+						name: 'copy-service-worker',
+						writeBundle() {
+							const fs = require('fs');
+							const swPath = path.resolve(__dirname, 'public/service-worker.js');
+							const outPath = path.resolve(__dirname, 'dist/service-worker.js');
+							if (fs.existsSync(swPath)) {
+								fs.copyFileSync(swPath, outPath);
+								console.log('Service worker copied to dist');
+							}
+						},
 					},
-				},
+				],
+				// output: {
+				// 	manualChunks: (id: string) => {
+				// 		if (id.includes('react') || id.includes('react-dom') || id.includes('react-router-dom')) {
+				// 			return 'vendor';
+				// 		}
+				// 		if (id.includes('@permaweb/aoconnect')) {
+				// 			return 'ao-connect';
+				// 		}
+				// 		if (id.includes('@permaweb/libs') || id.includes('arweave')) {
+				// 			return 'permaweb-libs';
+				// 		}
+				// 		if (id.includes('react-svg') || id.includes('react-markdown')) {
+				// 			return 'utils';
+				// 		}
+
+				// 		return undefined;
+				// 	},
+				// },
 			},
 		},
 		server: {
