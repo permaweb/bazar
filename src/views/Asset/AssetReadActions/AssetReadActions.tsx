@@ -1,3 +1,5 @@
+import { ReactSVG } from 'react-svg';
+
 import { IconButton } from 'components/atoms/IconButton';
 import { ASSETS } from 'helpers/config';
 import { useLanguageProvider } from 'providers/LanguageProvider';
@@ -11,6 +13,19 @@ export default function AssetReadActions(props: IProps) {
 
 	return (
 		<S.Wrapper>
+			{props.isEbook && props.assetId && (
+				<S.EbookAction>
+					<button
+						onClick={() => {
+							window.open(`https://arweave.net/${props.assetId}`, '_blank', 'noopener,noreferrer');
+						}}
+						title="Open PDF on Arweave"
+					>
+						<ReactSVG src={ASSETS.view} />
+						<span>Open PDF on Arweave</span>
+					</button>
+				</S.EbookAction>
+			)}
 			<IconButton
 				type={'alt1'}
 				src={ASSETS.close}

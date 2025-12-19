@@ -1,7 +1,9 @@
 import React from 'react';
 import { ReactSVG } from 'react-svg';
 import { Button } from 'components/atoms/Button';
+import { FormField } from 'components/atoms/FormField';
 import { Notification } from 'components/atoms/Notification';
+import { TextArea } from 'components/atoms/TextArea';
 import { ASSETS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import { NotificationType } from 'helpers/types';
@@ -27,6 +29,8 @@ export default function CollectionManage(props: IProps) {
 	const bannerInputRef = React.useRef<any>(null);
 	const thumbnailInputRef = React.useRef<any>(null);
 
+	const [name, setName] = React.useState<string>('');
+	const [description, setDescription] = React.useState<string>('');
 	const [banner, setBanner] = React.useState<string | null>(null);
 	const [thumbnail, setThumbnail] = React.useState<string | null>(null);
 
@@ -35,6 +39,8 @@ export default function CollectionManage(props: IProps) {
 
 	React.useEffect(() => {
 		if (props.collection) {
+			setName(props.collection.title || '');
+			setDescription(props.collection.description || '');
 			setBanner(props.collection.banner && checkValidAddress(props.collection.banner) ? props.collection.banner : null);
 			setThumbnail(
 				props.collection.thumbnail && checkValidAddress(props.collection.thumbnail) ? props.collection.thumbnail : null
@@ -81,6 +87,23 @@ export default function CollectionManage(props: IProps) {
 				// Build Eval code to update variables and sync state
 				const evalLines: string[] = [];
 
+				// Update Name if changed
+				if (name && name !== props.collection.title) {
+					// Escape single quotes for Lua string
+					const escapedName = name.replace(/'/g, "\\'");
+					evalLines.push(`Name = '${escapedName}'`);
+					hasUpdates = true;
+				}
+
+				// Update Description if changed
+				const currentDescription = props.collection.description || '';
+				if (description !== currentDescription) {
+					// Escape single quotes for Lua string
+					const escapedDescription = description.replace(/'/g, "\\'");
+					evalLines.push(`Description = '${escapedDescription}'`);
+					hasUpdates = true;
+				}
+
 				// Update Banner if changed
 				if (bannerTxId && bannerTxId !== props.collection.banner) {
 					evalLines.push(`Banner = '${bannerTxId}'`);
@@ -101,8 +124,8 @@ export default function CollectionManage(props: IProps) {
 
 					// Build the state object with updated values
 					const stateObj = {
-						Name: props.collection.title || '',
-						Description: props.collection.description || '',
+						Name: name || props.collection.title || '',
+						Description: description || props.collection.description || '',
 						Creator: props.collection.creator || '',
 						Banner: bannerTxId || props.collection.banner || '',
 						Thumbnail: thumbnailTxId || props.collection.thumbnail || '',
@@ -123,7 +146,7 @@ export default function CollectionManage(props: IProps) {
 
 					try {
 						// Send Eval message to update variables and sync state
-						const messageId = await message({
+						await message({
 							process: props.collection.id,
 							signer: signer,
 							tags: [{ name: 'Action', value: 'Eval' }],
@@ -131,7 +154,7 @@ export default function CollectionManage(props: IProps) {
 						});
 
 						setCollectionResponse({
-							message: 'Collection images updated successfully! State is syncing...',
+							message: 'Collection updated successfully! State is syncing...',
 							status: 'success',
 						});
 						// Wait a bit for state to sync before refreshing
@@ -140,7 +163,7 @@ export default function CollectionManage(props: IProps) {
 					} catch (evalError: any) {
 						console.error('Eval error:', evalError);
 						setCollectionResponse({
-							message: evalError.message ?? 'Failed to update collection images',
+							message: evalError.message ?? 'Failed to update collection',
 							status: 'warning',
 						});
 					}
@@ -153,7 +176,7 @@ export default function CollectionManage(props: IProps) {
 			} catch (e: any) {
 				console.error('Error updating collection:', e);
 				setCollectionResponse({
-					message: e.message ?? 'Failed to update collection images',
+					message: e.message ?? 'Failed to update collection',
 					status: 'warning',
 				});
 			}
@@ -171,6 +194,13 @@ export default function CollectionManage(props: IProps) {
 		if (thumbnailSize > MAX_IMAGE_SIZE || bannerSize > MAX_IMAGE_SIZE)
 			return <span>One or more images exceeds max size of 100KB</span>;
 		return null;
+	}
+
+	function getNameValidation() {
+		if (!name || name.trim() === '') {
+			return { status: true, message: 'Name is required' };
+		}
+		return { status: false, message: null };
 	}
 
 	function handleFileChange(e: React.ChangeEvent<HTMLInputElement>, type: 'banner' | 'thumbnail') {
@@ -227,6 +257,25 @@ export default function CollectionManage(props: IProps) {
 				<>
 					<S.Wrapper>
 						<S.Body>
+							<S.Form>
+								<S.TForm>
+									<FormField
+										label={language.name || 'Name'}
+										value={name}
+										onChange={(e: any) => setName(e.target.value)}
+										disabled={loading}
+										invalid={getNameValidation()}
+										required
+									/>
+								</S.TForm>
+								<TextArea
+									label={language.description || 'Description'}
+									value={description}
+									onChange={(e: any) => setDescription(e.target.value)}
+									disabled={loading}
+									invalid={{ status: false, message: null }}
+								/>
+							</S.Form>
 							<S.PWrapper>
 								<S.BWrapper>
 									<S.BInput
@@ -290,7 +339,7 @@ export default function CollectionManage(props: IProps) {
 									type={'alt1'}
 									label={language.save}
 									handlePress={handleSubmit}
-									disabled={loading || getImageSizeMessage() !== null}
+									disabled={loading || !name || name.trim() === '' || getImageSizeMessage() !== null}
 									loading={loading}
 								/>
 							</S.SAction>

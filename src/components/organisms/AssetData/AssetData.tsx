@@ -3,12 +3,13 @@ import { ReactSVG } from 'react-svg';
 
 import { readHandler } from 'api';
 
-import { ASSETS, REFORMATTED_ASSETS } from 'helpers/config';
+import { ASSETS, CUSTOM_ORDERBOOKS, REFORMATTED_ASSETS, TOKEN_REGISTRY } from 'helpers/config';
 import { getRendererEndpoint, getTxEndpoint } from 'helpers/endpoints';
 import { AssetRenderType } from 'helpers/types';
 import { checkValidAddress } from 'helpers/utils';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 
+import { EbookRenderer } from '../EbookRenderer';
 import * as S from './styles';
 import { IProps } from './types';
 
@@ -226,7 +227,62 @@ export default function AssetData(props: IProps) {
 		}
 	}
 
+	// Check if asset is an ebook
+	function isEbook(): boolean {
+		if (!props.asset || !props.asset.data?.id) return false;
+
+		const assetId = props.asset.data.id;
+
+		// Exclude tokens - tokens should never be treated as ebooks
+		if (TOKEN_REGISTRY[assetId] || CUSTOM_ORDERBOOKS[assetId]) {
+			return false;
+		}
+
+		// Check topics first (most reliable indicator)
+		const topics = props.asset.data?.topics || [];
+		if (topics.some((topic: string) => ['Book', 'Ebook', 'ISBN'].includes(topic))) {
+			return true;
+		}
+
+		// Check contentType from assetRender or asset data
+		const contentType = assetRender?.contentType || props.asset.data?.contentType || '';
+		if (contentType === 'application/pdf' || contentType === 'text/plain') {
+			return true;
+		}
+
+		// Check metadata for ISBN
+		if (props.asset.state?.metadata?.ISBN || assetMetadata?.ISBN) {
+			return true;
+		}
+
+		return false;
+	}
+
 	function getData() {
+		// Render ebook if detected - check topics/contentType even before assetRender is loaded
+		// But exclude tokens first
+		if (props.asset?.data?.id) {
+			const assetId = props.asset.data.id;
+
+			// Never treat tokens as ebooks
+			if (TOKEN_REGISTRY[assetId] || CUSTOM_ORDERBOOKS[assetId]) {
+				// Continue to normal rendering for tokens
+			} else {
+				const hasEbookTopics = props.asset.data?.topics?.some((topic: string) =>
+					['Book', 'Ebook', 'ISBN'].includes(topic)
+				);
+				const isTextOrPdf =
+					props.asset.data?.contentType === 'text/plain' ||
+					props.asset.data?.contentType === 'application/pdf' ||
+					assetRender?.contentType === 'text/plain' ||
+					assetRender?.contentType === 'application/pdf';
+
+				if (hasEbookTopics || isTextOrPdf) {
+					return <EbookRenderer assetId={props.asset.data.id} />;
+				}
+			}
+		}
+
 		if (assetRender) {
 			switch (assetRender.type) {
 				case 'renderer':

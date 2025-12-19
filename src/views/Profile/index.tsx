@@ -1,5 +1,6 @@
 import React from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import styled from 'styled-components';
 
 import AOProfile, { ProfileType } from '@permaweb/aoprofile';
 
@@ -17,6 +18,29 @@ import { ProfileCollections } from './ProfileCollections';
 import { ProfileHeader } from './ProfileHeader';
 const debug = (..._args: any[]) => {};
 
+const ErrorWrapper = styled.div`
+	padding: 40px 20px;
+	text-align: center;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	min-height: 400px;
+`;
+
+const ErrorMessage = styled.p`
+	color: ${(props) => props.theme.colors.font.primary};
+	font-size: ${(props) => props.theme.typography.size.base};
+	font-weight: ${(props) => props.theme.typography.weight.medium};
+	margin: 0 0 10px 0;
+`;
+
+const ErrorDetail = styled.p`
+	color: ${(props) => props.theme.colors.font.alt1};
+	font-size: ${(props) => props.theme.typography.size.small};
+	margin: 0;
+`;
+
 export default function Profile() {
 	const permawebProvider = usePermawebProvider();
 
@@ -29,6 +53,7 @@ export default function Profile() {
 
 	const [profile, setProfile] = React.useState<ProfileType | null>(null);
 	const [toggleUpdate, setToggleUpdate] = React.useState<boolean>(false);
+	const [profileError, setProfileError] = React.useState<boolean>(false);
 
 	React.useEffect(() => {
 		if (!address && !active) navigate(URLS.notFound);
@@ -43,6 +68,7 @@ export default function Profile() {
 	React.useEffect(() => {
 		(async function () {
 			if (address && checkValidAddress(address)) {
+				setProfileError(false);
 				try {
 					let fetchedProfile = null;
 					let isLegacyProfile = false;
@@ -57,15 +83,20 @@ export default function Profile() {
 						fetchedProfile = await aoProfile.getProfileById({ profileId: address });
 					}
 
-					setProfile({ ...fetchedProfile, isLegacyProfile });
+					if (fetchedProfile && fetchedProfile.id) {
+						setProfile({ ...fetchedProfile, isLegacyProfile });
+					} else {
+						setProfileError(true);
+					}
 				} catch (e: any) {
-					console.error(e);
+					console.error('Error fetching profile:', e);
+					setProfileError(true);
 				}
 			} else {
 				navigate(URLS.notFound);
 			}
 		})();
-	}, [address]);
+	}, [address, navigate, permawebProvider.libs]);
 
 	const TABS = React.useMemo(
 		() => [
@@ -102,6 +133,18 @@ export default function Profile() {
 	const urlTabs = React.useMemo(() => {
 		return <URLTabs tabs={TABS} activeUrl={TABS[0].url} />;
 	}, [TABS]);
+
+	if (profileError) {
+		return (
+			<ErrorWrapper>
+				<ErrorMessage>
+					Unable to load profile. This profile may not be hydrated on HyperBEAM yet, or there may be network issues on
+					legacynet.
+				</ErrorMessage>
+				<ErrorDetail>Profile ID: {address}</ErrorDetail>
+			</ErrorWrapper>
+		);
+	}
 
 	return profile ? (
 		<>

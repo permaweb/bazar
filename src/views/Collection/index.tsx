@@ -61,8 +61,12 @@ export default function Collection() {
 			if (id && checkValidAddress(id)) {
 				setCollectionLoading(true);
 				try {
-					setCollection(await getCollectionById({ id: id, libs: permawebProvider.libs }));
+					const collectionData = await getCollectionById({ id: id, libs: permawebProvider.libs });
+					console.log('[Collection] Fetched collection:', collectionData);
+					console.log('[Collection] Asset IDs:', collectionData?.assetIds?.length || 0);
+					setCollection(collectionData);
 				} catch (e: any) {
+					console.error('[Collection] Error fetching collection:', e);
 					setCollectionErrorResponse(e.message || language.collectionFetchFailed);
 				}
 				setCollectionLoading(false);

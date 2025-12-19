@@ -10,7 +10,7 @@ import { TxAddress } from 'components/atoms/TxAddress';
 import { OwnerLine } from 'components/molecules/OwnerLine';
 import { AssetData } from 'components/organisms/AssetData';
 import { MetadataSection } from 'components/organisms/MetadataSection';
-import { ASSETS, LICENSES, URLS } from 'helpers/config';
+import { ASSETS, CUSTOM_ORDERBOOKS, LICENSES, REFORMATTED_ASSETS, TOKEN_REGISTRY, URLS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import { CollectionDetailType } from 'helpers/types';
 import {
@@ -24,6 +24,7 @@ import {
 } from 'helpers/utils';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 import { usePermawebProvider } from 'providers/PermawebProvider';
+import { useTokenProvider } from 'providers/TokenProvider';
 import { RootState } from 'store';
 
 import * as S from './styles';
@@ -34,6 +35,7 @@ export default function AssetInfo(props: IProps) {
 	const collectionsReducer = useSelector((state: RootState) => state.collectionsReducer);
 
 	const permawebProvider = usePermawebProvider();
+	const tokenProvider = useTokenProvider();
 
 	const languageProvider = useLanguageProvider();
 	const language = languageProvider.object[languageProvider.current];
@@ -96,24 +98,149 @@ export default function AssetInfo(props: IProps) {
 		})();
 	}, [props.asset]);
 
+	function getTokenMetadata(currencyId: string) {
+		// Try token provider first (has most complete data)
+		const providerToken = tokenProvider.availableTokens.find((token) => token.id === currencyId);
+		if (providerToken) {
+			return {
+				logo: providerToken.logo,
+				name: providerToken.name,
+				symbol: providerToken.symbol,
+			};
+		}
+
+		// Try TOKEN_REGISTRY next
+		if (TOKEN_REGISTRY[currencyId]) {
+			return {
+				logo: TOKEN_REGISTRY[currencyId].logo,
+				name: TOKEN_REGISTRY[currencyId].name,
+				symbol: TOKEN_REGISTRY[currencyId].symbol,
+			};
+		}
+
+		// Try currenciesReducer (from Redux state)
+		if (currenciesReducer && currenciesReducer[currencyId]) {
+			return {
+				logo: currenciesReducer[currencyId].Logo,
+				name: currenciesReducer[currencyId].Name || currenciesReducer[currencyId].Ticker,
+				symbol: currenciesReducer[currencyId].Ticker,
+			};
+		}
+
+		// Final fallback: REFORMATTED_ASSETS
+		if (REFORMATTED_ASSETS[currencyId]) {
+			return {
+				logo: REFORMATTED_ASSETS[currencyId].logo,
+				name: REFORMATTED_ASSETS[currencyId].title,
+				symbol: null,
+			};
+		}
+
+		// Return null if no metadata found
+		return null;
+	}
+
 	function getLicenseValue(licenseKey: string) {
 		if (!props.asset || !props.asset.data.udl || !props.asset.data.udl[licenseKey]) return null;
 		const licenseElement = props.asset.data.udl[licenseKey];
 
+		// Special handling for the currency field itself
+		if (licenseKey === 'currency' && checkValidAddress(licenseElement)) {
+			const tokenMeta = getTokenMetadata(licenseElement);
+
+			if (tokenMeta) {
+				return (
+					<Link to={`${URLS.asset}${licenseElement}`}>
+						<S.CurrencyInfo>
+							{tokenMeta.logo && (
+								<S.CurrencyIcon src={getTxEndpoint(tokenMeta.logo)} alt={tokenMeta.symbol || tokenMeta.name} />
+							)}
+							<S.CurrencyName>{tokenMeta.symbol || tokenMeta.name}</S.CurrencyName>
+						</S.CurrencyInfo>
+					</Link>
+				);
+			} else {
+				// Fallback for unknown tokens
+				return (
+					<Link to={`${URLS.asset}${licenseElement}`}>
+						<S.CurrencyInfo>
+							<span>🪙</span>
+							<S.CurrencyName>{formatAddress(licenseElement, false)}</S.CurrencyName>
+						</S.CurrencyInfo>
+					</Link>
+				);
+			}
+		}
+
 		if (typeof licenseElement === 'object') {
+			// Check if this field has a numeric value (indicating it's a currency amount)
+			const hasNumericValue = /\d/.test(licenseElement.value);
+			const currencyId = props.asset.data.udl.currency;
+
+			if (hasNumericValue && currencyId) {
+				const tokenMeta = getTokenMetadata(currencyId);
+
+				return (
+					<S.CurrencyWrapper>
+						<span>{licenseElement.value ? splitTagValue(licenseElement.value) : '-'}</span>
+						{tokenMeta && (
+							<Link to={`${URLS.asset}${currencyId}`}>
+								<S.CurrencyInfo>
+									{tokenMeta.logo && (
+										<S.CurrencyIcon src={getTxEndpoint(tokenMeta.logo)} alt={tokenMeta.symbol || tokenMeta.name} />
+									)}
+									<S.CurrencyName>{tokenMeta.symbol || tokenMeta.name}</S.CurrencyName>
+								</S.CurrencyInfo>
+							</Link>
+						)}
+						{!tokenMeta && (
+							<Link to={`${URLS.asset}${currencyId}`}>
+								<S.CurrencyInfo>
+									<span>🪙</span>
+									<S.CurrencyName>{formatAddress(currencyId, false)}</S.CurrencyName>
+								</S.CurrencyInfo>
+							</Link>
+						)}
+					</S.CurrencyWrapper>
+				);
+			}
+
+			// Non-currency numeric values
 			return (
 				<GS.DrawerContentDetail>
-					{licenseElement.value ? splitTagValue(licenseElement.value) : '-'}{' '}
-					{props.asset.data.udl.currency &&
-						currenciesReducer &&
-						currenciesReducer[props.asset.data.udl.currency] &&
-						currenciesReducer[props.asset.data.udl.currency].Logo &&
-						/\d/.test(licenseElement.value) && (
-							<S.CurrencyIcon src={getTxEndpoint(currenciesReducer[props.asset.data.udl.currency].Logo)} />
-						)}
+					{licenseElement.value ? splitTagValue(licenseElement.value) : '-'}
 				</GS.DrawerContentDetail>
 			);
 		} else if (checkValidAddress(licenseElement)) {
+			// Special handling for currency field - show token logo and name
+			if (licenseKey === 'currency') {
+				const tokenMeta = getTokenMetadata(licenseElement);
+
+				if (tokenMeta) {
+					return (
+						<Link to={`${URLS.asset}${licenseElement}`}>
+							<S.CurrencyInfo>
+								{tokenMeta.logo && (
+									<S.CurrencyIcon src={getTxEndpoint(tokenMeta.logo)} alt={tokenMeta.symbol || tokenMeta.name} />
+								)}
+								<S.CurrencyName>{tokenMeta.symbol || tokenMeta.name}</S.CurrencyName>
+							</S.CurrencyInfo>
+						</Link>
+					);
+				}
+
+				// Fallback for currency without metadata
+				return (
+					<Link to={`${URLS.asset}${licenseElement}`}>
+						<S.CurrencyInfo>
+							<span>🪙</span>
+							<S.CurrencyName>{formatAddress(licenseElement, false)}</S.CurrencyName>
+						</S.CurrencyInfo>
+					</Link>
+				);
+			}
+
+			// For non-currency addresses, use TxAddress
 			return licenseElement ? <TxAddress address={licenseElement} wrap={false} /> : '-';
 		} else {
 			return <GS.DrawerContentDetail>{licenseElement}</GS.DrawerContentDetail>;
@@ -259,6 +386,64 @@ export default function AssetInfo(props: IProps) {
 									<GS.DrawerContentDetail>{props.asset.data.implementation}</GS.DrawerContentDetail>
 								</GS.DrawerContentLine>
 							)}
+							{(() => {
+								// Check if asset is an ebook (but exclude tokens)
+								const assetId = props.asset.data?.id || '';
+								const isToken = TOKEN_REGISTRY[assetId] || CUSTOM_ORDERBOOKS[assetId];
+
+								let isEbook = false;
+								if (!isToken && assetId) {
+									const topics = props.asset.data?.topics || [];
+									const hasEbookTopics = topics.some((topic: string) => ['Book', 'Ebook', 'ISBN'].includes(topic));
+									const contentType = props.asset.data?.contentType || '';
+									isEbook = hasEbookTopics || contentType === 'application/pdf' || contentType === 'text/plain';
+								}
+
+								if (!isEbook) return null;
+
+								const metadata = props.asset.state?.metadata || {};
+								const author = metadata.Author || metadata.author;
+								const bookLanguage = metadata.Language || metadata.language;
+								const isbn = metadata.Isbn || metadata.isbn || metadata.ISBN;
+								const genre = metadata.Genre || metadata.genre;
+								const publicationDate =
+									metadata.Publicationdate || metadata.PublicationDate || metadata.publicationDate;
+
+								return (
+									<>
+										{author && (
+											<GS.DrawerContentLine>
+												<GS.DrawerContentHeader>{language.author}</GS.DrawerContentHeader>
+												<GS.DrawerContentDetail>{author}</GS.DrawerContentDetail>
+											</GS.DrawerContentLine>
+										)}
+										{bookLanguage && (
+											<GS.DrawerContentLine>
+												<GS.DrawerContentHeader>{language.bookLanguage}</GS.DrawerContentHeader>
+												<GS.DrawerContentDetail>{bookLanguage}</GS.DrawerContentDetail>
+											</GS.DrawerContentLine>
+										)}
+										{isbn && (
+											<GS.DrawerContentLine>
+												<GS.DrawerContentHeader>{language.isbn}</GS.DrawerContentHeader>
+												<GS.DrawerContentDetail>{isbn}</GS.DrawerContentDetail>
+											</GS.DrawerContentLine>
+										)}
+										{genre && (
+											<GS.DrawerContentLine>
+												<GS.DrawerContentHeader>{language.genre}</GS.DrawerContentHeader>
+												<GS.DrawerContentDetail>{genre}</GS.DrawerContentDetail>
+											</GS.DrawerContentLine>
+										)}
+										{publicationDate && (
+											<GS.DrawerContentLine>
+												<GS.DrawerContentHeader>{language.publicationDate}</GS.DrawerContentHeader>
+												<GS.DrawerContentDetail>{publicationDate}</GS.DrawerContentDetail>
+											</GS.DrawerContentLine>
+										)}
+									</>
+								);
+							})()}
 						</GS.DrawerContent>
 					}
 				/>

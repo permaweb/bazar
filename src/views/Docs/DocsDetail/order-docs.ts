@@ -136,6 +136,10 @@ export const docsOrder = [
 		path: 'resources',
 		children: [
 			{
+				name: 'Branding Kit',
+				path: 'branding-kit',
+			},
+			{
 				name: 'Contact',
 				path: 'contact',
 			},

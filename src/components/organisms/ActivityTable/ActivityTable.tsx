@@ -12,6 +12,7 @@ import { Select } from 'components/atoms/Select';
 import { OwnerLine } from 'components/molecules/OwnerLine';
 import {
 	ACTIVITY_SORT_OPTIONS,
+	AO,
 	ASSETS,
 	getDefaultToken,
 	HB,
@@ -32,9 +33,6 @@ import * as S from './styles';
 import { IProps } from './types';
 
 const GROUP_COUNT = 50;
-
-// Spam address to filter out from Recent Activity
-const SPAM_ADDRESS = 'DwYZmjS7l6NHwojaH7-LzRBb4RiwjshGQm7-1ApDObw';
 
 export default function ActivityTable(props: IProps) {
 	const profilesReducer = useSelector((state: RootState) => state.profilesReducer);
@@ -95,6 +93,7 @@ export default function ActivityTable(props: IProps) {
 							{ name: 'Handler', values: ['Create-Order'] },
 							{ name: 'Data-Protocol', values: ['ao'] },
 							{ name: 'Type', values: ['Message'] },
+							{ name: 'IncomingSide', values: ['Bid', 'Ask'], match: 'FUZZY_OR' },
 							{ name: 'Variant', values: ['ao.TN.1'] },
 						],
 					};
@@ -226,76 +225,54 @@ export default function ActivityTable(props: IProps) {
 		const swapTokens = [getDefaultToken().id];
 
 		for (const { node } of edges) {
-			const t = node.tags.reduce<Record<string, string>>((m, { name, value }) => {
+			const tags = node.tags.reduce<Record<string, string>>((m, { name, value }) => {
 				m[name] = value;
 				return m;
 			}, {});
 
-			// Filter out activities from spam address
-			// Check multiple fields where the spam address might appear
-			const isSpamActivity =
-				node.recipient === SPAM_ADDRESS ||
-				t['Sender'] === SPAM_ADDRESS ||
-				t['From-Process'] === SPAM_ADDRESS ||
-				t['Recipient'] === SPAM_ADDRESS ||
-				t['To-Process'] === SPAM_ADDRESS ||
-				t['Owner'] === SPAM_ADDRESS ||
-				t['Creator'] === SPAM_ADDRESS;
+			const price = tags['Price'];
+			const priceSet = price && price !== 'None';
+			const isGlobalUCM = tags['From-Process'] && tags['From-Process'] === AO.ucm;
 
-			// Additional filter: Check if this is a spam activity based on very low denomination values
-			// Spam collections often have extremely low prices that aren't visible in UI
-			const price = t['Price'];
-			const isLowDenominationSpam = price && price === 'None'; // Only filter out "None" prices, not "0" or small values
-
-			// Check if this looks like emoji/animal spam based on asset data
-			// Only filter if we have strong evidence it's spam
-			const isEmojiAnimalSpam =
-				t['Message'] &&
-				// Only filter if the message contains multiple emojis (spam pattern)
-				((t['Message'].includes('🐙') && t['Message'].includes('🦑')) || // Octopus + squid pattern
-					(t['Message'].includes('🐬') && t['Message'].includes('🐋')) || // Dolphin + whale pattern
-					// Or if it contains very specific spam patterns
-					t['Message'].includes('🐙🦑') ||
-					t['Message'].includes('🐬🐋'));
-
-			if (isSpamActivity || isLowDenominationSpam || isEmojiAnimalSpam) {
+			if (!priceSet || isGlobalUCM) {
 				continue;
 			}
 
 			const tsMs = node?.block?.timestamp ? node.block.timestamp * 1000 : '-';
-			const action = t['Action'];
+			const action = tags['Action'];
 
 			if (action === 'Order-Success') {
 				let order: any = {
 					OrderId: node.id,
 					Timestamp: tsMs,
-					Quantity: t['Quantity'],
-					Price: t['Price'],
-					Side: t['Side'] || null,
-					IncomingSide: t['IncomingSide'] || null,
+					Quantity: tags['Quantity'],
+					Price: tags['Price'],
+					Side: tags['Side'] || null,
+					IncomingSide: tags['IncomingSide'] || null,
 				};
 
 				// Use IncomingSide to determine if this is an executed order (market order)
 				// If IncomingSide exists, it means this was a market order that matched against the orderbook
-				if (t['IncomingSide']) {
+				if (tags['IncomingSide']) {
 					// This is an executed/matched order
-					order.Sender = t['Sender'] ?? t['From-Process'];
+					order.Sender = tags['Sender'] ?? tags['From-Process'];
 					order.Receiver = props.address ?? node.recipient;
-					order.DominantToken = t['DominantToken'];
-					order.SwapToken = t['SwapToken'];
+					order.DominantToken = tags['DominantToken'];
+					order.SwapToken = tags['SwapToken'];
+
 					out.ExecutedOrders.push(order);
 					out.PurchasesByAddress[node.recipient] = (out.PurchasesByAddress[node.recipient] || 0) + 1;
-				} else if (swapTokens.includes(t['DominantToken'])) {
+				} else if (swapTokens.includes(tags['DominantToken'])) {
 					order.Sender = node.recipient;
-					order.DominantToken = t['SwapToken'];
-					order.SwapToken = t['DominantToken'];
+					order.DominantToken = tags['SwapToken'];
+					order.SwapToken = tags['DominantToken'];
 					out.ListedOrders.push(order);
 					out.SalesByAddress[node.recipient] = (out.SalesByAddress[node.recipient] || 0) + 1;
 				} else {
 					// This is a limit order (listing or bid) for an asset
 					order.Sender = node.recipient;
-					order.DominantToken = t['DominantToken'];
-					order.SwapToken = t['SwapToken'];
+					order.DominantToken = tags['DominantToken'];
+					order.SwapToken = tags['SwapToken'];
 
 					out.ListedOrders.push(order);
 					out.SalesByAddress[node.recipient] = (out.SalesByAddress[node.recipient] || 0) + 1;
@@ -535,10 +512,15 @@ export default function ActivityTable(props: IProps) {
 				<S.TableBody>
 					{activityGroup.map((row: any, index: number) => {
 						let asset = row.asset;
+
 						if (!row.asset?.data) {
 							asset = {
-								data: { id: row.dominantToken },
+								data: {
+									id: row.dominantToken,
+								},
 							};
+
+							if (REFORMATTED_ASSETS[row.dominantToken]) asset.data.title = REFORMATTED_ASSETS[row.dominantToken].title;
 						}
 
 						return (

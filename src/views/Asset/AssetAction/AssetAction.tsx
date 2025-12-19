@@ -16,7 +16,7 @@ import { OwnerLine } from 'components/molecules/OwnerLine';
 import { Tabs } from 'components/molecules/Tabs';
 import { AssetData } from 'components/organisms/AssetData';
 import { OrderCancel } from 'components/organisms/OrderCancel';
-import { ASSETS, STYLING, TOKEN_REGISTRY } from 'helpers/config';
+import { ASSETS, CUSTOM_ORDERBOOKS, STYLING, TOKEN_REGISTRY } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import { ListingType, OwnerType } from 'helpers/types';
 import { formatCount, getOwners, sortOrders } from 'helpers/utils';
@@ -746,20 +746,51 @@ export default function AssetAction(props: IProps) {
 							</S.OwnerLine>
 						)}
 					</S.OrdersWrapper>
-					<S.ACActionWrapper>
-						<S.ACAction>
-							<button onClick={() => props.toggleViewType()}>
-								<ReactSVG src={ASSETS.zen} />
-								{language.viewInZenMode}
-							</button>
-						</S.ACAction>
-						<S.ACAction>
-							<Link target={'_blank'} to={getTxEndpoint(props.asset.data.id)}>
-								<ReactSVG src={ASSETS.view} />
-								{language.viewOnArweave}
-							</Link>
-						</S.ACAction>
-					</S.ACActionWrapper>
+					{(() => {
+						// Check if asset is an ebook (but exclude tokens)
+						const assetId = props.asset.data?.id || '';
+						const isToken = TOKEN_REGISTRY[assetId] || CUSTOM_ORDERBOOKS[assetId];
+
+						let isEbook = false;
+						if (!isToken && assetId) {
+							const topics = props.asset.data?.topics || [];
+							const hasEbookTopics = topics.some((topic: string) => ['Book', 'Ebook', 'ISBN'].includes(topic));
+							const contentType = props.asset.data?.contentType || '';
+							isEbook = hasEbookTopics || contentType === 'application/pdf' || contentType === 'text/plain';
+						}
+
+						return (
+							<S.ACActionWrapper>
+								<S.ACAction>
+									<button onClick={() => props.toggleViewType()}>
+										<ReactSVG src={ASSETS.zen} />
+										{isEbook ? 'Reading Mode' : language.viewInZenMode}
+									</button>
+								</S.ACAction>
+								<S.ACAction>
+									{isEbook ? (
+										<a
+											href={`https://arweave.net/${props.asset.data.id}`}
+											target="_blank"
+											rel="noopener noreferrer"
+											onClick={(e) => {
+												e.preventDefault();
+												window.open(`https://arweave.net/${props.asset.data.id}`, '_blank', 'noopener,noreferrer');
+											}}
+										>
+											<ReactSVG src={ASSETS.view} />
+											Open PDF on Arweave
+										</a>
+									) : (
+										<Link target={'_blank'} to={getTxEndpoint(props.asset.data.id)}>
+											<ReactSVG src={ASSETS.view} />
+											{language.viewOnArweave}
+										</Link>
+									)}
+								</S.ACAction>
+							</S.ACActionWrapper>
+						);
+					})()}
 				</S.Header>
 				<S.TabsWrapper>
 					<Tabs onTabPropClick={(label: string) => setCurrentTab(label)} type={'alt1'}>
