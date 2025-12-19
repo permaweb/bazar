@@ -1,11 +1,13 @@
 import React from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate, useParams } from 'react-router-dom';
+import { TwitterShareButton } from 'react-share';
 
 import { getCollectionById, stamps } from 'api';
 
 import { Button } from 'components/atoms/Button';
 import { CurrencyLine } from 'components/atoms/CurrencyLine';
+import { IconButton } from 'components/atoms/IconButton';
 import { Loader } from 'components/atoms/Loader';
 import { Modal } from 'components/molecules/Modal';
 import { OwnerLine } from 'components/molecules/OwnerLine';
@@ -47,6 +49,7 @@ export default function Collection() {
 	const [collectionErrorResponse, setCollectionErrorResponse] = React.useState<string | null>(null);
 	const [showFullDescription, setShowFullDescription] = React.useState<boolean>(false);
 	const [showCollectionManage, setShowCollectionManage] = React.useState<boolean>(false);
+	const [urlCopied, setUrlCopied] = React.useState<boolean>(false);
 
 	React.useEffect(() => {
 		if (!id && !active) navigate(URLS.notFound);
@@ -154,6 +157,24 @@ export default function Collection() {
 		return <URLTabs tabs={TABS} activeUrl={TABS[0].url} />;
 	}, [TABS]);
 
+	const copyPageUrl = React.useCallback(async () => {
+		await navigator.clipboard.writeText(window.location.href);
+		setUrlCopied(true);
+		setTimeout(() => setUrlCopied(false), 2000);
+	}, []);
+
+	const getShareContent = React.useCallback(() => {
+		if (!collection) return { title: '', url: '' };
+		const baseUrl = `https://bazar.arweave.net/#/collection/${collection.id}\n`;
+		const baseTitle = `Check out this collection on BazAR: "${
+			collection.title ?? collection.name ?? 'Untitled Collection'
+		}"`;
+		return {
+			title: `${baseTitle}\n\n`,
+			url: baseUrl,
+		};
+	}, [collection]);
+
 	function getData() {
 		if (collection) {
 			return (
@@ -190,8 +211,40 @@ export default function Collection() {
 									<S.InfoHeaderFlex2>
 										<span>{language.title}</span>
 									</S.InfoHeaderFlex2>
-									<S.InfoDetailFlex2>
+									<S.InfoDetailFlex2 style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
 										<span>{collection.title ?? collection.name ?? '-'}</span>
+										<S.ShareButtonsWrapper>
+											<IconButton
+												type={'alt1'}
+												src={urlCopied ? ASSETS.link : ASSETS.link}
+												handlePress={copyPageUrl}
+												dimensions={{
+													wrapper: 33.5,
+													icon: 17.5,
+												}}
+												disabled={urlCopied}
+												tooltip={urlCopied ? `${language.copied}!` : language.copyPageUrl}
+												useBottomToolTip
+											/>
+											<TwitterShareButton
+												url={getShareContent().url}
+												title={getShareContent().title}
+												hashtags={['Arweave', 'BazAR', 'Collections']}
+												style={{ display: 'flex' }}
+											>
+												<IconButton
+													type={'alt1'}
+													src={ASSETS.x}
+													handlePress={() => {}}
+													dimensions={{
+														wrapper: 33.5,
+														icon: 17.5,
+													}}
+													tooltip={`${language.shareOn} X`}
+													useBottomToolTip
+												/>
+											</TwitterShareButton>
+										</S.ShareButtonsWrapper>
 									</S.InfoDetailFlex2>
 								</S.InfoBodyTile>
 								{collection.metrics && (

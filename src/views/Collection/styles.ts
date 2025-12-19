@@ -145,6 +145,13 @@ export const InfoDetailFlex2 = styled(InfoDetail)`
 	flex: 2;
 `;
 
+export const ShareButtonsWrapper = styled.div`
+	display: flex;
+	align-items: center;
+	gap: 5px;
+	margin-left: 10px;
+`;
+
 export const InfoFooter = styled.div`
 	margin: 15px 0 0 0;
 	display: flex;

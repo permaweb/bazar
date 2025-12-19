@@ -16,7 +16,7 @@ import { OwnerLine } from 'components/molecules/OwnerLine';
 import { Tabs } from 'components/molecules/Tabs';
 import { AssetData } from 'components/organisms/AssetData';
 import { OrderCancel } from 'components/organisms/OrderCancel';
-import { ASSETS, STYLING } from 'helpers/config';
+import { ASSETS, STYLING, TOKEN_REGISTRY } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import { ListingType, OwnerType } from 'helpers/types';
 import { formatCount, getOwners, sortOrders } from 'helpers/utils';
@@ -91,7 +91,11 @@ export default function AssetAction(props: IProps) {
 
 	const getShareContent = React.useCallback(() => {
 		const baseUrl = `https://bazar.arweave.net/#/asset/${props.asset.data.id}\n`;
-		const baseTitle = `Check out this atomic asset on BazAR: "${props.asset.data.title}"`;
+
+		// Detect if this is an AO token or atomic asset
+		const isAOToken = TOKEN_REGISTRY[props.asset.data.id] !== undefined;
+		const assetType = isAOToken ? 'AO token' : 'atomic asset';
+		const baseTitle = `Check out this ${assetType} on BazAR: "${props.asset.data.title}"`;
 
 		// Detect if asset is an image or video - check both contentType and try to determine from asset render
 		const contentType = props.asset.data.contentType?.toLowerCase() || '';
@@ -651,7 +655,11 @@ export default function AssetAction(props: IProps) {
 							<TwitterShareButton
 								url={getShareContent().url}
 								title={getShareContent().title}
-								hashtags={['Arweave', 'BazAR', 'AtomicAssets']}
+								hashtags={
+									TOKEN_REGISTRY[props.asset.data.id]
+										? ['Arweave', 'BazAR', 'AOTokens']
+										: ['Arweave', 'BazAR', 'AtomicAssets']
+								}
 								style={{ display: 'flex' }}
 							>
 								<IconButton
