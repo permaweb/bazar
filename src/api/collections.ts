@@ -459,6 +459,203 @@ export async function getAllMusicCollections(libs: any): Promise<CollectionType[
 	}
 }
 
+export async function getAllEbookCollections(libs: any): Promise<CollectionType[]> {
+	try {
+		// Check Redux cache first
+		const state = store.getState().collectionsReducer;
+		const cachedEbooks = state?.ebooks;
+		const cacheAge = cachedEbooks?.lastUpdate ? Date.now() - cachedEbooks.lastUpdate : Infinity;
+		const cacheDuration = 2 * 60 * 1000; // 2 minutes (reduced for faster updates)
+
+		if (cachedEbooks?.collections && cacheAge < cacheDuration) {
+			return cachedEbooks.collections;
+		}
+
+		// Set to store unique ebook collection IDs
+		const ebookCollectionIds = new Set<string>();
+
+		// Use a more targeted search for ebook assets with ISBN tag
+		try {
+			// Search for all assets with Bootloader-ISBN tag using pagination
+			const query = `query BootloaderISBN($cursor: String) {
+				transactions(
+					tags: [
+						{ name: "Bootloader-ISBN", values: [""] }
+					]
+					first: 50
+					sort: HEIGHT_DESC
+					after: $cursor
+				) {
+					pageInfo {
+						hasNextPage
+					}
+					edges {
+						cursor
+						node {
+							id
+							tags {
+								name
+								value
+							}
+							block {
+								height
+								timestamp
+							}
+						}
+					}
+				}
+			}`;
+
+			let success = false;
+			let cursor: string | null = null;
+			let hasNextPage = true;
+			let pageCount = 0;
+			const maxPages = 10; // Limit to prevent infinite loops, fetch up to 500 assets (10 pages * 50)
+
+			// Fetch all pages
+			while (hasNextPage && pageCount < maxPages) {
+				try {
+					const variables = cursor ? { cursor } : {};
+					const result = await executeGraphQLQueryWithRetry(query, variables, 2);
+					const data = result?.data?.transactions;
+					const edges = data?.edges ?? [];
+					const pageInfo = data?.pageInfo;
+
+					console.log(
+						`[Ebook Collections] Page ${pageCount + 1}: Found ${edges.length} assets, hasNextPage: ${
+							pageInfo?.hasNextPage
+						}`
+					);
+
+					if (edges.length) {
+						success = true;
+					}
+
+					for (const edge of edges) {
+						try {
+							const node = edge.node;
+							const collectionId = getTagValue(node.tags, 'Bootloader-CollectionId');
+
+							if (collectionId) {
+								// Include all collections with ISBN assets
+								// The presence of Bootloader-ISBN tag already indicates it's an ebook
+								ebookCollectionIds.add(collectionId);
+							}
+						} catch (e) {
+							console.error(`Error processing asset ${edge.node.id}:`, e);
+							continue;
+						}
+					}
+
+					// Check if there are more pages
+					pageCount++;
+					hasNextPage = pageInfo?.hasNextPage ?? false;
+					if (hasNextPage && edges.length > 0) {
+						cursor = edges[edges.length - 1].cursor;
+					} else {
+						hasNextPage = false;
+					}
+
+					console.log(`[Ebook Collections] Total unique collections found so far: ${ebookCollectionIds.size}`);
+				} catch (graphQLError) {
+					console.error('Error executing ebook collections GraphQL query:', graphQLError);
+					hasNextPage = false; // Stop pagination on error
+				}
+			}
+
+			console.log(
+				`[Ebook Collections] GraphQL search complete. Found ${ebookCollectionIds.size} unique collection IDs`
+			);
+		} catch (e) {
+			console.error('Error in GraphQL search:', e);
+		}
+
+		// Fetch all the ebook collections
+		const ebookCollections: CollectionType[] = [];
+		console.log(`[Ebook Collections] Fetching ${ebookCollectionIds.size} collections...`);
+
+		for (const collectionId of ebookCollectionIds) {
+			try {
+				let collection: CollectionType | null = null;
+
+				try {
+					collection = await libs.getCollection(collectionId);
+					console.log(`[Ebook Collections] Fetched collection: ${collection?.title || collectionId}`);
+				} catch (hyperbeamError) {
+					console.warn(`[Ebook Collections] HyperBEAM failed for ${collectionId}, using fallback:`, hyperbeamError);
+					// Create fallback collection data
+					collection = {
+						id: collectionId,
+						title: `Ebook Collection ${collectionId.slice(0, 8)}`,
+						name: `Ebook Collection ${collectionId.slice(0, 8)}`,
+						description: 'Ebook collection from Arweave',
+						creator: '',
+						dateCreated: Date.now(),
+						banner: null,
+						thumbnail: null,
+						activityProcess: null,
+					};
+				}
+
+				if (collection) {
+					// Remove emojis from title (simple approach)
+					const cleanTitle = (collection.title || collection.name || 'Ebook Collection')
+						.replace(/[^\x00-\x7F]/g, '') // Remove non-ASCII characters (including emojis)
+						.trim();
+
+					// Filter out test collections
+					if (cleanTitle.toLowerCase().includes('test')) {
+						continue;
+					}
+
+					const mappedCollection: CollectionType = {
+						id: collection.id || collectionId,
+						title: cleanTitle || 'Ebook Collection',
+						description: collection.description || '',
+						creator: collection.creator || '',
+						dateCreated: collection.dateCreated || Date.now(),
+						banner: collection.banner || null,
+						thumbnail: collection.thumbnail || null,
+						activityProcess: collection.activityProcess || null,
+					};
+
+					// Ensure we're only adding collections, not individual assets
+					// Also filter out collections from spam address
+					if (
+						mappedCollection.title &&
+						!mappedCollection.title.includes('Back Then') &&
+						!mappedCollection.title.includes('Echoes of Wisdom') &&
+						!mappedCollection.title.toLowerCase().includes('test') &&
+						mappedCollection.creator !== SPAM_ADDRESS
+					) {
+						ebookCollections.push(mappedCollection);
+					}
+				}
+			} catch (e) {
+				console.error(`Error fetching collection ${collectionId}:`, e);
+				continue;
+			}
+		}
+
+		// Update Redux cache
+		store.dispatch(
+			collectionActions.setCollections({
+				...(store.getState().collectionsReducer ?? {}),
+				ebooks: {
+					collections: ebookCollections,
+					lastUpdate: Date.now(),
+				},
+			})
+		);
+
+		console.log(`[Ebook Collections] Returning ${ebookCollections.length} collections`);
+		return ebookCollections;
+	} catch (e: any) {
+		console.error('Error in getAllEbookCollections:', e);
+		return [];
+	}
+}
+
 function getFloorPrice(assetIds: string[]): number {
 	if (store.getState().ucmReducer) {
 		const ucmReducer = store.getState().ucmReducer;

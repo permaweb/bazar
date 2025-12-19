@@ -10,7 +10,7 @@ import { TxAddress } from 'components/atoms/TxAddress';
 import { OwnerLine } from 'components/molecules/OwnerLine';
 import { AssetData } from 'components/organisms/AssetData';
 import { MetadataSection } from 'components/organisms/MetadataSection';
-import { ASSETS, LICENSES, REFORMATTED_ASSETS, TOKEN_REGISTRY, URLS } from 'helpers/config';
+import { ASSETS, CUSTOM_ORDERBOOKS, LICENSES, REFORMATTED_ASSETS, TOKEN_REGISTRY, URLS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import { CollectionDetailType } from 'helpers/types';
 import {
@@ -386,6 +386,64 @@ export default function AssetInfo(props: IProps) {
 									<GS.DrawerContentDetail>{props.asset.data.implementation}</GS.DrawerContentDetail>
 								</GS.DrawerContentLine>
 							)}
+							{(() => {
+								// Check if asset is an ebook (but exclude tokens)
+								const assetId = props.asset.data?.id || '';
+								const isToken = TOKEN_REGISTRY[assetId] || CUSTOM_ORDERBOOKS[assetId];
+
+								let isEbook = false;
+								if (!isToken && assetId) {
+									const topics = props.asset.data?.topics || [];
+									const hasEbookTopics = topics.some((topic: string) => ['Book', 'Ebook', 'ISBN'].includes(topic));
+									const contentType = props.asset.data?.contentType || '';
+									isEbook = hasEbookTopics || contentType === 'application/pdf' || contentType === 'text/plain';
+								}
+
+								if (!isEbook) return null;
+
+								const metadata = props.asset.state?.metadata || {};
+								const author = metadata.Author || metadata.author;
+								const bookLanguage = metadata.Language || metadata.language;
+								const isbn = metadata.Isbn || metadata.isbn || metadata.ISBN;
+								const genre = metadata.Genre || metadata.genre;
+								const publicationDate =
+									metadata.Publicationdate || metadata.PublicationDate || metadata.publicationDate;
+
+								return (
+									<>
+										{author && (
+											<GS.DrawerContentLine>
+												<GS.DrawerContentHeader>{language.author}</GS.DrawerContentHeader>
+												<GS.DrawerContentDetail>{author}</GS.DrawerContentDetail>
+											</GS.DrawerContentLine>
+										)}
+										{bookLanguage && (
+											<GS.DrawerContentLine>
+												<GS.DrawerContentHeader>{language.bookLanguage}</GS.DrawerContentHeader>
+												<GS.DrawerContentDetail>{bookLanguage}</GS.DrawerContentDetail>
+											</GS.DrawerContentLine>
+										)}
+										{isbn && (
+											<GS.DrawerContentLine>
+												<GS.DrawerContentHeader>{language.isbn}</GS.DrawerContentHeader>
+												<GS.DrawerContentDetail>{isbn}</GS.DrawerContentDetail>
+											</GS.DrawerContentLine>
+										)}
+										{genre && (
+											<GS.DrawerContentLine>
+												<GS.DrawerContentHeader>{language.genre}</GS.DrawerContentHeader>
+												<GS.DrawerContentDetail>{genre}</GS.DrawerContentDetail>
+											</GS.DrawerContentLine>
+										)}
+										{publicationDate && (
+											<GS.DrawerContentLine>
+												<GS.DrawerContentHeader>{language.publicationDate}</GS.DrawerContentHeader>
+												<GS.DrawerContentDetail>{publicationDate}</GS.DrawerContentDetail>
+											</GS.DrawerContentLine>
+										)}
+									</>
+								);
+							})()}
 						</GS.DrawerContent>
 					}
 				/>

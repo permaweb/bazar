@@ -397,12 +397,29 @@ export default function Asset() {
 						</>
 					);
 				case 'reading':
+					// Check if asset is an ebook
+					// Check if asset is an ebook (but exclude tokens)
+					const assetId = asset.data?.id || '';
+					const isToken = TOKEN_REGISTRY[assetId] || CUSTOM_ORDERBOOKS[assetId];
+
+					let isEbook = false;
+					if (!isToken && assetId) {
+						const topics = asset.data?.topics || [];
+						const hasEbookTopics = topics.some((topic: string) => ['Book', 'Ebook', 'ISBN'].includes(topic));
+						const contentType = asset.data?.contentType || '';
+						isEbook = hasEbookTopics || contentType === 'application/pdf' || contentType === 'text/plain';
+					}
+
 					return (
 						<Portal node={DOM.overlay}>
 							<S.ReadingOverlay className={'fade-in'}>
 								<S.ReadingWrapper>
 									<S.ReadingActionWrapper className={'fade-in'}>
-										<AssetReadActions toggleViewType={() => setViewType('trading')} />
+										<AssetReadActions
+											toggleViewType={() => setViewType('trading')}
+											assetId={asset.data.id}
+											isEbook={isEbook}
+										/>
 									</S.ReadingActionWrapper>
 									<S.ReadingInfoWrapper className={'fade-in'}>
 										<AssetData asset={asset} autoLoad />
