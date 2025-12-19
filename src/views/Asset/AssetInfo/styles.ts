@@ -27,8 +27,32 @@ export const OwnerLine = styled.div`
 	}
 `;
 
+export const CurrencyWrapper = styled.div`
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	flex-wrap: wrap;
+`;
+
+export const CurrencyInfo = styled.div`
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	color: ${(props) => props.theme.colors.font.primary};
+	transition: all 0.2s;
+
+	&:hover {
+		opacity: 0.7;
+	}
+`;
+
 export const CurrencyIcon = styled.img`
 	height: 16.5px !important;
 	width: 16.5px !important;
-	margin: 3.5px 0 0 6.5px !important;
+`;
+
+export const CurrencyName = styled.span`
+	font-size: ${(props) => props.theme.typography.size.xSmall};
+	font-weight: ${(props) => props.theme.typography.weight.medium};
+	color: ${(props) => props.theme.colors.font.alt1};
 `;
