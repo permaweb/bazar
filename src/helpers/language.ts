@@ -150,6 +150,8 @@ export const language = {
 		seller: `Seller`,
 		sellerFee: `The UCM Will Take a 0.5% Fee from the Total Sale.`,
 		setProfilePicture: `Set as Profile Picture`,
+		share: `Share`,
+		shareOn: `Share on`,
 		stamp: `Stamp`,
 		stampComment: `STAMP Comment`,
 		stampCount: `STAMPs`,

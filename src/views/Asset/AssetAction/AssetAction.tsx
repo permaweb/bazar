@@ -1,6 +1,7 @@
 import React from 'react';
 import { useSelector } from 'react-redux';
 import { Link } from 'react-router-dom';
+import { TwitterShareButton } from 'react-share';
 import { ReactSVG } from 'react-svg';
 
 import { getProfiles } from 'api';
@@ -87,6 +88,42 @@ export default function AssetAction(props: IProps) {
 
 	const [currentTab, setCurrentTab] = React.useState<string>(ACTION_TABS[0]!.label);
 	const [urlCopied, setUrlCopied] = React.useState<boolean>(false);
+
+	const getShareContent = React.useCallback(() => {
+		const baseUrl = `https://bazar.arweave.net/#/asset/${props.asset.data.id}\n`;
+
+		// Detect if this is an AO token or atomic asset
+		const isAOToken = TOKEN_REGISTRY[props.asset.data.id] !== undefined;
+		const assetType = isAOToken ? 'AO token' : 'atomic asset';
+		const baseTitle = `Check out this ${assetType} on BazAR: "${props.asset.data.title}"`;
+
+		// Detect if asset is an image or video - check both contentType and try to determine from asset render
+		const contentType = props.asset.data.contentType?.toLowerCase() || '';
+
+		// Also check if there's a renderWith that might indicate it's a renderer (not raw media)
+		const hasRenderer = props.asset.data.renderWith && props.asset.data.renderWith !== '[]';
+
+		const isImage = contentType.includes('image') && !hasRenderer;
+		const isVideo = contentType.includes('video') && !hasRenderer;
+		const isGif = contentType.includes('gif');
+
+		// For images, videos, and GIFs, include the direct Arweave URL
+		if (isImage || isVideo || isGif) {
+			const mediaUrl = `https://arweave.net/${props.asset.data.id}`;
+			const mediaEmoji = isVideo ? '🎬' : isGif ? '✨' : '🖼️';
+
+			return {
+				title: `${baseTitle}\n\n${mediaEmoji} ${mediaUrl}\n\n`,
+				url: baseUrl,
+			};
+		}
+
+		// For other types (documents, audio, etc.), just share the page URL
+		return {
+			title: `${baseTitle}\n\n`,
+			url: baseUrl,
+		};
+	}, [props.asset.data.id, props.asset.data.title, props.asset.data.contentType, props.asset.data.renderWith]);
 
 	React.useEffect(() => {
 		if (props.asset && props.asset.state?.balances) {
@@ -615,6 +652,28 @@ export default function AssetAction(props: IProps) {
 								tooltip={urlCopied ? `${language.copied}!` : language.copyPageUrl}
 								useBottomToolTip
 							/>
+							<TwitterShareButton
+								url={getShareContent().url}
+								title={getShareContent().title}
+								hashtags={
+									TOKEN_REGISTRY[props.asset.data.id]
+										? ['Arweave', 'BazAR', 'AOTokens']
+										: ['Arweave', 'BazAR', 'AtomicAssets']
+								}
+								style={{ display: 'flex' }}
+							>
+								<IconButton
+									type={'alt1'}
+									src={ASSETS.x}
+									handlePress={() => {}}
+									dimensions={{
+										wrapper: 33.5,
+										icon: 17.5,
+									}}
+									tooltip={`${language.shareOn} X`}
+									useBottomToolTip
+								/>
+							</TwitterShareButton>
 						</S.HeaderTitleActions>
 					</S.HeaderTitle>
 					<S.OrdersWrapper>
