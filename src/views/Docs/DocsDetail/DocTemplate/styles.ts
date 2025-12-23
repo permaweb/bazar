@@ -8,6 +8,9 @@ export const Wrapper = styled.div<{ isView: boolean }>`
 	padding: ${(props) => (props.isView ? '0 40px 0 30px' : '0')};
 	animation: ${open} ${fadeIn2};
 	margin: 0 0 0 auto;
+	display: flex;
+	flex-direction: column;
+	gap: 25px;
 
 	@media (max-width: ${STYLING.cutoffs.initial}) {
 		width: 100%;
@@ -25,7 +28,6 @@ export const Wrapper = styled.div<{ isView: boolean }>`
 		font-weight: ${(props) => props.theme.typography.weight.bold} !important;
 		font-family: ${(props) => props.theme.typography.family.alt1} !important;
 		color: ${(props) => props.theme.colors.font.primary} !important;
-		margin: 0 0 5px 0;
 		padding: 0 0 2.5px 0;
 	}
 
@@ -33,7 +35,6 @@ export const Wrapper = styled.div<{ isView: boolean }>`
 	h4,
 	h5,
 	h6 {
-		margin: 50px 0 10px 0;
 	}
 
 	h2 {
@@ -45,17 +46,19 @@ export const Wrapper = styled.div<{ isView: boolean }>`
 		}
 	}
 
-	h3,
+	h3 {
+		font-size: clamp(18px, 2.5vw, 28px) !important;
+	}
+
 	h4,
 	h5 {
-		font-size: clamp(18px, 2.5vw, 28px) !important;
+		font-size: clamp(16px, 2vw, 24px) !important;
 	}
 
 	h6 {
 		font-size: clamp(16px, 1.95vw, 22px) !important;
 		color: ${(props) => props.theme.colors.font.alt1} !important;
 		border-bottom: 1px solid transparent;
-		margin: 35px 0 0 0;
 
 		a {
 			font-size: clamp(16px, 1.95vw, 22px) !important;
@@ -82,6 +85,7 @@ export const Wrapper = styled.div<{ isView: boolean }>`
 		font-family: ${(props) => props.theme.typography.family.primary} !important;
 		color: ${(props) => props.theme.colors.font.alt1} !important;
 		line-height: 1.65 !important;
+		margin: -12.5px 0 0 0;
 	}
 
 	a {
@@ -94,7 +98,7 @@ export const Wrapper = styled.div<{ isView: boolean }>`
 		display: flex;
 		flex-direction: column;
 		gap: 7.5px;
-		margin: 7.5px 0 0 0;
+		margin: -12.5px 0 0 0;
 
 		li {
 			list-style-type: none;
@@ -166,7 +170,6 @@ export const Wrapper = styled.div<{ isView: boolean }>`
 		background: ${(props) => props.theme.colors.container.primary.background};
 		border: 1px solid ${(props) => props.theme.colors.border.primary};
 		border-radius: ${STYLING.dimensions.radius.primary};
-		margin: 30px 0 0 0;
 	}
 `;
 

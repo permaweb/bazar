@@ -6,7 +6,6 @@ import {
 	getAllEbookCollections,
 	getAllMusicCollections,
 	getAssetByIdGQL,
-	getAssetStateById,
 	getCollectionById,
 	getCollections,
 } from 'api';
@@ -318,6 +317,9 @@ export default function Landing() {
 					<Link to={`${URLS.asset}${AO.ao}`}>
 						<S.TokenImage>
 							<img src={getTxEndpoint(TOKEN_REGISTRY[AO.ao].logo)} alt={'AO'} />
+						</S.TokenImage>
+						<S.TokenImage>
+							<img src={getTxEndpoint(TOKEN_REGISTRY[AO.pi].logo)} alt={'AO'} />
 						</S.TokenImage>
 					</Link>
 				</S.TokenWrapper>

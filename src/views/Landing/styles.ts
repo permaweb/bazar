@@ -1,5 +1,7 @@
 import styled from 'styled-components';
 
+import { STYLING } from 'helpers/config';
+
 export const Wrapper = styled.div`
 	width: 100%;
 `;
@@ -13,18 +15,37 @@ export const TokenWrapper = styled.div<{ disabled: boolean }>`
 	overflow: hidden;
 	margin: 20px 0 0 0;
 	transition: all 100ms;
+
+	background-image: radial-gradient(${(props) => props.theme.colors.container.alt1.background} 1px, transparent 1px);
+	background-size: 3px 3px;
+	background-position: 0 0;
+
 	a {
-		min-height: 100%;
+		min-height: 450px;
 		min-width: 100%;
 		height: 100%;
 		width: 100%;
 		display: flex;
+		position: relative;
 		flex-direction: column;
 		align-items: center;
 		justify-content: center;
 		transition: all 100ms;
 		padding: 20px;
 		border: 1px solid transparent;
+
+		> :first-child {
+			position: absolute;
+			top: -30px;
+			left: 29%;
+			z-index: 2;
+		}
+		> :last-child {
+			position: absolute;
+			top: 60px;
+			right: 32%;
+			z-index: 1;
+		}
 	}
 	&:hover {
 		background: ${(props) =>
@@ -34,11 +55,25 @@ export const TokenWrapper = styled.div<{ disabled: boolean }>`
 		border: 1px solid
 			${(props) => (props.disabled ? props.theme.colors.border.primary : props.theme.colors.border.alt2)} !important;
 	}
+
+	@media (max-width: ${STYLING.cutoffs.desktop}) {
+		a {
+			> :first-child {
+				position: relative;
+				top: auto;
+				left: auto;
+			}
+			> :last-child {
+				display: none;
+			}
+		}
+	}
 `;
 
 export const TokenImage = styled.div<{}>`
 	height: 300px;
 	width: 300px;
+	box-shadow: 0px 3.5px 5px 0px ${(props) => props.theme.colors.shadow.alt2};
 	border: 1px solid ${(props) => props.theme.colors.border.primary};
 	border-radius: 50%;
 	overflow: hidden;

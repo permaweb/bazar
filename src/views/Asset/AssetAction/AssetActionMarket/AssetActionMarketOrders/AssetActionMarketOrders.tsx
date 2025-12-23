@@ -125,7 +125,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 	// Track hydration progress for each token (tokenId -> percentage)
 	const [hydrationProgress, setHydrationProgress] = React.useState<{ [key: string]: number }>({});
 
-	const CURRENT_AO_NODE = 'https://state.forward.computer';
+	const CURRENT_AO_NODE = 'https://state-a.forward.computer';
 	const CURRENT_TOKEN_NODE = 'https://state-1.forward.computer';
 	const SU_URL = 'https://su-router.ao-testnet.xyz';
 

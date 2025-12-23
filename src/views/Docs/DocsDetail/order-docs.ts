@@ -12,17 +12,13 @@ export const docsOrder = [
 				path: 'profiles',
 			},
 			{
-				name: 'Vouch your wallet',
-				path: 'vouch',
-			},
-			{
 				name: 'PIXL Fair Launch',
 				path: 'pixl-fair-launch',
 			},
 		],
 	},
 	{
-		name: 'For collectors',
+		name: 'For Collectors',
 		path: 'collectors',
 		children: [
 			{
@@ -40,7 +36,7 @@ export const docsOrder = [
 		],
 	},
 	{
-		name: 'For creators',
+		name: 'For Creators',
 		path: 'creators',
 		children: [
 			{
@@ -62,7 +58,7 @@ export const docsOrder = [
 		],
 	},
 	{
-		name: 'For developers',
+		name: 'For Developers',
 		path: 'developers',
 		children: [
 			{
@@ -82,22 +78,8 @@ export const docsOrder = [
 				path: 'collections',
 			},
 			{
-				name: 'AO Profile',
-				path: 'ao-profile',
-			},
-			{
 				name: 'Integrations',
 				path: 'integrations',
-			},
-		],
-	},
-	{
-		name: 'AOS Integration',
-		path: 'aos',
-		children: [
-			{
-				name: 'Commands Reference',
-				path: 'commands',
 			},
 		],
 	},
