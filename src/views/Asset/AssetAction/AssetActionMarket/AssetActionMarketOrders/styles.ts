@@ -16,12 +16,14 @@ export const LearnMoreWrapper = styled.div`
 	a {
 		display: flex;
 		align-items: center;
-		gap: 8px;
+		gap: 7.5px;
 		text-decoration: none;
-		opacity: 0.6;
 		transition: opacity 0.2s ease;
-		font-size: ${(props) => props.theme.typography.size.small};
-		color: ${(props) => props.theme.colors.font.alt1};
+
+		span {
+			font-size: ${(props) => props.theme.typography.size.small};
+			color: ${(props) => props.theme.colors.font.primary};
+		}
 
 		&:hover {
 			opacity: 1;
@@ -30,12 +32,9 @@ export const LearnMoreWrapper = styled.div`
 		svg {
 			width: 14px;
 			height: 14px;
-			fill: ${(props) => props.theme.colors.font.alt1};
-		}
-
-		span {
-			font-size: ${(props) => props.theme.typography.size.small};
-			color: ${(props) => props.theme.colors.font.alt1};
+			margin: 6.5px 0 0 0;
+			color: ${(props) => props.theme.colors.font.primary};
+			fill: ${(props) => props.theme.colors.font.primary};
 		}
 	}
 `;

@@ -1,159 +1,84 @@
-# AO Token Trading System
+## AO Token Trading System
 
-## Overview
+The AO Token Trading System in Bazar is a decentralized exchange mechanism built on the Universal Content Marketplace (UCM) protocol. Unlike traditional DEXs that require liquidity pools, this system enables direct peer-to-peer trading through an on-chain orderbook, allowing users to buy, sell, bid, and list tokens without intermediaries.
 
-The AO Token Trading System in Bazar is a truly decentralized exchange mechanism built on the Universal Content Marketplace (UCM) protocol. Unlike traditional DEXs that require liquidity pools, this system enables direct peer-to-peer trading through an on-chain orderbook, allowing users to buy, sell, bid, and list tokens without intermediaries.
+### Core Concepts
 
-## Key Concepts
-
-### Orderbook-Based Trading
+#### Orderbook-Based Trading
 
 The system uses an **orderbook** - a decentralized ledger of buy and sell orders stored on-chain. Each asset can have its own orderbook that tracks:
 
 - **Asks (Listings)**: Sell orders where users list assets at a specific price
 - **Bids**: Buy orders where users offer to purchase assets at a specific price
 
-### No Liquidity Pools Required
+The orderbook structure separates orders into `Asks` and `Bids` arrays, each containing orders with:
 
-Traditional DEXs (like Uniswap) require liquidity providers to deposit tokens into pools. The AO Token Trading System eliminates this need:
+- Order ID
+- Creator address
+- Quantity (remaining and original)
+- Token address
+- Price
+- Creation timestamp
+- Side (Ask or Bid)
+
+#### No Liquidity Pools Required
+
+Traditional DEXs require liquidity providers to deposit tokens into pools. The AO Token Trading System eliminates this need:
 
 - **Direct Matching**: Orders are matched directly between buyers and sellers
 - **No Intermediaries**: Trades execute peer-to-peer through the UCM protocol
 - **On-Chain Orderbook**: All orders are stored on the Arweave blockchain via AO processes
 - **True Decentralization**: No centralized exchange or liquidity pool required
 
-## System Evolution: Legacy vs. New Orderbook
+### Trading Actions
 
-### Legacy System (Before Bid/List Update)
+The system provides **5 trading actions** that cover all trading needs:
 
-The original trading system had a simpler structure with only **3 trading actions**:
+1. **Buy** - Market order to purchase from listings
+2. **Sell** - Market order to fill existing bids
+3. **Bid** - Limit order to place buy offers
+4. **List** - Limit order to create sell listings
+5. **Transfer** - Direct asset transfer
 
-1. **Buy** - Purchase assets from existing listings (same as current)
-2. **List** - Create a sell listing at a specific price (this was the only way to sell)
-3. **Transfer** - Direct asset transfer (same as current)
+These actions provide:
 
-**Key Characteristics:**
+- Clear distinction between market orders (Buy/Sell) and limit orders (Bid/List)
+- Full price discovery through bid/ask spread
+- Flexible trading options for both buyers and sellers
 
-- No separate "Sell" tab - users had to create a listing first
-- No "Bid" functionality - buyers could only purchase from existing listings
-- Orders stored in a simple `Orders` array without side information
-- Less flexible - required creating limit orders even for immediate sales
-
-**Legacy Orderbook Structure:**
-
-The legacy orderbook used a simple structure with a `Pair` array containing base and quote tokens, and an `Orders` array without distinction between Ask and Bid orders. For implementation details, see the source code on GitHub.
-
-### New System (Current)
-
-The updated system introduces **5 trading actions** with clearer separation of market and limit orders:
-
-1. **Buy** - Market order to purchase from listings (unchanged behavior)
-2. **Sell** - Market order to fill existing bids (NEW - immediate sales)
-3. **Bid** - Limit order to place buy offers (NEW - waiting for sellers)
-4. **List** - Limit order to create sell listings (renamed from old "Sell")
-5. **Transfer** - Direct asset transfer (unchanged)
-
-**Key Improvements:**
-
-- **Sell** tab allows immediate market sales by filling existing bids
-- **Bid** tab allows buyers to place offers and wait for sellers
-- Clearer distinction between market orders (Buy/Sell) and limit orders (Bid/List)
-- Better price discovery through bid/ask spread
-- More flexible trading options for users
-
-**New Orderbook Structure:**
-
-The new orderbook structure separates orders into `Asks` (sell orders/listings) and `Bids` (buy orders), providing clearer distinction between order types. For implementation details, see the source code on GitHub.
-
-### Key Differences
-
-**Tabs Available**
-
-- Legacy: Buy, List, Transfer
-- New: Buy, Sell, Bid, List, Transfer
-
-**Immediate Sales**
-
-- Legacy: Must create listing first, then wait for buyers
-- New: "Sell" tab allows immediate sales by filling existing bids
-
-**Buy Offers**
-
-- Legacy: Not available - buyers could only purchase from existing listings
-- New: "Bid" tab allows placing buy offers and waiting for sellers
-
-**Order Structure**
-
-- Legacy: Simple `Orders` array without side distinction
-- New: Separate `Asks` and `Bids` arrays with clear side information
-
-**Market Orders**
-
-- Legacy: Buy only
-- New: Buy + Sell
-
-**Limit Orders**
-
-- Legacy: List only
-- New: Bid + List
-
-**Price Discovery**
-
-- Legacy: Limited to listings only
-- New: Full bid/ask spread with both sides of the market
-
-### Migration Notes
-
-- **Legacy assets** (with old orderbook structure) still work with the 3-tab interface (Buy, List, Transfer)
-- **New assets** automatically use the 5-tab interface (Buy, Sell, Bid, List, Transfer)
-- The system detects legacy orderbooks and adapts the UI accordingly
-- All new assets created after the update use the new structure
-- **Backward compatible**: Legacy assets continue to function normally
-
-## Trading Actions
-
-The system provides five main trading actions, each serving a specific purpose:
-
-### 1. Buy (Market Order)
+#### 1. Buy (Market Order)
 
 **Purpose**: Purchase assets from existing listings at market price
 
 **How it works**:
 
 - User selects quantity of assets to buy
-- System automatically matches against available **Ask orders** (listings created via "List" tab)
+- System automatically matches against available **Ask orders** (listings)
 - Fills orders starting from lowest price first (best price for buyer)
-- User sends payment token (e.g., PI) and receives assets immediately
-- **Works the same in both legacy and new systems**
+- User sends payment token and receives assets immediately
+- Supports partial fills if insufficient liquidity
 
 **When to use**: When you want to purchase assets immediately at current market price
 
-**How it's implemented**: Buy orders send the payment token (quote token) and receive the asset (base token). The system calculates the total payment amount based on quantity and average price. For implementation details, see the source code on GitHub.
+**Implementation**: Buy orders send the payment token (quote token) and receive the asset (base token). The orderbook process calculates the total payment amount and matches against available asks, applying a 0.05% fee that goes toward buybacks.
 
-### 2. Sell (Market Order) - NEW
+#### 2. Sell (Market Order)
 
 **Purpose**: Sell assets immediately by filling existing bids at market price
 
 **How it works**:
 
 - User selects quantity of assets to sell
-- System automatically matches against available **Bid orders** (created via "Bid" tab)
+- System automatically matches against available **Bid orders**
 - Fills bids starting from highest price first (best price for seller)
 - User sends assets and receives payment token immediately
-- **Only available in new orderbook system** (not in legacy)
-
-**Key Difference from Legacy System**:
-
-- **Legacy**: Users had to use "List" to create a sell order and wait for buyers
-- **New**: Users can immediately sell by filling existing bids without creating a listing
-
-**Key Difference from Traditional DEX**: The "Sell" tab doesn't create a new listing - it fills existing bids. This follows standard market conventions where "selling" means accepting existing buy offers.
+- Supports partial fills if insufficient liquidity
 
 **When to use**: When you want to sell assets immediately at current market price (requires existing bids)
 
-**How it's implemented**: Sell orders send the asset (base token) and receive the payment token (quote token). The system matches against existing bids, sorting them by highest price first to get the best price for the seller. The matching logic handles partial fills and calculates the total quote tokens received. For implementation details, see the source code on GitHub.
+**Implementation**: Sell orders send the asset (base token) and receive the payment token (quote token). The system matches against existing bids sorted by highest price first, ensuring sellers get the best available price. A 0.05% fee is applied toward buybacks.
 
-### 3. Bid (Limit Order) - NEW
+#### 3. Bid (Limit Order)
 
 **Purpose**: Place a buy order at a specific price, waiting for sellers to fill it
 
@@ -162,15 +87,14 @@ The system provides five main trading actions, each serving a specific purpose:
 - User specifies quantity and price per unit
 - Creates a **Bid order** in the orderbook
 - Order remains active until filled or cancelled
-- When someone uses "Sell" tab, they can fill your bid
-- User's payment tokens are locked until order is filled or cancelled
-- **Only available in new orderbook system** (not in legacy)
+- Sellers using "Sell" can fill your bid
+- Payment tokens are locked in the orderbook until order is filled or cancelled
 
-**When to use**: When you want to buy at a specific price and are willing to wait for sellers to fill your bid
+**When to use**: When you want to buy at a specific price and are willing to wait for sellers
 
-**How it's implemented**: Bid orders send the payment token (quote token) and receive the asset (base token) at the specified price. The transfer quantity is the total payment amount (quantity \* unit price). For implementation details, see the source code on GitHub.
+**Implementation**: Bid orders send the total payment amount (quantity × price) to the orderbook process. The order is added to the `Bids` table and remains until matched or cancelled. When matched, the base token is transferred to the bidder and the quote token to the seller.
 
-### 4. List (Limit Order)
+#### 4. List (Limit Order)
 
 **Purpose**: Create a sell listing at a specific price, waiting for buyers to purchase
 
@@ -179,20 +103,14 @@ The system provides five main trading actions, each serving a specific purpose:
 - User specifies quantity and price per unit
 - Creates an **Ask order** (listing) in the orderbook
 - Order remains active until filled or cancelled
-- When someone uses "Buy" tab, they can purchase from your listing
-- User's assets are locked until order is filled or cancelled
+- Buyers using "Buy" can purchase from your listing
+- Assets are locked in the orderbook until order is filled or cancelled
 
-**Evolution from Legacy System**:
+**When to use**: When you want to sell at a specific price and are willing to wait for buyers
 
-- **Legacy**: "List" was the only way to sell assets (users had to create a listing)
-- **New**: "List" is now specifically for limit orders, while "Sell" handles immediate market sales
-- The functionality is the same, but the naming is clearer and more aligned with market conventions
+**Implementation**: List orders send the asset quantity to the orderbook process. The order is added to the `Asks` table with the specified price. When matched, the base token is transferred to the buyer and the quote token to the seller.
 
-**When to use**: When you want to sell at a specific price and are willing to wait for buyers to purchase from your listing
-
-**How it's implemented**: List orders send the asset (base token) and receive the payment token (quote token) at the specified price. The transfer quantity is the asset amount being listed. For implementation details, see the source code on GitHub.
-
-### 5. Transfer
+#### 5. Transfer
 
 **Purpose**: Directly transfer assets to another address without trading
 
@@ -203,171 +121,161 @@ The system provides five main trading actions, each serving a specific purpose:
 - No orderbook interaction required
 - Useful for gifting or moving assets between wallets
 
-**How it's implemented**: Transfer operations send a direct message to the asset process with the Transfer action, including quantity and recipient address in the message tags. No orderbook is involved in this operation. For implementation details, see the source code on GitHub.
+**Implementation**: Transfer operations send a direct message to the asset process with the `Transfer` action, bypassing the orderbook entirely.
 
-## System Flow Diagram
+#### Order Matching Logic
 
-The following diagram illustrates how orders flow through the system:
+The orderbook process automatically matches orders using price-time priority:
 
+#### Market Orders (Buy/Sell)
+
+**Buy Orders**: Match against existing **Ask orders** (listings)
+
+- Orders sorted by price: **lowest first** (best execution for buyer)
+- Fills available asks until requested quantity is satisfied
+- Calculates VWAP (volume-weighted average price) across all fills
+- Supports partial fills if insufficient liquidity
+- Transfers quote token from buyer to seller, base token from seller to buyer
+
+**Sell Orders**: Match against existing **Bid orders**
+
+- Orders sorted by price: **highest first** (best execution for seller)
+- Fills available bids until requested quantity is satisfied
+- Calculates VWAP across all fills
+- Supports partial fills if insufficient liquidity
+- Transfers base token from seller to bidder, quote token from bidder to seller
+
+#### Limit Orders (Bid/List)
+
+**Bid Orders**: Added to orderbook, waiting for sellers
+
+- Stored in `Bids` table with specified price and quantity
+- Locked payment tokens held by orderbook process
+- Matched when sellers use "Sell" market orders
+- Can be cancelled by creator (returns locked tokens)
+
+**List Orders**: Added to orderbook, waiting for buyers
+
+- Stored in `Asks` table with specified price and quantity
+- Locked assets held by orderbook process
+- Matched when buyers use "Buy" market orders
+- Can be cancelled by creator (returns locked assets)
+
+#### Price Calculation
+
+The system handles token denominations for accurate pricing:
+
+- Each trading pair stores base and quote token denominations
+- Price is expressed as: quote token (raw) per 1 base token (display units)
+- Example: If base denomination is 1,000,000 (6 decimals), price of 500,000 means 0.5 quote tokens per 1 display unit of base token
+- Calculations preserve precision using integer arithmetic throughout
+
+### Implementation Architecture
+
+#### Order Creation Flow
+
+1. **User initiates order** via Bazar UI (Buy, Sell, Bid, List)
+2. **UCM SDK** (`@permaweb/ucm`) prepares the order with proper tags
+3. **Token transfer** sent to dominant token process with `Credit-Notice` action
+4. **Orderbook process** receives credit notice and processes order:
+5. **Activity tracking** updates executed/listed orders
+6. **Response sent** to user with order status and details
+
+#### Orderbook Structure
+
+Each trading pair in the orderbook contains:
+
+```lua
+{
+  Pair = [BaseToken, QuoteToken],      -- Token addresses
+  Denominations = [BaseDenom, QuoteDenom], -- Token decimals (default: 1)
+  Asks = [...],                         -- Sell orders
+  Bids = [...],                         -- Buy orders
+  PriceData = {                         -- Market data
+    Vwap,                               -- Volume-weighted average price
+    Block,                              -- Last trade block height
+    DominantToken,                      -- Last trade dominant token
+    MatchLogs                           -- Trade history
+  }
+}
 ```
-┌─────────────────────────────────────────────────────────────┐
-│              AO Token Trading System Flow                    │
-└─────────────────────────────────────────────────────────────┘
 
-    User A                    Orderbook                  User B
-    ──────                    ────────                  ──────
-      │                          │                        │
-      │  1. List 100 AO @ 10 PI  │                        │
-      │─────────────────────────>│                        │
-      │                          │                        │
-      │                          │  2. Bid 50 AO @ 12 PI │
-      │                          │<───────────────────────│
-      │                          │                        │
-      │                          │  Orderbook State:      │
-      │                          │  • Ask: 100 AO @ 10 PI│
-      │                          │  • Bid: 50 AO @ 12 PI │
-      │                          │                        │
-      │                          │  3. Buy 30 AO          │
-      │                          │<───────────────────────│
-      │                          │                        │
-      │  4. Match with Ask       │                        │
-      │<─────────────────────────│                        │
-      │                          │                        │
-      │  5. Receive 300 PI       │                        │  5. Receive 30 AO
-      │<─────────────────────────│                        │<───────────────
-      │                          │                        │
-      │                          │  6. Sell 20 AO         │
-      │                          │<───────────────────────│
-      │                          │                        │
-      │  7. Receive 20 AO        │                        │  7. Match with Bid
-      │<─────────────────────────│                        │<───────────────
-      │                          │                        │
-      │                          │                        │  8. Receive 240 PI
-      │                          │                        │<───────────────
+#### Order Structure
+
+Each order in the `Asks` or `Bids` table contains:
+
+```lua
+{
+  Id,                 -- Transaction ID
+  Creator,            -- Order creator address
+  Quantity,           -- Remaining quantity
+  OriginalQuantity,   -- Initial quantity
+  Token,              -- Token being sent
+  DateCreated,        -- Creation timestamp
+  Price,              -- Price per unit
+  Side                -- "Ask" or "Bid"
+}
 ```
 
-**Step-by-Step Explanation:**
+#### Token Denominations
 
-1. **User A** creates a **List** order: 100 AO @ 10 PI per token
+Tokens can have different decimal places (denominations):
 
-   - Order stored in orderbook as an **Ask**
+- Stored as base denomination (e.g., 1,000,000 for 6 decimals)
+- Orderbook stores denominations for both base and quote tokens
+- Prices calculated using raw token amounts for precision
+- UI converts to display units for user-friendly presentation
 
-2. **User B** creates a **Bid** order: 50 AO @ 12 PI per token
+#### Balance Management
 
-   - Order stored in orderbook as a **Bid**
+The system supports multiple balance sources:
 
-3. **User B** uses **Buy** tab to purchase 30 AO
+- **Wallet Balance**: Direct wallet holdings
+- **Profile Balance**: Tokens in AO profile process
 
-   - System matches against User A's Ask (lowest price first)
-   - User B sends 300 PI, receives 30 AO
+Order creation attempts wallet first, falls back to profile if insufficient funds.
 
-4. **User A** uses **Sell** tab to sell 20 AO
-   - System matches against User B's Bid (highest price first)
-   - User A sends 20 AO, receives 240 PI
+### Comparison to Traditional DEX Models
 
-**Key Points:**
+#### AMM-Based DEX
 
-- **Buy** matches against existing **Asks** (List orders)
-- **Sell** matches against existing **Bids** (Bid orders)
-- Orders are matched automatically by price priority
-- All transactions are peer-to-peer through the on-chain orderbook
+- **Liquidity Pools**: Requires liquidity providers to deposit token pairs
+- **Automated Pricing**: Prices determined by pool ratios (constant product formula)
+- **Impermanent Loss**: LPs risk losing value when prices diverge
+- **Immediate Execution**: Always available if pool has liquidity
+- **Slippage**: Large orders move price significantly
 
-## Order Matching Logic
+#### Orderbook-Based DEX (AO Token Trading System)
 
-The UCM protocol handles order matching automatically:
+- **Direct Matching**: Peer-to-peer orders without intermediaries
+- **Market-Set Pricing**: Buyers and sellers determine prices
+- **No Impermanent Loss**: No liquidity provider role required
+- **Execution Depends on Orders**: Market orders need matching limit orders
+- **Price Priority**: Best prices matched first, transparent orderbook
 
-### Market Orders (Buy/Sell)
+### Trading Strategies
 
-1. **Buy Orders**: Match against existing **Ask orders** (listings)
+#### Market Orders
 
-   - Sorted by price: **lowest first** (best price for buyer)
-   - Fills orders until quantity is satisfied
-   - Partial fills are supported
+- **Use when**: You want immediate execution at best available price
+- **Best for**: Quick trades when price certainty is less important than execution
+- **Tip**: Check orderbook depth before large market orders
 
-2. **Sell Orders**: Match against existing **Bid orders**
-   - Sorted by price: **highest first** (best price for seller)
-   - Fills bids until quantity is satisfied
-   - Partial fills are supported
+#### Limit Orders
 
-### Limit Orders (Bid/List)
+- **Use when**: You have a target price and can wait for execution
+- **Best for**: Patient traders who want price control
+- **Tip**: Place bids below current asks, place asks above current bids for better chances of execution
 
-1. **Bid Orders**: Placed in orderbook, waiting for sellers
+#### Price Discovery
 
-   - Stored with specified price and total payment amount
-   - Can be filled by "Sell" market orders
-   - Can be cancelled by creator
+- Monitor the bid-ask spread to understand market liquidity
+- Tight spreads indicate active markets
+- Wide spreads may require competitive limit orders
 
-2. **List Orders**: Placed in orderbook, waiting for buyers
-   - Stored with specified price and asset quantity
-   - Can be filled by "Buy" market orders
-   - Can be cancelled by creator
+#### Order Management
 
-## Implementation Details
-
-### Order Creation
-
-All orders are created through the UCM protocol using the `createOrder` function from `@permaweb/ucm`. The function takes orderbook details, token information, quantity, and price parameters, along with a status callback for tracking order creation progress. For implementation details, see the source code on GitHub.
-
-### Orderbook Creation
-
-If an asset doesn't have an orderbook, one is created automatically using the `createOrderbook` function. The orderbook can optionally be associated with a collection. For implementation details, see the source code on GitHub.
-
-### Token Denominations
-
-The system handles tokens with different denominations (decimals), setting appropriate denomination values for both base tokens (assets) and quote tokens (payment tokens) when they differ from the default. For implementation details, see the source code on GitHub.
-
-### Balance Management
-
-The system supports both wallet and profile balances:
-
-- **Profile Balance**: Tokens stored in user's AO profile
-- **Wallet Balance**: Tokens stored directly in wallet
-
-The system automatically transfers from wallet to profile when needed, checking wallet balance first and falling back to profile balance if insufficient. For implementation details, see the source code on GitHub.
-
-## Differences from Traditional DEX
-
-### Traditional DEX (e.g., Uniswap)
-
-- **Requires Liquidity Pools**: Users must provide liquidity to enable trading
-- **Automated Market Maker (AMM)**: Prices determined by pool ratios
-- **Liquidity Provider Fees**: LPs earn fees but face impermanent loss
-- **Centralized Components**: Often relies on centralized components for some operations
-
-### AO Token Trading System
-
-- **No Liquidity Pools**: Direct peer-to-peer matching
-- **Orderbook-Based**: Prices set by market participants
-- **No Intermediaries**: Fully decentralized on Arweave/AO
-- **True Ownership**: Users maintain full control of their assets
-- **Flexible Pricing**: Market and limit orders supported
-
-## Code Structure
-
-The main implementation is located in `bazar/src/views/Asset/AssetAction/AssetActionMarket/AssetActionMarketOrders/`, with the primary component handling all trading logic and a types file for TypeScript definitions. Key functions include order creation, transfer quantity calculation, total order amount calculation, and order parameter validation. For complete implementation details, see the source code on GitHub.
-
-## Best Practices
-
-1. **Market Orders**: Use for immediate execution at current market price
-2. **Limit Orders**: Use when you want to set a specific price
-3. **Bid Strategy**: Place bids slightly below market for better fills
-4. **List Strategy**: List slightly above market for better prices
-5. **Partial Fills**: System supports partial order fills automatically
-
-## Security Considerations
-
-- All orders are stored on-chain via AO processes
-- No centralized exchange risk
-- Users maintain custody of assets until trade execution
-- Orders can be cancelled by creator
-- Transparent orderbook for all participants
-
-## Future Enhancements
-
-Potential improvements to the system:
-
-- Order expiration timestamps
-- Advanced order types (stop-loss, take-profit)
-- Order history and analytics
-- Batch order operations
-- Cross-chain compatibility
+- **Cancellable**: Creators can cancel unfilled orders anytime
+- **Atomic Execution**: Trades execute completely or not at all
+- **Token Locking**: Assets locked in orderbook process during active orders
+- **Fee Structure**: 0.05% trading fee supports ecosystem buybacks
