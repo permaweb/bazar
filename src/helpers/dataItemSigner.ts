@@ -236,6 +236,30 @@ export function createUnifiedDataItemSigner(chain: ChainType) {
 				originalSigConfig.sigLength = 65;
 			}
 
+			// #region agent log
+			fetch('http://127.0.0.1:7242/ingest/5c5bd03e-3b23-4d26-96d2-4949305ee115', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					location: 'dataItemSigner.ts:239',
+					message: 'Before createData call',
+					data: {
+						dataBytesLength: dataBytes.length,
+						tagsCount: tags.length,
+						tagsTotalBytes: tags.reduce((sum, t) => sum + t.name.length + t.value.length, 0),
+						maxTagNameLength: Math.max(...tags.map((t) => t.name.length), 0),
+						maxTagValueLength: Math.max(...tags.map((t) => t.value.length), 0),
+						tagNames: tags.map((t) => t.name),
+						tagValueLengths: tags.map((t) => ({ name: t.name, length: t.value.length })),
+					},
+					timestamp: Date.now(),
+					sessionId: 'debug-session',
+					runId: 'run1',
+					hypothesisId: 'J',
+				}),
+			}).catch(() => {});
+			// #endregion
+
 			let dataItem: any;
 			try {
 				// Now createData should work with the patched SIG_CONFIG[2]

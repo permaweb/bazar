@@ -15,6 +15,7 @@ import { getARBalanceEndpoint } from 'helpers/endpoints';
 import { WalletEnum } from 'helpers/types';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 import { useWayfinderProvider } from 'providers/WayfinderProvider';
+import { useEvmWallet } from 'providers/EvmWalletProvider';
 import { RootState } from 'store';
 
 import * as S from './styles';
@@ -117,6 +118,32 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 	const [wallet, setWallet] = React.useState<any>(null);
 	const [walletType, setWalletType] = React.useState<WalletEnum | null>(null);
 	const [walletModalVisible, setWalletModalVisible] = React.useState<boolean>(false);
+
+	// Get EVM wallet state to detect when it connects
+	const evmWallet = useEvmWallet();
+
+	// Close wallet modal when EVM wallet connects
+	// This ensures the modal closes automatically after ETH wallet connection
+	React.useEffect(() => {
+		if (evmWallet.evmAddress && evmWallet.isConnected && walletModalVisible) {
+			// #region agent log
+			fetch('http://127.0.0.1:7242/ingest/5c5bd03e-3b23-4d26-96d2-4949305ee115', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					location: 'ArweaveProvider.tsx:125',
+					message: 'EVM wallet connected, closing modal',
+					data: { evmAddress: evmWallet.evmAddress, walletModalVisible, isConnected: evmWallet.isConnected },
+					timestamp: Date.now(),
+					sessionId: 'debug-session',
+					runId: 'run1',
+					hypothesisId: 'AA',
+				}),
+			}).catch(() => {});
+			// #endregion
+			setWalletModalVisible(false);
+		}
+	}, [evmWallet.evmAddress, evmWallet.isConnected, walletModalVisible]);
 	const [walletAddress, setWalletAddress] = React.useState<string | null>(null);
 	// const [vouch, setVouch] = React.useState<VouchType | null>(null);
 

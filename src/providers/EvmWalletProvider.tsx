@@ -42,8 +42,40 @@ export function getSessionKey(mainAccount: string): SessionKeyData | null {
 		const sessionData = JSON.parse(stored);
 
 		// Check if expired or about to expire (within 1 day)
-		if (Date.now() + ONE_DAY_MS > sessionData.expiry) {
-			console.log('Session key expired or expiring soon');
+		const timeUntilExpiry = sessionData.expiry - Date.now();
+		const isExpired = timeUntilExpiry <= 0;
+		const isExpiringSoon = timeUntilExpiry <= ONE_DAY_MS;
+
+		if (isExpired || isExpiringSoon) {
+			// #region agent log
+			fetch('http://127.0.0.1:7242/ingest/5c5bd03e-3b23-4d26-96d2-4949305ee115', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					location: 'EvmWalletProvider.tsx:44',
+					message: 'Session key expired or expiring soon',
+					data: {
+						mainAccount,
+						sessionAddress: sessionData.address,
+						expiry: sessionData.expiry,
+						timeUntilExpiry,
+						isExpired,
+						isExpiringSoon,
+						daysUntilExpiry: Math.floor(timeUntilExpiry / (24 * 60 * 60 * 1000)),
+						note: 'A new session key will be generated. This is expected behavior after 7 days.',
+					},
+					timestamp: Date.now(),
+					sessionId: 'debug-session',
+					runId: 'run1',
+					hypothesisId: 'KK',
+				}),
+			}).catch(() => {});
+			// #endregion
+			console.log(
+				'Session key expired or expiring soon. Time until expiry:',
+				Math.floor(timeUntilExpiry / (24 * 60 * 60 * 1000)),
+				'days'
+			);
 			return null;
 		}
 
@@ -122,16 +154,81 @@ function EvmWalletProviderInner({ children }: { children: React.ReactNode }) {
 
 	// Handle wallet connection/disconnection
 	React.useEffect(() => {
+		// #region agent log
+		fetch('http://127.0.0.1:7242/ingest/5c5bd03e-3b23-4d26-96d2-4949305ee115', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				location: 'EvmWalletProvider.tsx:124',
+				message: 'Wallet connection state changed',
+				data: {
+					address,
+					isConnected,
+					currentEvmAddress: evmAddress,
+					currentSessionKey: sessionKey?.address,
+				},
+				timestamp: Date.now(),
+				sessionId: 'debug-session',
+				runId: 'run1',
+				hypothesisId: 'JJ',
+			}),
+		}).catch(() => {});
+		// #endregion
+
 		if (address && isConnected) {
 			setEvmAddress(address);
 
 			// Auto-initialize session key on connection
-			initializeSession(address);
+			// Only initialize if we don't already have a session key for this address
+			if (!sessionKey || sessionKey.mainAccount.toLowerCase() !== address.toLowerCase()) {
+				// #region agent log
+				fetch('http://127.0.0.1:7242/ingest/5c5bd03e-3b23-4d26-96d2-4949305ee115', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						location: 'EvmWalletProvider.tsx:140',
+						message: 'Initializing session key for connected wallet',
+						data: {
+							address,
+							hasExistingSession: !!sessionKey,
+							existingSessionAddress: sessionKey?.address,
+							existingSessionMainAccount: sessionKey?.mainAccount,
+						},
+						timestamp: Date.now(),
+						sessionId: 'debug-session',
+						runId: 'run1',
+						hypothesisId: 'JJ',
+					}),
+				}).catch(() => {});
+				// #endregion
+				initializeSession(address);
+			} else {
+				// #region agent log
+				fetch('http://127.0.0.1:7242/ingest/5c5bd03e-3b23-4d26-96d2-4949305ee115', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						location: 'EvmWalletProvider.tsx:155',
+						message: 'Skipping session key init - already have valid session',
+						data: {
+							address,
+							sessionKeyAddress: sessionKey.address,
+							sessionKeyMainAccount: sessionKey.mainAccount,
+						},
+						timestamp: Date.now(),
+						sessionId: 'debug-session',
+						runId: 'run1',
+						hypothesisId: 'JJ',
+					}),
+				}).catch(() => {});
+				// #endregion
+			}
 		} else {
 			setEvmAddress(null);
 			setSessionKey(null);
 		}
-	}, [address, isConnected]);
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [address, isConnected]); // Removed initializeSession and sessionKey to prevent infinite loop
 
 	// Update balance
 	React.useEffect(() => {
@@ -169,26 +266,129 @@ function EvmWalletProviderInner({ children }: { children: React.ReactNode }) {
 	const initializeSession = React.useCallback(async (mainAccount: string): Promise<SessionKeyData | null> => {
 		if (!mainAccount) return null;
 
+		// #region agent log
+		fetch('http://127.0.0.1:7242/ingest/5c5bd03e-3b23-4d26-96d2-4949305ee115', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				location: 'EvmWalletProvider.tsx:169',
+				message: 'initializeSession: Starting',
+				data: {
+					mainAccount,
+					currentSessionKey: sessionKey?.address,
+					storageKey: `ethSessionKey_${mainAccount.toLowerCase()}`,
+				},
+				timestamp: Date.now(),
+				sessionId: 'debug-session',
+				runId: 'run1',
+				hypothesisId: 'II',
+			}),
+		}).catch(() => {});
+		// #endregion
+
 		try {
 			// Check for existing valid session
 			let session = getSessionKey(mainAccount);
+
+			// #region agent log
+			fetch('http://127.0.0.1:7242/ingest/5c5bd03e-3b23-4d26-96d2-4949305ee115', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					location: 'EvmWalletProvider.tsx:185',
+					message: 'initializeSession: Session key lookup result',
+					data: {
+						mainAccount,
+						foundExisting: !!session,
+						sessionAddress: session?.address,
+						sessionExpiry: session?.expiry,
+						timeUntilExpiry: session ? session.expiry - Date.now() : null,
+					},
+					timestamp: Date.now(),
+					sessionId: 'debug-session',
+					runId: 'run1',
+					hypothesisId: 'II',
+				}),
+			}).catch(() => {});
+			// #endregion
 
 			if (!session) {
 				// Generate new session key
 				session = generateSessionKey(mainAccount);
 				storeSessionKey(session);
 				console.log('New session key generated:', session.address);
+				// #region agent log
+				fetch('http://127.0.0.1:7242/ingest/5c5bd03e-3b23-4d26-96d2-4949305ee115', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						location: 'EvmWalletProvider.tsx:200',
+						message: 'initializeSession: NEW session key generated',
+						data: {
+							mainAccount,
+							sessionAddress: session.address,
+							sessionExpiry: session.expiry,
+							storageKey: `ethSessionKey_${mainAccount.toLowerCase()}`,
+							warning: 'This should only happen once per wallet!',
+						},
+						timestamp: Date.now(),
+						sessionId: 'debug-session',
+						runId: 'run1',
+						hypothesisId: 'II',
+					}),
+				}).catch(() => {});
+				// #endregion
 			} else {
 				console.log('Reusing existing session key:', session.address);
+				// #region agent log
+				fetch('http://127.0.0.1:7242/ingest/5c5bd03e-3b23-4d26-96d2-4949305ee115', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						location: 'EvmWalletProvider.tsx:215',
+						message: 'initializeSession: Reusing existing session key',
+						data: {
+							mainAccount,
+							sessionAddress: session.address,
+							sessionExpiry: session.expiry,
+							timeUntilExpiry: session.expiry - Date.now(),
+						},
+						timestamp: Date.now(),
+						sessionId: 'debug-session',
+						runId: 'run1',
+						hypothesisId: 'II',
+					}),
+				}).catch(() => {});
+				// #endregion
 			}
 
 			setSessionKey(session);
 			return session;
 		} catch (error) {
+			// #region agent log
+			fetch('http://127.0.0.1:7242/ingest/5c5bd03e-3b23-4d26-96d2-4949305ee115', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					location: 'EvmWalletProvider.tsx:230',
+					message: 'initializeSession: Error occurred',
+					data: {
+						mainAccount,
+						error: error instanceof Error ? error.message : String(error),
+						errorStack: error instanceof Error ? error.stack : undefined,
+					},
+					timestamp: Date.now(),
+					sessionId: 'debug-session',
+					runId: 'run1',
+					hypothesisId: 'II',
+				}),
+			}).catch(() => {});
+			// #endregion
 			console.error('Error initializing session key:', error);
 			return null;
 		}
-	}, []);
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, []); // Removed sessionKey dependency to prevent infinite loop - session key is retrieved from localStorage, not state
 
 	const clearSession = React.useCallback(() => {
 		if (evmAddress) {

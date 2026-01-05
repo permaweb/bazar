@@ -90,6 +90,138 @@ export default function BazarBridge() {
 			return;
 		}
 
+		// #region agent log
+		fetch('http://127.0.0.1:7242/ingest/5c5bd03e-3b23-4d26-96d2-4949305ee115', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				location: 'BazarBridge/index.tsx:87',
+				message: 'handleCreateEthProfile: Entry',
+				data: {
+					evmAddress: evmWallet.evmAddress,
+					currentEthProfile: ethProfile,
+					hasSessionKey: !!evmWallet.sessionKey,
+				},
+				timestamp: Date.now(),
+				sessionId: 'debug-session',
+				runId: 'run1',
+				hypothesisId: 'BB1',
+			}),
+		}).catch(() => {});
+		// #endregion
+
+		// CRITICAL: Check if profile already exists BEFORE creating
+		// Check localStorage first (fastest)
+		const cacheKey = `ethProfile_${evmWallet.evmAddress.toLowerCase()}`;
+		const cachedProfileId = localStorage.getItem(cacheKey);
+
+		// #region agent log
+		fetch('http://127.0.0.1:7242/ingest/5c5bd03e-3b23-4d26-96d2-4949305ee115', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				location: 'BazarBridge/index.tsx:95',
+				message: 'handleCreateEthProfile: Checking for existing profile',
+				data: {
+					evmAddress: evmWallet.evmAddress,
+					cacheKey,
+					cachedProfileId,
+					currentEthProfile,
+				},
+				timestamp: Date.now(),
+				sessionId: 'debug-session',
+				runId: 'run1',
+				hypothesisId: 'BB1',
+			}),
+		}).catch(() => {});
+		// #endregion
+
+		if (cachedProfileId || ethProfile) {
+			const existingProfileId = cachedProfileId || ethProfile;
+			// #region agent log
+			fetch('http://127.0.0.1:7242/ingest/5c5bd03e-3b23-4d26-96d2-4949305ee115', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					location: 'BazarBridge/index.tsx:110',
+					message: 'handleCreateEthProfile: Profile already exists, opening edit',
+					data: { existingProfileId, source: cachedProfileId ? 'localStorage' : 'state' },
+					timestamp: Date.now(),
+					sessionId: 'debug-session',
+					runId: 'run1',
+					hypothesisId: 'BB1',
+				}),
+			}).catch(() => {});
+			// #endregion
+			console.log('Profile already exists:', existingProfileId);
+			setEthProfile(existingProfileId);
+			setProfileEditOpen(true);
+			return;
+		}
+
+		// Also check registry before creating
+		try {
+			const existingProfileId = await checkExistingProfile(evmWallet.evmAddress);
+			// #region agent log
+			fetch('http://127.0.0.1:7242/ingest/5c5bd03e-3b23-4d26-96d2-4949305ee115', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					location: 'BazarBridge/index.tsx:125',
+					message: 'handleCreateEthProfile: Registry check result',
+					data: { existingProfileId, evmAddress: evmWallet.evmAddress },
+					timestamp: Date.now(),
+					sessionId: 'debug-session',
+					runId: 'run1',
+					hypothesisId: 'BB1',
+				}),
+			}).catch(() => {});
+			// #endregion
+
+			if (existingProfileId) {
+				// Cache it and set it
+				localStorage.setItem(cacheKey, existingProfileId);
+				setEthProfile(existingProfileId);
+				setProfileEditOpen(true);
+				// #region agent log
+				fetch('http://127.0.0.1:7242/ingest/5c5bd03e-3b23-4d26-96d2-4949305ee115', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						location: 'BazarBridge/index.tsx:140',
+						message: 'handleCreateEthProfile: Using existing profile from registry',
+						data: { existingProfileId, cached: true },
+						timestamp: Date.now(),
+						sessionId: 'debug-session',
+						runId: 'run1',
+						hypothesisId: 'BB1',
+					}),
+				}).catch(() => {});
+				// #endregion
+				return;
+			}
+		} catch (checkError) {
+			// #region agent log
+			fetch('http://127.0.0.1:7242/ingest/5c5bd03e-3b23-4d26-96d2-4949305ee115', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					location: 'BazarBridge/index.tsx:150',
+					message: 'handleCreateEthProfile: Registry check failed, proceeding with creation',
+					data: {
+						checkError: checkError instanceof Error ? checkError.message : String(checkError),
+						evmAddress: evmWallet.evmAddress,
+					},
+					timestamp: Date.now(),
+					sessionId: 'debug-session',
+					runId: 'run1',
+					hypothesisId: 'BB1',
+				}),
+			}).catch(() => {});
+			// #endregion
+			console.warn('Registry check failed, proceeding with creation:', checkError);
+		}
+
 		// Check if session key is available
 		if (!evmWallet.sessionKey) {
 			console.log('Session key not available yet. Initializing...');
@@ -108,6 +240,22 @@ export default function BazarBridge() {
 		setProfileError(null);
 
 		try {
+			// #region agent log
+			fetch('http://127.0.0.1:7242/ingest/5c5bd03e-3b23-4d26-96d2-4949305ee115', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					location: 'BazarBridge/index.tsx:175',
+					message: 'handleCreateEthProfile: Starting profile creation',
+					data: { evmAddress: evmWallet.evmAddress, hasSessionKey: !!evmWallet.sessionKey },
+					timestamp: Date.now(),
+					sessionId: 'debug-session',
+					runId: 'run1',
+					hypothesisId: 'BB2',
+				}),
+			}).catch(() => {});
+			// #endregion
+
 			console.log('Creating profile for ETH wallet:', evmWallet.evmAddress);
 			const result = await createProfile({
 				walletAddress: evmWallet.evmAddress,

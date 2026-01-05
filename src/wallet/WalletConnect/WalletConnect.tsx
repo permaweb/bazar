@@ -16,6 +16,7 @@ import { useEvmWallet } from 'providers/EvmWalletProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 import { usePermawebProvider } from 'providers/PermawebProvider';
 import { useTokenProvider } from 'providers/TokenProvider';
+import { useDisconnect } from 'wagmi';
 
 import * as S from './styles';
 
@@ -26,6 +27,7 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 	const arProvider = useArweaveProvider();
 	const evmWallet = useEvmWallet();
 	const permawebProvider = usePermawebProvider();
+	const { disconnect: disconnectEvmWallet } = useDisconnect();
 
 	const themeProvider = useCustomThemeProvider();
 
@@ -38,6 +40,7 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 	const [ethProfileId, setEthProfileId] = React.useState<string | null>(null);
 	const [ethProfile, setEthProfile] = React.useState<any | null>(null);
 	const [checkingEthProfile, setCheckingEthProfile] = React.useState<boolean>(false);
+	const [fetchingEthProfile, setFetchingEthProfile] = React.useState<boolean>(false);
 	const [creatingEthProfile, setCreatingEthProfile] = React.useState<boolean>(false);
 
 	const [copiedWalletAddress, setCopiedWalletAddress] = React.useState<boolean>(false);
@@ -48,82 +51,194 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 	);
 
 	// Check for existing ETH profile when ETH wallet connects
+	// This should trigger immediately when wallet connects, similar to Arweave flow
 	React.useEffect(() => {
-		if (evmWallet.evmAddress && !arProvider.walletAddress) {
+		// #region agent log
+		fetch('http://127.0.0.1:7242/ingest/5c5bd03e-3b23-4d26-96d2-4949305ee115', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				location: 'WalletConnect.tsx:51',
+				message: 'useEffect: ETH profile check triggered',
+				data: {
+					evmAddress: evmWallet.evmAddress,
+					arweaveAddress: arProvider.walletAddress,
+					currentEthProfileId: ethProfileId,
+					isConnected: evmWallet.isConnected,
+					willCheck: evmWallet.evmAddress && !arProvider.walletAddress,
+				},
+				timestamp: Date.now(),
+				sessionId: 'debug-session',
+				runId: 'run1',
+				hypothesisId: 'Y',
+			}),
+		}).catch(() => {});
+		// #endregion
+
+		if (evmWallet.evmAddress && evmWallet.isConnected && !arProvider.walletAddress) {
+			// Immediately check for profile when wallet connects
+			// Don't wait - check right away like Arweave does
+			checkForEthProfile();
+		} else if (!evmWallet.evmAddress || !evmWallet.isConnected) {
 			// #region agent log
 			fetch('http://127.0.0.1:7242/ingest/5c5bd03e-3b23-4d26-96d2-4949305ee115', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
-					location: 'WalletConnect.tsx:50',
-					message: 'useEffect: Checking for ETH profile on mount',
-					data: { evmAddress: evmWallet.evmAddress, currentEthProfileId: ethProfileId },
+					location: 'WalletConnect.tsx:75',
+					message: 'Clearing ETH profile state',
+					data: {
+						reason: !evmWallet.evmAddress
+							? 'No EVM wallet'
+							: !evmWallet.isConnected
+							? 'EVM wallet disconnected'
+							: 'Arweave wallet connected',
+						previousEthProfileId: ethProfileId,
+						isConnected: evmWallet.isConnected,
+					},
 					timestamp: Date.now(),
 					sessionId: 'debug-session',
 					runId: 'run1',
-					hypothesisId: 'V',
+					hypothesisId: 'Y',
 				}),
 			}).catch(() => {});
 			// #endregion
-			checkForEthProfile();
-		} else {
 			setEthProfileId(null);
 			setEthProfile(null);
 		}
-	}, [evmWallet.evmAddress, arProvider.walletAddress]);
+	}, [evmWallet.evmAddress, evmWallet.isConnected, arProvider.walletAddress]);
 
 	// Fetch ETH profile data when ethProfileId is set
 	React.useEffect(() => {
 		if (ethProfileId && !arProvider.walletAddress && permawebProvider.libs) {
 			(async () => {
+				const fetchStartTime = Date.now();
+				setFetchingEthProfile(true);
 				try {
 					// #region agent log
 					fetch('http://127.0.0.1:7242/ingest/5c5bd03e-3b23-4d26-96d2-4949305ee115', {
 						method: 'POST',
 						headers: { 'Content-Type': 'application/json' },
 						body: JSON.stringify({
-							location: 'WalletConnect.tsx:60',
-							message: 'Fetching ETH profile data',
-							data: { ethProfileId },
+							location: 'WalletConnect.tsx:108',
+							message: 'Fetching ETH profile data: Starting',
+							data: { ethProfileId, hasLibs: !!permawebProvider.libs },
 							timestamp: Date.now(),
 							sessionId: 'debug-session',
 							runId: 'run1',
-							hypothesisId: 'S',
+							hypothesisId: 'S1',
 						}),
 					}).catch(() => {});
 					// #endregion
-
-					const fetchedProfile = await permawebProvider.libs.getProfileById(ethProfileId);
 
 					// #region agent log
 					fetch('http://127.0.0.1:7242/ingest/5c5bd03e-3b23-4d26-96d2-4949305ee115', {
 						method: 'POST',
 						headers: { 'Content-Type': 'application/json' },
 						body: JSON.stringify({
-							location: 'WalletConnect.tsx:65',
-							message: 'ETH profile data fetched',
+							location: 'WalletConnect.tsx:120',
+							message: 'Fetching ETH profile data: Before getProfileById call',
+							data: { ethProfileId },
+							timestamp: Date.now(),
+							sessionId: 'debug-session',
+							runId: 'run1',
+							hypothesisId: 'S2',
+						}),
+					}).catch(() => {});
+					// #endregion
+
+					const fetchedProfile = await permawebProvider.libs.getProfileById(ethProfileId);
+
+					const fetchElapsed = Date.now() - fetchStartTime;
+
+					// #region agent log
+					fetch('http://127.0.0.1:7242/ingest/5c5bd03e-3b23-4d26-96d2-4949305ee115', {
+						method: 'POST',
+						headers: { 'Content-Type': 'application/json' },
+						body: JSON.stringify({
+							location: 'WalletConnect.tsx:135',
+							message: 'ETH profile data fetched: Success',
 							data: {
 								profileId: fetchedProfile?.id,
 								username: fetchedProfile?.Username,
 								displayName: fetchedProfile?.DisplayName,
+								hasProfile: !!fetchedProfile,
+								fetchElapsed,
 							},
 							timestamp: Date.now(),
 							sessionId: 'debug-session',
 							runId: 'run1',
-							hypothesisId: 'S',
+							hypothesisId: 'S3',
 						}),
 					}).catch(() => {});
 					// #endregion
 
 					if (fetchedProfile) {
 						setEthProfile(fetchedProfile);
+						// #region agent log
+						fetch('http://127.0.0.1:7242/ingest/5c5bd03e-3b23-4d26-96d2-4949305ee115', {
+							method: 'POST',
+							headers: { 'Content-Type': 'application/json' },
+							body: JSON.stringify({
+								location: 'WalletConnect.tsx:150',
+								message: 'ETH profile set in state',
+								data: { profileId: fetchedProfile.id, fetchElapsed },
+								timestamp: Date.now(),
+								sessionId: 'debug-session',
+								runId: 'run1',
+								hypothesisId: 'S4',
+							}),
+						}).catch(() => {});
+						// #endregion
+					} else {
+						// #region agent log
+						fetch('http://127.0.0.1:7242/ingest/5c5bd03e-3b23-4d26-96d2-4949305ee115', {
+							method: 'POST',
+							headers: { 'Content-Type': 'application/json' },
+							body: JSON.stringify({
+								location: 'WalletConnect.tsx:160',
+								message: 'ETH profile data fetched but is null/undefined',
+								data: { ethProfileId, fetchElapsed },
+								timestamp: Date.now(),
+								sessionId: 'debug-session',
+								runId: 'run1',
+								hypothesisId: 'S5',
+							}),
+						}).catch(() => {});
+						// #endregion
 					}
 				} catch (error) {
-					console.warn('Failed to fetch ETH profile data:', error);
+					const fetchElapsed = Date.now() - fetchStartTime;
+					// #region agent log
+					fetch('http://127.0.0.1:7242/ingest/5c5bd03e-3b23-4d26-96d2-4949305ee115', {
+						method: 'POST',
+						headers: { 'Content-Type': 'application/json' },
+						body: JSON.stringify({
+							location: 'WalletConnect.tsx:170',
+							message: 'Failed to fetch ETH profile data: Error caught',
+							data: {
+								ethProfileId,
+								error: error instanceof Error ? error.message : String(error),
+								errorStack: error instanceof Error ? error.stack : undefined,
+								fetchElapsed,
+							},
+							timestamp: Date.now(),
+							sessionId: 'debug-session',
+							runId: 'run1',
+							hypothesisId: 'S6',
+						}),
+					}).catch(() => {});
+					// #endregion
+					console.error('Failed to fetch ETH profile data:', error);
+					// Don't set profile to null on error - keep the ID so user can retry
+					// The profile might just not be indexed yet
+				} finally {
+					setFetchingEthProfile(false);
 				}
 			})();
 		} else if (!ethProfileId) {
 			setEthProfile(null);
+			setFetchingEthProfile(false);
 		}
 	}, [ethProfileId, arProvider.walletAddress, permawebProvider.libs]);
 
@@ -193,6 +308,8 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 	async function checkForEthProfile() {
 		if (!evmWallet.evmAddress) return;
 
+		const startTime = Date.now();
+
 		// Check localStorage first
 		const cacheKey = `ethProfile_${evmWallet.evmAddress.toLowerCase()}`;
 		const cachedProfileId = localStorage.getItem(cacheKey);
@@ -202,30 +319,50 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({
-				location: 'WalletConnect.tsx:110',
-				message: 'checkForEthProfile: Checking localStorage',
+				location: 'WalletConnect.tsx:219',
+				message: 'checkForEthProfile: Starting profile check',
 				data: {
 					cacheKey,
 					cachedProfileId,
+					evmAddress: evmWallet.evmAddress,
 					allKeys: Object.keys(localStorage).filter((k) => k.startsWith('ethProfile_')),
+					startTime,
 				},
 				timestamp: Date.now(),
 				sessionId: 'debug-session',
 				runId: 'run1',
-				hypothesisId: 'V',
+				hypothesisId: 'BB',
 			}),
 		}).catch(() => {});
 		// #endregion
 
 		if (cachedProfileId) {
 			console.log('Found cached profile in checkForEthProfile:', cachedProfileId);
+			const elapsed = Date.now() - startTime;
+			// #region agent log
+			fetch('http://127.0.0.1:7242/ingest/5c5bd03e-3b23-4d26-96d2-4949305ee115', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					location: 'WalletConnect.tsx:246',
+					message: 'checkForEthProfile: Found cached profile',
+					data: { cachedProfileId, elapsed },
+					timestamp: Date.now(),
+					sessionId: 'debug-session',
+					runId: 'run1',
+					hypothesisId: 'BB',
+				}),
+			}).catch(() => {});
+			// #endregion
 			setEthProfileId(cachedProfileId);
 			return;
 		}
 
 		setCheckingEthProfile(true);
 		try {
+			const registryCheckStart = Date.now();
 			const existingProfileId = await checkExistingProfile(evmWallet.evmAddress);
+			const registryCheckElapsed = Date.now() - registryCheckStart;
 			// #region agent log
 			fetch('http://127.0.0.1:7242/ingest/5c5bd03e-3b23-4d26-96d2-4949305ee115', {
 				method: 'POST',
@@ -242,11 +379,43 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 			}).catch(() => {});
 			// #endregion
 
+			const totalElapsed = Date.now() - startTime;
 			if (existingProfileId) {
 				// Cache it for future use
 				localStorage.setItem(cacheKey, existingProfileId);
 				setEthProfileId(existingProfileId);
+				// #region agent log
+				fetch('http://127.0.0.1:7242/ingest/5c5bd03e-3b23-4d26-96d2-4949305ee115', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						location: 'WalletConnect.tsx:280',
+						message: 'ETH profile found and set',
+						data: { existingProfileId, cacheKey, cached: true, registryCheckElapsed, totalElapsed },
+						timestamp: Date.now(),
+						sessionId: 'debug-session',
+						runId: 'run1',
+						hypothesisId: 'CC',
+					}),
+				}).catch(() => {});
+				// #endregion
 				// Profile will be fetched automatically by the useEffect that watches ethProfileId
+			} else {
+				// #region agent log
+				fetch('http://127.0.0.1:7242/ingest/5c5bd03e-3b23-4d26-96d2-4949305ee115', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						location: 'WalletConnect.tsx:295',
+						message: 'No ETH profile found in registry',
+						data: { evmAddress: evmWallet.evmAddress, registryCheckElapsed, totalElapsed },
+						timestamp: Date.now(),
+						sessionId: 'debug-session',
+						runId: 'run1',
+						hypothesisId: 'CC',
+					}),
+				}).catch(() => {});
+				// #endregion
 			}
 		} catch (error) {
 			console.error('Error checking for ETH profile:', error);
@@ -270,23 +439,63 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({
-				location: 'WalletConnect.tsx:142',
-				message: 'Checking localStorage in handleCreateEthProfile',
+				location: 'WalletConnect.tsx:343',
+				message: 'handleCreateEthProfile: Entry',
 				data: {
+					evmAddress: evmWallet.evmAddress,
 					cacheKey,
 					cachedProfileId,
+					currentEthProfileId: ethProfileId,
 					allKeys: Object.keys(localStorage).filter((k) => k.startsWith('ethProfile_')),
 				},
 				timestamp: Date.now(),
 				sessionId: 'debug-session',
 				runId: 'run1',
-				hypothesisId: 'U',
+				hypothesisId: 'EE',
 			}),
 		}).catch(() => {});
 		// #endregion
 
+		// If we already have a profile ID in state, don't create another one
+		if (ethProfileId) {
+			// #region agent log
+			fetch('http://127.0.0.1:7242/ingest/5c5bd03e-3b23-4d26-96d2-4949305ee115', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					location: 'WalletConnect.tsx:375',
+					message: 'handleCreateEthProfile: Profile already in state, opening edit',
+					data: { ethProfileId },
+					timestamp: Date.now(),
+					sessionId: 'debug-session',
+					runId: 'run1',
+					hypothesisId: 'EE',
+				}),
+			}).catch(() => {});
+			// #endregion
+			setTimeout(() => {
+				setShowProfileManage(true);
+			}, 500);
+			return;
+		}
+
 		if (cachedProfileId) {
 			console.log('Found cached profile ID:', cachedProfileId);
+			// #region agent log
+			fetch('http://127.0.0.1:7242/ingest/5c5bd03e-3b23-4d26-96d2-4949305ee115', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					location: 'WalletConnect.tsx:388',
+					message: 'handleCreateEthProfile: Found cached profile',
+					data: { cachedProfileId },
+					timestamp: Date.now(),
+					sessionId: 'debug-session',
+					runId: 'run1',
+					hypothesisId: 'EE',
+				}),
+			}).catch(() => {});
+			// #endregion
 			setEthProfileId(cachedProfileId);
 			setTimeout(() => {
 				setShowProfileManage(true);
@@ -294,19 +503,19 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 			return;
 		}
 
-		// First, check if a profile already exists
+		// First, check if a profile already exists in the registry
 		// #region agent log
 		fetch('http://127.0.0.1:7242/ingest/5c5bd03e-3b23-4d26-96d2-4949305ee115', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({
-				location: 'WalletConnect.tsx:126',
-				message: 'handleCreateEthProfile called',
-				data: { evmAddress: evmWallet.evmAddress, currentEthProfileId: ethProfileId, cachedProfileId },
+				location: 'WalletConnect.tsx:405',
+				message: 'handleCreateEthProfile: Checking registry before creation',
+				data: { evmAddress: evmWallet.evmAddress },
 				timestamp: Date.now(),
 				sessionId: 'debug-session',
 				runId: 'run1',
-				hypothesisId: 'S',
+				hypothesisId: 'EE',
 			}),
 		}).catch(() => {});
 		// #endregion
@@ -318,22 +527,37 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
-					location: 'WalletConnect.tsx:132',
-					message: 'Checked for existing profile',
-					data: { existingProfileId, currentEthProfileId: ethProfileId },
+					location: 'WalletConnect.tsx:417',
+					message: 'handleCreateEthProfile: Registry check result',
+					data: { existingProfileId, evmAddress: evmWallet.evmAddress },
 					timestamp: Date.now(),
 					sessionId: 'debug-session',
 					runId: 'run1',
-					hypothesisId: 'S',
+					hypothesisId: 'EE',
 				}),
 			}).catch(() => {});
 			// #endregion
 
 			if (existingProfileId) {
-				console.log('Profile already exists:', existingProfileId);
+				console.log('Profile already exists in registry:', existingProfileId);
 				// Cache it for future use
 				localStorage.setItem(cacheKey, existingProfileId);
 				setEthProfileId(existingProfileId);
+				// #region agent log
+				fetch('http://127.0.0.1:7242/ingest/5c5bd03e-3b23-4d26-96d2-4949305ee115', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						location: 'WalletConnect.tsx:432',
+						message: 'handleCreateEthProfile: Using existing profile from registry',
+						data: { existingProfileId, cached: true },
+						timestamp: Date.now(),
+						sessionId: 'debug-session',
+						runId: 'run1',
+						hypothesisId: 'EE',
+					}),
+				}).catch(() => {});
+				// #endregion
 				// Open profile edit modal instead of creating
 				setTimeout(() => {
 					setShowProfileManage(true);
@@ -341,6 +565,24 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 				return;
 			}
 		} catch (checkError) {
+			// #region agent log
+			fetch('http://127.0.0.1:7242/ingest/5c5bd03e-3b23-4d26-96d2-4949305ee115', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					location: 'WalletConnect.tsx:448',
+					message: 'handleCreateEthProfile: Registry check failed, proceeding with creation',
+					data: {
+						checkError: checkError instanceof Error ? checkError.message : String(checkError),
+						evmAddress: evmWallet.evmAddress,
+					},
+					timestamp: Date.now(),
+					sessionId: 'debug-session',
+					runId: 'run1',
+					hypothesisId: 'EE',
+				}),
+			}).catch(() => {});
+			// #endregion
 			console.warn('Error checking for existing profile (will proceed with creation):', checkError);
 			// Continue with creation if check fails
 		}
@@ -362,17 +604,70 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 		setCreatingEthProfile(true);
 		try {
 			console.log('Creating profile for ETH wallet:', evmWallet.evmAddress);
+			// #region agent log
+			fetch('http://127.0.0.1:7242/ingest/5c5bd03e-3b23-4d26-96d2-4949305ee115', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					location: 'WalletConnect.tsx:520',
+					message: 'handleCreateEthProfile: Starting profile creation',
+					data: { evmAddress: evmWallet.evmAddress, currentEthProfileId: ethProfileId },
+					timestamp: Date.now(),
+					sessionId: 'debug-session',
+					runId: 'run1',
+					hypothesisId: 'FF',
+				}),
+			}).catch(() => {});
+			// #endregion
+
 			const result = await createProfile({
 				walletAddress: evmWallet.evmAddress,
 				walletType: 'evm',
 				displayName: `ETH User ${evmWallet.evmAddress.slice(0, 6)}`,
 			});
 
+			// #region agent log
+			fetch('http://127.0.0.1:7242/ingest/5c5bd03e-3b23-4d26-96d2-4949305ee115', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					location: 'WalletConnect.tsx:540',
+					message: 'handleCreateEthProfile: Profile creation result',
+					data: {
+						success: result.success,
+						profileId: result.profileId,
+						error: result.error,
+						evmAddress: evmWallet.evmAddress,
+					},
+					timestamp: Date.now(),
+					sessionId: 'debug-session',
+					runId: 'run1',
+					hypothesisId: 'FF',
+				}),
+			}).catch(() => {});
+			// #endregion
+
 			if (result.success && result.profileId) {
 				console.log('Profile created successfully:', result.profileId);
 				// Cache the profile ID to prevent duplicate creation
 				const cacheKey = `ethProfile_${evmWallet.evmAddress.toLowerCase()}`;
 				localStorage.setItem(cacheKey, result.profileId);
+				setEthProfileId(result.profileId);
+				// #region agent log
+				fetch('http://127.0.0.1:7242/ingest/5c5bd03e-3b23-4d26-96d2-4949305ee115', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						location: 'WalletConnect.tsx:560',
+						message: 'handleCreateEthProfile: Profile cached and set in state',
+						data: { profileId: result.profileId, cacheKey, cached: true },
+						timestamp: Date.now(),
+						sessionId: 'debug-session',
+						runId: 'run1',
+						hypothesisId: 'FF',
+					}),
+				}).catch(() => {});
+				// #endregion
 
 				// #region agent log
 				fetch('http://127.0.0.1:7242/ingest/5c5bd03e-3b23-4d26-96d2-4949305ee115', {
@@ -575,13 +870,55 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 	}
 
 	function handleDisconnect() {
+		// #region agent log
+		fetch('http://127.0.0.1:7242/ingest/5c5bd03e-3b23-4d26-96d2-4949305ee115', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				location: 'WalletConnect.tsx:577',
+				message: 'handleDisconnect called',
+				data: {
+					hasArweaveWallet: !!arProvider.walletAddress,
+					hasEthWallet: !!evmWallet.evmAddress,
+					currentEthProfileId: ethProfileId,
+				},
+				timestamp: Date.now(),
+				sessionId: 'debug-session',
+				runId: 'run1',
+				hypothesisId: 'W',
+			}),
+		}).catch(() => {});
+		// #endregion
+
 		setShowWalletDropdown(false);
 		if (arProvider.walletAddress) {
 			arProvider.handleDisconnect();
 		}
-		// Note: ETH wallet disconnection is handled by RainbowKit's ConnectButton
-		// We just need to clear local state
-		setEthProfileId(null);
+		if (evmWallet.evmAddress) {
+			// Properly disconnect EVM wallet using wagmi's disconnect
+			disconnectEvmWallet();
+			// Clear local state
+			setEthProfileId(null);
+			setEthProfile(null);
+			// Clear localStorage cache for this address
+			const cacheKey = `ethProfile_${evmWallet.evmAddress.toLowerCase()}`;
+			localStorage.removeItem(cacheKey);
+			// #region agent log
+			fetch('http://127.0.0.1:7242/ingest/5c5bd03e-3b23-4d26-96d2-4949305ee115', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					location: 'WalletConnect.tsx:595',
+					message: 'EVM wallet disconnected',
+					data: { cacheKey, cleared: true },
+					timestamp: Date.now(),
+					sessionId: 'debug-session',
+					runId: 'run1',
+					hypothesisId: 'W',
+				}),
+			}).catch(() => {});
+			// #endregion
+		}
 	}
 
 	const tokenLinks = {
@@ -796,6 +1133,31 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 		const hasEthProfile = !!ethProfileId;
 		const needsProfile = (hasArweaveWallet && !hasArweaveProfile) || (hasEthWallet && !hasEthProfile);
 
+		// #region agent log
+		fetch('http://127.0.0.1:7242/ingest/5c5bd03e-3b23-4d26-96d2-4949305ee115', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				location: 'WalletConnect.tsx:792',
+				message: 'getHeader: Profile visibility check',
+				data: {
+					hasArweaveWallet,
+					hasEthWallet,
+					hasArweaveProfile,
+					hasEthProfile,
+					ethProfileId,
+					needsProfile,
+					evmAddress: evmWallet.evmAddress,
+					arweaveProfileId: permawebProvider.profile?.id,
+				},
+				timestamp: Date.now(),
+				sessionId: 'debug-session',
+				runId: 'run1',
+				hypothesisId: 'X',
+			}),
+		}).catch(() => {});
+		// #endregion
+
 		return (
 			<S.PWrapper>
 				{needsProfile && (
@@ -813,7 +1175,7 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 						<span>{`${language.fetchingProfile}...`}</span>
 					</S.MessageWrapper>
 				)}
-				{hasEthWallet && !hasEthProfile && checkingEthProfile && (
+				{hasEthWallet && !hasEthProfile && (checkingEthProfile || fetchingEthProfile) && (
 					<S.MessageWrapper className={'update-wrapper'}>
 						<span>{`${language.fetchingProfile}...`}</span>
 					</S.MessageWrapper>
