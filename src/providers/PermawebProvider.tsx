@@ -7,7 +7,7 @@ import { Loader } from 'components/atoms/Loader';
 import { Panel } from 'components/molecules/Panel';
 import { ProfileManage } from 'components/organisms/ProfileManage';
 import { connect, createSigner } from 'helpers/aoconnect';
-import { HB, STORAGE, TOKEN_REGISTRY } from 'helpers/config';
+import { AO_NODE, HB, STORAGE, TOKEN_REGISTRY } from 'helpers/config';
 import { clearTokenStatusCache } from 'helpers/tokenValidation';
 
 import { useArweaveProvider } from './ArweaveProvider';
@@ -80,21 +80,76 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 	// const isInitialMount = React.useRef(true);
 
 	React.useEffect(() => {
-		const deps: any = {
-			ao: connect({ MODE: 'legacy' }),
-			arweave: Arweave.init({}),
-			signer: arProvider.wallet ? createSigner(arProvider.wallet) : null,
-			node: { url: HB.defaultNode },
-		};
+		try {
+			// Support switching between legacy and mainnet modes via VITE_AO env var
+			// Default to mainnet for this branch
+			const aoConnection = import.meta.env.VITE_AO || 'mainnet';
 
-		setLibs(PermawebLibs.init(deps));
-		setDeps(deps);
+			let signer = null;
+			if (arProvider.wallet) signer = createSigner(arProvider.wallet);
 
-		// Clear token status cache to ensure fresh data
-		clearTokenStatusCache();
+			let ao: any;
+			if (aoConnection === 'mainnet') {
+				// Safety check: ensure AO_NODE is defined
+				if (!AO_NODE || !AO_NODE.url || !AO_NODE.scheduler) {
+					console.error('AO_NODE configuration is missing or incomplete:', AO_NODE);
+					// Fallback to legacy if mainnet config is missing
+					ao = connect({ MODE: 'legacy' });
+					console.warn('⚠️ Falling back to LEGACY mode due to missing AO_NODE configuration');
+				} else {
+					// In mainnet mode, pass SCHEDULER to connect() - it's used by spawn() calls
+					const config: any = { MODE: 'mainnet', URL: AO_NODE.url, SCHEDULER: AO_NODE.scheduler };
+					if (signer) config.signer = signer;
+					ao = connect(config);
+					console.log('🌐 BAZAR: Running in MAINNET mode');
+					console.log('   HyperBEAM URL:', AO_NODE.url);
+					console.log('   Scheduler:', AO_NODE.scheduler);
+					console.log('   Module:', process.env.MODULE);
+					console.log('   Profile Registry:', process.env.PROFILE_REGISTRY);
+				}
+			} else if (aoConnection === 'legacy') {
+				ao = connect({ MODE: 'legacy' });
+				console.log('🔵 BAZAR: Running in LEGACY mode (VITE_AO=legacy)');
+			} else {
+				console.warn('Unknown aoConnection mode, defaulting to mainnet:', aoConnection);
+				if (AO_NODE && AO_NODE.url && AO_NODE.scheduler) {
+					// In mainnet mode, pass SCHEDULER to connect() - it's used by spawn() calls
+					const config: any = { MODE: 'mainnet', URL: AO_NODE.url, SCHEDULER: AO_NODE.scheduler };
+					if (signer) config.signer = signer;
+					ao = connect(config);
+					console.log('🌐 BAZAR: Running in MAINNET mode (default)');
+					console.log('   HyperBEAM URL:', AO_NODE.url);
+					console.log('   Scheduler:', AO_NODE.scheduler);
+				} else {
+					ao = connect({ MODE: 'legacy' });
+					console.warn('⚠️ Falling back to LEGACY mode');
+				}
+			}
 
-		// Force refresh token balances
-		setToggleTokenBalanceUpdate((prev) => !prev);
+			if (!ao) {
+				console.error('Failed to create AO connection');
+				return;
+			}
+
+			const deps: any = {
+				ao: ao,
+				arweave: Arweave.init({}),
+				signer: signer,
+				node: aoConnection === 'mainnet' && AO_NODE ? { ...AO_NODE } : { url: HB.defaultNode },
+			};
+
+			setLibs(PermawebLibs.init(deps));
+			setDeps(deps);
+
+			// Clear token status cache to ensure fresh data
+			clearTokenStatusCache();
+
+			// Force refresh token balances
+			setToggleTokenBalanceUpdate((prev) => !prev);
+		} catch (error) {
+			console.error('Error in PermawebProvider initialization:', error);
+			// Don't throw - allow app to render with null libs/deps
+		}
 	}, [arProvider.wallet]);
 
 	React.useEffect(() => {
