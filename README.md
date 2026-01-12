@@ -1,4 +1,4 @@
-### Bazar Marketplace
+# Bazar
 
 Welcome to Bazar, a fully decentralized atomic asset exchange built on the permaweb. Bazar leverages the power of the [Universal Content Marketplace (UCM)](https://github.com/permaweb/ao-ucm) protocol, [AO](https://github.com/permaweb/ao) and the [Universal Data License](https://udlicense.arweave.net/ 'UDL') to enable content creators to trade digital assets with real-world rights.
 
@@ -18,12 +18,12 @@ Orders on Bazar are fulfilled by a trustless orderbook process built on AO (UCM)
 
 - Node.js 18+ and npm
 
-###### Run local
+###### Development
 
 ```
 npm install
 ```
 
 ```
-npm start
+npm run start:development
 ```
