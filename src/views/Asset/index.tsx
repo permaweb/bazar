@@ -63,7 +63,7 @@ export default function Asset() {
 				const fetchUntilChange = async () => {
 					while (!assetFetched && tries < maxTries) {
 						try {
-							const processState = await getAssetStateById({ id: id });
+							const processState = await getAssetStateById({ id: id, libs: permawebProvider.libs });
 
 							if (processState) {
 								let assetState: any = {
