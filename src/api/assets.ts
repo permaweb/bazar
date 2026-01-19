@@ -151,6 +151,7 @@ export async function getAssetStateById(args: { id: string; libs?: any }): Promi
 					processState = await args.libs.readState({
 						processId: args.id,
 						path: 'asset',
+						appendPath: true,
 						fallbackAction: 'Info',
 						node: HB.defaultNode,
 					});
