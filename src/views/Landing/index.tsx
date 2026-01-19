@@ -25,47 +25,47 @@ import { RootState } from 'store';
 
 import * as S from './styles';
 
-// Preload audio assets for faster playback
-const preloadAudioAssets = async (collections: CollectionType[], libs: any) => {
-	try {
-		// Preload first few audio assets from each collection
-		for (const collection of collections.slice(0, 3)) {
-			try {
-				const collectionDetail = await getCollectionById({ id: collection.id, libs });
+// // Preload audio assets for faster playback
+// const preloadAudioAssets = async (collections: CollectionType[], libs: any) => {
+// 	try {
+// 		// Preload first few audio assets from each collection
+// 		for (const collection of collections.slice(0, 3)) {
+// 			try {
+// 				const collectionDetail = await getCollectionById({ id: collection.id, libs });
 
-				if (collectionDetail?.assetIds?.length > 0) {
-					// Preload first 2 audio assets from each collection
-					const audioAssetIds = collectionDetail.assetIds.slice(0, 2);
+// 				if (collectionDetail?.assetIds?.length > 0) {
+// 					// Preload first 2 audio assets from each collection
+// 					const audioAssetIds = collectionDetail.assetIds.slice(0, 2);
 
-					for (const assetId of audioAssetIds) {
-						try {
-							// Fetch asset data to resolve audio URL
-							const structuredAsset = await getAssetByIdGQL({ id: assetId });
+// 					for (const assetId of audioAssetIds) {
+// 						try {
+// 							// Fetch asset data to resolve audio URL
+// 							const structuredAsset = await getAssetByIdGQL({ id: assetId });
 
-							// If it's an audio asset, preload the actual audio file
-							if (structuredAsset?.data?.contentType?.startsWith('audio/')) {
-								// Create a hidden audio element to preload
-								const audio = new Audio();
-								audio.preload = 'metadata'; // Just load metadata for faster response
-								// Use the asset ID to construct the Arweave URL
-								audio.src = getTxEndpoint(assetId);
-								audio.load();
-							}
-						} catch (e) {
-							// Continue if one asset fails
-							continue;
-						}
-					}
-				}
-			} catch (e) {
-				// Continue if collection fails
-				continue;
-			}
-		}
-	} catch (e) {
-		// Silent fail - preloading is optional
-	}
-};
+// 							// If it's an audio asset, preload the actual audio file
+// 							if (structuredAsset?.data?.contentType?.startsWith('audio/')) {
+// 								// Create a hidden audio element to preload
+// 								const audio = new Audio();
+// 								audio.preload = 'metadata'; // Just load metadata for faster response
+// 								// Use the asset ID to construct the Arweave URL
+// 								audio.src = getTxEndpoint(assetId);
+// 								audio.load();
+// 							}
+// 						} catch (e) {
+// 							// Continue if one asset fails
+// 							continue;
+// 						}
+// 					}
+// 				}
+// 			} catch (e) {
+// 				// Continue if collection fails
+// 				continue;
+// 			}
+// 		}
+// 	} catch (e) {
+// 		// Silent fail - preloading is optional
+// 	}
+// };
 
 export default function Landing() {
 	const collectionsReducer = useSelector((state: RootState) => state.collectionsReducer);
@@ -78,7 +78,7 @@ export default function Landing() {
 	const [collections, setCollections] = React.useState<CollectionType[] | null>(null);
 	const [collectionsLoading, setCollectionsLoading] = React.useState<boolean>(true);
 	const [musicCollections, setMusicCollections] = React.useState<CollectionType[] | null>(null);
-	const [musicCollectionsLoading, setMusicCollectionsLoading] = React.useState<boolean>(true);
+	// const [musicCollectionsLoading, setMusicCollectionsLoading] = React.useState<boolean>(true);
 	const [ebookCollections, setEbookCollections] = React.useState<CollectionType[] | null>(null);
 	const [ebookCollectionsLoading, setEbookCollectionsLoading] = React.useState<boolean>(true);
 	const [hasFetchedCollections, setHasFetchedCollections] = React.useState(false);
@@ -103,30 +103,30 @@ export default function Landing() {
 		return playlist.findIndex((track) => track.data.id === currentTrack.data.id);
 	}, [currentTrack, playlist]);
 
-	// Local play track function - will be passed to MusicCollectionsCarousel
-	const handlePlayTrack = React.useCallback(
-		(asset: AssetDetailType) => {
-			if (currentTrack?.data?.id === asset?.data?.id) {
-				// Same track - toggle play/pause
-				setIsPlaying(!isPlaying);
-			} else {
-				// New track - start playing
-				setCurrentTrack(asset);
-				setIsPlaying(true);
-				setCurrentTime(0);
-				setDuration(0);
+	// // Local play track function - will be passed to MusicCollectionsCarousel
+	// const handlePlayTrack = React.useCallback(
+	// 	(asset: AssetDetailType) => {
+	// 		if (currentTrack?.data?.id === asset?.data?.id) {
+	// 			// Same track - toggle play/pause
+	// 			setIsPlaying(!isPlaying);
+	// 		} else {
+	// 			// New track - start playing
+	// 			setCurrentTrack(asset);
+	// 			setIsPlaying(true);
+	// 			setCurrentTime(0);
+	// 			setDuration(0);
 
-				// Add to playlist if not already there
-				setPlaylist((prev) => {
-					if (!prev.find((track) => track.data.id === asset.data.id)) {
-						return [...prev, asset];
-					}
-					return prev;
-				});
-			}
-		},
-		[currentTrack?.data?.id, isPlaying]
-	);
+	// 			// Add to playlist if not already there
+	// 			setPlaylist((prev) => {
+	// 				if (!prev.find((track) => track.data.id === asset.data.id)) {
+	// 					return [...prev, asset];
+	// 				}
+	// 				return prev;
+	// 			});
+	// 		}
+	// 	},
+	// 	[currentTrack?.data?.id, isPlaying]
+	// );
 
 	// Music player control handlers
 	const handlePlayPause = () => setIsPlaying(!isPlaying);
@@ -198,63 +198,63 @@ export default function Landing() {
 		};
 	}, [hasFetchedCollections, permawebProvider.libs, stampedCollections?.length, language.collectionsFetchFailed]);
 
-	React.useEffect(() => {
-		(async function () {
-			if (!cachedMusicCollections?.length) {
-				return;
-			}
+	// React.useEffect(() => {
+	// 	(async function () {
+	// 		if (!cachedMusicCollections?.length) {
+	// 			return;
+	// 		}
 
-			const SPAM_ADDRESS = 'DwYZmjS7l6NHwojaH7-LzRBb4RiwjshGQm7-1ApDObw';
-			const filteredCachedMusicCollections = cachedMusicCollections.filter(
-				(collection: any) => collection.creator !== SPAM_ADDRESS
-			);
-			setMusicCollections(filteredCachedMusicCollections);
-			setMusicCollectionsLoading(false);
-		})();
-	}, [cachedMusicCollections]);
+	// 		const SPAM_ADDRESS = 'DwYZmjS7l6NHwojaH7-LzRBb4RiwjshGQm7-1ApDObw';
+	// 		const filteredCachedMusicCollections = cachedMusicCollections.filter(
+	// 			(collection: any) => collection.creator !== SPAM_ADDRESS
+	// 		);
+	// 		setMusicCollections(filteredCachedMusicCollections);
+	// 		setMusicCollectionsLoading(false);
+	// 	})();
+	// }, [cachedMusicCollections]);
 
-	React.useEffect(() => {
-		if (!permawebProvider.libs || hasFetchedMusicCollections) {
-			return;
-		}
+	// React.useEffect(() => {
+	// 	if (!permawebProvider.libs || hasFetchedMusicCollections) {
+	// 		return;
+	// 	}
 
-		if (cachedMusicCollections?.length) {
-			setHasFetchedMusicCollections(true);
-			return;
-		}
+	// 	if (cachedMusicCollections?.length) {
+	// 		setHasFetchedMusicCollections(true);
+	// 		return;
+	// 	}
 
-		if (musicCollections && musicCollections.length > 0) {
-			setHasFetchedMusicCollections(true);
-			return;
-		}
+	// 	if (musicCollections && musicCollections.length > 0) {
+	// 		setHasFetchedMusicCollections(true);
+	// 		return;
+	// 	}
 
-		let cancelled = false;
+	// 	let cancelled = false;
 
-		(async function () {
-			setMusicCollectionsLoading(true);
-			try {
-				const musicCollectionsFetch: CollectionType[] = await getAllMusicCollections(permawebProvider.libs);
+	// 	(async function () {
+	// 		setMusicCollectionsLoading(true);
+	// 		try {
+	// 			const musicCollectionsFetch: CollectionType[] = await getAllMusicCollections(permawebProvider.libs);
 
-				if (!cancelled && musicCollectionsFetch && musicCollectionsFetch.length > 0) {
-					setMusicCollections(musicCollectionsFetch);
-					preloadAudioAssets(musicCollectionsFetch, permawebProvider.libs);
-				}
-			} catch (e: any) {
-				if (!cancelled) {
-					console.error('Failed to fetch music collections:', e);
-				}
-			} finally {
-				if (!cancelled) {
-					setMusicCollectionsLoading(false);
-					setHasFetchedMusicCollections(true);
-				}
-			}
-		})();
+	// 			if (!cancelled && musicCollectionsFetch && musicCollectionsFetch.length > 0) {
+	// 				setMusicCollections(musicCollectionsFetch);
+	// 				preloadAudioAssets(musicCollectionsFetch, permawebProvider.libs);
+	// 			}
+	// 		} catch (e: any) {
+	// 			if (!cancelled) {
+	// 				console.error('Failed to fetch music collections:', e);
+	// 			}
+	// 		} finally {
+	// 			if (!cancelled) {
+	// 				setMusicCollectionsLoading(false);
+	// 				setHasFetchedMusicCollections(true);
+	// 			}
+	// 		}
+	// 	})();
 
-		return () => {
-			cancelled = true;
-		};
-	}, [cachedMusicCollections?.length, hasFetchedMusicCollections, musicCollections, permawebProvider.libs]);
+	// 	return () => {
+	// 		cancelled = true;
+	// 	};
+	// }, [cachedMusicCollections?.length, hasFetchedMusicCollections, musicCollections, permawebProvider.libs]);
 
 	// Fetch ebook collections (similar to music collections)
 	React.useEffect(() => {
@@ -327,7 +327,7 @@ export default function Landing() {
 			<S.CollectionsWrapper>
 				<CollectionsCarousel collections={collections} loading={collectionsLoading} />
 			</S.CollectionsWrapper>
-			<S.MusicCollectionsWrapper>
+			{/* <S.MusicCollectionsWrapper>
 				<MusicCollectionsCarousel
 					collections={musicCollections}
 					loading={musicCollectionsLoading}
@@ -335,7 +335,7 @@ export default function Landing() {
 					currentTrack={currentTrack}
 					isPlaying={isPlaying}
 				/>
-			</S.MusicCollectionsWrapper>
+			</S.MusicCollectionsWrapper> */}
 			<S.EbookCollectionsWrapper>
 				<EbookCollectionsCarousel collections={ebookCollections} loading={ebookCollectionsLoading} />
 			</S.EbookCollectionsWrapper>

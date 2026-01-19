@@ -529,7 +529,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 			// Determine if we need to transfer from wallet to profile
 			const transferQuantity = getTransferQuantity().toString();
-			let useWalletAddress = false;
+			let useWalletAddress = sendToWallet;
 
 			// For list/bid orders, check if wallet has sufficient balance
 			// if (props.type === 'list' || props.type === 'bid') {

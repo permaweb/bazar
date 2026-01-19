@@ -662,17 +662,9 @@ export default function AssetAction(props: IProps) {
 								}
 								style={{ display: 'flex' }}
 							>
-								<IconButton
-									type={'alt1'}
-									src={ASSETS.x}
-									handlePress={() => {}}
-									dimensions={{
-										wrapper: 33.5,
-										icon: 17.5,
-									}}
-									tooltip={`${language.shareOn} X`}
-									useBottomToolTip
-								/>
+								<S.ShareButtonContent title={`${language.shareOn} X`}>
+									<ReactSVG src={ASSETS.x} />
+								</S.ShareButtonContent>
 							</TwitterShareButton>
 						</S.HeaderTitleActions>
 					</S.HeaderTitle>

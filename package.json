@@ -60,7 +60,7 @@
 		"eslint-plugin-react-hooks": "^4.6.0",
 		"eslint-plugin-simple-import-sort": "^10.0.0",
 		"husky": "^8.0.0",
-		"permaweb-deploy": "2.3.0",
+		"permaweb-deploy": "3.0.1",
 		"prettier": "^2.8.3",
 		"rollup-plugin-polyfill-node": "^0.13.0",
 		"terser": "^5.44.0",
