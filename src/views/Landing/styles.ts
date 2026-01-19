@@ -73,7 +73,7 @@ export const TokenWrapper = styled.div<{ disabled: boolean }>`
 export const TokenImage = styled.div<{}>`
 	height: 300px;
 	width: 300px;
-	box-shadow: 0px 3.5px 5px 0px ${(props) => props.theme.colors.shadow.alt2};
+	box-shadow: 0px 3.5px 5px 0px ${(props) => props.theme.colors.contrast.background};
 	border: 1px solid ${(props) => props.theme.colors.border.primary};
 	border-radius: 50%;
 	overflow: hidden;

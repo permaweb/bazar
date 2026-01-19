@@ -50,6 +50,38 @@ export const HeaderTitleActions = styled.div`
 	}
 `;
 
+export const ShareButtonContent = styled.div`
+	width: 33.5px;
+	height: 33.5px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	border-radius: 50%;
+	background: ${(props) => props.theme.colors.button.primary.background};
+	border: 1px solid ${(props) => props.theme.colors.button.primary.active.border};
+	cursor: pointer;
+	transition: all 100ms;
+
+	&:hover {
+		background: ${(props) => props.theme.colors.button.primary.active.background};
+	}
+
+	&:focus {
+		outline: 0;
+	}
+
+	div {
+		height: 17.5px !important;
+		width: 17.5px !important;
+	}
+
+	svg {
+		height: 17.5px !important;
+		width: 17.5px !important;
+		fill: ${(props) => props.theme.colors.icon.alt1.fill};
+	}
+`;
+
 export const OrdersWrapper = styled.div`
 	width: fit-content;
 	display: flex;
