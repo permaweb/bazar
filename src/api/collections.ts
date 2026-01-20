@@ -1,5 +1,5 @@
 import { readHandler } from 'api';
-import { getAssetByIdGQL, getAssetStateById } from 'api/assets';
+import { getAssetByIdGQL } from 'api/assets';
 
 import { AO, getDefaultToken, HB } from 'helpers/config';
 
@@ -318,12 +318,6 @@ export async function getAllMusicCollections(libs: any): Promise<CollectionType[
 					const edges = data?.edges ?? [];
 					const pageInfo = data?.pageInfo;
 
-					console.log(
-						`[Music Collections] Page ${pageCount + 1}: Found ${edges.length} assets, hasNextPage: ${
-							pageInfo?.hasNextPage
-						}`
-					);
-
 					if (edges.length) {
 						success = true;
 					}
@@ -352,17 +346,11 @@ export async function getAllMusicCollections(libs: any): Promise<CollectionType[
 					} else {
 						hasNextPage = false;
 					}
-
-					console.log(`[Music Collections] Total unique collections found so far: ${musicCollectionIds.size}`);
 				} catch (graphQLError) {
 					console.error('Error executing music collections GraphQL query:', graphQLError);
 					hasNextPage = false; // Stop pagination on error
 				}
 			}
-
-			console.log(
-				`[Music Collections] GraphQL search complete. Found ${musicCollectionIds.size} unique collection IDs`
-			);
 
 			if (!success) {
 				// Fallback to known music collection
@@ -376,14 +364,12 @@ export async function getAllMusicCollections(libs: any): Promise<CollectionType[
 
 		// Fetch all the music collections
 		const musicCollections: CollectionType[] = [];
-		console.log(`[Music Collections] Fetching ${musicCollectionIds.size} collections...`);
 
 		for (const collectionId of musicCollectionIds) {
 			try {
 				let collection;
 				try {
 					collection = await libs.getCollection(collectionId);
-					console.log(`[Music Collections] Fetched collection: ${collection?.title || collectionId}`);
 				} catch (hyperbeamError) {
 					console.warn(`[Music Collections] HyperBEAM failed for ${collectionId}, using fallback:`, hyperbeamError);
 					// Create fallback collection data
@@ -451,7 +437,6 @@ export async function getAllMusicCollections(libs: any): Promise<CollectionType[
 			})
 		);
 
-		console.log(`[Music Collections] Returning ${musicCollections.length} collections`);
 		return musicCollections;
 	} catch (e: any) {
 		console.error('Error in getAllMusicCollections:', e);
@@ -506,7 +491,6 @@ export async function getAllEbookCollections(libs: any): Promise<CollectionType[
 				}
 			}`;
 
-			let success = false;
 			let cursor: string | null = null;
 			let hasNextPage = true;
 			let pageCount = 0;
@@ -520,16 +504,6 @@ export async function getAllEbookCollections(libs: any): Promise<CollectionType[
 					const data = result?.data?.transactions;
 					const edges = data?.edges ?? [];
 					const pageInfo = data?.pageInfo;
-
-					console.log(
-						`[Ebook Collections] Page ${pageCount + 1}: Found ${edges.length} assets, hasNextPage: ${
-							pageInfo?.hasNextPage
-						}`
-					);
-
-					if (edges.length) {
-						success = true;
-					}
 
 					for (const edge of edges) {
 						try {
@@ -555,24 +529,17 @@ export async function getAllEbookCollections(libs: any): Promise<CollectionType[
 					} else {
 						hasNextPage = false;
 					}
-
-					console.log(`[Ebook Collections] Total unique collections found so far: ${ebookCollectionIds.size}`);
 				} catch (graphQLError) {
 					console.error('Error executing ebook collections GraphQL query:', graphQLError);
 					hasNextPage = false; // Stop pagination on error
 				}
 			}
-
-			console.log(
-				`[Ebook Collections] GraphQL search complete. Found ${ebookCollectionIds.size} unique collection IDs`
-			);
 		} catch (e) {
 			console.error('Error in GraphQL search:', e);
 		}
 
 		// Fetch all the ebook collections
 		const ebookCollections: CollectionType[] = [];
-		console.log(`[Ebook Collections] Fetching ${ebookCollectionIds.size} collections...`);
 
 		for (const collectionId of ebookCollectionIds) {
 			try {
@@ -580,7 +547,6 @@ export async function getAllEbookCollections(libs: any): Promise<CollectionType[
 
 				try {
 					collection = await libs.getCollection(collectionId);
-					console.log(`[Ebook Collections] Fetched collection: ${collection?.title || collectionId}`);
 				} catch (hyperbeamError) {
 					console.warn(`[Ebook Collections] HyperBEAM failed for ${collectionId}, using fallback:`, hyperbeamError);
 					// Create fallback collection data
@@ -590,7 +556,7 @@ export async function getAllEbookCollections(libs: any): Promise<CollectionType[
 						name: `Ebook Collection ${collectionId.slice(0, 8)}`,
 						description: 'Ebook collection from Arweave',
 						creator: '',
-						dateCreated: Date.now(),
+						dateCreated: Date.now().toString(),
 						banner: null,
 						thumbnail: null,
 						activityProcess: null,
@@ -613,7 +579,7 @@ export async function getAllEbookCollections(libs: any): Promise<CollectionType[
 						title: cleanTitle || 'Ebook Collection',
 						description: collection.description || '',
 						creator: collection.creator || '',
-						dateCreated: collection.dateCreated || Date.now(),
+						dateCreated: collection.dateCreated || Date.now().toString(),
 						banner: collection.banner || null,
 						thumbnail: collection.thumbnail || null,
 						activityProcess: collection.activityProcess || null,
@@ -648,7 +614,6 @@ export async function getAllEbookCollections(libs: any): Promise<CollectionType[
 			})
 		);
 
-		console.log(`[Ebook Collections] Returning ${ebookCollections.length} collections`);
 		return ebookCollections;
 	} catch (e: any) {
 		console.error('Error in getAllEbookCollections:', e);
