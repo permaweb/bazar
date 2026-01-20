@@ -129,44 +129,44 @@ export default function AssetActionMarketOrders(props: IProps) {
 	const CURRENT_TOKEN_NODE = 'https://state-1.forward.computer';
 	const SU_URL = 'https://su-router.ao-testnet.xyz';
 
-	// Hydrate tokens on page load
-	React.useEffect(() => {
-		const assetId = props.asset?.data?.id;
-		if (assetId) {
-			hydrateProcess(assetId, resolveHBNode(assetId));
-		}
+	// // Hydrate tokens on page load
+	// React.useEffect(() => {
+	// 	const assetId = props.asset?.data?.id;
+	// 	if (assetId) {
+	// 		hydrateProcess(assetId, resolveHBNode(assetId));
+	// 	}
 
-		// Cleanup: remove from hydration state if asset changes
-		return () => {
-			if (assetId) {
-				setHydratingTokens((prev) => prev.filter((id) => id !== assetId));
-				setHydrationProgress((prev) => {
-					const next = { ...prev };
-					delete next[assetId];
-					return next;
-				});
-			}
-		};
-	}, [props.asset?.data?.id]);
+	// 	// Cleanup: remove from hydration state if asset changes
+	// 	return () => {
+	// 		if (assetId) {
+	// 			setHydratingTokens((prev) => prev.filter((id) => id !== assetId));
+	// 			setHydrationProgress((prev) => {
+	// 				const next = { ...prev };
+	// 				delete next[assetId];
+	// 				return next;
+	// 			});
+	// 		}
+	// 	};
+	// }, [props.asset?.data?.id]);
 
-	React.useEffect(() => {
-		const tokenId = tokenProvider.selectedToken?.id;
-		if (tokenId) {
-			hydrateProcess(tokenId, resolveHBNode(tokenId));
-		}
+	// React.useEffect(() => {
+	// 	const tokenId = tokenProvider.selectedToken?.id;
+	// 	if (tokenId) {
+	// 		hydrateProcess(tokenId, resolveHBNode(tokenId));
+	// 	}
 
-		// Cleanup: remove from hydration state if token changes
-		return () => {
-			if (tokenId) {
-				setHydratingTokens((prev) => prev.filter((id) => id !== tokenId));
-				setHydrationProgress((prev) => {
-					const next = { ...prev };
-					delete next[tokenId];
-					return next;
-				});
-			}
-		};
-	}, [tokenProvider.selectedToken?.id]);
+	// 	// Cleanup: remove from hydration state if token changes
+	// 	return () => {
+	// 		if (tokenId) {
+	// 			setHydratingTokens((prev) => prev.filter((id) => id !== tokenId));
+	// 			setHydrationProgress((prev) => {
+	// 				const next = { ...prev };
+	// 				delete next[tokenId];
+	// 				return next;
+	// 			});
+	// 		}
+	// 	};
+	// }, [tokenProvider.selectedToken?.id]);
 
 	function resolveHBNode(processId: string) {
 		return processId === AO.ao ? CURRENT_AO_NODE : CURRENT_TOKEN_NODE;
@@ -285,9 +285,21 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 					(async function () {
 						let calculatedOwnerBalance = 0;
-						if (permawebProvider.profile?.id)
-							calculatedOwnerBalance = await fetchBalance(props.asset.data.id, permawebProvider.profile?.id);
-						let calculatedWalletBalance = await fetchBalance(props.asset.data.id, arProvider.walletAddress);
+						let calculatedWalletBalance = 0;
+
+						if (props.asset?.state?.balances) {
+							if (permawebProvider.profile?.id)
+								calculatedOwnerBalance = props.asset?.state?.balances[permawebProvider.profile?.id]
+									? Number(props.asset?.state?.balances[permawebProvider.profile?.id])
+									: 0;
+							calculatedWalletBalance = props.asset?.state?.balances[arProvider.walletAddress]
+								? Number(props.asset?.state?.balances[arProvider.walletAddress])
+								: 0;
+						} else {
+							if (permawebProvider.profile?.id)
+								calculatedOwnerBalance = await fetchBalance(props.asset.data.id, permawebProvider.profile?.id);
+							calculatedWalletBalance = await fetchBalance(props.asset.data.id, arProvider.walletAddress);
+						}
 
 						if (denomination) {
 							calculatedOwnerBalance = calculatedOwnerBalance / denomination;
@@ -509,7 +521,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 			if (!currentOrderbook) {
 				try {
-					const args: any = { assetId: props.asset.data.id, writeToProcess: true };
+					const args: any = { assetId: props.asset.data.id, writeToAsset: true };
 					if (props.asset.data.collectionId) args.collectionId = props.asset.data.collectionId;
 
 					const newOrderbook = await createOrderbook(
@@ -626,10 +638,14 @@ export default function AssetActionMarketOrders(props: IProps) {
 				// quoteTokenDenomination is always the selected token's denomination (quote token in pair)
 				if (denomination && denomination > 1) {
 					data.baseTokenDenomination = denomination.toString();
+				} else {
+					data.baseTokenDenomination = '1';
 				}
 
 				if (transferDenomination && transferDenomination > 1) {
 					data.quoteTokenDenomination = transferDenomination.toString();
+				} else {
+					data.quoteTokenDenomination = '1';
 				}
 
 				const orderId = await createOrder(
@@ -654,6 +670,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 				// 	dispatch(streakActions.setStreaks(streaks.Streaks));
 				// }
 			} catch (e: any) {
+				console.error(e);
 				handleStatusUpdate(false, true, false, e.message ?? 'Error creating order in UCM');
 			}
 		} else {

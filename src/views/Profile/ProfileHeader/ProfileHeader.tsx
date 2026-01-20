@@ -7,7 +7,7 @@ import { Button } from 'components/atoms/Button';
 import { Modal } from 'components/molecules/Modal';
 import { Panel } from 'components/molecules/Panel';
 import { ProfileManage } from 'components/organisms/ProfileManage';
-import { Streaks } from 'components/organisms/Streaks';
+// import { Streaks } from 'components/organisms/Streaks';
 import { ASSETS, DEFAULTS, URLS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import { checkValidAddress, formatAddress } from 'helpers/utils';
@@ -88,7 +88,7 @@ export default function ProfileHeader(props: IProps) {
 		return props.profile ? (
 			<S.HeaderHA>
 				<h4>
-					{props.profile.displayName ? props.profile.displayName : formatAddress(props.profile.walletAddress, false)}
+					{props.profile.displayName ?? props.profile.displayname ?? formatAddress(props.profile.walletAddress, false)}
 				</h4>
 				<S.HeaderInfoDetail>
 					<span>{`${getHandle()}`}</span>
