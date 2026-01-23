@@ -5,9 +5,10 @@ import { defineConfig } from 'vite';
 import { nodePolyfills } from 'vite-plugin-node-polyfills';
 import svgr from 'vite-plugin-svgr';
 
+// Mainnet addresses (default for this branch)
 const productionAddresses = {
-	MODULE: 'Pq2Zftrqut0hdisH_MC2pDOT6S4eQFoxGsFUzR6r350',
-	SCHEDULER: '_GQ33BkPtZrqxA84vM8Zk-N2aO0toNNu_C-l-rawrBA',
+	MODULE: 'ISShJH1ij-hPPt9St5UFFr_8Ys3Kj5cyg7zrMGt7H9s', // Mainnet AOS Module
+	SCHEDULER: 'n_XZJhUnmldNFo4dhajoPZWhBXuJk-OcQr5JQ49c4Zo', // Mainnet scheduler (schedule.forward.computer)
 	DEFAULT_TOKEN: 'xU9zFkq3X2ZQ6olwNVvr1vUWIjc3kXTWr7xKQD6dh10',
 	UCM: 'hqdL4AZaFZ0huQHbAsYxdTwG6vpibK7ALWKNzmWaD4Q',
 	UCM_ACTIVITY: '7_psKu3QHwzc2PFCJk2lEwyitLJbz6Vj7hOcltOulj4',
@@ -19,9 +20,10 @@ const productionAddresses = {
 	STAMPS: 'LaC2VtxqGekpRPuJh-TkI_ByAqCS2_KB3YuhMJ5yBtc',
 };
 
+// Legacy addresses (for fallback/testing)
 const nonProductionAddresses = {
-	MODULE: 'Pq2Zftrqut0hdisH_MC2pDOT6S4eQFoxGsFUzR6r350',
-	SCHEDULER: '_GQ33BkPtZrqxA84vM8Zk-N2aO0toNNu_C-l-rawrBA',
+	MODULE: 'Pq2Zftrqut0hdisH_MC2pDOT6S4eQFoxGsFUzR6r350', // Legacy module
+	SCHEDULER: '_GQ33BkPtZrqxA84vM8Zk-N2aO0toNNu_C-l-rawrBA', // Legacy scheduler
 	DEFAULT_TOKEN: 'xU9zFkq3X2ZQ6olwNVvr1vUWIjc3kXTWr7xKQD6dh10',
 	UCM: 'CDxd81DDaJvpzxoyhXn-dVnZhYIFQEKU8FeUHdktFgQ',
 	UCM_ACTIVITY: 'W45ki8vJ0TcsxZAGZIbGj3k38595TA0HfZwCOaqhOa0',
@@ -38,7 +40,12 @@ export default defineConfig(({ mode }) => {
 	const isProduction = env === 'production';
 	const isStaging = env === 'staging';
 
-	const addresses = isProduction ? productionAddresses : isStaging ? nonProductionAddresses : productionAddresses;
+	// Support switching between mainnet and legacy via VITE_AO env var
+	// Default to mainnet for this branch
+	const aoMode = process.env.VITE_AO || 'mainnet';
+	const useMainnet = aoMode === 'mainnet';
+
+	const addresses = useMainnet ? productionAddresses : nonProductionAddresses;
 
 	return {
 		root: './',
@@ -56,7 +63,7 @@ export default defineConfig(({ mode }) => {
 		],
 		resolve: {
 			alias: {
-				'@permaweb/ucm': path.resolve(__dirname, 'node_modules/@permaweb/ucm/dist/browser.js'),
+				'@permaweb/ucm': path.resolve(__dirname, 'node_modules/@permaweb/ucm/dist/index.esm.js'),
 				api: path.resolve(__dirname, 'src/api'),
 				app: path.resolve(__dirname, 'src/app'),
 				arweave: path.resolve(__dirname, 'node_modules/arweave'),
