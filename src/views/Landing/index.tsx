@@ -1,6 +1,6 @@
 import React from 'react';
 import { useSelector } from 'react-redux';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 
 import {
 	getAllEbookCollections,
@@ -10,6 +10,7 @@ import {
 	getCollections,
 } from 'api';
 
+import { Button } from 'components/atoms/Button';
 import { ActivityTable } from 'components/organisms/ActivityTable';
 import { CollectionsCarousel } from 'components/organisms/CollectionsCarousel';
 import { EbookCollectionsCarousel } from 'components/organisms/EbookCollectionsCarousel';
@@ -67,7 +68,11 @@ import * as S from './styles';
 // 	}
 // };
 
+const FEATURED_ASSET = 'xZnE3Y8FSM1A8XOp4j2q1b0pQNayJO-41Wx2GIcGhnA';
+
 export default function Landing() {
+	const navigate = useNavigate();
+
 	const collectionsReducer = useSelector((state: RootState) => state.collectionsReducer);
 
 	const permawebProvider = usePermawebProvider();
@@ -311,7 +316,7 @@ export default function Landing() {
 
 	return (
 		<S.Wrapper className={'fade-in'}>
-			<S.FeaturedWrapper>
+			<S.FeaturedTokenWrapper>
 				<h4>{'Trade AO'}</h4>
 				<S.TokenWrapper className={'fade-in border-wrapper-alt1'} disabled={false}>
 					<Link to={`${URLS.asset}${AO.ao}`}>
@@ -323,10 +328,41 @@ export default function Landing() {
 						</S.TokenImage>
 					</Link>
 				</S.TokenWrapper>
-			</S.FeaturedWrapper>
+			</S.FeaturedTokenWrapper>
 			<S.CollectionsWrapper>
 				<CollectionsCarousel collections={collections} loading={collectionsLoading} />
 			</S.CollectionsWrapper>
+			<S.FeaturedAssetWrapper>
+				<h4>{'Permaweb Journal'}</h4>
+				<S.FeaturedAssetBody>
+					<S.FeaturedAssetInfo>
+						<p>
+							Permaweb Journal Issue 00 is live. Buy an Issue 00 atomic asset to claim a print journal: 90 pages,
+							full-color artwork, printed on high-quality paper stock.
+						</p>
+						<S.FeaturedAssetInfoDivider />
+						<span>
+							Featuring articles and essays from permaweb founders, builders, and thinkers. Bringing back media you can
+							feel.
+						</span>
+						<S.FeaturedAssetActions>
+							<Button
+								type={'primary'}
+								label={'Go To Asset'}
+								handlePress={() => navigate(`${URLS.asset}${FEATURED_ASSET}`)}
+								height={50}
+								width={350}
+							/>
+							<Button type={'alt1'} label={'Claim Print'} handlePress={() => window.open('')} height={50} width={350} />
+						</S.FeaturedAssetActions>
+					</S.FeaturedAssetInfo>
+					<S.FeaturedAssetData>
+						<Link to={`${URLS.asset}${FEATURED_ASSET}`}>
+							<video src={getTxEndpoint(FEATURED_ASSET)} muted autoPlay loop />
+						</Link>
+					</S.FeaturedAssetData>
+				</S.FeaturedAssetBody>
+			</S.FeaturedAssetWrapper>
 			{/* <S.MusicCollectionsWrapper>
 				<MusicCollectionsCarousel
 					collections={musicCollections}
@@ -336,9 +372,9 @@ export default function Landing() {
 					isPlaying={isPlaying}
 				/>
 			</S.MusicCollectionsWrapper> */}
-			<S.EbookCollectionsWrapper>
+			{/* <S.EbookCollectionsWrapper>
 				<EbookCollectionsCarousel collections={ebookCollections} loading={ebookCollectionsLoading} />
-			</S.EbookCollectionsWrapper>
+			</S.EbookCollectionsWrapper> */}
 			<S.TokensWrapper>
 				<TrendingTokens />
 			</S.TokensWrapper>

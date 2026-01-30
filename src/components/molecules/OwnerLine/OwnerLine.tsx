@@ -1,7 +1,7 @@
 import { Link, useNavigate } from 'react-router-dom';
 
 import { Avatar } from 'components/atoms/Avatar';
-import { URLS } from 'helpers/config';
+import { REDIRECTS, URLS } from 'helpers/config';
 import { formatAddress } from 'helpers/utils';
 
 import * as S from './styles';
@@ -13,8 +13,11 @@ export default function OwnerLine(props: IProps) {
 	function handleViewProfile() {
 		if (props.owner && props.owner.profile && props.owner.profile.id) {
 			navigate(URLS.profileAssets(props.owner.profile.id));
-			if (props.callback) props.callback();
+		} else {
+			window.open(REDIRECTS.explorer(props.owner.address));
 		}
+
+		if (props.callback) props.callback();
 	}
 
 	function getLabel() {
@@ -30,10 +33,11 @@ export default function OwnerLine(props: IProps) {
 			<S.Label>
 				<Link
 					onClick={() => (props.callback ? props.callback() : {})}
+					target={'_blank'}
 					to={
 						props.owner.profile && props.owner.profile.id
 							? URLS.profileAssets(props.owner.profile.id)
-							: `${URLS.profile}${props.owner.address}`
+							: REDIRECTS.explorer(props.owner.address)
 					}
 				>
 					{getLabel()}
