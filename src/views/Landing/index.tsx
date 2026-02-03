@@ -353,7 +353,13 @@ export default function Landing() {
 								height={50}
 								width={350}
 							/>
-							<Button type={'alt1'} label={'Claim Print'} handlePress={() => window.open('')} height={50} width={350} />
+							<Button
+								type={'alt1'}
+								label={'Claim Print'}
+								handlePress={() => window.open('https://print_permaweb-journal.arweave.net/')}
+								height={50}
+								width={350}
+							/>
 						</S.FeaturedAssetActions>
 					</S.FeaturedAssetInfo>
 					<S.FeaturedAssetData>
