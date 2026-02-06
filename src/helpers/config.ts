@@ -424,7 +424,7 @@ export const REDIRECTS = {
 	aox: `https://aox.arweave.net`,
 	arconnect: `https://wander.app`,
 	warDepot: `https://wardepot.arweave.net`,
-	explorer: (messageId: string) => `https://lunar.arweave.net/#/explorer/${messageId}`,
+	explorer: (id: string) => `https://lunar.arweave.net/#/explorer/${id}`,
 };
 
 export const DEFAULTS = {

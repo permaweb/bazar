@@ -7,6 +7,7 @@ export const SectionTitle = styled.h4`
 	color: ${(props) => props.theme.colors.font.primary};
 	font-size: ${(props) => props.theme.typography.size.base};
 	font-weight: ${(props) => props.theme.typography.weight.bold};
+	text-shadow: none;
 	margin: 0 0 15px 0;
 `;
 
@@ -56,16 +57,17 @@ export const TopicsWrapper = styled.div`
 export const TopicsGrid = styled.div`
 	display: flex;
 	flex-wrap: wrap;
-	gap: 8px;
+	gap: 10px;
 `;
 
 export const TopicTag = styled.span`
 	background: ${(props) => props.theme.colors.button.primary.background};
 	color: ${(props) => props.theme.colors.button.primary.label};
-	padding: 6px 12px;
+	padding: 6.5px 12.5px 5px 12.5px;
 	border-radius: ${STYLING.dimensions.radius.alt2};
-	font-size: 12px;
+	font-size: ${(props) => props.theme.typography.size.xxxSmall};
 	font-weight: ${(props) => props.theme.typography.weight.bold};
+	text-transform: uppercase;
 
 	animation: ${open} ${fadeIn2};
 `;

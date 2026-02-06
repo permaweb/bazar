@@ -35,40 +35,6 @@ import { IProps } from './types';
 
 const MIN_PRICE = 0.000001;
 
-// Helper function to check if an asset is 1/1 (total supply is 1 OR only 1 owner)
-function isOneOfOneAsset(asset: IProps['asset'], denomination: number | null): boolean {
-	if (!asset?.state?.balances || Object.keys(asset.state.balances).length === 0) {
-		return false;
-	}
-
-	// Calculate total supply from all balances
-	const balances: any = Object.keys(asset.state.balances).map((address: string) => {
-		const balanceValue = asset.state.balances[address];
-		return Number(balanceValue) || 0;
-	});
-	const totalSupplyRaw = balances.reduce((a: number, b: number) => a + b, 0);
-
-	// Account for denomination to get display units
-	// Only apply denomination if it's greater than 1 (denomination of 1 means no denomination)
-	let totalSupply = totalSupplyRaw;
-	const assetDenomination = asset.state.denomination;
-	if (assetDenomination && Number(assetDenomination) > 1) {
-		const denomValue = Math.pow(10, Number(assetDenomination));
-		totalSupply = totalSupplyRaw / denomValue;
-	} else if (denomination && denomination > 1) {
-		// Fallback to state denomination if asset state doesn't have it
-		totalSupply = totalSupplyRaw / denomination;
-	}
-
-	// Count owners with non-zero balances
-	const ownerCount = Object.keys(asset.state.balances).filter(
-		(address: string) => Number(asset.state.balances[address]) > 0
-	).length;
-
-	// Asset is 1/1 if total supply is 1 OR there's only 1 owner
-	return Math.round(totalSupply) === 1 || ownerCount === 1;
-}
-
 export default function AssetActionMarketOrders(props: IProps) {
 	const permawebProvider = usePermawebProvider();
 	const arProvider = useArweaveProvider();
@@ -117,7 +83,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 	const [insufficientBalance, setInsufficientBalance] = React.useState<boolean>(false);
 
 	// Buy / Sell tokens through wallet directly, bypass profile
-	const [sendToWallet, setSendToWallet] = React.useState<boolean>(false);
+	const [sendToWallet, setSendToWallet] = React.useState<boolean>(true);
 
 	// Track tokens currently being hydrated
 	const [hydratingTokens, setHydratingTokens] = React.useState<string[]>([]);
@@ -444,11 +410,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 				setMaxOrderQuantity(totalBidQuantity);
 				break;
 			case 'bid':
-				// For bids, user can bid any quantity they want
-				// The real limit is their currency balance and the price they set (quantity × price)
-				// Use a reasonable number for slider, but don't enforce as hard limit
-				// Exception: For 1/1 assets, max bid quantity should be 1
-				const bidMaxQuantity = isOneOfOneAsset(props.asset, denomination) ? 1 : 10000000; // 10M for slider range, validation is by total cost
+				const bidMaxQuantity = props.asset?.state?.metadata?.Totalsupply ?? 1000;
 				setMaxOrderQuantity(bidMaxQuantity);
 				break;
 			case 'list':
@@ -1196,15 +1158,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 			(!Number.isInteger(Number(currentOrderQuantity)) && !denomination)
 		)
 			return true;
-		// For bids, only enforce maxOrderQuantity limit for 1/1 assets
-		// For other types, always enforce maxOrderQuantity limit
-		if (props.type === 'bid') {
-			// Enforce maxOrderQuantity limit only for 1/1 assets
-			if (isOneOfOneAsset(props.asset, denomination) && Number(currentOrderQuantity) > maxOrderQuantity) return true;
-		} else {
-			// For non-bid types, always enforce maxOrderQuantity limit
-			if (Number(currentOrderQuantity) > maxOrderQuantity) return true;
-		}
+		if (Number(currentOrderQuantity) > maxOrderQuantity) return true;
 		if (
 			(props.type === 'list' || props.type === 'bid') &&
 			(Number(unitPrice) <= 0 || Number(unitPrice) <= MIN_PRICE || isNaN(Number(unitPrice)))
@@ -1299,9 +1253,9 @@ export default function AssetActionMarketOrders(props: IProps) {
 						<span>{props.updating ? `${language.updating}...` : formatCount(quantity.toString())}</span>
 					</S.TotalQuantityLine>
 				)}
-				{props.type === 'sell' && !props.updating && (
+				{!props.updating && (
 					<S.TotalQuantityLine>
-						<p>{'Your Balance'}</p>
+						<p>{`Your Balance (${props.asset?.data?.title})`}</p>
 						<span>
 							{formatCount(
 								getTotalTokenBalance(

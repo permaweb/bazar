@@ -179,6 +179,11 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 			label: language.tradeUsda,
 			target: '',
 		},
+		[AO.apus]: {
+			link: `${URLS.asset}${AO.apus}`,
+			label: language.tradeApus,
+			target: '',
+		},
 		[AO.game]: {
 			link: `${URLS.asset}${AO.game}`,
 			label: language.tradeGame,

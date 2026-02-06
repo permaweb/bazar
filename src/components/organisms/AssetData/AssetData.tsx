@@ -10,6 +10,7 @@ import { checkValidAddress } from 'helpers/utils';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 
 import { EbookRenderer } from '../EbookRenderer';
+
 import * as S from './styles';
 import { IProps } from './types';
 

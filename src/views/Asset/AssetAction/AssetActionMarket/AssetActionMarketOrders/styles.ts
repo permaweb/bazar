@@ -78,6 +78,7 @@ export const TotalQuantityLine = styled.div`
 		font-weight: ${(props) => props.theme.typography.weight.medium};
 		color: ${(props) => props.theme.colors.font.alt1};
 		word-wrap: break-word;
+		max-width: 200px;
 	}
 	span {
 		color: ${(props) => props.theme.colors.font.primary};
