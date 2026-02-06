@@ -319,7 +319,7 @@ export default function AssetInfo(props: IProps) {
 					content={
 						<GS.DrawerContent>
 							<GS.DrawerHeader>{props.asset.data.title}</GS.DrawerHeader>
-							{props.asset.data.description && (
+							{props.asset?.data?.description && (
 								<GS.DrawerContentDescription>{props.asset.data.description}</GS.DrawerContentDescription>
 							)}
 							{creator && (
@@ -384,6 +384,12 @@ export default function AssetInfo(props: IProps) {
 								<GS.DrawerContentLine>
 									<GS.DrawerContentHeader>{language.implements}</GS.DrawerContentHeader>
 									<GS.DrawerContentDetail>{props.asset.data.implementation}</GS.DrawerContentDetail>
+								</GS.DrawerContentLine>
+							)}
+							{props.asset?.orderbook?.id && (
+								<GS.DrawerContentLine>
+									<GS.DrawerContentHeader>Orderbook</GS.DrawerContentHeader>
+									<TxAddress address={props.asset.orderbook.id} wrap={false} />
 								</GS.DrawerContentLine>
 							)}
 							{(() => {

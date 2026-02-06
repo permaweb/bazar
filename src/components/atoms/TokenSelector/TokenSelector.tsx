@@ -83,7 +83,7 @@ export default function TokenSelector(props: TokenSelectorProps) {
 	return (
 		<CloseHandler active={isOpen} disabled={!isOpen} callback={() => setIsOpen(false)}>
 			<S.Wrapper className={props.className}>
-				{props.showLabel && <S.Label>{language.selectToken}</S.Label>}
+				{props.showLabel && <S.Label>{'Swap For'}</S.Label>}
 				<S.CustomSelectWrapper>
 					<S.CustomSelect onClick={() => setIsOpen(!isOpen)} className={isOpen ? 'active' : ''}>
 						<S.SelectedToken>
@@ -113,9 +113,6 @@ export default function TokenSelector(props: TokenSelectorProps) {
 								<S.TokenName>{selectedToken.name.replace(' Token', '')}</S.TokenName>
 								<S.TokenSymbol>{selectedToken.symbol}</S.TokenSymbol>
 							</S.TokenInfo>
-							{/* <S.HealthWrapper>
-								<TokenHealthIndicator tokenId={selectedToken.id} operation="orders" showDetails={false} />
-							</S.HealthWrapper> */}
 						</S.SelectedToken>
 						<S.DropdownArrow className={isOpen ? 'open' : ''}>
 							<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

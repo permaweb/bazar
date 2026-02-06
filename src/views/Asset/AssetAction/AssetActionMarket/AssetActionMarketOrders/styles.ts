@@ -7,8 +7,26 @@ export const Wrapper = styled.div`
 	margin: 30px 0 0 0;
 `;
 
+export const TabDescription = styled.div`
+	display: flex;
+	flex-wrap: wrap;
+	gap: 15px;
+	align-items: center;
+	justify-content: space-between;
+	margin: -10px 0 20px 0;
+	padding: 0 0 15px 0;
+	border-bottom: 1px dotted ${(props) => props.theme.colors.border.primary};
+
+	p {
+		font-size: ${(props) => props.theme.typography.size.small};
+		font-family: ${(props) => props.theme.typography.family.primary};
+		font-weight: ${(props) => props.theme.typography.weight.medium};
+		color: ${(props) => props.theme.colors.font.primary};
+		line-height: 1.5;
+	}
+`;
+
 export const LearnMoreWrapper = styled.div`
-	margin: 15px 0 0 0;
 	display: flex;
 	align-items: center;
 	justify-content: flex-start;
@@ -18,15 +36,11 @@ export const LearnMoreWrapper = styled.div`
 		align-items: center;
 		gap: 7.5px;
 		text-decoration: none;
-		transition: opacity 0.2s ease;
+		transition: all 100ms;
 
 		span {
 			font-size: ${(props) => props.theme.typography.size.small};
 			color: ${(props) => props.theme.colors.font.primary};
-		}
-
-		&:hover {
-			opacity: 1;
 		}
 
 		svg {
@@ -35,6 +49,17 @@ export const LearnMoreWrapper = styled.div`
 			margin: 6.5px 0 0 0;
 			color: ${(props) => props.theme.colors.font.primary};
 			fill: ${(props) => props.theme.colors.font.primary};
+		}
+
+		&:hover {
+			span {
+				color: ${(props) => props.theme.colors.font.alt1};
+			}
+
+			svg {
+				color: ${(props) => props.theme.colors.font.alt1};
+				fill: ${(props) => props.theme.colors.font.alt1};
+			}
 		}
 	}
 `;
@@ -78,7 +103,7 @@ export const TotalQuantityLine = styled.div`
 		font-weight: ${(props) => props.theme.typography.weight.medium};
 		color: ${(props) => props.theme.colors.font.alt1};
 		word-wrap: break-word;
-		max-width: 200px;
+		max-width: 220px;
 	}
 	span {
 		color: ${(props) => props.theme.colors.font.primary};

@@ -406,8 +406,11 @@ export default function AssetActionMarketOrders(props: IProps) {
 				setMaxOrderQuantity(totalSalesQuantity);
 				break;
 			case 'sell':
-				// For sell (market orders): show quantity of bids available to fill
-				setMaxOrderQuantity(totalBidQuantity);
+				// For sell (market orders): limited by minimum of available balance and bid liquidity
+				let totalBalance = 0;
+				if (connectedBalance) totalBalance += connectedBalance;
+				if (connectedWalletBalance) totalBalance += connectedWalletBalance;
+				setMaxOrderQuantity(Math.min(totalBalance, totalBidQuantity));
 				break;
 			case 'bid':
 				const bidMaxQuantity = props.asset?.state?.metadata?.Totalsupply ?? 1000;
@@ -415,10 +418,10 @@ export default function AssetActionMarketOrders(props: IProps) {
 				break;
 			case 'list':
 			case 'transfer':
-				let totalBalance = 0;
-				if (connectedBalance) totalBalance += connectedBalance;
-				if (connectedWalletBalance) totalBalance += connectedWalletBalance;
-				setMaxOrderQuantity(totalBalance);
+				let listTransferBalance = 0;
+				if (connectedBalance) listTransferBalance += connectedBalance;
+				if (connectedWalletBalance) listTransferBalance += connectedWalletBalance;
+				setMaxOrderQuantity(listTransferBalance);
 				break;
 		}
 	}, [
@@ -581,8 +584,8 @@ export default function AssetActionMarketOrders(props: IProps) {
 					action: action,
 				};
 
-				// For buy orders, if sendToWallet is true, set walletAddress to receive tokens directly to wallet
-				if (props.type === 'buy' && sendToWallet) {
+				// For buy/sell orders, if sendToWallet is true, set walletAddress to receive tokens directly to wallet
+				if ((props.type === 'buy' || props.type === 'sell') && sendToWallet) {
 					data.walletAddress = arProvider.walletAddress;
 				} else {
 					if (props.type === 'list' || props.type === 'bid') {
@@ -1302,33 +1305,32 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 	function getOrderDetails(_useWrapper: boolean) {
 		let quantityLabel: string | null = null;
-		// let percentageLabel: string | null = null;
+		let priceLabel: string | null = null;
 
 		switch (props.type) {
 			case 'buy':
-				quantityLabel = language.totalPurchaseQuantity;
+				quantityLabel = 'You Will Buy';
+				priceLabel = 'For';
 				dominantToken = props.asset.data.id;
-				// swapToken = props.asset.data.id;
-				// percentageLabel = language.totalPurchasePercentage;
 				break;
 			case 'bid':
-				quantityLabel = 'Total Bid Quantity';
+				quantityLabel = 'You Want to Receive';
+				priceLabel = 'For';
 				dominantToken = props.asset.data.id;
-				// swapToken = props.asset.data.id;
 				break;
 			case 'sell':
-				quantityLabel = 'Total Sale Quantity';
+				quantityLabel = 'You Will Sell';
+				priceLabel = 'For';
 				dominantToken = props.asset.data.id;
 				break;
 			case 'list':
-				quantityLabel = language.totalListingQuantity;
+				quantityLabel = 'You Will List';
+				priceLabel = 'For';
 				dominantToken = props.asset.data.id;
-				// percentageLabel = language.totalListingPercentage;
 				break;
 			case 'transfer':
-				quantityLabel = language.totalTransferQuantity;
+				quantityLabel = 'You Will Send';
 				dominantToken = props.asset.data.id;
-				// percentageLabel = language.totalTransferPercentage;
 				break;
 		}
 
@@ -1342,21 +1344,11 @@ export default function AssetActionMarketOrders(props: IProps) {
 							<p>{formatCount(currentOrderQuantity.toString())}</p>
 						</S.SalesDetailValue>
 					</S.SalesDetail>
-					{/* <S.SalesDetail>
-						<span>{percentageLabel}</span>
-						<p>
-							{formatPercentage(
-								!isNaN(Number(currentOrderQuantity) / totalAssetBalance)
-									? Number(currentOrderQuantity) / totalAssetBalance
-									: 0
-							)}
-						</p>
-					</S.SalesDetail> */}
 				</S.SalesLine>
 				{props.type !== 'transfer' && (
 					<S.SalesLine>
 						<S.SalesDetail>
-							<span>{language.totalPrice}</span>
+							<span>{priceLabel}</span>
 							{getTotalPriceDisplay()}
 						</S.SalesDetail>
 					</S.SalesLine>
@@ -1497,7 +1489,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 					</S.ConfirmationHeader>
 					{getOrderDetails(true)}
 
-					{props.type === 'buy' && (
+					{(props.type === 'buy' || props.type === 'sell') && (
 						<S.ConfirmationDetailsAction
 							active={sendToWallet}
 							disabled={orderProcessed}
@@ -1561,18 +1553,50 @@ export default function AssetActionMarketOrders(props: IProps) {
 		);
 	}
 
-	return props.asset ? (
-		<>
-			<S.Wrapper>
-				{getOrderDetails(false)}
+	function getTabDescription() {
+		let description: string | null = null;
+
+		let currentToken = props.asset?.data?.title ?? 'tokens';
+		let swapToken = tokenProvider.selectedToken.name;
+
+		switch (props.type) {
+			case 'buy':
+				description = `Purchase ${currentToken} instantly with ${swapToken}.`;
+				break;
+			case 'sell':
+				description = `Sell ${currentToken} for ${swapToken} at the best available bid prices.`;
+				break;
+			case 'list':
+				description = `List ${currentToken} for ${swapToken} at a specific price.`;
+				break;
+			case 'bid':
+				description = `Bid on ${currentToken} with ${swapToken} at a specific price.`;
+				break;
+			case 'transfer':
+				description = `Send ${currentToken} directly to another wallet address.`;
+				break;
+		}
+
+		return (
+			<S.TabDescription>
+				<p>{description}</p>
 				{props.type !== 'transfer' && (
 					<S.LearnMoreWrapper>
 						<Link to={`${URLS.docs}developers/ao-token-trading-system`} target="_blank" rel="noopener noreferrer">
 							<ReactSVG src={ASSETS.info} />
-							<span>Learn more about trading</span>
+							<span>Learn More About Trading</span>
 						</Link>
 					</S.LearnMoreWrapper>
 				)}
+			</S.TabDescription>
+		);
+	}
+
+	return props.asset ? (
+		<>
+			<S.Wrapper>
+				{getTabDescription()}
+				{getOrderDetails(false)}
 				<S.InputWrapper>
 					<Slider
 						value={parseFloat(Number(currentOrderQuantity).toString())}

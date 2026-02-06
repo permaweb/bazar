@@ -9,10 +9,11 @@ export const Wrapper = styled.div<{ disabled: boolean }>`
 		font-family: ${(props) => props.theme.typography.family.primary} !important;
 		font-weight: ${(props) => props.theme.typography.weight.bold} !important;
 		text-decoration: ${(props) => (props.disabled ? 'none' : 'underline')};
+		transition: all 100ms;
 
 		&:hover {
 			cursor: ${(props) => (props.disabled ? 'default' : 'pointer')};
-			color: ${(props) => (props.disabled ? props.theme.colors.font.primary : props.theme.colors.font.alt1)};
+			color: ${(props) => (props.disabled ? props.theme.colors.font.primary : props.theme.colors.font.alt5)} !important;
 		}
 	}
 `;
