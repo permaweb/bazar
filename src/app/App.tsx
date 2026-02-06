@@ -2,7 +2,6 @@ import React, { lazy, Suspense } from 'react';
 import { ReactSVG } from 'react-svg';
 
 import { Loader } from 'components/atoms/Loader';
-import { Banner } from 'components/organisms/Banner';
 import { ASSETS, DOM, FLAGS } from 'helpers/config';
 import { serviceWorkerManager } from 'helpers/serviceWorkerManager';
 import { Footer } from 'navigation/footer';
@@ -44,7 +43,7 @@ export default function App() {
 			{!FLAGS.MAINTENANCE ? (
 				<Suspense fallback={<Loader />}>
 					<S.AppWrapper>
-						<Banner />
+						{/* <Banner /> */}
 						<Header />
 						<S.View className={'max-view-wrapper'}>
 							<Routes />

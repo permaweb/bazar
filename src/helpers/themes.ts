@@ -357,7 +357,6 @@ export const theme = (currentTheme: any): DefaultTheme => ({
 		family: {
 			primary: `'Inter', sans-serif`,
 			alt1: `'Quantico', sans-serif`,
-			alt2: `'Archivo', sans-serif`,
 		},
 		size: {
 			xxxSmall: '12px',
