@@ -321,14 +321,19 @@ export default function ActivityTable(props: IProps) {
 				}
 				if (event === 'Sale' && order.Side) {
 					if (order.IncomingSide === 'Ask') {
+						if (order.Side === 'Bids') {
+							dominantToken = order.DominantToken;
+							swapToken = order.SwapToken;
+						} else {
+							dominantToken = order.SwapToken;
+							swapToken = order.DominantToken;
+						}
 						sender = order.Receiver;
 						receiver = order.Sender;
 						quantity = getDenominatedTokenValue(
 							(Number(order.Quantity) / Number(order.Price)) * Math.pow(10, props.asset?.state?.denomination ?? 0),
 							props.asset?.data?.id
 						);
-						dominantToken = order.SwapToken;
-						swapToken = order.DominantToken;
 					}
 					if (order.IncomingSide === 'Bid') {
 						sender = order.Sender;
