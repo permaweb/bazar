@@ -1,10 +1,11 @@
 import React from 'react';
+import { useDispatch } from 'react-redux';
 import { Link } from 'react-router-dom';
 import { ReactSVG } from 'react-svg';
 
 import { createOrder, createOrderbook } from '@permaweb/ucm';
 
-import { messageResults } from 'api';
+import { messageResults, readHandler } from 'api';
 
 import { Button } from 'components/atoms/Button';
 import { CurrencyLine } from 'components/atoms/CurrencyLine';
@@ -13,7 +14,7 @@ import { Slider } from 'components/atoms/Slider';
 import { TokenSelector } from 'components/atoms/TokenSelector';
 import { TxAddress } from 'components/atoms/TxAddress';
 import { Panel } from 'components/molecules/Panel';
-import { AO, ASSETS, REDIRECTS, TOKEN_REGISTRY, URLS } from 'helpers/config';
+import { AO, ASSETS, FLAGS, REDIRECTS, TOKEN_REGISTRY, URLS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import { AssetOrderType } from 'helpers/types';
 import {
@@ -29,6 +30,7 @@ import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 import { usePermawebProvider } from 'providers/PermawebProvider';
 import { useTokenProvider } from 'providers/TokenProvider';
+import * as streakActions from 'store/streaks/actions';
 
 import * as S from './styles';
 import { IProps } from './types';
@@ -36,6 +38,7 @@ import { IProps } from './types';
 const MIN_PRICE = 0.000001;
 
 export default function AssetActionMarketOrders(props: IProps) {
+	const dispatch = useDispatch();
 	const permawebProvider = usePermawebProvider();
 	const arProvider = useArweaveProvider();
 	const tokenProvider = useTokenProvider();
@@ -95,44 +98,48 @@ export default function AssetActionMarketOrders(props: IProps) {
 	const CURRENT_TOKEN_NODE = 'https://state-1.forward.computer';
 	const SU_URL = 'https://su-router.ao-testnet.xyz';
 
-	// // Hydrate tokens on page load
-	// React.useEffect(() => {
-	// 	const assetId = props.asset?.data?.id;
-	// 	if (assetId) {
-	// 		hydrateProcess(assetId, resolveHBNode(assetId));
-	// 	}
+	// Hydrate tokens on page load
+	React.useEffect(() => {
+		if (!FLAGS.ASSET_HYDRATION) return;
 
-	// 	// Cleanup: remove from hydration state if asset changes
-	// 	return () => {
-	// 		if (assetId) {
-	// 			setHydratingTokens((prev) => prev.filter((id) => id !== assetId));
-	// 			setHydrationProgress((prev) => {
-	// 				const next = { ...prev };
-	// 				delete next[assetId];
-	// 				return next;
-	// 			});
-	// 		}
-	// 	};
-	// }, [props.asset?.data?.id]);
+		const assetId = props.asset?.data?.id;
+		if (assetId) {
+			hydrateProcess(assetId, resolveHBNode(assetId));
+		}
 
-	// React.useEffect(() => {
-	// 	const tokenId = tokenProvider.selectedToken?.id;
-	// 	if (tokenId) {
-	// 		hydrateProcess(tokenId, resolveHBNode(tokenId));
-	// 	}
+		// Cleanup: remove from hydration state if asset changes
+		return () => {
+			if (assetId) {
+				setHydratingTokens((prev) => prev.filter((id) => id !== assetId));
+				setHydrationProgress((prev) => {
+					const next = { ...prev };
+					delete next[assetId];
+					return next;
+				});
+			}
+		};
+	}, [props.asset?.data?.id]);
 
-	// 	// Cleanup: remove from hydration state if token changes
-	// 	return () => {
-	// 		if (tokenId) {
-	// 			setHydratingTokens((prev) => prev.filter((id) => id !== tokenId));
-	// 			setHydrationProgress((prev) => {
-	// 				const next = { ...prev };
-	// 				delete next[tokenId];
-	// 				return next;
-	// 			});
-	// 		}
-	// 	};
-	// }, [tokenProvider.selectedToken?.id]);
+	React.useEffect(() => {
+		if (!FLAGS.TOKEN_HYDRATION) return;
+
+		const tokenId = tokenProvider.selectedToken?.id;
+		if (tokenId) {
+			hydrateProcess(tokenId, resolveHBNode(tokenId));
+		}
+
+		// Cleanup: remove from hydration state if token changes
+		return () => {
+			if (tokenId) {
+				setHydratingTokens((prev) => prev.filter((id) => id !== tokenId));
+				setHydrationProgress((prev) => {
+					const next = { ...prev };
+					delete next[tokenId];
+					return next;
+				});
+			}
+		};
+	}, [tokenProvider.selectedToken?.id]);
 
 	function resolveHBNode(processId: string) {
 		return processId === AO.ao ? CURRENT_AO_NODE : CURRENT_TOKEN_NODE;
@@ -277,51 +284,21 @@ export default function AssetActionMarketOrders(props: IProps) {
 					})();
 				}
 
-				// if (props.asset.state.balances) {
-				// 	const balances: any = Object.keys(props.asset.state.balances).map((address: string) => {
-				// 		return Number(props.asset.state.balances[address]);
-				// 	});
+				if (FLAGS.ASSET_BALANCE_CALC && props.asset.state.balances) {
+					const balances: any = Object.keys(props.asset.state.balances).map((address: string) => {
+						return Number(props.asset.state.balances[address]);
+					});
 
-				// 	const totalBalance = balances.reduce((a: number, b: number) => a + b, 0);
+					const totalBalance = balances.reduce((a: number, b: number) => a + b, 0);
 
-				// 	let calculatedTotalBalance = totalBalance;
+					let calculatedTotalBalance = totalBalance;
 
-				// 	if (denomination) {
-				// 		calculatedTotalBalance = totalBalance / denomination;
-				// 	}
+					if (denomination) {
+						calculatedTotalBalance = totalBalance / denomination;
+					}
 
-				// 	setTotalAssetBalance(calculatedTotalBalance);
-				// if (props.asset.state.balances) {
-				// 	const balances: any = Object.keys(props.asset.state.balances).map((address: string) => {
-				// 		return Number(props.asset.state.balances[address]);
-				// 	});
-
-				// 	const totalBalance = balances.reduce((a: number, b: number) => a + b, 0);
-
-				// 	let calculatedTotalBalance = totalBalance;
-
-				// 	if (denomination) {
-				// 		calculatedTotalBalance = totalBalance / denomination;
-				// 	}
-
-				// 	setTotalAssetBalance(calculatedTotalBalance);
-
-				// 	if (arProvider.walletAddress && permawebProvider.profile && permawebProvider.profile.id) {
-				// 		const profileBalance = Number(props.asset.state.balances[permawebProvider.profile.id]);
-				// 		const walletBalance = Number(props.asset.state.balances[arProvider.walletAddress]);
-
-				// let calculatedOwnerBalance = profileBalance;
-				// let calculatedWalletBalance = walletBalance;
-
-				// if (denomination) {
-				// 	calculatedOwnerBalance = profileBalance / denomination;
-				// 	calculatedWalletBalance = walletBalance / denomination;
-				// }
-
-				// 		setConnectedBalance(calculatedOwnerBalance);
-				// 		setConnectedWalletBalance(calculatedWalletBalance);
-				// 	}
-				// }
+					setTotalAssetBalance(calculatedTotalBalance);
+				}
 			}
 
 			if (props.asset.orderbook?.orders && props.asset.orderbook?.orders.length > 0) {
@@ -627,13 +604,13 @@ export default function AssetActionMarketOrders(props: IProps) {
 				arProvider.setToggleProfileUpdate(!arProvider.toggleProfileUpdate);
 				permawebProvider.setToggleTokenBalanceUpdate(!permawebProvider.toggleTokenBalanceUpdate);
 
-				// if (props.type === 'buy') {
-				// 	const streaks = await readHandler({
-				// 		processId: AO.pixl,
-				// 		action: 'Get-Streaks',
-				// 	});
-				// 	dispatch(streakActions.setStreaks(streaks.Streaks));
-				// }
+				if (FLAGS.STREAKS_UPDATE_ON_PURCHASE && props.type === 'buy') {
+					const streaks = await readHandler({
+						processId: AO.pixl,
+						action: 'Get-Streaks',
+					});
+					dispatch(streakActions.setStreaks(streaks.Streaks));
+				}
 			} catch (e: any) {
 				console.error(e);
 				handleStatusUpdate(false, true, false, e.message ?? 'Error creating order in UCM');

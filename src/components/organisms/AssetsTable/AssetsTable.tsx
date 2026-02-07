@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 
-import { getAssetIdGroups, getAssetsByIds } from 'api';
+import { getAssetIdGroups, getAssetsByIds, messageResult } from 'api';
 
 import * as GS from 'app/styles';
 import { Button } from 'components/atoms/Button';
@@ -9,11 +9,12 @@ import { CurrencyLine } from 'components/atoms/CurrencyLine';
 import { IconButton } from 'components/atoms/IconButton';
 import { Notification } from 'components/atoms/Notification';
 import { Select } from 'components/atoms/Select';
-import { ASSET_SORT_OPTIONS, ASSETS, PAGINATORS, STYLING, URLS } from 'helpers/config';
+import { ASSET_SORT_OPTIONS, ASSETS, FLAGS, PAGINATORS, STYLING, URLS } from 'helpers/config';
 import { AssetDetailType, AssetSortType, IdGroupType, NotificationType, SelectOptionType } from 'helpers/types';
 import { isFirefox, sortOrders } from 'helpers/utils';
 import * as windowUtils from 'helpers/window';
 import { useAppProvider } from 'providers/AppProvider';
+import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 import { usePermawebProvider } from 'providers/PermawebProvider';
 
@@ -85,6 +86,7 @@ export default function AssetsTable(props: IProps) {
 	const navigate = useNavigate();
 
 	const appProvider = useAppProvider();
+	const arProvider = useArweaveProvider();
 	const permawebProvider = usePermawebProvider();
 
 	const languageProvider = useLanguageProvider();
@@ -105,7 +107,7 @@ export default function AssetsTable(props: IProps) {
 	const [desktop, setDesktop] = React.useState(windowUtils.checkWindowCutoff(parseInt(STYLING.cutoffs.initial)));
 	const [scrolling, setScrolling] = React.useState<boolean>(false);
 
-	// const [profileLoading, setProfileLoading] = React.useState<boolean>(false);
+	const [profileLoading, setProfileLoading] = React.useState<boolean>(false);
 	const [profileResponse, setProfileResponse] = React.useState<NotificationType | null>(null);
 
 	function handleWindowResize() {
@@ -263,50 +265,52 @@ export default function AssetsTable(props: IProps) {
 	}
 
 	// PFP
-	// async function handleProfileActionPress(e: any, asset: AssetDetailType) {
-	// 	if (permawebProvider.profile && permawebProvider.profile.id && asset.data && asset.data.id) {
-	// 		e.preventDefault();
-	// 		e.stopPropagation();
+	async function handleProfileActionPress(e: any, asset: AssetDetailType) {
+		if (!FLAGS.PFP_UPDATE) return;
 
-	// 		setProfileLoading(true);
-	// 		try {
-	// 			const data: any = {
-	// 				DisplayName: permawebProvider.profile.displayName,
-	// 				UserName: permawebProvider.profile.username,
-	// 				Description: permawebProvider.profile.description,
-	// 				CoverImage: permawebProvider.profile.banner,
-	// 				ProfileImage: asset.data.id,
-	// 			};
+		if (permawebProvider.profile && permawebProvider.profile.id && asset.data && asset.data.id) {
+			e.preventDefault();
+			e.stopPropagation();
 
-	// 			let updateResponse = await messageResult({
-	// 				processId: permawebProvider.profile.id,
-	// 				action: 'Update-Profile',
-	// 				tags: null,
-	// 				data: data,
-	// 				wallet: arProvider.wallet,
-	// 			});
-	// 			if (updateResponse && updateResponse['Profile-Success']) {
-	// 				arProvider.setToggleProfileUpdate(!arProvider.toggleProfileUpdate);
-	// 				setProfileResponse({
-	// 					message: `${language.profileUpdated}!`,
-	// 					status: 'success',
-	// 				});
-	// 			} else {
-	// 				setProfileResponse({
-	// 					message: language.errorUpdatingProfile,
-	// 					status: 'warning',
-	// 				});
-	// 			}
-	// 		} catch (e: any) {
-	// 			console.error(e);
-	// 			setProfileResponse({
-	// 				message: language.errorUpdatingProfile,
-	// 				status: 'warning',
-	// 			});
-	// 		}
-	// 		setProfileLoading(false);
-	// 	}
-	// }
+			setProfileLoading(true);
+			try {
+				const data: any = {
+					DisplayName: permawebProvider.profile.displayName,
+					UserName: permawebProvider.profile.username,
+					Description: permawebProvider.profile.description,
+					CoverImage: permawebProvider.profile.banner,
+					ProfileImage: asset.data.id,
+				};
+
+				let updateResponse = await messageResult({
+					processId: permawebProvider.profile.id,
+					action: 'Update-Profile',
+					tags: null,
+					data: data,
+					wallet: arProvider.wallet,
+				});
+				if (updateResponse && updateResponse['Profile-Success']) {
+					arProvider.setToggleProfileUpdate(!arProvider.toggleProfileUpdate);
+					setProfileResponse({
+						message: `${language.profileUpdated}!`,
+						status: 'success',
+					});
+				} else {
+					setProfileResponse({
+						message: language.errorUpdatingProfile,
+						status: 'warning',
+					});
+				}
+			} catch (e: any) {
+				console.error(e);
+				setProfileResponse({
+					message: language.errorUpdatingProfile,
+					status: 'warning',
+				});
+			}
+			setProfileLoading(false);
+		}
+	}
 
 	function getData() {
 		if ((assetsLoading || props.loadingIds) && viewType) {
@@ -443,18 +447,20 @@ export default function AssetsTable(props: IProps) {
 														/>
 													)}
 
-													{/* {props.setProfileAction &&
+													{FLAGS.PFP_UPDATE &&
+													props.setProfileAction &&
 													permawebProvider.profile &&
 													permawebProvider.profile.id &&
 													permawebProvider.profile.id === address &&
 													asset.data.contentType &&
 													asset.data.contentType.includes('image') ? (
 														<S.AssetGridDataActionWrapper>
-															<Stamps
-																txId={asset.data.id}
-																title={asset.data.title || asset.data.description}
-																asButton
-																noAutoFetch
+															<Button
+																type={'alt2'}
+																label={language.setAsProfilePicture}
+																handlePress={(e: any) => handleProfileActionPress(e, asset)}
+																disabled={profileLoading}
+																loading={profileLoading}
 															/>
 														</S.AssetGridDataActionWrapper>
 													) : (
@@ -466,7 +472,7 @@ export default function AssetsTable(props: IProps) {
 																noAutoFetch
 															/>
 														</S.AssetGridDataActionWrapper>
-													)} */}
+													)}
 												</S.AssetGridDataWrapper>
 												<S.AssetGridBottomWrapper>
 													<S.AssetGridInfoWrapper>

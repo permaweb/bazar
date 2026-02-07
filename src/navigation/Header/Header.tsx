@@ -6,7 +6,7 @@ import { useTheme } from 'styled-components';
 import { IconButton } from 'components/atoms/IconButton';
 import { DelegationPanel } from 'components/organisms/DelegationPanel';
 import { Streaks } from 'components/organisms/Streaks';
-import { ASSETS, REDIRECTS, URLS } from 'helpers/config';
+import { ASSETS, FLAGS, REDIRECTS, URLS } from 'helpers/config';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 import { usePermawebProvider } from 'providers/PermawebProvider';
@@ -87,7 +87,7 @@ export default function Header() {
 					</S.C1Wrapper>
 					<S.ActionsWrapper>
 						{/* {permawebProvider.profile && permawebProvider.profile.id && <Streaks profile={permawebProvider.profile} />} */}
-						{/* {arweaveProvider.walletAddress && (
+						{FLAGS.DELEGATION && arweaveProvider.walletAddress && (
 							<S.DelegationButtonWrapper>
 								<S.DelegationButton
 									onClick={(e) => {
@@ -99,7 +99,7 @@ export default function Header() {
 									Delegate
 								</S.DelegationButton>
 							</S.DelegationButtonWrapper>
-						)} */}
+						)}
 						<WalletConnect />
 						<S.MWrapper>
 							<IconButton
@@ -150,11 +150,13 @@ export default function Header() {
 					</S.PWrapper>
 				</div>
 			)}
-			{/* <DelegationPanel
-				walletAddress={arweaveProvider.walletAddress}
-				isOpen={delegationPanelOpen}
-				onClose={() => setDelegationPanelOpen(false)}
-			/> */}
+			{FLAGS.DELEGATION && (
+				<DelegationPanel
+					walletAddress={arweaveProvider.walletAddress}
+					isOpen={delegationPanelOpen}
+					onClose={() => setDelegationPanelOpen(false)}
+				/>
+			)}
 		</>
 	);
 }
