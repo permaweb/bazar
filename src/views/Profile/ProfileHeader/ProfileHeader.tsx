@@ -2,15 +2,17 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ReactSVG } from 'react-svg';
 
-// import { connect, createDataItemSigner } from '@permaweb/aoconnect';
+import { connect, createDataItemSigner } from '@permaweb/aoconnect';
+
 import { Button } from 'components/atoms/Button';
 import { Modal } from 'components/molecules/Modal';
 import { Panel } from 'components/molecules/Panel';
 import { ProfileManage } from 'components/organisms/ProfileManage';
-// import { Streaks } from 'components/organisms/Streaks';
-import { ASSETS, DEFAULTS, URLS } from 'helpers/config';
+import { Streaks } from 'components/organisms/Streaks';
+import { AO, ASSETS, DEFAULTS, FLAGS, URLS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import { checkValidAddress, formatAddress } from 'helpers/utils';
+import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 import { usePermawebProvider } from 'providers/PermawebProvider';
 
@@ -22,6 +24,7 @@ const MAX_BIO_LENGTH = 80;
 export default function ProfileHeader(props: IProps) {
 	const navigate = useNavigate();
 
+	const arProvider = useArweaveProvider();
 	const permawebProvider = usePermawebProvider();
 
 	const languageProvider = useLanguageProvider();
@@ -29,8 +32,7 @@ export default function ProfileHeader(props: IProps) {
 
 	const [showProfileManage, setShowProfileManage] = React.useState<boolean>(false);
 	const [showBio, setShowBio] = React.useState<boolean>(false);
-	// const [profileUpdating, setProfileUpdating] = React.useState<boolean>(false);
-	// const [copied, setCopied] = React.useState<boolean>(false);
+	const [profileUpdating, setProfileUpdating] = React.useState<boolean>(false);
 
 	React.useEffect(() => {
 		(async function () {
@@ -49,40 +51,42 @@ export default function ProfileHeader(props: IProps) {
 		return props.profile.username ? `@${props.profile.username}` : formatAddress(props.profile.walletAddress, false);
 	}
 
-	// async function handleProfileSrcUpdate() {
-	// 	if (permawebProvider.profile && permawebProvider.profile.id) {
-	// 		setProfileUpdating(true);
-	// 		const aos = connect();
+	async function handleProfileSrcUpdate() {
+		if (!FLAGS.PROFILE_SOURCE_UPDATE) return;
 
-	// 		let processSrc = null;
-	// 		try {
-	// 			const processSrcFetch = await fetch(getTxEndpoint(AO.profileSrc));
-	// 			if (processSrcFetch.ok) {
-	// 				processSrc = await processSrcFetch.text();
+		if (permawebProvider.profile && permawebProvider.profile.id) {
+			setProfileUpdating(true);
+			const aos = connect();
 
-	// 				console.log('Sending source eval...');
-	// 				const evalMessage = await aos.message({
-	// 					process: permawebProvider.profile.id,
-	// 					signer: createDataItemSigner(arProvider.wallet),
-	// 					tags: [{ name: 'Action', value: 'Eval' }],
-	// 					data: processSrc,
-	// 				});
+			let processSrc = null;
+			try {
+				const processSrcFetch = await fetch(getTxEndpoint(AO.profileSrc));
+				if (processSrcFetch.ok) {
+					processSrc = await processSrcFetch.text();
 
-	// 				console.log(evalMessage);
+					console.log('Sending source eval...');
+					const evalMessage = await aos.message({
+						process: permawebProvider.profile.id,
+						signer: createDataItemSigner(arProvider.wallet),
+						tags: [{ name: 'Action', value: 'Eval' }],
+						data: processSrc,
+					});
 
-	// 				const evalResult = await aos.result({
-	// 					message: evalMessage,
-	// 					process: permawebProvider.profile.id,
-	// 				});
+					console.log(evalMessage);
 
-	// 				console.log(evalResult);
-	// 			}
-	// 		} catch (e: any) {
-	// 			console.error(e);
-	// 		}
-	// 		setProfileUpdating(false);
-	// 	}
-	// }
+					const evalResult = await aos.result({
+						message: evalMessage,
+						process: permawebProvider.profile.id,
+					});
+
+					console.log(evalResult);
+				}
+			} catch (e: any) {
+				console.error(e);
+			}
+			setProfileUpdating(false);
+		}
+	}
 
 	function getHeaderDetails() {
 		return props.profile ? (
@@ -128,20 +132,25 @@ export default function ProfileHeader(props: IProps) {
 						{getHeaderDetails()}
 					</S.HeaderInfo>
 					<S.HeaderActions>
-						{/* <S.Action>
-							<Streaks profile={props.profile} />
-						</S.Action> */}
-						{/* {permawebProvider.profile && permawebProvider.profile.id && permawebProvider.profile.id === props.profile.id && (
+						{FLAGS.STREAKS_DISPLAY && (
 							<S.Action>
-								<Button
-									type={'primary'}
-									label={'Update profile'}
-									handlePress={handleProfileSrcUpdate}
-									disabled={profileUpdating}
-									loading={profileUpdating}
-								/>
+								<Streaks profile={props.profile} />
 							</S.Action>
-						)} */}
+						)}
+						{FLAGS.PROFILE_SOURCE_UPDATE &&
+							permawebProvider.profile &&
+							permawebProvider.profile.id &&
+							permawebProvider.profile.id === props.profile.id && (
+								<S.Action>
+									<Button
+										type={'primary'}
+										label={'Update profile'}
+										handlePress={handleProfileSrcUpdate}
+										disabled={profileUpdating}
+										loading={profileUpdating}
+									/>
+								</S.Action>
+							)}
 						{permawebProvider.profile && permawebProvider.profile.id === props.profile.id && (
 							<S.Action>
 								<Button

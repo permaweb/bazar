@@ -4,7 +4,7 @@ import { isEqual } from 'lodash';
 
 import { readHandler, stamps } from 'api';
 
-import { AO } from 'helpers/config';
+import { AO, FLAGS } from 'helpers/config';
 import { RootState } from 'store';
 import * as currencyActions from 'store/currencies/actions';
 import * as stampsActions from 'store/stamps/actions';
@@ -68,203 +68,211 @@ export function AppProvider(props: AppProviderProps) {
 		if (stampsReducer) setStampsState((prevState) => ({ ...prevState, completed: true }));
 	}, [stampsReducer]);
 
-	// React.useEffect(() => {
-	// 	(async function () {
-	// 		setUCMState((prevState) => ({ ...prevState, updating: true }));
+	React.useEffect(() => {
+		if (!FLAGS.UCM_POLLING) return;
 
-	// 		try {
-	// 			const ucmState = await readHandler({
-	// 				processId: AO.ucm,
-	// 				action: 'Info',
-	// 			});
+		(async function () {
+			setUCMState((prevState) => ({ ...prevState, updating: true }));
 
-	// 			dispatch(
-	// 				ucmActions.setUCM({
-	// 					...ucmState,
-	// 					lastUpdate: Date.now(),
-	// 				})
-	// 			);
+			try {
+				const ucmState = await readHandler({
+					processId: AO.ucm,
+					action: 'Info',
+				});
 
-	// 			setUCMState({
-	// 				updating: false,
-	// 				completed: true,
-	// 				lastUpdate: Date.now(),
-	// 			});
-	// 		} catch (e: any) {
-	// 			console.error(e);
-	// 			setUCMState((prevState) => ({ ...prevState, updating: false }));
-	// 		}
-	// 	})();
-	// }, []);
+				dispatch(
+					ucmActions.setUCM({
+						...ucmState,
+						lastUpdate: Date.now(),
+					})
+				);
 
-	// React.useEffect(() => {
-	// 	const fetchAndCompareUCM = async () => {
-	// 		setUCMState((prevState) => ({ ...prevState, updating: true }));
+				setUCMState({
+					updating: false,
+					completed: true,
+					lastUpdate: Date.now(),
+				});
+			} catch (e: any) {
+				console.error(e);
+				setUCMState((prevState) => ({ ...prevState, updating: false }));
+			}
+		})();
+	}, []);
 
-	// 		try {
-	// 			const newUCMState = await readHandler({
-	// 				processId: AO.ucm,
-	// 				action: 'Info',
-	// 			});
+	React.useEffect(() => {
+		if (!FLAGS.UCM_POLLING) return;
 
-	// 			const normalizedOrders = (ucm) =>
-	// 				ucm?.Orderbook?.map((entry) => ({
-	// 					Pair: entry.Pair?.sort() || [],
-	// 					PriceData: entry.PriceData
-	// 						? {
-	// 								...entry.PriceData,
-	// 								MatchLogs: entry.PriceData.MatchLogs
-	// 									? entry.PriceData.MatchLogs.map((log) => ({
-	// 											...log,
-	// 									  })).sort((a, b) => a.Id.localeCompare(b.Id))
-	// 									: [],
-	// 						  }
-	// 						: null,
-	// 					Orders: entry.Orders
-	// 						? entry.Orders.map((order) => ({
-	// 								...order,
-	// 						  })).sort((a, b) => a.Id.localeCompare(b.Id))
-	// 						: [],
-	// 				})).sort((a, b) => JSON.stringify(a.Pair).localeCompare(JSON.stringify(b.Pair))) || [];
+		const fetchAndCompareUCM = async () => {
+			setUCMState((prevState) => ({ ...prevState, updating: true }));
 
-	// 			const currentOrders = normalizedOrders(ucmReducer);
-	// 			const newOrders = normalizedOrders(newUCMState);
+			try {
+				const newUCMState = await readHandler({
+					processId: AO.ucm,
+					action: 'Info',
+				});
 
-	// 			const hasDifferences = !isEqual(currentOrders, newOrders);
+				const normalizedOrders = (ucm) =>
+					ucm?.Orderbook?.map((entry) => ({
+						Pair: entry.Pair?.sort() || [],
+						PriceData: entry.PriceData
+							? {
+									...entry.PriceData,
+									MatchLogs: entry.PriceData.MatchLogs
+										? entry.PriceData.MatchLogs.map((log) => ({
+												...log,
+										  })).sort((a, b) => a.Id.localeCompare(b.Id))
+										: [],
+							  }
+							: null,
+						Orders: entry.Orders
+							? entry.Orders.map((order) => ({
+									...order,
+							  })).sort((a, b) => a.Id.localeCompare(b.Id))
+							: [],
+					})).sort((a, b) => JSON.stringify(a.Pair).localeCompare(JSON.stringify(b.Pair))) || [];
 
-	// 			if (hasDifferences) {
-	// 				dispatch(
-	// 					ucmActions.setUCM({
-	// 						...newUCMState,
-	// 						lastUpdate: Date.now(),
-	// 					})
-	// 				);
+				const currentOrders = normalizedOrders(ucmReducer);
+				const newOrders = normalizedOrders(newUCMState);
 
-	// 				setUCMState({
-	// 					updating: false,
-	// 					completed: true,
-	// 					lastUpdate: Date.now(),
-	// 				});
+				const hasDifferences = !isEqual(currentOrders, newOrders);
 
-	// 				setUcmRefreshTrigger(null);
+				if (hasDifferences) {
+					dispatch(
+						ucmActions.setUCM({
+							...newUCMState,
+							lastUpdate: Date.now(),
+						})
+					);
 
-	// 				return true;
-	// 			} else {
-	// 				setUCMState((prevState) => ({
-	// 					...prevState,
-	// 					updating: false,
-	// 				}));
-	// 				return false;
-	// 			}
-	// 		} catch (e) {
-	// 			console.error(e);
-	// 			setUCMState((prevState) => ({ ...prevState, updating: false }));
-	// 			return true;
-	// 		}
-	// 	};
+					setUCMState({
+						updating: false,
+						completed: true,
+						lastUpdate: Date.now(),
+					});
 
-	// 	let isPolling = false;
+					setUcmRefreshTrigger(null);
 
-	// 	const pollUntilDifference = async () => {
-	// 		if (isPolling) return;
-	// 		isPolling = true;
+					return true;
+				} else {
+					setUCMState((prevState) => ({
+						...prevState,
+						updating: false,
+					}));
+					return false;
+				}
+			} catch (e) {
+				console.error(e);
+				setUCMState((prevState) => ({ ...prevState, updating: false }));
+				return true;
+			}
+		};
 
-	// 		let differencesDetected = false;
-	// 		do {
-	// 			differencesDetected = await fetchAndCompareUCM();
-	// 			if (!differencesDetected) {
-	// 				await new Promise((resolve) => setTimeout(resolve, 2000));
-	// 			}
-	// 		} while (!differencesDetected);
+		let isPolling = false;
 
-	// 		isPolling = false;
-	// 	};
+		const pollUntilDifference = async () => {
+			if (isPolling) return;
+			isPolling = true;
 
-	// 	if (ucmRefreshTrigger !== null) {
-	// 		pollUntilDifference();
-	// 	}
-	// }, [ucmRefreshTrigger, ucmReducer]);
+			let differencesDetected = false;
+			do {
+				differencesDetected = await fetchAndCompareUCM();
+				if (!differencesDetected) {
+					await new Promise((resolve) => setTimeout(resolve, 2000));
+				}
+			} while (!differencesDetected);
 
-	// React.useEffect(() => {
-	// 	(async function () {
-	// 		setStreaksState((prevState) => ({ ...prevState, updating: true }));
+			isPolling = false;
+		};
 
-	// 		try {
-	// 			const streaks = await readHandler({
-	// 				processId: AO.pixl,
-	// 				action: 'Get-Streaks',
-	// 			});
+		if (ucmRefreshTrigger !== null) {
+			pollUntilDifference();
+		}
+	}, [ucmRefreshTrigger, ucmReducer]);
 
-	// 			if (streaks.Streaks) {
-	// 				for (let key in streaks.Streaks) {
-	// 					if (streaks.Streaks[key].days === 0) {
-	// 						delete streaks.Streaks[key];
-	// 					}
-	// 				}
-	// 			}
+	React.useEffect(() => {
+		if (!FLAGS.STREAKS) return;
 
-	// 			dispatch(streakActions.setStreaks(streaks.Streaks ?? {}));
+		(async function () {
+			setStreaksState((prevState) => ({ ...prevState, updating: true }));
 
-	// 			setStreaksState({
-	// 				updating: false,
-	// 				completed: true,
-	// 				lastUpdate: Date.now(),
-	// 			});
-	// 		} catch (e: any) {
-	// 			console.error(e);
-	// 			setStreaksState((prevState) => ({ ...prevState, updating: false }));
-	// 		}
-	// 	})();
-	// }, []);
+			try {
+				const streaks = await readHandler({
+					processId: AO.pixl,
+					action: 'Get-Streaks',
+				});
 
-	// React.useEffect(() => {
-	// 	(async function () {
-	// 		let stampIdsToCheck = [];
-	// 		if (permawebProvider.profile?.assets) {
-	// 			stampIdsToCheck.push(...permawebProvider.profile.assets.map((asset) => asset.id));
-	// 		}
+				if (streaks.Streaks) {
+					for (let key in streaks.Streaks) {
+						if (streaks.Streaks[key].days === 0) {
+							delete streaks.Streaks[key];
+						}
+					}
+				}
 
-	// 		if (stampIdsToCheck.length > 0) {
-	// 			setStampsState((prevState) => ({ ...prevState, updating: true }));
+				dispatch(streakActions.setStreaks(streaks.Streaks ?? {}));
 
-	// 			try {
-	// 				const updatedStampCounts = await stamps.getStamps({ ids: stampIdsToCheck });
-	// 				const updatedStamps = {};
-	// 				if (updatedStampCounts) {
-	// 					for (const tx of Object.keys(updatedStampCounts)) {
-	// 						updatedStamps[tx] = {
-	// 							...(stampsReducer?.[tx] ?? {}),
-	// 							total: updatedStampCounts[tx].total,
-	// 							vouched: updatedStampCounts[tx].vouched,
-	// 						};
-	// 					}
-	// 					dispatch(stampsActions.setStamps(updatedStamps));
-	// 					setStampsState({
-	// 						updating: false,
-	// 						completed: true,
-	// 						lastUpdate: Date.now(),
-	// 					});
-	// 				}
-	// 				setStampsState((prevState) => ({ ...prevState, updating: false }));
-	// 				if (arProvider.walletAddress) {
-	// 					const hasStampedCheck = await stamps.hasStamped(stampIdsToCheck);
-	// 					const updatedStampCheck = {};
-	// 					for (const tx of Object.keys(updatedStampCounts)) {
-	// 						updatedStampCheck[tx] = {
-	// 							total: updatedStampCounts[tx].total,
-	// 							vouched: updatedStampCounts[tx].vouched,
-	// 							hasStamped: hasStampedCheck?.[tx] ?? false,
-	// 						};
-	// 					}
-	// 					dispatch(stampsActions.setStamps(updatedStampCheck));
-	// 				}
-	// 			} catch (e: any) {
-	// 				console.error(e);
-	// 				setStampsState((prevState) => ({ ...prevState, updating: false }));
-	// 			}
-	// 		}
-	// 	})();
-	// }, [arProvider.walletAddress, permawebProvider.profile?.assets]);
+				setStreaksState({
+					updating: false,
+					completed: true,
+					lastUpdate: Date.now(),
+				});
+			} catch (e: any) {
+				console.error(e);
+				setStreaksState((prevState) => ({ ...prevState, updating: false }));
+			}
+		})();
+	}, []);
+
+	React.useEffect(() => {
+		if (!FLAGS.STAMPS) return;
+
+		(async function () {
+			let stampIdsToCheck = [];
+			if (permawebProvider.profile?.assets) {
+				stampIdsToCheck.push(...permawebProvider.profile.assets.map((asset) => asset.id));
+			}
+
+			if (stampIdsToCheck.length > 0) {
+				setStampsState((prevState) => ({ ...prevState, updating: true }));
+
+				try {
+					const updatedStampCounts = await stamps.getStamps({ ids: stampIdsToCheck });
+					const updatedStamps = {};
+					if (updatedStampCounts) {
+						for (const tx of Object.keys(updatedStampCounts)) {
+							updatedStamps[tx] = {
+								...(stampsReducer?.[tx] ?? {}),
+								total: updatedStampCounts[tx].total,
+								vouched: updatedStampCounts[tx].vouched,
+							};
+						}
+						dispatch(stampsActions.setStamps(updatedStamps));
+						setStampsState({
+							updating: false,
+							completed: true,
+							lastUpdate: Date.now(),
+						});
+					}
+					setStampsState((prevState) => ({ ...prevState, updating: false }));
+					if (arProvider.walletAddress) {
+						const hasStampedCheck = await stamps.hasStamped(stampIdsToCheck);
+						const updatedStampCheck = {};
+						for (const tx of Object.keys(updatedStampCounts)) {
+							updatedStampCheck[tx] = {
+								total: updatedStampCounts[tx].total,
+								vouched: updatedStampCounts[tx].vouched,
+								hasStamped: hasStampedCheck?.[tx] ?? false,
+							};
+						}
+						dispatch(stampsActions.setStamps(updatedStampCheck));
+					}
+				} catch (e: any) {
+					console.error(e);
+					setStampsState((prevState) => ({ ...prevState, updating: false }));
+				}
+			}
+		})();
+	}, [arProvider.walletAddress, permawebProvider.profile?.assets]);
 
 	React.useEffect(() => {
 		(async function () {

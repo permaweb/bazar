@@ -16,7 +16,7 @@ import { OwnerLine } from 'components/molecules/OwnerLine';
 import { Tabs } from 'components/molecules/Tabs';
 import { AssetData } from 'components/organisms/AssetData';
 import { OrderCancel } from 'components/organisms/OrderCancel';
-import { ASSETS, CUSTOM_ORDERBOOKS, STYLING, TOKEN_REGISTRY } from 'helpers/config';
+import { ASSETS, CUSTOM_ORDERBOOKS, FLAGS, STYLING, TOKEN_REGISTRY } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import { ListingType, OwnerType } from 'helpers/types';
 import { formatCount, getOwners, sortOrders } from 'helpers/utils';
@@ -257,70 +257,69 @@ export default function AssetAction(props: IProps) {
 						setCurrentListings([]);
 						setCurrentBids([]);
 					}
+				} else if (FLAGS.ORDERBOOK_DIRECT_READ) {
+					// Fetch orders from orderbook (for global orderbook or when orders not loaded)
+					try {
+						const response = await permawebProvider.libs.readState({
+							processId: props.asset.orderbook.id,
+							path: 'asset',
+							fallbackAction: 'Info',
+						});
+
+						if (response?.Orderbook) {
+							const assetPairs = response.Orderbook.filter(
+								(pair: any) => pair.Pair && pair.Pair.includes(props.asset.data.id)
+							);
+
+							let allOrders: any[] = [];
+
+							assetPairs.forEach((pair: any) => {
+								if (pair.Orders && Array.isArray(pair.Orders)) {
+									const pairOrders = pair.Orders.map((order: any) => ({
+										creator: order.Creator || order.creator,
+										dateCreated: order.DateCreated || order.dateCreated,
+										id: order.Id || order.id,
+										originalQuantity: order.OriginalQuantity || order.originalQuantity,
+										quantity: order.Quantity || order.quantity,
+										token: order.Token || order.token,
+										currency: pair.Pair[1],
+										price: order.Price || order.price || '0',
+									}));
+									allOrders = allOrders.concat(pairOrders);
+								}
+							});
+
+							if (allOrders.length > 0) {
+								const sortedOrders = sortOrders(allOrders, 'low-to-high');
+
+								let profiles: any[] = await getProfiles(sortedOrders.map((order: any) => order.creator));
+								const mappedListings = sortedOrders.map((order: any) => {
+									let currentProfile = null;
+									if (profiles) {
+										currentProfile = profiles.find((profile: any) => profile.id === order.creator);
+									}
+
+									const currentListing = {
+										profile: currentProfile || null,
+										orderbookId: props.asset.orderbook.id,
+										...order,
+									};
+
+									return currentListing;
+								});
+
+								setCurrentListings(mappedListings);
+							} else {
+								setCurrentListings([]);
+							}
+						} else {
+							setCurrentListings([]);
+						}
+					} catch (error) {
+						console.error('Error fetching orderbook orders:', error);
+						setCurrentListings([]);
+					}
 				}
-				// else {
-				// 	// Fetch orders from orderbook (for global orderbook or when orders not loaded)
-				// 	try {
-				// 		const response = await permawebProvider.libs.readState({
-				// 			processId: props.asset.orderbook.id,
-				// 			path: 'asset',
-				// 			fallbackAction: 'Info',
-				// 		});
-
-				// 		if (response?.Orderbook) {
-				// 			const assetPairs = response.Orderbook.filter(
-				// 				(pair: any) => pair.Pair && pair.Pair.includes(props.asset.data.id)
-				// 			);
-
-				// 			let allOrders: any[] = [];
-
-				// 			assetPairs.forEach((pair: any) => {
-				// 				if (pair.Orders && Array.isArray(pair.Orders)) {
-				// 					const pairOrders = pair.Orders.map((order: any) => ({
-				// 						creator: order.Creator || order.creator,
-				// 						dateCreated: order.DateCreated || order.dateCreated,
-				// 						id: order.Id || order.id,
-				// 						originalQuantity: order.OriginalQuantity || order.originalQuantity,
-				// 						quantity: order.Quantity || order.quantity,
-				// 						token: order.Token || order.token,
-				// 						currency: pair.Pair[1],
-				// 						price: order.Price || order.price || '0',
-				// 					}));
-				// 					allOrders = allOrders.concat(pairOrders);
-				// 				}
-				// 			});
-
-				// 			if (allOrders.length > 0) {
-				// 				const sortedOrders = sortOrders(allOrders, 'low-to-high');
-
-				// 				let profiles: any[] = await getProfiles(sortedOrders.map((order: any) => order.creator));
-				// 				const mappedListings = sortedOrders.map((order: any) => {
-				// 					let currentProfile = null;
-				// 					if (profiles) {
-				// 						currentProfile = profiles.find((profile: any) => profile.id === order.creator);
-				// 					}
-
-				// 					const currentListing = {
-				// 						profile: currentProfile || null,
-				// 						orderbookId: props.asset.orderbook.id,
-				// 						...order,
-				// 					};
-
-				// 					return currentListing;
-				// 				});
-
-				// 				setCurrentListings(mappedListings);
-				// 			} else {
-				// 				setCurrentListings([]);
-				// 			}
-				// 		} else {
-				// 			setCurrentListings([]);
-				// 		}
-				// 	} catch (error) {
-				// 		console.error('Error fetching orderbook orders:', error);
-				// 		setCurrentListings([]);
-				// 	}
-				// }
 			}
 		})();
 	}, [props.asset]);
@@ -671,7 +670,7 @@ export default function AssetAction(props: IProps) {
 					<S.OrdersWrapper>
 						{!props.updating && (
 							<S.OwnerLinesWrapper>
-								{/* {showCurrentlyOwnedBy() && (
+								{FLAGS.OWNER_DISPLAY && ownerCountDisplay && (
 									<S.OwnerLine>
 										<span>{language.currentlyOwnedBy}</span>
 										<button
@@ -682,7 +681,7 @@ export default function AssetAction(props: IProps) {
 											{ownerCountDisplay}
 										</button>
 									</S.OwnerLine>
-								)} */}
+								)}
 								{currentListings && (
 									<S.OwnerLine>
 										{(() => {

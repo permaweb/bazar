@@ -17,7 +17,7 @@ import { ActivityTable } from 'components/organisms/ActivityTable';
 import { AssetsTable } from 'components/organisms/AssetsTable';
 import { CollectionManage } from 'components/organisms/CollectionManage';
 import { Stamps } from 'components/organisms/Stamps';
-import { ASSETS, DEFAULTS, PAGINATORS, URLS } from 'helpers/config';
+import { ASSETS, DEFAULTS, FLAGS, PAGINATORS, URLS } from 'helpers/config';
 import { getTxEndpoint } from 'helpers/endpoints';
 import { CollectionDetailType } from 'helpers/types';
 import { checkValidAddress, formatDate, formatPercentage } from 'helpers/utils';
@@ -100,28 +100,30 @@ export default function Collection() {
 		})();
 	}, [collection?.creator]);
 
-	// React.useEffect(() => {
-	// 	(async function () {
-	// 		if (collection?.assetIds.length > 0) {
-	// 			try {
-	// 				const updatedStampCounts = await stamps.getStamps({ ids: collection.assetIds });
-	// 				const updatedStamps = {};
-	// 				if (updatedStampCounts) {
-	// 					for (const tx of Object.keys(updatedStampCounts)) {
-	// 						updatedStamps[tx] = {
-	// 							...(stampsReducer?.[tx] ?? {}),
-	// 							total: updatedStampCounts[tx].total,
-	// 							vouched: updatedStampCounts[tx].vouched,
-	// 						};
-	// 					}
-	// 					dispatch(stampsActions.setStamps(updatedStamps));
-	// 				}
-	// 			} catch (e: any) {
-	// 				console.error(e);
-	// 			}
-	// 		}
-	// 	})();
-	// }, [collection?.assetIds]);
+	React.useEffect(() => {
+		if (!FLAGS.COLLECTION_STAMPS) return;
+
+		(async function () {
+			if (collection?.assetIds.length > 0) {
+				try {
+					const updatedStampCounts = await stamps.getStamps({ ids: collection.assetIds });
+					const updatedStamps = {};
+					if (updatedStampCounts) {
+						for (const tx of Object.keys(updatedStampCounts)) {
+							updatedStamps[tx] = {
+								...(stampsReducer?.[tx] ?? {}),
+								total: updatedStampCounts[tx].total,
+								vouched: updatedStampCounts[tx].vouched,
+							};
+						}
+						dispatch(stampsActions.setStamps(updatedStamps));
+					}
+				} catch (e: any) {
+					console.error(e);
+				}
+			}
+		})();
+	}, [collection?.assetIds]);
 
 	const TABS = React.useMemo(
 		() => [

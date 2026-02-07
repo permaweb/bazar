@@ -7,8 +7,8 @@ import { Button } from 'components/atoms/Button';
 import { CurrencyLine } from 'components/atoms/CurrencyLine';
 import { Panel } from 'components/molecules/Panel';
 import { ProfileManage } from 'components/organisms/ProfileManage';
-import { AO, ASSETS, REDIRECTS, URLS } from 'helpers/config';
-import { formatAddress, getTotalTokenBalance } from 'helpers/utils';
+import { AO, ASSETS, FLAGS, REDIRECTS, URLS } from 'helpers/config';
+import { formatAddress, formatCount, getTotalTokenBalance } from 'helpers/utils';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useCustomThemeProvider } from 'providers/CustomThemeProvider';
 import { useLanguageProvider } from 'providers/LanguageProvider';
@@ -209,25 +209,27 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 						<S.DHeader>
 							<S.DNameWrapper>
 								<p onClick={() => handleDropdownAction(handleProfileAction)}>{label}</p>
-								{/* {arProvider.vouch?.isVouched && (
+								{FLAGS.VOUCH_BADGE && arProvider.vouch?.isVouched && (
 									<div id={'vouch-check'}>
 										<ReactSVG src={ASSETS.checkmark} />
 										<S.Tooltip className={'info-text'} useBottom={true}>
 											<span>{language.userConnectedVouched}</span>
 										</S.Tooltip>
 									</div>
-								)} */}
+								)}
 							</S.DNameWrapper>
-							{/* <span onClick={() => handleDropdownAction(handleProfileAction)}>
-								{permawebProvider.arnsPrimaryName
-									? formatAddress(arProvider.walletAddress, false)
-									: formatAddress(
-											permawebProvider.profile && permawebProvider.profile.id
-												? permawebProvider.profile.id
-												: arProvider.walletAddress,
-											false
-									  )}
-							</span> */}
+							{FLAGS.ARNS_DISPLAY && (
+								<span onClick={() => handleDropdownAction(handleProfileAction)}>
+									{permawebProvider.arnsPrimaryName
+										? formatAddress(arProvider.walletAddress, false)
+										: formatAddress(
+												permawebProvider.profile && permawebProvider.profile.id
+													? permawebProvider.profile.id
+													: arProvider.walletAddress,
+												false
+										  )}
+								</span>
+							)}
 						</S.DHeader>
 					</S.DHeaderFlex>
 				</S.DHeaderWrapper>
@@ -243,19 +245,21 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 							/>
 						)}
 					</S.DBalancesHeaderWrapper>
-					{/* <S.BalanceLine>
-						<ReactSVG src={ASSETS.ar} />
-						<span>{formatCount(arProvider.arBalance ? arProvider.arBalance.toString() : '0')}</span>
-						<S.TokenLink>
-							<Link
-								to={'https://viewblock.io/arweave/'}
-								target={'_blank'}
-								onClick={() => handleDropdownAction(() => setShowWalletDropdown(false))}
-							>
-								<span>{language.viewAr}</span>
-							</Link>
-						</S.TokenLink>
-					</S.BalanceLine> */}
+					{FLAGS.AR_BALANCE_DISPLAY && (
+						<S.BalanceLine>
+							<ReactSVG src={ASSETS.ar} />
+							<span>{formatCount(arProvider.arBalance ? arProvider.arBalance.toString() : '0')}</span>
+							<S.TokenLink>
+								<Link
+									to={'https://viewblock.io/arweave/'}
+									target={'_blank'}
+									onClick={() => handleDropdownAction(() => setShowWalletDropdown(false))}
+								>
+									<span>{language.viewAr}</span>
+								</Link>
+							</S.TokenLink>
+						</S.BalanceLine>
+					)}
 					{availableTokens && (
 						<>
 							{availableTokens

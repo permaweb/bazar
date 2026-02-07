@@ -6,11 +6,13 @@ import { useWallet as useAOsyncWallet } from '@vela-ventures/aosync-sdk-react';
 
 import AOProfile, { ProfileType } from '@permaweb/aoprofile';
 
+import { readHandler } from 'api';
+import { getVouch } from 'api/vouch';
 import { Modal } from 'components/molecules/Modal';
 import { connect } from 'helpers/aoconnect';
-import { AR_WALLETS, REDIRECTS, WALLET_PERMISSIONS } from 'helpers/config';
+import { AO, AR_WALLETS, FLAGS, REDIRECTS, WALLET_PERMISSIONS } from 'helpers/config';
 import { getARBalanceEndpoint } from 'helpers/endpoints';
-import { WalletEnum } from 'helpers/types';
+import { VouchType, WalletEnum } from 'helpers/types';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 import { useWayfinderProvider } from 'providers/WayfinderProvider';
 import { RootState } from 'store';
@@ -23,9 +25,9 @@ interface ArweaveContextState {
 	walletAddress: string | null;
 	walletType: WalletEnum | null;
 	arBalance: number | null;
-	// tokenBalances: { [address: string]: { profileBalance: number; walletBalance: number } } | null;
-	// toggleTokenBalanceUpdate: boolean;
-	// setToggleTokenBalanceUpdate: (toggleUpdate: boolean) => void;
+	tokenBalances: { [address: string]: { profileBalance: number; walletBalance: number } } | null;
+	toggleTokenBalanceUpdate: boolean;
+	setToggleTokenBalanceUpdate: (toggleUpdate: boolean) => void;
 	handleConnect: any;
 	handleDisconnect: () => void;
 	walletModalVisible: boolean;
@@ -33,7 +35,7 @@ interface ArweaveContextState {
 	profile: ProfileType;
 	toggleProfileUpdate: boolean;
 	setToggleProfileUpdate: (toggleUpdate: boolean) => void;
-	// vouch: VouchType;
+	vouch: VouchType;
 }
 
 interface ArweaveProviderProps {
@@ -46,9 +48,9 @@ const DEFAULT_CONTEXT = {
 	walletAddress: null,
 	walletType: null,
 	arBalance: null,
-	// tokenBalances: null,
-	// toggleTokenBalanceUpdate: false,
-	// setToggleTokenBalanceUpdate(_toggleUpdate: boolean) {},
+	tokenBalances: null,
+	toggleTokenBalanceUpdate: false,
+	setToggleTokenBalanceUpdate(_toggleUpdate: boolean) {},
 	handleConnect() {},
 	handleDisconnect() {},
 	walletModalVisible: false,
@@ -56,7 +58,7 @@ const DEFAULT_CONTEXT = {
 	profile: null,
 	toggleProfileUpdate: false,
 	setToggleProfileUpdate(_toggleUpdate: boolean) {},
-	// vouch: null,
+	vouch: null,
 };
 
 const ARContext = React.createContext<ArweaveContextState>(DEFAULT_CONTEXT);
@@ -103,16 +105,16 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 	const [walletType, setWalletType] = React.useState<WalletEnum | null>(null);
 	const [walletModalVisible, setWalletModalVisible] = React.useState<boolean>(false);
 	const [walletAddress, setWalletAddress] = React.useState<string | null>(null);
-	// const [vouch, setVouch] = React.useState<VouchType | null>(null);
+	const [vouch, setVouch] = React.useState<VouchType | null>(null);
 
 	const [arBalance, setArBalance] = React.useState<number | null>(null);
-	// const [tokenBalances, setTokenBalances] = React.useState<{
-	// 	[address: string]: { profileBalance: number; walletBalance: number };
-	// } | null>({
-	// 	[AO.defaultToken]: { profileBalance: null, walletBalance: null },
-	// 	[AO.pixl]: { profileBalance: null, walletBalance: null },
-	// });
-	// const [toggleTokenBalanceUpdate, setToggleTokenBalanceUpdate] = React.useState<boolean>(false);
+	const [tokenBalances, setTokenBalances] = React.useState<{
+		[address: string]: { profileBalance: number; walletBalance: number };
+	} | null>({
+		[AO.defaultToken]: { profileBalance: null, walletBalance: null },
+		[AO.pixl]: { profileBalance: null, walletBalance: null },
+	});
+	const [toggleTokenBalanceUpdate, setToggleTokenBalanceUpdate] = React.useState<boolean>(false);
 
 	const [profile, setProfile] = React.useState<ProfileType | null>(null);
 	const [toggleProfileUpdate, setToggleProfileUpdate] = React.useState<boolean>(false);
@@ -154,127 +156,135 @@ export function ArweaveProvider(props: ArweaveProviderProps) {
 		})();
 	}, [walletAddress]);
 
-	// React.useEffect(() => {
-	// 	(async function () {
-	// 		if (wallet && walletAddress) {
-	// 			try {
-	// 				if (profilesReducer?.userProfiles?.[walletAddress]) {
-	// 					setProfile(profilesReducer.userProfiles[walletAddress]);
-	// 				} else {
-	// 					setProfile(await getProfileByWalletAddress({ address: walletAddress }));
-	// 				}
-	// 			} catch (e: any) {
-	// 				console.error(e);
-	// 			}
-	// 		}
-	// 	})();
-	// }, [wallet, walletAddress, walletType, profilesReducer?.userProfiles]);
+	React.useEffect(() => {
+		if (!FLAGS.PROFILE_POLLING) return;
 
-	// React.useEffect(() => {
-	// 	(async function () {
-	// 		if (wallet && walletAddress) {
-	// 			const fetchProfileUntilChange = async () => {
-	// 				let changeDetected = false;
-	// 				let tries = 0;
-	// 				const maxTries = 10;
+		(async function () {
+			if (wallet && walletAddress) {
+				try {
+					if (profilesReducer?.userProfiles?.[walletAddress]) {
+						setProfile(profilesReducer.userProfiles[walletAddress]);
+					} else {
+						setProfile(await getProfileByWalletAddress({ address: walletAddress }));
+					}
+				} catch (e: any) {
+					console.error(e);
+				}
+			}
+		})();
+	}, [wallet, walletAddress, walletType, profilesReducer?.userProfiles]);
 
-	// 				while (!changeDetected && tries < maxTries) {
-	// 					try {
-	// 						const existingProfile = profile;
-	// 						const newProfile = await getProfileByWalletAddress({ address: walletAddress });
+	React.useEffect(() => {
+		if (!FLAGS.PROFILE_POLLING) return;
 
-	// 						if (JSON.stringify(existingProfile) !== JSON.stringify(newProfile)) {
-	// 							setProfile(newProfile);
-	// 							changeDetected = true;
-	// 						} else {
-	// 							await new Promise((resolve) => setTimeout(resolve, 1000));
-	// 							tries++;
-	// 						}
-	// 					} catch (error) {
-	// 						console.error(error);
-	// 						break;
-	// 					}
-	// 				}
+		(async function () {
+			if (wallet && walletAddress) {
+				const fetchProfileUntilChange = async () => {
+					let changeDetected = false;
+					let tries = 0;
+					const maxTries = 10;
 
-	// 				if (!changeDetected) {
-	// 					console.warn(`No changes detected after ${maxTries} attempts`);
-	// 				}
-	// 			};
+					while (!changeDetected && tries < maxTries) {
+						try {
+							const existingProfile = profile;
+							const newProfile = await getProfileByWalletAddress({ address: walletAddress });
 
-	// 			await fetchProfileUntilChange();
-	// 		}
-	// 	})();
-	// }, [toggleProfileUpdate]);
+							if (JSON.stringify(existingProfile) !== JSON.stringify(newProfile)) {
+								setProfile(newProfile);
+								changeDetected = true;
+							} else {
+								await new Promise((resolve) => setTimeout(resolve, 1000));
+								tries++;
+							}
+						} catch (error) {
+							console.error(error);
+							break;
+						}
+					}
 
-	// React.useEffect(() => {
-	// 	const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+					if (!changeDetected) {
+						console.warn(`No changes detected after ${maxTries} attempts`);
+					}
+				};
 
-	// 	const fetchBalances = async () => {
-	// 		if (!walletAddress || !profile?.id) return;
+				await fetchProfileUntilChange();
+			}
+		})();
+	}, [toggleProfileUpdate]);
 
-	// 		try {
-	// 			const defaultTokenWalletBalance = await readHandler({
-	// 				processId: AO.defaultToken,
-	// 				action: 'Balance',
-	// 				tags: [{ name: 'Recipient', value: walletAddress }],
-	// 			});
-	// 			await sleep(500);
+	React.useEffect(() => {
+		if (!FLAGS.TOKEN_BALANCES) return;
 
-	// 			const pixlTokenWalletBalance = await readHandler({
-	// 				processId: AO.pixl,
-	// 				action: 'Balance',
-	// 				tags: [{ name: 'Recipient', value: walletAddress }],
-	// 			});
-	// 			await sleep(500);
+		const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-	// 			const defaultTokenProfileBalance = await readHandler({
-	// 				processId: AO.defaultToken,
-	// 				action: 'Balance',
-	// 				tags: [{ name: 'Recipient', value: profile.id }],
-	// 			});
-	// 			await sleep(500);
+		const fetchBalances = async () => {
+			if (!walletAddress || !profile?.id) return;
 
-	// 			const pixlTokenProfileBalance = await readHandler({
-	// 				processId: AO.pixl,
-	// 				action: 'Balance',
-	// 				tags: [{ name: 'Recipient', value: profile.id }],
-	// 			});
+			try {
+				const defaultTokenWalletBalance = await readHandler({
+					processId: AO.defaultToken,
+					action: 'Balance',
+					tags: [{ name: 'Recipient', value: walletAddress }],
+				});
+				await sleep(500);
 
-	// 			setTokenBalances((prevBalances) => ({
-	// 				...prevBalances,
-	// 				[AO.defaultToken]: {
-	// 					...prevBalances[AO.defaultToken],
-	// 					walletBalance: defaultTokenWalletBalance ?? null,
-	// 					profileBalance: defaultTokenProfileBalance ?? null,
-	// 				},
-	// 				[AO.pixl]: {
-	// 					...prevBalances[AO.pixl],
-	// 					walletBalance: pixlTokenWalletBalance ?? null,
-	// 					profileBalance: pixlTokenProfileBalance ?? null,
-	// 				},
-	// 			}));
-	// 		} catch (e) {
-	// 			console.error(e);
-	// 		}
-	// 	};
+				const pixlTokenWalletBalance = await readHandler({
+					processId: AO.pixl,
+					action: 'Balance',
+					tags: [{ name: 'Recipient', value: walletAddress }],
+				});
+				await sleep(500);
 
-	// 	fetchBalances();
-	// }, [walletAddress, profile, toggleTokenBalanceUpdate]);
+				const defaultTokenProfileBalance = await readHandler({
+					processId: AO.defaultToken,
+					action: 'Balance',
+					tags: [{ name: 'Recipient', value: profile.id }],
+				});
+				await sleep(500);
 
-	// React.useEffect(() => {
-	// 	if (walletAddress && profile && profile.id) {
-	// 		const fetchVouch = async () => {
-	// 			try {
-	// 				const vouch = await getVouch({ wallet, address: walletAddress });
-	// 				setVouch(vouch);
-	// 			} catch (e) {
-	// 				console.error(e);
-	// 			}
-	// 		};
+				const pixlTokenProfileBalance = await readHandler({
+					processId: AO.pixl,
+					action: 'Balance',
+					tags: [{ name: 'Recipient', value: profile.id }],
+				});
 
-	// 		fetchVouch();
-	// 	}
-	// }, [walletAddress, profile]);
+				setTokenBalances((prevBalances) => ({
+					...prevBalances,
+					[AO.defaultToken]: {
+						...prevBalances[AO.defaultToken],
+						walletBalance: defaultTokenWalletBalance ?? null,
+						profileBalance: defaultTokenProfileBalance ?? null,
+					},
+					[AO.pixl]: {
+						...prevBalances[AO.pixl],
+						walletBalance: pixlTokenWalletBalance ?? null,
+						profileBalance: pixlTokenProfileBalance ?? null,
+					},
+				}));
+			} catch (e) {
+				console.error(e);
+			}
+		};
+
+		fetchBalances();
+	}, [walletAddress, profile, toggleTokenBalanceUpdate]);
+
+	React.useEffect(() => {
+		if (!FLAGS.VOUCH_SYSTEM) return;
+
+		if (walletAddress && profile && profile.id) {
+			const fetchVouch = async () => {
+				try {
+					const vouch = await getVouch({ wallet, address: walletAddress });
+					setVouch(vouch);
+				} catch (e) {
+					console.error(e);
+				}
+			};
+
+			fetchVouch();
+		}
+	}, [walletAddress, profile]);
 
 	async function handleWallet() {
 		if (localStorage.getItem('walletType')) {

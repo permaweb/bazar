@@ -1,7 +1,12 @@
 import { lazy } from 'react';
-import { Route, Routes } from 'react-router-dom';
+import { Route, Routes, useLocation } from 'react-router-dom';
 
-import { URLS } from 'helpers/config';
+import React from 'react';
+import NProgress from 'nprogress';
+
+import { FLAGS, URLS } from 'helpers/config';
+
+import 'nprogress/nprogress.css';
 const Asset = getLazyImport('Asset');
 const Landing = getLazyImport('Landing');
 const Campaign = getLazyImport('Campaign_2');
@@ -12,35 +17,33 @@ const Docs = getLazyImport('Docs');
 const Terms = getLazyImport('Terms');
 const NotFound = getLazyImport('NotFound');
 
-// import NProgress from 'nprogress';
+NProgress.configure({ showSpinner: false, speed: 400, trickleSpeed: 200, minimum: 0.3 });
 
-// import 'nprogress/nprogress.css';
+const useNProgress = () => {
+	const location = useLocation();
 
-// NProgress.configure({ showSpinner: false, speed: 400, trickleSpeed: 200, minimum: 0.3 });
+	React.useEffect(() => {
+		if (!FLAGS.NPROGRESS_LOADING) return;
 
-// const useNProgress = () => {
-// 	const location = useLocation();
+		const startNProgress = async () => {
+			NProgress.start();
 
-// 	React.useEffect(() => {
-// 		const startNProgress = async () => {
-// 			NProgress.start();
+			const trickle = setInterval(() => {
+				NProgress.inc(0.05);
+			}, 200);
 
-// 			const trickle = setInterval(() => {
-// 				NProgress.inc(0.05);
-// 			}, 200);
+			await new Promise((resolve) => setTimeout(resolve, 275));
 
-// 			await new Promise((resolve) => setTimeout(resolve, 275));
+			clearInterval(trickle);
+			NProgress.done();
+		};
 
-// 			clearInterval(trickle);
-// 			NProgress.done();
-// 		};
-
-// 		startNProgress();
-// 	}, [location]);
-// };
+		startNProgress();
+	}, [location]);
+};
 
 export default function _Routes() {
-	// useNProgress();
+	useNProgress();
 
 	return (
 		<Routes>
