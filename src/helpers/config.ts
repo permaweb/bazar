@@ -106,13 +106,50 @@ export const AO = {
 export const HB = {
 	defaultNode: 'https://app-1.forward.computer',
 };
-export const AOCONFIG = {
-	cu_url: 'https://cu.ao-testnet.xyz',
-	cu_af_url: 'https://cu-af.dataos.so',
+
+export const AO_NODE = {
+	// Mainnet HyperBEAM configuration
+	// Default URL: https://push.forward.computer (as per mainnet release notes)
+	url: import.meta.env.VITE_HYPERBEAM_URL || 'https://push.forward.computer',
+	// Mainnet scheduler: n_XZJhUnmldNFo4dhajoPZWhBXuJk-OcQr5JQ49c4Zo (schedule.forward.computer)
+	scheduler: import.meta.env.VITE_SCHEDULER || 'n_XZJhUnmldNFo4dhajoPZWhBXuJk-OcQr5JQ49c4Zo',
+	// Authority should be set per HyperBEAM node (found on hyperbuddy explorer or startup logs)
+	authority:
+		import.meta.env.VITE_AUTHORITY ||
+		import.meta.env.VITE_HYPERBEAM_AUTHORITY ||
+		'fcoN_xJeisVsPXA-trzVAuIiqO3ydLQxM-L4XbrQKzY',
 };
 
+// Support switching between mainnet and legacy CU/MU URLs
+const getAOCONFIG = () => {
+	const aoMode = import.meta.env.VITE_AO || 'mainnet';
+
+	if (aoMode === 'mainnet') {
+		// For mainnet, use HyperBEAM infrastructure
+		// CU and MU are typically handled by the HyperBEAM gateway
+		// When MODE is 'mainnet', @permaweb/aoconnect should handle URLs automatically
+		// But we provide fallbacks if needed
+		return {
+			cu_url: import.meta.env.VITE_CU_URL || 'https://cu.ao-testnet.xyz', // Fallback, should be auto-handled by aoconnect
+			mu_url: import.meta.env.VITE_MU_URL || 'https://mu.ao-testnet.xyz', // Fallback, should be auto-handled by aoconnect
+			cu_af_url: 'https://cu-af.dataos.so',
+			gateway: 'https://arweave.net',
+		};
+	} else {
+		// Legacy/testnet configuration
+		return {
+			cu_url: 'https://cu.ao-testnet.xyz',
+			mu_url: 'https://mu.ao-testnet.xyz',
+			cu_af_url: 'https://cu-af.dataos.so',
+			gateway: 'https://arweave.net',
+		};
+	}
+};
+
+export const AOCONFIG = getAOCONFIG();
+
 export const getAOConfig = () => {
-	return AOCONFIG;
+	return getAOCONFIG();
 };
 
 export const REFORMATTED_ASSETS = {

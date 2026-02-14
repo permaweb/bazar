@@ -75,9 +75,9 @@ export default function Profile() {
 
 					fetchedProfile = await permawebProvider.libs.getProfileById(address);
 
+					// If mainnet profile not found, try legacy as fallback
 					if (!fetchedProfile?.id || !fetchedProfile?.username) {
-						await new Promise((r) => setTimeout(r, 1000));
-						debug('Fetching legacy profile...');
+						debug('Mainnet profile not found, trying legacy...');
 						isLegacyProfile = true;
 						const aoProfile = AOProfile.init({ ao: connect({ MODE: 'legacy' }) });
 						fetchedProfile = await aoProfile.getProfileById({ profileId: address });
@@ -138,8 +138,7 @@ export default function Profile() {
 		return (
 			<ErrorWrapper>
 				<ErrorMessage>
-					Unable to load profile. This profile may not be hydrated on HyperBEAM yet, or there may be network issues on
-					legacynet.
+					Unable to load profile. This profile may not be hydrated on HyperBEAM yet, or there may be network issues.
 				</ErrorMessage>
 				<ErrorDetail>Profile ID: {address}</ErrorDetail>
 			</ErrorWrapper>
