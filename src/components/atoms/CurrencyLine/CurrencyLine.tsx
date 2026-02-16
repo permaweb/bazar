@@ -26,7 +26,7 @@ export default function CurrencyLine(props: IProps & { tokenLogo?: string; token
 			if (props.amount === null || props.amount === undefined || isNaN(Number(props.amount))) {
 				setTimedOut(true);
 			}
-		}, 5000); // 5 seconds timeout
+		}, 5000);
 
 		return () => clearTimeout(timer);
 	}, [props.amount]);
@@ -51,7 +51,23 @@ export default function CurrencyLine(props: IProps & { tokenLogo?: string; token
 		if (tokenInfo && tokenInfo.denomination) {
 			const denomination = tokenInfo.denomination;
 			const factor = Math.pow(10, denomination);
-			const formattedAmount: string = (amount / factor).toFixed(denomination > 4 ? 4 : denomination);
+			const value = amount / factor;
+
+			// Determine how many significant figures to show based on the value
+			// For very small numbers, show more precision; for larger numbers, show fewer decimals
+			let decimalPlaces: number;
+			if (value >= 1) {
+				// For values >= 1, show up to 4 decimal places
+				decimalPlaces = Math.min(4, denomination);
+			} else if (value > 0) {
+				// For values < 1, calculate decimals needed to show at least 4 significant figures
+				const leadingZeros = Math.floor(-Math.log10(value));
+				decimalPlaces = Math.min(leadingZeros + 4, denomination);
+			} else {
+				decimalPlaces = 0;
+			}
+
+			const formattedAmount = value.toFixed(decimalPlaces);
 			return formatCount(formattedAmount);
 		}
 
