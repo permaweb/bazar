@@ -205,6 +205,7 @@ export const language = {
 		tradeGame: `Trade GAME`,
 		tradeWander: `Trade WNDR`,
 		tradeStamp: `Trade STAMP`,
+		tradeWar: `Trade wAR`,
 		transaction: `Transaction`,
 		transfer: `Transfer`,
 		transferWar: `Transfer Wrapped AR`,
