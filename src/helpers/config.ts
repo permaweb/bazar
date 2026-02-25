@@ -487,6 +487,7 @@ export const FLAGS = {
 	ASSET_BALANCE_CALC: false,
 	STREAKS_UPDATE_ON_PURCHASE: false,
 	NPROGRESS_LOADING: false,
+	COLLECTIONS: false,
 };
 
 export const ARNS = {

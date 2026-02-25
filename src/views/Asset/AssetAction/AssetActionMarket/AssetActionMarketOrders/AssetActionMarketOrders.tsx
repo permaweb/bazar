@@ -297,7 +297,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 						calculatedTotalBalance = totalBalance / denomination;
 					}
 
-					setTotalAssetBalance(calculatedTotalBalance);
+					_setTotalAssetBalance(calculatedTotalBalance);
 				}
 			}
 
@@ -1188,7 +1188,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 
 	const getTotals = React.useMemo(() => {
 		let balanceHeader: string | null = null;
-		// let percentageHeader: string | null = null;
 
 		let totalBalance = 0;
 		let quantity: number | null = null;
@@ -1249,10 +1248,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 						</span>
 					</S.TotalQuantityLine>
 				)}
-				{/* <S.TotalQuantityLine>
-					<p>{percentageHeader}</p>
-					<span>{formatPercentage(!isNaN(quantity / totalAssetBalance) ? quantity / totalAssetBalance : 0)}</span>
-				</S.TotalQuantityLine> */}
 			</>
 		);
 	}, [props.asset, props.type, totalAssetBalance, totalSalesQuantity, totalBidQuantity, connectedBalance]);
@@ -1278,7 +1273,6 @@ export default function AssetActionMarketOrders(props: IProps) {
 	}
 
 	let dominantToken = null;
-	// let swapToken = null;
 
 	function getOrderDetails(_useWrapper: boolean) {
 		let quantityLabel: string | null = null;
@@ -1601,13 +1595,7 @@ export default function AssetActionMarketOrders(props: IProps) {
 						</S.MaxQty>
 					)}
 					<S.FieldsFlexWrapper>
-						<S.TotalsWrapper>
-							{/* <S.TotalQuantityLine>
-								<p>{`${language.totalAssetBalance}`}</p>
-								<span>{formatCount(totalAssetBalance.toString())}</span>
-							</S.TotalQuantityLine> */}
-							{getTotals}
-						</S.TotalsWrapper>
+						<S.TotalsWrapper>{getTotals}</S.TotalsWrapper>
 						<S.FieldsWrapper>
 							<S.FieldWrapper>
 								<FormField
