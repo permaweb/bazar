@@ -251,7 +251,7 @@ export function PermawebProvider(props: { children: React.ReactNode }) {
 				const allTokens = Object.entries(TOKEN_REGISTRY).sort(([, a], [, b]) => a.priority - b.priority);
 
 				// Only load top 3 initially, or all if allTokensLoaded is true
-				const tokensToLoad = allTokensLoaded ? allTokens : allTokens.slice(0, 3);
+				const tokensToLoad = allTokensLoaded ? allTokens : allTokens.slice(0, 2);
 
 				for (const [token] of tokensToLoad) {
 					// Check if this token already has balance data loaded (not null and not undefined)

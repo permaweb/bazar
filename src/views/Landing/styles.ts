@@ -10,6 +10,15 @@ export const FeaturedTokenWrapper = styled.div`
 	margin: 0 0 40px 0;
 `;
 
+export const FeaturedTokenHeader = styled.div`
+	width: 100%;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 15px;
+	flex-wrap: wrap;
+`;
+
 export const TokenWrapper = styled.div<{ disabled: boolean }>`
 	width: 100%;
 	overflow: hidden;
@@ -33,20 +42,8 @@ export const TokenWrapper = styled.div<{ disabled: boolean }>`
 		transition: all 100ms;
 		padding: 20px;
 		border: 1px solid transparent;
-
-		> :first-child {
-			position: absolute;
-			top: -30px;
-			left: 29%;
-			z-index: 2;
-		}
-		> :last-child {
-			position: absolute;
-			top: 60px;
-			right: 32%;
-			z-index: 1;
-		}
 	}
+
 	&:hover {
 		background: ${(props) =>
 			props.disabled

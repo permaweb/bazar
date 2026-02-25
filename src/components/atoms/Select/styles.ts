@@ -32,17 +32,10 @@ export const Dropdown = styled.button<{ active: boolean }>`
 	background: ${(props) =>
 		props.active ? props.theme.colors.button.primary.background : props.theme.colors.button.primary.background};
 	border: 1px solid ${(props) => (props.active ? props.theme.colors.border.alt2 : props.theme.colors.border.primary)};
-	border-radius: ${STYLING.dimensions.radius.primary};
+	border-radius: ${STYLING.dimensions.radius.alt3};
 	transition: all 100ms;
 	&:hover {
 		background: ${(props) => props.theme.colors.button.primary.active.background};
-		/* border: 1px solid ${(props) => props.theme.colors.border.alt2}; */
-		/* span {
-			color: ${(props) => props.theme.colors.font.light1} !important;
-		}
-		svg {
-			color: ${(props) => props.theme.colors.font.light1} !important;
-		} */
 	}
 	&:focus {
 		background: ${(props) => props.theme.colors.button.primary.background};

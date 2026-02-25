@@ -99,6 +99,7 @@ export const Primary = styled.button<{
 		overflow: hidden;
 		font-size: ${(props) => props.theme.typography.size.xSmall} !important;
 		font-weight: ${(props) => props.theme.typography.weight.bold} !important;
+		font-family: ${(props) => props.theme.typography.family.primary} !important;
 		color: ${(props) =>
 			props.active
 				? props.theme.colors.button.primary.active.color

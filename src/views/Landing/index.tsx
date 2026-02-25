@@ -77,7 +77,7 @@ export default function Landing() {
 	const [musicCollections, setMusicCollections] = React.useState<CollectionType[] | null>(null);
 	const [musicCollectionsLoading, setMusicCollectionsLoading] = React.useState<boolean>(true);
 	const [ebookCollections, setEbookCollections] = React.useState<CollectionType[] | null>(null);
-	const [ebookCollectionsLoading, setEbookCollectionsLoading] = React.useState<boolean>(true);
+	const [_ebookCollectionsLoading, setEbookCollectionsLoading] = React.useState<boolean>(true);
 	const [hasFetchedCollections, setHasFetchedCollections] = React.useState(false);
 	const [hasFetchedMusicCollections, setHasFetchedMusicCollections] = React.useState(false);
 	const [hasFetchedEbookCollections, setHasFetchedEbookCollections] = React.useState(false);
@@ -158,6 +158,8 @@ export default function Landing() {
 	const handleDurationChange = (newDuration: number) => setDuration(newDuration);
 
 	React.useEffect(() => {
+		if (!FLAGS.COLLECTIONS) return;
+
 		if (!permawebProvider.libs || hasFetchedCollections || stampedCollections?.length) {
 			if (stampedCollections?.length) {
 				setCollections(stampedCollections);
@@ -311,21 +313,27 @@ export default function Landing() {
 	return (
 		<S.Wrapper className={'fade-in'}>
 			<S.FeaturedTokenWrapper>
-				<h4>{'Trade AO'}</h4>
+				<S.FeaturedTokenHeader>
+					<h4>{'Trade AO'}</h4>
+					<Button
+						type={'primary'}
+						label={'Learn About Trading'}
+						handlePress={() => window.open(`${URLS.docs}developers/ao-token-trading-system`)}
+					/>
+				</S.FeaturedTokenHeader>
 				<S.TokenWrapper className={'fade-in border-wrapper-alt1'} disabled={false}>
 					<Link to={`${URLS.asset}${AO.ao}`}>
 						<S.TokenImage>
 							<img src={getTxEndpoint(TOKEN_REGISTRY[AO.ao].logo)} alt={'AO'} />
 						</S.TokenImage>
-						<S.TokenImage>
-							<img src={getTxEndpoint(TOKEN_REGISTRY[AO.pi].logo)} alt={'AO'} />
-						</S.TokenImage>
 					</Link>
 				</S.TokenWrapper>
 			</S.FeaturedTokenWrapper>
-			<S.CollectionsWrapper>
-				<CollectionsCarousel collections={collections} loading={collectionsLoading} />
-			</S.CollectionsWrapper>
+			{FLAGS.COLLECTIONS && (
+				<S.CollectionsWrapper>
+					<CollectionsCarousel collections={collections} loading={collectionsLoading} />
+				</S.CollectionsWrapper>
+			)}
 			<S.FeaturedAssetWrapper>
 				<h4>{'Permaweb Journal'}</h4>
 				<S.FeaturedAssetBody>
