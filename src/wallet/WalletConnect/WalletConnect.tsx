@@ -7,7 +7,7 @@ import { Button } from 'components/atoms/Button';
 import { CurrencyLine } from 'components/atoms/CurrencyLine';
 import { Panel } from 'components/molecules/Panel';
 import { ProfileManage } from 'components/organisms/ProfileManage';
-import { AO, ASSETS, FLAGS, REDIRECTS, URLS } from 'helpers/config';
+import { AO, ASSETS, FLAGS, URLS } from 'helpers/config';
 import { formatAddress, formatCount, getTotalTokenBalance } from 'helpers/utils';
 import { useArweaveProvider } from 'providers/ArweaveProvider';
 import { useCustomThemeProvider } from 'providers/CustomThemeProvider';
@@ -145,9 +145,9 @@ export default function WalletConnect(_props: { callback?: () => void }) {
 
 	const tokenLinks = {
 		[AO.defaultToken]: {
-			link: REDIRECTS.aox,
-			label: language.getWrappedAr,
-			target: '_blank',
+			link: `${URLS.asset}${AO.defaultToken}`,
+			label: language.tradeWar,
+			target: '',
 		},
 		[AO.pixl]: {
 			link: `${URLS.asset}${AO.pixl}`,
