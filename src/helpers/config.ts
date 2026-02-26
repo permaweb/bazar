@@ -419,7 +419,7 @@ export const PAGINATORS = {
 export const REDIRECTS = {
 	github: `https://github.com/permaweb/bazar`,
 	x: `https://x.com/OurBazAR`,
-	discord: `https://discord.gg/vS2fYJNucN`,
+	discord: `https://discord.com/invite/rMQG8utY`,
 	bazarStudio: `https://studio_bazar.arweave.net`,
 	aox: `https://aox.arweave.net`,
 	arconnect: `https://wander.app`,

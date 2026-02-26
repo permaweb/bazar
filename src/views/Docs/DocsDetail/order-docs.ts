@@ -8,118 +8,12 @@ export const docsOrder = [
 				path: 'introduction',
 			},
 			{
-				name: 'Profiles',
-				path: 'profiles',
-			},
-			{
-				name: 'PIXL Fair Launch',
-				path: 'pixl-fair-launch',
-			},
-		],
-	},
-	{
-		name: 'For Collectors',
-		path: 'collectors',
-		children: [
-			{
 				name: 'How to fund your account',
 				path: 'how-to-fund',
 			},
 			{
-				name: 'How to collect',
-				path: 'how-to-collect',
-			},
-			{
-				name: 'How to earn PIXL',
-				path: 'earn-pixl',
-			},
-		],
-	},
-	{
-		name: 'For Creators',
-		path: 'creators',
-		children: [
-			{
-				name: 'How to upload',
-				path: 'how-to-upload',
-			},
-			{
-				name: 'Creating best practices',
-				path: 'creating-best-practices',
-			},
-			{
-				name: 'Why create atomic assets',
-				path: 'why-create-atomic-assets',
-			},
-			{
-				name: 'Universal Data License (UDL)',
-				path: 'universal-data-license',
-			},
-		],
-	},
-	{
-		name: 'For Developers',
-		path: 'developers',
-		children: [
-			{
-				name: 'Universal Content Marketplace',
-				path: 'universal-content-marketplace',
-			},
-			{
-				name: 'AO Token Trading System',
-				path: 'ao-token-trading-system',
-			},
-			{
-				name: 'Atomic Assets',
-				path: 'atomic-assets',
-			},
-			{
-				name: 'Collections',
-				path: 'collections',
-			},
-			{
-				name: 'Integrations',
-				path: 'integrations',
-			},
-		],
-	},
-	{
-		name: 'Key concepts',
-		path: 'key-concepts',
-		children: [
-			{
-				name: 'Wallets',
-				path: 'wallets',
-			},
-			{
-				name: 'Stamps',
-				path: 'stamps',
-			},
-			{
-				name: 'Tokens',
-				path: 'tokens',
-			},
-			{
-				name: 'Permaweb',
-				path: 'permaweb',
-			},
-			{
-				name: 'Atomic assets',
-				path: 'atomic-asset',
-			},
-			{
-				name: 'Bazar on AO',
-				path: 'bazar-on-ao',
-			},
-		],
-	},
-	{
-		name: 'Resources',
-		path: 'resources',
-		children: [
-			{
-				name: 'Branding Kit',
-				path: 'branding-kit',
+				name: 'How to trade',
+				path: 'how-to-trade',
 			},
 			{
 				name: 'Contact',

@@ -26,11 +26,7 @@ export default function Header() {
 
 	const [delegationPanelOpen, setDelegationPanelOpen] = React.useState(false);
 
-	const paths: { path: string; label: string; target?: '_blank' }[] = [
-		{ path: URLS.collections, label: language.collections },
-		{ path: URLS.docs, label: language.learn },
-		{ path: REDIRECTS.bazarStudio, label: language.create, target: '_blank' },
-	];
+	const paths: { path: string; label: string; target?: '_blank' }[] = [{ path: URLS.docs, label: language.learn }];
 
 	const [panelOpen, setPanelOpen] = React.useState<boolean>(false);
 
