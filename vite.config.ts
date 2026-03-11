@@ -130,24 +130,6 @@ export default defineConfig(({ mode }) => {
 						},
 					},
 				],
-				// output: {
-				// 	manualChunks: (id: string) => {
-				// 		if (id.includes('react') || id.includes('react-dom') || id.includes('react-router-dom')) {
-				// 			return 'vendor';
-				// 		}
-				// 		if (id.includes('@permaweb/aoconnect')) {
-				// 			return 'ao-connect';
-				// 		}
-				// 		if (id.includes('@permaweb/libs') || id.includes('arweave')) {
-				// 			return 'permaweb-libs';
-				// 		}
-				// 		if (id.includes('react-svg') || id.includes('react-markdown')) {
-				// 			return 'utils';
-				// 		}
-
-				// 		return undefined;
-				// 	},
-				// },
 			},
 		},
 		server: {

@@ -1,7 +1,5 @@
-import { lazy } from 'react';
+import React, { lazy } from 'react';
 import { Route, Routes, useLocation } from 'react-router-dom';
-
-import React from 'react';
 import NProgress from 'nprogress';
 
 import { FLAGS, URLS } from 'helpers/config';
