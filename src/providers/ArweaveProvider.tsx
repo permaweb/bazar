@@ -8,6 +8,7 @@ import AOProfile, { ProfileType } from '@permaweb/aoprofile';
 
 import { readHandler } from 'api';
 import { getVouch } from 'api/vouch';
+
 import { Modal } from 'components/molecules/Modal';
 import { connect } from 'helpers/aoconnect';
 import { AO, AR_WALLETS, FLAGS, REDIRECTS, WALLET_PERMISSIONS } from 'helpers/config';
