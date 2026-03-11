@@ -21,4 +21,18 @@ export const docsOrder = [
 			},
 		],
 	},
+	{
+		name: 'For Developers',
+		path: 'for-developers',
+		children: [
+			{
+				name: 'Universal Content Marketplace',
+				path: 'universal-content-marketplace',
+			},
+			{
+				name: 'AO Token Trading System',
+				path: 'ao-token-trading-system',
+			},
+		],
+	},
 ];
