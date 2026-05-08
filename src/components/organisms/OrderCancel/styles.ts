@@ -32,7 +32,7 @@ export const FlexActions = styled.div`
 		width: 100% !important;
 		span {
 			font-size: ${(props) => props.theme.typography.size.xLg} !important;
-			font-family: ${(props) => props.theme.typography.family.alt1};
+			font-family: ${(props) => props.theme.typography.family.alt1} !important;
 			text-transform: uppercase;
 		}
 	}

@@ -27,7 +27,7 @@ export default function OrderCancel(props: IProps) {
 	const [response, setResponse] = React.useState<NotificationType | null>(null);
 
 	async function handleOrderCancel() {
-		if (arProvider.wallet && permawebProvider.deps) {
+		if (arProvider.wallet && permawebProvider.deps && props.listing) {
 			setLoading(true);
 			try {
 				let args: any = {
@@ -37,7 +37,7 @@ export default function OrderCancel(props: IProps) {
 					swapToken: props.listing.currency,
 				};
 
-				if (props.listing.creator === permawebProvider.profile.id) args.creatorId = permawebProvider.profile.id;
+				if (props.listing.creator === permawebProvider.profile?.id) args.creatorId = permawebProvider.profile.id;
 				else args.walletAddress = arProvider.walletAddress;
 
 				const cancelOrderId = await cancelOrder(

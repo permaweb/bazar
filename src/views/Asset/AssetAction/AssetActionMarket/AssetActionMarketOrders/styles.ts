@@ -250,7 +250,7 @@ export const ActionWrapper = styled.div<{ loading: string }>`
 		}
 		span {
 			font-size: clamp(18px, 2vw, 24px) !important;
-			font-family: ${(props) => props.theme.typography.family.alt1};
+			font-family: ${(props) => props.theme.typography.family.alt1} !important;
 			text-transform: uppercase;
 			white-space: nowrap;
 		}
