@@ -2,13 +2,23 @@ import { spawn } from 'node:child_process';
 
 const ARWEAVE_ID = /^[A-Za-z0-9_-]{43}$/;
 const ANSI = /\x1B\[[0-?]*[ -/]*[@-~]/g;
+const deployKey = process.env.DEPLOY_KEY?.trim();
+
+if (!deployKey) throw new Error('DEPLOY_KEY environment variable is not set');
+
+const encodedDeployKey = deployKey.startsWith('{')
+	? Buffer.from(JSON.stringify(JSON.parse(deployKey))).toString('base64')
+	: deployKey;
 
 const output = await new Promise((resolve, reject) => {
 	let combined = '';
 	const upload = spawn(
 		'npx',
 		['--yes', 'permaweb-deploy@3.4.6', 'upload', '--deploy-folder', './dist'],
-		{ env: process.env, stdio: ['ignore', 'pipe', 'pipe'] }
+		{
+			env: { ...process.env, DEPLOY_KEY: encodedDeployKey },
+			stdio: ['ignore', 'pipe', 'pipe'],
+		}
 	);
 
 	for (const stream of [upload.stdout, upload.stderr]) {
