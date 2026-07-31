@@ -1,1 +1,0 @@
-export { DelegationPanel } from './DelegationPanel';

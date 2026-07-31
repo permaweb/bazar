@@ -1,41 +1,86 @@
-# Bazar
+# Bazar 2.0
 
-Welcome to Bazar, a fully decentralized atomic asset exchange built on the permaweb. Bazar leverages the power of the [Universal Content Marketplace (UCM)](https://github.com/permaweb/ao-ucm) protocol, [AO](https://ao.arweave.net) and the [Universal Data License](https://udlicense.arweave.net/ 'UDL') to enable content creators to trade digital assets with real-world rights.
+Bazar is a browser-only marketplace for one-unit Arweave assets. Wallets own
+assets directly, offers and transfers execute in their Arweave-scheduled
+processes, and purchases settle in native AR.
 
-## AO Overview
+There is no marketplace backend, identity intermediary, hosted order book, or
+legacy AO message service. The application reads immutable collection indexes
+from Arweave and computes live asset state through any HyperBEAM gateway.
 
-AO is a hyper-parallel computing system built on the Arweave network, offering a unified environment for executing decentralized applications and smart contracts. Unlike traditional decentralized computer systems, AO provides an open message passing layer that connects parallel processes, creating a cohesive computing experience similar to websites linked through hyperlinks.
+## Asset contract
 
-AO enables computation without protocol-enforced limitations on size and form while ensuring network verifiability and trust minimization. For a more detailed breakdown of AO, visit the [core repository](https://github.com/permaweb/ao?tab=readme-ov-file#what-is-ao).
+A tradable process uses:
 
-Orders on Bazar are fulfilled by a trustless orderbook process built on AO, called the Universal Content Marketplace.
+- `device: ~process@1.0`
+- `execution-device: token@1.0`
+- `swap-device: arweave-swap@1.0`
+- `scheduler-device: arweave-scheduler@1.0`
+- `scheduler-mode: all`
+- `total-supply: 1`
+- `initial-holder: <wallet address>`
 
-## UCM Overview
+The write API is deliberately small:
 
-The Universal Content Marketplace (UCM) is a protocol built on the permaweb designed to enable trustless exchange of atomic assets. It empowers creators and users to interact, trade, and transact with any form of digital content, from images and music to videos, papers, components, and even applications. Bazar is the first user interface that operates on the Universal Content Marketplace (UCM) protocol.
+- `transfer`
+- `make-offer`
+- `cancel-order`
+- `register-interest`, followed by a native AR payment bearing the `order-id`
+
+Collection indexes are immutable JSON manifests addressed through
+`reference@1.0`. Carrier names are discovered directly from Arweave GraphQL and
+paged in the browser.
 
 ## Development
 
-#### Prerequisites
-
-Before running Bazar, ensure the following dependencies are installed:
-
-- Node.js version 18.0 or higher
-- `npm`
-
-#### Development
-
-Run the development server:
-
-```
+```sh
 npm install
+npm run start
 ```
 
-```
-npm run start:development
+Vite serves the application on `http://127.0.0.1:3000` by default. Select a
+compute gateway in the header or append a `node` query parameter:
+
+```text
+http://127.0.0.1:3000/?node=http://127.0.0.1:3101#/asset/…
 ```
 
-This will launch the app locally at http://localhost:3000. Port configurations can be modified in `vite.config.js`
+The query parameter selects process computation and the HyperBEAM relay used
+for browser-safe checks against independent Arweave nodes. Transactions are
+signed by the connected wallet and submitted to the Arweave network.
+
+## Validation
+
+```sh
+npm run build
+npm test
+git diff --check
+```
+
+The purchase workflow stores signed transactions and deterministic recovery
+metadata locally until live process state proves completion. Reloading does not
+sign or pay twice.
+
+## Test collections
+
+The repository includes deterministic generation and publication scripts for
+two 100-piece PNG collections. Generated data, test wallets, and publication
+ledgers live under the ignored `.run-data/` directory; private keys are never
+committed.
+
+```sh
+python scripts/generate_test_collections.py
+node scripts/publish_collection_media.mjs
+node scripts/publish_asset_processes.mjs
+node scripts/fund_test_parties.mjs
+```
+
+Publication scripts read `~/src/Documents/hyperbeam-key.json` by default. Set
+`BAZAR_TEST_WALLET` to use a different local key file.
+
+The media and asset processes are separate permanent transactions: the small
+JSON process body remains valid token state while `asset-data` points to the
+full-resolution PNG.
 
 ## License
 

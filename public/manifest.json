@@ -1,13 +1,15 @@
 {
 	"short_name": "Bazar",
-	"name": "Bazar",
+	"name": "Bazar — Arweave-native assets",
 	"icons": [
 		{
 			"src": "favicon.svg",
-			"sizes": "64x64 32x32 24x24 16x16",
-			"type": "image/x-icon"
+			"sizes": "any",
+			"type": "image/svg+xml"
 		}
 	],
 	"start_url": ".",
-	"display": "standalone"
+	"display": "standalone",
+	"background_color": "#f5f0e6",
+	"theme_color": "#f5f0e6"
 }

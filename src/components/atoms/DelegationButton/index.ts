@@ -1,1 +1,0 @@
-export { DelegationButton } from './DelegationButton';
