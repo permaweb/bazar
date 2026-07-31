@@ -1,23 +1,23 @@
 import type { DefaultTheme } from 'styled-components';
 
 export const theme: DefaultTheme = {
-	colors: {
-		border: { primary: '#1d1b17', alt1: '#d9d2c5' },
-		container: {
-			primary: { background: '#fffdf8' },
-			alt1: { background: '#f5f0e6' },
-			alt2: { background: '#ebe4d8' },
-		},
-		font: { primary: '#171510', alt1: '#6f685d' },
-		indicator: { primary: '#ff5a1f' },
-		nasaGraphic: { green1: '#00a66a' },
-		stats: { alt7: '#ff8b45', alt8: '#ffbd46', alt10: '#18b976' },
-		status: { draft: '#8d8171' },
-		warning: { primary: '#d94718' },
-	},
-	typography: {
-		family: { primary: 'Inter, ui-sans-serif, system-ui, sans-serif' },
-		weight: { medium: 600 },
-		size: { lg: '1.15rem', small: '.88rem', xxSmall: '.72rem', xxxxSmall: '.62rem' },
-	},
+  colors: {
+    border: { primary: '#f0f0f0', alt1: '#d4d4d4' },
+    container: {
+      primary: { background: '#ffffff' },
+      alt1: { background: '#fafafa' },
+      alt2: { background: '#f0f0f0' },
+    },
+    font: { primary: '#1c1916', alt1: '#5c554d' },
+    indicator: { primary: '#13ab8f' },
+    nasaGraphic: { green1: '#13ab8f' },
+    stats: { alt7: '#d97706', alt8: '#eeca00', alt10: '#13ab8f' },
+    status: { draft: '#756e65' },
+    warning: { primary: '#c94b62' },
+  },
+  typography: {
+    family: { primary: '"DM Sans", ui-sans-serif, system-ui, sans-serif' },
+    weight: { medium: 600 },
+    size: { lg: '1.15rem', small: '.88rem', xxSmall: '.72rem', xxxxSmall: '.62rem' },
+  },
 };
