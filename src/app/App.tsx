@@ -1,5 +1,33 @@
 import React from 'react';
-import { HashRouter, Link, Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom';
+import {
+  ArrowLeft,
+  ArrowRight,
+  ArrowUpRight,
+  AtSign,
+  BarChart3,
+  Check,
+  ChevronDown,
+  CircleX,
+  Diamond,
+  FileText,
+  Grid2X2,
+  History,
+  Images,
+  Info,
+  LayoutGrid,
+  Layers3,
+  Library,
+  RefreshCw,
+  Search,
+  Send,
+  Server,
+  ShoppingCart,
+  Tag,
+  Upload,
+  Wallet,
+  X,
+} from 'lucide-react';
+import { HashRouter, Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   SwapPurchase,
   type ObserverView,
@@ -36,6 +64,8 @@ import { AssetTransactionClient, DEFAULT_REGISTRATION_FEE, dispatchAndConfirm } 
 import { ArweaveTransactionSync, type ArweaveSyncStep } from 'components/ArweaveTransactionSync';
 import { useWallet } from 'providers/WalletProvider';
 
+import arweaveNamesCube from '../assets/arweave-names-cube.gif';
+import arweaveNamesCubeStill from '../assets/arweave-names-cube.png';
 import bazarLogo from '../assets/logo.svg';
 
 import './styles.css';
@@ -117,44 +147,268 @@ function RouteScroll() {
 }
 
 function Header() {
-  const { pathname } = useLocation();
+  const location = useLocation();
+  const navigate = useNavigate();
   const wallet = useWallet();
-  if (pathname === '/') return null;
+  const market = React.useContext(MarketContext);
+  const inputRef = React.useRef<HTMLInputElement>(null);
+  const urlQuery = new URLSearchParams(location.search).get('q') ?? '';
+  const [query, setQuery] = React.useState(urlQuery);
+  const [searchOpen, setSearchOpen] = React.useState(false);
+  const [scope, setScope] = React.useState<'all' | 'collections' | 'assets' | 'names'>('all');
+  const [recentQueries, setRecentQueries] = React.useState<string[]>([]);
+  const normalizedQuery = query.trim().toLowerCase();
+  const collectionResults = market.collections
+    .filter((collection) => {
+      if (scope === 'assets') return false;
+      if (scope === 'names' && collection.kind !== 'names') return false;
+      return (
+        !normalizedQuery ||
+        `${collection.name} ${collection.description}`.toLowerCase().includes(normalizedQuery) ||
+        collection.assets.some((asset) => asset.name.toLowerCase().includes(normalizedQuery))
+      );
+    })
+    .slice(0, 6);
+  const assetResults = market.collections
+    .filter((collection) => scope !== 'collections' && (scope !== 'names' || collection.kind === 'names'))
+    .flatMap((collection) => collection.assets.map((asset) => ({ asset, collection })))
+    .filter(({ asset, collection }) => {
+      if (!normalizedQuery) return Boolean(asset.image) || collection.kind === 'names';
+      return `${asset.name} ${collection.name}`.toLowerCase().includes(normalizedQuery);
+    })
+    .slice(0, 8);
+  React.useEffect(() => setQuery(urlQuery), [urlQuery]);
+  React.useEffect(() => {
+    const focusSearch = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        setSearchOpen(true);
+        inputRef.current?.focus();
+      }
+      if (event.key === 'Escape') setSearchOpen(false);
+    };
+    window.addEventListener('keydown', focusSearch);
+    return () => window.removeEventListener('keydown', focusSearch);
+  }, []);
+  const updateQuery = (value: string) => {
+    setQuery(value);
+    if (location.pathname === '/') {
+      navigate(value.trim() ? `/?q=${encodeURIComponent(value)}` : '/', { replace: true });
+    }
+  };
+  const submitSearch = (event: React.FormEvent) => {
+    event.preventDefault();
+    if (query.trim()) {
+      setRecentQueries((current) => [query.trim(), ...current.filter((item) => item !== query.trim())].slice(0, 4));
+    }
+    navigate(query.trim() ? `/?q=${encodeURIComponent(query.trim())}` : '/');
+    setSearchOpen(false);
+  };
+  const useRecentQuery = (value: string) => {
+    setQuery(value);
+    navigate(`/?q=${encodeURIComponent(value)}`);
+    setSearchOpen(false);
+  };
+  const closeSearch = () => {
+    if (query.trim()) {
+      setRecentQueries((current) => [query.trim(), ...current.filter((item) => item !== query.trim())].slice(0, 4));
+    }
+    setSearchOpen(false);
+  };
+  const scopes = [
+    { id: 'all' as const, label: 'All', Icon: Search },
+    { id: 'collections' as const, label: 'Collections', Icon: LayoutGrid },
+    { id: 'assets' as const, label: 'Assets', Icon: Images },
+    { id: 'names' as const, label: 'Names', Icon: AtSign },
+  ];
   return (
-    <header className="site-header">
-      <Link className="brand" to="/">
-        <span className="brand-mark">
-          <BazarMark />
-        </span>
-        <span>Bazar</span>
-        <small>2.0</small>
-      </Link>
-      <nav className="site-nav">
-        <Link to="/">Collections</Link>
-        {wallet.address ? (
-          <Link className="my-assets-link" to="/my-assets">
-            My assets
-          </Link>
-        ) : null}
-        <GatewayControl />
-        {wallet.loadDevelopmentWallet ? (
-          <label className="development-wallet">
-            Test wallet
-            <input
-              type="file"
-              accept=".json,application/json"
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                if (file) void wallet.loadDevelopmentWallet?.(file);
-              }}
-            />
-          </label>
-        ) : null}
-        <button className="wallet" onClick={() => void (wallet.address ? wallet.disconnect() : wallet.connect())}>
-          {wallet.address ? short(wallet.address) : 'Connect wallet'}
-        </button>
-      </nav>
-    </header>
+    <>
+      <header className="site-header">
+        <Link aria-label="Bazar home" className="brand" to="/">
+          <span className="brand-mark">
+            <BazarMark />
+          </span>
+          <small>2.0</small>
+        </Link>
+        <form className={`site-search${searchOpen ? ' expanded' : ''}`} role="search" onSubmit={submitSearch}>
+          <Search className="ui-icon ui-icon--sm" aria-hidden="true" />
+          <input
+            ref={inputRef}
+            aria-label="Search collections and assets"
+            placeholder="Search collections and assets"
+            value={query}
+            onChange={(event) => updateQuery(event.target.value)}
+            onFocus={() => setSearchOpen(true)}
+            aria-expanded={searchOpen}
+            aria-controls="marketplace-search-panel"
+          />
+        </form>
+        <nav className="site-nav">
+          <div className="site-nav-primary">
+            {wallet.address ? (
+              <Link className="my-assets-link" to="/my-assets">
+                <Library className="ui-icon ui-icon--sm" aria-hidden="true" /> My assets
+              </Link>
+            ) : null}
+            <GatewayControl />
+          </div>
+          <div className="site-nav-wallet">
+            {wallet.loadDevelopmentWallet ? (
+              <label className="development-wallet">
+                <Upload className="ui-icon ui-icon--sm" aria-hidden="true" /> Test wallet
+                <input
+                  type="file"
+                  accept=".json,application/json"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) void wallet.loadDevelopmentWallet?.(file);
+                  }}
+                />
+              </label>
+            ) : null}
+            <button className="wallet" onClick={() => void (wallet.address ? wallet.disconnect() : wallet.connect())}>
+              <Wallet className="ui-icon ui-icon--sm" aria-hidden="true" />
+              {wallet.address ? short(wallet.address) : 'Connect wallet'}
+            </button>
+          </div>
+        </nav>
+      </header>
+      {searchOpen ? (
+        <div className="search-overlay" onMouseDown={(event) => event.target === event.currentTarget && closeSearch()}>
+          <section id="marketplace-search-panel" className="search-panel" role="dialog" aria-label="Search Bazar">
+            <form className="search-panel-query" role="search" onSubmit={submitSearch}>
+              <Search className="ui-icon" aria-hidden="true" />
+              <input
+                autoFocus
+                aria-label="Search Bazar marketplace"
+                placeholder="Search Bazar"
+                value={query}
+                onChange={(event) => updateQuery(event.target.value)}
+              />
+              {query ? (
+                <button type="button" onClick={() => updateQuery('')} aria-label="Clear search">
+                  Clear
+                </button>
+              ) : (
+                <kbd>ESC</kbd>
+              )}
+            </form>
+            <aside className="search-categories" aria-label="Search categories">
+              {scopes.map((item) => {
+                const ScopeIcon = item.Icon;
+                return (
+                  <button
+                    className={scope === item.id ? 'active' : undefined}
+                    key={item.id}
+                    onClick={() => setScope(item.id)}
+                  >
+                    <ScopeIcon className="ui-icon" aria-hidden="true" />
+                    {item.label}
+                  </button>
+                );
+              })}
+            </aside>
+            <div className="search-panel-main">
+              <div className="search-scope-row">
+                {scopes.map((item) => (
+                  <button
+                    className={scope === item.id ? 'active' : undefined}
+                    key={item.id}
+                    onClick={() => setScope(item.id)}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+              <div className="search-panel-content">
+                {!normalizedQuery && recentQueries.length ? (
+                  <section className="search-result-section">
+                    <div className="search-result-heading">
+                      <h2>Recent searches</h2>
+                      <button onClick={() => setRecentQueries([])}>Clear</button>
+                    </div>
+                    <div className="recent-searches">
+                      {recentQueries.map((item) => (
+                        <button key={item} onClick={() => useRecentQuery(item)}>
+                          <History className="ui-icon ui-icon--sm" aria-hidden="true" />
+                          {item}
+                        </button>
+                      ))}
+                    </div>
+                  </section>
+                ) : null}
+                {collectionResults.length ? (
+                  <section className="search-result-section">
+                    <div className="search-result-heading">
+                      <h2>{normalizedQuery ? 'Matching collections' : 'Featured collections'}</h2>
+                      <span>{collectionResults.length} shown</span>
+                    </div>
+                    <div className="search-collection-grid">
+                      {collectionResults.map((collection) => {
+                        const preview = collection.assets.find((asset) => asset.image)?.image;
+                        return (
+                          <Link key={collection.id} to={`/collection/${collection.id}`} onClick={closeSearch}>
+                            <span className="search-result-image">
+                              {preview ? (
+                                <img src={preview} alt="" />
+                              ) : collection.kind === 'names' ? (
+                                <NamesCubePreview />
+                              ) : (
+                                <BazarMark />
+                              )}
+                            </span>
+                            <span>
+                              <strong>{collection.name}</strong>
+                              <small>
+                                {collection.kind === 'names' ? 'Names' : 'Collection'} ·{' '}
+                                {(collection.total ?? collection.assets.length).toLocaleString()} assets
+                              </small>
+                            </span>
+                            <ArrowUpRight className="ui-icon ui-icon--sm" aria-hidden="true" />
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  </section>
+                ) : null}
+                {assetResults.length ? (
+                  <section className="search-result-section">
+                    <div className="search-result-heading">
+                      <h2>{normalizedQuery ? 'Matching assets' : 'Recent assets'}</h2>
+                      <span>{assetResults.length} shown</span>
+                    </div>
+                    <div className="search-asset-grid">
+                      {assetResults.map(({ asset, collection }) => (
+                        <Link
+                          key={`${collection.id}-${asset.id}`}
+                          to={`/asset/${collection.id}/${asset.id}`}
+                          onClick={closeSearch}
+                        >
+                          <span className="search-result-image">
+                            {asset.image ? <img src={asset.image} alt="" /> : <BazarMark />}
+                          </span>
+                          <span>
+                            <strong>{asset.name}</strong>
+                            <small>{collection.name}</small>
+                          </span>
+                          <ArrowUpRight className="ui-icon ui-icon--sm" aria-hidden="true" />
+                        </Link>
+                      ))}
+                    </div>
+                  </section>
+                ) : null}
+                {!market.loading && !collectionResults.length && !assetResults.length ? (
+                  <div className="search-empty">
+                    <strong>No results for “{query}”</strong>
+                    <span>Try another asset, collection, or Arweave name.</span>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          </section>
+        </div>
+      ) : null}
+    </>
   );
 }
 
@@ -169,11 +423,25 @@ function Footer() {
   );
 }
 
+function NamesCubePreview() {
+  const [hovered, setHovered] = React.useState(false);
+  const motionAllowed = typeof window === 'undefined' || !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  return (
+    <span
+      className="names-cube-preview"
+      aria-hidden="true"
+      onMouseEnter={() => motionAllowed && setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <img src={hovered ? arweaveNamesCube : arweaveNamesCubeStill} alt="" />
+    </span>
+  );
+}
+
 function Home() {
   const market = React.useContext(MarketContext);
-  const wallet = useWallet();
-  const [query, setQuery] = React.useState('');
-  const searchRef = React.useRef<HTMLInputElement>(null);
+  const { search } = useLocation();
+  const query = new URLSearchParams(search).get('q') ?? '';
   const normalizedQuery = query.trim().toLowerCase();
   const collections = market.collections.filter((collection) => {
     if (!normalizedQuery) return true;
@@ -189,110 +457,72 @@ function Home() {
         !normalizedQuery || `${asset.name} ${collection.name}`.toLowerCase().includes(normalizedQuery),
     )
     .slice(0, 10);
+  const assetKey = assets.map(({ asset }) => asset.id).join(',');
+  const [assetPrices, setAssetPrices] = React.useState<Record<string, string | null>>({});
+  const collectionKey = collections
+    .map((collection) => `${collection.id}:${collection.assets.map((asset) => asset.id).join('.')}`)
+    .join(',');
+  const [collectionFloors, setCollectionFloors] = React.useState<Record<string, string | null>>({});
   React.useEffect(() => {
-    const focusSearch = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
-        event.preventDefault();
-        searchRef.current?.focus();
-      }
-    };
-    window.addEventListener('keydown', focusSearch);
-    return () => window.removeEventListener('keydown', focusSearch);
-  }, []);
-  const scrollTo = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
+    const controller = new AbortController();
+    setAssetPrices({});
+    void Promise.all(
+      assets.map(async ({ asset }) => {
+        try {
+          const { state } = await readAssetState(asset.id, { signal: controller.signal, maxAttempts: 1 });
+          const order = liveOrderOfAsset(state);
+          return [asset.id, order ? `${winstonToAr(order.asking)} AR` : null] as const;
+        } catch {
+          return [asset.id, null] as const;
+        }
+      }),
+    ).then((prices) => {
+      if (!controller.signal.aborted) setAssetPrices(Object.fromEntries(prices));
+    });
+    return () => controller.abort();
+  }, [assetKey]);
+  React.useEffect(() => {
+    const controller = new AbortController();
+    setCollectionFloors({});
+    void Promise.all(
+      collections.map(async (collection) => {
+        try {
+          const candidates = await discoverMarketActivity({
+            recipients: collection.assets.map((asset) => asset.id),
+            listingsOnly: true,
+            signal: controller.signal,
+          });
+          const resolved = await resolveAssetCandidates(candidates, [collection], {
+            signal: controller.signal,
+            read: (processId, signal) => readAssetState(processId, { signal, maxAttempts: 1 }),
+          });
+          let floor: bigint | null = null;
+          for (const result of resolved) {
+            const order = liveOrderOfAsset(result.state);
+            if (!order) continue;
+            const asking = BigInt(order.asking);
+            if (floor === null || asking < floor) floor = asking;
+          }
+          return [collection.id, floor === null ? null : `${winstonToAr(floor.toString())} AR`] as const;
+        } catch {
+          return [collection.id, null] as const;
+        }
+      }),
+    ).then((floors) => {
+      if (!controller.signal.aborted) setCollectionFloors(Object.fromEntries(floors));
+    });
+    return () => controller.abort();
+  }, [collectionKey]);
   return (
     <div className="home-shell">
-      <aside className="home-sidebar">
-        <Link className="home-brand" to="/" aria-label="Bazar home">
-          <span>
-            <BazarMark />
-          </span>
-          <strong>BAZAR</strong>
-        </Link>
-        <nav className="home-nav" aria-label="Marketplace">
-          <button className="active" onClick={() => scrollTo('featured')}>
-            <span>⌂</span> Home
-          </button>
-          <button onClick={() => scrollTo('collections')}>
-            <span>↗</span> Collections
-          </button>
-          <button onClick={() => scrollTo('assets')}>
-            <span>◫</span> Discover
-          </button>
-          {wallet.address ? (
-            <Link to="/my-assets">
-              <span>◇</span> My assets
-            </Link>
-          ) : null}
-        </nav>
-        <div className="home-sidebar-foot">
-          <a href="https://docs.arweave.org" target="_blank" rel="noreferrer">
-            <span>⌘</span> Developers
-          </a>
-          <a href="https://github.com/permaweb/bazar" target="_blank" rel="noreferrer">
-            <span>↗</span> Source
-          </a>
-          <p>
-            Permanent markets.
-            <br />
-            Direct ownership.
-          </p>
-        </div>
-      </aside>
-
       <div className="home-main">
-        <div className="home-toolbar">
-          <label className="home-search">
-            <span>⌕</span>
-            <input
-              ref={searchRef}
-              aria-label="Search collections and assets"
-              placeholder="Search collections and assets"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-            />
-            <kbd>⌘ K</kbd>
-          </label>
-          <strong className="home-toolbar-title">Arweave-native marketplace</strong>
-          <div className="home-toolbar-actions">
-            <GatewayControl />
-            <button
-              className="home-wallet"
-              onClick={() => void (wallet.address ? wallet.disconnect() : wallet.connect())}
-            >
-              {wallet.address ? short(wallet.address) : 'Connect wallet'}
-            </button>
-          </div>
-        </div>
-
-        <div className="home-ticker" aria-label="Marketplace properties">
-          <span>
-            <i /> NETWORK <strong>ARWEAVE</strong>
-          </span>
-          <span>
-            <i /> SETTLEMENT <strong>AR NATIVE</strong>
-          </span>
-          <span>
-            <i /> OWNERSHIP <strong>DIRECT</strong>
-          </span>
-          <span>
-            <i /> STATE <strong>HYPERBEAM</strong>
-          </span>
-          <span>
-            <i /> STORAGE <strong>PERMANENT</strong>
-          </span>
-        </div>
-
         <div className="home-content">
           <section className="home-section" id="featured">
             <div className="home-section-heading">
               <div>
-                <h1>Featured collections</h1>
+                <h1>Collections</h1>
                 <p>Permanent assets with ownership and settlement native to Arweave.</p>
               </div>
-              <span className="home-live">
-                <i /> LIVE ON ARWEAVE
-              </span>
             </div>
             {market.loading ? <Loading label="Loading collection indexes from Arweave…" /> : null}
             {market.error ? <ErrorPanel message={market.error} /> : null}
@@ -308,6 +538,8 @@ function Home() {
                     <div className="home-feature-art">
                       {image ? (
                         <img src={image} alt="" />
+                      ) : collection.kind === 'names' ? (
+                        <NamesCubePreview />
                       ) : (
                         <div className="home-name-art">
                           <BazarMark />
@@ -327,16 +559,23 @@ function Home() {
                         <strong>{(collection.total ?? collection.assets.length).toLocaleString()}</strong>
                       </div>
                       <div>
-                        <span>Storage</span>
-                        <strong>Permanent</strong>
+                        <span>Type</span>
+                        <strong>{collection.kind === 'names' ? 'Names' : 'Images'}</strong>
                       </div>
                       <div>
-                        <span>Settlement</span>
-                        <strong>AR</strong>
+                        <span>Floor</span>
+                        <strong>
+                          {collection.id in collectionFloors
+                            ? (collectionFloors[collection.id] ?? 'No listings')
+                            : 'Checking…'}
+                        </strong>
                       </div>
                     </div>
                     <strong className="home-card-action">
-                      Open collection <span>↗</span>
+                      Open collection
+                      <span>
+                        <ArrowUpRight className="ui-icon ui-icon--xs" aria-hidden="true" />
+                      </span>
                     </strong>
                   </Link>
                 );
@@ -345,40 +584,6 @@ function Home() {
             {!market.loading && !market.error && collections.length === 0 ? (
               <div className="home-no-results">No collections match “{query}”.</div>
             ) : null}
-          </section>
-
-          <section className="home-section home-collections" id="collections">
-            <div className="home-section-heading">
-              <div>
-                <h2>Marketplace collections</h2>
-                <p>Browse collection indexes resolved from permanent data.</p>
-              </div>
-            </div>
-            <div className="home-collection-row">
-              {collections.map((collection, index) => (
-                <Link className="home-collection-card" key={collection.id} to={`/collection/${collection.id}`}>
-                  <div className={`home-collection-image tone-${index % 3}`}>
-                    {collection.kind === 'names' ? (
-                      <span className="home-name-glyph">A</span>
-                    ) : (
-                      <AssetMosaic assets={collection.assets} />
-                    )}
-                  </div>
-                  <div className="home-collection-copy">
-                    <h3>{collection.name}</h3>
-                    <p>{collection.kind === 'names' ? 'NAMES' : 'COLLECTION'} · On Arweave</p>
-                    <div>
-                      <span>
-                        Assets<strong>{(collection.total ?? collection.assets.length).toLocaleString()}</strong>
-                      </span>
-                      <span>
-                        State<strong className="positive">Live</strong>
-                      </span>
-                    </div>
-                  </div>
-                </Link>
-              ))}
-            </div>
           </section>
 
           {assets.length ? (
@@ -393,8 +598,15 @@ function Home() {
                 {assets.map(({ asset, collection }) => (
                   <Link key={`${collection.id}-${asset.id}`} to={`/asset/${collection.id}/${asset.id}`}>
                     <img src={asset.image} alt="" />
-                    <strong>{asset.name}</strong>
-                    <span>{collection.name}</span>
+                    <div className="home-asset-details">
+                      <div>
+                        <strong>{asset.name}</strong>
+                        <span>{collection.name}</span>
+                      </div>
+                      <b className={`home-asset-price${assetPrices[asset.id] ? ' listed' : ''}`}>
+                        {asset.id in assetPrices ? (assetPrices[asset.id] ?? 'Not listed') : 'Checking…'}
+                      </b>
+                    </div>
                   </Link>
                 ))}
               </div>
@@ -421,16 +633,137 @@ function GatewayControl() {
   }
   return (
     <details className="gateway">
-      <summary title={current}>Compute gateway</summary>
+      <summary title={current}>
+        <Server className="ui-icon ui-icon--sm" aria-hidden="true" /> Compute gateway
+      </summary>
       <div>
         <label>
           HyperBEAM gateway
           <input value={value} onChange={(event) => setValue(event.target.value)} />
         </label>
-        <button onClick={apply}>Use gateway</button>
+        <button className="with-icon" onClick={apply}>
+          <Server className="ui-icon ui-icon--sm" aria-hidden="true" /> Use gateway
+        </button>
         <p>Process reads and browser-safe observer checks use this node. Transactions still settle on Arweave.</p>
       </div>
     </details>
+  );
+}
+
+type MarketSelectOption<Value extends string> = {
+  value: Value;
+  label: string;
+};
+
+function MarketSelect<Value extends string>({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: Value;
+  options: readonly MarketSelectOption<Value>[];
+  onChange(value: Value): void;
+}) {
+  const [open, setOpen] = React.useState(false);
+  const rootRef = React.useRef<HTMLDivElement>(null);
+  const triggerRef = React.useRef<HTMLButtonElement>(null);
+  const optionRefs = React.useRef<Array<HTMLButtonElement | null>>([]);
+  const menuId = React.useId();
+  const selectedIndex = Math.max(
+    0,
+    options.findIndex((option) => option.value === value),
+  );
+  const selected = options[selectedIndex];
+
+  React.useEffect(() => {
+    if (!open) return;
+    const closeOnOutsidePress = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      setOpen(false);
+      triggerRef.current?.focus();
+    };
+    document.addEventListener('pointerdown', closeOnOutsidePress);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsidePress);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [open]);
+
+  const focusOption = (index: number) => {
+    const normalizedIndex = (index + options.length) % options.length;
+    optionRefs.current[normalizedIndex]?.focus();
+  };
+  const openAndFocus = (index = selectedIndex) => {
+    setOpen(true);
+    window.requestAnimationFrame(() => focusOption(index));
+  };
+  const selectOption = (option: MarketSelectOption<Value>) => {
+    onChange(option.value);
+    setOpen(false);
+    triggerRef.current?.focus();
+  };
+
+  return (
+    <div className="market-select" ref={rootRef}>
+      <span className="market-select-label">{label}</span>
+      <button
+        aria-controls={menuId}
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        aria-label={`${label}: ${selected.label}`}
+        className={`market-select-trigger${open ? ' open' : ''}`}
+        onClick={() => (open ? setOpen(false) : openAndFocus())}
+        onKeyDown={(event) => {
+          if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+          event.preventDefault();
+          openAndFocus(event.key === 'ArrowDown' ? selectedIndex : selectedIndex - 1);
+        }}
+        ref={triggerRef}
+        type="button"
+      >
+        <span>{selected.label}</span>
+        <ChevronDown aria-hidden="true" />
+      </button>
+      {open ? (
+        <div aria-label={label} className="market-select-menu" id={menuId} role="listbox">
+          {options.map((option, index) => {
+            const active = option.value === value;
+            return (
+              <button
+                aria-selected={active}
+                className={`market-select-option${active ? ' active' : ''}`}
+                key={option.value}
+                onClick={() => selectOption(option)}
+                onKeyDown={(event) => {
+                  if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+                    event.preventDefault();
+                    focusOption(index + (event.key === 'ArrowDown' ? 1 : -1));
+                  } else if (event.key === 'Home' || event.key === 'End') {
+                    event.preventDefault();
+                    focusOption(event.key === 'Home' ? 0 : options.length - 1);
+                  }
+                }}
+                ref={(element) => {
+                  optionRefs.current[index] = element;
+                }}
+                role="option"
+                tabIndex={-1}
+                type="button"
+              >
+                <span>{option.label}</span>
+                {active ? <Check aria-hidden="true" /> : null}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -442,8 +775,12 @@ function CollectionView() {
   const [limit, setLimit] = React.useState(48);
   const [sort, setSort] = React.useState<'default' | 'recent'>('default');
   const [listedOnly, setListedOnly] = React.useState(false);
+  const [initial, setInitial] = React.useState<string>('all');
   const [activity, setActivity] = React.useState<AssetCandidate[]>([]);
   const [listed, setListed] = React.useState<ResolvedAsset[]>([]);
+  const [cardPrices, setCardPrices] = React.useState<Record<string, string | null>>({});
+  const [cardPricesLoading, setCardPricesLoading] = React.useState(false);
+  const [cardPricesUnavailable, setCardPricesUnavailable] = React.useState(false);
   const [activityState, setActivityState] = React.useState({
     loading: false,
     resolved: 0,
@@ -452,6 +789,40 @@ function CollectionView() {
   });
   const [retry, setRetry] = React.useState(0);
   const gateway = servingNodeOrigin(window.location);
+  React.useEffect(() => {
+    if (!collection) return;
+    const controller = new AbortController();
+    setCardPrices({});
+    setCardPricesLoading(true);
+    setCardPricesUnavailable(false);
+    void (async () => {
+      try {
+        const candidates = await discoverMarketActivity({
+          recipients: collection.assets.map((asset) => asset.id),
+          listingsOnly: true,
+          signal: controller.signal,
+        });
+        const resolved = await resolveAssetCandidates(candidates, [collection], {
+          signal: controller.signal,
+          read: (processId, signal) => readAssetState(processId, { signal, maxAttempts: 1 }),
+        });
+        if (controller.signal.aborted) return;
+        const prices: Record<string, string | null> = Object.fromEntries(
+          collection.assets.map((asset) => [asset.id, null]),
+        );
+        for (const result of resolved) {
+          const order = liveOrderOfAsset(result.state);
+          if (order) prices[result.asset.id] = `${winstonToAr(order.asking)} AR`;
+        }
+        setCardPrices(prices);
+      } catch {
+        if (!controller.signal.aborted) setCardPricesUnavailable(true);
+      } finally {
+        if (!controller.signal.aborted) setCardPricesLoading(false);
+      }
+    })();
+    return () => controller.abort();
+  }, [collection]);
   React.useEffect(() => {
     if (!collection || (!listedOnly && sort === 'default')) {
       setActivity([]);
@@ -513,15 +884,20 @@ function CollectionView() {
     })();
     return () => controller.abort();
   }, [collection, gateway, listedOnly, retry, sort]);
-  React.useEffect(() => setLimit(48), [listedOnly, query, sort]);
+  React.useEffect(() => setLimit(48), [initial, listedOnly, query, sort]);
   if (market.loading) return <Loading label="Reading collection index…" />;
   if (!collection) return <ErrorPanel message="This collection could not be found on Arweave." />;
   const activityByAsset = new Map(activity.map((candidate) => [candidate.processId, candidate]));
   const defaultIndex = new Map(collection.assets.map((asset, index) => [asset.id, index]));
   const visibleAssets = listedOnly ? listed.map((result) => result.asset) : collection.assets;
   const filtered = visibleAssets
-    .filter((asset) => asset.name.toLowerCase().includes(query.toLowerCase()))
+    .filter(
+      (asset) =>
+        asset.name.toLowerCase().includes(query.toLowerCase()) &&
+        (initial === 'all' || asset.name.trim().toUpperCase().startsWith(initial)),
+    )
     .sort((a, b) => {
+      if (initial !== 'all') return a.name.localeCompare(b.name);
       if (sort === 'recent') {
         const activityA = activityByAsset.get(a.id);
         const activityB = activityByAsset.get(b.id);
@@ -539,7 +915,7 @@ function CollectionView() {
   return (
     <section className="collection-page">
       <Link className="back" to="/">
-        ← All collections
+        <ArrowLeft className="ui-icon ui-icon--sm" aria-hidden="true" /> All collections
       </Link>
       <div className="collection-title">
         <div>
@@ -549,26 +925,51 @@ function CollectionView() {
         <p>{collection.description}</p>
       </div>
       <CollectionTabs collection={collection} active="assets" />
+      {collection.kind === 'names' ? (
+        <nav className="alphabet-filter" aria-label="Filter names by first letter">
+          <button
+            aria-pressed={initial === 'all'}
+            className={initial === 'all' ? 'active' : undefined}
+            type="button"
+            onClick={() => setInitial('all')}
+          >
+            All
+          </button>
+          {'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').map((letter) => (
+            <button
+              aria-label={`Names beginning with ${letter}`}
+              aria-pressed={initial === letter}
+              className={initial === letter ? 'active' : undefined}
+              key={letter}
+              type="button"
+              onClick={() => setInitial(letter)}
+            >
+              {letter}
+            </button>
+          ))}
+        </nav>
+      ) : null}
       <div className="asset-tools">
         <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search this collection" />
         <div className="asset-filters">
-          <label>
-            Show
-            <select
-              value={listedOnly ? 'listed' : 'all'}
-              onChange={(event) => setListedOnly(event.target.value === 'listed')}
-            >
-              <option value="all">All assets</option>
-              <option value="listed">Listed for sale</option>
-            </select>
-          </label>
-          <label>
-            Sort
-            <select value={sort} onChange={(event) => setSort(event.target.value as 'default' | 'recent')}>
-              <option value="default">Default</option>
-              <option value="recent">Recent activity</option>
-            </select>
-          </label>
+          <MarketSelect<'all' | 'listed'>
+            label="Show"
+            onChange={(nextValue) => setListedOnly(nextValue === 'listed')}
+            options={[
+              { value: 'all', label: 'All assets' },
+              { value: 'listed', label: 'Listed for sale' },
+            ]}
+            value={listedOnly ? 'listed' : 'all'}
+          />
+          <MarketSelect<'default' | 'recent'>
+            label="Sort"
+            onChange={setSort}
+            options={[
+              { value: 'default', label: 'Default' },
+              { value: 'recent', label: 'Recent activity' },
+            ]}
+            value={sort}
+          />
         </div>
         <span>
           {activityState.loading && listedOnly
@@ -577,20 +978,37 @@ function CollectionView() {
               : 'Finding listing activity on Arweave…'
             : query
               ? `${filtered.length.toLocaleString()} loaded matches`
-              : listedOnly
-                ? `${filtered.length.toLocaleString()} live listings`
-                : `${collection.assets.length.toLocaleString()} of ${(collection.total ?? collection.assets.length).toLocaleString()}`}
+              : initial !== 'all'
+                ? `${filtered.length.toLocaleString()} loaded names beginning with ${initial}`
+                : listedOnly
+                  ? `${filtered.length.toLocaleString()} live listings`
+                  : `${collection.assets.length.toLocaleString()} of ${(collection.total ?? collection.assets.length).toLocaleString()}`}
         </span>
       </div>
       {activityState.error ? (
         <div className="inline-error">
           <span>{activityState.error}</span>
-          <button onClick={() => setRetry((value) => value + 1)}>Retry</button>
+          <button className="with-icon" onClick={() => setRetry((value) => value + 1)}>
+            <RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Retry
+          </button>
         </div>
       ) : null}
       <div className="asset-grid">
         {filtered.slice(0, limit).map((asset) => (
-          <AssetCard key={asset.id} collection={collection} asset={asset} badge={listedOnly ? 'For sale' : undefined} />
+          <AssetCard
+            key={asset.id}
+            collection={collection}
+            asset={asset}
+            badge={listedOnly ? 'For sale' : undefined}
+            price={
+              cardPricesLoading
+                ? 'Checking…'
+                : cardPricesUnavailable
+                  ? 'Unavailable'
+                  : (cardPrices[asset.id] ?? 'Not listed')
+            }
+            priceListed={Boolean(cardPrices[asset.id])}
+          />
         ))}
       </div>
       {listedOnly && !activityState.loading && !activityState.error && !filtered.length ? (
@@ -599,11 +1017,43 @@ function CollectionView() {
           <p>Every candidate was checked against current process state through {gateway}.</p>
         </div>
       ) : null}
+      {!listedOnly && !filtered.length ? (
+        <div className="collection-empty-state">
+          <span>
+            <Search className="ui-icon" aria-hidden="true" />
+          </span>
+          <h3>
+            {query
+              ? `No assets match “${query}”`
+              : initial !== 'all'
+                ? `No names beginning with ${initial}`
+                : 'Nothing here yet'}
+          </h3>
+          <p>
+            {query
+              ? 'Try a shorter search or clear the current query.'
+              : initial !== 'all'
+                ? 'Try another letter or return to all names.'
+                : 'This collection does not contain any indexed assets yet.'}
+          </p>
+          {query || initial !== 'all' ? (
+            <button
+              type="button"
+              onClick={() => {
+                setQuery('');
+                setInitial('all');
+              }}
+            >
+              {initial !== 'all' ? 'View all names' : 'Clear search'}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       {limit < filtered.length ? (
         <button className="load-more" onClick={() => setLimit((value) => value + 48)}>
           Show more
         </button>
-      ) : collection.hasMore && !query && !listedOnly ? (
+      ) : filtered.length && collection.hasMore && !query && !listedOnly ? (
         <button className="load-more" onClick={() => void market.loadMore(collection.id)}>
           Load 100 more from Arweave
         </button>
@@ -656,7 +1106,7 @@ function CollectionActivityView() {
   return (
     <section className="collection-page collection-activity-page">
       <Link className="back" to="/">
-        ← All collections
+        <ArrowLeft className="ui-icon ui-icon--sm" aria-hidden="true" /> All collections
       </Link>
       <div className="collection-title">
         <div>
@@ -674,7 +1124,8 @@ function CollectionActivityView() {
           <strong>Recent market activity</strong>
           <span>Newest first · up to 100 permanent transactions</span>
         </div>
-        <button onClick={() => setRetry((value) => value + 1)} disabled={loading}>
+        <button className="with-icon" onClick={() => setRetry((value) => value + 1)} disabled={loading}>
+          <RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" />
           {loading ? 'Loading…' : 'Refresh'}
         </button>
       </div>
@@ -700,7 +1151,8 @@ function CollectionActivityView() {
               <div className="activity-block">
                 <span>{event.timestamp ? formatTimestamp(event.timestamp) : 'Pending timestamp'}</span>
                 <a href={`https://arweave.net/${event.id}`} target="_blank" rel="noreferrer">
-                  Block {event.height.toLocaleString()} ↗
+                  Block {event.height.toLocaleString()}
+                  <ArrowUpRight className="ui-icon ui-icon--xs" aria-hidden="true" />
                 </a>
               </div>
             </article>
@@ -722,16 +1174,28 @@ function CollectionTabs({ collection, active }: { collection: Collection; active
   return (
     <nav className="collection-tabs" aria-label={`${collection.name} views`}>
       <Link className={active === 'assets' ? 'active' : ''} to={`/collection/${collection.id}`}>
-        <span>▦</span> Assets
+        <LayoutGrid className="ui-icon ui-icon--sm" aria-hidden="true" /> Assets
       </Link>
       <Link className={active === 'activity' ? 'active' : ''} to={`/collection/${collection.id}/activity`}>
-        <span>⇄</span> Activity
+        <History className="ui-icon ui-icon--sm" aria-hidden="true" /> Activity
       </Link>
     </nav>
   );
 }
 
-function AssetCard({ collection, asset, badge }: { collection: Collection; asset: AssetSummary; badge?: string }) {
+function AssetCard({
+  collection,
+  asset,
+  badge,
+  price,
+  priceListed = false,
+}: {
+  collection: Collection;
+  asset: AssetSummary;
+  badge?: string;
+  price?: string;
+  priceListed?: boolean;
+}) {
   return (
     <Link className="asset-card" to={`/asset/${collection.id}/${asset.id}`}>
       <div className="asset-media">
@@ -744,7 +1208,10 @@ function AssetCard({ collection, asset, badge }: { collection: Collection; asset
       </div>
       <div className="asset-card-copy">
         <p>{collection.name}</p>
-        <h3>{asset.name}</h3>
+        <div className="asset-card-heading">
+          <h3>{asset.name}</h3>
+          {price ? <strong className={priceListed ? 'listed' : undefined}>{price}</strong> : null}
+        </div>
         <span>{short(asset.id)}</span>
       </div>
     </Link>
@@ -849,7 +1316,8 @@ function MyAssetsView() {
         <div className="empty-state">
           <h3>Connect a wallet to resolve its assets</h3>
           <p>No signature is requested. Candidate history and live state are read-only.</p>
-          <button className="primary" onClick={() => void wallet.connect()}>
+          <button className="primary with-icon" onClick={() => void wallet.connect()}>
+            <Wallet className="ui-icon ui-icon--sm" aria-hidden="true" />
             Connect wallet
           </button>
         </div>
@@ -867,7 +1335,8 @@ function MyAssetsView() {
           <h1>My assets</h1>
           <p>Ownership is computed now through {gateway}. Transaction history only tells Bazar what to check.</p>
         </div>
-        <button onClick={() => setRetry((value) => value + 1)} disabled={working}>
+        <button className="with-icon" onClick={() => setRetry((value) => value + 1)} disabled={working}>
+          <RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" />
           {working ? 'Resolving…' : 'Retry'}
         </button>
       </div>
@@ -905,7 +1374,9 @@ function MyAssetsView() {
       {status.error ? (
         <div className="inline-error">
           <span>{status.error}</span>
-          <button onClick={() => setRetry((value) => value + 1)}>Retry</button>
+          <button className="with-icon" onClick={() => setRetry((value) => value + 1)}>
+            <RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Retry
+          </button>
         </div>
       ) : null}
       <AssetGroup title="Listed for sale" results={listed} badge="For sale" />
@@ -951,6 +1422,9 @@ function AssetView() {
   const [error, setError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [operation, setOperation] = React.useState<Operation | null>(null);
+  const [assetActivity, setAssetActivity] = React.useState<CollectionActivityEvent[]>([]);
+  const [activityLoading, setActivityLoading] = React.useState(true);
+  const [activeSection, setActiveSection] = React.useState<'about' | 'orders' | 'activity'>('about');
   const load = React.useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -963,6 +1437,23 @@ function AssetView() {
     }
   }, [assetId]);
   React.useEffect(() => void load(), [load]);
+  React.useEffect(() => {
+    const controller = new AbortController();
+    setAssetActivity([]);
+    setActivityLoading(true);
+    void discoverCollectionActivity({ recipients: [assetId], signal: controller.signal, limit: 24 })
+      .then(
+        (events) => {
+          if (!controller.signal.aborted) setAssetActivity(events);
+        },
+        () => undefined,
+      )
+      .finally(() => {
+        if (!controller.signal.aborted) setActivityLoading(false);
+      });
+    return () => controller.abort();
+  }, [assetId]);
+  React.useEffect(() => setActiveSection('about'), [assetId]);
   React.useEffect(() => {
     if (!wallet.address || operation || !state) return;
     try {
@@ -1028,13 +1519,17 @@ function AssetView() {
   const mine = Boolean(wallet.address && owner === wallet.address);
   const license = state ? licenseProperties(state) : [];
   const description = assetDescription(state, collection.description);
+  const moreAssets = collection.assets.filter((item) => item.id !== asset.id).slice(0, 4);
+  const showAssetSection = (section: 'about' | 'orders' | 'activity') => {
+    setActiveSection(section);
+    const target = document.getElementById(`asset-${section}`);
+    if (target instanceof HTMLDetailsElement) target.open = true;
+    window.requestAnimationFrame(() => target?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  };
   return (
-    <section className="asset-page">
-      <Link className="back" to={`/collection/${collection.id}`}>
-        ← {collection.name}
-      </Link>
-      <div className="asset-layout">
-        <div className="asset-column">
+    <section className="asset-page asset-detail-page">
+      <div className="asset-detail-layout">
+        <div className="asset-visual-column">
           <div className="asset-hero-media">
             {asset.image ? (
               <img src={asset.image} alt={asset.name} />
@@ -1046,149 +1541,308 @@ function AssetView() {
               <strong>{asset.contentType ?? (asset.image ? 'image' : (state?.device ?? 'process'))}</strong>
             </div>
           </div>
-          {state ? (
-            <section className="market-card license-card">
-              <div className="market-card-heading">
-                <div>
-                  <p className="eyebrow">USAGE RIGHTS</p>
-                  <h2>License</h2>
-                </div>
-                <span>{license.length ? `${license.length} terms` : 'Not declared'}</span>
-              </div>
-              {license.length ? (
-                <dl className="license-properties">
-                  {license.map((property) => (
-                    <div key={property.key}>
-                      <dt>{property.label}</dt>
-                      <dd>{property.value}</dd>
-                    </div>
-                  ))}
-                </dl>
-              ) : (
-                <div className="license-empty">
-                  <span>◇</span>
-                  <div>
-                    <strong>No UDL terms declared</strong>
-                    <p>This process does not publish Universal Data License properties.</p>
-                  </div>
-                </div>
-              )}
-              <p className="market-note">
-                License terms are read directly from immutable process metadata when present.
-              </p>
-            </section>
-          ) : null}
         </div>
-        <div className="asset-column">
-          <div className="asset-details">
+        <div className="asset-commerce-column">
+          <div className="asset-details asset-identity">
             <div className="asset-kicker">
-              <p className="eyebrow">{collection.name}</p>
+              <Link className="asset-collection-link" to={`/collection/${collection.id}`}>
+                {collection.name}
+              </Link>
               <span className={order ? 'status-dot listed' : 'status-dot'}>{order ? 'For sale' : 'Live'}</span>
             </div>
             <h1>{asset.name}</h1>
-            <p className="asset-description">{description}</p>
-            <p className="permanent-id">
-              Process{' '}
-              <a href={`https://arweave.net/${asset.id}`} target="_blank" rel="noreferrer">
-                {asset.id}
-              </a>
-            </p>
+            <div className="asset-owner-line">
+              <span>Owned by</span>
+              {owner ? (
+                <a href={`https://arweave.net/${owner}`} target="_blank" rel="noreferrer">
+                  {short(owner)} <ArrowUpRight className="ui-icon ui-icon--xs" aria-hidden="true" />
+                </a>
+              ) : (
+                <strong>Unassigned</strong>
+              )}
+            </div>
+            <div className="asset-token-tags" aria-label="Asset protocol details">
+              <span>{state?.device || 'token@1.0'}</span>
+              <span>ARWEAVE</span>
+              <span>SUPPLY 1</span>
+            </div>
             {loading ? <Loading label="Computing current state…" /> : null}
             {error ? <ErrorPanel message={error} /> : null}
             {state ? (
-              <>
-                <div className="market-callout">
+              <section className="asset-commerce-card">
+                <div className="asset-market-stats">
                   <div>
-                    <span>{order ? 'Current ask' : 'Market status'}</span>
+                    <span>Current ask</span>
                     <strong>{order ? `${winstonToAr(order.asking)} AR` : 'Not listed'}</strong>
                   </div>
                   <div>
                     <span>Supply</span>
                     <strong>1 / 1</strong>
                   </div>
+                  <div>
+                    <span>Order status</span>
+                    <strong>{order ? order.status : 'None'}</strong>
+                  </div>
+                  <div>
+                    <span>License terms</span>
+                    <strong>{license.length || 'None'}</strong>
+                  </div>
                 </div>
-                <div className="facts">
+                <div className="asset-buy-summary">
+                  <span>{order ? 'Buy for' : 'Market status'}</span>
+                  <strong>{order ? `${winstonToAr(order.asking)} AR` : 'Not listed'}</strong>
+                </div>
+                <div className="asset-commerce-actions">
+                  {!wallet.address ? (
+                    <button className="primary with-icon" onClick={() => void wallet.connect()}>
+                      <Wallet className="ui-icon ui-icon--sm" aria-hidden="true" /> Connect wallet
+                    </button>
+                  ) : null}
+                  {wallet.address && order && !mine ? (
+                    <button className="primary with-icon" onClick={() => setOperation({ kind: 'buy', order })}>
+                      <ShoppingCart className="ui-icon ui-icon--sm" aria-hidden="true" /> Buy now
+                    </button>
+                  ) : null}
+                  {wallet.address && mine && !order ? (
+                    <button className="primary with-icon" onClick={() => setOperation({ kind: 'sell' })}>
+                      <Tag className="ui-icon ui-icon--sm" aria-hidden="true" /> List for sale
+                    </button>
+                  ) : null}
+                  {wallet.address && mine && order?.status === 'open' ? (
+                    <button className="with-icon" onClick={() => setOperation({ kind: 'cancel', order })}>
+                      <CircleX className="ui-icon ui-icon--sm" aria-hidden="true" /> Cancel listing
+                    </button>
+                  ) : null}
+                  {wallet.address && mine && !order ? (
+                    <button className="with-icon" onClick={() => setOperation({ kind: 'transfer' })}>
+                      <Send className="ui-icon ui-icon--sm" aria-hidden="true" /> Transfer
+                    </button>
+                  ) : null}
+                  <button className="with-icon" onClick={() => void load()}>
+                    <RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Refresh
+                  </button>
+                </div>
+              </section>
+            ) : null}
+          </div>
+          <nav className="asset-section-tabs" aria-label="Asset detail sections">
+            <button
+              className={activeSection === 'about' ? 'active' : undefined}
+              onClick={() => showAssetSection('about')}
+              type="button"
+            >
+              Details
+            </button>
+            <button
+              className={activeSection === 'orders' ? 'active' : undefined}
+              onClick={() => showAssetSection('orders')}
+              type="button"
+            >
+              Orders
+            </button>
+            <button
+              className={activeSection === 'activity' ? 'active' : undefined}
+              onClick={() => showAssetSection('activity')}
+              type="button"
+            >
+              Activity
+            </button>
+          </nav>
+          <div className="asset-accordion-list">
+            <details id="asset-about" open>
+              <summary>
+                <span className="asset-accordion-icon">
+                  <Info className="ui-icon" aria-hidden="true" />
+                </span>
+                <strong>About</strong>
+                <ChevronDown className="ui-icon ui-icon--sm" aria-hidden="true" />
+              </summary>
+              <div className="asset-accordion-content">
+                <p className="asset-description">{description}</p>
+                <div className="asset-detail-facts">
                   <div>
                     <span>Owner</span>
                     <strong>{owner ? short(owner) : 'Unassigned'}</strong>
                   </div>
                   <div>
-                    <span>Execution</span>
-                    <strong>{state.device || 'token@1.0'}</strong>
+                    <span>Collection</span>
+                    <strong>{collection.name}</strong>
                   </div>
                   <div>
-                    <span>Settlement</span>
-                    <strong>Native AR</strong>
+                    <span>Asset type</span>
+                    <strong>{asset.contentType ?? state?.device ?? 'process'}</strong>
                   </div>
                   <div>
-                    <span>Scheduler</span>
-                    <strong>Arweave</strong>
+                    <span>Supply</span>
+                    <strong>1</strong>
                   </div>
                 </div>
-              </>
-            ) : null}
-            <div className="actions">
-              {!wallet.address ? (
-                <button className="primary" onClick={() => void wallet.connect()}>
-                  Connect wallet
-                </button>
-              ) : null}
-              {wallet.address && order && !mine ? (
-                <button className="primary" onClick={() => setOperation({ kind: 'buy', order })}>
-                  Buy for {winstonToAr(order.asking)} AR
-                </button>
-              ) : null}
-              {wallet.address && mine && !order ? (
-                <button className="primary" onClick={() => setOperation({ kind: 'sell' })}>
-                  List for sale
-                </button>
-              ) : null}
-              {wallet.address && mine && order?.status === 'open' ? (
-                <button onClick={() => setOperation({ kind: 'cancel', order })}>Cancel listing</button>
-              ) : null}
-              {wallet.address && mine && !order ? (
-                <button onClick={() => setOperation({ kind: 'transfer' })}>Transfer</button>
-              ) : null}
-              <button onClick={() => void load()}>Refresh state</button>
-            </div>
-          </div>
-          {state ? (
-            <section className="market-card orderbook-card">
-              <div className="market-card-heading">
-                <div>
-                  <p className="eyebrow">LIVE MARKET</p>
-                  <h2>Order book</h2>
-                </div>
-                <span>{order ? '1 ask' : '0 asks'}</span>
               </div>
-              <div className="orderbook-table">
-                <div className="orderbook-head">
-                  <span>Price</span>
-                  <span>Quantity</span>
-                  <span>Seller</span>
-                  <span>Status</span>
-                </div>
-                {order ? (
-                  <div className="orderbook-row">
-                    <strong>{winstonToAr(order.asking)} AR</strong>
-                    <span>{order.quantity}</span>
-                    <a href={`https://arweave.net/${order.creator}`} target="_blank" rel="noreferrer">
-                      {short(order.creator)}
-                    </a>
-                    <span className={`order-status ${order.status}`}>{order.status}</span>
+            </details>
+            <details id="asset-orders">
+              <summary>
+                <span className="asset-accordion-icon">
+                  <Layers3 className="ui-icon" aria-hidden="true" />
+                </span>
+                <strong>Orders</strong>
+                <span className="asset-accordion-count">{order ? '1' : '0'}</span>
+                <ChevronDown className="ui-icon ui-icon--sm" aria-hidden="true" />
+              </summary>
+              <div className="asset-accordion-content">
+                <div className="orderbook-table">
+                  <div className="orderbook-head">
+                    <span>Price</span>
+                    <span>Quantity</span>
+                    <span>Seller</span>
+                    <span>Status</span>
                   </div>
+                  {order ? (
+                    <div className="orderbook-row">
+                      <strong>{winstonToAr(order.asking)} AR</strong>
+                      <span>{order.quantity}</span>
+                      <a href={`https://arweave.net/${order.creator}`} target="_blank" rel="noreferrer">
+                        {short(order.creator)}
+                      </a>
+                      <span className={`order-status ${order.status}`}>{order.status}</span>
+                    </div>
+                  ) : (
+                    <div className="orderbook-empty">
+                      <strong>No open asks</strong>
+                      <span>This asset is not currently listed.</span>
+                    </div>
+                  )}
+                </div>
+                <p className="market-note">
+                  Computed from current asset process state through the selected HyperBEAM gateway.
+                </p>
+              </div>
+            </details>
+            <details id="asset-activity">
+              <summary>
+                <span className="asset-accordion-icon">
+                  <BarChart3 className="ui-icon" aria-hidden="true" />
+                </span>
+                <strong>Price history</strong>
+                <ChevronDown className="ui-icon ui-icon--sm" aria-hidden="true" />
+              </summary>
+              <div className="asset-accordion-content">
+                {order ? (
+                  <div className="asset-history-current">
+                    <span>Current ask</span>
+                    <strong>{winstonToAr(order.asking)} AR</strong>
+                  </div>
+                ) : null}
+                {activityLoading ? <Loading label="Reading permanent market history…" /> : null}
+                {!activityLoading && assetActivity.length ? (
+                  <div className="asset-history-list">
+                    {assetActivity.map((event) => (
+                      <a key={event.id} href={`https://arweave.net/${event.id}`} target="_blank" rel="noreferrer">
+                        <span>{activityLabel(event.action)}</span>
+                        <time>{event.timestamp ? formatTimestamp(event.timestamp) : 'Pending timestamp'}</time>
+                        <ArrowUpRight className="ui-icon ui-icon--xs" aria-hidden="true" />
+                      </a>
+                    ))}
+                  </div>
+                ) : null}
+                {!activityLoading && !assetActivity.length ? (
+                  <p className="asset-empty-copy">No permanent market events found.</p>
+                ) : null}
+              </div>
+            </details>
+            <details>
+              <summary>
+                <span className="asset-accordion-icon">
+                  <FileText className="ui-icon" aria-hidden="true" />
+                </span>
+                <strong>Usage rights</strong>
+                <span className="asset-accordion-count">{license.length || '—'}</span>
+                <ChevronDown className="ui-icon ui-icon--sm" aria-hidden="true" />
+              </summary>
+              <div className="asset-accordion-content">
+                {license.length ? (
+                  <dl className="license-properties">
+                    {license.map((property) => (
+                      <div key={property.key}>
+                        <dt>{property.label}</dt>
+                        <dd>{property.value}</dd>
+                      </div>
+                    ))}
+                  </dl>
                 ) : (
-                  <div className="orderbook-empty">
-                    <strong>No open asks</strong>
-                    <span>The one-unit asset is currently held outside market escrow.</span>
+                  <div className="license-empty">
+                    <span>
+                      <Diamond className="ui-icon" aria-hidden="true" />
+                    </span>
+                    <div>
+                      <strong>No UDL terms declared</strong>
+                      <p>This process does not publish Universal Data License properties.</p>
+                    </div>
                   </div>
                 )}
+                <p className="market-note">Terms are read directly from immutable process metadata when present.</p>
               </div>
-              <p className="market-note">
-                Computed from the asset’s current <code>orders</code> state through the selected HyperBEAM gateway.
-              </p>
-            </section>
-          ) : null}
+            </details>
+            <details>
+              <summary>
+                <span className="asset-accordion-icon">
+                  <Grid2X2 className="ui-icon" aria-hidden="true" />
+                </span>
+                <strong>Blockchain details</strong>
+                <ChevronDown className="ui-icon ui-icon--sm" aria-hidden="true" />
+              </summary>
+              <div className="asset-accordion-content">
+                <dl className="asset-blockchain-details">
+                  <div>
+                    <dt>Process ID</dt>
+                    <dd>
+                      <a href={`https://arweave.net/${asset.id}`} target="_blank" rel="noreferrer">
+                        {short(asset.id)} <ArrowUpRight className="ui-icon ui-icon--xs" aria-hidden="true" />
+                      </a>
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Network</dt>
+                    <dd>Arweave</dd>
+                  </div>
+                  <div>
+                    <dt>Execution</dt>
+                    <dd>{state?.device || 'token@1.0'}</dd>
+                  </div>
+                  <div>
+                    <dt>Settlement</dt>
+                    <dd>Native AR</dd>
+                  </div>
+                  <div>
+                    <dt>Content type</dt>
+                    <dd>{asset.contentType ?? (asset.image ? 'image' : 'process')}</dd>
+                  </div>
+                </dl>
+              </div>
+            </details>
+            <details>
+              <summary>
+                <span className="asset-accordion-icon">
+                  <Grid2X2 className="ui-icon" aria-hidden="true" />
+                </span>
+                <strong>More from this collection</strong>
+                <ChevronDown className="ui-icon ui-icon--sm" aria-hidden="true" />
+              </summary>
+              <div className="asset-accordion-content">
+                <div className="asset-more-grid">
+                  {moreAssets.map((item) => (
+                    <Link key={item.id} to={`/asset/${collection.id}/${item.id}`}>
+                      {item.image ? (
+                        <img src={item.image} alt="" />
+                      ) : (
+                        <span>{item.name.slice(0, 1).toUpperCase()}</span>
+                      )}
+                      <strong>{item.name}</strong>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            </details>
+          </div>
         </div>
       </div>
       {operation && wallet.address ? (
@@ -1407,8 +2061,8 @@ function OperationDialog({
             <h2>{asset.name}</h2>
           </div>
           {visiblePhase !== 'working' ? (
-            <button className="close" onClick={onClose}>
-              ×
+            <button className="close" onClick={onClose} aria-label="Close dialog">
+              <X className="ui-icon" aria-hidden="true" />
             </button>
           ) : null}
         </div>
@@ -1452,8 +2106,8 @@ function OperationDialog({
           <div className="result success">
             <h3>Applied to live asset state</h3>
             <p>Arweave nodes now compute this action as part of the asset.</p>
-            <button className="primary" onClick={onClose}>
-              Return to asset
+            <button className="primary with-icon" onClick={onClose}>
+              <ArrowLeft className="ui-icon ui-icon--sm" aria-hidden="true" /> Return to asset
             </button>
           </div>
         ) : null}
@@ -1516,12 +2170,13 @@ function activityLabel(action: CollectionActivityEvent['action']) {
 }
 
 function activitySymbol(action: CollectionActivityEvent['action']) {
-  return {
-    'make-offer': '＋',
-    'register-interest': '↘',
-    transfer: '→',
-    'cancel-order': '×',
+  const ActivityIcon = {
+    'make-offer': Tag,
+    'register-interest': ShoppingCart,
+    transfer: ArrowRight,
+    'cancel-order': CircleX,
   }[action];
+  return <ActivityIcon className="ui-icon" aria-hidden="true" />;
 }
 
 function formatTimestamp(timestamp: number) {
@@ -1534,11 +2189,6 @@ function formatTimestamp(timestamp: number) {
   }).format(new Date(timestamp * 1000));
 }
 
-function AssetMosaic({ assets }: { assets: AssetSummary[] }) {
-  return (
-    <>{assets.slice(0, 4).map((asset) => (asset.image ? <img key={asset.id} src={asset.image} alt="" /> : null))}</>
-  );
-}
 function Loading({ label }: { label: string }) {
   return (
     <div className="loading">
