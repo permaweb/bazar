@@ -266,9 +266,13 @@ function Header() {
                 />
               </label>
             ) : null}
-            <button className="wallet" onClick={() => void (wallet.address ? wallet.disconnect() : wallet.connect())}>
+            <button
+              aria-label={wallet.address ? `Disconnect wallet ${short(wallet.address)}` : 'Connect wallet'}
+              className="wallet"
+              onClick={() => void (wallet.address ? wallet.disconnect() : wallet.connect())}
+            >
               <Wallet className="ui-icon ui-icon--sm" aria-hidden="true" />
-              {wallet.address ? short(wallet.address) : 'Connect wallet'}
+              <span>{wallet.address ? short(wallet.address) : 'Connect wallet'}</span>
             </button>
           </div>
         </nav>
@@ -289,9 +293,10 @@ function Header() {
                 <button type="button" onClick={() => updateQuery('')} aria-label="Clear search">
                   Clear
                 </button>
-              ) : (
-                <kbd>ESC</kbd>
-              )}
+              ) : null}
+              <button className="search-panel-close" type="button" onClick={closeSearch} aria-label="Close search">
+                <X aria-hidden="true" />
+              </button>
             </form>
             <aside className="search-categories" aria-label="Search categories">
               {scopes.map((item) => {
