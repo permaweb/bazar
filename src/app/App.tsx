@@ -10,8 +10,20 @@ import {
 
 import { loadCollections, loadMoreCarrierNames, type AssetSummary, type Collection } from 'api/collections';
 import {
+	discoverMarketActivity,
+	discoverWalletAssetCandidates,
+	isLiveListing,
+	resolveAssetCandidates,
+	restrictAssetCandidates,
+	walletAssetGroup,
+	type AssetCandidate,
+	type ResolvedAsset,
+} from 'api/asset-discovery';
+import {
+	liveOrderOfAsset,
 	ownerOfAsset,
 	readAssetState,
+	servingNodeOrigin,
 	type AssetState,
 	type SwapOrder,
 } from 'api/asset-marketplace';
@@ -82,6 +94,7 @@ export function App() {
 				<main>
 					<Routes>
 						<Route path="/" element={<Home />} />
+						<Route path="/my-assets" element={<MyAssetsView />} />
 						<Route path="/collection/:collectionId" element={<CollectionView />} />
 						<Route path="/asset/:collectionId/:assetId" element={<AssetView />} />
 						<Route path="*" element={<Navigate to="/" replace />} />
@@ -114,6 +127,7 @@ function Header() {
 			</Link>
 			<nav>
 				<Link to="/">Collections</Link>
+				{wallet.address ? <Link className="my-assets-link" to="/my-assets">My assets</Link> : null}
 				<GatewayControl />
 				{wallet.loadDevelopmentWallet ? (
 					<label className="development-wallet">
@@ -213,9 +227,103 @@ function CollectionView() {
 	const collection = market.collections.find((item) => item.id === collectionId);
 	const [query, setQuery] = React.useState('');
 	const [limit, setLimit] = React.useState(48);
+	const [sort, setSort] = React.useState<'default' | 'recent'>('default');
+	const [listedOnly, setListedOnly] = React.useState(false);
+	const [activity, setActivity] = React.useState<AssetCandidate[]>([]);
+	const [listed, setListed] = React.useState<ResolvedAsset[]>([]);
+	const [activityState, setActivityState] = React.useState({
+		loading: false,
+		resolved: 0,
+		total: 0,
+		error: null as string | null,
+	});
+	const [retry, setRetry] = React.useState(0);
+	const gateway = servingNodeOrigin(window.location);
+	React.useEffect(() => {
+		if (!collection || (!listedOnly && sort === 'default')) {
+			setActivity([]);
+			setListed([]);
+			setActivityState({ loading: false, resolved: 0, total: 0, error: null });
+			return;
+		}
+		const controller = new AbortController();
+		setActivity([]);
+		setListed([]);
+		setActivityState({ loading: true, resolved: 0, total: 0, error: null });
+		void (async () => {
+			try {
+				const allActivity = await discoverMarketActivity({
+					signal: controller.signal,
+					listingsOnly: listedOnly,
+					...(!listedOnly || collection.kind === 'images'
+						? { recipients: collection.assets.map((asset) => asset.id) }
+						: {}),
+				});
+				if (controller.signal.aborted) return;
+				const candidates = collection.kind === 'images'
+					? allActivity.filter((candidate) =>
+							collection.assets.some((asset) => asset.id === candidate.processId))
+					: allActivity;
+				setActivity(candidates);
+				if (!listedOnly) {
+					setActivityState({
+						loading: false,
+						resolved: candidates.length,
+						total: candidates.length,
+						error: null,
+					});
+					return;
+				}
+				setActivityState({ loading: true, resolved: 0, total: candidates.length, error: null });
+				await resolveAssetCandidates(candidates, [collection], {
+					signal: controller.signal,
+					onSettled: (result) => {
+						if (controller.signal.aborted) return;
+						setActivityState((current) => ({ ...current, resolved: current.resolved + 1 }));
+						if (result && isLiveListing(result)) {
+							setListed((current) =>
+								[...current.filter((item) => item.asset.id !== result.asset.id), result]
+							);
+						}
+					},
+				});
+				if (!controller.signal.aborted) {
+					setActivityState((current) => ({ ...current, loading: false }));
+				}
+			} catch (cause) {
+				if (!controller.signal.aborted) {
+					setActivityState((current) => ({
+						...current,
+						loading: false,
+						error: errorMessage(cause),
+					}));
+				}
+			}
+		})();
+		return () => controller.abort();
+	}, [collection, gateway, listedOnly, retry, sort]);
+	React.useEffect(() => setLimit(48), [listedOnly, query, sort]);
 	if (market.loading) return <Loading label="Reading collection index…" />;
 	if (!collection) return <ErrorPanel message="This collection could not be found on Arweave." />;
-	const filtered = collection.assets.filter((asset) => asset.name.toLowerCase().includes(query.toLowerCase()));
+	const activityByAsset = new Map(activity.map((candidate) => [candidate.processId, candidate]));
+	const defaultIndex = new Map(collection.assets.map((asset, index) => [asset.id, index]));
+	const visibleAssets = listedOnly
+		? listed.map((result) => result.asset)
+		: collection.assets;
+	const filtered = visibleAssets
+		.filter((asset) => asset.name.toLowerCase().includes(query.toLowerCase()))
+		.sort((a, b) => {
+			if (sort === 'recent') {
+				const activityA = activityByAsset.get(a.id);
+				const activityB = activityByAsset.get(b.id);
+				return (activityB?.height ?? 0) - (activityA?.height ?? 0) ||
+					(activityB?.timestamp ?? 0) - (activityA?.timestamp ?? 0) ||
+					a.name.localeCompare(b.name);
+			}
+			return (defaultIndex.get(a.id) ?? Number.MAX_SAFE_INTEGER) -
+				(defaultIndex.get(b.id) ?? Number.MAX_SAFE_INTEGER) ||
+				a.name.localeCompare(b.name);
+		});
 	return (
 		<section className="collection-page">
 			<Link className="back" to="/">← All collections</Link>
@@ -228,31 +336,82 @@ function CollectionView() {
 			</div>
 			<div className="asset-tools">
 				<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search this collection" />
+				<div className="asset-filters">
+					<label>
+						Show
+						<select
+							value={listedOnly ? 'listed' : 'all'}
+							onChange={(event) => setListedOnly(event.target.value === 'listed')}
+						>
+							<option value="all">All assets</option>
+							<option value="listed">Listed for sale</option>
+						</select>
+					</label>
+					<label>
+						Sort
+						<select value={sort} onChange={(event) => setSort(event.target.value as 'default' | 'recent')}>
+							<option value="default">Default</option>
+							<option value="recent">Recent activity</option>
+						</select>
+					</label>
+				</div>
 				<span>
-					{query
+					{activityState.loading && listedOnly
+						? activityState.total
+							? `Resolving live listings ${activityState.resolved.toLocaleString()} / ${activityState.total.toLocaleString()}`
+							: 'Finding listing activity on Arweave…'
+						: query
 						? `${filtered.length.toLocaleString()} loaded matches`
-						: `${collection.assets.length.toLocaleString()} of ${(collection.total ?? collection.assets.length).toLocaleString()}`}
+						: listedOnly
+							? `${filtered.length.toLocaleString()} live listings`
+							: `${collection.assets.length.toLocaleString()} of ${(collection.total ?? collection.assets.length).toLocaleString()}`}
 				</span>
 			</div>
+			{activityState.error ? (
+				<div className="inline-error">
+					<span>{activityState.error}</span>
+					<button onClick={() => setRetry((value) => value + 1)}>Retry</button>
+				</div>
+			) : null}
 			<div className="asset-grid">
 				{filtered.slice(0, limit).map((asset) => (
-					<AssetCard key={asset.id} collection={collection} asset={asset} />
+					<AssetCard
+						key={asset.id}
+						collection={collection}
+						asset={asset}
+						badge={listedOnly ? 'For sale' : undefined}
+					/>
 				))}
 			</div>
+			{listedOnly && !activityState.loading && !activityState.error && !filtered.length ? (
+				<div className="empty-state">
+					<h3>No live listings</h3>
+					<p>Every candidate was checked against current process state through {gateway}.</p>
+				</div>
+			) : null}
 			{limit < filtered.length ? (
 				<button className="load-more" onClick={() => setLimit((value) => value + 48)}>Show more</button>
-			) : collection.hasMore && !query ? (
+			) : collection.hasMore && !query && !listedOnly ? (
 				<button className="load-more" onClick={() => void market.loadMore(collection.id)}>Load 100 more from Arweave</button>
 			) : null}
 		</section>
 	);
 }
 
-function AssetCard({ collection, asset }: { collection: Collection; asset: AssetSummary }) {
+function AssetCard({
+	collection,
+	asset,
+	badge,
+}: {
+	collection: Collection;
+	asset: AssetSummary;
+	badge?: string;
+}) {
 	return (
 		<Link className="asset-card" to={`/asset/${collection.id}/${asset.id}`}>
 			<div className="asset-media">
 				{asset.image ? <img src={asset.image} loading="lazy" alt="" /> : <span>{asset.name.slice(0, 1).toUpperCase()}</span>}
+				{badge ? <strong className="asset-badge">{badge}</strong> : null}
 			</div>
 			<div className="asset-card-copy">
 				<p>{collection.name}</p>
@@ -263,12 +422,211 @@ function AssetCard({ collection, asset }: { collection: Collection; asset: Asset
 	);
 }
 
+function MyAssetsView() {
+	const market = React.useContext(MarketContext);
+	const wallet = useWallet();
+	const gateway = servingNodeOrigin(window.location);
+	const [retry, setRetry] = React.useState(0);
+	const [results, setResults] = React.useState<ResolvedAsset[]>([]);
+	const [status, setStatus] = React.useState({
+		phase: 'discovering' as 'discovering' | 'resolving' | 'done' | 'error',
+		discovered: 0,
+		resolved: 0,
+		total: 0,
+		failures: 0,
+		error: null as string | null,
+	});
+	React.useEffect(() => {
+		if (!wallet.address || market.loading || market.error) return;
+		const controller = new AbortController();
+		const walletAddress = wallet.address;
+		const discovered = new Set<string>();
+		const attempted = new Set<string>();
+		setResults([]);
+		setStatus({
+			phase: 'discovering',
+			discovered: 0,
+			resolved: 0,
+			total: 0,
+			failures: 0,
+			error: null,
+		});
+		void (async () => {
+			try {
+				const resolvePage = async (page: AssetCandidate[]) => {
+					for (const candidate of page) discovered.add(candidate.processId);
+					const candidates = restrictAssetCandidates(page, market.collections)
+						.filter((candidate) => !attempted.has(candidate.processId));
+					for (const candidate of candidates) attempted.add(candidate.processId);
+					if (!controller.signal.aborted) {
+						setStatus((current) => ({
+							...current,
+							phase: candidates.length ? 'resolving' : current.phase,
+							discovered: discovered.size,
+							total: current.total + candidates.length,
+						}));
+					}
+					await resolveAssetCandidates(candidates, market.collections, {
+						signal: controller.signal,
+						onSettled: (result, _candidate, error) => {
+							if (controller.signal.aborted) return;
+							setStatus((current) => ({
+								...current,
+								resolved: current.resolved + 1,
+								failures: current.failures + (error ? 1 : 0),
+							}));
+							if (result && walletAssetGroup(result, walletAddress)) {
+								setResults((current) =>
+									[...current.filter((item) => item.asset.id !== result.asset.id), result]
+										.sort((a, b) =>
+											b.activity.height - a.activity.height ||
+											b.activity.timestamp - a.activity.timestamp)
+								);
+							}
+						},
+					});
+				};
+				const discoveredCandidates = await discoverWalletAssetCandidates(walletAddress, {
+					signal: controller.signal,
+					onPage: resolvePage,
+				});
+				if (controller.signal.aborted) return;
+				await resolvePage(discoveredCandidates.filter(
+					(candidate) => !attempted.has(candidate.processId)
+				));
+				if (!controller.signal.aborted) {
+					setStatus((current) => ({
+						...current,
+						phase: 'done',
+						discovered: discoveredCandidates.length,
+					}));
+				}
+			} catch (cause) {
+				if (!controller.signal.aborted) {
+					setStatus((current) => ({
+						...current,
+						phase: 'error',
+						error: errorMessage(cause),
+					}));
+				}
+			}
+		})();
+		return () => controller.abort();
+	}, [gateway, market.collections, market.error, market.loading, retry, wallet.address]);
+
+	if (!wallet.address) {
+		return (
+			<section className="my-assets-page">
+				<p className="eyebrow">YOUR WALLET</p>
+				<h1>My assets</h1>
+				<div className="empty-state">
+					<h3>Connect a wallet to resolve its assets</h3>
+					<p>No signature is requested. Candidate history and live state are read-only.</p>
+					<button className="primary" onClick={() => void wallet.connect()}>Connect wallet</button>
+				</div>
+			</section>
+		);
+	}
+	const owned = results.filter((result) => walletAssetGroup(result, wallet.address!) === 'owned');
+	const listed = results.filter((result) => walletAssetGroup(result, wallet.address!) === 'listed');
+	const working = status.phase === 'discovering' || status.phase === 'resolving';
+	return (
+		<section className="my-assets-page">
+			<div className="my-assets-heading">
+				<div>
+					<p className="eyebrow">LIVE WALLET INVENTORY</p>
+					<h1>My assets</h1>
+					<p>Ownership is computed now through {gateway}. Transaction history only tells Bazar what to check.</p>
+				</div>
+				<button onClick={() => setRetry((value) => value + 1)} disabled={working}>
+					{working ? 'Resolving…' : 'Retry'}
+				</button>
+			</div>
+			<div className="resolution-status" aria-live="polite">
+				<div>
+					<strong>
+						{status.phase === 'discovering'
+							? 'Discovering candidates'
+							: status.phase === 'resolving'
+								? 'Computing live state'
+								: status.phase === 'done'
+									? 'Live state resolved'
+									: 'Resolution interrupted'}
+					</strong>
+					<span>
+							{status.phase === 'discovering'
+								? `${status.discovered.toLocaleString()} candidates found`
+								: `${status.resolved.toLocaleString()} of ${status.total.toLocaleString()} checked${
+										status.failures ? ` · ${status.failures.toLocaleString()} unavailable` : ''
+								  }`}
+					</span>
+				</div>
+				<div className="resolution-track">
+					<span style={{
+						width: status.total
+							? `${Math.min(100, (status.resolved / status.total) * 100)}%`
+							: status.phase === 'discovering' ? '12%' : '0%',
+					}} />
+				</div>
+			</div>
+			{status.error ? (
+				<div className="inline-error">
+					<span>{status.error}</span>
+					<button onClick={() => setRetry((value) => value + 1)}>Retry</button>
+				</div>
+			) : null}
+			<AssetGroup title="Listed for sale" results={listed} badge="For sale" />
+			<AssetGroup title="Owned" results={owned} badge="Owned" />
+			{status.phase === 'done' && !results.length ? (
+				<div className="empty-state">
+					<h3>No supported assets are currently owned</h3>
+					<p>
+						{status.failures
+							? `${status.failures} candidates could not be computed. Retry to check them again.`
+							: 'Sold and transferred assets are automatically omitted from this live view.'}
+					</p>
+				</div>
+			) : null}
+		</section>
+	);
+}
+
+function AssetGroup({
+	title,
+	results,
+	badge,
+}: {
+	title: string;
+	results: ResolvedAsset[];
+	badge: string;
+}) {
+	if (!results.length) return null;
+	return (
+		<section className="asset-group">
+			<div className="asset-group-title">
+				<h2>{title}</h2>
+				<span>{results.length.toLocaleString()}</span>
+			</div>
+			<div className="asset-grid">
+				{results.map((result) => (
+					<AssetCard
+						key={result.asset.id}
+						collection={result.collection}
+						asset={result.asset}
+						badge={badge}
+					/>
+				))}
+			</div>
+		</section>
+	);
+}
+
 function AssetView() {
 	const { collectionId = '', assetId = '' } = useParams();
 	const market = React.useContext(MarketContext);
 	const wallet = useWallet();
 	const collection = market.collections.find((item) => item.id === collectionId);
-	const asset = collection?.assets.find((item) => item.id === assetId);
+	const indexedAsset = collection?.assets.find((item) => item.id === assetId);
 	const [state, setState] = React.useState<AssetState | null>(null);
 	const [error, setError] = React.useState<string | null>(null);
 	const [loading, setLoading] = React.useState(true);
@@ -337,7 +695,14 @@ function AssetView() {
 			localStorage.removeItem(`bazar-operation:${assetId}`);
 		}
 	}, [assetId, operation, state, wallet.address]);
-	if (!collection || !asset) return <ErrorPanel message="This asset is not in the selected collection." />;
+	if (!collection) return <ErrorPanel message="This collection could not be found on Arweave." />;
+	const asset = indexedAsset ?? (
+		collection.kind === 'names' && state && ['carrier@1.0', 'name-token@1.0'].includes(state.device)
+			? { id: assetId, name: state.name || short(assetId) }
+			: null
+	);
+	if (!asset && !loading) return <ErrorPanel message="This asset is not in the selected collection." />;
+	if (!asset) return <Loading label="Computing current state…" />;
 	const owner = state ? ownerOfAsset(state) : null;
 	const order = state ? liveOrder(state) : null;
 	const mine = Boolean(wallet.address && owner === wallet.address);
@@ -665,7 +1030,7 @@ function AssetMosaic({ assets }: { assets: AssetSummary[] }) {
 }
 function Loading({ label }: { label: string }) { return <div className="loading"><span />{label}</div>; }
 function ErrorPanel({ message }: { message: string }) { return <div className="error-panel"><strong>Unable to load</strong><span>{message}</span></div>; }
-function liveOrder(state: AssetState) { return Object.values(state.orders).find((order) => order.status === 'open' || order.status === 'reserved') ?? null; }
+function liveOrder(state: AssetState) { return liveOrderOfAsset(state); }
 function short(value: string) { return `${value.slice(0, 6)}…${value.slice(-5)}`; }
 function winstonToAr(value: string) { return (Number(value) / 1e12).toLocaleString(undefined, { maximumFractionDigits: 12 }); }
 function arToWinston(value: string) {

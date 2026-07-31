@@ -56,7 +56,8 @@ Continue now in overnight unattended mode. Godspeed!
 - The complete publication ledger contains exactly 200 PNG transactions, 200
   process transactions, two manifests, two references, and funding. Exact
   publication/funding spend was 6.607545696784 AR; all marketplace/control
-  actions totalled 0.619191226846 AR. Both remain far below the 50 AR limit.
+  actions including the inventory extension totalled 1.235823878375 AR.
+  Combined spend is 7.843369575159 AR, far below the 50 AR limit.
 - Two independent parties completed reciprocal browser-driven sales in both
   collections, including listing, registration, exact native-AR payment,
   five-confirmation observer consensus, scheduler application, reload
@@ -71,7 +72,7 @@ Continue now in overnight unattended mode. Godspeed!
   - `.run-data/screenshots/e2e-final-signals-owner-party-b.png`
   - `.run-data/screenshots/e2e-strata-party-a-return-purchase-applied.png`
   - `.run-data/screenshots/e2e-signals-party-b-return-purchase-applied.png`
-- Production build, all 12 application tests, script syntax checks, dependency
+- Production build, all 17 application tests, script syntax checks, dependency
   validation, `git diff --check`, and forbidden-surface scans pass. No
   AOConnect, profile, UCM, Redux, announcement, migration, service-worker,
   backend, mocked telemetry, or machine-specific source path remains.
@@ -94,6 +95,85 @@ Reuse the existing asset cards and state helpers, grouping results into “Owned
 Finally, collection pages must be able to be filtered for only assets that have a live listing, and sorted by recent activity or 'Default' (as you have it now).
 
 Focus on making sure that even with very large asset groups, the UI is clean, simple, and fast to load. List a number of test assets for sale before returning. Once you are certain that you have finished commit your work again.
+
+## Mission extension status
+
+- The completed Bazar 2.0 baseline is committed as `aae26f8`.
+- `/my-assets` now uses one paginated GraphQL operation with aliases for
+  `initial-holder`, wallet-signed `register-interest`/`make-offer`, and
+  recipient-tagged transfers.
+- Immutable creation tags eliminate unsupported initial candidates before
+  compute. The remaining candidates resolve progressively, newest first,
+  through eight bounded live-state workers. No marketplace result is persisted.
+- The page groups reused asset cards under `Owned` and `Listed for sale`,
+  reports discovery/resolution progress, retries cleanly, and aborts on route,
+  wallet, or gateway changes. A browser navigation at 65/102 live resolutions
+  produced no stale-state or abort error.
+- Collection pages expose `All assets`/`Listed for sale` and
+  `Default`/`Recent activity`. Image activity queries are scoped to the 100
+  collection process recipients. The names listing query discovers only
+  `make-offer` candidates globally, then verifies their live state.
+- Real-network browser validation completed with these exact transfer/listing
+  actions:
+  - Permanent Strata #002, party A → party B:
+    `QGDk3Z0niQiH9fUV84z_hblB_V6FhFqqVSvwsOZUXz8`
+  - Weave Signals #002, party B → party A:
+    `tAgkXN0V7RceSLJCWFGWvEJwRCZokKH4y7SHCVwwkUc`
+  - list Permanent Strata #001:
+    `S09vnf099nqn8oACEJhdZGI3SCQ8vWVMFgkLRFel_iE`
+  - list Permanent Strata #003:
+    `JuHOTT0-YJpqj18fmEiQUJu8JCHiLrXPcFTBsVb8ID0`
+  - list Weave Signals #001:
+    `XdqyEKOj0p5wJGbAJ2kMbVo6DQLFk1wGrPulefje97A`
+  - list Weave Signals #003:
+    `LZwFzF5FrXGGoBJmm2A9ani1axx_ZZmNenO1335UzyE`
+- Both parties then bought the other collection's #003 asset through the full
+  browser payment flow:
+  - Party B bought Permanent Strata #003:
+    - reservation:
+      `M68KpEwj8zw9OgL-5oe_DuMPE4ZOdDJ4JtE1EtMltes`
+    - exact 0.0001 AR payment:
+      `XLByXT_hHsu5H8JK0I3ocxVgHcLmReiIM9Q5amtadJc`
+  - Party A bought Weave Signals #003:
+    - reservation:
+      `hNBxEJmaYudWOVI5iTMkw2etuCLd4IPwUInau0WeTtM`
+    - exact 0.0001 AR payment:
+      `q333GVTMP-2pLlmykThZVxil6jy-t55VNvYVRzEmErA`
+  - both reservations mined at 1,970,087; both payments mined at 1,970,098;
+    both dialogs reported `Applied to live asset state` at tip 1,970,109.
+- Final live computed state proves:
+  - Permanent Strata #001 remains an open listing by party A;
+  - Weave Signals #001 remains an open listing by party B;
+  - Permanent Strata #003 is unlisted and owned by party B;
+  - Weave Signals #003 is unlisted and owned by party A.
+- Both `/my-assets` pages resolve 103 candidate processes to 99 `Owned` and one
+  `Listed for sale`. The sold #003 disappears from its seller and appears for
+  its buyer. A true page reload and wallet restoration reproduced the same
+  results for both parties without signing.
+- Final collection tests prove:
+  - each live-listing filter returns only the remaining #001 listing;
+  - the sold #003 is absent;
+  - `Recent activity` puts the newly settled #003 first;
+  - `Default` restores #001-first manifest order.
+- Browser evidence:
+  - `.run-data/screenshots/purchase-signals-party-a-applied.png`
+  - `.run-data/screenshots/purchase-strata-party-b-applied.png`
+  - `.run-data/screenshots/my-assets-party-a-after-purchases.png`
+  - `.run-data/screenshots/my-assets-party-b-after-purchases.png`
+  - `.run-data/screenshots/collection-strata-live-listings.png`
+  - `.run-data/screenshots/collection-signals-live-listings.png`
+- The live transfer test exposed one precise token-device defect: Arweave tag
+  values deliver `quantity` as a binary (`<<"1">>`), while `transfer/3`
+  required an integer. `dev_token` now normalizes numeric wire values with
+  `hb_util:safe_int/1`, covered by a packaged end-to-end owner-transfer
+  regression. All 40 packaged device tests, `rebar3 device verify`, and
+  `rebar3 device package` pass. The minimal fix is committed as `0542eaf` on
+  `feat/arweave-swap-assets`.
+- Final application gates pass: 17/17 Vitest tests, TypeScript, production Vite
+  build (124 modules), dependency validation, `git diff --check`, forbidden
+  legacy/backend scans, and the real two-wallet browser acceptance run.
+- Extension actions cost 0.616632651529 AR including both 0.0001 AR payments.
+  Combined mission spend remains 7.843369575159 AR, below the 50 AR ceiling.
 
 ## Product surface
 

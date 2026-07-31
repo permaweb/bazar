@@ -31,6 +31,22 @@ Collection indexes are immutable JSON manifests addressed through
 `reference@1.0`. Carrier names are discovered directly from Arweave GraphQL and
 paged in the browser.
 
+## Wallet inventory
+
+`#/my-assets` discovers a wallet's possible assets with one paginated,
+aliased Arweave GraphQL query. It combines initial holdings, signed market
+actions, and incoming transfers, then computes only those candidates through
+the selected HyperBEAM gateway with bounded concurrency. GraphQL is never
+treated as ownership or listing truth.
+
+Results appear progressively in `Owned` and `Listed for sale` groups. Changing
+the connected wallet or compute gateway aborts the previous resolution. The
+page is read-only and never requests a signature.
+
+Collection pages can retain their manifest order or sort by recent on-chain
+activity. The live-listings filter discovers offer candidates and verifies
+their current order state without computing every asset in the collection.
+
 ## Development
 
 ```sh

@@ -250,6 +250,12 @@ export function ownerOfAsset(state: AssetState): string | null {
 	return escrowed?.creator ?? null;
 }
 
+export function liveOrderOfAsset(state: AssetState): SwapOrder | null {
+	return Object.values(state.orders).find(
+		(order) => LIVE_ORDER.has(order.status) && order.quantity === 1
+	) ?? null;
+}
+
 async function readState(
 	processId: string,
 	servingNode: string,
