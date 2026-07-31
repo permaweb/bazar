@@ -185,14 +185,14 @@ This is the final challenge. You have done exceptionally well so far. Time to ge
 
 ## Final mission status
 
-- In progress. The existing decentralized architecture, live-state ownership
-  rules, browser-only discovery, observer consensus, and payment safety gates
-  remain immutable acceptance constraints.
-- The aesthetic backport will recover the original Bazar visual vocabulary
-  without restoring profiles, UCM, AOConnect, announcements, migrations,
-  backends, or any other legacy architecture.
-- Publication, implementation-ID loading, two-wallet market circuits, Arweave
-  deployment, and production-origin validation remain required before stopping.
+- Complete. The original Bazar visual vocabulary is restored in a smoother,
+  responsive application without restoring profiles, UCM, AOConnect,
+  announcements, migrations, backends, or any other legacy architecture.
+- Published `token@1.0`, implementation-ID cold loading, two-wallet market
+  circuits, live inventory recovery, collection listing/activity views, and
+  Arweave production-origin validation all pass.
+- Deployed Bazar manifest:
+  `aoehUhJcxoKQl93_X2uXYxborLgHQReTFZ2VWHtCYhc`.
 
 ## Product surface
 
@@ -425,6 +425,29 @@ AO-Connect push path, or application backend.
   `my-assets-party-a-after-purchase.png`.
 - Current final visual evidence lives under
   `.run-data/screenshots/final-ui/`.
+- The exact application build at
+  `2c03841b83813387ad063d151cc0640c4cb0d10b` was published as 14 ordinary
+  Arweave file transactions and a standard `arweave/paths` manifest:
+  `aoehUhJcxoKQl93_X2uXYxborLgHQReTFZ2VWHtCYhc`.
+  Upload cost was 0.094402935091 AR, bringing total mission spend to
+  7.937772510250 AR.
+- Arweave mined the manifest in block 1,970,182. A fresh production-origin
+  browser session loaded the security-sandboxed Arweave URL, the bundled
+  fonts/images/application chunks, and the complete Bazar home.
+- A temporary GET/HEAD/OPTIONS-only HTTPS tunnel to the task-local standard
+  HyperBEAM node proved that the deployed origin computes through the node
+  whose trusted-device map loads published `token@1.0`. The deployed asset
+  page returned the current Party B owner, 0.0003 AR open ask,
+  `execution: token@1.0`, native-AR settlement, supply 1/1, and the rendered
+  live order book. The tunnel was validation infrastructure only and is not
+  part of Bazar.
+- From the deployed build, the Strata collection's `Listed for sale` +
+  `Recent activity` controls resolved exactly one current listing, and its
+  Activity view rendered the permanent listing, transfer, and reservation
+  transactions from both test parties.
+- Production evidence:
+  - `.run-data/screenshots/final-ui/deployed-arweave-live-orderbook.png`
+  - `.run-data/screenshots/final-ui/deployed-arweave-collection-activity.png`
 
 ### Cold-runtime dependency control
 
