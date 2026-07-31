@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { Collection } from './collections';
 import {
 	discoverWalletAssetCandidates,
+	discoverCollectionActivity,
 	discoverMarketActivity,
 	resolveAssetCandidates,
 	restrictAssetCandidates,
@@ -144,6 +145,45 @@ describe('wallet candidate discovery', () => {
 		expect(body.query).toContain('recipients: $recipients');
 		expect(body.variables.recipients).toEqual([assetA, assetB]);
 		expect(body.variables.tags).toEqual([{ name: 'action', values: ['make-offer'] }]);
+	});
+
+	it('returns bounded collection activity events with their actors and targets', async () => {
+		const transaction = 'T'.repeat(43);
+		const fetcher = vi.fn(async () => new Response(JSON.stringify({
+			data: {
+				transactions: {
+					pageInfo: { hasNextPage: false },
+					edges: [{
+						cursor: 'activity-1',
+						node: {
+							id: transaction,
+							recipient: assetA,
+							owner: { address: wallet },
+							tags: [{ name: 'action', value: 'transfer' }],
+							block: { height: 42, timestamp: 420 },
+						},
+					}],
+				},
+			},
+		}), { status: 200, headers: { 'content-type': 'application/json' } }));
+
+		const events = await discoverCollectionActivity({
+			fetch: fetcher as typeof fetch,
+			recipients: [assetA, assetA, 'invalid'],
+			limit: 20,
+		});
+
+		expect(events).toEqual([{
+			id: transaction,
+			processId: assetA,
+			action: 'transfer',
+			actor: wallet,
+			height: 42,
+			timestamp: 420,
+		}]);
+		const call = fetcher.mock.calls[0] as unknown as [RequestInfo | URL, RequestInit];
+		const body = JSON.parse(String(call[1].body));
+		expect(body.variables.recipients).toEqual([assetA]);
 	});
 });
 

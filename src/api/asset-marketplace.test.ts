@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+	licenseProperties,
 	ownerOfAsset,
 	parseAssetState,
 	servingNodeOrigin,
@@ -80,5 +81,22 @@ describe('asset state', () => {
 			'total-supply': 2,
 			balances: { [owner]: '2' },
 		})).toThrow('invalid-asset-state');
+	});
+
+	it('renders only declared scalar license properties', () => {
+		const state = parseAssetState({
+			'execution-device': 'token@1.0',
+			'total-supply': 1,
+			balances: { [owner]: 1 },
+			license: 'dE0rmDfl9_OWjkDznNEXHaSO_JohJkRolvMzaCroUdw',
+			'commercial_use': true,
+			'access-fee': 12,
+			ignored: { inferred: false },
+		});
+		expect(licenseProperties(state)).toEqual([
+			{ key: 'license', label: 'License', value: 'Universal Data License' },
+			{ key: 'access-fee', label: 'Access fee', value: '12' },
+			{ key: 'commercial-use', label: 'Commercial use', value: 'true' },
+		]);
 	});
 });

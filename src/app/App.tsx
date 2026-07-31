@@ -10,6 +10,7 @@ import {
 
 import { loadCollections, loadMoreCarrierNames, type AssetSummary, type Collection } from 'api/collections';
 import {
+	discoverCollectionActivity,
 	discoverMarketActivity,
 	discoverWalletAssetCandidates,
 	isLiveListing,
@@ -17,9 +18,11 @@ import {
 	restrictAssetCandidates,
 	walletAssetGroup,
 	type AssetCandidate,
+	type CollectionActivityEvent,
 	type ResolvedAsset,
 } from 'api/asset-discovery';
 import {
+	licenseProperties,
 	liveOrderOfAsset,
 	ownerOfAsset,
 	readAssetState,
@@ -96,6 +99,7 @@ export function App() {
 						<Route path="/" element={<Home />} />
 						<Route path="/my-assets" element={<MyAssetsView />} />
 						<Route path="/collection/:collectionId" element={<CollectionView />} />
+						<Route path="/collection/:collectionId/activity" element={<CollectionActivityView />} />
 						<Route path="/asset/:collectionId/:assetId" element={<AssetView />} />
 						<Route path="*" element={<Navigate to="/" replace />} />
 					</Routes>
@@ -122,10 +126,11 @@ function Header() {
 	return (
 		<header>
 			<Link className="brand" to="/">
-				<span className="brand-mark">B</span>
+				<span className="brand-mark"><BazarMark /></span>
 				<span>Bazar</span>
+				<small>2.0</small>
 			</Link>
-			<nav>
+			<nav className="site-nav">
 				<Link to="/">Collections</Link>
 				{wallet.address ? <Link className="my-assets-link" to="/my-assets">My assets</Link> : null}
 				<GatewayControl />
@@ -155,22 +160,30 @@ function Home() {
 	return (
 		<>
 			<section className="hero">
-				<p className="eyebrow">ARWEAVE-NATIVE MARKETPLACE</p>
-				<h1>Assets that belong<br />to their owners.</h1>
-				<p className="lead">
-					Buy and sell permanent assets without a custodian, intermediary, or marketplace backend.
-				</p>
-				<div className="principles">
-					<span>Direct wallet ownership</span>
-					<span>AR settlement</span>
-					<span>Any HyperBEAM gateway</span>
+				<div className="hero-copy">
+					<p className="eyebrow">ARWEAVE-NATIVE MARKETPLACE</p>
+					<h1>Trade what lives<br />on the weave.</h1>
+					<p className="lead">
+						A familiar Bazar experience, rebuilt for direct ownership, native AR settlement,
+						and live computation through any HyperBEAM gateway.
+					</p>
+					<div className="principles">
+						<span>Direct wallet ownership</span>
+						<span>AR settlement</span>
+						<span>No marketplace backend</span>
+					</div>
+				</div>
+				<div className="hero-market" aria-hidden="true">
+					<div className="hero-mark"><BazarMark /></div>
+					<span>PERMANENT MARKET</span>
+					<strong>BUY · SELL · OWN</strong>
 				</div>
 			</section>
-			<section className="content-section">
+			<section className="content-section" id="collections">
 				<div className="section-heading">
 					<div>
 						<p className="eyebrow">LIVE COLLECTIONS</p>
-						<h2>Explore the weave</h2>
+						<h2>Explore Bazar</h2>
 					</div>
 					<p>Every item below resolves from permanent data and live process state.</p>
 				</div>
@@ -334,6 +347,7 @@ function CollectionView() {
 				</div>
 				<p>{collection.description}</p>
 			</div>
+			<CollectionTabs collection={collection} active="assets" />
 			<div className="asset-tools">
 				<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search this collection" />
 				<div className="asset-filters">
@@ -395,6 +409,132 @@ function CollectionView() {
 				<button className="load-more" onClick={() => void market.loadMore(collection.id)}>Load 100 more from Arweave</button>
 			) : null}
 		</section>
+	);
+}
+
+function CollectionActivityView() {
+	const { collectionId = '' } = useParams();
+	const market = React.useContext(MarketContext);
+	const collection = market.collections.find((item) => item.id === collectionId);
+	const [events, setEvents] = React.useState<CollectionActivityEvent[]>([]);
+	const [loading, setLoading] = React.useState(true);
+	const [error, setError] = React.useState<string | null>(null);
+	const [retry, setRetry] = React.useState(0);
+
+	React.useEffect(() => {
+		if (!collection) return;
+		const controller = new AbortController();
+		setEvents([]);
+		setLoading(true);
+		setError(null);
+		void discoverCollectionActivity({
+			recipients: collection.assets.map((asset) => asset.id),
+			signal: controller.signal,
+			limit: 100,
+			onPage: (page) => {
+				if (!controller.signal.aborted) {
+					setEvents((current) => [...current, ...page]);
+				}
+			},
+		}).then(
+			() => {
+				if (!controller.signal.aborted) setLoading(false);
+			},
+			(cause) => {
+				if (!controller.signal.aborted) {
+					setError(errorMessage(cause));
+					setLoading(false);
+				}
+			}
+		);
+		return () => controller.abort();
+	}, [collection, retry]);
+
+	if (market.loading) return <Loading label="Reading collection index…" />;
+	if (!collection) return <ErrorPanel message="This collection could not be found on Arweave." />;
+	const assets = new Map(collection.assets.map((asset) => [asset.id, asset]));
+	return (
+		<section className="collection-page collection-activity-page">
+			<Link className="back" to="/">← All collections</Link>
+			<div className="collection-title">
+				<div>
+					<p className="eyebrow">PERMANENT ACTIVITY</p>
+					<h1>{collection.name}</h1>
+				</div>
+				<p>
+					Recent signed market actions discovered from Arweave. Current ownership and
+					listing status still come only from live process state.
+				</p>
+			</div>
+			<CollectionTabs collection={collection} active="activity" />
+			<div className="activity-heading">
+				<div>
+					<strong>Recent market activity</strong>
+					<span>Newest first · up to 100 permanent transactions</span>
+				</div>
+				<button onClick={() => setRetry((value) => value + 1)} disabled={loading}>
+					{loading ? 'Loading…' : 'Refresh'}
+				</button>
+			</div>
+			{error ? <ErrorPanel message={error} /> : null}
+			<div className="activity-list" aria-live="polite">
+				{events.map((event) => {
+					const asset = assets.get(event.processId);
+					return (
+						<article className="activity-row" key={event.id}>
+							<span className={`activity-icon action-${event.action}`}>{activitySymbol(event.action)}</span>
+							<div className="activity-main">
+								<strong>{activityLabel(event.action)}</strong>
+								{asset ? (
+									<Link to={`/asset/${collection.id}/${asset.id}`}>{asset.name}</Link>
+								) : (
+									<span>{short(event.processId)}</span>
+								)}
+							</div>
+							<div className="activity-actor">
+								<span>Actor</span>
+								<strong>{event.actor ? short(event.actor) : 'Unknown'}</strong>
+							</div>
+							<div className="activity-block">
+								<span>{event.timestamp ? formatTimestamp(event.timestamp) : 'Pending timestamp'}</span>
+								<a href={`https://arweave.net/${event.id}`} target="_blank" rel="noreferrer">
+									Block {event.height.toLocaleString()} ↗
+								</a>
+							</div>
+						</article>
+					);
+				})}
+			</div>
+			{loading && !events.length ? <Loading label="Reading recent collection activity from Arweave…" /> : null}
+			{!loading && !error && !events.length ? (
+				<div className="empty-state">
+					<h3>No market activity yet</h3>
+					<p>This collection has no matching permanent market actions in the current index.</p>
+				</div>
+			) : null}
+		</section>
+	);
+}
+
+function CollectionTabs({
+	collection,
+	active,
+}: {
+	collection: Collection;
+	active: 'assets' | 'activity';
+}) {
+	return (
+		<nav className="collection-tabs" aria-label={`${collection.name} views`}>
+			<Link className={active === 'assets' ? 'active' : ''} to={`/collection/${collection.id}`}>
+				<span>▦</span> Assets
+			</Link>
+			<Link
+				className={active === 'activity' ? 'active' : ''}
+				to={`/collection/${collection.id}/activity`}
+			>
+				<span>⇄</span> Activity
+			</Link>
+		</nav>
 	);
 }
 
@@ -706,26 +846,46 @@ function AssetView() {
 	const owner = state ? ownerOfAsset(state) : null;
 	const order = state ? liveOrder(state) : null;
 	const mine = Boolean(wallet.address && owner === wallet.address);
+	const license = state ? licenseProperties(state) : [];
 	return (
 		<section className="asset-page">
 			<Link className="back" to={`/collection/${collection.id}`}>← {collection.name}</Link>
 			<div className="asset-layout">
 				<div className="asset-hero-media">
 					{asset.image ? <img src={asset.image} alt={asset.name} /> : <span>{asset.name.slice(0, 1).toUpperCase()}</span>}
+					<div className="asset-media-label">
+						<span>Permanent asset</span>
+						<strong>{asset.contentType ?? (asset.image ? 'image' : state?.device ?? 'process')}</strong>
+					</div>
 				</div>
 				<div className="asset-details">
-					<p className="eyebrow">{collection.name}</p>
+					<div className="asset-kicker">
+						<p className="eyebrow">{collection.name}</p>
+						<span className={order ? 'status-dot listed' : 'status-dot'}>{order ? 'For sale' : 'Live'}</span>
+					</div>
 					<h1>{asset.name}</h1>
 					<p className="permanent-id">Process <a href={`https://arweave.net/${asset.id}`} target="_blank" rel="noreferrer">{asset.id}</a></p>
 					{loading ? <Loading label="Computing current state…" /> : null}
 					{error ? <ErrorPanel message={error} /> : null}
 					{state ? (
-						<div className="facts">
-							<div><span>Owner</span><strong>{owner ? short(owner) : 'Unassigned'}</strong></div>
-							<div><span>Execution</span><strong>{state.device || 'token@1.0'}</strong></div>
-							<div><span>Status</span><strong>{order ? 'Listed for sale' : 'Not listed'}</strong></div>
-							{order ? <div><span>Price</span><strong>{winstonToAr(order.asking)} AR</strong></div> : null}
-						</div>
+						<>
+							<div className="market-callout">
+								<div>
+									<span>{order ? 'Current ask' : 'Market status'}</span>
+									<strong>{order ? `${winstonToAr(order.asking)} AR` : 'Not listed'}</strong>
+								</div>
+								<div>
+									<span>Supply</span>
+									<strong>1 / 1</strong>
+								</div>
+							</div>
+							<div className="facts">
+								<div><span>Owner</span><strong>{owner ? short(owner) : 'Unassigned'}</strong></div>
+								<div><span>Execution</span><strong>{state.device || 'token@1.0'}</strong></div>
+								<div><span>Settlement</span><strong>Native AR</strong></div>
+								<div><span>Scheduler</span><strong>Arweave</strong></div>
+							</div>
+						</>
 					) : null}
 					<div className="actions">
 						{!wallet.address ? <button className="primary" onClick={() => void wallet.connect()}>Connect wallet</button> : null}
@@ -745,6 +905,70 @@ function AssetView() {
 					</div>
 				</div>
 			</div>
+			{state ? (
+				<div className="asset-market-grid">
+					<section className="market-card orderbook-card">
+						<div className="market-card-heading">
+							<div>
+								<p className="eyebrow">LIVE MARKET</p>
+								<h2>Order book</h2>
+							</div>
+							<span>{order ? '1 ask' : '0 asks'}</span>
+						</div>
+						<div className="orderbook-table">
+							<div className="orderbook-head">
+								<span>Price</span><span>Quantity</span><span>Seller</span><span>Status</span>
+							</div>
+							{order ? (
+								<div className="orderbook-row">
+									<strong>{winstonToAr(order.asking)} AR</strong>
+									<span>{order.quantity}</span>
+									<a href={`https://arweave.net/${order.creator}`} target="_blank" rel="noreferrer">
+										{short(order.creator)}
+									</a>
+									<span className={`order-status ${order.status}`}>{order.status}</span>
+								</div>
+							) : (
+								<div className="orderbook-empty">
+									<strong>No open asks</strong>
+									<span>The one-unit asset is currently held outside market escrow.</span>
+								</div>
+							)}
+						</div>
+						<p className="market-note">
+							Computed from the asset’s current <code>orders</code> state through the selected HyperBEAM gateway.
+						</p>
+					</section>
+					<section className="market-card license-card">
+						<div className="market-card-heading">
+							<div>
+								<p className="eyebrow">USAGE RIGHTS</p>
+								<h2>License</h2>
+							</div>
+							<span>{license.length ? `${license.length} terms` : 'Not declared'}</span>
+						</div>
+						{license.length ? (
+							<dl className="license-properties">
+								{license.map((property) => (
+									<div key={property.key}>
+										<dt>{property.label}</dt>
+										<dd>{property.value}</dd>
+									</div>
+								))}
+							</dl>
+						) : (
+							<div className="license-empty">
+								<span>◇</span>
+								<div>
+									<strong>No UDL terms declared</strong>
+									<p>This process does not publish Universal Data License properties.</p>
+								</div>
+							</div>
+						)}
+						<p className="market-note">License terms are read directly from immutable process metadata when present.</p>
+					</section>
+				</div>
+			) : null}
 			{operation && wallet.address ? (
 				<OperationDialog
 					asset={asset}
@@ -1023,6 +1247,45 @@ function OperationDialog({
 			</div>
 		</div>
 	);
+}
+
+function BazarMark() {
+	return (
+		<svg viewBox="0 0 64 56" aria-hidden="true">
+			<path d="M8 21 18 5l10 16M25 21 36 4l14 17" />
+			<rect x="4" y="20" width="56" height="25" rx="4" />
+			<circle cx="15" cy="50" r="3.5" />
+			<circle cx="49" cy="50" r="3.5" />
+		</svg>
+	);
+}
+
+function activityLabel(action: CollectionActivityEvent['action']) {
+	return ({
+		'make-offer': 'Listed for sale',
+		'register-interest': 'Purchase reserved',
+		transfer: 'Asset transferred',
+		'cancel-order': 'Listing cancelled',
+	})[action];
+}
+
+function activitySymbol(action: CollectionActivityEvent['action']) {
+	return ({
+		'make-offer': '＋',
+		'register-interest': '↘',
+		transfer: '→',
+		'cancel-order': '×',
+	})[action];
+}
+
+function formatTimestamp(timestamp: number) {
+	return new Intl.DateTimeFormat(undefined, {
+		month: 'short',
+		day: 'numeric',
+		year: 'numeric',
+		hour: 'numeric',
+		minute: '2-digit',
+	}).format(new Date(timestamp * 1000));
 }
 
 function AssetMosaic({ assets }: { assets: AssetSummary[] }) {

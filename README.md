@@ -47,6 +47,16 @@ Collection pages can retain their manifest order or sort by recent on-chain
 activity. The live-listings filter discovers offer candidates and verifies
 their current order state without computing every asset in the collection.
 
+Each collection also exposes a backend-free activity view. It queries recent
+signed market actions scoped to that collection's process IDs and links each
+event to its permanent transaction. The activity feed is historical context;
+ownership, availability, and the order book still come exclusively from live
+process state.
+
+Asset pages render the current one-unit order book and any UDL/license fields
+present in the process state. Missing license metadata is shown as absent
+rather than inferred.
+
 ## Development
 
 ```sh
@@ -65,6 +75,23 @@ The query parameter selects process computation and the HyperBEAM relay used
 for browser-safe checks against independent Arweave nodes. Transactions are
 signed by the connected wallet and submitted to the Arweave network.
 
+### HyperBEAM device configuration
+
+The published `token@1.0` implementation is
+`TmTc-Tjo8WWrp6Th8Kgqs7azjIKHgyNIcvZ6NW-zvps`. A standard
+`feat/name-token` node should pin it together with the devices it composes:
+
+```json
+{
+  "trusted-devices": {
+    "process-outbox@1.0": "HOcPV7wxMHYb3rSQ3EfykQhHx_b8waRWhXolhcBNgHo",
+    "reference@1.0": "dRkm83Whq0qNE6We0oekl9Ngymgb7y3Otr-Smlatn54",
+    "security@1.0": "ARgymad5oYZcWPpxuV-A9hoSgmm4ElgPIvxMwmeh674",
+    "token@1.0": "TmTc-Tjo8WWrp6Th8Kgqs7azjIKHgyNIcvZ6NW-zvps"
+  }
+}
+```
+
 ## Validation
 
 ```sh
@@ -76,6 +103,18 @@ git diff --check
 The purchase workflow stores signed transactions and deterministic recovery
 metadata locally until live process state proves completion. Reloading does not
 sign or pay twice.
+
+## Deployment
+
+Build and publish the static application with a JSON Arweave key in
+`DEPLOY_KEY`:
+
+```sh
+DEPLOY_KEY="$(jq -c . /path/to/key.json)" npm run deploy:main
+```
+
+The deployment command prints the immutable Arweave manifest ID. No service is
+deployed because the build is entirely static.
 
 ## Test collections
 

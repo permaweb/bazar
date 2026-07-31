@@ -28,6 +28,15 @@ export type ResolvedAsset = {
 	activity: AssetCandidate;
 };
 
+export type CollectionActivityEvent = {
+	id: string;
+	processId: string;
+	action: 'make-offer' | 'register-interest' | 'transfer' | 'cancel-order';
+	actor: string;
+	height: number;
+	timestamp: number;
+};
+
 type GraphqlNode = {
 	id: string;
 	recipient?: string;
@@ -52,6 +61,12 @@ type CandidateOptions = {
 type MarketActivityOptions = CandidateOptions & {
 	recipients?: string[];
 	listingsOnly?: boolean;
+};
+
+type CollectionActivityOptions = Omit<CandidateOptions, 'onPage'> & {
+	recipients: string[];
+	limit?: number;
+	onPage?: (events: CollectionActivityEvent[]) => void | Promise<void>;
 };
 
 type ResolutionOptions = {
@@ -248,6 +263,66 @@ export async function discoverMarketActivity(options: MarketActivityOptions = {}
 	}
 }
 
+export async function discoverCollectionActivity(
+	options: CollectionActivityOptions
+): Promise<CollectionActivityEvent[]> {
+	const fetcher = options.fetch ?? globalThis.fetch.bind(globalThis);
+	const graphql = options.graphql ?? 'https://arweave.net/graphql';
+	const recipients = [...new Set(options.recipients.filter((id) => ADDRESS.test(id)))];
+	const limit = Math.max(1, Math.min(200, Math.floor(options.limit ?? 100)));
+	const events: CollectionActivityEvent[] = [];
+	const seen = new Set<string>();
+	let cursor: string | null = null;
+
+	if (!recipients.length) return [];
+	while (events.length < limit) {
+		options.signal?.throwIfAborted();
+		const response = await fetcher(graphql, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({
+				query: MARKET_ACTIVITY_QUERY,
+				variables: {
+					cursor,
+					recipients,
+					tags: [{
+						name: 'action',
+						values: ['make-offer', 'register-interest', 'transfer', 'cancel-order'],
+					}],
+				},
+			}),
+			signal: options.signal,
+		});
+		if (!response.ok) throw new Error(`collection-activity-graphql-${response.status}`);
+		const payload = await response.json();
+		if (payload?.errors?.length) throw new Error('collection-activity-graphql-error');
+		const connection = payload?.data?.transactions as GraphqlConnection | undefined;
+		const edges = Array.isArray(connection?.edges) ? connection.edges : [];
+		const page = edges.flatMap((edge) => {
+			if (seen.has(edge.node.id)) return [];
+			const event = activityEventFromNode(edge.node);
+			if (!event) return [];
+			seen.add(event.id);
+			return [event];
+		});
+		const remaining = limit - events.length;
+		const accepted = page.slice(0, remaining);
+		events.push(...accepted);
+		await options.onPage?.(accepted);
+		if (
+			events.length >= limit ||
+			!connection?.pageInfo?.hasNextPage ||
+			!edges.length
+		) {
+			return events;
+		}
+		const nextCursor = edges.at(-1)?.cursor;
+		if (!nextCursor || nextCursor === cursor) throw new Error('collection-activity-pagination-stalled');
+		cursor = nextCursor;
+	}
+	return events;
+}
+
 export async function resolveAssetCandidates(
 	candidates: AssetCandidate[],
 	collections: Collection[],
@@ -376,6 +451,27 @@ function candidateFromNode(
 					collection: tags.collection,
 			  }
 			: {}),
+	};
+}
+
+function activityEventFromNode(node: GraphqlNode): CollectionActivityEvent | null {
+	const tags = Object.fromEntries((node.tags ?? []).map((tag) => [tag.name.toLowerCase(), tag.value]));
+	const action = tags.action;
+	if (
+		!ADDRESS.test(node.id) ||
+		!node.recipient ||
+		!ADDRESS.test(node.recipient) ||
+		!['make-offer', 'register-interest', 'transfer', 'cancel-order'].includes(action)
+	) {
+		return null;
+	}
+	return {
+		id: node.id,
+		processId: node.recipient,
+		action: action as CollectionActivityEvent['action'],
+		actor: ADDRESS.test(node.owner?.address ?? '') ? node.owner!.address! : '',
+		height: safeNumber(node.block?.height),
+		timestamp: safeNumber(node.block?.timestamp),
 	};
 }
 

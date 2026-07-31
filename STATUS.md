@@ -175,6 +175,25 @@ Focus on making sure that even with very large asset groups, the UI is clean, si
 - Extension actions cost 0.616632651529 AR including both 0.0001 AR payments.
   Combined mission spend remains 7.843369575159 AR, below the 50 AR ceiling.
 
+## Final mission — verbatim
+
+Thank you. Now your final task for the evening: Please backport the aesthetic *style* (not the exact implementation) of the original onto your new version of Bazar. Bazar has many fans that enjoyed its UI, so we should offer them a cleaner, smoother, and fully decentralized experience -- but with a familiar aesthetic theme. Please update it slightly to be smoother, sleeker, and more modern, but still largely true to the original vibe of Bazar. That means that we want the asset listing page to look similar, too: Showing UDL/license properties if present, an orderbook (even if these *particular* assets only have one offer at a time as they have one unit), and if possible, an activity page for collections. All of the prior rules of this build still apply: Keep it clean, fast, and fully decentralized.
+
+Once you are done, publish a version of your `token@1.0`, then demonstrate that we can load it by its implementation ID (alongside our `reference@1.0`) in a standard HyperBEAM node only running the `feat/name-token` branch. Please run your complete circuits of buying and selling assets, checking they appear in your `my-assets` page, filtering and sorting by activity on collections, and re-listing and purchasing. Once all of these components work please commit your work and then deploy the new Bazar UI itself and check it loads correctly from arweave.net (using your local HyperBEAM node with token@1.0 loaded for compute). Commander's intent: Have Bazar 2.0 ready to deploy as soon as your turn completes. We will load your `~token@1.0` onto our production nodes, then my team will start to use it.
+
+This is the final challenge. You have done exceptionally well so far. Time to get it over the line. Stay focused. Godspeed!
+
+## Final mission status
+
+- In progress. The existing decentralized architecture, live-state ownership
+  rules, browser-only discovery, observer consensus, and payment safety gates
+  remain immutable acceptance constraints.
+- The aesthetic backport will recover the original Bazar visual vocabulary
+  without restoring profiles, UCM, AOConnect, announcements, migrations,
+  backends, or any other legacy architecture.
+- Publication, implementation-ID loading, two-wallet market circuits, Arweave
+  deployment, and production-origin validation remain required before stopping.
+
 ## Product surface
 
 Bazar 2.0 is a browser-only marketplace where an Arweave wallet directly owns
@@ -311,3 +330,118 @@ AO-Connect push path, or application backend.
   `reference-value` points at an immutable JSON collection manifest. This
   matches the device's documented foreign-message pattern without inventing a
   backend or a nested on-chain encoding.
+
+## Final mission progress
+
+- The modernized original-Bazar visual system is implemented with bundled
+  Quantico/Inter WOFF2 fonts, the familiar cart/mountain mark, the original
+  monochrome/coral palette, dot-grid surfaces, and current responsive layout.
+- Collection pages now have `Assets` and backend-free `Activity` views.
+  Activity is a bounded, collection-scoped Arweave GraphQL history; it is never
+  treated as ownership or listing truth.
+- Asset pages now render the live one-unit order book and only UDL/license
+  scalar properties actually declared by process state.
+- Current app validation:
+  - `npm run typecheck`
+  - `npm test -- --run`: 19/19 tests pass
+  - `npm run build`
+  - `git diff --check`
+- `token@1.0` source remains the committed
+  `0542eaf0067054f058fbeb5e558b47f046eb7e8b`.
+  `HB_PORT=0 rebar3 device test` passed all 40 tests, including native/hyper
+  parity, swap settlement, offer/cancel, transfer ownership, and wire quantity.
+  `rebar3 device verify` and `rebar3 device package` also passed.
+- Published once:
+  - specification:
+    `7LWK7RCyMKCZ1uiANJ5At1vfsiwra1T_5xkBG3X_so0`
+  - implementation:
+    `TmTc-Tjo8WWrp6Th8Kgqs7azjIKHgyNIcvZ6NW-zvps`
+  - signer:
+    `eFNj8Xo_fbPWkEFL47YgEHctsxs03jk6fSGDr_xTiFY`
+- The token branch now ends at documentation commit `0b17c5f`, which records
+  those published IDs; implementation source remains the tested
+  `0542eaf0067054f058fbeb5e558b47f046eb7e8b`.
+- A clean HyperBEAM checkout at exact `feat/name-token` commit
+  `35c41dfb86b6b369cd5d9e52978976f778b091c3` is running on task port 3101.
+  Its metadata reports the published token implementation and the production
+  `reference@1.0` implementation
+  `dRkm83Whq0qNE6We0oekl9Ngymgb7y3Otr-Smlatn54`.
+  A cold computation of Strata #001 returned `execution-device: token@1.0`,
+  its live escrowed order, and the exact current state without source-preloading
+  the token repository.
+- The two-party final circuit is in flight:
+  - Party B Strata #001 registration:
+    `u_jgUobBkZPiI1uNl5Qd4WA09L1YFP59TZ90CywiJ7k`
+  - Party B → Party A seller payment:
+    `YE9df6nXUoe9d-QB-KkxvtceR-FUzQ1AqI2tuhgEdzc`
+  - Party A Signals #001 registration:
+    `CSGyP7ecdUcbFqOQCwlgio9N0CVAPeCYp1OzT-iyXRs`
+  - Party A → Party B seller payment:
+    `4hSlysFohDhY2g8ikn45O5A19QlTQOJgjUPcloXj9Gs`
+  Bazar has already demonstrated exact signed-transaction recovery after a
+  wallet-context change and a compute-node restart; no transaction was signed
+  twice. Each payment remained local until live state showed its matching
+  scheduler reservation.
+- Party B has also re-listed the already purchased Strata #003 through the UI
+  at 0.0001 AR. The signed listing transaction is
+  `i-59CVHojfCzMPqGFfPqB0xHWx3Gl5KzoRfV6GSsfCA`; its transaction-sync screen is
+  preserved as `relist-party-b-sync.png`.
+  Its preceding completed sale is independently visible as listing
+  `JuHOTT0-YJpqj18fmEiQUJu8JCHiLrXPcFTBsVb8ID0`, reservation
+  `M68KpEwj8zw9OgL-5oe_DuMPE4ZOdDJ4JtE1EtMltes`, and native payment
+  `XLByXT_hHsu5H8JK0I3ocxVgHcLmReiIM9Q5amtadJc`; live state now names Party B
+  as owner.
+- Once that re-list appeared as an open live order, Party A started the
+  buy-back through the rendered order book. The new registration transaction
+  is `lKj6GTVlV-1Lup0_P8Y1x1-pRhtFOfGbwVBTiTqFCk0`; its native payment remains
+  signed but undispatched until the scheduler reservation becomes live.
+  After that exact live-state transition, Bazar released payment
+  `YaQMEaaMAnpFIAlupt9bD6voG03JPOcHpTsnqLaXSwk`.
+- The buy-back settled at `swap-height` 1,970,169: Party A owns Strata #003
+  and the order book is empty. The asset page refreshed to that live state.
+- Final, refreshed 103/103 inventory checks:
+  - Party A: Signals #003 listed; Signals #001 and Strata #003 owned.
+  - Party B: Strata #001 listed; transferred Strata #002 owned; sold Strata
+    #003 and Signals #001 absent.
+  - Evidence: `my-assets-party-a-final.png` and
+    `my-assets-party-b-final.png`.
+- Party A listed Signals #003 at 0.0002 AR for the final live marketplace
+  inventory. Its transaction is
+  `z0YQvZ3K5t7Ambyr7OjEf8A79_fLBhP6bITvb52oZfc`.
+  Live Signals state now contains that open order, and the collection's
+  `Listed for sale` + `Recent activity` view resolves exactly one result:
+  Signals #003. Evidence: `signals-live-listing-filter.png`.
+- Strata #001 settled to Party B in live state with no remaining order, proving
+  the registration/payment pair above completed. Party B then re-listed that
+  newly purchased asset at 0.0003 AR through the UI:
+  `xPq4nbitLwypaokKrEisl0_Bul7Cfz088ef77qIcA9w`.
+  Live Strata state now contains that open order at 0.0003 AR, so the final
+  marketplace has open inventory in both test image collections.
+- Signals #001 then settled to Party A. Fresh 103/103 live-state inventory
+  resolutions showed Strata #001 under Party B and Signals #001 under Party A;
+  after retrying Party B's page, the sold Signals asset and its listing
+  disappeared. Corresponding screenshots are
+  `my-assets-party-b-sold-disappeared.png` and
+  `my-assets-party-a-after-purchase.png`.
+- Current final visual evidence lives under
+  `.run-data/screenshots/final-ui/`.
+
+### Cold-runtime dependency control
+
+- A never-before-requested Strata asset initially failed on the clean node
+  with `device_not_loadable: security@1.0`. This was an operator-configuration
+  miss, not a token implementation defect: `token@1.0` deliberately composes
+  the published `security@1.0` and `process-outbox@1.0` devices documented by
+  its repository.
+- The clean node now pins those two published dependencies in addition to
+  `token@1.0` and `reference@1.0`; no HyperBEAM or token source was changed.
+- The same cold asset then computed successfully through the published token
+  implementation. Its live state reports Party B as owner, matching the real
+  Party A → Party B transfer
+  `QGDk3Z0niQiH9fUV84z_hblB_V6FhFqqVSvwsOZUXz8`.
+- A second standard node on port 3102 used a brand-new isolated store and the
+  exact `feat/name-token` commit. Its metadata exposed the four pinned device
+  IDs, then first-request computations of Strata #002 and Signals #002 both
+  returned HTTP 200, `execution-device: token@1.0`, and their correct,
+  different live owners. The control node and its temporary config were
+  stopped and removed immediately afterward.

@@ -38,6 +38,12 @@ export type ComputeRetryProgress = {
 	delayMs: number;
 };
 
+export type LicenseProperty = {
+	key: string;
+	label: string;
+	value: string;
+};
+
 const ADDRESS = /^[A-Za-z0-9_-]{43}$/;
 const UNSIGNED_INTEGER = /^(?:0|[1-9]\d*)$/;
 const LIVE_ORDER = new Set<SwapOrderStatus>(['open', 'reserved']);
@@ -45,6 +51,19 @@ const ASSET_PROCESS_DEVICES = new Set(['carrier@1.0', 'name-token@1.0', 'token@1
 const COMPUTE_TIMEOUT = 12_000;
 const COMPUTE_RETRY_BASE_DELAY = 1_000;
 const COMPUTE_RETRY_MAX_DELAY = 8_000;
+const LICENSE_FIELDS = [
+	['license', 'License'],
+	['access', 'Access'],
+	['access-fee', 'Access fee'],
+	['derivation', 'Derivatives'],
+	['derivation-fee', 'Derivative fee'],
+	['commercial-use', 'Commercial use'],
+	['commercial-use-fee', 'Commercial fee'],
+	['data-model-training', 'Model training'],
+	['payment-mode', 'Payment mode'],
+	['payment-address', 'Payment address'],
+	['currency', 'Currency'],
+] as const;
 
 function isLocalhostHostname(hostname: string): boolean {
 	const normalized = hostname.toLowerCase().replace(/^\[|\]$/g, '');
@@ -254,6 +273,25 @@ export function liveOrderOfAsset(state: AssetState): SwapOrder | null {
 	return Object.values(state.orders).find(
 		(order) => LIVE_ORDER.has(order.status) && order.quantity === 1
 	) ?? null;
+}
+
+export function licenseProperties(state: AssetState): LicenseProperty[] {
+	const normalized = new Map(
+		Object.entries(state.raw).map(([key, value]) => [
+			key.toLowerCase().replaceAll('_', '-'),
+			value,
+		])
+	);
+	return LICENSE_FIELDS.flatMap(([key, label]) => {
+		const held = normalized.get(key);
+		if (!['string', 'number', 'boolean'].includes(typeof held)) return [];
+		const raw = String(held);
+		const value =
+			key === 'license' && raw === 'dE0rmDfl9_OWjkDznNEXHaSO_JohJkRolvMzaCroUdw'
+				? 'Universal Data License'
+				: raw;
+		return [{ key, label, value }];
+	});
 }
 
 async function readState(
