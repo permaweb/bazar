@@ -847,128 +847,134 @@ function AssetView() {
 	const order = state ? liveOrder(state) : null;
 	const mine = Boolean(wallet.address && owner === wallet.address);
 	const license = state ? licenseProperties(state) : [];
+	const description = assetDescription(state, collection.description);
 	return (
 		<section className="asset-page">
 			<Link className="back" to={`/collection/${collection.id}`}>← {collection.name}</Link>
 			<div className="asset-layout">
-				<div className="asset-hero-media">
-					{asset.image ? <img src={asset.image} alt={asset.name} /> : <span>{asset.name.slice(0, 1).toUpperCase()}</span>}
-					<div className="asset-media-label">
-						<span>Permanent asset</span>
-						<strong>{asset.contentType ?? (asset.image ? 'image' : state?.device ?? 'process')}</strong>
-					</div>
-				</div>
-				<div className="asset-details">
-					<div className="asset-kicker">
-						<p className="eyebrow">{collection.name}</p>
-						<span className={order ? 'status-dot listed' : 'status-dot'}>{order ? 'For sale' : 'Live'}</span>
-					</div>
-					<h1>{asset.name}</h1>
-					<p className="permanent-id">Process <a href={`https://arweave.net/${asset.id}`} target="_blank" rel="noreferrer">{asset.id}</a></p>
-					{loading ? <Loading label="Computing current state…" /> : null}
-					{error ? <ErrorPanel message={error} /> : null}
-					{state ? (
-						<>
-							<div className="market-callout">
-								<div>
-									<span>{order ? 'Current ask' : 'Market status'}</span>
-									<strong>{order ? `${winstonToAr(order.asking)} AR` : 'Not listed'}</strong>
-								</div>
-								<div>
-									<span>Supply</span>
-									<strong>1 / 1</strong>
-								</div>
-							</div>
-							<div className="facts">
-								<div><span>Owner</span><strong>{owner ? short(owner) : 'Unassigned'}</strong></div>
-								<div><span>Execution</span><strong>{state.device || 'token@1.0'}</strong></div>
-								<div><span>Settlement</span><strong>Native AR</strong></div>
-								<div><span>Scheduler</span><strong>Arweave</strong></div>
-							</div>
-						</>
-					) : null}
-					<div className="actions">
-						{!wallet.address ? <button className="primary" onClick={() => void wallet.connect()}>Connect wallet</button> : null}
-						{wallet.address && order && !mine ? (
-							<button className="primary" onClick={() => setOperation({ kind: 'buy', order })}>Buy for {winstonToAr(order.asking)} AR</button>
-						) : null}
-						{wallet.address && mine && !order ? (
-							<button className="primary" onClick={() => setOperation({ kind: 'sell' })}>List for sale</button>
-						) : null}
-						{wallet.address && mine && order?.status === 'open' ? (
-							<button onClick={() => setOperation({ kind: 'cancel', order })}>Cancel listing</button>
-						) : null}
-						{wallet.address && mine && !order ? (
-							<button onClick={() => setOperation({ kind: 'transfer' })}>Transfer</button>
-						) : null}
-						<button onClick={() => void load()}>Refresh state</button>
-					</div>
-				</div>
-			</div>
-			{state ? (
-				<div className="asset-market-grid">
-					<section className="market-card orderbook-card">
-						<div className="market-card-heading">
-							<div>
-								<p className="eyebrow">LIVE MARKET</p>
-								<h2>Order book</h2>
-							</div>
-							<span>{order ? '1 ask' : '0 asks'}</span>
+				<div className="asset-column">
+					<div className="asset-hero-media">
+						{asset.image ? <img src={asset.image} alt={asset.name} /> : <span>{asset.name.slice(0, 1).toUpperCase()}</span>}
+						<div className="asset-media-label">
+							<span>Permanent asset</span>
+							<strong>{asset.contentType ?? (asset.image ? 'image' : state?.device ?? 'process')}</strong>
 						</div>
-						<div className="orderbook-table">
-							<div className="orderbook-head">
-								<span>Price</span><span>Quantity</span><span>Seller</span><span>Status</span>
-							</div>
-							{order ? (
-								<div className="orderbook-row">
-									<strong>{winstonToAr(order.asking)} AR</strong>
-									<span>{order.quantity}</span>
-									<a href={`https://arweave.net/${order.creator}`} target="_blank" rel="noreferrer">
-										{short(order.creator)}
-									</a>
-									<span className={`order-status ${order.status}`}>{order.status}</span>
+					</div>
+					{state ? (
+						<section className="market-card license-card">
+							<div className="market-card-heading">
+								<div>
+									<p className="eyebrow">USAGE RIGHTS</p>
+									<h2>License</h2>
 								</div>
+								<span>{license.length ? `${license.length} terms` : 'Not declared'}</span>
+							</div>
+							{license.length ? (
+								<dl className="license-properties">
+									{license.map((property) => (
+										<div key={property.key}>
+											<dt>{property.label}</dt>
+											<dd>{property.value}</dd>
+										</div>
+									))}
+								</dl>
 							) : (
-								<div className="orderbook-empty">
-									<strong>No open asks</strong>
-									<span>The one-unit asset is currently held outside market escrow.</span>
+								<div className="license-empty">
+									<span>◇</span>
+									<div>
+										<strong>No UDL terms declared</strong>
+										<p>This process does not publish Universal Data License properties.</p>
+									</div>
 								</div>
 							)}
-						</div>
-						<p className="market-note">
-							Computed from the asset’s current <code>orders</code> state through the selected HyperBEAM gateway.
-						</p>
-					</section>
-					<section className="market-card license-card">
-						<div className="market-card-heading">
-							<div>
-								<p className="eyebrow">USAGE RIGHTS</p>
-								<h2>License</h2>
-							</div>
-							<span>{license.length ? `${license.length} terms` : 'Not declared'}</span>
-						</div>
-						{license.length ? (
-							<dl className="license-properties">
-								{license.map((property) => (
-									<div key={property.key}>
-										<dt>{property.label}</dt>
-										<dd>{property.value}</dd>
-									</div>
-								))}
-							</dl>
-						) : (
-							<div className="license-empty">
-								<span>◇</span>
-								<div>
-									<strong>No UDL terms declared</strong>
-									<p>This process does not publish Universal Data License properties.</p>
-								</div>
-							</div>
-						)}
-						<p className="market-note">License terms are read directly from immutable process metadata when present.</p>
-					</section>
+							<p className="market-note">License terms are read directly from immutable process metadata when present.</p>
+						</section>
+					) : null}
 				</div>
-			) : null}
+				<div className="asset-column">
+					<div className="asset-details">
+						<div className="asset-kicker">
+							<p className="eyebrow">{collection.name}</p>
+							<span className={order ? 'status-dot listed' : 'status-dot'}>{order ? 'For sale' : 'Live'}</span>
+						</div>
+						<h1>{asset.name}</h1>
+						<p className="asset-description">{description}</p>
+						<p className="permanent-id">Process <a href={`https://arweave.net/${asset.id}`} target="_blank" rel="noreferrer">{asset.id}</a></p>
+						{loading ? <Loading label="Computing current state…" /> : null}
+						{error ? <ErrorPanel message={error} /> : null}
+						{state ? (
+							<>
+								<div className="market-callout">
+									<div>
+										<span>{order ? 'Current ask' : 'Market status'}</span>
+										<strong>{order ? `${winstonToAr(order.asking)} AR` : 'Not listed'}</strong>
+									</div>
+									<div>
+										<span>Supply</span>
+										<strong>1 / 1</strong>
+									</div>
+								</div>
+								<div className="facts">
+									<div><span>Owner</span><strong>{owner ? short(owner) : 'Unassigned'}</strong></div>
+									<div><span>Execution</span><strong>{state.device || 'token@1.0'}</strong></div>
+									<div><span>Settlement</span><strong>Native AR</strong></div>
+									<div><span>Scheduler</span><strong>Arweave</strong></div>
+								</div>
+							</>
+						) : null}
+						<div className="actions">
+							{!wallet.address ? <button className="primary" onClick={() => void wallet.connect()}>Connect wallet</button> : null}
+							{wallet.address && order && !mine ? (
+								<button className="primary" onClick={() => setOperation({ kind: 'buy', order })}>Buy for {winstonToAr(order.asking)} AR</button>
+							) : null}
+							{wallet.address && mine && !order ? (
+								<button className="primary" onClick={() => setOperation({ kind: 'sell' })}>List for sale</button>
+							) : null}
+							{wallet.address && mine && order?.status === 'open' ? (
+								<button onClick={() => setOperation({ kind: 'cancel', order })}>Cancel listing</button>
+							) : null}
+							{wallet.address && mine && !order ? (
+								<button onClick={() => setOperation({ kind: 'transfer' })}>Transfer</button>
+							) : null}
+							<button onClick={() => void load()}>Refresh state</button>
+						</div>
+					</div>
+					{state ? (
+						<section className="market-card orderbook-card">
+							<div className="market-card-heading">
+								<div>
+									<p className="eyebrow">LIVE MARKET</p>
+									<h2>Order book</h2>
+								</div>
+								<span>{order ? '1 ask' : '0 asks'}</span>
+							</div>
+							<div className="orderbook-table">
+								<div className="orderbook-head">
+									<span>Price</span><span>Quantity</span><span>Seller</span><span>Status</span>
+								</div>
+								{order ? (
+									<div className="orderbook-row">
+										<strong>{winstonToAr(order.asking)} AR</strong>
+										<span>{order.quantity}</span>
+										<a href={`https://arweave.net/${order.creator}`} target="_blank" rel="noreferrer">
+											{short(order.creator)}
+										</a>
+										<span className={`order-status ${order.status}`}>{order.status}</span>
+									</div>
+								) : (
+									<div className="orderbook-empty">
+										<strong>No open asks</strong>
+										<span>The one-unit asset is currently held outside market escrow.</span>
+									</div>
+								)}
+							</div>
+							<p className="market-note">
+								Computed from the asset’s current <code>orders</code> state through the selected HyperBEAM gateway.
+							</p>
+						</section>
+					) : null}
+				</div>
+			</div>
 			{operation && wallet.address ? (
 				<OperationDialog
 					asset={asset}
@@ -1293,6 +1299,23 @@ function AssetMosaic({ assets }: { assets: AssetSummary[] }) {
 }
 function Loading({ label }: { label: string }) { return <div className="loading"><span />{label}</div>; }
 function ErrorPanel({ message }: { message: string }) { return <div className="error-panel"><strong>Unable to load</strong><span>{message}</span></div>; }
+function assetDescription(state: AssetState | null, fallback: string) {
+	if (!state) return fallback;
+	if (typeof state.raw.description === 'string' && state.raw.description.trim()) {
+		return state.raw.description.trim();
+	}
+	if (typeof state.raw.data === 'string') {
+		try {
+			const metadata = JSON.parse(state.raw.data);
+			if (typeof metadata?.description === 'string' && metadata.description.trim()) {
+				return metadata.description.trim();
+			}
+		} catch {
+			// Non-JSON process data is content, not asset metadata.
+		}
+	}
+	return fallback;
+}
 function liveOrder(state: AssetState) { return liveOrderOfAsset(state); }
 function short(value: string) { return `${value.slice(0, 6)}…${value.slice(-5)}`; }
 function winstonToAr(value: string) { return (Number(value) / 1e12).toLocaleString(undefined, { maximumFractionDigits: 12 }); }

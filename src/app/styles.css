@@ -275,6 +275,7 @@ select {
 	display: grid; grid-template-columns: minmax(0, 1.03fr) minmax(380px, .97fr);
 	gap: clamp(34px, 5vw, 78px); align-items: start;
 }
+.asset-column { min-width: 0; display: grid; align-content: start; gap: 18px; }
 .asset-hero-media {
 	position: relative; aspect-ratio: 1; display: grid; place-items: center; overflow: hidden;
 	border: 1px solid var(--line); border-radius: 13px;
@@ -303,6 +304,7 @@ select {
 .status-dot.listed { color: #a04328; border-color: #efb8a7; background: #fff4f0; }
 .status-dot.listed::before { background: var(--accent); }
 .asset-details h1 { margin: 14px 0 15px; font-size: clamp(2.4rem, 5vw, 5rem); line-height: .98; letter-spacing: -.04em; }
+.asset-description { max-width: 62ch; margin: 0 0 17px; color: #595959; font-size: .9rem; line-height: 1.6; }
 .permanent-id { margin: 0; font-size: .73rem; color: #6a6a6a; }
 .permanent-id a { text-decoration: underline; text-underline-offset: 3px; }
 .market-callout {
@@ -319,7 +321,6 @@ select {
 .facts strong { text-align: right; }
 .actions { display: flex; flex-wrap: wrap; gap: 9px; }
 
-.asset-market-grid { margin-top: clamp(48px, 7vw, 90px); display: grid; grid-template-columns: 1.2fr .8fr; gap: 18px; }
 .market-card { padding: clamp(20px, 3vw, 30px); border: 1px solid var(--line); border-radius: 12px; background: var(--paper); }
 .market-card-heading { display: flex; align-items: start; justify-content: space-between; gap: 18px; margin-bottom: 22px; }
 .market-card-heading .eyebrow { margin-bottom: 5px; }
@@ -435,9 +436,13 @@ footer {
 	.hero-market { min-height: 360px; aspect-ratio: auto; }
 	.collection-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
 	.asset-grid { grid-template-columns: repeat(3, minmax(0,1fr)); }
-	.asset-layout { grid-template-columns: 1fr; }
+	.asset-layout { display: flex; align-items: stretch; flex-direction: column; }
+	.asset-column { display: contents; }
+	.asset-hero-media { order: 1; }
+	.asset-details { order: 2; }
+	.license-card { order: 3; }
+	.orderbook-card { order: 4; }
 	.asset-hero-media { max-height: 760px; }
-	.asset-market-grid { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 760px) {

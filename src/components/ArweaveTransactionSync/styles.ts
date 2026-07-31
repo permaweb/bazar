@@ -268,7 +268,7 @@ export const ProgressTrack = styled.div<{ $active: boolean; $progress: number } 
 
 export const RiskNote = styled.p`
 	margin: 7px 0 0;
-	color: ${(props) => props.theme.colors.font.alt1};
+	color: #525252;
 	font-size: ${(props) => props.theme.typography.size.xxSmall};
 `;
 
