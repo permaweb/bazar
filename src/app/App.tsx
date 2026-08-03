@@ -69,7 +69,6 @@ import {
   servingNodeOrigin,
   waitForAssetState,
   type AssetState,
-  type SwapOrder,
 } from 'api/asset-marketplace';
 import {
   AssetMintClient,
@@ -102,6 +101,13 @@ import { useWallet } from 'providers/WalletProvider';
 import arweaveNamesCube from '../assets/arweave-names-cube.gif';
 import arweaveNamesCubeStill from '../assets/arweave-names-cube.png';
 import bazarLogo from '../assets/logo.svg';
+import {
+  loadOperationActivities,
+  saveOperationActivities,
+  type Operation,
+  type OperationActivity,
+  type OperationActivityPhase,
+} from './operation-activity';
 
 import './styles.css';
 
@@ -122,21 +128,6 @@ const MarketContext = React.createContext<MarketContextValue>({
   addCreatedAsset: () => undefined,
   addCollection: () => undefined,
 });
-
-type OperationActivityPhase = 'form' | 'working' | 'done' | 'error';
-
-type OperationActivity = {
-  id: string;
-  asset: AssetSummary;
-  collectionId: string;
-  owner: string;
-  operation: Operation;
-  phase: OperationActivityPhase;
-  status: string;
-  confirmations: number;
-  confirmationTarget: number;
-  createdAt: number;
-};
 
 type OperationActivityContextValue = {
   activities: OperationActivity[];
@@ -247,8 +238,26 @@ export function App() {
 
 function OperationActivityProvider({ children }: React.PropsWithChildren) {
   const navigate = useNavigate();
+  const wallet = useWallet();
   const [activities, setActivities] = React.useState<OperationActivity[]>([]);
   const [activeId, setActiveId] = React.useState<string | null>(null);
+  const [hydratedOwners, setHydratedOwners] = React.useState<string[]>([]);
+  React.useEffect(() => {
+    const owner = wallet.address;
+    if (!owner || hydratedOwners.includes(owner)) return;
+    const restored = loadOperationActivities(localStorage, owner);
+    setActivities((current) => {
+      const known = new Set(current.map((activity) => activity.id));
+      return [...current, ...restored.filter((activity) => !known.has(activity.id))].sort(
+        (left, right) => right.createdAt - left.createdAt,
+      );
+    });
+    setHydratedOwners((current) => (current.includes(owner) ? current : [...current, owner]));
+  }, [hydratedOwners, wallet.address]);
+  React.useEffect(() => {
+    if (!hydratedOwners.length) return;
+    saveOperationActivities(localStorage, activities, hydratedOwners);
+  }, [activities, hydratedOwners]);
   const start = React.useCallback(
     (input: Pick<OperationActivity, 'asset' | 'collectionId' | 'owner' | 'operation'>) => {
       const existing = activities.find((activity) => activity.asset.id === input.asset.id && activity.phase !== 'done');
@@ -292,15 +301,18 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
     },
     [],
   );
+  const updateOperation = React.useCallback((id: string, operation: Operation) => {
+    setActivities((current) => current.map((activity) => (activity.id === id ? { ...activity, operation } : activity)));
+  }, []);
   const remove = React.useCallback((id: string) => {
     setActivities((current) => current.filter((activity) => activity.id !== id));
     setActiveId((current) => (current === id ? null : current));
   }, []);
   const clearFinished = React.useCallback(() => {
-    setActivities((current) => current.filter((activity) => !['done', 'error'].includes(activity.phase)));
+    setActivities((current) => current.filter((activity) => activity.phase !== 'done'));
     setActiveId((current) => {
       const active = activities.find((activity) => activity.id === current);
-      return active && ['done', 'error'].includes(active.phase) ? null : current;
+      return active?.phase === 'done' ? null : current;
     });
   }, [activities]);
   const value = React.useMemo<OperationActivityContextValue>(
@@ -323,10 +335,12 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
           key={activity.id}
           taskId={activity.id}
           asset={activity.asset}
+          collectionId={activity.collectionId}
           owner={activity.owner}
           operation={activity.operation}
           visible={activeId === activity.id}
           onUpdate={update}
+          onOperation={(operation) => updateOperation(activity.id, operation)}
           onClose={() => {
             if (activity.phase === 'form') remove(activity.id);
             else setActiveId(null);
@@ -474,6 +488,7 @@ function Header() {
               onClick={() => void (wallet.address ? wallet.disconnect() : wallet.connect())}
             >
               <Wallet className="ui-icon ui-icon--sm" aria-hidden="true" />
+              <span>{wallet.address ? short(wallet.address) : 'Connect'}</span>
             </button>
           </div>
         </nav>
@@ -623,7 +638,7 @@ function OperationActivityControl() {
   const [open, setOpen] = React.useState(false);
   const containerRef = React.useRef<HTMLDivElement>(null);
   const workingCount = activities.filter((activity) => activity.phase === 'working').length;
-  const finishedCount = activities.filter((activity) => ['done', 'error'].includes(activity.phase)).length;
+  const completedCount = activities.filter((activity) => activity.phase === 'done').length;
   React.useEffect(() => {
     if (!open) return;
     const close = (event: MouseEvent) => {
@@ -653,9 +668,9 @@ function OperationActivityControl() {
               <strong>Transaction activity</strong>
               <span>{workingCount ? `${workingCount} running in the background` : 'No transactions running'}</span>
             </div>
-            {finishedCount ? (
+            {completedCount ? (
               <button type="button" onClick={clearFinished}>
-                Clear finished
+                Clear completed
               </button>
             ) : null}
           </div>
@@ -698,7 +713,7 @@ function OperationActivityControl() {
                   </span>
                   <ChevronRight className="ui-icon ui-icon--sm operation-activity-chevron" aria-hidden="true" />
                 </button>
-                {activity.phase !== 'working' ? (
+                {activity.phase === 'done' ? (
                   <button
                     type="button"
                     className="operation-activity-remove"
@@ -2893,24 +2908,22 @@ function AssetView() {
   );
 }
 
-type Operation =
-  | { kind: 'sell' | 'transfer'; resumeId?: string; value?: string }
-  | { kind: 'cancel'; order: SwapOrder; resumeId?: string }
-  | { kind: 'buy'; order: SwapOrder; resume?: PurchaseSnapshot };
-
 function OperationDialog({
   taskId,
   asset,
+  collectionId,
   owner,
   operation,
   visible,
   onUpdate,
+  onOperation,
   onClose,
   onDiscard,
   onViewAsset,
 }: {
   taskId: string;
   asset: AssetSummary;
+  collectionId: string;
   owner: string;
   operation: Operation;
   visible: boolean;
@@ -2919,6 +2932,7 @@ function OperationDialog({
     patch: Pick<OperationActivity, 'phase' | 'status' | 'confirmations' | 'confirmationTarget'>,
     assetId: string,
   ): void;
+  onOperation(operation: Operation): void;
   onClose(): void;
   onDiscard(): void;
   onViewAsset(): void;
@@ -2990,16 +3004,19 @@ function OperationDialog({
         );
         purchaseRef.current = purchase;
         const update = (state: PurchaseState) => {
+          const snapshot = purchase.snapshot();
           setPurchaseState(state);
           localStorage.setItem(
             `bazar-purchase:${asset.id}`,
             JSON.stringify({
               asset: { id: asset.id, name: asset.name, image: asset.image },
+              collectionId,
               buyer: owner,
               order: operation.order,
-              snapshot: purchase.snapshot(),
+              snapshot,
             }),
           );
+          onOperation({ kind: 'buy', order: operation.order, resume: snapshot });
         };
         purchase.on('state', update);
         purchase.on('failed', update);
@@ -3031,6 +3048,7 @@ function OperationDialog({
         `bazar-operation:${asset.id}`,
         JSON.stringify({
           asset: { id: asset.id, name: asset.name, image: asset.image },
+          collectionId,
           txId: prepared.id,
           kind: operation.kind,
           assetId: asset.id,
@@ -3038,6 +3056,11 @@ function OperationDialog({
           ...(operation.kind === 'cancel' ? { order: operation.order } : { value }),
           createdAt: Date.now(),
         }),
+      );
+      onOperation(
+        operation.kind === 'cancel'
+          ? { kind: 'cancel', order: operation.order, resumeId: prepared.id }
+          : { kind: operation.kind, value, resumeId: prepared.id },
       );
       await dispatchAndConfirm(prepared, {
         target: 5,
@@ -3222,6 +3245,7 @@ function OperationDialog({
                       `bazar-purchase:${asset.id}`,
                       JSON.stringify({
                         asset: { id: asset.id, name: asset.name, image: asset.image },
+                        collectionId,
                         buyer: owner,
                         order: operation.order,
                         snapshot: purchaseSnapshot(purchaseState),

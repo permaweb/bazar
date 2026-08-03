@@ -1418,13 +1418,15 @@ button:disabled {
   border-color: var(--button-accent-hover);
 }
 .wallet {
-  width: 36px;
+  min-width: 36px;
   min-height: 36px;
-  padding: 0;
+  padding: 0 11px;
   border-radius: 7px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 7px;
+  white-space: nowrap;
 }
 .wallet:hover:not(:disabled),
 .primary:hover:not(:disabled) {
@@ -3519,7 +3521,7 @@ body input:focus-visible {
     display: none;
   }
   .wallet {
-    padding: 0;
+    padding-inline: 10px;
   }
   .hero {
     padding-top: 60px;
@@ -3676,10 +3678,9 @@ body input:focus-visible {
     font-size: 0.76rem;
   }
   .wallet {
-    width: 37px;
     min-width: 37px;
     min-height: 37px;
-    padding: 0;
+    padding-inline: 10px;
   }
   .operation-activity-menu {
     right: -39px;
