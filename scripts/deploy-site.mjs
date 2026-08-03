@@ -20,7 +20,9 @@ const wallet = completePrivateJwk(JSON.parse(
 		: Buffer.from(deployKey, 'base64').toString('utf8')
 ));
 const owner = await arweave.wallets.jwkToAddress(wallet);
-const files = await listFiles(distRoot);
+// Keep source maps in normal builds for downstream debugging without paying to
+// include those non-runtime artifacts in the immutable site deployment.
+const files = (await listFiles(distRoot)).filter((filename) => !filename.endsWith('.map'));
 const ledger = await readLedger(owner);
 
 for (const filename of files) {
