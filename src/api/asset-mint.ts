@@ -1,0 +1,669 @@
+import Arweave from 'arweave';
+
+import type { AssetSummary, Collection } from './collections';
+
+const ADDRESS = /^[A-Za-z0-9_-]{43}$/;
+const IMAGE_CONTENT_TYPES = new Set(['image/gif', 'image/jpeg', 'image/png', 'image/webp']);
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+const HIGH_COST_WINSTON = 100_000_000_000n;
+const STORAGE_KEY = 'bazar-created-assets';
+const DRAFT_PREFIX = 'bazar-mint-draft:';
+const GATEWAY = 'https://arweave.net';
+
+export const CREATED_COLLECTION_ID = 'created-assets';
+export const CREATED_COLLECTION_NAME = 'Created on Bazar';
+
+export type MintInput = {
+  name: string;
+  description: string;
+  file: File;
+  collection?: string;
+};
+
+export type MintEstimate = {
+  mediaReward: bigint;
+  processReward: bigint;
+  total: bigint;
+  processBytes: number;
+};
+
+export type MintDraft = {
+  owner: string;
+  name: string;
+  description: string;
+  contentType: string;
+  mediaId: string;
+  createdAt: number;
+  collection?: string;
+};
+
+export type MintedAsset = AssetSummary & {
+  description: string;
+  mediaId: string;
+  owner: string;
+  createdAt: number;
+};
+
+export type MintResult = {
+  asset: MintedAsset;
+  mediaId: string;
+  processId: string;
+};
+
+export type MintPhase = 'signing-media' | 'uploading-media' | 'signing-process' | 'creating-process';
+
+export type CollectionMintInput = {
+  name: string;
+  description: string;
+  files: File[];
+};
+
+export type CollectionMintEstimate = {
+  assetCount: number;
+  total: bigint;
+  transactionCount: number;
+};
+
+export type CollectionMintPhase =
+  | { kind: 'asset'; index: number; total: number; phase: MintPhase }
+  | { kind: 'manifest' | 'reference'; phase: 'signing' | 'uploading' };
+
+export type MintedCollection = Collection & {
+  manifestId: string;
+  owner: string;
+  createdAt: number;
+};
+
+export type CollectionMintResult = {
+  collection: MintedCollection;
+  manifestId: string;
+  referenceId: string;
+};
+
+type StorageLike = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
+
+export type AssetMintClientOptions = {
+  wallet?: Window['arweaveWallet'];
+  fetch?: typeof fetch;
+  arweave?: any;
+  storage?: StorageLike;
+  gateway?: string;
+};
+
+export class AssetMintClient {
+  #wallet?: Window['arweaveWallet'];
+  #fetch: typeof fetch;
+  #arweave: any;
+  #storage?: StorageLike;
+  #gateway: string;
+
+  constructor(options: AssetMintClientOptions = {}) {
+    this.#wallet = options.wallet ?? globalThis.window?.arweaveWallet;
+    this.#fetch = options.fetch ?? globalThis.fetch.bind(globalThis);
+    this.#arweave = options.arweave ?? Arweave.init({ host: 'arweave.net', port: 443, protocol: 'https' });
+    this.#storage = options.storage ?? globalThis.window?.localStorage;
+    this.#gateway = options.gateway ?? GATEWAY;
+  }
+
+  async estimate(input: MintInput, signal?: AbortSignal): Promise<MintEstimate> {
+    validateMintInput(input);
+    const placeholder = 'x'.repeat(43);
+    const processBytes = byteLength(JSON.stringify(mintMetadata(input, placeholder)));
+    const [mediaReward, processReward] = await Promise.all([
+      this.#price(input.file.size, signal),
+      this.#price(processBytes, signal),
+    ]);
+    return { mediaReward, processReward, total: mediaReward + processReward, processBytes };
+  }
+
+  async mint(
+    input: MintInput,
+    owner: string,
+    options: { allowHighCost?: boolean; signal?: AbortSignal; onPhase?: (phase: MintPhase) => void } = {},
+  ): Promise<MintResult> {
+    validateMintInput(input);
+    assertAddress(owner, 'invalid-mint-owner');
+    await this.#assertActiveSigner(owner);
+    const estimate = await this.estimate(input, options.signal);
+    if (estimate.total > HIGH_COST_WINSTON && !options.allowHighCost)
+      throw new Error('mint-high-cost-confirmation-required');
+    await this.#assertBalance(owner, estimate.total, options.signal);
+
+    options.onPhase?.('signing-media');
+    const media = await this.#arweave.createTransaction(
+      { data: new Uint8Array(await input.file.arrayBuffer()) },
+      'use_wallet',
+    );
+    media.addTag('Content-Type', input.file.type);
+    media.addTag('App-Name', 'Bazar');
+    media.addTag('App-Version', '2.0.0');
+    media.addTag('Type', 'Asset-Media');
+    const signedMedia = await this.#sign(media, owner, options.signal);
+    options.onPhase?.('uploading-media');
+    await this.#post(signedMedia, options.signal);
+
+    const draft: MintDraft = {
+      owner,
+      name: input.name.trim(),
+      description: input.description.trim(),
+      contentType: input.file.type,
+      mediaId: signedMedia.id,
+      createdAt: Date.now(),
+      ...(input.collection ? { collection: input.collection.trim() } : {}),
+    };
+    this.#storage?.setItem(`${DRAFT_PREFIX}${owner}`, JSON.stringify(draft));
+    return this.resume(draft, owner, options);
+  }
+
+  async resume(
+    draft: MintDraft,
+    owner: string,
+    options: { allowHighCost?: boolean; signal?: AbortSignal; onPhase?: (phase: MintPhase) => void } = {},
+  ): Promise<MintResult> {
+    validateMintDraft(draft);
+    assertAddress(owner, 'invalid-mint-owner');
+    if (draft.owner !== owner) throw new Error('mint-draft-wallet-mismatch');
+    await this.#assertActiveSigner(owner);
+    const metadata = mintMetadata(draft, draft.mediaId);
+    const processReward = await this.#price(byteLength(JSON.stringify(metadata)), options.signal);
+    if (processReward > HIGH_COST_WINSTON && !options.allowHighCost)
+      throw new Error('mint-high-cost-confirmation-required');
+    await this.#assertBalance(owner, processReward, options.signal);
+
+    options.onPhase?.('signing-process');
+    const process = await this.#arweave.createTransaction({ data: JSON.stringify(metadata) }, 'use_wallet');
+    for (const [name, value] of Object.entries(mintProcessTags(draft, owner))) process.addTag(name, value);
+    const signedProcess = await this.#sign(process, owner, options.signal);
+    options.onPhase?.('creating-process');
+    await this.#post(signedProcess, options.signal);
+
+    const asset: MintedAsset = {
+      id: signedProcess.id,
+      name: draft.name,
+      description: draft.description,
+      contentType: draft.contentType,
+      image: `${this.#gateway}/${draft.mediaId}`,
+      mediaId: draft.mediaId,
+      owner,
+      createdAt: draft.createdAt,
+    };
+    storeMintedAsset(asset, this.#storage);
+    this.#storage?.removeItem(`${DRAFT_PREFIX}${owner}`);
+    return { asset, mediaId: draft.mediaId, processId: signedProcess.id };
+  }
+
+  async publishData(
+    data: string,
+    tags: Record<string, string>,
+    owner: string,
+    options: { signal?: AbortSignal; onPhase?: (phase: 'signing' | 'uploading') => void } = {},
+  ): Promise<string> {
+    assertAddress(owner, 'invalid-mint-owner');
+    await this.#assertActiveSigner(owner);
+    const reward = await this.#price(byteLength(data), options.signal);
+    await this.#assertBalance(owner, reward, options.signal);
+    options.onPhase?.('signing');
+    const transaction = await this.#arweave.createTransaction({ data }, 'use_wallet');
+    for (const [name, value] of Object.entries(tags)) transaction.addTag(name, value);
+    const signed = await this.#sign(transaction, owner, options.signal);
+    options.onPhase?.('uploading');
+    await this.#post(signed, options.signal);
+    return signed.id;
+  }
+
+  async #price(bytes: number, signal?: AbortSignal): Promise<bigint> {
+    const response = await this.#fetch(`${this.#gateway}/price/${bytes}`, { signal });
+    if (!response.ok) throw new Error(`mint-price-${response.status}`);
+    const value = (await response.text()).trim();
+    if (!/^\d+$/.test(value)) throw new Error('mint-price-invalid');
+    return BigInt(value);
+  }
+
+  async #sign(transaction: any, owner: string, signal?: AbortSignal): Promise<any> {
+    if (!this.#wallet?.sign) throw new Error('wallet-sign-unavailable');
+    signal?.throwIfAborted();
+    await this.#assertActiveSigner(owner);
+    const signed = (await this.#wallet.sign(transaction)) ?? transaction;
+    if (!ADDRESS.test(signed?.id)) throw new Error('wallet-returned-unsigned-transaction');
+    const signedOwner = String(signed.owner ?? '');
+    if (!signedOwner || (await this.#arweave.wallets.ownerToAddress(signedOwner)) !== owner) {
+      throw new Error('wallet-account-changed');
+    }
+    return signed;
+  }
+
+  async #post(transaction: any, signal?: AbortSignal): Promise<void> {
+    const serializable =
+      typeof transaction.toJSON === 'function' ? transaction.toJSON() : JSON.parse(JSON.stringify(transaction));
+    serializable.id = transaction.id;
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      const response = await this.#fetch(`${this.#gateway}/tx`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(serializable),
+        signal,
+      });
+      if ([200, 202, 208].includes(response.status)) return;
+      if (attempt === 3) throw new Error(`mint-upload-${response.status}`);
+      await delay(attempt * 750, signal);
+    }
+  }
+
+  async #assertActiveSigner(owner: string): Promise<void> {
+    if (this.#wallet?.getActiveAddress && (await this.#wallet.getActiveAddress()) !== owner) {
+      throw new Error('wallet-account-changed');
+    }
+  }
+
+  async #assertBalance(owner: string, required: bigint, signal?: AbortSignal): Promise<void> {
+    const response = await this.#fetch(`${this.#gateway}/wallet/${owner}/balance`, { signal });
+    if (!response.ok) throw new Error(`wallet-balance-${response.status}`);
+    const balance = BigInt((await response.text()).trim());
+    if (balance < required) throw new Error('mint-insufficient-balance');
+  }
+}
+
+export class CollectionMintClient {
+  #assetClient: AssetMintClient;
+  #fetch: typeof fetch;
+  #gateway: string;
+  #storage?: StorageLike;
+
+  constructor(options: AssetMintClientOptions = {}) {
+    this.#assetClient = new AssetMintClient(options);
+    this.#fetch = options.fetch ?? globalThis.fetch.bind(globalThis);
+    this.#gateway = options.gateway ?? GATEWAY;
+    this.#storage = options.storage ?? globalThis.window?.localStorage;
+  }
+
+  async estimate(input: CollectionMintInput, signal?: AbortSignal): Promise<CollectionMintEstimate> {
+    validateCollectionMintInput(input);
+    const placeholder = 'x'.repeat(43);
+    const assets = input.files.map((file, index) => ({
+      id: placeholder,
+      name: fileAssetName(file, index),
+      contentType: file.type,
+      image: `${this.#gateway}/${placeholder}`,
+      mediaId: placeholder,
+    }));
+    const processSizes = input.files.map((file, index) =>
+      byteLength(
+        JSON.stringify(
+          mintMetadata(
+            {
+              name: fileAssetName(file, index),
+              description: input.description,
+              contentType: file.type,
+              collection: input.name,
+            },
+            placeholder,
+          ),
+        ),
+      ),
+    );
+    const manifest = collectionManifest(input, assets);
+    const sizes = [
+      ...input.files.map((file) => file.size),
+      ...processSizes,
+      byteLength(JSON.stringify(manifest)),
+      byteLength('Bazar collection index'),
+    ];
+    const rewards = await Promise.all(sizes.map((size) => this.#price(size, signal)));
+    return {
+      assetCount: input.files.length,
+      total: rewards.reduce((total, reward) => total + reward, 0n),
+      transactionCount: input.files.length * 2 + 2,
+    };
+  }
+
+  async mint(
+    input: CollectionMintInput,
+    owner: string,
+    options: {
+      allowHighCost?: boolean;
+      signal?: AbortSignal;
+      onPhase?: (phase: CollectionMintPhase) => void;
+    } = {},
+  ): Promise<CollectionMintResult> {
+    validateCollectionMintInput(input);
+    const estimate = await this.estimate(input, options.signal);
+    if (isHighMintCost(estimate.total) && !options.allowHighCost) {
+      throw new Error('mint-high-cost-confirmation-required');
+    }
+    const assets: MintedAsset[] = [];
+    for (const [index, file] of input.files.entries()) {
+      const result = await this.#assetClient.mint(
+        {
+          file,
+          name: fileAssetName(file, index),
+          description: input.description,
+          collection: input.name.trim(),
+        },
+        owner,
+        {
+          allowHighCost: options.allowHighCost,
+          signal: options.signal,
+          onPhase: (phase) => options.onPhase?.({ kind: 'asset', index, total: input.files.length, phase }),
+        },
+      );
+      assets.push(result.asset);
+    }
+    const manifestData = JSON.stringify(collectionManifest(input, assets));
+    const manifestId = await this.#assetClient.publishData(
+      manifestData,
+      {
+        'Content-Type': 'application/json',
+        'App-Name': 'Bazar',
+        'App-Version': '2.0.0',
+        type: 'Collection-Manifest',
+        name: input.name.trim(),
+      },
+      owner,
+      { signal: options.signal, onPhase: (phase) => options.onPhase?.({ kind: 'manifest', phase }) },
+    );
+    const referenceId = await this.#assetClient.publishData(
+      'Bazar collection index',
+      {
+        'Content-Type': 'application/x.ao-message',
+        'App-Name': 'Bazar',
+        'App-Version': '2.0.0',
+        device: 'reference@1.0',
+        'reference-value': manifestId,
+        type: 'Collection-Index',
+        name: input.name.trim(),
+      },
+      owner,
+      { signal: options.signal, onPhase: (phase) => options.onPhase?.({ kind: 'reference', phase }) },
+    );
+    const collection: MintedCollection = {
+      id: referenceId,
+      name: input.name.trim(),
+      description: input.description.trim() || 'A permanent Arweave collection created on Bazar.',
+      kind: 'images',
+      assets,
+      total: assets.length,
+      manifestId,
+      owner,
+      createdAt: Date.now(),
+    };
+    storeMintedCollection(collection, this.#storage);
+    return { collection, manifestId, referenceId };
+  }
+
+  async #price(bytes: number, signal?: AbortSignal): Promise<bigint> {
+    const response = await this.#fetch(`${this.#gateway}/price/${bytes}`, { signal });
+    if (!response.ok) throw new Error(`mint-price-${response.status}`);
+    return BigInt((await response.text()).trim());
+  }
+}
+
+export function validateMintInput(input: MintInput): void {
+  const name = input.name.trim();
+  const description = input.description.trim();
+  if (!name || name.length > 80) throw new TypeError('mint-name-invalid');
+  if (description.length > 600) throw new TypeError('mint-description-invalid');
+  if (!(input.file instanceof File)) throw new TypeError('mint-file-required');
+  if (!IMAGE_CONTENT_TYPES.has(input.file.type)) throw new TypeError('mint-file-type-unsupported');
+  if (!input.file.size || input.file.size > MAX_IMAGE_BYTES) throw new TypeError('mint-file-size-invalid');
+}
+
+export function validateCollectionMintInput(input: CollectionMintInput): void {
+  if (!input.name.trim() || input.name.trim().length > 80) throw new TypeError('mint-collection-name-invalid');
+  if (input.description.trim().length > 600) throw new TypeError('mint-description-invalid');
+  if (!Array.isArray(input.files) || input.files.length < 1 || input.files.length > 10) {
+    throw new TypeError('mint-collection-size-invalid');
+  }
+  for (const file of input.files)
+    validateMintInput({
+      name: fileAssetName(file, 0),
+      description: input.description,
+      file,
+      collection: input.name,
+    });
+}
+
+export function mintMetadata(
+  input: Pick<MintInput, 'name' | 'description' | 'collection'> & { contentType?: string; file?: File },
+  mediaId: string,
+) {
+  const contentType = input.contentType ?? input.file?.type ?? '';
+  return {
+    name: input.name.trim(),
+    description: input.description.trim(),
+    contentType,
+    image: mediaId,
+    collection: input.collection?.trim() || CREATED_COLLECTION_NAME,
+  };
+}
+
+export function mintProcessTags(
+  input: { name: string; contentType: string; mediaId: string; collection?: string },
+  owner: string,
+): Record<string, string> {
+  assertAddress(owner, 'invalid-mint-owner');
+  assertAddress(input.mediaId, 'invalid-mint-media-id');
+  return {
+    'Content-Type': 'application/json',
+    'App-Name': 'Bazar',
+    'App-Version': '2.0.0',
+    device: 'process@1.0',
+    type: 'Process',
+    'execution-device': 'token@1.0',
+    'swap-device': 'arweave-swap@1.0',
+    'scheduler-device': 'arweave-scheduler@1.0',
+    'scheduler-mode': 'all',
+    'initial-holder': owner,
+    'total-supply': '1',
+    denomination: '0',
+    ticker: 'ASSET',
+    name: input.name.trim(),
+    collection: input.collection?.trim() || CREATED_COLLECTION_NAME,
+    'asset-content-type': input.contentType,
+    'asset-data': input.mediaId,
+  };
+}
+
+export function getMintDraft(
+  owner: string,
+  storage: StorageLike | undefined = globalThis.window?.localStorage,
+): MintDraft | null {
+  if (!ADDRESS.test(owner) || !storage) return null;
+  try {
+    const draft = JSON.parse(storage.getItem(`${DRAFT_PREFIX}${owner}`) ?? 'null');
+    validateMintDraft(draft);
+    return draft.owner === owner ? draft : null;
+  } catch {
+    return null;
+  }
+}
+
+export function discardMintDraft(
+  owner: string,
+  storage: StorageLike | undefined = globalThis.window?.localStorage,
+): void {
+  if (ADDRESS.test(owner)) storage?.removeItem(`${DRAFT_PREFIX}${owner}`);
+}
+
+export function loadMintedAssets(storage: StorageLike | undefined = globalThis.window?.localStorage): MintedAsset[] {
+  if (!storage) return [];
+  try {
+    const assets = JSON.parse(storage.getItem(STORAGE_KEY) ?? '[]');
+    if (!Array.isArray(assets)) return [];
+    return assets.filter(isMintedAsset).sort((a, b) => b.createdAt - a.createdAt);
+  } catch {
+    return [];
+  }
+}
+
+export function storeMintedAsset(
+  asset: MintedAsset,
+  storage: StorageLike | undefined = globalThis.window?.localStorage,
+): void {
+  if (!storage || !isMintedAsset(asset)) return;
+  storage.setItem(
+    STORAGE_KEY,
+    JSON.stringify([asset, ...loadMintedAssets(storage).filter((item) => item.id !== asset.id)]),
+  );
+}
+
+export function loadMintedCollections(
+  storage: StorageLike | undefined = globalThis.window?.localStorage,
+): MintedCollection[] {
+  if (!storage) return [];
+  try {
+    const collections = JSON.parse(storage.getItem(`${STORAGE_KEY}:collections`) ?? '[]');
+    return Array.isArray(collections)
+      ? collections.filter(isMintedCollection).sort((a, b) => b.createdAt - a.createdAt)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+export function storeMintedCollection(
+  collection: MintedCollection,
+  storage: StorageLike | undefined = globalThis.window?.localStorage,
+): void {
+  if (!storage || !isMintedCollection(collection)) return;
+  storage.setItem(
+    `${STORAGE_KEY}:collections`,
+    JSON.stringify([collection, ...loadMintedCollections(storage).filter((item) => item.id !== collection.id)]),
+  );
+}
+
+export function createdCollection(assets: AssetSummary[] = loadMintedAssets()): Collection {
+  return {
+    id: CREATED_COLLECTION_ID,
+    name: CREATED_COLLECTION_NAME,
+    description: 'One-of-one media minted permanently through Bazar.',
+    kind: 'images',
+    assets,
+    total: assets.length,
+  };
+}
+
+export function assetFromMintState(
+  processId: string,
+  raw: Record<string, unknown>,
+  fallbackName = '',
+): AssetSummary | null {
+  const mediaId = String(raw['asset-data'] ?? '');
+  const contentType = String(raw['asset-content-type'] ?? '');
+  const name = String(raw.name ?? fallbackName).trim();
+  if (!ADDRESS.test(processId) || !ADDRESS.test(mediaId) || !IMAGE_CONTENT_TYPES.has(contentType) || !name) return null;
+  return { id: processId, name, contentType, image: `${GATEWAY}/${mediaId}` };
+}
+
+export function isBazarMintTags(tags: Record<string, string>): boolean {
+  return (
+    tags['app-name'] === 'Bazar' &&
+    tags.type === 'Process' &&
+    tags['execution-device'] === 'token@1.0' &&
+    tags['swap-device'] === 'arweave-swap@1.0' &&
+    ADDRESS.test(tags['asset-data'] ?? '') &&
+    IMAGE_CONTENT_TYPES.has(tags['asset-content-type'] ?? '')
+  );
+}
+
+export function isHighMintCost(total: bigint): boolean {
+  return total > HIGH_COST_WINSTON;
+}
+
+function validateMintDraft(value: unknown): asserts value is MintDraft {
+  if (!value || typeof value !== 'object') throw new TypeError('mint-draft-invalid');
+  const draft = value as MintDraft;
+  if (
+    !ADDRESS.test(draft.owner) ||
+    !ADDRESS.test(draft.mediaId) ||
+    !draft.name?.trim() ||
+    draft.name.length > 80 ||
+    !IMAGE_CONTENT_TYPES.has(draft.contentType) ||
+    typeof draft.description !== 'string' ||
+    draft.description.length > 600 ||
+    !Number.isSafeInteger(draft.createdAt)
+  )
+    throw new TypeError('mint-draft-invalid');
+}
+
+function collectionManifest(
+  input: Pick<CollectionMintInput, 'name' | 'description'>,
+  assets: Array<AssetSummary & { mediaId?: string }>,
+) {
+  return {
+    version: 2,
+    name: input.name.trim(),
+    description: input.description.trim() || 'A permanent Arweave collection created on Bazar.',
+    kind: 'arweave-native-token-assets',
+    assetCount: assets.length,
+    assets: assets.map((asset, index) => ({
+      index: index + 1,
+      id: asset.id,
+      name: asset.name,
+      contentType: asset.contentType,
+      image: asset.image,
+      ...(asset.mediaId ? { mediaId: asset.mediaId } : {}),
+    })),
+  };
+}
+
+function fileAssetName(file: File, index: number): string {
+  return (
+    file.name
+      .replace(/\.[^.]+$/, '')
+      .trim()
+      .slice(0, 80) || `Asset ${index + 1}`
+  );
+}
+
+function isMintedAsset(value: unknown): value is MintedAsset {
+  if (!value || typeof value !== 'object') return false;
+  const asset = value as MintedAsset;
+  return (
+    ADDRESS.test(asset.id) &&
+    ADDRESS.test(asset.mediaId) &&
+    ADDRESS.test(asset.owner) &&
+    typeof asset.name === 'string' &&
+    typeof asset.description === 'string' &&
+    IMAGE_CONTENT_TYPES.has(asset.contentType ?? '') &&
+    typeof asset.image === 'string' &&
+    Number.isSafeInteger(asset.createdAt)
+  );
+}
+
+function isMintedCollection(value: unknown): value is MintedCollection {
+  if (!value || typeof value !== 'object') return false;
+  const collection = value as MintedCollection;
+  return (
+    ADDRESS.test(collection.id) &&
+    ADDRESS.test(collection.manifestId) &&
+    ADDRESS.test(collection.owner) &&
+    collection.kind === 'images' &&
+    typeof collection.name === 'string' &&
+    typeof collection.description === 'string' &&
+    Array.isArray(collection.assets) &&
+    collection.assets.every(isMintedAsset) &&
+    Number.isSafeInteger(collection.createdAt)
+  );
+}
+
+function assertAddress(value: string, error: string): void {
+  if (!ADDRESS.test(value)) throw new TypeError(error);
+}
+
+function byteLength(value: string): number {
+  return new TextEncoder().encode(value).byteLength;
+}
+
+function delay(duration: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(resolve, duration);
+    signal?.addEventListener(
+      'abort',
+      () => {
+        clearTimeout(timer);
+        reject(signal.reason ?? new DOMException('Aborted', 'AbortError'));
+      },
+      { once: true },
+    );
+  });
+}

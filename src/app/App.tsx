@@ -36,7 +36,13 @@ import {
   type PurchaseState,
 } from 'weave-wrangler';
 
-import { loadCollections, loadMoreCarrierNames, type AssetSummary, type Collection } from 'api/collections';
+import {
+  loadCollectionReference,
+  loadCollections,
+  loadMoreCarrierNames,
+  type AssetSummary,
+  type Collection,
+} from 'api/collections';
 import {
   discoverCollectionActivity,
   discoverMarketActivity,
@@ -58,6 +64,24 @@ import {
   type AssetState,
   type SwapOrder,
 } from 'api/asset-marketplace';
+import {
+  AssetMintClient,
+  CollectionMintClient,
+  CREATED_COLLECTION_ID,
+  assetFromMintState,
+  createdCollection,
+  discardMintDraft,
+  getMintDraft,
+  isHighMintCost,
+  loadMintedAssets,
+  loadMintedCollections,
+  type CollectionMintEstimate,
+  type CollectionMintPhase,
+  type MintDraft,
+  type MintEstimate,
+  type MintPhase,
+  type MintedAsset,
+} from 'api/asset-mint';
 import { ArweaveObserverNetwork } from 'api/arweave-observers';
 import { assetObserverNetworkOptions } from 'api/asset-observers';
 import { AssetTransactionClient, DEFAULT_REGISTRATION_FEE, dispatchAndConfirm } from 'api/asset-transactions';
@@ -75,6 +99,8 @@ type MarketContextValue = {
   loading: boolean;
   error: string | null;
   loadMore(collectionId: string): Promise<void>;
+  addCreatedAsset(asset: MintedAsset): void;
+  addCollection(collection: Collection): void;
 };
 
 const MarketContext = React.createContext<MarketContextValue>({
@@ -82,6 +108,8 @@ const MarketContext = React.createContext<MarketContextValue>({
   loading: true,
   error: null,
   loadMore: async () => undefined,
+  addCreatedAsset: () => undefined,
+  addCollection: () => undefined,
 });
 
 export function App() {
@@ -90,11 +118,27 @@ export function App() {
     loading: true,
     error: null,
     loadMore: async () => undefined,
+    addCreatedAsset: () => undefined,
+    addCollection: () => undefined,
   });
   React.useEffect(() => {
     const controller = new AbortController();
     loadCollections(controller.signal).then(
-      (collections) => setMarket((current) => ({ ...current, collections, loading: false, error: null })),
+      (collections) => {
+        const created = loadMintedAssets();
+        const localCollections = loadMintedCollections();
+        const known = new Set(collections.map((collection) => collection.id));
+        setMarket((current) => ({
+          ...current,
+          collections: [
+            ...collections,
+            ...localCollections.filter((collection) => !known.has(collection.id)),
+            ...(created.length ? [createdCollection(created)] : []),
+          ],
+          loading: false,
+          error: null,
+        }));
+      },
       (error) => {
         if (!controller.signal.aborted) {
           setMarket((current) => ({ ...current, collections: [], loading: false, error: errorMessage(error) }));
@@ -115,7 +159,29 @@ export function App() {
     },
     [market.collections],
   );
-  const value = React.useMemo(() => ({ ...market, loadMore }), [loadMore, market]);
+  const addCreatedAsset = React.useCallback((asset: MintedAsset) => {
+    setMarket((current) => {
+      const existing = current.collections.find((item) => item.id === CREATED_COLLECTION_ID);
+      const assets = [asset, ...(existing?.assets ?? []).filter((item) => item.id !== asset.id)];
+      const created = createdCollection(assets);
+      return {
+        ...current,
+        collections: existing
+          ? current.collections.map((item) => (item.id === CREATED_COLLECTION_ID ? created : item))
+          : [...current.collections, created],
+      };
+    });
+  }, []);
+  const addCollection = React.useCallback((collection: Collection) => {
+    setMarket((current) => ({
+      ...current,
+      collections: [collection, ...current.collections.filter((item) => item.id !== collection.id)],
+    }));
+  }, []);
+  const value = React.useMemo(
+    () => ({ ...market, loadMore, addCreatedAsset, addCollection }),
+    [addCollection, addCreatedAsset, loadMore, market],
+  );
 
   return (
     <MarketContext.Provider value={value}>
@@ -125,6 +191,7 @@ export function App() {
         <main>
           <Routes>
             <Route path="/" element={<Home />} />
+            <Route path="/create" element={<CreateView />} />
             <Route path="/my-assets" element={<MyAssetsView />} />
             <Route path="/collection/:collectionId" element={<CollectionView />} />
             <Route path="/collection/:collectionId/activity" element={<CollectionActivityView />} />
@@ -245,34 +312,24 @@ function Header() {
         </form>
         <nav className="site-nav">
           <div className="site-nav-primary">
+            <Link aria-label="Create asset" className="create-link" title="Create asset" to="/create">
+              <Upload className="ui-icon ui-icon--sm" aria-hidden="true" />
+            </Link>
             {wallet.address ? (
-              <Link className="my-assets-link" to="/my-assets">
-                <Library className="ui-icon ui-icon--sm" aria-hidden="true" /> My assets
+              <Link aria-label="My assets" className="my-assets-link" title="My assets" to="/my-assets">
+                <Library className="ui-icon ui-icon--sm" aria-hidden="true" />
               </Link>
             ) : null}
             <GatewayControl />
           </div>
           <div className="site-nav-wallet">
-            {wallet.loadDevelopmentWallet ? (
-              <label className="development-wallet">
-                <Upload className="ui-icon ui-icon--sm" aria-hidden="true" /> Test wallet
-                <input
-                  type="file"
-                  accept=".json,application/json"
-                  onChange={(event) => {
-                    const file = event.target.files?.[0];
-                    if (file) void wallet.loadDevelopmentWallet?.(file);
-                  }}
-                />
-              </label>
-            ) : null}
             <button
               aria-label={wallet.address ? `Disconnect wallet ${short(wallet.address)}` : 'Connect wallet'}
               className="wallet"
+              title={wallet.address ? `Disconnect wallet ${short(wallet.address)}` : 'Connect wallet'}
               onClick={() => void (wallet.address ? wallet.disconnect() : wallet.connect())}
             >
               <Wallet className="ui-icon ui-icon--sm" aria-hidden="true" />
-              <span>{wallet.address ? short(wallet.address) : 'Connect wallet'}</span>
             </button>
           </div>
         </nav>
@@ -446,6 +503,7 @@ function NamesCubePreview() {
 function Home() {
   const market = React.useContext(MarketContext);
   const { search } = useLocation();
+  const [assetView, setAssetView] = React.useState<'recent' | 'listed' | 'price-low' | 'price-high'>('recent');
   const query = new URLSearchParams(search).get('q') ?? '';
   const normalizedQuery = query.trim().toLowerCase();
   const collections = market.collections.filter((collection) => {
@@ -518,6 +576,15 @@ function Home() {
     });
     return () => controller.abort();
   }, [collectionKey]);
+  const pricesReady = assets.every(({ asset }) => asset.id in assetPrices);
+  const displayedAssets = [...assets]
+    .filter(({ asset }) => assetView === 'recent' || Boolean(assetPrices[asset.id]))
+    .sort((left, right) => {
+      if (assetView !== 'price-low' && assetView !== 'price-high') return 0;
+      const leftPrice = Number(assetPrices[left.asset.id]?.replace(/\s+AR$/, '') ?? 0);
+      const rightPrice = Number(assetPrices[right.asset.id]?.replace(/\s+AR$/, '') ?? 0);
+      return assetView === 'price-low' ? leftPrice - rightPrice : rightPrice - leftPrice;
+    });
   return (
     <div className="home-shell">
       <div className="home-main">
@@ -598,9 +665,20 @@ function Home() {
                   <h2>Discover assets</h2>
                   <p>Individual assets from the latest permanent collection indexes.</p>
                 </div>
+                <MarketSelect<'recent' | 'listed' | 'price-low' | 'price-high'>
+                  label="View"
+                  onChange={setAssetView}
+                  options={[
+                    { value: 'recent', label: 'Recently indexed' },
+                    { value: 'listed', label: 'Listed for sale' },
+                    { value: 'price-low', label: 'Price: low to high' },
+                    { value: 'price-high', label: 'Price: high to low' },
+                  ]}
+                  value={assetView}
+                />
               </div>
               <div className="home-asset-grid">
-                {assets.map(({ asset, collection }) => (
+                {displayedAssets.map(({ asset, collection }) => (
                   <Link key={`${collection.id}-${asset.id}`} to={`/asset/${collection.id}/${asset.id}`}>
                     <img src={asset.image} alt="" />
                     <div className="home-asset-details">
@@ -615,11 +693,490 @@ function Home() {
                   </Link>
                 ))}
               </div>
+              {assetView !== 'recent' && !displayedAssets.length ? (
+                <div className="home-assets-empty">
+                  {pricesReady ? 'No listed assets in the latest set.' : 'Checking live listings…'}
+                </div>
+              ) : null}
             </section>
           ) : null}
         </div>
       </div>
     </div>
+  );
+}
+
+function CreateView() {
+  const market = React.useContext(MarketContext);
+  const wallet = useWallet();
+  const navigate = useNavigate();
+  const fileInput = React.useRef<HTMLInputElement>(null);
+  const [mode, setMode] = React.useState<'asset' | 'collection'>('asset');
+  const [name, setName] = React.useState('');
+  const [description, setDescription] = React.useState('');
+  const [file, setFile] = React.useState<File | null>(null);
+  const [collectionFiles, setCollectionFiles] = React.useState<File[]>([]);
+  const [preview, setPreview] = React.useState('');
+  const [collectionPreviews, setCollectionPreviews] = React.useState<string[]>([]);
+  const [estimate, setEstimate] = React.useState<MintEstimate | null>(null);
+  const [collectionEstimate, setCollectionEstimate] = React.useState<CollectionMintEstimate | null>(null);
+  const [estimating, setEstimating] = React.useState(false);
+  const [allowHighCost, setAllowHighCost] = React.useState(false);
+  const [phase, setPhase] = React.useState<MintPhase | null>(null);
+  const [collectionPhase, setCollectionPhase] = React.useState<CollectionMintPhase | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+  const [result, setResult] = React.useState<MintedAsset | null>(null);
+  const [collectionResult, setCollectionResult] = React.useState<Collection | null>(null);
+  const [draft, setDraft] = React.useState<MintDraft | null>(() =>
+    wallet.address ? getMintDraft(wallet.address) : null,
+  );
+
+  React.useEffect(() => {
+    setDraft(wallet.address ? getMintDraft(wallet.address) : null);
+  }, [wallet.address]);
+  React.useEffect(() => {
+    if (!file) {
+      setPreview('');
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    setPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
+  React.useEffect(() => {
+    const urls = collectionFiles.map((item) => URL.createObjectURL(item));
+    setCollectionPreviews(urls);
+    return () => urls.forEach((url) => URL.revokeObjectURL(url));
+  }, [collectionFiles]);
+  React.useEffect(() => {
+    if (mode !== 'asset' || !file || !name.trim()) {
+      setEstimate(null);
+      return;
+    }
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      setEstimating(true);
+      setError(null);
+      void new AssetMintClient()
+        .estimate({ file, name, description }, controller.signal)
+        .then(
+          (nextEstimate) => {
+            if (!controller.signal.aborted) setEstimate(nextEstimate);
+          },
+          (cause) => {
+            if (!controller.signal.aborted) setError(mintErrorMessage(cause));
+          },
+        )
+        .finally(() => {
+          if (!controller.signal.aborted) setEstimating(false);
+        });
+    }, 250);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [description, file, mode, name]);
+  React.useEffect(() => {
+    if (mode !== 'collection' || !collectionFiles.length || !name.trim()) {
+      setCollectionEstimate(null);
+      return;
+    }
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      setEstimating(true);
+      setError(null);
+      void new CollectionMintClient()
+        .estimate({ files: collectionFiles, name, description }, controller.signal)
+        .then(
+          (nextEstimate) => {
+            if (!controller.signal.aborted) setCollectionEstimate(nextEstimate);
+          },
+          (cause) => {
+            if (!controller.signal.aborted) setError(mintErrorMessage(cause));
+          },
+        )
+        .finally(() => {
+          if (!controller.signal.aborted) setEstimating(false);
+        });
+    }, 250);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [collectionFiles, description, mode, name]);
+
+  const selectFile = (next: File | null) => {
+    setFile(next);
+    setEstimate(null);
+    setAllowHighCost(false);
+    setError(null);
+    setResult(null);
+    if (next && !name.trim()) setName(next.name.replace(/\.[^.]+$/, '').slice(0, 80));
+  };
+  const selectCollectionFiles = (next: File[]) => {
+    setCollectionFiles(next.slice(0, 10));
+    setCollectionEstimate(null);
+    setAllowHighCost(false);
+    setError(next.length > 10 ? 'Collections support up to 10 images at a time.' : null);
+    setCollectionResult(null);
+  };
+  const completeMint = (asset: MintedAsset) => {
+    market.addCreatedAsset(asset);
+    setResult(asset);
+    setDraft(null);
+    setPhase(null);
+  };
+  const mint = async () => {
+    if (!wallet.address) {
+      try {
+        await wallet.connect();
+      } catch (cause) {
+        setError(mintErrorMessage(cause));
+      }
+      return;
+    }
+    if (mode === 'asset' && !file) return setError('Choose an image to continue.');
+    if (mode === 'collection' && !collectionFiles.length) return setError('Choose at least one collection image.');
+    setError(null);
+    setResult(null);
+    setCollectionResult(null);
+    try {
+      if (mode === 'collection') {
+        const minted = await new CollectionMintClient().mint(
+          { files: collectionFiles, name, description },
+          wallet.address,
+          { allowHighCost, onPhase: setCollectionPhase },
+        );
+        market.addCollection(minted.collection);
+        setCollectionResult(minted.collection);
+        setCollectionPhase(null);
+        return;
+      }
+      if (!file) return;
+      const minted = await new AssetMintClient().mint({ file, name, description }, wallet.address, {
+        allowHighCost,
+        onPhase: setPhase,
+      });
+      completeMint(minted.asset);
+    } catch (cause) {
+      setDraft(getMintDraft(wallet.address));
+      setPhase(null);
+      setError(mintErrorMessage(cause));
+    }
+  };
+  const resume = async () => {
+    if (!wallet.address || !draft) return;
+    setError(null);
+    try {
+      const minted = await new AssetMintClient().resume(draft, wallet.address, { onPhase: setPhase });
+      completeMint(minted.asset);
+    } catch (cause) {
+      setPhase(null);
+      setError(mintErrorMessage(cause));
+    }
+  };
+  const working = phase !== null || collectionPhase !== null;
+  const phaseLabel = collectionPhase
+    ? collectionPhase.kind === 'asset'
+      ? `Asset ${collectionPhase.index + 1} of ${collectionPhase.total}: ${
+          {
+            'signing-media': 'approve media upload',
+            'uploading-media': 'uploading media',
+            'signing-process': 'approve asset process',
+            'creating-process': 'creating asset',
+          }[collectionPhase.phase]
+        }…`
+      : `${collectionPhase.kind === 'manifest' ? 'Collection manifest' : 'Collection index'}: ${collectionPhase.phase}…`
+    : phase
+      ? {
+          'signing-media': 'Approve the media upload in your wallet…',
+          'uploading-media': 'Uploading media permanently…',
+          'signing-process': 'Approve the asset process in your wallet…',
+          'creating-process': 'Creating your one-of-one asset…',
+        }[phase]
+      : '';
+  const activeEstimate = mode === 'asset' ? estimate : collectionEstimate;
+
+  return (
+    <section className="create-page">
+      <div className="create-heading">
+        <div>
+          <p className="eyebrow">Create on Arweave</p>
+          <h1>Upload and mint</h1>
+        </div>
+        <p>
+          {mode === 'asset'
+            ? 'Your image and its one-of-one marketplace process are signed in your wallet and stored on Arweave.'
+            : 'Mint a group of one-of-one assets and publish their permanent, shareable collection index.'}
+        </p>
+      </div>
+
+      <div className="create-mode" role="tablist" aria-label="Create type">
+        <button
+          className={mode === 'asset' ? 'active' : undefined}
+          role="tab"
+          aria-selected={mode === 'asset'}
+          type="button"
+          onClick={() => {
+            setMode('asset');
+            setError(null);
+            setAllowHighCost(false);
+          }}
+        >
+          Single asset
+        </button>
+        <button
+          className={mode === 'collection' ? 'active' : undefined}
+          role="tab"
+          aria-selected={mode === 'collection'}
+          type="button"
+          onClick={() => {
+            setMode('collection');
+            setError(null);
+            setAllowHighCost(false);
+          }}
+        >
+          Collection
+        </button>
+      </div>
+
+      {mode === 'asset' && draft ? (
+        <div className="mint-recovery" role="status">
+          <div>
+            <strong>Finish your previous mint</strong>
+            <span>The media for “{draft.name}” is already permanent. Only the asset process remains.</span>
+          </div>
+          <div>
+            <button type="button" onClick={() => void resume()} disabled={working}>
+              Finish mint
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                discardMintDraft(draft.owner);
+                setDraft(null);
+              }}
+              disabled={working}
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      <div className="create-layout">
+        <div className="create-preview-column">
+          <button
+            className={`mint-dropzone${mode === 'asset' && preview ? ' has-file' : ''}${mode === 'collection' && collectionPreviews.length ? ' has-file collection-files' : ''}`}
+            type="button"
+            onClick={() => fileInput.current?.click()}
+            onDragOver={(event) => event.preventDefault()}
+            onDrop={(event) => {
+              event.preventDefault();
+              if (mode === 'collection') selectCollectionFiles(Array.from(event.dataTransfer.files ?? []));
+              else selectFile(event.dataTransfer.files?.[0] ?? null);
+            }}
+          >
+            {mode === 'collection' && collectionPreviews.length ? (
+              <span className="collection-preview-grid">
+                {collectionPreviews.slice(0, 6).map((url, index) => (
+                  <span key={`${collectionFiles[index]?.name}-${index}`}>
+                    <img src={url} alt="" />
+                    <small>{index + 1}</small>
+                  </span>
+                ))}
+                {collectionPreviews.length > 6 ? <strong>+{collectionPreviews.length - 6}</strong> : null}
+              </span>
+            ) : mode === 'asset' && preview ? (
+              <img src={preview} alt="Asset preview" />
+            ) : (
+              <span>
+                <Upload aria-hidden="true" />
+                <strong>{mode === 'asset' ? 'Choose an image' : 'Choose collection images'}</strong>
+                <small>
+                  PNG, JPG, WebP, or GIF · up to 10 MB each{mode === 'collection' ? ' · 10 images maximum' : ''}
+                </small>
+              </span>
+            )}
+          </button>
+          <input
+            ref={fileInput}
+            className="mint-file-input"
+            type="file"
+            multiple={mode === 'collection'}
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            onChange={(event) => {
+              if (mode === 'collection') selectCollectionFiles(Array.from(event.target.files ?? []));
+              else selectFile(event.target.files?.[0] ?? null);
+            }}
+          />
+          {mode === 'asset' && file ? (
+            <div className="mint-file-meta">
+              <span>{file.name}</span>
+              <strong>{formatBytes(file.size)}</strong>
+            </div>
+          ) : null}
+          {mode === 'collection' && collectionFiles.length ? (
+            <div className="collection-file-list">
+              {collectionFiles.map((item, index) => (
+                <div key={`${item.name}-${item.size}-${index}`}>
+                  <span>
+                    <strong>{index + 1}</strong>
+                    {item.name.replace(/\.[^.]+$/, '')}
+                  </span>
+                  <button
+                    type="button"
+                    aria-label={`Remove ${item.name}`}
+                    onClick={() => selectCollectionFiles(collectionFiles.filter((_, heldIndex) => heldIndex !== index))}
+                  >
+                    <X className="ui-icon ui-icon--sm" aria-hidden="true" />
+                  </button>
+                </div>
+              ))}
+              <button type="button" onClick={() => fileInput.current?.click()}>
+                <Upload className="ui-icon ui-icon--sm" aria-hidden="true" /> Add images
+              </button>
+            </div>
+          ) : null}
+        </div>
+
+        <form
+          className="create-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void mint();
+          }}
+        >
+          <div className="create-field">
+            <label htmlFor="mint-name">{mode === 'asset' ? 'Name' : 'Collection name'}</label>
+            <input
+              id="mint-name"
+              maxLength={80}
+              placeholder={mode === 'asset' ? 'Name your asset' : 'Name your collection'}
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+            />
+            <span>{name.length} / 80</span>
+          </div>
+          <div className="create-field">
+            <label htmlFor="mint-description">
+              {mode === 'asset' ? 'Description' : 'Collection description'} <small>Optional</small>
+            </label>
+            <textarea
+              id="mint-description"
+              maxLength={600}
+              placeholder={mode === 'asset' ? 'Tell collectors about this work' : 'Describe this collection'}
+              rows={5}
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+            />
+            <span>{description.length} / 600</span>
+          </div>
+
+          <div className="mint-summary">
+            <div>
+              <span>{mode === 'asset' ? 'Edition' : 'Assets'}</span>
+              <strong>{mode === 'asset' ? '1 of 1' : collectionFiles.length || '—'}</strong>
+            </div>
+            <div>
+              <span>{mode === 'asset' ? 'Storage' : 'Transactions'}</span>
+              <strong>
+                {mode === 'asset' ? 'Permanent' : collectionEstimate ? collectionEstimate.transactionCount : '—'}
+              </strong>
+            </div>
+            <div>
+              <span>Estimated network cost</span>
+              <strong>
+                {estimating ? 'Checking…' : activeEstimate ? `${winstonToAr(activeEstimate.total.toString())} AR` : '—'}
+              </strong>
+            </div>
+          </div>
+
+          {activeEstimate && isHighMintCost(activeEstimate.total) ? (
+            <label className="mint-cost-confirmation">
+              <input
+                type="checkbox"
+                checked={allowHighCost}
+                onChange={(event) => setAllowHighCost(event.target.checked)}
+              />
+              I approve this unusually high network cost.
+            </label>
+          ) : null}
+          <div className="mint-notice">
+            <Info className="ui-icon" aria-hidden="true" />
+            <span>
+              {mode === 'asset'
+                ? 'Your wallet will request two signatures: one for the media and one for the tradeable asset.'
+                : collectionEstimate
+                  ? `Your wallet will request ${collectionEstimate.transactionCount} signatures: two per asset, then the collection manifest and index.`
+                  : 'Each image becomes a one-of-one asset. Bazar then publishes a permanent collection manifest and index.'}
+            </span>
+          </div>
+          {error ? (
+            <div className="inline-error">
+              <span>{error}</span>
+            </div>
+          ) : null}
+          {result || collectionResult ? (
+            <div className="mint-success">
+              <span>
+                <Check aria-hidden="true" />
+              </span>
+              <div>
+                <strong>{collectionResult ? 'Collection submitted to Arweave' : 'Mint submitted to Arweave'}</strong>
+                <p>
+                  {collectionResult
+                    ? 'The permanent collection index may take a few minutes to become available through every gateway.'
+                    : 'The asset may take a few minutes to become computable through every gateway.'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() =>
+                  navigate(
+                    collectionResult
+                      ? `/collection/${collectionResult.id}`
+                      : `/asset/${CREATED_COLLECTION_ID}/${result!.id}`,
+                  )
+                }
+              >
+                View {collectionResult ? 'collection' : 'asset'}
+                <ArrowRight className="ui-icon ui-icon--sm" aria-hidden="true" />
+              </button>
+            </div>
+          ) : (
+            <button
+              className="mint-submit"
+              type="submit"
+              disabled={
+                working ||
+                Boolean(wallet.address && mode === 'asset' && file && name.trim() && !estimate) ||
+                Boolean(
+                  wallet.address &&
+                  mode === 'collection' &&
+                  collectionFiles.length &&
+                  name.trim() &&
+                  !collectionEstimate,
+                ) ||
+                Boolean(wallet.address && activeEstimate && isHighMintCost(activeEstimate.total) && !allowHighCost)
+              }
+            >
+              {working
+                ? phaseLabel
+                : wallet.address
+                  ? mode === 'asset'
+                    ? 'Upload and mint'
+                    : 'Mint collection'
+                  : 'Connect wallet to create'}
+              {!working ? <ArrowRight className="ui-icon" aria-hidden="true" /> : null}
+            </button>
+          )}
+          <p className="mint-permanence">
+            Uploads are permanent. Review every image, name, and description before signing.
+          </p>
+        </form>
+      </div>
+    </section>
   );
 }
 
@@ -638,8 +1195,8 @@ function GatewayControl() {
   }
   return (
     <details className="gateway">
-      <summary title={current}>
-        <Server className="ui-icon ui-icon--sm" aria-hidden="true" /> Compute gateway
+      <summary aria-label="Compute gateway" title={`Compute gateway: ${current}`}>
+        <Server className="ui-icon ui-icon--sm" aria-hidden="true" />
       </summary>
       <div>
         <label>
@@ -775,7 +1332,32 @@ function MarketSelect<Value extends string>({
 function CollectionView() {
   const { collectionId = '' } = useParams();
   const market = React.useContext(MarketContext);
-  const collection = market.collections.find((item) => item.id === collectionId);
+  const indexedCollection = market.collections.find((item) => item.id === collectionId);
+  const [remoteCollection, setRemoteCollection] = React.useState<Collection | null>(null);
+  const [remoteCollectionLoading, setRemoteCollectionLoading] = React.useState(false);
+  React.useEffect(() => {
+    if (indexedCollection || !/^[A-Za-z0-9_-]{43}$/.test(collectionId)) {
+      setRemoteCollection(null);
+      return;
+    }
+    const controller = new AbortController();
+    setRemoteCollectionLoading(true);
+    void loadCollectionReference(collectionId, controller.signal)
+      .then(
+        (loaded) => {
+          if (!controller.signal.aborted) {
+            setRemoteCollection(loaded);
+            market.addCollection(loaded);
+          }
+        },
+        () => undefined,
+      )
+      .finally(() => {
+        if (!controller.signal.aborted) setRemoteCollectionLoading(false);
+      });
+    return () => controller.abort();
+  }, [collectionId, indexedCollection]);
+  const collection = indexedCollection ?? remoteCollection;
   const [query, setQuery] = React.useState('');
   const [limit, setLimit] = React.useState(48);
   const [sort, setSort] = React.useState<'default' | 'recent'>('default');
@@ -890,7 +1472,7 @@ function CollectionView() {
     return () => controller.abort();
   }, [collection, gateway, listedOnly, retry, sort]);
   React.useEffect(() => setLimit(48), [initial, listedOnly, query, sort]);
-  if (market.loading) return <Loading label="Reading collection index…" />;
+  if (market.loading || remoteCollectionLoading) return <Loading label="Reading collection index…" />;
   if (!collection) return <ErrorPanel message="This collection could not be found on Arweave." />;
   const activityByAsset = new Map(activity.map((candidate) => [candidate.processId, candidate]));
   const defaultIndex = new Map(collection.assets.map((asset, index) => [asset.id, index]));
@@ -924,7 +1506,7 @@ function CollectionView() {
       </Link>
       <div className="collection-title">
         <div>
-          <p className="eyebrow">{collection.kind === 'names' ? 'CARRIER ASSETS' : 'TOKEN ASSETS'}</p>
+          <p className="eyebrow">{collection.kind === 'names' ? 'Carrier assets' : 'Token assets'}</p>
           <h1>{collection.name}</h1>
         </div>
         <p>{collection.description}</p>
@@ -1115,7 +1697,7 @@ function CollectionActivityView() {
       </Link>
       <div className="collection-title">
         <div>
-          <p className="eyebrow">PERMANENT ACTIVITY</p>
+          <p className="eyebrow">Permanent activity</p>
           <h1>{collection.name}</h1>
         </div>
         <p>
@@ -1287,6 +1869,19 @@ function MyAssetsView() {
             },
           });
         };
+        const locallyCreated =
+          market.collections
+            .find((collection) => collection.id === CREATED_COLLECTION_ID)
+            ?.assets.map<AssetCandidate>((asset) => ({
+              processId: asset.id,
+              height: 0,
+              timestamp: 0,
+              sources: ['initial-holder'],
+              device: 'token@1.0',
+              collection: 'Created on Bazar',
+              bazarMint: true,
+            })) ?? [];
+        await resolvePage(locallyCreated);
         const discoveredCandidates = await discoverWalletAssetCandidates(walletAddress, {
           signal: controller.signal,
           onPage: resolvePage,
@@ -1316,7 +1911,7 @@ function MyAssetsView() {
   if (!wallet.address) {
     return (
       <section className="my-assets-page">
-        <p className="eyebrow">YOUR WALLET</p>
+        <p className="eyebrow">Your wallet</p>
         <h1>My assets</h1>
         <div className="empty-state">
           <h3>Connect a wallet to resolve its assets</h3>
@@ -1336,7 +1931,7 @@ function MyAssetsView() {
     <section className="my-assets-page">
       <div className="my-assets-heading">
         <div>
-          <p className="eyebrow">LIVE WALLET INVENTORY</p>
+          <p className="eyebrow">Live wallet inventory</p>
           <h1>My assets</h1>
           <p>Ownership is computed now through {gateway}. Transaction history only tells Bazar what to check.</p>
         </div>
@@ -1344,37 +1939,6 @@ function MyAssetsView() {
           <RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" />
           {working ? 'Resolving…' : 'Retry'}
         </button>
-      </div>
-      <div className="resolution-status" aria-live="polite">
-        <div>
-          <strong>
-            {status.phase === 'discovering'
-              ? 'Discovering candidates'
-              : status.phase === 'resolving'
-                ? 'Computing live state'
-                : status.phase === 'done'
-                  ? 'Live state resolved'
-                  : 'Resolution interrupted'}
-          </strong>
-          <span>
-            {status.phase === 'discovering'
-              ? `${status.discovered.toLocaleString()} candidates found`
-              : `${status.resolved.toLocaleString()} of ${status.total.toLocaleString()} checked${
-                  status.failures ? ` · ${status.failures.toLocaleString()} unavailable` : ''
-                }`}
-          </span>
-        </div>
-        <div className="resolution-track">
-          <span
-            style={{
-              width: status.total
-                ? `${Math.min(100, (status.resolved / status.total) * 100)}%`
-                : status.phase === 'discovering'
-                  ? '12%'
-                  : '0%',
-            }}
-          />
-        </div>
       </div>
       {status.error ? (
         <div className="inline-error">
@@ -1421,8 +1985,8 @@ function AssetView() {
   const { collectionId = '', assetId = '' } = useParams();
   const market = React.useContext(MarketContext);
   const wallet = useWallet();
-  const collection = market.collections.find((item) => item.id === collectionId);
-  const indexedAsset = collection?.assets.find((item) => item.id === assetId);
+  const indexedCollection = market.collections.find((item) => item.id === collectionId);
+  const [remoteCollection, setRemoteCollection] = React.useState<Collection | null>(null);
   const [state, setState] = React.useState<AssetState | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(true);
@@ -1430,6 +1994,23 @@ function AssetView() {
   const [assetActivity, setAssetActivity] = React.useState<CollectionActivityEvent[]>([]);
   const [activityLoading, setActivityLoading] = React.useState(true);
   const [activeSection, setActiveSection] = React.useState<'about' | 'orders' | 'activity'>('about');
+  React.useEffect(() => {
+    if (indexedCollection || collectionId === CREATED_COLLECTION_ID || !/^[A-Za-z0-9_-]{43}$/.test(collectionId)) {
+      setRemoteCollection(null);
+      return;
+    }
+    const controller = new AbortController();
+    void loadCollectionReference(collectionId, controller.signal).then(
+      (loaded) => {
+        if (!controller.signal.aborted) {
+          setRemoteCollection(loaded);
+          market.addCollection(loaded);
+        }
+      },
+      () => undefined,
+    );
+    return () => controller.abort();
+  }, [collectionId, indexedCollection]);
   const load = React.useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -1511,12 +2092,20 @@ function AssetView() {
       localStorage.removeItem(`bazar-operation:${assetId}`);
     }
   }, [assetId, operation, state, wallet.address]);
+  const collection =
+    indexedCollection ??
+    remoteCollection ??
+    (collectionId === CREATED_COLLECTION_ID ? createdCollection([]) : undefined);
+  const indexedAsset = collection?.assets.find((item) => item.id === assetId);
+  if (market.loading) return <Loading label="Reading collection index…" />;
   if (!collection) return <ErrorPanel message="This collection could not be found on Arweave." />;
   const asset =
     indexedAsset ??
     (collection.kind === 'names' && state && ['carrier@1.0', 'name-token@1.0'].includes(state.device)
       ? { id: assetId, name: state.name || short(assetId) }
-      : null);
+      : collection.id === CREATED_COLLECTION_ID && state?.device === 'token@1.0'
+        ? assetFromMintState(assetId, state.raw, state.name)
+        : null);
   if (!asset && !loading) return <ErrorPanel message="This asset is not in the selected collection." />;
   if (!asset) return <Loading label="Computing current state…" />;
   const owner = state ? ownerOfAsset(state) : null;
@@ -1553,7 +2142,6 @@ function AssetView() {
               <Link className="asset-collection-link" to={`/collection/${collection.id}`}>
                 {collection.name}
               </Link>
-              <span className={order ? 'status-dot listed' : 'status-dot'}>{order ? 'For sale' : 'Live'}</span>
             </div>
             <h1>{asset.name}</h1>
             <div className="asset-owner-line">
@@ -1568,8 +2156,8 @@ function AssetView() {
             </div>
             <div className="asset-token-tags" aria-label="Asset protocol details">
               <span>{state?.device || 'token@1.0'}</span>
-              <span>ARWEAVE</span>
-              <span>SUPPLY 1</span>
+              <span>Arweave</span>
+              <span>Supply 1</span>
             </div>
             {loading ? <Loading label="Computing current state…" /> : null}
             {error ? <ErrorPanel message={error} /> : null}
@@ -1623,9 +2211,6 @@ function AssetView() {
                       <Send className="ui-icon ui-icon--sm" aria-hidden="true" /> Transfer
                     </button>
                   ) : null}
-                  <button className="with-icon" onClick={() => void load()}>
-                    <RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Refresh
-                  </button>
                 </div>
               </section>
             ) : null}
@@ -1886,9 +2471,7 @@ function OperationDialog({
     operation.kind === 'sell' || operation.kind === 'transfer' ? (operation.value ?? '') : '',
   );
   const [phase, setPhase] = React.useState<'form' | 'working' | 'done' | 'error'>(
-    (operation.kind === 'buy' && operation.resume) || (operation.kind !== 'buy' && operation.resumeId)
-      ? 'working'
-      : 'form',
+    operation.kind === 'buy' || operation.resumeId ? 'working' : 'form',
   );
   const [message, setMessage] = React.useState('');
   const [views, setViews] = React.useState<ObserverView[]>([]);
@@ -1909,12 +2492,11 @@ function OperationDialog({
       });
     };
   }, []);
-  const resumed = React.useRef(false);
+  const submittedAutomatically = React.useRef(false);
   React.useEffect(() => {
-    const shouldResume =
-      (operation.kind === 'buy' && operation.resume) || (operation.kind !== 'buy' && operation.resumeId);
-    if (!shouldResume || resumed.current) return;
-    resumed.current = true;
+    const shouldSubmitAutomatically = operation.kind === 'buy' || Boolean(operation.resumeId);
+    if (!shouldSubmitAutomatically || submittedAutomatically.current) return;
+    submittedAutomatically.current = true;
     void submit();
   }, []);
 
@@ -2098,21 +2680,22 @@ function OperationDialog({
         ) : null}
         {visiblePhase === 'working' && steps.length ? (
           <>
-            <p className="sync-intro">
-              {(operation.kind === 'buy' && operation.resume) || (operation.kind !== 'buy' && operation.resumeId)
-                ? 'Recovered the exact signed transactions. Resuming from the weave—nothing will be signed twice.'
-                : 'Signed. Now watching independent Arweave nodes agree on the transaction.'}
-            </p>
+            {!((operation.kind === 'buy' && operation.resume) || (operation.kind !== 'buy' && operation.resumeId)) ? (
+              <p className="sync-intro">Signed. Now watching independent Arweave nodes agree on the transaction.</p>
+            ) : null}
             {workingStatus ? <p className="scheduler-wait">{workingStatus}</p> : null}
             <ArweaveTransactionSync subject={asset.name} steps={steps} activeStep={activeStep} />
           </>
         ) : null}
         {visiblePhase === 'done' ? (
-          <div className="result success">
-            <h3>Applied to live asset state</h3>
-            <p>Arweave nodes now compute this action as part of the asset.</p>
-            <button className="primary with-icon" onClick={onClose}>
-              <ArrowLeft className="ui-icon ui-icon--sm" aria-hidden="true" /> Return to asset
+          <div className="result success" role="status" aria-live="polite">
+            <span className="result-status-icon" aria-hidden="true">
+              <Check className="ui-icon" />
+            </span>
+            <h3>{operationSuccessTitle(operation.kind)}</h3>
+            <p>{operationSuccessMessage(operation.kind)}</p>
+            <button className="primary with-icon result-action" onClick={onClose}>
+              View asset <ArrowRight className="ui-icon ui-icon--sm" aria-hidden="true" />
             </button>
           </div>
         ) : null}
@@ -2236,6 +2819,10 @@ function short(value: string) {
 function winstonToAr(value: string) {
   return (Number(value) / 1e12).toLocaleString(undefined, { maximumFractionDigits: 12 });
 }
+function formatBytes(value: number) {
+  if (value < 1024 * 1024) return `${Math.max(1, Math.round(value / 1024))} KB`;
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+}
 function arToWinston(value: string) {
   if (!/^(?:0|[1-9]\d*)(?:\.\d{1,12})?$/.test(value) || Number(value) <= 0)
     throw new Error('Enter a positive AR amount.');
@@ -2244,6 +2831,22 @@ function arToWinston(value: string) {
 }
 function operationLabel(kind: Operation['kind']) {
   return { sell: 'List for sale', buy: 'Buy asset', cancel: 'Cancel listing', transfer: 'Transfer asset' }[kind];
+}
+function operationSuccessTitle(kind: Operation['kind']) {
+  return {
+    sell: 'Listing is live',
+    buy: 'Purchase complete',
+    cancel: 'Listing canceled',
+    transfer: 'Transfer complete',
+  }[kind];
+}
+function operationSuccessMessage(kind: Operation['kind']) {
+  return {
+    sell: 'This asset is now listed for sale and reflected in its live Arweave state.',
+    buy: 'Ownership has transferred to your wallet and is reflected in the asset’s live Arweave state.',
+    cancel: 'The listing has been removed from the asset’s live Arweave state.',
+    transfer: 'The new owner is reflected in the asset’s live Arweave state.',
+  }[kind];
 }
 function purchaseSnapshot(state: PurchaseState): PurchaseSnapshot {
   return {
@@ -2292,6 +2895,22 @@ function errorMessage(error: unknown) {
       'Arweave nodes accepted the reservation, but it was not mined during this observation window. Reload to resume the exact signed transaction without signing again.',
     'payment not found':
       'Arweave nodes accepted the payment, but it was not mined during this observation window. Reload to resume the exact signed payment without paying again.',
+  };
+  return friendly[value] ?? value.replaceAll('-', ' ');
+}
+function mintErrorMessage(error: unknown) {
+  const value = error instanceof Error ? error.message : String(error);
+  const friendly: Record<string, string> = {
+    'mint-name-invalid': 'Enter a name between 1 and 80 characters.',
+    'mint-description-invalid': 'Keep the description under 600 characters.',
+    'mint-file-required': 'Choose an image to continue.',
+    'mint-file-type-unsupported': 'Use a PNG, JPG, WebP, or GIF image.',
+    'mint-file-size-invalid': 'Choose an image no larger than 10 MB.',
+    'mint-insufficient-balance': 'This wallet does not have enough AR for both permanent transactions.',
+    'mint-high-cost-confirmation-required': 'Review and approve the unusually high network cost before minting.',
+    'wallet-sign-unavailable': 'Connect an Arweave wallet that can sign transactions.',
+    'wallet-account-changed': 'The connected wallet changed. Reconnect the original wallet and try again.',
+    'mint-draft-wallet-mismatch': 'Reconnect the wallet that uploaded this media to finish minting it.',
   };
   return friendly[value] ?? value.replaceAll('-', ' ');
 }

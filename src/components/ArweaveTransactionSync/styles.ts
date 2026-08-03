@@ -2,6 +2,7 @@ import styled, { type DefaultTheme, keyframes } from 'styled-components';
 import type { ObserverView } from 'weave-wrangler';
 
 import { confirmationTrustTone } from './confirmationTrust';
+import { PROGRESS_GRADIENT, confirmationProgress, progressColorCss } from './progressColors';
 
 const sweepProgress = keyframes`
 	0% { transform: translateX(-100%); }
@@ -30,15 +31,15 @@ function laneTrustColor(props: LaneTrustProps & { theme: DefaultTheme }): string
     case 'pending':
       return `color-mix(in srgb, ${props.theme.colors.status.draft} 62%, ${props.theme.colors.container.primary.background})`;
     case 'confirmation-1':
-      return props.theme.colors.status.draft;
+      return progressColorCss(confirmationProgress(1, 5));
     case 'confirmation-2':
-      return props.theme.colors.stats.alt7;
+      return progressColorCss(confirmationProgress(2, 5));
     case 'confirmation-3':
-      return props.theme.colors.stats.alt8;
+      return progressColorCss(confirmationProgress(3, 5));
     case 'confirmation-4':
-      return props.theme.colors.stats.alt10;
+      return progressColorCss(confirmationProgress(4, 5));
     case 'confirmation-5':
-      return props.theme.colors.nasaGraphic.green1;
+      return progressColorCss(confirmationProgress(5, 5));
     case 'neutral':
     default:
       return `color-mix(in srgb, ${props.theme.colors.status.draft} 28%, ${props.theme.colors.container.primary.background})`;
@@ -243,10 +244,7 @@ export const ProgressTrack = styled.div<{ $active: boolean; $progress: number } 
     height: 100%;
     overflow: hidden;
     border-radius: inherit;
-    background: ${(props) =>
-      props.$hasError
-        ? props.theme.colors.warning.primary
-        : `linear-gradient(90deg, #f4d985 0%, #f2b500 12%, #c9ea2d 45%, #69d36d 72%, #008f20 100%)`};
+    background: ${(props) => (props.$hasError ? props.theme.colors.warning.primary : PROGRESS_GRADIENT)};
     background-size: ${(props) => `${10000 / Math.max(1, props.$progress)}% 100%`};
     transition: width 420ms ease;
 
