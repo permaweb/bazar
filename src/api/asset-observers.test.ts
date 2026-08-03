@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
+import { AO_MAINNET } from 'helpers/config';
+
 import { assetObserverNetworkOptions } from './asset-observers';
 
 function location(overrides: Partial<Location>): Location {
@@ -32,7 +34,7 @@ describe('assetObserverNetworkOptions', () => {
     expect(options.maxObservers).toBe(12);
   });
 
-  it('uses the serving gateway after stripping an Arweave sandbox label', () => {
+  it('keeps Arweave as the observer seed while using the production HyperBEAM relay', () => {
     const options = assetObserverNetworkOptions(
       location({
         protocol: 'https:',
@@ -41,6 +43,7 @@ describe('assetObserverNetworkOptions', () => {
       }),
     );
 
-    expect(options['relay-with']).toBe('https://arweave.net');
+    expect(options.node).toBe('https://arweave.net');
+    expect(options['relay-with']).toBe(AO_MAINNET.app1);
   });
 });

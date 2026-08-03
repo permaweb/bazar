@@ -42,7 +42,7 @@
   --accent-dark: #4e4e4a;
   --button-accent: #f1f1ee;
   --button-accent-hover: #e7e7e3;
-  --positive: #13ab8f;
+  --positive: #217a00;
   --negative: #c94b62;
 }
 
@@ -549,7 +549,7 @@ p {
   --home-panel: #fff;
   --home-panel-raised: #fafafa;
   --home-muted: #5c554d;
-  --home-green: #13ab8f;
+  --home-green: #217a00;
 }
 .home-sidebar {
   position: fixed;
@@ -2638,6 +2638,7 @@ input:focus {
   object-fit: contain;
 }
 .mint-dropzone > .collection-preview-grid {
+  position: relative;
   width: 100%;
   height: 100%;
   padding: 14px;

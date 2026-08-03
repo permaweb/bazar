@@ -1,6 +1,6 @@
 import type { WeaveNetworkOptions } from 'weave-wrangler';
 
-import { GATEWAYS, gatewayFromLocation } from 'helpers/config';
+import { AO_MAINNET, GATEWAYS, gatewayFromLocation } from 'helpers/config';
 
 export function assetObserverNetworkOptions(location: Location = window.location): WeaveNetworkOptions {
   const hasSelectedRelay = new URLSearchParams(location.search).has('node');
@@ -13,6 +13,6 @@ export function assetObserverNetworkOptions(location: Location = window.location
     maxObservers: 12,
     ...(isLocalDevelopment && !hasSelectedRelay
       ? { pageProtocol: location.protocol }
-      : { 'relay-with': gatewayFromLocation(location) }),
+      : { 'relay-with': hasSelectedRelay ? gatewayFromLocation(location) : AO_MAINNET.app1 }),
   };
 }
