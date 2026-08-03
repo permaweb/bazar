@@ -231,7 +231,7 @@ export const Depth = styled.div<{ $success: boolean }>`
 
 export const ProgressTrack = styled.div<{ $active: boolean; $progress: number } & LaneTrustProps>`
   position: relative;
-  height: 8px;
+  height: 16px;
   margin: 9px 0 5px;
   overflow: hidden;
   border-radius: 999px;

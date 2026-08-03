@@ -240,6 +240,7 @@ export function ArweaveTransactionSync({ subject, steps, activeStep, onProgressC
                   acceptedProofs: acceptedProofs.map((proof) => ({
                     key: proof.key,
                     height: proof.height,
+                    observedAt: proof.observedAt,
                     label: language.transactionSyncMiningBlockLabel.replace('{height}', proof.height.toLocaleString()),
                     meta: miningProofPinMeta(proof, language),
                     recalls: proof.recallSamples.map((sample) => ({
@@ -294,7 +295,7 @@ function useRaceClock(active: boolean): number {
   return now;
 }
 
-function observedConfirmationDepth(views: ObserverView[]): number {
+export function observedConfirmationDepth(views: ObserverView[]): number {
   const depths = views
     .filter((view) => view.state === 'confirmed')
     .map((view) => view.confirmations)

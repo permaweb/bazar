@@ -10,6 +10,12 @@ import type { ObserverView } from 'weave-wrangler';
 
 import { RaceTooltip as RaceTooltipContainer } from './styles';
 
+import {
+  ACCEPTED_PROOF_ANNOTATION_FADE_MS,
+  ACCEPTED_PROOF_ANNOTATION_HOLD_MS,
+  ACCEPTED_PROOF_ANNOTATION_LIFETIME_MS,
+  acceptedProofAnnotationIsVisible,
+} from './acceptedProofs';
 import { ObserverTooltipCard, type ObserverTooltipStage } from './ObserverTooltipCard';
 import { progressColorRgb } from './progressColors';
 import { sequencePhaseBounds } from './sequence';
@@ -54,6 +60,7 @@ type Props = {
     acceptedProofs: Array<{
       key: string;
       height: number;
+      observedAt: number;
       label: string;
       meta: string;
       recalls: Array<{
@@ -104,6 +111,26 @@ type MarkerHoverData = {
   detail: string;
 };
 
+function useTransientAcceptedProofs(
+  proofs: NonNullable<Props['miningActivity']>['acceptedProofs'],
+): NonNullable<Props['miningActivity']>['acceptedProofs'] {
+  const [, setVisibilityClock] = React.useState(() => Date.now());
+  const now = Date.now();
+  const visibleProofs = proofs.filter((proof) => acceptedProofAnnotationIsVisible(proof.observedAt, now));
+  const nextRemovalAt = visibleProofs.reduce(
+    (earliest, proof) => Math.min(earliest, proof.observedAt + ACCEPTED_PROOF_ANNOTATION_LIFETIME_MS),
+    Number.POSITIVE_INFINITY,
+  );
+
+  React.useEffect(() => {
+    if (!Number.isFinite(nextRemovalAt)) return undefined;
+    const timer = window.setTimeout(() => setVisibilityClock(Date.now()), Math.max(0, nextRemovalAt - Date.now()) + 16);
+    return () => window.clearTimeout(timer);
+  }, [nextRemovalAt]);
+
+  return visibleProofs;
+}
+
 type WireState = {
   positions: Float32Array;
   baseGeometry: LineGeometry;
@@ -124,6 +151,7 @@ const PROGRESS_LINE_WIDTH = 4.1;
 const MAX_MINING_PARTICLES = 180;
 const PICK_SAMPLE_STEP = 12;
 const PARTICLE_HIGHLIGHT = new THREE.Color('#ffffff');
+const EMPTY_ACCEPTED_PROOFS: NonNullable<Props['miningActivity']>['acceptedProofs'] = [];
 export function TransactionSequenceCable3D({
   lanes,
   ariaLabel,
@@ -145,12 +173,14 @@ export function TransactionSequenceCable3D({
   const tooltipRef = React.useRef<HTMLSpanElement>(null);
   const hoverRef = React.useRef<Hover>();
   const [hover, setHover] = React.useState<Hover>();
+  const acceptedProofs = useTransientAcceptedProofs(miningActivity?.acceptedProofs ?? EMPTY_ACCEPTED_PROOFS);
+  const visibleMiningActivity = miningActivity ? { ...miningActivity, acceptedProofs } : undefined;
   const phaseLabelKey = phaseLabels.join('\u0000');
   const laneMarkerSignature = React.useMemo(() => markerDataSignature(lanes), [lanes]);
   const laneMarkerSignatureRef = React.useRef(laneMarkerSignature);
 
   laneDataRef.current = lanes;
-  miningActivityRef.current = miningActivity;
+  miningActivityRef.current = visibleMiningActivity;
   laneMarkerSignatureRef.current = laneMarkerSignature;
 
   React.useEffect(() => {
@@ -180,7 +210,7 @@ export function TransactionSequenceCable3D({
     camera.lookAt(0, 0, 0);
 
     const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.domElement.setAttribute('aria-label', ariaLabel);
     renderer.domElement.setAttribute('role', 'img');
@@ -210,8 +240,7 @@ export function TransactionSequenceCable3D({
         color: BASE_WIRE.getHex(),
         linewidth: baseLineWidth,
         transparent: true,
-        opacity: 0.9,
-        alphaToCoverage: true,
+        opacity: 1,
       });
       const baseLine = new Line2(baseGeometry, baseMaterial);
       const phaseGeometries: LineGeometry[] = [];
@@ -231,7 +260,6 @@ export function TransactionSequenceCable3D({
           transparent: true,
           opacity: 1,
           depthWrite: false,
-          alphaToCoverage: true,
         });
         const line = new Line2(geometry, material);
         line.frustumCulled = false;
@@ -702,7 +730,7 @@ export function TransactionSequenceCable3D({
           );
         })}
       <AcceptedProofPins>
-        {(miningActivity?.acceptedProofs ?? []).map((proof) => (
+        {acceptedProofs.map((proof) => (
           <AcceptedProofPin
             key={proof.key}
             ref={(element) => {
@@ -711,30 +739,33 @@ export function TransactionSequenceCable3D({
             }}
             data-block-height={proof.height}
           >
-            <AcceptedProofStem />
-            <AcceptedProofCard>
-              <AcceptedProofLabel>{proof.label}</AcceptedProofLabel>
-              <AcceptedProofMeta>{proof.meta}</AcceptedProofMeta>
-              <AcceptedProofPayloads>
-                {proof.recalls.slice(0, 2).map((recall) => (
-                  <AcceptedProofPayload
-                    key={recall.key}
-                    as={recall.content && recall.content.kind !== 'binary' ? 'a' : 'span'}
-                    href={recall.content && recall.content.kind !== 'binary' ? recall.content.contentUrl : undefined}
-                    target={recall.content && recall.content.kind !== 'binary' ? '_blank' : undefined}
-                    rel={recall.content && recall.content.kind !== 'binary' ? 'noreferrer' : undefined}
-                    aria-label={`${proof.label}: ${recall.contentLabel}`}
-                  >
-                    <RecallContentPreview content={recall.content} fallback={recall.fallback} />
-                    <AcceptedProofContentType>
-                      {recall.contentLabel}
-                      {recall.content?.kind !== 'binary' && recall.content?.contentUrl ? ' ↗' : ''}
-                    </AcceptedProofContentType>
-                    {recall.meta && <AcceptedProofRecallMeta>{recall.meta}</AcceptedProofRecallMeta>}
-                  </AcceptedProofPayload>
-                ))}
-              </AcceptedProofPayloads>
-            </AcceptedProofCard>
+            <AcceptedProofVisual $ageMs={Math.max(0, Date.now() - proof.observedAt)}>
+              <AcceptedProofStem />
+              <AcceptedProofAnchor />
+              <AcceptedProofCard data-proof-card={true}>
+                <AcceptedProofLabel>{proof.label}</AcceptedProofLabel>
+                <AcceptedProofMeta>{proof.meta}</AcceptedProofMeta>
+                <AcceptedProofPayloads>
+                  {proof.recalls.slice(0, 2).map((recall) => (
+                    <AcceptedProofPayload
+                      key={recall.key}
+                      as={recall.content && recall.content.kind !== 'binary' ? 'a' : 'span'}
+                      href={recall.content && recall.content.kind !== 'binary' ? recall.content.contentUrl : undefined}
+                      target={recall.content && recall.content.kind !== 'binary' ? '_blank' : undefined}
+                      rel={recall.content && recall.content.kind !== 'binary' ? 'noreferrer' : undefined}
+                      aria-label={`${proof.label}: ${recall.contentLabel}`}
+                    >
+                      <RecallContentPreview content={recall.content} fallback={recall.fallback} />
+                      <AcceptedProofContentType>
+                        {recall.contentLabel}
+                        {recall.content?.kind !== 'binary' && recall.content?.contentUrl ? ' ↗' : ''}
+                      </AcceptedProofContentType>
+                      {recall.meta && <AcceptedProofRecallMeta>{recall.meta}</AcceptedProofRecallMeta>}
+                    </AcceptedProofPayload>
+                  ))}
+                </AcceptedProofPayloads>
+              </AcceptedProofCard>
+            </AcceptedProofVisual>
           </AcceptedProofPin>
         ))}
       </AcceptedProofPins>
@@ -1209,18 +1240,21 @@ function updateAcceptedProofPins(
     point.project(camera);
     const anchorX = (point.x * 0.5 + 0.5) * width;
     const anchorY = (-point.y * 0.5 + 0.5) * height;
-    const card = element.lastElementChild as HTMLElement | null;
+    const card = element.querySelector<HTMLElement>('[data-proof-card]');
     const cardWidth = card?.offsetWidth || 240;
     const cardHeight = card?.offsetHeight || 116;
-    const slots = Math.ceil(proofs.length / 2);
-    const slot = Math.floor(index / 2);
-    const cardX =
-      slots <= 1 ? Math.max(4, width / 2 - cardWidth / 2) : 4 + ((width - cardWidth - 8) * slot) / (slots - 1);
-    const cardY = index % 2 === 0 ? 4 : Math.max(4, height - cardHeight - 4);
-    const cardCenterX = cardX + cardWidth / 2;
-    const cardCenterY = cardY + cardHeight / 2;
-    const deltaX = cardCenterX - anchorX;
-    const deltaY = cardCenterY - anchorY;
+    const { x: cardX, y: cardY } = acceptedProofCardPosition(
+      index,
+      proofs.length,
+      anchorY,
+      width,
+      height,
+      cardWidth,
+      cardHeight,
+    );
+    const connector = connectorEndpoint(anchorX, anchorY, cardX, cardY, cardWidth, cardHeight);
+    const deltaX = connector.x - anchorX;
+    const deltaY = connector.y - anchorY;
     element.style.setProperty('--proof-pin-x', `${anchorX}px`);
     element.style.setProperty('--proof-pin-y', `${anchorY}px`);
     element.style.setProperty('--proof-card-x', `${cardX - anchorX}px`);
@@ -1229,6 +1263,54 @@ function updateAcceptedProofPins(
     element.style.setProperty('--proof-stem-angle', `${Math.atan2(deltaY, deltaX)}rad`);
     element.style.opacity = point.z >= -1 && point.z <= 1 ? '1' : '0';
   });
+}
+
+export function acceptedProofCardPosition(
+  index: number,
+  proofCount: number,
+  anchorY: number,
+  width: number,
+  height: number,
+  cardWidth: number,
+  cardHeight: number,
+): { x: number; y: number } {
+  const edge = 4;
+  if (proofCount <= 1) {
+    return {
+      x: Math.max(edge, width - cardWidth - edge),
+      y: anchorY < height / 2 ? Math.max(edge, height - cardHeight - edge) : edge,
+    };
+  }
+  const slots = Math.ceil(proofCount / 2);
+  const slot = Math.floor(index / 2);
+  return {
+    x:
+      slots <= 1
+        ? Math.max(edge, width - cardWidth - edge)
+        : edge + ((width - cardWidth - edge * 2) * slot) / (slots - 1),
+    y: index % 2 === 0 ? edge : Math.max(edge, height - cardHeight - edge),
+  };
+}
+
+export function connectorEndpoint(
+  anchorX: number,
+  anchorY: number,
+  cardX: number,
+  cardY: number,
+  cardWidth: number,
+  cardHeight: number,
+): { x: number; y: number } {
+  const centerX = cardX + cardWidth / 2;
+  const centerY = cardY + cardHeight / 2;
+  const towardAnchorX = anchorX - centerX;
+  const towardAnchorY = anchorY - centerY;
+  const scaleX = towardAnchorX === 0 ? Number.POSITIVE_INFINITY : cardWidth / 2 / Math.abs(towardAnchorX);
+  const scaleY = towardAnchorY === 0 ? Number.POSITIVE_INFINITY : cardHeight / 2 / Math.abs(towardAnchorY);
+  const scale = Math.min(1, scaleX, scaleY);
+  return {
+    x: centerX + towardAnchorX * scale,
+    y: centerY + towardAnchorY * scale,
+  };
 }
 
 function medianWireProgress(wires: WireState[]): number {
@@ -1373,15 +1455,60 @@ const AcceptedProofPin = styled.span`
   pointer-events: none;
 `;
 
+const acceptedProofAnnotationFade = keyframes`
+  0%, ${(ACCEPTED_PROOF_ANNOTATION_HOLD_MS / ACCEPTED_PROOF_ANNOTATION_LIFETIME_MS) * 100}% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+`;
+
+const AcceptedProofVisual = styled.span<{ $ageMs: number }>`
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  animation: ${acceptedProofAnnotationFade} ${ACCEPTED_PROOF_ANNOTATION_LIFETIME_MS}ms ease-out both;
+  animation-delay: -${(props) => Math.min(props.$ageMs, ACCEPTED_PROOF_ANNOTATION_LIFETIME_MS)}ms;
+  pointer-events: none;
+
+  @media (prefers-reduced-motion: reduce) {
+    animation-duration: ${ACCEPTED_PROOF_ANNOTATION_FADE_MS}ms;
+    animation-delay: ${(props) =>
+      props.$ageMs < ACCEPTED_PROOF_ANNOTATION_HOLD_MS
+        ? `${ACCEPTED_PROOF_ANNOTATION_HOLD_MS - props.$ageMs}ms`
+        : '0ms'};
+  }
+`;
+
 const AcceptedProofStem = styled.span`
   position: absolute;
   top: -0.5px;
   left: 0;
   width: var(--proof-stem-length, 0);
-  height: 1px;
+  height: 1.5px;
   transform: rotate(var(--proof-stem-angle, 0));
   transform-origin: 0 50%;
-  background: color-mix(in srgb, ${(props) => props.theme.colors.font.alt1} 48%, transparent);
+  background: color-mix(in srgb, ${(props) => props.theme.colors.font.primary} 70%, transparent);
+  box-shadow: 0 0 0 0.5px ${(props) => props.theme.colors.container.primary.background};
+  pointer-events: none;
+`;
+
+const AcceptedProofAnchor = styled.span`
+  position: absolute;
+  top: -5px;
+  left: -5px;
+  z-index: 1;
+  box-sizing: border-box;
+  width: 10px;
+  height: 10px;
+  background: ${(props) => props.theme.colors.container.primary.background};
+  border: 2px solid ${(props) => props.theme.colors.font.primary};
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px
+    color-mix(in srgb, ${(props) => props.theme.colors.container.primary.background} 78%, transparent);
   pointer-events: none;
 `;
 
@@ -1395,8 +1522,8 @@ const AcceptedProofCard = styled.span`
   grid-template-rows: auto auto auto;
   gap: 5px;
   transform: translate3d(var(--proof-card-x, 0), var(--proof-card-y, 0), 0);
-  background: color-mix(in srgb, ${(props) => props.theme.colors.container.primary.background} 96%, transparent);
-  border: 1px solid ${(props) => props.theme.colors.border.primary};
+  background: ${(props) => props.theme.colors.container.primary.background};
+  border: 1px solid ${(props) => props.theme.colors.border.alt1};
   border-radius: 7px;
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.1);
   pointer-events: auto;

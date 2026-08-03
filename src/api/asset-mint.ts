@@ -223,7 +223,18 @@ export class AssetMintClient {
     if (!this.#wallet?.sign) throw new Error('wallet-sign-unavailable');
     signal?.throwIfAborted();
     await this.#assertActiveSigner(owner);
-    const signed = (await this.#wallet.sign(transaction)) ?? transaction;
+    const walletResult = (await this.#wallet.sign(transaction)) ?? transaction;
+    let signed = walletResult;
+    if (walletResult !== transaction && typeof transaction?.setSignature === 'function') {
+      transaction.setSignature({
+        id: walletResult.id,
+        owner: walletResult.owner,
+        reward: walletResult.reward,
+        tags: walletResult.tags,
+        signature: walletResult.signature,
+      });
+      signed = transaction;
+    }
     if (!ADDRESS.test(signed?.id)) throw new Error('wallet-returned-unsigned-transaction');
     const signedOwner = String(signed.owner ?? '');
     if (!signedOwner || (await this.#arweave.wallets.ownerToAddress(signedOwner)) !== owner) {
@@ -233,6 +244,16 @@ export class AssetMintClient {
   }
 
   async #post(transaction: any, signal?: AbortSignal): Promise<void> {
+    const chunks = transaction?.chunks?.chunks;
+    if (Array.isArray(chunks) && chunks.length > 1 && this.#arweave?.transactions?.getUploader) {
+      const uploader = await this.#arweave.transactions.getUploader(transaction);
+      while (!uploader.isComplete) {
+        signal?.throwIfAborted();
+        await uploader.uploadChunk();
+      }
+      return;
+    }
+
     const serializable =
       typeof transaction.toJSON === 'function' ? transaction.toJSON() : JSON.parse(JSON.stringify(transaction));
     serializable.id = transaction.id;

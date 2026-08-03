@@ -7,16 +7,21 @@ import {
   BarChart3,
   Check,
   ChevronDown,
+  ChevronRight,
   CircleX,
   Diamond,
+  Eye,
+  EyeOff,
   FileText,
   Grid2X2,
   History,
   Images,
   Info,
+  InfinityIcon,
   LayoutGrid,
   Layers3,
   Library,
+  LoaderCircle,
   RefreshCw,
   Search,
   Send,
@@ -46,6 +51,7 @@ import {
 import {
   discoverCollectionActivity,
   discoverMarketActivity,
+  discoverMarketActivityPage,
   discoverWalletAssetCandidates,
   isLiveListing,
   resolveAssetCandidates,
@@ -61,6 +67,7 @@ import {
   ownerOfAsset,
   readAssetState,
   servingNodeOrigin,
+  waitForAssetState,
   type AssetState,
   type SwapOrder,
 } from 'api/asset-marketplace';
@@ -85,7 +92,11 @@ import {
 import { ArweaveObserverNetwork } from 'api/arweave-observers';
 import { assetObserverNetworkOptions } from 'api/asset-observers';
 import { AssetTransactionClient, DEFAULT_REGISTRATION_FEE, dispatchAndConfirm } from 'api/asset-transactions';
-import { ArweaveTransactionSync, type ArweaveSyncStep } from 'components/ArweaveTransactionSync';
+import {
+  ArweaveTransactionSync,
+  observedConfirmationDepth,
+  type ArweaveSyncStep,
+} from 'components/ArweaveTransactionSync';
 import { useWallet } from 'providers/WalletProvider';
 
 import arweaveNamesCube from '../assets/arweave-names-cube.gif';
@@ -111,6 +122,33 @@ const MarketContext = React.createContext<MarketContextValue>({
   addCreatedAsset: () => undefined,
   addCollection: () => undefined,
 });
+
+type OperationActivityPhase = 'form' | 'working' | 'done' | 'error';
+
+type OperationActivity = {
+  id: string;
+  asset: AssetSummary;
+  collectionId: string;
+  owner: string;
+  operation: Operation;
+  phase: OperationActivityPhase;
+  status: string;
+  confirmations: number;
+  confirmationTarget: number;
+  createdAt: number;
+};
+
+type OperationActivityContextValue = {
+  activities: OperationActivity[];
+  activeId: string | null;
+  start(input: Pick<OperationActivity, 'asset' | 'collectionId' | 'owner' | 'operation'>): void;
+  show(id: string): void;
+  hide(): void;
+  remove(id: string): void;
+  clearFinished(): void;
+};
+
+const OperationActivityContext = React.createContext<OperationActivityContextValue | null>(null);
 
 export function App() {
   const [market, setMarket] = React.useState<MarketContextValue>({
@@ -186,23 +224,128 @@ export function App() {
   return (
     <MarketContext.Provider value={value}>
       <HashRouter>
-        <RouteScroll />
-        <Header />
-        <main>
-          <Routes>
-            <Route path="/" element={<Home />} />
-            <Route path="/create" element={<CreateView />} />
-            <Route path="/my-assets" element={<MyAssetsView />} />
-            <Route path="/collection/:collectionId" element={<CollectionView />} />
-            <Route path="/collection/:collectionId/activity" element={<CollectionActivityView />} />
-            <Route path="/asset/:collectionId/:assetId" element={<AssetView />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </main>
-        <Footer />
+        <OperationActivityProvider>
+          <RouteScroll />
+          <Header />
+          <main>
+            <Routes>
+              <Route path="/" element={<Home />} />
+              <Route path="/create" element={<CreateView />} />
+              <Route path="/my-assets" element={<MyAssetsView />} />
+              <Route path="/collection/:collectionId" element={<CollectionView />} />
+              <Route path="/collection/:collectionId/activity" element={<CollectionActivityView />} />
+              <Route path="/asset/:collectionId/:assetId" element={<AssetView />} />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </main>
+          <Footer />
+        </OperationActivityProvider>
       </HashRouter>
     </MarketContext.Provider>
   );
+}
+
+function OperationActivityProvider({ children }: React.PropsWithChildren) {
+  const navigate = useNavigate();
+  const [activities, setActivities] = React.useState<OperationActivity[]>([]);
+  const [activeId, setActiveId] = React.useState<string | null>(null);
+  const start = React.useCallback(
+    (input: Pick<OperationActivity, 'asset' | 'collectionId' | 'owner' | 'operation'>) => {
+      const existing = activities.find((activity) => activity.asset.id === input.asset.id && activity.phase !== 'done');
+      if (existing) {
+        setActiveId(existing.id);
+        return;
+      }
+      const id = `${input.asset.id}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
+      const phase =
+        input.operation.kind === 'buy' || ('resumeId' in input.operation && input.operation.resumeId)
+          ? 'working'
+          : 'form';
+      const activity: OperationActivity = {
+        ...input,
+        id,
+        phase,
+        status: phase === 'working' ? 'Starting transaction…' : 'Waiting for details',
+        confirmations: 0,
+        confirmationTarget: 5,
+        createdAt: Date.now(),
+      };
+      setActivities((current) => [activity, ...current]);
+      setActiveId(id);
+    },
+    [activities],
+  );
+  const update = React.useCallback(
+    (
+      id: string,
+      patch: Pick<OperationActivity, 'phase' | 'status' | 'confirmations' | 'confirmationTarget'>,
+      assetId: string,
+    ) => {
+      setActivities((current) =>
+        current.map((activity) => (activity.id === id ? { ...activity, ...patch } : activity)),
+      );
+      if (patch.phase === 'done') {
+        queueMicrotask(() =>
+          window.dispatchEvent(new CustomEvent('bazar:asset-operation-finished', { detail: assetId })),
+        );
+      }
+    },
+    [],
+  );
+  const remove = React.useCallback((id: string) => {
+    setActivities((current) => current.filter((activity) => activity.id !== id));
+    setActiveId((current) => (current === id ? null : current));
+  }, []);
+  const clearFinished = React.useCallback(() => {
+    setActivities((current) => current.filter((activity) => !['done', 'error'].includes(activity.phase)));
+    setActiveId((current) => {
+      const active = activities.find((activity) => activity.id === current);
+      return active && ['done', 'error'].includes(active.phase) ? null : current;
+    });
+  }, [activities]);
+  const value = React.useMemo<OperationActivityContextValue>(
+    () => ({
+      activities,
+      activeId,
+      start,
+      show: setActiveId,
+      hide: () => setActiveId(null),
+      remove,
+      clearFinished,
+    }),
+    [activeId, activities, clearFinished, remove, start],
+  );
+  return (
+    <OperationActivityContext.Provider value={value}>
+      {children}
+      {activities.map((activity) => (
+        <OperationDialog
+          key={activity.id}
+          taskId={activity.id}
+          asset={activity.asset}
+          owner={activity.owner}
+          operation={activity.operation}
+          visible={activeId === activity.id}
+          onUpdate={update}
+          onClose={() => {
+            if (activity.phase === 'form') remove(activity.id);
+            else setActiveId(null);
+          }}
+          onDiscard={() => remove(activity.id)}
+          onViewAsset={() => {
+            navigate(`/asset/${activity.collectionId}/${activity.asset.id}`);
+            remove(activity.id);
+          }}
+        />
+      ))}
+    </OperationActivityContext.Provider>
+  );
+}
+
+function useOperationActivity() {
+  const value = React.useContext(OperationActivityContext);
+  if (!value) throw new Error('operation-activity-provider-missing');
+  return value;
 }
 
 function RouteScroll() {
@@ -323,6 +466,7 @@ function Header() {
             <GatewayControl />
           </div>
           <div className="site-nav-wallet">
+            <OperationActivityControl />
             <button
               aria-label={wallet.address ? `Disconnect wallet ${short(wallet.address)}` : 'Connect wallet'}
               className="wallet"
@@ -474,6 +618,105 @@ function Header() {
   );
 }
 
+function OperationActivityControl() {
+  const { activities, show, remove, clearFinished } = useOperationActivity();
+  const [open, setOpen] = React.useState(false);
+  const containerRef = React.useRef<HTMLDivElement>(null);
+  const workingCount = activities.filter((activity) => activity.phase === 'working').length;
+  const finishedCount = activities.filter((activity) => ['done', 'error'].includes(activity.phase)).length;
+  React.useEffect(() => {
+    if (!open) return;
+    const close = (event: MouseEvent) => {
+      if (!containerRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    window.addEventListener('mousedown', close);
+    return () => window.removeEventListener('mousedown', close);
+  }, [open]);
+  if (!activities.length) return null;
+  return (
+    <div className="operation-activity-control" ref={containerRef}>
+      <button
+        type="button"
+        className={`operation-activity-trigger${workingCount ? ' working' : ''}`}
+        aria-label={`Transaction activity, ${activities.length} ${activities.length === 1 ? 'item' : 'items'}`}
+        aria-expanded={open}
+        title="Transaction activity"
+        onClick={() => setOpen((value) => !value)}
+      >
+        <InfinityIcon className="ui-icon" aria-hidden="true" />
+        <span>{activities.length}</span>
+      </button>
+      {open ? (
+        <section className="operation-activity-menu" aria-label="Transaction activity">
+          <div className="operation-activity-heading">
+            <div>
+              <strong>Transaction activity</strong>
+              <span>{workingCount ? `${workingCount} running in the background` : 'No transactions running'}</span>
+            </div>
+            {finishedCount ? (
+              <button type="button" onClick={clearFinished}>
+                Clear finished
+              </button>
+            ) : null}
+          </div>
+          <div className="operation-activity-list">
+            {activities.map((activity) => (
+              <div className={`operation-activity-item ${activity.phase}`} key={activity.id}>
+                <button
+                  type="button"
+                  className="operation-activity-open"
+                  onClick={() => {
+                    show(activity.id);
+                    setOpen(false);
+                  }}
+                >
+                  <span className="operation-activity-symbol" aria-hidden="true">
+                    {activity.asset.image ? (
+                      <img src={activity.asset.image} alt="" />
+                    ) : (
+                      <span>{activity.asset.name.slice(0, 1).toUpperCase()}</span>
+                    )}
+                  </span>
+                  <span className="operation-activity-copy">
+                    <strong>{activity.asset.name}</strong>
+                    <small>
+                      {operationLabel(activity.operation.kind)} · {operationActivityPhaseLabel(activity.phase)}
+                    </small>
+                    <span>{activity.status}</span>
+                  </span>
+                  <span className="operation-activity-progress">
+                    <span
+                      className="operation-activity-confirmations"
+                      aria-label={`${activity.confirmations} of ${activity.confirmationTarget} confirmations`}
+                      title="Confirmations"
+                    >
+                      {activity.confirmations}/{activity.confirmationTarget}
+                    </span>
+                    {activity.phase === 'working' ? (
+                      <LoaderCircle className="ui-icon ui-icon--xs operation-activity-loader" aria-hidden="true" />
+                    ) : null}
+                  </span>
+                  <ChevronRight className="ui-icon ui-icon--sm operation-activity-chevron" aria-hidden="true" />
+                </button>
+                {activity.phase !== 'working' ? (
+                  <button
+                    type="button"
+                    className="operation-activity-remove"
+                    aria-label={`Remove ${activity.asset.name} transaction`}
+                    onClick={() => remove(activity.id)}
+                  >
+                    <X className="ui-icon ui-icon--sm" aria-hidden="true" />
+                  </button>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
+    </div>
+  );
+}
+
 function Footer() {
   const { pathname } = useLocation();
   if (pathname === '/') return null;
@@ -500,10 +743,29 @@ function NamesCubePreview() {
   );
 }
 
+function NameAssetArtwork({ name, className = '' }: { name: string; className?: string }) {
+  const characterCount = Math.max(1, Array.from(name.trim()).length);
+  const fontScale = Math.max(3.5, Math.min(18, 138 / characterCount));
+  return (
+    <span
+      className={`name-asset-artwork${className ? ` ${className}` : ''}`}
+      style={{ '--name-font-cqw': fontScale } as React.CSSProperties}
+      aria-hidden="true"
+    >
+      <strong>{name}</strong>
+      <img src={arweaveNamesCube} alt="" />
+    </span>
+  );
+}
+
+const HOME_LISTING_PAGE_SIZE = 24;
+const HOME_LISTING_TARGET = 12;
+const HOME_LISTING_MAX_PAGES_PER_LOAD = 2;
+
 function Home() {
   const market = React.useContext(MarketContext);
   const { search } = useLocation();
-  const [assetView, setAssetView] = React.useState<'recent' | 'listed' | 'price-low' | 'price-high'>('recent');
+  const [assetView, setAssetView] = React.useState<'recent' | 'listed' | 'price-low' | 'price-high'>('listed');
   const query = new URLSearchParams(search).get('q') ?? '';
   const normalizedQuery = query.trim().toLowerCase();
   const collections = market.collections.filter((collection) => {
@@ -513,24 +775,120 @@ function Home() {
       collection.assets.some((asset) => asset.name.toLowerCase().includes(normalizedQuery))
     );
   });
-  const assets = market.collections
+  const recentAssets = market.collections
     .flatMap((collection) => collection.assets.filter((asset) => asset.image).map((asset) => ({ asset, collection })))
     .filter(
       ({ asset, collection }) =>
         !normalizedQuery || `${asset.name} ${collection.name}`.toLowerCase().includes(normalizedQuery),
     )
     .slice(0, 10);
-  const assetKey = assets.map(({ asset }) => asset.id).join(',');
+  const assetKey = recentAssets.map(({ asset }) => asset.id).join(',');
   const [assetPrices, setAssetPrices] = React.useState<Record<string, string | null>>({});
+  const [activeListings, setActiveListings] = React.useState<ResolvedAsset[]>([]);
+  const [activeListingLimit, setActiveListingLimit] = React.useState(HOME_LISTING_TARGET);
+  const [listingLoading, setListingLoading] = React.useState(false);
+  const [listingHasMore, setListingHasMore] = React.useState(false);
+  const [listingError, setListingError] = React.useState<string | null>(null);
+  const [listingRefresh, setListingRefresh] = React.useState(0);
+  const listingControllerRef = React.useRef<AbortController | null>(null);
+  const listingScanRef = React.useRef<{
+    cursor: string | null;
+    hasMore: boolean;
+    loading: boolean;
+    seen: Set<string>;
+    results: ResolvedAsset[];
+  }>({ cursor: null, hasMore: true, loading: false, seen: new Set(), results: [] });
+  const marketCollectionKey = market.collections
+    .map((collection) => `${collection.id}:${collection.assets.map((asset) => asset.id).join('.')}`)
+    .join(',');
   const collectionKey = collections
     .map((collection) => `${collection.id}:${collection.assets.map((asset) => asset.id).join('.')}`)
     .join(',');
   const [collectionFloors, setCollectionFloors] = React.useState<Record<string, string | null>>({});
+  const loadActiveListings = React.useCallback(
+    async (target: number, controller: AbortController) => {
+      const scan = listingScanRef.current;
+      if (scan.loading || controller.signal.aborted) return;
+      scan.loading = true;
+      setListingLoading(true);
+      setListingError(null);
+      let pages = 0;
+      try {
+        while (scan.results.length < target && scan.hasMore && pages < HOME_LISTING_MAX_PAGES_PER_LOAD) {
+          const previousCursor = scan.cursor;
+          const page = await discoverMarketActivityPage({
+            cursor: scan.cursor,
+            listingsOnly: true,
+            pageSize: HOME_LISTING_PAGE_SIZE,
+            signal: controller.signal,
+          });
+          if (page.hasMore && (!page.cursor || page.cursor === previousCursor)) {
+            throw new Error('asset-activity-pagination-stalled');
+          }
+          scan.cursor = page.cursor;
+          scan.hasMore = page.hasMore;
+          pages += 1;
+          const candidates = page.candidates.filter((candidate) => {
+            if (scan.seen.has(candidate.processId)) return false;
+            scan.seen.add(candidate.processId);
+            return true;
+          });
+          if (candidates.length) {
+            const resolved = await resolveAssetCandidates(candidates, market.collections, {
+              signal: controller.signal,
+              read: (processId, signal) => readAssetState(processId, { signal, maxAttempts: 1 }),
+            });
+            const known = new Set(scan.results.map((result) => result.asset.id));
+            for (const result of resolved) {
+              if (isLiveListing(result) && !known.has(result.asset.id)) {
+                scan.results.push(result);
+                known.add(result.asset.id);
+              }
+            }
+            scan.results.sort(
+              (left, right) =>
+                right.activity.height - left.activity.height ||
+                right.activity.timestamp - left.activity.timestamp ||
+                left.asset.id.localeCompare(right.asset.id),
+            );
+            setActiveListings([...scan.results]);
+          }
+          setListingHasMore(scan.hasMore);
+        }
+      } catch (error) {
+        if (!controller.signal.aborted) setListingError(errorMessage(error));
+      } finally {
+        scan.loading = false;
+        if (!controller.signal.aborted) setListingLoading(false);
+      }
+    },
+    [market.collections],
+  );
+  React.useEffect(() => {
+    const refresh = () => setListingRefresh((value) => value + 1);
+    window.addEventListener('bazar:asset-operation-finished', refresh);
+    return () => window.removeEventListener('bazar:asset-operation-finished', refresh);
+  }, []);
+  React.useEffect(() => {
+    listingControllerRef.current?.abort();
+    const controller = new AbortController();
+    listingControllerRef.current = controller;
+    listingScanRef.current = { cursor: null, hasMore: true, loading: false, seen: new Set(), results: [] };
+    setActiveListings([]);
+    setActiveListingLimit(HOME_LISTING_TARGET);
+    setListingHasMore(false);
+    setListingError(null);
+    if (!market.loading && market.collections.length) {
+      void loadActiveListings(HOME_LISTING_TARGET, controller);
+    }
+    return () => controller.abort();
+  }, [listingRefresh, loadActiveListings, market.loading, marketCollectionKey]);
   React.useEffect(() => {
     const controller = new AbortController();
     setAssetPrices({});
+    if (assetView !== 'recent') return () => controller.abort();
     void Promise.all(
-      assets.map(async ({ asset }) => {
+      recentAssets.map(async ({ asset }) => {
         try {
           const { state } = await readAssetState(asset.id, { signal: controller.signal, maxAttempts: 1 });
           const order = liveOrderOfAsset(state);
@@ -543,7 +901,7 @@ function Home() {
       if (!controller.signal.aborted) setAssetPrices(Object.fromEntries(prices));
     });
     return () => controller.abort();
-  }, [assetKey]);
+  }, [assetKey, assetView]);
   React.useEffect(() => {
     const controller = new AbortController();
     setCollectionFloors({});
@@ -576,15 +934,37 @@ function Home() {
     });
     return () => controller.abort();
   }, [collectionKey]);
-  const pricesReady = assets.every(({ asset }) => asset.id in assetPrices);
-  const displayedAssets = [...assets]
-    .filter(({ asset }) => assetView === 'recent' || Boolean(assetPrices[asset.id]))
+  const recentCards = recentAssets.map(({ asset, collection }) => ({
+    asset,
+    collection,
+    price: asset.id in assetPrices ? assetPrices[asset.id] : undefined,
+  }));
+  const listingCards = activeListings
+    .map((result) => ({
+      asset: result.asset,
+      collection: result.collection,
+      price: `${winstonToAr(liveOrderOfAsset(result.state)!.asking)} AR`,
+    }))
+    .filter(
+      ({ asset, collection }) =>
+        !normalizedQuery || `${asset.name} ${collection.name}`.toLowerCase().includes(normalizedQuery),
+    )
     .sort((left, right) => {
       if (assetView !== 'price-low' && assetView !== 'price-high') return 0;
-      const leftPrice = Number(assetPrices[left.asset.id]?.replace(/\s+AR$/, '') ?? 0);
-      const rightPrice = Number(assetPrices[right.asset.id]?.replace(/\s+AR$/, '') ?? 0);
+      const leftPrice = Number(left.price.replace(/\s+AR$/, ''));
+      const rightPrice = Number(right.price.replace(/\s+AR$/, ''));
       return assetView === 'price-low' ? leftPrice - rightPrice : rightPrice - leftPrice;
     });
+  const displayedAssets = assetView === 'recent' ? recentCards : listingCards.slice(0, activeListingLimit);
+  const canLoadMoreListings = listingCards.length > activeListingLimit || listingHasMore;
+  const showMoreListings = () => {
+    const nextLimit = activeListingLimit + HOME_LISTING_TARGET;
+    setActiveListingLimit(nextLimit);
+    const controller = listingControllerRef.current;
+    if (listingCards.length < nextLimit && controller && !controller.signal.aborted) {
+      void loadActiveListings(nextLimit, controller);
+    }
+  };
   return (
     <div className="home-shell">
       <div className="home-main">
@@ -658,18 +1038,21 @@ function Home() {
             ) : null}
           </section>
 
-          {assets.length ? (
+          {recentAssets.length || activeListings.length || listingLoading || listingError ? (
             <section className="home-section home-assets" id="assets">
               <div className="home-section-heading">
                 <div>
                   <h2>Discover assets</h2>
-                  <p>Individual assets from the latest permanent collection indexes.</p>
+                  <p>
+                    {assetView === 'recent'
+                      ? 'Individual assets from the latest permanent collection indexes.'
+                      : 'Verified active listings across every marketplace collection.'}
+                  </p>
                 </div>
                 <MarketSelect<'recent' | 'listed' | 'price-low' | 'price-high'>
                   label="View"
                   onChange={setAssetView}
                   options={[
-                    { value: 'recent', label: 'Recently indexed' },
                     { value: 'listed', label: 'Listed for sale' },
                     { value: 'price-low', label: 'Price: low to high' },
                     { value: 'price-high', label: 'Price: high to low' },
@@ -678,25 +1061,42 @@ function Home() {
                 />
               </div>
               <div className="home-asset-grid">
-                {displayedAssets.map(({ asset, collection }) => (
+                {displayedAssets.map(({ asset, collection, price }) => (
                   <Link key={`${collection.id}-${asset.id}`} to={`/asset/${collection.id}/${asset.id}`}>
-                    <img src={asset.image} alt="" />
+                    {asset.image ? (
+                      <img className="home-asset-media" src={asset.image} alt="" />
+                    ) : collection.kind === 'names' ? (
+                      <NameAssetArtwork className="home-asset-media name-asset-artwork--card" name={asset.name} />
+                    ) : (
+                      <span className="home-asset-media home-asset-placeholder" aria-hidden="true">
+                        <BazarMark />
+                      </span>
+                    )}
                     <div className="home-asset-details">
                       <div>
                         <strong>{asset.name}</strong>
                         <span>{collection.name}</span>
                       </div>
-                      <b className={`home-asset-price${assetPrices[asset.id] ? ' listed' : ''}`}>
-                        {asset.id in assetPrices ? (assetPrices[asset.id] ?? 'Not listed') : 'Checking…'}
+                      <b className={`home-asset-price${price ? ' listed' : ''}`}>
+                        {price === undefined ? 'Checking…' : (price ?? 'Not listed')}
                       </b>
                     </div>
                   </Link>
                 ))}
               </div>
+              {assetView !== 'recent' && listingLoading ? (
+                <div className="home-assets-status">Verifying recent listing activity…</div>
+              ) : null}
+              {assetView !== 'recent' && listingError ? <ErrorPanel message={listingError} /> : null}
               {assetView !== 'recent' && !displayedAssets.length ? (
                 <div className="home-assets-empty">
-                  {pricesReady ? 'No listed assets in the latest set.' : 'Checking live listings…'}
+                  {listingLoading ? 'Checking live listings…' : 'No active listings found in the latest activity.'}
                 </div>
+              ) : null}
+              {assetView !== 'recent' && canLoadMoreListings ? (
+                <button className="load-more" disabled={listingLoading} onClick={showMoreListings}>
+                  {listingLoading ? 'Checking listings…' : 'Load more listings'}
+                </button>
               ) : null}
             </section>
           ) : null}
@@ -726,6 +1126,7 @@ function CreateView() {
   const [collectionPhase, setCollectionPhase] = React.useState<CollectionMintPhase | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [result, setResult] = React.useState<MintedAsset | null>(null);
+  const [resultReady, setResultReady] = React.useState(false);
   const [collectionResult, setCollectionResult] = React.useState<Collection | null>(null);
   const [draft, setDraft] = React.useState<MintDraft | null>(() =>
     wallet.address ? getMintDraft(wallet.address) : null,
@@ -748,6 +1149,22 @@ function CreateView() {
     setCollectionPreviews(urls);
     return () => urls.forEach((url) => URL.revokeObjectURL(url));
   }, [collectionFiles]);
+  React.useEffect(() => {
+    setResultReady(false);
+    if (!result) return;
+    const controller = new AbortController();
+    void waitForAssetState(result.id, () => true, {
+      signal: controller.signal,
+      interval: 4000,
+      timeout: 0,
+    }).then(
+      () => {
+        if (!controller.signal.aborted) setResultReady(true);
+      },
+      () => undefined,
+    );
+    return () => controller.abort();
+  }, [result]);
   React.useEffect(() => {
     if (mode !== 'asset' || !file || !name.trim()) {
       setEstimate(null);
@@ -1118,20 +1535,21 @@ function CreateView() {
             </div>
           ) : null}
           {result || collectionResult ? (
-            <div className="mint-success">
-              <span>
-                <Check aria-hidden="true" />
-              </span>
+            <div className={`mint-success${result && !resultReady ? ' propagating' : ''}`}>
+              <span>{result && !resultReady ? <InfinityIcon aria-hidden="true" /> : <Check aria-hidden="true" />}</span>
               <div>
                 <strong>{collectionResult ? 'Collection submitted to Arweave' : 'Mint submitted to Arweave'}</strong>
                 <p>
                   {collectionResult
                     ? 'The permanent collection index may take a few minutes to become available through every gateway.'
-                    : 'The asset may take a few minutes to become computable through every gateway.'}
+                    : resultReady
+                      ? 'The asset is live and computable through the selected gateway.'
+                      : 'Watching Arweave continuously. You can view the asset as soon as its live state resolves.'}
                 </p>
               </div>
               <button
                 type="button"
+                disabled={Boolean(result && !resultReady)}
                 onClick={() =>
                   navigate(
                     collectionResult
@@ -1140,8 +1558,16 @@ function CreateView() {
                   )
                 }
               >
-                View {collectionResult ? 'collection' : 'asset'}
-                <ArrowRight className="ui-icon ui-icon--sm" aria-hidden="true" />
+                {result && !resultReady ? (
+                  <>
+                    Watching Arweave <InfinityIcon className="ui-icon ui-icon--sm" aria-hidden="true" />
+                  </>
+                ) : (
+                  <>
+                    View {collectionResult ? 'collection' : 'asset'}{' '}
+                    <ArrowRight className="ui-icon ui-icon--sm" aria-hidden="true" />
+                  </>
+                )}
               </button>
             </div>
           ) : (
@@ -1985,15 +2411,17 @@ function AssetView() {
   const { collectionId = '', assetId = '' } = useParams();
   const market = React.useContext(MarketContext);
   const wallet = useWallet();
+  const transactionActivity = useOperationActivity();
   const indexedCollection = market.collections.find((item) => item.id === collectionId);
+  const awaitLocalMint = Boolean(
+    collectionId === CREATED_COLLECTION_ID && indexedCollection?.assets.some((item) => item.id === assetId),
+  );
   const [remoteCollection, setRemoteCollection] = React.useState<Collection | null>(null);
   const [state, setState] = React.useState<AssetState | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(true);
-  const [operation, setOperation] = React.useState<Operation | null>(null);
   const [assetActivity, setAssetActivity] = React.useState<CollectionActivityEvent[]>([]);
   const [activityLoading, setActivityLoading] = React.useState(true);
-  const [activeSection, setActiveSection] = React.useState<'about' | 'orders' | 'activity'>('about');
   React.useEffect(() => {
     if (indexedCollection || collectionId === CREATED_COLLECTION_ID || !/^[A-Za-z0-9_-]{43}$/.test(collectionId)) {
       setRemoteCollection(null);
@@ -2011,18 +2439,35 @@ function AssetView() {
     );
     return () => controller.abort();
   }, [collectionId, indexedCollection]);
-  const load = React.useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      setState((await readAssetState(assetId)).state);
-    } catch (cause) {
-      setError(errorMessage(cause));
-    } finally {
-      setLoading(false);
-    }
-  }, [assetId]);
-  React.useEffect(() => void load(), [load]);
+  const load = React.useCallback(
+    async (signal?: AbortSignal) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const result = awaitLocalMint
+          ? await waitForAssetState(assetId, () => true, { signal, interval: 4000, timeout: 0 })
+          : await readAssetState(assetId, { signal });
+        if (!signal?.aborted) setState(result.state);
+      } catch (cause) {
+        if (!signal?.aborted) setError(errorMessage(cause));
+      } finally {
+        if (!signal?.aborted) setLoading(false);
+      }
+    },
+    [assetId, awaitLocalMint],
+  );
+  React.useEffect(() => {
+    const controller = new AbortController();
+    void load(controller.signal);
+    return () => controller.abort();
+  }, [load]);
+  React.useEffect(() => {
+    const refresh = (event: Event) => {
+      if ((event as CustomEvent<string>).detail === assetId) void load();
+    };
+    window.addEventListener('bazar:asset-operation-finished', refresh);
+    return () => window.removeEventListener('bazar:asset-operation-finished', refresh);
+  }, [assetId, load]);
   React.useEffect(() => {
     const controller = new AbortController();
     setAssetActivity([]);
@@ -2039,16 +2484,28 @@ function AssetView() {
       });
     return () => controller.abort();
   }, [assetId]);
-  React.useEffect(() => setActiveSection('about'), [assetId]);
   React.useEffect(() => {
-    if (!wallet.address || operation || !state) return;
+    if (!wallet.address || !state || transactionActivity.activities.some((activity) => activity.asset.id === assetId))
+      return;
+    const indexedActivityAsset =
+      indexedCollection?.assets.find((item) => item.id === assetId) ??
+      remoteCollection?.assets.find((item) => item.id === assetId);
+    const fallbackActivityAsset: AssetSummary = indexedActivityAsset ?? {
+      id: assetId,
+      name: state.name || short(assetId),
+    };
     try {
       const saved = JSON.parse(localStorage.getItem(`bazar-purchase:${assetId}`) ?? 'null');
       if (saved?.buyer === wallet.address && saved?.order) {
         if (!state.orders[saved.order.orderId] && state.balances[wallet.address] === '1') {
           localStorage.removeItem(`bazar-purchase:${assetId}`);
         } else {
-          setOperation({ kind: 'buy', order: saved.order, resume: saved.snapshot });
+          transactionActivity.start({
+            asset: indexedActivityAsset ?? saved.asset ?? fallbackActivityAsset,
+            collectionId,
+            owner: wallet.address,
+            operation: { kind: 'buy', order: saved.order, resume: saved.snapshot },
+          });
           return;
         }
       }
@@ -2057,11 +2514,16 @@ function AssetView() {
         const client = new AssetTransactionClient();
         const registrationId = client.findStoredRegistration(assetId, order.orderId, wallet.address);
         if (registrationId) {
-          setOperation({
-            kind: 'buy',
-            order,
-            resume: {
-              registration: { id: registrationId, dispatched: false },
+          transactionActivity.start({
+            asset: fallbackActivityAsset,
+            collectionId,
+            owner: wallet.address,
+            operation: {
+              kind: 'buy',
+              order,
+              resume: {
+                registration: { id: registrationId, dispatched: false },
+              },
             },
           });
           return;
@@ -2074,16 +2536,22 @@ function AssetView() {
         ['sell', 'cancel', 'transfer'].includes(savedOperation?.kind)
       ) {
         if (savedOperation.kind === 'cancel' && savedOperation.order) {
-          setOperation({
-            kind: 'cancel',
-            order: savedOperation.order,
-            resumeId: savedOperation.txId,
+          transactionActivity.start({
+            asset: indexedActivityAsset ?? savedOperation.asset ?? fallbackActivityAsset,
+            collectionId,
+            owner: wallet.address,
+            operation: { kind: 'cancel', order: savedOperation.order, resumeId: savedOperation.txId },
           });
         } else {
-          setOperation({
-            kind: savedOperation.kind,
-            resumeId: savedOperation.txId,
-            value: savedOperation.value,
+          transactionActivity.start({
+            asset: indexedActivityAsset ?? savedOperation.asset ?? fallbackActivityAsset,
+            collectionId,
+            owner: wallet.address,
+            operation: {
+              kind: savedOperation.kind,
+              resumeId: savedOperation.txId,
+              value: savedOperation.value,
+            },
           });
         }
       }
@@ -2091,7 +2559,16 @@ function AssetView() {
       localStorage.removeItem(`bazar-purchase:${assetId}`);
       localStorage.removeItem(`bazar-operation:${assetId}`);
     }
-  }, [assetId, operation, state, wallet.address]);
+  }, [
+    assetId,
+    collectionId,
+    indexedCollection,
+    remoteCollection,
+    state,
+    transactionActivity.activities,
+    transactionActivity.start,
+    wallet.address,
+  ]);
   const collection =
     indexedCollection ??
     remoteCollection ??
@@ -2114,11 +2591,9 @@ function AssetView() {
   const license = state ? licenseProperties(state) : [];
   const description = assetDescription(state, collection.description);
   const moreAssets = collection.assets.filter((item) => item.id !== asset.id).slice(0, 4);
-  const showAssetSection = (section: 'about' | 'orders' | 'activity') => {
-    setActiveSection(section);
-    const target = document.getElementById(`asset-${section}`);
-    if (target instanceof HTMLDetailsElement) target.open = true;
-    window.requestAnimationFrame(() => target?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  const startOperation = (operation: Operation) => {
+    if (!wallet.address) return;
+    transactionActivity.start({ asset, collectionId: collection.id, owner: wallet.address, operation });
   };
   return (
     <section className="asset-page asset-detail-page">
@@ -2127,6 +2602,8 @@ function AssetView() {
           <div className="asset-hero-media">
             {asset.image ? (
               <img src={asset.image} alt={asset.name} />
+            ) : collection.kind === 'names' ? (
+              <NameAssetArtwork className="name-asset-artwork--hero" name={asset.name} />
             ) : (
               <span>{asset.name.slice(0, 1).toUpperCase()}</span>
             )}
@@ -2192,22 +2669,22 @@ function AssetView() {
                     </button>
                   ) : null}
                   {wallet.address && order && !mine ? (
-                    <button className="primary with-icon" onClick={() => setOperation({ kind: 'buy', order })}>
+                    <button className="primary with-icon" onClick={() => startOperation({ kind: 'buy', order })}>
                       <ShoppingCart className="ui-icon ui-icon--sm" aria-hidden="true" /> Buy now
                     </button>
                   ) : null}
                   {wallet.address && mine && !order ? (
-                    <button className="primary with-icon" onClick={() => setOperation({ kind: 'sell' })}>
+                    <button className="primary with-icon" onClick={() => startOperation({ kind: 'sell' })}>
                       <Tag className="ui-icon ui-icon--sm" aria-hidden="true" /> List for sale
                     </button>
                   ) : null}
-                  {wallet.address && mine && order?.status === 'open' ? (
-                    <button className="with-icon" onClick={() => setOperation({ kind: 'cancel', order })}>
-                      <CircleX className="ui-icon ui-icon--sm" aria-hidden="true" /> Cancel listing
+                  {wallet.address && mine && order ? (
+                    <button className="with-icon" onClick={() => startOperation({ kind: 'cancel', order })}>
+                      <CircleX className="ui-icon ui-icon--sm" aria-hidden="true" /> Delist asset
                     </button>
                   ) : null}
                   {wallet.address && mine && !order ? (
-                    <button className="with-icon" onClick={() => setOperation({ kind: 'transfer' })}>
+                    <button className="with-icon" onClick={() => startOperation({ kind: 'transfer' })}>
                       <Send className="ui-icon ui-icon--sm" aria-hidden="true" /> Transfer
                     </button>
                   ) : null}
@@ -2215,29 +2692,6 @@ function AssetView() {
               </section>
             ) : null}
           </div>
-          <nav className="asset-section-tabs" aria-label="Asset detail sections">
-            <button
-              className={activeSection === 'about' ? 'active' : undefined}
-              onClick={() => showAssetSection('about')}
-              type="button"
-            >
-              Details
-            </button>
-            <button
-              className={activeSection === 'orders' ? 'active' : undefined}
-              onClick={() => showAssetSection('orders')}
-              type="button"
-            >
-              Orders
-            </button>
-            <button
-              className={activeSection === 'activity' ? 'active' : undefined}
-              onClick={() => showAssetSection('activity')}
-              type="button"
-            >
-              Activity
-            </button>
-          </nav>
           <div className="asset-accordion-list">
             <details id="asset-about" open>
               <summary>
@@ -2435,18 +2889,6 @@ function AssetView() {
           </div>
         </div>
       </div>
-      {operation && wallet.address ? (
-        <OperationDialog
-          asset={asset}
-          owner={wallet.address}
-          operation={operation}
-          onClose={() => {
-            setState(null);
-            setOperation(null);
-            void load();
-          }}
-        />
-      ) : null}
     </section>
   );
 }
@@ -2457,15 +2899,29 @@ type Operation =
   | { kind: 'buy'; order: SwapOrder; resume?: PurchaseSnapshot };
 
 function OperationDialog({
+  taskId,
   asset,
   owner,
   operation,
+  visible,
+  onUpdate,
   onClose,
+  onDiscard,
+  onViewAsset,
 }: {
+  taskId: string;
   asset: AssetSummary;
   owner: string;
   operation: Operation;
+  visible: boolean;
+  onUpdate(
+    id: string,
+    patch: Pick<OperationActivity, 'phase' | 'status' | 'confirmations' | 'confirmationTarget'>,
+    assetId: string,
+  ): void;
   onClose(): void;
+  onDiscard(): void;
+  onViewAsset(): void;
 }) {
   const [value, setValue] = React.useState(
     operation.kind === 'sell' || operation.kind === 'transfer' ? (operation.value ?? '') : '',
@@ -2477,14 +2933,17 @@ function OperationDialog({
   const [views, setViews] = React.useState<ObserverView[]>([]);
   const [transaction, setTransaction] = React.useState<PreparedTransaction | null>(null);
   const [purchaseState, setPurchaseState] = React.useState<PurchaseState | null>(null);
+  const [hiding, setHiding] = React.useState(false);
   const purchaseRef = React.useRef<SwapPurchase | null>(null);
   const networkRef = React.useRef<ArweaveObserverNetwork | null>(null);
   const lifecycleRef = React.useRef<object | null>(null);
+  const hideTimerRef = React.useRef<number | null>(null);
 
   React.useEffect(() => {
     const lifecycle = {};
     lifecycleRef.current = lifecycle;
     return () => {
+      if (hideTimerRef.current !== null) window.clearTimeout(hideTimerRef.current);
       queueMicrotask(() => {
         if (lifecycleRef.current !== lifecycle) return;
         purchaseRef.current?.abandon();
@@ -2492,6 +2951,9 @@ function OperationDialog({
       });
     };
   }, []);
+  React.useEffect(() => {
+    if (visible) setHiding(false);
+  }, [visible]);
   const submittedAutomatically = React.useRef(false);
   React.useEffect(() => {
     const shouldSubmitAutomatically = operation.kind === 'buy' || Boolean(operation.resumeId);
@@ -2532,7 +2994,7 @@ function OperationDialog({
           localStorage.setItem(
             `bazar-purchase:${asset.id}`,
             JSON.stringify({
-              asset: { id: asset.id, name: asset.name },
+              asset: { id: asset.id, name: asset.name, image: asset.image },
               buyer: owner,
               order: operation.order,
               snapshot: purchase.snapshot(),
@@ -2568,6 +3030,7 @@ function OperationDialog({
       localStorage.setItem(
         `bazar-operation:${asset.id}`,
         JSON.stringify({
+          asset: { id: asset.id, name: asset.name, image: asset.image },
           txId: prepared.id,
           kind: operation.kind,
           assetId: asset.id,
@@ -2633,25 +3096,67 @@ function OperationDialog({
       : operation.kind === 'buy'
         ? 'register'
         : operation.kind;
+  const activeSyncStep = steps.find((step) => step.key === activeStep) ?? steps[0];
+  const confirmationTarget = activeSyncStep?.target ?? 5;
+  const confirmations = Math.min(
+    confirmationTarget,
+    activeSyncStep?.confirmations ??
+      activeSyncStep?.transaction?.consensus?.confirmations ??
+      observedConfirmationDepth(activeSyncStep?.transaction?.views ?? []),
+  );
   const visiblePhase =
     operation.kind === 'buy' && phase === 'done' && purchaseState?.stage !== 'complete' ? 'error' : phase;
   const visibleMessage =
     message ||
     (purchaseState?.error ? errorMessage(new Error(purchaseState.error.message || purchaseState.error.code)) : '');
   const workingStatus = message || purchaseStatusMessage(purchaseState);
+  const reportedStatus =
+    visiblePhase === 'form'
+      ? 'Waiting for details'
+      : visiblePhase === 'working'
+        ? workingStatus || 'Watching Arweave confirmations…'
+        : visiblePhase === 'done'
+          ? operationSuccessTitle(operation.kind)
+          : visibleMessage || 'This transaction needs attention';
+  React.useEffect(() => {
+    onUpdate(taskId, { phase: visiblePhase, status: reportedStatus, confirmations, confirmationTarget }, asset.id);
+  }, [confirmationTarget, confirmations, reportedStatus, taskId, visiblePhase]);
+  const closeOrHide = () => {
+    if (visiblePhase !== 'working') {
+      onClose();
+      return;
+    }
+    if (hiding) return;
+    setHiding(true);
+    hideTimerRef.current = window.setTimeout(() => {
+      hideTimerRef.current = null;
+      onClose();
+    }, 240);
+  };
+  if (!visible) return null;
   return (
     <div className="dialog-backdrop" role="presentation">
-      <div className="dialog" role="dialog" aria-modal="true">
+      <div className={`dialog dialog--${visiblePhase}`} role="dialog" aria-modal="true">
         <div className="dialog-heading">
           <div>
             <p className="eyebrow">{operationLabel(operation.kind)}</p>
             <h2>{asset.name}</h2>
           </div>
-          {visiblePhase !== 'working' ? (
-            <button className="close" onClick={onClose} aria-label="Close dialog">
+          <button
+            className={`close${visiblePhase === 'working' ? ' transaction-hide' : ''}`}
+            onClick={closeOrHide}
+            aria-label={visiblePhase === 'working' ? 'Hide transaction details' : 'Close dialog'}
+            title={visiblePhase === 'working' ? 'Hide transaction details' : 'Close'}
+          >
+            {visiblePhase === 'working' ? (
+              <span className={`transaction-hide-icon${hiding ? ' hiding' : ''}`} aria-hidden="true">
+                <Eye className="ui-icon transaction-hide-eye-open" />
+                <EyeOff className="ui-icon transaction-hide-eye-closed" />
+              </span>
+            ) : (
               <X className="ui-icon" aria-hidden="true" />
-            </button>
-          ) : null}
+            )}
+          </button>
         </div>
         {visiblePhase === 'form' ? (
           <>
@@ -2672,7 +3177,13 @@ function OperationDialog({
                 />
               </label>
             ) : null}
-            {operation.kind === 'cancel' ? <p>This removes the open order. The asset remains in your wallet.</p> : null}
+            {operation.kind === 'cancel' ? (
+              <p>
+                {operation.order.status === 'reserved'
+                  ? 'This cancels the active buyer reservation and removes the listing. The asset remains in your wallet.'
+                  : 'This removes the listing. The asset remains in your wallet.'}
+              </p>
+            ) : null}
             <button className="primary wide" onClick={() => void submit()}>
               Sign {operationLabel(operation.kind).toLowerCase()}
             </button>
@@ -2694,7 +3205,7 @@ function OperationDialog({
             </span>
             <h3>{operationSuccessTitle(operation.kind)}</h3>
             <p>{operationSuccessMessage(operation.kind)}</p>
-            <button className="primary with-icon result-action" onClick={onClose}>
+            <button className="primary with-icon result-action" onClick={onViewAsset}>
               View asset <ArrowRight className="ui-icon ui-icon--sm" aria-hidden="true" />
             </button>
           </div>
@@ -2710,7 +3221,7 @@ function OperationDialog({
                     localStorage.setItem(
                       `bazar-purchase:${asset.id}`,
                       JSON.stringify({
-                        asset: { id: asset.id, name: asset.name },
+                        asset: { id: asset.id, name: asset.name, image: asset.image },
                         buyer: owner,
                         order: operation.order,
                         snapshot: purchaseSnapshot(purchaseState),
@@ -2720,14 +3231,14 @@ function OperationDialog({
                   window.location.reload();
                 }}
               >
-                Reload and resume safely
+                Try again
               </button>
             ) : /^transaction dispatch 4\d\d/.test(message) && transaction ? (
               <button
                 onClick={() => {
                   localStorage.removeItem(`bazar-operation:${asset.id}`);
                   localStorage.removeItem(`bazar-signed-transaction:${transaction.id}`);
-                  onClose();
+                  onDiscard();
                 }}
               >
                 Discard rejected signature and sign again
@@ -2830,13 +3341,21 @@ function arToWinston(value: string) {
   return (BigInt(whole) * 1_000_000_000_000n + BigInt(decimals.padEnd(12, '0'))).toString();
 }
 function operationLabel(kind: Operation['kind']) {
-  return { sell: 'List for sale', buy: 'Buy asset', cancel: 'Cancel listing', transfer: 'Transfer asset' }[kind];
+  return { sell: 'List for sale', buy: 'Buy asset', cancel: 'Delist asset', transfer: 'Transfer asset' }[kind];
+}
+function operationActivityPhaseLabel(phase: OperationActivityPhase) {
+  return {
+    form: 'Awaiting signature',
+    working: 'In progress',
+    done: 'Complete',
+    error: 'Needs attention',
+  }[phase];
 }
 function operationSuccessTitle(kind: Operation['kind']) {
   return {
     sell: 'Listing is live',
     buy: 'Purchase complete',
-    cancel: 'Listing canceled',
+    cancel: 'Asset delisted',
     transfer: 'Transfer complete',
   }[kind];
 }
@@ -2891,10 +3410,10 @@ function errorMessage(error: unknown) {
       'The transaction is confirmed, but the selected compute gateway has not applied it yet. Resume to keep checking live state.',
     'wallet-account-changed':
       'The connected wallet changed after signing. Reconnect the original signer to resume safely.',
-    'registration not found':
-      'Arweave nodes accepted the reservation, but it was not mined during this observation window. Reload to resume the exact signed transaction without signing again.',
-    'payment not found':
-      'Arweave nodes accepted the payment, but it was not mined during this observation window. Reload to resume the exact signed payment without paying again.',
+    'registration-not-found':
+      'Independent observers could not verify the saved reservation during this observation window. Resume the exact signed transaction without signing again.',
+    'payment-not-found':
+      'Independent observers could not verify the saved payment during this observation window. Resume the exact signed payment without paying again.',
   };
   return friendly[value] ?? value.replaceAll('-', ' ');
 }

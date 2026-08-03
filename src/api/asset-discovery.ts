@@ -65,6 +65,17 @@ type MarketActivityOptions = CandidateOptions & {
   listingsOnly?: boolean;
 };
 
+type MarketActivityPageOptions = Omit<MarketActivityOptions, 'onPage'> & {
+  cursor?: string | null;
+  pageSize?: number;
+};
+
+export type MarketActivityPage = {
+  candidates: AssetCandidate[];
+  cursor: string | null;
+  hasMore: boolean;
+};
+
 type CollectionActivityOptions = Omit<CandidateOptions, 'onPage'> & {
   recipients: string[];
   limit?: number;
@@ -128,11 +139,12 @@ const WALLET_CANDIDATES_QUERY = `query WalletAssetCandidates(
 
 const MARKET_ACTIVITY_QUERY = `query AssetMarketActivity(
 	$cursor: String
+	$first: Int!
 	$recipients: [String!]
 	$tags: [TagFilter!]!
 ) {
 	transactions(
-		first: ${GRAPHQL_PAGE_SIZE}
+		first: $first
 		after: $cursor
 		sort: HEIGHT_DESC
 		recipients: $recipients
@@ -218,51 +230,71 @@ export async function discoverWalletAssetCandidates(
 }
 
 export async function discoverMarketActivity(options: MarketActivityOptions = {}): Promise<AssetCandidate[]> {
-  const fetcher = options.fetch ?? globalThis.fetch.bind(globalThis);
-  const graphql = options.graphql ?? 'https://arweave.net/graphql';
   const found = new Map<string, AssetCandidate>();
-  const recipients = [...new Set((options.recipients ?? []).filter((id) => ADDRESS.test(id)))];
   let cursor: string | null = null;
 
   while (true) {
     options.signal?.throwIfAborted();
-    const response = await fetcher(graphql, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        query: MARKET_ACTIVITY_QUERY,
-        variables: {
-          cursor,
-          recipients: recipients.length ? recipients : null,
-          tags: [
-            {
-              name: 'action',
-              values: options.listingsOnly
-                ? ['make-offer']
-                : ['make-offer', 'register-interest', 'transfer', 'cancel-order'],
-            },
-          ],
-        },
-      }),
+    const page = await discoverMarketActivityPage({
+      fetch: options.fetch,
+      graphql: options.graphql,
+      listingsOnly: options.listingsOnly,
+      recipients: options.recipients,
       signal: options.signal,
+      cursor,
     });
-    if (!response.ok) throw new Error(`asset-activity-graphql-${response.status}`);
-    const payload = await response.json();
-    if (payload?.errors?.length) throw new Error('asset-activity-graphql-error');
-    const connection = payload?.data?.transactions as GraphqlConnection | undefined;
-    const edges = Array.isArray(connection?.edges) ? connection.edges : [];
-    const pageCandidates = edges.flatMap((edge) => {
-      const candidate = candidateFromNode(edge.node, 'market-action');
-      if (!candidate) return [];
+    for (const candidate of page.candidates) {
       mergeCandidate(found, candidate);
-      return [candidate];
-    });
-    await options.onPage?.(sortCandidates(pageCandidates));
-    if (!connection?.pageInfo?.hasNextPage || !edges.length) return sortCandidates([...found.values()]);
-    const nextCursor = edges.at(-1)?.cursor;
-    if (!nextCursor || nextCursor === cursor) throw new Error('asset-activity-pagination-stalled');
-    cursor = nextCursor;
+    }
+    await options.onPage?.(page.candidates);
+    if (!page.hasMore) return sortCandidates([...found.values()]);
+    if (!page.cursor || page.cursor === cursor) throw new Error('asset-activity-pagination-stalled');
+    cursor = page.cursor;
   }
+}
+
+export async function discoverMarketActivityPage(options: MarketActivityPageOptions = {}): Promise<MarketActivityPage> {
+  const fetcher = options.fetch ?? globalThis.fetch.bind(globalThis);
+  const graphql = options.graphql ?? 'https://arweave.net/graphql';
+  const recipients = [...new Set((options.recipients ?? []).filter((id) => ADDRESS.test(id)))];
+  const pageSize = Math.max(1, Math.min(GRAPHQL_PAGE_SIZE, Math.floor(options.pageSize ?? 25)));
+  const response = await fetcher(graphql, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      query: MARKET_ACTIVITY_QUERY,
+      variables: {
+        cursor: options.cursor ?? null,
+        first: pageSize,
+        recipients: recipients.length ? recipients : null,
+        tags: [
+          {
+            name: 'action',
+            values: options.listingsOnly
+              ? ['make-offer']
+              : ['make-offer', 'register-interest', 'transfer', 'cancel-order'],
+          },
+        ],
+      },
+    }),
+    signal: options.signal,
+  });
+  if (!response.ok) throw new Error(`asset-activity-graphql-${response.status}`);
+  const payload = await response.json();
+  if (payload?.errors?.length) throw new Error('asset-activity-graphql-error');
+  const connection = payload?.data?.transactions as GraphqlConnection | undefined;
+  const edges = Array.isArray(connection?.edges) ? connection.edges : [];
+  const found = new Map<string, AssetCandidate>();
+  for (const edge of edges) {
+    const candidate = candidateFromNode(edge.node, 'market-action');
+    if (candidate) mergeCandidate(found, candidate);
+  }
+  const cursor = edges.at(-1)?.cursor ?? null;
+  return {
+    candidates: sortCandidates([...found.values()]),
+    cursor,
+    hasMore: Boolean(connection?.pageInfo?.hasNextPage && edges.length),
+  };
 }
 
 export async function discoverCollectionActivity(
@@ -286,6 +318,7 @@ export async function discoverCollectionActivity(
         query: MARKET_ACTIVITY_QUERY,
         variables: {
           cursor,
+          first: Math.min(GRAPHQL_PAGE_SIZE, limit - events.length),
           recipients,
           tags: [
             {

@@ -1,7 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   CREATED_COLLECTION_ID,
+  AssetMintClient,
   assetFromMintState,
   createdCollection,
   isBazarMintTags,
@@ -134,5 +135,70 @@ describe('asset mint contract', () => {
         total: 1,
       },
     ]);
+  });
+
+  it('uploads multi-chunk media through the Arweave chunk uploader', async () => {
+    const makeTransaction = (chunkCount: number) => {
+      const transaction: any = {
+        id: '',
+        owner: '',
+        data: new Uint8Array(1),
+        chunks: { chunks: Array.from({ length: chunkCount }, () => ({})) },
+        addTag: vi.fn(),
+      };
+      transaction.setSignature = vi.fn((signature) => Object.assign(transaction, signature));
+      transaction.toJSON = () => ({ id: transaction.id, owner: transaction.owner, data: '' });
+      return transaction;
+    };
+    const media = makeTransaction(2);
+    const process = makeTransaction(1);
+    let uploadComplete = false;
+    const uploadChunk = vi.fn(async () => {
+      uploadComplete = true;
+    });
+    const getUploader = vi.fn(async () => ({
+      get isComplete() {
+        return uploadComplete;
+      },
+      uploadChunk,
+    }));
+    const posted: string[] = [];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes('/price/')) return new Response('1');
+      if (url.includes('/wallet/')) return new Response('100');
+      if (init?.method === 'POST') posted.push(url);
+      return new Response('', { status: 200 });
+    });
+    const client = new AssetMintClient({
+      arweave: {
+        createTransaction: vi.fn().mockResolvedValueOnce(media).mockResolvedValueOnce(process),
+        transactions: { getUploader },
+        wallets: { ownerToAddress: vi.fn(async () => owner) },
+      },
+      fetch: fetchMock as typeof fetch,
+      storage: storage(),
+      wallet: {
+        getActiveAddress: vi.fn(async () => owner),
+        sign: vi
+          .fn()
+          .mockResolvedValueOnce({ id: mediaId, owner: 'signed-owner', reward: '1', tags: [], signature: 'media' })
+          .mockResolvedValueOnce({ id: processId, owner: 'signed-owner', reward: '1', tags: [], signature: 'process' }),
+      } as any,
+    });
+
+    await client.mint(
+      {
+        name: 'Large signal',
+        description: '',
+        file: new File([new Uint8Array(300_000)], 'large-signal.png', { type: 'image/png' }),
+      },
+      owner,
+    );
+
+    expect(getUploader).toHaveBeenCalledWith(media);
+    expect(media.setSignature).toHaveBeenCalledWith(expect.objectContaining({ id: mediaId, signature: 'media' }));
+    expect(uploadChunk).toHaveBeenCalledOnce();
+    expect(posted).toEqual(['https://arweave.net/tx']);
   });
 });

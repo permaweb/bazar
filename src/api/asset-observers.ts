@@ -4,7 +4,7 @@ import { AO_MAINNET, GATEWAYS, gatewayFromLocation } from 'helpers/config';
 
 export function assetObserverNetworkOptions(location: Location = window.location): WeaveNetworkOptions {
   const hasSelectedRelay = new URLSearchParams(location.search).has('node');
-  const isLocalDevelopment = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+  const isLocalDevelopment = ['localhost', '127.0.0.1', '[::1]', '::1'].includes(location.hostname);
 
   return {
     node: `${GATEWAYS.default.protocol}://${GATEWAYS.default.host}`,

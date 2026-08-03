@@ -5,6 +5,8 @@ import {
   discoverWalletAssetCandidates,
   discoverCollectionActivity,
   discoverMarketActivity,
+  discoverMarketActivityPage,
+  isLiveListing,
   resolveAssetCandidates,
   restrictAssetCandidates,
   walletAssetGroup,
@@ -162,6 +164,68 @@ describe('wallet candidate discovery', () => {
     expect(body.query).toContain('recipients: $recipients');
     expect(body.variables.recipients).toEqual([assetA, assetB]);
     expect(body.variables.tags).toEqual([{ name: 'action', values: ['make-offer'] }]);
+  });
+
+  it('returns one bounded market page, deduplicates targets, and exposes the next cursor', async () => {
+    const fetcher = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            data: {
+              transactions: {
+                pageInfo: { hasNextPage: true },
+                edges: [
+                  {
+                    cursor: 'offer-1',
+                    node: {
+                      id: 'E'.repeat(43),
+                      recipient: assetA,
+                      tags: [{ name: 'action', value: 'make-offer' }],
+                      block: { height: 10, timestamp: 100 },
+                    },
+                  },
+                  {
+                    cursor: 'offer-2',
+                    node: {
+                      id: 'F'.repeat(43),
+                      recipient: assetA,
+                      tags: [{ name: 'action', value: 'make-offer' }],
+                      block: { height: 12, timestamp: 120 },
+                    },
+                  },
+                  {
+                    cursor: 'offer-3',
+                    node: {
+                      id: 'G'.repeat(43),
+                      recipient: assetB,
+                      tags: [{ name: 'action', value: 'make-offer' }],
+                      block: { height: 11, timestamp: 110 },
+                    },
+                  },
+                ],
+              },
+            },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+    );
+
+    const page = await discoverMarketActivityPage({
+      cursor: 'previous-page',
+      fetch: fetcher as typeof fetch,
+      listingsOnly: true,
+      pageSize: 12,
+    });
+
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    const call = fetcher.mock.calls[0] as unknown as [RequestInfo | URL, RequestInit];
+    const body = JSON.parse(String(call[1].body));
+    expect(body.variables).toMatchObject({ cursor: 'previous-page', first: 12 });
+    expect(page).toMatchObject({ cursor: 'offer-3', hasMore: true });
+    expect(page.candidates.map((candidate) => [candidate.processId, candidate.height])).toEqual([
+      [assetA, 12],
+      [assetB, 11],
+    ]);
   });
 
   it('returns bounded collection activity events with their actors and targets', async () => {
@@ -349,6 +413,7 @@ describe('live candidate resolution', () => {
     };
 
     expect(walletAssetGroup(result, wallet)).toBe('listed');
+    expect(isLiveListing(result)).toBe(true);
     expect(walletAssetGroup(result, buyer)).toBeNull();
     expect(
       walletAssetGroup(
@@ -364,5 +429,26 @@ describe('live candidate resolution', () => {
         wallet,
       ),
     ).toBe('owned');
+    expect(
+      isLiveListing({
+        ...result,
+        state: parseAssetState({
+          'execution-device': 'token@1.0',
+          'total-supply': 1,
+          balances: { [wallet]: '1' },
+          orders: {
+            [orderId]: {
+              'order-id': orderId,
+              creator: wallet,
+              recipient: wallet,
+              asking: '100000000',
+              deadline: 20,
+              quantity: 1,
+              status: 'cancelled',
+            },
+          },
+        }),
+      }),
+    ).toBe(false);
   });
 });

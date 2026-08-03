@@ -19,6 +19,7 @@ describe('assetObserverNetworkOptions', () => {
   it('contacts observers directly during local development', () => {
     const options = assetObserverNetworkOptions(location({}));
 
+    expect(options.node).toBe('https://arweave.net');
     expect(options['relay-with']).toBeUndefined();
     expect(options.pageProtocol).toBe('http:');
     expect(options.minObservers).toBe(3);

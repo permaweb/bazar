@@ -1,7 +1,12 @@
 import type { ArweaveAcceptedProof } from 'api/arweave-mining-telemetry';
 import { describe, expect, it } from 'vitest';
 
-import { insertAcceptedProof, upsertAcceptedProof } from './acceptedProofs';
+import {
+  ACCEPTED_PROOF_ANNOTATION_LIFETIME_MS,
+  acceptedProofAnnotationIsVisible,
+  insertAcceptedProof,
+  upsertAcceptedProof,
+} from './acceptedProofs';
 
 describe('accepted block annotations', () => {
   it('inserts a raw block proof immediately without replacing later enrichment', () => {
@@ -24,6 +29,17 @@ describe('accepted block annotations', () => {
     expect(updated).toHaveLength(10);
     expect(updated[0].height).toBe(2);
     expect(updated.at(-1)).toEqual(enriched);
+  });
+
+  it('expires an annotation after its visible and fade lifecycle', () => {
+    const observedAt = 1_000;
+
+    expect(acceptedProofAnnotationIsVisible(observedAt, observedAt + ACCEPTED_PROOF_ANNOTATION_LIFETIME_MS - 1)).toBe(
+      true,
+    );
+    expect(acceptedProofAnnotationIsVisible(observedAt, observedAt + ACCEPTED_PROOF_ANNOTATION_LIFETIME_MS)).toBe(
+      false,
+    );
   });
 });
 
