@@ -3,8 +3,8 @@
 ## Isolated worktrees for this task
 
 - **Bazar application:** `/Users/sam/.codex/worktrees/bazar-2-arweave-native-20260730`
-  - Branch: `feat/arweave-native-marketplace`
-  - Base: `ed511d9cdec2ab76b11423e1eac392b794915444` (`main`)
+  - Branch: `feat/fungible`
+  - Base: `7066e8ad847004535e3e1ae945e0478979dd2a7d`
 - **HyperBEAM runtime:** `/Users/sam/.codex/worktrees/bazar-2-hyperbeam-20260730`
   - Detached at `35c41dfb86b6b369cd5d9e52978976f778b091c3`
     (`feat/name-token`)
@@ -468,3 +468,135 @@ AO-Connect push path, or application backend.
   returned HTTP 200, `execution-device: token@1.0`, and their correct,
   different live owners. The control node and its temporary config were
   stopped and removed immediately afterward.
+
+## Fungible-token mission — verbatim
+
+In unattended mode, work from a branch from your current build called `feat/fungible` and:
+- Generate a fungible token with the arweave-scheduler and swap device. It should be denominated in the 10^12 range, as Arweave and AO are.
+- Modify the UI such that it supports the full end-to-end flow for listing offers, cancelling them, and making purchases of units -- including multi-order settlements.
+- When we match multiple orders at once, we should claim the orders in parallel and send payments, such that it should not take meaningfully longer than a single-order purchase. For v1, you should allow the user to leaf between 'tabs' of the 3D infinity symbol to see each of their different transactions happening in parallel. Later we will produce a better visualization. This is the ONLY area of your work that you may punt some of the visual details. The rest must be beautiful, clean, clear, and functional.
+- Use the screenshot tool and analyze what you see, going through multiple rounds of UX review with sub-agents until the flow is beautiful, clean, and elegant.
+- Commander's intent: Implement the *complete*, fungible token flow for Bazar 2.0, with beautiful rendering and smooth UX. Acceptance: Provide full screenshots of the entire flow end-to-end working including multi-order matched settlement.
+
+### Fungible-token execution status
+
+- Created `feat/fungible` from Bazar commit
+  `7066e8ad847004535e3e1ae945e0478979dd2a7d`.
+- Published the real 12-decimal `[TEST] Weave Credit` (`WEAVE`) process
+  `IyFfmbTu8P4rv0KyrA0Q-QtfEnYntMj4RkRiBVip9KA`, seeded with
+  `1000000000000000000` atomic units (1,000,000 WEAVE) to party A. It uses
+  `token@1.0`, `arweave-swap@1.0`, `arweave-scheduler@1.0`, and
+  `scheduler-mode: all`. Upload reward was `2647978870` winston.
+- The clean task HyperBEAM node on port 3101 loaded the published process and
+  returned its exact token metadata and balance at Arweave block 1,972,523.
+- Live browser computation exposed and fixed a lossless-JSON boundary defect:
+  HyperBEAM correctly emitted the 10^18 balance, but native `response.json()`
+  could not preserve it as a safe JavaScript integer. Unsafe integer lexemes
+  are now retained as exact decimal strings before state parsing, with a live-
+  response regression test.
+- Fungible state, exact decimal formatting, deterministic bounded whole-lot
+  matching, arbitrary-quantity list/transfer actions, cancellation, aggregate
+  affordability preflight, and resumable parallel purchase orchestration are
+  implemented. Device/runtime source remains unchanged.
+- UX review round one used two independent sub-agents. Applied findings include
+  a readable full-ticker hero, grouped exact quantities, correct listed-supply
+  and holder semantics, a primary listing action, wider commerce layout,
+  explicit amount-vs-listing matching, aggregate spend disclosure, independent
+  settlement warning, and an aggregate post-settlement balance/order check.
+- The first real cancellation-control listing is in flight from party A:
+  `WnACXzUfdI9MHc_-K7ZmRXLyO09VKz6IE2h8zFVo1sc` (2 WEAVE at 0.000001 AR per
+  WEAVE). Browser evidence so far is under `.run-data/screenshots/fungible/`.
+- That listing reached five confirmations and entered live process state at
+  scheduler height 1,972,525. The UI then showed party A with 999,998 liquid
+  WEAVE, 2 listed WEAVE, and the exact 0.000002 AR lot in its live order book.
+  The cancellation was submitted through the rendered order row as
+  `iFNmpguLt2zhov5PwxOOX_CEOW5FG4E4KJIN1Cdjev0` and mined at 1,972,538.
+- Two durable seller lots were signed and dispatched concurrently from
+  independent browser origins while that cancellation synchronized:
+  - 3 WEAVE at 0.000001 AR/unit:
+    `9oNqP1sFMwgBqotYHD5iMF3EJUFWHRhKsYdStTY7SOs`
+  - 5 WEAVE at 0.0000012 AR/unit:
+    `P8T-Ic0j0JFMmzFd2siSa88IpwK5zkUDY62wr9G5lfk`
+- A second correctness review found and reproduced an invalid fresh-batch
+  resume snapshot before buyer testing (`A resumed payment requires a
+  dispatched registration`). Fresh batches now hand their already-signed
+  pairs directly into each new `SwapPurchase`, while crash-safe storage holds
+  only the undispatched registration until the lifecycle itself publishes a
+  valid payment snapshot. A constructor-level regression test covers the
+  exact rejected boundary.
+- Parallel payment release now has a shared barrier: every reservation is
+  proven live first, one aggregate exact-balance check covers all signed seller
+  payments, and only then are those payments released together. Ambiguously
+  dispatched resumed payments always reuse their exact signed ID even if its
+  pre-sign window elapsed, preventing a replacement native-AR transfer from
+  becoming a possible duplicate. Purchase estimates also include the one-
+  winston scheduler quantity. Current gates pass 36/36 tests and TypeScript.
+- UX review round two was completed by a fresh sub-agent against screenshots
+  01–08 and the batch implementation. Applied changes include pre-submit
+  sell/transfer validation, exact operation-specific success receipts,
+  whole-listing purchase language, seller-payment/network-fee/wallet-after
+  quote rows, operation-specific CTAs, cancel consequences, accessible dialog
+  naming/live announcements, safe continue-and-resume controls, recovery tabs,
+  and exact `Reserve x/5` / `Pay x/5` progress on every parallel listing.
+- Both durable listings were then reloaded from fresh browser documents after
+  reaching five confirmations. Each recovered its original signed transaction
+  without another wallet signature and resumed at the scheduler wait. Evidence:
+  `.run-data/screenshots/fungible/08-listing-reload-recovered.png`.
+- Both durable listings entered live process state together at scheduler height
+  1,972,550. Party A then held 999,992 liquid WEAVE with exactly two open lots:
+  3 WEAVE for 0.000003 AR and 5 WEAVE for 0.000006 AR.
+- Party B matched the full 8 WEAVE through the real browser order book. The two
+  reservation transactions were signed and dispatched together:
+  - 3-WEAVE lot: `pNGPNKtVXynrIxzTLqOnlvC1vhsu0ul7ybMXy_a9F1Q`
+  - 5-WEAVE lot: `9Ul9zVn6JnG_B_508-fZfxtp7mB1uY41ciQmd97BOEg`
+- That live run exposed one route-boundary defect: observer relay selection read
+  only `location.search`, while Bazar's hash router stores `?node=` after the
+  hash. The state reader already handled both forms. The relay helper now does
+  too, with a regression test. The same accepted reservations resumed without
+  signing again and immediately rendered eight real relayed node lanes in each
+  listing tab at depth 2.
+- Reload recovery also exposed React StrictMode stopping the newly-created
+  observer network during its intentional development effect replay. Resource
+  cleanup is now deferred one task and cancelled by a matching remount, while a
+  genuine route/document unmount still abandons local watchers normally.
+- UX review round three judged the actual multi-order quote release-ready. Its
+  one recommendation is applied: the disclosure now says exactly four wallet
+  approvals for two matched listings instead of making the user infer the count.
+- Current parallel reservation evidence:
+  `.run-data/screenshots/fungible/12-parallel-registrations-listing-1.png` and
+  `.run-data/screenshots/fungible/13-parallel-registrations-listing-2.png`.
+- Both reservations were mined in the same block, 1,972,553, and every observer
+  tab reached 5/5. The payment gate remained closed until the scheduler-safe
+  state reached that exact block at network tip 1,972,563.
+- The shared gate then changed both tabs from reserving to paying in one render
+  and released both pre-signed native-AR payments together:
+  - 3-WEAVE lot: `JR8wieQMDY0b4bt-jt4D8xpXt5QzX8KFxKmOiX4ohyk`
+  - 5-WEAVE lot: `bYUzZBLiyMko_PlrVzINvn2QIh3_Ax-UTvaf22Qfprw`
+  Both were accepted before the next block. Browser evidence:
+  `.run-data/screenshots/fungible/14-parallel-payments-listing-1.png` and
+  `.run-data/screenshots/fungible/15-parallel-payments-listing-2.png`.
+- Both payments were then mined together in block 1,972,564. Each independently
+  reached 5/5, after which Bazar continued waiting for live token state instead
+  of treating base-layer confirmation as settlement.
+- At network tip 1,972,574, scheduled state applied both payments in one process
+  transition. The exact final state is:
+  - Party A: `999992000000000000` atomic units (999,992 WEAVE)
+  - Party B: `8000000000000` atomic units (8 WEAVE)
+  - orders: empty
+  - swap height: 1,972,564
+- The final receipt says `8 WEAVE received from 2 listings · 0.000009 AR paid
+  to sellers` and links both payment IDs. Party B's final AR balance is
+  `1.382697967578 AR`, exactly the pre-sign quote's post-purchase balance.
+  Evidence: `.run-data/screenshots/fungible/16-multi-order-purchase-complete.png`
+  and `.run-data/screenshots/fungible/17-buyer-live-balance.png`.
+- `/my-assets` progressively places the fungible token first. A true reload
+  through `http://127.0.0.1:3101` reproduced Party B's 8 WEAVE; Party A's page
+  shows 999,992 liquid WEAVE and no listed group. The fungible collection's
+  `Listed for sale` plus `Recent activity` controls resolve to zero live
+  listings after settlement. Evidence:
+  - `.run-data/screenshots/fungible/18-my-assets-party-b.png`
+  - `.run-data/screenshots/fungible/19-my-assets-party-a-sold.png`
+  - `.run-data/screenshots/fungible/20-collection-no-live-listings-recent.png`
+- Final gates pass on the exact finished tree: 37/37 Vitest tests, TypeScript,
+  production Vite build (1,896 modules), `git diff --check`, forbidden legacy
+  surface scans, and the real two-wallet browser acceptance circuit above.

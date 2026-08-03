@@ -27,7 +27,7 @@ const SIGNATURE_WINDOW_BLOCKS = 40;
  * state for ~20 minutes. State checks that gate on those effects must wait
  * comfortably past that window before declaring failure.
  */
-const STATE_INCLUSION_TIMEOUT = 35 * 60_000;
+const STATE_INCLUSION_TIMEOUT = 60 * 60_000;
 /**
  * Mirrors the node's `arweave_scheduler_confirmation_depth`: a mined
  * transaction only enters a process's schedule once it sits this many blocks
@@ -102,6 +102,7 @@ export type AssetTransactionClientOptions = {
 
 export type OfferInput = {
 	processId: string;
+	quantity: string;
 	asking: string;
 	minimumFee?: string;
 	deadline?: number;
@@ -112,7 +113,18 @@ export type PurchaseAdapterInput = {
 	processId: string;
 	order: SwapOrder;
 	buyer: string;
+	startingBalance: string;
 	network: WeaveNetwork;
+};
+
+export type PreparedPurchase = {
+	order: SwapOrder;
+	registration: PreparedTransaction;
+	payment: PreparedTransaction;
+	paymentCost: string;
+	snapshot: {
+		registration: { id: string; dispatched: false };
+	};
 };
 
 export type TransactionProgress = {
@@ -151,6 +163,7 @@ export class AssetTransactionClient {
 
 	async makeOffer(input: OfferInput, signal?: AbortSignal): Promise<PreparedTransaction> {
 		if (!ADDRESS.test(input.processId)) throw new TypeError('invalid-asset-process-id');
+		assertTokenQuantity(input.quantity);
 		assertSafeOfferAsking(input.asking);
 		if (input.seller && !ADDRESS.test(input.seller)) throw new TypeError('invalid-asset-offer-seller');
 		const deadline = input.deadline ?? DEFAULT_OFFER_DEADLINE;
@@ -163,7 +176,7 @@ export class AssetTransactionClient {
 				quantity: '1',
 				tags: [
 					{ name: 'action', value: 'make-offer' },
-					{ name: 'offer-quantity', value: '1' },
+					{ name: 'offer-quantity', value: input.quantity },
 					{ name: 'asking', value: input.asking },
 					{ name: 'deposit', value: '0' },
 					{
@@ -203,12 +216,14 @@ export class AssetTransactionClient {
 	async transfer(
 		processId: string,
 		recipient: string,
+		quantity: string,
 		expectedSigner?: string,
 		signal?: AbortSignal
 	): Promise<PreparedTransaction> {
 		if (!ADDRESS.test(processId) || !ADDRESS.test(recipient)) {
 			throw new TypeError('invalid-asset-transfer');
 		}
+		assertTokenQuantity(quantity);
 		return this.#prepare(
 			{
 				target: processId,
@@ -216,7 +231,7 @@ export class AssetTransactionClient {
 				tags: [
 					{ name: 'action', value: 'transfer' },
 					{ name: 'recipient', value: recipient },
-					{ name: 'quantity', value: '1' },
+					{ name: 'quantity', value: quantity },
 				],
 			},
 			signal,
@@ -237,10 +252,16 @@ export class AssetTransactionClient {
 		);
 	}
 
-	async requireAssetOwnership(processId: string, address: string, signal?: AbortSignal): Promise<void> {
+	async requireAssetBalance(
+		processId: string,
+		address: string,
+		minimum: string,
+		signal?: AbortSignal
+	): Promise<void> {
+		assertTokenQuantity(minimum);
 		await this.#requireProcessState(
 			processId,
-			(state) => state.balances[address] === '1',
+			(state) => BigInt(state.balances[address] ?? '0') >= BigInt(minimum),
 			'asset-not-owned',
 			signal
 		);
@@ -251,6 +272,7 @@ export class AssetTransactionClient {
 		expected: {
 			orderId: string;
 			seller: string;
+			quantity: string;
 			asking: string;
 			minimumFee: string;
 		},
@@ -265,6 +287,7 @@ export class AssetTransactionClient {
 						order &&
 							order.status === 'open' &&
 							order.creator === expected.seller &&
+							order.quantity === expected.quantity &&
 							order.asking === expected.asking &&
 							order.minimumFee === expected.minimumFee
 					);
@@ -284,9 +307,15 @@ export class AssetTransactionClient {
 		).state;
 	}
 
-	async waitForAssetOwnership(processId: string, owner: string, signal?: AbortSignal): Promise<AssetState> {
+	async waitForAssetBalance(
+		processId: string,
+		owner: string,
+		minimum: string,
+		signal?: AbortSignal
+	): Promise<AssetState> {
+		assertTokenQuantity(minimum);
 		return (
-			await waitForAssetState(processId, (state) => state.balances[owner] === '1', {
+			await waitForAssetState(processId, (state) => BigInt(state.balances[owner] ?? '0') >= BigInt(minimum), {
 				fetch: this.#fetch,
 				signal,
 				timeout: STATE_INCLUSION_TIMEOUT,
@@ -294,8 +323,36 @@ export class AssetTransactionClient {
 		).state;
 	}
 
+	async waitForPurchaseBatch(
+		processId: string,
+		buyer: string,
+		startingBalance: string,
+		orders: SwapOrder[],
+		signal?: AbortSignal
+	): Promise<AssetState> {
+		if (!ADDRESS.test(processId) || !ADDRESS.test(buyer) || !orders.length) {
+			throw new TypeError('invalid-purchase-batch');
+		}
+		assertTokenQuantity(startingBalance, true);
+		const expectedBalance = orders
+			.reduce((total, order) => total + BigInt(order.quantity), BigInt(startingBalance))
+			.toString();
+		const orderIds = new Set(orders.map((order) => order.orderId));
+		if (orderIds.size !== orders.length) throw new TypeError('duplicate-purchase-batch-order');
+		return (
+			await waitForAssetState(
+				processId,
+				(state) =>
+					[...orderIds].every((orderId) => state.orders[orderId] === undefined) &&
+					BigInt(state.balances[buyer] ?? '0') >= BigInt(expectedBalance),
+				{ fetch: this.#fetch, signal, timeout: STATE_INCLUSION_TIMEOUT }
+			)
+		).state;
+	}
+
 	purchaseAdapter(input: PurchaseAdapterInput): PurchaseAdapter {
 		assertSafePurchaseOrder(input.order);
+		assertTokenQuantity(input.startingBalance, true);
 		const prepareRegistration = (signal: AbortSignal) =>
 			this.#prepare(
 				{
@@ -355,7 +412,11 @@ export class AssetTransactionClient {
 				await this.#assertBalance(input.buyer, registration.cost + payment.cost);
 				return { registration, payment };
 			},
-			restorePrepared: async (_which, id) => this.restore(id, input.buyer),
+			// A persisted payment may have reached Arweave before its dispatched
+			// bit was written. Always replay that exact ID; never expire it into a
+			// second native-AR payment whose first dispatch remains ambiguous.
+			restorePrepared: async (which, id) =>
+				this.restore(id, input.buyer, { preserveExpiry: which !== 'payment' }),
 			waitForRegistrationAcceptance: async ({ signal, report }) => {
 				await waitForAssetState(
 					input.processId,
@@ -379,9 +440,12 @@ export class AssetTransactionClient {
 				);
 			},
 			verifyOwnership: async ({ signal, report }) => {
+				const expectedBalance = (BigInt(input.startingBalance) + BigInt(input.order.quantity)).toString();
 				await waitForAssetState(
 					input.processId,
-					(state) => state.orders[input.order.orderId] === undefined && state.balances[input.buyer] === '1',
+					(state) =>
+						state.orders[input.order.orderId] === undefined &&
+						BigInt(state.balances[input.buyer] ?? '0') >= BigInt(expectedBalance),
 					{
 						fetch: this.#fetch,
 						signal,
@@ -394,7 +458,58 @@ export class AssetTransactionClient {
 		};
 	}
 
-	restore(id: string, expectedSigner?: string): PreparedTransaction {
+	async preparePurchaseBatch(
+		inputs: PurchaseAdapterInput[],
+		signal?: AbortSignal
+	): Promise<PreparedPurchase[]> {
+		if (!inputs.length) throw new TypeError('empty-purchase-batch');
+		const buyer = inputs[0].buyer;
+		if (!ADDRESS.test(buyer) || inputs.some((input) => input.buyer !== buyer)) {
+			throw new TypeError('invalid-purchase-batch-buyer');
+		}
+		if (new Set(inputs.map((input) => input.order.orderId)).size !== inputs.length) {
+			throw new TypeError('duplicate-purchase-batch-order');
+		}
+		await this.#assertActiveSigner(buyer);
+		const estimates = await Promise.all(
+			inputs.map((input) => this.estimatePurchaseCosts(input.order, input.processId))
+		);
+		await this.#assertBalance(
+			buyer,
+			estimates.reduce((total, estimate) => total + BigInt(estimate.total), 0n)
+		);
+
+		const prepared: Array<PreparedPurchase & { cost: bigint }> = [];
+		for (const input of inputs) {
+			if (signal?.aborted) throw signal.reason;
+			const adapter = this.purchaseAdapter(input);
+			if (!adapter.prepareBoth) throw new Error('purchase-presign-unavailable');
+			const pair = await adapter.prepareBoth(signal ?? new AbortController().signal);
+			const registration = pair.registration as SafePreparedTransaction;
+			const payment = pair.payment as SafePreparedTransaction;
+			prepared.push({
+				order: input.order,
+				registration,
+				payment,
+				paymentCost: payment.cost.toString(),
+				snapshot: {
+					registration: { id: registration.id, dispatched: false },
+				},
+				cost: registration.cost + payment.cost,
+			});
+		}
+		await this.#assertBalance(
+			buyer,
+			prepared.reduce((total, item) => total + item.cost, 0n)
+		);
+		return prepared.map(({ cost: _cost, ...item }) => item);
+	}
+
+	restore(
+		id: string,
+		expectedSigner?: string,
+		options: { preserveExpiry?: boolean } = {}
+	): PreparedTransaction {
 		if (!ADDRESS.test(id)) throw new TypeError('invalid-signed-transaction-id');
 		const held = this.#storage?.getItem(`${SIGNED_TRANSACTION_PREFIX}${id}`);
 		if (!held) throw new Error('signed-transaction-not-found');
@@ -407,7 +522,7 @@ export class AssetTransactionClient {
 		}
 		return this.#prepared(
 			transaction,
-			stored.validUntilHeight,
+			options.preserveExpiry === false ? undefined : stored.validUntilHeight,
 			expectedSigner ?? stored.expectedSigner,
 			stored.requiredBalance === undefined ? undefined : BigInt(stored.requiredBalance)
 		);
@@ -494,7 +609,7 @@ export class AssetTransactionClient {
 			registrationFee: registrationFee.toString(),
 			registrationNetworkReward: registrationReward.toString(),
 			paymentNetworkReward: paymentReward.toString(),
-			total: (asking + maxBigInt(registrationReward, registrationFee) + paymentReward).toString(),
+				total: (asking + maxBigInt(registrationReward, registrationFee) + paymentReward + 1n).toString(),
 		};
 	}
 
@@ -615,7 +730,7 @@ export class AssetTransactionClient {
 
 	async #assertBalance(address: string, required: bigint): Promise<void> {
 		if ((await this.walletBalance(address)) < required) {
-			throw new Error('asset-purchase-insufficient-funds-after-signing');
+			throw new Error('asset-purchase-insufficient-funds');
 		}
 	}
 
@@ -757,6 +872,12 @@ function assertSafeOfferAsking(value: string): void {
 	if (BigInt(value) > MAXIMUM_ASSET_OFFER_PRICE) throw new TypeError('asset-offer-asking-too-high');
 }
 
+function assertTokenQuantity(value: string, allowZero = false): void {
+	if (!/^(?:0|[1-9]\d*)$/.test(value) || (!allowZero && value === '0')) {
+		throw new TypeError('invalid-token-quantity');
+	}
+}
+
 function assertZeroDataTransaction(transaction: Record<string, unknown>): void {
 	if (transaction.data !== '' && transaction.data !== undefined) {
 		throw new Error('wallet-modified-transaction-data');
@@ -814,6 +935,8 @@ function isExactOpenOrder(
 	return Boolean(
 		order &&
 			claimable &&
+			buyer !== order.creator &&
+			buyer !== order.recipient &&
 			order.creator === expected.creator &&
 			order.recipient === expected.recipient &&
 			order.asking === expected.asking &&
@@ -821,9 +944,7 @@ function isExactOpenOrder(
 			order.minimumFee === expected.minimumFee &&
 			order.deadline === expected.deadline &&
 			order.createdAt === expected.createdAt &&
-			order.quantity === expected.quantity &&
-			state.balances[order.creator] === '0' &&
-			state.balances[buyer] !== '1'
+			order.quantity === expected.quantity
 	);
 }
 

@@ -11,7 +11,7 @@ export type Collection = {
 	id: string;
 	name: string;
 	description: string;
-	kind: 'names' | 'images';
+	kind: 'names' | 'images' | 'tokens';
 	assets: AssetSummary[];
 	total?: number;
 	cursor?: string;
@@ -37,16 +37,87 @@ const IMAGE_COLLECTIONS = [
 
 export const IMAGE_COLLECTION_REFERENCES = IMAGE_COLLECTIONS.map((collection) => collection.reference);
 
+export const FUNGIBLE_TOKEN_ID =
+	import.meta.env.VITE_FUNGIBLE_TOKEN_ID ?? 'IyFfmbTu8P4rv0KyrA0Q-QtfEnYntMj4RkRiBVip9KA';
+
 export async function loadCollections(signal?: AbortSignal): Promise<Collection[]> {
-	const [names, ...images] = await Promise.allSettled([
+	const [names, fungible, ...images] = await Promise.allSettled([
 		loadNames(signal),
+		loadFungibleTokens(signal),
 		...IMAGE_COLLECTIONS.map(({ reference, manifest }) => loadImageCollection(reference, manifest, signal)),
 	]);
-	if (names.status === 'rejected') throw names.reason;
 	return [
-		names.value,
+		...(names.status === 'fulfilled' ? [names.value] : []),
+		...(fungible.status === 'fulfilled' && fungible.value.assets.length
+			? [fungible.value]
+			: [fungibleTokenCollection([defaultFungibleToken()])]),
 		...images.flatMap((result) => (result.status === 'fulfilled' ? [result.value] : [])),
 	];
+}
+
+async function loadFungibleTokens(signal?: AbortSignal): Promise<Collection> {
+	const response = await fetch(`${DEFAULT_GATEWAY}/graphql`, {
+		method: 'POST',
+		headers: { 'content-type': 'application/json' },
+		body: JSON.stringify({
+			query: `query FungibleTokens {
+				transactions(
+					first: 100
+					sort: HEIGHT_DESC
+					tags: [
+						{ name: "execution-device", values: ["token@1.0"] }
+						{ name: "swap-device", values: ["arweave-swap@1.0"] }
+						{ name: "scheduler-device", values: ["arweave-scheduler@1.0"] }
+						{ name: "asset-type", values: ["fungible"] }
+					]
+				) {
+					count
+					edges { node { id tags { name value } } }
+				}
+			}`,
+		}),
+		signal,
+	});
+	if (!response.ok) throw new Error(`fungible-index-${response.status}`);
+	const payload = await response.json();
+	if (payload.errors?.length) throw new Error('fungible-index-query');
+	const edges: Array<{
+		node: { id: string; tags: Array<{ name: string; value: string }> };
+	}> = payload.data.transactions.edges;
+	const assets: AssetSummary[] = edges.map(({ node }) => {
+		const tags = Object.fromEntries(node.tags.map((tag) => [tag.name.toLowerCase(), tag.value]));
+		return {
+			id: node.id,
+			name: tags.name ?? tags.ticker ?? shortId(node.id),
+			contentType: 'application/x.arweave-token',
+			...(tags.logo && /^[A-Za-z0-9_-]{43}$/.test(tags.logo)
+				? { image: `${DEFAULT_GATEWAY}/${tags.logo}` }
+				: {}),
+		};
+	});
+	if (/^[A-Za-z0-9_-]{43}$/.test(FUNGIBLE_TOKEN_ID) && !assets.some((asset) => asset.id === FUNGIBLE_TOKEN_ID)) {
+		assets.unshift(defaultFungibleToken());
+	}
+	return fungibleTokenCollection(assets, Number(payload.data.transactions.count));
+}
+
+function fungibleTokenCollection(assets: AssetSummary[], count = 0): Collection {
+	return {
+		id: 'fungible-tokens',
+		name: '[TEST] Bazar Fungible Tokens',
+		description: 'Arweave-native fungible tokens with direct wallet ownership and native AR settlement.',
+		kind: 'tokens',
+		assets,
+		total: Math.max(count, assets.length),
+	};
+}
+
+function defaultFungibleToken(): AssetSummary {
+	return {
+		id: FUNGIBLE_TOKEN_ID,
+		name: '[TEST] Weave Credit',
+		contentType: 'application/x.arweave-token',
+	};
 }
 
 async function loadNames(signal?: AbortSignal): Promise<Collection> {

@@ -44,25 +44,36 @@ import {
   isLiveListing,
   resolveAssetCandidates,
   restrictAssetCandidates,
-  walletAssetGroup,
+  walletAssetGroups,
   type AssetCandidate,
   type CollectionActivityEvent,
   type ResolvedAsset,
 } from 'api/asset-discovery';
 import {
+  bestAskOfAsset,
   licenseProperties,
+  listedBalanceOf,
+  liquidBalanceOf,
   liveOrderOfAsset,
+  liveOrdersOfAsset,
+  openOrdersOfAsset,
   ownerOfAsset,
   readAssetState,
   servingNodeOrigin,
   type AssetState,
   type SwapOrder,
 } from 'api/asset-marketplace';
+import { formatTokenAmount } from 'api/order-matching';
 import { ArweaveObserverNetwork } from 'api/arweave-observers';
 import { assetObserverNetworkOptions } from 'api/asset-observers';
-import { AssetTransactionClient, DEFAULT_REGISTRATION_FEE, dispatchAndConfirm } from 'api/asset-transactions';
+import {
+  AssetTransactionClient,
+  DEFAULT_REGISTRATION_FEE,
+  dispatchAndConfirm,
+} from 'api/asset-transactions';
 import { ArweaveTransactionSync, type ArweaveSyncStep } from 'components/ArweaveTransactionSync';
 import { useWallet } from 'providers/WalletProvider';
+import { FungibleAssetView } from './FungibleAssetView';
 
 import arweaveNamesCube from '../assets/arweave-names-cube.gif';
 import arweaveNamesCubeStill from '../assets/arweave-names-cube.png';
@@ -456,7 +467,11 @@ function Home() {
     );
   });
   const assets = market.collections
-    .flatMap((collection) => collection.assets.filter((asset) => asset.image).map((asset) => ({ asset, collection })))
+    .flatMap((collection) =>
+      collection.assets
+        .filter((asset) => asset.image || collection.kind === 'tokens')
+        .map((asset) => ({ asset, collection })),
+    )
     .filter(
       ({ asset, collection }) =>
         !normalizedQuery || `${asset.name} ${collection.name}`.toLowerCase().includes(normalizedQuery),
@@ -475,8 +490,8 @@ function Home() {
       assets.map(async ({ asset }) => {
         try {
           const { state } = await readAssetState(asset.id, { signal: controller.signal, maxAttempts: 1 });
-          const order = liveOrderOfAsset(state);
-          return [asset.id, order ? `${winstonToAr(order.asking)} AR` : null] as const;
+          const order = bestAskOfAsset(state);
+          return [asset.id, order ? orderPriceLabel(order, state) : null] as const;
         } catch {
           return [asset.id, null] as const;
         }
@@ -503,9 +518,9 @@ function Home() {
           });
           let floor: bigint | null = null;
           for (const result of resolved) {
-            const order = liveOrderOfAsset(result.state);
+            const order = bestAskOfAsset(result.state);
             if (!order) continue;
-            const asking = BigInt(order.asking);
+            const asking = unitPriceWinston(order, result.state.denomination);
             if (floor === null || asking < floor) floor = asking;
           }
           return [collection.id, floor === null ? null : `${winstonToAr(floor.toString())} AR`] as const;
@@ -565,7 +580,7 @@ function Home() {
                       </div>
                       <div>
                         <span>Type</span>
-                        <strong>{collection.kind === 'names' ? 'Names' : 'Images'}</strong>
+                        <strong>{collection.kind === 'names' ? 'Names' : collection.kind === 'tokens' ? 'Tokens' : 'Images'}</strong>
                       </div>
                       <div>
                         <span>Floor</span>
@@ -602,7 +617,7 @@ function Home() {
               <div className="home-asset-grid">
                 {assets.map(({ asset, collection }) => (
                   <Link key={`${collection.id}-${asset.id}`} to={`/asset/${collection.id}/${asset.id}`}>
-                    <img src={asset.image} alt="" />
+                    {asset.image ? <img src={asset.image} alt="" /> : <span className="home-token-art">TOKEN</span>}
                     <div className="home-asset-details">
                       <div>
                         <strong>{asset.name}</strong>
@@ -816,8 +831,8 @@ function CollectionView() {
           collection.assets.map((asset) => [asset.id, null]),
         );
         for (const result of resolved) {
-          const order = liveOrderOfAsset(result.state);
-          if (order) prices[result.asset.id] = `${winstonToAr(order.asking)} AR`;
+          const order = bestAskOfAsset(result.state);
+          if (order) prices[result.asset.id] = orderPriceLabel(order, result.state);
         }
         setCardPrices(prices);
       } catch {
@@ -844,13 +859,13 @@ function CollectionView() {
         const allActivity = await discoverMarketActivity({
           signal: controller.signal,
           listingsOnly: listedOnly,
-          ...(!listedOnly || collection.kind === 'images'
+          ...(!listedOnly || collection.kind !== 'names'
             ? { recipients: collection.assets.map((asset) => asset.id) }
             : {}),
         });
         if (controller.signal.aborted) return;
         const candidates =
-          collection.kind === 'images'
+          collection.kind !== 'names'
             ? allActivity.filter((candidate) => collection.assets.some((asset) => asset.id === candidate.processId))
             : allActivity;
         setActivity(candidates);
@@ -1277,7 +1292,7 @@ function MyAssetsView() {
                 resolved: current.resolved + 1,
                 failures: current.failures + (error ? 1 : 0),
               }));
-              if (result && walletAssetGroup(result, walletAddress)) {
+              if (result && walletAssetGroups(result, walletAddress).length) {
                 setResults((current) =>
                   [...current.filter((item) => item.asset.id !== result.asset.id), result].sort(
                     (a, b) => b.activity.height - a.activity.height || b.activity.timestamp - a.activity.timestamp,
@@ -1329,8 +1344,8 @@ function MyAssetsView() {
       </section>
     );
   }
-  const owned = results.filter((result) => walletAssetGroup(result, wallet.address!) === 'owned');
-  const listed = results.filter((result) => walletAssetGroup(result, wallet.address!) === 'listed');
+  const owned = results.filter((result) => walletAssetGroups(result, wallet.address!).includes('owned'));
+  const listed = results.filter((result) => walletAssetGroups(result, wallet.address!).includes('listed'));
   const working = status.phase === 'discovering' || status.phase === 'resolving';
   return (
     <section className="my-assets-page">
@@ -1384,8 +1399,8 @@ function MyAssetsView() {
           </button>
         </div>
       ) : null}
-      <AssetGroup title="Listed for sale" results={listed} badge="For sale" />
-      <AssetGroup title="Owned" results={owned} badge="Owned" />
+      <AssetGroup title="Listed for sale" results={listed} badge="For sale" address={wallet.address} group="listed" />
+      <AssetGroup title="Owned" results={owned} badge="Owned" address={wallet.address} group="owned" />
       {status.phase === 'done' && !results.length ? (
         <div className="empty-state">
           <h3>No supported assets are currently owned</h3>
@@ -1400,7 +1415,19 @@ function MyAssetsView() {
   );
 }
 
-function AssetGroup({ title, results, badge }: { title: string; results: ResolvedAsset[]; badge: string }) {
+function AssetGroup({
+  title,
+  results,
+  badge,
+  address,
+  group,
+}: {
+  title: string;
+  results: ResolvedAsset[];
+  badge: string;
+  address: string;
+  group: 'owned' | 'listed';
+}) {
   if (!results.length) return null;
   return (
     <section className="asset-group">
@@ -1410,7 +1437,18 @@ function AssetGroup({ title, results, badge }: { title: string; results: Resolve
       </div>
       <div className="asset-grid">
         {results.map((result) => (
-          <AssetCard key={result.asset.id} collection={result.collection} asset={result.asset} badge={badge} />
+          <AssetCard
+            key={result.asset.id}
+            collection={result.collection}
+            asset={result.asset}
+            badge={badge}
+            price={tokenBalanceLabel(
+              group === 'owned'
+                ? liquidBalanceOf(result.state, address)
+                : listedBalanceOf(result.state, address),
+              result.state,
+            )}
+          />
         ))}
       </div>
     </section>
@@ -1461,6 +1499,7 @@ function AssetView() {
   React.useEffect(() => setActiveSection('about'), [assetId]);
   React.useEffect(() => {
     if (!wallet.address || operation || !state) return;
+    if (state.totalSupply !== '1' || state.denomination > 0) return;
     try {
       const saved = JSON.parse(localStorage.getItem(`bazar-purchase:${assetId}`) ?? 'null');
       if (saved?.buyer === wallet.address && saved?.order) {
@@ -1519,6 +1558,20 @@ function AssetView() {
       : null);
   if (!asset && !loading) return <ErrorPanel message="This asset is not in the selected collection." />;
   if (!asset) return <Loading label="Computing current state…" />;
+  if (state && (state.totalSupply !== '1' || state.denomination > 0)) {
+    return (
+      <FungibleAssetView
+        asset={asset}
+        collection={collection}
+        state={state}
+        activity={assetActivity}
+        activityLoading={activityLoading}
+        loading={loading}
+        error={error}
+        onRefresh={load}
+      />
+    );
+  }
   const owner = state ? ownerOfAsset(state) : null;
   const order = state ? liveOrder(state) : null;
   const mine = Boolean(wallet.address && owner === wallet.address);
@@ -1932,6 +1985,7 @@ function OperationDialog({
             processId: asset.id,
             order: operation.order,
             buyer: owner,
+            startingBalance: '0',
             network,
           }),
           {
@@ -1976,11 +2030,11 @@ function OperationDialog({
         prepared = client.restore(operation.resumeId, owner);
       } else if (operation.kind === 'sell') {
         const winston = arToWinston(value);
-        prepared = await client.makeOffer({ processId: asset.id, asking: winston, seller: owner });
+        prepared = await client.makeOffer({ processId: asset.id, quantity: '1', asking: winston, seller: owner });
       } else if (operation.kind === 'cancel') {
         prepared = await client.cancelOrder(asset.id, operation.order.orderId, owner);
       } else if (operation.kind === 'transfer') {
-        prepared = await client.transfer(asset.id, value, owner);
+        prepared = await client.transfer(asset.id, value, '1', owner);
       } else throw new Error('invalid-operation');
       setTransaction(prepared);
       localStorage.setItem(
@@ -2003,13 +2057,14 @@ function OperationDialog({
         await client.waitForOfferAcceptance(asset.id, {
           orderId: prepared.id,
           seller: owner,
+          quantity: '1',
           asking: arToWinston(value),
           minimumFee: DEFAULT_REGISTRATION_FEE.toString(),
         });
       } else if (operation.kind === 'cancel') {
         await client.waitForOrderCancelled(asset.id, operation.order.orderId);
       } else if (operation.kind === 'transfer') {
-        await client.waitForAssetOwnership(asset.id, value);
+        await client.waitForAssetBalance(asset.id, value, '1');
       }
       localStorage.removeItem(`bazar-operation:${asset.id}`);
       setPhase('done');
@@ -2230,11 +2285,28 @@ function assetDescription(state: AssetState | null, fallback: string) {
 function liveOrder(state: AssetState) {
   return liveOrderOfAsset(state);
 }
+function unitPriceWinston(order: SwapOrder, denomination: number) {
+  const scale = 10n ** BigInt(denomination);
+  return (BigInt(order.asking) * scale + BigInt(order.quantity) - 1n) / BigInt(order.quantity);
+}
+function orderPriceLabel(order: SwapOrder, state: AssetState) {
+  return `${winstonToAr(unitPriceWinston(order, state.denomination).toString())} AR${
+    state.totalSupply === '1' && state.denomination === 0 ? '' : ` / ${state.ticker || 'token'}`
+  }`;
+}
+function tokenBalanceLabel(value: string, state: AssetState) {
+  const [whole, fraction] = formatTokenAmount(value, state.denomination).split('.');
+  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return `${fraction ? `${grouped}.${fraction}` : grouped} ${state.ticker || (state.totalSupply === '1' ? 'asset' : 'tokens')}`;
+}
 function short(value: string) {
   return `${value.slice(0, 6)}…${value.slice(-5)}`;
 }
 function winstonToAr(value: string) {
-  return (Number(value) / 1e12).toLocaleString(undefined, { maximumFractionDigits: 12 });
+  const raw = BigInt(value);
+  const whole = raw / 1_000_000_000_000n;
+  const fraction = (raw % 1_000_000_000_000n).toString().padStart(12, '0').replace(/0+$/, '');
+  return fraction ? `${whole.toLocaleString()}.${fraction}` : whole.toLocaleString();
 }
 function arToWinston(value: string) {
   if (!/^(?:0|[1-9]\d*)(?:\.\d{1,12})?$/.test(value) || Number(value) <= 0)

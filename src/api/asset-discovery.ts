@@ -1,7 +1,8 @@
 import type { AssetSummary, Collection } from './collections';
 import {
 	liveOrderOfAsset,
-	ownerOfAsset,
+	listedBalanceOf,
+	liquidBalanceOf,
 	readAssetState,
 	type AssetState,
 	type ComputeResult,
@@ -365,10 +366,10 @@ export function restrictAssetCandidates(
 	candidates: AssetCandidate[],
 	collections: Collection[]
 ): AssetCandidate[] {
-	const imageAssets = new Map<string, string>();
+	const indexedAssets = new Map<string, string>();
 	for (const collection of collections) {
-		if (collection.kind !== 'images') continue;
-		for (const asset of collection.assets) imageAssets.set(asset.id, collection.name);
+		if (collection.kind === 'names') continue;
+		for (const asset of collection.assets) indexedAssets.set(asset.id, collection.name);
 	}
 	const supportsNames = collections.some((collection) => collection.kind === 'names');
 	return candidates.filter((candidate) => {
@@ -377,19 +378,26 @@ export function restrictAssetCandidates(
 		}
 		if (['carrier@1.0', 'name-token@1.0'].includes(candidate.device)) return supportsNames;
 		if (candidate.device !== 'token@1.0') return false;
-		const collection = imageAssets.get(candidate.processId);
+		const collection = indexedAssets.get(candidate.processId);
 		return Boolean(collection && (!candidate.collection || candidate.collection === collection));
 	});
+}
+
+export type WalletAssetGroup = 'owned' | 'listed';
+
+export function walletAssetGroups(result: ResolvedAsset, address: string): WalletAssetGroup[] {
+	const groups: WalletAssetGroup[] = [];
+	if (BigInt(liquidBalanceOf(result.state, address)) > 0n) groups.push('owned');
+	if (BigInt(listedBalanceOf(result.state, address)) > 0n) groups.push('listed');
+	return groups;
 }
 
 export function walletAssetGroup(
 	result: ResolvedAsset,
 	address: string
 ): 'owned' | 'listed' | null {
-	if (ownerOfAsset(result.state) !== address) return null;
-	const order = liveOrderOfAsset(result.state);
-	if (order?.creator === address) return 'listed';
-	return result.state.balances[address] === '1' ? 'owned' : null;
+	const groups = walletAssetGroups(result, address);
+	return groups.includes('listed') ? 'listed' : groups[0] ?? null;
 }
 
 export function isLiveListing(result: ResolvedAsset): boolean {
@@ -401,16 +409,16 @@ function supportedAsset(
 	computed: ComputeResult,
 	collections: Collection[]
 ): ResolvedAsset | null {
-	const imageCollection = collections.find(
+	const indexedCollection = collections.find(
 		(collection) =>
-			collection.kind === 'images' &&
+			collection.kind !== 'names' &&
 			collection.assets.some((asset) => asset.id === activity.processId)
 	);
-	if (imageCollection) {
+	if (indexedCollection) {
 		if (computed.state.device !== 'token@1.0') return null;
-		const asset = imageCollection.assets.find((item) => item.id === activity.processId);
+		const asset = indexedCollection.assets.find((item) => item.id === activity.processId);
 		return asset
-			? { asset, collection: imageCollection, state: computed.state, provider: computed.provider, activity }
+			? { asset, collection: indexedCollection, state: computed.state, provider: computed.provider, activity }
 			: null;
 	}
 

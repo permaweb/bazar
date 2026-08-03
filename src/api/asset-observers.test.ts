@@ -25,6 +25,16 @@ describe('assetObserverNetworkOptions', () => {
 		expect(options.maxObservers).toBe(12);
 	});
 
+	it('reads a selected HyperBEAM gateway from a hash route', () => {
+		const options = assetObserverNetworkOptions(
+			location({
+				hash: '#/asset/collection/process?node=http%3A%2F%2F127.0.0.1%3A3101',
+			})
+		);
+
+		expect(options['relay-with']).toBe('http://127.0.0.1:3101');
+	});
+
 	it('uses the serving gateway after stripping an Arweave sandbox label', () => {
 		const options = assetObserverNetworkOptions(
 			location({

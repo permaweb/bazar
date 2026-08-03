@@ -1,10 +1,17 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+	bestAskOfAsset,
+	compareOrderUnitPrice,
 	licenseProperties,
+	listedBalanceOf,
+	liquidBalanceOf,
+	liveOrdersOfAsset,
 	ownerOfAsset,
 	parseAssetState,
+	readAssetState,
 	servingNodeOrigin,
+	type SwapOrder,
 } from './asset-marketplace';
 
 const owner = '1uTLV5GvfQ5M46Tq_DTeJL7rIy7vCAOMxQ7Fbf82YZw';
@@ -48,6 +55,9 @@ describe('asset state', () => {
 			orders: {},
 		});
 		expect(state.name).toBe('Permanent Strata #001');
+		expect(state.totalSupply).toBe('1');
+		expect(state.denomination).toBe(0);
+		expect(state.ticker).toBe('');
 		expect(ownerOfAsset(state)).toBe(owner);
 	});
 
@@ -75,12 +85,74 @@ describe('asset state', () => {
 		expect(state.orders[orderId].buyer).toBe(buyer);
 	});
 
-	it('rejects a process that is not a one-unit supported asset', () => {
-		expect(() => parseAssetState({
+	it('preserves fungible amounts above MAX_SAFE_INTEGER and parses token metadata', () => {
+		const state = parseAssetState({
 			'execution-device': 'token@1.0',
-			'total-supply': 2,
+			name: 'Fungible test token',
+			ticker: 'FTT',
+			denomination: '12',
+			'total-supply': '900719925474099312345678',
+			balances: { [owner]: '900719925474099312345678' },
+			orders: {
+				[orderId]: order(orderId, { quantity: '900719925474099312345' }),
+			},
+		});
+		expect(state.totalSupply).toBe('900719925474099312345678');
+		expect(state.balances[owner]).toBe('900719925474099312345678');
+		expect(state.denomination).toBe(12);
+		expect(state.ticker).toBe('FTT');
+		expect(state.orders[orderId].quantity).toBe('900719925474099312345');
+		expect(ownerOfAsset(state)).toBeNull();
+	});
+
+	it('preserves unsafe integer lexemes from live HyperBEAM JSON responses', async () => {
+		const processId = 'IyFfmbTu8P4rv0KyrA0Q-QtfEnYntMj4RkRiBVip9KA';
+		const responseBody = `{"execution-device":"token@1.0","denomination":12,"ticker":"WEAVE","total-supply":1000000000000000000,"balances":{"${owner}":999997000000000001},"orders":{}}`;
+		const { state } = await readAssetState(processId, {
+			fetch: async () => new Response(responseBody, {
+				status: 200,
+				headers: { 'content-type': 'application/json' },
+			}),
+		});
+		expect(state.totalSupply).toBe('1000000000000000000');
+		expect(state.balances[owner]).toBe('999997000000000001');
+	});
+
+	it('rejects unsafe token metadata', () => {
+		const base = {
+			'execution-device': 'token@1.0',
+			'total-supply': '2',
 			balances: { [owner]: '2' },
-		})).toThrow('invalid-asset-state');
+		};
+		expect(() => parseAssetState({ ...base, denomination: 256 })).toThrow('invalid-asset-state');
+		expect(() => parseAssetState({ ...base, ticker: ' bad ' })).toThrow('invalid-asset-state');
+	});
+
+	it('reports liquid and escrowed balances and sorts all live asks exactly', () => {
+		const cheaperId = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
+		const olderTieId = 'BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB';
+		const newerTieId = 'CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC';
+		const state = parseAssetState({
+			'execution-device': 'token@1.0',
+			'total-supply': '100000000000000000000',
+			balances: { [owner]: '90000000000000000000' },
+			orders: {
+				[olderTieId]: order(olderTieId, { asking: '6', quantity: '4', 'created-at': 1 }),
+				[newerTieId]: order(newerTieId, { asking: '3', quantity: '2', 'created-at': 2 }),
+				[cheaperId]: order(cheaperId, { asking: '1', quantity: '1' }),
+				[orderId]: order(orderId, { asking: '2', quantity: '1', status: 'cancelled' }),
+			},
+		});
+
+		expect(liquidBalanceOf(state, owner)).toBe('90000000000000000000');
+		expect(listedBalanceOf(state, owner)).toBe('7');
+		expect(liveOrdersOfAsset(state).map((held) => held.orderId)).toEqual([
+			cheaperId,
+			olderTieId,
+			newerTieId,
+		]);
+		expect(bestAskOfAsset(state)?.orderId).toBe(cheaperId);
+		expect(compareOrderUnitPrice(state.orders[olderTieId], state.orders[newerTieId])).toBeLessThan(0);
 	});
 
 	it('renders only declared scalar license properties', () => {
@@ -100,3 +172,18 @@ describe('asset state', () => {
 		]);
 	});
 });
+
+function order(id: string, overrides: Partial<Record<string, unknown>> = {}): Record<string, unknown> {
+	return {
+		'order-id': id,
+		creator: owner,
+		recipient: owner,
+		asking: '100000000',
+		'minimum-fee': '100000000',
+		deadline: 20,
+		'created-at': 1,
+		quantity: '1',
+		status: 'open',
+		...overrides,
+	};
+}

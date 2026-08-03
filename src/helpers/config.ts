@@ -5,7 +5,10 @@ export const GATEWAYS = {
 export const AO_MAINNET = { app1: DEFAULT_GATEWAY };
 
 export function gatewayFromLocation(location: Location = window.location): string {
-	const requested = new URLSearchParams(location.search).get('node');
+	const hashQueryIndex = location.hash?.indexOf('?') ?? -1;
+	const hashSearch = hashQueryIndex === -1 ? '' : location.hash.slice(hashQueryIndex);
+	const requested =
+		new URLSearchParams(location.search).get('node') ?? new URLSearchParams(hashSearch).get('node');
 	if (requested) return new URL(requested).origin;
 	const labels = location.hostname.split('.');
 	const host =

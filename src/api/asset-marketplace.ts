@@ -9,7 +9,7 @@ export type SwapOrder = {
 	minimumFee: string;
 	deadline: number;
 	createdAt: number;
-	quantity: number;
+	quantity: string;
 	status: SwapOrderStatus;
 	buyer?: string;
 	reservedUntil?: number;
@@ -19,7 +19,9 @@ export type SwapOrder = {
 export type AssetState = {
 	device: string;
 	name: string;
-	totalSupply: number;
+	ticker: string;
+	denomination: number;
+	totalSupply: string;
 	balances: Record<string, string>;
 	orders: Record<string, SwapOrder>;
 	swapHeight: number;
@@ -48,6 +50,7 @@ const ADDRESS = /^[A-Za-z0-9_-]{43}$/;
 const UNSIGNED_INTEGER = /^(?:0|[1-9]\d*)$/;
 const LIVE_ORDER = new Set<SwapOrderStatus>(['open', 'reserved']);
 const ASSET_PROCESS_DEVICES = new Set(['carrier@1.0', 'name-token@1.0', 'token@1.0']);
+const MAX_TOKEN_DENOMINATION = 255;
 const COMPUTE_TIMEOUT = 12_000;
 const COMPUTE_RETRY_BASE_DELAY = 1_000;
 const COMPUTE_RETRY_MAX_DELAY = 8_000;
@@ -189,9 +192,19 @@ export async function waitForAssetState(
 export function parseAssetState(value: unknown): AssetState {
 	const raw = unwrapState(value);
 	const device = text(raw['execution-device'] ?? raw.device);
-	const totalSupply = integer(raw['total-supply']);
+	const totalSupply = amount(raw['total-supply']);
+	const denomination = raw.denomination === undefined ? 0 : integer(raw.denomination);
+	const ticker = raw.ticker === undefined ? '' : safeTicker(raw.ticker);
 	const balances = stringRecord(raw.balances);
-	if (!ASSET_PROCESS_DEVICES.has(device) || totalSupply !== 1 || !balances) {
+	if (
+		!ASSET_PROCESS_DEVICES.has(device) ||
+		totalSupply === null ||
+		BigInt(totalSupply) < 1n ||
+		denomination === null ||
+		denomination > MAX_TOKEN_DENOMINATION ||
+		ticker === null ||
+		!balances
+	) {
 		throw new TypeError('invalid-asset-state');
 	}
 
@@ -206,6 +219,8 @@ export function parseAssetState(value: unknown): AssetState {
 	return {
 		device,
 		name: text(raw.name),
+		ticker,
+		denomination,
 		totalSupply,
 		balances,
 		orders,
@@ -225,7 +240,7 @@ export function parseSwapOrder(id: string, value: unknown): SwapOrder | null {
 	const minimumFee = amount(value['minimum-fee']) ?? '0';
 	const deadline = integer(value.deadline);
 	const createdAt = integer(value['created-at']) ?? 0;
-	const quantity = integer(value.quantity);
+	const quantity = amount(value.quantity);
 	const status = text(value.status) as SwapOrderStatus;
 
 	if (
@@ -236,6 +251,7 @@ export function parseSwapOrder(id: string, value: unknown): SwapOrder | null {
 		BigInt(asking) < 1n ||
 		deadline === null ||
 		quantity === null ||
+		BigInt(quantity) < 1n ||
 		!['open', 'reserved', 'settled', 'cancelled', 'expired'].includes(status)
 	) {
 		return null;
@@ -263,16 +279,65 @@ export function parseSwapOrder(id: string, value: unknown): SwapOrder | null {
 }
 
 export function ownerOfAsset(state: AssetState): string | null {
+	if (state.totalSupply !== '1') return null;
 	const holder = Object.entries(state.balances).find(([, balance]) => balance === '1');
 	if (holder && ADDRESS.test(holder[0])) return holder[0];
-	const escrowed = Object.values(state.orders).find((order) => LIVE_ORDER.has(order.status) && order.quantity === 1);
+	const escrowed = Object.values(state.orders).find((order) => LIVE_ORDER.has(order.status) && order.quantity === '1');
 	return escrowed?.creator ?? null;
 }
 
 export function liveOrderOfAsset(state: AssetState): SwapOrder | null {
-	return Object.values(state.orders).find(
-		(order) => LIVE_ORDER.has(order.status) && order.quantity === 1
-	) ?? null;
+	return liveOrdersOfAsset(state)[0] ?? null;
+}
+
+/** Units still held directly by an address, excluding quantities in swap escrow. */
+export function liquidBalanceOf(state: AssetState, address: string): string {
+	return ADDRESS.test(address) ? state.balances[address] ?? '0' : '0';
+}
+
+/** Units currently held in open or reserved swap orders created by an address. */
+export function listedBalanceOf(state: AssetState, address: string): string {
+	if (!ADDRESS.test(address)) return '0';
+	return Object.values(state.orders)
+		.filter((order) => order.creator === address && LIVE_ORDER.has(order.status))
+		.reduce((total, order) => total + BigInt(order.quantity), 0n)
+		.toString();
+}
+
+/** All currently live orders, ordered by exact unit price and then stable age/id ties. */
+export function liveOrdersOfAsset(state: AssetState): SwapOrder[] {
+	return Object.values(state.orders)
+		.filter((order) => LIVE_ORDER.has(order.status))
+		.sort(compareOrderUnitPrice);
+}
+
+/** Open (claimable) orders in deterministic best-price order. */
+export function openOrdersOfAsset(state: AssetState): SwapOrder[] {
+	return Object.values(state.orders)
+		.filter((order) => order.status === 'open')
+		.sort(compareOrderUnitPrice);
+}
+
+export function bestAskOfAsset(state: AssetState): SwapOrder | null {
+	return openOrdersOfAsset(state)[0] ?? null;
+}
+
+export type OrderUnitPrice = {
+	numerator: string;
+	denominator: string;
+};
+
+/** The exact price-per-unit fraction: total asking amount / offered atomic units. */
+export function orderUnitPrice(order: SwapOrder): OrderUnitPrice {
+	return { numerator: order.asking, denominator: order.quantity };
+}
+
+export function compareOrderUnitPrice(left: SwapOrder, right: SwapOrder): number {
+	const difference = BigInt(left.asking) * BigInt(right.quantity) -
+		BigInt(right.asking) * BigInt(left.quantity);
+	if (difference !== 0n) return difference < 0n ? -1 : 1;
+	if (left.createdAt !== right.createdAt) return left.createdAt - right.createdAt;
+	return left.orderId < right.orderId ? -1 : left.orderId > right.orderId ? 1 : 0;
 }
 
 export function licenseProperties(state: AssetState): LicenseProperty[] {
@@ -326,8 +391,8 @@ async function readState(
 					},
 					signal: request.signal,
 				});
-				if (!response.ok) throw new Error(`HTTP ${response.status}`);
-				return parseAssetState(await response.json());
+					if (!response.ok) throw new Error(`HTTP ${response.status}`);
+					return parseAssetState(parseLosslessJson(await response.text()));
 			} catch (error) {
 				lastError = error;
 			} finally {
@@ -348,7 +413,7 @@ function unwrapState(value: unknown): Record<string, unknown> {
 	let held = value;
 	for (let depth = 0; depth < 3; depth += 1) {
 		if (typeof held === 'string') {
-			held = JSON.parse(held);
+			held = parseLosslessJson(held);
 			continue;
 		}
 		if (isRecord(held) && Object.keys(held).length <= 4 && 'body' in held) {
@@ -359,6 +424,43 @@ function unwrapState(value: unknown): Record<string, unknown> {
 	}
 	if (!isRecord(held)) throw new TypeError('invalid-asset-state');
 	return held;
+}
+
+/** Preserve integer lexemes that JSON.parse cannot represent exactly. */
+function parseLosslessJson(source: string): unknown {
+	let normalized = '';
+	let inString = false;
+	let escaped = false;
+	for (let index = 0; index < source.length;) {
+		const character = source[index];
+		if (inString) {
+			normalized += character;
+			index += 1;
+			if (escaped) escaped = false;
+			else if (character === '\\') escaped = true;
+			else if (character === '"') inString = false;
+			continue;
+		}
+		if (character === '"') {
+			inString = true;
+			normalized += character;
+			index += 1;
+			continue;
+		}
+		if (character === '-' || (character >= '0' && character <= '9')) {
+			const number = /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?/.exec(source.slice(index))?.[0];
+			if (number) {
+				normalized += /^-?\d+$/.test(number) && !Number.isSafeInteger(Number(number))
+					? `"${number}"`
+					: number;
+				index += number.length;
+				continue;
+			}
+		}
+		normalized += character;
+		index += 1;
+	}
+	return JSON.parse(normalized);
 }
 
 function stringRecord(value: unknown): Record<string, string> | null {
@@ -384,6 +486,11 @@ function integer(value: unknown): number | null {
 	if (held === null) return null;
 	const parsed = Number(held);
 	return Number.isSafeInteger(parsed) ? parsed : null;
+}
+
+function safeTicker(value: unknown): string | null {
+	if (typeof value !== 'string' || value.length < 1 || value.length > 32) return null;
+	return /[\u0000-\u001f\u007f-\u009f]/u.test(value) || value.trim() !== value ? null : value;
 }
 
 function text(value: unknown): string {
