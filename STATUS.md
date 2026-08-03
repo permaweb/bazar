@@ -600,3 +600,13 @@ In unattended mode, work from a branch from your current build called `feat/fung
 - Final gates pass on the exact finished tree: 37/37 Vitest tests, TypeScript,
   production Vite build (1,896 modules), `git diff --check`, forbidden legacy
   surface scans, and the real two-wallet browser acceptance circuit above.
+- The exact fungible UI build from commit
+  `3d98e39effe48f68c809fa9f204054aa36032bc1` is published as the standard
+  `arweave/paths` manifest
+  `l2YnypzdzYUYwcKRPSNfy94x3n-IPQL9bo0avKZRyGc`. Its changed application,
+  stylesheet, 3D visualization, source-map, and index transactions were mined
+  with the manifest in block 1,972,582; unchanged media and fonts were reused.
+  A fresh security-sandboxed `arweave.net` browser session loaded the fungible
+  asset page and computed its exact 1,000,000-WEAVE supply, 12-decimal
+  denomination, two holders, empty settled order book, and `Arweave live`
+  status through the default gateway.
