@@ -1994,52 +1994,51 @@ input:focus {
   display: grid;
   place-content: center;
   justify-items: center;
-  gap: 5px;
+  gap: 0.16em;
   overflow: hidden;
-  background:
-    radial-gradient(circle at 72% 26%, rgba(255, 178, 132, 0.92), transparent 25%),
-    radial-gradient(circle at 26% 74%, rgba(139, 120, 232, 0.66), transparent 32%),
-    linear-gradient(145deg, #16151f, #33264b 48%, #f46d48);
-  color: #fff;
-}
-.token-artwork::before,
-.token-artwork::after {
-  content: '';
-  position: absolute;
-  z-index: -1;
-  width: 78%;
-  aspect-ratio: 1;
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  border-radius: 50%;
+  color: var(--ink);
+  background-color: #efefef;
+  background-image: radial-gradient(#c3c3c3 0.7px, transparent 0.7px);
+  background-size: 3px 3px;
 }
 .token-artwork::before {
-  left: -20%;
-  top: -14%;
-}
-.token-artwork::after {
-  right: -28%;
-  bottom: -26%;
+  content: '';
+  position: absolute;
+  z-index: 0;
+  top: 50%;
+  left: 50%;
+  height: 72%;
+  max-width: calc(100% - 28px);
+  aspect-ratio: 1;
+  border: 1px solid #77736e;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.42);
+  transform: translate(-50%, -50%);
 }
 .token-artwork strong {
-  color: #fff;
+  position: relative;
+  z-index: 1;
+  color: var(--ink);
   font:
-    700 1em/0.95 'DM Sans',
+    700 0.72em/0.95 'DM Sans',
     sans-serif;
-  letter-spacing: -0.07em;
+  letter-spacing: -0.045em;
   white-space: nowrap;
 }
 .token-artwork.ticker-long strong {
-  font-size: 0.72em;
-  letter-spacing: -0.055em;
+  font-size: 0.56em;
+  letter-spacing: -0.035em;
 }
 .token-artwork small {
-  color: rgba(255, 255, 255, 0.72);
+  position: relative;
+  z-index: 1;
+  color: var(--muted);
   font:
-    700 max(0.48rem, 0.17em)/1 'DM Sans',
+    600 max(0.44rem, 0.13em)/1 'DM Sans',
     sans-serif;
 }
 .home-token-collection-art {
-  font-size: clamp(3.2rem, 6vw, 6.4rem);
+  font-size: clamp(2rem, 3.5vw, 3.1rem);
 }
 .search-result-image .token-artwork {
   font-size: 0.72rem;
@@ -5969,9 +5968,10 @@ body input:focus-visible {
   opacity: 0.86;
   border-color: var(--home-line);
 }
-.home-token-art.home-asset-media {
+.home-asset-grid .home-token-art.home-asset-media {
   display: grid;
-  place-items: center;
+  place-content: center;
+  justify-items: center;
 }
 .name-asset-artwork {
   position: relative;
