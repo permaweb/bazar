@@ -1,17 +1,29 @@
 import Arweave from 'arweave';
-import type {
-	ObserverView,
-	PreparedTransaction,
-	PurchaseAdapter,
-	TxWatcher,
-	VerificationUpdate,
-	WeaveNetwork,
+import {
+	TransactionDispatchNotSentError,
+	TransactionDispatchRejectedError,
+	type Consensus,
+	type ObserverView,
+	type PreparedTransaction,
+	type PurchaseAdapter,
+	type TxWatcher,
+	type VerificationUpdate,
+	type WeaveNetwork,
 } from 'weave-wrangler';
 
 import { GATEWAYS } from 'helpers/config';
 
 import { ArweaveObserverNetwork } from './arweave-observers';
-import { type AssetState, readAssetState, type SwapOrder, waitForAssetState } from './asset-marketplace';
+import {
+	assetStateSlot,
+	type AssetState,
+	type ProcessAssignment,
+	readAssetState,
+	readAssetStateAtSlot,
+	readProcessAssignments,
+	type SwapOrder,
+	waitForAssetState,
+} from './asset-marketplace';
 
 const ADDRESS = /^[A-Za-z0-9_-]{43}$/;
 const SIGNED_TRANSACTION_PREFIX = 'bazar-signed-transaction:';
@@ -21,6 +33,7 @@ export const ASSET_TRANSACTION_CONFIRMATION_TARGET = 5;
 export const MAXIMUM_ASSET_OFFER_PRICE = 66_000_000_000_000_000_000n;
 const DEFAULT_OFFER_DEADLINE = 20;
 const SIGNATURE_WINDOW_BLOCKS = 40;
+const PRICE_REQUEST_CONCURRENCY = 8;
 /**
  * The arweave-scheduler only sequences a transaction once it sits 10 blocks
  * below the network tip, so a dispatched transaction cannot affect process
@@ -78,6 +91,29 @@ export type PurchaseCostEstimate = {
 	total: string;
 };
 
+export type FungibleTransferBaseline = {
+	startingSlot: number;
+};
+
+async function mapBounded<T, Result>(
+	values: T[],
+	concurrency: number,
+	map: (value: T) => Promise<Result>,
+): Promise<Result[]> {
+	const results = new Array<Result>(values.length);
+	let next = 0;
+	await Promise.all(Array.from(
+		{ length: Math.min(concurrency, values.length) },
+		async () => {
+			while (next < values.length) {
+				const index = next++;
+				results[index] = await map(values[index]);
+			}
+		},
+	));
+	return results;
+}
+
 type SafePreparedTransaction = PreparedTransaction & {
 	cost: bigint;
 	setRequiredBalance(required: bigint): void;
@@ -89,6 +125,13 @@ type TransactionFields = {
 	rewardFloor?: string;
 	data?: string;
 	tags: Array<{ name: string; value: string }>;
+};
+
+type TransactionIntent = {
+	target: string;
+	quantity: string;
+	reward: string;
+	tags: TransactionFields['tags'];
 };
 
 export type AssetTransactionClientOptions = {
@@ -124,6 +167,7 @@ export type PreparedPurchase = {
 	paymentCost: string;
 	snapshot: {
 		registration: { id: string; dispatched: false };
+		payment: { id: string; dispatched: false };
 	};
 };
 
@@ -227,7 +271,7 @@ export class AssetTransactionClient {
 		return this.#prepare(
 			{
 				target: processId,
-				quantity: '1',
+				quantity: '0',
 				tags: [
 					{ name: 'action', value: 'transfer' },
 					{ name: 'recipient', value: recipient },
@@ -297,57 +341,195 @@ export class AssetTransactionClient {
 		).state;
 	}
 
-	async waitForOrderCancelled(processId: string, orderId: string, signal?: AbortSignal): Promise<AssetState> {
-		return (
-			await waitForAssetState(processId, (state) => state.orders[orderId] === undefined, {
-				fetch: this.#fetch,
-				signal,
-				timeout: STATE_INCLUSION_TIMEOUT,
-			})
-		).state;
-	}
-
-	async waitForAssetBalance(
+	async waitForExactCancellation(
 		processId: string,
-		owner: string,
-		minimum: string,
+		transactionId: string,
+		seller: string,
+		expected: SwapOrder,
+		baseline: FungibleTransferBaseline,
 		signal?: AbortSignal
 	): Promise<AssetState> {
-		assertTokenQuantity(minimum);
-		return (
-			await waitForAssetState(processId, (state) => BigInt(state.balances[owner] ?? '0') >= BigInt(minimum), {
-				fetch: this.#fetch,
-				signal,
-				timeout: STATE_INCLUSION_TIMEOUT,
-			})
-		).state;
-	}
-
-	async waitForPurchaseBatch(
-		processId: string,
-		buyer: string,
-		startingBalance: string,
-		orders: SwapOrder[],
-		signal?: AbortSignal
-	): Promise<AssetState> {
-		if (!ADDRESS.test(processId) || !ADDRESS.test(buyer) || !orders.length) {
-			throw new TypeError('invalid-purchase-batch');
+		if (![processId, transactionId, seller, expected.orderId].every((value) => ADDRESS.test(value))) {
+			throw new TypeError('invalid-asset-cancellation-verification');
 		}
-		assertTokenQuantity(startingBalance, true);
-		const expectedBalance = orders
-			.reduce((total, order) => total + BigInt(order.quantity), BigInt(startingBalance))
-			.toString();
-		const orderIds = new Set(orders.map((order) => order.orderId));
-		if (orderIds.size !== orders.length) throw new TypeError('duplicate-purchase-batch-order');
-		return (
-			await waitForAssetState(
+		assertTokenQuantity(expected.quantity);
+		if (expected.creator !== seller || expected.status !== 'open') {
+			throw new TypeError('invalid-asset-cancellation-order');
+		}
+		return this.#waitForExactScheduledAction(
+			processId,
+			transactionId,
+			baseline,
+			(assignment) => assertExactCancelAssignment(
+				assignment,
 				processId,
-				(state) =>
-					[...orderIds].every((orderId) => state.orders[orderId] === undefined) &&
-					BigInt(state.balances[buyer] ?? '0') >= BigInt(expectedBalance),
-				{ fetch: this.#fetch, signal, timeout: STATE_INCLUSION_TIMEOUT }
-			)
-		).state;
+				transactionId,
+				seller,
+				expected.orderId,
+			),
+			(after, assignment, before) => Boolean(
+				before && hasExactCancelTransition(before, after, assignment, seller, expected)
+			),
+			'asset-cancel-proof-mismatch',
+			'asset-cancel-rejected',
+			signal,
+			true,
+		);
+	}
+
+	async waitForFungibleTransfer(
+		processId: string,
+		transactionId: string,
+		sender: string,
+		recipient: string,
+		quantity: string,
+		baseline: FungibleTransferBaseline,
+		signal?: AbortSignal
+	): Promise<AssetState> {
+		if (![processId, transactionId, sender, recipient].every((value) => ADDRESS.test(value)) || sender === recipient) {
+			throw new TypeError('invalid-fungible-transfer-verification');
+		}
+		assertTokenQuantity(quantity);
+		if (!Number.isSafeInteger(baseline.startingSlot) || baseline.startingSlot < 0) {
+			throw new TypeError('invalid-fungible-transfer-baseline');
+		}
+		return this.#waitForExactScheduledAction(
+			processId,
+			transactionId,
+			baseline,
+			(assignment) => assertExactFungibleTransferAssignment(
+				assignment,
+				processId,
+				transactionId,
+				sender,
+				recipient,
+				quantity,
+			),
+			(after, assignment) => hasExactFungibleTransferReceipt(
+				after,
+				assignment,
+				sender,
+				recipient,
+				quantity,
+			),
+			'fungible-transfer-proof-mismatch',
+			'fungible-transfer-rejected',
+			signal,
+		);
+	}
+
+	async #waitForExactScheduledAction(
+		processId: string,
+		transactionId: string,
+		baseline: FungibleTransferBaseline,
+		assertAssignment: (assignment: ProcessAssignment) => void,
+		appliedAtSlot: (
+			after: AssetState,
+			assignment: ProcessAssignment,
+			before?: AssetState,
+		) => boolean | Promise<boolean>,
+		proofMismatchCode: string,
+		rejectionCode: string,
+		signal?: AbortSignal,
+		readPreviousState = false,
+	): Promise<AssetState> {
+		if (!Number.isSafeInteger(baseline.startingSlot) || baseline.startingSlot < 0) {
+			throw new TypeError('invalid-scheduled-action-baseline');
+		}
+		let transactionHeight: number | null = null;
+		const assignmentCache = new Map<number, ProcessAssignment>();
+		let exactState: AssetState | null = null;
+		let rejected = false;
+		let proofMismatch = false;
+		await waitForAssetState(
+			processId,
+			async (current) => {
+				// Schedule slots may move within the same L1 block during a reorg.
+				// Cache only within one immutable-window attempt; a later poll must
+				// rediscover its boundaries even when the transaction height agrees.
+				assignmentCache.clear();
+				const currentSlot = assetStateSlot(current);
+				if (currentSlot === null || currentSlot < baseline.startingSlot) {
+					throw new Error('invalid-current-process-slot');
+				}
+				if (currentSlot === baseline.startingSlot) return false;
+				transactionHeight ??= await this.#transactionBlockHeight(transactionId, signal);
+				const attemptedHeights = new Set<number>();
+				while (!attemptedHeights.has(transactionHeight)) {
+					attemptedHeights.add(transactionHeight);
+					const firstSlot = await firstSlotAtOrAboveBlockHeight(
+						processId,
+						baseline.startingSlot + 1,
+						currentSlot,
+						transactionHeight,
+						assignmentCache,
+						this.#fetch,
+						signal,
+					);
+					if (firstSlot === null) return false;
+					const firstHeight = assignmentCache.get(firstSlot)?.blockHeight;
+					if (firstHeight !== transactionHeight) {
+						const refreshedHeight = await this.#transactionBlockHeight(transactionId, signal);
+						if (refreshedHeight === transactionHeight) return false;
+						transactionHeight = refreshedHeight;
+						assignmentCache.clear();
+						continue;
+					}
+					const firstLaterSlot = await firstSlotAtOrAboveBlockHeight(
+						processId,
+						firstSlot,
+						currentSlot,
+						transactionHeight + 1,
+						assignmentCache,
+						this.#fetch,
+						signal,
+					);
+					const lastSlot = firstLaterSlot === null ? currentSlot : firstLaterSlot - 1;
+					for (let fromSlot = firstSlot; fromSlot <= lastSlot; fromSlot += 100) {
+						const toSlot = Math.min(lastSlot, fromSlot + 99);
+						const assignments = await readProcessAssignments(processId, fromSlot, toSlot, {
+							fetch: this.#fetch,
+							signal,
+						});
+						const assignment = assignments.find((held) => held.transactionIds.includes(transactionId));
+						if (!assignment) continue;
+						try {
+							assertAssignment(assignment);
+						} catch (error) {
+							if (error instanceof Error && error.message === proofMismatchCode) {
+								proofMismatch = true;
+								return true;
+							}
+							throw error;
+						}
+						const after = await readAssetStateAtSlot(processId, assignment.slot, {
+							fetch: this.#fetch,
+							signal,
+						});
+						const before = readPreviousState
+							? await readAssetStateAtSlot(processId, assignment.slot - 1, {
+								fetch: this.#fetch,
+								signal,
+							})
+							: undefined;
+						exactState = after.state;
+						rejected = !await appliedAtSlot(after.state, assignment, before?.state);
+						return true;
+					}
+					if (firstLaterSlot === null) return false;
+					const refreshedHeight = await this.#transactionBlockHeight(transactionId, signal);
+					if (refreshedHeight === transactionHeight) return false;
+					transactionHeight = refreshedHeight;
+					assignmentCache.clear();
+				}
+				return false;
+			},
+			{ fetch: this.#fetch, signal, timeout: STATE_INCLUSION_TIMEOUT }
+		);
+		if (proofMismatch) throw new Error(proofMismatchCode);
+		if (rejected) throw new Error(rejectionCode);
+		if (!exactState) throw new Error('scheduled-action-state-missing');
+		return exactState;
 	}
 
 	purchaseAdapter(input: PurchaseAdapterInput): PurchaseAdapter {
@@ -397,38 +579,63 @@ export class AssetTransactionClient {
 			prepareRegistration,
 			preparePayment: (_registrationId, signal) => preparePayment(signal),
 			prepareBoth: async (signal) => {
-				await this.#assertActiveSigner(input.buyer);
-				const tip = Math.max(await this.#currentHeight(signal), input.network.tip());
-				await this.#requireProcessState(
-					input.processId,
-					(state) => isExactOpenOrder(state, input.order, input.buyer, tip, this.#reservationInclusionMargin),
-					'asset-order-not-purchasable',
-					signal
-				);
-				const registration = await prepareRegistration(signal);
-				const payment = await preparePayment(signal);
-				registration.setRequiredBalance(registration.cost + payment.cost);
-				payment.setRequiredBalance(payment.cost);
-				await this.#assertBalance(input.buyer, registration.cost + payment.cost);
-				return { registration, payment };
+				const prepared: SafePreparedTransaction[] = [];
+				try {
+					await this.#assertActiveSigner(input.buyer);
+					const tip = Math.max(await this.#currentHeight(signal), input.network.tip());
+					await this.#requireProcessState(
+						input.processId,
+						(state) => isExactOpenOrder(state, input.order, input.buyer, tip, this.#reservationInclusionMargin),
+						'asset-order-not-purchasable',
+						signal
+					);
+					const registration = await prepareRegistration(signal);
+					prepared.push(registration);
+					const payment = await preparePayment(signal);
+					prepared.push(payment);
+					registration.setRequiredBalance(registration.cost + payment.cost);
+					payment.setRequiredBalance(payment.cost);
+					await this.#assertBalance(input.buyer, registration.cost + payment.cost, signal);
+					return { registration, payment };
+				} catch (cause) {
+					for (const transaction of prepared) {
+						this.#storage?.removeItem(`${SIGNED_TRANSACTION_PREFIX}${transaction.id}`);
+					}
+					throw cause;
+				}
 			},
 			// A persisted payment may have reached Arweave before its dispatched
 			// bit was written. Always replay that exact ID; never expire it into a
 			// second native-AR payment whose first dispatch remains ambiguous.
-			restorePrepared: async (which, id) =>
-				this.restore(id, input.buyer, { preserveExpiry: which !== 'payment' }),
+			restorePrepared: async (which, id, signal) => {
+				if (which === 'registration') {
+					const tip = Math.max(await this.#currentHeight(signal), input.network.tip());
+					await this.#requireProcessState(
+						input.processId,
+						(state) => isExactOpenOrder(
+							state,
+							input.order,
+							input.buyer,
+							tip,
+							this.#reservationInclusionMargin,
+						),
+						'asset-order-not-purchasable',
+						signal,
+					);
+				}
+				return this.restore(id, input.buyer, { preserveExpiry: which !== 'payment' });
+			},
 			waitForRegistrationAcceptance: async ({ signal, report }) => {
+				let expired = false;
 				await waitForAssetState(
 					input.processId,
 					async (state) => {
 						const order = state.orders[input.order.orderId];
 						const tip = Math.max(await this.#currentHeight(signal), input.network.tip());
-						return Boolean(
-							order &&
-								order.status === 'reserved' &&
-								order.buyer === input.buyer &&
-								(order.reservedUntil ?? 0) >= tip + this.#reservationInclusionMargin
-						);
+						if (!order || !purchaseOrderMatches(order, input.order) ||
+							order.status !== 'reserved' || order.buyer !== input.buyer) return false;
+						expired = (order.reservedUntil ?? 0) < tip + this.#reservationInclusionMargin;
+						return true;
 					},
 					{
 						fetch: this.#fetch,
@@ -438,21 +645,37 @@ export class AssetTransactionClient {
 							reportProvider(report, provider, attempt, total, 'checking-reservation'),
 					}
 				);
+				if (expired) throw new Error('asset-order-reservation-expired');
 			},
-			verifyOwnership: async ({ signal, report }) => {
-				const expectedBalance = (BigInt(input.startingBalance) + BigInt(input.order.quantity)).toString();
-				await waitForAssetState(
+			verifyOwnership: async ({ paymentId, signal, report }) => {
+				if (!paymentId || !ADDRESS.test(paymentId)) {
+					throw new Error('asset-payment-id-missing');
+				}
+				report({ code: 'checking-ownership' });
+				await this.#waitForExactScheduledAction(
 					input.processId,
-					(state) =>
-						state.orders[input.order.orderId] === undefined &&
-						BigInt(state.balances[input.buyer] ?? '0') >= BigInt(expectedBalance),
-					{
-						fetch: this.#fetch,
-						signal,
-						timeout: STATE_INCLUSION_TIMEOUT,
-						onAttempt: (provider, attempt, total) =>
-							reportProvider(report, provider, attempt, total, 'checking-ownership'),
-					}
+					paymentId,
+					{ startingSlot: 0 },
+					(assignment) => assertExactPurchaseAssignment(
+						assignment,
+						input.processId,
+						paymentId,
+						input.buyer,
+						input.order,
+					),
+					(after, assignment, before) => Boolean(
+						before && hasExactPurchaseTransition(
+							before,
+							after,
+							assignment,
+							input.buyer,
+							input.order,
+						)
+					),
+					'asset-purchase-proof-mismatch',
+					'asset-purchase-rejected',
+					signal,
+					true,
 				);
 			},
 		};
@@ -471,38 +694,51 @@ export class AssetTransactionClient {
 			throw new TypeError('duplicate-purchase-batch-order');
 		}
 		await this.#assertActiveSigner(buyer);
-		const estimates = await Promise.all(
-			inputs.map((input) => this.estimatePurchaseCosts(input.order, input.processId))
+		const estimates = await this.estimatePurchaseBatchCosts(
+			inputs.map((input) => input.order),
+			inputs[0].processId,
+			signal,
 		);
 		await this.#assertBalance(
 			buyer,
-			estimates.reduce((total, estimate) => total + BigInt(estimate.total), 0n)
+			estimates.reduce((total, estimate) => total + BigInt(estimate.total), 0n),
+			signal,
 		);
 
 		const prepared: Array<PreparedPurchase & { cost: bigint }> = [];
-		for (const input of inputs) {
-			if (signal?.aborted) throw signal.reason;
-			const adapter = this.purchaseAdapter(input);
-			if (!adapter.prepareBoth) throw new Error('purchase-presign-unavailable');
-			const pair = await adapter.prepareBoth(signal ?? new AbortController().signal);
-			const registration = pair.registration as SafePreparedTransaction;
-			const payment = pair.payment as SafePreparedTransaction;
-			prepared.push({
-				order: input.order,
-				registration,
-				payment,
-				paymentCost: payment.cost.toString(),
-				snapshot: {
-					registration: { id: registration.id, dispatched: false },
-				},
-				cost: registration.cost + payment.cost,
-			});
+		try {
+			for (const input of inputs) {
+				if (signal?.aborted) throw signal.reason;
+				const adapter = this.purchaseAdapter(input);
+				if (!adapter.prepareBoth) throw new Error('purchase-presign-unavailable');
+				const pair = await adapter.prepareBoth(signal ?? new AbortController().signal);
+				const registration = pair.registration as SafePreparedTransaction;
+				const payment = pair.payment as SafePreparedTransaction;
+				prepared.push({
+					order: input.order,
+					registration,
+					payment,
+					paymentCost: payment.cost.toString(),
+					snapshot: {
+						registration: { id: registration.id, dispatched: false },
+						payment: { id: payment.id, dispatched: false },
+					},
+					cost: registration.cost + payment.cost,
+				});
+			}
+			await this.#assertBalance(
+				buyer,
+				prepared.reduce((total, item) => total + item.cost, 0n),
+				signal,
+			);
+			return prepared.map(({ cost: _cost, ...item }) => item);
+		} catch (cause) {
+			for (const item of prepared) {
+				this.#storage?.removeItem(`${SIGNED_TRANSACTION_PREFIX}${item.registration.id}`);
+				this.#storage?.removeItem(`${SIGNED_TRANSACTION_PREFIX}${item.payment.id}`);
+			}
+			throw cause;
 		}
-		await this.#assertBalance(
-			buyer,
-			prepared.reduce((total, item) => total + item.cost, 0n)
-		);
-		return prepared.map(({ cost: _cost, ...item }) => item);
 	}
 
 	restore(
@@ -517,6 +753,7 @@ export class AssetTransactionClient {
 		const transaction = stored.transaction ?? stored;
 		if (transaction.id !== id) throw new Error('signed-transaction-id-mismatch');
 		assertZeroDataTransaction(transaction);
+		assertTransactionIntent(transaction, stored.intent);
 		if (stored.expectedSigner && expectedSigner && stored.expectedSigner !== expectedSigner) {
 			throw new Error('signed-transaction-signer-mismatch');
 		}
@@ -524,7 +761,8 @@ export class AssetTransactionClient {
 			transaction,
 			options.preserveExpiry === false ? undefined : stored.validUntilHeight,
 			expectedSigner ?? stored.expectedSigner,
-			stored.requiredBalance === undefined ? undefined : BigInt(stored.requiredBalance)
+			stored.requiredBalance === undefined ? undefined : BigInt(stored.requiredBalance),
+			stored.intent,
 		);
 	}
 
@@ -592,36 +830,54 @@ export class AssetTransactionClient {
 		return null;
 	}
 
-	async estimatePurchaseCost(order: SwapOrder, processId: string): Promise<bigint> {
-		return BigInt((await this.estimatePurchaseCosts(order, processId)).total);
+	async estimatePurchaseCost(order: SwapOrder, processId: string, signal?: AbortSignal): Promise<bigint> {
+		return BigInt((await this.estimatePurchaseCosts(order, processId, signal)).total);
 	}
 
-	async estimatePurchaseCosts(order: SwapOrder, processId: string): Promise<PurchaseCostEstimate> {
-		assertSafePurchaseOrder(order);
-		const [registrationReward, paymentReward] = await Promise.all([
-			this.#price(processId),
-			this.#price(order.recipient),
-		]);
-		const asking = BigInt(order.asking);
-		const registrationFee = BigInt(order.minimumFee);
-		return {
-			asking: asking.toString(),
-			registrationFee: registrationFee.toString(),
-			registrationNetworkReward: registrationReward.toString(),
-			paymentNetworkReward: paymentReward.toString(),
+	async estimatePurchaseCosts(
+		order: SwapOrder,
+		processId: string,
+		signal?: AbortSignal,
+	): Promise<PurchaseCostEstimate> {
+		return (await this.estimatePurchaseBatchCosts([order], processId, signal))[0];
+	}
+
+	async estimatePurchaseBatchCosts(
+		orders: SwapOrder[],
+		processId: string,
+		signal?: AbortSignal,
+	): Promise<PurchaseCostEstimate[]> {
+		if (!orders.length) return [];
+		orders.forEach(assertSafePurchaseOrder);
+		const targets = [...new Set([processId, ...orders.map((order) => order.recipient)])];
+		const rewards = new Map(await mapBounded(targets, PRICE_REQUEST_CONCURRENCY, async (target) => [
+			target,
+			await this.#price(target, signal),
+		] as const));
+		const registrationReward = rewards.get(processId)!;
+		return orders.map((order) => {
+			const asking = BigInt(order.asking);
+			const registrationFee = BigInt(order.minimumFee);
+			const paymentReward = rewards.get(order.recipient)!;
+			return {
+				asking: asking.toString(),
+				registrationFee: registrationFee.toString(),
+				registrationNetworkReward: registrationReward.toString(),
+				paymentNetworkReward: paymentReward.toString(),
 				total: (asking + maxBigInt(registrationReward, registrationFee) + paymentReward + 1n).toString(),
-		};
+			};
+		});
 	}
 
-	async walletBalance(address: string): Promise<bigint> {
-		const response = await this.#fetch(`${this.#gateway}/wallet/${address}/balance`);
+	async walletBalance(address: string, signal?: AbortSignal): Promise<bigint> {
+		const response = await this.#fetch(`${this.#gateway}/wallet/${address}/balance`, { signal });
 		if (!response.ok) throw new Error(`wallet-balance-${response.status}`);
 		const value = (await response.text()).trim();
 		return BigInt(value);
 	}
 
-	async #price(target: string): Promise<bigint> {
-		const response = await this.#fetch(`${this.#gateway}/price/0/${target}`);
+	async #price(target: string, signal?: AbortSignal): Promise<bigint> {
+		const response = await this.#fetch(`${this.#gateway}/price/0/${target}`, { signal });
 		if (!response.ok) throw new Error(`transaction-price-${response.status}`);
 		return BigInt((await response.text()).trim());
 	}
@@ -648,31 +904,42 @@ export class AssetTransactionClient {
 			transaction.reward = fields.rewardFloor;
 		}
 		for (const tag of fields.tags) transaction.addTag(tag.name, tag.value);
+		const intent: TransactionIntent = {
+			target: fields.target ?? '',
+			quantity: fields.quantity ?? '0',
+			reward: String(transaction.reward),
+			tags: fields.tags,
+		};
 
 		const signed = (await this.#wallet.sign(transaction)) ?? transaction;
+		if (signal?.aborted) throw signal.reason;
 		if (!ADDRESS.test(signed.id)) throw new Error('wallet-returned-unsigned-transaction');
 		const serializable = typeof signed.toJSON === 'function' ? signed.toJSON() : JSON.parse(JSON.stringify(signed));
 		serializable.id = signed.id;
 		assertZeroDataTransaction(serializable);
+		assertTransactionIntent(serializable, intent);
 		if (expectedSigner) await this.#assertSigner(serializable, expectedSigner);
+		if (signal?.aborted) throw signal.reason;
 		const requiredBalance = transactionCost(serializable);
 		this.#storage?.setItem(
 			`${SIGNED_TRANSACTION_PREFIX}${signed.id}`,
 			JSON.stringify({
 				transaction: serializable,
+				intent,
 				...(validUntilHeight === undefined ? {} : { validUntilHeight }),
 				...(expectedSigner ? { expectedSigner } : {}),
 				...(expectedSigner ? { requiredBalance: requiredBalance.toString() } : {}),
 			})
 		);
-		return this.#prepared(serializable, validUntilHeight, expectedSigner, requiredBalance);
+		return this.#prepared(serializable, validUntilHeight, expectedSigner, requiredBalance, intent);
 	}
 
 	#prepared(
 		transaction: Record<string, unknown>,
 		validUntilHeight?: number,
 		expectedSigner?: string,
-		initialRequiredBalance?: bigint
+		initialRequiredBalance?: bigint,
+		intent?: TransactionIntent,
 	): SafePreparedTransaction {
 		const id = String(transaction.id);
 		const cost = transactionCost(transaction);
@@ -689,13 +956,21 @@ export class AssetTransactionClient {
 				stored.requiredBalance = required.toString();
 				this.#storage?.setItem(`${SIGNED_TRANSACTION_PREFIX}${id}`, JSON.stringify(stored));
 			},
-			dispatch: async (signal) => {
-				assertZeroDataTransaction(transaction);
-				if (expectedSigner) {
-					await this.#assertSigner(transaction, expectedSigner);
-					await this.#assertBalance(expectedSigner, requiredBalance);
-				}
-				const response = await this.#fetch(`${this.#gateway}/tx`, {
+				dispatch: async (signal) => {
+					try {
+						assertZeroDataTransaction(transaction);
+						assertTransactionIntent(transaction, intent);
+						if (expectedSigner) {
+							await this.#assertSigner(transaction, expectedSigner);
+							await this.#assertBalance(expectedSigner, requiredBalance, signal);
+						}
+					} catch (cause) {
+						if (signal.aborted) throw cause;
+						throw new TransactionDispatchNotSentError(
+							cause instanceof Error ? cause.message : String(cause),
+						);
+					}
+					const response = await this.#fetch(`${this.#gateway}/tx`, {
 					method: 'POST',
 					headers: { 'content-type': 'application/json' },
 					body: JSON.stringify(transaction),
@@ -707,7 +982,14 @@ export class AssetTransactionClient {
 				if (response.status === 208) {
 					return { status: 'duplicate', httpStatus: response.status, observer: this.#gateway };
 				}
-				throw new Error(`transaction-dispatch-${response.status}: ${(await response.text()).slice(0, 240)}`);
+					const detail = (await response.text()).slice(0, 240);
+					if (response.status === 400 || response.status === 422) {
+						throw new TransactionDispatchRejectedError(
+							response.status,
+							`transaction-dispatch-${response.status}: ${detail}`,
+						);
+					}
+					throw new Error(`transaction-dispatch-${response.status}: ${detail}`);
 			},
 		};
 	}
@@ -728,8 +1010,10 @@ export class AssetTransactionClient {
 		}
 	}
 
-	async #assertBalance(address: string, required: bigint): Promise<void> {
-		if ((await this.walletBalance(address)) < required) {
+	async #assertBalance(address: string, required: bigint, signal?: AbortSignal): Promise<void> {
+		const balance = await this.walletBalance(address, signal);
+		signal?.throwIfAborted();
+		if (balance < required) {
 			throw new Error('asset-purchase-insufficient-funds');
 		}
 	}
@@ -755,6 +1039,24 @@ export class AssetTransactionClient {
 		return this.#height.value;
 	}
 
+	async #transactionBlockHeight(transactionId: string, signal?: AbortSignal): Promise<number> {
+		const request = requestDeadline(signal, 12_000);
+		try {
+			const response = await this.#fetch(`${this.#gateway}/tx/${transactionId}/status`, {
+				cache: 'no-store',
+				signal: request.signal,
+			});
+			if (!response.ok) throw new Error(`transaction-status-${response.status}`);
+			const height = Number((await response.json()).block_height);
+			if (!Number.isSafeInteger(height) || height < 0) {
+				throw new Error('invalid-transaction-block-height');
+			}
+			return height;
+		} finally {
+			request.cleanup();
+		}
+	}
+
 	async #requireProcessState(
 		processId: string,
 		accept: (state: AssetState) => boolean,
@@ -771,6 +1073,261 @@ export class AssetTransactionClient {
 	}
 }
 
+export function fungibleTransferAppliedAtSlot(
+	after: AssetState,
+	assignment: ProcessAssignment,
+	processId: string,
+	transactionId: string,
+	sender: string,
+	recipient: string,
+	quantity: string,
+) {
+	assertExactFungibleTransferAssignment(
+		assignment,
+		processId,
+		transactionId,
+		sender,
+		recipient,
+		quantity,
+	);
+	return hasExactFungibleTransferReceipt(after, assignment, sender, recipient, quantity);
+}
+
+export function cancelAppliedAtSlot(
+	before: AssetState,
+	after: AssetState,
+	assignment: ProcessAssignment,
+	processId: string,
+	transactionId: string,
+	seller: string,
+	orderId: string,
+): boolean {
+	assertExactCancelAssignment(assignment, processId, transactionId, seller, orderId);
+	const expected = before.orders[orderId];
+	return Boolean(expected && hasExactCancelTransition(before, after, assignment, seller, expected));
+}
+
+export function purchaseAppliedAtSlot(
+	before: AssetState,
+	after: AssetState,
+	assignment: ProcessAssignment,
+	processId: string,
+	transactionId: string,
+	buyer: string,
+	expected: SwapOrder,
+): boolean {
+	assertExactPurchaseAssignment(assignment, processId, transactionId, buyer, expected);
+	return hasExactPurchaseTransition(before, after, assignment, buyer, expected);
+}
+
+export function assertExactPurchaseAssignment(
+	assignment: ProcessAssignment,
+	processId: string,
+	transactionId: string,
+	buyer: string,
+	expected: SwapOrder,
+): void {
+	const body = record(assignment.raw.body);
+	const commitment = record(record(body?.commitments)?.[transactionId]);
+	const committed = Array.isArray(commitment?.committed)
+		? new Set(commitment.committed.filter((key): key is string => typeof key === 'string'))
+		: new Set<string>();
+	if (
+		!assignment.transactionIds.includes(transactionId) ||
+		assignment.raw.process !== processId ||
+		body?.target !== expected.recipient ||
+		body?.['order-id'] !== expected.orderId ||
+		wireAmount(body?.quantity) !== expected.asking ||
+		commitment?.['commitment-device'] !== 'tx@1.0' ||
+		commitment.committer !== buyer ||
+		commitment['field-target'] !== expected.recipient ||
+		!['order-id', 'quantity', 'target'].every((field) => committed.has(field))
+	) throw new Error('asset-purchase-proof-mismatch');
+}
+
+export function hasExactPurchaseTransition(
+	before: AssetState,
+	after: AssetState,
+	assignment: ProcessAssignment,
+	buyer: string,
+	expected: SwapOrder,
+): boolean {
+	if (
+		assetStateSlot(before) !== assignment.slot - 1 ||
+		assetStateSlot(after) !== assignment.slot
+	) return false;
+	const beforeOrder = before.orders[expected.orderId];
+	if (
+		!beforeOrder ||
+		beforeOrder.status !== 'reserved' ||
+		beforeOrder.buyer !== buyer ||
+		(beforeOrder.reservedUntil ?? -1) < assignment.blockHeight ||
+		!purchaseOrderMatches(beforeOrder, expected) ||
+		after.orders[expected.orderId]
+	) return false;
+	return BigInt(after.balances[buyer] ?? '0') ===
+		BigInt(before.balances[buyer] ?? '0') + BigInt(expected.quantity);
+}
+
+export function assertExactCancelAssignment(
+	assignment: ProcessAssignment,
+	processId: string,
+	transactionId: string,
+	seller: string,
+	orderId: string,
+): void {
+	const body = record(assignment.raw.body);
+	const commitment = record(record(body?.commitments)?.[transactionId]);
+	const committed = Array.isArray(commitment?.committed)
+		? new Set(commitment.committed.filter((key): key is string => typeof key === 'string'))
+		: new Set<string>();
+	if (
+		!assignment.transactionIds.includes(transactionId) ||
+		assignment.raw.process !== processId ||
+		body?.target !== processId ||
+		body?.action !== 'cancel-order' ||
+		body?.['order-id'] !== orderId ||
+		commitment?.['commitment-device'] !== 'tx@1.0' ||
+		commitment.committer !== seller ||
+		commitment['field-target'] !== processId ||
+		!['action', 'order-id', 'target'].every((field) => committed.has(field))
+	) throw new Error('asset-cancel-proof-mismatch');
+}
+
+export function hasExactCancelTransition(
+	before: AssetState,
+	after: AssetState,
+	assignment: ProcessAssignment,
+	seller: string,
+	expected: SwapOrder,
+): boolean {
+	if (
+		assetStateSlot(before) !== assignment.slot - 1 ||
+		assetStateSlot(after) !== assignment.slot
+	) return false;
+	const beforeOrder = before.orders[expected.orderId];
+	if (
+		!beforeOrder ||
+		beforeOrder.status !== 'open' ||
+		beforeOrder.creator !== seller ||
+		!purchaseOrderMatches(beforeOrder, expected) ||
+		after.orders[expected.orderId]
+	) return false;
+	return BigInt(after.balances[seller] ?? '0') >=
+		BigInt(before.balances[seller] ?? '0') + BigInt(expected.quantity);
+}
+
+export function assertExactFungibleTransferAssignment(
+	assignment: ProcessAssignment,
+	processId: string,
+	transactionId: string,
+	sender: string,
+	recipient: string,
+	quantity: string,
+): void {
+	const body = record(assignment.raw.body);
+	const commitment = record(record(body?.commitments)?.[transactionId]);
+	const committed = Array.isArray(commitment?.committed)
+		? new Set(commitment.committed.filter((key): key is string => typeof key === 'string'))
+		: new Set<string>();
+	if (
+		!assignment.transactionIds.includes(transactionId) ||
+		assignment.raw.process !== processId ||
+		body?.target !== processId ||
+		body?.action !== 'transfer' ||
+		body?.recipient !== recipient ||
+		wireAmount(body?.quantity) !== quantity ||
+		commitment?.['commitment-device'] !== 'tx@1.0' ||
+		commitment.committer !== sender ||
+		commitment['field-target'] !== processId ||
+		!['action', 'recipient', 'quantity', 'target'].every((field) => committed.has(field))
+	) throw new Error('fungible-transfer-proof-mismatch');
+}
+
+export function hasExactFungibleTransferReceipt(
+	after: AssetState,
+	assignment: ProcessAssignment,
+	sender: string,
+	recipient: string,
+	quantity: string,
+): boolean {
+	if (assetStateSlot(after) !== assignment.slot) return false;
+	const results = record(after.raw.results);
+	const outbox = Array.isArray(results?.outbox)
+		? results.outbox
+		: Object.values(record(results?.outbox) ?? {});
+	const notices = outbox
+		.map((notice) => record(notice))
+		.filter((notice): notice is Record<string, unknown> => notice !== null);
+	return notices.some((notice) =>
+		notice.action === 'Debit-Notice' &&
+		notice.target === sender &&
+		notice.recipient === recipient &&
+		wireAmount(notice.quantity) === quantity
+	) && notices.some((notice) =>
+		notice.action === 'Credit-Notice' &&
+		notice.target === recipient &&
+		notice.sender === sender &&
+		wireAmount(notice.quantity) === quantity
+	);
+}
+
+function record(value: unknown): Record<string, unknown> | null {
+	return value && typeof value === 'object' && !Array.isArray(value)
+		? value as Record<string, unknown>
+		: null;
+}
+
+function wireAmount(value: unknown): string | null {
+	if (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0) return String(value);
+	return typeof value === 'string' && /^(?:0|[1-9]\d*)$/.test(value) ? value : null;
+}
+
+async function firstSlotAtOrAboveBlockHeight(
+	processId: string,
+	fromSlot: number,
+	toSlot: number,
+	blockHeight: number,
+	cache: Map<number, ProcessAssignment>,
+	fetcher: typeof fetch,
+	signal?: AbortSignal,
+): Promise<number | null> {
+	let low = fromSlot;
+	let high = toSlot;
+	let found: number | null = null;
+	while (low <= high) {
+		const slot = low + Math.floor((high - low) / 2);
+		let assignment = cache.get(slot);
+		if (!assignment) {
+			[assignment] = await readProcessAssignments(processId, slot, slot, { fetch: fetcher, signal });
+			if (!assignment || assignment.slot !== slot) throw new Error('process-schedule-slot-missing');
+			cache.set(slot, assignment);
+		}
+		if (assignment.blockHeight >= blockHeight) {
+			found = slot;
+			high = slot - 1;
+		} else {
+			low = slot + 1;
+		}
+	}
+	return found;
+}
+
+function requestDeadline(parent: AbortSignal | undefined, timeout: number) {
+	const controller = new AbortController();
+	const abort = () => controller.abort(parent?.reason);
+	if (parent?.aborted) abort();
+	else parent?.addEventListener('abort', abort, { once: true });
+	const timer = setTimeout(() => controller.abort(new Error('transaction-status-timeout')), timeout);
+	return {
+		signal: controller.signal,
+		cleanup: () => {
+			clearTimeout(timer);
+			parent?.removeEventListener('abort', abort);
+		},
+	};
+}
+
 export async function dispatchAndConfirm(
 	transaction: PreparedTransaction,
 	options: {
@@ -778,6 +1335,7 @@ export async function dispatchAndConfirm(
 		target?: number;
 		onProgress?: (progress: TransactionProgress) => void;
 		onViews?: (views: ObserverView[]) => void;
+		onConsensus?: (consensus: Consensus) => void;
 	} = {}
 ): Promise<void> {
 	const network = new ArweaveObserverNetwork({
@@ -798,6 +1356,7 @@ export async function dispatchAndConfirm(
 			options.signal?.addEventListener('abort', abort, { once: true });
 			watcher.on('consensus', (consensus) => {
 				options.onViews?.(watcher.views());
+				options.onConsensus?.(consensus);
 				options.onProgress?.({
 					confirmations: consensus.confirmations,
 					propagated: consensus.propagated,
@@ -810,26 +1369,40 @@ export async function dispatchAndConfirm(
 		});
 		void settlement.catch(() => undefined);
 		watcher.start();
+		const dispatchController = new AbortController();
+		const abortDispatch = () => dispatchController.abort(options.signal?.reason);
+		if (options.signal?.aborted) abortDispatch();
+		else options.signal?.addEventListener('abort', abortDispatch, { once: true });
 		try {
-			const signal = options.signal ?? new AbortController().signal;
-			let dispatchError: unknown;
-			for (let attempt = 0; attempt < 2; attempt += 1) {
-				try {
-					await transaction.dispatch(signal);
-					dispatchError = undefined;
-					break;
-				} catch (error) {
-					dispatchError = error;
-					if (isAmbiguousDispatchError(error) && (await waitUntilSeen(watcher, 15_000, signal))) {
+			const dispatch = (async () => {
+				let dispatchError: unknown;
+				for (let attempt = 0; attempt < 2; attempt += 1) {
+					try {
+						await transaction.dispatch(dispatchController.signal);
 						dispatchError = undefined;
 						break;
+					} catch (error) {
+						dispatchError = error;
+						if (
+							isAmbiguousDispatchError(error) &&
+							(await waitUntilSeen(watcher, 15_000, dispatchController.signal))
+						) {
+							dispatchError = undefined;
+							break;
+						}
+						if (!isAmbiguousDispatchError(error)) break;
 					}
-					if (!isAmbiguousDispatchError(error)) break;
 				}
-			}
-			if (dispatchError) throw dispatchError;
+				if (dispatchError) throw dispatchError;
+			})();
+			void dispatch.catch(() => undefined);
+			await Promise.race([dispatch, settlement]);
 			await settlement;
 		} finally {
+			if (!dispatchController.signal.aborted) {
+				dispatchController.abort(new DOMException('Transaction observation finished', 'AbortError'));
+			}
+			options.signal?.removeEventListener('abort', abortDispatch);
 			watcher.stop();
 		}
 	} finally {
@@ -890,6 +1463,47 @@ function assertZeroDataTransaction(transaction: Record<string, unknown>): void {
 	}
 }
 
+function assertTransactionIntent(transaction: Record<string, unknown>, expected: unknown): void {
+	if (!expected || typeof expected !== 'object' || Array.isArray(expected)) {
+		throw new Error('signed-transaction-intent-unavailable');
+	}
+	const intent = expected as TransactionIntent;
+	if (
+		typeof intent.target !== 'string' ||
+		typeof intent.quantity !== 'string' ||
+		typeof intent.reward !== 'string' ||
+		!Array.isArray(intent.tags)
+	) {
+		throw new Error('signed-transaction-intent-unavailable');
+	}
+	if (
+		typeof transaction.target !== 'string' || transaction.target !== intent.target ||
+		typeof transaction.quantity !== 'string' || transaction.quantity !== intent.quantity ||
+		typeof transaction.reward !== 'string' || transaction.reward !== intent.reward ||
+		!transactionTagsEqual(transaction.tags, intent.tags)
+	) {
+		throw new Error('wallet-modified-transaction-fields');
+	}
+}
+
+function transactionTagsEqual(tags: unknown, expected: TransactionFields['tags']): boolean {
+	if (!Array.isArray(tags) || tags.length !== expected.length) return false;
+	const remaining = [...tags];
+	return expected.every((expectedTag) => {
+		const index = remaining.findIndex((tag) => {
+			if (!tag || typeof tag !== 'object') return false;
+			const record = tag as Record<string, unknown>;
+			return (
+				transactionTagValues(record.name).includes(expectedTag.name) &&
+				transactionTagValues(record.value).includes(expectedTag.value)
+			);
+		});
+		if (index < 0) return false;
+		remaining.splice(index, 1);
+		return true;
+	});
+}
+
 function transactionCost(transaction: Record<string, unknown>): bigint {
 	return BigInt(String(transaction.quantity ?? '0')) + BigInt(String(transaction.reward ?? '0'));
 }
@@ -909,9 +1523,11 @@ function transactionTagMatches(tags: unknown, expectedName: string, expectedValu
 function transactionTagValues(value: unknown): string[] {
 	if (typeof value !== 'string') return [];
 	try {
-		return [value, Arweave.utils.b64UrlToString(value)];
+		const bytes = Arweave.utils.b64UrlToBuffer(value);
+		if (Arweave.utils.bufferTob64Url(bytes) !== value) return [];
+		return [Arweave.utils.b64UrlToString(value)];
 	} catch {
-		return [value];
+		return [];
 	}
 }
 
@@ -937,22 +1553,32 @@ function isExactOpenOrder(
 			claimable &&
 			buyer !== order.creator &&
 			buyer !== order.recipient &&
-			order.creator === expected.creator &&
-			order.recipient === expected.recipient &&
-			order.asking === expected.asking &&
-			order.deposit === expected.deposit &&
-			order.minimumFee === expected.minimumFee &&
-			order.deadline === expected.deadline &&
-			order.createdAt === expected.createdAt &&
-			order.quantity === expected.quantity
+			purchaseOrderMatches(order, expected)
 	);
 }
 
-function isAmbiguousDispatchError(error: unknown): boolean {
-	return !(error instanceof Error && /^transaction-dispatch-4\d\d:/.test(error.message));
+function purchaseOrderMatches(order: SwapOrder, expected: SwapOrder): boolean {
+	return order.creator === expected.creator &&
+		order.recipient === expected.recipient &&
+		order.asking === expected.asking &&
+		order.deposit === expected.deposit &&
+		order.minimumFee === expected.minimumFee &&
+		order.deadline === expected.deadline &&
+		order.createdAt === expected.createdAt &&
+		order.quantity === expected.quantity;
 }
 
-function waitUntilSeen(watcher: TxWatcher, timeout: number, signal: AbortSignal): Promise<boolean> {
+function isAmbiguousDispatchError(error: unknown): boolean {
+	return !(
+		error &&
+		typeof error === 'object' &&
+		((error as { code?: unknown }).code === 'transaction-dispatch-not-sent' ||
+			(error as { code?: unknown }).code === 'transaction-dispatch-rejected')
+	);
+}
+
+export function waitUntilSeen(watcher: TxWatcher, timeout: number, signal: AbortSignal): Promise<boolean> {
+	if (signal.aborted) return Promise.reject(signal.reason);
 	if (watcher.consensus().seen > 0) return Promise.resolve(true);
 	return new Promise((resolve, reject) => {
 		const finish = (seen: boolean) => {
