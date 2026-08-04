@@ -1115,7 +1115,7 @@ export function homeScrollIndicatorMetrics(
   if (!scrollRange || clientHeight <= 0 || trackHeight <= 0) {
     return { visible: false, size: Math.max(0, trackHeight), offset: 0 };
   }
-  const size = Math.min(trackHeight, Math.max(44, trackHeight * (clientHeight / scrollHeight)));
+  const size = Math.min(trackHeight, Math.max(44, trackHeight * (clientHeight / scrollHeight) * 0.72));
   const offsetRange = Math.max(0, trackHeight - size);
   const progress = Math.min(1, Math.max(0, scrollTop / scrollRange));
   return { visible: true, size, offset: offsetRange * progress };
