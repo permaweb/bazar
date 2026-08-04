@@ -440,19 +440,6 @@ export function FungibleAssetView({
               <Link className="asset-collection-link" to={`/collection/${collection.id}`}>
                 {collection.name}
               </Link>
-              <span
-                className={
-                  loading || error ? 'status-dot stale' : openOrders.length ? 'status-dot listed' : 'status-dot'
-                }
-              >
-                {loading
-                  ? 'Refreshing'
-                  : error
-                    ? 'Refresh failed'
-                    : openOrders.length
-                      ? `${openOrders.length} open ${openOrders.length === 1 ? 'ask' : 'asks'}`
-                      : 'Verified'}
-              </span>
             </div>
             <h1 ref={operationFocusFallbackRef} tabIndex={-1}>
               {asset.name}

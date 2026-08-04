@@ -3558,6 +3558,25 @@ body input:focus-visible {
   grid-template-rows: auto 1fr;
   row-gap: 0;
 }
+.fungible-asset-page .asset-kicker {
+  justify-content: flex-start;
+}
+.fungible-asset-page .asset-details h1 {
+  max-width: 18ch;
+  margin: 12px 0 10px;
+  font-size: clamp(2rem, 2.65vw, 2.85rem);
+  line-height: 1.02;
+  text-wrap: balance;
+}
+.fungible-asset-page .asset-owner-line strong {
+  font-size: 0.8rem;
+}
+.fungible-asset-page .asset-token-tags {
+  margin-top: 13px;
+}
+.fungible-asset-page .state-verification {
+  margin-top: 8px;
+}
 .fungible-asset-page .asset-commerce-primary {
   grid-column: 2;
   grid-row: 1;
