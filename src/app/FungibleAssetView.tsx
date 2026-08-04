@@ -13,11 +13,11 @@ import {
   Send,
   ShoppingCart,
   Tag,
-  Wallet,
   X,
 } from 'lucide-react';
 import {
   SwapPurchase,
+  type Consensus,
   type ObserverView,
   type PreparedTransaction,
   type PurchaseSnapshot,
@@ -33,9 +33,11 @@ import {
   liquidBalanceOf,
   liveOrdersOfAsset,
   openOrdersOfAsset,
+  readAssetState,
   type AssetState,
   type SwapOrder,
 } from 'api/asset-marketplace';
+import { transactionExplorerUrl } from 'api/arweave-explorer';
 import { matchWholeOrders, formatTokenAmount, parseTokenAmount } from 'api/order-matching';
 import { ArweaveObserverNetwork } from 'api/arweave-observers';
 import { assetObserverNetworkOptions } from 'api/asset-observers';
@@ -46,16 +48,59 @@ import {
   type PreparedPurchase,
 } from 'api/asset-transactions';
 import { ArweaveTransactionSync, type ArweaveSyncStep } from 'components/ArweaveTransactionSync';
+import { ArtworkImage } from 'components/ArtworkImage';
+import { ConnectWalletButton } from 'components/ConnectWalletButton';
+import { OperationOutcome, OperationOutcomeAnnouncement } from 'components/OperationOutcomeAnnouncement';
+import { StateVerification } from 'components/StateVerification';
+import {
+  UnavailableOperationRecoveryNotice,
+  type UnavailableOperationRecovery,
+} from 'components/UnavailableOperationRecovery';
+import { WalletAddress, WalletIdentity } from 'components/WalletAddress';
+import { optionalMotionBehavior } from 'helpers/motion';
 import { useWallet } from 'providers/WalletProvider';
+import { useDialogFocus } from './useDialogFocus';
+import {
+	marketplaceCodedError,
+  marketplaceErrorMessage as errorMessage,
+  marketplaceOperationFailure,
+  type MarketplaceOperationFailure,
+} from './marketplace-error';
+import {
+  acquireWalletOperationClaim,
+  clearStaleWalletOperationClaim,
+  discardNewlyPreparedTransactionIfAborted,
+  loadWalletRecord,
+  hasRecoverablePurchase,
+  operationForSigner,
+  operationClaimStorageKey,
+  operationStorageKey,
+  promoteWalletOperationClaim,
+  purchaseRecoveryApprovalCount,
+  repairRejectedPurchase,
+  removeWalletRecoveryAndSignatures,
+  removeWalletRecordIf,
+  releaseWalletOperationClaim,
+  shouldAutomaticallyResumePurchase,
+  storeWalletRecordOrThrow,
+  walletOperationStorageChange,
+  type OperationSession,
+  type WalletOperationClaim,
+} from './operation-session';
 
 type Props = {
   asset: AssetSummary;
   collection: Collection;
+  collectionIndexNotice?: React.ReactNode;
   state: AssetState;
   activity: CollectionActivityEvent[];
   activityLoading: boolean;
+  activityError: string | null;
+  onActivityRetry(): void;
   loading: boolean;
   error: string | null;
+  provider: string;
+  verifiedAt: number | null;
   onRefresh(): Promise<void>;
 };
 
@@ -70,6 +115,7 @@ type BatchResume = {
   buyer: string;
   startingBalance: string;
   entries: BatchEntry[];
+  attemptId?: string;
 };
 
 type FungibleOperation =
@@ -78,10 +124,10 @@ type FungibleOperation =
       kind: 'transfer';
       quantity?: string;
       recipient?: string;
-      recipientStartingBalance?: string;
+      startingSlot?: number;
       resumeId?: string;
     }
-  | { kind: 'cancel'; order: SwapOrder; resumeId?: string }
+  | { kind: 'cancel'; order: SwapOrder; startingSlot?: number; resumeId?: string }
   | {
       kind: 'buy';
       availableOrders: SwapOrder[];
@@ -91,21 +137,47 @@ type FungibleOperation =
     };
 
 const ADDRESS = /^[A-Za-z0-9_-]{43}$/;
+const SETTLEMENT_PANEL_ID = 'fungible-settlement-panel';
+const SETTLEMENT_ERROR_PANEL_ID = 'fungible-settlement-error-panel';
+export const LOT_PICKER_PAGE_SIZE = 50;
 
 export function FungibleAssetView({
   asset,
   collection,
+  collectionIndexNotice,
   state,
   activity,
   activityLoading,
+  activityError,
+  onActivityRetry,
   loading,
   error,
+  provider,
+  verifiedAt,
   onRefresh,
 }: Props) {
   const wallet = useWallet();
-  const [operation, setOperation] = React.useState<FungibleOperation | null>(null);
-  const [activeSection, setActiveSection] = React.useState<'about' | 'orders' | 'activity'>('orders');
+  const [operationSession, setOperationSession] = React.useState<OperationSession<FungibleOperation> | null>(null);
+  const operation = operationForSigner(operationSession, wallet.address);
+  const openOperation = React.useCallback((next: FungibleOperation) => {
+    if (wallet.address) setOperationSession({ signer: wallet.address, operation: next });
+  }, [wallet.address]);
+  const [recoverySuppressed, setRecoverySuppressed] = React.useState(false);
+  const [recoveryNotice, setRecoveryNotice] = React.useState('');
+  const [unavailableRecovery, setUnavailableRecovery] = React.useState<UnavailableOperationRecovery | null>(null);
+  const resumeButtonRef = React.useRef<HTMLButtonElement>(null);
+  const operationFocusFallbackRef = React.useRef<HTMLHeadingElement>(null);
+  const operationFocusFallback = React.useCallback(
+    () => resumeButtonRef.current ?? operationFocusFallbackRef.current,
+    [],
+  );
+  const [activeSection, setActiveSection] = React.useState<'about' | 'orders' | 'activity' | null>('orders');
+  const [orderReveal, setOrderReveal] = React.useState({ assetId: asset.id, limit: 50 });
+  const orderRevealStatusRef = React.useRef<HTMLParagraphElement>(null);
+  const [storageVersion, setStorageVersion] = React.useState(0);
   const orders = liveOrdersOfAsset(state);
+  const orderLimit = orderReveal.assetId === asset.id ? orderReveal.limit : 50;
+  const visibleOrderRows = visibleOrderbookRows(orders, orderLimit);
   const openOrders = openOrdersOfAsset(state);
   const purchasableOrders = openOrders.filter(
     (order) => order.creator !== wallet.address && order.recipient !== wallet.address,
@@ -128,88 +200,244 @@ export function FungibleAssetView({
   const purchaseKey = wallet.address ? batchStorageKey(asset.id, wallet.address) : '';
 
   React.useEffect(() => {
-    if (!wallet.address || operation) return;
-    try {
-      const savedBatch = JSON.parse(localStorage.getItem(batchStorageKey(asset.id, wallet.address)) ?? 'null');
-	      if (savedBatch?.version === 2 && savedBatch.buyer === wallet.address && Array.isArray(savedBatch.entries)) {
-        const resume = savedBatch as BatchResume;
-        const expected = resume.entries.reduce(
-          (total, entry) => total + BigInt(entry.order.quantity),
-          BigInt(resume.startingBalance),
-        );
-        const allGone = resume.entries.every((entry) => !state.orders[entry.order.orderId]);
-        if (allGone && BigInt(liquidBalanceOf(state, wallet.address)) >= expected) {
-          localStorage.removeItem(batchStorageKey(asset.id, wallet.address));
-        } else {
-          setOperation({
-            kind: 'buy',
-            availableOrders: resume.entries.map((entry) => entry.order),
-            selectedOrders: resume.entries.map((entry) => entry.order),
-            startingBalance: resume.startingBalance,
-            resume,
+    if (!wallet.address) return;
+    const walletAddress = wallet.address;
+    const claimKey = operationClaimStorageKey(asset.id, walletAddress);
+    const recoveryKeys = [
+      operationStorageKey(asset.id, walletAddress),
+      batchStorageKey(asset.id, walletAddress),
+    ];
+    const onStorage = (event: StorageEvent) => {
+      if (event.storageArea && event.storageArea !== localStorage) return;
+      const change = walletOperationStorageChange(event.key, event.newValue, claimKey, recoveryKeys);
+      if (change === 'ignore') return;
+      setRecoverySuppressed(false);
+      if (change === 'claim-acquired' || change === 'claim-released') {
+        if (change === 'claim-acquired') {
+          setOperationSession((current) => {
+            if (!current || current.signer !== walletAddress) return current;
+            const active = current.operation;
+            const recovering = active.kind === 'buy' ? Boolean(active.resume) : Boolean(active.resumeId);
+            return recovering ? current : null;
           });
-          return;
         }
+        setStorageVersion((version) => version + 1);
+        return;
       }
+      if (change === 'recovery-updated') {
+        setOperationSession((current) => {
+          if (!current || current.signer !== walletAddress) return current;
+          const active = current.operation;
+          const recovering = active.kind === 'buy' ? Boolean(active.resume) : Boolean(active.resumeId);
+          return recovering ? current : null;
+        });
+      } else {
+        setOperationSession(null);
+        void onRefresh();
+      }
+      setStorageVersion((version) => version + 1);
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, [asset.id, onRefresh, wallet.address]);
 
-      const saved = JSON.parse(localStorage.getItem(`bazar-operation:${asset.id}`) ?? 'null');
-      if (saved?.signer !== wallet.address || !ADDRESS.test(saved?.txId)) return;
+  React.useEffect(() => {
+    setRecoverySuppressed(false);
+    setRecoveryNotice('');
+    setUnavailableRecovery(null);
+    setOperationSession(null);
+  }, [asset.id, wallet.address]);
+  React.useLayoutEffect(() => {
+    if (recoverySuppressed) resumeButtonRef.current?.focus();
+  }, [recoverySuppressed]);
+  React.useEffect(() => {
+    if (!wallet.address || operation || recoverySuppressed) return;
+    const activeClaimKey = operationClaimStorageKey(asset.id, wallet.address);
+    if (localStorage.getItem(activeClaimKey)) {
+      const controller = new AbortController();
+      void clearStaleWalletOperationClaim(localStorage, activeClaimKey, { signal: controller.signal })
+        .then((cleared) => {
+          if (!controller.signal.aborted && cleared) setStorageVersion((version) => version + 1);
+        })
+        .catch(() => undefined);
+      return () => controller.abort();
+    }
+    let savedBatch: any = null;
+    try {
+      savedBatch = JSON.parse(localStorage.getItem(batchStorageKey(asset.id, wallet.address)) ?? 'null');
+    } catch {
+      localStorage.removeItem(purchaseKey);
+    }
+	  if (isRecoverableBatch(savedBatch, wallet.address)) {
+      const resume = savedBatch as BatchResume;
+      const recoveryStatus = fungibleBatchRecoveryStatus(resume, state, wallet.address);
+      if (recoveryStatus === 'resumable') {
+        openOperation({
+          kind: 'buy',
+          availableOrders: resume.entries.map((entry) => entry.order),
+          selectedOrders: resume.entries.map((entry) => entry.order),
+          startingBalance: resume.startingBalance,
+          resume,
+        });
+        return;
+      } else {
+        setRecoveryNotice('A previous token purchase is paused because one or more orders are no longer available to this wallet. Its exact signed transactions remain stored, and no replacement seller payment will be created.');
+      }
+	  } else if (savedBatch !== null) {
+      removeWalletRecordIf<any>(
+        localStorage,
+        batchStorageKey(asset.id, wallet.address),
+        (current) => !isRecoverableBatch(current, wallet.address!),
+      );
+    }
+    try {
+      const pendingOperationKey = operationStorageKey(asset.id, wallet.address);
+      const saved = loadWalletRecord<any>(
+        localStorage,
+        pendingOperationKey,
+        `bazar-operation:${asset.id}`,
+        (record) =>
+          record?.signer === wallet.address &&
+          ADDRESS.test(record?.txId ?? '') &&
+          ['sell', 'cancel', 'transfer'].includes(record?.kind),
+      );
+      if (!saved) {
+        setUnavailableRecovery((current) => current?.key === pendingOperationKey ? null : current);
+        return;
+      }
+      if (saved.signer !== wallet.address || !ADDRESS.test(saved.txId)) return;
+      try {
+        new AssetTransactionClient().restore(saved.txId, wallet.address);
+      } catch {
+        let canStillApply = false;
+        if (saved.kind === 'cancel') {
+          const order = state.orders[saved.order?.orderId];
+          canStillApply = Boolean(order?.status === 'open' && order.creator === wallet.address);
+        } else if (!state.orders[saved.txId]) {
+          try {
+            const quantity = parseTokenAmount(saved.quantity ?? '', state.denomination);
+            canStillApply = BigInt(quantity) <= BigInt(liquidBalanceOf(state, wallet.address));
+          } catch {
+            canStillApply = false;
+          }
+        }
+        const matches = (record: any) =>
+          record?.assetId === asset.id &&
+          record?.signer === wallet.address &&
+          record?.txId === saved.txId;
+        if (!canStillApply) {
+          if (removeWalletRecoveryAndSignatures(
+            localStorage,
+            pendingOperationKey,
+            matches,
+            [saved.txId],
+            wallet.address,
+          )) {
+            setUnavailableRecovery(null);
+            setRecoveryNotice('A stale local action was removed after current live state proved that it can no longer apply. No replacement transaction was created.');
+          }
+        } else {
+          setUnavailableRecovery({
+            key: pendingOperationKey,
+            kind: saved.kind,
+            signer: wallet.address,
+            txId: saved.txId,
+          });
+        }
+        return;
+      }
+      setUnavailableRecovery(null);
       if (saved.kind === 'cancel' && saved.order) {
-        setOperation({ kind: 'cancel', order: saved.order, resumeId: saved.txId });
+        openOperation({
+          kind: 'cancel',
+          order: saved.order,
+          startingSlot: saved.startingSlot,
+          resumeId: saved.txId,
+        });
       } else if (saved.kind === 'sell') {
-        setOperation({
+        openOperation({
           kind: 'sell',
           quantity: saved.quantity,
           unitPrice: saved.unitPrice,
           resumeId: saved.txId,
         });
       } else if (saved.kind === 'transfer') {
-        setOperation({
+        openOperation({
           kind: 'transfer',
           quantity: saved.quantity,
           recipient: saved.recipient,
-          recipientStartingBalance: saved.recipientStartingBalance,
+          startingSlot: saved.startingSlot,
           resumeId: saved.txId,
         });
       }
     } catch {
-      if (purchaseKey) localStorage.removeItem(purchaseKey);
-      localStorage.removeItem(`bazar-operation:${asset.id}`);
+      if (wallet.address) localStorage.removeItem(operationStorageKey(asset.id, wallet.address));
     }
-  }, [asset.id, operation, purchaseKey, state, wallet.address]);
+  }, [asset.id, openOperation, operation, purchaseKey, recoverySuppressed, state, storageVersion, wallet.address]);
 
   const showAssetSection = (section: 'about' | 'orders' | 'activity') => {
     setActiveSection(section);
     const target = document.getElementById(`asset-${section}`);
     if (target instanceof HTMLDetailsElement) target.open = true;
-    window.requestAnimationFrame(() => target?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+    window.requestAnimationFrame(() => target?.scrollIntoView({ behavior: optionalMotionBehavior(), block: 'start' }));
   };
+  const syncActiveSection = (section: 'about' | 'orders' | 'activity', open: boolean) => {
+    setActiveSection((current) => open ? section : current === section ? null : current);
+  };
+  const recoveryBlocksActions = recoverySuppressed || Boolean(unavailableRecovery);
 
   return (
     <section className="asset-page asset-detail-page fungible-asset-page">
-      <div className="asset-detail-layout">
-        <div className="asset-visual-column">
-          <div className={`asset-hero-media${asset.image ? '' : ' token-hero'}`}>
-            {asset.image ? <img src={asset.image} alt={asset.name} /> : <span>{ticker.slice(0, 6)}</span>}
-            <div className="asset-media-label">
-              <span>Arweave-native token</span>
-              <strong>{ticker}</strong>
-            </div>
-          </div>
+      {recoverySuppressed ? (
+        <div className="pending-operation-notice">
+          <span role="status">Local tracking is paused. Resume here to continue observing signed work or review any wallet approvals still required.</span>
+	          <button ref={resumeButtonRef} className="with-icon" type="button" onClick={() => setRecoverySuppressed(false)}>
+	            <RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Resume pending action
+	          </button>
+	        </div>
+      ) : null}
+      {recoveryNotice ? (
+        <div className="pending-operation-notice">
+          <span role="status">{recoveryNotice}</span>
+          <button type="button" onClick={() => setRecoveryNotice('')}>Dismiss</button>
         </div>
-        <div className="asset-commerce-column">
+      ) : null}
+      {unavailableRecovery ? (
+        <UnavailableOperationRecoveryNotice
+          recovery={unavailableRecovery}
+          stateNoun="balances and orders above"
+          onRefresh={() => void onRefresh()}
+          onDiscard={() => {
+            const removed = removeWalletRecoveryAndSignatures<any>(
+              localStorage,
+              unavailableRecovery.key,
+              (record) =>
+                record?.signer === unavailableRecovery.signer &&
+                record?.txId === unavailableRecovery.txId,
+              [unavailableRecovery.txId],
+              unavailableRecovery.signer,
+            );
+            if (removed) {
+              setUnavailableRecovery(null);
+              setRecoveryNotice('Local tracking was discarded. Current balances and orders above remain the live source of truth.');
+            }
+          }}
+        />
+      ) : null}
+      <div className="asset-detail-layout">
+        <div className="asset-commerce-column asset-commerce-primary">
           <div className="asset-details asset-identity">
             <div className="asset-kicker">
               <Link className="asset-collection-link" to={`/collection/${collection.id}`}>
                 {collection.name}
               </Link>
-              <span className={openOrders.length ? 'status-dot listed' : 'status-dot'}>
-                {openOrders.length ? `${openOrders.length} open ${openOrders.length === 1 ? 'ask' : 'asks'}` : 'Arweave live'}
+              <span className={loading || error ? 'status-dot stale' : openOrders.length ? 'status-dot listed' : 'status-dot'}>
+                {loading ? 'Refreshing' : error ? 'Refresh failed' : openOrders.length ? `${openOrders.length} open ${openOrders.length === 1 ? 'ask' : 'asks'}` : 'Verified'}
               </span>
             </div>
-            <h1>{asset.name}</h1>
+            <h1 ref={operationFocusFallbackRef} tabIndex={-1}>{asset.name}</h1>
             <div className="asset-owner-line">
-              <span>{wallet.address ? 'Your liquid balance' : 'Circulating supply'}</span>
+              <span>{loading || error ? (wallet.address ? 'Last verified balance' : 'Last verified supply') : wallet.address ? 'Your liquid balance' : 'Circulating supply'}</span>
               <strong>{tokenLabel(wallet.address ? liquid : state.totalSupply, state)}</strong>
             </div>
             <div className="asset-token-tags" aria-label="Token protocol details">
@@ -217,12 +445,13 @@ export function FungibleAssetView({
               <span>{ticker}</span>
               <span>{state.denomination} decimals</span>
             </div>
+            <StateVerification provider={provider} verifiedAt={verifiedAt} refreshing={loading} failed={Boolean(error)} />
             {loading ? <Loading label="Computing current state…" /> : null}
             {error ? <ErrorPanel message={error} /> : null}
             <section className="asset-commerce-card">
               <div className="asset-market-stats">
                 <div>
-                  <span>Best unit price</span>
+                  <span>Verified unit price</span>
                   <strong>{best ? orderPriceLabel(best, state) : 'Not listed'}</strong>
                 </div>
                 <div>
@@ -244,39 +473,58 @@ export function FungibleAssetView({
               </div>
               <div className="asset-commerce-actions">
                 {!wallet.address ? (
-                  <button className="primary with-icon" onClick={() => void wallet.connect()}>
-                    <Wallet className="ui-icon ui-icon--sm" aria-hidden="true" /> Connect wallet
-                  </button>
+                  <ConnectWalletButton />
                 ) : null}
                 {wallet.address && purchasableOrders.length ? (
 	                  <button
                     className="primary with-icon"
+                    disabled={recoveryBlocksActions || loading || Boolean(error)}
                     onClick={() =>
-                      setOperation({ kind: 'buy', availableOrders: purchasableOrders, startingBalance: liquid })
+                      openOperation({ kind: 'buy', availableOrders: purchasableOrders, startingBalance: liquid })
                     }
                   >
                     <ShoppingCart className="ui-icon ui-icon--sm" aria-hidden="true" /> Buy from order book
                   </button>
                 ) : null}
                 {wallet.address && BigInt(liquid) > 0n ? (
-	                  <button className={`${purchasableOrders.length ? '' : 'primary '}with-icon`} onClick={() => setOperation({ kind: 'sell' })}>
+	                  <button className={`${purchasableOrders.length ? '' : 'primary '}with-icon`} disabled={recoveryBlocksActions || loading || Boolean(error)} onClick={() => openOperation({ kind: 'sell' })}>
                     <Tag className="ui-icon ui-icon--sm" aria-hidden="true" /> List tokens
                   </button>
                 ) : null}
                 {wallet.address && BigInt(liquid) > 0n ? (
-                  <button className="with-icon" onClick={() => setOperation({ kind: 'transfer' })}>
+                  <button className="with-icon" disabled={recoveryBlocksActions || loading || Boolean(error)} onClick={() => openOperation({ kind: 'transfer' })}>
                     <Send className="ui-icon ui-icon--sm" aria-hidden="true" /> Transfer
                   </button>
                 ) : null}
-                <button className="with-icon" onClick={() => void onRefresh()}>
-                  <RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Refresh
+                <button
+                  aria-disabled={loading}
+                  className="with-icon"
+                  onClick={() => {
+                    if (!loading) void onRefresh();
+                  }}
+                >
+                  <RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> {loading ? 'Refreshing…' : 'Refresh'}
                 </button>
               </div>
             </section>
           </div>
+        </div>
+        <div className="asset-visual-column">
+          <div className={`asset-hero-media${asset.image ? '' : ' token-hero'}`}>
+            {asset.image ? <ArtworkImage src={asset.image} alt={asset.name} loading="eager" /> : <span>{ticker.slice(0, 6)}</span>}
+            <div className="asset-media-label">
+              <span>Arweave-native token</span>
+              <strong>{ticker}</strong>
+            </div>
+          </div>
+        </div>
+        <div className="asset-commerce-column asset-commerce-secondary">
+          {collectionIndexNotice}
           <nav className="asset-section-tabs" aria-label="Token detail sections">
             {(['about', 'orders', 'activity'] as const).map((section) => (
               <button
+                aria-controls={`asset-${section}`}
+                aria-current={activeSection === section ? 'true' : undefined}
                 className={activeSection === section ? 'active' : undefined}
                 key={section}
                 onClick={() => showAssetSection(section)}
@@ -287,7 +535,9 @@ export function FungibleAssetView({
             ))}
           </nav>
           <div className="asset-accordion-list">
-            <details id="asset-orders" open>
+            <details id="asset-orders" open onToggle={(event) => {
+              syncActiveSection('orders', event.currentTarget.open);
+            }}>
               <summary>
                 <span className="asset-accordion-icon"><Layers3 className="ui-icon" aria-hidden="true" /></span>
                 <strong>Order book</strong>
@@ -295,57 +545,93 @@ export function FungibleAssetView({
                 <ChevronDown className="ui-icon ui-icon--sm" aria-hidden="true" />
               </summary>
               <div className="asset-accordion-content">
-                <div className="orderbook-table fungible-orderbook">
-                  <div className="orderbook-head">
-                    <span>Unit price</span><span>Quantity</span><span>Total</span><span>Seller</span><span>Status</span><span />
+                <div aria-label={`${asset.name} order book`} className="orderbook-table fungible-orderbook" role="table">
+                  <div className="orderbook-head" role="row">
+                    <span role="columnheader">Unit price</span><span role="columnheader">Quantity</span><span role="columnheader">Total</span><span role="columnheader">Seller</span><span role="columnheader">Status</span><span aria-label="Actions" role="columnheader" />
                   </div>
-                  {orders.map((order) => {
+                  {visibleOrderRows.map((order) => {
                     const own = order.creator === wallet.address;
                     return (
-                      <div className="orderbook-row" key={order.orderId}>
-                        <strong>{orderPriceLabel(order, state)}</strong>
-                        <span>{tokenLabel(order.quantity, state)}</span>
-                        <span>{winstonToAr(order.asking)} AR</span>
-                        <a href={`https://arweave.net/${order.creator}`} target="_blank" rel="noreferrer">
-                          {short(order.creator)}
-                        </a>
-                        <span className={`order-status ${order.status}`}>{order.status}</span>
-                        {own && order.status === 'open' ? (
-                          <button className="order-action" onClick={() => setOperation({ kind: 'cancel', order })}>
-                            Cancel
-                          </button>
-                        ) : !own && order.status === 'open' ? (
-                          <button
-                            className="order-action"
-                            onClick={() =>
-                              setOperation({
-                                kind: 'buy',
-                                availableOrders: purchasableOrders,
-                                selectedOrders: [order],
-                                startingBalance: liquid,
-                              })
-                            }
-                          >
-                            Buy lot
-                          </button>
-                        ) : <span />}
+                      <div
+                        className="orderbook-row"
+                        key={order.orderId}
+                        role="row"
+                      >
+                        <strong data-label="Unit price" role="cell">{orderPriceLabel(order, state)}</strong>
+                        <span data-label="Quantity" role="cell">{tokenLabel(order.quantity, state)}</span>
+                        <span data-label="Total" role="cell">{winstonToAr(order.asking)} AR</span>
+                        <span data-label="Seller" role="cell"><WalletAddress address={order.creator} label="seller" /></span>
+                        <span className={`order-status ${order.status}`} data-label="Status" role="cell">{order.status}</span>
+                        <span className="orderbook-action-cell" role="cell">
+                          {own && order.status === 'open' ? (
+                            <button
+                              aria-label={fungibleOrderActionLabel('cancel', order, state)}
+                              className="order-action"
+                              disabled={recoveryBlocksActions || loading || Boolean(error)}
+                              onClick={() => openOperation({ kind: 'cancel', order })}
+                            >
+                              Cancel
+                            </button>
+                          ) : wallet.address && !own && order.status === 'open' ? (
+                            <button
+                              aria-label={fungibleOrderActionLabel('buy', order, state)}
+                              className="order-action"
+                              disabled={recoveryBlocksActions || loading || Boolean(error)}
+                              onClick={() =>
+                                openOperation({
+                                  kind: 'buy',
+                                  availableOrders: purchasableOrders,
+                                  selectedOrders: [order],
+                                  startingBalance: liquid,
+                                })
+                              }
+                            >
+                              Buy lot
+                            </button>
+                          ) : null}
+                        </span>
                       </div>
                     );
                   })}
                   {!orders.length ? (
-                    <div className="orderbook-empty">
-                      <strong>No open asks</strong>
-                      <span>Token holders can list any whole lot directly from their wallet.</span>
+                    <div className="orderbook-empty" role="row">
+                      <div aria-colspan={6} className="orderbook-empty-cell" role="cell">
+                        <strong>No open asks</strong>
+                        <span>Token holders can list any whole lot directly from their wallet.</span>
+                      </div>
                     </div>
                   ) : null}
                 </div>
+                {orders.length > 50 ? (
+                  <div className="orderbook-reveal">
+                    <p aria-atomic="true" aria-live="polite" ref={orderRevealStatusRef} role="status" tabIndex={-1}>
+                      Showing {visibleOrderRows.length.toLocaleString()} of {orders.length.toLocaleString()} live orders.
+                    </p>
+                    {visibleOrderRows.length < orders.length ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const next = Math.min(orders.length, orderLimit + 50);
+                          setOrderReveal({ assetId: asset.id, limit: next });
+                          if (next === orders.length) {
+                            window.requestAnimationFrame(() => orderRevealStatusRef.current?.focus());
+                          }
+                        }}
+                      >
+                        Show {Math.min(50, orders.length - visibleOrderRows.length).toLocaleString()} more orders
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
                 <p className="market-note">
-                  Every row is an escrowed whole lot computed from live process state. Multi-order purchases settle
+                  Every row is an escrowed whole lot from the last verified process state. Multi-order purchases settle
                   each selected lot independently and in parallel.
                 </p>
               </div>
             </details>
-            <details id="asset-about">
+            <details id="asset-about" onToggle={(event) => {
+              syncActiveSection('about', event.currentTarget.open);
+            }}>
               <summary>
                 <span className="asset-accordion-icon"><Grid2X2 className="ui-icon" aria-hidden="true" /></span>
                 <strong>Token details</strong>
@@ -361,26 +647,51 @@ export function FungibleAssetView({
                 </div>
               </div>
             </details>
-            <details id="asset-activity">
+            <details id="asset-activity" onToggle={(event) => {
+              syncActiveSection('activity', event.currentTarget.open);
+            }}>
               <summary>
                 <span className="asset-accordion-icon"><BarChart3 className="ui-icon" aria-hidden="true" /></span>
                 <strong>Market activity</strong>
                 <ChevronDown className="ui-icon ui-icon--sm" aria-hidden="true" />
               </summary>
               <div className="asset-accordion-content">
-                {activityLoading ? <Loading label="Reading permanent market history…" /> : null}
-                {!activityLoading && activity.length ? (
+                {activityLoading ? <Loading label={activity.length ? 'Refreshing market history…' : 'Reading indexed market history…'} /> : null}
+                <div className="asset-history-actions">
+                  <button
+                    aria-disabled={activityLoading}
+                    className="with-icon"
+                    type="button"
+                    onClick={() => { if (!activityLoading) onActivityRetry(); }}
+                  >
+                    <RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> {activityLoading ? activity.length ? 'Refreshing history…' : 'Loading history…' : activityError ? 'Retry history' : 'Refresh history'}
+                  </button>
+                </div>
+                {activityError ? (
+                  <div className="inline-error" role={activity.length ? 'status' : 'alert'}>
+                    <span>
+                      Market history could not be read. {activity.length ? `Previously loaded events remain visible. ${activityError}` : activityError}
+                    </span>
+                  </div>
+                ) : null}
+                {activity.length ? (
                   <div className="asset-history-list">
                     {activity.map((event) => (
-                      <a key={event.id} href={`https://arweave.net/${event.id}`} target="_blank" rel="noreferrer">
-                        <span>{activityLabel(event.action)}</span>
+                      <a key={event.id} href={transactionExplorerUrl(event.id)} target="_blank" rel="noreferrer">
+                        <span>
+                          {activityLabel(event.action)}
+                          {activityDetail(event, state) ? ` · ${activityDetail(event, state)}` : ''}
+                        </span>
                         <time>{event.timestamp ? formatTimestamp(event.timestamp) : 'Pending timestamp'}</time>
                         <ArrowUpRight className="ui-icon ui-icon--xs" aria-hidden="true" />
                       </a>
                     ))}
                   </div>
                 ) : null}
-                {!activityLoading && !activity.length ? <p className="asset-empty-copy">No permanent market events found.</p> : null}
+                {!activityLoading && !activityError && !activity.length ? <p className="asset-empty-copy">No indexed market events found.</p> : null}
+                <p className="market-note">
+                  Up to 24 recent signed process submissions indexed from Arweave. Live balances and orders above remain authoritative.
+                </p>
               </div>
             </details>
             <details>
@@ -401,15 +712,17 @@ export function FungibleAssetView({
           </div>
         </div>
       </div>
-      {operation && wallet.address ? (
+      {operation && operationSession ? (
         <FungibleOperationDialog
           asset={asset}
           state={state}
-          owner={wallet.address}
+          owner={operationSession.signer}
           operation={operation}
-          onClose={() => {
-            setOperation(null);
-            void onRefresh();
+          restoreFallback={operationFocusFallback}
+          onClose={(resumeLater, refresh = true) => {
+            setRecoverySuppressed(Boolean(resumeLater));
+            setOperationSession(null);
+            if (refresh) void onRefresh();
           }}
         />
       ) : null}
@@ -422,16 +735,27 @@ function FungibleOperationDialog({
   state,
   owner,
   operation,
+  restoreFallback,
   onClose,
 }: {
   asset: AssetSummary;
   state: AssetState;
   owner: string;
   operation: FungibleOperation;
-  onClose(): void;
+  restoreFallback(): HTMLElement | null;
+  onClose(resumeLater?: boolean, refresh?: boolean): void;
 }) {
-  const eligible = operation.kind === 'buy' ? operation.availableOrders.filter((order) => order.status === 'open') : [];
-  const initialSelected = operation.kind === 'buy' ? (operation.selectedOrders ?? operation.resume?.entries.map((entry) => entry.order) ?? []) : [];
+  const recoveryApprovalCount = operation.kind === 'buy' && operation.resume
+    ? batchPurchaseRecoveryApprovalCount(operation.resume.entries)
+    : 0;
+  const eligible = React.useMemo(
+    () => operation.kind === 'buy' ? operation.availableOrders.filter((order) => order.status === 'open') : [],
+    [operation.kind, operation.kind === 'buy' ? operation.availableOrders : undefined],
+  );
+  const initialSelected = React.useMemo(
+    () => operation.kind === 'buy' ? (operation.selectedOrders ?? operation.resume?.entries.map((entry) => entry.order) ?? []) : [],
+    [operation.kind, operation.kind === 'buy' ? operation.selectedOrders : undefined, operation.kind === 'buy' ? operation.resume : undefined],
+  );
   const initialQuantity = initialSelected.length
     ? formatTokenAmount(initialSelected.reduce((total, order) => total + BigInt(order.quantity), 0n).toString(), state.denomination)
     : eligible[0]
@@ -444,23 +768,64 @@ function FungibleOperationDialog({
   const [recipient, setRecipient] = React.useState(operation.kind === 'transfer' ? (operation.recipient ?? '') : '');
   const [manualOrderIds, setManualOrderIds] = React.useState<string[]>(initialSelected.map((order) => order.orderId));
   const [matchMode, setMatchMode] = React.useState<'amount' | 'lots'>(initialSelected.length ? 'lots' : 'amount');
-  const [phase, setPhase] = React.useState<'form' | 'working' | 'done' | 'error'>(
-    (operation.kind === 'buy' && operation.resume) || (operation.kind !== 'buy' && operation.resumeId) ? 'working' : 'form',
+  const [phase, setPhase] = React.useState<'form' | 'approval' | 'working' | 'done' | 'error'>(
+    operation.kind === 'buy' && operation.resume
+      ? recoveryApprovalCount ? 'approval' : 'working'
+      : operation.kind !== 'buy' && operation.resumeId ? 'working' : 'form',
   );
   const [message, setMessage] = React.useState('');
+  const [failureKind, setFailureKind] = React.useState<MarketplaceOperationFailure | null>(null);
   const [views, setViews] = React.useState<ObserverView[]>([]);
+  const [confirmations, setConfirmations] = React.useState(0);
+  const [consensus, setConsensus] = React.useState<Consensus | null>(null);
   const [transaction, setTransaction] = React.useState<PreparedTransaction | null>(null);
   const [purchaseStates, setPurchaseStates] = React.useState<Record<string, PurchaseState>>({});
+  const purchaseStateBufferRef = React.useRef<ReturnType<typeof purchaseStateFrameBuffer> | null>(null);
+  if (!purchaseStateBufferRef.current) {
+    purchaseStateBufferRef.current = purchaseStateFrameBuffer((updates) => {
+      setPurchaseStates((current) => ({ ...current, ...updates }));
+    });
+  }
+  const batchRecoveryBufferRef = React.useRef<ReturnType<typeof batchRecoveryFrameBuffer> | null>(null);
   const [activeOrderId, setActiveOrderId] = React.useState(initialSelected[0]?.orderId ?? '');
   const [estimatedCost, setEstimatedCost] = React.useState<string | null>(null);
   const [estimatedWalletBalance, setEstimatedWalletBalance] = React.useState<string | null>(null);
   const [canAfford, setCanAfford] = React.useState<boolean | null>(null);
+  const [quoteState, setQuoteState] = React.useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  const [quoteRetry, setQuoteRetry] = React.useState(0);
+  const [activeLotIndex, setActiveLotIndex] = React.useState(0);
+  const [lotPickerLimit, setLotPickerLimit] = React.useState(LOT_PICKER_PAGE_SIZE);
+  const [settlementAnnouncement, setSettlementAnnouncement] = React.useState('');
+  const settlementAnnouncementKeyRef = React.useRef('');
+  const lotOptionRefs = React.useRef<Array<HTMLButtonElement | null>>([]);
+  const lotRevealStatusRef = React.useRef<HTMLParagraphElement>(null);
   const purchasesRef = React.useRef<Map<string, SwapPurchase>>(new Map());
   const networkRef = React.useRef<ArweaveObserverNetwork | null>(null);
-	const cleanupTimerRef = React.useRef<number | undefined>();
+  const claimRef = React.useRef<WalletOperationClaim | null>(null);
+  const exactActionBaselineRef = React.useRef<{ startingSlot: number } | null>(
+    (operation.kind === 'cancel' || operation.kind === 'transfer') && Number.isSafeInteger(operation.startingSlot)
+      ? { startingSlot: operation.startingSlot! }
+      : (operation.kind === 'cancel' || operation.kind === 'transfer') && operation.resumeId
+        ? { startingSlot: 0 }
+      : null,
+  );
+  const attemptRef = React.useRef(new AbortController());
+  const cleanupTimerRef = React.useRef<number | undefined>();
   const resumed = React.useRef(false);
   const ticker = state.ticker || 'TOKEN';
-  const manualOrders = eligible.filter((order) => manualOrderIds.includes(order.orderId));
+  const manualOrderIdSet = React.useMemo(() => new Set(manualOrderIds), [manualOrderIds]);
+  const initiallySelectedOrderIdSet = React.useMemo(
+    () => new Set(initialSelected.map((order) => order.orderId)),
+    [initialSelected],
+  );
+  const manualOrders = React.useMemo(
+    () => eligible.filter((order) => manualOrderIdSet.has(order.orderId)),
+    [eligible, manualOrderIdSet],
+  );
+  const lotPickerOrders = React.useMemo(
+    () => visibleLotPickerOrders(eligible, initiallySelectedOrderIdSet, lotPickerLimit),
+    [eligible, initiallySelectedOrderIdSet, lotPickerLimit],
+  );
   const automaticMatchResult = React.useMemo(() => {
     if (operation.kind !== 'buy' || matchMode !== 'amount') return { match: null, error: '' };
 	    try {
@@ -479,56 +844,89 @@ function FungibleOperationDialog({
   const matchedOrders = matchMode === 'lots' ? manualOrders : (automaticMatch?.orders ?? []);
   const matchedQuantity = matchedOrders.reduce((total, order) => total + BigInt(order.quantity), 0n);
   const matchedAsking = matchedOrders.reduce((total, order) => total + BigInt(order.asking), 0n);
+  const matchedSellers = new Set(matchedOrders.map((order) => order.creator)).size;
   const enteredQuantity = safeTokenAmount(quantity, state.denomination);
   const currentLiquid = BigInt(liquidBalanceOf(state, owner));
   const currentListed = BigInt(listedBalanceOf(state, owner));
   const listingQuote = operation.kind === 'sell' ? safeLotQuote(quantity, unitPrice, state) : null;
-  const sellValid = operation.kind === 'sell' && enteredQuantity !== null && enteredQuantity <= currentLiquid && listingQuote !== null;
-  const transferValid = operation.kind === 'transfer' && ADDRESS.test(recipient) && enteredQuantity !== null && enteredQuantity <= currentLiquid;
+  const unitPriceValid = safeArPrice(unitPrice);
+  const transferRecipient = operation.kind === 'transfer' ? (operation.recipient ?? recipient).trim() : recipient.trim();
+  const recipientError = operation.kind === 'transfer' ? fungibleTransferRecipientError(transferRecipient, owner) : '';
+  const sellValid = operation.kind === 'sell' && enteredQuantity !== null && enteredQuantity <= currentLiquid && unitPriceValid && listingQuote !== null;
+  const transferValid = operation.kind === 'transfer' && !recipientError && enteredQuantity !== null && enteredQuantity <= currentLiquid;
+  const quantityGuidanceId = React.useId();
+  const priceGuidanceId = React.useId();
+  const recipientGuidanceId = React.useId();
+  const amountGuidanceId = React.useId();
+  const quoteStatusId = React.useId();
+  const dialogTitleId = React.useId();
+  const operationLabelId = React.useId();
 
-	React.useEffect(() => {
-		if (cleanupTimerRef.current !== undefined) window.clearTimeout(cleanupTimerRef.current);
-		return () => {
-			cleanupTimerRef.current = window.setTimeout(() => {
-				for (const purchase of purchasesRef.current.values()) purchase.abandon();
-				networkRef.current?.stop();
-			}, 0);
-		};
-	}, []);
+  React.useEffect(() => {
+    if (cleanupTimerRef.current !== undefined) window.clearTimeout(cleanupTimerRef.current);
+    return () => {
+      cleanupTimerRef.current = window.setTimeout(() => {
+        batchRecoveryBufferRef.current?.flush();
+        batchRecoveryBufferRef.current = null;
+        purchaseStateBufferRef.current?.clear();
+        attemptRef.current.abort();
+        for (const purchase of purchasesRef.current.values()) purchase.abandon();
+        networkRef.current?.stop();
+        if (claimRef.current) {
+          releaseWalletOperationClaim(localStorage, claimRef.current);
+          claimRef.current = null;
+        }
+      }, 0);
+    };
+  }, []);
 
   React.useEffect(() => {
     if (operation.kind !== 'buy' || !matchedOrders.length || operation.resume) {
       setEstimatedCost(null);
       setEstimatedWalletBalance(null);
       setCanAfford(null);
+      setQuoteState('idle');
       return;
     }
     const controller = new AbortController();
     const client = new AssetTransactionClient();
-    void Promise.all([
-      Promise.all(matchedOrders.map((order) => client.estimatePurchaseCosts(order, asset.id))),
-      client.walletBalance(owner),
-    ])
-      .then(([costs, walletBalance]) => {
-        if (!controller.signal.aborted) {
-          const total = costs.reduce((sum, item) => sum + BigInt(item.total), 0n);
-          setEstimatedCost(total.toString());
-          setEstimatedWalletBalance(walletBalance.toString());
-          setCanAfford(walletBalance >= total);
-        }
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) {
-          setEstimatedCost(null);
-          setEstimatedWalletBalance(null);
-          setCanAfford(null);
-        }
-      });
-    return () => controller.abort();
-  }, [asset.id, matchedOrders.map((order) => order.orderId).join(','), operation.kind, operation.kind === 'buy' ? operation.resume : undefined, owner]);
+    setEstimatedCost(null);
+    setEstimatedWalletBalance(null);
+    setCanAfford(null);
+    setQuoteState('loading');
+    const quoteTimer = window.setTimeout(() => {
+      void Promise.all([
+        client.estimatePurchaseBatchCosts(matchedOrders, asset.id, controller.signal),
+        client.walletBalance(owner, controller.signal),
+      ])
+        .then(([costs, walletBalance]) => {
+          if (!controller.signal.aborted) {
+            const total = costs.reduce((sum, item) => sum + BigInt(item.total), 0n);
+            setEstimatedCost(total.toString());
+            setEstimatedWalletBalance(walletBalance.toString());
+            setCanAfford(walletBalance >= total);
+            setQuoteState('ready');
+          }
+        })
+        .catch(() => {
+          if (!controller.signal.aborted) {
+            setEstimatedCost(null);
+            setEstimatedWalletBalance(null);
+            setCanAfford(null);
+            setQuoteState('error');
+          }
+        });
+    }, 250);
+    return () => {
+      window.clearTimeout(quoteTimer);
+      controller.abort();
+    };
+  }, [asset.id, matchedOrders.map((order) => order.orderId).join(','), operation.kind, operation.kind === 'buy' ? operation.resume : undefined, owner, quoteRetry]);
 
   React.useEffect(() => {
-    const shouldResume = (operation.kind === 'buy' && operation.resume) || (operation.kind !== 'buy' && operation.resumeId);
+    const shouldResume =
+      (operation.kind === 'buy' && operation.resume?.entries.every((entry) => shouldAutomaticallyResumePurchase(entry.snapshot))) ||
+      (operation.kind !== 'buy' && operation.resumeId);
     if (!shouldResume || resumed.current) return;
     resumed.current = true;
     void submit();
@@ -536,11 +934,13 @@ function FungibleOperationDialog({
 
   function chooseLot(order: SwapOrder) {
     setManualOrderIds((current) => {
-      const next = current.includes(order.orderId)
+      const currentSet = new Set(current);
+      const next = currentSet.has(order.orderId)
         ? current.filter((id) => id !== order.orderId)
         : [...current, order.orderId];
+      const nextSet = new Set(next);
       const total = eligible
-        .filter((candidate) => next.includes(candidate.orderId))
+        .filter((candidate) => nextSet.has(candidate.orderId))
         .reduce((sum, candidate) => sum + BigInt(candidate.quantity), 0n);
       setQuantity(formatTokenAmount(total.toString(), state.denomination));
       return next;
@@ -549,18 +949,93 @@ function FungibleOperationDialog({
 
   async function submit() {
     setMessage('');
+    setFailureKind(null);
     setPhase('working');
+    let attemptedTransactionId = operation.kind === 'buy' ? undefined : operation.resumeId ?? transaction?.id;
     try {
+      const freshOperation = operation.kind === 'buy'
+        ? !operation.resume
+        : !operation.resumeId && !transaction;
+      const signal = attemptRef.current.signal;
+      const operationKey = operationStorageKey(asset.id, owner);
+      const purchaseKey = batchStorageKey(asset.id, owner);
+      const resumeTransactionId = operation.kind === 'buy' ? undefined : operation.resumeId ?? transaction?.id;
+      let exactActionBaseline = exactActionBaselineRef.current;
+      let freshState: AssetState | undefined;
+      claimRef.current = await acquireWalletOperationClaim(
+        localStorage,
+        operationClaimStorageKey(asset.id, owner),
+        [operationKey, purchaseKey],
+        {
+          ...(freshOperation
+            ? {}
+            : operation.kind === 'buy' && operation.resume
+              ? {
+                  recovery: {
+                    key: purchaseKey,
+                    matches: (record: any) =>
+                      record?.buyer === owner &&
+                      (record?.attemptId ?? batchRecoveryIdentity(record?.entries ?? [])) ===
+                        (operation.resume?.attemptId ?? batchRecoveryIdentity(operation.resume?.entries ?? [])),
+                  },
+                }
+              : {
+                  recovery: {
+                    key: operationKey,
+                    matches: (record: any) => record?.txId === resumeTransactionId,
+                  },
+                }),
+        },
+      );
+      if (freshOperation) {
+        ({ state: freshState } = await readAssetState(asset.id, { signal, maxAge: 0 }));
+        const expectedOrders = operation.kind === 'buy'
+          ? matchedOrders
+          : operation.kind === 'cancel'
+            ? [operation.order]
+            : [];
+        const rawQuantity = operation.kind === 'sell' || operation.kind === 'transfer'
+          ? parseTokenAmount(quantity, state.denomination)
+          : '0';
+        if (fungibleOperationStateError(
+          operation.kind,
+          freshState,
+          owner,
+          expectedOrders,
+          rawQuantity,
+          state.denomination,
+        )) {
+          throw new Error('market-state-changed');
+        }
+        if (operation.kind === 'cancel' || operation.kind === 'transfer') {
+          const startingSlot = Number(freshState.raw['at-slot']);
+          if (!Number.isSafeInteger(startingSlot) || startingSlot < 0) {
+            throw new Error('asset-action-starting-slot-unavailable');
+          }
+          exactActionBaseline = { startingSlot };
+          exactActionBaselineRef.current = exactActionBaseline;
+        }
+      }
       const client = new AssetTransactionClient();
       if (operation.kind === 'buy') {
         if (!operation.resume && !matchedOrders.length) throw new Error('Select one or more complete lots.');
-        await runPurchaseBatch(client, operation.resume?.entries ?? matchedOrders.map((order) => ({ order, snapshot: {} })), operation.resume);
+        await runPurchaseBatch(
+          client,
+          operation.resume?.entries ?? matchedOrders.map((order) => ({ order, snapshot: {} })),
+          operation.resume,
+          batchPurchaseStartingBalance(operation.resume, freshState, owner, operation.startingBalance),
+        );
         return;
       }
 
       let prepared: PreparedTransaction;
+      let newlyPrepared = false;
       let rawQuantity = '';
       let asking = '';
+      if (operation.kind === 'transfer') {
+        const transferError = fungibleTransferRecipientError(transferRecipient, owner);
+        if (transferError) throw new Error(transferError);
+      }
       if (transaction) prepared = transaction;
       else if (operation.resumeId) prepared = client.restore(operation.resumeId, owner);
       else if (operation.kind === 'sell') {
@@ -569,33 +1044,78 @@ function FungibleOperationDialog({
           throw new Error('Enter a quantity within your liquid balance.');
         }
         asking = lotAsking(rawQuantity, unitPrice, state.denomination);
-        prepared = await client.makeOffer({ processId: asset.id, quantity: rawQuantity, asking, seller: owner });
+        prepared = await client.makeOffer({ processId: asset.id, quantity: rawQuantity, asking, seller: owner }, signal);
+        newlyPrepared = true;
       } else if (operation.kind === 'cancel') {
-        prepared = await client.cancelOrder(asset.id, operation.order.orderId, owner);
+        prepared = await client.cancelOrder(asset.id, operation.order.orderId, owner, signal);
+        newlyPrepared = true;
       } else {
         rawQuantity = parseTokenAmount(quantity, state.denomination);
-        if (!ADDRESS.test(recipient) || BigInt(rawQuantity) < 1n || BigInt(rawQuantity) > BigInt(liquidBalanceOf(state, owner))) {
-          throw new Error('Enter a valid recipient and quantity within your liquid balance.');
+        if (BigInt(rawQuantity) < 1n || BigInt(rawQuantity) > BigInt(liquidBalanceOf(state, owner))) {
+          throw new Error('Enter a quantity within your liquid balance.');
         }
-        prepared = await client.transfer(asset.id, recipient, rawQuantity, owner);
+        prepared = await client.transfer(asset.id, transferRecipient, rawQuantity, owner, signal);
+        newlyPrepared = true;
       }
+      if (discardNewlyPreparedTransactionIfAborted(localStorage, prepared.id, newlyPrepared, signal)) {
+        throw signal.reason;
+      }
+      attemptedTransactionId = prepared.id;
       setTransaction(prepared);
-      const recipientStartingBalance = operation.kind === 'transfer'
-        ? (operation.recipientStartingBalance ?? state.balances[recipient] ?? '0')
-        : undefined;
-      localStorage.setItem(`bazar-operation:${asset.id}`, JSON.stringify({
+      if ((operation.kind === 'cancel' || operation.kind === 'transfer') && !exactActionBaseline) {
+        throw new Error('asset-action-recovery-baseline-missing');
+      }
+      const operationRecord = {
         txId: prepared.id,
         kind: operation.kind,
         assetId: asset.id,
         signer: owner,
         ...(operation.kind === 'cancel'
-          ? { order: operation.order }
+          ? { order: operation.order, startingSlot: exactActionBaseline!.startingSlot }
           : operation.kind === 'sell'
             ? { quantity, unitPrice }
-            : { quantity, recipient, recipientStartingBalance }),
+            : {
+                quantity,
+                recipient: transferRecipient,
+                startingSlot: exactActionBaseline!.startingSlot,
+              }),
         createdAt: Date.now(),
-      }));
-      await dispatchAndConfirm(prepared, { target: 5, onViews: setViews });
+      };
+      try {
+        const matches = (current: any) => current?.txId === prepared.id;
+        if (claimRef.current) {
+          promoteWalletOperationClaim(
+            localStorage,
+            claimRef.current,
+            operationStorageKey(asset.id, owner),
+            operationRecord,
+            matches,
+          );
+        } else {
+          storeWalletRecordOrThrow<any>(
+            localStorage,
+            operationStorageKey(asset.id, owner),
+            operationRecord,
+            matches,
+            true,
+          );
+        }
+      } catch (cause) {
+        localStorage.removeItem(`bazar-signed-transaction:${prepared.id}`);
+        setTransaction(null);
+        throw cause;
+      }
+      setViews([]);
+      setConfirmations(0);
+      setConsensus(null);
+      await dispatchAndConfirm(prepared, {
+        signal,
+        target: 5,
+        onViews: setViews,
+        onConsensus: setConsensus,
+        onProgress: (progress) => setConfirmations(progress.confirmations),
+      });
+      setConfirmations(5);
       setMessage('Five confirmations reached. Waiting for live token state…');
       if (operation.kind === 'sell') {
         const expectedQuantity = rawQuantity || parseTokenAmount(operation.quantity ?? quantity, state.denomination);
@@ -606,21 +1126,63 @@ function FungibleOperationDialog({
           quantity: expectedQuantity,
           asking: expectedAsking,
           minimumFee: DEFAULT_REGISTRATION_FEE.toString(),
-        });
+        }, signal);
       } else if (operation.kind === 'cancel') {
-        await client.waitForOrderCancelled(asset.id, operation.order.orderId);
+        await client.waitForExactCancellation(
+          asset.id,
+          prepared.id,
+          owner,
+          operation.order,
+          exactActionBaseline!,
+          signal,
+        );
       } else {
         const expectedQuantity = rawQuantity || parseTokenAmount(operation.quantity ?? quantity, state.denomination);
-        const receiverStart = BigInt(operation.recipientStartingBalance ?? recipientStartingBalance ?? '0');
-        await client.waitForAssetBalance(
+        if (!exactActionBaseline) throw new Error('asset-action-recovery-baseline-missing');
+        await client.waitForFungibleTransfer(
           asset.id,
-          operation.recipient ?? recipient,
-          (receiverStart + BigInt(expectedQuantity)).toString(),
+          prepared.id,
+          owner,
+          transferRecipient,
+          expectedQuantity,
+          exactActionBaseline,
+          signal,
         );
       }
-      localStorage.removeItem(`bazar-operation:${asset.id}`);
+      removeWalletRecoveryAndSignatures<any>(
+        localStorage,
+        operationStorageKey(asset.id, owner),
+        (record) => record?.txId === prepared.id,
+        [prepared.id],
+        owner,
+      );
+      if (claimRef.current) {
+        releaseWalletOperationClaim(localStorage, claimRef.current);
+        claimRef.current = null;
+      }
       setPhase('done');
     } catch (cause) {
+      if (claimRef.current) {
+        releaseWalletOperationClaim(localStorage, claimRef.current);
+        claimRef.current = null;
+      }
+      networkRef.current?.stop();
+      networkRef.current = null;
+      if (attemptRef.current.signal.aborted) return;
+      if (
+        cause instanceof Error &&
+        ['asset-cancel-rejected', 'fungible-transfer-rejected'].includes(cause.message) &&
+        attemptedTransactionId
+      ) {
+        removeWalletRecordIf<any>(
+          localStorage,
+          operationStorageKey(asset.id, owner),
+          (record) => record?.txId === attemptedTransactionId,
+        );
+        localStorage.removeItem(`bazar-signed-transaction:${attemptedTransactionId}`);
+        setTransaction(null);
+      }
+      setFailureKind(marketplaceOperationFailure(cause));
       setMessage(errorMessage(cause));
       setPhase('error');
     }
@@ -630,10 +1192,13 @@ function FungibleOperationDialog({
     client: AssetTransactionClient,
     requested: Array<Pick<BatchEntry, 'order' | 'snapshot'>>,
     resume?: BatchResume,
+    startingBalance = operation.kind === 'buy' ? operation.startingBalance : '0',
   ) {
     const network = new ArweaveObserverNetwork(assetObserverNetworkOptions());
     networkRef.current = network;
     await network.ready();
+	  const signal = attemptRef.current.signal;
+	  if (signal.aborted) throw signal.reason;
 	    let entries: BatchEntry[];
 	    const preparedByOrder = new Map<string, PreparedPurchase>();
 	    if (resume) entries = resume.entries;
@@ -643,25 +1208,64 @@ function FungibleOperationDialog({
           processId: asset.id,
           order,
           buyer: owner,
-          startingBalance: operation.kind === 'buy' ? operation.startingBalance : '0',
+          startingBalance,
           network,
         })),
+        signal,
       );
 	      entries = prepared.map((item) => {
 	        preparedByOrder.set(item.order.orderId, item);
 	        return preparedEntry(item);
 	      });
+	      if (signal.aborted) {
+	        for (const item of prepared) {
+	          localStorage.removeItem(`bazar-signed-transaction:${item.registration.id}`);
+	          localStorage.removeItem(`bazar-signed-transaction:${item.payment.id}`);
+	        }
+	        throw signal.reason;
+	      }
     }
 	    const saved: BatchResume = {
-	      version: 2,
+      version: 2,
       buyer: owner,
-      startingBalance: operation.kind === 'buy' ? operation.startingBalance : '0',
+      startingBalance,
       entries,
     };
-    localStorage.setItem(batchStorageKey(asset.id, owner), JSON.stringify(saved));
+    const attemptId = batchRecoveryIdentity(entries);
+    saved.attemptId = attemptId;
+    try {
+      if (claimRef.current) {
+        promoteWalletOperationClaim(
+          localStorage,
+          claimRef.current,
+          batchStorageKey(asset.id, owner),
+          saved,
+          (current) =>
+            current.buyer === owner &&
+            (current.attemptId ?? batchRecoveryIdentity(current.entries)) === attemptId,
+        );
+        if (signal.aborted) throw signal.reason;
+      } else {
+        storeBatchRecoveryBeforeDispatch(
+          localStorage,
+          batchStorageKey(asset.id, owner),
+          saved,
+          signal,
+        );
+      }
+    } catch (cause) {
+      if (!signal.aborted) {
+        for (const item of preparedByOrder.values()) {
+          localStorage.removeItem(`bazar-signed-transaction:${item.registration.id}`);
+          localStorage.removeItem(`bazar-signed-transaction:${item.payment.id}`);
+        }
+      }
+      throw cause;
+    }
     if (!activeOrderId) setActiveOrderId(entries[0].order.orderId);
 
-	    let registrationsReady = 0;
+	    const barrierState = batchPaymentBarrierState(entries);
+	    let registrationsReady = barrierState.registrationsReady;
 	    let releasePayments!: () => void;
 	    let rejectPayments!: (cause: unknown) => void;
 	    const paymentGate = new Promise<void>((resolve, reject) => {
@@ -669,9 +1273,31 @@ function FungibleOperationDialog({
 	      rejectPayments = reject;
 	    });
 	    void paymentGate.catch(() => undefined);
-	    const totalPaymentCost = entries.reduce((total, entry) => total + BigInt(entry.paymentCost), 0n);
+	    const totalPaymentCost = barrierState.pendingPaymentCost;
+	    let recoveryConflict: Error | null = null;
+	    const failRecovery = (cause: unknown) => {
+	      if (recoveryConflict) return;
+	      recoveryConflict = cause instanceof Error ? cause : new Error(String(cause));
+	      rejectPayments(recoveryConflict);
+	      for (const purchase of purchasesRef.current.values()) purchase.abandon();
+	    };
+	    const recoveryBuffer = batchRecoveryFrameBuffer(() => {
+	      try {
+	        storeWalletRecordOrThrow<BatchResume>(
+	          localStorage,
+	          batchStorageKey(asset.id, owner),
+	          saved,
+	          (current) => (current.attemptId ?? batchRecoveryIdentity(current.entries)) === attemptId,
+	          true,
+	        );
+	      } catch (cause) {
+	        failRecovery(cause);
+	      }
+	    });
+	    batchRecoveryBufferRef.current = recoveryBuffer;
 
 	    const running = entries.map((entry) => {
+	      if (recoveryConflict) throw recoveryConflict;
 	      const adapter = client.purchaseAdapter({
 	        processId: asset.id,
 	        order: entry.order,
@@ -696,9 +1322,13 @@ function FungibleOperationDialog({
 	            await waitForRegistrationAcceptance?.(context);
 	            registrationsReady += 1;
 	            if (registrationsReady === entries.length) {
-	              if (await client.walletBalance(owner) < totalPaymentCost) {
+	              recoveryBuffer.flush();
+	              if (recoveryConflict) throw recoveryConflict;
+	              if (await client.walletBalance(owner, signal) < totalPaymentCost) {
 	                throw new Error('The wallet no longer has enough AR to pay every reserved listing. No seller payment was sent.');
 	              }
+	              recoveryBuffer.flush(true);
+	              if (recoveryConflict) throw recoveryConflict;
 	              releasePayments();
 	            }
 	            await paymentGate;
@@ -723,29 +1353,61 @@ function FungibleOperationDialog({
       );
       purchasesRef.current.set(entry.order.orderId, purchase);
       const update = (purchaseState: PurchaseState) => {
-        setPurchaseStates((current) => ({ ...current, [entry.order.orderId]: purchaseState }));
-        entry.snapshot = purchase.snapshot();
-        localStorage.setItem(batchStorageKey(asset.id, owner), JSON.stringify(saved));
+        if (attemptRef.current.signal.aborted || recoveryConflict) return;
+        purchaseStateBufferRef.current!.push(entry.order.orderId, purchaseState);
+        const previousSnapshot = entry.snapshot;
+        entry.snapshot = latestRecoverableSnapshot(previousSnapshot, purchase.snapshot());
+        if (entry.snapshot === previousSnapshot) return;
+        recoveryBuffer.schedule();
       };
       purchase.on('state', update);
 	      purchase.on('failed', (purchaseState) => {
 	        rejectPayments(new Error(purchaseState.error?.message ?? 'A reservation could not complete. No remaining seller payment was sent.'));
 	        update(purchaseState);
+	        const repaired = repairRejectedPurchase(entry.snapshot, purchaseState.error?.code);
+	        for (const id of repaired.discardIds) {
+	          localStorage.removeItem(`bazar-signed-transaction:${id}`);
+	        }
+	        if (repaired.snapshot !== entry.snapshot) {
+	          entry.snapshot = repaired.snapshot ?? {};
+	          recoveryBuffer.schedule();
+      recoveryBuffer.flush();
+	        }
 	      });
       purchase.on('complete', update);
       update(purchase.state());
       return purchase.run();
     });
 
-    const results = await Promise.all(running);
-    if (results.some((result) => result.stage !== 'complete' || !result.success)) {
-			const failed = results.filter((result) => result.stage !== 'complete' || !result.success);
-			const reasons = [...new Set(failed.flatMap((result) => result.error?.message ? [result.error.message] : []))];
-			throw new Error(`${failed.length} of ${results.length} settlements need attention.${reasons.length ? ` ${reasons.join(' ')}` : ''}`);
+    try {
+      await waitForSettlementBatch(running);
+    } catch (cause) {
+	  recoveryBuffer.flush();
+      if (signal.aborted) purchaseStateBufferRef.current!.clear();
+      else purchaseStateBufferRef.current!.flush();
+      if (recoveryConflict) throw recoveryConflict;
+      throw cause;
     }
-    setMessage('Every lot reported success. Verifying the aggregate token balance…');
-    await client.waitForPurchaseBatch(asset.id, owner, saved.startingBalance, entries.map((entry) => entry.order));
-    localStorage.removeItem(batchStorageKey(asset.id, owner));
+    recoveryBuffer.clear();
+    if (batchRecoveryBufferRef.current === recoveryBuffer) batchRecoveryBufferRef.current = null;
+    purchaseStateBufferRef.current!.flush();
+    setMessage('Every lot is proven in its exact scheduled payment slot.');
+    removeWalletRecoveryAndSignatures<BatchResume>(
+      localStorage,
+      batchStorageKey(asset.id, owner),
+      (current) => (current.attemptId ?? batchRecoveryIdentity(current.entries)) === attemptId,
+      entries.flatMap((entry) => [
+        entry.snapshot.registration?.id,
+        entry.snapshot.payment?.id,
+      ]),
+      owner,
+    );
+    if (claimRef.current) {
+      releaseWalletOperationClaim(localStorage, claimRef.current);
+      claimRef.current = null;
+    }
+    network.stop();
+    networkRef.current = null;
     setPhase('done');
   }
 
@@ -753,14 +1415,53 @@ function FungibleOperationDialog({
     ? (operation.resume?.entries.map((entry) => entry.order) ?? matchedOrders)
     : [];
   const activeOrder = visibleOrders.find((order) => order.orderId === activeOrderId) ?? visibleOrders[0];
-	  const activePurchase = activeOrder ? purchaseStates[activeOrder.orderId] : undefined;
-	  const incompletePurchases = visibleOrders.filter((order) => purchaseStates[order.orderId]?.stage !== 'complete').length;
+  const activeOrderIndex = activeOrder ? visibleOrders.findIndex((order) => order.orderId === activeOrder.orderId) : -1;
+  const activePurchase = activeOrder ? purchaseStates[activeOrder.orderId] : undefined;
+	  const recoverableBatch = operation.kind === 'buy' && (
+	    operation.resume?.entries.some((entry) => hasRecoverablePurchase(entry.snapshot)) ||
+	    Object.values(purchaseStates).some((purchase) => hasRecoverablePurchase(purchase))
+	  );
 	  const completedPurchaseQuantity = visibleOrders.reduce((total, order) => total + BigInt(order.quantity), 0n);
-	  const settledPurchases = visibleOrders.length - incompletePurchases;
-	  const payingPurchases = visibleOrders.filter((order) => {
-	    const stage = purchaseStates[order.orderId]?.stage ?? '';
-	    return stage.includes('payment') || stage === 'ownership-verifying';
-	  }).length;
+	  const outcomeTitle = operation.kind === 'buy'
+	    ? 'Purchase complete'
+	    : operation.kind === 'sell'
+	      ? 'Tokens listed'
+	      : operation.kind === 'cancel'
+	        ? 'Listing cancelled'
+	        : 'Transfer complete';
+	  const outcomeDetail = operation.kind === 'buy'
+	    ? `${tokenLabel(completedPurchaseQuantity.toString(), state)} received from ${visibleOrders.length} ${visibleOrders.length === 1 ? 'listing' : 'listings'} · ${winstonToAr(visibleOrders.reduce((total, order) => total + BigInt(order.asking), 0n).toString())} AR paid to sellers.`
+	    : operation.kind === 'sell' && enteredQuantity && listingQuote
+	      ? `${tokenLabel(enteredQuantity.toString(), state)} listed for ${listingQuote} AR.`
+	      : operation.kind === 'cancel'
+	        ? `${tokenLabel(operation.order.quantity, state)} returned to your liquid balance.`
+	        : enteredQuantity
+	          ? `${tokenLabel(enteredQuantity.toString(), state)} sent to ${transferRecipient}.`
+	          : 'The live token state now reflects this action.';
+	  const settlementSummary = batchSettlementSummary(
+	    visibleOrders.map((order) => purchaseStates[order.orderId]),
+	  );
+	  const incompletePurchases = visibleOrders.length - settlementSummary.settled;
+  const signedWork = Boolean(transaction || recoverableBatch);
+  React.useEffect(() => {
+    if (operation.kind !== 'buy' || phase !== 'working') return;
+    const next = nextSettlementAnnouncement(
+      settlementAnnouncementKeyRef.current,
+      signedWork,
+      visibleOrders.length,
+      settlementSummary,
+    );
+    if (!next) return;
+    settlementAnnouncementKeyRef.current = next.key;
+    setSettlementAnnouncement(next.message);
+  }, [
+    operation.kind,
+    phase,
+    settlementSummary.failed,
+    settlementSummary.settled,
+    signedWork,
+    visibleOrders.length,
+  ]);
   const purchaseSteps: ArweaveSyncStep[] = activePurchase ? [
 	    { key: 'register', label: 'Reserve listing', target: 5, transaction: activePurchase.registration },
     { key: 'pay', label: 'Pay seller', target: 5, transaction: activePurchase.payment },
@@ -770,30 +1471,85 @@ function FungibleOperationDialog({
     key: operation.kind,
     label: operationLabel(operation.kind),
     target: 5,
-    transaction: { id: transaction.id, views },
+    confirmations,
+    transaction: { id: transaction.id, views, ...(consensus ? { consensus } : {}) },
   }] : [];
 	  const formError = operation.kind === 'buy' && !matchedOrders.length
 	    ? automaticMatchResult.error || (quantity
 	      ? `No complete-listing combination totals ${quantity} ${ticker}. Choose listings instead.`
 	      : 'Enter an amount to buy, or choose listings directly.')
 	    : '';
+  const dialogRef = useDialogFocus<HTMLDivElement>(
+    true,
+    phase !== 'working' || transaction || recoverableBatch
+      ? () => onClose(
+          phase === 'approval' || phase === 'working' || (phase === 'error' && Boolean(transaction || recoverableBatch)),
+          phase !== 'form',
+        )
+      : undefined,
+    undefined,
+    phase,
+    restoreFallback,
+  );
+  const restartPurchase = () => {
+    if (!recoverableBatch) {
+      setMessage('');
+      setFailureKind(null);
+      setPhase('form');
+      return;
+    }
+    batchRecoveryBufferRef.current?.flush();
+    attemptRef.current.abort();
+    for (const purchase of purchasesRef.current.values()) purchase.abandon();
+    networkRef.current?.stop();
+    networkRef.current = null;
+    onClose(false);
+  };
 
   return (
     <div className="dialog-backdrop" role="presentation">
-	      <div className="dialog fungible-dialog" role="dialog" aria-labelledby="fungible-dialog-title" aria-modal="true">
+	      <div className={`dialog fungible-dialog${phase === 'form' ? ' dialog-form-phase' : ''}`} ref={dialogRef} role="dialog" aria-labelledby={`${operationLabelId} ${dialogTitleId}`} aria-modal="true" tabIndex={-1}>
 	        <div className="dialog-heading">
-	          <div><p className="eyebrow">{operationLabel(operation.kind)}</p><h2 id="fungible-dialog-title">{asset.name}</h2></div>
-	          {phase !== 'working' ? <button className="close" onClick={onClose} aria-label="Close dialog"><X /></button>
-	            : transaction || activePurchase ? <button className="sync-close" onClick={onClose} type="button">Continue in background</button>
+	          <div><p className="eyebrow" id={operationLabelId}>{operationLabel(operation.kind)}</p><h2 id={dialogTitleId}>{asset.name}</h2></div>
+	          {phase !== 'working' ? <button className="close" onClick={() => onClose(phase === 'approval' || (phase === 'error' && Boolean(transaction || recoverableBatch)), phase !== 'form')} aria-label="Close dialog"><X /></button>
+	            : transaction || recoverableBatch ? <button className="sync-close" onClick={() => onClose(true)} type="button">Close and resume later</button>
 	              : null}
-        </div>
-        {phase === 'form' ? (
-          <div className="trade-form">
+	        </div>
+	        <OperationOutcomeAnnouncement active={phase === 'done'} title={outcomeTitle} detail={outcomeDetail} />
+	        {phase === 'approval' && operation.kind === 'buy' && operation.resume ? (
+	          <div className="recovery-approval">
+	            <div>
+	              <h3>{recoveryApprovalCount} new wallet {recoveryApprovalCount === 1 ? 'approval is' : 'approvals are'} still required</h3>
+	              <p>
+	                This saved batch does not contain every signed reservation and seller payment. Bazar will not ask your wallet to sign or submit anything else until you choose Continue.
+	              </p>
+	            </div>
+	            <div className="batch-quote">
+	              <div><span>Listings</span><strong>{visibleOrders.length}</strong></div>
+	              <div><span>Sellers</span><strong>{new Set(visibleOrders.map((order) => order.creator)).size}</strong></div>
+	              <div><span>Seller subtotal</span><strong>{winstonToAr(visibleOrders.reduce((total, order) => total + BigInt(order.asking), 0n).toString())} AR</strong></div>
+	              <div><span>New approvals</span><strong>{recoveryApprovalCount}</strong></div>
+	            </div>
+	            <MatchedListingsReview matchMode="lots" orders={visibleOrders} state={state} />
+	            <button className="primary wide" data-dialog-initial onClick={() => void submit()} type="button">
+	              Continue with {recoveryApprovalCount} new {recoveryApprovalCount === 1 ? 'approval' : 'approvals'}
+	            </button>
+	          </div>
+	        ) : null}
+	        {phase === 'form' ? (
+	          <form
+	            className="trade-form"
+	            onSubmit={(event) => {
+	              event.preventDefault();
+	              void submit();
+	            }}
+	          >
+            <div className="dialog-form-scroll">
             {operation.kind === 'sell' ? <>
               <div className="trade-balance"><span>Available to list</span><strong>{tokenLabel(liquidBalanceOf(state, owner), state)}</strong></div>
-              <div className="trade-fields">
-	                <label>Token quantity<input aria-invalid={Boolean(quantity) && (enteredQuantity === null || enteredQuantity > currentLiquid)} autoFocus inputMode="decimal" value={quantity} onChange={(event) => setQuantity(event.target.value)} placeholder="100" /></label>
-	                <label>Price per {ticker} in AR<input aria-invalid={Boolean(unitPrice) && listingQuote === null} inputMode="decimal" value={unitPrice} onChange={(event) => setUnitPrice(event.target.value)} placeholder="0.01" /></label>
+	              <div className="trade-fields">
+	                <label>Token quantity<input aria-describedby={quantity && (enteredQuantity === null || enteredQuantity > currentLiquid) ? quantityGuidanceId : undefined} aria-invalid={Boolean(quantity) && (enteredQuantity === null || enteredQuantity > currentLiquid)} autoFocus data-dialog-initial inputMode="decimal" value={quantity} onChange={(event) => setQuantity(event.target.value)} placeholder="100" /></label>
+	                <label>Price per {ticker} in AR<input aria-describedby={unitPrice && !unitPriceValid ? priceGuidanceId : undefined} aria-invalid={Boolean(unitPrice) && !unitPriceValid} inputMode="decimal" value={unitPrice} onChange={(event) => setUnitPrice(event.target.value)} placeholder="0.01" /></label>
 	              </div>
 	              {listingQuote ? (
 	                <div className="trade-quote"><span>Listing total</span><strong>{listingQuote} AR</strong></div>
@@ -804,15 +1560,22 @@ function FungibleOperationDialog({
 	                  <strong>{tokenLabel((currentLiquid - enteredQuantity).toString(), state)} liquid · {tokenLabel((currentListed + enteredQuantity).toString(), state)} listed</strong>
 	                </div>
 	              ) : null}
-	              {quantity && (enteredQuantity === null || enteredQuantity > currentLiquid) ? <p className="trade-guidance">Enter a quantity up to {tokenLabel(currentLiquid.toString(), state)}.</p> : null}
+	              {quantity && (enteredQuantity === null || enteredQuantity > currentLiquid) ? <p id={quantityGuidanceId} className="trade-guidance" role="alert">Enter a quantity up to {tokenLabel(currentLiquid.toString(), state)}.</p> : null}
+	              {unitPrice && !unitPriceValid ? <p id={priceGuidanceId} className="trade-guidance" role="alert">Enter a positive AR price with no more than 12 decimal places.</p> : null}
 	              <p className="settlement-disclosure">Listed tokens move into order escrow after network confirmation. Network fees are shown by your wallet before signing.</p>
 	            </> : null}
             {operation.kind === 'transfer' ? <>
               <div className="trade-balance"><span>Available to send</span><strong>{tokenLabel(liquidBalanceOf(state, owner), state)}</strong></div>
-	              <label>Recipient wallet address<input aria-invalid={Boolean(recipient) && !ADDRESS.test(recipient)} autoFocus value={recipient} onChange={(event) => setRecipient(event.target.value)} placeholder="43-character Arweave address" /></label>
-	              {recipient && !ADDRESS.test(recipient) ? <p className="trade-guidance">Enter a 43-character Arweave wallet address.</p> : null}
-	              <label>Token quantity<input aria-invalid={Boolean(quantity) && (enteredQuantity === null || enteredQuantity > currentLiquid)} inputMode="decimal" value={quantity} onChange={(event) => setQuantity(event.target.value)} placeholder="100" /></label>
-	              {quantity && (enteredQuantity === null || enteredQuantity > currentLiquid) ? <p className="trade-guidance">Enter a quantity up to {tokenLabel(currentLiquid.toString(), state)}.</p> : null}
+	              <label>Recipient wallet address<input aria-describedby={recipient && recipientError ? recipientGuidanceId : undefined} aria-invalid={Boolean(recipient) && Boolean(recipientError)} autoCapitalize="none" autoComplete="off" autoCorrect="off" autoFocus data-dialog-initial spellCheck={false} value={recipient} onChange={(event) => setRecipient(event.target.value)} placeholder="43-character Arweave address" /></label>
+	              {recipient && recipientError ? <p id={recipientGuidanceId} className="trade-guidance" role="alert">{recipientError}</p> : null}
+	              {recipient && !recipientError ? (
+	                <div className="trade-quote"><span>Recipient</span><strong>{transferRecipient}</strong></div>
+	              ) : null}
+	              {recipient && !recipientError ? (
+	                <p className="settlement-disclosure">Review the complete destination before asking your wallet to approve this irreversible transfer.</p>
+	              ) : null}
+	              <label>Token quantity<input aria-describedby={quantity && (enteredQuantity === null || enteredQuantity > currentLiquid) ? quantityGuidanceId : undefined} aria-invalid={Boolean(quantity) && (enteredQuantity === null || enteredQuantity > currentLiquid)} inputMode="decimal" value={quantity} onChange={(event) => setQuantity(event.target.value)} placeholder="100" /></label>
+	              {quantity && (enteredQuantity === null || enteredQuantity > currentLiquid) ? <p id={quantityGuidanceId} className="trade-guidance" role="alert">Enter a quantity up to {tokenLabel(currentLiquid.toString(), state)}.</p> : null}
             </> : null}
             {operation.kind === 'cancel' ? (
               <div className="cancel-summary">
@@ -826,28 +1589,30 @@ function FungibleOperationDialog({
               </div>
             ) : null}
             {operation.kind === 'buy' ? <>
-              <div className="order-match-mode" role="tablist" aria-label="Order matching method">
+              <div className="order-match-mode" role="group" aria-label="Order matching method">
                 <button
-                  aria-selected={matchMode === 'amount'}
+                  aria-pressed={matchMode === 'amount'}
                   className={matchMode === 'amount' ? 'active' : undefined}
                   onClick={() => {
                     setMatchMode('amount');
                     setManualOrderIds([]);
+                    setActiveLotIndex(0);
+                    setLotPickerLimit(LOT_PICKER_PAGE_SIZE);
                   }}
-                  role="tab"
                   type="button"
                 >
 	                  Buy exact amount
                 </button>
                 <button
-                  aria-selected={matchMode === 'lots'}
+                  aria-pressed={matchMode === 'lots'}
                   className={matchMode === 'lots' ? 'active' : undefined}
                   onClick={() => {
                     const selected = automaticMatch?.orders ?? [];
                     setMatchMode('lots');
                     setManualOrderIds(selected.map((order) => order.orderId));
+                    setActiveLotIndex(0);
+                    setLotPickerLimit(LOT_PICKER_PAGE_SIZE);
                   }}
-                  role="tab"
                   type="button"
                 >
                   Choose listings
@@ -855,35 +1620,116 @@ function FungibleOperationDialog({
               </div>
               {matchMode === 'amount' ? (
 	                <>
-	                  <label>Amount to buy<input autoFocus inputMode="decimal" value={quantity} onChange={(event) => setQuantity(event.target.value)} /></label>
-	                  <p className="trade-guidance">Uses the lowest-priced combination of complete listings. Listings cannot be partially filled.</p>
+	                  <label>Amount to buy<input aria-describedby={`${amountGuidanceId}${formError ? ` ${amountGuidanceId}-error` : ''}${matchedOrders.length ? ` ${quoteStatusId}` : ''}`} aria-invalid={Boolean(quantity && formError)} autoFocus data-dialog-initial inputMode="decimal" value={quantity} onChange={(event) => setQuantity(event.target.value)} /></label>
+	                  <p id={amountGuidanceId} className="trade-guidance">Uses the lowest-priced combination of complete listings. Listings cannot be partially filled.</p>
 	                </>
               ) : (
-                <div className="lot-picker" aria-label="Available listings">
-                  <div><strong>Available listings</strong><span>Select any combination</span></div>
-                  {eligible.map((order) => (
-                    <button
-                      className={matchedOrders.some((matched) => matched.orderId === order.orderId) ? 'selected' : undefined}
-                      key={order.orderId}
-                      onClick={() => chooseLot(order)}
-                      type="button"
-                    >
-                      <span>{tokenLabel(order.quantity, state)}</span>
-                      <strong>{orderPriceLabel(order, state)}</strong>
-                      <small>{winstonToAr(order.asking)} AR total · {short(order.creator)}</small>
-                    </button>
-                  ))}
+                <div className="lot-picker">
+                  <div>
+                    <strong>Available listings</strong>
+                    <span aria-live="polite">{matchedOrders.length.toLocaleString()} selected</span>
+                  </div>
+                  <div
+                    aria-label="Available listings"
+                    aria-multiselectable="true"
+                    className="lot-picker-options"
+                    role="listbox"
+                  >
+                    {lotPickerOrders.map((order, index) => {
+                      const selected = manualOrderIdSet.has(order.orderId);
+                      return (
+                        <button
+                          aria-label={fungibleListingAccessibleLabel(order, state)}
+                          aria-posinset={index + 1}
+                          aria-selected={selected}
+                          aria-setsize={eligible.length}
+                          className={selected ? 'selected' : undefined}
+                          key={order.orderId}
+                          onClick={() => chooseLot(order)}
+                          onFocus={() => setActiveLotIndex(index)}
+                          onKeyDown={(event) => {
+                            const nextIndex = settlementTabIndex(event.key, index, lotPickerOrders.length);
+                            if (nextIndex === null) return;
+                            event.preventDefault();
+                            setActiveLotIndex(nextIndex);
+                            lotOptionRefs.current[nextIndex]?.focus();
+                          }}
+                          ref={(element) => { lotOptionRefs.current[index] = element; }}
+                          role="option"
+                          tabIndex={lotOptionTabIndex(index, activeLotIndex)}
+                          type="button"
+                        >
+                          <span>{tokenLabel(order.quantity, state)}</span>
+                          <strong>{orderPriceLabel(order, state)}</strong>
+                          <small>{winstonToAr(order.asking)} AR total · {short(order.creator)}</small>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {eligible.length > LOT_PICKER_PAGE_SIZE ? (
+                    <div className="orderbook-reveal lot-picker-reveal">
+                      <p aria-atomic="true" aria-live="polite" ref={lotRevealStatusRef} role="status" tabIndex={-1}>
+                        Showing {lotPickerOrders.length.toLocaleString()} of {eligible.length.toLocaleString()} listings.
+                      </p>
+                      {lotPickerOrders.length < eligible.length ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const next = nextLotPickerLimit(lotPickerLimit, eligible.length);
+                            setLotPickerLimit(next);
+                            if (next === eligible.length) {
+                              window.requestAnimationFrame(() => lotRevealStatusRef.current?.focus());
+                            }
+                          }}
+                        >
+                          Show {Math.min(LOT_PICKER_PAGE_SIZE, eligible.length - lotPickerOrders.length).toLocaleString()} more listings
+                        </button>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
               )}
-              {formError ? <p className="trade-guidance">{formError}</p> : null}
+              {formError ? <p id={`${amountGuidanceId}-error`} className="trade-guidance" role={quantity ? 'alert' : undefined}>{formError}</p> : null}
               {matchedOrders.length ? (
-                <div className="batch-quote">
-                  <div><span>You receive</span><strong>{tokenLabel(matchedQuantity.toString(), state)}</strong></div>
+                <div aria-busy={quoteState === 'loading'} className="batch-quote">
+	                  <div><span>You receive</span><strong>{tokenLabel(matchedQuantity.toString(), state)}</strong></div>
 	                  <div><span>Listings matched</span><strong>{matchedOrders.length}</strong></div>
+	                  <div><span>Sellers</span><strong>{matchedSellers}</strong></div>
 	                  <div><span>Listing subtotal</span><strong>{winstonToAr(matchedAsking.toString())} AR</strong></div>
-	                  <div><span>Network fees</span><strong>{estimatedCost ? `${winstonToAr((BigInt(estimatedCost) - matchedAsking).toString())} AR` : 'Checking…'}</strong></div>
-	                  <div><span>Maximum total</span><strong>{estimatedCost ? `${winstonToAr(estimatedCost)} AR` : 'Checking…'}</strong></div>
-	                  <div><span>Wallet after purchase</span><strong>{canAfford === false ? 'Insufficient AR' : estimatedCost && estimatedWalletBalance ? `${winstonToAr((BigInt(estimatedWalletBalance) - BigInt(estimatedCost)).toString())} AR` : 'Checking…'}</strong></div>
+	                  <div><span>Network fees</span><strong>{quoteState === 'error' ? 'Unavailable' : estimatedCost ? `${winstonToAr((BigInt(estimatedCost) - matchedAsking).toString())} AR` : 'Checking…'}</strong></div>
+	                  <div><span>Maximum total</span><strong>{quoteState === 'error' ? 'Unavailable' : estimatedCost ? `${winstonToAr(estimatedCost)} AR` : 'Checking…'}</strong></div>
+	                  <div><span>Wallet after purchase</span><strong>{quoteState === 'error' ? 'Unavailable' : canAfford === false ? 'Insufficient AR' : estimatedCost && estimatedWalletBalance ? `${winstonToAr((BigInt(estimatedWalletBalance) - BigInt(estimatedCost)).toString())} AR` : 'Checking…'}</strong></div>
+                </div>
+              ) : null}
+	              {matchedOrders.length ? (
+	                <MatchedListingsReview
+	                  key={matchedOrders.map((order) => order.orderId).join(':')}
+	                  matchMode={matchMode}
+	                  orders={matchedOrders}
+	                  state={state}
+	                />
+	              ) : null}
+              {matchedOrders.length ? (
+                <p id={quoteStatusId} className="sr-only" aria-live="polite" role="status">
+                  {quoteState === 'ready' && estimatedCost
+                    ? `Purchase quote ready. Maximum total ${winstonToAr(estimatedCost)} AR.${canAfford ? '' : ' This wallet has insufficient AR.'}`
+                    : quoteState === 'error'
+                      ? 'Purchase quote unavailable. Retry the cost check before buying.'
+                      : 'Checking the wallet balance and network fees.'}
+                </p>
+              ) : null}
+              {matchedOrders.length ? (
+                <div className={quoteState === 'error' ? 'inline-error' : 'quote-check-action'} role={quoteState === 'error' ? 'alert' : undefined}>
+                  <span>{quoteState === 'error' ? 'Could not verify the wallet balance and network fees.' : quoteState === 'ready' ? 'Exact costs checked.' : 'Checking wallet balance and network fees…'}</span>
+                  <button
+                    aria-describedby={quoteStatusId}
+                    aria-disabled={quoteState !== 'ready' && quoteState !== 'error'}
+                    className="with-icon"
+                    onClick={() => { if (quoteState === 'ready' || quoteState === 'error') setQuoteRetry((value) => value + 1); }}
+                    type="button"
+                  >
+                    <RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> {quoteState === 'error' ? 'Retry quote' : quoteState === 'ready' ? 'Recheck quote' : 'Checking quote…'}
+                  </button>
                 </div>
               ) : null}
               {canAfford === false ? <p className="trade-guidance">This wallet does not have enough AR for the listings and network fees.</p> : null}
@@ -894,14 +1740,20 @@ function FungibleOperationDialog({
                 </p>
               ) : null}
             </> : null}
+	            </div>
 	            <button
 	              className="primary wide"
+	              data-dialog-initial
+	              aria-label={operation.kind === 'transfer' && enteredQuantity && transferValid
+	                ? fungibleTransferSubmitLabel(enteredQuantity.toString(), state, transferRecipient, true)
+	                : undefined}
+	              aria-describedby={operation.kind === 'buy' && matchedOrders.length ? quoteStatusId : undefined}
 	              disabled={
 	                (operation.kind === 'buy' && (!matchedOrders.length || !estimatedCost || canAfford !== true)) ||
 	                (operation.kind === 'sell' && !sellValid) ||
 	                (operation.kind === 'transfer' && !transferValid)
 	              }
-	              onClick={() => void submit()}
+	              type="submit"
 	            >
 	              {operation.kind === 'buy' && matchedOrders.length
 	                ? `Buy ${formatGroupedTokenAmount(matchedQuantity.toString(), state.denomination)} ${ticker} from ${matchedOrders.length} ${matchedOrders.length === 1 ? 'listing' : 'listings'} · up to ${estimatedCost ? winstonToAr(estimatedCost) : '…'} AR`
@@ -910,32 +1762,50 @@ function FungibleOperationDialog({
 	                  : operation.kind === 'cancel'
 	                    ? `Cancel listing and return ${tokenLabel(operation.order.quantity, state)}`
 	                    : operation.kind === 'transfer' && enteredQuantity
-	                      ? `Send ${tokenLabel(enteredQuantity.toString(), state)}`
+	                      ? fungibleTransferSubmitLabel(enteredQuantity.toString(), state, transferRecipient)
 	                      : operationLabel(operation.kind)}
 	            </button>
-          </div>
-        ) : null}
-	        {phase === 'working' ? <div aria-live="polite">
-	          <p className="sync-intro">
-            {operation.kind === 'buy' && visibleOrders.length > 1
-	              ? `${visibleOrders.length} listings are settling independently. Switch between them below while every transaction continues in parallel.`
-              : 'Signed. Now watching independent Arweave nodes agree on the transaction.'}
-	          </p>
-	          {transaction || activePurchase ? <p className="sync-resume-note">This action will resume automatically when you return.</p> : null}
+	          </form>
+	        ) : null}
+	        {phase === 'working' ? <div>
+	          {operation.kind === 'buy' ? (
+	            <p className="sr-only" aria-live="polite" role="status">{settlementAnnouncement}</p>
+	          ) : (
+	            <p className="sr-only" aria-live="polite" role="status">
+	              {message || (signedWork ? 'Watching this transaction.' : 'Preparing the transaction for wallet approval.')}
+	            </p>
+	          )}
+	          <p className="sync-intro">{fungibleWorkingIntro(operation.kind, visibleOrders.length, signedWork)}</p>
+	          {signedWork ? <p className="sync-resume-note">This action will resume automatically when you return.</p> : null}
           {message ? <p className="scheduler-wait">{message}</p> : null}
 	          {operation.kind === 'buy' && visibleOrders.length ? <>
-	            <p className="parallel-summary">{visibleOrders.length} listings · {settledPurchases} settled · {payingPurchases} paying · {visibleOrders.length - settledPurchases - payingPurchases} reserving</p>
+	            <p className="parallel-summary">{signedWork
+	              ? settlementSummary.label
+	              : `${visibleOrders.length} listings · preparing wallet approvals`}</p>
 	            <div className="settlement-tabs" role="tablist" aria-label="Parallel settlements">
               {visibleOrders.map((order, index) => {
                 const purchase = purchaseStates[order.orderId];
+                const active = order.orderId === (activeOrder?.orderId ?? visibleOrders[0].orderId);
                 return (
 	                  <button
-	                    aria-controls={`settlement-panel-${order.orderId}`}
-	                    aria-selected={order.orderId === (activeOrder?.orderId ?? visibleOrders[0].orderId)}
-                    className={order.orderId === (activeOrder?.orderId ?? visibleOrders[0].orderId) ? 'active' : undefined}
+	                    aria-controls={SETTLEMENT_PANEL_ID}
+	                    aria-selected={active}
+                    className={active ? 'active' : undefined}
+                    id={`settlement-tab-${order.orderId}`}
                     key={order.orderId}
                     onClick={() => setActiveOrderId(order.orderId)}
+                    onKeyDown={(event) => {
+                      const nextIndex = settlementTabIndex(event.key, index, visibleOrders.length);
+                      if (nextIndex === null) return;
+                      event.preventDefault();
+                      const nextOrder = visibleOrders[nextIndex];
+                      setActiveOrderId(nextOrder.orderId);
+                      window.requestAnimationFrame(() => {
+                        document.getElementById(`settlement-tab-${nextOrder.orderId}`)?.focus();
+                      });
+                    }}
                     role="tab"
+                    tabIndex={active ? 0 : -1}
                     type="button"
                   >
 	                    <span>Listing {index + 1}</span>
@@ -945,44 +1815,133 @@ function FungibleOperationDialog({
                 );
               })}
             </div>
-	            {activeOrder && activePurchase ? (
-	              <div id={`settlement-panel-${activeOrder.orderId}`} role="tabpanel">
-	                <ArweaveTransactionSync subject={`${asset.name} · ${tokenLabel(activeOrder.quantity, state)}`} steps={purchaseSteps} activeStep={activeStep} />
+	            {activeOrder ? (
+	              <div
+	                aria-labelledby={`settlement-tab-${activeOrder.orderId}`}
+	                id={SETTLEMENT_PANEL_ID}
+	                role="tabpanel"
+	                tabIndex={0}
+	              >
+	                <div className="settlement-panel-summary">
+	                  <span>Listing {activeOrderIndex + 1} of {visibleOrders.length}</span>
+	                  <WalletAddress address={activeOrder.creator} full label="seller" />
+	                </div>
+	                {activePurchase ? (
+	                  <ArweaveTransactionSync subject={`${asset.name} · ${tokenLabel(activeOrder.quantity, state)}`} steps={purchaseSteps} activeStep={activeStep} />
+	                ) : (
+	                  <div className="loading"><span aria-hidden="true" />Preparing this reservation and payment for your approval…</div>
+	                )}
 	              </div>
-	            ) : <Loading label="Preparing each reservation and payment for your approval…" />}
+	            ) : null}
           </> : singleSteps.length ? (
             <ArweaveTransactionSync subject={asset.name} steps={singleSteps} activeStep={operation.kind} />
           ) : <Loading label="Preparing the exact signed transaction…" />}
 	        </div> : null}
 	        {phase === 'done' ? (
-	          <div className="result success" role="status">
-	            <h3>{operation.kind === 'buy' ? 'Purchase complete' : operation.kind === 'sell' ? 'Tokens listed' : operation.kind === 'cancel' ? 'Listing cancelled' : 'Transfer complete'}</h3>
-	            <p>{operation.kind === 'buy'
-	              ? `${tokenLabel(completedPurchaseQuantity.toString(), state)} received from ${visibleOrders.length} ${visibleOrders.length === 1 ? 'listing' : 'listings'} · ${winstonToAr(visibleOrders.reduce((total, order) => total + BigInt(order.asking), 0n).toString())} AR paid to sellers.`
-	              : operation.kind === 'sell' && enteredQuantity && listingQuote
-	                ? `${tokenLabel(enteredQuantity.toString(), state)} listed for ${listingQuote} AR.`
-	                : operation.kind === 'cancel'
-	                  ? `${tokenLabel(operation.order.quantity, state)} returned to your liquid balance.`
-	                  : enteredQuantity
-	                    ? `${tokenLabel(enteredQuantity.toString(), state)} sent to ${short(recipient)}.`
-	                    : 'The live token state now reflects this action.'}</p>
-	            {transaction ? <a href={`https://arweave.net/${transaction.id}`} rel="noreferrer" target="_blank">View transaction {short(transaction.id)} ↗</a> : null}
-	            {operation.kind === 'buy' ? <div className="result-links">{visibleOrders.flatMap((order, index) => {
-	              const paymentId = purchaseStates[order.orderId]?.payment?.id;
-	              return paymentId ? [<a href={`https://arweave.net/${paymentId}`} key={paymentId} rel="noreferrer" target="_blank">Payment {index + 1} · {short(paymentId)} ↗</a>] : [];
-	            })}</div> : null}
-	            <button className="primary with-icon" onClick={onClose}><ArrowLeft className="ui-icon ui-icon--sm" /> View updated order book</button>
+	          <div className="result success">
+	            <OperationOutcome title={outcomeTitle} detail={outcomeDetail} />
+	            {transaction && operation.kind !== 'transfer' ? <a href={transactionExplorerUrl(transaction.id)} rel="noreferrer" target="_blank">View transaction {short(transaction.id)} ↗</a> : null}
+	            {operation.kind === 'buy' ? (
+	              <FungiblePurchaseReceiptNavigator
+	                activeOrderId={activeOrder?.orderId}
+	                onSelect={setActiveOrderId}
+	                orders={visibleOrders}
+	                purchaseStates={purchaseStates}
+	                state={state}
+	              />
+	            ) : operation.kind === 'transfer' && transaction && enteredQuantity ? (
+	              <div className="settlement-receipt">
+	                <div><span>Quantity</span><strong>{tokenLabel(enteredQuantity.toString(), state)}</strong></div>
+	                <div><span>Recipient</span><WalletAddress address={transferRecipient} full label="recipient" /></div>
+	                <div className="settlement-receipt-links">
+	                  <a href={transactionExplorerUrl(transaction.id)} rel="noreferrer" target="_blank">
+	                    Transaction {short(transaction.id)} ↗
+	                  </a>
+	                </div>
+	              </div>
+	            ) : null}
+	            <button className="primary with-icon" data-dialog-initial onClick={() => onClose(false)}><ArrowLeft className="ui-icon ui-icon--sm" /> View updated token</button>
 	          </div>
 	        ) : null}
 	        {phase === 'error' ? (
-	          <div className="result error" role="alert">
-	            <h3>Could not complete this action</h3><p>{message}</p>
-	            {operation.kind === 'buy' && visibleOrders.length ? <div className="settlement-tabs" aria-label="Settlement recovery status">{visibleOrders.map((order, index) => (
-	              <button key={order.orderId} onClick={() => setActiveOrderId(order.orderId)} type="button"><span>Listing {index + 1}</span><strong>{tokenLabel(order.quantity, state)}</strong><small>{batchStageLabel(purchaseStates[order.orderId])}</small></button>
-	            ))}</div> : null}
-	            {operation.kind === 'buy' ? <><p>Completed purchases are final; only incomplete settlements will resume.</p><button onClick={() => window.location.reload()}>Resume {incompletePurchases} incomplete {incompletePurchases === 1 ? 'settlement' : 'settlements'}</button></>
-	              : transaction ? <button onClick={() => void submit()}>Resume the signed transaction</button>
-                : <button onClick={() => setPhase('form')}>Review and try again</button>}
+	          <div className="result error">
+	            <FungibleOperationErrorAlert message={message} />
+	            {operation.kind === 'buy' && visibleOrders.length ? (
+	              <>
+	                <div className="settlement-tabs" aria-label="Settlement recovery status" role="tablist">
+	                  {visibleOrders.map((order, index) => {
+	                    const active = order.orderId === activeOrder?.orderId;
+	                    return (
+	                      <button
+	                        aria-controls={SETTLEMENT_ERROR_PANEL_ID}
+	                        aria-selected={active}
+	                        className={active ? 'active' : undefined}
+	                        id={`settlement-error-tab-${order.orderId}`}
+	                        key={order.orderId}
+	                        onClick={() => setActiveOrderId(order.orderId)}
+	                        onKeyDown={(event) => {
+	                          const nextIndex = settlementTabIndex(event.key, index, visibleOrders.length);
+	                          if (nextIndex === null) return;
+	                          event.preventDefault();
+	                          const nextOrder = visibleOrders[nextIndex];
+	                          setActiveOrderId(nextOrder.orderId);
+	                          window.requestAnimationFrame(() => {
+	                            document.getElementById(`settlement-error-tab-${nextOrder.orderId}`)?.focus();
+	                          });
+	                        }}
+	                        role="tab"
+	                        tabIndex={active ? 0 : -1}
+	                        type="button"
+	                      >
+	                        <span>Listing {index + 1}</span>
+	                        <strong>{tokenLabel(order.quantity, state)}</strong>
+	                        <small>{batchStageLabel(purchaseStates[order.orderId])}</small>
+	                      </button>
+	                    );
+	                  })}
+	                </div>
+	                {activeOrder ? (
+	                  <FungibleSettlementRecoveryPanel orderId={activeOrder.orderId}>
+	                    <div><span>Stage</span><strong>{batchStageLabel(activePurchase)}</strong></div>
+	                    <div><span>Seller</span><WalletAddress address={activeOrder.creator} full label="seller" /></div>
+	                    <div><span>Order</span><strong title={activeOrder.orderId}>{short(activeOrder.orderId)}</strong></div>
+	                    <p>{activePurchase?.error
+	                      ? errorMessage(marketplaceCodedError(activePurchase.error.code, activePurchase.error.message || activePurchase.error.code))
+	                      : activePurchase?.stage === 'complete'
+	                        ? 'This listing settled successfully.'
+	                        : 'This incomplete listing can be resumed safely.'}</p>
+	                    <div className="settlement-receipt-links">
+	                      {activePurchase?.registration?.id ? <a href={transactionExplorerUrl(activePurchase.registration.id)} rel="noreferrer" target="_blank">Reservation {short(activePurchase.registration.id)} ↗</a> : null}
+	                      {activePurchase?.payment?.id ? <a href={transactionExplorerUrl(activePurchase.payment.id)} rel="noreferrer" target="_blank">Payment {short(activePurchase.payment.id)} ↗</a> : null}
+	                    </div>
+	                  </FungibleSettlementRecoveryPanel>
+	                ) : null}
+	              </>
+	            ) : null}
+	            {failureKind === 'market-state-changed' ? <button data-dialog-initial onClick={() => onClose(false)}>Review updated token</button>
+	              : failureKind === 'transaction-rejected' && transaction ? (
+	                <button
+	                  data-dialog-initial
+	                  onClick={() => {
+	                    removeWalletRecordIf<any>(
+	                      localStorage,
+	                      operationStorageKey(asset.id, owner),
+	                      (record) => record?.txId === transaction.id,
+	                    );
+	                    localStorage.removeItem(`bazar-signed-transaction:${transaction.id}`);
+	                    onClose(false);
+	                  }}
+	                >
+	                  Discard rejected signature and sign again
+	                </button>
+	              )
+	              : operation.kind === 'buy' ? <>{recoverableBatch ? <p>Completed purchases are final; only incomplete settlements will resume.</p> : <p>No transaction was submitted. Any earlier approvals from this attempt were discarded.</p>}<button data-dialog-initial onClick={restartPurchase}>{recoverableBatch ? `Resume ${incompletePurchases} incomplete ${incompletePurchases === 1 ? 'settlement' : 'settlements'}` : 'Review and try again'}</button></>
+	              : transaction ? <button data-dialog-initial onClick={() => void submit()}>Resume the signed transaction</button>
+                : <button data-dialog-initial onClick={() => {
+                    setFailureKind(null);
+                    setMessage('');
+                    setPhase('form');
+                  }}>Review and try again</button>}
           </div>
         ) : null}
       </div>
@@ -990,8 +1949,461 @@ function FungibleOperationDialog({
   );
 }
 
+export function FungibleOperationErrorAlert({ message }: { message: string }) {
+  return (
+    <div className="result-alert" role="alert">
+      <h3>Could not complete this action</h3>
+      <p>{message}</p>
+    </div>
+  );
+}
+
+export function MatchedListingsReview({
+  matchMode,
+  orders,
+  state,
+}: {
+  matchMode: 'amount' | 'lots';
+  orders: SwapOrder[];
+  state: AssetState;
+}) {
+  return (
+    <details className="matched-listings" open={orders.length <= 4}>
+      <summary>Review {orders.length} {matchMode === 'amount' ? 'matched' : 'selected'} {orders.length === 1 ? 'listing' : 'listings'}</summary>
+      <ul aria-label="Exact matched seller addresses" tabIndex={0}>
+        {orders.map((order) => (
+          <li key={order.orderId}>
+            <span>{tokenLabel(order.quantity, state)} · {winstonToAr(order.asking)} AR</span>
+            <WalletIdentity address={order.creator} />
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+}
+
+export function FungiblePurchaseReceiptNavigator({
+  activeOrderId,
+  onSelect,
+  orders,
+  purchaseStates,
+  state,
+}: {
+  activeOrderId?: string;
+  onSelect(orderId: string): void;
+  orders: SwapOrder[];
+  purchaseStates: Record<string, PurchaseState>;
+  state: AssetState;
+}) {
+  if (!orders.length) return null;
+  const activeIndex = Math.max(0, orders.findIndex((order) => order.orderId === activeOrderId));
+  const order = orders[activeIndex];
+  const settled = purchaseStates[order.orderId];
+  return (
+    <div className="settlement-receipts">
+      <div className="settlement-receipt-navigation">
+        <label>
+          <span>Settlement receipt</span>
+          <select
+            aria-label={`Choose a settlement receipt; current seller ${order.creator}`}
+            onChange={(event) => onSelect(event.target.value)}
+            value={order.orderId}
+          >
+            {orders.map((candidate, index) => (
+              <option
+                key={candidate.orderId}
+                value={candidate.orderId}
+              >
+                Listing {index + 1} · {tokenLabel(candidate.quantity, state)} · {short(candidate.creator)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <span aria-live="polite">{activeIndex + 1} of {orders.length}</span>
+      </div>
+      <section aria-label={`Settlement receipt ${activeIndex + 1} of ${orders.length}`} className="settlement-receipt">
+        <div><span>Listing {activeIndex + 1}</span><strong>{tokenLabel(order.quantity, state)}</strong></div>
+        <div><span>Seller</span><WalletAddress address={order.creator} full label="seller" /></div>
+        <div><span>Order</span><strong title={order.orderId}>{short(order.orderId)}</strong></div>
+        <div><span>Seller payment</span><strong>{winstonToAr(order.asking)} AR</strong></div>
+        <div className="settlement-receipt-links">
+          {settled?.registration?.id ? <a href={transactionExplorerUrl(settled.registration.id)} rel="noreferrer" target="_blank">Reservation {short(settled.registration.id)} ↗</a> : null}
+          {settled?.payment?.id ? <a href={transactionExplorerUrl(settled.payment.id)} rel="noreferrer" target="_blank">Payment {short(settled.payment.id)} ↗</a> : null}
+        </div>
+      </section>
+      {orders.length > 1 ? (
+        <div className="settlement-receipt-paging">
+          <button
+            aria-disabled={activeIndex === 0}
+            onClick={() => {
+              if (activeIndex > 0) onSelect(orders[activeIndex - 1].orderId);
+            }}
+            type="button"
+          >
+            Previous receipt
+          </button>
+          <button
+            aria-disabled={activeIndex === orders.length - 1}
+            onClick={() => {
+              if (activeIndex < orders.length - 1) onSelect(orders[activeIndex + 1].orderId);
+            }}
+            type="button"
+          >
+            Next receipt
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+export function FungibleSettlementRecoveryPanel({
+  children,
+  orderId,
+}: {
+  children?: React.ReactNode;
+  orderId: string;
+}) {
+  return (
+    <section
+      aria-labelledby={`settlement-error-tab-${orderId}`}
+      className="settlement-error-detail"
+      id={SETTLEMENT_ERROR_PANEL_ID}
+      role="tabpanel"
+      tabIndex={0}
+    >
+      {children}
+    </section>
+  );
+}
+
 function preparedEntry(prepared: PreparedPurchase): BatchEntry {
   return { order: prepared.order, snapshot: prepared.snapshot, paymentCost: prepared.paymentCost };
+}
+
+export function batchPaymentBarrierState(
+  entries: Array<Pick<BatchEntry, 'snapshot' | 'paymentCost'>>,
+) {
+  return entries.reduce(
+    (state, entry) => entry.snapshot.payment?.dispatched
+      ? { ...state, registrationsReady: state.registrationsReady + 1 }
+      : { ...state, pendingPaymentCost: state.pendingPaymentCost + BigInt(entry.paymentCost) },
+    { registrationsReady: 0, pendingPaymentCost: 0n },
+  );
+}
+
+export function batchRecoveryIdentity(
+  entries: Array<Pick<BatchEntry, 'order' | 'snapshot'>>,
+) {
+  return entries.map(({ order, snapshot }) =>
+    `${order.orderId}:${snapshot.registration?.id ?? ''}:${snapshot.payment?.id ?? ''}`,
+  ).join('|');
+}
+
+export function batchPurchaseStartingBalance(
+  resume: Pick<BatchResume, 'startingBalance'> | undefined,
+  freshState: AssetState | undefined,
+  buyer: string,
+  renderedBalance: string,
+) {
+  if (resume) return resume.startingBalance;
+  return freshState ? liquidBalanceOf(freshState, buyer) : renderedBalance;
+}
+
+export function fungibleBatchRecoveryStatus(
+  resume: Pick<BatchResume, 'entries'>,
+  state: AssetState,
+  buyer: string,
+): 'resumable' | 'blocked' {
+  return resume.entries.every((entry) => {
+    // A payment leg must resume its exact historical proof even if the buyer
+    // later transfers the purchased units and current balance returns to zero.
+    if (entry.snapshot.payment?.id) return true;
+    const order = state.orders[entry.order.orderId];
+    return Boolean(
+      order &&
+      order.creator === entry.order.creator &&
+      order.recipient === entry.order.recipient &&
+      order.asking === entry.order.asking &&
+      order.deposit === entry.order.deposit &&
+      order.minimumFee === entry.order.minimumFee &&
+      order.deadline === entry.order.deadline &&
+      order.createdAt === entry.order.createdAt &&
+      order.quantity === entry.order.quantity &&
+      (order.status === 'open' || (order.status === 'reserved' && order.buyer === buyer)),
+    );
+  }) ? 'resumable' : 'blocked';
+}
+
+export function isRecoverableBatch(record: unknown, buyer: string): record is BatchResume {
+  if (!record || typeof record !== 'object') return false;
+  const candidate = record as Partial<BatchResume>;
+  if (
+    candidate.version !== 2 ||
+    candidate.buyer !== buyer ||
+    !/^\d+$/.test(candidate.startingBalance ?? '') ||
+    !Array.isArray(candidate.entries) ||
+    candidate.entries.length === 0
+  ) {
+    return false;
+  }
+  return candidate.entries.every((entry) =>
+    Boolean(
+      entry &&
+      ADDRESS.test(entry.order?.orderId ?? '') &&
+      /^\d+$/.test(entry.order?.quantity ?? '') &&
+      /^\d+$/.test(entry.order?.asking ?? '') &&
+      /^\d+$/.test(entry.paymentCost ?? '') &&
+			  (
+			    hasRecoverablePurchase(entry.snapshot) ||
+			    (!entry.snapshot.registration && !entry.snapshot.payment)
+			  ),
+    ),
+  );
+}
+
+export function batchPurchaseRecoveryApprovalCount(
+  entries: Array<Pick<BatchEntry, 'snapshot'>>,
+) {
+  return entries.reduce(
+    (total, entry) => total + purchaseRecoveryApprovalCount(entry.snapshot),
+    0,
+  );
+}
+
+export function latestRecoverableSnapshot(current: PurchaseSnapshot, next: PurchaseSnapshot) {
+  if (!hasRecoverablePurchase(next)) return current;
+  const candidate = current.registration?.id === next.registration?.id
+    ? {
+        registration: {
+          id: next.registration!.id,
+          dispatched: Boolean(current.registration?.dispatched || next.registration?.dispatched),
+        },
+        ...(next.payment
+          ? {
+              payment: next.payment.id === current.payment?.id
+                ? {
+                    id: next.payment.id,
+                    dispatched: Boolean(current.payment.dispatched || next.payment.dispatched),
+                  }
+                : next.payment,
+            }
+          : current.payment ? { payment: current.payment } : {}),
+        ...((current.dismissed || next.dismissed) ? { dismissed: true } : {}),
+      }
+    : next;
+  return equalPurchaseSnapshots(current, candidate) ? current : candidate;
+}
+
+export function purchaseStateFrameBuffer(
+  commit: (updates: Record<string, PurchaseState>) => void,
+  schedule: (callback: () => void) => number = (callback) => window.requestAnimationFrame(callback),
+  cancel: (handle: number) => void = (handle) => window.cancelAnimationFrame(handle),
+) {
+  let scheduled: number | null = null;
+  let pending: Record<string, PurchaseState> = {};
+  const flush = () => {
+    if (scheduled !== null) cancel(scheduled);
+    scheduled = null;
+    if (!Object.keys(pending).length) return;
+    const updates = pending;
+    pending = {};
+    commit(updates);
+  };
+  return {
+    push(orderId: string, state: PurchaseState) {
+      pending[orderId] = state;
+      if (scheduled !== null) return;
+      scheduled = schedule(() => {
+        scheduled = null;
+        flush();
+      });
+    },
+    flush,
+    clear() {
+      if (scheduled !== null) cancel(scheduled);
+      scheduled = null;
+      pending = {};
+    },
+  };
+}
+
+export function batchRecoveryFrameBuffer(
+  persist: () => void,
+  scheduleFrame: (callback: () => void) => number = (callback) => window.requestAnimationFrame(callback),
+  cancelFrame: (handle: number) => void = (handle) => window.cancelAnimationFrame(handle),
+) {
+  let scheduled: number | null = null;
+  let dirty = false;
+  const persistDirty = () => {
+    if (!dirty) return;
+    dirty = false;
+    persist();
+  };
+  return {
+    schedule() {
+      dirty = true;
+      if (scheduled !== null) return;
+      scheduled = scheduleFrame(() => {
+        scheduled = null;
+        persistDirty();
+      });
+    },
+    flush(force = false) {
+      if (scheduled !== null) cancelFrame(scheduled);
+      scheduled = null;
+      if (force && !dirty) persist();
+      else persistDirty();
+    },
+    clear() {
+      if (scheduled !== null) cancelFrame(scheduled);
+      scheduled = null;
+      dirty = false;
+    },
+  };
+}
+
+export function visibleOrderbookRows<T>(orders: T[], limit: number) {
+  return orders.slice(0, Math.max(0, limit));
+}
+
+export function visibleLotPickerOrders<T extends { orderId: string }>(
+  orders: T[],
+  selectedIds: ReadonlySet<string>,
+  limit: number,
+) {
+  const bounded = Math.max(0, limit);
+  if (!selectedIds.size) return orders.slice(0, bounded);
+  const selected: T[] = [];
+  const remaining: T[] = [];
+  for (const order of orders) {
+    (selectedIds.has(order.orderId) ? selected : remaining).push(order);
+  }
+  return [...selected, ...remaining].slice(0, bounded);
+}
+
+export function nextLotPickerLimit(current: number, total: number) {
+  return Math.min(Math.max(0, total), Math.max(0, current) + LOT_PICKER_PAGE_SIZE);
+}
+
+function equalPurchaseSnapshots(left: PurchaseSnapshot, right: PurchaseSnapshot) {
+  return (
+    left.registration?.id === right.registration?.id &&
+    left.registration?.dispatched === right.registration?.dispatched &&
+    left.payment?.id === right.payment?.id &&
+    left.payment?.dispatched === right.payment?.dispatched &&
+    left.dismissed === right.dismissed
+  );
+}
+
+export function storeBatchRecoveryBeforeDispatch(
+  storage: Pick<Storage, 'getItem' | 'setItem'>,
+  key: string,
+  record: BatchResume,
+  signal: AbortSignal,
+) {
+  const attemptId = record.attemptId ?? batchRecoveryIdentity(record.entries);
+  record.attemptId = attemptId;
+  storeWalletRecordOrThrow(
+    storage,
+    key,
+    record,
+    (current: BatchResume) =>
+      (current.attemptId ?? batchRecoveryIdentity(current.entries)) === attemptId,
+    true,
+  );
+  if (signal.aborted) throw signal.reason;
+}
+
+export async function waitForSettlementBatch(running: Promise<PurchaseState>[]): Promise<PurchaseState[]> {
+  const settled = await Promise.allSettled(running);
+  const failed = settled.filter(
+    (result) => result.status === 'rejected' || result.value.stage !== 'complete' || !result.value.success,
+  );
+  if (failed.length) {
+    const reasons = [...new Set(failed.flatMap((result) => {
+      if (result.status === 'rejected') {
+        return [result.reason instanceof Error ? result.reason.message : String(result.reason)];
+      }
+      return result.value.error?.message ? [result.value.error.message] : [];
+    }))];
+    throw new Error(
+      `${failed.length} of ${settled.length} settlements need attention.${reasons.length ? ` ${reasons.join(' ')}` : ''}`,
+    );
+  }
+  return settled.map((result) => (result as PromiseFulfilledResult<PurchaseState>).value);
+}
+
+export function settlementTabIndex(key: string, current: number, count: number): number | null {
+  if (count < 1) return null;
+  if (key === 'Home') return 0;
+  if (key === 'End') return count - 1;
+  if (key === 'ArrowRight' || key === 'ArrowDown') return (current + 1) % count;
+  if (key === 'ArrowLeft' || key === 'ArrowUp') return (current - 1 + count) % count;
+  return null;
+}
+
+export function batchSettlementSummary(states: Array<PurchaseState | undefined>) {
+	const settled = states.filter((state) => state?.stage === 'complete').length;
+	const failed = states.filter((state) => state?.stage === 'failed').length;
+	const paying = states.filter((state) => {
+		const stage = state?.stage ?? '';
+		return stage.includes('payment') || stage === 'ownership-verifying';
+	}).length;
+	const reserving = states.length - settled - failed - paying;
+	return {
+		settled,
+		failed,
+		paying,
+		reserving,
+		label: `${states.length} listings · ${settled} settled${failed ? ` · ${failed} needs attention` : ''} · ${paying} paying · ${reserving} reserving`,
+	};
+}
+
+export function nextSettlementAnnouncement(
+  previousKey: string,
+  signedWork: boolean,
+  total: number,
+  summary: Pick<ReturnType<typeof batchSettlementSummary>, 'failed' | 'settled'>,
+): { key: string; message: string } | null {
+  if (total < 1) return null;
+  let next: { key: string; message: string };
+  if (!signedWork) {
+    next = {
+      key: `preparing:${total}`,
+      message: `Preparing wallet approvals for ${total} ${total === 1 ? 'listing' : 'listings'}.`,
+    };
+  } else if (summary.failed) {
+    if (previousKey.startsWith('attention:')) return null;
+    next = {
+      key: `attention:${total}`,
+      message: `A settlement needs attention. ${summary.settled} of ${total} settled; the others continue independently.`,
+    };
+  } else if (summary.settled >= total) {
+    next = {
+      key: `complete:${total}`,
+      message: total === 1 ? 'The settlement is complete.' : `All ${total} settlements are complete.`,
+    };
+  } else {
+    const quarter = Math.floor((summary.settled * 4) / total);
+    if (quarter > 0) {
+      const threshold = Math.ceil((total * Math.min(quarter, 3)) / 4);
+      next = {
+        key: `progress:${Math.min(quarter, 3)}:${total}`,
+        message: `${threshold} of ${total} settlements complete.`,
+      };
+    } else {
+      next = {
+        key: `watching:${total}`,
+        message: `Watching ${total} parallel ${total === 1 ? 'settlement' : 'settlements'}.`,
+      };
+    }
+  }
+  return next.key === previousKey ? null : next;
+}
+
+export function lotOptionTabIndex(index: number, activeIndex: number) {
+  return index === activeIndex ? 0 : -1;
 }
 
 function batchStorageKey(assetId: string, buyer: string) {
@@ -1010,6 +2422,14 @@ function safeLotQuote(quantity: string, price: string, state: AssetState): strin
     return winstonToAr(lotAsking(parseTokenAmount(quantity, state.denomination), price, state.denomination));
   } catch {
     return null;
+  }
+}
+
+function safeArPrice(value: string): boolean {
+  try {
+    return BigInt(arToWinston(value)) > 0n;
+  } catch {
+    return false;
   }
 }
 
@@ -1033,6 +2453,67 @@ function orderPriceLabel(order: SwapOrder, state: AssetState) {
 
 function tokenLabel(raw: string, state: AssetState) {
   return `${formatGroupedTokenAmount(raw, state.denomination)} ${state.ticker || 'tokens'}`;
+}
+
+export function fungibleOrderActionLabel(action: 'buy' | 'cancel', order: SwapOrder, state: AssetState) {
+  const lot = `${tokenLabel(order.quantity, state)} for ${winstonToAr(order.asking)} AR`;
+  return action === 'buy'
+    ? `Buy ${lot} from ${order.creator}`
+    : `Cancel listing of ${lot}`;
+}
+
+export function fungibleListingAccessibleLabel(order: SwapOrder, state: AssetState) {
+  return `${tokenLabel(order.quantity, state)}, ${orderPriceLabel(order, state)}, ${winstonToAr(order.asking)} AR total, seller ${order.creator}`;
+}
+
+export function fungibleOperationStateError(
+	kind: FungibleOperation['kind'],
+	state: AssetState,
+	owner: string,
+	expectedOrders: SwapOrder[],
+	rawQuantity = '0',
+	expectedDenomination = state.denomination,
+) {
+	if (state.denomination !== expectedDenomination) return 'market-state-changed';
+	if (kind === 'buy' || kind === 'cancel') {
+		if (!expectedOrders.length) return 'market-state-changed';
+		const unchanged = expectedOrders.every((expected) => {
+			const current = state.orders[expected.orderId];
+			return Boolean(
+				current &&
+				current.status === 'open' &&
+				current.creator === expected.creator &&
+				current.asking === expected.asking &&
+				current.quantity === expected.quantity &&
+				(kind === 'buy' ? current.creator !== owner : current.creator === owner),
+			);
+		});
+		return unchanged ? '' : 'market-state-changed';
+	}
+	try {
+		const quantity = BigInt(rawQuantity);
+		return quantity > 0n && quantity <= BigInt(liquidBalanceOf(state, owner))
+			? ''
+			: 'market-state-changed';
+	} catch {
+		return 'market-state-changed';
+	}
+}
+
+export function fungibleTransferRecipientError(recipient: string, owner: string) {
+  const normalized = recipient.trim();
+  if (!ADDRESS.test(normalized)) return 'Enter a 43-character Arweave wallet address.';
+  if (normalized === owner) return 'Choose a different wallet. Sending tokens to this wallet would not change its balance.';
+  return '';
+}
+
+export function fungibleTransferSubmitLabel(
+	quantity: string,
+	state: AssetState,
+	recipient: string,
+	fullRecipient = false,
+) {
+	return `Send ${tokenLabel(quantity, state)} to ${fullRecipient ? recipient : short(recipient)}`;
 }
 
 function formatGroupedTokenAmount(raw: string, denomination: number) {
@@ -1063,6 +2544,20 @@ function operationLabel(kind: FungibleOperation['kind']) {
   return { sell: 'List tokens', buy: 'Buy tokens', cancel: 'Cancel listing', transfer: 'Transfer tokens' }[kind];
 }
 
+export function fungibleWorkingIntro(kind: FungibleOperation['kind'], listings: number, signed: boolean) {
+  if (!signed) {
+    if (kind === 'buy') {
+      const transactions = listings === 1 ? 'the reservation and seller payment' : `${listings} reservations and seller payments`;
+      return `Preparing ${transactions} for wallet approval. Nothing has been submitted yet.`;
+    }
+    return `Preparing the ${operationLabel(kind).toLowerCase()} transaction for wallet approval. Nothing has been submitted yet.`;
+  }
+  if (kind === 'buy' && listings > 1) {
+    return `${listings} listings are settling independently. Switch between them below while every transaction continues in parallel.`;
+  }
+  return 'Signed. Now watching independent Arweave nodes agree on the transaction.';
+}
+
 function batchStageLabel(state?: PurchaseState) {
   if (!state) return 'Preparing';
   if (state.stage === 'complete') return 'Settled ✓';
@@ -1075,7 +2570,23 @@ function batchStageLabel(state?: PurchaseState) {
 }
 
 function activityLabel(action: CollectionActivityEvent['action']) {
-  return { 'make-offer': 'Listed tokens', 'register-interest': 'Reservation submitted', transfer: 'Tokens transferred', 'cancel-order': 'Listing cancelled' }[action];
+  return { 'make-offer': 'Token listing submitted', 'register-interest': 'Reservation submitted', transfer: 'Token transfer submitted', 'cancel-order': 'Cancellation submitted' }[action];
+}
+
+function activityDetail(event: CollectionActivityEvent, state: AssetState) {
+  if (event.action === 'make-offer') {
+    const quantity = event.quantity ? tokenLabel(event.quantity, state) : '';
+    const asking = event.asking ? `${winstonToAr(event.asking)} AR total` : '';
+    return [quantity, asking].filter(Boolean).join(' for ');
+  }
+  if (event.action === 'transfer') {
+    const quantity = event.quantity ? tokenLabel(event.quantity, state) : '';
+    const recipient = event.recipient ? `to ${short(event.recipient)}` : '';
+    return [quantity, recipient].filter(Boolean).join(' ');
+  }
+  if (event.action === 'register-interest' && event.orderId) return `Order ${short(event.orderId)}`;
+  if (event.action === 'cancel-order' && event.orderId) return `Order ${short(event.orderId)}`;
+  return '';
 }
 
 function formatTimestamp(timestamp: number) {
@@ -1087,14 +2598,9 @@ function short(value: string) {
 }
 
 function Loading({ label }: { label: string }) {
-  return <div className="loading"><span />{label}</div>;
+  return <div aria-live="polite" className="loading" role="status"><span aria-hidden="true" />{label}</div>;
 }
 
 function ErrorPanel({ message }: { message: string }) {
-  return <div className="error-panel"><strong>Unable to load</strong><span>{message}</span></div>;
-}
-
-function errorMessage(error: unknown) {
-  const value = error instanceof Error ? error.message : String(error);
-  return value.replaceAll('-', ' ');
+  return <div className="error-panel"><strong>Unable to load</strong><span aria-label={`Unable to load. ${message}`} role="alert">{message}</span></div>;
 }
