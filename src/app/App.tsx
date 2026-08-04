@@ -1583,7 +1583,9 @@ function Home() {
                         </div>
                         <div>
                           <span>{collection.hasMore ? 'Loaded floor' : 'Floor'}</span>
-                          <strong>
+                          <strong
+                            className={homeMarketSummaryListed(collectionFloors[collection.id]) ? 'listed' : undefined}
+                          >
                             {homeMarketSummaryLabel(
                               collectionFloors[collection.id],
                               collection.hasMore ? 'No loaded listings' : 'No live listings',

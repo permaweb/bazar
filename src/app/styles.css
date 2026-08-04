@@ -1125,6 +1125,9 @@ p {
   font-weight: 600;
   text-overflow: ellipsis;
 }
+.home-feature-stats strong.listed {
+  color: var(--positive-text);
+}
 .home-card-action {
   width: calc(100% - 36px);
   min-height: 35px;
