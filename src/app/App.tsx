@@ -7,16 +7,23 @@ import {
   BarChart3,
   Check,
   ChevronDown,
+  ChevronRight,
   CircleX,
+  Copy,
   Diamond,
+  Eye,
+  EyeOff,
   FileText,
   Grid2X2,
   History,
   Images,
   Info,
+  InfinityIcon,
   LayoutGrid,
   Layers3,
   Library,
+  LoaderCircle,
+  LogOut,
   RefreshCw,
   Search,
   Send,
@@ -75,9 +82,29 @@ import {
   readAssetState,
   normalizeServingNodeOrigin,
   servingNodeOrigin,
+  waitForAssetState,
   type AssetState,
   type SwapOrder,
 } from 'api/asset-marketplace';
+import {
+  AssetMintClient,
+  CollectionMintClient,
+  CREATED_COLLECTION_ID,
+  UDL_LICENSE_ID,
+  createdCollection,
+  discardMintDraft,
+  getMintDraft,
+  isHighMintCost,
+  loadMintedAssets,
+  loadMintedCollections,
+  type CollectionMintEstimate,
+  type CollectionMintPhase,
+  type MintDraft,
+  type MintEstimate,
+  type MintPhase,
+  type MintedAsset,
+  type UdlTerms,
+} from 'api/asset-mint';
 import { transactionExplorerUrl } from 'api/arweave-explorer';
 import { formatTokenAmount } from 'api/order-matching';
 import { ArweaveObserverNetwork } from 'api/arweave-observers';
@@ -150,6 +177,8 @@ type MarketContextValue = {
   error: string | null;
   notice: string | null;
   loadMore(collectionId: string, signal?: AbortSignal): Promise<number>;
+  addCreatedAsset(asset: MintedAsset): void;
+  addCollection(collection: Collection): void;
   retry(): void;
 };
 
@@ -159,6 +188,8 @@ const MarketContext = React.createContext<MarketContextValue>({
   error: null,
   notice: null,
   loadMore: async () => 0,
+  addCreatedAsset: () => undefined,
+  addCollection: () => undefined,
   retry: () => undefined,
 });
 
@@ -170,6 +201,8 @@ export function App() {
     error: null,
     notice: null,
     loadMore: async () => 0,
+    addCreatedAsset: () => undefined,
+    addCollection: () => undefined,
     retry: () => undefined,
   });
   React.useEffect(() => {
@@ -185,15 +218,25 @@ export function App() {
     }).then(
       ({ collections, unavailable }) => {
         if (controller.signal.aborted) return;
-        setMarket((current) => ({
-          ...current,
-          collections: mergeCollectionSnapshots(current.collections, collections, true),
-          loading: false,
-          error: null,
-          notice: unavailable.length
-            ? `The latest Arweave references for ${unavailable.join(', ')} could not be checked. Showing their bundled immutable indexes; ownership, listings, and prices are still verified from live state.`
-            : null,
-        }));
+        const mintedAssets = loadMintedAssets();
+        const localCollections = loadMintedCollections();
+        setMarket((current) => {
+          const resolved = mergeCollectionSnapshots(current.collections, collections, true);
+          const known = new Set(resolved.map((collection) => collection.id));
+          return {
+            ...current,
+            collections: [
+              ...resolved,
+              ...localCollections.filter((collection) => !known.has(collection.id)),
+              ...(mintedAssets.length && !known.has(CREATED_COLLECTION_ID) ? [createdCollection(mintedAssets)] : []),
+            ],
+            loading: false,
+            error: null,
+            notice: unavailable.length
+              ? `The latest Arweave references for ${unavailable.join(', ')} could not be checked. Showing their bundled immutable indexes; ownership, listings, and prices are still verified from live state.`
+              : null,
+          };
+        });
       },
       (error) => {
         if (!controller.signal.aborted) {
@@ -239,8 +282,30 @@ export function App() {
     },
     [market.collections],
   );
+  const addCreatedAsset = React.useCallback((asset: MintedAsset) => {
+    setMarket((current) => {
+      const existing = current.collections.find((item) => item.id === CREATED_COLLECTION_ID);
+      const assets = [asset, ...(existing?.assets ?? []).filter((item) => item.id !== asset.id)];
+      const created = createdCollection(assets);
+      return {
+        ...current,
+        collections: existing
+          ? current.collections.map((item) => (item.id === CREATED_COLLECTION_ID ? created : item))
+          : [...current.collections, created],
+      };
+    });
+  }, []);
+  const addCollection = React.useCallback((collection: Collection) => {
+    setMarket((current) => ({
+      ...current,
+      collections: [collection, ...current.collections.filter((item) => item.id !== collection.id)],
+    }));
+  }, []);
   const retry = React.useCallback(() => setMarketRetry((current) => current + 1), []);
-  const value = React.useMemo(() => ({ ...market, loadMore, retry }), [loadMore, market, retry]);
+  const value = React.useMemo(
+    () => ({ ...market, loadMore, addCreatedAsset, addCollection, retry }),
+    [addCollection, addCreatedAsset, loadMore, market, retry],
+  );
 
   return (
     <MarketContext.Provider value={value}>
@@ -262,6 +327,7 @@ export function App() {
         <main aria-label="Marketplace content" id="main-content" tabIndex={-1}>
           <Routes>
             <Route path="/" element={<Home />} />
+            <Route path="/create" element={<CreateView />} />
             <Route path="/my-assets" element={<MyAssetsView />} />
             <Route path="/collection/:collectionId" element={<CollectionRoute />} />
             <Route path="/collection/:collectionId/activity" element={<CollectionActivityView />} />
@@ -499,7 +565,6 @@ function Header() {
           <span className="brand-mark">
             <BazarMark />
           </span>
-          <span className="brand-name">Bazar</span>
           <small>2.0</small>
         </Link>
         <form className={`site-search${searchOpen ? ' expanded' : ''}`} role="search" onSubmit={submitSearch}>
@@ -521,13 +586,24 @@ function Header() {
         </form>
         <nav className="site-nav">
           <div className="site-nav-primary">
+            <Link
+              aria-label="Create asset"
+              aria-current={location.pathname === '/create' ? 'page' : undefined}
+              className={`create-link${location.pathname === '/create' ? ' active' : ''}`}
+              data-tooltip="Create asset"
+              to="/create"
+            >
+              <Upload className="ui-icon ui-icon--sm" aria-hidden="true" />
+            </Link>
             {wallet.address ? (
               <Link
                 aria-current={location.pathname === '/my-assets' ? 'page' : undefined}
                 className={`my-assets-link${location.pathname === '/my-assets' ? ' active' : ''}`}
+                aria-label="My assets"
+                data-tooltip="My assets"
                 to="/my-assets"
               >
-                <Library className="ui-icon ui-icon--sm" aria-hidden="true" /> My assets
+                <Library className="ui-icon ui-icon--sm" aria-hidden="true" />
               </Link>
             ) : null}
             <GatewayControl />
@@ -576,7 +652,7 @@ function Header() {
                     : 'Disconnecting…'
                   : wallet.address
                     ? short(wallet.address)
-                    : 'Connect wallet'}
+                    : 'Connect'}
               </span>
             </button>
             {walletError ? (
@@ -835,6 +911,29 @@ function NamesCubePreview() {
   );
 }
 
+function NameAssetArtwork({
+  name,
+  className = '',
+  showCube = true,
+}: {
+  name: string;
+  className?: string;
+  showCube?: boolean;
+}) {
+  const characterCount = Math.max(1, Array.from(name.trim()).length);
+  const fontScale = Math.max(3.5, Math.min(18, 138 / characterCount));
+  return (
+    <span
+      className={`name-asset-artwork${className ? ` ${className}` : ''}`}
+      style={{ '--name-font-cqw': fontScale } as React.CSSProperties}
+      aria-hidden="true"
+    >
+      <strong>{name}</strong>
+      {showCube ? <img src={arweaveNamesCube} alt="" /> : null}
+    </span>
+  );
+}
+
 export type HomeMarketSummary =
   | { status: 'resolved'; value: string | null }
   | { status: 'unindexed' }
@@ -1004,9 +1103,17 @@ function homeMarketSummaryListed(summary: HomeMarketSummary | undefined) {
   return summary?.status === 'resolved' && Boolean(summary.value);
 }
 
+export function homeMarketPriceValue(value: string | null | undefined) {
+  if (!value) return Number.POSITIVE_INFINITY;
+  const match = value.replace(/,/g, '').match(/^([0-9]+(?:\.[0-9]+)?)\s+AR(?:\s*\/|$)/);
+  const parsed = Number(match?.[1]);
+  return Number.isFinite(parsed) ? parsed : Number.POSITIVE_INFINITY;
+}
+
 function Home() {
   const market = React.useContext(MarketContext);
   const { search } = useLocation();
+  const [assetView, setAssetView] = React.useState<'listed' | 'price-low' | 'price-high'>('listed');
   const computeGateway = gatewayFromLocation();
   const query = new URLSearchParams(search).get('q') ?? '';
   const normalizedQuery = query.trim().toLowerCase();
@@ -1333,201 +1440,233 @@ function Home() {
       }
     });
   }, [summaryFailures.length, summaryRetrying]);
+  const displayedAssets = [...assets]
+    .filter(({ asset }) => {
+      const summary = assetPrices[asset.id];
+      return !summary || summary.status === 'unavailable' || homeMarketSummaryListed(summary);
+    })
+    .sort((left, right) => {
+      if (assetView === 'listed') return 0;
+      const price = (assetId: string) => {
+        const summary = assetPrices[assetId];
+        if (!summary || summary.status !== 'resolved' || !summary.value) return Number.POSITIVE_INFINITY;
+        return homeMarketPriceValue(summary.value);
+      };
+      const leftPrice = price(left.asset.id);
+      const rightPrice = price(right.asset.id);
+      if (Number.isFinite(leftPrice) !== Number.isFinite(rightPrice)) {
+        return Number.isFinite(leftPrice) ? -1 : 1;
+      }
+      return assetView === 'price-low' ? leftPrice - rightPrice : rightPrice - leftPrice;
+    });
   return (
     <div className="home-shell">
       <div className="home-main">
         <div className="home-content">
-          <section className="home-section" id="featured">
-            <div className="home-section-heading">
-              <div>
-                <p className="eyebrow home-market-eyebrow">ARWEAVE-NATIVE MARKETPLACE</p>
-                <h1 ref={homeHeadingRef} tabIndex={-1}>
-                  Collections
-                </h1>
-                <p>Permanent assets with ownership and settlement native to Arweave.</p>
-              </div>
-            </div>
-            {market.loading ? <Loading label="Loading collection indexes from Arweave…" /> : null}
-            {market.error ? (
-              <ErrorPanel message={market.error} onRetry={market.retry} retryLabel="Retry collections" />
-            ) : null}
-            {market.notice ? (
-              <div className="collection-source-notice">
-                <span role="status">{market.notice}</span>
-                <button
-                  aria-disabled={market.loading}
-                  className="with-icon"
-                  type="button"
-                  onClick={() => {
-                    if (!market.loading) market.retry();
-                  }}
-                >
-                  <RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" />
-                  {market.loading ? 'Checking indexes…' : 'Retry indexes'}
-                </button>
-              </div>
-            ) : null}
-            {partialTokenCollection ? (
-              <div className="collection-source-notice">
-                <span role="status">
-                  Search covers {partialTokenCollection.assets.length.toLocaleString()} of{' '}
-                  {(partialTokenCollection.total ?? partialTokenCollection.assets.length).toLocaleString()} discovered
-                  token records currently loaded.
-                </span>
-                <Link
-                  className="with-icon"
-                  to={`/collection/${partialTokenCollection.id}?q=${encodeURIComponent(query.trim())}`}
-                >
-                  Continue token search
-                  <ArrowRight className="ui-icon ui-icon--xs" aria-hidden="true" />
-                </Link>
-              </div>
-            ) : null}
-            {summaryFailures.length ? (
-              <div className="collection-source-notice">
-                <span role="status">
-                  {summaryRetrying ? 'Rechecking unfinished market data.' : summaryFailureMessage}
-                </span>
-                <button
-                  aria-busy={summaryRetrying}
-                  aria-disabled={summaryRetrying}
-                  className="with-icon"
-                  onBlur={(event) => {
-                    if (summaryRetrying && event.relatedTarget) summaryRetryOwnsFocus.current = false;
-                  }}
-                  onClick={() => {
-                    if (summaryRetrying) return;
-                    summaryRetryOwnsFocus.current = true;
-                    retryMarketSummaries();
-                  }}
-                  ref={summaryRetryButtonRef}
-                  type="button"
-                >
-                  <RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" />{' '}
-                  {summaryRetrying ? 'Retrying…' : 'Retry market data'}
-                </button>
-              </div>
-            ) : null}
-            <div className="home-feature-grid">
-              {collections.map((collection, index) => {
-                const image = collection.assets.find((asset) => asset.image)?.image;
-                return (
-                  <Link
-                    className={`home-feature-card feature-${index}`}
-                    key={collection.id}
-                    to={`/collection/${collection.id}`}
-                  >
-                    <div className="home-feature-art">
-                      {image ? (
-                        <ArtworkImage
-                          src={image}
-                          alt=""
-                          loading="eager"
-                          fallback={
-                            <span className="home-image-collection-fallback" aria-hidden="true">
-                              <BazarMark />
-                              <strong>{collection.name.replace(/^\[TEST\]\s*/, '')}</strong>
-                              <small>Permanent image collection</small>
-                            </span>
-                          }
-                        />
-                      ) : collection.kind === 'names' ? (
-                        <NamesCubePreview />
-                      ) : collection.kind === 'tokens' ? (
-                        <TokenArtwork
-                          className="home-token-collection-art"
-                          ticker={collection.assets[0]?.ticker ?? 'TOKEN'}
-                        />
-                      ) : (
-                        <div className="home-name-art">
-                          <BazarMark />
-                          <span>AR</span>
-                        </div>
-                      )}
-                      <div className="home-feature-glow" />
-                    </div>
-                    <div className="home-feature-copy">
-                      <p>{collectionKindLabel(collection)}</p>
-                      <h2>{collection.name}</h2>
-                      <span>{collection.description}</span>
-                    </div>
-                    <div className="home-feature-stats">
-                      <div>
-                        <span>{collection.kind === 'names' && collection.hasMore ? 'Loaded' : 'Assets'}</span>
-                        <strong>{(collection.total ?? collection.assets.length).toLocaleString()}</strong>
-                      </div>
-                      <div>
-                        <span>Type</span>
-                        <strong>
-                          {collection.kind === 'names' ? 'Names' : collection.kind === 'tokens' ? 'Tokens' : 'Images'}
-                        </strong>
-                      </div>
-                      <div>
-                        <span>{collection.hasMore ? 'Loaded floor' : 'Floor'}</span>
-                        <strong>
-                          {homeMarketSummaryLabel(
-                            collectionFloors[collection.id],
-                            collection.hasMore ? 'No loaded listings' : 'No live listings',
-                            collection.hasMore ? 'No loaded asks' : 'No indexed asks',
-                          )}
-                        </strong>
-                      </div>
-                    </div>
-                    <strong className="home-card-action">
-                      Open collection
-                      <span>
-                        <ArrowUpRight className="ui-icon ui-icon--xs" aria-hidden="true" />
-                      </span>
-                    </strong>
-                  </Link>
-                );
-              })}
-            </div>
-            {!market.loading && !market.error && collections.length === 0 ? (
-              <div className="home-no-results">No collections match “{query}”.</div>
-            ) : null}
-          </section>
-
-          {assets.length ? (
-            <section className="home-section home-assets" id="assets">
+          <div className="home-market-layout">
+            <section className="home-section" id="featured">
               <div className="home-section-heading">
                 <div>
-                  <h2>Discover assets</h2>
-                  <p>
-                    {normalizedQuery
-                      ? `Results for “${query}” across the current Arweave collection indexes.`
-                      : 'Individual assets from the latest permanent collection indexes.'}
-                  </p>
+                  <h1 ref={homeHeadingRef} tabIndex={-1}>
+                    Collections
+                  </h1>
+                  <p>Permanent assets with ownership and settlement native to Arweave.</p>
                 </div>
               </div>
-              <div className="home-asset-grid">
-                {assets.map(({ asset, collection }) => (
-                  <Link key={`${collection.id}-${asset.id}`} to={`/asset/${collection.id}/${asset.id}`}>
-                    {asset.image ? (
-                      <ArtworkImage src={asset.image} alt="" />
-                    ) : collection.kind === 'names' ? (
-                      <span className="home-name-asset-art" aria-hidden="true">
-                        {asset.name.slice(0, 1).toUpperCase()}
-                      </span>
-                    ) : (
-                      <TokenArtwork className="home-token-art" ticker={asset.ticker ?? 'TOKEN'} />
-                    )}
-                    <div className="home-asset-details">
-                      <div>
-                        <strong>{asset.name}</strong>
-                        <span>{collection.name}</span>
-                      </div>
-                      <b
-                        className={`home-asset-price${homeMarketSummaryListed(assetPrices[asset.id]) ? ' listed' : ''}`}
-                      >
-                        {homeMarketSummaryLabel(assetPrices[asset.id], 'Not listed')}
-                      </b>
-                    </div>
+              {market.loading ? <Loading label="Loading collection indexes from Arweave…" /> : null}
+              {market.error ? (
+                <ErrorPanel message={market.error} onRetry={market.retry} retryLabel="Retry collections" />
+              ) : null}
+              {market.notice ? (
+                <div className="collection-source-notice">
+                  <span role="status">{market.notice}</span>
+                  <button
+                    aria-disabled={market.loading}
+                    className="with-icon"
+                    type="button"
+                    onClick={() => {
+                      if (!market.loading) market.retry();
+                    }}
+                  >
+                    <RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" />
+                    {market.loading ? 'Checking indexes…' : 'Retry indexes'}
+                  </button>
+                </div>
+              ) : null}
+              {partialTokenCollection ? (
+                <div className="collection-source-notice">
+                  <span role="status">
+                    Search covers {partialTokenCollection.assets.length.toLocaleString()} of{' '}
+                    {(partialTokenCollection.total ?? partialTokenCollection.assets.length).toLocaleString()} discovered
+                    token records currently loaded.
+                  </span>
+                  <Link
+                    className="with-icon"
+                    to={`/collection/${partialTokenCollection.id}?q=${encodeURIComponent(query.trim())}`}
+                  >
+                    Continue token search
+                    <ArrowRight className="ui-icon ui-icon--xs" aria-hidden="true" />
                   </Link>
-                ))}
+                </div>
+              ) : null}
+              {summaryFailures.length ? (
+                <div className="collection-source-notice">
+                  <span role="status">
+                    {summaryRetrying ? 'Rechecking unfinished market data.' : summaryFailureMessage}
+                  </span>
+                  <button
+                    aria-busy={summaryRetrying}
+                    aria-disabled={summaryRetrying}
+                    className="with-icon"
+                    onBlur={(event) => {
+                      if (summaryRetrying && event.relatedTarget) summaryRetryOwnsFocus.current = false;
+                    }}
+                    onClick={() => {
+                      if (summaryRetrying) return;
+                      summaryRetryOwnsFocus.current = true;
+                      retryMarketSummaries();
+                    }}
+                    ref={summaryRetryButtonRef}
+                    type="button"
+                  >
+                    <RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" />{' '}
+                    {summaryRetrying ? 'Retrying…' : 'Retry market data'}
+                  </button>
+                </div>
+              ) : null}
+              <div className="home-feature-grid">
+                {collections.map((collection, index) => {
+                  const image = collection.assets.find((asset) => asset.image)?.image;
+                  return (
+                    <Link
+                      className={`home-feature-card feature-${index}`}
+                      key={collection.id}
+                      to={`/collection/${collection.id}`}
+                    >
+                      <div className="home-feature-art">
+                        {image ? (
+                          <ArtworkImage
+                            src={image}
+                            alt=""
+                            loading="eager"
+                            fallback={
+                              <span className="home-image-collection-fallback" aria-hidden="true">
+                                <BazarMark />
+                                <strong>{collection.name.replace(/^\[TEST\]\s*/, '')}</strong>
+                                <small>Permanent image collection</small>
+                              </span>
+                            }
+                          />
+                        ) : collection.kind === 'names' ? (
+                          <NamesCubePreview />
+                        ) : collection.kind === 'tokens' ? (
+                          <TokenArtwork
+                            className="home-token-collection-art"
+                            ticker={collection.assets[0]?.ticker ?? 'TOKEN'}
+                          />
+                        ) : (
+                          <div className="home-name-art">
+                            <BazarMark />
+                            <span>AR</span>
+                          </div>
+                        )}
+                        <div className="home-feature-glow" />
+                      </div>
+                      <div className="home-feature-copy">
+                        <p>{collectionKindLabel(collection)}</p>
+                        <h2>{collection.name}</h2>
+                        <span>{collection.description}</span>
+                      </div>
+                      <div className="home-feature-stats">
+                        <div>
+                          <span>{collection.kind === 'names' && collection.hasMore ? 'Loaded' : 'Assets'}</span>
+                          <strong>{(collection.total ?? collection.assets.length).toLocaleString()}</strong>
+                        </div>
+                        <div>
+                          <span>Type</span>
+                          <strong>
+                            {collection.kind === 'names' ? 'Names' : collection.kind === 'tokens' ? 'Tokens' : 'Images'}
+                          </strong>
+                        </div>
+                        <div>
+                          <span>{collection.hasMore ? 'Loaded floor' : 'Floor'}</span>
+                          <strong>
+                            {homeMarketSummaryLabel(
+                              collectionFloors[collection.id],
+                              collection.hasMore ? 'No loaded listings' : 'No live listings',
+                              collection.hasMore ? 'No loaded asks' : 'No indexed asks',
+                            )}
+                          </strong>
+                        </div>
+                      </div>
+                      <strong className="home-card-action">
+                        Open collection
+                        <span>
+                          <ArrowUpRight className="ui-icon ui-icon--xs" aria-hidden="true" />
+                        </span>
+                      </strong>
+                    </Link>
+                  );
+                })}
               </div>
+              {!market.loading && !market.error && collections.length === 0 ? (
+                <div className="home-no-results">No collections match “{query}”.</div>
+              ) : null}
             </section>
-          ) : null}
+
+            {assets.length ? (
+              <section className="home-section home-assets" id="assets">
+                <div className="home-section-heading">
+                  <div>
+                    <h2>Discover assets</h2>
+                    <p>
+                      {normalizedQuery
+                        ? `Results for “${query}” across the current Arweave collection indexes.`
+                        : 'Verified active listings across every marketplace collection.'}
+                    </p>
+                  </div>
+                  <MarketSelect<'listed' | 'price-low' | 'price-high'>
+                    label="View"
+                    onChange={setAssetView}
+                    options={[
+                      { value: 'listed', label: 'Listed for sale' },
+                      { value: 'price-low', label: 'Price: low to high' },
+                      { value: 'price-high', label: 'Price: high to low' },
+                    ]}
+                    value={assetView}
+                  />
+                </div>
+                <div className="home-asset-grid">
+                  {displayedAssets.map(({ asset, collection }) => (
+                    <Link key={`${collection.id}-${asset.id}`} to={`/asset/${collection.id}/${asset.id}`}>
+                      {asset.image ? (
+                        <ArtworkImage className="home-asset-media" src={asset.image} alt="" />
+                      ) : collection.kind === 'names' ? (
+                        <NameAssetArtwork
+                          className="home-asset-media name-asset-artwork--card"
+                          name={asset.name}
+                          showCube={false}
+                        />
+                      ) : (
+                        <TokenArtwork className="home-asset-media home-token-art" ticker={asset.ticker ?? 'TOKEN'} />
+                      )}
+                      <div className="home-asset-details">
+                        <div>
+                          <strong>{asset.name}</strong>
+                          <span>{collection.name}</span>
+                        </div>
+                        <b
+                          className={`home-asset-price${homeMarketSummaryListed(assetPrices[asset.id]) ? ' listed' : ''}`}
+                        >
+                          {homeMarketSummaryLabel(assetPrices[asset.id], 'Not listed')}
+                        </b>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              </section>
+            ) : null}
+          </div>
         </div>
       </div>
     </div>
@@ -1588,7 +1727,8 @@ function GatewayControl() {
         role="button"
         title={current}
       >
-        <Server className="ui-icon ui-icon--sm" aria-hidden="true" /> Compute gateway
+        <Server className="ui-icon ui-icon--sm" aria-hidden="true" />
+        <span className="gateway-label">Compute gateway</span>
       </summary>
       <div id="compute-gateway-panel">
         <form onSubmit={apply}>
@@ -1630,11 +1770,13 @@ function MarketSelect<Value extends string>({
   value,
   options,
   onChange,
+  showLabel = true,
 }: {
   label: string;
   value: Value;
   options: readonly MarketSelectOption<Value>[];
   onChange(value: Value): void;
+  showLabel?: boolean;
 }) {
   const [open, setOpen] = React.useState(false);
   const rootRef = React.useRef<HTMLDivElement>(null);
@@ -1699,7 +1841,7 @@ function MarketSelect<Value extends string>({
       }}
       ref={rootRef}
     >
-      <span className="market-select-label">{label}</span>
+      {showLabel ? <span className="market-select-label">{label}</span> : null}
       <button
         aria-controls={menuId}
         aria-expanded={open}
@@ -3717,6 +3859,799 @@ function initialWalletResolutionStatus(): WalletResolutionStatus {
     indexRateLimited: 0,
     error: null,
   };
+}
+
+type UdlGrantValue = NonNullable<UdlTerms['derivation'] | UdlTerms['commercialUse'] | UdlTerms['dataModelTraining']>;
+
+function UdlGrantField({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value?: UdlGrantValue;
+  options: Array<[string, string]>;
+  onChange: (value: UdlGrantValue | undefined) => void;
+}) {
+  const needsValue = value && ['revenue-share', 'one-time', 'monthly'].includes(value.grant);
+  return (
+    <div className={needsValue ? 'udl-field udl-grant-field has-value' : 'udl-field udl-grant-field'}>
+      <div className={needsValue ? 'udl-field-control with-value' : 'udl-field-control'}>
+        <MarketSelect
+          label={label}
+          value={value?.grant ?? ''}
+          options={[
+            { value: '', label: 'Not granted' },
+            ...options.map(([optionValue, optionLabel]) => ({ value: optionValue, label: optionLabel })),
+          ]}
+          onChange={(grant) => {
+            if (!grant) return onChange(undefined);
+            onChange({
+              grant: grant as UdlGrantValue['grant'],
+              ...(['one-time', 'monthly'].includes(grant)
+                ? { value: '1' }
+                : grant === 'revenue-share'
+                  ? { value: '10' }
+                  : {}),
+            });
+          }}
+        />
+        {needsValue ? (
+          <label className="udl-value">
+            <span>{value.grant === 'revenue-share' ? 'Percent' : 'Amount'}</span>
+            <input
+              aria-label={`${label} ${value.grant === 'revenue-share' ? 'percentage' : 'fee amount'}`}
+              inputMode="decimal"
+              min="0.000000000001"
+              max={value.grant === 'revenue-share' ? '100' : undefined}
+              step="any"
+              type="number"
+              value={value.value ?? '1'}
+              onChange={(event) => onChange({ ...value, value: event.target.value || '1' })}
+            />
+          </label>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function CreateView() {
+  const market = React.useContext(MarketContext);
+  const wallet = useWallet();
+  const navigate = useNavigate();
+  const fileInput = React.useRef<HTMLInputElement>(null);
+  const [mode, setMode] = React.useState<'asset' | 'collection'>('asset');
+  const [name, setName] = React.useState('');
+  const [description, setDescription] = React.useState('');
+  const [file, setFile] = React.useState<File | null>(null);
+  const [collectionFiles, setCollectionFiles] = React.useState<File[]>([]);
+  const [preview, setPreview] = React.useState('');
+  const [collectionPreviews, setCollectionPreviews] = React.useState<string[]>([]);
+  const [estimate, setEstimate] = React.useState<MintEstimate | null>(null);
+  const [collectionEstimate, setCollectionEstimate] = React.useState<CollectionMintEstimate | null>(null);
+  const [estimating, setEstimating] = React.useState(false);
+  const [allowHighCost, setAllowHighCost] = React.useState(false);
+  const [udlEnabled, setUdlEnabled] = React.useState(true);
+  const [udlTerms, setUdlTerms] = React.useState<UdlTerms>({});
+  const [phase, setPhase] = React.useState<MintPhase | null>(null);
+  const [collectionPhase, setCollectionPhase] = React.useState<CollectionMintPhase | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+  const [result, setResult] = React.useState<MintedAsset | null>(null);
+  const [resultReady, setResultReady] = React.useState(false);
+  const [collectionResult, setCollectionResult] = React.useState<Collection | null>(null);
+  const [draft, setDraft] = React.useState<MintDraft | null>(() =>
+    wallet.address ? getMintDraft(wallet.address) : null,
+  );
+  const activeUdl = udlEnabled ? udlTerms : undefined;
+  const hasUdlPayment = Boolean(
+    activeUdl?.accessFee ||
+    ['revenue-share', 'one-time', 'monthly'].includes(activeUdl?.derivation?.grant ?? '') ||
+    ['revenue-share', 'one-time', 'monthly'].includes(activeUdl?.commercialUse?.grant ?? '') ||
+    ['one-time', 'monthly'].includes(activeUdl?.dataModelTraining?.grant ?? ''),
+  );
+
+  React.useEffect(() => {
+    setDraft(wallet.address ? getMintDraft(wallet.address) : null);
+  }, [wallet.address]);
+  React.useEffect(() => {
+    if (!file) {
+      setPreview('');
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    setPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
+  React.useEffect(() => {
+    const urls = collectionFiles.map((item) => URL.createObjectURL(item));
+    setCollectionPreviews(urls);
+    return () => urls.forEach((url) => URL.revokeObjectURL(url));
+  }, [collectionFiles]);
+  React.useEffect(() => {
+    setResultReady(false);
+    if (!result) return;
+    const controller = new AbortController();
+    void waitForAssetState(result.id, () => true, {
+      signal: controller.signal,
+      interval: 4000,
+      timeout: 0,
+    }).then(
+      () => {
+        if (!controller.signal.aborted) setResultReady(true);
+      },
+      () => undefined,
+    );
+    return () => controller.abort();
+  }, [result]);
+  React.useEffect(() => {
+    if (mode !== 'asset' || !file || !name.trim()) {
+      setEstimate(null);
+      return;
+    }
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      setEstimating(true);
+      setError(null);
+      void new AssetMintClient()
+        .estimate({ file, name, description, udl: activeUdl }, controller.signal)
+        .then(
+          (nextEstimate) => {
+            if (!controller.signal.aborted) setEstimate(nextEstimate);
+          },
+          (cause) => {
+            if (!controller.signal.aborted) setError(mintErrorMessage(cause));
+          },
+        )
+        .finally(() => {
+          if (!controller.signal.aborted) setEstimating(false);
+        });
+    }, 250);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [activeUdl, description, file, mode, name]);
+  React.useEffect(() => {
+    if (mode !== 'collection' || !collectionFiles.length || !name.trim()) {
+      setCollectionEstimate(null);
+      return;
+    }
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      setEstimating(true);
+      setError(null);
+      void new CollectionMintClient()
+        .estimate({ files: collectionFiles, name, description, udl: activeUdl }, controller.signal)
+        .then(
+          (nextEstimate) => {
+            if (!controller.signal.aborted) setCollectionEstimate(nextEstimate);
+          },
+          (cause) => {
+            if (!controller.signal.aborted) setError(mintErrorMessage(cause));
+          },
+        )
+        .finally(() => {
+          if (!controller.signal.aborted) setEstimating(false);
+        });
+    }, 250);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [activeUdl, collectionFiles, description, mode, name]);
+
+  const selectFile = (next: File | null) => {
+    setFile(next);
+    setEstimate(null);
+    setAllowHighCost(false);
+    setError(null);
+    setResult(null);
+    if (next && !name.trim()) setName(next.name.replace(/\.[^.]+$/, '').slice(0, 80));
+  };
+  const selectCollectionFiles = (next: File[]) => {
+    setCollectionFiles(next.slice(0, 10));
+    setCollectionEstimate(null);
+    setAllowHighCost(false);
+    setError(next.length > 10 ? 'Collections support up to 10 images at a time.' : null);
+    setCollectionResult(null);
+  };
+  const completeMint = (asset: MintedAsset) => {
+    market.addCreatedAsset(asset);
+    setResult(asset);
+    setDraft(null);
+    setPhase(null);
+  };
+  const mint = async () => {
+    if (!wallet.address) {
+      try {
+        await wallet.connect();
+      } catch (cause) {
+        setError(mintErrorMessage(cause));
+      }
+      return;
+    }
+    if (mode === 'asset' && !file) return setError('Choose an image to continue.');
+    if (mode === 'collection' && !collectionFiles.length) return setError('Choose at least one collection image.');
+    setError(null);
+    setResult(null);
+    setCollectionResult(null);
+    try {
+      if (mode === 'collection') {
+        const minted = await new CollectionMintClient().mint(
+          { files: collectionFiles, name, description, udl: activeUdl },
+          wallet.address,
+          { allowHighCost, onPhase: setCollectionPhase },
+        );
+        market.addCollection(minted.collection);
+        setCollectionResult(minted.collection);
+        setCollectionPhase(null);
+        return;
+      }
+      if (!file) return;
+      const minted = await new AssetMintClient().mint({ file, name, description, udl: activeUdl }, wallet.address, {
+        allowHighCost,
+        onPhase: setPhase,
+      });
+      completeMint(minted.asset);
+    } catch (cause) {
+      setDraft(getMintDraft(wallet.address));
+      setPhase(null);
+      setError(mintErrorMessage(cause));
+    }
+  };
+  const resume = async () => {
+    if (!wallet.address || !draft) return;
+    setError(null);
+    try {
+      const minted = await new AssetMintClient().resume(draft, wallet.address, { onPhase: setPhase });
+      completeMint(minted.asset);
+    } catch (cause) {
+      setPhase(null);
+      setError(mintErrorMessage(cause));
+    }
+  };
+  const working = phase !== null || collectionPhase !== null;
+  const phaseLabel = collectionPhase
+    ? collectionPhase.kind === 'asset'
+      ? `Asset ${collectionPhase.index + 1} of ${collectionPhase.total}: ${
+          {
+            'signing-media': 'approve media upload',
+            'uploading-media': 'uploading media',
+            'signing-process': 'approve asset process',
+            'creating-process': 'creating asset',
+          }[collectionPhase.phase]
+        }…`
+      : `${collectionPhase.kind === 'manifest' ? 'Collection manifest' : 'Collection index'}: ${collectionPhase.phase}…`
+    : phase
+      ? {
+          'signing-media': 'Approve the media upload in your wallet…',
+          'uploading-media': 'Uploading media permanently…',
+          'signing-process': 'Approve the asset process in your wallet…',
+          'creating-process': 'Creating your one-of-one asset…',
+        }[phase]
+      : '';
+  const activeEstimate = mode === 'asset' ? estimate : collectionEstimate;
+
+  return (
+    <section className="create-page">
+      <div className="create-heading">
+        <div>
+          <p className="eyebrow">Create on Arweave</p>
+          <h1>Upload and mint</h1>
+        </div>
+        <p>
+          {mode === 'asset'
+            ? 'Your image and its one-of-one marketplace process are signed in your wallet and stored on Arweave.'
+            : 'Mint a group of one-of-one assets and publish their permanent, shareable collection index.'}
+        </p>
+      </div>
+
+      <div className="create-mode" role="tablist" aria-label="Create type">
+        <button
+          className={mode === 'asset' ? 'active' : undefined}
+          role="tab"
+          aria-selected={mode === 'asset'}
+          type="button"
+          onClick={() => {
+            setMode('asset');
+            setError(null);
+            setAllowHighCost(false);
+          }}
+        >
+          Single asset
+        </button>
+        <button
+          className={mode === 'collection' ? 'active' : undefined}
+          role="tab"
+          aria-selected={mode === 'collection'}
+          type="button"
+          onClick={() => {
+            setMode('collection');
+            setError(null);
+            setAllowHighCost(false);
+          }}
+        >
+          Collection
+        </button>
+      </div>
+
+      {mode === 'asset' && draft ? (
+        <div className="mint-recovery" role="status">
+          <div>
+            <strong>Finish your previous mint</strong>
+            <span>The media for “{draft.name}” is already permanent. Only the asset process remains.</span>
+          </div>
+          <div>
+            <button type="button" onClick={() => void resume()} disabled={working}>
+              Finish mint
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                discardMintDraft(draft.owner);
+                setDraft(null);
+              }}
+              disabled={working}
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      <div className="create-layout">
+        <div className="create-preview-column">
+          <button
+            className={`mint-dropzone${mode === 'asset' && preview ? ' has-file' : ''}${mode === 'collection' && collectionPreviews.length ? ' has-file collection-files' : ''}`}
+            type="button"
+            onClick={() => fileInput.current?.click()}
+            onDragOver={(event) => event.preventDefault()}
+            onDrop={(event) => {
+              event.preventDefault();
+              if (mode === 'collection') selectCollectionFiles(Array.from(event.dataTransfer.files ?? []));
+              else selectFile(event.dataTransfer.files?.[0] ?? null);
+            }}
+          >
+            {mode === 'collection' && collectionPreviews.length ? (
+              <span className="collection-preview-grid">
+                {collectionPreviews.slice(0, 6).map((url, index) => (
+                  <span key={`${collectionFiles[index]?.name}-${index}`}>
+                    <img src={url} alt="" />
+                    <small>{index + 1}</small>
+                  </span>
+                ))}
+                {collectionPreviews.length > 6 ? <strong>+{collectionPreviews.length - 6}</strong> : null}
+              </span>
+            ) : mode === 'asset' && preview ? (
+              <img src={preview} alt="Asset preview" />
+            ) : (
+              <span>
+                <Upload aria-hidden="true" />
+                <strong>{mode === 'asset' ? 'Choose an image' : 'Choose collection images'}</strong>
+                <small>
+                  PNG, JPG, WebP, or GIF · up to 10 MB each{mode === 'collection' ? ' · 10 images maximum' : ''}
+                </small>
+              </span>
+            )}
+          </button>
+          <input
+            ref={fileInput}
+            className="mint-file-input"
+            type="file"
+            multiple={mode === 'collection'}
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            onChange={(event) => {
+              if (mode === 'collection') selectCollectionFiles(Array.from(event.target.files ?? []));
+              else selectFile(event.target.files?.[0] ?? null);
+            }}
+          />
+          {mode === 'asset' && file ? (
+            <div className="mint-file-meta">
+              <span>{file.name}</span>
+              <strong>{formatBytes(file.size)}</strong>
+            </div>
+          ) : null}
+          {mode === 'collection' && collectionFiles.length ? (
+            <div className="collection-file-list">
+              {collectionFiles.map((item, index) => (
+                <div key={`${item.name}-${item.size}-${index}`}>
+                  <span>
+                    <strong>{index + 1}</strong>
+                    {item.name.replace(/\.[^.]+$/, '')}
+                  </span>
+                  <button
+                    type="button"
+                    aria-label={`Remove ${item.name}`}
+                    onClick={() => selectCollectionFiles(collectionFiles.filter((_, heldIndex) => heldIndex !== index))}
+                  >
+                    <X className="ui-icon ui-icon--sm" aria-hidden="true" />
+                  </button>
+                </div>
+              ))}
+              <button type="button" onClick={() => fileInput.current?.click()}>
+                <Upload className="ui-icon ui-icon--sm" aria-hidden="true" /> Add images
+              </button>
+            </div>
+          ) : null}
+        </div>
+
+        <form
+          className="create-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void mint();
+          }}
+        >
+          <div className="create-field">
+            <label htmlFor="mint-name">{mode === 'asset' ? 'Name' : 'Collection name'}</label>
+            <input
+              id="mint-name"
+              maxLength={80}
+              placeholder={mode === 'asset' ? 'Name your asset' : 'Name your collection'}
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+            />
+            <span>{name.length} / 80</span>
+          </div>
+          <div className="create-field">
+            <label htmlFor="mint-description">
+              {mode === 'asset' ? 'Description' : 'Collection description'} <small>Optional</small>
+            </label>
+            <textarea
+              id="mint-description"
+              maxLength={600}
+              placeholder={mode === 'asset' ? 'Tell collectors about this work' : 'Describe this collection'}
+              rows={5}
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+            />
+            <span>{description.length} / 600</span>
+          </div>
+
+          <section className="create-license" aria-labelledby="mint-license-heading">
+            <div className="create-license-heading">
+              <div>
+                <strong id="mint-license-heading">Usage rights</strong>
+                <span>
+                  Attach permanent, machine-readable terms to {mode === 'asset' ? 'this asset' : 'every asset'}.
+                </span>
+              </div>
+              <MarketSelect<'udl' | 'none'>
+                label="License"
+                value={udlEnabled ? 'udl' : 'none'}
+                options={[
+                  { value: 'udl', label: 'Universal Data License 0.2' },
+                  { value: 'none', label: 'No license tags' },
+                ]}
+                onChange={(value) => {
+                  setUdlEnabled(value === 'udl');
+                  setEstimate(null);
+                  setCollectionEstimate(null);
+                  setError(null);
+                }}
+                showLabel={false}
+              />
+            </div>
+
+            {udlEnabled ? (
+              <div className="udl-options">
+                <p>
+                  Free access is the default. Rights not granted below remain reserved.{' '}
+                  <a href={`https://arweave.net/${UDL_LICENSE_ID}`} target="_blank" rel="noreferrer">
+                    Read UDL 0.2 <ArrowUpRight className="ui-icon ui-icon--sm" aria-hidden="true" />
+                  </a>
+                </p>
+                <div className="udl-grid">
+                  <div className="udl-field">
+                    <div className={udlTerms.accessFee ? 'udl-field-control with-value' : 'udl-field-control'}>
+                      <MarketSelect<'free' | 'one-time'>
+                        label="Access"
+                        value={udlTerms.accessFee ? 'one-time' : 'free'}
+                        options={[
+                          { value: 'free', label: 'Free' },
+                          { value: 'one-time', label: 'One-time fee' },
+                        ]}
+                        onChange={(value) =>
+                          setUdlTerms((current) => ({
+                            ...current,
+                            accessFee: value === 'one-time' ? '1' : undefined,
+                          }))
+                        }
+                      />
+                      {udlTerms.accessFee ? (
+                        <label className="udl-value">
+                          <span>Amount</span>
+                          <input
+                            aria-label="Access fee amount"
+                            inputMode="decimal"
+                            min="0.000000000001"
+                            step="any"
+                            type="number"
+                            value={udlTerms.accessFee}
+                            onChange={(event) =>
+                              setUdlTerms((current) => ({ ...current, accessFee: event.target.value || '1' }))
+                            }
+                          />
+                        </label>
+                      ) : null}
+                    </div>
+                  </div>
+                  <UdlGrantField
+                    label="Derivatives"
+                    value={udlTerms.derivation}
+                    options={[
+                      ['allowed', 'Allowed'],
+                      ['credit', 'Allowed with credit'],
+                      ['indication', 'Allowed with change indication'],
+                      ['license-passthrough', 'Allowed with license passthrough'],
+                      ['revenue-share', 'Allowed with revenue share'],
+                      ['one-time', 'Allowed with one-time fee'],
+                      ['monthly', 'Allowed with monthly fee'],
+                    ]}
+                    onChange={(value) =>
+                      setUdlTerms((current) => ({ ...current, derivation: value as UdlTerms['derivation'] }))
+                    }
+                  />
+                  <UdlGrantField
+                    label="Commercial use"
+                    value={udlTerms.commercialUse}
+                    options={[
+                      ['allowed', 'Allowed'],
+                      ['credit', 'Allowed with credit'],
+                      ['revenue-share', 'Allowed with revenue share'],
+                      ['one-time', 'Allowed with one-time fee'],
+                      ['monthly', 'Allowed with monthly fee'],
+                    ]}
+                    onChange={(value) =>
+                      setUdlTerms((current) => ({ ...current, commercialUse: value as UdlTerms['commercialUse'] }))
+                    }
+                  />
+                  <UdlGrantField
+                    label="AI model training"
+                    value={udlTerms.dataModelTraining}
+                    options={[
+                      ['allowed', 'Allowed'],
+                      ['one-time', 'Allowed with one-time fee'],
+                      ['monthly', 'Allowed with monthly fee'],
+                    ]}
+                    onChange={(value) =>
+                      setUdlTerms((current) => ({
+                        ...current,
+                        dataModelTraining: value as UdlTerms['dataModelTraining'],
+                      }))
+                    }
+                  />
+                </div>
+
+                {hasUdlPayment ? (
+                  <div className="udl-payment">
+                    <div className="udl-field">
+                      <div className="udl-field-control">
+                        <MarketSelect<'U' | 'AR'>
+                          label="Payment currency"
+                          value={udlTerms.currency ?? 'U'}
+                          options={[
+                            { value: 'U', label: '$U (UDL default)' },
+                            { value: 'AR', label: 'AR' },
+                          ]}
+                          onChange={(value) =>
+                            setUdlTerms((current) => ({
+                              ...current,
+                              currency: value === 'AR' ? 'AR' : undefined,
+                            }))
+                          }
+                        />
+                      </div>
+                    </div>
+                    <div className="udl-field udl-address">
+                      <label htmlFor="udl-payment-address">Payment address</label>
+                      <div className="udl-field-control">
+                        <input
+                          id="udl-payment-address"
+                          maxLength={43}
+                          placeholder={wallet.address || 'Uploader wallet by default'}
+                          value={udlTerms.paymentAddress ?? ''}
+                          onChange={(event) =>
+                            setUdlTerms((current) => ({
+                              ...current,
+                              paymentAddress: event.target.value.trim() || undefined,
+                            }))
+                          }
+                        />
+                      </div>
+                    </div>
+                    {udlTerms.paymentAddress && udlTerms.paymentAddress !== wallet.address ? (
+                      <p className="udl-payment-warning">
+                        License payments will go to this address, not the connected wallet.
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                <details className="udl-advanced">
+                  <summary>Advanced terms</summary>
+                  <div className="udl-grid">
+                    <div className="udl-field">
+                      <div className="udl-field-control">
+                        <MarketSelect<'included' | 'excluded'>
+                          label="Unknown usage rights"
+                          value={udlTerms.unknownUsageRights ?? 'included'}
+                          options={[
+                            { value: 'included', label: 'Included when legally available' },
+                            { value: 'excluded', label: 'Excluded' },
+                          ]}
+                          onChange={(value) =>
+                            setUdlTerms((current) => ({
+                              ...current,
+                              unknownUsageRights: value === 'excluded' ? 'excluded' : undefined,
+                            }))
+                          }
+                        />
+                      </div>
+                    </div>
+                    <div className="udl-field">
+                      <label htmlFor="udl-expiry">License term</label>
+                      <div className="udl-field-control with-suffix">
+                        <input
+                          id="udl-expiry"
+                          inputMode="numeric"
+                          min="1"
+                          placeholder="Unlimited"
+                          step="1"
+                          type="number"
+                          value={udlTerms.expiry ?? ''}
+                          onChange={(event) =>
+                            setUdlTerms((current) => ({ ...current, expiry: event.target.value || undefined }))
+                          }
+                        />
+                        <span>years</span>
+                      </div>
+                    </div>
+                    {hasUdlPayment ? (
+                      <div className="udl-field">
+                        <div className="udl-field-control">
+                          <MarketSelect<'direct' | 'random' | 'global'>
+                            label="Payment mode"
+                            value={udlTerms.paymentMode ?? 'direct'}
+                            options={[
+                              { value: 'direct', label: 'Direct to payment address' },
+                              { value: 'random', label: 'Random PST distribution' },
+                              { value: 'global', label: 'Global PST distribution' },
+                            ]}
+                            onChange={(value) =>
+                              setUdlTerms((current) => ({
+                                ...current,
+                                paymentMode: value === 'random' || value === 'global' ? value : undefined,
+                              }))
+                            }
+                          />
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                </details>
+              </div>
+            ) : (
+              <p className="udl-none">No license metadata will be written. Copyright defaults still apply.</p>
+            )}
+          </section>
+
+          <div className="mint-summary">
+            <div>
+              <span>{mode === 'asset' ? 'Edition' : 'Assets'}</span>
+              <strong>{mode === 'asset' ? '1 of 1' : collectionFiles.length || '—'}</strong>
+            </div>
+            <div>
+              <span>{mode === 'asset' ? 'Storage' : 'Transactions'}</span>
+              <strong>
+                {mode === 'asset' ? 'Permanent' : collectionEstimate ? collectionEstimate.transactionCount : '—'}
+              </strong>
+            </div>
+            <div>
+              <span>Estimated network cost</span>
+              <strong>
+                {estimating ? 'Checking…' : activeEstimate ? `${winstonToAr(activeEstimate.total.toString())} AR` : '—'}
+              </strong>
+            </div>
+          </div>
+
+          {activeEstimate && isHighMintCost(activeEstimate.total) ? (
+            <label className="mint-cost-confirmation">
+              <input
+                type="checkbox"
+                checked={allowHighCost}
+                onChange={(event) => setAllowHighCost(event.target.checked)}
+              />
+              I approve this unusually high network cost.
+            </label>
+          ) : null}
+          <div className="mint-notice">
+            <Info className="ui-icon" aria-hidden="true" />
+            <span>
+              {mode === 'asset'
+                ? 'Your wallet will request two signatures: one for the media and one for the tradeable asset.'
+                : collectionEstimate
+                  ? `Your wallet will request ${collectionEstimate.transactionCount} signatures: two per asset, then the collection manifest and index.`
+                  : 'Each image becomes a one-of-one asset. Bazar then publishes a permanent collection manifest and index.'}
+            </span>
+          </div>
+          {error ? (
+            <div className="inline-error">
+              <span>{error}</span>
+            </div>
+          ) : null}
+          {result || collectionResult ? (
+            <div className={`mint-success${result && !resultReady ? ' propagating' : ''}`}>
+              <span>{result && !resultReady ? <InfinityIcon aria-hidden="true" /> : <Check aria-hidden="true" />}</span>
+              <div>
+                <strong>{collectionResult ? 'Collection submitted to Arweave' : 'Mint submitted to Arweave'}</strong>
+                <p>
+                  {collectionResult
+                    ? 'The permanent collection index may take a few minutes to become available through every gateway.'
+                    : resultReady
+                      ? 'The asset is live and computable through the selected gateway.'
+                      : 'Watching Arweave continuously. You can view the asset as soon as its live state resolves.'}
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={Boolean(result && !resultReady)}
+                onClick={() =>
+                  navigate(
+                    collectionResult
+                      ? `/collection/${collectionResult.id}`
+                      : `/asset/${CREATED_COLLECTION_ID}/${result!.id}`,
+                  )
+                }
+              >
+                {result && !resultReady ? (
+                  <>
+                    Watching Arweave <InfinityIcon className="ui-icon ui-icon--sm" aria-hidden="true" />
+                  </>
+                ) : (
+                  <>
+                    View {collectionResult ? 'collection' : 'asset'}{' '}
+                    <ArrowRight className="ui-icon ui-icon--sm" aria-hidden="true" />
+                  </>
+                )}
+              </button>
+            </div>
+          ) : (
+            <button
+              className="mint-submit"
+              type="submit"
+              disabled={
+                working ||
+                Boolean(wallet.address && mode === 'asset' && file && name.trim() && !estimate) ||
+                Boolean(
+                  wallet.address &&
+                  mode === 'collection' &&
+                  collectionFiles.length &&
+                  name.trim() &&
+                  !collectionEstimate,
+                ) ||
+                Boolean(wallet.address && activeEstimate && isHighMintCost(activeEstimate.total) && !allowHighCost)
+              }
+            >
+              {working
+                ? phaseLabel
+                : wallet.address
+                  ? mode === 'asset'
+                    ? 'Upload and mint'
+                    : 'Mint collection'
+                  : 'Connect wallet to create'}
+              {!working ? <ArrowRight className="ui-icon" aria-hidden="true" /> : null}
+            </button>
+          )}
+          <p className="mint-permanence">
+            Uploads are permanent. Review every image, name, and description before signing.
+          </p>
+        </form>
+      </div>
+    </section>
+  );
 }
 
 function MyAssetsView() {
@@ -6586,6 +7521,31 @@ function winstonToAr(value: string) {
   const whole = raw / 1_000_000_000_000n;
   const fraction = (raw % 1_000_000_000_000n).toString().padStart(12, '0').replace(/0+$/, '');
   return fraction ? `${whole.toLocaleString()}.${fraction}` : whole.toLocaleString();
+}
+function formatBytes(value: number) {
+  if (value < 1024 * 1024) return `${Math.max(1, Math.round(value / 1024))} KB`;
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+}
+function mintErrorMessage(error: unknown) {
+  const value = error instanceof Error ? error.message : String(error);
+  const friendly: Record<string, string> = {
+    'mint-name-invalid': 'Enter a name between 1 and 80 characters.',
+    'mint-description-invalid': 'Keep the description under 600 characters.',
+    'mint-file-required': 'Choose an image to continue.',
+    'mint-file-type-unsupported': 'Use a PNG, JPG, WebP, or GIF image.',
+    'mint-file-size-invalid': 'Choose an image no larger than 10 MB.',
+    'mint-insufficient-balance': 'This wallet does not have enough AR for both permanent transactions.',
+    'mint-high-cost-confirmation-required': 'Review and approve the unusually high network cost before minting.',
+    'wallet-sign-unavailable': 'Connect an Arweave wallet that can sign transactions.',
+    'wallet-account-changed': 'The connected wallet changed. Reconnect the original wallet and try again.',
+    'mint-draft-wallet-mismatch': 'Reconnect the wallet that uploaded this media to finish minting it.',
+    'mint-udl-access-fee-invalid': 'Enter a UDL access fee greater than zero.',
+    'mint-udl-fee-invalid': 'Enter a UDL license fee greater than zero.',
+    'mint-udl-share-invalid': 'Enter a UDL revenue share between 0 and 100 percent.',
+    'mint-udl-expiry-invalid': 'Enter a whole number of years for the UDL license term.',
+    'mint-udl-payment-address-invalid': 'Enter a valid 43-character Arweave payment address.',
+  };
+  return friendly[value] ?? value.replaceAll('-', ' ');
 }
 function arToWinston(value: string) {
   if (!/^(?:0|[1-9]\d*)(?:\.\d{1,12})?$/.test(value) || Number(value) <= 0)

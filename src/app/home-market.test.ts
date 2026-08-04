@@ -12,6 +12,7 @@ import {
   completeHomeActivityScan,
   completeHomeSummaryRetryGroup,
   homeSummaryRequestKeys,
+  homeMarketPriceValue,
   homeFloorScanSummary,
   mergeResolvedListingBatch,
   newestCollectionActivity,
@@ -25,6 +26,12 @@ import {
 } from './App';
 
 describe('Home market summary retries', () => {
+  it('sorts NFT and fungible AR price labels by their numeric amount', () => {
+    expect(homeMarketPriceValue('0.000001 AR / WEAVE')).toBe(0.000001);
+    expect(homeMarketPriceValue('1,234.5 AR')).toBe(1234.5);
+    expect(homeMarketPriceValue('Unavailable')).toBe(Number.POSITIVE_INFINITY);
+  });
+
   it('checks exact collection membership without rescanning loaded assets', () => {
     const loadedImage = 'i'.repeat(43);
     const loadedToken = 't'.repeat(43);
