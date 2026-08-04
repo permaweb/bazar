@@ -7,6 +7,7 @@ import {
   type ComputeResult,
 } from './asset-marketplace';
 import { assetFromMintState, createdCollection, isBazarMintTags } from './asset-mint';
+import { fetchJsonWithDeadline } from './fetch-with-deadline';
 
 const ADDRESS = /^[A-Za-z0-9_-]{43}$/;
 const GRAPHQL_PAGE_SIZE = 100;
@@ -57,6 +58,7 @@ type CandidateOptions = {
   fetch?: typeof fetch;
   signal?: AbortSignal;
   graphql?: string;
+  requestTimeoutMs?: number;
   onPage?: (candidates: AssetCandidate[]) => void | Promise<void>;
 };
 
@@ -175,28 +177,33 @@ export async function discoverWalletAssetCandidates(
 
   while (active.size) {
     options.signal?.throwIfAborted();
-    const response = await fetcher(graphql, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        query: WALLET_CANDIDATES_QUERY,
-        variables: {
-          initialCursor: cursors.initiallyHeld,
-          marketCursor: cursors.marketActions,
-          transferCursor: cursors.receivedTransfers,
-          owners: [address],
-          initialTags: [{ name: 'initial-holder', values: [address] }],
-          marketTags: [{ name: 'action', values: ['register-interest', 'make-offer'] }],
-          transferTags: [
-            { name: 'action', values: ['transfer'] },
-            { name: 'recipient', values: [address] },
-          ],
-        },
-      }),
-      signal: options.signal,
-    });
+    const { response, body: payload } = await fetchJsonWithDeadline<any>(
+      fetcher,
+      graphql,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          query: WALLET_CANDIDATES_QUERY,
+          variables: {
+            initialCursor: cursors.initiallyHeld,
+            marketCursor: cursors.marketActions,
+            transferCursor: cursors.receivedTransfers,
+            owners: [address],
+            initialTags: [{ name: 'initial-holder', values: [address] }],
+            marketTags: [{ name: 'action', values: ['register-interest', 'make-offer'] }],
+            transferTags: [
+              { name: 'action', values: ['transfer'] },
+              { name: 'recipient', values: [address] },
+            ],
+          },
+        }),
+        signal: options.signal,
+      },
+      { timeoutMs: options.requestTimeoutMs, timeoutError: 'asset-discovery-graphql-timeout' },
+    );
     if (!response.ok) throw new Error(`asset-discovery-graphql-${response.status}`);
-    const payload = await response.json();
+    if (!payload) throw new Error('asset-discovery-graphql-empty');
     if (payload?.errors?.length) throw new Error('asset-discovery-graphql-error');
 
     const pageCandidates: AssetCandidate[] = [];
@@ -241,6 +248,7 @@ export async function discoverMarketActivity(options: MarketActivityOptions = {}
       listingsOnly: options.listingsOnly,
       recipients: options.recipients,
       signal: options.signal,
+      requestTimeoutMs: options.requestTimeoutMs,
       cursor,
     });
     for (const candidate of page.candidates) {
@@ -258,29 +266,34 @@ export async function discoverMarketActivityPage(options: MarketActivityPageOpti
   const graphql = options.graphql ?? 'https://arweave.net/graphql';
   const recipients = [...new Set((options.recipients ?? []).filter((id) => ADDRESS.test(id)))];
   const pageSize = Math.max(1, Math.min(GRAPHQL_PAGE_SIZE, Math.floor(options.pageSize ?? 25)));
-  const response = await fetcher(graphql, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      query: MARKET_ACTIVITY_QUERY,
-      variables: {
-        cursor: options.cursor ?? null,
-        first: pageSize,
-        recipients: recipients.length ? recipients : null,
-        tags: [
-          {
-            name: 'action',
-            values: options.listingsOnly
-              ? ['make-offer']
-              : ['make-offer', 'register-interest', 'transfer', 'cancel-order'],
-          },
-        ],
-      },
-    }),
-    signal: options.signal,
-  });
+  const { response, body: payload } = await fetchJsonWithDeadline<any>(
+    fetcher,
+    graphql,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        query: MARKET_ACTIVITY_QUERY,
+        variables: {
+          cursor: options.cursor ?? null,
+          first: pageSize,
+          recipients: recipients.length ? recipients : null,
+          tags: [
+            {
+              name: 'action',
+              values: options.listingsOnly
+                ? ['make-offer']
+                : ['make-offer', 'register-interest', 'transfer', 'cancel-order'],
+            },
+          ],
+        },
+      }),
+      signal: options.signal,
+    },
+    { timeoutMs: options.requestTimeoutMs, timeoutError: 'asset-activity-graphql-timeout' },
+  );
   if (!response.ok) throw new Error(`asset-activity-graphql-${response.status}`);
-  const payload = await response.json();
+  if (!payload) throw new Error('asset-activity-graphql-empty');
   if (payload?.errors?.length) throw new Error('asset-activity-graphql-error');
   const connection = payload?.data?.transactions as GraphqlConnection | undefined;
   const edges = Array.isArray(connection?.edges) ? connection.edges : [];
@@ -311,27 +324,32 @@ export async function discoverCollectionActivity(
   if (!recipients.length) return [];
   while (events.length < limit) {
     options.signal?.throwIfAborted();
-    const response = await fetcher(graphql, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        query: MARKET_ACTIVITY_QUERY,
-        variables: {
-          cursor,
-          first: Math.min(GRAPHQL_PAGE_SIZE, limit - events.length),
-          recipients,
-          tags: [
-            {
-              name: 'action',
-              values: ['make-offer', 'register-interest', 'transfer', 'cancel-order'],
-            },
-          ],
-        },
-      }),
-      signal: options.signal,
-    });
+    const { response, body: payload } = await fetchJsonWithDeadline<any>(
+      fetcher,
+      graphql,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          query: MARKET_ACTIVITY_QUERY,
+          variables: {
+            cursor,
+            first: Math.min(GRAPHQL_PAGE_SIZE, limit - events.length),
+            recipients,
+            tags: [
+              {
+                name: 'action',
+                values: ['make-offer', 'register-interest', 'transfer', 'cancel-order'],
+              },
+            ],
+          },
+        }),
+        signal: options.signal,
+      },
+      { timeoutMs: options.requestTimeoutMs, timeoutError: 'collection-activity-graphql-timeout' },
+    );
     if (!response.ok) throw new Error(`collection-activity-graphql-${response.status}`);
-    const payload = await response.json();
+    if (!payload) throw new Error('collection-activity-graphql-empty');
     if (payload?.errors?.length) throw new Error('collection-activity-graphql-error');
     const connection = payload?.data?.transactions as GraphqlConnection | undefined;
     const edges = Array.isArray(connection?.edges) ? connection.edges : [];

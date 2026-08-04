@@ -18,6 +18,7 @@ import { useLanguageProvider } from 'providers/LanguageProvider';
 
 import { type ObserverTooltipStage } from './ObserverTooltipCard';
 import { confirmationProgress } from './progressColors';
+import { quorumConfirmationDepth } from './confirmationDepth';
 import { sequencePhaseBounds } from './sequence';
 import type { CableTelemetry, Infinity3DLane } from './TransactionSequenceCable3D';
 import { type ArweaveMiningTelemetry, useArweaveMiningTelemetry } from './useArweaveMiningTelemetry';
@@ -102,10 +103,7 @@ export function ArweaveTransactionSync({
   const active = steps.find((step) => step.key === activeStep) ?? steps[0];
   const activeKey = active?.key;
   const transaction = active?.transaction;
-  const confirmationDepth =
-    active?.confirmations ??
-    transaction?.consensus?.confirmations ??
-    observedConfirmationDepth(transaction?.views ?? []);
+  const confirmationDepth = quorumConfirmationDepth(active);
   const target = active?.target ?? 0;
   const displayedConfirmationDepth = Math.min(target, confirmationDepth);
   const transactionState = transaction?.consensus?.state ?? latestObserverState(transaction?.views ?? []);

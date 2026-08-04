@@ -1,4 +1,5 @@
 import { DEFAULT_GATEWAY } from 'helpers/config';
+import { fetchJsonWithDeadline, fetchTextWithDeadline } from './fetch-with-deadline';
 
 export type AssetSummary = {
   id: string;
@@ -84,11 +85,14 @@ async function loadCarrierPage(after?: string, signal?: AbortSignal) {
   // request. The first page establishes the collection total; later pages
   // preserve that value while fetching only edges and pageInfo.
   const totalField = after ? '' : 'count';
-  const response = await fetch(`${DEFAULT_GATEWAY}/graphql`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      query: `query CarrierAssets($after: String) {
+  const { response, body: payload } = await fetchJsonWithDeadline<any>(
+    globalThis.fetch.bind(globalThis),
+    `${DEFAULT_GATEWAY}/graphql`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        query: `query CarrierAssets($after: String) {
 				transactions(
 					first: 100
 					after: $after
@@ -103,12 +107,14 @@ async function loadCarrierPage(after?: string, signal?: AbortSignal) {
 					}
 				}
 			}`,
-      variables: { after: after ?? null },
-    }),
-    signal,
-  });
+        variables: { after: after ?? null },
+      }),
+      signal,
+    },
+    { timeoutError: 'carrier-index-timeout' },
+  );
   if (!response.ok) throw new Error(`carrier-index-${response.status}`);
-  const payload = await response.json();
+  if (!payload) throw new Error('carrier-index-empty');
   if (payload.errors?.length) throw new Error('carrier-index-query');
   const connection = payload.data.transactions;
   const edges: Array<{
@@ -161,22 +167,32 @@ async function loadImageCollection(
 
 async function fetchJson<T>(path: string, signal?: AbortSignal, process = false): Promise<T> {
   if (!process && /^[A-Za-z0-9_-]{43}$/.test(path)) {
-    const response = await fetch(`${DEFAULT_GATEWAY}/tx/${path}/data`, { signal });
+    const { response, body } = await fetchTextWithDeadline(
+      globalThis.fetch.bind(globalThis),
+      `${DEFAULT_GATEWAY}/tx/${path}/data`,
+      { signal },
+      { timeoutError: 'collection-data-timeout' },
+    );
     if (!response.ok) throw new Error(`collection-fetch-${response.status}`);
-    const body = (await response.text()).trim();
-    if (!/^[A-Za-z0-9_-]+$/.test(body) || body === 'Accepted') {
+    const encodedBody = body?.trim() ?? '';
+    if (!/^[A-Za-z0-9_-]+$/.test(encodedBody) || encodedBody === 'Accepted') {
       throw new Error('collection-data-pending');
     }
-    const encoded = body.replaceAll('-', '+').replaceAll('_', '/');
+    const encoded = encodedBody.replaceAll('-', '+').replaceAll('_', '/');
     const json = decodeURIComponent(
       Array.from(atob(encoded), (byte) => `%${byte.charCodeAt(0).toString(16).padStart(2, '0')}`).join(''),
     );
     return JSON.parse(json) as T;
   }
   const url = process && path.startsWith('http') ? path : `${DEFAULT_GATEWAY}/${path}`;
-  const response = await fetch(url, { signal, headers: { accept: 'application/json' } });
+  const { response, body } = await fetchJsonWithDeadline<any>(
+    globalThis.fetch.bind(globalThis),
+    url,
+    { signal, headers: { accept: 'application/json' } },
+    { timeoutError: 'collection-fetch-timeout' },
+  );
   if (!response.ok) throw new Error(`collection-fetch-${response.status}`);
-  const body = await response.json();
+  if (body === undefined) throw new Error('collection-fetch-empty');
   return ((body as any)?.data ?? body) as T;
 }
 

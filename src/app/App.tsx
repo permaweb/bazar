@@ -93,13 +93,15 @@ import {
   type UdlTerms,
 } from 'api/asset-mint';
 import { ArweaveObserverNetwork } from 'api/arweave-observers';
+import { transactionExplorerUrl } from 'api/arweave-explorer';
 import { assetObserverNetworkOptions } from 'api/asset-observers';
 import { AssetTransactionClient, DEFAULT_REGISTRATION_FEE, dispatchAndConfirm } from 'api/asset-transactions';
-import {
-  ArweaveTransactionSync,
-  observedConfirmationDepth,
-  type ArweaveSyncStep,
-} from 'components/ArweaveTransactionSync';
+import { ArtworkImage } from 'components/ArtworkImage';
+import { ArweaveTransactionSync, type ArweaveSyncStep } from 'components/ArweaveTransactionSync';
+import { ConnectWalletButton } from 'components/ConnectWalletButton';
+import { StateVerification } from 'components/StateVerification';
+import { WalletAddress } from 'components/WalletAddress';
+import { quorumConfirmationDepth } from 'components/ArweaveTransactionSync/confirmationDepth';
 import { useWallet } from 'providers/WalletProvider';
 
 import arweaveNamesCube from '../assets/arweave-names-cube.gif';
@@ -2654,7 +2656,7 @@ function CollectionActivityView() {
               </div>
               <div className="activity-block">
                 <span>{event.timestamp ? formatTimestamp(event.timestamp) : 'Pending timestamp'}</span>
-                <a href={`https://arweave.net/${event.id}`} target="_blank" rel="noreferrer">
+                <a href={transactionExplorerUrl(event.id)} target="_blank" rel="noreferrer">
                   Block {event.height.toLocaleString()}
                   <ArrowUpRight className="ui-icon ui-icon--xs" aria-hidden="true" />
                 </a>
@@ -2704,7 +2706,7 @@ function AssetCard({
     <Link className="asset-card" to={`/asset/${collection.id}/${asset.id}`}>
       <div className="asset-media">
         {asset.image ? (
-          <img src={asset.image} loading="lazy" alt="" />
+          <ArtworkImage src={asset.image} loading="lazy" alt="" />
         ) : (
           <span>{asset.name.slice(0, 1).toUpperCase()}</span>
         )}
@@ -2833,10 +2835,7 @@ function MyAssetsView() {
         <div className="empty-state">
           <h3>Connect a wallet to resolve its assets</h3>
           <p>No signature is requested. Candidate history and live state are read-only.</p>
-          <button className="primary with-icon" onClick={() => void wallet.connect()}>
-            <Wallet className="ui-icon ui-icon--sm" aria-hidden="true" />
-            Connect wallet
-          </button>
+          <ConnectWalletButton />
         </div>
       </section>
     );
@@ -2909,6 +2908,8 @@ function AssetView() {
   );
   const [remoteCollection, setRemoteCollection] = React.useState<Collection | null>(null);
   const [state, setState] = React.useState<AssetState | null>(null);
+  const [stateProvider, setStateProvider] = React.useState('');
+  const [verifiedAt, setVerifiedAt] = React.useState<number | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [assetActivity, setAssetActivity] = React.useState<CollectionActivityEvent[]>([]);
@@ -2938,7 +2939,11 @@ function AssetView() {
         const result = awaitLocalMint
           ? await waitForAssetState(assetId, () => true, { signal, interval: 4000, timeout: 0 })
           : await readAssetState(assetId, { signal });
-        if (!signal?.aborted) setState(result.state);
+        if (!signal?.aborted) {
+          setState(result.state);
+          setStateProvider(result.provider);
+          setVerifiedAt(Date.now());
+        }
       } catch (cause) {
         if (!signal?.aborted) setError(errorMessage(cause));
       } finally {
@@ -3092,7 +3097,7 @@ function AssetView() {
         <div className="asset-visual-column">
           <div className="asset-hero-media">
             {asset.image ? (
-              <img src={asset.image} alt={asset.name} />
+              <ArtworkImage src={asset.image} alt={asset.name} />
             ) : collection.kind === 'names' ? (
               <NameAssetArtwork className="name-asset-artwork--hero" name={asset.name} />
             ) : (
@@ -3110,19 +3115,19 @@ function AssetView() {
             <h1>{asset.name}</h1>
             <div className="asset-owner-line">
               <span>Owned by</span>
-              {owner ? (
-                <a href={`https://arweave.net/${owner}`} target="_blank" rel="noreferrer">
-                  {short(owner)} <ArrowUpRight className="ui-icon ui-icon--xs" aria-hidden="true" />
-                </a>
-              ) : (
-                <strong>Unassigned</strong>
-              )}
+              {owner ? <WalletAddress address={owner} label="owner" /> : <strong>Unassigned</strong>}
             </div>
             <div className="asset-token-tags" aria-label="Asset protocol details">
               <span>{state?.device || 'token@1.0'}</span>
               <span>Arweave</span>
               <span>Supply 1</span>
             </div>
+            <StateVerification
+              provider={stateProvider}
+              verifiedAt={verifiedAt}
+              refreshing={loading}
+              failed={Boolean(error)}
+            />
             {loading ? <Loading label="Computing current state…" /> : null}
             {error ? <ErrorPanel message={error} /> : null}
             {state ? (
@@ -3150,11 +3155,7 @@ function AssetView() {
                   <strong>{order ? `${winstonToAr(order.asking)} AR` : 'Not listed'}</strong>
                 </div>
                 <div className="asset-commerce-actions">
-                  {!wallet.address ? (
-                    <button className="primary with-icon" onClick={() => void wallet.connect()}>
-                      <Wallet className="ui-icon ui-icon--sm" aria-hidden="true" /> Connect wallet
-                    </button>
-                  ) : null}
+                  {!wallet.address ? <ConnectWalletButton /> : null}
                   {wallet.address && order && !mine ? (
                     <button className="primary with-icon" onClick={() => startOperation({ kind: 'buy', order })}>
                       <ShoppingCart className="ui-icon ui-icon--sm" aria-hidden="true" /> Buy now
@@ -3231,9 +3232,7 @@ function AssetView() {
                     <div className="orderbook-row">
                       <strong>{winstonToAr(order.asking)} AR</strong>
                       <span>{order.quantity}</span>
-                      <a href={`https://arweave.net/${order.creator}`} target="_blank" rel="noreferrer">
-                        {short(order.creator)}
-                      </a>
+                      <WalletAddress address={order.creator} label="seller" />
                       <span className={`order-status ${order.status}`}>{order.status}</span>
                     </div>
                   ) : (
@@ -3267,7 +3266,7 @@ function AssetView() {
                 {!activityLoading && assetActivity.length ? (
                   <div className="asset-history-list">
                     {assetActivity.map((event) => (
-                      <a key={event.id} href={`https://arweave.net/${event.id}`} target="_blank" rel="noreferrer">
+                      <a key={event.id} href={transactionExplorerUrl(event.id)} target="_blank" rel="noreferrer">
                         <span>{activityLabel(event.action)}</span>
                         <time>{event.timestamp ? formatTimestamp(event.timestamp) : 'Pending timestamp'}</time>
                         <ArrowUpRight className="ui-icon ui-icon--xs" aria-hidden="true" />
@@ -3363,7 +3362,7 @@ function AssetView() {
                   {moreAssets.map((item) => (
                     <Link key={item.id} to={`/asset/${collection.id}/${item.id}`}>
                       {item.image ? (
-                        <img src={item.image} alt="" />
+                        <ArtworkImage src={item.image} alt="" />
                       ) : (
                         <span>{item.name.slice(0, 1).toUpperCase()}</span>
                       )}
@@ -3593,12 +3592,7 @@ function OperationDialog({
         : operation.kind;
   const activeSyncStep = steps.find((step) => step.key === activeStep) ?? steps[0];
   const confirmationTarget = activeSyncStep?.target ?? 5;
-  const confirmations = Math.min(
-    confirmationTarget,
-    activeSyncStep?.confirmations ??
-      activeSyncStep?.transaction?.consensus?.confirmations ??
-      observedConfirmationDepth(activeSyncStep?.transaction?.views ?? []),
-  );
+  const confirmations = Math.min(confirmationTarget, quorumConfirmationDepth(activeSyncStep));
   const visiblePhase =
     operation.kind === 'buy' && phase === 'done' && purchaseState?.stage !== 'complete' ? 'error' : phase;
   const visibleMessage =

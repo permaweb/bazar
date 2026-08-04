@@ -209,11 +209,21 @@ export const TransactionHeader = styled.div`
 
   > div:first-child {
     min-width: 0;
-    display: flex;
-    align-items: center;
-    gap: 10px;
+    display: grid;
+    gap: 3px;
     color: ${(props) => props.theme.colors.font.alt1};
     font-size: ${(props) => props.theme.typography.size.xxSmall};
+
+    > strong {
+      color: ${(props) => props.theme.colors.font.primary};
+      font-weight: ${(props) => props.theme.typography.weight.medium};
+    }
+
+    > span {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
   }
 `;
 

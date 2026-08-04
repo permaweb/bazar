@@ -1,4 +1,8 @@
-import type { ArweaveRecallContent, ArweaveRecallContentKind } from 'api/arweave-mining-telemetry';
+import {
+  canPreviewRecallImage,
+  type ArweaveRecallContent,
+  type ArweaveRecallContentKind,
+} from 'api/arweave-mining-telemetry';
 import React from 'react';
 import { createPortal } from 'react-dom';
 import styled, { keyframes } from 'styled-components';
@@ -801,7 +805,7 @@ export function TransactionSequenceCable3D({
 function RecallContentPreview({ content, fallback }: { content?: ArweaveRecallContent; fallback: string }) {
   if (!content) return <AcceptedProofPayloadText>{fallback}</AcceptedProofPayloadText>;
   const title = content.contentType ?? fallback;
-  if (content.kind === 'image') {
+  if (canPreviewRecallImage(content)) {
     return <img src={content.contentUrl} alt={title} loading={'lazy'} />;
   }
   if (content.kind === 'video') {
