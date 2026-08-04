@@ -237,7 +237,7 @@ p {
   grid-template-columns: minmax(180px, 1fr) minmax(240px, 360px) minmax(0, 1fr);
   align-items: center;
   gap: 16px;
-  border-bottom: 1px solid var(--home-line);
+  border-bottom: 1px solid var(--line-dark);
   background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(14px);
   position: sticky;
