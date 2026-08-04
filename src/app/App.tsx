@@ -1488,22 +1488,6 @@ function Home() {
               {market.error ? (
                 <ErrorPanel message={market.error} onRetry={market.retry} retryLabel="Retry collections" />
               ) : null}
-              {market.notice ? (
-                <div className="collection-source-notice">
-                  <span role="status">{market.notice}</span>
-                  <button
-                    aria-disabled={market.loading}
-                    className="with-icon"
-                    type="button"
-                    onClick={() => {
-                      if (!market.loading) market.retry();
-                    }}
-                  >
-                    <RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" />
-                    {market.loading ? 'Checking indexes…' : 'Retry indexes'}
-                  </button>
-                </div>
-              ) : null}
               {partialTokenCollection ? (
                 <div className="collection-source-notice">
                   <span role="status">
