@@ -125,12 +125,14 @@ describe('asset state', () => {
       license: 'dE0rmDfl9_OWjkDznNEXHaSO_JohJkRolvMzaCroUdw',
       commercial_use: true,
       'access-fee': 12,
+      expiry: 5,
       ignored: { inferred: false },
     });
     expect(licenseProperties(state)).toEqual([
-      { key: 'license', label: 'License', value: 'Universal Data License' },
+      { key: 'license', label: 'License', value: 'Universal Data License 0.2' },
       { key: 'access-fee', label: 'Access fee', value: '12' },
       { key: 'commercial-use', label: 'Commercial use', value: 'true' },
+      { key: 'expiry', label: 'License term', value: '5' },
     ]);
   });
 });

@@ -9,6 +9,7 @@ import {
   ChevronDown,
   ChevronRight,
   CircleX,
+  Copy,
   Diamond,
   Eye,
   EyeOff,
@@ -22,6 +23,7 @@ import {
   Layers3,
   Library,
   LoaderCircle,
+  LogOut,
   RefreshCw,
   Search,
   Send,
@@ -74,6 +76,7 @@ import {
   AssetMintClient,
   CollectionMintClient,
   CREATED_COLLECTION_ID,
+  UDL_LICENSE_ID,
   assetFromMintState,
   createdCollection,
   discardMintDraft,
@@ -87,6 +90,7 @@ import {
   type MintEstimate,
   type MintPhase,
   type MintedAsset,
+  type UdlTerms,
 } from 'api/asset-mint';
 import { ArweaveObserverNetwork } from 'api/arweave-observers';
 import { assetObserverNetworkOptions } from 'api/asset-observers';
@@ -469,11 +473,11 @@ function Header() {
         </form>
         <nav className="site-nav">
           <div className="site-nav-primary">
-            <Link aria-label="Create asset" className="create-link" title="Create asset" to="/create">
+            <Link aria-label="Create asset" className="create-link" data-tooltip="Create asset" to="/create">
               <Upload className="ui-icon ui-icon--sm" aria-hidden="true" />
             </Link>
             {wallet.address ? (
-              <Link aria-label="My assets" className="my-assets-link" title="My assets" to="/my-assets">
+              <Link aria-label="My assets" className="my-assets-link" data-tooltip="My assets" to="/my-assets">
                 <Library className="ui-icon ui-icon--sm" aria-hidden="true" />
               </Link>
             ) : null}
@@ -481,15 +485,7 @@ function Header() {
           </div>
           <div className="site-nav-wallet">
             <OperationActivityControl />
-            <button
-              aria-label={wallet.address ? `Disconnect wallet ${short(wallet.address)}` : 'Connect wallet'}
-              className="wallet"
-              title={wallet.address ? `Disconnect wallet ${short(wallet.address)}` : 'Connect wallet'}
-              onClick={() => void (wallet.address ? wallet.disconnect() : wallet.connect())}
-            >
-              <Wallet className="ui-icon ui-icon--sm" aria-hidden="true" />
-              <span>{wallet.address ? short(wallet.address) : 'Connect'}</span>
-            </button>
+            <WalletControl />
           </div>
         </nav>
       </header>
@@ -633,6 +629,149 @@ function Header() {
   );
 }
 
+function WalletControl() {
+  const wallet = useWallet();
+  const [open, setOpen] = React.useState(false);
+  const [copied, setCopied] = React.useState(false);
+  const rootRef = React.useRef<HTMLDivElement>(null);
+  const triggerRef = React.useRef<HTMLButtonElement>(null);
+  const closeTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const copiedTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const menuId = React.useId();
+
+  const clearCloseTimer = React.useCallback(() => {
+    if (!closeTimerRef.current) return;
+    clearTimeout(closeTimerRef.current);
+    closeTimerRef.current = null;
+  }, []);
+
+  const openMenu = React.useCallback(() => {
+    clearCloseTimer();
+    if (wallet.address && usesDesktopWalletMenu()) setOpen(true);
+  }, [clearCloseTimer, wallet.address]);
+
+  const scheduleMenuClose = React.useCallback(() => {
+    if (!usesDesktopWalletMenu()) return;
+    clearCloseTimer();
+    closeTimerRef.current = setTimeout(() => {
+      setOpen(false);
+      closeTimerRef.current = null;
+    }, 200);
+  }, [clearCloseTimer]);
+
+  React.useEffect(() => {
+    if (!open) return;
+    const closeOnOutsidePress = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      setOpen(false);
+      triggerRef.current?.focus();
+    };
+    document.addEventListener('pointerdown', closeOnOutsidePress);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsidePress);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [open]);
+
+  React.useEffect(() => {
+    setOpen(false);
+    setCopied(false);
+  }, [wallet.address]);
+
+  React.useEffect(
+    () => () => {
+      clearCloseTimer();
+      if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+    },
+    [clearCloseTimer],
+  );
+
+  const copyAddress = async () => {
+    if (!wallet.address) return;
+    await navigator.clipboard.writeText(wallet.address);
+    setCopied(true);
+    if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+    copiedTimerRef.current = setTimeout(() => {
+      setCopied(false);
+      copiedTimerRef.current = null;
+    }, 2000);
+  };
+
+  const handlePress = () => {
+    if (!wallet.address) {
+      void wallet.connect();
+      return;
+    }
+    clearCloseTimer();
+    if (usesDesktopWalletMenu()) setOpen(true);
+    else setOpen((value) => !value);
+  };
+
+  return (
+    <div
+      className="wallet-control"
+      onMouseEnter={wallet.address ? openMenu : undefined}
+      onMouseLeave={wallet.address ? scheduleMenuClose : undefined}
+      ref={rootRef}
+    >
+      <button
+        aria-controls={wallet.address ? menuId : undefined}
+        aria-expanded={wallet.address ? open : undefined}
+        aria-haspopup={wallet.address ? 'menu' : undefined}
+        aria-label={wallet.address ? `Wallet ${short(wallet.address)}` : 'Connect wallet'}
+        className="wallet"
+        data-tooltip={wallet.address ? undefined : 'Connect wallet'}
+        onClick={handlePress}
+        ref={triggerRef}
+        type="button"
+      >
+        <Wallet className="ui-icon ui-icon--sm" aria-hidden="true" />
+        <span>{wallet.address ? short(wallet.address) : 'Connect'}</span>
+      </button>
+      {open && wallet.address ? (
+        <section aria-label="Wallet" className="wallet-menu" id={menuId} role="menu">
+          <div className="wallet-menu-heading">
+            <span className="wallet-menu-icon" aria-hidden="true">
+              <Wallet className="ui-icon ui-icon--sm" />
+            </span>
+            <span className="wallet-menu-copy">
+              <small>Connected wallet</small>
+              <strong title={wallet.address}>{short(wallet.address)}</strong>
+            </span>
+          </div>
+          <div className="wallet-menu-actions">
+            <button role="menuitem" type="button" onClick={() => void copyAddress()}>
+              {copied ? (
+                <Check className="ui-icon ui-icon--sm" aria-hidden="true" />
+              ) : (
+                <Copy className="ui-icon ui-icon--sm" aria-hidden="true" />
+              )}
+              <span aria-live="polite">{copied ? 'Copied!' : 'Copy address'}</span>
+            </button>
+            <button
+              className="wallet-menu-disconnect"
+              role="menuitem"
+              type="button"
+              onClick={() => void wallet.disconnect()}
+            >
+              <LogOut className="ui-icon ui-icon--sm" aria-hidden="true" />
+              <span>Disconnect</span>
+            </button>
+          </div>
+        </section>
+      ) : null}
+    </div>
+  );
+}
+
+function usesDesktopWalletMenu() {
+  return window.matchMedia('(hover: hover) and (pointer: fine) and (min-width: 769px)').matches;
+}
+
 function OperationActivityControl() {
   const { activities, show, remove, clearFinished } = useOperationActivity();
   const [open, setOpen] = React.useState(false);
@@ -655,7 +794,7 @@ function OperationActivityControl() {
         className={`operation-activity-trigger${workingCount ? ' working' : ''}`}
         aria-label={`Transaction activity, ${activities.length} ${activities.length === 1 ? 'item' : 'items'}`}
         aria-expanded={open}
-        title="Transaction activity"
+        data-tooltip="Transaction activity"
         onClick={() => setOpen((value) => !value)}
       >
         <InfinityIcon className="ui-icon" aria-hidden="true" />
@@ -758,7 +897,15 @@ function NamesCubePreview() {
   );
 }
 
-function NameAssetArtwork({ name, className = '' }: { name: string; className?: string }) {
+function NameAssetArtwork({
+  name,
+  className = '',
+  showCube = true,
+}: {
+  name: string;
+  className?: string;
+  showCube?: boolean;
+}) {
   const characterCount = Math.max(1, Array.from(name.trim()).length);
   const fontScale = Math.max(3.5, Math.min(18, 138 / characterCount));
   return (
@@ -768,7 +915,7 @@ function NameAssetArtwork({ name, className = '' }: { name: string; className?: 
       aria-hidden="true"
     >
       <strong>{name}</strong>
-      <img src={arweaveNamesCube} alt="" />
+      {showCube ? <img src={arweaveNamesCube} alt="" /> : null}
     </span>
   );
 }
@@ -966,8 +1113,8 @@ function Home() {
     )
     .sort((left, right) => {
       if (assetView !== 'price-low' && assetView !== 'price-high') return 0;
-      const leftPrice = Number(left.price.replace(/\s+AR$/, ''));
-      const rightPrice = Number(right.price.replace(/\s+AR$/, ''));
+      const leftPrice = Number(left.price.replace(/,/g, '').replace(/\s+AR$/, ''));
+      const rightPrice = Number(right.price.replace(/,/g, '').replace(/\s+AR$/, ''));
       return assetView === 'price-low' ? leftPrice - rightPrice : rightPrice - leftPrice;
     });
   const displayedAssets = assetView === 'recent' ? recentCards : listingCards.slice(0, activeListingLimit);
@@ -984,138 +1131,195 @@ function Home() {
     <div className="home-shell">
       <div className="home-main">
         <div className="home-content">
-          <section className="home-section" id="featured">
-            <div className="home-section-heading">
-              <div>
-                <h1>Collections</h1>
-                <p>Permanent assets with ownership and settlement native to Arweave.</p>
-              </div>
-            </div>
-            {market.loading ? <Loading label="Loading collection indexes from Arweave…" /> : null}
-            {market.error ? <ErrorPanel message={market.error} /> : null}
-            <div className="home-feature-grid">
-              {collections.slice(0, 3).map((collection, index) => {
-                const image = collection.assets.find((asset) => asset.image)?.image;
-                return (
-                  <Link
-                    className={`home-feature-card feature-${index}`}
-                    key={collection.id}
-                    to={`/collection/${collection.id}`}
-                  >
-                    <div className="home-feature-art">
-                      {image ? (
-                        <img src={image} alt="" />
-                      ) : collection.kind === 'names' ? (
-                        <NamesCubePreview />
-                      ) : (
-                        <div className="home-name-art">
-                          <BazarMark />
-                          <span>AR</span>
-                        </div>
-                      )}
-                      <div className="home-feature-glow" />
-                    </div>
-                    <div className="home-feature-copy">
-                      <p>{collection.kind === 'names' ? 'Arweave identity' : 'Permanent collection'}</p>
-                      <h2>{collection.name}</h2>
-                      <span>{collection.description}</span>
-                    </div>
-                    <div className="home-feature-stats">
-                      <div>
-                        <span>Assets</span>
-                        <strong>{(collection.total ?? collection.assets.length).toLocaleString()}</strong>
-                      </div>
-                      <div>
-                        <span>Type</span>
-                        <strong>{collection.kind === 'names' ? 'Names' : 'Images'}</strong>
-                      </div>
-                      <div>
-                        <span>Floor</span>
-                        <strong>
-                          {collection.id in collectionFloors
-                            ? (collectionFloors[collection.id] ?? 'No listings')
-                            : 'Checking…'}
-                        </strong>
-                      </div>
-                    </div>
-                    <strong className="home-card-action">
-                      Open collection
-                      <span>
-                        <ArrowUpRight className="ui-icon ui-icon--xs" aria-hidden="true" />
-                      </span>
-                    </strong>
-                  </Link>
-                );
-              })}
-            </div>
-            {!market.loading && !market.error && collections.length === 0 ? (
-              <div className="home-no-results">No collections match “{query}”.</div>
-            ) : null}
-          </section>
-
-          {recentAssets.length || activeListings.length || listingLoading || listingError ? (
-            <section className="home-section home-assets" id="assets">
+          <div className="home-market-layout">
+            <section className="home-section" id="featured">
               <div className="home-section-heading">
                 <div>
-                  <h2>Discover assets</h2>
-                  <p>
-                    {assetView === 'recent'
-                      ? 'Individual assets from the latest permanent collection indexes.'
-                      : 'Verified active listings across every marketplace collection.'}
-                  </p>
+                  <h1>Collections</h1>
+                  <p>Permanent assets with ownership and settlement native to Arweave.</p>
                 </div>
-                <MarketSelect<'recent' | 'listed' | 'price-low' | 'price-high'>
-                  label="View"
-                  onChange={setAssetView}
-                  options={[
-                    { value: 'listed', label: 'Listed for sale' },
-                    { value: 'price-low', label: 'Price: low to high' },
-                    { value: 'price-high', label: 'Price: high to low' },
-                  ]}
-                  value={assetView}
-                />
               </div>
-              <div className="home-asset-grid">
-                {displayedAssets.map(({ asset, collection, price }) => (
-                  <Link key={`${collection.id}-${asset.id}`} to={`/asset/${collection.id}/${asset.id}`}>
-                    {asset.image ? (
-                      <img className="home-asset-media" src={asset.image} alt="" />
-                    ) : collection.kind === 'names' ? (
-                      <NameAssetArtwork className="home-asset-media name-asset-artwork--card" name={asset.name} />
-                    ) : (
-                      <span className="home-asset-media home-asset-placeholder" aria-hidden="true">
-                        <BazarMark />
-                      </span>
-                    )}
-                    <div className="home-asset-details">
-                      <div>
-                        <strong>{asset.name}</strong>
-                        <span>{collection.name}</span>
+              {market.loading ? <Loading label="Loading collection indexes from Arweave…" /> : null}
+              {market.error ? <ErrorPanel message={market.error} /> : null}
+              <div className="home-feature-grid">
+                {collections.slice(0, 3).map((collection, index) => {
+                  const image = collection.assets.find((asset) => asset.image)?.image;
+                  return (
+                    <Link
+                      className={`home-feature-card feature-${index}`}
+                      key={collection.id}
+                      to={`/collection/${collection.id}`}
+                    >
+                      <div className="home-feature-art">
+                        {image ? (
+                          <img src={image} alt="" />
+                        ) : collection.kind === 'names' ? (
+                          <NamesCubePreview />
+                        ) : (
+                          <div className="home-name-art">
+                            <BazarMark />
+                            <span>AR</span>
+                          </div>
+                        )}
+                        <div className="home-feature-glow" />
                       </div>
-                      <b className={`home-asset-price${price ? ' listed' : ''}`}>
-                        {price === undefined ? 'Checking…' : (price ?? 'Not listed')}
-                      </b>
-                    </div>
-                  </Link>
-                ))}
+                      <div className="home-feature-copy">
+                        <h2>{collection.name}</h2>
+                        <span>{collection.description}</span>
+                      </div>
+                      <div className="home-feature-stats">
+                        <div>
+                          <span>Assets</span>
+                          <strong>{(collection.total ?? collection.assets.length).toLocaleString()}</strong>
+                        </div>
+                        <div>
+                          <span>Floor</span>
+                          <strong>
+                            {collection.id in collectionFloors
+                              ? (collectionFloors[collection.id] ?? 'No listings')
+                              : 'Checking…'}
+                          </strong>
+                        </div>
+                      </div>
+                      <strong className="home-card-action">
+                        Open collection
+                        <span>
+                          <ArrowUpRight className="ui-icon ui-icon--xs" aria-hidden="true" />
+                        </span>
+                      </strong>
+                    </Link>
+                  );
+                })}
               </div>
-              {assetView !== 'recent' && listingLoading ? (
-                <div className="home-assets-status">Verifying recent listing activity…</div>
-              ) : null}
-              {assetView !== 'recent' && listingError ? <ErrorPanel message={listingError} /> : null}
-              {assetView !== 'recent' && !displayedAssets.length ? (
-                <div className="home-assets-empty">
-                  {listingLoading ? 'Checking live listings…' : 'No active listings found in the latest activity.'}
-                </div>
-              ) : null}
-              {assetView !== 'recent' && canLoadMoreListings ? (
-                <button className="load-more" disabled={listingLoading} onClick={showMoreListings}>
-                  {listingLoading ? 'Checking listings…' : 'Load more listings'}
-                </button>
+              {!market.loading && !market.error && collections.length === 0 ? (
+                <div className="home-no-results">No collections match “{query}”.</div>
               ) : null}
             </section>
-          ) : null}
+
+            {recentAssets.length || activeListings.length || listingLoading || listingError ? (
+              <section className="home-section home-assets" id="assets">
+                <div className="home-section-heading">
+                  <div>
+                    <h2>Discover assets</h2>
+                    <p>
+                      {assetView === 'recent'
+                        ? 'Individual assets from the latest permanent collection indexes.'
+                        : 'Verified active listings across every marketplace collection.'}
+                    </p>
+                  </div>
+                  <MarketSelect<'recent' | 'listed' | 'price-low' | 'price-high'>
+                    label="View"
+                    onChange={setAssetView}
+                    options={[
+                      { value: 'listed', label: 'Listed for sale' },
+                      { value: 'price-low', label: 'Price: low to high' },
+                      { value: 'price-high', label: 'Price: high to low' },
+                    ]}
+                    value={assetView}
+                  />
+                </div>
+                <div className="home-asset-grid">
+                  {displayedAssets.map(({ asset, collection, price }) => (
+                    <Link key={`${collection.id}-${asset.id}`} to={`/asset/${collection.id}/${asset.id}`}>
+                      {asset.image ? (
+                        <img className="home-asset-media" src={asset.image} alt="" />
+                      ) : collection.kind === 'names' ? (
+                        <NameAssetArtwork
+                          className="home-asset-media name-asset-artwork--card"
+                          name={asset.name}
+                          showCube={false}
+                        />
+                      ) : (
+                        <span className="home-asset-media home-asset-placeholder" aria-hidden="true">
+                          <BazarMark />
+                        </span>
+                      )}
+                      <div className="home-asset-details">
+                        <div>
+                          <strong>{asset.name}</strong>
+                          <span>{collection.name}</span>
+                        </div>
+                        <b className={`home-asset-price${price ? ' listed' : ''}`}>
+                          {price === undefined ? 'Checking…' : (price ?? 'Not listed')}
+                        </b>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+                {assetView !== 'recent' && listingLoading ? (
+                  <div className="home-assets-status">Verifying recent listing activity…</div>
+                ) : null}
+                {assetView !== 'recent' && listingError ? <ErrorPanel message={listingError} /> : null}
+                {assetView !== 'recent' && !displayedAssets.length ? (
+                  <div className="home-assets-empty">
+                    {listingLoading ? 'Checking live listings…' : 'No active listings found in the latest activity.'}
+                  </div>
+                ) : null}
+                {assetView !== 'recent' && canLoadMoreListings ? (
+                  <button className="load-more" disabled={listingLoading} onClick={showMoreListings}>
+                    {listingLoading ? 'Checking listings…' : 'Load more listings'}
+                  </button>
+                ) : null}
+              </section>
+            ) : null}
+          </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+type UdlGrantValue = NonNullable<UdlTerms['derivation'] | UdlTerms['commercialUse'] | UdlTerms['dataModelTraining']>;
+
+function UdlGrantField({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value?: UdlGrantValue;
+  options: Array<[string, string]>;
+  onChange: (value: UdlGrantValue | undefined) => void;
+}) {
+  const needsValue = value && ['revenue-share', 'one-time', 'monthly'].includes(value.grant);
+  return (
+    <div className={needsValue ? 'udl-field udl-grant-field has-value' : 'udl-field udl-grant-field'}>
+      <div className={needsValue ? 'udl-field-control with-value' : 'udl-field-control'}>
+        <MarketSelect
+          label={label}
+          value={value?.grant ?? ''}
+          options={[
+            { value: '', label: 'Not granted' },
+            ...options.map(([optionValue, optionLabel]) => ({ value: optionValue, label: optionLabel })),
+          ]}
+          onChange={(grant) => {
+            if (!grant) return onChange(undefined);
+            onChange({
+              grant: grant as UdlGrantValue['grant'],
+              ...(['one-time', 'monthly'].includes(grant)
+                ? { value: '1' }
+                : grant === 'revenue-share'
+                  ? { value: '10' }
+                  : {}),
+            });
+          }}
+        />
+        {needsValue ? (
+          <label className="udl-value">
+            <span>{value.grant === 'revenue-share' ? 'Percent' : 'Amount'}</span>
+            <input
+              aria-label={`${label} ${value.grant === 'revenue-share' ? 'percentage' : 'fee amount'}`}
+              inputMode="decimal"
+              min="0.000000000001"
+              max={value.grant === 'revenue-share' ? '100' : undefined}
+              step="any"
+              type="number"
+              value={value.value ?? '1'}
+              onChange={(event) => onChange({ ...value, value: event.target.value || '1' })}
+            />
+          </label>
+        ) : null}
       </div>
     </div>
   );
@@ -1137,6 +1341,8 @@ function CreateView() {
   const [collectionEstimate, setCollectionEstimate] = React.useState<CollectionMintEstimate | null>(null);
   const [estimating, setEstimating] = React.useState(false);
   const [allowHighCost, setAllowHighCost] = React.useState(false);
+  const [udlEnabled, setUdlEnabled] = React.useState(true);
+  const [udlTerms, setUdlTerms] = React.useState<UdlTerms>({});
   const [phase, setPhase] = React.useState<MintPhase | null>(null);
   const [collectionPhase, setCollectionPhase] = React.useState<CollectionMintPhase | null>(null);
   const [error, setError] = React.useState<string | null>(null);
@@ -1145,6 +1351,13 @@ function CreateView() {
   const [collectionResult, setCollectionResult] = React.useState<Collection | null>(null);
   const [draft, setDraft] = React.useState<MintDraft | null>(() =>
     wallet.address ? getMintDraft(wallet.address) : null,
+  );
+  const activeUdl = udlEnabled ? udlTerms : undefined;
+  const hasUdlPayment = Boolean(
+    activeUdl?.accessFee ||
+    ['revenue-share', 'one-time', 'monthly'].includes(activeUdl?.derivation?.grant ?? '') ||
+    ['revenue-share', 'one-time', 'monthly'].includes(activeUdl?.commercialUse?.grant ?? '') ||
+    ['one-time', 'monthly'].includes(activeUdl?.dataModelTraining?.grant ?? ''),
   );
 
   React.useEffect(() => {
@@ -1190,7 +1403,7 @@ function CreateView() {
       setEstimating(true);
       setError(null);
       void new AssetMintClient()
-        .estimate({ file, name, description }, controller.signal)
+        .estimate({ file, name, description, udl: activeUdl }, controller.signal)
         .then(
           (nextEstimate) => {
             if (!controller.signal.aborted) setEstimate(nextEstimate);
@@ -1207,7 +1420,7 @@ function CreateView() {
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [description, file, mode, name]);
+  }, [activeUdl, description, file, mode, name]);
   React.useEffect(() => {
     if (mode !== 'collection' || !collectionFiles.length || !name.trim()) {
       setCollectionEstimate(null);
@@ -1218,7 +1431,7 @@ function CreateView() {
       setEstimating(true);
       setError(null);
       void new CollectionMintClient()
-        .estimate({ files: collectionFiles, name, description }, controller.signal)
+        .estimate({ files: collectionFiles, name, description, udl: activeUdl }, controller.signal)
         .then(
           (nextEstimate) => {
             if (!controller.signal.aborted) setCollectionEstimate(nextEstimate);
@@ -1235,7 +1448,7 @@ function CreateView() {
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [collectionFiles, description, mode, name]);
+  }, [activeUdl, collectionFiles, description, mode, name]);
 
   const selectFile = (next: File | null) => {
     setFile(next);
@@ -1275,7 +1488,7 @@ function CreateView() {
     try {
       if (mode === 'collection') {
         const minted = await new CollectionMintClient().mint(
-          { files: collectionFiles, name, description },
+          { files: collectionFiles, name, description, udl: activeUdl },
           wallet.address,
           { allowHighCost, onPhase: setCollectionPhase },
         );
@@ -1285,7 +1498,7 @@ function CreateView() {
         return;
       }
       if (!file) return;
-      const minted = await new AssetMintClient().mint({ file, name, description }, wallet.address, {
+      const minted = await new AssetMintClient().mint({ file, name, description, udl: activeUdl }, wallet.address, {
         allowHighCost,
         onPhase: setPhase,
       });
@@ -1505,6 +1718,234 @@ function CreateView() {
             <span>{description.length} / 600</span>
           </div>
 
+          <section className="create-license" aria-labelledby="mint-license-heading">
+            <div className="create-license-heading">
+              <div>
+                <strong id="mint-license-heading">Usage rights</strong>
+                <span>
+                  Attach permanent, machine-readable terms to {mode === 'asset' ? 'this asset' : 'every asset'}.
+                </span>
+              </div>
+              <MarketSelect<'udl' | 'none'>
+                label="License"
+                value={udlEnabled ? 'udl' : 'none'}
+                options={[
+                  { value: 'udl', label: 'Universal Data License 0.2' },
+                  { value: 'none', label: 'No license tags' },
+                ]}
+                onChange={(value) => {
+                  setUdlEnabled(value === 'udl');
+                  setEstimate(null);
+                  setCollectionEstimate(null);
+                  setError(null);
+                }}
+                showLabel={false}
+              />
+            </div>
+
+            {udlEnabled ? (
+              <div className="udl-options">
+                <p>
+                  Free access is the default. Rights not granted below remain reserved.{' '}
+                  <a href={`https://arweave.net/${UDL_LICENSE_ID}`} target="_blank" rel="noreferrer">
+                    Read UDL 0.2 <ArrowUpRight className="ui-icon ui-icon--sm" aria-hidden="true" />
+                  </a>
+                </p>
+                <div className="udl-grid">
+                  <div className="udl-field">
+                    <div className={udlTerms.accessFee ? 'udl-field-control with-value' : 'udl-field-control'}>
+                      <MarketSelect<'free' | 'one-time'>
+                        label="Access"
+                        value={udlTerms.accessFee ? 'one-time' : 'free'}
+                        options={[
+                          { value: 'free', label: 'Free' },
+                          { value: 'one-time', label: 'One-time fee' },
+                        ]}
+                        onChange={(value) =>
+                          setUdlTerms((current) => ({
+                            ...current,
+                            accessFee: value === 'one-time' ? '1' : undefined,
+                          }))
+                        }
+                      />
+                      {udlTerms.accessFee ? (
+                        <label className="udl-value">
+                          <span>Amount</span>
+                          <input
+                            aria-label="Access fee amount"
+                            inputMode="decimal"
+                            min="0.000000000001"
+                            step="any"
+                            type="number"
+                            value={udlTerms.accessFee}
+                            onChange={(event) =>
+                              setUdlTerms((current) => ({ ...current, accessFee: event.target.value || '1' }))
+                            }
+                          />
+                        </label>
+                      ) : null}
+                    </div>
+                  </div>
+                  <UdlGrantField
+                    label="Derivatives"
+                    value={udlTerms.derivation}
+                    options={[
+                      ['allowed', 'Allowed'],
+                      ['credit', 'Allowed with credit'],
+                      ['indication', 'Allowed with change indication'],
+                      ['license-passthrough', 'Allowed with license passthrough'],
+                      ['revenue-share', 'Allowed with revenue share'],
+                      ['one-time', 'Allowed with one-time fee'],
+                      ['monthly', 'Allowed with monthly fee'],
+                    ]}
+                    onChange={(value) =>
+                      setUdlTerms((current) => ({ ...current, derivation: value as UdlTerms['derivation'] }))
+                    }
+                  />
+                  <UdlGrantField
+                    label="Commercial use"
+                    value={udlTerms.commercialUse}
+                    options={[
+                      ['allowed', 'Allowed'],
+                      ['credit', 'Allowed with credit'],
+                      ['revenue-share', 'Allowed with revenue share'],
+                      ['one-time', 'Allowed with one-time fee'],
+                      ['monthly', 'Allowed with monthly fee'],
+                    ]}
+                    onChange={(value) =>
+                      setUdlTerms((current) => ({ ...current, commercialUse: value as UdlTerms['commercialUse'] }))
+                    }
+                  />
+                  <UdlGrantField
+                    label="AI model training"
+                    value={udlTerms.dataModelTraining}
+                    options={[
+                      ['allowed', 'Allowed'],
+                      ['one-time', 'Allowed with one-time fee'],
+                      ['monthly', 'Allowed with monthly fee'],
+                    ]}
+                    onChange={(value) =>
+                      setUdlTerms((current) => ({
+                        ...current,
+                        dataModelTraining: value as UdlTerms['dataModelTraining'],
+                      }))
+                    }
+                  />
+                </div>
+
+                {hasUdlPayment ? (
+                  <div className="udl-payment">
+                    <div className="udl-field">
+                      <div className="udl-field-control">
+                        <MarketSelect<'U' | 'AR'>
+                          label="Payment currency"
+                          value={udlTerms.currency ?? 'U'}
+                          options={[
+                            { value: 'U', label: '$U (UDL default)' },
+                            { value: 'AR', label: 'AR' },
+                          ]}
+                          onChange={(value) =>
+                            setUdlTerms((current) => ({
+                              ...current,
+                              currency: value === 'AR' ? 'AR' : undefined,
+                            }))
+                          }
+                        />
+                      </div>
+                    </div>
+                    <div className="udl-field udl-address">
+                      <label htmlFor="udl-payment-address">Payment address</label>
+                      <div className="udl-field-control">
+                        <input
+                          id="udl-payment-address"
+                          maxLength={43}
+                          placeholder={wallet.address || 'Uploader wallet by default'}
+                          value={udlTerms.paymentAddress ?? ''}
+                          onChange={(event) =>
+                            setUdlTerms((current) => ({
+                              ...current,
+                              paymentAddress: event.target.value.trim() || undefined,
+                            }))
+                          }
+                        />
+                      </div>
+                    </div>
+                    {udlTerms.paymentAddress && udlTerms.paymentAddress !== wallet.address ? (
+                      <p className="udl-payment-warning">
+                        License payments will go to this address, not the connected wallet.
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                <details className="udl-advanced">
+                  <summary>Advanced terms</summary>
+                  <div className="udl-grid">
+                    <div className="udl-field">
+                      <div className="udl-field-control">
+                        <MarketSelect<'included' | 'excluded'>
+                          label="Unknown usage rights"
+                          value={udlTerms.unknownUsageRights ?? 'included'}
+                          options={[
+                            { value: 'included', label: 'Included when legally available' },
+                            { value: 'excluded', label: 'Excluded' },
+                          ]}
+                          onChange={(value) =>
+                            setUdlTerms((current) => ({
+                              ...current,
+                              unknownUsageRights: value === 'excluded' ? 'excluded' : undefined,
+                            }))
+                          }
+                        />
+                      </div>
+                    </div>
+                    <div className="udl-field">
+                      <label htmlFor="udl-expiry">License term</label>
+                      <div className="udl-field-control with-suffix">
+                        <input
+                          id="udl-expiry"
+                          inputMode="numeric"
+                          min="1"
+                          placeholder="Unlimited"
+                          step="1"
+                          type="number"
+                          value={udlTerms.expiry ?? ''}
+                          onChange={(event) =>
+                            setUdlTerms((current) => ({ ...current, expiry: event.target.value || undefined }))
+                          }
+                        />
+                        <span>years</span>
+                      </div>
+                    </div>
+                    {hasUdlPayment ? (
+                      <div className="udl-field">
+                        <div className="udl-field-control">
+                          <MarketSelect<'direct' | 'random' | 'global'>
+                            label="Payment mode"
+                            value={udlTerms.paymentMode ?? 'direct'}
+                            options={[
+                              { value: 'direct', label: 'Direct to payment address' },
+                              { value: 'random', label: 'Random PST distribution' },
+                              { value: 'global', label: 'Global PST distribution' },
+                            ]}
+                            onChange={(value) =>
+                              setUdlTerms((current) => ({
+                                ...current,
+                                paymentMode: value === 'random' || value === 'global' ? value : undefined,
+                              }))
+                            }
+                          />
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                </details>
+              </div>
+            ) : (
+              <p className="udl-none">No license metadata will be written. Copyright defaults still apply.</p>
+            )}
+          </section>
+
           <div className="mint-summary">
             <div>
               <span>{mode === 'asset' ? 'Edition' : 'Assets'}</span>
@@ -1636,7 +2077,7 @@ function GatewayControl() {
   }
   return (
     <details className="gateway">
-      <summary aria-label="Compute gateway" title={`Compute gateway: ${current}`}>
+      <summary aria-label="Compute gateway" data-tooltip={`Compute gateway: ${current}`}>
         <Server className="ui-icon ui-icon--sm" aria-hidden="true" />
       </summary>
       <div>
@@ -1663,11 +2104,13 @@ function MarketSelect<Value extends string>({
   value,
   options,
   onChange,
+  showLabel = true,
 }: {
   label: string;
   value: Value;
   options: readonly MarketSelectOption<Value>[];
   onChange(value: Value): void;
+  showLabel?: boolean;
 }) {
   const [open, setOpen] = React.useState(false);
   const rootRef = React.useRef<HTMLDivElement>(null);
@@ -1714,7 +2157,7 @@ function MarketSelect<Value extends string>({
 
   return (
     <div className="market-select" ref={rootRef}>
-      <span className="market-select-label">{label}</span>
+      {showLabel ? <span className="market-select-label">{label}</span> : null}
       <button
         aria-controls={menuId}
         aria-expanded={open}
@@ -1809,6 +2252,8 @@ function CollectionView() {
   const [cardPrices, setCardPrices] = React.useState<Record<string, string | null>>({});
   const [cardPricesLoading, setCardPricesLoading] = React.useState(false);
   const [cardPricesUnavailable, setCardPricesUnavailable] = React.useState(false);
+  const [pageLoading, setPageLoading] = React.useState(false);
+  const [pageError, setPageError] = React.useState<string | null>(null);
   const [activityState, setActivityState] = React.useState({
     loading: false,
     resolved: 0,
@@ -1817,6 +2262,18 @@ function CollectionView() {
   });
   const [retry, setRetry] = React.useState(0);
   const gateway = servingNodeOrigin(window.location);
+  const loadNextCarrierPage = async () => {
+    if (!collection || pageLoading) return;
+    setPageLoading(true);
+    setPageError(null);
+    try {
+      await market.loadMore(collection.id);
+    } catch (cause) {
+      setPageError(errorMessage(cause));
+    } finally {
+      setPageLoading(false);
+    }
+  };
   React.useEffect(() => {
     if (!collection) return;
     const controller = new AbortController();
@@ -1954,28 +2411,37 @@ function CollectionView() {
       </div>
       <CollectionTabs collection={collection} active="assets" />
       {collection.kind === 'names' ? (
-        <nav className="alphabet-filter" aria-label="Filter names by first letter">
-          <button
-            aria-pressed={initial === 'all'}
-            className={initial === 'all' ? 'active' : undefined}
-            type="button"
-            onClick={() => setInitial('all')}
-          >
-            All
-          </button>
-          {'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').map((letter) => (
+        <>
+          <nav className="alphabet-filter" aria-label="Filter loaded names by first letter">
             <button
-              aria-label={`Names beginning with ${letter}`}
-              aria-pressed={initial === letter}
-              className={initial === letter ? 'active' : undefined}
-              key={letter}
+              aria-pressed={initial === 'all'}
+              className={initial === 'all' ? 'active' : undefined}
               type="button"
-              onClick={() => setInitial(letter)}
+              onClick={() => setInitial('all')}
             >
-              {letter}
+              All
             </button>
-          ))}
-        </nav>
+            {'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').map((letter) => (
+              <button
+                aria-label={`Loaded names beginning with ${letter}`}
+                aria-pressed={initial === letter}
+                className={initial === letter ? 'active' : undefined}
+                key={letter}
+                type="button"
+                onClick={() => setInitial(letter)}
+              >
+                {letter}
+              </button>
+            ))}
+          </nav>
+          {collection.hasMore ? (
+            <p className="collection-index-note">
+              Showing {collection.assets.length.toLocaleString()} of{' '}
+              {(collection.total ?? collection.assets.length).toLocaleString()} indexed names. Search and A–Z filters
+              cover loaded names only.
+            </p>
+          ) : null}
+        </>
       ) : null}
       <div className="asset-tools">
         <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search this collection" />
@@ -2054,14 +2520,16 @@ function CollectionView() {
             {query
               ? `No assets match “${query}”`
               : initial !== 'all'
-                ? `No names beginning with ${initial}`
+                ? `No loaded names beginning with ${initial}`
                 : 'Nothing here yet'}
           </h3>
           <p>
             {query
               ? 'Try a shorter search or clear the current query.'
               : initial !== 'all'
-                ? 'Try another letter or return to all names.'
+                ? collection.hasMore
+                  ? 'Load more names from Arweave or try another letter.'
+                  : 'Try another letter or return to all names.'
                 : 'This collection does not contain any indexed assets yet.'}
           </p>
           {query || initial !== 'all' ? (
@@ -2077,13 +2545,21 @@ function CollectionView() {
           ) : null}
         </div>
       ) : null}
+      {pageError ? (
+        <div className="inline-error collection-page-error">
+          <span>{pageError}</span>
+          <button className="with-icon" onClick={() => void loadNextCarrierPage()}>
+            <RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Try again
+          </button>
+        </div>
+      ) : null}
       {limit < filtered.length ? (
         <button className="load-more" onClick={() => setLimit((value) => value + 48)}>
           Show more
         </button>
-      ) : filtered.length && collection.hasMore && !query && !listedOnly ? (
-        <button className="load-more" onClick={() => void market.loadMore(collection.id)}>
-          Load 100 more from Arweave
+      ) : collection.hasMore && !query && !listedOnly && !pageError ? (
+        <button className="load-more" disabled={pageLoading} onClick={() => void loadNextCarrierPage()}>
+          {pageLoading ? 'Loading 100 more…' : 'Load next 100 names from Arweave'}
         </button>
       ) : null}
     </section>
@@ -2622,10 +3098,6 @@ function AssetView() {
             ) : (
               <span>{asset.name.slice(0, 1).toUpperCase()}</span>
             )}
-            <div className="asset-media-label">
-              <span>Permanent asset</span>
-              <strong>{asset.contentType ?? (asset.image ? 'image' : (state?.device ?? 'process'))}</strong>
-            </div>
           </div>
         </div>
         <div className="asset-commerce-column">
@@ -3156,10 +3628,15 @@ function OperationDialog({
       onClose();
     }, 240);
   };
-  if (!visible) return null;
+  if (!visible && visiblePhase !== 'working') return null;
   return (
-    <div className="dialog-backdrop" role="presentation">
-      <div className={`dialog dialog--${visiblePhase}`} role="dialog" aria-modal="true">
+    <div className="dialog-backdrop" role="presentation" hidden={!visible}>
+      <div
+        className={`dialog dialog--${visiblePhase}`}
+        role={visible ? 'dialog' : undefined}
+        aria-modal={visible ? true : undefined}
+        aria-hidden={visible ? undefined : true}
+      >
         <div className="dialog-heading">
           <div>
             <p className="eyebrow">{operationLabel(operation.kind)}</p>
@@ -3218,7 +3695,7 @@ function OperationDialog({
               <p className="sync-intro">Signed. Now watching independent Arweave nodes agree on the transaction.</p>
             ) : null}
             {workingStatus ? <p className="scheduler-wait">{workingStatus}</p> : null}
-            <ArweaveTransactionSync subject={asset.name} steps={steps} activeStep={activeStep} />
+            <ArweaveTransactionSync subject={asset.name} steps={steps} activeStep={activeStep} active={visible} />
           </>
         ) : null}
         {visiblePhase === 'done' ? (
@@ -3454,6 +3931,11 @@ function mintErrorMessage(error: unknown) {
     'wallet-sign-unavailable': 'Connect an Arweave wallet that can sign transactions.',
     'wallet-account-changed': 'The connected wallet changed. Reconnect the original wallet and try again.',
     'mint-draft-wallet-mismatch': 'Reconnect the wallet that uploaded this media to finish minting it.',
+    'mint-udl-access-fee-invalid': 'Enter a UDL access fee greater than zero.',
+    'mint-udl-fee-invalid': 'Enter a UDL license fee greater than zero.',
+    'mint-udl-share-invalid': 'Enter a UDL revenue share between 0 and 100 percent.',
+    'mint-udl-expiry-invalid': 'Enter a whole number of years for the UDL license term.',
+    'mint-udl-payment-address-invalid': 'Enter a valid 43-character Arweave payment address.',
   };
   return friendly[value] ?? value.replaceAll('-', ' ');
 }

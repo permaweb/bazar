@@ -48,13 +48,14 @@ export async function loadCollections(signal?: AbortSignal): Promise<Collection[
 
 async function loadNames(signal?: AbortSignal): Promise<Collection> {
   const page = await loadCarrierPage(undefined, signal);
+  const total = page.total ?? page.assets.length;
   return {
     id: 'arweave-names',
     name: 'Arweave names',
-    description: `${page.total.toLocaleString()} carrier names owned and traded directly on Arweave.`,
+    description: `${total.toLocaleString()} carrier names owned and traded directly on Arweave.`,
     kind: 'names',
     assets: page.assets,
-    total: page.total,
+    total,
     cursor: page.cursor,
     hasMore: page.hasMore,
   };
@@ -69,7 +70,7 @@ export async function loadMoreCarrierNames(collection: Collection, signal?: Abor
     assets: [...collection.assets, ...page.assets.filter((asset) => !seen.has(asset.id))],
     cursor: page.cursor,
     hasMore: page.hasMore,
-    total: page.total,
+    total: page.total ?? collection.total,
   };
 }
 
@@ -79,6 +80,10 @@ export async function loadCollectionReference(referenceId: string, signal?: Abor
 }
 
 async function loadCarrierPage(after?: string, signal?: AbortSignal) {
+  // arweave.net rejects `count` together with a cursor-backed search_after
+  // request. The first page establishes the collection total; later pages
+  // preserve that value while fetching only edges and pageInfo.
+  const totalField = after ? '' : 'count';
   const response = await fetch(`${DEFAULT_GATEWAY}/graphql`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -90,7 +95,7 @@ async function loadCarrierPage(after?: string, signal?: AbortSignal) {
 					sort: HEIGHT_DESC
 					tags: [{ name: "execution-device", values: ["carrier@1.0"] }]
 				) {
-					count
+					${totalField}
 					pageInfo { hasNextPage }
 					edges {
 						cursor
@@ -115,7 +120,7 @@ async function loadCarrierPage(after?: string, signal?: AbortSignal) {
       id: node.id,
       name: node.tags.find((tag) => tag.name === 'name')?.value ?? shortId(node.id),
     })),
-    total: Number(connection.count),
+    total: connection.count === undefined ? undefined : Number(connection.count),
     cursor: edges.at(-1)?.cursor,
     hasMore: Boolean(connection.pageInfo.hasNextPage),
   };

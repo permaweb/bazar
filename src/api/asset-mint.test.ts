@@ -2,9 +2,11 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   CREATED_COLLECTION_ID,
+  UDL_LICENSE_ID,
   AssetMintClient,
   assetFromMintState,
   createdCollection,
+  getMintDraft,
   isBazarMintTags,
   loadMintedAssets,
   loadMintedCollections,
@@ -12,6 +14,7 @@ import {
   mintProcessTags,
   storeMintedAsset,
   storeMintedCollection,
+  udlLicenseTags,
 } from './asset-mint';
 
 const owner = 'W'.repeat(43);
@@ -62,6 +65,60 @@ describe('asset mint contract', () => {
       contentType: 'image/png',
       image: mediaId,
       collection: 'Created on Bazar',
+    });
+  });
+
+  it('encodes Universal Data License 0.2 terms with canonical tags', () => {
+    const terms = {
+      accessFee: '1.5',
+      derivation: { grant: 'revenue-share' as const, value: '12.5' },
+      commercialUse: { grant: 'one-time' as const, value: '20' },
+      dataModelTraining: { grant: 'monthly' as const, value: '3' },
+      unknownUsageRights: 'excluded' as const,
+      expiry: '5',
+      currency: 'AR' as const,
+      paymentAddress: owner,
+      paymentMode: 'global' as const,
+    };
+
+    expect(udlLicenseTags({})).toEqual({ License: UDL_LICENSE_ID });
+    expect(udlLicenseTags(terms)).toEqual({
+      License: UDL_LICENSE_ID,
+      'Access-Fee': 'One-Time-1.5',
+      Derivation: 'Allowed-With-RevenueShare-12.5%',
+      'Commercial-Use': 'Allowed-With-Fee-One-Time-20',
+      'Data-Model-Training': 'Allowed-With-Fee-Monthly-3',
+      'Unknown-Usage-Rights': 'Excluded',
+      Expiry: '5',
+      Currency: 'AR',
+      'Payment-Address': owner,
+      'Payment-Mode': 'Global-Distribution',
+    });
+    expect(mintProcessTags({ name: 'Signal #1', contentType: 'image/png', mediaId, udl: terms }, owner)).toMatchObject({
+      License: UDL_LICENSE_ID,
+      'Data-Model-Training': 'Allowed-With-Fee-Monthly-3',
+    });
+    expect(() => udlLicenseTags({ commercialUse: { grant: 'one-time', value: '0' } })).toThrow('mint-udl-fee-invalid');
+  });
+
+  it('keeps UDL terms in a recoverable mint draft', () => {
+    const store = storage();
+    store.setItem(
+      `bazar-mint-draft:${owner}`,
+      JSON.stringify({
+        owner,
+        mediaId,
+        name: 'Recoverable signal',
+        description: '',
+        contentType: 'image/png',
+        createdAt: 1,
+        udl: { commercialUse: { grant: 'credit' }, dataModelTraining: { grant: 'allowed' } },
+      }),
+    );
+
+    expect(getMintDraft(owner, store)?.udl).toEqual({
+      commercialUse: { grant: 'credit' },
+      dataModelTraining: { grant: 'allowed' },
     });
   });
 
@@ -192,11 +249,16 @@ describe('asset mint contract', () => {
         name: 'Large signal',
         description: '',
         file: new File([new Uint8Array(300_000)], 'large-signal.png', { type: 'image/png' }),
+        udl: { dataModelTraining: { grant: 'allowed' } },
       },
       owner,
     );
 
     expect(getUploader).toHaveBeenCalledWith(media);
+    expect(media.addTag).toHaveBeenCalledWith('License', UDL_LICENSE_ID);
+    expect(media.addTag).toHaveBeenCalledWith('Data-Model-Training', 'Allowed');
+    expect(process.addTag).toHaveBeenCalledWith('License', UDL_LICENSE_ID);
+    expect(process.addTag).toHaveBeenCalledWith('Data-Model-Training', 'Allowed');
     expect(media.setSignature).toHaveBeenCalledWith(expect.objectContaining({ id: mediaId, signature: 'media' }));
     expect(uploadChunk).toHaveBeenCalledOnce();
     expect(posted).toEqual(['https://arweave.net/tx']);

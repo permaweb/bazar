@@ -60,6 +60,8 @@ const LICENSE_FIELDS = [
   ['commercial-use', 'Commercial use'],
   ['commercial-use-fee', 'Commercial fee'],
   ['data-model-training', 'Model training'],
+  ['unknown-usage-rights', 'Unknown usage rights'],
+  ['expiry', 'License term'],
   ['payment-mode', 'Payment mode'],
   ['payment-address', 'Payment address'],
   ['currency', 'Currency'],
@@ -282,7 +284,7 @@ export function licenseProperties(state: AssetState): LicenseProperty[] {
     if (!['string', 'number', 'boolean'].includes(typeof held)) return [];
     const raw = String(held);
     const value =
-      key === 'license' && raw === 'dE0rmDfl9_OWjkDznNEXHaSO_JohJkRolvMzaCroUdw' ? 'Universal Data License' : raw;
+      key === 'license' && raw === 'dE0rmDfl9_OWjkDznNEXHaSO_JohJkRolvMzaCroUdw' ? 'Universal Data License 0.2' : raw;
     return [{ key, label, value }];
   });
 }

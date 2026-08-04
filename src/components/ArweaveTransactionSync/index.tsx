@@ -4,7 +4,15 @@ import React from 'react';
 import { type Observer, type ObserverView, type PurchaseTransaction } from 'weave-wrangler';
 
 import { TxAddress } from 'components/atoms/TxAddress';
-import { elapsedLabel, phaseIsComplete, type RaceTimelineEvent, timelineLayout, transitionKey } from './raceTimeline';
+import {
+  elapsedLabel,
+  MAX_VISIBLE_MINOR_EVENT_MARKERS,
+  minorEventMarkerPositions,
+  phaseIsComplete,
+  type RaceTimelineEvent,
+  timelineLayout,
+  transitionKey,
+} from './raceTimeline';
 import * as S from './styles';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 
@@ -25,6 +33,9 @@ const CableTelemetryPanel = React.lazy(async () => {
 });
 
 const MAX_PROOFS_PER_LANE = 320;
+const RECENT_PROOF_CANDIDATE_MULTIPLIER = 2;
+const RACE_CLOCK_INTERVAL_MS = 250;
+const LIVE_RESPONSE_BATCH_MS = 50;
 
 type LaneEvent = RaceTimelineEvent & {
   nodeHeight?: number;
@@ -49,7 +60,7 @@ type LaneHistory = {
   observedAt: number;
 };
 
-type Timeline = {
+export type Timeline = {
   transactionId: string;
   lanes: LaneHistory[];
 };
@@ -76,10 +87,17 @@ type Props = {
   subject: string;
   steps: ArweaveSyncStep[];
   activeStep?: string;
+  active?: boolean;
   onProgressChange?: (progress: number) => void;
 };
 
-export function ArweaveTransactionSync({ subject, steps, activeStep, onProgressChange }: Props) {
+export function ArweaveTransactionSync({
+  subject,
+  steps,
+  activeStep,
+  active: renderActive = true,
+  onProgressChange,
+}: Props) {
   const language = useLanguageProvider().strings;
   const active = steps.find((step) => step.key === activeStep) ?? steps[0];
   const activeKey = active?.key;
@@ -106,10 +124,10 @@ export function ArweaveTransactionSync({ subject, steps, activeStep, onProgressC
       (step) => step.transaction && !phaseIsComplete(latestLaneEvent(lane.phases.get(step.key)), step.target),
     ),
   );
-  const liveAt = useRaceClock(raceActive);
+  const liveAt = useRaceClock(renderActive && raceActive);
   const protocolTelemetry = useProtocolTelemetry(observedSteps, activeKey, liveAt);
   const miningTelemetry = useArweaveMiningTelemetry(
-    lanes.length > 0,
+    renderActive && lanes.length > 0,
     `${subject}:${observedSteps.map((step) => step.transaction?.id ?? '').join(':')}`,
   );
   const acceptedProofs = miningTelemetry.acceptedProofs;
@@ -233,6 +251,7 @@ export function ArweaveTransactionSync({ subject, steps, activeStep, onProgressC
               <TransactionSequenceCable3D
                 lanes={cableLanes}
                 ariaLabel={`${language.transactionSyncRacePrototypeInfinityCable}: ${subject}`}
+                active={renderActive}
                 layout={'bundle'}
                 phaseLabels={observedSteps.map((step) => step.label)}
                 miningActivity={{
@@ -281,7 +300,7 @@ function useRaceClock(active: boolean): number {
       stop();
       if (document.hidden) return;
       setNow(Date.now());
-      interval = window.setInterval(() => setNow(Date.now()), 125);
+      interval = window.setInterval(() => setNow(Date.now()), RACE_CLOCK_INTERVAL_MS);
     };
 
     start();
@@ -305,7 +324,11 @@ export function observedConfirmationDepth(views: ObserverView[]): number {
 }
 
 function latestObserverState(views: ObserverView[]): ObserverView['state'] {
-  return [...views].sort((left, right) => right.updatedAt - left.updatedAt)[0]?.state ?? 'unknown';
+  let latest: ObserverView | undefined;
+  for (const view of views) {
+    if (!latest || view.updatedAt > latest.updatedAt) latest = view;
+  }
+  return latest?.state ?? 'unknown';
 }
 
 function localizedRisk(depth: number, language: any): string {
@@ -324,6 +347,14 @@ function useLiveObserverResponses(steps: ArweaveSyncStep[]): ArweaveSyncStep[] {
 
   React.useEffect(() => {
     const transactionIds = new Set(steps.flatMap((step) => (step.transaction ? [step.transaction.id] : [])));
+    let flushTimer: number | undefined;
+    const scheduleRender = () => {
+      if (flushTimer !== undefined) return;
+      flushTimer = window.setTimeout(() => {
+        flushTimer = undefined;
+        setVersion((current) => current + 1);
+      }, LIVE_RESPONSE_BATCH_MS);
+    };
     const handleResponse = (event: Event) => {
       const detail = (event as CustomEvent<ArweaveObserverResponseDetail>).detail;
       if (!detail || !transactionIds.has(detail.transactionId)) return;
@@ -333,11 +364,14 @@ function useLiveObserverResponses(steps: ArweaveSyncStep[]): ArweaveSyncStep[] {
       if (!view) return;
       transactionViews.set(detail.observer.url, view);
       storeRef.current.viewsByTransaction.set(detail.transactionId, transactionViews);
-      setVersion((current) => current + 1);
+      scheduleRender();
     };
 
     window.addEventListener(ARWEAVE_OBSERVER_RESPONSE_EVENT, handleResponse);
-    return () => window.removeEventListener(ARWEAVE_OBSERVER_RESPONSE_EVENT, handleResponse);
+    return () => {
+      window.removeEventListener(ARWEAVE_OBSERVER_RESPONSE_EVENT, handleResponse);
+      if (flushTimer !== undefined) window.clearTimeout(flushTimer);
+    };
   }, [key]);
 
   return React.useMemo(
@@ -852,8 +886,8 @@ function infinity3DPhase(
   const layout = timelineLayout(lane.events, observedAt, phaseStart, phaseEnd, target, complete);
   const startedAt = lane.events[0].updatedAt;
   const eventTimestamps = new Set(lane.events.map((event) => event.updatedAt));
-  const proofMarkers = includeProofs
-    ? lane.proofs.flatMap((proof) => {
+  const rawProofMarkers = includeProofs
+    ? lane.proofs.slice(-MAX_VISIBLE_MINOR_EVENT_MARKERS * RECENT_PROOF_CANDIDATE_MULTIPLIER).flatMap((proof) => {
         if (eventTimestamps.has(proof.observedAt)) return [];
         const proofEvents = lane.events.filter((event) => event.updatedAt <= proof.observedAt);
         if (!proofEvents.length) return [];
@@ -875,6 +909,14 @@ function infinity3DPhase(
         ];
       })
     : [];
+  const minorMarkerPositions = minorEventMarkerPositions(
+    rawProofMarkers.map((marker) => marker.progress),
+    phaseStart,
+  );
+  const proofMarkers = rawProofMarkers
+    .slice(-MAX_VISIBLE_MINOR_EVENT_MARKERS)
+    .slice(-minorMarkerPositions.length)
+    .map((marker, index) => ({ ...marker, progress: minorMarkerPositions[index] }));
   return {
     progress: layout.progressEnd,
     markers: [
@@ -994,9 +1036,17 @@ function useObserverTimelines(steps: ArweaveSyncStep[]): Map<string, Timeline> {
   return timelines;
 }
 
-function updateObserverTimeline(current: Timeline, views: ObserverView[]): Timeline {
+export function updateObserverTimeline(current: Timeline, views: ObserverView[]): Timeline {
   let changed = false;
-  const lanes = current.lanes.map((lane) => ({ ...lane, events: [...lane.events], proofs: [...lane.proofs] }));
+  let lanes = current.lanes;
+  const laneIndexes = new Map(lanes.map((lane, index) => [lane.observer.url, index]));
+  const mutableLane = (index: number): LaneHistory => {
+    if (lanes === current.lanes) lanes = [...lanes];
+    if (lanes[index] === current.lanes[index]) {
+      lanes[index] = { ...lanes[index], events: [...lanes[index].events], proofs: [...lanes[index].proofs] };
+    }
+    return lanes[index];
+  };
 
   for (const view of views) {
     const event: LaneEvent = {
@@ -1010,20 +1060,29 @@ function updateObserverTimeline(current: Timeline, views: ObserverView[]): Timel
       ...(view.latency === undefined ? {} : { latency: view.latency }),
       ...(view.error === undefined ? {} : { error: view.error }),
     };
-    let lane = lanes.find((candidate) => candidate.observer.url === view.observer.url);
-    if (!lane) {
-      lane = { observer: view.observer, events: [], proofs: [], observedAt: view.updatedAt };
-      lanes.push(lane);
+    let laneIndex = laneIndexes.get(view.observer.url);
+    if (laneIndex === undefined) {
+      if (lanes === current.lanes) lanes = [...lanes];
+      laneIndex = lanes.length;
+      lanes.push({ observer: view.observer, events: [], proofs: [], observedAt: view.updatedAt });
+      laneIndexes.set(view.observer.url, laneIndex);
       changed = true;
     }
+    let lane = lanes[laneIndex];
     const previous = lane.events[lane.events.length - 1];
-    if (!previous || transitionKey(previous) !== transitionKey(event)) {
+    const addEvent = !previous || transitionKey(previous) !== transitionKey(event);
+    const previousProof = lane.proofs[lane.proofs.length - 1];
+    const addProof = view.lastSeenAt !== undefined && (!previousProof || view.lastSeenAt > previousProof.observedAt);
+    const updateObservedAt = view.updatedAt > lane.observedAt;
+    if (!addEvent && !addProof && !updateObservedAt) continue;
+
+    lane = mutableLane(laneIndex);
+    if (addEvent) {
       lane.events.push(event);
       lane.events.sort((left, right) => left.updatedAt - right.updatedAt);
       changed = true;
     }
-    const previousProof = lane.proofs[lane.proofs.length - 1];
-    if (view.lastSeenAt !== undefined && (!previousProof || view.lastSeenAt > previousProof.observedAt)) {
+    if (addProof && view.lastSeenAt !== undefined) {
       lane.proofs.push({
         observedAt: view.lastSeenAt,
         state: view.state,
@@ -1039,7 +1098,7 @@ function updateObserverTimeline(current: Timeline, views: ObserverView[]): Timel
       }
       changed = true;
     }
-    if (view.updatedAt > lane.observedAt) {
+    if (updateObservedAt) {
       lane.observedAt = view.updatedAt;
       changed = true;
     }

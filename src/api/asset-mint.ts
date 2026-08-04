@@ -9,15 +9,36 @@ const HIGH_COST_WINSTON = 100_000_000_000n;
 const STORAGE_KEY = 'bazar-created-assets';
 const DRAFT_PREFIX = 'bazar-mint-draft:';
 const GATEWAY = 'https://arweave.net';
+const UDL_AMOUNT = /^(?:0|[1-9]\d*)(?:\.\d+)?$/;
 
 export const CREATED_COLLECTION_ID = 'created-assets';
 export const CREATED_COLLECTION_NAME = 'Created on Bazar';
+export const UDL_LICENSE_ID = 'dE0rmDfl9_OWjkDznNEXHaSO_JohJkRolvMzaCroUdw';
+
+export type UdlFeeGrant = 'one-time' | 'monthly';
+export type UdlDerivationGrant =
+  'allowed' | 'credit' | 'indication' | 'license-passthrough' | 'revenue-share' | UdlFeeGrant;
+export type UdlCommercialGrant = 'allowed' | 'credit' | 'revenue-share' | UdlFeeGrant;
+export type UdlTrainingGrant = 'allowed' | UdlFeeGrant;
+
+export type UdlTerms = {
+  accessFee?: string;
+  derivation?: { grant: UdlDerivationGrant; value?: string };
+  commercialUse?: { grant: UdlCommercialGrant; value?: string };
+  dataModelTraining?: { grant: UdlTrainingGrant; value?: string };
+  unknownUsageRights?: 'excluded';
+  expiry?: string;
+  currency?: 'U' | 'AR';
+  paymentAddress?: string;
+  paymentMode?: 'random' | 'global';
+};
 
 export type MintInput = {
   name: string;
   description: string;
   file: File;
   collection?: string;
+  udl?: UdlTerms;
 };
 
 export type MintEstimate = {
@@ -35,6 +56,7 @@ export type MintDraft = {
   mediaId: string;
   createdAt: number;
   collection?: string;
+  udl?: UdlTerms;
 };
 
 export type MintedAsset = AssetSummary & {
@@ -56,6 +78,7 @@ export type CollectionMintInput = {
   name: string;
   description: string;
   files: File[];
+  udl?: UdlTerms;
 };
 
 export type CollectionMintEstimate = {
@@ -138,6 +161,7 @@ export class AssetMintClient {
     media.addTag('App-Name', 'Bazar');
     media.addTag('App-Version', '2.0.0');
     media.addTag('Type', 'Asset-Media');
+    for (const [name, value] of Object.entries(udlLicenseTags(input.udl))) media.addTag(name, value);
     const signedMedia = await this.#sign(media, owner, options.signal);
     options.onPhase?.('uploading-media');
     await this.#post(signedMedia, options.signal);
@@ -150,6 +174,7 @@ export class AssetMintClient {
       mediaId: signedMedia.id,
       createdAt: Date.now(),
       ...(input.collection ? { collection: input.collection.trim() } : {}),
+      ...(input.udl ? { udl: input.udl } : {}),
     };
     this.#storage?.setItem(`${DRAFT_PREFIX}${owner}`, JSON.stringify(draft));
     return this.resume(draft, owner, options);
@@ -316,6 +341,7 @@ export class CollectionMintClient {
               description: input.description,
               contentType: file.type,
               collection: input.name,
+              udl: input.udl,
             },
             placeholder,
           ),
@@ -359,6 +385,7 @@ export class CollectionMintClient {
           name: fileAssetName(file, index),
           description: input.description,
           collection: input.name.trim(),
+          udl: input.udl,
         },
         owner,
         {
@@ -426,6 +453,7 @@ export function validateMintInput(input: MintInput): void {
   if (!(input.file instanceof File)) throw new TypeError('mint-file-required');
   if (!IMAGE_CONTENT_TYPES.has(input.file.type)) throw new TypeError('mint-file-type-unsupported');
   if (!input.file.size || input.file.size > MAX_IMAGE_BYTES) throw new TypeError('mint-file-size-invalid');
+  validateUdlTerms(input.udl);
 }
 
 export function validateCollectionMintInput(input: CollectionMintInput): void {
@@ -440,11 +468,12 @@ export function validateCollectionMintInput(input: CollectionMintInput): void {
       description: input.description,
       file,
       collection: input.name,
+      udl: input.udl,
     });
 }
 
 export function mintMetadata(
-  input: Pick<MintInput, 'name' | 'description' | 'collection'> & { contentType?: string; file?: File },
+  input: Pick<MintInput, 'name' | 'description' | 'collection' | 'udl'> & { contentType?: string; file?: File },
   mediaId: string,
 ) {
   const contentType = input.contentType ?? input.file?.type ?? '';
@@ -458,7 +487,7 @@ export function mintMetadata(
 }
 
 export function mintProcessTags(
-  input: { name: string; contentType: string; mediaId: string; collection?: string },
+  input: { name: string; contentType: string; mediaId: string; collection?: string; udl?: UdlTerms },
   owner: string,
 ): Record<string, string> {
   assertAddress(owner, 'invalid-mint-owner');
@@ -481,7 +510,26 @@ export function mintProcessTags(
     collection: input.collection?.trim() || CREATED_COLLECTION_NAME,
     'asset-content-type': input.contentType,
     'asset-data': input.mediaId,
+    ...udlLicenseTags(input.udl),
   };
+}
+
+export function udlLicenseTags(terms?: UdlTerms): Record<string, string> {
+  if (!terms) return {};
+  validateUdlTerms(terms);
+  const tags: Record<string, string> = { License: UDL_LICENSE_ID };
+  if (terms.accessFee) tags['Access-Fee'] = `One-Time-${terms.accessFee}`;
+  if (terms.derivation) tags.Derivation = udlGrantValue(terms.derivation);
+  if (terms.commercialUse) tags['Commercial-Use'] = udlGrantValue(terms.commercialUse);
+  if (terms.dataModelTraining) tags['Data-Model-Training'] = udlGrantValue(terms.dataModelTraining);
+  if (terms.unknownUsageRights === 'excluded') tags['Unknown-Usage-Rights'] = 'Excluded';
+  if (terms.expiry) tags.Expiry = terms.expiry;
+  if (terms.currency && terms.currency !== 'U') tags.Currency = terms.currency;
+  if (terms.paymentAddress) tags['Payment-Address'] = terms.paymentAddress;
+  if (terms.paymentMode) {
+    tags['Payment-Mode'] = terms.paymentMode === 'random' ? 'Random-Distribution' : 'Global-Distribution';
+  }
+  return tags;
 }
 
 export function getMintDraft(
@@ -604,6 +652,85 @@ function validateMintDraft(value: unknown): asserts value is MintDraft {
     !Number.isSafeInteger(draft.createdAt)
   )
     throw new TypeError('mint-draft-invalid');
+  validateUdlTerms(draft.udl);
+}
+
+function validateUdlTerms(terms?: UdlTerms): void {
+  if (terms === undefined) return;
+  if (!terms || typeof terms !== 'object' || Array.isArray(terms)) throw new TypeError('mint-udl-invalid');
+  if (terms.accessFee !== undefined && !isPositiveUdlAmount(terms.accessFee)) {
+    throw new TypeError('mint-udl-access-fee-invalid');
+  }
+  validateUdlGrant(
+    terms.derivation,
+    new Set<UdlDerivationGrant>([
+      'allowed',
+      'credit',
+      'indication',
+      'license-passthrough',
+      'revenue-share',
+      'one-time',
+      'monthly',
+    ]),
+  );
+  validateUdlGrant(
+    terms.commercialUse,
+    new Set<UdlCommercialGrant>(['allowed', 'credit', 'revenue-share', 'one-time', 'monthly']),
+  );
+  validateUdlGrant(terms.dataModelTraining, new Set<UdlTrainingGrant>(['allowed', 'one-time', 'monthly']));
+  if (terms.unknownUsageRights !== undefined && terms.unknownUsageRights !== 'excluded') {
+    throw new TypeError('mint-udl-unknown-rights-invalid');
+  }
+  if (terms.expiry !== undefined && !/^[1-9]\d*$/.test(terms.expiry)) {
+    throw new TypeError('mint-udl-expiry-invalid');
+  }
+  if (terms.currency !== undefined && !['U', 'AR'].includes(terms.currency)) {
+    throw new TypeError('mint-udl-currency-invalid');
+  }
+  if (terms.paymentAddress !== undefined && !ADDRESS.test(terms.paymentAddress)) {
+    throw new TypeError('mint-udl-payment-address-invalid');
+  }
+  if (terms.paymentMode !== undefined && !['random', 'global'].includes(terms.paymentMode)) {
+    throw new TypeError('mint-udl-payment-mode-invalid');
+  }
+}
+
+function validateUdlGrant<T extends string>(grant: { grant: T; value?: string } | undefined, allowed: Set<T>): void {
+  if (grant === undefined) return;
+  if (!grant || typeof grant !== 'object' || !allowed.has(grant.grant)) throw new TypeError('mint-udl-grant-invalid');
+  if (['one-time', 'monthly'].includes(grant.grant)) {
+    if (!isPositiveUdlAmount(grant.value)) throw new TypeError('mint-udl-fee-invalid');
+  } else if (grant.grant === 'revenue-share') {
+    const percentage = Number(grant.value);
+    if (!isPositiveUdlAmount(grant.value) || percentage > 100) throw new TypeError('mint-udl-share-invalid');
+  } else if (grant.value !== undefined) {
+    throw new TypeError('mint-udl-value-unexpected');
+  }
+}
+
+function isPositiveUdlAmount(value: unknown): value is string {
+  return typeof value === 'string' && UDL_AMOUNT.test(value) && !/^0(?:\.0+)?$/.test(value);
+}
+
+function udlGrantValue(grant: { grant: string; value?: string }): string {
+  switch (grant.grant) {
+    case 'allowed':
+      return 'Allowed';
+    case 'credit':
+      return 'Allowed-With-Credit';
+    case 'indication':
+      return 'Allowed-With-Indication';
+    case 'license-passthrough':
+      return 'Allowed-With-License-Passthrough';
+    case 'revenue-share':
+      return `Allowed-With-RevenueShare-${grant.value}%`;
+    case 'one-time':
+      return `Allowed-With-Fee-One-Time-${grant.value}`;
+    case 'monthly':
+      return `Allowed-With-Fee-Monthly-${grant.value}`;
+    default:
+      throw new TypeError('mint-udl-grant-invalid');
+  }
 }
 
 function collectionManifest(

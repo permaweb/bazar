@@ -1,5 +1,6 @@
 import type { ArweaveRecallContent, ArweaveRecallContentKind } from 'api/arweave-mining-telemetry';
 import React from 'react';
+import { createPortal } from 'react-dom';
 import styled, { keyframes } from 'styled-components';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
@@ -54,6 +55,7 @@ type Props = {
   lanes: Infinity3DLane[];
   ariaLabel: string;
   phaseLabels: string[];
+  active?: boolean;
   layout?: 'spread' | 'bundle';
   miningActivity?: {
     candidateRate?: number;
@@ -150,16 +152,22 @@ const BASE_LINE_WIDTH = 2.8;
 const PROGRESS_LINE_WIDTH = 4.1;
 const MAX_MINING_PARTICLES = 180;
 const PICK_SAMPLE_STEP = 12;
+const MAX_RENDER_PIXEL_RATIO = 1.5;
+const TARGET_RENDER_FPS = 60;
+const TARGET_FRAME_INTERVAL_MS = 1_000 / TARGET_RENDER_FPS;
+const FRAME_INTERVAL_TOLERANCE_MS = 1;
 const PARTICLE_HIGHLIGHT = new THREE.Color('#ffffff');
 const EMPTY_ACCEPTED_PROOFS: NonNullable<Props['miningActivity']>['acceptedProofs'] = [];
 export function TransactionSequenceCable3D({
   lanes,
   ariaLabel,
   phaseLabels,
+  active = true,
   layout = 'spread',
   miningActivity,
 }: Props) {
   const mountRef = React.useRef<HTMLDivElement>(null);
+  const activeRef = React.useRef(active);
   const phaseLabelRefs = React.useRef<Array<HTMLSpanElement | null>>([]);
   const wireStatesRef = React.useRef<WireState[]>([]);
   const laneDataRef = React.useRef(lanes);
@@ -179,6 +187,7 @@ export function TransactionSequenceCable3D({
   const laneMarkerSignature = React.useMemo(() => markerDataSignature(lanes), [lanes]);
   const laneMarkerSignatureRef = React.useRef(laneMarkerSignature);
 
+  activeRef.current = active;
   laneDataRef.current = lanes;
   miningActivityRef.current = visibleMiningActivity;
   laneMarkerSignatureRef.current = laneMarkerSignature;
@@ -210,7 +219,7 @@ export function TransactionSequenceCable3D({
     camera.lookAt(0, 0, 0);
 
     const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, MAX_RENDER_PIXEL_RATIO));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.domElement.setAttribute('aria-label', ariaLabel);
     renderer.domElement.setAttribute('role', 'img');
@@ -338,10 +347,10 @@ export function TransactionSequenceCable3D({
     const confirmationMaterial = eventMaterial.clone();
     confirmationMaterial.size = 0.52;
     const proofHaloMaterial = eventHaloMaterial.clone();
-    proofHaloMaterial.size = 0.15;
-    proofHaloMaterial.opacity = 0.28;
+    proofHaloMaterial.size = 0.25;
+    proofHaloMaterial.opacity = 0.42;
     const proofMaterial = eventMaterial.clone();
-    proofMaterial.size = 0.11;
+    proofMaterial.size = 0.18;
     const activeHeadMaterial = eventMaterial.clone();
     activeHeadMaterial.size = 0.12;
     const acceptedProofHaloMaterial = eventHaloMaterial.clone();
@@ -468,8 +477,10 @@ export function TransactionSequenceCable3D({
       pointer.y = -((clientY - bounds.top) / bounds.height) * 2 + 1;
       raycaster.setFromCamera(pointer, camera);
       const horizontalInset = Math.min(150, bounds.width / 2);
-      const x = Math.max(horizontalInset, Math.min(bounds.width - horizontalInset, clientX - bounds.left));
-      const y = Math.max(0, Math.min(bounds.height, clientY - bounds.top));
+      const localX = Math.max(horizontalInset, Math.min(bounds.width - horizontalInset, clientX - bounds.left));
+      const localY = Math.max(0, Math.min(bounds.height, clientY - bounds.top));
+      const x = bounds.left + localX;
+      const y = bounds.top + localY;
       const confirmationHit = firstIntersection(confirmationMarkers);
       const eventHit = confirmationHit ? undefined : firstIntersection(eventMarkers);
       const proofHit = confirmationHit || eventHit ? undefined : firstIntersection(proofMarkers);
@@ -500,7 +511,7 @@ export function TransactionSequenceCable3D({
         stages: lane.stages,
         x,
         y,
-        below: y < 58,
+        below: localY < 58,
       });
     };
     let pointerFrame = 0;
@@ -535,7 +546,9 @@ export function TransactionSequenceCable3D({
     controls.addEventListener('end', handleControlsEnd);
     renderer.domElement.addEventListener('pointermove', handlePointerMove);
     renderer.domElement.addEventListener('pointerleave', clearHover);
+    window.addEventListener('scroll', clearHover, true);
 
+    const acceptedProofCardSizes = new Map<string, { width: number; height: number }>();
     let renderWidth = 0;
     let renderHeight = 0;
     const resize = () => {
@@ -543,6 +556,7 @@ export function TransactionSequenceCable3D({
       if (!bounds.width || !bounds.height) return;
       renderWidth = bounds.width;
       renderHeight = bounds.height;
+      acceptedProofCardSizes.clear();
       camera.aspect = bounds.width / bounds.height;
       camera.updateProjectionMatrix();
       renderer.setSize(bounds.width, bounds.height, false);
@@ -556,7 +570,7 @@ export function TransactionSequenceCable3D({
     resize();
 
     let frame = 0;
-    let previousFrameAt = performance.now();
+    let previousFrameAt = performance.now() - TARGET_FRAME_INTERVAL_MS;
     let markerSignature = '';
     let activityPhase = 0.08;
     let acceptedProofSignature = '';
@@ -565,14 +579,15 @@ export function TransactionSequenceCable3D({
     const activeHeadColor = new THREE.Color();
     const phaseLabelPoints = Array.from({ length: phaseCount }, () => new THREE.Vector3());
     const acceptedProofPinPoint = new THREE.Vector3();
-    const render = () => {
+    const render = (frameAt: number) => {
       frame = window.requestAnimationFrame(render);
-      const frameAt = performance.now();
-      if (document.hidden) {
+      if (!activeRef.current || document.hidden) {
         previousFrameAt = frameAt;
         return;
       }
-      const deltaSeconds = Math.min(0.05, Math.max(0, (frameAt - previousFrameAt) / 1_000));
+      const elapsedMs = frameAt - previousFrameAt;
+      if (elapsedMs < TARGET_FRAME_INTERVAL_MS - FRAME_INTERVAL_TOLERANCE_MS) return;
+      const deltaSeconds = Math.min(0.05, Math.max(0, elapsedMs / 1_000));
       previousFrameAt = frameAt;
       wireStates.forEach((wire) => {
         const lane = laneDataRef.current[wire.laneIndex];
@@ -598,6 +613,7 @@ export function TransactionSequenceCable3D({
         .join('|');
       if (acceptedProofSignature !== nextAcceptedProofSignature) {
         acceptedProofSignature = nextAcceptedProofSignature;
+        acceptedProofCardSizes.clear();
         const activeProofKeys = new Set(acceptedProofs.map((proof) => proof.key));
         for (const proofKey of acceptedProofProgress.keys()) {
           if (!activeProofKeys.has(proofKey)) acceptedProofProgress.delete(proofKey);
@@ -630,7 +646,7 @@ export function TransactionSequenceCable3D({
         confirmationHoverDataRef.current = markerHoverData.confirmations;
         proofHoverDataRef.current = markerHoverData.proofs;
       }
-      controls.update();
+      controls.update(deltaSeconds);
       group.updateWorldMatrix(true, false);
       camera.updateWorldMatrix(true, false);
       updateAcceptedProofPins(
@@ -643,6 +659,7 @@ export function TransactionSequenceCable3D({
         renderWidth,
         renderHeight,
         acceptedProofPinPoint,
+        acceptedProofCardSizes,
       );
       phaseLabelRefs.current.forEach((element, phaseIndex) => {
         updateSegmentLabel(
@@ -669,6 +686,7 @@ export function TransactionSequenceCable3D({
       controls.removeEventListener('end', handleControlsEnd);
       renderer.domElement.removeEventListener('pointermove', handlePointerMove);
       renderer.domElement.removeEventListener('pointerleave', clearHover);
+      window.removeEventListener('scroll', clearHover, true);
       controls.dispose();
       wireStates.forEach(({ baseGeometry, phaseGeometries, baseMaterial, phaseMaterials }) => {
         baseGeometry.dispose();
@@ -769,11 +787,13 @@ export function TransactionSequenceCable3D({
           </AcceptedProofPin>
         ))}
       </AcceptedProofPins>
-      {hover && (
-        <RaceTooltipContainer ref={tooltipRef} $left={hover.x} $top={hover.y} $below={hover.below} role={'tooltip'}>
-          <ObserverTooltipCard observerLabel={hover.observerLabel} stages={hover.stages} detail={hover.detail} />
-        </RaceTooltipContainer>
-      )}
+      {hover &&
+        createPortal(
+          <RaceTooltipContainer ref={tooltipRef} $left={hover.x} $top={hover.y} $below={hover.below} role={'tooltip'}>
+            <ObserverTooltipCard observerLabel={hover.observerLabel} stages={hover.stages} detail={hover.detail} />
+          </RaceTooltipContainer>,
+          document.body,
+        )}
     </Stage>
   );
 }
@@ -1228,6 +1248,7 @@ function updateAcceptedProofPins(
   width: number,
   height: number,
   point: THREE.Vector3,
+  cardSizes: Map<string, { width: number; height: number }>,
 ): void {
   if (!wire || !width || !height) return;
   const coordinates = new Float32Array(3);
@@ -1240,9 +1261,14 @@ function updateAcceptedProofPins(
     point.project(camera);
     const anchorX = (point.x * 0.5 + 0.5) * width;
     const anchorY = (-point.y * 0.5 + 0.5) * height;
-    const card = element.querySelector<HTMLElement>('[data-proof-card]');
-    const cardWidth = card?.offsetWidth || 240;
-    const cardHeight = card?.offsetHeight || 116;
+    let cardSize = cardSizes.get(proof.key);
+    if (!cardSize) {
+      const card = element.querySelector<HTMLElement>('[data-proof-card]');
+      cardSize = { width: card?.offsetWidth || 240, height: card?.offsetHeight || 116 };
+      cardSizes.set(proof.key, cardSize);
+    }
+    const cardWidth = cardSize.width;
+    const cardHeight = cardSize.height;
     const { x: cardX, y: cardY } = acceptedProofCardPosition(
       index,
       proofs.length,
@@ -1345,23 +1371,23 @@ function updateMarkerGeometry(geometry: THREE.BufferGeometry, positions: number[
 
 function markerDataSignature(lanes: Infinity3DLane[]): string {
   return lanes
-    .map((lane) =>
-      lane.markers
-        .map((marker) =>
-          [
-            marker.kind,
-            marker.confirmation,
-            marker.progress,
-            marker.colorProgress,
-            marker.state,
-            marker.confirmations,
-            marker.error,
-            marker.observedAt,
-            marker.detail,
-          ].join(':'),
-        )
-        .join(','),
-    )
+    .map((lane) => {
+      const first = lane.markers[0];
+      const last = lane.markers[lane.markers.length - 1];
+      return [
+        lane.observerUrl,
+        lane.markers.length,
+        first?.observedAt,
+        last?.observedAt,
+        last?.kind,
+        last?.confirmation,
+        last?.progress,
+        last?.colorProgress,
+        last?.state,
+        last?.confirmations,
+        last?.error,
+      ].join(':');
+    })
     .join('|');
 }
 
@@ -1415,13 +1441,26 @@ const Stage = styled.div`
   position: absolute;
   inset: 0;
   overflow: hidden;
-  border-radius: 24px;
   background: radial-gradient(circle at 50% 42%, rgba(0, 143, 32, 0.035), transparent 58%);
 `;
 
 const CanvasMount = styled.div`
   position: absolute;
   inset: 0;
+  -webkit-mask-image: linear-gradient(
+    90deg,
+    transparent 0,
+    #000 clamp(48px, 6vw, 84px),
+    #000 calc(100% - clamp(48px, 6vw, 84px)),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    90deg,
+    transparent 0,
+    #000 clamp(48px, 6vw, 84px),
+    #000 calc(100% - clamp(48px, 6vw, 84px)),
+    transparent 100%
+  );
   cursor: grab;
 
   &:active {
@@ -1627,11 +1666,13 @@ const activityEnter = keyframes`
 `;
 
 const ProtocolTelemetry = styled.div`
+  position: relative;
+  z-index: 2;
   display: grid;
   box-sizing: border-box;
   width: 100%;
   gap: 8px;
-  margin: 10px 0 0;
+  margin: 0;
   padding: 12px 14px;
   background: ${(props) => props.theme.colors.container.primary.background};
   border: 1px solid ${(props) => props.theme.colors.border.primary};

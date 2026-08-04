@@ -199,6 +199,8 @@ export const CostTotal = styled(CostRow)`
 `;
 
 export const TransactionHeader = styled.div`
+  position: relative;
+  z-index: 2;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -231,6 +233,7 @@ export const Depth = styled.div<{ $success: boolean }>`
 
 export const ProgressTrack = styled.div<{ $active: boolean; $progress: number } & LaneTrustProps>`
   position: relative;
+  z-index: 2;
   height: 16px;
   margin: 9px 0 5px;
   overflow: hidden;
@@ -265,6 +268,8 @@ export const ProgressTrack = styled.div<{ $active: boolean; $progress: number } 
 `;
 
 export const RiskNote = styled.p`
+  position: relative;
+  z-index: 2;
   margin: 7px 0 0;
   color: #525252;
   font-size: ${(props) => props.theme.typography.size.xxSmall};
@@ -272,13 +277,19 @@ export const RiskNote = styled.p`
 
 export const RaceShell = styled.div<{ $height: number; $embedded: boolean }>`
   position: relative;
+  z-index: 0;
   display: grid;
   place-items: center;
-  width: ${(props) => `min(100%, ${(props.$height * 700) / 320}px)`};
+  width: ${(props) =>
+    props.$embedded ? '100%' : 'calc(100% + var(--dialog-gutter, 48px) + var(--dialog-gutter, 48px))'};
   height: auto;
   aspect-ratio: 700 / 320;
-  margin: ${(props) => (props.$embedded ? '0 auto' : 'clamp(12px, 2vh, 20px) auto 0')};
+  margin: ${(props) => (props.$embedded ? '0 auto' : '-90px var(--dialog-gutter-negative, -48px) -16px')};
   transition: width 240ms ease;
+
+  @media (max-width: 680px) {
+    margin: ${(props) => (props.$embedded ? '0 auto' : '-48px var(--dialog-gutter-negative, -24px) -10px')};
+  }
 `;
 
 export const RaceTrack = styled.svg`
@@ -402,10 +413,10 @@ export const RaceTooltip = styled.span<{
   $top: number;
   $below: boolean;
 }>`
-  position: absolute;
+  position: fixed;
   top: 0;
   left: 0;
-  z-index: 6;
+  z-index: 200;
   display: grid;
   min-width: min(260px, calc(100% - 24px));
   max-width: min(340px, calc(100% - 24px));
