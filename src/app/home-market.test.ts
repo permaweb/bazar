@@ -12,6 +12,7 @@ import {
   completeHomeActivityScan,
   completeHomeSummaryRetryGroup,
   homeSummaryRequestKeys,
+  homeDiscoveryAssets,
   homeMarketPriceValue,
   homeFloorScanSummary,
   mergeResolvedListingBatch,
@@ -26,6 +27,20 @@ import {
 } from './App';
 
 describe('Home market summary retries', () => {
+  it('keeps verified Arweave names in the discovery mosaic', () => {
+    const name = { id: 'n'.repeat(43), name: 'alice' };
+    const image = { id: 'i'.repeat(43), name: 'Image', image: 'https://arweave.net/image' };
+    const collections: Collection[] = [
+      { id: 'names', name: 'Names', description: '', kind: 'names', assets: [] },
+      { id: 'images', name: 'Images', description: '', kind: 'images', assets: [image] },
+    ];
+
+    expect(homeDiscoveryAssets(collections, { names: [name] }, 10)).toEqual([
+      { asset: name, collection: collections[0] },
+      { asset: image, collection: collections[1] },
+    ]);
+  });
+
   it('sorts NFT and fungible AR price labels by their numeric amount', () => {
     expect(homeMarketPriceValue('0.000001 AR / WEAVE')).toBe(0.000001);
     expect(homeMarketPriceValue('1,234.5 AR')).toBe(1234.5);

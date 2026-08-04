@@ -1124,6 +1124,7 @@ function Home() {
     if (!normalizedQuery) return true;
     return collectionMatchesSearch(collection, normalizedQuery);
   });
+  const [verifiedHomeListings, setVerifiedHomeListings] = React.useState<Record<string, AssetSummary[]>>({});
   const assets = normalizedQuery
     ? market.collections
         .flatMap((collection) =>
@@ -1133,11 +1134,7 @@ function Home() {
         )
         .filter(({ asset, collection }) => marketplaceAssetMatchesSearch(asset, collection, normalizedQuery))
         .slice(0, 10)
-    : interleaveCollectionAssets(
-        market.collections,
-        10,
-        (asset, collection) => Boolean(asset.image) || collection.kind === 'tokens',
-      );
+    : homeDiscoveryAssets(market.collections, verifiedHomeListings, 10);
   const assetKey = assets.map(({ asset }) => asset.id).join(',');
   const [assetPrices, setAssetPrices] = React.useState<Record<string, HomeMarketSummary>>({});
   const collectionKey = collections
@@ -1377,6 +1374,20 @@ function Home() {
             controller.signal.throwIfAborted();
           }
           if (!controller.signal.aborted) {
+            const verifiedListings = [...floorScan.settled].flatMap(([processId, asking]) => {
+              if (asking === null) return [];
+              const asset = collectionAsset(collection, processId);
+              return asset ? [asset] : [];
+            });
+            setVerifiedHomeListings((current) => {
+              const previous = current[collection.id] ?? [];
+              if (
+                previous.length === verifiedListings.length &&
+                previous.every((asset, index) => asset.id === verifiedListings[index]?.id)
+              )
+                return current;
+              return { ...current, [collection.id]: verifiedListings };
+            });
             setCollectionFloors((current) => ({
               ...current,
               [collection.id]: homeFloorScanSummary(floorScan),
@@ -7365,6 +7376,35 @@ export function interleaveCollectionAssets(
     }
   }
   return results;
+}
+
+export function homeDiscoveryAssets(
+  collections: Collection[],
+  verifiedListings: Record<string, AssetSummary[]>,
+  limit: number,
+) {
+  const collectionsById = new Map(collections.map((collection) => [collection.id, collection]));
+  const verified = interleaveCollectionAssets(
+    collections.map((collection) => ({
+      ...collection,
+      assets: verifiedListings[collection.id] ?? [],
+    })),
+    limit,
+  ).map(({ asset, collection }) => ({ asset, collection: collectionsById.get(collection.id)! }));
+  const fallback = interleaveCollectionAssets(
+    collections,
+    limit,
+    (asset, collection) => Boolean(asset.image) || collection.kind === 'tokens',
+  );
+  const seen = new Set<string>();
+  return [...verified, ...fallback]
+    .filter(({ asset, collection }) => {
+      const key = `${collection.id}:${asset.id}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, limit);
 }
 
 export function alphabetFilterIndex(key: string, current: number, count: number): number | null {
