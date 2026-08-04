@@ -11,6 +11,7 @@ import {
   commitHomeFloorResult,
   completeHomeActivityScan,
   completeHomeSummaryRetryGroup,
+  homeAssetTypeMatches,
   homeSummaryRequestKeys,
   homeDiscoveryAssets,
   homeMarketPriceValue,
@@ -27,6 +28,46 @@ import {
 } from './App';
 
 describe('Home market summary retries', () => {
+  it('separates fungible tokens from atomic assets', () => {
+    const tokenCollection: Collection = {
+      id: 'tokens',
+      name: 'Tokens',
+      description: '',
+      kind: 'tokens',
+      assets: [],
+    };
+    const nameCollection: Collection = {
+      id: 'names',
+      name: 'Names',
+      description: '',
+      kind: 'names',
+      assets: [],
+    };
+    const imageCollection: Collection = {
+      id: 'images',
+      name: 'Images',
+      description: '',
+      kind: 'images',
+      assets: [],
+    };
+
+    expect(
+      [tokenCollection, nameCollection, imageCollection].filter((collection) =>
+        homeAssetTypeMatches(collection, 'all'),
+      ),
+    ).toHaveLength(3);
+    expect(
+      [tokenCollection, nameCollection, imageCollection].filter((collection) =>
+        homeAssetTypeMatches(collection, 'tokens'),
+      ),
+    ).toEqual([tokenCollection]);
+    expect(
+      [tokenCollection, nameCollection, imageCollection].filter((collection) =>
+        homeAssetTypeMatches(collection, 'atomic'),
+      ),
+    ).toEqual([nameCollection, imageCollection]);
+  });
+
   it('keeps verified Arweave names in the discovery mosaic', () => {
     const name = { id: 'n'.repeat(43), name: 'alice' };
     const image = { id: 'i'.repeat(43), name: 'Image', image: 'https://arweave.net/image' };

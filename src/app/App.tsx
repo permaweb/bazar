@@ -1113,6 +1113,7 @@ export function homeMarketPriceValue(value: string | null | undefined) {
 function Home() {
   const market = React.useContext(MarketContext);
   const { search } = useLocation();
+  const [assetType, setAssetType] = React.useState<HomeAssetType>('all');
   const [assetView, setAssetView] = React.useState<'listed' | 'price-low' | 'price-high'>('listed');
   const computeGateway = gatewayFromLocation();
   const query = new URLSearchParams(search).get('q') ?? '';
@@ -1456,6 +1457,7 @@ function Home() {
       const summary = assetPrices[asset.id];
       return !summary || summary.status === 'unavailable' || homeMarketSummaryListed(summary);
     })
+    .filter(({ collection }) => homeAssetTypeMatches(collection, assetType))
     .sort((left, right) => {
       if (assetView === 'listed') return 0;
       const price = (assetId: string) => {
@@ -1620,45 +1622,61 @@ function Home() {
                         : 'Verified active listings across every marketplace collection.'}
                     </p>
                   </div>
-                  <MarketSelect<'listed' | 'price-low' | 'price-high'>
-                    label="View"
-                    onChange={setAssetView}
-                    options={[
-                      { value: 'listed', label: 'Listed for sale' },
-                      { value: 'price-low', label: 'Price: low to high' },
-                      { value: 'price-high', label: 'Price: high to low' },
-                    ]}
-                    value={assetView}
-                  />
+                  <div className="home-asset-filters">
+                    <MarketSelect<HomeAssetType>
+                      label="Asset type"
+                      onChange={setAssetType}
+                      options={[
+                        { value: 'all', label: 'All' },
+                        { value: 'tokens', label: 'Tokens' },
+                        { value: 'atomic', label: 'Atomic assets (NFT)' },
+                      ]}
+                      value={assetType}
+                    />
+                    <MarketSelect<'listed' | 'price-low' | 'price-high'>
+                      label="View"
+                      onChange={setAssetView}
+                      options={[
+                        { value: 'listed', label: 'Listed for sale' },
+                        { value: 'price-low', label: 'Price: low to high' },
+                        { value: 'price-high', label: 'Price: high to low' },
+                      ]}
+                      value={assetView}
+                    />
+                  </div>
                 </div>
-                <div className="home-asset-grid">
-                  {displayedAssets.map(({ asset, collection }) => (
-                    <Link key={`${collection.id}-${asset.id}`} to={`/asset/${collection.id}/${asset.id}`}>
-                      {asset.image ? (
-                        <ArtworkImage className="home-asset-media" src={asset.image} alt="" />
-                      ) : collection.kind === 'names' ? (
-                        <NameAssetArtwork
-                          className="home-asset-media name-asset-artwork--initial"
-                          name={asset.name.slice(0, 1).toUpperCase()}
-                          showCube={false}
-                        />
-                      ) : (
-                        <TokenArtwork className="home-asset-media home-token-art" ticker={asset.ticker ?? 'TOKEN'} />
-                      )}
-                      <div className="home-asset-details">
-                        <div>
-                          <strong>{asset.name}</strong>
-                          <span>{collection.name}</span>
+                {displayedAssets.length ? (
+                  <div className="home-asset-grid">
+                    {displayedAssets.map(({ asset, collection }) => (
+                      <Link key={`${collection.id}-${asset.id}`} to={`/asset/${collection.id}/${asset.id}`}>
+                        {asset.image ? (
+                          <ArtworkImage className="home-asset-media" src={asset.image} alt="" />
+                        ) : collection.kind === 'names' ? (
+                          <NameAssetArtwork
+                            className="home-asset-media name-asset-artwork--initial"
+                            name={asset.name.slice(0, 1).toUpperCase()}
+                            showCube={false}
+                          />
+                        ) : (
+                          <TokenArtwork className="home-asset-media home-token-art" ticker={asset.ticker ?? 'TOKEN'} />
+                        )}
+                        <div className="home-asset-details">
+                          <div>
+                            <strong>{asset.name}</strong>
+                            <span>{collection.name}</span>
+                          </div>
+                          <b
+                            className={`home-asset-price${homeMarketSummaryListed(assetPrices[asset.id]) ? ' listed' : ''}`}
+                          >
+                            {homeMarketSummaryLabel(assetPrices[asset.id], 'Not listed')}
+                          </b>
                         </div>
-                        <b
-                          className={`home-asset-price${homeMarketSummaryListed(assetPrices[asset.id]) ? ' listed' : ''}`}
-                        >
-                          {homeMarketSummaryLabel(assetPrices[asset.id], 'Not listed')}
-                        </b>
-                      </div>
-                    </Link>
-                  ))}
-                </div>
+                      </Link>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="home-assets-empty">No verified listings match this asset type.</div>
+                )}
               </section>
             ) : null}
           </div>
@@ -7329,6 +7347,13 @@ export function collectionMatchesSearch(collection: Collection, query: string): 
     `${collection.name} ${collection.description}`.toLowerCase().includes(query) ||
     collectionSearchAssets(collection, query).length > 0
   );
+}
+
+export type HomeAssetType = 'all' | 'tokens' | 'atomic';
+
+export function homeAssetTypeMatches(collection: Collection, assetType: HomeAssetType): boolean {
+  if (assetType === 'all') return true;
+  return assetType === 'tokens' ? collection.kind === 'tokens' : collection.kind !== 'tokens';
 }
 
 export function interleaveCollectionAssets(
