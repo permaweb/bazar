@@ -5838,17 +5838,6 @@ function AssetView() {
               <Link className="asset-collection-link" to={`/collection/${collection.id}`}>
                 {collection.name}
               </Link>
-              <span className={loading || error ? 'status-dot stale' : order ? 'status-dot listed' : 'status-dot'}>
-                {loading
-                  ? 'Refreshing'
-                  : error
-                    ? 'Refresh failed'
-                    : order?.status === 'reserved'
-                      ? 'Reserved'
-                      : order
-                        ? 'For sale'
-                        : 'Verified'}
-              </span>
             </div>
             <h1 ref={operationFocusFallbackRef} tabIndex={-1}>
               {asset.name}
