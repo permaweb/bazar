@@ -3,8 +3,17 @@
 ## Isolated worktrees for this task
 
 - **Bazar application:** `/Users/sam/.codex/worktrees/bazar-2-arweave-native-20260730`
-  - Branch: `feat/fungible`
-  - Base: `7066e8ad847004535e3e1ae945e0478979dd2a7d`
+  - Branch: `impr/recursive-ux`
+  - Recursive UX base: `764bf28943f21ab038243c33aebeae952f906521`
+    (published fungible build; parent branch `feat/fungible`)
+- **weave-wrangler recovery contract:**
+  `/Users/sam/.codex/worktrees/weave-wrangler-recursive-ux-20260804`
+  - Branch: `impr/recursive-ux`
+  - Base: `722b7f01832baa3f1db8a165a8994f72ba7379bc`
+  - Candidates:
+    - `35d30af` (`fix: distinguish terminal dispatch outcomes`)
+    - `b5e12d4` (`fix: abort ambiguity waits immediately`)
+    - `afaed9c` (`fix: replay exact transactions after reorgs`)
 - **HyperBEAM runtime:** `/Users/sam/.codex/worktrees/bazar-2-hyperbeam-20260730`
   - Detached at `35c41dfb86b6b369cd5d9e52978976f778b091c3`
     (`feat/name-token`)
@@ -228,6 +237,21 @@ AO-Connect push path, or application backend.
   smallest practical spend.
 - **Processes:** Do not stop or modify services not started for this task. Tear
   down task-local nodes and development servers when validation finishes.
+
+## Non-negotiable architecture invariant
+
+- Nothing that depends on a custom server-side index, database, API, worker,
+  or privately operated backend is admissible. The finished application must
+  remain usable from Arweave and ordinary stock HyperBEAM nodes loading its
+  published devices by implementation ID.
+- Standard Arweave GraphQL may discover candidate transactions only. It must
+  never supply marketplace truth: ownership, balances, listings, reservations,
+  and settlement are accepted only from live process state computed through
+  the user-selected HyperBEAM gateway.
+- Immutable manifests and reference indexes belong on Arweave. Browser-local
+  storage may retain only signer-scoped transaction recovery metadata, never
+  shared marketplace state. If a proposed feature requires any other hosted
+  component, reject or redesign it rather than adding that dependency.
 
 ## Public contracts
 
@@ -610,3 +634,1088 @@ In unattended mode, work from a branch from your current build called `feat/fung
   asset page and computed its exact 1,000,000-WEAVE supply, 12-decimal
   denomination, two holders, empty settled order book, and `Arweave live`
   status through the default gateway.
+
+## Recursive UX campaign — verbatim
+
+Thanks. On a separate branch in unattended overnight mode, please simply: Improve the UX recursively. Do not stop until I halt you. Experiment with many ideas via sub-agents and create a set of candidate commits that can be merged if I approve. Shoot for the most exceptional, clean, robust UX that you can achieve.
+
+### Recursive UX campaign status
+
+- Created `impr/recursive-ux` from the published fungible build at
+  `764bf28943f21ab038243c33aebeae952f906521`.
+- Candidate changes will remain as small, coherent commits so they can be
+  reviewed, cherry-picked, or rejected independently.
+- Each round follows implementation, real browser rendering at desktop and
+  mobile widths, screenshot inspection, independent sub-agent critique, and
+  regression validation before the next round begins.
+- Candidate commits completed so far:
+  - `440f789` starts the recursive UX campaign ledger.
+  - `caaff1c` resumes partially dispatched purchase batches safely.
+  - `87afebf` makes atomic settlements explicit and resumable.
+  - `63a4d81` gives every asset class legible collection art.
+  - `70dfd8a` makes search calm, ranked, and locally responsive.
+  - `4934aea` keeps large wallet inventories fast and clear.
+  - `966239d` resolves only visible collection state.
+  - `f19024b` stops refetching exhausted GraphQL aliases.
+  - `06529df` restores Bazar identity and commerce hierarchy.
+  - `e2612e5` gives marketplace dialogs correct focus ownership.
+  - `48b6bc0` makes gateway selection explicit and mobile-ready.
+  - `8d3db5d` makes live-state failures recoverable.
+  - `f73490e` honors reduced-motion preferences across settlement UX.
+  - `db5a4f8` prevents stale asset state from crossing route changes.
+  - `c0827bd` keeps search closed after navigation.
+  - `eea7949` contains gateway feedback inside its popover.
+  - `42d6121` keeps focus trapped through changing dialog phases.
+  - `f1d2986` announces settlement progress without telemetry noise.
+  - `a3c12c2` distinguishes stale market state from live state.
+  - `51f1838` makes parallel settlement tabs keyboard-complete.
+  - `05dbc07` keeps route failures inside the application frame.
+  - `9e305ee` stabilizes artwork while permanent media loads.
+  - `c577833` makes token collections intentional at every width.
+  - `d8d1396` connects trade validation to the exact invalid field.
+  - `18f605e` keeps stale market actions closed during refresh.
+  - `43a1b4e` exposes confirmation depth as a semantic progressbar.
+  - `95c6c1f` keeps token cards aligned inside mixed inventory grids.
+  - `14fed31` removes inert controls from a single-token collection.
+  - `9870c3f` shows honest indeterminate wallet discovery progress.
+  - `b4de115` makes failed fungible purchase quotes recoverable.
+  - `9a3c201` keeps home market summaries truthful and progressive.
+  - `74d8b95` bounds every permanent-index request with a fresh deadline.
+  - `c33255b` gives SPA navigation a consistent focus contract.
+  - `19de92d` reveals independently loaded collection indexes immediately.
+  - `c0e93c2` keeps request deadlines active while response bodies stream.
+  - `5c1f27f` keeps unavailable listings out of verified-empty market states.
+  - `d2c0ca1` distinguishes repeated fungible order actions unambiguously.
+  - `af79a94` resets collection controls when navigating between collections.
+  - `55cd852` reuses resolved listings when changing local collection sorts.
+  - `2d993fe` closes collection filter menus correctly on keyboard exit.
+  - `c8425d0` gives atomic and fungible order books complete table semantics.
+  - `673d363` names collection search and result updates for assistive tech.
+  - `400cc0b` preserves cumulative price resolution across pagination.
+  - `7f0d380` checkpoints the seventh recursive review round.
+  - `7f04446` removes modal-search background content from keyboard and assistive navigation.
+  - `aa92f47` keeps verified collections usable while their indexes refresh.
+  - `42aae1b` discloses when an artwork collection uses its compiled manifest fallback.
+  - `6932e29` lets pending atomic and fungible actions remain deliberately dismissed.
+  - `f04bf0b` waits for every parallel settlement before reporting batch recovery.
+  - `5041e54` reveals verified listings as each unique activity page resolves.
+  - `d7d1580` coalesces progressive wallet results without hiding verified cards.
+  - `c21adb9` retries unavailable wallet assets without restarting successful work.
+  - `928c1e7` keeps discovery and live-state resolution progress distinct and honest.
+  - `758ef51` balances empty-search and home discovery across asset collections.
+  - `95485a3` binds pending operation recovery to the wallet that signed it.
+  - `bbc00f0` resumes failed purchases in place without reloading the application.
+  - `ef4e710` moves cursor discovery to a GraphQL endpoint that supports its own cursors.
+  - `43d4bb6` rejects malformed GraphQL connections instead of treating them as empty.
+  - `6add992` paginates carrier-name discovery through cursor-compatible GraphQL.
+  - `bad0fd0` preserves loaded carrier names and exposes a recoverable page failure.
+  - `bd37942` lets assistive technology use collection results while they stream.
+  - `72009e6` keeps route titles correct after slow asynchronous index loads.
+  - `317ca0f` makes the 27-option alphabet filter a single keyboard tab stop.
+  - `edd79a2` identifies the current marketplace destination in primary navigation.
+  - `37e46f4` presents one coherent recovery state when every wallet result is unavailable.
+  - `b296091` constrains search and transaction overlays to the live safe viewport.
+  - `ba0587f` exposes one carrier-pagination retry instead of two identical actions.
+  - `1ded2eb` keeps every exact purchase total visible on phone-width dialogs.
+  - `71934be` contains long compute-gateway identities without widening the page.
+  - `92d169f` hides decorative collection-activity glyphs from assistive technology.
+  - `2c112c5` announces progressive wallet resolution at a human cadence.
+  - `3a7df4a` keeps wide fungible dialogs inside their safe overlay gutters.
+  - `3da2def` removes the nested touch scroller from phone-width listing selection.
+  - `5525b84` intersects carrier discovery with the immutable current names namespace.
+  - `71aacee` makes transaction recovery ownership financially exclusive before dispatch.
+  - `1a33cee` gives every narrow-header action a 44-pixel touch target.
+  - `e435a37` distinguishes pending activity from a nonexistent block zero.
+  - `dc694a0` checkpoints the twelfth recursive review round.
+  - `3b9bae7` enforces exact canonical carrier membership across discovery, state, routes, and activity.
+  - `1ab022a` stops interrupted wallet discovery from looking active.
+  - `ce75773` preserves complete wallet progress while retrying unavailable candidates.
+  - `4dbd434` keeps progressive collection snapshots monotonic during pagination.
+  - `dc1835b` labels canonical name discovery honestly while raw pages remain.
+  - `81da146` keeps verified collection activity visible while it refreshes.
+  - `687a8d1` keeps GraphQL absence distinct from verified live market state.
+  - `0a0b766` keeps resolved home summaries stable as indexes stream.
+  - `787855f` gives unavailable home summaries a local retry.
+  - `231934c` makes large name and wallet groups progressively compact.
+  - `36da0c1` adds signed price, order, and transfer context to permanent activity.
+  - `a326c11` moves keyboard focus to the safe resume action after dismissing tracking.
+  - `90543fa` announces retained-content gateway failures without disruptive alerts.
+  - `0f0a39b` checkpoints the thirteenth recursive review round.
+  - `736aa38` renders exact quantity and price context in fungible market history.
+  - `6e0542d` prevents failed market-history reads from masquerading as empty history.
+  - `9abd699` keeps document titles synchronized with asynchronously resolved routes.
+  - `1b67c69` distinguishes indexed market activity from confirmed permanence.
+  - `4769281` reveals long activity feeds in exact, bounded local batches.
+  - `c314f5d` synchronizes asset section navigation with directly opened disclosures.
+  - `5bf0f7e` keeps whole-lot purchase totals visible in narrow fungible order books.
+  - `59ed1e8` quotes atomic seller price, network fees, maximum spend, and wallet balance before approval.
+  - `176aa17` labels atomic order history as complete market history rather than price history.
+  - `2ef93fa` identifies and links the exact seller inside atomic purchase confirmation.
+  - `c4d3193` keeps keyboard focus inside checkout while asynchronous quotes load.
+  - `259cd33` keeps failed confirmation bars aligned with their real confirmation depth.
+  - `0bafa46` visibly labels the active reservation, payment, or asset-action phase.
+  - `7fef946` gives every phone-width modal dismissal control a 44-pixel touch target.
+  - `f17c826` identifies an unreachable compute gateway and explains both recovery paths.
+  - `fb899c4` gives fungible settlements the same actionable financial recovery language as atomic trades.
+  - `39274af` makes completed atomic and multi-listing purchases independently traceable from their receipts.
+  - `f6765fd` locks background scrolling behind search and operation dialogs without losing route position.
+  - `4ae7950` discloses every matched fungible listing before approval.
+  - `4d94cda` surfaces wallet connection and invalid-wallet-file failures in place.
+  - `7d1692e` discards only terminally rejected fungible action signatures while preserving ambiguous recovery.
+  - `6535c95` exposes the exact failed listing, stage, seller, order, and transactions in parallel settlement recovery.
+  - `2773376` identifies the seller and order in every multi-listing purchase receipt.
+  - `cb07a10` lets valid atomic and fungible trade forms submit exactly once with Enter.
+  - `818a5c5` makes observer lanes and event pips inspectable by keyboard and touch without replacing the 3D view.
+  - `f3973eb` keeps proof cards compact and readable on phone-width transaction visualizations.
+  - `b0302c0` checkpoints the seventeenth recursive review round.
+  - `d4f4911` searches the complete canonical names namespace without sequential carrier-page scanning.
+  - `894cfff` gives marketplace search both explicit and Enter-key submission.
+  - `c773914` exposes the compute gateway as a complete keyboard disclosure.
+  - `7a408ff` gives collection activity a real heading and named feed structure.
+  - `139a7c7` announces honest, deferred marketplace search result summaries.
+  - `a1fc583` preserves complete asset identities on narrow two-column cards.
+  - `e4bcf4e` clears inactive search text after direct result navigation.
+  - `ef7f268` links every collection activity counterparty to its Arweave identity.
+  - `34a9dfc` renders canonical name results as names rather than fungible tokens.
+  - `330ae6b` keeps every exact atomic purchase total readable at 320 pixels.
+  - `e4963d7` gives the mobile gateway input and submit action 44-pixel targets.
+  - `58b8c29` keeps bounded search counts and routed-result provenance honest.
+  - `2f8a48f` gives the newly added mobile search submit action a 44-pixel target.
+  - `76065b8` prevents long dialog headings from compressing modal close targets.
+  - `d7dfc1f` surfaces wallet connection failures inside disconnected commerce views.
+  - `78610b6` enlarges standalone back-navigation targets at desktop and phone widths.
+  - `07d45da` checkpoints the twenty-second recursive review round.
+  - `eedca75` completes mobile search touch targets without disturbing its horizontal scopes.
+  - `8b7bb5a` completes mobile collection, filter, recovery, and pagination touch targets.
+  - `004d448` prevents activity loading from announcing a contradictory empty result.
+  - `5a1e5b4` makes collection-reference retry progress visible and non-repeatable.
+  - `53d843a` checkpoints the twenty-third recursive review round.
+  - `aab3a3e` enlarges the primary mobile wallet-inventory actions.
+  - `578211c` removes disconnected fungible order actions that could only no-op.
+  - `59832ac` gives mobile fungible row actions complete touch targets.
+  - `1dbe213` names unavailable indexes by their visible immutable collection names.
+  - `f999562` preserves seller, order, stage, reservation, and payment traceability in atomic receipts.
+  - `fe417f9` completes the mobile operation-dialog touch target contract.
+  - `69b048d` keeps reserved one-of-one orders visibly non-actionable.
+  - `7f05251` submits and persists the exact normalized atomic transfer recipient.
+  - `c5234a0` rejects atomic and fungible self-transfers before wallet approval.
+  - `a4ba1d1` fails explicit wallet connections when no valid active address can be read.
+  - `3ce6855` labels indexed market activity as submissions rather than outcomes.
+  - `b93d856` keeps fungible settlement language pre-approval truthful.
+  - `f22e90d` directs observation failures to the in-place resume action.
+  - `c80cbe6` labels reserved atomic assets consistently at every level.
+  - `130b059` keeps fungible completion actions honest about their destination.
+  - `37d9564` restores the committed route query when search is cancelled.
+  - `ed84fc7` restores wallet-trigger focus after dismissing a connection error.
+  - `f33f8fe` keeps progressive wallet activity monotonic across aliased discovery.
+  - `b1f0146` refreshes live asset state and indexed activity from one boundary.
+  - `7bf4eee` discloses the bounded provenance of asset activity feeds.
+  - `a8003e3` contains long mobile UDL and license values.
+  - `3b901d8` retains compact asset-history timestamps on mobile.
+  - `0edc26a` prevents stale asynchronous wallet reads from restoring an old signer.
+  - `a835170` completes mobile market navigation and history touch targets.
+  - `c34c8e2` keeps activity refresh focus stable through loading and failure.
+  - `4adca6e` serializes collection activity announcements into one network-status stream.
+  - `9f0b84b` hands focus to a visible completion status after final progressive reveals.
+  - `d093af5` clears stale activity reveal summaries when history refreshes.
+  - `942e000` exposes manual fungible lot selection to assistive technology.
+  - `60f7153` keeps quote retry focus inside atomic and fungible checkout.
+  - `d9772f0` synchronizes signer-scoped pending operations across browser tabs.
+  - `0a66557` isolates operation dialogs from background assistive navigation.
+  - `b4047e5` stacks exact fungible orders legibly on phone-width screens.
+  - `9631794` contains exact multi-listing purchase quotes on narrow screens.
+  - `80b3882` replaces broken wallet transaction links with copyable identities.
+  - `5ca8334` opens transaction metadata rather than raw permanent payloads.
+  - `4dca1f7` qualifies empty wallet discovery without inferring live ownership.
+  - `a8d5895` makes live-state freshness, gateway, and cache intent explicit.
+  - `92e1744` revalidates exact market state before requesting wallet approval.
+  - `84ce98e` claims signer-scoped wallet operations before any approval across tabs.
+  - `c7fa737` keeps explicit live-state freshness on both JSON codec attempts.
+  - `516fb41` aborts hung dispatch work when network observation expires.
+  - `638591c` refreshes indexed asset history when a visible route returns.
+  - `301b3cb` makes wallet-identity copy failures visible and actionable.
+  - `acaf591` holds exclusive wallet-operation claims through final live-state application.
+  - `39b27f6` completes mobile wallet-identity copy targets.
+  - `629b319` contains arbitrary collection names in narrow asset headers.
+  - `a9fbc7f` dates retained state checks explicitly.
+  - `8314ecc` preserves collection identity when permanent artwork is unavailable.
+  - `a7049e4` reclaims crashed cross-tab wallet-operation locks safely.
+  - `60c5ec5` sizes failed collection-artwork marks correctly.
+  - `ae59741` keeps state check dates unambiguous across midnight.
+  - `b851196` rejects GraphQL pages that promise continuation without a cursor.
+  - `8da0142` retains a readable published collection while a replacement index is pending or malformed.
+  - `483cb85` first removes the 100-token truncation; `f9deb68` refines it into fast cursor-backed, on-demand token pages that retain completed work.
+  - `cc15592` first makes collection order canonical; `0a943c2` refines reconciliation so populated retries do not churn existing cards.
+  - `5a9c651` stacks exact settlement receipts at phone widths.
+  - `4928d6e` gives mobile settlement links complete touch targets.
+  - `0a2f695` preserves centered presentation for direct result links.
+  - `7db36d0` scopes fallback provenance to collection indexes on both atomic and fungible assets while affirming current live state.
+  - `1262e52` detects cursor cycles and bounds every paginated index traversal.
+  - `691634e` makes paged token search match name, ticker, and process ID while keeping the next-page action available.
+  - `349236c` resolves unloaded fungible assets from their exact live process contract and preserves loaded token pages through retries.
+  - `879a83b` scopes floor, listing, and activity claims honestly while a token index is only partially loaded.
+  - `0f4c1b2` accepts Arweave GraphQL count strings so successful live token discovery no longer falls back spuriously.
+  - `a4f8b6a` lets exact process-ID search verify unloaded tokens from live state while qualifying partial token indexes.
+  - `c17a881` verifies unindexed candidates in batches before compute, applies the exact token contract uniformly, and restarts changed index windows safely.
+  - `d16ad5b` turns compute throttling into explicit wait-or-change-gateway recovery.
+  - `0bb9322` stops a rate-limited live-state read before the fallback codec can amplify it.
+  - `c06b357` preserves marketplace search text when continuing into a paged token collection and matches submitted tickers and process IDs consistently.
+  - `5988c7b` resolves known wallet assets while unrelated candidate support checks run, screens each discovered ID once, and respects Arweave GraphQL’s nine-ID limit.
+  - `a713c99` retains successful support-verification batches when another batch is unavailable and aborts active workers without draining queued requests.
+  - `80520bd` distinguishes compute throttling from transaction-index throttling across aggregate marketplace screens while preserving verified results.
+  - `a6dbdda` uses 100-candidate support batches on Turbo while retaining Arweave GraphQL's proven nine-ID limit.
+  - `a757be3` leads collapsed fungible pages with verified commerce before compact artwork.
+  - `ab7e5de` reconciles wallet retry metadata with the newest indexed activity and current failure category.
+  - `76b3b11` preserves exact activity-recovery guidance beside retained events.
+  - `5aa21ed` distinguishes transaction-index screening failures from live-state compute failures in wallet status and announcements.
+  - `36be476` retries only unavailable Home summaries and collection listing candidates while preserving verified results.
+  - `dcef847` gives atomic assets the same commerce-first collapsed hierarchy as fungible tokens.
+  - `c3d94fc` keeps global Search behind an active marketplace transaction dialog.
+  - `6416bf7` keeps permanent-data proof previews inside the settlement focus trap.
+  - `ecc3d48` binds listing retries to the exact manifest and loaded-token scope, with full retries revalidating settled candidates.
+  - `31743b5` makes the aggregate Home market retry singular, disabled, and explicitly in progress.
+  - `e52778e` bounds automatic permanent-data image previews to declared payloads of at most 2 MiB.
+  - `5fe9054` bounds long mobile multi-listing selectors without hiding any available lot.
+  - `f7f5d71` memoizes exact collection activity fingerprints across local renders.
+  - `d153992` lets the focused transaction map clear its own inspection with Escape without closing checkout.
+  - `4379d52` announces large collection resolutions at human milestones while retaining exact visual progress.
+  - `db54c87` carries still-pending Home summaries into an in-place retry instead of stranding them at Checking.
+  - `c637e31` preserves unchanged collection object identities as independently loaded indexes arrive.
+  - `7d22e38` turns a 512-listing manual picker into one conventional roving keyboard stop.
+  - `2acf5c7` keeps paginated collection announcements monotonic and batches failure churn.
+  - `b7a53a5` degrades an unavailable WebGL transaction map into live textual observer status.
+  - `4000ca8` coordinates Home summary reads per asset and collection instead of restarting whole groups.
+  - `fc65f59` extends paged token listing scans with only the newly loaded asset window.
+  - `82441ff` removes covered proof links from the non-WebGL transaction fallback.
+  - `45b1213` classifies failed parallel settlements as needing attention instead of reserving.
+  - `1288f77` commits an incremental token listing window only after its scan succeeds.
+  - `024f69b` restores focus to the live trade action before any post-operation state refresh.
+  - `e946465` restarts Home summary reads after React StrictMode's intentional effect replay.
+  - `ccc61b1` preserves a meaningful focus destination when refreshed trade actions change or disappear.
+  - `8c665dd` keeps changing textual observer rows outside the non-WebGL fallback live region.
+  - `edbdcd5` keeps paused atomic and fungible recovery focused on the newly visible Resume action.
+  - `12e677b` exits stale revalidated trade forms to freshly computed market state instead of looping.
+  - `1f75c3a` contains uninterrupted on-chain asset names without displacing dialog dismissal.
+  - `e527cd4` removes unavailable current reads from the verified live-listing result set.
+  - `7302489` places stale atomic market recovery in the reachable error phase.
+  - `68b97da` sorts verified live listings by their latest indexed market action.
+  - `a465e96` keeps multi-settlement recovery controls outside assertive alerts.
+  - `a4c5c0f` keeps atomic transaction recovery outside assertive alerts too.
+  - `51b6343` contains maximum-length on-chain token tickers in trade dialogs.
+  - `0c3f042` resolves large live-listing activity sets in incremental bounded windows.
+  - `6fe7f59` discards incomplete pre-dispatch wallet-approval batches atomically.
+  - `b18202a` contains maximum-length token tickers inside their form labels and inputs.
+  - `bf89a39` cleans pre-dispatch approval sets when their owning route or wallet aborts.
+  - `515bf60` classifies concurrent activity-window failures deterministically.
+  - `c9da704` bounds Home collection-floor discovery with the same incremental
+    market-activity windows used by collection views.
+  - `6ff612f` places active settlement recovery explanations in the sequential
+    keyboard path before their seller-specific controls.
+  - `9ba176b` introduced a preliminary aggregate fungible-transfer baseline;
+    it is superseded by `1733d49` and must not be cherry-picked alone.
+  - `c4bfa3c` isolates completion announcements from their interactive receipts.
+  - `6caa397` retains completed Home activity windows when a sibling window fails.
+  - `2b119c5` makes fungible transfer destinations reviewable and mutation-safe on mobile.
+  - `1733d49` verifies fungible transfers from their exact scheduler assignment
+    and exact-slot debit/credit notices rather than confusable aggregate deltas.
+  - `de99fb2` removes terminally rejected transfer recovery without presenting
+    a false paused action and keeps the exact destination visible.
+  - `b2eb59d` preserves keyboard focus when leaving collection filter menus.
+  - `9612707` refreshes completed Home activity snapshots when membership
+    changes or a compute failure invalidates their live result.
+  - `1fce1d8` keeps shared Home retry ownership through replacement effects.
+  - `bf1db89` prevents native transaction quantity from shadowing a fungible
+    transfer's exact token quantity.
+  - `934c0ea` preserves transfer recovery when scheduler evidence is incomplete
+    while keeping a proven exact token rejection terminal.
+  - `571c76b` localizes exact transfer assignments by mined block height instead
+    of walking every process slot since approval.
+  - `48c1ab1` explains retained immutable collection indexes without implying
+    that live ownership or market state came from the fallback.
+  - `cc21827` preserves exact recipient, quantity, asset, and transaction
+    details in atomic and fungible transfer receipts.
+  - `b28b6c3` follows an exact transfer when its mined height changes before
+    scheduler finality.
+  - `155e37c` retains the exact transfer baseline through same-dialog proof
+    recovery without requiring a reload or another signature.
+  - `56f49de` excludes inactive roving controls from modal tab boundaries.
+  - `79c34b9` normalizes pasted transfer recipients before every validation,
+    review, persistence, and signing boundary.
+  - `b7e6861` prevents iOS auto-zoom by keeping narrow dialog form controls at
+    a measured 16-pixel font size.
+  - `9ff6756` makes exact selected seller addresses visually reviewable before
+    fungible purchase approval.
+  - `3c27129` discovers large collection listing sets in independently retained
+    100-recipient windows through two bounded workers.
+  - `3e8e3c0` keeps empty completion live regions mounted before their concise
+    outcomes arrive while leaving visual receipts outside announcements.
+  - `28a110f` labels listing discovery work and live-listing totals precisely.
+  - `501b205` keeps exact recipient identities visible in both transfer
+    receipts.
+  - `c93a3ad` locks exact irreversible-party identity rendering in a component
+    regression.
+  - `300937a` directs incomplete transfer-proof recovery to the existing
+    in-dialog resume path and header gateway control.
+  - `6211c5f` keeps exact seller identities visible in atomic and fungible
+    purchase receipts.
+  - `bc00f4e` bounds large matched-seller disclosures, removes hundreds of
+    unnecessary tab stops, and never erases an identity after copy failure.
+  - `841dec5` rejects a wallet-returned transaction whose target, native
+    quantity, action, recipient, token quantity, or tag set differs from the
+    exact transaction the application requested.
+  - `0caf61e` gives atomic transfers the same normalized, complete destination
+    review and mobile-keyboard safeguards as fungible transfers.
+  - `f24839d` batches visible collection-card price discovery into retained
+    100-recipient windows through two bounded workers.
+  - `85d5b93` identifies listing discovery counters as per-pass work so retry
+    and collection growth never imply cumulative progress that did not occur.
+  - `bffa702` verifies that every wallet-signed transaction preserves its exact
+    semantic tag intent through Arweave encoding.
+  - `ac7c2e6` completes narrow-screen navigation touch targets without changing
+    the familiar Bazar header hierarchy.
+  - `bde25f0` batches collection activity discovery into retained bounded
+    recipient windows.
+  - `28db497` preserves the exact identities of both pre-signed purchase legs
+    across recovery.
+  - `6affdd0` revalidates resumed reservations from current live market state.
+  - `c7810ef` exposes complete irreversible counterparties before approval and
+    in permanent receipts.
+  - `6e8af1b` turns very large matched-seller reviews into one bounded,
+    keyboard-reachable disclosure.
+  - `5b73290` preserves a settlement tab panel while its signed work is still
+    being prepared.
+  - `439db80` bounds completed multi-order receipt review to one active listing.
+  - `327cce2` binds every settlement tab to one stable, focusable panel.
+  - `7cfb267` announces parallel settlement through calm 25/50/75/100 percent
+    milestones and the first failure rather than sibling telemetry churn.
+  - `d4c4f3c` integrates typed not-sent, definitive-rejection, and ambiguous
+    dispatch outcomes so recovery never loops a terminally rejected signature
+    or replaces an uncertain one.
+  - `d26af64` retains every successful Home floor contribution and retries only
+    unavailable or newly changed candidate state.
+  - `84a2de7` groups wallet results once per published result set instead of
+    rescanning every live order after each progress update.
+  - `caec328` gives aliased wallet-candidate GraphQL an atomic, in-memory
+    pagination checkpoint that resumes only unfinished aliases and pages.
+  - `d51f3c1` keeps the corresponding component-local live-resolution session,
+    verified cards, and exact progress through an interrupted discovery retry.
+  - `4375482` preserves recovery focus and revealed inventory through retry,
+    progressive arrivals, and responsive breakpoint changes.
+  - `81d01ee` preserves keyboard focus on the live wallet-resolution status
+    during an explicit refresh.
+  - `6b5eb01` derives aggregate transaction completion only from conservative
+    observer quorum, never from raw per-node depths.
+  - `7b76ca1` gates wallet cards and progress by their exact signer, gateway,
+    collection, and refresh scope before effects can reset stale state.
+  - `a983727` offers both resumable checkpoint retry and a clean wallet-
+    discovery restart when a cursor cannot advance.
+  - `fbb1511` preserves revealed collection cards, retry focus, and final-
+    reveal focus across responsive and progressive result changes.
+  - `87bf361` commits successful unavailable-asset retries into the resumable
+    wallet session and rejects late retries from superseded scopes.
+  - `57a5033` invalidates and recomputes a wallet candidate when a later alias
+    page reveals strictly newer indexed activity.
+  - `691afba` keeps immutable-index retry feedback stable while its focused
+    control is busy.
+  - `2c04a4f` preserves collection-activity reveal focus through final batches.
+  - `a21b172` keeps aggregate transaction progress strictly quorum-bound.
+  - `310b55b` resumes a terminally rejected seller payment from the repaired
+    registration-only snapshot instead of replaying the rejected leg.
+  - `cfe4cae` carries canonical watcher consensus through single actions and
+    clears stale observer lanes before retries.
+  - `eea9f81` gives the auto-focused marketplace search field a visible focus
+    boundary.
+  - `be657f6` restores collection filter focus and the alphabet roving tab stop
+    after an empty-state clear.
+  - `f0b94b1` retains modal-search focus and announces recent-history removal
+    after destructive clears.
+  - `4be2b87` bypasses live-state caches for explicit wallet refreshes.
+  - `b06a2fc` bounds large wallet-discovery announcements while keeping exact
+    visual progress.
+  - `a512052` preserves collection status focus when unavailable listings are
+    retried.
+  - `67d5cf6` synchronizes atomic and fungible section navigation with the
+    disclosures that are actually open.
+  - `57db291` indexes immutable supported-asset membership once per collection
+    snapshot instead of rescanning every asset for every wallet candidate.
+  - `ae4f4ed` retires signed transaction material only after corresponding
+    live-state success has been verified.
+  - `d2162af` renders one stable search-scope control set at every responsive
+    width instead of retaining hidden duplicates.
+  - `2bf741b` closes resumable descending wallet scans against stable head
+    watermarks and detects distinct same-block activity.
+  - `3cd17bb` progressively preserves wallet cards while zero-age live state
+    performs a final ownership reconciliation before completion.
+  - `89073ba` preserves signed transactions whenever a newer recovery record
+    owns the signer-scoped storage key.
+  - `019f754` keeps keyboard focus on atomic and fungible asset refresh actions
+    throughout live-state replacement.
+  - `fa3cc0c` reveals the desktop test-wallet file control with the same visible
+    focus contract as ordinary header actions.
+  - `962c971` separates accessible positive text from decorative green accents,
+    raising white-background contrast from 2.90:1 to 5.35:1.
+  - `aa66bec` lets the transaction map consume Escape only while an inspection
+    is visible; otherwise checkout owns its dismissal key again.
+  - `0ac7cfc` keeps exact collection-activity scan counters visual while polite
+    announcements advance only at bounded ten-batch milestones.
+  - `fe1ca69` verifies new fungible purchase settlement from the zero-age
+    pre-approval balance while retaining the persisted baseline on resume.
+  - `9c201c1` retires atomic purchase recovery that current state proves is
+    completed or no longer resumable instead of reopening it forever.
+  - `3901609` applies the same terminal-state contract to parallel fungible
+    order recovery, including partial settled quantities.
+  - `f1c435e` removes a newly prepared signature when route or wallet aborts
+    before its recovery record can take ownership.
+  - `b5ad799` overlaps resumable wallet discovery with bounded live-state
+    resolution so verified cards appear while later GraphQL pages continue.
+  - `ca3063c` dismisses marketplace search on external route changes without
+    stealing the destination page's focus.
+  - `623e73f` preserves exact signed evidence when a purchase becomes blocked
+    rather than deleting a possibly dispatched seller payment.
+  - `cec5f88` aborts already-cancelled ambiguous dispatch waits immediately in
+    both Bazar and its vendored weave-wrangler.
+  - `e33bd29` exposes complete connected-wallet and compute-gateway identities
+    without expanding their compact header labels.
+  - `ae95c75` raises functional small-text and placeholder contrast to WCAG AA.
+  - `96bcff2` removes the narrow-header breakpoint cliff and restores true
+    44-pixel search targets.
+  - `260998c` retains price, quantity, seller, status, and actions in narrow
+    atomic and fungible order books.
+  - `ad3c0fb` keeps interactive recovery controls outside changing live
+    regions so only concise status text is announced.
+  - `82c7cde` exposes exact wallet-inventory counts and compact zero-result
+    groups to visual and heading navigation.
+  - `4e3fd9a` exposes complete fungible seller identities in irreversible
+    actions and selection controls while keeping 512-receipt rendering bounded.
+  - `1f0eb26` places immutable-index provenance after current asset identity
+    and live commerce while preserving its complete retryable disclosure.
+  - `49940ef` debounces matched-order quotes, cancels abandoned price and
+    balance requests, and coalesces identical targets across a final batch.
+  - `61d3843` vendors exact-ID, lazy reorg replay from weave-wrangler candidate
+    `afaed9c` without signing or eagerly reposting normally confirmed work.
+  - `47d4440` leaves visual marketplace search immediate while settling its
+    polite result announcement only after rapid typing pauses.
+  - `048ee82` bounds wallet ownership revalidation speech to deciles and makes
+    inventory reveal announcements user-action-only.
+  - `c38c2ef` stops an expired unpaid reservation on its first fresh-state
+    check before any seller payment can be released.
+  - `6d10681` keeps the primary irreversible action visible inside short-height
+    operation dialogs without changing ordinary portrait or desktop layouts.
+  - `e40e70d` gives immutable-index recovery controls a complete 44-pixel
+    target across the full mobile asset-page breakpoint.
+  - `c503c32` removes duplicate whole-row narration from semantic atomic and
+    fungible order books while retaining every header, cell, seller, and action.
+  - `8b685c9` proves cancellation and transfer completion from each exact
+    committed scheduler assignment and immutable slot transition instead of
+    confusable aggregate order absence or recipient balances.
+  - `b019030` keeps the visible focus ring of a sticky short-dialog action
+    inside its owning scroll boundary.
+  - `7cb38ad` enables React Router's stable v7 transition and relative-splat
+    behavior, removing repeated compatibility warnings from clean startup.
+  - `f280081` checkpoints the sixty-second recursive review round.
+  - `ea3fbc5` bounds large multi-seller purchase quotes to eight concurrent
+    requests and closes the final wallet-balance abort gap.
+  - `93c07d8` proves every purchase from its exact committed scheduler payment
+    slot instead of aggregate balance or order-absence heuristics.
+  - `e015bc5` rediscovers schedule boundaries after a same-height reorg.
+  - `9940be5` names every trade dialog by its exact task and focuses the task
+    field rather than its dismissal control.
+  - `6aa4a44` preserves meaningful keyboard focus through collection and
+    live-state retries.
+  - `58dbfed` persists parallel settlement recovery only when durable signed
+    transaction facts change.
+  - `dce801a` keeps every focused short-height trade field completely visible
+    above a separate, persistent action footer.
+  - `ff1b5cf` preserves complete two-leg settlement recovery through partial
+    resume projections without redundant batch rewrites.
+  - `7e24fac` bounds progressive wallet resolution to one active and one queued
+    discovery page while retaining discovery/compute overlap.
+  - `0cf7850` coalesces each parallel observer wave into one visual settlement
+    update while flushing terminal outcomes synchronously.
+  - `a54579b` reveals very large fungible order books in exact 50-row batches.
+  - `b47b796` rejects automatic matching after the 513th open order without
+    sorting or consuming the rest of an unbounded order source.
+  - `34e36be` presents interrupted wallet discovery as one calm recovery state
+    without a stopped progress bar or duplicate retry action.
+  - `d19b7dd` politely announces every progressive order-book reveal while
+    retaining focus on the reveal control.
+  - `80583ad` restores visible My Assets and Gateway labels from 360-pixel
+    phone widths upward while keeping smaller screens icon-only.
+  - `d256007` removes repeated collection names and shortened process IDs from
+    collection-context asset cards without removing that provenance elsewhere.
+  - `4c822df` coalesces durable parallel-settlement checkpoint waves while
+    forcing storage ownership before any seller payment is released.
+  - `cd9d089` checkpoints the sixty-fifth recursive review round.
+  - `e0c7dd0` keeps asset media ahead of non-blocking immutable-index recovery
+    on collapsed asset pages.
+  - `46a9f1d` indexes exact collection candidate membership once instead of
+    rescanning large asset arrays at three listing boundaries.
+  - `1efde6d` announces entered atomic and fungible trade validation failures
+    while leaving initial form guidance non-assertive.
+  - `e58e0a9` indexes aggregate carrier-name membership once for Home floors
+    and collection activity instead of repeatedly scanning the namespace.
+  - `eb9a34c` batches each progressive live-listing page into one retained
+    result, price, and activity publication rather than one render per asset.
+  - `411428e` preserves keyboard focus on collection pagination while its next
+    immutable-index page loads and through the resulting continuation.
+  - `4145b9b` retires only impossible stale operation recovery automatically;
+    potentially applicable missing signed intents remain guarded without an
+    auto-opened failing modal or a replacement transaction.
+  - `182ab68` preserves keyboard focus on Home market retries throughout their
+    busy state and through either a retained failure or successful removal.
+  - `c57ff1b` indexes exact asset lookup once per immutable collection snapshot
+    instead of linearly rescanning large collections for every candidate.
+  - `37c4b6d` keeps the active multi-order receipt pager control focused when
+    it reaches either endpoint.
+  - `9f2e5e6` compacts mobile collection activity without shrinking touch
+    targets or removing actor, time, transaction, or block semantics.
+  - `be5575b` demotes safe mobile compiled-index provenance while retaining
+    its complete explanation for assistive technology and desktop review.
+  - `f961177` clears stale operation guards as soon as another tab or a fresh
+    live-state check proves their tracked record has been removed.
+  - `3c98e58` bounds manual fungible listing selection to progressive 50-row
+    windows and replaces quadratic selected-order membership scans.
+  - `cc37174` separates exact signed purchase observation from recovery that
+    still requires new wallet approvals, which now waits for explicit consent.
+  - `f1751c7` makes the horizontally paged mobile names alphabet visible,
+    directional, and focus-preserving without changing its desktop layout.
+- Browser evidence is organized by candidate under
+  `.run-data/screenshots/recursive-ux/`, including gateway validation,
+  live-state recovery, route states, progressive artwork, token collection and
+  mixed inventory layouts, connected validation guidance, pending refresh
+  truth, wallet discovery, unavailable-vs-empty market summaries, routed focus,
+  progressive indexes, deadline failures, collection reset/local-sort behavior,
+  keyboard-complete filters, semantic order books, named result states, and
+  cumulative price pagination, isolated modal search, preserved collection
+  refreshes, honest manifest provenance, progressive large-market listing
+  resolution, filtered-listing empty states, safe dynamic overlays, canonical
+  names pagination, bounded gateway labels, dense wallet inventories, compact
+  name tiles, signed market-action details, honest indexed-vs-confirmed
+  activity summaries, bounded activity-feed reveals, exact atomic purchase
+  quotes and counterparties, explicit compute-gateway recovery, modal
+  focus/scroll isolation, progressive 104-candidate wallet resolution, the
+  fully resolved 100-asset collection, compact transaction proof cards,
+  canonical namespace search and routed results, the structured collection
+  activity feed, the revalidated 320-pixel atomic quote, and independently
+  measured 44-by-44 atomic and fungible dialog close controls at 320 and 390
+  pixels. Round 26 additionally records retained activity during refresh and
+  the focus-preserving final reveal of a 100-asset collection under
+  `.run-data/screenshots/recursive-ux/round26/`. Round 27 records a live listed
+  Arweave-name purchase quote and a focus-preserving cost recheck under
+  `.run-data/screenshots/recursive-ux/round27/atomic-quote-recheck.png`; the
+  5 AR listing resolves through the selected HyperBEAM gateway and discloses
+  seller price, network fees, maximum total, and wallet-after-purchase state
+  without soliciting a signature.
+- Round 28 records the live home, copyable wallet identity, explicit state
+  freshness, mobile quote candidates, and the checkout after cross-tab claim
+  hardening under `.run-data/screenshots/recursive-ux/round28/`. The current
+  listed-name checkout still renders the exact seller, 5 AR ask, network fees,
+  maximum total, and affordability state without soliciting a signature.
+- Rounds 29–32 add real-browser evidence for canonical collection ordering,
+  explicit retained-state timestamps, identity-preserving artwork fallback,
+  and scoped atomic/fungible index provenance under
+  `.run-data/screenshots/recursive-ux/round29/` through `round32/`.
+  `round31/canonical-collection-order.png` shows the same Names → Tokens →
+  Strata → Signals order produced by the immutable source index, and
+  `round32/fungible-index-provenance.png` shows a fallback token index beside
+  independently current HyperBEAM-computed balances.
+- Round 34 records the corrected token fallback provenance and the recovered
+  live token index under `.run-data/screenshots/recursive-ux/round34/`.
+  A real Arweave GraphQL response demonstrated that `count` is a decimal
+  string; after normalizing that wire value, a hot-reloaded browser removed
+  the fallback notice and rendered the independently computed WEAVE market
+  state from the live discovered index.
+  Three independent Round 34 audits then drove strict loaded-token contract
+  checks, batched pre-compute candidate verification, changed-window cursor
+  recovery, truthful direct-token fallback copy, and honest activity
+  navigation. A 150-candidate transfer-spam regression performs two
+  100-ID-capable support checks through the default Turbo endpoint and zero
+  HyperBEAM reads; an independent 19-candidate `arweave.net` control uses
+  exactly `[9, 9, 1]` IDs through the same two bounded workers.
+- Rounds 35–37 establish the final wallet-candidate and throttling controls.
+  Real `arweave.net` GraphQL probes proved that transaction ID filters accept
+  at most nine IDs; support verification now uses two bounded workers and
+  preserves successful batches independently. The same real wallet then
+  resolved 104/104 candidates to 99 owned assets without a repeated support
+  pass. A task-local 429 control rendered the complete-wallet warning and
+  `Retry later` action, while a naturally throttled live gateway rendered the
+  matching home-market recovery. Evidence:
+  - `.run-data/screenshots/recursive-ux/round35/routed-token-search.png`
+  - `.run-data/screenshots/recursive-ux/round35/progressive-wallet-screening.png`
+  - `.run-data/screenshots/recursive-ux/round37/my-assets-rate-limit.png`
+  - `.run-data/screenshots/recursive-ux/round37/home-rate-limit.png`
+- A protocol audit found no safe GraphQL-only discriminator between a valid
+  transfer and a forged transfer-shaped transaction: only scheduled process
+  execution knows the signer’s balance at that slot. The client therefore
+  deliberately retains one bounded live read per distinct supported process
+  rather than introducing a false-negative ownership filter. IDs are deduped,
+  support checks are bounded, and live state remains the only ownership truth.
+- Rounds 38–39 close the remaining collapsed-commerce and classified-recovery
+  gaps. Fungible and atomic 630-by-924 controls both put identity, verified
+  price/status, and the contextual primary action before compact artwork.
+  Mixed-failure proxies proved that collection retries retain the verified
+  0.5 AR Strata listing while issuing only the failed process read, and a
+  stable Home retry issues only the failed asset/collection summaries. Search
+  now remains closed when Cmd/Ctrl+K is pressed inside the atomic purchase
+  dialog, leaving exactly one modal and focus inside it. Evidence:
+  - `.run-data/screenshots/recursive-ux/round38/fungible-mobile-commerce-first.png`
+  - `.run-data/screenshots/recursive-ux/round39/atomic-commerce-first.png`
+  - `.run-data/screenshots/recursive-ux/round39/listing-targeted-retry.png`
+  - `.run-data/screenshots/recursive-ux/round39/home-retry-busy.png`
+- Round 40 closes four interaction and progressive-loading races found by
+  independent audits. The transaction map now owns its documented Escape key;
+  screen readers receive a start, bounded progress milestones, failure changes,
+  and exact completion instead of one announcement per candidate; Home retry
+  includes requests it intentionally aborts while they are still pending; and
+  unrelated index arrivals preserve stable collection identities rather than
+  restarting live listing and price work. Mobile multi-listing selection is
+  independently bounded, and permanent-data image proof previews cannot
+  auto-fetch an unknown or multi-gigabyte payload. Browser evidence:
+  `.run-data/screenshots/recursive-ux/round40/home-stable.png`.
+- Round 41 makes scale behavior interaction-safe as well as visually bounded.
+  A manual fungible picker with 1, 100, or 512 orders has exactly one modal tab
+  stop with arrow, Home, and End navigation; a changing GraphQL page total can
+  no longer move announced progress backwards; and WebGL initialization failure
+  leaves checkout, confirmation progress, live observer rows, telemetry, and
+  recovery controls intact. Home now keeps unchanged per-card and per-collection
+  requests alive as independent indexes arrive, while growing token windows
+  preserve prior listings and query only their new IDs. A real browser recheck
+  retained the verified 0.5 AR Strata listing through the resulting live flow:
+  `.run-data/screenshots/recursive-ux/round41/incremental-listings-preserved.png`.
+- Round 42 adversarially retests those new boundaries. Non-WebGL mode now omits
+  otherwise invisible proof anchors; parallel settlement buckets are mutually
+  exclusive and politely announce the first failed sibling while the rest
+  continue; an aborted token-index delta remains uncommitted and is unioned
+  into the next request; and dismissing an untouched atomic or fungible form
+  does not start a refresh that disables its focus-return target. The live
+  atomic control returned focus to the enabled `Buy now` button after Escape:
+  `.run-data/screenshots/recursive-ux/round42/checkout-focus-restored.png`.
+- Round 43 closes the remaining refresh and fallback boundaries. React
+  StrictMode cleanup can no longer strand Home cards at `Checking…`; a fresh
+  Home navigation resolved every visible floor and ask with zero pending
+  summaries. Atomic and fungible dialogs still return focus to their exact
+  enabled launch actions on ordinary dismissal, while state-changing refreshes
+  now reject disabled, detached, hidden, or inert actions and fall back to the
+  visible asset heading. The non-WebGL observer list remains readable while
+  only its stable fallback notice is announced. Browser evidence:
+  - `.run-data/screenshots/recursive-ux/round43/atomic-focus-original.png`
+  - `.run-data/screenshots/recursive-ux/round43/fungible-focus-original.png`
+- Round 44 follows the new boundaries into their recovery edges. Pausing a
+  signed action now wins the deferred focus race and leaves keyboard users on
+  `Resume pending action`; a `market-state-changed` pre-sign guard closes the
+  frozen form and refreshes its parent rather than presenting the obsolete
+  quote again; 100-character uninterrupted asset names cannot push the shared
+  44-pixel dialog dismissal control off-screen; and a listing whose current
+  compute retry fails is removed from live counts and `For sale` badges while
+  verified sibling listings remain. A fresh Home pass also completed every
+  market summary after the naturally slower Arweave reads:
+  `.run-data/screenshots/recursive-ux/round44/home-resolved.png`.
+- Round 45 adversarially follows those changes through their reachable UI.
+  Atomic stale-state recovery now appears in the error phase rather than an
+  unreachable form branch. `Listed for sale` still verifies every candidate
+  from current HyperBEAM state, then independently orders only those verified
+  listings by the latest indexed offer, reservation, transfer, or
+  cancellation; recent-order failure leaves the live listings visible in
+  default order with its own retry. Multi-order settlement errors announce one
+  concise failure summary while the tablist, receipts, and recovery actions
+  remain outside the assertive live region. A real Strata collection pass
+  resolved exactly the remaining 0.5 AR live listing, displayed the temporary
+  recent-order status, and removed it after ordering completed:
+  `.run-data/screenshots/recursive-ux/round45/listed-recent-activity.png`.
+- Round 46 extends the alert boundary to atomic recovery and contains every
+  accepted 32-character fungible ticker inside balance, quote, cancellation,
+  and primary-action rows. Recent ordering now uses two 100-recipient workers,
+  commits completed windows, retains interrupted windows for retry, prunes
+  removed listings, and queries only new live listings as paged token indexes
+  grow. Pre-dispatch purchase approvals are deliberately atomic: rejecting a
+  later atomic or multi-lot approval, or failing the final balance check,
+  removes every signed transaction from that attempt before reporting that
+  nothing was submitted. Deterministic tests cover payment rejection, the
+  third and fourth multi-lot prompts, and a post-signing balance failure. Real
+  browser controls retain a contained fungible dialog and the single verified
+  0.5 AR Strata listing under the bounded recent-order path:
+  - `.run-data/screenshots/recursive-ux/round46/fungible-dialog-contained.png`
+  - `.run-data/screenshots/recursive-ux/round46/bounded-listed-recent.png`
+- Round 47 adversarially tests the new ownership boundaries. Accepted
+  32-character tickers now wrap inside the sell-price label as well as every
+  dynamic value. Wallet balance reads carry their owning abort signal, check it
+  again after resolution, and clean both atomic and multi-lot signed approval
+  sets when a route or wallet changes during the post-sign balance window; the
+  batch handoff also takes explicit ownership of returned IDs before checking
+  abort. Deferred controls prove two atomic and four fungible approvals leave
+  zero signed-key residue without dispatch or recovery when aborted. Parallel
+  recent-order workers aggregate rather than overwrite failures, so identical
+  mixed 429/503 responses always produce rate-limit guidance regardless of
+  timing while completed windows remain committed.
+- Round 48 closes three more scale, focus, and causal-state gaps. Home token
+  floors now use bounded activity windows and publish no partial floor if any
+  window is unavailable. Tabbing from a partial-settlement tablist enters the
+  active explanation before its seller-specific recovery controls. Fungible
+  transfers persist the exact fresh pre-sign sender balance, recipient balance,
+  and swap height, then remove recovery only after a single later computed
+  state proves the full debit-and-credit transition; an unrelated recipient
+  credit cannot produce false completion. The current collection activity page
+  still rendered all 18 indexed events as 18 confirmed live events without
+  layout overflow:
+  `.run-data/screenshots/recursive-ux/round48/activity-audit.png`.
+- Round 49 adversarially corrects that preliminary transfer check and closes
+  three independent UX gaps. Completion announcements now exclude receipts,
+  links, copy confirmations, and CTAs; Home retains every completed bounded
+  activity window while retrying only unavailable discovery work; and mobile
+  fungible transfers disable address mutation while visibly echoing the exact
+  destination before approval. The final transfer verifier persists the fresh
+  process slot, finds the exact signed transaction in complete 100-slot
+  scheduler windows, validates its committed sender, process, recipient, and
+  quantity, then accepts completion only when that exact historical slot emits
+  its paired `Debit-Notice` and `Credit-Notice`. An exact scheduled rejection
+  is terminal and removes resumable signature state; schedule or compute
+  unavailability remains safely resumable. A stock-HyperBEAM live control
+  resolved transfer `QGDk3Z0niQiH9fUV84z_hblB_V6FhFqqVSvwsOZUXz8` at slot
+  80 and returned the exact notice pair. Browser evidence records the contained,
+  destination-reviewable transfer form at 630 pixels with zero document
+  overflow:
+  `.run-data/screenshots/recursive-ux/round49/fungible-transfer-review.png`.
+- Round 50 follows the exact-transfer design through protocol and recovery
+  boundaries. A completed Home activity snapshot is now invalidated only by a
+  real membership or compute change, and obsolete StrictMode effects cannot
+  release a replacement retry. Collection filter controls retain their
+  conventional Tab and Shift+Tab sequence. The transfer path now sends zero
+  native AR quantity so the signed `quantity` tag survives `tx@1.0` decoding;
+  cancellation continues to send its required one-winston scheduler dust.
+  Exact proof validation requires the transaction ID, process, sender,
+  recipient, quantity, target, field target, and committed field set. Missing
+  proof remains resumable; only a valid exact assignment without its paired
+  debit and credit notices is terminal. Assignment discovery obtains the
+  confirmed transaction block, finds its process-slot range in logarithmic
+  probes, and scans only that immutable block. A deterministic 100,000-slot
+  fixture remains under 45 schedule reads, and the stock-HyperBEAM slot-80
+  control exposes the same commitment shape. Browser evidence shows the full
+  transfer recipient and contained approval surface at 630 pixels:
+  `.run-data/screenshots/recursive-ux/round50/exact-transfer-review.png`.
+- Round 51 hardens those protocol boundaries through scheduler finality and
+  turns the resulting evidence into clearer commerce UX. A confirmed transfer
+  whose mined height changes before ten-block scheduler inclusion now discards
+  only its immutable slot probes and immediately follows the new height.
+  Incomplete scheduler proof remains resumable in the same open dialog because
+  its exact pre-sign slot survives retry. An offline, locally signed control
+  using native quantity zero and a `10^12` token tag was decoded through the
+  stock `feat/name-token` `tx@1.0` modules: its body quantity was exactly
+  `1000000000000`, and its commitment covered action, recipient, quantity,
+  target, and the exact field target. Nothing was dispatched or spent, and all
+  temporary key-derived material was removed. Exact recipients now survive in
+  completion receipts, pasted whitespace is normalized before signing, and
+  selected sellers render all 43 characters before approval. Narrow form text
+  measures 16 pixels with a 630-pixel document width and no overflow. Modal
+  tab boundaries ignore inactive roving controls, and a browser control found
+  the empty polite completion node connected before the form could complete.
+  Large token listing discovery now uses two 100-recipient workers, retains
+  completed windows across a sibling failure, and retries only uncompleted
+  IDs; the live 100-asset Strata collection still resolved its exact 0.5 AR
+  listing. Browser evidence:
+  - `.run-data/screenshots/recursive-ux/round51/immutable-index-guidance.png`
+  - `.run-data/screenshots/recursive-ux/round51/batched-live-listings.png`
+- Round 52 follows exact transaction identity back to the wallet trust
+  boundary. The app now compares every signed transaction's complete target,
+  native quantity, semantic tag multiset, and zero-data body with the exact
+  requested fields before local persistence or dispatch; deterministic
+  mutations of the action, process, recipient, native quantity, and token
+  quantity are all rejected. Permanent purchase and transfer receipts visibly
+  preserve complete counterparties. Large fungible matches expose complete
+  seller identities as selectable text inside a bounded disclosure instead of
+  creating up to 512 copy-button tab stops, and clipboard failure leaves the
+  identity visible. Atomic transfers now normalize pasted whitespace, suppress
+  address-altering mobile input behavior, and show the complete destination
+  separately before wallet approval. A 630-pixel browser control measured a
+  16-pixel input and exactly 630 pixels of document width while rendering all
+  43 recipient characters; nothing was signed. Visible collection-card prices
+  now share the listing filter's two-worker, 100-recipient GraphQL windows and
+  retain completed windows across sibling failure. Evidence:
+  `.run-data/screenshots/recursive-ux/round52/atomic-transfer-review.png`.
+- Rounds 53–54 close the remaining transaction-dispatch and large parallel
+  settlement boundaries. The vendored wrangler now distinguishes local
+  not-sent failures, demonstrated 400/422 rejections, and ambiguous
+  408/425/429/network outcomes. Deterministic registration and payment controls
+  issue one terminal POST, preserve both exact pre-signed IDs, and repair only
+  the rejected leg; uncertain legs still replay the same ID. Bazar exposes the
+  exact seller for every irreversible action, keeps 512-seller review to one
+  keyboard region, renders one stable settlement panel and one active receipt,
+  and emits only bounded parallel milestones. Browser evidence:
+  - `.run-data/screenshots/recursive-ux/round53/batched-activity.png`
+  - `.run-data/screenshots/recursive-ux/round53/mobile-targets.png`
+  - `.run-data/screenshots/recursive-ux/round54/home-retained-floor-viewport.png`
+- Round 55 makes aggregate discovery recover proportionally at large scale.
+  Home retains 999 successful live floor contributions when one of 1,000
+  candidates fails, then retries only that candidate. Wallet candidate
+  discovery commits every aliased GraphQL page atomically in memory: a
+  deterministic 16,000-candidate control completed 159 pages, failed page 160,
+  then resumed only that final page for 161 total requests rather than replaying
+  320; every candidate reached the resolver exactly once. The UI retains its
+  verified cards and live results across same-scope recovery, resets on wallet,
+  gateway, support-index, or explicit-refresh scope changes, leaves interrupted
+  progress indeterminate, and bounds status-only inventory work behind memoized
+  groups. Responsive page-size changes no longer collapse a revealed inventory,
+  late progressive arrivals cannot receive hidden-summary focus, and retry
+  focus moves to the persistent resolution status. A live `arweave.net` pass
+  resolved 104/104 candidates to 99 owned assets with no alert or horizontal
+  overflow. Evidence:
+  - `.run-data/screenshots/recursive-ux/round54/home-retained-floor-viewport.png`
+  - `.run-data/screenshots/recursive-ux/round55/my-assets-resumable.png`
+- Rounds 56–57 close the remaining aggregate-truth and resumable-inventory
+  boundaries found by three independent audits. Single-action confirmation
+  counters, success styling, fork-risk language, and completion announcements
+  now move only from the same inclusion-block-aware quorum used by the network
+  watcher; deterministic depth-five outlier and conflicting-block controls both
+  remain at 0/5 until explicit consensus arrives. A fresh wallet/gateway scope
+  hides every prior card and prior status synchronously, checkpoint failures
+  can be restarted cleanly, retry recoveries survive same-scope effect replay,
+  and a later activity alias invalidates only that process's prior live read
+  without inflating the unique candidate total. Collection reveals retain 96
+  cards when the responsive page size shrinks, and a live 48 → 96 → 100 control
+  focused the visible final summary with no horizontal overflow. Evidence:
+  - `.run-data/screenshots/recursive-ux/round56/wallet-refresh-focus.png`
+  - `.run-data/screenshots/recursive-ux/round56/collection-final-reveal.png`
+- Round 58 follows those fixes through payment recovery, accessibility, and
+  large-wallet scale. A definitively rejected seller payment now retries from
+  its still-valid reservation and asks only for a replacement payment. Atomic
+  and fungible single actions render the exact inclusion-block-aware watcher
+  consensus and clear old attempt lanes. Live keyboard controls prove visible
+  modal-search focus, stable focus after search and collection clears, a
+  restored alphabet tab stop, and section navigation that never claims a
+  collapsed disclosure is current. Explicit `Refresh assets` bypasses the
+  60-second live-state cache. Candidate announcements are bounded, while their
+  adjacent visual counts remain exact. Finally, a first-pass 16,000-name
+  membership partition now takes 12 milliseconds, down from the audited
+  ~2.2 seconds; three complete focused-suite runs took 98, 102, and 101
+  milliseconds. Evidence:
+  - `.run-data/screenshots/recursive-ux/round58/search-input-focus.png`
+  - `.run-data/screenshots/recursive-ux/round58/wallet-live.png`
+- Round 59 closes the moving-snapshot and terminal-recovery boundaries exposed
+  by three independent scale, recovery, and accessibility audits. Wallet
+  GraphQL now resumes its old tail, scans back to each original head, and
+  repeats until those heads are stable; a distinct transaction in the same
+  block reopens only that asset. Progressive results remain visible while a
+  zero-age terminal pass rechecks every positive ownership/listing result, with
+  its own honest progress state. Purchase recovery no longer loops orders that
+  disappeared, changed, or were reserved by another buyer, and signature
+  cleanup cannot invalidate a newer cross-tab recovery. New fungible batches
+  carry their fresh pre-approval balance. Keyboard refresh focus, test-wallet
+  focus, transaction-map Escape ownership, status contrast, and large activity
+  announcements were independently corrected and rendered. Evidence:
+  - `.run-data/screenshots/recursive-ux/round59/wallet-head-closed.png`
+  - `.run-data/screenshots/recursive-ux/round59/wallet-terminal-revalidation.png`
+  - `.run-data/screenshots/recursive-ux/round59/fungible-refresh-focus.png`
+  - `.run-data/screenshots/recursive-ux/round59/activity-bounded-status.png`
+- Round 60 follows the completed scale and recovery work through three fresh
+  accessibility, responsive, and protocol audits. Wallet candidate discovery
+  now overlaps with bounded live resolution; a live 104-candidate pass rendered
+  its first verified cards after ten candidates and completed without an alert.
+  Search cannot survive a route change, header trust controls expose their exact
+  wallet and gateway, functional small text meets 4.5:1 contrast, narrow headers
+  no longer clip between 481 and 560 pixels, and compact order books retain every
+  decision field. Recovery controls are siblings of their live messages, zero
+  inventory groups remain navigable, and exact fungible sellers no longer
+  collide behind shortened labels. Protocol recovery preserves ambiguous signed
+  payments when live state blocks a purchase, while an already-aborted ambiguous
+  POST cannot retain a 15-second timer. Evidence:
+  - `.run-data/screenshots/recursive-ux/round60/wallet-overlapped-resolution.png`
+  - `.run-data/screenshots/recursive-ux/round60/compact-orderbook.png`
+  - `.run-data/screenshots/recursive-ux/round60/wallet-zero-group.png`
+- Round 61 turns another three adversarial audits into bounded work at the
+  browser, network, and library layers. Asset routes lead with current identity
+  and commerce before immutable-index provenance. Rapid 512-lot selection no
+  longer launches quadratic, uncancellable quote traffic: only the settled
+  selection is quoted, every request owns an abort signal, and identical batch
+  targets are coalesced without persistence. Search counts settle after typing,
+  while a live 104-candidate wallet control advanced exact visual revalidation
+  sixteen times but emitted only three speech changes (80%, 90%, completion).
+  Wrangler now lazily restores and reposts the exact signed ID after durable
+  `gone` consensus; repeated orphan events produce one restore and one POST,
+  with no eager replay or wallet signing. Expired unpaid reservations fail on
+  their first fresh-state read, preserve signed evidence, and release zero
+  seller payments. Short-height forms keep their action within the modal scroll
+  boundary. Evidence:
+  - `.run-data/screenshots/recursive-ux/round61/commerce-before-provenance.png`
+  - `.run-data/screenshots/recursive-ux/round61/wallet-bounded-announcements.png`
+  - `.run-data/screenshots/recursive-ux/round61/form-dialog-normal-height.png`
+- Round 62 follows those changes into mobile recovery, dense order semantics,
+  and causal process execution. Asset provenance retry now measures 44 pixels
+  at a real 630-pixel viewport with no horizontal overflow. Order rows no
+  longer repeat the complete row before exposing their already semantic cells.
+  Atomic and fungible cancellation, plus atomic and fungible transfer, persist
+  their pre-sign process slot and retire recovery only after locating the exact
+  signed transaction in its confirmed Arweave block, validating its complete
+  `tx@1.0` commitment, and reading its immutable schedule-slot outcome. A live
+  WEAVE control located cancellation `iFNmp…` at slot 7: slot 6 contained the
+  exact open 2-WEAVE order and a 999,998-WEAVE liquid balance; slot 7 removed
+  that order and restored 1,000,000 WEAVE. The control also proved that
+  transient device event fields are not exposed in historical state, so the
+  implementation validates the real before/after escrow transition instead.
+  A clean browser startup now emits zero warnings or errors. Evidence:
+  - `.run-data/screenshots/recursive-ux/round62/mobile-provenance-target.png`
+  - `.run-data/screenshots/recursive-ux/round62/home-after-round62.png`
+- Rounds 63–64 close the remaining exact-purchase, resume, short-viewport, and
+  progressive-wallet scale gaps found by three independent protocol,
+  accessibility, and performance audits. A live WEAVE control proved both
+  seller payments in their exact scheduler slots, including the matching
+  reserved orders immediately before settlement and exact buyer credits
+  immediately after it. Same-height schedule reorgs now invalidate only stale
+  boundary probes. Multi-seller quotes peak at eight requests. Repeated
+  observer views no longer rewrite a complete 512-lot recovery record, partial
+  resume emissions cannot erase its prepared payment IDs, and 512 visual state
+  changes merge once per animation frame without delaying durable writes.
+  Wallet discovery retains at most one resolving and one queued page; a live
+  104-candidate pass rendered verified cards progressively, entered its
+  zero-cache ownership pass, and completed 104/104 through `arweave.net`.
+  Exact 375-by-320 browser controls kept atomic and fungible inputs fully inside
+  their scroll body with a 44-pixel action footer, no overlap, and no document
+  overflow. Evidence:
+  - `.run-data/screenshots/recursive-ux/round63/named-task-focused-dialog.png`
+  - `.run-data/screenshots/recursive-ux/round64/atomic-dialog-375x320.png`
+  - `.run-data/screenshots/recursive-ux/round64/fungible-dialog-375x320-price-fixed.png`
+  - `.run-data/screenshots/recursive-ux/round64/my-assets-bounded-queue.png`
+- Round 65 continues the scale and responsive audit. Fungible order books
+  initially reveal 50 exact rows and announce each further batch; automatic
+  matching consumes at most 513 open orders even when its source contains
+  100,000. Interrupted wallet discovery now exposes exactly two deliberate
+  recovery paths, no inert progress bar, and one live error. At 375 pixels,
+  the previously anonymous My Assets and Gateway header controls have visible
+  labels, retain 44-pixel targets, and keep the document at exactly 375 pixels;
+  at 359 pixels they return to the compact icon form. Collection-context cards
+  no longer repeat their already visible collection title and process ID:
+  the live Strata card height fell from 287 to 240 pixels and the 24-card page
+  from 4,514 to 3,928 pixels, while My Assets retains full provenance. Finally,
+  1,024 changed settlement snapshots schedule one durable write instead of
+  1,024 full-batch serializations. Repairs and unmounts still flush
+  synchronously, and the final payment gate forces a recovery-ownership write
+  after its balance check before releasing seller payments. Evidence:
+  - `.run-data/screenshots/recursive-ux/round65/my-assets-interrupted-clean.png`
+  - `.run-data/screenshots/recursive-ux/round65/mobile-header-labelled.png`
+  - `.run-data/screenshots/recursive-ux/round65/mobile-collection-compact-cards.png`
+  - `.run-data/screenshots/recursive-ux/round65/live-token-orderbook-full.png`
+- Round 66 follows the responsive work through asset hierarchy, large
+  collection completion, and form recovery. A retained-index warning formerly
+  pushed atomic artwork to document Y 956 on a 375-by-924 viewport; commerce
+  now remains first, artwork begins at Y 695, and the complete 156-pixel
+  provenance/retry notice follows it before detailed sections. Desktop keeps
+  the same notice directly below commerce in the right column. Three exact
+  collection-membership passes over 13,769 candidates and 16,653 assets
+  retained all 27,537 decisions while improving from 2,057 / 1,955 / 1,455
+  milliseconds to 1.99 / 0.81 / 0.76 milliseconds across three runs. Name
+  membership still comes from the canonical namespace map, including unloaded
+  canonical members and excluding stale loaded ones. Finally, entered invalid
+  prices, quantities, recipients, and exact-match requests now populate stable
+  alert nodes as they disable approval; initial instructional guidance remains
+  non-assertive. A live self-transfer control exposed exactly one specific
+  alert, its input remained described by that node, and its submit action was
+  disabled without signing. Evidence:
+  - `.run-data/screenshots/recursive-ux/round66/mobile-asset-art-before-index-warning.png`
+  - `.run-data/screenshots/recursive-ux/round66/atomic-transfer-alert.png`
+- Round 67 follows large-collection work through its last progressive render
+  and recovery boundaries. Home and collection activity now use the exact
+  indexed namespace membership created in Round 66. Live-listing resolution
+  publishes one retained batch per bounded GraphQL page; a 10,000-result
+  single-use control consumed every outcome once and retained all unique
+  results. Carrier pagination keeps its focused control mounted with
+  `aria-disabled` while loading, then transfers that same focus contract to
+  the exact `Show 18 more names` continuation. Finally, a real stale
+  Weave Signals #003 listing recovery whose signed intent no longer existed
+  and whose live owner had changed now opens zero dialogs, removes the
+  impossible local record, and creates no replacement transaction. Missing
+  local intent that could still apply remains visible as a nonmodal,
+  transaction-linked guard and disables replacement market actions. Evidence:
+  - `.run-data/screenshots/recursive-ux/round67/pagination-focus-continuity.png`
+  - `.run-data/screenshots/recursive-ux/round67/stale-operation-retired-mobile.png`
+- Round 68 extends the same focus contract to Home market recovery: a
+  controlled unreachable gateway formerly moved `Retry market data` focus to
+  `BODY` immediately, while the corrected control stays focused through its
+  busy and completed states. Exact collection lookup now builds one lazy
+  per-array index; three 16,653-asset / 13,769-lookup controls improved from
+  331.12 / 328.72 / 328.60 milliseconds to 1.79 / 1.67 / 1.53 milliseconds,
+  with proxy tests proving one traversal and clean invalidation on a new
+  snapshot. Multi-order receipt endpoints use guarded `aria-disabled`
+  controls rather than removing the user’s focused pager. On the live Strata
+  activity feed, each 375-pixel event fell from 256 to 165 pixels and the
+  19-event document from 5,839 to 4,127 pixels; copyable actors, timestamps,
+  44-pixel transaction links, and exact accessible block labels remain. The
+  safe compiled-index notice fell from 139.5 to 66 pixels at the same width,
+  with a 44-pixel Retry target and full desktop/live-region provenance intact.
+  Evidence:
+  - `.run-data/screenshots/recursive-ux/round68/home-market-retry-focus.png`
+  - `.run-data/screenshots/recursive-ux/round68/mobile-activity-compact.png`
+  - `.run-data/screenshots/recursive-ux/round68/mobile-index-provenance-compact.png`
+- Round 69 follows the recovery and mobile-scale work through three fresh
+  independent audits. A fungible order book with 25,000 listings formerly
+  spent 806–969 milliseconds on membership and pre-render work before React
+  created thousands of nodes; selected-ID sets and a sticky 50-row reveal now
+  complete the same lower-bound work in 0.66–1.36 milliseconds. Directly
+  selected lots remain first, one roving option is tabbable, intermediate
+  reveal focus stays on the sticky control, and the final reveal moves focus
+  to its exact status. More importantly, registration-only purchase recovery
+  could previously prepare a brand-new seller payment during automatic page-
+  load recovery. Atomic and mixed fungible recoveries now auto-run only when
+  every exact payment transaction is already signed. Missing signatures open
+  a deliberate approval review with complete sellers, seller subtotal, exact
+  number of new wallet approvals, and one focused Continue action; closing it
+  preserves recovery, and nothing signs or submits before that action. Live
+  browser controls rendered one atomic approval and a mixed three-approval
+  fungible batch without invoking either wallet. Finally, the phone-width
+  names alphabet no longer hides twenty controls in an unmarked 1,306-pixel
+  strip. Edge fades and 44-pixel paging controls move focus by one visible
+  window, expose both directions in the middle, remove the forward control at
+  `Z`, preserve the one-stop roving alphabet, and leave desktop unchanged.
+  Evidence:
+  - `.run-data/screenshots/recursive-ux/round69/fungible-live-after-picker-bounds.png`
+  - `.run-data/screenshots/recursive-ux/round69/recovery-approval-atomic-630.png`
+  - `.run-data/screenshots/recursive-ux/round69/recovery-approval-fungible-630.png`
+  - `.run-data/screenshots/recursive-ux/round69/names-alphabet-affordance-start-375.png`
+  - `.run-data/screenshots/recursive-ux/round69/names-alphabet-affordance-middle-375.png`
+  - `.run-data/screenshots/recursive-ux/round69/names-alphabet-affordance-end-375.png`
+- The current live browser validation gateway is `https://arweave.net`; a deliberately unreachable
+  `http://127.0.0.1:1` control proves the UI no longer presents failed market
+  reads as verified emptiness.
+- The large-inventory audit resolved 104/104 wallet candidates progressively:
+  the first verified cards appeared after eight candidates and the candidate
+  computation completed in about 2.08 seconds. Navigating away during a fresh
+  resolution produced zero stale wallet UI across 45 samples over 14.56
+  seconds. Canonical names pagination rendered 25 names in 1.109 seconds and
+  added 18 more in 275 milliseconds without recomputing the settled prefix.
+- Broad canonical-name search committed a 13,769-match local result set in 32
+  milliseconds while live price checks remained bounded to the 48 rendered
+  cards. The scale review therefore made no speculative caching or debounce
+  change.
+- A live fallback-reference retry now changes its status to `Checking the live
+  reference`, disables and relabels the retry control, preserves all 18
+  previously loaded activity events, then restores the explicit fallback and
+  retry state when the network reference remains unavailable.
+- Current committed gates pass: 348/348 Vitest tests, TypeScript, production Vite build
+  (1,909 modules), and `git diff --check`.
+
+### Recursive UX halt and feature-series refactor — 2026-08-04
+
+- The recursive campaign was explicitly halted after round 70. The preserved
+  chronological branch is `impr/recursive-ux` at
+  `fc2e42aeb45c2e6ea7e8ebd773400b8ff89ddbaa` (446 commits after the
+  published fungible base).
+- Round 70 added three final candidates:
+  - `6a76b0a7` enlarges the mobile process-metadata link to a measured 44-pixel
+    target without changing desktop layout.
+  - `d0696b6` memoizes the 20,000-asset collection-activity fingerprint;
+    three controls reduced repeated work from 101–106 ms to 0.55–0.57 ms.
+  - `fc2e42a` forces transaction-acceptance polling through uncached process
+    state so a 60-second cached reservation cannot release an irreversible
+    seller payment or retire listing recovery.
+- `impr/recursive-ux-feature-series` was rebuilt from the exact pre-campaign
+  base `764bf28943f21ab038243c33aebeae952f906521`. The final source and
+  vendored-library tree is byte-identical to the halted chronological branch,
+  while the history is organized by product feature:
+  - `8f19217` — network discovery and live-state resilience;
+  - `00b8298` — exact, recoverable wallet operations;
+  - `0d84eed` — explicit, accessible marketplace interaction;
+  - `9262038` — inspectable transaction synchronization;
+  - `19ca487` — scalable collection discovery and atomic commerce;
+  - `1ab8e22` — resilient fungible-token commerce.
+- The reorganized branch passes 348/348 Vitest tests, TypeScript, the
+  1,909-module production build, and `git diff --check`.
+- The untouched chronological worktree continues serving the exact halted UI
+  on `http://127.0.0.1:3002/` with the permanent sample collections and live
+  `arweave.net` process computation available for review.
