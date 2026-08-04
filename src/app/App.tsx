@@ -1105,11 +1105,18 @@ export function homeMarketPriceValue(value: string | null | undefined) {
   return Number.isFinite(parsed) ? parsed : Number.POSITIVE_INFINITY;
 }
 
-export function homeScrollIndicatorMetrics(scrollTop: number, scrollHeight: number, clientHeight: number) {
+export function homeScrollIndicatorMetrics(
+  scrollTop: number,
+  scrollHeight: number,
+  clientHeight: number,
+  trackHeight = clientHeight,
+) {
   const scrollRange = Math.max(0, scrollHeight - clientHeight);
-  if (!scrollRange || clientHeight <= 0) return { visible: false, size: clientHeight, offset: 0 };
-  const size = Math.max(44, clientHeight * (clientHeight / scrollHeight));
-  const offsetRange = Math.max(0, clientHeight - size);
+  if (!scrollRange || clientHeight <= 0 || trackHeight <= 0) {
+    return { visible: false, size: Math.max(0, trackHeight), offset: 0 };
+  }
+  const size = Math.min(trackHeight, Math.max(44, trackHeight * (clientHeight / scrollHeight)));
+  const offsetRange = Math.max(0, trackHeight - size);
   const progress = Math.min(1, Math.max(0, scrollTop / scrollRange));
   return { visible: true, size, offset: offsetRange * progress };
 }
@@ -1124,7 +1131,9 @@ function HomePaneScrollbar({ paneRef }: { paneRef: React.RefObject<HTMLElement> 
     if (!pane || !track || !thumb) return;
     let frame = 0;
     const update = () => {
-      const metrics = homeScrollIndicatorMetrics(pane.scrollTop, pane.scrollHeight, pane.clientHeight);
+      const heading = pane.querySelector<HTMLElement>(':scope > .home-section-heading');
+      const trackHeight = Math.max(0, pane.clientHeight - (heading?.offsetHeight ?? 0));
+      const metrics = homeScrollIndicatorMetrics(pane.scrollTop, pane.scrollHeight, pane.clientHeight, trackHeight);
       track.hidden = !metrics.visible;
       thumb.style.height = `${metrics.size}px`;
       thumb.style.transform = `translateY(${metrics.offset}px)`;

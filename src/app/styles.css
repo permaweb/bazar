@@ -5821,10 +5821,10 @@ body input:focus-visible {
 }
 .home-pane-scrollbar {
   position: sticky;
-  top: 0;
+  top: 108px;
   z-index: 8;
   width: 8px;
-  height: 100%;
+  height: calc(100% - 108px);
   margin-left: -8px;
   float: right;
   border-left: 1px solid #e2e2de;

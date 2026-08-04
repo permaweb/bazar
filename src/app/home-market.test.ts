@@ -35,6 +35,10 @@ describe('Home market summary retries', () => {
     expect(homeScrollIndicatorMetrics(0, 600, 600)).toEqual({ visible: false, size: 600, offset: 0 });
   });
 
+  it('keeps the indicator within a track below the sticky heading', () => {
+    expect(homeScrollIndicatorMetrics(300, 1_200, 600, 492)).toEqual({ visible: true, size: 246, offset: 123 });
+  });
+
   it('separates fungible tokens from atomic assets', () => {
     const tokenCollection: Collection = {
       id: 'tokens',
