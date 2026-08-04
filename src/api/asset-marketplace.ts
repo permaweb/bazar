@@ -32,6 +32,15 @@ export type AssetState = {
 export type ComputeResult = {
 	state: AssetState;
 	provider: string;
+	verifiedAt?: number;
+	maxAge?: number;
+};
+
+export type ProcessAssignment = {
+	slot: number;
+	blockHeight: number;
+	transactionIds: string[];
+	raw: Record<string, unknown>;
 };
 
 export type ComputeRetryProgress = {
@@ -146,6 +155,7 @@ export async function readAssetState(
 		fetch?: typeof fetch;
 		signal?: AbortSignal;
 		maxAttempts?: number;
+		maxAge?: number;
 		retryBaseDelay?: number;
 		onRetry?: (progress: ComputeRetryProgress) => void;
 	} = {}
@@ -154,7 +164,80 @@ export async function readAssetState(
 	const fetcher = options.fetch ?? globalThis.fetch.bind(globalThis);
 	const provider = currentServingNode();
 	const state = await readState(processId, provider, fetcher, options);
-	return { state, provider };
+	return {
+		state,
+		provider,
+		verifiedAt: Date.now(),
+		maxAge: Math.max(0, Math.floor(options.maxAge ?? 60)),
+	};
+}
+
+/** Read the immutable process state immediately after one exact schedule slot. */
+export async function readAssetStateAtSlot(
+	processId: string,
+	slot: number,
+	options: { fetch?: typeof fetch; signal?: AbortSignal } = {}
+): Promise<ComputeResult> {
+	if (!ADDRESS.test(processId) || !Number.isSafeInteger(slot) || slot < 0) {
+		throw new TypeError('invalid-process-slot');
+	}
+	const fetcher = options.fetch ?? globalThis.fetch.bind(globalThis);
+	const provider = currentServingNode();
+	const state = await readState(processId, provider, fetcher, { ...options, slot });
+	if (assetStateSlot(state) !== slot) throw new Error('historical-state-slot-mismatch');
+	return { state, provider, verifiedAt: Date.now(), maxAge: 0 };
+}
+
+/** Read a complete, bounded immutable window from a process's schedule. */
+export async function readProcessAssignments(
+	processId: string,
+	fromSlot: number,
+	toSlot: number,
+	options: { fetch?: typeof fetch; signal?: AbortSignal } = {}
+): Promise<ProcessAssignment[]> {
+	if (
+		!ADDRESS.test(processId) ||
+		!Number.isSafeInteger(fromSlot) ||
+		!Number.isSafeInteger(toSlot) ||
+		fromSlot < 0 ||
+		toSlot < fromSlot ||
+		toSlot - fromSlot >= 100
+	) {
+		throw new TypeError('invalid-process-schedule-window');
+	}
+	const fetcher = options.fetch ?? globalThis.fetch.bind(globalThis);
+	const provider = currentServingNode();
+	const base = provider ? `${provider}/` : '/';
+	const paths = [
+		`${base}${processId}~process@1.0/schedule&from=${fromSlot}&to=${toSlot}/assignments?require-codec=json%401.0&accept-bundle=true`,
+		`${base}${processId}~process@1.0/schedule&from=${fromSlot}&to=${toSlot}/assignments?require-codec=application%2Fjson&accept-bundle=true`,
+	];
+	let lastError: unknown;
+	for (const path of paths) {
+		const request = timeoutSignal(options.signal, COMPUTE_TIMEOUT);
+		try {
+			const response = await fetcher(path, {
+				headers: {
+					accept: 'application/json',
+					'require-codec': 'application/json',
+					'accept-bundle': 'true',
+				},
+				signal: request.signal,
+			});
+			if (!response.ok) throw new Error(`HTTP ${response.status}`);
+			return parseProcessAssignments(parseLosslessJson(await response.text()), fromSlot, toSlot);
+		} catch (error) {
+			lastError = error;
+			if (error instanceof Error && /^HTTP 429(?:\b|$)/i.test(error.message)) break;
+		} finally {
+			request.cleanup();
+		}
+	}
+	throw lastError instanceof Error ? lastError : new Error('process-schedule-provider-failed');
+}
+
+export function assetStateSlot(state: AssetState): number | null {
+	return integer(state.raw['at-slot']);
 }
 
 export async function waitForAssetState(
@@ -178,7 +261,11 @@ export async function waitForAssetState(
 		attempt += 1;
 		options.onAttempt?.(currentServingNode(), attempt, 1);
 		try {
-			const result = await readAssetState(processId, { fetch: fetcher, signal: options.signal });
+			const result = await readAssetState(processId, {
+				fetch: fetcher,
+				signal: options.signal,
+				maxAge: 0,
+			});
 			if (await accept(result.state)) return result;
 		} catch (error) {
 			if (options.signal?.aborted) throw error;
@@ -366,20 +453,28 @@ async function readState(
 	options: {
 		signal?: AbortSignal;
 		maxAttempts?: number;
+		maxAge?: number;
 		retryBaseDelay?: number;
 		onRetry?: (progress: ComputeRetryProgress) => void;
+		slot?: number;
 	}
 ): Promise<AssetState> {
 	const base = servingNode ? `${servingNode}/` : '/';
+	const maxAge = Math.max(0, Math.floor(options.maxAge ?? 60));
+	const endpoint = options.slot === undefined
+		? `now&max-age=${maxAge}`
+		: `compute?slot=${options.slot}`;
+	const separator = endpoint.includes('?') ? '&' : '?';
 	const paths = [
-		`${base}${processId}~process@1.0/now&max-age=60?require-codec=json%401.0&accept-bundle=true`,
-		`${base}${processId}~process@1.0/now?require-codec=application%2Fjson&accept-bundle=true`,
+		`${base}${processId}~process@1.0/${endpoint}${separator}require-codec=json%401.0&accept-bundle=true`,
+		`${base}${processId}~process@1.0/${endpoint}${separator}require-codec=application%2Fjson&accept-bundle=true`,
 	];
 	const maxAttempts = Math.max(1, Math.floor(options.maxAttempts ?? 1));
 	const retryBaseDelay = Math.max(0, options.retryBaseDelay ?? COMPUTE_RETRY_BASE_DELAY);
 	let lastError: unknown;
 
 	for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+		let rateLimited = false;
 		for (const path of paths) {
 			const request = timeoutSignal(options.signal, COMPUTE_TIMEOUT);
 			try {
@@ -395,9 +490,11 @@ async function readState(
 					return parseAssetState(parseLosslessJson(await response.text()));
 			} catch (error) {
 				lastError = error;
+				rateLimited = error instanceof Error && /^HTTP 429(?:\b|$)/i.test(error.message);
 			} finally {
 				request.cleanup();
 			}
+			if (rateLimited) break;
 		}
 
 		if (options.signal?.aborted || attempt === maxAttempts) break;
@@ -407,6 +504,29 @@ async function readState(
 	}
 
 	throw lastError instanceof Error ? lastError : new Error('compute-provider-failed');
+}
+
+function parseProcessAssignments(value: unknown, fromSlot: number, toSlot: number): ProcessAssignment[] {
+	if (!isRecord(value)) throw new TypeError('invalid-process-schedule');
+	const assignments: ProcessAssignment[] = [];
+	for (let slot = fromSlot; slot <= toSlot; slot += 1) {
+		const raw = value[String(slot)];
+		if (!isRecord(raw) || integer(raw.slot) !== slot || !isRecord(raw.body)) {
+			throw new TypeError('incomplete-process-schedule');
+		}
+		const blockHeight = integer(raw['block-height']);
+		const commitments = isRecord(raw.body.commitments) ? raw.body.commitments : {};
+		const transactionIds = Object.entries(commitments).flatMap(([id, commitment]) =>
+			ADDRESS.test(id) && isRecord(commitment) && commitment['commitment-device'] === 'tx@1.0'
+				? [id]
+				: []
+		);
+		if (blockHeight === null || !transactionIds.length) {
+			throw new TypeError('invalid-process-assignment');
+		}
+		assignments.push({ slot, blockHeight, transactionIds, raw });
+	}
+	return assignments;
 }
 
 function unwrapState(value: unknown): Record<string, unknown> {

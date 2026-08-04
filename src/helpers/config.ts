@@ -1,4 +1,8 @@
 export const DEFAULT_GATEWAY = 'https://arweave.net';
+export const PAGINATED_GRAPHQL =
+	import.meta.env.VITE_PAGINATED_GRAPHQL ?? 'https://turbo-gateway.com/graphql';
+export const NAMES_NAMESPACE_ID =
+	import.meta.env.VITE_NAMES_NAMESPACE_ID ?? 'fQXYPE9MAcfI1wV2CwJ3sJIhgT9btBOlYFOKFDGhAs0';
 export const GATEWAYS = {
 	default: { protocol: 'https', host: 'arweave.net' },
 };

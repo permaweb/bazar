@@ -55,10 +55,13 @@ export function matchWholeOrders(
 	}
 
 	const target = BigInt(requestedQuantity);
-	const available = [...orders]
-		.filter((order) => order.status === 'open')
-		.sort(compareOrderUnitPrice);
-	if (available.length > MAX_MATCH_ORDERS) throw new RangeError('order-match-search-limit');
+	const available: SwapOrder[] = [];
+	for (const order of orders) {
+		if (order.status !== 'open') continue;
+		if (available.length === MAX_MATCH_ORDERS) throw new RangeError('order-match-search-limit');
+		available.push(order);
+	}
+	available.sort(compareOrderUnitPrice);
 	type Candidate = { indexes: number[]; asking: bigint };
 	const candidates = new Map<bigint, Candidate>([[0n, { indexes: [], asking: 0n }]]);
 

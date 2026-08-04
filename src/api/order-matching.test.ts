@@ -66,6 +66,19 @@ describe('whole-order matching', () => {
 		});
 		expect(() => matchWholeOrders(orders, '16383')).toThrow('order-match-search-limit');
 	});
+
+	it('rejects an oversized live book before consuming or sorting its tail', () => {
+		let consumed = 0;
+		function* oversizedBook() {
+			for (let index = 0; index < 100_000; index += 1) {
+				consumed += 1;
+				yield swapOrder(String(index).padStart(43, '0'), '1', `${100_000 - index}`, index);
+			}
+		}
+
+		expect(() => matchWholeOrders(oversizedBook(), '1')).toThrow('order-match-search-limit');
+		expect(consumed).toBe(513);
+	});
 });
 
 function swapOrder(

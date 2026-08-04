@@ -19,6 +19,14 @@ export type ArweaveRecallContent = {
 	kind: ArweaveRecallContentKind;
 };
 
+export const MAX_RECALL_IMAGE_PREVIEW_BYTES = 2 * 1024 * 1024;
+
+export function canPreviewRecallImage(content: ArweaveRecallContent) {
+	return content.kind === 'image' &&
+		content.contentLength !== undefined &&
+		content.contentLength <= MAX_RECALL_IMAGE_PREVIEW_BYTES;
+}
+
 export type ArweaveRecallSample = {
 	index: number;
 	offset: number;
