@@ -8,41 +8,49 @@ type WalletContextValue = {
 	loadDevelopmentWallet?(file: File): Promise<void>;
 };
 
+const WALLET_PERMISSIONS = [
+	'ACCESS_ADDRESS',
+	'ACCESS_PUBLIC_KEY',
+	'SIGN_TRANSACTION',
+];
+const ARWEAVE_ADDRESS = /^[A-Za-z0-9_-]{43}$/;
+
 const WalletContext = React.createContext<WalletContextValue | null>(null);
 
 export function WalletProvider({ children }: React.PropsWithChildren) {
 	installDevelopmentWallet();
 	const [address, setAddress] = React.useState<string | null>(null);
+	const addressRequests = React.useRef(createLatestAddressCommitter(setAddress));
 
 	const refresh = React.useCallback(async () => {
+		const commit = addressRequests.current.begin();
 		try {
-			setAddress((await window.arweaveWallet?.getActiveAddress?.()) ?? null);
+			commit((await window.arweaveWallet?.getActiveAddress?.()) ?? null);
 		} catch {
-			setAddress(null);
+			commit(null);
 		}
 	}, []);
 
 	React.useEffect(() => {
 		void refresh();
 		window.addEventListener('walletSwitch', refresh);
-		return () => window.removeEventListener('walletSwitch', refresh);
+		return () => {
+			window.removeEventListener('walletSwitch', refresh);
+			addressRequests.current.invalidate();
+		};
 	}, [refresh]);
 
 	const value = React.useMemo(
 		() => ({
 			address,
 			connect: async () => {
-				if (!window.arweaveWallet) throw new Error('Install an Arweave wallet extension to continue.');
-				await window.arweaveWallet.connect([
-					'ACCESS_ADDRESS',
-					'ACCESS_PUBLIC_KEY',
-					'SIGN_TRANSACTION',
-				]);
-				await refresh();
+				const commit = addressRequests.current.begin();
+				commit(await connectWallet(window.arweaveWallet));
 			},
 			disconnect: async () => {
+				const commit = addressRequests.current.begin();
 				await window.arweaveWallet?.disconnect?.();
-				setAddress(null);
+				commit(null);
 			},
 			...(import.meta.env.DEV
 				? {
@@ -61,7 +69,7 @@ export function WalletProvider({ children }: React.PropsWithChildren) {
 				  }
 				: {}),
 		}),
-		[address, refresh]
+		[address]
 	);
 	return <WalletContext.Provider value={value}>{children}</WalletContext.Provider>;
 }
@@ -70,6 +78,38 @@ export function useWallet() {
 	const value = React.useContext(WalletContext);
 	if (!value) throw new Error('wallet-provider-missing');
 	return value;
+}
+
+export async function connectWallet(wallet: Window['arweaveWallet']) {
+	if (!wallet) throw new Error('Install an Arweave wallet extension to continue.');
+	await wallet.connect(WALLET_PERMISSIONS);
+	let address: string | undefined;
+	try {
+		address = await wallet.getActiveAddress?.();
+	} catch {
+		throw new Error('The wallet connected, but its active address could not be read. Unlock or reconnect the wallet and try again.');
+	}
+	if (!address || !ARWEAVE_ADDRESS.test(address)) {
+		throw new Error('The wallet connected, but no valid active address was returned. Unlock or reconnect the wallet and try again.');
+	}
+	return address;
+}
+
+export function createLatestAddressCommitter(commit: (address: string | null) => void) {
+	let latest = 0;
+	return {
+		begin() {
+			const request = ++latest;
+			return (address: string | null) => {
+				if (request !== latest) return false;
+				commit(address);
+				return true;
+			};
+		},
+		invalidate() {
+			latest += 1;
+		},
+	};
 }
 
 function installDevelopmentWallet() {
