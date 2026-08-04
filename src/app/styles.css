@@ -5823,9 +5823,9 @@ body input:focus-visible {
   position: sticky;
   top: 108px;
   z-index: 8;
-  width: 6px;
+  width: 8px;
   height: calc(100% - 108px);
-  margin-left: -6px;
+  margin-left: -8px;
   float: right;
   border-left: 1px solid #e2e2de;
   background: #f4f4f1;
@@ -5835,7 +5835,7 @@ body input:focus-visible {
   position: absolute;
   top: 0;
   right: 1px;
-  width: 3px;
+  width: 5px;
   min-height: 44px;
   border-radius: 999px;
   background: #aaa7a2;

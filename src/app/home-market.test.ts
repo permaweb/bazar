@@ -30,16 +30,16 @@ import {
 
 describe('Home market summary retries', () => {
   it('sizes and positions persistent pane scroll indicators', () => {
-    expect(homeScrollIndicatorMetrics(0, 1_200, 600)).toEqual({ visible: true, size: 216, offset: 0 });
-    expect(homeScrollIndicatorMetrics(300, 1_200, 600)).toEqual({ visible: true, size: 216, offset: 192 });
+    expect(homeScrollIndicatorMetrics(0, 1_200, 600)).toEqual({ visible: true, size: 150, offset: 0 });
+    expect(homeScrollIndicatorMetrics(300, 1_200, 600)).toEqual({ visible: true, size: 150, offset: 225 });
     expect(homeScrollIndicatorMetrics(0, 600, 600)).toEqual({ visible: false, size: 600, offset: 0 });
   });
 
   it('keeps the indicator within a track below the sticky heading', () => {
     expect(homeScrollIndicatorMetrics(300, 1_200, 600, 492)).toEqual({
       visible: true,
-      size: 177.12,
-      offset: 157.44,
+      size: 123,
+      offset: 184.5,
     });
   });
 
