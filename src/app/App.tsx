@@ -116,6 +116,7 @@ import {
   type PurchaseCostEstimate,
 } from 'api/asset-transactions';
 import { ArweaveTransactionSync, type ArweaveSyncStep } from 'components/ArweaveTransactionSync';
+import { quorumConfirmationDepth } from 'components/ArweaveTransactionSync/confirmationDepth';
 import { ArtworkImage } from 'components/ArtworkImage';
 import { ConnectWalletButton } from 'components/ConnectWalletButton';
 import { OperationOutcome, OperationOutcomeAnnouncement } from 'components/OperationOutcomeAnnouncement';
@@ -139,7 +140,6 @@ import {
   hasRecoverablePurchase,
   latestPurchaseSnapshot,
   loadWalletRecord,
-  operationForSigner,
   operationClaimStorageKey,
   operationStorageKey,
   promoteWalletOperationClaim,
@@ -152,7 +152,6 @@ import {
   storeWalletRecordOrThrow,
   shouldAutomaticallyResumePurchase,
   walletOperationStorageChange,
-  type OperationSession,
   type WalletOperationClaim,
 } from './operation-session';
 import { useDialogFocus } from './useDialogFocus';
@@ -385,35 +384,192 @@ export function App() {
   return (
     <MarketContext.Provider value={value}>
       <HashRouter future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
-        <RouteFocus />
-        <a
-          className="skip-link"
-          href="#main-content"
-          onClick={(event) => {
-            event.preventDefault();
-            const main = document.getElementById('main-content');
-            main?.focus();
-            main?.scrollIntoView({ block: 'start' });
-          }}
-        >
-          Skip to marketplace content
-        </a>
-        <Header />
-        <main aria-label="Marketplace content" id="main-content" tabIndex={-1}>
-          <Routes>
-            <Route path="/" element={<Home />} />
-            <Route path="/create" element={<CreateView />} />
-            <Route path="/my-assets" element={<MyAssetsView />} />
-            <Route path="/collection/:collectionId" element={<CollectionRoute />} />
-            <Route path="/collection/:collectionId/activity" element={<CollectionActivityView />} />
-            <Route path="/asset/:collectionId/:assetId" element={<AssetView />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </main>
-        <Footer />
+        <OperationActivityProvider>
+          <RouteFocus />
+          <a
+            className="skip-link"
+            href="#main-content"
+            onClick={(event) => {
+              event.preventDefault();
+              const main = document.getElementById('main-content');
+              main?.focus();
+              main?.scrollIntoView({ block: 'start' });
+            }}
+          >
+            Skip to marketplace content
+          </a>
+          <Header />
+          <main aria-label="Marketplace content" id="main-content" tabIndex={-1}>
+            <Routes>
+              <Route path="/" element={<Home />} />
+              <Route path="/create" element={<CreateView />} />
+              <Route path="/my-assets" element={<MyAssetsView />} />
+              <Route path="/collection/:collectionId" element={<CollectionRoute />} />
+              <Route path="/collection/:collectionId/activity" element={<CollectionActivityView />} />
+              <Route path="/asset/:collectionId/:assetId" element={<AssetView />} />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </main>
+          <Footer />
+        </OperationActivityProvider>
       </HashRouter>
     </MarketContext.Provider>
   );
+}
+
+type OperationActivityPhase = 'form' | 'approval' | 'working' | 'done' | 'error';
+
+type OperationActivity = {
+  id: string;
+  asset: AssetSummary;
+  collectionId: string;
+  owner: string;
+  operation: Operation;
+  phase: OperationActivityPhase;
+  status: string;
+  confirmations: number;
+  confirmationTarget: number;
+  createdAt: number;
+  restoreFallback(): HTMLElement | null;
+};
+
+type OperationActivityContextValue = {
+  activities: OperationActivity[];
+  activeId: string | null;
+  start(input: Pick<OperationActivity, 'asset' | 'collectionId' | 'owner' | 'operation' | 'restoreFallback'>): void;
+  show(id: string): void;
+  hide(): void;
+  remove(id: string): void;
+};
+
+const OperationActivityContext = React.createContext<OperationActivityContextValue | null>(null);
+
+function OperationActivityProvider({ children }: React.PropsWithChildren) {
+  const navigate = useNavigate();
+  const [activities, setActivities] = React.useState<OperationActivity[]>([]);
+  const [activeId, setActiveId] = React.useState<string | null>(null);
+  const activitiesRef = React.useRef(activities);
+  activitiesRef.current = activities;
+  const start = React.useCallback(
+    (input: Pick<OperationActivity, 'asset' | 'collectionId' | 'owner' | 'operation' | 'restoreFallback'>) => {
+      const existing = activitiesRef.current.find(
+        (activity) => activity.asset.id === input.asset.id && activity.owner === input.owner && activity.phase !== 'done',
+      );
+      if (existing) {
+        setActiveId(existing.id);
+        return;
+      }
+      const id = `${input.asset.id}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
+      const phase: OperationActivityPhase =
+        input.operation.kind === 'buy' && input.operation.resume
+          ? purchaseRecoveryApprovalCount(input.operation.resume)
+            ? 'approval'
+            : 'working'
+          : input.operation.kind !== 'buy' && input.operation.resumeId
+            ? 'working'
+            : 'form';
+      setActivities((current) => [
+        {
+          ...input,
+          id,
+          phase,
+          status:
+            phase === 'approval'
+              ? 'Waiting for wallet approval'
+              : phase === 'working'
+                ? 'Starting transaction…'
+                : 'Waiting for details',
+          confirmations: 0,
+          confirmationTarget: 5,
+          createdAt: Date.now(),
+        },
+        ...current,
+      ]);
+      setActiveId(id);
+    },
+    [],
+  );
+  const update = React.useCallback(
+    (
+      id: string,
+      patch: Pick<OperationActivity, 'phase' | 'status' | 'confirmations' | 'confirmationTarget'>,
+      assetId: string,
+    ) => {
+      setActivities((current) =>
+        current.map((activity) => (activity.id === id ? { ...activity, ...patch } : activity)),
+      );
+      if (patch.phase === 'done') {
+        queueMicrotask(() =>
+          window.dispatchEvent(new CustomEvent('bazar:asset-operation-finished', { detail: assetId })),
+        );
+      }
+    },
+    [],
+  );
+  const updateOperation = React.useCallback((id: string, operation: Operation) => {
+    setActivities((current) => current.map((activity) => (activity.id === id ? { ...activity, operation } : activity)));
+  }, []);
+  const remove = React.useCallback((id: string) => {
+    setActivities((current) => current.filter((activity) => activity.id !== id));
+    setActiveId((current) => (current === id ? null : current));
+  }, []);
+  React.useEffect(() => {
+    if (!activities.some((activity) => activity.phase === 'done' && activity.id !== activeId)) return;
+    setActivities((current) =>
+      current.filter((activity) => activity.phase !== 'done' || activity.id === activeId),
+    );
+  }, [activeId, activities]);
+  const value = React.useMemo<OperationActivityContextValue>(
+    () => ({
+      activities,
+      activeId,
+      start,
+      show: setActiveId,
+      hide: () => setActiveId(null),
+      remove,
+    }),
+    [activeId, activities, remove, start],
+  );
+  return (
+    <OperationActivityContext.Provider value={value}>
+      {children}
+      {activities.map((activity) => (
+        <OperationDialog
+          key={activity.id}
+          taskId={activity.id}
+          asset={activity.asset}
+          owner={activity.owner}
+          operation={activity.operation}
+          visible={activeId === activity.id}
+          restoreFallback={() =>
+            activity.restoreFallback() ??
+            document.querySelector<HTMLElement>('.operation-activity-trigger') ??
+            document.getElementById('main-content')
+          }
+          onUpdate={update}
+          onOperation={(operation) => updateOperation(activity.id, operation)}
+          onHide={() => setActiveId(null)}
+          onClose={(resumeLater, refresh = true) => {
+            if (refresh) {
+              window.dispatchEvent(new CustomEvent('bazar:asset-operation-finished', { detail: activity.asset.id }));
+            }
+            if (resumeLater) setActiveId(null);
+            else remove(activity.id);
+          }}
+          onViewAsset={() => {
+            navigate(`/asset/${activity.collectionId}/${activity.asset.id}`);
+            remove(activity.id);
+          }}
+        />
+      ))}
+    </OperationActivityContext.Provider>
+  );
+}
+
+function useOperationActivity() {
+  const value = React.useContext(OperationActivityContext);
+  if (!value) throw new Error('operation-activity-provider-missing');
+  return value;
 }
 
 function RouteFocus() {
@@ -705,6 +861,7 @@ function Header() {
                 />
               </label>
             ) : null}
+            <OperationActivityControl />
             <button
               aria-label={
                 walletAction
@@ -960,6 +1117,100 @@ function Header() {
       ) : null}
     </>
   );
+}
+
+function OperationActivityControl() {
+  const { activities, show } = useOperationActivity();
+  const [open, setOpen] = React.useState(false);
+  const containerRef = React.useRef<HTMLDivElement>(null);
+  const visibleActivities = activities.filter((activity) => activity.phase !== 'done');
+  const workingCount = visibleActivities.filter((activity) => activity.phase === 'working').length;
+  React.useEffect(() => {
+    if (!open) return;
+    const close = (event: MouseEvent) => {
+      if (!containerRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    window.addEventListener('mousedown', close);
+    return () => window.removeEventListener('mousedown', close);
+  }, [open]);
+  if (!visibleActivities.length) return null;
+  return (
+    <div className="operation-activity-control" ref={containerRef}>
+      <button
+        aria-expanded={open}
+        aria-label={`Transaction activity, ${visibleActivities.length} ${visibleActivities.length === 1 ? 'item' : 'items'}`}
+        className={`operation-activity-trigger${workingCount ? ' working' : ''}`}
+        data-tooltip="Transaction activity"
+        onClick={() => setOpen((value) => !value)}
+        type="button"
+      >
+        <InfinityIcon className="ui-icon" aria-hidden="true" />
+        <span>{visibleActivities.length}</span>
+      </button>
+      {open ? (
+        <section aria-label="Transaction activity" className="operation-activity-menu">
+          <div className="operation-activity-heading">
+            <div>
+              <strong>Transaction activity</strong>
+              <span>{workingCount ? `${workingCount} running in the background` : 'No transactions running'}</span>
+            </div>
+          </div>
+          <div className="operation-activity-list">
+            {visibleActivities.map((activity) => (
+              <div className={`operation-activity-item ${activity.phase}`} key={activity.id}>
+                <button
+                  className="operation-activity-open"
+                  onClick={() => {
+                    show(activity.id);
+                    setOpen(false);
+                  }}
+                  type="button"
+                >
+                  <span className="operation-activity-symbol" aria-hidden="true">
+                    {activity.asset.image ? (
+                      <img src={activity.asset.image} alt="" />
+                    ) : (
+                      <span>{activity.asset.name.slice(0, 1).toUpperCase()}</span>
+                    )}
+                  </span>
+                  <span className="operation-activity-copy">
+                    <strong>{activity.asset.name}</strong>
+                    <small>
+                      {operationLabel(activity.operation.kind)} · {operationActivityPhaseLabel(activity.phase)}
+                    </small>
+                    <span>{activity.status}</span>
+                  </span>
+                  <span className="operation-activity-progress">
+                    <span
+                      aria-label={`${activity.confirmations} of ${activity.confirmationTarget} confirmations`}
+                      className="operation-activity-confirmations"
+                      title="Confirmations"
+                    >
+                      {activity.confirmations}/{activity.confirmationTarget}
+                    </span>
+                    {activity.phase === 'working' ? (
+                      <LoaderCircle className="ui-icon ui-icon--xs operation-activity-loader" aria-hidden="true" />
+                    ) : null}
+                  </span>
+                  <ChevronRight className="ui-icon ui-icon--sm operation-activity-chevron" aria-hidden="true" />
+                </button>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
+    </div>
+  );
+}
+
+function operationActivityPhaseLabel(phase: OperationActivityPhase) {
+  return {
+    form: 'Awaiting signature',
+    approval: 'Awaiting approval',
+    working: 'In progress',
+    done: 'Complete',
+    error: 'Needs attention',
+  }[phase];
 }
 
 function Footer() {
@@ -5596,29 +5847,44 @@ function AssetView() {
   React.useEffect(() => {
     if (resolvedAsset) storeAssetShellSnapshot(window.sessionStorage, resolvedAsset);
   }, [resolvedAsset]);
-  const [operationSession, setOperationSession] = React.useState<OperationSession<Operation> | null>(null);
-  const operation = operationForSigner(operationSession, wallet.address);
+  const {
+    activities: operationActivities,
+    start: startOperationActivity,
+    remove: removeOperationActivity,
+  } = useOperationActivity();
+  const operationFocusFallbackRef = React.useRef<HTMLHeadingElement>(null);
+  const resumeButtonRef = React.useRef<HTMLButtonElement>(null);
+  const operationFocusFallback = React.useCallback(
+    () => resumeButtonRef.current ?? operationFocusFallbackRef.current,
+    [],
+  );
+  const operationActivityEntry = operationActivities.find(
+    (activity) => activity.asset.id === assetId && activity.owner === wallet.address && activity.phase !== 'done',
+  );
+  const operation = operationActivityEntry?.operation ?? null;
   const openOperation = React.useCallback(
     (next: Operation) => {
-      if (wallet.address) setOperationSession({ signer: wallet.address, operation: next });
+      const activityAsset = resolvedAsset ?? indexedAsset ?? cachedAsset;
+      if (!wallet.address || !activityAsset) return;
+      startOperationActivity({
+        asset: activityAsset,
+        collectionId,
+        owner: wallet.address,
+        operation: next,
+        restoreFallback: operationFocusFallback,
+      });
     },
-    [wallet.address],
+    [cachedAsset, collectionId, indexedAsset, operationFocusFallback, resolvedAsset, startOperationActivity, wallet.address],
   );
   const [recoverySuppressed, setRecoverySuppressed] = React.useState(false);
   const [recoveryNotice, setRecoveryNotice] = React.useState('');
   const [unavailableRecovery, setUnavailableRecovery] = React.useState<UnavailableOperationRecovery | null>(null);
-  const resumeButtonRef = React.useRef<HTMLButtonElement>(null);
   const [assetActivity, setAssetActivity] = React.useState<CollectionActivityEvent[]>([]);
   const [activityLoading, setActivityLoading] = React.useState(true);
   const [activityError, setActivityError] = React.useState<string | null>(null);
   const [activityRetry, setActivityRetry] = React.useState(0);
   const [storageVersion, setStorageVersion] = React.useState(0);
   const activityAssetRef = React.useRef('');
-  const operationFocusFallbackRef = React.useRef<HTMLHeadingElement>(null);
-  const operationFocusFallback = React.useCallback(
-    () => resumeButtonRef.current ?? operationFocusFallbackRef.current,
-    [],
-  );
   const [activeSection, setActiveSection] = React.useState<'about' | 'orders' | 'activity' | null>('about');
   const load = React.useCallback(async () => {
     requestRef.current?.abort();
@@ -5666,6 +5932,13 @@ function AssetView() {
     await load();
   }, [load]);
   React.useEffect(() => {
+    const refreshFinishedOperation = (event: Event) => {
+      if ((event as CustomEvent<string>).detail === assetId) void refreshAsset();
+    };
+    window.addEventListener('bazar:asset-operation-finished', refreshFinishedOperation);
+    return () => window.removeEventListener('bazar:asset-operation-finished', refreshFinishedOperation);
+  }, [assetId, refreshAsset]);
+  React.useEffect(() => {
     if (!wallet.address) return;
     const walletAddress = wallet.address;
     const claimKey = operationClaimStorageKey(assetId, walletAddress);
@@ -5679,35 +5952,28 @@ function AssetView() {
       if (change === 'ignore') return;
       setRecoverySuppressed(false);
       if (change === 'claim-acquired' || change === 'claim-released') {
-        if (change === 'claim-acquired') {
-          setOperationSession((current) => {
-            if (!current || current.signer !== walletAddress) return current;
-            const active = current.operation;
-            const recovering = active.kind === 'buy' ? Boolean(active.resume) : Boolean(active.resumeId);
-            return recovering ? current : null;
-          });
+        if (change === 'claim-acquired' && operation && operationActivityEntry) {
+          const recovering = operation.kind === 'buy' ? Boolean(operation.resume) : Boolean(operation.resumeId);
+          if (!recovering) removeOperationActivity(operationActivityEntry.id);
         }
         setStorageVersion((version) => version + 1);
         return;
       }
       if (change === 'recovery-updated') {
-        setOperationSession((current) => {
-          if (!current || current.signer !== walletAddress) return current;
-          const active = current.operation;
-          const recovering = active.kind === 'buy' ? Boolean(active.resume) : Boolean(active.resumeId);
-          return recovering ? current : null;
-        });
+        if (operation && operationActivityEntry) {
+          const recovering = operation.kind === 'buy' ? Boolean(operation.resume) : Boolean(operation.resumeId);
+          if (!recovering) removeOperationActivity(operationActivityEntry.id);
+        }
       } else {
-        setOperationSession(null);
+        if (operationActivityEntry) removeOperationActivity(operationActivityEntry.id);
         void refreshAsset();
       }
       setStorageVersion((version) => version + 1);
     };
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
-  }, [assetId, refreshAsset, wallet.address]);
+  }, [assetId, operation, operationActivityEntry, refreshAsset, removeOperationActivity, wallet.address]);
   React.useEffect(() => {
-    setOperationSession(null);
     void load();
     return () => {
       requestRef.current?.abort();
@@ -5753,7 +6019,6 @@ function AssetView() {
     setRecoverySuppressed(false);
     setRecoveryNotice('');
     setUnavailableRecovery(null);
-    setOperationSession(null);
   }, [assetId, wallet.address]);
   React.useLayoutEffect(() => {
     if (recoverySuppressed) resumeButtonRef.current?.focus();
@@ -6456,19 +6721,6 @@ function AssetView() {
           </div>
         </div>
       </div>
-      {operation && operationSession ? (
-        <OperationDialog
-          asset={asset}
-          owner={operationSession.signer}
-          operation={operation}
-          restoreFallback={operationFocusFallback}
-          onClose={(resumeLater, refresh = true) => {
-            setRecoverySuppressed(Boolean(resumeLater));
-            setOperationSession(null);
-            if (refresh) void refreshAsset();
-          }}
-        />
-      ) : null}
     </section>
   );
 }
@@ -6480,17 +6732,33 @@ type Operation =
   | { kind: 'buy'; order: SwapOrder; resume?: PurchaseSnapshot };
 
 function OperationDialog({
+  taskId,
   asset,
   owner,
   operation,
+  visible,
   restoreFallback,
+  onUpdate,
+  onOperation,
+  onHide,
   onClose,
+  onViewAsset,
 }: {
+  taskId: string;
   asset: AssetSummary;
   owner: string;
   operation: Operation;
+  visible: boolean;
   restoreFallback(): HTMLElement | null;
+  onUpdate(
+    id: string,
+    patch: Pick<OperationActivity, 'phase' | 'status' | 'confirmations' | 'confirmationTarget'>,
+    assetId: string,
+  ): void;
+  onOperation(operation: Operation): void;
+  onHide(): void;
   onClose(resumeLater?: boolean, refresh?: boolean): void;
+  onViewAsset(): void;
 }) {
   const recoveryApprovalCount =
     operation.kind === 'buy' && operation.resume ? purchaseRecoveryApprovalCount(operation.resume) : 0;
@@ -6517,6 +6785,7 @@ function OperationDialog({
   const [purchaseWalletBalance, setPurchaseWalletBalance] = React.useState<bigint | null>(null);
   const [quoteError, setQuoteError] = React.useState('');
   const [quoteRetry, setQuoteRetry] = React.useState(0);
+  const [hiding, setHiding] = React.useState(false);
   const purchaseRef = React.useRef<SwapPurchase | null>(null);
   const networkRef = React.useRef<ArweaveObserverNetwork | null>(null);
   const claimRef = React.useRef<WalletOperationClaim | null>(null);
@@ -6529,6 +6798,7 @@ function OperationDialog({
   );
   const attemptRef = React.useRef(new AbortController());
   const lifecycleRef = React.useRef<object | null>(null);
+  const hideTimerRef = React.useRef<number | null>(null);
   const titleId = React.useId();
   const operationLabelId = React.useId();
   const fieldHelpId = React.useId();
@@ -6539,6 +6809,7 @@ function OperationDialog({
     const lifecycle = {};
     lifecycleRef.current = lifecycle;
     return () => {
+      if (hideTimerRef.current !== null) window.clearTimeout(hideTimerRef.current);
       queueMicrotask(() => {
         if (lifecycleRef.current !== lifecycle) return;
         attemptRef.current.abort();
@@ -6551,6 +6822,9 @@ function OperationDialog({
       });
     };
   }, []);
+  React.useEffect(() => {
+    if (visible) setHiding(false);
+  }, [visible]);
   React.useEffect(() => {
     if (operation.kind !== 'buy' || operation.resume) return;
     const controller = new AbortController();
@@ -6686,6 +6960,7 @@ function OperationDialog({
           if (signal.aborted || recoveryConflict) return;
           setPurchaseState(state);
           const snapshot = purchase.snapshot();
+          onOperation({ kind: 'buy', order: operation.order, resume: snapshot });
           if (hasRecoverablePurchase(snapshot)) {
             const record = {
               asset: { id: asset.id, name: asset.name },
@@ -6811,6 +7086,23 @@ function OperationDialog({
         throw signal.reason;
       }
       setTransaction(prepared);
+      onOperation(
+        operation.kind === 'cancel'
+          ? {
+              kind: 'cancel',
+              order: operation.order,
+              resumeId: prepared.id,
+              startingSlot: exactActionBaseline!.startingSlot,
+            }
+          : operation.kind === 'transfer'
+            ? {
+                kind: 'transfer',
+                resumeId: prepared.id,
+                startingSlot: exactActionBaseline!.startingSlot,
+                value: operationValue,
+              }
+            : { kind: 'sell', resumeId: prepared.id, value: operationValue },
+      );
       const operationRecord = {
         txId: prepared.id,
         kind: operation.kind,
@@ -6963,6 +7255,9 @@ function OperationDialog({
       : operation.kind === 'buy'
         ? 'register'
         : operation.kind;
+  const activeSyncStep = steps.find((step) => step.key === activeStep) ?? steps[0];
+  const confirmationTarget = activeSyncStep?.target ?? 5;
+  const activityConfirmations = Math.min(confirmationTarget, quorumConfirmationDepth(activeSyncStep));
   const visiblePhase =
     operation.kind === 'buy' && phase === 'done' && purchaseState?.stage !== 'complete' ? 'error' : phase;
   const visibleMessage =
@@ -6981,6 +7276,28 @@ function OperationDialog({
     purchaseQuote && purchaseWalletBalance !== null ? purchaseWalletBalance >= BigInt(purchaseQuote.total) : null;
   const actionLabel = atomicOperationActionLabel(operation, operationValue);
   const resultCopy = atomicOperationResult(operation.kind, asset.name, operationValue, owner);
+  const reportedStatus =
+    visiblePhase === 'form'
+      ? 'Waiting for details'
+      : visiblePhase === 'approval'
+        ? 'Waiting for wallet approval'
+        : visiblePhase === 'working'
+          ? workingStatus || 'Watching Arweave confirmations…'
+          : visiblePhase === 'done'
+            ? resultCopy.title
+            : visibleMessage || 'This transaction needs attention';
+  React.useEffect(() => {
+    onUpdate(
+      taskId,
+      {
+        phase: visiblePhase,
+        status: reportedStatus,
+        confirmations: activityConfirmations,
+        confirmationTarget,
+      },
+      asset.id,
+    );
+  }, [activityConfirmations, asset.id, confirmationTarget, onUpdate, reportedStatus, taskId, visiblePhase]);
   const restartPurchase = () => {
     if (operation.kind !== 'buy' || !recoverable) {
       setMessage('');
@@ -7015,27 +7332,38 @@ function OperationDialog({
     networkRef.current = null;
     onClose(false);
   };
+  const closeOrHide = () => {
+    if (visiblePhase !== 'working') {
+      onClose(
+        visiblePhase === 'approval' || (visiblePhase === 'error' && recoverable),
+        visiblePhase !== 'form',
+      );
+      return;
+    }
+    if (hiding) return;
+    setHiding(true);
+    hideTimerRef.current = window.setTimeout(() => {
+      hideTimerRef.current = null;
+      onHide();
+    }, 240);
+  };
   const dialogRef = useDialogFocus<HTMLDivElement>(
-    true,
-    visiblePhase !== 'working' || recoverable
-      ? () =>
-          onClose(
-            visiblePhase === 'approval' || visiblePhase === 'working' || (visiblePhase === 'error' && recoverable),
-            visiblePhase !== 'form',
-          )
-      : undefined,
+    visible,
+    closeOrHide,
     undefined,
     visiblePhase,
     restoreFallback,
   );
+  if (!visible && visiblePhase !== 'working') return null;
   return (
-    <div className="dialog-backdrop" role="presentation">
+    <div className="dialog-backdrop" hidden={!visible} role="presentation">
       <div
         className={`dialog${visiblePhase === 'working' ? '' : ' dialog-compact'}${visiblePhase === 'form' ? ' dialog-form-phase' : ''}`}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={`${operationLabelId} ${titleId}`}
+        aria-hidden={visible ? undefined : true}
+        aria-labelledby={visible ? `${operationLabelId} ${titleId}` : undefined}
+        aria-modal={visible ? true : undefined}
         ref={dialogRef}
+        role={visible ? 'dialog' : undefined}
         tabIndex={-1}
       >
         <div className="dialog-heading">
@@ -7045,20 +7373,21 @@ function OperationDialog({
             </p>
             <h2 id={titleId}>{asset.name}</h2>
           </div>
-          {visiblePhase !== 'working' ? (
-            <button
-              className="close"
-              onClick={() =>
-                onClose(
-                  visiblePhase === 'approval' || (visiblePhase === 'error' && recoverable),
-                  visiblePhase !== 'form',
-                )
-              }
-              aria-label="Close dialog"
-            >
+          <button
+            aria-label={visiblePhase === 'working' ? 'Hide transaction details' : 'Close dialog'}
+            className={`close${visiblePhase === 'working' ? ' transaction-hide' : ''}`}
+            onClick={closeOrHide}
+            title={visiblePhase === 'working' ? 'Hide transaction details' : 'Close'}
+          >
+            {visiblePhase === 'working' ? (
+              <span className={`transaction-hide-icon${hiding ? ' hiding' : ''}`} aria-hidden="true">
+                <Eye className="ui-icon transaction-hide-eye-open" />
+                <EyeOff className="ui-icon transaction-hide-eye-closed" />
+              </span>
+            ) : (
               <X className="ui-icon" aria-hidden="true" />
-            </button>
-          ) : null}
+            )}
+          </button>
         </div>
         <OperationOutcomeAnnouncement
           active={visiblePhase === 'done'}
@@ -7285,17 +7614,13 @@ function OperationDialog({
             <p className="sr-only" aria-live="polite" role="status">
               {workingStatus || 'Watching independent Arweave nodes confirm this action.'}
             </p>
-            <button className="sync-close" onClick={() => onClose(true)}>
-              Close and resume later
-            </button>
             <p className="sync-intro">
               {(operation.kind === 'buy' && operation.resume) || (operation.kind !== 'buy' && operation.resumeId)
                 ? 'Recovered the exact signed transactions. Resuming from the weave—nothing will be signed twice.'
                 : 'Signed. Now watching independent Arweave nodes agree on the transaction.'}
             </p>
-            <p className="sync-resume-note">This signed action will resume automatically when you return.</p>
             {workingStatus ? <p className="scheduler-wait">{workingStatus}</p> : null}
-            <ArweaveTransactionSync subject={asset.name} steps={steps} activeStep={activeStep} />
+            <ArweaveTransactionSync active={visible} subject={asset.name} steps={steps} activeStep={activeStep} />
           </div>
         ) : null}
         {visiblePhase === 'done' ? (
@@ -7351,7 +7676,7 @@ function OperationDialog({
                 View transaction {short(transaction.id)} ↗
               </a>
             ) : null}
-            <button className="primary with-icon" data-dialog-initial onClick={() => onClose(false)}>
+            <button className="primary with-icon" data-dialog-initial onClick={onViewAsset}>
               <ArrowLeft className="ui-icon ui-icon--sm" aria-hidden="true" /> View updated asset
             </button>
           </div>
