@@ -52,6 +52,7 @@ import { ArtworkImage } from 'components/ArtworkImage';
 import { ConnectWalletButton } from 'components/ConnectWalletButton';
 import { OperationOutcome, OperationOutcomeAnnouncement } from 'components/OperationOutcomeAnnouncement';
 import { StateVerification } from 'components/StateVerification';
+import { TokenArtwork } from 'components/TokenArtwork';
 import {
   UnavailableOperationRecoveryNotice,
   type UnavailableOperationRecovery,
@@ -557,12 +558,14 @@ export function FungibleAssetView({
             {asset.image ? (
               <ArtworkImage src={asset.image} alt={asset.name} loading="eager" />
             ) : (
-              <span>{ticker.slice(0, 6)}</span>
+              <TokenArtwork ticker={ticker} />
             )}
-            <div className="asset-media-label">
-              <span>Arweave-native token</span>
-              <strong>{ticker}</strong>
-            </div>
+            {asset.image ? (
+              <div className="asset-media-label">
+                <span>Permanent asset</span>
+                <strong>{asset.contentType ?? 'image'}</strong>
+              </div>
+            ) : null}
           </div>
         </div>
         <div className="asset-commerce-column asset-commerce-secondary">

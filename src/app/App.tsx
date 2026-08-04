@@ -120,6 +120,7 @@ import { ArtworkImage } from 'components/ArtworkImage';
 import { ConnectWalletButton } from 'components/ConnectWalletButton';
 import { OperationOutcome, OperationOutcomeAnnouncement } from 'components/OperationOutcomeAnnouncement';
 import { StateVerification } from 'components/StateVerification';
+import { TokenArtwork } from 'components/TokenArtwork';
 import {
   UnavailableOperationRecoveryNotice,
   type UnavailableOperationRecovery,
@@ -7308,19 +7309,6 @@ export function AtomicOperationErrorAlert({ message }: { message: string }) {
 
 function BazarMark() {
   return <img src={bazarLogo} alt="" aria-hidden="true" />;
-}
-
-function TokenArtwork({ ticker, className = '' }: { ticker: string; className?: string }) {
-  const normalizedTicker = ticker.slice(0, 8).toUpperCase();
-  return (
-    <span
-      className={`token-artwork${normalizedTicker.length > 5 ? ' ticker-long' : ''}${className ? ` ${className}` : ''}`}
-      aria-hidden="true"
-    >
-      <strong>{normalizedTicker}</strong>
-      <small>Arweave-native</small>
-    </span>
-  );
 }
 
 function collectionKindLabel(collection: Collection) {

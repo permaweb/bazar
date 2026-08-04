@@ -3500,40 +3500,10 @@ body input:focus-visible {
 }
 
 .asset-hero-media.token-hero {
-  isolation: isolate;
-  background:
-    radial-gradient(circle at 68% 24%, rgba(255, 178, 132, 0.95), transparent 24%),
-    radial-gradient(circle at 24% 72%, rgba(139, 120, 232, 0.72), transparent 31%),
-    linear-gradient(145deg, #16151f 4%, #33264b 45%, #f46d48 100%);
-  color: #fff;
+  background: #efefef;
 }
-.asset-hero-media.token-hero > span {
-  font-size: clamp(3.8rem, 8vw, 7rem);
-  letter-spacing: -0.08em;
-  text-shadow: 0 14px 48px rgba(0, 0, 0, 0.25);
-}
-.asset-hero-media.token-hero .asset-media-label {
-  z-index: 2;
-  font-size: 0.68rem;
-  line-height: 1.2;
-  letter-spacing: 0;
-  text-shadow: none;
-}
-.asset-hero-media.token-hero::before,
-.asset-hero-media.token-hero::after {
-  content: '';
-  position: absolute;
-  z-index: -1;
-  width: 68%;
-  aspect-ratio: 1;
-  border: 1px solid rgba(255, 255, 255, 0.24);
-  border-radius: 50%;
-}
-.asset-hero-media.token-hero::before {
-  transform: translate(-31%, -21%);
-}
-.asset-hero-media.token-hero::after {
-  transform: translate(34%, 27%);
+.asset-hero-media.token-hero > .token-artwork {
+  font-size: clamp(3.2rem, 6vw, 5rem);
 }
 .fungible-orderbook .orderbook-head,
 .fungible-orderbook .orderbook-row {
