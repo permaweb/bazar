@@ -112,6 +112,7 @@ describe('fetchWithDeadline', () => {
     const rejection = expect(request).rejects.toBe(reason);
 
     caller.abort(reason);
+
     await rejection;
   });
 

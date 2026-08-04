@@ -1,7 +1,5 @@
 import { describe, expect, it } from 'vitest';
 
-import { AO_MAINNET } from 'helpers/config';
-
 import { assetObserverNetworkOptions } from './asset-observers';
 
 function location(overrides: Partial<Location>): Location {
@@ -16,16 +14,6 @@ function location(overrides: Partial<Location>): Location {
 }
 
 describe('assetObserverNetworkOptions', () => {
-  it('contacts observers directly during local development', () => {
-    const options = assetObserverNetworkOptions(location({}));
-
-    expect(options.node).toBe('https://arweave.net');
-    expect(options['relay-with']).toBeUndefined();
-    expect(options.pageProtocol).toBe('http:');
-    expect(options.minObservers).toBe(3);
-    expect(options.maxObservers).toBe(12);
-  });
-
   it('relays observer requests through the selected HyperBEAM gateway', () => {
     const options = assetObserverNetworkOptions(location({ search: '?node=http%3A%2F%2F127.0.0.1%3A3101' }));
 
@@ -35,7 +23,17 @@ describe('assetObserverNetworkOptions', () => {
     expect(options.maxObservers).toBe(12);
   });
 
-  it('keeps Arweave as the observer seed while using the production HyperBEAM relay', () => {
+  it('reads a selected HyperBEAM gateway from a hash route', () => {
+    const options = assetObserverNetworkOptions(
+      location({
+        hash: '#/asset/collection/process?node=http%3A%2F%2F127.0.0.1%3A3101',
+      }),
+    );
+
+    expect(options['relay-with']).toBe('http://127.0.0.1:3101');
+  });
+
+  it('uses the serving gateway after stripping an Arweave sandbox label', () => {
     const options = assetObserverNetworkOptions(
       location({
         protocol: 'https:',
@@ -44,7 +42,6 @@ describe('assetObserverNetworkOptions', () => {
       }),
     );
 
-    expect(options.node).toBe('https://arweave.net');
-    expect(options['relay-with']).toBe(AO_MAINNET.app1);
+    expect(options['relay-with']).toBe('https://arweave.net');
   });
 });
