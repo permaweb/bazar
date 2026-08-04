@@ -5974,12 +5974,22 @@ body input:focus-visible {
 }
 .name-asset-artwork {
   position: relative;
+  width: 100%;
+  height: 100%;
+  display: block;
   container-type: inline-size;
   overflow: hidden;
   color: #55534f;
   background-color: #efefef;
-  background-image: radial-gradient(#c3c3c3 0.75px, transparent 0.75px);
+}
+.name-asset-artwork::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background-image: radial-gradient(#bdbdb8 0.75px, transparent 0.75px);
   background-size: 3px 3px;
+  pointer-events: none;
 }
 .name-asset-artwork > strong {
   position: absolute;
@@ -5989,7 +5999,7 @@ body input:focus-visible {
   right: 7%;
   overflow: visible;
   color: #55534f;
-  font-size: clamp(4rem, 40cqw, 13rem);
+  font-size: clamp(2rem, var(--name-artwork-size), 8.5rem);
   font-weight: 700;
   line-height: 0.95;
   text-align: center;

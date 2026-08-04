@@ -121,6 +121,7 @@ import { ConnectWalletButton } from 'components/ConnectWalletButton';
 import { OperationOutcome, OperationOutcomeAnnouncement } from 'components/OperationOutcomeAnnouncement';
 import { StateVerification } from 'components/StateVerification';
 import { TokenArtwork } from 'components/TokenArtwork';
+import { NameArtwork } from 'components/NameArtwork';
 import {
   UnavailableOperationRecoveryNotice,
   type UnavailableOperationRecovery,
@@ -912,23 +913,6 @@ function NamesCubePreview() {
   );
 }
 
-function NameAssetArtwork({
-  name,
-  className = '',
-  showCube = true,
-}: {
-  name: string;
-  className?: string;
-  showCube?: boolean;
-}) {
-  return (
-    <span className={`name-asset-artwork${className ? ` ${className}` : ''}`} aria-hidden="true">
-      <strong>{name}</strong>
-      {showCube ? <img src={arweaveNamesCube} alt="" /> : null}
-    </span>
-  );
-}
-
 export type HomeMarketSummary =
   | { status: 'resolved'; value: string | null }
   | { status: 'unindexed' }
@@ -1705,11 +1689,7 @@ function Home() {
                         {asset.image ? (
                           <ArtworkImage className="home-asset-media" src={asset.image} alt="" />
                         ) : collection.kind === 'names' ? (
-                          <NameAssetArtwork
-                            className="home-asset-media"
-                            name={asset.name.slice(0, 1).toUpperCase()}
-                            showCube={false}
-                          />
+                          <NameArtwork className="home-asset-media" name={asset.name} />
                         ) : (
                           <TokenArtwork className="home-asset-media home-token-art" ticker={asset.ticker ?? 'TOKEN'} />
                         )}
@@ -6015,6 +5995,8 @@ function AssetView() {
           <div className="asset-hero-media">
             {asset.image ? (
               <ArtworkImage src={asset.image} alt={asset.name} loading="eager" />
+            ) : collection.kind === 'names' ? (
+              <NameArtwork name={asset.name} />
             ) : (
               <span>{asset.name.slice(0, 1).toUpperCase()}</span>
             )}
