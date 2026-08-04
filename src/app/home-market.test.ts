@@ -30,9 +30,9 @@ import {
 
 describe('Home market summary retries', () => {
   it('scales complete Arweave names by character count', () => {
-    expect(nameAssetFontScale('ufw')).toBe(18);
-    expect(nameAssetFontScale('rule34')).toBe(18);
-    expect(nameAssetFontScale('123456789012345')).toBe(9.2);
+    expect(nameAssetFontScale('ufw')).toBe(16.5);
+    expect(nameAssetFontScale('rule34')).toBe(16.5);
+    expect(nameAssetFontScale('123456789012345')).toBeCloseTo(8.53, 2);
     expect(nameAssetFontScale('x'.repeat(50))).toBe(3.5);
   });
 

@@ -913,7 +913,7 @@ function NamesCubePreview() {
 
 export function nameAssetFontScale(name: string) {
   const characterCount = Math.max(1, Array.from(name.trim()).length);
-  return Math.max(3.5, Math.min(18, 138 / characterCount));
+  return Math.max(3.5, Math.min(16.5, 128 / characterCount));
 }
 
 function NameAssetArtwork({
