@@ -15,6 +15,7 @@ import {
   homeSummaryRequestKeys,
   homeDiscoveryAssets,
   homeMarketPriceValue,
+  homeScrollIndicatorMetrics,
   homeFloorScanSummary,
   mergeResolvedListingBatch,
   nameAssetFontScale,
@@ -29,6 +30,12 @@ import {
 } from './App';
 
 describe('Home market summary retries', () => {
+  it('sizes and positions persistent pane scroll indicators', () => {
+    expect(homeScrollIndicatorMetrics(0, 1_200, 600)).toEqual({ visible: true, size: 300, offset: 0 });
+    expect(homeScrollIndicatorMetrics(300, 1_200, 600)).toEqual({ visible: true, size: 300, offset: 150 });
+    expect(homeScrollIndicatorMetrics(0, 600, 600)).toEqual({ visible: false, size: 600, offset: 0 });
+  });
+
   it('scales complete Arweave names by character count', () => {
     expect(nameAssetFontScale('ufw')).toBe(16.5);
     expect(nameAssetFontScale('rule34')).toBe(16.5);

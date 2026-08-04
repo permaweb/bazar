@@ -1113,9 +1113,61 @@ export function homeMarketPriceValue(value: string | null | undefined) {
   return Number.isFinite(parsed) ? parsed : Number.POSITIVE_INFINITY;
 }
 
+export function homeScrollIndicatorMetrics(scrollTop: number, scrollHeight: number, clientHeight: number) {
+  const scrollRange = Math.max(0, scrollHeight - clientHeight);
+  if (!scrollRange || clientHeight <= 0) return { visible: false, size: clientHeight, offset: 0 };
+  const size = Math.max(44, clientHeight * (clientHeight / scrollHeight));
+  const offsetRange = Math.max(0, clientHeight - size);
+  const progress = Math.min(1, Math.max(0, scrollTop / scrollRange));
+  return { visible: true, size, offset: offsetRange * progress };
+}
+
+function HomePaneScrollbar({ paneRef }: { paneRef: React.RefObject<HTMLElement> }) {
+  const trackRef = React.useRef<HTMLSpanElement>(null);
+  const thumbRef = React.useRef<HTMLSpanElement>(null);
+  React.useEffect(() => {
+    const pane = paneRef.current;
+    const track = trackRef.current;
+    const thumb = thumbRef.current;
+    if (!pane || !track || !thumb) return;
+    let frame = 0;
+    const update = () => {
+      const metrics = homeScrollIndicatorMetrics(pane.scrollTop, pane.scrollHeight, pane.clientHeight);
+      track.hidden = !metrics.visible;
+      thumb.style.height = `${metrics.size}px`;
+      thumb.style.transform = `translateY(${metrics.offset}px)`;
+    };
+    const schedule = () => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(update);
+    };
+    const resizeObserver = new ResizeObserver(schedule);
+    const mutationObserver = new MutationObserver(schedule);
+    pane.addEventListener('scroll', update, { passive: true });
+    window.addEventListener('resize', schedule);
+    resizeObserver.observe(pane);
+    mutationObserver.observe(pane, { childList: true, characterData: true, subtree: true });
+    update();
+    return () => {
+      window.cancelAnimationFrame(frame);
+      pane.removeEventListener('scroll', update);
+      window.removeEventListener('resize', schedule);
+      resizeObserver.disconnect();
+      mutationObserver.disconnect();
+    };
+  }, [paneRef]);
+  return (
+    <span aria-hidden="true" className="home-pane-scrollbar" hidden ref={trackRef}>
+      <span ref={thumbRef} />
+    </span>
+  );
+}
+
 function Home() {
   const market = React.useContext(MarketContext);
   const { search } = useLocation();
+  const collectionsPaneRef = React.useRef<HTMLElement>(null);
+  const assetsPaneRef = React.useRef<HTMLElement>(null);
   const [assetType, setAssetType] = React.useState<HomeAssetType>('all');
   const [assetView, setAssetView] = React.useState<'listed' | 'price-low' | 'price-high'>('listed');
   const computeGateway = gatewayFromLocation();
@@ -1480,7 +1532,8 @@ function Home() {
       <div className="home-main">
         <div className="home-content">
           <div className="home-market-layout">
-            <section className="home-section" id="featured">
+            <section className="home-section" id="featured" ref={collectionsPaneRef}>
+              <HomePaneScrollbar paneRef={collectionsPaneRef} />
               <div className="home-section-heading">
                 <div>
                   <h1 ref={homeHeadingRef} tabIndex={-1}>
@@ -1610,7 +1663,8 @@ function Home() {
             </section>
 
             {assets.length ? (
-              <section className="home-section home-assets" id="assets">
+              <section className="home-section home-assets" id="assets" ref={assetsPaneRef}>
+                <HomePaneScrollbar paneRef={assetsPaneRef} />
                 <div className="home-section-heading">
                   <div>
                     <h2>Discover assets</h2>
