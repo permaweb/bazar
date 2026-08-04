@@ -1,4 +1,8 @@
-import type { ArweaveRecallContent, ArweaveRecallContentKind } from 'api/arweave-mining-telemetry';
+import {
+	canPreviewRecallImage,
+	type ArweaveRecallContent,
+	type ArweaveRecallContentKind,
+} from 'api/arweave-mining-telemetry';
 import React from 'react';
 import styled, { keyframes } from 'styled-components';
 import * as THREE from 'three';
@@ -7,6 +11,7 @@ import { Line2 } from 'three/examples/jsm/lines/Line2.js';
 import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js';
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import type { ObserverView } from 'weave-wrangler';
+import { prefersReducedMotion } from 'helpers/motion';
 
 import { RaceTooltip as RaceTooltipContainer } from './styles';
 
@@ -130,6 +135,43 @@ const PROGRESS_STOPS = [
 	{ at: 1, color: new THREE.Color('#008f20') },
 ];
 
+export function createWebGLRendererSafely(
+	create: () => THREE.WebGLRenderer = () => new THREE.WebGLRenderer({ alpha: true, antialias: true }),
+) {
+	try {
+		return create();
+	} catch {
+		return null;
+	}
+}
+
+export function shouldRenderProofPins(rendererUnavailable: boolean) {
+	return !rendererUnavailable;
+}
+
+export function shouldClearTransactionInspection(key: string, inspected: boolean) {
+	return key === 'Escape' && inspected;
+}
+
+export function TransactionRendererFallback({ lanes }: Pick<Props, 'lanes'>) {
+	return (
+		<RendererFallback>
+			<div className="renderer-fallback-announcement" aria-atomic="true" aria-live="polite" role="status">
+				<strong>3D network view unavailable</strong>
+				<span>Transaction tracking continues with live observer status.</span>
+			</div>
+			<ul aria-label="Live observer status">
+				{lanes.slice(0, 8).map((lane) => (
+					<li key={lane.observerUrl}>
+						<span>{lane.label}</span>
+						<small>{lane.statusLabel}</small>
+					</li>
+				))}
+			</ul>
+		</RendererFallback>
+	);
+}
+
 export function TransactionSequenceCable3D({
 	lanes,
 	ariaLabel,
@@ -150,8 +192,11 @@ export function TransactionSequenceCable3D({
 	const highlightedLaneRef = React.useRef<number>();
 	const tooltipRef = React.useRef<HTMLSpanElement>(null);
 	const hoverRef = React.useRef<Hover>();
+	const keyboardCursorRef = React.useRef(-1);
 	const [hover, setHover] = React.useState<Hover>();
+	const [rendererUnavailable, setRendererUnavailable] = React.useState(false);
 	const phaseLabelKey = phaseLabels.join('\u0000');
+	const tooltipId = React.useId();
 
 	laneDataRef.current = lanes;
 	miningActivityRef.current = miningActivity;
@@ -176,26 +221,38 @@ export function TransactionSequenceCable3D({
 		if (!mount || lanes.length === 0) return undefined;
 		const bundled = layout === 'bundle';
 		const phaseCount = Math.max(1, phaseLabels.length);
+		const reducedMotion = prefersReducedMotion();
 
 		const scene = new THREE.Scene();
 		const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 100);
 		camera.position.set(bundled ? 0.35 : 0.8, bundled ? 0.35 : 0.75, bundled ? 15.4 : 16.9);
 		camera.lookAt(0, 0, 0);
 
-		const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+		const renderer = createWebGLRendererSafely();
+		if (!renderer) {
+			setRendererUnavailable(true);
+			return undefined;
+		}
+		setRendererUnavailable(false);
 		renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
 		renderer.outputColorSpace = THREE.SRGBColorSpace;
-		renderer.domElement.setAttribute('aria-label', ariaLabel);
-		renderer.domElement.setAttribute('role', 'img');
+		renderer.domElement.setAttribute(
+			'aria-label',
+			`${ariaLabel}. Use arrow keys to inspect observer lanes and events; press Escape to clear.`,
+		);
+		renderer.domElement.setAttribute('aria-keyshortcuts', 'ArrowLeft ArrowRight ArrowUp ArrowDown Home End Escape');
+		renderer.domElement.setAttribute('aria-roledescription', 'interactive transaction map');
+		renderer.domElement.setAttribute('role', 'application');
+		renderer.domElement.tabIndex = 0;
 		mount.appendChild(renderer.domElement);
 
 		const controls = new OrbitControls(camera, renderer.domElement);
-		controls.enableDamping = true;
+		controls.enableDamping = !reducedMotion;
 		controls.dampingFactor = 0.07;
 		controls.enablePan = false;
 		controls.minDistance = bundled ? 10.4 : 11.8;
 		controls.maxDistance = 20;
-		controls.autoRotate = true;
+		controls.autoRotate = !reducedMotion;
 		controls.autoRotateSpeed = 0.22;
 
 		const group = new THREE.Group();
@@ -414,7 +471,7 @@ export function TransactionSequenceCable3D({
 			if (highlightedLaneRef.current === laneIndex) return;
 			const previousLaneIndex = highlightedLaneRef.current;
 			highlightedLaneRef.current = laneIndex;
-			controls.autoRotate = laneIndex === undefined;
+			controls.autoRotate = !reducedMotion && laneIndex === undefined;
 			if (previousLaneIndex !== undefined) {
 				const previousWire = wireStates[previousLaneIndex];
 				if (previousWire) setWireHighlight(previousWire, false);
@@ -433,12 +490,16 @@ export function TransactionSequenceCable3D({
 		const showHover = (nextHover: Hover) => {
 			const currentHover = hoverRef.current;
 			hoverRef.current = nextHover;
+			renderer.domElement.setAttribute('aria-describedby', tooltipId);
+			renderer.domElement.setAttribute('data-dialog-escape-owner', '');
 			updateTooltipPosition(nextHover.x, nextHover.y);
 			if (!sameHoverContent(currentHover, nextHover)) setHover(nextHover);
 		};
 		const hideHover = () => {
+			renderer.domElement.removeAttribute('data-dialog-escape-owner');
 			if (!hoverRef.current) return;
 			hoverRef.current = undefined;
+			renderer.domElement.removeAttribute('aria-describedby');
 			setHover(undefined);
 		};
 		const processPointerMove = (clientX: number, clientY: number) => {
@@ -501,7 +562,57 @@ export function TransactionSequenceCable3D({
 			pointerFrame = 0;
 			pendingPointer = undefined;
 			highlightLane(undefined);
+			keyboardCursorRef.current = -1;
 			hideHover();
+		};
+		const keyboardItems = () => laneDataRef.current.flatMap((lane, laneIndex) => [
+			{ laneIndex, detail: lane.statusLabel },
+			...[...eventHoverDataRef.current, ...confirmationHoverDataRef.current, ...proofHoverDataRef.current]
+				.filter((item) => item.laneIndex === laneIndex),
+		]);
+		const showKeyboardItem = (item: MarkerHoverData) => {
+			const lane = laneDataRef.current[item.laneIndex];
+			if (!lane) return;
+			const bounds = renderer.domElement.getBoundingClientRect();
+			highlightLane(item.laneIndex);
+			showHover({
+				kind: 'lane',
+				observerLabel: lane.label,
+				detail: item.detail,
+				stages: lane.stages,
+				x: bounds.width / 2,
+				y: bounds.height / 2,
+				below: false,
+			});
+		};
+		const handleKeyDown = (event: KeyboardEvent) => {
+			const items = keyboardItems();
+			if (!items.length) return;
+			if (shouldClearTransactionInspection(event.key, Boolean(hoverRef.current))) {
+				event.preventDefault();
+				clearHover();
+				return;
+			}
+			let next = keyboardCursorRef.current;
+			if (event.key === 'Home') next = 0;
+			else if (event.key === 'End') next = items.length - 1;
+			else if (['ArrowRight', 'ArrowDown'].includes(event.key)) next = (next + 1) % items.length;
+			else if (['ArrowLeft', 'ArrowUp'].includes(event.key)) next = (next <= 0 ? items.length : next) - 1;
+			else return;
+			event.preventDefault();
+			keyboardCursorRef.current = next;
+			showKeyboardItem(items[next]);
+		};
+		let tapStart: { x: number; y: number } | undefined;
+		const handlePointerDown = (event: PointerEvent) => {
+			tapStart = { x: event.clientX, y: event.clientY };
+		};
+		const handlePointerUp = (event: PointerEvent) => {
+			const started = tapStart;
+			tapStart = undefined;
+			if (!started || Math.hypot(event.clientX - started.x, event.clientY - started.y) > 8) return;
+			renderer.domElement.focus({ preventScroll: true });
+			processPointerMove(event.clientX, event.clientY);
 		};
 		const handleControlsStart = () => {
 			controlsActive = true;
@@ -513,7 +624,10 @@ export function TransactionSequenceCable3D({
 		controls.addEventListener('start', handleControlsStart);
 		controls.addEventListener('end', handleControlsEnd);
 		renderer.domElement.addEventListener('pointermove', handlePointerMove);
+		renderer.domElement.addEventListener('pointerdown', handlePointerDown);
+		renderer.domElement.addEventListener('pointerup', handlePointerUp);
 		renderer.domElement.addEventListener('pointerleave', clearHover);
+		renderer.domElement.addEventListener('keydown', handleKeyDown);
 
 		let renderWidth = 0;
 		let renderHeight = 0;
@@ -535,6 +649,7 @@ export function TransactionSequenceCable3D({
 		resize();
 
 		let frame = 0;
+		let reducedMotionTimer: number | undefined;
 		let previousFrameAt = performance.now();
 		let markerSignature = '';
 		let markerDataSource: Infinity3DLane[] | undefined;
@@ -545,8 +660,17 @@ export function TransactionSequenceCable3D({
 		const activeHeadColor = new THREE.Color();
 		const phaseLabelPoints = Array.from({ length: phaseCount }, () => new THREE.Vector3());
 		const acceptedProofPinPoint = new THREE.Vector3();
+		const scheduleRender = (render: FrameRequestCallback) => {
+			if (reducedMotion && !controlsActive) {
+				reducedMotionTimer = window.setTimeout(() => {
+					frame = window.requestAnimationFrame(render);
+				}, 200);
+			} else {
+				frame = window.requestAnimationFrame(render);
+			}
+		};
 		const render = () => {
-			frame = window.requestAnimationFrame(render);
+			scheduleRender(render);
 			const frameAt = performance.now();
 			if (document.hidden) {
 				previousFrameAt = frameAt;
@@ -556,12 +680,12 @@ export function TransactionSequenceCable3D({
 			previousFrameAt = frameAt;
 			wireStates.forEach((wire) => {
 				const lane = laneDataRef.current[wire.laneIndex];
-				if (lane) updateWireProgress(wire, lane, deltaSeconds, phaseCount);
+				if (lane) updateWireProgress(wire, lane, reducedMotion ? Number.POSITIVE_INFINITY : deltaSeconds, phaseCount);
 			});
 			activityPhase = updateMiningParticles(
 				wireStates,
 				miningParticleGeometry,
-				miningActivityRef.current?.candidateRate,
+				reducedMotion ? undefined : miningActivityRef.current?.candidateRate,
 				deltaSeconds,
 				activityPhase,
 				miningParticleColor
@@ -648,12 +772,16 @@ export function TransactionSequenceCable3D({
 
 		return () => {
 			window.cancelAnimationFrame(frame);
+			if (reducedMotionTimer !== undefined) window.clearTimeout(reducedMotionTimer);
 			if (pointerFrame) window.cancelAnimationFrame(pointerFrame);
 			resizeObserver.disconnect();
 			controls.removeEventListener('start', handleControlsStart);
 			controls.removeEventListener('end', handleControlsEnd);
 			renderer.domElement.removeEventListener('pointermove', handlePointerMove);
+			renderer.domElement.removeEventListener('pointerdown', handlePointerDown);
+			renderer.domElement.removeEventListener('pointerup', handlePointerUp);
 			renderer.domElement.removeEventListener('pointerleave', clearHover);
+			renderer.domElement.removeEventListener('keydown', handleKeyDown);
 			controls.dispose();
 			wireStates.forEach(({ baseGeometry, phaseGeometries, baseMaterial, phaseMaterials }) => {
 				baseGeometry.dispose();
@@ -697,6 +825,7 @@ export function TransactionSequenceCable3D({
 	return (
 		<Stage>
 			<CanvasMount ref={mountRef} />
+			{rendererUnavailable ? <TransactionRendererFallback lanes={lanes} /> : null}
 			{laneHover &&
 				phaseLabels.map((phaseLabel, phaseIndex) => {
 					const stage = laneHover.stages[phaseIndex];
@@ -714,7 +843,7 @@ export function TransactionSequenceCable3D({
 						</PhaseLabel>
 					);
 				})}
-			<AcceptedProofPins>
+			{shouldRenderProofPins(rendererUnavailable) ? <AcceptedProofPins>
 				{(miningActivity?.acceptedProofs ?? []).map((proof) => (
 					<AcceptedProofPin
 						key={proof.key}
@@ -756,9 +885,11 @@ export function TransactionSequenceCable3D({
 						</AcceptedProofCard>
 					</AcceptedProofPin>
 				))}
-			</AcceptedProofPins>
+			</AcceptedProofPins> : null}
 			{hover && (
 				<RaceTooltipContainer
+					aria-live="polite"
+					id={tooltipId}
 					ref={tooltipRef}
 					$left={hover.x}
 					$top={hover.y}
@@ -779,17 +910,8 @@ export function TransactionSequenceCable3D({
 function RecallContentPreview({ content, fallback }: { content?: ArweaveRecallContent; fallback: string }) {
 	if (!content) return <AcceptedProofPayloadText>{fallback}</AcceptedProofPayloadText>;
 	const title = content.contentType ?? fallback;
-	if (content.kind === 'image') {
+	if (canPreviewRecallImage(content)) {
 		return <img src={content.contentUrl} alt={title} loading={'lazy'} />;
-	}
-	if (content.kind === 'video') {
-		return <video src={content.contentUrl} muted={true} preload={'metadata'} />;
-	}
-	if (content.kind === 'html') {
-		return <iframe src={content.contentUrl} title={title} sandbox={''} loading={'lazy'} />;
-	}
-	if (content.kind === 'pdf') {
-		return <object data={content.contentUrl} type={content.contentType} aria-label={title} />;
 	}
 	return (
 		<AcceptedProofPayloadText>
@@ -800,6 +922,9 @@ function RecallContentPreview({ content, fallback }: { content?: ArweaveRecallCo
 
 function contentSymbol(kind: ArweaveRecallContentKind): string {
 	if (kind === 'audio') return '♪';
+	if (kind === 'video') return '▶';
+	if (kind === 'html') return '</>';
+	if (kind === 'pdf') return 'PDF';
 	if (kind === 'json') return '{}';
 	if (kind === 'text') return 'Aa';
 	return '◫';
@@ -851,12 +976,18 @@ const MAX_ACTIVITY_QUEUE = 80;
 const MAX_SEEN_ACTIVITY = 500;
 
 function ActivityRolodex({ activity }: { activity: CableTelemetry['activity'] }) {
+	const reducedMotion = prefersReducedMotion();
 	const [visible, setVisible] = React.useState<CableTelemetry['activity']>([]);
 	const queueRef = React.useRef<CableTelemetry['activity']>([]);
 	const seenRef = React.useRef(new Set<string>());
 	const seenOrderRef = React.useRef<string[]>([]);
 
 	React.useEffect(() => {
+		if (reducedMotion) {
+			queueRef.current = [];
+			setVisible(activity.slice(0, ACTIVITY_VISIBLE_ROWS));
+			return;
+		}
 		if (!activity.length) {
 			queueRef.current = [];
 			seenRef.current.clear();
@@ -879,9 +1010,10 @@ function ActivityRolodex({ activity }: { activity: CableTelemetry['activity'] })
 			const expired = seenOrderRef.current.shift();
 			if (expired) seenRef.current.delete(expired);
 		}
-	}, [activity]);
+	}, [activity, reducedMotion]);
 
 	React.useEffect(() => {
+		if (reducedMotion) return undefined;
 		const timer = window.setInterval(() => {
 			const next = queueRef.current.shift();
 			if (!next) return;
@@ -891,10 +1023,10 @@ function ActivityRolodex({ activity }: { activity: CableTelemetry['activity'] })
 		}, ACTIVITY_STREAM_INTERVAL_MS);
 
 		return () => window.clearInterval(timer);
-	}, []);
+	}, [reducedMotion]);
 
 	return (
-		<ProtocolActivity aria-live={'polite'}>
+		<ProtocolActivity>
 			{visible.map((event) => (
 				<ProtocolActivityRow key={event.key}>
 					<ActivityKind $kind={event.kind}>{event.typeLabel}</ActivityKind>
@@ -1245,12 +1377,17 @@ function updateAcceptedProofPins(
 		point.project(camera);
 		const anchorX = (point.x * 0.5 + 0.5) * width;
 		const anchorY = (-point.y * 0.5 + 0.5) * height;
+		const compact = width <= 480;
+		const cardWidth = compact ? 112 : 150;
+		const cardHeight = compact ? 72 : 96;
 		const slots = Math.ceil(proofs.length / 2);
 		const slot = Math.floor(index / 2);
-		const cardX = slots <= 1 ? Math.max(4, width / 2 - 75) : 4 + ((width - 158) * slot) / (slots - 1);
-		const cardY = index % 2 === 0 ? 4 : height - 100;
-		const cardCenterX = cardX + 75;
-		const cardCenterY = cardY + 48;
+		const cardX = slots <= 1
+			? Math.max(4, width / 2 - cardWidth / 2)
+			: 4 + ((width - cardWidth - 8) * slot) / (slots - 1);
+		const cardY = index % 2 === 0 ? 4 : height - cardHeight - 4;
+		const cardCenterX = cardX + cardWidth / 2;
+		const cardCenterY = cardY + cardHeight / 2;
 		const deltaX = cardCenterX - anchorX;
 		const deltaY = cardCenterY - anchorY;
 		element.style.setProperty('--proof-pin-x', `${anchorX}px`);
@@ -1386,6 +1523,69 @@ const CanvasMount = styled.div`
 	}
 `;
 
+const RendererFallback = styled.div`
+	position: absolute;
+	inset: 18px;
+	z-index: 4;
+	padding: 18px;
+	display: grid;
+	align-content: center;
+	gap: 6px;
+	overflow: auto;
+	border: 1px solid ${(props) => props.theme.colors.border.primary};
+	border-radius: 14px;
+	background: color-mix(in srgb, ${(props) => props.theme.colors.container.primary.background} 94%, transparent);
+	color: ${(props) => props.theme.colors.font.alt1};
+
+	.renderer-fallback-announcement {
+		display: grid;
+		gap: 6px;
+	}
+
+	.renderer-fallback-announcement > strong {
+		color: ${(props) => props.theme.colors.font.primary};
+	}
+
+	.renderer-fallback-announcement > span,
+	small {
+		font-size: 0.76rem;
+	}
+
+	ul {
+		margin: 8px 0 0;
+		padding: 0;
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 6px;
+		list-style: none;
+	}
+
+	li {
+		min-width: 0;
+		padding: 7px 9px;
+		display: grid;
+		gap: 2px;
+		border-radius: 8px;
+		background: ${(props) => props.theme.colors.container.alt1.background};
+	}
+
+	li span,
+	li small {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	@media (max-width: 480px) {
+		inset: 10px;
+		padding: 12px;
+
+		ul {
+			grid-template-columns: 1fr;
+		}
+	}
+`;
+
 const AcceptedProofPins = styled.span`
 	position: absolute;
 	inset: 0;
@@ -1434,6 +1634,14 @@ const AcceptedProofCard = styled.span`
 	border-radius: 7px;
 	box-shadow: 0 6px 18px rgba(0, 0, 0, 0.1);
 	pointer-events: auto;
+
+	@media (max-width: 480px) {
+		width: 112px;
+		height: 72px;
+		padding: 4px;
+		gap: 2px;
+		border-radius: 6px;
+	}
 `;
 
 const AcceptedProofLabel = styled.span`
@@ -1445,6 +1653,10 @@ const AcceptedProofLabel = styled.span`
 	line-height: 1;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+
+	@media (max-width: 480px) {
+		font-size: 7px;
+	}
 `;
 
 const AcceptedProofMeta = styled.span`
@@ -1455,6 +1667,10 @@ const AcceptedProofMeta = styled.span`
 	line-height: 1;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+
+	@media (max-width: 480px) {
+		font-size: 6px;
+	}
 `;
 
 const AcceptedProofPayloads = styled.span`
@@ -1477,10 +1693,7 @@ const AcceptedProofPayload = styled.a`
 	text-decoration: none;
 	position: relative;
 
-	img,
-	video,
-	iframe,
-	object {
+	img {
 		display: block;
 		width: 100%;
 		height: 100%;
@@ -1503,6 +1716,13 @@ const AcceptedProofPayloadText = styled.span`
 	overflow-wrap: anywhere;
 	-webkit-box-orient: vertical;
 	-webkit-line-clamp: 4;
+
+	@media (max-width: 480px) {
+		max-height: 31px;
+		padding: 2px;
+		font-size: 6px;
+		-webkit-line-clamp: 3;
+	}
 `;
 
 const AcceptedProofContentType = styled.span`
@@ -1520,6 +1740,10 @@ const AcceptedProofContentType = styled.span`
 	line-height: 1;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+
+	@media (max-width: 480px) {
+		font-size: 5.5px;
+	}
 `;
 
 const AcceptedProofRecallMeta = styled.span`

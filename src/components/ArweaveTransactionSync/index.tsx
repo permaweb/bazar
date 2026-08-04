@@ -15,7 +15,8 @@ import * as S from './styles';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 
 import { type ObserverTooltipStage } from './ObserverTooltipCard';
-import { sequencePhaseBounds } from './sequence';
+import { quorumConfirmationDepth } from './confirmationDepth';
+import { confirmationProgressText, confirmationProgressWidth, sequencePhaseBounds } from './sequence';
 import type { CableTelemetry, Infinity3DLane } from './TransactionSequenceCable3D';
 import { type ArweaveMiningTelemetry, useArweaveMiningTelemetry } from './useArweaveMiningTelemetry';
 
@@ -89,22 +90,20 @@ export function ArweaveTransactionSync({ subject, steps, activeStep, onProgressC
 	const active = steps.find((step) => step.key === activeStep) ?? steps[0];
 	const activeKey = active?.key;
 	const transaction = active?.transaction;
-	const confirmationDepth =
-		active?.confirmations ??
-		transaction?.consensus?.confirmations ??
-		observedConfirmationDepth(transaction?.views ?? []);
+	const confirmationDepth = quorumConfirmationDepth(active);
 	const target = active?.target ?? 0;
 	const displayedConfirmationDepth = Math.min(target, confirmationDepth);
+	const progressText = active
+		? confirmationProgressText(active.label, displayedConfirmationDepth, target)
+		: '';
 	const transactionState = transaction?.consensus?.state ?? latestObserverState(transaction?.views ?? []);
-	const progressKey = `${transaction?.id ?? 'none'}:${active?.key ?? 'none'}`;
-	const [estimatedProgress, setEstimatedProgress] = React.useState({ key: progressKey, value: 0 });
 	const confirmedProgress = target > 0 ? (confirmationDepth / target) * 100 : 0;
 	const progressActive = Boolean(transaction) && confirmationDepth < target && !active?.hasError;
-	const continuousProgress =
-		estimatedProgress.key === progressKey
-			? Math.max(confirmedProgress, estimatedProgress.value)
-			: confirmedProgress;
-	const displayedProgress = Math.min(progressActive ? 99 : 100, Math.max(progressActive ? 2 : 0, continuousProgress));
+	const displayedProgress = confirmationProgressWidth(
+		confirmedProgress,
+		progressActive,
+		Boolean(active?.hasError),
+	);
 	const observedSteps = useLiveObserverResponses(steps);
 	const timelines = useObserverTimelines(observedSteps);
 	const lanes = React.useMemo(() => mergeRaceLanes(observedSteps, timelines), [observedSteps, timelines]);
@@ -147,13 +146,8 @@ export function ArweaveTransactionSync({ subject, steps, activeStep, onProgressC
 
 	React.useEffect(() => {
 		if (activePhaseProgress === undefined) return;
-		setEstimatedProgress((current) => {
-			const next = Math.max(confirmedProgress, activePhaseProgress);
-			if (current.key === progressKey && Math.abs(current.value - next) < 0.02) return current;
-			return { key: progressKey, value: next };
-		});
 		onProgressChange?.(activePhaseProgress);
-	}, [activePhaseProgress, confirmedProgress, onProgressChange, progressKey]);
+	}, [activePhaseProgress, onProgressChange]);
 
 	const telemetry: CableTelemetry = {
 		heading: language.transactionSyncProtocolTelemetry,
@@ -219,17 +213,29 @@ export function ArweaveTransactionSync({ subject, steps, activeStep, onProgressC
 		<>
 			{transaction && (
 				<>
+					<span className="sr-only" aria-atomic="true" aria-live="polite" role="status">
+						{progressText}
+					</span>
 					<S.TransactionHeader>
 						<div>
-							<span>{language.transaction}</span>
-							<TxAddress address={transaction.id} wrap={false} tooltipPosition={'right'} />
+							<strong>{active.label}</strong>
+							<span>
+								{language.transaction}
+								<TxAddress address={transaction.id} wrap={false} tooltipPosition={'right'} />
+							</span>
 						</div>
 						<S.Depth $success={confirmationDepth >= target}>
 							<strong>{displayedConfirmationDepth}</strong>
-							<span> / {target}</span>
+							<span> / {target} confirmations</span>
 						</S.Depth>
 					</S.TransactionHeader>
 					<S.ProgressTrack
+						aria-label={`${active.label} confirmation progress for ${subject}`}
+						aria-valuemax={target}
+						aria-valuemin={0}
+						aria-valuenow={displayedConfirmationDepth}
+						aria-valuetext={progressText}
+						role="progressbar"
 						$active={progressActive}
 						$progress={displayedProgress}
 						$state={transactionState}
@@ -310,15 +316,6 @@ function useRaceClock(active: boolean): number {
 	}, [active]);
 
 	return now;
-}
-
-function observedConfirmationDepth(views: ObserverView[]): number {
-	const depths = views
-		.filter((view) => view.state === 'confirmed')
-		.map((view) => view.confirmations)
-		.sort((left, right) => left - right);
-	if (!depths.length) return 0;
-	return depths[Math.floor((depths.length - 1) / 2)];
 }
 
 function latestObserverState(views: ObserverView[]): ObserverView['state'] {

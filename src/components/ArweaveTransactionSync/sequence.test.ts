@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { sequencePhaseBounds } from './sequence';
+import { confirmationProgressText, confirmationProgressWidth, sequencePhaseBounds } from './sequence';
 
 describe('sequencePhaseBounds', () => {
 	it.each([
@@ -34,5 +34,26 @@ describe('sequencePhaseBounds', () => {
 		for (let index = 1; index < phases.length; index += 1) {
 			expect(phases[index].start).toBe(phases[index - 1].end);
 		}
+	});
+});
+
+describe('confirmationProgressText', () => {
+	it('describes bounded confirmation depth and completion', () => {
+		expect(confirmationProgressText('Reserve listing', 0, 5)).toBe('Reserve listing: 0 of 5 confirmations.');
+		expect(confirmationProgressText('Pay seller', 3, 5)).toBe('Pay seller: 3 of 5 confirmations.');
+		expect(confirmationProgressText('Pay seller', 8, 5)).toBe('Pay seller: 5 of 5 confirmations complete.');
+	});
+});
+
+describe('confirmationProgressWidth', () => {
+	it('keeps failed progress aligned with confirmed depth', () => {
+		expect(confirmationProgressWidth(20, false, true)).toBe(20);
+		expect(confirmationProgressWidth(0, false, true)).toBe(0);
+	});
+
+	it('uses only quorum-confirmed progress while keeping an active affordance', () => {
+		expect(confirmationProgressWidth(0, true, false)).toBe(2);
+		expect(confirmationProgressWidth(20, true, false)).toBe(20);
+		expect(confirmationProgressWidth(100, false, false)).toBe(100);
 	});
 });
