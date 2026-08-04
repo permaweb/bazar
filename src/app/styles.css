@@ -5906,6 +5906,23 @@ body input:focus-visible {
   padding-top: 0;
   border-left: 1px solid var(--home-line);
   container-type: inline-size;
+  scrollbar-color: #aaa7a2 #f4f4f1;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+}
+.home-assets::-webkit-scrollbar {
+  width: 10px;
+}
+.home-assets::-webkit-scrollbar-track {
+  background: #f4f4f1;
+}
+.home-assets::-webkit-scrollbar-thumb {
+  border: 2px solid #f4f4f1;
+  border-radius: 999px;
+  background: #aaa7a2;
+}
+.home-assets::-webkit-scrollbar-thumb:hover {
+  background: #85817c;
 }
 .home-assets .market-select {
   min-width: 190px;
