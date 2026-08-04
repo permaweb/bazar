@@ -5994,6 +5994,15 @@ body input:focus-visible {
   white-space: nowrap;
   transform: translateY(-50%);
 }
+.home-asset-grid .name-asset-artwork.home-asset-media.name-asset-artwork--initial {
+  background-color: #efefef;
+  background-image: radial-gradient(#c3c3c3 0.75px, transparent 0.75px);
+  background-size: 3px 3px;
+}
+.name-asset-artwork--initial > strong {
+  font-size: clamp(4rem, 34cqw, 13rem);
+  font-weight: 700;
+}
 .home-asset-details {
   min-width: 0;
   margin: 0;

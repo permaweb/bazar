@@ -1638,8 +1638,8 @@ function Home() {
                         <ArtworkImage className="home-asset-media" src={asset.image} alt="" />
                       ) : collection.kind === 'names' ? (
                         <NameAssetArtwork
-                          className="home-asset-media name-asset-artwork--card"
-                          name={asset.name}
+                          className="home-asset-media name-asset-artwork--initial"
+                          name={asset.name.slice(0, 1).toUpperCase()}
                           showCube={false}
                         />
                       ) : (
