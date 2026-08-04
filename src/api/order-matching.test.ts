@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { SwapOrder } from './asset-marketplace';
-import { formatTokenAmount, matchWholeOrders, parseTokenAmount } from './order-matching';
+import { filledOrder, formatTokenAmount, matchOrderFills, parseTokenAmount } from './order-matching';
 
 describe('token amount conversion', () => {
   it('parses and formats 12-decimal amounts exactly', () => {
@@ -17,45 +17,44 @@ describe('token amount conversion', () => {
   });
 });
 
-describe('whole-order matching', () => {
-  it('matches several complete orders at exact quantity without overfill', () => {
+describe('partial order matching', () => {
+  it('fills across cheapest orders and slices only the final order', () => {
     const two = swapOrder('AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA', '2', '2', 2);
     const one = swapOrder('BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB', '1', '2', 3);
-    const tooLarge = swapOrder('CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC', '4', '1', 1);
-    const result = matchWholeOrders([one, tooLarge, two], '3');
+    const four = swapOrder('CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC', '4', '4', 1);
+    const result = matchOrderFills([one, four, two], '3');
 
-    expect(result).toEqual({
-      orders: [two, one],
-      quantity: '3',
-      totalAsking: '4',
-    });
+    expect(result?.fills.map(({ order, partial }) => ({ id: order.orderId, quantity: order.quantity, partial }))).toEqual([
+      { id: four.orderId, quantity: '3', partial: true },
+    ]);
+    expect(result).toMatchObject({ quantity: '3', totalAsking: '3' });
   });
 
-  it('chooses the least expensive exact whole-lot combination', () => {
-    const entire = swapOrder('AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA', '3', '5', 4);
-    const two = swapOrder('BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB', '2', '2', 1);
-    const one = swapOrder('CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC', '1', '2', 2);
-    const result = matchWholeOrders([one, entire, two], '3');
-    expect(result?.orders.map((order) => order.orderId)).toEqual([two.orderId, one.orderId]);
-    expect(result?.totalAsking).toBe('4');
+  it('uses whole cheap orders before taking a partial dearer order', () => {
+    const cheap = swapOrder('AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA', '2', '2', 1);
+    const dear = swapOrder('BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB', '5', '10', 2);
+    const result = matchOrderFills([dear, cheap], '4');
+    expect(result?.fills.map((fill) => [fill.order.quantity, fill.order.asking, fill.partial])).toEqual([
+      ['2', '2', false],
+      ['2', '4', true],
+    ]);
+    expect(result?.totalAsking).toBe('6');
   });
 
-  it('returns no match when only an overfilling whole lot is available', () => {
-    expect(matchWholeOrders([swapOrder('AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA', '2', '1', 1)], '1')).toBeNull();
+  it('fills one unit from a larger order', () => {
+    const order = swapOrder('AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA', '5', '15', 1);
+    expect(matchOrderFills([order], '1')?.fills[0].order).toMatchObject({ quantity: '1', asking: '3' });
   });
 
   it('ignores reserved orders when matching', () => {
     const reserved = swapOrder('AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA', '1', '1', 1);
     reserved.status = 'reserved';
-    expect(matchWholeOrders([reserved], '1')).toBeNull();
+    expect(matchOrderFills([reserved], '1')).toBeNull();
   });
 
-  it('bounds exact-search state growth on adversarial order books', () => {
-    const orders = Array.from({ length: 14 }, (_, index) => {
-      const quantity = (2n ** BigInt(index)).toString();
-      return swapOrder(String(index).padStart(43, '0'), quantity, quantity, index);
-    });
-    expect(() => matchWholeOrders(orders, '16383')).toThrow('order-match-search-limit');
+  it('rounds every economic term exactly as the device does', () => {
+    const order = { ...swapOrder('A'.repeat(43), '5', '503', 1), minimumFee: '7', deposit: '11' };
+    expect(filledOrder(order, '3')).toMatchObject({ quantity: '3', asking: '302', minimumFee: '5', deposit: '7' });
   });
 
   it('rejects an oversized live book before consuming or sorting its tail', () => {
@@ -67,8 +66,8 @@ describe('whole-order matching', () => {
       }
     }
 
-    expect(() => matchWholeOrders(oversizedBook(), '1')).toThrow('order-match-search-limit');
-    expect(consumed).toBe(513);
+    expect(() => matchOrderFills(oversizedBook(), '1')).toThrow('order-match-search-limit');
+    expect(consumed).toBe(10_001);
   });
 });
 

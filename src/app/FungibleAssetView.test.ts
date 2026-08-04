@@ -3,6 +3,7 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import type { AssetState, SwapOrder } from 'api/asset-marketplace';
+import { filledOrder } from 'api/order-matching';
 import {
   batchPaymentBarrierState,
   batchPurchaseRecoveryApprovalCount,
@@ -15,7 +16,7 @@ import {
   FungibleOperationErrorAlert,
   FungibleSettlementRecoveryPanel,
   FungiblePurchaseReceiptNavigator,
-  MatchedListingsReview,
+  PurchaseRoute,
   fungibleOperationStateError,
   fungibleBatchRecoveryStatus,
   fungibleTransferRecipientError,
@@ -23,15 +24,12 @@ import {
   fungibleWorkingIntro,
   isRecoverableBatch,
   latestRecoverableSnapshot,
-  LOT_PICKER_PAGE_SIZE,
-  lotOptionTabIndex,
-  nextLotPickerLimit,
   nextSettlementAnnouncement,
   purchaseStateFrameBuffer,
+  purchaseQuoteIdentity,
   settlementTabIndex,
   storeBatchRecoveryBeforeDispatch,
   visibleOrderbookRows,
-  visibleLotPickerOrders,
   waitForSettlementBatch,
 } from './FungibleAssetView';
 import type { PurchaseSnapshot, PurchaseState } from 'weave-wrangler';
@@ -122,14 +120,14 @@ describe('fungible operation error semantics', () => {
       quantity: '1',
     })) as SwapOrder[];
     const review = renderToStaticMarkup(
-      React.createElement(MatchedListingsReview, {
-        matchMode: 'amount',
-        orders,
+      React.createElement(PurchaseRoute, {
+        fills: orders.map((order) => ({ sourceOrder: order, order, partial: false })),
         state: { denomination: 0, ticker: 'WEAVE' } as AssetState,
       }),
     );
-    expect(review).toContain('Review 512 matched listings');
-    expect(review).toContain('aria-label="Exact matched seller addresses"');
+    expect(review).toContain('Purchase route');
+    expect(review).toContain('512 orders');
+    expect(review).toContain('aria-label="Purchase execution route"');
     expect(review.match(/tabindex="0"/g)).toHaveLength(1);
     expect(review).toContain(orders[511].creator);
   });
@@ -164,16 +162,24 @@ describe('fungible operation error semantics', () => {
 
 function recoveryBatch() {
   return {
-    version: 2 as const,
+    version: 3 as const,
     buyer: BUYER,
     startingBalance: '0',
     entries: [
       {
         order: {
           orderId: ORDER_ID,
+          creator: 's'.repeat(43),
+          recipient: 's'.repeat(43),
           quantity: '1000',
           asking: '2000',
+          minimumFee: '100',
+          deposit: '100',
+          deadline: 200,
+          createdAt: 100,
+          status: 'open',
         } as SwapOrder,
+        fillQuantity: '400',
         snapshot: { registration: { id: REGISTRATION_ID, dispatched: false } },
         paymentCost: '100',
       },
@@ -242,6 +248,7 @@ describe('fungible batch payment coordination', () => {
   it('resumes only batch orders still available to the same buyer', () => {
     const resume = recoveryBatch();
     const openOrder = { ...resume.entries[0].order, status: 'open' } as SwapOrder;
+    const reservedOrder = { ...filledOrder(openOrder, resume.entries[0].fillQuantity), status: 'reserved', buyer: BUYER } as SwapOrder;
     const state = (orders: Record<string, SwapOrder>, balance = '0') =>
       ({
         balances: { [BUYER]: balance },
@@ -252,14 +259,14 @@ describe('fungible batch payment coordination', () => {
     expect(
       fungibleBatchRecoveryStatus(
         resume,
-        state({ [ORDER_ID]: { ...openOrder, status: 'reserved', buyer: BUYER } }),
+        state({ [ORDER_ID]: reservedOrder }),
         BUYER,
       ),
     ).toBe('resumable');
     expect(
       fungibleBatchRecoveryStatus(
         resume,
-        state({ [ORDER_ID]: { ...openOrder, status: 'reserved', buyer: 'x'.repeat(43) } }),
+        state({ [ORDER_ID]: { ...reservedOrder, buyer: 'x'.repeat(43) } }),
         BUYER,
       ),
     ).toBe('blocked');
@@ -292,9 +299,27 @@ describe('fungible batch payment coordination', () => {
   it('distinguishes recovery attempts for the same order by their signed transactions', () => {
     const order = { orderId: 'order' } as SwapOrder;
     expect(
-      batchRecoveryIdentity([{ order, snapshot: { registration: { id: 'registration-a', dispatched: false } } }]),
+      batchRecoveryIdentity([
+        { order, fillQuantity: '1', snapshot: { registration: { id: 'registration-a', dispatched: false } } },
+      ]),
     ).not.toBe(
-      batchRecoveryIdentity([{ order, snapshot: { registration: { id: 'registration-b', dispatched: false } } }]),
+      batchRecoveryIdentity([
+        { order, fillQuantity: '1', snapshot: { registration: { id: 'registration-b', dispatched: false } } },
+      ]),
+    );
+  });
+
+  it('requotes when a partial fill changes without changing its source order', () => {
+    const order = {
+      orderId: 'order',
+      quantity: '5',
+      asking: '15',
+      deposit: '0',
+      minimumFee: '10',
+      recipient: 'seller',
+    } as SwapOrder;
+    expect(purchaseQuoteIdentity([filledOrder(order, '1')])).not.toBe(
+      purchaseQuoteIdentity([filledOrder(order, '2')]),
     );
   });
 
@@ -559,49 +584,6 @@ describe('parallel settlement progress summary', () => {
       paying: 0,
       reserving: 2,
     });
-  });
-});
-
-describe('manual listing keyboard navigation', () => {
-  it.each([1, 25, LOT_PICKER_PAGE_SIZE])('keeps %i revealed listings inside one modal tab stop', (count) => {
-    const active = Math.floor(count / 2);
-    const stops = Array.from({ length: count }, (_, index) => lotOptionTabIndex(index, active));
-    expect(stops.filter((tabIndex) => tabIndex === 0)).toHaveLength(1);
-    expect(stops[active]).toBe(0);
-  });
-
-  it('reaches first, middle, and last revealed listings with conventional listbox keys', () => {
-    expect(settlementTabIndex('Home', 25, LOT_PICKER_PAGE_SIZE)).toBe(0);
-    expect(settlementTabIndex('ArrowDown', 24, LOT_PICKER_PAGE_SIZE)).toBe(25);
-    expect(settlementTabIndex('End', 0, LOT_PICKER_PAGE_SIZE)).toBe(LOT_PICKER_PAGE_SIZE - 1);
-  });
-
-  it('reveals large order books in exact bounded batches', () => {
-    const orders = Array.from({ length: 10_000 }, (_, index) => ({ orderId: `order-${index}` }));
-    expect(visibleLotPickerOrders(orders, new Set(), LOT_PICKER_PAGE_SIZE)).toEqual(orders.slice(0, 50));
-    expect(nextLotPickerLimit(50, orders.length)).toBe(100);
-    expect(nextLotPickerLimit(9_950, orders.length)).toBe(10_000);
-    expect(nextLotPickerLimit(10_000, orders.length)).toBe(10_000);
-  });
-
-  it('keeps selected listings first without scanning membership quadratically', () => {
-    const reads = { count: 0 };
-    const orders = Array.from(
-      { length: 10_000 },
-      (_, index) =>
-        new Proxy(
-          { orderId: `order-${index}` },
-          {
-            get(target, property, receiver) {
-              if (property === 'orderId') reads.count += 1;
-              return Reflect.get(target, property, receiver);
-            },
-          },
-        ),
-    );
-    const visible = visibleLotPickerOrders(orders, new Set(['order-9999', 'order-5000']), 50);
-    expect(visible.slice(0, 2).map((order) => order.orderId)).toEqual(['order-5000', 'order-9999']);
-    expect(reads.count).toBeLessThanOrEqual(orders.length + 2);
   });
 });
 

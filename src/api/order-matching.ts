@@ -2,11 +2,16 @@ import { compareOrderUnitPrice, type SwapOrder } from './asset-marketplace';
 
 const UNSIGNED_INTEGER = /^(?:0|[1-9]\d*)$/;
 const HUMAN_AMOUNT = /^(?:0|[1-9]\d*)(?:\.(\d+))?$/;
-const MAX_MATCH_ORDERS = 512;
-const MAX_MATCH_STATES = 8192;
+const MAX_MATCH_ORDERS = 10_000;
 
-export type WholeOrderMatch = {
-  orders: SwapOrder[];
+export type OrderFill = {
+  sourceOrder: SwapOrder;
+  order: SwapOrder;
+  partial: boolean;
+};
+
+export type OrderFillMatch = {
+  fills: OrderFill[];
   quantity: string;
   totalAsking: string;
 };
@@ -40,12 +45,10 @@ export function formatTokenAmount(value: string, denomination: number): string {
   return fraction ? `${whole}.${fraction}` : whole;
 }
 
-/**
- * Select complete open orders whose quantities exactly fill the requested
- * atomic amount. The chosen set has the lowest total asking amount; ties
- * prefer the earlier entries in exact unit-price order.
- */
-export function matchWholeOrders(orders: Iterable<SwapOrder>, requestedQuantity: string): WholeOrderMatch | null {
+/** Fill a requested amount from the cheapest open orders, slicing only the
+ * final order when necessary. Integer economic terms use the device's exact
+ * seller-favouring ceiling, so the quote is also the amount paid on-chain. */
+export function matchOrderFills(orders: Iterable<SwapOrder>, requestedQuantity: string): OrderFillMatch | null {
   if (!UNSIGNED_INTEGER.test(requestedQuantity) || BigInt(requestedQuantity) < 1n) {
     throw new TypeError('invalid-requested-quantity');
   }
@@ -58,47 +61,42 @@ export function matchWholeOrders(orders: Iterable<SwapOrder>, requestedQuantity:
     available.push(order);
   }
   available.sort(compareOrderUnitPrice);
-  type Candidate = { indexes: number[]; asking: bigint };
-  const candidates = new Map<bigint, Candidate>([[0n, { indexes: [], asking: 0n }]]);
+  const availableQuantity = available.reduce((total, order) => total + BigInt(order.quantity), 0n);
+  if (availableQuantity < target) return null;
 
-  for (const [index, order] of available.entries()) {
-    const quantity = BigInt(order.quantity);
-    const asking = BigInt(order.asking);
-    for (const [heldQuantity, held] of [...candidates.entries()]) {
-      const nextQuantity = heldQuantity + quantity;
-      if (nextQuantity > target) continue;
-      const candidate = { indexes: [...held.indexes, index], asking: held.asking + asking };
-      const current = candidates.get(nextQuantity);
-      if (!current || compareCandidate(candidate, current) < 0) {
-        if (!current && candidates.size >= MAX_MATCH_STATES) {
-          throw new RangeError('order-match-search-limit');
-        }
-        candidates.set(nextQuantity, candidate);
-      }
-    }
+  const fills: OrderFill[] = [];
+  let remaining = target;
+  for (const sourceOrder of available) {
+    if (remaining === 0n) break;
+    const sourceQuantity = BigInt(sourceOrder.quantity);
+    const fillQuantity = remaining < sourceQuantity ? remaining : sourceQuantity;
+    fills.push({
+      sourceOrder,
+      order: filledOrder(sourceOrder, fillQuantity.toString()),
+      partial: fillQuantity < sourceQuantity,
+    });
+    remaining -= fillQuantity;
   }
-
-  const match = candidates.get(target);
-  if (!match) return null;
   return {
-    orders: match.indexes.map((index) => available[index]),
+    fills,
     quantity: requestedQuantity,
-    totalAsking: match.asking.toString(),
+    totalAsking: fills.reduce((total, fill) => total + BigInt(fill.order.asking), 0n).toString(),
   };
 }
 
-function compareCandidate(
-  left: { indexes: number[]; asking: bigint },
-  right: { indexes: number[]; asking: bigint },
-): number {
-  if (left.asking !== right.asking) return left.asking < right.asking ? -1 : 1;
-  const length = Math.min(left.indexes.length, right.indexes.length);
-  for (let index = 0; index < length; index += 1) {
-    if (left.indexes[index] !== right.indexes[index]) {
-      return left.indexes[index] - right.indexes[index];
-    }
-  }
-  return left.indexes.length - right.indexes.length;
+export function filledOrder(order: SwapOrder, fillQuantity: string): SwapOrder {
+  if (!UNSIGNED_INTEGER.test(fillQuantity)) throw new TypeError('invalid-requested-quantity');
+  const part = BigInt(fillQuantity);
+  const whole = BigInt(order.quantity);
+  if (part < 1n || part > whole) throw new RangeError('fill-quantity-out-of-range');
+  const share = (value: string) => ((BigInt(value) * part + whole - 1n) / whole).toString();
+  return {
+    ...order,
+    quantity: fillQuantity,
+    asking: share(order.asking),
+    minimumFee: share(order.minimumFee),
+    deposit: share(order.deposit),
+  };
 }
 
 function assertDenomination(denomination: number): void {

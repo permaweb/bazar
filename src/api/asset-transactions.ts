@@ -24,6 +24,7 @@ import {
   type SwapOrder,
   waitForAssetState,
 } from './asset-marketplace';
+import { filledOrder } from './order-matching';
 
 const ADDRESS = /^[A-Za-z0-9_-]{43}$/;
 const SIGNED_TRANSACTION_PREFIX = 'bazar-signed-transaction:';
@@ -154,6 +155,7 @@ export type OfferInput = {
 export type PurchaseAdapterInput = {
   processId: string;
   order: SwapOrder;
+  fillQuantity?: string;
   buyer: string;
   startingBalance: string;
   network: WeaveNetwork;
@@ -161,6 +163,7 @@ export type PurchaseAdapterInput = {
 
 export type PreparedPurchase = {
   order: SwapOrder;
+  fillQuantity: string;
   registration: PreparedTransaction;
   payment: PreparedTransaction;
   paymentCost: string;
@@ -508,17 +511,19 @@ export class AssetTransactionClient {
   }
 
   purchaseAdapter(input: PurchaseAdapterInput): PurchaseAdapter {
-    assertSafePurchaseOrder(input.order);
+    const purchaseOrder = filledOrder(input.order, input.fillQuantity ?? input.order.quantity);
+    assertSafePurchaseOrder(purchaseOrder);
     assertTokenQuantity(input.startingBalance, true);
     const prepareRegistration = (signal: AbortSignal) =>
       this.#prepare(
         {
           target: input.processId,
           quantity: '1',
-          rewardFloor: input.order.minimumFee,
+          rewardFloor: purchaseOrder.minimumFee,
           tags: [
             { name: 'action', value: 'register-interest' },
             { name: 'order-id', value: input.order.orderId },
+            { name: 'fill-quantity', value: purchaseOrder.quantity },
           ],
         },
         signal,
@@ -528,9 +533,9 @@ export class AssetTransactionClient {
     const preparePayment = async (signal: AbortSignal) => {
       const tip = Math.max(await this.#currentHeight(signal), input.network.tip());
       const storedPaymentId = this.findStoredPayment(
-        input.order.recipient,
+        purchaseOrder.recipient,
         input.order.orderId,
-        input.order.asking,
+        purchaseOrder.asking,
         input.buyer,
         tip,
       );
@@ -540,8 +545,8 @@ export class AssetTransactionClient {
 
       return this.#prepare(
         {
-          target: input.order.recipient,
-          quantity: input.order.asking,
+          target: purchaseOrder.recipient,
+          quantity: purchaseOrder.asking,
           tags: [{ name: 'order-id', value: input.order.orderId }],
         },
         signal,
@@ -560,7 +565,15 @@ export class AssetTransactionClient {
           const tip = Math.max(await this.#currentHeight(signal), input.network.tip());
           await this.#requireProcessState(
             input.processId,
-            (state) => isExactOpenOrder(state, input.order, input.buyer, tip, this.#reservationInclusionMargin),
+            (state) =>
+              isPurchasableOrderFill(
+                state,
+                input.order,
+                purchaseOrder,
+                input.buyer,
+                tip,
+                this.#reservationInclusionMargin,
+              ),
             'asset-order-not-purchasable',
             signal,
           );
@@ -587,7 +600,15 @@ export class AssetTransactionClient {
           const tip = Math.max(await this.#currentHeight(signal), input.network.tip());
           await this.#requireProcessState(
             input.processId,
-            (state) => isExactOpenOrder(state, input.order, input.buyer, tip, this.#reservationInclusionMargin),
+            (state) =>
+              isPurchasableOrderFill(
+                state,
+                input.order,
+                purchaseOrder,
+                input.buyer,
+                tip,
+                this.#reservationInclusionMargin,
+              ),
             'asset-order-not-purchasable',
             signal,
           );
@@ -603,7 +624,7 @@ export class AssetTransactionClient {
             const tip = Math.max(await this.#currentHeight(signal), input.network.tip());
             if (
               !order ||
-              !purchaseOrderMatches(order, input.order) ||
+              !purchaseOrderMatches(order, purchaseOrder) ||
               order.status !== 'reserved' ||
               order.buyer !== input.buyer
             )
@@ -631,9 +652,9 @@ export class AssetTransactionClient {
           paymentId,
           { startingSlot: 0 },
           (assignment) =>
-            assertExactPurchaseAssignment(assignment, input.processId, paymentId, input.buyer, input.order),
+            assertExactPurchaseAssignment(assignment, input.processId, paymentId, input.buyer, purchaseOrder),
           (after, assignment, before) =>
-            Boolean(before && hasExactPurchaseTransition(before, after, assignment, input.buyer, input.order)),
+            Boolean(before && hasExactPurchaseTransition(before, after, assignment, input.buyer, purchaseOrder)),
           'asset-purchase-proof-mismatch',
           'asset-purchase-rejected',
           signal,
@@ -654,7 +675,7 @@ export class AssetTransactionClient {
     }
     await this.#assertActiveSigner(buyer);
     const estimates = await this.estimatePurchaseBatchCosts(
-      inputs.map((input) => input.order),
+      inputs.map((input) => filledOrder(input.order, input.fillQuantity ?? input.order.quantity)),
       inputs[0].processId,
       signal,
     );
@@ -675,6 +696,7 @@ export class AssetTransactionClient {
         const payment = pair.payment as SafePreparedTransaction;
         prepared.push({
           order: input.order,
+          fillQuantity: input.fillQuantity ?? input.order.quantity,
           registration,
           payment,
           paymentCost: payment.cost.toString(),
@@ -1478,23 +1500,28 @@ function transactionTagValues(value: unknown): string[] {
   }
 }
 
-function isExactOpenOrder(
+function isPurchasableOrderFill(
   state: AssetState,
-  expected: SwapOrder,
+  source: SwapOrder,
+  fill: SwapOrder,
   buyer: string,
   tip: number,
   inclusionMargin: number,
 ): boolean {
-  const order = state.orders[expected.orderId];
+  const order = state.orders[source.orderId];
   // An order reserved for this buyer is still theirs to complete: without
   // this, a retry after a verification timeout refuses the very order the
   // buyer's own registration reserved.
-  const claimable =
+  const claimable = Boolean(
     order &&
-    (order.status === 'open' ||
-      (order.status === 'reserved' && order.buyer === buyer && (order.reservedUntil ?? 0) >= tip + inclusionMargin));
+      ((order.status === 'open' && purchaseOrderMatches(order, source)) ||
+        (order.status === 'reserved' &&
+          order.buyer === buyer &&
+          (order.reservedUntil ?? 0) >= tip + inclusionMargin &&
+          purchaseOrderMatches(order, fill))),
+  );
   return Boolean(
-    order && claimable && buyer !== order.creator && buyer !== order.recipient && purchaseOrderMatches(order, expected),
+    order && claimable && buyer !== order.creator && buyer !== order.recipient,
   );
 }
 

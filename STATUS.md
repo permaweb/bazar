@@ -468,3 +468,81 @@ AO-Connect push path, or application backend.
   returned HTTP 200, `execution-device: token@1.0`, and their correct,
   different live owners. The control node and its temporary config were
   stopped and removed immediately afterward.
+
+## Fungible purchase UX mission — 2026-08-04
+
+### Isolated worktrees
+
+- **Bazar UI:**
+  `/Users/sam/.codex/worktrees/bazar-fungible-purchase-ux-20260804`
+  - Branch: `impr/fungible-purchase-ux`
+  - Base: `8ee7415a08b408a8b8468f85b8ca5d01a0fc2eb1`
+    (`origin/mosaic-fungible`)
+- **HyperBEAM partial fills:**
+  `/Users/sam/.codex/worktrees/hb-partial-order-fills-20260804`
+  - Branch: `feat/partial-order-fills`
+  - Current base: `898e56d514f6eb866d7d04561a2ab936a0e5115c`
+  - A separate reviewer is expected to add a commit above this base; integrate
+    it without touching their worktree or process.
+
+### Mission — verbatim
+
+Thanks. Please now run the patch on a local HyperBEAM port and use it during testing of the UI+UX.
+
+Please now rework the UI cleanly so that it will allow us a clear, elegant experience for buying fungible tokens. Do this in unattended mode, iterating on your design to make it cleaner and less surprising through multiple revisions. Commander's intent: A well-tested, beautiful, clean experience for fungible token purchases as part of Bazar 2.0. Do not keep things just because they exist right now in the fungible flow. Instead, think through each UI element from first principles and replace/upgrade/improve whichever elements you can to make the experience world-class.
+
+Look out for a new commit on top of `898e56d514f6eb866d7d04561a2ab936a0e5115c` at some point, which will be another agent finishing and shipping their review and tweaks of the patch. Integrate and test on top of this in your own worktree when it lands.
+
+### Current execution state
+
+- The Bazar branch starts from the latest integrated mosaic/fungible build,
+  rather than the superseded chronological UX campaign. It was fast-forwarded
+  to current upstream `25e226241bd2acee86c7bc15a271f14aafd34fa3`
+  before this feature work began.
+- The initial UI still matches only exact combinations of complete listings
+  and explicitly says listings cannot be partially filled. This is the primary
+  product behavior being replaced.
+- The validated device contract accepts an optional `fill-quantity`, reserves
+  that slice under the original order id, and leaves a proportionally priced
+  remainder open under the registration transaction id.
+- Reviewer commit `ced012485704e71c786e203996be1fd657f84962` is integrated
+  above `898e56d514f6eb866d7d04561a2ab936a0e5115c`. It independently
+  ceiling-scales the remainder's asking, fee, and deposit so repeated splits
+  cannot round away a seller's terms. The packaged `arweave-swap@1.0` device
+  run passes all 35 tests, including partial settlement and split-term
+  conservation.
+- The exact patched branch is running as an isolated HyperBEAM node on port
+  `10986` from `/tmp/bazar-partial-hb-config.json`. Its trusted-device map pins
+  the published token, reference, security, and process-outbox implementations.
+  A cold live computation of the WEAVE process reached slot 283 and returns
+  the three open 2, 3, and 5 WEAVE price tiers.
+- Bazar is running on port `3004` and points at that local node through
+  `?node=http://127.0.0.1:10986`. Browser-visible verification names
+  `127.0.0.1:10986` as the live provider.
+- The exact-combination matcher and manual lot-selection escape hatch are
+  removed. Buyers enter the number of tokens they want; Bazar consumes the
+  cheapest orders first and partially fills only the last order when needed.
+  One WEAVE now quotes a 1-of-2 partial fill, four WEAVE route across the full
+  2-unit tier plus 2 of the 3-unit tier, and Max routes all ten units across all
+  three listings.
+- Partial fills flow through the complete transaction contract: the original
+  order remains the registration target, `fill-quantity` is signed into the
+  reservation, asking/minimum fee/deposit use the device's exact ceiling
+  formula, and recovery retains both source order and fill quantity.
+- The checkout was iterated from screenshots. It now starts without a false
+  validation error, keeps the approval explanation and primary action visible
+  at 1280x720, scrolls details independently, shows an itemized max total,
+  average execution price, post-purchase balance, compact copyable seller
+  identities, and collapses multi-order routes behind an explicit affordance.
+  A 390x844 layout has no horizontal overflow and keeps its 44px primary action
+  fully visible.
+- Browser testing caught and fixed a partial-fill-specific stale quote: changing
+  from one to two units of the same source order previously preserved the same
+  React dependency key. The quote identity now includes quantity, asking,
+  minimum fee, and recipient; live browser totals changed from
+  `0.00008328288 AR` to `0.00013428288 AR` as expected.
+- Final application gates pass: 34 Vitest files / 385 tests, TypeScript,
+  production Vite build (1,914 modules), and `git diff --check`.
+- Visual evidence is under
+  `.run-data/screenshots/fungible-purchase-ux/`, notably
+  `10-empty-no-error.png` and `12-final-candidate-local-hb.png`.
