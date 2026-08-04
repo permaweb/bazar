@@ -184,6 +184,76 @@ type MarketContextValue = {
   retry(): void;
 };
 
+const MARKET_SHELL_CACHE_KEY = 'bazar-market-shell:v1';
+const ASSET_SHELL_CACHE_PREFIX = 'bazar-asset-shell:v1:';
+
+function isCachedAsset(value: unknown): value is AssetSummary {
+  if (!value || typeof value !== 'object') return false;
+  const asset = value as Partial<AssetSummary>;
+  return typeof asset.id === 'string' && typeof asset.name === 'string';
+}
+
+function isCachedCollection(value: unknown): value is Collection {
+  if (!value || typeof value !== 'object') return false;
+  const collection = value as Partial<Collection>;
+  return (
+    typeof collection.id === 'string' &&
+    typeof collection.name === 'string' &&
+    typeof collection.description === 'string' &&
+    ['names', 'images', 'tokens'].includes(collection.kind ?? '') &&
+    Array.isArray(collection.assets) &&
+    collection.assets.every(isCachedAsset)
+  );
+}
+
+export function loadMarketShellSnapshot(storage: Pick<Storage, 'getItem'>): Collection[] {
+  try {
+    const value = JSON.parse(storage.getItem(MARKET_SHELL_CACHE_KEY) ?? 'null');
+    return Array.isArray(value) && value.every(isCachedCollection) ? value : [];
+  } catch {
+    return [];
+  }
+}
+
+export function storeMarketShellSnapshot(storage: Pick<Storage, 'setItem'>, collections: Collection[]) {
+  try {
+    storage.setItem(MARKET_SHELL_CACHE_KEY, JSON.stringify(collections));
+  } catch {
+    // A denied or full session store should not block live collection loading.
+  }
+}
+
+export function loadAssetShellSnapshot(storage: Pick<Storage, 'getItem'>, assetId: string): AssetSummary | undefined {
+  try {
+    const value = JSON.parse(storage.getItem(`${ASSET_SHELL_CACHE_PREFIX}${assetId}`) ?? 'null');
+    return isCachedAsset(value) && value.id === assetId ? value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export function storeAssetShellSnapshot(storage: Pick<Storage, 'setItem'>, asset: AssetSummary) {
+  try {
+    storage.setItem(`${ASSET_SHELL_CACHE_PREFIX}${asset.id}`, JSON.stringify(asset));
+  } catch {
+    // A denied or full session store should not block live asset verification.
+  }
+}
+
+function initialMarketCollections() {
+  const cached = loadMarketShellSnapshot(window.sessionStorage);
+  const localCollections = loadMintedCollections();
+  const mintedAssets = loadMintedAssets();
+  const known = new Set(cached.map((collection) => collection.id));
+  const localAdditions = localCollections.filter((collection) => !known.has(collection.id));
+  for (const collection of localAdditions) known.add(collection.id);
+  return [
+    ...cached,
+    ...localAdditions,
+    ...(mintedAssets.length && !known.has(CREATED_COLLECTION_ID) ? [createdCollection(mintedAssets)] : []),
+  ];
+}
+
 const MarketContext = React.createContext<MarketContextValue>({
   collections: [],
   loading: true,
@@ -197,8 +267,8 @@ const MarketContext = React.createContext<MarketContextValue>({
 
 export function App() {
   const [marketRetry, setMarketRetry] = React.useState(0);
-  const [market, setMarket] = React.useState<MarketContextValue>({
-    collections: [],
+  const [market, setMarket] = React.useState<MarketContextValue>(() => ({
+    collections: initialMarketCollections(),
     loading: true,
     error: null,
     notice: null,
@@ -206,7 +276,10 @@ export function App() {
     addCreatedAsset: () => undefined,
     addCollection: () => undefined,
     retry: () => undefined,
-  });
+  }));
+  React.useEffect(() => {
+    if (market.collections.length) storeMarketShellSnapshot(window.sessionStorage, market.collections);
+  }, [market.collections]);
   React.useEffect(() => {
     const controller = new AbortController();
     setMarket((current) => ({ ...current, loading: true, error: null }));
@@ -737,7 +810,9 @@ function Header() {
             <div className="search-panel-main">
               <div className="search-panel-content">
                 <CollectionResultStatus message={searchFeedback || announcedSearchResult} />
-                {market.loading ? <Loading label="Loading collection indexes from Arweave…" /> : null}
+                {market.loading && !market.collections.length ? (
+                  <Loading label="Loading collection indexes from Arweave…" />
+                ) : null}
                 {partialTokenCollection ? (
                   <div className="collection-source-notice">
                     <span role="status">
@@ -1527,7 +1602,9 @@ function Home() {
                   <p>Permanent assets with ownership and settlement native to Arweave.</p>
                 </div>
               </div>
-              {market.loading ? <Loading label="Loading collection indexes from Arweave…" /> : null}
+              {market.loading && !collections.length ? (
+                <Loading label="Loading collection indexes from Arweave…" />
+              ) : null}
               {market.error ? (
                 <ErrorPanel message={market.error} onRetry={market.retry} retryLabel="Retry collections" />
               ) : null}
@@ -1647,71 +1724,71 @@ function Home() {
               ) : null}
             </section>
 
-            {assets.length ? (
-              <section className="home-section home-assets" id="assets" ref={assetsPaneRef}>
-                <HomePaneScrollbar paneRef={assetsPaneRef} />
-                <div className="home-section-heading">
-                  <div>
-                    <h2>Discover assets</h2>
-                    <p>
-                      {normalizedQuery
-                        ? `Results for “${query}” across the current Arweave collection indexes.`
-                        : 'Verified active listings across every marketplace collection.'}
-                    </p>
-                  </div>
-                  <div className="home-asset-filters">
-                    <MarketSelect<HomeAssetType>
-                      label="Asset type"
-                      onChange={setAssetType}
-                      options={[
-                        { value: 'all', label: 'All' },
-                        { value: 'tokens', label: 'Tokens' },
-                        { value: 'atomic', label: 'Atomic assets (NFT)' },
-                      ]}
-                      value={assetType}
-                    />
-                    <MarketSelect<'listed' | 'price-low' | 'price-high'>
-                      label="View"
-                      onChange={setAssetView}
-                      options={[
-                        { value: 'listed', label: 'Listed for sale' },
-                        { value: 'price-low', label: 'Price: low to high' },
-                        { value: 'price-high', label: 'Price: high to low' },
-                      ]}
-                      value={assetView}
-                    />
-                  </div>
+            <section className="home-section home-assets" id="assets" ref={assetsPaneRef}>
+              <HomePaneScrollbar paneRef={assetsPaneRef} />
+              <div className="home-section-heading">
+                <div>
+                  <h2>Discover assets</h2>
+                  <p>
+                    {normalizedQuery
+                      ? `Results for “${query}” across the current Arweave collection indexes.`
+                      : 'Verified active listings across every marketplace collection.'}
+                  </p>
                 </div>
-                {displayedAssets.length ? (
-                  <div className="home-asset-grid">
-                    {displayedAssets.map(({ asset, collection }) => (
-                      <Link key={`${collection.id}-${asset.id}`} to={`/asset/${collection.id}/${asset.id}`}>
-                        {asset.image ? (
-                          <ArtworkImage className="home-asset-media" src={asset.image} alt="" />
-                        ) : collection.kind === 'names' ? (
-                          <NameArtwork className="home-asset-media" name={asset.name} />
-                        ) : (
-                          <TokenArtwork className="home-asset-media home-token-art" ticker={asset.ticker ?? 'TOKEN'} />
-                        )}
-                        <div className="home-asset-details">
-                          <div>
-                            <strong>{asset.name}</strong>
-                            <span>{collection.name}</span>
-                          </div>
-                          <b
-                            className={`home-asset-price${homeMarketSummaryListed(assetPrices[asset.id]) ? ' listed' : ''}`}
-                          >
-                            {homeMarketSummaryLabel(assetPrices[asset.id], 'Not listed')}
-                          </b>
+                <div className="home-asset-filters">
+                  <MarketSelect<HomeAssetType>
+                    label="Asset type"
+                    onChange={setAssetType}
+                    options={[
+                      { value: 'all', label: 'All' },
+                      { value: 'tokens', label: 'Tokens' },
+                      { value: 'atomic', label: 'Atomic assets (NFT)' },
+                    ]}
+                    value={assetType}
+                  />
+                  <MarketSelect<'listed' | 'price-low' | 'price-high'>
+                    label="View"
+                    onChange={setAssetView}
+                    options={[
+                      { value: 'listed', label: 'Listed for sale' },
+                      { value: 'price-low', label: 'Price: low to high' },
+                      { value: 'price-high', label: 'Price: high to low' },
+                    ]}
+                    value={assetView}
+                  />
+                </div>
+              </div>
+              {displayedAssets.length ? (
+                <div className="home-asset-grid">
+                  {displayedAssets.map(({ asset, collection }) => (
+                    <Link key={`${collection.id}-${asset.id}`} to={`/asset/${collection.id}/${asset.id}`}>
+                      {asset.image ? (
+                        <ArtworkImage className="home-asset-media" src={asset.image} alt="" />
+                      ) : collection.kind === 'names' ? (
+                        <NameArtwork className="home-asset-media" name={asset.name} />
+                      ) : (
+                        <TokenArtwork className="home-asset-media home-token-art" ticker={asset.ticker ?? 'TOKEN'} />
+                      )}
+                      <div className="home-asset-details">
+                        <div>
+                          <strong>{asset.name}</strong>
+                          <span>{collection.name}</span>
                         </div>
-                      </Link>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="home-assets-empty">No verified listings match this asset type.</div>
-                )}
-              </section>
-            ) : null}
+                        <b
+                          className={`home-asset-price${homeMarketSummaryListed(assetPrices[asset.id]) ? ' listed' : ''}`}
+                        >
+                          {homeMarketSummaryLabel(assetPrices[asset.id], 'Not listed')}
+                        </b>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              ) : (
+                <div className="home-assets-empty">
+                  {market.loading ? 'Loading verified listings…' : 'No verified listings match this asset type.'}
+                </div>
+              )}
+            </section>
           </div>
         </div>
       </div>
@@ -5102,7 +5179,7 @@ function MyAssetsView() {
       </section>
     );
   }
-  if (market.loading) {
+  if (market.loading && !market.collections.length) {
     return (
       <RouteState title="My assets">
         <Loading label="Reading the supported asset collections from Arweave…" />
@@ -5404,12 +5481,101 @@ const AssetGroup = React.memo(function AssetGroup({
   );
 });
 
+function AssetDetailLoadingShell({
+  asset,
+  collection,
+  collectionId,
+  error,
+  onRetry,
+}: {
+  asset?: AssetSummary;
+  collection?: Collection;
+  collectionId: string;
+  error?: string | null;
+  onRetry?: () => void;
+}) {
+  const kind = collection?.kind ?? (collectionId === 'fungible-tokens' ? 'tokens' : 'names');
+  const detailClass = kind === 'tokens' ? 'fungible-asset-page' : 'atomic-asset-page';
+  const collectionName = collection?.name ?? (kind === 'tokens' ? 'Fungible tokens' : 'Arweave names');
+
+  return (
+    <section className={`asset-page asset-detail-page asset-detail-loading-shell ${detailClass}`}>
+      <div className="asset-detail-layout">
+        <div className="asset-commerce-column asset-commerce-primary">
+          <div className="asset-details asset-identity">
+            <div className="asset-kicker">
+              {collection ? (
+                <Link className="asset-collection-link" to={`/collection/${collection.id}`}>
+                  {collectionName}
+                </Link>
+              ) : (
+                <span className="asset-collection-link">{collectionName}</span>
+              )}
+            </div>
+            {asset ? <h1>{asset.name}</h1> : <span className="layout-placeholder layout-placeholder-title" />}
+            <div className="asset-owner-line">
+              <span>Verifying current ownership and market state</span>
+            </div>
+            <div className="asset-token-tags" aria-hidden="true">
+              <span>{kind === 'tokens' ? 'token@1.0' : 'carrier@1.0'}</span>
+              <span>ARWEAVE</span>
+              <span>{kind === 'tokens' ? 'TOKEN' : 'SUPPLY 1'}</span>
+            </div>
+            {error ? (
+              <ErrorPanel message={error} onRetry={onRetry} retryLabel="Retry live state" />
+            ) : (
+              <div aria-live="polite" className="state-verification asset-loading-verification" role="status">
+                <span aria-hidden="true" /> Computing current state…
+              </div>
+            )}
+            <section aria-hidden="true" className="asset-commerce-card asset-commerce-card-loading">
+              <div className="asset-loading-stat-grid">
+                {Array.from({ length: 4 }, (_, index) => (
+                  <span className="layout-placeholder" key={index} />
+                ))}
+              </div>
+              <span className="layout-placeholder asset-loading-summary" />
+              <span className="layout-placeholder asset-loading-action" />
+            </section>
+          </div>
+        </div>
+        <div className="asset-visual-column">
+          <div className={`asset-hero-media${kind === 'tokens' ? ' token-hero' : ''}`}>
+            {asset?.image ? (
+              <ArtworkImage src={asset.image} alt={asset.name} loading="eager" />
+            ) : kind === 'names' && asset ? (
+              <NameArtwork name={asset.name} />
+            ) : kind === 'tokens' && asset ? (
+              <TokenArtwork ticker={asset.ticker ?? asset.name} />
+            ) : (
+              <span className="layout-placeholder asset-loading-artwork" />
+            )}
+          </div>
+        </div>
+        <div className="asset-commerce-column asset-commerce-secondary">
+          <nav aria-hidden="true" className="asset-section-tabs asset-section-tabs-loading">
+            <span>Details</span>
+            <span>Orders</span>
+            <span>Activity</span>
+          </nav>
+          <div aria-hidden="true" className="asset-loading-panel">
+            <span className="layout-placeholder" />
+            <span className="layout-placeholder" />
+            <span className="layout-placeholder" />
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function AssetView() {
   const { collectionId = '', assetId = '' } = useParams();
   const market = React.useContext(MarketContext);
   const wallet = useWallet();
   const collection = market.collections.find((item) => item.id === collectionId);
   const indexedAsset = collection ? collectionAsset(collection, assetId) : undefined;
+  const cachedAsset = React.useMemo(() => loadAssetShellSnapshot(window.sessionStorage, assetId), [assetId]);
   const [liveResult, setLiveResult] = React.useState<{
     assetId: string;
     state: AssetState | null;
@@ -5426,6 +5592,10 @@ function AssetView() {
   const verifiedAt = liveResult.assetId === assetId ? liveResult.verifiedAt : null;
   const canResolveAsset = Boolean(indexedAsset || (collection?.kind === 'tokens' && ARWEAVE_ADDRESS.test(assetId)));
   const resolvedAsset = collection && state ? collectionAsset(collection, assetId, state) : indexedAsset;
+  const shellAsset = indexedAsset ?? cachedAsset;
+  React.useEffect(() => {
+    if (resolvedAsset) storeAssetShellSnapshot(window.sessionStorage, resolvedAsset);
+  }, [resolvedAsset]);
   const [operationSession, setOperationSession] = React.useState<OperationSession<Operation> | null>(null);
   const operation = operationForSigner(operationSession, wallet.address);
   const openOperation = React.useCallback(
@@ -5732,12 +5902,7 @@ function AssetView() {
       localStorage.removeItem(pendingOperationKey);
     }
   }, [assetId, openOperation, operation, recoverySuppressed, state, storageVersion, wallet.address]);
-  if (!collection && market.loading)
-    return (
-      <RouteState title="Asset">
-        <Loading label="Reading collection index…" />
-      </RouteState>
-    );
+  if (!collection && market.loading) return <AssetDetailLoadingShell collectionId={collectionId} />;
   if (!collection && market.error)
     return (
       <RouteState title="Asset unavailable">
@@ -5770,26 +5935,17 @@ function AssetView() {
     );
   if (!asset)
     return (
-      <RouteState title="Asset" backTo={`/collection/${collection.id}`} backLabel={collection.name}>
-        <Loading label="Computing current state…" />
-      </RouteState>
+      <AssetDetailLoadingShell asset={shellAsset} collection={collection} collectionId={collectionId} onRetry={load} />
     );
   if (!state) {
     return (
-      <section className="asset-page asset-state-page">
-        <Link className="back" to={`/collection/${collection.id}`}>
-          <ArrowLeft className="ui-icon ui-icon--sm" aria-hidden="true" /> {collection.name}
-        </Link>
-        <p className="eyebrow">LIVE ASSET STATE</p>
-        <h1>{asset.name}</h1>
-        {error ? (
-          <ErrorPanel message={error} onRetry={load} retryLabel="Retry live state" />
-        ) : (
-          <Loading label="Computing ownership and orders through HyperBEAM…" />
-        )}
-        <p>Ownership, supply, and market actions appear only after current process state is verified.</p>
-        <CollectionIndexNotice collection={collection} checking={market.loading} onRetry={market.retry} />
-      </section>
+      <AssetDetailLoadingShell
+        asset={asset}
+        collection={collection}
+        collectionId={collectionId}
+        error={error}
+        onRetry={load}
+      />
     );
   }
   if (state && (state.totalSupply !== '1' || state.denomination > 0)) {

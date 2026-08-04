@@ -17,6 +17,8 @@ import {
   homeMarketPriceValue,
   homeScrollIndicatorMetrics,
   homeFloorScanSummary,
+  loadAssetShellSnapshot,
+  loadMarketShellSnapshot,
   mergeResolvedListingBatch,
   newestCollectionActivity,
   nextListingAnnouncementProgress,
@@ -25,10 +27,50 @@ import {
   reconcileHomeActivityScan,
   reconcileHomeFloorScan,
   retryableHomeSummaryKeys,
+  storeAssetShellSnapshot,
+  storeMarketShellSnapshot,
   type HomeMarketSummary,
 } from './App';
 
 describe('Home market summary retries', () => {
+  it('round-trips a structural market snapshot for stable refresh shells', () => {
+    const values = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, value),
+    };
+    const collections: Collection[] = [
+      {
+        id: 'names',
+        name: 'Names',
+        description: 'Current names',
+        kind: 'names',
+        assets: [{ id: 'asset', name: 'blockdata' }],
+      },
+    ];
+
+    storeMarketShellSnapshot(storage, collections);
+    expect(loadMarketShellSnapshot(storage)).toEqual(collections);
+  });
+
+  it('ignores malformed market snapshots', () => {
+    expect(loadMarketShellSnapshot({ getItem: () => '{bad json' })).toEqual([]);
+    expect(loadMarketShellSnapshot({ getItem: () => JSON.stringify([{ id: 'broken' }]) })).toEqual([]);
+  });
+
+  it('round-trips asset display metadata without caching live ownership state', () => {
+    const values = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, value),
+    };
+    const asset = { id: 'asset-id', name: 'blockdata', ticker: 'BLOCK' };
+
+    storeAssetShellSnapshot(storage, asset);
+    expect(loadAssetShellSnapshot(storage, asset.id)).toEqual(asset);
+    expect(loadAssetShellSnapshot(storage, 'another-id')).toBeUndefined();
+  });
+
   it('sizes and positions persistent pane scroll indicators', () => {
     expect(homeScrollIndicatorMetrics(0, 1_200, 600)).toEqual({ visible: true, size: 150, offset: 0 });
     expect(homeScrollIndicatorMetrics(300, 1_200, 600)).toEqual({ visible: true, size: 150, offset: 225 });
