@@ -18,7 +18,6 @@ import {
   homeScrollIndicatorMetrics,
   homeFloorScanSummary,
   mergeResolvedListingBatch,
-  nameAssetFontScale,
   newestCollectionActivity,
   nextListingAnnouncementProgress,
   pendingHomeActivityRecipients,
@@ -34,13 +33,6 @@ describe('Home market summary retries', () => {
     expect(homeScrollIndicatorMetrics(0, 1_200, 600)).toEqual({ visible: true, size: 300, offset: 0 });
     expect(homeScrollIndicatorMetrics(300, 1_200, 600)).toEqual({ visible: true, size: 300, offset: 150 });
     expect(homeScrollIndicatorMetrics(0, 600, 600)).toEqual({ visible: false, size: 600, offset: 0 });
-  });
-
-  it('scales complete Arweave names by character count', () => {
-    expect(nameAssetFontScale('ufw')).toBe(16.5);
-    expect(nameAssetFontScale('rule34')).toBe(16.5);
-    expect(nameAssetFontScale('123456789012345')).toBeCloseTo(8.53, 2);
-    expect(nameAssetFontScale('x'.repeat(50))).toBe(3.5);
   });
 
   it('separates fungible tokens from atomic assets', () => {

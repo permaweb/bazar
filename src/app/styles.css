@@ -6000,8 +6000,8 @@ body input:focus-visible {
   right: 7%;
   overflow: visible;
   color: #55534f;
-  font-size: clamp(1rem, calc(var(--name-font-cqw) * 1cqw), 7rem);
-  font-weight: 600;
+  font-size: clamp(4rem, 40cqw, 13rem);
+  font-weight: 700;
   line-height: 0.95;
   text-align: center;
   text-overflow: clip;

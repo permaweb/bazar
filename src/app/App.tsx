@@ -911,11 +911,6 @@ function NamesCubePreview() {
   );
 }
 
-export function nameAssetFontScale(name: string) {
-  const characterCount = Math.max(1, Array.from(name.trim()).length);
-  return Math.max(3.5, Math.min(16.5, 128 / characterCount));
-}
-
 function NameAssetArtwork({
   name,
   className = '',
@@ -926,11 +921,7 @@ function NameAssetArtwork({
   showCube?: boolean;
 }) {
   return (
-    <span
-      className={`name-asset-artwork${className ? ` ${className}` : ''}`}
-      style={{ '--name-font-cqw': nameAssetFontScale(name) } as React.CSSProperties}
-      aria-hidden="true"
-    >
+    <span className={`name-asset-artwork${className ? ` ${className}` : ''}`} aria-hidden="true">
       <strong>{name}</strong>
       {showCube ? <img src={arweaveNamesCube} alt="" /> : null}
     </span>
@@ -1704,7 +1695,11 @@ function Home() {
                         {asset.image ? (
                           <ArtworkImage className="home-asset-media" src={asset.image} alt="" />
                         ) : collection.kind === 'names' ? (
-                          <NameAssetArtwork className="home-asset-media" name={asset.name} showCube={false} />
+                          <NameAssetArtwork
+                            className="home-asset-media"
+                            name={asset.name.slice(0, 1).toUpperCase()}
+                            showCube={false}
+                          />
                         ) : (
                           <TokenArtwork className="home-asset-media home-token-art" ticker={asset.ticker ?? 'TOKEN'} />
                         )}
@@ -6013,10 +6008,12 @@ function AssetView() {
             ) : (
               <span>{asset.name.slice(0, 1).toUpperCase()}</span>
             )}
-            <div className="asset-media-label">
-              <span>Permanent asset</span>
-              <strong>{asset.contentType ?? (asset.image ? 'image' : (state?.device ?? 'process'))}</strong>
-            </div>
+            {collection.kind !== 'names' ? (
+              <div className="asset-media-label">
+                <span>Permanent asset</span>
+                <strong>{asset.contentType ?? (asset.image ? 'image' : (state?.device ?? 'process'))}</strong>
+              </div>
+            ) : null}
           </div>
         </div>
         <div className="asset-commerce-column asset-commerce-secondary">
