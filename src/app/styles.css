@@ -1095,11 +1095,6 @@ p {
 .home-feature-copy {
   padding: 18px 18px 12px;
 }
-.home-feature-copy > p {
-  margin: 0 0 6px;
-  color: #756e65;
-  font-size: 0.68rem;
-}
 .home-feature-copy h2 {
   margin: 0;
   color: #1c1916;
@@ -1120,7 +1115,7 @@ p {
   margin: 0 18px;
   padding: 13px 0 15px;
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
   border-top: 1px solid var(--home-line);
 }

@@ -1573,7 +1573,6 @@ function Home() {
                         <div className="home-feature-glow" />
                       </div>
                       <div className="home-feature-copy">
-                        <p>{collectionKindLabel(collection)}</p>
                         <h2>{collection.name}</h2>
                         <span>{collection.description}</span>
                       </div>
@@ -1581,12 +1580,6 @@ function Home() {
                         <div>
                           <span>{collection.kind === 'names' && collection.hasMore ? 'Loaded' : 'Assets'}</span>
                           <strong>{(collection.total ?? collection.assets.length).toLocaleString()}</strong>
-                        </div>
-                        <div>
-                          <span>Type</span>
-                          <strong>
-                            {collection.kind === 'names' ? 'Names' : collection.kind === 'tokens' ? 'Tokens' : 'Images'}
-                          </strong>
                         </div>
                         <div>
                           <span>{collection.hasMore ? 'Loaded floor' : 'Floor'}</span>
