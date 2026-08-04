@@ -911,6 +911,11 @@ function NamesCubePreview() {
   );
 }
 
+export function nameAssetFontScale(name: string) {
+  const characterCount = Math.max(1, Array.from(name.trim()).length);
+  return Math.max(3.5, Math.min(18, 138 / characterCount));
+}
+
 function NameAssetArtwork({
   name,
   className = '',
@@ -920,12 +925,10 @@ function NameAssetArtwork({
   className?: string;
   showCube?: boolean;
 }) {
-  const characterCount = Math.max(1, Array.from(name.trim()).length);
-  const fontScale = Math.max(3.5, Math.min(18, 138 / characterCount));
   return (
     <span
       className={`name-asset-artwork${className ? ` ${className}` : ''}`}
-      style={{ '--name-font-cqw': fontScale } as React.CSSProperties}
+      style={{ '--name-font-cqw': nameAssetFontScale(name) } as React.CSSProperties}
       aria-hidden="true"
     >
       <strong>{name}</strong>
@@ -1652,11 +1655,7 @@ function Home() {
                         {asset.image ? (
                           <ArtworkImage className="home-asset-media" src={asset.image} alt="" />
                         ) : collection.kind === 'names' ? (
-                          <NameAssetArtwork
-                            className="home-asset-media name-asset-artwork--initial"
-                            name={asset.name.slice(0, 1).toUpperCase()}
-                            showCube={false}
-                          />
+                          <NameAssetArtwork className="home-asset-media" name={asset.name} showCube={false} />
                         ) : (
                           <TokenArtwork className="home-asset-media home-token-art" ticker={asset.ticker ?? 'TOKEN'} />
                         )}

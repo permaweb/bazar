@@ -17,6 +17,7 @@ import {
   homeMarketPriceValue,
   homeFloorScanSummary,
   mergeResolvedListingBatch,
+  nameAssetFontScale,
   newestCollectionActivity,
   nextListingAnnouncementProgress,
   pendingHomeActivityRecipients,
@@ -28,6 +29,13 @@ import {
 } from './App';
 
 describe('Home market summary retries', () => {
+  it('scales complete Arweave names by character count', () => {
+    expect(nameAssetFontScale('ufw')).toBe(18);
+    expect(nameAssetFontScale('rule34')).toBe(18);
+    expect(nameAssetFontScale('123456789012345')).toBe(9.2);
+    expect(nameAssetFontScale('x'.repeat(50))).toBe(3.5);
+  });
+
   it('separates fungible tokens from atomic assets', () => {
     const tokenCollection: Collection = {
       id: 'tokens',
