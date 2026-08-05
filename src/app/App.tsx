@@ -1342,6 +1342,29 @@ function homeMarketSummaryListed(summary: HomeMarketSummary | undefined) {
   return summary?.status === 'resolved' && Boolean(summary.value);
 }
 
+function HomePendingMarketValue({ label = 'Checking…' }: { label?: string }) {
+  return (
+    <span className="home-market-value-pending">
+      <LoaderCircle aria-hidden="true" />
+      <span>{label}</span>
+    </span>
+  );
+}
+
+function HomeMarketGhostCard({ kind }: { kind: 'asset' | 'collection' }) {
+  const collection = kind === 'collection';
+  return (
+    <div
+      className={`home-market-ghost home-market-ghost--${kind}${collection ? ' home-feature-card' : ''}`}
+      role="status"
+    >
+      <LoaderCircle aria-hidden="true" />
+      <strong>{collection ? 'Loading more collections' : 'Loading more assets'}</strong>
+      <span>{collection ? 'Checking indexes and live floors.' : 'Checking active listings and prices.'}</span>
+    </div>
+  );
+}
+
 export function homeMarketPriceValue(value: string | null | undefined) {
   if (!value) return Number.POSITIVE_INFINITY;
   const match = value.replace(/,/g, '').match(/^([0-9]+(?:\.[0-9]+)?)\s+AR(?:\s*\/|$)/);
@@ -1355,6 +1378,10 @@ export function homeMarketSummariesReady(
   summaries: Record<string, HomeMarketSummary>,
 ) {
   return !loading && keys.every((key) => Boolean(summaries[key]));
+}
+
+export function homeMarketHasPending(loading: boolean, keys: string[], summaries: Record<string, HomeMarketSummary>) {
+  return loading || keys.some((key) => !summaries[key]);
 }
 
 export function homeMarketShellLoading(loading: boolean, collectionCount: number) {
@@ -1775,6 +1802,18 @@ function Home() {
     collections.map((collection) => collection.id),
     collectionFloors,
   );
+  const assetSummariesRetrying = summaryRetrying && summaryRetryRun.current.pending.has('assets');
+  const collectionSummariesRetrying = summaryRetrying && summaryRetryRun.current.pending.has('collections');
+  const collectionResultsPending = homeMarketHasPending(
+    market.loading || collectionSummariesRetrying,
+    collections.map((collection) => collection.id),
+    collectionFloors,
+  );
+  const discoverResultsPending = homeMarketHasPending(
+    market.loading || assetSummariesRetrying,
+    assets.map(({ asset }) => asset.id),
+    assetPrices,
+  );
   const discoverResultsReady = discoverResultsPublished || visibleAssetResultsReady;
   const selectHomeTab = (tab: 'discover' | 'collections') => {
     setHomeTab(tab);
@@ -1894,15 +1933,18 @@ function Home() {
                 </div>
               ) : null}
               {homeTab === 'collections' ? (
-                <div aria-labelledby="home-collections-tab" id="home-collections-panel" role="tabpanel">
-                  {!collectionResultsReady ? (
-                    <div className="home-market-loading">
-                      <Loading label="Loading collections…" />
-                    </div>
-                  ) : (
+                <div
+                  aria-busy={collectionResultsPending}
+                  aria-labelledby="home-collections-tab"
+                  id="home-collections-panel"
+                  role="tabpanel"
+                >
+                  {collections.length || collectionResultsPending ? (
                     <div className="home-feature-grid">
                       {collections.map((collection, index) => {
                         const image = collection.assets.find((asset) => asset.image)?.image;
+                        const floor = collectionFloors[collection.id];
+                        const floorPending = !floor || (collectionSummariesRetrying && floor.status === 'unavailable');
                         return (
                           <Link
                             className={`home-feature-card feature-${index}`}
@@ -1949,15 +1991,15 @@ function Home() {
                               </div>
                               <div>
                                 <span>{collection.hasMore ? 'Loaded floor' : 'Floor'}</span>
-                                <strong
-                                  className={
-                                    homeMarketSummaryListed(collectionFloors[collection.id]) ? 'listed' : undefined
-                                  }
-                                >
-                                  {homeMarketSummaryLabel(
-                                    collectionFloors[collection.id],
-                                    collection.hasMore ? 'No loaded listings' : 'No live listings',
-                                    collection.hasMore ? 'No loaded asks' : 'No indexed asks',
+                                <strong className={homeMarketSummaryListed(floor) ? 'listed' : undefined}>
+                                  {!floorPending && floor ? (
+                                    homeMarketSummaryLabel(
+                                      floor,
+                                      collection.hasMore ? 'No loaded listings' : 'No live listings',
+                                      collection.hasMore ? 'No loaded asks' : 'No indexed asks',
+                                    )
+                                  ) : (
+                                    <HomePendingMarketValue />
                                   )}
                                 </strong>
                               </div>
@@ -1971,50 +2013,54 @@ function Home() {
                           </Link>
                         );
                       })}
+                      {collectionResultsPending ? <HomeMarketGhostCard kind="collection" /> : null}
                     </div>
-                  )}
+                  ) : null}
                   {collectionResultsReady && !market.error && collections.length === 0 ? (
                     <div className="home-no-results">No collections match “{query}”.</div>
                   ) : null}
                 </div>
               ) : (
                 <div
-                  aria-busy={!discoverResultsReady}
+                  aria-busy={discoverResultsPending}
                   aria-labelledby="home-discover-tab"
                   id="home-discover-panel"
                   role="tabpanel"
                 >
-                  {!discoverResultsReady ? (
-                    <div className="home-market-loading">
-                      <Loading label="Loading assets…" />
-                    </div>
-                  ) : displayedAssets.length ? (
+                  {displayedAssets.length || discoverResultsPending ? (
                     <div className="home-asset-grid">
-                      {displayedAssets.map(({ asset, collection }) => (
-                        <Link key={`${collection.id}-${asset.id}`} to={`/asset/${collection.id}/${asset.id}`}>
-                          {asset.image ? (
-                            <ArtworkImage className="home-asset-media" src={asset.image} alt="" />
-                          ) : collection.kind === 'names' ? (
-                            <NameArtwork className="home-asset-media" name={asset.name} />
-                          ) : (
-                            <TokenArtwork
-                              className="home-asset-media home-token-art"
-                              ticker={asset.ticker ?? 'Token'}
-                            />
-                          )}
-                          <div className="home-asset-details">
-                            <div>
-                              <strong>{asset.name}</strong>
-                              <span>{collection.name}</span>
+                      {displayedAssets.map(({ asset, collection }) => {
+                        const price = assetPrices[asset.id];
+                        const pricePending = !price || (assetSummariesRetrying && price.status === 'unavailable');
+                        return (
+                          <Link key={`${collection.id}-${asset.id}`} to={`/asset/${collection.id}/${asset.id}`}>
+                            {asset.image ? (
+                              <ArtworkImage className="home-asset-media" src={asset.image} alt="" />
+                            ) : collection.kind === 'names' ? (
+                              <NameArtwork className="home-asset-media" name={asset.name} />
+                            ) : (
+                              <TokenArtwork
+                                className="home-asset-media home-token-art"
+                                ticker={asset.ticker ?? 'Token'}
+                              />
+                            )}
+                            <div className="home-asset-details">
+                              <div>
+                                <strong>{asset.name}</strong>
+                                <span>{collection.name}</span>
+                              </div>
+                              <b className={`home-asset-price${homeMarketSummaryListed(price) ? ' listed' : ''}`}>
+                                {!pricePending && price ? (
+                                  homeMarketSummaryLabel(price, 'Not listed')
+                                ) : (
+                                  <HomePendingMarketValue />
+                                )}
+                              </b>
                             </div>
-                            <b
-                              className={`home-asset-price${homeMarketSummaryListed(assetPrices[asset.id]) ? ' listed' : ''}`}
-                            >
-                              {homeMarketSummaryLabel(assetPrices[asset.id], 'Not listed')}
-                            </b>
-                          </div>
-                        </Link>
-                      ))}
+                          </Link>
+                        );
+                      })}
+                      {discoverResultsPending ? <HomeMarketGhostCard kind="asset" /> : null}
                     </div>
                   ) : (
                     <div className="home-assets-empty">No live listings match this asset type.</div>
@@ -7293,11 +7339,28 @@ function OperationDialog({
         tabIndex={-1}
       >
         <div className="dialog-heading">
-          <div>
-            <p className="eyebrow" id={operationLabelId}>
-              {operationLabel(operation.kind)}
-            </p>
-            <h2 id={titleId}>{asset.name}</h2>
+          <div className={visiblePhase === 'working' ? 'dialog-asset-heading' : undefined}>
+            {visiblePhase === 'working' ? (
+              asset.image ? (
+                <ArtworkImage
+                  alt=""
+                  className="dialog-asset-artwork"
+                  decoding="async"
+                  loading="eager"
+                  src={asset.image}
+                />
+              ) : (
+                <span aria-hidden="true" className="dialog-asset-artwork dialog-asset-artwork-fallback">
+                  {asset.name.slice(0, 1)}
+                </span>
+              )
+            ) : null}
+            <div className="dialog-asset-heading-copy">
+              <p className="eyebrow" id={operationLabelId}>
+                {operationLabel(operation.kind)}
+              </p>
+              <h2 id={titleId}>{asset.name}</h2>
+            </div>
           </div>
           <TransactionDialogControl hiding={hiding} phase={visiblePhase} onClick={closeOrHide} />
         </div>

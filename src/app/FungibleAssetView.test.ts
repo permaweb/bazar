@@ -16,6 +16,7 @@ import {
   batchSettlementSummary,
   fungibleOrderActionLabel,
   FungiblePurchaseComposer,
+  FungiblePurchaseSequence,
   fungibleListingAccessibleLabel,
   FungibleOperationErrorAlert,
   FungibleOperationActivityControl,
@@ -24,6 +25,7 @@ import {
   MatchedListingsReview,
   PurchaseRoute,
   fungibleOperationStateError,
+  fungiblePurchaseSequence,
   fungibleBatchRecoveryStatus,
   fungibleTransferRecipientError,
   fungibleTransferSubmitLabel,
@@ -61,6 +63,42 @@ function purchaseOrder(orderId: string, creator: string, quantity: string, askin
 }
 
 describe('fungible operation error semantics', () => {
+  it('shows the gated transaction sequence for a multi-listing purchase', () => {
+    const registration = { stage: 'registration-confirming' } as PurchaseState;
+    const payment = { stage: 'payment-confirming' } as PurchaseState;
+    const steps = fungiblePurchaseSequence([payment, registration], 2);
+    const sequence = renderToStaticMarkup(
+      React.createElement(FungiblePurchaseSequence, {
+        listingCount: 2,
+        states: [payment, registration],
+      }),
+    );
+
+    expect(steps.map((step) => [step.key, step.state])).toEqual([
+      ['sign', 'done'],
+      ['reserve', 'active'],
+      ['pay', 'next'],
+      ['verify', 'next'],
+    ]);
+    expect(sequence).toContain('Purchase transaction sequence');
+    expect(sequence).not.toContain('Purchase sequence');
+    expect(sequence).not.toContain('2 listings · 4 transactions');
+    expect(sequence).not.toContain('Seller payments begin only after every reservation is accepted.');
+  });
+
+  it('keeps payment and receipt verification as separate visible stages', () => {
+    const verifying = { stage: 'ownership-verifying' } as PurchaseState;
+    const complete = { stage: 'complete' } as PurchaseState;
+
+    expect(fungiblePurchaseSequence([verifying], 1).map((step) => step.state)).toEqual([
+      'done',
+      'done',
+      'done',
+      'active',
+    ]);
+    expect(fungiblePurchaseSequence([complete], 1).every((step) => step.state === 'done')).toBe(true);
+  });
+
   it('keeps a running purchase when a separate listing form opens', () => {
     const purchase = {
       id: 'purchase',

@@ -1,5 +1,6 @@
 import {
   canPreviewRecallImage,
+  fetchBoundedRecallImage,
   type ArweaveRecallContent,
   type ArweaveRecallContentKind,
 } from 'api/arweave-mining-telemetry';
@@ -150,10 +151,10 @@ const MAX_MINING_PARTICLES = 180;
 const PICK_SAMPLE_STEP = 12;
 const MAX_RENDER_PIXEL_RATIO = 1.5;
 const PARTICLE_HIGHLIGHT = new THREE.Color('#ffffff');
-const ACCEPTED_PROOF_CARD_WIDTH = 190;
-const ACCEPTED_PROOF_CARD_HEIGHT = 116;
-const ACCEPTED_PROOF_CARD_COMPACT_WIDTH = 168;
-const ACCEPTED_PROOF_CARD_COMPACT_HEIGHT = 104;
+const ACCEPTED_PROOF_CARD_WIDTH = 224;
+const ACCEPTED_PROOF_CARD_HEIGHT = 144;
+const ACCEPTED_PROOF_CARD_COMPACT_WIDTH = 196;
+const ACCEPTED_PROOF_CARD_COMPACT_HEIGHT = 128;
 const EMPTY_ACCEPTED_PROOFS: NonNullable<Props['miningActivity']>['acceptedProofs'] = [];
 
 export function createWebGLRendererSafely(
@@ -203,6 +204,7 @@ export function TransactionSequenceCable3D({
 }: Props) {
   const mountRef = React.useRef<HTMLDivElement>(null);
   const activeRef = React.useRef(active);
+  const resumeSyncRef = React.useRef(false);
   const phaseLabelRefs = React.useRef<Array<HTMLSpanElement | null>>([]);
   const wireStatesRef = React.useRef<WireState[]>([]);
   const laneDataRef = React.useRef(lanes);
@@ -223,6 +225,7 @@ export function TransactionSequenceCable3D({
   const phaseLabelKey = phaseLabels.join('\u0000');
   const tooltipId = React.useId();
 
+  if (active && !activeRef.current) resumeSyncRef.current = true;
   activeRef.current = active;
   laneDataRef.current = lanes;
   miningActivityRef.current = visibleMiningActivity;
@@ -327,7 +330,7 @@ export function TransactionSequenceCable3D({
       baseLine.userData.laneIndex = laneIndex;
       baseLine.frustumCulled = false;
       group.add(baseLine, ...phaseLines);
-      return {
+      const wire: WireState = {
         positions,
         baseGeometry,
         baseMaterial,
@@ -342,6 +345,8 @@ export function TransactionSequenceCable3D({
             lanes[laneIndex]?.phases[phaseIndex]?.progress ?? sequencePhaseBounds(phaseIndex, phaseCount).start,
         ),
       };
+      snapWireProgress(wire, lanes[laneIndex], phaseCount);
+      return wire;
     });
     wireStatesRef.current = wireStates;
 
@@ -688,6 +693,13 @@ export function TransactionSequenceCable3D({
         previousFrameAt = frameAt;
         return;
       }
+      if (resumeSyncRef.current) {
+        wireStates.forEach((wire) => {
+          const lane = laneDataRef.current[wire.laneIndex];
+          if (lane) snapWireProgress(wire, lane, phaseCount);
+        });
+        resumeSyncRef.current = false;
+      }
       const deltaSeconds = Math.min(0.05, Math.max(0, (frameAt - previousFrameAt) / 1_000));
       previousFrameAt = frameAt;
       wireStates.forEach((wire) => {
@@ -914,10 +926,40 @@ function RecallContentPreview({ content, fallback }: { content?: ArweaveRecallCo
   if (canPreviewRecallImage(content)) {
     return <img src={content.contentUrl} alt={title} loading={'lazy'} />;
   }
+  if (content.kind === 'image' && content.contentLength === undefined) {
+    return <BoundedRecallImagePreview content={content} title={title} />;
+  }
   return (
     <AcceptedProofPayloadText>
       {content.metadata?.length ? content.metadata.join(' · ') : contentSymbol(content.kind)}
     </AcceptedProofPayloadText>
+  );
+}
+
+function BoundedRecallImagePreview({ content, title }: { content: ArweaveRecallContent; title: string }) {
+  const [imageUrl, setImageUrl] = React.useState<string>();
+
+  React.useEffect(() => {
+    const controller = new AbortController();
+    let objectUrl: string | undefined;
+    setImageUrl(undefined);
+    void fetchBoundedRecallImage(content, controller.signal)
+      .then((image) => {
+        if (!image || controller.signal.aborted) return;
+        objectUrl = URL.createObjectURL(image);
+        setImageUrl(objectUrl);
+      })
+      .catch(() => undefined);
+    return () => {
+      controller.abort();
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [content]);
+
+  return imageUrl ? (
+    <img src={imageUrl} alt={title} />
+  ) : (
+    <AcceptedProofPayloadText aria-label={'Loading image preview'}>Image</AcceptedProofPayloadText>
   );
 }
 
@@ -1180,6 +1222,29 @@ function updateWireProgress(wire: WireState, lane: Infinity3DLane, deltaSeconds:
   });
 }
 
+function snapWireProgress(wire: WireState, lane: Infinity3DLane, phaseCount: number): void {
+  wire.phaseGeometries.forEach((geometry, phaseIndex) => {
+    const { start: phaseStart, end: phaseEnd } = sequencePhaseBounds(phaseIndex, phaseCount);
+    const nextProgress = retainedPhaseProgress(
+      wire.displayedPhaseProgress[phaseIndex] ?? phaseStart,
+      lane.phases[phaseIndex]?.progress ?? phaseStart,
+      phaseStart,
+      phaseEnd,
+    );
+    wire.displayedPhaseProgress[phaseIndex] = nextProgress;
+    setPhaseInstanceCount(geometry, nextProgress, phaseStart, phaseEnd);
+  });
+}
+
+export function retainedPhaseProgress(
+  displayedProgress: number,
+  liveProgress: number,
+  phaseStart: number,
+  phaseEnd: number,
+): number {
+  return Math.max(displayedProgress, Math.min(phaseEnd, Math.max(phaseStart, liveProgress)));
+}
+
 function updatePhaseProgress(
   geometry: LineGeometry,
   displayedProgress: number,
@@ -1188,17 +1253,21 @@ function updatePhaseProgress(
   phaseEnd: number,
   deltaSeconds: number,
 ): number {
-  const target = Math.max(displayedProgress, Math.min(phaseEnd, Math.max(phaseStart, progress)));
+  const target = retainedPhaseProgress(displayedProgress, progress, phaseStart, phaseEnd);
   const smoothing = 1 - Math.exp(-deltaSeconds * 11);
   let nextProgress = displayedProgress + (target - displayedProgress) * smoothing;
   if (target - nextProgress < 0.002) nextProgress = target;
+  setPhaseInstanceCount(geometry, nextProgress, phaseStart, phaseEnd);
+  return nextProgress;
+}
+
+function setPhaseInstanceCount(geometry: LineGeometry, progress: number, phaseStart: number, phaseEnd: number): void {
   const segmentCount = Math.round(((phaseEnd - phaseStart) / 100) * SAMPLE_COUNT);
   const instanceCount = Math.max(
     1,
-    Math.min(segmentCount, Math.ceil(((nextProgress - phaseStart) / (phaseEnd - phaseStart)) * segmentCount)),
+    Math.min(segmentCount, Math.ceil(((progress - phaseStart) / (phaseEnd - phaseStart)) * segmentCount)),
   );
   if (geometry.instanceCount !== instanceCount) geometry.instanceCount = instanceCount;
-  return nextProgress;
 }
 
 function updateMarkers(

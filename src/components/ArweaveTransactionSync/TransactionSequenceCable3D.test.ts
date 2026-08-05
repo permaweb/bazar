@@ -5,6 +5,7 @@ import { ServerStyleSheet, ThemeProvider } from 'styled-components';
 import { theme } from 'helpers/theme';
 import {
   createWebGLRendererSafely,
+  retainedPhaseProgress,
   shouldClearTransactionInspection,
   shouldRenderProofPins,
   TransactionRendererFallback,
@@ -84,5 +85,11 @@ describe('transaction map renderer fallback', () => {
     expect(initial.indexOf('role="status"')).toBeLessThan(initial.indexOf('aria-label="Live observer status"'));
     expect(changed).toContain('3 confirmations');
     expect(changed).toContain('Transaction tracking continues with live observer status.');
+  });
+
+  it('restores hidden cable progress to the latest live position without moving backward', () => {
+    expect(retainedPhaseProgress(18, 42, 0, 50)).toBe(42);
+    expect(retainedPhaseProgress(42, 18, 0, 50)).toBe(42);
+    expect(retainedPhaseProgress(18, 72, 0, 50)).toBe(50);
   });
 });

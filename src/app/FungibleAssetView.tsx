@@ -6,6 +6,7 @@ import {
   ArrowDown,
   ArrowUpRight,
   BarChart3,
+  Check,
   ChevronRight,
   CircleX,
   FileText,
@@ -1008,6 +1009,81 @@ function fungibleActivityPhaseLabel(phase: TransactionDialogPhase) {
   }[phase];
 }
 
+export type FungiblePurchaseSequenceStep = {
+  key: 'sign' | 'reserve' | 'pay' | 'verify';
+  label: string;
+  detail: string;
+  state: 'done' | 'active' | 'next';
+};
+
+const PAYMENT_PURCHASE_STAGES = new Set([
+  'dispatching-payment',
+  'payment-propagating',
+  'payment-confirming',
+  'ownership-verifying',
+  'complete',
+]);
+
+export function fungiblePurchaseSequence(
+  states: Array<PurchaseState | undefined>,
+  listingCount: number,
+): FungiblePurchaseSequenceStep[] {
+  const total = Math.max(1, listingCount);
+  const known = states.filter((state): state is PurchaseState => Boolean(state));
+  const signed = Math.min(total, known.length);
+  const reserved = Math.min(total, known.filter((state) => PAYMENT_PURCHASE_STAGES.has(state.stage)).length);
+  const paid = Math.min(
+    total,
+    known.filter((state) => state.stage === 'ownership-verifying' || state.stage === 'complete').length,
+  );
+  const verified = Math.min(total, known.filter((state) => state.stage === 'complete').length);
+  const activeIndex = signed < total ? 0 : reserved < total ? 1 : paid < total ? 2 : verified < total ? 3 : 4;
+  const progress = [signed, reserved, paid, verified];
+  const steps: Array<Omit<FungiblePurchaseSequenceStep, 'state'>> = [
+    {
+      key: 'sign',
+      label: 'Sign transactions',
+      detail: `${total * 2} wallet ${total * 2 === 1 ? 'approval' : 'approvals'}`,
+    },
+    { key: 'reserve', label: 'Reserve listings', detail: `${reserved}/${total} accepted` },
+    { key: 'pay', label: 'Pay sellers', detail: `${paid}/${total} confirmed` },
+    { key: 'verify', label: 'Verify receipts', detail: `${verified}/${total} verified` },
+  ];
+  return steps.map((step, index) => ({
+    ...step,
+    state: index < activeIndex ? 'done' : index === activeIndex ? 'active' : 'next',
+    ...(index === 0 && signed < total ? { detail: `Preparing ${total * 2} wallet approvals` } : {}),
+    ...(index > 0 && progress[index] === total ? { state: 'done' as const } : {}),
+  }));
+}
+
+export function FungiblePurchaseSequence({
+  states,
+  listingCount,
+}: {
+  states: Array<PurchaseState | undefined>;
+  listingCount: number;
+}) {
+  const steps = fungiblePurchaseSequence(states, listingCount);
+  return (
+    <section aria-label="Purchase transaction sequence" className="purchase-sequence">
+      <ol>
+        {steps.map((step, index) => (
+          <li className={step.state} key={step.key}>
+            <span aria-hidden="true" className="purchase-sequence-marker">
+              {step.state === 'done' ? <Check /> : index + 1}
+            </span>
+            <span className="purchase-sequence-copy">
+              <strong>{step.label}</strong>
+              <small>{step.detail}</small>
+            </span>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
 function FungibleOperationDialog({
   asset,
   state,
@@ -1860,17 +1936,32 @@ function FungibleOperationDialog({
         tabIndex={-1}
       >
         <div className="dialog-heading">
-          <div>
-            {compactPurchaseForm ? (
-              <h2 id={dialogTitleId}>Buy {asset.name}</h2>
-            ) : (
-              <>
-                <p className="eyebrow" id={operationLabelId}>
-                  {operationLabel(operation.kind)}
-                </p>
-                <h2 id={dialogTitleId}>{asset.name}</h2>
-              </>
-            )}
+          <div className={phase === 'working' ? 'dialog-asset-heading' : undefined}>
+            {phase === 'working' ? (
+              asset.image ? (
+                <ArtworkImage
+                  alt=""
+                  className="dialog-asset-artwork"
+                  decoding="async"
+                  loading="eager"
+                  src={asset.image}
+                />
+              ) : (
+                <TokenArtwork className="dialog-asset-artwork" ticker={state.ticker || asset.ticker || asset.name} />
+              )
+            ) : null}
+            <div className="dialog-asset-heading-copy">
+              {compactPurchaseForm ? (
+                <h2 id={dialogTitleId}>Buy {asset.name}</h2>
+              ) : (
+                <>
+                  <p className="eyebrow" id={operationLabelId}>
+                    {operationLabel(operation.kind)}
+                  </p>
+                  <h2 id={dialogTitleId}>{asset.name}</h2>
+                </>
+              )}
+            </div>
           </div>
           <TransactionDialogControl hiding={hiding} phase={phase} onClick={closeOrHide} />
         </div>
@@ -2198,6 +2289,12 @@ function FungibleOperationDialog({
                   (signedWork ? 'Watching this transaction.' : 'Preparing the transaction for wallet approval.')}
               </p>
             )}
+            {operation.kind === 'buy' && visibleOrders.length ? (
+              <FungiblePurchaseSequence
+                listingCount={visibleOrders.length}
+                states={visibleOrders.map((order) => purchaseStates[order.orderId])}
+              />
+            ) : null}
             {signedWork && operation.kind !== 'buy' ? (
               <p className="sync-resume-note">
                 Transaction details are saved in this browser. Return with the same wallet to continue while this
