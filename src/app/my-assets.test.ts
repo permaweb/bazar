@@ -379,7 +379,7 @@ describe('My assets retry bookkeeping', () => {
       'Arweave’s transaction index is temporarily rate-limiting requests.',
     );
 
-    expect(copy.heading).toBe('Candidate verification unavailable');
+    expect(copy.heading).toBe('Candidate checks unavailable');
     expect(copy.announcement).toContain('transaction index');
     expect(copy.announcement).not.toContain('Live state resolved');
   });

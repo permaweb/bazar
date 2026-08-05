@@ -150,6 +150,10 @@ const MAX_MINING_PARTICLES = 180;
 const PICK_SAMPLE_STEP = 12;
 const MAX_RENDER_PIXEL_RATIO = 1.5;
 const PARTICLE_HIGHLIGHT = new THREE.Color('#ffffff');
+const ACCEPTED_PROOF_CARD_WIDTH = 190;
+const ACCEPTED_PROOF_CARD_HEIGHT = 116;
+const ACCEPTED_PROOF_CARD_COMPACT_WIDTH = 168;
+const ACCEPTED_PROOF_CARD_COMPACT_HEIGHT = 104;
 const EMPTY_ACCEPTED_PROOFS: NonNullable<Props['miningActivity']>['acceptedProofs'] = [];
 
 export function createWebGLRendererSafely(
@@ -1361,11 +1365,18 @@ function updateAcceptedProofPins(
     const anchorX = (point.x * 0.5 + 0.5) * width;
     const anchorY = (-point.y * 0.5 + 0.5) * height;
     const compact = width <= 480;
-    const cardWidth = compact ? 112 : 150;
-    const cardHeight = compact ? 72 : 96;
+    const cardWidth = Math.min(
+      compact ? ACCEPTED_PROOF_CARD_COMPACT_WIDTH : ACCEPTED_PROOF_CARD_WIDTH,
+      Math.max(1, width - 8),
+    );
+    const cardHeight = Math.min(
+      compact ? ACCEPTED_PROOF_CARD_COMPACT_HEIGHT : ACCEPTED_PROOF_CARD_HEIGHT,
+      Math.max(1, height - 8),
+    );
     const { x: cardX, y: cardY } = acceptedProofCardPosition(
       index,
       proofs.length,
+      anchorX,
       anchorY,
       width,
       height,
@@ -1377,6 +1388,8 @@ function updateAcceptedProofPins(
     const deltaY = connector.y - anchorY;
     element.style.setProperty('--proof-pin-x', `${anchorX}px`);
     element.style.setProperty('--proof-pin-y', `${anchorY}px`);
+    element.style.setProperty('--proof-card-width', `${cardWidth}px`);
+    element.style.setProperty('--proof-card-height', `${cardHeight}px`);
     element.style.setProperty('--proof-card-x', `${cardX - anchorX}px`);
     element.style.setProperty('--proof-card-y', `${cardY - anchorY}px`);
     element.style.setProperty('--proof-stem-length', `${Math.hypot(deltaX, deltaY)}px`);
@@ -1388,6 +1401,7 @@ function updateAcceptedProofPins(
 export function acceptedProofCardPosition(
   index: number,
   proofCount: number,
+  anchorX: number,
   anchorY: number,
   width: number,
   height: number,
@@ -1395,20 +1409,18 @@ export function acceptedProofCardPosition(
   cardHeight: number,
 ): { x: number; y: number } {
   const edge = 4;
-  if (proofCount <= 1) {
-    return {
-      x: Math.max(edge, width - cardWidth - edge),
-      y: anchorY < height / 2 ? Math.max(edge, height - cardHeight - edge) : edge,
-    };
-  }
-  const slots = Math.ceil(proofCount / 2);
-  const slot = Math.floor(index / 2);
+  const gap = 12;
+  const maxX = Math.max(edge, width - cardWidth - edge);
+  const maxY = Math.max(edge, height - cardHeight - edge);
+  const roomOnRight = width - anchorX;
+  const roomOnLeft = anchorX;
+  const placeOnRight = roomOnRight >= cardWidth + gap + edge || roomOnRight >= roomOnLeft;
+  const nearVerticalCenter = Math.abs(anchorY - height / 2) < cardHeight / 2 + gap;
+  const placeBelow = nearVerticalCenter && proofCount > 1 ? index % 2 === 0 : anchorY < height / 2;
+
   return {
-    x:
-      slots <= 1
-        ? Math.max(edge, width - cardWidth - edge)
-        : edge + ((width - cardWidth - edge * 2) * slot) / (slots - 1),
-    y: index % 2 === 0 ? edge : Math.max(edge, height - cardHeight - edge),
+    x: Math.min(maxX, Math.max(edge, placeOnRight ? anchorX + gap : anchorX - cardWidth - gap)),
+    y: Math.min(maxY, Math.max(edge, placeBelow ? anchorY + gap : anchorY - cardHeight - gap)),
   };
 }
 
@@ -1610,6 +1622,7 @@ const RendererFallback = styled.div`
 const AcceptedProofPins = styled.span`
   position: absolute;
   inset: 0;
+  z-index: 300;
   pointer-events: none;
 `;
 
@@ -1643,32 +1656,32 @@ const AcceptedProofCard = styled.span`
   position: absolute;
   display: grid;
   box-sizing: border-box;
-  width: 150px;
-  height: 96px;
-  padding: 5px;
+  width: var(--proof-card-width, ${ACCEPTED_PROOF_CARD_WIDTH}px);
+  height: var(--proof-card-height, ${ACCEPTED_PROOF_CARD_HEIGHT}px);
+  padding: 8px;
   grid-template-rows: auto auto minmax(0, 1fr);
-  gap: 3px;
+  gap: 5px;
   transform: translate3d(var(--proof-card-x, 0), var(--proof-card-y, 0), 0);
   overflow: hidden;
-  background: color-mix(in srgb, ${(props) => props.theme.colors.container.primary.background} 96%, transparent);
+  background: color-mix(in srgb, ${(props) => props.theme.colors.container.primary.background} 98%, transparent);
   border: 1px solid ${(props) => props.theme.colors.border.primary};
-  border-radius: 7px;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.1);
+  border-radius: 10px;
+  box-shadow: 0 10px 28px rgba(28, 25, 22, 0.14);
   pointer-events: auto;
 
   @media (max-width: 480px) {
-    width: 112px;
-    height: 72px;
-    padding: 4px;
-    gap: 2px;
-    border-radius: 6px;
+    width: var(--proof-card-width, ${ACCEPTED_PROOF_CARD_COMPACT_WIDTH}px);
+    height: var(--proof-card-height, ${ACCEPTED_PROOF_CARD_COMPACT_HEIGHT}px);
+    padding: 6px;
+    gap: 4px;
+    border-radius: 8px;
   }
 `;
 
 const AcceptedProofLabel = styled.span`
   overflow: hidden;
-  color: ${(props) => props.theme.colors.font.alt1};
-  font-size: ${(props) => props.theme.typography.size.small};
+  color: ${(props) => props.theme.colors.font.primary};
+  font-size: ${(props) => props.theme.typography.size.body};
   font-variant-numeric: tabular-nums;
   font-weight: ${(props) => props.theme.typography.weight.regular};
   line-height: 1;
@@ -1676,7 +1689,7 @@ const AcceptedProofLabel = styled.span`
   white-space: nowrap;
 
   @media (max-width: 480px) {
-    font-size: ${(props) => props.theme.typography.size.small};
+    font-size: ${(props) => props.theme.typography.size.body};
   }
 `;
 
@@ -1685,7 +1698,7 @@ const AcceptedProofMeta = styled.span`
   color: ${(props) => props.theme.colors.font.alt1};
   font-size: ${(props) => props.theme.typography.size.small};
   font-variant-numeric: tabular-nums;
-  line-height: 1;
+  line-height: 1.15;
   text-overflow: ellipsis;
   white-space: nowrap;
 
@@ -1700,7 +1713,7 @@ const AcceptedProofPayloads = styled.span`
   grid-auto-columns: minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
-  gap: 3px;
+  gap: 6px;
 `;
 
 const AcceptedProofPayload = styled.a`
@@ -1708,8 +1721,9 @@ const AcceptedProofPayload = styled.a`
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  background: color-mix(in srgb, ${(props) => props.theme.colors.font.primary} 5%, transparent);
-  border-radius: 4px;
+  background: color-mix(in srgb, ${(props) => props.theme.colors.font.primary} 6%, transparent);
+  border: 1px solid color-mix(in srgb, ${(props) => props.theme.colors.border.alt1} 60%, transparent);
+  border-radius: 6px;
   color: ${(props) => props.theme.colors.font.primary};
   text-decoration: none;
   position: relative;
@@ -1725,24 +1739,22 @@ const AcceptedProofPayload = styled.a`
 `;
 
 const AcceptedProofPayloadText = styled.span`
-  display: -webkit-box;
+  display: block;
+  box-sizing: border-box;
   align-self: center;
-  max-height: 43px;
-  padding: 3px;
+  width: 100%;
+  padding: 17px 6px 15px;
   overflow: hidden;
   color: ${(props) => props.theme.colors.font.alt1};
   font-family: ${(props) => props.theme.typography.family.primary};
   font-size: ${(props) => props.theme.typography.size.small};
-  line-height: 1.2;
-  overflow-wrap: anywhere;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 4;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 
   @media (max-width: 480px) {
-    max-height: 31px;
-    padding: 2px;
+    padding: 15px 4px 13px;
     font-size: ${(props) => props.theme.typography.size.small};
-    -webkit-line-clamp: 3;
   }
 `;
 
@@ -1751,10 +1763,10 @@ const AcceptedProofContentType = styled.span`
   right: 2px;
   bottom: 2px;
   left: 2px;
-  padding: 2px 3px;
+  padding: 3px 4px;
   overflow: hidden;
   background: color-mix(in srgb, ${(props) => props.theme.colors.container.primary.background} 90%, transparent);
-  border-radius: 3px;
+  border-radius: 4px;
   color: ${(props) => props.theme.colors.font.primary};
   font-size: ${(props) => props.theme.typography.size.small};
   font-weight: ${(props) => props.theme.typography.weight.regular};
@@ -1770,8 +1782,8 @@ const AcceptedProofContentType = styled.span`
 const AcceptedProofRecallMeta = styled.span`
   position: absolute;
   top: 2px;
-  right: 2px;
-  left: 2px;
+  right: 4px;
+  left: 4px;
   overflow: hidden;
   color: ${(props) => props.theme.colors.font.alt1};
   font-size: ${(props) => props.theme.typography.size.small};

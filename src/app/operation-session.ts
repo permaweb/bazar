@@ -71,7 +71,7 @@ export function repairRejectedPurchase(
   snapshot: PurchaseSnapshot,
   code: string | undefined,
 ): { discardIds: string[]; snapshot: PurchaseSnapshot | null } {
-  if (code === 'registration-dispatch-rejected') {
+  if (code === 'registration-dispatch-rejected' || code === 'asset-order-reservation-rejected') {
     return {
       discardIds: [snapshot.registration?.id, snapshot.payment?.id].filter((id): id is string => Boolean(id)),
       snapshot: null,

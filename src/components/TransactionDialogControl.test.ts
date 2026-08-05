@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
 import {
+  isTransactionActivityVisible,
   TransactionDialogControl,
   transactionDialogDismissAction,
   transactionDialogHideMotion,
@@ -10,6 +11,14 @@ import {
 } from './TransactionDialogControl';
 
 describe('shared transaction dialog control', () => {
+  it('keeps wallet approval out of background transaction activity', () => {
+    expect(isTransactionActivityVisible('approval')).toBe(false);
+    expect(isTransactionActivityVisible('done')).toBe(false);
+    expect(isTransactionActivityVisible('form')).toBe(true);
+    expect(isTransactionActivityVisible('working')).toBe(true);
+    expect(isTransactionActivityVisible('error')).toBe(true);
+  });
+
   it('hides working transactions without closing their lifecycle', () => {
     expect(transactionDialogDismissAction('working', true)).toEqual({ kind: 'hide' });
     const markup = renderToStaticMarkup(

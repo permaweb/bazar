@@ -16,13 +16,13 @@ describe('atomic operation error semantics', () => {
   it('keeps transaction recovery outside the assertive alert summary', () => {
     const alert = renderToStaticMarkup(
       React.createElement(AtomicOperationErrorAlert, {
-        message: 'The signed transaction is safe to resume.',
+        message: 'The signed transaction is saved in this browser.',
       }),
     );
     expect(alert).toContain('role="alert"');
     expect(alert).not.toContain('<button');
     expect(alert).not.toContain('<a');
-    expect(alert).toContain('The signed transaction is safe to resume.');
+    expect(alert).toContain('The signed transaction is saved in this browser.');
   });
 });
 

@@ -65,7 +65,7 @@ describe('confirmationProgressWidth', () => {
 
 describe('confirmationLifecycleState', () => {
   it('keeps post-confirmation settlement visibly active', () => {
-    expect(confirmationLifecycleState(5, 5, 'Verifying receipt', false)).toEqual({
+    expect(confirmationLifecycleState(5, 5, 'Checking receipt', false)).toEqual({
       depth: 5,
       pending: true,
       active: true,

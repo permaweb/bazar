@@ -9,6 +9,7 @@ import {
   batchStageLabel,
   batchPaymentBarrierState,
   batchPurchaseRecoveryApprovalCount,
+  batchHasNoDispatchedSellerPayment,
   batchPurchaseStartingBalance,
   batchRecoveryFrameBuffer,
   batchRecoveryIdentity,
@@ -258,14 +259,14 @@ describe('fungible operation error semantics', () => {
       React.createElement(
         FungibleSettlementRecoveryPanel,
         { orderId: ORDER_ID },
-        React.createElement('p', null, 'This incomplete listing can be resumed safely.'),
+        React.createElement('p', null, 'This incomplete listing can be continued with the same wallet.'),
       ),
     );
     expect(panel).toContain('role="tabpanel"');
     expect(panel).toContain('tabindex="0"');
     expect(panel).toContain(`aria-labelledby="settlement-error-tab-${ORDER_ID}"`);
     expect(panel).toContain('id="fungible-settlement-error-panel"');
-    expect(panel).toContain('This incomplete listing can be resumed safely.');
+    expect(panel).toContain('This incomplete listing can be continued with the same wallet.');
   });
 });
 
@@ -688,7 +689,32 @@ describe('parallel settlement progress summary', () => {
   });
 
   it('does not report payment completion while token receipt is still being verified', () => {
-    expect(batchStageLabel({ stage: 'ownership-verifying' } as PurchaseState)).toBe('Verifying receipt');
+    expect(batchStageLabel({ stage: 'ownership-verifying' } as PurchaseState)).toBe('Checking receipt');
+  });
+
+  it('names the live reservation check and caps historical confirmation counts', () => {
+    expect(batchStageLabel({ stage: 'registration-accepting' } as PurchaseState)).toBe('Checking reservation');
+    expect(
+      batchStageLabel({
+        stage: 'registration-confirming',
+        registration: { consensus: { confirmations: 316 } },
+      } as PurchaseState),
+    ).toBe('Reserve 5/5');
+  });
+});
+
+describe('blocked purchase recovery cleanup', () => {
+  it('clears only batches whose seller payments were never dispatched', () => {
+    expect(
+      batchHasNoDispatchedSellerPayment({
+        entries: [{ snapshot: { registration: { id: 'R'.repeat(43), dispatched: true } } }],
+      } as any),
+    ).toBe(true);
+    expect(
+      batchHasNoDispatchedSellerPayment({
+        entries: [{ snapshot: { payment: { id: 'P'.repeat(43), dispatched: true } } }],
+      } as any),
+    ).toBe(false);
   });
 });
 

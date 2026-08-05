@@ -99,7 +99,7 @@ function reconcileActivity(activity: OperationActivity, storage: ActivityStorage
         status: 'Resuming purchase…',
       };
     }
-    return { ...activity, phase: 'working', status: 'Restarting purchase safely…' };
+    return { ...activity, phase: 'working', status: 'Reviewing interrupted purchase…' };
   }
 
   const saved = parseJson<StoredOperation>(storage.getItem(`bazar-operation:${activity.asset.id}`));

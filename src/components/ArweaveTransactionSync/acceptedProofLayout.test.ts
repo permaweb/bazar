@@ -3,9 +3,14 @@ import { describe, expect, it } from 'vitest';
 import { acceptedProofCardPosition, connectorEndpoint } from './TransactionSequenceCable3D';
 
 describe('accepted proof layout', () => {
-  it('places a single block card on the right edge and opposite its marker', () => {
-    expect(acceptedProofCardPosition(0, 1, 80, 700, 320, 240, 116)).toEqual({ x: 456, y: 200 });
-    expect(acceptedProofCardPosition(0, 1, 240, 700, 320, 240, 116)).toEqual({ x: 456, y: 4 });
+  it('keeps a single block card close to its marker', () => {
+    expect(acceptedProofCardPosition(0, 1, 320, 80, 700, 320, 240, 116)).toEqual({ x: 332, y: 92 });
+    expect(acceptedProofCardPosition(0, 1, 620, 240, 700, 320, 240, 116)).toEqual({ x: 368, y: 112 });
+  });
+
+  it('keeps a nearby block card within the visualization edges', () => {
+    expect(acceptedProofCardPosition(0, 1, 4, 4, 300, 140, 168, 104)).toEqual({ x: 16, y: 16 });
+    expect(acceptedProofCardPosition(0, 1, 296, 136, 300, 140, 168, 104)).toEqual({ x: 116, y: 20 });
   });
 
   it('ends the connector at the visible card border', () => {

@@ -8,6 +8,10 @@ export type TransactionDialogDismissAction =
 
 export const TRANSACTION_DIALOG_HIDE_DURATION_MS = 480;
 
+export function isTransactionActivityVisible(phase: TransactionDialogPhase) {
+  return phase !== 'approval' && phase !== 'done';
+}
+
 type DialogMotionRect = Pick<DOMRect, 'height' | 'left' | 'top' | 'width'>;
 
 export function transactionDialogHideMotion(source: DialogMotionRect, target: DialogMotionRect) {

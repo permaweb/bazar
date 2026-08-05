@@ -1487,6 +1487,7 @@ describe('fungible asset transactions', () => {
       fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input);
         if (init?.method === 'POST') posts += 1;
+        if (url.includes('/tx/') && url.endsWith('/status')) return Response.json({ block_height: 90 });
         if (url.endsWith('/info')) return Response.json({ height: 101 });
         stateReads += 1;
         return Response.json({
@@ -1531,6 +1532,59 @@ describe('fungible asset transactions', () => {
     ).rejects.toThrow('asset-order-reservation-expired');
     expect(stateReads).toBe(1);
     expect(posts).toBe(0);
+  });
+
+  it('stops a reservation after live process state has definitively passed its block', async () => {
+    const order = swapOrder(transactionId, '3000000000000', '6000000');
+    const registrationId = 'R'.repeat(43);
+    let stateReads = 0;
+    const subject = new AssetTransactionClient({
+      fetch: async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith(`/tx/${registrationId}/status`)) return Response.json({ block_height: 100 });
+        if (url.endsWith('/info')) return Response.json({ height: 120 });
+        stateReads += 1;
+        return Response.json({
+          'execution-device': 'token@1.0',
+          'at-slot': 40,
+          'swap-height': 111,
+          'total-supply': '1000000000000000000',
+          denomination: 12,
+          ticker: 'WEAVE',
+          balances: { [recipient]: '999997000000000000' },
+          orders: {
+            [order.orderId]: {
+              'order-id': order.orderId,
+              creator: order.creator,
+              recipient: order.recipient,
+              asking: order.asking,
+              deposit: order.deposit,
+              'minimum-fee': order.minimumFee,
+              deadline: order.deadline,
+              'created-at': order.createdAt,
+              quantity: order.quantity,
+              status: 'open',
+            },
+          },
+        });
+      },
+    });
+    const adapter = subject.purchaseAdapter({
+      processId,
+      order,
+      buyer: seller,
+      startingBalance: '0',
+      network: { tip: () => 120 } as any,
+    });
+
+    await expect(
+      adapter.waitForRegistrationAcceptance!({
+        registrationId,
+        signal: new AbortController().signal,
+        report: () => undefined,
+      }),
+    ).rejects.toThrow('asset-order-reservation-rejected');
+    expect(stateReads).toBe(1);
   });
 });
 

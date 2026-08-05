@@ -615,22 +615,32 @@ export class AssetTransactionClient {
         }
         return this.restore(id, input.buyer, { preserveExpiry: which !== 'payment' });
       },
-      waitForRegistrationAcceptance: async ({ signal, report }) => {
+      waitForRegistrationAcceptance: async ({ registrationId, signal, report }) => {
         let expired = false;
+        let rejected = false;
+        const registrationHeight = await this.#transactionBlockHeight(registrationId, signal);
         await waitForAssetState(
           input.processId,
           async (state) => {
             const order = state.orders[input.order.orderId];
             const tip = Math.max(await this.#currentHeight(signal), input.network.tip());
             if (
-              !order ||
-              !purchaseOrderMatches(order, purchaseOrder) ||
-              order.status !== 'reserved' ||
-              order.buyer !== input.buyer
-            )
-              return false;
-            expired = (order.reservedUntil ?? 0) < tip + this.#reservationInclusionMargin;
-            return true;
+              order &&
+              purchaseOrderMatches(order, purchaseOrder) &&
+              order.status === 'reserved' &&
+              order.buyer === input.buyer
+            ) {
+              expired = (order.reservedUntil ?? 0) < tip + this.#reservationInclusionMargin;
+              return true;
+            }
+
+            // Once this process has computed safely beyond the registration's
+            // L1 block, a missing reservation cannot appear later. It either
+            // lost a race, was rejected by the token device, or expired before
+            // recovery resumed. In every case the pre-signed seller payment
+            // must remain undispatched and this recovery must stop.
+            rejected = state.swapHeight >= registrationHeight + SCHEDULER_INCLUSION_DEPTH;
+            return rejected;
           },
           {
             fetch: this.#fetch,
@@ -640,6 +650,7 @@ export class AssetTransactionClient {
               reportProvider(report, provider, attempt, total, 'checking-reservation'),
           },
         );
+        if (rejected) throw new Error('asset-order-reservation-rejected');
         if (expired) throw new Error('asset-order-reservation-expired');
       },
       verifyOwnership: async ({ paymentId, signal, report }) => {

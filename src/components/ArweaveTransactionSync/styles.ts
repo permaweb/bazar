@@ -287,7 +287,6 @@ export const RiskNote = styled.p`
 
 export const RaceShell = styled.div<{ $height: number; $embedded: boolean }>`
   position: relative;
-  z-index: 0;
   display: grid;
   place-items: center;
   width: ${(props) =>

@@ -28,7 +28,6 @@ import {
   ShoppingCart,
   Tag,
   Upload,
-  Wallet,
   X,
 } from 'lucide-react';
 import { HashRouter, Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
@@ -115,9 +114,12 @@ import {
 import { ArweaveTransactionSync, type ArweaveSyncStep } from 'components/ArweaveTransactionSync';
 import { quorumConfirmationDepth } from 'components/ArweaveTransactionSync/confirmationDepth';
 import { ArtworkImage } from 'components/ArtworkImage';
+import { AssetDetailTabs, type AssetDetailTab } from 'components/AssetDetailTabs';
 import { ConnectWalletButton } from 'components/ConnectWalletButton';
+import { MarketActivityList } from 'components/MarketActivityList';
 import { OperationOutcome, OperationOutcomeAnnouncement } from 'components/OperationOutcomeAnnouncement';
 import {
+  isTransactionActivityVisible,
   prepareTransactionDialogHide,
   TRANSACTION_DIALOG_HIDE_DURATION_MS,
   TransactionDialogControl,
@@ -131,6 +133,7 @@ import {
   type UnavailableOperationRecovery,
 } from 'components/UnavailableOperationRecovery';
 import { WalletAddress, WalletIdentity } from 'components/WalletAddress';
+import { WalletMenu } from 'components/WalletMenu';
 import { gatewayFromLocation } from 'helpers/config';
 import { optionalMotionBehavior } from 'helpers/motion';
 import { useWallet } from 'providers/WalletProvider';
@@ -310,7 +313,7 @@ export function App() {
             loading: false,
             error: null,
             notice: unavailable.length
-              ? `The latest Arweave references for ${unavailable.join(', ')} could not be checked. Showing their bundled immutable indexes; ownership, listings, and prices are still verified from live state.`
+              ? `The latest Arweave references for ${unavailable.join(', ')} could not be checked. Showing their bundled immutable indexes; ownership, listings, and prices are still read from live state.`
               : null,
           };
         });
@@ -323,7 +326,7 @@ export function App() {
                   ...current,
                   loading: false,
                   error: null,
-                  notice: `Collection indexes could not be refreshed: ${errorMessage(error)}. Previously verified collections remain available.`,
+                  notice: `Collection indexes could not be refreshed: ${errorMessage(error)}. Previously loaded collections remain available.`,
                 }
               : { ...current, loading: false, error: errorMessage(error), notice: null },
           );
@@ -615,7 +618,6 @@ function Header() {
   const market = React.useContext(MarketContext);
   const inputRef = React.useRef<HTMLInputElement>(null);
   const panelInputRef = React.useRef<HTMLInputElement>(null);
-  const walletButtonRef = React.useRef<HTMLButtonElement>(null);
   const skipNextSearchFocus = React.useRef(false);
   const suppressSearchFocusRestore = React.useRef(false);
   const releaseSearchFocusFrame = React.useRef<number>();
@@ -627,8 +629,6 @@ function Header() {
   const [scope, setScope] = React.useState<'all' | 'collections' | 'assets' | 'names'>('all');
   const [recentQueries, setRecentQueries] = React.useState<string[]>([]);
   const [searchFeedback, setSearchFeedback] = React.useState('');
-  const [walletAction, setWalletAction] = React.useState<'connect' | 'disconnect' | null>(null);
-  const [walletError, setWalletError] = React.useState('');
   const normalizedQuery = query.trim().toLowerCase();
   const collectionResults = market.collections
     .filter((collection) => {
@@ -768,18 +768,6 @@ function Header() {
     setQuery('');
     closeSearch(false);
   };
-  const updateWalletConnection = async () => {
-    const action = wallet.address ? 'disconnect' : 'connect';
-    setWalletAction(action);
-    setWalletError('');
-    try {
-      await (wallet.address ? wallet.disconnect() : wallet.connect());
-    } catch (cause) {
-      setWalletError(errorMessage(cause));
-    } finally {
-      setWalletAction(null);
-    }
-  };
   const searchRestoreTarget = React.useCallback(
     () => (suppressSearchFocusRestore.current ? document.getElementById('main-content') : inputRef.current),
     [],
@@ -842,72 +830,12 @@ function Header() {
             <GatewayControl />
           </div>
           <div className="site-nav-wallet">
-            {wallet.loadDevelopmentWallet ? (
-              <label className="development-wallet">
-                <Upload className="ui-icon ui-icon--sm" aria-hidden="true" /> Test wallet
-                <input
-                  type="file"
-                  accept=".json,application/json"
-                  onChange={async (event) => {
-                    const input = event.currentTarget;
-                    const file = input.files?.[0];
-                    if (!file) return;
-                    setWalletError('');
-                    try {
-                      await wallet.loadDevelopmentWallet?.(file);
-                    } catch (cause) {
-                      setWalletError(errorMessage(cause));
-                      input.value = '';
-                    }
-                  }}
-                />
-              </label>
-            ) : null}
             <div
               className="operation-activity-control fungible-operation-activity-slot"
               id="fungible-operation-activity-slot"
             />
             <OperationActivityControl />
-            <button
-              aria-label={
-                walletAction
-                  ? `${walletAction === 'connect' ? 'Connecting' : 'Disconnecting'} wallet${wallet.address ? ` ${wallet.address}` : ''}`
-                  : wallet.address
-                    ? `Disconnect wallet ${wallet.address}`
-                    : 'Connect wallet'
-              }
-              className="wallet"
-              disabled={walletAction !== null}
-              onClick={() => void updateWalletConnection()}
-              ref={walletButtonRef}
-              title={wallet.address || undefined}
-            >
-              <Wallet className="ui-icon ui-icon--sm" aria-hidden="true" />
-              <span>
-                {walletAction
-                  ? walletAction === 'connect'
-                    ? 'Connecting…'
-                    : 'Disconnecting…'
-                  : wallet.address
-                    ? short(wallet.address)
-                    : 'Connect'}
-              </span>
-            </button>
-            {walletError ? (
-              <div className="wallet-error">
-                <span role="alert">{walletError}</span>
-                <button
-                  aria-label="Dismiss wallet error"
-                  onClick={() => {
-                    setWalletError('');
-                    window.requestAnimationFrame(() => walletButtonRef.current?.focus());
-                  }}
-                  type="button"
-                >
-                  <X className="ui-icon ui-icon--sm" aria-hidden="true" />
-                </button>
-              </div>
-            ) : null}
+            <WalletMenu />
           </div>
         </nav>
       </header>
@@ -1026,7 +954,7 @@ function Header() {
                               ) : collection.kind === 'names' ? (
                                 <NamesCubePreview />
                               ) : collection.kind === 'tokens' ? (
-                                <TokenArtwork ticker={collection.assets[0]?.ticker ?? 'TOKEN'} />
+                                <TokenArtwork ticker={collection.assets[0]?.ticker ?? 'Token'} />
                               ) : (
                                 <BazarMark />
                               )}
@@ -1064,7 +992,7 @@ function Header() {
                             {asset.image ? (
                               <ArtworkImage src={asset.image} alt="" />
                             ) : collection.kind === 'tokens' ? (
-                              <TokenArtwork ticker={asset.ticker ?? 'TOKEN'} />
+                              <TokenArtwork ticker={asset.ticker ?? 'Token'} />
                             ) : (
                               <BazarMark />
                             )}
@@ -1083,15 +1011,15 @@ function Header() {
                   <section className="search-result-section">
                     <div className="search-result-heading">
                       <h2>Direct process</h2>
-                      <span>Live verification required</span>
+                      <span>Live state check required</span>
                     </div>
                     <div className="search-asset-grid">
                       <Link to={`/asset/${directTokenCollection.id}/${query.trim()}`} onClick={followSearchResult}>
                         <span className="search-result-image">
-                          <TokenArtwork ticker="TOKEN" />
+                          <TokenArtwork ticker="Token" />
                         </span>
                         <span>
-                          <strong>Verify token process</strong>
+                          <strong>Check token process</strong>
                           <small>{short(query.trim())} · support is determined from live state</small>
                         </span>
                         <ArrowUpRight className="ui-icon ui-icon--sm" aria-hidden="true" />
@@ -1129,7 +1057,7 @@ function OperationActivityControl() {
   const { activities, show } = useOperationActivity();
   const [open, setOpen] = React.useState(false);
   const containerRef = React.useRef<HTMLDivElement>(null);
-  const visibleActivities = activities.filter((activity) => activity.phase !== 'done');
+  const visibleActivities = activities.filter((activity) => isTransactionActivityVisible(activity.phase));
   const workingCount = visibleActivities.filter((activity) => activity.phase === 'working').length;
   React.useEffect(() => {
     if (!open) return;
@@ -1177,7 +1105,7 @@ function OperationActivityControl() {
                     {activity.asset.image ? (
                       <img src={activity.asset.image} alt="" />
                     ) : (
-                      <span>{activity.asset.name.slice(0, 1).toUpperCase()}</span>
+                      <span>{activity.asset.name.slice(0, 1)}</span>
                     )}
                   </span>
                   <span className="operation-activity-copy">
@@ -1455,49 +1383,6 @@ export function homeScrollIndicatorMetrics(
   const offsetRange = Math.max(0, trackHeight - size);
   const progress = Math.min(1, Math.max(0, scrollTop / scrollRange));
   return { visible: true, size, offset: offsetRange * progress };
-}
-
-function HomePaneScrollbar({ paneRef }: { paneRef: React.RefObject<HTMLElement> }) {
-  const trackRef = React.useRef<HTMLSpanElement>(null);
-  const thumbRef = React.useRef<HTMLSpanElement>(null);
-  React.useEffect(() => {
-    const pane = paneRef.current;
-    const track = trackRef.current;
-    const thumb = thumbRef.current;
-    if (!pane || !track || !thumb) return;
-    let frame = 0;
-    const update = () => {
-      const heading = pane.querySelector<HTMLElement>(':scope > .home-section-heading');
-      const trackHeight = Math.max(0, pane.clientHeight - (heading?.offsetHeight ?? 0));
-      const metrics = homeScrollIndicatorMetrics(pane.scrollTop, pane.scrollHeight, pane.clientHeight, trackHeight);
-      track.hidden = !metrics.visible;
-      thumb.style.height = `${metrics.size}px`;
-      thumb.style.transform = `translateY(${metrics.offset}px)`;
-    };
-    const schedule = () => {
-      window.cancelAnimationFrame(frame);
-      frame = window.requestAnimationFrame(update);
-    };
-    const resizeObserver = new ResizeObserver(schedule);
-    const mutationObserver = new MutationObserver(schedule);
-    pane.addEventListener('scroll', update, { passive: true });
-    window.addEventListener('resize', schedule);
-    resizeObserver.observe(pane);
-    mutationObserver.observe(pane, { childList: true, characterData: true, subtree: true });
-    update();
-    return () => {
-      window.cancelAnimationFrame(frame);
-      pane.removeEventListener('scroll', update);
-      window.removeEventListener('resize', schedule);
-      resizeObserver.disconnect();
-      mutationObserver.disconnect();
-    };
-  }, [paneRef]);
-  return (
-    <span aria-hidden="true" className="home-pane-scrollbar" hidden ref={trackRef}>
-      <span ref={thumbRef} />
-    </span>
-  );
 }
 
 function Home() {
@@ -1902,7 +1787,6 @@ function Home() {
           <div className="home-market-layout">
             <section className="home-section home-assets" id="market" ref={marketPaneRef}>
               <h1 className="sr-only">Marketplace</h1>
-              <HomePaneScrollbar paneRef={marketPaneRef} />
               <div className="home-section-heading">
                 <div>
                   <div aria-label="Marketplace view" className="home-market-tabs" role="tablist">
@@ -1936,7 +1820,7 @@ function Home() {
                     {homeTab === 'discover'
                       ? normalizedQuery
                         ? `Results for “${query}” across the current Arweave collection indexes.`
-                        : 'Verified active listings across every marketplace collection.'
+                        : 'Active listings read from current live state across every marketplace collection.'
                       : 'Permanent assets with ownership and settlement native to Arweave.'}
                   </p>
                 </div>
@@ -2013,7 +1897,7 @@ function Home() {
                 <div aria-labelledby="home-collections-tab" id="home-collections-panel" role="tabpanel">
                   {!collectionResultsReady ? (
                     <div className="home-market-loading">
-                      <Loading label="Verifying collection listings…" />
+                      <Loading label="Loading collections…" />
                     </div>
                   ) : (
                     <div className="home-feature-grid">
@@ -2044,7 +1928,7 @@ function Home() {
                               ) : collection.kind === 'tokens' ? (
                                 <TokenArtwork
                                   className="home-token-collection-art"
-                                  ticker={collection.assets[0]?.ticker ?? 'TOKEN'}
+                                  ticker={collection.assets[0]?.ticker ?? 'Token'}
                                 />
                               ) : (
                                 <div className="home-name-art">
@@ -2102,7 +1986,7 @@ function Home() {
                 >
                   {!discoverResultsReady ? (
                     <div className="home-market-loading">
-                      <Loading label="Verifying listed assets…" />
+                      <Loading label="Loading assets…" />
                     </div>
                   ) : displayedAssets.length ? (
                     <div className="home-asset-grid">
@@ -2115,7 +1999,7 @@ function Home() {
                           ) : (
                             <TokenArtwork
                               className="home-asset-media home-token-art"
-                              ticker={asset.ticker ?? 'TOKEN'}
+                              ticker={asset.ticker ?? 'Token'}
                             />
                           )}
                           <div className="home-asset-details">
@@ -2133,7 +2017,7 @@ function Home() {
                       ))}
                     </div>
                   ) : (
-                    <div className="home-assets-empty">No verified listings match this asset type.</div>
+                    <div className="home-assets-empty">No live listings match this asset type.</div>
                   )}
                 </div>
               )}
@@ -2226,7 +2110,7 @@ function GatewayControl() {
             <Server className="ui-icon ui-icon--sm" aria-hidden="true" /> Use gateway
           </button>
         </form>
-        <p>Process reads and browser-safe observer checks use this node. Transactions still settle on Arweave.</p>
+        <p>Process reads and observer requests use this node. Transactions still settle on Arweave.</p>
       </div>
     </details>
   );
@@ -2622,7 +2506,7 @@ function CollectionView() {
     .filter(
       (asset) =>
         assetMatchesCollectionQuery(asset, query) &&
-        (initial === 'all' || asset.name.trim().toUpperCase().startsWith(initial)),
+        (initial === 'all' || asset.name.trim().toLowerCase().startsWith(initial.toLowerCase())),
     )
     .sort((a, b) => {
       if (initial !== 'all') return compareCollectionAssetNames(a, b);
@@ -3138,7 +3022,7 @@ function CollectionView() {
   const listingSearchAnnouncement = `${activityState.pages.toLocaleString()} index ${activityState.pages === 1 ? 'check' : 'checks'} this pass · ${activityState.total.toLocaleString()} ${activityState.total === 1 ? 'candidate' : 'candidates'} · ${announcedListingProgress.resolved.toLocaleString()} checked${announcedListingProgress.failures ? ` · ${announcedListingProgress.failures.toLocaleString()} unavailable` : ''}${pagedTokenScope ? ` · among ${collection.assets.length.toLocaleString()} loaded tokens` : ''}`;
   const resultSummary = activityState.loading
     ? listedOnly
-      ? `${listed.length.toLocaleString()} verified ${listed.length === 1 ? 'listing' : 'listings'} so far`
+      ? `${listed.length.toLocaleString()} live ${listed.length === 1 ? 'listing' : 'listings'} so far`
       : 'Finding recent activity on Arweave…'
     : query
       ? `${filtered.length.toLocaleString()} ${collection.kind === 'names' ? 'current namespace' : 'loaded'} matches`
@@ -3346,7 +3230,7 @@ function CollectionView() {
                   activityState.rateLimited ? 'rate-limited' : 'unavailable',
                 )}{' '}
             {activityState.failures.toLocaleString()} listing{' '}
-            {activityState.failures === 1 ? 'candidate remains' : 'candidates remain'} unavailable. Verified listings
+            {activityState.failures === 1 ? 'candidate remains' : 'candidates remain'} unavailable. Resolved listings
             remain visible.
           </span>
           <button
@@ -3367,8 +3251,8 @@ function CollectionView() {
         <div className={recentOrderState.error ? 'inline-error' : 'collection-source-notice'}>
           <span role="status">
             {recentOrderState.loading
-              ? 'Ordering verified listings by their latest indexed market activity…'
-              : `${marketplaceRequestFailureMessage('index', recentOrderState.error!)} Verified listings are shown in Default order.`}
+              ? 'Ordering live listings by their latest indexed market activity…'
+              : `${marketplaceRequestFailureMessage('index', recentOrderState.error!)} Resolved listings are shown in Default order.`}
           </span>
           {recentOrderState.error ? (
             <button
@@ -3436,14 +3320,14 @@ function CollectionView() {
               : initial !== 'all'
                 ? `No live listings begin with ${initial}`
                 : activityState.failures
-                  ? 'No verified listings yet'
+                  ? 'No live listings yet'
                   : pagedTokenScope
-                    ? 'No verified listings in loaded tokens'
-                    : 'No verified listings found'}
+                    ? 'No live listings in loaded tokens'
+                    : 'No live listings found'}
           </h3>
           <p>
             {query || initial !== 'all'
-              ? 'Clear the current filters to see every verified listing.'
+              ? 'Clear the current filters to see every live listing.'
               : activityState.failures
                 ? 'Some candidates could not be checked through this compute gateway. Retry them before treating this as an empty market.'
                 : pagedTokenScope
@@ -3598,17 +3482,17 @@ function CollectionIndexNotice({
   const message = checking
     ? tokenIndex
       ? directlyVerified
-        ? 'Checking token discovery. This token remains verified directly from live state through the selected gateway.'
+        ? 'Checking token discovery. This token remains available directly from live state through the selected gateway.'
         : 'Checking token discovery. The configured token remains available; ownership, orders, and balances are still computed live through the selected gateway.'
       : 'Checking this collection’s live asset index. Its bundled index remains available; ownership and orders are still computed live through the selected gateway.'
     : tokenIndex
       ? directlyVerified
-        ? 'This token was verified directly from live state and may not appear in collection browsing while token discovery is unavailable.'
+        ? 'This token was read directly from live state and may not appear in collection browsing while token discovery is unavailable.'
         : 'Token discovery is unavailable. Showing the configured token only; ownership, orders, and balances are still computed live through the selected gateway.'
       : 'This collection’s live asset index is unavailable. Showing its last published index; ownership and orders are still computed live through the selected gateway.';
   const compactMessage = tokenIndex
     ? directlyVerified
-      ? `${checking ? 'Checking discovery' : 'Discovery unavailable'}; live token state remains verified.`
+      ? `${checking ? 'Checking discovery' : 'Discovery unavailable'}; live token state remains available.`
       : `${checking ? 'Checking discovery' : 'Showing the configured token'}; balances and orders remain live.`
     : `${checking ? 'Checking the published index' : 'Using the published index'}; ownership and orders remain live.`;
   return (
@@ -3798,7 +3682,7 @@ function CollectionActivityView() {
       </Link>
       <div className="collection-title">
         <div>
-          <p className="eyebrow">ARWEAVE ACTIVITY</p>
+          <p className="eyebrow">Arweave activity</p>
           <h1>{collection.name}</h1>
         </div>
         <p>
@@ -3856,64 +3740,14 @@ function CollectionActivityView() {
           message={`Activity scanning was interrupted. ${events.length ? `${events.length.toLocaleString()} existing events remain visible. ` : ''}${error}`}
         />
       ) : null}
-      <ul aria-busy={loading} aria-label="Recent market activity" className="activity-list" id={activityListId}>
-        {events.slice(0, activityLimit).map((event) => {
-          const asset = collectionAsset(collection, event.processId);
-          const detail = activityDetail(event);
-          const timestamp = event.timestamp ? formatTimestamp(event.timestamp) : 'Pending confirmation';
-          return (
-            <li className="activity-row" key={event.id}>
-              <span aria-hidden="true" className={`activity-icon action-${event.action}`}>
-                {activitySymbol(event.action)}
-              </span>
-              <div className="activity-main">
-                <strong>{activityLabel(event.action)}</strong>
-                {asset ? (
-                  <Link to={`/asset/${collection.id}/${asset.id}`}>{asset.name}</Link>
-                ) : (
-                  <span>{short(event.processId)}</span>
-                )}
-                <small className={detail ? undefined : 'activity-time-only'}>
-                  {detail}
-                  <span className="activity-mobile-time">
-                    {detail ? ' · ' : ''}
-                    {timestamp}
-                  </span>
-                </small>
-              </div>
-              <div className="activity-meta">
-                <div className="activity-actor">
-                  <span>Actor</span>
-                  {event.actor ? <WalletAddress address={event.actor} label="actor" /> : <strong>Unknown</strong>}
-                </div>
-                <div className="activity-block">
-                  <span className="activity-desktop-time">{timestamp}</span>
-                  <a
-                    aria-label={
-                      event.height > 0
-                        ? `View submitted transaction included in block ${event.height.toLocaleString()}`
-                        : 'View submitted transaction'
-                    }
-                    href={transactionExplorerUrl(event.id)}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    <span className="activity-transaction-long" aria-hidden="true">
-                      {event.height > 0
-                        ? `View submitted transaction · included in block ${event.height.toLocaleString()}`
-                        : 'View submitted transaction'}
-                    </span>
-                    <span className="activity-transaction-short" aria-hidden="true">
-                      View transaction
-                    </span>
-                    <ArrowUpRight className="ui-icon ui-icon--xs" aria-hidden="true" />
-                  </a>
-                </div>
-              </div>
-            </li>
-          );
-        })}
-      </ul>
+      <MarketActivityList
+        ariaLabel="Recent market activity"
+        collectionId={collection.id}
+        events={events.slice(0, activityLimit)}
+        id={activityListId}
+        loading={loading}
+        resolveAsset={(event) => collectionAsset(collection, event.processId)}
+      />
       <p
         className={
           activityRevealAnnouncement && events.length > 20 && activityLimit >= events.length
@@ -4031,11 +3865,10 @@ const AssetCard = React.memo(function AssetCard({
         {asset.image ? (
           <ArtworkImage src={asset.image} loading="lazy" alt="" />
         ) : collection.kind === 'tokens' ? (
-          <TokenArtwork ticker={asset.ticker ?? 'TOKEN'} />
+          <TokenArtwork ticker={asset.ticker ?? 'Token'} />
         ) : (
-          <span>{asset.name.slice(0, 1).toUpperCase()}</span>
+          <span>{asset.name.slice(0, 1)}</span>
         )}
-        {badge ? <strong className="asset-badge">{badge}</strong> : null}
       </div>
       <div className="asset-card-copy">
         {!collectionContext ? <p>{collection.name}</p> : null}
@@ -4043,6 +3876,7 @@ const AssetCard = React.memo(function AssetCard({
           <h3>{asset.name}</h3>
           {price ? <strong className={priceListed ? 'listed' : undefined}>{price}</strong> : null}
         </div>
+        {badge ? <span className="asset-card-status">{badge}</span> : null}
         {!collectionContext ? <span>{short(asset.id)}</span> : null}
       </div>
     </Link>
@@ -4094,8 +3928,8 @@ export function walletResolutionCopy(status: WalletResolutionStatus, failureMess
             : status.phase === 'done' && status.failures
               ? status.indexFailures
                 ? status.failures === status.total
-                  ? 'Candidate verification unavailable'
-                  : 'Asset verification partially resolved'
+                  ? 'Candidate checks unavailable'
+                  : 'Asset checks partially completed'
                 : status.failures === status.total
                   ? 'Live state unavailable'
                   : 'Live state partially resolved'
@@ -4112,7 +3946,7 @@ export function walletResolutionCopy(status: WalletResolutionStatus, failureMess
           : status.phase === 'resolving'
             ? `Checking asset candidates. ${status.total ? Math.floor((status.resolved / status.total) * 10) * 10 : 0}% complete.`
             : status.phase === 'done' && status.failures
-              ? `${failureMessage} ${status.resolved.toLocaleString()} of ${status.total.toLocaleString()} candidate checks completed; ${status.failures.toLocaleString()} unavailable. Verified assets remain visible.`
+              ? `${failureMessage} ${status.resolved.toLocaleString()} of ${status.total.toLocaleString()} candidate checks completed; ${status.failures.toLocaleString()} unavailable. Resolved assets remain visible.`
               : status.phase === 'done'
                 ? `Live state resolved for ${status.resolved.toLocaleString()} candidates.`
                 : 'Asset resolution was interrupted.';
@@ -4546,11 +4380,7 @@ function CreateView() {
   };
   const mint = async () => {
     if (!wallet.address) {
-      try {
-        await wallet.connect();
-      } catch (cause) {
-        setError(mintErrorMessage(cause));
-      }
+      wallet.openConnectDialog();
       return;
     }
     if (mode === 'asset' && !file) return setError('Choose an image to continue.');
@@ -4608,7 +4438,7 @@ function CreateView() {
     : phase
       ? {
           'signing-media': 'Approve the media upload in your wallet…',
-          'uploading-media': 'Uploading media permanently…',
+          'uploading-media': 'Uploading media to Arweave…',
           'signing-process': 'Approve the asset process in your wallet…',
           'creating-process': 'Creating your one-of-one asset…',
         }[phase]
@@ -4625,7 +4455,7 @@ function CreateView() {
         <p>
           {mode === 'asset'
             ? 'Your image and its one-of-one marketplace process are signed in your wallet and stored on Arweave.'
-            : 'Mint a group of one-of-one assets and publish their permanent, shareable collection index.'}
+            : 'Mint a group of one-of-one assets and submit their shareable collection index to Arweave.'}
         </p>
       </div>
 
@@ -4662,7 +4492,10 @@ function CreateView() {
         <div className="mint-recovery" role="status">
           <div>
             <strong>Finish your previous mint</strong>
-            <span>The media for “{draft.name}” is already permanent. Only the asset process remains.</span>
+            <span>
+              The media transaction for “{draft.name}” was accepted by the submission gateway. Only the asset process
+              remains.
+            </span>
           </div>
           <div>
             <button type="button" onClick={() => void resume()} disabled={working}>
@@ -4796,7 +4629,8 @@ function CreateView() {
               <div>
                 <strong id="mint-license-heading">Usage rights</strong>
                 <span>
-                  Attach permanent, machine-readable terms to {mode === 'asset' ? 'this asset' : 'every asset'}.
+                  Attach machine-readable terms stored with {mode === 'asset' ? 'this asset' : 'every asset'} on
+                  Arweave.
                 </span>
               </div>
               <MarketSelect<'udl' | 'none'>
@@ -5025,9 +4859,9 @@ function CreateView() {
               <strong>{mode === 'asset' ? '1 of 1' : collectionFiles.length || '—'}</strong>
             </div>
             <div>
-              <span>{mode === 'asset' ? 'Storage' : 'Transactions'}</span>
+              <span>{mode === 'asset' ? 'Storage target' : 'Transactions'}</span>
               <strong>
-                {mode === 'asset' ? 'Permanent' : collectionEstimate ? collectionEstimate.transactionCount : '—'}
+                {mode === 'asset' ? 'Arweave' : collectionEstimate ? collectionEstimate.transactionCount : '—'}
               </strong>
             </div>
             <div>
@@ -5055,7 +4889,7 @@ function CreateView() {
                 ? 'Your wallet will request two signatures: one for the media and one for the tradeable asset.'
                 : collectionEstimate
                   ? `Your wallet will request ${collectionEstimate.transactionCount} signatures: two per asset, then the collection manifest and index.`
-                  : 'Each image becomes a one-of-one asset. Bazar then publishes a permanent collection manifest and index.'}
+                  : 'Each image becomes a one-of-one asset. Bazar then submits a collection manifest and index to Arweave.'}
             </span>
           </div>
           {error ? (
@@ -5067,13 +4901,17 @@ function CreateView() {
             <div className={`mint-success${result && !resultReady ? ' propagating' : ''}`}>
               <span>{result && !resultReady ? <InfinityIcon aria-hidden="true" /> : <Check aria-hidden="true" />}</span>
               <div>
-                <strong>{collectionResult ? 'Collection submitted to Arweave' : 'Mint submitted to Arweave'}</strong>
+                <strong>
+                  {collectionResult
+                    ? 'Collection transactions accepted by submission gateway'
+                    : 'Mint transactions accepted by submission gateway'}
+                </strong>
                 <p>
                   {collectionResult
-                    ? 'The permanent collection index may take a few minutes to become available through every gateway.'
+                    ? 'Gateway availability can vary while the collection transactions are mined and indexed.'
                     : resultReady
                       ? 'The asset is live and computable through the selected gateway.'
-                      : 'Watching Arweave continuously. You can view the asset as soon as its live state resolves.'}
+                      : 'Watching while this page remains open. You can view the asset as soon as its live state resolves.'}
                 </p>
               </div>
               <button
@@ -5127,7 +4965,8 @@ function CreateView() {
             </button>
           )}
           <p className="mint-permanence">
-            Uploads are permanent. Review every image, name, and description before signing.
+            Confirmed Arweave uploads are permanent and cannot be edited. Review every image, name, and description
+            before signing.
           </p>
         </form>
       </div>
@@ -5520,7 +5359,7 @@ function MyAssetsView() {
   if (!wallet.address) {
     return (
       <section className="my-assets-page">
-        <p className="eyebrow">YOUR WALLET</p>
+        <p className="eyebrow">Your wallet</p>
         <h1>My assets</h1>
         <div className="empty-state">
           <h3>Connect a wallet to resolve its assets</h3>
@@ -5540,7 +5379,7 @@ function MyAssetsView() {
   if (market.error) {
     return (
       <section className="my-assets-page">
-        <p className="eyebrow">LIVE WALLET INVENTORY</p>
+        <p className="eyebrow">Live wallet inventory</p>
         <h1>My assets</h1>
         <ErrorPanel message={market.error} onRetry={market.retry} retryLabel="Retry asset index" />
       </section>
@@ -5577,9 +5416,9 @@ function MyAssetsView() {
     <section className="my-assets-page">
       <div className="my-assets-heading">
         <div>
-          <p className="eyebrow">LIVE WALLET INVENTORY</p>
+          <p className="eyebrow">Live wallet inventory</p>
           <h1>My assets</h1>
-          <p>Your assets, verified from live Arweave state.</p>
+          <p>Your assets, read from live Arweave state.</p>
           <span className="gateway-pill">
             <Server className="ui-icon ui-icon--xs" aria-hidden="true" /> Gateway{' '}
             <span className="gateway-pill-host" title={new URL(gateway).host}>
@@ -5612,7 +5451,7 @@ function MyAssetsView() {
         <div className="inline-error">
           <span role="status">
             {aggregateFailureMessage} {status.failures.toLocaleString()}{' '}
-            {status.failures === 1 ? 'candidate remains' : 'candidates remain'} unavailable. Verified assets remain
+            {status.failures === 1 ? 'candidate remains' : 'candidates remain'} unavailable. Resolved assets remain
             visible.
           </span>
           <button className="with-icon" type="button" onClick={retryUnavailableAssets}>
@@ -5641,12 +5480,12 @@ function MyAssetsView() {
         <div className="empty-state">
           <h3>
             {status.failures
-              ? 'Ownership could not be verified'
+              ? 'Ownership could not be checked'
               : 'No indexed candidates currently resolve to your ownership'}
           </h3>
           <p>
             {status.failures
-              ? `${aggregateFailureMessage} ${status.failures} of ${status.total} candidates could not be verified. Retry them before treating this as an empty wallet.`
+              ? `${aggregateFailureMessage} ${status.failures} of ${status.total} candidates could not be checked. Retry them before treating this as an empty wallet.`
               : 'Arweave GraphQL discovers candidates and can lag behind new transactions. Refresh after indexing; live state remains authoritative for every candidate found.'}
           </p>
           {status.failures ? (
@@ -5749,7 +5588,7 @@ const AssetGroup = React.memo(function AssetGroup({
           </span>
         </>
       ) : (
-        <p className="asset-group-empty">{settled ? `No ${assetLabel}.` : `No ${assetLabel} verified yet.`}</p>
+        <p className="asset-group-empty">{settled ? `No ${assetLabel}.` : `No ${assetLabel} loaded yet.`}</p>
       )}
       {results.length && limit < results.length ? (
         <button
@@ -5790,6 +5629,74 @@ function AssetDetailLoadingShell({
   const detailClass = kind === 'tokens' ? 'fungible-asset-page' : 'atomic-asset-page';
   const collectionName = collection?.name ?? (kind === 'tokens' ? 'Fungible tokens' : 'Arweave names');
 
+  if (kind === 'tokens') {
+    return (
+      <section className="asset-page asset-detail-page asset-detail-loading-shell fungible-asset-page">
+        <header className="fungible-token-header">
+          <div className="fungible-token-avatar" aria-hidden="true">
+            {asset?.image ? (
+              <ArtworkImage src={asset.image} alt="" loading="eager" />
+            ) : asset ? (
+              <TokenArtwork ticker={asset.ticker ?? asset.name} />
+            ) : (
+              <span className="layout-placeholder" />
+            )}
+          </div>
+          <div className="fungible-token-identity">
+            <div className="fungible-token-title">
+              {asset ? <h1>{asset.name}</h1> : <span className="layout-placeholder layout-placeholder-title" />}
+              {asset?.ticker ? <strong>{asset.ticker}</strong> : null}
+            </div>
+            <div className="fungible-token-meta" aria-hidden="true">
+              {collection ? (
+                <Link to={`/collection/${collection.id}`}>{collectionName}</Link>
+              ) : (
+                <span>{collectionName}</span>
+              )}
+              <span>token@1.0</span>
+              <span>Token</span>
+            </div>
+          </div>
+          <div className="fungible-token-balance">
+            <span>Loading market state</span>
+          </div>
+        </header>
+        {error ? (
+          <ErrorPanel message={error} onRetry={onRetry} retryLabel="Retry live state" />
+        ) : (
+          <div aria-live="polite" className="state-verification asset-loading-verification" role="status">
+            <span aria-hidden="true" /> Computing current state…
+          </div>
+        )}
+        <div className="asset-detail-layout">
+          <div className="asset-commerce-column asset-commerce-primary">
+            <section aria-hidden="true" className="asset-commerce-card asset-commerce-card-loading">
+              <div className="asset-loading-stat-grid">
+                {Array.from({ length: 4 }, (_, index) => (
+                  <span className="layout-placeholder" key={index} />
+                ))}
+              </div>
+              <span className="layout-placeholder asset-loading-summary" />
+              <span className="layout-placeholder asset-loading-action" />
+            </section>
+          </div>
+          <div className="asset-commerce-column asset-commerce-secondary">
+            <nav aria-hidden="true" className="home-market-tabs asset-detail-tabs asset-section-tabs-loading">
+              <span>Orders</span>
+              <span>Details</span>
+              <span>Activity</span>
+            </nav>
+            <div aria-hidden="true" className="asset-loading-panel">
+              <span className="layout-placeholder" />
+              <span className="layout-placeholder" />
+              <span className="layout-placeholder" />
+            </div>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section className={`asset-page asset-detail-page asset-detail-loading-shell ${detailClass}`}>
       <div className="asset-detail-layout">
@@ -5806,12 +5713,12 @@ function AssetDetailLoadingShell({
             </div>
             {asset ? <h1>{asset.name}</h1> : <span className="layout-placeholder layout-placeholder-title" />}
             <div className="asset-owner-line">
-              <span>Verifying current ownership and market state</span>
+              <span>Loading ownership and market state</span>
             </div>
             <div className="asset-token-tags" aria-hidden="true">
-              <span>{kind === 'tokens' ? 'token@1.0' : 'carrier@1.0'}</span>
-              <span>ARWEAVE</span>
-              <span>{kind === 'tokens' ? 'TOKEN' : 'SUPPLY 1'}</span>
+              <span>carrier@1.0</span>
+              <span>Arweave</span>
+              <span>Supply 1</span>
             </div>
             {error ? (
               <ErrorPanel message={error} onRetry={onRetry} retryLabel="Retry live state" />
@@ -5832,20 +5739,18 @@ function AssetDetailLoadingShell({
           </div>
         </div>
         <div className="asset-visual-column">
-          <div className={`asset-hero-media${kind === 'tokens' ? ' token-hero' : ''}`}>
+          <div className="asset-hero-media">
             {asset?.image ? (
               <ArtworkImage src={asset.image} alt={asset.name} loading="eager" />
             ) : kind === 'names' && asset ? (
               <NameArtwork name={asset.name} />
-            ) : kind === 'tokens' && asset ? (
-              <TokenArtwork ticker={asset.ticker ?? asset.name} />
             ) : (
               <span className="layout-placeholder asset-loading-artwork" />
             )}
           </div>
         </div>
         <div className="asset-commerce-column asset-commerce-secondary">
-          <nav aria-hidden="true" className="asset-section-tabs asset-section-tabs-loading">
+          <nav aria-hidden="true" className="home-market-tabs asset-detail-tabs asset-section-tabs-loading">
             <span>Details</span>
             <span>Orders</span>
             <span>Activity</span>
@@ -5934,7 +5839,9 @@ function AssetView() {
   const [activityRetry, setActivityRetry] = React.useState(0);
   const [storageVersion, setStorageVersion] = React.useState(0);
   const activityAssetRef = React.useRef('');
-  const [activeSection, setActiveSection] = React.useState<'about' | 'orders' | 'activity' | null>('about');
+  const [activeSection, setActiveSection] = React.useState<
+    'about' | 'orders' | 'activity' | 'rights' | 'blockchain' | 'more'
+  >('about');
   const load = React.useCallback(async () => {
     requestRef.current?.abort();
     if (!canResolveAsset) {
@@ -6116,7 +6023,7 @@ function AssetView() {
         return;
       } else {
         setRecoveryNotice(
-          'A previous purchase is paused because its order is no longer available to this wallet. Its exact signed transactions remain stored, and no replacement payment will be created.',
+          'A previous purchase is paused because its order is no longer available to this wallet. Its signed transaction details remain saved in this browser, and no replacement payment will be created.',
         );
       }
     }
@@ -6295,15 +6202,40 @@ function AssetView() {
   const license = state ? licenseProperties(state) : [];
   const description = assetDescription(state, collection.description);
   const moreAssets = collection.assets.filter((item) => item.id !== asset.id).slice(0, 4);
-  const showAssetSection = (section: 'about' | 'orders' | 'activity') => {
-    setActiveSection(section);
-    const target = document.getElementById(`asset-${section}`);
-    if (target instanceof HTMLDetailsElement) target.open = true;
-    window.requestAnimationFrame(() => target?.scrollIntoView({ behavior: optionalMotionBehavior(), block: 'start' }));
-  };
-  const syncActiveSection = (section: 'about' | 'orders' | 'activity', open: boolean) => {
-    setActiveSection((current) => (open ? section : current === section ? null : current));
-  };
+  type AtomicAssetSection = typeof activeSection;
+  const assetTabs: AssetDetailTab<AtomicAssetSection>[] = [
+    { value: 'about', label: 'About', icon: <Info className="ui-icon" aria-hidden="true" />, panelId: 'asset-about' },
+    {
+      value: 'orders',
+      label: 'Orders',
+      icon: <Layers3 className="ui-icon" aria-hidden="true" />,
+      panelId: 'asset-orders',
+    },
+    {
+      value: 'activity',
+      label: 'Activity',
+      icon: <BarChart3 className="ui-icon" aria-hidden="true" />,
+      panelId: 'asset-activity',
+    },
+    {
+      value: 'rights',
+      label: 'Usage rights',
+      icon: <FileText className="ui-icon" aria-hidden="true" />,
+      panelId: 'asset-rights',
+    },
+    {
+      value: 'blockchain',
+      label: 'Blockchain',
+      icon: <Grid2X2 className="ui-icon" aria-hidden="true" />,
+      panelId: 'asset-blockchain',
+    },
+    {
+      value: 'more',
+      label: 'More',
+      icon: <Images className="ui-icon" aria-hidden="true" />,
+      panelId: 'asset-more',
+    },
+  ];
   return (
     <section className="asset-page asset-detail-page atomic-asset-page">
       {recoverySuppressed ? (
@@ -6364,7 +6296,7 @@ function AssetView() {
               {asset.name}
             </h1>
             <div className="asset-owner-line">
-              <span>{loading || error ? 'Last verified owner' : 'Owned by'}</span>
+              <span>{loading || error ? 'Last known owner' : 'Owned by'}</span>
               {owner ? (
                 <WalletAddress address={owner} label="owner" />
               ) : (
@@ -6373,8 +6305,8 @@ function AssetView() {
             </div>
             <div className="asset-token-tags" aria-label="Asset protocol details">
               <span>{state?.device || 'token@1.0'}</span>
-              <span>ARWEAVE</span>
-              <span>SUPPLY 1</span>
+              <span>Arweave</span>
+              <span>Supply 1</span>
             </div>
             <StateVerification
               provider={provider}
@@ -6388,7 +6320,7 @@ function AssetView() {
               <section className="asset-commerce-card">
                 <div className="asset-market-stats">
                   <div>
-                    <span>Verified ask</span>
+                    <span>Current ask</span>
                     <strong>{order ? `${winstonToAr(order.asking)} AR` : 'Not listed'}</strong>
                   </div>
                   <div>
@@ -6468,7 +6400,7 @@ function AssetView() {
             ) : collection.kind === 'names' ? (
               <NameArtwork name={asset.name} />
             ) : (
-              <span>{asset.name.slice(0, 1).toUpperCase()}</span>
+              <span>{asset.name.slice(0, 1)}</span>
             )}
             {collection.kind !== 'names' ? (
               <div className="asset-media-label">
@@ -6480,294 +6412,235 @@ function AssetView() {
         </div>
         <div className="asset-commerce-column asset-commerce-secondary">
           <CollectionIndexNotice collection={collection} checking={market.loading} onRetry={market.retry} />
-          <nav className="asset-section-tabs" aria-label="Asset detail sections">
-            <button
-              aria-controls="asset-about"
-              aria-current={activeSection === 'about' ? 'true' : undefined}
-              className={activeSection === 'about' ? 'active' : undefined}
-              onClick={() => showAssetSection('about')}
-              type="button"
-            >
-              Details
-            </button>
-            <button
-              aria-controls="asset-orders"
-              aria-current={activeSection === 'orders' ? 'true' : undefined}
-              className={activeSection === 'orders' ? 'active' : undefined}
-              onClick={() => showAssetSection('orders')}
-              type="button"
-            >
-              Orders
-            </button>
-            <button
-              aria-controls="asset-activity"
-              aria-current={activeSection === 'activity' ? 'true' : undefined}
-              className={activeSection === 'activity' ? 'active' : undefined}
-              onClick={() => showAssetSection('activity')}
-              type="button"
-            >
-              Activity
-            </button>
-          </nav>
-          <div className="asset-accordion-list">
-            <details
+          <AssetDetailTabs<AtomicAssetSection>
+            active={activeSection}
+            ariaLabel="Asset detail sections"
+            idPrefix="asset"
+            onChange={setActiveSection}
+            tabs={assetTabs}
+          />
+          {activeSection === 'about' ? (
+            <section
+              aria-labelledby="asset-about-tab"
+              className="asset-tab-panel"
               id="asset-about"
-              open
-              onToggle={(event) => {
-                syncActiveSection('about', event.currentTarget.open);
-              }}
+              role="tabpanel"
+              tabIndex={0}
             >
-              <summary>
-                <span className="asset-accordion-icon">
-                  <Info className="ui-icon" aria-hidden="true" />
-                </span>
-                <strong>About</strong>
-                <ChevronDown className="ui-icon ui-icon--sm" aria-hidden="true" />
-              </summary>
-              <div className="asset-accordion-content">
-                <p className="asset-description">{description}</p>
-                <div className="asset-detail-facts">
-                  <div>
-                    <span>Owner</span>
-                    <strong>{owner ? short(owner) : state ? 'Unassigned' : 'State unavailable'}</strong>
-                  </div>
-                  <div>
-                    <span>Collection</span>
-                    <strong>{collection.name}</strong>
-                  </div>
-                  <div>
-                    <span>Asset type</span>
-                    <strong>{asset.contentType ?? state?.device ?? 'process'}</strong>
-                  </div>
-                  <div>
-                    <span>Supply</span>
-                    <strong>1</strong>
-                  </div>
+              <p className="asset-description">{description}</p>
+              <div className="asset-detail-facts">
+                <div>
+                  <span>Owner</span>
+                  <strong>{owner ? short(owner) : state ? 'Unassigned' : 'State unavailable'}</strong>
+                </div>
+                <div>
+                  <span>Collection</span>
+                  <strong>{collection.name}</strong>
+                </div>
+                <div>
+                  <span>Asset type</span>
+                  <strong>{asset.contentType ?? state?.device ?? 'process'}</strong>
+                </div>
+                <div>
+                  <span>Supply</span>
+                  <strong>1</strong>
                 </div>
               </div>
-            </details>
-            <details
+            </section>
+          ) : null}
+          {activeSection === 'orders' ? (
+            <section
+              aria-labelledby="asset-orders-tab"
+              className="asset-tab-panel"
               id="asset-orders"
-              onToggle={(event) => {
-                syncActiveSection('orders', event.currentTarget.open);
-              }}
+              role="tabpanel"
+              tabIndex={0}
             >
-              <summary>
-                <span className="asset-accordion-icon">
-                  <Layers3 className="ui-icon" aria-hidden="true" />
-                </span>
-                <strong>Orders</strong>
-                <span className="asset-accordion-count">{order ? '1' : '0'}</span>
-                <ChevronDown className="ui-icon ui-icon--sm" aria-hidden="true" />
-              </summary>
-              <div className="asset-accordion-content">
-                <div aria-label={`${asset.name} order book`} className="orderbook-table" role="table">
-                  <div className="orderbook-head" role="row">
-                    <span role="columnheader">Price</span>
-                    <span role="columnheader">Quantity</span>
-                    <span role="columnheader">Seller</span>
-                    <span role="columnheader">Status</span>
-                  </div>
-                  {order ? (
-                    <div className="orderbook-row" role="row">
-                      <strong data-label="Price" role="cell">
-                        {winstonToAr(order.asking)} AR
-                      </strong>
-                      <span data-label="Quantity" role="cell">
-                        {order.quantity}
-                      </span>
-                      <span data-label="Seller" role="cell">
-                        <WalletAddress address={order.creator} label="seller" />
-                      </span>
-                      <span className={`order-status ${order.status}`} data-label="Status" role="cell">
-                        {order.status}
-                      </span>
-                    </div>
-                  ) : (
-                    <div className="orderbook-empty" role="row">
-                      <div aria-colspan={4} className="orderbook-empty-cell" role="cell">
-                        <strong>No open asks</strong>
-                        <span>This asset is not currently listed.</span>
-                      </div>
-                    </div>
-                  )}
+              <div aria-label={`${asset.name} order book`} className="orderbook-table" role="table">
+                <div className="orderbook-head" role="row">
+                  <span role="columnheader">Price</span>
+                  <span role="columnheader">Quantity</span>
+                  <span role="columnheader">Seller</span>
+                  <span role="columnheader">Status</span>
                 </div>
-                <p className="market-note">
-                  Computed from the last verified asset process state through the selected HyperBEAM gateway.
-                </p>
-              </div>
-            </details>
-            <details
-              id="asset-activity"
-              onToggle={(event) => {
-                syncActiveSection('activity', event.currentTarget.open);
-              }}
-            >
-              <summary>
-                <span className="asset-accordion-icon">
-                  <BarChart3 className="ui-icon" aria-hidden="true" />
-                </span>
-                <strong>Market history</strong>
-                <ChevronDown className="ui-icon ui-icon--sm" aria-hidden="true" />
-              </summary>
-              <div className="asset-accordion-content">
                 {order ? (
-                  <div className="asset-history-current">
-                    <span>Verified ask</span>
-                    <strong>{winstonToAr(order.asking)} AR</strong>
-                  </div>
-                ) : null}
-                {activityLoading ? (
-                  <Loading
-                    label={assetActivity.length ? 'Refreshing market history…' : 'Reading indexed market history…'}
-                  />
-                ) : null}
-                <div className="asset-history-actions">
-                  <button
-                    aria-disabled={activityLoading}
-                    className="with-icon"
-                    type="button"
-                    onClick={() => {
-                      if (!activityLoading) setActivityRetry((value) => value + 1);
-                    }}
-                  >
-                    <RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" />{' '}
-                    {activityLoading
-                      ? assetActivity.length
-                        ? 'Refreshing history…'
-                        : 'Loading history…'
-                      : activityError
-                        ? 'Retry history'
-                        : 'Refresh history'}
-                  </button>
-                </div>
-                {activityError ? (
-                  <div className="inline-error" role={assetActivity.length ? 'status' : 'alert'}>
-                    <span>
-                      Market history could not be read.{' '}
-                      {assetActivity.length
-                        ? `Previously loaded events remain visible. ${activityError}`
-                        : activityError}
+                  <div className="orderbook-row" role="row">
+                    <strong data-label="Price" role="cell">
+                      {winstonToAr(order.asking)} AR
+                    </strong>
+                    <span data-label="Quantity" role="cell">
+                      {order.quantity}
+                    </span>
+                    <span data-label="Seller" role="cell">
+                      <WalletAddress address={order.creator} label="seller" />
+                    </span>
+                    <span className={`order-status ${order.status}`} data-label="Status" role="cell">
+                      {order.status}
                     </span>
                   </div>
-                ) : null}
-                {assetActivity.length ? (
-                  <div className="asset-history-list">
-                    {assetActivity.map((event) => (
-                      <a key={event.id} href={transactionExplorerUrl(event.id)} target="_blank" rel="noreferrer">
-                        <span>
-                          {activityLabel(event.action)}
-                          {activityDetail(event) ? ` · ${activityDetail(event)}` : ''}
-                        </span>
-                        <time>{event.timestamp ? formatTimestamp(event.timestamp) : 'Pending timestamp'}</time>
-                        <ArrowUpRight className="ui-icon ui-icon--xs" aria-hidden="true" />
-                      </a>
-                    ))}
-                  </div>
-                ) : null}
-                {!activityLoading && !activityError && !assetActivity.length ? (
-                  <p className="asset-empty-copy">No indexed market events found.</p>
-                ) : null}
-                <p className="market-note">
-                  Up to 24 recent signed process submissions indexed from Arweave. Live ownership and orders above
-                  remain authoritative.
-                </p>
-              </div>
-            </details>
-            <details>
-              <summary>
-                <span className="asset-accordion-icon">
-                  <FileText className="ui-icon" aria-hidden="true" />
-                </span>
-                <strong>Usage rights</strong>
-                <span className="asset-accordion-count">{license.length || '—'}</span>
-                <ChevronDown className="ui-icon ui-icon--sm" aria-hidden="true" />
-              </summary>
-              <div className="asset-accordion-content">
-                {license.length ? (
-                  <dl className="license-properties">
-                    {license.map((property) => (
-                      <div key={property.key}>
-                        <dt>{property.label}</dt>
-                        <dd>{property.value}</dd>
-                      </div>
-                    ))}
-                  </dl>
                 ) : (
-                  <div className="license-empty">
-                    <span>
-                      <Diamond className="ui-icon" aria-hidden="true" />
-                    </span>
-                    <div>
-                      <strong>No UDL terms declared</strong>
-                      <p>This process does not publish Universal Data License properties.</p>
+                  <div className="orderbook-empty" role="row">
+                    <div aria-colspan={4} className="orderbook-empty-cell" role="cell">
+                      <strong>No open asks</strong>
+                      <span>This asset is not currently listed.</span>
                     </div>
                   </div>
                 )}
-                <p className="market-note">Terms are read directly from immutable process metadata when present.</p>
               </div>
-            </details>
-            <details>
-              <summary>
-                <span className="asset-accordion-icon">
-                  <Grid2X2 className="ui-icon" aria-hidden="true" />
-                </span>
-                <strong>Blockchain details</strong>
-                <ChevronDown className="ui-icon ui-icon--sm" aria-hidden="true" />
-              </summary>
-              <div className="asset-accordion-content">
-                <dl className="asset-blockchain-details">
-                  <div>
-                    <dt>Process ID</dt>
-                    <dd>
-                      <a href={transactionExplorerUrl(asset.id)} target="_blank" rel="noreferrer">
-                        {short(asset.id)} <ArrowUpRight className="ui-icon ui-icon--xs" aria-hidden="true" />
-                      </a>
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Network</dt>
-                    <dd>Arweave</dd>
-                  </div>
-                  <div>
-                    <dt>Execution</dt>
-                    <dd>{state?.device || 'token@1.0'}</dd>
-                  </div>
-                  <div>
-                    <dt>Settlement</dt>
-                    <dd>Native AR</dd>
-                  </div>
-                  <div>
-                    <dt>Content type</dt>
-                    <dd>{asset.contentType ?? (asset.image ? 'image' : 'process')}</dd>
-                  </div>
-                </dl>
-              </div>
-            </details>
-            <details>
-              <summary>
-                <span className="asset-accordion-icon">
-                  <Grid2X2 className="ui-icon" aria-hidden="true" />
-                </span>
-                <strong>More from this collection</strong>
-                <ChevronDown className="ui-icon ui-icon--sm" aria-hidden="true" />
-              </summary>
-              <div className="asset-accordion-content">
-                <div className="asset-more-grid">
-                  {moreAssets.map((item) => (
-                    <Link key={item.id} to={`/asset/${collection.id}/${item.id}`}>
-                      {item.image ? (
-                        <ArtworkImage src={item.image} alt="" />
-                      ) : (
-                        <span>{item.name.slice(0, 1).toUpperCase()}</span>
-                      )}
-                      <strong>{item.name}</strong>
-                    </Link>
-                  ))}
+              <p className="market-note">
+                Computed from the last loaded asset process state through the selected HyperBEAM gateway.
+              </p>
+            </section>
+          ) : null}
+          {activeSection === 'activity' ? (
+            <section
+              aria-labelledby="asset-activity-tab"
+              className="asset-tab-panel asset-activity-panel"
+              id="asset-activity"
+              role="tabpanel"
+              tabIndex={0}
+            >
+              {order ? (
+                <div className="asset-history-current">
+                  <span>Current ask</span>
+                  <strong>{winstonToAr(order.asking)} AR</strong>
                 </div>
+              ) : null}
+              {activityLoading ? (
+                <Loading
+                  label={assetActivity.length ? 'Refreshing market history…' : 'Reading indexed market history…'}
+                />
+              ) : null}
+              <div className="asset-history-actions">
+                <button
+                  aria-disabled={activityLoading}
+                  className="with-icon"
+                  type="button"
+                  onClick={() => {
+                    if (!activityLoading) setActivityRetry((value) => value + 1);
+                  }}
+                >
+                  <RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" />{' '}
+                  {activityLoading
+                    ? assetActivity.length
+                      ? 'Refreshing history…'
+                      : 'Loading history…'
+                    : activityError
+                      ? 'Retry history'
+                      : 'Refresh history'}
+                </button>
               </div>
-            </details>
-          </div>
+              {activityError ? (
+                <div className="inline-error" role={assetActivity.length ? 'status' : 'alert'}>
+                  <span>
+                    Market history could not be read.{' '}
+                    {assetActivity.length ? `Previously loaded events remain visible. ${activityError}` : activityError}
+                  </span>
+                </div>
+              ) : null}
+              {assetActivity.length ? (
+                <MarketActivityList
+                  ariaLabel={`${asset.name} market activity`}
+                  collectionId={collection.id}
+                  events={assetActivity}
+                  loading={activityLoading}
+                  resolveAsset={() => asset}
+                />
+              ) : null}
+              {!activityLoading && !activityError && !assetActivity.length ? (
+                <p className="asset-empty-copy">No indexed market events found.</p>
+              ) : null}
+              <p className="market-note">
+                Up to 24 recent signed process submissions indexed from Arweave. Live ownership and orders above remain
+                authoritative.
+              </p>
+            </section>
+          ) : null}
+          {activeSection === 'rights' ? (
+            <section
+              aria-labelledby="asset-rights-tab"
+              className="asset-tab-panel"
+              id="asset-rights"
+              role="tabpanel"
+              tabIndex={0}
+            >
+              {license.length ? (
+                <dl className="license-properties">
+                  {license.map((property) => (
+                    <div key={property.key}>
+                      <dt>{property.label}</dt>
+                      <dd>{property.value}</dd>
+                    </div>
+                  ))}
+                </dl>
+              ) : (
+                <div className="license-empty">
+                  <span>
+                    <Diamond className="ui-icon" aria-hidden="true" />
+                  </span>
+                  <div>
+                    <strong>No UDL terms declared</strong>
+                    <p>This process does not publish Universal Data License properties.</p>
+                  </div>
+                </div>
+              )}
+              <p className="market-note">Terms are read directly from immutable process metadata when present.</p>
+            </section>
+          ) : null}
+          {activeSection === 'blockchain' ? (
+            <section
+              aria-labelledby="asset-blockchain-tab"
+              className="asset-tab-panel"
+              id="asset-blockchain"
+              role="tabpanel"
+              tabIndex={0}
+            >
+              <dl className="asset-blockchain-details">
+                <div>
+                  <dt>Process ID</dt>
+                  <dd>
+                    <a href={transactionExplorerUrl(asset.id)} target="_blank" rel="noreferrer">
+                      {short(asset.id)} <ArrowUpRight className="ui-icon ui-icon--xs" aria-hidden="true" />
+                    </a>
+                  </dd>
+                </div>
+                <div>
+                  <dt>Network</dt>
+                  <dd>Arweave</dd>
+                </div>
+                <div>
+                  <dt>Execution</dt>
+                  <dd>{state?.device || 'token@1.0'}</dd>
+                </div>
+                <div>
+                  <dt>Settlement</dt>
+                  <dd>Native AR</dd>
+                </div>
+                <div>
+                  <dt>Content type</dt>
+                  <dd>{asset.contentType ?? (asset.image ? 'image' : 'process')}</dd>
+                </div>
+              </dl>
+            </section>
+          ) : null}
+          {activeSection === 'more' ? (
+            <section
+              aria-labelledby="asset-more-tab"
+              className="asset-tab-panel"
+              id="asset-more"
+              role="tabpanel"
+              tabIndex={0}
+            >
+              <div className="asset-more-grid">
+                {moreAssets.map((item) => (
+                  <Link key={item.id} to={`/asset/${collection.id}/${item.id}`}>
+                    {item.image ? <ArtworkImage src={item.image} alt="" /> : <span>{item.name.slice(0, 1)}</span>}
+                    <strong>{item.name}</strong>
+                  </Link>
+                ))}
+              </div>
+            </section>
+          ) : null}
         </div>
       </div>
     </section>
@@ -7052,7 +6925,10 @@ function OperationDialog({
         const finalState = await purchase.run();
         if (recoveryConflict) throw recoveryConflict;
         if (finalState.stage !== 'complete' || !finalState.success) {
-          const code = finalState.error?.code ?? 'asset-purchase-failed';
+          const code =
+            finalState.error?.code === 'unexpected'
+              ? finalState.error.message
+              : (finalState.error?.code ?? 'asset-purchase-failed');
           const snapshot = purchase.snapshot();
           const repaired = repairRejectedPurchase(snapshot, code);
           for (const id of repaired.discardIds) {
@@ -7437,10 +7313,6 @@ function OperationDialog({
                 {recoveryApprovalCount} new wallet {recoveryApprovalCount === 1 ? 'approval is' : 'approvals are'} still
                 required
               </h3>
-              <p>
-                Your saved purchase does not contain every signed transaction. Bazar will not ask your wallet to sign or
-                submit anything else until you choose Continue.
-              </p>
             </div>
             <div className="operation-summary">
               <span>Seller</span>
@@ -7608,7 +7480,7 @@ function OperationDialog({
               <p className="operation-disclosure">
                 {operation.kind === 'buy'
                   ? 'Your wallet will ask for two approvals: one reservation and one exact seller payment. The payment stays local until the reservation is accepted by the network.'
-                  : 'After wallet approval, Bazar will track this action across independent Arweave nodes and resume it safely if you leave.'}
+                  : 'After signing, Bazar observes this action through independently addressed Arweave nodes. Signed transaction details are saved in this browser so you can return with the same wallet while browser data remains available.'}
               </p>
             </div>
             <button
@@ -7640,7 +7512,7 @@ function OperationDialog({
             />
             <p>
               {operation.kind === 'buy'
-                ? 'Opening the observer network and preparing the reservation and seller payment. Nothing is sent before wallet approval.'
+                ? 'Bazar may contact observer nodes while preparing the reservation and seller payment, but no transaction is submitted until its signing step completes.'
                 : 'Bazar is preparing the Arweave transaction. The network view will appear as soon as the signed transaction is recoverable.'}
             </p>
           </div>
@@ -7648,7 +7520,7 @@ function OperationDialog({
         {visiblePhase === 'working' && recoverable ? (
           <div>
             <p className="sr-only" aria-live="polite" role="status">
-              {workingStatus || 'Watching independent Arweave nodes confirm this action.'}
+              {workingStatus || 'Watching independently addressed Arweave nodes report confirmations for this action.'}
             </p>
             {workingStatus ? <p className="scheduler-wait">{workingStatus}</p> : null}
             <ArweaveTransactionSync
@@ -7657,7 +7529,7 @@ function OperationDialog({
               steps={steps}
               activeStep={activeStep}
               pendingAfterConfirmation={
-                purchaseState?.stage === 'ownership-verifying' ? 'Verifying ownership' : undefined
+                purchaseState?.stage === 'ownership-verifying' ? 'Checking ownership' : undefined
               }
             />
           </div>
@@ -7725,7 +7597,7 @@ function OperationDialog({
             <AtomicOperationErrorAlert message={visibleMessage} />
             {failureKind === 'market-state-changed' ? (
               <button data-dialog-initial type="button" onClick={() => onClose(false)}>
-                Review updated asset
+                View updated asset
               </button>
             ) : operation.kind === 'buy' ? (
               <>
@@ -7759,7 +7631,7 @@ function OperationDialog({
                 </div>
                 {purchaseState?.error?.code === 'registration-dispatch-rejected' ? (
                   <button data-dialog-initial onClick={() => onClose(false)}>
-                    Review current listing
+                    View current listing
                   </button>
                 ) : purchaseState?.error?.code === 'payment-dispatch-rejected' ? (
                   <button data-dialog-initial onClick={() => void submit()}>
@@ -7767,7 +7639,7 @@ function OperationDialog({
                   </button>
                 ) : (
                   <button data-dialog-initial onClick={restartPurchase}>
-                    {recoverable ? 'Resume safely' : 'Review and try again'}
+                    {recoverable ? 'Continue saved purchase' : 'Try again'}
                   </button>
                 )}
               </>
@@ -7829,9 +7701,9 @@ function collectionKindLabel(collection: Collection) {
 }
 
 function collectionEyebrow(collection: Collection) {
-  if (collection.kind === 'names') return 'CARRIER ASSETS';
-  if (collection.kind === 'tokens') return 'FUNGIBLE TOKENS';
-  return 'PERMANENT ARTWORK';
+  if (collection.kind === 'names') return 'Carrier assets';
+  if (collection.kind === 'tokens') return 'Fungible tokens';
+  return 'Permanent artwork';
 }
 
 export function searchResultScore(
@@ -7964,43 +7836,6 @@ export function alphabetBrowseIndex(direction: 'previous' | 'next', visible: num
   return direction === 'previous' ? Math.max(0, visible[0] - 5) : Math.min(count - 1, visible[visible.length - 1] + 5);
 }
 
-function activityLabel(action: CollectionActivityEvent['action']) {
-  return {
-    'make-offer': 'Listing submitted',
-    'register-interest': 'Reservation submitted',
-    transfer: 'Transfer submitted',
-    'cancel-order': 'Cancellation submitted',
-  }[action];
-}
-
-function activityDetail(event: CollectionActivityEvent) {
-  if (event.action === 'make-offer' && event.asking) return `${winstonToAr(event.asking)} AR total`;
-  if (event.action === 'transfer' && event.recipient) return `To ${short(event.recipient)}`;
-  if (event.action === 'register-interest' && event.orderId) return `Order ${short(event.orderId)}`;
-  if (event.action === 'cancel-order' && event.orderId) return `Order ${short(event.orderId)}`;
-  return '';
-}
-
-function activitySymbol(action: CollectionActivityEvent['action']) {
-  const ActivityIcon = {
-    'make-offer': Tag,
-    'register-interest': ShoppingCart,
-    transfer: ArrowRight,
-    'cancel-order': CircleX,
-  }[action];
-  return <ActivityIcon className="ui-icon" aria-hidden="true" />;
-}
-
-function formatTimestamp(timestamp: number) {
-  return new Intl.DateTimeFormat(undefined, {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  }).format(new Date(timestamp * 1000));
-}
-
 function Loading({ label }: { label: string }) {
   return (
     <div aria-live="polite" className="loading" role="status">
@@ -8025,7 +7860,7 @@ function RouteState({
       <Link className="back" to={backTo}>
         <ArrowLeft className="ui-icon ui-icon--sm" aria-hidden="true" /> {backLabel}
       </Link>
-      <p className="eyebrow">ARWEAVE MARKETPLACE</p>
+      <p className="eyebrow">Arweave marketplace</p>
       <h1>{title}</h1>
       {children}
     </section>
@@ -8116,7 +7951,7 @@ function mintErrorMessage(error: unknown) {
     'mint-file-required': 'Choose an image to continue.',
     'mint-file-type-unsupported': 'Use a PNG, JPG, WebP, or GIF image.',
     'mint-file-size-invalid': 'Choose an image no larger than 10 MB.',
-    'mint-insufficient-balance': 'This wallet does not have enough AR for both permanent transactions.',
+    'mint-insufficient-balance': 'This wallet does not have enough AR for both Arweave transactions.',
     'mint-high-cost-confirmation-required': 'Review and approve the unusually high network cost before minting.',
     'wallet-sign-unavailable': 'Connect an Arweave wallet that can sign transactions.',
     'wallet-account-changed': 'The connected wallet changed. Reconnect the original wallet and try again.',
@@ -8256,19 +8091,19 @@ function purchaseStatusMessage(state: PurchaseState | null) {
     state.stage === 'registration-propagating' ||
     state.stage === 'registration-confirming'
   ) {
-    return 'The payment is signed but held locally. It will only be released after the reservation reaches five confirmations and appears in live process state.';
+    return 'The payment is signed but held in this browser. It will only be released after sampled observers report five confirmations and the reservation appears in live process state.';
   }
   if (state.stage === 'registration-accepting') {
-    return 'Registration has five confirmations. Waiting for ~arweave-scheduler@1.0 to reserve the order in live process state before releasing payment.';
+    return 'Sampled observers report five registration confirmations. Waiting for ~arweave-scheduler@1.0 to reserve the order in live process state before releasing payment.';
   }
   if (state.stage === 'signing-payment' || state.stage === 'dispatching-payment') {
     return 'The reservation is live. Preparing the exact payment to the seller.';
   }
   if (state.stage === 'payment-propagating' || state.stage === 'payment-confirming') {
-    return 'The reservation is live and the payment has been posted. Independent nodes are confirming settlement.';
+    return 'The reservation is live and the submission gateway accepted the payment. Sampled observers are reporting settlement confirmations.';
   }
   if (state.stage === 'ownership-verifying') {
-    return 'Payment is confirmed. Waiting for ~arweave-scheduler@1.0 to settle the order and transfer ownership in live process state.';
+    return 'Sampled observers report the payment as confirmed. Waiting for ~arweave-scheduler@1.0 to settle the order and transfer ownership in live process state.';
   }
   return '';
 }
