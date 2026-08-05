@@ -577,15 +577,6 @@ export function FungibleAssetView({
                     <Send className="ui-icon ui-icon--sm" aria-hidden="true" /> Transfer
                   </button>
                 ) : null}
-                <button
-                  aria-disabled={loading}
-                  className="with-icon"
-                  onClick={() => {
-                    if (!loading) void onRefresh();
-                  }}
-                >
-                  <RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> {loading ? 'Refreshing…' : 'Refresh'}
-                </button>
               </div>
             </section>
           </div>
