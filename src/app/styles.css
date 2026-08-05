@@ -3063,10 +3063,24 @@ input:focus {
 }
 .asset-accordion-list details {
   scroll-margin-top: 82px;
+  interpolate-size: allow-keywords;
   overflow: hidden;
   border: 1px solid var(--line-dark);
   border-radius: 9px;
   background: #fff;
+}
+.asset-accordion-list details::details-content {
+  block-size: 0;
+  overflow: clip;
+  opacity: 0;
+  transition:
+    block-size 240ms cubic-bezier(0.2, 0.7, 0.2, 1),
+    opacity 160ms ease,
+    content-visibility 240ms allow-discrete;
+}
+.asset-accordion-list details[open]::details-content {
+  block-size: auto;
+  opacity: 1;
 }
 .asset-accordion-list summary {
   min-height: 62px;
@@ -3086,7 +3100,7 @@ input:focus {
 }
 .asset-accordion-list summary > .ui-icon:last-child {
   color: var(--muted);
-  transition: transform 150ms ease;
+  transition: transform 220ms cubic-bezier(0.2, 0.7, 0.2, 1);
 }
 .asset-accordion-list details[open] summary > .ui-icon:last-child {
   transform: rotate(180deg);
@@ -3113,6 +3127,15 @@ input:focus {
 .asset-accordion-content {
   padding: 17px 18px 20px;
   border-top: 1px solid var(--line);
+  opacity: 0;
+  transform: translateY(-5px);
+  transition:
+    opacity 160ms ease,
+    transform 220ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.asset-accordion-list details[open] > .asset-accordion-content {
+  opacity: 1;
+  transform: translateY(0);
 }
 .asset-accordion-content > .asset-description {
   margin-bottom: 18px;
