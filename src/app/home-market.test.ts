@@ -6,7 +6,9 @@ import {
   collectionActivityScanAnnouncement,
   collectionCandidateMembership,
   collectionAssetWindowDelta,
+  collectionDefaultsToListed,
   collectionListingScopeVersion,
+  compareCollectionAssetNames,
   commitHomeActivityBatch,
   commitHomeFloorResult,
   completeHomeActivityScan,
@@ -33,6 +35,18 @@ import {
 } from './App';
 
 describe('Home market summary retries', () => {
+  it('opens Arweave names on complete live listings ordered A to Z', () => {
+    expect(collectionDefaultsToListed('arweave-names')).toBe(true);
+    expect(collectionDefaultsToListed('fungible-tokens')).toBe(false);
+    expect(
+      [
+        { id: '3', name: 'zupercollectiv' },
+        { id: '2', name: 'blockdata10' },
+        { id: '1', name: 'blockdata2' },
+      ].sort(compareCollectionAssetNames).map(({ name }) => name),
+    ).toEqual(['blockdata2', 'blockdata10', 'zupercollectiv']);
+  });
+
   it('round-trips a structural market snapshot for stable refresh shells', () => {
     const values = new Map<string, string>();
     const storage = {

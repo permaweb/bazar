@@ -2325,6 +2325,14 @@ export function collectionCandidateMembership(collection: Collection) {
   return (processId: string) => assetIds.has(processId);
 }
 
+export function collectionDefaultsToListed(collectionId: string) {
+  return collectionId === 'arweave-names';
+}
+
+export function compareCollectionAssetNames(a: AssetSummary, b: AssetSummary) {
+  return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+}
+
 export type ListingAnnouncementProgress = {
   scope: string;
   resolved: number;
@@ -2381,7 +2389,7 @@ function CollectionView() {
   const pageSize = useProgressiveAssetPageSize();
   const [limit, setLimit] = React.useState(pageSize);
   const [sort, setSort] = React.useState<'default' | 'recent'>('default');
-  const [listedOnly, setListedOnly] = React.useState(false);
+  const [listedOnly, setListedOnly] = React.useState(() => collectionDefaultsToListed(collectionId));
   const [initial, setInitial] = React.useState<string>('all');
   const [alphabetFocus, setAlphabetFocus] = React.useState<string>('all');
   const alphabetRefs = React.useRef<Array<HTMLButtonElement | null>>([]);
@@ -2519,19 +2527,20 @@ function CollectionView() {
         (initial === 'all' || asset.name.trim().toUpperCase().startsWith(initial)),
     )
     .sort((a, b) => {
-      if (initial !== 'all') return a.name.localeCompare(b.name);
+      if (initial !== 'all') return compareCollectionAssetNames(a, b);
       if (sort === 'recent' && !recentOrderState.loading && !recentOrderState.error) {
         const activityA = activityByAsset.get(a.id);
         const activityB = activityByAsset.get(b.id);
         return (
           (activityB?.height ?? 0) - (activityA?.height ?? 0) ||
           (activityB?.timestamp ?? 0) - (activityA?.timestamp ?? 0) ||
-          a.name.localeCompare(b.name)
+          compareCollectionAssetNames(a, b)
         );
       }
+      if (collection?.kind === 'names') return compareCollectionAssetNames(a, b);
       return (
         (defaultIndex.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (defaultIndex.get(b.id) ?? Number.MAX_SAFE_INTEGER) ||
-        a.name.localeCompare(b.name)
+        compareCollectionAssetNames(a, b)
       );
     });
   const filteredCountRef = React.useRef(filtered.length);
@@ -3171,7 +3180,7 @@ function CollectionView() {
               label="Sort"
               onChange={setSort}
               options={[
-                { value: 'default', label: 'Default' },
+                { value: 'default', label: collection.kind === 'names' ? 'Name: A to Z' : 'Default' },
                 { value: 'recent', label: 'Recent activity' },
               ]}
               value={sort}
