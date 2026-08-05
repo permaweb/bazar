@@ -17,6 +17,7 @@ import {
   homeSummaryRequestKeys,
   homeDiscoveryAssets,
   homeMarketPriceValue,
+  homeMarketShellLoading,
   homeMarketSummariesReady,
   homeScrollIndicatorMetrics,
   homeFloorScanSummary,
@@ -30,6 +31,7 @@ import {
   reconcileHomeActivityScan,
   reconcileHomeFloorScan,
   retryableHomeSummaryKeys,
+  shouldLoadHomeCollectionSummaries,
   storeAssetShellSnapshot,
   storeMarketShellSnapshot,
   type HomeMarketSummary,
@@ -44,7 +46,9 @@ describe('Home market summary retries', () => {
         { id: '3', name: 'zupercollectiv' },
         { id: '2', name: 'blockdata10' },
         { id: '1', name: 'blockdata2' },
-      ].sort(compareCollectionAssetNames).map(({ name }) => name),
+      ]
+        .sort(compareCollectionAssetNames)
+        .map(({ name }) => name),
     ).toEqual(['blockdata2', 'blockdata10', 'zupercollectiv']);
   });
 
@@ -170,6 +174,19 @@ describe('Home market summary retries', () => {
     expect(homeMarketSummariesReady(true, ['listed'], summaries)).toBe(false);
     expect(homeMarketSummariesReady(false, ['listed', 'pending'], summaries)).toBe(false);
     expect(homeMarketSummariesReady(false, ['listed', 'empty', 'failed'], summaries)).toBe(true);
+  });
+
+  it('publishes a cached or progressive market shell while indexes refresh', () => {
+    expect(homeMarketShellLoading(true, 0)).toBe(true);
+    expect(homeMarketShellLoading(true, 1)).toBe(false);
+    expect(homeMarketShellLoading(false, 0)).toBe(false);
+  });
+
+  it('keeps collection floor scans off the initial discover render path', () => {
+    expect(shouldLoadHomeCollectionSummaries('discover', true, false)).toBe(false);
+    expect(shouldLoadHomeCollectionSummaries('discover', false, false)).toBe(false);
+    expect(shouldLoadHomeCollectionSummaries('discover', false, true)).toBe(true);
+    expect(shouldLoadHomeCollectionSummaries('collections', true, false)).toBe(true);
   });
 
   it('checks exact collection membership without rescanning loaded assets', () => {

@@ -891,12 +891,38 @@ export class AssetTransactionClient {
       tags: fields.tags,
     };
 
-    const signed = (await this.#wallet.sign(transaction)) ?? transaction;
+    const walletResult = (await this.#wallet.sign(transaction)) ?? transaction;
+    let signed = walletResult;
+    if (walletResult !== transaction && typeof transaction?.setSignature === 'function') {
+      transaction.setSignature({
+        id: walletResult.id,
+        owner: walletResult.owner,
+        reward: walletResult.reward,
+        tags: walletResult.tags,
+        signature: walletResult.signature,
+      });
+      signed = transaction;
+    }
     if (signal?.aborted) throw signal.reason;
     if (!ADDRESS.test(signed.id)) throw new Error('wallet-returned-unsigned-transaction');
     const serializable = typeof signed.toJSON === 'function' ? signed.toJSON() : JSON.parse(JSON.stringify(signed));
     serializable.id = signed.id;
     assertZeroDataTransaction(serializable);
+    const signedReward = serializable.reward;
+    if (typeof signedReward !== 'string' || !/^\d+$/.test(signedReward)) {
+      throw new Error('wallet-modified-transaction-fields');
+    }
+    // Wander finalizes the network reward as part of the signed fields it
+    // returns. Keep the business intent strict, then make that exact signed
+    // reward immutable for persistence, recovery, and dispatch.
+    intent.reward = signedReward;
+    let signatureValid = false;
+    try {
+      signatureValid = Boolean(await this.#arweave.transactions?.verify?.(signed));
+    } catch {
+      signatureValid = false;
+    }
+    if (!signatureValid) throw new Error('wallet-returned-invalid-signature');
     assertTransactionIntent(serializable, intent);
     if (expectedSigner) await this.#assertSigner(serializable, expectedSigner);
     if (signal?.aborted) throw signal.reason;
@@ -1456,20 +1482,22 @@ function assertTransactionIntent(transaction: Record<string, unknown>, expected:
 }
 
 function transactionTagsEqual(tags: unknown, expected: TransactionFields['tags']): boolean {
-  if (!Array.isArray(tags) || tags.length !== expected.length) return false;
-  const remaining = [...tags];
+  if (!Array.isArray(tags)) return false;
+  const decoded = tags.map((tag) => {
+    if (!tag || typeof tag !== 'object') return null;
+    const record = tag as Record<string, unknown>;
+    const names = transactionTagValues(record.name);
+    const values = transactionTagValues(record.value);
+    return names.length === 1 && values.length === 1 ? { name: names[0], value: values[0] } : null;
+  });
+  if (decoded.some((tag) => tag === null)) return false;
+
+  // Wander's signing finalizer merges the app's original tags with tags from
+  // the signed wallet response. Permit signed metadata and identical copies of
+  // an expected tag, but never permit a conflicting value for a business tag.
   return expected.every((expectedTag) => {
-    const index = remaining.findIndex((tag) => {
-      if (!tag || typeof tag !== 'object') return false;
-      const record = tag as Record<string, unknown>;
-      return (
-        transactionTagValues(record.name).includes(expectedTag.name) &&
-        transactionTagValues(record.value).includes(expectedTag.value)
-      );
-    });
-    if (index < 0) return false;
-    remaining.splice(index, 1);
-    return true;
+    const matchingName = decoded.filter((tag) => tag?.name === expectedTag.name);
+    return matchingName.length > 0 && matchingName.every((tag) => tag?.value === expectedTag.value);
   });
 }
 

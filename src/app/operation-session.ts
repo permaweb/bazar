@@ -148,8 +148,8 @@ export function operationStorageKey(assetId: string, signer: string) {
   return `bazar-operation:${assetId}:${signer}`;
 }
 
-export function operationClaimStorageKey(assetId: string, signer: string) {
-  return `bazar-operation-claim:${assetId}:${signer}`;
+export function operationClaimStorageKey(assetId: string, signer: string, scope?: string) {
+  return `bazar-operation-claim:${assetId}:${signer}${scope ? `:${scope}` : ''}`;
 }
 
 export function isWalletOperationStorageKey(key: string | null, keys: string[]) {

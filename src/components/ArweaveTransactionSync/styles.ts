@@ -53,7 +53,7 @@ function completedLaneTrustColor(props: RaceTrustProps & { theme: DefaultTheme }
 export const Wrapper = styled.div`
   padding: 6px 24px 26px;
   color: ${(props) => props.theme.colors.font.primary};
-  font-size: ${(props) => props.theme.typography.size.xxSmall};
+  font-size: ${(props) => props.theme.typography.size.small};
   font-family: ${(props) => props.theme.typography.family.primary};
 `;
 
@@ -102,7 +102,7 @@ export const Step = styled.div<{ $state: 'done' | 'active' | 'next' }>`
         ? props.theme.colors.container.alt2.background
         : props.theme.colors.container.primary.background};
     color: ${(props) => props.theme.colors.font.primary};
-    font-size: ${(props) => props.theme.typography.size.xxSmall};
+    font-size: ${(props) => props.theme.typography.size.small};
 
     > div,
     svg {
@@ -114,7 +114,7 @@ export const Step = styled.div<{ $state: 'done' | 'active' | 'next' }>`
 
   p {
     margin: 0;
-    font-size: ${(props) => props.theme.typography.size.xxSmall};
+    font-size: ${(props) => props.theme.typography.size.small};
     line-height: 1.25;
   }
 `;
@@ -126,14 +126,14 @@ export const StatusCard = styled.div`
   }
 
   h3 {
-    font-size: ${(props) => props.theme.typography.size.small};
-    font-weight: ${(props) => props.theme.typography.weight.medium};
+    font-size: ${(props) => props.theme.typography.size.body};
+    font-weight: ${(props) => props.theme.typography.weight.regular};
   }
 
   p {
     margin-top: 5px;
     color: ${(props) => props.theme.colors.font.alt1};
-    font-size: ${(props) => props.theme.typography.size.xxSmall};
+    font-size: ${(props) => props.theme.typography.size.small};
     line-height: 1.45;
   }
 `;
@@ -147,15 +147,15 @@ export const CostCard = styled.div`
 
   h4 {
     margin: 0 0 12px;
-    font-size: ${(props) => props.theme.typography.size.small};
-    font-weight: ${(props) => props.theme.typography.weight.medium};
+    font-size: ${(props) => props.theme.typography.size.body};
+    font-weight: ${(props) => props.theme.typography.weight.regular};
   }
 
   > small {
     display: block;
     margin-top: 10px;
     color: ${(props) => props.theme.colors.font.alt1};
-    font-size: ${(props) => props.theme.typography.size.xxxxSmall};
+    font-size: ${(props) => props.theme.typography.size.small};
     line-height: 1.45;
   }
 `;
@@ -170,10 +170,10 @@ export const CostSummary = styled.div`
   border: 1px solid ${(props) => props.theme.colors.border.primary};
   border-radius: 6px;
   background: ${(props) => props.theme.colors.container.alt1.background};
-  font-size: ${(props) => props.theme.typography.size.small};
+  font-size: ${(props) => props.theme.typography.size.body};
 
   strong {
-    font-weight: ${(props) => props.theme.typography.weight.medium};
+    font-weight: ${(props) => props.theme.typography.weight.regular};
   }
 `;
 
@@ -183,11 +183,11 @@ export const CostRow = styled.div`
   gap: 18px;
   padding: 5px 0;
   color: ${(props) => props.theme.colors.font.alt1};
-  font-size: ${(props) => props.theme.typography.size.xxSmall};
+  font-size: ${(props) => props.theme.typography.size.small};
 
   strong {
     color: ${(props) => props.theme.colors.font.primary};
-    font-weight: ${(props) => props.theme.typography.weight.medium};
+    font-weight: ${(props) => props.theme.typography.weight.regular};
   }
 `;
 
@@ -195,7 +195,7 @@ export const CostTotal = styled(CostRow)`
   margin-top: 7px;
   padding-top: 12px;
   border-top: 1px solid ${(props) => props.theme.colors.border.primary};
-  font-size: ${(props) => props.theme.typography.size.small};
+  font-size: ${(props) => props.theme.typography.size.body};
 `;
 
 export const TransactionHeader = styled.div`
@@ -212,11 +212,11 @@ export const TransactionHeader = styled.div`
     display: grid;
     gap: 3px;
     color: ${(props) => props.theme.colors.font.alt1};
-    font-size: ${(props) => props.theme.typography.size.xxSmall};
+    font-size: ${(props) => props.theme.typography.size.small};
 
     > strong {
       color: ${(props) => props.theme.colors.font.primary};
-      font-weight: ${(props) => props.theme.typography.weight.medium};
+      font-weight: ${(props) => props.theme.typography.weight.regular};
     }
 
     > span {
@@ -232,12 +232,12 @@ export const Depth = styled.div<{ $success: boolean }>`
   color: ${(props) => (props.$success ? props.theme.colors.indicator.primary : props.theme.colors.font.primary)};
 
   strong {
-    font-size: ${(props) => props.theme.typography.size.small};
+    font-size: ${(props) => props.theme.typography.size.body};
   }
 
   span {
     color: ${(props) => props.theme.colors.font.alt1};
-    font-size: ${(props) => props.theme.typography.size.xxSmall};
+    font-size: ${(props) => props.theme.typography.size.small};
   }
 `;
 
@@ -282,7 +282,7 @@ export const RiskNote = styled.p`
   z-index: 2;
   margin: 7px 0 0;
   color: #525252;
-  font-size: ${(props) => props.theme.typography.size.xxSmall};
+  font-size: ${(props) => props.theme.typography.size.small};
 `;
 
 export const RaceShell = styled.div<{ $height: number; $embedded: boolean }>`
@@ -368,7 +368,7 @@ export const RaceHitArea = styled.rect<{ $hitWidth: number; $active: boolean }>`
 
 export const LaneNumber = styled.text<{ $dense: boolean }>`
   fill: ${(props) => props.theme.colors.font.alt1};
-  font-size: ${(props) => (props.$dense ? '7px' : '8px')};
+  font-size: ${(props) => props.theme.typography.size.small};
   font-family: ${(props) => props.theme.typography.family.primary};
 `;
 
@@ -392,8 +392,8 @@ export const PhaseLabelBackground = styled.rect`
 export const PhaseLabel = styled.text`
   fill: ${(props) => props.theme.colors.font.alt1};
   font-family: ${(props) => props.theme.typography.family.primary};
-  font-size: 9px;
-  font-weight: ${(props) => props.theme.typography.weight.medium};
+  font-size: ${(props) => props.theme.typography.size.small};
+  font-weight: ${(props) => props.theme.typography.weight.regular};
 `;
 
 export const RaceInfield = styled.div`
@@ -412,8 +412,8 @@ export const RaceInfield = styled.div`
     max-width: 100%;
     overflow: hidden;
     text-overflow: ellipsis;
-    font-size: ${(props) => props.theme.typography.size.lg};
-    font-weight: ${(props) => props.theme.typography.weight.medium};
+    font-size: ${(props) => props.theme.typography.size.display};
+    font-weight: ${(props) => props.theme.typography.weight.regular};
     white-space: nowrap;
   }
 `;
@@ -445,7 +445,7 @@ export const RaceTooltip = styled.span<{
   box-shadow: 0 14px 36px rgba(28, 25, 22, 0.1);
   color: ${(props) => props.theme.colors.font.primary};
   font-family: ${(props) => props.theme.typography.family.primary};
-  font-size: ${(props) => props.theme.typography.size.xxxxSmall};
+  font-size: ${(props) => props.theme.typography.size.small};
   line-height: 1.35;
   text-align: left;
   white-space: normal;
@@ -468,8 +468,8 @@ export const RaceTooltip = styled.span<{
 export const RaceTooltipObserver = styled.strong`
   overflow: hidden;
   color: ${(props) => props.theme.colors.font.primary};
-  font-size: ${(props) => props.theme.typography.size.xxSmall};
-  font-weight: ${(props) => props.theme.typography.weight.medium};
+  font-size: ${(props) => props.theme.typography.size.small};
+  font-weight: ${(props) => props.theme.typography.weight.regular};
   text-overflow: ellipsis;
   white-space: nowrap;
 `;
@@ -494,7 +494,7 @@ export const RaceTooltipStage = styled.span`
 
   strong {
     color: ${(props) => props.theme.colors.font.primary};
-    font-weight: ${(props) => props.theme.typography.weight.medium};
+    font-weight: ${(props) => props.theme.typography.weight.regular};
   }
 `;
 
@@ -509,7 +509,7 @@ export const RaceTooltipStageDot = styled.i<LaneTrustProps>`
 
 export const RaceTooltipDetail = styled.span`
   color: ${(props) => props.theme.colors.font.alt1};
-  font-size: 10px;
+  font-size: ${(props) => props.theme.typography.size.small};
 `;
 
 export const ErrorBox = styled.div`
@@ -522,7 +522,7 @@ export const ErrorBox = styled.div`
   border-radius: 10px;
   background: color-mix(in srgb, ${(props) => props.theme.colors.warning.primary} 6%, white);
   color: ${(props) => props.theme.colors.warning.primary};
-  font-size: ${(props) => props.theme.typography.size.xxSmall};
+  font-size: ${(props) => props.theme.typography.size.small};
 `;
 
 export const Actions = styled.div`

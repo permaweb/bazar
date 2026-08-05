@@ -153,6 +153,7 @@ function decodedTags(transaction: { tags: Array<{ name: string; value: string }>
 function client(
   sign: (transaction: any) => Promise<any> = async (transaction) => transaction,
   fetchResponse?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
+  verify: (transaction: any) => Promise<boolean> = async () => true,
 ) {
   const values = new Map<string, string>();
   const requests: string[] = [];
@@ -178,10 +179,18 @@ function client(
         addTag(name: string, value: string) {
           this.tags.push({ name, value });
         },
+        setSignature({ id, owner, reward, tags, signature }: Record<string, any>) {
+          this.id = id;
+          this.owner = owner;
+          if (reward) this.reward = reward;
+          if (tags) this.tags = tags;
+          this.signature = signature;
+        },
         toJSON() {
           return {
             ...this,
             addTag: undefined,
+            setSignature: undefined,
             toJSON: undefined,
             tags: this.tags.map((tag: { name: string; value: string }) => ({
               name: Buffer.from(tag.name).toString('base64url'),
@@ -192,6 +201,7 @@ function client(
       };
       return transaction;
     },
+    transactions: { verify },
     wallets: { ownerToAddress: async () => seller },
   };
   return {
@@ -283,6 +293,91 @@ describe('fungible asset transactions', () => {
     });
   });
 
+  it('applies Wander signature fields to the original transaction before validating its intent', async () => {
+    const subject = client(async (transaction) => ({
+      id: transaction.id,
+      owner: transaction.owner,
+      reward: transaction.reward,
+      tags: transaction.tags,
+      signature: 'wallet-signature',
+    }));
+
+    const prepared = await subject.client.transfer(processId, recipient, '12500000000000', seller);
+    const stored = JSON.parse(subject.storage.getItem(`bazar-signed-transaction:${prepared.id}`)!);
+
+    expect(stored.transaction.target).toBe(processId);
+    expect(stored.transaction.quantity).toBe('0');
+    expect(stored.transaction.signature).toBe('wallet-signature');
+    expect(decodedTags(stored.transaction)).toContainEqual({ name: 'recipient', value: recipient });
+  });
+
+  it('accepts Wander finalizing the cancellation reward and stores that exact signed intent', async () => {
+    const subject = client(async (transaction) => ({
+      id: transaction.id,
+      owner: transaction.owner,
+      reward: '2000',
+      tags: transaction.tags,
+      signature: 'wallet-signature',
+    }));
+
+    const prepared = await subject.client.cancelOrder(processId, orderId, seller);
+    const stored = JSON.parse(subject.storage.getItem(`bazar-signed-transaction:${prepared.id}`)!);
+
+    expect(stored.transaction.target).toBe(processId);
+    expect(stored.transaction.quantity).toBe('1');
+    expect(stored.transaction.reward).toBe('2000');
+    expect(stored.intent.reward).toBe('2000');
+    expect(decodedTags(stored.transaction)).toEqual([
+      { name: 'action', value: 'cancel-order' },
+      { name: 'order-id', value: orderId },
+    ]);
+  });
+
+  it('accepts Wander merging signed metadata and identical business tags into its response', async () => {
+    const subject = client(async (transaction) => ({
+      id: transaction.id,
+      owner: transaction.owner,
+      reward: transaction.reward,
+      tags: [...transaction.tags, ...transaction.tags, { name: 'App-Name', value: 'Wander' }],
+      signature: 'wallet-signature',
+    }));
+
+    const prepared = await subject.client.cancelOrder(processId, orderId, seller);
+    const stored = JSON.parse(subject.storage.getItem(`bazar-signed-transaction:${prepared.id}`)!);
+
+    expect(decodedTags(stored.transaction)).toEqual([
+      { name: 'action', value: 'cancel-order' },
+      { name: 'order-id', value: orderId },
+      { name: 'action', value: 'cancel-order' },
+      { name: 'order-id', value: orderId },
+      { name: 'App-Name', value: 'Wander' },
+    ]);
+  });
+
+  it('rejects a conflicting duplicate business tag returned by the wallet', async () => {
+    const subject = client(async (transaction) => ({
+      id: transaction.id,
+      owner: transaction.owner,
+      reward: transaction.reward,
+      tags: [...transaction.tags, { name: 'action', value: 'make-offer' }],
+      signature: 'wallet-signature',
+    }));
+
+    await expect(subject.client.cancelOrder(processId, orderId, seller)).rejects.toThrow(
+      'wallet-modified-transaction-fields',
+    );
+    expect(subject.storage.getItem(`bazar-signed-transaction:${transactionId}`)).toBeNull();
+  });
+
+  it('rejects signed fields that do not verify against the reconstructed transaction', async () => {
+    const subject = client(undefined, undefined, async () => false);
+
+    await expect(subject.client.cancelOrder(processId, orderId, seller)).rejects.toThrow(
+      'wallet-returned-invalid-signature',
+    );
+    expect(subject.storage.getItem(`bazar-signed-transaction:${transactionId}`)).toBeNull();
+  });
+
   it('rejects a noncanonical raw wire tag before persistence', async () => {
     const subject = client(async (transaction) => {
       const toJSON = transaction.toJSON.bind(transaction);
@@ -330,12 +425,6 @@ describe('fungible asset transactions', () => {
         transaction.tags.find((tag: { name: string }) => tag.name === 'action').value = 'make-offer';
       },
     ],
-    [
-      'reward',
-      (transaction: any) => {
-        transaction.reward = '999999';
-      },
-    ],
   ])('rejects a wallet-modified transfer %s before persistence', async (_field, mutate) => {
     const subject = client(async (transaction) => {
       mutate(transaction);
@@ -371,6 +460,25 @@ describe('fungible asset transactions', () => {
     });
     const prepared = await subject.client.transfer(processId, recipient, '12500000000000', seller);
     serializedTransaction.target = recipient;
+
+    await expect(prepared.dispatch(new AbortController().signal)).rejects.toBeInstanceOf(
+      TransactionDispatchNotSentError,
+    );
+    expect(subject.requests).toEqual([]);
+  });
+
+  it('rejects a reward changed after signing before dispatch', async () => {
+    let serializedTransaction: any;
+    const subject = client(async (transaction) => {
+      const toJSON = transaction.toJSON.bind(transaction);
+      transaction.toJSON = () => {
+        serializedTransaction = toJSON();
+        return serializedTransaction;
+      };
+      return transaction;
+    });
+    const prepared = await subject.client.cancelOrder(processId, orderId, seller);
+    serializedTransaction.reward = '999999';
 
     await expect(prepared.dispatch(new AbortController().signal)).rejects.toBeInstanceOf(
       TransactionDispatchNotSentError,
@@ -1494,6 +1602,7 @@ function approvalSubject(
       };
       return transaction;
     },
+    transactions: { verify: async () => true },
     wallets: { ownerToAddress: async () => seller },
   };
   const state = {

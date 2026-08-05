@@ -1,19 +1,23 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import {
   ArrowLeft,
+  ArrowDown,
   ArrowUpRight,
   BarChart3,
   ChevronDown,
+  ChevronRight,
   CircleX,
   FileText,
   Grid2X2,
+  InfinityIcon,
   Layers3,
+  LoaderCircle,
   RefreshCw,
   Send,
   ShoppingCart,
   Tag,
-  X,
 } from 'lucide-react';
 import {
   SwapPurchase,
@@ -28,7 +32,6 @@ import type { CollectionActivityEvent } from 'api/asset-discovery';
 import type { AssetSummary, Collection } from 'api/collections';
 import {
   bestAskOfAsset,
-  compareOrderUnitPrice,
   licenseProperties,
   listedBalanceOf,
   liquidBalanceOf,
@@ -52,8 +55,9 @@ import { ArweaveTransactionSync, type ArweaveSyncStep } from 'components/Arweave
 import { ArtworkImage } from 'components/ArtworkImage';
 import { ConnectWalletButton } from 'components/ConnectWalletButton';
 import { OperationOutcome, OperationOutcomeAnnouncement } from 'components/OperationOutcomeAnnouncement';
-import { StateVerification } from 'components/StateVerification';
 import {
+  prepareTransactionDialogHide,
+  TRANSACTION_DIALOG_HIDE_DURATION_MS,
   TransactionDialogControl,
   transactionDialogDismissAction,
   type TransactionDialogPhase,
@@ -79,7 +83,6 @@ import {
   discardNewlyPreparedTransactionIfAborted,
   loadWalletRecord,
   hasRecoverablePurchase,
-  operationForSigner,
   operationClaimStorageKey,
   operationStorageKey,
   promoteWalletOperationClaim,
@@ -126,7 +129,7 @@ type BatchResume = {
   attemptId?: string;
 };
 
-type FungibleOperation =
+export type FungibleOperation =
   | { kind: 'sell'; quantity?: string; unitPrice?: string; resumeId?: string }
   | {
       kind: 'transfer';
@@ -139,10 +142,23 @@ type FungibleOperation =
   | {
       kind: 'buy';
       availableOrders: SwapOrder[];
+      quantity?: string;
       startingBalance: string;
-      selectedOrders?: SwapOrder[];
       resume?: BatchResume;
     };
+
+export type FungibleOperationActivity = OperationSession<FungibleOperation> & {
+  id: string;
+  phase: TransactionDialogPhase | null;
+  visible: boolean;
+};
+
+export function appendFungibleOperationActivity(
+  current: FungibleOperationActivity[],
+  activity: FungibleOperationActivity,
+) {
+  return [...current.map((item) => ({ ...item, visible: false })), activity];
+}
 
 const ADDRESS = /^[A-Za-z0-9_-]{43}$/;
 const SETTLEMENT_PANEL_ID = 'fungible-settlement-panel';
@@ -159,21 +175,20 @@ export function FungibleAssetView({
   onActivityRetry,
   loading,
   error,
-  provider,
-  verifiedAt,
   onRefresh,
 }: Props) {
   const wallet = useWallet();
-  const [operationSession, setOperationSession] = React.useState<OperationSession<FungibleOperation> | null>(null);
-  const operation = operationForSigner(operationSession, wallet.address);
-  const [operationVisible, setOperationVisible] = React.useState(false);
-  const [operationPhase, setOperationPhase] = React.useState<TransactionDialogPhase | null>(null);
+  const [operationActivities, setOperationActivities] = React.useState<FungibleOperationActivity[]>([]);
+  const walletActivities = operationActivities.filter((activity) => activity.signer === wallet.address);
+  const hasWalletActivities = walletActivities.length > 0;
   const openOperation = React.useCallback(
     (next: FungibleOperation) => {
       if (wallet.address) {
-        setOperationSession({ signer: wallet.address, operation: next });
-        setOperationVisible(true);
-        setOperationPhase(null);
+        const signer = wallet.address;
+        const id = `${next.kind}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
+        setOperationActivities((current) =>
+          appendFungibleOperationActivity(current, { id, operation: next, phase: null, signer, visible: true }),
+        );
       }
     },
     [wallet.address],
@@ -183,12 +198,13 @@ export function FungibleAssetView({
   const [unavailableRecovery, setUnavailableRecovery] = React.useState<UnavailableOperationRecovery | null>(null);
   const resumeButtonRef = React.useRef<HTMLButtonElement>(null);
   const operationActivityButtonRef = React.useRef<HTMLButtonElement>(null);
+  const [operationActivitySlot, setOperationActivitySlot] = React.useState<HTMLElement | null>(null);
   const operationFocusFallbackRef = React.useRef<HTMLHeadingElement>(null);
   const operationFocusFallback = React.useCallback(
     () => operationActivityButtonRef.current ?? resumeButtonRef.current ?? operationFocusFallbackRef.current,
     [],
   );
-  const [selectedOrderCount, setSelectedOrderCount] = React.useState(1);
+  const [purchaseQuantity, setPurchaseQuantity] = React.useState('');
   const [orderReveal, setOrderReveal] = React.useState({ assetId: asset.id, limit: 50 });
   const orderRevealStatusRef = React.useRef<HTMLParagraphElement>(null);
   const [storageVersion, setStorageVersion] = React.useState(0);
@@ -196,17 +212,16 @@ export function FungibleAssetView({
   const orderLimit = orderReveal.assetId === asset.id ? orderReveal.limit : 50;
   const visibleOrderRows = visibleOrderbookRows(orders, orderLimit);
   const openOrders = openOrdersOfAsset(state);
-  const purchasableOrders = lowestCostOrders(
-    openOrders.filter((order) => order.creator !== wallet.address && order.recipient !== wallet.address),
-    openOrders.length,
+  const purchasableOrders = openOrders.filter(
+    (order) => order.creator !== wallet.address && order.recipient !== wallet.address,
   );
-  const selectedOrders = lowestCostOrders(purchasableOrders, selectedOrderCount);
   const liquid = wallet.address ? liquidBalanceOf(state, wallet.address) : '0';
   const listed = wallet.address ? listedBalanceOf(state, wallet.address) : '0';
   const ticker = state.ticker || 'TOKEN';
   const best = bestAskOfAsset(state);
   const forSale = openOrders.reduce((total, order) => total + BigInt(order.quantity), 0n).toString();
-  const sellerCount = new Set(openOrders.map((order) => order.creator)).size;
+  const purchasableQuantity = purchasableOrders.reduce((total, order) => total + BigInt(order.quantity), 0n);
+  const purchaseAmountResult = purchaseAmountMatch(purchasableOrders, purchaseQuantity, state);
   const holderAddresses = new Set(
     Object.entries(state.balances)
       .filter(([, balance]) => BigInt(balance) > 0n)
@@ -218,37 +233,60 @@ export function FungibleAssetView({
   const description = assetDescription(state, collection.description);
   const purchaseKey = wallet.address ? batchStorageKey(asset.id, wallet.address) : '';
 
+  React.useLayoutEffect(() => {
+    setOperationActivitySlot(document.getElementById('fungible-operation-activity-slot'));
+  }, []);
+
+  React.useEffect(() => {
+    setPurchaseQuantity('');
+  }, [asset.id]);
+
   React.useEffect(() => {
     if (!wallet.address) return;
     const walletAddress = wallet.address;
-    const claimKey = operationClaimStorageKey(asset.id, walletAddress);
-    const recoveryKeys = [operationStorageKey(asset.id, walletAddress), batchStorageKey(asset.id, walletAddress)];
+    const purchaseClaimKey = operationClaimStorageKey(asset.id, walletAddress, 'purchase');
+    const assetClaimKey = operationClaimStorageKey(asset.id, walletAddress, 'asset');
+    const operationKey = operationStorageKey(asset.id, walletAddress);
+    const purchaseKey = batchStorageKey(asset.id, walletAddress);
     const onStorage = (event: StorageEvent) => {
       if (event.storageArea && event.storageArea !== localStorage) return;
-      const change = walletOperationStorageChange(event.key, event.newValue, claimKey, recoveryKeys);
+      const purchaseChange = walletOperationStorageChange(event.key, event.newValue, purchaseClaimKey, [purchaseKey]);
+      const change =
+        purchaseChange === 'ignore'
+          ? walletOperationStorageChange(event.key, event.newValue, assetClaimKey, [operationKey])
+          : purchaseChange;
       if (change === 'ignore') return;
+      const changedScope = event.key === purchaseClaimKey || event.key === purchaseKey ? 'purchase' : 'asset';
+      const inChangedScope = (activity: FungibleOperationActivity) =>
+        changedScope === 'purchase' ? activity.operation.kind === 'buy' : activity.operation.kind !== 'buy';
       setRecoverySuppressed(false);
       if (change === 'claim-acquired' || change === 'claim-released') {
         if (change === 'claim-acquired') {
-          setOperationSession((current) => {
-            if (!current || current.signer !== walletAddress) return current;
-            const active = current.operation;
-            const recovering = active.kind === 'buy' ? Boolean(active.resume) : Boolean(active.resumeId);
-            return recovering ? current : null;
-          });
+          setOperationActivities((current) =>
+            current.filter((activity) => {
+              if (activity.signer !== walletAddress || !inChangedScope(activity)) return true;
+              return activity.operation.kind === 'buy'
+                ? Boolean(activity.operation.resume)
+                : Boolean(activity.operation.resumeId);
+            }),
+          );
         }
         setStorageVersion((version) => version + 1);
         return;
       }
       if (change === 'recovery-updated') {
-        setOperationSession((current) => {
-          if (!current || current.signer !== walletAddress) return current;
-          const active = current.operation;
-          const recovering = active.kind === 'buy' ? Boolean(active.resume) : Boolean(active.resumeId);
-          return recovering ? current : null;
-        });
+        setOperationActivities((current) =>
+          current.filter((activity) => {
+            if (activity.signer !== walletAddress || !inChangedScope(activity)) return true;
+            return activity.operation.kind === 'buy'
+              ? Boolean(activity.operation.resume)
+              : Boolean(activity.operation.resumeId);
+          }),
+        );
       } else {
-        setOperationSession(null);
+        setOperationActivities((current) =>
+          current.filter((activity) => activity.signer !== walletAddress || !inChangedScope(activity)),
+        );
         void onRefresh();
       }
       setStorageVersion((version) => version + 1);
@@ -261,17 +299,19 @@ export function FungibleAssetView({
     setRecoverySuppressed(false);
     setRecoveryNotice('');
     setUnavailableRecovery(null);
-    setOperationSession(null);
-    setOperationVisible(false);
-    setOperationPhase(null);
+    setOperationActivities([]);
   }, [asset.id, wallet.address]);
   React.useLayoutEffect(() => {
     if (recoverySuppressed) resumeButtonRef.current?.focus();
   }, [recoverySuppressed]);
   React.useEffect(() => {
-    if (!wallet.address || operation || recoverySuppressed) return;
-    const activeClaimKey = operationClaimStorageKey(asset.id, wallet.address);
-    if (localStorage.getItem(activeClaimKey)) {
+    if (!wallet.address || hasWalletActivities || recoverySuppressed) return;
+    const activeClaimKeys = [
+      operationClaimStorageKey(asset.id, wallet.address, 'purchase'),
+      operationClaimStorageKey(asset.id, wallet.address, 'asset'),
+    ];
+    const activeClaimKey = activeClaimKeys.find((key) => localStorage.getItem(key));
+    if (activeClaimKey) {
       const controller = new AbortController();
       void clearStaleWalletOperationClaim(localStorage, activeClaimKey, { signal: controller.signal })
         .then((cleared) => {
@@ -293,11 +333,9 @@ export function FungibleAssetView({
         openOperation({
           kind: 'buy',
           availableOrders: resume.entries.map((entry) => entry.order),
-          selectedOrders: resume.entries.map((entry) => entry.order),
           startingBalance: resume.startingBalance,
           resume,
         });
-        return;
       } else {
         setRecoveryNotice(
           'A previous token purchase is paused because one or more orders are no longer available to this wallet. Its exact signed transactions remain stored, and no replacement seller payment will be created.',
@@ -389,12 +427,23 @@ export function FungibleAssetView({
     } catch {
       if (wallet.address) localStorage.removeItem(operationStorageKey(asset.id, wallet.address));
     }
-  }, [asset.id, openOperation, operation, purchaseKey, recoverySuppressed, state, storageVersion, wallet.address]);
+  }, [
+    asset.id,
+    hasWalletActivities,
+    openOperation,
+    purchaseKey,
+    recoverySuppressed,
+    state,
+    storageVersion,
+    wallet.address,
+  ]);
 
   const recoveryBlocksActions = recoverySuppressed || Boolean(unavailableRecovery);
   const handleOperationPhaseChange = React.useCallback(
-    (nextPhase: TransactionDialogPhase) => {
-      setOperationPhase(nextPhase);
+    (id: string, nextPhase: TransactionDialogPhase) => {
+      setOperationActivities((current) =>
+        current.map((activity) => (activity.id === id ? { ...activity, phase: nextPhase } : activity)),
+      );
       if (nextPhase === 'done') void onRefresh();
     },
     [onRefresh],
@@ -418,25 +467,21 @@ export function FungibleAssetView({
           </button>
         </div>
       ) : null}
-      {operation && !operationVisible ? (
-        <div className="pending-operation-notice">
-          <span role="status">
-            {operationPhase === 'done'
-              ? 'Transaction completed.'
-              : operationPhase === 'error'
-                ? 'Transaction needs attention.'
-                : 'Transaction tracking continues in the background.'}
-          </span>
-          <button
-            className="with-icon"
-            ref={operationActivityButtonRef}
-            type="button"
-            onClick={() => setOperationVisible(true)}
-          >
-            Show transaction progress
-          </button>
-        </div>
-      ) : null}
+      {walletActivities.length && operationActivitySlot
+        ? createPortal(
+            <FungibleOperationActivityControl
+              activities={walletActivities}
+              asset={asset}
+              buttonRef={operationActivityButtonRef}
+              onShow={(id) =>
+                setOperationActivities((current) =>
+                  current.map((activity) => ({ ...activity, visible: activity.id === id })),
+                )
+              }
+            />,
+            operationActivitySlot,
+          )
+        : null}
       {recoveryNotice ? (
         <div className="pending-operation-notice">
           <span role="status">{recoveryNotice}</span>
@@ -495,12 +540,6 @@ export function FungibleAssetView({
               <span>{ticker}</span>
               <span>{state.denomination} decimals</span>
             </div>
-            <StateVerification
-              provider={provider}
-              verifiedAt={verifiedAt}
-              refreshing={loading}
-              failed={Boolean(error)}
-            />
             {loading ? <Loading label="Computing current state…" /> : null}
             {error ? <ErrorPanel message={error} /> : null}
             <section className="asset-commerce-card">
@@ -522,42 +561,43 @@ export function FungibleAssetView({
                   <strong>{holders.toLocaleString()}</strong>
                 </div>
               </div>
-              <div className="asset-buy-summary">
-                <span>Open listings</span>
-                <strong>
-                  {openOrders.length
-                    ? `${openOrders.length} from ${sellerCount} ${sellerCount === 1 ? 'seller' : 'sellers'}`
-                    : 'None yet'}
-                </strong>
-              </div>
-              {wallet.address && purchasableOrders.length > 1 ? (
-                <FungibleOrderSlider
-                  count={selectedOrders.length}
-                  onChange={setSelectedOrderCount}
-                  orders={purchasableOrders}
+              {purchasableOrders.length ? (
+                <FungiblePurchaseComposer
+                  availableQuantity={purchasableQuantity.toString()}
+                  error={purchaseAmountResult.error}
+                  match={purchaseAmountResult.match}
+                  onChange={setPurchaseQuantity}
+                  onMax={() =>
+                    setPurchaseQuantity(formatTokenAmount(purchasableQuantity.toString(), state.denomination))
+                  }
+                  quantity={purchaseQuantity}
                   state={state}
                 />
-              ) : null}
+              ) : (
+                <div className="asset-buy-summary">
+                  <span>Purchase amount</span>
+                  <strong>No purchasable listings</strong>
+                  <small>No open listings are available to this wallet.</small>
+                </div>
+              )}
               <div className="asset-commerce-actions">
                 {!wallet.address ? <ConnectWalletButton /> : null}
                 {wallet.address && purchasableOrders.length ? (
                   <button
                     className="primary with-icon"
-                    disabled={recoveryBlocksActions || loading || Boolean(error)}
+                    disabled={!purchaseAmountResult.match || recoveryBlocksActions || loading || Boolean(error)}
                     onClick={() => {
-                      if (!selectedOrders.length) return;
+                      if (!purchaseAmountResult.match) return;
                       openOperation({
                         kind: 'buy',
                         availableOrders: purchasableOrders,
-                        selectedOrders,
+                        quantity: purchaseQuantity,
                         startingBalance: liquid,
                       });
                     }}
                   >
                     <ShoppingCart className="ui-icon ui-icon--sm" aria-hidden="true" />{' '}
-                    {purchasableOrders.length > 1
-                      ? `Review ${selectedOrders.length} ${selectedOrders.length === 1 ? 'listing' : 'listings'}`
-                      : 'Buy from order book'}
+                    {purchaseAmountResult.match ? 'Review purchase' : 'Enter an amount'}
                   </button>
                 ) : null}
                 {wallet.address && BigInt(liquid) > 0n ? (
@@ -651,22 +691,6 @@ export function FungibleAssetView({
                               onClick={() => openOperation({ kind: 'cancel', order })}
                             >
                               Cancel
-                            </button>
-                          ) : wallet.address && !own && order.status === 'open' ? (
-                            <button
-                              aria-label={fungibleOrderActionLabel('buy', order, state)}
-                              className="order-action"
-                              disabled={recoveryBlocksActions || loading || Boolean(error)}
-                              onClick={() =>
-                                openOperation({
-                                  kind: 'buy',
-                                  availableOrders: [order],
-                                  selectedOrders: [order],
-                                  startingBalance: liquid,
-                                })
-                              }
-                            >
-                              Buy
                             </button>
                           ) : null}
                         </span>
@@ -829,27 +853,141 @@ export function FungibleAssetView({
           </div>
         </div>
       </div>
-      {operation && operationSession ? (
+      {walletActivities.map((activity) => (
         <FungibleOperationDialog
+          key={activity.id}
           asset={asset}
           state={state}
-          owner={operationSession.signer}
-          operation={operation}
-          visible={operationVisible}
+          owner={activity.signer}
+          operation={activity.operation}
+          visible={activity.visible}
           restoreFallback={operationFocusFallback}
-          onHide={() => setOperationVisible(false)}
-          onPhaseChange={handleOperationPhaseChange}
+          onHide={() =>
+            setOperationActivities((current) =>
+              current.map((currentActivity) =>
+                currentActivity.id === activity.id ? { ...currentActivity, visible: false } : currentActivity,
+              ),
+            )
+          }
+          onPhaseChange={(phase) => handleOperationPhaseChange(activity.id, phase)}
           onClose={(resumeLater, refresh = true) => {
             setRecoverySuppressed(Boolean(resumeLater));
-            setOperationSession(null);
-            setOperationVisible(false);
-            setOperationPhase(null);
+            setOperationActivities((current) =>
+              resumeLater
+                ? current.map((currentActivity) =>
+                    currentActivity.id === activity.id ? { ...currentActivity, visible: false } : currentActivity,
+                  )
+                : current.filter((currentActivity) => currentActivity.id !== activity.id),
+            );
             if (refresh) void onRefresh();
           }}
         />
-      ) : null}
+      ))}
     </section>
   );
+}
+
+export function FungibleOperationActivityControl({
+  activities,
+  asset,
+  buttonRef,
+  onShow,
+}: {
+  activities: FungibleOperationActivity[];
+  asset: AssetSummary;
+  buttonRef: React.RefObject<HTMLButtonElement>;
+  onShow(id: string): void;
+}) {
+  const [open, setOpen] = React.useState(false);
+  const containerRef = React.useRef<HTMLDivElement>(null);
+  const visibleActivities = activities.filter((activity) => activity.phase !== 'done');
+  const workingCount = visibleActivities.filter((activity) => activity.phase === 'working').length;
+  React.useEffect(() => {
+    if (!open) return;
+    const close = (event: MouseEvent) => {
+      if (!containerRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    window.addEventListener('mousedown', close);
+    return () => window.removeEventListener('mousedown', close);
+  }, [open]);
+  if (!visibleActivities.length) return null;
+  return (
+    <div className="fungible-operation-activity-control" ref={containerRef}>
+      <button
+        aria-expanded={open}
+        aria-label={`Transaction activity, ${visibleActivities.length} ${visibleActivities.length === 1 ? 'item' : 'items'}`}
+        className={`operation-activity-trigger${workingCount ? ' working' : ''}`}
+        data-activity-owner="fungible"
+        data-tooltip="Transaction activity"
+        onClick={() => setOpen((value) => !value)}
+        ref={buttonRef}
+        type="button"
+      >
+        <InfinityIcon className="ui-icon" aria-hidden="true" />
+        <span>{visibleActivities.length}</span>
+      </button>
+      {open ? (
+        <section aria-label="Transaction activity" className="operation-activity-menu">
+          <div className="operation-activity-heading">
+            <div>
+              <strong>Transaction activity</strong>
+              <span>
+                {workingCount
+                  ? `${workingCount} running in the background`
+                  : `${visibleActivities.length} waiting for details or approval`}
+              </span>
+            </div>
+          </div>
+          <div className="operation-activity-list">
+            {visibleActivities.map((activity) => {
+              const phase = activity.phase ?? 'form';
+              return (
+                <div className={`operation-activity-item ${phase}`} key={activity.id}>
+                  <button
+                    className="operation-activity-open"
+                    onClick={() => {
+                      onShow(activity.id);
+                      setOpen(false);
+                    }}
+                    type="button"
+                  >
+                    <span className="operation-activity-symbol" aria-hidden="true">
+                      {asset.image ? (
+                        <img src={asset.image} alt="" />
+                      ) : (
+                        <span>{asset.name.slice(0, 1).toUpperCase()}</span>
+                      )}
+                    </span>
+                    <span className="operation-activity-copy">
+                      <strong>{operationLabel(activity.operation.kind)}</strong>
+                      <small>{asset.name}</small>
+                      <span>{fungibleActivityPhaseLabel(phase)}</span>
+                    </span>
+                    <span className="operation-activity-progress">
+                      {phase === 'working' ? (
+                        <LoaderCircle className="ui-icon ui-icon--xs operation-activity-loader" aria-hidden="true" />
+                      ) : null}
+                    </span>
+                    <ChevronRight className="ui-icon ui-icon--sm operation-activity-chevron" aria-hidden="true" />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      ) : null}
+    </div>
+  );
+}
+
+function fungibleActivityPhaseLabel(phase: TransactionDialogPhase) {
+  return {
+    form: 'Waiting for details',
+    approval: 'Waiting for wallet approval',
+    working: 'Transaction in progress',
+    done: 'Complete',
+    error: 'Needs attention',
+  }[phase];
 }
 
 function FungibleOperationDialog({
@@ -879,28 +1017,14 @@ function FungibleOperationDialog({
     () => (operation.kind === 'buy' ? operation.availableOrders.filter((order) => order.status === 'open') : []),
     [operation.kind, operation.kind === 'buy' ? operation.availableOrders : undefined],
   );
-  const initialSelected = React.useMemo(
-    () =>
-      operation.kind === 'buy'
-        ? (operation.selectedOrders ?? operation.resume?.entries.map((entry) => entry.order) ?? [])
-        : [],
-    [
-      operation.kind,
-      operation.kind === 'buy' ? operation.selectedOrders : undefined,
-      operation.kind === 'buy' ? operation.resume : undefined,
-    ],
-  );
   const initialQuantity =
     operation.kind === 'buy' && operation.resume
       ? formatTokenAmount(
           operation.resume.entries.reduce((total, entry) => total + BigInt(entry.fillQuantity), 0n).toString(),
           state.denomination,
         )
-      : initialSelected.length
-        ? formatTokenAmount(
-            initialSelected.reduce((total, order) => total + BigInt(order.quantity), 0n).toString(),
-            state.denomination,
-          )
+      : operation.kind === 'buy'
+        ? (operation.quantity ?? '')
         : '';
   const [quantity, setQuantity] = React.useState(
     operation.kind === 'sell' || operation.kind === 'transfer' ? (operation.quantity ?? '') : initialQuantity,
@@ -930,7 +1054,9 @@ function FungibleOperationDialog({
     });
   }
   const batchRecoveryBufferRef = React.useRef<ReturnType<typeof batchRecoveryFrameBuffer> | null>(null);
-  const [activeOrderId, setActiveOrderId] = React.useState(initialSelected[0]?.orderId ?? '');
+  const [activeOrderId, setActiveOrderId] = React.useState(
+    operation.kind === 'buy' ? (operation.resume?.entries[0]?.order.orderId ?? '') : '',
+  );
   const [estimatedCost, setEstimatedCost] = React.useState<string | null>(null);
   const [estimatedWalletBalance, setEstimatedWalletBalance] = React.useState<string | null>(null);
   const [canAfford, setCanAfford] = React.useState<boolean | null>(null);
@@ -988,8 +1114,6 @@ function FungibleOperationDialog({
   const matchedQuantity = matchedOrders.reduce((total, order) => total + BigInt(order.quantity), 0n);
   const matchedAsking = matchedOrders.reduce((total, order) => total + BigInt(order.asking), 0n);
   const matchedSellers = new Set(matchedOrders.map((order) => order.creator)).size;
-  const marketAvailable = eligible.reduce((total, order) => total + BigInt(order.quantity), 0n);
-  const bestEligible = React.useMemo(() => [...eligible].sort(compareOrderUnitPrice)[0], [eligible]);
   const enteredQuantity = safeTokenAmount(quantity, state.denomination);
   const currentLiquid = BigInt(liquidBalanceOf(state, owner));
   const currentListed = BigInt(listedBalanceOf(state, owner));
@@ -1009,7 +1133,6 @@ function FungibleOperationDialog({
   const quantityGuidanceId = React.useId();
   const priceGuidanceId = React.useId();
   const recipientGuidanceId = React.useId();
-  const amountGuidanceId = React.useId();
   const quoteStatusId = React.useId();
   const dialogTitleId = React.useId();
   const operationLabelId = React.useId();
@@ -1116,8 +1239,8 @@ function FungibleOperationDialog({
       let freshState: AssetState | undefined;
       claimRef.current = await acquireWalletOperationClaim(
         localStorage,
-        operationClaimStorageKey(asset.id, owner),
-        [operationKey, purchaseKey],
+        operationClaimStorageKey(asset.id, owner, operation.kind === 'buy' ? 'purchase' : 'asset'),
+        operation.kind === 'buy' ? [purchaseKey] : [operationKey],
         {
           ...(freshOperation
             ? {}
@@ -1647,12 +1770,6 @@ function FungibleOperationDialog({
         },
       ]
     : [];
-  const formError =
-    operation.kind === 'buy' && !matchedOrders.length
-      ? quantity
-        ? automaticMatchResult.error || 'That amount cannot be quoted.'
-        : ''
-      : '';
   const closeOrHide = () => {
     const action = transactionDialogDismissAction(phase, Boolean(transaction || recoverableBatch));
     if (action.kind === 'close') {
@@ -1660,13 +1777,22 @@ function FungibleOperationDialog({
       return;
     }
     if (hiding) return;
+    if (dialogRef.current) {
+      prepareTransactionDialogHide(
+        dialogRef.current,
+        document.querySelector<HTMLElement>('.operation-activity-trigger[data-activity-owner="fungible"]'),
+      );
+    }
     setHiding(true);
     hideTimerRef.current = window.setTimeout(() => {
       hideTimerRef.current = null;
       onHide();
-    }, 240);
+    }, TRANSACTION_DIALOG_HIDE_DURATION_MS);
   };
   const dialogRef = useDialogFocus<HTMLDivElement>(visible, closeOrHide, undefined, phase, restoreFallback);
+  React.useEffect(() => {
+    if (visible) setHiding(false);
+  }, [visible]);
   const restartPurchase = () => {
     if (!recoverableBatch) {
       setMessage('');
@@ -1684,7 +1810,7 @@ function FungibleOperationDialog({
 
   if (!visible && phase !== 'working') return null;
   return (
-    <div className="dialog-backdrop" hidden={!visible} role="presentation">
+    <div className={`dialog-backdrop${hiding ? ' dialog-backdrop-hiding' : ''}`} hidden={!visible} role="presentation">
       <div
         className={`dialog fungible-dialog${phase === 'form' ? ' dialog-form-phase' : ''}`}
         aria-hidden={visible ? undefined : true}
@@ -1899,54 +2025,20 @@ function FungibleOperationDialog({
               ) : null}
               {operation.kind === 'buy' ? (
                 <>
-                  <div className="purchase-market-snapshot" aria-label="Available market liquidity">
+                  <section className="purchase-review-summary" aria-label="Purchase amount">
                     <div>
-                      <span>Available now</span>
-                      <strong>{tokenLabel(marketAvailable.toString(), state)}</strong>
+                      <span>You receive</span>
+                      <strong>{tokenLabel(matchedQuantity.toString(), state)}</strong>
                     </div>
                     <div>
-                      <span>Best price</span>
-                      <strong>{bestEligible ? orderPriceLabel(bestEligible, state) : '—'}</strong>
+                      <span>To sellers</span>
+                      <strong>{winstonToAr(matchedAsking.toString())} AR</strong>
                     </div>
                     <div>
-                      <span>Live sellers</span>
-                      <strong>{new Set(eligible.map((order) => order.creator)).size.toLocaleString()}</strong>
+                      <span>Average price</span>
+                      <strong>{averageOrderPriceLabel(matchedOrders, state)}</strong>
                     </div>
-                  </div>
-                  <label className="purchase-amount-field">
-                    <span>How many {ticker} do you want?</span>
-                    <div>
-                      <input
-                        aria-describedby={`${amountGuidanceId}${formError ? ` ${amountGuidanceId}-error` : ''}${matchedOrders.length ? ` ${quoteStatusId}` : ''}`}
-                        aria-invalid={Boolean(quantity && formError)}
-                        autoFocus
-                        data-dialog-initial
-                        inputMode="decimal"
-                        placeholder="0"
-                        value={quantity}
-                        onChange={(event) => setQuantity(event.target.value)}
-                      />
-                      <strong>{ticker}</strong>
-                      <button
-                        onClick={() => setQuantity(formatTokenAmount(marketAvailable.toString(), state.denomination))}
-                        type="button"
-                      >
-                        Max
-                      </button>
-                    </div>
-                  </label>
-                  <p id={amountGuidanceId} className="purchase-guidance">
-                    Best execution is automatic. Cheaper orders fill first; only the final order is split when needed.
-                  </p>
-                  {formError ? (
-                    <p
-                      id={`${amountGuidanceId}-error`}
-                      className="purchase-form-error"
-                      role={quantity ? 'alert' : undefined}
-                    >
-                      {formError}
-                    </p>
-                  ) : null}
+                  </section>
                   {matchedOrders.length ? (
                     <section aria-busy={quoteState === 'loading'} className="purchase-quote-card">
                       <div className="purchase-quote-total">
@@ -1966,14 +2058,6 @@ function FungibleOperationDialog({
                         </small>
                       </div>
                       <div className="purchase-quote-facts">
-                        <div>
-                          <span>You receive</span>
-                          <strong>{tokenLabel(matchedQuantity.toString(), state)}</strong>
-                        </div>
-                        <div>
-                          <span>Average price</span>
-                          <strong>{averageOrderPriceLabel(matchedOrders, state)}</strong>
-                        </div>
                         <div>
                           <span>Execution</span>
                           <strong>
@@ -2091,7 +2175,6 @@ function FungibleOperationDialog({
                   (signedWork ? 'Watching this transaction.' : 'Preparing the transaction for wallet approval.')}
               </p>
             )}
-            <p className="sync-intro">{fungibleWorkingIntro(operation.kind, visibleOrders.length, signedWork)}</p>
             {signedWork ? (
               <p className="sync-resume-note">This action will resume automatically when you return.</p>
             ) : null}
@@ -2155,6 +2238,9 @@ function FungibleOperationDialog({
                         subject={`${asset.name} · ${tokenLabel(activeOrder.quantity, state)}`}
                         steps={purchaseSteps}
                         activeStep={activeStep}
+                        pendingAfterConfirmation={
+                          activePurchase.stage === 'ownership-verifying' ? 'Verifying receipt' : undefined
+                        }
                       />
                     ) : (
                       <div className="loading">
@@ -2409,70 +2495,101 @@ export function MatchedListingsReview({
   );
 }
 
-export function lowestCostOrders(orders: SwapOrder[], count: number) {
-  const limit = Math.min(Math.max(0, Math.floor(count)), orders.length);
-  return [...orders]
-    .sort((left, right) => {
-      const costDifference = BigInt(left.asking) - BigInt(right.asking);
-      if (costDifference !== 0n) return costDifference < 0n ? -1 : 1;
-      return compareOrderUnitPrice(left, right);
-    })
-    .slice(0, limit);
+export function purchaseAmountMatch(orders: SwapOrder[], quantity: string, state: AssetState) {
+  if (!quantity.trim()) return { match: null, error: '' };
+  try {
+    const atomic = parseTokenAmount(quantity, state.denomination);
+    const match = matchOrderFills(orders, atomic);
+    return {
+      match,
+      error: match
+        ? ''
+        : `Only ${tokenLabel(
+            orders.reduce((total, order) => total + BigInt(order.quantity), 0n).toString(),
+            state,
+          )} is currently available.`,
+    };
+  } catch (cause) {
+    return {
+      match: null,
+      error:
+        cause instanceof RangeError
+          ? 'This order book is too large to quote safely. Refresh and try again.'
+          : `Enter a valid ${state.ticker || 'TOKEN'} amount using no more than ${state.denomination} decimal places.`,
+    };
+  }
 }
 
-export function FungibleOrderSlider({
-  count,
+export function FungiblePurchaseComposer({
+  availableQuantity,
+  error,
+  match,
   onChange,
-  orders,
+  onMax,
+  quantity,
   state,
 }: {
-  count: number;
-  onChange(count: number): void;
-  orders: SwapOrder[];
+  availableQuantity: string;
+  error: string;
+  match: ReturnType<typeof matchOrderFills>;
+  onChange(quantity: string): void;
+  onMax(): void;
+  quantity: string;
   state: AssetState;
 }) {
-  if (orders.length < 2) return null;
-  const prioritized = lowestCostOrders(orders, orders.length);
-  const selectedCount = Math.min(Math.max(1, Math.floor(count)), prioritized.length);
-  const selected = prioritized.slice(0, selectedCount);
-  const addedOrder = selected[selected.length - 1];
-  const selectedQuantity = selected.reduce((total, order) => total + BigInt(order.quantity), 0n);
-  const selectedAsking = selected.reduce((total, order) => total + BigInt(order.asking), 0n);
-  const accessibleValue = `${selectedCount} ${selectedCount === 1 ? 'listing' : 'listings'} selected. Adding order ${selectedCount} of ${prioritized.length}: ${fungibleListingAccessibleLabel(addedOrder, state)}`;
+  const ticker = state.ticker || 'TOKEN';
+  const matchedSellerCount = match ? new Set(match.fills.map((fill) => fill.order.creator)).size : 0;
+  const inputId = React.useId();
+  const guidanceId = React.useId();
+  const errorId = React.useId();
 
   return (
-    <div className="order-slider">
-      <label className="order-slider-control">
-        <span>Lowest cost first</span>
-        <input
-          aria-label="Listings to add"
-          aria-valuetext={accessibleValue}
-          max={prioritized.length}
-          min={1}
-          onChange={(event) => onChange(Number(event.target.value))}
-          step={1}
-          type="range"
-          value={selectedCount}
-        />
-        <output aria-live="polite">
-          {selectedCount} / {prioritized.length}
-        </output>
-      </label>
-      <div className="order-slider-summary" aria-live="polite">
-        <span>
-          <small>Adding order {selectedCount}</small>
-          <strong>
-            {tokenLabel(addedOrder.quantity, state)} at {orderPriceLabel(addedOrder, state)}
-          </strong>
-        </span>
-        <span>
-          <small>Checkout total</small>
-          <strong>
-            {tokenLabel(selectedQuantity.toString(), state)} · {winstonToAr(selectedAsking.toString())} AR
-          </strong>
-        </span>
+    <section aria-label="Choose purchase amount" className="purchase-composer">
+      <div className="purchase-composer-panel purchase-composer-buy">
+        <div className="purchase-composer-heading">
+          <label htmlFor={inputId}>You buy</label>
+          <button onClick={onMax} type="button">
+            Max
+          </button>
+        </div>
+        <div className="purchase-composer-value">
+          <input
+            aria-describedby={`${guidanceId}${error ? ` ${errorId}` : ''}`}
+            aria-invalid={Boolean(error)}
+            id={inputId}
+            inputMode="decimal"
+            onChange={(event) => onChange(event.target.value)}
+            placeholder="0"
+            value={quantity}
+          />
+          <span className="purchase-composer-token">{ticker}</span>
+        </div>
+        <small id={guidanceId}>{tokenLabel(availableQuantity, state)} available</small>
       </div>
-    </div>
+      <span className="purchase-composer-direction" aria-hidden="true">
+        <ArrowDown />
+      </span>
+      <div className="purchase-composer-panel purchase-composer-pay" aria-live="polite">
+        <div className="purchase-composer-heading">
+          <span>You pay</span>
+          <span>Seller total</span>
+        </div>
+        <div className="purchase-composer-value">
+          <strong>{match ? winstonToAr(match.totalAsking) : '0'}</strong>
+          <span className="purchase-composer-token">AR</span>
+        </div>
+        <small>
+          {match
+            ? `${match.fills.length} ${match.fills.length === 1 ? 'order' : 'orders'} · ${matchedSellerCount} ${matchedSellerCount === 1 ? 'seller' : 'sellers'} · network fees shown in review`
+            : 'Enter an amount to see the exact seller payment.'}
+        </small>
+      </div>
+      {error ? (
+        <p className="purchase-composer-error" id={errorId} role="alert">
+          {error}
+        </p>
+      ) : null}
+    </section>
   );
 }
 
@@ -3082,29 +3199,15 @@ function assetDescription(state: AssetState, fallback: string) {
 }
 
 function operationLabel(kind: FungibleOperation['kind']) {
-  return { sell: 'List tokens', buy: 'Buy tokens', cancel: 'Cancel listing', transfer: 'Transfer tokens' }[kind];
+  return { sell: 'List tokens', buy: 'Review purchase', cancel: 'Cancel listing', transfer: 'Transfer tokens' }[kind];
 }
 
-export function fungibleWorkingIntro(kind: FungibleOperation['kind'], listings: number, signed: boolean) {
-  if (!signed) {
-    if (kind === 'buy') {
-      const transactions =
-        listings === 1 ? 'the reservation and seller payment' : `${listings} reservations and seller payments`;
-      return `Preparing ${transactions} for wallet approval. Nothing has been submitted yet.`;
-    }
-    return `Preparing the ${operationLabel(kind).toLowerCase()} transaction for wallet approval. Nothing has been submitted yet.`;
-  }
-  if (kind === 'buy' && listings > 1) {
-    return `${listings} listings are settling independently. Switch between them below while every transaction continues in parallel.`;
-  }
-  return 'Signed. Now watching independent Arweave nodes agree on the transaction.';
-}
-
-function batchStageLabel(state?: PurchaseState) {
+export function batchStageLabel(state?: PurchaseState) {
   if (!state) return 'Preparing';
   if (state.stage === 'complete') return 'Settled ✓';
   if (state.stage === 'failed') return 'Needs attention';
-  if (state.stage.includes('payment') || state.stage === 'ownership-verifying') {
+  if (state.stage === 'ownership-verifying') return 'Verifying receipt';
+  if (state.stage.includes('payment')) {
     return `Pay ${state.payment?.consensus.confirmations ?? 0}/5`;
   }
   if (state.stage === 'signing' || state.stage === 'idle') return 'Preparing';

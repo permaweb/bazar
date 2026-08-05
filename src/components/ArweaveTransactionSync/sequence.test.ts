@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { confirmationProgressText, confirmationProgressWidth, sequencePhaseBounds } from './sequence';
+import {
+  confirmationLifecycleState,
+  confirmationProgressText,
+  confirmationProgressWidth,
+  sequencePhaseBounds,
+} from './sequence';
 
 describe('sequencePhaseBounds', () => {
   it.each([
@@ -55,5 +60,25 @@ describe('confirmationProgressWidth', () => {
     expect(confirmationProgressWidth(0, true, false)).toBe(2);
     expect(confirmationProgressWidth(20, true, false)).toBe(20);
     expect(confirmationProgressWidth(100, false, false)).toBe(100);
+  });
+});
+
+describe('confirmationLifecycleState', () => {
+  it('keeps post-confirmation settlement visibly active', () => {
+    expect(confirmationLifecycleState(5, 5, 'Verifying receipt', false)).toEqual({
+      depth: 5,
+      pending: true,
+      active: true,
+      complete: false,
+    });
+  });
+
+  it('only marks the confirmation phase complete when no later verification is pending', () => {
+    expect(confirmationLifecycleState(5, 5, undefined, false)).toEqual({
+      depth: 5,
+      pending: false,
+      active: false,
+      complete: true,
+    });
   });
 });

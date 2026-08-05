@@ -11,8 +11,6 @@ import { Line2 } from 'three/examples/jsm/lines/Line2.js';
 import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js';
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import type { ObserverView } from 'weave-wrangler';
-import { prefersReducedMotion } from 'helpers/motion';
-
 import { RaceTooltip as RaceTooltipContainer } from './styles';
 
 import { ACCEPTED_PROOF_ANNOTATION_LIFETIME_MS, acceptedProofAnnotationIsVisible } from './acceptedProofs';
@@ -245,8 +243,6 @@ export function TransactionSequenceCable3D({
     if (!mount || lanes.length === 0) return undefined;
     const bundled = layout === 'bundle';
     const phaseCount = Math.max(1, phaseLabels.length);
-    const reducedMotion = prefersReducedMotion();
-
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 100);
     camera.position.set(bundled ? 0.35 : 0.8, bundled ? 0.35 : 0.75, bundled ? 15.4 : 16.9);
@@ -271,12 +267,12 @@ export function TransactionSequenceCable3D({
     mount.appendChild(renderer.domElement);
 
     const controls = new OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = !reducedMotion;
+    controls.enableDamping = true;
     controls.dampingFactor = 0.07;
     controls.enablePan = false;
     controls.minDistance = bundled ? 10.4 : 11.8;
     controls.maxDistance = 20;
-    controls.autoRotate = !reducedMotion;
+    controls.autoRotate = true;
     controls.autoRotateSpeed = 0.22;
 
     const group = new THREE.Group();
@@ -491,7 +487,7 @@ export function TransactionSequenceCable3D({
       if (highlightedLaneRef.current === laneIndex) return;
       const previousLaneIndex = highlightedLaneRef.current;
       highlightedLaneRef.current = laneIndex;
-      controls.autoRotate = !reducedMotion && laneIndex === undefined;
+      controls.autoRotate = laneIndex === undefined;
       if (previousLaneIndex !== undefined) {
         const previousWire = wireStates[previousLaneIndex];
         if (previousWire) setWireHighlight(previousWire, false);
@@ -671,7 +667,6 @@ export function TransactionSequenceCable3D({
     resize();
 
     let frame = 0;
-    let reducedMotionTimer: number | undefined;
     let previousFrameAt = performance.now();
     let markerSignature = '';
     let markerDataSource: Infinity3DLane[] | undefined;
@@ -682,17 +677,8 @@ export function TransactionSequenceCable3D({
     const activeHeadColor = new THREE.Color();
     const phaseLabelPoints = Array.from({ length: phaseCount }, () => new THREE.Vector3());
     const acceptedProofPinPoint = new THREE.Vector3();
-    const scheduleRender = (render: FrameRequestCallback) => {
-      if (reducedMotion && !controlsActive) {
-        reducedMotionTimer = window.setTimeout(() => {
-          frame = window.requestAnimationFrame(render);
-        }, 200);
-      } else {
-        frame = window.requestAnimationFrame(render);
-      }
-    };
     const render = () => {
-      scheduleRender(render);
+      frame = window.requestAnimationFrame(render);
       const frameAt = performance.now();
       if (!activeRef.current || document.hidden) {
         previousFrameAt = frameAt;
@@ -702,12 +688,12 @@ export function TransactionSequenceCable3D({
       previousFrameAt = frameAt;
       wireStates.forEach((wire) => {
         const lane = laneDataRef.current[wire.laneIndex];
-        if (lane) updateWireProgress(wire, lane, reducedMotion ? Number.POSITIVE_INFINITY : deltaSeconds, phaseCount);
+        if (lane) updateWireProgress(wire, lane, deltaSeconds, phaseCount);
       });
       activityPhase = updateMiningParticles(
         wireStates,
         miningParticleGeometry,
-        reducedMotion ? undefined : miningActivityRef.current?.candidateRate,
+        miningActivityRef.current?.candidateRate,
         deltaSeconds,
         activityPhase,
         miningParticleColor,
@@ -792,7 +778,6 @@ export function TransactionSequenceCable3D({
 
     return () => {
       window.cancelAnimationFrame(frame);
-      if (reducedMotionTimer !== undefined) window.clearTimeout(reducedMotionTimer);
       if (pointerFrame) window.cancelAnimationFrame(pointerFrame);
       resizeObserver.disconnect();
       controls.removeEventListener('start', handleControlsStart);
@@ -988,18 +973,12 @@ const MAX_ACTIVITY_QUEUE = 80;
 const MAX_SEEN_ACTIVITY = 500;
 
 function ActivityRolodex({ activity }: { activity: CableTelemetry['activity'] }) {
-  const reducedMotion = prefersReducedMotion();
   const [visible, setVisible] = React.useState<CableTelemetry['activity']>([]);
   const queueRef = React.useRef<CableTelemetry['activity']>([]);
   const seenRef = React.useRef(new Set<string>());
   const seenOrderRef = React.useRef<string[]>([]);
 
   React.useEffect(() => {
-    if (reducedMotion) {
-      queueRef.current = [];
-      setVisible(activity.slice(0, ACTIVITY_VISIBLE_ROWS));
-      return;
-    }
     if (!activity.length) {
       queueRef.current = [];
       seenRef.current.clear();
@@ -1022,10 +1001,9 @@ function ActivityRolodex({ activity }: { activity: CableTelemetry['activity'] })
       const expired = seenOrderRef.current.shift();
       if (expired) seenRef.current.delete(expired);
     }
-  }, [activity, reducedMotion]);
+  }, [activity]);
 
   React.useEffect(() => {
-    if (reducedMotion) return undefined;
     const timer = window.setInterval(() => {
       const next = queueRef.current.shift();
       if (!next) return;
@@ -1035,7 +1013,7 @@ function ActivityRolodex({ activity }: { activity: CableTelemetry['activity'] })
     }, ACTIVITY_STREAM_INTERVAL_MS);
 
     return () => window.clearInterval(timer);
-  }, [reducedMotion]);
+  }, []);
 
   return (
     <ProtocolActivity>
@@ -1591,7 +1569,7 @@ const RendererFallback = styled.div`
 
   .renderer-fallback-announcement > span,
   small {
-    font-size: 0.76rem;
+    font-size: ${(props) => props.theme.typography.size.body};
   }
 
   ul {
@@ -1690,29 +1668,29 @@ const AcceptedProofCard = styled.span`
 const AcceptedProofLabel = styled.span`
   overflow: hidden;
   color: ${(props) => props.theme.colors.font.alt1};
-  font-size: 8px;
+  font-size: ${(props) => props.theme.typography.size.small};
   font-variant-numeric: tabular-nums;
-  font-weight: ${(props) => props.theme.typography.weight.medium};
+  font-weight: ${(props) => props.theme.typography.weight.regular};
   line-height: 1;
   text-overflow: ellipsis;
   white-space: nowrap;
 
   @media (max-width: 480px) {
-    font-size: 7px;
+    font-size: ${(props) => props.theme.typography.size.small};
   }
 `;
 
 const AcceptedProofMeta = styled.span`
   overflow: hidden;
   color: ${(props) => props.theme.colors.font.alt1};
-  font-size: 7px;
+  font-size: ${(props) => props.theme.typography.size.small};
   font-variant-numeric: tabular-nums;
   line-height: 1;
   text-overflow: ellipsis;
   white-space: nowrap;
 
   @media (max-width: 480px) {
-    font-size: 6px;
+    font-size: ${(props) => props.theme.typography.size.small};
   }
 `;
 
@@ -1754,7 +1732,7 @@ const AcceptedProofPayloadText = styled.span`
   overflow: hidden;
   color: ${(props) => props.theme.colors.font.alt1};
   font-family: ${(props) => props.theme.typography.family.primary};
-  font-size: 7px;
+  font-size: ${(props) => props.theme.typography.size.small};
   line-height: 1.2;
   overflow-wrap: anywhere;
   -webkit-box-orient: vertical;
@@ -1763,7 +1741,7 @@ const AcceptedProofPayloadText = styled.span`
   @media (max-width: 480px) {
     max-height: 31px;
     padding: 2px;
-    font-size: 6px;
+    font-size: ${(props) => props.theme.typography.size.small};
     -webkit-line-clamp: 3;
   }
 `;
@@ -1778,14 +1756,14 @@ const AcceptedProofContentType = styled.span`
   background: color-mix(in srgb, ${(props) => props.theme.colors.container.primary.background} 90%, transparent);
   border-radius: 3px;
   color: ${(props) => props.theme.colors.font.primary};
-  font-size: 6px;
-  font-weight: ${(props) => props.theme.typography.weight.medium};
+  font-size: ${(props) => props.theme.typography.size.small};
+  font-weight: ${(props) => props.theme.typography.weight.regular};
   line-height: 1;
   text-overflow: ellipsis;
   white-space: nowrap;
 
   @media (max-width: 480px) {
-    font-size: 5.5px;
+    font-size: ${(props) => props.theme.typography.size.small};
   }
 `;
 
@@ -1796,7 +1774,7 @@ const AcceptedProofRecallMeta = styled.span`
   left: 2px;
   overflow: hidden;
   color: ${(props) => props.theme.colors.font.alt1};
-  font-size: 5.5px;
+  font-size: ${(props) => props.theme.typography.size.small};
   line-height: 1;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1823,7 +1801,7 @@ const ProtocolTelemetry = styled.div`
   border: 1px solid ${(props) => props.theme.colors.border.primary};
   border-radius: 10px;
   color: ${(props) => props.theme.colors.font.primary};
-  font-size: 10px;
+  font-size: ${(props) => props.theme.typography.size.small};
   font-variant-numeric: tabular-nums;
   line-height: 1.3;
 `;
@@ -1834,7 +1812,7 @@ const ProtocolTelemetryHeading = styled.span`
   gap: 6px;
   color: ${(props) => props.theme.colors.font.alt1};
   font-size: inherit;
-  font-weight: ${(props) => props.theme.typography.weight.medium};
+  font-weight: ${(props) => props.theme.typography.weight.regular};
 `;
 
 const ProtocolTelemetryPulse = styled.span`
@@ -1886,7 +1864,7 @@ const ProtocolMetric = styled.span`
 
   strong {
     font-size: inherit;
-    font-weight: ${(props) => props.theme.typography.weight.medium};
+    font-weight: ${(props) => props.theme.typography.weight.regular};
     white-space: nowrap;
   }
 
@@ -1914,7 +1892,7 @@ const MiningStatus = styled.span`
 const ProtocolActivityHeading = styled.span`
   color: ${(props) => props.theme.colors.font.alt1};
   font-size: inherit;
-  font-weight: ${(props) => props.theme.typography.weight.medium};
+  font-weight: ${(props) => props.theme.typography.weight.regular};
 `;
 
 const ProtocolActivity = styled.span`
@@ -1942,7 +1920,7 @@ const ProtocolActivityRow = styled.span`
   }
 
   strong {
-    font-weight: ${(props) => props.theme.typography.weight.medium};
+    font-weight: ${(props) => props.theme.typography.weight.regular};
   }
 
   span {
@@ -1992,7 +1970,7 @@ const PhaseLabel = styled.span`
   border-radius: 999px;
   box-shadow: 0 5px 18px rgba(0, 0, 0, 0.08);
   color: ${(props) => props.theme.colors.font.alt1};
-  font-size: 9px;
+  font-size: ${(props) => props.theme.typography.size.small};
   line-height: 1;
   white-space: nowrap;
   pointer-events: none;
@@ -2000,7 +1978,7 @@ const PhaseLabel = styled.span`
   strong {
     color: ${(props) => props.theme.colors.font.primary};
     font-size: inherit;
-    font-weight: ${(props) => props.theme.typography.weight.medium};
+    font-weight: ${(props) => props.theme.typography.weight.regular};
   }
 
   &::after {

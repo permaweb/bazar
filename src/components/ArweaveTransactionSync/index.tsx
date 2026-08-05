@@ -19,7 +19,7 @@ import { useLanguageProvider } from 'providers/LanguageProvider';
 import { type ObserverTooltipStage } from './ObserverTooltipCard';
 import { confirmationProgress } from './progressColors';
 import { quorumConfirmationDepth } from './confirmationDepth';
-import { sequencePhaseBounds } from './sequence';
+import { confirmationLifecycleState, sequencePhaseBounds } from './sequence';
 import type { CableTelemetry, Infinity3DLane } from './TransactionSequenceCable3D';
 import { type ArweaveMiningTelemetry, useArweaveMiningTelemetry } from './useArweaveMiningTelemetry';
 
@@ -89,6 +89,7 @@ type Props = {
   steps: ArweaveSyncStep[];
   activeStep?: string;
   active?: boolean;
+  pendingAfterConfirmation?: string;
   onProgressChange?: (progress: number) => void;
 };
 
@@ -97,6 +98,7 @@ export function ArweaveTransactionSync({
   steps,
   activeStep,
   active: renderActive = true,
+  pendingAfterConfirmation,
   onProgressChange,
 }: Props) {
   const language = useLanguageProvider().strings;
@@ -105,12 +107,18 @@ export function ArweaveTransactionSync({
   const transaction = active?.transaction;
   const confirmationDepth = quorumConfirmationDepth(active);
   const target = active?.target ?? 0;
-  const displayedConfirmationDepth = Math.min(target, confirmationDepth);
+  const lifecycle = confirmationLifecycleState(
+    confirmationDepth,
+    target,
+    pendingAfterConfirmation,
+    Boolean(active?.hasError),
+  );
+  const displayedConfirmationDepth = lifecycle.depth;
   const transactionState = transaction?.consensus?.state ?? latestObserverState(transaction?.views ?? []);
   const progressKey = `${transaction?.id ?? 'none'}:${active?.key ?? 'none'}`;
   const [estimatedProgress, setEstimatedProgress] = React.useState({ key: progressKey, value: 0 });
   const confirmedProgress = target > 0 ? (confirmationDepth / target) * 100 : 0;
-  const progressActive = Boolean(transaction) && confirmationDepth < target && !active?.hasError;
+  const progressActive = Boolean(transaction) && lifecycle.active;
   const continuousProgress =
     estimatedProgress.key === progressKey ? Math.max(confirmedProgress, estimatedProgress.value) : confirmedProgress;
   const displayedProgress = Math.min(progressActive ? 99 : 100, Math.max(progressActive ? 2 : 0, continuousProgress));
@@ -225,9 +233,18 @@ export function ArweaveTransactionSync({
               <span>{language.transaction}</span>
               <TxAddress address={transaction.id} wrap={false} tooltipPosition={'right'} />
             </div>
-            <S.Depth $success={confirmationDepth >= target}>
-              <strong>{displayedConfirmationDepth}</strong>
-              <span> / {target}</span>
+            <S.Depth
+              aria-label={lifecycle.pending ? pendingAfterConfirmation : `${displayedConfirmationDepth} of ${target}`}
+              $success={lifecycle.complete}
+            >
+              {lifecycle.pending ? (
+                <strong>{pendingAfterConfirmation}</strong>
+              ) : (
+                <>
+                  <strong>{displayedConfirmationDepth}</strong>
+                  <span> / {target}</span>
+                </>
+              )}
             </S.Depth>
           </S.TransactionHeader>
           <S.ProgressTrack

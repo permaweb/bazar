@@ -5,6 +5,8 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import type { AssetState, SwapOrder } from 'api/asset-marketplace';
 import { filledOrder } from 'api/order-matching';
 import {
+  appendFungibleOperationActivity,
+  batchStageLabel,
   batchPaymentBarrierState,
   batchPurchaseRecoveryApprovalCount,
   batchPurchaseStartingBalance,
@@ -12,9 +14,10 @@ import {
   batchRecoveryIdentity,
   batchSettlementSummary,
   fungibleOrderActionLabel,
-  FungibleOrderSlider,
+  FungiblePurchaseComposer,
   fungibleListingAccessibleLabel,
   FungibleOperationErrorAlert,
+  FungibleOperationActivityControl,
   FungibleSettlementRecoveryPanel,
   FungiblePurchaseReceiptNavigator,
   MatchedListingsReview,
@@ -23,13 +26,12 @@ import {
   fungibleBatchRecoveryStatus,
   fungibleTransferRecipientError,
   fungibleTransferSubmitLabel,
-  fungibleWorkingIntro,
   isRecoverableBatch,
   latestRecoverableSnapshot,
-  lowestCostOrders,
   nextSettlementAnnouncement,
   purchaseStateFrameBuffer,
   purchaseQuoteIdentity,
+  purchaseAmountMatch,
   settlementTabIndex,
   storeBatchRecoveryBeforeDispatch,
   visibleOrderbookRows,
@@ -42,33 +44,90 @@ const ORDER_ID = 'o'.repeat(43);
 const REGISTRATION_ID = 'r'.repeat(43);
 const PAYMENT_ID = 'p'.repeat(43);
 
+function purchaseOrder(orderId: string, creator: string, quantity: string, asking: string): SwapOrder {
+  return {
+    asking,
+    createdAt: 1,
+    creator,
+    deadline: 100,
+    deposit: '0',
+    minimumFee: '0',
+    orderId,
+    quantity,
+    recipient: creator,
+    status: 'open',
+  };
+}
+
 describe('fungible operation error semantics', () => {
-  it('builds the slider cart from the lowest total cost and names the order being added', () => {
-    const orders = [
-      { orderId: '1'.repeat(43), creator: 'a'.repeat(43), quantity: '1', asking: '3000' },
-      { orderId: '2'.repeat(43), creator: 'b'.repeat(43), quantity: '2', asking: '2000' },
-      { orderId: '3'.repeat(43), creator: 'c'.repeat(43), quantity: '10', asking: '2500' },
-    ] as SwapOrder[];
-    const slider = renderToStaticMarkup(
-      React.createElement(FungibleOrderSlider, {
-        count: 2,
-        onChange: () => undefined,
-        orders,
-        state: { denomination: 0, ticker: 'WEAVE' } as AssetState,
+  it('keeps a running purchase when a separate listing form opens', () => {
+    const purchase = {
+      id: 'purchase',
+      operation: { kind: 'buy', availableOrders: [] as SwapOrder[], startingBalance: '0' } as const,
+      phase: 'working' as const,
+      signer: BUYER,
+      visible: true,
+    };
+    const listing = {
+      id: 'listing',
+      operation: { kind: 'sell' } as const,
+      phase: null,
+      signer: BUYER,
+      visible: true,
+    };
+    const activities = appendFungibleOperationActivity([purchase], listing);
+    const control = renderToStaticMarkup(
+      React.createElement(FungibleOperationActivityControl, {
+        activities,
+        asset: { id: 'asset', name: 'Weave Credit' },
+        buttonRef: React.createRef<HTMLButtonElement>(),
+        onShow: () => undefined,
       }),
     );
 
-    expect(slider).toContain('type="range"');
-    expect(slider).toContain('min="1"');
-    expect(slider).toContain('max="3"');
-    expect(slider).toContain('value="2"');
-    expect(slider).toContain('2 / 3');
-    expect(slider).toContain('Lowest cost first');
-    expect(slider).toContain('Adding order 2');
-    expect(slider).toContain('10 WEAVE at 0.00000000025 AR / WEAVE');
-    expect(slider).toContain('12 WEAVE · 0.0000000045 AR');
-    expect(slider).toContain('aria-valuetext="2 listings selected. Adding order 2 of 3:');
-    expect(lowestCostOrders(orders, 2).map((order) => order.orderId)).toEqual(['2'.repeat(43), '3'.repeat(43)]);
+    expect(activities.map((activity) => activity.operation.kind)).toEqual(['buy', 'sell']);
+    expect(activities.map((activity) => activity.visible)).toEqual([false, true]);
+    expect(control).toContain('aria-label="Transaction activity, 2 items"');
+    expect(control).toContain('class="operation-activity-trigger working"');
+    expect(control).toContain('<span>2</span>');
+  });
+
+  it('quotes a requested token amount from automatic partial fills', () => {
+    const orders = [
+      purchaseOrder('1'.repeat(43), 'a'.repeat(43), '2', '2'),
+      purchaseOrder('2'.repeat(43), 'b'.repeat(43), '5', '10'),
+    ];
+    const state = { denomination: 0, ticker: 'WEAVE' } as AssetState;
+    const quote = purchaseAmountMatch(orders, '4', state);
+    const composer = renderToStaticMarkup(
+      React.createElement(FungiblePurchaseComposer, {
+        availableQuantity: '7',
+        error: quote.error,
+        match: quote.match,
+        onChange: () => undefined,
+        onMax: () => undefined,
+        quantity: '4',
+        state,
+      }),
+    );
+
+    expect(quote.match?.fills.map((fill) => [fill.order.quantity, fill.partial])).toEqual([
+      ['2', false],
+      ['2', true],
+    ]);
+    expect(composer).toContain('You buy');
+    expect(composer).toContain('value="4"');
+    expect(composer).toContain('You pay');
+    expect(composer).toContain('0.000000000006');
+    expect(composer).toContain('2 orders · 2 sellers · network fees shown in review');
+    expect(composer).not.toContain('type="range"');
+  });
+
+  it('rejects an amount beyond the available partial-fill liquidity', () => {
+    const state = { denomination: 0, ticker: 'WEAVE' } as AssetState;
+    const quote = purchaseAmountMatch([purchaseOrder('1'.repeat(43), 'a'.repeat(43), '2', '2')], '3', state);
+    expect(quote.match).toBeNull();
+    expect(quote.error).toBe('Only 2 WEAVE is currently available.');
   });
 
   it('counts only the new wallet approvals missing from a recovered batch', () => {
@@ -627,6 +686,10 @@ describe('parallel settlement progress summary', () => {
       reserving: 2,
     });
   });
+
+  it('does not report payment completion while token receipt is still being verified', () => {
+    expect(batchStageLabel({ stage: 'ownership-verifying' } as PurchaseState)).toBe('Verifying receipt');
+  });
 });
 
 describe('fungible order action names', () => {
@@ -703,15 +766,5 @@ describe('fungible transfer recipient validation', () => {
     const state = { denomination: 12, ticker: 'WEAVE' } as AssetState;
     expect(fungibleTransferSubmitLabel('2000000000000', state, recipient)).toBe('Send 2 WEAVE to cccccc…ccccc');
     expect(fungibleTransferSubmitLabel('2000000000000', state, recipient, true)).toBe(`Send 2 WEAVE to ${recipient}`);
-  });
-});
-
-describe('fungible pre-approval language', () => {
-  it('does not claim a transaction is signed before the wallet approvals exist', () => {
-    expect(fungibleWorkingIntro('sell', 0, false)).toContain('wallet approval');
-    expect(fungibleWorkingIntro('sell', 0, false)).toContain('Nothing has been submitted');
-    expect(fungibleWorkingIntro('buy', 2, false)).toContain('2 reservations and seller payments');
-    expect(fungibleWorkingIntro('buy', 2, false)).not.toContain('settling');
-    expect(fungibleWorkingIntro('buy', 2, true)).toContain('settling independently');
   });
 });

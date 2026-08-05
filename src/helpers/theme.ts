@@ -17,7 +17,7 @@ export const theme: DefaultTheme = {
   },
   typography: {
     family: { primary: '"DM Sans", ui-sans-serif, system-ui, sans-serif' },
-    weight: { medium: 600 },
-    size: { lg: '1.15rem', small: '.88rem', xxSmall: '.72rem', xxxxSmall: '.62rem' },
+    weight: { regular: 400 },
+    size: { display: '1.875rem', body: '0.8125rem', small: '0.6875rem' },
   },
 };

@@ -9,10 +9,8 @@ import {
   ChevronDown,
   ChevronRight,
   CircleX,
-  Copy,
+  Compass,
   Diamond,
-  Eye,
-  EyeOff,
   FileText,
   Grid2X2,
   History,
@@ -23,7 +21,6 @@ import {
   Layers3,
   Library,
   LoaderCircle,
-  LogOut,
   RefreshCw,
   Search,
   Send,
@@ -121,6 +118,8 @@ import { ArtworkImage } from 'components/ArtworkImage';
 import { ConnectWalletButton } from 'components/ConnectWalletButton';
 import { OperationOutcome, OperationOutcomeAnnouncement } from 'components/OperationOutcomeAnnouncement';
 import {
+  prepareTransactionDialogHide,
+  TRANSACTION_DIALOG_HIDE_DURATION_MS,
   TransactionDialogControl,
   transactionDialogDismissAction,
 } from 'components/TransactionDialogControl';
@@ -133,7 +132,7 @@ import {
 } from 'components/UnavailableOperationRecovery';
 import { WalletAddress, WalletIdentity } from 'components/WalletAddress';
 import { gatewayFromLocation } from 'helpers/config';
-import { optionalMotionBehavior, prefersReducedMotion } from 'helpers/motion';
+import { optionalMotionBehavior } from 'helpers/motion';
 import { useWallet } from 'providers/WalletProvider';
 import { FungibleAssetView } from './FungibleAssetView';
 import {
@@ -457,7 +456,8 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
   const start = React.useCallback(
     (input: Pick<OperationActivity, 'asset' | 'collectionId' | 'owner' | 'operation' | 'restoreFallback'>) => {
       const existing = activitiesRef.current.find(
-        (activity) => activity.asset.id === input.asset.id && activity.owner === input.owner && activity.phase !== 'done',
+        (activity) =>
+          activity.asset.id === input.asset.id && activity.owner === input.owner && activity.phase !== 'done',
       );
       if (existing) {
         setActiveId(existing.id);
@@ -519,9 +519,7 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
   }, []);
   React.useEffect(() => {
     if (!activities.some((activity) => activity.phase === 'done' && activity.id !== activeId)) return;
-    setActivities((current) =>
-      current.filter((activity) => activity.phase !== 'done' || activity.id === activeId),
-    );
+    setActivities((current) => current.filter((activity) => activity.phase !== 'done' || activity.id === activeId));
   }, [activeId, activities]);
   const value = React.useMemo<OperationActivityContextValue>(
     () => ({
@@ -547,7 +545,7 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
           visible={activeId === activity.id}
           restoreFallback={() =>
             activity.restoreFallback() ??
-            document.querySelector<HTMLElement>('.operation-activity-trigger') ??
+            document.querySelector<HTMLElement>('.operation-activity-trigger[data-activity-owner="global"]') ??
             document.getElementById('main-content')
           }
           onUpdate={update}
@@ -865,6 +863,10 @@ function Header() {
                 />
               </label>
             ) : null}
+            <div
+              className="operation-activity-control fungible-operation-activity-slot"
+              id="fungible-operation-activity-slot"
+            />
             <OperationActivityControl />
             <button
               aria-label={
@@ -1144,6 +1146,7 @@ function OperationActivityControl() {
         aria-expanded={open}
         aria-label={`Transaction activity, ${visibleActivities.length} ${visibleActivities.length === 1 ? 'item' : 'items'}`}
         className={`operation-activity-trigger${workingCount ? ' working' : ''}`}
+        data-activity-owner="global"
         data-tooltip="Transaction activity"
         onClick={() => setOpen((value) => !value)}
         type="button"
@@ -1230,12 +1233,11 @@ function Footer() {
 
 function NamesCubePreview() {
   const [hovered, setHovered] = React.useState(false);
-  const motionAllowed = !prefersReducedMotion();
   return (
     <span
       className="names-cube-preview"
       aria-hidden="true"
-      onMouseEnter={() => motionAllowed && setHovered(true)}
+      onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
       <img src={hovered ? arweaveNamesCube : arweaveNamesCubeStill} alt="" />
@@ -1427,6 +1429,18 @@ export function homeMarketSummariesReady(
   return !loading && keys.every((key) => Boolean(summaries[key]));
 }
 
+export function homeMarketShellLoading(loading: boolean, collectionCount: number) {
+  return loading && collectionCount === 0;
+}
+
+export function shouldLoadHomeCollectionSummaries(
+  tab: 'discover' | 'collections',
+  marketLoading: boolean,
+  discoverPublished: boolean,
+) {
+  return tab === 'collections' || (!marketLoading && discoverPublished);
+}
+
 export function homeScrollIndicatorMetrics(
   scrollTop: number,
   scrollHeight: number,
@@ -1489,8 +1503,8 @@ function HomePaneScrollbar({ paneRef }: { paneRef: React.RefObject<HTMLElement> 
 function Home() {
   const market = React.useContext(MarketContext);
   const { search } = useLocation();
-  const collectionsPaneRef = React.useRef<HTMLElement>(null);
-  const assetsPaneRef = React.useRef<HTMLElement>(null);
+  const marketPaneRef = React.useRef<HTMLElement>(null);
+  const [homeTab, setHomeTab] = React.useState<'discover' | 'collections'>('discover');
   const [assetType, setAssetType] = React.useState<HomeAssetType>('all');
   const [assetView, setAssetView] = React.useState<'listed' | 'price-low' | 'price-high'>('listed');
   const computeGateway = gatewayFromLocation();
@@ -1516,6 +1530,7 @@ function Home() {
     : homeDiscoveryAssets(market.collections, verifiedHomeListings, 10);
   const assetKey = assets.map(({ asset }) => asset.id).join(',');
   const [assetPrices, setAssetPrices] = React.useState<Record<string, HomeMarketSummary>>({});
+  const [publishedDiscoverQuery, setPublishedDiscoverQuery] = React.useState<string | null>(null);
   const collectionKey = collections
     .map((collection) => `${collection.id}:${collection.assets.map((asset) => asset.id).join('.')}`)
     .concat(computeGateway)
@@ -1525,7 +1540,7 @@ function Home() {
   const [summaryRetrying, setSummaryRetrying] = React.useState(false);
   const summaryRetryButtonRef = React.useRef<HTMLButtonElement>(null);
   const summaryRetryOwnsFocus = React.useRef(false);
-  const homeHeadingRef = React.useRef<HTMLHeadingElement>(null);
+  const homeHeadingRef = React.useRef<HTMLButtonElement>(null);
   const assetSummaryControllers = React.useRef(new Map<string, AbortController>());
   const collectionSummaryControllers = React.useRef(
     new Map<
@@ -1616,7 +1631,27 @@ function Home() {
     );
     void Promise.all(requests).then(finishRetry);
   }, [assetKey, finishSummaryRetry, summaryRetry]);
+  const marketShellLoading = homeMarketShellLoading(market.loading, market.collections.length);
+  const visibleAssetResultsReady = homeMarketSummariesReady(
+    marketShellLoading,
+    assets.map(({ asset }) => asset.id),
+    assetPrices,
+  );
+  const discoverResultsPublished = publishedDiscoverQuery === normalizedQuery;
   React.useEffect(() => {
+    if (visibleAssetResultsReady) setPublishedDiscoverQuery(normalizedQuery);
+  }, [normalizedQuery, visibleAssetResultsReady]);
+  const shouldLoadCollectionSummaries = shouldLoadHomeCollectionSummaries(
+    homeTab,
+    market.loading,
+    discoverResultsPublished,
+  );
+  React.useEffect(() => {
+    if (!shouldLoadCollectionSummaries) {
+      for (const { controller } of collectionSummaryControllers.current.values()) controller.abort();
+      collectionSummaryControllers.current.clear();
+      return;
+    }
     const visibleCollections = new Map(
       collections.map((collection) => [
         collection.id,
@@ -1787,7 +1822,7 @@ function Home() {
       })(),
     );
     void Promise.all(requests).then(finishRetry);
-  }, [collectionKey, computeGateway, finishSummaryRetry, summaryRetry]);
+  }, [collectionKey, computeGateway, finishSummaryRetry, shouldLoadCollectionSummaries, summaryRetry]);
   const summaryFailures = [...Object.values(assetPrices), ...Object.values(collectionFloors)].filter(
     (summary): summary is Extract<HomeMarketSummary, { status: 'unavailable' }> => summary.status === 'unavailable',
   );
@@ -1802,20 +1837,20 @@ function Home() {
   const retryMarketSummaries = () => {
     if (summaryRetrying) return;
     retryAssetSummaries.current = new Set(
-      retryableHomeSummaryKeys(
-        assets.map(({ asset }) => asset.id),
-        assetPrices,
-      ),
+      assets.map(({ asset }) => asset.id).filter((assetId) => assetPrices[assetId]?.status === 'unavailable'),
     );
     retryCollectionSummaries.current = new Set(
-      retryableHomeSummaryKeys(
-        collections.map((collection) => collection.id),
-        collectionFloors,
-      ),
+      collections
+        .map((collection) => collection.id)
+        .filter((collectionId) => collectionFloors[collectionId]?.status === 'unavailable'),
     );
+    const retryGroups = new Set<'assets' | 'collections'>();
+    if (retryAssetSummaries.current.size) retryGroups.add('assets');
+    if (retryCollectionSummaries.current.size) retryGroups.add('collections');
+    if (!retryGroups.size) return;
     summaryRetryRun.current = {
       token: summaryRetryRun.current.token + 1,
-      pending: new Set(['assets', 'collections']),
+      pending: retryGroups,
     };
     setSummaryRetrying(true);
     setSummaryRetry((current) => current + 1);
@@ -1851,35 +1886,85 @@ function Home() {
       return assetView === 'price-low' ? leftPrice - rightPrice : rightPrice - leftPrice;
     });
   const collectionResultsReady = homeMarketSummariesReady(
-    market.loading,
+    marketShellLoading,
     collections.map((collection) => collection.id),
     collectionFloors,
   );
-  const discoverResultsReady =
-    collectionResultsReady &&
-    homeMarketSummariesReady(
-      false,
-      assets.map(({ asset }) => asset.id),
-      assetPrices,
-    );
+  const discoverResultsReady = discoverResultsPublished || visibleAssetResultsReady;
+  const selectHomeTab = (tab: 'discover' | 'collections') => {
+    setHomeTab(tab);
+    if (marketPaneRef.current) marketPaneRef.current.scrollTop = 0;
+  };
   return (
     <div className="home-shell">
       <div className="home-main">
         <div className="home-content">
           <div className="home-market-layout">
-            <section className="home-section" id="featured" ref={collectionsPaneRef}>
-              <HomePaneScrollbar paneRef={collectionsPaneRef} />
+            <section className="home-section home-assets" id="market" ref={marketPaneRef}>
+              <h1 className="sr-only">Marketplace</h1>
+              <HomePaneScrollbar paneRef={marketPaneRef} />
               <div className="home-section-heading">
                 <div>
-                  <h1 ref={homeHeadingRef} tabIndex={-1}>
-                    Collections
-                  </h1>
-                  <p>Permanent assets with ownership and settlement native to Arweave.</p>
+                  <div aria-label="Marketplace view" className="home-market-tabs" role="tablist">
+                    <button
+                      aria-controls="home-discover-panel"
+                      aria-selected={homeTab === 'discover'}
+                      className="home-market-tab"
+                      id="home-discover-tab"
+                      onClick={() => selectHomeTab('discover')}
+                      ref={homeHeadingRef}
+                      role="tab"
+                      type="button"
+                    >
+                      <Compass className="ui-icon" aria-hidden="true" />
+                      Discover
+                    </button>
+                    <button
+                      aria-controls="home-collections-panel"
+                      aria-selected={homeTab === 'collections'}
+                      className="home-market-tab"
+                      id="home-collections-tab"
+                      onClick={() => selectHomeTab('collections')}
+                      role="tab"
+                      type="button"
+                    >
+                      <LayoutGrid className="ui-icon" aria-hidden="true" />
+                      Collections
+                    </button>
+                  </div>
+                  <p>
+                    {homeTab === 'discover'
+                      ? normalizedQuery
+                        ? `Results for “${query}” across the current Arweave collection indexes.`
+                        : 'Verified active listings across every marketplace collection.'
+                      : 'Permanent assets with ownership and settlement native to Arweave.'}
+                  </p>
                 </div>
+                {homeTab === 'discover' ? (
+                  <div className="home-asset-filters">
+                    <MarketSelect<HomeAssetType>
+                      label="Asset type"
+                      onChange={setAssetType}
+                      options={[
+                        { value: 'all', label: 'All' },
+                        { value: 'tokens', label: 'Tokens' },
+                        { value: 'atomic', label: 'Atomic assets (NFT)' },
+                      ]}
+                      value={assetType}
+                    />
+                    <MarketSelect<'listed' | 'price-low' | 'price-high'>
+                      label="View"
+                      onChange={setAssetView}
+                      options={[
+                        { value: 'listed', label: 'Listed for sale' },
+                        { value: 'price-low', label: 'Price: low to high' },
+                        { value: 'price-high', label: 'Price: high to low' },
+                      ]}
+                      value={assetView}
+                    />
+                  </div>
+                ) : null}
               </div>
-              {market.loading && !collections.length ? (
-                <Loading label="Loading collection indexes from Arweave…" />
-              ) : null}
               {market.error ? (
                 <ErrorPanel message={market.error} onRetry={market.retry} retryLabel="Retry collections" />
               ) : null}
@@ -1924,156 +2009,133 @@ function Home() {
                   </button>
                 </div>
               ) : null}
-              {!collectionResultsReady ? (
-                <div className="home-market-loading">
-                  <Loading label="Verifying collection listings…" />
-                </div>
-              ) : null}
-              <div className="home-feature-grid" hidden={!collectionResultsReady}>
-                {collections.map((collection, index) => {
-                  const image = collection.assets.find((asset) => asset.image)?.image;
-                  return (
-                    <Link
-                      className={`home-feature-card feature-${index}`}
-                      key={collection.id}
-                      to={`/collection/${collection.id}`}
-                    >
-                      <div className="home-feature-art">
-                        {image ? (
-                          <ArtworkImage
-                            src={image}
-                            alt=""
-                            loading="eager"
-                            fallback={
-                              <span className="home-image-collection-fallback" aria-hidden="true">
-                                <BazarMark />
-                                <strong>{collection.name.replace(/^\[TEST\]\s*/, '')}</strong>
-                                <small>Permanent image collection</small>
-                              </span>
-                            }
-                          />
-                        ) : collection.kind === 'names' ? (
-                          <NamesCubePreview />
-                        ) : collection.kind === 'tokens' ? (
-                          <TokenArtwork
-                            className="home-token-collection-art"
-                            ticker={collection.assets[0]?.ticker ?? 'TOKEN'}
-                          />
-                        ) : (
-                          <div className="home-name-art">
-                            <BazarMark />
-                            <span>AR</span>
-                          </div>
-                        )}
-                        <div className="home-feature-glow" />
-                      </div>
-                      <div className="home-feature-copy">
-                        <h2>{collection.name}</h2>
-                        <span>{collection.description}</span>
-                      </div>
-                      <div className="home-feature-stats">
-                        <div>
-                          <span>{collection.kind === 'names' && collection.hasMore ? 'Loaded' : 'Assets'}</span>
-                          <strong>{(collection.total ?? collection.assets.length).toLocaleString()}</strong>
-                        </div>
-                        <div>
-                          <span>{collection.hasMore ? 'Loaded floor' : 'Floor'}</span>
-                          <strong
-                            className={homeMarketSummaryListed(collectionFloors[collection.id]) ? 'listed' : undefined}
+              {homeTab === 'collections' ? (
+                <div aria-labelledby="home-collections-tab" id="home-collections-panel" role="tabpanel">
+                  {!collectionResultsReady ? (
+                    <div className="home-market-loading">
+                      <Loading label="Verifying collection listings…" />
+                    </div>
+                  ) : (
+                    <div className="home-feature-grid">
+                      {collections.map((collection, index) => {
+                        const image = collection.assets.find((asset) => asset.image)?.image;
+                        return (
+                          <Link
+                            className={`home-feature-card feature-${index}`}
+                            key={collection.id}
+                            to={`/collection/${collection.id}`}
                           >
-                            {homeMarketSummaryLabel(
-                              collectionFloors[collection.id],
-                              collection.hasMore ? 'No loaded listings' : 'No live listings',
-                              collection.hasMore ? 'No loaded asks' : 'No indexed asks',
-                            )}
-                          </strong>
-                        </div>
-                      </div>
-                      <strong className="home-card-action">
-                        Open collection
-                        <span>
-                          <ArrowUpRight className="ui-icon ui-icon--xs" aria-hidden="true" />
-                        </span>
-                      </strong>
-                    </Link>
-                  );
-                })}
-              </div>
-              {collectionResultsReady && !market.error && collections.length === 0 ? (
-                <div className="home-no-results">No collections match “{query}”.</div>
-              ) : null}
-            </section>
-
-            <section
-              aria-busy={!discoverResultsReady}
-              className="home-section home-assets"
-              id="assets"
-              ref={assetsPaneRef}
-            >
-              <HomePaneScrollbar paneRef={assetsPaneRef} />
-              <div className="home-section-heading">
-                <div>
-                  <h2>Discover assets</h2>
-                  <p>
-                    {normalizedQuery
-                      ? `Results for “${query}” across the current Arweave collection indexes.`
-                      : 'Verified active listings across every marketplace collection.'}
-                  </p>
-                </div>
-                <div className="home-asset-filters">
-                  <MarketSelect<HomeAssetType>
-                    label="Asset type"
-                    onChange={setAssetType}
-                    options={[
-                      { value: 'all', label: 'All' },
-                      { value: 'tokens', label: 'Tokens' },
-                      { value: 'atomic', label: 'Atomic assets (NFT)' },
-                    ]}
-                    value={assetType}
-                  />
-                  <MarketSelect<'listed' | 'price-low' | 'price-high'>
-                    label="View"
-                    onChange={setAssetView}
-                    options={[
-                      { value: 'listed', label: 'Listed for sale' },
-                      { value: 'price-low', label: 'Price: low to high' },
-                      { value: 'price-high', label: 'Price: high to low' },
-                    ]}
-                    value={assetView}
-                  />
-                </div>
-              </div>
-              {!discoverResultsReady ? (
-                <div className="home-market-loading">
-                  <Loading label="Verifying listed assets…" />
-                </div>
-              ) : displayedAssets.length ? (
-                <div className="home-asset-grid">
-                  {displayedAssets.map(({ asset, collection }) => (
-                    <Link key={`${collection.id}-${asset.id}`} to={`/asset/${collection.id}/${asset.id}`}>
-                      {asset.image ? (
-                        <ArtworkImage className="home-asset-media" src={asset.image} alt="" />
-                      ) : collection.kind === 'names' ? (
-                        <NameArtwork className="home-asset-media" name={asset.name} />
-                      ) : (
-                        <TokenArtwork className="home-asset-media home-token-art" ticker={asset.ticker ?? 'TOKEN'} />
-                      )}
-                      <div className="home-asset-details">
-                        <div>
-                          <strong>{asset.name}</strong>
-                          <span>{collection.name}</span>
-                        </div>
-                        <b
-                          className={`home-asset-price${homeMarketSummaryListed(assetPrices[asset.id]) ? ' listed' : ''}`}
-                        >
-                          {homeMarketSummaryLabel(assetPrices[asset.id], 'Not listed')}
-                        </b>
-                      </div>
-                    </Link>
-                  ))}
+                            <div className="home-feature-art">
+                              {image ? (
+                                <ArtworkImage
+                                  src={image}
+                                  alt=""
+                                  loading="eager"
+                                  fallback={
+                                    <span className="home-image-collection-fallback" aria-hidden="true">
+                                      <BazarMark />
+                                      <strong>{collection.name.replace(/^\[TEST\]\s*/, '')}</strong>
+                                      <small>Permanent image collection</small>
+                                    </span>
+                                  }
+                                />
+                              ) : collection.kind === 'names' ? (
+                                <NamesCubePreview />
+                              ) : collection.kind === 'tokens' ? (
+                                <TokenArtwork
+                                  className="home-token-collection-art"
+                                  ticker={collection.assets[0]?.ticker ?? 'TOKEN'}
+                                />
+                              ) : (
+                                <div className="home-name-art">
+                                  <BazarMark />
+                                  <span>AR</span>
+                                </div>
+                              )}
+                              <div className="home-feature-glow" />
+                            </div>
+                            <div className="home-feature-copy">
+                              <h2>{collection.name}</h2>
+                              <span>{collection.description}</span>
+                            </div>
+                            <div className="home-feature-stats">
+                              <div>
+                                <span>{collection.kind === 'names' && collection.hasMore ? 'Loaded' : 'Assets'}</span>
+                                <strong>{(collection.total ?? collection.assets.length).toLocaleString()}</strong>
+                              </div>
+                              <div>
+                                <span>{collection.hasMore ? 'Loaded floor' : 'Floor'}</span>
+                                <strong
+                                  className={
+                                    homeMarketSummaryListed(collectionFloors[collection.id]) ? 'listed' : undefined
+                                  }
+                                >
+                                  {homeMarketSummaryLabel(
+                                    collectionFloors[collection.id],
+                                    collection.hasMore ? 'No loaded listings' : 'No live listings',
+                                    collection.hasMore ? 'No loaded asks' : 'No indexed asks',
+                                  )}
+                                </strong>
+                              </div>
+                            </div>
+                            <strong className="home-card-action">
+                              Open collection
+                              <span>
+                                <ArrowUpRight className="ui-icon ui-icon--xs" aria-hidden="true" />
+                              </span>
+                            </strong>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {collectionResultsReady && !market.error && collections.length === 0 ? (
+                    <div className="home-no-results">No collections match “{query}”.</div>
+                  ) : null}
                 </div>
               ) : (
-                <div className="home-assets-empty">No verified listings match this asset type.</div>
+                <div
+                  aria-busy={!discoverResultsReady}
+                  aria-labelledby="home-discover-tab"
+                  id="home-discover-panel"
+                  role="tabpanel"
+                >
+                  {!discoverResultsReady ? (
+                    <div className="home-market-loading">
+                      <Loading label="Verifying listed assets…" />
+                    </div>
+                  ) : displayedAssets.length ? (
+                    <div className="home-asset-grid">
+                      {displayedAssets.map(({ asset, collection }) => (
+                        <Link key={`${collection.id}-${asset.id}`} to={`/asset/${collection.id}/${asset.id}`}>
+                          {asset.image ? (
+                            <ArtworkImage className="home-asset-media" src={asset.image} alt="" />
+                          ) : collection.kind === 'names' ? (
+                            <NameArtwork className="home-asset-media" name={asset.name} />
+                          ) : (
+                            <TokenArtwork
+                              className="home-asset-media home-token-art"
+                              ticker={asset.ticker ?? 'TOKEN'}
+                            />
+                          )}
+                          <div className="home-asset-details">
+                            <div>
+                              <strong>{asset.name}</strong>
+                              <span>{collection.name}</span>
+                            </div>
+                            <b
+                              className={`home-asset-price${homeMarketSummaryListed(assetPrices[asset.id]) ? ' listed' : ''}`}
+                            >
+                              {homeMarketSummaryLabel(assetPrices[asset.id], 'Not listed')}
+                            </b>
+                          </div>
+                        </Link>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="home-assets-empty">No verified listings match this asset type.</div>
+                  )}
+                </div>
               )}
             </section>
           </div>
@@ -5090,7 +5152,6 @@ function MyAssetsView() {
     discovered: 0,
     revalidated: 0,
   });
-  const resolutionStatusRef = React.useRef<HTMLDivElement>(null);
   const [results, setResults] = React.useState<ResolvedAsset[]>([]);
   const [storedStatus, setStatus] = React.useState<WalletResolutionStatus>(initialWalletResolutionStatus);
   const discoveryScope = wallet.address ? walletDiscoveryScope(wallet.address, gateway, market.collections) : '';
@@ -5102,20 +5163,14 @@ function MyAssetsView() {
     () => (wallet.address ? groupWalletResults(visibleResults, wallet.address) : { owned: [], listed: [] }),
     [visibleResults, wallet.address],
   );
-  const focusResolutionStatus = () => {
-    window.requestAnimationFrame(() => resolutionStatusRef.current?.focus());
-  };
   const retryDiscovery = () => {
     setDiscoveryRetry((value) => value + 1);
-    focusResolutionStatus();
   };
   const retryUnavailableAssets = () => {
     setFailedRetry((value) => value + 1);
-    focusResolutionStatus();
   };
   const refreshAssets = () => {
     setRetry((value) => value + 1);
-    focusResolutionStatus();
   };
   React.useEffect(() => {
     if (!wallet.address || market.loading || market.error) return;
@@ -5505,8 +5560,6 @@ function MyAssetsView() {
   ]
     .filter(Boolean)
     .join(' ');
-  const determinateProgress = walletResolutionIsDeterminate(status);
-  const showsProgress = walletResolutionShowsProgress(status);
   walletAnnouncementProgress.current = nextWalletAnnouncementProgress(
     walletAnnouncementProgress.current,
     status,
@@ -5544,63 +5597,6 @@ function MyAssetsView() {
       <p className="sr-only" aria-live="polite" role="status">
         {resolutionCopy.announcement}
       </p>
-      <div className="resolution-status" ref={resolutionStatusRef} tabIndex={-1}>
-        <div>
-          <strong>{resolutionCopy.heading}</strong>
-          <span>
-            {status.phase === 'revalidating'
-              ? `${(status.revalidated ?? 0).toLocaleString()} of ${(status.revalidationTotal ?? 0).toLocaleString()} visible assets rechecked`
-              : !status.discoveryComplete
-                ? `${status.discovered.toLocaleString()} candidates found · ${status.resolved.toLocaleString()} checked${
-                    status.failures ? ` · ${status.failures.toLocaleString()} unavailable` : ''
-                  }`
-                : `${status.resolved.toLocaleString()} of ${status.total.toLocaleString()} checked${
-                    status.failures ? ` · ${status.failures.toLocaleString()} unavailable` : ''
-                  }`}
-          </span>
-        </div>
-        {showsProgress ? (
-          <div
-            aria-label="Asset resolution progress"
-            aria-valuemax={
-              !determinateProgress
-                ? undefined
-                : Math.max(1, status.phase === 'revalidating' ? (status.revalidationTotal ?? 0) : status.total)
-            }
-            aria-valuemin={!determinateProgress ? undefined : 0}
-            aria-valuenow={
-              !determinateProgress
-                ? undefined
-                : status.phase === 'revalidating'
-                  ? (status.revalidated ?? 0)
-                  : status.resolved
-            }
-            aria-valuetext={
-              status.phase === 'revalidating'
-                ? `${(status.revalidated ?? 0).toLocaleString()} of ${(status.revalidationTotal ?? 0).toLocaleString()} visible assets rechecked without cached state`
-                : !status.discoveryComplete
-                  ? `${status.discovered.toLocaleString()} candidates found, ${status.resolved.toLocaleString()} checked${status.failures ? `, ${status.failures.toLocaleString()} unavailable` : ''}`
-                  : `${status.resolved.toLocaleString()} of ${status.total.toLocaleString()} checked${status.failures ? `, ${status.failures.toLocaleString()} unavailable` : ''}`
-            }
-            className={`resolution-track${!determinateProgress ? ' indeterminate' : ''}${status.failures ? ' has-failures' : ''}`}
-            role="progressbar"
-          >
-            <span
-              style={{
-                width: !determinateProgress
-                  ? undefined
-                  : status.phase === 'revalidating'
-                    ? status.revalidationTotal
-                      ? `${Math.min(100, ((status.revalidated ?? 0) / status.revalidationTotal) * 100)}%`
-                      : '0%'
-                    : status.total
-                      ? `${Math.min(100, (status.resolved / status.total) * 100)}%`
-                      : '0%',
-              }}
-            />
-          </div>
-        ) : null}
-      </div>
       {status.error ? (
         <div className="inline-error">
           <span role="alert">{status.error}</span>
@@ -5919,7 +5915,15 @@ function AssetView() {
         restoreFallback: operationFocusFallback,
       });
     },
-    [cachedAsset, collectionId, indexedAsset, operationFocusFallback, resolvedAsset, startOperationActivity, wallet.address],
+    [
+      cachedAsset,
+      collectionId,
+      indexedAsset,
+      operationFocusFallback,
+      resolvedAsset,
+      startOperationActivity,
+      wallet.address,
+    ],
   );
   const [recoverySuppressed, setRecoverySuppressed] = React.useState(false);
   const [recoveryNotice, setRecoveryNotice] = React.useState('');
@@ -7384,22 +7388,25 @@ function OperationDialog({
       return;
     }
     if (hiding) return;
+    if (dialogRef.current) {
+      prepareTransactionDialogHide(
+        dialogRef.current,
+        document.querySelector<HTMLElement>('.operation-activity-trigger[data-activity-owner="global"]'),
+      );
+    }
     setHiding(true);
     hideTimerRef.current = window.setTimeout(() => {
       hideTimerRef.current = null;
       onHide();
-    }, 240);
+    }, TRANSACTION_DIALOG_HIDE_DURATION_MS);
   };
-  const dialogRef = useDialogFocus<HTMLDivElement>(
-    visible,
-    closeOrHide,
-    undefined,
-    visiblePhase,
-    restoreFallback,
-  );
+  const dialogRef = useDialogFocus<HTMLDivElement>(visible, closeOrHide, undefined, visiblePhase, restoreFallback);
+  React.useEffect(() => {
+    if (visible) setHiding(false);
+  }, [visible]);
   if (!visible && visiblePhase !== 'working') return null;
   return (
-    <div className="dialog-backdrop" hidden={!visible} role="presentation">
+    <div className={`dialog-backdrop${hiding ? ' dialog-backdrop-hiding' : ''}`} hidden={!visible} role="presentation">
       <div
         className={`dialog${visiblePhase === 'working' ? '' : ' dialog-compact'}${visiblePhase === 'form' ? ' dialog-form-phase' : ''}`}
         aria-hidden={visible ? undefined : true}
@@ -7643,13 +7650,16 @@ function OperationDialog({
             <p className="sr-only" aria-live="polite" role="status">
               {workingStatus || 'Watching independent Arweave nodes confirm this action.'}
             </p>
-            <p className="sync-intro">
-              {(operation.kind === 'buy' && operation.resume) || (operation.kind !== 'buy' && operation.resumeId)
-                ? 'Recovered the exact signed transactions. Resuming from the weave—nothing will be signed twice.'
-                : 'Signed. Now watching independent Arweave nodes agree on the transaction.'}
-            </p>
             {workingStatus ? <p className="scheduler-wait">{workingStatus}</p> : null}
-            <ArweaveTransactionSync active={visible} subject={asset.name} steps={steps} activeStep={activeStep} />
+            <ArweaveTransactionSync
+              active={visible}
+              subject={asset.name}
+              steps={steps}
+              activeStep={activeStep}
+              pendingAfterConfirmation={
+                purchaseState?.stage === 'ownership-verifying' ? 'Verifying ownership' : undefined
+              }
+            />
           </div>
         ) : null}
         {visiblePhase === 'done' ? (

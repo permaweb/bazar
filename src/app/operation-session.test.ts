@@ -48,6 +48,51 @@ describe('wallet-bound operation sessions', () => {
     expect(atomicPurchaseStorageKey('asset', 'wallet-a')).not.toBe(atomicPurchaseStorageKey('asset', 'wallet-b'));
   });
 
+  it('gives purchases and balance-changing asset actions independent claims', () => {
+    expect(operationClaimStorageKey('asset', 'wallet-a', 'purchase')).toBe(
+      'bazar-operation-claim:asset:wallet-a:purchase',
+    );
+    expect(operationClaimStorageKey('asset', 'wallet-a', 'asset')).toBe('bazar-operation-claim:asset:wallet-a:asset');
+  });
+
+  it('holds a purchase claim and an asset-action claim at the same time', async () => {
+    const values = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, value),
+      removeItem: (key: string) => values.delete(key),
+    };
+    const held = new Set<string>();
+    const locks = {
+      async request<T>(name: string, _options: unknown, callback: (lock: unknown | null) => T | PromiseLike<T>) {
+        if (held.has(name)) return await callback(null);
+        held.add(name);
+        try {
+          return await callback({});
+        } finally {
+          held.delete(name);
+        }
+      },
+    };
+    const purchase = await acquireWalletOperationClaim(
+      storage,
+      operationClaimStorageKey('asset', 'wallet-a', 'purchase'),
+      [atomicPurchaseStorageKey('asset', 'wallet-a')],
+      { locks },
+    );
+    const assetAction = await acquireWalletOperationClaim(
+      storage,
+      operationClaimStorageKey('asset', 'wallet-a', 'asset'),
+      [operationStorageKey('asset', 'wallet-a')],
+      { locks },
+    );
+
+    expect(values.has(purchase.key)).toBe(true);
+    expect(values.has(assetAction.key)).toBe(true);
+    releaseWalletOperationClaim(storage, purchase);
+    releaseWalletOperationClaim(storage, assetAction);
+  });
+
   it('requires a signed transaction before describing a purchase as recoverable', () => {
     expect(hasRecoverablePurchase()).toBe(false);
     expect(hasRecoverablePurchase({})).toBe(false);
