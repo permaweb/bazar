@@ -1282,6 +1282,58 @@ describe('fungible asset transactions', () => {
     ).toBeUndefined();
   });
 
+  it('signs a proportional partial fill against the original order', async () => {
+    const order = swapOrder(transactionId, '3000000000000', '1000000');
+    const subject = approvalSubject([order]);
+    const [prepared] = await subject.client.preparePurchaseBatch([
+      {
+        processId,
+        order,
+        fillQuantity: '1000000000000',
+        buyer: seller,
+        startingBalance: '0',
+        network: { tip: () => 1000 } as any,
+      },
+    ]);
+    const registration = subject.storedTransaction(prepared.registration.id);
+    const payment = subject.storedTransaction(prepared.payment.id);
+
+    expect(prepared.order).toBe(order);
+    expect(prepared.fillQuantity).toBe('1000000000000');
+    expect(registration.reward).toBe('33333334');
+    expect(registration.tags).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: Buffer.from('order-id').toString('base64url'),
+          value: Buffer.from(order.orderId).toString('base64url'),
+        }),
+        expect.objectContaining({
+          name: Buffer.from('fill-quantity').toString('base64url'),
+          value: Buffer.from('1000000000000').toString('base64url'),
+        }),
+      ]),
+    );
+    expect(payment.target).toBe(order.recipient);
+    expect(payment.quantity).toBe('333334');
+  });
+
+  it.each(['0', '3000000000001'])('refuses invalid fill quantity %s before wallet approval', (fillQuantity) => {
+    const order = swapOrder(transactionId, '3000000000000', '1000000');
+    const subject = approvalSubject([order]);
+
+    expect(() =>
+      subject.client.purchaseAdapter({
+        processId,
+        order,
+        fillQuantity,
+        buyer: seller,
+        startingBalance: '0',
+        network: { tip: () => 1000 } as any,
+      }),
+    ).toThrow('fill-quantity-out-of-range');
+    expect(subject.signatures()).toBe(0);
+  });
+
   it('refuses to dispatch a stored registration after its exact order disappears', async () => {
     const order = swapOrder(transactionId, '3000000000000', '1000000');
     const subject = client();
@@ -1499,5 +1551,6 @@ function approvalSubject(
     releaseBalance,
     signatures: () => signatures,
     signedKeys: () => [...values.keys()].filter((key) => key.startsWith('bazar-signed-transaction:')),
+    storedTransaction: (id: string) => JSON.parse(values.get(`bazar-signed-transaction:${id}`)!).transaction,
   };
 }

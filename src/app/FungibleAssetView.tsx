@@ -39,7 +39,7 @@ import {
   type SwapOrder,
 } from 'api/asset-marketplace';
 import { transactionExplorerUrl } from 'api/arweave-explorer';
-import { matchWholeOrders, formatTokenAmount, parseTokenAmount } from 'api/order-matching';
+import { filledOrder, formatTokenAmount, matchOrderFills, parseTokenAmount, type OrderFill } from 'api/order-matching';
 import { ArweaveObserverNetwork } from 'api/arweave-observers';
 import { assetObserverNetworkOptions } from 'api/asset-observers';
 import {
@@ -64,6 +64,7 @@ import {
   type UnavailableOperationRecovery,
 } from 'components/UnavailableOperationRecovery';
 import { WalletAddress, WalletIdentity } from 'components/WalletAddress';
+import { optionalMotionBehavior } from 'helpers/motion';
 import { useWallet } from 'providers/WalletProvider';
 import { useDialogFocus } from './useDialogFocus';
 import {
@@ -112,12 +113,13 @@ type Props = {
 
 type BatchEntry = {
   order: SwapOrder;
+  fillQuantity: string;
   snapshot: PurchaseSnapshot;
   paymentCost: string;
 };
 
 type BatchResume = {
-  version: 2;
+  version: 3;
   buyer: string;
   startingBalance: string;
   entries: BatchEntry[];
@@ -145,7 +147,6 @@ type FungibleOperation =
 const ADDRESS = /^[A-Za-z0-9_-]{43}$/;
 const SETTLEMENT_PANEL_ID = 'fungible-settlement-panel';
 const SETTLEMENT_ERROR_PANEL_ID = 'fungible-settlement-error-panel';
-export const LOT_PICKER_PAGE_SIZE = 50;
 
 export function FungibleAssetView({
   asset,
@@ -659,13 +660,13 @@ export function FungibleAssetView({
                               onClick={() =>
                                 openOperation({
                                   kind: 'buy',
-                                  availableOrders: purchasableOrders,
+                                  availableOrders: [order],
                                   selectedOrders: [order],
                                   startingBalance: liquid,
                                 })
                               }
                             >
-                              Buy lot
+                              Buy
                             </button>
                           ) : null}
                         </span>
@@ -704,8 +705,8 @@ export function FungibleAssetView({
                   </div>
                 ) : null}
                 <p className="market-note">
-                  Every row is an escrowed whole lot from the last verified process state. Multi-order purchases settle
-                  each selected lot independently and in parallel.
+                  Every row is live escrowed liquidity from the last verified process state. Buy any amount from one
+                  order or let Bazar route across the best prices automatically.
                 </p>
               </div>
             </details>
@@ -889,22 +890,23 @@ function FungibleOperationDialog({
       operation.kind === 'buy' ? operation.resume : undefined,
     ],
   );
-  const checkoutMode = operation.kind === 'buy' && initialSelected.length > 0;
-  const initialQuantity = initialSelected.length
-    ? formatTokenAmount(
-        initialSelected.reduce((total, order) => total + BigInt(order.quantity), 0n).toString(),
-        state.denomination,
-      )
-    : eligible[0]
-      ? formatTokenAmount(eligible[0].quantity, state.denomination)
-      : '';
+  const initialQuantity =
+    operation.kind === 'buy' && operation.resume
+      ? formatTokenAmount(
+          operation.resume.entries.reduce((total, entry) => total + BigInt(entry.fillQuantity), 0n).toString(),
+          state.denomination,
+        )
+      : initialSelected.length
+        ? formatTokenAmount(
+            initialSelected.reduce((total, order) => total + BigInt(order.quantity), 0n).toString(),
+            state.denomination,
+          )
+        : '';
   const [quantity, setQuantity] = React.useState(
     operation.kind === 'sell' || operation.kind === 'transfer' ? (operation.quantity ?? '') : initialQuantity,
   );
   const [unitPrice, setUnitPrice] = React.useState(operation.kind === 'sell' ? (operation.unitPrice ?? '') : '');
   const [recipient, setRecipient] = React.useState(operation.kind === 'transfer' ? (operation.recipient ?? '') : '');
-  const [manualOrderIds, setManualOrderIds] = React.useState<string[]>(initialSelected.map((order) => order.orderId));
-  const [matchMode, setMatchMode] = React.useState<'amount' | 'lots'>(initialSelected.length ? 'lots' : 'amount');
   const [phase, setPhase] = React.useState<'form' | 'approval' | 'working' | 'done' | 'error'>(
     operation.kind === 'buy' && operation.resume
       ? recoveryApprovalCount
@@ -935,12 +937,8 @@ function FungibleOperationDialog({
   const [quoteState, setQuoteState] = React.useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [quoteRetry, setQuoteRetry] = React.useState(0);
   const [hiding, setHiding] = React.useState(false);
-  const [activeLotIndex, setActiveLotIndex] = React.useState(0);
-  const [lotPickerLimit, setLotPickerLimit] = React.useState(LOT_PICKER_PAGE_SIZE);
   const [settlementAnnouncement, setSettlementAnnouncement] = React.useState('');
   const settlementAnnouncementKeyRef = React.useRef('');
-  const lotOptionRefs = React.useRef<Array<HTMLButtonElement | null>>([]);
-  const lotRevealStatusRef = React.useRef<HTMLParagraphElement>(null);
   const purchasesRef = React.useRef<Map<string, SwapPurchase>>(new Map());
   const networkRef = React.useRef<ArweaveObserverNetwork | null>(null);
   const claimRef = React.useRef<WalletOperationClaim | null>(null);
@@ -958,39 +956,40 @@ function FungibleOperationDialog({
   phaseChangeRef.current = onPhaseChange;
   const resumed = React.useRef(false);
   const ticker = state.ticker || 'TOKEN';
-  const manualOrderIdSet = React.useMemo(() => new Set(manualOrderIds), [manualOrderIds]);
-  const initiallySelectedOrderIdSet = React.useMemo(
-    () => new Set(initialSelected.map((order) => order.orderId)),
-    [initialSelected],
-  );
-  const manualOrders = React.useMemo(
-    () => eligible.filter((order) => manualOrderIdSet.has(order.orderId)),
-    [eligible, manualOrderIdSet],
-  );
-  const lotPickerOrders = React.useMemo(
-    () => visibleLotPickerOrders(eligible, initiallySelectedOrderIdSet, lotPickerLimit),
-    [eligible, initiallySelectedOrderIdSet, lotPickerLimit],
-  );
   const automaticMatchResult = React.useMemo(() => {
-    if (operation.kind !== 'buy' || matchMode !== 'amount') return { match: null, error: '' };
+    if (operation.kind !== 'buy') return { match: null, error: '' };
     try {
       const atomic = parseTokenAmount(quantity, state.denomination);
-      return { match: matchWholeOrders(eligible, atomic), error: '' };
+      const match = matchOrderFills(eligible, atomic);
+      return {
+        match,
+        error: match
+          ? ''
+          : `Only ${tokenLabel(
+              eligible.reduce((total, order) => total + BigInt(order.quantity), 0n).toString(),
+              state,
+            )} is currently available.`,
+      };
     } catch (cause) {
       return {
         match: null,
         error:
           cause instanceof RangeError
-            ? 'This order book is too large for automatic matching. Choose listings directly instead.'
-            : '',
+            ? 'This order book is too large to quote safely. Refresh and try again.'
+            : quantity
+              ? `Enter a valid ${ticker} amount using no more than ${state.denomination} decimal places.`
+              : '',
       };
     }
-  }, [eligible, matchMode, operation.kind, quantity, state.denomination]);
+  }, [eligible, operation.kind, quantity, state, state.denomination, ticker]);
   const automaticMatch = automaticMatchResult.match;
-  const matchedOrders = matchMode === 'lots' ? manualOrders : (automaticMatch?.orders ?? []);
+  const matchedFills = automaticMatch?.fills ?? [];
+  const matchedOrders = matchedFills.map((fill) => fill.order);
   const matchedQuantity = matchedOrders.reduce((total, order) => total + BigInt(order.quantity), 0n);
   const matchedAsking = matchedOrders.reduce((total, order) => total + BigInt(order.asking), 0n);
   const matchedSellers = new Set(matchedOrders.map((order) => order.creator)).size;
+  const marketAvailable = eligible.reduce((total, order) => total + BigInt(order.quantity), 0n);
+  const bestEligible = React.useMemo(() => [...eligible].sort(compareOrderUnitPrice)[0], [eligible]);
   const enteredQuantity = safeTokenAmount(quantity, state.denomination);
   const currentLiquid = BigInt(liquidBalanceOf(state, owner));
   const currentListed = BigInt(listedBalanceOf(state, owner));
@@ -1085,7 +1084,7 @@ function FungibleOperationDialog({
     };
   }, [
     asset.id,
-    matchedOrders.map((order) => order.orderId).join(','),
+    purchaseQuoteIdentity(matchedOrders),
     operation.kind,
     operation.kind === 'buy' ? operation.resume : undefined,
     owner,
@@ -1101,21 +1100,6 @@ function FungibleOperationDialog({
     resumed.current = true;
     void submit();
   }, []);
-
-  function chooseLot(order: SwapOrder) {
-    setManualOrderIds((current) => {
-      const currentSet = new Set(current);
-      const next = currentSet.has(order.orderId)
-        ? current.filter((id) => id !== order.orderId)
-        : [...current, order.orderId];
-      const nextSet = new Set(next);
-      const total = eligible
-        .filter((candidate) => nextSet.has(candidate.orderId))
-        .reduce((sum, candidate) => sum + BigInt(candidate.quantity), 0n);
-      setQuantity(formatTokenAmount(total.toString(), state.denomination));
-      return next;
-    });
-  }
 
   async function submit() {
     setMessage('');
@@ -1158,7 +1142,11 @@ function FungibleOperationDialog({
       if (freshOperation) {
         ({ state: freshState } = await readAssetState(asset.id, { signal, maxAge: 0 }));
         const expectedOrders =
-          operation.kind === 'buy' ? matchedOrders : operation.kind === 'cancel' ? [operation.order] : [];
+          operation.kind === 'buy'
+            ? matchedFills.map((fill) => fill.sourceOrder)
+            : operation.kind === 'cancel'
+              ? [operation.order]
+              : [];
         const rawQuantity =
           operation.kind === 'sell' || operation.kind === 'transfer'
             ? parseTokenAmount(quantity, state.denomination)
@@ -1186,10 +1174,16 @@ function FungibleOperationDialog({
       }
       const client = new AssetTransactionClient();
       if (operation.kind === 'buy') {
-        if (!operation.resume && !matchedOrders.length) throw new Error('Select one or more complete lots.');
+        if (!operation.resume && !matchedFills.length)
+          throw new Error('Enter an amount available from the order book.');
         await runPurchaseBatch(
           client,
-          operation.resume?.entries ?? matchedOrders.map((order) => ({ order, snapshot: {} })),
+          operation.resume?.entries ??
+            matchedFills.map((fill) => ({
+              order: fill.sourceOrder,
+              fillQuantity: fill.order.quantity,
+              snapshot: {},
+            })),
           operation.resume,
           batchPurchaseStartingBalance(operation.resume, freshState, owner, operation.startingBalance),
         );
@@ -1366,7 +1360,7 @@ function FungibleOperationDialog({
 
   async function runPurchaseBatch(
     client: AssetTransactionClient,
-    requested: Array<Pick<BatchEntry, 'order' | 'snapshot'>>,
+    requested: Array<Pick<BatchEntry, 'order' | 'fillQuantity' | 'snapshot'>>,
     resume?: BatchResume,
     startingBalance = operation.kind === 'buy' ? operation.startingBalance : '0',
   ) {
@@ -1380,9 +1374,10 @@ function FungibleOperationDialog({
     if (resume) entries = resume.entries;
     else {
       const prepared = await client.preparePurchaseBatch(
-        requested.map(({ order }) => ({
+        requested.map(({ order, fillQuantity }) => ({
           processId: asset.id,
           order,
+          fillQuantity,
           buyer: owner,
           startingBalance,
           network,
@@ -1402,7 +1397,7 @@ function FungibleOperationDialog({
       }
     }
     const saved: BatchResume = {
-      version: 2,
+      version: 3,
       buyer: owner,
       startingBalance,
       entries,
@@ -1471,6 +1466,7 @@ function FungibleOperationDialog({
       const adapter = client.purchaseAdapter({
         processId: asset.id,
         order: entry.order,
+        fillQuantity: entry.fillQuantity,
         buyer: owner,
         startingBalance: saved.startingBalance,
         network,
@@ -1582,8 +1578,15 @@ function FungibleOperationDialog({
     setPhase('done');
   }
 
-  const visibleOrders =
-    operation.kind === 'buy' ? (operation.resume?.entries.map((entry) => entry.order) ?? matchedOrders) : [];
+  const visibleFills: OrderFill[] =
+    operation.kind === 'buy'
+      ? (operation.resume?.entries.map((entry) => ({
+          sourceOrder: entry.order,
+          order: filledOrder(entry.order, entry.fillQuantity),
+          partial: entry.fillQuantity !== entry.order.quantity,
+        })) ?? matchedFills)
+      : [];
+  const visibleOrders = visibleFills.map((fill) => fill.order);
   const activeOrder = visibleOrders.find((order) => order.orderId === activeOrderId) ?? visibleOrders[0];
   const activeOrderIndex = activeOrder ? visibleOrders.findIndex((order) => order.orderId === activeOrder.orderId) : -1;
   const activePurchase = activeOrder ? purchaseStates[activeOrder.orderId] : undefined;
@@ -1646,12 +1649,9 @@ function FungibleOperationDialog({
     : [];
   const formError =
     operation.kind === 'buy' && !matchedOrders.length
-      ? checkoutMode
-        ? 'Your purchase overview is empty. Close this checkout and choose a listing to continue.'
-        : automaticMatchResult.error ||
-        (quantity
-          ? `No complete-listing combination totals ${quantity} ${ticker}. Choose listings instead.`
-          : 'Enter an amount to buy, or choose listings directly.')
+      ? quantity
+        ? automaticMatchResult.error || 'That amount cannot be quoted.'
+        : ''
       : '';
   const closeOrHide = () => {
     const action = transactionDialogDismissAction(phase, Boolean(transaction || recoverableBatch));
@@ -1736,7 +1736,7 @@ function FungibleOperationDialog({
                 <strong>{recoveryApprovalCount}</strong>
               </div>
             </div>
-            <MatchedListingsReview orders={visibleOrders} state={state} />
+            <PurchaseRoute fills={visibleFills} state={state} />
             <button className="primary wide" data-dialog-initial onClick={() => void submit()} type="button">
               Continue with {recoveryApprovalCount} new {recoveryApprovalCount === 1 ? 'approval' : 'approvals'}
             </button>
@@ -1899,200 +1899,104 @@ function FungibleOperationDialog({
               ) : null}
               {operation.kind === 'buy' ? (
                 <>
-                  {!checkoutMode ? (
-                    <div className="order-match-mode" role="group" aria-label="Order matching method">
+                  <div className="purchase-market-snapshot" aria-label="Available market liquidity">
+                    <div>
+                      <span>Available now</span>
+                      <strong>{tokenLabel(marketAvailable.toString(), state)}</strong>
+                    </div>
+                    <div>
+                      <span>Best price</span>
+                      <strong>{bestEligible ? orderPriceLabel(bestEligible, state) : '—'}</strong>
+                    </div>
+                    <div>
+                      <span>Live sellers</span>
+                      <strong>{new Set(eligible.map((order) => order.creator)).size.toLocaleString()}</strong>
+                    </div>
+                  </div>
+                  <label className="purchase-amount-field">
+                    <span>How many {ticker} do you want?</span>
+                    <div>
+                      <input
+                        aria-describedby={`${amountGuidanceId}${formError ? ` ${amountGuidanceId}-error` : ''}${matchedOrders.length ? ` ${quoteStatusId}` : ''}`}
+                        aria-invalid={Boolean(quantity && formError)}
+                        autoFocus
+                        data-dialog-initial
+                        inputMode="decimal"
+                        placeholder="0"
+                        value={quantity}
+                        onChange={(event) => setQuantity(event.target.value)}
+                      />
+                      <strong>{ticker}</strong>
                       <button
-                        aria-pressed={matchMode === 'amount'}
-                        className={matchMode === 'amount' ? 'active' : undefined}
-                        onClick={() => {
-                          setMatchMode('amount');
-                          setManualOrderIds([]);
-                          setActiveLotIndex(0);
-                          setLotPickerLimit(LOT_PICKER_PAGE_SIZE);
-                        }}
+                        onClick={() => setQuantity(formatTokenAmount(marketAvailable.toString(), state.denomination))}
                         type="button"
                       >
-                        Buy exact amount
-                      </button>
-                      <button
-                        aria-pressed={matchMode === 'lots'}
-                        className={matchMode === 'lots' ? 'active' : undefined}
-                        onClick={() => {
-                          const selected = automaticMatch?.orders ?? [];
-                          setMatchMode('lots');
-                          setManualOrderIds(selected.map((order) => order.orderId));
-                          setActiveLotIndex(0);
-                          setLotPickerLimit(LOT_PICKER_PAGE_SIZE);
-                        }}
-                        type="button"
-                      >
-                        Choose listings
+                        Max
                       </button>
                     </div>
-                  ) : null}
-                  {!checkoutMode && matchMode === 'amount' ? (
-                    <>
-                      <label>
-                        Amount to buy
-                        <input
-                          aria-describedby={`${amountGuidanceId}${formError ? ` ${amountGuidanceId}-error` : ''}${matchedOrders.length ? ` ${quoteStatusId}` : ''}`}
-                          aria-invalid={Boolean(quantity && formError)}
-                          autoFocus
-                          data-dialog-initial
-                          inputMode="decimal"
-                          value={quantity}
-                          onChange={(event) => setQuantity(event.target.value)}
-                        />
-                      </label>
-                      <p id={amountGuidanceId} className="trade-guidance">
-                        Uses the lowest-priced combination of complete listings. Listings cannot be partially filled.
-                      </p>
-                    </>
-                  ) : !checkoutMode ? (
-                    <div className="lot-picker">
-                      <div>
-                        <strong>Available listings</strong>
-                        <span aria-live="polite">{matchedOrders.length.toLocaleString()} selected</span>
-                      </div>
-                      <div
-                        aria-label="Available listings"
-                        aria-multiselectable="true"
-                        className="lot-picker-options"
-                        role="listbox"
-                      >
-                        {lotPickerOrders.map((order, index) => {
-                          const selected = manualOrderIdSet.has(order.orderId);
-                          return (
-                            <button
-                              aria-label={fungibleListingAccessibleLabel(order, state)}
-                              aria-posinset={index + 1}
-                              aria-selected={selected}
-                              aria-setsize={eligible.length}
-                              className={selected ? 'selected' : undefined}
-                              key={order.orderId}
-                              onClick={() => chooseLot(order)}
-                              onFocus={() => setActiveLotIndex(index)}
-                              onKeyDown={(event) => {
-                                const nextIndex = settlementTabIndex(event.key, index, lotPickerOrders.length);
-                                if (nextIndex === null) return;
-                                event.preventDefault();
-                                setActiveLotIndex(nextIndex);
-                                lotOptionRefs.current[nextIndex]?.focus();
-                              }}
-                              ref={(element) => {
-                                lotOptionRefs.current[index] = element;
-                              }}
-                              role="option"
-                              tabIndex={lotOptionTabIndex(index, activeLotIndex)}
-                              type="button"
-                            >
-                              <span>{tokenLabel(order.quantity, state)}</span>
-                              <strong>{orderPriceLabel(order, state)}</strong>
-                              <small>
-                                {winstonToAr(order.asking)} AR total · {short(order.creator)}
-                              </small>
-                            </button>
-                          );
-                        })}
-                      </div>
-                      {eligible.length > LOT_PICKER_PAGE_SIZE ? (
-                        <div className="orderbook-reveal lot-picker-reveal">
-                          <p aria-atomic="true" aria-live="polite" ref={lotRevealStatusRef} role="status" tabIndex={-1}>
-                            Showing {lotPickerOrders.length.toLocaleString()} of {eligible.length.toLocaleString()}{' '}
-                            listings.
-                          </p>
-                          {lotPickerOrders.length < eligible.length ? (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const next = nextLotPickerLimit(lotPickerLimit, eligible.length);
-                                setLotPickerLimit(next);
-                                if (next === eligible.length) {
-                                  window.requestAnimationFrame(() => lotRevealStatusRef.current?.focus());
-                                }
-                              }}
-                            >
-                              Show{' '}
-                              {Math.min(
-                                LOT_PICKER_PAGE_SIZE,
-                                eligible.length - lotPickerOrders.length,
-                              ).toLocaleString()}{' '}
-                              more listings
-                            </button>
-                          ) : null}
-                        </div>
-                      ) : null}
-                    </div>
-                  ) : null}
+                  </label>
+                  <p id={amountGuidanceId} className="purchase-guidance">
+                    Best execution is automatic. Cheaper orders fill first; only the final order is split when needed.
+                  </p>
                   {formError ? (
                     <p
                       id={`${amountGuidanceId}-error`}
-                      className="trade-guidance"
+                      className="purchase-form-error"
                       role={quantity ? 'alert' : undefined}
                     >
                       {formError}
                     </p>
                   ) : null}
                   {matchedOrders.length ? (
-                    <div aria-busy={quoteState === 'loading'} className="batch-quote">
-                      <div>
-                        <span>You receive</span>
-                        <strong>{tokenLabel(matchedQuantity.toString(), state)}</strong>
-                      </div>
-                      <div>
-                        <span>Listings matched</span>
-                        <strong>{matchedOrders.length}</strong>
-                      </div>
-                      <div>
-                        <span>Sellers</span>
-                        <strong>{matchedSellers}</strong>
-                      </div>
-                      <div>
-                        <span>Listing subtotal</span>
-                        <strong>{winstonToAr(matchedAsking.toString())} AR</strong>
-                      </div>
-                      <div>
-                        <span>Network fees</span>
-                        <strong>
-                          {quoteState === 'error'
-                            ? 'Unavailable'
-                            : estimatedCost
-                              ? `${winstonToAr((BigInt(estimatedCost) - matchedAsking).toString())} AR`
-                              : 'Checking…'}
-                        </strong>
-                      </div>
-                      <div>
+                    <section aria-busy={quoteState === 'loading'} className="purchase-quote-card">
+                      <div className="purchase-quote-total">
                         <span>Maximum total</span>
                         <strong>
                           {quoteState === 'error'
-                            ? 'Unavailable'
+                            ? 'Quote unavailable'
                             : estimatedCost
                               ? `${winstonToAr(estimatedCost)} AR`
                               : 'Checking…'}
                         </strong>
+                        <small>
+                          {winstonToAr(matchedAsking.toString())} AR to sellers
+                          {estimatedCost
+                            ? ` · ${winstonToAr((BigInt(estimatedCost) - matchedAsking).toString())} AR network fees`
+                            : ''}
+                        </small>
                       </div>
-                      <div>
-                        <span>Wallet after purchase</span>
-                        <strong>
-                          {quoteState === 'error'
-                            ? 'Unavailable'
-                            : canAfford === false
-                              ? 'Insufficient AR'
-                              : estimatedCost && estimatedWalletBalance
-                                ? `${winstonToAr((BigInt(estimatedWalletBalance) - BigInt(estimatedCost)).toString())} AR`
-                                : 'Checking…'}
-                        </strong>
+                      <div className="purchase-quote-facts">
+                        <div>
+                          <span>You receive</span>
+                          <strong>{tokenLabel(matchedQuantity.toString(), state)}</strong>
+                        </div>
+                        <div>
+                          <span>Average price</span>
+                          <strong>{averageOrderPriceLabel(matchedOrders, state)}</strong>
+                        </div>
+                        <div>
+                          <span>Execution</span>
+                          <strong>
+                            {matchedOrders.length} {matchedOrders.length === 1 ? 'order' : 'orders'} · {matchedSellers}{' '}
+                            {matchedSellers === 1 ? 'seller' : 'sellers'}
+                          </strong>
+                        </div>
+                        <div>
+                          <span>Wallet after</span>
+                          <strong>
+                            {quoteState === 'error'
+                              ? '—'
+                              : canAfford === false
+                                ? 'Insufficient AR'
+                                : estimatedCost && estimatedWalletBalance
+                                  ? `${winstonToAr((BigInt(estimatedWalletBalance) - BigInt(estimatedCost)).toString())} AR`
+                                  : 'Checking…'}
+                          </strong>
+                        </div>
                       </div>
-                    </div>
+                    </section>
                   ) : null}
-                  {checkoutMode || matchedOrders.length ? (
-                    <MatchedListingsReview
-                      key={matchedOrders.map((order) => order.orderId).join(':')}
-                      onRemove={checkoutMode ? chooseLot : undefined}
-                      orders={matchedOrders}
-                      state={state}
-                    />
-                  ) : null}
+                  {matchedFills.length ? <PurchaseRoute fills={matchedFills} state={state} /> : null}
                   {matchedOrders.length ? (
                     <p id={quoteStatusId} className="sr-only" aria-live="polite" role="status">
                       {quoteState === 'ready' && estimatedCost
@@ -2104,15 +2008,15 @@ function FungibleOperationDialog({
                   ) : null}
                   {matchedOrders.length ? (
                     <div
-                      className={quoteState === 'error' ? 'inline-error' : 'quote-check-action'}
+                      className={quoteState === 'error' ? 'inline-error' : 'purchase-quote-status'}
                       role={quoteState === 'error' ? 'alert' : undefined}
                     >
                       <span>
                         {quoteState === 'error'
-                          ? 'Could not verify the wallet balance and network fees.'
+                          ? 'Live fees and wallet balance could not be verified.'
                           : quoteState === 'ready'
-                            ? 'Exact costs checked.'
-                            : 'Checking wallet balance and network fees…'}
+                            ? 'Live fees and wallet balance checked.'
+                            : 'Checking live fees and wallet balance…'}
                       </span>
                       <button
                         aria-describedby={quoteStatusId}
@@ -2124,55 +2028,55 @@ function FungibleOperationDialog({
                         type="button"
                       >
                         <RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" />{' '}
-                        {quoteState === 'error'
-                          ? 'Retry quote'
-                          : quoteState === 'ready'
-                            ? 'Recheck quote'
-                            : 'Checking quote…'}
+                        {quoteState === 'error' ? 'Retry' : quoteState === 'ready' ? 'Recheck' : 'Checking…'}
                       </button>
                     </div>
                   ) : null}
                   {canAfford === false ? (
-                    <p className="trade-guidance">
-                      This wallet does not have enough AR for the listings and network fees.
-                    </p>
-                  ) : null}
-                  {matchedOrders.length ? (
-                    <p className="settlement-disclosure">
-                      Each listing completes separately. If one becomes unavailable, completed purchases remain final.
-                      Your wallet will ask for {matchedOrders.length * 2} approvals: one reservation and one payment for
-                      each listing. After approval, all settlements run in parallel.
+                    <p className="purchase-form-error" role="alert">
+                      This wallet does not have enough AR for the purchase and network fees.
                     </p>
                   ) : null}
                 </>
               ) : null}
             </div>
-            <button
-              className="primary wide"
-              data-dialog-initial
-              aria-label={
-                operation.kind === 'transfer' && enteredQuantity && transferValid
-                  ? fungibleTransferSubmitLabel(enteredQuantity.toString(), state, transferRecipient, true)
-                  : undefined
-              }
-              aria-describedby={operation.kind === 'buy' && matchedOrders.length ? quoteStatusId : undefined}
-              disabled={
-                (operation.kind === 'buy' && (!matchedOrders.length || !estimatedCost || canAfford !== true)) ||
-                (operation.kind === 'sell' && !sellValid) ||
-                (operation.kind === 'transfer' && !transferValid)
-              }
-              type="submit"
-            >
-              {operation.kind === 'buy' && matchedOrders.length
-                ? `Buy ${formatGroupedTokenAmount(matchedQuantity.toString(), state.denomination)} ${ticker} from ${matchedOrders.length} ${matchedOrders.length === 1 ? 'listing' : 'listings'} · up to ${estimatedCost ? winstonToAr(estimatedCost) : '…'} AR`
-                : operation.kind === 'sell' && listingQuote && enteredQuantity
-                  ? `List ${tokenLabel(enteredQuantity.toString(), state)} for ${listingQuote} AR`
-                  : operation.kind === 'cancel'
-                    ? `Cancel listing and return ${tokenLabel(operation.order.quantity, state)}`
-                    : operation.kind === 'transfer' && enteredQuantity
-                      ? fungibleTransferSubmitLabel(enteredQuantity.toString(), state, transferRecipient)
-                      : operationLabel(operation.kind)}
-            </button>
+            <div className="trade-form-footer">
+              {operation.kind === 'buy' && matchedOrders.length ? (
+                <div className="purchase-settlement-note">
+                  <strong>{matchedOrders.length * 2} wallet approvals</strong>
+                  <span>
+                    One reservation and one payment per order. Reservations happen first; seller payments then run in
+                    parallel. Progress is safe to close and resume.
+                  </span>
+                </div>
+              ) : null}
+              <button
+                className="primary wide"
+                data-dialog-initial
+                aria-label={
+                  operation.kind === 'transfer' && enteredQuantity && transferValid
+                    ? fungibleTransferSubmitLabel(enteredQuantity.toString(), state, transferRecipient, true)
+                    : undefined
+                }
+                aria-describedby={operation.kind === 'buy' && matchedOrders.length ? quoteStatusId : undefined}
+                disabled={
+                  (operation.kind === 'buy' && (!matchedOrders.length || !estimatedCost || canAfford !== true)) ||
+                  (operation.kind === 'sell' && !sellValid) ||
+                  (operation.kind === 'transfer' && !transferValid)
+                }
+                type="submit"
+              >
+                {operation.kind === 'buy' && matchedOrders.length
+                  ? `Buy ${formatGroupedTokenAmount(matchedQuantity.toString(), state.denomination)} ${ticker} · ${estimatedCost ? `${winstonToAr(estimatedCost)} AR max` : 'checking total…'}`
+                  : operation.kind === 'sell' && listingQuote && enteredQuantity
+                    ? `List ${tokenLabel(enteredQuantity.toString(), state)} for ${listingQuote} AR`
+                    : operation.kind === 'cancel'
+                      ? `Cancel listing and return ${tokenLabel(operation.order.quantity, state)}`
+                      : operation.kind === 'transfer' && enteredQuantity
+                        ? fungibleTransferSubmitLabel(enteredQuantity.toString(), state, transferRecipient)
+                        : operationLabel(operation.kind)}
+              </button>
+            </div>
           </form>
         ) : null}
         {phase === 'working' ? (
@@ -2572,6 +2476,35 @@ export function FungibleOrderSlider({
   );
 }
 
+export function PurchaseRoute({ fills, state }: { fills: OrderFill[]; state: AssetState }) {
+  return (
+    <details className="purchase-route" open={fills.length === 1}>
+      <summary>
+        <span>Purchase route</span>
+        <strong>{fills.length === 1 ? '1 order' : `View ${fills.length} orders`}</strong>
+      </summary>
+      <ul aria-label="Purchase execution route" tabIndex={0}>
+        {fills.map(({ order, sourceOrder, partial }, index) => (
+          <li key={order.orderId}>
+            <span className="purchase-route-index">{index + 1}</span>
+            <span className="purchase-route-fill">
+              <strong>{tokenLabel(order.quantity, state)}</strong>
+              <small>
+                {orderPriceLabel(order, state)}
+                {partial
+                  ? ` · ${tokenLabel(order.quantity, state)} of ${tokenLabel(sourceOrder.quantity, state)} from this listing`
+                  : ' · full order'}
+              </small>
+            </span>
+            <span className="purchase-route-total">{winstonToAr(order.asking)} AR</span>
+            <WalletAddress address={order.creator} label="seller" />
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+}
+
 export function FungiblePurchaseReceiptNavigator({
   activeOrderId,
   onSelect,
@@ -2690,7 +2623,12 @@ export function FungibleSettlementRecoveryPanel({
 }
 
 function preparedEntry(prepared: PreparedPurchase): BatchEntry {
-  return { order: prepared.order, snapshot: prepared.snapshot, paymentCost: prepared.paymentCost };
+  return {
+    order: prepared.order,
+    fillQuantity: prepared.fillQuantity,
+    snapshot: prepared.snapshot,
+    paymentCost: prepared.paymentCost,
+  };
 }
 
 export function batchPaymentBarrierState(entries: Array<Pick<BatchEntry, 'snapshot' | 'paymentCost'>>) {
@@ -2703,9 +2641,18 @@ export function batchPaymentBarrierState(entries: Array<Pick<BatchEntry, 'snapsh
   );
 }
 
-export function batchRecoveryIdentity(entries: Array<Pick<BatchEntry, 'order' | 'snapshot'>>) {
+export function batchRecoveryIdentity(entries: Array<Pick<BatchEntry, 'order' | 'fillQuantity' | 'snapshot'>>) {
   return entries
-    .map(({ order, snapshot }) => `${order.orderId}:${snapshot.registration?.id ?? ''}:${snapshot.payment?.id ?? ''}`)
+    .map(
+      ({ order, fillQuantity, snapshot }) =>
+        `${order.orderId}:${fillQuantity}:${snapshot.registration?.id ?? ''}:${snapshot.payment?.id ?? ''}`,
+    )
+    .join('|');
+}
+
+export function purchaseQuoteIdentity(orders: SwapOrder[]) {
+  return orders
+    .map((order) => `${order.orderId}:${order.quantity}:${order.asking}:${order.minimumFee}:${order.recipient}`)
     .join('|');
 }
 
@@ -2729,16 +2676,18 @@ export function fungibleBatchRecoveryStatus(
     // later transfers the purchased units and current balance returns to zero.
     if (entry.snapshot.payment?.id) return true;
     const order = state.orders[entry.order.orderId];
+    const fill = filledOrder(entry.order, entry.fillQuantity);
+    const expected = order?.status === 'reserved' ? fill : entry.order;
     return Boolean(
       order &&
-      order.creator === entry.order.creator &&
-      order.recipient === entry.order.recipient &&
-      order.asking === entry.order.asking &&
-      order.deposit === entry.order.deposit &&
-      order.minimumFee === entry.order.minimumFee &&
-      order.deadline === entry.order.deadline &&
-      order.createdAt === entry.order.createdAt &&
-      order.quantity === entry.order.quantity &&
+      order.creator === expected.creator &&
+      order.recipient === expected.recipient &&
+      order.asking === expected.asking &&
+      order.deposit === expected.deposit &&
+      order.minimumFee === expected.minimumFee &&
+      order.deadline === expected.deadline &&
+      order.createdAt === expected.createdAt &&
+      order.quantity === expected.quantity &&
       (order.status === 'open' || (order.status === 'reserved' && order.buyer === buyer)),
     );
   })
@@ -2750,7 +2699,7 @@ export function isRecoverableBatch(record: unknown, buyer: string): record is Ba
   if (!record || typeof record !== 'object') return false;
   const candidate = record as Partial<BatchResume>;
   if (
-    candidate.version !== 2 ||
+    candidate.version !== 3 ||
     candidate.buyer !== buyer ||
     !/^\d+$/.test(candidate.startingBalance ?? '') ||
     !Array.isArray(candidate.entries) ||
@@ -2764,6 +2713,8 @@ export function isRecoverableBatch(record: unknown, buyer: string): record is Ba
       ADDRESS.test(entry.order?.orderId ?? '') &&
       /^\d+$/.test(entry.order?.quantity ?? '') &&
       /^\d+$/.test(entry.order?.asking ?? '') &&
+      /^[1-9]\d*$/.test(entry.fillQuantity ?? '') &&
+      BigInt(entry.fillQuantity) <= BigInt(entry.order.quantity) &&
       /^\d+$/.test(entry.paymentCost ?? '') &&
       (hasRecoverablePurchase(entry.snapshot) || (!entry.snapshot.registration && !entry.snapshot.payment)),
     ),
@@ -2872,25 +2823,6 @@ export function batchRecoveryFrameBuffer(
 
 export function visibleOrderbookRows<T>(orders: T[], limit: number) {
   return orders.slice(0, Math.max(0, limit));
-}
-
-export function visibleLotPickerOrders<T extends { orderId: string }>(
-  orders: T[],
-  selectedIds: ReadonlySet<string>,
-  limit: number,
-) {
-  const bounded = Math.max(0, limit);
-  if (!selectedIds.size) return orders.slice(0, bounded);
-  const selected: T[] = [];
-  const remaining: T[] = [];
-  for (const order of orders) {
-    (selectedIds.has(order.orderId) ? selected : remaining).push(order);
-  }
-  return [...selected, ...remaining].slice(0, bounded);
-}
-
-export function nextLotPickerLimit(current: number, total: number) {
-  return Math.min(Math.max(0, total), Math.max(0, current) + LOT_PICKER_PAGE_SIZE);
 }
 
 function equalPurchaseSnapshots(left: PurchaseSnapshot, right: PurchaseSnapshot) {
@@ -3012,10 +2944,6 @@ export function nextSettlementAnnouncement(
   return next.key === previousKey ? null : next;
 }
 
-export function lotOptionTabIndex(index: number, activeIndex: number) {
-  return index === activeIndex ? 0 : -1;
-}
-
 function batchStorageKey(assetId: string, buyer: string) {
   return `bazar-purchase-batch:${assetId}:${buyer}`;
 }
@@ -3059,6 +2987,12 @@ function unitPriceWinston(order: SwapOrder, denomination: number): bigint {
 
 function orderPriceLabel(order: SwapOrder, state: AssetState) {
   return `${winstonToAr(unitPriceWinston(order, state.denomination).toString())} AR / ${state.ticker || 'token'}`;
+}
+
+function averageOrderPriceLabel(orders: SwapOrder[], state: AssetState) {
+  const quantity = orders.reduce((total, order) => total + BigInt(order.quantity), 0n);
+  const asking = orders.reduce((total, order) => total + BigInt(order.asking), 0n);
+  return orderPriceLabel({ quantity: quantity.toString(), asking: asking.toString() } as SwapOrder, state);
 }
 
 function tokenLabel(raw: string, state: AssetState) {

@@ -19,7 +19,7 @@ Thanks. Please now turn your attention to a new task:
 
 - Please make yourself a worktree of the Bazar atomic asset marketplace. There is a checkout in `~/src/bazar`.
 - Your mission in unattended mode is to: Please modify Bazar such that it is focused on trading Arweave-scheduled (`~arweave-scheduler@1.0`), Arweave-native swapped (`swap-device: arweave-swap@1.0`) token-compatible (`~/src/devices/token@1.0`) assets.
-- Assessment criteria: You will implement the **entire** system, end-to-end, *without any gaps* and *without over-engineering*. Re-use as much of the existing infrastructure and components as you can, as well as the same weave-wrangler/AO-Site-style payments flow -- just as you did for name re-sales in `~/src/ao-site`. Before halting you MUST demonstrate, collecting screenshots of the entire process end-to-end, multiple parties buying and selling assets from one another in both of the collections described below. Your finished product before halting will be Bazar 2.0 as a fully-functional on-chain, decentralized marketplace.
+- Assessment criteria: You will implement the **entire** system, end-to-end, _without any gaps_ and _without over-engineering_. Re-use as much of the existing infrastructure and components as you can, as well as the same weave-wrangler/AO-Site-style payments flow -- just as you did for name re-sales in `~/src/ao-site`. Before halting you MUST demonstrate, collecting screenshots of the entire process end-to-end, multiple parties buying and selling assets from one another in both of the collections described below. Your finished product before halting will be Bazar 2.0 as a fully-functional on-chain, decentralized marketplace.
 - The initial 'collections' of assets will be all available `~carrier@1.0` names, just like in the AO-Site, as well as two randomly generated PNG collections with 100 assets each. You should upload these with '[TEST]' somewhere in their collection name. I would suggest using the `~/src/devices/reference@1.0` device (to load into your HB just add a `trusted-devices/reference@1.0: ImplementationID`, as `arweave.net/~meta@1.0/info/trusted-devices` does) as your collection indexes in the new system. The new image asset collections should be constructed as `device: ~process@1.0` messages with `execution-device: token@1.0`, `swap-device: arweave-swap@1.0`, and `scheduler-device: arweave-scheduler@1.0`.
 - When you need AR to test with (it will be the only base-pair currency for now), please use `~/src/Documents/hyperbeam-key.json`. Do not exceed a budget of 50 AR (ideally much less than that).
 - You MUST add zero backend servers that the site is dependent upon -- instead, like AO-Site it should load from any HyperBEAM gateway, and perform its compute requests on `GET /ProcessIDRelativePaths`.
@@ -177,7 +177,7 @@ Focus on making sure that even with very large asset groups, the UI is clean, si
 
 ## Final mission — verbatim
 
-Thank you. Now your final task for the evening: Please backport the aesthetic *style* (not the exact implementation) of the original onto your new version of Bazar. Bazar has many fans that enjoyed its UI, so we should offer them a cleaner, smoother, and fully decentralized experience -- but with a familiar aesthetic theme. Please update it slightly to be smoother, sleeker, and more modern, but still largely true to the original vibe of Bazar. That means that we want the asset listing page to look similar, too: Showing UDL/license properties if present, an orderbook (even if these *particular* assets only have one offer at a time as they have one unit), and if possible, an activity page for collections. All of the prior rules of this build still apply: Keep it clean, fast, and fully decentralized.
+Thank you. Now your final task for the evening: Please backport the aesthetic _style_ (not the exact implementation) of the original onto your new version of Bazar. Bazar has many fans that enjoyed its UI, so we should offer them a cleaner, smoother, and fully decentralized experience -- but with a familiar aesthetic theme. Please update it slightly to be smoother, sleeker, and more modern, but still largely true to the original vibe of Bazar. That means that we want the asset listing page to look similar, too: Showing UDL/license properties if present, an orderbook (even if these _particular_ assets only have one offer at a time as they have one unit), and if possible, an activity page for collections. All of the prior rules of this build still apply: Keep it clean, fast, and fully decentralized.
 
 Once you are done, publish a version of your `token@1.0`, then demonstrate that we can load it by its implementation ID (alongside our `reference@1.0`) in a standard HyperBEAM node only running the `feat/name-token` branch. Please run your complete circuits of buying and selling assets, checking they appear in your `my-assets` page, filtering and sorting by activity on collections, and re-listing and purchasing. Once all of these components work please commit your work and then deploy the new Bazar UI itself and check it loads correctly from arweave.net (using your local HyperBEAM node with token@1.0 loaded for compute). Commander's intent: Have Bazar 2.0 ready to deploy as soon as your turn completes. We will load your `~token@1.0` onto our production nodes, then my team will start to use it.
 
@@ -289,9 +289,9 @@ AO-Connect push path, or application backend.
 - Baseline UI screenshots:
   - `.run-data/screenshots/baseline-home.png`
   - `.run-data/screenshots/baseline-home-full.png`
-  The landing page is dominated by old promotional collections and exposes a
-  profile-shaped wallet control; this is replacement evidence, not a target to
-  preserve.
+    The landing page is dominated by old promotional collections and exposes a
+    profile-shaped wallet control; this is replacement evidence, not a target to
+    preserve.
 - HyperBEAM base worktree already exists at `/Users/sam/src/hb-name-token`,
   branch `feat/name-token`, commit
   `35c41dfb86b6b369cd5d9e52978976f778b091c3`.
@@ -378,10 +378,10 @@ AO-Connect push path, or application backend.
     `CSGyP7ecdUcbFqOQCwlgio9N0CVAPeCYp1OzT-iyXRs`
   - Party A → Party B seller payment:
     `4hSlysFohDhY2g8ikn45O5A19QlTQOJgjUPcloXj9Gs`
-  Bazar has already demonstrated exact signed-transaction recovery after a
-  wallet-context change and a compute-node restart; no transaction was signed
-  twice. Each payment remained local until live state showed its matching
-  scheduler reservation.
+    Bazar has already demonstrated exact signed-transaction recovery after a
+    wallet-context change and a compute-node restart; no transaction was signed
+    twice. Each payment remained local until live state showed its matching
+    scheduler reservation.
 - Party B has also re-listed the already purchased Strata #003 through the UI
   at 0.0001 AR. The signed listing transaction is
   `i-59CVHojfCzMPqGFfPqB0xHWx3Gl5KzoRfV6GSsfCA`; its transaction-sync screen is
@@ -468,3 +468,81 @@ AO-Connect push path, or application backend.
   returned HTTP 200, `execution-device: token@1.0`, and their correct,
   different live owners. The control node and its temporary config were
   stopped and removed immediately afterward.
+
+## Fungible purchase UX mission — 2026-08-04
+
+### Isolated worktrees
+
+- **Bazar UI:**
+  `/Users/sam/.codex/worktrees/bazar-fungible-purchase-ux-20260804`
+  - Branch: `impr/fungible-purchase-ux`
+  - Base: `8ee7415a08b408a8b8468f85b8ca5d01a0fc2eb1`
+    (`origin/mosaic-fungible`)
+- **HyperBEAM partial fills:**
+  `/Users/sam/.codex/worktrees/hb-partial-order-fills-20260804`
+  - Branch: `feat/partial-order-fills`
+  - Current base: `898e56d514f6eb866d7d04561a2ab936a0e5115c`
+  - A separate reviewer is expected to add a commit above this base; integrate
+    it without touching their worktree or process.
+
+### Mission — verbatim
+
+Thanks. Please now run the patch on a local HyperBEAM port and use it during testing of the UI+UX.
+
+Please now rework the UI cleanly so that it will allow us a clear, elegant experience for buying fungible tokens. Do this in unattended mode, iterating on your design to make it cleaner and less surprising through multiple revisions. Commander's intent: A well-tested, beautiful, clean experience for fungible token purchases as part of Bazar 2.0. Do not keep things just because they exist right now in the fungible flow. Instead, think through each UI element from first principles and replace/upgrade/improve whichever elements you can to make the experience world-class.
+
+Look out for a new commit on top of `898e56d514f6eb866d7d04561a2ab936a0e5115c` at some point, which will be another agent finishing and shipping their review and tweaks of the patch. Integrate and test on top of this in your own worktree when it lands.
+
+### Current execution state
+
+- The Bazar branch starts from the latest integrated mosaic/fungible build,
+  rather than the superseded chronological UX campaign. It was fast-forwarded
+  to current upstream `25e226241bd2acee86c7bc15a271f14aafd34fa3`
+  before this feature work began.
+- The initial UI still matches only exact combinations of complete listings
+  and explicitly says listings cannot be partially filled. This is the primary
+  product behavior being replaced.
+- The validated device contract accepts an optional `fill-quantity`, reserves
+  that slice under the original order id, and leaves a proportionally priced
+  remainder open under the registration transaction id.
+- Reviewer commit `ced012485704e71c786e203996be1fd657f84962` is integrated
+  above `898e56d514f6eb866d7d04561a2ab936a0e5115c`. It independently
+  ceiling-scales the remainder's asking, fee, and deposit so repeated splits
+  cannot round away a seller's terms. The packaged `arweave-swap@1.0` device
+  run passes all 35 tests, including partial settlement and split-term
+  conservation.
+- The exact patched branch is running as an isolated HyperBEAM node on port
+  `10986` from `/tmp/bazar-partial-hb-config.json`. Its trusted-device map pins
+  the published token, reference, security, and process-outbox implementations.
+  A cold live computation of the WEAVE process reached slot 283 and returns
+  the three open 2, 3, and 5 WEAVE price tiers.
+- Bazar is running on port `3004` and points at that local node through
+  `?node=http://127.0.0.1:10986`. Browser-visible verification names
+  `127.0.0.1:10986` as the live provider.
+- The exact-combination matcher and manual lot-selection escape hatch are
+  removed. Buyers enter the number of tokens they want; Bazar consumes the
+  cheapest orders first and partially fills only the last order when needed.
+  One WEAVE now quotes a 1-of-2 partial fill, four WEAVE route across the full
+  2-unit tier plus 2 of the 3-unit tier, and Max routes all ten units across all
+  three listings.
+- Partial fills flow through the complete transaction contract: the original
+  order remains the registration target, `fill-quantity` is signed into the
+  reservation, asking/minimum fee/deposit use the device's exact ceiling
+  formula, and recovery retains both source order and fill quantity.
+- The checkout was iterated from screenshots. It now starts without a false
+  validation error, keeps the approval explanation and primary action visible
+  at 1280x720, scrolls details independently, shows an itemized max total,
+  average execution price, post-purchase balance, compact copyable seller
+  identities, and collapses multi-order routes behind an explicit affordance.
+  A 390x844 layout has no horizontal overflow and keeps its 44px primary action
+  fully visible.
+- Browser testing caught and fixed a partial-fill-specific stale quote: changing
+  from one to two units of the same source order previously preserved the same
+  React dependency key. The quote identity now includes quantity, asking,
+  minimum fee, and recipient; live browser totals changed from
+  `0.00008328288 AR` to `0.00013428288 AR` as expected.
+- Final application gates pass: 34 Vitest files / 385 tests, TypeScript,
+  production Vite build (1,914 modules), and `git diff --check`.
+- Visual evidence is under
+  `.run-data/screenshots/fungible-purchase-ux/`, notably
+  `10-empty-no-error.png` and `12-final-candidate-local-hb.png`.
