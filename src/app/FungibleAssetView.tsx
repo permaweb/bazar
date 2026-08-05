@@ -53,6 +53,11 @@ import { ArtworkImage } from 'components/ArtworkImage';
 import { ConnectWalletButton } from 'components/ConnectWalletButton';
 import { OperationOutcome, OperationOutcomeAnnouncement } from 'components/OperationOutcomeAnnouncement';
 import { StateVerification } from 'components/StateVerification';
+import {
+  TransactionDialogControl,
+  transactionDialogDismissAction,
+  type TransactionDialogPhase,
+} from 'components/TransactionDialogControl';
 import { TokenArtwork } from 'components/TokenArtwork';
 import {
   UnavailableOperationRecoveryNotice,
@@ -160,9 +165,15 @@ export function FungibleAssetView({
   const wallet = useWallet();
   const [operationSession, setOperationSession] = React.useState<OperationSession<FungibleOperation> | null>(null);
   const operation = operationForSigner(operationSession, wallet.address);
+  const [operationVisible, setOperationVisible] = React.useState(false);
+  const [operationPhase, setOperationPhase] = React.useState<TransactionDialogPhase | null>(null);
   const openOperation = React.useCallback(
     (next: FungibleOperation) => {
-      if (wallet.address) setOperationSession({ signer: wallet.address, operation: next });
+      if (wallet.address) {
+        setOperationSession({ signer: wallet.address, operation: next });
+        setOperationVisible(true);
+        setOperationPhase(null);
+      }
     },
     [wallet.address],
   );
@@ -170,9 +181,10 @@ export function FungibleAssetView({
   const [recoveryNotice, setRecoveryNotice] = React.useState('');
   const [unavailableRecovery, setUnavailableRecovery] = React.useState<UnavailableOperationRecovery | null>(null);
   const resumeButtonRef = React.useRef<HTMLButtonElement>(null);
+  const operationActivityButtonRef = React.useRef<HTMLButtonElement>(null);
   const operationFocusFallbackRef = React.useRef<HTMLHeadingElement>(null);
   const operationFocusFallback = React.useCallback(
-    () => resumeButtonRef.current ?? operationFocusFallbackRef.current,
+    () => operationActivityButtonRef.current ?? resumeButtonRef.current ?? operationFocusFallbackRef.current,
     [],
   );
   const [selectedOrderCount, setSelectedOrderCount] = React.useState(1);
@@ -249,6 +261,8 @@ export function FungibleAssetView({
     setRecoveryNotice('');
     setUnavailableRecovery(null);
     setOperationSession(null);
+    setOperationVisible(false);
+    setOperationPhase(null);
   }, [asset.id, wallet.address]);
   React.useLayoutEffect(() => {
     if (recoverySuppressed) resumeButtonRef.current?.focus();
@@ -377,6 +391,13 @@ export function FungibleAssetView({
   }, [asset.id, openOperation, operation, purchaseKey, recoverySuppressed, state, storageVersion, wallet.address]);
 
   const recoveryBlocksActions = recoverySuppressed || Boolean(unavailableRecovery);
+  const handleOperationPhaseChange = React.useCallback(
+    (nextPhase: TransactionDialogPhase) => {
+      setOperationPhase(nextPhase);
+      if (nextPhase === 'done') void onRefresh();
+    },
+    [onRefresh],
+  );
 
   return (
     <section className="asset-page asset-detail-page fungible-asset-page">
@@ -393,6 +414,25 @@ export function FungibleAssetView({
             onClick={() => setRecoverySuppressed(false)}
           >
             <RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Resume pending action
+          </button>
+        </div>
+      ) : null}
+      {operation && !operationVisible ? (
+        <div className="pending-operation-notice">
+          <span role="status">
+            {operationPhase === 'done'
+              ? 'Transaction completed.'
+              : operationPhase === 'error'
+                ? 'Transaction needs attention.'
+                : 'Transaction tracking continues in the background.'}
+          </span>
+          <button
+            className="with-icon"
+            ref={operationActivityButtonRef}
+            type="button"
+            onClick={() => setOperationVisible(true)}
+          >
+            Show transaction progress
           </button>
         </div>
       ) : null}
@@ -803,10 +843,15 @@ export function FungibleAssetView({
           state={state}
           owner={operationSession.signer}
           operation={operation}
+          visible={operationVisible}
           restoreFallback={operationFocusFallback}
+          onHide={() => setOperationVisible(false)}
+          onPhaseChange={handleOperationPhaseChange}
           onClose={(resumeLater, refresh = true) => {
             setRecoverySuppressed(Boolean(resumeLater));
             setOperationSession(null);
+            setOperationVisible(false);
+            setOperationPhase(null);
             if (refresh) void onRefresh();
           }}
         />
@@ -820,14 +865,20 @@ function FungibleOperationDialog({
   state,
   owner,
   operation,
+  visible,
   restoreFallback,
+  onHide,
+  onPhaseChange,
   onClose,
 }: {
   asset: AssetSummary;
   state: AssetState;
   owner: string;
   operation: FungibleOperation;
+  visible: boolean;
   restoreFallback(): HTMLElement | null;
+  onHide(): void;
+  onPhaseChange(phase: TransactionDialogPhase): void;
   onClose(resumeLater?: boolean, refresh?: boolean): void;
 }) {
   const recoveryApprovalCount =
@@ -892,6 +943,7 @@ function FungibleOperationDialog({
   const [canAfford, setCanAfford] = React.useState<boolean | null>(null);
   const [quoteState, setQuoteState] = React.useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [quoteRetry, setQuoteRetry] = React.useState(0);
+  const [hiding, setHiding] = React.useState(false);
   const [activeLotIndex, setActiveLotIndex] = React.useState(0);
   const [lotPickerLimit, setLotPickerLimit] = React.useState(LOT_PICKER_PAGE_SIZE);
   const [settlementAnnouncement, setSettlementAnnouncement] = React.useState('');
@@ -910,6 +962,9 @@ function FungibleOperationDialog({
   );
   const attemptRef = React.useRef(new AbortController());
   const cleanupTimerRef = React.useRef<number | undefined>();
+  const hideTimerRef = React.useRef<number | null>(null);
+  const phaseChangeRef = React.useRef(onPhaseChange);
+  phaseChangeRef.current = onPhaseChange;
   const resumed = React.useRef(false);
   const ticker = state.ticker || 'TOKEN';
   const manualOrderIdSet = React.useMemo(() => new Set(manualOrderIds), [manualOrderIds]);
@@ -972,6 +1027,7 @@ function FungibleOperationDialog({
   React.useEffect(() => {
     if (cleanupTimerRef.current !== undefined) window.clearTimeout(cleanupTimerRef.current);
     return () => {
+      if (hideTimerRef.current !== null) window.clearTimeout(hideTimerRef.current);
       cleanupTimerRef.current = window.setTimeout(() => {
         batchRecoveryBufferRef.current?.flush();
         batchRecoveryBufferRef.current = null;
@@ -986,6 +1042,14 @@ function FungibleOperationDialog({
       }, 0);
     };
   }, []);
+
+  React.useEffect(() => {
+    if (visible) setHiding(false);
+  }, [visible]);
+
+  React.useEffect(() => {
+    phaseChangeRef.current(phase);
+  }, [phase]);
 
   React.useEffect(() => {
     if (operation.kind !== 'buy' || !matchedOrders.length || operation.resume) {
@@ -1598,21 +1662,20 @@ function FungibleOperationDialog({
           ? `No complete-listing combination totals ${quantity} ${ticker}. Choose listings instead.`
           : 'Enter an amount to buy, or choose listings directly.')
       : '';
-  const dialogRef = useDialogFocus<HTMLDivElement>(
-    true,
-    phase !== 'working' || transaction || recoverableBatch
-      ? () =>
-          onClose(
-            phase === 'approval' ||
-              phase === 'working' ||
-              (phase === 'error' && Boolean(transaction || recoverableBatch)),
-            phase !== 'form',
-          )
-      : undefined,
-    undefined,
-    phase,
-    restoreFallback,
-  );
+  const closeOrHide = () => {
+    const action = transactionDialogDismissAction(phase, Boolean(transaction || recoverableBatch));
+    if (action.kind === 'close') {
+      onClose(action.resumeLater, action.refresh);
+      return;
+    }
+    if (hiding) return;
+    setHiding(true);
+    hideTimerRef.current = window.setTimeout(() => {
+      hideTimerRef.current = null;
+      onHide();
+    }, 240);
+  };
+  const dialogRef = useDialogFocus<HTMLDivElement>(visible, closeOrHide, undefined, phase, restoreFallback);
   const restartPurchase = () => {
     if (!recoverableBatch) {
       setMessage('');
@@ -1628,14 +1691,16 @@ function FungibleOperationDialog({
     onClose(false);
   };
 
+  if (!visible && phase !== 'working') return null;
   return (
-    <div className="dialog-backdrop" role="presentation">
+    <div className="dialog-backdrop" hidden={!visible} role="presentation">
       <div
         className={`dialog fungible-dialog${phase === 'form' ? ' dialog-form-phase' : ''}`}
+        aria-hidden={visible ? undefined : true}
+        aria-labelledby={visible ? `${operationLabelId} ${dialogTitleId}` : undefined}
+        aria-modal={visible ? true : undefined}
         ref={dialogRef}
-        role="dialog"
-        aria-labelledby={`${operationLabelId} ${dialogTitleId}`}
-        aria-modal="true"
+        role={visible ? 'dialog' : undefined}
         tabIndex={-1}
       >
         <div className="dialog-heading">
@@ -1645,24 +1710,7 @@ function FungibleOperationDialog({
             </p>
             <h2 id={dialogTitleId}>{asset.name}</h2>
           </div>
-          {phase !== 'working' ? (
-            <button
-              className="close"
-              onClick={() =>
-                onClose(
-                  phase === 'approval' || (phase === 'error' && Boolean(transaction || recoverableBatch)),
-                  phase !== 'form',
-                )
-              }
-              aria-label="Close dialog"
-            >
-              <X />
-            </button>
-          ) : transaction || recoverableBatch ? (
-            <button className="sync-close" onClick={() => onClose(true)} type="button">
-              Close and resume later
-            </button>
-          ) : null}
+          <TransactionDialogControl hiding={hiding} phase={phase} onClick={closeOrHide} />
         </div>
         <OperationOutcomeAnnouncement active={phase === 'done'} title={outcomeTitle} detail={outcomeDetail} />
         {phase === 'approval' && operation.kind === 'buy' && operation.resume ? (
@@ -2208,6 +2256,7 @@ function FungibleOperationDialog({
                     </div>
                     {activePurchase ? (
                       <ArweaveTransactionSync
+                        active={visible}
                         subject={`${asset.name} · ${tokenLabel(activeOrder.quantity, state)}`}
                         steps={purchaseSteps}
                         activeStep={activeStep}
@@ -2222,7 +2271,12 @@ function FungibleOperationDialog({
                 ) : null}
               </>
             ) : singleSteps.length ? (
-              <ArweaveTransactionSync subject={asset.name} steps={singleSteps} activeStep={operation.kind} />
+              <ArweaveTransactionSync
+                active={visible}
+                subject={asset.name}
+                steps={singleSteps}
+                activeStep={operation.kind}
+              />
             ) : (
               <Loading label="Preparing the exact signed transaction…" />
             )}

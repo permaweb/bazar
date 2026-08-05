@@ -4364,17 +4364,6 @@ body input:focus-visible {
   font-size: 0.72rem;
   line-height: 1.55;
 }
-.sync-close {
-  margin: -10px 0 10px;
-  float: right;
-  border-color: transparent;
-  background: transparent;
-  color: var(--muted);
-}
-.dialog-heading .sync-close {
-  margin: 0;
-  float: none;
-}
 .sync-resume-note,
 .parallel-summary {
   margin: -14px 0 14px;
@@ -4637,9 +4626,6 @@ body input:focus-visible {
   .close {
     width: 44px;
     height: 44px;
-  }
-  .sync-close {
-    min-height: 44px;
   }
   .site-header {
     height: 61px;

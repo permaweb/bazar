@@ -120,6 +120,10 @@ import { quorumConfirmationDepth } from 'components/ArweaveTransactionSync/confi
 import { ArtworkImage } from 'components/ArtworkImage';
 import { ConnectWalletButton } from 'components/ConnectWalletButton';
 import { OperationOutcome, OperationOutcomeAnnouncement } from 'components/OperationOutcomeAnnouncement';
+import {
+  TransactionDialogControl,
+  transactionDialogDismissAction,
+} from 'components/TransactionDialogControl';
 import { StateVerification } from 'components/StateVerification';
 import { TokenArtwork } from 'components/TokenArtwork';
 import { NameArtwork } from 'components/NameArtwork';
@@ -7342,11 +7346,9 @@ function OperationDialog({
     onClose(false);
   };
   const closeOrHide = () => {
-    if (visiblePhase !== 'working') {
-      onClose(
-        visiblePhase === 'approval' || (visiblePhase === 'error' && recoverable),
-        visiblePhase !== 'form',
-      );
+    const action = transactionDialogDismissAction(visiblePhase, recoverable);
+    if (action.kind === 'close') {
+      onClose(action.resumeLater, action.refresh);
       return;
     }
     if (hiding) return;
@@ -7382,21 +7384,7 @@ function OperationDialog({
             </p>
             <h2 id={titleId}>{asset.name}</h2>
           </div>
-          <button
-            aria-label={visiblePhase === 'working' ? 'Hide transaction details' : 'Close dialog'}
-            className={`close${visiblePhase === 'working' ? ' transaction-hide' : ''}`}
-            onClick={closeOrHide}
-            title={visiblePhase === 'working' ? 'Hide transaction details' : 'Close'}
-          >
-            {visiblePhase === 'working' ? (
-              <span className={`transaction-hide-icon${hiding ? ' hiding' : ''}`} aria-hidden="true">
-                <Eye className="ui-icon transaction-hide-eye-open" />
-                <EyeOff className="ui-icon transaction-hide-eye-closed" />
-              </span>
-            ) : (
-              <X className="ui-icon" aria-hidden="true" />
-            )}
-          </button>
+          <TransactionDialogControl hiding={hiding} phase={visiblePhase} onClick={closeOrHide} />
         </div>
         <OperationOutcomeAnnouncement
           active={visiblePhase === 'done'}
