@@ -19,7 +19,6 @@ import {
   FungiblePurchaseSequence,
   fungibleListingAccessibleLabel,
   FungibleOperationErrorAlert,
-  FungibleOperationActivityControl,
   FungibleSettlementRecoveryPanel,
   FungiblePurchaseReceiptNavigator,
   MatchedListingsReview,
@@ -119,20 +118,9 @@ describe('fungible operation error semantics', () => {
       visible: true,
     };
     const activities = appendFungibleOperationActivity([purchase], listing);
-    const control = renderToStaticMarkup(
-      React.createElement(FungibleOperationActivityControl, {
-        activities,
-        asset: { id: 'asset', name: 'Weave Credit' },
-        buttonRef: React.createRef<HTMLButtonElement>(),
-        onShow: () => undefined,
-      }),
-    );
 
     expect(activities.map((activity) => activity.operation.kind)).toEqual(['buy', 'sell']);
     expect(activities.map((activity) => activity.visible)).toEqual([false, true]);
-    expect(control).toContain('aria-label="Transaction activity, 2 items"');
-    expect(control).toContain('class="operation-activity-trigger working"');
-    expect(control).toContain('<span>2</span>');
   });
 
   it('quotes a requested token amount from automatic partial fills', () => {

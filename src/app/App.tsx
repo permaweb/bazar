@@ -140,6 +140,17 @@ import { optionalMotionBehavior } from 'helpers/motion';
 import { useWallet } from 'providers/WalletProvider';
 import { FungibleAssetView } from './FungibleAssetView';
 import {
+  discoverFungibleOperationActivities,
+  FUNGIBLE_OPERATION_ACTIVITY_CHANGE_EVENT,
+  FUNGIBLE_OPERATION_ACTIVITY_SHOW_EVENT,
+  FUNGIBLE_OPERATION_ACTIVITY_STORAGE_KEY,
+  loadFungibleOperationActivities,
+  loadOperationActivities,
+  saveFungibleOperationActivities,
+  saveOperationActivities,
+  type FungibleOperationActivitySummary,
+} from './operation-activity';
+import {
   acquireWalletOperationClaim,
   atomicPurchaseStorageKey,
   clearStaleWalletOperationClaim,
@@ -442,9 +453,11 @@ type OperationActivity = {
 
 type OperationActivityContextValue = {
   activities: OperationActivity[];
+  fungibleActivities: FungibleOperationActivitySummary[];
   activeId: string | null;
   start(input: Pick<OperationActivity, 'asset' | 'collectionId' | 'owner' | 'operation' | 'restoreFallback'>): void;
   show(id: string): void;
+  showFungible(id: string): void;
   hide(): void;
   remove(id: string): void;
 };
@@ -453,10 +466,76 @@ const OperationActivityContext = React.createContext<OperationActivityContextVal
 
 function OperationActivityProvider({ children }: React.PropsWithChildren) {
   const navigate = useNavigate();
+  const wallet = useWallet();
+  const market = React.useContext(MarketContext);
   const [activities, setActivities] = React.useState<OperationActivity[]>([]);
+  const [fungibleActivities, setFungibleActivities] = React.useState<FungibleOperationActivitySummary[]>([]);
   const [activeId, setActiveId] = React.useState<string | null>(null);
+  const [hydratedOwners, setHydratedOwners] = React.useState<string[]>([]);
   const activitiesRef = React.useRef(activities);
   activitiesRef.current = activities;
+  React.useEffect(() => {
+    const owner = wallet.address;
+    if (!owner || hydratedOwners.includes(owner)) return;
+    const restored = loadOperationActivities(localStorage, owner).map((activity) => ({
+      ...activity,
+      restoreFallback: () => null,
+    }));
+    setActivities((current) => {
+      const known = new Set(current.map((activity) => activity.id));
+      return [...current, ...restored.filter((activity) => !known.has(activity.id))].sort(
+        (left, right) => right.createdAt - left.createdAt,
+      );
+    });
+    setHydratedOwners((current) => (current.includes(owner) ? current : [...current, owner]));
+  }, [hydratedOwners, wallet.address]);
+  React.useEffect(() => {
+    if (!hydratedOwners.length) return;
+    saveOperationActivities(localStorage, activities, hydratedOwners);
+  }, [activities, hydratedOwners]);
+  const refreshFungibleActivities = React.useCallback(
+    (durableOnly: boolean) => {
+      const owner = wallet.address;
+      if (!owner) {
+        setFungibleActivities([]);
+        return;
+      }
+      const stored = loadFungibleOperationActivities(localStorage, owner, { durableOnly });
+      const discovered = discoverFungibleOperationActivities(localStorage, owner, market.collections);
+      const byId = new Map([...discovered, ...stored].map((activity) => [activity.id, activity]));
+      const restored = [...byId.values()].sort((left, right) => right.createdAt - left.createdAt);
+      if (discovered.length) saveFungibleOperationActivities(localStorage, restored, [owner]);
+      setFungibleActivities((current) => {
+        if (!durableOnly) return restored;
+        for (const activity of current) {
+          if (activity.owner === owner && (activity.phase === 'form' || activity.phase === 'approval')) {
+            byId.set(activity.id, activity);
+          }
+        }
+        return [...byId.values()].sort((left, right) => right.createdAt - left.createdAt);
+      });
+    },
+    [market.collections, wallet.address],
+  );
+  React.useEffect(() => refreshFungibleActivities(true), [refreshFungibleActivities]);
+  React.useEffect(() => {
+    const refreshCurrentDocument = () => refreshFungibleActivities(false);
+    const refreshFromStorage = (event: StorageEvent) => {
+      if (
+        event.key === FUNGIBLE_OPERATION_ACTIVITY_STORAGE_KEY ||
+        event.key?.startsWith('bazar-operation:') ||
+        event.key?.startsWith('bazar-purchase-batch:')
+      ) {
+        refreshFungibleActivities(true);
+      }
+    };
+    window.addEventListener(FUNGIBLE_OPERATION_ACTIVITY_CHANGE_EVENT, refreshCurrentDocument);
+    window.addEventListener('storage', refreshFromStorage);
+    return () => {
+      window.removeEventListener(FUNGIBLE_OPERATION_ACTIVITY_CHANGE_EVENT, refreshCurrentDocument);
+      window.removeEventListener('storage', refreshFromStorage);
+    };
+  }, [refreshFungibleActivities]);
   const start = React.useCallback(
     (input: Pick<OperationActivity, 'asset' | 'collectionId' | 'owner' | 'operation' | 'restoreFallback'>) => {
       const existing = activitiesRef.current.find(
@@ -528,13 +607,23 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
   const value = React.useMemo<OperationActivityContextValue>(
     () => ({
       activities,
+      fungibleActivities,
       activeId,
       start,
       show: setActiveId,
+      showFungible: (id) => {
+        const activity = fungibleActivities.find((candidate) => candidate.id === id);
+        if (!activity) return;
+        navigate(`/asset/${activity.collectionId}/${activity.asset.id}`);
+        window.setTimeout(
+          () => window.dispatchEvent(new CustomEvent(FUNGIBLE_OPERATION_ACTIVITY_SHOW_EVENT, { detail: activity.id })),
+          0,
+        );
+      },
       hide: () => setActiveId(null),
       remove,
     }),
-    [activeId, activities, remove, start],
+    [activeId, activities, fungibleActivities, navigate, remove, start],
   );
   return (
     <OperationActivityContext.Provider value={value}>
@@ -819,10 +908,6 @@ function Header() {
             <GatewayControl />
           </div>
           <div className="site-nav-wallet">
-            <div
-              className="operation-activity-control fungible-operation-activity-slot"
-              id="fungible-operation-activity-slot"
-            />
             <OperationActivityControl />
             <WalletMenu />
           </div>
@@ -1043,11 +1128,20 @@ function Header() {
 }
 
 function OperationActivityControl() {
-  const { activities, show } = useOperationActivity();
+  const wallet = useWallet();
+  const { activities, fungibleActivities, show, showFungible } = useOperationActivity();
   const [open, setOpen] = React.useState(false);
   const containerRef = React.useRef<HTMLDivElement>(null);
-  const visibleActivities = activities.filter((activity) => isTransactionActivityVisible(activity.phase));
-  const workingCount = visibleActivities.filter((activity) => activity.phase === 'working').length;
+  const visibleActivities = activities.filter(
+    (activity) => activity.owner === wallet.address && isTransactionActivityVisible(activity.phase),
+  );
+  const visibleFungibleActivities = fungibleActivities.filter((activity) =>
+    isTransactionActivityVisible(activity.phase),
+  );
+  const activityCount = visibleActivities.length + visibleFungibleActivities.length;
+  const workingCount =
+    visibleActivities.filter((activity) => activity.phase === 'working').length +
+    visibleFungibleActivities.filter((activity) => activity.phase === 'working').length;
   React.useEffect(() => {
     if (!open) return;
     const close = (event: MouseEvent) => {
@@ -1056,12 +1150,12 @@ function OperationActivityControl() {
     window.addEventListener('mousedown', close);
     return () => window.removeEventListener('mousedown', close);
   }, [open]);
-  if (!visibleActivities.length) return null;
+  if (!activityCount) return null;
   return (
     <div className="operation-activity-control" ref={containerRef}>
       <button
         aria-expanded={open}
-        aria-label={`Transaction activity, ${visibleActivities.length} ${visibleActivities.length === 1 ? 'item' : 'items'}`}
+        aria-label={`Transaction activity, ${activityCount} ${activityCount === 1 ? 'item' : 'items'}`}
         className={`operation-activity-trigger${workingCount ? ' working' : ''}`}
         data-activity-owner="global"
         data-tooltip="Transaction activity"
@@ -1069,7 +1163,7 @@ function OperationActivityControl() {
         type="button"
       >
         <InfinityIcon className="ui-icon" aria-hidden="true" />
-        <span>{visibleActivities.length}</span>
+        <span>{activityCount}</span>
       </button>
       {open ? (
         <section aria-label="Transaction activity" className="operation-activity-menu">
@@ -1112,6 +1206,39 @@ function OperationActivityControl() {
                     >
                       {activity.confirmations}/{activity.confirmationTarget}
                     </span>
+                    {activity.phase === 'working' ? (
+                      <LoaderCircle className="ui-icon ui-icon--xs operation-activity-loader" aria-hidden="true" />
+                    ) : null}
+                  </span>
+                  <ChevronRight className="ui-icon ui-icon--sm operation-activity-chevron" aria-hidden="true" />
+                </button>
+              </div>
+            ))}
+            {visibleFungibleActivities.map((activity) => (
+              <div className={`operation-activity-item ${activity.phase}`} key={activity.id}>
+                <button
+                  className="operation-activity-open"
+                  onClick={() => {
+                    showFungible(activity.id);
+                    setOpen(false);
+                  }}
+                  type="button"
+                >
+                  <span className="operation-activity-symbol" aria-hidden="true">
+                    {activity.asset.image ? (
+                      <img src={activity.asset.image} alt="" />
+                    ) : (
+                      <span>{activity.asset.name.slice(0, 1)}</span>
+                    )}
+                  </span>
+                  <span className="operation-activity-copy">
+                    <strong>{activity.asset.name}</strong>
+                    <small>
+                      {operationLabel(activity.operationKind)} · {operationActivityPhaseLabel(activity.phase)}
+                    </small>
+                    <span>{activity.status}</span>
+                  </span>
+                  <span className="operation-activity-progress">
                     {activity.phase === 'working' ? (
                       <LoaderCircle className="ui-icon ui-icon--xs operation-activity-loader" aria-hidden="true" />
                     ) : null}

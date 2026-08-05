@@ -1,5 +1,4 @@
 import React from 'react';
-import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -7,13 +6,10 @@ import {
   ArrowUpRight,
   BarChart3,
   Check,
-  ChevronRight,
   CircleX,
   FileText,
   Grid2X2,
-  InfinityIcon,
   Layers3,
-  LoaderCircle,
   RefreshCw,
   Send,
   ShoppingCart,
@@ -58,7 +54,6 @@ import { ConnectWalletButton } from 'components/ConnectWalletButton';
 import { MarketActivityList } from 'components/MarketActivityList';
 import { OperationOutcome, OperationOutcomeAnnouncement } from 'components/OperationOutcomeAnnouncement';
 import {
-  isTransactionActivityVisible,
   prepareTransactionDialogHide,
   TRANSACTION_DIALOG_HIDE_DURATION_MS,
   TransactionDialogControl,
@@ -81,9 +76,17 @@ import {
   type MarketplaceOperationFailure,
 } from './marketplace-error';
 import {
+  FUNGIBLE_OPERATION_ACTIVITY_CHANGE_EVENT,
+  FUNGIBLE_OPERATION_ACTIVITY_SHOW_EVENT,
+  fungibleOperationActivityId,
+  removeFungibleOperationActivity,
+  upsertFungibleOperationActivity,
+} from './operation-activity';
+import {
   acquireWalletOperationClaim,
   clearStaleWalletOperationClaim,
   discardNewlyPreparedTransactionIfAborted,
+  fungibleBatchStorageKey,
   loadWalletRecord,
   hasRecoverablePurchase,
   operationClaimStorageKey,
@@ -152,6 +155,7 @@ export type FungibleOperation =
 
 export type FungibleOperationActivity = OperationSession<FungibleOperation> & {
   id: string;
+  createdAt?: number;
   phase: TransactionDialogPhase | null;
   visible: boolean;
 };
@@ -181,29 +185,65 @@ export function FungibleAssetView({
 }: Props) {
   const wallet = useWallet();
   const [operationActivities, setOperationActivities] = React.useState<FungibleOperationActivity[]>([]);
+  const operationActivitiesRef = React.useRef(operationActivities);
+  operationActivitiesRef.current = operationActivities;
   const walletActivities = operationActivities.filter((activity) => activity.signer === wallet.address);
   const hasWalletActivities = walletActivities.length > 0;
+  const publishOperationActivity = React.useCallback(
+    (activity: FungibleOperationActivity, nextPhase: TransactionDialogPhase | null = activity.phase) => {
+      const phase = nextPhase ?? 'form';
+      if (phase === 'done') {
+        removeFungibleOperationActivity(localStorage, activity.id, activity.signer);
+      } else {
+        upsertFungibleOperationActivity(localStorage, {
+          id: activity.id,
+          asset,
+          collectionId: collection.id,
+          owner: activity.signer,
+          operationKind: activity.operation.kind,
+          phase,
+          status: fungibleActivityPhaseStatus(phase),
+          createdAt: activity.createdAt ?? Date.now(),
+        });
+      }
+      window.dispatchEvent(new Event(FUNGIBLE_OPERATION_ACTIVITY_CHANGE_EVENT));
+    },
+    [asset, collection.id],
+  );
   const openOperation = React.useCallback(
     (next: FungibleOperation) => {
       if (wallet.address) {
         const signer = wallet.address;
-        const id = `${next.kind}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
+        const id = fungibleOperationActivityId(asset.id, signer, next.kind);
+        const activity = {
+          id,
+          operation: next,
+          phase: null,
+          signer,
+          visible: true,
+          createdAt: Date.now(),
+        } satisfies FungibleOperationActivity;
         setOperationActivities((current) =>
-          appendFungibleOperationActivity(current, { id, operation: next, phase: null, signer, visible: true }),
+          appendFungibleOperationActivity(
+            current.filter((candidate) => candidate.id !== id),
+            activity,
+          ),
         );
+        publishOperationActivity(activity);
       }
     },
-    [wallet.address],
+    [asset.id, publishOperationActivity, wallet.address],
   );
   const [recoverySuppressed, setRecoverySuppressed] = React.useState(false);
   const [recoveryNotice, setRecoveryNotice] = React.useState('');
   const [unavailableRecovery, setUnavailableRecovery] = React.useState<UnavailableOperationRecovery | null>(null);
   const resumeButtonRef = React.useRef<HTMLButtonElement>(null);
-  const operationActivityButtonRef = React.useRef<HTMLButtonElement>(null);
-  const [operationActivitySlot, setOperationActivitySlot] = React.useState<HTMLElement | null>(null);
   const operationFocusFallbackRef = React.useRef<HTMLHeadingElement>(null);
   const operationFocusFallback = React.useCallback(
-    () => operationActivityButtonRef.current ?? resumeButtonRef.current ?? operationFocusFallbackRef.current,
+    () =>
+      document.querySelector<HTMLElement>('.operation-activity-trigger[data-activity-owner="global"]') ??
+      resumeButtonRef.current ??
+      operationFocusFallbackRef.current,
     [],
   );
   const [purchaseQuantity, setPurchaseQuantity] = React.useState('');
@@ -234,7 +274,7 @@ export function FungibleAssetView({
   const holders = holderAddresses.size;
   const license = licenseProperties(state);
   const description = assetDescription(state, collection.description);
-  const purchaseKey = wallet.address ? batchStorageKey(asset.id, wallet.address) : '';
+  const purchaseKey = wallet.address ? fungibleBatchStorageKey(asset.id, wallet.address) : '';
   type FungibleAssetSection = typeof activeSection;
   const assetTabs: AssetDetailTab<FungibleAssetSection>[] = [
     {
@@ -263,10 +303,6 @@ export function FungibleAssetView({
     },
   ];
 
-  React.useLayoutEffect(() => {
-    setOperationActivitySlot(document.getElementById('fungible-operation-activity-slot'));
-  }, []);
-
   React.useEffect(() => {
     setPurchaseQuantity('');
     setActiveSection('orders');
@@ -278,7 +314,7 @@ export function FungibleAssetView({
     const purchaseClaimKey = operationClaimStorageKey(asset.id, walletAddress, 'purchase');
     const assetClaimKey = operationClaimStorageKey(asset.id, walletAddress, 'asset');
     const operationKey = operationStorageKey(asset.id, walletAddress);
-    const purchaseKey = batchStorageKey(asset.id, walletAddress);
+    const purchaseKey = fungibleBatchStorageKey(asset.id, walletAddress);
     const onStorage = (event: StorageEvent) => {
       if (event.storageArea && event.storageArea !== localStorage) return;
       const purchaseChange = walletOperationStorageChange(event.key, event.newValue, purchaseClaimKey, [purchaseKey]);
@@ -353,7 +389,7 @@ export function FungibleAssetView({
     }
     let savedBatch: any = null;
     try {
-      savedBatch = JSON.parse(localStorage.getItem(batchStorageKey(asset.id, wallet.address)) ?? 'null');
+      savedBatch = JSON.parse(localStorage.getItem(fungibleBatchStorageKey(asset.id, wallet.address)) ?? 'null');
     } catch {
       localStorage.removeItem(purchaseKey);
     }
@@ -370,7 +406,7 @@ export function FungibleAssetView({
       } else if (batchHasNoDispatchedSellerPayment(resume)) {
         const removed = removeWalletRecoveryAndSignatures<BatchResume>(
           localStorage,
-          batchStorageKey(asset.id, wallet.address),
+          fungibleBatchStorageKey(asset.id, wallet.address),
           (current) =>
             current.buyer === wallet.address &&
             (current.attemptId ?? batchRecoveryIdentity(current.entries)) ===
@@ -391,7 +427,7 @@ export function FungibleAssetView({
     } else if (savedBatch !== null) {
       removeWalletRecordIf<any>(
         localStorage,
-        batchStorageKey(asset.id, wallet.address),
+        fungibleBatchStorageKey(asset.id, wallet.address),
         (current) => !isRecoverableBatch(current, wallet.address!),
       );
     }
@@ -488,13 +524,25 @@ export function FungibleAssetView({
   const recoveryBlocksActions = recoverySuppressed || Boolean(unavailableRecovery);
   const handleOperationPhaseChange = React.useCallback(
     (id: string, nextPhase: TransactionDialogPhase) => {
+      const activity = operationActivitiesRef.current.find((candidate) => candidate.id === id);
+      if (activity) publishOperationActivity(activity, nextPhase);
       setOperationActivities((current) =>
         current.map((activity) => (activity.id === id ? { ...activity, phase: nextPhase } : activity)),
       );
       if (nextPhase === 'done') void onRefresh();
     },
-    [onRefresh],
+    [onRefresh, publishOperationActivity],
   );
+
+  React.useEffect(() => {
+    const showActivity = (event: Event) => {
+      const id = (event as CustomEvent<string>).detail;
+      if (!id) return;
+      setOperationActivities((current) => current.map((activity) => ({ ...activity, visible: activity.id === id })));
+    };
+    window.addEventListener(FUNGIBLE_OPERATION_ACTIVITY_SHOW_EVENT, showActivity);
+    return () => window.removeEventListener(FUNGIBLE_OPERATION_ACTIVITY_SHOW_EVENT, showActivity);
+  }, []);
 
   return (
     <section className="asset-page asset-detail-page fungible-asset-page">
@@ -514,21 +562,6 @@ export function FungibleAssetView({
           </button>
         </div>
       ) : null}
-      {walletActivities.length && operationActivitySlot
-        ? createPortal(
-            <FungibleOperationActivityControl
-              activities={walletActivities}
-              asset={asset}
-              buttonRef={operationActivityButtonRef}
-              onShow={(id) =>
-                setOperationActivities((current) =>
-                  current.map((activity) => ({ ...activity, visible: activity.id === id })),
-                )
-              }
-            />,
-            operationActivitySlot,
-          )
-        : null}
       {recoveryNotice ? (
         <div className="pending-operation-notice">
           <span role="status">{recoveryNotice}</span>
@@ -895,6 +928,7 @@ export function FungibleAssetView({
           onPhaseChange={(phase) => handleOperationPhaseChange(activity.id, phase)}
           onClose={(resumeLater, refresh = true) => {
             setRecoverySuppressed(Boolean(resumeLater));
+            if (!resumeLater) publishOperationActivity(activity, 'done');
             setOperationActivities((current) =>
               resumeLater
                 ? current.map((currentActivity) =>
@@ -910,96 +944,7 @@ export function FungibleAssetView({
   );
 }
 
-export function FungibleOperationActivityControl({
-  activities,
-  asset,
-  buttonRef,
-  onShow,
-}: {
-  activities: FungibleOperationActivity[];
-  asset: AssetSummary;
-  buttonRef: React.RefObject<HTMLButtonElement>;
-  onShow(id: string): void;
-}) {
-  const [open, setOpen] = React.useState(false);
-  const containerRef = React.useRef<HTMLDivElement>(null);
-  const visibleActivities = activities.filter((activity) => isTransactionActivityVisible(activity.phase ?? 'form'));
-  const workingCount = visibleActivities.filter((activity) => activity.phase === 'working').length;
-  React.useEffect(() => {
-    if (!open) return;
-    const close = (event: MouseEvent) => {
-      if (!containerRef.current?.contains(event.target as Node)) setOpen(false);
-    };
-    window.addEventListener('mousedown', close);
-    return () => window.removeEventListener('mousedown', close);
-  }, [open]);
-  if (!visibleActivities.length) return null;
-  return (
-    <div className="fungible-operation-activity-control" ref={containerRef}>
-      <button
-        aria-expanded={open}
-        aria-label={`Transaction activity, ${visibleActivities.length} ${visibleActivities.length === 1 ? 'item' : 'items'}`}
-        className={`operation-activity-trigger${workingCount ? ' working' : ''}`}
-        data-activity-owner="fungible"
-        data-tooltip="Transaction activity"
-        onClick={() => setOpen((value) => !value)}
-        ref={buttonRef}
-        type="button"
-      >
-        <InfinityIcon className="ui-icon" aria-hidden="true" />
-        <span>{visibleActivities.length}</span>
-      </button>
-      {open ? (
-        <section aria-label="Transaction activity" className="operation-activity-menu">
-          <div className="operation-activity-heading">
-            <div>
-              <strong>Transaction activity</strong>
-              <span>
-                {workingCount
-                  ? `${workingCount} running in the background`
-                  : `${visibleActivities.length} waiting for details or approval`}
-              </span>
-            </div>
-          </div>
-          <div className="operation-activity-list">
-            {visibleActivities.map((activity) => {
-              const phase = activity.phase ?? 'form';
-              return (
-                <div className={`operation-activity-item ${phase}`} key={activity.id}>
-                  <button
-                    className="operation-activity-open"
-                    onClick={() => {
-                      onShow(activity.id);
-                      setOpen(false);
-                    }}
-                    type="button"
-                  >
-                    <span className="operation-activity-symbol" aria-hidden="true">
-                      {asset.image ? <img src={asset.image} alt="" /> : <span>{asset.name.slice(0, 1)}</span>}
-                    </span>
-                    <span className="operation-activity-copy">
-                      <strong>{operationLabel(activity.operation.kind)}</strong>
-                      <small>{asset.name}</small>
-                      <span>{fungibleActivityPhaseLabel(phase)}</span>
-                    </span>
-                    <span className="operation-activity-progress">
-                      {phase === 'working' ? (
-                        <LoaderCircle className="ui-icon ui-icon--xs operation-activity-loader" aria-hidden="true" />
-                      ) : null}
-                    </span>
-                    <ChevronRight className="ui-icon ui-icon--sm operation-activity-chevron" aria-hidden="true" />
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        </section>
-      ) : null}
-    </div>
-  );
-}
-
-function fungibleActivityPhaseLabel(phase: TransactionDialogPhase) {
+function fungibleActivityPhaseStatus(phase: TransactionDialogPhase) {
   return {
     form: 'Waiting for details',
     approval: 'Waiting for wallet approval',
@@ -1328,7 +1273,7 @@ function FungibleOperationDialog({
       const freshOperation = operation.kind === 'buy' ? !operation.resume : !operation.resumeId && !transaction;
       const signal = attemptRef.current.signal;
       const operationKey = operationStorageKey(asset.id, owner);
-      const purchaseKey = batchStorageKey(asset.id, owner);
+      const purchaseKey = fungibleBatchStorageKey(asset.id, owner);
       const resumeTransactionId = operation.kind === 'buy' ? undefined : (operation.resumeId ?? transaction?.id);
       let exactActionBaseline = exactActionBaselineRef.current;
       let freshState: AssetState | undefined;
@@ -1628,14 +1573,14 @@ function FungibleOperationDialog({
         promoteWalletOperationClaim(
           localStorage,
           claimRef.current,
-          batchStorageKey(asset.id, owner),
+          fungibleBatchStorageKey(asset.id, owner),
           saved,
           (current) =>
             current.buyer === owner && (current.attemptId ?? batchRecoveryIdentity(current.entries)) === attemptId,
         );
         if (signal.aborted) throw signal.reason;
       } else {
-        storeBatchRecoveryBeforeDispatch(localStorage, batchStorageKey(asset.id, owner), saved, signal);
+        storeBatchRecoveryBeforeDispatch(localStorage, fungibleBatchStorageKey(asset.id, owner), saved, signal);
       }
     } catch (cause) {
       if (!signal.aborted) {
@@ -1669,7 +1614,7 @@ function FungibleOperationDialog({
       try {
         storeWalletRecordOrThrow<BatchResume>(
           localStorage,
-          batchStorageKey(asset.id, owner),
+          fungibleBatchStorageKey(asset.id, owner),
           saved,
           (current) => (current.attemptId ?? batchRecoveryIdentity(current.entries)) === attemptId,
           true,
@@ -1769,7 +1714,7 @@ function FungibleOperationDialog({
             recoveryBuffer.clear();
             removeWalletRecordIf<BatchResume>(
               localStorage,
-              batchStorageKey(asset.id, owner),
+              fungibleBatchStorageKey(asset.id, owner),
               (current) => (current.attemptId ?? batchRecoveryIdentity(current.entries)) === attemptId,
             );
             terminalRecoveryRemoved = true;
@@ -1801,7 +1746,7 @@ function FungibleOperationDialog({
     setMessage('Every lot is proven in its exact scheduled payment slot.');
     removeWalletRecoveryAndSignatures<BatchResume>(
       localStorage,
-      batchStorageKey(asset.id, owner),
+      fungibleBatchStorageKey(asset.id, owner),
       (current) => (current.attemptId ?? batchRecoveryIdentity(current.entries)) === attemptId,
       entries.flatMap((entry) => [entry.snapshot.registration?.id, entry.snapshot.payment?.id]),
       owner,
@@ -1893,7 +1838,7 @@ function FungibleOperationDialog({
     if (dialogRef.current) {
       prepareTransactionDialogHide(
         dialogRef.current,
-        document.querySelector<HTMLElement>('.operation-activity-trigger[data-activity-owner="fungible"]'),
+        document.querySelector<HTMLElement>('.operation-activity-trigger[data-activity-owner="global"]'),
       );
     }
     setHiding(true);
@@ -3148,10 +3093,6 @@ export function nextSettlementAnnouncement(
     }
   }
   return next.key === previousKey ? null : next;
-}
-
-function batchStorageKey(assetId: string, buyer: string) {
-  return `bazar-purchase-batch:${assetId}:${buyer}`;
 }
 
 function lotAsking(rawQuantity: string, unitPrice: string, denomination: number): string {
