@@ -84,6 +84,10 @@ describe('fungible operation error semantics', () => {
     expect(sequence).not.toContain('Purchase sequence');
     expect(sequence).not.toContain('2 listings · 4 transactions');
     expect(sequence).not.toContain('Seller payments begin only after every reservation is accepted.');
+    expect(sequence).not.toContain('2 wallet approvals');
+    expect(sequence).not.toContain('0/2 accepted');
+    expect(sequence).not.toContain('0/2 confirmed');
+    expect(sequence).not.toContain('0/2 verified');
   });
 
   it('keeps payment and receipt verification as separate visible stages', () => {

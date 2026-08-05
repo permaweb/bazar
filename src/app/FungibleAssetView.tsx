@@ -1075,7 +1075,6 @@ export function FungiblePurchaseSequence({
             </span>
             <span className="purchase-sequence-copy">
               <strong>{step.label}</strong>
-              <small>{step.detail}</small>
             </span>
           </li>
         ))}

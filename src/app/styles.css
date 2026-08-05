@@ -3868,25 +3868,29 @@ input:focus {
 .purchase-sequence > ol {
   margin: 0;
   padding: 0;
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  display: flex;
   list-style: none;
 }
 .purchase-sequence > ol > li {
   position: relative;
+  flex: 1 1 0;
   min-width: 0;
   display: grid;
   grid-template-columns: 30px minmax(0, 1fr);
   align-items: center;
   gap: 8px;
 }
+.purchase-sequence > ol > li:last-child {
+  flex: 0 0 auto;
+  grid-template-columns: 30px max-content;
+}
 .purchase-sequence > ol > li:not(:last-child)::after {
   content: '';
   position: absolute;
   z-index: 0;
   top: 15px;
-  right: 5px;
-  width: calc(100% - 34px);
+  left: 15px;
+  width: 100%;
   height: 1px;
   background: var(--line-dark);
 }
@@ -3935,20 +3939,18 @@ input:focus {
 .purchase-sequence > ol > li:last-child .purchase-sequence-copy {
   padding-right: 0;
 }
-.purchase-sequence-copy > strong,
-.purchase-sequence-copy > small {
+.purchase-sequence-copy > strong {
+  justify-self: start;
+  padding-right: 8px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  background: var(--paper);
 }
 .purchase-sequence-copy > strong {
   color: var(--ink);
   font-size: var(--type-small);
   font-weight: 500;
-}
-.purchase-sequence-copy > small {
-  color: var(--muted);
-  font-size: 0.68rem;
 }
 .close {
   width: 35px;
@@ -5108,9 +5110,13 @@ body input:focus-visible {
 @media (max-width: 760px) {
   .purchase-sequence > ol {
     padding-bottom: 6px;
-    grid-template-columns: repeat(4, minmax(142px, 1fr));
     overflow-x: auto;
     overscroll-behavior-inline: contain;
+  }
+  .purchase-sequence > ol > li,
+  .purchase-sequence > ol > li:last-child {
+    flex: 0 0 180px;
+    grid-template-columns: 30px minmax(0, 1fr);
   }
   .collection-source-notice > :is(button, a) {
     min-height: 44px;
