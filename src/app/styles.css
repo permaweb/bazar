@@ -6500,6 +6500,17 @@ body input:focus-visible {
   border-top: 1px solid var(--home-line);
   font-size: 0.8rem;
 }
+.home-market-loading {
+  min-height: calc(100vh - 169px);
+  display: grid;
+  place-items: center;
+  border-top: 1px solid var(--home-line);
+  background: #fafafa;
+}
+.home-market-loading .loading {
+  justify-content: center;
+  padding: 48px 28px;
+}
 @container (min-width: 1500px) {
   .home-asset-grid {
     grid-template-columns: repeat(4, minmax(0, 1fr));

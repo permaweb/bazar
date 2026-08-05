@@ -17,6 +17,7 @@ import {
   homeSummaryRequestKeys,
   homeDiscoveryAssets,
   homeMarketPriceValue,
+  homeMarketSummariesReady,
   homeScrollIndicatorMetrics,
   homeFloorScanSummary,
   loadAssetShellSnapshot,
@@ -157,6 +158,18 @@ describe('Home market summary retries', () => {
     expect(homeMarketPriceValue('0.000001 AR / WEAVE')).toBe(0.000001);
     expect(homeMarketPriceValue('1,234.5 AR')).toBe(1234.5);
     expect(homeMarketPriceValue('Unavailable')).toBe(Number.POSITIVE_INFINITY);
+  });
+
+  it('publishes the home mosaic only after every live summary settles', () => {
+    const summaries: Record<string, HomeMarketSummary> = {
+      listed: { status: 'resolved', value: '0.001 AR' },
+      empty: { status: 'unindexed' },
+      failed: { status: 'unavailable', source: 'compute', kind: 'unavailable' },
+    };
+
+    expect(homeMarketSummariesReady(true, ['listed'], summaries)).toBe(false);
+    expect(homeMarketSummariesReady(false, ['listed', 'pending'], summaries)).toBe(false);
+    expect(homeMarketSummariesReady(false, ['listed', 'empty', 'failed'], summaries)).toBe(true);
   });
 
   it('checks exact collection membership without rescanning loaded assets', () => {

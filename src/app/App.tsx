@@ -1419,6 +1419,14 @@ export function homeMarketPriceValue(value: string | null | undefined) {
   return Number.isFinite(parsed) ? parsed : Number.POSITIVE_INFINITY;
 }
 
+export function homeMarketSummariesReady(
+  loading: boolean,
+  keys: string[],
+  summaries: Record<string, HomeMarketSummary>,
+) {
+  return !loading && keys.every((key) => Boolean(summaries[key]));
+}
+
 export function homeScrollIndicatorMetrics(
   scrollTop: number,
   scrollHeight: number,
@@ -1842,6 +1850,18 @@ function Home() {
       }
       return assetView === 'price-low' ? leftPrice - rightPrice : rightPrice - leftPrice;
     });
+  const collectionResultsReady = homeMarketSummariesReady(
+    market.loading,
+    collections.map((collection) => collection.id),
+    collectionFloors,
+  );
+  const discoverResultsReady =
+    collectionResultsReady &&
+    homeMarketSummariesReady(
+      false,
+      assets.map(({ asset }) => asset.id),
+      assetPrices,
+    );
   return (
     <div className="home-shell">
       <div className="home-main">
@@ -1879,7 +1899,7 @@ function Home() {
                   </Link>
                 </div>
               ) : null}
-              {summaryFailures.length ? (
+              {discoverResultsReady && summaryFailures.length ? (
                 <div className="collection-source-notice">
                   <span role="status">
                     {summaryRetrying ? 'Rechecking unfinished market data.' : summaryFailureMessage}
@@ -1904,7 +1924,12 @@ function Home() {
                   </button>
                 </div>
               ) : null}
-              <div className="home-feature-grid">
+              {!collectionResultsReady ? (
+                <div className="home-market-loading">
+                  <Loading label="Verifying collection listings…" />
+                </div>
+              ) : null}
+              <div className="home-feature-grid" hidden={!collectionResultsReady}>
                 {collections.map((collection, index) => {
                   const image = collection.assets.find((asset) => asset.image)?.image;
                   return (
@@ -1974,12 +1999,17 @@ function Home() {
                   );
                 })}
               </div>
-              {!market.loading && !market.error && collections.length === 0 ? (
+              {collectionResultsReady && !market.error && collections.length === 0 ? (
                 <div className="home-no-results">No collections match “{query}”.</div>
               ) : null}
             </section>
 
-            <section className="home-section home-assets" id="assets" ref={assetsPaneRef}>
+            <section
+              aria-busy={!discoverResultsReady}
+              className="home-section home-assets"
+              id="assets"
+              ref={assetsPaneRef}
+            >
               <HomePaneScrollbar paneRef={assetsPaneRef} />
               <div className="home-section-heading">
                 <div>
@@ -2013,7 +2043,11 @@ function Home() {
                   />
                 </div>
               </div>
-              {displayedAssets.length ? (
+              {!discoverResultsReady ? (
+                <div className="home-market-loading">
+                  <Loading label="Verifying listed assets…" />
+                </div>
+              ) : displayedAssets.length ? (
                 <div className="home-asset-grid">
                   {displayedAssets.map(({ asset, collection }) => (
                     <Link key={`${collection.id}-${asset.id}`} to={`/asset/${collection.id}/${asset.id}`}>
@@ -2039,9 +2073,7 @@ function Home() {
                   ))}
                 </div>
               ) : (
-                <div className="home-assets-empty">
-                  {market.loading ? 'Loading verified listings…' : 'No verified listings match this asset type.'}
-                </div>
+                <div className="home-assets-empty">No verified listings match this asset type.</div>
               )}
             </section>
           </div>
