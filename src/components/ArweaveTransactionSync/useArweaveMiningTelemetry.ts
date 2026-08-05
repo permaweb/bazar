@@ -33,15 +33,19 @@ type MiningNetworkTracker = {
   bytesReadSinceStart: number;
 };
 
-export function useArweaveMiningTelemetry(enabled: boolean, sessionKey: string): ArweaveMiningTelemetry {
+export function useArweaveMiningTelemetry(
+  enabled: boolean,
+  sessionKey: string,
+  sessionStartedAt: number,
+): ArweaveMiningTelemetry {
   const blockOrigin = import.meta.env.VITE_ARWEAVE_BLOCK_SOURCE_URL || DEFAULT_GATEWAY;
   const [telemetry, setTelemetry] = React.useState<ArweaveMiningTelemetry>(() => initialTelemetry(blockOrigin));
-  const trackerRef = React.useRef<MiningNetworkTracker>(initialTracker());
+  const trackerRef = React.useRef<MiningNetworkTracker>(createMiningNetworkTracker(sessionStartedAt));
 
   React.useEffect(() => {
-    trackerRef.current = initialTracker();
+    trackerRef.current = createMiningNetworkTracker(sessionStartedAt);
     setTelemetry(initialTelemetry(blockOrigin));
-  }, [blockOrigin, sessionKey]);
+  }, [blockOrigin, sessionKey, sessionStartedAt]);
 
   React.useEffect(() => {
     if (!enabled || !blockOrigin) return undefined;
@@ -53,9 +57,7 @@ export function useArweaveMiningTelemetry(enabled: boolean, sessionKey: string):
         const proof = await fetchCurrentBlockProof(blockOrigin, controller.signal);
         const now = Date.now();
         const tracker = trackerRef.current;
-        accumulateTracker(tracker, now);
-        tracker.candidateRate = proof.estimatedCandidateRate;
-        tracker.diskReadRate = proof.estimatedDiskReadRate;
+        recordMiningSample(tracker, now, proof.estimatedCandidateRate, proof.estimatedDiskReadRate);
         setTelemetry((current) =>
           telemetryFromTracker(current, tracker, insertAcceptedProof(current.acceptedProofs, proof), true),
         );
@@ -87,7 +89,7 @@ export function useArweaveMiningTelemetry(enabled: boolean, sessionKey: string):
       } catch {
         if (!controller.signal.aborted) {
           const tracker = trackerRef.current;
-          accumulateTracker(tracker, Date.now());
+          accumulateMiningEstimate(tracker, Date.now());
           setTelemetry((current) =>
             telemetryFromTracker(current, tracker, current.acceptedProofs, current.acceptedProofs.length > 0),
           );
@@ -100,12 +102,26 @@ export function useArweaveMiningTelemetry(enabled: boolean, sessionKey: string):
       controller.abort();
       if (timer !== undefined) window.clearTimeout(timer);
     };
-  }, [blockOrigin, enabled, sessionKey]);
+  }, [blockOrigin, enabled, sessionKey, sessionStartedAt]);
 
   return telemetry;
 }
 
-function accumulateTracker(tracker: MiningNetworkTracker, now: number): void {
+export function recordMiningSample(
+  tracker: MiningNetworkTracker,
+  now: number,
+  candidateRate: number | undefined,
+  diskReadRate: number | undefined,
+): void {
+  const firstSample = tracker.candidateRate === undefined && tracker.diskReadRate === undefined;
+  if (!firstSample) accumulateMiningEstimate(tracker, now);
+  tracker.candidateRate = candidateRate;
+  tracker.diskReadRate = diskReadRate;
+  if (firstSample) accumulateMiningEstimate(tracker, now);
+}
+
+export function accumulateMiningEstimate(tracker: MiningNetworkTracker, now: number): void {
+  if (tracker.candidateRate === undefined && tracker.diskReadRate === undefined) return;
   const duration = Math.max(0, now - tracker.lastAt) / 1_000;
   if (tracker.candidateRate !== undefined) {
     tracker.weightedCandidateTotal += tracker.candidateRate * duration;
@@ -139,9 +155,9 @@ function telemetryFromTracker(
   };
 }
 
-function initialTracker(): MiningNetworkTracker {
+export function createMiningNetworkTracker(startedAt: number): MiningNetworkTracker {
   return {
-    lastAt: Date.now(),
+    lastAt: startedAt,
     weightedCandidateTotal: 0,
     weightedDiskTotal: 0,
     duration: 0,

@@ -310,6 +310,18 @@ describe('fungible operation error semantics', () => {
     expect(panel).toContain('id="fungible-settlement-error-panel"');
     expect(panel).toContain('This incomplete listing can be continued with the same wallet.');
   });
+
+  it('renders a settled recovery result with positive styling', () => {
+    const panel = renderToStaticMarkup(
+      React.createElement(
+        FungibleSettlementRecoveryPanel,
+        { orderId: ORDER_ID, settled: true },
+        React.createElement('p', null, 'This listing settled successfully.'),
+      ),
+    );
+    expect(panel).toContain('settlement-success-detail');
+    expect(panel).toContain('This listing settled successfully.');
+  });
 });
 
 function recoveryBatch() {

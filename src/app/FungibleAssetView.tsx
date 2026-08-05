@@ -1158,6 +1158,7 @@ function FungibleOperationDialog({
   const [hiding, setHiding] = React.useState(false);
   const [settlementAnnouncement, setSettlementAnnouncement] = React.useState('');
   const settlementAnnouncementKeyRef = React.useRef('');
+  const submittedAtRef = React.useRef<number>();
   const purchasesRef = React.useRef<Map<string, SwapPurchase>>(new Map());
   const networkRef = React.useRef<ArweaveObserverNetwork | null>(null);
   const claimRef = React.useRef<WalletOperationClaim | null>(null);
@@ -1318,6 +1319,7 @@ function FungibleOperationDialog({
   }, []);
 
   async function submit() {
+    submittedAtRef.current ??= Date.now();
     setMessage('');
     setFailureKind(null);
     setPhase('working');
@@ -2305,7 +2307,16 @@ function FungibleOperationDialog({
               activeOrder && activePurchase ? (
                 <ArweaveTransactionSync
                   active={visible}
+                  skipKind={activePurchase.canSkip ? (activePurchase.skipKind ?? 'skip') : undefined}
+                  onSkip={
+                    activePurchase.canSkip
+                      ? () => {
+                          purchasesRef.current.get(activeOrder.orderId)?.skip();
+                        }
+                      : undefined
+                  }
                   subject={`${asset.name} · ${tokenLabel(activeOrder.quantity, state)}`}
+                  startedAt={submittedAtRef.current}
                   steps={purchaseSteps}
                   activeStep={activeStep}
                   pendingAfterConfirmation={
@@ -2323,6 +2334,7 @@ function FungibleOperationDialog({
               <ArweaveTransactionSync
                 active={visible}
                 subject={asset.name}
+                startedAt={submittedAtRef.current}
                 steps={singleSteps}
                 activeStep={operation.kind}
               />
@@ -2407,7 +2419,10 @@ function FungibleOperationDialog({
                   })}
                 </div>
                 {activeOrder ? (
-                  <FungibleSettlementRecoveryPanel orderId={activeOrder.orderId}>
+                  <FungibleSettlementRecoveryPanel
+                    orderId={activeOrder.orderId}
+                    settled={activePurchase?.stage === 'complete'}
+                  >
                     <div>
                       <span>Stage</span>
                       <strong>{batchStageLabel(activePurchase)}</strong>
@@ -2790,14 +2805,16 @@ export function FungiblePurchaseReceiptNavigator({
 export function FungibleSettlementRecoveryPanel({
   children,
   orderId,
+  settled = false,
 }: {
   children?: React.ReactNode;
   orderId: string;
+  settled?: boolean;
 }) {
   return (
     <section
       aria-labelledby={`settlement-error-tab-${orderId}`}
-      className="settlement-error-detail"
+      className={`settlement-error-detail${settled ? ' settlement-success-detail' : ''}`}
       id={SETTLEMENT_ERROR_PANEL_ID}
       role="tabpanel"
       tabIndex={0}

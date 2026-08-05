@@ -664,7 +664,7 @@ async function fetchJson<T>(path: string, signal?: AbortSignal, process = false)
   );
   if (!response.ok) throw new Error(`collection-fetch-${response.status}`);
   if (body === undefined) throw new Error('collection-fetch-empty');
-  return ((body as any)?.data ?? body) as T;
+  return (process ? body : ((body as any)?.data ?? body)) as T;
 }
 
 function decodeBase64Url(value: string): string {

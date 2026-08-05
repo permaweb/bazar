@@ -4887,6 +4887,13 @@ body input:focus-visible {
   font-size: var(--type-body);
   line-height: 1.5;
 }
+.settlement-error-detail.settlement-success-detail {
+  border-color: color-mix(in srgb, var(--positive) 38%, var(--line));
+  background: #f5fcfa;
+}
+.settlement-error-detail.settlement-success-detail p {
+  color: var(--positive-text);
+}
 .settlement-disclosure {
   margin: -2px 0 0;
   padding: 12px 14px;
@@ -5479,14 +5486,6 @@ body input:focus-visible {
     padding: 0;
     justify-content: center;
   }
-  .site-nav-primary .my-assets-link {
-    width: 44px;
-    min-width: 44px;
-    min-height: 44px;
-    padding: 0;
-    justify-content: center;
-    font-size: 0;
-  }
   .gateway summary::after {
     display: none;
   }
@@ -5524,16 +5523,12 @@ body input:focus-visible {
   .wallet > span {
     display: none;
   }
+  .wallet-menu .wallet-chevron {
+    display: none;
+  }
 }
 
 @media (min-width: 360px) and (max-width: 600px) {
-  .site-nav-primary .my-assets-link {
-    width: auto;
-    min-width: 44px;
-    padding: 0 6px;
-    gap: 4px;
-    font-size: var(--type-small);
-  }
   .gateway summary {
     width: auto;
     min-width: 44px;

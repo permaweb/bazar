@@ -614,7 +614,6 @@ function RouteFocus() {
 function Header() {
   const location = useLocation();
   const navigate = useNavigate();
-  const wallet = useWallet();
   const market = React.useContext(MarketContext);
   const inputRef = React.useRef<HTMLInputElement>(null);
   const panelInputRef = React.useRef<HTMLInputElement>(null);
@@ -816,17 +815,6 @@ function Header() {
             >
               <Upload className="ui-icon ui-icon--sm" aria-hidden="true" />
             </Link>
-            {wallet.address ? (
-              <Link
-                aria-current={location.pathname === '/my-assets' ? 'page' : undefined}
-                className={`my-assets-link${location.pathname === '/my-assets' ? ' active' : ''}`}
-                aria-label="My assets"
-                data-tooltip="My assets"
-                to="/my-assets"
-              >
-                <Library className="ui-icon ui-icon--sm" aria-hidden="true" />
-              </Link>
-            ) : null}
             <GatewayControl />
           </div>
           <div className="site-nav-wallet">
@@ -6757,6 +6745,7 @@ function OperationDialog({
   const purchaseRef = React.useRef<SwapPurchase | null>(null);
   const networkRef = React.useRef<ArweaveObserverNetwork | null>(null);
   const claimRef = React.useRef<WalletOperationClaim | null>(null);
+  const submittedAtRef = React.useRef<number>();
   const exactActionBaselineRef = React.useRef<{ startingSlot: number } | null>(
     (operation.kind === 'cancel' || operation.kind === 'transfer') && Number.isSafeInteger(operation.startingSlot)
       ? { startingSlot: operation.startingSlot! }
@@ -6838,6 +6827,7 @@ function OperationDialog({
       setMessage(validation);
       return;
     }
+    submittedAtRef.current ??= Date.now();
     setMessage('');
     setFailureKind(null);
     setPhase('working');
@@ -7588,7 +7578,16 @@ function OperationDialog({
             {workingStatus ? <p className="scheduler-wait">{workingStatus}</p> : null}
             <ArweaveTransactionSync
               active={visible}
+              skipKind={purchaseState?.canSkip ? (purchaseState.skipKind ?? 'skip') : undefined}
+              onSkip={
+                purchaseState?.canSkip
+                  ? () => {
+                      purchaseRef.current?.skip();
+                    }
+                  : undefined
+              }
               subject={asset.name}
+              startedAt={submittedAtRef.current}
               steps={steps}
               activeStep={activeStep}
               pendingAfterConfirmation={

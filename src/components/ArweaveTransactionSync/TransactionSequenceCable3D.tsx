@@ -77,7 +77,6 @@ export type CableTelemetry = {
   heading: string;
   liveLabel: string;
   metrics: Array<{ label: string; value: string }>;
-  statusLabel: string;
   activityLabel: string;
   activity: Array<{
     key: string;
@@ -1004,7 +1003,6 @@ export function CableTelemetryPanel({ telemetry }: { telemetry: CableTelemetry }
               </ProtocolMetric>
             ))}
           </ProtocolMetricGrid>
-          <ProtocolStatus>{telemetry.statusLabel}</ProtocolStatus>
         </ProtocolSummarySection>
       </ProtocolSummary>
       <ProtocolActivityHeading>{telemetry.activityLabel}</ProtocolActivityHeading>
@@ -1954,13 +1952,6 @@ const ProtocolMetric = styled.span`
     font-size: inherit;
     white-space: nowrap;
   }
-`;
-
-const ProtocolStatus = styled.span`
-  padding-top: 4px;
-  border-top: 1px solid ${(props) => props.theme.colors.border.primary};
-  color: ${(props) => props.theme.colors.font.alt1};
-  font-size: inherit;
 `;
 
 const MiningStatus = styled.span`

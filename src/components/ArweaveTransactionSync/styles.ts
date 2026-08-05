@@ -524,6 +524,105 @@ export const ErrorBox = styled.div`
   font-size: ${(props) => props.theme.typography.size.small};
 `;
 
+export const SkipAction = styled.div<{ $warning: boolean }>`
+  margin-top: 10px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  background: ${(props) =>
+    props.$warning
+      ? `color-mix(in srgb, ${props.theme.colors.warning.primary} 6%, ${props.theme.colors.container.primary.background})`
+      : props.theme.colors.container.alt1.background};
+  border: 1px solid
+    ${(props) =>
+      props.$warning
+        ? `color-mix(in srgb, ${props.theme.colors.warning.primary} 34%, ${props.theme.colors.border.primary})`
+        : props.theme.colors.border.primary};
+  border-radius: 8px;
+
+  > span {
+    min-width: 0;
+    display: grid;
+    gap: 2px;
+  }
+
+  strong,
+  small {
+    font-size: inherit;
+  }
+
+  strong {
+    color: ${(props) => props.theme.colors.font.primary};
+    font-weight: ${(props) => props.theme.typography.weight.regular};
+  }
+
+  small {
+    color: ${(props) => props.theme.colors.font.alt1};
+  }
+
+  button {
+    min-width: 76px;
+    color: ${(props) =>
+      props.$warning ? props.theme.colors.warning.primary : props.theme.colors.container.primary.background};
+    background: ${(props) =>
+      props.$warning ? props.theme.colors.container.primary.background : props.theme.colors.font.primary};
+    border-color: ${(props) =>
+      props.$warning ? props.theme.colors.warning.primary : props.theme.colors.font.primary};
+  }
+
+  @media (max-width: 560px) {
+    align-items: stretch;
+    flex-direction: column;
+
+    button {
+      width: 100%;
+    }
+  }
+`;
+
+export const SkipButtonWrap = styled.span`
+  position: relative;
+  flex: 0 0 auto;
+  display: inline-flex;
+
+  @media (max-width: 560px) {
+    width: 100%;
+  }
+`;
+
+export const SkipTooltip = styled.span`
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 20;
+  width: min(360px, calc(100vw - 64px));
+  padding: 9px 11px;
+  transform: translateY(-3px);
+  visibility: hidden;
+  background: ${(props) => props.theme.colors.font.primary};
+  border-radius: 7px;
+  box-shadow: 0 10px 28px rgba(28, 25, 22, 0.18);
+  color: ${(props) => props.theme.colors.container.primary.background};
+  font-size: ${(props) => props.theme.typography.size.small};
+  line-height: 1.4;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 120ms ease,
+    transform 120ms ease,
+    visibility 120ms ease;
+
+  ${SkipButtonWrap} > button:hover + &,
+  ${SkipButtonWrap} > button:focus + &,
+  ${SkipButtonWrap} > button:focus-visible + & {
+    transform: translateY(0);
+    visibility: visible;
+    opacity: 1;
+  }
+`;
+
 export const Actions = styled.div`
   display: flex;
   justify-content: flex-end;
