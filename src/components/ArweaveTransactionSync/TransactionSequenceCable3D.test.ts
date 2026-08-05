@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { ThemeProvider } from 'styled-components';
+import { ServerStyleSheet, ThemeProvider } from 'styled-components';
 import { theme } from 'helpers/theme';
 import {
   createWebGLRendererSafely,
@@ -10,6 +10,7 @@ import {
   TransactionRendererFallback,
   type Infinity3DLane,
 } from './TransactionSequenceCable3D';
+import { RaceTooltip } from './styles';
 
 function fallbackLane(statusLabel: string): Infinity3DLane {
   return {
@@ -38,6 +39,23 @@ function renderFallback(statusLabel: string) {
 }
 
 describe('transaction map renderer fallback', () => {
+  it('positions observer tooltips inside the transaction visualization', () => {
+    const sheet = new ServerStyleSheet();
+    renderToStaticMarkup(
+      sheet.collectStyles(
+        React.createElement(
+          ThemeProvider,
+          { theme },
+          React.createElement(RaceTooltip, { $below: false, $left: 120, $top: 80 }, 'Observer status'),
+        ),
+      ),
+    );
+    const css = sheet.getStyleTags();
+    sheet.seal();
+    expect(css).toContain('position:absolute');
+    expect(css).not.toContain('position:fixed');
+  });
+
   it('owns Escape only while an inspection is visible', () => {
     expect(shouldClearTransactionInspection('Escape', true)).toBe(true);
     expect(shouldClearTransactionInspection('Escape', false)).toBe(false);

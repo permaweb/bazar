@@ -423,7 +423,7 @@ export const RaceTooltip = styled.span<{
   $top: number;
   $below: boolean;
 }>`
-  position: fixed;
+  position: absolute;
   top: 0;
   left: 0;
   z-index: 200;
