@@ -557,28 +557,8 @@ export function FungibleAssetView({
         </div>
         <div className="asset-commerce-column asset-commerce-secondary">
           {collectionIndexNotice}
-          <nav className="asset-section-tabs" aria-label="Token detail sections">
-            {(['about', 'orders', 'activity'] as const).map((section) => (
-              <button
-                aria-controls={`asset-${section}`}
-                aria-current={activeSection === section ? 'true' : undefined}
-                className={activeSection === section ? 'active' : undefined}
-                key={section}
-                onClick={() => showAssetSection(section)}
-                type="button"
-              >
-                {section === 'about' ? 'Details' : section[0].toUpperCase() + section.slice(1)}
-              </button>
-            ))}
-          </nav>
           <div className="asset-accordion-list">
-            <details
-              id="asset-orders"
-              open
-              onToggle={(event) => {
-                syncActiveSection('orders', event.currentTarget.open);
-              }}
-            >
+            <details id="asset-orders" open>
               <summary>
                 <span className="asset-accordion-icon">
                   <Layers3 className="ui-icon" aria-hidden="true" />
@@ -688,12 +668,7 @@ export function FungibleAssetView({
                 </p>
               </div>
             </details>
-            <details
-              id="asset-about"
-              onToggle={(event) => {
-                syncActiveSection('about', event.currentTarget.open);
-              }}
-            >
+            <details id="asset-about">
               <summary>
                 <span className="asset-accordion-icon">
                   <Grid2X2 className="ui-icon" aria-hidden="true" />
@@ -723,12 +698,7 @@ export function FungibleAssetView({
                 </div>
               </div>
             </details>
-            <details
-              id="asset-activity"
-              onToggle={(event) => {
-                syncActiveSection('activity', event.currentTarget.open);
-              }}
-            >
+            <details id="asset-activity">
               <summary>
                 <span className="asset-accordion-icon">
                   <BarChart3 className="ui-icon" aria-hidden="true" />
