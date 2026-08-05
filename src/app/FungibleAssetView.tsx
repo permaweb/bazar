@@ -28,6 +28,7 @@ import type { CollectionActivityEvent } from 'api/asset-discovery';
 import type { AssetSummary, Collection } from 'api/collections';
 import {
   bestAskOfAsset,
+  compareOrderUnitPrice,
   licenseProperties,
   listedBalanceOf,
   liquidBalanceOf,
@@ -58,7 +59,6 @@ import {
   type UnavailableOperationRecovery,
 } from 'components/UnavailableOperationRecovery';
 import { WalletAddress, WalletIdentity } from 'components/WalletAddress';
-import { optionalMotionBehavior } from 'helpers/motion';
 import { useWallet } from 'providers/WalletProvider';
 import { useDialogFocus } from './useDialogFocus';
 import {
@@ -175,7 +175,7 @@ export function FungibleAssetView({
     () => resumeButtonRef.current ?? operationFocusFallbackRef.current,
     [],
   );
-  const [activeSection, setActiveSection] = React.useState<'about' | 'orders' | 'activity' | null>('orders');
+  const [selectedOrderCount, setSelectedOrderCount] = React.useState(1);
   const [orderReveal, setOrderReveal] = React.useState({ assetId: asset.id, limit: 50 });
   const orderRevealStatusRef = React.useRef<HTMLParagraphElement>(null);
   const [storageVersion, setStorageVersion] = React.useState(0);
@@ -183,9 +183,11 @@ export function FungibleAssetView({
   const orderLimit = orderReveal.assetId === asset.id ? orderReveal.limit : 50;
   const visibleOrderRows = visibleOrderbookRows(orders, orderLimit);
   const openOrders = openOrdersOfAsset(state);
-  const purchasableOrders = openOrders.filter(
-    (order) => order.creator !== wallet.address && order.recipient !== wallet.address,
+  const purchasableOrders = lowestCostOrders(
+    openOrders.filter((order) => order.creator !== wallet.address && order.recipient !== wallet.address),
+    openOrders.length,
   );
+  const selectedOrders = lowestCostOrders(purchasableOrders, selectedOrderCount);
   const liquid = wallet.address ? liquidBalanceOf(state, wallet.address) : '0';
   const listed = wallet.address ? listedBalanceOf(state, wallet.address) : '0';
   const ticker = state.ticker || 'TOKEN';
@@ -374,15 +376,6 @@ export function FungibleAssetView({
     }
   }, [asset.id, openOperation, operation, purchaseKey, recoverySuppressed, state, storageVersion, wallet.address]);
 
-  const showAssetSection = (section: 'about' | 'orders' | 'activity') => {
-    setActiveSection(section);
-    const target = document.getElementById(`asset-${section}`);
-    if (target instanceof HTMLDetailsElement) target.open = true;
-    window.requestAnimationFrame(() => target?.scrollIntoView({ behavior: optionalMotionBehavior(), block: 'start' }));
-  };
-  const syncActiveSection = (section: 'about' | 'orders' | 'activity', open: boolean) => {
-    setActiveSection((current) => (open ? section : current === section ? null : current));
-  };
   const recoveryBlocksActions = recoverySuppressed || Boolean(unavailableRecovery);
 
   return (
@@ -496,17 +489,34 @@ export function FungibleAssetView({
                     : 'None yet'}
                 </strong>
               </div>
+              {wallet.address && purchasableOrders.length > 1 ? (
+                <FungibleOrderSlider
+                  count={selectedOrders.length}
+                  onChange={setSelectedOrderCount}
+                  orders={purchasableOrders}
+                  state={state}
+                />
+              ) : null}
               <div className="asset-commerce-actions">
                 {!wallet.address ? <ConnectWalletButton /> : null}
                 {wallet.address && purchasableOrders.length ? (
                   <button
                     className="primary with-icon"
                     disabled={recoveryBlocksActions || loading || Boolean(error)}
-                    onClick={() =>
-                      openOperation({ kind: 'buy', availableOrders: purchasableOrders, startingBalance: liquid })
-                    }
+                    onClick={() => {
+                      if (!selectedOrders.length) return;
+                      openOperation({
+                        kind: 'buy',
+                        availableOrders: purchasableOrders,
+                        selectedOrders,
+                        startingBalance: liquid,
+                      });
+                    }}
                   >
-                    <ShoppingCart className="ui-icon ui-icon--sm" aria-hidden="true" /> Buy from order book
+                    <ShoppingCart className="ui-icon ui-icon--sm" aria-hidden="true" />{' '}
+                    {purchasableOrders.length > 1
+                      ? `Review ${selectedOrders.length} ${selectedOrders.length === 1 ? 'listing' : 'listings'}`
+                      : 'Buy from order book'}
                   </button>
                 ) : null}
                 {wallet.address && BigInt(liquid) > 0n ? (
@@ -837,6 +847,7 @@ function FungibleOperationDialog({
       operation.kind === 'buy' ? operation.resume : undefined,
     ],
   );
+  const checkoutMode = operation.kind === 'buy' && initialSelected.length > 0;
   const initialQuantity = initialSelected.length
     ? formatTokenAmount(
         initialSelected.reduce((total, order) => total + BigInt(order.quantity), 0n).toString(),
@@ -1580,7 +1591,9 @@ function FungibleOperationDialog({
     : [];
   const formError =
     operation.kind === 'buy' && !matchedOrders.length
-      ? automaticMatchResult.error ||
+      ? checkoutMode
+        ? 'Your purchase overview is empty. Close this checkout and choose a listing to continue.'
+        : automaticMatchResult.error ||
         (quantity
           ? `No complete-listing combination totals ${quantity} ${ticker}. Choose listings instead.`
           : 'Enter an amount to buy, or choose listings directly.')
@@ -1684,7 +1697,7 @@ function FungibleOperationDialog({
                 <strong>{recoveryApprovalCount}</strong>
               </div>
             </div>
-            <MatchedListingsReview matchMode="lots" orders={visibleOrders} state={state} />
+            <MatchedListingsReview orders={visibleOrders} state={state} />
             <button className="primary wide" data-dialog-initial onClick={() => void submit()} type="button">
               Continue with {recoveryApprovalCount} new {recoveryApprovalCount === 1 ? 'approval' : 'approvals'}
             </button>
@@ -1847,36 +1860,38 @@ function FungibleOperationDialog({
               ) : null}
               {operation.kind === 'buy' ? (
                 <>
-                  <div className="order-match-mode" role="group" aria-label="Order matching method">
-                    <button
-                      aria-pressed={matchMode === 'amount'}
-                      className={matchMode === 'amount' ? 'active' : undefined}
-                      onClick={() => {
-                        setMatchMode('amount');
-                        setManualOrderIds([]);
-                        setActiveLotIndex(0);
-                        setLotPickerLimit(LOT_PICKER_PAGE_SIZE);
-                      }}
-                      type="button"
-                    >
-                      Buy exact amount
-                    </button>
-                    <button
-                      aria-pressed={matchMode === 'lots'}
-                      className={matchMode === 'lots' ? 'active' : undefined}
-                      onClick={() => {
-                        const selected = automaticMatch?.orders ?? [];
-                        setMatchMode('lots');
-                        setManualOrderIds(selected.map((order) => order.orderId));
-                        setActiveLotIndex(0);
-                        setLotPickerLimit(LOT_PICKER_PAGE_SIZE);
-                      }}
-                      type="button"
-                    >
-                      Choose listings
-                    </button>
-                  </div>
-                  {matchMode === 'amount' ? (
+                  {!checkoutMode ? (
+                    <div className="order-match-mode" role="group" aria-label="Order matching method">
+                      <button
+                        aria-pressed={matchMode === 'amount'}
+                        className={matchMode === 'amount' ? 'active' : undefined}
+                        onClick={() => {
+                          setMatchMode('amount');
+                          setManualOrderIds([]);
+                          setActiveLotIndex(0);
+                          setLotPickerLimit(LOT_PICKER_PAGE_SIZE);
+                        }}
+                        type="button"
+                      >
+                        Buy exact amount
+                      </button>
+                      <button
+                        aria-pressed={matchMode === 'lots'}
+                        className={matchMode === 'lots' ? 'active' : undefined}
+                        onClick={() => {
+                          const selected = automaticMatch?.orders ?? [];
+                          setMatchMode('lots');
+                          setManualOrderIds(selected.map((order) => order.orderId));
+                          setActiveLotIndex(0);
+                          setLotPickerLimit(LOT_PICKER_PAGE_SIZE);
+                        }}
+                        type="button"
+                      >
+                        Choose listings
+                      </button>
+                    </div>
+                  ) : null}
+                  {!checkoutMode && matchMode === 'amount' ? (
                     <>
                       <label>
                         Amount to buy
@@ -1894,7 +1909,7 @@ function FungibleOperationDialog({
                         Uses the lowest-priced combination of complete listings. Listings cannot be partially filled.
                       </p>
                     </>
-                  ) : (
+                  ) : !checkoutMode ? (
                     <div className="lot-picker">
                       <div>
                         <strong>Available listings</strong>
@@ -1969,7 +1984,7 @@ function FungibleOperationDialog({
                         </div>
                       ) : null}
                     </div>
-                  )}
+                  ) : null}
                   {formError ? (
                     <p
                       id={`${amountGuidanceId}-error`}
@@ -2031,10 +2046,10 @@ function FungibleOperationDialog({
                       </div>
                     </div>
                   ) : null}
-                  {matchedOrders.length ? (
+                  {checkoutMode || matchedOrders.length ? (
                     <MatchedListingsReview
                       key={matchedOrders.map((order) => order.orderId).join(':')}
-                      matchMode={matchMode}
+                      onRemove={checkoutMode ? chooseLot : undefined}
                       orders={matchedOrders}
                       state={state}
                     />
@@ -2399,31 +2414,116 @@ export function FungibleOperationErrorAlert({ message }: { message: string }) {
 }
 
 export function MatchedListingsReview({
-  matchMode,
+  onRemove,
   orders,
   state,
 }: {
-  matchMode: 'amount' | 'lots';
+  onRemove?(order: SwapOrder): void;
   orders: SwapOrder[];
   state: AssetState;
 }) {
   return (
-    <details className="matched-listings" open={orders.length <= 4}>
-      <summary>
-        Review {orders.length} {matchMode === 'amount' ? 'matched' : 'selected'}{' '}
-        {orders.length === 1 ? 'listing' : 'listings'}
-      </summary>
-      <ul aria-label="Exact matched seller addresses" tabIndex={0}>
-        {orders.map((order) => (
-          <li key={order.orderId}>
-            <span>
-              {tokenLabel(order.quantity, state)} · {winstonToAr(order.asking)} AR
-            </span>
-            <WalletIdentity address={order.creator} />
-          </li>
-        ))}
-      </ul>
-    </details>
+    <section aria-label="Purchase overview" className="matched-listings">
+      <div className="matched-listings-heading">
+        <strong>Purchase overview</strong>
+        <span>
+          {orders.length} {orders.length === 1 ? 'listing' : 'listings'}
+        </span>
+      </div>
+      {orders.length ? (
+        <ul aria-label="Exact matched seller addresses" tabIndex={orders.length > 4 ? 0 : undefined}>
+          {orders.map((order) => (
+            <li key={order.orderId}>
+              <span>
+                <strong>{tokenLabel(order.quantity, state)}</strong>
+                <small>
+                  {orderPriceLabel(order, state)} · {winstonToAr(order.asking)} AR total
+                </small>
+              </span>
+              <WalletIdentity address={order.creator} />
+              {onRemove ? (
+                <button
+                  aria-label={`Remove ${fungibleListingAccessibleLabel(order, state)} from purchase`}
+                  onClick={() => onRemove(order)}
+                  type="button"
+                >
+                  Remove
+                </button>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="matched-listings-empty">Your purchase overview is empty.</p>
+      )}
+    </section>
+  );
+}
+
+export function lowestCostOrders(orders: SwapOrder[], count: number) {
+  const limit = Math.min(Math.max(0, Math.floor(count)), orders.length);
+  return [...orders]
+    .sort((left, right) => {
+      const costDifference = BigInt(left.asking) - BigInt(right.asking);
+      if (costDifference !== 0n) return costDifference < 0n ? -1 : 1;
+      return compareOrderUnitPrice(left, right);
+    })
+    .slice(0, limit);
+}
+
+export function FungibleOrderSlider({
+  count,
+  onChange,
+  orders,
+  state,
+}: {
+  count: number;
+  onChange(count: number): void;
+  orders: SwapOrder[];
+  state: AssetState;
+}) {
+  if (orders.length < 2) return null;
+  const prioritized = lowestCostOrders(orders, orders.length);
+  const selectedCount = Math.min(Math.max(1, Math.floor(count)), prioritized.length);
+  const selected = prioritized.slice(0, selectedCount);
+  const addedOrder = selected[selected.length - 1];
+  const selectedQuantity = selected.reduce((total, order) => total + BigInt(order.quantity), 0n);
+  const selectedAsking = selected.reduce((total, order) => total + BigInt(order.asking), 0n);
+  const accessibleValue = `${selectedCount} ${selectedCount === 1 ? 'listing' : 'listings'} selected. Adding order ${selectedCount} of ${prioritized.length}: ${fungibleListingAccessibleLabel(addedOrder, state)}`;
+
+  return (
+    <div className="order-slider">
+      <label className="order-slider-control">
+        <span>Lowest cost first</span>
+        <input
+          aria-label="Listings to add"
+          aria-valuetext={accessibleValue}
+          max={prioritized.length}
+          min={1}
+          onChange={(event) => onChange(Number(event.target.value))}
+          step={1}
+          type="range"
+          value={selectedCount}
+        />
+        <output aria-live="polite">
+          {selectedCount} / {prioritized.length}
+        </output>
+      </label>
+      <div className="order-slider-summary" aria-live="polite">
+        <span>
+          <small>Adding order {selectedCount}</small>
+          <strong>
+            {tokenLabel(addedOrder.quantity, state)} at {orderPriceLabel(addedOrder, state)}
+          </strong>
+        </span>
+        <span>
+          <small>Checkout total</small>
+          <strong>
+            {tokenLabel(selectedQuantity.toString(), state)} · {winstonToAr(selectedAsking.toString())} AR
+          </strong>
+        </span>
+      </div>
+    </div>
   );
 }
 

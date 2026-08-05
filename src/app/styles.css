@@ -2910,6 +2910,103 @@ input:focus {
   line-height: 1.05;
   letter-spacing: -0.025em;
 }
+.order-slider {
+  margin-top: 12px;
+  display: grid;
+  gap: 7px;
+}
+.order-slider-control {
+  min-width: 0;
+  min-height: 42px;
+  padding: 8px 11px;
+  display: grid;
+  grid-template-columns: auto minmax(80px, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  border-radius: 9px;
+  background: #ececea;
+}
+.order-slider-control > span,
+.order-slider-control output {
+  color: var(--ink);
+  font-size: var(--type-body);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.order-slider-control > span {
+  color: var(--muted);
+  font-weight: 400;
+}
+.order-slider-control output {
+  min-width: 3.4em;
+  font-weight: 400;
+  text-align: right;
+}
+.order-slider-control input[type='range'] {
+  width: 100%;
+  min-width: 0;
+  height: 24px;
+  margin: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  border: 0;
+  background:
+    repeating-linear-gradient(90deg, transparent 0 31px, rgba(69, 69, 66, 0.13) 31px 32px),
+    linear-gradient(90deg, #cfcfcb, #cfcfcb) center / 100% 1px no-repeat;
+  cursor: pointer;
+}
+.order-slider-control input[type='range']::-webkit-slider-thumb {
+  width: 4px;
+  height: 23px;
+  appearance: none;
+  -webkit-appearance: none;
+  border: 0;
+  border-radius: 2px;
+  background: #777773;
+  box-shadow: 0 0 0 5px rgba(236, 236, 234, 0.72);
+}
+.order-slider-control input[type='range']::-moz-range-track {
+  height: 1px;
+  border: 0;
+  background: #cfcfcb;
+}
+.order-slider-control input[type='range']::-moz-range-thumb {
+  width: 4px;
+  height: 23px;
+  border: 0;
+  border-radius: 2px;
+  background: #777773;
+}
+.order-slider-control input[type='range']:focus-visible {
+  outline: 2px solid #756e65;
+  outline-offset: 3px;
+}
+.order-slider-summary {
+  margin: 0 3px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.order-slider-summary > span {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.order-slider-summary > span:last-child {
+  text-align: right;
+}
+.order-slider-summary small {
+  color: var(--muted);
+  font-size: var(--type-small, var(--type-body-sm));
+}
+.order-slider-summary strong {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: var(--type-small, var(--type-body-sm));
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .asset-commerce-actions {
   margin-top: 16px;
   display: grid;
@@ -3714,12 +3811,19 @@ input:focus {
   border-radius: 8px;
   background: var(--panel);
 }
-.matched-listings summary {
+.matched-listings-heading {
   padding: 11px 14px;
-  cursor: pointer;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
   color: var(--ink);
-  font-size: 0.75rem;
-  font-weight: 650;
+  font-size: var(--type-body);
+  font-weight: 400;
+}
+.matched-listings-heading > span {
+  color: var(--muted);
+  font-size: var(--type-small, var(--type-body-sm));
 }
 .matched-listings ul {
   max-height: min(300px, 40dvh);
@@ -3734,20 +3838,47 @@ input:focus {
 }
 .matched-listings li {
   padding: 7px 0;
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
   gap: 16px;
   border-top: 1px solid var(--line);
   color: var(--muted);
-  font-size: 0.72rem;
+  font-size: var(--type-body);
 }
 .matched-listings li > span:first-child {
-  flex: 0 0 auto;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.matched-listings li > span:first-child small {
+  overflow: hidden;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .matched-listings a {
   flex: 0 0 auto;
   color: var(--ink);
   text-underline-offset: 3px;
+}
+.matched-listings button {
+  min-height: 34px;
+  padding: 6px 10px;
+  color: var(--muted);
+  background: #fff;
+  font-size: var(--type-small, var(--type-body-sm));
+}
+.matched-listings button:hover {
+  color: var(--negative);
+  border-color: color-mix(in srgb, var(--negative) 45%, var(--line));
+}
+.matched-listings-empty {
+  margin: 0;
+  padding: 14px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: var(--type-body);
 }
 .field-help {
   min-height: 1.1em;

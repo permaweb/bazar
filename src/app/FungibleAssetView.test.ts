@@ -11,6 +11,7 @@ import {
   batchRecoveryIdentity,
   batchSettlementSummary,
   fungibleOrderActionLabel,
+  FungibleOrderSlider,
   fungibleListingAccessibleLabel,
   FungibleOperationErrorAlert,
   FungibleSettlementRecoveryPanel,
@@ -23,6 +24,7 @@ import {
   fungibleWorkingIntro,
   isRecoverableBatch,
   latestRecoverableSnapshot,
+  lowestCostOrders,
   LOT_PICKER_PAGE_SIZE,
   lotOptionTabIndex,
   nextLotPickerLimit,
@@ -42,6 +44,37 @@ const REGISTRATION_ID = 'r'.repeat(43);
 const PAYMENT_ID = 'p'.repeat(43);
 
 describe('fungible operation error semantics', () => {
+  it('builds the slider cart from the lowest total cost and names the order being added', () => {
+    const orders = [
+      { orderId: '1'.repeat(43), creator: 'a'.repeat(43), quantity: '1', asking: '3000' },
+      { orderId: '2'.repeat(43), creator: 'b'.repeat(43), quantity: '2', asking: '2000' },
+      { orderId: '3'.repeat(43), creator: 'c'.repeat(43), quantity: '10', asking: '2500' },
+    ] as SwapOrder[];
+    const slider = renderToStaticMarkup(
+      React.createElement(FungibleOrderSlider, {
+        count: 2,
+        onChange: () => undefined,
+        orders,
+        state: { denomination: 0, ticker: 'WEAVE' } as AssetState,
+      }),
+    );
+
+    expect(slider).toContain('type="range"');
+    expect(slider).toContain('min="1"');
+    expect(slider).toContain('max="3"');
+    expect(slider).toContain('value="2"');
+    expect(slider).toContain('2 / 3');
+    expect(slider).toContain('Lowest cost first');
+    expect(slider).toContain('Adding order 2');
+    expect(slider).toContain('10 WEAVE at 0.00000000025 AR / WEAVE');
+    expect(slider).toContain('12 WEAVE · 0.0000000045 AR');
+    expect(slider).toContain('aria-valuetext="2 listings selected. Adding order 2 of 3:');
+    expect(lowestCostOrders(orders, 2).map((order) => order.orderId)).toEqual([
+      '2'.repeat(43),
+      '3'.repeat(43),
+    ]);
+  });
+
   it('counts only the new wallet approvals missing from a recovered batch', () => {
     expect(
       batchPurchaseRecoveryApprovalCount([
@@ -123,15 +156,34 @@ describe('fungible operation error semantics', () => {
     })) as SwapOrder[];
     const review = renderToStaticMarkup(
       React.createElement(MatchedListingsReview, {
-        matchMode: 'amount',
         orders,
         state: { denomination: 0, ticker: 'WEAVE' } as AssetState,
       }),
     );
-    expect(review).toContain('Review 512 matched listings');
+    expect(review).toContain('Purchase overview');
+    expect(review).toContain('512 listings');
     expect(review).toContain('aria-label="Exact matched seller addresses"');
     expect(review.match(/tabindex="0"/g)).toHaveLength(1);
     expect(review).toContain(orders[511].creator);
+  });
+
+  it('renders checkout listings without tabs and exposes a remove action for each lot', () => {
+    const orders = [
+      { orderId: '1'.repeat(43), creator: 'a'.repeat(43), quantity: '1', asking: '1000' },
+      { orderId: '2'.repeat(43), creator: 'b'.repeat(43), quantity: '2', asking: '2000' },
+    ] as SwapOrder[];
+    const overview = renderToStaticMarkup(
+      React.createElement(MatchedListingsReview, {
+        onRemove: () => undefined,
+        orders,
+        state: { denomination: 0, ticker: 'WEAVE' } as AssetState,
+      }),
+    );
+
+    expect(overview).toContain('aria-label="Purchase overview"');
+    expect(overview).not.toContain('role="tablist"');
+    expect(overview).not.toContain('<details');
+    expect(overview.match(/>Remove<\/button>/g)).toHaveLength(2);
   });
 
   it('keeps interactive settlement recovery outside the assertive alert summary', () => {
