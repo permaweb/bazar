@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const control = vi.hoisted(() => ({
   dispatchAborted: false,
+  networkOptions: undefined as Record<string, unknown> | undefined,
   networkStopped: false,
   watcherStopped: false,
   outcome: 'timeout' as 'timeout' | 'settled',
@@ -10,6 +11,9 @@ const control = vi.hoisted(() => ({
 
 vi.mock('./arweave-observers', () => ({
   ArweaveObserverNetwork: class {
+    constructor(options: Record<string, unknown>) {
+      control.networkOptions = options;
+    }
     async ready() {}
     watch() {
       return {
@@ -58,10 +62,35 @@ import { dispatchAndConfirm } from './asset-transactions';
 describe('transaction dispatch observation', () => {
   beforeEach(() => {
     control.dispatchAborted = false;
+    control.networkOptions = undefined;
     control.networkStopped = false;
     control.watcherStopped = false;
     control.outcome = 'timeout';
     control.listeners.clear();
+    vi.stubGlobal('window', {
+      location: {
+        protocol: 'https:',
+        hostname: 'lcno4nkkk4gsb5krqpa6irlzbuurmnzk4entikswauifsbryldfa.arweave.net',
+        port: '',
+        search: '',
+        hash: '',
+      },
+    });
+  });
+
+  it('relays deployment observer requests through the serving HyperBEAM gateway', async () => {
+    const transaction = {
+      id: 'qAhWNMSuX70lZpIRohKJn_SuVcymr_RmpGbltydjpwA',
+      dispatch: async () => undefined,
+    };
+
+    await expect(dispatchAndConfirm(transaction as any)).rejects.toThrow('transaction-propagation-timeout');
+    expect(control.networkOptions).toMatchObject({
+      node: 'https://arweave.net',
+      minObservers: 3,
+      maxObservers: 12,
+      'relay-with': 'https://arweave.net',
+    });
   });
 
   it('terminates a hung dispatch when transaction observation times out', async () => {

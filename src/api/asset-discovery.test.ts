@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { Collection } from './collections';
 import {
+  bazarAtomicAssetFromState,
   createWalletCandidateScan,
   discoverWalletAssetCandidates,
   discoverCollectionActivity,
@@ -1258,6 +1259,93 @@ describe('live candidate resolution', () => {
     expect(results).toHaveLength(1);
     expect(results[0].asset).toMatchObject({ id: unloaded, name: 'Page two token', ticker: 'PAGE2' });
     expect(results[0].collection.kind).toBe('tokens');
+  });
+
+  it('verifies and reconstructs Bazar one-of-one assets without origin-local collection storage', async () => {
+    const processId = 'U'.repeat(43);
+    const mediaId = 'M'.repeat(43);
+    const candidate: AssetCandidate = {
+      processId,
+      height: 10,
+      timestamp: 20,
+      sources: ['initial-holder'],
+      processDevice: 'process@1.0',
+      device: 'token@1.0',
+      swapDevice: 'arweave-swap@1.0',
+      schedulerDevice: 'arweave-scheduler@1.0',
+      schedulerMode: 'all',
+      collection: 'Portable collection',
+    };
+    const tokenCollection: Collection = {
+      id: 'fungible-tokens',
+      name: 'Tokens',
+      description: 'Tokens',
+      kind: 'tokens',
+      assets: [],
+    };
+    const processTags = [
+      ['App-Name', 'Bazar'],
+      ['device', 'process@1.0'],
+      ['execution-device', 'token@1.0'],
+      ['swap-device', 'arweave-swap@1.0'],
+      ['scheduler-device', 'arweave-scheduler@1.0'],
+      ['scheduler-mode', 'all'],
+      ['initial-holder', wallet],
+      ['total-supply', '1'],
+      ['denomination', '0'],
+      ['ticker', 'ASSET'],
+      ['name', 'Portable asset'],
+      ['collection', 'Portable collection'],
+      ['asset-content-type', 'image/png'],
+      ['asset-data', mediaId],
+    ].map(([name, value]) => ({ name, value }));
+    const fetcher = vi.fn(async () =>
+      Response.json({
+        data: {
+          fungible: { pageInfo: { hasNextPage: false }, edges: [] },
+          atomic: {
+            pageInfo: { hasNextPage: false },
+            edges: [{ cursor: 'atomic', node: { id: processId, tags: processTags } }],
+          },
+        },
+      }),
+    );
+
+    expect(restrictAssetCandidates([candidate], [tokenCollection])).toEqual([candidate]);
+    const verification = await verifyAssetCandidateSupport([candidate], [tokenCollection], {
+      fetch: fetcher as typeof fetch,
+    });
+    expect(verification).toEqual({ supported: [candidate], unavailable: [] });
+    const state = parseAssetState({
+      device: 'process@1.0',
+      'execution-device': 'token@1.0',
+      'swap-device': 'arweave-swap@1.0',
+      'scheduler-device': 'arweave-scheduler@1.0',
+      'scheduler-mode': 'all',
+      ticker: 'ASSET',
+      name: 'Portable asset',
+      collection: 'Portable collection',
+      'asset-content-type': 'image/png',
+      'asset-data': mediaId,
+      'total-supply': '1',
+      denomination: 0,
+      balances: { [wallet]: '1' },
+      orders: {},
+    });
+    expect(bazarAtomicAssetFromState(processId, state)).toMatchObject({
+      asset: { id: processId, name: 'Portable asset', contentType: 'image/png' },
+      collection: { id: 'created-assets', name: 'Portable collection' },
+    });
+    await expect(
+      resolveAssetCandidates(verification.supported, [tokenCollection], {
+        read: async () => ({ provider: 'https://compute.example', state }),
+      }),
+    ).resolves.toMatchObject([
+      {
+        asset: { id: processId, name: 'Portable asset' },
+        collection: { id: 'created-assets', name: 'Portable collection' },
+      },
+    ]);
   });
 
   it('batch-rejects unindexed transfer spam before any live compute read', async () => {

@@ -1,4 +1,5 @@
 import { collectionAsset, type AssetSummary, type Collection } from './collections';
+import { assetFromMintState, CREATED_COLLECTION_ID, CREATED_COLLECTION_NAME } from './asset-mint';
 import { PAGINATED_GRAPHQL } from 'helpers/config';
 import {
   liveOrderOfAsset,
@@ -17,6 +18,7 @@ const ARWEAVE_GRAPHQL_ID_BATCH_SIZE = 9;
 const MAX_GRAPHQL_PAGES = 1_000;
 const WALLET_HEAD_CATCH_UP_PAGES_PER_PASS = 20;
 const ASSET_SUPPORT_CONCURRENCY = 2;
+const IMAGE_CONTENT_TYPES = new Set(['image/gif', 'image/jpeg', 'image/png', 'image/webp']);
 export const ASSET_RESOLUTION_CONCURRENCY = 8;
 
 export type AssetCandidate = {
@@ -229,13 +231,11 @@ const VERIFY_PROCESS_DEVICES_QUERY = `query VerifyAssetProcesses(
 	}
 }`;
 
-const VERIFY_FUNGIBLE_PROCESSES_QUERY = `query VerifyFungibleProcesses(
-	$cursor: String
+const VERIFY_ASSET_PROCESSES_QUERY = `query VerifyAssetProcesses(
 	$ids: [ID!]!
 ) {
-	transactions(
+	fungible: transactions(
 		first: ${GRAPHQL_PAGE_SIZE}
-		after: $cursor
 		ids: $ids
 		tags: [
 			{ name: "device", values: ["process@1.0"] }
@@ -248,6 +248,24 @@ const VERIFY_FUNGIBLE_PROCESSES_QUERY = `query VerifyFungibleProcesses(
 	) {
 		pageInfo { hasNextPage }
 		edges { cursor node { id } }
+	}
+	atomic: transactions(
+		first: ${GRAPHQL_PAGE_SIZE}
+		ids: $ids
+		tags: [
+			{ name: "App-Name", values: ["Bazar"] }
+			{ name: "device", values: ["process@1.0"] }
+			{ name: "execution-device", values: ["token@1.0"] }
+			{ name: "swap-device", values: ["arweave-swap@1.0"] }
+			{ name: "scheduler-device", values: ["arweave-scheduler@1.0"] }
+			{ name: "scheduler-mode", values: ["all"] }
+			{ name: "total-supply", values: ["1"] }
+			{ name: "denomination", values: ["0"] }
+			{ name: "ticker", values: ["ASSET"] }
+		]
+	) {
+		pageInfo { hasNextPage }
+		edges { cursor node { id tags { name value } } }
 	}
 }`;
 
@@ -834,10 +852,7 @@ function restrictAssetCandidatesWithIndex(candidates: AssetCandidate[], index: C
       return !candidate.collection || candidate.collection === collection.name;
     }
     return Boolean(
-      index.tokens &&
-      candidate.assetType === 'fungible' &&
-      candidate.swapDevice === 'arweave-swap@1.0' &&
-      candidate.schedulerDevice === 'arweave-scheduler@1.0',
+      index.tokens && (candidateMatchesFungibleContract(candidate) || candidateMatchesAtomicContract(candidate)),
     );
   });
 }
@@ -869,37 +884,46 @@ export async function verifyAssetCandidateSupport(
   let nextChunk = 0;
   const verifyChunk = async (chunk: string[]) => {
     const requested = new Set(chunk);
-    let cursor: string | null = null;
-    const visited = new Set<string>();
-    while (true) {
-      options.signal?.throwIfAborted();
-      const { response, body: payload } = await fetchJsonWithDeadline<any>(
-        fetcher,
-        graphql,
-        {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({
-            query: VERIFY_FUNGIBLE_PROCESSES_QUERY,
-            variables: { cursor, ids: chunk },
-          }),
-          signal: options.signal,
-        },
-        {
-          timeoutMs: options.requestTimeoutMs,
-          timeoutError: 'asset-support-graphql-timeout',
-        },
-      );
-      if (!response.ok) throw new Error(`asset-support-graphql-${response.status}`);
-      if (!payload) throw new Error('asset-support-graphql-empty');
-      if (payload.errors?.length) throw new Error('asset-support-graphql-error');
-      const connection = decodeGraphqlConnection(payload, 'transactions', 'asset-support-graphql-schema');
-      for (const edge of connection.edges) {
-        if (!requested.has(edge.node.id)) throw new Error('asset-support-graphql-schema');
-        verified.add(edge.node.id);
+    options.signal?.throwIfAborted();
+    const { response, body: payload } = await fetchJsonWithDeadline<any>(
+      fetcher,
+      graphql,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ query: VERIFY_ASSET_PROCESSES_QUERY, variables: { ids: chunk } }),
+        signal: options.signal,
+      },
+      {
+        timeoutMs: options.requestTimeoutMs,
+        timeoutError: 'asset-support-graphql-timeout',
+      },
+    );
+    if (!response.ok) throw new Error(`asset-support-graphql-${response.status}`);
+    if (!payload) throw new Error('asset-support-graphql-empty');
+    if (payload.errors?.length) throw new Error('asset-support-graphql-error');
+    // `transactions` keeps older callers and focused mocks compatible while deployed
+    // GraphQL responses use the two explicit contract aliases.
+    const fungible = decodeGraphqlConnection(
+      payload,
+      payload.data?.fungible ? 'fungible' : 'transactions',
+      'asset-support-graphql-schema',
+    );
+    const atomic = payload.data?.atomic
+      ? decodeGraphqlConnection(payload, 'atomic', 'asset-support-graphql-schema')
+      : { pageInfo: { hasNextPage: false }, edges: [] };
+    if (fungible.pageInfo.hasNextPage || atomic.pageInfo.hasNextPage) {
+      throw new Error('asset-support-pagination-stalled');
+    }
+    for (const edge of fungible.edges) {
+      if (!requested.has(edge.node.id)) throw new Error('asset-support-graphql-schema');
+      verified.add(edge.node.id);
+    }
+    for (const edge of atomic.edges) {
+      if (!requested.has(edge.node.id) || !atomicProcessNode(edge.node)) {
+        throw new Error('asset-support-graphql-schema');
       }
-      if (!connection.pageInfo.hasNextPage) break;
-      cursor = advanceGraphqlCursor(connection, visited, 'asset-support-pagination-stalled');
+      verified.add(edge.node.id);
     }
   };
   const workers = Array.from({ length: Math.min(ASSET_SUPPORT_CONCURRENCY, chunks.length) }, async () => {
@@ -956,6 +980,37 @@ function candidateMatchesFungibleContract(candidate: AssetCandidate): boolean {
   );
 }
 
+function candidateMatchesAtomicContract(candidate: AssetCandidate): boolean {
+  return (
+    candidate.processDevice === 'process@1.0' &&
+    candidate.device === 'token@1.0' &&
+    candidate.assetType !== 'fungible' &&
+    candidate.swapDevice === 'arweave-swap@1.0' &&
+    candidate.schedulerDevice === 'arweave-scheduler@1.0' &&
+    candidate.schedulerMode === 'all'
+  );
+}
+
+function atomicProcessNode(node: GraphqlNode): boolean {
+  const tags = Object.fromEntries((node.tags ?? []).map(({ name, value }) => [name.toLowerCase(), value]));
+  return (
+    ADDRESS.test(node.id) &&
+    tags['app-name'] === 'Bazar' &&
+    tags.device === 'process@1.0' &&
+    tags['execution-device'] === 'token@1.0' &&
+    tags['swap-device'] === 'arweave-swap@1.0' &&
+    tags['scheduler-device'] === 'arweave-scheduler@1.0' &&
+    tags['scheduler-mode'] === 'all' &&
+    tags['total-supply'] === '1' &&
+    tags.denomination === '0' &&
+    tags.ticker === 'ASSET' &&
+    ADDRESS.test(tags['initial-holder'] ?? '') &&
+    ADDRESS.test(tags['asset-data'] ?? '') &&
+    IMAGE_CONTENT_TYPES.has(tags['asset-content-type']) &&
+    Boolean(tags.name?.trim())
+  );
+}
+
 export type WalletAssetGroup = 'owned' | 'listed';
 
 export function walletAssetGroups(result: ResolvedAsset, address: string): WalletAssetGroup[] {
@@ -1003,12 +1058,50 @@ function supportedAsset(
     };
   }
 
+  const atomicAsset = bazarAtomicAssetFromState(activity.processId, computed.state);
+  if (atomicAsset) {
+    return { ...atomicAsset, state: computed.state, provider: computed.provider, activity };
+  }
+
   if (!['carrier@1.0', 'name-token@1.0'].includes(computed.state.device)) return null;
   const names = collections.find((collection) => collection.kind === 'names');
   if (!names) return null;
   const asset = collectionAsset(names, activity.processId);
   if (!asset) return null;
   return { asset, collection: names, state: computed.state, provider: computed.provider, activity };
+}
+
+export function bazarAtomicAssetFromState(
+  processId: string,
+  state: AssetState,
+): { asset: AssetSummary; collection: Collection } | null {
+  if (
+    state.device !== 'token@1.0' ||
+    state.totalSupply !== '1' ||
+    state.denomination !== 0 ||
+    state.raw.device !== 'process@1.0' ||
+    state.raw['execution-device'] !== 'token@1.0' ||
+    state.raw['swap-device'] !== 'arweave-swap@1.0' ||
+    state.raw['scheduler-device'] !== 'arweave-scheduler@1.0' ||
+    state.raw['scheduler-mode'] !== 'all' ||
+    state.raw.ticker !== 'ASSET'
+  ) {
+    return null;
+  }
+  const asset = assetFromMintState(processId, state.raw);
+  if (!asset) return null;
+  const name = String(state.raw.collection ?? '').trim() || CREATED_COLLECTION_NAME;
+  return {
+    asset,
+    collection: {
+      id: CREATED_COLLECTION_ID,
+      name,
+      description: 'One-of-one media discovered from its live Arweave process.',
+      kind: 'images',
+      assets: [asset],
+      total: 1,
+    },
+  };
 }
 
 function candidateFromNode(

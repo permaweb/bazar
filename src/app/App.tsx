@@ -50,6 +50,7 @@ import {
   type Collection,
 } from 'api/collections';
 import {
+  bazarAtomicAssetFromState,
   discoverCollectionActivity,
   discoverCollectionActivityBatched,
   discoverMarketActivity,
@@ -1418,6 +1419,12 @@ function Home() {
     return collectionMatchesSearch(collection, normalizedQuery);
   });
   const [verifiedHomeListings, setVerifiedHomeListings] = React.useState<Record<string, AssetSummary[]>>({});
+  const [portableHomeListings, setPortableHomeListings] = React.useState<ResolvedAsset[]>([]);
+  const [portableHomeListingsLoading, setPortableHomeListingsLoading] = React.useState(false);
+  const [portableHomeListingsFailure, setPortableHomeListingsFailure] = React.useState<
+    Extract<HomeMarketSummary, { status: 'unavailable' }> | undefined
+  >();
+  const [portableHomeRetry, setPortableHomeRetry] = React.useState(0);
   const assets = normalizedQuery
     ? market.collections
         .flatMap((collection) =>
@@ -1427,7 +1434,7 @@ function Home() {
         )
         .filter(({ asset, collection }) => marketplaceAssetMatchesSearch(asset, collection, normalizedQuery))
         .slice(0, 10)
-    : homeDiscoveryAssets(market.collections, verifiedHomeListings, 10);
+    : homeDiscoveryAssets(market.collections, verifiedHomeListings, 10, portableHomeListings);
   const assetKey = assets.map(({ asset }) => asset.id).join(',');
   const [assetPrices, setAssetPrices] = React.useState<Record<string, HomeMarketSummary>>({});
   const [publishedDiscoverQuery, setPublishedDiscoverQuery] = React.useState<string | null>(null);
@@ -1473,6 +1480,62 @@ function Home() {
     },
     [],
   );
+  React.useEffect(() => {
+    if (market.loading) return;
+    if (market.error) {
+      setPortableHomeListingsLoading(false);
+      return;
+    }
+    const controller = new AbortController();
+    setPortableHomeListingsLoading(true);
+    setPortableHomeListingsFailure(undefined);
+    void (async () => {
+      try {
+        const candidates = await discoverMarketActivity({ listingsOnly: true, signal: controller.signal });
+        const { unverified } = partitionAssetCandidateSupport(candidates, market.collections);
+        const verification = unverified.length
+          ? await verifyAssetCandidateSupport(unverified, market.collections, { signal: controller.signal })
+          : { supported: [], unavailable: [] };
+        const unverifiedIds = new Set(unverified.map((candidate) => candidate.processId));
+        let computeFailure: unknown;
+        const resolved = await resolveAssetCandidates(
+          verification.supported.filter((candidate) => unverifiedIds.has(candidate.processId)),
+          market.collections,
+          {
+            signal: controller.signal,
+            read: (processId, signal) => readAssetState(processId, { signal, maxAttempts: 1 }),
+            onSettled: (_result, _candidate, cause) => {
+              if (cause && computeFailure === undefined) computeFailure = cause;
+            },
+          },
+        );
+        if (controller.signal.aborted) return;
+        setPortableHomeListings(resolved.filter(isLiveListing));
+        const indexFailure = verification.unavailable[0]?.error;
+        const failure = indexFailure ?? computeFailure;
+        setPortableHomeListingsFailure(
+          failure
+            ? {
+                status: 'unavailable',
+                source: indexFailure ? 'index' : 'compute',
+                kind: marketplaceFailureKind(failure),
+              }
+            : undefined,
+        );
+      } catch (cause) {
+        if (!controller.signal.aborted) {
+          setPortableHomeListingsFailure({
+            status: 'unavailable',
+            source: 'index',
+            kind: marketplaceFailureKind(cause),
+          });
+        }
+      } finally {
+        if (!controller.signal.aborted) setPortableHomeListingsLoading(false);
+      }
+    })();
+    return () => controller.abort();
+  }, [computeGateway, market.error, market.loading, portableHomeRetry]);
   React.useEffect(() => {
     const visibleAssetIds = new Set(assets.map(({ asset }) => asset.id));
     for (const [assetId, controller] of assetSummaryControllers.current) {
@@ -1798,7 +1861,7 @@ function Home() {
     collectionFloors,
   );
   const discoverResultsPending = homeMarketHasPending(
-    market.loading || assetSummariesRetrying,
+    market.loading || assetSummariesRetrying || portableHomeListingsLoading,
     assets.map(({ asset }) => asset.id),
     assetPrices,
   );
@@ -1878,6 +1941,16 @@ function Home() {
               </div>
               {market.error ? (
                 <ErrorPanel message={market.error} onRetry={market.retry} retryLabel="Retry collections" />
+              ) : null}
+              {portableHomeListingsFailure ? (
+                <ErrorPanel
+                  message={marketplaceRequestFailureMessage(
+                    portableHomeListingsFailure.source,
+                    portableHomeListingsFailure.kind,
+                  )}
+                  onRetry={() => setPortableHomeRetry((current) => current + 1)}
+                  retryLabel="Retry public listings"
+                />
               ) : null}
               {partialTokenCollection ? (
                 <div className="collection-source-notice">
@@ -5804,8 +5877,8 @@ function AssetView() {
   const { collectionId = '', assetId = '' } = useParams();
   const market = React.useContext(MarketContext);
   const wallet = useWallet();
-  const collection = market.collections.find((item) => item.id === collectionId);
-  const indexedAsset = collection ? collectionAsset(collection, assetId) : undefined;
+  const indexedCollection = market.collections.find((item) => item.id === collectionId);
+  const indexedAsset = indexedCollection ? collectionAsset(indexedCollection, assetId) : undefined;
   const cachedAsset = React.useMemo(() => loadAssetShellSnapshot(window.sessionStorage, assetId), [assetId]);
   const [liveResult, setLiveResult] = React.useState<{
     assetId: string;
@@ -5821,8 +5894,15 @@ function AssetView() {
   const loading = liveResult.assetId !== assetId || liveResult.loading;
   const provider = liveResult.assetId === assetId ? liveResult.provider : '';
   const verifiedAt = liveResult.assetId === assetId ? liveResult.verifiedAt : null;
-  const canResolveAsset = Boolean(indexedAsset || (collection?.kind === 'tokens' && ARWEAVE_ADDRESS.test(assetId)));
-  const resolvedAsset = collection && state ? collectionAsset(collection, assetId, state) : indexedAsset;
+  const directAtomicRoute = collectionId === CREATED_COLLECTION_ID && ARWEAVE_ADDRESS.test(assetId);
+  const canResolveAsset = Boolean(
+    indexedAsset || (indexedCollection?.kind === 'tokens' && ARWEAVE_ADDRESS.test(assetId)) || directAtomicRoute,
+  );
+  const directAtomicAsset = directAtomicRoute && state ? bazarAtomicAssetFromState(assetId, state) : null;
+  const collection = indexedCollection ?? directAtomicAsset?.collection;
+  const resolvedAsset =
+    directAtomicAsset?.asset ??
+    (indexedCollection && state ? collectionAsset(indexedCollection, assetId, state) : indexedAsset);
   const shellAsset = indexedAsset ?? cachedAsset;
   React.useEffect(() => {
     if (resolvedAsset) storeAssetShellSnapshot(window.sessionStorage, resolvedAsset);
@@ -6157,11 +6237,19 @@ function AssetView() {
       localStorage.removeItem(pendingOperationKey);
     }
   }, [assetId, openOperation, operation, recoverySuppressed, state, storageVersion, wallet.address]);
-  if (!collection && market.loading) return <AssetDetailLoadingShell collectionId={collectionId} />;
+  if (!collection && (market.loading || (directAtomicRoute && loading))) {
+    return <AssetDetailLoadingShell collectionId={collectionId} error={error} onRetry={load} />;
+  }
   if (!collection && market.error)
     return (
       <RouteState title="Asset unavailable">
         <ErrorPanel message={market.error} onRetry={market.retry} retryLabel="Retry collection index" />
+      </RouteState>
+    );
+  if (!collection && directAtomicRoute && error)
+    return (
+      <RouteState title="Asset unavailable">
+        <ErrorPanel message={error} onRetry={load} retryLabel="Retry live state" />
       </RouteState>
     );
   if (!collection)
@@ -6322,9 +6410,13 @@ function AssetView() {
         <div className="asset-commerce-column asset-commerce-primary">
           <div className="asset-details asset-identity">
             <div className="asset-kicker">
-              <Link className="asset-collection-link" to={`/collection/${collection.id}`}>
-                {collection.name}
-              </Link>
+              {indexedCollection ? (
+                <Link className="asset-collection-link" to={`/collection/${collection.id}`}>
+                  {collection.name}
+                </Link>
+              ) : (
+                <span className="asset-collection-link">{collection.name}</span>
+              )}
             </div>
             <h1 ref={operationFocusFallbackRef} tabIndex={-1}>
               {asset.name}
@@ -6686,6 +6778,61 @@ type Operation =
   | { kind: 'transfer'; resumeId?: string; startingSlot?: number; value?: string }
   | { kind: 'cancel'; order: SwapOrder; resumeId?: string; startingSlot?: number }
   | { kind: 'buy'; order: SwapOrder; resume?: PurchaseSnapshot };
+
+export type AtomicPurchaseSequenceStep = {
+  key: 'sign' | 'reserve' | 'pay' | 'verify';
+  label: string;
+  state: 'done' | 'active' | 'next';
+};
+
+const ATOMIC_PAYMENT_STAGES = new Set([
+  'signing-payment',
+  'dispatching-payment',
+  'payment-propagating',
+  'payment-confirming',
+  'ownership-verifying',
+  'complete',
+]);
+
+export function atomicPurchaseSequence(state: PurchaseState | null): AtomicPurchaseSequenceStep[] {
+  const progress = [
+    Boolean(state && state.stage !== 'idle' && state.stage !== 'signing'),
+    Boolean(state && ATOMIC_PAYMENT_STAGES.has(state.stage)),
+    state?.stage === 'ownership-verifying' || state?.stage === 'complete',
+    state?.stage === 'complete',
+  ];
+  const activeIndex = progress.findIndex((complete) => !complete);
+  const steps: Array<Omit<AtomicPurchaseSequenceStep, 'state'>> = [
+    { key: 'sign', label: 'Sign reservation' },
+    { key: 'reserve', label: 'Reserve asset' },
+    { key: 'pay', label: 'Pay seller' },
+    { key: 'verify', label: 'Verify ownership' },
+  ];
+  return steps.map((step, index) => ({
+    ...step,
+    state: progress[index] ? 'done' : index === activeIndex ? 'active' : 'next',
+  }));
+}
+
+export function AtomicPurchaseSequence({ state }: { state: PurchaseState | null }) {
+  const steps = atomicPurchaseSequence(state);
+  return (
+    <section aria-label="Asset purchase transaction sequence" className="purchase-sequence">
+      <ol>
+        {steps.map((step, index) => (
+          <li className={step.state} key={step.key}>
+            <span aria-hidden="true" className="purchase-sequence-marker">
+              {step.state === 'done' ? <Check /> : index + 1}
+            </span>
+            <span className="purchase-sequence-copy">
+              <strong>{step.label}</strong>
+            </span>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
 
 function OperationDialog({
   taskId,
@@ -7359,6 +7506,9 @@ function OperationDialog({
           title={resultCopy.title}
           detail={resultCopy.detail}
         />
+        {visiblePhase === 'working' && operation.kind === 'buy' ? (
+          <AtomicPurchaseSequence state={purchaseState} />
+        ) : null}
         {visiblePhase === 'approval' && operation.kind === 'buy' ? (
           <div className="recovery-approval">
             <div>
@@ -7858,6 +8008,7 @@ export function homeDiscoveryAssets(
   collections: Collection[],
   verifiedListings: Record<string, AssetSummary[]>,
   limit: number,
+  portableListings: Array<Pick<ResolvedAsset, 'asset' | 'collection'>> = [],
 ) {
   const collectionsById = new Map(collections.map((collection) => [collection.id, collection]));
   const verified = interleaveCollectionAssets(
@@ -7873,11 +8024,10 @@ export function homeDiscoveryAssets(
     (asset, collection) => Boolean(asset.image) || collection.kind === 'tokens',
   );
   const seen = new Set<string>();
-  return [...verified, ...fallback]
-    .filter(({ asset, collection }) => {
-      const key = `${collection.id}:${asset.id}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
+  return [...portableListings, ...verified, ...fallback]
+    .filter(({ asset }) => {
+      if (seen.has(asset.id)) return false;
+      seen.add(asset.id);
       return true;
     })
     .slice(0, limit);

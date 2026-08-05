@@ -159,6 +159,32 @@ describe('Home market summary retries', () => {
     ]);
   });
 
+  it('puts verified portable listings on Discover without a collection index', () => {
+    const indexed = { id: 'i'.repeat(43), name: 'Indexed', image: 'https://arweave.net/indexed' };
+    const portable = { id: 'p'.repeat(43), name: 'Portable', image: 'https://arweave.net/portable' };
+    const indexedCollection: Collection = {
+      id: 'images',
+      name: 'Images',
+      description: '',
+      kind: 'images',
+      assets: [indexed],
+    };
+    const portableCollection: Collection = {
+      id: 'created-assets',
+      name: 'Portable collection',
+      description: '',
+      kind: 'images',
+      assets: [portable],
+    };
+
+    expect(
+      homeDiscoveryAssets([indexedCollection], {}, 10, [{ asset: portable, collection: portableCollection }]),
+    ).toEqual([
+      { asset: portable, collection: portableCollection },
+      { asset: indexed, collection: indexedCollection },
+    ]);
+  });
+
   it('sorts NFT and fungible AR price labels by their numeric amount', () => {
     expect(homeMarketPriceValue('0.000001 AR / WEAVE')).toBe(0.000001);
     expect(homeMarketPriceValue('1,234.5 AR')).toBe(1234.5);

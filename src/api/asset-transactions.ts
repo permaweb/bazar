@@ -14,6 +14,7 @@ import {
 import { GATEWAYS } from 'helpers/config';
 
 import { ArweaveObserverNetwork } from './arweave-observers';
+import { assetObserverNetworkOptions } from './asset-observers';
 import {
   assetStateSlot,
   type AssetState,
@@ -1344,11 +1345,7 @@ export async function dispatchAndConfirm(
     onConsensus?: (consensus: Consensus) => void;
   } = {},
 ): Promise<void> {
-  const network = new ArweaveObserverNetwork({
-    node: `${GATEWAYS.default.protocol}://${GATEWAYS.default.host}`,
-    minObservers: 3,
-    maxObservers: 12,
-  });
+  const network = new ArweaveObserverNetwork(assetObserverNetworkOptions());
   try {
     await network.ready();
     const watcher = network.watch(transaction.id, {

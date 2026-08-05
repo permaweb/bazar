@@ -38,6 +38,10 @@ export function atomicPurchaseStorageKey(assetId: string, buyer: string) {
   return `bazar-purchase:${assetId}:${buyer}`;
 }
 
+export function fungibleBatchStorageKey(assetId: string, buyer: string) {
+  return `bazar-purchase-batch:${assetId}:${buyer}`;
+}
+
 export function hasRecoverablePurchase(
   snapshot?: {
     registration?: { id?: string; dispatched?: boolean };

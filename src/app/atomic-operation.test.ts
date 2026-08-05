@@ -3,7 +3,9 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import {
+  AtomicPurchaseSequence,
   AtomicOperationErrorAlert,
+  atomicPurchaseSequence,
   atomicOperationFormError,
   atomicOperationStateError,
   atomicOperationValue,
@@ -92,6 +94,34 @@ describe('atomic order actions', () => {
 });
 
 describe('atomic purchase failure trace', () => {
+  it('shows NFT-specific purchase stages using the shared sequence styling', () => {
+    const steps = atomicPurchaseSequence({ stage: 'payment-confirming' } as any);
+    const sequence = renderToStaticMarkup(
+      React.createElement(AtomicPurchaseSequence, {
+        state: { stage: 'payment-confirming' } as any,
+      }),
+    );
+
+    expect(steps.map((step) => [step.key, step.label, step.state])).toEqual([
+      ['sign', 'Sign reservation', 'done'],
+      ['reserve', 'Reserve asset', 'done'],
+      ['pay', 'Pay seller', 'active'],
+      ['verify', 'Verify ownership', 'next'],
+    ]);
+    expect(sequence).toContain('aria-label="Asset purchase transaction sequence"');
+    expect(sequence).toContain('Reserve asset');
+    expect(sequence).toContain('Verify ownership');
+  });
+
+  it('keeps reservation signing active until the first NFT transaction is prepared', () => {
+    expect(atomicPurchaseSequence({ stage: 'signing' } as any).map((step) => step.state)).toEqual([
+      'active',
+      'next',
+      'next',
+      'next',
+    ]);
+  });
+
   it('resumes only orders still available to the same buyer', () => {
     const buyer = 'B'.repeat(43);
     const otherBuyer = 'C'.repeat(43);
