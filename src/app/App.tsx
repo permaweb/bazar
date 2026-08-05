@@ -21,6 +21,7 @@ import {
   Layers3,
   Library,
   LoaderCircle,
+  LogOut,
   RefreshCw,
   Search,
   Send,
@@ -616,6 +617,7 @@ function Header() {
   const inputRef = React.useRef<HTMLInputElement>(null);
   const panelInputRef = React.useRef<HTMLInputElement>(null);
   const walletButtonRef = React.useRef<HTMLButtonElement>(null);
+  const walletMenuRef = React.useRef<HTMLDivElement>(null);
   const skipNextSearchFocus = React.useRef(false);
   const suppressSearchFocusRestore = React.useRef(false);
   const releaseSearchFocusFrame = React.useRef<number>();
@@ -629,6 +631,7 @@ function Header() {
   const [searchFeedback, setSearchFeedback] = React.useState('');
   const [walletAction, setWalletAction] = React.useState<'connect' | 'disconnect' | null>(null);
   const [walletError, setWalletError] = React.useState('');
+  const [walletMenuOpen, setWalletMenuOpen] = React.useState(false);
   const normalizedQuery = query.trim().toLowerCase();
   const collectionResults = market.collections
     .filter((collection) => {
@@ -676,6 +679,25 @@ function Header() {
     return () => window.clearTimeout(timer);
   }, [searchOpen, searchResultAnnouncement]);
   React.useEffect(() => setQuery(urlQuery), [urlQuery]);
+  React.useEffect(() => setWalletMenuOpen(false), [routeKey]);
+  React.useEffect(() => {
+    if (!walletMenuOpen) return;
+    const closeOutside = (event: PointerEvent) => {
+      if (event.target instanceof Node && !walletMenuRef.current?.contains(event.target)) setWalletMenuOpen(false);
+    };
+    const closeWithEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      setWalletMenuOpen(false);
+      window.requestAnimationFrame(() => walletButtonRef.current?.focus());
+    };
+    document.addEventListener('pointerdown', closeOutside, true);
+    document.addEventListener('keydown', closeWithEscape, true);
+    return () => {
+      document.removeEventListener('pointerdown', closeOutside, true);
+      document.removeEventListener('keydown', closeWithEscape, true);
+    };
+  }, [walletMenuOpen]);
   const closeSearch = React.useCallback(
     (restoreFocus = true) => {
       if (restoreFocus) setQuery(urlQuery);
@@ -828,17 +850,6 @@ function Header() {
             >
               <Upload className="ui-icon ui-icon--sm" aria-hidden="true" />
             </Link>
-            {wallet.address ? (
-              <Link
-                aria-current={location.pathname === '/my-assets' ? 'page' : undefined}
-                className={`my-assets-link${location.pathname === '/my-assets' ? ' active' : ''}`}
-                aria-label="My assets"
-                data-tooltip="My assets"
-                to="/my-assets"
-              >
-                <Library className="ui-icon ui-icon--sm" aria-hidden="true" />
-              </Link>
-            ) : null}
             <GatewayControl />
           </div>
           <div className="site-nav-wallet">
@@ -868,31 +879,61 @@ function Header() {
               id="fungible-operation-activity-slot"
             />
             <OperationActivityControl />
-            <button
-              aria-label={
-                walletAction
-                  ? `${walletAction === 'connect' ? 'Connecting' : 'Disconnecting'} wallet${wallet.address ? ` ${wallet.address}` : ''}`
-                  : wallet.address
-                    ? `Disconnect wallet ${wallet.address}`
-                    : 'Connect wallet'
-              }
-              className="wallet"
-              disabled={walletAction !== null}
-              onClick={() => void updateWalletConnection()}
-              ref={walletButtonRef}
-              title={wallet.address || undefined}
-            >
-              <Wallet className="ui-icon ui-icon--sm" aria-hidden="true" />
-              <span>
-                {walletAction
-                  ? walletAction === 'connect'
-                    ? 'Connecting…'
-                    : 'Disconnecting…'
-                  : wallet.address
-                    ? short(wallet.address)
-                    : 'Connect'}
-              </span>
-            </button>
+            {wallet.address ? (
+              <div className="wallet-menu" ref={walletMenuRef}>
+                <button
+                  aria-controls="wallet-menu-panel"
+                  aria-expanded={walletMenuOpen}
+                  aria-label={walletAction ? `Disconnecting wallet ${wallet.address}` : `Wallet ${wallet.address}`}
+                  className="wallet"
+                  disabled={walletAction !== null}
+                  onClick={() => setWalletMenuOpen((open) => !open)}
+                  ref={walletButtonRef}
+                  title={wallet.address}
+                  type="button"
+                >
+                  <Wallet className="ui-icon ui-icon--sm" aria-hidden="true" />
+                  <span>{walletAction ? 'Disconnecting…' : short(wallet.address)}</span>
+                  <ChevronDown className="ui-icon ui-icon--xs wallet-chevron" aria-hidden="true" />
+                </button>
+                {walletMenuOpen ? (
+                  <div className="wallet-menu-panel" id="wallet-menu-panel">
+                    <Link
+                      aria-current={location.pathname === '/my-assets' ? 'page' : undefined}
+                      onClick={() => setWalletMenuOpen(false)}
+                      to="/my-assets"
+                    >
+                      <Library className="ui-icon ui-icon--sm" aria-hidden="true" />
+                      My assets
+                    </Link>
+                    <button
+                      className="wallet-menu-disconnect"
+                      disabled={walletAction !== null}
+                      onClick={() => {
+                        setWalletMenuOpen(false);
+                        void updateWalletConnection();
+                      }}
+                      type="button"
+                    >
+                      <LogOut className="ui-icon ui-icon--sm" aria-hidden="true" />
+                      Disconnect
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <button
+                aria-label={walletAction ? 'Connecting wallet' : 'Connect wallet'}
+                className="wallet"
+                disabled={walletAction !== null}
+                onClick={() => void updateWalletConnection()}
+                ref={walletButtonRef}
+                type="button"
+              >
+                <Wallet className="ui-icon ui-icon--sm" aria-hidden="true" />
+                <span>{walletAction ? 'Connecting…' : 'Connect'}</span>
+              </button>
+            )}
             {walletError ? (
               <div className="wallet-error">
                 <span role="alert">{walletError}</span>
@@ -6838,6 +6879,7 @@ function OperationDialog({
   const purchaseRef = React.useRef<SwapPurchase | null>(null);
   const networkRef = React.useRef<ArweaveObserverNetwork | null>(null);
   const claimRef = React.useRef<WalletOperationClaim | null>(null);
+  const submittedAtRef = React.useRef<number>();
   const exactActionBaselineRef = React.useRef<{ startingSlot: number } | null>(
     (operation.kind === 'cancel' || operation.kind === 'transfer') && Number.isSafeInteger(operation.startingSlot)
       ? { startingSlot: operation.startingSlot! }
@@ -6919,6 +6961,7 @@ function OperationDialog({
       setMessage(validation);
       return;
     }
+    submittedAtRef.current ??= Date.now();
     setMessage('');
     setFailureKind(null);
     setPhase('working');
@@ -7653,7 +7696,16 @@ function OperationDialog({
             {workingStatus ? <p className="scheduler-wait">{workingStatus}</p> : null}
             <ArweaveTransactionSync
               active={visible}
+              skipKind={purchaseState?.canSkip ? (purchaseState.skipKind ?? 'skip') : undefined}
+              onSkip={
+                purchaseState?.canSkip
+                  ? () => {
+                      purchaseRef.current?.skip();
+                    }
+                  : undefined
+              }
               subject={asset.name}
+              startedAt={submittedAtRef.current}
               steps={steps}
               activeStep={activeStep}
               pendingAfterConfirmation={

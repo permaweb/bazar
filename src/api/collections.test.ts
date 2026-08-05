@@ -647,6 +647,7 @@ describe('collection index loading', () => {
         const url = String(input);
         if (url.endsWith(`/tx/${referenceId}`)) {
           return Response.json({
+            data: '',
             tags: [{ name: encode('reference-value'), value: encode(manifestId) }],
           });
         }

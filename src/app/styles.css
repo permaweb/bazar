@@ -1545,6 +1545,61 @@ button[aria-disabled='true'] {
   background: var(--button-accent-hover);
   border-color: #cacac5;
 }
+.wallet[aria-expanded='true'] {
+  color: var(--ink);
+  background: var(--button-accent-hover);
+  border-color: #cacac5;
+}
+.wallet-menu {
+  position: relative;
+}
+.wallet-chevron {
+  color: var(--muted);
+  transition: transform 0.14s ease;
+}
+.wallet[aria-expanded='true'] .wallet-chevron {
+  transform: rotate(180deg);
+}
+.wallet-menu-panel {
+  position: absolute;
+  z-index: 75;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 210px;
+  padding: 6px;
+  display: grid;
+  gap: 2px;
+  border: 1px solid var(--line-dark);
+  border-radius: 9px;
+  background: var(--paper);
+  box-shadow: 0 16px 40px rgba(28, 25, 22, 0.12);
+}
+.wallet-menu-panel > :is(a, button) {
+  width: 100%;
+  min-height: 40px;
+  padding: 9px 10px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border: 0;
+  border-radius: 6px;
+  color: var(--ink);
+  background: transparent;
+  font-size: var(--type-body);
+  font-weight: 400;
+  text-align: left;
+  text-decoration: none;
+}
+.wallet-menu-panel > :is(a, button):hover:not(:disabled) {
+  background: #f5f5f3;
+}
+.wallet-menu-panel .wallet-menu-disconnect {
+  color: #a64a42;
+}
+.wallet-menu-panel .wallet-menu-disconnect:hover:not(:disabled) {
+  color: #963f38;
+  background: #fff5f3;
+}
 button.primary:hover:not(:disabled):not([aria-disabled='true']) {
   color: #fff;
   background: #35332f;
@@ -4487,6 +4542,13 @@ body input:focus-visible {
   font-size: var(--type-body);
   line-height: 1.5;
 }
+.settlement-error-detail.settlement-success-detail {
+  border-color: color-mix(in srgb, var(--positive) 38%, var(--line));
+  background: #f5fcfa;
+}
+.settlement-error-detail.settlement-success-detail p {
+  color: var(--positive-text);
+}
 .settlement-disclosure {
   margin: -2px 0 0;
   padding: 12px 14px;
@@ -4625,7 +4687,7 @@ body input:focus-visible {
     height: 44px;
   }
   .brand small,
-  .site-nav-primary > a:not(.my-assets-link),
+  .site-nav-primary > a,
   .development-wallet {
     display: none;
   }
@@ -4785,7 +4847,7 @@ body input:focus-visible {
   .brand-name {
     display: none;
   }
-  .site-nav-primary > a:not(.my-assets-link),
+  .site-nav-primary > a,
   .development-wallet {
     display: none;
   }
@@ -5088,14 +5150,6 @@ body input:focus-visible {
     padding: 0;
     justify-content: center;
   }
-  .site-nav-primary .my-assets-link {
-    width: 44px;
-    min-width: 44px;
-    min-height: 44px;
-    padding: 0;
-    justify-content: center;
-    font-size: 0;
-  }
   .gateway summary::after {
     display: none;
   }
@@ -5133,16 +5187,12 @@ body input:focus-visible {
   .wallet > span {
     display: none;
   }
+  .wallet-menu .wallet-chevron {
+    display: none;
+  }
 }
 
 @media (min-width: 360px) and (max-width: 600px) {
-  .site-nav-primary .my-assets-link {
-    width: auto;
-    min-width: 44px;
-    padding: 0 6px;
-    gap: 4px;
-    font-size: var(--type-small);
-  }
   .gateway summary {
     width: auto;
     min-width: 44px;

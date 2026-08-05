@@ -5,6 +5,7 @@ import { ServerStyleSheet, ThemeProvider } from 'styled-components';
 import { theme } from 'helpers/theme';
 import {
   createWebGLRendererSafely,
+  CableTelemetryPanel,
   shouldClearTransactionInspection,
   shouldRenderProofPins,
   TransactionRendererFallback,
@@ -39,6 +40,27 @@ function renderFallback(statusLabel: string) {
 }
 
 describe('transaction map renderer fallback', () => {
+  it('omits the raw HTTP status-count row from network telemetry', () => {
+    const markup = renderToStaticMarkup(
+      React.createElement(
+        ThemeProvider,
+        { theme },
+        React.createElement(CableTelemetryPanel, {
+          telemetry: {
+            heading: 'Network consensus',
+            liveLabel: 'Live',
+            metrics: [],
+            activityLabel: 'Recent network activity',
+            activity: [],
+            mining: { heading: 'Arweave protocol', status: 'Sampling live mining activity', metrics: [] },
+          },
+        }),
+      ),
+    );
+    expect(markup).not.toContain('HTTP 404');
+    expect(markup).toContain('Recent network activity');
+  });
+
   it('positions observer tooltips inside the transaction visualization', () => {
     const sheet = new ServerStyleSheet();
     renderToStaticMarkup(

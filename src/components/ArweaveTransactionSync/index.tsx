@@ -87,6 +87,9 @@ export type ArweaveSyncStep = {
 type Props = {
   subject: string;
   steps: ArweaveSyncStep[];
+  startedAt?: number;
+  skipKind?: 'yolo' | 'skip';
+  onSkip?: () => void;
   activeStep?: string;
   active?: boolean;
   pendingAfterConfirmation?: string;
@@ -96,12 +99,16 @@ type Props = {
 export function ArweaveTransactionSync({
   subject,
   steps,
+  startedAt,
+  skipKind,
+  onSkip,
   activeStep,
   active: renderActive = true,
   pendingAfterConfirmation,
   onProgressChange,
 }: Props) {
   const language = useLanguageProvider().strings;
+  const skipTooltipId = React.useId();
   const active = steps.find((step) => step.key === activeStep) ?? steps[0];
   const activeKey = active?.key;
   const transaction = active?.transaction;
@@ -123,6 +130,14 @@ export function ArweaveTransactionSync({
     estimatedProgress.key === progressKey ? Math.max(confirmedProgress, estimatedProgress.value) : confirmedProgress;
   const displayedProgress = Math.min(progressActive ? 99 : 100, Math.max(progressActive ? 2 : 0, continuousProgress));
   const observedSteps = useLiveObserverResponses(steps);
+  const telemetrySessionKey = transactionSyncSessionKey(observedSteps);
+  const telemetrySessionRef = React.useRef({ key: telemetrySessionKey, startedAt: startedAt ?? Date.now() });
+  if (
+    telemetrySessionRef.current.key !== telemetrySessionKey ||
+    (startedAt !== undefined && telemetrySessionRef.current.startedAt !== startedAt)
+  ) {
+    telemetrySessionRef.current = { key: telemetrySessionKey, startedAt: startedAt ?? Date.now() };
+  }
   const timelines = useObserverTimelines(observedSteps);
   const lanes = React.useMemo(() => mergeRaceLanes(observedSteps, timelines), [observedSteps, timelines]);
   const raceActive = lanes.some((lane) =>
@@ -131,10 +146,17 @@ export function ArweaveTransactionSync({
     ),
   );
   const liveAt = useRaceClock(renderActive && raceActive);
-  const protocolTelemetry = useProtocolTelemetry(observedSteps, activeKey, liveAt);
+  const protocolTelemetry = useProtocolTelemetry(
+    observedSteps,
+    activeKey,
+    liveAt,
+    telemetrySessionKey,
+    telemetrySessionRef.current.startedAt,
+  );
   const miningTelemetry = useArweaveMiningTelemetry(
     renderActive && lanes.length > 0,
-    `${subject}:${observedSteps.map((step) => step.transaction?.id ?? '').join(':')}`,
+    telemetrySessionKey,
+    telemetrySessionRef.current.startedAt,
   );
   const acceptedProofs = miningTelemetry.acceptedProofs;
   const cableLanes = React.useMemo(
@@ -168,11 +190,6 @@ export function ArweaveTransactionSync({
     heading: language.transactionSyncProtocolTelemetry,
     liveLabel: language.transactionSyncProtocolLive,
     metrics: protocolMetrics(protocolTelemetry, language),
-    statusLabel: language.transactionSyncProtocolHttp
-      .replace('{notFound}', String(protocolTelemetry.notFound))
-      .replace('{pending}', String(protocolTelemetry.pending))
-      .replace('{confirmed}', String(protocolTelemetry.confirmed))
-      .replace('{errors}', String(protocolTelemetry.errors)),
     activityLabel: language.transactionSyncProtocolRecent,
     activity: [
       ...acceptedProofs.map((proof) => ({
@@ -257,6 +274,30 @@ export function ArweaveTransactionSync({
             <span style={{ width: `${displayedProgress}%` }} />
           </S.ProgressTrack>
           {confirmationDepth >= 2 && <S.RiskNote>{localizedRisk(confirmationDepth, language)}</S.RiskNote>}
+          {skipKind && onSkip ? (
+            <S.SkipAction $warning={skipKind === 'yolo'}>
+              <span>
+                <strong>
+                  {skipKind === 'yolo'
+                    ? language.transactionSyncYoloTitle
+                    : language.transactionSyncSkipTitle.replace('{depth}', String(confirmationDepth))}
+                </strong>
+                <small>
+                  {skipKind === 'yolo'
+                    ? language.transactionSyncYoloDetail
+                    : language.transactionSyncSkipDetail}
+                </small>
+              </span>
+              <S.SkipButtonWrap>
+                <button aria-describedby={skipTooltipId} onClick={onSkip} type="button">
+                  {skipKind === 'yolo' ? language.transactionSyncYolo : language.transactionSyncSkip}
+                </button>
+                <S.SkipTooltip id={skipTooltipId} role="tooltip">
+                  {language.transactionSyncSkipTooltip}
+                </S.SkipTooltip>
+              </S.SkipButtonWrap>
+            </S.SkipAction>
+          ) : null}
         </>
       )}
       {lanes.length > 0 && (
@@ -475,10 +516,6 @@ type ProtocolTelemetry = {
   responsesPerSecond: number;
   observers: number;
   answering: number;
-  notFound: number;
-  pending: number;
-  confirmed: number;
-  errors: number;
   agreeing: number;
   eligible: number;
   stateChanges: number;
@@ -500,11 +537,12 @@ function useProtocolTelemetry(
   steps: ArweaveSyncStep[],
   activeStep: string | undefined,
   now: number,
+  sessionKey: string,
+  sessionStartedAt: number,
 ): ProtocolTelemetry {
-  const key = steps.map((step) => `${step.key}:${step.transaction?.id ?? ''}`).join('|');
   const trackerRef = React.useRef<ProtocolTelemetryTracker>({
-    key,
-    startedAt: now,
+    key: sessionKey,
+    startedAt: sessionStartedAt,
     latestResponseAt: new Map(),
     latestState: new Map(),
     latestConfirmations: new Map(),
@@ -516,11 +554,11 @@ function useProtocolTelemetry(
 
   React.useEffect(() => {
     let tracker = trackerRef.current;
-    const reset = tracker.key !== key;
+    const reset = tracker.key !== sessionKey;
     if (reset) {
       tracker = {
-        key,
-        startedAt: Date.now(),
+        key: sessionKey,
+        startedAt: sessionStartedAt,
         latestResponseAt: new Map(),
         latestState: new Map(),
         latestConfirmations: new Map(),
@@ -577,9 +615,9 @@ function useProtocolTelemetry(
       setConfirmationEvents((current) => current + addedConfirmationEvents);
       if (additions.length > 0) setRecent((current) => [...additions.reverse(), ...current].slice(0, 10));
     }
-  }, [key, steps]);
+  }, [sessionKey, sessionStartedAt, steps]);
 
-  const startedAt = trackerRef.current.key === key ? trackerRef.current.startedAt : now;
+  const startedAt = trackerRef.current.key === sessionKey ? trackerRef.current.startedAt : sessionStartedAt;
   const elapsedSeconds = Math.max(1, (now - startedAt) / 1_000);
   const active =
     steps.find((step) => step.key === activeStep) ??
@@ -598,10 +636,6 @@ function useProtocolTelemetry(
     responsesPerSecond: responses / elapsedSeconds,
     observers: observers.size,
     answering: consensus?.answering ?? views.filter((view) => view.lastSeenAt !== undefined).length,
-    notFound: views.filter((view) => view.state === 'not-found').length,
-    pending: views.filter((view) => view.state === 'pending').length,
-    confirmed: views.filter((view) => view.state === 'confirmed').length,
-    errors: views.filter((view) => Boolean(view.error)).length,
     agreeing: consensus?.agreeing ?? 0,
     eligible: consensus?.eligible ?? 0,
     stateChanges,
@@ -756,17 +790,34 @@ function durationLabel(seconds: number, language: any): string {
   );
 }
 
-function protocolActivityDetail(event: ProtocolActivity, language: any): string {
+export function protocolActivityDetail(event: ProtocolActivity, language: any): string {
   const unknown = language.transactionSyncProtocolUnknown;
   const status = event.httpStatus ?? protocolStatusForState(event.state) ?? unknown;
   const latency = event.latency === undefined ? unknown : String(Math.max(0, Math.round(event.latency)));
   const height = event.nodeHeight ?? event.blockHeight;
   return language.transactionSyncProtocolActivity
     .replace('{phase}', event.phaseLabel)
+    .replace('{state}', protocolActivityState(event, language))
     .replace('{status}', String(status))
     .replace('{latency}', latency)
     .replace('{height}', height === undefined ? unknown : height.toLocaleString())
     .replace('{depth}', String(event.confirmations));
+}
+
+function protocolActivityState(event: ProtocolActivity, language: any): string {
+  if (event.kind === 'error') return language.transactionSyncProtocolStateError;
+  if (event.state === 'not-found') return language.transactionSyncProtocolStateNotFound;
+  if (event.state === 'pending') return language.transactionSyncProtocolStatePending;
+  if (event.state === 'confirmed') return language.transactionSyncProtocolStateConfirmed;
+  if (event.state === 'gone') return language.transactionSyncProtocolStateGone;
+  return language.transactionSyncProtocolUnknown;
+}
+
+export function transactionSyncSessionKey(steps: ArweaveSyncStep[]): string {
+  return (
+    steps.find((step) => step.transaction?.id)?.transaction?.id ??
+    `pending:${steps.map((step) => step.key).join(':')}`
+  );
 }
 
 function protocolStatusForState(state: ObserverView['state']): number | undefined {
