@@ -88,7 +88,7 @@ export function MarketActivityList({
 export function marketActivityLabel(action: CollectionActivityEvent['action']) {
   return {
     'make-offer': 'Listing submitted',
-    'register-interest': 'Reservation submitted',
+    'register-interest': 'Purchase submitted',
     transfer: 'Transfer submitted',
     'cancel-order': 'Cancellation submitted',
   }[action];

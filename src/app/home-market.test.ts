@@ -16,6 +16,7 @@ import {
   homeAssetTypeMatches,
   homeSummaryRequestKeys,
   homeDiscoveryAssets,
+  homeMarketHasPending,
   homeMarketPriceValue,
   homeMarketShellLoading,
   homeMarketSummariesReady,
@@ -180,6 +181,16 @@ describe('Home market summary retries', () => {
     expect(homeMarketShellLoading(true, 0)).toBe(true);
     expect(homeMarketShellLoading(true, 1)).toBe(false);
     expect(homeMarketShellLoading(false, 0)).toBe(false);
+  });
+
+  it('keeps a trailing ghost while indexes or visible card summaries are pending', () => {
+    const summaries: Record<string, HomeMarketSummary> = {
+      ready: { status: 'resolved', value: '0.001 AR' },
+    };
+
+    expect(homeMarketHasPending(true, ['ready'], summaries)).toBe(true);
+    expect(homeMarketHasPending(false, ['ready', 'pending'], summaries)).toBe(true);
+    expect(homeMarketHasPending(false, ['ready'], summaries)).toBe(false);
   });
 
   it('keeps collection floor scans off the initial discover render path', () => {

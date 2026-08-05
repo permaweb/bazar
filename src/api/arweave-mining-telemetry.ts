@@ -19,7 +19,7 @@ export type ArweaveRecallContent = {
   kind: ArweaveRecallContentKind;
 };
 
-export const MAX_RECALL_IMAGE_PREVIEW_BYTES = 2 * 1024 * 1024;
+export const MAX_RECALL_IMAGE_PREVIEW_BYTES = 12 * 1024 * 1024;
 
 export function canPreviewRecallImage(content: ArweaveRecallContent) {
   return (
@@ -27,6 +27,51 @@ export function canPreviewRecallImage(content: ArweaveRecallContent) {
     content.contentLength !== undefined &&
     content.contentLength <= MAX_RECALL_IMAGE_PREVIEW_BYTES
   );
+}
+
+export async function fetchBoundedRecallImage(
+  content: ArweaveRecallContent,
+  signal: AbortSignal,
+  maxBytes = MAX_RECALL_IMAGE_PREVIEW_BYTES,
+): Promise<Blob | undefined> {
+  if (content.kind !== 'image' || (content.contentLength !== undefined && content.contentLength > maxBytes)) {
+    return undefined;
+  }
+  const response = await fetch(content.contentUrl, {
+    signal,
+    headers: { accept: 'image/*' },
+  });
+  if (!response.ok || !response.body) return undefined;
+  const contentType = response.headers.get('content-type') ?? content.contentType;
+  if (contentKind(contentType) !== 'image') return undefined;
+  const declaredLength = responseContentLength(response.headers);
+  if (declaredLength !== undefined && declaredLength > maxBytes) return undefined;
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel();
+        return undefined;
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  chunks.forEach((chunk) => {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  });
+  return new Blob([bytes.buffer], { type: contentType ?? 'image/*' });
 }
 
 export type ArweaveRecallSample = {
