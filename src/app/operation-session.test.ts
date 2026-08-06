@@ -16,6 +16,7 @@ import {
   operationClaimStorageKey,
   operationStorageKey,
   purchaseRecoveryApprovalCount,
+  purchaseRecoveryApprovalCopy,
   removeWalletRecordIf,
   releaseWalletOperationClaim,
   promoteWalletOperationClaim,
@@ -144,6 +145,27 @@ describe('wallet-bound operation sessions', () => {
         payment: { id: PAYMENT_ID, dispatched: false },
       }),
     ).toBe(true);
+  });
+
+  it('explains which approval is missing without implying a duplicate reservation', () => {
+    expect(purchaseRecoveryApprovalCopy({ registration: { id: REGISTRATION_ID, dispatched: true } })).toEqual({
+      title: 'Continue your purchase',
+      detail: 'Your reservation is confirmed. Approve the seller payment to continue.',
+      action: 'Approve seller payment and continue',
+    });
+    expect(purchaseRecoveryApprovalCopy({ registration: { id: REGISTRATION_ID, dispatched: false } }).detail).toBe(
+      'Your reservation is saved. Approve the seller payment to continue.',
+    );
+    expect(
+      purchaseRecoveryApprovalCopy(
+        { registration: { id: REGISTRATION_ID, dispatched: true } },
+        { externalOrigin: true },
+      ),
+    ).toEqual({
+      title: 'Continue your purchase',
+      detail: 'Close the other Bazar tab, then approve the seller payment to continue.',
+      action: 'Approve seller payment and continue',
+    });
   });
 
   it('repairs only the terminally rejected purchase leg', () => {

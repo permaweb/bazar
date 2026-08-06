@@ -70,6 +70,36 @@ export function purchaseRecoveryApprovalCount(snapshot?: PurchaseSnapshot | null
   return 2;
 }
 
+export function purchaseRecoveryApprovalCopy(
+  snapshot?: PurchaseSnapshot | null,
+  options: { externalOrigin?: boolean } = {},
+) {
+  const approvals = purchaseRecoveryApprovalCount(snapshot);
+  const hasReservation = /^[A-Za-z0-9_-]{43}$/.test(snapshot?.registration?.id ?? '');
+  if (approvals === 1 && hasReservation) {
+    if (options.externalOrigin) {
+      return {
+        title: 'Continue your purchase',
+        detail: 'Close the other Bazar tab, then approve the seller payment to continue.',
+        action: 'Approve seller payment and continue',
+      };
+    }
+    return {
+      title: 'Continue your purchase',
+      detail: snapshot?.registration?.dispatched
+        ? 'Your reservation is confirmed. Approve the seller payment to continue.'
+        : 'Your reservation is saved. Approve the seller payment to continue.',
+      action: 'Approve seller payment and continue',
+    };
+  }
+  return {
+    title: `${approvals} wallet approvals needed to resume`,
+    detail:
+      'Bazar could not recover usable signatures for the reservation or seller payment. Continuing will ask your wallet to approve both transactions before either one is submitted. Nothing will be signed or sent until you choose Continue.',
+    action: `Approve ${approvals} transactions and continue`,
+  };
+}
+
 export function shouldAutomaticallyResumePurchase(snapshot?: PurchaseSnapshot | null) {
   return hasRecoverablePurchase(snapshot) && purchaseRecoveryApprovalCount(snapshot) === 0;
 }

@@ -16,7 +16,7 @@ export type Operation =
   | { kind: 'sell'; resumeId?: string; value?: string }
   | { kind: 'transfer'; resumeId?: string; startingSlot?: number; value?: string }
   | { kind: 'cancel'; order: SwapOrder; resumeId?: string; startingSlot?: number }
-  | { kind: 'buy'; order: SwapOrder; resume?: PurchaseSnapshot };
+  | { kind: 'buy'; order: SwapOrder; resume?: PurchaseSnapshot; externalOrigin?: boolean };
 
 export type OperationActivityPhase = 'form' | 'approval' | 'working' | 'done' | 'error';
 

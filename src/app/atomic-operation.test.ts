@@ -14,7 +14,10 @@ import {
   atomicPurchaseFailureStage,
   atomicPurchaseHasTerminalReservationFailure,
   atomicPurchaseRecoveryStatus,
+  externalReservationTransaction,
+  pendingListingMessage,
 } from './App';
+import { purchaseObservationResumeState } from './purchase-observation-retry';
 
 describe('atomic operation error semantics', () => {
   it('keeps transaction recovery outside the assertive alert summary', () => {
@@ -27,6 +30,20 @@ describe('atomic operation error semantics', () => {
     expect(alert).not.toContain('<button');
     expect(alert).not.toContain('<a');
     expect(alert).toContain('The signed transaction is saved in this browser.');
+  });
+
+  it('distinguishes the connected signer from another pending listing signer', () => {
+    const signer = 'S'.repeat(43);
+    const transaction = 'T'.repeat(43);
+    const own = pendingListingMessage({ id: transaction, actor: signer, height: 12, timestamp: 1 }, signer);
+    const other = pendingListingMessage({ id: transaction, actor: 'O'.repeat(43), height: 12, timestamp: 1 }, signer);
+
+    expect(own).toBe(
+      'You already submitted listing transaction TTTTTT…TTTTT; waiting for live asset state. No new wallet approval was requested.',
+    );
+    expect(other).toBe(
+      'Another wallet OOOOOO…OOOOO submitted pending listing transaction TTTTTT…TTTTT, but it has not been accepted by live asset state. No new wallet approval was requested.',
+    );
   });
 });
 
@@ -66,6 +83,30 @@ describe('atomic order actions', () => {
     expect(atomicOrderCanBeBought({ status: 'open' } as any)).toBe(true);
     expect(atomicOrderCanBeBought({ status: 'reserved' } as any)).toBe(false);
     expect(atomicOrderCanBeBought(null)).toBe(false);
+  });
+
+  it('recovers only the exact reservation submitted by the connected buyer', () => {
+    const buyer = 'B'.repeat(43);
+    const order = {
+      orderId: 'O'.repeat(43),
+      status: 'reserved',
+      buyer,
+      deadline: 100,
+      reservedUntil: 110,
+    } as any;
+    const matching = {
+      id: 'R'.repeat(43),
+      processId: 'P'.repeat(43),
+      action: 'register-interest',
+      actor: buyer,
+      orderId: order.orderId,
+      height: 10,
+      timestamp: 20,
+    } as any;
+    expect(externalReservationTransaction(order, buyer, [matching])).toBe(matching);
+    expect(externalReservationTransaction(order, 'X'.repeat(43), [matching])).toBeNull();
+    expect(externalReservationTransaction(order, buyer, [{ ...matching, actor: 'X'.repeat(43) }])).toBeNull();
+    expect(externalReservationTransaction({ ...order, status: 'open' }, buyer, [matching])).toBeNull();
   });
 
   it('rejects stale ownership and order snapshots before approval', () => {
@@ -122,6 +163,15 @@ describe('atomic purchase failure trace', () => {
       'next',
       'next',
     ]);
+  });
+
+  it('shows a recovered reservation at the reserve step while its observations rebuild', () => {
+    const recovered = purchaseObservationResumeState({
+      registration: { id: 'R'.repeat(43), dispatched: true },
+      payment: { id: 'P'.repeat(43), dispatched: false },
+    });
+
+    expect(atomicPurchaseSequence(recovered).map((step) => step.state)).toEqual(['done', 'active', 'next', 'next']);
   });
 
   it('resumes only orders still available to the same buyer', () => {

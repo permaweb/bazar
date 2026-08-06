@@ -62,6 +62,11 @@ export type CollectionActivityEvent = {
   recipient?: string;
 };
 
+export type PendingAssetOffer = Pick<
+  CollectionActivityEvent,
+  'id' | 'actor' | 'height' | 'timestamp' | 'asking' | 'quantity'
+>;
+
 type GraphqlNode = {
   id: string;
   recipient?: string;
@@ -125,6 +130,7 @@ type BatchedMarketActivityOptions = Omit<MarketActivityOptions, 'onPage' | 'reci
 type CollectionActivityOptions = Omit<CandidateOptions, 'onPage'> & {
   recipients?: string[];
   limit?: number;
+  actions?: CollectionActivityEvent['action'][];
   acceptProcessId?: (processId: string) => boolean;
   requiredExecutionDevice?: string;
   onPage?: (events: CollectionActivityEvent[]) => void | Promise<void>;
@@ -582,6 +588,13 @@ export async function discoverCollectionActivity(
   const graphql = options.graphql ?? PAGINATED_GRAPHQL;
   const recipients = [...new Set((options.recipients ?? []).filter((id) => ADDRESS.test(id)))];
   const limit = Math.max(1, Math.min(200, Math.floor(options.limit ?? 100)));
+  const actions = [
+    ...new Set(
+      (options.actions ?? ['make-offer', 'register-interest', 'transfer', 'cancel-order']).filter((action) =>
+        ['make-offer', 'register-interest', 'transfer', 'cancel-order'].includes(action),
+      ),
+    ),
+  ];
   const events: CollectionActivityEvent[] = [];
   const seen = new Set<string>();
   const deviceMatches = new Map<string, boolean>();
@@ -589,6 +602,7 @@ export async function discoverCollectionActivity(
   const visited = new Set<string>();
 
   if (options.recipients !== undefined && !recipients.length) return [];
+  if (!actions.length) return [];
   while (events.length < limit) {
     options.signal?.throwIfAborted();
     const { response, body: payload } = await fetchJsonWithDeadline<any>(
@@ -605,7 +619,7 @@ export async function discoverCollectionActivity(
             tags: [
               {
                 name: 'action',
-                values: ['make-offer', 'register-interest', 'transfer', 'cancel-order'],
+                values: actions,
               },
             ],
           },
@@ -655,6 +669,52 @@ export async function discoverCollectionActivity(
     cursor = advanceGraphqlCursor(connection, visited, 'collection-activity-pagination-stalled');
   }
   return events;
+}
+
+export function pendingAssetOffersFromActivity(
+  state: AssetState,
+  events: CollectionActivityEvent[],
+): PendingAssetOffer[] {
+  return events
+    .filter(
+      (event) =>
+        event.action === 'make-offer' &&
+        ADDRESS.test(event.actor) &&
+        event.quantity === '1' &&
+        /^[1-9]\d*$/.test(event.asking ?? '') &&
+        // An indexed offer is pending only while the process scheduler remains
+        // behind its block. Once the scheduler passes it, live orders are the
+        // sole acceptance record, even when the transaction itself was mined.
+        event.height > state.swapHeight &&
+        !Object.prototype.hasOwnProperty.call(state.orders, event.id),
+    )
+    .map(({ id, actor, height, timestamp, asking, quantity }) => ({
+      id,
+      actor,
+      height,
+      timestamp,
+      ...(asking ? { asking } : {}),
+      ...(quantity ? { quantity } : {}),
+    }))
+    .sort(
+      (left, right) =>
+        right.height - left.height || right.timestamp - left.timestamp || left.id.localeCompare(right.id),
+    );
+}
+
+export async function discoverPendingAssetOffers(
+  processId: string,
+  state: AssetState,
+  options: Pick<CandidateOptions, 'fetch' | 'graphql' | 'requestTimeoutMs' | 'signal'> & { limit?: number } = {},
+): Promise<PendingAssetOffer[]> {
+  if (!ADDRESS.test(processId)) throw new TypeError('invalid-asset-process-id');
+  const events = await discoverCollectionActivity({
+    ...options,
+    recipients: [processId],
+    actions: ['make-offer'],
+    limit: options.limit ?? 24,
+  });
+  return pendingAssetOffersFromActivity(state, events);
 }
 
 export async function discoverCollectionActivityBatched(

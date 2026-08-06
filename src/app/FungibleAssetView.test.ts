@@ -9,6 +9,7 @@ import {
   batchStageLabel,
   batchPaymentBarrierState,
   batchPurchaseRecoveryApprovalCount,
+  batchPurchaseRecoveryApprovalCopy,
   batchHasNoDispatchedSellerPayment,
   batchPurchaseStartingBalance,
   batchRecoveryFrameBuffer,
@@ -174,6 +175,25 @@ describe('fungible operation error semantics', () => {
         { snapshot: {} },
       ]),
     ).toBe(3);
+  });
+
+  it('explains how much of a recovered batch will be reused', () => {
+    expect(
+      batchPurchaseRecoveryApprovalCopy([
+        {
+          snapshot: {
+            registration: { id: REGISTRATION_ID, dispatched: true },
+            payment: { id: PAYMENT_ID, dispatched: false },
+          },
+        },
+        { snapshot: { registration: { id: REGISTRATION_ID, dispatched: true } } },
+      ]),
+    ).toEqual({
+      title: '1 missing transaction approval needed to resume',
+      detail:
+        'Bazar recovered 3 of 4 signed transactions and will reuse those exact transactions. Your wallet will be asked only for the 1 missing approval. No seller payment has been submitted. Signed seller payments remain held until every reservation is accepted. Nothing new will be signed or submitted until you choose Continue.',
+      action: 'Approve 1 missing transaction and continue',
+    });
   });
 
   it('bounds the initial order book without changing its complete market truth', () => {

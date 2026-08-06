@@ -18,10 +18,16 @@ const FRIENDLY_ERRORS: Record<string, string> = {
     'This browser cannot safely coordinate wallet approvals across tabs. Use a current browser with Web Locks support to trade.',
   'market-state-changed':
     'The owner or listing changed since it was last checked. Close this dialog and review the updated market state before approving anything.',
+  'asset-pending-listing-check-unavailable':
+    'Bazar could not check Arweave for another recent listing transaction, so it did not ask your wallet to sign. Retry shortly.',
+  'registration-not-found':
+    'The exact reservation is already signed and submitted, but Bazar could not verify it across the required Arweave observers and live asset state during this check. Bazar will keep checking it automatically without signing again.',
   'registration not found':
-    'The submission gateway accepted the reservation, but sampled observers did not report it as mined during this observation window. Choose the visible Resume action to keep watching the exact signed transaction without signing again.',
+    'The exact reservation is already signed and submitted, but Bazar could not verify it across the required Arweave observers and live asset state during this check. Bazar will keep checking it automatically without signing again.',
+  'payment-not-found':
+    'The exact seller payment was submitted, but Bazar could not verify it across the required Arweave observers and live asset state during this check. Bazar will keep checking it automatically without paying again.',
   'payment not found':
-    'The submission gateway accepted the payment, but sampled observers did not report it as mined during this observation window. Choose the visible Resume action to keep watching the exact signed payment without paying again.',
+    'The exact seller payment was submitted, but Bazar could not verify it across the required Arweave observers and live asset state during this check. Bazar will keep checking it automatically without paying again.',
   'fungible-transfer-rejected':
     'This transfer reached its exact token schedule slot, but live state proves it was not applied. No tokens moved. Review the current balance before trying again.',
   'fungible-transfer-proof-mismatch':

@@ -9,12 +9,15 @@ import {
   discoverCollectionActivityBatched,
   discoverMarketActivity,
   discoverMarketActivityBatched,
+  discoverPendingAssetOffers,
+  pendingAssetOffersFromActivity,
   partitionAssetCandidateSupport,
   resolveAssetCandidates,
   restrictAssetCandidates,
   verifyAssetCandidateSupport,
   walletAssetGroup,
   type AssetCandidate,
+  type CollectionActivityEvent,
 } from './asset-discovery';
 import { parseAssetState } from './asset-marketplace';
 import { PAGINATED_GRAPHQL } from 'helpers/config';
@@ -604,6 +607,122 @@ describe('wallet candidate discovery', () => {
     await expect(discoverCollectionActivity({ fetch: stalledMarket as typeof fetch })).rejects.toThrow(
       'collection-activity-pagination-stalled',
     );
+  });
+
+  it('reconciles recent make-offers against the process scheduler height and live orders', () => {
+    const pendingId = 'P'.repeat(43);
+    const acceptedId = 'Q'.repeat(43);
+    const staleId = 'S'.repeat(43);
+    const state = { swapHeight: 100, orders: { [acceptedId]: {} } } as any;
+    const events: CollectionActivityEvent[] = [
+      {
+        id: staleId,
+        processId: assetA,
+        action: 'make-offer',
+        actor: wallet,
+        height: 99,
+        timestamp: 1,
+        asking: '200000',
+        quantity: '1',
+      },
+      {
+        id: acceptedId,
+        processId: assetA,
+        action: 'make-offer',
+        actor: wallet,
+        height: 102,
+        timestamp: 2,
+        asking: '200000',
+        quantity: '1',
+      },
+      {
+        id: pendingId,
+        processId: assetA,
+        action: 'make-offer',
+        actor: buyer,
+        height: 101,
+        timestamp: 3,
+        asking: '200000',
+        quantity: '1',
+      },
+      {
+        id: 'U'.repeat(43),
+        processId: assetA,
+        action: 'make-offer',
+        actor: '',
+        height: 104,
+        timestamp: 5,
+        asking: '200000',
+        quantity: '1',
+      },
+      {
+        id: 'V'.repeat(43),
+        processId: assetA,
+        action: 'make-offer',
+        actor: wallet,
+        height: 105,
+        timestamp: 6,
+      },
+      {
+        id: 'T'.repeat(43),
+        processId: assetA,
+        action: 'transfer',
+        actor: wallet,
+        height: 103,
+        timestamp: 4,
+      },
+    ];
+
+    expect(pendingAssetOffersFromActivity(state, events)).toEqual([
+      {
+        id: pendingId,
+        actor: buyer,
+        height: 101,
+        timestamp: 3,
+        asking: '200000',
+        quantity: '1',
+      },
+    ]);
+  });
+
+  it('queries only recent make-offers for one asset before signing', async () => {
+    const pendingId = 'P'.repeat(43);
+    const fetcher = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body));
+      expect(body.variables).toMatchObject({
+        recipients: [assetA],
+        tags: [{ name: 'action', values: ['make-offer'] }],
+      });
+      return Response.json({
+        data: {
+          transactions: {
+            pageInfo: { hasNextPage: false },
+            edges: [
+              {
+                cursor: 'pending',
+                node: {
+                  id: pendingId,
+                  recipient: assetA,
+                  owner: { address: wallet },
+                  block: { height: 101, timestamp: 2 },
+                  tags: [
+                    { name: 'action', value: 'make-offer' },
+                    { name: 'asking', value: '200000' },
+                    { name: 'offer-quantity', value: '1' },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+      });
+    });
+
+    await expect(
+      discoverPendingAssetOffers(assetA, { swapHeight: 100, orders: {} } as any, {
+        fetch: fetcher as typeof fetch,
+      }),
+    ).resolves.toEqual([{ id: pendingId, actor: wallet, height: 101, timestamp: 2, asking: '200000', quantity: '1' }]);
   });
 
   it('rejects stalled pagination while verifying collection activity devices', async () => {

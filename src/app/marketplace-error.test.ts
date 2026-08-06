@@ -29,6 +29,7 @@ describe('marketplaceErrorMessage', () => {
     ['asset-payment-id-missing', 'cannot prove settlement safely'],
     ['asset-action-starting-slot-unavailable', 'did not ask the wallet'],
     ['asset-action-recovery-baseline-missing', 'cannot reliably infer its outcome'],
+    ['asset-pending-listing-check-unavailable', 'did not ask your wallet to sign'],
   ] as const)('explains recovery for %s', (code, guidance) => {
     expect(marketplaceErrorMessage(new Error(code))).toContain(guidance);
   });
@@ -37,10 +38,12 @@ describe('marketplaceErrorMessage', () => {
     expect(marketplaceErrorMessage(new Error('unexpected-market-failure'))).toBe('unexpected market failure');
   });
 
-  it('points observation-window failures at the in-place recovery action', () => {
+  it('explains that observation-window failures continue automatically', () => {
     for (const code of ['registration not found', 'payment not found']) {
       const message = marketplaceErrorMessage(new Error(code));
-      expect(message).toContain('visible Resume action');
+      expect(message).toContain('keep checking');
+      expect(message).toContain('automatically');
+      expect(message).not.toContain('visible Resume action');
       expect(message).not.toContain('Reload');
     }
   });

@@ -4001,6 +4001,7 @@ input:focus {
   text-overflow: ellipsis;
   white-space: nowrap;
   background: var(--paper);
+  box-shadow: -8px 0 0 var(--paper);
 }
 .purchase-sequence-copy > strong {
   color: var(--ink);
@@ -4189,6 +4190,28 @@ input:focus {
   color: var(--muted);
   font-size: var(--type-body);
   line-height: 1.55;
+}
+.external-reservation-notice {
+  padding: 14px;
+  display: grid;
+  gap: 14px;
+  border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--line));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 7%, var(--panel));
+}
+.external-reservation-notice > div {
+  display: grid;
+  gap: 6px;
+}
+.external-reservation-notice p {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--type-small);
+  line-height: 1.5;
+}
+.external-reservation-notice a {
+  width: fit-content;
+  font-size: var(--type-small);
 }
 .dialog-form-scroll {
   min-width: 0;
@@ -4440,12 +4463,71 @@ input:focus {
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
+.scheduler-wait-with-progress::before {
+  display: none;
+}
 .result {
   text-align: center;
   padding: 38px;
 }
 .result h3 {
   font-size: var(--type-display);
+}
+.result.success {
+  width: min(460px, 100%);
+  margin: 0 auto;
+  padding: 24px 0 6px;
+  display: grid;
+  gap: 18px;
+  text-align: left;
+}
+.result.success .result-outcome {
+  display: grid;
+  gap: 8px;
+}
+.result.success .result-outcome h3,
+.result.success .result-outcome p {
+  margin: 0;
+}
+.result.success .result-outcome p {
+  color: var(--muted);
+  line-height: 1.5;
+}
+.operation-result-artwork,
+.artwork-fallback.operation-result-artwork {
+  width: 120px;
+  height: 120px;
+  margin: 6px 0 4px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  object-fit: cover;
+}
+.operation-result-artwork-fallback {
+  color: var(--muted);
+  font-size: 2rem;
+}
+.result.success > a {
+  min-width: 0;
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  overflow-wrap: anywhere;
+  text-decoration: none;
+}
+.result.success > .settlement-receipt {
+  width: 100%;
+  margin: 0;
+}
+.result.success > button {
+  width: 100%;
+  min-height: 44px;
+  margin: 0;
+  justify-content: center;
 }
 .success h3 {
   color: var(--positive-text);
