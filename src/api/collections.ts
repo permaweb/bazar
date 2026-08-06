@@ -10,6 +10,7 @@ export type AssetSummary = {
   name: string;
   contentType?: string;
   image?: string;
+  media?: string;
   ticker?: string;
 };
 
@@ -85,7 +86,7 @@ export function fungibleAssetFromState(id: string, state?: AssetState): AssetSum
 type ImageManifest = {
   name: string;
   description?: string;
-  assets: Array<{ id: string; name: string; contentType?: string; image?: string }>;
+  assets: Array<{ id: string; name: string; contentType?: string; image?: string; media?: string }>;
 };
 
 type FungibleTokenConnection = {
@@ -614,7 +615,8 @@ function imageCollection(
         typeof asset.name !== 'string' ||
         !asset.name.trim() ||
         (asset.contentType !== undefined && typeof asset.contentType !== 'string') ||
-        (asset.image !== undefined && typeof asset.image !== 'string'),
+        (asset.image !== undefined && typeof asset.image !== 'string') ||
+        (asset.media !== undefined && typeof asset.media !== 'string'),
     )
   )
     throw new Error('collection-manifest-schema');
@@ -627,7 +629,7 @@ function imageCollection(
     manifestId,
     assets: manifest.assets.map((asset) => ({
       ...asset,
-      image: asset.image ?? `${DEFAULT_GATEWAY}/${asset.id}`,
+      ...(!asset.image && !asset.media ? { image: `${DEFAULT_GATEWAY}/${asset.id}` } : {}),
     })),
   };
 }

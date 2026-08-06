@@ -20,7 +20,7 @@ describe('assetObserverNetworkOptions', () => {
     expect(options.node).toBe('https://arweave.net');
     expect(options['relay-with']).toBe('http://127.0.0.1:3101');
     expect(options.minObservers).toBe(3);
-    expect(options.maxObservers).toBe(12);
+    expect(options.maxObservers).toBe(7);
   });
 
   it('reads a selected HyperBEAM gateway from a hash route', () => {

@@ -25,7 +25,9 @@ const strings: Record<string, string> = {
   transactionSyncProtocolSecondsAgo: '{seconds}s ago',
   transactionSyncProtocolStateChanges: 'State changes',
   transactionSyncProtocolUnknown: 'Unknown',
-  transactionSyncVerificationDelayed: 'Verification delayed',
+  transactionSyncVerificationDelayed: 'Observers delayed',
+  transactionSyncVerificationDelayedDetail:
+    'Observers are currently delayed. Your transaction may still be progressing. Come back soon to see progress.',
   transactionSyncActivityConfirmation: 'Node depth',
   transactionSyncActivityError: 'Error',
   transactionSyncActivityProof: 'Block proof',

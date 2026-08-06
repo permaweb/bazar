@@ -15,6 +15,8 @@ import {
   storeMintedAsset,
   storeMintedCollection,
   udlLicenseTags,
+  validateCollectionMintInput,
+  validateMintInput,
 } from './asset-mint';
 
 const owner = 'W'.repeat(43);
@@ -65,6 +67,46 @@ describe('asset mint contract', () => {
       contentType: 'image/png',
       image: mediaId,
       collection: 'Created on Bazar',
+    });
+  });
+
+  it('accepts MP3 and WAV assets with optional immutable album artwork', () => {
+    const artworkId = 'A'.repeat(43);
+    const mp3 = new File([new Uint8Array([1])], 'signal.mp3', { type: 'audio/mpeg' });
+    const wav = new File([new Uint8Array([1])], 'signal.wav', { type: 'audio/x-wav' });
+    const artwork = new File([new Uint8Array([1])], 'cover.png', { type: 'image/png' });
+
+    expect(() => validateMintInput({ name: 'Signal', description: '', file: mp3, artwork })).not.toThrow();
+    expect(() => validateMintInput({ name: 'Signal', description: '', file: wav })).not.toThrow();
+    expect(() => validateCollectionMintInput({ name: 'Audio collection', description: '', files: [mp3] })).toThrow(
+      'mint-file-type-unsupported',
+    );
+    expect(mintProcessTags({ name: 'Signal', contentType: 'audio/x-wav', mediaId, artworkId }, owner)).toMatchObject({
+      'asset-content-type': 'audio/wav',
+      'asset-data': mediaId,
+      'asset-artwork': artworkId,
+    });
+    expect(mintMetadata({ name: 'Signal', description: '', contentType: 'audio/mpeg' }, mediaId, artworkId)).toEqual({
+      name: 'Signal',
+      description: '',
+      contentType: 'audio/mpeg',
+      audio: mediaId,
+      image: artworkId,
+      collection: 'Created on Bazar',
+    });
+    expect(
+      assetFromMintState(processId, {
+        name: 'Signal',
+        'asset-data': mediaId,
+        'asset-artwork': artworkId,
+        'asset-content-type': 'audio/mpeg',
+      }),
+    ).toEqual({
+      id: processId,
+      name: 'Signal',
+      contentType: 'audio/mpeg',
+      media: `https://arweave.net/${mediaId}`,
+      image: `https://arweave.net/${artworkId}`,
     });
   });
 
@@ -262,5 +304,65 @@ describe('asset mint contract', () => {
     expect(media.setSignature).toHaveBeenCalledWith(expect.objectContaining({ id: mediaId, signature: 'media' }));
     expect(uploadChunk).toHaveBeenCalledOnce();
     expect(posted).toEqual(['https://arweave.net/tx']);
+  });
+
+  it('uploads album artwork and records its transaction on the audio asset process', async () => {
+    const artworkId = 'A'.repeat(43);
+    const transaction = () => {
+      const held: any = { id: '', owner: '', chunks: { chunks: [{}] }, addTag: vi.fn() };
+      held.setSignature = vi.fn((signature) => Object.assign(held, signature));
+      held.toJSON = () => ({ id: held.id, owner: held.owner, tags: [] });
+      return held;
+    };
+    const media = transaction();
+    const artwork = transaction();
+    const process = transaction();
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/price/')) return new Response('1');
+      if (url.includes('/wallet/')) return new Response('100');
+      return new Response('', { status: 200 });
+    });
+    const client = new AssetMintClient({
+      arweave: {
+        createTransaction: vi
+          .fn()
+          .mockResolvedValueOnce(media)
+          .mockResolvedValueOnce(artwork)
+          .mockResolvedValueOnce(process),
+        transactions: {},
+        wallets: { ownerToAddress: vi.fn(async () => owner) },
+      },
+      fetch: fetchMock as typeof fetch,
+      storage: storage(),
+      wallet: {
+        getActiveAddress: vi.fn(async () => owner),
+        sign: vi
+          .fn()
+          .mockResolvedValueOnce({ id: mediaId, owner: 'signed-owner', tags: [], signature: 'media' })
+          .mockResolvedValueOnce({ id: artworkId, owner: 'signed-owner', tags: [], signature: 'artwork' })
+          .mockResolvedValueOnce({ id: processId, owner: 'signed-owner', tags: [], signature: 'process' }),
+      } as any,
+    });
+
+    const result = await client.mint(
+      {
+        name: 'Permanent signal',
+        description: '',
+        file: new File([new Uint8Array([1])], 'signal.mp3', { type: 'audio/mpeg' }),
+        artwork: new File([new Uint8Array([2])], 'cover.jpg', { type: 'image/jpeg' }),
+      },
+      owner,
+    );
+
+    expect(media.addTag).toHaveBeenCalledWith('Content-Type', 'audio/mpeg');
+    expect(artwork.addTag).toHaveBeenCalledWith('Type', 'Asset-Artwork');
+    expect(process.addTag).toHaveBeenCalledWith('asset-artwork', artworkId);
+    expect(result.asset).toMatchObject({
+      contentType: 'audio/mpeg',
+      media: `https://arweave.net/${mediaId}`,
+      image: `https://arweave.net/${artworkId}`,
+      artworkId,
+    });
   });
 });

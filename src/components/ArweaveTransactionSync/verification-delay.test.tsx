@@ -56,19 +56,22 @@ function renderLoader(answering: number, eligible: number, views: ObserverView[]
 describe('observer verification delay', () => {
   it('replaces a misleading zero count when no observer quorum is available', () => {
     const markup = renderLoader(0, 0);
-    expect(markup).toContain('Verification delayed');
+    expect(markup).toContain('Observers delayed');
+    expect(markup).toContain(
+      'Observers are currently delayed. Your transaction may still be progressing. Come back soon to see progress.',
+    );
     expect(markup).not.toContain('aria-label="0 of 5"');
   });
 
   it('keeps the real zero count while healthy observers are checking', () => {
     const markup = renderLoader(2, 5);
     expect(markup).toContain('aria-label="0 of 5"');
-    expect(markup).not.toContain('Verification delayed');
+    expect(markup).not.toContain('Observers delayed');
   });
 
   it('does not call an untouched transaction delayed before observer responses arrive', () => {
     const markup = renderLoader(0, 0, []);
     expect(markup).toContain('aria-label="0 of 5"');
-    expect(markup).not.toContain('Verification delayed');
+    expect(markup).not.toContain('Observers delayed');
   });
 });

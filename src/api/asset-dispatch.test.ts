@@ -88,7 +88,7 @@ describe('transaction dispatch observation', () => {
     expect(control.networkOptions).toMatchObject({
       node: 'https://arweave.net',
       minObservers: 3,
-      maxObservers: 12,
+      maxObservers: 7,
       'relay-with': 'https://arweave.net',
     });
   });

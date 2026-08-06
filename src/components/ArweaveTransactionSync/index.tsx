@@ -283,7 +283,11 @@ export function ArweaveTransactionSync({
           >
             <span style={{ width: `${displayedProgress}%` }} />
           </S.ProgressTrack>
-          {confirmationDepth >= 2 && <S.RiskNote>{localizedRisk(confirmationDepth, language)}</S.RiskNote>}
+          {verificationDelayed ? (
+            <S.VerificationNote role="status">{language.transactionSyncVerificationDelayedDetail}</S.VerificationNote>
+          ) : confirmationDepth >= 2 ? (
+            <S.RiskNote>{localizedRisk(confirmationDepth, language)}</S.RiskNote>
+          ) : null}
           {skipKind && onSkip ? (
             <S.SkipAction $warning={skipKind === 'yolo'}>
               <span>
