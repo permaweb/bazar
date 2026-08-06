@@ -50,6 +50,7 @@ import {
 import { ArweaveTransactionSync, type ArweaveSyncStep } from 'components/ArweaveTransactionSync';
 import { postConfirmationPendingLabel } from 'components/ArweaveTransactionSync/sequence';
 import { AssetDetailTabs, type AssetDetailTab } from 'components/AssetDetailTabs';
+import { AssetOperationStatus, assetOperationPendingActionLabel } from 'components/AssetOperationStatus';
 import { ArtworkImage } from 'components/ArtworkImage';
 import { ConnectWalletButton } from 'components/ConnectWalletButton';
 import { MarketActivityList } from 'components/MarketActivityList';
@@ -199,6 +200,12 @@ export function FungibleAssetView({
   );
   const walletActivities = operationActivities.filter((activity) => activity.signer === wallet.address);
   const hasWalletActivities = walletActivities.length > 0;
+  const hasBusyWalletActivities = walletActivities.some((activity) => (activity.phase ?? 'form') !== 'error');
+  const activePurchaseActivity = walletActivities.find((activity) => activity.operation.kind === 'buy');
+  const activeAssetActivity = walletActivities.find((activity) => activity.operation.kind !== 'buy');
+  const showOperationActivity = React.useCallback((id: string) => {
+    setOperationActivities((current) => current.map((activity) => ({ ...activity, visible: activity.id === id })));
+  }, []);
   const publishOperationActivity = React.useCallback(
     (activity: FungibleOperationActivity, nextPhase: TransactionDialogPhase | null = activity.phase) => {
       const phase = nextPhase ?? 'form';
@@ -225,6 +232,13 @@ export function FungibleAssetView({
       if (wallet.address) {
         const signer = wallet.address;
         const id = fungibleOperationActivityId(asset.id, signer, next.kind);
+        const existing = operationActivitiesRef.current.find(
+          (activity) => activity.id === id && activity.signer === signer,
+        );
+        if (existing) {
+          showOperationActivity(existing.id);
+          return;
+        }
         const activity = {
           id,
           operation: next,
@@ -242,7 +256,7 @@ export function FungibleAssetView({
         publishOperationActivity(activity);
       }
     },
-    [asset.id, publishOperationActivity, wallet.address],
+    [asset.id, publishOperationActivity, showOperationActivity, wallet.address],
   );
   const [recoverySuppressed, setRecoverySuppressed] = React.useState(false);
   const [recoveryNotice, setRecoveryNotice] = React.useState('');
@@ -532,6 +546,8 @@ export function FungibleAssetView({
   ]);
 
   const recoveryBlocksActions = recoverySuppressed || Boolean(unavailableRecovery);
+  const purchaseBlocksActions = recoveryBlocksActions || Boolean(activePurchaseActivity);
+  const assetBlocksActions = recoveryBlocksActions || Boolean(activeAssetActivity);
   const handleOperationPhaseChange = React.useCallback(
     (id: string, nextPhase: TransactionDialogPhase) => {
       const activity = operationActivitiesRef.current.find((candidate) => candidate.id === id);
@@ -637,7 +653,7 @@ export function FungibleAssetView({
       {error ? <ErrorPanel message={error} /> : null}
       <div className="asset-detail-layout">
         <div className="asset-commerce-column asset-commerce-primary">
-          <section className="asset-commerce-card">
+          <section aria-busy={hasBusyWalletActivities} className="asset-commerce-card">
             <div className="asset-market-stats">
               <div>
                 <span>Current unit price</span>
@@ -673,12 +689,21 @@ export function FungibleAssetView({
                 <small>No open listings are available to this wallet.</small>
               </div>
             )}
+            {walletActivities.map((activity) => (
+              <AssetOperationStatus
+                key={activity.id}
+                kind={activity.operation.kind}
+                phase={activity.phase ?? 'form'}
+                status={fungibleActivityPhaseStatus(activity.phase ?? 'form')}
+                onView={() => showOperationActivity(activity.id)}
+              />
+            ))}
             <div className="asset-commerce-actions">
               {!wallet.address ? <ConnectWalletButton /> : null}
               {wallet.address && purchasableOrders.length ? (
                 <button
                   className="primary with-icon"
-                  disabled={!purchaseAmountResult.match || recoveryBlocksActions || loading || Boolean(error)}
+                  disabled={!purchaseAmountResult.match || purchaseBlocksActions || loading || Boolean(error)}
                   onClick={() => {
                     if (!purchaseAmountResult.match) return;
                     openOperation({
@@ -690,25 +715,35 @@ export function FungibleAssetView({
                   }}
                 >
                   <ShoppingCart className="ui-icon ui-icon--sm" aria-hidden="true" />{' '}
-                  {purchaseAmountResult.match ? 'Buy tokens' : 'Enter an amount'}
+                  {activePurchaseActivity
+                    ? assetOperationPendingActionLabel('buy')
+                    : purchaseAmountResult.match
+                      ? 'Buy tokens'
+                      : 'Enter an amount'}
                 </button>
               ) : null}
               {wallet.address && BigInt(liquid) > 0n ? (
                 <button
                   className={`${purchasableOrders.length ? '' : 'primary '}with-icon`}
-                  disabled={recoveryBlocksActions || loading || Boolean(error)}
+                  disabled={assetBlocksActions || loading || Boolean(error)}
                   onClick={() => openOperation({ kind: 'sell' })}
                 >
-                  <Tag className="ui-icon ui-icon--sm" aria-hidden="true" /> List tokens
+                  <Tag className="ui-icon ui-icon--sm" aria-hidden="true" />{' '}
+                  {activeAssetActivity?.operation.kind === 'sell'
+                    ? assetOperationPendingActionLabel('sell')
+                    : 'List tokens'}
                 </button>
               ) : null}
               {wallet.address && BigInt(liquid) > 0n ? (
                 <button
                   className="with-icon"
-                  disabled={recoveryBlocksActions || loading || Boolean(error)}
+                  disabled={assetBlocksActions || loading || Boolean(error)}
                   onClick={() => openOperation({ kind: 'transfer' })}
                 >
-                  <Send className="ui-icon ui-icon--sm" aria-hidden="true" /> Transfer
+                  <Send className="ui-icon ui-icon--sm" aria-hidden="true" />{' '}
+                  {activeAssetActivity?.operation.kind === 'transfer'
+                    ? assetOperationPendingActionLabel('transfer')
+                    : 'Transfer'}
                 </button>
               ) : null}
             </div>
@@ -764,10 +799,13 @@ export function FungibleAssetView({
                           <button
                             aria-label={fungibleOrderActionLabel('cancel', order, state)}
                             className="order-action"
-                            disabled={recoveryBlocksActions || loading || Boolean(error)}
+                            disabled={assetBlocksActions || loading || Boolean(error)}
                             onClick={() => openOperation({ kind: 'cancel', order })}
                           >
-                            Cancel
+                            {activeAssetActivity?.operation.kind === 'cancel' &&
+                            activeAssetActivity.operation.order.orderId === order.orderId
+                              ? assetOperationPendingActionLabel('cancel')
+                              : 'Cancel'}
                           </button>
                         ) : null}
                       </span>

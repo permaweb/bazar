@@ -204,6 +204,13 @@ function fungibleActivity(overrides: Partial<FungibleOperationActivitySummary> =
 }
 
 describe('fungible operation activity persistence', () => {
+  it('uses one active slot for asset mutations and a separate slot for purchases', () => {
+    const sell = fungibleOperationActivityId('asset-1', owner, 'sell');
+    expect(fungibleOperationActivityId('asset-1', owner, 'cancel')).toBe(sell);
+    expect(fungibleOperationActivityId('asset-1', owner, 'transfer')).toBe(sell);
+    expect(fungibleOperationActivityId('asset-1', owner, 'buy')).not.toBe(sell);
+  });
+
   it('hydrates only activities backed by recoverable transaction state after refresh', () => {
     const storage = new MemoryStorage();
     saveFungibleOperationActivities(

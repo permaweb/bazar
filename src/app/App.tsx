@@ -117,6 +117,7 @@ import { quorumConfirmationDepth } from 'components/ArweaveTransactionSync/confi
 import { postConfirmationPendingLabel } from 'components/ArweaveTransactionSync/sequence';
 import { ArtworkImage } from 'components/ArtworkImage';
 import { AssetDetailTabs, type AssetDetailTab } from 'components/AssetDetailTabs';
+import { AssetOperationStatus, assetOperationPendingActionLabel } from 'components/AssetOperationStatus';
 import { ConnectWalletButton } from 'components/ConnectWalletButton';
 import { MarketActivityList } from 'components/MarketActivityList';
 import { OperationOutcome, OperationOutcomeAnnouncement } from 'components/OperationOutcomeAnnouncement';
@@ -555,6 +556,7 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
   }, [refreshFungibleActivities, refreshOperationActivities]);
   const start = React.useCallback(
     (input: Pick<OperationActivity, 'asset' | 'collectionId' | 'owner' | 'operation' | 'restoreFallback'>) => {
+      const id = atomicOperationActivityId(input.asset.id, input.owner);
       const existing = activitiesRef.current.find(
         (activity) =>
           activity.asset.id === input.asset.id && activity.owner === input.owner && activity.phase !== 'done',
@@ -563,7 +565,6 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
         setActiveId(existing.id);
         return;
       }
-      const id = atomicOperationActivityId(input.asset.id, input.owner);
       const phase: OperationActivityPhase =
         input.operation.kind === 'buy' && input.operation.resume
           ? purchaseRecoveryApprovalCount(input.operation.resume)
@@ -572,24 +573,34 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
           : input.operation.kind !== 'buy' && input.operation.resumeId
             ? 'working'
             : 'form';
-      setActivities((current) => [
-        {
-          ...input,
-          id,
-          phase,
-          status:
-            phase === 'approval'
-              ? 'Waiting for wallet approval'
-              : phase === 'working'
-                ? 'Starting transaction…'
-                : 'Waiting for details',
-          confirmations: 0,
-          confirmationTarget: 5,
-          createdAt: Date.now(),
-          origin: 'runtime',
-        },
-        ...current,
-      ]);
+      setActivities((current) => {
+        if (
+          current.some(
+            (activity) =>
+              activity.asset.id === input.asset.id && activity.owner === input.owner && activity.phase !== 'done',
+          )
+        ) {
+          return current;
+        }
+        return [
+          {
+            ...input,
+            id,
+            phase,
+            status:
+              phase === 'approval'
+                ? 'Waiting for wallet approval'
+                : phase === 'working'
+                  ? 'Starting transaction…'
+                  : 'Waiting for details',
+            confirmations: 0,
+            confirmationTarget: 5,
+            createdAt: Date.now(),
+            origin: 'runtime',
+          },
+          ...current,
+        ];
+      });
       setActiveId(id);
     },
     [],
@@ -6081,6 +6092,7 @@ function AssetView() {
   const {
     activities: operationActivities,
     start: startOperationActivity,
+    show: showOperationActivity,
     remove: removeOperationActivity,
   } = useOperationActivity();
   const operationFocusFallbackRef = React.useRef<HTMLHeadingElement>(null);
@@ -6492,6 +6504,8 @@ function AssetView() {
   const order = state ? liveOrder(state) : null;
   const mine = Boolean(wallet.address && owner === wallet.address);
   const recoveryBlocksActions = recoverySuppressed || Boolean(unavailableRecovery);
+  const operationBlocksActions = recoveryBlocksActions || Boolean(operationActivityEntry);
+  const operationIsBusy = Boolean(operationActivityEntry && operationActivityEntry.phase !== 'error');
   const license = state ? licenseProperties(state) : [];
   const description = assetDescription(state, collection.description);
   const moreAssets = collection.assets.filter((item) => item.id !== asset.id).slice(0, 4);
@@ -6614,7 +6628,7 @@ function AssetView() {
             {loading ? <Loading label="Computing current state…" /> : null}
             {error ? <ErrorPanel message={error} onRetry={load} retryLabel="Retry live state" /> : null}
             {state ? (
-              <section className="asset-commerce-card">
+              <section aria-busy={operationIsBusy} className="asset-commerce-card">
                 <div className="asset-market-stats">
                   <div>
                     <span>Current ask</span>
@@ -6637,42 +6651,54 @@ function AssetView() {
                   <span>{order?.status === 'reserved' ? 'Reserved at' : order ? 'Buy for' : 'Market status'}</span>
                   <strong>{order ? `${winstonToAr(order.asking)} AR` : 'Not listed'}</strong>
                 </div>
+                {operationActivityEntry ? (
+                  <AssetOperationStatus
+                    kind={operationActivityEntry.operation.kind}
+                    phase={operationActivityEntry.phase}
+                    status={operationActivityEntry.status}
+                    onView={() => showOperationActivity(operationActivityEntry.id)}
+                  />
+                ) : null}
                 <div className="asset-commerce-actions">
                   {!wallet.address ? <ConnectWalletButton /> : null}
                   {wallet.address && atomicOrderCanBeBought(order) && !mine ? (
                     <button
                       className="primary with-icon"
-                      disabled={recoveryBlocksActions || loading || Boolean(error)}
+                      disabled={operationBlocksActions || loading || Boolean(error)}
                       onClick={() => openOperation({ kind: 'buy', order })}
                     >
-                      <ShoppingCart className="ui-icon ui-icon--sm" aria-hidden="true" /> Buy now
+                      <ShoppingCart className="ui-icon ui-icon--sm" aria-hidden="true" />{' '}
+                      {operation?.kind === 'buy' ? assetOperationPendingActionLabel('buy') : 'Buy now'}
                     </button>
                   ) : null}
                   {wallet.address && mine && !order ? (
                     <button
                       className="primary with-icon"
-                      disabled={recoveryBlocksActions || loading || Boolean(error)}
+                      disabled={operationBlocksActions || loading || Boolean(error)}
                       onClick={() => openOperation({ kind: 'sell' })}
                     >
-                      <Tag className="ui-icon ui-icon--sm" aria-hidden="true" /> List for sale
+                      <Tag className="ui-icon ui-icon--sm" aria-hidden="true" />{' '}
+                      {operation?.kind === 'sell' ? assetOperationPendingActionLabel('sell') : 'List for sale'}
                     </button>
                   ) : null}
                   {wallet.address && mine && order?.status === 'open' ? (
                     <button
                       className="with-icon"
-                      disabled={recoveryBlocksActions || loading || Boolean(error)}
+                      disabled={operationBlocksActions || loading || Boolean(error)}
                       onClick={() => openOperation({ kind: 'cancel', order })}
                     >
-                      <CircleX className="ui-icon ui-icon--sm" aria-hidden="true" /> Cancel listing
+                      <CircleX className="ui-icon ui-icon--sm" aria-hidden="true" />{' '}
+                      {operation?.kind === 'cancel' ? assetOperationPendingActionLabel('cancel') : 'Cancel listing'}
                     </button>
                   ) : null}
                   {wallet.address && mine && !order ? (
                     <button
                       className="with-icon"
-                      disabled={recoveryBlocksActions || loading || Boolean(error)}
+                      disabled={operationBlocksActions || loading || Boolean(error)}
                       onClick={() => openOperation({ kind: 'transfer' })}
                     >
-                      <Send className="ui-icon ui-icon--sm" aria-hidden="true" /> Transfer
+                      <Send className="ui-icon ui-icon--sm" aria-hidden="true" />{' '}
+                      {operation?.kind === 'transfer' ? assetOperationPendingActionLabel('transfer') : 'Transfer'}
                     </button>
                   ) : null}
                   <button

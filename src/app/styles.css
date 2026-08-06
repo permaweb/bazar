@@ -2978,6 +2978,61 @@ input:focus {
   font-size: var(--type-small);
   line-height: 1.35;
 }
+.asset-operation-status {
+  margin-top: 16px;
+  padding: 11px 12px;
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #cfd4df;
+  border-radius: 8px;
+  background: #f7f8fb;
+  color: #404a60;
+}
+.asset-operation-status + .asset-operation-status {
+  margin-top: 8px;
+}
+.asset-operation-status.error {
+  border-color: rgba(201, 75, 98, 0.28);
+  background: rgba(201, 75, 98, 0.045);
+  color: var(--negative);
+}
+.asset-operation-status-icon {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+}
+.asset-operation-status-copy {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.asset-operation-status-copy strong,
+.asset-operation-status-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.asset-operation-status-copy strong {
+  color: var(--ink);
+  font-size: var(--type-body);
+}
+.asset-operation-status-copy small {
+  color: currentColor;
+  font-size: var(--type-small);
+}
+.asset-operation-status > button {
+  min-height: 34px;
+  padding: 6px 9px;
+  border-color: currentColor;
+  color: inherit;
+  background: transparent;
+  white-space: nowrap;
+}
 .purchase-composer {
   position: relative;
   margin-top: 17px;
@@ -5281,6 +5336,13 @@ body input:focus-visible {
   }
   .asset-commerce-actions {
     grid-template-columns: 1fr;
+  }
+  .asset-operation-status {
+    grid-template-columns: 32px minmax(0, 1fr);
+  }
+  .asset-operation-status > button {
+    grid-column: 2;
+    justify-self: start;
   }
   .asset-section-tabs {
     position: sticky;
