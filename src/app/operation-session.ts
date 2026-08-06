@@ -1,5 +1,7 @@
 import type { PurchaseSnapshot } from 'weave-wrangler';
 
+export const WALLET_OPERATION_RECOVERY_CHANGE_EVENT = 'bazar:wallet-operation-recovery-changed';
+
 export type OperationSession<T> = {
   signer: string;
   operation: T;
@@ -42,6 +44,14 @@ export function fungibleBatchStorageKey(assetId: string, buyer: string) {
   return `bazar-purchase-batch:${assetId}:${buyer}`;
 }
 
+export function isWalletOperationRecoveryKey(key: string | null) {
+  return Boolean(
+    key?.startsWith('bazar-operation:') ||
+    key?.startsWith('bazar-purchase:') ||
+    key?.startsWith('bazar-purchase-batch:'),
+  );
+}
+
 export function hasRecoverablePurchase(
   snapshot?: {
     registration?: { id?: string; dispatched?: boolean };
@@ -75,7 +85,11 @@ export function repairRejectedPurchase(
   snapshot: PurchaseSnapshot,
   code: string | undefined,
 ): { discardIds: string[]; snapshot: PurchaseSnapshot | null } {
-  if (code === 'registration-dispatch-rejected' || code === 'asset-order-reservation-rejected') {
+  if (
+    code === 'registration-dispatch-rejected' ||
+    code === 'asset-order-reservation-rejected' ||
+    code === 'asset-order-reservation-expired'
+  ) {
     return {
       discardIds: [snapshot.registration?.id, snapshot.payment?.id].filter((id): id is string => Boolean(id)),
       snapshot: null,
@@ -303,18 +317,34 @@ export function loadWalletRecord<T>(
 ): T | null {
   const current = storage.getItem(key);
   if (current) {
-    const record = JSON.parse(current) as T;
-    if (matches(record)) return record;
-    storage.removeItem(key);
+    try {
+      const record = JSON.parse(current) as T;
+      if (matches(record)) return record;
+    } catch {
+      // Invalid recovery cannot remain authoritative merely because it exists.
+    }
+    removeWalletRecord(storage, key);
     return null;
   }
   const legacy = storage.getItem(legacyKey);
   if (!legacy) return null;
-  const record = JSON.parse(legacy) as T;
-  if (!matches(record)) return null;
-  storage.setItem(key, legacy);
-  storage.removeItem(legacyKey);
-  return record;
+  try {
+    const record = JSON.parse(legacy) as T;
+    if (!matches(record)) return null;
+    storage.setItem(key, legacy);
+    storage.removeItem(legacyKey);
+    notifyWalletOperationRecoveryChange(storage, key);
+    return record;
+  } catch {
+    return null;
+  }
+}
+
+export function removeWalletRecord(storage: Pick<Storage, 'getItem' | 'removeItem'>, key: string) {
+  if (storage.getItem(key) === null) return false;
+  storage.removeItem(key);
+  notifyWalletOperationRecoveryChange(storage, key);
+  return true;
 }
 
 export function removeWalletRecordIf<T>(
@@ -327,6 +357,7 @@ export function removeWalletRecordIf<T>(
   try {
     if (!matches(JSON.parse(current) as T)) return false;
     storage.removeItem(key);
+    notifyWalletOperationRecoveryChange(storage, key);
     return true;
   } catch {
     return false;
@@ -344,15 +375,29 @@ export function storeWalletRecordIf<T>(
   if (!current) {
     if (!allowMissing) return false;
     storage.setItem(key, JSON.stringify(record));
+    notifyWalletOperationRecoveryChange(storage, key);
     return true;
   }
   try {
     if (!matches(JSON.parse(current) as T)) return false;
     storage.setItem(key, JSON.stringify(record));
+    // The owning dialog already publishes live phase updates. Existing-record
+    // writes do not change durable activity membership in this document.
     return true;
   } catch {
     return false;
   }
+}
+
+function notifyWalletOperationRecoveryChange(storage: object, key: string) {
+  if (
+    !isWalletOperationRecoveryKey(key) ||
+    typeof window === 'undefined' ||
+    typeof localStorage === 'undefined' ||
+    storage !== localStorage
+  )
+    return;
+  window.dispatchEvent(new CustomEvent(WALLET_OPERATION_RECOVERY_CHANGE_EVENT, { detail: key }));
 }
 
 export function storeWalletRecordOrThrow<T>(

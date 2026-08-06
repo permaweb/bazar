@@ -14,8 +14,8 @@ describe('marketplaceErrorMessage', () => {
     ['asset-purchase-insufficient-funds-after-signing', 'saved in this browser with the same wallet'],
     ['transaction-propagation-timeout', 'return with the same wallet and retained browser data'],
     ['asset-state-timeout', 'sampled observers report the transaction as confirmed'],
-    ['asset-order-reservation-expired', 'No seller payment was sent'],
-    ['asset-order-reservation-rejected', 'stale recovery has been cleared'],
+    ['asset-order-reservation-expired', 'start a new purchase'],
+    ['asset-order-reservation-rejected', 'may have lost a race'],
     ['wallet-account-changed', 'Reconnect the original signer to continue'],
     ['wallet-recovery-conflict', 'Resume that action before starting a new one.'],
     ['registration not found', 'without signing again.'],
@@ -51,8 +51,15 @@ describe('marketplaceErrorMessage', () => {
     expect(marketplaceOperationFailure(new Error('asset-cancel-rejected'))).toBe('transaction-rejected');
     expect(marketplaceOperationFailure(new Error('asset-purchase-rejected'))).toBe('transaction-rejected');
     expect(marketplaceOperationFailure(new Error('asset-order-reservation-rejected'))).toBe('transaction-rejected');
+    expect(marketplaceOperationFailure(new Error('asset-order-reservation-expired'))).toBe('transaction-rejected');
     expect(marketplaceOperationFailure(new Error('fungible-transfer-proof-mismatch'))).toBe('other');
     expect(marketplaceOperationFailure(new Error('temporary quote failure'))).toBe('other');
+  });
+
+  it('does not claim a different buyer won when current state only proves the reservation is inactive', () => {
+    expect(marketplaceErrorMessage(new Error('asset-order-reservation-rejected'))).not.toContain(
+      'Another buyer claimed',
+    );
   });
 
   it('retains structured lifecycle rejection codes through user-facing copy', () => {

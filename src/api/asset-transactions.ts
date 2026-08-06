@@ -635,11 +635,23 @@ export class AssetTransactionClient {
               return true;
             }
 
+            // A reservation can have been accepted and later disappear from
+            // the current state after its block-height deadline. Treat that
+            // as expiry, not as proof that another buyer won the listing.
+            if (
+              order?.status === 'open' &&
+              purchaseOrderMatches(order, input.order) &&
+              state.swapHeight >= registrationHeight + input.order.deadline
+            ) {
+              expired = true;
+              return true;
+            }
+
             // Once this process has computed safely beyond the registration's
             // L1 block, a missing reservation cannot appear later. It either
-            // lost a race, was rejected by the token device, or expired before
-            // recovery resumed. In every case the pre-signed seller payment
-            // must remain undispatched and this recovery must stop.
+            // lost a race or was rejected by the token device. In either case
+            // the pre-signed seller payment must remain undispatched and this
+            // recovery must stop.
             rejected = state.swapHeight >= registrationHeight + SCHEDULER_INCLUSION_DEPTH;
             return rejected;
           },

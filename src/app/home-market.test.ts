@@ -16,6 +16,7 @@ import {
   homeAssetTypeMatches,
   homeSummaryRequestKeys,
   homeDiscoveryAssets,
+  homeSearchAssets,
   homeMarketHasPending,
   homeMarketPriceValue,
   homeMarketShellLoading,
@@ -179,6 +180,36 @@ describe('Home market summary retries', () => {
 
     expect(
       homeDiscoveryAssets([indexedCollection], {}, 10, [{ asset: portable, collection: portableCollection }]),
+    ).toEqual([
+      { asset: portable, collection: portableCollection },
+      { asset: indexed, collection: indexedCollection },
+    ]);
+  });
+
+  it('includes portable listings in Discover search and de-duplicates indexed matches', () => {
+    const portable = {
+      id: 'p'.repeat(43),
+      name: 'permaweb as a substrate for ai',
+      image: 'https://arweave.net/portable',
+    };
+    const indexed = { id: 'i'.repeat(43), name: 'Indexed substrate', image: 'https://arweave.net/indexed' };
+    const indexedCollection: Collection = {
+      id: 'images',
+      name: 'Images',
+      description: '',
+      kind: 'images',
+      assets: [indexed, portable],
+    };
+    const portableCollection: Collection = {
+      id: 'created-assets',
+      name: 'Created on Bazar',
+      description: '',
+      kind: 'images',
+      assets: [portable],
+    };
+
+    expect(
+      homeSearchAssets([indexedCollection], [{ asset: portable, collection: portableCollection }], 'substrate', 10),
     ).toEqual([
       { asset: portable, collection: portableCollection },
       { asset: indexed, collection: indexedCollection },

@@ -177,9 +177,11 @@ describe('asset state', () => {
   it('bypasses cached process state throughout transaction acceptance polling', async () => {
     const processId = 'IyFfmbTu8P4rv0KyrA0Q-QtfEnYntMj4RkRiBVip9KA';
     const requested: string[] = [];
+    const requestOptions: RequestInit[] = [];
     const result = await waitForAssetState(processId, (state) => state.balances[owner] === '1', {
-      fetch: async (input) => {
+      fetch: async (input, init) => {
         requested.push(String(input));
+        requestOptions.push(init ?? {});
         if (requested.length === 1) return new Response('unsupported codec', { status: 415 });
         return Response.json({
           'execution-device': 'token@1.0',
@@ -192,6 +194,7 @@ describe('asset state', () => {
 
     expect(requested).toHaveLength(2);
     expect(requested.every((url) => url.includes('now&max-age=0'))).toBe(true);
+    expect(requestOptions.every((options) => options.cache === 'no-store')).toBe(true);
     expect(result.maxAge).toBe(0);
   });
 

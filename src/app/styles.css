@@ -6956,9 +6956,24 @@ body input:focus-visible {
   min-width: 190px;
 }
 .home-asset-filters {
+  position: relative;
   display: flex;
   align-items: flex-end;
   gap: 10px;
+}
+.home-asset-filters-loading {
+  width: 18px;
+  height: 18px;
+  margin: 0 2px 11px 0;
+  flex: 0 0 18px;
+  display: grid;
+  place-items: center;
+  color: var(--home-muted);
+}
+.home-asset-filters-loading > svg {
+  width: 16px;
+  height: 16px;
+  animation: spin 0.8s linear infinite;
 }
 .home-assets .market-select-label {
   display: none;
@@ -7211,6 +7226,12 @@ body input:focus-visible {
     width: 100%;
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .home-asset-filters-loading {
+    position: absolute;
+    top: -24px;
+    right: 0;
+    margin: 0;
   }
   .home-feature-art {
     height: 190px;

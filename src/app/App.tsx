@@ -140,14 +140,16 @@ import { optionalMotionBehavior } from 'helpers/motion';
 import { useWallet } from 'providers/WalletProvider';
 import { FungibleAssetView } from './FungibleAssetView';
 import {
-  discoverFungibleOperationActivities,
+  atomicOperationActivityId,
+  deriveFungibleOperationActivities,
+  deriveOperationActivities,
   FUNGIBLE_OPERATION_ACTIVITY_CHANGE_EVENT,
-  FUNGIBLE_OPERATION_ACTIVITY_SHOW_EVENT,
   FUNGIBLE_OPERATION_ACTIVITY_STORAGE_KEY,
-  loadFungibleOperationActivities,
-  loadOperationActivities,
+  fungibleActivityHasRecovery,
+  reduceFungibleRuntimeActivities,
   saveFungibleOperationActivities,
   saveOperationActivities,
+  type FungibleOperationActivityChange,
   type FungibleOperationActivitySummary,
 } from './operation-activity';
 import {
@@ -156,6 +158,7 @@ import {
   clearStaleWalletOperationClaim,
   discardNewlyPreparedTransactionIfAborted,
   hasRecoverablePurchase,
+  isWalletOperationRecoveryKey,
   latestPurchaseSnapshot,
   loadWalletRecord,
   operationClaimStorageKey,
@@ -163,6 +166,7 @@ import {
   promoteWalletOperationClaim,
   purchaseRecoveryApprovalCount,
   repairRejectedPurchase,
+  removeWalletRecord,
   removeWalletRecoveryAndSignatures,
   releaseWalletOperationClaim,
   removeWalletRecordIf,
@@ -170,6 +174,7 @@ import {
   storeWalletRecordOrThrow,
   shouldAutomaticallyResumePurchase,
   walletOperationStorageChange,
+  WALLET_OPERATION_RECOVERY_CHANGE_EVENT,
   type WalletOperationClaim,
 } from './operation-session';
 import { useDialogFocus } from './useDialogFocus';
@@ -448,6 +453,7 @@ type OperationActivity = {
   confirmations: number;
   confirmationTarget: number;
   createdAt: number;
+  origin: 'runtime' | 'restored';
   restoreFallback(): HTMLElement | null;
 };
 
@@ -472,70 +478,80 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
   const [fungibleActivities, setFungibleActivities] = React.useState<FungibleOperationActivitySummary[]>([]);
   const [activeId, setActiveId] = React.useState<string | null>(null);
   const [hydratedOwners, setHydratedOwners] = React.useState<string[]>([]);
+  const fungibleRuntimeActivitiesRef = React.useRef<FungibleOperationActivitySummary[]>([]);
   const activitiesRef = React.useRef(activities);
   activitiesRef.current = activities;
-  React.useEffect(() => {
+  const refreshOperationActivities = React.useCallback(() => {
     const owner = wallet.address;
-    if (!owner || hydratedOwners.includes(owner)) return;
-    const restored = loadOperationActivities(localStorage, owner).map((activity) => ({
+    if (!owner) return;
+    const restored = deriveOperationActivities(localStorage, owner, market.collections).map((activity) => ({
       ...activity,
+      origin: 'restored' as const,
       restoreFallback: () => null,
     }));
     setActivities((current) => {
-      const known = new Set(current.map((activity) => activity.id));
-      return [...current, ...restored.filter((activity) => !known.has(activity.id))].sort(
+      const runtime = current.filter((activity) => activity.origin === 'runtime');
+      const runtimeAssets = new Set(
+        runtime.filter((activity) => activity.owner === owner).map((activity) => activity.asset.id),
+      );
+      const otherOwners = current.filter((activity) => activity.origin === 'restored' && activity.owner !== owner);
+      return [...runtime, ...otherOwners, ...restored.filter((activity) => !runtimeAssets.has(activity.asset.id))].sort(
         (left, right) => right.createdAt - left.createdAt,
       );
     });
     setHydratedOwners((current) => (current.includes(owner) ? current : [...current, owner]));
-  }, [hydratedOwners, wallet.address]);
+  }, [market.collections, wallet.address]);
+  React.useEffect(() => refreshOperationActivities(), [refreshOperationActivities]);
   React.useEffect(() => {
     if (!hydratedOwners.length) return;
     saveOperationActivities(localStorage, activities, hydratedOwners);
   }, [activities, hydratedOwners]);
   const refreshFungibleActivities = React.useCallback(
-    (durableOnly: boolean) => {
+    (runtime = fungibleRuntimeActivitiesRef.current) => {
       const owner = wallet.address;
       if (!owner) {
         setFungibleActivities([]);
         return;
       }
-      const stored = loadFungibleOperationActivities(localStorage, owner, { durableOnly });
-      const discovered = discoverFungibleOperationActivities(localStorage, owner, market.collections);
-      const byId = new Map([...discovered, ...stored].map((activity) => [activity.id, activity]));
-      const restored = [...byId.values()].sort((left, right) => right.createdAt - left.createdAt);
-      if (discovered.length) saveFungibleOperationActivities(localStorage, restored, [owner]);
-      setFungibleActivities((current) => {
-        if (!durableOnly) return restored;
-        for (const activity of current) {
-          if (activity.owner === owner && (activity.phase === 'form' || activity.phase === 'approval')) {
-            byId.set(activity.id, activity);
-          }
-        }
-        return [...byId.values()].sort((left, right) => right.createdAt - left.createdAt);
-      });
+      const derived = deriveFungibleOperationActivities(localStorage, owner, market.collections, runtime);
+      saveFungibleOperationActivities(
+        localStorage,
+        derived.filter((activity) => fungibleActivityHasRecovery(localStorage, activity)),
+        [owner],
+      );
+      setFungibleActivities(derived);
     },
     [market.collections, wallet.address],
   );
-  React.useEffect(() => refreshFungibleActivities(true), [refreshFungibleActivities]);
+  React.useEffect(() => refreshFungibleActivities(), [refreshFungibleActivities]);
   React.useEffect(() => {
-    const refreshCurrentDocument = () => refreshFungibleActivities(false);
-    const refreshFromStorage = (event: StorageEvent) => {
-      if (
-        event.key === FUNGIBLE_OPERATION_ACTIVITY_STORAGE_KEY ||
-        event.key?.startsWith('bazar-operation:') ||
-        event.key?.startsWith('bazar-purchase-batch:')
-      ) {
-        refreshFungibleActivities(true);
-      }
+    const updateRuntimeActivity = (event: Event) => {
+      const change = (event as CustomEvent<FungibleOperationActivityChange>).detail;
+      if (!change || (change.type !== 'upsert' && change.type !== 'remove')) return;
+      const next = reduceFungibleRuntimeActivities(fungibleRuntimeActivitiesRef.current, change);
+      fungibleRuntimeActivitiesRef.current = next;
+      refreshFungibleActivities(next);
     };
-    window.addEventListener(FUNGIBLE_OPERATION_ACTIVITY_CHANGE_EVENT, refreshCurrentDocument);
+    const refreshCurrentDocument = (event: Event) => {
+      if (!isWalletOperationRecoveryKey((event as CustomEvent<string>).detail)) return;
+      refreshOperationActivities();
+      refreshFungibleActivities();
+    };
+    const refreshFromStorage = (event: StorageEvent) => {
+      if (isWalletOperationRecoveryKey(event.key)) {
+        refreshOperationActivities();
+        refreshFungibleActivities();
+      } else if (event.key === FUNGIBLE_OPERATION_ACTIVITY_STORAGE_KEY) refreshFungibleActivities();
+    };
+    window.addEventListener(FUNGIBLE_OPERATION_ACTIVITY_CHANGE_EVENT, updateRuntimeActivity);
+    window.addEventListener(WALLET_OPERATION_RECOVERY_CHANGE_EVENT, refreshCurrentDocument);
     window.addEventListener('storage', refreshFromStorage);
     return () => {
-      window.removeEventListener(FUNGIBLE_OPERATION_ACTIVITY_CHANGE_EVENT, refreshCurrentDocument);
+      window.removeEventListener(FUNGIBLE_OPERATION_ACTIVITY_CHANGE_EVENT, updateRuntimeActivity);
+      window.removeEventListener(WALLET_OPERATION_RECOVERY_CHANGE_EVENT, refreshCurrentDocument);
       window.removeEventListener('storage', refreshFromStorage);
     };
-  }, [refreshFungibleActivities]);
+  }, [refreshFungibleActivities, refreshOperationActivities]);
   const start = React.useCallback(
     (input: Pick<OperationActivity, 'asset' | 'collectionId' | 'owner' | 'operation' | 'restoreFallback'>) => {
       const existing = activitiesRef.current.find(
@@ -546,7 +562,7 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
         setActiveId(existing.id);
         return;
       }
-      const id = `${input.asset.id}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
+      const id = atomicOperationActivityId(input.asset.id, input.owner);
       const phase: OperationActivityPhase =
         input.operation.kind === 'buy' && input.operation.resume
           ? purchaseRecoveryApprovalCount(input.operation.resume)
@@ -569,6 +585,7 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
           confirmations: 0,
           confirmationTarget: 5,
           createdAt: Date.now(),
+          origin: 'runtime',
         },
         ...current,
       ]);
@@ -614,11 +631,9 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
       showFungible: (id) => {
         const activity = fungibleActivities.find((candidate) => candidate.id === id);
         if (!activity) return;
-        navigate(`/asset/${activity.collectionId}/${activity.asset.id}`);
-        window.setTimeout(
-          () => window.dispatchEvent(new CustomEvent(FUNGIBLE_OPERATION_ACTIVITY_SHOW_EVENT, { detail: activity.id })),
-          0,
-        );
+        navigate(`/asset/${activity.collectionId}/${activity.asset.id}`, {
+          state: { fungibleOperationActivityId: activity.id },
+        });
       },
       hide: () => setActiveId(null),
       remove,
@@ -633,6 +648,7 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
           key={activity.id}
           taskId={activity.id}
           asset={activity.asset}
+          collectionId={activity.collectionId}
           owner={activity.owner}
           operation={activity.operation}
           visible={activeId === activity.id}
@@ -1553,16 +1569,13 @@ function Home() {
   >();
   const [portableHomeRetry, setPortableHomeRetry] = React.useState(0);
   const assets = normalizedQuery
-    ? market.collections
-        .flatMap((collection) =>
-          collectionSearchAssets(collection, normalizedQuery)
-            .filter((asset) => asset.image || collection.kind === 'tokens' || collection.kind === 'names')
-            .map((asset) => ({ asset, collection })),
-        )
-        .filter(({ asset, collection }) => marketplaceAssetMatchesSearch(asset, collection, normalizedQuery))
-        .slice(0, 10)
+    ? homeSearchAssets(market.collections, portableHomeListings, normalizedQuery, 10)
     : homeDiscoveryAssets(market.collections, verifiedHomeListings, 10, portableHomeListings);
   const assetKey = assets.map(({ asset }) => asset.id).join(',');
+  const portableHomeListingById = new Map(portableHomeListings.map((result) => [result.asset.id, result]));
+  const portableHomeStateKey = portableHomeListings
+    .map((result) => `${result.asset.id}:${String(result.state.raw['at-slot'] ?? result.state.swapHeight)}`)
+    .join(',');
   const [assetPrices, setAssetPrices] = React.useState<Record<string, HomeMarketSummary>>({});
   const [publishedDiscoverQuery, setPublishedDiscoverQuery] = React.useState<string | null>(null);
   const collectionKey = collections
@@ -1616,29 +1629,42 @@ function Home() {
     const controller = new AbortController();
     setPortableHomeListingsLoading(true);
     setPortableHomeListingsFailure(undefined);
+    setPortableHomeListings([]);
     void (async () => {
-      try {
-        const candidates = await discoverMarketActivity({ listingsOnly: true, signal: controller.signal });
+      let indexFailure: unknown;
+      let computeFailure: unknown;
+      const publishCandidates = async (candidates: AssetCandidate[]) => {
         const { unverified } = partitionAssetCandidateSupport(candidates, market.collections);
-        const verification = unverified.length
-          ? await verifyAssetCandidateSupport(unverified, market.collections, { signal: controller.signal })
-          : { supported: [], unavailable: [] };
+        if (!unverified.length) return;
+        const verification = await verifyAssetCandidateSupport(unverified, market.collections, {
+          signal: controller.signal,
+        });
+        indexFailure ??= verification.unavailable[0]?.error;
         const unverifiedIds = new Set(unverified.map((candidate) => candidate.processId));
-        let computeFailure: unknown;
-        const resolved = await resolveAssetCandidates(
+        await resolveAssetCandidates(
           verification.supported.filter((candidate) => unverifiedIds.has(candidate.processId)),
           market.collections,
           {
             signal: controller.signal,
-            read: (processId, signal) => readAssetState(processId, { signal, maxAttempts: 1 }),
-            onSettled: (_result, _candidate, cause) => {
+            concurrency: 2,
+            read: (processId, signal) => readAssetState(processId, { signal, maxAge: 0, maxAttempts: 1 }),
+            onSettled: (result, candidate, cause) => {
               if (cause && computeFailure === undefined) computeFailure = cause;
+              setPortableHomeListings((current) =>
+                mergeResolvedListingBatch(current, [{ processId: candidate.processId, result }]),
+              );
             },
           },
         );
+        controller.signal.throwIfAborted();
+      };
+      try {
+        await discoverMarketActivity({
+          listingsOnly: true,
+          signal: controller.signal,
+          onPage: publishCandidates,
+        });
         if (controller.signal.aborted) return;
-        setPortableHomeListings(resolved.filter(isLiveListing));
-        const indexFailure = verification.unavailable[0]?.error;
         const failure = indexFailure ?? computeFailure;
         setPortableHomeListingsFailure(
           failure
@@ -1697,7 +1723,16 @@ function Home() {
         const controller = new AbortController();
         assetSummaryControllers.current.set(asset.id, controller);
         try {
-          const { state } = await readAssetState(asset.id, { signal: controller.signal, maxAttempts: 1 });
+          const portable = portableHomeListingById.get(asset.id);
+          const state = portable
+            ? portable.state
+            : (
+                await readAssetState(asset.id, {
+                  signal: controller.signal,
+                  maxAge: 0,
+                  maxAttempts: 1,
+                })
+              ).state;
           const order = bestAskOfAsset(state);
           if (!controller.signal.aborted) {
             setAssetPrices((current) => ({
@@ -1720,7 +1755,7 @@ function Home() {
       })(),
     );
     void Promise.all(requests).then(finishRetry);
-  }, [assetKey, finishSummaryRetry, summaryRetry]);
+  }, [assetKey, finishSummaryRetry, portableHomeStateKey, summaryRetry]);
   const marketShellLoading = homeMarketShellLoading(market.loading, market.collections.length);
   const visibleAssetResultsReady = homeMarketSummariesReady(
     marketShellLoading,
@@ -1851,7 +1886,7 @@ function Home() {
           const pendingFloorCandidates = candidates.filter((candidate) => pendingFloorIds.has(candidate.processId));
           await resolveAssetCandidates(pendingFloorCandidates, [collection], {
             signal: controller.signal,
-            read: (processId, signal) => readAssetState(processId, { signal, maxAttempts: 1 }),
+            read: (processId, signal) => readAssetState(processId, { signal, maxAge: 0, maxAttempts: 1 }),
             onSettled: (result, candidate, cause) => {
               if (
                 controller.signal.aborted ||
@@ -2042,7 +2077,15 @@ function Home() {
                   </p>
                 </div>
                 {homeTab === 'discover' ? (
-                  <div className="home-asset-filters">
+                  <div aria-busy={discoverResultsPending} className="home-asset-filters">
+                    <span className="home-asset-filters-loading" role="status">
+                      {discoverResultsPending ? (
+                        <>
+                          <LoaderCircle aria-hidden="true" />
+                          <span className="sr-only">Loading marketplace results</span>
+                        </>
+                      ) : null}
+                    </span>
                     <MarketSelect<HomeAssetType>
                       label="Asset type"
                       onChange={setAssetType}
@@ -6244,7 +6287,7 @@ function AssetView() {
         (record) => record?.buyer === wallet.address,
       );
     } catch {
-      localStorage.removeItem(purchaseKey);
+      removeWalletRecord(localStorage, purchaseKey);
     }
     if (saved?.buyer === wallet.address && saved?.order && !hasRecoverablePurchase(saved.snapshot)) {
       removeWalletRecordIf<any>(
@@ -6361,7 +6404,7 @@ function AssetView() {
         }
       }
     } catch {
-      localStorage.removeItem(pendingOperationKey);
+      removeWalletRecord(localStorage, pendingOperationKey);
     }
   }, [assetId, openOperation, operation, recoverySuppressed, state, storageVersion, wallet.address]);
   if (!collection && (market.loading || (directAtomicRoute && loading))) {
@@ -6964,6 +7007,7 @@ export function AtomicPurchaseSequence({ state }: { state: PurchaseState | null 
 function OperationDialog({
   taskId,
   asset,
+  collectionId,
   owner,
   operation,
   visible,
@@ -6976,6 +7020,7 @@ function OperationDialog({
 }: {
   taskId: string;
   asset: AssetSummary;
+  collectionId: string;
   owner: string;
   operation: Operation;
   visible: boolean;
@@ -7196,9 +7241,12 @@ function OperationDialog({
           if (hasRecoverablePurchase(snapshot)) {
             const record = {
               asset: { id: asset.id, name: asset.name },
+              activityKind: 'atomic',
               buyer: owner,
+              collectionId,
               order: operation.order,
               snapshot,
+              createdAt: submittedAtRef.current ?? Date.now(),
             };
             try {
               const matches = (current: any) =>
@@ -7235,10 +7283,7 @@ function OperationDialog({
         const finalState = await purchase.run();
         if (recoveryConflict) throw recoveryConflict;
         if (finalState.stage !== 'complete' || !finalState.success) {
-          const code =
-            finalState.error?.code === 'unexpected'
-              ? finalState.error.message
-              : (finalState.error?.code ?? 'asset-purchase-failed');
+          const code = atomicPurchaseFailureCode(finalState) ?? 'asset-purchase-failed';
           const snapshot = purchase.snapshot();
           const repaired = repairRejectedPurchase(snapshot, code);
           for (const id of repaired.discardIds) {
@@ -7253,15 +7298,19 @@ function OperationDialog({
                 record?.order?.orderId === operation.order.orderId &&
                 record?.snapshot?.registration?.id === snapshot.registration?.id,
             );
+            onOperation({ kind: 'buy', order: operation.order });
           } else if (repaired.snapshot !== snapshot) {
             storeWalletRecordOrThrow<any>(
               localStorage,
               purchaseKey,
               {
                 asset: { id: asset.id, name: asset.name },
+                activityKind: 'atomic',
                 buyer: owner,
+                collectionId,
                 order: operation.order,
                 snapshot: repaired.snapshot,
+                createdAt: submittedAtRef.current ?? Date.now(),
               },
               (record) =>
                 record?.buyer === owner &&
@@ -7342,6 +7391,9 @@ function OperationDialog({
         txId: prepared.id,
         kind: operation.kind,
         assetId: asset.id,
+        asset: { id: asset.id, name: asset.name, ...(asset.image ? { image: asset.image } : {}) },
+        activityKind: 'atomic',
+        collectionId,
         signer: owner,
         ...(operation.kind === 'cancel'
           ? { order: operation.order, startingSlot: exactActionBaseline!.startingSlot }
@@ -7505,6 +7557,7 @@ function OperationDialog({
     hasRecoverablePurchase(purchaseState) ||
     (operation.kind === 'buy' && hasRecoverablePurchase(operation.resume)),
   );
+  const terminalReservationFailure = atomicPurchaseHasTerminalReservationFailure(purchaseState);
   const sellerPrice =
     operation.kind === 'buy' || operation.kind === 'cancel' ? `${winstonToAr(operation.order.asking)} AR` : '';
   const purchaseAffordable =
@@ -7545,9 +7598,12 @@ function OperationDialog({
       if (hasRecoverablePurchase(snapshot)) {
         const record = {
           asset: { id: asset.id, name: asset.name },
+          activityKind: 'atomic',
           buyer: owner,
+          collectionId,
           order: operation.order,
           snapshot,
+          createdAt: submittedAtRef.current ?? Date.now(),
         };
         storeWalletRecordIf<any>(
           localStorage,
@@ -7567,8 +7623,31 @@ function OperationDialog({
     networkRef.current = null;
     onClose(false);
   };
+  const startFreshPurchase = () => {
+    if (operation.kind !== 'buy') return;
+    const snapshot = latestPurchaseSnapshot(operation.resume, purchaseState ? purchaseSnapshot(purchaseState) : null);
+    if (snapshot?.registration?.id) {
+      removeWalletRecoveryAndSignatures<any>(
+        localStorage,
+        atomicPurchaseStorageKey(asset.id, owner),
+        (record) =>
+          record?.buyer === owner &&
+          record?.order?.orderId === operation.order.orderId &&
+          record?.snapshot?.registration?.id === snapshot.registration?.id,
+        [snapshot.registration.id, snapshot.payment?.id],
+        owner,
+      );
+    }
+    onOperation({ kind: 'buy', order: operation.order });
+    purchaseRef.current = null;
+    submittedAtRef.current = undefined;
+    setPurchaseState(null);
+    setMessage('');
+    setFailureKind(null);
+    setPhase('form');
+  };
   const closeOrHide = () => {
-    const action = transactionDialogDismissAction(visiblePhase, recoverable);
+    const action = transactionDialogDismissAction(visiblePhase, recoverable && !terminalReservationFailure);
     if (action.kind === 'close') {
       onClose(action.resumeLater, action.refresh);
       return;
@@ -7968,11 +8047,15 @@ function OperationDialog({
                     ) : null}
                   </div>
                 </div>
-                {purchaseState?.error?.code === 'registration-dispatch-rejected' ? (
+                {atomicPurchaseFailureCode(purchaseState) === 'registration-dispatch-rejected' ? (
                   <button data-dialog-initial onClick={() => onClose(false)}>
                     View current listing
                   </button>
-                ) : purchaseState?.error?.code === 'payment-dispatch-rejected' ? (
+                ) : terminalReservationFailure ? (
+                  <button data-dialog-initial onClick={startFreshPurchase}>
+                    Start a new purchase
+                  </button>
+                ) : atomicPurchaseFailureCode(purchaseState) === 'payment-dispatch-rejected' ? (
                   <button data-dialog-initial onClick={() => void submit()}>
                     Sign a replacement seller payment
                   </button>
@@ -8152,6 +8235,28 @@ export function homeDiscoveryAssets(
   );
   const seen = new Set<string>();
   return [...portableListings, ...verified, ...fallback]
+    .filter(({ asset }) => {
+      if (seen.has(asset.id)) return false;
+      seen.add(asset.id);
+      return true;
+    })
+    .slice(0, limit);
+}
+
+export function homeSearchAssets(
+  collections: Collection[],
+  portableListings: Array<Pick<ResolvedAsset, 'asset' | 'collection'>>,
+  query: string,
+  limit: number,
+) {
+  const indexed = collections.flatMap((collection) =>
+    collectionSearchAssets(collection, query)
+      .filter((asset) => asset.image || collection.kind === 'tokens' || collection.kind === 'names')
+      .map((asset) => ({ asset, collection })),
+  );
+  const seen = new Set<string>();
+  return [...portableListings, ...indexed]
+    .filter(({ asset, collection }) => marketplaceAssetMatchesSearch(asset, collection, query))
     .filter(({ asset }) => {
       if (seen.has(asset.id)) return false;
       seen.add(asset.id);
@@ -8454,6 +8559,17 @@ export function atomicPurchaseFailureStage(state: PurchaseState | null) {
     return state.registration.dispatched ? 'Reservation confirmation or acceptance' : 'Reservation dispatch';
   }
   return 'Before reservation';
+}
+export function atomicPurchaseFailureCode(state: PurchaseState | null) {
+  if (!state?.error?.code) return null;
+  return state.error.code === 'unexpected' ? state.error.message || state.error.code : state.error.code;
+}
+export function atomicPurchaseHasTerminalReservationFailure(state: PurchaseState | null) {
+  return [
+    'registration-dispatch-rejected',
+    'asset-order-reservation-rejected',
+    'asset-order-reservation-expired',
+  ].includes(atomicPurchaseFailureCode(state) ?? '');
 }
 export function assetStateErrorMessage(error: unknown) {
   const value = error instanceof Error ? error.message : String(error);

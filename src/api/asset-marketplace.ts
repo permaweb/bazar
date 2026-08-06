@@ -471,6 +471,7 @@ async function readState(
       const request = timeoutSignal(options.signal, COMPUTE_TIMEOUT);
       try {
         const response = await fetcher(path, {
+          ...(options.slot === undefined && maxAge === 0 ? { cache: 'no-store' as const } : {}),
           headers: {
             accept: 'application/json',
             'require-codec': 'application/json',

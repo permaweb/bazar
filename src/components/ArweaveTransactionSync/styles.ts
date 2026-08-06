@@ -525,6 +525,8 @@ export const ErrorBox = styled.div`
 `;
 
 export const SkipAction = styled.div<{ $warning: boolean }>`
+  position: relative;
+  z-index: 2;
   margin-top: 10px;
   padding: 10px 12px;
   display: flex;
@@ -568,8 +570,7 @@ export const SkipAction = styled.div<{ $warning: boolean }>`
       props.$warning ? props.theme.colors.warning.primary : props.theme.colors.container.primary.background};
     background: ${(props) =>
       props.$warning ? props.theme.colors.container.primary.background : props.theme.colors.font.primary};
-    border-color: ${(props) =>
-      props.$warning ? props.theme.colors.warning.primary : props.theme.colors.font.primary};
+    border-color: ${(props) => (props.$warning ? props.theme.colors.warning.primary : props.theme.colors.font.primary)};
   }
 
   @media (max-width: 560px) {

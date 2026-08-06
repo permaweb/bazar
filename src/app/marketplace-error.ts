@@ -7,9 +7,9 @@ const FRIENDLY_ERRORS: Record<string, string> = {
   'asset-state-timeout':
     'The sampled observers report the transaction as confirmed, but the selected compute gateway has not applied it yet. Continue to keep checking live state.',
   'asset-order-reservation-expired':
-    'This reservation no longer has enough time to reach scheduled state before its deadline. No seller payment was sent; the signed transaction details remain saved in this browser for review.',
+    'The reservation window passed before the seller payment was dispatched. No seller payment was sent. The stale recovery has been cleared; start a new purchase if the listing is still available.',
   'asset-order-reservation-rejected':
-    'Another buyer claimed this listing before your reservation reached live process state. No seller payment was sent. The stale recovery has been cleared; review the current order book before trying again.',
+    'The reservation was not active when the token process reached its transaction. It may have lost a race or been rejected by the token process. No seller payment was sent. The stale recovery has been cleared; review the current listing before trying again.',
   'wallet-account-changed':
     'The connected wallet changed after signing. Reconnect the original signer to continue the transaction saved in this browser.',
   'wallet-recovery-conflict':
@@ -69,6 +69,7 @@ export function marketplaceOperationFailure(error: unknown): MarketplaceOperatio
     'asset-cancel-rejected',
     'asset-purchase-rejected',
     'asset-order-reservation-rejected',
+    'asset-order-reservation-expired',
   ].includes(value) ||
     ['transaction-dispatch-rejected', 'registration-dispatch-rejected', 'payment-dispatch-rejected'].includes(code)
     ? 'transaction-rejected'

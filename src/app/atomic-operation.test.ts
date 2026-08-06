@@ -10,7 +10,9 @@ import {
   atomicOperationStateError,
   atomicOperationValue,
   atomicOrderCanBeBought,
+  atomicPurchaseFailureCode,
   atomicPurchaseFailureStage,
+  atomicPurchaseHasTerminalReservationFailure,
   atomicPurchaseRecoveryStatus,
 } from './App';
 
@@ -175,5 +177,20 @@ describe('atomic purchase failure trace', () => {
         payment: { id: 'payment', dispatched: true },
       } as any),
     ).toBe('Payment confirmation or ownership');
+  });
+
+  it('normalizes terminal reservation failures before choosing a recovery action', () => {
+    const expired = {
+      stage: 'failed',
+      error: { code: 'unexpected', message: 'asset-order-reservation-expired' },
+    } as any;
+    const paymentRejected = {
+      stage: 'failed',
+      error: { code: 'payment-dispatch-rejected', message: 'invalid payment' },
+    } as any;
+
+    expect(atomicPurchaseFailureCode(expired)).toBe('asset-order-reservation-expired');
+    expect(atomicPurchaseHasTerminalReservationFailure(expired)).toBe(true);
+    expect(atomicPurchaseHasTerminalReservationFailure(paymentRejected)).toBe(false);
   });
 });

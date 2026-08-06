@@ -6,8 +6,10 @@ import {
   assertWalletOperationAvailable,
   atomicPurchaseStorageKey,
   clearStaleWalletOperationClaim,
+  fungibleBatchStorageKey,
   hasRecoverablePurchase,
   isWalletOperationStorageKey,
+  isWalletOperationRecoveryKey,
   latestPurchaseSnapshot,
   loadWalletRecord,
   operationForSigner,
@@ -31,6 +33,14 @@ const REGISTRATION_ID = 'r'.repeat(43);
 const PAYMENT_ID = 'p'.repeat(43);
 
 describe('wallet-bound operation sessions', () => {
+  it('identifies recovery records that drive durable activity', () => {
+    expect(isWalletOperationRecoveryKey(operationStorageKey('asset', 'wallet-a'))).toBe(true);
+    expect(isWalletOperationRecoveryKey(atomicPurchaseStorageKey('asset', 'wallet-a'))).toBe(true);
+    expect(isWalletOperationRecoveryKey(fungibleBatchStorageKey('asset', 'wallet-a'))).toBe(true);
+    expect(isWalletOperationRecoveryKey(operationClaimStorageKey('asset', 'wallet-a'))).toBe(false);
+    expect(isWalletOperationRecoveryKey('bazar-operation-activities:v1')).toBe(false);
+  });
+
   it('exposes an operation only to the signer that opened it', () => {
     const session = { signer: 'wallet-a', operation: { kind: 'sell' } };
 
@@ -162,6 +172,10 @@ describe('wallet-bound operation sessions', () => {
       snapshot: unsignedPair,
     });
     expect(repairRejectedPurchase(unsignedPair, 'asset-order-reservation-rejected')).toEqual({
+      discardIds: [REGISTRATION_ID, PAYMENT_ID],
+      snapshot: null,
+    });
+    expect(repairRejectedPurchase(unsignedPair, 'asset-order-reservation-expired')).toEqual({
       discardIds: [REGISTRATION_ID, PAYMENT_ID],
       snapshot: null,
     });
@@ -335,6 +349,19 @@ describe('wallet-bound operation sessions', () => {
     ).toBeNull();
     expect(values.has(scoped)).toBe(false);
     expect(values.has(legacy)).toBe(true);
+  });
+
+  it('removes malformed recovery instead of letting key existence become state', () => {
+    const scoped = operationStorageKey('asset', 'wallet-a');
+    const values = new Map([[scoped, '{not-json']]);
+    const storage = {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, value),
+      removeItem: (key: string) => values.delete(key),
+    };
+
+    expect(loadWalletRecord(storage, scoped, 'legacy-key', () => true)).toBeNull();
+    expect(values.has(scoped)).toBe(false);
   });
 
   it('removes only the exact attempt that finished', () => {

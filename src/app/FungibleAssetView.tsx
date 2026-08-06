@@ -1,5 +1,5 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
   ArrowDown,
@@ -75,13 +75,7 @@ import {
   marketplaceOperationFailure,
   type MarketplaceOperationFailure,
 } from './marketplace-error';
-import {
-  FUNGIBLE_OPERATION_ACTIVITY_CHANGE_EVENT,
-  FUNGIBLE_OPERATION_ACTIVITY_SHOW_EVENT,
-  fungibleOperationActivityId,
-  removeFungibleOperationActivity,
-  upsertFungibleOperationActivity,
-} from './operation-activity';
+import { announceFungibleOperationActivityChange, fungibleOperationActivityId } from './operation-activity';
 import {
   acquireWalletOperationClaim,
   clearStaleWalletOperationClaim,
@@ -94,6 +88,7 @@ import {
   promoteWalletOperationClaim,
   purchaseRecoveryApprovalCount,
   repairRejectedPurchase,
+  removeWalletRecord,
   removeWalletRecoveryAndSignatures,
   removeWalletRecordIf,
   releaseWalletOperationClaim,
@@ -129,10 +124,14 @@ type BatchEntry = {
 
 type BatchResume = {
   version: 3;
+  asset?: AssetSummary;
+  activityKind?: 'fungible';
   buyer: string;
+  collectionId?: string;
   startingBalance: string;
   entries: BatchEntry[];
   attemptId?: string;
+  createdAt?: number;
 };
 
 export type FungibleOperation =
@@ -184,18 +183,28 @@ export function FungibleAssetView({
   onRefresh,
 }: Props) {
   const wallet = useWallet();
+  const location = useLocation();
+  const navigate = useNavigate();
   const [operationActivities, setOperationActivities] = React.useState<FungibleOperationActivity[]>([]);
   const operationActivitiesRef = React.useRef(operationActivities);
   operationActivitiesRef.current = operationActivities;
+  React.useEffect(
+    () => () => {
+      for (const activity of operationActivitiesRef.current) {
+        announceFungibleOperationActivityChange({ type: 'remove', id: activity.id, owner: activity.signer });
+      }
+    },
+    [asset.id, wallet.address],
+  );
   const walletActivities = operationActivities.filter((activity) => activity.signer === wallet.address);
   const hasWalletActivities = walletActivities.length > 0;
   const publishOperationActivity = React.useCallback(
     (activity: FungibleOperationActivity, nextPhase: TransactionDialogPhase | null = activity.phase) => {
       const phase = nextPhase ?? 'form';
       if (phase === 'done') {
-        removeFungibleOperationActivity(localStorage, activity.id, activity.signer);
+        announceFungibleOperationActivityChange({ type: 'remove', id: activity.id, owner: activity.signer });
       } else {
-        upsertFungibleOperationActivity(localStorage, {
+        const summary = {
           id: activity.id,
           asset,
           collectionId: collection.id,
@@ -204,9 +213,9 @@ export function FungibleAssetView({
           phase,
           status: fungibleActivityPhaseStatus(phase),
           createdAt: activity.createdAt ?? Date.now(),
-        });
+        };
+        announceFungibleOperationActivityChange({ type: 'upsert', activity: summary });
       }
-      window.dispatchEvent(new Event(FUNGIBLE_OPERATION_ACTIVITY_CHANGE_EVENT));
     },
     [asset, collection.id],
   );
@@ -391,7 +400,7 @@ export function FungibleAssetView({
     try {
       savedBatch = JSON.parse(localStorage.getItem(fungibleBatchStorageKey(asset.id, wallet.address)) ?? 'null');
     } catch {
-      localStorage.removeItem(purchaseKey);
+      removeWalletRecord(localStorage, purchaseKey);
     }
     if (isRecoverableBatch(savedBatch, wallet.address)) {
       const resume = savedBatch as BatchResume;
@@ -508,7 +517,7 @@ export function FungibleAssetView({
         });
       }
     } catch {
-      if (wallet.address) localStorage.removeItem(operationStorageKey(asset.id, wallet.address));
+      if (wallet.address) removeWalletRecord(localStorage, operationStorageKey(asset.id, wallet.address));
     }
   }, [
     asset.id,
@@ -535,14 +544,15 @@ export function FungibleAssetView({
   );
 
   React.useEffect(() => {
-    const showActivity = (event: Event) => {
-      const id = (event as CustomEvent<string>).detail;
-      if (!id) return;
-      setOperationActivities((current) => current.map((activity) => ({ ...activity, visible: activity.id === id })));
-    };
-    window.addEventListener(FUNGIBLE_OPERATION_ACTIVITY_SHOW_EVENT, showActivity);
-    return () => window.removeEventListener(FUNGIBLE_OPERATION_ACTIVITY_SHOW_EVENT, showActivity);
-  }, []);
+    const requestedId = (location.state as { fungibleOperationActivityId?: unknown } | null)
+      ?.fungibleOperationActivityId;
+    if (typeof requestedId !== 'string' || !operationActivities.some((activity) => activity.id === requestedId)) return;
+    setOperationActivities((current) => {
+      if (current.every((activity) => activity.visible === (activity.id === requestedId))) return current;
+      return current.map((activity) => ({ ...activity, visible: activity.id === requestedId }));
+    });
+    navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+  }, [location.pathname, location.search, location.state, navigate, operationActivities]);
 
   return (
     <section className="asset-page asset-detail-page fungible-asset-page">
@@ -913,6 +923,7 @@ export function FungibleAssetView({
         <FungibleOperationDialog
           key={activity.id}
           asset={asset}
+          collectionId={collection.id}
           state={state}
           owner={activity.signer}
           operation={activity.operation}
@@ -1030,6 +1041,7 @@ export function FungiblePurchaseSequence({
 
 function FungibleOperationDialog({
   asset,
+  collectionId,
   state,
   owner,
   operation,
@@ -1040,6 +1052,7 @@ function FungibleOperationDialog({
   onClose,
 }: {
   asset: AssetSummary;
+  collectionId: string;
   state: AssetState;
   owner: string;
   operation: FungibleOperation;
@@ -1397,6 +1410,9 @@ function FungibleOperationDialog({
         txId: prepared.id,
         kind: operation.kind,
         assetId: asset.id,
+        asset,
+        activityKind: 'fungible',
+        collectionId,
         signer: owner,
         ...(operation.kind === 'cancel'
           ? { order: operation.order, startingSlot: exactActionBaseline!.startingSlot }
@@ -1561,9 +1577,13 @@ function FungibleOperationDialog({
     }
     const saved: BatchResume = {
       version: 3,
+      asset,
+      activityKind: 'fungible',
       buyer: owner,
+      collectionId,
       startingBalance,
       entries,
+      createdAt: resume?.createdAt ?? Date.now(),
     };
     let terminalRecoveryRemoved = false;
     const attemptId = batchRecoveryIdentity(entries);
