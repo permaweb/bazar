@@ -55,6 +55,7 @@ import {
 	discoverCollectionActivityBatched,
 	discoverMarketActivity,
 	discoverMarketActivityBatched,
+	discoverPendingAssetOffers,
 	discoverWalletAssetCandidates,
 	createWalletCandidateScan,
 	isLiveListing,
@@ -64,6 +65,7 @@ import {
 	walletAssetGroups,
 	type AssetCandidate,
 	type CollectionActivityEvent,
+	type PendingAssetOffer,
 	type ResolvedAsset,
 	type WalletCandidateScan,
 } from 'api/asset-discovery';
@@ -114,8 +116,10 @@ import type { ArweaveObserverNetwork } from 'api/arweave-observers';
 import type { PurchaseCostEstimate } from 'api/asset-transactions';
 import type { ArweaveSyncStep } from 'components/ArweaveTransactionSync';
 import { quorumConfirmationDepth } from 'components/ArweaveTransactionSync/confirmationDepth';
+import { postConfirmationPendingLabel } from 'components/ArweaveTransactionSync/sequence';
 import { ArtworkImage } from 'components/ArtworkImage';
 import { AssetDetailTabs, type AssetDetailTab } from 'components/AssetDetailTabs';
+import { AssetOperationStatus, assetOperationPendingActionLabel } from 'components/AssetOperationStatus';
 import { BazarMark } from 'components/BazarMark';
 import { ConnectWalletButton } from 'components/ConnectWalletButton';
 import { ErrorPanel } from 'components/ErrorPanel';
@@ -179,6 +183,7 @@ import {
 	operationClaimStorageKey,
 	operationStorageKey,
 	promoteWalletOperationClaim,
+	purchaseRecoveryApprovalCopy,
 	purchaseRecoveryApprovalCount,
 	repairRejectedPurchase,
 	removeWalletRecord,
@@ -203,6 +208,15 @@ import {
 	type MarketplaceFailureKind,
 	type MarketplaceRequestSource,
 } from './marketplace-error';
+import {
+	purchaseObservationCheckingMessage,
+	purchaseObservationPendingState,
+	purchaseObservationResumeState,
+	purchaseObservationRetryDelay,
+	purchaseObservationRetryKind,
+	purchaseObservationRetryMessage,
+	waitForPurchaseObservationRetry,
+} from './purchase-observation-retry';
 
 import './styles.css';
 
@@ -532,6 +546,7 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 	}, [refreshFungibleActivities, refreshOperationActivities]);
 	const start = React.useCallback(
 		(input: Pick<OperationActivity, 'asset' | 'collectionId' | 'owner' | 'operation' | 'restoreFallback'>) => {
+			const id = atomicOperationActivityId(input.asset.id, input.owner);
 			const existing = activitiesRef.current.find(
 				(activity) =>
 					activity.asset.id === input.asset.id && activity.owner === input.owner && activity.phase !== 'done',
@@ -540,7 +555,6 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 				setActiveId(existing.id);
 				return;
 			}
-			const id = atomicOperationActivityId(input.asset.id, input.owner);
 			const phase: OperationActivityPhase =
 				input.operation.kind === 'buy' && input.operation.resume
 					? purchaseRecoveryApprovalCount(input.operation.resume)
@@ -549,24 +563,34 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 					: input.operation.kind !== 'buy' && input.operation.resumeId
 						? 'working'
 						: 'form';
-			setActivities((current) => [
-				{
-					...input,
-					id,
-					phase,
-					status:
-						phase === 'approval'
-							? 'Waiting for wallet approval'
-							: phase === 'working'
-								? 'Starting transaction…'
-								: 'Waiting for details',
-					confirmations: 0,
-					confirmationTarget: 5,
-					createdAt: Date.now(),
-					origin: 'runtime',
-				},
-				...current,
-			]);
+			setActivities((current) => {
+				if (
+					current.some(
+						(activity) =>
+							activity.asset.id === input.asset.id && activity.owner === input.owner && activity.phase !== 'done',
+					)
+				) {
+					return current;
+				}
+				return [
+					{
+						...input,
+						id,
+						phase,
+						status:
+							phase === 'approval'
+								? 'Waiting for wallet approval'
+								: phase === 'working'
+									? 'Starting transaction…'
+									: 'Waiting for details',
+						confirmations: 0,
+						confirmationTarget: 5,
+						createdAt: Date.now(),
+						origin: 'runtime',
+					},
+					...current,
+				];
+			});
 			setActiveId(id);
 		},
 		[],
@@ -4651,6 +4675,7 @@ function AssetView() {
 	const {
 		activities: operationActivities,
 		start: startOperationActivity,
+		show: showOperationActivity,
 		remove: removeOperationActivity,
 	} = useOperationActivity();
 	const operationFocusFallbackRef = React.useRef<HTMLHeadingElement>(null);
@@ -4799,6 +4824,13 @@ function AssetView() {
 			requestRef.current?.abort();
 		};
 	}, [load]);
+	React.useEffect(() => {
+		if (!wallet.address || !state) return;
+		const currentOrder = liveOrder(state);
+		if (currentOrder?.status === 'reserved' && currentOrder.buyer === wallet.address) {
+			setActivityRequested(true);
+		}
+	}, [state, wallet.address]);
 	React.useEffect(() => {
 		const refreshVisibleState = () => {
 			if (document.visibilityState === 'visible') void refreshAsset();
@@ -5086,7 +5118,10 @@ function AssetView() {
 	const owner = state ? ownerOfAsset(state) : null;
 	const order = state ? liveOrder(state) : null;
 	const mine = Boolean(wallet.address && owner === wallet.address);
+	const externalReservation = externalReservationTransaction(order, wallet.address, assetActivity);
 	const recoveryBlocksActions = recoverySuppressed || Boolean(unavailableRecovery);
+	const operationBlocksActions = recoveryBlocksActions || Boolean(operationActivityEntry);
+	const operationIsBusy = Boolean(operationActivityEntry && operationActivityEntry.phase !== 'error');
 	const license = state ? licenseProperties(state) : [];
 	const description = assetDescription(state, collection.description);
 	const moreAssets = collection.assets.filter((item) => item.id !== asset.id).slice(0, 4);
@@ -5209,7 +5244,7 @@ function AssetView() {
 						{loading ? <Loading label="Computing current state…" /> : null}
 						{error ? <ErrorPanel message={error} onRetry={load} retryLabel="Retry live state" /> : null}
 						{state ? (
-							<section className="asset-commerce-card">
+							<section aria-busy={operationIsBusy} className="asset-commerce-card">
 								<div className="asset-market-stats">
 									<div>
 										<span>Current ask</span>
@@ -5232,42 +5267,77 @@ function AssetView() {
 									<span>{order?.status === 'reserved' ? 'Reserved at' : order ? 'Buy for' : 'Market status'}</span>
 									<strong>{order ? `${winstonToAr(order.asking)} AR` : 'Not listed'}</strong>
 								</div>
+								{operationActivityEntry ? (
+									<AssetOperationStatus
+										kind={operationActivityEntry.operation.kind}
+										phase={operationActivityEntry.phase}
+										status={operationActivityEntry.status}
+										onView={() => showOperationActivity(operationActivityEntry.id)}
+									/>
+								) : null}
+								{externalReservation && !operationActivityEntry ? (
+									<div className="external-reservation-notice" role="status">
+										<div>
+											<strong>Your reservation is ready</strong>
+											<p>Close the other Bazar tab, then continue here with one seller-payment approval.</p>
+										</div>
+										<button
+											className="primary"
+											disabled={operationBlocksActions || loading || Boolean(error)}
+											onClick={() =>
+												openOperation({
+													kind: 'buy',
+													order: order!,
+													resume: { registration: { id: externalReservation.id, dispatched: true } },
+													externalOrigin: true,
+												})
+											}
+											type="button"
+										>
+											Continue purchase
+										</button>
+									</div>
+								) : null}
 								<div className="asset-commerce-actions">
 									{!wallet.address ? <ConnectWalletButton /> : null}
 									{wallet.address && atomicOrderCanBeBought(order) && !mine ? (
 										<button
 											className="primary with-icon asset-buy-now"
-											disabled={recoveryBlocksActions || loading || Boolean(error)}
+											disabled={operationBlocksActions || loading || Boolean(error)}
 											onClick={() => openOperation({ kind: 'buy', order })}
 										>
-											<ShoppingCart className="ui-icon ui-icon--sm" aria-hidden="true" /> Buy now
+											<ShoppingCart className="ui-icon ui-icon--sm" aria-hidden="true" />{' '}
+											{operation?.kind === 'buy' ? assetOperationPendingActionLabel('buy') : 'Buy now'}
 										</button>
 									) : null}
 									{wallet.address && mine && !order ? (
 										<button
 											className="primary with-icon"
-											disabled={recoveryBlocksActions || loading || Boolean(error)}
+											disabled={operationBlocksActions || loading || Boolean(error)}
 											onClick={() => openOperation({ kind: 'sell' })}
 										>
-											<Tag className="ui-icon ui-icon--sm" aria-hidden="true" /> List for sale
+											<Tag className="ui-icon ui-icon--sm" aria-hidden="true" />{' '}
+											{operation?.kind === 'sell' ? assetOperationPendingActionLabel('sell') : 'List for sale'}
 										</button>
 									) : null}
 									{wallet.address && mine && order?.status === 'open' ? (
 										<button
 											className="with-icon"
-											disabled={recoveryBlocksActions || loading || Boolean(error)}
+											disabled={operationBlocksActions || loading || Boolean(error)}
 											onClick={() => openOperation({ kind: 'cancel', order })}
 										>
-											<CircleX className="ui-icon ui-icon--sm" aria-hidden="true" /> Cancel listing
+											<CircleX className="ui-icon ui-icon--sm" aria-hidden="true" />{' '}
+											{operation?.kind === 'cancel' ? assetOperationPendingActionLabel('cancel') : 'Cancel listing'}
 										</button>
 									) : null}
 									{wallet.address && mine && !order ? (
 										<button
 											className="with-icon"
-											disabled={recoveryBlocksActions || loading || Boolean(error)}
+											disabled={operationBlocksActions || loading || Boolean(error)}
 											onClick={() => openOperation({ kind: 'transfer' })}
 										>
-											<Send className="ui-icon ui-icon--sm" aria-hidden="true" /> Transfer
+											<Send className="ui-icon ui-icon--sm" aria-hidden="true" />{' '}
+											{operation?.kind === 'transfer' ? assetOperationPendingActionLabel('transfer') : 'Transfer'}
 										</button>
 									) : null}
 									<button
@@ -5552,7 +5622,7 @@ type Operation =
 	| { kind: 'sell'; resumeId?: string; value?: string }
 	| { kind: 'transfer'; resumeId?: string; startingSlot?: number; value?: string }
 	| { kind: 'cancel'; order: SwapOrder; resumeId?: string; startingSlot?: number }
-	| { kind: 'buy'; order: SwapOrder; resume?: PurchaseSnapshot };
+	| { kind: 'buy'; order: SwapOrder; resume?: PurchaseSnapshot; externalOrigin?: boolean };
 
 export type AtomicPurchaseSequenceStep = {
 	key: 'sign' | 'reserve' | 'pay' | 'verify';
@@ -5642,6 +5712,10 @@ function OperationDialog({
 }) {
 	const recoveryApprovalCount =
 		operation.kind === 'buy' && operation.resume ? purchaseRecoveryApprovalCount(operation.resume) : 0;
+	const recoveryApprovalCopy =
+		operation.kind === 'buy' && operation.resume
+			? purchaseRecoveryApprovalCopy(operation.resume, { externalOrigin: operation.externalOrigin })
+			: null;
 	const [value, setValue] = React.useState(
 		operation.kind === 'sell' || operation.kind === 'transfer' ? (operation.value ?? '') : '',
 	);
@@ -5762,7 +5836,7 @@ function OperationDialog({
 		let operationClaim: WalletOperationClaim | null = null;
 		let attemptedTransactionId = operation.kind === 'buy' ? undefined : (operation.resumeId ?? transaction?.id);
 		try {
-			const currentPurchaseSnapshot =
+			let currentPurchaseSnapshot =
 				operation.kind === 'buy'
 					? latestPurchaseSnapshot(operation.resume, purchaseState ? purchaseSnapshot(purchaseState) : null)
 					: null;
@@ -5775,15 +5849,16 @@ function OperationDialog({
 			const purchaseKey = atomicPurchaseStorageKey(asset.id, owner);
 			const resumeTransactionId = operation.kind === 'buy' ? undefined : (operation.resumeId ?? transaction?.id);
 			let exactActionBaseline = exactActionBaselineRef.current;
+			const recoveryRegistrationId = currentPurchaseSnapshot?.registration?.id;
 			const recovery =
-				!freshOperation && operation.kind === 'buy' && currentPurchaseSnapshot?.registration?.id
+				!freshOperation && operation.kind === 'buy' && recoveryRegistrationId
 					? localStorage.getItem(purchaseKey)
 						? {
 								key: purchaseKey,
 								matches: (record: any) =>
 									record?.buyer === owner &&
 									record?.order?.orderId === operation.order.orderId &&
-									record?.snapshot?.registration?.id === currentPurchaseSnapshot.registration?.id,
+									record?.snapshot?.registration?.id === recoveryRegistrationId,
 							}
 						: undefined
 					: !freshOperation
@@ -5806,6 +5881,25 @@ function OperationDialog({
 				) {
 					throw new Error('market-state-changed');
 				}
+				if (operation.kind === 'sell') {
+					let pendingOffers: PendingAssetOffer[];
+					try {
+						pendingOffers = await discoverPendingAssetOffers(asset.id, freshState, { signal });
+					} catch (cause) {
+						if (signal.aborted) throw cause;
+						throw marketplaceCodedError(
+							'asset-pending-listing-check-unavailable',
+							'asset-pending-listing-check-unavailable',
+						);
+					}
+					const pendingOffer = pendingOffers.find((offer) => offer.actor === owner) ?? pendingOffers[0];
+					if (pendingOffer) {
+						throw marketplaceCodedError(
+							pendingOffer.actor === owner ? 'asset-listing-pending-self' : 'asset-listing-pending-other',
+							pendingListingMessage(pendingOffer, owner),
+						);
+					}
+				}
 				if (operation.kind === 'cancel' || operation.kind === 'transfer') {
 					const startingSlot = Number(freshState.raw['at-slot']);
 					if (!Number.isSafeInteger(startingSlot) || startingSlot < 0) {
@@ -5822,116 +5916,133 @@ function OperationDialog({
 				networkRef.current = network;
 				await network.ready();
 				if (signal.aborted) throw signal.reason;
-				const purchase = new runtime.SwapPurchase(
-					network,
-					client.purchaseAdapter({
-						processId: asset.id,
-						order: operation.order,
-						buyer: owner,
-						startingBalance: '0',
+				let observationRetryAttempt = 0;
+				let completedSnapshot: PurchaseSnapshot | null = null;
+				while (!completedSnapshot) {
+					const purchase = new runtime.SwapPurchase(
 						network,
-					}),
-					{
-						registrationTarget: 5,
-						paymentTarget: 5,
-						paymentSuccessDepth: 1,
-						skipFrom: 2,
-						propagation: 'all',
-						minObservers: 2,
-						...(currentPurchaseSnapshot ? { resume: currentPurchaseSnapshot } : {}),
-					},
-				);
-				purchaseRef.current = purchase;
-				let recoveryConflict: Error | null = null;
-				const update = (state: PurchaseState) => {
-					if (signal.aborted || recoveryConflict) return;
-					setPurchaseState(state);
-					const snapshot = purchase.snapshot();
-					onOperation({ kind: 'buy', order: operation.order, resume: snapshot });
-					if (hasRecoverablePurchase(snapshot)) {
-						const record = {
-							asset: { id: asset.id, name: asset.name },
-							activityKind: 'atomic',
-							buyer: owner,
-							collectionId,
+						client.purchaseAdapter({
+							processId: asset.id,
 							order: operation.order,
-							snapshot,
-							createdAt: submittedAtRef.current ?? Date.now(),
-						};
-						try {
-							const matches = (current: any) =>
-								current?.buyer === owner &&
-								current?.order?.orderId === operation.order.orderId &&
-								current?.snapshot?.registration?.id === snapshot.registration?.id;
-							if (operationClaim) {
-								promoteWalletOperationClaim(
-									localStorage,
-									operationClaim,
-									atomicPurchaseStorageKey(asset.id, owner),
-									record,
-									matches,
-								);
-							} else {
-								storeWalletRecordOrThrow<any>(
-									localStorage,
-									atomicPurchaseStorageKey(asset.id, owner),
-									record,
-									matches,
-									true,
-								);
-							}
-						} catch (cause) {
-							recoveryConflict = cause instanceof Error ? cause : new Error(String(cause));
-							purchase.abandon();
-						}
-					}
-				};
-				purchase.on('state', update);
-				purchase.on('failed', update);
-				purchase.on('complete', update);
-				update(purchase.state());
-				const finalState = await purchase.run();
-				if (recoveryConflict) throw recoveryConflict;
-				if (finalState.stage !== 'complete' || !finalState.success) {
-					const code = atomicPurchaseFailureCode(finalState) ?? 'asset-purchase-failed';
-					const snapshot = purchase.snapshot();
-					const repaired = repairRejectedPurchase(snapshot, code);
-					for (const id of repaired.discardIds) {
-						localStorage.removeItem(`bazar-signed-transaction:${id}`);
-					}
-					if (!repaired.snapshot) {
-						removeWalletRecordIf<any>(
-							localStorage,
-							purchaseKey,
-							(record) =>
-								record?.buyer === owner &&
-								record?.order?.orderId === operation.order.orderId &&
-								record?.snapshot?.registration?.id === snapshot.registration?.id,
-						);
-						onOperation({ kind: 'buy', order: operation.order });
-					} else if (repaired.snapshot !== snapshot) {
-						storeWalletRecordOrThrow<any>(
-							localStorage,
-							purchaseKey,
-							{
+							buyer: owner,
+							startingBalance: '0',
+							network,
+						}),
+						{
+							registrationTarget: 5,
+							paymentTarget: 5,
+							paymentSuccessDepth: 1,
+							skipFrom: 2,
+							propagation: 'all',
+							minObservers: 2,
+							...(currentPurchaseSnapshot ? { resume: currentPurchaseSnapshot } : {}),
+						},
+					);
+					purchaseRef.current = purchase;
+					let recoveryConflict: Error | null = null;
+					const update = (state: PurchaseState) => {
+						if (signal.aborted || recoveryConflict) return;
+						setPurchaseState(state);
+						const snapshot = purchase.snapshot();
+						if (hasRecoverablePurchase(snapshot)) {
+							onOperation({ kind: 'buy', order: operation.order, resume: snapshot });
+							const record = {
 								asset: { id: asset.id, name: asset.name },
 								activityKind: 'atomic',
 								buyer: owner,
 								collectionId,
 								order: operation.order,
-								snapshot: repaired.snapshot,
+								snapshot,
 								createdAt: submittedAtRef.current ?? Date.now(),
-							},
-							(record) =>
-								record?.buyer === owner &&
-								record?.order?.orderId === operation.order.orderId &&
-								record?.snapshot?.registration?.id === snapshot.registration?.id,
-						);
-						setPurchaseState({ ...finalState, payment: undefined });
+							};
+							try {
+								const matches = (current: any) =>
+									current?.buyer === owner &&
+									current?.order?.orderId === operation.order.orderId &&
+									current?.snapshot?.registration?.id === snapshot.registration?.id;
+								if (operationClaim) {
+									promoteWalletOperationClaim(
+										localStorage,
+										operationClaim,
+										atomicPurchaseStorageKey(asset.id, owner),
+										record,
+										matches,
+									);
+								} else {
+									storeWalletRecordOrThrow<any>(
+										localStorage,
+										atomicPurchaseStorageKey(asset.id, owner),
+										record,
+										matches,
+										true,
+									);
+								}
+							} catch (cause) {
+								recoveryConflict = cause instanceof Error ? cause : new Error(String(cause));
+								purchase.abandon();
+							}
+						}
+					};
+					purchase.on('state', update);
+					purchase.on('failed', update);
+					purchase.on('complete', update);
+					const resumeState = purchaseObservationResumeState(currentPurchaseSnapshot, purchaseState);
+					if (resumeState) setPurchaseState(resumeState);
+					else update(purchase.state());
+					const finalState = await purchase.run();
+					if (recoveryConflict) throw recoveryConflict;
+					const retryKind = purchaseObservationRetryKind(finalState);
+					if (retryKind) {
+						currentPurchaseSnapshot = purchase.snapshot();
+						const delay = purchaseObservationRetryDelay(observationRetryAttempt++);
+						setPurchaseState(purchaseObservationPendingState(finalState));
+						setFailureKind(null);
+						setMessage(purchaseObservationRetryMessage(finalState, delay));
+						await waitForPurchaseObservationRetry(delay, signal);
+						setMessage(purchaseObservationCheckingMessage(retryKind));
+						continue;
 					}
-					throw marketplaceCodedError(code, finalState.error?.message ?? code);
+					if (finalState.stage !== 'complete' || !finalState.success) {
+						const code = atomicPurchaseFailureCode(finalState) ?? 'asset-purchase-failed';
+						const snapshot = purchase.snapshot();
+						const repaired = repairRejectedPurchase(snapshot, code);
+						for (const id of repaired.discardIds) {
+							localStorage.removeItem(`bazar-signed-transaction:${id}`);
+						}
+						if (!repaired.snapshot) {
+							removeWalletRecordIf<any>(
+								localStorage,
+								purchaseKey,
+								(record) =>
+									record?.buyer === owner &&
+									record?.order?.orderId === operation.order.orderId &&
+									record?.snapshot?.registration?.id === snapshot.registration?.id,
+							);
+							onOperation({ kind: 'buy', order: operation.order });
+						} else if (repaired.snapshot !== snapshot) {
+							storeWalletRecordOrThrow<any>(
+								localStorage,
+								purchaseKey,
+								{
+									asset: { id: asset.id, name: asset.name },
+									activityKind: 'atomic',
+									buyer: owner,
+									collectionId,
+									order: operation.order,
+									snapshot: repaired.snapshot,
+									createdAt: submittedAtRef.current ?? Date.now(),
+								},
+								(record) =>
+									record?.buyer === owner &&
+									record?.order?.orderId === operation.order.orderId &&
+									record?.snapshot?.registration?.id === snapshot.registration?.id,
+							);
+							setPurchaseState({ ...finalState, payment: undefined });
+						}
+						throw marketplaceCodedError(code, finalState.error?.message ?? code);
+					}
+					completedSnapshot = purchase.snapshot();
 				}
-				const completedSnapshot = purchase.snapshot();
 				removeWalletRecoveryAndSignatures<any>(
 					localStorage,
 					atomicPurchaseStorageKey(asset.id, owner),
@@ -6161,6 +6272,12 @@ function OperationDialog({
 		message ||
 		(purchaseState?.error ? errorMessage(new Error(purchaseState.error.message || purchaseState.error.code)) : '');
 	const workingStatus = message || purchaseStatusMessage(purchaseState);
+	const pendingAfterConfirmation =
+		purchaseState?.stage === 'registration-accepting'
+			? 'Checking live reservation'
+			: purchaseState?.stage === 'ownership-verifying'
+				? 'Checking ownership'
+				: postConfirmationPendingLabel(activityConfirmations, confirmationTarget, workingStatus);
 	const formError = atomicOperationFormError(operation.kind, operationValue, owner);
 	const recoverable = Boolean(
 		transaction ||
@@ -6328,10 +6445,8 @@ function OperationDialog({
 				{visiblePhase === 'approval' && operation.kind === 'buy' ? (
 					<div className="recovery-approval">
 						<div>
-							<h3>
-								{recoveryApprovalCount} new wallet {recoveryApprovalCount === 1 ? 'approval is' : 'approvals are'} still
-								required
-							</h3>
+							<h3>{recoveryApprovalCopy?.title}</h3>
+							<p>{recoveryApprovalCopy?.detail}</p>
 						</div>
 						<div className="operation-summary">
 							<span>Seller</span>
@@ -6351,7 +6466,7 @@ function OperationDialog({
 							) : null}
 						</div>
 						<button className="primary wide" data-dialog-initial onClick={() => void submit()} type="button">
-							Continue with {recoveryApprovalCount} new {recoveryApprovalCount === 1 ? 'approval' : 'approvals'}
+							{recoveryApprovalCopy?.action}
 						</button>
 					</div>
 				) : null}
@@ -6541,7 +6656,11 @@ function OperationDialog({
 						<p className="sr-only" aria-live="polite" role="status">
 							{workingStatus || 'Watching independently addressed Arweave nodes report confirmations for this action.'}
 						</p>
-						{workingStatus ? <p className="scheduler-wait">{workingStatus}</p> : null}
+						{workingStatus ? (
+							<p className={`scheduler-wait${activityConfirmations > 0 ? ' scheduler-wait-with-progress' : ''}`}>
+								{workingStatus}
+							</p>
+						) : null}
 						<React.Suspense fallback={<Loading label="Loading transaction progress…" />}>
 							<ArweaveTransactionSync
 								active={visible}
@@ -6557,16 +6676,34 @@ function OperationDialog({
 								startedAt={submittedAtRef.current}
 								steps={steps}
 								activeStep={activeStep}
-								pendingAfterConfirmation={
-									purchaseState?.stage === 'ownership-verifying' ? 'Checking ownership' : undefined
-								}
+								pendingAfterConfirmation={pendingAfterConfirmation}
 							/>
 						</React.Suspense>
 					</div>
 				) : null}
 				{visiblePhase === 'done' ? (
 					<div className="result success">
-						<OperationOutcome title={resultCopy.title} detail={resultCopy.detail} />
+						<OperationOutcome title={resultCopy.title} detail={resultCopy.detail}>
+							{operation.kind === 'sell' ? (
+								asset.image ? (
+									<ArtworkImage
+										alt={`${asset.name} artwork`}
+										className="operation-result-artwork"
+										decoding="async"
+										loading="eager"
+										src={asset.image}
+									/>
+								) : (
+									<span
+										aria-label={`${asset.name} artwork`}
+										className="operation-result-artwork operation-result-artwork-fallback"
+										role="img"
+									>
+										{asset.name.slice(0, 1)}
+									</span>
+								)
+							) : null}
+						</OperationOutcome>
 						{operation.kind === 'buy' ? (
 							<div className="settlement-receipt">
 								<div>
@@ -7028,6 +7165,32 @@ export function atomicOrderCanBeBought(order: SwapOrder | null): order is SwapOr
 	return order?.status === 'open';
 }
 
+export function externalReservationTransaction(
+	order: SwapOrder | null,
+	buyer: string | null | undefined,
+	activity: CollectionActivityEvent[],
+): CollectionActivityEvent | null {
+	if (
+		!buyer ||
+		order?.status !== 'reserved' ||
+		order.buyer !== buyer ||
+		!Number.isSafeInteger(order.reservedUntil) ||
+		order.reservedUntil! < order.deadline
+	)
+		return null;
+	const reservationHeight = order.reservedUntil! - order.deadline;
+	return (
+		activity.find(
+			(event) =>
+				event.action === 'register-interest' &&
+				event.actor === buyer &&
+				event.orderId === order.orderId &&
+				event.height === reservationHeight &&
+				ARWEAVE_ADDRESS.test(event.id),
+		) ?? null
+	);
+}
+
 export function atomicPurchaseRecoveryStatus(
 	state: AssetState,
 	buyer: string,
@@ -7082,6 +7245,14 @@ export function atomicOperationStateError(
 			: '';
 	}
 	return liquidBalanceOf(state, owner) !== '1' || liveOrderOfAsset(state) ? 'market-state-changed' : '';
+}
+
+export function pendingListingMessage(offer: PendingAssetOffer, signer: string): string {
+	const transaction = short(offer.id);
+	if (offer.actor === signer) {
+		return `You already submitted listing transaction ${transaction}; waiting for live asset state. No new wallet approval was requested.`;
+	}
+	return `Another wallet ${short(offer.actor)} submitted pending listing transaction ${transaction}, but it has not been accepted by live asset state. No new wallet approval was requested.`;
 }
 
 function atomicOperationActionLabel(operation: Operation, value: string) {

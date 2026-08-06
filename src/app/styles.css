@@ -3055,6 +3055,61 @@ input:focus {
 	font-size: var(--type-small);
 	line-height: 1.35;
 }
+.asset-operation-status {
+	margin-top: 16px;
+	padding: 11px 12px;
+	display: grid;
+	grid-template-columns: 32px minmax(0, 1fr) auto;
+	align-items: center;
+	gap: 10px;
+	border: 1px solid color-mix(in srgb, var(--notice-text) 24%, var(--line));
+	border-radius: 8px;
+	background: var(--notice-surface);
+	color: var(--notice-text);
+}
+.asset-operation-status + .asset-operation-status {
+	margin-top: 8px;
+}
+.asset-operation-status.error {
+	border-color: var(--negative-subtle-border);
+	background: var(--negative-subtle-surface);
+	color: var(--negative);
+}
+.asset-operation-status-icon {
+	width: 32px;
+	height: 32px;
+	display: grid;
+	place-items: center;
+	border: 1px solid currentColor;
+	border-radius: 50%;
+}
+.asset-operation-status-copy {
+	min-width: 0;
+	display: grid;
+	gap: 2px;
+}
+.asset-operation-status-copy strong,
+.asset-operation-status-copy small {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.asset-operation-status-copy strong {
+	color: var(--ink);
+	font-size: var(--type-body);
+}
+.asset-operation-status-copy small {
+	color: currentColor;
+	font-size: var(--type-small);
+}
+.asset-operation-status > button {
+	min-height: 34px;
+	padding: 6px 9px;
+	border-color: currentColor;
+	color: inherit;
+	background: var(--transparent);
+	white-space: nowrap;
+}
 .purchase-composer {
 	position: relative;
 	margin-top: 17px;
@@ -4040,6 +4095,7 @@ input:focus {
 	text-overflow: ellipsis;
 	white-space: nowrap;
 	background: var(--paper);
+	box-shadow: -8px 0 0 var(--paper);
 }
 .purchase-sequence-copy > strong {
 	color: var(--ink);
@@ -4440,6 +4496,28 @@ input:focus {
 	background: var(--warning-surface);
 	color: var(--warning-text);
 }
+.external-reservation-notice {
+	padding: 14px;
+	display: grid;
+	gap: 14px;
+	border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--line));
+	border-radius: 8px;
+	background: color-mix(in srgb, var(--accent) 7%, var(--panel));
+}
+.external-reservation-notice > div {
+	display: grid;
+	gap: 6px;
+}
+.external-reservation-notice p {
+	margin: 0;
+	color: var(--muted);
+	font-size: var(--type-small);
+	line-height: 1.5;
+}
+.external-reservation-notice a {
+	width: fit-content;
+	font-size: var(--type-small);
+}
 .operation-preparing {
 	min-height: 220px;
 	display: grid;
@@ -4459,6 +4537,9 @@ input:focus {
 .scheduler-wait {
 	margin: 17px 0 0;
 	padding: 12px 15px;
+	display: flex;
+	align-items: center;
+	gap: 11px;
 	border: 1px solid var(--line);
 	border-radius: 10px;
 	background: var(--panel);
@@ -4466,12 +4547,81 @@ input:focus {
 	font-size: var(--type-body);
 	line-height: 1.5;
 }
+.scheduler-wait::before {
+	content: '';
+	width: 17px;
+	height: 17px;
+	flex: 0 0 auto;
+	border: 2px solid var(--line-dark);
+	border-top-color: var(--ink);
+	border-radius: 50%;
+	animation: spin 0.8s linear infinite;
+}
+.scheduler-wait-with-progress::before {
+	display: none;
+}
 .result {
 	text-align: center;
 	padding: 38px;
 }
 .result h3 {
 	font-size: var(--type-display);
+}
+.result.success {
+	width: min(460px, 100%);
+	margin: 0 auto;
+	padding: 24px 0 6px;
+	display: grid;
+	gap: 18px;
+	text-align: left;
+}
+.result.success .result-outcome {
+	display: grid;
+	gap: 8px;
+}
+.result.success .result-outcome h3,
+.result.success .result-outcome p {
+	margin: 0;
+}
+.result.success .result-outcome p {
+	color: var(--muted);
+	line-height: 1.5;
+}
+.operation-result-artwork,
+.artwork-fallback.operation-result-artwork {
+	width: 120px;
+	height: 120px;
+	margin: 6px 0 4px;
+	display: grid;
+	place-items: center;
+	border: 1px solid var(--line);
+	border-radius: 10px;
+	background: var(--panel);
+	object-fit: cover;
+}
+.operation-result-artwork-fallback {
+	color: var(--muted);
+	font-size: var(--type-display);
+}
+.result.success > a {
+	min-width: 0;
+	margin: 0;
+	padding: 12px 14px;
+	overflow-wrap: anywhere;
+	border: 1px solid var(--line);
+	border-radius: 8px;
+	background: var(--panel);
+	text-decoration: none;
+}
+.result.success > .settlement-receipt {
+	width: 100%;
+	margin: 0;
+}
+.result.success > button {
+	width: 100%;
+	min-height: 44px;
+	margin: 0;
+	justify-content: center;
 }
 .success h3 {
 	color: var(--positive-text);
@@ -5367,6 +5517,13 @@ body input:focus-visible {
 	}
 	.asset-commerce-actions {
 		grid-template-columns: 1fr;
+	}
+	.asset-operation-status {
+		grid-template-columns: 32px minmax(0, 1fr);
+	}
+	.asset-operation-status > button {
+		grid-column: 2;
+		justify-self: start;
 	}
 	.asset-section-tabs {
 		position: sticky;

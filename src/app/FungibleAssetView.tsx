@@ -48,7 +48,9 @@ import {
 	type PreparedPurchase,
 } from 'api/asset-transactions';
 import { ArweaveTransactionSync, type ArweaveSyncStep } from 'components/ArweaveTransactionSync';
+import { postConfirmationPendingLabel } from 'components/ArweaveTransactionSync/sequence';
 import { AssetDetailTabs, type AssetDetailTab } from 'components/AssetDetailTabs';
+import { AssetOperationStatus, assetOperationPendingActionLabel } from 'components/AssetOperationStatus';
 import { ArtworkImage } from 'components/ArtworkImage';
 import { ConnectWalletButton } from 'components/ConnectWalletButton';
 import { ErrorPanel } from 'components/ErrorPanel';
@@ -78,6 +80,15 @@ import {
 	type MarketplaceOperationFailure,
 } from './marketplace-error';
 import { announceFungibleOperationActivityChange, fungibleOperationActivityId } from './operation-activity';
+import {
+	purchaseObservationCheckingMessage,
+	purchaseObservationPendingState,
+	purchaseObservationResumeState,
+	purchaseObservationRetryDelay,
+	purchaseObservationRetryKind,
+	purchaseObservationRetryMessage,
+	waitForPurchaseObservationRetry,
+} from './purchase-observation-retry';
 import {
 	acquireWalletOperationClaim,
 	clearStaleWalletOperationClaim,
@@ -202,6 +213,12 @@ export function FungibleAssetView({
 	);
 	const walletActivities = operationActivities.filter((activity) => activity.signer === wallet.address);
 	const hasWalletActivities = walletActivities.length > 0;
+	const hasBusyWalletActivities = walletActivities.some((activity) => (activity.phase ?? 'form') !== 'error');
+	const activePurchaseActivity = walletActivities.find((activity) => activity.operation.kind === 'buy');
+	const activeAssetActivity = walletActivities.find((activity) => activity.operation.kind !== 'buy');
+	const showOperationActivity = React.useCallback((id: string) => {
+		setOperationActivities((current) => current.map((activity) => ({ ...activity, visible: activity.id === id })));
+	}, []);
 	const publishOperationActivity = React.useCallback(
 		(activity: FungibleOperationActivity, nextPhase: TransactionDialogPhase | null = activity.phase) => {
 			const phase = nextPhase ?? 'form';
@@ -228,6 +245,13 @@ export function FungibleAssetView({
 			if (wallet.address) {
 				const signer = wallet.address;
 				const id = fungibleOperationActivityId(asset.id, signer, next.kind);
+				const existing = operationActivitiesRef.current.find(
+					(activity) => activity.id === id && activity.signer === signer,
+				);
+				if (existing) {
+					showOperationActivity(existing.id);
+					return;
+				}
 				const activity = {
 					id,
 					operation: next,
@@ -245,7 +269,7 @@ export function FungibleAssetView({
 				publishOperationActivity(activity);
 			}
 		},
-		[asset.id, publishOperationActivity, wallet.address],
+		[asset.id, publishOperationActivity, showOperationActivity, wallet.address],
 	);
 	const [recoverySuppressed, setRecoverySuppressed] = React.useState(false);
 	const [recoveryNotice, setRecoveryNotice] = React.useState('');
@@ -539,6 +563,8 @@ export function FungibleAssetView({
 	]);
 
 	const recoveryBlocksActions = recoverySuppressed || Boolean(unavailableRecovery);
+	const purchaseBlocksActions = recoveryBlocksActions || Boolean(activePurchaseActivity);
+	const assetBlocksActions = recoveryBlocksActions || Boolean(activeAssetActivity);
 	const handleOperationPhaseChange = React.useCallback(
 		(id: string, nextPhase: TransactionDialogPhase) => {
 			const activity = operationActivitiesRef.current.find((candidate) => candidate.id === id);
@@ -648,7 +674,7 @@ export function FungibleAssetView({
 			{error ? <ErrorPanel message={error} /> : null}
 			<div className="asset-detail-layout">
 				<div className="asset-commerce-column asset-commerce-primary">
-					<section className="asset-commerce-card">
+					<section aria-busy={hasBusyWalletActivities} className="asset-commerce-card">
 						<div className="asset-market-stats">
 							<div>
 								<span>Current unit price</span>
@@ -684,12 +710,21 @@ export function FungibleAssetView({
 								<small>No open listings are available to this wallet.</small>
 							</div>
 						)}
+						{walletActivities.map((activity) => (
+							<AssetOperationStatus
+								key={activity.id}
+								kind={activity.operation.kind}
+								phase={activity.phase ?? 'form'}
+								status={fungibleActivityPhaseStatus(activity.phase ?? 'form')}
+								onView={() => showOperationActivity(activity.id)}
+							/>
+						))}
 						<div className="asset-commerce-actions">
 							{!wallet.address ? <ConnectWalletButton /> : null}
 							{wallet.address && purchasableOrders.length ? (
 								<button
 									className="primary with-icon"
-									disabled={!purchaseAmountResult.match || recoveryBlocksActions || loading || Boolean(error)}
+									disabled={!purchaseAmountResult.match || purchaseBlocksActions || loading || Boolean(error)}
 									onClick={() => {
 										if (!purchaseAmountResult.match) return;
 										openOperation({
@@ -701,25 +736,35 @@ export function FungibleAssetView({
 									}}
 								>
 									<ShoppingCart className="ui-icon ui-icon--sm" aria-hidden="true" />{' '}
-									{purchaseAmountResult.match ? 'Buy tokens' : 'Enter an amount'}
+									{activePurchaseActivity
+										? assetOperationPendingActionLabel('buy')
+										: purchaseAmountResult.match
+											? 'Buy tokens'
+											: 'Enter an amount'}
 								</button>
 							) : null}
 							{wallet.address && BigInt(liquid) > 0n ? (
 								<button
 									className={`${purchasableOrders.length ? '' : 'primary '}with-icon`}
-									disabled={recoveryBlocksActions || loading || Boolean(error)}
+									disabled={assetBlocksActions || loading || Boolean(error)}
 									onClick={() => openOperation({ kind: 'sell' })}
 								>
-									<Tag className="ui-icon ui-icon--sm" aria-hidden="true" /> List tokens
+									<Tag className="ui-icon ui-icon--sm" aria-hidden="true" />{' '}
+									{activeAssetActivity?.operation.kind === 'sell'
+										? assetOperationPendingActionLabel('sell')
+										: 'List tokens'}
 								</button>
 							) : null}
 							{wallet.address && BigInt(liquid) > 0n ? (
 								<button
 									className="with-icon"
-									disabled={recoveryBlocksActions || loading || Boolean(error)}
+									disabled={assetBlocksActions || loading || Boolean(error)}
 									onClick={() => openOperation({ kind: 'transfer' })}
 								>
-									<Send className="ui-icon ui-icon--sm" aria-hidden="true" /> Transfer
+									<Send className="ui-icon ui-icon--sm" aria-hidden="true" />{' '}
+									{activeAssetActivity?.operation.kind === 'transfer'
+										? assetOperationPendingActionLabel('transfer')
+										: 'Transfer'}
 								</button>
 							) : null}
 						</div>
@@ -775,10 +820,13 @@ export function FungibleAssetView({
 													<button
 														aria-label={fungibleOrderActionLabel('cancel', order, state)}
 														className="order-action"
-														disabled={recoveryBlocksActions || loading || Boolean(error)}
+														disabled={assetBlocksActions || loading || Boolean(error)}
 														onClick={() => openOperation({ kind: 'cancel', order })}
 													>
-														Cancel
+														{activeAssetActivity?.operation.kind === 'cancel' &&
+														activeAssetActivity.operation.order.orderId === order.orderId
+															? assetOperationPendingActionLabel('cancel')
+															: 'Cancel'}
 													</button>
 												) : null}
 											</span>
@@ -1076,6 +1124,8 @@ function FungibleOperationDialog({
 }) {
 	const recoveryApprovalCount =
 		operation.kind === 'buy' && operation.resume ? batchPurchaseRecoveryApprovalCount(operation.resume.entries) : 0;
+	const recoveryApprovalCopy =
+		operation.kind === 'buy' && operation.resume ? batchPurchaseRecoveryApprovalCopy(operation.resume.entries) : null;
 	const eligible = React.useMemo(
 		() => (operation.kind === 'buy' ? operation.availableOrders.filter((order) => order.status === 'open') : []),
 		[operation.kind, operation.kind === 'buy' ? operation.availableOrders : undefined],
@@ -1657,7 +1707,7 @@ function FungibleOperationDialog({
 		});
 		batchRecoveryBufferRef.current = recoveryBuffer;
 
-		const running = entries.map((entry) => {
+		const running = entries.map(async (entry) => {
 			if (recoveryConflict) throw recoveryConflict;
 			const adapter = client.purchaseAdapter({
 				processId: asset.id,
@@ -1704,62 +1754,85 @@ function FungibleOperationDialog({
 					}
 				},
 			};
-			const purchase = new SwapPurchase(network, coordinatedAdapter, {
-				registrationTarget: 5,
-				paymentTarget: 5,
-				paymentSuccessDepth: 1,
-				skipFrom: 2,
-				propagation: 'all',
-				minObservers: 2,
-				...(resume ? { resume: entry.snapshot } : {}),
-			});
-			purchasesRef.current.set(entry.order.orderId, purchase);
-			const update = (purchaseState: PurchaseState) => {
-				if (attemptRef.current.signal.aborted || recoveryConflict) return;
-				purchaseStateBufferRef.current!.push(entry.order.orderId, purchaseState);
-				const previousSnapshot = entry.snapshot;
-				entry.snapshot = latestRecoverableSnapshot(previousSnapshot, purchase.snapshot());
-				if (entry.snapshot === previousSnapshot) return;
-				recoveryBuffer.schedule();
-			};
-			purchase.on('state', update);
-			purchase.on('failed', (purchaseState) => {
-				rejectPayments(
-					new Error(
-						purchaseState.error?.message ?? 'A reservation could not complete. No remaining seller payment was sent.',
-					),
-				);
-				update(purchaseState);
-				const failureCode =
-					purchaseState.error?.code === 'unexpected' ? purchaseState.error.message : purchaseState.error?.code;
-				const repaired = repairRejectedPurchase(entry.snapshot, failureCode);
-				for (const id of repaired.discardIds) {
-					localStorage.removeItem(`bazar-signed-transaction:${id}`);
-				}
-				if (!repaired.snapshot) {
-					entry.snapshot = {};
-					saved.entries = saved.entries.filter((savedEntry) => savedEntry.order.orderId !== entry.order.orderId);
-					if (saved.entries.length) {
+			let observationRetryAttempt = 0;
+			while (true) {
+				const purchase = new SwapPurchase(network, coordinatedAdapter, {
+					registrationTarget: 5,
+					paymentTarget: 5,
+					paymentSuccessDepth: 1,
+					skipFrom: 2,
+					propagation: 'all',
+					minObservers: 2,
+					...(resume || observationRetryAttempt > 0 ? { resume: entry.snapshot } : {}),
+				});
+				purchasesRef.current.set(entry.order.orderId, purchase);
+				const update = (purchaseState: PurchaseState) => {
+					if (attemptRef.current.signal.aborted || recoveryConflict) return;
+					purchaseStateBufferRef.current!.push(entry.order.orderId, purchaseState);
+					const previousSnapshot = entry.snapshot;
+					entry.snapshot = latestRecoverableSnapshot(previousSnapshot, purchase.snapshot());
+					if (entry.snapshot === previousSnapshot) return;
+					recoveryBuffer.schedule();
+				};
+				purchase.on('state', update);
+				purchase.on('failed', (purchaseState) => {
+					const retryKind = purchaseObservationRetryKind(purchaseState);
+					if (!retryKind) {
+						rejectPayments(
+							new Error(
+								purchaseState.error?.message ??
+									'A reservation could not complete. No remaining seller payment was sent.',
+							),
+						);
+					}
+					update(purchaseState);
+					if (retryKind) return;
+					const failureCode =
+						purchaseState.error?.code === 'unexpected' ? purchaseState.error.message : purchaseState.error?.code;
+					const repaired = repairRejectedPurchase(entry.snapshot, failureCode);
+					for (const id of repaired.discardIds) {
+						localStorage.removeItem(`bazar-signed-transaction:${id}`);
+					}
+					if (!repaired.snapshot) {
+						entry.snapshot = {};
+						saved.entries = saved.entries.filter((savedEntry) => savedEntry.order.orderId !== entry.order.orderId);
+						if (saved.entries.length) {
+							recoveryBuffer.schedule();
+							recoveryBuffer.flush();
+						} else {
+							recoveryBuffer.clear();
+							removeWalletRecordIf<BatchResume>(
+								localStorage,
+								fungibleBatchStorageKey(asset.id, owner),
+								(current) => (current.attemptId ?? batchRecoveryIdentity(current.entries)) === attemptId,
+							);
+							terminalRecoveryRemoved = true;
+						}
+					} else if (repaired.snapshot !== entry.snapshot) {
+						entry.snapshot = repaired.snapshot ?? {};
 						recoveryBuffer.schedule();
 						recoveryBuffer.flush();
-					} else {
-						recoveryBuffer.clear();
-						removeWalletRecordIf<BatchResume>(
-							localStorage,
-							fungibleBatchStorageKey(asset.id, owner),
-							(current) => (current.attemptId ?? batchRecoveryIdentity(current.entries)) === attemptId,
-						);
-						terminalRecoveryRemoved = true;
 					}
-				} else if (repaired.snapshot !== entry.snapshot) {
-					entry.snapshot = repaired.snapshot ?? {};
-					recoveryBuffer.schedule();
-					recoveryBuffer.flush();
-				}
-			});
-			purchase.on('complete', update);
-			update(purchase.state());
-			return purchase.run();
+				});
+				purchase.on('complete', update);
+				const resumeState =
+					resume || observationRetryAttempt > 0
+						? purchaseObservationResumeState(entry.snapshot, purchaseStates[entry.order.orderId])
+						: null;
+				if (resumeState) purchaseStateBufferRef.current!.push(entry.order.orderId, resumeState);
+				else update(purchase.state());
+				const finalState = await purchase.run();
+				const retryKind = purchaseObservationRetryKind(finalState);
+				if (!retryKind) return finalState;
+				const delay = purchaseObservationRetryDelay(observationRetryAttempt++);
+				purchaseStateBufferRef.current!.push(entry.order.orderId, purchaseObservationPendingState(finalState));
+				purchaseStateBufferRef.current!.flush();
+				recoveryBuffer.flush();
+				setFailureKind(null);
+				setMessage(purchaseObservationRetryMessage(finalState, delay));
+				await waitForPurchaseObservationRetry(delay, signal);
+				setMessage(purchaseObservationCheckingMessage(retryKind));
+			}
 		});
 
 		try {
@@ -1947,14 +2020,8 @@ function FungibleOperationDialog({
 				{phase === 'approval' && operation.kind === 'buy' && operation.resume ? (
 					<div className="recovery-approval">
 						<div>
-							<h3>
-								{recoveryApprovalCount} new wallet {recoveryApprovalCount === 1 ? 'approval is' : 'approvals are'} still
-								required
-							</h3>
-							<p>
-								This saved batch does not contain every signed reservation and seller payment. Bazar will not ask your
-								wallet to sign or submit anything else until you choose Continue.
-							</p>
+							<h3>{recoveryApprovalCopy?.title}</h3>
+							<p>{recoveryApprovalCopy?.detail}</p>
 						</div>
 						<div className="batch-quote">
 							<div>
@@ -1978,7 +2045,7 @@ function FungibleOperationDialog({
 						</div>
 						<PurchaseRoute fills={visibleFills} state={state} />
 						<button className="primary wide" data-dialog-initial onClick={() => void submit()} type="button">
-							Continue with {recoveryApprovalCount} new {recoveryApprovalCount === 1 ? 'approval' : 'approvals'}
+							{recoveryApprovalCopy?.action}
 						</button>
 					</div>
 				) : null}
@@ -2314,6 +2381,7 @@ function FungibleOperationDialog({
 								startedAt={submittedAtRef.current}
 								steps={singleSteps}
 								activeStep={operation.kind}
+								pendingAfterConfirmation={postConfirmationPendingLabel(confirmations, 5, message)}
 							/>
 						) : (
 							<Loading label="Preparing the exact signed transaction…" />
@@ -2902,6 +2970,21 @@ export function isRecoverableBatch(record: unknown, buyer: string): record is Ba
 
 export function batchPurchaseRecoveryApprovalCount(entries: Array<Pick<BatchEntry, 'snapshot'>>) {
 	return entries.reduce((total, entry) => total + purchaseRecoveryApprovalCount(entry.snapshot), 0);
+}
+
+export function batchPurchaseRecoveryApprovalCopy(entries: Array<Pick<BatchEntry, 'snapshot'>>) {
+	const approvals = batchPurchaseRecoveryApprovalCount(entries);
+	const transactionCount = entries.length * 2;
+	const recovered = transactionCount - approvals;
+	const dispatchedPayments = entries.filter((entry) => entry.snapshot.payment?.dispatched === true).length;
+	const paymentDetail = dispatchedPayments
+		? `${dispatchedPayments} seller ${dispatchedPayments === 1 ? 'payment has' : 'payments have'} already been submitted and will only be monitored; Bazar will not replace them.`
+		: 'No seller payment has been submitted. Signed seller payments remain held until every reservation is accepted.';
+	return {
+		title: `${approvals} missing transaction ${approvals === 1 ? 'approval' : 'approvals'} needed to resume`,
+		detail: `Bazar recovered ${recovered} of ${transactionCount} signed transactions and will reuse those exact transactions. Your wallet will be asked only for the ${approvals} missing ${approvals === 1 ? 'approval' : 'approvals'}. ${paymentDetail} Nothing new will be signed or submitted until you choose Continue.`,
+		action: `Approve ${approvals} missing ${approvals === 1 ? 'transaction' : 'transactions'} and continue`,
+	};
 }
 
 export function batchHasNoDispatchedSellerPayment(resume: Pick<BatchResume, 'entries'>) {

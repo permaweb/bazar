@@ -16,10 +16,15 @@ export function OperationOutcomeAnnouncement({
 	);
 }
 
-export function OperationOutcome({ title, detail }: { title: string; detail: string }) {
+export function OperationOutcome({
+	title,
+	detail,
+	children,
+}: React.PropsWithChildren<{ title: string; detail: string }>) {
 	return (
 		<div className="result-outcome">
 			<h3>{title}</h3>
+			{children}
 			<p>{detail}</p>
 		</div>
 	);
