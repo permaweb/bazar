@@ -21,6 +21,7 @@ import { confirmationProgress } from './progressColors';
 import { quorumConfirmationDepth } from './confirmationDepth';
 import { confirmationLifecycleState, sequencePhaseBounds } from './sequence';
 import type { CableTelemetry, Infinity3DLane } from './TransactionSequenceCable3D';
+import { TransactionRendererFallback, TransactionVisualizerBoundary } from './TransactionVisualizerFallback';
 import { type ArweaveMiningTelemetry, useArweaveMiningTelemetry } from './useArweaveMiningTelemetry';
 
 const TransactionSequenceCable3D = React.lazy(async () => {
@@ -283,9 +284,7 @@ export function ArweaveTransactionSync({
                     : language.transactionSyncSkipTitle.replace('{depth}', String(confirmationDepth))}
                 </strong>
                 <small>
-                  {skipKind === 'yolo'
-                    ? language.transactionSyncYoloDetail
-                    : language.transactionSyncSkipDetail}
+                  {skipKind === 'yolo' ? language.transactionSyncYoloDetail : language.transactionSyncSkipDetail}
                 </small>
               </span>
               <S.SkipButtonWrap>
@@ -301,42 +300,54 @@ export function ArweaveTransactionSync({
         </>
       )}
       {lanes.length > 0 && (
-        <>
-          <S.RaceShell $height={320} $embedded={false}>
-            <React.Suspense fallback={null}>
-              <TransactionSequenceCable3D
-                lanes={cableLanes}
-                ariaLabel={`${language.transactionSyncRacePrototypeInfinityCable}: ${subject}`}
-                active={renderActive}
-                layout={'bundle'}
-                phaseLabels={observedSteps.map((step) => step.label)}
-                miningActivity={{
-                  candidateRate: miningTelemetry.candidateRate,
-                  acceptedProofs: acceptedProofs.map((proof) => ({
-                    key: proof.key,
-                    height: proof.height,
-                    observedAt: proof.observedAt,
-                    label: language.transactionSyncMiningBlockLabel.replace('{height}', proof.height.toLocaleString()),
-                    meta: miningProofPinMeta(proof, language),
-                    recalls: proof.recallSamples.map((sample) => ({
-                      key: `${proof.key}:${sample.index}`,
-                      content: sample.content,
-                      fallback: language.transactionSyncMiningPinOffset.replace(
-                        '{offset}',
-                        sample.offset.toLocaleString(),
+        <TransactionVisualizerBoundary
+          fallback={
+            <S.RaceShell $height={320} $embedded={false}>
+              <TransactionRendererFallback lanes={cableLanes} />
+            </S.RaceShell>
+          }
+          resetKey={transaction?.id ?? subject}
+        >
+          <>
+            <S.RaceShell $height={320} $embedded={false}>
+              <React.Suspense fallback={<TransactionRendererFallback lanes={cableLanes} />}>
+                <TransactionSequenceCable3D
+                  lanes={cableLanes}
+                  ariaLabel={`${language.transactionSyncRacePrototypeInfinityCable}: ${subject}`}
+                  active={renderActive}
+                  layout={'bundle'}
+                  phaseLabels={observedSteps.map((step) => step.label)}
+                  miningActivity={{
+                    candidateRate: miningTelemetry.candidateRate,
+                    acceptedProofs: acceptedProofs.map((proof) => ({
+                      key: proof.key,
+                      height: proof.height,
+                      observedAt: proof.observedAt,
+                      label: language.transactionSyncMiningBlockLabel.replace(
+                        '{height}',
+                        proof.height.toLocaleString(),
                       ),
-                      contentLabel: recallContentLabel(sample.content, language),
-                      meta: miningRecallPinMeta(proof, sample, language),
+                      meta: miningProofPinMeta(proof, language),
+                      recalls: proof.recallSamples.map((sample) => ({
+                        key: `${proof.key}:${sample.index}`,
+                        content: sample.content,
+                        fallback: language.transactionSyncMiningPinOffset.replace(
+                          '{offset}',
+                          sample.offset.toLocaleString(),
+                        ),
+                        contentLabel: recallContentLabel(sample.content, language),
+                        meta: miningRecallPinMeta(proof, sample, language),
+                      })),
                     })),
-                  })),
-                }}
-              />
+                  }}
+                />
+              </React.Suspense>
+            </S.RaceShell>
+            <React.Suspense fallback={null}>
+              <CableTelemetryPanel telemetry={telemetry} />
             </React.Suspense>
-          </S.RaceShell>
-          <React.Suspense fallback={null}>
-            <CableTelemetryPanel telemetry={telemetry} />
-          </React.Suspense>
-        </>
+          </>
+        </TransactionVisualizerBoundary>
       )}
     </>
   );
@@ -815,8 +826,7 @@ function protocolActivityState(event: ProtocolActivity, language: any): string {
 
 export function transactionSyncSessionKey(steps: ArweaveSyncStep[]): string {
   return (
-    steps.find((step) => step.transaction?.id)?.transaction?.id ??
-    `pending:${steps.map((step) => step.key).join(':')}`
+    steps.find((step) => step.transaction?.id)?.transaction?.id ?? `pending:${steps.map((step) => step.key).join(':')}`
   );
 }
 

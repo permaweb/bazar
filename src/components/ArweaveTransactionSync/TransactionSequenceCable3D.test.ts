@@ -12,6 +12,7 @@ import {
   TransactionRendererFallback,
   type Infinity3DLane,
 } from './TransactionSequenceCable3D';
+import { TransactionVisualizerBoundary } from './TransactionVisualizerFallback';
 import { RaceTooltip } from './styles';
 
 function fallbackLane(statusLabel: string): Infinity3DLane {
@@ -41,6 +42,16 @@ function renderFallback(statusLabel: string) {
 }
 
 describe('transaction map renderer fallback', () => {
+  it('contains a failed lazy visualizer and renders its local fallback', () => {
+    const boundary = new TransactionVisualizerBoundary({
+      children: 'visualizer',
+      fallback: 'tracking continues',
+    });
+    boundary.state = TransactionVisualizerBoundary.getDerivedStateFromError();
+
+    expect(boundary.render()).toBe('tracking continues');
+  });
+
   it('omits the raw HTTP status-count row from network telemetry', () => {
     const markup = renderToStaticMarkup(
       React.createElement(

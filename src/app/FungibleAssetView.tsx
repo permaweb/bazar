@@ -48,6 +48,7 @@ import {
   type PreparedPurchase,
 } from 'api/asset-transactions';
 import { ArweaveTransactionSync, type ArweaveSyncStep } from 'components/ArweaveTransactionSync';
+import { postConfirmationPendingLabel } from 'components/ArweaveTransactionSync/sequence';
 import { AssetDetailTabs, type AssetDetailTab } from 'components/AssetDetailTabs';
 import { ArtworkImage } from 'components/ArtworkImage';
 import { ConnectWalletButton } from 'components/ConnectWalletButton';
@@ -2302,6 +2303,7 @@ function FungibleOperationDialog({
                 startedAt={submittedAtRef.current}
                 steps={singleSteps}
                 activeStep={operation.kind}
+                pendingAfterConfirmation={postConfirmationPendingLabel(confirmations, 5, message)}
               />
             ) : (
               <Loading label="Preparing the exact signed transaction…" />

@@ -23,6 +23,16 @@ export function confirmationProgressWidth(confirmed: number, active: boolean, ha
   return Math.min(active ? 99 : 100, Math.max(active && !hasError ? 2 : 0, confirmed));
 }
 
+export function postConfirmationPendingLabel(
+  confirmations: number,
+  target: number,
+  status: string | undefined,
+  label = 'Settling live state',
+): string | undefined {
+  const depth = Math.min(Math.max(0, confirmations), Math.max(0, target));
+  return status && target > 0 && depth >= target ? label : undefined;
+}
+
 export function confirmationLifecycleState(
   confirmations: number,
   target: number,

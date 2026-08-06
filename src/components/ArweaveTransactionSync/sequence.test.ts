@@ -4,6 +4,7 @@ import {
   confirmationLifecycleState,
   confirmationProgressText,
   confirmationProgressWidth,
+  postConfirmationPendingLabel,
   sequencePhaseBounds,
 } from './sequence';
 
@@ -60,6 +61,15 @@ describe('confirmationProgressWidth', () => {
     expect(confirmationProgressWidth(0, true, false)).toBe(2);
     expect(confirmationProgressWidth(20, true, false)).toBe(20);
     expect(confirmationProgressWidth(100, false, false)).toBe(100);
+  });
+});
+
+describe('postConfirmationPendingLabel', () => {
+  it('starts an indeterminate live-state phase only after confirmation completes', () => {
+    expect(postConfirmationPendingLabel(4, 5, 'Waiting for live state…')).toBeUndefined();
+    expect(postConfirmationPendingLabel(5, 5, 'Waiting for live state…')).toBe('Settling live state');
+    expect(postConfirmationPendingLabel(8, 5, 'Waiting for live state…', 'Checking receipt')).toBe('Checking receipt');
+    expect(postConfirmationPendingLabel(5, 5, '')).toBeUndefined();
   });
 });
 

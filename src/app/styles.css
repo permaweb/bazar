@@ -4365,12 +4365,25 @@ input:focus {
 .scheduler-wait {
   margin: 17px 0 0;
   padding: 12px 15px;
+  display: flex;
+  align-items: center;
+  gap: 11px;
   border: 1px solid var(--line);
   border-radius: 10px;
   background: var(--panel);
   color: var(--muted);
   font-size: var(--type-body);
   line-height: 1.5;
+}
+.scheduler-wait::before {
+  content: '';
+  flex: 0 0 auto;
+  width: 17px;
+  height: 17px;
+  border: 2px solid #d4d4d4;
+  border-top-color: var(--ink);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
 }
 .result {
   text-align: center;

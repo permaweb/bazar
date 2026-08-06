@@ -114,6 +114,7 @@ import {
 } from 'api/asset-transactions';
 import { ArweaveTransactionSync, type ArweaveSyncStep } from 'components/ArweaveTransactionSync';
 import { quorumConfirmationDepth } from 'components/ArweaveTransactionSync/confirmationDepth';
+import { postConfirmationPendingLabel } from 'components/ArweaveTransactionSync/sequence';
 import { ArtworkImage } from 'components/ArtworkImage';
 import { AssetDetailTabs, type AssetDetailTab } from 'components/AssetDetailTabs';
 import { ConnectWalletButton } from 'components/ConnectWalletButton';
@@ -7551,6 +7552,12 @@ function OperationDialog({
     message ||
     (purchaseState?.error ? errorMessage(new Error(purchaseState.error.message || purchaseState.error.code)) : '');
   const workingStatus = message || purchaseStatusMessage(purchaseState);
+  const pendingAfterConfirmation =
+    purchaseState?.stage === 'registration-accepting'
+      ? 'Checking live reservation'
+      : purchaseState?.stage === 'ownership-verifying'
+        ? 'Checking ownership'
+        : postConfirmationPendingLabel(activityConfirmations, confirmationTarget, workingStatus);
   const formError = atomicOperationFormError(operation.kind, operationValue, owner);
   const recoverable = Boolean(
     transaction ||
@@ -7946,9 +7953,7 @@ function OperationDialog({
               startedAt={submittedAtRef.current}
               steps={steps}
               activeStep={activeStep}
-              pendingAfterConfirmation={
-                purchaseState?.stage === 'ownership-verifying' ? 'Checking ownership' : undefined
-              }
+              pendingAfterConfirmation={pendingAfterConfirmation}
             />
           </div>
         ) : null}
