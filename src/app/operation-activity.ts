@@ -1,6 +1,8 @@
-import type { AssetSummary, Collection } from 'api/collections';
-import type { SwapOrder } from 'api/asset-marketplace';
 import type { PurchaseSnapshot } from 'weave-wrangler';
+
+import type { SwapOrder } from 'api/asset-marketplace';
+import type { AssetSummary, Collection } from 'api/collections';
+
 import {
 	atomicPurchaseStorageKey,
 	fungibleBatchStorageKey,
@@ -51,7 +53,8 @@ export type FungibleOperationActivitySummary = {
 };
 
 export type FungibleOperationActivityChange =
-	{ type: 'upsert'; activity: FungibleOperationActivitySummary } | { type: 'remove'; id: string; owner: string };
+	| { type: 'upsert'; activity: FungibleOperationActivitySummary }
+	| { type: 'remove'; id: string; owner: string };
 
 type StoredPurchase = {
 	activityKind?: unknown;
@@ -78,7 +81,7 @@ type StoredOperation = {
 export function deriveOperationActivities(
 	storage: EnumerableActivityStorage,
 	owner: string,
-	collections: Collection[],
+	collections: Collection[]
 ) {
 	const discovered = discoverOperationActivities(storage, owner, collections);
 	const cached = loadOperationActivities(storage, owner);
@@ -114,11 +117,11 @@ export function loadOperationActivities(storage: ActivityStorage, owner: string)
 
 export function operationActivityHasRecovery(
 	storage: Pick<Storage, 'getItem'>,
-	activity: Pick<OperationActivity, 'asset' | 'owner' | 'operation'>,
+	activity: Pick<OperationActivity, 'asset' | 'owner' | 'operation'>
 ) {
 	if (activity.operation.kind === 'buy') {
 		const saved = parseJson<StoredPurchase>(
-			storage.getItem(atomicPurchaseStorageKey(activity.asset.id, activity.owner)),
+			storage.getItem(atomicPurchaseStorageKey(activity.asset.id, activity.owner))
 		);
 		return validAtomicPurchase(saved, activity.owner);
 	}
@@ -129,7 +132,7 @@ export function operationActivityHasRecovery(
 export function discoverOperationActivities(
 	storage: EnumerableActivityStorage,
 	owner: string,
-	collections: Collection[],
+	collections: Collection[]
 ): OperationActivity[] {
 	const discovered: OperationActivity[] = [];
 	const ownerSuffix = `:${owner}`;
@@ -207,10 +210,10 @@ export function atomicOperationActivityId(assetId: string, owner: string) {
 export function saveOperationActivities(
 	storage: ActivityStorage,
 	activities: OperationActivity[],
-	managedOwners: string[],
+	managedOwners: string[]
 ): void {
 	const durable = activities.filter(
-		(activity) => activity.phase === 'approval' || activity.phase === 'working' || activity.phase === 'error',
+		(activity) => activity.phase === 'approval' || activity.phase === 'working' || activity.phase === 'error'
 	);
 	const preserved = readStoredActivities(storage).filter((activity) => !managedOwners.includes(activity.owner));
 	const stored = [...durable, ...preserved];
@@ -225,7 +228,9 @@ function readStoredActivities(storage: ActivityStorage): OperationActivity[] {
 	try {
 		const parsed = JSON.parse(storage.getItem(OPERATION_ACTIVITY_STORAGE_KEY) ?? 'null');
 		if (!isRecord(parsed) || parsed.version !== 1 || !Array.isArray(parsed.activities)) return [];
-		return parsed.activities.map(parseActivity).filter((activity): activity is OperationActivity => Boolean(activity));
+		return parsed.activities
+			.map(parseActivity)
+			.filter((activity): activity is OperationActivity => Boolean(activity));
 	} catch {
 		return [];
 	}
@@ -234,7 +239,7 @@ function readStoredActivities(storage: ActivityStorage): OperationActivity[] {
 function reconcileActivity(activity: OperationActivity, storage: ActivityStorage): OperationActivity {
 	if (activity.operation.kind === 'buy') {
 		const saved = parseJson<StoredPurchase>(
-			storage.getItem(atomicPurchaseStorageKey(activity.asset.id, activity.owner)),
+			storage.getItem(atomicPurchaseStorageKey(activity.asset.id, activity.owner))
 		);
 		if (saved?.buyer === activity.owner && isRecord(saved.order)) {
 			return {
@@ -260,7 +265,7 @@ function reconcileActivity(activity: OperationActivity, storage: ActivityStorage
 						kind: saved.kind as 'sell' | 'transfer',
 						resumeId: saved.txId,
 						...(typeof saved.value === 'string' ? { value: saved.value } : {}),
-					} as const);
+				  } as const);
 		return { ...activity, operation, phase: 'working', status: 'Resuming signed transaction…' };
 	}
 
@@ -313,10 +318,10 @@ export function fungibleOperationActivityId(assetId: string, owner: string, oper
 
 export function loadFungibleOperationActivities(
 	storage: ActivityStorage,
-	owner: string,
+	owner: string
 ): FungibleOperationActivitySummary[] {
 	const activities = readStoredFungibleActivities(storage).filter(
-		(activity) => activity.owner === owner && activity.phase !== 'done',
+		(activity) => activity.owner === owner && activity.phase !== 'done'
 	);
 	const restored = activities.filter((activity) => fungibleActivityHasRecovery(storage, activity));
 	if (restored.length !== activities.length) {
@@ -329,7 +334,7 @@ export function deriveFungibleOperationActivities(
 	storage: EnumerableActivityStorage,
 	owner: string,
 	collections: Collection[],
-	runtime: FungibleOperationActivitySummary[] = [],
+	runtime: FungibleOperationActivitySummary[] = []
 ) {
 	const discovered = discoverFungibleOperationActivities(storage, owner, collections);
 	const cached = loadFungibleOperationActivities(storage, owner);
@@ -339,10 +344,10 @@ export function deriveFungibleOperationActivities(
 export function mergeFungibleOperationActivities(
 	recovered: FungibleOperationActivitySummary[],
 	runtime: FungibleOperationActivitySummary[],
-	owner: string,
+	owner: string
 ) {
 	const byId = new Map(
-		recovered.filter((activity) => activity.owner === owner).map((activity) => [activity.id, activity]),
+		recovered.filter((activity) => activity.owner === owner).map((activity) => [activity.id, activity])
 	);
 	for (const activity of runtime) {
 		if (activity.owner === owner) byId.set(activity.id, activity);
@@ -352,7 +357,7 @@ export function mergeFungibleOperationActivities(
 
 export function reduceFungibleRuntimeActivities(
 	current: FungibleOperationActivitySummary[],
-	change: FungibleOperationActivityChange,
+	change: FungibleOperationActivityChange
 ) {
 	if (change.type === 'remove') {
 		return current.filter((activity) => activity.id !== change.id || activity.owner !== change.owner);
@@ -371,9 +376,11 @@ export function announceFungibleOperationActivityChange(change: FungibleOperatio
 export function saveFungibleOperationActivities(
 	storage: ActivityStorage,
 	activities: FungibleOperationActivitySummary[],
-	managedOwners: string[],
+	managedOwners: string[]
 ) {
-	const preserved = readStoredFungibleActivities(storage).filter((activity) => !managedOwners.includes(activity.owner));
+	const preserved = readStoredFungibleActivities(storage).filter(
+		(activity) => !managedOwners.includes(activity.owner)
+	);
 	const stored = [...activities.filter((activity) => activity.phase !== 'done'), ...preserved];
 	if (!stored.length) {
 		storage.removeItem(FUNGIBLE_OPERATION_ACTIVITY_STORAGE_KEY);
@@ -386,8 +393,11 @@ export function upsertFungibleOperationActivity(storage: ActivityStorage, activi
 	const current = readStoredFungibleActivities(storage);
 	saveFungibleOperationActivities(
 		storage,
-		[activity, ...current.filter((candidate) => candidate.id !== activity.id && candidate.owner === activity.owner)],
-		[activity.owner],
+		[
+			activity,
+			...current.filter((candidate) => candidate.id !== activity.id && candidate.owner === activity.owner),
+		],
+		[activity.owner]
 	);
 }
 
@@ -395,14 +405,14 @@ export function removeFungibleOperationActivity(storage: ActivityStorage, id: st
 	saveFungibleOperationActivities(
 		storage,
 		readStoredFungibleActivities(storage).filter((activity) => activity.owner === owner && activity.id !== id),
-		[owner],
+		[owner]
 	);
 }
 
 export function discoverFungibleOperationActivities(
 	storage: EnumerableActivityStorage,
 	owner: string,
-	collections: Collection[],
+	collections: Collection[]
 ): FungibleOperationActivitySummary[] {
 	const discovered: FungibleOperationActivitySummary[] = [];
 	const operationSuffix = `:${owner}`;
@@ -414,13 +424,16 @@ export function discoverFungibleOperationActivities(
 		if (!purchase && !operation) continue;
 		const assetId = key.slice(
 			purchase ? 'bazar-purchase-batch:'.length : 'bazar-operation:'.length,
-			-operationSuffix.length,
+			-operationSuffix.length
 		);
 		const record = parseJson<Record<string, unknown>>(storage.getItem(key));
 		if (!record) continue;
 		if (purchase ? !validFungiblePurchase(record, owner) : record?.signer !== owner) continue;
 		const operationKind = purchase ? 'buy' : parseFungibleOperationKind(record?.kind);
-		if (!operationKind || (operationKind !== 'buy' && !validStoredOperation(record, owner, operationKind, 'fungible')))
+		if (
+			!operationKind ||
+			(operationKind !== 'buy' && !validStoredOperation(record, owner, operationKind, 'fungible'))
+		)
 			continue;
 		const located = locateActivityAsset(collections, assetId, record, 'fungible');
 		if (!located) continue;
@@ -498,32 +511,32 @@ function parseAssetOperationKind(value: unknown): Exclude<FungibleOperationKind,
 
 function validAtomicPurchase(
 	record: StoredPurchase | null,
-	owner: string,
+	owner: string
 ): record is StoredPurchase & { buyer: string; order: SwapOrder; snapshot: PurchaseSnapshot } {
 	return Boolean(
 		record?.buyer === owner &&
-		record.activityKind !== 'fungible' &&
-		isRecord(record.order) &&
-		typeof record.order.orderId === 'string' &&
-		isRecord(record.snapshot) &&
-		hasRecoverablePurchase(record.snapshot),
+			record.activityKind !== 'fungible' &&
+			isRecord(record.order) &&
+			typeof record.order.orderId === 'string' &&
+			isRecord(record.snapshot) &&
+			hasRecoverablePurchase(record.snapshot)
 	);
 }
 
 function validFungiblePurchase(record: Record<string, unknown> | null, owner: string) {
 	return Boolean(
 		record?.buyer === owner &&
-		record.activityKind !== 'atomic' &&
-		Array.isArray(record.entries) &&
-		record.entries.length > 0 &&
-		record.entries.every(
-			(entry) =>
-				isRecord(entry) &&
-				isRecord(entry.order) &&
-				typeof entry.order.orderId === 'string' &&
-				isRecord(entry.snapshot) &&
-				hasRecoverablePurchase(entry.snapshot),
-		),
+			record.activityKind !== 'atomic' &&
+			Array.isArray(record.entries) &&
+			record.entries.length > 0 &&
+			record.entries.every(
+				(entry) =>
+					isRecord(entry) &&
+					isRecord(entry.order) &&
+					typeof entry.order.orderId === 'string' &&
+					isRecord(entry.snapshot) &&
+					hasRecoverablePurchase(entry.snapshot)
+			)
 	);
 }
 
@@ -531,17 +544,17 @@ function validStoredOperation(
 	record: StoredOperation | Record<string, unknown> | null,
 	owner: string,
 	kind: Exclude<FungibleOperationKind, 'buy'>,
-	expectedKind?: 'atomic' | 'fungible',
+	expectedKind?: 'atomic' | 'fungible'
 ): record is StoredOperation & { signer: string; txId: string; kind: Exclude<FungibleOperationKind, 'buy'> } {
 	return Boolean(
 		record?.signer === owner &&
-		(!expectedKind ||
-			(record.activityKind !== 'atomic' && record.activityKind !== 'fungible') ||
-			record.activityKind === expectedKind) &&
-		typeof record.txId === 'string' &&
-		/^[A-Za-z0-9_-]{43}$/.test(record.txId) &&
-		record.kind === kind &&
-		(kind !== 'cancel' || (isRecord(record.order) && typeof record.order.orderId === 'string')),
+			(!expectedKind ||
+				(record.activityKind !== 'atomic' && record.activityKind !== 'fungible') ||
+				record.activityKind === expectedKind) &&
+			typeof record.txId === 'string' &&
+			/^[A-Za-z0-9_-]{43}$/.test(record.txId) &&
+			record.kind === kind &&
+			(kind !== 'cancel' || (isRecord(record.order) && typeof record.order.orderId === 'string'))
 	);
 }
 
@@ -549,7 +562,7 @@ function locateActivityAsset(
 	collections: Collection[],
 	assetId: string,
 	record: object | null,
-	expectedKind: 'atomic' | 'fungible',
+	expectedKind: 'atomic' | 'fungible'
 ) {
 	const metadata = isRecord(record) ? record : null;
 	if (

@@ -13,21 +13,23 @@ import {
 describe('purchase observation retries', () => {
 	it('only classifies observer not-found windows as retryable', () => {
 		expect(
-			purchaseObservationRetryKind({ error: { code: 'registration-not-found', message: 'registration not found' } }),
+			purchaseObservationRetryKind({
+				error: { code: 'registration-not-found', message: 'registration not found' },
+			})
 		).toBe('registration');
 		expect(purchaseObservationRetryKind({ error: { code: 'unexpected', message: 'payment not found' } })).toBe(
-			'payment',
+			'payment'
 		);
 		expect(
-			purchaseObservationRetryKind({ error: { code: 'registration-dispatch-rejected', message: 'rejected' } }),
+			purchaseObservationRetryKind({ error: { code: 'registration-dispatch-rejected', message: 'rejected' } })
 		).toBeNull();
 		expect(
 			purchaseObservationRetryKind({
 				error: { code: 'registration-dispatch-rejected', message: 'registration not found' },
-			}),
+			})
 		).toBeNull();
 		expect(
-			purchaseObservationRetryKind({ error: { code: 'asset-order-reservation-expired', message: 'expired' } }),
+			purchaseObservationRetryKind({ error: { code: 'asset-order-reservation-expired', message: 'expired' } })
 		).toBeNull();
 	});
 

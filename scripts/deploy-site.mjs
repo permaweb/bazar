@@ -14,11 +14,9 @@ const deployKey = process.env.DEPLOY_KEY?.trim();
 
 if (!deployKey) throw new Error('DEPLOY_KEY environment variable is not set');
 
-const wallet = completePrivateJwk(JSON.parse(
-	deployKey.startsWith('{')
-		? deployKey
-		: Buffer.from(deployKey, 'base64').toString('utf8')
-));
+const wallet = completePrivateJwk(
+	JSON.parse(deployKey.startsWith('{') ? deployKey : Buffer.from(deployKey, 'base64').toString('utf8'))
+);
 const owner = await arweave.wallets.jwkToAddress(wallet);
 // Keep source maps in normal builds for downstream debugging without paying to
 // include those non-runtime artifacts in the immutable site deployment.
@@ -54,15 +52,15 @@ for (const filename of files) {
 	console.log(`Uploaded ${filename}: ${transaction.id}`);
 }
 
-const paths = Object.fromEntries(
-	files.map((filename) => [filename, { id: ledger.files[filename].id }])
+const paths = Object.fromEntries(files.map((filename) => [filename, { id: ledger.files[filename].id }]));
+const manifestBytes = Buffer.from(
+	JSON.stringify({
+		manifest: 'arweave/paths',
+		version: '0.2.0',
+		index: { path: 'index.html' },
+		paths,
+	})
 );
-const manifestBytes = Buffer.from(JSON.stringify({
-	manifest: 'arweave/paths',
-	version: '0.2.0',
-	index: { path: 'index.html' },
-	paths,
-}));
 const manifestSha256 = createHash('sha256').update(manifestBytes).digest('hex');
 
 if (ledger.manifest?.sha256 !== manifestSha256 || ledger.manifest.status !== 'posted') {
@@ -89,10 +87,12 @@ console.log(`Arweave URL: https://arweave.net/${ledger.manifest.id}`);
 
 async function listFiles(directory, relative = '') {
 	const entries = await fs.readdir(path.join(directory, relative), { withFileTypes: true });
-	const nested = await Promise.all(entries.map((entry) => {
-		const filename = path.posix.join(relative, entry.name);
-		return entry.isDirectory() ? listFiles(directory, filename) : [filename];
-	}));
+	const nested = await Promise.all(
+		entries.map((entry) => {
+			const filename = path.posix.join(relative, entry.name);
+			return entry.isDirectory() ? listFiles(directory, filename) : [filename];
+		})
+	);
 	return nested.flat().sort();
 }
 
@@ -111,10 +111,7 @@ async function signAndPost(transaction) {
 }
 
 function assertBudget(currentLedger, nextReward) {
-	const committed = [
-		...Object.values(currentLedger.files),
-		currentLedger.manifest,
-	]
+	const committed = [...Object.values(currentLedger.files), currentLedger.manifest]
 		.filter((entry) => entry?.status === 'posted')
 		.reduce((total, entry) => total + BigInt(entry.reward), 0n);
 	if (committed + BigInt(nextReward) > budget) {
@@ -140,15 +137,17 @@ async function saveLedger(value) {
 
 function contentType(filename) {
 	const extension = path.extname(filename).toLowerCase();
-	return {
-		'.css': 'text/css; charset=utf-8',
-		'.html': 'text/html; charset=utf-8',
-		'.js': 'text/javascript; charset=utf-8',
-		'.json': 'application/json',
-		'.map': 'application/json',
-		'.svg': 'image/svg+xml',
-		'.woff2': 'font/woff2',
-	}[extension] ?? 'application/octet-stream';
+	return (
+		{
+			'.css': 'text/css; charset=utf-8',
+			'.html': 'text/html; charset=utf-8',
+			'.js': 'text/javascript; charset=utf-8',
+			'.json': 'application/json',
+			'.map': 'application/json',
+			'.svg': 'image/svg+xml',
+			'.woff2': 'font/woff2',
+		}[extension] ?? 'application/octet-stream'
+	);
 }
 
 function completePrivateJwk(jwk) {
@@ -183,7 +182,7 @@ function recoverPrimeFactors(n, e, d) {
 		let value = modPow(base, odd, n);
 		if (value === 1n || value === n - 1n) continue;
 		for (let exponent = 1; exponent <= powersOfTwo; exponent += 1) {
-			const squared = value * value % n;
+			const squared = (value * value) % n;
 			if (squared === 1n) {
 				const factor = greatestCommonDivisor(value - 1n, n);
 				if (factor > 1n && factor < n) return { p: factor, q: n / factor };
@@ -201,8 +200,8 @@ function modPow(base, exponent, modulus) {
 	let factor = base % modulus;
 	let remaining = exponent;
 	while (remaining > 0n) {
-		if (remaining % 2n === 1n) result = result * factor % modulus;
-		factor = factor * factor % modulus;
+		if (remaining % 2n === 1n) result = (result * factor) % modulus;
+		factor = (factor * factor) % modulus;
 		remaining /= 2n;
 	}
 	return result;
@@ -223,7 +222,7 @@ function modInverse(value, modulus) {
 		[oldRemainder, remainder] = [remainder, oldRemainder - quotient * remainder];
 		[oldCoefficient, coefficient] = [coefficient, oldCoefficient - quotient * coefficient];
 	}
-	return (oldCoefficient % modulus + modulus) % modulus;
+	return ((oldCoefficient % modulus) + modulus) % modulus;
 }
 
 function decodeInteger(value) {

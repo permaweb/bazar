@@ -1,46 +1,47 @@
-import { describe, expect, it } from 'vitest';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { describe, expect, it } from 'vitest';
+import type { PurchaseSnapshot, PurchaseState } from 'weave-wrangler';
 
 import type { AssetState, SwapOrder } from 'api/asset-marketplace';
 import { filledOrder } from 'api/order-matching';
+
 import {
 	appendFungibleOperationActivity,
-	batchStageLabel,
-	batchPaymentBarrierState,
-	batchPurchaseRecoveryApprovalCount,
-	batchPurchaseRecoveryApprovalCopy,
 	batchHasNoDispatchedSellerPayment,
+	batchPaymentBarrierState,
+	batchPurchaseRecoveryApprovalCopy,
+	batchPurchaseRecoveryApprovalCount,
 	batchPurchaseStartingBalance,
 	batchRecoveryFrameBuffer,
 	batchRecoveryIdentity,
 	batchSettlementSummary,
-	fungibleOrderActionLabel,
-	FungiblePurchaseComposer,
-	FungiblePurchaseSequence,
+	batchStageLabel,
+	fungibleBatchRecoveryStatus,
 	fungibleListingAccessibleLabel,
 	FungibleOperationErrorAlert,
-	FungibleSettlementRecoveryPanel,
-	FungiblePurchaseReceiptNavigator,
-	MatchedListingsReview,
-	PurchaseRoute,
 	fungibleOperationStateError,
+	fungibleOrderActionLabel,
+	FungiblePurchaseComposer,
+	FungiblePurchaseReceiptNavigator,
+	FungiblePurchaseSequence,
 	fungiblePurchaseSequence,
-	fungibleBatchRecoveryStatus,
+	FungibleSettlementRecoveryPanel,
 	fungibleTransferRecipientError,
 	fungibleTransferSubmitLabel,
 	isRecoverableBatch,
 	latestRecoverableSnapshot,
+	MatchedListingsReview,
 	nextSettlementAnnouncement,
-	purchaseStateFrameBuffer,
-	purchaseQuoteIdentity,
 	purchaseAmountMatch,
+	purchaseQuoteIdentity,
+	PurchaseRoute,
+	purchaseStateFrameBuffer,
 	settlementTabIndex,
 	storeBatchRecoveryBeforeDispatch,
 	visibleOrderbookRows,
 	waitForSettlementBatch,
 } from './FungibleAssetView';
-import type { PurchaseSnapshot, PurchaseState } from 'weave-wrangler';
 
 const BUYER = 'b'.repeat(43);
 const ORDER_ID = 'o'.repeat(43);
@@ -71,7 +72,7 @@ describe('fungible operation error semantics', () => {
 			React.createElement(FungiblePurchaseSequence, {
 				listingCount: 2,
 				states: [payment, registration],
-			}),
+			})
 		);
 
 		expect(steps.map((step) => [step.key, step.state])).toEqual([
@@ -140,7 +141,7 @@ describe('fungible operation error semantics', () => {
 				onMax: () => undefined,
 				quantity: '4',
 				state,
-			}),
+			})
 		);
 
 		expect(quote.match?.fills.map((fill) => [fill.order.quantity, fill.partial])).toEqual([
@@ -173,7 +174,7 @@ describe('fungible operation error semantics', () => {
 				},
 				{ snapshot: { registration: { id: REGISTRATION_ID, dispatched: true } } },
 				{ snapshot: {} },
-			]),
+			])
 		).toBe(3);
 	});
 
@@ -187,11 +188,10 @@ describe('fungible operation error semantics', () => {
 					},
 				},
 				{ snapshot: { registration: { id: REGISTRATION_ID, dispatched: true } } },
-			]),
+			])
 		).toEqual({
 			title: '1 missing transaction approval needed to resume',
-			detail:
-				'Bazar recovered 3 of 4 signed transactions and will reuse those exact transactions. Your wallet will be asked only for the 1 missing approval. No seller payment has been submitted. Signed seller payments remain held until every reservation is accepted. Nothing new will be signed or submitted until you choose Continue.',
+			detail: 'Bazar recovered 3 of 4 signed transactions and will reuse those exact transactions. Your wallet will be asked only for the 1 missing approval. No seller payment has been submitted. Signed seller payments remain held until every reservation is accepted. Nothing new will be signed or submitted until you choose Continue.',
 			action: 'Approve 1 missing transaction and continue',
 		});
 	});
@@ -217,7 +217,7 @@ describe('fungible operation error semantics', () => {
 					registration: { id: `${String(index).padStart(42, '0')}R`, views: [] },
 					payment: { id: `${String(index).padStart(42, '0')}P`, views: [] },
 				},
-			]),
+			])
 		) as unknown as Record<string, PurchaseState>;
 		const receipt = renderToStaticMarkup(
 			React.createElement(FungiblePurchaseReceiptNavigator, {
@@ -226,7 +226,7 @@ describe('fungible operation error semantics', () => {
 				orders,
 				purchaseStates,
 				state: { denomination: 0, ticker: 'WEAVE' } as AssetState,
-			}),
+			})
 		);
 		expect(receipt.match(/<section/g)).toHaveLength(1);
 		expect(receipt.match(/<option/g)).toHaveLength(512);
@@ -246,7 +246,7 @@ describe('fungible operation error semantics', () => {
 				orders: orders.slice(0, 2),
 				purchaseStates,
 				state: { denomination: 0, ticker: 'WEAVE' } as AssetState,
-			}),
+			})
 		);
 		const previousButton = firstReceipt.match(/<button[^>]*>Previous receipt<\/button>/)?.[0] ?? '';
 		expect(previousButton).toContain('aria-disabled="true"');
@@ -264,7 +264,7 @@ describe('fungible operation error semantics', () => {
 			React.createElement(PurchaseRoute, {
 				fills: orders.map((order) => ({ sourceOrder: order, order, partial: false })),
 				state: { denomination: 0, ticker: 'WEAVE' } as AssetState,
-			}),
+			})
 		);
 		expect(review).toContain('Purchase route');
 		expect(review).toContain('512 orders');
@@ -283,7 +283,7 @@ describe('fungible operation error semantics', () => {
 				onRemove: () => undefined,
 				orders,
 				state: { denomination: 0, ticker: 'WEAVE' } as AssetState,
-			}),
+			})
 		);
 
 		expect(overview).toContain('aria-label="Purchase overview"');
@@ -296,7 +296,7 @@ describe('fungible operation error semantics', () => {
 		const alert = renderToStaticMarkup(
 			React.createElement(FungibleOperationErrorAlert, {
 				message: 'One settlement needs attention.',
-			}),
+			})
 		);
 		expect(alert).toContain('role="alert"');
 		expect(alert).not.toContain('role="tablist"');
@@ -309,8 +309,8 @@ describe('fungible operation error semantics', () => {
 			React.createElement(
 				FungibleSettlementRecoveryPanel,
 				{ orderId: ORDER_ID },
-				React.createElement('p', null, 'This incomplete listing can be continued with the same wallet.'),
-			),
+				React.createElement('p', null, 'This incomplete listing can be continued with the same wallet.')
+			)
 		);
 		expect(panel).toContain('role="tabpanel"');
 		expect(panel).toContain('tabindex="0"');
@@ -324,8 +324,8 @@ describe('fungible operation error semantics', () => {
 			React.createElement(
 				FungibleSettlementRecoveryPanel,
 				{ orderId: ORDER_ID, settled: true },
-				React.createElement('p', null, 'This listing settled successfully.'),
-			),
+				React.createElement('p', null, 'This listing settled successfully.')
+			)
 		);
 		expect(panel).toContain('settlement-success-detail');
 		expect(panel).toContain('This listing settled successfully.');
@@ -369,7 +369,7 @@ describe('fungible batch payment coordination', () => {
 				frames.push(callback);
 				return frames.length;
 			},
-			() => undefined,
+			() => undefined
 		);
 		for (let index = 0; index < 512; index += 1) {
 			buffer.push(`order-${index}`, { stage: 'registration-confirming', updatedAt: index } as PurchaseState);
@@ -394,7 +394,7 @@ describe('fungible batch payment coordination', () => {
 				frames.push(callback);
 				return 17;
 			},
-			(handle) => cancelled.push(handle),
+			(handle) => cancelled.push(handle)
 		);
 		buffer.push(ORDER_ID, { stage: 'complete', success: true } as PurchaseState);
 		buffer.flush();
@@ -429,12 +429,16 @@ describe('fungible batch payment coordination', () => {
 			({
 				balances: { [BUYER]: balance },
 				orders,
-			}) as AssetState;
+			} as AssetState);
 
 		expect(fungibleBatchRecoveryStatus(resume, state({ [ORDER_ID]: openOrder }), BUYER)).toBe('resumable');
 		expect(fungibleBatchRecoveryStatus(resume, state({ [ORDER_ID]: reservedOrder }), BUYER)).toBe('resumable');
 		expect(
-			fungibleBatchRecoveryStatus(resume, state({ [ORDER_ID]: { ...reservedOrder, buyer: 'x'.repeat(43) } }), BUYER),
+			fungibleBatchRecoveryStatus(
+				resume,
+				state({ [ORDER_ID]: { ...reservedOrder, buyer: 'x'.repeat(43) } }),
+				BUYER
+			)
 		).toBe('blocked');
 		expect(fungibleBatchRecoveryStatus(resume, state({}), BUYER)).toBe('blocked');
 		(resume.entries[0].snapshot as PurchaseSnapshot).payment = { id: PAYMENT_ID, dispatched: true };
@@ -467,11 +471,11 @@ describe('fungible batch payment coordination', () => {
 		expect(
 			batchRecoveryIdentity([
 				{ order, fillQuantity: '1', snapshot: { registration: { id: 'registration-a', dispatched: false } } },
-			]),
+			])
 		).not.toBe(
 			batchRecoveryIdentity([
 				{ order, fillQuantity: '1', snapshot: { registration: { id: 'registration-b', dispatched: false } } },
-			]),
+			])
 		);
 	});
 
@@ -484,7 +488,9 @@ describe('fungible batch payment coordination', () => {
 			minimumFee: '10',
 			recipient: 'seller',
 		} as SwapOrder;
-		expect(purchaseQuoteIdentity([filledOrder(order, '1')])).not.toBe(purchaseQuoteIdentity([filledOrder(order, '2')]));
+		expect(purchaseQuoteIdentity([filledOrder(order, '1')])).not.toBe(
+			purchaseQuoteIdentity([filledOrder(order, '2')])
+		);
 	});
 
 	it('waits for every sibling before reporting a batch failure', async () => {
@@ -493,10 +499,12 @@ describe('fungible batch payment coordination', () => {
 			resolveSibling = resolve;
 		});
 		let reported = false;
-		const result = waitForSettlementBatch([Promise.reject(new Error('reservation failed')), sibling]).catch((cause) => {
-			reported = true;
-			throw cause;
-		});
+		const result = waitForSettlementBatch([Promise.reject(new Error('reservation failed')), sibling]).catch(
+			(cause) => {
+				reported = true;
+				throw cause;
+			}
+		);
 
 		await Promise.resolve();
 		expect(reported).toBe(false);
@@ -519,7 +527,7 @@ describe('fungible batch payment coordination', () => {
 					snapshot: { registration: { id: 'registration-b', dispatched: true } },
 					paymentCost: '1100',
 				},
-			]),
+			])
 		).toEqual({
 			registrationsReady: 1,
 			pendingPaymentCost: 1100n,
@@ -531,7 +539,7 @@ describe('fungible batch payment coordination', () => {
 			batchPaymentBarrierState([
 				{ snapshot: {}, paymentCost: '900' },
 				{ snapshot: {}, paymentCost: '1100' },
-			]),
+			])
 		).toEqual({
 			registrationsReady: 0,
 			pendingPaymentCost: 2000n,
@@ -547,8 +555,8 @@ describe('fungible batch payment coordination', () => {
 					...recoveryBatch(),
 					entries: [{ ...recoveryBatch().entries[0], snapshot: {} }],
 				},
-				BUYER,
-			),
+				BUYER
+			)
 		).toBe(true);
 		expect(
 			isRecoverableBatch(
@@ -561,8 +569,8 @@ describe('fungible batch payment coordination', () => {
 						},
 					],
 				},
-				BUYER,
-			),
+				BUYER
+			)
 		).toBe(false);
 	});
 
@@ -572,7 +580,7 @@ describe('fungible batch payment coordination', () => {
 		expect(
 			latestRecoverableSnapshot(prepared, {
 				registration: { ...prepared.registration! },
-			}),
+			})
 		).toBe(prepared);
 		const dispatched = { registration: { id: REGISTRATION_ID, dispatched: true } };
 		expect(latestRecoverableSnapshot(prepared, dispatched)).toEqual(dispatched);
@@ -589,13 +597,13 @@ describe('fungible batch payment coordination', () => {
 		expect(
 			latestRecoverableSnapshot(complete, {
 				registration: { id: REGISTRATION_ID, dispatched: false },
-			}),
+			})
 		).toBe(complete);
 		expect(
 			latestRecoverableSnapshot(complete, {
 				registration: { id: REGISTRATION_ID, dispatched: false },
 				payment: { id: PAYMENT_ID, dispatched: false },
-			}),
+			})
 		).toBe(complete);
 	});
 
@@ -614,7 +622,9 @@ describe('fungible batch payment coordination', () => {
 		});
 
 		expect(writes).toBe(0);
-		expect(resumed.map((snapshot) => snapshot.payment?.id)).toEqual(complete.map((snapshot) => snapshot.payment.id));
+		expect(resumed.map((snapshot) => snapshot.payment?.id)).toEqual(
+			complete.map((snapshot) => snapshot.payment.id)
+		);
 	});
 
 	it('coalesces a 512-lot durable update wave and flushes payment-gate ownership synchronously', () => {
@@ -633,7 +643,7 @@ describe('fungible batch payment coordination', () => {
 			},
 			() => {
 				cancels += 1;
-			},
+			}
 		);
 
 		for (let index = 0; index < 1_024; index += 1) buffer.schedule();
@@ -663,7 +673,7 @@ describe('fungible batch payment coordination', () => {
 			latestRecoverableSnapshot(complete, {
 				registration: { id: REGISTRATION_ID, dispatched: false },
 				payment: { id: replacementPayment, dispatched: false },
-			}),
+			})
 		).toEqual({
 			registration: { id: REGISTRATION_ID, dispatched: true },
 			payment: { id: replacementPayment, dispatched: false },
@@ -673,7 +683,7 @@ describe('fungible batch payment coordination', () => {
 		expect(
 			latestRecoverableSnapshot(complete, {
 				registration: { id: replacementRegistration, dispatched: false },
-			}),
+			})
 		).toEqual({
 			registration: { id: replacementRegistration, dispatched: false },
 		});
@@ -689,7 +699,12 @@ describe('fungible batch payment coordination', () => {
 		controller.abort(new Error('wallet changed'));
 
 		expect(() =>
-			storeBatchRecoveryBeforeDispatch(storage, 'bazar-purchase-batch:asset:buyer', recoveryBatch(), controller.signal),
+			storeBatchRecoveryBeforeDispatch(
+				storage,
+				'bazar-purchase-batch:asset:buyer',
+				recoveryBatch(),
+				controller.signal
+			)
 		).toThrow('wallet changed');
 		expect(JSON.parse(values.get('bazar-purchase-batch:asset:buyer')!)).toMatchObject({
 			buyer: BUYER,
@@ -705,9 +720,9 @@ describe('fungible batch payment coordination', () => {
 			setItem: (candidate: string, value: string) => values.set(candidate, value),
 		};
 
-		expect(() => storeBatchRecoveryBeforeDispatch(storage, key, recoveryBatch(), new AbortController().signal)).toThrow(
-			'wallet-recovery-conflict',
-		);
+		expect(() =>
+			storeBatchRecoveryBeforeDispatch(storage, key, recoveryBatch(), new AbortController().signal)
+		).toThrow('wallet-recovery-conflict');
 		expect(JSON.parse(values.get(key)!)).toMatchObject({ attemptId: 'older-attempt' });
 	});
 });
@@ -740,7 +755,7 @@ describe('parallel settlement progress summary', () => {
 
 	it('reports all-failed and not-yet-started batches truthfully', () => {
 		expect(
-			batchSettlementSummary([{ stage: 'failed' } as PurchaseState, { stage: 'failed' } as PurchaseState]),
+			batchSettlementSummary([{ stage: 'failed' } as PurchaseState, { stage: 'failed' } as PurchaseState])
 		).toMatchObject({ settled: 0, failed: 2, paying: 0, reserving: 0 });
 		expect(batchSettlementSummary([undefined, undefined])).toMatchObject({
 			settled: 0,
@@ -760,7 +775,7 @@ describe('parallel settlement progress summary', () => {
 			batchStageLabel({
 				stage: 'registration-confirming',
 				registration: { consensus: { confirmations: 316 } },
-			} as PurchaseState),
+			} as PurchaseState)
 		).toBe('Reserve 5/5');
 	});
 });
@@ -770,12 +785,12 @@ describe('blocked purchase recovery cleanup', () => {
 		expect(
 			batchHasNoDispatchedSellerPayment({
 				entries: [{ snapshot: { registration: { id: 'R'.repeat(43), dispatched: true } } }],
-			} as any),
+			} as any)
 		).toBe(true);
 		expect(
 			batchHasNoDispatchedSellerPayment({
 				entries: [{ snapshot: { payment: { id: 'P'.repeat(43), dispatched: true } } }],
-			} as any),
+			} as any)
 		).toBe(false);
 	});
 });
@@ -797,8 +812,12 @@ describe('fungible order action names', () => {
 			asking: '6000000',
 		} as SwapOrder;
 
-		expect(fungibleOrderActionLabel('buy', first, state)).toBe(`Buy 3 WEAVE for 0.000003 AR from ${'A'.repeat(43)}`);
-		expect(fungibleOrderActionLabel('buy', second, state)).toBe(`Buy 5 WEAVE for 0.000006 AR from ${'B'.repeat(43)}`);
+		expect(fungibleOrderActionLabel('buy', first, state)).toBe(
+			`Buy 3 WEAVE for 0.000003 AR from ${'A'.repeat(43)}`
+		);
+		expect(fungibleOrderActionLabel('buy', second, state)).toBe(
+			`Buy 5 WEAVE for 0.000006 AR from ${'B'.repeat(43)}`
+		);
 		expect(fungibleOrderActionLabel('cancel', first, state)).toBe('Cancel listing of 3 WEAVE for 0.000003 AR');
 	});
 
@@ -831,7 +850,9 @@ describe('fungible state revalidation', () => {
 			orders: { [order.orderId]: order },
 		} as AssetState;
 		expect(fungibleOperationStateError('buy', state, buyer, [order])).toBe('');
-		expect(fungibleOperationStateError('buy', { ...state, orders: {} }, buyer, [order])).toBe('market-state-changed');
+		expect(fungibleOperationStateError('buy', { ...state, orders: {} }, buyer, [order])).toBe(
+			'market-state-changed'
+		);
 		expect(fungibleOperationStateError('cancel', state, seller, [order])).toBe('');
 		expect(fungibleOperationStateError('cancel', state, buyer, [order])).toBe('market-state-changed');
 		expect(fungibleOperationStateError('sell', state, seller, [], '5000')).toBe('');
@@ -853,6 +874,8 @@ describe('fungible transfer recipient validation', () => {
 		const recipient = 'c'.repeat(43);
 		const state = { denomination: 12, ticker: 'WEAVE' } as AssetState;
 		expect(fungibleTransferSubmitLabel('2000000000000', state, recipient)).toBe('Send 2 WEAVE to cccccc…ccccc');
-		expect(fungibleTransferSubmitLabel('2000000000000', state, recipient, true)).toBe(`Send 2 WEAVE to ${recipient}`);
+		expect(fungibleTransferSubmitLabel('2000000000000', state, recipient, true)).toBe(
+			`Send 2 WEAVE to ${recipient}`
+		);
 	});
 });

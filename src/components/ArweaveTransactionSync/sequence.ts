@@ -27,7 +27,7 @@ export function postConfirmationPendingLabel(
 	confirmations: number,
 	target: number,
 	status: string | undefined,
-	label = 'Settling live state',
+	label = 'Settling live state'
 ): string | undefined {
 	const depth = Math.min(Math.max(0, confirmations), Math.max(0, target));
 	return status && target > 0 && depth >= target ? label : undefined;
@@ -37,7 +37,7 @@ export function confirmationLifecycleState(
 	confirmations: number,
 	target: number,
 	pendingAfterConfirmation: string | undefined,
-	hasError: boolean,
+	hasError: boolean
 ) {
 	const depth = Math.min(Math.max(0, confirmations), Math.max(0, target));
 	const pending = Boolean(pendingAfterConfirmation && depth >= target && !hasError);

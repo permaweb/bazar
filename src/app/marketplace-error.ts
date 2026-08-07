@@ -1,5 +1,6 @@
 const FRIENDLY_ERRORS: Record<string, string> = {
-	'collection-indexes-unavailable': 'No collection index could be read from Arweave. Check your connection and retry.',
+	'collection-indexes-unavailable':
+		'No collection index could be read from Arweave. Check your connection and retry.',
 	'asset-purchase-insufficient-funds-after-signing':
 		'This wallet does not have enough AR for the transaction and network fee. Add AR, then continue the transaction saved in this browser with the same wallet.',
 	'transaction-propagation-timeout':
@@ -92,7 +93,7 @@ export function marketplaceFailureKind(error: unknown): MarketplaceFailureKind {
 
 export function marketplaceRequestFailureMessage(
 	source: MarketplaceRequestSource,
-	kind: MarketplaceFailureKind,
+	kind: MarketplaceFailureKind
 ): string {
 	if (source === 'compute' && kind === 'rate-limited') {
 		return 'The selected compute gateway is temporarily rate-limiting live-state requests. Wait briefly and retry, or choose another Compute gateway in the header.';

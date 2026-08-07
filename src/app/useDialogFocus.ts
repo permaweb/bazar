@@ -101,13 +101,10 @@ function isolateDialogBackground(container: HTMLElement) {
 
 export function targetOwnsDialogEscape(target: EventTarget | null) {
 	const closest = (target as { closest?: unknown } | null)?.closest;
-	return typeof closest === 'function'
-		&& Boolean(closest.call(target, '[data-dialog-escape-owner]'));
+	return typeof closest === 'function' && Boolean(closest.call(target, '[data-dialog-escape-owner]'));
 }
 
-function resolveRestoreTarget(
-	target?: HTMLElement | null | false | (() => HTMLElement | null),
-) {
+function resolveRestoreTarget(target?: HTMLElement | null | false | (() => HTMLElement | null)) {
 	return typeof target === 'function' ? target() : target || null;
 }
 
@@ -121,10 +118,7 @@ export function isDialogRestoreTarget(target: HTMLElement | null) {
 	return target.getClientRects().length > 0;
 }
 
-export function dialogRestoreTarget(
-	preferred: HTMLElement | null,
-	fallback: HTMLElement | null,
-) {
+export function dialogRestoreTarget(preferred: HTMLElement | null, fallback: HTMLElement | null) {
 	if (isDialogRestoreTarget(preferred)) return preferred;
 	return isDialogRestoreTarget(fallback) ? fallback : null;
 }
@@ -138,15 +132,13 @@ export function useDialogFocus<T extends HTMLElement>(
 	onEscape?: () => void,
 	restoreTarget?: HTMLElement | null | false | (() => HTMLElement | null),
 	focusKey?: unknown,
-	restoreFallback?: HTMLElement | null | false | (() => HTMLElement | null),
+	restoreFallback?: HTMLElement | null | false | (() => HTMLElement | null)
 ) {
 	const containerRef = React.useRef<T>(null);
 	const escapeRef = React.useRef(onEscape);
 	const restoreFrameRef = React.useRef<number | null>(null);
 	const mountedRestoreTarget = React.useRef(
-		typeof document !== 'undefined' && document.activeElement instanceof HTMLElement
-			? document.activeElement
-			: null,
+		typeof document !== 'undefined' && document.activeElement instanceof HTMLElement ? document.activeElement : null
 	);
 	escapeRef.current = onEscape;
 
@@ -170,10 +162,10 @@ export function useDialogFocus<T extends HTMLElement>(
 		}
 		const container = containerRef.current;
 		if (!container) return;
-		const focusable = () => [...container.querySelectorAll<HTMLElement>(FOCUSABLE)]
-			.filter(isDialogFocusable);
-		const initial = [...container.querySelectorAll<HTMLElement>('[data-dialog-initial], [autofocus]')]
-			.find((element) => element.matches(FOCUSABLE) && isDialogFocusable(element));
+		const focusable = () => [...container.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(isDialogFocusable);
+		const initial = [...container.querySelectorAll<HTMLElement>('[data-dialog-initial], [autofocus]')].find(
+			(element) => element.matches(FOCUSABLE) && isDialogFocusable(element)
+		);
 		(initial ?? focusable()[0] ?? container).focus();
 		const handleKeyDown = (event: KeyboardEvent) => {
 			if (event.key === 'Escape' && targetOwnsDialogEscape(event.target)) return;
@@ -210,7 +202,7 @@ export function useDialogFocus<T extends HTMLElement>(
 				restoreFrameRef.current = null;
 				const returnFocusTo = dialogRestoreTarget(
 					resolveRestoreTarget(restoreTarget) ?? mountedRestoreTarget.current,
-					resolveRestoreTarget(restoreFallback),
+					resolveRestoreTarget(restoreFallback)
 				);
 				returnFocusTo?.focus();
 			});

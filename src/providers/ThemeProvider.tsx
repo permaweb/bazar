@@ -1,7 +1,7 @@
 import React from 'react';
 import { ThemeProvider as StyledThemeProvider } from 'styled-components';
 
-import { resolveTheme, themes, type ThemeName, type ThemePreference } from 'helpers/theme';
+import { resolveTheme, type ThemeName, type ThemePreference, themes } from 'helpers/theme';
 
 const PREFERRED_THEME_KEY = 'preferredTheme';
 const SYSTEM_THEME_KEY = 'isSystemTheme';
@@ -57,7 +57,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
 	const value = React.useMemo(
 		() => ({ preference, resolvedTheme, setPreference }),
-		[preference, resolvedTheme, setPreference],
+		[preference, resolvedTheme, setPreference]
 	);
 
 	return (

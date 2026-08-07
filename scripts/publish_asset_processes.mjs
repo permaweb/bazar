@@ -7,9 +7,7 @@ import Arweave from 'arweave';
 
 const root = path.resolve(import.meta.dirname, '..');
 const ledgerPath = path.join(root, '.run-data', 'publication-ledger.json');
-const fundingKey =
-	process.env.BAZAR_TEST_WALLET ??
-	path.join(os.homedir(), 'src', 'Documents', 'hyperbeam-key.json');
+const fundingKey = process.env.BAZAR_TEST_WALLET ?? path.join(os.homedir(), 'src', 'Documents', 'hyperbeam-key.json');
 const arweave = Arweave.init({ host: 'arweave.net', port: 443, protocol: 'https' });
 const wallet = JSON.parse(await fs.readFile(fundingKey, 'utf8'));
 const ledger = JSON.parse(await fs.readFile(ledgerPath, 'utf8'));
@@ -79,16 +77,19 @@ for (const definition of definitions) {
 	}
 
 	if (!collection.processManifestId) {
-		const manifest = await arweave.createTransaction({
-			data: JSON.stringify({
-				version: 2,
-				name: definition.name,
-				description: definition.description,
-				kind: 'arweave-native-token-assets',
-				assetCount: collection.processes.length,
-				assets: collection.processes.sort((left, right) => left.index - right.index),
-			}),
-		}, wallet);
+		const manifest = await arweave.createTransaction(
+			{
+				data: JSON.stringify({
+					version: 2,
+					name: definition.name,
+					description: definition.description,
+					kind: 'arweave-native-token-assets',
+					assetCount: collection.processes.length,
+					assets: collection.processes.sort((left, right) => left.index - right.index),
+				}),
+			},
+			wallet
+		);
 		addTags(manifest, {
 			'Content-Type': 'application/json',
 			'App-Name': 'Bazar',
@@ -124,16 +125,22 @@ ledger.endBalance = await arweave.wallets.getBalance(ledger.fundingAddress);
 ledger.committedCost = totalCost().toString();
 assertBudget();
 await save();
-console.log(JSON.stringify(Object.fromEntries(
-	Object.entries(ledger.collections).map(([slug, collection]) => [
-		slug,
-		{
-			assets: collection.processes.length,
-			manifestId: collection.processManifestId,
-			referenceId: collection.processReferenceId,
-		},
-	])
-), null, 2));
+console.log(
+	JSON.stringify(
+		Object.fromEntries(
+			Object.entries(ledger.collections).map(([slug, collection]) => [
+				slug,
+				{
+					assets: collection.processes.length,
+					manifestId: collection.processManifestId,
+					referenceId: collection.processReferenceId,
+				},
+			])
+		),
+		null,
+		2
+	)
+);
 
 function addTags(transaction, tags) {
 	for (const [name, value] of Object.entries(tags)) transaction.addTag(name, String(value));

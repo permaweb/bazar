@@ -38,16 +38,16 @@ swap had already handled them.
 
 Choose option 3. Change only standalone `token@1.0`:
 
-- seed `initial-holder` with `total-supply` when `balances` is absent;
-- preserve exact, case-sensitive Arweave address keys for swap-configured
-  ledgers (the swap settles against exact L1 signer addresses), while leaving
-  the existing canonical key behavior unchanged for ordinary token ledgers;
-- call configured `swap-device` before token routing and restore
-  `device: token@1.0`;
-- ignore unrelated all-mode traffic;
-- do not run `make-offer`, `cancel-order`, or `register-interest` through the
-  token action router after the swap has handled them;
-- retain the existing behavior for token processes without `swap-device`.
+-   seed `initial-holder` with `total-supply` when `balances` is absent;
+-   preserve exact, case-sensitive Arweave address keys for swap-configured
+    ledgers (the swap settles against exact L1 signer addresses), while leaving
+    the existing canonical key behavior unchanged for ordinary token ledgers;
+-   call configured `swap-device` before token routing and restore
+    `device: token@1.0`;
+-   ignore unrelated all-mode traffic;
+-   do not run `make-offer`, `cancel-order`, or `register-interest` through the
+    token action router after the swap has handled them;
+-   retain the existing behavior for token processes without `swap-device`.
 
 Pin the token repository's HyperBEAM dependency and forge plugin to the exact
 `feat/name-token` commit required by the mission so the composed device and its

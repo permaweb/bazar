@@ -5,7 +5,7 @@ export type PurchaseObservationRetryKind = 'registration' | 'payment';
 const PURCHASE_OBSERVATION_RETRY_DELAYS_MS = [2_000, 4_000, 8_000, 15_000, 30_000, 60_000] as const;
 
 export function purchaseObservationRetryKind(
-	state: Pick<PurchaseState, 'error'> | null | undefined,
+	state: Pick<PurchaseState, 'error'> | null | undefined
 ): PurchaseObservationRetryKind | null {
 	const normalize = (value: string) => value.trim().toLowerCase().replaceAll('_', '-').replaceAll(' ', '-');
 	const code = normalize(state?.error?.code ?? '');
@@ -40,7 +40,7 @@ export function purchaseObservationPendingState(state: PurchaseState): PurchaseS
 
 export function purchaseObservationResumeState(
 	snapshot: PurchaseSnapshot | null | undefined,
-	previous?: PurchaseState | null,
+	previous?: PurchaseState | null
 ): PurchaseState | null {
 	if (!snapshot?.registration?.id) return null;
 	const registration = resumedTransaction(snapshot.registration, previous?.registration);
@@ -49,8 +49,8 @@ export function purchaseObservationResumeState(
 	const stage = watchingPayment
 		? 'payment-propagating'
 		: registration.dispatched
-			? 'registration-propagating'
-			: 'dispatching-registration';
+		? 'registration-propagating'
+		: 'dispatching-registration';
 	return {
 		stage,
 		txId: watchingPayment ? payment.id : registration.id,
@@ -101,7 +101,7 @@ export function waitForPurchaseObservationRetry(delayMs: number, signal: AbortSi
 
 function resumedTransaction(
 	snapshot: { id: string; dispatched: boolean },
-	previous?: PurchaseTransaction,
+	previous?: PurchaseTransaction
 ): PurchaseTransaction {
 	if (previous?.id === snapshot.id) {
 		return { ...previous, dispatched: Boolean(previous.dispatched || snapshot.dispatched) };

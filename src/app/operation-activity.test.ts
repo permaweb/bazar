@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+
 import type { SwapOrder } from 'api/asset-marketplace';
 
 import {
@@ -8,17 +9,17 @@ import {
 	discoverOperationActivities,
 	FUNGIBLE_OPERATION_ACTIVITY_STORAGE_KEY,
 	fungibleOperationActivityId,
+	type FungibleOperationActivitySummary,
 	loadFungibleOperationActivities,
-	OPERATION_ACTIVITY_STORAGE_KEY,
 	loadOperationActivities,
 	mergeFungibleOperationActivities,
+	OPERATION_ACTIVITY_STORAGE_KEY,
+	type OperationActivity,
 	reduceFungibleRuntimeActivities,
 	removeFungibleOperationActivity,
 	saveFungibleOperationActivities,
 	saveOperationActivities,
 	upsertFungibleOperationActivity,
-	type FungibleOperationActivitySummary,
-	type OperationActivity,
 } from './operation-activity';
 
 const owner = 'A'.repeat(43);
@@ -75,7 +76,7 @@ describe('operation activity persistence', () => {
 				activity({ id: 'done', phase: 'done' }),
 				activity({ id: 'error', phase: 'error' }),
 			],
-			[owner],
+			[owner]
 		);
 
 		const stored = JSON.parse(storage.getItem(OPERATION_ACTIVITY_STORAGE_KEY) ?? '{}');
@@ -88,11 +89,11 @@ describe('operation activity persistence', () => {
 		saveOperationActivities(storage, [activity()], [owner]);
 		storage.setItem(
 			`bazar-operation:asset-1:${otherOwner}`,
-			JSON.stringify({ signer: otherOwner, txId: 'U'.repeat(43), kind: 'sell' }),
+			JSON.stringify({ signer: otherOwner, txId: 'U'.repeat(43), kind: 'sell' })
 		);
 		storage.setItem(
 			`bazar-operation:asset-1:${owner}`,
-			JSON.stringify({ signer: owner, txId: 'T'.repeat(43), kind: 'sell' }),
+			JSON.stringify({ signer: owner, txId: 'T'.repeat(43), kind: 'sell' })
 		);
 
 		expect(loadOperationActivities(storage, otherOwner).map((item) => item.id)).toEqual(['other']);
@@ -104,7 +105,7 @@ describe('operation activity persistence', () => {
 		saveOperationActivities(storage, [activity()], [owner]);
 		storage.setItem(
 			`bazar-operation:asset-1:${owner}`,
-			JSON.stringify({ signer: owner, txId: 'T'.repeat(43), kind: 'sell', value: '0.5' }),
+			JSON.stringify({ signer: owner, txId: 'T'.repeat(43), kind: 'sell', value: '0.5' })
 		);
 
 		const [restored] = loadOperationActivities(storage, owner);
@@ -118,7 +119,7 @@ describe('operation activity persistence', () => {
 		saveOperationActivities(
 			storage,
 			[activity({ operation: { kind: 'buy', order }, status: 'Reserving asset…' })],
-			[owner],
+			[owner]
 		);
 		const snapshot = { registration: { id: 'R'.repeat(43), dispatched: true } };
 		storage.setItem(`bazar-purchase:asset-1:${owner}`, JSON.stringify({ buyer: owner, order, snapshot }));
@@ -148,7 +149,7 @@ describe('operation activity persistence', () => {
 		const storage = new MemoryStorage();
 		storage.setItem(
 			`bazar-operation:asset-1:${owner}`,
-			JSON.stringify({ signer: owner, txId: 'T'.repeat(43), kind: 'transfer', value: '1', createdAt: 125 }),
+			JSON.stringify({ signer: owner, txId: 'T'.repeat(43), kind: 'transfer', value: '1', createdAt: 125 })
 		);
 		const collection = {
 			id: 'collection-1',
@@ -180,7 +181,7 @@ describe('operation activity persistence', () => {
 				asset: { id: 'asset-1', name: 'Permanent Strata #001' },
 				activityKind: 'atomic',
 				collectionId: 'collection-1',
-			}),
+			})
 		);
 
 		expect(discoverOperationActivities(storage, owner, [])).toMatchObject([
@@ -216,7 +217,7 @@ describe('fungible operation activity persistence', () => {
 		saveFungibleOperationActivities(
 			storage,
 			[fungibleActivity(), fungibleActivity({ id: 'stale', asset: { id: 'asset-2', name: 'Stale' } })],
-			[owner],
+			[owner]
 		);
 		storage.setItem(
 			`bazar-purchase-batch:asset-1:${owner}`,
@@ -228,7 +229,7 @@ describe('fungible operation activity persistence', () => {
 						snapshot: { registration: { id: 'R'.repeat(43), dispatched: true } },
 					},
 				],
-			}),
+			})
 		);
 
 		expect(loadFungibleOperationActivities(storage, owner).map((item) => item.id)).toEqual([
@@ -251,7 +252,7 @@ describe('fungible operation activity persistence', () => {
 						snapshot: { registration: { id: 'R'.repeat(43), dispatched: true } },
 					},
 				],
-			}),
+			})
 		);
 		upsertFungibleOperationActivity(storage, fungibleActivity());
 		removeFungibleOperationActivity(storage, fungibleActivity().id, owner);
@@ -264,7 +265,7 @@ describe('fungible operation activity persistence', () => {
 		const storage = new MemoryStorage();
 		storage.setItem(
 			`bazar-operation:asset-1:${owner}`,
-			JSON.stringify({ signer: owner, kind: 'transfer', txId: 'T'.repeat(43), createdAt: 123 }),
+			JSON.stringify({ signer: owner, kind: 'transfer', txId: 'T'.repeat(43), createdAt: 123 })
 		);
 		const collection = {
 			id: 'fungible-tokens',
@@ -323,7 +324,7 @@ describe('fungible operation activity persistence', () => {
 				asset: { id: 'asset-1', name: 'Weave Credit' },
 				activityKind: 'fungible',
 				collectionId: 'fungible-tokens',
-			}),
+			})
 		);
 
 		expect(discoverOperationActivities(storage, owner, [])).toEqual([]);

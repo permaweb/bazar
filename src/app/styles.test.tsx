@@ -4,6 +4,7 @@ import { ServerStyleSheet, ThemeProvider } from 'styled-components';
 import { describe, expect, it } from 'vitest';
 
 import { darkTheme } from 'helpers/theme';
+
 import { GlobalStyle } from './styles';
 
 describe('GlobalStyle', () => {
@@ -15,8 +16,8 @@ describe('GlobalStyle', () => {
 				sheet.collectStyles(
 					<ThemeProvider theme={darkTheme}>
 						<GlobalStyle />
-					</ThemeProvider>,
-				),
+					</ThemeProvider>
+				)
 			);
 			const css = sheet.getStyleTags();
 

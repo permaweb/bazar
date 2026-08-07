@@ -1,32 +1,32 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-	discardNewlyPreparedTransactionIfAborted,
 	acquireWalletOperationClaim,
 	assertWalletOperationAvailable,
 	atomicPurchaseStorageKey,
 	clearStaleWalletOperationClaim,
+	discardNewlyPreparedTransactionIfAborted,
 	fungibleBatchStorageKey,
 	hasRecoverablePurchase,
-	isWalletOperationStorageKey,
 	isWalletOperationRecoveryKey,
+	isWalletOperationStorageKey,
 	latestPurchaseSnapshot,
 	loadWalletRecord,
-	operationForSigner,
 	operationClaimStorageKey,
+	operationForSigner,
 	operationStorageKey,
-	purchaseRecoveryApprovalCount,
-	purchaseRecoveryApprovalCopy,
-	removeWalletRecordIf,
-	releaseWalletOperationClaim,
 	promoteWalletOperationClaim,
-	repairRejectedPurchase,
-	removeSignedTransactionRecords,
+	purchaseRecoveryApprovalCopy,
+	purchaseRecoveryApprovalCount,
+	releaseWalletOperationClaim,
 	removeCompletedPurchaseRecoveryAndSignatures,
+	removeSignedTransactionRecords,
+	removeWalletRecordIf,
 	removeWalletRecoveryAndSignatures,
+	repairRejectedPurchase,
+	shouldAutomaticallyResumePurchase,
 	storeWalletRecordIf,
 	storeWalletRecordOrThrow,
-	shouldAutomaticallyResumePurchase,
 	walletOperationStorageChange,
 } from './operation-session';
 
@@ -61,9 +61,11 @@ describe('wallet-bound operation sessions', () => {
 
 	it('gives purchases and balance-changing asset actions independent claims', () => {
 		expect(operationClaimStorageKey('asset', 'wallet-a', 'purchase')).toBe(
-			'bazar-operation-claim:asset:wallet-a:purchase',
+			'bazar-operation-claim:asset:wallet-a:purchase'
 		);
-		expect(operationClaimStorageKey('asset', 'wallet-a', 'asset')).toBe('bazar-operation-claim:asset:wallet-a:asset');
+		expect(operationClaimStorageKey('asset', 'wallet-a', 'asset')).toBe(
+			'bazar-operation-claim:asset:wallet-a:asset'
+		);
 	});
 
 	it('holds a purchase claim and an asset-action claim at the same time', async () => {
@@ -89,13 +91,13 @@ describe('wallet-bound operation sessions', () => {
 			storage,
 			operationClaimStorageKey('asset', 'wallet-a', 'purchase'),
 			[atomicPurchaseStorageKey('asset', 'wallet-a')],
-			{ locks },
+			{ locks }
 		);
 		const assetAction = await acquireWalletOperationClaim(
 			storage,
 			operationClaimStorageKey('asset', 'wallet-a', 'asset'),
 			[operationStorageKey('asset', 'wallet-a')],
-			{ locks },
+			{ locks }
 		);
 
 		expect(values.has(purchase.key)).toBe(true);
@@ -115,13 +117,13 @@ describe('wallet-bound operation sessions', () => {
 			hasRecoverablePurchase({
 				registration: { id: REGISTRATION_ID, dispatched: false },
 				payment: { id: PAYMENT_ID, dispatched: false },
-			}),
+			})
 		).toBe(true);
 		expect(
 			hasRecoverablePurchase({
 				registration: { id: REGISTRATION_ID, dispatched: true },
 				payment: { id: PAYMENT_ID, dispatched: false },
-			}),
+			})
 		).toBe(true);
 	});
 
@@ -135,15 +137,17 @@ describe('wallet-bound operation sessions', () => {
 			purchaseRecoveryApprovalCount({
 				registration: { id: REGISTRATION_ID, dispatched: true },
 				payment: { id: PAYMENT_ID, dispatched: false },
-			}),
+			})
 		).toBe(0);
-		expect(shouldAutomaticallyResumePurchase({ registration: { id: REGISTRATION_ID, dispatched: true } })).toBe(false);
+		expect(shouldAutomaticallyResumePurchase({ registration: { id: REGISTRATION_ID, dispatched: true } })).toBe(
+			false
+		);
 		expect(shouldAutomaticallyResumePurchase({ payment: { id: PAYMENT_ID, dispatched: false } })).toBe(false);
 		expect(
 			shouldAutomaticallyResumePurchase({
 				registration: { id: REGISTRATION_ID, dispatched: true },
 				payment: { id: PAYMENT_ID, dispatched: false },
-			}),
+			})
 		).toBe(true);
 	});
 
@@ -154,13 +158,13 @@ describe('wallet-bound operation sessions', () => {
 			action: 'Approve seller payment and continue',
 		});
 		expect(purchaseRecoveryApprovalCopy({ registration: { id: REGISTRATION_ID, dispatched: false } }).detail).toBe(
-			'Your reservation is saved. Approve the seller payment to continue.',
+			'Your reservation is saved. Approve the seller payment to continue.'
 		);
 		expect(
 			purchaseRecoveryApprovalCopy(
 				{ registration: { id: REGISTRATION_ID, dispatched: true } },
-				{ externalOrigin: true },
-			),
+				{ externalOrigin: true }
+			)
 		).toEqual({
 			title: 'Continue your purchase',
 			detail: 'Close the other Bazar tab, then approve the seller payment to continue.',
@@ -183,8 +187,8 @@ describe('wallet-bound operation sessions', () => {
 					registration: { id: REGISTRATION_ID, dispatched: true },
 					payment: { id: PAYMENT_ID, dispatched: false },
 				},
-				'payment-dispatch-rejected',
-			),
+				'payment-dispatch-rejected'
+			)
 		).toEqual({
 			discardIds: [PAYMENT_ID],
 			snapshot: { registration: { id: REGISTRATION_ID, dispatched: true } },
@@ -227,7 +231,10 @@ describe('wallet-bound operation sessions', () => {
 			undefined,
 		]);
 
-		expect(removed).toEqual([`bazar-signed-transaction:${REGISTRATION_ID}`, `bazar-signed-transaction:${PAYMENT_ID}`]);
+		expect(removed).toEqual([
+			`bazar-signed-transaction:${REGISTRATION_ID}`,
+			`bazar-signed-transaction:${PAYMENT_ID}`,
+		]);
 	});
 
 	it('retains signed material when a newer recovery record owns the storage key', () => {
@@ -243,17 +250,23 @@ describe('wallet-bound operation sessions', () => {
 		};
 
 		expect(
-			removeWalletRecoveryAndSignatures<{ attemptId: string }>(storage, key, (record) => record.attemptId === 'older', [
-				REGISTRATION_ID,
-			]),
+			removeWalletRecoveryAndSignatures<{ attemptId: string }>(
+				storage,
+				key,
+				(record) => record.attemptId === 'older',
+				[REGISTRATION_ID]
+			)
 		).toBe(false);
 		expect(values.has(key)).toBe(true);
 		expect(values.has(registrationKey)).toBe(true);
 
 		expect(
-			removeWalletRecoveryAndSignatures<{ attemptId: string }>(storage, key, (record) => record.attemptId === 'newer', [
-				REGISTRATION_ID,
-			]),
+			removeWalletRecoveryAndSignatures<{ attemptId: string }>(
+				storage,
+				key,
+				(record) => record.attemptId === 'newer',
+				[REGISTRATION_ID]
+			)
 		).toBe(true);
 		expect(values.has(key)).toBe(false);
 		expect(values.has(registrationKey)).toBe(false);
@@ -279,8 +292,8 @@ describe('wallet-bound operation sessions', () => {
 				storage,
 				recoveryKey,
 				(record) => record.buyer === 'wallet-a',
-				[REGISTRATION_ID, PAYMENT_ID],
-			),
+				[REGISTRATION_ID, PAYMENT_ID]
+			)
 		).toBe(false);
 		expect([...values.keys()]).toEqual([recoveryKey, registrationKey, paymentKey]);
 	});
@@ -336,8 +349,8 @@ describe('wallet-bound operation sessions', () => {
 				storage,
 				operationStorageKey('asset', 'wallet-b'),
 				'bazar-operation:asset',
-				(record) => record.signer === 'wallet-b',
-			),
+				(record) => record.signer === 'wallet-b'
+			)
 		).toBeNull();
 		expect(values.has('bazar-operation:asset')).toBe(true);
 
@@ -346,8 +359,8 @@ describe('wallet-bound operation sessions', () => {
 				storage,
 				operationStorageKey('asset', 'wallet-a'),
 				'bazar-operation:asset',
-				(record) => record.signer === 'wallet-a',
-			),
+				(record) => record.signer === 'wallet-a'
+			)
 		).toEqual({ signer: 'wallet-a', txId: 'transaction' });
 		expect(values.has('bazar-operation:asset')).toBe(false);
 		expect(values.has(operationStorageKey('asset', 'wallet-a'))).toBe(true);
@@ -367,7 +380,7 @@ describe('wallet-bound operation sessions', () => {
 		};
 
 		expect(
-			loadWalletRecord<{ signer: string }>(storage, scoped, legacy, (record) => record.signer === 'wallet-b'),
+			loadWalletRecord<{ signer: string }>(storage, scoped, legacy, (record) => record.signer === 'wallet-b')
 		).toBeNull();
 		expect(values.has(scoped)).toBe(false);
 		expect(values.has(legacy)).toBe(true);
@@ -394,13 +407,13 @@ describe('wallet-bound operation sessions', () => {
 			removeItem: (candidate: string) => values.delete(candidate),
 		};
 
-		expect(removeWalletRecordIf<{ txId: string }>(storage, key, (record) => record.txId === 'older-transaction')).toBe(
-			false,
-		);
+		expect(
+			removeWalletRecordIf<{ txId: string }>(storage, key, (record) => record.txId === 'older-transaction')
+		).toBe(false);
 		expect(values.has(key)).toBe(true);
-		expect(removeWalletRecordIf<{ txId: string }>(storage, key, (record) => record.txId === 'newer-transaction')).toBe(
-			true,
-		);
+		expect(
+			removeWalletRecordIf<{ txId: string }>(storage, key, (record) => record.txId === 'newer-transaction')
+		).toBe(true);
 		expect(values.has(key)).toBe(false);
 	});
 
@@ -417,8 +430,8 @@ describe('wallet-bound operation sessions', () => {
 				storage,
 				key,
 				{ txId: 'older-transaction', stage: 2 },
-				(record) => record.txId === 'older-transaction',
-			),
+				(record) => record.txId === 'older-transaction'
+			)
 		).toBe(false);
 		expect(JSON.parse(values.get(key)!)).toEqual({ txId: 'newer-transaction', stage: 1 });
 		expect(
@@ -426,8 +439,8 @@ describe('wallet-bound operation sessions', () => {
 				storage,
 				key,
 				{ txId: 'newer-transaction', stage: 2 },
-				(record) => record.txId === 'newer-transaction',
-			),
+				(record) => record.txId === 'newer-transaction'
+			)
 		).toBe(true);
 		expect(JSON.parse(values.get(key)!)).toEqual({ txId: 'newer-transaction', stage: 2 });
 	});
@@ -446,8 +459,8 @@ describe('wallet-bound operation sessions', () => {
 				key,
 				{ txId: 'new-transaction' },
 				(record) => record.txId === 'new-transaction',
-				true,
-			),
+				true
+			)
 		).toThrow('wallet-recovery-conflict');
 		expect(JSON.parse(values.get(key)!)).toEqual({ txId: 'pending-transaction' });
 	});
@@ -505,7 +518,7 @@ describe('wallet-bound operation sessions', () => {
 			first,
 			operationKey,
 			{ txId: 'signed-transaction' },
-			(record) => record.txId === 'signed-transaction',
+			(record) => record.txId === 'signed-transaction'
 		);
 		expect(values.has(claimKey)).toBe(true);
 		expect(JSON.parse(values.get(operationKey)!)).toEqual({ txId: 'signed-transaction' });
@@ -516,7 +529,7 @@ describe('wallet-bound operation sessions', () => {
 					key: operationKey,
 					matches: (record: any) => record?.txId === 'signed-transaction',
 				},
-			}),
+			})
 		).rejects.toThrow('wallet-recovery-conflict');
 		releaseWalletOperationClaim(storage, first);
 		expect(values.has(claimKey)).toBe(false);
@@ -541,7 +554,7 @@ describe('wallet-bound operation sessions', () => {
 		};
 		const claimKey = operationClaimStorageKey('asset', 'wallet-a');
 		await expect(acquireWalletOperationClaim(storage, claimKey, [], { locks: null })).rejects.toThrow(
-			'wallet-operation-lock-unavailable',
+			'wallet-operation-lock-unavailable'
 		);
 		expect(values.has(claimKey)).toBe(false);
 	});
@@ -593,8 +606,8 @@ describe('wallet-bound operation sessions', () => {
 		expect(walletOperationStorageChange(claimKey, null, claimKey, recoveryKeys)).toBe('claim-released');
 		expect(walletOperationStorageChange(recoveryKeys[0], '{}', claimKey, recoveryKeys)).toBe('recovery-updated');
 		expect(walletOperationStorageChange(recoveryKeys[1], null, claimKey, recoveryKeys)).toBe('recovery-removed');
-		expect(walletOperationStorageChange(operationStorageKey('asset', 'wallet-b'), null, claimKey, recoveryKeys)).toBe(
-			'ignore',
-		);
+		expect(
+			walletOperationStorageChange(operationStorageKey('asset', 'wallet-b'), null, claimKey, recoveryKeys)
+		).toBe('ignore');
 	});
 });

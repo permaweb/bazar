@@ -11,7 +11,7 @@ export function useProgressiveReveal(enabled: boolean, reveal: () => void, rootM
 			([entry]) => {
 				if (entry?.isIntersecting) revealRef.current();
 			},
-			{ rootMargin },
+			{ rootMargin }
 		);
 		observer.observe(node);
 		return () => observer.disconnect();
