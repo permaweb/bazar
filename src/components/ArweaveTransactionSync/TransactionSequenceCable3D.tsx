@@ -888,7 +888,10 @@ export function TransactionSequenceCable3D({
 								if (element) acceptedProofPinRefs.current.set(proof.key, element);
 								else acceptedProofPinRefs.current.delete(proof.key);
 							}}
+							aria-label={`${proof.label}. Hover or focus to inspect block data.`}
 							data-block-height={proof.height}
+							role="group"
+							tabIndex={0}
 						>
 							<AcceptedProofStem />
 							<AcceptedProofCard>
@@ -1684,7 +1687,34 @@ const AcceptedProofPin = styled.span`
 	transform: translate3d(var(--proof-pin-x, 0), var(--proof-pin-y, 0), 0);
 	transition: opacity 220ms ease;
 	will-change: transform;
-	pointer-events: none;
+	pointer-events: auto;
+	cursor: help;
+
+	&::before {
+		content: '';
+		position: absolute;
+		top: 0;
+		left: 0;
+		width: 14px;
+		height: 14px;
+		transform: translate(-50%, -50%);
+		border: 2px solid ${(props) => props.theme.colors.container.primary.background};
+		border-radius: 50%;
+		background: ${(props) => props.theme.colors.nasaGraphic.green1};
+		box-shadow: 0 0 0 2px color-mix(in srgb, ${(props) => props.theme.colors.nasaGraphic.green1} 35%, transparent);
+		transition: transform 160ms ease, box-shadow 160ms ease;
+	}
+
+	&:focus {
+		outline: none;
+	}
+
+	&:hover::before,
+	&:focus-visible::before,
+	&:focus-within::before {
+		transform: translate(-50%, -50%) scale(1.18);
+		box-shadow: 0 0 0 4px color-mix(in srgb, ${(props) => props.theme.colors.nasaGraphic.green1} 28%, transparent);
+	}
 `;
 
 const AcceptedProofStem = styled.span`
@@ -1696,7 +1726,17 @@ const AcceptedProofStem = styled.span`
 	transform: rotate(var(--proof-stem-angle, 0));
 	transform-origin: 0 50%;
 	background: color-mix(in srgb, ${(props) => props.theme.colors.font.alt1} 48%, transparent);
+	opacity: 0;
+	visibility: hidden;
+	transition: opacity 140ms ease, visibility 0s linear 140ms;
 	pointer-events: none;
+
+	${AcceptedProofPin}:hover &,
+  ${AcceptedProofPin}:focus-within & {
+		opacity: 1;
+		visibility: visible;
+		transition-delay: 0s;
+	}
 `;
 
 const AcceptedProofCard = styled.span`
@@ -1714,7 +1754,18 @@ const AcceptedProofCard = styled.span`
 	border: 1px solid ${(props) => props.theme.colors.border.primary};
 	border-radius: 10px;
 	box-shadow: 0 10px 28px rgba(28, 25, 22, 0.14);
-	pointer-events: auto;
+	opacity: 0;
+	visibility: hidden;
+	pointer-events: none;
+	transition: opacity 140ms ease, visibility 0s linear 140ms;
+
+	${AcceptedProofPin}:hover &,
+  ${AcceptedProofPin}:focus-within & {
+		opacity: 1;
+		visibility: visible;
+		pointer-events: auto;
+		transition-delay: 0s;
+	}
 
 	@media (max-width: 480px) {
 		width: var(--proof-card-width, ${ACCEPTED_PROOF_CARD_COMPACT_WIDTH}px);
@@ -1852,6 +1903,7 @@ const activityEnter = keyframes`
 const ProtocolTelemetry = styled.div`
 	position: relative;
 	z-index: 2;
+	container-type: inline-size;
 	display: grid;
 	box-sizing: border-box;
 	width: 100%;
@@ -1894,19 +1946,15 @@ const ProtocolTelemetryLive = styled.span`
 
 const ProtocolMetricGrid = styled.div`
 	display: grid;
-	grid-template-columns: repeat(2, minmax(0, 1fr));
-	gap: 4px 10px;
+	grid-template-columns: minmax(0, 1fr);
+	gap: 5px;
 `;
 
 const ProtocolSummary = styled.div`
 	display: grid;
-	grid-template-columns: repeat(2, minmax(0, 1fr));
-	gap: 18px;
-
-	@media (max-width: 680px) {
-		grid-template-columns: 1fr;
-		gap: 10px;
-	}
+	grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+	align-items: start;
+	gap: 14px 24px;
 `;
 
 const ProtocolSummarySection = styled.span`
@@ -1916,23 +1964,27 @@ const ProtocolSummarySection = styled.span`
 `;
 
 const ProtocolMetric = styled.span`
-	display: flex;
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
 	align-items: baseline;
-	justify-content: space-between;
-	gap: 5px;
+	gap: 12px;
 	min-width: 0;
 	font-size: inherit;
 
 	strong {
+		justify-self: end;
 		font-size: inherit;
 		font-weight: ${(props) => props.theme.typography.weight.regular};
+		text-align: right;
 		white-space: nowrap;
 	}
 
 	span {
+		min-width: 0;
 		color: ${(props) => props.theme.colors.font.alt1};
 		font-size: inherit;
-		white-space: nowrap;
+		line-height: 1.35;
+		overflow-wrap: anywhere;
 	}
 `;
 
@@ -1979,6 +2031,16 @@ const ProtocolActivityRow = styled.span`
 
 	span {
 		color: ${(props) => props.theme.colors.font.alt1};
+	}
+
+	@container (max-width: 420px) {
+		grid-template-columns: auto minmax(0, 1fr);
+		align-items: start;
+		gap: 4px 8px;
+
+		> span:last-child {
+			grid-column: 1 / -1;
+		}
 	}
 `;
 

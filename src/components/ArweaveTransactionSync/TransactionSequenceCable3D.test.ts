@@ -93,7 +93,7 @@ describe('transaction map renderer fallback', () => {
 		expect(css).not.toContain('position:fixed');
 	});
 
-	it('keeps the transaction map prominent while overlapping its lower edge on shorter viewports', () => {
+	it('keeps the transaction map in a fixed viewport as observer lanes are added', () => {
 		const sheet = new ServerStyleSheet();
 		renderToStaticMarkup(
 			sheet.collectStyles(
@@ -106,9 +106,11 @@ describe('transaction map renderer fallback', () => {
 		);
 		const css = sheet.getStyleTags();
 		sheet.seal();
-		expect(css).toContain('max-height:max(240px,calc(100dvh - 450px))');
-		expect(css).toContain('@media (max-height:900px)');
-		expect(css).toContain('margin-bottom:-126px');
+		expect(css).toContain('width:100%');
+		expect(css).toContain('height:clamp(220px,36dvh,320px)');
+		expect(css).toContain('margin:8px auto 0');
+		expect(css).not.toContain('aspect-ratio');
+		expect(css).not.toContain('margin-bottom:-126px');
 	});
 
 	it('owns Escape only while an inspection is visible', () => {

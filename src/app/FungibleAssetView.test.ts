@@ -17,6 +17,7 @@ import {
 	batchRecoveryIdentity,
 	batchSettlementSummary,
 	batchStageLabel,
+	checkpointBatchPreparation,
 	fungibleBatchRecoveryStatus,
 	fungibleListingAccessibleLabel,
 	FungibleOperationErrorAlert,
@@ -176,6 +177,41 @@ describe('fungible operation error semantics', () => {
 				{ snapshot: {} },
 			])
 		).toBe(3);
+	});
+
+	it('keeps a reload-safe checkpoint before and between batch approval prompts', () => {
+		const order = purchaseOrder(ORDER_ID, 's'.repeat(43), '2', '4');
+		let entries = checkpointBatchPreparation([], {
+			type: 'quoted',
+			entries: [{ order, fillQuantity: '2', paymentCost: '9' }],
+		});
+		expect(entries).toEqual([{ order, fillQuantity: '2', paymentCost: '9', snapshot: {} }]);
+
+		entries = checkpointBatchPreparation(entries, {
+			type: 'signed',
+			kind: 'registration',
+			orderId: ORDER_ID,
+			transactionId: REGISTRATION_ID,
+			cost: '1',
+		});
+		expect(entries[0].snapshot).toEqual({
+			registration: { id: REGISTRATION_ID, dispatched: false },
+		});
+
+		entries = checkpointBatchPreparation(entries, {
+			type: 'signed',
+			kind: 'payment',
+			orderId: ORDER_ID,
+			transactionId: PAYMENT_ID,
+			cost: '10',
+		});
+		expect(entries[0]).toMatchObject({
+			paymentCost: '10',
+			snapshot: {
+				registration: { id: REGISTRATION_ID, dispatched: false },
+				payment: { id: PAYMENT_ID, dispatched: false },
+			},
+		});
 	});
 
 	it('explains how much of a recovered batch will be reused', () => {

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { SwapPurchase, TransactionDispatchNotSentError, TransactionDispatchRejectedError } from 'weave-wrangler';
 
-import { parseAssetState } from './asset-marketplace';
+import { parseAssetState, type SwapOrder } from './asset-marketplace';
 import {
 	assertExactCancelAssignment,
 	assertExactFungibleTransferAssignment,
@@ -1309,6 +1309,47 @@ describe('fungible asset transactions', () => {
 
 		expect(subject.signatures()).toBe(4);
 		expect(subject.signedKeys()).toEqual([]);
+	});
+
+	it('checkpoints the batch quote and every up-front signature in approval order', async () => {
+		const orders = [
+			swapOrder(transactionId, '3000000000000', '1000000'),
+			swapOrder('AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA', '5000000000000', '2000000'),
+		];
+		const subject = approvalSubject(orders);
+		const events: Array<
+			| { type: 'quoted'; entries: Array<{ order: SwapOrder; fillQuantity: string; paymentCost: string }> }
+			| { type: 'signed'; kind: 'registration' | 'payment'; orderId: string; transactionId: string; cost: string }
+		> = [];
+
+		await subject.client.preparePurchaseBatch(
+			orders.map((order) => ({
+				processId,
+				order,
+				buyer: seller,
+				startingBalance: '0',
+				network: { tip: () => 1000 } as any,
+			})),
+			undefined,
+			(event) => events.push(event)
+		);
+
+		expect(
+			events.map((event) => (event.type === 'quoted' ? event.type : `${event.kind}:${event.orderId}`))
+		).toEqual([
+			'quoted',
+			`registration:${orders[0].orderId}`,
+			`payment:${orders[0].orderId}`,
+			`registration:${orders[1].orderId}`,
+			`payment:${orders[1].orderId}`,
+		]);
+		expect(events[0]).toMatchObject({
+			type: 'quoted',
+			entries: [
+				{ fillQuantity: orders[0].quantity, paymentCost: '1001000' },
+				{ fillQuantity: orders[1].quantity, paymentCost: '2001000' },
+			],
+		});
 	});
 
 	it('discards an atomic approval pair when navigation aborts its final balance check', async () => {

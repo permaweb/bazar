@@ -159,7 +159,22 @@ export type PurchaseAdapterInput = {
 	buyer: string;
 	startingBalance: string;
 	network: WeaveNetwork;
+	onPrepared?: (event: PurchasePreparationEvent) => void;
 };
+
+export type PurchasePreparationEvent = {
+	kind: 'registration' | 'payment';
+	orderId: string;
+	transactionId: string;
+	cost: string;
+};
+
+export type PurchaseBatchPreparationEvent =
+	| {
+			type: 'quoted';
+			entries: Array<{ order: SwapOrder; fillQuantity: string; paymentCost: string }>;
+	  }
+	| ({ type: 'signed' } & PurchasePreparationEvent);
 
 export type PreparedPurchase = {
 	order: SwapOrder;
@@ -523,21 +538,38 @@ export class AssetTransactionClient {
 		const purchaseOrder = filledOrder(input.order, input.fillQuantity ?? input.order.quantity);
 		assertSafePurchaseOrder(purchaseOrder);
 		assertTokenQuantity(input.startingBalance, true);
-		const prepareRegistration = (signal: AbortSignal) =>
-			this.#prepare(
-				{
-					target: input.processId,
-					quantity: '1',
-					rewardFloor: purchaseOrder.minimumFee,
-					tags: [
-						{ name: 'action', value: 'register-interest' },
-						{ name: 'order-id', value: input.order.orderId },
-						{ name: 'fill-quantity', value: purchaseOrder.quantity },
-					],
-				},
-				signal,
-				undefined,
-				input.buyer
+		const reportPrepared = (kind: PurchasePreparationEvent['kind'], transaction: SafePreparedTransaction) => {
+			try {
+				input.onPrepared?.({
+					kind,
+					orderId: input.order.orderId,
+					transactionId: transaction.id,
+					cost: transaction.cost.toString(),
+				});
+			} catch (cause) {
+				this.#storage?.removeItem(`${SIGNED_TRANSACTION_PREFIX}${transaction.id}`);
+				throw cause;
+			}
+			return transaction;
+		};
+		const prepareRegistration = async (signal: AbortSignal) =>
+			reportPrepared(
+				'registration',
+				await this.#prepare(
+					{
+						target: input.processId,
+						quantity: '1',
+						rewardFloor: purchaseOrder.minimumFee,
+						tags: [
+							{ name: 'action', value: 'register-interest' },
+							{ name: 'order-id', value: input.order.orderId },
+							{ name: 'fill-quantity', value: purchaseOrder.quantity },
+						],
+					},
+					signal,
+					undefined,
+					input.buyer
+				)
 			);
 		const preparePayment = async (signal: AbortSignal) => {
 			const tip = Math.max(await this.#currentHeight(signal), input.network.tip());
@@ -549,18 +581,21 @@ export class AssetTransactionClient {
 				tip
 			);
 			if (storedPaymentId) {
-				return this.restore(storedPaymentId, input.buyer) as SafePreparedTransaction;
+				return reportPrepared('payment', this.restore(storedPaymentId, input.buyer) as SafePreparedTransaction);
 			}
 
-			return this.#prepare(
-				{
-					target: purchaseOrder.recipient,
-					quantity: purchaseOrder.asking,
-					tags: [{ name: 'order-id', value: input.order.orderId }],
-				},
-				signal,
-				tip + SIGNATURE_WINDOW_BLOCKS,
-				input.buyer
+			return reportPrepared(
+				'payment',
+				await this.#prepare(
+					{
+						target: purchaseOrder.recipient,
+						quantity: purchaseOrder.asking,
+						tags: [{ name: 'order-id', value: input.order.orderId }],
+					},
+					signal,
+					tip + SIGNATURE_WINDOW_BLOCKS,
+					input.buyer
+				)
 			);
 		};
 
@@ -704,7 +739,11 @@ export class AssetTransactionClient {
 		};
 	}
 
-	async preparePurchaseBatch(inputs: PurchaseAdapterInput[], signal?: AbortSignal): Promise<PreparedPurchase[]> {
+	async preparePurchaseBatch(
+		inputs: PurchaseAdapterInput[],
+		signal?: AbortSignal,
+		onPreparation?: (event: PurchaseBatchPreparationEvent) => void
+	): Promise<PreparedPurchase[]> {
 		if (!inputs.length) throw new TypeError('empty-purchase-batch');
 		const buyer = inputs[0].buyer;
 		if (!ADDRESS.test(buyer) || inputs.some((input) => input.buyer !== buyer)) {
@@ -724,12 +763,28 @@ export class AssetTransactionClient {
 			estimates.reduce((total, estimate) => total + BigInt(estimate.total), 0n),
 			signal
 		);
+		onPreparation?.({
+			type: 'quoted',
+			entries: inputs.map((input, index) => ({
+				order: input.order,
+				fillQuantity: input.fillQuantity ?? input.order.quantity,
+				paymentCost: (
+					BigInt(estimates[index].asking) + BigInt(estimates[index].paymentNetworkReward)
+				).toString(),
+			})),
+		});
 
 		const prepared: Array<PreparedPurchase & { cost: bigint }> = [];
 		try {
 			for (const input of inputs) {
 				if (signal?.aborted) throw signal.reason;
-				const adapter = this.purchaseAdapter(input);
+				const adapter = this.purchaseAdapter({
+					...input,
+					onPrepared: (event) => {
+						input.onPrepared?.(event);
+						onPreparation?.({ type: 'signed', ...event });
+					},
+				});
 				if (!adapter.prepareBoth) throw new Error('purchase-presign-unavailable');
 				const pair = await adapter.prepareBoth(signal ?? new AbortController().signal);
 				const registration = pair.registration as SafePreparedTransaction;

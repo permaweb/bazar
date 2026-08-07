@@ -467,7 +467,10 @@ type OperationActivityContextValue = {
 	activities: OperationActivity[];
 	fungibleActivities: FungibleOperationActivitySummary[];
 	activeId: string | null;
-	start(input: Pick<OperationActivity, 'asset' | 'collectionId' | 'owner' | 'operation' | 'restoreFallback'>): void;
+	start(
+		input: Pick<OperationActivity, 'asset' | 'collectionId' | 'owner' | 'operation' | 'restoreFallback'>,
+		options?: { show?: boolean }
+	): void;
 	show(id: string): void;
 	showFungible(id: string): void;
 	hide(): void;
@@ -563,14 +566,18 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 		};
 	}, [refreshFungibleActivities, refreshOperationActivities]);
 	const start = React.useCallback(
-		(input: Pick<OperationActivity, 'asset' | 'collectionId' | 'owner' | 'operation' | 'restoreFallback'>) => {
+		(
+			input: Pick<OperationActivity, 'asset' | 'collectionId' | 'owner' | 'operation' | 'restoreFallback'>,
+			options?: { show?: boolean }
+		) => {
+			const show = options?.show ?? true;
 			const id = atomicOperationActivityId(input.asset.id, input.owner);
 			const existing = activitiesRef.current.find(
 				(activity) =>
 					activity.asset.id === input.asset.id && activity.owner === input.owner && activity.phase !== 'done'
 			);
 			if (existing) {
-				setActiveId(existing.id);
+				if (show) setActiveId(existing.id);
 				return;
 			}
 			const phase: OperationActivityPhase =
@@ -611,7 +618,7 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 					...current,
 				];
 			});
-			setActiveId(id);
+			if (show) setActiveId(id);
 		},
 		[]
 	);
@@ -1700,7 +1707,7 @@ function HomePendingMarketValue({ label = 'Checking…' }: { label?: string }) {
 	);
 }
 
-function HomeMarketGhostCard({ kind }: { kind: 'asset' | 'collection' }) {
+function HomeMarketGhostCard({ kind }: { kind: 'collection' }) {
 	const collection = kind === 'collection';
 	return (
 		<div
@@ -1710,6 +1717,15 @@ function HomeMarketGhostCard({ kind }: { kind: 'asset' | 'collection' }) {
 			<LoaderCircle aria-hidden="true" />
 			<strong>{collection ? 'Loading more collections' : 'Loading more assets'}</strong>
 			<span>{collection ? 'Checking indexes and live floors.' : 'Checking active listings and prices.'}</span>
+		</div>
+	);
+}
+
+function HomeAssetLoadingMore() {
+	return (
+		<div className="home-feed-loading-more" role="status">
+			<LoaderCircle aria-hidden="true" />
+			<span>Loading more assets</span>
 		</div>
 	);
 }
@@ -2679,8 +2695,8 @@ function Home() {
 														);
 													}
 												)}
-												{discoverResultsPending ? <HomeMarketGhostCard kind="asset" /> : null}
 											</div>
+											{discoverResultsPending ? <HomeAssetLoadingMore /> : null}
 											{publishAssetCards ? (
 												<Pagination
 													ariaLabel="Discover pages"
@@ -5529,17 +5545,20 @@ function AssetView() {
 	);
 	const operation = operationActivityEntry?.operation ?? null;
 	const openOperation = React.useCallback(
-		(next: Operation) => {
+		(next: Operation, options?: { show?: boolean }) => {
 			const activityAsset = resolvedAsset ?? indexedAsset ?? cachedAsset;
 			if (!wallet.address || !activityAsset) return;
 			preloadAtomicTransactionRuntime();
-			startOperationActivity({
-				asset: activityAsset,
-				collectionId,
-				owner: wallet.address,
-				operation: next,
-				restoreFallback: operationFocusFallback,
-			});
+			startOperationActivity(
+				{
+					asset: activityAsset,
+					collectionId,
+					owner: wallet.address,
+					operation: next,
+					restoreFallback: operationFocusFallback,
+				},
+				options
+			);
 		},
 		[
 			cachedAsset,
@@ -5764,7 +5783,7 @@ function AssetView() {
 			if (saved?.buyer === walletAddress && saved?.order) {
 				const recoveryStatus = atomicPurchaseRecoveryStatus(state, walletAddress, saved.order, saved.snapshot);
 				if (recoveryStatus === 'resumable') {
-					openOperation({ kind: 'buy', order: saved.order, resume: saved.snapshot });
+					openOperation({ kind: 'buy', order: saved.order, resume: saved.snapshot }, { show: false });
 					return;
 				}
 				setRecoveryNotice(
@@ -5802,11 +5821,14 @@ function AssetView() {
 			if (mayHaveRegistration && order) {
 				const registrationId = client.findStoredRegistration(assetId, order.orderId, walletAddress);
 				if (registrationId) {
-					openOperation({
-						kind: 'buy',
-						order,
-						resume: { registration: { id: registrationId, dispatched: false } },
-					});
+					openOperation(
+						{
+							kind: 'buy',
+							order,
+							resume: { registration: { id: registrationId, dispatched: false } },
+						},
+						{ show: false }
+					);
 					return;
 				}
 			}
@@ -5857,19 +5879,25 @@ function AssetView() {
 			}
 			setUnavailableRecovery(null);
 			if (savedOperation.kind === 'cancel' && savedOperation.order) {
-				openOperation({
-					kind: 'cancel',
-					order: savedOperation.order,
-					startingSlot: savedOperation.startingSlot,
-					resumeId: savedOperation.txId,
-				});
+				openOperation(
+					{
+						kind: 'cancel',
+						order: savedOperation.order,
+						startingSlot: savedOperation.startingSlot,
+						resumeId: savedOperation.txId,
+					},
+					{ show: false }
+				);
 			} else {
-				openOperation({
-					kind: savedOperation.kind,
-					resumeId: savedOperation.txId,
-					startingSlot: savedOperation.startingSlot,
-					value: savedOperation.value,
-				});
+				openOperation(
+					{
+						kind: savedOperation.kind,
+						resumeId: savedOperation.txId,
+						startingSlot: savedOperation.startingSlot,
+						value: savedOperation.value,
+					},
+					{ show: false }
+				);
 			}
 		})().catch(() => undefined);
 		return () => controller.abort();
@@ -6171,7 +6199,7 @@ function AssetView() {
 									{!wallet.address ? <ConnectWalletButton /> : null}
 									{wallet.address && atomicOrderCanBeBought(order) && !mine ? (
 										<Button
-											className="with-icon asset-buy-now"
+											className="with-icon asset-buy-now market-primary-action"
 											disabled={operationBlocksActions || loading || Boolean(error)}
 											size="custom"
 											variant="primary"
@@ -6185,7 +6213,7 @@ function AssetView() {
 									) : null}
 									{wallet.address && mine && !order ? (
 										<Button
-											className="with-icon"
+											className="with-icon asset-buy-now market-primary-action"
 											disabled={operationBlocksActions || loading || Boolean(error)}
 											size="custom"
 											variant="primary"
@@ -6850,6 +6878,63 @@ function OperationDialog({
 				if (signal.aborted) throw signal.reason;
 				let observationRetryAttempt = 0;
 				let completedSnapshot: PurchaseSnapshot | null = null;
+				const persistPurchaseSnapshot = (snapshot: PurchaseSnapshot) => {
+					onOperation({ kind: 'buy', order: operation.order, resume: snapshot });
+					const record = {
+						asset: { id: asset.id, name: asset.name },
+						activityKind: 'atomic',
+						buyer: owner,
+						collectionId,
+						order: operation.order,
+						snapshot,
+						createdAt: submittedAtRef.current ?? Date.now(),
+					};
+					const matches = (current: any) =>
+						current?.buyer === owner &&
+						current?.order?.orderId === operation.order.orderId &&
+						current?.snapshot?.registration?.id === snapshot.registration?.id;
+					if (operationClaim) {
+						promoteWalletOperationClaim(
+							localStorage,
+							operationClaim,
+							atomicPurchaseStorageKey(asset.id, owner),
+							record,
+							matches
+						);
+					} else {
+						storeWalletRecordOrThrow<any>(
+							localStorage,
+							atomicPurchaseStorageKey(asset.id, owner),
+							record,
+							matches,
+							true
+						);
+					}
+				};
+				if (currentPurchaseSnapshot?.registration?.id && !currentPurchaseSnapshot.payment?.id) {
+					const registration = currentPurchaseSnapshot.registration;
+					const preparationAdapter = client.purchaseAdapter({
+						processId: asset.id,
+						order: operation.order,
+						buyer: owner,
+						startingBalance: '0',
+						network,
+						onPrepared: (event) => {
+							if (event.kind !== 'payment') return;
+							const snapshot = {
+								...currentPurchaseSnapshot!,
+								payment: { id: event.transactionId, dispatched: false },
+							};
+							persistPurchaseSnapshot(snapshot);
+							currentPurchaseSnapshot = snapshot;
+						},
+					});
+					if (!registration.dispatched) {
+						await preparationAdapter.restorePrepared?.('registration', registration.id, signal);
+					}
+					await preparationAdapter.preparePayment(registration.id, signal);
+					if (signal.aborted) throw signal.reason;
+				}
 				while (!completedSnapshot) {
 					const purchase = new runtime.SwapPurchase(
 						network,
@@ -6877,38 +6962,8 @@ function OperationDialog({
 						setPurchaseState(state);
 						const snapshot = purchase.snapshot();
 						if (hasRecoverablePurchase(snapshot)) {
-							onOperation({ kind: 'buy', order: operation.order, resume: snapshot });
-							const record = {
-								asset: { id: asset.id, name: asset.name },
-								activityKind: 'atomic',
-								buyer: owner,
-								collectionId,
-								order: operation.order,
-								snapshot,
-								createdAt: submittedAtRef.current ?? Date.now(),
-							};
 							try {
-								const matches = (current: any) =>
-									current?.buyer === owner &&
-									current?.order?.orderId === operation.order.orderId &&
-									current?.snapshot?.registration?.id === snapshot.registration?.id;
-								if (operationClaim) {
-									promoteWalletOperationClaim(
-										localStorage,
-										operationClaim,
-										atomicPurchaseStorageKey(asset.id, owner),
-										record,
-										matches
-									);
-								} else {
-									storeWalletRecordOrThrow<any>(
-										localStorage,
-										atomicPurchaseStorageKey(asset.id, owner),
-										record,
-										matches,
-										true
-									);
-								}
+								persistPurchaseSnapshot(snapshot);
 							} catch (cause) {
 								recoveryConflict = cause instanceof Error ? cause : new Error(String(cause));
 								purchase.abandon();
@@ -7334,12 +7389,13 @@ function OperationDialog({
 	if (!visible && visiblePhase !== 'working') return null;
 	return (
 		<div
-			className={`dialog-backdrop${hiding ? ' dialog-backdrop-hiding' : ''}`}
+			className={`dialog-backdrop operation-panel-backdrop${hiding ? ' dialog-backdrop-hiding' : ''}`}
 			hidden={!visible}
+			onMouseDown={(event) => event.target === event.currentTarget && closeOrHide()}
 			role="presentation"
 		>
 			<div
-				className={`dialog${visiblePhase === 'working' ? '' : ' dialog-compact'}${
+				className={`dialog operation-side-panel${visiblePhase === 'working' ? '' : ' dialog-compact'}${
 					visiblePhase === 'form' ? ' dialog-form-phase' : ''
 				}`}
 				aria-hidden={visible ? undefined : true}
@@ -7592,7 +7648,11 @@ function OperationDialog({
 						</div>
 						<Button
 							aria-describedby={operation.kind === 'buy' ? quoteStatusId : undefined}
-							className="wide"
+							className={`wide${
+								operation.kind === 'buy' || operation.kind === 'sell'
+									? ' with-icon market-primary-action'
+									: ''
+							}`}
 							data-dialog-initial
 							size="custom"
 							disabled={
@@ -7603,6 +7663,11 @@ function OperationDialog({
 							type="submit"
 							variant={operation.kind === 'cancel' ? 'danger' : 'primary'}
 						>
+							{operation.kind === 'buy' ? (
+								<ShoppingCart className="ui-icon ui-icon--sm" aria-hidden="true" />
+							) : operation.kind === 'sell' ? (
+								<Tag className="ui-icon ui-icon--sm" aria-hidden="true" />
+							) : null}
 							{operation.kind === 'buy' && purchaseAffordable === false
 								? 'Insufficient AR'
 								: operation.kind === 'buy' && purchaseQuote

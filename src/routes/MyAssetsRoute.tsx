@@ -46,7 +46,9 @@ import {
 	walletDiscoverySessionIsCurrent,
 	walletPageResolutionQueue,
 	walletResolutionCopy,
+	walletResolutionIsDeterminate,
 	walletResolutionMaxAge,
+	walletResolutionShowsProgress,
 	type WalletResolutionStatus,
 } from '../app/App';
 import {
@@ -500,6 +502,12 @@ export default function MyAssetsRoute() {
 		},
 		aggregateFailureMessage
 	);
+	const resolutionDeterminate = walletResolutionIsDeterminate(status);
+	const resolutionProgressTotal = status.phase === 'revalidating' ? status.revalidationTotal ?? 0 : status.total;
+	const resolutionProgressValue = status.phase === 'revalidating' ? status.revalidated ?? 0 : status.resolved;
+	const resolutionProgress = resolutionProgressTotal
+		? Math.min(100, Math.round((resolutionProgressValue / resolutionProgressTotal) * 100))
+		: 0;
 	return (
 		<section className="my-assets-page">
 			<div className="my-assets-heading">
@@ -524,6 +532,29 @@ export default function MyAssetsRoute() {
 			<p className="sr-only" aria-live="polite" role="status">
 				{resolutionCopy.announcement}
 			</p>
+			{working ? (
+				<div className="my-assets-resolution-status" aria-busy="true">
+					<div>
+						<Loading label={resolutionCopy.heading} />
+						<p>{resolutionCopy.announcement}</p>
+					</div>
+					{walletResolutionShowsProgress(status) ? (
+						<div
+							aria-label={resolutionCopy.heading}
+							aria-valuemax={resolutionDeterminate ? 100 : undefined}
+							aria-valuemin={resolutionDeterminate ? 0 : undefined}
+							aria-valuenow={resolutionDeterminate ? resolutionProgress : undefined}
+							aria-valuetext={resolutionCopy.announcement}
+							className={`resolution-track${resolutionDeterminate ? '' : ' indeterminate'}${
+								status.failures ? ' has-failures' : ''
+							}`}
+							role="progressbar"
+						>
+							<span style={resolutionDeterminate ? { width: `${resolutionProgress}%` } : undefined} />
+						</div>
+					) : null}
+				</div>
+			) : null}
 			{status.error ? (
 				<div className="inline-error">
 					<span role="alert">{status.error}</span>
@@ -550,22 +581,26 @@ export default function MyAssetsRoute() {
 					</Button>
 				</div>
 			) : null}
-			<AssetGroup
-				title="Listed for sale"
-				results={listed}
-				badge="For sale"
-				address={wallet.address}
-				group="listed"
-				settled={status.phase === 'done'}
-			/>
-			<AssetGroup
-				title="Owned"
-				results={owned}
-				badge="Owned"
-				address={wallet.address}
-				group="owned"
-				settled={status.phase === 'done'}
-			/>
+			{!working || visibleResults.length ? (
+				<>
+					<AssetGroup
+						title="Listed for sale"
+						results={listed}
+						badge="For sale"
+						address={wallet.address}
+						group="listed"
+						settled={status.phase === 'done'}
+					/>
+					<AssetGroup
+						title="Owned"
+						results={owned}
+						badge="Owned"
+						address={wallet.address}
+						group="owned"
+						settled={status.phase === 'done'}
+					/>
+				</>
+			) : null}
 			{status.phase === 'done' && !visibleResults.length ? (
 				<div className="empty-state">
 					<h3>
@@ -675,7 +710,7 @@ const AssetGroup = React.memo(function AssetGroup({
 					</span>
 				</>
 			) : (
-				<p className="asset-group-empty">{settled ? `No ${assetLabel}.` : `No ${assetLabel} loaded yet.`}</p>
+				<p className="asset-group-empty">{settled ? `No ${assetLabel}.` : `Checking for ${assetLabel}…`}</p>
 			)}
 			{results.length && limit < results.length ? (
 				<>

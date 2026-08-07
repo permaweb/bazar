@@ -1,5 +1,5 @@
 import React from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useNavigationType } from 'react-router-dom';
 import {
 	ArrowDown,
 	ArrowLeft,
@@ -43,6 +43,7 @@ import {
 	DEFAULT_REGISTRATION_FEE,
 	dispatchAndConfirm,
 	type PreparedPurchase,
+	type PurchaseBatchPreparationEvent,
 } from 'api/asset-transactions';
 import type { AssetSummary, Collection } from 'api/collections';
 import { filledOrder, formatTokenAmount, matchOrderFills, type OrderFill, parseTokenAmount } from 'api/order-matching';
@@ -202,6 +203,7 @@ export function FungibleAssetView({
 	const wallet = useWallet();
 	const location = useLocation();
 	const navigate = useNavigate();
+	const navigationType = useNavigationType();
 	const [operationActivities, setOperationActivities] = React.useState<FungibleOperationActivity[]>([]);
 	const operationActivitiesRef = React.useRef(operationActivities);
 	operationActivitiesRef.current = operationActivities;
@@ -243,15 +245,16 @@ export function FungibleAssetView({
 		[asset, collection.id]
 	);
 	const openOperation = React.useCallback(
-		(next: FungibleOperation) => {
+		(next: FungibleOperation, options?: { show?: boolean }) => {
 			if (wallet.address) {
+				const show = options?.show ?? true;
 				const signer = wallet.address;
 				const id = fungibleOperationActivityId(asset.id, signer, next.kind);
 				const existing = operationActivitiesRef.current.find(
 					(activity) => activity.id === id && activity.signer === signer
 				);
 				if (existing) {
-					showOperationActivity(existing.id);
+					if (show) showOperationActivity(existing.id);
 					return;
 				}
 				const activity = {
@@ -259,7 +262,7 @@ export function FungibleAssetView({
 					operation: next,
 					phase: null,
 					signer,
-					visible: true,
+					visible: show,
 					createdAt: Date.now(),
 				} satisfies FungibleOperationActivity;
 				setOperationActivities((current) =>
@@ -442,12 +445,15 @@ export function FungibleAssetView({
 			const resume = savedBatch as BatchResume;
 			const recoveryStatus = fungibleBatchRecoveryStatus(resume, state, wallet.address);
 			if (recoveryStatus === 'resumable') {
-				openOperation({
-					kind: 'buy',
-					availableOrders: resume.entries.map((entry) => entry.order),
-					startingBalance: resume.startingBalance,
-					resume,
-				});
+				openOperation(
+					{
+						kind: 'buy',
+						availableOrders: resume.entries.map((entry) => entry.order),
+						startingBalance: resume.startingBalance,
+						resume,
+					},
+					{ show: false }
+				);
 			} else if (batchHasNoDispatchedSellerPayment(resume)) {
 				const removed = removeWalletRecoveryAndSignatures<BatchResume>(
 					localStorage,
@@ -536,27 +542,36 @@ export function FungibleAssetView({
 			}
 			setUnavailableRecovery(null);
 			if (saved.kind === 'cancel' && saved.order) {
-				openOperation({
-					kind: 'cancel',
-					order: saved.order,
-					startingSlot: saved.startingSlot,
-					resumeId: saved.txId,
-				});
+				openOperation(
+					{
+						kind: 'cancel',
+						order: saved.order,
+						startingSlot: saved.startingSlot,
+						resumeId: saved.txId,
+					},
+					{ show: false }
+				);
 			} else if (saved.kind === 'sell') {
-				openOperation({
-					kind: 'sell',
-					quantity: saved.quantity,
-					unitPrice: saved.unitPrice,
-					resumeId: saved.txId,
-				});
+				openOperation(
+					{
+						kind: 'sell',
+						quantity: saved.quantity,
+						unitPrice: saved.unitPrice,
+						resumeId: saved.txId,
+					},
+					{ show: false }
+				);
 			} else if (saved.kind === 'transfer') {
-				openOperation({
-					kind: 'transfer',
-					quantity: saved.quantity,
-					recipient: saved.recipient,
-					startingSlot: saved.startingSlot,
-					resumeId: saved.txId,
-				});
+				openOperation(
+					{
+						kind: 'transfer',
+						quantity: saved.quantity,
+						recipient: saved.recipient,
+						startingSlot: saved.startingSlot,
+						resumeId: saved.txId,
+					},
+					{ show: false }
+				);
 			}
 		} catch {
 			if (wallet.address) removeWalletRecord(localStorage, operationStorageKey(asset.id, wallet.address));
@@ -590,14 +605,18 @@ export function FungibleAssetView({
 	React.useEffect(() => {
 		const requestedId = (location.state as { fungibleOperationActivityId?: unknown } | null)
 			?.fungibleOperationActivityId;
-		if (typeof requestedId !== 'string' || !operationActivities.some((activity) => activity.id === requestedId))
+		if (typeof requestedId !== 'string') return;
+		if (navigationType === 'POP') {
+			navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
 			return;
+		}
+		if (!operationActivities.some((activity) => activity.id === requestedId)) return;
 		setOperationActivities((current) => {
 			if (current.every((activity) => activity.visible === (activity.id === requestedId))) return current;
 			return current.map((activity) => ({ ...activity, visible: activity.id === requestedId }));
 		});
 		navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
-	}, [location.pathname, location.search, location.state, navigate, operationActivities]);
+	}, [location.pathname, location.search, location.state, navigate, navigationType, operationActivities]);
 
 	return (
 		<section className="asset-page asset-detail-page fungible-asset-page">
@@ -741,7 +760,7 @@ export function FungibleAssetView({
 							{!wallet.address ? <ConnectWalletButton /> : null}
 							{wallet.address && purchasableOrders.length ? (
 								<Button
-									className="with-icon"
+									className="with-icon market-primary-action"
 									disabled={
 										!purchaseAmountResult.match ||
 										purchaseBlocksActions ||
@@ -770,10 +789,11 @@ export function FungibleAssetView({
 							) : null}
 							{wallet.address && BigInt(liquid) > 0n ? (
 								<Button
-									className={`${purchasableOrders.length ? '' : 'primary '}with-icon`}
+									className="with-icon market-primary-action"
 									disabled={assetBlocksActions || loading || Boolean(error)}
 									size="custom"
 									onClick={() => openOperation({ kind: 'sell' })}
+									variant="primary"
 								>
 									<Tag className="ui-icon ui-icon--sm" aria-hidden="true" />{' '}
 									{activeAssetActivity?.operation.kind === 'sell'
@@ -1122,12 +1142,12 @@ export function fungiblePurchaseSequence(
 	const steps: Array<Omit<FungiblePurchaseSequenceStep, 'state'>> = [
 		{
 			key: 'sign',
-			label: 'Sign transactions',
+			label: 'Sign',
 			detail: `${total * 2} wallet ${total * 2 === 1 ? 'approval' : 'approvals'}`,
 		},
-		{ key: 'reserve', label: 'Reserve listings', detail: `${reserved}/${total} accepted` },
-		{ key: 'pay', label: 'Pay sellers', detail: `${paid}/${total} confirmed` },
-		{ key: 'verify', label: 'Verify receipts', detail: `${verified}/${total} verified` },
+		{ key: 'reserve', label: 'Reserve', detail: `${reserved}/${total} accepted` },
+		{ key: 'pay', label: 'Pay', detail: `${paid}/${total} confirmed` },
+		{ key: 'verify', label: 'Verify', detail: `${verified}/${total} verified` },
 	];
 	return steps.map((step, index) => ({
 		...step,
@@ -1686,33 +1706,8 @@ function FungibleOperationDialog({
 		const network = observerLease.network;
 		const signal = attemptRef.current.signal;
 		if (signal.aborted) throw signal.reason;
-		let entries: BatchEntry[];
+		let entries: BatchEntry[] = resume?.entries ?? [];
 		const preparedByOrder = new Map<string, PreparedPurchase>();
-		if (resume) entries = resume.entries;
-		else {
-			const prepared = await client.preparePurchaseBatch(
-				requested.map(({ order, fillQuantity }) => ({
-					processId: asset.id,
-					order,
-					fillQuantity,
-					buyer: owner,
-					startingBalance,
-					network,
-				})),
-				signal
-			);
-			entries = prepared.map((item) => {
-				preparedByOrder.set(item.order.orderId, item);
-				return preparedEntry(item);
-			});
-			if (signal.aborted) {
-				for (const item of prepared) {
-					localStorage.removeItem(`bazar-signed-transaction:${item.registration.id}`);
-					localStorage.removeItem(`bazar-signed-transaction:${item.payment.id}`);
-				}
-				throw signal.reason;
-			}
-		}
 		const saved: BatchResume = {
 			version: 3,
 			asset,
@@ -1724,31 +1719,115 @@ function FungibleOperationDialog({
 			createdAt: resume?.createdAt ?? Date.now(),
 		};
 		let terminalRecoveryRemoved = false;
-		const attemptId = batchRecoveryIdentity(entries);
+		const attemptId =
+			resume?.attemptId ??
+			(resume
+				? batchRecoveryIdentity(entries)
+				: globalThis.crypto.randomUUID?.() ?? `${Date.now()}-${Math.random()}`);
 		saved.attemptId = attemptId;
+		const recoveryKey = fungibleBatchStorageKey(asset.id, owner);
+		const matchesAttempt = (current: BatchResume) =>
+			current.buyer === owner && (current.attemptId ?? batchRecoveryIdentity(current.entries)) === attemptId;
 		try {
-			if (claimRef.current) {
-				promoteWalletOperationClaim(
-					localStorage,
-					claimRef.current,
-					fungibleBatchStorageKey(asset.id, owner),
-					saved,
-					(current) =>
-						current.buyer === owner &&
-						(current.attemptId ?? batchRecoveryIdentity(current.entries)) === attemptId
+			if (!resume) {
+				const prepared = await client.preparePurchaseBatch(
+					requested.map(({ order, fillQuantity }) => ({
+						processId: asset.id,
+						order,
+						fillQuantity,
+						buyer: owner,
+						startingBalance,
+						network,
+					})),
+					signal,
+					(event) => {
+						entries = checkpointBatchPreparation(entries, event);
+						saved.entries = entries;
+						if (event.type === 'quoted') {
+							if (claimRef.current) {
+								promoteWalletOperationClaim(
+									localStorage,
+									claimRef.current,
+									recoveryKey,
+									saved,
+									matchesAttempt
+								);
+							} else {
+								storeBatchRecoveryBeforeDispatch(localStorage, recoveryKey, saved, signal);
+							}
+							return;
+						}
+						storeWalletRecordOrThrow(localStorage, recoveryKey, saved, matchesAttempt, true);
+					}
 				);
+				entries = prepared.map((item) => {
+					preparedByOrder.set(item.order.orderId, item);
+					return preparedEntry(item);
+				});
+				saved.entries = entries;
+				storeWalletRecordOrThrow(localStorage, recoveryKey, saved, matchesAttempt, true);
 				if (signal.aborted) throw signal.reason;
+			} else if (claimRef.current) {
+				promoteWalletOperationClaim(localStorage, claimRef.current, recoveryKey, saved, matchesAttempt);
 			} else {
-				storeBatchRecoveryBeforeDispatch(localStorage, fungibleBatchStorageKey(asset.id, owner), saved, signal);
+				storeBatchRecoveryBeforeDispatch(localStorage, recoveryKey, saved, signal);
 			}
 		} catch (cause) {
-			if (!signal.aborted) {
-				for (const item of preparedByOrder.values()) {
-					localStorage.removeItem(`bazar-signed-transaction:${item.registration.id}`);
-					localStorage.removeItem(`bazar-signed-transaction:${item.payment.id}`);
-				}
+			if (!resume) {
+				removeWalletRecoveryAndSignatures(
+					localStorage,
+					recoveryKey,
+					matchesAttempt,
+					saved.entries.flatMap((entry) => [entry.snapshot.registration?.id, entry.snapshot.payment?.id]),
+					owner
+				);
 			}
 			throw cause;
+		}
+		if (resume && batchPurchaseRecoveryApprovalCount(entries) > 0) {
+			for (const queued of [...entries]) {
+				const current = entries.find((entry) => entry.order.orderId === queued.order.orderId)!;
+				if (current.snapshot.registration?.id && current.snapshot.payment?.id) continue;
+				const originalSnapshot = current.snapshot;
+				const newlyPreparedIds: string[] = [];
+				const adapter = client.purchaseAdapter({
+					processId: asset.id,
+					order: current.order,
+					fillQuantity: current.fillQuantity,
+					buyer: owner,
+					startingBalance,
+					network,
+					onPrepared: (preparedEvent) => {
+						const alreadySaved =
+							originalSnapshot.registration?.id === preparedEvent.transactionId ||
+							originalSnapshot.payment?.id === preparedEvent.transactionId;
+						if (!alreadySaved) newlyPreparedIds.push(preparedEvent.transactionId);
+						entries = checkpointBatchPreparation(entries, { type: 'signed', ...preparedEvent });
+						saved.entries = entries;
+						storeWalletRecordOrThrow(localStorage, recoveryKey, saved, matchesAttempt, true);
+					},
+				});
+				try {
+					if (!current.snapshot.registration?.id) {
+						if (!adapter.prepareBoth) throw new Error('purchase-presign-unavailable');
+						await adapter.prepareBoth(signal);
+					} else if (!current.snapshot.payment?.id) {
+						if (!current.snapshot.registration.dispatched) {
+							await adapter.restorePrepared?.('registration', current.snapshot.registration.id, signal);
+						}
+						await adapter.preparePayment(current.snapshot.registration.id, signal);
+					}
+					if (signal.aborted) throw signal.reason;
+				} catch (cause) {
+					for (const id of newlyPreparedIds) localStorage.removeItem(`bazar-signed-transaction:${id}`);
+					entries = entries.map((entry) =>
+						entry.order.orderId === current.order.orderId ? { ...entry, snapshot: originalSnapshot } : entry
+					);
+					saved.entries = entries;
+					storeWalletRecordOrThrow(localStorage, recoveryKey, saved, matchesAttempt, true);
+					throw cause;
+				}
+			}
 		}
 		if (!activeOrderId) setActiveOrderId(entries[0].order.orderId);
 
@@ -2062,12 +2141,13 @@ function FungibleOperationDialog({
 	const compactPurchaseForm = phase === 'form' && operation.kind === 'buy';
 	return (
 		<div
-			className={`dialog-backdrop${hiding ? ' dialog-backdrop-hiding' : ''}`}
+			className={`dialog-backdrop operation-panel-backdrop${hiding ? ' dialog-backdrop-hiding' : ''}`}
 			hidden={!visible}
+			onMouseDown={(event) => event.target === event.currentTarget && closeOrHide()}
 			role="presentation"
 		>
 			<div
-				className={`dialog fungible-dialog${phase === 'form' ? ' dialog-form-phase' : ''}${
+				className={`dialog operation-side-panel fungible-dialog${phase === 'form' ? ' dialog-form-phase' : ''}${
 					compactPurchaseForm ? ' purchase-dialog' : ''
 				}`}
 				aria-hidden={visible ? undefined : true}
@@ -2437,7 +2517,11 @@ function FungibleOperationDialog({
 						</div>
 						<div className="trade-form-footer">
 							<Button
-								className="wide"
+								className={`wide${
+									operation.kind === 'buy' || operation.kind === 'sell'
+										? ' with-icon market-primary-action'
+										: ''
+								}`}
 								data-dialog-initial
 								aria-label={
 									operation.kind === 'transfer' && enteredQuantity && transferValid
@@ -2462,6 +2546,11 @@ function FungibleOperationDialog({
 								type="submit"
 								variant={operation.kind === 'cancel' ? 'danger' : 'primary'}
 							>
+								{operation.kind === 'buy' ? (
+									<ShoppingCart className="ui-icon ui-icon--sm" aria-hidden="true" />
+								) : operation.kind === 'sell' ? (
+									<Tag className="ui-icon ui-icon--sm" aria-hidden="true" />
+								) : null}
 								{operation.kind === 'buy' && matchedOrders.length
 									? `Buy ${formatGroupedTokenAmount(
 											matchedQuantity.toString(),
@@ -3081,6 +3170,27 @@ function preparedEntry(prepared: PreparedPurchase): BatchEntry {
 		snapshot: prepared.snapshot,
 		paymentCost: prepared.paymentCost,
 	};
+}
+
+export function checkpointBatchPreparation(entries: BatchEntry[], event: PurchaseBatchPreparationEvent): BatchEntry[] {
+	if (event.type === 'quoted') {
+		return event.entries.map((entry) => ({ ...entry, snapshot: {} }));
+	}
+	let matched = false;
+	const next = entries.map((entry) => {
+		if (entry.order.orderId !== event.orderId) return entry;
+		matched = true;
+		return {
+			...entry,
+			...(event.kind === 'payment' ? { paymentCost: event.cost } : {}),
+			snapshot: {
+				...entry.snapshot,
+				[event.kind]: { id: event.transactionId, dispatched: false },
+			},
+		};
+	});
+	if (!matched) throw new Error('purchase-preparation-checkpoint-missing');
+	return next;
 }
 
 export function batchPaymentBarrierState(entries: Array<Pick<BatchEntry, 'snapshot' | 'paymentCost'>>) {

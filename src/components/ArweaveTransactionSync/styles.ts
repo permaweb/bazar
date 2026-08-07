@@ -300,20 +300,13 @@ export const RaceShell = styled.div<{ $height: number; $embedded: boolean }>`
 	position: relative;
 	display: grid;
 	place-items: center;
-	width: ${(props) =>
-		props.$embedded ? '100%' : 'calc(100% + var(--dialog-gutter, 48px) + var(--dialog-gutter, 48px))'};
-	height: auto;
-	aspect-ratio: 700 / 320;
-	max-height: ${(props) => (props.$embedded ? 'none' : 'max(240px, calc(100dvh - 450px))')};
-	margin: ${(props) => (props.$embedded ? '0 auto' : '-90px var(--dialog-gutter-negative, -48px) -16px')};
-	transition: width 240ms ease, max-height 240ms ease;
+	width: 100%;
+	height: ${(props) => `clamp(220px, 36dvh, ${props.$height}px)`};
+	flex: 0 0 auto;
+	margin: 8px auto 0;
 
 	@media (max-width: 680px) {
-		margin: ${(props) => (props.$embedded ? '0 auto' : '-48px var(--dialog-gutter-negative, -24px) -10px')};
-	}
-
-	@media (max-height: 900px) {
-		margin-bottom: ${(props) => (props.$embedded ? '0' : '-126px')};
+		height: ${(props) => `clamp(200px, 34dvh, ${props.$height}px)`};
 	}
 `;
 
