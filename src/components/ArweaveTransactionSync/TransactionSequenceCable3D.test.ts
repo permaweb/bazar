@@ -91,7 +91,7 @@ describe('transaction map renderer fallback', () => {
     expect(css).not.toContain('position:fixed');
   });
 
-  it('shrinks the transaction map on shorter viewports instead of requiring modal scrolling', () => {
+  it('keeps the transaction map prominent while overlapping its lower edge on shorter viewports', () => {
     const sheet = new ServerStyleSheet();
     renderToStaticMarkup(
       sheet.collectStyles(
@@ -104,7 +104,9 @@ describe('transaction map renderer fallback', () => {
     );
     const css = sheet.getStyleTags();
     sheet.seal();
-    expect(css).toContain('max-height:max(180px,calc(100dvh - 560px))');
+    expect(css).toContain('max-height:max(240px,calc(100dvh - 450px))');
+    expect(css).toContain('@media (max-height:900px)');
+    expect(css).toContain('margin-bottom:-126px');
   });
 
   it('owns Escape only while an inspection is visible', () => {

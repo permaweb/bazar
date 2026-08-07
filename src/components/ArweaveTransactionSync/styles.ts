@@ -304,7 +304,7 @@ export const RaceShell = styled.div<{ $height: number; $embedded: boolean }>`
     props.$embedded ? '100%' : 'calc(100% + var(--dialog-gutter, 48px) + var(--dialog-gutter, 48px))'};
   height: auto;
   aspect-ratio: 700 / 320;
-  max-height: ${(props) => (props.$embedded ? 'none' : 'max(180px, calc(100dvh - 560px))')};
+  max-height: ${(props) => (props.$embedded ? 'none' : 'max(240px, calc(100dvh - 450px))')};
   margin: ${(props) => (props.$embedded ? '0 auto' : '-90px var(--dialog-gutter-negative, -48px) -16px')};
   transition:
     width 240ms ease,
@@ -312,6 +312,10 @@ export const RaceShell = styled.div<{ $height: number; $embedded: boolean }>`
 
   @media (max-width: 680px) {
     margin: ${(props) => (props.$embedded ? '0 auto' : '-48px var(--dialog-gutter-negative, -24px) -10px')};
+  }
+
+  @media (max-height: 900px) {
+    margin-bottom: ${(props) => (props.$embedded ? '0' : '-126px')};
   }
 `;
 

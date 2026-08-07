@@ -1811,6 +1811,8 @@ const activityEnter = keyframes`
 `;
 
 const ProtocolTelemetry = styled.div`
+  position: relative;
+  z-index: 2;
   display: grid;
   box-sizing: border-box;
   width: 100%;
