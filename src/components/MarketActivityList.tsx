@@ -40,6 +40,8 @@ export function MarketActivityList({
 				const collection = resolveCollection?.(event);
 				const detail = [collection?.name, describeEvent(event)].filter(Boolean).join(' · ');
 				const assetCollectionId = collection?.id ?? collectionId;
+				const transactionId = event.purchaseProof?.transactionId ?? event.id;
+				const transactionHeight = event.purchaseProof?.height ?? event.height;
 				const timestamp = event.timestamp
 					? formatMarketActivityTimestamp(event.timestamp, now)
 					: 'Pending confirmation';
@@ -53,7 +55,7 @@ export function MarketActivityList({
 							{marketActivitySymbol(event.action)}
 						</span>
 						<div className="activity-main">
-							<strong>{marketActivityLabel(event.action)}</strong>
+							<strong>{marketActivityLabel(event.action, Boolean(event.purchaseProof))}</strong>
 							{asset && assetCollectionId ? (
 								<Link to={`/asset/${assetCollectionId}/${asset.id}`}>{asset.name}</Link>
 							) : asset ? (
@@ -92,17 +94,17 @@ export function MarketActivityList({
 								</time>
 								<a
 									aria-label={
-										event.height > 0
-											? `View submitted transaction included in block ${event.height.toLocaleString()}`
+										transactionHeight > 0
+											? `View ${event.purchaseProof ? 'settlement proof' : 'submitted transaction'} included in block ${transactionHeight.toLocaleString()}`
 											: 'View submitted transaction'
 									}
-									href={transactionExplorerUrl(event.id)}
+									href={transactionExplorerUrl(transactionId)}
 									target="_blank"
 									rel="noreferrer"
 								>
 									<span className="activity-transaction-long" aria-hidden="true">
-										{event.height > 0
-											? `View submitted transaction · included in block ${event.height.toLocaleString()}`
+										{transactionHeight > 0
+											? `View ${event.purchaseProof ? 'settlement proof' : 'submitted transaction'} · included in block ${transactionHeight.toLocaleString()}`
 											: 'View submitted transaction'}
 									</span>
 									<span className="activity-transaction-short" aria-hidden="true">
@@ -118,10 +120,10 @@ export function MarketActivityList({
 		</ul>
 	);
 }
-export function marketActivityLabel(action: CollectionActivityEvent['action']) {
+export function marketActivityLabel(action: CollectionActivityEvent['action'], purchaseConfirmed = false) {
 	return {
 		'make-offer': 'Listing submitted',
-		'register-interest': 'Purchase submitted',
+		'register-interest': purchaseConfirmed ? 'Purchase confirmed' : 'Purchase submitted',
 		transfer: 'Transfer submitted',
 		'cancel-order': 'Cancellation submitted',
 	}[action];

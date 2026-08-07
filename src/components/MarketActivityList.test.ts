@@ -5,6 +5,7 @@ import { formatMarketActivityTimestamp, marketActivityLabel } from './MarketActi
 describe('market activity labels', () => {
 	it('presents a purchase reservation as a submitted purchase', () => {
 		expect(marketActivityLabel('register-interest')).toBe('Purchase submitted');
+		expect(marketActivityLabel('register-interest', true)).toBe('Purchase confirmed');
 	});
 
 	it('formats activity timestamps as live relative time', () => {
