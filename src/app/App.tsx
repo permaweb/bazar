@@ -61,6 +61,7 @@ import {
   isLiveListing,
   partitionAssetCandidateSupport,
   resolveAssetCandidates,
+  searchBazarAtomicAssetsByName,
   verifyAssetCandidateSupport,
   walletAssetGroups,
   type AssetCandidate,
@@ -742,7 +743,47 @@ function Header() {
   const [recentQueries, setRecentQueries] = React.useState<string[]>([]);
   const [searchFeedback, setSearchFeedback] = React.useState('');
   const normalizedQuery = query.trim().toLowerCase();
-  const deferredNormalizedQuery = React.useDeferredValue(normalizedQuery);
+  const deferredQuery = React.useDeferredValue(query.trim());
+  const deferredNormalizedQuery = deferredQuery.toLowerCase();
+  const [indexedAtomicSearch, setIndexedAtomicSearch] = React.useState<{
+    query: string;
+    loading: boolean;
+    error: boolean;
+    results: Array<{ asset: AssetSummary; collection: Collection }>;
+  }>({ query: '', loading: false, error: false, results: [] });
+  const shouldSearchAtomicIndex =
+    searchOpen && Boolean(deferredNormalizedQuery) && scope !== 'collections' && scope !== 'names';
+  React.useEffect(() => {
+    if (!shouldSearchAtomicIndex) {
+      setIndexedAtomicSearch({ query: deferredNormalizedQuery, loading: false, error: false, results: [] });
+      return;
+    }
+    const controller = new AbortController();
+    const requestedQuery = deferredNormalizedQuery;
+    setIndexedAtomicSearch({ query: requestedQuery, loading: true, error: false, results: [] });
+    const timer = window.setTimeout(() => {
+      void searchBazarAtomicAssetsByName(deferredQuery, { signal: controller.signal }).then(
+        (results) => {
+          if (!controller.signal.aborted) {
+            setIndexedAtomicSearch({ query: requestedQuery, loading: false, error: false, results });
+          }
+        },
+        () => {
+          if (!controller.signal.aborted) {
+            setIndexedAtomicSearch({ query: requestedQuery, loading: false, error: true, results: [] });
+          }
+        },
+      );
+    }, 250);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [deferredNormalizedQuery, deferredQuery, shouldSearchAtomicIndex]);
+  const atomicIndexSearchPending =
+    shouldSearchAtomicIndex && (indexedAtomicSearch.query !== deferredNormalizedQuery || indexedAtomicSearch.loading);
+  const atomicIndexSearchFailed =
+    shouldSearchAtomicIndex && indexedAtomicSearch.query === deferredNormalizedQuery && indexedAtomicSearch.error;
   const collectionResults = market.collections
     .filter((collection) => {
       if (scope === 'assets') return false;
@@ -753,7 +794,7 @@ function Header() {
   const searchableCollections = market.collections.filter(
     (collection) => scope !== 'collections' && (scope !== 'names' || collection.kind === 'names'),
   );
-  const assetResults = deferredNormalizedQuery
+  const localAssetResults = deferredNormalizedQuery
     ? searchableCollections
         .flatMap((collection) =>
           collectionSearchAssets(collection, deferredNormalizedQuery).map((asset) => ({ asset, collection })),
@@ -770,6 +811,17 @@ function Header() {
         (asset, collection) =>
           Boolean(asset.image || asset.media) || collection.kind === 'names' || collection.kind === 'tokens',
       );
+  const atomicIndexResults =
+    shouldSearchAtomicIndex && indexedAtomicSearch.query === deferredNormalizedQuery ? indexedAtomicSearch.results : [];
+  const assetResults = [...localAssetResults, ...atomicIndexResults]
+    .filter(
+      ({ asset }, index, results) => results.findIndex(({ asset: candidate }) => candidate.id === asset.id) === index,
+    )
+    .sort(
+      (left, right) =>
+        searchResultScore(right, deferredNormalizedQuery) - searchResultScore(left, deferredNormalizedQuery),
+    )
+    .slice(0, 8);
   const directTokenCollection =
     scope !== 'collections' && scope !== 'names' ? directTokenSearchCollection(market.collections, query) : undefined;
   const directTokenProcess = directTokenCollection && !assetResults.some(({ asset }) => asset.id === query.trim());
@@ -777,15 +829,19 @@ function Header() {
     normalizedQuery && scope !== 'collections' && scope !== 'names'
       ? market.collections.find((collection) => collection.kind === 'tokens' && collection.hasMore)
       : undefined;
-  const searchResultAnnouncement = market.loading
-    ? 'Loading collection indexes from Arweave.'
-    : market.error
-      ? 'Marketplace search is unavailable.'
-      : normalizedQuery && !collectionResults.length && !assetResults.length && !directTokenProcess
-        ? partialTokenCollection
-          ? `No loaded collections or assets match ${query.trim()}; more token records remain available.`
-          : `No collections or assets match ${query.trim()}.`
-        : `Showing ${collectionResults.length.toLocaleString()} ${collectionResults.length === 1 ? 'collection' : 'collections'} and ${(assetResults.length + (directTokenProcess ? 1 : 0)).toLocaleString()} ${assetResults.length + (directTokenProcess ? 1 : 0) === 1 ? 'asset result' : 'asset results'}${normalizedQuery ? ` for ${query.trim()}` : ''}.`;
+  const searchResultAnnouncement = atomicIndexSearchPending
+    ? 'Searching permanent Bazar creation records on Arweave.'
+    : atomicIndexSearchFailed
+      ? 'Permanent Bazar creation-record search is temporarily unavailable.'
+      : market.loading
+        ? 'Loading collection indexes from Arweave.'
+        : market.error
+          ? 'Marketplace search is unavailable.'
+          : normalizedQuery && !collectionResults.length && !assetResults.length && !directTokenProcess
+            ? partialTokenCollection
+              ? `No loaded collections or assets match ${query.trim()}; more token records remain available.`
+              : `No collections or assets match ${query.trim()}.`
+            : `Showing ${collectionResults.length.toLocaleString()} ${collectionResults.length === 1 ? 'collection' : 'collections'} and ${(assetResults.length + (directTokenProcess ? 1 : 0)).toLocaleString()} ${assetResults.length + (directTokenProcess ? 1 : 0) === 1 ? 'asset result' : 'asset results'}${normalizedQuery ? ` for ${query.trim()}` : ''}.`;
   const [announcedSearchResult, setAnnouncedSearchResult] = React.useState('');
   React.useEffect(() => {
     if (!searchOpen) return;
@@ -1024,6 +1080,9 @@ function Header() {
                 {market.loading && !market.collections.length ? (
                   <Loading label="Loading collection indexes from Arweave…" />
                 ) : null}
+                {atomicIndexSearchPending && !assetResults.length ? (
+                  <Loading label="Searching permanent Bazar creation records on Arweave…" />
+                ) : null}
                 {partialTokenCollection ? (
                   <div className="collection-source-notice">
                     <span role="status">
@@ -1165,6 +1224,7 @@ function Header() {
                 ) : null}
                 {!market.loading &&
                 !market.error &&
+                !atomicIndexSearchPending &&
                 !collectionResults.length &&
                 !assetResults.length &&
                 !directTokenProcess ? (
@@ -1173,7 +1233,9 @@ function Header() {
                     <span>
                       {partialTokenCollection
                         ? 'More token records remain available from the token collection.'
-                        : 'Try another asset, collection, or Arweave name.'}
+                        : atomicIndexSearchFailed
+                          ? 'Permanent Bazar creation-record search is temporarily unavailable. Try again shortly.'
+                          : 'Try another asset, collection, or Arweave name.'}
                     </span>
                   </div>
                 ) : null}
@@ -1498,6 +1560,7 @@ function homeMarketSummaryListed(summary: HomeMarketSummary | undefined) {
   return summary?.status === 'resolved' && Boolean(summary.value);
 }
 
+export type HomeTab = 'discover' | 'collections' | 'activity';
 export type HomeAssetView = 'all' | 'listed' | 'price-low' | 'price-high';
 
 export type HomeListingActivity = Pick<AssetCandidate, 'processId' | 'height' | 'timestamp'>;
@@ -1589,12 +1652,8 @@ export function homeMarketShellLoading(loading: boolean, collectionCount: number
   return loading && collectionCount === 0;
 }
 
-export function shouldLoadHomeCollectionSummaries(
-  tab: 'discover' | 'collections',
-  marketLoading: boolean,
-  discoverPublished: boolean,
-) {
-  return tab === 'collections' || (!marketLoading && discoverPublished);
+export function shouldLoadHomeCollectionSummaries(tab: HomeTab, marketLoading: boolean, discoverPublished: boolean) {
+  return tab === 'collections' || (tab === 'discover' && !marketLoading && discoverPublished);
 }
 
 export function homeScrollIndicatorMetrics(
@@ -1617,7 +1676,7 @@ function Home() {
   const market = React.useContext(MarketContext);
   const { search } = useLocation();
   const marketPaneRef = React.useRef<HTMLElement>(null);
-  const [homeTab, setHomeTab] = React.useState<'discover' | 'collections'>('discover');
+  const [homeTab, setHomeTab] = React.useState<HomeTab>('discover');
   const [assetType, setAssetType] = React.useState<HomeAssetType>('all');
   const [assetView, setAssetView] = React.useState<HomeAssetView>('listed');
   const [assetPage, setAssetPage] = React.useState(1);
@@ -2142,7 +2201,7 @@ function Home() {
   const discoverResultsFailed = Boolean(portableHomeListingsFailure) || summaryFailures.length > 0;
   const publishAssetCards = homeAssetCardsPublished(assetView, discoverResultsPending);
   const discoverResultsReady = discoverResultsPublished || visibleAssetResultsReady;
-  const selectHomeTab = (tab: 'discover' | 'collections') => {
+  const selectHomeTab = (tab: HomeTab) => {
     setHomeTab(tab);
     if (marketPaneRef.current) marketPaneRef.current.scrollTop = 0;
   };
@@ -2185,13 +2244,27 @@ function Home() {
                       <LayoutGrid className="ui-icon" aria-hidden="true" />
                       Collections
                     </Button>
+                    <Button
+                      aria-controls="home-activity-panel"
+                      aria-selected={homeTab === 'activity'}
+                      className="home-market-tab"
+                      id="home-activity-tab"
+                      onClick={() => selectHomeTab('activity')}
+                      role="tab"
+                      size="small"
+                    >
+                      <History className="ui-icon" aria-hidden="true" />
+                      Activity
+                    </Button>
                   </div>
                   <p>
                     {homeTab === 'discover'
                       ? normalizedQuery
                         ? `Results for “${query}” across the current Arweave collection indexes.`
                         : 'Active listings read from current live state across every marketplace collection.'
-                      : 'Permanent assets with ownership and settlement native to Arweave.'}
+                      : homeTab === 'collections'
+                        ? 'Permanent assets with ownership and settlement native to Arweave.'
+                        : 'Recent signed market actions across every marketplace collection.'}
                   </p>
                 </div>
                 {homeTab === 'discover' ? (
@@ -2231,7 +2304,7 @@ function Home() {
               {market.error ? (
                 <ErrorPanel message={market.error} onRetry={market.retry} retryLabel="Retry collections" />
               ) : null}
-              {portableHomeListingsFailure ? (
+              {homeTab === 'discover' && portableHomeListingsFailure ? (
                 <ErrorPanel
                   message={marketplaceRequestFailureMessage(
                     portableHomeListingsFailure.source,
@@ -2241,7 +2314,7 @@ function Home() {
                   retryLabel="Retry public listings"
                 />
               ) : null}
-              {partialTokenCollection ? (
+              {homeTab === 'discover' && partialTokenCollection ? (
                 <div className="collection-source-notice">
                   <span role="status">
                     Search covers {partialTokenCollection.assets.length.toLocaleString()} of{' '}
@@ -2257,7 +2330,8 @@ function Home() {
                   </Link>
                 </div>
               ) : null}
-              {homeSummaryFailureNoticeVisible(
+              {homeTab !== 'activity' &&
+              homeSummaryFailureNoticeVisible(
                 discoverResultsReady,
                 summaryFailures.length,
                 Boolean(portableHomeListingsFailure),
@@ -2376,6 +2450,8 @@ function Home() {
                     <div className="home-no-results">No collections match “{query}”.</div>
                   ) : null}
                 </div>
+              ) : homeTab === 'activity' ? (
+                <HomeActivityPanel collections={market.collections} marketLoading={market.loading} />
               ) : (
                 <div
                   aria-busy={discoverResultsPending}
@@ -2460,6 +2536,265 @@ function Home() {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+export function globalActivityCollection(collections: Collection[], processId: string) {
+  return collections.find((collection) => collectionCandidateMembership(collection)(processId));
+}
+
+export type GlobalActivityFilter = 'all' | CollectionActivityEvent['action'];
+
+export function filterGlobalActivity(events: CollectionActivityEvent[], filter: GlobalActivityFilter) {
+  return filter === 'all' ? events : events.filter((event) => event.action === filter);
+}
+
+function HomeActivityPanel({ collections, marketLoading }: { collections: Collection[]; marketLoading: boolean }) {
+  const [events, setEvents] = React.useState<CollectionActivityEvent[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+  const [pages, setPages] = React.useState(0);
+  const [preservingEvents, setPreservingEvents] = React.useState(false);
+  const [retry, setRetry] = React.useState(0);
+  const [activityFilter, setActivityFilter] = React.useState<GlobalActivityFilter>('all');
+  const [activityLimit, setActivityLimit] = React.useState(20);
+  const [activityRevealAnnouncement, setActivityRevealAnnouncement] = React.useState('');
+  const eventsRef = React.useRef(events);
+  const scopeRef = React.useRef('');
+  const activityListId = React.useId();
+  const activityRevealRef = React.useRef<HTMLParagraphElement>(null);
+  const eventCountRef = React.useRef(events.length);
+  eventsRef.current = events;
+  eventCountRef.current = events.length;
+  const activityScope = collections
+    .map((collection) => `${collection.id}:${collectionActivityVersion(collection)}`)
+    .sort()
+    .join('|');
+
+  React.useEffect(() => {
+    setActivityLimit(20);
+    setActivityRevealAnnouncement('');
+  }, [activityFilter, activityScope]);
+
+  React.useEffect(() => {
+    if (marketLoading) return;
+    if (!collections.length) {
+      setEvents([]);
+      setLoading(false);
+      return;
+    }
+    const controller = new AbortController();
+    const sameScope = scopeRef.current === activityScope;
+    const preserveEvents = sameScope && eventsRef.current.length > 0;
+    const found = new Map((preserveEvents ? eventsRef.current : []).map((event) => [event.id, event]));
+    scopeRef.current = activityScope;
+    if (!preserveEvents) {
+      eventsRef.current = [];
+      setEvents([]);
+    }
+    setLoading(true);
+    setError(null);
+    setPages(0);
+    setPreservingEvents(preserveEvents);
+    const publish = (nextEvents: CollectionActivityEvent[]) => {
+      if (controller.signal.aborted) return;
+      for (const event of nextEvents) found.set(event.id, event);
+      eventsRef.current = newestCollectionActivity([...found.values()]);
+      setEvents(eventsRef.current);
+      setPages((current) => current + 1);
+    };
+    const nameCollections = collections.filter((collection) => collection.kind === 'names');
+    const nonNameRecipients = [
+      ...new Set(
+        collections
+          .filter((collection) => collection.kind !== 'names')
+          .flatMap((collection) => collection.assets.map((asset) => asset.id)),
+      ),
+    ];
+    const requests: Array<Promise<CollectionActivityEvent[]>> = [];
+    if (nonNameRecipients.length) {
+      requests.push(
+        discoverCollectionActivityBatched({
+          recipients: nonNameRecipients,
+          signal: controller.signal,
+          limit: 100,
+          onBatch: (batchEvents) => publish(batchEvents),
+        }),
+      );
+    }
+    if (nameCollections.length) {
+      requests.push(
+        discoverCollectionActivity({
+          signal: controller.signal,
+          limit: 100,
+          acceptProcessId: (processId) =>
+            nameCollections.some((collection) => collectionCandidateMembership(collection)(processId)),
+          requiredExecutionDevice: 'carrier@1.0',
+          onPage: (pageEvents) => publish(pageEvents),
+        }),
+      );
+    }
+    void Promise.allSettled(requests).then((outcomes) => {
+      if (controller.signal.aborted) return;
+      for (const outcome of outcomes) {
+        if (outcome.status === 'fulfilled') {
+          for (const event of outcome.value) found.set(event.id, event);
+        }
+      }
+      eventsRef.current = newestCollectionActivity([...found.values()]);
+      setEvents(eventsRef.current);
+      const failures = outcomes.flatMap((outcome) => (outcome.status === 'rejected' ? [outcome.reason] : []));
+      if (failures.length) {
+        const kind = failures.some((cause) => marketplaceFailureKind(cause) === 'rate-limited')
+          ? 'rate-limited'
+          : 'unavailable';
+        setError(marketplaceRequestFailureMessage('index', kind));
+      }
+      setLoading(false);
+      setPreservingEvents(false);
+    });
+    return () => controller.abort();
+  }, [activityScope, marketLoading, retry]);
+
+  const confirmedEvents = events.filter((event) => event.height > 0).length;
+  const pendingEvents = events.length - confirmedEvents;
+  const filteredEvents = filterGlobalActivity(events, activityFilter);
+  eventCountRef.current = filteredEvents.length;
+  const activityFilters: Array<{ value: GlobalActivityFilter; label: string }> = [
+    { value: 'all', label: 'All' },
+    { value: 'make-offer', label: 'Listings' },
+    { value: 'register-interest', label: 'Purchases' },
+    { value: 'transfer', label: 'Transfers' },
+    { value: 'cancel-order', label: 'Cancellations' },
+  ];
+  const resolveCollection = (event: CollectionActivityEvent) => globalActivityCollection(collections, event.processId);
+  return (
+    <div
+      aria-busy={loading}
+      aria-labelledby="home-activity-tab"
+      className="home-activity-panel"
+      id="home-activity-panel"
+      role="tabpanel"
+    >
+      <div className="activity-heading">
+        <div>
+          <h2>Global market activity</h2>
+          <span aria-hidden="true">
+            {loading
+              ? preservingEvents
+                ? `${events.length.toLocaleString()} retained · refreshing from Arweave`
+                : pages
+                  ? `${events.length.toLocaleString()} found across ${pages.toLocaleString()} ${pages === 1 ? 'check' : 'checks'} · still reading Arweave`
+                  : 'Reading indexed transactions from Arweave…'
+              : `${events.length.toLocaleString()} indexed ${events.length === 1 ? 'transaction' : 'transactions'} · ${confirmedEvents.toLocaleString()} confirmed${pendingEvents ? ` · ${pendingEvents.toLocaleString()} pending` : ''} · newest first`}
+          </span>
+        </div>
+        <Button
+          aria-disabled={loading}
+          className="with-icon"
+          size="custom"
+          onClick={() => {
+            if (loading) return;
+            setActivityRevealAnnouncement('');
+            setRetry((value) => value + 1);
+          }}
+        >
+          <RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" />
+          {loading ? (events.length ? 'Refreshing…' : 'Loading…') : error ? 'Retry activity' : 'Refresh'}
+        </Button>
+      </div>
+      <div aria-label="Filter global activity" className="activity-filters" role="group">
+        {activityFilters.map((filter) => {
+          const count = filterGlobalActivity(events, filter.value).length;
+          return (
+            <Button
+              aria-controls={activityListId}
+              aria-pressed={activityFilter === filter.value}
+              className="activity-filter"
+              key={filter.value}
+              onClick={() => setActivityFilter(filter.value)}
+              size="small"
+            >
+              <span>{filter.label}</span>
+              <span aria-hidden="true" className="activity-filter-count">
+                {count.toLocaleString()}
+              </span>
+            </Button>
+          );
+        })}
+      </div>
+      {error ? (
+        events.length ? (
+          <div className="collection-source-notice home-activity-partial-notice">
+            <span role="status">
+              Some activity sources could not be refreshed. Showing {events.length.toLocaleString()} indexed{' '}
+              {events.length === 1 ? 'event' : 'events'} already loaded. {error}
+            </span>
+          </div>
+        ) : (
+          <ErrorPanel message={`Global activity could not be loaded. ${error}`} />
+        )
+      ) : null}
+      <MarketActivityList
+        ariaLabel={`Global market activity, ${activityFilters.find((filter) => filter.value === activityFilter)?.label}`}
+        events={filteredEvents.slice(0, activityLimit)}
+        id={activityListId}
+        loading={loading}
+        resolveAsset={(event) => {
+          const collection = resolveCollection(event);
+          return collection ? collectionAsset(collection, event.processId) : undefined;
+        }}
+        resolveCollection={resolveCollection}
+      />
+      <p
+        className={
+          activityRevealAnnouncement && filteredEvents.length > 20 && activityLimit >= filteredEvents.length
+            ? 'collection-result-count reveal-complete'
+            : 'sr-only'
+        }
+        aria-live="polite"
+        ref={activityRevealRef}
+        role="status"
+        tabIndex={-1}
+      >
+        {activityRevealAnnouncement}
+      </p>
+      {activityLimit < filteredEvents.length ? (
+        <Button
+          aria-controls={activityListId}
+          className="load-more"
+          size="custom"
+          type="button"
+          onClick={() => {
+            const nextLimit = Math.min(filteredEvents.length, activityLimit + 20);
+            setActivityLimit(nextLimit);
+            setActivityRevealAnnouncement(
+              `Showing ${nextLimit.toLocaleString()} of ${filteredEvents.length.toLocaleString()} filtered global activity events.`,
+            );
+            window.requestAnimationFrame(() => {
+              if (assetGroupRevealComplete(nextLimit, eventCountRef.current)) {
+                activityRevealRef.current?.focus();
+              }
+            });
+          }}
+        >
+          Show {Math.min(20, filteredEvents.length - activityLimit).toLocaleString()} more activity events
+        </Button>
+      ) : null}
+      {loading && !events.length ? <Loading label="Reading global market activity from Arweave…" /> : null}
+      {!loading && !error && events.length > 0 && !filteredEvents.length ? (
+        <div className="empty-state">
+          <h3>No matching activity</h3>
+          <p>No submitted actions match this activity filter in the current indexed window.</p>
+        </div>
+      ) : null}
+      {!loading && !error && !events.length ? (
+        <div className="empty-state">
+          <h3>No indexed market activity yet</h3>
+          <p>The current marketplace collections have no matching signed market actions in the Arweave index.</p>
+        </div>
+      ) : null}
     </div>
   );
 }

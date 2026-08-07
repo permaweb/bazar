@@ -275,6 +275,82 @@ const VERIFY_ASSET_PROCESSES_QUERY = `query VerifyAssetProcesses(
 	}
 }`;
 
+const SEARCH_BAZAR_ATOMIC_ASSETS_QUERY = `query SearchBazarAtomicAssets($names: [String!]!) {
+	transactions(
+		first: 20
+		sort: HEIGHT_DESC
+		tags: [
+			{ name: "App-Name", values: ["Bazar"] }
+			{ name: "name", values: $names }
+			{ name: "device", values: ["process@1.0"] }
+			{ name: "execution-device", values: ["token@1.0"] }
+			{ name: "swap-device", values: ["arweave-swap@1.0"] }
+			{ name: "scheduler-device", values: ["arweave-scheduler@1.0"] }
+			{ name: "scheduler-mode", values: ["all"] }
+			{ name: "total-supply", values: ["1"] }
+			{ name: "denomination", values: ["0"] }
+			{ name: "ticker", values: ["ASSET"] }
+		]
+	) {
+		pageInfo { hasNextPage }
+		edges { cursor node { id tags { name value } } }
+	}
+}`;
+
+type AtomicAssetSearchOptions = Pick<CandidateOptions, 'fetch' | 'graphql' | 'requestTimeoutMs' | 'signal'>;
+
+export async function searchBazarAtomicAssetsByName(
+  query: string,
+  options: AtomicAssetSearchOptions = {},
+): Promise<Array<{ asset: AssetSummary; collection: Collection }>> {
+  const name = query.trim();
+  if (!name) return [];
+  const titleCaseName = name.replace(/\b\p{L}/gu, (letter) => letter.toUpperCase());
+  const names = [...new Set([name, name.toLowerCase(), titleCaseName, name.toUpperCase()])];
+  const fetcher = options.fetch ?? globalThis.fetch.bind(globalThis);
+  const graphql = options.graphql ?? arweaveGraphqlEndpoint();
+  const { response, body: payload } = await fetchJsonWithDeadline<any>(
+    fetcher,
+    graphql,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ query: SEARCH_BAZAR_ATOMIC_ASSETS_QUERY, variables: { names } }),
+      signal: options.signal,
+    },
+    {
+      timeoutMs: options.requestTimeoutMs,
+      timeoutError: 'asset-search-graphql-timeout',
+    },
+  );
+  if (!response.ok) throw new Error(`asset-search-graphql-${response.status}`);
+  if (!payload) throw new Error('asset-search-graphql-empty');
+  if (payload?.errors?.length) throw new Error('asset-search-graphql-error');
+  const connection = decodeGraphqlConnection(payload, 'transactions', 'asset-search-graphql-schema');
+  return connection.edges.flatMap(({ node }) => {
+    if (!atomicProcessNode(node)) return [];
+    const tags = Object.fromEntries(
+      (node.tags ?? []).map(({ name: tagName, value }) => [tagName.toLowerCase(), value]),
+    );
+    const asset = assetFromMintState(node.id, tags);
+    if (!asset || asset.name.toLowerCase() !== name.toLowerCase()) return [];
+    const collectionName = String(tags.collection ?? '').trim() || CREATED_COLLECTION_NAME;
+    return [
+      {
+        asset,
+        collection: {
+          id: CREATED_COLLECTION_ID,
+          name: collectionName,
+          description: 'One-of-one media discovered from its permanent Bazar creation record.',
+          kind: 'images' as const,
+          assets: [asset],
+          total: 1,
+        },
+      },
+    ];
+  });
+}
+
 export function createWalletCandidateScan(address: string, graphql = arweaveGraphqlEndpoint()): WalletCandidateScan {
   if (!ADDRESS.test(address)) throw new TypeError('invalid-wallet-address');
   return {
@@ -775,40 +851,51 @@ async function verifyProcessDevices(
   if (!device.trim() || ids.some((id) => !ADDRESS.test(id))) {
     throw new TypeError('invalid-collection-activity-device-filter');
   }
-  const requested = new Set(ids);
   const verified = new Set<string>();
-  let cursor: string | null = null;
-  const visited = new Set<string>();
-  while (true) {
-    options.signal?.throwIfAborted();
-    const { response, body: payload } = await fetchJsonWithDeadline<any>(
-      fetcher,
-      graphql,
-      {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          query: VERIFY_PROCESS_DEVICES_QUERY,
-          variables: { cursor, ids, devices: [device] },
-        }),
-        signal: options.signal,
-      },
-      {
-        timeoutMs: options.requestTimeoutMs,
-        timeoutError: 'collection-activity-device-graphql-timeout',
-      },
-    );
-    if (!response.ok) throw new Error(`collection-activity-device-graphql-${response.status}`);
-    if (!payload) throw new Error('collection-activity-device-graphql-empty');
-    if (payload?.errors?.length) throw new Error('collection-activity-device-graphql-error');
-    const connection = decodeGraphqlConnection(payload, 'transactions', 'collection-activity-device-graphql-schema');
-    for (const edge of connection.edges) {
-      if (!requested.has(edge.node.id)) throw new Error('collection-activity-device-graphql-schema');
-      verified.add(edge.node.id);
+  const graphqlHost = new URL(graphql).hostname;
+  const batchSize =
+    graphqlHost === 'arweave.net' || graphqlHost.endsWith('.arweave.net')
+      ? ARWEAVE_GRAPHQL_ID_BATCH_SIZE
+      : GRAPHQL_ID_BATCH_SIZE;
+  const batches = Array.from({ length: Math.ceil(ids.length / batchSize) }, (_, index) =>
+    ids.slice(index * batchSize, (index + 1) * batchSize),
+  );
+  for (const batch of batches) {
+    const requested = new Set(batch);
+    let cursor: string | null = null;
+    const visited = new Set<string>();
+    while (true) {
+      options.signal?.throwIfAborted();
+      const { response, body: payload } = await fetchJsonWithDeadline<any>(
+        fetcher,
+        graphql,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            query: VERIFY_PROCESS_DEVICES_QUERY,
+            variables: { cursor, ids: batch, devices: [device] },
+          }),
+          signal: options.signal,
+        },
+        {
+          timeoutMs: options.requestTimeoutMs,
+          timeoutError: 'collection-activity-device-graphql-timeout',
+        },
+      );
+      if (!response.ok) throw new Error(`collection-activity-device-graphql-${response.status}`);
+      if (!payload) throw new Error('collection-activity-device-graphql-empty');
+      if (payload?.errors?.length) throw new Error('collection-activity-device-graphql-error');
+      const connection = decodeGraphqlConnection(payload, 'transactions', 'collection-activity-device-graphql-schema');
+      for (const edge of connection.edges) {
+        if (!requested.has(edge.node.id)) throw new Error('collection-activity-device-graphql-schema');
+        verified.add(edge.node.id);
+      }
+      if (!connection.pageInfo.hasNextPage) break;
+      cursor = advanceGraphqlCursor(connection, visited, 'collection-activity-device-pagination-stalled');
     }
-    if (!connection.pageInfo.hasNextPage) return verified;
-    cursor = advanceGraphqlCursor(connection, visited, 'collection-activity-device-pagination-stalled');
   }
+  return verified;
 }
 
 function decodeGraphqlConnection(payload: any, key: string, errorCode: string): GraphqlConnection {

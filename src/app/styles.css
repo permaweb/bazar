@@ -3791,6 +3791,34 @@ input:focus {
   color: var(--muted-subtle);
   font-size: var(--type-small);
 }
+.activity-filters {
+  margin: 0 0 13px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.activity-filter {
+  gap: 7px;
+}
+.activity-filter[aria-pressed='true'] {
+  color: var(--ink);
+  border-color: var(--line-dark);
+  background: var(--surface-subtle);
+}
+.activity-filter-count {
+  min-width: 20px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  color: var(--muted-subtle);
+  background: var(--surface);
+  font-size: var(--type-small);
+  line-height: 1.35;
+  text-align: center;
+}
+.activity-filter[aria-pressed='true'] .activity-filter-count {
+  color: var(--ink);
+  background: var(--paper);
+}
 .activity-list {
   margin: 0;
   padding: 0;
@@ -3841,11 +3869,20 @@ input:focus {
   background: var(--event-pink-surface);
 }
 .activity-main,
-.activity-actor,
 .activity-block {
   min-width: 0;
   display: grid;
   gap: 3px;
+}
+.activity-actor {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+}
+.activity-actor .wallet-address {
+  min-width: 0;
 }
 .activity-meta {
   min-width: 0;
@@ -3878,6 +3915,14 @@ input:focus {
 .activity-mobile-time,
 .activity-time-only {
   display: none;
+}
+.activity-desktop-time,
+.activity-mobile-time {
+  color: var(--ink);
+  font-size: var(--type-body);
+  font-style: normal;
+  font-weight: 400;
+  line-height: 1.35;
 }
 .activity-actor span,
 .activity-block span {
@@ -6435,18 +6480,25 @@ body input:focus-visible {
   .collection-activity-page .activity-main a,
   .collection-activity-page .activity-actor a,
   .collection-activity-page .activity-actor .wallet-address,
-  .collection-activity-page .activity-block a {
+  .collection-activity-page .activity-block a,
+  .home-activity-panel .activity-main a,
+  .home-activity-panel .activity-actor a,
+  .home-activity-panel .activity-actor .wallet-address,
+  .home-activity-panel .activity-block a {
     min-height: 44px;
     display: inline-flex;
     align-items: center;
   }
-  .collection-activity-page .activity-block a {
+  .collection-activity-page .activity-block a,
+  .home-activity-panel .activity-block a {
     justify-content: flex-end;
   }
-  .collection-activity-page .activity-transaction-long {
+  .collection-activity-page .activity-transaction-long,
+  .home-activity-panel .activity-transaction-long {
     display: none;
   }
-  .collection-activity-page .activity-transaction-short {
+  .collection-activity-page .activity-transaction-short,
+  .home-activity-panel .activity-transaction-short {
     display: inline;
   }
   .license-properties > div {

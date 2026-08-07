@@ -14,6 +14,7 @@ import {
   partitionAssetCandidateSupport,
   resolveAssetCandidates,
   restrictAssetCandidates,
+  searchBazarAtomicAssetsByName,
   verifyAssetCandidateSupport,
   walletAssetGroup,
   type AssetCandidate,
@@ -62,6 +63,75 @@ const collections: Collection[] = [
 
 afterEach(() => {
   vi.useRealTimers();
+});
+
+describe('Bazar atomic asset search', () => {
+  it('finds an exact named creation and rejects records outside the atomic contract', async () => {
+    const processId = 'P'.repeat(43);
+    const mediaId = 'M'.repeat(43);
+    const exactTags = [
+      { name: 'App-Name', value: 'Bazar' },
+      { name: 'device', value: 'process@1.0' },
+      { name: 'execution-device', value: 'token@1.0' },
+      { name: 'swap-device', value: 'arweave-swap@1.0' },
+      { name: 'scheduler-device', value: 'arweave-scheduler@1.0' },
+      { name: 'scheduler-mode', value: 'all' },
+      { name: 'initial-holder', value: wallet },
+      { name: 'total-supply', value: '1' },
+      { name: 'denomination', value: '0' },
+      { name: 'ticker', value: 'ASSET' },
+      { name: 'name', value: 'lucifer shrek' },
+      { name: 'collection', value: 'Created on Bazar' },
+      { name: 'asset-content-type', value: 'image/webp' },
+      { name: 'asset-data', value: mediaId },
+    ];
+    const fetcher = vi.fn(async (_url: string | URL | Request, _init?: RequestInit) =>
+      Response.json({
+        data: {
+          transactions: {
+            pageInfo: { hasNextPage: false },
+            edges: [
+              { cursor: 'valid', node: { id: processId, tags: exactTags } },
+              { cursor: 'spoof', node: { id: 'S'.repeat(43), tags: exactTags.filter((tag) => tag.name !== 'ticker') } },
+            ],
+          },
+        },
+      }),
+    );
+
+    const results = await searchBazarAtomicAssetsByName(' lucifer shrek ', {
+      fetch: fetcher as typeof fetch,
+      graphql: 'https://arweave.net/graphql',
+    });
+
+    expect(results).toHaveLength(1);
+    expect(results[0]).toMatchObject({
+      asset: { id: processId, name: 'lucifer shrek', contentType: 'image/webp' },
+      collection: { id: 'created-assets', name: 'Created on Bazar' },
+    });
+    const request = JSON.parse(String(fetcher.mock.calls[0][1]?.body));
+    expect(request.variables).toEqual({ names: ['lucifer shrek', 'Lucifer Shrek', 'LUCIFER SHREK'] });
+  });
+
+  it('checks common case variants because Arweave tag filters are case-sensitive', async () => {
+    const fetcher = vi.fn(async (_url: string | URL | Request, _init?: RequestInit) =>
+      Response.json({
+        data: { transactions: { pageInfo: { hasNextPage: false }, edges: [] } },
+      }),
+    );
+
+    await searchBazarAtomicAssetsByName('Lucifer Shrek', { fetch: fetcher as typeof fetch });
+
+    const request = JSON.parse(String(fetcher.mock.calls[0][1]?.body));
+    expect(request.variables.names).toEqual(['Lucifer Shrek', 'lucifer shrek', 'LUCIFER SHREK']);
+  });
+
+  it('does not query Arweave for a blank name', async () => {
+    const fetcher = vi.fn();
+
+    await expect(searchBazarAtomicAssetsByName('   ', { fetch: fetcher as typeof fetch })).resolves.toEqual([]);
+    expect(fetcher).not.toHaveBeenCalled();
+  });
 });
 
 describe('wallet candidate discovery', () => {
@@ -1214,6 +1284,42 @@ describe('wallet candidate discovery', () => {
       ids: [nameAsset, traditionalName],
       devices: ['carrier@1.0'],
     });
+  });
+
+  it('batches collection activity device verification for arweave.net', async () => {
+    const processIds = Array.from({ length: 17 }, (_, index) => String(index).padStart(43, 'P'));
+    const verificationBatches: string[][] = [];
+    const fetcher = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body));
+      if (body.query.includes('VerifyAssetProcesses')) {
+        const ids = body.variables.ids as string[];
+        verificationBatches.push(ids);
+        return Response.json({
+          data: {
+            transactions: {
+              pageInfo: { hasNextPage: false },
+              edges: ids.map((id, index) => ({ cursor: `verified-${index}`, node: { id } })),
+            },
+          },
+        });
+      }
+      return Response.json({
+        data: {
+          transactions: {
+            pageInfo: { hasNextPage: false },
+            edges: processIds.map((processId, index) => activityEdge(`activity-${index}`, processId, 100 - index)),
+          },
+        },
+      });
+    });
+
+    const events = await discoverCollectionActivity({
+      fetch: fetcher as typeof fetch,
+      requiredExecutionDevice: 'carrier@1.0',
+    });
+
+    expect(verificationBatches.map((batch) => batch.length)).toEqual([9, 8]);
+    expect(events.map((event) => event.processId)).toEqual(processIds);
   });
 });
 

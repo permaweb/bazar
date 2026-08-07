@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import type { CollectionActivityEvent } from 'api/asset-discovery';
 import type { Collection } from 'api/collections';
 import {
   collectionActivityVersion,
@@ -14,6 +15,8 @@ import {
   commitHomeFloorResult,
   completeHomeActivityScan,
   completeHomeSummaryRetryGroup,
+  filterGlobalActivity,
+  globalActivityCollection,
   homeAssetTypeMatches,
   homeAssetPage,
   homeAssetCardsPublished,
@@ -361,6 +364,48 @@ describe('Home market summary retries', () => {
     expect(shouldLoadHomeCollectionSummaries('discover', false, false)).toBe(false);
     expect(shouldLoadHomeCollectionSummaries('discover', false, true)).toBe(true);
     expect(shouldLoadHomeCollectionSummaries('collections', true, false)).toBe(true);
+    expect(shouldLoadHomeCollectionSummaries('activity', false, true)).toBe(false);
+  });
+
+  it('resolves global activity to its marketplace collection', () => {
+    const tokenId = 't'.repeat(43);
+    const nameId = 'n'.repeat(43);
+    const collections: Collection[] = [
+      {
+        id: 'tokens',
+        name: 'Tokens',
+        description: '',
+        kind: 'tokens',
+        assets: [{ id: tokenId, name: 'Token' }],
+      },
+      {
+        id: 'names',
+        name: 'Names',
+        description: '',
+        kind: 'names',
+        assets: [],
+        namespace: { manifestId: 'm'.repeat(43), namesById: { [nameId]: 'name' } },
+      },
+    ];
+
+    expect(globalActivityCollection(collections, tokenId)?.id).toBe('tokens');
+    expect(globalActivityCollection(collections, nameId)?.id).toBe('names');
+    expect(globalActivityCollection(collections, 'x'.repeat(43))).toBeUndefined();
+  });
+
+  it('filters global activity by submitted market action', () => {
+    const events = [
+      { id: 'listing', action: 'make-offer' },
+      { id: 'purchase', action: 'register-interest' },
+      { id: 'transfer', action: 'transfer' },
+      { id: 'cancel', action: 'cancel-order' },
+    ] as CollectionActivityEvent[];
+
+    expect(filterGlobalActivity(events, 'all')).toEqual(events);
+    expect(filterGlobalActivity(events, 'make-offer').map((event) => event.id)).toEqual(['listing']);
+    expect(filterGlobalActivity(events, 'register-interest').map((event) => event.id)).toEqual(['purchase']);
+    expect(filterGlobalActivity(events, 'transfer').map((event) => event.id)).toEqual(['transfer']);
+    expect(filterGlobalActivity(events, 'cancel-order').map((event) => event.id)).toEqual(['cancel']);
   });
 
   it('checks exact collection membership without rescanning loaded assets', () => {
