@@ -10,7 +10,7 @@ import {
   type WeaveNetwork,
 } from 'weave-wrangler';
 
-import { GATEWAYS } from 'helpers/config';
+import { arweaveClientConfig, arweaveGatewayFromLocation } from 'helpers/config';
 import { createArweaveClient } from 'helpers/arweave';
 
 import { acquireAssetObserverNetwork } from './asset-observers';
@@ -193,7 +193,7 @@ export class AssetTransactionClient {
     this.#wallet = options.wallet ?? globalThis.window?.arweaveWallet;
     this.#fetch = options.fetch ?? globalThis.fetch.bind(globalThis);
     this.#arweave = options.arweave;
-    this.#gateway = options.gateway ?? `${GATEWAYS.default.protocol}://${GATEWAYS.default.host}`;
+    this.#gateway = options.gateway ?? arweaveGatewayFromLocation();
     this.#storage = options.storage ?? globalThis.window?.localStorage;
     this.#reservationInclusionMargin = options.reservationInclusionMargin ?? DEFAULT_RESERVATION_INCLUSION_MARGIN;
     if (!Number.isSafeInteger(this.#reservationInclusionMargin) || this.#reservationInclusionMargin < 1) {
@@ -1028,11 +1028,7 @@ export class AssetTransactionClient {
   }
 
   async #getArweave() {
-    this.#arweave ??= await createArweaveClient({
-      host: GATEWAYS.default.host,
-      port: 443,
-      protocol: GATEWAYS.default.protocol,
-    });
+    this.#arweave ??= await createArweaveClient(arweaveClientConfig(this.#gateway));
     return this.#arweave;
   }
 

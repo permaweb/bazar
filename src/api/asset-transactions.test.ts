@@ -1101,6 +1101,36 @@ describe('fungible asset transactions', () => {
     expect(requests).toEqual([`https://arweave.net/price/0/${processId}`, `https://arweave.net/price/0/${recipient}`]);
   });
 
+  it('uses the Arweave gateway serving the browser by default', async () => {
+    vi.stubGlobal('window', {
+      location: {
+        protocol: 'https:',
+        hostname: 'deployment.arweave.net',
+        port: '',
+        search: '',
+        hash: '',
+      },
+    });
+    const requests: string[] = [];
+    try {
+      const subject = new AssetTransactionClient({
+        fetch: async (input) => {
+          requests.push(String(input));
+          return new Response('1000');
+        },
+      });
+
+      await subject.estimatePurchaseCosts(swapOrder(transactionId, '3000000000000', '1000000'), processId);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+
+    expect(requests).toEqual([
+      `https://deployment.arweave.net/price/0/${processId}`,
+      `https://deployment.arweave.net/price/0/${recipient}`,
+    ]);
+  });
+
   it('bounds distinct purchase price requests to eight at a time', async () => {
     let active = 0;
     let peak = 0;

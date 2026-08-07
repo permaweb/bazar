@@ -145,7 +145,7 @@ import {
 } from 'components/UnavailableOperationRecovery';
 import { WalletAddress, WalletIdentity } from 'components/WalletAddress';
 import { WalletMenu } from 'components/WalletMenu';
-import { gatewayFromLocation } from 'helpers/config';
+import { arweaveGatewayFromLocation, arweaveGatewayOverrideFromLocation, gatewayFromLocation } from 'helpers/config';
 import { isAudioContentType } from 'helpers/asset-media';
 import { mapConcurrent } from 'helpers/concurrency';
 import { scheduleIdleTask } from 'helpers/idle';
@@ -1472,6 +1472,12 @@ function homeMarketSummaryListed(summary: HomeMarketSummary | undefined) {
   return summary?.status === 'resolved' && Boolean(summary.value);
 }
 
+export type HomeAssetView = 'all' | 'listed' | 'price-low' | 'price-high';
+
+export function homeAssetVisibleForView(summary: HomeMarketSummary | undefined, view: HomeAssetView) {
+  return view === 'all' || !summary || summary.status === 'unavailable' || homeMarketSummaryListed(summary);
+}
+
 function HomePendingMarketValue({ label = 'Checking…' }: { label?: string }) {
   return (
     <span className="home-market-value-pending">
@@ -1556,7 +1562,7 @@ function Home() {
   const marketPaneRef = React.useRef<HTMLElement>(null);
   const [homeTab, setHomeTab] = React.useState<'discover' | 'collections'>('discover');
   const [assetType, setAssetType] = React.useState<HomeAssetType>('all');
-  const [assetView, setAssetView] = React.useState<'listed' | 'price-low' | 'price-high'>('listed');
+  const [assetView, setAssetView] = React.useState<HomeAssetView>('listed');
   const computeGateway = gatewayFromLocation();
   const query = new URLSearchParams(search).get('q') ?? '';
   const normalizedQuery = query.trim().toLowerCase();
@@ -1579,7 +1585,9 @@ function Home() {
   marketCollectionsRef.current = market.collections;
   const assets = normalizedQuery
     ? homeSearchAssets(market.collections, portableHomeListings, normalizedQuery, 10)
-    : homeDiscoveryAssets(market.collections, verifiedHomeListings, 10, portableHomeListings);
+    : assetView === 'all'
+      ? homeAllAssets(market.collections, 10, portableHomeListings)
+      : homeDiscoveryAssets(market.collections, verifiedHomeListings, 10, portableHomeListings);
   const assetKey = assets.map(({ asset }) => asset.id).join(',');
   const portableHomeListingById = new Map(portableHomeListings.map((result) => [result.asset.id, result]));
   const portableHomeStateKey = portableHomeListings
@@ -1999,11 +2007,11 @@ function Home() {
   const displayedAssets = [...assets]
     .filter(({ asset }) => {
       const summary = assetPrices[asset.id];
-      return !summary || summary.status === 'unavailable' || homeMarketSummaryListed(summary);
+      return homeAssetVisibleForView(summary, assetView);
     })
     .filter(({ collection }) => homeAssetTypeMatches(collection, assetType))
     .sort((left, right) => {
-      if (assetView === 'listed') return 0;
+      if (assetView === 'all' || assetView === 'listed') return 0;
       const price = (assetId: string) => {
         const summary = assetPrices[assetId];
         if (!summary || summary.status !== 'resolved' || !summary.value) return Number.POSITIVE_INFINITY;
@@ -2102,10 +2110,11 @@ function Home() {
                       ]}
                       value={assetType}
                     />
-                    <MarketSelect<'listed' | 'price-low' | 'price-high'>
+                    <MarketSelect<HomeAssetView>
                       label="View"
                       onChange={setAssetView}
                       options={[
+                        { value: 'all', label: 'All assets' },
                         { value: 'listed', label: 'Listed for sale' },
                         { value: 'price-low', label: 'Price: low to high' },
                         { value: 'price-high', label: 'Price: high to low' },
@@ -2323,7 +2332,11 @@ function Home() {
                       {discoverResultsPending ? <HomeMarketGhostCard kind="asset" /> : null}
                     </div>
                   ) : (
-                    <div className="home-assets-empty">No live listings match this asset type.</div>
+                    <div className="home-assets-empty">
+                      {assetView === 'all'
+                        ? 'No assets match this asset type.'
+                        : 'No live listings match this asset type.'}
+                    </div>
                   )}
                 </div>
               )}
@@ -2336,8 +2349,10 @@ function Home() {
 }
 
 function GatewayControl() {
-  const current = servingNodeOrigin(window.location);
-  const [value, setValue] = React.useState(current);
+  const computeCurrent = servingNodeOrigin(window.location);
+  const arweaveCurrent = arweaveGatewayFromLocation(window.location);
+  const [computeValue, setComputeValue] = React.useState(computeCurrent);
+  const [arweaveValue, setArweaveValue] = React.useState(arweaveGatewayOverrideFromLocation(window.location) ?? '');
   const [open, setOpen] = React.useState(false);
   const [error, setError] = React.useState('');
   const detailsRef = React.useRef<HTMLDetailsElement>(null);
@@ -2365,34 +2380,44 @@ function GatewayControl() {
   }, [open]);
   function apply(event: React.FormEvent) {
     event.preventDefault();
-    const origin = normalizeServingNodeOrigin(value, window.location.protocol);
-    if (!origin) {
+    const computeOrigin = normalizeServingNodeOrigin(computeValue, window.location.protocol);
+    if (!computeOrigin) {
       setError('Enter an HTTP or HTTPS HyperBEAM gateway, such as arweave.net or localhost:3101.');
+      return;
+    }
+    const requestedArweave = arweaveValue.trim();
+    const arweaveOrigin = requestedArweave
+      ? normalizeServingNodeOrigin(requestedArweave, window.location.protocol)
+      : null;
+    if (requestedArweave && !arweaveOrigin) {
+      setError('Enter an HTTP or HTTPS Arweave gateway, or leave it blank to use the site gateway.');
       return;
     }
     setError('');
     const url = new URL(window.location.href);
-    url.searchParams.set('node', origin);
+    url.searchParams.set('node', computeOrigin);
+    if (arweaveOrigin) url.searchParams.set('arweave-node', arweaveOrigin);
+    else url.searchParams.delete('arweave-node');
     window.location.assign(url);
   }
   return (
     <details className="gateway" open={open} ref={detailsRef}>
       <summary
-        aria-controls="compute-gateway-panel"
+        aria-controls="gateway-panel"
         aria-expanded={open}
-        aria-label={`Compute gateway, current ${current}`}
+        aria-label={`Gateways, compute ${computeCurrent}, Arweave ${arweaveCurrent}`}
         onClick={(event) => {
           event.preventDefault();
           setOpen((currentOpen) => !currentOpen);
         }}
         ref={triggerRef}
         role="button"
-        title={current}
+        title={`Compute: ${computeCurrent}\nArweave: ${arweaveCurrent}`}
       >
         <Server className="ui-icon ui-icon--sm" aria-hidden="true" />
-        <span className="gateway-label">Compute gateway</span>
+        <span className="gateway-label">Gateways</span>
       </summary>
-      <div id="compute-gateway-panel">
+      <div id="gateway-panel">
         <form onSubmit={apply}>
           <label>
             HyperBEAM gateway
@@ -2400,23 +2425,42 @@ function GatewayControl() {
               aria-describedby={error ? 'gateway-error' : undefined}
               aria-invalid={Boolean(error)}
               onChange={(event) => {
-                setValue(event.target.value);
+                setComputeValue(event.target.value);
                 setError('');
               }}
               ref={inputRef}
-              value={value}
+              value={computeValue}
             />
           </label>
+          <label>
+            Arweave gateway override
+            <input
+              aria-describedby={error ? 'gateway-error' : 'arweave-gateway-help'}
+              aria-invalid={Boolean(error)}
+              onChange={(event) => {
+                setArweaveValue(event.target.value);
+                setError('');
+              }}
+              placeholder={arweaveCurrent}
+              value={arweaveValue}
+            />
+          </label>
+          <span className="gateway-help" id="arweave-gateway-help">
+            Leave blank to use the gateway serving this site.
+          </span>
           {error ? (
             <p className="gateway-error" id="gateway-error" role="alert">
               {error}
             </p>
           ) : null}
           <button className="with-icon" type="submit">
-            <Server className="ui-icon ui-icon--sm" aria-hidden="true" /> Use gateway
+            <Server className="ui-icon ui-icon--sm" aria-hidden="true" /> Apply gateways
           </button>
         </form>
-        <p>Process reads and observer requests use this node. Transactions still settle on Arweave.</p>
+        <p>
+          Process reads and observer requests use HyperBEAM. Content, pricing, balances, and settlement use the current
+          site gateway unless overridden.
+        </p>
       </div>
     </details>
   );
@@ -7029,6 +7073,26 @@ export function homeDiscoveryAssets(
   );
   const seen = new Set<string>();
   return [...portableListings, ...verified, ...fallback]
+    .filter(({ asset }) => {
+      if (seen.has(asset.id)) return false;
+      seen.add(asset.id);
+      return true;
+    })
+    .slice(0, limit);
+}
+
+export function homeAllAssets(
+  collections: Collection[],
+  limit: number,
+  portableListings: Array<Pick<ResolvedAsset, 'asset' | 'collection'>> = [],
+) {
+  const indexed = interleaveCollectionAssets(
+    collections,
+    limit,
+    (asset, collection) => Boolean(asset.image || asset.media) || collection.kind === 'tokens',
+  );
+  const seen = new Set<string>();
+  return [...indexed, ...portableListings]
     .filter(({ asset }) => {
       if (seen.has(asset.id)) return false;
       seen.add(asset.id);

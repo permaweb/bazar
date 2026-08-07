@@ -1,5 +1,6 @@
 import type { AssetSummary, Collection } from './collections';
 import { createArweaveClient } from 'helpers/arweave';
+import { arweaveClientConfig, arweaveGatewayFromLocation } from 'helpers/config';
 import {
   isAudioContentType,
   isImageContentType,
@@ -13,7 +14,6 @@ const MAX_AUDIO_BYTES = 100 * 1024 * 1024;
 const HIGH_COST_WINSTON = 100_000_000_000n;
 const STORAGE_KEY = 'bazar-created-assets';
 const DRAFT_PREFIX = 'bazar-mint-draft:';
-const GATEWAY = 'https://arweave.net';
 const UDL_AMOUNT = /^(?:0|[1-9]\d*)(?:\.\d+)?$/;
 
 export const CREATED_COLLECTION_ID = 'created-assets';
@@ -140,7 +140,7 @@ export class AssetMintClient {
     this.#fetch = options.fetch ?? globalThis.fetch.bind(globalThis);
     this.#arweave = options.arweave;
     this.#storage = options.storage ?? globalThis.window?.localStorage;
-    this.#gateway = options.gateway ?? GATEWAY;
+    this.#gateway = options.gateway ?? arweaveGatewayFromLocation();
   }
 
   async estimate(input: MintInput, signal?: AbortSignal): Promise<MintEstimate> {
@@ -357,7 +357,7 @@ export class AssetMintClient {
   }
 
   async #getArweave() {
-    this.#arweave ??= await createArweaveClient({ host: 'arweave.net', port: 443, protocol: 'https' });
+    this.#arweave ??= await createArweaveClient(arweaveClientConfig(this.#gateway));
     return this.#arweave;
   }
 
@@ -378,7 +378,7 @@ export class CollectionMintClient {
   constructor(options: AssetMintClientOptions = {}) {
     this.#assetClient = new AssetMintClient(options);
     this.#fetch = options.fetch ?? globalThis.fetch.bind(globalThis);
-    this.#gateway = options.gateway ?? GATEWAY;
+    this.#gateway = options.gateway ?? arweaveGatewayFromLocation();
     this.#storage = options.storage ?? globalThis.window?.localStorage;
   }
 
@@ -718,13 +718,14 @@ export function assetFromMintState(
     !name
   )
     return null;
+  const gateway = arweaveGatewayFromLocation();
   return {
     id: processId,
     name,
     contentType,
     ...(isAudioContentType(contentType)
-      ? { media: `${GATEWAY}/${mediaId}`, ...(artworkId ? { image: `${GATEWAY}/${artworkId}` } : {}) }
-      : { image: `${GATEWAY}/${mediaId}` }),
+      ? { media: `${gateway}/${mediaId}`, ...(artworkId ? { image: `${gateway}/${artworkId}` } : {}) }
+      : { image: `${gateway}/${mediaId}` }),
   };
 }
 

@@ -14,6 +14,8 @@ import {
   completeHomeActivityScan,
   completeHomeSummaryRetryGroup,
   homeAssetTypeMatches,
+  homeAssetVisibleForView,
+  homeAllAssets,
   homeSummaryRequestKeys,
   homeDiscoveryAssets,
   homeSearchAssets,
@@ -208,6 +210,30 @@ describe('Home market summary retries', () => {
     ]);
   });
 
+  it('uses indexed collection assets before listings-only additions for the All assets view', () => {
+    const indexed = { id: 'i'.repeat(43), name: 'Indexed', image: 'https://arweave.net/indexed' };
+    const portable = { id: 'p'.repeat(43), name: 'Portable', image: 'https://arweave.net/portable' };
+    const collection: Collection = {
+      id: 'images',
+      name: 'Images',
+      description: '',
+      kind: 'images',
+      assets: [indexed],
+    };
+    const portableCollection: Collection = {
+      id: 'created-assets',
+      name: 'Created on Bazar',
+      description: '',
+      kind: 'images',
+      assets: [portable],
+    };
+
+    expect(homeAllAssets([collection], 10, [{ asset: portable, collection: portableCollection }])).toEqual([
+      { asset: indexed, collection },
+      { asset: portable, collection: portableCollection },
+    ]);
+  });
+
   it('includes portable listings in Discover search and de-duplicates indexed matches', () => {
     const portable = {
       id: 'p'.repeat(43),
@@ -242,6 +268,16 @@ describe('Home market summary retries', () => {
     expect(homeMarketPriceValue('0.000001 AR / WEAVE')).toBe(0.000001);
     expect(homeMarketPriceValue('1,234.5 AR')).toBe(1234.5);
     expect(homeMarketPriceValue('Unavailable')).toBe(Number.POSITIVE_INFINITY);
+  });
+
+  it('allows Discover to show all assets without treating unlisted assets as live listings', () => {
+    const unlisted: HomeMarketSummary = { status: 'resolved', value: null };
+    const listed: HomeMarketSummary = { status: 'resolved', value: '0.001 AR' };
+
+    expect(homeAssetVisibleForView(unlisted, 'all')).toBe(true);
+    expect(homeAssetVisibleForView(unlisted, 'listed')).toBe(false);
+    expect(homeAssetVisibleForView(listed, 'listed')).toBe(true);
+    expect(homeAssetVisibleForView(listed, 'price-low')).toBe(true);
   });
 
   it('publishes the home mosaic only after every live summary settles', () => {

@@ -23,6 +23,7 @@ import { waitForAssetState } from 'api/asset-marketplace';
 import { Loading } from 'components/Loading';
 import { AudioArtwork } from 'components/AudioArtwork';
 import { isAudioContentType, normalizeAssetContentType } from 'helpers/asset-media';
+import { arweaveGatewayFromLocation } from 'helpers/config';
 import { useWallet } from 'providers/WalletProvider';
 
 import { formatBytes, MarketContext, MarketSelect, mintErrorMessage, winstonToAr } from '../app/App';
@@ -578,7 +579,7 @@ export default function CreateRoute() {
               <div className="udl-options">
                 <p>
                   Free access is the default. Rights not granted below remain reserved.{' '}
-                  <a href={`https://arweave.net/${UDL_LICENSE_ID}`} target="_blank" rel="noreferrer">
+                  <a href={`${arweaveGatewayFromLocation()}/${UDL_LICENSE_ID}`} target="_blank" rel="noreferrer">
                     Read UDL 0.2 <ArrowUpRight className="ui-icon ui-icon--sm" aria-hidden="true" />
                   </a>
                 </p>

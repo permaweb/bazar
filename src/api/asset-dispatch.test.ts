@@ -86,7 +86,7 @@ describe('transaction dispatch observation', () => {
 
     await expect(dispatchAndConfirm(transaction as any)).rejects.toThrow('transaction-propagation-timeout');
     expect(control.networkOptions).toMatchObject({
-      node: 'https://arweave.net',
+      node: 'https://lcno4nkkk4gsb5krqpa6irlzbuurmnzk4entikswauifsbryldfa.arweave.net',
       minObservers: 3,
       maxObservers: 7,
       'relay-with': 'https://alpha.neo.zephyrdev.xyz',

@@ -42,6 +42,18 @@ describe('assetObserverNetworkOptions', () => {
       }),
     );
 
+    expect(options.node).toBe('https://lcno4nkkk4gsb5krqpa6irlzbuurmnzk4entikswauifsbryldfa.arweave.net');
     expect(options['relay-with']).toBe('https://alpha.neo.zephyrdev.xyz');
+  });
+
+  it('uses an independently selected Arweave gateway for observer discovery', () => {
+    const options = assetObserverNetworkOptions(
+      location({
+        search: '?node=https%3A%2F%2Fcompute.example&arweave-node=https%3A%2F%2Fgateway.example',
+      }),
+    );
+
+    expect(options.node).toBe('https://gateway.example');
+    expect(options['relay-with']).toBe('https://compute.example');
   });
 });

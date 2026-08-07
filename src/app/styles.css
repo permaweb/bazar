@@ -1556,6 +1556,15 @@ p {
   gap: 7px;
   font-size: var(--type-body);
 }
+.gateway label + label {
+  margin-top: 12px;
+}
+.gateway .gateway-help {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: var(--type-small);
+}
 .gateway button {
   margin-top: 10px;
 }

@@ -6,7 +6,7 @@ import {
 } from 'api/arweave-mining-telemetry';
 import React from 'react';
 
-import { DEFAULT_GATEWAY } from 'helpers/config';
+import { arweaveGatewayFromLocation } from 'helpers/config';
 import { insertAcceptedProof, upsertAcceptedProof } from './acceptedProofs';
 
 export type ArweaveMiningTelemetry = {
@@ -38,7 +38,7 @@ export function useArweaveMiningTelemetry(
   sessionKey: string,
   sessionStartedAt: number,
 ): ArweaveMiningTelemetry {
-  const blockOrigin = import.meta.env.VITE_ARWEAVE_BLOCK_SOURCE_URL || DEFAULT_GATEWAY;
+  const blockOrigin = import.meta.env.VITE_ARWEAVE_BLOCK_SOURCE_URL || arweaveGatewayFromLocation();
   const [telemetry, setTelemetry] = React.useState<ArweaveMiningTelemetry>(() => initialTelemetry(blockOrigin));
   const trackerRef = React.useRef<MiningNetworkTracker>(createMiningNetworkTracker(sessionStartedAt));
 

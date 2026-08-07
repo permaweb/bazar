@@ -71,9 +71,18 @@ compute gateway in the header or append a `node` query parameter:
 http://127.0.0.1:3000/?node=http://127.0.0.1:3101#/asset/…
 ```
 
-The query parameter selects process computation and the HyperBEAM relay used
-for browser-safe checks against independent Arweave nodes. Transactions are
-signed by the connected wallet and submitted to the Arweave network.
+The `node` parameter selects process computation and the HyperBEAM relay used
+for browser-safe checks against independent Arweave nodes. Arweave API requests
+use the gateway serving the site. During local development they fall back to
+`https://arweave.net`; set `VITE_ARWEAVE_GATEWAY` or use the separate
+`arweave-node` field in the header when another Arweave gateway is required:
+
+```text
+http://127.0.0.1:3000/?node=http://127.0.0.1:3101&arweave-node=http://127.0.0.1:1984#/asset/…
+```
+
+The compute and Arweave selections are independent. Transactions are signed by
+the connected wallet and submitted through the selected Arweave gateway.
 
 ### HyperBEAM device configuration
 

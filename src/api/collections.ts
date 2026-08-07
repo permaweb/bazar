@@ -1,4 +1,4 @@
-import { DEFAULT_GATEWAY, NAMES_NAMESPACE_ID, PAGINATED_GRAPHQL } from 'helpers/config';
+import { NAMES_NAMESPACE_ID, PAGINATED_GRAPHQL, arweaveGatewayFromLocation } from 'helpers/config';
 import type { AssetState } from './asset-marketplace';
 import { fetchJsonWithDeadline, fetchTextWithDeadline } from './fetch-with-deadline';
 
@@ -79,7 +79,7 @@ export function fungibleAssetFromState(id: string, state?: AssetState): AssetSum
     name: state.name || state.ticker || shortId(id),
     contentType: 'application/x.arweave-token',
     ...(state.ticker ? { ticker: state.ticker } : {}),
-    ...(typeof logo === 'string' && ARWEAVE_ID.test(logo) ? { image: `${DEFAULT_GATEWAY}/${logo}` } : {}),
+    ...(typeof logo === 'string' && ARWEAVE_ID.test(logo) ? { image: `${arweaveGatewayFromLocation()}/${logo}` } : {}),
   };
 }
 
@@ -301,7 +301,7 @@ export async function loadMoreFungibleTokens(collection: Collection, signal?: Ab
 async function loadFungibleTokenPage(after?: string, signal?: AbortSignal): Promise<FungibleTokenPage> {
   const result = await fetchJsonWithDeadline<any>(
     fetch,
-    `${DEFAULT_GATEWAY}/graphql`,
+    `${arweaveGatewayFromLocation()}/graphql`,
     {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -365,7 +365,7 @@ async function loadFungibleTokenPage(after?: string, signal?: AbortSignal): Prom
       name: tags.name ?? tags.ticker ?? shortId(node.id),
       contentType: 'application/x.arweave-token',
       ...(tags.ticker ? { ticker: tags.ticker } : {}),
-      ...(tags.logo && ARWEAVE_ID.test(tags.logo) ? { image: `${DEFAULT_GATEWAY}/${tags.logo}` } : {}),
+      ...(tags.logo && ARWEAVE_ID.test(tags.logo) ? { image: `${arweaveGatewayFromLocation()}/${tags.logo}` } : {}),
     });
   }
   const cursor = connection.edges.at(-1)?.cursor;
@@ -629,7 +629,7 @@ function imageCollection(
     manifestId,
     assets: manifest.assets.map((asset) => ({
       ...asset,
-      ...(!asset.image && !asset.media ? { image: `${DEFAULT_GATEWAY}/${asset.id}` } : {}),
+      ...(!asset.image && !asset.media ? { image: `${arweaveGatewayFromLocation()}/${asset.id}` } : {}),
     })),
   };
 }
@@ -638,7 +638,7 @@ async function fetchJson<T>(path: string, signal?: AbortSignal, process = false)
   if (!process && /^[A-Za-z0-9_-]{43}$/.test(path)) {
     const { response, body: responseBody } = await fetchTextWithDeadline(
       fetch,
-      `${DEFAULT_GATEWAY}/tx/${path}/data`,
+      `${arweaveGatewayFromLocation()}/tx/${path}/data`,
       { signal },
       {
         timeoutError: 'collection-data-timeout',
@@ -655,7 +655,7 @@ async function fetchJson<T>(path: string, signal?: AbortSignal, process = false)
     );
     return JSON.parse(json) as T;
   }
-  const url = process && path.startsWith('http') ? path : `${DEFAULT_GATEWAY}/${path}`;
+  const url = process && path.startsWith('http') ? path : `${arweaveGatewayFromLocation()}/${path}`;
   const { response, body } = await fetchJsonWithDeadline<any>(
     fetch,
     url,

@@ -1,6 +1,6 @@
 import type { WeaveNetworkOptions } from 'weave-wrangler';
 
-import { AO_MAINNET, GATEWAYS, gatewayFromLocation } from 'helpers/config';
+import { AO_MAINNET, arweaveGatewayFromLocation, gatewayFromLocation } from 'helpers/config';
 import { ArweaveObserverNetwork } from './arweave-observers';
 import { ARWEAVE_OBSERVER_HEALTHY_TARGET } from './observer-policy';
 
@@ -26,7 +26,7 @@ export function assetObserverNetworkOptions(location: Location = window.location
   const isLocalDevelopment = ['localhost', '127.0.0.1', '[::1]', '::1'].includes(location.hostname);
 
   return {
-    node: `${GATEWAYS.default.protocol}://${GATEWAYS.default.host}`,
+    node: arweaveGatewayFromLocation(location),
     minObservers: 3,
     syncTolerance: 2,
     maxObservers: ARWEAVE_OBSERVER_HEALTHY_TARGET,
