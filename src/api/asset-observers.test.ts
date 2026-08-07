@@ -33,7 +33,7 @@ describe('assetObserverNetworkOptions', () => {
     expect(options['relay-with']).toBe('http://127.0.0.1:3101');
   });
 
-  it('uses the serving gateway after stripping an Arweave sandbox label', () => {
+  it('uses the default compute gateway when no relay is selected', () => {
     const options = assetObserverNetworkOptions(
       location({
         protocol: 'https:',
@@ -42,6 +42,6 @@ describe('assetObserverNetworkOptions', () => {
       }),
     );
 
-    expect(options['relay-with']).toBe('https://arweave.net');
+    expect(options['relay-with']).toBe('https://alpha.neo.zephyrdev.xyz');
   });
 });

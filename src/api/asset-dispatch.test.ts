@@ -78,7 +78,7 @@ describe('transaction dispatch observation', () => {
     });
   });
 
-  it('relays deployment observer requests through the serving HyperBEAM gateway', async () => {
+  it('relays deployment observer requests through the default HyperBEAM gateway', async () => {
     const transaction = {
       id: 'qAhWNMSuX70lZpIRohKJn_SuVcymr_RmpGbltydjpwA',
       dispatch: async () => undefined,
@@ -89,7 +89,7 @@ describe('transaction dispatch observation', () => {
       node: 'https://arweave.net',
       minObservers: 3,
       maxObservers: 7,
-      'relay-with': 'https://arweave.net',
+      'relay-with': 'https://alpha.neo.zephyrdev.xyz',
     });
   });
 

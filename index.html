@@ -1,42 +1,44 @@
 <!doctype html>
 <html lang="en">
-	<head>
-		<meta charset="UTF-8" />
-		<script>
-			const path = window.location.pathname || '/';
-			const base = document.createElement('base');
-			base.href = path === '/' ? '/' : `${path.replace(/\/+$/, '')}/`;
-			document.head.appendChild(base);
-		</script>
-		<meta name="viewport" content="width=device-width, initial-scale=1" />
-		<script>
-			(() => {
-				let stored = null;
-				let followsSystem = true;
-				try {
-					stored = localStorage.getItem('preferredTheme');
-					followsSystem = localStorage.getItem('isSystemTheme') === 'true' || !stored || stored === 'system';
-				} catch {
-					// Continue with the system preference when storage is blocked.
-				}
-				const systemTheme = window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-				const theme = followsSystem ? systemTheme : ['light', 'dimmed', 'dark'].includes(stored) ? stored : systemTheme;
-				document.documentElement.dataset.theme = theme;
-				document.documentElement.style.colorScheme = theme === 'light' ? 'light' : 'dark';
-			})();
-		</script>
-		<meta name="description" content="Trade assets owned and settled directly on Arweave." />
-		<meta name="theme-color" content="#f5f0e6" />
-		<link rel="preconnect" href="https://arweave.net" crossorigin />
-		<link rel="preconnect" href="https://turbo-gateway.com" crossorigin />
-		<link rel="dns-prefetch" href="//arweave.net" />
-		<link rel="dns-prefetch" href="//turbo-gateway.com" />
-		<link rel="icon" href="favicon.svg" />
-		<link rel="manifest" href="manifest.json" />
-		<title>Bazar — Arweave-native assets</title>
-	</head>
-	<body>
-		<div id="root"></div>
-		<script type="module" src="./src/index.tsx"></script>
-	</body>
+  <head>
+    <meta charset="UTF-8" />
+    <script>
+      const path = window.location.pathname || '/';
+      const base = document.createElement('base');
+      base.href = path === '/' ? '/' : `${path.replace(/\/+$/, '')}/`;
+      document.head.appendChild(base);
+    </script>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <script>
+      (() => {
+        let stored = null;
+        let followsSystem = true;
+        try {
+          stored = localStorage.getItem('preferredTheme');
+          followsSystem = localStorage.getItem('isSystemTheme') === 'true' || !stored || stored === 'system';
+        } catch {
+          // Continue with the system preference when storage is blocked.
+        }
+        const systemTheme = window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        const theme = followsSystem ? systemTheme : ['light', 'dimmed', 'dark'].includes(stored) ? stored : systemTheme;
+        document.documentElement.dataset.theme = theme;
+        document.documentElement.style.colorScheme = theme === 'light' ? 'light' : 'dark';
+      })();
+    </script>
+    <meta name="description" content="Trade assets owned and settled directly on Arweave." />
+    <meta name="theme-color" content="#f5f0e6" />
+    <link rel="preconnect" href="https://arweave.net" crossorigin />
+    <link rel="preconnect" href="https://alpha.neo.zephyrdev.xyz" crossorigin />
+    <link rel="preconnect" href="https://turbo-gateway.com" crossorigin />
+    <link rel="dns-prefetch" href="//arweave.net" />
+    <link rel="dns-prefetch" href="//alpha.neo.zephyrdev.xyz" />
+    <link rel="dns-prefetch" href="//turbo-gateway.com" />
+    <link rel="icon" href="favicon.svg" />
+    <link rel="manifest" href="manifest.json" />
+    <title>Bazar — Arweave-native assets</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./src/index.tsx"></script>
+  </body>
 </html>

@@ -1,3 +1,5 @@
+import { DEFAULT_COMPUTE_GATEWAY } from 'helpers/config';
+
 export type SwapOrderStatus = 'open' | 'reserved' | 'settled' | 'cancelled' | 'expired';
 
 export type SwapOrder = {
@@ -77,34 +79,12 @@ const LICENSE_FIELDS = [
   ['currency', 'Currency'],
 ] as const;
 
-function isLocalhostHostname(hostname: string): boolean {
-  const normalized = hostname.toLowerCase().replace(/^\[|\]$/g, '');
-  return (
-    normalized === 'localhost' ||
-    normalized.endsWith('.localhost') ||
-    normalized === '::1' ||
-    /^127(?:\.\d{1,3}){3}$/.test(normalized)
-  );
-}
-
 function isValidServingNodeHostname(hostname: string): boolean {
   const normalized = hostname.toLowerCase().replace(/^\[|\]$/g, '');
   if (normalized === 'localhost' || normalized.endsWith('.localhost') || normalized.includes(':')) return true;
 
   const labels = normalized.replace(/\.$/, '').split('.');
   return labels.length >= 2 && labels.every((label) => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(label));
-}
-
-export function servingNodeFromHostname(hostname: string): string {
-  if (isLocalhostHostname(hostname)) return 'arweave.net';
-  if (!hostname || hostname.includes(':') || /^\d{1,3}(?:\.\d{1,3}){3}$/.test(hostname)) {
-    return hostname;
-  }
-
-  const labels = hostname.split('.');
-  return labels[0]?.length === 52 && /^[A-Za-z0-9_-]+$/.test(labels[0]) && labels.length > 2
-    ? labels.slice(1).join('.')
-    : hostname;
 }
 
 export function normalizeServingNodeOrigin(value: string, defaultProtocol = 'https:'): string | null {
@@ -138,9 +118,7 @@ export function servingNodeOrigin(location: {
     if (origin) return origin;
   }
 
-  if (isLocalhostHostname(location.hostname)) return 'https://arweave.net';
-  const port = location.port ? `:${location.port}` : '';
-  return `${location.protocol}//${servingNodeFromHostname(location.hostname)}${port}`;
+  return DEFAULT_COMPUTE_GATEWAY;
 }
 
 function currentServingNode(): string {

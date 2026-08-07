@@ -35,26 +35,10 @@ function assignment(slot: number, transactionId: string) {
 }
 
 describe('servingNodeOrigin', () => {
-  it('removes only an Arweave security sandbox label', () => {
-    expect(
-      servingNodeOrigin({
-        protocol: 'https:',
-        hostname: 'lcno4nkkk4gsb5krqpa6irlzbuurmnzk4entikswauifsbryldfa.charlie.neo2.zephyrdev.xyz',
-      }),
-    ).toBe('https://charlie.neo2.zephyrdev.xyz');
-  });
-
-  it('preserves ordinary multi-label gateway hosts', () => {
-    expect(
-      servingNodeOrigin({
-        protocol: 'https:',
-        hostname: 'charlie.neo2.zephyrdev.xyz',
-      }),
-    ).toBe('https://charlie.neo2.zephyrdev.xyz');
-  });
-
-  it('uses Arweave for localhost unless an explicit node is selected', () => {
-    expect(servingNodeOrigin({ protocol: 'http:', hostname: '127.0.0.1', port: '3000' })).toBe('https://arweave.net');
+  it('uses the default compute gateway unless an explicit node is selected', () => {
+    expect(servingNodeOrigin({ protocol: 'http:', hostname: '127.0.0.1', port: '3000' })).toBe(
+      'https://alpha.neo.zephyrdev.xyz',
+    );
     expect(
       servingNodeOrigin({
         protocol: 'http:',
@@ -63,6 +47,10 @@ describe('servingNodeOrigin', () => {
         search: '?node=http%3A%2F%2F127.0.0.1%3A3101',
       }),
     ).toBe('http://127.0.0.1:3101');
+  });
+
+  it('uses the default gateway instead of the site hosting origin', () => {
+    expect(servingNodeOrigin({ protocol: 'https:', hostname: 'arweave.net' })).toBe('https://alpha.neo.zephyrdev.xyz');
   });
 });
 

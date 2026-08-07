@@ -116,6 +116,35 @@ DEPLOY_KEY="$(jq -c . /path/to/key.json)" npm run deploy:main
 The deployment command prints the immutable Arweave manifest ID. No service is
 deployed because the build is entirely static.
 
+### Stable test deployment address
+
+Bazar can place every immutable deployment behind one `~reference@1.0`
+address. Initialize the reference once after an immutable deployment:
+
+```sh
+DEPLOY_KEY="$(jq -c . /path/to/key.json)" npm run reference:init
+```
+
+This creates a permanent, wallet-controlled reference whose public ID is saved
+in the ignored `.run-data/site-reference.json`. Back up that public reference
+ID. On another machine, provide it as `BAZAR_REFERENCE_ID`; the wallet remains
+the authority and must never be committed.
+
+The normal `npm run deploy:main` workflow is unchanged: it publishes an
+immutable manifest and does not move any reference or name. For reference
+testing, `npm run deploy:reference` uploads the immutable manifest and then
+updates the test reference exactly once. Preview a signed reference item
+without posting it:
+
+```sh
+DEPLOY_KEY="$(jq -c . /path/to/key.json)" npm run reference:set -- --dry-run
+```
+
+Reference updates are permanent public ANS-104 items sent directly to the
+Mystical HyperBEAM bundler with `bundler-subject: body`; they do not use Turbo.
+The test reference does not update `bazar.arweave.net`. The stable URL can take
+several minutes to reflect a newly accepted target.
+
 ## Test collections
 
 The repository includes deterministic generation and publication scripts for
