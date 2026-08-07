@@ -489,7 +489,7 @@ describe('collection index loading', () => {
     const stale = 'S'.repeat(43);
     const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const body = typeof init?.body === 'string' ? JSON.parse(init.body) : {};
-      expect(String(input)).toBe('https://turbo-gateway.com/graphql');
+      expect(String(input)).toBe('https://arweave.net/graphql');
       expect(body.variables.after).toBe('first-cursor');
       return Response.json({
         data: {

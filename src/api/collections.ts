@@ -1,4 +1,4 @@
-import { NAMES_NAMESPACE_ID, PAGINATED_GRAPHQL, arweaveGatewayFromLocation } from 'helpers/config';
+import { NAMES_NAMESPACE_ID, arweaveGatewayFromLocation, arweaveGraphqlEndpoint } from 'helpers/config';
 import type { AssetState } from './asset-marketplace';
 import { fetchJsonWithDeadline, fetchTextWithDeadline } from './fetch-with-deadline';
 
@@ -301,7 +301,7 @@ export async function loadMoreFungibleTokens(collection: Collection, signal?: Ab
 async function loadFungibleTokenPage(after?: string, signal?: AbortSignal): Promise<FungibleTokenPage> {
   const result = await fetchJsonWithDeadline<any>(
     fetch,
-    `${arweaveGatewayFromLocation()}/graphql`,
+    arweaveGraphqlEndpoint(),
     {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -451,7 +451,7 @@ export async function loadMoreCarrierNames(collection: Collection, signal?: Abor
 async function loadCarrierPage(after?: string, signal?: AbortSignal): Promise<CarrierPage> {
   const { response, body: payload } = await fetchJsonWithDeadline<any>(
     fetch,
-    PAGINATED_GRAPHQL,
+    arweaveGraphqlEndpoint(),
     {
       method: 'POST',
       headers: { 'content-type': 'application/json' },

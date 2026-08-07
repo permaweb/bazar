@@ -1,7 +1,7 @@
 import React from 'react';
 
-export type ButtonSize = 'custom' | 'medium' | 'small';
-export type ButtonVariant = 'neutral' | 'primary';
+export type ButtonSize = 'custom' | 'icon' | 'medium' | 'small';
+export type ButtonVariant = 'danger' | 'ghost' | 'neutral' | 'primary';
 
 export type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
   size?: ButtonSize;
@@ -15,13 +15,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(function 
   return (
     <button
       {...props}
-      className={[
-        'ui-button',
-        `ui-button--${size}`,
-        `ui-button--${variant}`,
-        variant === 'primary' ? 'primary' : '',
-        className ?? '',
-      ]
+      className={['ui-button', `ui-button--${size}`, `ui-button--${variant}`, className ?? '']
         .filter(Boolean)
         .join(' ')}
       ref={ref}

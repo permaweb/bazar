@@ -33,7 +33,7 @@ export function UnavailableOperationRecoveryNotice({
       <Button onClick={onRefresh} size="custom">
         Refresh live state
       </Button>
-      <Button onClick={onDiscard} size="custom">
+      <Button onClick={onDiscard} size="custom" variant="danger">
         Discard local tracking
       </Button>
       <small>The live source of truth remains current {stateNoun}.</small>

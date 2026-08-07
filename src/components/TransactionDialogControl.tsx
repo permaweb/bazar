@@ -83,8 +83,9 @@ export function TransactionDialogControl({
       aria-label={working ? 'Hide transaction details' : 'Close dialog'}
       className={`close${working ? ' transaction-hide' : ''}`}
       onClick={onClick}
-      size="custom"
+      size="icon"
       title={working ? 'Hide transaction details' : 'Close'}
+      variant="ghost"
     >
       {working ? (
         <span className={`transaction-hide-icon${hiding ? ' hiding' : ''}`} aria-hidden="true">

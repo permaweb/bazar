@@ -1,6 +1,6 @@
 import { collectionAsset, type AssetSummary, type Collection } from './collections';
 import { assetFromMintState, CREATED_COLLECTION_ID, CREATED_COLLECTION_NAME } from './asset-mint';
-import { PAGINATED_GRAPHQL } from 'helpers/config';
+import { arweaveGraphqlEndpoint } from 'helpers/config';
 import {
   liveOrderOfAsset,
   listedBalanceOf,
@@ -275,7 +275,7 @@ const VERIFY_ASSET_PROCESSES_QUERY = `query VerifyAssetProcesses(
 	}
 }`;
 
-export function createWalletCandidateScan(address: string, graphql = PAGINATED_GRAPHQL): WalletCandidateScan {
+export function createWalletCandidateScan(address: string, graphql = arweaveGraphqlEndpoint()): WalletCandidateScan {
   if (!ADDRESS.test(address)) throw new TypeError('invalid-wallet-address');
   return {
     address,
@@ -299,7 +299,7 @@ export async function discoverWalletAssetCandidates(
 ): Promise<AssetCandidate[]> {
   if (!ADDRESS.test(address)) throw new TypeError('invalid-wallet-address');
   const fetcher = options.fetch ?? globalThis.fetch.bind(globalThis);
-  const graphql = options.graphql ?? PAGINATED_GRAPHQL;
+  const graphql = options.graphql ?? arweaveGraphqlEndpoint();
   const scan = options.scan ?? createWalletCandidateScan(address, graphql);
   if (scan.address !== address || scan.graphql !== graphql) {
     throw new TypeError('wallet-candidate-scan-scope-mismatch');
@@ -487,7 +487,7 @@ export async function discoverWalletAssetCandidates(
 
 export async function discoverMarketActivity(options: MarketActivityOptions = {}): Promise<AssetCandidate[]> {
   const fetcher = options.fetch ?? globalThis.fetch.bind(globalThis);
-  const graphql = options.graphql ?? PAGINATED_GRAPHQL;
+  const graphql = options.graphql ?? arweaveGraphqlEndpoint();
   const found = new Map<string, AssetCandidate>();
   const recipients = [...new Set((options.recipients ?? []).filter((id) => ADDRESS.test(id)))];
   let cursor: string | null = null;
@@ -585,7 +585,7 @@ export async function discoverCollectionActivity(
   options: CollectionActivityOptions,
 ): Promise<CollectionActivityEvent[]> {
   const fetcher = options.fetch ?? globalThis.fetch.bind(globalThis);
-  const graphql = options.graphql ?? PAGINATED_GRAPHQL;
+  const graphql = options.graphql ?? arweaveGraphqlEndpoint();
   const recipients = [...new Set((options.recipients ?? []).filter((id) => ADDRESS.test(id)))];
   const limit = Math.max(1, Math.min(200, Math.floor(options.limit ?? 100)));
   const actions = [
@@ -932,7 +932,7 @@ export async function verifyAssetCandidateSupport(
   const unavailable = new Map<string, unknown>();
   const ids = [...new Set(unindexed.map((candidate) => candidate.processId))];
   const fetcher = options.fetch ?? globalThis.fetch.bind(globalThis);
-  const graphql = options.graphql ?? PAGINATED_GRAPHQL;
+  const graphql = options.graphql ?? arweaveGraphqlEndpoint();
   const graphqlHost = new URL(graphql).hostname;
   const batchSize =
     graphqlHost === 'arweave.net' || graphqlHost.endsWith('.arweave.net')

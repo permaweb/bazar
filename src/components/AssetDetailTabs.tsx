@@ -55,6 +55,7 @@ export function AssetDetailTabs<Value extends string>({
             }}
             role="tab"
             size="small"
+            variant="ghost"
             tabIndex={selected ? 0 : -1}
           >
             {tab.icon}

@@ -92,6 +92,7 @@ export function WalletMenu() {
         ref={trigger}
         size="custom"
         title={wallet.address || undefined}
+        variant="primary"
       >
         <Wallet className="ui-icon ui-icon--sm" aria-hidden="true" />
         <span>{wallet.address ? shortAddress(wallet.address) : 'Connect'}</span>
@@ -120,11 +121,12 @@ export function WalletMenu() {
               }}
               role="menuitem"
               size="custom"
+              variant="ghost"
             >
               <Library className="ui-icon ui-icon--sm" aria-hidden="true" />
               My assets
             </Button>
-            <Button onClick={() => void copyAddress()} role="menuitem" size="custom">
+            <Button onClick={() => void copyAddress()} role="menuitem" size="custom" variant="ghost">
               <Copy className="ui-icon ui-icon--sm" aria-hidden="true" />
               {copied ? 'Copied' : 'Copy address'}
             </Button>
@@ -143,6 +145,7 @@ export function WalletMenu() {
                   onClick={() => theme.setPreference(id)}
                   role="menuitemradio"
                   size="custom"
+                  variant="ghost"
                 >
                   <Icon className="ui-icon ui-icon--sm" aria-hidden="true" />
                   {label}
@@ -152,7 +155,13 @@ export function WalletMenu() {
             })}
           </div>
           <div className="wallet-dropdown-footer">
-            <Button disabled={disconnecting} onClick={() => void disconnect()} role="menuitem" size="custom">
+            <Button
+              disabled={disconnecting}
+              onClick={() => void disconnect()}
+              role="menuitem"
+              size="custom"
+              variant="danger"
+            >
               <LogOut className="ui-icon ui-icon--sm" aria-hidden="true" />
               {disconnecting ? 'Disconnecting…' : 'Disconnect'}
             </Button>

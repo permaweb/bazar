@@ -1571,7 +1571,7 @@ p {
   font-weight: 400;
 }
 
-button {
+.ui-button {
   min-height: 35px;
   border: 1px solid var(--line-dark);
   background: var(--panel);
@@ -1584,17 +1584,26 @@ button {
   font-size: var(--type-body);
   font-weight: 400;
 }
-button:hover:not(:disabled):not([aria-disabled='true']) {
+.ui-button:hover:not(:disabled):not([aria-disabled='true']) {
   border-color: var(--line-dark);
   background: var(--surface-hover);
   transform: none;
 }
 .ui-button--medium,
-.ui-button--small {
+.ui-button--small,
+.ui-button--icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 7px;
+}
+.ui-button--icon {
+  width: 35px;
+  min-width: 0;
+  min-height: 35px;
+  flex: 0 0 auto;
+  padding: 0;
+  border-radius: 6px;
 }
 .ui-button--small {
   min-height: 28px;
@@ -1613,21 +1622,42 @@ button:hover:not(:disabled):not([aria-disabled='true']) {
   border-color: var(--line-dark);
   background: var(--surface-subtle);
 }
-button:disabled,
-button[aria-disabled='true'] {
+.ui-button--primary {
+  color: var(--ink);
+  border-color: var(--button-accent-hover);
+  background: var(--button-accent);
+}
+.ui-button--primary:hover:not(:disabled):not([aria-disabled='true']) {
+  color: var(--ink);
+  border-color: var(--line-dark);
+  background: var(--button-accent-hover);
+}
+.ui-button--ghost {
+  color: var(--muted);
+  border-color: var(--transparent);
+  background: var(--transparent);
+  box-shadow: none;
+}
+.ui-button--ghost:hover:not(:disabled):not([aria-disabled='true']) {
+  color: var(--ink);
+  border-color: var(--transparent);
+  background: var(--surface-hover);
+}
+.ui-button--danger {
+  color: var(--negative);
+  border-color: var(--negative-border);
+  background: var(--negative-surface);
+}
+.ui-button--danger:hover:not(:disabled):not([aria-disabled='true']) {
+  color: var(--negative);
+  border-color: var(--negative);
+  background: var(--negative-subtle-surface);
+}
+.ui-button:disabled,
+.ui-button[aria-disabled='true'] {
   cursor: default;
   color: var(--muted-subtle);
   opacity: 0.72;
-}
-.wallet {
-  color: var(--ink);
-  background: var(--button-accent);
-  border-color: var(--button-accent-hover);
-}
-.primary {
-  color: var(--ink);
-  background: var(--button-accent);
-  border-color: var(--button-accent-hover);
 }
 .wallet {
   min-height: 36px;
@@ -1771,11 +1801,6 @@ button[aria-disabled='true'] {
   color: var(--negative);
   font-size: var(--type-small);
   line-height: 1.35;
-}
-button.primary:hover:not(:disabled):not([aria-disabled='true']) {
-  color: var(--ink);
-  background: var(--button-accent-hover);
-  border-color: var(--line-dark);
 }
 .wide {
   width: 100%;
@@ -3502,7 +3527,7 @@ input:focus {
   min-height: 45px;
   border-radius: 7px;
 }
-.asset-commerce-actions .primary {
+.asset-commerce-actions .ui-button--primary {
   width: 100%;
 }
 .asset-commerce-actions .asset-buy-now {
@@ -5132,7 +5157,7 @@ body input:focus-visible {
 .fungible-asset-page .asset-commerce-actions {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
-.fungible-asset-page .asset-commerce-actions .primary {
+.fungible-asset-page .asset-commerce-actions .ui-button--primary {
   grid-column: 1 / -1;
 }
 .fungible-asset-page .market-note {
@@ -5315,7 +5340,8 @@ body input:focus-visible {
   color: var(--muted-subtle);
   font-size: var(--type-body);
 }
-.trade-form > .primary.wide {
+.trade-form > .ui-button--primary.wide,
+.trade-form > .ui-button--danger.wide {
   min-width: 0;
   overflow-wrap: anywhere;
   white-space: normal;
@@ -6591,12 +6617,16 @@ body input:focus-visible {
     padding: 3px;
     scroll-padding-block: 3px;
   }
-  .dialog-form-phase > .operation-form > .primary.wide,
-  .dialog-form-phase > .trade-form > .primary.wide {
+  .dialog-form-phase > .operation-form > .ui-button--primary.wide,
+  .dialog-form-phase > .operation-form > .ui-button--danger.wide,
+  .dialog-form-phase > .trade-form > .ui-button--primary.wide,
+  .dialog-form-phase > .trade-form > .ui-button--danger.wide {
     min-height: 44px;
   }
-  .dialog-form-phase > .operation-form > .primary.wide:focus-visible,
-  .dialog-form-phase > .trade-form > .primary.wide:focus-visible {
+  .dialog-form-phase > .operation-form > .ui-button--primary.wide:focus-visible,
+  .dialog-form-phase > .operation-form > .ui-button--danger.wide:focus-visible,
+  .dialog-form-phase > .trade-form > .ui-button--primary.wide:focus-visible,
+  .dialog-form-phase > .trade-form > .ui-button--danger.wide:focus-visible {
     outline-offset: -3px;
   }
   .dialog-form-phase button {

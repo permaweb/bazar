@@ -51,6 +51,7 @@ import { postConfirmationPendingLabel } from 'components/ArweaveTransactionSync/
 import { AssetDetailTabs, type AssetDetailTab } from 'components/AssetDetailTabs';
 import { AssetOperationStatus, assetOperationPendingActionLabel } from 'components/AssetOperationStatus';
 import { ArtworkImage } from 'components/ArtworkImage';
+import { Button } from 'components/Button';
 import { ConnectWalletButton } from 'components/ConnectWalletButton';
 import { ErrorPanel } from 'components/ErrorPanel';
 import { Loading } from 'components/Loading';
@@ -595,22 +596,23 @@ export function FungibleAssetView({
             Local tracking is paused. Resume here to continue observing signed work or review any wallet approvals still
             required.
           </span>
-          <button
+          <Button
             ref={resumeButtonRef}
             className="with-icon"
             type="button"
+            size="custom"
             onClick={() => setRecoverySuppressed(false)}
           >
             <RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Resume pending action
-          </button>
+          </Button>
         </div>
       ) : null}
       {recoveryNotice ? (
         <div className="pending-operation-notice">
           <span role="status">{recoveryNotice}</span>
-          <button type="button" onClick={() => setRecoveryNotice('')}>
+          <Button type="button" onClick={() => setRecoveryNotice('')} size="custom">
             Dismiss
-          </button>
+          </Button>
         </div>
       ) : null}
       {unavailableRecovery ? (
@@ -721,9 +723,11 @@ export function FungibleAssetView({
             <div className="asset-commerce-actions">
               {!wallet.address ? <ConnectWalletButton /> : null}
               {wallet.address && purchasableOrders.length ? (
-                <button
-                  className="primary with-icon"
+                <Button
+                  className="with-icon"
                   disabled={!purchaseAmountResult.match || purchaseBlocksActions || loading || Boolean(error)}
+                  size="custom"
+                  variant="primary"
                   onClick={() => {
                     if (!purchaseAmountResult.match) return;
                     openOperation({
@@ -740,31 +744,33 @@ export function FungibleAssetView({
                     : purchaseAmountResult.match
                       ? 'Buy tokens'
                       : 'Enter an amount'}
-                </button>
+                </Button>
               ) : null}
               {wallet.address && BigInt(liquid) > 0n ? (
-                <button
+                <Button
                   className={`${purchasableOrders.length ? '' : 'primary '}with-icon`}
                   disabled={assetBlocksActions || loading || Boolean(error)}
+                  size="custom"
                   onClick={() => openOperation({ kind: 'sell' })}
                 >
                   <Tag className="ui-icon ui-icon--sm" aria-hidden="true" />{' '}
                   {activeAssetActivity?.operation.kind === 'sell'
                     ? assetOperationPendingActionLabel('sell')
                     : 'List tokens'}
-                </button>
+                </Button>
               ) : null}
               {wallet.address && BigInt(liquid) > 0n ? (
-                <button
+                <Button
                   className="with-icon"
                   disabled={assetBlocksActions || loading || Boolean(error)}
+                  size="custom"
                   onClick={() => openOperation({ kind: 'transfer' })}
                 >
                   <Send className="ui-icon ui-icon--sm" aria-hidden="true" />{' '}
                   {activeAssetActivity?.operation.kind === 'transfer'
                     ? assetOperationPendingActionLabel('transfer')
                     : 'Transfer'}
-                </button>
+                </Button>
               ) : null}
             </div>
           </section>
@@ -816,17 +822,19 @@ export function FungibleAssetView({
                       </span>
                       <span className="orderbook-action-cell" role="cell">
                         {own && order.status === 'open' ? (
-                          <button
+                          <Button
                             aria-label={fungibleOrderActionLabel('cancel', order, state)}
                             className="order-action"
                             disabled={assetBlocksActions || loading || Boolean(error)}
+                            size="custom"
                             onClick={() => openOperation({ kind: 'cancel', order })}
+                            variant="danger"
                           >
                             {activeAssetActivity?.operation.kind === 'cancel' &&
                             activeAssetActivity.operation.order.orderId === order.orderId
                               ? assetOperationPendingActionLabel('cancel')
                               : 'Cancel'}
-                          </button>
+                          </Button>
                         ) : null}
                       </span>
                     </div>
@@ -847,8 +855,9 @@ export function FungibleAssetView({
                     Showing {visibleOrderRows.length.toLocaleString()} of {orders.length.toLocaleString()} live orders.
                   </p>
                   {visibleOrderRows.length < orders.length ? (
-                    <button
+                    <Button
                       type="button"
+                      size="custom"
                       onClick={() => {
                         const next = Math.min(orders.length, orderLimit + 50);
                         setOrderReveal({ assetId: asset.id, limit: next });
@@ -858,7 +867,7 @@ export function FungibleAssetView({
                       }}
                     >
                       Show {Math.min(50, orders.length - visibleOrderRows.length).toLocaleString()} more orders
-                    </button>
+                    </Button>
                   ) : null}
                 </div>
               ) : null}
@@ -909,10 +918,11 @@ export function FungibleAssetView({
                 <Loading label={activity.length ? 'Refreshing market history…' : 'Reading indexed market history…'} />
               ) : null}
               <div className="asset-history-actions">
-                <button
+                <Button
                   aria-disabled={activityLoading}
                   className="with-icon"
                   type="button"
+                  size="custom"
                   onClick={() => {
                     if (!activityLoading) onActivityRetry();
                   }}
@@ -925,7 +935,7 @@ export function FungibleAssetView({
                     : activityError
                       ? 'Retry history'
                       : 'Refresh history'}
-                </button>
+                </Button>
               </div>
               {activityError ? (
                 <div className="inline-error" role={activity.length ? 'status' : 'alert'}>
@@ -2044,9 +2054,16 @@ function FungibleOperationDialog({
               </div>
             </div>
             <PurchaseRoute fills={visibleFills} state={state} />
-            <button className="primary wide" data-dialog-initial onClick={() => void submit()} type="button">
+            <Button
+              className="wide"
+              data-dialog-initial
+              onClick={() => void submit()}
+              type="button"
+              size="custom"
+              variant="primary"
+            >
               {recoveryApprovalCopy?.action}
-            </button>
+            </Button>
           </div>
         ) : null}
         {phase === 'form' ? (
@@ -2273,14 +2290,15 @@ function FungibleOperationDialog({
                     quoteState === 'error' ? (
                       <div className="inline-error" role="alert">
                         <span>Live fees and wallet balance could not be checked.</span>
-                        <button
+                        <Button
                           aria-describedby={quoteStatusId}
                           className="with-icon"
                           onClick={() => setQuoteRetry((value) => value + 1)}
                           type="button"
+                          size="custom"
                         >
                           <RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Retry
-                        </button>
+                        </Button>
                       </div>
                     ) : null
                   ) : null}
@@ -2293,8 +2311,8 @@ function FungibleOperationDialog({
               ) : null}
             </div>
             <div className="trade-form-footer">
-              <button
-                className="primary wide"
+              <Button
+                className="wide"
                 data-dialog-initial
                 aria-label={
                   operation.kind === 'transfer' && enteredQuantity && transferValid
@@ -2307,7 +2325,9 @@ function FungibleOperationDialog({
                   (operation.kind === 'sell' && !sellValid) ||
                   (operation.kind === 'transfer' && !transferValid)
                 }
+                size="custom"
                 type="submit"
+                variant={operation.kind === 'cancel' ? 'danger' : 'primary'}
               >
                 {operation.kind === 'buy' && matchedOrders.length
                   ? `Buy ${formatGroupedTokenAmount(matchedQuantity.toString(), state.denomination)} ${ticker} · ${estimatedCost ? `${winstonToAr(estimatedCost)} AR max` : 'checking total…'}`
@@ -2318,7 +2338,7 @@ function FungibleOperationDialog({
                       : operation.kind === 'transfer' && enteredQuantity
                         ? fungibleTransferSubmitLabel(enteredQuantity.toString(), state, transferRecipient)
                         : operationLabel(operation.kind)}
-              </button>
+              </Button>
             </div>
           </form>
         ) : null}
@@ -2421,9 +2441,15 @@ function FungibleOperationDialog({
                 </div>
               </div>
             ) : null}
-            <button className="primary with-icon" data-dialog-initial onClick={() => onClose(false)}>
+            <Button
+              className="with-icon"
+              data-dialog-initial
+              onClick={() => onClose(false)}
+              size="custom"
+              variant="primary"
+            >
               <ArrowLeft className="ui-icon ui-icon--sm" /> View updated token
-            </button>
+            </Button>
           </div>
         ) : null}
         {phase === 'error' ? (
@@ -2435,13 +2461,14 @@ function FungibleOperationDialog({
                   {visibleOrders.map((order, index) => {
                     const active = order.orderId === activeOrder?.orderId;
                     return (
-                      <button
+                      <Button
                         aria-controls={SETTLEMENT_ERROR_PANEL_ID}
                         aria-selected={active}
                         className={active ? 'active' : undefined}
                         id={`settlement-error-tab-${order.orderId}`}
                         key={order.orderId}
                         onClick={() => setActiveOrderId(order.orderId)}
+                        size="custom"
                         onKeyDown={(event) => {
                           const nextIndex = settlementTabIndex(event.key, index, visibleOrders.length);
                           if (nextIndex === null) return;
@@ -2459,7 +2486,7 @@ function FungibleOperationDialog({
                         <span>Listing {index + 1}</span>
                         <strong>{tokenLabel(order.quantity, state)}</strong>
                         <small>{batchStageLabel(purchaseStates[order.orderId])}</small>
-                      </button>
+                      </Button>
                     );
                   })}
                 </div>
@@ -2513,12 +2540,13 @@ function FungibleOperationDialog({
               </>
             ) : null}
             {failureKind === 'market-state-changed' ? (
-              <button data-dialog-initial onClick={() => onClose(false)}>
+              <Button data-dialog-initial onClick={() => onClose(false)} size="custom">
                 View updated token
-              </button>
+              </Button>
             ) : failureKind === 'transaction-rejected' && transaction ? (
-              <button
+              <Button
                 data-dialog-initial
+                size="custom"
                 onClick={() => {
                   removeWalletRecordIf<any>(
                     localStorage,
@@ -2528,9 +2556,10 @@ function FungibleOperationDialog({
                   localStorage.removeItem(`bazar-signed-transaction:${transaction.id}`);
                   onClose(false);
                 }}
+                variant="danger"
               >
                 Discard rejected signature and sign again
-              </button>
+              </Button>
             ) : operation.kind === 'buy' ? (
               <>
                 {recoverableBatch ? (
@@ -2538,19 +2567,20 @@ function FungibleOperationDialog({
                 ) : (
                   <p>No transaction was submitted. Any earlier approvals from this attempt were discarded.</p>
                 )}
-                <button data-dialog-initial onClick={restartPurchase}>
+                <Button data-dialog-initial onClick={restartPurchase} size="custom">
                   {recoverableBatch
                     ? `Resume ${incompletePurchases} incomplete ${incompletePurchases === 1 ? 'settlement' : 'settlements'}`
                     : 'Try again'}
-                </button>
+                </Button>
               </>
             ) : transaction ? (
-              <button data-dialog-initial onClick={() => void submit()}>
+              <Button data-dialog-initial onClick={() => void submit()} size="custom">
                 Resume the signed transaction
-              </button>
+              </Button>
             ) : (
-              <button
+              <Button
                 data-dialog-initial
+                size="custom"
                 onClick={() => {
                   setFailureKind(null);
                   setMessage('');
@@ -2558,7 +2588,7 @@ function FungibleOperationDialog({
                 }}
               >
                 Try again
-              </button>
+              </Button>
             )}
           </div>
         ) : null}
@@ -2605,13 +2635,15 @@ export function MatchedListingsReview({
               </span>
               <WalletIdentity address={order.creator} />
               {onRemove ? (
-                <button
+                <Button
                   aria-label={`Remove ${fungibleListingAccessibleLabel(order, state)} from purchase`}
                   onClick={() => onRemove(order)}
+                  size="custom"
                   type="button"
+                  variant="danger"
                 >
                   Remove
-                </button>
+                </Button>
               ) : null}
             </li>
           ))}
@@ -2676,9 +2708,9 @@ export function FungiblePurchaseComposer({
       <div className="purchase-composer-panel purchase-composer-buy">
         <div className="purchase-composer-heading">
           <label htmlFor={inputId}>You buy</label>
-          <button onClick={onMax} type="button">
+          <Button onClick={onMax} type="button" size="custom">
             Max
-          </button>
+          </Button>
         </div>
         <div className="purchase-composer-value">
           <input
@@ -2823,24 +2855,26 @@ export function FungiblePurchaseReceiptNavigator({
       </section>
       {orders.length > 1 ? (
         <div className="settlement-receipt-paging">
-          <button
+          <Button
             aria-disabled={activeIndex === 0}
             onClick={() => {
               if (activeIndex > 0) onSelect(orders[activeIndex - 1].orderId);
             }}
             type="button"
+            size="custom"
           >
             Previous receipt
-          </button>
-          <button
+          </Button>
+          <Button
             aria-disabled={activeIndex === orders.length - 1}
             onClick={() => {
               if (activeIndex < orders.length - 1) onSelect(orders[activeIndex + 1].orderId);
             }}
             type="button"
+            size="custom"
           >
             Next receipt
-          </button>
+          </Button>
         </div>
       ) : null}
     </div>

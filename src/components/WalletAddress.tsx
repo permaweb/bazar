@@ -43,6 +43,7 @@ export function WalletAddress({
         onClick={() => void copy()}
         size="custom"
         title={address}
+        variant="ghost"
       >
         <span>{full ? address : shortened}</span>
         {copyState === 'copied' ? (

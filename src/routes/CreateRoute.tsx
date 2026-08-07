@@ -20,8 +20,9 @@ import {
   type UdlTerms,
 } from 'api/asset-mint';
 import { waitForAssetState } from 'api/asset-marketplace';
-import { Loading } from 'components/Loading';
 import { AudioArtwork } from 'components/AudioArtwork';
+import { Button } from 'components/Button';
+import { Loading } from 'components/Loading';
 import { isAudioContentType, normalizeAssetContentType } from 'helpers/asset-media';
 import { arweaveGatewayFromLocation } from 'helpers/config';
 import { useWallet } from 'providers/WalletProvider';
@@ -335,11 +336,12 @@ export default function CreateRoute() {
       </div>
 
       <div className="create-mode" role="tablist" aria-label="Create type">
-        <button
+        <Button
           className={mode === 'asset' ? 'active' : undefined}
           role="tab"
           aria-selected={mode === 'asset'}
           type="button"
+          size="custom"
           onClick={() => {
             setMode('asset');
             setError(null);
@@ -347,12 +349,13 @@ export default function CreateRoute() {
           }}
         >
           Single asset
-        </button>
-        <button
+        </Button>
+        <Button
           className={mode === 'collection' ? 'active' : undefined}
           role="tab"
           aria-selected={mode === 'collection'}
           type="button"
+          size="custom"
           onClick={() => {
             setMode('collection');
             setError(null);
@@ -360,7 +363,7 @@ export default function CreateRoute() {
           }}
         >
           Collection
-        </button>
+        </Button>
       </div>
 
       {mode === 'asset' && draft ? (
@@ -373,28 +376,30 @@ export default function CreateRoute() {
             </span>
           </div>
           <div>
-            <button type="button" onClick={() => void resume()} disabled={working}>
+            <Button type="button" onClick={() => void resume()} disabled={working} size="custom">
               Finish mint
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
               onClick={() => {
                 discardMintDraft(draft.owner);
                 setDraft(null);
               }}
               disabled={working}
+              size="custom"
             >
               Dismiss
-            </button>
+            </Button>
           </div>
         </div>
       ) : null}
 
       <div className="create-layout">
         <div className="create-preview-column">
-          <button
+          <Button
             className={`mint-dropzone${mode === 'asset' && preview ? ' has-file' : ''}${mode === 'collection' && collectionPreviews.length ? ' has-file collection-files' : ''}`}
             type="button"
+            size="custom"
             onClick={() => fileInput.current?.click()}
             onDragOver={(event) => event.preventDefault()}
             onDrop={(event) => {
@@ -430,7 +435,7 @@ export default function CreateRoute() {
                 </small>
               </span>
             )}
-          </button>
+          </Button>
           <input
             ref={fileInput}
             className="mint-file-input"
@@ -462,20 +467,22 @@ export default function CreateRoute() {
                 {artworkPreview ? <img src={artworkPreview} alt="Album artwork preview" /> : null}
               </div>
               <div>
-                <button type="button" onClick={() => artworkInput.current?.click()}>
+                <Button type="button" onClick={() => artworkInput.current?.click()} size="custom">
                   <Upload className="ui-icon ui-icon--sm" aria-hidden="true" />{' '}
                   {artwork ? 'Replace artwork' : 'Add artwork'}
-                </button>
+                </Button>
                 {artwork ? (
-                  <button
+                  <Button
                     type="button"
+                    size="custom"
+                    variant="danger"
                     onClick={() => {
                       setArtwork(null);
                       if (artworkInput.current) artworkInput.current.value = '';
                     }}
                   >
                     <X className="ui-icon ui-icon--sm" aria-hidden="true" /> Remove
-                  </button>
+                  </Button>
                 ) : null}
               </div>
               <input
@@ -500,18 +507,20 @@ export default function CreateRoute() {
                     <strong>{index + 1}</strong>
                     {item.name.replace(/\.[^.]+$/, '')}
                   </span>
-                  <button
+                  <Button
                     type="button"
+                    size="icon"
                     aria-label={`Remove ${item.name}`}
                     onClick={() => selectCollectionFiles(collectionFiles.filter((_, heldIndex) => heldIndex !== index))}
+                    variant="danger"
                   >
                     <X className="ui-icon ui-icon--sm" aria-hidden="true" />
-                  </button>
+                  </Button>
                 </div>
               ))}
-              <button type="button" onClick={() => fileInput.current?.click()}>
+              <Button type="button" onClick={() => fileInput.current?.click()} size="custom">
                 <Upload className="ui-icon ui-icon--sm" aria-hidden="true" /> Add images
-              </button>
+              </Button>
             </div>
           ) : null}
         </div>
@@ -841,8 +850,9 @@ export default function CreateRoute() {
                       : 'Watching while this page remains open. You can view the asset as soon as its live state resolves.'}
                 </p>
               </div>
-              <button
+              <Button
                 type="button"
+                size="custom"
                 disabled={Boolean(result && !resultReady)}
                 onClick={() =>
                   navigate(
@@ -862,12 +872,13 @@ export default function CreateRoute() {
                     <ArrowRight className="ui-icon ui-icon--sm" aria-hidden="true" />
                   </>
                 )}
-              </button>
+              </Button>
             </div>
           ) : (
-            <button
+            <Button
               className="mint-submit"
               type="submit"
+              size="custom"
               disabled={
                 working ||
                 Boolean(wallet.address && mode === 'asset' && file && name.trim() && !estimate) ||
@@ -889,7 +900,7 @@ export default function CreateRoute() {
                     : 'Mint collection'
                   : 'Connect wallet to create'}
               {!working ? <ArrowRight className="ui-icon" aria-hidden="true" /> : null}
-            </button>
+            </Button>
           )}
           <p className="mint-permanence">
             Confirmed Arweave uploads are permanent and cannot be edited. Review every image, name, and description

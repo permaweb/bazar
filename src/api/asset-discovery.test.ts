@@ -20,7 +20,7 @@ import {
   type CollectionActivityEvent,
 } from './asset-discovery';
 import { parseAssetState } from './asset-marketplace';
-import { PAGINATED_GRAPHQL } from 'helpers/config';
+import { arweaveGraphqlEndpoint } from 'helpers/config';
 
 const wallet = 'W'.repeat(43);
 const buyer = 'B'.repeat(43);
@@ -160,7 +160,7 @@ describe('wallet candidate discovery', () => {
 
     expect(fetcher).toHaveBeenCalledTimes(2);
     const firstCall = fetcher.mock.calls[0] as unknown as [RequestInfo | URL, RequestInit];
-    expect(firstCall[0]).toBe(PAGINATED_GRAPHQL);
+    expect(firstCall[0]).toBe(arweaveGraphqlEndpoint());
     const firstBody = JSON.parse(String(firstCall[1].body));
     expect(firstBody.query).toContain('initiallyHeld: transactions');
     expect(firstBody.query).toContain('marketActions: transactions');
@@ -1476,7 +1476,7 @@ describe('live candidate resolution', () => {
     ]);
   });
 
-  it('batch-rejects unindexed transfer spam before any live compute read', async () => {
+  it('batch-rejects unindexed transfer spam with Arweave-compatible GraphQL batches before any live compute read', async () => {
     const tokenCollection: Collection = {
       id: 'fungible-tokens',
       name: 'Tokens',
@@ -1511,8 +1511,8 @@ describe('live candidate resolution', () => {
     await resolveAssetCandidates(verification.supported, [tokenCollection], { read });
 
     expect(verification).toEqual({ supported: [], unavailable: [] });
-    expect(fetcher).toHaveBeenCalledTimes(2);
-    expect(Math.max(...batchSizes)).toBe(100);
+    expect(fetcher).toHaveBeenCalledTimes(17);
+    expect(Math.max(...batchSizes)).toBe(9);
     expect(peak).toBe(2);
     expect(read).not.toHaveBeenCalled();
   });

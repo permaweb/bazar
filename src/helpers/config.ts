@@ -4,7 +4,6 @@ export const DEFAULT_ARWEAVE_GATEWAY = configuredArweaveGateway
   ? new URL(configuredArweaveGateway).origin
   : 'https://arweave.net';
 export const DEFAULT_COMPUTE_GATEWAY = 'https://alpha.neo.zephyrdev.xyz';
-export const PAGINATED_GRAPHQL = import.meta.env.VITE_PAGINATED_GRAPHQL ?? 'https://turbo-gateway.com/graphql';
 export const NAMES_NAMESPACE_ID =
   import.meta.env.VITE_NAMES_NAMESPACE_ID ?? 'fQXYPE9MAcfI1wV2CwJ3sJIhgT9btBOlYFOKFDGhAs0';
 export const AO_MAINNET = { app1: DEFAULT_COMPUTE_GATEWAY };
@@ -56,6 +55,12 @@ export function arweaveClientConfig(gateway = arweaveGatewayFromLocation()) {
     port: url.port ? Number(url.port) : url.protocol === 'https:' ? 443 : 80,
     protocol: url.protocol.slice(0, -1),
   };
+}
+
+export function arweaveGraphqlEndpoint(
+  location: GatewayLocation | undefined = typeof window === 'undefined' ? undefined : window.location,
+): string {
+  return `${arweaveGatewayFromLocation(location)}/graphql`;
 }
 
 export function gatewayFromLocation(location: Location = window.location): string {

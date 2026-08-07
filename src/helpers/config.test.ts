@@ -5,6 +5,7 @@ import {
   arweaveClientConfig,
   arweaveGatewayFromLocation,
   arweaveGatewayOverrideFromLocation,
+  arweaveGraphqlEndpoint,
   gatewayFromLocation,
 } from './config';
 
@@ -57,5 +58,12 @@ describe('Arweave gateway routing', () => {
       port: 1984,
       protocol: 'http',
     });
+  });
+
+  it('posts GraphQL queries through the selected Arweave gateway', () => {
+    expect(arweaveGraphqlEndpoint(location())).toBe('https://bazar.arweave.net/graphql');
+    expect(arweaveGraphqlEndpoint(location({ search: '?arweave-node=https%3A%2F%2Fgateway.example' }))).toBe(
+      'https://gateway.example/graphql',
+    );
   });
 });

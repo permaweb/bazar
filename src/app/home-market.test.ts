@@ -16,6 +16,7 @@ import {
   completeHomeSummaryRetryGroup,
   homeAssetTypeMatches,
   homeAssetPage,
+  homeAssetCardsPublished,
   homeAssetVisibleForView,
   homeAllAssets,
   homeSummaryRequestKeys,
@@ -291,9 +292,19 @@ describe('Home market summary retries', () => {
     const listed: HomeMarketSummary = { status: 'resolved', value: '0.001 AR' };
 
     expect(homeAssetVisibleForView(unlisted, 'all')).toBe(true);
+    expect(homeAssetVisibleForView(undefined, 'listed')).toBe(false);
+    expect(homeAssetVisibleForView({ status: 'unavailable', source: 'compute', kind: 'unavailable' }, 'listed')).toBe(
+      false,
+    );
     expect(homeAssetVisibleForView(unlisted, 'listed')).toBe(false);
     expect(homeAssetVisibleForView(listed, 'listed')).toBe(true);
     expect(homeAssetVisibleForView(listed, 'price-low')).toBe(true);
+  });
+
+  it('holds Listed for sale cards until the complete result set is resolved', () => {
+    expect(homeAssetCardsPublished('listed', true)).toBe(false);
+    expect(homeAssetCardsPublished('listed', false)).toBe(true);
+    expect(homeAssetCardsPublished('all', true)).toBe(true);
   });
 
   it('paginates Discover assets and clamps pages when filters reduce the result set', () => {

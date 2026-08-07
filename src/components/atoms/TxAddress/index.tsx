@@ -41,8 +41,9 @@ export function TxAddress({ address, wrap = false }: { address: string; wrap?: b
         aria-label={copied ? 'Transaction address copied' : 'Copy transaction address'}
         className="tx-address-copy"
         onClick={() => void copyAddress()}
-        size="custom"
+        size="icon"
         title={copied ? 'Copied' : 'Copy transaction address'}
+        variant="ghost"
       >
         {copied ? (
           <Check className="ui-icon ui-icon--xs" aria-hidden="true" />

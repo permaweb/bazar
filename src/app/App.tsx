@@ -970,35 +970,51 @@ function Header() {
                 ref={panelInputRef}
               />
               {query ? (
-                <button type="button" onClick={clearSearchQuery} aria-label="Clear search">
+                <Button
+                  size="custom"
+                  type="button"
+                  onClick={clearSearchQuery}
+                  aria-label="Clear search"
+                  variant="ghost"
+                >
                   Clear
-                </button>
+                </Button>
               ) : null}
-              <button className="search-panel-submit" type="submit" aria-label="View search results">
+              <Button
+                size="icon"
+                className="search-panel-submit"
+                type="submit"
+                aria-label="View search results"
+                variant="primary"
+              >
                 <ArrowRight className="ui-icon ui-icon--sm" aria-hidden="true" />
-              </button>
-              <button
+              </Button>
+              <Button
                 className="search-panel-close"
                 type="button"
                 onClick={() => closeSearch()}
                 aria-label="Close search"
+                size="icon"
+                variant="ghost"
               >
                 <X aria-hidden="true" />
-              </button>
+              </Button>
             </form>
             <aside className="search-categories" aria-label="Search categories">
               {scopes.map((item) => {
                 const ScopeIcon = item.Icon;
                 return (
-                  <button
+                  <Button
                     aria-pressed={scope === item.id}
                     className={scope === item.id ? 'active' : undefined}
                     key={item.id}
+                    size="custom"
                     onClick={() => setScope(item.id)}
+                    variant="ghost"
                   >
                     <ScopeIcon className="ui-icon" aria-hidden="true" />
                     {item.label}
-                  </button>
+                  </Button>
                 );
               })}
             </aside>
@@ -1029,14 +1045,16 @@ function Header() {
                   <section className="search-result-section">
                     <div className="search-result-heading">
                       <h2>Recent searches</h2>
-                      <button onClick={clearRecentSearches}>Clear</button>
+                      <Button onClick={clearRecentSearches} size="custom" variant="ghost">
+                        Clear
+                      </Button>
                     </div>
                     <div className="recent-searches">
                       {recentQueries.map((item) => (
-                        <button key={item} onClick={() => useRecentQuery(item)}>
+                        <Button key={item} onClick={() => useRecentQuery(item)} size="custom" variant="ghost">
                           <History className="ui-icon ui-icon--sm" aria-hidden="true" />
                           {item}
-                        </button>
+                        </Button>
                       ))}
                     </div>
                   </section>
@@ -1194,18 +1212,20 @@ function OperationActivityControl() {
   if (!activityCount) return null;
   return (
     <div className="operation-activity-control" ref={containerRef}>
-      <button
+      <Button
         aria-expanded={open}
         aria-label={`Transaction activity, ${activityCount} ${activityCount === 1 ? 'item' : 'items'}`}
         className={`operation-activity-trigger${workingCount ? ' working' : ''}`}
         data-activity-owner="global"
         data-tooltip="Transaction activity"
+        size="custom"
         onClick={() => setOpen((value) => !value)}
         type="button"
+        variant="ghost"
       >
         <InfinityIcon className="ui-icon" aria-hidden="true" />
         <span>{activityCount}</span>
-      </button>
+      </Button>
       {open ? (
         <section aria-label="Transaction activity" className="operation-activity-menu">
           <div className="operation-activity-heading">
@@ -1217,13 +1237,15 @@ function OperationActivityControl() {
           <div className="operation-activity-list">
             {visibleActivities.map((activity) => (
               <div className={`operation-activity-item ${activity.phase}`} key={activity.id}>
-                <button
+                <Button
                   className="operation-activity-open"
+                  size="custom"
                   onClick={() => {
                     show(activity.id);
                     setOpen(false);
                   }}
                   type="button"
+                  variant="ghost"
                 >
                   <span className="operation-activity-symbol" aria-hidden="true">
                     {activity.asset.image ? (
@@ -1252,18 +1274,20 @@ function OperationActivityControl() {
                     ) : null}
                   </span>
                   <ChevronRight className="ui-icon ui-icon--sm operation-activity-chevron" aria-hidden="true" />
-                </button>
+                </Button>
               </div>
             ))}
             {visibleFungibleActivities.map((activity) => (
               <div className={`operation-activity-item ${activity.phase}`} key={activity.id}>
-                <button
+                <Button
                   className="operation-activity-open"
+                  size="custom"
                   onClick={() => {
                     showFungible(activity.id);
                     setOpen(false);
                   }}
                   type="button"
+                  variant="ghost"
                 >
                   <span className="operation-activity-symbol" aria-hidden="true">
                     {activity.asset.image ? (
@@ -1285,7 +1309,7 @@ function OperationActivityControl() {
                     ) : null}
                   </span>
                   <ChevronRight className="ui-icon ui-icon--sm operation-activity-chevron" aria-hidden="true" />
-                </button>
+                </Button>
               </div>
             ))}
           </div>
@@ -1504,7 +1528,11 @@ export function homeAssetPage<T>(items: T[], requestedPage: number, pageSize = H
 }
 
 export function homeAssetVisibleForView(summary: HomeMarketSummary | undefined, view: HomeAssetView) {
-  return view === 'all' || !summary || summary.status === 'unavailable' || homeMarketSummaryListed(summary);
+  return view === 'all' || homeMarketSummaryListed(summary);
+}
+
+export function homeAssetCardsPublished(view: HomeAssetView, pending: boolean) {
+  return view !== 'listed' || !pending;
 }
 
 function HomePendingMarketValue({ label = 'Checking…' }: { label?: string }) {
@@ -2111,6 +2139,8 @@ function Home() {
     assets.map(({ asset }) => asset.id),
     assetPrices,
   );
+  const discoverResultsFailed = Boolean(portableHomeListingsFailure) || summaryFailures.length > 0;
+  const publishAssetCards = homeAssetCardsPublished(assetView, discoverResultsPending);
   const discoverResultsReady = discoverResultsPublished || visibleAssetResultsReady;
   const selectHomeTab = (tab: 'discover' | 'collections') => {
     setHomeTab(tab);
@@ -2236,10 +2266,11 @@ function Home() {
                   <span role="status">
                     {summaryRetrying ? 'Rechecking unfinished market data.' : summaryFailureMessage}
                   </span>
-                  <button
+                  <Button
                     aria-busy={summaryRetrying}
                     aria-disabled={summaryRetrying}
                     className="with-icon"
+                    size="custom"
                     onBlur={(event) => {
                       if (summaryRetrying && event.relatedTarget) summaryRetryOwnsFocus.current = false;
                     }}
@@ -2253,7 +2284,7 @@ function Home() {
                   >
                     <RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" />{' '}
                     {summaryRetrying ? 'Retrying…' : 'Retry market data'}
-                  </button>
+                  </Button>
                 </div>
               ) : null}
               {homeTab === 'collections' ? (
@@ -2355,7 +2386,7 @@ function Home() {
                   {displayedAssets.length || discoverResultsPending ? (
                     <>
                       <div className="home-asset-grid">
-                        {assetPagination.items.map(({ asset, collection }, index) => {
+                        {(publishAssetCards ? assetPagination.items : []).map(({ asset, collection }, index) => {
                           const price = assetPrices[asset.id];
                           const pricePending = !price || (assetSummariesRetrying && price.status === 'unavailable');
                           return (
@@ -2406,15 +2437,17 @@ function Home() {
                         })}
                         {discoverResultsPending ? <HomeMarketGhostCard kind="asset" /> : null}
                       </div>
-                      <Pagination
-                        ariaLabel="Discover pages"
-                        className="home-asset-pagination"
-                        onPageChange={selectAssetPage}
-                        page={assetPagination.page}
-                        pageCount={assetPagination.pageCount}
-                      />
+                      {publishAssetCards ? (
+                        <Pagination
+                          ariaLabel="Discover pages"
+                          className="home-asset-pagination"
+                          onPageChange={selectAssetPage}
+                          page={assetPagination.page}
+                          pageCount={assetPagination.pageCount}
+                        />
+                      ) : null}
                     </>
-                  ) : (
+                  ) : discoverResultsFailed ? null : (
                     <div className="home-assets-empty">
                       {assetView === 'all'
                         ? 'No assets match this asset type.'
@@ -2508,9 +2541,9 @@ function GatewayControl() {
               {error}
             </p>
           ) : null}
-          <button className="with-icon" type="submit">
+          <Button className="with-icon" type="submit" size="custom">
             <Server className="ui-icon ui-icon--sm" aria-hidden="true" /> Apply gateway
-          </button>
+          </Button>
         </form>
         <p>
           Process reads and observer requests use HyperBEAM. Content, pricing, balances, and settlement use the site
@@ -2603,12 +2636,13 @@ export function MarketSelect<Value extends string>({
       ref={rootRef}
     >
       {showLabel ? <span className="market-select-label">{label}</span> : null}
-      <button
+      <Button
         aria-controls={menuId}
         aria-expanded={open}
         aria-haspopup="listbox"
         aria-label={`${label}: ${selected.label}`}
         className={`market-select-trigger${open ? ' open' : ''}`}
+        size="custom"
         onClick={() => (open ? setOpen(false) : openAndFocus())}
         onKeyDown={(event) => {
           if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
@@ -2620,16 +2654,17 @@ export function MarketSelect<Value extends string>({
       >
         <span>{selected.label}</span>
         <ChevronDown aria-hidden="true" />
-      </button>
+      </Button>
       {open ? (
         <div aria-label={label} className="market-select-menu" id={menuId} role="listbox">
           {options.map((option, index) => {
             const active = option.value === value;
             return (
-              <button
+              <Button
                 aria-selected={active}
                 className={`market-select-option${active ? ' active' : ''}`}
                 key={option.value}
+                size="custom"
                 onClick={() => selectOption(option)}
                 onKeyDown={(event) => {
                   if (event.key === 'Tab') {
@@ -2648,11 +2683,12 @@ export function MarketSelect<Value extends string>({
                 }}
                 role="option"
                 tabIndex={-1}
+                variant="ghost"
                 type="button"
               >
                 <span>{option.label}</span>
                 {active ? <Check aria-hidden="true" /> : null}
-              </button>
+              </Button>
             );
           })}
         </div>
@@ -3500,12 +3536,14 @@ function CollectionView() {
             ref={alphabetScrollerRef}
           >
             {['all', ...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('')].map((letter, index, options) => (
-              <button
+              <Button
                 aria-label={letter === 'all' ? 'All names' : `Names beginning with ${letter}`}
                 aria-pressed={initial === letter}
                 className={initial === letter ? 'active' : undefined}
                 key={letter}
+                size="custom"
                 type="button"
+                variant="ghost"
                 onClick={() => {
                   setAlphabetFocus(letter);
                   setInitial(letter);
@@ -3523,30 +3561,32 @@ function CollectionView() {
                 tabIndex={alphabetFocus === letter ? 0 : -1}
               >
                 {letter === 'all' ? 'All' : letter}
-              </button>
+              </Button>
             ))}
           </nav>
           {!alphabetEdges.start ? (
-            <button
+            <Button
               aria-controls="name-initial-filter"
               aria-label="Browse earlier letters"
               className="alphabet-scroll alphabet-scroll-previous"
+              size="icon"
               onClick={() => browseAlphabet('previous')}
               type="button"
             >
               <ArrowLeft aria-hidden="true" />
-            </button>
+            </Button>
           ) : null}
           {!alphabetEdges.end ? (
-            <button
+            <Button
               aria-controls="name-initial-filter"
               aria-label="Browse later letters"
               className="alphabet-scroll alphabet-scroll-next"
+              size="icon"
               onClick={() => browseAlphabet('next')}
               type="button"
             >
               <ArrowRight aria-hidden="true" />
-            </button>
+            </Button>
           ) : null}
         </div>
       ) : null}
@@ -3609,15 +3649,16 @@ function CollectionView() {
       {activityState.error ? (
         <div className="inline-error">
           <span role="alert">{activityState.error}</span>
-          <button
+          <Button
             className="with-icon"
+            size="custom"
             onClick={() => {
               setRetry((value) => value + 1);
               window.requestAnimationFrame(() => collectionStatusRef.current?.focus());
             }}
           >
             <RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Retry
-          </button>
+          </Button>
         </div>
       ) : null}
       {!listedOnly && !cardPricesLoading && (cardPricesFailure || visibleUnavailablePrices > 0) ? (
@@ -3630,10 +3671,10 @@ function CollectionView() {
               ? ` ${visibleUnavailablePrices.toLocaleString()} visible ${visibleUnavailablePrices === 1 ? 'price remains' : 'prices remain'} unavailable.`
               : ''}
           </span>
-          <button className="with-icon" type="button" onClick={retryCardPrices}>
+          <Button className="with-icon" type="button" onClick={retryCardPrices} size="custom">
             <RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" />
             {cardPricesFailure?.kind === 'rate-limited' || visibleRateLimitedPrices ? 'Retry later' : 'Retry prices'}
-          </button>
+          </Button>
         </div>
       ) : null}
       {listedOnly && !activityState.loading && !activityState.error && activityState.failures ? (
@@ -3649,9 +3690,10 @@ function CollectionView() {
             {activityState.failures === 1 ? 'candidate remains' : 'candidates remain'} unavailable. Resolved listings
             remain visible.
           </span>
-          <button
+          <Button
             className="with-icon"
             disabled={listingRetrying}
+            size="custom"
             type="button"
             onClick={() => {
               setListingRetry((value) => value + 1);
@@ -3660,7 +3702,7 @@ function CollectionView() {
           >
             <RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" />{' '}
             {listingRetrying ? 'Retrying…' : activityState.rateLimited ? 'Retry later' : 'Retry unavailable'}
-          </button>
+          </Button>
         </div>
       ) : null}
       {listedOnly && sort === 'recent' && (recentOrderState.loading || recentOrderState.error) ? (
@@ -3671,8 +3713,9 @@ function CollectionView() {
               : `${marketplaceRequestFailureMessage('index', recentOrderState.error!)} Resolved listings are shown in Default order.`}
           </span>
           {recentOrderState.error ? (
-            <button
+            <Button
               className="with-icon"
+              size="custom"
               type="button"
               onClick={() => {
                 setRecentOrderRetry((value) => value + 1);
@@ -3680,7 +3723,7 @@ function CollectionView() {
               }}
             >
               <RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Retry recent order
-            </button>
+            </Button>
           ) : null}
         </div>
       ) : null}
@@ -3753,9 +3796,9 @@ function CollectionView() {
                     : 'Arweave returned no indexed offer candidates for this collection window. Live state remains the marketplace truth once a candidate is found.'}
           </p>
           {query || initial !== 'all' ? (
-            <button type="button" onClick={clearCollectionFilters}>
+            <Button type="button" onClick={clearCollectionFilters} size="custom">
               Clear filters
-            </button>
+            </Button>
           ) : null}
         </div>
       ) : null}
@@ -3783,9 +3826,9 @@ function CollectionView() {
                 : 'This collection does not contain any indexed assets yet.'}
           </p>
           {query || initial !== 'all' ? (
-            <button type="button" onClick={clearCollectionFilters}>
+            <Button type="button" onClick={clearCollectionFilters} size="custom">
               {initial !== 'all' ? 'View all names' : 'Clear search'}
-            </button>
+            </Button>
           ) : null}
         </div>
       ) : null}
@@ -3800,8 +3843,9 @@ function CollectionView() {
           <span role="alert">
             More {collection.kind === 'tokens' ? 'tokens' : 'names'} could not be loaded: {moreState.error}
           </span>
-          <button
+          <Button
             className="with-icon"
+            size="custom"
             type="button"
             onClick={() => {
               void loadMore();
@@ -3810,7 +3854,7 @@ function CollectionView() {
           >
             <RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Retry{' '}
             {collection.kind === 'tokens' ? 'tokens' : 'names'}
-          </button>
+          </Button>
         </div>
       ) : null}
       {moreState.scanned ? (
@@ -3834,10 +3878,11 @@ function CollectionView() {
         <span aria-hidden="true" className="progressive-reveal-sentinel" ref={progressiveRevealRef} />
       ) : null}
       {limit < filtered.length ? (
-        <button
+        <Button
           aria-controls={assetGridId}
           className="load-more"
           ref={moreContinuationRef}
+          size="custom"
           type="button"
           onClick={() => {
             const nextLimit = Math.min(filtered.length, limit + pageSize);
@@ -3851,12 +3896,13 @@ function CollectionView() {
         >
           Show {Math.min(pageSize, filtered.length - limit).toLocaleString()} more{' '}
           {collection.kind === 'names' ? 'names' : 'assets'}
-        </button>
+        </Button>
       ) : collection.hasMore && (collection.kind === 'tokens' || (!listedOnly && !query)) && !moreState.error ? (
-        <button
+        <Button
           aria-busy={moreState.loading}
           aria-disabled={moreState.loading}
           className="load-more"
+          size="custom"
           onBlur={(event) => {
             if (moreState.loading && event.relatedTarget) restoreMoreFocus.current = false;
           }}
@@ -3871,7 +3917,7 @@ function CollectionView() {
           {moreState.loading
             ? `${collection.kind === 'tokens' && query ? 'Searching' : 'Checking'} ${collection.kind === 'tokens' ? 'token' : 'carrier'} records…`
             : `${collection.kind === 'tokens' && query ? 'Search' : 'Check'} next 100 ${collection.kind === 'tokens' ? 'token' : 'carrier'} records`}
-        </button>
+        </Button>
       ) : null}
     </section>
   );
@@ -3925,10 +3971,11 @@ function CollectionIndexNotice({
         </span>
         <span className="sr-only">{message}</span>
       </span>
-      <button
+      <Button
         aria-disabled={checking}
         aria-label={checking ? 'Checking collection index' : 'Retry collection index'}
         className="with-icon"
+        size="custom"
         type="button"
         onClick={() => {
           if (!checking) onRetry();
@@ -3941,7 +3988,7 @@ function CollectionIndexNotice({
         <span aria-hidden="true" className="collection-index-action-compact">
           {checking ? 'Checking…' : 'Retry'}
         </span>
-      </button>
+      </Button>
     </div>
   );
 }
@@ -4140,9 +4187,10 @@ function CollectionActivityView() {
             {activityScanAnnouncement}
           </span>
         </div>
-        <button
+        <Button
           aria-disabled={loading}
           className="with-icon"
+          size="custom"
           onClick={() => {
             if (loading) return;
             setActivityRevealAnnouncement('');
@@ -4152,7 +4200,7 @@ function CollectionActivityView() {
         >
           <RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" />
           {loading ? (events.length ? 'Refreshing…' : 'Loading…') : error ? 'Retry activity' : 'Refresh'}
-        </button>
+        </Button>
       </div>
       {error ? (
         <ErrorPanel
@@ -4181,9 +4229,10 @@ function CollectionActivityView() {
         {activityRevealAnnouncement}
       </p>
       {activityLimit < events.length ? (
-        <button
+        <Button
           aria-controls={activityListId}
           className="load-more"
+          size="custom"
           type="button"
           onClick={() => {
             const nextLimit = Math.min(events.length, activityLimit + 20);
@@ -4199,7 +4248,7 @@ function CollectionActivityView() {
           }}
         >
           Show {Math.min(20, events.length - activityLimit).toLocaleString()} more activity events
-        </button>
+        </Button>
       ) : null}
       {loading && !events.length ? <Loading label="Reading indexed collection activity from Arweave…" /> : null}
       {!loading && !error && !events.length ? (
@@ -5294,22 +5343,23 @@ function AssetView() {
             Local tracking is paused. Resume here to continue observing signed work or review any wallet approvals still
             required.
           </span>
-          <button
+          <Button
             ref={resumeButtonRef}
             className="with-icon"
+            size="custom"
             type="button"
             onClick={() => setRecoverySuppressed(false)}
           >
             <RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Resume pending action
-          </button>
+          </Button>
         </div>
       ) : null}
       {recoveryNotice ? (
         <div className="pending-operation-notice">
           <span role="status">{recoveryNotice}</span>
-          <button type="button" onClick={() => setRecoveryNotice('')}>
+          <Button type="button" onClick={() => setRecoveryNotice('')} size="custom">
             Dismiss
-          </button>
+          </Button>
         </div>
       ) : null}
       {unavailableRecovery ? (
@@ -5408,9 +5458,10 @@ function AssetView() {
                       <strong>Your reservation is ready</strong>
                       <p>Close the other Bazar tab, then continue here with one seller-payment approval.</p>
                     </div>
-                    <button
-                      className="primary"
+                    <Button
                       disabled={operationBlocksActions || loading || Boolean(error)}
+                      size="custom"
+                      variant="primary"
                       onClick={() =>
                         openOperation({
                           kind: 'buy',
@@ -5422,61 +5473,69 @@ function AssetView() {
                       type="button"
                     >
                       Continue purchase
-                    </button>
+                    </Button>
                   </div>
                 ) : null}
                 <div className="asset-commerce-actions">
                   {!wallet.address ? <ConnectWalletButton /> : null}
                   {wallet.address && atomicOrderCanBeBought(order) && !mine ? (
-                    <button
-                      className="primary with-icon asset-buy-now"
+                    <Button
+                      className="with-icon asset-buy-now"
                       disabled={operationBlocksActions || loading || Boolean(error)}
+                      size="custom"
+                      variant="primary"
                       onClick={() => openOperation({ kind: 'buy', order })}
                     >
                       <ShoppingCart className="ui-icon ui-icon--sm" aria-hidden="true" />{' '}
                       {operation?.kind === 'buy' ? assetOperationPendingActionLabel('buy') : 'Buy now'}
-                    </button>
+                    </Button>
                   ) : null}
                   {wallet.address && mine && !order ? (
-                    <button
-                      className="primary with-icon"
+                    <Button
+                      className="with-icon"
                       disabled={operationBlocksActions || loading || Boolean(error)}
+                      size="custom"
+                      variant="primary"
                       onClick={() => openOperation({ kind: 'sell' })}
                     >
                       <Tag className="ui-icon ui-icon--sm" aria-hidden="true" />{' '}
                       {operation?.kind === 'sell' ? assetOperationPendingActionLabel('sell') : 'List for sale'}
-                    </button>
+                    </Button>
                   ) : null}
                   {wallet.address && mine && order?.status === 'open' ? (
-                    <button
+                    <Button
                       className="with-icon"
                       disabled={operationBlocksActions || loading || Boolean(error)}
+                      size="custom"
                       onClick={() => openOperation({ kind: 'cancel', order })}
+                      variant="danger"
                     >
                       <CircleX className="ui-icon ui-icon--sm" aria-hidden="true" />{' '}
                       {operation?.kind === 'cancel' ? assetOperationPendingActionLabel('cancel') : 'Cancel listing'}
-                    </button>
+                    </Button>
                   ) : null}
                   {wallet.address && mine && !order ? (
-                    <button
+                    <Button
                       className="with-icon"
                       disabled={operationBlocksActions || loading || Boolean(error)}
+                      size="custom"
                       onClick={() => openOperation({ kind: 'transfer' })}
                     >
                       <Send className="ui-icon ui-icon--sm" aria-hidden="true" />{' '}
                       {operation?.kind === 'transfer' ? assetOperationPendingActionLabel('transfer') : 'Transfer'}
-                    </button>
+                    </Button>
                   ) : null}
-                  <button
+                  <Button
                     aria-disabled={loading}
                     className="with-icon"
+                    size="custom"
                     onClick={() => {
                       if (!loading) void refreshAsset();
                     }}
                   >
                     <RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" />{' '}
                     {loading ? 'Refreshing…' : 'Refresh'}
-                  </button>
+                  </Button>
                 </div>
               </section>
             ) : null}
@@ -5618,9 +5677,10 @@ function AssetView() {
                 />
               ) : null}
               <div className="asset-history-actions">
-                <button
+                <Button
                   aria-disabled={activityLoading}
                   className="with-icon"
+                  size="custom"
                   type="button"
                   onClick={() => {
                     if (!activityLoading) setActivityRetry((value) => value + 1);
@@ -5634,7 +5694,7 @@ function AssetView() {
                     : activityError
                       ? 'Retry history'
                       : 'Refresh history'}
-                </button>
+                </Button>
               </div>
               {activityError ? (
                 <div className="inline-error" role={assetActivity.length ? 'status' : 'alert'}>
@@ -6613,9 +6673,16 @@ function OperationDialog({
                 </small>
               ) : null}
             </div>
-            <button className="primary wide" data-dialog-initial onClick={() => void submit()} type="button">
+            <Button
+              className="wide"
+              data-dialog-initial
+              onClick={() => void submit()}
+              type="button"
+              size="custom"
+              variant="primary"
+            >
               {recoveryApprovalCopy?.action}
-            </button>
+            </Button>
           </div>
         ) : null}
         {visiblePhase === 'form' ? (
@@ -6688,10 +6755,11 @@ function OperationDialog({
                         ? 'Exact costs checked.'
                         : 'Checking wallet balance and network fees…'}
                   </span>
-                  <button
+                  <Button
                     aria-describedby={quoteStatusId}
                     aria-disabled={!purchaseQuote && !quoteError}
                     className="with-icon"
+                    size="custom"
                     type="button"
                     onClick={() => {
                       if (purchaseQuote || quoteError) setQuoteRetry((current) => current + 1);
@@ -6699,7 +6767,7 @@ function OperationDialog({
                   >
                     <RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" />{' '}
                     {quoteError ? 'Retry cost check' : purchaseQuote ? 'Recheck cost' : 'Checking cost…'}
-                  </button>
+                  </Button>
                 </div>
               ) : null}
               {operation.kind === 'sell' ? (
@@ -6765,22 +6833,24 @@ function OperationDialog({
                   : 'After signing, Bazar observes this action through independently addressed Arweave nodes. Signed transaction details are saved in this browser so you can return with the same wallet while browser data remains available.'}
               </p>
             </div>
-            <button
+            <Button
               aria-describedby={operation.kind === 'buy' ? quoteStatusId : undefined}
-              className="primary wide"
+              className="wide"
               data-dialog-initial
+              size="custom"
               disabled={
                 Boolean(formError) ||
                 (operation.kind === 'buy' && (!purchaseQuote || purchaseAffordable !== true || Boolean(quoteError)))
               }
               type="submit"
+              variant={operation.kind === 'cancel' ? 'danger' : 'primary'}
             >
               {operation.kind === 'buy' && purchaseAffordable === false
                 ? 'Insufficient AR'
                 : operation.kind === 'buy' && purchaseQuote
                   ? `Buy · up to ${winstonToAr(purchaseQuote.total)} AR`
                   : actionLabel}
-            </button>
+            </Button>
           </form>
         ) : null}
         {visiblePhase === 'working' && !steps.length ? (
@@ -6902,18 +6972,18 @@ function OperationDialog({
                 View transaction {short(transaction.id)} ↗
               </a>
             ) : null}
-            <button className="primary with-icon" data-dialog-initial onClick={onViewAsset}>
+            <Button className="with-icon" data-dialog-initial onClick={onViewAsset} size="custom" variant="primary">
               <ArrowLeft className="ui-icon ui-icon--sm" aria-hidden="true" /> View updated asset
-            </button>
+            </Button>
           </div>
         ) : null}
         {visiblePhase === 'error' ? (
           <div className="result error">
             <AtomicOperationErrorAlert message={visibleMessage} />
             {failureKind === 'market-state-changed' ? (
-              <button data-dialog-initial type="button" onClick={() => onClose(false)}>
+              <Button data-dialog-initial type="button" onClick={() => onClose(false)} size="custom">
                 View updated asset
-              </button>
+              </Button>
             ) : operation.kind === 'buy' ? (
               <>
                 <div className="settlement-receipt">
@@ -6945,26 +7015,27 @@ function OperationDialog({
                   </div>
                 </div>
                 {atomicPurchaseFailureCode(purchaseState) === 'registration-dispatch-rejected' ? (
-                  <button data-dialog-initial onClick={() => onClose(false)}>
+                  <Button data-dialog-initial onClick={() => onClose(false)} size="custom">
                     View current listing
-                  </button>
+                  </Button>
                 ) : terminalReservationFailure ? (
-                  <button data-dialog-initial onClick={startFreshPurchase}>
+                  <Button data-dialog-initial onClick={startFreshPurchase} size="custom">
                     Start a new purchase
-                  </button>
+                  </Button>
                 ) : atomicPurchaseFailureCode(purchaseState) === 'payment-dispatch-rejected' ? (
-                  <button data-dialog-initial onClick={() => void submit()}>
+                  <Button data-dialog-initial onClick={() => void submit()} size="custom">
                     Sign a replacement seller payment
-                  </button>
+                  </Button>
                 ) : (
-                  <button data-dialog-initial onClick={restartPurchase}>
+                  <Button data-dialog-initial onClick={restartPurchase} size="custom">
                     {recoverable ? 'Continue saved purchase' : 'Try again'}
-                  </button>
+                  </Button>
                 )}
               </>
             ) : failureKind === 'transaction-rejected' && transaction ? (
-              <button
+              <Button
                 data-dialog-initial
+                size="custom"
                 onClick={() => {
                   removeWalletRecordIf<any>(
                     localStorage,
@@ -6974,16 +7045,18 @@ function OperationDialog({
                   localStorage.removeItem(`bazar-signed-transaction:${transaction.id}`);
                   onClose(false);
                 }}
+                variant="danger"
               >
                 Discard rejected signature and sign again
-              </button>
+              </Button>
             ) : transaction ? (
-              <button data-dialog-initial onClick={() => void submit()}>
+              <Button data-dialog-initial onClick={() => void submit()} size="custom">
                 Resume the signed transaction
-              </button>
+              </Button>
             ) : (
-              <button
+              <Button
                 data-dialog-initial
+                size="custom"
                 onClick={() => {
                   setFailureKind(null);
                   setMessage('');
@@ -6991,7 +7064,7 @@ function OperationDialog({
                 }}
               >
                 Try again
-              </button>
+              </Button>
             )}
           </div>
         ) : null}
