@@ -119,6 +119,7 @@ import { quorumConfirmationDepth } from 'components/ArweaveTransactionSync/confi
 import { postConfirmationPendingLabel } from 'components/ArweaveTransactionSync/sequence';
 import { ArtworkImage } from 'components/ArtworkImage';
 import { AudioArtwork } from 'components/AudioArtwork';
+import { AudioWaveformPlayer } from 'components/AudioWaveformPlayer';
 import { AssetDetailTabs, type AssetDetailTab } from 'components/AssetDetailTabs';
 import { AssetOperationStatus, assetOperationPendingActionLabel } from 'components/AssetOperationStatus';
 import { BazarMark } from 'components/BazarMark';
@@ -5396,9 +5397,7 @@ function AssetView() {
                 ) : (
                   <AudioArtwork contentType={asset.contentType} name={asset.name} />
                 )}
-                <audio aria-label={`Play ${asset.name}`} controls preload="metadata" src={asset.media ?? asset.image}>
-                  Your browser does not support audio playback.
-                </audio>
+                {asset.media ? <AudioWaveformPlayer name={asset.name} src={asset.media} /> : null}
               </div>
             ) : asset.image ? (
               <ArtworkImage src={asset.image} alt={asset.name} fetchPriority="high" loading="eager" />

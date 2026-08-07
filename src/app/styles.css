@@ -2540,9 +2540,205 @@ input:focus {
   border-radius: 8px;
   background: var(--paper);
 }
-.asset-audio-player audio {
+.audio-waveform-player {
   width: 100%;
-  height: 40px;
+  min-width: 0;
+  padding: 11px;
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: 'DM Sans', sans-serif;
+}
+.audio-waveform-player > audio {
+  display: none;
+}
+.audio-waveform-play {
+  width: 52px;
+  height: 52px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line-dark);
+  border-radius: 50%;
+  background: var(--ink);
+  color: var(--paper);
+  cursor: pointer;
+}
+.audio-waveform-play:hover {
+  background: var(--fixed-ink);
+}
+.audio-waveform-play:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 3px;
+}
+.audio-waveform-play svg {
+  width: 19px;
+  height: 19px;
+  fill: currentColor;
+  stroke-width: 1.4;
+}
+.audio-waveform-play svg.lucide-play {
+  transform: translateX(1px);
+}
+.audio-waveform-main {
+  min-width: 0;
+}
+.audio-waveform-meta {
+  min-height: 20px;
+  margin-bottom: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  color: var(--muted);
+  font-size: var(--type-small);
+  line-height: 1;
+}
+.audio-waveform-meta span {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.audio-waveform-meta small {
+  overflow: hidden;
+  color: var(--muted-subtle);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.audio-waveform-scroll {
+  width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-inline: contain;
+  scrollbar-color: var(--line-dark) var(--surface-subtle);
+  scrollbar-width: thin;
+}
+.audio-waveform-scroll::-webkit-scrollbar {
+  height: 6px;
+}
+.audio-waveform-scroll::-webkit-scrollbar-track {
+  border-radius: 999px;
+  background: var(--surface-subtle);
+}
+.audio-waveform-scroll::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: var(--line-dark);
+}
+.audio-waveform-track {
+  position: relative;
+  height: 75px;
+  min-width: 100%;
+  touch-action: none;
+}
+.audio-waveform-bars {
+  position: absolute;
+  inset: 2px 0 auto;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  pointer-events: none;
+}
+.audio-waveform-bars i {
+  min-width: 2px;
+  height: 8%;
+  flex: 1 1 2px;
+  border-radius: 1px;
+  background: var(--line-dark);
+}
+.audio-waveform-bars.is-played {
+  z-index: 1;
+}
+.audio-waveform-bars.is-played i {
+  background: var(--ink);
+}
+.audio-waveform-playhead {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  bottom: 22px;
+  width: 1px;
+  background: var(--accent);
+  pointer-events: none;
+  transform: translateX(-0.5px);
+}
+.audio-waveform-playhead::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  transform: translate(-50%, -1px);
+}
+.audio-waveform-range {
+  position: absolute;
+  z-index: 3;
+  inset: 0 0 22px;
+  width: 100%;
+  height: auto;
+  margin: 0;
+  opacity: 0;
+  cursor: ew-resize;
+}
+.audio-waveform-track:focus-within {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+  border-radius: 4px;
+}
+.audio-waveform-range:disabled {
+  cursor: wait;
+}
+.audio-waveform-ticks {
+  position: absolute;
+  inset: auto 0 1px;
+  height: 18px;
+  border-top: 1px solid var(--line);
+  color: var(--muted-subtle);
+  font-size: 10px;
+  pointer-events: none;
+}
+.audio-waveform-ticks span {
+  position: absolute;
+  top: 5px;
+  line-height: 1;
+  white-space: nowrap;
+  transform: translateX(-50%);
+}
+.audio-waveform-ticks span:first-child {
+  transform: none;
+}
+.audio-waveform-ticks span:last-child {
+  transform: translateX(-100%);
+}
+.audio-waveform-placeholder {
+  position: absolute;
+  inset: 5px 0 auto;
+  height: 42px;
+  border-radius: 3px;
+  background: linear-gradient(90deg, var(--surface-subtle), var(--line), var(--surface-subtle));
+  background-size: 180% 100%;
+}
+.audio-waveform-placeholder.is-loading {
+  animation: waveform-loading 1.2s linear infinite;
+}
+.audio-waveform-placeholder.is-unavailable {
+  height: 1px;
+  top: 25px;
+  background: var(--line-dark);
+}
+@keyframes waveform-loading {
+  to {
+    background-position: -180% 0;
+  }
 }
 .asset-media-label {
   position: absolute;
