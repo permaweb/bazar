@@ -3,10 +3,10 @@ import ReactDOM from 'react-dom/client';
 
 import { App } from './app/App';
 import { GlobalStyle } from './app/styles';
+import { scheduleIdleTask } from './helpers/idle';
 import { LanguageProvider } from './providers/LanguageProvider';
 import { ThemeProvider } from './providers/ThemeProvider';
 import { WalletProvider } from './providers/WalletProvider';
-import { scheduleIdleTask } from './helpers/idle';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
 	<React.StrictMode>
@@ -18,7 +18,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
 				</WalletProvider>
 			</LanguageProvider>
 		</ThemeProvider>
-	</React.StrictMode>,
+	</React.StrictMode>
 );
 
 scheduleIdleTask(() => {

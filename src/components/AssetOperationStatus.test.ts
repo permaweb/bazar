@@ -3,9 +3,9 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
 import {
-	AssetOperationStatus,
 	assetOperationPendingActionLabel,
 	assetOperationProgressTitle,
+	AssetOperationStatus,
 } from './AssetOperationStatus';
 
 describe('asset operation page status', () => {
@@ -24,7 +24,7 @@ describe('asset operation page status', () => {
 				phase: 'working',
 				status: 'Checking confirmations',
 				onView: () => undefined,
-			}),
+			})
 		);
 
 		expect(markup).toContain('Listing in progress');

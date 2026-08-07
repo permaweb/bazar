@@ -269,9 +269,7 @@ p {
 	border-radius: 5px;
 	color: var(--contrast-text);
 	background: var(--brand-badge-background);
-	font:
-		400 var(--type-small) / 1.1 'DM Sans',
-		sans-serif;
+	font: 400 var(--type-small) / 1.1 'DM Sans', sans-serif;
 	letter-spacing: 0.05em;
 }
 .site-nav {
@@ -813,9 +811,7 @@ p {
 	border: 1px solid var(--line);
 	border-radius: 10px;
 	background: var(--paper);
-	transition:
-		border-color 100ms ease,
-		background 100ms ease;
+	transition: border-color 100ms ease, background 100ms ease;
 }
 .search-collection-grid a:hover,
 .search-asset-grid a:hover {
@@ -1053,9 +1049,7 @@ p {
 	border-radius: 4px;
 	color: var(--muted-subtle);
 	background: var(--panel);
-	font:
-		400 var(--type-small) / 1.4 'DM Sans',
-		sans-serif;
+	font: 400 var(--type-small) / 1.4 'DM Sans', sans-serif;
 }
 .home-toolbar-title {
 	grid-column: 1;
@@ -1192,9 +1186,7 @@ p {
 	border-radius: 10px;
 	background: var(--paper);
 	box-shadow: none;
-	transition:
-		background 100ms ease,
-		border-color 100ms ease;
+	transition: background 100ms ease, border-color 100ms ease;
 }
 .home-feature-card:hover {
 	transform: none;
@@ -1237,15 +1229,13 @@ p {
 	gap: 8px;
 	overflow: hidden;
 	position: relative;
-	background:
-		radial-gradient(circle at 74% 26%, var(--gradient-coral), var(--transparent) 27%),
+	background: radial-gradient(circle at 74% 26%, var(--gradient-coral), var(--transparent) 27%),
 		radial-gradient(circle at 22% 78%, var(--gradient-purple), var(--transparent) 31%), var(--surface-subtle);
 	color: var(--ink);
 	text-align: center;
 }
 .feature-1 .home-image-collection-fallback {
-	background:
-		radial-gradient(circle at 75% 24%, var(--gradient-blue), var(--transparent) 27%),
+	background: radial-gradient(circle at 75% 24%, var(--gradient-blue), var(--transparent) 27%),
 		radial-gradient(circle at 24% 77%, var(--gradient-coral-soft), var(--transparent) 32%), var(--surface-subtle);
 }
 .home-image-collection-fallback img {
@@ -1268,8 +1258,7 @@ p {
 	display: grid;
 	place-items: center;
 	position: relative;
-	background:
-		radial-gradient(circle at 75% 28%, var(--gradient-coral-strong), var(--transparent) 27%),
+	background: radial-gradient(circle at 75% 28%, var(--gradient-coral-strong), var(--transparent) 27%),
 		radial-gradient(circle at 25% 78%, var(--gradient-blue-soft), var(--transparent) 31%), var(--panel);
 }
 .home-name-art img {
@@ -1449,9 +1438,7 @@ p {
 	object-fit: cover;
 	border: 1px solid var(--home-line);
 	border-radius: 10px;
-	transition:
-		opacity 100ms ease,
-		border-color 100ms ease;
+	transition: opacity 100ms ease, border-color 100ms ease;
 }
 .home-asset-grid img {
 	background: var(--panel);
@@ -1464,9 +1451,7 @@ p {
 	background-image: radial-gradient(var(--line-dark) 0.7px, var(--transparent) 0.7px);
 	background-size: 3px 3px;
 	color: var(--accent);
-	font:
-		400 var(--type-display) 'DM Sans',
-		sans-serif;
+	font: 400 var(--type-display) 'DM Sans', sans-serif;
 }
 .home-asset-grid a:hover img {
 	transform: none;
@@ -1578,9 +1563,7 @@ p {
 	border-radius: 5px;
 	padding: 8px 13px;
 	cursor: pointer;
-	transition:
-		border-color 0.1s ease,
-		background 0.1s ease;
+	transition: border-color 0.1s ease, background 0.1s ease;
 	font-size: var(--type-body);
 	font-weight: 400;
 }
@@ -1839,9 +1822,7 @@ main:focus {
 .eyebrow {
 	margin: 0 0 12px;
 	color: var(--muted-subtle);
-	font:
-		400 var(--type-small) / 1.3 'DM Sans',
-		sans-serif;
+	font: 400 var(--type-small) / 1.3 'DM Sans', sans-serif;
 }
 .hero h1 {
 	margin: 0;
@@ -1904,16 +1885,12 @@ main:focus {
 .hero-market > span {
 	margin-top: 25px;
 	color: var(--muted);
-	font:
-		400 var(--type-small) 'DM Sans',
-		sans-serif;
+	font: 400 var(--type-small) 'DM Sans', sans-serif;
 	letter-spacing: 0.14em;
 }
 .hero-market > strong {
 	margin-top: 7px;
-	font:
-		400 var(--type-body) 'DM Sans',
-		sans-serif;
+	font: 400 var(--type-body) 'DM Sans', sans-serif;
 }
 
 .content-section,
@@ -1978,9 +1955,7 @@ main:focus {
 	border-radius: 10px;
 	overflow: hidden;
 	box-shadow: none;
-	transition:
-		background 0.1s ease,
-		border-color 0.1s ease;
+	transition: background 0.1s ease, border-color 0.1s ease;
 }
 .collection-card:hover {
 	transform: none;
@@ -2017,9 +1992,7 @@ main:focus {
 	display: grid;
 	place-items: center;
 	color: var(--ink);
-	font:
-		400 var(--type-display) / 1 'DM Sans',
-		sans-serif;
+	font: 400 var(--type-display) / 1 'DM Sans', sans-serif;
 }
 .collection-card > div:nth-child(2) {
 	padding: 25px;
@@ -2036,9 +2009,7 @@ main:focus {
 }
 .collection-card .count {
 	color: var(--ink);
-	font:
-		400 var(--type-small) 'DM Sans',
-		sans-serif;
+	font: 400 var(--type-small) 'DM Sans', sans-serif;
 }
 .arrow {
 	position: absolute;
@@ -2081,9 +2052,7 @@ main:focus {
 	border-bottom: 0;
 	border-radius: 5px 5px 0 0;
 	color: var(--muted);
-	font:
-		400 var(--type-body) 'DM Sans',
-		sans-serif;
+	font: 400 var(--type-body) 'DM Sans', sans-serif;
 }
 .collection-tabs a::after {
 	display: none;
@@ -2198,9 +2167,7 @@ input:focus {
 }
 .market-select-label {
 	color: var(--muted-subtle);
-	font:
-		400 var(--type-small) 'DM Sans',
-		sans-serif;
+	font: 400 var(--type-small) 'DM Sans', sans-serif;
 }
 .market-select-trigger {
 	width: 100%;
@@ -2218,9 +2185,7 @@ input:focus {
 	font-size: var(--type-body);
 	font-weight: 400;
 	text-align: left;
-	transition:
-		background 120ms ease,
-		border-color 120ms ease;
+	transition: background 120ms ease, border-color 120ms ease;
 }
 .market-select-trigger:hover,
 .market-select-trigger.open {
@@ -2356,9 +2321,7 @@ input:focus {
 	overflow: hidden;
 	background: var(--paper);
 	box-shadow: none;
-	transition:
-		background 0.1s ease,
-		border-color 0.1s ease;
+	transition: background 0.1s ease, border-color 0.1s ease;
 }
 .asset-card:hover {
 	transform: none;
@@ -2377,9 +2340,7 @@ input:focus {
 	background-size: 3px 3px;
 	background-position: -1.5px -1.5px;
 	color: var(--accent);
-	font:
-		400 var(--type-display) 'DM Sans',
-		sans-serif;
+	font: 400 var(--type-display) 'DM Sans', sans-serif;
 }
 .token-artwork {
 	position: relative;
@@ -2415,9 +2376,7 @@ input:focus {
 	position: relative;
 	z-index: 1;
 	color: var(--ink);
-	font:
-		400 var(--type-display) / 0.95 'DM Sans',
-		sans-serif;
+	font: 400 var(--type-display) / 0.95 'DM Sans', sans-serif;
 	letter-spacing: -0.045em;
 	white-space: nowrap;
 }
@@ -2429,9 +2388,7 @@ input:focus {
 	position: relative;
 	z-index: 1;
 	color: var(--muted);
-	font:
-		400 var(--type-small) / 1 'DM Sans',
-		sans-serif;
+	font: 400 var(--type-small) / 1 'DM Sans', sans-serif;
 }
 .home-token-collection-art {
 	font-size: var(--type-display);
@@ -2560,9 +2517,7 @@ input:focus {
 	background-image: radial-gradient(var(--line-dark) 0.75px, var(--transparent) 0.75px);
 	background-size: 3px 3px;
 	color: var(--accent);
-	font:
-		400 var(--type-display) 'DM Sans',
-		sans-serif;
+	font: 400 var(--type-display) 'DM Sans', sans-serif;
 	box-shadow: none;
 }
 .asset-hero-media > img {
@@ -2830,9 +2785,7 @@ input:focus {
 	border-radius: 5px;
 	background: var(--positive-surface);
 	color: var(--positive-text);
-	font:
-		400 var(--type-small) 'DM Sans',
-		sans-serif;
+	font: 400 var(--type-small) 'DM Sans', sans-serif;
 }
 .status-dot::before {
 	content: '';
@@ -2902,9 +2855,7 @@ input:focus {
 	font-size: var(--type-small);
 }
 .market-callout strong {
-	font:
-		400 var(--type-body) 'DM Sans',
-		sans-serif;
+	font: 400 var(--type-body) 'DM Sans', sans-serif;
 }
 .facts {
 	margin: 18px 0 24px;
@@ -2974,9 +2925,7 @@ input:focus {
 	padding: 9px 13px;
 	background: var(--panel);
 	color: var(--muted-subtle);
-	font:
-		400 var(--type-small) 'DM Sans',
-		sans-serif;
+	font: 400 var(--type-small) 'DM Sans', sans-serif;
 }
 .orderbook-row {
 	padding: 16px 13px;
@@ -2996,9 +2945,7 @@ input:focus {
 	border-radius: 5px;
 	background: var(--positive-surface);
 	color: var(--positive-text);
-	font:
-		400 var(--type-small) 'DM Sans',
-		sans-serif;
+	font: 400 var(--type-small) 'DM Sans', sans-serif;
 }
 .order-status.reserved {
 	background: var(--warning-surface);
@@ -3059,9 +3006,7 @@ input:focus {
 	margin: 0;
 	overflow-wrap: anywhere;
 	text-align: right;
-	font:
-		400 var(--type-body) 'DM Sans',
-		sans-serif;
+	font: 400 var(--type-body) 'DM Sans', sans-serif;
 }
 .license-empty {
 	min-height: 120px;
@@ -3599,9 +3544,7 @@ input:focus {
 	block-size: 0;
 	overflow: clip;
 	opacity: 0;
-	transition:
-		block-size 240ms cubic-bezier(0.2, 0.7, 0.2, 1),
-		opacity 160ms ease,
+	transition: block-size 240ms cubic-bezier(0.2, 0.7, 0.2, 1), opacity 160ms ease,
 		content-visibility 240ms allow-discrete;
 }
 .asset-accordion-list details[open]::details-content {
@@ -3655,9 +3598,7 @@ input:focus {
 	border-top: 1px solid var(--line);
 	opacity: 0;
 	transform: translateY(-5px);
-	transition:
-		opacity 160ms ease,
-		transform 220ms cubic-bezier(0.2, 0.7, 0.2, 1);
+	transition: opacity 160ms ease, transform 220ms cubic-bezier(0.2, 0.7, 0.2, 1);
 }
 .asset-accordion-list details[open] > .asset-accordion-content {
 	opacity: 1;
@@ -3835,9 +3776,7 @@ input:focus {
 	border: 1px solid var(--line);
 	border-radius: 10px;
 	background: var(--paper);
-	transition:
-		background 0.1s ease,
-		border-color 0.1s ease;
+	transition: background 0.1s ease, border-color 0.1s ease;
 }
 .activity-row:hover {
 	border-color: var(--line-dark);
@@ -3892,9 +3831,7 @@ input:focus {
 	gap: 14px;
 }
 .activity-main strong {
-	font:
-		400 var(--type-body) 'DM Sans',
-		sans-serif;
+	font: 400 var(--type-body) 'DM Sans', sans-serif;
 }
 .activity-main a,
 .activity-main > span {
@@ -4227,9 +4164,7 @@ input:focus {
 	place-items: center;
 	background: var(--dialog-scrim);
 	backdrop-filter: blur(8px);
-	transition:
-		background 420ms cubic-bezier(0.32, 0.72, 0, 1),
-		backdrop-filter 420ms cubic-bezier(0.32, 0.72, 0, 1);
+	transition: background 420ms cubic-bezier(0.32, 0.72, 0, 1), backdrop-filter 420ms cubic-bezier(0.32, 0.72, 0, 1);
 }
 .dialog-backdrop-hiding {
 	background: var(--dialog-scrim-clear);
@@ -4252,10 +4187,7 @@ input:focus {
 	transform: translate3d(0, 0, 0) scale(1);
 	transform-origin: center;
 	will-change: transform, opacity, filter;
-	transition:
-		transform 480ms cubic-bezier(0.32, 0.72, 0, 1),
-		opacity 360ms ease 80ms,
-		filter 420ms ease;
+	transition: transform 480ms cubic-bezier(0.32, 0.72, 0, 1), opacity 360ms ease 80ms, filter 420ms ease;
 }
 .dialog-backdrop-hiding .dialog {
 	filter: blur(1.5px);
@@ -4457,9 +4389,7 @@ input:focus {
 	inset: 0;
 	width: 20px;
 	height: 20px;
-	transition:
-		opacity 160ms ease,
-		transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+	transition: opacity 160ms ease, transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 .transaction-hide-eye-open {
 	opacity: 1;

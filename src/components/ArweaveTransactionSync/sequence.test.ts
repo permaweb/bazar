@@ -29,7 +29,7 @@ describe('sequencePhaseBounds', () => {
 		],
 	] as const)('partitions a %i-transaction sequence across the full cable', (count, expected) => {
 		expect(Array.from({ length: count }, (_, index) => Object.values(sequencePhaseBounds(index, count)))).toEqual(
-			expected,
+			expected
 		);
 	});
 
@@ -68,7 +68,9 @@ describe('postConfirmationPendingLabel', () => {
 	it('starts an indeterminate live-state phase only after confirmation completes', () => {
 		expect(postConfirmationPendingLabel(4, 5, 'Waiting for live state…')).toBeUndefined();
 		expect(postConfirmationPendingLabel(5, 5, 'Waiting for live state…')).toBe('Settling live state');
-		expect(postConfirmationPendingLabel(8, 5, 'Waiting for live state…', 'Checking receipt')).toBe('Checking receipt');
+		expect(postConfirmationPendingLabel(8, 5, 'Waiting for live state…', 'Checking receipt')).toBe(
+			'Checking receipt'
+		);
 		expect(postConfirmationPendingLabel(5, 5, '')).toBeUndefined();
 	});
 });

@@ -34,7 +34,8 @@ export default defineConfig({
 					if (id.includes('/three/')) return 'graphics';
 					if (id.includes('/arweave/')) return 'arweave';
 					if (id.includes('weave-wrangler')) return 'transactions';
-					if (id.includes('/react/') || id.includes('/react-dom/') || id.includes('/react-router')) return 'react';
+					if (id.includes('/react/') || id.includes('/react-dom/') || id.includes('/react-router'))
+						return 'react';
 					if (id.includes('/styled-components/')) return 'styles';
 				},
 			},

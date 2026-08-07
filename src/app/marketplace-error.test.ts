@@ -61,7 +61,7 @@ describe('marketplaceErrorMessage', () => {
 
 	it('does not claim a different buyer won when current state only proves the reservation is inactive', () => {
 		expect(marketplaceErrorMessage(new Error('asset-order-reservation-rejected'))).not.toContain(
-			'Another buyer claimed',
+			'Another buyer claimed'
 		);
 	});
 
@@ -85,18 +85,18 @@ describe('marketplace request failures', () => {
 	it('distinguishes compute and transaction-index recovery', () => {
 		expect(marketplaceRequestFailureMessage('compute', 'rate-limited')).toContain('choose another Compute gateway');
 		expect(marketplaceRequestFailureMessage('index', 'rate-limited')).toBe(
-			'Arweave’s transaction index is temporarily rate-limiting requests. Wait briefly and retry.',
+			'Arweave’s transaction index is temporarily rate-limiting requests. Wait briefly and retry.'
 		);
 		expect(marketplaceRequestFailureMessage('compute', 'unavailable')).toContain('Live state could not be read');
 		expect(marketplaceRequestFailureMessage('index', 'unavailable')).toBe(
-			'Arweave’s transaction index could not be read. Retry shortly.',
+			'Arweave’s transaction index could not be read. Retry shortly.'
 		);
 	});
 
 	it('keeps a mixed batched index failure classified as rate-limited', () => {
 		const failure = new AggregateError(
 			[new Error('asset-activity-graphql-503'), new Error('asset-activity-graphql-429')],
-			'asset-activity-batch-failed: asset-activity-graphql-429; asset-activity-graphql-503',
+			'asset-activity-batch-failed: asset-activity-graphql-429; asset-activity-graphql-503'
 		);
 		expect(marketplaceFailureKind(failure)).toBe('rate-limited');
 	});

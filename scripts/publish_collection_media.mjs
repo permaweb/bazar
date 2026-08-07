@@ -10,9 +10,7 @@ const dataRoot = path.join(root, '.run-data');
 const collectionRoot = path.join(dataRoot, 'collections');
 const walletRoot = path.join(dataRoot, 'wallets');
 const ledgerPath = path.join(dataRoot, 'publication-ledger.json');
-const fundingKey =
-	process.env.BAZAR_TEST_WALLET ??
-	path.join(os.homedir(), 'src', 'Documents', 'hyperbeam-key.json');
+const fundingKey = process.env.BAZAR_TEST_WALLET ?? path.join(os.homedir(), 'src', 'Documents', 'hyperbeam-key.json');
 const budget = 50_000_000_000_000n;
 const arweave = Arweave.init({ host: 'arweave.net', port: 443, protocol: 'https' });
 
@@ -91,19 +89,25 @@ async function main() {
 	ledger.committedCost = committedCost.toString();
 	ledger.endBalance = await arweave.wallets.getBalance(fundingAddress);
 	await writeLedger(ledger);
-	console.log(JSON.stringify({
-		fundingAddress,
-		startBalance: ledger.startBalance,
-		currentBalance: ledger.endBalance,
-		committedCost: ledger.committedCost,
-		parties: ledger.parties,
-		collections: Object.fromEntries(
-			Object.entries(ledger.collections).map(([slug, collection]) => [
-				slug,
-				{ media: collection.assets.length },
-			])
-		),
-	}, null, 2));
+	console.log(
+		JSON.stringify(
+			{
+				fundingAddress,
+				startBalance: ledger.startBalance,
+				currentBalance: ledger.endBalance,
+				committedCost: ledger.committedCost,
+				parties: ledger.parties,
+				collections: Object.fromEntries(
+					Object.entries(ledger.collections).map(([slug, collection]) => [
+						slug,
+						{ media: collection.assets.length },
+					])
+				),
+			},
+			null,
+			2
+		)
+	);
 }
 
 function addTags(transaction, tags) {

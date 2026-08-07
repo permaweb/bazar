@@ -5,57 +5,57 @@ import { DEFAULT_COMPUTE_GATEWAY } from 'helpers/config';
 import { assetObserverNetworkOptions } from './asset-observers';
 
 function location(overrides: Partial<Location>): Location {
-  return {
-    protocol: 'http:',
-    hostname: '127.0.0.1',
-    port: '3000',
-    search: '',
-    hash: '',
-    ...overrides,
-  } as Location;
+	return {
+		protocol: 'http:',
+		hostname: '127.0.0.1',
+		port: '3000',
+		search: '',
+		hash: '',
+		...overrides,
+	} as Location;
 }
 
 describe('assetObserverNetworkOptions', () => {
-  it('relays observer requests through the selected HyperBEAM gateway', () => {
-    const options = assetObserverNetworkOptions(location({ search: '?node=http%3A%2F%2F127.0.0.1%3A3101' }));
+	it('relays observer requests through the selected HyperBEAM gateway', () => {
+		const options = assetObserverNetworkOptions(location({ search: '?node=http%3A%2F%2F127.0.0.1%3A3101' }));
 
-    expect(options.node).toBe('https://arweave.net');
-    expect(options['relay-with']).toBe('http://127.0.0.1:3101');
-    expect(options.minObservers).toBe(3);
-    expect(options.maxObservers).toBe(7);
-  });
+		expect(options.node).toBe('https://arweave.net');
+		expect(options['relay-with']).toBe('http://127.0.0.1:3101');
+		expect(options.minObservers).toBe(3);
+		expect(options.maxObservers).toBe(7);
+	});
 
-  it('reads a selected HyperBEAM gateway from a hash route', () => {
-    const options = assetObserverNetworkOptions(
-      location({
-        hash: '#/asset/collection/process?node=http%3A%2F%2F127.0.0.1%3A3101',
-      }),
-    );
+	it('reads a selected HyperBEAM gateway from a hash route', () => {
+		const options = assetObserverNetworkOptions(
+			location({
+				hash: '#/asset/collection/process?node=http%3A%2F%2F127.0.0.1%3A3101',
+			})
+		);
 
-    expect(options['relay-with']).toBe('http://127.0.0.1:3101');
-  });
+		expect(options['relay-with']).toBe('http://127.0.0.1:3101');
+	});
 
-  it('uses the default compute gateway when no relay is selected', () => {
-    const options = assetObserverNetworkOptions(
-      location({
-        protocol: 'https:',
-        hostname: 'lcno4nkkk4gsb5krqpa6irlzbuurmnzk4entikswauifsbryldfa.arweave.net',
-        port: '',
-      }),
-    );
+	it('uses the default compute gateway when no relay is selected', () => {
+		const options = assetObserverNetworkOptions(
+			location({
+				protocol: 'https:',
+				hostname: 'lcno4nkkk4gsb5krqpa6irlzbuurmnzk4entikswauifsbryldfa.arweave.net',
+				port: '',
+			})
+		);
 
-    expect(options.node).toBe('https://lcno4nkkk4gsb5krqpa6irlzbuurmnzk4entikswauifsbryldfa.arweave.net');
-    expect(options['relay-with']).toBe(DEFAULT_COMPUTE_GATEWAY);
-  });
+		expect(options.node).toBe('https://lcno4nkkk4gsb5krqpa6irlzbuurmnzk4entikswauifsbryldfa.arweave.net');
+		expect(options['relay-with']).toBe(DEFAULT_COMPUTE_GATEWAY);
+	});
 
-  it('uses an independently selected Arweave gateway for observer discovery', () => {
-    const options = assetObserverNetworkOptions(
-      location({
-        search: '?node=https%3A%2F%2Fcompute.example&arweave-node=https%3A%2F%2Fgateway.example',
-      }),
-    );
+	it('uses an independently selected Arweave gateway for observer discovery', () => {
+		const options = assetObserverNetworkOptions(
+			location({
+				search: '?node=https%3A%2F%2Fcompute.example&arweave-node=https%3A%2F%2Fgateway.example',
+			})
+		);
 
-    expect(options.node).toBe('https://gateway.example');
-    expect(options['relay-with']).toBe('https://compute.example');
-  });
+		expect(options.node).toBe('https://gateway.example');
+		expect(options['relay-with']).toBe('https://compute.example');
+	});
 });

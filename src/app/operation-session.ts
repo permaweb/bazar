@@ -14,13 +14,17 @@ export type WalletOperationClaim = {
 };
 
 export type WalletOperationStorageChange =
-	'claim-acquired' | 'claim-released' | 'recovery-updated' | 'recovery-removed' | 'ignore';
+	| 'claim-acquired'
+	| 'claim-released'
+	| 'recovery-updated'
+	| 'recovery-removed'
+	| 'ignore';
 
 type LockManagerLike = {
 	request<T>(
 		name: string,
 		options: { mode: 'exclusive'; ifAvailable?: true; signal?: AbortSignal },
-		callback: (lock: unknown | null) => T | PromiseLike<T>,
+		callback: (lock: unknown | null) => T | PromiseLike<T>
 	): Promise<T>;
 };
 
@@ -47,8 +51,8 @@ export function fungibleBatchStorageKey(assetId: string, buyer: string) {
 export function isWalletOperationRecoveryKey(key: string | null) {
 	return Boolean(
 		key?.startsWith('bazar-operation:') ||
-		key?.startsWith('bazar-purchase:') ||
-		key?.startsWith('bazar-purchase-batch:'),
+			key?.startsWith('bazar-purchase:') ||
+			key?.startsWith('bazar-purchase-batch:')
 	);
 }
 
@@ -56,7 +60,7 @@ export function hasRecoverablePurchase(
 	snapshot?: {
 		registration?: { id?: string; dispatched?: boolean };
 		payment?: { id?: string; dispatched?: boolean };
-	} | null,
+	} | null
 ) {
 	const registration = snapshot?.registration;
 	if (!registration || !/^[A-Za-z0-9_-]{43}$/.test(registration.id ?? '')) return false;
@@ -72,7 +76,7 @@ export function purchaseRecoveryApprovalCount(snapshot?: PurchaseSnapshot | null
 
 export function purchaseRecoveryApprovalCopy(
 	snapshot?: PurchaseSnapshot | null,
-	options: { externalOrigin?: boolean } = {},
+	options: { externalOrigin?: boolean } = {}
 ) {
 	const approvals = purchaseRecoveryApprovalCount(snapshot);
 	const hasReservation = /^[A-Za-z0-9_-]{43}$/.test(snapshot?.registration?.id ?? '');
@@ -94,8 +98,7 @@ export function purchaseRecoveryApprovalCopy(
 	}
 	return {
 		title: `${approvals} wallet approvals needed to resume`,
-		detail:
-			'Bazar could not recover usable signatures for the reservation or seller payment. Continuing will ask your wallet to approve both transactions before either one is submitted. Nothing will be signed or sent until you choose Continue.',
+		detail: 'Bazar could not recover usable signatures for the reservation or seller payment. Continuing will ask your wallet to approve both transactions before either one is submitted. Nothing will be signed or sent until you choose Continue.',
 		action: `Approve ${approvals} transactions and continue`,
 	};
 }
@@ -106,14 +109,14 @@ export function shouldAutomaticallyResumePurchase(snapshot?: PurchaseSnapshot | 
 
 export function latestPurchaseSnapshot(
 	resume: PurchaseSnapshot | null | undefined,
-	current: PurchaseSnapshot | null | undefined,
+	current: PurchaseSnapshot | null | undefined
 ) {
 	return current ?? resume ?? null;
 }
 
 export function repairRejectedPurchase(
 	snapshot: PurchaseSnapshot,
-	code: string | undefined,
+	code: string | undefined
 ): { discardIds: string[]; snapshot: PurchaseSnapshot | null } {
 	if (
 		code === 'registration-dispatch-rejected' ||
@@ -137,7 +140,7 @@ export function repairRejectedPurchase(
 export function removeSignedTransactionRecords(
 	storage: Pick<Storage, 'removeItem'> & Partial<Pick<Storage, 'getItem'>>,
 	ids: Array<string | null | undefined>,
-	expectedSigner?: string,
+	expectedSigner?: string
 ) {
 	for (const id of new Set(ids)) {
 		if (/^[A-Za-z0-9_-]{43}$/.test(id ?? '')) {
@@ -161,7 +164,7 @@ export function removeWalletRecoveryAndSignatures<T>(
 	key: string,
 	matches: (record: T) => boolean,
 	ids: Array<string | null | undefined>,
-	expectedSigner?: string,
+	expectedSigner?: string
 ) {
 	if (!removeWalletRecordIf(storage, key, matches)) return false;
 	removeSignedTransactionRecords(storage, ids, expectedSigner);
@@ -174,7 +177,7 @@ export function removeCompletedPurchaseRecoveryAndSignatures<T>(
 	key: string,
 	matches: (record: T) => boolean,
 	ids: Array<string | null | undefined>,
-	expectedSigner?: string,
+	expectedSigner?: string
 ) {
 	return status === 'complete' && removeWalletRecoveryAndSignatures(storage, key, matches, ids, expectedSigner);
 }
@@ -183,7 +186,7 @@ export function discardNewlyPreparedTransactionIfAborted(
 	storage: Pick<Storage, 'removeItem'>,
 	id: string,
 	newlyPrepared: boolean,
-	signal: AbortSignal,
+	signal: AbortSignal
 ) {
 	if (!signal.aborted) return false;
 	if (newlyPrepared && /^[A-Za-z0-9_-]{43}$/.test(id)) {
@@ -208,7 +211,7 @@ export function walletOperationStorageChange(
 	key: string | null,
 	newValue: string | null,
 	claimKey: string,
-	recoveryKeys: string[],
+	recoveryKeys: string[]
 ): WalletOperationStorageChange {
 	if (key === claimKey) return newValue === null ? 'claim-released' : 'claim-acquired';
 	if (!isWalletOperationStorageKey(key, recoveryKeys)) return 'ignore';
@@ -225,14 +228,17 @@ export async function acquireWalletOperationClaim(
 	storage: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>,
 	claimKey: string,
 	recoveryKeys: string[],
-	options: WalletOperationClaimOptions = {},
+	options: WalletOperationClaimOptions = {}
 ): Promise<WalletOperationClaim> {
 	const locks =
 		options.locks === undefined ? (typeof navigator === 'undefined' ? undefined : navigator.locks) : options.locks;
 	const attemptId = globalThis.crypto.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
 	const writeClaim = (releaseLock: () => void, clearStale = false): WalletOperationClaim => {
 		if (clearStale && storage.getItem(claimKey) !== null) storage.removeItem(claimKey);
-		assertWalletOperationAvailable(storage, [claimKey, ...recoveryKeys.filter((key) => key !== options.recovery?.key)]);
+		assertWalletOperationAvailable(storage, [
+			claimKey,
+			...recoveryKeys.filter((key) => key !== options.recovery?.key),
+		]);
 		if (options.recovery) {
 			let recovered: unknown;
 			try {
@@ -248,7 +254,10 @@ export async function acquireWalletOperationClaim(
 		}
 		storage.setItem(claimKey, JSON.stringify({ attemptId, createdAt: Date.now() }));
 		try {
-			if ((JSON.parse(storage.getItem(claimKey) ?? 'null') as { attemptId?: string } | null)?.attemptId !== attemptId) {
+			if (
+				(JSON.parse(storage.getItem(claimKey) ?? 'null') as { attemptId?: string } | null)?.attemptId !==
+				attemptId
+			) {
 				throw new Error('wallet-recovery-conflict');
 			}
 		} catch {
@@ -294,7 +303,7 @@ export async function acquireWalletOperationClaim(
 
 export function releaseWalletOperationClaim(
 	storage: Pick<Storage, 'getItem' | 'removeItem'>,
-	claim: WalletOperationClaim,
+	claim: WalletOperationClaim
 ) {
 	removeWalletRecordIf<{ attemptId?: string }>(storage, claim.key, (record) => record.attemptId === claim.attemptId);
 	claim.releaseLock();
@@ -303,7 +312,7 @@ export function releaseWalletOperationClaim(
 export async function clearStaleWalletOperationClaim(
 	storage: Pick<Storage, 'getItem' | 'removeItem'>,
 	claimKey: string,
-	options: { locks?: LockManagerLike | null; signal?: AbortSignal } = {},
+	options: { locks?: LockManagerLike | null; signal?: AbortSignal } = {}
 ) {
 	const locks =
 		options.locks === undefined ? (typeof navigator === 'undefined' ? undefined : navigator.locks) : options.locks;
@@ -318,7 +327,7 @@ export async function clearStaleWalletOperationClaim(
 			if (!lock || storage.getItem(claimKey) === null) return false;
 			storage.removeItem(claimKey);
 			return true;
-		},
+		}
 	);
 }
 
@@ -327,7 +336,7 @@ export function promoteWalletOperationClaim<T>(
 	claim: WalletOperationClaim,
 	recoveryKey: string,
 	record: T,
-	matches: (current: T) => boolean,
+	matches: (current: T) => boolean
 ) {
 	let held: { attemptId?: string } | null = null;
 	try {
@@ -343,7 +352,7 @@ export function loadWalletRecord<T>(
 	storage: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>,
 	key: string,
 	legacyKey: string,
-	matches: (record: T) => boolean,
+	matches: (record: T) => boolean
 ): T | null {
 	const current = storage.getItem(key);
 	if (current) {
@@ -380,7 +389,7 @@ export function removeWalletRecord(storage: Pick<Storage, 'getItem' | 'removeIte
 export function removeWalletRecordIf<T>(
 	storage: Pick<Storage, 'getItem' | 'removeItem'>,
 	key: string,
-	matches: (record: T) => boolean,
+	matches: (record: T) => boolean
 ) {
 	const current = storage.getItem(key);
 	if (!current) return false;
@@ -399,7 +408,7 @@ export function storeWalletRecordIf<T>(
 	key: string,
 	record: T,
 	matches: (current: T) => boolean,
-	allowMissing = false,
+	allowMissing = false
 ) {
 	const current = storage.getItem(key);
 	if (!current) {
@@ -435,7 +444,7 @@ export function storeWalletRecordOrThrow<T>(
 	key: string,
 	record: T,
 	matches: (current: T) => boolean,
-	allowMissing = false,
+	allowMissing = false
 ) {
 	if (!storeWalletRecordIf(storage, key, record, matches, allowMissing)) {
 		throw new Error('wallet-recovery-conflict');

@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { describe, expect, it } from 'vitest';
 
 import { OperationOutcome, OperationOutcomeAnnouncement } from './OperationOutcomeAnnouncement';
 
@@ -11,7 +11,7 @@ describe('operation outcome announcements', () => {
 				active: true,
 				title: 'Purchase complete',
 				detail: '8 WEAVE received from two listings.',
-			}),
+			})
 		);
 		expect(outcome).toContain('role="status"');
 		expect(outcome).toContain('aria-atomic="true"');
@@ -26,7 +26,7 @@ describe('operation outcome announcements', () => {
 				active: false,
 				title: 'Transfer complete',
 				detail: 'One token moved.',
-			}),
+			})
 		);
 		expect(pending).toContain('role="status"');
 		expect(pending).not.toContain('Transfer complete');
@@ -38,8 +38,8 @@ describe('operation outcome announcements', () => {
 			React.createElement(
 				OperationOutcome,
 				{ title: 'Listing is live', detail: 'catsun is offered for 0.0000002 AR.' },
-				React.createElement('img', { alt: 'catsun artwork', src: '/catsun.png' }),
-			),
+				React.createElement('img', { alt: 'catsun artwork', src: '/catsun.png' })
+			)
 		);
 		expect(outcome.indexOf('Listing is live')).toBeLessThan(outcome.indexOf('catsun artwork'));
 		expect(outcome.indexOf('catsun artwork')).toBeLessThan(outcome.indexOf('catsun is offered'));

@@ -3,10 +3,10 @@ import { SwapPurchase, TransactionDispatchNotSentError, TransactionDispatchRejec
 
 import { parseAssetState, type SwapOrder } from './asset-marketplace';
 import {
-	AssetTransactionClient,
 	assertExactCancelAssignment,
 	assertExactFungibleTransferAssignment,
 	assertExactPurchaseAssignment,
+	AssetTransactionClient,
 	cancelAppliedAtSlot,
 	fungibleTransferAppliedAtSlot,
 	purchaseAppliedAtSlot,
@@ -23,7 +23,7 @@ function transferState(
 	slot: number,
 	senderBalance: string,
 	recipientBalance: string,
-	orders: Record<string, unknown> = {},
+	orders: Record<string, unknown> = {}
 ) {
 	return parseAssetState({
 		'execution-device': 'token@1.0',
@@ -82,7 +82,7 @@ function scheduledPurchaseAssignment(
 	signedId: string,
 	expected: ReturnType<typeof swapOrder>,
 	buyer = recipient,
-	blockHeight = 51,
+	blockHeight = 51
 ) {
 	return {
 		'block-height': blockHeight,
@@ -153,7 +153,7 @@ function decodedTags(transaction: { tags: Array<{ name: string; value: string }>
 function client(
 	sign: (transaction: any) => Promise<any> = async (transaction) => transaction,
 	fetchResponse?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
-	verify: (transaction: any) => Promise<boolean> = async () => true,
+	verify: (transaction: any) => Promise<boolean> = async () => true
 ) {
 	const values = new Map<string, string>();
 	const requests: string[] = [];
@@ -260,7 +260,7 @@ describe('fungible asset transactions', () => {
 				'total-supply': '10',
 				balances: { [seller]: '9' },
 				orders: { [orderId]: cancelOrderRaw() },
-			}),
+			})
 		);
 
 		await subject.client.waitForOfferAcceptance(processId, {
@@ -364,7 +364,7 @@ describe('fungible asset transactions', () => {
 		}));
 
 		await expect(subject.client.cancelOrder(processId, orderId, seller)).rejects.toThrow(
-			'wallet-modified-transaction-fields',
+			'wallet-modified-transaction-fields'
 		);
 		expect(subject.storage.getItem(`bazar-signed-transaction:${transactionId}`)).toBeNull();
 	});
@@ -373,7 +373,7 @@ describe('fungible asset transactions', () => {
 		const subject = client(undefined, undefined, async () => false);
 
 		await expect(subject.client.cancelOrder(processId, orderId, seller)).rejects.toThrow(
-			'wallet-returned-invalid-signature',
+			'wallet-returned-invalid-signature'
 		);
 		expect(subject.storage.getItem(`bazar-signed-transaction:${transactionId}`)).toBeNull();
 	});
@@ -389,7 +389,7 @@ describe('fungible asset transactions', () => {
 			return transaction;
 		});
 		await expect(subject.client.transfer(processId, recipient, '12500000000000', seller)).rejects.toThrow(
-			'wallet-modified-transaction-fields',
+			'wallet-modified-transaction-fields'
 		);
 		expect(subject.storage.getItem(`bazar-signed-transaction:${transactionId}`)).toBeNull();
 	});
@@ -431,7 +431,7 @@ describe('fungible asset transactions', () => {
 			return transaction;
 		});
 		await expect(subject.client.transfer(processId, recipient, '12500000000000', seller)).rejects.toThrow(
-			'wallet-modified-transaction-fields',
+			'wallet-modified-transaction-fields'
 		);
 		expect(subject.storage.getItem(`bazar-signed-transaction:${transactionId}`)).toBeNull();
 	});
@@ -462,7 +462,7 @@ describe('fungible asset transactions', () => {
 		serializedTransaction.target = recipient;
 
 		await expect(prepared.dispatch(new AbortController().signal)).rejects.toBeInstanceOf(
-			TransactionDispatchNotSentError,
+			TransactionDispatchNotSentError
 		);
 		expect(subject.requests).toEqual([]);
 	});
@@ -481,7 +481,7 @@ describe('fungible asset transactions', () => {
 		serializedTransaction.reward = '999999';
 
 		await expect(prepared.dispatch(new AbortController().signal)).rejects.toBeInstanceOf(
-			TransactionDispatchNotSentError,
+			TransactionDispatchNotSentError
 		);
 		expect(subject.requests).toEqual([]);
 	});
@@ -490,7 +490,7 @@ describe('fungible asset transactions', () => {
 		const subject = client(undefined, async (input) =>
 			String(input).endsWith('/tx')
 				? new Response('invalid transaction', { status: 400 })
-				: new Response('1000000000000'),
+				: new Response('1000000000000')
 		);
 		const prepared = await subject.client.transfer(processId, recipient, '12500000000000', seller);
 
@@ -509,7 +509,7 @@ describe('fungible asset transactions', () => {
 
 	it.each([408, 425, 429])('keeps HTTP %s ambiguous so only the exact signed ID may be retried', async (status) => {
 		const subject = client(undefined, async (input) =>
-			String(input).endsWith('/tx') ? new Response('retry later', { status }) : new Response('1000000000000'),
+			String(input).endsWith('/tx') ? new Response('retry later', { status }) : new Response('1000000000000')
 		);
 		const prepared = await subject.client.transfer(processId, recipient, '12500000000000', seller);
 
@@ -546,13 +546,13 @@ describe('fungible asset transactions', () => {
 		const settled = transferState(11, '90', '12');
 
 		expect(
-			purchaseAppliedAtSlot(before, unrelatedGrowth, assignment, processId, transactionId, recipient, expected),
+			purchaseAppliedAtSlot(before, unrelatedGrowth, assignment, processId, transactionId, recipient, expected)
 		).toBe(false);
 		expect(
-			purchaseAppliedAtSlot(before, wrongQuantity, assignment, processId, transactionId, recipient, expected),
+			purchaseAppliedAtSlot(before, wrongQuantity, assignment, processId, transactionId, recipient, expected)
 		).toBe(false);
 		expect(purchaseAppliedAtSlot(before, settled, assignment, processId, transactionId, recipient, expected)).toBe(
-			true,
+			true
 		);
 	});
 
@@ -596,8 +596,8 @@ describe('fungible asset transactions', () => {
 					processId,
 					transactionId,
 					recipient,
-					expected,
-				),
+					expected
+				)
 			).toThrow('asset-purchase-proof-mismatch');
 		}
 	});
@@ -629,7 +629,7 @@ describe('fungible asset transactions', () => {
 							slot === 11 ? transactionId : `p${String(slot).padStart(42, '0')}`,
 							expected,
 							recipient,
-							slot < 11 ? 50 : slot === 11 ? 51 : 52,
+							slot < 11 ? 50 : slot === 11 ? 51 : 52
 						);
 					}
 					return new Response(JSON.stringify(assignments));
@@ -653,7 +653,7 @@ describe('fungible asset transactions', () => {
 				paymentId: transactionId,
 				signal: new AbortController().signal,
 				report: () => undefined,
-			}),
+			})
 		).resolves.toBeUndefined();
 	});
 
@@ -669,9 +669,11 @@ describe('fungible asset transactions', () => {
 		const cancelled = transferState(11, '100', '0');
 
 		expect(
-			cancelAppliedAtSlot(before, absentWithoutCredit, assignment, processId, transactionId, seller, orderId),
+			cancelAppliedAtSlot(before, absentWithoutCredit, assignment, processId, transactionId, seller, orderId)
 		).toBe(false);
-		expect(cancelAppliedAtSlot(before, cancelled, assignment, processId, transactionId, seller, orderId)).toBe(true);
+		expect(cancelAppliedAtSlot(before, cancelled, assignment, processId, transactionId, seller, orderId)).toBe(
+			true
+		);
 	});
 
 	it('rejects incomplete exact cancellation evidence before reading it as success', () => {
@@ -709,8 +711,8 @@ describe('fungible asset transactions', () => {
 					processId,
 					transactionId,
 					seller,
-					orderId,
-				),
+					orderId
+				)
 			).toThrow('asset-cancel-proof-mismatch');
 		}
 	});
@@ -734,7 +736,7 @@ describe('fungible asset transactions', () => {
 						assignments[slot] = scheduledCancelAssignment(
 							slot,
 							slot === 12 ? transactionId : `c${String(slot).padStart(42, '0')}`,
-							slot === 12 ? 51 : 50,
+							slot === 12 ? 51 : 50
 						);
 					}
 					return new Response(JSON.stringify(assignments));
@@ -746,7 +748,7 @@ describe('fungible asset transactions', () => {
 		});
 
 		await expect(
-			subject.waitForExactCancellation(processId, transactionId, seller, expected, { startingSlot: 10 }),
+			subject.waitForExactCancellation(processId, transactionId, seller, expected, { startingSlot: 10 })
 		).rejects.toThrow('asset-cancel-rejected');
 	});
 
@@ -769,7 +771,7 @@ describe('fungible asset transactions', () => {
 						assignments[slot] = scheduledCancelAssignment(
 							slot,
 							slot === 12 ? transactionId : `d${String(slot).padStart(42, '0')}`,
-							slot < 12 ? 50 : slot === 12 ? 51 : 52,
+							slot < 12 ? 50 : slot === 12 ? 51 : 52
 						);
 					}
 					return new Response(JSON.stringify(assignments));
@@ -781,7 +783,7 @@ describe('fungible asset transactions', () => {
 		});
 
 		await expect(
-			subject.waitForExactCancellation(processId, transactionId, seller, expected, { startingSlot: 10 }),
+			subject.waitForExactCancellation(processId, transactionId, seller, expected, { startingSlot: 10 })
 		).resolves.toMatchObject({ raw: { 'at-slot': 12 } });
 	});
 
@@ -796,12 +798,12 @@ describe('fungible asset transactions', () => {
 		applied.raw.results = { outbox: transferNotices('10') };
 		const rejected = transferState(11, '100', '107');
 
-		expect(fungibleTransferAppliedAtSlot(rejected, assignment, processId, transactionId, seller, recipient, '10')).toBe(
-			false,
-		);
-		expect(fungibleTransferAppliedAtSlot(applied, assignment, processId, transactionId, seller, recipient, '10')).toBe(
-			true,
-		);
+		expect(
+			fungibleTransferAppliedAtSlot(rejected, assignment, processId, transactionId, seller, recipient, '10')
+		).toBe(false);
+		expect(
+			fungibleTransferAppliedAtSlot(applied, assignment, processId, transactionId, seller, recipient, '10')
+		).toBe(true);
 	});
 
 	it('distinguishes incomplete scheduler proof from an exact token rejection', () => {
@@ -840,8 +842,8 @@ describe('fungible asset transactions', () => {
 					transactionId,
 					seller,
 					recipient,
-					'10',
-				),
+					'10'
+				)
 			).toThrow('fungible-transfer-proof-mismatch');
 		}
 	});
@@ -867,7 +869,7 @@ describe('fungible asset transactions', () => {
 		});
 
 		await expect(
-			subject.waitForFungibleTransfer(processId, transactionId, seller, recipient, '10', { startingSlot: 10 }),
+			subject.waitForFungibleTransfer(processId, transactionId, seller, recipient, '10', { startingSlot: 10 })
 		).rejects.toThrow('fungible-transfer-proof-mismatch');
 		expect(historicalReads).toBe(0);
 	});
@@ -889,7 +891,7 @@ describe('fungible asset transactions', () => {
 				for (let slot = Number(schedule[1]); slot <= Number(schedule[2]); slot += 1) {
 					assignments[slot] = scheduledAssignment(
 						slot,
-						slot === 12 ? transactionId : String.fromCharCode(54 + slot).repeat(43),
+						slot === 12 ? transactionId : String.fromCharCode(54 + slot).repeat(43)
 					);
 				}
 				return new Response(JSON.stringify(assignments));
@@ -901,7 +903,7 @@ describe('fungible asset transactions', () => {
 		const subject = new AssetTransactionClient({ fetch: fetcher as typeof fetch });
 
 		await expect(
-			subject.waitForFungibleTransfer(processId, transactionId, seller, recipient, '10', { startingSlot: 10 }),
+			subject.waitForFungibleTransfer(processId, transactionId, seller, recipient, '10', { startingSlot: 10 })
 		).resolves.toMatchObject({ raw: { 'at-slot': 12 }, balances: { [recipient]: '110' } });
 	});
 
@@ -929,7 +931,7 @@ describe('fungible asset transactions', () => {
 						assignments[slot] = scheduledAssignment(
 							slot,
 							slot === targetSlot ? transactionId : `x${String(slot).padStart(42, '0')}`,
-							blockHeight(slot),
+							blockHeight(slot)
 						);
 					}
 					return new Response(JSON.stringify(assignments));
@@ -942,7 +944,7 @@ describe('fungible asset transactions', () => {
 		});
 
 		await expect(
-			subject.waitForFungibleTransfer(processId, transactionId, seller, recipient, '10', { startingSlot: 0 }),
+			subject.waitForFungibleTransfer(processId, transactionId, seller, recipient, '10', { startingSlot: 0 })
 		).resolves.toMatchObject({ raw: { 'at-slot': targetSlot } });
 		expect(scheduleReads).toBeLessThan(45);
 	});
@@ -967,7 +969,7 @@ describe('fungible asset transactions', () => {
 						assignments[slot] = scheduledAssignment(
 							slot,
 							slot === 13 ? transactionId : `r${String(slot).padStart(42, '0')}`,
-							slot < 13 ? 51 : 52,
+							slot < 13 ? 51 : 52
 						);
 					}
 					return new Response(JSON.stringify(assignments));
@@ -978,7 +980,7 @@ describe('fungible asset transactions', () => {
 		});
 
 		await expect(
-			subject.waitForFungibleTransfer(processId, transactionId, seller, recipient, '10', { startingSlot: 10 }),
+			subject.waitForFungibleTransfer(processId, transactionId, seller, recipient, '10', { startingSlot: 10 })
 		).resolves.toMatchObject({ raw: { 'at-slot': 13 } });
 		expect(statusReads).toBe(2);
 	});
@@ -1011,7 +1013,7 @@ describe('fungible asset transactions', () => {
 							assignments[slot] = scheduledAssignment(
 								slot,
 								moved && slot === 10 ? transactionId : `s${String(slot).padStart(42, '0')}`,
-								blockHeight,
+								blockHeight
 							);
 						}
 						return new Response(JSON.stringify(assignments));
@@ -1070,17 +1072,17 @@ describe('fungible asset transactions', () => {
 
 	it('rejects zero and malformed token quantities before signing', async () => {
 		await expect(client().client.makeOffer({ processId, quantity: '0', asking: '1', seller })).rejects.toThrow(
-			'invalid-token-quantity',
+			'invalid-token-quantity'
 		);
 		await expect(client().client.transfer(processId, recipient, '1.5', seller)).rejects.toThrow(
-			'invalid-token-quantity',
+			'invalid-token-quantity'
 		);
 	});
 
 	it('includes the one-winston scheduler quantity in purchase estimates', async () => {
 		const subject = new AssetTransactionClient({ fetch: async () => new Response('1000') });
 		await expect(
-			subject.estimatePurchaseCosts(swapOrder(transactionId, '3000000000000', '1000000'), processId),
+			subject.estimatePurchaseCosts(swapOrder(transactionId, '3000000000000', '1000000'), processId)
 		).resolves.toMatchObject({ total: '101001001' });
 	});
 
@@ -1098,7 +1100,10 @@ describe('fungible asset transactions', () => {
 		];
 
 		await expect(subject.estimatePurchaseBatchCosts(orders, processId)).resolves.toHaveLength(2);
-		expect(requests).toEqual([`https://arweave.net/price/0/${processId}`, `https://arweave.net/price/0/${recipient}`]);
+		expect(requests).toEqual([
+			`https://arweave.net/price/0/${processId}`,
+			`https://arweave.net/price/0/${recipient}`,
+		]);
 	});
 
 	it('uses the Arweave gateway serving the browser by default', async () => {
@@ -1208,8 +1213,8 @@ describe('fungible asset transactions', () => {
 			subject.estimatePurchaseBatchCosts(
 				[swapOrder(transactionId, '3000000000000', '1000000')],
 				processId,
-				controller.signal,
-			),
+				controller.signal
+			)
 		).rejects.toBe(reason);
 		expect(signals).toEqual([controller.signal, controller.signal]);
 	});
@@ -1238,7 +1243,7 @@ describe('fungible asset transactions', () => {
 					startingBalance: '0',
 					network: { tip: () => 0 } as any,
 				},
-			]),
+			])
 		).rejects.toThrow('asset-purchase-insufficient-funds');
 		expect(signatures).toBe(0);
 	});
@@ -1275,8 +1280,8 @@ describe('fungible asset transactions', () => {
 					buyer: seller,
 					startingBalance: '0',
 					network: { tip: () => 1000 } as any,
-				})),
-			),
+				}))
+			)
 		).rejects.toThrow('wallet approval rejected');
 
 		expect(subject.signatures()).toBe(rejectAt);
@@ -1298,8 +1303,8 @@ describe('fungible asset transactions', () => {
 					buyer: seller,
 					startingBalance: '0',
 					network: { tip: () => 1000 } as any,
-				})),
-			),
+				}))
+			)
 		).rejects.toThrow('asset-purchase-insufficient-funds');
 
 		expect(subject.signatures()).toBe(4);
@@ -1326,10 +1331,12 @@ describe('fungible asset transactions', () => {
 				network: { tip: () => 1000 } as any,
 			})),
 			undefined,
-			(event) => events.push(event),
+			(event) => events.push(event)
 		);
 
-		expect(events.map((event) => (event.type === 'quoted' ? event.type : `${event.kind}:${event.orderId}`))).toEqual([
+		expect(
+			events.map((event) => (event.type === 'quoted' ? event.type : `${event.kind}:${event.orderId}`))
+		).toEqual([
 			'quoted',
 			`registration:${orders[0].orderId}`,
 			`payment:${orders[0].orderId}`,
@@ -1383,7 +1390,7 @@ describe('fungible asset transactions', () => {
 				startingBalance: '0',
 				network: { tip: () => 1000 } as any,
 			})),
-			controller.signal,
+			controller.signal
 		);
 
 		await subject.balanceStarted;
@@ -1452,10 +1459,11 @@ describe('fungible asset transactions', () => {
 		expect(() => new SwapPurchase(network, adapter, { resume: prepared.snapshot })).not.toThrow();
 		expect(
 			(await adapter.restorePrepared!('registration', prepared.registration.id, new AbortController().signal))
-				.validUntilHeight,
+				.validUntilHeight
 		).toBeDefined();
 		expect(
-			(await adapter.restorePrepared!('payment', prepared.payment.id, new AbortController().signal)).validUntilHeight,
+			(await adapter.restorePrepared!('payment', prepared.payment.id, new AbortController().signal))
+				.validUntilHeight
 		).toBeUndefined();
 	});
 
@@ -1488,7 +1496,7 @@ describe('fungible asset transactions', () => {
 					name: Buffer.from('fill-quantity').toString('base64url'),
 					value: Buffer.from('1000000000000').toString('base64url'),
 				}),
-			]),
+			])
 		);
 		expect(payment.target).toBe(order.recipient);
 		expect(payment.quantity).toBe('333334');
@@ -1506,7 +1514,7 @@ describe('fungible asset transactions', () => {
 				buyer: seller,
 				startingBalance: '0',
 				network: { tip: () => 1000 } as any,
-			}),
+			})
 		).toThrow('fill-quantity-out-of-range');
 		expect(subject.signatures()).toBe(0);
 	});
@@ -1542,9 +1550,9 @@ describe('fungible asset transactions', () => {
 			},
 		}).purchaseAdapter({ processId, order, buyer: seller, startingBalance: '0', network });
 
-		await expect(resumed.restorePrepared!('registration', prepared.id, new AbortController().signal)).rejects.toThrow(
-			'asset-order-not-purchasable',
-		);
+		await expect(
+			resumed.restorePrepared!('registration', prepared.id, new AbortController().signal)
+		).rejects.toThrow('asset-order-not-purchasable');
 		expect(posts).toBe(0);
 	});
 
@@ -1597,7 +1605,7 @@ describe('fungible asset transactions', () => {
 				registrationId: 'R'.repeat(43),
 				signal: new AbortController().signal,
 				report: () => undefined,
-			}),
+			})
 		).rejects.toThrow('asset-order-reservation-expired');
 		expect(stateReads).toBe(1);
 		expect(posts).toBe(0);
@@ -1651,7 +1659,7 @@ describe('fungible asset transactions', () => {
 				registrationId,
 				signal: new AbortController().signal,
 				report: () => undefined,
-			}),
+			})
 		).rejects.toThrow('asset-order-reservation-rejected');
 		expect(stateReads).toBe(1);
 	});
@@ -1704,7 +1712,7 @@ describe('fungible asset transactions', () => {
 				registrationId,
 				signal: new AbortController().signal,
 				report: () => undefined,
-			}),
+			})
 		).rejects.toThrow('asset-order-reservation-expired');
 		expect(stateReads).toBe(1);
 	});
@@ -1727,7 +1735,7 @@ function swapOrder(orderId: string, quantity: string, asking: string) {
 
 function approvalSubject(
 	orders: ReturnType<typeof swapOrder>[],
-	options: { rejectAt?: number; failBalanceAt?: number; deferBalanceAt?: number } = {},
+	options: { rejectAt?: number; failBalanceAt?: number; deferBalanceAt?: number } = {}
 ) {
 	const values = new Map<string, string>();
 	const ids = ['R', 'P', 'S', 'T', 'U', 'V'].map((prefix) => prefix.repeat(43));
@@ -1801,7 +1809,7 @@ function approvalSubject(
 					quantity: order.quantity,
 					status: 'open',
 				},
-			]),
+			])
 		),
 	};
 	const subject = new AssetTransactionClient({

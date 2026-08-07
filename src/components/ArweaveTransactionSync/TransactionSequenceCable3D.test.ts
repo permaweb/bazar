@@ -1,20 +1,22 @@
-import { describe, expect, it } from 'vitest';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { ServerStyleSheet, ThemeProvider } from 'styled-components';
+import { describe, expect, it } from 'vitest';
+
 import { theme } from 'helpers/theme';
+
+import { RaceShell, RaceTooltip } from './styles';
 import {
+	CableTelemetryPanel,
 	configureTransactionOrbitControls,
 	createWebGLRendererSafely,
-	CableTelemetryPanel,
+	type Infinity3DLane,
 	retainedPhaseProgress,
 	shouldClearTransactionInspection,
 	shouldRenderProofPins,
 	TransactionRendererFallback,
-	type Infinity3DLane,
 } from './TransactionSequenceCable3D';
 import { TransactionVisualizerBoundary } from './TransactionVisualizerFallback';
-import { RaceShell, RaceTooltip } from './styles';
 
 function fallbackLane(statusLabel: string): Infinity3DLane {
 	return {
@@ -37,8 +39,8 @@ function renderFallback(statusLabel: string) {
 		React.createElement(
 			ThemeProvider,
 			{ theme },
-			React.createElement(TransactionRendererFallback, { lanes: [fallbackLane(statusLabel)] }),
-		),
+			React.createElement(TransactionRendererFallback, { lanes: [fallbackLane(statusLabel)] })
+		)
 	);
 }
 
@@ -67,8 +69,8 @@ describe('transaction map renderer fallback', () => {
 						activity: [],
 						mining: { heading: 'Arweave protocol', status: 'Sampling live mining activity', metrics: [] },
 					},
-				}),
-			),
+				})
+			)
 		);
 		expect(markup).not.toContain('HTTP 404');
 		expect(markup).toContain('Recent network activity');
@@ -81,9 +83,9 @@ describe('transaction map renderer fallback', () => {
 				React.createElement(
 					ThemeProvider,
 					{ theme },
-					React.createElement(RaceTooltip, { $below: false, $left: 120, $top: 80 }, 'Observer status'),
-				),
-			),
+					React.createElement(RaceTooltip, { $below: false, $left: 120, $top: 80 }, 'Observer status')
+				)
+			)
 		);
 		const css = sheet.getStyleTags();
 		sheet.seal();
@@ -98,9 +100,9 @@ describe('transaction map renderer fallback', () => {
 				React.createElement(
 					ThemeProvider,
 					{ theme },
-					React.createElement(RaceShell, { $height: 320, $embedded: false }),
-				),
-			),
+					React.createElement(RaceShell, { $height: 320, $embedded: false })
+				)
+			)
 		);
 		const css = sheet.getStyleTags();
 		sheet.seal();
@@ -121,7 +123,7 @@ describe('transaction map renderer fallback', () => {
 		expect(
 			createWebGLRendererSafely(() => {
 				throw new Error('WebGL unavailable');
-			}),
+			})
 		).toBeNull();
 		expect(shouldRenderProofPins(true)).toBe(false);
 	});

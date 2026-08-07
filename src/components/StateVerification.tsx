@@ -30,12 +30,13 @@ export function StateVerification({
 	return (
 		<p className="state-verification">
 			<Server className="ui-icon ui-icon--xs" aria-hidden="true" />
-			<span>{refreshing ? 'Refreshing · last checked' : failed ? 'Refresh failed · last checked' : 'Checked'}</span>{' '}
+			<span>
+				{refreshing ? 'Refreshing · last checked' : failed ? 'Refresh failed · last checked' : 'Checked'}
+			</span>{' '}
 			<time dateTime={timestamp.toISOString()} title={timestamp.toLocaleString()}>
 				{stateVerificationTimeLabel(verifiedAt)}
 			</time>{' '}
-			<span>via</span>{' '}
-			<strong title={provider}>{host}</strong>
+			<span>via</span> <strong title={provider}>{host}</strong>
 			<span>· current state requested</span>
 		</p>
 	);

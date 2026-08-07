@@ -8,11 +8,13 @@ const address = '1uTLV5GvfQ5M46Tq_DTeJL7rIy7vCAOMxQ7Fbf82YZw';
 
 describe('wallet address rendering', () => {
 	it('shows the complete identity when irreversible review requests it', () => {
-		const markup = renderToStaticMarkup(React.createElement(WalletAddress, {
-			address,
-			full: true,
-			label: 'recipient',
-		}));
+		const markup = renderToStaticMarkup(
+			React.createElement(WalletAddress, {
+				address,
+				full: true,
+				label: 'recipient',
+			})
+		);
 		expect(markup).toContain('wallet-address is-full');
 		expect(markup).toContain(`<span>${address}</span>`);
 		expect(markup).toContain(`Copy recipient address ${address}`);

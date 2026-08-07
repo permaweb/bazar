@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
+
 import {
 	dialogRestoreTarget,
-	isDialogRestoreTarget,
 	isDialogFocusable,
+	isDialogRestoreTarget,
 	targetOwnsDialogEscape,
 } from './useDialogFocus';
 
@@ -20,8 +21,8 @@ function restoreCandidate({
 		hidden,
 		inert,
 		parentElement: null,
-		getAttribute: (name: string) => name === 'aria-disabled' && ariaDisabled ? 'true' : null,
-		getClientRects: () => visible ? [{}] : [],
+		getAttribute: (name: string) => (name === 'aria-disabled' && ariaDisabled ? 'true' : null),
+		getClientRects: () => (visible ? [{}] : []),
 	} as unknown as HTMLElement;
 }
 
@@ -62,10 +63,11 @@ describe('dialog focus restoration', () => {
 
 describe('dialog focus candidates', () => {
 	it('excludes inactive controls from roving tab sets', () => {
-		const candidate = (tabIndex: number) => ({
-			tabIndex,
-			getClientRects: () => [{}],
-		}) as unknown as HTMLElement;
+		const candidate = (tabIndex: number) =>
+			({
+				tabIndex,
+				getClientRects: () => [{}],
+			} as unknown as HTMLElement);
 		expect(isDialogFocusable(candidate(0))).toBe(true);
 		expect(isDialogFocusable(candidate(-1))).toBe(false);
 	});

@@ -1,4 +1,4 @@
-import { readAssetState, servingNodeOrigin, type ComputeResult } from './asset-marketplace';
+import { type ComputeResult, readAssetState, servingNodeOrigin } from './asset-marketplace';
 
 const DEFAULT_STATE_TTL_MS = 20_000;
 const PREFETCH_CONCURRENCY = 2;
@@ -47,7 +47,7 @@ function waitForConsumer<Result>(promise: Promise<Result>, signal?: AbortSignal)
 			(cause) => {
 				signal.removeEventListener('abort', abort);
 				reject(cause);
-			},
+			}
 		);
 	});
 }
@@ -94,7 +94,7 @@ function drainPrefetchQueue() {
 		void readAssetStateCached(processId, { cacheTtlMs: 30_000, maxAge: 30, maxAttempts: 1 })
 			.then(
 				(result) => prefetchWaiters.get(processId)?.forEach((resolve) => resolve(result)),
-				() => prefetchWaiters.get(processId)?.forEach((resolve) => resolve(undefined)),
+				() => prefetchWaiters.get(processId)?.forEach((resolve) => resolve(undefined))
 			)
 			.finally(() => {
 				prefetchWaiters.delete(processId);

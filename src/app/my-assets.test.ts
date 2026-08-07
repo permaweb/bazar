@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
 import type { AssetCandidate, ResolvedAsset } from 'api/asset-discovery';
+
 import {
+	assetGroupRevealAnnouncement,
+	assetGroupRevealComplete,
+	retainedAssetGroupLimit,
+} from '../helpers/progressive-assets';
+
+import {
+	type CandidateSupportFailure,
 	groupWalletResults,
 	nextWalletAnnouncementProgress,
 	refreshCandidateRetryMetadata,
@@ -14,15 +22,9 @@ import {
 	walletPageResolutionQueue,
 	walletResolutionCopy,
 	walletResolutionIsDeterminate,
-	walletResolutionShowsProgress,
 	walletResolutionMaxAge,
-	type CandidateSupportFailure,
+	walletResolutionShowsProgress,
 } from './App';
-import {
-	assetGroupRevealAnnouncement,
-	assetGroupRevealComplete,
-	retainedAssetGroupLimit,
-} from '../helpers/progressive-assets';
 
 const processId = 'P'.repeat(43);
 
@@ -66,7 +68,7 @@ function resolved(id: string, liquid: string, listed: string): ResolvedAsset {
 								quantity: listed,
 								status: 'open',
 							},
-						},
+					  },
 			swapHeight: 1,
 			value: null,
 			raw: {},
@@ -224,7 +226,7 @@ describe('My assets retry bookkeeping', () => {
 				discoveryComplete: true,
 				discovered: 16_000,
 			},
-			'wallet-a',
+			'wallet-a'
 		);
 
 		expect(first.discovered).toBe(104);
@@ -263,14 +265,14 @@ describe('My assets retry bookkeeping', () => {
 						...status,
 						revalidated: progress.revalidated,
 					},
-					'',
-				).announcement,
+					''
+				).announcement
 			);
 		}
 
 		expect(announcements.size).toBeLessThanOrEqual(12);
 		expect([...announcements].at(-1)).toBe(
-			'Confirming current ownership. 104 of 104 visible assets rechecked without cached state.',
+			'Confirming current ownership. 104 of 104 visible assets rechecked without cached state.'
 		);
 	});
 
@@ -378,7 +380,7 @@ describe('My assets retry bookkeeping', () => {
 				indexRateLimited: 4,
 				error: null,
 			},
-			'Arweave’s transaction index is temporarily rate-limiting requests.',
+			'Arweave’s transaction index is temporarily rate-limiting requests.'
 		);
 
 		expect(copy.heading).toBe('Candidate checks unavailable');
@@ -402,12 +404,12 @@ describe('My assets retry bookkeeping', () => {
 				revalidationTotal: 101,
 				error: null,
 			},
-			'',
+			''
 		);
 
 		expect(copy.heading).toBe('Confirming current ownership');
 		expect(copy.announcement).toBe(
-			'Confirming current ownership. 80 of 101 visible assets rechecked without cached state.',
+			'Confirming current ownership. 80 of 101 visible assets rechecked without cached state.'
 		);
 	});
 
@@ -434,14 +436,14 @@ describe('My assets retry bookkeeping', () => {
 				phase: 'done',
 				discoveryComplete: true,
 				error: null,
-			}),
+			})
 		).toBe(true);
 		expect(
 			walletResolutionShowsProgress({
 				...interrupted,
 				phase: 'discovering',
 				error: null,
-			}),
+			})
 		).toBe(true);
 	});
 });

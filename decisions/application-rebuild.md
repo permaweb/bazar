@@ -17,12 +17,12 @@ leave the old authority and write paths in the bundle.
 
 The useful public contract is much smaller:
 
-- immutable collection indexes on Arweave;
-- process state read from the selected HyperBEAM gateway;
-- offers discovered on Arweave and verified against process state;
-- native Arweave transactions signed by the connected wallet;
-- resumable `weave-wrangler` synchronization; and
-- direct wallet ownership.
+-   immutable collection indexes on Arweave;
+-   process state read from the selected HyperBEAM gateway;
+-   offers discovered on Arweave and verified against process state;
+-   native Arweave transactions signed by the connected wallet;
+-   resumable `weave-wrangler` synchronization; and
+-   direct wallet ownership.
 
 ## Options
 
@@ -42,16 +42,16 @@ Choose option 3.
 
 The new source tree will contain only:
 
-- gateway/GraphQL and collection discovery clients;
-- a generic one-unit asset state and marketplace client shared by carrier and
-  token assets;
-- browser-wallet connection and native transaction preparation;
-- a generic resumable sequence operation provider for list, cancel, transfer,
-  and two-transaction purchases;
-- the AO-Site/weave-wrangler observer network and transaction synchronization
-  visualization, generalized from name-specific labels;
-- collection, asset, owned-assets, and transaction-recovery screens; and
-- a small design system consistent with Bazar's black/white visual identity.
+-   gateway/GraphQL and collection discovery clients;
+-   a generic one-unit asset state and marketplace client shared by carrier and
+    token assets;
+-   browser-wallet connection and native transaction preparation;
+-   a generic resumable sequence operation provider for list, cancel, transfer,
+    and two-transaction purchases;
+-   the AO-Site/weave-wrangler observer network and transaction synchronization
+    visualization, generalized from name-specific labels;
+-   collection, asset, owned-assets, and transaction-recovery screens; and
+-   a small design system consistent with Bazar's black/white visual identity.
 
 There will be no profile model, intermediary owner, AO-Connect import,
 legacynet write, UCM process, app backend, service worker cache, Redux store, or

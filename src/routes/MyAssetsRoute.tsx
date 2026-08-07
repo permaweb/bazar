@@ -2,16 +2,17 @@ import React from 'react';
 import { RefreshCw, Server } from 'lucide-react';
 
 import {
+	type AssetCandidate,
 	createWalletCandidateScan,
 	discoverWalletAssetCandidates,
 	partitionAssetCandidateSupport,
 	resolveAssetCandidates,
+	type ResolvedAsset,
 	verifyAssetCandidateSupport,
 	walletAssetGroups,
-	type AssetCandidate,
-	type ResolvedAsset,
 } from 'api/asset-discovery';
-import { listedBalanceOf, liquidBalanceOf, readAssetState, servingNodeOrigin } from 'api/asset-marketplace';
+import { liquidBalanceOf, listedBalanceOf, readAssetState, servingNodeOrigin } from 'api/asset-marketplace';
+
 import { Button } from 'components/Button';
 import { ConnectWalletButton } from 'components/ConnectWalletButton';
 import { ErrorPanel } from 'components/ErrorPanel';
@@ -31,23 +32,23 @@ import {
 	initialWalletResolutionStatus,
 	MarketContext,
 	nextWalletAnnouncementProgress,
-	reopenWalletCandidate,
 	refreshCandidateRetryMetadata,
+	reopenWalletCandidate,
 	RouteState,
 	tokenBalanceLabel,
 	trackRateLimitFailure,
 	updateWalletResolvedAsset,
 	useProgressiveAssetPageSize,
+	type WalletAnnouncementProgress,
 	walletDiscoveryScope,
+	type WalletDiscoverySession,
 	walletDiscoverySession,
 	walletDiscoverySessionIsCurrent,
 	walletPageResolutionQueue,
 	walletResolutionCopy,
 	walletResolutionIsDeterminate,
-	walletResolutionShowsProgress,
 	walletResolutionMaxAge,
-	type WalletAnnouncementProgress,
-	type WalletDiscoverySession,
+	walletResolutionShowsProgress,
 	type WalletResolutionStatus,
 } from '../app/App';
 import {
@@ -82,7 +83,7 @@ export default function MyAssetsRoute() {
 	const status = sessionIsCurrent ? storedStatus : initialWalletResolutionStatus();
 	const groupedResults = React.useMemo(
 		() => (wallet.address ? groupWalletResults(visibleResults, wallet.address) : { owned: [], listed: [] }),
-		[visibleResults, wallet.address],
+		[visibleResults, wallet.address]
 	);
 	const retryDiscovery = () => {
 		setDiscoveryRetry((value) => value + 1);
@@ -109,8 +110,8 @@ export default function MyAssetsRoute() {
 			if (!active()) return;
 			setResults(
 				[...session.resolvedAssets.values()].sort(
-					(a, b) => b.activity.height - a.activity.height || b.activity.timestamp - a.activity.timestamp,
-				),
+					(a, b) => b.activity.height - a.activity.height || b.activity.timestamp - a.activity.timestamp
+				)
 			);
 		};
 		const scheduleResults = () => {
@@ -210,7 +211,8 @@ export default function MyAssetsRoute() {
 									resolved: current.resolved + 1,
 									failures: current.failures + (error ? 1 : 0),
 									rateLimited:
-										current.rateLimited + (error && marketplaceFailureKind(error) === 'rate-limited' ? 1 : 0),
+										current.rateLimited +
+										(error && marketplaceFailureKind(error) === 'rate-limited' ? 1 : 0),
 								}));
 								if (!error && updateWalletResolvedAsset(session, result, candidate, walletAddress)) {
 									scheduleResults();
@@ -238,7 +240,7 @@ export default function MyAssetsRoute() {
 						}
 						const checkedWithoutCompute = unverified.length - verification.supported.length;
 						const rateLimited = verification.unavailable.filter(
-							(failure) => marketplaceFailureKind(failure.error) === 'rate-limited',
+							(failure) => marketplaceFailureKind(failure.error) === 'rate-limited'
 						).length;
 						if (checkedWithoutCompute && active()) {
 							for (const candidate of unverified) {
@@ -259,7 +261,7 @@ export default function MyAssetsRoute() {
 				};
 				const pageQueue = walletPageResolutionQueue(resolvePage, controller.signal);
 				const pendingCandidates = [...session.latestCandidates.values()].filter(
-					(candidate) => !session.screened.has(candidate.processId),
+					(candidate) => !session.screened.has(candidate.processId)
 				);
 				if (pendingCandidates.length) await resolvePage(pendingCandidates);
 				const discoveredCandidates = await discoverWalletAssetCandidates(walletAddress, {
@@ -270,7 +272,9 @@ export default function MyAssetsRoute() {
 				});
 				if (!active()) return;
 				await pageQueue.drain();
-				await resolvePage(discoveredCandidates.filter((candidate) => !session.screened.has(candidate.processId)));
+				await resolvePage(
+					discoveredCandidates.filter((candidate) => !session.screened.has(candidate.processId))
+				);
 				const revalidationCandidates = [...session.resolvedAssets.keys()]
 					.map((processId) => session.latestCandidates.get(processId))
 					.filter((candidate): candidate is AssetCandidate => Boolean(candidate));
@@ -299,7 +303,9 @@ export default function MyAssetsRoute() {
 								...current,
 								revalidated: (current.revalidated ?? 0) + 1,
 								failures: current.failures + (error ? 1 : 0),
-								rateLimited: current.rateLimited + (error && marketplaceFailureKind(error) === 'rate-limited' ? 1 : 0),
+								rateLimited:
+									current.rateLimited +
+									(error && marketplaceFailureKind(error) === 'rate-limited' ? 1 : 0),
 							}));
 						},
 					});
@@ -350,10 +356,10 @@ export default function MyAssetsRoute() {
 		const unverified = [...supportFailures.current.values()].map(({ candidate }) => candidate);
 		const retryCount = candidates.length + unverified.length;
 		const retryComputeRateLimits = candidates.filter((candidate) =>
-			computeRateLimits.current.has(candidate.processId),
+			computeRateLimits.current.has(candidate.processId)
 		).length;
 		const retryIndexRateLimits = unverified.filter((candidate) =>
-			indexRateLimits.current.has(candidate.processId),
+			indexRateLimits.current.has(candidate.processId)
 		).length;
 		setStatus((current) => ({
 			...current,
@@ -379,7 +385,8 @@ export default function MyAssetsRoute() {
 						...current,
 						resolved: current.resolved + 1,
 						failures: current.failures + (error ? 1 : 0),
-						rateLimited: current.rateLimited + (error && marketplaceFailureKind(error) === 'rate-limited' ? 1 : 0),
+						rateLimited:
+							current.rateLimited + (error && marketplaceFailureKind(error) === 'rate-limited' ? 1 : 0),
 					}));
 				},
 			});
@@ -394,11 +401,12 @@ export default function MyAssetsRoute() {
 				trackRateLimitFailure(indexRateLimits.current, failure.candidate.processId, failure.error);
 			}
 			for (const candidate of unverified) {
-				if (!supportFailures.current.has(candidate.processId)) indexRateLimits.current.delete(candidate.processId);
+				if (!supportFailures.current.has(candidate.processId))
+					indexRateLimits.current.delete(candidate.processId);
 			}
 			const checkedWithoutCompute = unverified.length - verification.supported.length;
 			const rateLimited = verification.unavailable.filter(
-				(failure) => marketplaceFailureKind(failure.error) === 'rate-limited',
+				(failure) => marketplaceFailureKind(failure.error) === 'rate-limited'
 			).length;
 			if (checkedWithoutCompute && active()) {
 				setStatus((current) => ({
@@ -417,8 +425,8 @@ export default function MyAssetsRoute() {
 				if (!active()) return;
 				setResults(
 					[...session.resolvedAssets.values()].sort(
-						(a, b) => b.activity.height - a.activity.height || b.activity.timestamp - a.activity.timestamp,
-					),
+						(a, b) => b.activity.height - a.activity.height || b.activity.timestamp - a.activity.timestamp
+					)
 				);
 				setStatus((current) => ({
 					...current,
@@ -433,7 +441,7 @@ export default function MyAssetsRoute() {
 				if (active()) {
 					setStatus((current) => ({ ...current, phase: 'error', error: errorMessage(cause) }));
 				}
-			},
+			}
 		);
 		return () => controller.abort();
 	}, [failedRetry, gateway, market.collections, market.error, market.loading, requestedSessionScope, wallet.address]);
@@ -484,7 +492,7 @@ export default function MyAssetsRoute() {
 	walletAnnouncementProgress.current = nextWalletAnnouncementProgress(
 		walletAnnouncementProgress.current,
 		status,
-		requestedSessionScope,
+		requestedSessionScope
 	);
 	const resolutionCopy = walletResolutionCopy(
 		{
@@ -492,11 +500,11 @@ export default function MyAssetsRoute() {
 			discovered: walletAnnouncementProgress.current.discovered,
 			revalidated: walletAnnouncementProgress.current.revalidated,
 		},
-		aggregateFailureMessage,
+		aggregateFailureMessage
 	);
 	const resolutionDeterminate = walletResolutionIsDeterminate(status);
-	const resolutionProgressTotal = status.phase === 'revalidating' ? (status.revalidationTotal ?? 0) : status.total;
-	const resolutionProgressValue = status.phase === 'revalidating' ? (status.revalidated ?? 0) : status.resolved;
+	const resolutionProgressTotal = status.phase === 'revalidating' ? status.revalidationTotal ?? 0 : status.total;
+	const resolutionProgressValue = status.phase === 'revalidating' ? status.revalidated ?? 0 : status.resolved;
 	const resolutionProgress = resolutionProgressTotal
 		? Math.min(100, Math.round((resolutionProgressValue / resolutionProgressTotal) * 100))
 		: 0;
@@ -537,7 +545,9 @@ export default function MyAssetsRoute() {
 							aria-valuemin={resolutionDeterminate ? 0 : undefined}
 							aria-valuenow={resolutionDeterminate ? resolutionProgress : undefined}
 							aria-valuetext={resolutionCopy.announcement}
-							className={`resolution-track${resolutionDeterminate ? '' : ' indeterminate'}${status.failures ? ' has-failures' : ''}`}
+							className={`resolution-track${resolutionDeterminate ? '' : ' indeterminate'}${
+								status.failures ? ' has-failures' : ''
+							}`}
 							role="progressbar"
 						>
 							<span style={resolutionDeterminate ? { width: `${resolutionProgress}%` } : undefined} />
@@ -562,8 +572,8 @@ export default function MyAssetsRoute() {
 				<div className="inline-error">
 					<span role="status">
 						{aggregateFailureMessage} {status.failures.toLocaleString()}{' '}
-						{status.failures === 1 ? 'candidate remains' : 'candidates remain'} unavailable. Resolved assets remain
-						visible.
+						{status.failures === 1 ? 'candidate remains' : 'candidates remain'} unavailable. Resolved assets
+						remain visible.
 					</span>
 					<Button className="with-icon" type="button" onClick={retryUnavailableAssets} size="custom">
 						<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" />{' '}
@@ -672,8 +682,8 @@ const AssetGroup = React.memo(function AssetGroup({
 												group === 'owned'
 													? liquidBalanceOf(result.state, address)
 													: listedBalanceOf(result.state, address),
-												result.state,
-											)} ${group === 'owned' ? 'liquid' : 'listed'}`
+												result.state
+										  )} ${group === 'owned' ? 'liquid' : 'listed'}`
 										: undefined
 								}
 							/>
@@ -690,7 +700,10 @@ const AssetGroup = React.memo(function AssetGroup({
 					>
 						{results.length > pageSize && limit >= results.length
 							? `All ${results.length.toLocaleString()} ${assetLabel} are shown.`
-							: `Showing ${Math.min(limit, results.length).toLocaleString()} of ${results.length.toLocaleString()} ${assetLabel}.`}
+							: `Showing ${Math.min(
+									limit,
+									results.length
+							  ).toLocaleString()} of ${results.length.toLocaleString()} ${assetLabel}.`}
 					</p>
 					<span aria-live="polite" className="sr-only" role="status">
 						{revealAnnouncement}

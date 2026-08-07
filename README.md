@@ -12,20 +12,20 @@ from Arweave and computes live asset state through any HyperBEAM gateway.
 
 A tradable process uses:
 
-- `device: ~process@1.0`
-- `execution-device: token@1.0`
-- `swap-device: arweave-swap@1.0`
-- `scheduler-device: arweave-scheduler@1.0`
-- `scheduler-mode: all`
-- `total-supply: 1`
-- `initial-holder: <wallet address>`
+-   `device: ~process@1.0`
+-   `execution-device: token@1.0`
+-   `swap-device: arweave-swap@1.0`
+-   `scheduler-device: arweave-scheduler@1.0`
+-   `scheduler-mode: all`
+-   `total-supply: 1`
+-   `initial-holder: <wallet address>`
 
 The write API is deliberately small:
 
-- `transfer`
-- `make-offer`
-- `cancel-order`
-- `register-interest`, followed by a native AR payment bearing the `order-id`
+-   `transfer`
+-   `make-offer`
+-   `cancel-order`
+-   `register-interest`, followed by a native AR payment bearing the `order-id`
 
 Collection indexes are immutable JSON manifests addressed through
 `reference@1.0`. Carrier names are discovered directly from Arweave GraphQL and
@@ -94,12 +94,12 @@ The published `token@1.0` implementation is
 
 ```json
 {
-  "trusted-devices": {
-    "process-outbox@1.0": "HOcPV7wxMHYb3rSQ3EfykQhHx_b8waRWhXolhcBNgHo",
-    "reference@1.0": "dRkm83Whq0qNE6We0oekl9Ngymgb7y3Otr-Smlatn54",
-    "security@1.0": "ARgymad5oYZcWPpxuV-A9hoSgmm4ElgPIvxMwmeh674",
-    "token@1.0": "TmTc-Tjo8WWrp6Th8Kgqs7azjIKHgyNIcvZ6NW-zvps"
-  }
+	"trusted-devices": {
+		"process-outbox@1.0": "HOcPV7wxMHYb3rSQ3EfykQhHx_b8waRWhXolhcBNgHo",
+		"reference@1.0": "dRkm83Whq0qNE6We0oekl9Ngymgb7y3Otr-Smlatn54",
+		"security@1.0": "ARgymad5oYZcWPpxuV-A9hoSgmm4ElgPIvxMwmeh674",
+		"token@1.0": "TmTc-Tjo8WWrp6Th8Kgqs7azjIKHgyNIcvZ6NW-zvps"
+	}
 }
 ```
 

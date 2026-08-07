@@ -1,4 +1,5 @@
 import React from 'react';
+import { HashRouter, Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
 	ArrowLeft,
 	ArrowRight,
@@ -15,10 +16,10 @@ import {
 	Grid2X2,
 	History,
 	Images,
-	Info,
 	InfinityIcon,
-	LayoutGrid,
+	Info,
 	Layers3,
+	LayoutGrid,
 	Library,
 	LoaderCircle,
 	RefreshCw,
@@ -30,108 +31,111 @@ import {
 	Upload,
 	X,
 } from 'lucide-react';
-import { HashRouter, Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
 import type {
-	SwapPurchase,
 	Consensus,
 	ObserverView,
 	PreparedTransaction,
 	PurchaseSnapshot,
 	PurchaseState,
+	SwapPurchase,
 } from 'weave-wrangler';
 
+import { transactionExplorerUrl } from 'api/arweave-explorer';
 import {
-	collectionAsset,
-	loadCollections,
-	loadMoreFungibleTokens,
-	loadMoreCarrierNames,
-	mergeCollectionSnapshots,
-	type AssetSummary,
-	type Collection,
-} from 'api/collections';
-import {
+	type AssetCandidate,
 	bazarAtomicAssetFromState,
+	type CollectionActivityEvent,
+	createWalletCandidateScan,
 	discoverCollectionActivity,
 	discoverCollectionActivityBatched,
 	discoverMarketActivity,
 	discoverMarketActivityBatched,
 	discoverPendingAssetOffers,
 	discoverWalletAssetCandidates,
-	createWalletCandidateScan,
 	isLiveListing,
 	partitionAssetCandidateSupport,
+	type PendingAssetOffer,
 	resolveAssetCandidates,
+	type ResolvedAsset,
 	searchBazarAtomicAssetsByName,
 	verifyAssetCandidateSupport,
 	walletAssetGroups,
-	type AssetCandidate,
-	type CollectionActivityEvent,
-	type PendingAssetOffer,
-	type ResolvedAsset,
 	type WalletCandidateScan,
 } from 'api/asset-discovery';
 import {
+	type AssetState,
 	bestAskOfAsset,
 	licenseProperties,
-	listedBalanceOf,
 	liquidBalanceOf,
+	listedBalanceOf,
 	liveOrderOfAsset,
 	liveOrdersOfAsset,
+	normalizeServingNodeOrigin,
 	openOrdersOfAsset,
 	ownerOfAsset,
 	readAssetState,
-	normalizeServingNodeOrigin,
 	servingNodeOrigin,
-	waitForAssetState,
-	type AssetState,
 	type SwapOrder,
+	waitForAssetState,
 } from 'api/asset-marketplace';
-import {
-	cachedAssetState,
-	invalidateAssetState,
-	prefetchAssetState,
-	readAssetStateCached,
-} from 'api/asset-state-store';
 import {
 	AssetMintClient,
 	CollectionMintClient,
+	type CollectionMintEstimate,
+	type CollectionMintPhase,
 	CREATED_COLLECTION_ID,
-	UDL_LICENSE_ID,
 	createdCollection,
 	discardMintDraft,
 	getMintDraft,
 	isHighMintCost,
 	loadMintedAssets,
 	loadMintedCollections,
-	type CollectionMintEstimate,
-	type CollectionMintPhase,
 	type MintDraft,
+	type MintedAsset,
 	type MintEstimate,
 	type MintPhase,
-	type MintedAsset,
+	UDL_LICENSE_ID,
 	type UdlTerms,
 } from 'api/asset-mint';
-import { transactionExplorerUrl } from 'api/arweave-explorer';
-import { formatTokenAmount } from 'api/order-matching';
 import type { AssetObserverNetworkLease } from 'api/asset-observers';
+import {
+	cachedAssetState,
+	invalidateAssetState,
+	prefetchAssetState,
+	readAssetStateCached,
+} from 'api/asset-state-store';
 import type { PurchaseCostEstimate } from 'api/asset-transactions';
+import {
+	type AssetSummary,
+	type Collection,
+	collectionAsset,
+	loadCollections,
+	loadMoreCarrierNames,
+	loadMoreFungibleTokens,
+	mergeCollectionSnapshots,
+} from 'api/collections';
+import { formatTokenAmount } from 'api/order-matching';
+
+import { ArtworkImage } from 'components/ArtworkImage';
 import type { ArweaveSyncStep } from 'components/ArweaveTransactionSync';
 import { quorumConfirmationDepth } from 'components/ArweaveTransactionSync/confirmationDepth';
 import { postConfirmationPendingLabel } from 'components/ArweaveTransactionSync/sequence';
-import { ArtworkImage } from 'components/ArtworkImage';
+import { type AssetDetailTab, AssetDetailTabs } from 'components/AssetDetailTabs';
+import { assetOperationPendingActionLabel, AssetOperationStatus } from 'components/AssetOperationStatus';
 import { AudioArtwork } from 'components/AudioArtwork';
 import { AudioWaveformPlayer } from 'components/AudioWaveformPlayer';
-import { AssetDetailTabs, type AssetDetailTab } from 'components/AssetDetailTabs';
-import { AssetOperationStatus, assetOperationPendingActionLabel } from 'components/AssetOperationStatus';
 import { BazarMark } from 'components/BazarMark';
 import { Button } from 'components/Button';
 import { ConnectWalletButton } from 'components/ConnectWalletButton';
-import { Pagination } from 'components/Pagination';
 import { ErrorPanel } from 'components/ErrorPanel';
 import { Loading } from 'components/Loading';
 import { MarketActivityList } from 'components/MarketActivityList';
+import { NameArtwork } from 'components/NameArtwork';
 import { NamesCubePreview } from 'components/NamesCubePreview';
 import { OperationOutcome, OperationOutcomeAnnouncement } from 'components/OperationOutcomeAnnouncement';
+import { Pagination } from 'components/Pagination';
+import { StateVerification } from 'components/StateVerification';
+import { TokenArtwork } from 'components/TokenArtwork';
 import {
 	isTransactionActivityVisible,
 	prepareTransactionDialogHide,
@@ -139,31 +143,34 @@ import {
 	TransactionDialogControl,
 	transactionDialogDismissAction,
 } from 'components/TransactionDialogControl';
-import { StateVerification } from 'components/StateVerification';
-import { TokenArtwork } from 'components/TokenArtwork';
-import { NameArtwork } from 'components/NameArtwork';
 import {
-	UnavailableOperationRecoveryNotice,
 	type UnavailableOperationRecovery,
+	UnavailableOperationRecoveryNotice,
 } from 'components/UnavailableOperationRecovery';
 import { WalletAddress, WalletIdentity } from 'components/WalletAddress';
 import { WalletMenu } from 'components/WalletMenu';
-import { gatewayFromLocation } from 'helpers/config';
 import { isAudioContentType } from 'helpers/asset-media';
 import { mapConcurrent } from 'helpers/concurrency';
+import { gatewayFromLocation } from 'helpers/config';
 import { scheduleIdleTask } from 'helpers/idle';
 import { optionalMotionBehavior } from 'helpers/motion';
 import { assetGroupRevealComplete, retainedAssetGroupLimit } from 'helpers/progressive-assets';
 import { useProgressiveReveal } from 'hooks/useProgressiveReveal';
 import { Footer } from 'navigation/Footer';
 import { useWallet } from 'providers/WalletProvider';
-import { loadAtomicTransactionRuntime, preloadAtomicTransactionRuntime } from './runtime';
+
+import './styles.css';
+
 import {
-	loadAssetShellSnapshot,
-	loadMarketShellSnapshot,
-	storeAssetShellSnapshot,
-	storeMarketShellSnapshot,
-} from './shell-snapshot';
+	marketplaceCodedError,
+	marketplaceErrorMessage as errorMessage,
+	type MarketplaceFailureKind,
+	marketplaceFailureKind,
+	type MarketplaceOperationFailure,
+	marketplaceOperationFailure,
+	marketplaceRequestFailureMessage,
+	type MarketplaceRequestSource,
+} from './marketplace-error';
 import {
 	atomicOperationActivityId,
 	deriveFungibleOperationActivities,
@@ -171,11 +178,11 @@ import {
 	FUNGIBLE_OPERATION_ACTIVITY_CHANGE_EVENT,
 	FUNGIBLE_OPERATION_ACTIVITY_STORAGE_KEY,
 	fungibleActivityHasRecovery,
+	type FungibleOperationActivityChange,
+	type FungibleOperationActivitySummary,
 	reduceFungibleRuntimeActivities,
 	saveFungibleOperationActivities,
 	saveOperationActivities,
-	type FungibleOperationActivityChange,
-	type FungibleOperationActivitySummary,
 } from './operation-activity';
 import {
 	acquireWalletOperationClaim,
@@ -191,29 +198,18 @@ import {
 	promoteWalletOperationClaim,
 	purchaseRecoveryApprovalCopy,
 	purchaseRecoveryApprovalCount,
-	repairRejectedPurchase,
-	removeWalletRecord,
-	removeWalletRecoveryAndSignatures,
 	releaseWalletOperationClaim,
+	removeWalletRecord,
 	removeWalletRecordIf,
+	removeWalletRecoveryAndSignatures,
+	repairRejectedPurchase,
+	shouldAutomaticallyResumePurchase,
 	storeWalletRecordIf,
 	storeWalletRecordOrThrow,
-	shouldAutomaticallyResumePurchase,
-	walletOperationStorageChange,
 	WALLET_OPERATION_RECOVERY_CHANGE_EVENT,
 	type WalletOperationClaim,
+	walletOperationStorageChange,
 } from './operation-session';
-import { useDialogFocus } from './useDialogFocus';
-import {
-	marketplaceCodedError,
-	marketplaceErrorMessage as errorMessage,
-	marketplaceFailureKind,
-	marketplaceOperationFailure,
-	marketplaceRequestFailureMessage,
-	type MarketplaceOperationFailure,
-	type MarketplaceFailureKind,
-	type MarketplaceRequestSource,
-} from './marketplace-error';
 import {
 	purchaseObservationCheckingMessage,
 	purchaseObservationPendingState,
@@ -223,8 +219,14 @@ import {
 	purchaseObservationRetryMessage,
 	waitForPurchaseObservationRetry,
 } from './purchase-observation-retry';
-
-import './styles.css';
+import { loadAtomicTransactionRuntime, preloadAtomicTransactionRuntime } from './runtime';
+import {
+	loadAssetShellSnapshot,
+	loadMarketShellSnapshot,
+	storeAssetShellSnapshot,
+	storeMarketShellSnapshot,
+} from './shell-snapshot';
+import { useDialogFocus } from './useDialogFocus';
 
 const FungibleAssetView = React.lazy(() => import('../routes/FungibleAssetRoute'));
 const CreateView = React.lazy(() => import('../routes/CreateRoute'));
@@ -309,12 +311,16 @@ export function App() {
 						collections: [
 							...resolved,
 							...localCollections.filter((collection) => !known.has(collection.id)),
-							...(mintedAssets.length && !known.has(CREATED_COLLECTION_ID) ? [createdCollection(mintedAssets)] : []),
+							...(mintedAssets.length && !known.has(CREATED_COLLECTION_ID)
+								? [createdCollection(mintedAssets)]
+								: []),
 						],
 						loading: false,
 						error: null,
 						notice: unavailable.length
-							? `The latest Arweave references for ${unavailable.join(', ')} could not be checked. Showing their bundled immutable indexes; ownership, listings, and prices are still read from live state.`
+							? `The latest Arweave references for ${unavailable.join(
+									', '
+							  )} could not be checked. Showing their bundled immutable indexes; ownership, listings, and prices are still read from live state.`
 							: null,
 					};
 				});
@@ -327,12 +333,14 @@ export function App() {
 									...current,
 									loading: false,
 									error: null,
-									notice: `Collection indexes could not be refreshed: ${errorMessage(error)}. Previously loaded collections remain available.`,
-								}
-							: { ...current, loading: false, error: errorMessage(error), notice: null },
+									notice: `Collection indexes could not be refreshed: ${errorMessage(
+										error
+									)}. Previously loaded collections remain available.`,
+							  }
+							: { ...current, loading: false, error: errorMessage(error), notice: null }
 					);
 				}
-			},
+			}
 		);
 		return () => controller.abort();
 	}, [marketRetry]);
@@ -361,7 +369,7 @@ export function App() {
 			}));
 			return added;
 		},
-		[market.collections],
+		[market.collections]
 	);
 	const addCreatedAsset = React.useCallback((asset: MintedAsset) => {
 		setMarket((current) => {
@@ -385,7 +393,7 @@ export function App() {
 	const retry = React.useCallback(() => setMarketRetry((current) => current + 1), []);
 	const value = React.useMemo(
 		() => ({ ...market, loadMore, addCreatedAsset, addCollection, retry }),
-		[addCollection, addCreatedAsset, loadMore, market, retry],
+		[addCollection, addCreatedAsset, loadMore, market, retry]
 	);
 
 	return (
@@ -461,7 +469,7 @@ type OperationActivityContextValue = {
 	activeId: string | null;
 	start(
 		input: Pick<OperationActivity, 'asset' | 'collectionId' | 'owner' | 'operation' | 'restoreFallback'>,
-		options?: { show?: boolean },
+		options?: { show?: boolean }
 	): void;
 	show(id: string): void;
 	showFungible(id: string): void;
@@ -493,12 +501,16 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 		setActivities((current) => {
 			const runtime = current.filter((activity) => activity.origin === 'runtime');
 			const runtimeAssets = new Set(
-				runtime.filter((activity) => activity.owner === owner).map((activity) => activity.asset.id),
+				runtime.filter((activity) => activity.owner === owner).map((activity) => activity.asset.id)
 			);
-			const otherOwners = current.filter((activity) => activity.origin === 'restored' && activity.owner !== owner);
-			return [...runtime, ...otherOwners, ...restored.filter((activity) => !runtimeAssets.has(activity.asset.id))].sort(
-				(left, right) => right.createdAt - left.createdAt,
+			const otherOwners = current.filter(
+				(activity) => activity.origin === 'restored' && activity.owner !== owner
 			);
+			return [
+				...runtime,
+				...otherOwners,
+				...restored.filter((activity) => !runtimeAssets.has(activity.asset.id)),
+			].sort((left, right) => right.createdAt - left.createdAt);
 		});
 		setHydratedOwners((current) => (current.includes(owner) ? current : [...current, owner]));
 	}, [market.collections, wallet.address]);
@@ -518,11 +530,11 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 			saveFungibleOperationActivities(
 				localStorage,
 				derived.filter((activity) => fungibleActivityHasRecovery(localStorage, activity)),
-				[owner],
+				[owner]
 			);
 			setFungibleActivities(derived);
 		},
-		[market.collections, wallet.address],
+		[market.collections, wallet.address]
 	);
 	React.useEffect(() => refreshFungibleActivities(), [refreshFungibleActivities]);
 	React.useEffect(() => {
@@ -556,13 +568,13 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 	const start = React.useCallback(
 		(
 			input: Pick<OperationActivity, 'asset' | 'collectionId' | 'owner' | 'operation' | 'restoreFallback'>,
-			options?: { show?: boolean },
+			options?: { show?: boolean }
 		) => {
 			const show = options?.show ?? true;
 			const id = atomicOperationActivityId(input.asset.id, input.owner);
 			const existing = activitiesRef.current.find(
 				(activity) =>
-					activity.asset.id === input.asset.id && activity.owner === input.owner && activity.phase !== 'done',
+					activity.asset.id === input.asset.id && activity.owner === input.owner && activity.phase !== 'done'
 			);
 			if (existing) {
 				if (show) setActiveId(existing.id);
@@ -574,13 +586,15 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 						? 'approval'
 						: 'working'
 					: input.operation.kind !== 'buy' && input.operation.resumeId
-						? 'working'
-						: 'form';
+					? 'working'
+					: 'form';
 			setActivities((current) => {
 				if (
 					current.some(
 						(activity) =>
-							activity.asset.id === input.asset.id && activity.owner === input.owner && activity.phase !== 'done',
+							activity.asset.id === input.asset.id &&
+							activity.owner === input.owner &&
+							activity.phase !== 'done'
 					)
 				) {
 					return current;
@@ -594,8 +608,8 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 							phase === 'approval'
 								? 'Waiting for wallet approval'
 								: phase === 'working'
-									? 'Starting transaction…'
-									: 'Waiting for details',
+								? 'Starting transaction…'
+								: 'Waiting for details',
 						confirmations: 0,
 						confirmationTarget: 5,
 						createdAt: Date.now(),
@@ -606,27 +620,29 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 			});
 			if (show) setActiveId(id);
 		},
-		[],
+		[]
 	);
 	const update = React.useCallback(
 		(
 			id: string,
 			patch: Pick<OperationActivity, 'phase' | 'status' | 'confirmations' | 'confirmationTarget'>,
-			assetId: string,
+			assetId: string
 		) => {
 			setActivities((current) =>
-				current.map((activity) => (activity.id === id ? { ...activity, ...patch } : activity)),
+				current.map((activity) => (activity.id === id ? { ...activity, ...patch } : activity))
 			);
 			if (patch.phase === 'done') {
 				queueMicrotask(() =>
-					window.dispatchEvent(new CustomEvent('bazar:asset-operation-finished', { detail: assetId })),
+					window.dispatchEvent(new CustomEvent('bazar:asset-operation-finished', { detail: assetId }))
 				);
 			}
 		},
-		[],
+		[]
 	);
 	const updateOperation = React.useCallback((id: string, operation: Operation) => {
-		setActivities((current) => current.map((activity) => (activity.id === id ? { ...activity, operation } : activity)));
+		setActivities((current) =>
+			current.map((activity) => (activity.id === id ? { ...activity, operation } : activity))
+		);
 	}, []);
 	const remove = React.useCallback((id: string) => {
 		setActivities((current) => current.filter((activity) => activity.id !== id));
@@ -653,7 +669,7 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 			hide: () => setActiveId(null),
 			remove,
 		}),
-		[activeId, activities, fungibleActivities, navigate, remove, start],
+		[activeId, activities, fungibleActivities, navigate, remove, start]
 	);
 	return (
 		<OperationActivityContext.Provider value={value}>
@@ -669,7 +685,9 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 					visible={activeId === activity.id}
 					restoreFallback={() =>
 						activity.restoreFallback() ??
-						document.querySelector<HTMLElement>('.operation-activity-trigger[data-activity-owner="global"]') ??
+						document.querySelector<HTMLElement>(
+							'.operation-activity-trigger[data-activity-owner="global"]'
+						) ??
 						document.getElementById('main-content')
 					}
 					onUpdate={update}
@@ -677,7 +695,9 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 					onHide={() => setActiveId(null)}
 					onClose={(resumeLater, refresh = true) => {
 						if (refresh) {
-							window.dispatchEvent(new CustomEvent('bazar:asset-operation-finished', { detail: activity.asset.id }));
+							window.dispatchEvent(
+								new CustomEvent('bazar:asset-operation-finished', { detail: activity.asset.id })
+							);
 						}
 						if (resumeLater) setActiveId(null);
 						else remove(activity.id);
@@ -779,7 +799,7 @@ function Header() {
 					if (!controller.signal.aborted) {
 						setIndexedAtomicSearch({ query: requestedQuery, loading: false, error: true, results: [] });
 					}
-				},
+				}
 			);
 		}, 250);
 		return () => {
@@ -788,7 +808,8 @@ function Header() {
 		};
 	}, [deferredNormalizedQuery, deferredQuery, shouldSearchAtomicIndex]);
 	const atomicIndexSearchPending =
-		shouldSearchAtomicIndex && (indexedAtomicSearch.query !== deferredNormalizedQuery || indexedAtomicSearch.loading);
+		shouldSearchAtomicIndex &&
+		(indexedAtomicSearch.query !== deferredNormalizedQuery || indexedAtomicSearch.loading);
 	const atomicIndexSearchFailed =
 		shouldSearchAtomicIndex && indexedAtomicSearch.query === deferredNormalizedQuery && indexedAtomicSearch.error;
 	const collectionResults = market.collections
@@ -799,38 +820,46 @@ function Header() {
 		})
 		.slice(0, 6);
 	const searchableCollections = market.collections.filter(
-		(collection) => scope !== 'collections' && (scope !== 'names' || collection.kind === 'names'),
+		(collection) => scope !== 'collections' && (scope !== 'names' || collection.kind === 'names')
 	);
 	const localAssetResults = deferredNormalizedQuery
 		? searchableCollections
 				.flatMap((collection) =>
-					collectionSearchAssets(collection, deferredNormalizedQuery).map((asset) => ({ asset, collection })),
+					collectionSearchAssets(collection, deferredNormalizedQuery).map((asset) => ({ asset, collection }))
 				)
-				.filter(({ asset, collection }) => marketplaceAssetMatchesSearch(asset, collection, deferredNormalizedQuery))
+				.filter(({ asset, collection }) =>
+					marketplaceAssetMatchesSearch(asset, collection, deferredNormalizedQuery)
+				)
 				.sort(
 					(left, right) =>
-						searchResultScore(right, deferredNormalizedQuery) - searchResultScore(left, deferredNormalizedQuery),
+						searchResultScore(right, deferredNormalizedQuery) -
+						searchResultScore(left, deferredNormalizedQuery)
 				)
 				.slice(0, 8)
 		: interleaveCollectionAssets(
 				searchableCollections,
 				8,
 				(asset, collection) =>
-					Boolean(asset.image || asset.media) || collection.kind === 'names' || collection.kind === 'tokens',
-			);
+					Boolean(asset.image || asset.media) || collection.kind === 'names' || collection.kind === 'tokens'
+		  );
 	const atomicIndexResults =
-		shouldSearchAtomicIndex && indexedAtomicSearch.query === deferredNormalizedQuery ? indexedAtomicSearch.results : [];
+		shouldSearchAtomicIndex && indexedAtomicSearch.query === deferredNormalizedQuery
+			? indexedAtomicSearch.results
+			: [];
 	const assetResults = [...localAssetResults, ...atomicIndexResults]
 		.filter(
-			({ asset }, index, results) => results.findIndex(({ asset: candidate }) => candidate.id === asset.id) === index,
+			({ asset }, index, results) =>
+				results.findIndex(({ asset: candidate }) => candidate.id === asset.id) === index
 		)
 		.sort(
 			(left, right) =>
-				searchResultScore(right, deferredNormalizedQuery) - searchResultScore(left, deferredNormalizedQuery),
+				searchResultScore(right, deferredNormalizedQuery) - searchResultScore(left, deferredNormalizedQuery)
 		)
 		.slice(0, 8);
 	const directTokenCollection =
-		scope !== 'collections' && scope !== 'names' ? directTokenSearchCollection(market.collections, query) : undefined;
+		scope !== 'collections' && scope !== 'names'
+			? directTokenSearchCollection(market.collections, query)
+			: undefined;
 	const directTokenProcess = directTokenCollection && !assetResults.some(({ asset }) => asset.id === query.trim());
 	const partialTokenCollection =
 		normalizedQuery && scope !== 'collections' && scope !== 'names'
@@ -839,16 +868,20 @@ function Header() {
 	const searchResultAnnouncement = atomicIndexSearchPending
 		? 'Searching permanent Bazar creation records on Arweave.'
 		: atomicIndexSearchFailed
-			? 'Permanent Bazar creation-record search is temporarily unavailable.'
-			: market.loading
-				? 'Loading collection indexes from Arweave.'
-				: market.error
-					? 'Marketplace search is unavailable.'
-					: normalizedQuery && !collectionResults.length && !assetResults.length && !directTokenProcess
-						? partialTokenCollection
-							? `No loaded collections or assets match ${query.trim()}; more token records remain available.`
-							: `No collections or assets match ${query.trim()}.`
-						: `Showing ${collectionResults.length.toLocaleString()} ${collectionResults.length === 1 ? 'collection' : 'collections'} and ${(assetResults.length + (directTokenProcess ? 1 : 0)).toLocaleString()} ${assetResults.length + (directTokenProcess ? 1 : 0) === 1 ? 'asset result' : 'asset results'}${normalizedQuery ? ` for ${query.trim()}` : ''}.`;
+		? 'Permanent Bazar creation-record search is temporarily unavailable.'
+		: market.loading
+		? 'Loading collection indexes from Arweave.'
+		: market.error
+		? 'Marketplace search is unavailable.'
+		: normalizedQuery && !collectionResults.length && !assetResults.length && !directTokenProcess
+		? partialTokenCollection
+			? `No loaded collections or assets match ${query.trim()}; more token records remain available.`
+			: `No collections or assets match ${query.trim()}.`
+		: `Showing ${collectionResults.length.toLocaleString()} ${
+				collectionResults.length === 1 ? 'collection' : 'collections'
+		  } and ${(assetResults.length + (directTokenProcess ? 1 : 0)).toLocaleString()} ${
+				assetResults.length + (directTokenProcess ? 1 : 0) === 1 ? 'asset result' : 'asset results'
+		  }${normalizedQuery ? ` for ${query.trim()}` : ''}.`;
 	const [announcedSearchResult, setAnnouncedSearchResult] = React.useState('');
 	React.useEffect(() => {
 		if (!searchOpen) return;
@@ -872,7 +905,7 @@ function Header() {
 				});
 			});
 		},
-		[urlQuery],
+		[urlQuery]
 	);
 	React.useEffect(() => {
 		const previousRoute = searchRoute.current;
@@ -890,7 +923,7 @@ function Header() {
 				window.cancelAnimationFrame(releaseSearchFocusFrame.current);
 			}
 		},
-		[],
+		[]
 	);
 	React.useEffect(() => {
 		const focusSearch = (event: KeyboardEvent) => {
@@ -924,14 +957,16 @@ function Header() {
 	};
 	const runSearch = () => {
 		if (query.trim()) {
-			setRecentQueries((current) => [query.trim(), ...current.filter((item) => item !== query.trim())].slice(0, 4));
+			setRecentQueries((current) =>
+				[query.trim(), ...current.filter((item) => item !== query.trim())].slice(0, 4)
+			);
 		}
 		navigate(
 			directTokenProcess && directTokenCollection
 				? `/asset/${directTokenCollection.id}/${query.trim()}`
 				: query.trim()
-					? `/?q=${encodeURIComponent(query.trim())}`
-					: '/',
+				? `/?q=${encodeURIComponent(query.trim())}`
+				: '/'
 		);
 		closeSearch(false);
 	};
@@ -950,7 +985,7 @@ function Header() {
 	};
 	const searchRestoreTarget = React.useCallback(
 		() => (suppressSearchFocusRestore.current ? document.getElementById('main-content') : inputRef.current),
-		[],
+		[]
 	);
 	const searchDialogRef = useDialogFocus<HTMLElement>(searchOpen, closeSearch, searchRestoreTarget);
 	const scopes = [
@@ -969,7 +1004,11 @@ function Header() {
 						</span>
 						<small>2.0</small>
 					</Link>
-					<form className={`site-search${searchOpen ? ' expanded' : ''}`} role="search" onSubmit={submitSearch}>
+					<form
+						className={`site-search${searchOpen ? ' expanded' : ''}`}
+						role="search"
+						onSubmit={submitSearch}
+					>
 						<Search className="ui-icon ui-icon--sm" aria-hidden="true" />
 						<input
 							ref={inputRef}
@@ -1007,7 +1046,10 @@ function Header() {
 				</div>
 			</header>
 			{searchOpen ? (
-				<div className="search-overlay" onMouseDown={(event) => event.target === event.currentTarget && closeSearch()}>
+				<div
+					className="search-overlay"
+					onMouseDown={(event) => event.target === event.currentTarget && closeSearch()}
+				>
 					<section
 						aria-label="Search Bazar"
 						aria-modal="true"
@@ -1093,13 +1135,18 @@ function Header() {
 								{partialTokenCollection ? (
 									<div className="collection-source-notice">
 										<span role="status">
-											Token matches cover {partialTokenCollection.assets.length.toLocaleString()} of{' '}
-											{(partialTokenCollection.total ?? partialTokenCollection.assets.length).toLocaleString()}{' '}
+											Token matches cover {partialTokenCollection.assets.length.toLocaleString()}{' '}
+											of{' '}
+											{(
+												partialTokenCollection.total ?? partialTokenCollection.assets.length
+											).toLocaleString()}{' '}
 											discovered records currently loaded.
 										</span>
 										<Link
 											className="with-icon"
-											to={`/collection/${partialTokenCollection.id}?q=${encodeURIComponent(query.trim())}`}
+											to={`/collection/${partialTokenCollection.id}?q=${encodeURIComponent(
+												query.trim()
+											)}`}
 											onClick={followSearchResult}
 										>
 											Continue token search
@@ -1117,7 +1164,12 @@ function Header() {
 										</div>
 										<div className="recent-searches">
 											{recentQueries.map((item) => (
-												<Button key={item} onClick={() => useRecentQuery(item)} size="custom" variant="ghost">
+												<Button
+													key={item}
+													onClick={() => useRecentQuery(item)}
+													size="custom"
+													variant="ghost"
+												>
 													<History className="ui-icon ui-icon--sm" aria-hidden="true" />
 													{item}
 												</Button>
@@ -1135,14 +1187,20 @@ function Header() {
 											{collectionResults.map((collection) => {
 												const preview = collection.assets.find((asset) => asset.image)?.image;
 												return (
-													<Link key={collection.id} to={`/collection/${collection.id}`} onClick={followSearchResult}>
+													<Link
+														key={collection.id}
+														to={`/collection/${collection.id}`}
+														onClick={followSearchResult}
+													>
 														<span className="search-result-image">
 															{preview ? (
 																<ArtworkImage src={preview} alt="" />
 															) : collection.kind === 'names' ? (
 																<NamesCubePreview />
 															) : collection.kind === 'tokens' ? (
-																<TokenArtwork ticker={collection.assets[0]?.ticker ?? 'Token'} />
+																<TokenArtwork
+																	ticker={collection.assets[0]?.ticker ?? 'Token'}
+																/>
 															) : (
 																<BazarMark />
 															)}
@@ -1153,10 +1211,20 @@ function Header() {
 																{collectionKindLabel(collection)} ·{' '}
 																{collection.kind === 'names'
 																	? `${collection.assets.length.toLocaleString()} names loaded`
-																	: `${(collection.total ?? collection.assets.length).toLocaleString()} ${(collection.total ?? collection.assets.length) === 1 ? 'asset' : 'assets'}`}
+																	: `${(
+																			collection.total ?? collection.assets.length
+																	  ).toLocaleString()} ${
+																			(collection.total ??
+																				collection.assets.length) === 1
+																				? 'asset'
+																				: 'assets'
+																	  }`}
 															</small>
 														</span>
-														<ArrowUpRight className="ui-icon ui-icon--sm" aria-hidden="true" />
+														<ArrowUpRight
+															className="ui-icon ui-icon--sm"
+															aria-hidden="true"
+														/>
 													</Link>
 												);
 											})}
@@ -1183,7 +1251,10 @@ function Header() {
 														{asset.image ? (
 															<ArtworkImage src={asset.image} alt="" />
 														) : isAudioContentType(asset.contentType) ? (
-															<AudioArtwork contentType={asset.contentType} name={asset.name} />
+															<AudioArtwork
+																contentType={asset.contentType}
+																name={asset.name}
+															/>
 														) : collection.kind === 'tokens' ? (
 															<TokenArtwork ticker={asset.ticker ?? 'Token'} />
 														) : (
@@ -1219,7 +1290,9 @@ function Header() {
 												</span>
 												<span>
 													<strong>Check token process</strong>
-													<small>{short(query.trim())} · support is determined from live state</small>
+													<small>
+														{short(query.trim())} · support is determined from live state
+													</small>
 												</span>
 												<ArrowUpRight className="ui-icon ui-icon--sm" aria-hidden="true" />
 											</Link>
@@ -1227,7 +1300,11 @@ function Header() {
 									</section>
 								) : null}
 								{market.error ? (
-									<ErrorPanel message={market.error} onRetry={market.retry} retryLabel="Retry marketplace" />
+									<ErrorPanel
+										message={market.error}
+										onRetry={market.retry}
+										retryLabel="Retry marketplace"
+									/>
 								) : null}
 								{!market.loading &&
 								!market.error &&
@@ -1241,8 +1318,8 @@ function Header() {
 											{partialTokenCollection
 												? 'More token records remain available from the token collection.'
 												: atomicIndexSearchFailed
-													? 'Permanent Bazar creation-record search is temporarily unavailable. Try again shortly.'
-													: 'Try another asset, collection, or Arweave name.'}
+												? 'Permanent Bazar creation-record search is temporarily unavailable. Try again shortly.'
+												: 'Try another asset, collection, or Arweave name.'}
 										</span>
 									</div>
 								) : null}
@@ -1261,10 +1338,10 @@ function OperationActivityControl() {
 	const [open, setOpen] = React.useState(false);
 	const containerRef = React.useRef<HTMLDivElement>(null);
 	const visibleActivities = activities.filter(
-		(activity) => activity.owner === wallet.address && isTransactionActivityVisible(activity.phase),
+		(activity) => activity.owner === wallet.address && isTransactionActivityVisible(activity.phase)
 	);
 	const visibleFungibleActivities = fungibleActivities.filter((activity) =>
-		isTransactionActivityVisible(activity.phase),
+		isTransactionActivityVisible(activity.phase)
 	);
 	const activityCount = visibleActivities.length + visibleFungibleActivities.length;
 	const workingCount =
@@ -1300,7 +1377,9 @@ function OperationActivityControl() {
 					<div className="operation-activity-heading">
 						<div>
 							<strong>Transaction activity</strong>
-							<span>{workingCount ? `${workingCount} running in the background` : 'No transactions running'}</span>
+							<span>
+								{workingCount ? `${workingCount} running in the background` : 'No transactions running'}
+							</span>
 						</div>
 					</div>
 					<div className="operation-activity-list">
@@ -1326,7 +1405,8 @@ function OperationActivityControl() {
 									<span className="operation-activity-copy">
 										<strong>{activity.asset.name}</strong>
 										<small>
-											{operationLabel(activity.operation.kind)} · {operationActivityPhaseLabel(activity.phase)}
+											{operationLabel(activity.operation.kind)} ·{' '}
+											{operationActivityPhaseLabel(activity.phase)}
 										</small>
 										<span>{activity.status}</span>
 									</span>
@@ -1339,10 +1419,16 @@ function OperationActivityControl() {
 											{activity.confirmations}/{activity.confirmationTarget}
 										</span>
 										{activity.phase === 'working' ? (
-											<LoaderCircle className="ui-icon ui-icon--xs operation-activity-loader" aria-hidden="true" />
+											<LoaderCircle
+												className="ui-icon ui-icon--xs operation-activity-loader"
+												aria-hidden="true"
+											/>
 										) : null}
 									</span>
-									<ChevronRight className="ui-icon ui-icon--sm operation-activity-chevron" aria-hidden="true" />
+									<ChevronRight
+										className="ui-icon ui-icon--sm operation-activity-chevron"
+										aria-hidden="true"
+									/>
 								</Button>
 							</div>
 						))}
@@ -1368,16 +1454,23 @@ function OperationActivityControl() {
 									<span className="operation-activity-copy">
 										<strong>{activity.asset.name}</strong>
 										<small>
-											{operationLabel(activity.operationKind)} · {operationActivityPhaseLabel(activity.phase)}
+											{operationLabel(activity.operationKind)} ·{' '}
+											{operationActivityPhaseLabel(activity.phase)}
 										</small>
 										<span>{activity.status}</span>
 									</span>
 									<span className="operation-activity-progress">
 										{activity.phase === 'working' ? (
-											<LoaderCircle className="ui-icon ui-icon--xs operation-activity-loader" aria-hidden="true" />
+											<LoaderCircle
+												className="ui-icon ui-icon--xs operation-activity-loader"
+												aria-hidden="true"
+											/>
 										) : null}
 									</span>
-									<ChevronRight className="ui-icon ui-icon--sm operation-activity-chevron" aria-hidden="true" />
+									<ChevronRight
+										className="ui-icon ui-icon--sm operation-activity-chevron"
+										aria-hidden="true"
+									/>
 								</Button>
 							</div>
 						))}
@@ -1414,7 +1507,7 @@ export function homeSummaryRequestKeys(
 	visibleKeys: string[],
 	summaries: Record<string, HomeMarketSummary>,
 	inFlightKeys: Iterable<string>,
-	retryKeys: ReadonlySet<string>,
+	retryKeys: ReadonlySet<string>
 ) {
 	const inFlight = new Set(inFlightKeys);
 	return visibleKeys.filter((key) => retryKeys.has(key) || (!summaries[key] && !inFlight.has(key)));
@@ -1429,7 +1522,7 @@ export type HomeActivityScan = {
 
 export function reconcileHomeActivityScan(
 	current: HomeActivityScan | undefined,
-	recipients: string[],
+	recipients: string[]
 ): HomeActivityScan {
 	const uniqueRecipients = [...new Set(recipients)];
 	const delta = collectionAssetWindowDelta(current?.members ?? [], uniqueRecipients);
@@ -1480,10 +1573,10 @@ export type HomeFloorScan = {
 export function reconcileHomeFloorScan(
 	current: HomeFloorScan | undefined,
 	scope: string,
-	candidateActivity: Array<Pick<AssetCandidate, 'processId' | 'height' | 'timestamp'>>,
+	candidateActivity: Array<Pick<AssetCandidate, 'processId' | 'height' | 'timestamp'>>
 ): HomeFloorScan {
 	const candidates = new Map(
-		candidateActivity.map((candidate) => [candidate.processId, `${candidate.height}:${candidate.timestamp}`]),
+		candidateActivity.map((candidate) => [candidate.processId, `${candidate.height}:${candidate.timestamp}`])
 	);
 	if (!current || current.scope !== scope) {
 		return { scope, candidates, settled: new Map(), failures: new Map() };
@@ -1505,7 +1598,7 @@ export function commitHomeFloorResult(
 	scan: HomeFloorScan,
 	processId: string,
 	value: bigint | null,
-	failure?: MarketplaceFailureKind,
+	failure?: MarketplaceFailureKind
 ) {
 	if (!scan.candidates.has(processId)) throw new TypeError('home-floor-result-out-of-scope');
 	if (failure) {
@@ -1545,7 +1638,7 @@ export function completeHomeSummaryRetryGroup(
 	run: HomeSummaryRetryRun,
 	token: number,
 	group: 'assets' | 'collections',
-	activeRequests: number,
+	activeRequests: number
 ) {
 	if (run.token !== token || activeRequests > 0 || !run.pending.has(group)) return false;
 	run.pending.delete(group);
@@ -1555,7 +1648,7 @@ export function completeHomeSummaryRetryGroup(
 function homeMarketSummaryLabel(
 	summary: HomeMarketSummary | undefined,
 	emptyLabel: string,
-	unindexedLabel = emptyLabel,
+	unindexedLabel = emptyLabel
 ) {
 	if (!summary) return 'Checking…';
 	if (summary.status === 'unavailable') return 'Unavailable';
@@ -1575,7 +1668,7 @@ export type HomeListingActivity = Pick<AssetCandidate, 'processId' | 'height' | 
 export function compareHomeListingRecency(
 	leftAssetId: string,
 	rightAssetId: string,
-	activityByAsset: ReadonlyMap<string, HomeListingActivity>,
+	activityByAsset: ReadonlyMap<string, HomeListingActivity>
 ) {
 	const left = activityByAsset.get(leftAssetId);
 	const right = activityByAsset.get(rightAssetId);
@@ -1647,7 +1740,7 @@ export function homeMarketPriceValue(value: string | null | undefined) {
 export function homeMarketSummariesReady(
 	loading: boolean,
 	keys: string[],
-	summaries: Record<string, HomeMarketSummary>,
+	summaries: Record<string, HomeMarketSummary>
 ) {
 	return !loading && keys.every((key) => Boolean(summaries[key]));
 }
@@ -1659,7 +1752,7 @@ export function homeMarketHasPending(loading: boolean, keys: string[], summaries
 export function homeSummaryFailureNoticeVisible(
 	discoverResultsReady: boolean,
 	summaryFailureCount: number,
-	publicListingsFailure: boolean,
+	publicListingsFailure: boolean
 ) {
 	return discoverResultsReady && summaryFailureCount > 0 && !publicListingsFailure;
 }
@@ -1676,7 +1769,7 @@ export function homeScrollIndicatorMetrics(
 	scrollTop: number,
 	scrollHeight: number,
 	clientHeight: number,
-	trackHeight = clientHeight,
+	trackHeight = clientHeight
 ) {
 	const scrollRange = Math.max(0, scrollHeight - clientHeight);
 	if (!scrollRange || clientHeight <= 0 || trackHeight <= 0) {
@@ -1720,20 +1813,23 @@ function Home() {
 	const marketCollectionsRef = React.useRef(market.collections);
 	marketCollectionsRef.current = market.collections;
 	const loadedAssetLimit =
-		market.collections.reduce((total, collection) => total + collection.assets.length, 0) + portableHomeListings.length;
+		market.collections.reduce((total, collection) => total + collection.assets.length, 0) +
+		portableHomeListings.length;
 	const listingAssetLimit = HOME_ASSET_PAGE_SIZE * HOME_LISTING_PAGE_LIMIT;
 	const assetCandidates = normalizedQuery
 		? homeSearchAssets(
 				market.collections,
 				portableHomeListings,
 				normalizedQuery,
-				assetView === 'all' ? loadedAssetLimit : listingAssetLimit,
-			)
+				assetView === 'all' ? loadedAssetLimit : listingAssetLimit
+		  )
 		: assetView === 'all'
-			? homeAllAssets(market.collections, loadedAssetLimit, portableHomeListings)
-			: homeDiscoveryAssets(market.collections, verifiedHomeListings, listingAssetLimit, portableHomeListings);
+		? homeAllAssets(market.collections, loadedAssetLimit, portableHomeListings)
+		: homeDiscoveryAssets(market.collections, verifiedHomeListings, listingAssetLimit, portableHomeListings);
 	const [assetPrices, setAssetPrices] = React.useState<Record<string, HomeMarketSummary>>({});
-	const homeListingActivityByAsset = new Map<string, HomeListingActivity>(Object.entries(verifiedHomeListingActivity));
+	const homeListingActivityByAsset = new Map<string, HomeListingActivity>(
+		Object.entries(verifiedHomeListingActivity)
+	);
 	for (const result of portableHomeListings) {
 		const current = homeListingActivityByAsset.get(result.asset.id);
 		if (
@@ -1793,7 +1889,7 @@ function Home() {
 				version: string;
 				controller: AbortController;
 			}
-		>(),
+		>()
 	);
 	const collectionSummaryVersions = React.useRef(new Map<string, string>());
 	const collectionActivityScans = React.useRef(new Map<string, HomeActivityScan>());
@@ -1815,7 +1911,7 @@ function Home() {
 			assetSummaryControllers.current.clear();
 			collectionSummaryControllers.current.clear();
 		},
-		[],
+		[]
 	);
 	React.useEffect(() => {
 		if (!marketShellReady) return;
@@ -1848,10 +1944,10 @@ function Home() {
 						onSettled: (result, candidate, cause) => {
 							if (cause && computeFailure === undefined) computeFailure = cause;
 							setPortableHomeListings((current) =>
-								mergeResolvedListingBatch(current, [{ processId: candidate.processId, result }]),
+								mergeResolvedListingBatch(current, [{ processId: candidate.processId, result }])
 							);
 						},
-					},
+					}
 				);
 				controller.signal.throwIfAborted();
 			};
@@ -1869,8 +1965,8 @@ function Home() {
 								status: 'unavailable',
 								source: indexFailure ? 'index' : 'compute',
 								kind: marketplaceFailureKind(failure),
-							}
-						: undefined,
+						  }
+						: undefined
 				);
 			} catch (cause) {
 				if (!controller.signal.aborted) {
@@ -1894,15 +1990,15 @@ function Home() {
 			assetSummaryControllers.current.delete(assetId);
 		}
 		setAssetPrices((current) =>
-			Object.fromEntries(Object.entries(current).filter(([assetId]) => visibleAssetIds.has(assetId))),
+			Object.fromEntries(Object.entries(current).filter(([assetId]) => visibleAssetIds.has(assetId)))
 		);
 		const requestedAssetIds = new Set(
 			homeSummaryRequestKeys(
 				assets.map(({ asset }) => asset.id),
 				assetPrices,
 				assetSummaryControllers.current.keys(),
-				retryAssetSummaries.current,
-			),
+				retryAssetSummaries.current
+			)
 		);
 		const requestedAssets = assets.filter(({ asset }) => requestedAssetIds.has(asset.id));
 		const retryToken = summaryRetryRun.current.pending.has('assets') ? summaryRetryRun.current.token : null;
@@ -1927,7 +2023,7 @@ function Home() {
 								signal: controller.signal,
 								maxAttempts: 1,
 							})
-						).state;
+					  ).state;
 				const order = bestAskOfAsset(state);
 				if (!controller.signal.aborted) {
 					setAssetPrices((current) => ({
@@ -1953,7 +2049,7 @@ function Home() {
 	const visibleAssetResultsReady = homeMarketSummariesReady(
 		marketShellLoading,
 		assets.map(({ asset }) => asset.id),
-		assetPrices,
+		assetPrices
 	);
 	const discoverResultsPublished = publishedDiscoverQuery === normalizedQuery;
 	React.useEffect(() => {
@@ -1962,7 +2058,7 @@ function Home() {
 	const shouldLoadCollectionSummaries = shouldLoadHomeCollectionSummaries(
 		homeTab,
 		market.loading,
-		discoverResultsPublished,
+		discoverResultsPublished
 	);
 	React.useEffect(() => {
 		if (!shouldLoadCollectionSummaries) {
@@ -1977,7 +2073,7 @@ function Home() {
 					.map((asset) => asset.id)
 					.sort()
 					.join('.')}`,
-			]),
+			])
 		);
 		const changedCollections = new Set<string>();
 		for (const [collectionId, request] of collectionSummaryControllers.current) {
@@ -1999,9 +2095,9 @@ function Home() {
 		setCollectionFloors((current) =>
 			Object.fromEntries(
 				Object.entries(current).filter(
-					([collectionId]) => visibleCollections.has(collectionId) && !changedCollections.has(collectionId),
-				),
-			),
+					([collectionId]) => visibleCollections.has(collectionId) && !changedCollections.has(collectionId)
+				)
+			)
 		);
 		const requestedCollections = collections.filter((collection) => {
 			const version = visibleCollections.get(collection.id)!;
@@ -2038,7 +2134,10 @@ function Home() {
 						});
 					} else {
 						const recipients = [...new Set(collection.assets.map((asset) => asset.id))];
-						const scan = reconcileHomeActivityScan(collectionActivityScans.current.get(collection.id), recipients);
+						const scan = reconcileHomeActivityScan(
+							collectionActivityScans.current.get(collection.id),
+							recipients
+						);
 						collectionActivityScans.current.set(collection.id, scan);
 						const pending = pendingHomeActivityRecipients(scan, recipients);
 						if (pending.length) {
@@ -2049,7 +2148,8 @@ function Home() {
 								onBatch: (batchCandidates, batchRecipients) => {
 									if (
 										controller.signal.aborted ||
-										collectionSummaryControllers.current.get(collection.id)?.controller !== controller ||
+										collectionSummaryControllers.current.get(collection.id)?.controller !==
+											controller ||
 										collectionSummaryControllers.current.get(collection.id)?.version !== version ||
 										collectionActivityScans.current.get(collection.id) !== scan
 									)
@@ -2072,11 +2172,13 @@ function Home() {
 					const floorScan = reconcileHomeFloorScan(
 						collectionFloorScans.current.get(collection.id),
 						version,
-						candidates,
+						candidates
 					);
 					collectionFloorScans.current.set(collection.id, floorScan);
 					const pendingFloorIds = new Set(pendingHomeFloorCandidates(floorScan));
-					const pendingFloorCandidates = candidates.filter((candidate) => pendingFloorIds.has(candidate.processId));
+					const pendingFloorCandidates = candidates.filter((candidate) =>
+						pendingFloorIds.has(candidate.processId)
+					);
 					await resolveAssetCandidates(pendingFloorCandidates, [collection], {
 						concurrency: 4,
 						signal: controller.signal,
@@ -2090,14 +2192,19 @@ function Home() {
 							)
 								return;
 							if (cause) {
-								commitHomeFloorResult(floorScan, candidate.processId, null, marketplaceFailureKind(cause));
+								commitHomeFloorResult(
+									floorScan,
+									candidate.processId,
+									null,
+									marketplaceFailureKind(cause)
+								);
 								return;
 							}
 							const order = result ? bestAskOfAsset(result.state) : null;
 							commitHomeFloorResult(
 								floorScan,
 								candidate.processId,
-								order && result ? unitPriceWinston(order, result.state.denomination) : null,
+								order && result ? unitPriceWinston(order, result.state.denomination) : null
 							);
 						},
 					});
@@ -2139,7 +2246,11 @@ function Home() {
 					if (!controller.signal.aborted) {
 						setCollectionFloors((current) => ({
 							...current,
-							[collection.id]: { status: 'unavailable', source: 'index', kind: marketplaceFailureKind(cause) },
+							[collection.id]: {
+								status: 'unavailable',
+								source: 'index',
+								kind: marketplaceFailureKind(cause),
+							},
 						}));
 					}
 				} finally {
@@ -2147,12 +2258,12 @@ function Home() {
 						collectionSummaryControllers.current.delete(collection.id);
 					}
 				}
-			})(),
+			})()
 		);
 		void Promise.all(requests).then(finishRetry);
 	}, [collectionKey, computeGateway, finishSummaryRetry, shouldLoadCollectionSummaries, summaryRetry]);
 	const summaryFailures = [...Object.values(assetPrices), ...Object.values(collectionFloors)].filter(
-		(summary): summary is Extract<HomeMarketSummary, { status: 'unavailable' }> => summary.status === 'unavailable',
+		(summary): summary is Extract<HomeMarketSummary, { status: 'unavailable' }> => summary.status === 'unavailable'
 	);
 	const summaryFailureMessage = (['index', 'compute'] as const)
 		.flatMap((source) => {
@@ -2165,12 +2276,12 @@ function Home() {
 	const retryMarketSummaries = () => {
 		if (summaryRetrying) return;
 		retryAssetSummaries.current = new Set(
-			assets.map(({ asset }) => asset.id).filter((assetId) => assetPrices[assetId]?.status === 'unavailable'),
+			assets.map(({ asset }) => asset.id).filter((assetId) => assetPrices[assetId]?.status === 'unavailable')
 		);
 		retryCollectionSummaries.current = new Set(
 			collections
 				.map((collection) => collection.id)
-				.filter((collectionId) => collectionFloors[collectionId]?.status === 'unavailable'),
+				.filter((collectionId) => collectionFloors[collectionId]?.status === 'unavailable')
 		);
 		const retryGroups = new Set<'assets' | 'collections'>();
 		if (retryAssetSummaries.current.size) retryGroups.add('assets');
@@ -2200,19 +2311,19 @@ function Home() {
 	const collectionResultsReady = homeMarketSummariesReady(
 		marketShellLoading,
 		collections.map((collection) => collection.id),
-		collectionFloors,
+		collectionFloors
 	);
 	const assetSummariesRetrying = summaryRetrying && summaryRetryRun.current.pending.has('assets');
 	const collectionSummariesRetrying = summaryRetrying && summaryRetryRun.current.pending.has('collections');
 	const collectionResultsPending = homeMarketHasPending(
 		market.loading || collectionSummariesRetrying,
 		collections.map((collection) => collection.id),
-		collectionFloors,
+		collectionFloors
 	);
 	const discoverResultsPending = homeMarketHasPending(
 		market.loading || assetSummariesRetrying || portableHomeListingsLoading,
 		assets.map(({ asset }) => asset.id),
-		assetPrices,
+		assetPrices
 	);
 	const discoverResultsFailed = Boolean(portableHomeListingsFailure) || summaryFailures.length > 0;
 	const publishAssetCards = homeAssetCardsPublished(assetView, discoverResultsPending);
@@ -2279,8 +2390,8 @@ function Home() {
 												? `Results for “${query}” across the current Arweave collection indexes.`
 												: 'Active listings read from current live state across every marketplace collection.'
 											: homeTab === 'collections'
-												? 'Permanent assets with ownership and settlement native to Arweave.'
-												: 'Recent signed market actions across every marketplace collection.'}
+											? 'Permanent assets with ownership and settlement native to Arweave.'
+											: 'Recent signed market actions across every marketplace collection.'}
 									</p>
 								</div>
 								{homeTab === 'discover' ? (
@@ -2318,13 +2429,17 @@ function Home() {
 								) : null}
 							</div>
 							{market.error ? (
-								<ErrorPanel message={market.error} onRetry={market.retry} retryLabel="Retry collections" />
+								<ErrorPanel
+									message={market.error}
+									onRetry={market.retry}
+									retryLabel="Retry collections"
+								/>
 							) : null}
 							{homeTab === 'discover' && portableHomeListingsFailure ? (
 								<ErrorPanel
 									message={marketplaceRequestFailureMessage(
 										portableHomeListingsFailure.source,
-										portableHomeListingsFailure.kind,
+										portableHomeListingsFailure.kind
 									)}
 									onRetry={() => setPortableHomeRetry((current) => current + 1)}
 									retryLabel="Retry public listings"
@@ -2334,12 +2449,16 @@ function Home() {
 								<div className="collection-source-notice">
 									<span role="status">
 										Search covers {partialTokenCollection.assets.length.toLocaleString()} of{' '}
-										{(partialTokenCollection.total ?? partialTokenCollection.assets.length).toLocaleString()} discovered
-										token records currently loaded.
+										{(
+											partialTokenCollection.total ?? partialTokenCollection.assets.length
+										).toLocaleString()}{' '}
+										discovered token records currently loaded.
 									</span>
 									<Link
 										className="with-icon"
-										to={`/collection/${partialTokenCollection.id}?q=${encodeURIComponent(query.trim())}`}
+										to={`/collection/${partialTokenCollection.id}?q=${encodeURIComponent(
+											query.trim()
+										)}`}
 									>
 										Continue token search
 										<ArrowRight className="ui-icon ui-icon--xs" aria-hidden="true" />
@@ -2350,7 +2469,7 @@ function Home() {
 							homeSummaryFailureNoticeVisible(
 								discoverResultsReady,
 								summaryFailures.length,
-								Boolean(portableHomeListingsFailure),
+								Boolean(portableHomeListingsFailure)
 							) ? (
 								<div className="collection-source-notice">
 									<span role="status">
@@ -2362,7 +2481,8 @@ function Home() {
 										className="with-icon"
 										size="custom"
 										onBlur={(event) => {
-											if (summaryRetrying && event.relatedTarget) summaryRetryOwnsFocus.current = false;
+											if (summaryRetrying && event.relatedTarget)
+												summaryRetryOwnsFocus.current = false;
 										}}
 										onClick={() => {
 											if (summaryRetrying) return;
@@ -2389,7 +2509,9 @@ function Home() {
 											{collections.map((collection, index) => {
 												const image = collection.assets.find((asset) => asset.image)?.image;
 												const floor = collectionFloors[collection.id];
-												const floorPending = !floor || (collectionSummariesRetrying && floor.status === 'unavailable');
+												const floorPending =
+													!floor ||
+													(collectionSummariesRetrying && floor.status === 'unavailable');
 												return (
 													<Link
 														className={`home-feature-card feature-${index}`}
@@ -2404,9 +2526,17 @@ function Home() {
 																	fetchPriority={index === 0 ? 'high' : 'auto'}
 																	loading={index === 0 ? 'eager' : 'lazy'}
 																	fallback={
-																		<span className="home-image-collection-fallback" aria-hidden="true">
+																		<span
+																			className="home-image-collection-fallback"
+																			aria-hidden="true"
+																		>
 																			<BazarMark />
-																			<strong>{collection.name.replace(/^\[TEST\]\s*/, '')}</strong>
+																			<strong>
+																				{collection.name.replace(
+																					/^\[TEST\]\s*/,
+																					''
+																				)}
+																			</strong>
 																			<small>Permanent image collection</small>
 																		</span>
 																	}
@@ -2432,17 +2562,37 @@ function Home() {
 														</div>
 														<div className="home-feature-stats">
 															<div>
-																<span>{collection.kind === 'names' && collection.hasMore ? 'Loaded' : 'Assets'}</span>
-																<strong>{(collection.total ?? collection.assets.length).toLocaleString()}</strong>
+																<span>
+																	{collection.kind === 'names' && collection.hasMore
+																		? 'Loaded'
+																		: 'Assets'}
+																</span>
+																<strong>
+																	{(
+																		collection.total ?? collection.assets.length
+																	).toLocaleString()}
+																</strong>
 															</div>
 															<div>
-																<span>{collection.hasMore ? 'Loaded floor' : 'Floor'}</span>
-																<strong className={homeMarketSummaryListed(floor) ? 'listed' : undefined}>
+																<span>
+																	{collection.hasMore ? 'Loaded floor' : 'Floor'}
+																</span>
+																<strong
+																	className={
+																		homeMarketSummaryListed(floor)
+																			? 'listed'
+																			: undefined
+																	}
+																>
 																	{!floorPending && floor ? (
 																		homeMarketSummaryLabel(
 																			floor,
-																			collection.hasMore ? 'No loaded listings' : 'No live listings',
-																			collection.hasMore ? 'No loaded asks' : 'No indexed asks',
+																			collection.hasMore
+																				? 'No loaded listings'
+																				: 'No live listings',
+																			collection.hasMore
+																				? 'No loaded asks'
+																				: 'No indexed asks'
 																		)
 																	) : (
 																		<HomePendingMarketValue />
@@ -2453,13 +2603,18 @@ function Home() {
 														<strong className="home-card-action">
 															Open collection
 															<span>
-																<ArrowUpRight className="ui-icon ui-icon--xs" aria-hidden="true" />
+																<ArrowUpRight
+																	className="ui-icon ui-icon--xs"
+																	aria-hidden="true"
+																/>
 															</span>
 														</strong>
 													</Link>
 												);
 											})}
-											{collectionResultsPending ? <HomeMarketGhostCard kind="collection" /> : null}
+											{collectionResultsPending ? (
+												<HomeMarketGhostCard kind="collection" />
+											) : null}
 										</div>
 									) : null}
 									{collectionResultsReady && !market.error && collections.length === 0 ? (
@@ -2478,55 +2633,68 @@ function Home() {
 									{displayedAssets.length || discoverResultsPending ? (
 										<>
 											<div className="home-asset-grid">
-												{(publishAssetCards ? assetPagination.items : []).map(({ asset, collection }, index) => {
-													const price = assetPrices[asset.id];
-													const pricePending = !price || (assetSummariesRetrying && price.status === 'unavailable');
-													return (
-														<Link
-															key={`${collection.id}-${asset.id}`}
-															to={`/asset/${collection.id}/${asset.id}`}
-															onFocus={() => prefetchAssetPage(asset.id)}
-															onMouseEnter={() => prefetchAssetPage(asset.id)}
-															onTouchStart={() => prefetchAssetPage(asset.id)}
-														>
-															{asset.image ? (
-																<ArtworkImage
-																	className="home-asset-media"
-																	src={asset.image}
-																	alt=""
-																	fetchPriority={index < 2 ? 'high' : 'auto'}
-																	loading={index < 2 ? 'eager' : 'lazy'}
-																/>
-															) : isAudioContentType(asset.contentType) ? (
-																<AudioArtwork
-																	className="home-asset-media"
-																	contentType={asset.contentType}
-																	name={asset.name}
-																/>
-															) : collection.kind === 'names' ? (
-																<NameArtwork className="home-asset-media" name={asset.name} />
-															) : (
-																<TokenArtwork
-																	className="home-asset-media home-token-art"
-																	ticker={asset.ticker ?? 'Token'}
-																/>
-															)}
-															<div className="home-asset-details">
-																<div>
-																	<strong>{asset.name}</strong>
-																	<span>{collection.name}</span>
+												{(publishAssetCards ? assetPagination.items : []).map(
+													({ asset, collection }, index) => {
+														const price = assetPrices[asset.id];
+														const pricePending =
+															!price ||
+															(assetSummariesRetrying && price.status === 'unavailable');
+														return (
+															<Link
+																key={`${collection.id}-${asset.id}`}
+																to={`/asset/${collection.id}/${asset.id}`}
+																onFocus={() => prefetchAssetPage(asset.id)}
+																onMouseEnter={() => prefetchAssetPage(asset.id)}
+																onTouchStart={() => prefetchAssetPage(asset.id)}
+															>
+																{asset.image ? (
+																	<ArtworkImage
+																		className="home-asset-media"
+																		src={asset.image}
+																		alt=""
+																		fetchPriority={index < 2 ? 'high' : 'auto'}
+																		loading={index < 2 ? 'eager' : 'lazy'}
+																	/>
+																) : isAudioContentType(asset.contentType) ? (
+																	<AudioArtwork
+																		className="home-asset-media"
+																		contentType={asset.contentType}
+																		name={asset.name}
+																	/>
+																) : collection.kind === 'names' ? (
+																	<NameArtwork
+																		className="home-asset-media"
+																		name={asset.name}
+																	/>
+																) : (
+																	<TokenArtwork
+																		className="home-asset-media home-token-art"
+																		ticker={asset.ticker ?? 'Token'}
+																	/>
+																)}
+																<div className="home-asset-details">
+																	<div>
+																		<strong>{asset.name}</strong>
+																		<span>{collection.name}</span>
+																	</div>
+																	<b
+																		className={`home-asset-price${
+																			homeMarketSummaryListed(price)
+																				? ' listed'
+																				: ''
+																		}`}
+																	>
+																		{!pricePending && price ? (
+																			homeMarketSummaryLabel(price, 'Not listed')
+																		) : (
+																			<HomePendingMarketValue />
+																		)}
+																	</b>
 																</div>
-																<b className={`home-asset-price${homeMarketSummaryListed(price) ? ' listed' : ''}`}>
-																	{!pricePending && price ? (
-																		homeMarketSummaryLabel(price, 'Not listed')
-																	) : (
-																		<HomePendingMarketValue />
-																	)}
-																</b>
-															</div>
-														</Link>
-													);
-												})}
+															</Link>
+														);
+													}
+												)}
 											</div>
 											{discoverResultsPending ? <HomeAssetLoadingMore /> : null}
 											{publishAssetCards ? (
@@ -2625,7 +2793,7 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 			...new Set(
 				collections
 					.filter((collection) => collection.kind !== 'names')
-					.flatMap((collection) => collection.assets.map((asset) => asset.id)),
+					.flatMap((collection) => collection.assets.map((asset) => asset.id))
 			),
 		];
 		const requests: Array<Promise<CollectionActivityEvent[]>> = [];
@@ -2636,7 +2804,7 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 					signal: controller.signal,
 					limit: 100,
 					onBatch: (batchEvents) => publish(batchEvents),
-				}),
+				})
 			);
 		}
 		if (nameCollections.length) {
@@ -2648,7 +2816,7 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 						nameCollections.some((collection) => collectionCandidateMembership(collection)(processId)),
 					requiredExecutionDevice: 'carrier@1.0',
 					onPage: (pageEvents) => publish(pageEvents),
-				}),
+				})
 			);
 		}
 		void Promise.allSettled(requests).then((outcomes) => {
@@ -2684,7 +2852,8 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 		{ value: 'transfer', label: 'Transfers' },
 		{ value: 'cancel-order', label: 'Cancellations' },
 	];
-	const resolveCollection = (event: CollectionActivityEvent) => globalActivityCollection(collections, event.processId);
+	const resolveCollection = (event: CollectionActivityEvent) =>
+		globalActivityCollection(collections, event.processId);
 	return (
 		<div
 			aria-busy={loading}
@@ -2701,9 +2870,15 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 							? preservingEvents
 								? `${events.length.toLocaleString()} retained · refreshing from Arweave`
 								: pages
-									? `${events.length.toLocaleString()} found across ${pages.toLocaleString()} ${pages === 1 ? 'check' : 'checks'} · still reading Arweave`
-									: 'Reading indexed transactions from Arweave…'
-							: `${events.length.toLocaleString()} indexed ${events.length === 1 ? 'transaction' : 'transactions'} · ${confirmedEvents.toLocaleString()} confirmed${pendingEvents ? ` · ${pendingEvents.toLocaleString()} pending` : ''} · newest first`}
+								? `${events.length.toLocaleString()} found across ${pages.toLocaleString()} ${
+										pages === 1 ? 'check' : 'checks'
+								  } · still reading Arweave`
+								: 'Reading indexed transactions from Arweave…'
+							: `${events.length.toLocaleString()} indexed ${
+									events.length === 1 ? 'transaction' : 'transactions'
+							  } · ${confirmedEvents.toLocaleString()} confirmed${
+									pendingEvents ? ` · ${pendingEvents.toLocaleString()} pending` : ''
+							  } · newest first`}
 					</span>
 				</div>
 				<Button
@@ -2744,8 +2919,8 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 				events.length ? (
 					<div className="collection-source-notice home-activity-partial-notice">
 						<span role="status">
-							Some activity sources could not be refreshed. Showing {events.length.toLocaleString()} indexed{' '}
-							{events.length === 1 ? 'event' : 'events'} already loaded. {error}
+							Some activity sources could not be refreshed. Showing {events.length.toLocaleString()}{' '}
+							indexed {events.length === 1 ? 'event' : 'events'} already loaded. {error}
 						</span>
 					</div>
 				) : (
@@ -2753,7 +2928,9 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 				)
 			) : null}
 			<MarketActivityList
-				ariaLabel={`Global market activity, ${activityFilters.find((filter) => filter.value === activityFilter)?.label}`}
+				ariaLabel={`Global market activity, ${
+					activityFilters.find((filter) => filter.value === activityFilter)?.label
+				}`}
 				events={filteredEvents.slice(0, activityLimit)}
 				id={activityListId}
 				loading={loading}
@@ -2786,7 +2963,7 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 						const nextLimit = Math.min(filteredEvents.length, activityLimit + 20);
 						setActivityLimit(nextLimit);
 						setActivityRevealAnnouncement(
-							`Showing ${nextLimit.toLocaleString()} of ${filteredEvents.length.toLocaleString()} filtered global activity events.`,
+							`Showing ${nextLimit.toLocaleString()} of ${filteredEvents.length.toLocaleString()} filtered global activity events.`
 						);
 						window.requestAnimationFrame(() => {
 							if (assetGroupRevealComplete(nextLimit, eventCountRef.current)) {
@@ -2808,7 +2985,9 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 			{!loading && !error && !events.length ? (
 				<div className="empty-state">
 					<h3>No indexed market activity yet</h3>
-					<p>The current marketplace collections have no matching signed market actions in the Arweave index.</p>
+					<p>
+						The current marketplace collections have no matching signed market actions in the Arweave index.
+					</p>
 				</div>
 			) : null}
 		</div>
@@ -2897,8 +3076,8 @@ function GatewayControl() {
 					</Button>
 				</form>
 				<p>
-					Process reads and observer requests use HyperBEAM. Content, pricing, balances, and settlement use the site
-					gateway by default.
+					Process reads and observer requests use HyperBEAM. Content, pricing, balances, and settlement use
+					the site gateway by default.
 				</p>
 			</div>
 		</details>
@@ -2930,7 +3109,7 @@ export function MarketSelect<Value extends string>({
 	const menuId = React.useId();
 	const selectedIndex = Math.max(
 		0,
-		options.findIndex((option) => option.value === value),
+		options.findIndex((option) => option.value === value)
 	);
 	const selected = options[selectedIndex];
 
@@ -2969,7 +3148,7 @@ export function MarketSelect<Value extends string>({
 		const trigger = triggerRef.current;
 		const tabStops = [
 			...document.querySelectorAll<HTMLElement>(
-				'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+				'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
 			),
 		].filter((element) => element.tabIndex >= 0 && element.getClientRects().length > 0);
 		const triggerIndex = trigger ? tabStops.indexOf(trigger) : -1;
@@ -3076,7 +3255,7 @@ export function newestCollectionActivity(events: CollectionActivityEvent[], limi
 
 export function collectionListingScopeVersion(collection: Collection) {
 	return collection.kind === 'tokens'
-		? (collection.manifestId ?? collection.id)
+		? collection.manifestId ?? collection.id
 		: collectionActivityVersion(collection);
 }
 
@@ -3115,7 +3294,7 @@ export type ListingAnnouncementProgress = {
 
 export function nextListingAnnouncementProgress(
 	previous: ListingAnnouncementProgress,
-	current: ListingAnnouncementProgress & { total: number; loading: boolean },
+	current: ListingAnnouncementProgress & { total: number; loading: boolean }
 ): ListingAnnouncementProgress {
 	const reset = previous.scope !== current.scope || current.resolved < previous.resolved;
 	const baseline = reset ? { scope: current.scope, resolved: 0, failures: 0 } : previous;
@@ -3289,8 +3468,8 @@ function CollectionView() {
 	const visibleAssets = listedOnly
 		? listed.map((result) => result.asset)
 		: collection && deferredQuery.trim()
-			? collectionSearchAssets(collection, deferredQuery.trim().toLowerCase())
-			: (collection?.assets ?? []);
+		? collectionSearchAssets(collection, deferredQuery.trim().toLowerCase())
+		: collection?.assets ?? [];
 	const listedIdsKey = listed
 		.map((result) => result.asset.id)
 		.sort()
@@ -3299,7 +3478,7 @@ function CollectionView() {
 		.filter(
 			(asset) =>
 				assetMatchesCollectionQuery(asset, deferredQuery) &&
-				(initial === 'all' || asset.name.trim().toLowerCase().startsWith(initial.toLowerCase())),
+				(initial === 'all' || asset.name.trim().toLowerCase().startsWith(initial.toLowerCase()))
 		)
 		.sort((a, b) => {
 			if (initial !== 'all') return compareCollectionAssetNames(a, b);
@@ -3314,21 +3493,21 @@ function CollectionView() {
 			}
 			if (collection?.kind === 'names') return compareCollectionAssetNames(a, b);
 			return (
-				(defaultIndex.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (defaultIndex.get(b.id) ?? Number.MAX_SAFE_INTEGER) ||
-				compareCollectionAssetNames(a, b)
+				(defaultIndex.get(a.id) ?? Number.MAX_SAFE_INTEGER) -
+					(defaultIndex.get(b.id) ?? Number.MAX_SAFE_INTEGER) || compareCollectionAssetNames(a, b)
 			);
 		});
 	const filteredCountRef = React.useRef(filtered.length);
 	filteredCountRef.current = filtered.length;
 	const revealNextAssetPage = React.useCallback(
 		() => setLimit((current) => Math.min(filteredCountRef.current, current + pageSize)),
-		[pageSize],
+		[pageSize]
 	);
 	const progressiveRevealRef = useProgressiveReveal(limit < filtered.length, revealNextAssetPage);
 	const visiblePriceAssets = filtered.slice(0, limit);
 	const visiblePriceKey = visiblePriceAssets.map((asset) => asset.id).join(',');
 	const visibleUnavailablePrices = visiblePriceAssets.filter(
-		(asset) => cardPrices[asset.id]?.status === 'unavailable',
+		(asset) => cardPrices[asset.id]?.status === 'unavailable'
 	).length;
 	const visibleRateLimitedPrices = visiblePriceAssets.filter((asset) => {
 		const price = cardPrices[asset.id];
@@ -3337,11 +3516,11 @@ function CollectionView() {
 	const activityRequestMode = listedOnly ? 'listed' : sort === 'recent' ? 'recent' : 'idle';
 	const listingCollectionVersion = React.useMemo(
 		() => (collection ? collectionListingScopeVersion(collection) : ''),
-		[collection],
+		[collection]
 	);
 	const listingWindowVersion = React.useMemo(
 		() => collection?.assets.map((asset) => asset.id).join('.') ?? '',
-		[collection],
+		[collection]
 	);
 	const listingScope = collection
 		? `${gateway}:${activityRequestMode}:${collection.id}:${listingCollectionVersion}`
@@ -3413,13 +3592,13 @@ function CollectionView() {
 						const completedIds = new Set(completedRecipients);
 						const candidateIds = new Set(candidates.map((candidate) => candidate.processId));
 						const withoutListingActivity = unresolvedAssets.filter(
-							(asset) => completedIds.has(asset.id) && !candidateIds.has(asset.id),
+							(asset) => completedIds.has(asset.id) && !candidateIds.has(asset.id)
 						);
 						withoutListingActivity.forEach((asset) => resolvedPriceIds.current.add(asset.id));
 						setCardPrices((current) => ({
 							...current,
 							...Object.fromEntries(
-								withoutListingActivity.map((asset) => [asset.id, { status: 'unindexed' as const }]),
+								withoutListingActivity.map((asset) => [asset.id, { status: 'unindexed' as const }])
 							),
 						}));
 						await resolveAssetCandidates(
@@ -3428,7 +3607,8 @@ function CollectionView() {
 							{
 								signal: controller.signal,
 								concurrency: 4,
-								read: (processId, signal) => readAssetStateCached(processId, { signal, maxAttempts: 1 }),
+								read: (processId, signal) =>
+									readAssetStateCached(processId, { signal, maxAttempts: 1 }),
 								onSettled: (result, candidate, cause) => {
 									if (controller.signal.aborted || priceScope.current !== nextScope) return;
 									resolvedPriceIds.current.add(candidate.processId);
@@ -3439,11 +3619,12 @@ function CollectionView() {
 											? { status: 'unavailable', kind: marketplaceFailureKind(cause) }
 											: {
 													status: 'resolved',
-													label: order && result ? orderPriceLabel(order, result.state) : null,
-												},
+													label:
+														order && result ? orderPriceLabel(order, result.state) : null,
+											  },
 									}));
 								},
-							},
+							}
 						);
 					},
 				});
@@ -3464,8 +3645,8 @@ function CollectionView() {
 					if (price.status !== 'unavailable') return true;
 					resolvedPriceIds.current.delete(processId);
 					return false;
-				}),
-			),
+				})
+			)
 		);
 		setCardPricesFailure(null);
 		setPriceRetry((current) => current + 1);
@@ -3481,7 +3662,15 @@ function CollectionView() {
 			setListingRetrying(false);
 			setActivity([]);
 			setListed([]);
-			setActivityState({ loading: false, pages: 0, resolved: 0, total: 0, failures: 0, rateLimited: 0, error: null });
+			setActivityState({
+				loading: false,
+				pages: 0,
+				resolved: 0,
+				total: 0,
+				failures: 0,
+				rateLimited: 0,
+				error: null,
+			});
 			return;
 		}
 		const controller = new AbortController();
@@ -3501,7 +3690,15 @@ function CollectionView() {
 			setListingRetrying(false);
 			setActivity([]);
 			setListed([]);
-			setActivityState({ loading: true, pages: 0, resolved: 0, total: 0, failures: 0, rateLimited: 0, error: null });
+			setActivityState({
+				loading: true,
+				pages: 0,
+				resolved: 0,
+				total: 0,
+				failures: 0,
+				rateLimited: 0,
+				error: null,
+			});
 		} else {
 			setActivityState((current) => ({ ...current, loading: true, pages: 0, error: null }));
 		}
@@ -3521,15 +3718,18 @@ function CollectionView() {
 					if (controller.signal.aborted) return;
 					const pageCandidates = page.filter((candidate) => includesCollectionAsset(candidate.processId));
 					const newCandidates = pageCandidates.filter(
-						(candidate) => !listingActivityCandidates.current.has(candidate.processId),
+						(candidate) => !listingActivityCandidates.current.has(candidate.processId)
 					);
 					for (const candidate of pageCandidates) {
 						listingActivityCandidates.current.set(candidate.processId, candidate);
 					}
 					setActivity(
 						[...listingActivityCandidates.current.values()].sort(
-							(a, b) => b.height - a.height || b.timestamp - a.timestamp || a.processId.localeCompare(b.processId),
-						),
+							(a, b) =>
+								b.height - a.height ||
+								b.timestamp - a.timestamp ||
+								a.processId.localeCompare(b.processId)
+						)
 					);
 					setActivityState((current) => ({
 						...current,
@@ -3538,7 +3738,7 @@ function CollectionView() {
 					}));
 					if (!listedOnly) return;
 					const candidates = pageCandidates.filter(
-						(candidate) => !settledListingCandidates.current.has(candidate.processId),
+						(candidate) => !settledListingCandidates.current.has(candidate.processId)
 					);
 					if (!candidates.length) return;
 					const outcomes = new Map<
@@ -3583,8 +3783,9 @@ function CollectionView() {
 							? { status: 'unavailable', kind: outcome.failureKind }
 							: {
 									status: 'resolved',
-									label: order && outcome.result ? orderPriceLabel(order, outcome.result.state) : null,
-								};
+									label:
+										order && outcome.result ? orderPriceLabel(order, outcome.result.state) : null,
+							  };
 					}
 					setListed((current) => mergeResolvedListingBatch(current, outcomes.values()));
 					setCardPrices((current) => ({ ...current, ...priceUpdates }));
@@ -3602,24 +3803,26 @@ function CollectionView() {
 								listingsOnly: listedOnly,
 								acceptProcessId: includesCollectionAsset,
 								onPage: resolvePage,
-							})
+						  })
 						: await discoverMarketActivityBatched({
 								recipients: requestedAssetIds,
 								signal: controller.signal,
 								listingsOnly: listedOnly,
 								onBatch: async (candidates, completedRecipients) => {
 									await resolvePage(candidates);
-									if (controller.signal.aborted || listingActivityScope.current !== listingScope) return;
-									for (const assetId of completedRecipients) listingLoadedAssetIds.current.add(assetId);
+									if (controller.signal.aborted || listingActivityScope.current !== listingScope)
+										return;
+									for (const assetId of completedRecipients)
+										listingLoadedAssetIds.current.add(assetId);
 								},
-							});
+						  });
 				if (controller.signal.aborted) return;
 				const candidates = allActivity.filter((candidate) => includesCollectionAsset(candidate.processId));
 				for (const candidate of candidates) {
 					listingActivityCandidates.current.set(candidate.processId, candidate);
 				}
 				const mergedCandidates = [...listingActivityCandidates.current.values()].sort(
-					(a, b) => b.height - a.height || b.timestamp - a.timestamp || a.processId.localeCompare(b.processId),
+					(a, b) => b.height - a.height || b.timestamp - a.timestamp || a.processId.localeCompare(b.processId)
 				);
 				if (collection.kind === 'names') {
 					for (const assetId of requestedAssetIds) listingLoadedAssetIds.current.add(assetId);
@@ -3701,7 +3904,7 @@ function CollectionView() {
 						: {
 								status: 'resolved',
 								label: order && outcome.result ? orderPriceLabel(order, outcome.result.state) : null,
-							};
+						  };
 				}
 				setListed((current) => mergeResolvedListingBatch(current, outcomes.values()));
 				setCardPrices((current) => ({ ...current, ...priceUpdates }));
@@ -3757,8 +3960,8 @@ function CollectionView() {
 		if (!pendingRecipients.length) {
 			setActivity(
 				[...recentOrderActivity.current.values()].sort(
-					(a, b) => b.height - a.height || b.timestamp - a.timestamp || a.processId.localeCompare(b.processId),
-				),
+					(a, b) => b.height - a.height || b.timestamp - a.timestamp || a.processId.localeCompare(b.processId)
+				)
 			);
 			setRecentOrderState({ loading: false, error: null });
 			return () => controller.abort();
@@ -3777,8 +3980,11 @@ function CollectionView() {
 				if (!controller.signal.aborted) {
 					setActivity(
 						[...recentOrderActivity.current.values()].sort(
-							(a, b) => b.height - a.height || b.timestamp - a.timestamp || a.processId.localeCompare(b.processId),
-						),
+							(a, b) =>
+								b.height - a.height ||
+								b.timestamp - a.timestamp ||
+								a.processId.localeCompare(b.processId)
+						)
 					);
 					setRecentOrderState({ loading: false, error: null });
 				}
@@ -3787,7 +3993,7 @@ function CollectionView() {
 				if (!controller.signal.aborted) {
 					setRecentOrderState({ loading: false, error: marketplaceFailureKind(cause) });
 				}
-			},
+			}
 		);
 		return () => controller.abort();
 	}, [activityState.loading, collection?.id, listedIdsKey, listedOnly, listingRetrying, recentOrderRetry, sort]);
@@ -3811,9 +4017,16 @@ function CollectionView() {
 				<ErrorPanel message="This collection could not be found on Arweave." />
 			</RouteState>
 		);
-	const compactTokenCollection = collection.kind === 'tokens' && collection.assets.length === 1 && !collection.hasMore;
+	const compactTokenCollection =
+		collection.kind === 'tokens' && collection.assets.length === 1 && !collection.hasMore;
 	const pagedTokenScope = collection.kind === 'tokens' && collection.hasMore;
-	const listingSearchDetail = `${activityState.pages.toLocaleString()} index ${activityState.pages === 1 ? 'check' : 'checks'} this pass · ${activityState.total.toLocaleString()} ${activityState.total === 1 ? 'candidate' : 'candidates'} · ${activityState.resolved.toLocaleString()} checked${activityState.failures ? ` · ${activityState.failures.toLocaleString()} unavailable` : ''}${pagedTokenScope ? ` · among ${collection.assets.length.toLocaleString()} loaded tokens` : ''}`;
+	const listingSearchDetail = `${activityState.pages.toLocaleString()} index ${
+		activityState.pages === 1 ? 'check' : 'checks'
+	} this pass · ${activityState.total.toLocaleString()} ${
+		activityState.total === 1 ? 'candidate' : 'candidates'
+	} · ${activityState.resolved.toLocaleString()} checked${
+		activityState.failures ? ` · ${activityState.failures.toLocaleString()} unavailable` : ''
+	}${pagedTokenScope ? ` · among ${collection.assets.length.toLocaleString()} loaded tokens` : ''}`;
 	listingAnnouncementProgress.current = nextListingAnnouncementProgress(listingAnnouncementProgress.current, {
 		scope: listingScope,
 		resolved: activityState.resolved,
@@ -3822,37 +4035,57 @@ function CollectionView() {
 		loading: activityState.loading,
 	});
 	const announcedListingProgress = listingAnnouncementProgress.current;
-	const listingSearchAnnouncement = `${activityState.pages.toLocaleString()} index ${activityState.pages === 1 ? 'check' : 'checks'} this pass · ${activityState.total.toLocaleString()} ${activityState.total === 1 ? 'candidate' : 'candidates'} · ${announcedListingProgress.resolved.toLocaleString()} checked${announcedListingProgress.failures ? ` · ${announcedListingProgress.failures.toLocaleString()} unavailable` : ''}${pagedTokenScope ? ` · among ${collection.assets.length.toLocaleString()} loaded tokens` : ''}`;
+	const listingSearchAnnouncement = `${activityState.pages.toLocaleString()} index ${
+		activityState.pages === 1 ? 'check' : 'checks'
+	} this pass · ${activityState.total.toLocaleString()} ${
+		activityState.total === 1 ? 'candidate' : 'candidates'
+	} · ${announcedListingProgress.resolved.toLocaleString()} checked${
+		announcedListingProgress.failures ? ` · ${announcedListingProgress.failures.toLocaleString()} unavailable` : ''
+	}${pagedTokenScope ? ` · among ${collection.assets.length.toLocaleString()} loaded tokens` : ''}`;
 	const resultSummary = activityState.loading
 		? listedOnly
 			? `${listed.length.toLocaleString()} live ${listed.length === 1 ? 'listing' : 'listings'} so far`
 			: 'Finding recent activity on Arweave…'
 		: query
-			? `${filtered.length.toLocaleString()} ${collection.kind === 'names' ? 'current namespace' : 'loaded'} matches`
-			: initial !== 'all'
-				? `${filtered.length.toLocaleString()} loaded names beginning with ${initial}`
-				: listedOnly
-					? `${filtered.length.toLocaleString()} live ${filtered.length === 1 ? 'listing' : 'listings'}${pagedTokenScope ? ' in loaded tokens' : ''}${activityState.failures ? ` · ${activityState.failures.toLocaleString()} unavailable` : ''}`
-					: collection.kind === 'names'
-						? collection.hasMore
-							? `${collection.assets.length.toLocaleString()} current names loaded · more available`
-							: `${collection.assets.length.toLocaleString()} current ${collection.assets.length === 1 ? 'name' : 'names'}`
-						: collection.kind === 'tokens' && collection.hasMore
-							? `${collection.assets.length.toLocaleString()} tokens loaded · more available`
-							: `${collection.assets.length.toLocaleString()} ${collection.kind === 'tokens' ? (collection.assets.length === 1 ? 'token' : 'tokens') : collection.assets.length === 1 ? 'asset' : 'assets'}`;
+		? `${filtered.length.toLocaleString()} ${collection.kind === 'names' ? 'current namespace' : 'loaded'} matches`
+		: initial !== 'all'
+		? `${filtered.length.toLocaleString()} loaded names beginning with ${initial}`
+		: listedOnly
+		? `${filtered.length.toLocaleString()} live ${filtered.length === 1 ? 'listing' : 'listings'}${
+				pagedTokenScope ? ' in loaded tokens' : ''
+		  }${activityState.failures ? ` · ${activityState.failures.toLocaleString()} unavailable` : ''}`
+		: collection.kind === 'names'
+		? collection.hasMore
+			? `${collection.assets.length.toLocaleString()} current names loaded · more available`
+			: `${collection.assets.length.toLocaleString()} current ${
+					collection.assets.length === 1 ? 'name' : 'names'
+			  }`
+		: collection.kind === 'tokens' && collection.hasMore
+		? `${collection.assets.length.toLocaleString()} tokens loaded · more available`
+		: `${collection.assets.length.toLocaleString()} ${
+				collection.kind === 'tokens'
+					? collection.assets.length === 1
+						? 'token'
+						: 'tokens'
+					: collection.assets.length === 1
+					? 'asset'
+					: 'assets'
+		  }`;
 	const resultAnnouncement = activityState.loading
 		? listedOnly
 			? `Searching Arweave for live listings in ${collection.name}: ${listingSearchAnnouncement}.`
 			: `Finding recent activity in ${collection.name}.`
 		: cardPricesLoading
-			? `Checking live prices for ${visiblePriceAssets.length.toLocaleString()} visible assets in ${collection.name}.`
-			: query
-				? filtered.length
-					? `${filtered.length.toLocaleString()} ${collection.kind === 'names' ? 'names' : 'assets'} match ${query} in ${collection.name}.`
-					: collection.kind === 'tokens' && collection.hasMore
-						? `No loaded tokens match ${query} in ${collection.name}; more token records remain available.`
-						: `No ${collection.kind === 'names' ? 'names' : 'assets'} match ${query} in ${collection.name}.`
-				: `${resultSummary} in ${collection.name}.`;
+		? `Checking live prices for ${visiblePriceAssets.length.toLocaleString()} visible assets in ${collection.name}.`
+		: query
+		? filtered.length
+			? `${filtered.length.toLocaleString()} ${
+					collection.kind === 'names' ? 'names' : 'assets'
+			  } match ${query} in ${collection.name}.`
+			: collection.kind === 'tokens' && collection.hasMore
+			? `No loaded tokens match ${query} in ${collection.name}; more token records remain available.`
+			: `No ${collection.kind === 'names' ? 'names' : 'assets'} match ${query} in ${collection.name}.`
+		: `${resultSummary} in ${collection.name}.`;
 	return (
 		<section className="collection-page">
 			<Link className="back" to="/">
@@ -3871,14 +4104,16 @@ function CollectionView() {
 				<div className="collection-source-notice" role="status">
 					<span>
 						Browsing {collection.assets.length.toLocaleString()} of{' '}
-						{(collection.total ?? collection.assets.length).toLocaleString()} discovered tokens. Prices, listings, and
-						recent activity cover the loaded records.
+						{(collection.total ?? collection.assets.length).toLocaleString()} discovered tokens. Prices,
+						listings, and recent activity cover the loaded records.
 					</span>
 				</div>
 			) : null}
 			{collection.kind === 'names' ? (
 				<div
-					className={`alphabet-filter-shell${alphabetEdges.start ? ' at-start' : ''}${alphabetEdges.end ? ' at-end' : ''}`}
+					className={`alphabet-filter-shell${alphabetEdges.start ? ' at-start' : ''}${
+						alphabetEdges.end ? ' at-end' : ''
+					}`}
 				>
 					<nav
 						className="alphabet-filter"
@@ -4017,14 +4252,21 @@ function CollectionView() {
 					<span role="status">
 						{cardPricesFailure
 							? marketplaceRequestFailureMessage(cardPricesFailure.source, cardPricesFailure.kind)
-							: marketplaceRequestFailureMessage('compute', visibleRateLimitedPrices ? 'rate-limited' : 'unavailable')}
+							: marketplaceRequestFailureMessage(
+									'compute',
+									visibleRateLimitedPrices ? 'rate-limited' : 'unavailable'
+							  )}
 						{!cardPricesFailure && visibleUnavailablePrices
-							? ` ${visibleUnavailablePrices.toLocaleString()} visible ${visibleUnavailablePrices === 1 ? 'price remains' : 'prices remain'} unavailable.`
+							? ` ${visibleUnavailablePrices.toLocaleString()} visible ${
+									visibleUnavailablePrices === 1 ? 'price remains' : 'prices remain'
+							  } unavailable.`
 							: ''}
 					</span>
 					<Button className="with-icon" type="button" onClick={retryCardPrices} size="custom">
 						<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" />
-						{cardPricesFailure?.kind === 'rate-limited' || visibleRateLimitedPrices ? 'Retry later' : 'Retry prices'}
+						{cardPricesFailure?.kind === 'rate-limited' || visibleRateLimitedPrices
+							? 'Retry later'
+							: 'Retry prices'}
 					</Button>
 				</div>
 			) : null}
@@ -4035,11 +4277,11 @@ function CollectionView() {
 							? 'Rechecking only the listing candidates that were unavailable.'
 							: marketplaceRequestFailureMessage(
 									'compute',
-									activityState.rateLimited ? 'rate-limited' : 'unavailable',
-								)}{' '}
+									activityState.rateLimited ? 'rate-limited' : 'unavailable'
+							  )}{' '}
 						{activityState.failures.toLocaleString()} listing{' '}
-						{activityState.failures === 1 ? 'candidate remains' : 'candidates remain'} unavailable. Resolved listings
-						remain visible.
+						{activityState.failures === 1 ? 'candidate remains' : 'candidates remain'} unavailable. Resolved
+						listings remain visible.
 					</span>
 					<Button
 						className="with-icon"
@@ -4052,7 +4294,11 @@ function CollectionView() {
 						}}
 					>
 						<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" />{' '}
-						{listingRetrying ? 'Retrying…' : activityState.rateLimited ? 'Retry later' : 'Retry unavailable'}
+						{listingRetrying
+							? 'Retrying…'
+							: activityState.rateLimited
+							? 'Retry later'
+							: 'Retry unavailable'}
 					</Button>
 				</div>
 			) : null}
@@ -4061,7 +4307,10 @@ function CollectionView() {
 					<span role="status">
 						{recentOrderState.loading
 							? 'Ordering live listings by their latest indexed market activity…'
-							: `${marketplaceRequestFailureMessage('index', recentOrderState.error!)} Resolved listings are shown in Default order.`}
+							: `${marketplaceRequestFailureMessage(
+									'index',
+									recentOrderState.error!
+							  )} Resolved listings are shown in Default order.`}
 					</span>
 					{recentOrderState.error ? (
 						<Button
@@ -4081,7 +4330,9 @@ function CollectionView() {
 			<div
 				aria-describedby={resultSummaryId}
 				aria-label={`${collection.name} assets`}
-				className={`asset-grid${collection.kind === 'tokens' ? ' token-collection-grid' : ''}${collection.kind === 'names' ? ' names-collection-grid' : ''}`}
+				className={`asset-grid${collection.kind === 'tokens' ? ' token-collection-grid' : ''}${
+					collection.kind === 'names' ? ' names-collection-grid' : ''
+				}`}
 				id={assetGridId}
 			>
 				{filtered.slice(0, limit).map((asset) => {
@@ -4097,12 +4348,12 @@ function CollectionView() {
 								price?.status === 'unavailable'
 									? 'Unavailable'
 									: price?.status === 'unindexed'
-										? 'No indexed ask'
-										: price?.status === 'resolved'
-											? (price.label ?? 'Not listed')
-											: cardPricesFailure
-												? 'Unavailable'
-												: 'Checking…'
+									? 'No indexed ask'
+									: price?.status === 'resolved'
+									? price.label ?? 'Not listed'
+									: cardPricesFailure
+									? 'Unavailable'
+									: 'Checking…'
 							}
 							priceListed={price?.status === 'resolved' && Boolean(price.label)}
 						/>
@@ -4111,7 +4362,9 @@ function CollectionView() {
 			</div>
 			<p
 				className={
-					filtered.length > pageSize && limit >= filtered.length ? 'collection-result-count reveal-complete' : 'sr-only'
+					filtered.length > pageSize && limit >= filtered.length
+						? 'collection-result-count reveal-complete'
+						: 'sr-only'
 				}
 				aria-live="polite"
 				ref={resultSummaryRef}
@@ -4119,8 +4372,19 @@ function CollectionView() {
 				tabIndex={-1}
 			>
 				{filtered.length > pageSize && limit >= filtered.length
-					? `All ${filtered.length.toLocaleString()} ${collection.hasMore ? `currently loaded ${collection.kind === 'names' ? 'names' : 'assets'}` : collection.kind === 'names' ? 'names' : 'assets'} are shown.`
-					: `Showing ${Math.min(limit, filtered.length).toLocaleString()} of ${filtered.length.toLocaleString()} ${collection.kind === 'names' ? 'names' : 'assets'}.`}
+					? `All ${filtered.length.toLocaleString()} ${
+							collection.hasMore
+								? `currently loaded ${collection.kind === 'names' ? 'names' : 'assets'}`
+								: collection.kind === 'names'
+								? 'names'
+								: 'assets'
+					  } are shown.`
+					: `Showing ${Math.min(
+							limit,
+							filtered.length
+					  ).toLocaleString()} of ${filtered.length.toLocaleString()} ${
+							collection.kind === 'names' ? 'names' : 'assets'
+					  }.`}
 			</p>
 			{listedOnly && !activityState.loading && !activityState.error && !filtered.length ? (
 				<div className="empty-state">
@@ -4128,23 +4392,23 @@ function CollectionView() {
 						{query
 							? `No live listings match “${query}”`
 							: initial !== 'all'
-								? `No live listings begin with ${initial}`
-								: activityState.failures
-									? 'No live listings yet'
-									: pagedTokenScope
-										? 'No live listings in loaded tokens'
-										: 'No live listings found'}
+							? `No live listings begin with ${initial}`
+							: activityState.failures
+							? 'No live listings yet'
+							: pagedTokenScope
+							? 'No live listings in loaded tokens'
+							: 'No live listings found'}
 					</h3>
 					<p>
 						{query || initial !== 'all'
 							? 'Clear the current filters to see every live listing.'
 							: activityState.failures
-								? 'Some candidates could not be checked through this compute gateway. Retry them before treating this as an empty market.'
-								: pagedTokenScope
-									? `Every offer candidate among the ${collection.assets.length.toLocaleString()} loaded tokens was checked against current process state. Load more tokens to extend this market view.`
-									: activityState.total
-										? `Every indexed offer candidate was checked against current process state through ${gateway}; none remains live.`
-										: 'Arweave returned no indexed offer candidates for this collection window. Live state remains the marketplace truth once a candidate is found.'}
+							? 'Some candidates could not be checked through this compute gateway. Retry them before treating this as an empty market.'
+							: pagedTokenScope
+							? `Every offer candidate among the ${collection.assets.length.toLocaleString()} loaded tokens was checked against current process state. Load more tokens to extend this market view.`
+							: activityState.total
+							? `Every indexed offer candidate was checked against current process state through ${gateway}; none remains live.`
+							: 'Arweave returned no indexed offer candidates for this collection window. Live state remains the marketplace truth once a candidate is found.'}
 					</p>
 					{query || initial !== 'all' ? (
 						<Button type="button" onClick={clearCollectionFilters} size="custom">
@@ -4164,8 +4428,8 @@ function CollectionView() {
 								? `No loaded tokens match “${query}”`
 								: `No assets match “${query}”`
 							: initial !== 'all'
-								? `No names beginning with ${initial}`
-								: 'Nothing here yet'}
+							? `No names beginning with ${initial}`
+							: 'Nothing here yet'}
 					</h3>
 					<p>
 						{query
@@ -4173,8 +4437,8 @@ function CollectionView() {
 								? 'Search the next token records or clear the current query.'
 								: 'Try a shorter search or clear the current query.'
 							: initial !== 'all'
-								? 'Try another letter or return to all names.'
-								: 'This collection does not contain any indexed assets yet.'}
+							? 'Try another letter or return to all names.'
+							: 'This collection does not contain any indexed assets yet.'}
 					</p>
 					{query || initial !== 'all' ? (
 						<Button type="button" onClick={clearCollectionFilters} size="custom">
@@ -4219,10 +4483,24 @@ function CollectionView() {
 					tabIndex={-1}
 				>
 					{moreState.added
-						? `${moreState.added.toLocaleString()} more ${collection.kind === 'tokens' ? (moreState.added === 1 ? 'token' : 'tokens') : `current ${moreState.added === 1 ? 'name' : 'names'}`} loaded.`
+						? `${moreState.added.toLocaleString()} more ${
+								collection.kind === 'tokens'
+									? moreState.added === 1
+										? 'token'
+										: 'tokens'
+									: `current ${moreState.added === 1 ? 'name' : 'names'}`
+						  } loaded.`
 						: collection.kind === 'tokens'
-							? `No additional tokens were found in that page. ${collection.hasMore ? 'More token records remain.' : 'The token index is now fully checked.'}`
-							: `No additional current names were found in that page. ${collection.hasMore ? 'More carrier records remain.' : 'The carrier index is now fully checked.'}`}
+						? `No additional tokens were found in that page. ${
+								collection.hasMore
+									? 'More token records remain.'
+									: 'The token index is now fully checked.'
+						  }`
+						: `No additional current names were found in that page. ${
+								collection.hasMore
+									? 'More carrier records remain.'
+									: 'The carrier index is now fully checked.'
+						  }`}
 				</p>
 			) : null}
 			{limit < filtered.length ? (
@@ -4266,8 +4544,12 @@ function CollectionView() {
 					type="button"
 				>
 					{moreState.loading
-						? `${collection.kind === 'tokens' && query ? 'Searching' : 'Checking'} ${collection.kind === 'tokens' ? 'token' : 'carrier'} records…`
-						: `${collection.kind === 'tokens' && query ? 'Search' : 'Check'} next 100 ${collection.kind === 'tokens' ? 'token' : 'carrier'} records`}
+						? `${collection.kind === 'tokens' && query ? 'Searching' : 'Checking'} ${
+								collection.kind === 'tokens' ? 'token' : 'carrier'
+						  } records…`
+						: `${collection.kind === 'tokens' && query ? 'Search' : 'Check'} next 100 ${
+								collection.kind === 'tokens' ? 'token' : 'carrier'
+						  } records`}
 				</Button>
 			) : null}
 		</section>
@@ -4302,15 +4584,17 @@ function CollectionIndexNotice({
 				: 'Checking token discovery. The configured token remains available; ownership, orders, and balances are still computed live through the selected gateway.'
 			: 'Checking this collection’s live asset index. Its bundled index remains available; ownership and orders are still computed live through the selected gateway.'
 		: tokenIndex
-			? directlyVerified
-				? 'This token was read directly from live state and may not appear in collection browsing while token discovery is unavailable.'
-				: 'Token discovery is unavailable. Showing the configured token only; ownership, orders, and balances are still computed live through the selected gateway.'
-			: 'This collection’s live asset index is unavailable. Showing its last published index; ownership and orders are still computed live through the selected gateway.';
+		? directlyVerified
+			? 'This token was read directly from live state and may not appear in collection browsing while token discovery is unavailable.'
+			: 'Token discovery is unavailable. Showing the configured token only; ownership, orders, and balances are still computed live through the selected gateway.'
+		: 'This collection’s live asset index is unavailable. Showing its last published index; ownership and orders are still computed live through the selected gateway.';
 	const compactMessage = tokenIndex
 		? directlyVerified
 			? `${checking ? 'Checking discovery' : 'Discovery unavailable'}; live token state remains available.`
 			: `${checking ? 'Checking discovery' : 'Showing the configured token'}; balances and orders remain live.`
-		: `${checking ? 'Checking the published index' : 'Using the published index'}; ownership and orders remain live.`;
+		: `${
+				checking ? 'Checking the published index' : 'Using the published index'
+		  }; ownership and orders remain live.`;
 	return (
 		<div className="collection-source-notice collection-index-notice">
 			<span role="status">
@@ -4368,13 +4652,17 @@ function CollectionActivityView() {
 	const activityScope = React.useMemo(
 		() =>
 			collection
-				? `${collection.id}:${collection.kind === 'names' ? collectionActivityVersion(collection) : (collection.manifestId ?? collection.id)}`
+				? `${collection.id}:${
+						collection.kind === 'names'
+							? collectionActivityVersion(collection)
+							: collection.manifestId ?? collection.id
+				  }`
 				: '',
-		[collection],
+		[collection]
 	);
 	const activityWindowVersion = React.useMemo(
 		() => collection?.assets.map((asset) => asset.id).join('.') ?? '',
-		[collection?.assets],
+		[collection?.assets]
 	);
 
 	React.useEffect(() => {
@@ -4425,7 +4713,7 @@ function CollectionActivityView() {
 								setEvents(eventsRef.current);
 							}
 						},
-					})
+				  })
 				: discoverCollectionActivityBatched({
 						signal: controller.signal,
 						limit: 100,
@@ -4442,7 +4730,7 @@ function CollectionActivityView() {
 								setEvents(eventsRef.current);
 							}
 						},
-					});
+				  });
 		void discovery.then(
 			() => {
 				if (!controller.signal.aborted) {
@@ -4460,7 +4748,7 @@ function CollectionActivityView() {
 					setError(marketplaceRequestFailureMessage('index', marketplaceFailureKind(cause)));
 					setLoading(false);
 				}
-			},
+			}
 		);
 		return () => controller.abort();
 	}, [activityScope, activityWindowVersion, retry]);
@@ -4503,8 +4791,8 @@ function CollectionActivityView() {
 					<h1>{collection.name}</h1>
 				</div>
 				<p>
-					Indexed signed market actions discovered from Arweave. Current ownership and listing status still come only
-					from live process state.
+					Indexed signed market actions discovered from Arweave. Current ownership and listing status still
+					come only from live process state.
 				</p>
 			</div>
 			<CollectionTabs collection={collection} active="activity" />
@@ -4513,8 +4801,8 @@ function CollectionActivityView() {
 				<div className="collection-source-notice">
 					<span role="status">
 						This feed covers {collection.assets.length.toLocaleString()} of{' '}
-						{(collection.total ?? collection.assets.length).toLocaleString()} discovered tokens currently loaded in the
-						collection.
+						{(collection.total ?? collection.assets.length).toLocaleString()} discovered tokens currently
+						loaded in the collection.
 					</span>
 					<Link className="with-icon" to={`/collection/${collection.id}`}>
 						Open collection to load more
@@ -4528,11 +4816,23 @@ function CollectionActivityView() {
 					<span aria-hidden="true">
 						{loading
 							? preservingEvents
-								? `${events.length.toLocaleString()} retained · ${pages ? `refresh checked ${pages.toLocaleString()} ${pages === 1 ? 'page' : 'pages'}` : 'refreshing from Arweave'}`
+								? `${events.length.toLocaleString()} retained · ${
+										pages
+											? `refresh checked ${pages.toLocaleString()} ${
+													pages === 1 ? 'page' : 'pages'
+											  }`
+											: 'refreshing from Arweave'
+								  }`
 								: pages
-									? `${events.length.toLocaleString()} found across ${pages.toLocaleString()} ${pages === 1 ? 'page' : 'pages'} · still reading Arweave`
-									: 'Reading indexed transactions from Arweave…'
-							: `${events.length.toLocaleString()} indexed ${events.length === 1 ? 'transaction' : 'transactions'} · ${confirmedEvents.toLocaleString()} confirmed${pendingEvents ? ` · ${pendingEvents.toLocaleString()} pending` : ''} · newest first`}
+								? `${events.length.toLocaleString()} found across ${pages.toLocaleString()} ${
+										pages === 1 ? 'page' : 'pages'
+								  } · still reading Arweave`
+								: 'Reading indexed transactions from Arweave…'
+							: `${events.length.toLocaleString()} indexed ${
+									events.length === 1 ? 'transaction' : 'transactions'
+							  } · ${confirmedEvents.toLocaleString()} confirmed${
+									pendingEvents ? ` · ${pendingEvents.toLocaleString()} pending` : ''
+							  } · newest first`}
 					</span>
 					<span aria-live="polite" className="sr-only" role="status">
 						{activityScanAnnouncement}
@@ -4555,7 +4855,9 @@ function CollectionActivityView() {
 			</div>
 			{error ? (
 				<ErrorPanel
-					message={`Activity scanning was interrupted. ${events.length ? `${events.length.toLocaleString()} existing events remain visible. ` : ''}${error}`}
+					message={`Activity scanning was interrupted. ${
+						events.length ? `${events.length.toLocaleString()} existing events remain visible. ` : ''
+					}${error}`}
 				/>
 			) : null}
 			<MarketActivityList
@@ -4589,7 +4891,7 @@ function CollectionActivityView() {
 						const nextLimit = Math.min(events.length, activityLimit + 20);
 						setActivityLimit(nextLimit);
 						setActivityRevealAnnouncement(
-							`Showing ${nextLimit.toLocaleString()} of ${events.length.toLocaleString()} indexed activity events.`,
+							`Showing ${nextLimit.toLocaleString()} of ${events.length.toLocaleString()} indexed activity events.`
 						);
 						window.requestAnimationFrame(() => {
 							if (assetGroupRevealComplete(nextLimit, eventCountRef.current)) {
@@ -4627,7 +4929,9 @@ export function collectionActivityScanAnnouncement({
 }) {
 	if (!loading) {
 		return error
-			? `Activity scanning stopped. ${events.toLocaleString()} previously indexed ${events === 1 ? 'event remains' : 'events remain'} visible.`
+			? `Activity scanning stopped. ${events.toLocaleString()} previously indexed ${
+					events === 1 ? 'event remains' : 'events remain'
+			  } visible.`
 			: `Activity scan complete. ${events.toLocaleString()} indexed ${events === 1 ? 'event' : 'events'} found.`;
 	}
 	if (pages === 0) {
@@ -4636,7 +4940,9 @@ export function collectionActivityScanAnnouncement({
 			: 'Reading indexed activity from Arweave.';
 	}
 	const milestone = pages < 10 ? 1 : Math.floor(pages / 10) * 10;
-	return `${preservingEvents ? 'Activity refresh' : 'Activity scan'} checked ${milestone.toLocaleString()} ${milestone === 1 ? 'batch' : 'batches'} so far.`;
+	return `${preservingEvents ? 'Activity refresh' : 'Activity scan'} checked ${milestone.toLocaleString()} ${
+		milestone === 1 ? 'batch' : 'batches'
+	} so far.`;
 }
 
 function CollectionTabs({ collection, active }: { collection: Collection; active: 'assets' | 'activity' }) {
@@ -4677,7 +4983,9 @@ export const AssetCard = React.memo(function AssetCard({
 }) {
 	return (
 		<Link
-			className={`asset-card${collection.kind === 'tokens' ? ' token-asset-card' : ''}${collectionContext ? ' collection-context' : ''}`}
+			className={`asset-card${collection.kind === 'tokens' ? ' token-asset-card' : ''}${
+				collectionContext ? ' collection-context' : ''
+			}`}
 			onFocus={() => prefetchAssetPage(asset.id)}
 			onMouseEnter={() => prefetchAssetPage(asset.id)}
 			onTouchStart={() => prefetchAssetPage(asset.id)}
@@ -4726,7 +5034,7 @@ export type WalletResolutionStatus = {
 export function refreshCandidateRetryMetadata(
 	candidate: AssetCandidate,
 	computeFailures: Map<string, AssetCandidate>,
-	supportFailures: Map<string, CandidateSupportFailure>,
+	supportFailures: Map<string, CandidateSupportFailure>
 ) {
 	if (computeFailures.has(candidate.processId)) computeFailures.set(candidate.processId, candidate);
 	const supportFailure = supportFailures.get(candidate.processId);
@@ -4744,36 +5052,42 @@ export function walletResolutionCopy(status: WalletResolutionStatus, failureMess
 		status.phase === 'error'
 			? 'Discovery interrupted'
 			: !status.discoveryComplete
-				? 'Discovering and checking live state'
-				: status.phase === 'revalidating'
-					? 'Confirming current ownership'
-					: status.phase === 'resolving'
-						? 'Computing live state'
-						: status.phase === 'done' && status.failures
-							? status.indexFailures
-								? status.failures === status.total
-									? 'Candidate checks unavailable'
-									: 'Asset checks partially completed'
-								: status.failures === status.total
-									? 'Live state unavailable'
-									: 'Live state partially resolved'
-							: status.phase === 'done'
-								? 'Live state resolved'
-								: 'Resolution interrupted';
+			? 'Discovering and checking live state'
+			: status.phase === 'revalidating'
+			? 'Confirming current ownership'
+			: status.phase === 'resolving'
+			? 'Computing live state'
+			: status.phase === 'done' && status.failures
+			? status.indexFailures
+				? status.failures === status.total
+					? 'Candidate checks unavailable'
+					: 'Asset checks partially completed'
+				: status.failures === status.total
+				? 'Live state unavailable'
+				: 'Live state partially resolved'
+			: status.phase === 'done'
+			? 'Live state resolved'
+			: 'Resolution interrupted';
 	const announcement =
 		status.phase === 'error'
 			? ''
 			: !status.discoveryComplete
-				? `Discovering and checking live state. ${status.discovered.toLocaleString()} candidates found${milestone ? `, ${milestone.toLocaleString()} checked` : ''}.`
-				: status.phase === 'revalidating'
-					? `Confirming current ownership. ${(status.revalidated ?? 0).toLocaleString()} of ${(status.revalidationTotal ?? 0).toLocaleString()} visible assets rechecked without cached state.`
-					: status.phase === 'resolving'
-						? `Checking asset candidates. ${status.total ? Math.floor((status.resolved / status.total) * 10) * 10 : 0}% complete.`
-						: status.phase === 'done' && status.failures
-							? `${failureMessage} ${status.resolved.toLocaleString()} of ${status.total.toLocaleString()} candidate checks completed; ${status.failures.toLocaleString()} unavailable. Resolved assets remain visible.`
-							: status.phase === 'done'
-								? `Live state resolved for ${status.resolved.toLocaleString()} candidates.`
-								: 'Asset resolution was interrupted.';
+			? `Discovering and checking live state. ${status.discovered.toLocaleString()} candidates found${
+					milestone ? `, ${milestone.toLocaleString()} checked` : ''
+			  }.`
+			: status.phase === 'revalidating'
+			? `Confirming current ownership. ${(status.revalidated ?? 0).toLocaleString()} of ${(
+					status.revalidationTotal ?? 0
+			  ).toLocaleString()} visible assets rechecked without cached state.`
+			: status.phase === 'resolving'
+			? `Checking asset candidates. ${
+					status.total ? Math.floor((status.resolved / status.total) * 10) * 10 : 0
+			  }% complete.`
+			: status.phase === 'done' && status.failures
+			? `${failureMessage} ${status.resolved.toLocaleString()} of ${status.total.toLocaleString()} candidate checks completed; ${status.failures.toLocaleString()} unavailable. Resolved assets remain visible.`
+			: status.phase === 'done'
+			? `Live state resolved for ${status.resolved.toLocaleString()} candidates.`
+			: 'Asset resolution was interrupted.';
 	return { heading, announcement };
 }
 
@@ -4794,7 +5108,7 @@ export type WalletAnnouncementProgress = { scope: string; discovered: number; re
 export function nextWalletAnnouncementProgress(
 	previous: WalletAnnouncementProgress,
 	status: WalletResolutionStatus,
-	scope: string,
+	scope: string
 ): WalletAnnouncementProgress {
 	const reset = previous.scope !== scope || status.discovered < previous.discovered;
 	const baseline = reset ? { scope, discovered: 0, revalidated: 0 } : previous;
@@ -4805,9 +5119,9 @@ export function nextWalletAnnouncementProgress(
 			? revalidated >= revalidationTotal
 				? revalidationTotal
 				: Math.floor((revalidated / revalidationTotal) * 10) >
-					  Math.floor((baseline.revalidated / revalidationTotal) * 10)
-					? Math.floor((Math.floor((revalidated / revalidationTotal) * 10) * revalidationTotal) / 10)
-					: baseline.revalidated
+				  Math.floor((baseline.revalidated / revalidationTotal) * 10)
+				? Math.floor((Math.floor((revalidated / revalidationTotal) * 10) * revalidationTotal) / 10)
+				: baseline.revalidated
 			: revalidated;
 	if (status.discoveryComplete || status.phase === 'error' || status.discovered === 0) {
 		return { scope, discovered: status.discovered, revalidated: announcedRevalidated };
@@ -4849,9 +5163,9 @@ export function walletDiscoveryScope(address: string, gateway: string, collectio
 				collection.id,
 				collection.kind,
 				collection.kind === 'names'
-					? (collection.namespace?.manifestId ?? '')
-					: (collection.manifestId ?? collection.id),
-			].join(':'),
+					? collection.namespace?.manifestId ?? ''
+					: collection.manifestId ?? collection.id,
+			].join(':')
 		)
 		.sort();
 	return [address, gateway, ...supportedCollections].join('|');
@@ -4860,7 +5174,7 @@ export function walletDiscoveryScope(address: string, gateway: string, collectio
 export function walletDiscoverySession(
 	current: WalletDiscoverySession | undefined,
 	scope: string,
-	address: string,
+	address: string
 ): WalletDiscoverySession {
 	if (current?.scope === scope) return current;
 	return {
@@ -4877,7 +5191,7 @@ export function walletDiscoverySession(
 
 export function walletDiscoverySessionIsCurrent(
 	session: WalletDiscoverySession | undefined,
-	scope: string,
+	scope: string
 ): session is WalletDiscoverySession {
 	return Boolean(scope && session?.scope === scope);
 }
@@ -4886,7 +5200,7 @@ export function updateWalletResolvedAsset(
 	session: WalletDiscoverySession,
 	result: ResolvedAsset | null,
 	candidate: AssetCandidate,
-	address: string,
+	address: string
 ) {
 	if (result && walletAssetGroups(result, address).length) {
 		session.resolvedAssets.set(result.asset.id, {
@@ -4902,11 +5216,11 @@ export function reopenWalletCandidate(session: WalletDiscoverySession, candidate
 	const previous = session.latestCandidates.get(candidate.processId);
 	const newer = Boolean(
 		previous &&
-		(candidate.height > previous.height ||
-			(candidate.height === previous.height && candidate.timestamp > previous.timestamp) ||
-			(candidate.height === previous.height &&
-				candidate.timestamp === previous.timestamp &&
-				(candidate.activityIds ?? []).some((id) => !(previous.activityIds ?? []).includes(id)))),
+			(candidate.height > previous.height ||
+				(candidate.height === previous.height && candidate.timestamp > previous.timestamp) ||
+				(candidate.height === previous.height &&
+					candidate.timestamp === previous.timestamp &&
+					(candidate.activityIds ?? []).some((id) => !(previous.activityIds ?? []).includes(id))))
 	);
 	if (!newer || !session.screened.delete(candidate.processId)) {
 		return { reopened: false, completed: false, removedResult: false };
@@ -4920,7 +5234,7 @@ export function reopenWalletCandidate(session: WalletDiscoverySession, candidate
 
 export function walletPageResolutionQueue(
 	resolvePage: (page: AssetCandidate[]) => void | Promise<void>,
-	signal: AbortSignal,
+	signal: AbortSignal
 ) {
 	let tail: Promise<void> = Promise.resolve();
 	const pending: Promise<void>[] = [];
@@ -4943,7 +5257,7 @@ export function walletPageResolutionQueue(
 				(cause) => {
 					signal.removeEventListener('abort', onAbort);
 					reject(cause);
-				},
+				}
 			);
 		});
 	};
@@ -5032,7 +5346,11 @@ function AssetDetailLoadingShell({
 					</div>
 					<div className="fungible-token-identity">
 						<div className="fungible-token-title">
-							{asset ? <h1>{asset.name}</h1> : <span className="layout-placeholder layout-placeholder-title" />}
+							{asset ? (
+								<h1>{asset.name}</h1>
+							) : (
+								<span className="layout-placeholder layout-placeholder-title" />
+							)}
 							{asset?.ticker ? <strong>{asset.ticker}</strong> : null}
 						</div>
 						<div className="fungible-token-meta" aria-hidden="true">
@@ -5069,7 +5387,10 @@ function AssetDetailLoadingShell({
 						</section>
 					</div>
 					<div className="asset-commerce-column asset-commerce-secondary">
-						<nav aria-hidden="true" className="home-market-tabs asset-detail-tabs asset-section-tabs-loading">
+						<nav
+							aria-hidden="true"
+							className="home-market-tabs asset-detail-tabs asset-section-tabs-loading"
+						>
 							<span>Orders</span>
 							<span>Details</span>
 							<span>Activity</span>
@@ -5099,7 +5420,11 @@ function AssetDetailLoadingShell({
 								<span className="asset-collection-link">{collectionName}</span>
 							)}
 						</div>
-						{asset ? <h1>{asset.name}</h1> : <span className="layout-placeholder layout-placeholder-title" />}
+						{asset ? (
+							<h1>{asset.name}</h1>
+						) : (
+							<span className="layout-placeholder layout-placeholder-title" />
+						)}
 						<div className="asset-owner-line">
 							<span>Loading ownership and market state</span>
 						</div>
@@ -5111,7 +5436,11 @@ function AssetDetailLoadingShell({
 						{error ? (
 							<ErrorPanel message={error} onRetry={onRetry} retryLabel="Retry live state" />
 						) : (
-							<div aria-live="polite" className="state-verification asset-loading-verification" role="status">
+							<div
+								aria-live="polite"
+								className="state-verification asset-loading-verification"
+								role="status"
+							>
 								<span aria-hidden="true" /> Computing current state…
 							</div>
 						)}
@@ -5180,14 +5509,14 @@ function AssetView() {
 		verifiedAt: prefetchedState?.verifiedAt ?? null,
 	});
 	const requestRef = React.useRef<AbortController>();
-	const state = liveResult.assetId === assetId ? liveResult.state : (prefetchedState?.state ?? null);
+	const state = liveResult.assetId === assetId ? liveResult.state : prefetchedState?.state ?? null;
 	const error = liveResult.assetId === assetId ? liveResult.error : null;
 	const loading = liveResult.assetId !== assetId || liveResult.loading;
-	const provider = liveResult.assetId === assetId ? liveResult.provider : (prefetchedState?.provider ?? '');
-	const verifiedAt = liveResult.assetId === assetId ? liveResult.verifiedAt : (prefetchedState?.verifiedAt ?? null);
+	const provider = liveResult.assetId === assetId ? liveResult.provider : prefetchedState?.provider ?? '';
+	const verifiedAt = liveResult.assetId === assetId ? liveResult.verifiedAt : prefetchedState?.verifiedAt ?? null;
 	const directAtomicRoute = collectionId === CREATED_COLLECTION_ID && ARWEAVE_ADDRESS.test(assetId);
 	const canResolveAsset = Boolean(
-		indexedAsset || (indexedCollection?.kind === 'tokens' && ARWEAVE_ADDRESS.test(assetId)) || directAtomicRoute,
+		indexedAsset || (indexedCollection?.kind === 'tokens' && ARWEAVE_ADDRESS.test(assetId)) || directAtomicRoute
 	);
 	const directAtomicAsset = directAtomicRoute && state ? bazarAtomicAssetFromState(assetId, state) : null;
 	const collection = indexedCollection ?? directAtomicAsset?.collection;
@@ -5209,10 +5538,10 @@ function AssetView() {
 	const resumeButtonRef = React.useRef<HTMLButtonElement>(null);
 	const operationFocusFallback = React.useCallback(
 		() => resumeButtonRef.current ?? operationFocusFallbackRef.current,
-		[],
+		[]
 	);
 	const operationActivityEntry = operationActivities.find(
-		(activity) => activity.asset.id === assetId && activity.owner === wallet.address && activity.phase !== 'done',
+		(activity) => activity.asset.id === assetId && activity.owner === wallet.address && activity.phase !== 'done'
 	);
 	const operation = operationActivityEntry?.operation ?? null;
 	const openOperation = React.useCallback(
@@ -5228,7 +5557,7 @@ function AssetView() {
 					operation: next,
 					restoreFallback: operationFocusFallback,
 				},
-				options,
+				options
 			);
 		},
 		[
@@ -5239,7 +5568,7 @@ function AssetView() {
 			resolvedAsset,
 			startOperationActivity,
 			wallet.address,
-		],
+		]
 	);
 	const [recoverySuppressed, setRecoverySuppressed] = React.useState(false);
 	const [recoveryNotice, setRecoveryNotice] = React.useState('');
@@ -5265,11 +5594,11 @@ function AssetView() {
 		const cached = cachedAssetState(assetId);
 		setLiveResult((current) => ({
 			assetId,
-			state: current.assetId === assetId ? current.state : (cached?.state ?? null),
+			state: current.assetId === assetId ? current.state : cached?.state ?? null,
 			loading: true,
 			error: null,
-			provider: current.assetId === assetId ? current.provider : (cached?.provider ?? ''),
-			verifiedAt: current.assetId === assetId ? current.verifiedAt : (cached?.verifiedAt ?? null),
+			provider: current.assetId === assetId ? current.provider : cached?.provider ?? '',
+			verifiedAt: current.assetId === assetId ? current.verifiedAt : cached?.verifiedAt ?? null,
 		}));
 		try {
 			const result = await readAssetStateCached(assetId, {
@@ -5328,7 +5657,8 @@ function AssetView() {
 			setRecoverySuppressed(false);
 			if (change === 'claim-acquired' || change === 'claim-released') {
 				if (change === 'claim-acquired' && operation && operationActivityEntry) {
-					const recovering = operation.kind === 'buy' ? Boolean(operation.resume) : Boolean(operation.resumeId);
+					const recovering =
+						operation.kind === 'buy' ? Boolean(operation.resume) : Boolean(operation.resumeId);
 					if (!recovering) removeOperationActivity(operationActivityEntry.id);
 				}
 				setStorageVersion((version) => version + 1);
@@ -5336,7 +5666,8 @@ function AssetView() {
 			}
 			if (change === 'recovery-updated') {
 				if (operation && operationActivityEntry) {
-					const recovering = operation.kind === 'buy' ? Boolean(operation.resume) : Boolean(operation.resumeId);
+					const recovering =
+						operation.kind === 'buy' ? Boolean(operation.resume) : Boolean(operation.resumeId);
 					if (!recovering) removeOperationActivity(operationActivityEntry.id);
 				}
 			} else {
@@ -5389,7 +5720,7 @@ function AssetView() {
 					if (!controller.signal.aborted) {
 						setActivityError(marketplaceRequestFailureMessage('index', marketplaceFailureKind(cause)));
 					}
-				},
+				}
 			)
 			.finally(() => {
 				if (!controller.signal.aborted) setActivityLoading(false);
@@ -5433,7 +5764,7 @@ function AssetView() {
 					localStorage,
 					purchaseKey,
 					`bazar-purchase:${assetId}`,
-					(record) => record?.buyer === walletAddress,
+					(record) => record?.buyer === walletAddress
 				);
 			} catch {
 				removeWalletRecord(localStorage, purchaseKey);
@@ -5445,7 +5776,7 @@ function AssetView() {
 					(record) =>
 						record?.buyer === walletAddress &&
 						record?.order?.orderId === saved.order.orderId &&
-						!hasRecoverablePurchase(record?.snapshot),
+						!hasRecoverablePurchase(record?.snapshot)
 				);
 				saved = null;
 			}
@@ -5456,7 +5787,7 @@ function AssetView() {
 					return;
 				}
 				setRecoveryNotice(
-					'A previous purchase is paused because its order is no longer available to this wallet. Its signed transaction details remain saved in this browser, and no replacement payment will be created.',
+					'A previous purchase is paused because its order is no longer available to this wallet. Its signed transaction details remain saved in this browser, and no replacement payment will be created.'
 				);
 			}
 
@@ -5469,7 +5800,7 @@ function AssetView() {
 					(record) =>
 						record?.signer === walletAddress &&
 						ARWEAVE_ADDRESS.test(record?.txId ?? '') &&
-						['sell', 'cancel', 'transfer'].includes(record?.kind),
+						['sell', 'cancel', 'transfer'].includes(record?.kind)
 				);
 			} catch {
 				removeWalletRecord(localStorage, pendingOperationKey);
@@ -5477,7 +5808,7 @@ function AssetView() {
 
 			const order = liveOrder(state);
 			const mayHaveRegistration = Boolean(
-				order && order.creator !== walletAddress && hasStoredSignedTransaction(localStorage),
+				order && order.creator !== walletAddress && hasStoredSignedTransaction(localStorage)
 			);
 			if (!savedOperation && !mayHaveRegistration) {
 				setUnavailableRecovery((current) => (current?.key === pendingOperationKey ? null : current));
@@ -5496,7 +5827,7 @@ function AssetView() {
 							order,
 							resume: { registration: { id: registrationId, dispatched: false } },
 						},
-						{ show: false },
+						{ show: false }
 					);
 					return;
 				}
@@ -5511,14 +5842,16 @@ function AssetView() {
 					savedOperation.kind === 'sell'
 						? ownerOfAsset(state) === walletAddress && !currentOrder
 						: savedOperation.kind === 'cancel'
-							? Boolean(
-									savedOperation.order?.orderId &&
+						? Boolean(
+								savedOperation.order?.orderId &&
 									state.orders[savedOperation.order.orderId]?.status === 'open' &&
-									state.orders[savedOperation.order.orderId]?.creator === walletAddress,
-								)
-							: liquidBalanceOf(state, walletAddress) === '1';
+									state.orders[savedOperation.order.orderId]?.creator === walletAddress
+						  )
+						: liquidBalanceOf(state, walletAddress) === '1';
 				const matches = (record: any) =>
-					record?.assetId === assetId && record?.signer === walletAddress && record?.txId === savedOperation.txId;
+					record?.assetId === assetId &&
+					record?.signer === walletAddress &&
+					record?.txId === savedOperation.txId;
 				if (!canStillApply) {
 					if (
 						removeWalletRecoveryAndSignatures(
@@ -5526,12 +5859,12 @@ function AssetView() {
 							pendingOperationKey,
 							matches,
 							[savedOperation.txId],
-							walletAddress,
+							walletAddress
 						)
 					) {
 						setUnavailableRecovery(null);
 						setRecoveryNotice(
-							'A stale local action was removed after current live state proved that it can no longer apply. No replacement transaction was created.',
+							'A stale local action was removed after current live state proved that it can no longer apply. No replacement transaction was created.'
 						);
 					}
 				} else {
@@ -5553,7 +5886,7 @@ function AssetView() {
 						startingSlot: savedOperation.startingSlot,
 						resumeId: savedOperation.txId,
 					},
-					{ show: false },
+					{ show: false }
 				);
 			} else {
 				openOperation(
@@ -5563,7 +5896,7 @@ function AssetView() {
 						startingSlot: savedOperation.startingSlot,
 						value: savedOperation.value,
 					},
-					{ show: false },
+					{ show: false }
 				);
 			}
 		})().catch(() => undefined);
@@ -5610,7 +5943,12 @@ function AssetView() {
 		);
 	if (!asset)
 		return (
-			<AssetDetailLoadingShell asset={shellAsset} collection={collection} collectionId={collectionId} onRetry={load} />
+			<AssetDetailLoadingShell
+				asset={shellAsset}
+				collection={collection}
+				collectionId={collectionId}
+				onRetry={load}
+			/>
 		);
 	if (!state) {
 		return (
@@ -5666,7 +6004,12 @@ function AssetView() {
 	const moreAssets = collection.assets.filter((item) => item.id !== asset.id).slice(0, 4);
 	type AtomicAssetSection = typeof activeSection;
 	const assetTabs: AssetDetailTab<AtomicAssetSection>[] = [
-		{ value: 'about', label: 'About', icon: <Info className="ui-icon" aria-hidden="true" />, panelId: 'asset-about' },
+		{
+			value: 'about',
+			label: 'About',
+			icon: <Info className="ui-icon" aria-hidden="true" />,
+			panelId: 'asset-about',
+		},
 		{
 			value: 'orders',
 			label: 'Orders',
@@ -5703,8 +6046,8 @@ function AssetView() {
 			{recoverySuppressed ? (
 				<div className="pending-operation-notice">
 					<span role="status">
-						Local tracking is paused. Resume here to continue observing signed work or review any wallet approvals still
-						required.
+						Local tracking is paused. Resume here to continue observing signed work or review any wallet
+						approvals still required.
 					</span>
 					<Button
 						ref={resumeButtonRef}
@@ -5734,14 +6077,16 @@ function AssetView() {
 						const removed = removeWalletRecoveryAndSignatures<any>(
 							localStorage,
 							unavailableRecovery.key,
-							(record) => record?.signer === unavailableRecovery.signer && record?.txId === unavailableRecovery.txId,
+							(record) =>
+								record?.signer === unavailableRecovery.signer &&
+								record?.txId === unavailableRecovery.txId,
 							[unavailableRecovery.txId],
-							unavailableRecovery.signer,
+							unavailableRecovery.signer
 						);
 						if (removed) {
 							setUnavailableRecovery(null);
 							setRecoveryNotice(
-								'Local tracking was discarded. Current ownership and orders above remain the live source of truth.',
+								'Local tracking was discarded. Current ownership and orders above remain the live source of truth.'
 							);
 						}
 					}}
@@ -5804,7 +6149,13 @@ function AssetView() {
 									</div>
 								</div>
 								<div className="asset-buy-summary">
-									<span>{order?.status === 'reserved' ? 'Reserved at' : order ? 'Buy for' : 'Market status'}</span>
+									<span>
+										{order?.status === 'reserved'
+											? 'Reserved at'
+											: order
+											? 'Buy for'
+											: 'Market status'}
+									</span>
 									<strong>{order ? `${winstonToAr(order.asking)} AR` : 'Not listed'}</strong>
 								</div>
 								{operationActivityEntry ? (
@@ -5819,7 +6170,10 @@ function AssetView() {
 									<div className="external-reservation-notice" role="status">
 										<div>
 											<strong>Your reservation is ready</strong>
-											<p>Close the other Bazar tab, then continue here with one seller-payment approval.</p>
+											<p>
+												Close the other Bazar tab, then continue here with one seller-payment
+												approval.
+											</p>
 										</div>
 										<Button
 											disabled={operationBlocksActions || loading || Boolean(error)}
@@ -5829,7 +6183,9 @@ function AssetView() {
 												openOperation({
 													kind: 'buy',
 													order: order!,
-													resume: { registration: { id: externalReservation.id, dispatched: true } },
+													resume: {
+														registration: { id: externalReservation.id, dispatched: true },
+													},
 													externalOrigin: true,
 												})
 											}
@@ -5850,7 +6206,9 @@ function AssetView() {
 											onClick={() => openOperation({ kind: 'buy', order })}
 										>
 											<ShoppingCart className="ui-icon ui-icon--sm" aria-hidden="true" />{' '}
-											{operation?.kind === 'buy' ? assetOperationPendingActionLabel('buy') : 'Buy now'}
+											{operation?.kind === 'buy'
+												? assetOperationPendingActionLabel('buy')
+												: 'Buy now'}
 										</Button>
 									) : null}
 									{wallet.address && mine && !order ? (
@@ -5862,7 +6220,9 @@ function AssetView() {
 											onClick={() => openOperation({ kind: 'sell' })}
 										>
 											<Tag className="ui-icon ui-icon--sm" aria-hidden="true" />{' '}
-											{operation?.kind === 'sell' ? assetOperationPendingActionLabel('sell') : 'List for sale'}
+											{operation?.kind === 'sell'
+												? assetOperationPendingActionLabel('sell')
+												: 'List for sale'}
 										</Button>
 									) : null}
 									{wallet.address && mine && order?.status === 'open' ? (
@@ -5874,7 +6234,9 @@ function AssetView() {
 											variant="danger"
 										>
 											<CircleX className="ui-icon ui-icon--sm" aria-hidden="true" />{' '}
-											{operation?.kind === 'cancel' ? assetOperationPendingActionLabel('cancel') : 'Cancel listing'}
+											{operation?.kind === 'cancel'
+												? assetOperationPendingActionLabel('cancel')
+												: 'Cancel listing'}
 										</Button>
 									) : null}
 									{wallet.address && mine && !order ? (
@@ -5885,7 +6247,9 @@ function AssetView() {
 											onClick={() => openOperation({ kind: 'transfer' })}
 										>
 											<Send className="ui-icon ui-icon--sm" aria-hidden="true" />{' '}
-											{operation?.kind === 'transfer' ? assetOperationPendingActionLabel('transfer') : 'Transfer'}
+											{operation?.kind === 'transfer'
+												? assetOperationPendingActionLabel('transfer')
+												: 'Transfer'}
 										</Button>
 									) : null}
 									<Button
@@ -5905,7 +6269,11 @@ function AssetView() {
 					</div>
 				</div>
 				<div className="asset-visual-column">
-					<div className={`asset-hero-media${isAudioContentType(asset.contentType) ? ' audio-hero-media' : ''}`}>
+					<div
+						className={`asset-hero-media${
+							isAudioContentType(asset.contentType) ? ' audio-hero-media' : ''
+						}`}
+					>
 						{isAudioContentType(asset.contentType) ? (
 							<div className="asset-audio-player">
 								{asset.image ? (
@@ -5930,7 +6298,9 @@ function AssetView() {
 						{collection.kind !== 'names' ? (
 							<div className="asset-media-label">
 								<span>Permanent asset</span>
-								<strong>{asset.contentType ?? (asset.image ? 'image' : (state?.device ?? 'process'))}</strong>
+								<strong>
+									{asset.contentType ?? (asset.image ? 'image' : state?.device ?? 'process')}
+								</strong>
 							</div>
 						) : null}
 					</div>
@@ -6002,7 +6372,11 @@ function AssetView() {
 										<span data-label="Seller" role="cell">
 											<WalletAddress address={order.creator} label="seller" />
 										</span>
-										<span className={`order-status ${order.status}`} data-label="Status" role="cell">
+										<span
+											className={`order-status ${order.status}`}
+											data-label="Status"
+											role="cell"
+										>
 											{order.status}
 										</span>
 									</div>
@@ -6016,7 +6390,8 @@ function AssetView() {
 								)}
 							</div>
 							<p className="market-note">
-								Computed from the last loaded asset process state through the selected HyperBEAM gateway.
+								Computed from the last loaded asset process state through the selected HyperBEAM
+								gateway.
 							</p>
 						</section>
 					) : null}
@@ -6036,7 +6411,11 @@ function AssetView() {
 							) : null}
 							{activityLoading ? (
 								<Loading
-									label={assetActivity.length ? 'Refreshing market history…' : 'Reading indexed market history…'}
+									label={
+										assetActivity.length
+											? 'Refreshing market history…'
+											: 'Reading indexed market history…'
+									}
 								/>
 							) : null}
 							<div className="asset-history-actions">
@@ -6055,15 +6434,17 @@ function AssetView() {
 											? 'Refreshing history…'
 											: 'Loading history…'
 										: activityError
-											? 'Retry history'
-											: 'Refresh history'}
+										? 'Retry history'
+										: 'Refresh history'}
 								</Button>
 							</div>
 							{activityError ? (
 								<div className="inline-error" role={assetActivity.length ? 'status' : 'alert'}>
 									<span>
 										Market history could not be read.{' '}
-										{assetActivity.length ? `Previously loaded events remain visible. ${activityError}` : activityError}
+										{assetActivity.length
+											? `Previously loaded events remain visible. ${activityError}`
+											: activityError}
 									</span>
 								</div>
 							) : null}
@@ -6080,8 +6461,8 @@ function AssetView() {
 								<p className="asset-empty-copy">No indexed market events found.</p>
 							) : null}
 							<p className="market-note">
-								Up to 24 recent signed process submissions indexed from Arweave. Live ownership and orders above remain
-								authoritative.
+								Up to 24 recent signed process submissions indexed from Arweave. Live ownership and
+								orders above remain authoritative.
 							</p>
 						</section>
 					) : null}
@@ -6113,7 +6494,9 @@ function AssetView() {
 									</div>
 								</div>
 							)}
-							<p className="market-note">Terms are read directly from immutable process metadata when present.</p>
+							<p className="market-note">
+								Terms are read directly from immutable process metadata when present.
+							</p>
 						</section>
 					) : null}
 					{activeSection === 'blockchain' ? (
@@ -6129,7 +6512,8 @@ function AssetView() {
 									<dt>Process ID</dt>
 									<dd>
 										<a href={transactionExplorerUrl(asset.id)} target="_blank" rel="noreferrer">
-											{short(asset.id)} <ArrowUpRight className="ui-icon ui-icon--xs" aria-hidden="true" />
+											{short(asset.id)}{' '}
+											<ArrowUpRight className="ui-icon ui-icon--xs" aria-hidden="true" />
 										</a>
 									</dd>
 								</div>
@@ -6273,7 +6657,7 @@ function OperationDialog({
 	onUpdate(
 		id: string,
 		patch: Pick<OperationActivity, 'phase' | 'status' | 'confirmations' | 'confirmationTarget'>,
-		assetId: string,
+		assetId: string
 	): void;
 	onOperation(operation: Operation): void;
 	onHide(): void;
@@ -6287,7 +6671,7 @@ function OperationDialog({
 			? purchaseRecoveryApprovalCopy(operation.resume, { externalOrigin: operation.externalOrigin })
 			: null;
 	const [value, setValue] = React.useState(
-		operation.kind === 'sell' || operation.kind === 'transfer' ? (operation.value ?? '') : '',
+		operation.kind === 'sell' || operation.kind === 'transfer' ? operation.value ?? '' : ''
 	);
 	const [phase, setPhase] = React.useState<'form' | 'approval' | 'working' | 'done' | 'error'>(
 		operation.kind === 'buy' && operation.resume
@@ -6295,8 +6679,8 @@ function OperationDialog({
 				? 'approval'
 				: 'working'
 			: operation.kind !== 'buy' && operation.resumeId
-				? 'working'
-				: 'form',
+			? 'working'
+			: 'form'
 	);
 	const [message, setMessage] = React.useState('');
 	const [failureKind, setFailureKind] = React.useState<MarketplaceOperationFailure | null>(null);
@@ -6318,8 +6702,8 @@ function OperationDialog({
 		(operation.kind === 'cancel' || operation.kind === 'transfer') && Number.isSafeInteger(operation.startingSlot)
 			? { startingSlot: operation.startingSlot! }
 			: (operation.kind === 'cancel' || operation.kind === 'transfer') && operation.resumeId
-				? { startingSlot: 0 }
-				: null,
+			? { startingSlot: 0 }
+			: null
 	);
 	const attemptRef = React.useRef(new AbortController());
 	const lifecycleRef = React.useRef<object | null>(null);
@@ -6373,7 +6757,7 @@ function OperationDialog({
 				},
 				(cause) => {
 					if (!controller.signal.aborted) setQuoteError(errorMessage(cause));
-				},
+				}
 			);
 		return () => controller.abort();
 	}, [
@@ -6404,7 +6788,7 @@ function OperationDialog({
 		setFailureKind(null);
 		setPhase('working');
 		let operationClaim: WalletOperationClaim | null = null;
-		let attemptedTransactionId = operation.kind === 'buy' ? undefined : (operation.resumeId ?? transaction?.id);
+		let attemptedTransactionId = operation.kind === 'buy' ? undefined : operation.resumeId ?? transaction?.id;
 		try {
 			let currentPurchaseSnapshot =
 				operation.kind === 'buy'
@@ -6417,7 +6801,7 @@ function OperationDialog({
 			const signal = attemptRef.current.signal;
 			const operationKey = operationStorageKey(asset.id, owner);
 			const purchaseKey = atomicPurchaseStorageKey(asset.id, owner);
-			const resumeTransactionId = operation.kind === 'buy' ? undefined : (operation.resumeId ?? transaction?.id);
+			const resumeTransactionId = operation.kind === 'buy' ? undefined : operation.resumeId ?? transaction?.id;
 			let exactActionBaseline = exactActionBaselineRef.current;
 			const recoveryRegistrationId = currentPurchaseSnapshot?.registration?.id;
 			const recovery =
@@ -6429,25 +6813,30 @@ function OperationDialog({
 									record?.buyer === owner &&
 									record?.order?.orderId === operation.order.orderId &&
 									record?.snapshot?.registration?.id === recoveryRegistrationId,
-							}
+						  }
 						: undefined
 					: !freshOperation
-						? {
-								key: operationKey,
-								matches: (record: any) => record?.txId === resumeTransactionId,
-							}
-						: undefined;
+					? {
+							key: operationKey,
+							matches: (record: any) => record?.txId === resumeTransactionId,
+					  }
+					: undefined;
 			operationClaim = await acquireWalletOperationClaim(
 				localStorage,
 				operationClaimStorageKey(asset.id, owner),
 				[operationKey, purchaseKey],
-				recovery ? { recovery } : {},
+				recovery ? { recovery } : {}
 			);
 			claimRef.current = operationClaim;
 			if (freshOperation) {
 				const { state: freshState } = await readAssetState(asset.id, { signal, maxAge: 0 });
 				if (
-					atomicOperationStateError(operation.kind, freshState, owner, 'order' in operation ? operation.order : null)
+					atomicOperationStateError(
+						operation.kind,
+						freshState,
+						owner,
+						'order' in operation ? operation.order : null
+					)
 				) {
 					throw new Error('market-state-changed');
 				}
@@ -6459,14 +6848,14 @@ function OperationDialog({
 						if (signal.aborted) throw cause;
 						throw marketplaceCodedError(
 							'asset-pending-listing-check-unavailable',
-							'asset-pending-listing-check-unavailable',
+							'asset-pending-listing-check-unavailable'
 						);
 					}
 					const pendingOffer = pendingOffers.find((offer) => offer.actor === owner) ?? pendingOffers[0];
 					if (pendingOffer) {
 						throw marketplaceCodedError(
 							pendingOffer.actor === owner ? 'asset-listing-pending-self' : 'asset-listing-pending-other',
-							pendingListingMessage(pendingOffer, owner),
+							pendingListingMessage(pendingOffer, owner)
 						);
 					}
 				}
@@ -6510,7 +6899,7 @@ function OperationDialog({
 							operationClaim,
 							atomicPurchaseStorageKey(asset.id, owner),
 							record,
-							matches,
+							matches
 						);
 					} else {
 						storeWalletRecordOrThrow<any>(
@@ -6518,7 +6907,7 @@ function OperationDialog({
 							atomicPurchaseStorageKey(asset.id, owner),
 							record,
 							matches,
-							true,
+							true
 						);
 					}
 				};
@@ -6564,7 +6953,7 @@ function OperationDialog({
 							propagation: 'all',
 							minObservers: 2,
 							...(currentPurchaseSnapshot ? { resume: currentPurchaseSnapshot } : {}),
-						},
+						}
 					);
 					purchaseRef.current = purchase;
 					let recoveryConflict: Error | null = null;
@@ -6614,7 +7003,7 @@ function OperationDialog({
 								(record) =>
 									record?.buyer === owner &&
 									record?.order?.orderId === operation.order.orderId &&
-									record?.snapshot?.registration?.id === snapshot.registration?.id,
+									record?.snapshot?.registration?.id === snapshot.registration?.id
 							);
 							onOperation({ kind: 'buy', order: operation.order });
 						} else if (repaired.snapshot !== snapshot) {
@@ -6633,7 +7022,7 @@ function OperationDialog({
 								(record) =>
 									record?.buyer === owner &&
 									record?.order?.orderId === operation.order.orderId &&
-									record?.snapshot?.registration?.id === snapshot.registration?.id,
+									record?.snapshot?.registration?.id === snapshot.registration?.id
 							);
 							setPurchaseState({ ...finalState, payment: undefined });
 						}
@@ -6649,7 +7038,7 @@ function OperationDialog({
 						record?.order?.orderId === operation.order.orderId &&
 						record?.snapshot?.registration?.id === completedSnapshot.registration?.id,
 					[completedSnapshot.registration?.id, completedSnapshot.payment?.id],
-					owner,
+					owner
 				);
 				if (operationClaim) {
 					releaseWalletOperationClaim(localStorage, operationClaim);
@@ -6671,7 +7060,7 @@ function OperationDialog({
 				const winston = arToWinston(value);
 				prepared = await client.makeOffer(
 					{ processId: asset.id, quantity: '1', asking: winston, seller: owner },
-					signal,
+					signal
 				);
 				newlyPrepared = true;
 			} else if (operation.kind === 'cancel') {
@@ -6696,15 +7085,15 @@ function OperationDialog({
 							order: operation.order,
 							resumeId: prepared.id,
 							startingSlot: exactActionBaseline!.startingSlot,
-						}
+					  }
 					: operation.kind === 'transfer'
-						? {
-								kind: 'transfer',
-								resumeId: prepared.id,
-								startingSlot: exactActionBaseline!.startingSlot,
-								value: operationValue,
-							}
-						: { kind: 'sell', resumeId: prepared.id, value: operationValue },
+					? {
+							kind: 'transfer',
+							resumeId: prepared.id,
+							startingSlot: exactActionBaseline!.startingSlot,
+							value: operationValue,
+					  }
+					: { kind: 'sell', resumeId: prepared.id, value: operationValue }
 			);
 			const operationRecord = {
 				txId: prepared.id,
@@ -6717,8 +7106,8 @@ function OperationDialog({
 				...(operation.kind === 'cancel'
 					? { order: operation.order, startingSlot: exactActionBaseline!.startingSlot }
 					: operation.kind === 'transfer'
-						? { value: operationValue, startingSlot: exactActionBaseline!.startingSlot }
-						: { value: operationValue }),
+					? { value: operationValue, startingSlot: exactActionBaseline!.startingSlot }
+					: { value: operationValue }),
 				createdAt: Date.now(),
 			};
 			try {
@@ -6729,7 +7118,7 @@ function OperationDialog({
 						operationClaim,
 						operationStorageKey(asset.id, owner),
 						operationRecord,
-						matches,
+						matches
 					);
 				} else {
 					storeWalletRecordOrThrow<any>(
@@ -6737,7 +7126,7 @@ function OperationDialog({
 						operationStorageKey(asset.id, owner),
 						operationRecord,
 						matches,
-						true,
+						true
 					);
 				}
 			} catch (cause) {
@@ -6767,7 +7156,7 @@ function OperationDialog({
 						asking: arToWinston(value),
 						minimumFee: runtime.DEFAULT_REGISTRATION_FEE.toString(),
 					},
-					signal,
+					signal
 				);
 			} else if (operation.kind === 'cancel') {
 				await client.waitForExactCancellation(
@@ -6776,7 +7165,7 @@ function OperationDialog({
 					owner,
 					operation.order,
 					exactActionBaseline!,
-					signal,
+					signal
 				);
 			} else if (operation.kind === 'transfer') {
 				await client.waitForFungibleTransfer(
@@ -6786,7 +7175,7 @@ function OperationDialog({
 					operationValue,
 					'1',
 					exactActionBaseline!,
-					signal,
+					signal
 				);
 			}
 			removeWalletRecoveryAndSignatures<any>(
@@ -6794,7 +7183,7 @@ function OperationDialog({
 				operationStorageKey(asset.id, owner),
 				(record) => record?.txId === prepared.id,
 				[prepared.id],
-				owner,
+				owner
 			);
 			if (operationClaim) {
 				releaseWalletOperationClaim(localStorage, operationClaim);
@@ -6816,7 +7205,7 @@ function OperationDialog({
 				removeWalletRecordIf<any>(
 					localStorage,
 					operationStorageKey(asset.id, owner),
-					(record) => record?.txId === attemptedTransactionId,
+					(record) => record?.txId === attemptedTransactionId
 				);
 				localStorage.removeItem(`bazar-signed-transaction:${attemptedTransactionId}`);
 				setTransaction(null);
@@ -6842,7 +7231,7 @@ function OperationDialog({
 						target: 5,
 						transaction: purchaseState.payment,
 					},
-				]
+			  ]
 			: [];
 	const steps: ArweaveSyncStep[] = transaction
 		? [
@@ -6853,14 +7242,14 @@ function OperationDialog({
 					confirmations,
 					transaction: { id: transaction.id, views, ...(consensus ? { consensus } : {}) },
 				},
-			]
+		  ]
 		: purchaseSteps;
 	const activeStep =
 		purchaseState?.stage.includes('payment') || purchaseState?.stage === 'ownership-verifying'
 			? 'pay'
 			: operation.kind === 'buy'
-				? 'register'
-				: operation.kind;
+			? 'register'
+			: operation.kind;
 	const activeSyncStep = steps.find((step) => step.key === activeStep) ?? steps[0];
 	const confirmationTarget = activeSyncStep?.target ?? 5;
 	const activityConfirmations = Math.min(confirmationTarget, quorumConfirmationDepth(activeSyncStep));
@@ -6874,13 +7263,13 @@ function OperationDialog({
 		purchaseState?.stage === 'registration-accepting'
 			? 'Checking live reservation'
 			: purchaseState?.stage === 'ownership-verifying'
-				? 'Checking ownership'
-				: postConfirmationPendingLabel(activityConfirmations, confirmationTarget, workingStatus);
+			? 'Checking ownership'
+			: postConfirmationPendingLabel(activityConfirmations, confirmationTarget, workingStatus);
 	const formError = atomicOperationFormError(operation.kind, operationValue, owner);
 	const recoverable = Boolean(
 		transaction ||
-		hasRecoverablePurchase(purchaseState) ||
-		(operation.kind === 'buy' && hasRecoverablePurchase(operation.resume)),
+			hasRecoverablePurchase(purchaseState) ||
+			(operation.kind === 'buy' && hasRecoverablePurchase(operation.resume))
 	);
 	const terminalReservationFailure = atomicPurchaseHasTerminalReservationFailure(purchaseState);
 	const sellerPrice =
@@ -6893,12 +7282,12 @@ function OperationDialog({
 		visiblePhase === 'form'
 			? 'Waiting for details'
 			: visiblePhase === 'approval'
-				? 'Waiting for wallet approval'
-				: visiblePhase === 'working'
-					? workingStatus || 'Watching Arweave confirmations…'
-					: visiblePhase === 'done'
-						? resultCopy.title
-						: visibleMessage || 'This transaction needs attention';
+			? 'Waiting for wallet approval'
+			: visiblePhase === 'working'
+			? workingStatus || 'Watching Arweave confirmations…'
+			: visiblePhase === 'done'
+			? resultCopy.title
+			: visibleMessage || 'This transaction needs attention';
 	React.useEffect(() => {
 		onUpdate(
 			taskId,
@@ -6908,7 +7297,7 @@ function OperationDialog({
 				confirmations: activityConfirmations,
 				confirmationTarget,
 			},
-			asset.id,
+			asset.id
 		);
 	}, [activityConfirmations, asset.id, confirmationTarget, onUpdate, reportedStatus, taskId, visiblePhase]);
 	const restartPurchase = () => {
@@ -6938,7 +7327,7 @@ function OperationDialog({
 						current?.buyer === owner &&
 						current?.order?.orderId === operation.order.orderId &&
 						current?.snapshot?.registration?.id === snapshot.registration?.id,
-					true,
+					true
 				);
 			}
 		}
@@ -6950,7 +7339,10 @@ function OperationDialog({
 	};
 	const startFreshPurchase = () => {
 		if (operation.kind !== 'buy') return;
-		const snapshot = latestPurchaseSnapshot(operation.resume, purchaseState ? purchaseSnapshot(purchaseState) : null);
+		const snapshot = latestPurchaseSnapshot(
+			operation.resume,
+			purchaseState ? purchaseSnapshot(purchaseState) : null
+		);
 		if (snapshot?.registration?.id) {
 			removeWalletRecoveryAndSignatures<any>(
 				localStorage,
@@ -6960,7 +7352,7 @@ function OperationDialog({
 					record?.order?.orderId === operation.order.orderId &&
 					record?.snapshot?.registration?.id === snapshot.registration?.id,
 				[snapshot.registration.id, snapshot.payment?.id],
-				owner,
+				owner
 			);
 		}
 		onOperation({ kind: 'buy', order: operation.order });
@@ -6981,7 +7373,7 @@ function OperationDialog({
 		if (dialogRef.current) {
 			prepareTransactionDialogHide(
 				dialogRef.current,
-				document.querySelector<HTMLElement>('.operation-activity-trigger[data-activity-owner="global"]'),
+				document.querySelector<HTMLElement>('.operation-activity-trigger[data-activity-owner="global"]')
 			);
 		}
 		setHiding(true);
@@ -7003,7 +7395,9 @@ function OperationDialog({
 			role="presentation"
 		>
 			<div
-				className={`dialog operation-side-panel${visiblePhase === 'working' ? '' : ' dialog-compact'}${visiblePhase === 'form' ? ' dialog-form-phase' : ''}`}
+				className={`dialog operation-side-panel${visiblePhase === 'working' ? '' : ' dialog-compact'}${
+					visiblePhase === 'form' ? ' dialog-form-phase' : ''
+				}`}
 				aria-hidden={visible ? undefined : true}
 				aria-labelledby={visible ? `${operationLabelId} ${titleId}` : undefined}
 				aria-modal={visible ? true : undefined}
@@ -7053,7 +7447,12 @@ function OperationDialog({
 						</div>
 						<div className="operation-summary">
 							<span>Seller</span>
-							<WalletAddress address={operation.order.creator} className="operation-summary-link" full label="seller" />
+							<WalletAddress
+								address={operation.order.creator}
+								className="operation-summary-link"
+								full
+								label="seller"
+							/>
 							<span>Seller payment</span>
 							<strong>{sellerPrice}</strong>
 							<span>New approvals</span>
@@ -7061,7 +7460,11 @@ function OperationDialog({
 							{operation.resume?.registration?.id ? (
 								<small>
 									Reservation{' '}
-									<a href={transactionExplorerUrl(operation.resume.registration.id)} rel="noreferrer" target="_blank">
+									<a
+										href={transactionExplorerUrl(operation.resume.registration.id)}
+										rel="noreferrer"
+										target="_blank"
+									>
 										{short(operation.resume.registration.id)} ↗
 									</a>{' '}
 									is already signed.
@@ -7105,26 +7508,32 @@ function OperationDialog({
 										{quoteError
 											? 'Unavailable'
 											: purchaseQuote
-												? `${winstonToAr((BigInt(purchaseQuote.total) - BigInt(purchaseQuote.asking)).toString())} AR`
-												: 'Checking…'}
+											? `${winstonToAr(
+													(
+														BigInt(purchaseQuote.total) - BigInt(purchaseQuote.asking)
+													).toString()
+											  )} AR`
+											: 'Checking…'}
 									</strong>
 									<span>Maximum total</span>
 									<strong>
 										{quoteError
 											? 'Unavailable'
 											: purchaseQuote
-												? `${winstonToAr(purchaseQuote.total)} AR`
-												: 'Checking…'}
+											? `${winstonToAr(purchaseQuote.total)} AR`
+											: 'Checking…'}
 									</strong>
 									<span>Wallet after purchase</span>
 									<strong>
 										{quoteError
 											? 'Unavailable'
 											: purchaseQuote && purchaseWalletBalance !== null
-												? purchaseAffordable
-													? `${winstonToAr((purchaseWalletBalance - BigInt(purchaseQuote.total)).toString())} AR`
-													: 'Insufficient AR'
-												: 'Checking…'}
+											? purchaseAffordable
+												? `${winstonToAr(
+														(purchaseWalletBalance - BigInt(purchaseQuote.total)).toString()
+												  )} AR`
+												: 'Insufficient AR'
+											: 'Checking…'}
 									</strong>
 									<small>One asset · native AR settlement</small>
 								</div>
@@ -7134,8 +7543,10 @@ function OperationDialog({
 									{quoteError
 										? 'Purchase quote unavailable. Retry the cost check before buying.'
 										: purchaseQuote
-											? `Purchase quote ready. Maximum total ${winstonToAr(purchaseQuote.total)} AR.${purchaseAffordable ? '' : ' This wallet has insufficient AR.'}`
-											: 'Checking the exact purchase cost.'}
+										? `Purchase quote ready. Maximum total ${winstonToAr(purchaseQuote.total)} AR.${
+												purchaseAffordable ? '' : ' This wallet has insufficient AR.'
+										  }`
+										: 'Checking the exact purchase cost.'}
 								</p>
 							) : null}
 							{operation.kind === 'buy' ? (
@@ -7147,8 +7558,8 @@ function OperationDialog({
 										{quoteError
 											? 'The exact network cost could not be checked.'
 											: purchaseQuote
-												? 'Exact costs checked.'
-												: 'Checking wallet balance and network fees…'}
+											? 'Exact costs checked.'
+											: 'Checking wallet balance and network fees…'}
 									</span>
 									<Button
 										aria-describedby={quoteStatusId}
@@ -7161,7 +7572,11 @@ function OperationDialog({
 										}}
 									>
 										<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" />{' '}
-										{quoteError ? 'Retry cost check' : purchaseQuote ? 'Recheck cost' : 'Checking cost…'}
+										{quoteError
+											? 'Retry cost check'
+											: purchaseQuote
+											? 'Recheck cost'
+											: 'Checking cost…'}
 									</Button>
 								</div>
 							) : null}
@@ -7202,7 +7617,8 @@ function OperationDialog({
 									<span>Recipient</span>
 									<WalletIdentity address={operationValue} />
 									<small>
-										Review the complete destination before asking your wallet to approve this irreversible transfer.
+										Review the complete destination before asking your wallet to approve this
+										irreversible transfer.
 									</small>
 								</div>
 							) : null}
@@ -7210,7 +7626,9 @@ function OperationDialog({
 								<div className="operation-summary">
 									<span>Open listing</span>
 									<strong>{sellerPrice}</strong>
-									<small>Cancelling returns the asset from order escrow to your liquid balance.</small>
+									<small>
+										Cancelling returns the asset from order escrow to your liquid balance.
+									</small>
 								</div>
 							) : null}
 							{operation.kind === 'sell' || operation.kind === 'transfer' ? (
@@ -7230,12 +7648,17 @@ function OperationDialog({
 						</div>
 						<Button
 							aria-describedby={operation.kind === 'buy' ? quoteStatusId : undefined}
-							className={`wide${operation.kind === 'buy' || operation.kind === 'sell' ? ' with-icon market-primary-action' : ''}`}
+							className={`wide${
+								operation.kind === 'buy' || operation.kind === 'sell'
+									? ' with-icon market-primary-action'
+									: ''
+							}`}
 							data-dialog-initial
 							size="custom"
 							disabled={
 								Boolean(formError) ||
-								(operation.kind === 'buy' && (!purchaseQuote || purchaseAffordable !== true || Boolean(quoteError)))
+								(operation.kind === 'buy' &&
+									(!purchaseQuote || purchaseAffordable !== true || Boolean(quoteError)))
 							}
 							type="submit"
 							variant={operation.kind === 'cancel' ? 'danger' : 'primary'}
@@ -7248,8 +7671,8 @@ function OperationDialog({
 							{operation.kind === 'buy' && purchaseAffordable === false
 								? 'Insufficient AR'
 								: operation.kind === 'buy' && purchaseQuote
-									? `Buy · up to ${winstonToAr(purchaseQuote.total)} AR`
-									: actionLabel}
+								? `Buy · up to ${winstonToAr(purchaseQuote.total)} AR`
+								: actionLabel}
 						</Button>
 					</form>
 				) : null}
@@ -7272,22 +7695,27 @@ function OperationDialog({
 				{visiblePhase === 'working' && recoverable ? (
 					<div>
 						<p className="sr-only" aria-live="polite" role="status">
-							{workingStatus || 'Watching independently addressed Arweave nodes report confirmations for this action.'}
+							{workingStatus ||
+								'Watching independently addressed Arweave nodes report confirmations for this action.'}
 						</p>
 						{workingStatus ? (
-							<p className={`scheduler-wait${activityConfirmations > 0 ? ' scheduler-wait-with-progress' : ''}`}>
+							<p
+								className={`scheduler-wait${
+									activityConfirmations > 0 ? ' scheduler-wait-with-progress' : ''
+								}`}
+							>
 								{workingStatus}
 							</p>
 						) : null}
 						<React.Suspense fallback={<Loading label="Loading transaction progress…" />}>
 							<ArweaveTransactionSync
 								active={visible}
-								skipKind={purchaseState?.canSkip ? (purchaseState.skipKind ?? 'skip') : undefined}
+								skipKind={purchaseState?.canSkip ? purchaseState.skipKind ?? 'skip' : undefined}
 								onSkip={
 									purchaseState?.canSkip
 										? () => {
 												purchaseRef.current?.skip();
-											}
+										  }
 										: undefined
 								}
 								subject={asset.name}
@@ -7334,18 +7762,30 @@ function OperationDialog({
 								</div>
 								<div>
 									<span>Order</span>
-									<a href={transactionExplorerUrl(operation.order.orderId)} rel="noreferrer" target="_blank">
+									<a
+										href={transactionExplorerUrl(operation.order.orderId)}
+										rel="noreferrer"
+										target="_blank"
+									>
 										{short(operation.order.orderId)} ↗
 									</a>
 								</div>
 								<div className="settlement-receipt-links">
 									{purchaseState?.registration?.id ? (
-										<a href={transactionExplorerUrl(purchaseState.registration.id)} rel="noreferrer" target="_blank">
+										<a
+											href={transactionExplorerUrl(purchaseState.registration.id)}
+											rel="noreferrer"
+											target="_blank"
+										>
 											Reservation {short(purchaseState.registration.id)} ↗
 										</a>
 									) : null}
 									{purchaseState?.payment?.id ? (
-										<a href={transactionExplorerUrl(purchaseState.payment.id)} rel="noreferrer" target="_blank">
+										<a
+											href={transactionExplorerUrl(purchaseState.payment.id)}
+											rel="noreferrer"
+											target="_blank"
+										>
 											Payment {short(purchaseState.payment.id)} ↗
 										</a>
 									) : null}
@@ -7372,7 +7812,13 @@ function OperationDialog({
 								View transaction {short(transaction.id)} ↗
 							</a>
 						) : null}
-						<Button className="with-icon" data-dialog-initial onClick={onViewAsset} size="custom" variant="primary">
+						<Button
+							className="with-icon"
+							data-dialog-initial
+							onClick={onViewAsset}
+							size="custom"
+							variant="primary"
+						>
 							<ArrowLeft className="ui-icon ui-icon--sm" aria-hidden="true" /> View updated asset
 						</Button>
 					</div>
@@ -7397,18 +7843,30 @@ function OperationDialog({
 									</div>
 									<div>
 										<span>Order</span>
-										<a href={transactionExplorerUrl(operation.order.orderId)} rel="noreferrer" target="_blank">
+										<a
+											href={transactionExplorerUrl(operation.order.orderId)}
+											rel="noreferrer"
+											target="_blank"
+										>
 											{short(operation.order.orderId)} ↗
 										</a>
 									</div>
 									<div className="settlement-receipt-links">
 										{purchaseState?.registration?.id ? (
-											<a href={transactionExplorerUrl(purchaseState.registration.id)} rel="noreferrer" target="_blank">
+											<a
+												href={transactionExplorerUrl(purchaseState.registration.id)}
+												rel="noreferrer"
+												target="_blank"
+											>
 												Reservation {short(purchaseState.registration.id)} ↗
 											</a>
 										) : null}
 										{purchaseState?.payment?.id ? (
-											<a href={transactionExplorerUrl(purchaseState.payment.id)} rel="noreferrer" target="_blank">
+											<a
+												href={transactionExplorerUrl(purchaseState.payment.id)}
+												rel="noreferrer"
+												target="_blank"
+											>
 												Payment {short(purchaseState.payment.id)} ↗
 											</a>
 										) : null}
@@ -7440,7 +7898,7 @@ function OperationDialog({
 									removeWalletRecordIf<any>(
 										localStorage,
 										operationStorageKey(asset.id, owner),
-										(record) => record?.txId === transaction.id,
+										(record) => record?.txId === transaction.id
 									);
 									localStorage.removeItem(`bazar-signed-transaction:${transaction.id}`);
 									onClose(false);
@@ -7496,7 +7954,7 @@ function collectionEyebrow(collection: Collection) {
 
 export function searchResultScore(
 	{ asset, collection }: { asset: AssetSummary; collection: Collection },
-	query: string,
+	query: string
 ) {
 	if (!query) return 0;
 	const name = asset.name.toLowerCase();
@@ -7563,7 +8021,7 @@ export function homeAssetTypeMatches(collection: Collection, assetType: HomeAsse
 export function interleaveCollectionAssets(
 	collections: Collection[],
 	limit: number,
-	include: (asset: AssetSummary, collection: Collection) => boolean = () => true,
+	include: (asset: AssetSummary, collection: Collection) => boolean = () => true
 ) {
 	const queues = collections.map((collection) => ({
 		collection,
@@ -7584,7 +8042,7 @@ export function homeDiscoveryAssets(
 	collections: Collection[],
 	verifiedListings: Record<string, AssetSummary[]>,
 	limit: number,
-	portableListings: Array<Pick<ResolvedAsset, 'asset' | 'collection'>> = [],
+	portableListings: Array<Pick<ResolvedAsset, 'asset' | 'collection'>> = []
 ) {
 	const collectionsById = new Map(collections.map((collection) => [collection.id, collection]));
 	const verified = interleaveCollectionAssets(
@@ -7592,12 +8050,12 @@ export function homeDiscoveryAssets(
 			...collection,
 			assets: verifiedListings[collection.id] ?? [],
 		})),
-		limit,
+		limit
 	).map(({ asset, collection }) => ({ asset, collection: collectionsById.get(collection.id)! }));
 	const fallback = interleaveCollectionAssets(
 		collections,
 		limit,
-		(asset, collection) => Boolean(asset.image || asset.media) || collection.kind === 'tokens',
+		(asset, collection) => Boolean(asset.image || asset.media) || collection.kind === 'tokens'
 	);
 	const seen = new Set<string>();
 	return [...portableListings, ...verified, ...fallback]
@@ -7612,12 +8070,12 @@ export function homeDiscoveryAssets(
 export function homeAllAssets(
 	collections: Collection[],
 	limit: number,
-	portableListings: Array<Pick<ResolvedAsset, 'asset' | 'collection'>> = [],
+	portableListings: Array<Pick<ResolvedAsset, 'asset' | 'collection'>> = []
 ) {
 	const indexed = interleaveCollectionAssets(
 		collections,
 		limit,
-		(asset, collection) => Boolean(asset.image || asset.media) || collection.kind === 'tokens',
+		(asset, collection) => Boolean(asset.image || asset.media) || collection.kind === 'tokens'
 	);
 	const seen = new Set<string>();
 	return [...indexed, ...portableListings]
@@ -7633,12 +8091,14 @@ export function homeSearchAssets(
 	collections: Collection[],
 	portableListings: Array<Pick<ResolvedAsset, 'asset' | 'collection'>>,
 	query: string,
-	limit: number,
+	limit: number
 ) {
 	const indexed = collections.flatMap((collection) =>
 		collectionSearchAssets(collection, query)
-			.filter((asset) => asset.image || asset.media || collection.kind === 'tokens' || collection.kind === 'names')
-			.map((asset) => ({ asset, collection })),
+			.filter(
+				(asset) => asset.image || asset.media || collection.kind === 'tokens' || collection.kind === 'names'
+			)
+			.map((asset) => ({ asset, collection }))
 	);
 	const seen = new Set<string>();
 	return [...portableListings, ...indexed]
@@ -7663,7 +8123,9 @@ export function alphabetFilterIndex(key: string, current: number, count: number)
 export function alphabetBrowseIndex(direction: 'previous' | 'next', visible: number[], count: number) {
 	if (count < 1) return -1;
 	if (!visible.length) return direction === 'previous' ? 0 : count - 1;
-	return direction === 'previous' ? Math.max(0, visible[0] - 5) : Math.min(count - 1, visible[visible.length - 1] + 5);
+	return direction === 'previous'
+		? Math.max(0, visible[0] - 5)
+		: Math.min(count - 1, visible[visible.length - 1] + 5);
 }
 
 export function RouteState({
@@ -7720,7 +8182,9 @@ function orderPriceLabel(order: SwapOrder, state: AssetState) {
 export function tokenBalanceLabel(value: string, state: AssetState) {
 	const [whole, fraction] = formatTokenAmount(value, state.denomination).split('.');
 	const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-	return `${fraction ? `${grouped}.${fraction}` : grouped} ${state.ticker || (state.totalSupply === '1' ? 'asset' : 'tokens')}`;
+	return `${fraction ? `${grouped}.${fraction}` : grouped} ${
+		state.ticker || (state.totalSupply === '1' ? 'asset' : 'tokens')
+	}`;
 }
 function short(value: string) {
 	return `${value.slice(0, 6)}…${value.slice(-5)}`;
@@ -7812,7 +8276,7 @@ export function atomicOrderCanBeBought(order: SwapOrder | null): order is SwapOr
 export function externalReservationTransaction(
 	order: SwapOrder | null,
 	buyer: string | null | undefined,
-	activity: CollectionActivityEvent[],
+	activity: CollectionActivityEvent[]
 ): CollectionActivityEvent | null {
 	if (
 		!buyer ||
@@ -7830,7 +8294,7 @@ export function externalReservationTransaction(
 				event.actor === buyer &&
 				event.orderId === order.orderId &&
 				event.height === reservationHeight &&
-				ARWEAVE_ADDRESS.test(event.id),
+				ARWEAVE_ADDRESS.test(event.id)
 		) ?? null
 	);
 }
@@ -7839,7 +8303,7 @@ export function atomicPurchaseRecoveryStatus(
 	state: AssetState,
 	buyer: string,
 	expectedOrder: SwapOrder,
-	snapshot?: PurchaseSnapshot,
+	snapshot?: PurchaseSnapshot
 ): 'resumable' | 'blocked' {
 	// Once an exact seller payment exists, only its immutable scheduler slot can
 	// prove settlement. Current ownership may have changed again legitimately.
@@ -7847,14 +8311,14 @@ export function atomicPurchaseRecoveryStatus(
 	const currentOrder = state.orders[expectedOrder.orderId];
 	const orderUnchanged = Boolean(
 		currentOrder &&
-		currentOrder.creator === expectedOrder.creator &&
-		currentOrder.recipient === expectedOrder.recipient &&
-		currentOrder.asking === expectedOrder.asking &&
-		currentOrder.deposit === expectedOrder.deposit &&
-		currentOrder.minimumFee === expectedOrder.minimumFee &&
-		currentOrder.deadline === expectedOrder.deadline &&
-		currentOrder.createdAt === expectedOrder.createdAt &&
-		currentOrder.quantity === expectedOrder.quantity,
+			currentOrder.creator === expectedOrder.creator &&
+			currentOrder.recipient === expectedOrder.recipient &&
+			currentOrder.asking === expectedOrder.asking &&
+			currentOrder.deposit === expectedOrder.deposit &&
+			currentOrder.minimumFee === expectedOrder.minimumFee &&
+			currentOrder.deadline === expectedOrder.deadline &&
+			currentOrder.createdAt === expectedOrder.createdAt &&
+			currentOrder.quantity === expectedOrder.quantity
 	);
 	if (
 		orderUnchanged &&
@@ -7869,14 +8333,14 @@ export function atomicOperationStateError(
 	kind: Operation['kind'],
 	state: AssetState,
 	owner: string,
-	expectedOrder: SwapOrder | null,
+	expectedOrder: SwapOrder | null
 ) {
 	const currentOrder = expectedOrder ? state.orders[expectedOrder.orderId] : null;
 	const orderUnchanged = Boolean(
 		currentOrder &&
-		currentOrder.creator === expectedOrder?.creator &&
-		currentOrder.asking === expectedOrder.asking &&
-		currentOrder.quantity === expectedOrder.quantity,
+			currentOrder.creator === expectedOrder?.creator &&
+			currentOrder.asking === expectedOrder.asking &&
+			currentOrder.quantity === expectedOrder.quantity
 	);
 	if (kind === 'buy') {
 		return !orderUnchanged || !atomicOrderCanBeBought(currentOrder) || currentOrder.creator === owner
@@ -7896,7 +8360,9 @@ export function pendingListingMessage(offer: PendingAssetOffer, signer: string):
 	if (offer.actor === signer) {
 		return `You already submitted listing transaction ${transaction}; waiting for live asset state. No new wallet approval was requested.`;
 	}
-	return `Another wallet ${short(offer.actor)} submitted pending listing transaction ${transaction}, but it has not been accepted by live asset state. No new wallet approval was requested.`;
+	return `Another wallet ${short(
+		offer.actor
+	)} submitted pending listing transaction ${transaction}, but it has not been accepted by live asset state. No new wallet approval was requested.`;
 }
 
 function atomicOperationActionLabel(operation: Operation, value: string) {

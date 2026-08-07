@@ -8,9 +8,7 @@ import Arweave from 'arweave';
 const root = path.resolve(import.meta.dirname, '..');
 const ledgerPath = path.join(root, '.run-data', 'publication-ledger.json');
 const walletRoot = path.join(root, '.run-data', 'wallets');
-const fundingKey =
-	process.env.BAZAR_TEST_WALLET ??
-	path.join(os.homedir(), 'src', 'Documents', 'hyperbeam-key.json');
+const fundingKey = process.env.BAZAR_TEST_WALLET ?? path.join(os.homedir(), 'src', 'Documents', 'hyperbeam-key.json');
 const targetBalance = 2_000_000_000_000n;
 const arweave = Arweave.init({ host: 'arweave.net', port: 443, protocol: 'https' });
 const fundingWallet = JSON.parse(await fs.readFile(fundingKey, 'utf8'));

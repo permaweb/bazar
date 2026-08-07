@@ -2,7 +2,7 @@ import styled, { type DefaultTheme, keyframes } from 'styled-components';
 import type { ObserverView } from 'weave-wrangler';
 
 import { confirmationTrustTone } from './confirmationTrust';
-import { PROGRESS_GRADIENT, confirmationProgress, progressColorCss } from './progressColors';
+import { confirmationProgress, PROGRESS_GRADIENT, progressColorCss } from './progressColors';
 
 const sweepProgress = keyframes`
 	0% { transform: translateX(-100%); }
@@ -331,9 +331,7 @@ export const RaceSegment = styled.rect<{ $laneWidth: number } & RaceTrustProps>`
 	stroke-width: ${(props) => props.$laneWidth};
 	stroke-linecap: round;
 	pointer-events: none;
-	transition:
-		stroke-dasharray 160ms linear,
-		stroke-dashoffset 160ms linear;
+	transition: stroke-dasharray 160ms linear, stroke-dashoffset 160ms linear;
 `;
 
 export const RaceActiveTip = styled.circle<RaceTrustProps>`
@@ -341,17 +339,19 @@ export const RaceActiveTip = styled.circle<RaceTrustProps>`
 	stroke: ${(props) => props.theme.colors.container.primary.background};
 	stroke-width: 1px;
 	pointer-events: none;
-	transition:
-		cx 160ms linear,
-		cy 160ms linear;
+	transition: cx 160ms linear, cy 160ms linear;
 	animation: ${activeTipPulse} 1.4s ease-in-out infinite;
 `;
 
 export const RaceEventMarker = styled.circle<RaceTrustProps & { $confirmation: boolean }>`
 	fill: ${(props) =>
-		props.$state === 'not-found' ? props.theme.colors.container.primary.background : completedLaneTrustColor(props)};
+		props.$state === 'not-found'
+			? props.theme.colors.container.primary.background
+			: completedLaneTrustColor(props)};
 	stroke: ${(props) =>
-		props.$state === 'not-found' ? completedLaneTrustColor(props) : props.theme.colors.container.primary.background};
+		props.$state === 'not-found'
+			? completedLaneTrustColor(props)
+			: props.theme.colors.container.primary.background};
 	stroke-width: ${(props) =>
 		props.$confirmation ? '2px' : props.$state === 'not-found' || props.$state === 'pending' ? '1.75px' : '1.25px'};
 	cursor: help;
@@ -579,7 +579,8 @@ export const SkipAction = styled.div<{ $warning: boolean }>`
 			props.$warning ? props.theme.colors.warning.primary : props.theme.colors.container.primary.background};
 		background: ${(props) =>
 			props.$warning ? props.theme.colors.container.primary.background : props.theme.colors.font.primary};
-		border-color: ${(props) => (props.$warning ? props.theme.colors.warning.primary : props.theme.colors.font.primary)};
+		border-color: ${(props) =>
+			props.$warning ? props.theme.colors.warning.primary : props.theme.colors.font.primary};
 	}
 
 	@media (max-width: 560px) {
@@ -619,10 +620,7 @@ export const SkipTooltip = styled.span`
 	line-height: 1.4;
 	opacity: 0;
 	pointer-events: none;
-	transition:
-		opacity 120ms ease,
-		transform 120ms ease,
-		visibility 120ms ease;
+	transition: opacity 120ms ease, transform 120ms ease, visibility 120ms ease;
 
 	${SkipButtonWrap} > button:hover + &,
   ${SkipButtonWrap} > button:focus + &,

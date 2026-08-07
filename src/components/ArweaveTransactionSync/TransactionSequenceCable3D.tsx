@@ -1,9 +1,3 @@
-import {
-	canPreviewRecallImage,
-	fetchBoundedRecallImage,
-	type ArweaveRecallContent,
-	type ArweaveRecallContentKind,
-} from 'api/arweave-mining-telemetry';
 import React from 'react';
 import styled, { keyframes } from 'styled-components';
 import * as THREE from 'three';
@@ -12,12 +6,19 @@ import { Line2 } from 'three/examples/jsm/lines/Line2.js';
 import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js';
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import type { ObserverView } from 'weave-wrangler';
-import { RaceTooltip as RaceTooltipContainer } from './styles';
+
+import {
+	type ArweaveRecallContent,
+	type ArweaveRecallContentKind,
+	canPreviewRecallImage,
+	fetchBoundedRecallImage,
+} from 'api/arweave-mining-telemetry';
 
 import { ACCEPTED_PROOF_ANNOTATION_LIFETIME_MS, acceptedProofAnnotationIsVisible } from './acceptedProofs';
 import { ObserverTooltipCard, type ObserverTooltipStage } from './ObserverTooltipCard';
 import { progressColorRgb } from './progressColors';
 import { sequencePhaseBounds } from './sequence';
+import { RaceTooltip as RaceTooltipContainer } from './styles';
 import { TransactionRendererFallback } from './TransactionVisualizerFallback';
 
 export { TransactionRendererFallback } from './TransactionVisualizerFallback';
@@ -113,19 +114,22 @@ type MarkerHoverData = {
 };
 
 function useTransientAcceptedProofs(
-	proofs: NonNullable<Props['miningActivity']>['acceptedProofs'],
+	proofs: NonNullable<Props['miningActivity']>['acceptedProofs']
 ): NonNullable<Props['miningActivity']>['acceptedProofs'] {
 	const [, setVisibilityClock] = React.useState(() => Date.now());
 	const now = Date.now();
 	const visibleProofs = proofs.filter((proof) => acceptedProofAnnotationIsVisible(proof.observedAt, now));
 	const nextRemovalAt = visibleProofs.reduce(
 		(earliest, proof) => Math.min(earliest, proof.observedAt + ACCEPTED_PROOF_ANNOTATION_LIFETIME_MS),
-		Number.POSITIVE_INFINITY,
+		Number.POSITIVE_INFINITY
 	);
 
 	React.useEffect(() => {
 		if (!Number.isFinite(nextRemovalAt)) return undefined;
-		const timer = window.setTimeout(() => setVisibilityClock(Date.now()), Math.max(0, nextRemovalAt - Date.now()) + 16);
+		const timer = window.setTimeout(
+			() => setVisibilityClock(Date.now()),
+			Math.max(0, nextRemovalAt - Date.now()) + 16
+		);
 		return () => window.clearTimeout(timer);
 	}, [nextRemovalAt]);
 
@@ -160,7 +164,7 @@ const ACCEPTED_PROOF_CARD_COMPACT_HEIGHT = 128;
 const EMPTY_ACCEPTED_PROOFS: NonNullable<Props['miningActivity']>['acceptedProofs'] = [];
 
 export function createWebGLRendererSafely(
-	create: () => THREE.WebGLRenderer = () => new THREE.WebGLRenderer({ alpha: true, antialias: true }),
+	create: () => THREE.WebGLRenderer = () => new THREE.WebGLRenderer({ alpha: true, antialias: true })
 ) {
 	try {
 		return create();
@@ -271,7 +275,7 @@ export function TransactionSequenceCable3D({
 		renderer.outputColorSpace = THREE.SRGBColorSpace;
 		renderer.domElement.setAttribute(
 			'aria-label',
-			`${ariaLabel}. Use arrow keys to inspect observer lanes and events; press Escape to clear.`,
+			`${ariaLabel}. Use arrow keys to inspect observer lanes and events; press Escape to clear.`
 		);
 		renderer.domElement.setAttribute('aria-keyshortcuts', 'ArrowLeft ArrowRight ArrowUp ArrowDown Home End Escape');
 		renderer.domElement.setAttribute('aria-roledescription', 'interactive transaction map');
@@ -345,7 +349,8 @@ export function TransactionSequenceCable3D({
 				displayedPhaseProgress: Array.from(
 					{ length: phaseCount },
 					(_, phaseIndex) =>
-						lanes[laneIndex]?.phases[phaseIndex]?.progress ?? sequencePhaseBounds(phaseIndex, phaseCount).start,
+						lanes[laneIndex]?.phases[phaseIndex]?.progress ??
+						sequencePhaseBounds(phaseIndex, phaseCount).start
 				),
 			};
 			snapWireProgress(wire, lanes[laneIndex], phaseCount);
@@ -362,19 +367,22 @@ export function TransactionSequenceCable3D({
 		const maxActiveHeads = lanes.length * phaseCount;
 		activeHeadGeometry.setAttribute(
 			'position',
-			new THREE.Float32BufferAttribute(new Float32Array(maxActiveHeads * 3), 3),
+			new THREE.Float32BufferAttribute(new Float32Array(maxActiveHeads * 3), 3)
 		);
-		activeHeadGeometry.setAttribute('color', new THREE.Float32BufferAttribute(new Float32Array(maxActiveHeads * 3), 3));
+		activeHeadGeometry.setAttribute(
+			'color',
+			new THREE.Float32BufferAttribute(new Float32Array(maxActiveHeads * 3), 3)
+		);
 		activeHeadGeometry.setDrawRange(0, 0);
 		const acceptedProofGeometry = new THREE.BufferGeometry();
 		const miningParticleGeometry = new THREE.BufferGeometry();
 		miningParticleGeometry.setAttribute(
 			'position',
-			new THREE.Float32BufferAttribute(new Float32Array(MAX_MINING_PARTICLES * 3), 3),
+			new THREE.Float32BufferAttribute(new Float32Array(MAX_MINING_PARTICLES * 3), 3)
 		);
 		miningParticleGeometry.setAttribute(
 			'color',
-			new THREE.Float32BufferAttribute(new Float32Array(MAX_MINING_PARTICLES * 3), 3),
+			new THREE.Float32BufferAttribute(new Float32Array(MAX_MINING_PARTICLES * 3), 3)
 		);
 		miningParticleGeometry.setDrawRange(0, 0);
 		const eventHaloMaterial = new THREE.PointsMaterial({
@@ -455,7 +463,7 @@ export function TransactionSequenceCable3D({
 			confirmationMarkers,
 			activeHeads,
 			acceptedProofHalo,
-			acceptedProofMarkers,
+			acceptedProofMarkers
 		);
 
 		const pickLineMaterial = new THREE.LineBasicMaterial({ visible: false });
@@ -546,10 +554,10 @@ export function TransactionSequenceCable3D({
 					? undefined
 					: confirmationHoverDataRef.current[confirmationHit.index]
 				: eventHit?.index !== undefined
-					? eventHoverDataRef.current[eventHit.index]
-					: proofHit?.index === undefined
-						? undefined
-						: proofHoverDataRef.current[proofHit.index];
+				? eventHoverDataRef.current[eventHit.index]
+				: proofHit?.index === undefined
+				? undefined
+				: proofHoverDataRef.current[proofHit.index];
 			const hit = markerHoverData ? undefined : firstLaneIntersection();
 			if (!markerHoverData && !hit) {
 				highlightLane(undefined);
@@ -596,9 +604,11 @@ export function TransactionSequenceCable3D({
 		const keyboardItems = () =>
 			laneDataRef.current.flatMap((lane, laneIndex) => [
 				{ laneIndex, detail: lane.statusLabel },
-				...[...eventHoverDataRef.current, ...confirmationHoverDataRef.current, ...proofHoverDataRef.current].filter(
-					(item) => item.laneIndex === laneIndex,
-				),
+				...[
+					...eventHoverDataRef.current,
+					...confirmationHoverDataRef.current,
+					...proofHoverDataRef.current,
+				].filter((item) => item.laneIndex === laneIndex),
 			]);
 		const showKeyboardItem = (item: MarkerHoverData) => {
 			const lane = laneDataRef.current[item.laneIndex];
@@ -715,7 +725,7 @@ export function TransactionSequenceCable3D({
 				miningActivityRef.current?.candidateRate,
 				deltaSeconds,
 				activityPhase,
-				miningParticleColor,
+				miningParticleColor
 			);
 			updateActiveHeads(wireStates, laneDataRef.current, activeHeadGeometry, phaseCount, activeHeadColor);
 			const acceptedProofs = miningActivityRef.current?.acceptedProofs ?? [];
@@ -723,8 +733,10 @@ export function TransactionSequenceCable3D({
 				.map(
 					(proof) =>
 						`${proof.key}:${proof.meta}:${proof.recalls
-							.map((recall) => `${recall.key}:${recall.content?.contentUrl}:${recall.content?.contentType}`)
-							.join(',')}`,
+							.map(
+								(recall) => `${recall.key}:${recall.content?.contentUrl}:${recall.content?.contentType}`
+							)
+							.join(',')}`
 				)
 				.join('|');
 			if (acceptedProofSignature !== nextAcceptedProofSignature) {
@@ -743,7 +755,7 @@ export function TransactionSequenceCable3D({
 					acceptedProofs,
 					acceptedProofProgress,
 					acceptedProofGeometry,
-					phaseCount,
+					phaseCount
 				);
 			}
 			if (markerDataSource !== laneDataRef.current) {
@@ -757,7 +769,7 @@ export function TransactionSequenceCable3D({
 						eventGeometry,
 						confirmationGeometry,
 						proofGeometry,
-						phaseCount,
+						phaseCount
 					);
 					eventHoverDataRef.current = markerHoverData.events;
 					confirmationHoverDataRef.current = markerHoverData.confirmations;
@@ -776,7 +788,7 @@ export function TransactionSequenceCable3D({
 				camera,
 				renderWidth,
 				renderHeight,
-				acceptedProofPinPoint,
+				acceptedProofPinPoint
 			);
 			phaseLabelRefs.current.forEach((element, phaseIndex) => {
 				updateSegmentLabel(
@@ -788,7 +800,7 @@ export function TransactionSequenceCable3D({
 					camera,
 					renderWidth,
 					renderHeight,
-					phaseLabelPoints[phaseIndex],
+					phaseLabelPoints[phaseIndex]
 				);
 			});
 			renderer.render(scene, camera);
@@ -890,7 +902,11 @@ export function TransactionSequenceCable3D({
 										<AcceptedProofPayload
 											key={recall.key}
 											as={recall.content?.kind === 'binary' ? 'span' : 'a'}
-											href={recall.content?.kind === 'binary' ? undefined : recall.content?.contentUrl}
+											href={
+												recall.content?.kind === 'binary'
+													? undefined
+													: recall.content?.contentUrl
+											}
 											target={recall.content?.kind === 'binary' ? undefined : '_blank'}
 											rel={recall.content?.kind === 'binary' ? undefined : 'noreferrer'}
 											aria-label={`${proof.label}: ${recall.contentLabel}`}
@@ -898,9 +914,13 @@ export function TransactionSequenceCable3D({
 											<RecallContentPreview content={recall.content} fallback={recall.fallback} />
 											<AcceptedProofContentType>
 												{recall.contentLabel}
-												{recall.content?.kind !== 'binary' && recall.content?.contentUrl ? ' ↗' : ''}
+												{recall.content?.kind !== 'binary' && recall.content?.contentUrl
+													? ' ↗'
+													: ''}
 											</AcceptedProofContentType>
-											{recall.meta && <AcceptedProofRecallMeta>{recall.meta}</AcceptedProofRecallMeta>}
+											{recall.meta && (
+												<AcceptedProofRecallMeta>{recall.meta}</AcceptedProofRecallMeta>
+											)}
 										</AcceptedProofPayload>
 									))}
 								</AcceptedProofPayloads>
@@ -919,7 +939,11 @@ export function TransactionSequenceCable3D({
 					$below={hover.below}
 					role={'tooltip'}
 				>
-					<ObserverTooltipCard observerLabel={hover.observerLabel} stages={hover.stages} detail={hover.detail} />
+					<ObserverTooltipCard
+						observerLabel={hover.observerLabel}
+						stages={hover.stages}
+						detail={hover.detail}
+					/>
 				</RaceTooltipContainer>
 			)}
 		</Stage>
@@ -1059,7 +1083,7 @@ function ActivityRolodex({ activity }: { activity: CableTelemetry['activity'] })
 			const next = queueRef.current.shift();
 			if (!next) return;
 			setVisible((current) =>
-				[next, ...current.filter((event) => event.key !== next.key)].slice(0, ACTIVITY_VISIBLE_ROWS),
+				[next, ...current.filter((event) => event.key !== next.key)].slice(0, ACTIVITY_VISIBLE_ROWS)
 			);
 		}, ACTIVITY_STREAM_INTERVAL_MS);
 
@@ -1102,7 +1126,11 @@ function createWirePositions(laneIndex: number, laneCount: number, layout: NonNu
 function decimateWire(positions: Float32Array): Float32Array {
 	const pointCount = Math.ceil(SAMPLE_COUNT / PICK_SAMPLE_STEP);
 	const decimated = new Float32Array(pointCount * 3);
-	for (let pointIndex = 0, sourceIndex = 0; pointIndex < pointCount; pointIndex += 1, sourceIndex += PICK_SAMPLE_STEP) {
+	for (
+		let pointIndex = 0, sourceIndex = 0;
+		pointIndex < pointCount;
+		pointIndex += 1, sourceIndex += PICK_SAMPLE_STEP
+	) {
 		const sourceOffset = (sourceIndex % SAMPLE_COUNT) * 3;
 		const targetOffset = pointIndex * 3;
 		decimated[targetOffset] = positions[sourceOffset];
@@ -1115,10 +1143,10 @@ function decimateWire(positions: Float32Array): Float32Array {
 function sameHoverContent(current: Hover | undefined, next: Hover): boolean {
 	return Boolean(
 		current &&
-		current.below === next.below &&
-		current.observerLabel === next.observerLabel &&
-		current.detail === next.detail &&
-		current.stages === next.stages,
+			current.below === next.below &&
+			current.observerLabel === next.observerLabel &&
+			current.detail === next.detail &&
+			current.stages === next.stages
 	);
 }
 
@@ -1166,7 +1194,7 @@ function updateSegmentLabel(
 	camera: THREE.Camera,
 	width: number,
 	height: number,
-	point: THREE.Vector3,
+	point: THREE.Vector3
 ): void {
 	if (!element || laneIndex === undefined || wires.length === 0 || !width || !height) return;
 	const wire = wires[laneIndex];
@@ -1222,7 +1250,7 @@ function updateWireProgress(wire: WireState, lane: Infinity3DLane, deltaSeconds:
 			lane.phases[phaseIndex]?.progress ?? phaseStart,
 			phaseStart,
 			phaseEnd,
-			deltaSeconds,
+			deltaSeconds
 		);
 	});
 }
@@ -1234,7 +1262,7 @@ function snapWireProgress(wire: WireState, lane: Infinity3DLane, phaseCount: num
 			wire.displayedPhaseProgress[phaseIndex] ?? phaseStart,
 			lane.phases[phaseIndex]?.progress ?? phaseStart,
 			phaseStart,
-			phaseEnd,
+			phaseEnd
 		);
 		wire.displayedPhaseProgress[phaseIndex] = nextProgress;
 		setPhaseInstanceCount(geometry, nextProgress, phaseStart, phaseEnd);
@@ -1245,7 +1273,7 @@ export function retainedPhaseProgress(
 	displayedProgress: number,
 	liveProgress: number,
 	phaseStart: number,
-	phaseEnd: number,
+	phaseEnd: number
 ): number {
 	return Math.max(displayedProgress, Math.min(phaseEnd, Math.max(phaseStart, liveProgress)));
 }
@@ -1256,7 +1284,7 @@ function updatePhaseProgress(
 	progress: number,
 	phaseStart: number,
 	phaseEnd: number,
-	deltaSeconds: number,
+	deltaSeconds: number
 ): number {
 	const target = retainedPhaseProgress(displayedProgress, progress, phaseStart, phaseEnd);
 	const smoothing = 1 - Math.exp(-deltaSeconds * 11);
@@ -1270,7 +1298,7 @@ function setPhaseInstanceCount(geometry: LineGeometry, progress: number, phaseSt
 	const segmentCount = Math.round(((phaseEnd - phaseStart) / 100) * SAMPLE_COUNT);
 	const instanceCount = Math.max(
 		1,
-		Math.min(segmentCount, Math.ceil(((progress - phaseStart) / (phaseEnd - phaseStart)) * segmentCount)),
+		Math.min(segmentCount, Math.ceil(((progress - phaseStart) / (phaseEnd - phaseStart)) * segmentCount))
 	);
 	if (geometry.instanceCount !== instanceCount) geometry.instanceCount = instanceCount;
 }
@@ -1281,7 +1309,7 @@ function updateMarkers(
 	eventGeometry: THREE.BufferGeometry,
 	confirmationGeometry: THREE.BufferGeometry,
 	proofGeometry: THREE.BufferGeometry,
-	phaseCount: number,
+	phaseCount: number
 ): { events: MarkerHoverData[]; confirmations: MarkerHoverData[]; proofs: MarkerHoverData[] } {
 	const eventPositions: number[] = [];
 	const eventColors: number[] = [];
@@ -1298,7 +1326,7 @@ function updateMarkers(
 		for (const marker of lane.markers) {
 			const pointIndex = Math.min(
 				SAMPLE_COUNT - 1,
-				Math.max(0, Math.round((marker.progress / 100) * (SAMPLE_COUNT - 1))),
+				Math.max(0, Math.round((marker.progress / 100) * (SAMPLE_COUNT - 1)))
 			);
 			const offset = pointIndex * 3;
 			if (marker.kind === 'proof') {
@@ -1329,7 +1357,7 @@ function updateActiveHeads(
 	lanes: Infinity3DLane[],
 	geometry: THREE.BufferGeometry,
 	phaseCount: number,
-	color: THREE.Color,
+	color: THREE.Color
 ): void {
 	const positionAttribute = geometry.getAttribute('position') as THREE.BufferAttribute;
 	const colorAttribute = geometry.getAttribute('color') as THREE.BufferAttribute;
@@ -1350,7 +1378,10 @@ function updateActiveHeads(
 		if (!lane) return;
 		lane.phases.forEach((phase, phaseIndex) => {
 			if (phase.started && !phase.complete) {
-				writeHead(wire, wire.displayedPhaseProgress[phaseIndex] ?? sequencePhaseBounds(phaseIndex, phaseCount).start);
+				writeHead(
+					wire,
+					wire.displayedPhaseProgress[phaseIndex] ?? sequencePhaseBounds(phaseIndex, phaseCount).start
+				);
 			}
 		});
 	});
@@ -1365,7 +1396,7 @@ function updateMiningParticles(
 	candidateRate: number | undefined,
 	deltaSeconds: number,
 	phase: number,
-	color: THREE.Color,
+	color: THREE.Color
 ): number {
 	if (!candidateRate || !wires.length) {
 		geometry.setDrawRange(0, 0);
@@ -1396,7 +1427,7 @@ function updateAcceptedProofMarkers(
 	proofs: NonNullable<Props['miningActivity']>['acceptedProofs'],
 	progressByKey: Map<string, number>,
 	geometry: THREE.BufferGeometry,
-	phaseCount: number,
+	phaseCount: number
 ): void {
 	const positions: number[] = [];
 	const colors: number[] = [];
@@ -1425,7 +1456,7 @@ function updateAcceptedProofPins(
 	camera: THREE.Camera,
 	width: number,
 	height: number,
-	point: THREE.Vector3,
+	point: THREE.Vector3
 ): void {
 	if (!wire || !width || !height) return;
 	const coordinates = new Float32Array(3);
@@ -1441,11 +1472,11 @@ function updateAcceptedProofPins(
 		const compact = width <= 480;
 		const cardWidth = Math.min(
 			compact ? ACCEPTED_PROOF_CARD_COMPACT_WIDTH : ACCEPTED_PROOF_CARD_WIDTH,
-			Math.max(1, width - 8),
+			Math.max(1, width - 8)
 		);
 		const cardHeight = Math.min(
 			compact ? ACCEPTED_PROOF_CARD_COMPACT_HEIGHT : ACCEPTED_PROOF_CARD_HEIGHT,
-			Math.max(1, height - 8),
+			Math.max(1, height - 8)
 		);
 		const { x: cardX, y: cardY } = acceptedProofCardPosition(
 			index,
@@ -1455,7 +1486,7 @@ function updateAcceptedProofPins(
 			width,
 			height,
 			cardWidth,
-			cardHeight,
+			cardHeight
 		);
 		const connector = connectorEndpoint(anchorX, anchorY, cardX, cardY, cardWidth, cardHeight);
 		const deltaX = connector.x - anchorX;
@@ -1480,7 +1511,7 @@ export function acceptedProofCardPosition(
 	width: number,
 	height: number,
 	cardWidth: number,
-	cardHeight: number,
+	cardHeight: number
 ): { x: number; y: number } {
 	const edge = 4;
 	const gap = 12;
@@ -1504,7 +1535,7 @@ export function connectorEndpoint(
 	cardX: number,
 	cardY: number,
 	cardWidth: number,
-	cardHeight: number,
+	cardHeight: number
 ): { x: number; y: number } {
 	const centerX = cardX + cardWidth / 2;
 	const centerY = cardY + cardHeight / 2;
@@ -1530,7 +1561,7 @@ function writeWirePoint(
 	wirePositions: Float32Array,
 	progress: number,
 	target: Float32Array | number[],
-	targetOffset: number,
+	targetOffset: number
 ): void {
 	const scaledIndex = ((progress % 100) / 100) * SAMPLE_COUNT;
 	const lowerIndex = Math.min(SAMPLE_COUNT - 1, Math.max(0, Math.floor(scaledIndex)));
@@ -1539,8 +1570,16 @@ function writeWirePoint(
 	const lowerOffset = lowerIndex * 3;
 	const upperOffset = upperIndex * 3;
 	target[targetOffset] = THREE.MathUtils.lerp(wirePositions[lowerOffset], wirePositions[upperOffset], mix);
-	target[targetOffset + 1] = THREE.MathUtils.lerp(wirePositions[lowerOffset + 1], wirePositions[upperOffset + 1], mix);
-	target[targetOffset + 2] = THREE.MathUtils.lerp(wirePositions[lowerOffset + 2], wirePositions[upperOffset + 2], mix);
+	target[targetOffset + 1] = THREE.MathUtils.lerp(
+		wirePositions[lowerOffset + 1],
+		wirePositions[upperOffset + 1],
+		mix
+	);
+	target[targetOffset + 2] = THREE.MathUtils.lerp(
+		wirePositions[lowerOffset + 2],
+		wirePositions[upperOffset + 2],
+		mix
+	);
 }
 
 function updateMarkerGeometry(geometry: THREE.BufferGeometry, positions: number[], colors: number[]): void {
@@ -1555,9 +1594,9 @@ function markerDataSignature(lanes: Infinity3DLane[]): string {
 			lane.markers
 				.map(
 					(marker) =>
-						`${marker.kind}:${marker.confirmation}:${marker.progress}:${marker.state}:${marker.confirmations}:${marker.error}:${marker.detail}`,
+						`${marker.kind}:${marker.confirmation}:${marker.progress}:${marker.state}:${marker.confirmations}:${marker.error}:${marker.detail}`
 				)
-				.join(','),
+				.join(',')
 		)
 		.join('|');
 }
@@ -1663,9 +1702,7 @@ const AcceptedProofPin = styled.span`
 		border-radius: 50%;
 		background: ${(props) => props.theme.colors.nasaGraphic.green1};
 		box-shadow: 0 0 0 2px color-mix(in srgb, ${(props) => props.theme.colors.nasaGraphic.green1} 35%, transparent);
-		transition:
-			transform 160ms ease,
-			box-shadow 160ms ease;
+		transition: transform 160ms ease, box-shadow 160ms ease;
 	}
 
 	&:focus {
@@ -1691,9 +1728,7 @@ const AcceptedProofStem = styled.span`
 	background: color-mix(in srgb, ${(props) => props.theme.colors.font.alt1} 48%, transparent);
 	opacity: 0;
 	visibility: hidden;
-	transition:
-		opacity 140ms ease,
-		visibility 0s linear 140ms;
+	transition: opacity 140ms ease, visibility 0s linear 140ms;
 	pointer-events: none;
 
 	${AcceptedProofPin}:hover &,
@@ -1722,9 +1757,7 @@ const AcceptedProofCard = styled.span`
 	opacity: 0;
 	visibility: hidden;
 	pointer-events: none;
-	transition:
-		opacity 140ms ease,
-		visibility 0s linear 140ms;
+	transition: opacity 140ms ease, visibility 0s linear 140ms;
 
 	${AcceptedProofPin}:hover &,
   ${AcceptedProofPin}:focus-within & {
@@ -2020,22 +2053,22 @@ const ActivityKind = styled.span<{ $kind: CableTelemetry['activity'][number]['ki
 		props.$kind === 'proof'
 			? 'color-mix(in srgb, #a76b00 12%, transparent)'
 			: props.$kind === 'error'
-				? 'color-mix(in srgb, #b42318 10%, transparent)'
-				: `color-mix(in srgb, ${props.theme.colors.nasaGraphic.green1} 10%, transparent)`};
+			? 'color-mix(in srgb, #b42318 10%, transparent)'
+			: `color-mix(in srgb, ${props.theme.colors.nasaGraphic.green1} 10%, transparent)`};
 	border: 1px solid
 		${(props) =>
 			props.$kind === 'proof'
 				? 'color-mix(in srgb, #a76b00 38%, transparent)'
 				: props.$kind === 'error'
-					? 'color-mix(in srgb, #b42318 35%, transparent)'
-					: `color-mix(in srgb, ${props.theme.colors.nasaGraphic.green1} 38%, transparent)`};
+				? 'color-mix(in srgb, #b42318 35%, transparent)'
+				: `color-mix(in srgb, ${props.theme.colors.nasaGraphic.green1} 38%, transparent)`};
 	border-radius: 999px;
 	color: ${(props) =>
 		props.$kind === 'proof'
 			? '#8b5900'
 			: props.$kind === 'error'
-				? '#9f1d14'
-				: props.theme.colors.nasaGraphic.green1} !important;
+			? '#9f1d14'
+			: props.theme.colors.nasaGraphic.green1} !important;
 	font-size: inherit;
 	line-height: 1.15;
 `;

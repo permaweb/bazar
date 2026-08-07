@@ -1,11 +1,9 @@
-import { describe, expect, it } from 'vitest';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { describe, expect, it } from 'vitest';
 
 import {
-	AtomicPurchaseSequence,
 	AtomicOperationErrorAlert,
-	atomicPurchaseSequence,
 	atomicOperationFormError,
 	atomicOperationStateError,
 	atomicOperationValue,
@@ -14,6 +12,8 @@ import {
 	atomicPurchaseFailureStage,
 	atomicPurchaseHasTerminalReservationFailure,
 	atomicPurchaseRecoveryStatus,
+	AtomicPurchaseSequence,
+	atomicPurchaseSequence,
 	externalReservationTransaction,
 	pendingListingMessage,
 } from './App';
@@ -24,7 +24,7 @@ describe('atomic operation error semantics', () => {
 		const alert = renderToStaticMarkup(
 			React.createElement(AtomicOperationErrorAlert, {
 				message: 'The signed transaction is saved in this browser.',
-			}),
+			})
 		);
 		expect(alert).toContain('role="alert"');
 		expect(alert).not.toContain('<button');
@@ -36,13 +36,16 @@ describe('atomic operation error semantics', () => {
 		const signer = 'S'.repeat(43);
 		const transaction = 'T'.repeat(43);
 		const own = pendingListingMessage({ id: transaction, actor: signer, height: 12, timestamp: 1 }, signer);
-		const other = pendingListingMessage({ id: transaction, actor: 'O'.repeat(43), height: 12, timestamp: 1 }, signer);
+		const other = pendingListingMessage(
+			{ id: transaction, actor: 'O'.repeat(43), height: 12, timestamp: 1 },
+			signer
+		);
 
 		expect(own).toBe(
-			'You already submitted listing transaction TTTTTT…TTTTT; waiting for live asset state. No new wallet approval was requested.',
+			'You already submitted listing transaction TTTTTT…TTTTT; waiting for live asset state. No new wallet approval was requested.'
 		);
 		expect(other).toBe(
-			'Another wallet OOOOOO…OOOOO submitted pending listing transaction TTTTTT…TTTTT, but it has not been accepted by live asset state. No new wallet approval was requested.',
+			'Another wallet OOOOOO…OOOOO submitted pending listing transaction TTTTTT…TTTTT, but it has not been accepted by live asset state. No new wallet approval was requested.'
 		);
 	});
 });
@@ -68,7 +71,7 @@ describe('atomic asset operation validation', () => {
 
 	it('uses the normalized recipient for the transfer operation', () => {
 		expect(atomicOperationValue('transfer', '  BLyLiOZptmb-olB8wycvk_ynHiu1SZMKPqswx4KONwc  ')).toBe(
-			'BLyLiOZptmb-olB8wycvk_ynHiu1SZMKPqswx4KONwc',
+			'BLyLiOZptmb-olB8wycvk_ynHiu1SZMKPqswx4KONwc'
 		);
 	});
 
@@ -127,11 +130,11 @@ describe('atomic order actions', () => {
 		expect(atomicOperationStateError('buy', { ...listed, orders: {} }, buyer, order)).toBe('market-state-changed');
 		expect(atomicOperationStateError('cancel', listed, owner, order)).toBe('');
 		expect(atomicOperationStateError('cancel', listed, buyer, order)).toBe('market-state-changed');
-		expect(atomicOperationStateError('transfer', { balances: { [owner]: '1' }, orders: {} } as any, owner, null)).toBe(
-			'',
-		);
+		expect(
+			atomicOperationStateError('transfer', { balances: { [owner]: '1' }, orders: {} } as any, owner, null)
+		).toBe('');
 		expect(atomicOperationStateError('transfer', { balances: {}, orders: {} } as any, owner, null)).toBe(
-			'market-state-changed',
+			'market-state-changed'
 		);
 	});
 });
@@ -142,7 +145,7 @@ describe('atomic purchase failure trace', () => {
 		const sequence = renderToStaticMarkup(
 			React.createElement(AtomicPurchaseSequence, {
 				state: { stage: 'payment-confirming' } as any,
-			}),
+			})
 		);
 
 		expect(steps.map((step) => [step.key, step.label, step.state])).toEqual([
@@ -188,20 +191,20 @@ describe('atomic purchase failure trace', () => {
 			({
 				balances,
 				orders: currentOrder ? { [order.orderId]: currentOrder } : {},
-			}) as any;
+			} as any);
 
 		expect(atomicPurchaseRecoveryStatus(state(order), buyer, order)).toBe('resumable');
 		expect(atomicPurchaseRecoveryStatus(state({ ...order, status: 'reserved', buyer }), buyer, order)).toBe(
-			'resumable',
+			'resumable'
 		);
-		expect(atomicPurchaseRecoveryStatus(state({ ...order, status: 'reserved', buyer: otherBuyer }), buyer, order)).toBe(
-			'blocked',
-		);
+		expect(
+			atomicPurchaseRecoveryStatus(state({ ...order, status: 'reserved', buyer: otherBuyer }), buyer, order)
+		).toBe('blocked');
 		expect(atomicPurchaseRecoveryStatus(state(), buyer, order)).toBe('blocked');
 		expect(
 			atomicPurchaseRecoveryStatus(state(undefined, { [buyer]: '0' }), buyer, order, {
 				payment: { id: 'P'.repeat(43), dispatched: true },
-			}),
+			})
 		).toBe('resumable');
 	});
 
@@ -210,22 +213,22 @@ describe('atomic purchase failure trace', () => {
 		expect(
 			atomicPurchaseFailureStage({
 				registration: { id: 'reservation', dispatched: false },
-			} as any),
+			} as any)
 		).toBe('Reservation dispatch');
 		expect(
 			atomicPurchaseFailureStage({
 				registration: { id: 'reservation', dispatched: true },
-			} as any),
+			} as any)
 		).toBe('Reservation confirmation or acceptance');
 		expect(
 			atomicPurchaseFailureStage({
 				payment: { id: 'payment', dispatched: false },
-			} as any),
+			} as any)
 		).toBe('Payment release');
 		expect(
 			atomicPurchaseFailureStage({
 				payment: { id: 'payment', dispatched: true },
-			} as any),
+			} as any)
 		).toBe('Payment confirmation or ownership');
 	});
 
