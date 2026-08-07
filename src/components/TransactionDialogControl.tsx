@@ -1,6 +1,8 @@
 import React from 'react';
 import { Eye, EyeOff, X } from 'lucide-react';
 
+import { Button } from './Button';
+
 export type TransactionDialogPhase = 'form' | 'approval' | 'working' | 'done' | 'error';
 
 export type TransactionDialogDismissAction =
@@ -77,12 +79,12 @@ export function TransactionDialogControl({
 }) {
   const working = phase === 'working';
   return (
-    <button
+    <Button
       aria-label={working ? 'Hide transaction details' : 'Close dialog'}
       className={`close${working ? ' transaction-hide' : ''}`}
       onClick={onClick}
+      size="custom"
       title={working ? 'Hide transaction details' : 'Close'}
-      type="button"
     >
       {working ? (
         <span className={`transaction-hide-icon${hiding ? ' hiding' : ''}`} aria-hidden="true">
@@ -92,6 +94,6 @@ export function TransactionDialogControl({
       ) : (
         <X className="ui-icon" aria-hidden="true" />
       )}
-    </button>
+    </Button>
   );
 }

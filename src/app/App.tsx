@@ -123,7 +123,9 @@ import { AudioWaveformPlayer } from 'components/AudioWaveformPlayer';
 import { AssetDetailTabs, type AssetDetailTab } from 'components/AssetDetailTabs';
 import { AssetOperationStatus, assetOperationPendingActionLabel } from 'components/AssetOperationStatus';
 import { BazarMark } from 'components/BazarMark';
+import { Button } from 'components/Button';
 import { ConnectWalletButton } from 'components/ConnectWalletButton';
+import { Pagination } from 'components/Pagination';
 import { ErrorPanel } from 'components/ErrorPanel';
 import { Loading } from 'components/Loading';
 import { MarketActivityList } from 'components/MarketActivityList';
@@ -145,7 +147,7 @@ import {
 } from 'components/UnavailableOperationRecovery';
 import { WalletAddress, WalletIdentity } from 'components/WalletAddress';
 import { WalletMenu } from 'components/WalletMenu';
-import { arweaveGatewayFromLocation, arweaveGatewayOverrideFromLocation, gatewayFromLocation } from 'helpers/config';
+import { gatewayFromLocation } from 'helpers/config';
 import { isAudioContentType } from 'helpers/asset-media';
 import { mapConcurrent } from 'helpers/concurrency';
 import { scheduleIdleTask } from 'helpers/idle';
@@ -1474,6 +1476,33 @@ function homeMarketSummaryListed(summary: HomeMarketSummary | undefined) {
 
 export type HomeAssetView = 'all' | 'listed' | 'price-low' | 'price-high';
 
+export type HomeListingActivity = Pick<AssetCandidate, 'processId' | 'height' | 'timestamp'>;
+
+export function compareHomeListingRecency(
+  leftAssetId: string,
+  rightAssetId: string,
+  activityByAsset: ReadonlyMap<string, HomeListingActivity>,
+) {
+  const left = activityByAsset.get(leftAssetId);
+  const right = activityByAsset.get(rightAssetId);
+  if (left && !right) return -1;
+  if (!left && right) return 1;
+  if (!left || !right) return 0;
+  return (
+    right.height - left.height || right.timestamp - left.timestamp || left.processId.localeCompare(right.processId)
+  );
+}
+
+export const HOME_ASSET_PAGE_SIZE = 9;
+const HOME_LISTING_PAGE_LIMIT = 4;
+
+export function homeAssetPage<T>(items: T[], requestedPage: number, pageSize = HOME_ASSET_PAGE_SIZE) {
+  const pageCount = Math.max(1, Math.ceil(items.length / pageSize));
+  const page = Math.min(Math.max(1, requestedPage), pageCount);
+  const start = (page - 1) * pageSize;
+  return { items: items.slice(start, start + pageSize), page, pageCount };
+}
+
 export function homeAssetVisibleForView(summary: HomeMarketSummary | undefined, view: HomeAssetView) {
   return view === 'all' || !summary || summary.status === 'unavailable' || homeMarketSummaryListed(summary);
 }
@@ -1563,6 +1592,7 @@ function Home() {
   const [homeTab, setHomeTab] = React.useState<'discover' | 'collections'>('discover');
   const [assetType, setAssetType] = React.useState<HomeAssetType>('all');
   const [assetView, setAssetView] = React.useState<HomeAssetView>('listed');
+  const [assetPage, setAssetPage] = React.useState(1);
   const computeGateway = gatewayFromLocation();
   const query = new URLSearchParams(search).get('q') ?? '';
   const normalizedQuery = query.trim().toLowerCase();
@@ -1574,6 +1604,9 @@ function Home() {
     return collectionMatchesSearch(collection, normalizedQuery);
   });
   const [verifiedHomeListings, setVerifiedHomeListings] = React.useState<Record<string, AssetSummary[]>>({});
+  const [verifiedHomeListingActivity, setVerifiedHomeListingActivity] = React.useState<
+    Record<string, HomeListingActivity>
+  >({});
   const [portableHomeListings, setPortableHomeListings] = React.useState<ResolvedAsset[]>([]);
   const [portableHomeListingsLoading, setPortableHomeListingsLoading] = React.useState(false);
   const [portableHomeListingsFailure, setPortableHomeListingsFailure] = React.useState<
@@ -1583,17 +1616,61 @@ function Home() {
   const marketShellReady = market.collections.length > 0;
   const marketCollectionsRef = React.useRef(market.collections);
   marketCollectionsRef.current = market.collections;
-  const assets = normalizedQuery
-    ? homeSearchAssets(market.collections, portableHomeListings, normalizedQuery, 10)
+  const loadedAssetLimit =
+    market.collections.reduce((total, collection) => total + collection.assets.length, 0) + portableHomeListings.length;
+  const listingAssetLimit = HOME_ASSET_PAGE_SIZE * HOME_LISTING_PAGE_LIMIT;
+  const assetCandidates = normalizedQuery
+    ? homeSearchAssets(
+        market.collections,
+        portableHomeListings,
+        normalizedQuery,
+        assetView === 'all' ? loadedAssetLimit : listingAssetLimit,
+      )
     : assetView === 'all'
-      ? homeAllAssets(market.collections, 10, portableHomeListings)
-      : homeDiscoveryAssets(market.collections, verifiedHomeListings, 10, portableHomeListings);
+      ? homeAllAssets(market.collections, loadedAssetLimit, portableHomeListings)
+      : homeDiscoveryAssets(market.collections, verifiedHomeListings, listingAssetLimit, portableHomeListings);
+  const [assetPrices, setAssetPrices] = React.useState<Record<string, HomeMarketSummary>>({});
+  const homeListingActivityByAsset = new Map<string, HomeListingActivity>(Object.entries(verifiedHomeListingActivity));
+  for (const result of portableHomeListings) {
+    const current = homeListingActivityByAsset.get(result.asset.id);
+    if (
+      !current ||
+      result.activity.height > current.height ||
+      (result.activity.height === current.height && result.activity.timestamp > current.timestamp)
+    ) {
+      homeListingActivityByAsset.set(result.asset.id, result.activity);
+    }
+  }
+  const displayedAssets = [...assetCandidates]
+    .filter(({ asset }) => {
+      const summary = assetPrices[asset.id];
+      return homeAssetVisibleForView(summary, assetView);
+    })
+    .filter(({ collection }) => homeAssetTypeMatches(collection, assetType))
+    .sort((left, right) => {
+      if (assetView === 'all') return 0;
+      if (assetView === 'listed') {
+        return compareHomeListingRecency(left.asset.id, right.asset.id, homeListingActivityByAsset);
+      }
+      const price = (assetId: string) => {
+        const summary = assetPrices[assetId];
+        if (!summary || summary.status !== 'resolved' || !summary.value) return Number.POSITIVE_INFINITY;
+        return homeMarketPriceValue(summary.value);
+      };
+      const leftPrice = price(left.asset.id);
+      const rightPrice = price(right.asset.id);
+      if (Number.isFinite(leftPrice) !== Number.isFinite(rightPrice)) {
+        return Number.isFinite(leftPrice) ? -1 : 1;
+      }
+      return assetView === 'price-low' ? leftPrice - rightPrice : rightPrice - leftPrice;
+    });
+  const assetPagination = homeAssetPage(displayedAssets, assetPage);
+  const assets = assetView === 'all' ? assetPagination.items : assetCandidates;
   const assetKey = assets.map(({ asset }) => asset.id).join(',');
   const portableHomeListingById = new Map(portableHomeListings.map((result) => [result.asset.id, result]));
   const portableHomeStateKey = portableHomeListings
     .map((result) => `${result.asset.id}:${String(result.state.raw['at-slot'] ?? result.state.swapHeight)}`)
     .join(',');
-  const [assetPrices, setAssetPrices] = React.useState<Record<string, HomeMarketSummary>>({});
   const [publishedDiscoverQuery, setPublishedDiscoverQuery] = React.useState<string | null>(null);
   const collectionKey = collections
     .map((collection) => `${collection.id}:${collection.assets.map((asset) => asset.id).join('.')}`)
@@ -1932,6 +2009,15 @@ function Home() {
               const asset = collectionAsset(collection, processId);
               return asset ? [asset] : [];
             });
+            const activityScan = collectionActivityScans.current.get(collection.id);
+            setVerifiedHomeListingActivity((current) => {
+              const next = { ...current };
+              for (const asset of verifiedListings) {
+                const candidate = activityScan?.candidates.get(asset.id);
+                if (candidate) next[asset.id] = candidate;
+              }
+              return next;
+            });
             setVerifiedHomeListings((current) => {
               const previous = current[collection.id] ?? [];
               if (
@@ -2004,26 +2090,10 @@ function Home() {
       }
     });
   }, [summaryFailures.length, summaryRetrying]);
-  const displayedAssets = [...assets]
-    .filter(({ asset }) => {
-      const summary = assetPrices[asset.id];
-      return homeAssetVisibleForView(summary, assetView);
-    })
-    .filter(({ collection }) => homeAssetTypeMatches(collection, assetType))
-    .sort((left, right) => {
-      if (assetView === 'all' || assetView === 'listed') return 0;
-      const price = (assetId: string) => {
-        const summary = assetPrices[assetId];
-        if (!summary || summary.status !== 'resolved' || !summary.value) return Number.POSITIVE_INFINITY;
-        return homeMarketPriceValue(summary.value);
-      };
-      const leftPrice = price(left.asset.id);
-      const rightPrice = price(right.asset.id);
-      if (Number.isFinite(leftPrice) !== Number.isFinite(rightPrice)) {
-        return Number.isFinite(leftPrice) ? -1 : 1;
-      }
-      return assetView === 'price-low' ? leftPrice - rightPrice : rightPrice - leftPrice;
-    });
+  React.useEffect(() => setAssetPage(1), [assetType, assetView, normalizedQuery]);
+  React.useEffect(() => {
+    if (assetPage !== assetPagination.page) setAssetPage(assetPagination.page);
+  }, [assetPage, assetPagination.page]);
   const collectionResultsReady = homeMarketSummariesReady(
     marketShellLoading,
     collections.map((collection) => collection.id),
@@ -2046,6 +2116,10 @@ function Home() {
     setHomeTab(tab);
     if (marketPaneRef.current) marketPaneRef.current.scrollTop = 0;
   };
+  const selectAssetPage = (page: number) => {
+    setAssetPage(page);
+    marketPaneRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+  };
   return (
     <div className="home-shell">
       <div className="home-main">
@@ -2056,7 +2130,7 @@ function Home() {
               <div className="home-section-heading">
                 <div>
                   <div aria-label="Marketplace view" className="home-market-tabs" role="tablist">
-                    <button
+                    <Button
                       aria-controls="home-discover-panel"
                       aria-selected={homeTab === 'discover'}
                       className="home-market-tab"
@@ -2064,23 +2138,23 @@ function Home() {
                       onClick={() => selectHomeTab('discover')}
                       ref={homeHeadingRef}
                       role="tab"
-                      type="button"
+                      size="small"
                     >
                       <Compass className="ui-icon" aria-hidden="true" />
                       Discover
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                       aria-controls="home-collections-panel"
                       aria-selected={homeTab === 'collections'}
                       className="home-market-tab"
                       id="home-collections-tab"
                       onClick={() => selectHomeTab('collections')}
                       role="tab"
-                      type="button"
+                      size="small"
                     >
                       <LayoutGrid className="ui-icon" aria-hidden="true" />
                       Collections
-                    </button>
+                    </Button>
                   </div>
                   <p>
                     {homeTab === 'discover'
@@ -2279,58 +2353,67 @@ function Home() {
                   role="tabpanel"
                 >
                   {displayedAssets.length || discoverResultsPending ? (
-                    <div className="home-asset-grid">
-                      {displayedAssets.map(({ asset, collection }, index) => {
-                        const price = assetPrices[asset.id];
-                        const pricePending = !price || (assetSummariesRetrying && price.status === 'unavailable');
-                        return (
-                          <Link
-                            key={`${collection.id}-${asset.id}`}
-                            to={`/asset/${collection.id}/${asset.id}`}
-                            onFocus={() => prefetchAssetPage(asset.id)}
-                            onMouseEnter={() => prefetchAssetPage(asset.id)}
-                            onTouchStart={() => prefetchAssetPage(asset.id)}
-                          >
-                            {asset.image ? (
-                              <ArtworkImage
-                                className="home-asset-media"
-                                src={asset.image}
-                                alt=""
-                                fetchPriority={index < 2 ? 'high' : 'auto'}
-                                loading={index < 2 ? 'eager' : 'lazy'}
-                              />
-                            ) : isAudioContentType(asset.contentType) ? (
-                              <AudioArtwork
-                                className="home-asset-media"
-                                contentType={asset.contentType}
-                                name={asset.name}
-                              />
-                            ) : collection.kind === 'names' ? (
-                              <NameArtwork className="home-asset-media" name={asset.name} />
-                            ) : (
-                              <TokenArtwork
-                                className="home-asset-media home-token-art"
-                                ticker={asset.ticker ?? 'Token'}
-                              />
-                            )}
-                            <div className="home-asset-details">
-                              <div>
-                                <strong>{asset.name}</strong>
-                                <span>{collection.name}</span>
+                    <>
+                      <div className="home-asset-grid">
+                        {assetPagination.items.map(({ asset, collection }, index) => {
+                          const price = assetPrices[asset.id];
+                          const pricePending = !price || (assetSummariesRetrying && price.status === 'unavailable');
+                          return (
+                            <Link
+                              key={`${collection.id}-${asset.id}`}
+                              to={`/asset/${collection.id}/${asset.id}`}
+                              onFocus={() => prefetchAssetPage(asset.id)}
+                              onMouseEnter={() => prefetchAssetPage(asset.id)}
+                              onTouchStart={() => prefetchAssetPage(asset.id)}
+                            >
+                              {asset.image ? (
+                                <ArtworkImage
+                                  className="home-asset-media"
+                                  src={asset.image}
+                                  alt=""
+                                  fetchPriority={index < 2 ? 'high' : 'auto'}
+                                  loading={index < 2 ? 'eager' : 'lazy'}
+                                />
+                              ) : isAudioContentType(asset.contentType) ? (
+                                <AudioArtwork
+                                  className="home-asset-media"
+                                  contentType={asset.contentType}
+                                  name={asset.name}
+                                />
+                              ) : collection.kind === 'names' ? (
+                                <NameArtwork className="home-asset-media" name={asset.name} />
+                              ) : (
+                                <TokenArtwork
+                                  className="home-asset-media home-token-art"
+                                  ticker={asset.ticker ?? 'Token'}
+                                />
+                              )}
+                              <div className="home-asset-details">
+                                <div>
+                                  <strong>{asset.name}</strong>
+                                  <span>{collection.name}</span>
+                                </div>
+                                <b className={`home-asset-price${homeMarketSummaryListed(price) ? ' listed' : ''}`}>
+                                  {!pricePending && price ? (
+                                    homeMarketSummaryLabel(price, 'Not listed')
+                                  ) : (
+                                    <HomePendingMarketValue />
+                                  )}
+                                </b>
                               </div>
-                              <b className={`home-asset-price${homeMarketSummaryListed(price) ? ' listed' : ''}`}>
-                                {!pricePending && price ? (
-                                  homeMarketSummaryLabel(price, 'Not listed')
-                                ) : (
-                                  <HomePendingMarketValue />
-                                )}
-                              </b>
-                            </div>
-                          </Link>
-                        );
-                      })}
-                      {discoverResultsPending ? <HomeMarketGhostCard kind="asset" /> : null}
-                    </div>
+                            </Link>
+                          );
+                        })}
+                        {discoverResultsPending ? <HomeMarketGhostCard kind="asset" /> : null}
+                      </div>
+                      <Pagination
+                        ariaLabel="Discover pages"
+                        className="home-asset-pagination"
+                        onPageChange={selectAssetPage}
+                        page={assetPagination.page}
+                        pageCount={assetPagination.pageCount}
+                      />
+                    </>
                   ) : (
                     <div className="home-assets-empty">
                       {assetView === 'all'
@@ -2350,9 +2433,7 @@ function Home() {
 
 function GatewayControl() {
   const computeCurrent = servingNodeOrigin(window.location);
-  const arweaveCurrent = arweaveGatewayFromLocation(window.location);
   const [computeValue, setComputeValue] = React.useState(computeCurrent);
-  const [arweaveValue, setArweaveValue] = React.useState(arweaveGatewayOverrideFromLocation(window.location) ?? '');
   const [open, setOpen] = React.useState(false);
   const [error, setError] = React.useState('');
   const detailsRef = React.useRef<HTMLDetailsElement>(null);
@@ -2385,19 +2466,9 @@ function GatewayControl() {
       setError('Enter an HTTP or HTTPS HyperBEAM gateway, such as arweave.net or localhost:3101.');
       return;
     }
-    const requestedArweave = arweaveValue.trim();
-    const arweaveOrigin = requestedArweave
-      ? normalizeServingNodeOrigin(requestedArweave, window.location.protocol)
-      : null;
-    if (requestedArweave && !arweaveOrigin) {
-      setError('Enter an HTTP or HTTPS Arweave gateway, or leave it blank to use the site gateway.');
-      return;
-    }
     setError('');
     const url = new URL(window.location.href);
     url.searchParams.set('node', computeOrigin);
-    if (arweaveOrigin) url.searchParams.set('arweave-node', arweaveOrigin);
-    else url.searchParams.delete('arweave-node');
     window.location.assign(url);
   }
   return (
@@ -2405,17 +2476,17 @@ function GatewayControl() {
       <summary
         aria-controls="gateway-panel"
         aria-expanded={open}
-        aria-label={`Gateways, compute ${computeCurrent}, Arweave ${arweaveCurrent}`}
+        aria-label={`Compute gateway, ${computeCurrent}`}
         onClick={(event) => {
           event.preventDefault();
           setOpen((currentOpen) => !currentOpen);
         }}
         ref={triggerRef}
         role="button"
-        title={`Compute: ${computeCurrent}\nArweave: ${arweaveCurrent}`}
+        title={`Compute: ${computeCurrent}`}
       >
         <Server className="ui-icon ui-icon--sm" aria-hidden="true" />
-        <span className="gateway-label">Gateways</span>
+        <span className="gateway-label">Gateway</span>
       </summary>
       <div id="gateway-panel">
         <form onSubmit={apply}>
@@ -2432,34 +2503,18 @@ function GatewayControl() {
               value={computeValue}
             />
           </label>
-          <label>
-            Arweave gateway override
-            <input
-              aria-describedby={error ? 'gateway-error' : 'arweave-gateway-help'}
-              aria-invalid={Boolean(error)}
-              onChange={(event) => {
-                setArweaveValue(event.target.value);
-                setError('');
-              }}
-              placeholder={arweaveCurrent}
-              value={arweaveValue}
-            />
-          </label>
-          <span className="gateway-help" id="arweave-gateway-help">
-            Leave blank to use the gateway serving this site.
-          </span>
           {error ? (
             <p className="gateway-error" id="gateway-error" role="alert">
               {error}
             </p>
           ) : null}
           <button className="with-icon" type="submit">
-            <Server className="ui-icon ui-icon--sm" aria-hidden="true" /> Apply gateways
+            <Server className="ui-icon ui-icon--sm" aria-hidden="true" /> Apply gateway
           </button>
         </form>
         <p>
-          Process reads and observer requests use HyperBEAM. Content, pricing, balances, and settlement use the current
-          site gateway unless overridden.
+          Process reads and observer requests use HyperBEAM. Content, pricing, balances, and settlement use the site
+          gateway by default.
         </p>
       </div>
     </details>

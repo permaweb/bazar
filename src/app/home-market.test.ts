@@ -9,11 +9,13 @@ import {
   collectionDefaultsToListed,
   collectionListingScopeVersion,
   compareCollectionAssetNames,
+  compareHomeListingRecency,
   commitHomeActivityBatch,
   commitHomeFloorResult,
   completeHomeActivityScan,
   completeHomeSummaryRetryGroup,
   homeAssetTypeMatches,
+  homeAssetPage,
   homeAssetVisibleForView,
   homeAllAssets,
   homeSummaryRequestKeys,
@@ -270,6 +272,20 @@ describe('Home market summary retries', () => {
     expect(homeMarketPriceValue('Unavailable')).toBe(Number.POSITIVE_INFINITY);
   });
 
+  it('keeps the most recently listed asset at the top of Listed for sale', () => {
+    const activity = new Map([
+      ['older', { processId: 'older', height: 100, timestamp: 200 }],
+      ['newer', { processId: 'newer', height: 101, timestamp: 100 }],
+      ['same-block-newer', { processId: 'same-block-newer', height: 100, timestamp: 300 }],
+    ]);
+
+    expect(
+      ['older', 'unknown', 'same-block-newer', 'newer'].sort((left, right) =>
+        compareHomeListingRecency(left, right, activity),
+      ),
+    ).toEqual(['newer', 'same-block-newer', 'older', 'unknown']);
+  });
+
   it('allows Discover to show all assets without treating unlisted assets as live listings', () => {
     const unlisted: HomeMarketSummary = { status: 'resolved', value: null };
     const listed: HomeMarketSummary = { status: 'resolved', value: '0.001 AR' };
@@ -278,6 +294,21 @@ describe('Home market summary retries', () => {
     expect(homeAssetVisibleForView(unlisted, 'listed')).toBe(false);
     expect(homeAssetVisibleForView(listed, 'listed')).toBe(true);
     expect(homeAssetVisibleForView(listed, 'price-low')).toBe(true);
+  });
+
+  it('paginates Discover assets and clamps pages when filters reduce the result set', () => {
+    const assets = Array.from({ length: 20 }, (_, index) => `asset-${index + 1}`);
+
+    expect(homeAssetPage(assets, 2)).toEqual({
+      items: assets.slice(9, 18),
+      page: 2,
+      pageCount: 3,
+    });
+    expect(homeAssetPage(assets.slice(0, 4), 3)).toEqual({
+      items: assets.slice(0, 4),
+      page: 1,
+      pageCount: 1,
+    });
   });
 
   it('publishes the home mosaic only after every live summary settles', () => {

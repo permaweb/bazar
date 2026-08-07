@@ -1,6 +1,8 @@
 import React from 'react';
 import { Pause, Play } from 'lucide-react';
 
+import { Button } from './Button';
+
 const MIN_WAVEFORM_WIDTH = 720;
 const MAX_WAVEFORM_WIDTH = 12_000;
 const PIXELS_PER_SECOND = 8;
@@ -182,14 +184,14 @@ export function AudioWaveformPlayer({ name, src }: { name: string; src: string }
         ref={audioRef}
         src={playbackSrc}
       />
-      <button
+      <Button
         aria-label={`${playing ? 'Pause' : 'Play'} ${name}`}
         className="audio-waveform-play"
         onClick={togglePlayback}
-        type="button"
+        size="custom"
       >
         {playing ? <Pause aria-hidden="true" /> : <Play aria-hidden="true" />}
-      </button>
+      </Button>
       <div className="audio-waveform-main">
         <div className="audio-waveform-meta">
           <span>

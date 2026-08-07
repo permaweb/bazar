@@ -1,5 +1,7 @@
 import React from 'react';
 
+import { Button } from './Button';
+
 export type AssetDetailTab<Value extends string> = {
   value: Value;
   label: string;
@@ -34,7 +36,7 @@ export function AssetDetailTabs<Value extends string>({
         const selected = active === tab.value;
         const tabId = `${idPrefix}-${tab.value}-tab`;
         return (
-          <button
+          <Button
             aria-controls={tab.panelId}
             aria-selected={selected}
             className="home-market-tab asset-detail-tab"
@@ -52,12 +54,12 @@ export function AssetDetailTabs<Value extends string>({
               });
             }}
             role="tab"
+            size="small"
             tabIndex={selected ? 0 : -1}
-            type="button"
           >
             {tab.icon}
             {tab.label}
-          </button>
+          </Button>
         );
       })}
     </div>

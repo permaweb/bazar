@@ -74,8 +74,8 @@ http://127.0.0.1:3000/?node=http://127.0.0.1:3101#/asset/…
 The `node` parameter selects process computation and the HyperBEAM relay used
 for browser-safe checks against independent Arweave nodes. Arweave API requests
 use the gateway serving the site. During local development they fall back to
-`https://arweave.net`; set `VITE_ARWEAVE_GATEWAY` or use the separate
-`arweave-node` field in the header when another Arweave gateway is required:
+`https://arweave.net`; set `VITE_ARWEAVE_GATEWAY` or append the advanced
+`arweave-node` query parameter when another Arweave gateway is required:
 
 ```text
 http://127.0.0.1:3000/?node=http://127.0.0.1:3101&arweave-node=http://127.0.0.1:1984#/asset/…

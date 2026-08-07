@@ -4,6 +4,7 @@ import React from 'react';
 import { type Observer, type ObserverView, type PurchaseTransaction } from 'weave-wrangler';
 
 import { TxAddress } from 'components/atoms/TxAddress';
+import { Button } from 'components/Button';
 import {
   elapsedLabel,
   MAX_VISIBLE_MINOR_EVENT_MARKERS,
@@ -301,9 +302,9 @@ export function ArweaveTransactionSync({
                 </small>
               </span>
               <S.SkipButtonWrap>
-                <button aria-describedby={skipTooltipId} onClick={onSkip} type="button">
+                <Button aria-describedby={skipTooltipId} onClick={onSkip} size="custom">
                   {skipKind === 'yolo' ? language.transactionSyncYolo : language.transactionSyncSkip}
-                </button>
+                </Button>
                 <S.SkipTooltip id={skipTooltipId} role="tooltip">
                   {language.transactionSyncSkipTooltip}
                 </S.SkipTooltip>
