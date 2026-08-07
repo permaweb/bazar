@@ -64,8 +64,10 @@ npm install
 npm run start
 ```
 
-Vite serves the application on `http://127.0.0.1:3000` by default. Select a
-compute gateway in the header or append a `node` query parameter:
+Vite serves the application on `http://127.0.0.1:3000` by default. Development
+uses `https://arweave.net` as its compute gateway instead of the rate-limited
+production Alpha gateway. Select another compute gateway in the header, set
+`VITE_COMPUTE_GATEWAY`, or append a `node` query parameter:
 
 ```text
 http://127.0.0.1:3000/?node=http://127.0.0.1:3101#/asset/…

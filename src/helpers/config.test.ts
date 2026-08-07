@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest';
 
 import {
   DEFAULT_ARWEAVE_GATEWAY,
+  PRODUCTION_COMPUTE_GATEWAY,
   arweaveClientConfig,
   arweaveGatewayFromLocation,
   arweaveGatewayOverrideFromLocation,
   arweaveGraphqlEndpoint,
+  computeGatewayForEnvironment,
   gatewayFromLocation,
 } from './config';
 
@@ -21,6 +23,12 @@ function location(overrides: Partial<Location> = {}): Location {
 }
 
 describe('Arweave gateway routing', () => {
+  it('keeps local development off the production compute gateway by default', () => {
+    expect(computeGatewayForEnvironment(true)).toBe(DEFAULT_ARWEAVE_GATEWAY);
+    expect(computeGatewayForEnvironment(false)).toBe(PRODUCTION_COMPUTE_GATEWAY);
+    expect(computeGatewayForEnvironment(true, 'http://127.0.0.1:3101/path')).toBe('http://127.0.0.1:3101');
+  });
+
   it('uses the gateway serving a deployed app', () => {
     expect(arweaveGatewayFromLocation(location())).toBe('https://bazar.arweave.net');
     expect(

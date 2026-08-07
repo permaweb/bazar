@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { DEFAULT_COMPUTE_GATEWAY } from 'helpers/config';
+
 const control = vi.hoisted(() => ({
   dispatchAborted: false,
   networkOptions: undefined as Record<string, unknown> | undefined,
@@ -89,7 +91,7 @@ describe('transaction dispatch observation', () => {
       node: 'https://lcno4nkkk4gsb5krqpa6irlzbuurmnzk4entikswauifsbryldfa.arweave.net',
       minObservers: 3,
       maxObservers: 7,
-      'relay-with': 'https://alpha.neo.zephyrdev.xyz',
+      'relay-with': DEFAULT_COMPUTE_GATEWAY,
     });
   });
 

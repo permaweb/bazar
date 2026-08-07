@@ -1,9 +1,16 @@
 const configuredArweaveGateway = import.meta.env.VITE_ARWEAVE_GATEWAY?.trim();
+const configuredComputeGateway = import.meta.env.VITE_COMPUTE_GATEWAY?.trim();
 
 export const DEFAULT_ARWEAVE_GATEWAY = configuredArweaveGateway
   ? new URL(configuredArweaveGateway).origin
   : 'https://arweave.net';
-export const DEFAULT_COMPUTE_GATEWAY = 'https://alpha.neo.zephyrdev.xyz';
+export const PRODUCTION_COMPUTE_GATEWAY = 'https://alpha.neo.zephyrdev.xyz';
+
+export function computeGatewayForEnvironment(development: boolean, configured = configuredComputeGateway) {
+  return configured ? new URL(configured).origin : development ? DEFAULT_ARWEAVE_GATEWAY : PRODUCTION_COMPUTE_GATEWAY;
+}
+
+export const DEFAULT_COMPUTE_GATEWAY = computeGatewayForEnvironment(import.meta.env.DEV);
 export const NAMES_NAMESPACE_ID =
   import.meta.env.VITE_NAMES_NAMESPACE_ID ?? 'fQXYPE9MAcfI1wV2CwJ3sJIhgT9btBOlYFOKFDGhAs0';
 export const AO_MAINNET = { app1: DEFAULT_COMPUTE_GATEWAY };

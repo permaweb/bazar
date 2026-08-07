@@ -304,8 +304,11 @@ export const RaceShell = styled.div<{ $height: number; $embedded: boolean }>`
     props.$embedded ? '100%' : 'calc(100% + var(--dialog-gutter, 48px) + var(--dialog-gutter, 48px))'};
   height: auto;
   aspect-ratio: 700 / 320;
+  max-height: ${(props) => (props.$embedded ? 'none' : 'max(180px, calc(100dvh - 560px))')};
   margin: ${(props) => (props.$embedded ? '0 auto' : '-90px var(--dialog-gutter-negative, -48px) -16px')};
-  transition: width 240ms ease;
+  transition:
+    width 240ms ease,
+    max-height 240ms ease;
 
   @media (max-width: 680px) {
     margin: ${(props) => (props.$embedded ? '0 auto' : '-48px var(--dialog-gutter-negative, -24px) -10px')};

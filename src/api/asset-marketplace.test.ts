@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import { DEFAULT_COMPUTE_GATEWAY } from 'helpers/config';
+
 import {
   bestAskOfAsset,
   compareOrderUnitPrice,
@@ -36,9 +38,7 @@ function assignment(slot: number, transactionId: string) {
 
 describe('servingNodeOrigin', () => {
   it('uses the default compute gateway unless an explicit node is selected', () => {
-    expect(servingNodeOrigin({ protocol: 'http:', hostname: '127.0.0.1', port: '3000' })).toBe(
-      'https://alpha.neo.zephyrdev.xyz',
-    );
+    expect(servingNodeOrigin({ protocol: 'http:', hostname: '127.0.0.1', port: '3000' })).toBe(DEFAULT_COMPUTE_GATEWAY);
     expect(
       servingNodeOrigin({
         protocol: 'http:',
@@ -50,7 +50,7 @@ describe('servingNodeOrigin', () => {
   });
 
   it('uses the default gateway instead of the site hosting origin', () => {
-    expect(servingNodeOrigin({ protocol: 'https:', hostname: 'arweave.net' })).toBe('https://alpha.neo.zephyrdev.xyz');
+    expect(servingNodeOrigin({ protocol: 'https:', hostname: 'arweave.net' })).toBe(DEFAULT_COMPUTE_GATEWAY);
   });
 });
 

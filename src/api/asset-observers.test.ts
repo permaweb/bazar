@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
+import { DEFAULT_COMPUTE_GATEWAY } from 'helpers/config';
+
 import { assetObserverNetworkOptions } from './asset-observers';
 
 function location(overrides: Partial<Location>): Location {
@@ -43,7 +45,7 @@ describe('assetObserverNetworkOptions', () => {
     );
 
     expect(options.node).toBe('https://lcno4nkkk4gsb5krqpa6irlzbuurmnzk4entikswauifsbryldfa.arweave.net');
-    expect(options['relay-with']).toBe('https://alpha.neo.zephyrdev.xyz');
+    expect(options['relay-with']).toBe(DEFAULT_COMPUTE_GATEWAY);
   });
 
   it('uses an independently selected Arweave gateway for observer discovery', () => {
