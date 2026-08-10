@@ -2,6 +2,7 @@ import type { WeaveNetworkOptions } from 'weave-wrangler';
 
 import { AO_MAINNET, arweaveGatewayFromLocation, gatewayFromLocation } from 'helpers/config';
 
+import { aoClient } from './ao';
 import { ArweaveObserverNetwork } from './arweave-observers';
 import { ARWEAVE_OBSERVER_HEALTHY_TARGET } from './observer-policy';
 
@@ -25,22 +26,22 @@ export function assetObserverNetworkOptions(location: Location = window.location
 	const hasSelectedRelay =
 		new URLSearchParams(location.search).has('node') || new URLSearchParams(hashSearch).has('node');
 	const isLocalDevelopment = ['localhost', '127.0.0.1', '[::1]', '::1'].includes(location.hostname);
+	const relay = hasSelectedRelay ? gatewayFromLocation(location) : AO_MAINNET.app1;
 
 	return {
+		ao: aoClient(relay),
 		node: arweaveGatewayFromLocation(location),
 		minObservers: 3,
 		syncTolerance: 2,
 		maxObservers: ARWEAVE_OBSERVER_HEALTHY_TARGET,
-		...(isLocalDevelopment && !hasSelectedRelay
-			? { pageProtocol: location.protocol }
-			: { 'relay-with': hasSelectedRelay ? gatewayFromLocation(location) : AO_MAINNET.app1 }),
+		...(isLocalDevelopment && !hasSelectedRelay ? { pageProtocol: location.protocol } : { 'relay-with': relay }),
 	};
 }
 
 function observerNetworkKey(options: WeaveNetworkOptions): string {
 	return JSON.stringify(
 		Object.entries(options)
-			.filter(([, value]) => value !== undefined)
+			.filter(([key, value]) => key !== 'ao' && value !== undefined)
 			.sort(([left], [right]) => left.localeCompare(right))
 	);
 }

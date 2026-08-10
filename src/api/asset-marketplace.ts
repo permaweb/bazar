@@ -1,6 +1,6 @@
 import { DEFAULT_COMPUTE_GATEWAY } from 'helpers/config';
 
-import { aoPeerFetch } from './ao-peer-fetch';
+import { aoFetch } from './ao';
 
 export type SwapOrderStatus = 'open' | 'reserved' | 'settled' | 'cancelled' | 'expired';
 
@@ -140,8 +140,8 @@ export async function readAssetState(
 	} = {}
 ): Promise<ComputeResult> {
 	if (!ADDRESS.test(processId)) throw new TypeError('invalid-asset-process-id');
-	const fetcher = aoPeerFetch(options.fetch);
 	const provider = currentServingNode();
+	const fetcher = aoFetch(provider, options.fetch);
 	const state = await readState(processId, provider, fetcher, options);
 	return {
 		state,
@@ -160,8 +160,8 @@ export async function readAssetStateAtSlot(
 	if (!ADDRESS.test(processId) || !Number.isSafeInteger(slot) || slot < 0) {
 		throw new TypeError('invalid-process-slot');
 	}
-	const fetcher = aoPeerFetch(options.fetch);
 	const provider = currentServingNode();
+	const fetcher = aoFetch(provider, options.fetch);
 	const state = await readState(processId, provider, fetcher, { ...options, slot });
 	if (assetStateSlot(state) !== slot) throw new Error('historical-state-slot-mismatch');
 	return { state, provider, verifiedAt: Date.now(), maxAge: 0 };
@@ -184,8 +184,8 @@ export async function readProcessAssignments(
 	) {
 		throw new TypeError('invalid-process-schedule-window');
 	}
-	const fetcher = aoPeerFetch(options.fetch);
 	const provider = currentServingNode();
+	const fetcher = aoFetch(provider, options.fetch);
 	const base = provider ? `${provider}/` : '/';
 	const paths = [
 		`${base}${processId}~process@1.0/schedule&from=${fromSlot}&to=${toSlot}/assignments?require-codec=json%401.0&accept-bundle=true`,
@@ -227,7 +227,7 @@ export async function waitForAssetState(
 		onAttempt?: (provider: string, attempt: number, total: number) => void;
 	} = {}
 ): Promise<ComputeResult> {
-	const fetcher = aoPeerFetch(options.fetch);
+	const fetcher = aoFetch(currentServingNode(), options.fetch);
 	const startedAt = Date.now();
 	const timeout = options.timeout ?? 180_000;
 	let attempt = 0;

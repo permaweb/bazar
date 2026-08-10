@@ -11,9 +11,14 @@ import {
 } from 'weave-wrangler';
 
 import { createArweaveClient } from 'helpers/arweave';
-import { arweaveClientConfig, arweaveGatewayFromLocation } from 'helpers/config';
+import {
+	arweaveClientConfig,
+	arweaveGatewayFromLocation,
+	DEFAULT_COMPUTE_GATEWAY,
+	gatewayFromLocation,
+} from 'helpers/config';
 
-import { aoPeerFetch } from './ao-peer-fetch';
+import { aoFetch } from './ao';
 import {
 	type AssetState,
 	assetStateSlot,
@@ -209,7 +214,8 @@ export class AssetTransactionClient {
 	constructor(options: AssetTransactionClientOptions = {}) {
 		this.#wallet = options.wallet ?? globalThis.window?.arweaveWallet;
 		this.#fetch = options.fetch ?? globalThis.fetch.bind(globalThis);
-		this.#peerFetch = aoPeerFetch(options.fetch);
+		const computeGateway = typeof window === 'undefined' ? DEFAULT_COMPUTE_GATEWAY : gatewayFromLocation();
+		this.#peerFetch = aoFetch(computeGateway, options.fetch);
 		this.#arweave = options.arweave;
 		this.#gateway = options.gateway ?? arweaveGatewayFromLocation();
 		this.#storage = options.storage ?? globalThis.window?.localStorage;

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { DEFAULT_COMPUTE_GATEWAY } from 'helpers/config';
 
+import { aoClient } from './ao';
 import { assetObserverNetworkOptions } from './asset-observers';
 
 function location(overrides: Partial<Location>): Location {
@@ -21,6 +22,7 @@ describe('assetObserverNetworkOptions', () => {
 
 		expect(options.node).toBe('https://arweave.net');
 		expect(options['relay-with']).toBe('http://127.0.0.1:3101');
+		expect(options.ao).toBe(aoClient('http://127.0.0.1:3101'));
 		expect(options.minObservers).toBe(3);
 		expect(options.maxObservers).toBe(7);
 	});
