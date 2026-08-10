@@ -14,8 +14,8 @@ import { createArweaveClient } from 'helpers/arweave';
 import {
 	arweaveClientConfig,
 	arweaveGatewayFromLocation,
-	DEFAULT_COMPUTE_GATEWAY,
-	gatewayFromLocation,
+	DEFAULT_COMPUTE_GATEWAYS,
+	gatewaysFromLocation,
 } from 'helpers/config';
 
 import { aoFetch } from './ao';
@@ -214,8 +214,8 @@ export class AssetTransactionClient {
 	constructor(options: AssetTransactionClientOptions = {}) {
 		this.#wallet = options.wallet ?? globalThis.window?.arweaveWallet;
 		this.#fetch = options.fetch ?? globalThis.fetch.bind(globalThis);
-		const computeGateway = typeof window === 'undefined' ? DEFAULT_COMPUTE_GATEWAY : gatewayFromLocation();
-		this.#peerFetch = aoFetch(computeGateway, options.fetch);
+		const computeGateways = typeof window === 'undefined' ? DEFAULT_COMPUTE_GATEWAYS : gatewaysFromLocation();
+		this.#peerFetch = aoFetch(computeGateways, options.fetch);
 		this.#arweave = options.arweave;
 		this.#gateway = options.gateway ?? arweaveGatewayFromLocation();
 		this.#storage = options.storage ?? globalThis.window?.localStorage;
