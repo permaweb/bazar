@@ -75,6 +75,7 @@ import { WalletAddress, WalletIdentity } from 'components/WalletAddress';
 import { optionalMotionBehavior } from 'helpers/motion';
 import { useWallet } from 'providers/WalletProvider';
 
+import { MarketSelect } from './App';
 import {
 	marketplaceCodedError,
 	marketplaceErrorMessage as errorMessage,
@@ -3058,24 +3059,16 @@ export function FungiblePurchaseReceiptNavigator({
 	);
 	const order = orders[activeIndex];
 	const settled = purchaseStates[order.orderId];
+	const receiptOptions = fungiblePurchaseReceiptOptions(orders, state);
 	return (
 		<div className="settlement-receipts">
 			<div className="settlement-receipt-navigation">
-				<label>
-					<span>Settlement receipt</span>
-					<select
-						aria-label={`Choose a settlement receipt; current seller ${order.creator}`}
-						onChange={(event) => onSelect(event.target.value)}
-						value={order.orderId}
-					>
-						{orders.map((candidate, index) => (
-							<option key={candidate.orderId} value={candidate.orderId}>
-								Listing {index + 1} · {tokenLabel(candidate.quantity, state)} ·{' '}
-								{short(candidate.creator)}
-							</option>
-						))}
-					</select>
-				</label>
+				<MarketSelect
+					label="Settlement receipt"
+					onChange={onSelect}
+					options={receiptOptions}
+					value={order.orderId}
+				/>
 				<span aria-live="polite">
 					{activeIndex + 1} of {orders.length}
 				</span>
@@ -3139,6 +3132,13 @@ export function FungiblePurchaseReceiptNavigator({
 			) : null}
 		</div>
 	);
+}
+
+export function fungiblePurchaseReceiptOptions(orders: SwapOrder[], state: AssetState) {
+	return orders.map((order, index) => ({
+		value: order.orderId,
+		label: `Listing ${index + 1} · ${tokenLabel(order.quantity, state)} · ${short(order.creator)}`,
+	}));
 }
 
 export function FungibleSettlementRecoveryPanel({

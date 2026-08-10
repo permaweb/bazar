@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import type { SwapOrder } from 'api/asset-marketplace';
+import type { AssetState, SwapOrder } from 'api/asset-marketplace';
 
 import {
+	atomicPurchaseRecoveryCanBeDiscarded,
 	deriveFungibleOperationActivities,
 	deriveOperationActivities,
 	discoverFungibleOperationActivities,
@@ -10,11 +11,13 @@ import {
 	FUNGIBLE_OPERATION_ACTIVITY_STORAGE_KEY,
 	fungibleOperationActivityId,
 	type FungibleOperationActivitySummary,
+	fungiblePurchaseRecoveryCanBeDiscarded,
 	loadFungibleOperationActivities,
 	loadOperationActivities,
 	mergeFungibleOperationActivities,
 	OPERATION_ACTIVITY_STORAGE_KEY,
 	type OperationActivity,
+	operationRecoveryCanStillApply,
 	reduceFungibleRuntimeActivities,
 	removeFungibleOperationActivity,
 	saveFungibleOperationActivities,
@@ -24,6 +27,34 @@ import {
 
 const owner = 'A'.repeat(43);
 const otherOwner = 'B'.repeat(43);
+const order: SwapOrder = {
+	orderId: 'O'.repeat(43),
+	creator: owner,
+	recipient: owner,
+	asking: '1000',
+	deposit: '50',
+	minimumFee: '25',
+	deadline: 100,
+	createdAt: 10,
+	quantity: '1000',
+	status: 'open',
+};
+
+function assetState(overrides: Partial<AssetState> = {}): AssetState {
+	return {
+		device: 'token@1.0',
+		name: 'Test asset',
+		ticker: 'TEST',
+		denomination: 0,
+		totalSupply: '1',
+		balances: { [owner]: '1' },
+		orders: {},
+		swapHeight: 0,
+		value: null,
+		raw: {},
+		...overrides,
+	};
+}
 
 class MemoryStorage {
 	readonly values = new Map<string, string>();
@@ -187,6 +218,100 @@ describe('operation activity persistence', () => {
 		expect(discoverOperationActivities(storage, owner, [])).toMatchObject([
 			{ asset: { id: 'asset-1', name: 'Permanent Strata #001' }, collectionId: 'collection-1' },
 		]);
+	});
+});
+
+describe('live operation activity reconciliation', () => {
+	it('drops a cancellation recovery after its order is no longer open', () => {
+		const recovery = { kind: 'cancel', order, txId: 'C'.repeat(43) };
+		expect(
+			operationRecoveryCanStillApply(
+				assetState({ orders: { [order.orderId]: order } }),
+				owner,
+				recovery,
+				'atomic'
+			)
+		).toBe(true);
+		expect(
+			operationRecoveryCanStillApply(
+				assetState({ orders: { [order.orderId]: { ...order, status: 'cancelled' } } }),
+				owner,
+				recovery,
+				'atomic'
+			)
+		).toBe(false);
+		expect(operationRecoveryCanStillApply(assetState(), owner, recovery, 'atomic')).toBe(false);
+	});
+
+	it('drops a listing recovery once its transaction is present in live state', () => {
+		const txId = 'S'.repeat(43);
+		const recovery = { kind: 'sell', txId, quantity: '2.5' };
+		expect(operationRecoveryCanStillApply(assetState(), owner, recovery, 'atomic')).toBe(true);
+		expect(
+			operationRecoveryCanStillApply(
+				assetState({ orders: { [txId]: { ...order, orderId: txId, status: 'expired' } } }),
+				owner,
+				recovery,
+				'atomic'
+			)
+		).toBe(false);
+		expect(
+			operationRecoveryCanStillApply(
+				assetState({
+					denomination: 1,
+					totalSupply: '1000',
+					balances: { [owner]: '100' },
+					orders: { [txId]: { ...order, orderId: txId, quantity: '25' } },
+				}),
+				owner,
+				recovery,
+				'fungible'
+			)
+		).toBe(false);
+	});
+
+	it('retains only purchases whose order is available or whose seller payment was dispatched', () => {
+		const missingOrderState = assetState({ totalSupply: '1000', balances: { [owner]: '1000' } });
+		expect(
+			atomicPurchaseRecoveryCanBeDiscarded(missingOrderState, otherOwner, order, {
+				registration: { id: 'R'.repeat(43), dispatched: true },
+			})
+		).toBe(true);
+		expect(
+			atomicPurchaseRecoveryCanBeDiscarded(missingOrderState, otherOwner, order, {
+				registration: { id: 'R'.repeat(43), dispatched: true },
+				payment: { id: 'P'.repeat(43), dispatched: true },
+			})
+		).toBe(false);
+		expect(
+			atomicPurchaseRecoveryCanBeDiscarded(
+				assetState({ orders: { [order.orderId]: order } }),
+				otherOwner,
+				order,
+				{ registration: { id: 'R'.repeat(43), dispatched: true } }
+			)
+		).toBe(false);
+
+		const batch = {
+			entries: [
+				{
+					order,
+					fillQuantity: order.quantity,
+					snapshot: { registration: { id: 'R'.repeat(43), dispatched: true } },
+				},
+			],
+		};
+		expect(fungiblePurchaseRecoveryCanBeDiscarded(missingOrderState, otherOwner, batch)).toBe(true);
+		expect(
+			fungiblePurchaseRecoveryCanBeDiscarded(missingOrderState, otherOwner, {
+				entries: [
+					{
+						...batch.entries[0],
+						snapshot: { payment: { id: 'P'.repeat(43), dispatched: true } },
+					},
+				],
+			})
+		).toBe(false);
 	});
 });
 

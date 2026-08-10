@@ -25,6 +25,7 @@ import {
 	fungibleOrderActionLabel,
 	FungiblePurchaseComposer,
 	FungiblePurchaseReceiptNavigator,
+	fungiblePurchaseReceiptOptions,
 	FungiblePurchaseSequence,
 	fungiblePurchaseSequence,
 	FungibleSettlementRecoveryPanel,
@@ -255,6 +256,15 @@ describe('fungible operation error semantics', () => {
 				},
 			])
 		) as unknown as Record<string, PurchaseState>;
+		const receiptOptions = fungiblePurchaseReceiptOptions(orders, {
+			denomination: 0,
+			ticker: 'WEAVE',
+		} as AssetState);
+		expect(receiptOptions).toHaveLength(512);
+		expect(receiptOptions[511]).toEqual({
+			value: orders[511].orderId,
+			label: `Listing 512 · 1 WEAVE · ${orders[511].creator.slice(0, 6)}…${orders[511].creator.slice(-5)}`,
+		});
 		const receipt = renderToStaticMarkup(
 			React.createElement(FungiblePurchaseReceiptNavigator, {
 				activeOrderId: orders[511].orderId,
@@ -265,7 +275,8 @@ describe('fungible operation error semantics', () => {
 			})
 		);
 		expect(receipt.match(/<section/g)).toHaveLength(1);
-		expect(receipt.match(/<option/g)).toHaveLength(512);
+		expect(receipt).toContain('class="market-select"');
+		expect(receipt).not.toContain('<select');
 		expect(receipt).toContain('Settlement receipt 512 of 512');
 		expect(receipt).toContain(orders[511].creator);
 		expect(receipt).toContain(purchaseStates[orders[511].orderId].registration?.id);

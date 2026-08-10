@@ -1,20 +1,21 @@
-import { collectionAsset, type AssetSummary, type Collection } from './collections';
-import { assetFromMintState, CREATED_COLLECTION_ID, CREATED_COLLECTION_NAME } from './asset-mint';
+import { isSupportedAssetContentType } from 'helpers/asset-media';
 import { arweaveGraphqlEndpoint } from 'helpers/config';
+
 import {
-	liveOrderOfAsset,
-	listedBalanceOf,
+	type AssetState,
+	assetStateSlot,
+	type ComputeResult,
 	liquidBalanceOf,
+	listedBalanceOf,
+	liveOrderOfAsset,
+	type ProcessAssignment,
 	readAssetState,
 	readAssetStateAtSlot,
 	readProcessAssignments,
-	assetStateSlot,
-	type AssetState,
-	type ComputeResult,
-	type ProcessAssignment,
 } from './asset-marketplace';
+import { assetFromMintState, CREATED_COLLECTION_ID, CREATED_COLLECTION_NAME } from './asset-mint';
+import { type AssetSummary, type Collection, collectionAsset } from './collections';
 import { fetchJsonWithDeadline } from './fetch-with-deadline';
-import { isSupportedAssetContentType } from 'helpers/asset-media';
 
 const ADDRESS = /^[A-Za-z0-9_-]{43}$/;
 const GRAPHQL_PAGE_SIZE = 100;
@@ -78,18 +79,18 @@ type PurchaseProofOptions = {
 		processId: string,
 		fromSlot: number,
 		toSlot: number,
-		options?: { signal?: AbortSignal },
+		options?: { signal?: AbortSignal }
 	) => Promise<ProcessAssignment[]>;
 	readAtSlot?: (processId: string, slot: number, options?: { signal?: AbortSignal }) => Promise<ComputeResult>;
 };
 
 export async function confirmPurchaseActivity(
 	events: CollectionActivityEvent[],
-	options: PurchaseProofOptions = {},
+	options: PurchaseProofOptions = {}
 ): Promise<CollectionActivityEvent[]> {
 	const purchases = events.filter(
 		(event) =>
-			event.action === 'register-interest' && ADDRESS.test(event.actor) && ADDRESS.test(event.orderId ?? ''),
+			event.action === 'register-interest' && ADDRESS.test(event.actor) && ADDRESS.test(event.orderId ?? '')
 	);
 	if (!purchases.length) return events;
 	const readCurrent = options.readCurrent ?? ((processId, signal) => readAssetState(processId, { signal }));
@@ -111,7 +112,7 @@ export async function confirmPurchaseActivity(
 		const firstSlot = Math.max(0, currentSlot - maxScheduleSlots + 1);
 		const assignments: ProcessAssignment[] = [];
 		const earliestRegistrationHeight = Math.min(
-			...processEvents.map((event) => event.height).filter((height) => height > 0),
+			...processEvents.map((event) => event.height).filter((height) => height > 0)
 		);
 		for (let toSlot = currentSlot; toSlot >= firstSlot; toSlot -= 100) {
 			const fromSlot = Math.max(firstSlot, toSlot - 99);
@@ -153,7 +154,7 @@ export async function confirmPurchaseActivity(
 							processId,
 							paymentId,
 							event.actor,
-							expected,
+							expected
 						)
 					) {
 						proofs.set(event.id, { transactionId: paymentId, height: assignment.blockHeight });
@@ -171,7 +172,7 @@ export async function confirmPurchaseActivity(
 				const group = pendingGroups[nextGroup++];
 				await verifyGroup(...group);
 			}
-		}),
+		})
 	);
 	const seenPayments = new Set<string>();
 	return events
@@ -424,7 +425,7 @@ type AtomicAssetSearchOptions = Pick<CandidateOptions, 'fetch' | 'graphql' | 're
 
 export async function searchBazarAtomicAssetsByName(
 	query: string,
-	options: AtomicAssetSearchOptions = {},
+	options: AtomicAssetSearchOptions = {}
 ): Promise<Array<{ asset: AssetSummary; collection: Collection }>> {
 	const name = query.trim();
 	if (!name) return [];
@@ -444,7 +445,7 @@ export async function searchBazarAtomicAssetsByName(
 		{
 			timeoutMs: options.requestTimeoutMs,
 			timeoutError: 'asset-search-graphql-timeout',
-		},
+		}
 	);
 	if (!response.ok) throw new Error(`asset-search-graphql-${response.status}`);
 	if (!payload) throw new Error('asset-search-graphql-empty');
@@ -453,7 +454,7 @@ export async function searchBazarAtomicAssetsByName(
 	return connection.edges.flatMap(({ node }) => {
 		if (!atomicProcessNode(node)) return [];
 		const tags = Object.fromEntries(
-			(node.tags ?? []).map(({ name: tagName, value }) => [tagName.toLowerCase(), value]),
+			(node.tags ?? []).map(({ name: tagName, value }) => [tagName.toLowerCase(), value])
 		);
 		const asset = assetFromMintState(node.id, tags);
 		if (!asset || asset.name.toLowerCase() !== name.toLowerCase()) return [];
@@ -494,7 +495,7 @@ export function createWalletCandidateScan(address: string, graphql = arweaveGrap
 
 export async function discoverWalletAssetCandidates(
 	address: string,
-	options: WalletCandidateOptions = {},
+	options: WalletCandidateOptions = {}
 ): Promise<AssetCandidate[]> {
 	if (!ADDRESS.test(address)) throw new TypeError('invalid-wallet-address');
 	const fetcher = options.fetch ?? globalThis.fetch.bind(globalThis);
@@ -505,7 +506,7 @@ export async function discoverWalletAssetCandidates(
 	}
 	const requestPage = async (
 		active: Set<WalletCandidateAlias>,
-		cursors: Record<WalletCandidateAlias, string | null>,
+		cursors: Record<WalletCandidateAlias, string | null>
 	) => {
 		const requestedAliases = [...active];
 		const { response, body: payload } = await fetchJsonWithDeadline<any>(
@@ -537,7 +538,7 @@ export async function discoverWalletAssetCandidates(
 			{
 				timeoutMs: options.requestTimeoutMs,
 				timeoutError: 'asset-discovery-graphql-timeout',
-			},
+			}
 		);
 		if (!response.ok) throw new Error(`asset-discovery-graphql-${response.status}`);
 		if (!payload) throw new Error('asset-discovery-graphql-empty');
@@ -548,13 +549,13 @@ export async function discoverWalletAssetCandidates(
 				requestedAliases.map((alias) => [
 					alias,
 					decodeGraphqlConnection(payload, alias, 'asset-discovery-graphql-schema'),
-				]),
+				])
 			),
 		};
 	};
 	const pageUpdates = (
 		requestedAliases: WalletCandidateAlias[],
-		connections: Map<WalletCandidateAlias, GraphqlConnection>,
+		connections: Map<WalletCandidateAlias, GraphqlConnection>
 	) => {
 		const processIds = new Set<string>();
 		const updates = new Map<string, AssetCandidate>();
@@ -564,8 +565,8 @@ export async function discoverWalletAssetCandidates(
 					alias === 'initiallyHeld'
 						? candidateFromNode(edge.node, 'initial-holder', address, false)
 						: alias === 'marketActions'
-							? candidateFromNode(edge.node, 'market-action', address, true)
-							: candidateFromNode(edge.node, 'transfer', address, false);
+						? candidateFromNode(edge.node, 'market-action', address, true)
+						: candidateFromNode(edge.node, 'transfer', address, false);
 				if (!candidate) continue;
 				if (!updates.has(candidate.processId)) {
 					const existing = scan.found.get(candidate.processId);
@@ -596,7 +597,7 @@ export async function discoverWalletAssetCandidates(
 				nextCursors[alias] = advanceGraphqlCursor(
 					connection,
 					nextVisited[alias],
-					'asset-discovery-pagination-stalled',
+					'asset-discovery-pagination-stalled'
 				);
 			}
 		}
@@ -665,13 +666,13 @@ export async function discoverWalletAssetCandidates(
 						nextCursors[alias] = advanceGraphqlCursor(
 							connection,
 							nextVisited[alias],
-							'asset-discovery-head-pagination-stalled',
+							'asset-discovery-head-pagination-stalled'
 						);
 					}
 				}
 				const page = pageUpdates(requestedAliases, connections);
 				await options.onPage?.(
-					sortCandidates([...page.processIds].map((processId) => page.updates.get(processId)!)),
+					sortCandidates([...page.processIds].map((processId) => page.updates.get(processId)!))
 				);
 				options.signal?.throwIfAborted();
 				for (const [processId, candidate] of page.updates) scan.found.set(processId, candidate);
@@ -727,7 +728,7 @@ export async function discoverMarketActivity(options: MarketActivityOptions = {}
 			{
 				timeoutMs: options.requestTimeoutMs,
 				timeoutError: 'asset-activity-graphql-timeout',
-			},
+			}
 		);
 		if (!response.ok) throw new Error(`asset-activity-graphql-${response.status}`);
 		if (!payload) throw new Error('asset-activity-graphql-empty');
@@ -752,7 +753,7 @@ export async function discoverMarketActivityBatched(options: BatchedMarketActivi
 	const batchSize = Math.max(1, Math.min(100, Math.floor(options.batchSize ?? 100)));
 	const concurrency = Math.max(1, Math.min(4, Math.floor(options.concurrency ?? 2)));
 	const batches = Array.from({ length: Math.ceil(recipients.length / batchSize) }, (_, index) =>
-		recipients.slice(index * batchSize, (index + 1) * batchSize),
+		recipients.slice(index * batchSize, (index + 1) * batchSize)
 	);
 	const found = new Map<string, AssetCandidate>();
 	let nextBatch = 0;
@@ -777,7 +778,7 @@ export async function discoverMarketActivityBatched(options: BatchedMarketActivi
 					failures.push(cause);
 				}
 			}
-		}),
+		})
 	);
 	options.signal?.throwIfAborted();
 	if (failures.length) {
@@ -790,7 +791,7 @@ export async function discoverMarketActivityBatched(options: BatchedMarketActivi
 }
 
 export async function discoverCollectionActivity(
-	options: CollectionActivityOptions,
+	options: CollectionActivityOptions
 ): Promise<CollectionActivityEvent[]> {
 	const fetcher = options.fetch ?? globalThis.fetch.bind(globalThis);
 	const graphql = options.graphql ?? arweaveGraphqlEndpoint();
@@ -799,8 +800,8 @@ export async function discoverCollectionActivity(
 	const actions = [
 		...new Set(
 			(options.actions ?? ['make-offer', 'register-interest', 'transfer', 'cancel-order']).filter((action) =>
-				['make-offer', 'register-interest', 'transfer', 'cancel-order'].includes(action),
-			),
+				['make-offer', 'register-interest', 'transfer', 'cancel-order'].includes(action)
+			)
 		),
 	];
 	const events: CollectionActivityEvent[] = [];
@@ -837,7 +838,7 @@ export async function discoverCollectionActivity(
 			{
 				timeoutMs: options.requestTimeoutMs,
 				timeoutError: 'collection-activity-graphql-timeout',
-			},
+			}
 		);
 		if (!response.ok) throw new Error(`collection-activity-graphql-${response.status}`);
 		if (!payload) throw new Error('collection-activity-graphql-empty');
@@ -861,7 +862,7 @@ export async function discoverCollectionActivity(
 					options.requiredExecutionDevice,
 					fetcher,
 					graphql,
-					options,
+					options
 				);
 				for (const id of unchecked) deviceMatches.set(id, verified.has(id));
 			}
@@ -881,7 +882,7 @@ export async function discoverCollectionActivity(
 
 export function pendingAssetOffersFromActivity(
 	state: AssetState,
-	events: CollectionActivityEvent[],
+	events: CollectionActivityEvent[]
 ): PendingAssetOffer[] {
 	return events
 		.filter(
@@ -894,7 +895,7 @@ export function pendingAssetOffersFromActivity(
 				// behind its block. Once the scheduler passes it, live orders are the
 				// sole acceptance record, even when the transaction itself was mined.
 				event.height > state.swapHeight &&
-				!Object.prototype.hasOwnProperty.call(state.orders, event.id),
+				!Object.prototype.hasOwnProperty.call(state.orders, event.id)
 		)
 		.map(({ id, actor, height, timestamp, asking, quantity }) => ({
 			id,
@@ -906,14 +907,14 @@ export function pendingAssetOffersFromActivity(
 		}))
 		.sort(
 			(left, right) =>
-				right.height - left.height || right.timestamp - left.timestamp || left.id.localeCompare(right.id),
+				right.height - left.height || right.timestamp - left.timestamp || left.id.localeCompare(right.id)
 		);
 }
 
 export async function discoverPendingAssetOffers(
 	processId: string,
 	state: AssetState,
-	options: Pick<CandidateOptions, 'fetch' | 'graphql' | 'requestTimeoutMs' | 'signal'> & { limit?: number } = {},
+	options: Pick<CandidateOptions, 'fetch' | 'graphql' | 'requestTimeoutMs' | 'signal'> & { limit?: number } = {}
 ): Promise<PendingAssetOffer[]> {
 	if (!ADDRESS.test(processId)) throw new TypeError('invalid-asset-process-id');
 	const events = await discoverCollectionActivity({
@@ -926,14 +927,14 @@ export async function discoverPendingAssetOffers(
 }
 
 export async function discoverCollectionActivityBatched(
-	options: BatchedCollectionActivityOptions,
+	options: BatchedCollectionActivityOptions
 ): Promise<CollectionActivityEvent[]> {
 	const recipients = [...new Set(options.recipients.filter((id) => ADDRESS.test(id)))];
 	const batchSize = Math.max(1, Math.min(100, Math.floor(options.batchSize ?? 100)));
 	const concurrency = Math.max(1, Math.min(4, Math.floor(options.concurrency ?? 2)));
 	const limit = Math.max(1, Math.min(200, Math.floor(options.limit ?? 100)));
 	const batches = Array.from({ length: Math.ceil(recipients.length / batchSize) }, (_, index) =>
-		recipients.slice(index * batchSize, (index + 1) * batchSize),
+		recipients.slice(index * batchSize, (index + 1) * batchSize)
 	);
 	const found = new Map<string, CollectionActivityEvent>();
 	let nextBatch = 0;
@@ -959,7 +960,7 @@ export async function discoverCollectionActivityBatched(
 					failures.push(cause);
 				}
 			}
-		}),
+		})
 	);
 	options.signal?.throwIfAborted();
 	if (failures.length) {
@@ -980,7 +981,7 @@ async function verifyProcessDevices(
 	device: string,
 	fetcher: typeof fetch,
 	graphql: string,
-	options: Pick<CollectionActivityOptions, 'requestTimeoutMs' | 'signal'>,
+	options: Pick<CollectionActivityOptions, 'requestTimeoutMs' | 'signal'>
 ): Promise<Set<string>> {
 	if (!device.trim() || ids.some((id) => !ADDRESS.test(id))) {
 		throw new TypeError('invalid-collection-activity-device-filter');
@@ -992,7 +993,7 @@ async function verifyProcessDevices(
 			? ARWEAVE_GRAPHQL_ID_BATCH_SIZE
 			: GRAPHQL_ID_BATCH_SIZE;
 	const batches = Array.from({ length: Math.ceil(ids.length / batchSize) }, (_, index) =>
-		ids.slice(index * batchSize, (index + 1) * batchSize),
+		ids.slice(index * batchSize, (index + 1) * batchSize)
 	);
 	for (const batch of batches) {
 		const requested = new Set(batch);
@@ -1015,7 +1016,7 @@ async function verifyProcessDevices(
 				{
 					timeoutMs: options.requestTimeoutMs,
 					timeoutError: 'collection-activity-device-graphql-timeout',
-				},
+				}
 			);
 			if (!response.ok) throw new Error(`collection-activity-device-graphql-${response.status}`);
 			if (!payload) throw new Error('collection-activity-device-graphql-empty');
@@ -1023,7 +1024,7 @@ async function verifyProcessDevices(
 			const connection = decodeGraphqlConnection(
 				payload,
 				'transactions',
-				'collection-activity-device-graphql-schema',
+				'collection-activity-device-graphql-schema'
 			);
 			for (const edge of connection.edges) {
 				if (!requested.has(edge.node.id)) throw new Error('collection-activity-device-graphql-schema');
@@ -1050,7 +1051,7 @@ function decodeGraphqlConnection(payload: any, key: string, errorCode: string): 
 				!edge.cursor ||
 				!edge.node ||
 				typeof edge.node !== 'object' ||
-				!ADDRESS.test(edge.node.id),
+				!ADDRESS.test(edge.node.id)
 		)
 	) {
 		throw new Error(errorCode);
@@ -1068,7 +1069,7 @@ function advanceGraphqlCursor(connection: GraphqlConnection, visited: Set<string
 export async function resolveAssetCandidates(
 	candidates: AssetCandidate[],
 	collections: Collection[],
-	options: ResolutionOptions = {},
+	options: ResolutionOptions = {}
 ): Promise<ResolvedAsset[]> {
 	const sorted = sortCandidates(candidates);
 	const resolved: ResolvedAsset[] = [];
@@ -1137,7 +1138,7 @@ function restrictAssetCandidatesWithIndex(candidates: AssetCandidate[], index: C
 			return !candidate.collection || candidate.collection === collection.name;
 		}
 		return Boolean(
-			index.tokens && (candidateMatchesFungibleContract(candidate) || candidateMatchesAtomicContract(candidate)),
+			index.tokens && (candidateMatchesFungibleContract(candidate) || candidateMatchesAtomicContract(candidate))
 		);
 	});
 }
@@ -1149,7 +1150,7 @@ export function restrictAssetCandidates(candidates: AssetCandidate[], collection
 export async function verifyAssetCandidateSupport(
 	candidates: AssetCandidate[],
 	collections: Collection[],
-	options: Pick<CandidateOptions, 'fetch' | 'graphql' | 'requestTimeoutMs' | 'signal'> = {},
+	options: Pick<CandidateOptions, 'fetch' | 'graphql' | 'requestTimeoutMs' | 'signal'> = {}
 ): Promise<AssetCandidateSupportResult> {
 	const { supported, unverified: unindexed } = partitionAssetCandidateSupport(candidates, collections);
 	if (!unindexed.length) return { supported, unavailable: [] };
@@ -1164,7 +1165,7 @@ export async function verifyAssetCandidateSupport(
 			? ARWEAVE_GRAPHQL_ID_BATCH_SIZE
 			: GRAPHQL_ID_BATCH_SIZE;
 	const chunks = Array.from({ length: Math.ceil(ids.length / batchSize) }, (_, index) =>
-		ids.slice(index * batchSize, (index + 1) * batchSize),
+		ids.slice(index * batchSize, (index + 1) * batchSize)
 	);
 	let nextChunk = 0;
 	const verifyChunk = async (chunk: string[]) => {
@@ -1182,7 +1183,7 @@ export async function verifyAssetCandidateSupport(
 			{
 				timeoutMs: options.requestTimeoutMs,
 				timeoutError: 'asset-support-graphql-timeout',
-			},
+			}
 		);
 		if (!response.ok) throw new Error(`asset-support-graphql-${response.status}`);
 		if (!payload) throw new Error('asset-support-graphql-empty');
@@ -1192,7 +1193,7 @@ export async function verifyAssetCandidateSupport(
 		const fungible = decodeGraphqlConnection(
 			payload,
 			payload.data?.fungible ? 'fungible' : 'transactions',
-			'asset-support-graphql-schema',
+			'asset-support-graphql-schema'
 		);
 		const atomic = payload.data?.atomic
 			? decodeGraphqlConnection(payload, 'atomic', 'asset-support-graphql-schema')
@@ -1229,7 +1230,7 @@ export async function verifyAssetCandidateSupport(
 	const supportedIds = new Set(supported.map((candidate) => candidate.processId));
 	return {
 		supported: restrictAssetCandidates(candidates, collections).filter(
-			(candidate) => supportedIds.has(candidate.processId) || verifiedIds.has(candidate.processId),
+			(candidate) => supportedIds.has(candidate.processId) || verifiedIds.has(candidate.processId)
 		),
 		unavailable: unindexed
 			.filter((candidate) => unavailable.has(candidate.processId))
@@ -1239,7 +1240,7 @@ export async function verifyAssetCandidateSupport(
 
 export function partitionAssetCandidateSupport(
 	candidates: AssetCandidate[],
-	collections: Collection[],
+	collections: Collection[]
 ): { supported: AssetCandidate[]; unverified: AssetCandidate[] } {
 	const supported: AssetCandidate[] = [];
 	const unverified: AssetCandidate[] = [];
@@ -1308,7 +1309,7 @@ export function walletAssetGroups(result: ResolvedAsset, address: string): Walle
 
 export function walletAssetGroup(result: ResolvedAsset, address: string): 'owned' | 'listed' | null {
 	const groups = walletAssetGroups(result, address);
-	return groups.includes('listed') ? 'listed' : (groups[0] ?? null);
+	return groups.includes('listed') ? 'listed' : groups[0] ?? null;
 }
 
 export function isLiveListing(result: ResolvedAsset): boolean {
@@ -1318,10 +1319,10 @@ export function isLiveListing(result: ResolvedAsset): boolean {
 function supportedAsset(
 	activity: AssetCandidate,
 	computed: ComputeResult,
-	collections: Collection[],
+	collections: Collection[]
 ): ResolvedAsset | null {
 	const indexedCollection = collections.find(
-		(collection) => collection.kind !== 'names' && Boolean(collectionAsset(collection, activity.processId)),
+		(collection) => collection.kind !== 'names' && Boolean(collectionAsset(collection, activity.processId))
 	);
 	if (indexedCollection) {
 		if (computed.state.device !== 'token@1.0') return null;
@@ -1359,7 +1360,7 @@ function supportedAsset(
 
 export function bazarAtomicAssetFromState(
 	processId: string,
-	state: AssetState,
+	state: AssetState
 ): { asset: AssetSummary; collection: Collection } | null {
 	if (
 		state.device !== 'token@1.0' ||
@@ -1394,7 +1395,7 @@ function candidateFromNode(
 	node: GraphqlNode,
 	source: AssetCandidate['sources'][number],
 	wallet?: string,
-	requireOwner = false,
+	requireOwner = false
 ): AssetCandidate | null {
 	const tags = Object.fromEntries((node.tags ?? []).map((tag) => [tag.name.toLowerCase(), tag.value]));
 	const processId = source === 'initial-holder' ? node.id : node.recipient;
@@ -1420,7 +1421,7 @@ function candidateFromNode(
 					swapDevice: tags['swap-device'],
 					schedulerDevice: tags['scheduler-device'],
 					schedulerMode: tags['scheduler-mode'],
-				}
+			  }
 			: {}),
 	};
 }
@@ -1445,7 +1446,7 @@ function activityEventFromNode(node: GraphqlNode): CollectionActivityEvent | nul
 		timestamp: safeNumber(node.block?.timestamp),
 		...(action === 'make-offer' && /^[1-9]\d*$/.test(tags.asking ?? '') ? { asking: tags.asking } : {}),
 		...(['make-offer', 'transfer'].includes(action) &&
-		/^[1-9]\d*$/.test(action === 'make-offer' ? (tags['offer-quantity'] ?? '') : (tags.quantity ?? ''))
+		/^[1-9]\d*$/.test(action === 'make-offer' ? tags['offer-quantity'] ?? '' : tags.quantity ?? '')
 			? { quantity: action === 'make-offer' ? tags['offer-quantity'] : tags.quantity }
 			: {}),
 		...(['register-interest', 'cancel-order'].includes(action) && ADDRESS.test(tags['order-id'] ?? '')

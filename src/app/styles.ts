@@ -13,6 +13,13 @@ export const GlobalStyle = createGlobalStyle`
     --page-block-spacing: clamp(38px, 5vw, 72px);
     --page-footer-spacing: clamp(48px, 6vw, 80px);
     --asset-grid-gap: clamp(12px, 1.5vw, 20px);
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 24px;
+    --space-6: 32px;
+    --space-7: 48px;
     --type-small: ${(props) => props.theme.typography.size.small};
     --type-body: ${(props) => props.theme.typography.size.body};
     --type-display: ${(props) => props.theme.typography.size.display};

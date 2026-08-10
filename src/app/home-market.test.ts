@@ -62,7 +62,7 @@ describe('Home market summary retries', () => {
 				{ id: '1', name: 'blockdata2' },
 			]
 				.sort(compareCollectionAssetNames)
-				.map(({ name }) => name),
+				.map(({ name }) => name)
 		).toEqual(['blockdata2', 'blockdata10', 'zupercollectiv']);
 	});
 
@@ -143,18 +143,18 @@ describe('Home market summary retries', () => {
 
 		expect(
 			[tokenCollection, nameCollection, imageCollection].filter((collection) =>
-				homeAssetTypeMatches(collection, 'all'),
-			),
+				homeAssetTypeMatches(collection, 'all')
+			)
 		).toHaveLength(3);
 		expect(
 			[tokenCollection, nameCollection, imageCollection].filter((collection) =>
-				homeAssetTypeMatches(collection, 'tokens'),
-			),
+				homeAssetTypeMatches(collection, 'tokens')
+			)
 		).toEqual([tokenCollection]);
 		expect(
 			[tokenCollection, nameCollection, imageCollection].filter((collection) =>
-				homeAssetTypeMatches(collection, 'atomic'),
-			),
+				homeAssetTypeMatches(collection, 'atomic')
+			)
 		).toEqual([nameCollection, imageCollection]);
 	});
 
@@ -210,7 +210,7 @@ describe('Home market summary retries', () => {
 		};
 
 		expect(
-			homeDiscoveryAssets([indexedCollection], {}, 10, [{ asset: portable, collection: portableCollection }]),
+			homeDiscoveryAssets([indexedCollection], {}, 10, [{ asset: portable, collection: portableCollection }])
 		).toEqual([
 			{ asset: portable, collection: portableCollection },
 			{ asset: indexed, collection: indexedCollection },
@@ -268,8 +268,8 @@ describe('Home market summary retries', () => {
 				[indexedCollection],
 				[{ asset: portable, collection: portableCollection }],
 				'substrate',
-				10,
-			),
+				10
+			)
 		).toEqual([
 			{ asset: portable, collection: portableCollection },
 			{ asset: indexed, collection: indexedCollection },
@@ -291,8 +291,8 @@ describe('Home market summary retries', () => {
 
 		expect(
 			['older', 'unknown', 'same-block-newer', 'newer'].sort((left, right) =>
-				compareHomeListingRecency(left, right, activity),
-			),
+				compareHomeListingRecency(left, right, activity)
+			)
 		).toEqual(['newer', 'same-block-newer', 'older', 'unknown']);
 	});
 
@@ -303,7 +303,7 @@ describe('Home market summary retries', () => {
 		expect(homeAssetVisibleForView(unlisted, 'all')).toBe(true);
 		expect(homeAssetVisibleForView(undefined, 'listed')).toBe(false);
 		expect(
-			homeAssetVisibleForView({ status: 'unavailable', source: 'compute', kind: 'unavailable' }, 'listed'),
+			homeAssetVisibleForView({ status: 'unavailable', source: 'compute', kind: 'unavailable' }, 'listed')
 		).toBe(false);
 		expect(homeAssetVisibleForView(unlisted, 'listed')).toBe(false);
 		expect(homeAssetVisibleForView(listed, 'listed')).toBe(true);
@@ -461,7 +461,7 @@ describe('Home market summary retries', () => {
 			assets: ids.map((id) => ({ id, name: id })),
 		});
 		const candidates = Array.from({ length: 13_769 }, (_, index) =>
-			index % 3 === 0 ? `${String(index).padStart(42, '0')}Z` : ids[index],
+			index % 3 === 0 ? `${String(index).padStart(42, '0')}Z` : ids[index]
 		);
 
 		expect(candidates.filter(includes)).toHaveLength(9_179);
@@ -476,8 +476,8 @@ describe('Home market summary retries', () => {
 					loading: true,
 					pages: index + 1,
 					preservingEvents: false,
-				}),
-			),
+				})
+			)
 		);
 
 		expect(messages.size).toBe(17);
@@ -490,7 +490,7 @@ describe('Home market summary retries', () => {
 				loading: false,
 				pages: 160,
 				preservingEvents: false,
-			}),
+			})
 		).toBe('Activity scan complete. 18 indexed events found.');
 	});
 
@@ -519,8 +519,8 @@ describe('Home market summary retries', () => {
 				['pending', 'settled'],
 				{ settled: { status: 'resolved', value: null } },
 				['pending'],
-				new Set(['pending']),
-			),
+				new Set(['pending'])
+			)
 		).toEqual(['pending']);
 	});
 
@@ -573,7 +573,7 @@ describe('Home collection activity windows', () => {
 		commitHomeActivityBatch(
 			scan,
 			[{ processId: kept, height: 20 } as any, { processId: removed, height: 10 } as any],
-			[kept, removed],
+			[kept, removed]
 		);
 		const reconciled = reconcileHomeActivityScan(scan, [kept, kept]);
 
@@ -624,7 +624,7 @@ describe('Home collection activity windows', () => {
 		const scan = reconcileHomeActivityScan(undefined, [requested]);
 
 		expect(() => commitHomeActivityBatch(scan, [{ processId: foreign, height: 10 } as any], [requested])).toThrow(
-			'home-activity-batch-out-of-scope',
+			'home-activity-batch-out-of-scope'
 		);
 		expect(scan.completed.size).toBe(0);
 		expect(scan.candidates.size).toBe(0);
@@ -643,7 +643,7 @@ describe('Home collection floor retries', () => {
 		let scan = reconcileHomeFloorScan(
 			undefined,
 			'scope-a',
-			candidates.map((processId) => activity(processId)),
+			candidates.map((processId) => activity(processId))
 		);
 		for (const [index, processId] of candidates.entries()) {
 			if (index === 719) commitHomeFloorResult(scan, processId, null, 'unavailable');
@@ -655,7 +655,7 @@ describe('Home collection floor retries', () => {
 		scan = reconcileHomeFloorScan(
 			scan,
 			'scope-a',
-			candidates.map((processId) => activity(processId)),
+			candidates.map((processId) => activity(processId))
 		);
 		commitHomeFloorResult(scan, candidates[719], 7n);
 		expect(pendingHomeFloorCandidates(scan)).toEqual([]);
@@ -669,7 +669,7 @@ describe('Home collection floor retries', () => {
 		let scan = reconcileHomeFloorScan(
 			undefined,
 			'scope-a',
-			[noAsk, minimum, other].map((id) => activity(id)),
+			[noAsk, minimum, other].map((id) => activity(id))
 		);
 		commitHomeFloorResult(scan, noAsk, null);
 		commitHomeFloorResult(scan, minimum, 1_000_000_000_000n);
@@ -680,7 +680,7 @@ describe('Home collection floor retries', () => {
 		scan = reconcileHomeFloorScan(
 			scan,
 			'scope-a',
-			[noAsk, other].map((id) => activity(id)),
+			[noAsk, other].map((id) => activity(id))
 		);
 		expect(pendingHomeFloorCandidates(scan)).toEqual([]);
 		expect(homeFloorScanSummary(scan)).toEqual({ status: 'resolved', value: '2 AR' });
@@ -728,7 +728,7 @@ describe('Collection activity scope', () => {
 			collectionActivityVersion({
 				...collection,
 				namespace: { ...collection.namespace!, manifestId: 'N'.repeat(43) },
-			}),
+			})
 		);
 	});
 
@@ -746,7 +746,7 @@ describe('Collection activity scope', () => {
 			collectionActivityVersion({
 				...collection,
 				assets: [...collection.assets, { id: 'B'.repeat(43), name: 'Another asset' }],
-			}),
+			})
 		);
 	});
 
@@ -764,7 +764,7 @@ describe('Collection activity scope', () => {
 			collectionListingScopeVersion({
 				...collection,
 				assets: [...collection.assets, { id: 'B'.repeat(43), name: 'Another asset' }],
-			}),
+			})
 		);
 	});
 
@@ -826,7 +826,7 @@ describe('Collection listing announcements', () => {
 				failures: 7,
 				total: 100,
 				loading: false,
-			}),
+			})
 		).toEqual({ scope: 'collection', resolved: 7, failures: 7 });
 	});
 });
@@ -843,13 +843,13 @@ describe('Collection activity windows', () => {
 		}));
 		expect(
 			newestCollectionActivity([...events.slice(100), ...events.slice(0, 100), events[204]]).map(
-				(event) => event.id,
-			),
+				(event) => event.id
+			)
 		).toEqual(
 			events
 				.slice(105)
 				.reverse()
-				.map((event) => event.id),
+				.map((event) => event.id)
 		);
 	});
 });
@@ -859,7 +859,7 @@ describe('Collection live listing truth', () => {
 		({
 			asset: { id, name: marker },
 			state: { orders: { order: { status: 'open' } } },
-		}) as any;
+		} as any);
 
 	it('merges a resolution batch once with last-outcome truth', () => {
 		const first = { asset: { id: 'a' } } as any;
@@ -874,8 +874,8 @@ describe('Collection live listing truth', () => {
 					{ processId: 'b', result: null },
 					{ processId: 'c', result: liveListing('c') },
 					{ processId: 'a', result: latest },
-				],
-			),
+				]
+			)
 		).toEqual([untouched, liveListing('c'), latest]);
 	});
 
