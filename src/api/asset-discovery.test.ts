@@ -70,7 +70,6 @@ afterEach(() => {
 describe('Bazar atomic asset search', () => {
 	it('finds an exact named creation and rejects records outside the atomic contract', async () => {
 		const processId = 'P'.repeat(43);
-		const mediaId = 'M'.repeat(43);
 		const exactTags = [
 			{ name: 'App-Name', value: 'Bazar' },
 			{ name: 'device', value: 'process@1.0' },
@@ -85,7 +84,6 @@ describe('Bazar atomic asset search', () => {
 			{ name: 'name', value: 'lucifer shrek' },
 			{ name: 'collection', value: 'Created on Bazar' },
 			{ name: 'asset-content-type', value: 'image/webp' },
-			{ name: 'asset-data', value: mediaId },
 		];
 		const fetcher = vi.fn(async (_url: string | URL | Request, _init?: RequestInit) =>
 			Response.json({
@@ -111,7 +109,12 @@ describe('Bazar atomic asset search', () => {
 
 		expect(results).toHaveLength(1);
 		expect(results[0]).toMatchObject({
-			asset: { id: processId, name: 'lucifer shrek', contentType: 'image/webp' },
+			asset: {
+				id: processId,
+				name: 'lucifer shrek',
+				contentType: 'image/webp',
+				image: `https://arweave.net/${processId}`,
+			},
 			collection: { id: 'created-assets', name: 'Created on Bazar' },
 		});
 		const request = JSON.parse(String(fetcher.mock.calls[0][1]?.body));

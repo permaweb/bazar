@@ -133,6 +133,7 @@ export async function readAssetState(
 	options: {
 		fetch?: typeof fetch;
 		signal?: AbortSignal;
+		provider?: string;
 		maxAttempts?: number;
 		maxAge?: number;
 		retryBaseDelay?: number;
@@ -141,7 +142,7 @@ export async function readAssetState(
 ): Promise<ComputeResult> {
 	if (!ADDRESS.test(processId)) throw new TypeError('invalid-asset-process-id');
 	const fetcher = aoPeerFetch(options.fetch);
-	const provider = currentServingNode();
+	const provider = options.provider ?? currentServingNode();
 	const state = await readState(processId, provider, fetcher, options);
 	return {
 		state,
@@ -222,6 +223,7 @@ export async function waitForAssetState(
 	options: {
 		fetch?: typeof fetch;
 		signal?: AbortSignal;
+		provider?: string;
 		interval?: number;
 		timeout?: number;
 		onAttempt?: (provider: string, attempt: number, total: number) => void;
@@ -235,11 +237,12 @@ export async function waitForAssetState(
 	while (Date.now() - startedAt < timeout) {
 		if (options.signal?.aborted) throw options.signal.reason;
 		attempt += 1;
-		options.onAttempt?.(currentServingNode(), attempt, 1);
+		options.onAttempt?.(options.provider ?? currentServingNode(), attempt, 1);
 		try {
 			const result = await readAssetState(processId, {
 				fetch: fetcher,
 				signal: options.signal,
+				provider: options.provider,
 				maxAge: 0,
 			});
 			if (await accept(result.state)) return result;

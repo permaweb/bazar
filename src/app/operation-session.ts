@@ -199,6 +199,35 @@ export function operationStorageKey(assetId: string, signer: string) {
 	return `bazar-operation:${assetId}:${signer}`;
 }
 
+export function assetHasSavedSignedAction(storage: Pick<Storage, 'getItem'>, assetId: string, owner: string) {
+	const records = [
+		storage.getItem(operationStorageKey(assetId, owner)),
+		storage.getItem(atomicPurchaseStorageKey(assetId, owner)),
+		storage.getItem(fungibleBatchStorageKey(assetId, owner)),
+	];
+	for (const serialized of records) {
+		if (!serialized) continue;
+		try {
+			const record = JSON.parse(serialized) as any;
+			const ids = [
+				record?.txId,
+				record?.snapshot?.registration?.id,
+				record?.snapshot?.payment?.id,
+				...(Array.isArray(record?.entries)
+					? record.entries.flatMap((entry: any) => [
+							entry?.snapshot?.registration?.id,
+							entry?.snapshot?.payment?.id,
+					  ])
+					: []),
+			].filter((id): id is string => typeof id === 'string' && /^[A-Za-z0-9_-]{43}$/.test(id));
+			if (ids.some((id) => storage.getItem(`bazar-signed-transaction:${id}`) !== null)) return true;
+		} catch {
+			// Malformed recovery is handled by the owning recovery flow.
+		}
+	}
+	return false;
+}
+
 export function operationClaimStorageKey(assetId: string, signer: string, scope?: string) {
 	return `bazar-operation-claim:${assetId}:${signer}${scope ? `:${scope}` : ''}`;
 }

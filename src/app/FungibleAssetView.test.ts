@@ -20,6 +20,7 @@ import {
 	checkpointBatchPreparation,
 	fungibleBatchRecoveryStatus,
 	fungibleListingAccessibleLabel,
+	type FungibleOperationActivity,
 	FungibleOperationErrorAlert,
 	fungibleOperationStateError,
 	fungibleOrderActionLabel,
@@ -36,9 +37,12 @@ import {
 	MatchedListingsReview,
 	nextSettlementAnnouncement,
 	purchaseAmountMatch,
+	purchaseFailureMessageNeedsManualReview,
 	purchaseQuoteIdentity,
 	PurchaseRoute,
+	purchaseSettlementNeedsManualReview,
 	purchaseStateFrameBuffer,
+	restartFungibleOperationActivity,
 	settlementTabIndex,
 	storeBatchRecoveryBeforeDispatch,
 	visibleOrderbookRows,
@@ -125,6 +129,62 @@ describe('fungible operation error semantics', () => {
 
 		expect(activities.map((activity) => activity.operation.kind)).toEqual(['buy', 'sell']);
 		expect(activities.map((activity) => activity.visible)).toEqual([false, true]);
+	});
+
+	it('restarts a recoverable settlement as a visible fresh dialog instance', () => {
+		const failed: FungibleOperationActivity = {
+			id: 'purchase',
+			operation: {
+				kind: 'buy',
+				availableOrders: [] as SwapOrder[],
+				startingBalance: '0',
+				resume: { version: 3, buyer: BUYER, startingBalance: '0', entries: [] },
+			},
+			phase: 'error',
+			signer: BUYER,
+			visible: true,
+			createdAt: 100,
+		};
+
+		expect(restartFungibleOperationActivity(failed, 100)).toMatchObject({
+			id: 'purchase',
+			operation: failed.operation,
+			phase: null,
+			visible: true,
+			createdAt: 101,
+		});
+	});
+
+	it('does not present a process-rejected payment as resumable observation', () => {
+		expect(
+			purchaseSettlementNeedsManualReview({
+				stage: 'failed',
+				error: { code: 'asset-purchase-rejected', message: 'asset purchase rejected' },
+			} as PurchaseState)
+		).toBe(true);
+		expect(
+			purchaseSettlementNeedsManualReview({
+				stage: 'failed',
+				error: { code: 'asset-payment-observer-timeout', message: 'asset purchase rejected' },
+			} as PurchaseState)
+		).toBe(true);
+		expect(
+			purchaseSettlementNeedsManualReview({
+				stage: 'failed',
+				error: { code: 'asset-payment-observer-timeout', message: 'observer timeout' },
+			} as PurchaseState)
+		).toBe(false);
+	});
+
+	it('recognizes a terminal failure reported only by the batch summary', () => {
+		expect(
+			purchaseFailureMessageNeedsManualReview('1 of 1 settlements need attention. asset purchase rejected')
+		).toBe(true);
+		expect(
+			purchaseFailureMessageNeedsManualReview(
+				'1 of 1 settlements need attention. observer timed out while checking transaction'
+			)
+		).toBe(false);
 	});
 
 	it('quotes a requested token amount from automatic partial fills', () => {

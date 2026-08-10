@@ -13,6 +13,9 @@ export type AssetSummary = {
 	image?: string;
 	media?: string;
 	ticker?: string;
+	artist?: string;
+	album?: string;
+	duration?: number;
 };
 
 export type Collection = {

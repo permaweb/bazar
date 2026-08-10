@@ -72,6 +72,7 @@ import {
 	UnavailableOperationRecoveryNotice,
 } from 'components/UnavailableOperationRecovery';
 import { WalletAddress, WalletIdentity } from 'components/WalletAddress';
+import { arweaveGatewayFromLocation, gatewayFromLocation } from 'helpers/config';
 import { optionalMotionBehavior } from 'helpers/motion';
 import { useWallet } from 'providers/WalletProvider';
 
@@ -85,6 +86,7 @@ import {
 import { announceFungibleOperationActivityChange, fungibleOperationActivityId } from './operation-activity';
 import {
 	acquireWalletOperationClaim,
+	assetHasSavedSignedAction,
 	clearStaleWalletOperationClaim,
 	discardNewlyPreparedTransactionIfAborted,
 	fungibleBatchStorageKey,
@@ -105,6 +107,11 @@ import {
 	type WalletOperationClaim,
 	walletOperationStorageChange,
 } from './operation-session';
+import {
+	type PurchaseGatewayContext,
+	purchaseGatewaySwitchNotice,
+	purchaseLifecycleStatus,
+} from './purchase-lifecycle';
 import {
 	purchaseObservationCheckingMessage,
 	purchaseObservationPendingState,
@@ -150,6 +157,7 @@ type BatchResume = {
 	entries: BatchEntry[];
 	attemptId?: string;
 	createdAt?: number;
+	gateway?: PurchaseGatewayContext;
 };
 
 export type FungibleOperation =
@@ -184,8 +192,36 @@ export function appendFungibleOperationActivity(
 	return [...current.map((item) => ({ ...item, visible: false })), activity];
 }
 
+export function restartFungibleOperationActivity(activity: FungibleOperationActivity, now = Date.now()) {
+	return {
+		...activity,
+		phase: null,
+		visible: true,
+		createdAt: Math.max(now, (activity.createdAt ?? 0) + 1),
+	};
+}
+
 const ADDRESS = /^[A-Za-z0-9_-]{43}$/;
 const SETTLEMENT_ERROR_PANEL_ID = 'fungible-settlement-error-panel';
+const TERMINAL_PURCHASE_FAILURES = new Set(['asset-purchase-rejected', 'asset-purchase-proof-mismatch']);
+const TERMINAL_PURCHASE_FAILURE_MESSAGES = new Set(['asset purchase rejected', 'asset purchase proof mismatch']);
+
+export function purchaseSettlementNeedsManualReview(state?: PurchaseState) {
+	if (state?.stage !== 'failed' || !state.error) return false;
+	if (TERMINAL_PURCHASE_FAILURES.has(state.error.code)) return true;
+	return TERMINAL_PURCHASE_FAILURE_MESSAGES.has(state.error.message.trim().toLowerCase());
+}
+
+export function purchaseFailureMessageNeedsManualReview(message?: string) {
+	if (!message) return false;
+	const normalized = message.trim().toLowerCase();
+	if (TERMINAL_PURCHASE_FAILURE_MESSAGES.has(normalized)) return true;
+	return [...TERMINAL_PURCHASE_FAILURE_MESSAGES].some((failure) => normalized.endsWith(`. ${failure}`));
+}
+
+function currentPurchaseGatewayContext(): PurchaseGatewayContext {
+	return { arweave: arweaveGatewayFromLocation(), compute: gatewayFromLocation() };
+}
 
 export function FungibleAssetView({
 	asset,
@@ -446,6 +482,12 @@ export function FungibleAssetView({
 			const resume = savedBatch as BatchResume;
 			const recoveryStatus = fungibleBatchRecoveryStatus(resume, state, wallet.address);
 			if (recoveryStatus === 'resumable') {
+				const gatewayNotice = purchaseGatewaySwitchNotice(
+					resume.gateway,
+					currentPurchaseGatewayContext(),
+					resume.entries.find((entry) => hasRecoverablePurchase(entry.snapshot))?.snapshot
+				);
+				if (gatewayNotice) setRecoveryNotice(gatewayNotice);
 				openOperation(
 					{
 						kind: 'buy',
@@ -588,7 +630,10 @@ export function FungibleAssetView({
 		wallet.address,
 	]);
 
-	const recoveryBlocksActions = recoverySuppressed || Boolean(unavailableRecovery);
+	const signedRecoveryLocksAsset = Boolean(
+		wallet.address && assetHasSavedSignedAction(localStorage, asset.id, wallet.address)
+	);
+	const recoveryBlocksActions = recoverySuppressed || Boolean(unavailableRecovery) || signedRecoveryLocksAsset;
 	const purchaseBlocksActions = recoveryBlocksActions || Boolean(activePurchaseActivity);
 	const assetBlocksActions = recoveryBlocksActions || Boolean(activeAssetActivity);
 	const handleOperationPhaseChange = React.useCallback(
@@ -935,10 +980,6 @@ export function FungibleAssetView({
 									) : null}
 								</div>
 							) : null}
-							<p className="market-note">
-								Every row is live escrowed liquidity from the last loaded process state. Buy any amount
-								from one order or let Bazar route across the best prices automatically.
-							</p>
 						</section>
 					) : null}
 					{activeSection === 'about' ? (
@@ -1062,7 +1103,7 @@ export function FungibleAssetView({
 			</div>
 			{walletActivities.map((activity) => (
 				<FungibleOperationDialog
-					key={activity.id}
+					key={`${activity.id}:${activity.createdAt ?? 0}`}
 					asset={asset}
 					collectionId={collection.id}
 					state={state}
@@ -1080,6 +1121,14 @@ export function FungibleAssetView({
 						)
 					}
 					onPhaseChange={(phase) => handleOperationPhaseChange(activity.id, phase)}
+					onRestart={() => {
+						setRecoverySuppressed(false);
+						setOperationActivities((current) =>
+							current.map((candidate) =>
+								candidate.id === activity.id ? restartFungibleOperationActivity(candidate) : candidate
+							)
+						);
+					}}
 					onClose={(resumeLater, refresh = true) => {
 						setRecoverySuppressed(Boolean(resumeLater));
 						if (!resumeLater) publishOperationActivity(activity, 'done');
@@ -1194,6 +1243,7 @@ function FungibleOperationDialog({
 	restoreFallback,
 	onHide,
 	onPhaseChange,
+	onRestart,
 	onClose,
 }: {
 	asset: AssetSummary;
@@ -1205,6 +1255,7 @@ function FungibleOperationDialog({
 	restoreFallback(): HTMLElement | null;
 	onHide(): void;
 	onPhaseChange(phase: TransactionDialogPhase): void;
+	onRestart(): void;
 	onClose(resumeLater?: boolean, refresh?: boolean): void;
 }) {
 	const recoveryApprovalCount =
@@ -1718,6 +1769,7 @@ function FungibleOperationDialog({
 			startingBalance,
 			entries,
 			createdAt: resume?.createdAt ?? Date.now(),
+			gateway: resume?.gateway ?? currentPurchaseGatewayContext(),
 		};
 		let terminalRecoveryRemoved = false;
 		const attemptId =
@@ -2066,6 +2118,9 @@ function FungibleOperationDialog({
 			: 'The live token state now reflects this action.';
 	const settlementSummary = batchSettlementSummary(visibleOrders.map((order) => purchaseStates[order.orderId]));
 	const incompletePurchases = visibleOrders.length - settlementSummary.settled;
+	const purchaseNeedsManualReview =
+		visibleOrders.some((order) => purchaseSettlementNeedsManualReview(purchaseStates[order.orderId])) ||
+		purchaseFailureMessageNeedsManualReview(message);
 	const signedWork = Boolean(transaction || recoverableBatch);
 	React.useEffect(() => {
 		if (operation.kind !== 'buy' || phase !== 'working') return;
@@ -2133,8 +2188,49 @@ function FungibleOperationDialog({
 		batchRecoveryBufferRef.current?.flush();
 		attemptRef.current.abort();
 		for (const purchase of purchasesRef.current.values()) purchase.abandon();
+		purchasesRef.current.clear();
 		networkRef.current?.release();
 		networkRef.current = null;
+		if (claimRef.current) {
+			releaseWalletOperationClaim(localStorage, claimRef.current);
+			claimRef.current = null;
+		}
+		onRestart();
+	};
+	const acknowledgeTerminalPurchase = () => {
+		batchRecoveryBufferRef.current?.clear();
+		purchaseStateBufferRef.current?.clear();
+		attemptRef.current.abort();
+		for (const purchase of purchasesRef.current.values()) purchase.abandon();
+		purchasesRef.current.clear();
+		networkRef.current?.release();
+		networkRef.current = null;
+		if (claimRef.current) {
+			releaseWalletOperationClaim(localStorage, claimRef.current);
+			claimRef.current = null;
+		}
+		const receiptIds = visibleOrders.flatMap((order) => {
+			const purchase = purchaseStates[order.orderId];
+			return [purchase?.registration?.id, purchase?.payment?.id].filter((id): id is string => Boolean(id));
+		});
+		const expectedAttemptId = operation.kind === 'buy' ? operation.resume?.attemptId : undefined;
+		removeWalletRecoveryAndSignatures<BatchResume>(
+			localStorage,
+			fungibleBatchStorageKey(asset.id, owner),
+			(current) => {
+				if (current.buyer !== owner) return false;
+				if (expectedAttemptId) {
+					return (current.attemptId ?? batchRecoveryIdentity(current.entries)) === expectedAttemptId;
+				}
+				const savedIds = current.entries.flatMap((entry) => [
+					entry.snapshot.registration?.id,
+					entry.snapshot.payment?.id,
+				]);
+				return receiptIds.length > 0 && receiptIds.every((id) => savedIds.includes(id));
+			},
+			receiptIds,
+			owner
+		);
 		onClose(false);
 	};
 
@@ -2597,6 +2693,9 @@ function FungibleOperationDialog({
 							</p>
 						) : null}
 						{message ? <p className="scheduler-wait">{message}</p> : null}
+						{operation.kind === 'buy' && activePurchase ? (
+							<p className="scheduler-wait">{purchaseLifecycleStatus(activePurchase)}</p>
+						) : null}
 						{operation.kind === 'buy' && visibleOrders.length ? (
 							activeOrder && activePurchase ? (
 								<ArweaveTransactionSync
@@ -2802,7 +2901,13 @@ function FungibleOperationDialog({
 							</Button>
 						) : operation.kind === 'buy' ? (
 							<>
-								{recoverableBatch ? (
+								{purchaseNeedsManualReview ? (
+									<p>
+										The process rejected this exact scheduled purchase after payment. Rechecking it
+										cannot apply the transfer, so Bazar will keep the permanent receipts without
+										creating a replacement.
+									</p>
+								) : recoverableBatch ? (
 									<p>
 										Completed settlements will not be retried; only incomplete settlements will
 										continue.
@@ -2813,8 +2918,14 @@ function FungibleOperationDialog({
 										discarded.
 									</p>
 								)}
-								<Button data-dialog-initial onClick={restartPurchase} size="custom">
-									{recoverableBatch
+								<Button
+									data-dialog-initial
+									onClick={purchaseNeedsManualReview ? acknowledgeTerminalPurchase : restartPurchase}
+									size="custom"
+								>
+									{purchaseNeedsManualReview
+										? 'Unlock asset and close'
+										: recoverableBatch
 										? `Resume ${incompletePurchases} incomplete ${
 												incompletePurchases === 1 ? 'settlement' : 'settlements'
 										  }`

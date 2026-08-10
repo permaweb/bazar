@@ -5,14 +5,15 @@ import {
 	isSupportedAssetContentType,
 	normalizeAssetContentType,
 } from 'helpers/asset-media';
-import { arweaveClientConfig, arweaveGatewayFromLocation } from 'helpers/config';
+import { arweaveClientConfig, arweaveGatewayFromLocation, gatewayFromLocation } from 'helpers/config';
 
 import type { AssetSummary, Collection } from './collections';
+import { acceptedMintActivity, upsertMintActivity } from './mint-activity';
 
 const ADDRESS = /^[A-Za-z0-9_-]{43}$/;
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const MAX_AUDIO_BYTES = 100 * 1024 * 1024;
-const HIGH_COST_WINSTON = 100_000_000_000n;
+export const ORDINARY_MINT_COST_MAX_WINSTON = 100_000_000_000n;
 const STORAGE_KEY = 'bazar-created-assets';
 const DRAFT_PREFIX = 'bazar-mint-draft:';
 const UDL_AMOUNT = /^(?:0|[1-9]\d*)(?:\.\d+)?$/;
@@ -49,16 +50,20 @@ export type MintInput = {
 	description: string;
 	file: File;
 	artwork?: File;
+	artist?: string;
+	album?: string;
+	duration?: number;
 	collection?: string;
 	udl?: UdlTerms;
 };
 
 export type MintEstimate = {
-	mediaReward: bigint;
+	assetReward: bigint;
 	artworkReward: bigint;
-	processReward: bigint;
 	total: bigint;
-	processBytes: number;
+	assetBytes: number;
+	artworkBytes: number;
+	transactionCount: number;
 };
 
 export type MintDraft = {
@@ -68,6 +73,9 @@ export type MintDraft = {
 	contentType: string;
 	mediaId: string;
 	artworkId?: string;
+	artist?: string;
+	album?: string;
+	duration?: number;
 	createdAt: number;
 	collection?: string;
 	udl?: UdlTerms;
@@ -87,13 +95,7 @@ export type MintResult = {
 	processId: string;
 };
 
-export type MintPhase =
-	| 'signing-media'
-	| 'uploading-media'
-	| 'signing-artwork'
-	| 'uploading-artwork'
-	| 'signing-process'
-	| 'creating-process';
+export type MintPhase = 'signing-asset' | 'uploading-asset' | 'signing-artwork' | 'uploading-artwork';
 
 export type CollectionMintInput = {
 	name: string;
@@ -132,6 +134,7 @@ export type AssetMintClientOptions = {
 	arweave?: any;
 	storage?: StorageLike;
 	gateway?: string;
+	computeGateway?: string;
 };
 
 export class AssetMintClient {
@@ -140,6 +143,7 @@ export class AssetMintClient {
 	#arweave?: any;
 	#storage?: StorageLike;
 	#gateway: string;
+	#computeGateway: string;
 
 	constructor(options: AssetMintClientOptions = {}) {
 		this.#wallet = options.wallet ?? globalThis.window?.arweaveWallet;
@@ -147,25 +151,22 @@ export class AssetMintClient {
 		this.#arweave = options.arweave;
 		this.#storage = options.storage ?? globalThis.window?.localStorage;
 		this.#gateway = options.gateway ?? arweaveGatewayFromLocation();
+		this.#computeGateway = options.computeGateway ?? (typeof window === 'undefined' ? '' : gatewayFromLocation());
 	}
 
 	async estimate(input: MintInput, signal?: AbortSignal): Promise<MintEstimate> {
 		validateMintInput(input);
-		const placeholder = 'x'.repeat(43);
-		const processBytes = byteLength(
-			JSON.stringify(mintMetadata(input, placeholder, input.artwork ? placeholder : undefined))
-		);
-		const [mediaReward, artworkReward, processReward] = await Promise.all([
+		const [assetReward, artworkReward] = await Promise.all([
 			this.#price(input.file.size, signal),
 			input.artwork ? this.#price(input.artwork.size, signal) : 0n,
-			this.#price(processBytes, signal),
 		]);
 		return {
-			mediaReward,
+			assetReward,
 			artworkReward,
-			processReward,
-			total: mediaReward + artworkReward + processReward,
-			processBytes,
+			total: assetReward + artworkReward,
+			assetBytes: input.file.size,
+			artworkBytes: input.artwork?.size ?? 0,
+			transactionCount: input.artwork ? 2 : 1,
 		};
 	}
 
@@ -178,25 +179,11 @@ export class AssetMintClient {
 		assertAddress(owner, 'invalid-mint-owner');
 		await this.#assertActiveSigner(owner);
 		const estimate = await this.estimate(input, options.signal);
-		if (estimate.total > HIGH_COST_WINSTON && !options.allowHighCost)
+		if (estimate.total > ORDINARY_MINT_COST_MAX_WINSTON && !options.allowHighCost)
 			throw new Error('mint-high-cost-confirmation-required');
 		await this.#assertBalance(owner, estimate.total, options.signal);
 		const arweave = await this.#getArweave();
 		const contentType = requiredFileContentType(input.file);
-
-		options.onPhase?.('signing-media');
-		const media = await arweave.createTransaction(
-			{ data: new Uint8Array(await input.file.arrayBuffer()) },
-			'use_wallet'
-		);
-		media.addTag('Content-Type', contentType);
-		media.addTag('App-Name', 'Bazar');
-		media.addTag('App-Version', '2.0.0');
-		media.addTag('Type', 'Asset-Media');
-		for (const [name, value] of Object.entries(udlLicenseTags(input.udl))) media.addTag(name, value);
-		const signedMedia = await this.#sign(media, owner, options.signal);
-		options.onPhase?.('uploading-media');
-		await this.#post(signedMedia, options.signal);
 
 		let artworkId: string | undefined;
 		if (input.artwork) {
@@ -216,19 +203,21 @@ export class AssetMintClient {
 			artworkId = signedArtwork.id;
 		}
 
-		const draft: MintDraft = {
-			owner,
+		const createdAt = Date.now();
+		const assetInput = {
 			name: input.name.trim(),
 			description: input.description.trim(),
 			contentType,
-			mediaId: signedMedia.id,
 			...(artworkId ? { artworkId } : {}),
-			createdAt: Date.now(),
+			...(input.artist?.trim() ? { artist: input.artist.trim() } : {}),
+			...(input.album?.trim() ? { album: input.album.trim() } : {}),
+			...(input.duration && input.duration > 0 ? { duration: input.duration } : {}),
+			createdAt,
 			...(input.collection ? { collection: input.collection.trim() } : {}),
 			...(input.udl ? { udl: input.udl } : {}),
 		};
-		this.#storage?.setItem(`${DRAFT_PREFIX}${owner}`, JSON.stringify(draft));
-		return this.resume(draft, owner, options);
+		const data = new Uint8Array(await input.file.arrayBuffer());
+		return this.#publishAtomicAsset(data, assetInput, owner, options);
 	}
 
 	async resume(
@@ -240,39 +229,79 @@ export class AssetMintClient {
 		assertAddress(owner, 'invalid-mint-owner');
 		if (draft.owner !== owner) throw new Error('mint-draft-wallet-mismatch');
 		await this.#assertActiveSigner(owner);
-		const metadata = mintMetadata(draft, draft.mediaId, draft.artworkId);
-		const processReward = await this.#price(byteLength(JSON.stringify(metadata)), options.signal);
-		if (processReward > HIGH_COST_WINSTON && !options.allowHighCost)
+		const response = await this.#fetch(`${this.#gateway}/${draft.mediaId}`, { signal: options.signal });
+		if (!response.ok) throw new Error(`mint-media-unavailable-${response.status}`);
+		const data = new Uint8Array(await response.arrayBuffer());
+		const maxBytes = isAudioContentType(draft.contentType) ? MAX_AUDIO_BYTES : MAX_IMAGE_BYTES;
+		if (!data.byteLength || data.byteLength > maxBytes) throw new Error('mint-media-invalid');
+		const assetReward = await this.#price(data.byteLength, options.signal);
+		if (assetReward > ORDINARY_MINT_COST_MAX_WINSTON && !options.allowHighCost)
 			throw new Error('mint-high-cost-confirmation-required');
-		await this.#assertBalance(owner, processReward, options.signal);
-		const arweave = await this.#getArweave();
+		await this.#assertBalance(owner, assetReward, options.signal);
+		const assetInput = {
+			name: draft.name,
+			description: draft.description,
+			contentType: draft.contentType,
+			...(draft.artworkId ? { artworkId: draft.artworkId } : {}),
+			...(draft.artist ? { artist: draft.artist } : {}),
+			...(draft.album ? { album: draft.album } : {}),
+			...(draft.duration ? { duration: draft.duration } : {}),
+			createdAt: draft.createdAt,
+			...(draft.collection ? { collection: draft.collection } : {}),
+			...(draft.udl ? { udl: draft.udl } : {}),
+		};
+		return this.#publishAtomicAsset(data, assetInput, owner, options);
+	}
 
-		options.onPhase?.('signing-process');
-		const process = await arweave.createTransaction({ data: JSON.stringify(metadata) }, 'use_wallet');
-		for (const [name, value] of Object.entries(mintProcessTags(draft, owner))) process.addTag(name, value);
+	async #publishAtomicAsset(
+		data: Uint8Array,
+		input: Omit<MintDraft, 'owner' | 'mediaId'>,
+		owner: string,
+		options: { signal?: AbortSignal; onPhase?: (phase: MintPhase) => void }
+	): Promise<MintResult> {
+		const arweave = await this.#getArweave();
+		options.onPhase?.('signing-asset');
+		const process = await arweave.createTransaction({ data }, 'use_wallet');
+		for (const [name, value] of Object.entries(mintProcessTags(input, owner))) process.addTag(name, value);
 		const signedProcess = await this.#sign(process, owner, options.signal);
-		options.onPhase?.('creating-process');
+		options.onPhase?.('uploading-asset');
 		await this.#post(signedProcess, options.signal);
 
 		const asset: MintedAsset = {
 			id: signedProcess.id,
-			name: draft.name,
-			description: draft.description,
-			contentType: draft.contentType,
-			...(isAudioContentType(draft.contentType)
+			name: input.name,
+			description: input.description,
+			contentType: input.contentType,
+			...(input.artist ? { artist: input.artist } : {}),
+			...(input.album ? { album: input.album } : {}),
+			...(input.duration ? { duration: input.duration } : {}),
+			...(isAudioContentType(input.contentType)
 				? {
-						media: `${this.#gateway}/${draft.mediaId}`,
-						...(draft.artworkId ? { image: `${this.#gateway}/${draft.artworkId}` } : {}),
+						media: `${this.#gateway}/${signedProcess.id}`,
+						...(input.artworkId ? { image: `${this.#gateway}/${input.artworkId}` } : {}),
 				  }
-				: { image: `${this.#gateway}/${draft.mediaId}` }),
-			mediaId: draft.mediaId,
-			...(draft.artworkId ? { artworkId: draft.artworkId } : {}),
+				: { image: `${this.#gateway}/${signedProcess.id}` }),
+			mediaId: signedProcess.id,
+			...(input.artworkId ? { artworkId: input.artworkId } : {}),
 			owner,
-			createdAt: draft.createdAt,
+			createdAt: input.createdAt,
 		};
 		storeMintedAsset(asset, this.#storage);
+		if (this.#storage) {
+			upsertMintActivity(
+				this.#storage,
+				acceptedMintActivity({
+					owner,
+					asset,
+					collectionId: CREATED_COLLECTION_ID,
+					transactionIds: [input.artworkId, signedProcess.id].filter((id): id is string => Boolean(id)),
+					arweaveGateway: this.#gateway,
+					computeGateway: this.#computeGateway,
+				})
+			);
+		}
 		this.#storage?.removeItem(`${DRAFT_PREFIX}${owner}`);
-		return { asset, mediaId: draft.mediaId, processId: signedProcess.id };
+		return { asset, mediaId: signedProcess.id, processId: signedProcess.id };
 	}
 
 	async publishData(
@@ -398,26 +427,9 @@ export class CollectionMintClient {
 			image: `${this.#gateway}/${placeholder}`,
 			mediaId: placeholder,
 		}));
-		const processSizes = input.files.map((file, index) =>
-			byteLength(
-				JSON.stringify(
-					mintMetadata(
-						{
-							name: fileAssetName(file, index),
-							description: input.description,
-							contentType: requiredFileContentType(file),
-							collection: input.name,
-							udl: input.udl,
-						},
-						placeholder
-					)
-				)
-			)
-		);
 		const manifest = collectionManifest(input, assets);
 		const sizes = [
 			...input.files.map((file) => file.size),
-			...processSizes,
 			byteLength(JSON.stringify(manifest)),
 			byteLength('Bazar collection index'),
 		];
@@ -425,7 +437,7 @@ export class CollectionMintClient {
 		return {
 			assetCount: input.files.length,
 			total: rewards.reduce((total, reward) => total + reward, 0n),
-			transactionCount: input.files.length * 2 + 2,
+			transactionCount: input.files.length + 2,
 		};
 	}
 
@@ -521,6 +533,11 @@ export function validateMintInput(input: MintInput): void {
 	const fileContentType = normalizeAssetContentType(input.file.type, input.file.name);
 	const maxFileBytes = isAudioContentType(fileContentType ?? undefined) ? MAX_AUDIO_BYTES : MAX_IMAGE_BYTES;
 	if (!input.file.size || input.file.size > maxFileBytes) throw new TypeError('mint-file-size-invalid');
+	if (input.artist !== undefined && input.artist.trim().length > 160) throw new TypeError('mint-artist-invalid');
+	if (input.album !== undefined && input.album.trim().length > 160) throw new TypeError('mint-album-invalid');
+	if (input.duration !== undefined && (!Number.isFinite(input.duration) || input.duration <= 0)) {
+		throw new TypeError('mint-duration-invalid');
+	}
 	if (input.artwork !== undefined) {
 		if (
 			!(input.artwork instanceof File) ||
@@ -558,7 +575,10 @@ export function validateCollectionMintInput(input: CollectionMintInput): void {
 }
 
 export function mintMetadata(
-	input: Pick<MintInput, 'name' | 'description' | 'collection' | 'udl'> & { contentType?: string; file?: File },
+	input: Pick<MintInput, 'name' | 'description' | 'collection' | 'udl' | 'artist' | 'album' | 'duration'> & {
+		contentType?: string;
+		file?: File;
+	},
 	mediaId: string,
 	artworkId?: string
 ) {
@@ -571,27 +591,43 @@ export function mintMetadata(
 			? { audio: mediaId, ...(artworkId ? { image: artworkId } : {}) }
 			: { image: mediaId }),
 		collection: input.collection?.trim() || CREATED_COLLECTION_NAME,
+		...(input.artist?.trim() ? { artist: input.artist.trim() } : {}),
+		...(input.album?.trim() ? { album: input.album.trim() } : {}),
+		...(input.duration && input.duration > 0 ? { duration: input.duration } : {}),
 	};
 }
 
 export function mintProcessTags(
 	input: {
 		name: string;
+		description?: string;
 		contentType: string;
-		mediaId: string;
+		mediaId?: string;
 		artworkId?: string;
+		artist?: string;
+		album?: string;
+		duration?: number;
+		createdAt?: number;
 		collection?: string;
 		udl?: UdlTerms;
 	},
 	owner: string
 ): Record<string, string> {
 	assertAddress(owner, 'invalid-mint-owner');
-	assertAddress(input.mediaId, 'invalid-mint-media-id');
+	if (input.mediaId) assertAddress(input.mediaId, 'invalid-mint-media-id');
 	if (input.artworkId) assertAddress(input.artworkId, 'invalid-mint-artwork-id');
+	const contentType = normalizeAssetContentType(input.contentType) ?? input.contentType;
 	return {
-		'Content-Type': 'application/json',
+		'Content-Type': contentType,
 		'App-Name': 'Bazar',
 		'App-Version': '2.0.0',
+		'Asset-Type': contentType,
+		Creator: owner,
+		'Date-Created': String(input.createdAt ?? Date.now()),
+		Description: input.description?.trim() ?? '',
+		Implements: 'ANS-110',
+		Title: input.name.trim(),
+		Type: 'Process',
 		device: 'process@1.0',
 		type: 'Process',
 		'execution-device': 'token@1.0',
@@ -604,8 +640,11 @@ export function mintProcessTags(
 		ticker: 'ASSET',
 		name: input.name.trim(),
 		collection: input.collection?.trim() || CREATED_COLLECTION_NAME,
-		'asset-content-type': normalizeAssetContentType(input.contentType) ?? input.contentType,
-		'asset-data': input.mediaId,
+		'asset-content-type': contentType,
+		...(input.artist?.trim() ? { artist: input.artist.trim() } : {}),
+		...(input.album?.trim() ? { album: input.album.trim() } : {}),
+		...(input.duration && input.duration > 0 ? { duration: String(input.duration) } : {}),
+		...(input.mediaId ? { 'asset-data': input.mediaId } : {}),
 		...(input.artworkId ? { 'asset-artwork': input.artworkId } : {}),
 		...udlLicenseTags(input.udl),
 	};
@@ -713,9 +752,13 @@ export function assetFromMintState(
 	raw: Record<string, unknown>,
 	fallbackName = ''
 ): AssetSummary | null {
-	const mediaId = String(raw['asset-data'] ?? '');
+	const explicitMediaId = String(raw['asset-data'] ?? '');
+	const mediaId = explicitMediaId ? explicitMediaId : processId;
 	const contentType = normalizeAssetContentType(String(raw['asset-content-type'] ?? ''));
 	const artworkId = String(raw['asset-artwork'] ?? '');
+	const artist = typeof raw.artist === 'string' ? raw.artist.trim() : '';
+	const album = typeof raw.album === 'string' ? raw.album.trim() : '';
+	const duration = Number(raw.duration);
 	const name = String(raw.name ?? fallbackName).trim();
 	if (
 		!ADDRESS.test(processId) ||
@@ -730,6 +773,9 @@ export function assetFromMintState(
 		id: processId,
 		name,
 		contentType,
+		...(artist ? { artist } : {}),
+		...(album ? { album } : {}),
+		...(Number.isFinite(duration) && duration > 0 ? { duration } : {}),
 		...(isAudioContentType(contentType)
 			? { media: `${gateway}/${mediaId}`, ...(artworkId ? { image: `${gateway}/${artworkId}` } : {}) }
 			: { image: `${gateway}/${mediaId}` }),
@@ -742,14 +788,14 @@ export function isBazarMintTags(tags: Record<string, string>): boolean {
 		tags.type === 'Process' &&
 		tags['execution-device'] === 'token@1.0' &&
 		tags['swap-device'] === 'arweave-swap@1.0' &&
-		ADDRESS.test(tags['asset-data'] ?? '') &&
+		(!tags['asset-data'] || ADDRESS.test(tags['asset-data'])) &&
 		isSupportedAssetContentType(tags['asset-content-type']) &&
 		(!tags['asset-artwork'] || ADDRESS.test(tags['asset-artwork']))
 	);
 }
 
 export function isHighMintCost(total: bigint): boolean {
-	return total > HIGH_COST_WINSTON;
+	return total > ORDINARY_MINT_COST_MAX_WINSTON;
 }
 
 function validateMintDraft(value: unknown): asserts value is MintDraft {
@@ -762,6 +808,9 @@ function validateMintDraft(value: unknown): asserts value is MintDraft {
 		draft.name.length > 80 ||
 		!isSupportedAssetContentType(draft.contentType) ||
 		(draft.artworkId !== undefined && !ADDRESS.test(draft.artworkId)) ||
+		(draft.artist !== undefined && (typeof draft.artist !== 'string' || draft.artist.length > 160)) ||
+		(draft.album !== undefined && (typeof draft.album !== 'string' || draft.album.length > 160)) ||
+		(draft.duration !== undefined && (!Number.isFinite(draft.duration) || draft.duration <= 0)) ||
 		typeof draft.description !== 'string' ||
 		draft.description.length > 600 ||
 		!Number.isSafeInteger(draft.createdAt)
@@ -891,6 +940,9 @@ function isMintedAsset(value: unknown): value is MintedAsset {
 		isSupportedAssetContentType(asset.contentType) &&
 		(isAudioContentType(asset.contentType) ? typeof asset.media === 'string' : typeof asset.image === 'string') &&
 		(asset.artworkId === undefined || ADDRESS.test(asset.artworkId)) &&
+		(asset.artist === undefined || typeof asset.artist === 'string') &&
+		(asset.album === undefined || typeof asset.album === 'string') &&
+		(asset.duration === undefined || (Number.isFinite(asset.duration) && asset.duration > 0)) &&
 		Number.isSafeInteger(asset.createdAt)
 	);
 }

@@ -1291,7 +1291,7 @@ function atomicProcessNode(node: GraphqlNode): boolean {
 		tags.denomination === '0' &&
 		tags.ticker === 'ASSET' &&
 		ADDRESS.test(tags['initial-holder'] ?? '') &&
-		ADDRESS.test(tags['asset-data'] ?? '') &&
+		(!tags['asset-data'] || ADDRESS.test(tags['asset-data'])) &&
 		isSupportedAssetContentType(tags['asset-content-type']) &&
 		(!tags['asset-artwork'] || ADDRESS.test(tags['asset-artwork'])) &&
 		Boolean(tags.name?.trim())

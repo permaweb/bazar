@@ -138,6 +138,26 @@ describe('asset state', () => {
 		expect(result.verifiedAt).toBeGreaterThan(0);
 	});
 
+	it('pins background observation to the operation compute gateway', async () => {
+		const processId = 'IyFfmbTu8P4rv0KyrA0Q-QtfEnYntMj4RkRiBVip9KA';
+		let requested = '';
+		const result = await readAssetState(processId, {
+			provider: 'https://original-compute.example',
+			fetch: async (input) => {
+				requested = String(input);
+				return Response.json({
+					'execution-device': 'token@1.0',
+					'total-supply': '1',
+					balances: { [owner]: '1' },
+					orders: {},
+				});
+			},
+		});
+
+		expect(requested).toMatch(/^https:\/\/original-compute\.example\//);
+		expect(result.provider).toBe('https://original-compute.example');
+	});
+
 	it('preserves the requested freshness when the preferred codec falls back', async () => {
 		const processId = 'IyFfmbTu8P4rv0KyrA0Q-QtfEnYntMj4RkRiBVip9KA';
 		const requested: string[] = [];

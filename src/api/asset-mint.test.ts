@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
 	assetFromMintState,
 	AssetMintClient,
+	CollectionMintClient,
 	CREATED_COLLECTION_ID,
 	createdCollection,
 	getMintDraft,
@@ -18,6 +19,7 @@ import {
 	validateCollectionMintInput,
 	validateMintInput,
 } from './asset-mint';
+import { loadMintActivities } from './mint-activity';
 
 const owner = 'W'.repeat(43);
 const mediaId = 'M'.repeat(43);
@@ -33,18 +35,29 @@ function storage() {
 }
 
 describe('asset mint contract', () => {
-	it('creates a one-of-one swap-enabled token process', () => {
-		const tags = mintProcessTags({ name: 'Signal #1', contentType: 'image/png', mediaId }, owner);
+	it('creates a discoverable one-of-one process whose transaction body is the asset media', () => {
+		const tags = mintProcessTags(
+			{ name: 'Signal #1', description: 'Permanent', contentType: 'image/png', createdAt: 123 },
+			owner
+		);
 
 		expect(tags).toMatchObject({
 			'App-Name': 'Bazar',
+			'Asset-Type': 'image/png',
+			'Content-Type': 'image/png',
+			Creator: owner,
+			'Date-Created': '123',
+			Description: 'Permanent',
+			Implements: 'ANS-110',
+			Title: 'Signal #1',
+			Type: 'Process',
 			type: 'Process',
 			'execution-device': 'token@1.0',
 			'swap-device': 'arweave-swap@1.0',
 			'initial-holder': owner,
 			'total-supply': '1',
-			'asset-data': mediaId,
 		});
+		expect(tags).not.toHaveProperty('asset-data');
 		expect(
 			mintProcessTags(
 				{
@@ -59,6 +72,12 @@ describe('asset mint contract', () => {
 		expect(
 			isBazarMintTags(Object.fromEntries(Object.entries(tags).map(([key, value]) => [key.toLowerCase(), value])))
 		).toBe(true);
+		expect(assetFromMintState(processId, { name: 'Signal #1', 'asset-content-type': 'image/png' })).toEqual({
+			id: processId,
+			name: 'Signal #1',
+			contentType: 'image/png',
+			image: `https://arweave.net/${processId}`,
+		});
 		expect(
 			mintMetadata({ name: ' Signal #1 ', description: ' Permanent ', contentType: 'image/png' }, mediaId)
 		).toEqual({
@@ -104,6 +123,9 @@ describe('asset mint contract', () => {
 				'asset-data': mediaId,
 				'asset-artwork': artworkId,
 				'asset-content-type': 'audio/mpeg',
+				artist: 'Kite Array',
+				album: 'Long Orbit',
+				duration: '125',
 			})
 		).toEqual({
 			id: processId,
@@ -111,6 +133,9 @@ describe('asset mint contract', () => {
 			contentType: 'audio/mpeg',
 			media: `https://arweave.net/${mediaId}`,
 			image: `https://arweave.net/${artworkId}`,
+			artist: 'Kite Array',
+			album: 'Long Orbit',
+			duration: 125,
 		});
 	});
 
@@ -244,7 +269,38 @@ describe('asset mint contract', () => {
 		]);
 	});
 
-	it('uploads multi-chunk media through the Arweave chunk uploader', async () => {
+	it('prices one atomic transaction per collection asset plus the manifest and index', async () => {
+		const fetchMock = vi.fn(async () => new Response('2'));
+		const estimate = await new CollectionMintClient({ fetch: fetchMock as typeof fetch }).estimate({
+			name: 'Signal set',
+			description: '',
+			files: [new File([new Uint8Array([1])], 'signal.png', { type: 'image/png' })],
+		});
+
+		expect(estimate).toEqual({ assetCount: 1, total: 6n, transactionCount: 3 });
+		expect(fetchMock).toHaveBeenCalledTimes(3);
+	});
+
+	it('explains the bytes and transaction count in a single-asset quote', async () => {
+		const fetchMock = vi.fn(async () => new Response('3'));
+		const estimate = await new AssetMintClient({ fetch: fetchMock as typeof fetch }).estimate({
+			name: 'Signal',
+			description: '',
+			file: new File([new Uint8Array(4)], 'signal.mp3', { type: 'audio/mpeg' }),
+			artwork: new File([new Uint8Array(2)], 'cover.png', { type: 'image/png' }),
+		});
+
+		expect(estimate).toEqual({
+			assetReward: 3n,
+			artworkReward: 3n,
+			total: 6n,
+			assetBytes: 4,
+			artworkBytes: 2,
+			transactionCount: 2,
+		});
+	});
+
+	it('uploads one atomic process transaction through the chunk uploader', async () => {
 		const makeTransaction = (chunkCount: number) => {
 			const transaction: any = {
 				id: '',
@@ -257,8 +313,7 @@ describe('asset mint contract', () => {
 			transaction.toJSON = () => ({ id: transaction.id, owner: transaction.owner, data: '' });
 			return transaction;
 		};
-		const media = makeTransaction(2);
-		const process = makeTransaction(1);
+		const asset = makeTransaction(2);
 		let uploadComplete = false;
 		const uploadChunk = vi.fn(async () => {
 			uploadComplete = true;
@@ -279,7 +334,7 @@ describe('asset mint contract', () => {
 		});
 		const client = new AssetMintClient({
 			arweave: {
-				createTransaction: vi.fn().mockResolvedValueOnce(media).mockResolvedValueOnce(process),
+				createTransaction: vi.fn().mockResolvedValueOnce(asset),
 				transactions: { getUploader },
 				wallets: { ownerToAddress: vi.fn(async () => owner) },
 			},
@@ -287,26 +342,17 @@ describe('asset mint contract', () => {
 			storage: storage(),
 			wallet: {
 				getActiveAddress: vi.fn(async () => owner),
-				sign: vi
-					.fn()
-					.mockResolvedValueOnce({
-						id: mediaId,
-						owner: 'signed-owner',
-						reward: '1',
-						tags: [],
-						signature: 'media',
-					})
-					.mockResolvedValueOnce({
-						id: processId,
-						owner: 'signed-owner',
-						reward: '1',
-						tags: [],
-						signature: 'process',
-					}),
+				sign: vi.fn().mockResolvedValueOnce({
+					id: processId,
+					owner: 'signed-owner',
+					reward: '1',
+					tags: [],
+					signature: 'asset',
+				}),
 			} as any,
 		});
 
-		await client.mint(
+		const result = await client.mint(
 			{
 				name: 'Large signal',
 				description: '',
@@ -316,14 +362,65 @@ describe('asset mint contract', () => {
 			owner
 		);
 
-		expect(getUploader).toHaveBeenCalledWith(media);
-		expect(media.addTag).toHaveBeenCalledWith('License', UDL_LICENSE_ID);
-		expect(media.addTag).toHaveBeenCalledWith('Data-Model-Training', 'Allowed');
-		expect(process.addTag).toHaveBeenCalledWith('License', UDL_LICENSE_ID);
-		expect(process.addTag).toHaveBeenCalledWith('Data-Model-Training', 'Allowed');
-		expect(media.setSignature).toHaveBeenCalledWith(expect.objectContaining({ id: mediaId, signature: 'media' }));
+		expect(getUploader).toHaveBeenCalledWith(asset);
+		expect(asset.addTag).toHaveBeenCalledWith('Content-Type', 'image/png');
+		expect(asset.addTag).toHaveBeenCalledWith('device', 'process@1.0');
+		expect(asset.addTag).toHaveBeenCalledWith('License', UDL_LICENSE_ID);
+		expect(asset.addTag).toHaveBeenCalledWith('Data-Model-Training', 'Allowed');
+		expect(asset.addTag).not.toHaveBeenCalledWith('asset-data', expect.anything());
+		expect(asset.setSignature).toHaveBeenCalledWith(expect.objectContaining({ id: processId, signature: 'asset' }));
 		expect(uploadChunk).toHaveBeenCalledOnce();
-		expect(posted).toEqual(['https://arweave.net/tx']);
+		expect(posted).toEqual([]);
+		expect(result).toMatchObject({ mediaId: processId, processId, asset: { id: processId, mediaId: processId } });
+	});
+
+	it('finishes a legacy split-upload draft as a self-contained atomic asset', async () => {
+		const asset: any = { id: '', owner: '', chunks: { chunks: [{}] }, addTag: vi.fn() };
+		asset.setSignature = vi.fn((signature) => Object.assign(asset, signature));
+		asset.toJSON = () => ({ id: asset.id, owner: asset.owner, tags: [] });
+		const createTransaction = vi.fn(async () => asset);
+		const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+			const url = String(input);
+			if (url === `https://arweave.net/${mediaId}`) return new Response(new Uint8Array([7, 8, 9]));
+			if (url.includes('/price/')) return new Response('1');
+			if (url.includes('/wallet/')) return new Response('100');
+			if (init?.method === 'POST') return new Response('', { status: 200 });
+			return new Response('', { status: 404 });
+		});
+		const client = new AssetMintClient({
+			arweave: {
+				createTransaction,
+				transactions: {},
+				wallets: { ownerToAddress: vi.fn(async () => owner) },
+			},
+			fetch: fetchMock as typeof fetch,
+			storage: storage(),
+			wallet: {
+				getActiveAddress: vi.fn(async () => owner),
+				sign: vi.fn(async () => ({
+					id: processId,
+					owner: 'signed-owner',
+					tags: [],
+					signature: 'asset',
+				})),
+			} as any,
+		});
+
+		const result = await client.resume(
+			{
+				owner,
+				name: 'Recovered signal',
+				description: '',
+				contentType: 'image/png',
+				mediaId,
+				createdAt: 123,
+			},
+			owner
+		);
+
+		expect(createTransaction).toHaveBeenCalledWith({ data: new Uint8Array([7, 8, 9]) }, 'use_wallet');
+		expect(asset.addTag).not.toHaveBeenCalledWith('asset-data', expect.anything());
+		expect(result).toMatchObject({ mediaId: processId, processId, asset: { id: processId, mediaId: processId } });
 	});
 
 	it('uploads album artwork and records its transaction on the audio asset process', async () => {
@@ -334,34 +431,30 @@ describe('asset mint contract', () => {
 			held.toJSON = () => ({ id: held.id, owner: held.owner, tags: [] });
 			return held;
 		};
-		const media = transaction();
 		const artwork = transaction();
-		const process = transaction();
+		const asset = transaction();
 		const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
 			const url = String(input);
 			if (url.includes('/price/')) return new Response('1');
 			if (url.includes('/wallet/')) return new Response('100');
 			return new Response('', { status: 200 });
 		});
+		const store = storage();
 		const client = new AssetMintClient({
 			arweave: {
-				createTransaction: vi
-					.fn()
-					.mockResolvedValueOnce(media)
-					.mockResolvedValueOnce(artwork)
-					.mockResolvedValueOnce(process),
+				createTransaction: vi.fn().mockResolvedValueOnce(artwork).mockResolvedValueOnce(asset),
 				transactions: {},
 				wallets: { ownerToAddress: vi.fn(async () => owner) },
 			},
 			fetch: fetchMock as typeof fetch,
-			storage: storage(),
+			storage: store,
+			computeGateway: 'https://compute.example',
 			wallet: {
 				getActiveAddress: vi.fn(async () => owner),
 				sign: vi
 					.fn()
-					.mockResolvedValueOnce({ id: mediaId, owner: 'signed-owner', tags: [], signature: 'media' })
 					.mockResolvedValueOnce({ id: artworkId, owner: 'signed-owner', tags: [], signature: 'artwork' })
-					.mockResolvedValueOnce({ id: processId, owner: 'signed-owner', tags: [], signature: 'process' }),
+					.mockResolvedValueOnce({ id: processId, owner: 'signed-owner', tags: [], signature: 'asset' }),
 			} as any,
 		});
 
@@ -371,18 +464,37 @@ describe('asset mint contract', () => {
 				description: '',
 				file: new File([new Uint8Array([1])], 'signal.mp3', { type: 'audio/mpeg' }),
 				artwork: new File([new Uint8Array([2])], 'cover.jpg', { type: 'image/jpeg' }),
+				artist: 'Kite Array',
+				album: 'Long Orbit',
+				duration: 125,
 			},
 			owner
 		);
 
-		expect(media.addTag).toHaveBeenCalledWith('Content-Type', 'audio/mpeg');
 		expect(artwork.addTag).toHaveBeenCalledWith('Type', 'Asset-Artwork');
-		expect(process.addTag).toHaveBeenCalledWith('asset-artwork', artworkId);
+		expect(asset.addTag).toHaveBeenCalledWith('Content-Type', 'audio/mpeg');
+		expect(asset.addTag).toHaveBeenCalledWith('asset-artwork', artworkId);
+		expect(asset.addTag).toHaveBeenCalledWith('artist', 'Kite Array');
+		expect(asset.addTag).toHaveBeenCalledWith('album', 'Long Orbit');
+		expect(asset.addTag).toHaveBeenCalledWith('duration', '125');
+		expect(asset.addTag).not.toHaveBeenCalledWith('asset-data', expect.anything());
 		expect(result.asset).toMatchObject({
 			contentType: 'audio/mpeg',
-			media: `https://arweave.net/${mediaId}`,
+			media: `https://arweave.net/${processId}`,
+			mediaId: processId,
 			image: `https://arweave.net/${artworkId}`,
 			artworkId,
+			artist: 'Kite Array',
+			album: 'Long Orbit',
+			duration: 125,
 		});
+		expect(loadMintActivities(store, owner)).toMatchObject([
+			{
+				phase: 'accepted',
+				transactionIds: [artworkId, processId],
+				arweaveGateway: 'https://arweave.net',
+				computeGateway: 'https://compute.example',
+			},
+		]);
 	});
 });
