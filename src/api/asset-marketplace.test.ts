@@ -244,11 +244,24 @@ describe('asset state', () => {
 		).rejects.toThrow('incomplete-process-schedule');
 	});
 
-	it('does not amplify a rate limit across codec fallbacks', async () => {
-		const fetcher = vi.fn(async () => new Response('rate limited', { status: 429 }));
+	it('retries a rate limit without multiplying it across codec fallbacks', async () => {
+		const requested: string[] = [];
+		const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+			requested.push(String(input));
+			if (requested.length === 1) {
+				return new Response('rate limited', { status: 429, headers: { 'retry-after': '0' } });
+			}
+			return Response.json({
+				'execution-device': 'token@1.0',
+				'total-supply': '1',
+				balances: { [owner]: '1' },
+				orders: {},
+			});
+		});
 
-		await expect(readAssetState('R'.repeat(43), { fetch: fetcher as typeof fetch })).rejects.toThrow('HTTP 429');
-		expect(fetcher).toHaveBeenCalledTimes(1);
+		await expect(readAssetState('R'.repeat(43), { fetch: fetcher as typeof fetch })).resolves.toBeDefined();
+		expect(requested).toHaveLength(2);
+		expect(requested[1]).toBe(requested[0]);
 	});
 
 	it('rejects unsafe token metadata', () => {

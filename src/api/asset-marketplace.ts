@@ -1,5 +1,7 @@
 import { DEFAULT_COMPUTE_GATEWAY } from 'helpers/config';
 
+import { aoPeerFetch } from './ao-peer-fetch';
+
 export type SwapOrderStatus = 'open' | 'reserved' | 'settled' | 'cancelled' | 'expired';
 
 export type SwapOrder = {
@@ -62,7 +64,6 @@ const UNSIGNED_INTEGER = /^(?:0|[1-9]\d*)$/;
 const LIVE_ORDER = new Set<SwapOrderStatus>(['open', 'reserved']);
 const ASSET_PROCESS_DEVICES = new Set(['carrier@1.0', 'name-token@1.0', 'token@1.0']);
 const MAX_TOKEN_DENOMINATION = 255;
-const COMPUTE_TIMEOUT = 12_000;
 const COMPUTE_RETRY_BASE_DELAY = 1_000;
 const COMPUTE_RETRY_MAX_DELAY = 8_000;
 const LICENSE_FIELDS = [
@@ -139,7 +140,7 @@ export async function readAssetState(
 	} = {}
 ): Promise<ComputeResult> {
 	if (!ADDRESS.test(processId)) throw new TypeError('invalid-asset-process-id');
-	const fetcher = options.fetch ?? globalThis.fetch.bind(globalThis);
+	const fetcher = aoPeerFetch(options.fetch);
 	const provider = currentServingNode();
 	const state = await readState(processId, provider, fetcher, options);
 	return {
@@ -159,7 +160,7 @@ export async function readAssetStateAtSlot(
 	if (!ADDRESS.test(processId) || !Number.isSafeInteger(slot) || slot < 0) {
 		throw new TypeError('invalid-process-slot');
 	}
-	const fetcher = options.fetch ?? globalThis.fetch.bind(globalThis);
+	const fetcher = aoPeerFetch(options.fetch);
 	const provider = currentServingNode();
 	const state = await readState(processId, provider, fetcher, { ...options, slot });
 	if (assetStateSlot(state) !== slot) throw new Error('historical-state-slot-mismatch');
@@ -183,7 +184,7 @@ export async function readProcessAssignments(
 	) {
 		throw new TypeError('invalid-process-schedule-window');
 	}
-	const fetcher = options.fetch ?? globalThis.fetch.bind(globalThis);
+	const fetcher = aoPeerFetch(options.fetch);
 	const provider = currentServingNode();
 	const base = provider ? `${provider}/` : '/';
 	const paths = [
@@ -192,7 +193,6 @@ export async function readProcessAssignments(
 	];
 	let lastError: unknown;
 	for (const path of paths) {
-		const request = timeoutSignal(options.signal, COMPUTE_TIMEOUT);
 		try {
 			const response = await fetcher(path, {
 				headers: {
@@ -200,15 +200,13 @@ export async function readProcessAssignments(
 					'require-codec': 'application/json',
 					'accept-bundle': 'true',
 				},
-				signal: request.signal,
+				signal: options.signal,
 			});
 			if (!response.ok) throw new Error(`HTTP ${response.status}`);
 			return parseProcessAssignments(parseLosslessJson(await response.text()), fromSlot, toSlot);
 		} catch (error) {
 			lastError = error;
 			if (error instanceof Error && /^HTTP 429(?:\b|$)/i.test(error.message)) break;
-		} finally {
-			request.cleanup();
 		}
 	}
 	throw lastError instanceof Error ? lastError : new Error('process-schedule-provider-failed');
@@ -229,7 +227,7 @@ export async function waitForAssetState(
 		onAttempt?: (provider: string, attempt: number, total: number) => void;
 	} = {}
 ): Promise<ComputeResult> {
-	const fetcher = options.fetch ?? globalThis.fetch.bind(globalThis);
+	const fetcher = aoPeerFetch(options.fetch);
 	const startedAt = Date.now();
 	const timeout = options.timeout ?? 180_000;
 	let attempt = 0;
@@ -448,7 +446,6 @@ async function readState(
 	for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
 		let rateLimited = false;
 		for (const path of paths) {
-			const request = timeoutSignal(options.signal, COMPUTE_TIMEOUT);
 			try {
 				const response = await fetcher(path, {
 					...(options.slot === undefined && maxAge === 0 ? { cache: 'no-store' as const } : {}),
@@ -457,15 +454,13 @@ async function readState(
 						'require-codec': 'application/json',
 						'accept-bundle': 'true',
 					},
-					signal: request.signal,
+					signal: options.signal,
 				});
 				if (!response.ok) throw new Error(`HTTP ${response.status}`);
 				return parseAssetState(parseLosslessJson(await response.text()));
 			} catch (error) {
 				lastError = error;
 				rateLimited = error instanceof Error && /^HTTP 429(?:\b|$)/i.test(error.message);
-			} finally {
-				request.cleanup();
 			}
 			if (rateLimited) break;
 		}
@@ -588,21 +583,6 @@ function text(value: unknown): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return Boolean(value && typeof value === 'object' && !Array.isArray(value));
-}
-
-function timeoutSignal(parent: AbortSignal | undefined, timeout: number): { signal: AbortSignal; cleanup: () => void } {
-	const controller = new AbortController();
-	const abort = () => controller.abort(parent?.reason);
-	if (parent?.aborted) abort();
-	else parent?.addEventListener('abort', abort, { once: true });
-	const timer = setTimeout(() => controller.abort(new Error('compute-provider-timeout')), timeout);
-	return {
-		signal: controller.signal,
-		cleanup: () => {
-			clearTimeout(timer);
-			parent?.removeEventListener('abort', abort);
-		},
-	};
 }
 
 function delay(duration: number, signal?: AbortSignal): Promise<void> {
