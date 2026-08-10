@@ -7421,13 +7421,13 @@ function OperationDialog({
 	if (!visible && visiblePhase !== 'working') return null;
 	return (
 		<div
-			className={`dialog-backdrop operation-panel-backdrop${hiding ? ' dialog-backdrop-hiding' : ''}`}
+			className={`dialog-backdrop${hiding ? ' dialog-backdrop-hiding' : ''}`}
 			hidden={!visible}
 			onMouseDown={(event) => event.target === event.currentTarget && closeOrHide()}
 			role="presentation"
 		>
 			<div
-				className={`dialog operation-side-panel${visiblePhase === 'working' ? '' : ' dialog-compact'}${
+				className={`dialog${visiblePhase === 'working' ? '' : ' dialog-compact'}${
 					visiblePhase === 'form' ? ' dialog-form-phase' : ''
 				}`}
 				aria-hidden={visible ? undefined : true}

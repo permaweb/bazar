@@ -2141,13 +2141,13 @@ function FungibleOperationDialog({
 	const compactPurchaseForm = phase === 'form' && operation.kind === 'buy';
 	return (
 		<div
-			className={`dialog-backdrop operation-panel-backdrop${hiding ? ' dialog-backdrop-hiding' : ''}`}
+			className={`dialog-backdrop${hiding ? ' dialog-backdrop-hiding' : ''}`}
 			hidden={!visible}
 			onMouseDown={(event) => event.target === event.currentTarget && closeOrHide()}
 			role="presentation"
 		>
 			<div
-				className={`dialog operation-side-panel fungible-dialog${phase === 'form' ? ' dialog-form-phase' : ''}${
+				className={`dialog fungible-dialog${phase === 'form' ? ' dialog-form-phase' : ''}${
 					compactPurchaseForm ? ' purchase-dialog' : ''
 				}`}
 				aria-hidden={visible ? undefined : true}
