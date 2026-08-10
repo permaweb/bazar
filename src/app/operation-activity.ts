@@ -1,7 +1,8 @@
 import type { PurchaseSnapshot } from 'weave-wrangler';
 
-import type { SwapOrder } from 'api/asset-marketplace';
+import { type AssetState, liquidBalanceOf, liveOrderOfAsset, type SwapOrder } from 'api/asset-marketplace';
 import type { AssetSummary, Collection } from 'api/collections';
+import { filledOrder, parseTokenAmount } from 'api/order-matching';
 
 import {
 	atomicPurchaseStorageKey,
@@ -77,6 +78,92 @@ type StoredOperation = {
 	value?: unknown;
 	createdAt?: unknown;
 };
+
+export function operationRecoveryCanStillApply(
+	state: AssetState,
+	owner: string,
+	record: unknown,
+	activityKind: 'atomic' | 'fungible'
+) {
+	if (!isRecord(record)) return false;
+	const kind = parseAssetOperationKind(record.kind);
+	if (!kind) return false;
+	if (kind === 'cancel') {
+		if (!isRecord(record.order) || typeof record.order.orderId !== 'string') return false;
+		const current = state.orders[record.order.orderId];
+		return Boolean(current?.status === 'open' && current.creator === owner);
+	}
+	if (kind === 'sell' && typeof record.txId === 'string' && state.orders[record.txId]) return false;
+	if (activityKind === 'atomic') {
+		return liquidBalanceOf(state, owner) === '1' && !liveOrderOfAsset(state);
+	}
+	try {
+		const quantity = parseTokenAmount(
+			typeof record.quantity === 'string' ? record.quantity : '',
+			state.denomination
+		);
+		return BigInt(quantity) > 0n && BigInt(quantity) <= BigInt(liquidBalanceOf(state, owner));
+	} catch {
+		return false;
+	}
+}
+
+export function atomicPurchaseRecoveryCanBeDiscarded(
+	state: AssetState,
+	buyer: string,
+	order: SwapOrder,
+	snapshot: PurchaseSnapshot
+) {
+	return snapshot.payment?.dispatched !== true && !purchaseOrderStillAvailable(state, buyer, order);
+}
+
+export function fungiblePurchaseRecoveryCanBeDiscarded(state: AssetState, buyer: string, record: unknown) {
+	if (!isRecord(record) || !Array.isArray(record.entries) || !record.entries.length) return false;
+	if (
+		record.entries.some(
+			(entry) =>
+				isRecord(entry) &&
+				isRecord(entry.snapshot) &&
+				isRecord(entry.snapshot.payment) &&
+				entry.snapshot.payment.dispatched === true
+		)
+	) {
+		return false;
+	}
+	return record.entries.some((entry) => {
+		if (!isRecord(entry) || !isRecord(entry.order)) return false;
+		const order = entry.order as unknown as SwapOrder;
+		if (typeof order.orderId !== 'string') return false;
+		return !purchaseOrderStillAvailable(
+			state,
+			buyer,
+			order,
+			typeof entry.fillQuantity === 'string' ? entry.fillQuantity : undefined
+		);
+	});
+}
+
+function purchaseOrderStillAvailable(state: AssetState, buyer: string, order: SwapOrder, fillQuantity?: string) {
+	const current = state.orders[order.orderId];
+	let expected = order;
+	try {
+		if (current?.status === 'reserved' && fillQuantity) expected = filledOrder(order, fillQuantity);
+	} catch {
+		return false;
+	}
+	return Boolean(
+		current &&
+			current.creator === expected.creator &&
+			current.recipient === expected.recipient &&
+			current.asking === expected.asking &&
+			current.deposit === expected.deposit &&
+			current.minimumFee === expected.minimumFee &&
+			current.deadline === expected.deadline &&
+			current.createdAt === expected.createdAt &&
+			current.quantity === expected.quantity &&
+			(current.status === 'open' || (current.status === 'reserved' && current.buyer === buyer))
+	);
+}
 
 export function deriveOperationActivities(
 	storage: EnumerableActivityStorage,

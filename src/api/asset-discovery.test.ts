@@ -1,28 +1,29 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import type { Collection } from './collections';
+import { arweaveGraphqlEndpoint } from 'helpers/config';
+
 import {
+	type AssetCandidate,
 	bazarAtomicAssetFromState,
+	type CollectionActivityEvent,
 	confirmPurchaseActivity,
 	createWalletCandidateScan,
-	discoverWalletAssetCandidates,
 	discoverCollectionActivity,
 	discoverCollectionActivityBatched,
 	discoverMarketActivity,
 	discoverMarketActivityBatched,
 	discoverPendingAssetOffers,
-	pendingAssetOffersFromActivity,
+	discoverWalletAssetCandidates,
 	partitionAssetCandidateSupport,
+	pendingAssetOffersFromActivity,
 	resolveAssetCandidates,
 	restrictAssetCandidates,
 	searchBazarAtomicAssetsByName,
 	verifyAssetCandidateSupport,
 	walletAssetGroup,
-	type AssetCandidate,
-	type CollectionActivityEvent,
 } from './asset-discovery';
 import { parseAssetState } from './asset-marketplace';
-import { arweaveGraphqlEndpoint } from 'helpers/config';
+import type { Collection } from './collections';
 
 const wallet = 'W'.repeat(43);
 const buyer = 'B'.repeat(43);
@@ -100,7 +101,7 @@ describe('Bazar atomic asset search', () => {
 						],
 					},
 				},
-			}),
+			})
 		);
 
 		const results = await searchBazarAtomicAssetsByName(' lucifer shrek ', {
@@ -121,7 +122,7 @@ describe('Bazar atomic asset search', () => {
 		const fetcher = vi.fn(async (_url: string | URL | Request, _init?: RequestInit) =>
 			Response.json({
 				data: { transactions: { pageInfo: { hasNextPage: false }, edges: [] } },
-			}),
+			})
 		);
 
 		await searchBazarAtomicAssetsByName('Lucifer Shrek', { fetch: fetcher as typeof fetch });
@@ -236,7 +237,7 @@ describe('purchase activity confirmation', () => {
 			confirmPurchaseActivity([event], {
 				readCurrent: async () => ({ state, provider: 'test' }),
 				readAssignments: async () => [],
-			}),
+			})
 		).resolves.toEqual([event]);
 	});
 });
@@ -330,7 +331,7 @@ describe('wallet candidate discovery', () => {
 				new Response(JSON.stringify(pages.shift()), {
 					status: 200,
 					headers: { 'content-type': 'application/json' },
-				}),
+				})
 		);
 
 		const candidates = await discoverWalletAssetCandidates(wallet, { fetch: fetcher as typeof fetch });
@@ -564,13 +565,13 @@ describe('wallet candidate discovery', () => {
 		const missingAlias = vi.fn(async () =>
 			Response.json({
 				data: { initiallyHeld: connection, marketActions: { pageInfo: { hasNextPage: false }, edges: [] } },
-			}),
+			})
 		);
 		await expect(
 			discoverWalletAssetCandidates(wallet, {
 				fetch: missingAlias as typeof fetch,
 				scan: missingAliasScan,
-			}),
+			})
 		).rejects.toThrow('asset-discovery-graphql-schema');
 		expect(missingAliasScan.found.size).toBe(0);
 		expect(missingAliasScan.cursors.initiallyHeld).toBeNull();
@@ -592,7 +593,7 @@ describe('wallet candidate discovery', () => {
 				onPage: () => {
 					throw new Error('consumer-failed');
 				},
-			}),
+			})
 		).rejects.toThrow('consumer-failed');
 		expect(consumerScan.found.size).toBe(0);
 		expect(consumerScan.cursors.initiallyHeld).toBeNull();
@@ -700,7 +701,7 @@ describe('wallet candidate discovery', () => {
 						],
 					},
 				},
-			}),
+			})
 		);
 
 		const result = await discoverWalletAssetCandidates(wallet, {
@@ -727,11 +728,11 @@ describe('wallet candidate discovery', () => {
 		const fetcher = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
 			Response.json({
 				data: { initiallyHeld: connection, marketActions: connection },
-			}),
+			})
 		);
 
 		await expect(discoverWalletAssetCandidates(wallet, { fetch: fetcher as typeof fetch })).rejects.toThrow(
-			'asset-discovery-graphql-schema',
+			'asset-discovery-graphql-schema'
 		);
 	});
 
@@ -739,10 +740,10 @@ describe('wallet candidate discovery', () => {
 		const missingPageInfo = vi.fn(async () =>
 			Response.json({
 				data: { transactions: { edges: [] } },
-			}),
+			})
 		);
 		await expect(discoverMarketActivity({ fetch: missingPageInfo as typeof fetch })).rejects.toThrow(
-			'asset-activity-graphql-schema',
+			'asset-activity-graphql-schema'
 		);
 
 		const invalidEdge = vi.fn(async () =>
@@ -753,10 +754,10 @@ describe('wallet candidate discovery', () => {
 						edges: [{ cursor: 'cursor', node: { id: 'not-a-transaction' } }],
 					},
 				},
-			}),
+			})
 		);
 		await expect(discoverMarketActivity({ fetch: invalidEdge as typeof fetch })).rejects.toThrow(
-			'asset-activity-graphql-schema',
+			'asset-activity-graphql-schema'
 		);
 	});
 
@@ -769,22 +770,22 @@ describe('wallet candidate discovery', () => {
 					marketActions: { pageInfo: { hasNextPage: false }, edges: [] },
 					receivedTransfers: { pageInfo: { hasNextPage: false }, edges: [] },
 				},
-			}),
+			})
 		);
 		await expect(discoverWalletAssetCandidates(wallet, { fetch: stalledWallet as typeof fetch })).rejects.toThrow(
-			'asset-discovery-pagination-stalled',
+			'asset-discovery-pagination-stalled'
 		);
 
 		const stalledMarket = vi.fn(async () =>
 			Response.json({
 				data: { transactions: stalledConnection },
-			}),
+			})
 		);
 		await expect(discoverMarketActivity({ fetch: stalledMarket as typeof fetch })).rejects.toThrow(
-			'asset-activity-pagination-stalled',
+			'asset-activity-pagination-stalled'
 		);
 		await expect(discoverCollectionActivity({ fetch: stalledMarket as typeof fetch })).rejects.toThrow(
-			'collection-activity-pagination-stalled',
+			'collection-activity-pagination-stalled'
 		);
 	});
 
@@ -900,7 +901,7 @@ describe('wallet candidate discovery', () => {
 		await expect(
 			discoverPendingAssetOffers(assetA, { swapHeight: 100, orders: {} } as any, {
 				fetch: fetcher as typeof fetch,
-			}),
+			})
 		).resolves.toEqual([
 			{ id: pendingId, actor: wallet, height: 101, timestamp: 2, asking: '200000', quantity: '1' },
 		]);
@@ -917,19 +918,19 @@ describe('wallet candidate discovery', () => {
 							edges: [activityEdge('activity', assetA, 10)],
 						},
 					},
-				}),
+				})
 			)
 			.mockResolvedValueOnce(
 				Response.json({
 					data: { transactions: { pageInfo: { hasNextPage: true }, edges: [] } },
-				}),
+				})
 			);
 
 		await expect(
 			discoverCollectionActivity({
 				fetch: fetcher as typeof fetch,
 				requiredExecutionDevice: 'token@1.0',
-			}),
+			})
 		).rejects.toThrow('collection-activity-device-pagination-stalled');
 	});
 
@@ -948,7 +949,7 @@ describe('wallet candidate discovery', () => {
 		});
 
 		await expect(discoverMarketActivity({ fetch: fetcher as typeof fetch })).rejects.toThrow(
-			'asset-activity-pagination-stalled',
+			'asset-activity-pagination-stalled'
 		);
 		expect(fetcher).toHaveBeenCalledTimes(3);
 	});
@@ -965,8 +966,8 @@ describe('wallet candidate discovery', () => {
 							},
 						},
 					}),
-					{ status: 200, headers: { 'content-type': 'application/json' } },
-				),
+					{ status: 200, headers: { 'content-type': 'application/json' } }
+				)
 		);
 
 		await discoverMarketActivity({
@@ -986,7 +987,7 @@ describe('wallet candidate discovery', () => {
 		const fetcher = vi.fn(async () =>
 			Response.json({
 				data: { transactions: { pageInfo: { hasNextPage: false }, edges: [] } },
-			}),
+			})
 		);
 
 		await discoverMarketActivity({ fetch: fetcher as typeof fetch, recipients: [assetA] });
@@ -1054,7 +1055,7 @@ describe('wallet candidate discovery', () => {
 				onBatch: (_candidates, batch) => {
 					completed.push(batch);
 				},
-			}),
+			})
 		).rejects.toThrow('activity window unavailable');
 
 		expect(fetcher).toHaveBeenCalledTimes(2);
@@ -1085,10 +1086,10 @@ describe('wallet candidate discovery', () => {
 		};
 
 		expect(await run([5, 1])).toBe(
-			'asset-activity-batch-failed: asset-activity-graphql-429; asset-activity-graphql-503',
+			'asset-activity-batch-failed: asset-activity-graphql-429; asset-activity-graphql-503'
 		);
 		expect(await run([1, 5])).toBe(
-			'asset-activity-batch-failed: asset-activity-graphql-429; asset-activity-graphql-503',
+			'asset-activity-batch-failed: asset-activity-graphql-429; asset-activity-graphql-503'
 		);
 	});
 
@@ -1104,7 +1105,7 @@ describe('wallet candidate discovery', () => {
 						],
 					},
 				},
-			}),
+			})
 		);
 		const emitted: string[][] = [];
 
@@ -1147,7 +1148,7 @@ describe('wallet candidate discovery', () => {
 				new Response(JSON.stringify(pages.shift()), {
 					status: 200,
 					headers: { 'content-type': 'application/json' },
-				}),
+				})
 		);
 		const emitted: string[][] = [];
 
@@ -1181,7 +1182,7 @@ describe('wallet candidate discovery', () => {
 				new Response(JSON.stringify(pages.shift()), {
 					status: 200,
 					headers: { 'content-type': 'application/json' },
-				}),
+				})
 		);
 		let page = 0;
 		const discovery = discoverMarketActivity({
@@ -1216,8 +1217,8 @@ describe('wallet candidate discovery', () => {
 							},
 						},
 					}),
-					{ status: 200, headers: { 'content-type': 'application/json' } },
-				),
+					{ status: 200, headers: { 'content-type': 'application/json' } }
+				)
 		);
 		const discovery = discoverMarketActivity({
 			fetch: fetcher as typeof fetch,
@@ -1260,8 +1261,8 @@ describe('wallet candidate discovery', () => {
 							},
 						},
 					}),
-					{ status: 200, headers: { 'content-type': 'application/json' } },
-				),
+					{ status: 200, headers: { 'content-type': 'application/json' } }
+				)
 		);
 
 		const events = await discoverCollectionActivity({
@@ -1345,7 +1346,7 @@ describe('wallet candidate discovery', () => {
 				onBatch: (_events, batch) => {
 					completed.push(batch);
 				},
-			}),
+			})
 		).rejects.toThrow('activity window unavailable');
 
 		expect(fetcher).toHaveBeenCalledTimes(2);
@@ -1439,7 +1440,7 @@ describe('wallet candidate discovery', () => {
 					transactions: {
 						pageInfo: { hasNextPage: false },
 						edges: processIds.map((processId, index) =>
-							activityEdge(`activity-${index}`, processId, 100 - index),
+							activityEdge(`activity-${index}`, processId, 100 - index)
 						),
 					},
 				},
@@ -1504,7 +1505,7 @@ describe('live candidate resolution', () => {
 			expect.arrayContaining([
 				{ processId: assetA, resolved: false, failed: true },
 				{ processId: assetB, resolved: true, failed: false },
-			]),
+			])
 		);
 	});
 
@@ -1668,7 +1669,7 @@ describe('live candidate resolution', () => {
 						edges: [{ cursor: 'atomic', node: { id: processId, tags: processTags } }],
 					},
 				},
-			}),
+			})
 		);
 
 		expect(restrictAssetCandidates([candidate], [tokenCollection])).toEqual([candidate]);
@@ -1706,7 +1707,7 @@ describe('live candidate resolution', () => {
 		await expect(
 			resolveAssetCandidates(verification.supported, [tokenCollection], {
 				read: async () => ({ provider: 'https://compute.example', state }),
-			}),
+			})
 		).resolves.toMatchObject([
 			{
 				asset: { id: processId, name: 'Portable asset' },
@@ -1801,7 +1802,7 @@ describe('live candidate resolution', () => {
 		expect(fetcher).toHaveBeenCalledTimes(3);
 		expect(verification.supported.map((candidate) => candidate.processId)).toEqual([knownId, verifiedId]);
 		expect(verification.unavailable.map(({ candidate }) => candidate.processId)).toEqual(
-			candidates.slice(1, 10).map((candidate) => candidate.processId),
+			candidates.slice(1, 10).map((candidate) => candidate.processId)
 		);
 	});
 
@@ -2050,8 +2051,8 @@ describe('live candidate resolution', () => {
 						orders: {},
 					}),
 				},
-				wallet,
-			),
+				wallet
+			)
 		).toBe('owned');
 	});
 });

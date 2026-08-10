@@ -24,6 +24,7 @@ describe('GlobalStyle', () => {
 			expect(css).toContain('--paper:#090a0b');
 			expect(css).toContain('--surface:#1b1c20');
 			expect(css).toContain('--focus-ring:#a0a1ad');
+			expect(css).toContain('--space-5:24px');
 			expect(css).toContain('color-scheme:dark');
 		} finally {
 			sheet.seal();

@@ -95,7 +95,9 @@ export function MarketActivityList({
 								<a
 									aria-label={
 										transactionHeight > 0
-											? `View ${event.purchaseProof ? 'settlement proof' : 'submitted transaction'} included in block ${transactionHeight.toLocaleString()}`
+											? `View ${
+													event.purchaseProof ? 'settlement proof' : 'submitted transaction'
+											  } included in block ${transactionHeight.toLocaleString()}`
 											: 'View submitted transaction'
 									}
 									href={transactionExplorerUrl(transactionId)}
@@ -104,7 +106,9 @@ export function MarketActivityList({
 								>
 									<span className="activity-transaction-long" aria-hidden="true">
 										{transactionHeight > 0
-											? `View ${event.purchaseProof ? 'settlement proof' : 'submitted transaction'} · included in block ${transactionHeight.toLocaleString()}`
+											? `View ${
+													event.purchaseProof ? 'settlement proof' : 'submitted transaction'
+											  } · included in block ${transactionHeight.toLocaleString()}`
 											: 'View submitted transaction'}
 									</span>
 									<span className="activity-transaction-short" aria-hidden="true">

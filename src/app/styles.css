@@ -1909,7 +1909,7 @@ main:focus {
 	padding: var(--page-block-spacing) 0 var(--page-footer-spacing);
 }
 .route-state-shell > .back {
-	margin-bottom: 34px;
+	margin-bottom: var(--space-5);
 }
 .route-state-shell h1 {
 	margin: 8px 0 24px;
@@ -1922,8 +1922,8 @@ main:focus {
 	display: flex;
 	justify-content: space-between;
 	align-items: end;
-	gap: 40px;
-	margin-bottom: 30px;
+	gap: var(--space-6);
+	margin-bottom: var(--space-5);
 }
 .section-heading h2,
 .collection-title h1 {
@@ -1943,7 +1943,7 @@ main:focus {
 .collection-grid {
 	display: grid;
 	grid-template-columns: repeat(3, minmax(0, 1fr));
-	gap: 18px;
+	gap: var(--space-4);
 }
 .collection-card {
 	min-height: 475px;
@@ -1995,7 +1995,7 @@ main:focus {
 	font: 400 var(--type-display) / 1 'DM Sans', sans-serif;
 }
 .collection-card > div:nth-child(2) {
-	padding: 25px;
+	padding: var(--space-5);
 }
 .collection-card h3 {
 	margin: 5px 0 10px;
@@ -2030,8 +2030,8 @@ main:focus {
 	min-height: 32px;
 	display: inline-flex;
 	align-items: center;
-	gap: 7px;
-	margin-bottom: 38px;
+	gap: var(--space-2);
+	margin-bottom: var(--space-5);
 	color: var(--muted-subtle);
 	font-size: var(--type-body);
 	font-weight: 400;
@@ -2106,8 +2106,8 @@ main:focus {
 	display: grid;
 	grid-template-columns: minmax(240px, 1fr) auto auto;
 	align-items: end;
-	margin-bottom: 24px;
-	gap: 14px;
+	margin-bottom: var(--space-5);
+	gap: var(--space-3);
 }
 input {
 	width: 100%;
@@ -3086,7 +3086,7 @@ input:focus {
 	box-shadow: 0 8px 28px var(--shadow-soft);
 }
 .asset-identity {
-	padding: 4px 0 22px;
+	padding: var(--space-1) 0 var(--space-4);
 }
 .asset-collection-link {
 	min-width: 0;
@@ -3215,13 +3215,13 @@ input:focus {
 	font-weight: 400;
 }
 .asset-token-tags {
-	margin-top: 15px;
+	margin-top: var(--space-4);
 	display: flex;
 	flex-wrap: wrap;
-	gap: 6px;
+	gap: var(--space-2);
 }
 .state-verification {
-	margin: 10px 0 0;
+	margin: var(--space-3) 0 0;
 	display: flex;
 	align-items: center;
 	flex-wrap: wrap;
@@ -3249,8 +3249,8 @@ input:focus {
 	letter-spacing: 0.035em;
 }
 .asset-commerce-card {
-	margin-top: 24px;
-	padding: 17px;
+	margin-top: var(--space-5);
+	padding: var(--space-4);
 	border: 1px solid var(--line-dark);
 	border-radius: 10px;
 	background: var(--paper);
@@ -3258,7 +3258,7 @@ input:focus {
 .asset-market-stats {
 	display: grid;
 	grid-template-columns: repeat(4, minmax(0, 1fr));
-	gap: 14px;
+	gap: var(--space-3);
 }
 .asset-market-stats > div {
 	min-width: 0;
@@ -3279,8 +3279,8 @@ input:focus {
 	white-space: nowrap;
 }
 .asset-buy-summary {
-	margin-top: 17px;
-	padding-top: 16px;
+	margin-top: var(--space-4);
+	padding-top: var(--space-4);
 	display: grid;
 	gap: 5px;
 	border-top: 1px solid var(--line);
@@ -3463,10 +3463,10 @@ input:focus {
 	line-height: 1.4;
 }
 .asset-commerce-actions {
-	margin-top: 16px;
+	margin-top: var(--space-4);
 	display: grid;
 	grid-template-columns: minmax(0, 1fr) auto;
-	gap: 9px;
+	gap: var(--space-2);
 }
 .asset-commerce-actions button {
 	min-height: 45px;
@@ -3893,8 +3893,8 @@ input:focus {
 .loading {
 	display: flex;
 	align-items: center;
-	gap: 11px;
-	padding: 26px 0;
+	gap: var(--space-3);
+	padding: var(--space-5) 0;
 	color: var(--muted-subtle);
 	font-size: var(--type-body);
 }
@@ -3912,19 +3912,22 @@ input:focus {
 	}
 }
 .error-panel {
-	margin: 0 0 var(--asset-grid-gap);
-	padding: 17px;
+	margin: var(--space-3) 0 var(--space-5);
+	padding: var(--space-4);
 	border: 1px solid var(--negative-border);
 	border-radius: 10px;
 	background: var(--negative-surface);
 	display: flex;
 	flex-direction: column;
-	gap: 5px;
+	gap: var(--space-2);
 	color: var(--negative);
+}
+.error-panel > span {
+	line-height: 1.45;
 }
 .error-panel-retry {
 	width: fit-content;
-	margin-top: 7px;
+	margin-top: var(--space-1);
 	border-color: currentColor;
 	background: var(--transparent);
 	color: inherit;
@@ -3933,9 +3936,9 @@ input:focus {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	gap: 18px;
-	margin: 0 0 24px;
-	padding: 13px 15px;
+	gap: var(--space-4);
+	margin: 0 0 var(--space-5);
+	padding: var(--space-3) var(--space-4);
 	border: 1px solid var(--negative-border);
 	border-radius: 10px;
 	background: var(--negative-surface);
@@ -3951,9 +3954,9 @@ input:focus {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	gap: 18px;
-	margin: 14px 0 22px;
-	padding: 13px 15px;
+	gap: var(--space-4);
+	margin: var(--space-4) 0 var(--space-5);
+	padding: var(--space-3) var(--space-4);
 	border: 1px solid var(--warning-border);
 	border-radius: 10px;
 	background: var(--warning-surface);
@@ -4057,8 +4060,8 @@ input:focus {
 	display: flex;
 	align-items: end;
 	justify-content: space-between;
-	gap: 36px;
-	margin-bottom: 30px;
+	gap: var(--space-6);
+	margin-bottom: var(--space-5);
 }
 .my-assets-heading h1 {
 	margin: 0;
@@ -4124,15 +4127,15 @@ input:focus {
 	}
 }
 .asset-group {
-	margin-top: 52px;
+	margin-top: var(--space-7);
 }
 .asset-group-title {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	margin-bottom: 18px;
+	margin-bottom: var(--space-4);
 	border-bottom: 1px solid var(--line);
-	padding-bottom: 12px;
+	padding-bottom: var(--space-3);
 }
 .asset-group-title h2 {
 	margin: 0;
@@ -4204,14 +4207,14 @@ input:focus {
 }
 .dialog-form-phase .dialog-heading {
 	flex: 0 0 auto;
-	margin-bottom: 20px;
+	margin-bottom: var(--space-5);
 }
 .dialog-form-phase > .operation-form,
 .dialog-form-phase > .trade-form {
 	flex: 1 1 auto;
 	min-height: 0;
 	grid-template-rows: minmax(0, 1fr) auto;
-	gap: 12px;
+	gap: var(--space-3);
 	overflow: hidden;
 }
 .dialog-form-phase .dialog-form-scroll {
@@ -4224,13 +4227,13 @@ input:focus {
 	scroll-padding-block: 2px;
 }
 .dialog-form-phase > .trade-form > .dialog-form-scroll {
-	gap: 14px;
+	gap: var(--space-4);
 }
 .dialog-heading {
 	display: flex;
 	align-items: start;
 	justify-content: space-between;
-	margin-bottom: 26px;
+	margin-bottom: var(--space-5);
 }
 .dialog-heading > div {
 	min-width: 0;
@@ -4238,7 +4241,7 @@ input:focus {
 .dialog-asset-heading {
 	display: flex;
 	align-items: center;
-	gap: 12px;
+	gap: var(--space-3);
 }
 .dialog-asset-heading-copy {
 	min-width: 0;
@@ -4529,7 +4532,7 @@ input:focus {
 }
 .operation-form {
 	display: grid;
-	gap: 16px;
+	gap: var(--space-4);
 }
 .recovery-approval {
 	min-width: 0;
@@ -5449,26 +5452,15 @@ body input:focus-visible {
 	align-items: end;
 	gap: 12px;
 }
-.settlement-receipt-navigation label {
+.settlement-receipt-navigation .market-select {
 	min-width: 0;
 	flex: 1;
-	display: grid;
-	gap: 5px;
-	color: var(--muted);
-	font-size: var(--type-small);
 	text-align: left;
 }
-.settlement-receipt-navigation select {
+.settlement-receipt-navigation .market-select-menu {
 	width: 100%;
-	min-width: 0;
-	min-height: 44px;
-	padding: 0 36px 0 12px;
-	border: 1px solid var(--line-dark);
-	border-radius: 7px;
-	background: var(--paper);
-	color: var(--ink);
-	font: inherit;
-	font-size: var(--type-body);
+	max-height: min(320px, 45vh);
+	overflow-y: auto;
 }
 .settlement-receipt-navigation > span {
 	flex: 0 0 auto;
@@ -5586,7 +5578,7 @@ body input:focus-visible {
 	.atomic-asset-page .asset-detail-layout {
 		grid-template-columns: 1fr;
 		grid-template-rows: auto auto auto;
-		row-gap: 28px;
+		row-gap: 20px;
 	}
 	.atomic-asset-page .asset-commerce-primary {
 		grid-column: 1;
@@ -5719,7 +5711,7 @@ body input:focus-visible {
 	.collection-title {
 		align-items: start;
 		flex-direction: column;
-		gap: 18px;
+		gap: var(--space-4);
 	}
 	.content-section,
 	.collection-page,
@@ -6353,7 +6345,7 @@ body input:focus-visible {
 		padding-inline: 4px;
 	}
 	.asset-identity {
-		padding-bottom: 14px;
+		padding-bottom: var(--space-3);
 	}
 	.asset-commerce-card {
 		margin-top: 18px;
@@ -6663,7 +6655,7 @@ body input:focus-visible {
 	grid-template-columns: minmax(0, 1fr) minmax(280px, 480px);
 	align-items: end;
 	gap: 48px;
-	margin-bottom: 42px;
+	margin-bottom: 40px;
 }
 .create-heading .eyebrow {
 	margin: 0 0 9px;
@@ -6934,7 +6926,7 @@ body input:focus-visible {
 }
 .create-form {
 	display: grid;
-	gap: 22px;
+	gap: var(--space-5);
 }
 .create-field {
 	position: relative;
@@ -7038,6 +7030,7 @@ body input:focus-visible {
 	background: var(--paper);
 }
 .udl-options > p {
+	margin: 0;
 	color: var(--muted-subtle);
 	font-size: var(--type-body);
 	line-height: 1.5;
@@ -7149,8 +7142,8 @@ body input:focus-visible {
 	padding: 0 16px 15px;
 }
 .mint-summary {
-	margin-top: 6px;
-	padding: 17px 0;
+	margin-top: var(--space-2);
+	padding: var(--space-4) 0;
 	display: grid;
 	grid-template-columns: repeat(3, minmax(0, 1fr));
 	gap: 16px;
@@ -7384,7 +7377,7 @@ body input:focus-visible {
 }
 .asset-detail-tabs {
 	width: 100%;
-	margin: 4px 0 16px;
+	margin: 0 0 var(--space-4);
 	gap: 5px;
 	flex-wrap: wrap;
 }
@@ -7412,7 +7405,7 @@ body input:focus-visible {
 	outline-offset: 2px;
 }
 .asset-tab-panel > .asset-description {
-	margin-bottom: 18px;
+	margin-bottom: var(--space-4);
 }
 .asset-activity-panel {
 	display: grid;
