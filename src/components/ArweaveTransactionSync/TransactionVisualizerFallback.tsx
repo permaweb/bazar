@@ -50,14 +50,14 @@ export function TransactionRendererFallback({ lanes }: { lanes: Infinity3DLane[]
 }
 
 const RendererFallback = styled.div`
-	position: absolute;
-	inset: 18px;
+	position: relative;
 	z-index: 4;
-	padding: 18px;
+	width: 100%;
+	padding: 16px 18px;
 	display: grid;
-	align-content: center;
+	align-content: start;
 	gap: 6px;
-	overflow: auto;
+	overflow: hidden;
 	border: 1px solid ${(props) => props.theme.colors.border.primary};
 	border-radius: 14px;
 	background: color-mix(in srgb, ${(props) => props.theme.colors.container.primary.background} 94%, transparent);
@@ -103,7 +103,6 @@ const RendererFallback = styled.div`
 	}
 
 	@media (max-width: 480px) {
-		inset: 10px;
 		padding: 12px;
 
 		ul {

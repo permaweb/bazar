@@ -2667,7 +2667,7 @@ function FungibleOperationDialog({
 					</form>
 				) : null}
 				{phase === 'working' ? (
-					<div>
+					<div className="operation-working">
 						{operation.kind === 'buy' ? (
 							<p className="sr-only" aria-live="polite" role="status">
 								{settlementAnnouncement}

@@ -310,6 +310,12 @@ export const RaceShell = styled.div<{ $height: number; $embedded: boolean }>`
 	}
 `;
 
+export const FallbackShell = styled.div`
+	position: relative;
+	width: 100%;
+	margin: 8px 0 0;
+`;
+
 export const RaceTrack = styled.svg`
 	position: absolute;
 	inset: 0;

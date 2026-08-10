@@ -113,6 +113,26 @@ describe('transaction map renderer fallback', () => {
 		expect(css).not.toContain('margin-bottom:-126px');
 	});
 
+	it('lets the unavailable network view size to its content at the full container width', () => {
+		const sheet = new ServerStyleSheet();
+		renderToStaticMarkup(
+			sheet.collectStyles(
+				React.createElement(
+					ThemeProvider,
+					{ theme },
+					React.createElement(TransactionRendererFallback, { lanes: [fallbackLane('Confirmed')] })
+				)
+			)
+		);
+		const css = sheet.getStyleTags();
+		sheet.seal();
+		expect(css).toContain('position:relative');
+		expect(css).toContain('width:100%');
+		expect(css).toContain('padding:16px 18px');
+		expect(css).not.toContain('position:absolute');
+		expect(css).not.toContain('inset:18px');
+	});
+
 	it('owns Escape only while an inspection is visible', () => {
 		expect(shouldClearTransactionInspection('Escape', true)).toBe(true);
 		expect(shouldClearTransactionInspection('Escape', false)).toBe(false);

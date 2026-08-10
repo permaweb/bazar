@@ -4974,19 +4974,39 @@ input:focus {
 	display: none;
 }
 .result {
-	text-align: center;
-	padding: 38px;
+	min-width: 0;
+	padding: 0 0 6px;
+	text-align: left;
 }
 .result h3 {
 	font-size: var(--type-display);
 }
 .result.success {
-	width: min(460px, 100%);
-	margin: 0 auto;
-	padding: 24px 0 6px;
+	width: 100%;
+	margin: 0;
+	padding: 0 0 6px;
 	display: grid;
-	gap: 18px;
+	gap: 16px;
 	text-align: left;
+}
+.result.error {
+	display: grid;
+	gap: 16px;
+}
+.result-alert,
+.result-alert h3,
+.result-alert p {
+	margin: 0;
+}
+.result-alert {
+	display: grid;
+	gap: 8px;
+}
+.result-alert p,
+.result.error > p {
+	color: var(--muted);
+	font-size: var(--type-body);
+	line-height: 1.5;
 }
 .result.success .result-outcome {
 	display: grid;
@@ -5035,6 +5055,11 @@ input:focus {
 	min-height: 44px;
 	margin: 0;
 	justify-content: center;
+}
+.result.error > button {
+	width: 100%;
+	min-height: 44px;
+	margin: 0;
 }
 .success h3 {
 	color: var(--positive-text);
@@ -5573,6 +5598,10 @@ body input:focus-visible {
 	color: var(--muted);
 	font-size: var(--type-body);
 }
+.operation-working {
+	min-width: 0;
+	width: 100%;
+}
 .result > a,
 .result-links a,
 .settlement-receipt-links a {
@@ -5639,6 +5668,16 @@ body input:focus-visible {
 }
 .settlement-receipts .settlement-receipt {
 	margin: 0 auto;
+}
+.result .settlement-receipts {
+	width: 100%;
+	margin: 0;
+}
+.result .settlement-receipt-navigation,
+.result .settlement-receipt-paging,
+.result .settlement-receipt {
+	width: 100%;
+	margin-inline: 0;
 }
 .settlement-receipt > div:not(.settlement-receipt-links) {
 	display: flex;

@@ -8152,7 +8152,7 @@ function OperationDialog({
 					</div>
 				) : null}
 				{visiblePhase === 'working' && recoverable ? (
-					<div>
+					<div className="operation-working">
 						<p className="sr-only" aria-live="polite" role="status">
 							{workingStatus ||
 								'Watching independently addressed Arweave nodes report confirmations for this action.'}
