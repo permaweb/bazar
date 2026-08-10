@@ -301,12 +301,12 @@ export const RaceShell = styled.div<{ $height: number; $embedded: boolean }>`
 	display: grid;
 	place-items: center;
 	width: 100%;
-	height: ${(props) => `clamp(220px, 36dvh, ${props.$height}px)`};
+	height: ${(props) => `clamp(280px, 48dvh, ${props.$height}px)`};
 	flex: 0 0 auto;
 	margin: 8px auto 0;
 
 	@media (max-width: 680px) {
-		height: ${(props) => `clamp(200px, 34dvh, ${props.$height}px)`};
+		height: ${(props) => `clamp(240px, 42dvh, ${props.$height}px)`};
 	}
 `;
 

@@ -14,7 +14,11 @@ import {
 	fetchBoundedRecallImage,
 } from 'api/arweave-mining-telemetry';
 
-import { ACCEPTED_PROOF_ANNOTATION_LIFETIME_MS, acceptedProofAnnotationIsVisible } from './acceptedProofs';
+import {
+	ACCEPTED_PROOF_ANNOTATION_LIFETIME_MS,
+	acceptedProofAnnotationIsVisible,
+	acceptedProofAnnotationOpacity,
+} from './acceptedProofs';
 import { ObserverTooltipCard, type ObserverTooltipStage } from './ObserverTooltipCard';
 import { progressColorRgb } from './progressColors';
 import { sequencePhaseBounds } from './sequence';
@@ -888,10 +892,7 @@ export function TransactionSequenceCable3D({
 								if (element) acceptedProofPinRefs.current.set(proof.key, element);
 								else acceptedProofPinRefs.current.delete(proof.key);
 							}}
-							aria-label={`${proof.label}. Hover or focus to inspect block data.`}
 							data-block-height={proof.height}
-							role="group"
-							tabIndex={0}
 						>
 							<AcceptedProofStem />
 							<AcceptedProofCard>
@@ -1460,6 +1461,7 @@ function updateAcceptedProofPins(
 ): void {
 	if (!wire || !width || !height) return;
 	const coordinates = new Float32Array(3);
+	const now = Date.now();
 	proofs.forEach((proof, index) => {
 		const element = elements.get(proof.key);
 		if (!element) return;
@@ -1499,7 +1501,8 @@ function updateAcceptedProofPins(
 		element.style.setProperty('--proof-card-y', `${cardY - anchorY}px`);
 		element.style.setProperty('--proof-stem-length', `${Math.hypot(deltaX, deltaY)}px`);
 		element.style.setProperty('--proof-stem-angle', `${Math.atan2(deltaY, deltaX)}rad`);
-		element.style.opacity = point.z >= -1 && point.z <= 1 ? '1' : '0';
+		element.style.opacity =
+			point.z >= -1 && point.z <= 1 ? String(acceptedProofAnnotationOpacity(proof.observedAt, now)) : '0';
 	});
 }
 
@@ -1676,6 +1679,22 @@ const AcceptedProofPins = styled.span`
 	pointer-events: none;
 `;
 
+const acceptedProofConnectorEnter = keyframes`
+	from {
+		opacity: 0;
+		transform: rotate(var(--proof-stem-angle, 0)) scaleX(0);
+	}
+	to {
+		opacity: 1;
+		transform: rotate(var(--proof-stem-angle, 0)) scaleX(1);
+	}
+`;
+
+const acceptedProofCardEnter = keyframes`
+	from { opacity: 0; }
+	to { opacity: 1; }
+`;
+
 const AcceptedProofPin = styled.span`
 	position: absolute;
 	top: 0;
@@ -1685,36 +1704,8 @@ const AcceptedProofPin = styled.span`
 	height: 0;
 	opacity: 0;
 	transform: translate3d(var(--proof-pin-x, 0), var(--proof-pin-y, 0), 0);
-	transition: opacity 220ms ease;
 	will-change: transform;
-	pointer-events: auto;
-	cursor: help;
-
-	&::before {
-		content: '';
-		position: absolute;
-		top: 0;
-		left: 0;
-		width: 14px;
-		height: 14px;
-		transform: translate(-50%, -50%);
-		border: 2px solid ${(props) => props.theme.colors.container.primary.background};
-		border-radius: 50%;
-		background: ${(props) => props.theme.colors.nasaGraphic.green1};
-		box-shadow: 0 0 0 2px color-mix(in srgb, ${(props) => props.theme.colors.nasaGraphic.green1} 35%, transparent);
-		transition: transform 160ms ease, box-shadow 160ms ease;
-	}
-
-	&:focus {
-		outline: none;
-	}
-
-	&:hover::before,
-	&:focus-visible::before,
-	&:focus-within::before {
-		transform: translate(-50%, -50%) scale(1.18);
-		box-shadow: 0 0 0 4px color-mix(in srgb, ${(props) => props.theme.colors.nasaGraphic.green1} 28%, transparent);
-	}
+	pointer-events: none;
 `;
 
 const AcceptedProofStem = styled.span`
@@ -1723,19 +1714,14 @@ const AcceptedProofStem = styled.span`
 	left: 0;
 	width: var(--proof-stem-length, 0);
 	height: 1px;
-	transform: rotate(var(--proof-stem-angle, 0));
-	transform-origin: 0 50%;
+	transform: rotate(var(--proof-stem-angle, 0)) scaleX(1);
+	transform-origin: 100% 50%;
 	background: color-mix(in srgb, ${(props) => props.theme.colors.font.alt1} 48%, transparent);
-	opacity: 0;
-	visibility: hidden;
-	transition: opacity 140ms ease, visibility 0s linear 140ms;
+	animation: ${acceptedProofConnectorEnter} 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
 	pointer-events: none;
 
-	${AcceptedProofPin}:hover &,
-  ${AcceptedProofPin}:focus-within & {
-		opacity: 1;
-		visibility: visible;
-		transition-delay: 0s;
+	@media (prefers-reduced-motion: reduce) {
+		animation: none;
 	}
 `;
 
@@ -1754,17 +1740,11 @@ const AcceptedProofCard = styled.span`
 	border: 1px solid ${(props) => props.theme.colors.border.primary};
 	border-radius: 10px;
 	box-shadow: 0 10px 28px rgba(28, 25, 22, 0.14);
-	opacity: 0;
-	visibility: hidden;
-	pointer-events: none;
-	transition: opacity 140ms ease, visibility 0s linear 140ms;
+	animation: ${acceptedProofCardEnter} 360ms ease-out both;
+	pointer-events: auto;
 
-	${AcceptedProofPin}:hover &,
-  ${AcceptedProofPin}:focus-within & {
-		opacity: 1;
-		visibility: visible;
-		pointer-events: auto;
-		transition-delay: 0s;
+	@media (prefers-reduced-motion: reduce) {
+		animation: none;
 	}
 
 	@media (max-width: 480px) {

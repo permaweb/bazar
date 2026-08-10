@@ -7421,13 +7421,13 @@ function OperationDialog({
 	if (!visible && visiblePhase !== 'working') return null;
 	return (
 		<div
-			className={`dialog-backdrop${hiding ? ' dialog-backdrop-hiding' : ''}`}
+			className={`dialog-backdrop operation-panel-backdrop${hiding ? ' dialog-backdrop-hiding' : ''}`}
 			hidden={!visible}
 			onMouseDown={(event) => event.target === event.currentTarget && closeOrHide()}
 			role="presentation"
 		>
 			<div
-				className={`dialog${visiblePhase === 'working' ? '' : ' dialog-compact'}${
+				className={`dialog operation-side-panel${visiblePhase === 'working' ? '' : ' dialog-compact'}${
 					visiblePhase === 'form' ? ' dialog-form-phase' : ''
 				}`}
 				aria-hidden={visible ? undefined : true}
@@ -7732,15 +7732,6 @@ function OperationDialog({
 							{workingStatus ||
 								'Watching independently addressed Arweave nodes report confirmations for this action.'}
 						</p>
-						{workingStatus ? (
-							<p
-								className={`scheduler-wait${
-									activityConfirmations > 0 ? ' scheduler-wait-with-progress' : ''
-								}`}
-							>
-								{workingStatus}
-							</p>
-						) : null}
 						<React.Suspense fallback={<Loading label="Loading transaction progress…" />}>
 							<ArweaveTransactionSync
 								active={visible}

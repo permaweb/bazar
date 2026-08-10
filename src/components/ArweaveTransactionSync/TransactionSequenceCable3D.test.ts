@@ -107,7 +107,7 @@ describe('transaction map renderer fallback', () => {
 		const css = sheet.getStyleTags();
 		sheet.seal();
 		expect(css).toContain('width:100%');
-		expect(css).toContain('height:clamp(220px,36dvh,320px)');
+		expect(css).toContain('height:clamp(280px,48dvh,320px)');
 		expect(css).toContain('margin:8px auto 0');
 		expect(css).not.toContain('aspect-ratio');
 		expect(css).not.toContain('margin-bottom:-126px');
