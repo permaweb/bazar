@@ -7282,6 +7282,33 @@ body input:focus-visible {
 	color: var(--muted);
 	font-size: var(--type-body);
 }
+.mint-transaction-receipts {
+	margin-top: 9px;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 7px 14px;
+}
+.mint-transaction-receipts a {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	color: var(--positive-text);
+	font-size: var(--type-small);
+	text-decoration: none;
+}
+.mint-transaction-receipts a:hover span {
+	text-decoration: underline;
+	text-underline-offset: 2px;
+}
+.mint-transaction-receipts code {
+	color: var(--muted);
+	font-family: inherit;
+	font-size: inherit;
+}
+.mint-transaction-receipts svg {
+	width: 13px;
+	height: 13px;
+}
 .mint-success button {
 	min-height: 38px;
 	display: flex;

@@ -8,6 +8,7 @@ import {
 	CollectionMintClient,
 	type CollectionMintEstimate,
 	type CollectionMintPhase,
+	type CollectionMintResult,
 	CREATED_COLLECTION_ID,
 	discardMintDraft,
 	getMintDraft,
@@ -19,11 +20,11 @@ import {
 	UDL_LICENSE_ID,
 	type UdlTerms,
 } from 'api/asset-mint';
-import type { Collection } from 'api/collections';
 
 import { AudioArtwork } from 'components/AudioArtwork';
 import { Button } from 'components/Button';
 import { Loading } from 'components/Loading';
+import { MintTransactionReceipt, type MintTransactionReceiptEntry } from 'components/MintTransactionReceipt';
 import { isAudioContentType, normalizeAssetContentType } from 'helpers/asset-media';
 import { arweaveGatewayFromLocation } from 'helpers/config';
 import { useWallet } from 'providers/WalletProvider';
@@ -112,7 +113,7 @@ export default function CreateRoute() {
 	const [error, setError] = React.useState<string | null>(null);
 	const [result, setResult] = React.useState<MintedAsset | null>(null);
 	const [resultReady, setResultReady] = React.useState(false);
-	const [collectionResult, setCollectionResult] = React.useState<Collection | null>(null);
+	const [collectionResult, setCollectionResult] = React.useState<CollectionMintResult | null>(null);
 	const [draft, setDraft] = React.useState<MintDraft | null>(() =>
 		wallet.address ? getMintDraft(wallet.address) : null
 	);
@@ -266,7 +267,7 @@ export default function CreateRoute() {
 					{ allowHighCost, onPhase: setCollectionPhase }
 				);
 				market.addCollection(minted.collection);
-				setCollectionResult(minted.collection);
+				setCollectionResult(minted);
 				setCollectionPhase(null);
 				return;
 			}
@@ -324,6 +325,18 @@ export default function CreateRoute() {
 		  }[phase]
 		: '';
 	const activeEstimate = mode === 'asset' ? estimate : collectionEstimate;
+	const receiptEntries: MintTransactionReceiptEntry[] = collectionResult
+		? [
+				{ label: 'View collection manifest', transactionId: collectionResult.manifestId },
+				{ label: 'View collection index', transactionId: collectionResult.referenceId },
+		  ]
+		: result
+		? [
+				{ label: 'View media upload', transactionId: result.mediaId },
+				...(result.artworkId ? [{ label: 'View artwork upload', transactionId: result.artworkId }] : []),
+				{ label: 'View asset creation', transactionId: result.id },
+		  ]
+		: [];
 
 	return (
 		<section className="create-page">
@@ -897,18 +910,15 @@ export default function CreateRoute() {
 								)}
 							</span>
 							<div>
-								<strong>
-									{collectionResult
-										? 'Collection transactions accepted by submission gateway'
-										: 'Mint transactions accepted by submission gateway'}
-								</strong>
+								<strong>{result && resultReady ? 'Live on Bazar' : 'Submitted to Arweave'}</strong>
 								<p>
 									{collectionResult
-										? 'Gateway availability can vary while the collection transactions are mined and indexed.'
+										? 'The collection receipt is ready to verify.'
 										: resultReady
-										? 'The asset is live and computable through the selected gateway.'
-										: 'Watching while this page remains open. You can view the asset as soon as its live state resolves.'}
+										? 'The asset is available through the selected gateway.'
+										: 'Waiting for the asset to become available in Bazar.'}
 								</p>
+								<MintTransactionReceipt entries={receiptEntries} />
 							</div>
 							<Button
 								type="button"
@@ -917,7 +927,7 @@ export default function CreateRoute() {
 								onClick={() =>
 									navigate(
 										collectionResult
-											? `/collection/${collectionResult.id}`
+											? `/collection/${collectionResult.collection.id}`
 											: `/asset/${CREATED_COLLECTION_ID}/${result!.id}`
 									)
 								}
