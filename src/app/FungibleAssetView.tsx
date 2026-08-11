@@ -1765,7 +1765,7 @@ function FungibleOperationDialog({
 				if (BigInt(rawQuantity) < 1n || BigInt(rawQuantity) > BigInt(liquidBalanceOf(state, owner))) {
 					throw new Error('Enter a quantity within your liquid balance.');
 				}
-				prepared = await client.transfer(asset.id, transferRecipient, rawQuantity, owner, signal);
+				prepared = await client.transferFungible(asset.id, transferRecipient, rawQuantity, owner, signal);
 				newlyPrepared = true;
 			}
 			if (discardNewlyPreparedTransactionIfAborted(localStorage, prepared.id, newlyPrepared, signal)) {
