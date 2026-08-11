@@ -4,8 +4,11 @@ import type { CollectionActivityEvent } from 'api/asset-discovery';
 import type { Collection } from 'api/collections';
 
 import {
+	assetDetailCanResolve,
+	assetDetailMembershipVerified,
 	collectionActivityScanAnnouncement,
 	collectionActivityVersion,
+	collectionActivityWindowDelta,
 	collectionAssetWindowDelta,
 	collectionCandidateMembership,
 	collectionDefaultsToListed,
@@ -16,15 +19,17 @@ import {
 	compareHomeListingRecency,
 	completeHomeActivityScan,
 	completeHomeSummaryRetryGroup,
+	createAnimationFrameBatch,
 	filterGlobalActivity,
 	globalActivityCollection,
 	homeAllAssets,
-	homeAssetCardsPublished,
 	homeAssetPage,
 	homeAssetTypeMatches,
 	homeAssetVisibleForView,
 	homeDiscoveryAssets,
+	homeFloorCandidateNeedsResolution,
 	homeFloorScanSummary,
+	homeListingSupportVersion,
 	homeMarketHasPending,
 	homeMarketPriceValue,
 	homeMarketShellLoading,
@@ -32,17 +37,21 @@ import {
 	type HomeMarketSummary,
 	homeScrollIndicatorMetrics,
 	homeSearchAssets,
-	homeSummaryFailureNoticeVisible,
 	homeSummaryRequestKeys,
 	mergeResolvedListingBatch,
 	newestCollectionActivity,
 	nextListingAnnouncementProgress,
 	pendingHomeActivityRecipients,
 	pendingHomeFloorCandidates,
+	publishHomeListingResult,
 	reconcileHomeActivityScan,
 	reconcileHomeFloorScan,
+	retainNewestCollectionActivity,
 	retryableHomeSummaryKeys,
+	shouldLoadHomeAssetSummaries,
 	shouldLoadHomeCollectionSummaries,
+	verifiedAssetForDetail,
+	verifiedCollectionIdsFrom,
 } from './App';
 import {
 	loadAssetShellSnapshot,
@@ -52,6 +61,40 @@ import {
 } from './shell-snapshot';
 
 describe('Home market summary retries', () => {
+	it('publishes progressive outcomes once per frame and drops canceled work', () => {
+		const frames = new Map<number, FrameRequestCallback>();
+		const canceled: number[] = [];
+		let frameId = 0;
+		const request = (callback: FrameRequestCallback) => {
+			const id = ++frameId;
+			frames.set(id, callback);
+			return id;
+		};
+		const cancel = (id: number) => {
+			canceled.push(id);
+			frames.delete(id);
+		};
+		const published: number[][] = [];
+		const batch = createAnimationFrameBatch<number>((values) => published.push(values), request, cancel);
+
+		batch.push(1);
+		batch.push(2);
+		expect(frames.size).toBe(1);
+		expect(published).toEqual([]);
+		frames.get(1)?.(0);
+		expect(published).toEqual([[1, 2]]);
+
+		batch.push(3);
+		batch.flush();
+		expect(canceled).toContain(2);
+		expect(published).toEqual([[1, 2], [3]]);
+
+		batch.push(4);
+		batch.cancel();
+		expect(canceled).toContain(3);
+		expect(published).toEqual([[1, 2], [3]]);
+	});
+
 	it('opens Arweave names on complete live listings ordered A to Z', () => {
 		expect(collectionDefaultsToListed('arweave-names')).toBe(true);
 		expect(collectionDefaultsToListed('fungible-tokens')).toBe(false);
@@ -102,6 +145,103 @@ describe('Home market summary retries', () => {
 		storeAssetShellSnapshot(storage, asset);
 		expect(loadAssetShellSnapshot(storage, asset.id)).toEqual(asset);
 		expect(loadAssetShellSnapshot(storage, 'another-id')).toBeUndefined();
+	});
+
+	it('warms a cached asset while its index loads without restarting when membership arrives', () => {
+		const asset = { id: 'A'.repeat(43), name: 'Cached asset' };
+		const pending = assetDetailCanResolve({
+			assetId: asset.id,
+			cachedAsset: asset,
+			directAtomicRoute: false,
+		});
+		const verified = assetDetailCanResolve({
+			assetId: asset.id,
+			cachedAsset: asset,
+			indexedAsset: asset,
+			indexedCollection: {
+				id: 'collection',
+				name: 'Collection',
+				description: '',
+				kind: 'images',
+				assets: [asset],
+			},
+			directAtomicRoute: false,
+		});
+
+		expect(pending).toBe(true);
+		expect(verified).toBe(pending);
+	});
+
+	it('starts a direct fungible read before its immutable collection index settles', () => {
+		const assetId = 'A'.repeat(43);
+		expect(
+			assetDetailCanResolve({
+				assetId,
+				directAtomicRoute: false,
+				directFungibleRoute: true,
+			})
+		).toBe(true);
+		expect(assetDetailMembershipVerified('fungible-tokens', new Set(), false)).toBe(false);
+	});
+
+	it('restarts listing support as progressively loaded collections expand', () => {
+		const first: Collection = {
+			id: 'fungible',
+			name: 'Tokens',
+			description: '',
+			kind: 'tokens',
+			assets: [{ id: 'A'.repeat(43), name: 'Token' }],
+		};
+		const second: Collection = {
+			id: 'artwork',
+			name: 'Artwork',
+			description: '',
+			kind: 'images',
+			manifestId: 'B'.repeat(43),
+			assets: [{ id: 'C'.repeat(43), name: 'Image' }],
+		};
+
+		expect(homeListingSupportVersion([first, second])).not.toBe(homeListingSupportVersion([first]));
+	});
+
+	it('keeps malformed or unverified asset shells outside the actionable asset boundary', () => {
+		const asset = { id: 'A'.repeat(43), name: 'Cached asset' };
+		expect(
+			assetDetailCanResolve({
+				assetId: asset.id,
+				cachedAsset: { ...asset, id: 'B'.repeat(43) },
+				directAtomicRoute: false,
+			})
+		).toBe(false);
+		expect(assetDetailMembershipVerified('collection', new Set(), false)).toBe(false);
+		expect(assetDetailMembershipVerified('collection', new Set(['collection']), false)).toBe(true);
+		expect(assetDetailMembershipVerified(undefined, new Set(), true)).toBe(true);
+		expect(verifiedAssetForDetail(undefined, undefined, asset, null)).toBeUndefined();
+	});
+
+	it('keeps a compiled fallback passive until its current reference index arrives', () => {
+		const asset = { id: 'A'.repeat(43), name: 'Cached asset' };
+		const fallback: Collection = {
+			id: 'collection',
+			name: 'Collection',
+			description: '',
+			kind: 'images',
+			assets: [asset],
+			indexSource: 'compiled-fallback',
+		};
+		expect(
+			assetDetailCanResolve({
+				assetId: asset.id,
+				cachedAsset: asset,
+				indexedAsset: asset,
+				indexedCollection: fallback,
+				directAtomicRoute: false,
+			})
+		).toBe(true);
+		const fallbackIds = verifiedCollectionIdsFrom([fallback]);
+		expect(fallbackIds).toEqual([]);
+		expect(assetDetailMembershipVerified(fallback.id, new Set(fallbackIds), false)).toBe(false);
+		expect(verifiedCollectionIdsFrom([{ ...fallback, indexSource: 'reference' }])).toEqual(['collection']);
 	});
 
 	it('sizes and positions persistent pane scroll indicators', () => {
@@ -217,6 +357,25 @@ describe('Home market summary retries', () => {
 		]);
 	});
 
+	it('caps portable listings by indexed activity rather than compute completion', () => {
+		const collection: Collection = {
+			id: 'images',
+			name: 'Images',
+			description: '',
+			kind: 'images',
+			assets: [],
+		};
+		const older = { id: 'o'.repeat(43), name: 'Older' };
+		const newer = { id: 'n'.repeat(43), name: 'Newer' };
+
+		expect(
+			homeDiscoveryAssets([collection], {}, 1, [
+				{ asset: older, collection, activity: { processId: older.id, height: 1, timestamp: 1 } },
+				{ asset: newer, collection, activity: { processId: newer.id, height: 2, timestamp: 2 } },
+			])
+		).toEqual([{ asset: newer, collection, activity: { processId: newer.id, height: 2, timestamp: 2 } }]);
+	});
+
 	it('uses indexed collection assets before listings-only additions for the All assets view', () => {
 		const indexed = { id: 'i'.repeat(43), name: 'Indexed', image: 'https://arweave.net/indexed' };
 		const portable = { id: 'p'.repeat(43), name: 'Portable', image: 'https://arweave.net/portable' };
@@ -310,10 +469,29 @@ describe('Home market summary retries', () => {
 		expect(homeAssetVisibleForView(listed, 'price-low')).toBe(true);
 	});
 
-	it('holds Listed for sale cards until the complete result set is resolved', () => {
-		expect(homeAssetCardsPublished('listed', true)).toBe(false);
-		expect(homeAssetCardsPublished('listed', false)).toBe(true);
-		expect(homeAssetCardsPublished('all', true)).toBe(true);
+	it('publishes each proven listing without waiting for unresolved siblings', () => {
+		const summaries: Record<string, HomeMarketSummary | undefined> = {
+			listed: { status: 'resolved', value: '0.001 AR' },
+			unlisted: { status: 'resolved', value: null },
+			pending: undefined,
+		};
+
+		expect(
+			Object.keys(summaries).filter((assetId) => homeAssetVisibleForView(summaries[assetId], 'listed'))
+		).toEqual(['listed']);
+	});
+
+	it('publishes and removes each live collection listing independently', () => {
+		const first = { id: 'first', name: 'First' };
+		const second = { id: 'second', name: 'Second' };
+		const start = { collection: [first] };
+
+		expect(publishHomeListingResult(start, 'collection', first, true)).toBe(start);
+		expect(publishHomeListingResult(start, 'collection', second, true)).toEqual({
+			collection: [first, second],
+		});
+		expect(publishHomeListingResult(start, 'collection', first, false)).toEqual({ collection: [] });
+		expect(publishHomeListingResult(start, 'collection', second, false)).toBe(start);
 	});
 
 	it('paginates Discover assets and clamps pages when filters reduce the result set', () => {
@@ -359,18 +537,16 @@ describe('Home market summary retries', () => {
 		expect(homeMarketHasPending(false, ['ready'], summaries)).toBe(false);
 	});
 
-	it('does not duplicate the public-listings error with a summary warning', () => {
-		expect(homeSummaryFailureNoticeVisible(true, 1, true)).toBe(false);
-		expect(homeSummaryFailureNoticeVisible(true, 1, false)).toBe(true);
-		expect(homeSummaryFailureNoticeVisible(false, 1, false)).toBe(false);
+	it('keeps collection floor scans isolated to the collections view', () => {
+		expect(shouldLoadHomeCollectionSummaries('discover')).toBe(false);
+		expect(shouldLoadHomeCollectionSummaries('collections')).toBe(true);
+		expect(shouldLoadHomeCollectionSummaries('activity')).toBe(false);
 	});
 
-	it('keeps collection floor scans off the initial discover render path', () => {
-		expect(shouldLoadHomeCollectionSummaries('discover', true, false)).toBe(false);
-		expect(shouldLoadHomeCollectionSummaries('discover', false, false)).toBe(false);
-		expect(shouldLoadHomeCollectionSummaries('discover', false, true)).toBe(true);
-		expect(shouldLoadHomeCollectionSummaries('collections', true, false)).toBe(true);
-		expect(shouldLoadHomeCollectionSummaries('activity', false, true)).toBe(false);
+	it('keeps listing discovery isolated to the discover view', () => {
+		expect(shouldLoadHomeAssetSummaries('discover')).toBe(true);
+		expect(shouldLoadHomeAssetSummaries('collections')).toBe(false);
+		expect(shouldLoadHomeAssetSummaries('activity')).toBe(false);
 	});
 
 	it('resolves global activity to its marketplace collection', () => {
@@ -705,6 +881,19 @@ describe('Home collection floor retries', () => {
 		expect(scan.settled.get('stable')).toBe(2n);
 	});
 
+	it('streams only candidates whose retained floor contribution is not current', () => {
+		const settled = activity('settled', 1);
+		const failed = activity('failed', 1);
+		let scan = reconcileHomeFloorScan(undefined, 'scope', [settled, failed]);
+		commitHomeFloorResult(scan, settled.processId, 1n);
+		commitHomeFloorResult(scan, failed.processId, null, 'unavailable');
+
+		expect(homeFloorCandidateNeedsResolution(scan, 'scope', settled)).toBe(false);
+		expect(homeFloorCandidateNeedsResolution(scan, 'scope', failed)).toBe(true);
+		expect(homeFloorCandidateNeedsResolution(scan, 'scope', activity(settled.processId, 2))).toBe(true);
+		expect(homeFloorCandidateNeedsResolution(scan, 'other-scope', settled)).toBe(true);
+	});
+
 	it('rejects stale or foreign result commits', () => {
 		const scan = reconcileHomeFloorScan(undefined, 'scope', [activity('asset')]);
 		expect(() => commitHomeFloorResult(scan, 'foreign', 1n)).toThrow('home-floor-result-out-of-scope');
@@ -785,6 +974,19 @@ describe('Collection activity scope', () => {
 		// The b request aborts, so only successfully scanned a remains committed.
 		expect(collectionAssetWindowDelta(scanned, ['a', 'b', 'c']).added).toEqual(['b', 'c']);
 	});
+
+	it('uses incremental recipient windows for names activity but not global name listings', () => {
+		expect(collectionActivityWindowDelta('names', false, ['a'], ['a', 'b'])).toEqual({
+			recipientBatched: true,
+			reset: false,
+			added: ['b'],
+		});
+		expect(collectionActivityWindowDelta('names', true, ['a'], ['a', 'b'])).toEqual({
+			recipientBatched: false,
+			reset: false,
+			added: ['a', 'b'],
+		});
+	});
 });
 
 describe('Collection listing announcements', () => {
@@ -851,6 +1053,42 @@ describe('Collection activity windows', () => {
 				.reverse()
 				.map((event) => event.id)
 		);
+	});
+
+	it('keeps an immutable purchase proof when fresh index data repeats the event', () => {
+		const proved = {
+			id: 'purchase',
+			processId: 'asset',
+			action: 'register-interest' as const,
+			actor: 'buyer',
+			height: 10,
+			timestamp: 20,
+			purchaseProof: { transactionId: 'payment', height: 11 },
+		};
+		expect(newestCollectionActivity([proved, { ...proved, purchaseProof: undefined }])[0].purchaseProof).toEqual(
+			proved.purchaseProof
+		);
+	});
+
+	it('bounds the retained activity map while admitting newer late batches', () => {
+		const activity = new Map<string, CollectionActivityEvent>();
+		const events = Array.from({ length: 150 }, (_, index) => ({
+			id: `event-${index}`,
+			processId: `process-${index}`,
+			action: 'transfer' as const,
+			actor: 'actor',
+			height: index + 1,
+			timestamp: index + 1,
+		}));
+		retainNewestCollectionActivity(activity, events.slice(0, 120));
+		expect(activity.size).toBe(100);
+		expect(retainNewestCollectionActivity(activity, events.slice(120)).map((event) => event.id)).toEqual(
+			events
+				.slice(50)
+				.reverse()
+				.map((event) => event.id)
+		);
+		expect(activity.size).toBe(100);
 	});
 });
 

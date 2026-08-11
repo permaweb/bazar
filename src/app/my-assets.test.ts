@@ -19,10 +19,8 @@ import {
 	walletDiscoveryScope,
 	walletDiscoverySession,
 	walletDiscoverySessionIsCurrent,
-	walletPageResolutionQueue,
 	walletResolutionCopy,
 	walletResolutionIsDeterminate,
-	walletResolutionMaxAge,
 	walletResolutionShowsProgress,
 } from './App';
 
@@ -84,87 +82,6 @@ describe('My assets retry bookkeeping', () => {
 		expect(retainedAssetGroupLimit(24, 48)).toBe(48);
 	});
 
-	it('lets candidate discovery continue while live-state pages resolve in order', async () => {
-		const releases = new Map<number, () => void>();
-		let reportSecondStarted!: () => void;
-		const secondStarted = new Promise<void>((resolve) => {
-			reportSecondStarted = resolve;
-		});
-		let reportThirdOffered!: () => void;
-		const thirdWasOffered = new Promise<void>((resolve) => {
-			reportThirdOffered = resolve;
-		});
-		const started: number[] = [];
-		const queue = walletPageResolutionQueue(async ([page]) => {
-			started.push(page.height);
-			if (page.height === 2) reportSecondStarted();
-			if (page.height < 3) await new Promise<void>((resolve) => releases.set(page.height, resolve));
-		}, new AbortController().signal);
-
-		await queue.push([candidate(1)]);
-		let thirdOffered = false;
-		const producer = (async () => {
-			await queue.push([candidate(2)]);
-			thirdOffered = true;
-			reportThirdOffered();
-			await queue.push([candidate(3)]);
-		})();
-		await Promise.resolve();
-		expect(started).toEqual([1]);
-		expect(thirdOffered).toBe(false);
-
-		releases.get(1)!();
-		await secondStarted;
-		await thirdWasOffered;
-		expect(started).toEqual([1, 2]);
-		expect(thirdOffered).toBe(true);
-		releases.get(2)!();
-		await producer;
-		await queue.drain();
-		expect(started).toEqual([1, 2, 3]);
-	});
-
-	it('stops later live-state pages and reports the first resolver failure', async () => {
-		const failure = new Error('compute unavailable');
-		let rejectFirst!: (cause: unknown) => void;
-		const started: number[] = [];
-		const queue = walletPageResolutionQueue(async ([page]) => {
-			started.push(page.height);
-			if (page.height === 1)
-				await new Promise<void>((_, reject) => {
-					rejectFirst = reject;
-				});
-		}, new AbortController().signal);
-
-		await queue.push([candidate(1)]);
-		const blocked = queue.push([candidate(2)]);
-		await Promise.resolve();
-		rejectFirst(failure);
-		await expect(blocked).rejects.toBe(failure);
-		await expect(queue.drain()).rejects.toBe(failure);
-		await expect(queue.push([candidate(3)])).rejects.toBe(failure);
-		expect(started).toEqual([1]);
-	});
-
-	it('unblocks every queued producer immediately when wallet discovery aborts', async () => {
-		const controller = new AbortController();
-		const reason = new Error('wallet changed');
-		const started: number[] = [];
-		const queue = walletPageResolutionQueue(async ([page]) => {
-			started.push(page.height);
-			await new Promise<void>(() => undefined);
-		}, controller.signal);
-
-		await queue.push([candidate(1)]);
-		const blocked = queue.push([candidate(2)]);
-		await Promise.resolve();
-		controller.abort(reason);
-		await expect(blocked).rejects.toBe(reason);
-		await expect(queue.drain()).rejects.toBe(reason);
-		await expect(queue.push([candidate(3)])).rejects.toBe(reason);
-		expect(started).toEqual([1]);
-	});
-
 	it('does not focus a completion summary after another asset arrives', () => {
 		expect(assetGroupRevealComplete(96, 96)).toBe(true);
 		expect(assetGroupRevealComplete(96, 97)).toBe(false);
@@ -194,12 +111,6 @@ describe('My assets retry bookkeeping', () => {
 		expect(walletDiscoverySessionIsCurrent(session, `${scope}|refresh:0`)).toBe(true);
 		expect(walletDiscoverySessionIsCurrent(session, `${scope}|refresh:1`)).toBe(false);
 		expect(walletDiscoverySessionIsCurrent(session, '')).toBe(false);
-	});
-
-	it('bypasses live-state caches only for an explicit wallet refresh', () => {
-		expect(walletResolutionMaxAge(0)).toBe(60);
-		expect(walletResolutionMaxAge(1)).toBe(0);
-		expect(walletResolutionMaxAge(12)).toBe(0);
 	});
 
 	it('announces large candidate discovery at bounded milestones', () => {

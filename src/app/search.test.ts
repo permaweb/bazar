@@ -7,6 +7,7 @@ import {
 	alphabetFilterIndex,
 	assetStateErrorMessage,
 	collectionMatchesSearch,
+	collectionMoreAssets,
 	collectionSearchAssets,
 	directTokenSearchCollection,
 	interleaveCollectionAssets,
@@ -27,6 +28,14 @@ function score(asset: AssetSummary, query: string) {
 }
 
 describe('marketplace search ranking', () => {
+	it('stops collecting related assets at the visible limit', () => {
+		const assets = Array.from({ length: 16_000 }, (_, index) => ({
+			id: String(index),
+			name: `Asset ${index}`,
+		}));
+		expect(collectionMoreAssets(assets, '1')).toEqual([assets[0], assets[2], assets[3], assets[4]]);
+	});
+
 	it('turns compute rate limits into actionable recovery guidance', () => {
 		expect(assetStateErrorMessage(new Error('HTTP 429'))).toBe(
 			'The selected compute gateway is temporarily rate-limiting live-state requests. Wait briefly and retry, or choose another Compute gateway in the header.'
@@ -113,6 +122,34 @@ describe('marketplace search ranking', () => {
 			{ id: 'canonical', name: 'welcome-to-fwd-hq' },
 		]);
 		expect(collectionMatchesSearch(names, 'welcome-to-fwd-hq')).toBe(true);
+	});
+
+	it('indexes a canonical namespace once across query revisions', () => {
+		let enumerations = 0;
+		const namesById = new Proxy(
+			{
+				first: 'welcome-to-fwd-hq',
+				second: 'goblinarchmagus',
+			},
+			{
+				ownKeys(target) {
+					enumerations += 1;
+					return Reflect.ownKeys(target);
+				},
+			}
+		);
+		const names: Collection = {
+			id: 'names',
+			name: 'Arweave names',
+			description: 'Canonical carrier names',
+			kind: 'names',
+			assets: [],
+			namespace: { manifestId: 'manifest', namesById },
+		};
+
+		expect(collectionSearchAssets(names, 'welcome')).toEqual([{ id: 'first', name: 'welcome-to-fwd-hq' }]);
+		expect(collectionSearchAssets(names, 'goblin')).toEqual([{ id: 'second', name: 'goblinarchmagus' }]);
+		expect(enumerations).toBe(1);
 	});
 
 	it('matches loaded fungible tokens by ticker or process ID as well as name', () => {
