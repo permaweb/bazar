@@ -19,6 +19,7 @@ import {
 } from 'api/fungible-dispatch';
 
 import { Button } from 'components/Button';
+import { type HolderDraftRow, HolderListField } from 'components/HolderListField';
 import { Loading } from 'components/Loading';
 import { TokenArtwork } from 'components/TokenArtwork';
 import { arweaveGatewayFromLocation } from 'helpers/config';
@@ -63,7 +64,7 @@ export default function DispatchRoute() {
 	const [stateError, setStateError] = React.useState<string | null>(null);
 	const [loadingState, setLoadingState] = React.useState(false);
 	const [stateAttempt, setStateAttempt] = React.useState(0);
-	const [text, setText] = React.useState('');
+	const [holderRows, setHolderRows] = React.useState<HolderDraftRow[]>([{ address: '', quantity: '' }]);
 	const [reward, setReward] = React.useState<bigint | null>(null);
 	const [plan, setPlan] = React.useState<DispatchPlan | null>(() => (validId ? loadDispatchPlan(processId) : null));
 	const [running, setRunning] = React.useState(false);
@@ -106,6 +107,16 @@ export default function DispatchRoute() {
 		return () => controller.abort();
 	}, [processId, validId, state]);
 
+	// The K/V rows are the editable source of truth; serialize non-empty rows
+	// back to the CSV the strict parser/validator already understands.
+	const text = React.useMemo(
+		() =>
+			holderRows
+				.filter((row) => row.address || row.quantity)
+				.map((row) => `${row.address},${row.quantity}`)
+				.join('\n'),
+		[holderRows]
+	);
 	const parsed = React.useMemo(() => (text.trim() ? parseHolderList(text) : null), [text]);
 	const estimate = parsed?.rows.length && reward !== null ? estimateDispatchCost(parsed.rows, reward) : null;
 	const needsCostApproval = Boolean(estimate && requiresCostConfirmation(estimate.totalWinston));
@@ -336,19 +347,12 @@ export default function DispatchRoute() {
 						}}
 					>
 						<div className="create-field">
-							<label htmlFor="dispatch-holders">Holder list</label>
-							<textarea
-								id="dispatch-holders"
-								placeholder={
-									'One address,quantity per line (quantities in base units), or JSON:\n' +
-									'[{"address":"…","quantity":"250000"}] · [["…","250000"]] · {"…":"250000"}\n' +
-									'# lines starting with # are comments'
-								}
-								rows={10}
-								spellCheck={false}
-								value={text}
-								onChange={(event) => {
-									setText(event.target.value);
+							<label>Holder list</label>
+							<HolderListField
+								rows={holderRows}
+								disabled={running}
+								onChange={(next) => {
+									setHolderRows(next);
 									setCostApproved(false);
 									setRunError(null);
 								}}
@@ -356,7 +360,7 @@ export default function DispatchRoute() {
 							<span>
 								{parsed?.rows.length
 									? `${parsed.rows.length} recipient${parsed.rows.length === 1 ? '' : 's'} parsed`
-									: 'Paste JSON or CSV'}
+									: 'Add rows, or paste a JSON/CSV list into any field to autofill'}
 							</span>
 						</div>
 
