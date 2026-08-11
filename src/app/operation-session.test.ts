@@ -612,6 +612,32 @@ describe('wallet-bound operation sessions', () => {
 		expect(values.has(claimKey)).toBe(false);
 	});
 
+	it('continues recovery when the previous owner releases its claim while the lock request waits', async () => {
+		const claimKey = operationClaimStorageKey('asset', 'wallet-a');
+		const values = new Map([[claimKey, JSON.stringify({ attemptId: 'previous-page' })]]);
+		const storage = {
+			getItem: (key: string) => values.get(key) ?? null,
+			removeItem: (key: string) => values.delete(key),
+		};
+		let grantLock!: () => void;
+		const queuedLocks = {
+			request: <T>(_name: string, _options: unknown, callback: (lock: unknown | null) => T | PromiseLike<T>) =>
+				new Promise<T>((resolve, reject) => {
+					grantLock = () => {
+						void Promise.resolve(callback({})).then(resolve, reject);
+					};
+				}),
+		};
+
+		const clearing = clearStaleWalletOperationClaim(storage, claimKey, { locks: queuedLocks });
+		await Promise.resolve();
+		values.delete(claimKey);
+		grantLock();
+
+		await expect(clearing).resolves.toBe(true);
+		expect(values.has(claimKey)).toBe(false);
+	});
+
 	it('scopes cross-document storage events to the active asset and signer', () => {
 		const keys = [operationStorageKey('asset', 'wallet-a'), atomicPurchaseStorageKey('asset', 'wallet-a')];
 

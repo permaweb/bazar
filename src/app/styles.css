@@ -76,10 +76,10 @@ a {
 button {
 	color: inherit;
 }
-.wallet-address {
+.wallet-address.ui-button--ghost {
 	max-width: 100%;
 	min-height: 28px;
-	padding: 4px 6px;
+	padding: 0;
 	display: inline-flex;
 	align-items: center;
 	gap: 6px;
@@ -88,13 +88,14 @@ button {
 	border-radius: 5px;
 	background: var(--transparent);
 	cursor: pointer;
-	color: inherit;
+	color: var(--muted);
 	font: inherit;
 	font-weight: inherit;
 	line-height: 1.2;
 	text-decoration: underline dotted;
 	text-decoration-color: var(--line-dark);
 	text-underline-offset: 3px;
+	transition: color 100ms ease;
 }
 .wallet-address > span {
 	overflow: hidden;
@@ -117,8 +118,9 @@ button {
 	align-self: center;
 	flex: 0 0 auto;
 }
-.wallet-address:hover {
-	background: var(--surface-hover);
+.wallet-address.ui-button--ghost:hover:not(:disabled):not([aria-disabled='true']) {
+	color: var(--ink);
+	background: var(--transparent);
 	text-decoration-color: currentColor;
 }
 .wallet-address.is-failed {
@@ -133,18 +135,17 @@ button {
 .tx-address {
 	min-width: 0;
 	width: fit-content;
-	padding: 4px 5px 4px 7px;
 	display: inline-flex;
 	align-items: center;
 	gap: 5px;
 	border-radius: 5px;
-	color: var(--ink);
+	color: var(--muted);
 	background: var(--transparent);
 	line-height: 1.2;
-	transition: background 100ms ease;
+	transition: color 100ms ease;
 }
 .tx-address:hover {
-	background: var(--surface-hover);
+	color: var(--ink);
 }
 .tx-address-link {
 	min-width: 0;
@@ -159,7 +160,7 @@ button {
 	text-overflow: clip;
 	white-space: normal;
 }
-.tx-address .tx-address-copy {
+.tx-address .tx-address-copy.ui-button--ghost {
 	width: 24px;
 	min-width: 24px;
 	min-height: 24px;
@@ -169,12 +170,14 @@ button {
 	align-self: center;
 	border: 0;
 	border-radius: 4px;
+	color: inherit;
 	background: var(--transparent);
 	cursor: pointer;
 }
-.tx-address .tx-address-copy:hover:not(:disabled) {
+.tx-address .tx-address-copy.ui-button--ghost:hover:not(:disabled):not([aria-disabled='true']) {
+	color: inherit;
 	border-color: var(--transparent);
-	background: var(--button-accent-hover);
+	background: var(--transparent);
 }
 .wallet-identity {
 	min-width: 0;
@@ -3093,6 +3096,7 @@ input:focus {
 	background: var(--positive-surface);
 	color: var(--positive-text);
 	font: 400 var(--type-small) 'DM Sans', sans-serif;
+	text-transform: capitalize;
 }
 .order-status.reserved {
 	background: var(--warning-surface);
@@ -3280,6 +3284,12 @@ input:focus {
 	border-radius: 50%;
 	animation: spin 0.8s linear infinite;
 }
+.asset-loading-verification {
+	gap: var(--space-2);
+}
+.asset-detail-loading-shell > .asset-loading-verification {
+	margin-bottom: var(--space-4);
+}
 .asset-commerce-card-loading {
 	min-height: 205px;
 	display: grid;
@@ -3317,7 +3327,7 @@ input:focus {
 	background: var(--surface);
 }
 .asset-section-tabs-loading span {
-	padding: 13px 0;
+	padding: 13px 8px;
 	color: var(--muted);
 	font-size: var(--type-body);
 	font-weight: 400;
@@ -6528,7 +6538,6 @@ body input:focus-visible {
 	}
 	.wallet-address {
 		min-height: 44px;
-		padding-inline: 4px;
 	}
 	.asset-identity {
 		padding-bottom: var(--space-3);
@@ -8320,6 +8329,9 @@ body input:focus-visible {
 .fungible-asset-page .asset-market-stats {
 	grid-template-columns: minmax(145px, 1.6fr) repeat(2, minmax(0, 1fr)) minmax(64px, 0.7fr);
 }
+.fungible-asset-page .asset-detail-tabs {
+	margin-bottom: var(--space-3);
+}
 .fungible-asset-page .asset-commerce-primary,
 .fungible-asset-page .asset-commerce-secondary {
 	min-width: 0;
@@ -8351,7 +8363,7 @@ body input:focus-visible {
 	position: static;
 	width: auto;
 	height: auto;
-	padding: 9px 13px;
+	padding: 12px 13px;
 	overflow: visible;
 	clip: auto;
 	white-space: nowrap;

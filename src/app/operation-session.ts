@@ -345,7 +345,8 @@ export async function clearStaleWalletOperationClaim(
 ) {
 	const locks =
 		options.locks === undefined ? (typeof navigator === 'undefined' ? undefined : navigator.locks) : options.locks;
-	if (!locks || storage.getItem(claimKey) === null) return false;
+	if (!locks) return false;
+	if (storage.getItem(claimKey) === null) return true;
 	return locks.request(
 		claimKey,
 		{
@@ -353,7 +354,11 @@ export async function clearStaleWalletOperationClaim(
 			...(options.signal ? { signal: options.signal } : {}),
 		},
 		(lock) => {
-			if (!lock || storage.getItem(claimKey) === null) return false;
+			if (!lock) return false;
+			// The previous document can release its claim while this request waits
+			// for the corresponding Web Lock. That still leaves recovery unblocked,
+			// so report success and let the caller continue hydrating saved work.
+			if (storage.getItem(claimKey) === null) return true;
 			storage.removeItem(claimKey);
 			return true;
 		}

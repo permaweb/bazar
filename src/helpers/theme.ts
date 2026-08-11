@@ -6,7 +6,7 @@ export type ThemePreference = 'system' | ThemeName;
 const typography: DefaultTheme['typography'] = {
 	family: { primary: '"DM Sans", ui-sans-serif, system-ui, sans-serif' },
 	weight: { regular: 400 },
-	size: { display: '1.875rem', body: '0.8125rem', small: '0.6875rem' },
+	size: { display: '1.875rem', body: '0.8125rem', small: '0.75rem' },
 };
 
 const common = {
