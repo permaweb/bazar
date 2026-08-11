@@ -3448,7 +3448,12 @@ function Home() {
 																)
 															}
 														>
-															{asset.image ? (
+															{collection.kind === 'tokens' ? (
+																<TokenArtwork
+																	className="home-asset-media home-token-art circle-only-token-art"
+																	ticker={asset.ticker ?? 'Token'}
+																/>
+															) : asset.image ? (
 																<ArtworkImage
 																	className="home-asset-media"
 																	src={asset.image}
@@ -6137,7 +6142,9 @@ export const AssetCard = React.memo(function AssetCard({
 			to={`/asset/${collection.id}/${asset.id}`}
 		>
 			<div className="asset-media">
-				{asset.image ? (
+				{collection.kind === 'tokens' && collectionContext ? (
+					<TokenArtwork className="circle-only-token-art" ticker={asset.ticker ?? 'Token'} />
+				) : asset.image ? (
 					<ArtworkImage
 						src={asset.image}
 						fetchPriority={priority ? 'high' : 'auto'}
@@ -6147,7 +6154,7 @@ export const AssetCard = React.memo(function AssetCard({
 				) : isAudioContentType(asset.contentType) ? (
 					<AudioArtwork contentType={asset.contentType} name={asset.name} />
 				) : collection.kind === 'tokens' ? (
-					<TokenArtwork ticker={asset.ticker ?? 'Token'} />
+					<TokenArtwork className="circle-only-token-art" ticker={asset.ticker ?? 'Token'} />
 				) : (
 					<span>{asset.name.slice(0, 1)}</span>
 				)}
