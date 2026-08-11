@@ -2222,7 +2222,8 @@ input:focus {
 	gap: var(--asset-grid-gap);
 }
 .asset-grid.token-collection-grid {
-	grid-template-columns: minmax(320px, 560px);
+	grid-template-columns: minmax(0, 1fr);
+	gap: 8px;
 }
 .asset-grid.names-collection-grid {
 	grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
@@ -2257,15 +2258,32 @@ input:focus {
 }
 .token-collection-grid .token-asset-card {
 	display: grid;
-	grid-template-columns: minmax(190px, 0.8fr) minmax(0, 1.2fr);
+	grid-template-columns: 72px minmax(0, 1fr);
 	align-items: stretch;
+	min-height: 72px;
+	border-radius: 7px;
 }
 .token-collection-grid .token-asset-card .asset-media {
-	aspect-ratio: 1;
+	min-height: 72px;
+	aspect-ratio: auto;
+	border-right: 0;
+	background: var(--transparent);
+	font-size: var(--type-body);
+}
+.token-collection-grid .token-asset-card .token-artwork {
+	background: var(--transparent);
+	font-size: var(--type-body);
+}
+.token-collection-grid .token-asset-card .token-artwork::before {
+	background: var(--transparent);
+}
+.token-collection-grid .token-asset-card .token-artwork small {
+	display: none;
 }
 .token-collection-grid .token-asset-card .asset-card-copy {
 	align-content: center;
 	display: grid;
+	padding: 12px 18px;
 }
 .asset-card {
 	content-visibility: auto;
@@ -6258,7 +6276,17 @@ body input:focus-visible {
 		grid-template-columns: 1fr;
 	}
 	.token-collection-grid .token-asset-card {
-		grid-template-columns: 1fr;
+		grid-template-columns: 64px minmax(0, 1fr);
+		min-height: 64px;
+	}
+	.token-collection-grid .token-asset-card .asset-media {
+		min-height: 64px;
+	}
+	.token-collection-grid .token-asset-card .asset-card-copy {
+		padding: 10px 12px;
+	}
+	.token-collection-grid .asset-card-heading {
+		gap: 8px;
 	}
 	.asset-filters {
 		grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -6687,6 +6715,10 @@ body input:focus-visible {
 .segmented-tabs button {
 	min-height: 34px;
 	padding: 0 14px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 7px;
 	border: 0;
 	border-radius: 6px;
 	background: var(--transparent);
