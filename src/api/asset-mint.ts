@@ -8,7 +8,11 @@ import {
 import { mapConcurrent } from 'helpers/concurrency';
 import { arweaveClientConfig, arweaveGatewayFromLocation, gatewayFromLocation } from 'helpers/config';
 
-import { type AssetSummary, FUNGIBLE_TOKEN_COLLECTION_NAME } from './collections';
+import {
+	type AssetSummary,
+	FUNGIBLE_TOKEN_COLLECTION_ID,
+	FUNGIBLE_TOKEN_COLLECTION_NAME,
+} from './collections';
 import { acceptedMintActivity, upsertMintActivity } from './mint-activity';
 import {
 	CREATED_COLLECTION_ID,
@@ -382,6 +386,35 @@ export class AssetMintClient {
 			owner,
 			options
 		);
+		const createdAt = Date.now();
+		// Record the mint in the shared activity notifier the same as an atomic
+		// mint. The App-level watcher advances it accepted → mined → applied →
+		// complete by polling readAssetState(processId) — which is exactly the
+		// scheduler-sequencing / process-state-readable signal a fungible token
+		// waits on — then self-removes and fires bazar:mint-live.
+		if (this.#storage) {
+			const asset: MintedAsset = {
+				id: processId,
+				name: input.name.trim(),
+				ticker: input.ticker,
+				contentType: 'application/x.arweave-token',
+				description: input.description?.trim() ?? '',
+				mediaId: processId,
+				owner,
+				createdAt,
+			};
+			upsertMintActivity(
+				this.#storage,
+				acceptedMintActivity({
+					owner,
+					asset,
+					collectionId: FUNGIBLE_TOKEN_COLLECTION_ID,
+					transactionIds: [processId],
+					arweaveGateway: this.#gateway,
+					computeGateway: this.#computeGateway,
+				})
+			);
+		}
 		return {
 			processId,
 			owner,
@@ -389,7 +422,7 @@ export class AssetMintClient {
 			ticker: input.ticker,
 			supply: input.supply,
 			denomination: Number(input.denomination),
-			createdAt: Date.now(),
+			createdAt,
 		};
 	}
 
