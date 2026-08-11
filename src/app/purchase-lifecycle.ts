@@ -51,7 +51,10 @@ export function purchaseLifecycleStatus(state: PurchaseState | null) {
 		return 'Reservation applied to live process state. Preparing the exact seller payment.';
 	}
 	if (state.stage === 'registration-accepting') {
-		return 'Reservation mined. Waiting for it to be applied to live process state before payment is released.';
+		const confirmations = state.registration?.consensus.confirmations ?? 0;
+		return `Reservation mined. ${confirmations} registration confirmation${
+			confirmations === 1 ? '' : 's'
+		} reported. Waiting for it to be applied to live process state before payment is released.`;
 	}
 	if (state.stage === 'registration-confirming') {
 		return 'Reservation mined. Waiting for the required confirmation depth.';

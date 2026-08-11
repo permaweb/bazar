@@ -486,19 +486,106 @@ function isLocalWallet(wallet: Window['arweaveWallet']) {
 async function activateLocalWallet(jwk: WalletJwk) {
 	const current = window.arweaveWallet;
 	if (current && !isLocalWallet(current)) rememberedBrowserWallet = current;
+	const signingJwk = completePrivateJwk(jwk);
 	const arweave = await createArweaveClient();
-	const address = await arweave.wallets.jwkToAddress(jwk as any);
+	const address = await arweave.wallets.jwkToAddress(signingJwk as any);
 	window.arweaveWallet = {
 		[LOCAL_WALLET_ADAPTER]: true,
 		connect: async () => undefined,
 		disconnect: async () => undefined,
 		getActiveAddress: async () => address,
 		sign: async (transaction: any) => {
-			await arweave.transactions.sign(transaction, jwk as any);
+			await arweave.transactions.sign(transaction, signingJwk as any);
 			return transaction;
 		},
 	} as Window['arweaveWallet'];
 	return address;
+}
+
+export function completePrivateJwk(jwk: WalletJwk): WalletJwk {
+	if (['p', 'q', 'dp', 'dq', 'qi'].every((field) => typeof (jwk as any)[field] === 'string')) return jwk;
+	const n = decodeInteger(jwk.n);
+	const e = decodeInteger(jwk.e);
+	const d = decodeInteger(jwk.d!);
+	const { p, q } = recoverPrimeFactors(n, e, d);
+	return {
+		...jwk,
+		e: encodeInteger(e),
+		d: encodeInteger(d),
+		p: encodeInteger(p),
+		q: encodeInteger(q),
+		dp: encodeInteger(d % (p - 1n)),
+		dq: encodeInteger(d % (q - 1n)),
+		qi: encodeInteger(modInverse(q, p)),
+	};
+}
+
+function recoverPrimeFactors(n: bigint, e: bigint, d: bigint) {
+	let odd = d * e - 1n;
+	let powersOfTwo = 0;
+	while (odd % 2n === 0n) {
+		odd /= 2n;
+		powersOfTwo += 1;
+	}
+	for (let base = 2n; base < 128n; base += 1n) {
+		let value = modPow(base, odd, n);
+		if (value === 1n || value === n - 1n) continue;
+		for (let exponent = 1; exponent <= powersOfTwo; exponent += 1) {
+			const squared = (value * value) % n;
+			if (squared === 1n) {
+				const factor = greatestCommonDivisor(value - 1n, n);
+				if (factor > 1n && factor < n) return { p: factor, q: n / factor };
+				break;
+			}
+			if (squared === n - 1n) break;
+			value = squared;
+		}
+	}
+	throw new Error('Could not complete the private RSA keyfile.');
+}
+
+function modPow(base: bigint, exponent: bigint, modulus: bigint) {
+	let result = 1n;
+	let factor = base % modulus;
+	for (let remaining = exponent; remaining > 0n; remaining /= 2n) {
+		if (remaining % 2n === 1n) result = (result * factor) % modulus;
+		factor = (factor * factor) % modulus;
+	}
+	return result;
+}
+
+function greatestCommonDivisor(left: bigint, right: bigint) {
+	let a = left < 0n ? -left : left;
+	let b = right < 0n ? -right : right;
+	while (b !== 0n) [a, b] = [b, a % b];
+	return a;
+}
+
+function modInverse(value: bigint, modulus: bigint) {
+	let [oldRemainder, remainder] = [value, modulus];
+	let [oldCoefficient, coefficient] = [1n, 0n];
+	while (remainder !== 0n) {
+		const quotient = oldRemainder / remainder;
+		[oldRemainder, remainder] = [remainder, oldRemainder - quotient * remainder];
+		[oldCoefficient, coefficient] = [coefficient, oldCoefficient - quotient * coefficient];
+	}
+	return ((oldCoefficient % modulus) + modulus) % modulus;
+}
+
+function decodeInteger(value: string) {
+	const base64 = value
+		.replace(/-/g, '+')
+		.replace(/_/g, '/')
+		.padEnd(Math.ceil(value.length / 4) * 4, '=');
+	const bytes = Uint8Array.from(atob(base64), (character) => character.charCodeAt(0));
+	return BigInt(`0x${[...bytes].map((byte) => byte.toString(16).padStart(2, '0')).join('')}`);
+}
+
+function encodeInteger(value: bigint) {
+	let hex = value.toString(16);
+	if (hex.length % 2) hex = `0${hex}`;
+	const bytes = hex.match(/.{2}/g)?.map((byte) => String.fromCharCode(parseInt(byte, 16))) ?? [];
+	return btoa(bytes.join('')).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
 function restoreBrowserWallet() {

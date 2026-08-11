@@ -72,16 +72,17 @@ npm run start
 ```
 
 Vite serves the application on `http://127.0.0.1:3000` by default. Development
-uses `https://arweave.net` as its compute gateway instead of the rate-limited
-production Alpha gateway. Select another compute gateway in the header, set
-`VITE_COMPUTE_GATEWAY`, or append a `node` query parameter:
+uses `https://arweave.net` for compute. Production defaults to Alpha and Charlie
+and fails over between them through AO Wrangler. Select peers in the header, set
+`VITE_COMPUTE_GATEWAY`, or append a comma-separated `node` query parameter:
 
 ```text
-http://127.0.0.1:3000/?node=http://127.0.0.1:3101#/asset/…
+http://127.0.0.1:3000/?node=https://alpha.example,https://charlie.example#/asset/…
 ```
 
-The `node` parameter selects process computation and the HyperBEAM relay used
-for browser-safe checks against independent Arweave nodes. Arweave API requests
+The ordered `node` list selects the catch-all peers used for process computation
+and the HyperBEAM relay used for browser-safe checks against independent Arweave nodes. AO Wrangler
+shares their advertised rate limits, honors `Retry-After`, and moves to the next peer when necessary. Arweave API requests
 use the gateway serving the site. During local development they fall back to
 `https://arweave.net`; set `VITE_ARWEAVE_GATEWAY` or append the advanced
 `arweave-node` query parameter when another Arweave gateway is required:

@@ -71,11 +71,12 @@ import {
 	listedBalanceOf,
 	liveOrderOfAsset,
 	liveOrdersOfAsset,
-	normalizeServingNodeOrigin,
+	normalizeServingNodeOrigins,
 	openOrdersOfAsset,
 	ownerOfAsset,
 	readAssetState,
 	servingNodeOrigin,
+	servingNodeOrigins,
 	type SwapOrder,
 	waitForAssetState,
 } from 'api/asset-marketplace';
@@ -3334,7 +3335,8 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 }
 
 function GatewayControl() {
-	const computeCurrent = servingNodeOrigin(window.location);
+	const computeNodes = servingNodeOrigins(window.location);
+	const computeCurrent = computeNodes.join(', ');
 	const [computeValue, setComputeValue] = React.useState(computeCurrent);
 	const [open, setOpen] = React.useState(false);
 	const [error, setError] = React.useState('');
@@ -3363,14 +3365,14 @@ function GatewayControl() {
 	}, [open]);
 	function apply(event: React.FormEvent) {
 		event.preventDefault();
-		const computeOrigin = normalizeServingNodeOrigin(computeValue, window.location.protocol);
-		if (!computeOrigin) {
-			setError('Enter an HTTP or HTTPS HyperBEAM gateway, such as arweave.net or localhost:3101.');
+		const computeOrigins = normalizeServingNodeOrigins(computeValue, window.location.protocol);
+		if (!computeOrigins) {
+			setError('Enter one or more HTTP or HTTPS HyperBEAM peers, separated by commas.');
 			return;
 		}
 		setError('');
 		const url = new URL(window.location.href);
-		url.searchParams.set('node', computeOrigin);
+		url.searchParams.set('node', computeOrigins.join(','));
 		window.location.assign(url);
 	}
 	return (
@@ -3378,7 +3380,7 @@ function GatewayControl() {
 			<summary
 				aria-controls="gateway-panel"
 				aria-expanded={open}
-				aria-label={`Compute gateway, ${computeCurrent}`}
+				aria-label={`Compute peers, ${computeCurrent}`}
 				onClick={(event) => {
 					event.preventDefault();
 					setOpen((currentOpen) => !currentOpen);
@@ -3393,7 +3395,7 @@ function GatewayControl() {
 			<div id="gateway-panel">
 				<form onSubmit={apply}>
 					<label>
-						HyperBEAM gateway
+						HyperBEAM peers
 						<input
 							aria-describedby={error ? 'gateway-error' : undefined}
 							aria-invalid={Boolean(error)}
@@ -3411,12 +3413,12 @@ function GatewayControl() {
 						</p>
 					) : null}
 					<Button className="with-icon" type="submit" size="custom">
-						<Server className="ui-icon ui-icon--sm" aria-hidden="true" /> Apply gateway
+						<Server className="ui-icon ui-icon--sm" aria-hidden="true" /> Apply peers
 					</Button>
 				</form>
 				<p>
-					Process reads and observer requests use HyperBEAM. Content, pricing, balances, and settlement use
-					the site gateway by default.
+					Process reads and observer requests fail over across these peers. Content, pricing, balances, and
+					settlement use the site gateway by default.
 				</p>
 			</div>
 		</details>
@@ -8863,7 +8865,7 @@ function purchaseGatewayForRecovery(key: string) {
 	return currentPurchaseGatewayContext();
 }
 
-function purchaseStatusMessage(state: PurchaseState | null) {
+export function purchaseStatusMessage(state: PurchaseState | null) {
 	return purchaseLifecycleStatus(state);
 }
 export function atomicPurchaseFailureStage(state: PurchaseState | null) {

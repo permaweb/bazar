@@ -1,6 +1,6 @@
-import { DEFAULT_COMPUTE_GATEWAY } from 'helpers/config';
+import { DEFAULT_COMPUTE_GATEWAY, gatewaysFromLocation, normalizeComputeGateways } from 'helpers/config';
 
-import { aoPeerFetch } from './ao-peer-fetch';
+import { aoFetch } from './ao';
 
 export type SwapOrderStatus = 'open' | 'reserved' | 'settled' | 'cancelled' | 'expired';
 
@@ -89,17 +89,12 @@ function isValidServingNodeHostname(hostname: string): boolean {
 }
 
 export function normalizeServingNodeOrigin(value: string, defaultProtocol = 'https:'): string | null {
-	const requestedNode = value.trim();
-	if (!requestedNode || /\s/.test(requestedNode)) return null;
+	return normalizeServingNodeOrigins(value, defaultProtocol)?.[0] ?? null;
+}
 
-	try {
-		const url = new URL(requestedNode.includes('://') ? requestedNode : `${defaultProtocol}//${requestedNode}`);
-		return (url.protocol === 'http:' || url.protocol === 'https:') && isValidServingNodeHostname(url.hostname)
-			? url.origin
-			: null;
-	} catch {
-		return null;
-	}
+export function normalizeServingNodeOrigins(value: string, defaultProtocol = 'https:'): string[] | null {
+	const origins = normalizeComputeGateways(value, defaultProtocol);
+	return origins?.every((origin) => isValidServingNodeHostname(new URL(origin).hostname)) ? origins : null;
 }
 
 export function servingNodeOrigin(location: {
@@ -109,23 +104,23 @@ export function servingNodeOrigin(location: {
 	search?: string;
 	hash?: string;
 }): string {
-	const hashQueryIndex = location.hash?.indexOf('?') ?? -1;
-	const hashSearch = hashQueryIndex === -1 ? '' : location.hash?.slice(hashQueryIndex);
-	const requestedNode = (
-		new URLSearchParams(location.search ?? '').get('node') ?? new URLSearchParams(hashSearch).get('node')
-	)?.trim();
-	if (requestedNode) {
-		const origin = normalizeServingNodeOrigin(requestedNode, location.protocol);
-		if (origin) return origin;
-	}
-
-	return DEFAULT_COMPUTE_GATEWAY;
+	return servingNodeOrigins(location)[0] ?? DEFAULT_COMPUTE_GATEWAY;
 }
 
-function currentServingNode(): string {
+export function servingNodeOrigins(location: {
+	protocol: string;
+	hostname: string;
+	port?: string;
+	search?: string;
+	hash?: string;
+}): string[] {
+	return gatewaysFromLocation(location as Location);
+}
+
+function currentServingNodes(): string[] {
 	return typeof window !== 'undefined' && ['http:', 'https:'].includes(window.location.protocol)
-		? servingNodeOrigin(window.location)
-		: '';
+		? servingNodeOrigins(window.location)
+		: [DEFAULT_COMPUTE_GATEWAY];
 }
 
 export async function readAssetState(
@@ -141,8 +136,9 @@ export async function readAssetState(
 	} = {}
 ): Promise<ComputeResult> {
 	if (!ADDRESS.test(processId)) throw new TypeError('invalid-asset-process-id');
-	const fetcher = aoPeerFetch(options.fetch);
-	const provider = options.provider ?? currentServingNode();
+	const nodes = options.provider ? [options.provider] : currentServingNodes();
+	const provider = nodes[0];
+	const fetcher = aoFetch(nodes, options.fetch);
 	const state = await readState(processId, provider, fetcher, options);
 	return {
 		state,
@@ -161,8 +157,9 @@ export async function readAssetStateAtSlot(
 	if (!ADDRESS.test(processId) || !Number.isSafeInteger(slot) || slot < 0) {
 		throw new TypeError('invalid-process-slot');
 	}
-	const fetcher = aoPeerFetch(options.fetch);
-	const provider = currentServingNode();
+	const nodes = currentServingNodes();
+	const provider = nodes[0];
+	const fetcher = aoFetch(nodes, options.fetch);
 	const state = await readState(processId, provider, fetcher, { ...options, slot });
 	if (assetStateSlot(state) !== slot) throw new Error('historical-state-slot-mismatch');
 	return { state, provider, verifiedAt: Date.now(), maxAge: 0 };
@@ -185,8 +182,9 @@ export async function readProcessAssignments(
 	) {
 		throw new TypeError('invalid-process-schedule-window');
 	}
-	const fetcher = aoPeerFetch(options.fetch);
-	const provider = currentServingNode();
+	const nodes = currentServingNodes();
+	const provider = nodes[0];
+	const fetcher = aoFetch(nodes, options.fetch);
 	const base = provider ? `${provider}/` : '/';
 	const paths = [
 		`${base}${processId}~process@1.0/schedule&from=${fromSlot}&to=${toSlot}/assignments?require-codec=json%401.0&accept-bundle=true`,
@@ -229,7 +227,9 @@ export async function waitForAssetState(
 		onAttempt?: (provider: string, attempt: number, total: number) => void;
 	} = {}
 ): Promise<ComputeResult> {
-	const fetcher = aoPeerFetch(options.fetch);
+	const nodes = options.provider ? [options.provider] : currentServingNodes();
+	const provider = nodes[0];
+	const fetcher = aoFetch(nodes, options.fetch);
 	const startedAt = Date.now();
 	const timeout = options.timeout ?? 180_000;
 	let attempt = 0;
@@ -237,7 +237,7 @@ export async function waitForAssetState(
 	while (Date.now() - startedAt < timeout) {
 		if (options.signal?.aborted) throw options.signal.reason;
 		attempt += 1;
-		options.onAttempt?.(options.provider ?? currentServingNode(), attempt, 1);
+		options.onAttempt?.(provider, attempt, 1);
 		try {
 			const result = await readAssetState(processId, {
 				fetch: fetcher,

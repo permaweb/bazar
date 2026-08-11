@@ -15,6 +15,7 @@ import {
 	readAssetStateAtSlot,
 	readProcessAssignments,
 	servingNodeOrigin,
+	servingNodeOrigins,
 	type SwapOrder,
 	waitForAssetState,
 } from './asset-marketplace';
@@ -49,6 +50,16 @@ describe('servingNodeOrigin', () => {
 				search: '?node=http%3A%2F%2F127.0.0.1%3A3101',
 			})
 		).toBe('http://127.0.0.1:3101');
+	});
+
+	it('keeps every selected compute peer in order', () => {
+		expect(
+			servingNodeOrigins({
+				protocol: 'https:',
+				hostname: 'bazar.example',
+				search: `?node=${encodeURIComponent('https://alpha.example,https://charlie.example')}`,
+			})
+		).toEqual(['https://alpha.example', 'https://charlie.example']);
 	});
 
 	it('uses the default gateway instead of the site hosting origin', () => {

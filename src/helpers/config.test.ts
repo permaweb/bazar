@@ -6,9 +6,13 @@ import {
 	arweaveGatewayOverrideFromLocation,
 	arweaveGraphqlEndpoint,
 	computeGatewayForEnvironment,
+	computeGatewaysForEnvironment,
 	DEFAULT_ARWEAVE_GATEWAY,
 	gatewayFromLocation,
+	gatewaysFromLocation,
+	normalizeComputeGateways,
 	PRODUCTION_COMPUTE_GATEWAY,
+	PRODUCTION_COMPUTE_GATEWAYS,
 } from './config';
 
 function location(overrides: Partial<Location> = {}): Location {
@@ -26,7 +30,24 @@ describe('Arweave gateway routing', () => {
 	it('keeps local development off the production compute gateway by default', () => {
 		expect(computeGatewayForEnvironment(true)).toBe(DEFAULT_ARWEAVE_GATEWAY);
 		expect(computeGatewayForEnvironment(false)).toBe(PRODUCTION_COMPUTE_GATEWAY);
+		expect(computeGatewaysForEnvironment(false)).toEqual(PRODUCTION_COMPUTE_GATEWAYS);
 		expect(computeGatewayForEnvironment(true, 'http://127.0.0.1:3101/path')).toBe('http://127.0.0.1:3101');
+	});
+
+	it('parses comma-separated, whitespace-separated, and JSON peer lists', () => {
+		expect(normalizeComputeGateways('alpha.example, https://charlie.example')).toEqual([
+			'https://alpha.example',
+			'https://charlie.example',
+		]);
+		expect(normalizeComputeGateways('["https://alpha.example","http://localhost:3101"]')).toEqual([
+			'https://alpha.example',
+			'http://localhost:3101',
+		]);
+		expect(normalizeComputeGateways('alpha.example, localhost:3101', 'http:')).toEqual([
+			'https://alpha.example',
+			'http://localhost:3101',
+		]);
+		expect(normalizeComputeGateways('https://alpha.example, nope://charlie.example')).toBeNull();
 	});
 
 	it('uses the gateway serving a deployed app', () => {
@@ -60,6 +81,15 @@ describe('Arweave gateway routing', () => {
 
 		expect(gatewayFromLocation(selected)).toBe('https://compute.example');
 		expect(arweaveGatewayFromLocation(selected)).toBe('https://gateway.example');
+	});
+
+	it('treats the node parameter as an ordered catch-all peer list', () => {
+		const selected = location({
+			search: `?node=${encodeURIComponent('https://alpha.example, https://charlie.example')}`,
+		});
+
+		expect(gatewaysFromLocation(selected)).toEqual(['https://alpha.example', 'https://charlie.example']);
+		expect(gatewayFromLocation(selected)).toBe('https://alpha.example');
 	});
 
 	it('creates an Arweave SDK configuration from the same selected origin', () => {
