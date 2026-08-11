@@ -1,4 +1,8 @@
-import { DEFAULT_COMPUTE_GATEWAY } from 'helpers/config';
+import { type AoCacheStatus, cacheMetadata } from 'ao-wrangler';
+
+import { DEFAULT_COMPUTE_GATEWAY, gatewaysFromLocation, normalizeComputeGateways } from 'helpers/config';
+
+import { aoFetch } from './ao';
 
 export type SwapOrderStatus = 'open' | 'reserved' | 'settled' | 'cancelled' | 'expired';
 
@@ -36,6 +40,8 @@ export type ComputeResult = {
 	provider: string;
 	verifiedAt?: number;
 	maxAge?: number;
+	cacheStatus?: AoCacheStatus;
+	revalidation?: Promise<ComputeResult>;
 };
 
 export type ProcessAssignment = {
@@ -62,7 +68,6 @@ const UNSIGNED_INTEGER = /^(?:0|[1-9]\d*)$/;
 const LIVE_ORDER = new Set<SwapOrderStatus>(['open', 'reserved']);
 const ASSET_PROCESS_DEVICES = new Set(['carrier@1.0', 'name-token@1.0', 'token@1.0']);
 const MAX_TOKEN_DENOMINATION = 255;
-const COMPUTE_TIMEOUT = 12_000;
 const COMPUTE_RETRY_BASE_DELAY = 1_000;
 const COMPUTE_RETRY_MAX_DELAY = 8_000;
 const LICENSE_FIELDS = [
@@ -88,17 +93,12 @@ function isValidServingNodeHostname(hostname: string): boolean {
 }
 
 export function normalizeServingNodeOrigin(value: string, defaultProtocol = 'https:'): string | null {
-	const requestedNode = value.trim();
-	if (!requestedNode || /\s/.test(requestedNode)) return null;
+	return normalizeServingNodeOrigins(value, defaultProtocol)?.[0] ?? null;
+}
 
-	try {
-		const url = new URL(requestedNode.includes('://') ? requestedNode : `${defaultProtocol}//${requestedNode}`);
-		return (url.protocol === 'http:' || url.protocol === 'https:') && isValidServingNodeHostname(url.hostname)
-			? url.origin
-			: null;
-	} catch {
-		return null;
-	}
+export function normalizeServingNodeOrigins(value: string, defaultProtocol = 'https:'): string[] | null {
+	const origins = normalizeComputeGateways(value, defaultProtocol);
+	return origins?.every((origin) => isValidServingNodeHostname(new URL(origin).hostname)) ? origins : null;
 }
 
 export function servingNodeOrigin(location: {
@@ -108,23 +108,23 @@ export function servingNodeOrigin(location: {
 	search?: string;
 	hash?: string;
 }): string {
-	const hashQueryIndex = location.hash?.indexOf('?') ?? -1;
-	const hashSearch = hashQueryIndex === -1 ? '' : location.hash?.slice(hashQueryIndex);
-	const requestedNode = (
-		new URLSearchParams(location.search ?? '').get('node') ?? new URLSearchParams(hashSearch).get('node')
-	)?.trim();
-	if (requestedNode) {
-		const origin = normalizeServingNodeOrigin(requestedNode, location.protocol);
-		if (origin) return origin;
-	}
-
-	return DEFAULT_COMPUTE_GATEWAY;
+	return servingNodeOrigins(location)[0] ?? DEFAULT_COMPUTE_GATEWAY;
 }
 
-function currentServingNode(): string {
+export function servingNodeOrigins(location: {
+	protocol: string;
+	hostname: string;
+	port?: string;
+	search?: string;
+	hash?: string;
+}): string[] {
+	return gatewaysFromLocation(location as Location);
+}
+
+function currentServingNodes(): string[] {
 	return typeof window !== 'undefined' && ['http:', 'https:'].includes(window.location.protocol)
-		? servingNodeOrigin(window.location)
-		: '';
+		? servingNodeOrigins(window.location)
+		: [DEFAULT_COMPUTE_GATEWAY];
 }
 
 export async function readAssetState(
@@ -134,19 +134,35 @@ export async function readAssetState(
 		signal?: AbortSignal;
 		maxAttempts?: number;
 		maxAge?: number;
+		staleWhileRevalidate?: number;
 		retryBaseDelay?: number;
 		onRetry?: (progress: ComputeRetryProgress) => void;
 	} = {}
 ): Promise<ComputeResult> {
 	if (!ADDRESS.test(processId)) throw new TypeError('invalid-asset-process-id');
-	const fetcher = options.fetch ?? globalThis.fetch.bind(globalThis);
-	const provider = currentServingNode();
-	const state = await readState(processId, provider, fetcher, options);
-	return {
-		state,
-		provider,
-		verifiedAt: Date.now(),
+	const nodes = currentServingNodes();
+	const provider = nodes[0];
+	const fetcher = aoFetch(nodes, options.fetch);
+	const read = await readState(processId, provider, fetcher, options);
+	const result = {
+		state: read.state,
+		provider: read.provider,
+		verifiedAt: Date.now() - (read.cacheAge ?? 0) * 1_000,
 		maxAge: Math.max(0, Math.floor(options.maxAge ?? 60)),
+		...(read.cacheStatus ? { cacheStatus: read.cacheStatus } : {}),
+	};
+	return {
+		...result,
+		...(read.revalidation
+			? {
+					revalidation: read.revalidation.then((fresh) => ({
+						...result,
+						...fresh,
+						verifiedAt: Date.now(),
+						cacheStatus: 'miss' as const,
+					})),
+			  }
+			: {}),
 	};
 }
 
@@ -159,11 +175,22 @@ export async function readAssetStateAtSlot(
 	if (!ADDRESS.test(processId) || !Number.isSafeInteger(slot) || slot < 0) {
 		throw new TypeError('invalid-process-slot');
 	}
-	const fetcher = options.fetch ?? globalThis.fetch.bind(globalThis);
-	const provider = currentServingNode();
-	const state = await readState(processId, provider, fetcher, { ...options, slot });
-	if (assetStateSlot(state) !== slot) throw new Error('historical-state-slot-mismatch');
-	return { state, provider, verifiedAt: Date.now(), maxAge: 0 };
+	const nodes = currentServingNodes();
+	const provider = nodes[0];
+	const fetcher = aoFetch(nodes, options.fetch);
+	const read = await readState(processId, provider, fetcher, {
+		...options,
+		slot,
+		maxAge: 0,
+	});
+	if (assetStateSlot(read.state) !== slot) throw new Error('historical-state-slot-mismatch');
+	return {
+		state: read.state,
+		provider: read.provider,
+		verifiedAt: Date.now() - (read.cacheAge ?? 0) * 1_000,
+		maxAge: 0,
+		...(read.cacheStatus ? { cacheStatus: read.cacheStatus } : {}),
+	};
 }
 
 /** Read a complete, bounded immutable window from a process's schedule. */
@@ -183,8 +210,9 @@ export async function readProcessAssignments(
 	) {
 		throw new TypeError('invalid-process-schedule-window');
 	}
-	const fetcher = options.fetch ?? globalThis.fetch.bind(globalThis);
-	const provider = currentServingNode();
+	const nodes = currentServingNodes();
+	const provider = nodes[0];
+	const fetcher = aoFetch(nodes, options.fetch);
 	const base = provider ? `${provider}/` : '/';
 	const paths = [
 		`${base}${processId}~process@1.0/schedule&from=${fromSlot}&to=${toSlot}/assignments?require-codec=json%401.0&accept-bundle=true`,
@@ -192,7 +220,6 @@ export async function readProcessAssignments(
 	];
 	let lastError: unknown;
 	for (const path of paths) {
-		const request = timeoutSignal(options.signal, COMPUTE_TIMEOUT);
 		try {
 			const response = await fetcher(path, {
 				headers: {
@@ -200,15 +227,13 @@ export async function readProcessAssignments(
 					'require-codec': 'application/json',
 					'accept-bundle': 'true',
 				},
-				signal: request.signal,
+				signal: options.signal,
 			});
 			if (!response.ok) throw new Error(`HTTP ${response.status}`);
 			return parseProcessAssignments(parseLosslessJson(await response.text()), fromSlot, toSlot);
 		} catch (error) {
 			lastError = error;
 			if (error instanceof Error && /^HTTP 429(?:\b|$)/i.test(error.message)) break;
-		} finally {
-			request.cleanup();
 		}
 	}
 	throw lastError instanceof Error ? lastError : new Error('process-schedule-provider-failed');
@@ -229,7 +254,7 @@ export async function waitForAssetState(
 		onAttempt?: (provider: string, attempt: number, total: number) => void;
 	} = {}
 ): Promise<ComputeResult> {
-	const fetcher = options.fetch ?? globalThis.fetch.bind(globalThis);
+	const fetcher = aoFetch(currentServingNodes(), options.fetch);
 	const startedAt = Date.now();
 	const timeout = options.timeout ?? 180_000;
 	let attempt = 0;
@@ -237,7 +262,7 @@ export async function waitForAssetState(
 	while (Date.now() - startedAt < timeout) {
 		if (options.signal?.aborted) throw options.signal.reason;
 		attempt += 1;
-		options.onAttempt?.(currentServingNode(), attempt, 1);
+		options.onAttempt?.(currentServingNodes()[0], attempt, 1);
 		try {
 			const result = await readAssetState(processId, {
 				fetch: fetcher,
@@ -428,14 +453,21 @@ async function readState(
 		signal?: AbortSignal;
 		maxAttempts?: number;
 		maxAge?: number;
+		staleWhileRevalidate?: number;
 		retryBaseDelay?: number;
 		onRetry?: (progress: ComputeRetryProgress) => void;
 		slot?: number;
 	}
-): Promise<AssetState> {
+): Promise<{
+	state: AssetState;
+	provider: string;
+	cacheStatus?: AoCacheStatus;
+	cacheAge?: number;
+	revalidation?: Promise<{ state: AssetState; provider: string }>;
+}> {
 	const base = servingNode ? `${servingNode}/` : '/';
 	const maxAge = Math.max(0, Math.floor(options.maxAge ?? 60));
-	const endpoint = options.slot === undefined ? `now&max-age=${maxAge}` : `compute?slot=${options.slot}`;
+	const endpoint = options.slot === undefined ? 'now&max-age=0' : `compute?slot=${options.slot}`;
 	const separator = endpoint.includes('?') ? '&' : '?';
 	const paths = [
 		`${base}${processId}~process@1.0/${endpoint}${separator}require-codec=json%401.0&accept-bundle=true`,
@@ -448,24 +480,67 @@ async function readState(
 	for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
 		let rateLimited = false;
 		for (const path of paths) {
-			const request = timeoutSignal(options.signal, COMPUTE_TIMEOUT);
-			try {
-				const response = await fetcher(path, {
-					...(options.slot === undefined && maxAge === 0 ? { cache: 'no-store' as const } : {}),
+			let retryInvalidCachedResponse = true;
+			const strictCurrent =
+				options.slot === undefined && maxAge === 0 && options.staleWhileRevalidate === undefined;
+			while (true) {
+				let response: Response | undefined;
+				const requestInit: RequestInit = {
+					...(strictCurrent
+						? { cache: 'reload' as const }
+						: options.slot !== undefined && maxAge === 0
+						? { cache: 'no-store' as const }
+						: {}),
+					...(!retryInvalidCachedResponse ? { cache: 'reload' as const } : {}),
 					headers: {
 						accept: 'application/json',
 						'require-codec': 'application/json',
 						'accept-bundle': 'true',
+						'cache-control':
+							options.staleWhileRevalidate === undefined
+								? `max-age=${maxAge}`
+								: `max-age=${maxAge}, stale-while-revalidate=${Math.max(
+										0,
+										Math.floor(options.staleWhileRevalidate)
+								  )}`,
 					},
-					signal: request.signal,
-				});
-				if (!response.ok) throw new Error(`HTTP ${response.status}`);
-				return parseAssetState(parseLosslessJson(await response.text()));
-			} catch (error) {
-				lastError = error;
-				rateLimited = error instanceof Error && /^HTTP 429(?:\b|$)/i.test(error.message);
-			} finally {
-				request.cleanup();
+					signal: options.signal,
+				};
+				const invalidate = (
+					fetcher as typeof fetch & {
+						invalidate?(input: RequestInfo | URL, init?: RequestInit): Promise<void>;
+					}
+				).invalidate;
+				try {
+					if (strictCurrent && retryInvalidCachedResponse && invalidate) {
+						await invalidate(path, requestInit).catch(() => undefined);
+					}
+					response = await fetcher(path, requestInit);
+					if (!response.ok) throw new Error(`HTTP ${response.status}`);
+					const state = parseAssetState(parseLosslessJson(await response.text()));
+					const cached = cacheMetadata(response);
+					return {
+						state,
+						provider: cached?.origin ?? servingNode,
+						...(cached ? { cacheStatus: cached.status, cacheAge: cached.age } : {}),
+						...(cached?.revalidation
+							? {
+									revalidation: cached.revalidation.then((fresh) =>
+										parseRevalidatedState(fresh, path, requestInit, fetcher, servingNode)
+									),
+							  }
+							: {}),
+					};
+				} catch (error) {
+					if (retryInvalidCachedResponse && response?.ok && cacheMetadata(response) && invalidate) {
+						retryInvalidCachedResponse = false;
+						await invalidate(path, requestInit).catch(() => undefined);
+						continue;
+					}
+					lastError = error;
+					rateLimited = error instanceof Error && /^HTTP 429(?:\b|$)/i.test(error.message);
+				}
+				break;
 			}
 			if (rateLimited) break;
 		}
@@ -477,6 +552,33 @@ async function readState(
 	}
 
 	throw lastError instanceof Error ? lastError : new Error('compute-provider-failed');
+}
+
+async function parseRevalidatedState(
+	response: Response,
+	path: string,
+	requestInit: RequestInit,
+	fetcher: typeof fetch,
+	servingNode: string,
+	retry = true
+): Promise<{ state: AssetState; provider: string }> {
+	try {
+		if (!response.ok) throw new Error(`HTTP ${response.status}`);
+		return {
+			state: parseAssetState(parseLosslessJson(await response.text())),
+			provider: cacheMetadata(response)?.origin ?? servingNode,
+		};
+	} catch (error) {
+		const invalidate = (
+			fetcher as typeof fetch & {
+				invalidate?(input: RequestInfo | URL, init?: RequestInit): Promise<void>;
+			}
+		).invalidate;
+		if (!retry || !response.ok || !invalidate) throw error;
+		await invalidate(path, requestInit).catch(() => undefined);
+		const replacement = await fetcher(path, { ...requestInit, cache: 'reload', signal: undefined });
+		return parseRevalidatedState(replacement, path, requestInit, fetcher, servingNode, false);
+	}
 }
 
 function parseProcessAssignments(value: unknown, fromSlot: number, toSlot: number): ProcessAssignment[] {
@@ -588,21 +690,6 @@ function text(value: unknown): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return Boolean(value && typeof value === 'object' && !Array.isArray(value));
-}
-
-function timeoutSignal(parent: AbortSignal | undefined, timeout: number): { signal: AbortSignal; cleanup: () => void } {
-	const controller = new AbortController();
-	const abort = () => controller.abort(parent?.reason);
-	if (parent?.aborted) abort();
-	else parent?.addEventListener('abort', abort, { once: true });
-	const timer = setTimeout(() => controller.abort(new Error('compute-provider-timeout')), timeout);
-	return {
-		signal: controller.signal,
-		cleanup: () => {
-			clearTimeout(timer);
-			parent?.removeEventListener('abort', abort);
-		},
-	};
 }
 
 function delay(duration: number, signal?: AbortSignal): Promise<void> {

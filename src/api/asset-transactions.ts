@@ -11,8 +11,14 @@ import {
 } from 'weave-wrangler';
 
 import { createArweaveClient } from 'helpers/arweave';
-import { arweaveClientConfig, arweaveGatewayFromLocation } from 'helpers/config';
+import {
+	arweaveClientConfig,
+	arweaveGatewayFromLocation,
+	DEFAULT_COMPUTE_GATEWAYS,
+	gatewaysFromLocation,
+} from 'helpers/config';
 
+import { aoFetch } from './ao';
 import {
 	type AssetState,
 	assetStateSlot,
@@ -198,6 +204,7 @@ export type TransactionProgress = {
 export class AssetTransactionClient {
 	#wallet: any;
 	#fetch: typeof fetch;
+	#peerFetch: typeof fetch;
 	#arweave?: any;
 	#gateway: string;
 	#storage?: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> & Partial<Pick<Storage, 'key' | 'length'>>;
@@ -207,6 +214,8 @@ export class AssetTransactionClient {
 	constructor(options: AssetTransactionClientOptions = {}) {
 		this.#wallet = options.wallet ?? globalThis.window?.arweaveWallet;
 		this.#fetch = options.fetch ?? globalThis.fetch.bind(globalThis);
+		const computeGateways = typeof window === 'undefined' ? DEFAULT_COMPUTE_GATEWAYS : gatewaysFromLocation();
+		this.#peerFetch = aoFetch(computeGateways, options.fetch);
 		this.#arweave = options.arweave;
 		this.#gateway = options.gateway ?? arweaveGatewayFromLocation();
 		this.#storage = options.storage ?? globalThis.window?.localStorage;
@@ -347,7 +356,7 @@ export class AssetTransactionClient {
 							order.minimumFee === expected.minimumFee
 					);
 				},
-				{ fetch: this.#fetch, signal, timeout: STATE_INCLUSION_TIMEOUT }
+				{ fetch: this.#peerFetch, signal, timeout: STATE_INCLUSION_TIMEOUT }
 			)
 		).state;
 	}
@@ -465,7 +474,7 @@ export class AssetTransactionClient {
 						currentSlot,
 						transactionHeight,
 						assignmentCache,
-						this.#fetch,
+						this.#peerFetch,
 						signal
 					);
 					if (firstSlot === null) return false;
@@ -483,14 +492,14 @@ export class AssetTransactionClient {
 						currentSlot,
 						transactionHeight + 1,
 						assignmentCache,
-						this.#fetch,
+						this.#peerFetch,
 						signal
 					);
 					const lastSlot = firstLaterSlot === null ? currentSlot : firstLaterSlot - 1;
 					for (let fromSlot = firstSlot; fromSlot <= lastSlot; fromSlot += 100) {
 						const toSlot = Math.min(lastSlot, fromSlot + 99);
 						const assignments = await readProcessAssignments(processId, fromSlot, toSlot, {
-							fetch: this.#fetch,
+							fetch: this.#peerFetch,
 							signal,
 						});
 						const assignment = assignments.find((held) => held.transactionIds.includes(transactionId));
@@ -505,12 +514,12 @@ export class AssetTransactionClient {
 							throw error;
 						}
 						const after = await readAssetStateAtSlot(processId, assignment.slot, {
-							fetch: this.#fetch,
+							fetch: this.#peerFetch,
 							signal,
 						});
 						const before = readPreviousState
 							? await readAssetStateAtSlot(processId, assignment.slot - 1, {
-									fetch: this.#fetch,
+									fetch: this.#peerFetch,
 									signal,
 							  })
 							: undefined;
@@ -526,7 +535,7 @@ export class AssetTransactionClient {
 				}
 				return false;
 			},
-			{ fetch: this.#fetch, signal, timeout: STATE_INCLUSION_TIMEOUT }
+			{ fetch: this.#peerFetch, signal, timeout: STATE_INCLUSION_TIMEOUT }
 		);
 		if (proofMismatch) throw new Error(proofMismatchCode);
 		if (rejected) throw new Error(rejectionCode);
@@ -699,7 +708,7 @@ export class AssetTransactionClient {
 						return rejected;
 					},
 					{
-						fetch: this.#fetch,
+						fetch: this.#peerFetch,
 						signal,
 						timeout: STATE_INCLUSION_TIMEOUT,
 						onAttempt: (provider, attempt, total) =>
@@ -1170,7 +1179,7 @@ export class AssetTransactionClient {
 		signal?: AbortSignal
 	): Promise<void> {
 		try {
-			const { state } = await readAssetState(processId, { fetch: this.#fetch, signal });
+			const { state } = await readAssetState(processId, { fetch: this.#peerFetch, signal });
 			if (!accept(state)) throw new Error(errorCode);
 		} catch (error) {
 			if (signal?.aborted) throw error;

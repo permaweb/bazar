@@ -49,18 +49,32 @@ export function formatTokenAmount(value: string, denomination: number): string {
  * final order when necessary. Integer economic terms use the device's exact
  * seller-favouring ceiling, so the quote is also the amount paid on-chain. */
 export function matchOrderFills(orders: Iterable<SwapOrder>, requestedQuantity: string): OrderFillMatch | null {
-	if (!UNSIGNED_INTEGER.test(requestedQuantity) || BigInt(requestedQuantity) < 1n) {
-		throw new TypeError('invalid-requested-quantity');
-	}
+	const available = availableOrders(orders);
+	available.sort(compareOrderUnitPrice);
+	return fillSortedOrders(available, requestedQuantity);
+}
 
-	const target = BigInt(requestedQuantity);
+/** Match an already price-sorted order book without re-sorting on each quote. */
+export function matchSortedOrderFills(orders: Iterable<SwapOrder>, requestedQuantity: string): OrderFillMatch | null {
+	return fillSortedOrders(availableOrders(orders), requestedQuantity);
+}
+
+function availableOrders(orders: Iterable<SwapOrder>): SwapOrder[] {
 	const available: SwapOrder[] = [];
 	for (const order of orders) {
 		if (order.status !== 'open') continue;
 		if (available.length === MAX_MATCH_ORDERS) throw new RangeError('order-match-search-limit');
 		available.push(order);
 	}
-	available.sort(compareOrderUnitPrice);
+	return available;
+}
+
+function fillSortedOrders(available: SwapOrder[], requestedQuantity: string): OrderFillMatch | null {
+	if (!UNSIGNED_INTEGER.test(requestedQuantity) || BigInt(requestedQuantity) < 1n) {
+		throw new TypeError('invalid-requested-quantity');
+	}
+
+	const target = BigInt(requestedQuantity);
 	const availableQuantity = available.reduce((total, order) => total + BigInt(order.quantity), 0n);
 	if (availableQuantity < target) return null;
 

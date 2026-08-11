@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import { DEFAULT_COMPUTE_GATEWAY } from 'helpers/config';
+import { DEFAULT_COMPUTE_GATEWAY, DEFAULT_COMPUTE_GATEWAYS } from 'helpers/config';
 
+import { aoClient } from './ao';
 import { assetObserverNetworkOptions } from './asset-observers';
 
 function location(overrides: Partial<Location>): Location {
@@ -21,6 +22,7 @@ describe('assetObserverNetworkOptions', () => {
 
 		expect(options.node).toBe('https://arweave.net');
 		expect(options['relay-with']).toBe('http://127.0.0.1:3101');
+		expect(options.ao).toBe(aoClient('http://127.0.0.1:3101'));
 		expect(options.minObservers).toBe(3);
 		expect(options.maxObservers).toBe(7);
 	});
@@ -35,6 +37,18 @@ describe('assetObserverNetworkOptions', () => {
 		expect(options['relay-with']).toBe('http://127.0.0.1:3101');
 	});
 
+	it('routes observer relays through every selected peer', () => {
+		const options = assetObserverNetworkOptions(
+			location({
+				search: `?node=${encodeURIComponent('https://alpha.example,https://charlie.example')}`,
+			})
+		);
+
+		expect(options['relay-with']).toBe('https://alpha.example');
+		expect(options.fetch).toBeTypeOf('function');
+		expect(options.ao).toBe(aoClient(['https://alpha.example', 'https://charlie.example']));
+	});
+
 	it('uses the default compute gateway when no relay is selected', () => {
 		const options = assetObserverNetworkOptions(
 			location({
@@ -46,6 +60,7 @@ describe('assetObserverNetworkOptions', () => {
 
 		expect(options.node).toBe('https://lcno4nkkk4gsb5krqpa6irlzbuurmnzk4entikswauifsbryldfa.arweave.net');
 		expect(options['relay-with']).toBe(DEFAULT_COMPUTE_GATEWAY);
+		expect(options.ao).toBe(aoClient(DEFAULT_COMPUTE_GATEWAYS));
 	});
 
 	it('uses an independently selected Arweave gateway for observer discovery', () => {

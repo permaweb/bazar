@@ -993,6 +993,8 @@ describe('fungible asset transactions', () => {
 			applied.raw.results = { outbox: transferNotices('10') };
 			let statePolls = 0;
 			let statusReads = 0;
+			let firstWindowRead!: () => void;
+			const firstWindow = new Promise<void>((resolve) => (firstWindowRead = resolve));
 			const subject = new AssetTransactionClient({
 				fetch: async (input: RequestInfo | URL) => {
 					const url = String(input);
@@ -1007,6 +1009,7 @@ describe('fungible asset transactions', () => {
 					const schedule = url.match(/schedule&from=(\d+)&to=(\d+)\/assignments/);
 					if (schedule) {
 						const moved = statePolls > 1;
+						if (!moved && schedule[1] === '12' && schedule[2] === '12') firstWindowRead();
 						const assignments: Record<number, unknown> = {};
 						for (let slot = Number(schedule[1]); slot <= Number(schedule[2]); slot += 1) {
 							const blockHeight = moved ? (slot < 10 ? 50 : slot === 10 ? 51 : 52) : slot < 11 ? 50 : 51;
@@ -1026,6 +1029,7 @@ describe('fungible asset transactions', () => {
 				startingSlot: 0,
 			});
 
+			await firstWindow;
 			await vi.advanceTimersByTimeAsync(0);
 			await vi.advanceTimersByTimeAsync(4_000);
 

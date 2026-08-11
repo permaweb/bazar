@@ -15,6 +15,7 @@ import {
 	readAssetStateAtSlot,
 	readProcessAssignments,
 	servingNodeOrigin,
+	servingNodeOrigins,
 	type SwapOrder,
 	waitForAssetState,
 } from './asset-marketplace';
@@ -22,6 +23,7 @@ import {
 const owner = '1uTLV5GvfQ5M46Tq_DTeJL7rIy7vCAOMxQ7Fbf82YZw';
 const buyer = 'BLyLiOZptmb-olB8wycvk_ynHiu1SZMKPqswx4KONwc';
 const orderId = 'qAhWNMSuX70lZpIRohKJn_SuVcymr_RmpGbltydjpwA';
+const processId = 'IyFfmbTu8P4rv0KyrA0Q-QtfEnYntMj4RkRiBVip9KA';
 
 function assignment(slot: number, transactionId: string) {
 	return {
@@ -49,6 +51,16 @@ describe('servingNodeOrigin', () => {
 				search: '?node=http%3A%2F%2F127.0.0.1%3A3101',
 			})
 		).toBe('http://127.0.0.1:3101');
+	});
+
+	it('keeps every selected compute peer in order', () => {
+		expect(
+			servingNodeOrigins({
+				protocol: 'https:',
+				hostname: 'bazar.example',
+				search: `?node=${encodeURIComponent('https://alpha.example,https://charlie.example')}`,
+			})
+		).toEqual(['https://alpha.example', 'https://charlie.example']);
 	});
 
 	it('uses the default gateway instead of the site hosting origin', () => {
@@ -164,6 +176,78 @@ describe('asset state', () => {
 		expect(requested[1]).toContain('require-codec=application%2Fjson');
 	});
 
+	it('makes passive max-age reads reusable without allowing stale state', async () => {
+		let requested = '';
+		const requestOptions: RequestInit[] = [];
+		await readAssetState('IyFfmbTu8P4rv0KyrA0Q-QtfEnYntMj4RkRiBVip9KA', {
+			maxAge: 60,
+			fetch: async (input, init) => {
+				requested = String(input);
+				requestOptions.push(init ?? {});
+				return Response.json({
+					'execution-device': 'token@1.0',
+					'total-supply': '1',
+					balances: { [owner]: '1' },
+					orders: {},
+				});
+			},
+		});
+
+		expect(requested).toContain('now&max-age=0');
+		expect(requestOptions[0].cache).toBeUndefined();
+		expect(new Headers(requestOptions[0].headers).get('cache-control')).toBe('max-age=60');
+	});
+
+	it('reports the peer that returned the routed process state', async () => {
+		vi.stubGlobal('window', {
+			location: {
+				protocol: 'https:',
+				hostname: 'bazar.example',
+				port: '',
+				search: `?node=${encodeURIComponent('https://alpha.example,https://charlie.example')}`,
+				hash: '',
+			},
+		});
+		try {
+			const result = await readAssetState('IyFfmbTu8P4rv0KyrA0Q-QtfEnYntMj4RkRiBVip9KA', {
+				maxAge: 60,
+				fetch: async (input) =>
+					String(input).startsWith('https://alpha.example/')
+						? new Response('unavailable', { status: 502 })
+						: Response.json({
+								'execution-device': 'token@1.0',
+								'total-supply': '1',
+								balances: { [owner]: '1' },
+								orders: {},
+						  }),
+			});
+
+			expect(result.provider).toBe('https://charlie.example');
+		} finally {
+			vi.unstubAllGlobals();
+		}
+	});
+
+	it('evicts and retries a malformed cached process response', async () => {
+		let requests = 0;
+		const result = await readAssetState('IyFfmbTu8P4rv0KyrA0Q-QtfEnYntMj4RkRiBVip9KA', {
+			maxAge: 60,
+			fetch: async () => {
+				requests += 1;
+				if (requests === 1) return new Response('not-json');
+				return Response.json({
+					'execution-device': 'token@1.0',
+					'total-supply': '1',
+					balances: { [owner]: '1' },
+					orders: {},
+				});
+			},
+		});
+
+		expect(result.state.balances[owner]).toBe('1');
+		expect(requests).toBe(2);
+	});
+
 	it('bypasses cached process state throughout transaction acceptance polling', async () => {
 		const processId = 'IyFfmbTu8P4rv0KyrA0Q-QtfEnYntMj4RkRiBVip9KA';
 		const requested: string[] = [];
@@ -184,15 +268,39 @@ describe('asset state', () => {
 
 		expect(requested).toHaveLength(2);
 		expect(requested.every((url) => url.includes('now&max-age=0'))).toBe(true);
-		expect(requestOptions.every((options) => options.cache === 'no-store')).toBe(true);
+		expect(requestOptions.every((options) => options.cache === 'reload')).toBe(true);
 		expect(result.maxAge).toBe(0);
+	});
+
+	it('allows zero-age stale state while its live replacement revalidates', async () => {
+		const requestOptions: RequestInit[] = [];
+		await readAssetState('IyFfmbTu8P4rv0KyrA0Q-QtfEnYntMj4RkRiBVip9KA', {
+			maxAge: 0,
+			staleWhileRevalidate: 86_400,
+			fetch: async (_input, init) => {
+				requestOptions.push(init ?? {});
+				return Response.json({
+					'execution-device': 'token@1.0',
+					'total-supply': '1',
+					balances: { [owner]: '1' },
+					orders: {},
+				});
+			},
+		});
+
+		expect(requestOptions[0].cache).toBeUndefined();
+		expect(new Headers(requestOptions[0].headers).get('cache-control')).toBe(
+			'max-age=0, stale-while-revalidate=86400'
+		);
 	});
 
 	it('reads one exact historical state and rejects a mismatched slot', async () => {
 		const processId = 'IyFfmbTu8P4rv0KyrA0Q-QtfEnYntMj4RkRiBVip9KA';
 		const requested: string[] = [];
-		const fetcher = async (input: RequestInfo | URL) => {
+		const requestOptions: RequestInit[] = [];
+		const fetcher = async (input: RequestInfo | URL, init?: RequestInit) => {
 			requested.push(String(input));
+			requestOptions.push(init ?? {});
 			return new Response(
 				JSON.stringify({
 					'execution-device': 'token@1.0',
@@ -209,9 +317,75 @@ describe('asset state', () => {
 			maxAge: 0,
 		});
 		expect(requested[0]).toContain('compute?slot=18&require-codec=json%401.0');
+		expect(requestOptions[0].cache).toBe('no-store');
+		expect(new Headers(requestOptions[0].headers).get('cache-control')).toBe('max-age=0');
+		await readAssetStateAtSlot(processId, 18, { fetch: fetcher as typeof fetch });
+		expect(requested).toHaveLength(2);
 		await expect(readAssetStateAtSlot(processId, 17, { fetch: fetcher as typeof fetch })).rejects.toThrow(
 			'historical-state-slot-mismatch'
 		);
+	});
+
+	it('replaces passive current state after a strict read', async () => {
+		let calls = 0;
+		vi.stubGlobal('caches', memoryCacheStorage());
+		const fetcher = async () =>
+			Response.json({
+				'execution-device': 'token@1.0',
+				'total-supply': '1',
+				balances: { [owner]: String(++calls) },
+				orders: {},
+			});
+		try {
+			const passive = await readAssetState(processId, { fetch: fetcher as typeof fetch, maxAge: 60 });
+			const strict = await readAssetState(processId, { fetch: fetcher as typeof fetch, maxAge: 0 });
+			const restored = await readAssetState(processId, { fetch: fetcher as typeof fetch, maxAge: 60 });
+
+			expect(passive.state.balances[owner]).toBe('1');
+			expect(strict.state.balances[owner]).toBe('2');
+			expect(restored.state.balances[owner]).toBe('2');
+			expect(calls).toBe(2);
+		} finally {
+			vi.unstubAllGlobals();
+		}
+	});
+
+	it('repairs a malformed stale revalidation before publishing it', async () => {
+		let now = 1_000;
+		vi.spyOn(Date, 'now').mockImplementation(() => now);
+		vi.stubGlobal('caches', memoryCacheStorage());
+		let calls = 0;
+		const fetcher = async () => {
+			calls += 1;
+			if (calls === 2) return new Response('not-json');
+			return Response.json({
+				'execution-device': 'token@1.0',
+				'total-supply': '1',
+				balances: { [owner]: calls === 1 ? '1' : '2' },
+				orders: {},
+			});
+		};
+		try {
+			await readAssetState(processId, {
+				fetch: fetcher as typeof fetch,
+				maxAge: 0,
+				staleWhileRevalidate: 60,
+			});
+			now += 1_000;
+			const stale = await readAssetState(processId, {
+				fetch: fetcher as typeof fetch,
+				maxAge: 0,
+				staleWhileRevalidate: 60,
+			});
+			const fresh = await stale.revalidation;
+
+			expect(stale.state.balances[owner]).toBe('1');
+			expect(fresh?.state.balances[owner]).toBe('2');
+			expect(calls).toBe(3);
+		} finally {
+			vi.restoreAllMocks();
+			vi.unstubAllGlobals();
+		}
 	});
 
 	it('reads a complete schedule window and extracts exact signed transaction IDs', async () => {
@@ -244,11 +418,24 @@ describe('asset state', () => {
 		).rejects.toThrow('incomplete-process-schedule');
 	});
 
-	it('does not amplify a rate limit across codec fallbacks', async () => {
-		const fetcher = vi.fn(async () => new Response('rate limited', { status: 429 }));
+	it('retries a rate limit without multiplying it across codec fallbacks', async () => {
+		const requested: string[] = [];
+		const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+			requested.push(String(input));
+			if (requested.length === 1) {
+				return new Response('rate limited', { status: 429, headers: { 'retry-after': '0' } });
+			}
+			return Response.json({
+				'execution-device': 'token@1.0',
+				'total-supply': '1',
+				balances: { [owner]: '1' },
+				orders: {},
+			});
+		});
 
-		await expect(readAssetState('R'.repeat(43), { fetch: fetcher as typeof fetch })).rejects.toThrow('HTTP 429');
-		expect(fetcher).toHaveBeenCalledTimes(1);
+		await expect(readAssetState('R'.repeat(43), { fetch: fetcher as typeof fetch })).resolves.toBeDefined();
+		expect(requested).toHaveLength(2);
+		expect(requested[1]).toBe(requested[0]);
 	});
 
 	it('rejects unsafe token metadata', () => {
@@ -315,4 +502,23 @@ function order(id: string, overrides: Partial<Record<string, unknown>> = {}): Re
 		status: 'open',
 		...overrides,
 	};
+}
+
+function memoryCacheStorage(): CacheStorage {
+	const held = new Map<string, Response>();
+	const cache = {
+		async delete(input: RequestInfo | URL) {
+			return held.delete(String(input));
+		},
+		async keys() {
+			return [...held.keys()].map((key) => new Request(key));
+		},
+		async match(input: RequestInfo | URL) {
+			return held.get(String(input))?.clone();
+		},
+		async put(input: RequestInfo | URL, response: Response) {
+			held.set(String(input), response.clone());
+		},
+	} as unknown as Cache;
+	return { open: async () => cache } as unknown as CacheStorage;
 }
