@@ -47,6 +47,7 @@ import {
 	publishHomeListingResult,
 	reconcileHomeActivityScan,
 	reconcileHomeFloorScan,
+	recordHomeListingComputeResult,
 	retainNewestCollectionActivity,
 	retryableHomeSummaryKeys,
 	shouldLoadHomeAssetSummaries,
@@ -69,6 +70,24 @@ describe('Home market summary retries', () => {
 		expect(homeListingComputeFailure(failure, 3, 3)).toBe(failure);
 		expect(homeListingComputeFailure(failure, 3, 2)).toBeUndefined();
 		expect(homeListingComputeFailure(failure, 0, 0)).toBeUndefined();
+	});
+
+	it('resets a failure streak on success and keeps an open listing circuit until retry or gateway change', () => {
+		const failure = new Error('all configured peers unavailable');
+		const circuit = { scope: '', consecutiveFailures: 0 };
+		for (let index = 0; index < 35; index += 1) {
+			expect(recordHomeListingComputeResult(circuit, 'alpha,charlie|0', failure)).toBeUndefined();
+		}
+		expect(recordHomeListingComputeResult(circuit, 'alpha,charlie|0')).toBeUndefined();
+		expect(circuit.consecutiveFailures).toBe(0);
+		for (let index = 0; index < 35; index += 1) {
+			expect(recordHomeListingComputeResult(circuit, 'alpha,charlie|0', failure)).toBeUndefined();
+		}
+		expect(recordHomeListingComputeResult(circuit, 'alpha,charlie|0', failure)).toBe(failure);
+		expect(recordHomeListingComputeResult(circuit, 'alpha,charlie|0')).toBe(failure);
+		expect(circuit).toEqual({ scope: 'alpha,charlie|0', consecutiveFailures: 36, failure });
+		expect(recordHomeListingComputeResult(circuit, 'alpha,charlie|1')).toBeUndefined();
+		expect(circuit).toEqual({ scope: 'alpha,charlie|1', consecutiveFailures: 0, failure: undefined });
 	});
 
 	it('publishes progressive outcomes once per frame and drops canceled work', () => {

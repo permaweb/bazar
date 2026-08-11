@@ -1977,6 +1977,27 @@ export function homeListingComputeFailure<T>(failure: T | undefined, attempts: n
 	return failure !== undefined && attempts > 0 && failures === attempts ? failure : undefined;
 }
 
+export type HomeListingComputeCircuit = {
+	scope: string;
+	consecutiveFailures: number;
+	failure?: unknown;
+};
+
+export function recordHomeListingComputeResult(circuit: HomeListingComputeCircuit, scope: string, failure?: unknown) {
+	if (circuit.scope !== scope) {
+		circuit.scope = scope;
+		circuit.consecutiveFailures = 0;
+		circuit.failure = undefined;
+	}
+	if (failure === undefined) {
+		if (circuit.failure === undefined) circuit.consecutiveFailures = 0;
+		return circuit.failure;
+	}
+	circuit.consecutiveFailures += 1;
+	if (circuit.consecutiveFailures >= HOME_LISTING_ASSET_LIMIT) circuit.failure ??= failure;
+	return circuit.failure;
+}
+
 export function homeMarketShellLoading(loading: boolean, collectionCount: number) {
 	return loading && collectionCount === 0;
 }
@@ -2091,6 +2112,10 @@ function Home() {
 		Extract<HomeMarketSummary, { status: 'unavailable' }> | undefined
 	>();
 	const [portableHomeRetry, setPortableHomeRetry] = React.useState(0);
+	const portableHomeComputeCircuit = React.useRef<HomeListingComputeCircuit>({
+		scope: '',
+		consecutiveFailures: 0,
+	});
 	const marketShellReady = market.collections.length > 0;
 	const listingSupportVersion = React.useMemo(
 		() => homeListingSupportVersion(market.collections),
@@ -2248,7 +2273,20 @@ function Home() {
 			setPortableHomeListingsLoading(false);
 			return;
 		}
+		const computeCircuitScope = `${computeGateway}|${portableHomeRetry}`;
+		const computeCircuit = portableHomeComputeCircuit.current;
+		recordHomeListingComputeResult(computeCircuit, computeCircuitScope);
+		if (computeCircuit.failure !== undefined) {
+			setPortableHomeListingsLoading(false);
+			setPortableHomeListingsFailure({
+				status: 'unavailable',
+				source: 'compute',
+				kind: marketplaceFailureKind(computeCircuit.failure),
+			});
+			return;
+		}
 		const controller = new AbortController();
+		let disposed = false;
 		setPortableHomeListingsLoading(true);
 		setPortableHomeListingsComplete(false);
 		setPortableHomeListingsFailure(undefined);
@@ -2286,6 +2324,7 @@ function Home() {
 			let computeFailure: unknown;
 			let computeAttempts = 0;
 			let computeFailures = 0;
+			let computeCircuitFailure: unknown;
 			let discoveryFailure: unknown;
 			const collections = marketCollectionsRef.current;
 			const resolver = createAssetCandidateResolver(collections, {
@@ -2313,8 +2352,15 @@ function Home() {
 					if (cause) {
 						computeFailures += 1;
 						computeFailure ??= cause;
+						computeCircuitFailure ??= recordHomeListingComputeResult(
+							computeCircuit,
+							computeCircuitScope,
+							cause
+						);
+						if (computeCircuitFailure !== undefined) controller.abort(computeCircuitFailure);
 						return;
 					}
+					recordHomeListingComputeResult(computeCircuit, computeCircuitScope);
 					publications.push({ processId: candidate.processId, result });
 				},
 			});
@@ -2344,7 +2390,7 @@ function Home() {
 					onPage: publishCandidates,
 				});
 			} catch (cause) {
-				discoveryFailure = cause;
+				if (computeCircuitFailure === undefined) discoveryFailure = cause;
 			}
 			try {
 				await supportTail;
@@ -2365,21 +2411,25 @@ function Home() {
 						: undefined
 				);
 			} catch (cause) {
-				if (!controller.signal.aborted) {
+				if (!disposed) {
 					setPortableHomeListingsFailure({
 						status: 'unavailable',
-						source: discoveryFailure || indexFailure ? 'index' : 'compute',
-						kind: marketplaceFailureKind(cause),
+						source:
+							computeCircuitFailure === undefined && (discoveryFailure || indexFailure)
+								? 'index'
+								: 'compute',
+						kind: marketplaceFailureKind(computeCircuitFailure ?? cause),
 					});
 				}
 			} finally {
-				if (!controller.signal.aborted) {
+				if (!disposed) {
 					publications.flush();
 					setPortableHomeListingsLoading(false);
 				}
 			}
 		})();
 		return () => {
+			disposed = true;
 			controller.abort();
 			publications.cancel();
 		};
@@ -2769,10 +2819,16 @@ function Home() {
 		setSummaryRetry((current) => current + 1);
 	};
 	React.useEffect(() => {
-		if (!summaryFailureKey || summaryFailureKey === '|' || summaryRetrying) return;
+		if (
+			!summaryFailureKey ||
+			summaryFailureKey === '|' ||
+			summaryRetrying ||
+			portableHomeListingsFailure?.source === 'compute'
+		)
+			return;
 		const timer = window.setTimeout(retryMarketSummaries, 15_000);
 		return () => window.clearTimeout(timer);
-	}, [summaryFailureKey, summaryRetrying]);
+	}, [portableHomeListingsFailure, summaryFailureKey, summaryRetrying]);
 	React.useEffect(() => setAssetPage(1), [assetType, assetView, normalizedQuery]);
 	React.useEffect(() => {
 		if (assetPage !== assetPagination.page) setAssetPage(assetPagination.page);
