@@ -206,7 +206,7 @@ export function mergeCollectionSnapshots(
 
 type CollectionSource = {
 	label: string;
-	load: () => Promise<Collection>;
+	load: (onProgress?: (collection: Collection) => void) => Promise<Collection>;
 	fallback?: () => Collection;
 };
 
@@ -215,7 +215,7 @@ export async function loadCollections(
 	onProgress?: (collections: Collection[]) => void
 ): Promise<CollectionLoadResult> {
 	const sources: CollectionSource[] = [
-		{ label: 'Arweave names', load: () => loadNames(signal) },
+		{ label: 'Arweave names', load: (progress) => loadNames(signal, progress) },
 		{
 			label: 'Fungible token discovery',
 			load: () => loadFungibleTokens(signal),
@@ -234,12 +234,21 @@ export async function loadCollections(
 	const failures = new Array<boolean>(sources.length).fill(false);
 	await Promise.all(
 		sources.map(async (source, index) => {
+			let settled = false;
 			try {
-				collections[index] = await source.load();
+				collections[index] = await source.load((collection) => {
+					if (settled || signal?.aborted) return;
+					collections[index] = collection;
+					if (successes.some(Boolean)) {
+						onProgress?.(collections.filter((item): item is Collection => Boolean(item)));
+					}
+				});
+				settled = true;
 				throwIfAborted(signal);
 				successes[index] = true;
-				if (collections[index]?.indexSource === 'compiled-fallback') failures[index] = true;
+				failures[index] = collections[index]?.indexSource === 'compiled-fallback';
 			} catch (cause) {
+				settled = true;
 				throwIfAborted(signal);
 				failures[index] = true;
 				collections[index] = source.fallback?.();
@@ -414,8 +423,19 @@ function defaultFungibleToken(): AssetSummary {
 	};
 }
 
-async function loadNames(signal?: AbortSignal): Promise<Collection> {
-	const [namespace, page] = await Promise.all([loadNamesNamespace(signal), loadCarrierPage(undefined, signal)]);
+async function loadNames(signal?: AbortSignal, onProgress?: (collection: Collection) => void): Promise<Collection> {
+	const namespace = await loadNamesNamespace(signal);
+	onProgress?.({
+		id: 'arweave-names',
+		name: 'Arweave names',
+		description: 'Current carrier names owned and traded directly on Arweave.',
+		kind: 'names',
+		assets: [],
+		manifestId: namespace.manifestId,
+		namespace,
+		indexSource: 'reference',
+	});
+	const page = await loadCarrierPage(undefined, signal);
 	const assets = carrierAssets(page, namespace);
 	return {
 		id: 'arweave-names',
@@ -429,6 +449,7 @@ async function loadNames(signal?: AbortSignal): Promise<Collection> {
 		hasMore: page.hasMore,
 		manifestId: namespace.manifestId,
 		namespace,
+		indexSource: 'reference',
 	};
 }
 
@@ -579,9 +600,8 @@ export async function loadImageCollection(
 		value = referencedManifest;
 	} catch {
 		throwIfAborted(signal);
-		// A just-published reference can remain pending after its immutable
-		// manifest is readable. The compiled manifest ID is the same signed
-		// value and keeps first load deterministic during that window.
+		// A reference can remain pending after its bundled immutable manifest
+		// is readable, so retain that manifest as the explicit fallback.
 		indexSource = 'compiled-fallback';
 	}
 	if (!value || !/^[A-Za-z0-9_-]{43}$/.test(value)) throw new Error('collection-reference-unavailable');
@@ -657,11 +677,7 @@ async function fetchJson<T>(path: string, signal?: AbortSignal, process = false)
 		if (!/^[A-Za-z0-9_-]+$/.test(body) || body === 'Accepted') {
 			throw new Error('collection-data-pending');
 		}
-		const encoded = body.replaceAll('-', '+').replaceAll('_', '/');
-		const json = decodeURIComponent(
-			Array.from(atob(encoded), (byte) => `%${byte.charCodeAt(0).toString(16).padStart(2, '0')}`).join('')
-		);
-		return JSON.parse(json) as T;
+		return JSON.parse(decodeBase64Url(body)) as T;
 	}
 	const url = process && path.startsWith('http') ? path : `${arweaveGatewayFromLocation()}/${path}`;
 	const { response, body } = await fetchJsonWithDeadline<any>(
@@ -679,9 +695,10 @@ async function fetchJson<T>(path: string, signal?: AbortSignal, process = false)
 
 function decodeBase64Url(value: string): string {
 	const encoded = value.replaceAll('-', '+').replaceAll('_', '/');
-	return decodeURIComponent(
-		Array.from(atob(encoded), (byte) => `%${byte.charCodeAt(0).toString(16).padStart(2, '0')}`).join('')
-	);
+	const binary = atob(encoded);
+	const bytes = new Uint8Array(binary.length);
+	for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+	return new TextDecoder().decode(bytes);
 }
 
 function shortId(value: string) {

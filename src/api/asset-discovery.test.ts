@@ -5,8 +5,10 @@ import { arweaveGraphqlEndpoint } from 'helpers/config';
 import {
 	type AssetCandidate,
 	bazarAtomicAssetFromState,
+	clearCompletedWalletCandidateScan,
 	type CollectionActivityEvent,
 	confirmPurchaseActivity,
+	createAssetCandidateResolver,
 	createWalletCandidateScan,
 	discoverCollectionActivity,
 	discoverCollectionActivityBatched,
@@ -14,11 +16,14 @@ import {
 	discoverMarketActivityBatched,
 	discoverPendingAssetOffers,
 	discoverWalletAssetCandidates,
+	loadCompletedWalletCandidateScan,
 	partitionAssetCandidateSupport,
 	pendingAssetOffersFromActivity,
 	resolveAssetCandidates,
 	restrictAssetCandidates,
+	resumeCompletedWalletCandidateScan,
 	searchBazarAtomicAssetsByName,
+	storeCompletedWalletCandidateScan,
 	verifyAssetCandidateSupport,
 	walletAssetGroup,
 } from './asset-discovery';
@@ -34,6 +39,16 @@ const nameAsset = 'N'.repeat(43);
 const traditionalName = 'R'.repeat(43);
 const outsideName = 'Z'.repeat(43);
 const orderId = 'O'.repeat(43);
+
+function memoryStorage() {
+	const values = new Map<string, string>();
+	return {
+		values,
+		getItem: (key: string) => values.get(key) ?? null,
+		setItem: (key: string, value: string) => values.set(key, value),
+		removeItem: (key: string) => values.delete(key),
+	};
+}
 
 const collections: Collection[] = [
 	{
@@ -239,6 +254,23 @@ describe('purchase activity confirmation', () => {
 				readAssignments: async () => [],
 			})
 		).resolves.toEqual([event]);
+	});
+
+	it('does not recompute a purchase proof that was already verified', async () => {
+		const event = {
+			id: 'R'.repeat(43),
+			processId: 'P'.repeat(43),
+			action: 'register-interest' as const,
+			actor: 'B'.repeat(43),
+			height: 100,
+			timestamp: 1,
+			orderId: 'O'.repeat(43),
+			purchaseProof: { transactionId: 'T'.repeat(43), height: 123 },
+		};
+		const readCurrent = vi.fn();
+
+		await expect(confirmPurchaseActivity([event], { readCurrent })).resolves.toEqual([event]);
+		expect(readCurrent).not.toHaveBeenCalled();
 	});
 });
 
@@ -661,6 +693,263 @@ describe('wallet candidate discovery', () => {
 		});
 	});
 
+	it('restores 16,000 completed candidates with one unchanged head request', async () => {
+		const processAt = (index: number) => index.toString(36).padStart(43, 'A');
+		const scan = createWalletCandidateScan(wallet);
+		scan.active.clear();
+		scan.caughtUp = true;
+		scan.heads = { initiallyHeld: processAt(0), marketActions: null, receivedTransfers: null };
+		for (let index = 0; index < 16_000; index += 1) {
+			const processId = processAt(index);
+			scan.found.set(processId, {
+				processId,
+				height: 16_000 - index,
+				timestamp: 1,
+				activityIds: [processId],
+				sources: ['initial-holder'],
+				processDevice: 'process@1.0',
+				device: 'carrier@1.0',
+				collection: 'names',
+				assetType: 'atomic',
+				swapDevice: 'arweave-swap@1.0',
+				schedulerDevice: 'arweave-scheduler@1.0',
+				schedulerMode: 'all',
+			});
+		}
+		const storage = memoryStorage();
+		expect(storeCompletedWalletCandidateScan(storage, scan)).toBe(true);
+		expect([...storage.values.values()][0]!.length).toBeLessThan(3_000_000);
+		const restored = loadCompletedWalletCandidateScan(storage, wallet)!;
+		const empty = { pageInfo: { hasNextPage: false }, edges: [] };
+		const fetcher = vi.fn(async () =>
+			Response.json({
+				data: {
+					initiallyHeld: {
+						pageInfo: { hasNextPage: true },
+						edges: [
+							{
+								cursor: 'unchanged-head',
+								node: {
+									id: processAt(0),
+									tags: [{ name: 'initial-holder', value: wallet }],
+									block: { height: 16_000, timestamp: 1 },
+								},
+							},
+						],
+					},
+					marketActions: empty,
+					receivedTransfers: empty,
+				},
+			})
+		);
+
+		const result = await discoverWalletAssetCandidates(wallet, {
+			fetch: fetcher as typeof fetch,
+			scan: restored,
+			catchUp: true,
+		});
+
+		expect(fetcher).toHaveBeenCalledTimes(1);
+		expect(result).toHaveLength(16_000);
+		expect(restored.caughtUp).toBe(true);
+	});
+
+	it('merges a new head into a restored completed scan before closing it', async () => {
+		const scan = createWalletCandidateScan(wallet);
+		scan.active.clear();
+		scan.caughtUp = true;
+		scan.heads = { initiallyHeld: assetA, marketActions: null, receivedTransfers: null };
+		scan.found.set(assetA, {
+			processId: assetA,
+			height: 10,
+			timestamp: 10,
+			sources: ['initial-holder'],
+		});
+		const storage = memoryStorage();
+		storeCompletedWalletCandidateScan(storage, scan);
+		const restored = loadCompletedWalletCandidateScan(storage, wallet)!;
+		const empty = { pageInfo: { hasNextPage: false }, edges: [] };
+		const initial = (ids: string[]) => ({
+			pageInfo: { hasNextPage: true },
+			edges: ids.map((id, index) => ({
+				cursor: `head-${id}`,
+				node: {
+					id,
+					tags: [{ name: 'initial-holder', value: wallet }],
+					block: { height: 20 - index * 10, timestamp: 20 - index * 10 },
+				},
+			})),
+		});
+		const fetcher = vi
+			.fn()
+			.mockResolvedValueOnce(
+				Response.json({
+					data: { initiallyHeld: initial([assetC, assetA]), marketActions: empty, receivedTransfers: empty },
+				})
+			)
+			.mockResolvedValueOnce(
+				Response.json({
+					data: { initiallyHeld: initial([assetC]), marketActions: empty, receivedTransfers: empty },
+				})
+			);
+
+		const result = await discoverWalletAssetCandidates(wallet, {
+			fetch: fetcher as typeof fetch,
+			scan: restored,
+			catchUp: true,
+		});
+
+		expect(fetcher).toHaveBeenCalledTimes(2);
+		expect(result.map(({ processId }) => processId)).toEqual([assetC, assetA]);
+		expect(restored.heads.initiallyHeld).toBe(assetC);
+		expect(restored.caughtUp).toBe(true);
+	});
+
+	it('keeps checkpoint retry fail-closed but restarts cleanly after a cached head disappears', async () => {
+		const scan = createWalletCandidateScan(wallet);
+		scan.active.clear();
+		scan.caughtUp = true;
+		scan.heads = { initiallyHeld: assetA, marketActions: null, receivedTransfers: null };
+		scan.found.set(assetA, {
+			processId: assetA,
+			height: 1,
+			timestamp: 1,
+			sources: ['initial-holder'],
+		});
+		const storage = memoryStorage();
+		storeCompletedWalletCandidateScan(storage, scan);
+		const restored = loadCompletedWalletCandidateScan(storage, wallet)!;
+		const empty = { pageInfo: { hasNextPage: false }, edges: [] };
+		const fetcher = vi.fn(async () =>
+			Response.json({
+				data: {
+					initiallyHeld: {
+						pageInfo: { hasNextPage: false },
+						edges: [
+							{
+								cursor: 'new-head',
+								node: {
+									id: assetC,
+									tags: [{ name: 'initial-holder', value: wallet }],
+									block: { height: 2, timestamp: 2 },
+								},
+							},
+						],
+					},
+					marketActions: empty,
+					receivedTransfers: empty,
+				},
+			})
+		);
+
+		for (let attempt = 0; attempt < 2; attempt += 1) {
+			await expect(
+				discoverWalletAssetCandidates(wallet, {
+					fetch: fetcher as typeof fetch,
+					scan: restored,
+					catchUp: true,
+				})
+			).rejects.toThrow('asset-discovery-head-watermark-missing');
+		}
+		expect(fetcher).toHaveBeenCalledTimes(2);
+
+		clearCompletedWalletCandidateScan(storage, wallet);
+		const restarted = loadCompletedWalletCandidateScan(storage, wallet) ?? createWalletCandidateScan(wallet);
+		await expect(
+			discoverWalletAssetCandidates(wallet, {
+				fetch: fetcher as typeof fetch,
+				scan: restarted,
+				catchUp: true,
+			})
+		).resolves.toMatchObject([{ processId: assetC }]);
+		expect(fetcher).toHaveBeenCalledTimes(4);
+	});
+
+	it('fails open for incomplete, corrupt, mismatched, or unavailable scan storage', () => {
+		const scan = createWalletCandidateScan(wallet);
+		const storage = memoryStorage();
+		expect(storeCompletedWalletCandidateScan(storage, scan)).toBe(false);
+		scan.active.clear();
+		scan.caughtUp = true;
+		scan.heads = { initiallyHeld: assetA, marketActions: null, receivedTransfers: null };
+		scan.found.set(assetA, {
+			processId: assetA,
+			height: 1,
+			timestamp: 1,
+			sources: ['initial-holder'],
+		});
+		expect(storeCompletedWalletCandidateScan(storage, scan)).toBe(true);
+		const [key] = storage.values.keys();
+		storage.values.set(key!, '{bad json');
+		expect(loadCompletedWalletCandidateScan(storage, wallet)).toBeUndefined();
+		storeCompletedWalletCandidateScan(storage, scan);
+		const mismatched = JSON.parse(storage.values.get(key!)!);
+		mismatched.a = buyer;
+		storage.values.set(key!, JSON.stringify(mismatched));
+		expect(loadCompletedWalletCandidateScan(storage, wallet)).toBeUndefined();
+		expect(loadCompletedWalletCandidateScan(storage, wallet, 'https://other.example/graphql')).toBeUndefined();
+		expect(
+			loadCompletedWalletCandidateScan(
+				{
+					getItem: () => {
+						throw new Error('denied');
+					},
+				},
+				wallet
+			)
+		).toBeUndefined();
+		expect(
+			storeCompletedWalletCandidateScan(
+				{
+					setItem: () => {
+						throw new Error('quota');
+					},
+				},
+				scan
+			)
+		).toBe(false);
+		expect(resumeCompletedWalletCandidateScan(scan, buyer)).toBeUndefined();
+	});
+
+	it('uses restored candidates only as inputs to fresh live-state resolution', async () => {
+		const scan = createWalletCandidateScan(wallet);
+		scan.active.clear();
+		scan.caughtUp = true;
+		scan.heads = { initiallyHeld: nameAsset, marketActions: null, receivedTransfers: null };
+		const candidate: AssetCandidate = {
+			processId: nameAsset,
+			height: 1,
+			timestamp: 1,
+			activityIds: [assetA],
+			sources: ['initial-holder', 'market-action'],
+			device: 'carrier@1.0',
+		};
+		scan.found.set(nameAsset, candidate);
+		const storage = memoryStorage();
+		storeCompletedWalletCandidateScan(storage, scan);
+		const restored = loadCompletedWalletCandidateScan(storage, wallet)!;
+		expect(restored.found.get(nameAsset)).toEqual(candidate);
+		const controller = new AbortController();
+		const read = vi.fn(async () => ({
+			provider: 'https://compute.example',
+			state: parseAssetState({
+				'execution-device': 'carrier@1.0',
+				'total-supply': 1,
+				balances: { [wallet]: '1' },
+				orders: {},
+			}),
+		}));
+
+		const results = await resolveAssetCandidates([...restored.found.values()], collections, {
+			read,
+			signal: controller.signal,
+		});
+
+		expect(read).toHaveBeenCalledOnce();
+		expect(read).toHaveBeenCalledWith(nameAsset, controller.signal);
+		expect(results.map((result) => result.asset.id)).toEqual([nameAsset]);
+	});
+
 	it('emits the merged newest activity when aliases contain the same process', async () => {
 		const connection = { pageInfo: { hasNextPage: false }, edges: [] };
 		const emitted: AssetCandidate[][] = [];
@@ -1034,7 +1323,7 @@ describe('wallet candidate discovery', () => {
 		expect(completed.flat()).toHaveLength(205);
 	});
 
-	it('commits only completed recent-order batches when a later window fails', async () => {
+	it('continues committing independent recent-order batches after a window fails', async () => {
 		const recipients = Array.from({ length: 5 }, (_, index) => index.toString(36).padStart(43, 'B'));
 		let request = 0;
 		const fetcher = vi.fn(async () => {
@@ -1058,8 +1347,8 @@ describe('wallet candidate discovery', () => {
 			})
 		).rejects.toThrow('activity window unavailable');
 
-		expect(fetcher).toHaveBeenCalledTimes(2);
-		expect(completed).toEqual([recipients.slice(0, 2)]);
+		expect(fetcher).toHaveBeenCalledTimes(3);
+		expect(completed).toEqual([recipients.slice(0, 2), recipients.slice(4)]);
 	});
 
 	it('reports concurrent recent-order failures deterministically', async () => {
@@ -1162,6 +1451,24 @@ describe('wallet candidate discovery', () => {
 		expect(emitted).toEqual([[assetA], [assetB]]);
 		expect(result.map((candidate) => candidate.processId)).toEqual([assetA, assetB]);
 		expect(result[0].height).toBe(30);
+	});
+
+	it('can bound a recent market scan without requiring the complete history', async () => {
+		const fetcher = vi.fn(async () =>
+			Response.json({
+				data: {
+					transactions: {
+						pageInfo: { hasNextPage: true },
+						edges: [activityEdge('recent', assetA, 30)],
+					},
+				},
+			})
+		);
+
+		const result = await discoverMarketActivity({ fetch: fetcher as typeof fetch, maxPages: 1 });
+
+		expect(fetcher).toHaveBeenCalledOnce();
+		expect(result.map((candidate) => candidate.processId)).toEqual([assetA]);
 	});
 
 	it('waits for each activity page consumer before fetching the next page', async () => {
@@ -1326,7 +1633,7 @@ describe('wallet candidate discovery', () => {
 		expect(events.map((event) => event.processId)).toEqual(recipients.slice(105).reverse());
 	});
 
-	it('commits only completed token activity windows when a later batch fails', async () => {
+	it('continues committing independent token activity windows after a batch fails', async () => {
 		const recipients = Array.from({ length: 205 }, (_, index) => index.toString(36).padStart(43, 'E'));
 		let request = 0;
 		const fetcher = vi.fn(async () => {
@@ -1349,8 +1656,8 @@ describe('wallet candidate discovery', () => {
 			})
 		).rejects.toThrow('activity window unavailable');
 
-		expect(fetcher).toHaveBeenCalledTimes(2);
-		expect(completed).toEqual([recipients.slice(0, 100)]);
+		expect(fetcher).toHaveBeenCalledTimes(3);
+		expect(completed).toEqual([recipients.slice(0, 100), recipients.slice(200)]);
 	});
 
 	it('queries names activity globally, filters it locally, and verifies carrier processes', async () => {
@@ -1470,6 +1777,111 @@ function activityEdge(cursor: string, processId: string, height: number) {
 }
 
 describe('live candidate resolution', () => {
+	it('shares one concurrency budget across progressively enqueued pages', async () => {
+		const started: string[] = [];
+		const releases: Array<() => void> = [];
+		let active = 0;
+		let peak = 0;
+		const candidate = (processId: string, height: number): AssetCandidate => ({
+			processId,
+			height,
+			timestamp: 0,
+			sources: ['market-action'],
+		});
+		const resolver = createAssetCandidateResolver(collections, {
+			concurrency: 2,
+			read: async (processId) => {
+				started.push(processId);
+				active += 1;
+				peak = Math.max(peak, active);
+				await new Promise<void>((resolve) => releases.push(resolve));
+				active -= 1;
+				return {
+					provider: 'https://compute.example',
+					state: parseAssetState({
+						'execution-device': 'token@1.0',
+						'total-supply': 1,
+						balances: { [wallet]: '1' },
+						orders: {},
+					}),
+				};
+			},
+		});
+
+		resolver.enqueue([candidate(assetA, 30), candidate(assetB, 20)]);
+		expect(started).toEqual([assetA, assetB]);
+		resolver.enqueue([candidate(assetC, 25)]);
+		const finished = resolver.finish();
+		releases.shift()!();
+		await vi.waitFor(() => expect(started).toEqual([assetA, assetB, assetC]));
+		releases.splice(0).forEach((release) => release());
+
+		await expect(finished).resolves.toHaveLength(3);
+		expect(peak).toBe(2);
+	});
+
+	it('prioritizes newer candidates that arrive while older work is pending', async () => {
+		const later = 'L'.repeat(43);
+		const started: string[] = [];
+		let releaseFirst!: () => void;
+		const first = new Promise<void>((resolve) => (releaseFirst = resolve));
+		const candidate = (processId: string, height: number): AssetCandidate => ({
+			processId,
+			height,
+			timestamp: 0,
+			sources: ['market-action'],
+		});
+		const resolver = createAssetCandidateResolver(collections, {
+			concurrency: 1,
+			read: async (processId) => {
+				started.push(processId);
+				if (processId === assetA) await first;
+				return {
+					provider: 'https://compute.example',
+					state: parseAssetState({
+						'execution-device': 'token@1.0',
+						'total-supply': 1,
+						balances: { [wallet]: '1' },
+						orders: {},
+					}),
+				};
+			},
+		});
+
+		resolver.enqueue([candidate(assetA, 30), candidate(assetB, 10)]);
+		resolver.enqueue([candidate(later, 20)]);
+		const finished = resolver.finish();
+		releaseFirst();
+		await finished;
+
+		expect(started).toEqual([assetA, later, assetB]);
+	});
+
+	it('rejects immediately on abort without starting queued candidates', async () => {
+		const controller = new AbortController();
+		const reason = new DOMException('Route changed', 'AbortError');
+		const started: string[] = [];
+		const resolver = createAssetCandidateResolver(collections, {
+			concurrency: 1,
+			signal: controller.signal,
+			read: (processId, signal) => {
+				started.push(processId);
+				return new Promise((_, reject) =>
+					signal?.addEventListener('abort', () => reject(signal.reason), { once: true })
+				);
+			},
+		});
+		resolver.enqueue([
+			{ processId: assetA, height: 2, timestamp: 0, sources: ['market-action'] },
+			{ processId: assetB, height: 1, timestamp: 0, sources: ['market-action'] },
+		]);
+		const finished = resolver.finish();
+
+		controller.abort(reason);
+		await expect(finished).rejects.toBe(reason);
+		expect(started).toEqual([assetA]);
+	});
+
 	it('reports failed live reads without converting them into resolved empty state', async () => {
 		const candidates: AssetCandidate[] = [assetA, assetB].map((processId, index) => ({
 			processId,
@@ -1507,6 +1919,43 @@ describe('live candidate resolution', () => {
 				{ processId: assetB, resolved: true, failed: false },
 			])
 		);
+	});
+
+	it('publishes a persistent stale result and its fresh replacement separately', async () => {
+		const candidate: AssetCandidate = {
+			processId: assetA,
+			height: 20,
+			timestamp: 0,
+			sources: ['market-action'],
+		};
+		const stale = parseAssetState({
+			'execution-device': 'token@1.0',
+			'total-supply': 1,
+			balances: { [wallet]: '1' },
+			orders: {},
+		});
+		const fresh = parseAssetState({
+			'execution-device': 'token@1.0',
+			'total-supply': 1,
+			balances: { [wallet]: '1' },
+			orders: { [orderId]: { status: 'open', asking: '2', quantity: '1' } },
+		});
+		const onSettled = vi.fn();
+		const onRevalidated = vi.fn();
+
+		await resolveAssetCandidates([candidate], collections, {
+			read: async () => ({
+				provider: 'https://compute.example',
+				state: stale,
+				revalidation: Promise.resolve({ provider: 'https://compute.example', state: fresh }),
+			}),
+			onSettled,
+			onRevalidated,
+		});
+		await vi.waitFor(() => expect(onRevalidated).toHaveBeenCalledTimes(1));
+
+		expect(onSettled).toHaveBeenCalledWith(expect.objectContaining({ state: stale }), candidate);
+		expect(onRevalidated).toHaveBeenCalledWith(expect.objectContaining({ state: fresh }), candidate);
 	});
 
 	it('bounds live computation and excludes unsupported assets', async () => {
@@ -1793,13 +2242,18 @@ describe('live candidate resolution', () => {
 				},
 			});
 		});
+		const verifiedBatches: string[][] = [];
 
 		const verification = await verifyAssetCandidateSupport(candidates, [tokenCollection], {
 			fetch: fetcher as typeof fetch,
 			graphql: 'https://arweave.net/graphql',
+			onVerified: (batch) => {
+				verifiedBatches.push(batch.map((candidate) => candidate.processId));
+			},
 		});
 
 		expect(fetcher).toHaveBeenCalledTimes(3);
+		expect(verifiedBatches).toEqual([[verifiedId]]);
 		expect(verification.supported.map((candidate) => candidate.processId)).toEqual([knownId, verifiedId]);
 		expect(verification.unavailable.map(({ candidate }) => candidate.processId)).toEqual(
 			candidates.slice(1, 10).map((candidate) => candidate.processId)
