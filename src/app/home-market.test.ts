@@ -29,6 +29,7 @@ import {
 	homeDiscoveryAssets,
 	homeFloorCandidateNeedsResolution,
 	homeFloorScanSummary,
+	homeListingComputeFailure,
 	homeListingSupportVersion,
 	homeMarketHasPending,
 	homeMarketPriceValue,
@@ -63,6 +64,13 @@ import {
 } from './shell-snapshot';
 
 describe('Home market summary retries', () => {
+	it('reports compute failure only when every listing refresh failed', () => {
+		const failure = new Error('compute unavailable');
+		expect(homeListingComputeFailure(failure, 3, 3)).toBe(failure);
+		expect(homeListingComputeFailure(failure, 3, 2)).toBeUndefined();
+		expect(homeListingComputeFailure(failure, 0, 0)).toBeUndefined();
+	});
+
 	it('publishes progressive outcomes once per frame and drops canceled work', () => {
 		const frames = new Map<number, FrameRequestCallback>();
 		const canceled: number[] = [];

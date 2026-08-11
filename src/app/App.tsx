@@ -1973,6 +1973,10 @@ export function homeMarketHasPending(loading: boolean, keys: string[], summaries
 	return loading || keys.some((key) => !summaries[key]);
 }
 
+export function homeListingComputeFailure<T>(failure: T | undefined, attempts: number, failures: number) {
+	return failure !== undefined && attempts > 0 && failures === attempts ? failure : undefined;
+}
+
 export function homeMarketShellLoading(loading: boolean, collectionCount: number) {
 	return loading && collectionCount === 0;
 }
@@ -2280,6 +2284,8 @@ function Home() {
 		void (async () => {
 			let indexFailure: unknown;
 			let computeFailure: unknown;
+			let computeAttempts = 0;
+			let computeFailures = 0;
 			let discoveryFailure: unknown;
 			const collections = marketCollectionsRef.current;
 			const resolver = createAssetCandidateResolver(collections, {
@@ -2303,7 +2309,12 @@ function Home() {
 					}),
 				onSettled: (result, candidate, cause) => {
 					if (controller.signal.aborted) return;
-					if (cause && computeFailure === undefined) computeFailure = cause;
+					computeAttempts += 1;
+					if (cause) {
+						computeFailures += 1;
+						computeFailure ??= cause;
+						return;
+					}
 					publications.push({ processId: candidate.processId, result });
 				},
 			});
@@ -2339,7 +2350,10 @@ function Home() {
 				await supportTail;
 				await resolver.finish();
 				controller.signal.throwIfAborted();
-				const failure = discoveryFailure ?? indexFailure ?? computeFailure;
+				const failure =
+					discoveryFailure ??
+					indexFailure ??
+					homeListingComputeFailure(computeFailure, computeAttempts, computeFailures);
 				setPortableHomeListingsComplete(!failure);
 				setPortableHomeListingsFailure(
 					failure
