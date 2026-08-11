@@ -1,6 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowRight, ArrowUpRight, Check, InfinityIcon, Info, Upload, X } from 'lucide-react';
+import type { Consensus, ObserverView } from 'weave-wrangler';
 
 import { waitForAssetState } from 'api/asset-marketplace';
 import {
@@ -26,6 +27,7 @@ import {
 	type UdlTerms,
 	validateFungibleMintInput,
 } from 'api/asset-mint';
+import { confirmTransactionId } from 'api/asset-transactions';
 import { FUNGIBLE_TOKEN_COLLECTION_ID } from 'api/collections';
 
 import { AudioArtwork } from 'components/AudioArtwork';
@@ -47,6 +49,11 @@ import {
 	useOperationActivity,
 	winstonToAr,
 } from '../app/App';
+
+const ArweaveTransactionSync = React.lazy(async () => {
+	const module = await import('components/ArweaveTransactionSync');
+	return { default: module.ArweaveTransactionSync };
+});
 
 type UdlGrantValue = NonNullable<UdlTerms['derivation'] | UdlTerms['commercialUse'] | UdlTerms['dataModelTraining']>;
 
@@ -140,6 +147,9 @@ export default function CreateRoute() {
 	const [fungiblePhase, setFungiblePhase] = React.useState<'signing' | 'uploading' | null>(null);
 	const [fungibleResult, setFungibleResult] = React.useState<FungibleMintResult | null>(null);
 	const [fungibleResultReady, setFungibleResultReady] = React.useState(false);
+	const [mintViews, setMintViews] = React.useState<ObserverView[]>([]);
+	const [mintConsensus, setMintConsensus] = React.useState<Consensus | null>(null);
+	const [mintConfirmations, setMintConfirmations] = React.useState(0);
 	const [file, setFile] = React.useState<File | null>(null);
 	const [artwork, setArtwork] = React.useState<File | null>(null);
 	const [audioMetadata, setAudioMetadata] = React.useState<EmbeddedAudioMetadata>({});
@@ -256,6 +266,25 @@ export default function CreateRoute() {
 			},
 			() => undefined
 		);
+		return () => controller.abort();
+	}, [fungibleResult]);
+	React.useEffect(() => {
+		setMintViews([]);
+		setMintConsensus(null);
+		setMintConfirmations(0);
+		if (!fungibleResult) return;
+		const controller = new AbortController();
+		void confirmTransactionId(fungibleResult.processId, {
+			signal: controller.signal,
+			target: 5,
+			onViews: setMintViews,
+			onConsensus: setMintConsensus,
+			onProgress: (progress) => setMintConfirmations(progress.confirmations),
+		})
+			.then(() => {
+				if (!controller.signal.aborted) setMintConfirmations(5);
+			})
+			.catch(() => undefined);
 		return () => controller.abort();
 	}, [fungibleResult]);
 	React.useEffect(() => {
@@ -1296,6 +1325,25 @@ export default function CreateRoute() {
 										? `All ${fungibleResult.supply} base units of ${fungibleResult.ticker} are in your wallet and ready to dispatch.`
 										: `All ${fungibleResult.supply} base units of ${fungibleResult.ticker} are minted to your wallet. Bazar is watching for the scheduler to sequence the process (~20 minutes); dispatch unlocks once its state is readable.`}
 								</p>
+								<React.Suspense fallback={<Loading label="Loading transaction progress…" />}>
+									<ArweaveTransactionSync
+										subject={fungibleResult.ticker || fungibleResult.name}
+										active
+										steps={[
+											{
+												key: 'mint',
+												label: 'Mint token',
+												target: 5,
+												confirmations: mintConfirmations,
+												transaction: {
+													id: fungibleResult.processId,
+													views: mintViews,
+													...(mintConsensus ? { consensus: mintConsensus } : {}),
+												},
+											},
+										]}
+									/>
+								</React.Suspense>
 								<MintTransactionReceipt
 									entries={[
 										{
