@@ -4,13 +4,39 @@ const configuredComputeGateway = import.meta.env.VITE_COMPUTE_GATEWAY?.trim();
 export const DEFAULT_ARWEAVE_GATEWAY = configuredArweaveGateway
 	? new URL(configuredArweaveGateway).origin
 	: 'https://arweave.net';
-export const PRODUCTION_COMPUTE_GATEWAY = 'https://alpha.neo.zephyrdev.xyz';
+export const PRODUCTION_COMPUTE_GATEWAYS = [
+	'https://alpha.neo.zephyrdev.xyz',
+	'https://charlie.neo2.zephyrdev.xyz',
+] as const;
+export const PRODUCTION_COMPUTE_GATEWAY = PRODUCTION_COMPUTE_GATEWAYS[0];
 
-export function computeGatewayForEnvironment(development: boolean, configured = configuredComputeGateway) {
-	return configured ? new URL(configured).origin : development ? DEFAULT_ARWEAVE_GATEWAY : PRODUCTION_COMPUTE_GATEWAY;
+export function normalizeComputeGateways(value: string, defaultProtocol = 'https:'): string[] | null {
+	let entries: unknown[];
+	try {
+		entries = value.trim().startsWith('[') ? JSON.parse(value) : value.split(/[\s,]+/);
+	} catch {
+		return null;
+	}
+	if (!Array.isArray(entries) || !entries.length || entries.some((entry) => typeof entry !== 'string')) return null;
+	const origins = entries.filter(Boolean).map((entry) => httpOrigin(entry as string, defaultProtocol));
+	return origins.length && origins.every(Boolean) ? [...new Set(origins as string[])] : null;
 }
 
-export const DEFAULT_COMPUTE_GATEWAY = computeGatewayForEnvironment(import.meta.env.DEV);
+export function computeGatewaysForEnvironment(development: boolean, configured = configuredComputeGateway): string[] {
+	if (configured) {
+		const parsed = normalizeComputeGateways(configured);
+		if (!parsed) throw new TypeError('invalid-compute-gateways');
+		return parsed;
+	}
+	return development ? [DEFAULT_ARWEAVE_GATEWAY] : [...PRODUCTION_COMPUTE_GATEWAYS];
+}
+
+export function computeGatewayForEnvironment(development: boolean, configured = configuredComputeGateway) {
+	return computeGatewaysForEnvironment(development, configured)[0];
+}
+
+export const DEFAULT_COMPUTE_GATEWAYS = computeGatewaysForEnvironment(import.meta.env.DEV);
+export const DEFAULT_COMPUTE_GATEWAY = DEFAULT_COMPUTE_GATEWAYS[0];
 export const NAMES_NAMESPACE_ID =
 	import.meta.env.VITE_NAMES_NAMESPACE_ID ?? 'fQXYPE9MAcfI1wV2CwJ3sJIhgT9btBOlYFOKFDGhAs0';
 export const AO_MAINNET = { app1: DEFAULT_COMPUTE_GATEWAY };
@@ -23,9 +49,12 @@ function queryValue(location: Pick<GatewayLocation, 'search' | 'hash'>, name: st
 	return new URLSearchParams(location.search).get(name) ?? new URLSearchParams(hashSearch).get(name);
 }
 
-function httpOrigin(value: string): string | null {
+function httpOrigin(value: string, defaultProtocol?: string): string | null {
 	try {
-		const url = new URL(value);
+		const requested = value.trim();
+		const local = /^(?:localhost|127(?:\.\d{1,3}){3}|\[?::1\]?)(?::|$)/i.test(requested);
+		const protocol = local ? defaultProtocol : 'https:';
+		const url = new URL(requested.includes('://') || !protocol ? requested : `${protocol}//${requested}`);
 		return url.protocol === 'http:' || url.protocol === 'https:' ? url.origin : null;
 	} catch {
 		return null;
@@ -71,7 +100,13 @@ export function arweaveGraphqlEndpoint(
 }
 
 export function gatewayFromLocation(location: Location = window.location): string {
-	const requested = queryValue(location, 'node');
-	if (requested) return new URL(requested).origin;
-	return DEFAULT_COMPUTE_GATEWAY;
+	return gatewaysFromLocation(location)[0];
+}
+
+export function gatewaysFromLocation(
+	location: GatewayLocation | undefined = typeof window === 'undefined' ? undefined : window.location
+): string[] {
+	if (!location) return [...DEFAULT_COMPUTE_GATEWAYS];
+	const requested = queryValue(location, 'node')?.trim();
+	return (requested && normalizeComputeGateways(requested, location.protocol)) || [...DEFAULT_COMPUTE_GATEWAYS];
 }
