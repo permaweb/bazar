@@ -2351,7 +2351,7 @@ input:focus {
 	transition: transform 120ms ease;
 }
 .market-select-trigger.open svg {
-	transform: rotate(180deg);
+	transform: rotate(90deg);
 }
 .market-select-menu {
 	position: absolute;
@@ -2760,30 +2760,17 @@ input:focus {
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
-.audio-waveform-scroll {
+.audio-waveform-viewport {
 	width: 100%;
 	min-width: 0;
-	overflow-x: auto;
-	overflow-y: hidden;
-	overscroll-behavior-inline: contain;
-	scrollbar-color: var(--line-dark) var(--surface-subtle);
-	scrollbar-width: thin;
-}
-.audio-waveform-scroll::-webkit-scrollbar {
-	height: 6px;
-}
-.audio-waveform-scroll::-webkit-scrollbar-track {
-	border-radius: 999px;
-	background: var(--surface-subtle);
-}
-.audio-waveform-scroll::-webkit-scrollbar-thumb {
-	border-radius: 999px;
-	background: var(--line-dark);
+	overflow: hidden;
 }
 .audio-waveform-track {
 	position: relative;
+	width: 100%;
+	max-width: 100%;
 	height: 75px;
-	min-width: 100%;
+	min-width: 0;
 	touch-action: none;
 }
 .audio-waveform-bars {
@@ -2792,13 +2779,13 @@ input:focus {
 	height: 48px;
 	display: flex;
 	align-items: center;
-	gap: 2px;
+	gap: 0.25%;
 	pointer-events: none;
 }
 .audio-waveform-bars i {
-	min-width: 2px;
+	min-width: 0;
 	height: 8%;
-	flex: 1 1 2px;
+	flex: 1 1 0;
 	border-radius: 1px;
 	background: var(--line-dark);
 }
@@ -3153,6 +3140,15 @@ input:focus {
 	overflow-wrap: anywhere;
 	text-align: right;
 	font: 400 var(--type-body) 'DM Sans', sans-serif;
+}
+.license-properties a {
+	display: inline-flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 4px;
+	font-weight: 500;
+	text-decoration: underline;
+	text-underline-offset: 3px;
 }
 .license-empty {
 	min-height: 120px;
@@ -7390,51 +7386,36 @@ body input:focus-visible {
 	font-size: var(--type-body);
 	line-height: 1.5;
 }
-.mint-cost-warning {
-	padding: 12px;
+.mint-cost-note {
+	padding: 11px 12px;
 	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: 14px;
-	border: 1px solid color-mix(in srgb, var(--warning-text) 28%, var(--line));
+	align-items: flex-start;
+	gap: 10px;
+	border: 1px solid var(--line);
 	border-radius: 8px;
-	background: var(--warning-surface);
-	color: var(--warning-text);
+	background: var(--panel);
+	color: var(--muted-subtle);
 }
-.mint-cost-warning > div {
+.mint-cost-note > svg {
+	margin-top: 1px;
+	flex: none;
+}
+.mint-cost-note > div {
 	min-width: 0;
 	display: grid;
-	gap: 3px;
+	gap: 2px;
 }
-.mint-cost-warning strong,
-.mint-cost-warning span,
-.mint-cost-warning small {
+.mint-cost-note strong,
+.mint-cost-note span {
 	line-height: 1.35;
 }
-.mint-cost-warning span {
+.mint-cost-note strong {
+	color: var(--ink);
 	font-size: var(--type-body);
+	font-weight: 500;
 }
-.mint-cost-warning small {
-	color: color-mix(in srgb, currentColor 82%, var(--transparent));
+.mint-cost-note span {
 	font-size: var(--type-small);
-}
-.mint-cost-warning button {
-	min-height: 32px;
-	padding: 0 10px;
-	flex: none;
-	display: inline-flex;
-	align-items: center;
-	gap: 6px;
-	border: 1px solid currentColor;
-	border-radius: 999px;
-	background: var(--transparent);
-	color: inherit;
-	cursor: pointer;
-	font-size: var(--type-small);
-}
-.mint-cost-warning button.approved {
-	background: var(--warning-text);
-	color: var(--warning-surface);
 }
 .mint-submit,
 .mint-success button,

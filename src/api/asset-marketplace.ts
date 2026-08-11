@@ -72,13 +72,25 @@ const LICENSE_FIELDS = [
 	['access-fee', 'Access fee'],
 	['derivation', 'Derivatives'],
 	['derivation-fee', 'Derivative fee'],
+	['unknown-usage-rights', 'Unknown usage rights'],
 	['commercial-use', 'Commercial use'],
 	['commercial-use-fee', 'Commercial fee'],
-	['data-model-training', 'Model training'],
+	['data-model-training', 'AI model training'],
+	['expiry', 'License term'],
 	['payment-mode', 'Payment mode'],
 	['payment-address', 'Payment address'],
 	['currency', 'Currency'],
 ] as const;
+const UDL_LICENSE_ID = 'dE0rmDfl9_OWjkDznNEXHaSO_JohJkRolvMzaCroUdw';
+const UDL_DEFAULTS = new Map<string, string>([
+	['access', 'Free'],
+	['derivation', 'Non-commercial only'],
+	['unknown-usage-rights', 'Included where available'],
+	['commercial-use', 'Not allowed'],
+	['data-model-training', 'Not allowed'],
+	['expiry', 'Unlimited'],
+	['currency', '$U'],
+]);
 
 function isValidServingNodeHostname(hostname: string): boolean {
 	const normalized = hostname.toLowerCase().replace(/^\[|\]$/g, '');
@@ -411,12 +423,14 @@ export function licenseProperties(state: AssetState): LicenseProperty[] {
 	const normalized = new Map(
 		Object.entries(state.raw).map(([key, value]) => [key.toLowerCase().replaceAll('_', '-'), value])
 	);
+	const udl = normalized.get('license') === UDL_LICENSE_ID;
 	return LICENSE_FIELDS.flatMap(([key, label]) => {
 		const held = normalized.get(key);
-		if (!['string', 'number', 'boolean'].includes(typeof held)) return [];
-		const raw = String(held);
-		const value =
-			key === 'license' && raw === 'dE0rmDfl9_OWjkDznNEXHaSO_JohJkRolvMzaCroUdw' ? 'Universal Data License' : raw;
+		const declared = ['string', 'number', 'boolean'].includes(typeof held);
+		if (!declared && (!udl || !UDL_DEFAULTS.has(key))) return [];
+		if (key === 'access' && !declared && normalized.has('access-fee')) return [];
+		const raw = declared ? String(held) : '';
+		const value = key === 'license' && udl ? 'Universal Data License 0.2' : raw || UDL_DEFAULTS.get(key)!;
 		return [{ key, label, value }];
 	});
 }

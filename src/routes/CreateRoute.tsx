@@ -17,7 +17,6 @@ import {
 	type MintedAsset,
 	type MintEstimate,
 	type MintPhase,
-	ORDINARY_MINT_COST_MAX_WINSTON,
 	UDL_LICENSE_ID,
 	type UdlTerms,
 } from 'api/asset-mint';
@@ -111,7 +110,6 @@ export default function CreateRoute() {
 	const [estimate, setEstimate] = React.useState<MintEstimate | null>(null);
 	const [collectionEstimate, setCollectionEstimate] = React.useState<CollectionMintEstimate | null>(null);
 	const [estimating, setEstimating] = React.useState(false);
-	const [allowHighCost, setAllowHighCost] = React.useState(false);
 	const [udlEnabled, setUdlEnabled] = React.useState(true);
 	const [udlTerms, setUdlTerms] = React.useState<UdlTerms>({});
 	const [phase, setPhase] = React.useState<MintPhase | null>(null);
@@ -262,7 +260,6 @@ export default function CreateRoute() {
 		setAudioMetadata({});
 		setReadingAudioMetadata(false);
 		setEstimate(null);
-		setAllowHighCost(false);
 		setError(null);
 		setResult(null);
 		if (next) {
@@ -301,7 +298,6 @@ export default function CreateRoute() {
 	const selectCollectionFiles = (next: File[]) => {
 		setCollectionFiles(next.slice(0, 10));
 		setCollectionEstimate(null);
-		setAllowHighCost(false);
 		setError(next.length > 10 ? 'Collections support up to 10 images at a time.' : null);
 		setCollectionResult(null);
 	};
@@ -327,7 +323,7 @@ export default function CreateRoute() {
 				const minted = await new CollectionMintClient().mint(
 					{ files: collectionFiles, name, description, udl: activeUdl },
 					wallet.address,
-					{ allowHighCost, onPhase: setCollectionPhase }
+					{ allowHighCost: true, onPhase: setCollectionPhase }
 				);
 				market.addCollection(minted.collection);
 				setCollectionResult(minted);
@@ -348,7 +344,7 @@ export default function CreateRoute() {
 				},
 				wallet.address,
 				{
-					allowHighCost,
+					allowHighCost: true,
 					onPhase: setPhase,
 				}
 			);
@@ -393,8 +389,6 @@ export default function CreateRoute() {
 		  }[phase]
 		: '';
 	const activeEstimate = mode === 'asset' ? estimate : collectionEstimate;
-	const activeTransactionCount =
-		mode === 'asset' ? estimate?.transactionCount ?? (artwork ? 2 : 1) : collectionEstimate?.transactionCount;
 	const activeUploadBytes = mode === 'asset' && estimate ? estimate.assetBytes + estimate.artworkBytes : null;
 	const receiptEntries: MintTransactionReceiptEntry[] = collectionResult
 		? [
@@ -432,7 +426,6 @@ export default function CreateRoute() {
 					onClick={() => {
 						setMode('asset');
 						setError(null);
-						setAllowHighCost(false);
 					}}
 				>
 					Single asset
@@ -446,7 +439,6 @@ export default function CreateRoute() {
 					onClick={() => {
 						setMode('collection');
 						setError(null);
-						setAllowHighCost(false);
 					}}
 				>
 					Collection
@@ -623,7 +615,6 @@ export default function CreateRoute() {
 									artworkRevision.current += 1;
 									setArtwork(event.target.files?.[0] ?? null);
 									setEstimate(null);
-									setAllowHighCost(false);
 									setError(null);
 								}}
 							/>
@@ -979,33 +970,20 @@ export default function CreateRoute() {
 					</div>
 
 					{activeEstimate && isHighMintCost(activeEstimate.total) ? (
-						<section className="mint-cost-warning" aria-labelledby="mint-cost-warning-title">
+						<section className="mint-cost-note" aria-label="Estimated storage cost">
+							<Info className="ui-icon" aria-hidden="true" />
 							<div>
-								<strong id="mint-cost-warning-title">Higher than the ordinary storage range</strong>
+								<strong>
+									{winstonToAr(activeEstimate.total.toString())} AR estimated storage cost
+								</strong>
 								<span>
-									Expected <b>{winstonToAr(activeEstimate.total.toString())} AR</b> · ordinary
-									comparison 0–{winstonToAr(ORDINARY_MINT_COST_MAX_WINSTON.toString())} AR
-								</span>
-								<small>
-									Permanent storage cost scales with media size and current network pricing. This
-									quote covers{' '}
+									Based on{' '}
 									{activeUploadBytes
 										? `${formatBytes(activeUploadBytes)} of permanent media`
 										: 'the selected assets'}{' '}
-									across {activeTransactionCount} transaction{activeTransactionCount === 1 ? '' : 's'}
-									.
-								</small>
+									and current network pricing.
+								</span>
 							</div>
-							<Button
-								type="button"
-								size="custom"
-								aria-pressed={allowHighCost}
-								className={allowHighCost ? 'approved' : undefined}
-								onClick={() => setAllowHighCost((current) => !current)}
-							>
-								{allowHighCost ? <Check className="ui-icon ui-icon--sm" aria-hidden="true" /> : null}
-								{allowHighCost ? 'Approved' : 'Approve quote'}
-							</Button>
 						</section>
 					) : null}
 					<div className="mint-notice">
@@ -1088,12 +1066,6 @@ export default function CreateRoute() {
 										collectionFiles.length &&
 										name.trim() &&
 										!collectionEstimate
-								) ||
-								Boolean(
-									wallet.address &&
-										activeEstimate &&
-										isHighMintCost(activeEstimate.total) &&
-										!allowHighCost
 								)
 							}
 						>

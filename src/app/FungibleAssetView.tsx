@@ -1093,10 +1093,23 @@ export function FungibleAssetView({
 											<dd>{property.value}</dd>
 										</div>
 									))}
+									<div className="license-proof">
+										<dt>Proof</dt>
+										<dd>
+											<a href={transactionExplorerUrl(asset.id)} target="_blank" rel="noreferrer">
+												View license proof on ViewBlock{' '}
+												<ArrowUpRight className="ui-icon ui-icon--xs" aria-hidden="true" />
+											</a>
+										</dd>
+									</div>
 								</dl>
 							) : (
 								<p className="asset-empty-copy">No UDL terms declared.</p>
 							)}
+							<p className="market-note">
+								Declared terms and effective UDL 0.2 defaults are derived from immutable process
+								metadata.
+							</p>
 						</section>
 					) : null}
 				</div>

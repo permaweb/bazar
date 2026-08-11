@@ -3,10 +3,7 @@ import { Pause, Play } from 'lucide-react';
 
 import { Button } from './Button';
 
-const MIN_WAVEFORM_WIDTH = 720;
-const MAX_WAVEFORM_WIDTH = 12_000;
-const PIXELS_PER_SECOND = 8;
-const PIXELS_PER_PEAK = 4;
+const WAVEFORM_PEAK_COUNT = 128;
 
 type WaveformStatus = 'loading' | 'ready' | 'unavailable';
 
@@ -19,11 +16,6 @@ export function formatAudioTime(value: number): string {
 	return hours
 		? `${hours}:${minutes.toString().padStart(2, '0')}:${remainder.toString().padStart(2, '0')}`
 		: `${minutes}:${remainder.toString().padStart(2, '0')}`;
-}
-
-export function waveformTimelineWidth(duration: number): number {
-	if (!Number.isFinite(duration) || duration <= 0) return MIN_WAVEFORM_WIDTH;
-	return Math.max(MIN_WAVEFORM_WIDTH, Math.min(MAX_WAVEFORM_WIDTH, Math.round(duration * PIXELS_PER_SECOND)));
 }
 
 export function sampleWaveformPeaks(channels: Float32Array[], peakCount: number): number[] {
@@ -46,25 +38,13 @@ export function sampleWaveformPeaks(channels: Float32Array[], peakCount: number)
 	return peaks.map((peak) => Math.max(0.08, Math.min(1, Math.sqrt(peak / maximum))));
 }
 
-function timelineTickStep(duration: number): number {
-	if (duration <= 60) return 10;
-	if (duration <= 180) return 30;
-	if (duration <= 600) return 60;
-	if (duration <= 1_800) return 300;
-	return 600;
-}
-
 function timelineTicks(duration: number): number[] {
 	if (!Number.isFinite(duration) || duration <= 0) return [];
-	const step = timelineTickStep(duration);
-	const ticks = Array.from({ length: Math.floor(duration / step) + 1 }, (_, index) => index * step);
-	if (ticks[ticks.length - 1] !== duration) ticks.push(duration);
-	return ticks;
+	return [0, duration / 2, duration];
 }
 
 export function AudioWaveformPlayer({ name, src }: { name: string; src: string }) {
 	const audioRef = React.useRef<HTMLAudioElement>(null);
-	const scrollRef = React.useRef<HTMLDivElement>(null);
 	const draggingRef = React.useRef(false);
 	const [status, setStatus] = React.useState<WaveformStatus>('loading');
 	const [peaks, setPeaks] = React.useState<number[]>([]);
@@ -99,12 +79,11 @@ export function AudioWaveformPlayer({ name, src }: { name: string; src: string }
 				const buffer = await context.decodeAudioData(bytes);
 				if (controller.signal.aborted) return;
 				const decodedDuration = Number.isFinite(buffer.duration) ? buffer.duration : 0;
-				const width = waveformTimelineWidth(decodedDuration);
 				const channels = Array.from({ length: buffer.numberOfChannels }, (_, index) =>
 					buffer.getChannelData(index)
 				);
 				setDuration((current) => current || decodedDuration);
-				setPeaks(sampleWaveformPeaks(channels, Math.ceil(width / PIXELS_PER_PEAK)));
+				setPeaks(sampleWaveformPeaks(channels, WAVEFORM_PEAK_COUNT));
 				setStatus('ready');
 			})
 			.catch((error) => {
@@ -123,18 +102,7 @@ export function AudioWaveformPlayer({ name, src }: { name: string; src: string }
 		if (!playing) return;
 		let frame = 0;
 		const update = () => {
-			const audio = audioRef.current;
-			if (!audio) return;
-			setCurrentTime(audio.currentTime);
-			const scroller = scrollRef.current;
-			if (scroller && audio.duration > 0 && scroller.scrollWidth > scroller.clientWidth) {
-				const playhead = (audio.currentTime / audio.duration) * scroller.scrollWidth;
-				const visibleStart = scroller.scrollLeft;
-				const visibleEnd = visibleStart + scroller.clientWidth;
-				if (playhead > visibleEnd - 64 || playhead < visibleStart + 24) {
-					scroller.scrollTo({ left: Math.max(0, playhead - scroller.clientWidth * 0.7) });
-				}
-			}
+			if (audioRef.current) setCurrentTime(audioRef.current.currentTime);
 			frame = window.requestAnimationFrame(update);
 		};
 		frame = window.requestAnimationFrame(update);
@@ -143,7 +111,6 @@ export function AudioWaveformPlayer({ name, src }: { name: string; src: string }
 
 	const safeDuration = Number.isFinite(duration) && duration > 0 ? duration : 0;
 	const progress = safeDuration ? Math.min(1, currentTime / safeDuration) : 0;
-	const timelineWidth = waveformTimelineWidth(safeDuration);
 	const ticks = timelineTicks(safeDuration);
 	const togglePlayback = () => {
 		const audio = audioRef.current;
@@ -208,7 +175,7 @@ export function AudioWaveformPlayer({ name, src }: { name: string; src: string }
 							: 'Drag to seek'}
 					</small>
 				</div>
-				<div className="audio-waveform-scroll" ref={scrollRef}>
+				<div className="audio-waveform-viewport">
 					<div
 						className="audio-waveform-track"
 						onClick={seekFromClick}
@@ -227,7 +194,6 @@ export function AudioWaveformPlayer({ name, src }: { name: string; src: string }
 								event.currentTarget.releasePointerCapture(event.pointerId);
 							}
 						}}
-						style={{ width: `max(100%, ${timelineWidth}px)` }}
 					>
 						{status === 'ready' ? (
 							<>
