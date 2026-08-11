@@ -58,6 +58,7 @@ import { ConnectWalletButton } from 'components/ConnectWalletButton';
 import { ErrorPanel } from 'components/ErrorPanel';
 import { Loading } from 'components/Loading';
 import { MarketActivityList } from 'components/MarketActivityList';
+import { type SegmentedTab, SegmentedTabs } from 'components/SegmentedTabs';
 import { OperationOutcome, OperationOutcomeAnnouncement } from 'components/OperationOutcomeAnnouncement';
 import { TokenArtwork } from 'components/TokenArtwork';
 import {
@@ -328,7 +329,7 @@ export function FungibleAssetView({
 	const [purchaseQuantity, setPurchaseQuantity] = React.useState('');
 	const [listingQuantity, setListingQuantity] = React.useState('');
 	const [listingUnitPrice, setListingUnitPrice] = React.useState('');
-	const [tradeMode, setTradeMode] = React.useState<'buy' | 'sell'>('buy');
+	const [tradeMode, setTradeMode] = React.useState<'buy' | 'sell' | 'transfer'>('buy');
 	const [activeSection, setActiveSection] = React.useState<'orders' | 'about' | 'activity' | 'rights'>('orders');
 	const [orderReveal, setOrderReveal] = React.useState({ assetId: asset.id, limit: 50 });
 	const orderRevealStatusRef = React.useRef<HTMLParagraphElement>(null);
@@ -405,7 +406,7 @@ export function FungibleAssetView({
 		},
 	];
 	type FungibleTradeMode = typeof tradeMode;
-	const tradeTabs: AssetDetailTab<FungibleTradeMode>[] = [
+	const tradeTabs: SegmentedTab<FungibleTradeMode>[] = [
 		{
 			value: 'buy',
 			label: 'Buy',
@@ -417,6 +418,12 @@ export function FungibleAssetView({
 			label: 'List',
 			icon: <Tag className="ui-icon" aria-hidden="true" />,
 			panelId: 'fungible-trade-sell',
+		},
+		{
+			value: 'transfer',
+			label: 'Transfer',
+			icon: <Send className="ui-icon" aria-hidden="true" />,
+			panelId: 'fungible-trade-transfer',
 		},
 	];
 
@@ -814,9 +821,10 @@ export function FungibleAssetView({
 							</div>
 						</div>
 						<div className="fungible-trade-switcher">
-							<AssetDetailTabs<FungibleTradeMode>
+							<SegmentedTabs<FungibleTradeMode>
 								active={tradeMode}
 								ariaLabel="Trade action"
+								className="fungible-trade-tabs"
 								idPrefix="fungible-trade"
 								onChange={setTradeMode}
 								tabs={tradeTabs}
@@ -851,7 +859,7 @@ export function FungibleAssetView({
 									</div>
 								)}
 							</div>
-						) : (
+						) : tradeMode === 'sell' ? (
 							<div
 								aria-labelledby="fungible-trade-sell-tab"
 								className="fungible-trade-panel"
@@ -882,6 +890,31 @@ export function FungibleAssetView({
 										</small>
 									</div>
 								)}
+							</div>
+						) : (
+							<div
+								aria-labelledby="fungible-trade-transfer-tab"
+								className="fungible-trade-panel"
+								id="fungible-trade-transfer"
+								role="tabpanel"
+							>
+								<div className="asset-buy-summary">
+									<span>Available to transfer</span>
+									<strong>
+										{wallet.address
+											? listingBalance > 0n
+												? tokenLabel(liquid, state)
+												: 'No liquid tokens'
+											: 'Connect to transfer'}
+									</strong>
+									<small>
+										{wallet.address
+											? listingBalance > 0n
+												? 'Choose a recipient and amount in the transfer review.'
+												: 'Tokens listed for sale are not available to transfer.'
+											: 'Connect your wallet to see the tokens available to transfer.'}
+									</small>
+								</div>
 							</div>
 						)}
 						{walletActivities.map((activity) => (
@@ -946,17 +979,18 @@ export function FungibleAssetView({
 										: 'Enter listing details'}
 								</Button>
 							) : null}
-							{wallet.address && BigInt(liquid) > 0n ? (
+							{tradeMode === 'transfer' && wallet.address && listingBalance > 0n ? (
 								<Button
-									className="with-icon"
+									className="with-icon market-primary-action"
 									disabled={assetBlocksActions || loading || Boolean(error)}
 									size="custom"
 									onClick={() => openOperation({ kind: 'transfer' })}
+									variant="primary"
 								>
 									<Send className="ui-icon ui-icon--sm" aria-hidden="true" />{' '}
 									{activeAssetActivity?.operation.kind === 'transfer'
 										? assetOperationPendingActionLabel('transfer')
-										: 'Transfer'}
+										: 'Transfer tokens'}
 								</Button>
 							) : null}
 						</div>
