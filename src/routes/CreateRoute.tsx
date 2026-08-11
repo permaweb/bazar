@@ -139,6 +139,7 @@ export default function CreateRoute() {
 	const [fungibleEstimate, setFungibleEstimate] = React.useState<FungibleMintEstimate | null>(null);
 	const [fungiblePhase, setFungiblePhase] = React.useState<'signing' | 'uploading' | null>(null);
 	const [fungibleResult, setFungibleResult] = React.useState<FungibleMintResult | null>(null);
+	const [fungibleResultReady, setFungibleResultReady] = React.useState(false);
 	const [file, setFile] = React.useState<File | null>(null);
 	const [artwork, setArtwork] = React.useState<File | null>(null);
 	const [audioMetadata, setAudioMetadata] = React.useState<EmbeddedAudioMetadata>({});
@@ -241,6 +242,22 @@ export default function CreateRoute() {
 		window.addEventListener('bazar:mint-live', markLive);
 		return () => window.removeEventListener('bazar:mint-live', markLive);
 	}, [result]);
+	React.useEffect(() => {
+		setFungibleResultReady(false);
+		if (!fungibleResult) return;
+		const controller = new AbortController();
+		void waitForAssetState(fungibleResult.processId, () => true, {
+			signal: controller.signal,
+			interval: 4000,
+			timeout: 0,
+		}).then(
+			() => {
+				if (!controller.signal.aborted) setFungibleResultReady(true);
+			},
+			() => undefined
+		);
+		return () => controller.abort();
+	}, [fungibleResult]);
 	React.useEffect(() => {
 		if (mode !== 'asset' || !file || !name.trim()) {
 			setEstimate(null);
@@ -1264,17 +1281,20 @@ export default function CreateRoute() {
 						</div>
 					) : null}
 					{mode === 'fungible' && fungibleResult ? (
-						<div className="mint-success">
+						<div className={`mint-success${!fungibleResultReady ? ' propagating' : ''}`}>
 							<span>
-								<Check aria-hidden="true" />
+								{fungibleResultReady ? (
+									<Check aria-hidden="true" />
+								) : (
+									<InfinityIcon aria-hidden="true" />
+								)}
 							</span>
 							<div>
-								<strong>Token submitted to Arweave</strong>
+								<strong>{fungibleResultReady ? 'Token live on Bazar' : 'Sequencing on Arweave'}</strong>
 								<p>
-									All {fungibleResult.supply} base units of {fungibleResult.ticker} are minted to your
-									wallet. The process state becomes readable once the scheduler sequences the
-									transaction (~20 minutes) — dispatching to holders needs that state, so the dispatch
-									page may ask you to retry until then.
+									{fungibleResultReady
+										? `All ${fungibleResult.supply} base units of ${fungibleResult.ticker} are in your wallet and ready to dispatch.`
+										: `All ${fungibleResult.supply} base units of ${fungibleResult.ticker} are minted to your wallet. Bazar is watching for the scheduler to sequence the process (~20 minutes); dispatch unlocks once its state is readable.`}
 								</p>
 								<MintTransactionReceipt
 									entries={[
@@ -1298,10 +1318,15 @@ export default function CreateRoute() {
 								<Button
 									type="button"
 									size="custom"
+									disabled={!fungibleResultReady}
 									onClick={() => navigate(`/dispatch/${fungibleResult.processId}`)}
 								>
 									Dispatch to holders{' '}
-									<ArrowRight className="ui-icon ui-icon--sm" aria-hidden="true" />
+									{fungibleResultReady ? (
+										<ArrowRight className="ui-icon ui-icon--sm" aria-hidden="true" />
+									) : (
+										<InfinityIcon className="ui-icon ui-icon--sm" aria-hidden="true" />
+									)}
 								</Button>
 							</div>
 						</div>

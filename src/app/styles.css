@@ -7486,9 +7486,11 @@ body input:focus-visible {
 	display: grid;
 	grid-template-columns: auto minmax(0, 1fr);
 	align-items: center;
-	gap: 8px;
+	gap: 4px 8px;
 }
 .mint-transaction-receipts a {
+	grid-row: 1;
+	grid-column: 1;
 	display: inline-flex;
 	align-items: center;
 	gap: 5px;
