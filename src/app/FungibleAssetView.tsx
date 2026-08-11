@@ -28,12 +28,10 @@ import { transactionExplorerUrl } from 'api/arweave-explorer';
 import type { CollectionActivityEvent } from 'api/asset-discovery';
 import {
 	type AssetState,
-	bestAskOfAsset,
 	licenseProperties,
 	liquidBalanceOf,
 	listedBalanceOf,
 	liveOrdersOfAsset,
-	openOrdersOfAsset,
 	readAssetState,
 	type SwapOrder,
 } from 'api/asset-marketplace';
@@ -46,7 +44,14 @@ import {
 	type PurchaseBatchPreparationEvent,
 } from 'api/asset-transactions';
 import type { AssetSummary, Collection } from 'api/collections';
-import { filledOrder, formatTokenAmount, matchOrderFills, type OrderFill, parseTokenAmount } from 'api/order-matching';
+import {
+	filledOrder,
+	formatTokenAmount,
+	matchOrderFills,
+	matchSortedOrderFills,
+	type OrderFill,
+	parseTokenAmount,
+} from 'api/order-matching';
 
 import { ArtworkImage } from 'components/ArtworkImage';
 import { type ArweaveSyncStep, ArweaveTransactionSync } from 'components/ArweaveTransactionSync';
@@ -294,27 +299,39 @@ export function FungibleAssetView({
 	const [orderReveal, setOrderReveal] = React.useState({ assetId: asset.id, limit: 50 });
 	const orderRevealStatusRef = React.useRef<HTMLParagraphElement>(null);
 	const [storageVersion, setStorageVersion] = React.useState(0);
-	const orders = liveOrdersOfAsset(state);
+	const orders = React.useMemo(() => liveOrdersOfAsset(state), [state]);
 	const orderLimit = orderReveal.assetId === asset.id ? orderReveal.limit : 50;
 	const visibleOrderRows = visibleOrderbookRows(orders, orderLimit);
-	const openOrders = openOrdersOfAsset(state);
-	const purchasableOrders = openOrders.filter(
-		(order) => order.creator !== wallet.address && order.recipient !== wallet.address
+	const openOrders = React.useMemo(() => orders.filter((order) => order.status === 'open'), [orders]);
+	const purchasableOrders = React.useMemo(
+		() => openOrders.filter((order) => order.creator !== wallet.address && order.recipient !== wallet.address),
+		[openOrders, wallet.address]
 	);
 	const liquid = wallet.address ? liquidBalanceOf(state, wallet.address) : '0';
 	const listed = wallet.address ? listedBalanceOf(state, wallet.address) : '0';
 	const ticker = state.ticker || 'Token';
-	const best = bestAskOfAsset(state);
-	const forSale = openOrders.reduce((total, order) => total + BigInt(order.quantity), 0n).toString();
-	const purchasableQuantity = purchasableOrders.reduce((total, order) => total + BigInt(order.quantity), 0n);
-	const purchaseAmountResult = purchaseAmountMatch(purchasableOrders, purchaseQuantity, state);
-	const holderAddresses = new Set(
-		Object.entries(state.balances)
-			.filter(([, balance]) => BigInt(balance) > 0n)
-			.map(([address]) => address)
+	const best = openOrders[0] ?? null;
+	const forSale = React.useMemo(
+		() => openOrders.reduce((total, order) => total + BigInt(order.quantity), 0n).toString(),
+		[openOrders]
 	);
-	for (const order of orders) holderAddresses.add(order.creator);
-	const holders = holderAddresses.size;
+	const purchasableQuantity = React.useMemo(
+		() => purchasableOrders.reduce((total, order) => total + BigInt(order.quantity), 0n),
+		[purchasableOrders]
+	);
+	const purchaseAmountResult = React.useMemo(
+		() => purchaseAmountMatch(purchasableOrders, purchaseQuantity, state),
+		[purchasableOrders, purchaseQuantity, state]
+	);
+	const holders = React.useMemo(() => {
+		const addresses = new Set(
+			Object.entries(state.balances)
+				.filter(([, balance]) => BigInt(balance) > 0n)
+				.map(([address]) => address)
+		);
+		for (const order of orders) addresses.add(order.creator);
+		return addresses.size;
+	}, [orders, state.balances]);
 	const license = licenseProperties(state);
 	const description = assetDescription(state, collection.description);
 	const purchaseKey = wallet.address ? fungibleBatchStorageKey(asset.id, wallet.address) : '';
@@ -2907,7 +2924,7 @@ export function purchaseAmountMatch(orders: SwapOrder[], quantity: string, state
 	if (!quantity.trim()) return { match: null, error: '' };
 	try {
 		const atomic = parseTokenAmount(quantity, state.denomination);
-		const match = matchOrderFills(orders, atomic);
+		const match = matchSortedOrderFills(orders, atomic);
 		return {
 			match,
 			error: match

@@ -8,7 +8,7 @@ const MAX_WAVEFORM_WIDTH = 12_000;
 const PIXELS_PER_SECOND = 8;
 const PIXELS_PER_PEAK = 4;
 
-type WaveformStatus = 'loading' | 'ready' | 'unavailable';
+type WaveformStatus = 'idle' | 'loading' | 'ready' | 'unavailable';
 
 export function formatAudioTime(value: number): string {
 	if (!Number.isFinite(value) || value < 0) return '0:00';
@@ -66,35 +66,34 @@ export function AudioWaveformPlayer({ name, src }: { name: string; src: string }
 	const audioRef = React.useRef<HTMLAudioElement>(null);
 	const scrollRef = React.useRef<HTMLDivElement>(null);
 	const draggingRef = React.useRef(false);
-	const [status, setStatus] = React.useState<WaveformStatus>('loading');
+	const [status, setStatus] = React.useState<WaveformStatus>('idle');
 	const [peaks, setPeaks] = React.useState<number[]>([]);
-	const [playbackSrc, setPlaybackSrc] = React.useState(src);
+	const [waveformRequested, setWaveformRequested] = React.useState(false);
 	const [duration, setDuration] = React.useState(0);
 	const [currentTime, setCurrentTime] = React.useState(0);
 	const [playing, setPlaying] = React.useState(false);
 
 	React.useEffect(() => {
-		const controller = new AbortController();
-		let context: AudioContext | null = null;
-		let playbackObjectUrl = '';
-		setStatus('loading');
+		setStatus('idle');
 		setPeaks([]);
-		setPlaybackSrc(src);
+		setWaveformRequested(false);
 		setCurrentTime(0);
 		setPlaying(false);
+	}, [src]);
+
+	React.useEffect(() => {
+		if (!waveformRequested) return;
+		const controller = new AbortController();
+		let context: AudioContext | null = null;
+		setStatus('loading');
 
 		void fetch(src, { signal: controller.signal })
 			.then(async (response) => {
 				if (!response.ok) throw new Error(`waveform-fetch-${response.status}`);
-				return {
-					bytes: await response.arrayBuffer(),
-					contentType: response.headers.get('content-type') ?? 'audio/mpeg',
-				};
+				return response.arrayBuffer();
 			})
-			.then(async ({ bytes, contentType }) => {
+			.then(async (bytes) => {
 				if (controller.signal.aborted) return;
-				playbackObjectUrl = URL.createObjectURL(new Blob([bytes], { type: contentType }));
-				setPlaybackSrc(playbackObjectUrl);
 				context = new AudioContext();
 				const buffer = await context.decodeAudioData(bytes);
 				if (controller.signal.aborted) return;
@@ -114,10 +113,9 @@ export function AudioWaveformPlayer({ name, src }: { name: string; src: string }
 
 		return () => {
 			controller.abort();
-			if (playbackObjectUrl) URL.revokeObjectURL(playbackObjectUrl);
 			void context?.close().catch(() => undefined);
 		};
-	}, [src]);
+	}, [src, waveformRequested]);
 
 	React.useEffect(() => {
 		if (!playing) return;
@@ -148,8 +146,10 @@ export function AudioWaveformPlayer({ name, src }: { name: string; src: string }
 	const togglePlayback = () => {
 		const audio = audioRef.current;
 		if (!audio) return;
-		if (audio.paused) void audio.play().catch(() => setPlaying(false));
-		else audio.pause();
+		if (audio.paused) {
+			setWaveformRequested(true);
+			void audio.play().catch(() => setPlaying(false));
+		} else audio.pause();
 	};
 	const seek = (value: number) => {
 		const audio = audioRef.current;
@@ -185,7 +185,7 @@ export function AudioWaveformPlayer({ name, src }: { name: string; src: string }
 				onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)}
 				preload="metadata"
 				ref={audioRef}
-				src={playbackSrc}
+				src={src}
 			/>
 			<Button
 				aria-label={`${playing ? 'Pause' : 'Play'} ${name}`}
@@ -201,7 +201,9 @@ export function AudioWaveformPlayer({ name, src }: { name: string; src: string }
 						{formatAudioTime(currentTime)} / {formatAudioTime(safeDuration)}
 					</span>
 					<small aria-live="polite">
-						{status === 'loading'
+						{status === 'idle'
+							? 'Play to load waveform'
+							: status === 'loading'
 							? 'Reading waveform…'
 							: status === 'unavailable'
 							? 'Waveform unavailable'

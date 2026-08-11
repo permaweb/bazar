@@ -14,6 +14,7 @@ import {
 	retainedPhaseProgress,
 	shouldClearTransactionInspection,
 	shouldRenderProofPins,
+	shouldScheduleActivityRolodex,
 	TransactionRendererFallback,
 } from './TransactionSequenceCable3D';
 import { TransactionVisualizerBoundary } from './TransactionVisualizerFallback';
@@ -45,6 +46,12 @@ function renderFallback(statusLabel: string) {
 }
 
 describe('transaction map renderer fallback', () => {
+	it('schedules telemetry presentation only while visible activity is queued', () => {
+		expect(shouldScheduleActivityRolodex(false, 5)).toBe(false);
+		expect(shouldScheduleActivityRolodex(true, 0)).toBe(false);
+		expect(shouldScheduleActivityRolodex(true, 1)).toBe(true);
+	});
+
 	it('contains a failed lazy visualizer and renders its local fallback', () => {
 		const boundary = new TransactionVisualizerBoundary({
 			children: 'visualizer',

@@ -8,6 +8,15 @@ import type { AssetSummary, Collection } from 'api/collections';
 
 import { WalletAddress } from 'components/WalletAddress';
 
+const relativeTime = new Intl.RelativeTimeFormat('en', { numeric: 'always' });
+const absoluteTime = new Intl.DateTimeFormat(undefined, {
+	month: 'short',
+	day: 'numeric',
+	year: 'numeric',
+	hour: 'numeric',
+	minute: '2-digit',
+});
+
 export function MarketActivityList({
 	ariaLabel,
 	collectionId,
@@ -29,10 +38,23 @@ export function MarketActivityList({
 }) {
 	const [now, setNow] = React.useState(() => Date.now());
 	React.useEffect(() => {
-		setNow(Date.now());
-		const interval = window.setInterval(() => setNow(Date.now()), 1_000);
-		return () => window.clearInterval(interval);
-	}, []);
+		let timer: number | undefined;
+		const schedule = () => {
+			window.clearTimeout(timer);
+			if (document.visibilityState !== 'visible') return;
+			const current = Date.now();
+			setNow(current);
+			const delay = marketActivityRefreshDelay(events, current);
+			if (delay !== null) timer = window.setTimeout(schedule, delay);
+		};
+		const resume = () => schedule();
+		document.addEventListener('visibilitychange', resume);
+		schedule();
+		return () => {
+			window.clearTimeout(timer);
+			document.removeEventListener('visibilitychange', resume);
+		};
+	}, [events]);
 	return (
 		<ul aria-busy={loading} aria-label={ariaLabel} className="activity-list" id={id}>
 			{events.map((event) => {
@@ -143,29 +165,34 @@ export function marketActivityDetail(event: CollectionActivityEvent) {
 
 export function formatMarketActivityTimestamp(timestamp: number, now = Date.now()) {
 	const elapsedSeconds = Math.max(1, Math.floor((now - timestamp * 1_000) / 1_000));
-	const relative = new Intl.RelativeTimeFormat('en', { numeric: 'always' });
-	if (elapsedSeconds < 60) return relative.format(-elapsedSeconds, 'second');
+	if (elapsedSeconds < 60) return relativeTime.format(-elapsedSeconds, 'second');
 	const elapsedMinutes = Math.floor(elapsedSeconds / 60);
-	if (elapsedMinutes < 60) return relative.format(-elapsedMinutes, 'minute');
+	if (elapsedMinutes < 60) return relativeTime.format(-elapsedMinutes, 'minute');
 	const elapsedHours = Math.floor(elapsedMinutes / 60);
-	if (elapsedHours < 24) return relative.format(-elapsedHours, 'hour');
+	if (elapsedHours < 24) return relativeTime.format(-elapsedHours, 'hour');
 	const elapsedDays = Math.floor(elapsedHours / 24);
-	if (elapsedDays < 7) return relative.format(-elapsedDays, 'day');
+	if (elapsedDays < 7) return relativeTime.format(-elapsedDays, 'day');
 	const elapsedWeeks = Math.floor(elapsedDays / 7);
-	if (elapsedWeeks < 4) return relative.format(-elapsedWeeks, 'week');
+	if (elapsedWeeks < 4) return relativeTime.format(-elapsedWeeks, 'week');
 	const elapsedMonths = Math.max(1, Math.floor(elapsedDays / 30));
-	if (elapsedMonths < 12) return relative.format(-elapsedMonths, 'month');
-	return relative.format(-Math.floor(elapsedDays / 365), 'year');
+	if (elapsedMonths < 12) return relativeTime.format(-elapsedMonths, 'month');
+	return relativeTime.format(-Math.floor(elapsedDays / 365), 'year');
 }
 
 export function formatMarketActivityAbsoluteTimestamp(timestamp: number) {
-	return new Intl.DateTimeFormat(undefined, {
-		month: 'short',
-		day: 'numeric',
-		year: 'numeric',
-		hour: 'numeric',
-		minute: '2-digit',
-	}).format(new Date(timestamp * 1000));
+	return absoluteTime.format(new Date(timestamp * 1000));
+}
+
+export function marketActivityRefreshDelay(events: CollectionActivityEvent[], now = Date.now()) {
+	let delay = Number.POSITIVE_INFINITY;
+	for (const event of events) {
+		if (!event.timestamp) continue;
+		const elapsed = Math.max(0, now - event.timestamp * 1_000);
+		const interval =
+			elapsed < 60_000 ? 1_000 : elapsed < 3_600_000 ? 60_000 : elapsed < 86_400_000 ? 3_600_000 : 86_400_000;
+		delay = Math.min(delay, interval - (elapsed % interval));
+	}
+	return Number.isFinite(delay) ? Math.max(250, delay + 20) : null;
 }
 
 function marketActivitySymbol(action: CollectionActivityEvent['action']) {

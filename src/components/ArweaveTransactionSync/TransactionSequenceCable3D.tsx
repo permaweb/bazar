@@ -219,6 +219,7 @@ export function TransactionSequenceCable3D({
 	const mountRef = React.useRef<HTMLDivElement>(null);
 	const activeRef = React.useRef(active);
 	const resumeSyncRef = React.useRef(false);
+	const setRenderActiveRef = React.useRef<(active: boolean) => void>();
 	const phaseLabelRefs = React.useRef<Array<HTMLSpanElement | null>>([]);
 	const wireStatesRef = React.useRef<WireState[]>([]);
 	const laneDataRef = React.useRef(lanes);
@@ -243,6 +244,10 @@ export function TransactionSequenceCable3D({
 	activeRef.current = active;
 	laneDataRef.current = lanes;
 	miningActivityRef.current = visibleMiningActivity;
+
+	React.useEffect(() => {
+		setRenderActiveRef.current?.(active);
+	}, [active]);
 
 	React.useEffect(() => {
 		const current = hoverRef.current;
@@ -703,8 +708,12 @@ export function TransactionSequenceCable3D({
 		const activeHeadColor = new THREE.Color();
 		const phaseLabelPoints = Array.from({ length: phaseCount }, () => new THREE.Vector3());
 		const acceptedProofPinPoint = new THREE.Vector3();
-		const render = () => {
+		const requestRender = () => {
+			if (frame || !activeRef.current || document.hidden) return;
 			frame = window.requestAnimationFrame(render);
+		};
+		const render = () => {
+			frame = 0;
 			const frameAt = performance.now();
 			if (!activeRef.current || document.hidden) {
 				previousFrameAt = frameAt;
@@ -808,12 +817,29 @@ export function TransactionSequenceCable3D({
 				);
 			});
 			renderer.render(scene, camera);
+			requestRender();
 		};
-		frame = window.requestAnimationFrame(render);
+		const setRenderActive = (renderActive: boolean) => {
+			if (!renderActive || document.hidden) {
+				if (frame) window.cancelAnimationFrame(frame);
+				frame = 0;
+				return;
+			}
+			requestRender();
+		};
+		const handleVisibilityChange = () => {
+			if (!document.hidden) resumeSyncRef.current = true;
+			setRenderActive(activeRef.current);
+		};
+		setRenderActiveRef.current = setRenderActive;
+		document.addEventListener('visibilitychange', handleVisibilityChange);
+		requestRender();
 
 		return () => {
 			window.cancelAnimationFrame(frame);
+			if (setRenderActiveRef.current === setRenderActive) setRenderActiveRef.current = undefined;
 			if (pointerFrame) window.cancelAnimationFrame(pointerFrame);
+			document.removeEventListener('visibilitychange', handleVisibilityChange);
 			resizeObserver.disconnect();
 			controls.removeEventListener('start', handleControlsStart);
 			controls.removeEventListener('end', handleControlsEnd);
@@ -1004,7 +1030,7 @@ function contentSymbol(kind: ArweaveRecallContentKind): string {
 	return '◫';
 }
 
-export function CableTelemetryPanel({ telemetry }: { telemetry: CableTelemetry }) {
+export function CableTelemetryPanel({ telemetry, active = true }: { telemetry: CableTelemetry; active?: boolean }) {
 	return (
 		<ProtocolTelemetry aria-label={`${telemetry.heading}. ${telemetry.liveLabel}`}>
 			<ProtocolTelemetryHeading>
@@ -1038,7 +1064,7 @@ export function CableTelemetryPanel({ telemetry }: { telemetry: CableTelemetry }
 				</ProtocolSummarySection>
 			</ProtocolSummary>
 			<ProtocolActivityHeading>{telemetry.activityLabel}</ProtocolActivityHeading>
-			<ActivityRolodex activity={telemetry.activity} />
+			<ActivityRolodex active={active} activity={telemetry.activity} />
 		</ProtocolTelemetry>
 	);
 }
@@ -1048,18 +1074,24 @@ const ACTIVITY_VISIBLE_ROWS = 5;
 const MAX_ACTIVITY_QUEUE = 80;
 const MAX_SEEN_ACTIVITY = 500;
 
-function ActivityRolodex({ activity }: { activity: CableTelemetry['activity'] }) {
+export function shouldScheduleActivityRolodex(active: boolean, queued: number) {
+	return active && queued > 0;
+}
+
+function ActivityRolodex({ active, activity }: { active: boolean; activity: CableTelemetry['activity'] }) {
 	const [visible, setVisible] = React.useState<CableTelemetry['activity']>([]);
+	const [scheduleVersion, setScheduleVersion] = React.useState(0);
 	const queueRef = React.useRef<CableTelemetry['activity']>([]);
 	const seenRef = React.useRef(new Set<string>());
 	const seenOrderRef = React.useRef<string[]>([]);
+	const timerRef = React.useRef<number>();
 
 	React.useEffect(() => {
 		if (!activity.length) {
 			queueRef.current = [];
 			seenRef.current.clear();
 			seenOrderRef.current = [];
-			setVisible([]);
+			if (active) setVisible([]);
 			return;
 		}
 
@@ -1077,19 +1109,27 @@ function ActivityRolodex({ activity }: { activity: CableTelemetry['activity'] })
 			const expired = seenOrderRef.current.shift();
 			if (expired) seenRef.current.delete(expired);
 		}
-	}, [activity]);
+		if (active && timerRef.current === undefined) setScheduleVersion((current) => current + 1);
+	}, [active, activity]);
 
 	React.useEffect(() => {
-		const timer = window.setInterval(() => {
+		if (!shouldScheduleActivityRolodex(active, queueRef.current.length)) return undefined;
+		const timer = window.setTimeout(() => {
+			timerRef.current = undefined;
 			const next = queueRef.current.shift();
 			if (!next) return;
 			setVisible((current) =>
 				[next, ...current.filter((event) => event.key !== next.key)].slice(0, ACTIVITY_VISIBLE_ROWS)
 			);
+			if (queueRef.current.length) setScheduleVersion((current) => current + 1);
 		}, ACTIVITY_STREAM_INTERVAL_MS);
+		timerRef.current = timer;
 
-		return () => window.clearInterval(timer);
-	}, []);
+		return () => {
+			window.clearTimeout(timer);
+			if (timerRef.current === timer) timerRef.current = undefined;
+		};
+	}, [active, scheduleVersion]);
 
 	return (
 		<ProtocolActivity>

@@ -368,7 +368,7 @@ export function ArweaveTransactionSync({
 							</React.Suspense>
 						</S.RaceShell>
 						<React.Suspense fallback={null}>
-							<CableTelemetryPanel telemetry={telemetry} />
+							<CableTelemetryPanel active={renderActive} telemetry={telemetry} />
 						</React.Suspense>
 					</>
 				</TransactionVisualizerBoundary>
