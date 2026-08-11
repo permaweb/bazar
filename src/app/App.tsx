@@ -143,7 +143,7 @@ import { WalletAddress, WalletIdentity } from 'components/WalletAddress';
 import { WalletMenu } from 'components/WalletMenu';
 import { isAudioContentType } from 'helpers/asset-media';
 import { mapConcurrent } from 'helpers/concurrency';
-import { gatewayFromLocation, gatewaysFromLocation } from 'helpers/config';
+import { arweaveGraphqlEndpoint, gatewayFromLocation, gatewaysFromLocation } from 'helpers/config';
 import { scheduleIdleTask } from 'helpers/idle';
 import { optionalMotionBehavior } from 'helpers/motion';
 import { assetGroupRevealComplete, retainedAssetGroupLimit } from 'helpers/progressive-assets';
@@ -223,9 +223,12 @@ import {
 	preloadAtomicTransactionRuntime,
 } from './runtime';
 import {
+	type HomeListingShell,
 	loadAssetShellSnapshot,
+	loadHomeListingSnapshot,
 	loadMarketShellSnapshot,
 	storeAssetShellSnapshot,
+	storeHomeListingSnapshot,
 	storeMarketShellSnapshot,
 } from './shell-snapshot';
 import { useDialogFocus } from './useDialogFocus';
@@ -1915,6 +1918,7 @@ export const HOME_ASSET_PAGE_SIZE = 9;
 const HOME_LISTING_ASSET_LIMIT = HOME_ASSET_PAGE_SIZE * 4;
 const HOME_STATE_MAX_AGE = 30;
 const HOME_STATE_STALE_WHILE_REVALIDATE = 86_400;
+const HOME_LISTING_SNAPSHOT_MAX_AGE_MS = 60_000;
 
 export function homeAssetPage<T>(items: T[], requestedPage: number, pageSize = HOME_ASSET_PAGE_SIZE) {
 	const pageCount = Math.max(1, Math.ceil(items.length / pageSize));
@@ -2013,6 +2017,7 @@ function Home() {
 	const [assetView, setAssetView] = React.useState<HomeAssetView>('listed');
 	const [assetPage, setAssetPage] = React.useState(1);
 	const computeGateway = gatewayFromLocation();
+	const homeListingSnapshotScope = `${arweaveGraphqlEndpoint()}|${gatewaysFromLocation().join(',')}`;
 	const query = new URLSearchParams(search).get('q') ?? '';
 	const normalizedQuery = query.trim().toLowerCase();
 	const homeSearchMatches = React.useMemo(
@@ -2050,7 +2055,34 @@ function Home() {
 		Record<string, HomeListingActivity>
 	>({});
 	const [portableHomeListings, setPortableHomeListings] = React.useState<ResolvedAsset[]>([]);
+	const [cachedHomeListings, setCachedHomeListings] = React.useState<HomeListingShell[]>(() =>
+		loadHomeListingSnapshot(window.sessionStorage, homeListingSnapshotScope, HOME_LISTING_SNAPSHOT_MAX_AGE_MS)
+	);
+	React.useEffect(() => {
+		setCachedHomeListings(
+			loadHomeListingSnapshot(window.sessionStorage, homeListingSnapshotScope, HOME_LISTING_SNAPSHOT_MAX_AGE_MS)
+		);
+	}, [homeListingSnapshotScope]);
+	const liveHomeListingShells = React.useMemo(
+		() => portableHomeListings.flatMap((result) => homeListingShell(result) ?? []),
+		[portableHomeListings]
+	);
+	const homeListingShells = React.useMemo(() => {
+		const listings = new Map(cachedHomeListings.map((listing) => [listing.asset.id, listing]));
+		for (const listing of liveHomeListingShells) listings.set(listing.asset.id, listing);
+		return [...listings.values()];
+	}, [cachedHomeListings, liveHomeListingShells]);
+	const displayHomeListings = React.useMemo(
+		() =>
+			homeListingShells.map(({ asset, collection, activity }) => ({
+				asset,
+				collection,
+				activity,
+			})),
+		[homeListingShells]
+	);
 	const [portableHomeListingsLoading, setPortableHomeListingsLoading] = React.useState(false);
+	const [portableHomeListingsComplete, setPortableHomeListingsComplete] = React.useState(false);
 	const [portableHomeListingsFailure, setPortableHomeListingsFailure] = React.useState<
 		Extract<HomeMarketSummary, { status: 'unavailable' }> | undefined
 	>();
@@ -2065,8 +2097,8 @@ function Home() {
 	const loadedAssetLimit = React.useMemo(
 		() =>
 			market.collections.reduce((total, collection) => total + collection.assets.length, 0) +
-			portableHomeListings.length,
-		[market.collections, portableHomeListings.length]
+			displayHomeListings.length,
+		[displayHomeListings.length, market.collections]
 	);
 	const listingAssetLimit = HOME_LISTING_ASSET_LIMIT;
 	const assetCandidates = React.useMemo(
@@ -2074,33 +2106,41 @@ function Home() {
 			normalizedQuery
 				? homeSearchAssets(
 						market.collections,
-						portableHomeListings,
+						displayHomeListings,
 						normalizedQuery,
 						assetView === 'all' ? loadedAssetLimit : listingAssetLimit,
 						homeSearchMatches ?? undefined
 				  )
 				: assetView === 'all'
-				? homeAllAssets(market.collections, loadedAssetLimit, portableHomeListings)
-				: homeDiscoveryAssets(
-						market.collections,
-						verifiedHomeListings,
-						listingAssetLimit,
-						portableHomeListings
-				  ),
+				? homeAllAssets(market.collections, loadedAssetLimit, displayHomeListings)
+				: homeDiscoveryAssets(market.collections, verifiedHomeListings, listingAssetLimit, displayHomeListings),
 		[
 			assetView,
 			loadedAssetLimit,
 			homeSearchMatches,
 			market.collections,
 			normalizedQuery,
-			portableHomeListings,
+			displayHomeListings,
 			verifiedHomeListings,
 		]
 	);
 	const [assetPrices, setAssetPrices] = React.useState<Record<string, HomeMarketSummary>>({});
+	const displayAssetPrices = React.useMemo(() => {
+		const prices: Record<string, HomeMarketSummary> = Object.fromEntries(
+			homeListingShells.map((listing) => [
+				listing.asset.id,
+				{ status: 'resolved', value: listing.price } satisfies HomeMarketSummary,
+			])
+		);
+		for (const [assetId, summary] of Object.entries(assetPrices)) {
+			if (summary.status === 'resolved') prices[assetId] = summary;
+			else if (!prices[assetId]) prices[assetId] = summary;
+		}
+		return prices;
+	}, [assetPrices, homeListingShells]);
 	const homeListingActivityByAsset = React.useMemo(() => {
 		const indexed = new Map<string, HomeListingActivity>(Object.entries(verifiedHomeListingActivity));
-		for (const result of portableHomeListings) {
+		for (const result of displayHomeListings) {
 			const current = indexed.get(result.asset.id);
 			if (
 				!current ||
@@ -2111,11 +2151,11 @@ function Home() {
 			}
 		}
 		return indexed;
-	}, [portableHomeListings, verifiedHomeListingActivity]);
+	}, [displayHomeListings, verifiedHomeListingActivity]);
 	const displayedAssets = React.useMemo(
 		() =>
 			[...assetCandidates]
-				.filter(({ asset }) => homeAssetVisibleForView(assetPrices[asset.id], assetView))
+				.filter(({ asset }) => homeAssetVisibleForView(displayAssetPrices[asset.id], assetView))
 				.filter(({ collection }) => homeAssetTypeMatches(collection, assetType))
 				.sort((left, right) => {
 					if (assetView === 'all') return 0;
@@ -2123,7 +2163,7 @@ function Home() {
 						return compareHomeListingRecency(left.asset.id, right.asset.id, homeListingActivityByAsset);
 					}
 					const price = (assetId: string) => {
-						const summary = assetPrices[assetId];
+						const summary = displayAssetPrices[assetId];
 						if (!summary || summary.status !== 'resolved' || !summary.value)
 							return Number.POSITIVE_INFINITY;
 						return homeMarketPriceValue(summary.value);
@@ -2135,7 +2175,7 @@ function Home() {
 					}
 					return assetView === 'price-low' ? leftPrice - rightPrice : rightPrice - leftPrice;
 				}),
-		[assetCandidates, assetPrices, assetType, assetView, homeListingActivityByAsset]
+		[assetCandidates, assetType, assetView, displayAssetPrices, homeListingActivityByAsset]
 	);
 	const assetPagination = homeAssetPage(displayedAssets, assetPage);
 	const assets = assetView === 'all' ? assetPagination.items : assetCandidates;
@@ -2206,21 +2246,26 @@ function Home() {
 		}
 		const controller = new AbortController();
 		setPortableHomeListingsLoading(true);
+		setPortableHomeListingsComplete(false);
 		setPortableHomeListingsFailure(undefined);
 		const publications = createAnimationFrameBatch<
 			ListingResolutionOutcome | { processId: string; state: AssetState; provider: string; refresh: true }
 		>((batch) => {
+			const settledIds = new Set(batch.map((publication) => publication.processId));
+			setCachedHomeListings((current) => current.filter((listing) => !settledIds.has(listing.asset.id)));
 			setPortableHomeListings((current) => {
 				const results = new Map(current.map((result) => [result.asset.id, result]));
 				for (const publication of batch) {
 					if ('refresh' in publication) {
 						const previous = results.get(publication.processId);
 						if (previous) {
-							results.set(publication.processId, {
+							const updated = {
 								...previous,
 								state: publication.state,
 								provider: publication.provider,
-							});
+							};
+							if (isLiveListing(updated)) results.set(publication.processId, updated);
+							else results.delete(publication.processId);
 						}
 					} else {
 						results.delete(publication.processId);
@@ -2295,6 +2340,7 @@ function Home() {
 				await resolver.finish();
 				controller.signal.throwIfAborted();
 				const failure = discoveryFailure ?? indexFailure ?? computeFailure;
+				setPortableHomeListingsComplete(!failure);
 				setPortableHomeListingsFailure(
 					failure
 						? {
@@ -2331,6 +2377,17 @@ function Home() {
 		portableHomeRetry,
 		shouldLoadAssetSummaries,
 	]);
+	React.useEffect(() => {
+		if (
+			!liveHomeListingShells.length ||
+			(!portableHomeListingsComplete && liveHomeListingShells.length < HOME_ASSET_PAGE_SIZE)
+		)
+			return;
+		return scheduleIdleTask(
+			() => storeHomeListingSnapshot(window.sessionStorage, homeListingSnapshotScope, liveHomeListingShells),
+			250
+		);
+	}, [homeListingSnapshotScope, liveHomeListingShells, portableHomeListingsComplete]);
 	React.useEffect(() => {
 		if (!shouldLoadAssetSummaries) {
 			for (const controller of assetSummaryControllers.current.values()) controller.abort();
@@ -2995,10 +3052,8 @@ function Home() {
 										<>
 											<div className="home-asset-grid">
 												{assetPagination.items.map(({ asset, collection }, index) => {
-													const price = assetPrices[asset.id];
-													const pricePending =
-														!price ||
-														(assetSummariesRetrying && price.status === 'unavailable');
+													const price = displayAssetPrices[asset.id];
+													const pricePending = !price;
 													return (
 														<Link
 															key={`${collection.id}-${asset.id}`}
@@ -8937,6 +8992,22 @@ function orderPriceLabel(order: SwapOrder, state: AssetState) {
 	return `${winstonToAr(unitPriceWinston(order, state.denomination).toString())} AR${
 		state.totalSupply === '1' && state.denomination === 0 ? '' : ` / ${state.ticker || 'token'}`
 	}`;
+}
+function homeListingShell(result: ResolvedAsset): HomeListingShell | undefined {
+	const order = bestAskOfAsset(result.state);
+	if (!order || !isLiveListing(result)) return undefined;
+	return {
+		asset: result.asset,
+		collection: {
+			id: result.collection.id,
+			name: result.collection.name,
+			description: result.collection.description,
+			kind: result.collection.kind,
+			assets: [result.asset],
+		},
+		activity: result.activity,
+		price: orderPriceLabel(order, result.state),
+	};
 }
 export function tokenBalanceLabel(value: string, state: AssetState) {
 	const [whole, fraction] = formatTokenAmount(value, state.denomination).split('.');

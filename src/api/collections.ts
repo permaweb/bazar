@@ -424,29 +424,30 @@ function defaultFungibleToken(): AssetSummary {
 }
 
 async function loadNames(signal?: AbortSignal, onProgress?: (collection: Collection) => void): Promise<Collection> {
-	const namespace = await loadNamesNamespace(signal);
-	onProgress?.({
-		id: 'arweave-names',
-		name: 'Arweave names',
-		description: 'Current carrier names owned and traded directly on Arweave.',
-		kind: 'names',
-		assets: [],
-		manifestId: namespace.manifestId,
-		namespace,
-		indexSource: 'reference',
+	const namespaceRequest = loadNamesNamespace(signal).then((namespace) => {
+		throwIfAborted(signal);
+		onProgress?.(namesNamespaceCollection(namespace));
+		return namespace;
 	});
-	const page = await loadCarrierPage(undefined, signal);
+	const [namespace, page] = await Promise.all([namespaceRequest, loadCarrierPage(undefined, signal)]);
 	const assets = carrierAssets(page, namespace);
 	return {
-		id: 'arweave-names',
-		name: 'Arweave names',
-		description: 'Current carrier names owned and traded directly on Arweave.',
-		kind: 'names',
+		...namesNamespaceCollection(namespace),
 		assets,
 		total: page.hasMore ? undefined : assets.length,
 		cursor: page.cursor,
 		cursorHistory: page.cursor ? [page.cursor] : [],
 		hasMore: page.hasMore,
+	};
+}
+
+function namesNamespaceCollection(namespace: NamesNamespaceIndex): Collection {
+	return {
+		id: 'arweave-names',
+		name: 'Arweave names',
+		description: 'Current carrier names owned and traded directly on Arweave.',
+		kind: 'names',
+		assets: [],
 		manifestId: namespace.manifestId,
 		namespace,
 		indexSource: 'reference',

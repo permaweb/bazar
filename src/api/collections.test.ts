@@ -437,6 +437,36 @@ describe('collection index loading', () => {
 		await expect(loading).rejects.toBe(reason);
 	});
 
+	it('starts carrier discovery while the namespace manifest is still loading', async () => {
+		const controller = new AbortController();
+		const reason = new Error('test-complete');
+		const requests: string[] = [];
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+				const body = typeof init?.body === 'string' ? init.body : '';
+				if (body.includes('CarrierAssets')) {
+					requests.push('carrier');
+					return new Promise<Response>((_resolve, reject) => {
+						init?.signal?.addEventListener('abort', () => reject(init.signal?.reason), { once: true });
+					});
+				}
+				if (String(input).includes(`/tx/${NAMES_NAMESPACE_ID}/data`)) {
+					requests.push('namespace');
+					return new Promise<Response>((_resolve, reject) => {
+						init?.signal?.addEventListener('abort', () => reject(init.signal?.reason), { once: true });
+					});
+				}
+				return new Response('unavailable', { status: 503 });
+			})
+		);
+
+		const loading = loadCollections(controller.signal);
+		await vi.waitFor(() => expect(requests).toEqual(expect.arrayContaining(['namespace', 'carrier'])));
+		controller.abort(reason);
+		await expect(loading).rejects.toBe(reason);
+	});
+
 	it('discovers every fungible token across GraphQL pages without duplicate assets', async () => {
 		const tokenIds = [
 			FUNGIBLE_TOKEN_ID,

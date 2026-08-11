@@ -55,8 +55,10 @@ import {
 } from './App';
 import {
 	loadAssetShellSnapshot,
+	loadHomeListingSnapshot,
 	loadMarketShellSnapshot,
 	storeAssetShellSnapshot,
+	storeHomeListingSnapshot,
 	storeMarketShellSnapshot,
 } from './shell-snapshot';
 
@@ -145,6 +147,58 @@ describe('Home market summary retries', () => {
 		storeAssetShellSnapshot(storage, asset);
 		expect(loadAssetShellSnapshot(storage, asset.id)).toEqual(asset);
 		expect(loadAssetShellSnapshot(storage, 'another-id')).toBeUndefined();
+	});
+
+	it('restores only recent Home listing display metadata from the same peer scope', () => {
+		const values = new Map<string, string>();
+		const storage = {
+			getItem: (key: string) => values.get(key) ?? null,
+			setItem: (key: string, value: string) => values.set(key, value),
+		};
+		const asset = { id: 'A'.repeat(43), name: 'Recent asset' };
+		const listing = {
+			asset,
+			collection: {
+				id: 'images',
+				name: 'Images',
+				description: 'Recent images',
+				kind: 'images' as const,
+				assets: [asset],
+			},
+			activity: { processId: asset.id, height: 100, timestamp: 200 },
+			price: '1 AR',
+		};
+
+		storeHomeListingSnapshot(storage, 'alpha,charlie', [listing], 1_000);
+		expect(loadHomeListingSnapshot(storage, 'alpha,charlie', 60_000, 1_001)).toEqual([listing]);
+		expect(loadHomeListingSnapshot(storage, 'charlie', 60_000, 1_001)).toEqual([]);
+		expect(loadHomeListingSnapshot(storage, 'alpha,charlie', 60_000, 61_001)).toEqual([]);
+	});
+
+	it('rejects Home listing shells that do not bind activity to the displayed asset', () => {
+		const storage = {
+			getItem: () =>
+				JSON.stringify({
+					scope: 'nodes',
+					updatedAt: 1,
+					listings: [
+						{
+							asset: { id: 'A'.repeat(43), name: 'Asset' },
+							collection: {
+								id: 'images',
+								name: 'Images',
+								description: 'Images',
+								kind: 'images',
+								assets: [{ id: 'A'.repeat(43), name: 'Asset' }],
+							},
+							activity: { processId: 'B'.repeat(43), height: 1, timestamp: 1 },
+							price: '1 AR',
+						},
+					],
+				}),
+		};
+
+		expect(loadHomeListingSnapshot(storage, 'nodes', 60_000, 2)).toEqual([]);
 	});
 
 	it('warms a cached asset while its index loads without restarting when membership arrives', () => {
