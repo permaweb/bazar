@@ -4,7 +4,10 @@ import {
 	acceptedMintActivity,
 	advanceMintActivity,
 	loadMintActivities,
+	MINT_ACTIVITY_ATTENTION_AFTER_MS,
 	MINT_ACTIVITY_STORAGE_KEY,
+	mintActivityNeedsAttention,
+	removeMintActivities,
 	removeMintActivity,
 	upsertMintActivity,
 } from './mint-activity';
@@ -115,5 +118,69 @@ describe('background mint activity', () => {
 
 		expect(loadMintActivities(store).map((activity) => activity.id)).toEqual([second.id]);
 		expect(store.values.has(MINT_ACTIVITY_STORAGE_KEY)).toBe(true);
+	});
+
+	it('marks only stale unfinished uploads as needing attention', () => {
+		const activity = acceptedMintActivity({
+			owner,
+			asset: {
+				id: processId,
+				name: 'Signal',
+				description: '',
+				contentType: 'image/png',
+				image: processId,
+				mediaId: processId,
+				owner,
+				createdAt: 1,
+			},
+			collectionId: 'created-assets',
+			transactionIds: [processId],
+			arweaveGateway: 'https://arweave.net',
+			computeGateway: 'https://compute.example',
+		});
+		const beforeAttention = activity.createdAt + MINT_ACTIVITY_ATTENTION_AFTER_MS - 1;
+		const afterAttention = activity.createdAt + MINT_ACTIVITY_ATTENTION_AFTER_MS;
+
+		expect(mintActivityNeedsAttention(activity, beforeAttention)).toBe(false);
+		expect(mintActivityNeedsAttention(activity, afterAttention)).toBe(true);
+		expect(mintActivityNeedsAttention(advanceMintActivity(activity, 'complete'), afterAttention)).toBe(false);
+	});
+
+	it('bulk-removes only the selected upload tracking records', () => {
+		const store = storage();
+		const first = acceptedMintActivity({
+			owner,
+			asset: {
+				id: processId,
+				name: 'Signal',
+				description: '',
+				contentType: 'image/png',
+				image: processId,
+				mediaId: processId,
+				owner,
+				createdAt: 1,
+			},
+			collectionId: 'created-assets',
+			transactionIds: [processId],
+			arweaveGateway: 'https://arweave.net',
+			computeGateway: 'https://compute.example',
+		});
+		const second = {
+			...first,
+			id: `mint:${owner}:${'Q'.repeat(43)}`,
+			asset: { ...first.asset, id: 'Q'.repeat(43) },
+		};
+		const third = {
+			...first,
+			id: `mint:${owner}:${'R'.repeat(43)}`,
+			asset: { ...first.asset, id: 'R'.repeat(43) },
+		};
+		upsertMintActivity(store, first);
+		upsertMintActivity(store, second);
+		upsertMintActivity(store, third);
+
+		removeMintActivities(store, [first.id, third.id]);
+
+		expect(loadMintActivities(store).map((activity) => activity.id)).toEqual([second.id]);
 	});
 });

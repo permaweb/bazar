@@ -122,6 +122,8 @@ import {
 	loadMintActivities,
 	MINT_ACTIVITY_CHANGE_EVENT,
 	type MintActivity,
+	mintActivityNeedsAttention,
+	removeMintActivities,
 	removeMintActivity,
 	upsertMintActivity,
 } from 'api/mint-activity';
@@ -663,7 +665,12 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 	}, [refreshMintActivities]);
 	React.useEffect(() => {
 		for (const activity of mintActivities) {
-			if (mintWatchersRef.current.has(activity.id) || activity.phase === 'complete') continue;
+			if (
+				mintWatchersRef.current.has(activity.id) ||
+				activity.phase === 'complete' ||
+				mintActivityNeedsAttention(activity)
+			)
+				continue;
 			const controller = new AbortController();
 			mintWatchersRef.current.set(activity.id, controller);
 			void observeMintActivity(
@@ -692,7 +699,9 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 				.catch(() => undefined)
 				.finally(() => mintWatchersRef.current.delete(activity.id));
 		}
-		const active = new Set(mintActivities.map((activity) => activity.id));
+		const active = new Set(
+			mintActivities.filter((activity) => !mintActivityNeedsAttention(activity)).map((activity) => activity.id)
+		);
 		for (const [id, controller] of mintWatchersRef.current) {
 			if (!active.has(id)) {
 				controller.abort();
@@ -1630,11 +1639,31 @@ function OperationActivityControl() {
 		isTransactionActivityVisible(activity.phase)
 	);
 	const visibleMintActivities = mintActivities.filter((activity) => activity.owner === wallet.address);
+	const attentionMintActivities = visibleMintActivities.filter((activity) => mintActivityNeedsAttention(activity));
 	const activityCount = visibleActivities.length + visibleFungibleActivities.length + visibleMintActivities.length;
 	const workingCount =
 		visibleActivities.filter((activity) => activity.phase === 'working').length +
 		visibleFungibleActivities.filter((activity) => activity.phase === 'working').length +
-		visibleMintActivities.filter((activity) => activity.phase !== 'complete').length;
+		visibleMintActivities.filter(
+			(activity) => activity.phase !== 'complete' && !mintActivityNeedsAttention(activity)
+		).length;
+	const clearUploadIssues = () => {
+		if (!attentionMintActivities.length) return;
+		const count = attentionMintActivities.length;
+		if (
+			!window.confirm(
+				`Clear ${count.toLocaleString()} upload ${
+					count === 1 ? 'item' : 'items'
+				} that need attention?\n\nThis removes local Activity tracking only. It does not delete anything from Arweave.`
+			)
+		)
+			return;
+		removeMintActivities(
+			localStorage,
+			attentionMintActivities.map((activity) => activity.id)
+		);
+		setOpen(false);
+	};
 	React.useEffect(() => {
 		if (!open) return;
 		const close = (event: MouseEvent) => {
@@ -1666,9 +1695,20 @@ function OperationActivityControl() {
 						<div>
 							<strong>Transaction activity</strong>
 							<span>
-								{workingCount ? `${workingCount} running in the background` : 'No transactions running'}
+								{attentionMintActivities.length
+									? `${attentionMintActivities.length.toLocaleString()} ${
+											attentionMintActivities.length === 1 ? 'upload needs' : 'uploads need'
+									  } attention`
+									: workingCount
+									? `${workingCount} running in the background`
+									: 'No transactions running'}
 							</span>
 						</div>
+						{attentionMintActivities.length ? (
+							<Button size="custom" variant="ghost" onClick={clearUploadIssues} type="button">
+								Clear upload issues
+							</Button>
+						) : null}
 					</div>
 					<div className="operation-activity-list">
 						{visibleActivities.map((activity) => (
@@ -1766,8 +1806,12 @@ function OperationActivityControl() {
 							const pinnedGateway =
 								activity.arweaveGateway !== arweaveGatewayFromLocation() ||
 								activity.computeGateway !== gatewayFromLocation();
+							const needsAttention = mintActivityNeedsAttention(activity);
 							return (
-								<div className="operation-activity-item working" key={activity.id}>
+								<div
+									className={`operation-activity-item ${needsAttention ? 'error' : 'working'}`}
+									key={activity.id}
+								>
 									<Link
 										className="operation-activity-open"
 										to={`/asset/${activity.collectionId}/${activity.asset.id}/pending`}
@@ -1777,16 +1821,25 @@ function OperationActivityControl() {
 										</span>
 										<span className="operation-activity-copy">
 											<strong>{activity.asset.name}</strong>
-											<small>Upload · {mintActivityPhaseLabel(activity.phase)}</small>
+											<small>
+												Upload ·{' '}
+												{needsAttention
+													? 'Needs attention'
+													: mintActivityPhaseLabel(activity.phase)}
+											</small>
 											<span>
-												{activity.status}
+												{needsAttention
+													? 'This upload has not reached live process state.'
+													: activity.status}
 												{pinnedGateway ? ' Tracking is pinned to the original gateways.' : ''}
 											</span>
 										</span>
-										<LoaderCircle
-											className="ui-icon ui-icon--xs operation-activity-loader"
-											aria-hidden="true"
-										/>
+										{needsAttention ? null : (
+											<LoaderCircle
+												className="ui-icon ui-icon--xs operation-activity-loader"
+												aria-hidden="true"
+											/>
+										)}
 										<ChevronRight
 											className="ui-icon ui-icon--sm operation-activity-chevron"
 											aria-hidden="true"

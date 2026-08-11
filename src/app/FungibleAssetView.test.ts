@@ -20,6 +20,7 @@ import {
 	checkpointBatchPreparation,
 	fungibleBatchRecoveryStatus,
 	fungibleListingAccessibleLabel,
+	FungibleListingComposer,
 	type FungibleOperationActivity,
 	FungibleOperationErrorAlert,
 	fungibleOperationStateError,
@@ -223,6 +224,30 @@ describe('fungible operation error semantics', () => {
 		const quote = purchaseAmountMatch([purchaseOrder('1'.repeat(43), 'a'.repeat(43), '2', '2')], '3', state);
 		expect(quote.match).toBeNull();
 		expect(quote.error).toBe('Only 2 WEAVE is currently available.');
+	});
+
+	it('presents listing quantity and unit price as one connected composer', () => {
+		const composer = renderToStaticMarkup(
+			React.createElement(FungibleListingComposer, {
+				availableQuantity: '48',
+				onMax: () => undefined,
+				onQuantityChange: () => undefined,
+				onUnitPriceChange: () => undefined,
+				quantity: '12',
+				quantityError: '',
+				state: { denomination: 0, ticker: 'MINTA' } as AssetState,
+				total: '0.00024',
+				unitPrice: '0.00002',
+				unitPriceError: '',
+			})
+		);
+
+		expect(composer).toContain('Create listing');
+		expect(composer).toContain('You list');
+		expect(composer).toContain('value="12"');
+		expect(composer).toContain('Unit price');
+		expect(composer).toContain('value="0.00002"');
+		expect(composer).toContain('0.00024 AR total');
 	});
 
 	it('counts only the new wallet approvals missing from a recovered batch', () => {

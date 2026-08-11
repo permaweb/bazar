@@ -326,6 +326,9 @@ export function FungibleAssetView({
 		[]
 	);
 	const [purchaseQuantity, setPurchaseQuantity] = React.useState('');
+	const [listingQuantity, setListingQuantity] = React.useState('');
+	const [listingUnitPrice, setListingUnitPrice] = React.useState('');
+	const [tradeMode, setTradeMode] = React.useState<'buy' | 'sell'>('buy');
 	const [activeSection, setActiveSection] = React.useState<'orders' | 'about' | 'activity' | 'rights'>('orders');
 	const [orderReveal, setOrderReveal] = React.useState({ assetId: asset.id, limit: 50 });
 	const orderRevealStatusRef = React.useRef<HTMLParagraphElement>(null);
@@ -344,6 +347,26 @@ export function FungibleAssetView({
 	const forSale = openOrders.reduce((total, order) => total + BigInt(order.quantity), 0n).toString();
 	const purchasableQuantity = purchasableOrders.reduce((total, order) => total + BigInt(order.quantity), 0n);
 	const purchaseAmountResult = purchaseAmountMatch(purchasableOrders, purchaseQuantity, state);
+	const listingAmount = safeTokenAmount(listingQuantity, state.denomination);
+	const listingBalance = BigInt(liquid);
+	const listingQuantityError = listingQuantity.trim()
+		? listingAmount === null
+			? `Enter a valid ${ticker} amount using no more than ${state.denomination} decimal places.`
+			: listingAmount > listingBalance
+			? `You can list up to ${tokenLabel(liquid, state)}.`
+			: ''
+		: '';
+	const listingUnitPriceError =
+		listingUnitPrice.trim() && !safeArPrice(listingUnitPrice)
+			? 'Enter a positive AR price with no more than 12 decimal places.'
+			: '';
+	const listingQuote =
+		listingAmount !== null && listingAmount <= listingBalance
+			? safeLotQuote(listingQuantity, listingUnitPrice, state)
+			: null;
+	const listingReady = Boolean(
+		listingAmount !== null && listingAmount <= listingBalance && safeArPrice(listingUnitPrice) && listingQuote
+	);
 	const holderAddresses = new Set(
 		Object.entries(state.balances)
 			.filter(([, balance]) => BigInt(balance) > 0n)
@@ -381,9 +404,27 @@ export function FungibleAssetView({
 			panelId: 'fungible-asset-rights',
 		},
 	];
+	type FungibleTradeMode = typeof tradeMode;
+	const tradeTabs: AssetDetailTab<FungibleTradeMode>[] = [
+		{
+			value: 'buy',
+			label: 'Buy',
+			icon: <ShoppingCart className="ui-icon" aria-hidden="true" />,
+			panelId: 'fungible-trade-buy',
+		},
+		{
+			value: 'sell',
+			label: 'List',
+			icon: <Tag className="ui-icon" aria-hidden="true" />,
+			panelId: 'fungible-trade-sell',
+		},
+	];
 
 	React.useEffect(() => {
 		setPurchaseQuantity('');
+		setListingQuantity('');
+		setListingUnitPrice('');
+		setTradeMode('buy');
 		setActiveSection('orders');
 	}, [asset.id]);
 
@@ -772,25 +813,75 @@ export function FungibleAssetView({
 								<strong>{holders.toLocaleString()}</strong>
 							</div>
 						</div>
-						{purchasableOrders.length ? (
-							<FungiblePurchaseComposer
-								availableQuantity={purchasableQuantity.toString()}
-								error={purchaseAmountResult.error}
-								match={purchaseAmountResult.match}
-								onChange={setPurchaseQuantity}
-								onMax={() =>
-									setPurchaseQuantity(
-										formatTokenAmount(purchasableQuantity.toString(), state.denomination)
-									)
-								}
-								quantity={purchaseQuantity}
-								state={state}
+						<div className="fungible-trade-switcher">
+							<AssetDetailTabs<FungibleTradeMode>
+								active={tradeMode}
+								ariaLabel="Trade action"
+								idPrefix="fungible-trade"
+								onChange={setTradeMode}
+								tabs={tradeTabs}
 							/>
+						</div>
+						{tradeMode === 'buy' ? (
+							<div
+								aria-labelledby="fungible-trade-buy-tab"
+								className="fungible-trade-panel"
+								id="fungible-trade-buy"
+								role="tabpanel"
+							>
+								{purchasableOrders.length ? (
+									<FungiblePurchaseComposer
+										availableQuantity={purchasableQuantity.toString()}
+										error={purchaseAmountResult.error}
+										match={purchaseAmountResult.match}
+										onChange={setPurchaseQuantity}
+										onMax={() =>
+											setPurchaseQuantity(
+												formatTokenAmount(purchasableQuantity.toString(), state.denomination)
+											)
+										}
+										quantity={purchaseQuantity}
+										state={state}
+									/>
+								) : (
+									<div className="asset-buy-summary">
+										<span>Purchase amount</span>
+										<strong>No purchasable listings</strong>
+										<small>No open listings are available to this wallet.</small>
+									</div>
+								)}
+							</div>
 						) : (
-							<div className="asset-buy-summary">
-								<span>Purchase amount</span>
-								<strong>No purchasable listings</strong>
-								<small>No open listings are available to this wallet.</small>
+							<div
+								aria-labelledby="fungible-trade-sell-tab"
+								className="fungible-trade-panel"
+								id="fungible-trade-sell"
+								role="tabpanel"
+							>
+								{wallet.address && listingBalance > 0n ? (
+									<FungibleListingComposer
+										availableQuantity={liquid}
+										onMax={() => setListingQuantity(formatTokenAmount(liquid, state.denomination))}
+										onQuantityChange={setListingQuantity}
+										onUnitPriceChange={setListingUnitPrice}
+										quantity={listingQuantity}
+										quantityError={listingQuantityError}
+										state={state}
+										total={listingQuote}
+										unitPrice={listingUnitPrice}
+										unitPriceError={listingUnitPriceError}
+									/>
+								) : (
+									<div className="asset-buy-summary">
+										<span>Listing amount</span>
+										<strong>{wallet.address ? 'No liquid tokens' : 'Connect to list'}</strong>
+										<small>
+											{wallet.address
+												? 'Tokens already listed for sale are not available for a new listing.'
+												: 'Connect your wallet to see the tokens available to list.'}
+										</small>
+									</div>
+								)}
 							</div>
 						)}
 						{walletActivities.map((activity) => (
@@ -804,7 +895,7 @@ export function FungibleAssetView({
 						))}
 						<div className="asset-commerce-actions">
 							{!wallet.address ? <ConnectWalletButton /> : null}
-							{wallet.address && purchasableOrders.length ? (
+							{tradeMode === 'buy' && wallet.address && purchasableOrders.length ? (
 								<Button
 									className="with-icon market-primary-action"
 									disabled={
@@ -833,18 +924,26 @@ export function FungibleAssetView({
 										: 'Enter an amount'}
 								</Button>
 							) : null}
-							{wallet.address && BigInt(liquid) > 0n ? (
+							{tradeMode === 'sell' && wallet.address && listingBalance > 0n ? (
 								<Button
 									className="with-icon market-primary-action"
-									disabled={assetBlocksActions || loading || Boolean(error)}
+									disabled={!listingReady || assetBlocksActions || loading || Boolean(error)}
 									size="custom"
-									onClick={() => openOperation({ kind: 'sell' })}
+									onClick={() =>
+										openOperation({
+											kind: 'sell',
+											quantity: listingQuantity,
+											unitPrice: listingUnitPrice,
+										})
+									}
 									variant="primary"
 								>
 									<Tag className="ui-icon ui-icon--sm" aria-hidden="true" />{' '}
 									{activeAssetActivity?.operation.kind === 'sell'
 										? assetOperationPendingActionLabel('sell')
-										: 'List tokens'}
+										: listingReady
+										? 'Review listing'
+										: 'Enter listing details'}
 								</Button>
 							) : null}
 							{wallet.address && BigInt(liquid) > 0n ? (
@@ -3125,6 +3224,96 @@ export function FungiblePurchaseComposer({
 			{error ? (
 				<p className="purchase-composer-error" id={errorId} role="alert">
 					{error}
+				</p>
+			) : null}
+		</section>
+	);
+}
+
+export function FungibleListingComposer({
+	availableQuantity,
+	onMax,
+	onQuantityChange,
+	onUnitPriceChange,
+	quantity,
+	quantityError,
+	state,
+	total,
+	unitPrice,
+	unitPriceError,
+}: {
+	availableQuantity: string;
+	onMax(): void;
+	onQuantityChange(quantity: string): void;
+	onUnitPriceChange(unitPrice: string): void;
+	quantity: string;
+	quantityError: string;
+	state: AssetState;
+	total: string | null;
+	unitPrice: string;
+	unitPriceError: string;
+}) {
+	const ticker = state.ticker || 'Token';
+	const quantityId = React.useId();
+	const quantityGuidanceId = React.useId();
+	const quantityErrorId = React.useId();
+	const unitPriceId = React.useId();
+	const priceGuidanceId = React.useId();
+	const priceErrorId = React.useId();
+
+	return (
+		<section aria-label="Create listing" className="purchase-composer">
+			<div className="purchase-composer-panel purchase-composer-buy">
+				<div className="purchase-composer-heading">
+					<label htmlFor={quantityId}>You list</label>
+					<Button onClick={onMax} type="button" size="custom">
+						Max
+					</Button>
+				</div>
+				<div className="purchase-composer-value">
+					<input
+						aria-describedby={`${quantityGuidanceId}${quantityError ? ` ${quantityErrorId}` : ''}`}
+						aria-invalid={Boolean(quantityError)}
+						id={quantityId}
+						inputMode="decimal"
+						onChange={(event) => onQuantityChange(event.target.value)}
+						placeholder="0"
+						value={quantity}
+					/>
+					<span className="purchase-composer-token">{ticker}</span>
+				</div>
+				<small id={quantityGuidanceId}>{tokenLabel(availableQuantity, state)} available</small>
+			</div>
+			<div className="purchase-composer-panel purchase-composer-pay">
+				<span className="purchase-composer-direction" aria-hidden="true">
+					<ArrowDown />
+				</span>
+				<div className="purchase-composer-heading">
+					<label htmlFor={unitPriceId}>Unit price</label>
+					<span>{total ? `${total} AR total` : 'Listing total'}</span>
+				</div>
+				<div className="purchase-composer-value">
+					<input
+						aria-describedby={`${priceGuidanceId}${unitPriceError ? ` ${priceErrorId}` : ''}`}
+						aria-invalid={Boolean(unitPriceError)}
+						id={unitPriceId}
+						inputMode="decimal"
+						onChange={(event) => onUnitPriceChange(event.target.value)}
+						placeholder="0"
+						value={unitPrice}
+					/>
+					<span className="purchase-composer-token">AR</span>
+				</div>
+				<small id={priceGuidanceId}>Price per {ticker}; network fees are shown in review.</small>
+			</div>
+			{quantityError ? (
+				<p className="purchase-composer-error" id={quantityErrorId} role="alert">
+					{quantityError}
+				</p>
+			) : null}
+			{unitPriceError ? (
+				<p className="purchase-composer-error" id={priceErrorId} role="alert">
+					{unitPriceError}
 				</p>
 			) : null}
 		</section>
