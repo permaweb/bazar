@@ -134,7 +134,7 @@ export default function CreateRoute() {
 	const [description, setDescription] = React.useState('');
 	const [ticker, setTicker] = React.useState('');
 	const [supply, setSupply] = React.useState('');
-	const [denomination, setDenomination] = React.useState('0');
+	const [denomination, setDenomination] = React.useState('12');
 	const [logoTxId, setLogoTxId] = React.useState('');
 	const [fungibleEstimate, setFungibleEstimate] = React.useState<FungibleMintEstimate | null>(null);
 	const [fungiblePhase, setFungiblePhase] = React.useState<'signing' | 'uploading' | null>(null);
@@ -898,12 +898,6 @@ export default function CreateRoute() {
 									value={denomination}
 									onChange={(event) => setDenomination(event.target.value.trim())}
 								/>
-								<span>
-									Display decimals (0–{MAX_FUNGIBLE_DENOMINATION}). Keep 0 for tokens you plan to
-									dispatch: an L1 transfer really costs its amount in winston (1 AR per 1e12 base
-									units), so high denominations with huge base-unit supplies make dispatching
-									expensive.
-								</span>
 							</div>
 							<div className="create-field">
 								<label htmlFor="mint-logo">
