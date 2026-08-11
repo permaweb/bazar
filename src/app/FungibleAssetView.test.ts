@@ -20,6 +20,8 @@ import {
 	checkpointBatchPreparation,
 	fungibleBatchRecoveryStatus,
 	fungibleListingAccessibleLabel,
+	FungibleListingComposer,
+	type FungibleOperationActivity,
 	FungibleOperationErrorAlert,
 	fungibleOperationStateError,
 	fungibleOrderActionLabel,
@@ -36,9 +38,12 @@ import {
 	MatchedListingsReview,
 	nextSettlementAnnouncement,
 	purchaseAmountMatch,
+	purchaseFailureMessageNeedsManualReview,
 	purchaseQuoteIdentity,
 	PurchaseRoute,
+	purchaseSettlementNeedsManualReview,
 	purchaseStateFrameBuffer,
+	restartFungibleOperationActivity,
 	settlementTabIndex,
 	storeBatchRecoveryBeforeDispatch,
 	visibleOrderbookRows,
@@ -127,6 +132,62 @@ describe('fungible operation error semantics', () => {
 		expect(activities.map((activity) => activity.visible)).toEqual([false, true]);
 	});
 
+	it('restarts a recoverable settlement as a visible fresh dialog instance', () => {
+		const failed: FungibleOperationActivity = {
+			id: 'purchase',
+			operation: {
+				kind: 'buy',
+				availableOrders: [] as SwapOrder[],
+				startingBalance: '0',
+				resume: { version: 3, buyer: BUYER, startingBalance: '0', entries: [] },
+			},
+			phase: 'error',
+			signer: BUYER,
+			visible: true,
+			createdAt: 100,
+		};
+
+		expect(restartFungibleOperationActivity(failed, 100)).toMatchObject({
+			id: 'purchase',
+			operation: failed.operation,
+			phase: null,
+			visible: true,
+			createdAt: 101,
+		});
+	});
+
+	it('does not present a process-rejected payment as resumable observation', () => {
+		expect(
+			purchaseSettlementNeedsManualReview({
+				stage: 'failed',
+				error: { code: 'asset-purchase-rejected', message: 'asset purchase rejected' },
+			} as PurchaseState)
+		).toBe(true);
+		expect(
+			purchaseSettlementNeedsManualReview({
+				stage: 'failed',
+				error: { code: 'asset-payment-observer-timeout', message: 'asset purchase rejected' },
+			} as PurchaseState)
+		).toBe(true);
+		expect(
+			purchaseSettlementNeedsManualReview({
+				stage: 'failed',
+				error: { code: 'asset-payment-observer-timeout', message: 'observer timeout' },
+			} as PurchaseState)
+		).toBe(false);
+	});
+
+	it('recognizes a terminal failure reported only by the batch summary', () => {
+		expect(
+			purchaseFailureMessageNeedsManualReview('1 of 1 settlements need attention. asset purchase rejected')
+		).toBe(true);
+		expect(
+			purchaseFailureMessageNeedsManualReview(
+				'1 of 1 settlements need attention. observer timed out while checking transaction'
+			)
+		).toBe(false);
+	});
+
 	it('quotes a requested token amount from automatic partial fills', () => {
 		const orders = [
 			purchaseOrder('1'.repeat(43), 'a'.repeat(43), '2', '2'),
@@ -163,6 +224,30 @@ describe('fungible operation error semantics', () => {
 		const quote = purchaseAmountMatch([purchaseOrder('1'.repeat(43), 'a'.repeat(43), '2', '2')], '3', state);
 		expect(quote.match).toBeNull();
 		expect(quote.error).toBe('Only 2 WEAVE is currently available.');
+	});
+
+	it('presents listing quantity and unit price as one connected composer', () => {
+		const composer = renderToStaticMarkup(
+			React.createElement(FungibleListingComposer, {
+				availableQuantity: '48',
+				onMax: () => undefined,
+				onQuantityChange: () => undefined,
+				onUnitPriceChange: () => undefined,
+				quantity: '12',
+				quantityError: '',
+				state: { denomination: 0, ticker: 'MINTA' } as AssetState,
+				total: '0.00024',
+				unitPrice: '0.00002',
+				unitPriceError: '',
+			})
+		);
+
+		expect(composer).toContain('Create listing');
+		expect(composer).toContain('You list');
+		expect(composer).toContain('value="12"');
+		expect(composer).toContain('Unit price');
+		expect(composer).toContain('value="0.00002"');
+		expect(composer).toContain('0.00024 AR total');
 	});
 
 	it('counts only the new wallet approvals missing from a recovered batch', () => {

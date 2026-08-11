@@ -1755,7 +1755,7 @@ const AcceptedProofStem = styled.span`
 	width: var(--proof-stem-length, 0);
 	height: 1px;
 	transform: rotate(var(--proof-stem-angle, 0)) scaleX(1);
-	transform-origin: 100% 50%;
+	transform-origin: 0 50%;
 	background: color-mix(in srgb, ${(props) => props.theme.colors.font.alt1} 48%, transparent);
 	animation: ${acceptedProofConnectorEnter} 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
 	pointer-events: none;

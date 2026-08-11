@@ -15,6 +15,9 @@ export type MintedAsset = AssetSummary & {
 	description: string;
 	mediaId: string;
 	artworkId?: string;
+	artist?: string;
+	album?: string;
+	duration?: number;
 	owner: string;
 	createdAt: number;
 };
@@ -88,9 +91,13 @@ export function assetFromMintState(
 	raw: Record<string, unknown>,
 	fallbackName = ''
 ): AssetSummary | null {
-	const mediaId = String(raw['asset-data'] ?? '');
+	const explicitMediaId = String(raw['asset-data'] ?? '');
+	const mediaId = explicitMediaId || processId;
 	const contentType = normalizeAssetContentType(String(raw['asset-content-type'] ?? ''));
 	const artworkId = String(raw['asset-artwork'] ?? '');
+	const artist = typeof raw.artist === 'string' ? raw.artist.trim() : '';
+	const album = typeof raw.album === 'string' ? raw.album.trim() : '';
+	const duration = Number(raw.duration);
 	const name = String(raw.name ?? fallbackName).trim();
 	if (
 		!ADDRESS.test(processId) ||
@@ -105,6 +112,9 @@ export function assetFromMintState(
 		id: processId,
 		name,
 		contentType,
+		...(artist ? { artist } : {}),
+		...(album ? { album } : {}),
+		...(Number.isFinite(duration) && duration > 0 ? { duration } : {}),
 		...(isAudioContentType(contentType)
 			? { media: `${gateway}/${mediaId}`, ...(artworkId ? { image: `${gateway}/${artworkId}` } : {}) }
 			: { image: `${gateway}/${mediaId}` }),
@@ -123,6 +133,9 @@ function isMintedAsset(value: unknown): value is MintedAsset {
 		isSupportedAssetContentType(asset.contentType) &&
 		(isAudioContentType(asset.contentType) ? typeof asset.media === 'string' : typeof asset.image === 'string') &&
 		(asset.artworkId === undefined || ADDRESS.test(asset.artworkId)) &&
+		(asset.artist === undefined || typeof asset.artist === 'string') &&
+		(asset.album === undefined || typeof asset.album === 'string') &&
+		(asset.duration === undefined || (Number.isFinite(asset.duration) && asset.duration > 0)) &&
 		Number.isSafeInteger(asset.createdAt)
 	);
 }

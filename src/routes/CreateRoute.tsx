@@ -25,7 +25,9 @@ import { AudioArtwork } from 'components/AudioArtwork';
 import { Button } from 'components/Button';
 import { Loading } from 'components/Loading';
 import { MintTransactionReceipt, type MintTransactionReceiptEntry } from 'components/MintTransactionReceipt';
+import { SegmentedTabs } from 'components/SegmentedTabs';
 import { isAudioContentType, normalizeAssetContentType } from 'helpers/asset-media';
+import { type EmbeddedAudioMetadata, extractEmbeddedAudioMetadata, formatAudioDuration } from 'helpers/audio-metadata';
 import { arweaveGatewayFromLocation } from 'helpers/config';
 import { useWallet } from 'providers/WalletProvider';
 
@@ -93,11 +95,15 @@ export default function CreateRoute() {
 	const navigate = useNavigate();
 	const fileInput = React.useRef<HTMLInputElement>(null);
 	const artworkInput = React.useRef<HTMLInputElement>(null);
+	const metadataRequest = React.useRef(0);
+	const artworkRevision = React.useRef(0);
 	const [mode, setMode] = React.useState<'asset' | 'collection'>('asset');
 	const [name, setName] = React.useState('');
 	const [description, setDescription] = React.useState('');
 	const [file, setFile] = React.useState<File | null>(null);
 	const [artwork, setArtwork] = React.useState<File | null>(null);
+	const [audioMetadata, setAudioMetadata] = React.useState<EmbeddedAudioMetadata>({});
+	const [readingAudioMetadata, setReadingAudioMetadata] = React.useState(false);
 	const [collectionFiles, setCollectionFiles] = React.useState<File[]>([]);
 	const [preview, setPreview] = React.useState('');
 	const [artworkPreview, setArtworkPreview] = React.useState('');
@@ -105,7 +111,6 @@ export default function CreateRoute() {
 	const [estimate, setEstimate] = React.useState<MintEstimate | null>(null);
 	const [collectionEstimate, setCollectionEstimate] = React.useState<CollectionMintEstimate | null>(null);
 	const [estimating, setEstimating] = React.useState(false);
-	const [allowHighCost, setAllowHighCost] = React.useState(false);
 	const [udlEnabled, setUdlEnabled] = React.useState(true);
 	const [udlTerms, setUdlTerms] = React.useState<UdlTerms>({});
 	const [phase, setPhase] = React.useState<MintPhase | null>(null);
@@ -170,6 +175,16 @@ export default function CreateRoute() {
 		return () => controller.abort();
 	}, [result]);
 	React.useEffect(() => {
+		if (!result) return;
+		const markLive = (event: Event) => {
+			if ((event as CustomEvent<{ asset?: { id?: string } }>).detail?.asset?.id === result.id) {
+				setResultReady(true);
+			}
+		};
+		window.addEventListener('bazar:mint-live', markLive);
+		return () => window.removeEventListener('bazar:mint-live', markLive);
+	}, [result]);
+	React.useEffect(() => {
 		if (mode !== 'asset' || !file || !name.trim()) {
 			setEstimate(null);
 			return;
@@ -179,7 +194,19 @@ export default function CreateRoute() {
 			setEstimating(true);
 			setError(null);
 			void new AssetMintClient()
-				.estimate({ file, artwork: artwork ?? undefined, name, description, udl: activeUdl }, controller.signal)
+				.estimate(
+					{
+						file,
+						artwork: artwork ?? undefined,
+						name,
+						description,
+						artist: audioMetadata.artist,
+						album: audioMetadata.album,
+						duration: audioMetadata.duration,
+						udl: activeUdl,
+					},
+					controller.signal
+				)
 				.then(
 					(nextEstimate) => {
 						if (!controller.signal.aborted) setEstimate(nextEstimate);
@@ -196,7 +223,7 @@ export default function CreateRoute() {
 			window.clearTimeout(timer);
 			controller.abort();
 		};
-	}, [activeUdl, artwork, description, file, mode, name]);
+	}, [activeUdl, artwork, audioMetadata, description, file, mode, name]);
 	React.useEffect(() => {
 		if (mode !== 'collection' || !collectionFiles.length || !name.trim()) {
 			setCollectionEstimate(null);
@@ -227,19 +254,51 @@ export default function CreateRoute() {
 	}, [activeUdl, collectionFiles, description, mode, name]);
 
 	const selectFile = (next: File | null) => {
+		const request = ++metadataRequest.current;
+		const artworkVersion = ++artworkRevision.current;
 		setFile(next);
-		if (!next || !isAudioContentType(normalizeAssetContentType(next.type, next.name) ?? undefined))
-			setArtwork(null);
+		setArtwork(null);
+		setAudioMetadata({});
+		setReadingAudioMetadata(false);
 		setEstimate(null);
-		setAllowHighCost(false);
 		setError(null);
 		setResult(null);
-		if (next && !name.trim()) setName(next.name.replace(/\.[^.]+$/, '').slice(0, 80));
+		if (next) {
+			const fallbackName = next.name.replace(/\.[^.]+$/, '').slice(0, 80);
+			if (!name.trim()) setName(fallbackName);
+			if (isAudioContentType(normalizeAssetContentType(next.type, next.name) ?? undefined)) {
+				setReadingAudioMetadata(true);
+				void extractEmbeddedAudioMetadata(next).then(
+					(metadata) => {
+						if (metadataRequest.current !== request) return;
+						const safeMetadata = {
+							...metadata,
+							...(metadata.artist ? { artist: metadata.artist.slice(0, 160) } : {}),
+							...(metadata.album ? { album: metadata.album.slice(0, 160) } : {}),
+							...(metadata.artwork && metadata.artwork.size <= 10 * 1024 * 1024
+								? { artwork: metadata.artwork }
+								: { artwork: undefined }),
+						};
+						setAudioMetadata(safeMetadata);
+						setName((current) =>
+							metadata.title && (!current.trim() || current === fallbackName)
+								? metadata.title.slice(0, 80)
+								: current
+						);
+						if (safeMetadata.artwork && artworkRevision.current === artworkVersion)
+							setArtwork(safeMetadata.artwork);
+						setReadingAudioMetadata(false);
+					},
+					() => {
+						if (metadataRequest.current === request) setReadingAudioMetadata(false);
+					}
+				);
+			}
+		}
 	};
 	const selectCollectionFiles = (next: File[]) => {
 		setCollectionFiles(next.slice(0, 10));
 		setCollectionEstimate(null);
-		setAllowHighCost(false);
 		setError(next.length > 10 ? 'Collections support up to 10 images at a time.' : null);
 		setCollectionResult(null);
 	};
@@ -248,6 +307,7 @@ export default function CreateRoute() {
 		setResult(asset);
 		setDraft(null);
 		setPhase(null);
+		navigate(`/asset/${CREATED_COLLECTION_ID}/${asset.id}/pending`, { replace: true });
 	};
 	const mint = async () => {
 		if (!wallet.address) {
@@ -264,7 +324,7 @@ export default function CreateRoute() {
 				const minted = await new CollectionMintClient().mint(
 					{ files: collectionFiles, name, description, udl: activeUdl },
 					wallet.address,
-					{ allowHighCost, onPhase: setCollectionPhase }
+					{ allowHighCost: true, onPhase: setCollectionPhase }
 				);
 				market.addCollection(minted.collection);
 				setCollectionResult(minted);
@@ -273,10 +333,19 @@ export default function CreateRoute() {
 			}
 			if (!file) return;
 			const minted = await new AssetMintClient().mint(
-				{ file, artwork: artwork ?? undefined, name, description, udl: activeUdl },
+				{
+					file,
+					artwork: artwork ?? undefined,
+					name,
+					description,
+					artist: audioMetadata.artist,
+					album: audioMetadata.album,
+					duration: audioMetadata.duration,
+					udl: activeUdl,
+				},
 				wallet.address,
 				{
-					allowHighCost,
+					allowHighCost: true,
 					onPhase: setPhase,
 				}
 			);
@@ -303,12 +372,10 @@ export default function CreateRoute() {
 		? collectionPhase.kind === 'asset'
 			? `Asset ${collectionPhase.index + 1} of ${collectionPhase.total}: ${
 					{
-						'signing-media': 'approve media upload',
-						'uploading-media': 'uploading media',
+						'signing-asset': 'approve atomic asset',
+						'uploading-asset': 'uploading atomic asset',
 						'signing-artwork': 'approve artwork upload',
 						'uploading-artwork': 'uploading artwork',
-						'signing-process': 'approve asset process',
-						'creating-process': 'creating asset',
 					}[collectionPhase.phase]
 			  }…`
 			: `${collectionPhase.kind === 'manifest' ? 'Collection manifest' : 'Collection index'}: ${
@@ -316,15 +383,14 @@ export default function CreateRoute() {
 			  }…`
 		: phase
 		? {
-				'signing-media': 'Approve the media upload in your wallet…',
-				'uploading-media': 'Uploading media to Arweave…',
+				'signing-asset': 'Approve the atomic asset in your wallet…',
+				'uploading-asset': 'Uploading the atomic asset to Arweave…',
 				'signing-artwork': 'Approve the album artwork in your wallet…',
 				'uploading-artwork': 'Uploading album artwork to Arweave…',
-				'signing-process': 'Approve the asset process in your wallet…',
-				'creating-process': 'Creating your one-of-one asset…',
 		  }[phase]
 		: '';
 	const activeEstimate = mode === 'asset' ? estimate : collectionEstimate;
+	const activeUploadBytes = mode === 'asset' && estimate ? estimate.assetBytes + estimate.artworkBytes : null;
 	const receiptEntries: MintTransactionReceiptEntry[] = collectionResult
 		? [
 				{ label: 'View collection manifest', transactionId: collectionResult.manifestId },
@@ -332,9 +398,8 @@ export default function CreateRoute() {
 		  ]
 		: result
 		? [
-				{ label: 'View media upload', transactionId: result.mediaId },
-				...(result.artworkId ? [{ label: 'View artwork upload', transactionId: result.artworkId }] : []),
-				{ label: 'View asset creation', transactionId: result.id },
+				...(result.artworkId ? [{ label: 'Artwork transaction', transactionId: result.artworkId }] : []),
+				{ label: 'Asset transaction', transactionId: result.id },
 		  ]
 		: [];
 
@@ -347,49 +412,33 @@ export default function CreateRoute() {
 				</div>
 				<p>
 					{mode === 'asset'
-						? 'Your media and its one-of-one marketplace process are signed in your wallet and stored on Arweave.'
+						? 'Your media, metadata, and one-of-one marketplace process are stored together under one Arweave transaction ID.'
 						: 'Mint a group of one-of-one assets and submit their shareable collection index to Arweave.'}
 				</p>
 			</div>
 
-			<div className="create-mode" role="tablist" aria-label="Create type">
-				<Button
-					className={mode === 'asset' ? 'active' : undefined}
-					role="tab"
-					aria-selected={mode === 'asset'}
-					type="button"
-					size="custom"
-					onClick={() => {
-						setMode('asset');
-						setError(null);
-						setAllowHighCost(false);
-					}}
-				>
-					Single asset
-				</Button>
-				<Button
-					className={mode === 'collection' ? 'active' : undefined}
-					role="tab"
-					aria-selected={mode === 'collection'}
-					type="button"
-					size="custom"
-					onClick={() => {
-						setMode('collection');
-						setError(null);
-						setAllowHighCost(false);
-					}}
-				>
-					Collection
-				</Button>
-			</div>
+			<SegmentedTabs
+				active={mode}
+				ariaLabel="Create type"
+				className="create-mode"
+				idPrefix="create-mode"
+				onChange={(nextMode) => {
+					setMode(nextMode);
+					setError(null);
+				}}
+				tabs={[
+					{ value: 'asset', label: 'Single asset' },
+					{ value: 'collection', label: 'Collection' },
+				]}
+			/>
 
 			{mode === 'asset' && draft ? (
 				<div className="mint-recovery" role="status">
 					<div>
 						<strong>Finish your previous mint</strong>
 						<span>
-							The media transaction for “{draft.name}” was accepted by the submission gateway. Only the
-							asset process remains.
+							The earlier media upload for “{draft.name}” was accepted. Bazar can reuse its bytes to
+							finish a self-contained atomic asset.
 						</span>
 					</div>
 					<div>
@@ -442,10 +491,14 @@ export default function CreateRoute() {
 							</span>
 						) : mode === 'asset' && preview ? (
 							audioSelected ? (
-								<AudioArtwork
-									contentType={selectedContentType ?? undefined}
-									name={file?.name ?? name}
-								/>
+								artworkPreview ? (
+									<img src={artworkPreview} alt={`${name || file?.name || 'Audio'} album artwork`} />
+								) : (
+									<AudioArtwork
+										contentType={selectedContentType ?? undefined}
+										name={file?.name ?? name}
+									/>
+								)
 							) : (
 								<img src={preview} alt="Asset preview" />
 							)
@@ -483,11 +536,40 @@ export default function CreateRoute() {
 						</div>
 					) : null}
 					{mode === 'asset' && audioSelected ? (
+						<div className="mint-audio-metadata" aria-live="polite">
+							<strong>{readingAudioMetadata ? 'Reading embedded metadata…' : 'Audio metadata'}</strong>
+							{!readingAudioMetadata ? (
+								<dl>
+									<div>
+										<dt>Title</dt>
+										<dd>{audioMetadata.title || 'Not embedded'}</dd>
+									</div>
+									<div>
+										<dt>Artist</dt>
+										<dd>{audioMetadata.artist || 'Not embedded'}</dd>
+									</div>
+									<div>
+										<dt>Album</dt>
+										<dd>{audioMetadata.album || 'Not embedded'}</dd>
+									</div>
+									<div>
+										<dt>Duration</dt>
+										<dd>{formatAudioDuration(audioMetadata.duration) || 'Unavailable'}</dd>
+									</div>
+								</dl>
+							) : null}
+						</div>
+					) : null}
+					{mode === 'asset' && audioSelected ? (
 						<div className="mint-artwork-field">
 							<div>
 								<span>
 									<strong>Album artwork</strong>
-									<small>Optional · PNG, JPG, WebP, or GIF · up to 10 MB</small>
+									<small>
+										{audioMetadata.artwork && artwork === audioMetadata.artwork
+											? 'Embedded artwork found · replace it if needed'
+											: 'Optional · PNG, JPG, WebP, or GIF · up to 10 MB'}
+									</small>
 								</span>
 								{artworkPreview ? <img src={artworkPreview} alt="Album artwork preview" /> : null}
 							</div>
@@ -502,6 +584,7 @@ export default function CreateRoute() {
 										size="custom"
 										variant="danger"
 										onClick={() => {
+											artworkRevision.current += 1;
 											setArtwork(null);
 											if (artworkInput.current) artworkInput.current.value = '';
 										}}
@@ -516,9 +599,9 @@ export default function CreateRoute() {
 								type="file"
 								accept="image/png,image/jpeg,image/webp,image/gif"
 								onChange={(event) => {
+									artworkRevision.current += 1;
 									setArtwork(event.target.files?.[0] ?? null);
 									setEstimate(null);
-									setAllowHighCost(false);
 									setError(null);
 								}}
 							/>
@@ -855,7 +938,7 @@ export default function CreateRoute() {
 							<span>{mode === 'asset' ? 'Storage target' : 'Transactions'}</span>
 							<strong>
 								{mode === 'asset'
-									? 'Arweave'
+									? '1 atomic asset'
 									: collectionEstimate
 									? collectionEstimate.transactionCount
 									: '—'}
@@ -874,25 +957,32 @@ export default function CreateRoute() {
 					</div>
 
 					{activeEstimate && isHighMintCost(activeEstimate.total) ? (
-						<label className="mint-cost-confirmation">
-							<input
-								type="checkbox"
-								checked={allowHighCost}
-								onChange={(event) => setAllowHighCost(event.target.checked)}
-							/>
-							I approve this unusually high network cost.
-						</label>
+						<section className="mint-cost-note" aria-label="Estimated storage cost">
+							<Info className="ui-icon" aria-hidden="true" />
+							<div>
+								<strong>
+									{winstonToAr(activeEstimate.total.toString())} AR estimated storage cost
+								</strong>
+								<span>
+									Based on{' '}
+									{activeUploadBytes
+										? `${formatBytes(activeUploadBytes)} of permanent media`
+										: 'the selected assets'}{' '}
+									and current network pricing.
+								</span>
+							</div>
+						</section>
 					) : null}
 					<div className="mint-notice">
 						<Info className="ui-icon" aria-hidden="true" />
 						<span>
 							{mode === 'asset'
 								? artwork
-									? 'Your wallet will request three signatures: one for the media, one for the album artwork, and one for the tradeable asset.'
-									: 'Your wallet will request two signatures: one for the media and one for the tradeable asset.'
+									? 'Your wallet will request two signatures: one for the optional album artwork and one atomic transaction containing the audio, metadata, and tradeable process.'
+									: 'Your wallet will request one signature for an atomic transaction containing the media, metadata, and tradeable process.'
 								: collectionEstimate
-								? `Your wallet will request ${collectionEstimate.transactionCount} signatures: two per asset, then the collection manifest and index.`
-								: 'Each image becomes a one-of-one asset. Bazar then submits a collection manifest and index to Arweave.'}
+								? `Your wallet will request ${collectionEstimate.transactionCount} signatures: one atomic transaction per asset, then the collection manifest and index.`
+								: 'Each image becomes one self-contained atomic transaction. Bazar then submits a collection manifest and index to Arweave.'}
 						</span>
 					</div>
 					{error ? (
@@ -916,34 +1006,37 @@ export default function CreateRoute() {
 										? 'The collection receipt is ready to verify.'
 										: resultReady
 										? 'The asset is available through the selected gateway.'
-										: 'Waiting for the asset to become available in Bazar.'}
+										: 'Submitted and accepted by Arweave. It is safe to leave this page; Bazar will keep watching in Activity.'}
 								</p>
 								<MintTransactionReceipt entries={receiptEntries} />
 							</div>
-							<Button
-								type="button"
-								size="custom"
-								disabled={Boolean(result && !resultReady)}
-								onClick={() =>
-									navigate(
-										collectionResult
-											? `/collection/${collectionResult.collection.id}`
-											: `/asset/${CREATED_COLLECTION_ID}/${result!.id}`
-									)
-								}
-							>
+							<div className="mint-success-actions">
 								{result && !resultReady ? (
-									<>
-										Watching Arweave{' '}
-										<InfinityIcon className="ui-icon ui-icon--sm" aria-hidden="true" />
-									</>
-								) : (
-									<>
-										View {collectionResult ? 'collection' : 'asset'}{' '}
+									<Button type="button" size="custom" onClick={() => navigate('/')}>
+										Continue browsing{' '}
 										<ArrowRight className="ui-icon ui-icon--sm" aria-hidden="true" />
-									</>
-								)}
-							</Button>
+									</Button>
+								) : null}
+								<Button
+									type="button"
+									size="custom"
+									disabled={Boolean(result && !resultReady)}
+									onClick={() =>
+										navigate(
+											collectionResult
+												? `/collection/${collectionResult.collection.id}`
+												: `/asset/${CREATED_COLLECTION_ID}/${result!.id}`
+										)
+									}
+								>
+									View {collectionResult ? 'collection' : resultReady ? 'asset' : 'when available'}{' '}
+									{result && !resultReady ? (
+										<InfinityIcon className="ui-icon ui-icon--sm" aria-hidden="true" />
+									) : (
+										<ArrowRight className="ui-icon ui-icon--sm" aria-hidden="true" />
+									)}
+								</Button>
+							</div>
 						</div>
 					) : (
 						<Button
@@ -952,6 +1045,7 @@ export default function CreateRoute() {
 							size="custom"
 							disabled={
 								working ||
+								Boolean(wallet.address && readingAudioMetadata) ||
 								Boolean(wallet.address && mode === 'asset' && file && name.trim() && !estimate) ||
 								Boolean(
 									wallet.address &&
@@ -959,12 +1053,6 @@ export default function CreateRoute() {
 										collectionFiles.length &&
 										name.trim() &&
 										!collectionEstimate
-								) ||
-								Boolean(
-									wallet.address &&
-										activeEstimate &&
-										isHighMintCost(activeEstimate.total) &&
-										!allowHighCost
 								)
 							}
 						>

@@ -326,9 +326,9 @@ export function ArweaveTransactionSync({
 			{lanes.length > 0 && (
 				<TransactionVisualizerBoundary
 					fallback={
-						<S.RaceShell $height={420} $embedded={false}>
+						<S.FallbackShell>
 							<TransactionRendererFallback lanes={cableLanes} />
-						</S.RaceShell>
+						</S.FallbackShell>
 					}
 					resetKey={transaction?.id ?? subject}
 				>

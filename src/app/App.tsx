@@ -7,7 +7,6 @@ import {
 	AtSign,
 	BarChart3,
 	Check,
-	ChevronDown,
 	ChevronRight,
 	CircleX,
 	Compass,
@@ -102,6 +101,16 @@ import {
 	mergeCollectionSnapshots,
 } from 'api/collections';
 import {
+	advanceMintActivity,
+	loadMintActivities,
+	MINT_ACTIVITY_CHANGE_EVENT,
+	type MintActivity,
+	mintActivityNeedsAttention,
+	removeMintActivities,
+	removeMintActivity,
+	upsertMintActivity,
+} from 'api/mint-activity';
+import {
 	CREATED_COLLECTION_ID,
 	createdCollection,
 	loadMintedAssets,
@@ -122,6 +131,7 @@ import { Button } from 'components/Button';
 import { ConnectWalletButton } from 'components/ConnectWalletButton';
 import { ErrorPanel } from 'components/ErrorPanel';
 import { Loading } from 'components/Loading';
+import { MintTransactionReceipt } from 'components/MintTransactionReceipt';
 import { NameArtwork } from 'components/NameArtwork';
 import { NamesCubePreview } from 'components/NamesCubePreview';
 import { OperationOutcome, OperationOutcomeAnnouncement } from 'components/OperationOutcomeAnnouncement';
@@ -142,13 +152,18 @@ import {
 import { WalletAddress, WalletIdentity } from 'components/WalletAddress';
 import { WalletMenu } from 'components/WalletMenu';
 import { isAudioContentType } from 'helpers/asset-media';
+import { formatAudioDuration } from 'helpers/audio-metadata';
 import { mapConcurrent } from 'helpers/concurrency';
-import { arweaveGraphqlEndpoint, gatewayFromLocation, gatewaysFromLocation } from 'helpers/config';
+import {
+	arweaveGatewayFromLocation,
+	arweaveGraphqlEndpoint,
+	gatewayFromLocation,
+	gatewaysFromLocation,
+} from 'helpers/config';
 import { scheduleIdleTask } from 'helpers/idle';
 import { optionalMotionBehavior } from 'helpers/motion';
 import { assetGroupRevealComplete, retainedAssetGroupLimit } from 'helpers/progressive-assets';
 import { useProgressiveReveal } from 'hooks/useProgressiveReveal';
-import { Footer } from 'navigation/Footer';
 import { useWallet } from 'providers/WalletProvider';
 
 import './styles.css';
@@ -207,6 +222,7 @@ import {
 	type WalletOperationClaim,
 	walletOperationStorageChange,
 } from './operation-session';
+import { purchaseGatewaySwitchNotice, purchaseLifecycleStatus } from './purchase-lifecycle';
 import {
 	purchaseObservationCheckingMessage,
 	purchaseObservationPendingState,
@@ -491,11 +507,11 @@ export function App() {
 							/>
 							<Route path="/collection/:collectionId" element={<CollectionRoute />} />
 							<Route path="/collection/:collectionId/activity" element={<CollectionActivityView />} />
+							<Route path="/asset/:collectionId/:assetId/pending" element={<PendingAssetView />} />
 							<Route path="/asset/:collectionId/:assetId" element={<AssetView />} />
 							<Route path="*" element={<Navigate to="/" replace />} />
 						</Routes>
 					</main>
-					<Footer />
 				</OperationActivityProvider>
 			</HashRouter>
 		</MarketContext.Provider>
@@ -522,6 +538,7 @@ type OperationActivity = {
 type OperationActivityContextValue = {
 	activities: OperationActivity[];
 	fungibleActivities: FungibleOperationActivitySummary[];
+	mintActivities: MintActivity[];
 	activeId: string | null;
 	start(
 		input: Pick<OperationActivity, 'asset' | 'collectionId' | 'owner' | 'operation' | 'restoreFallback'>,
@@ -535,16 +552,90 @@ type OperationActivityContextValue = {
 
 const OperationActivityContext = React.createContext<OperationActivityContextValue | null>(null);
 
+async function observeMintActivity(
+	activity: MintActivity,
+	onPhase: (phase: MintActivity['phase']) => void,
+	signal: AbortSignal
+) {
+	let mined = activity.phase === 'mined' || activity.phase === 'applied' || activity.phase === 'complete';
+	while (!signal.aborted) {
+		try {
+			await readAssetState(activity.asset.id, {
+				provider: activity.computeGateway || undefined,
+				maxAge: 0,
+				maxAttempts: 1,
+				signal,
+			});
+			if (!mined) onPhase('mined');
+			onPhase('applied');
+			onPhase('complete');
+			return;
+		} catch (cause) {
+			if (signal.aborted) throw cause;
+		}
+
+		let retryDelay = 4_000;
+		if (!mined) {
+			try {
+				const response = await fetch(
+					`${activity.arweaveGateway.replace(/\/$/, '')}/tx/${activity.asset.id}/status`,
+					{ cache: 'no-store', signal }
+				);
+				if (response.ok) {
+					const payload = (await response.json()) as { block_height?: unknown };
+					if (Number(payload.block_height) > 0) {
+						mined = true;
+						onPhase('mined');
+					}
+				} else if (response.status === 429) {
+					retryDelay = retryAfterDelay(response.headers.get('retry-after'), 4_000);
+				}
+			} catch (cause) {
+				if (signal.aborted) throw cause;
+				// Observation failures never create or upload another transaction.
+			}
+		}
+		await waitForBackgroundObservation(retryDelay, signal);
+	}
+}
+
+function retryAfterDelay(value: string | null, fallback: number) {
+	if (!value) return fallback;
+	const seconds = Number(value.trim());
+	if (Number.isFinite(seconds)) return Math.min(60_000, Math.max(fallback, seconds * 1_000));
+	const date = Date.parse(value);
+	return Number.isFinite(date) ? Math.min(60_000, Math.max(fallback, date - Date.now())) : fallback;
+}
+
+function waitForBackgroundObservation(milliseconds: number, signal: AbortSignal) {
+	return new Promise<void>((resolve, reject) => {
+		const timer = window.setTimeout(() => {
+			signal.removeEventListener('abort', abort);
+			resolve();
+		}, milliseconds);
+		const abort = () => {
+			window.clearTimeout(timer);
+			signal.removeEventListener('abort', abort);
+			reject(signal.reason);
+		};
+		if (signal.aborted) abort();
+		else signal.addEventListener('abort', abort, { once: true });
+	});
+}
+
 function OperationActivityProvider({ children }: React.PropsWithChildren) {
 	const navigate = useNavigate();
 	const wallet = useWallet();
 	const market = React.useContext(MarketContext);
 	const [activities, setActivities] = React.useState<OperationActivity[]>([]);
 	const [fungibleActivities, setFungibleActivities] = React.useState<FungibleOperationActivitySummary[]>([]);
+	const [mintActivities, setMintActivities] = React.useState<MintActivity[]>([]);
+	const [mintNotice, setMintNotice] = React.useState<MintActivity | null>(null);
 	const [activeId, setActiveId] = React.useState<string | null>(null);
 	const [hydratedOwners, setHydratedOwners] = React.useState<string[]>([]);
 	const [recoveryValidationRetry, setRecoveryValidationRetry] = React.useState(0);
 	const fungibleRuntimeActivitiesRef = React.useRef<FungibleOperationActivitySummary[]>([]);
+	const mintWatchersRef = React.useRef(new Map<string, AbortController>());
 	const activitiesRef = React.useRef(activities);
 	activitiesRef.current = activities;
 	const refreshOperationActivities = React.useCallback(() => {
@@ -594,6 +685,75 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 		[market.collections, wallet.address]
 	);
 	React.useEffect(() => refreshFungibleActivities(), [refreshFungibleActivities]);
+	const refreshMintActivities = React.useCallback(() => {
+		setMintActivities(loadMintActivities(localStorage));
+	}, []);
+	React.useEffect(() => refreshMintActivities(), [refreshMintActivities]);
+	React.useEffect(() => {
+		const refresh = () => refreshMintActivities();
+		const refreshStorage = (event: StorageEvent) => {
+			if (event.key === 'bazar-mint-activities:v1') refreshMintActivities();
+		};
+		window.addEventListener(MINT_ACTIVITY_CHANGE_EVENT, refresh);
+		window.addEventListener('storage', refreshStorage);
+		return () => {
+			window.removeEventListener(MINT_ACTIVITY_CHANGE_EVENT, refresh);
+			window.removeEventListener('storage', refreshStorage);
+		};
+	}, [refreshMintActivities]);
+	React.useEffect(() => {
+		for (const activity of mintActivities) {
+			if (
+				mintWatchersRef.current.has(activity.id) ||
+				activity.phase === 'complete' ||
+				mintActivityNeedsAttention(activity)
+			)
+				continue;
+			const controller = new AbortController();
+			mintWatchersRef.current.set(activity.id, controller);
+			void observeMintActivity(
+				activity,
+				(phase) => {
+					const current = loadMintActivities(localStorage).find((candidate) => candidate.id === activity.id);
+					if (!current) return;
+					const updated = advanceMintActivity(current, phase);
+					upsertMintActivity(localStorage, updated);
+					if (phase !== 'complete') return;
+					setMintNotice(updated);
+					window.dispatchEvent(new CustomEvent('bazar:mint-live', { detail: updated }));
+					if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+						try {
+							new Notification(`${updated.asset.name} is live on Bazar`, {
+								body: 'The accepted Arweave upload is now available in live process state.',
+							});
+						} catch {
+							// The in-app completion notice remains available when system notifications fail.
+						}
+					}
+					removeMintActivity(localStorage, updated.id);
+				},
+				controller.signal
+			)
+				.catch(() => undefined)
+				.finally(() => mintWatchersRef.current.delete(activity.id));
+		}
+		const active = new Set(
+			mintActivities.filter((activity) => !mintActivityNeedsAttention(activity)).map((activity) => activity.id)
+		);
+		for (const [id, controller] of mintWatchersRef.current) {
+			if (!active.has(id)) {
+				controller.abort();
+				mintWatchersRef.current.delete(id);
+			}
+		}
+	}, [mintActivities]);
+	React.useEffect(
+		() => () => {
+			for (const controller of mintWatchersRef.current.values()) controller.abort();
+			mintWatchersRef.current.clear();
+		},
+		[]
+	);
 	React.useEffect(() => {
 		const updateRuntimeActivity = (event: Event) => {
 			const change = (event as CustomEvent<FungibleOperationActivityChange>).detail;
@@ -815,6 +975,7 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 		() => ({
 			activities,
 			fungibleActivities,
+			mintActivities,
 			activeId,
 			start,
 			show: setActiveId,
@@ -828,11 +989,32 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 			hide: () => setActiveId(null),
 			remove,
 		}),
-		[activeId, activities, fungibleActivities, navigate, remove, start]
+		[activeId, activities, fungibleActivities, mintActivities, navigate, remove, start]
 	);
 	return (
 		<OperationActivityContext.Provider value={value}>
 			{children}
+			{mintNotice ? (
+				<div className="mint-live-notice" role="status" aria-live="polite">
+					<div>
+						<strong>{mintNotice.asset.name} is live on Bazar</strong>
+						<span>The original accepted upload is now applied to live process state.</span>
+					</div>
+					<Button
+						type="button"
+						size="custom"
+						onClick={() => {
+							navigate(`/asset/${mintNotice.collectionId}/${mintNotice.asset.id}`);
+							setMintNotice(null);
+						}}
+					>
+						View asset
+					</Button>
+					<Button type="button" size="custom" variant="ghost" onClick={() => setMintNotice(null)}>
+						Dismiss
+					</Button>
+				</div>
+			) : null}
 			{activities.map((activity) => (
 				<OperationDialog
 					key={activity.id}
@@ -871,7 +1053,7 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 	);
 }
 
-function useOperationActivity() {
+export function useOperationActivity() {
 	const value = React.useContext(OperationActivityContext);
 	if (!value) throw new Error('operation-activity-provider-missing');
 	return value;
@@ -1538,7 +1720,7 @@ function Header() {
 
 function OperationActivityControl() {
 	const wallet = useWallet();
-	const { activities, fungibleActivities, show, showFungible } = useOperationActivity();
+	const { activities, fungibleActivities, mintActivities, show, showFungible } = useOperationActivity();
 	const [open, setOpen] = React.useState(false);
 	const containerRef = React.useRef<HTMLDivElement>(null);
 	const visibleActivities = activities.filter(
@@ -1547,10 +1729,32 @@ function OperationActivityControl() {
 	const visibleFungibleActivities = fungibleActivities.filter((activity) =>
 		isTransactionActivityVisible(activity.phase)
 	);
-	const activityCount = visibleActivities.length + visibleFungibleActivities.length;
+	const visibleMintActivities = mintActivities.filter((activity) => activity.owner === wallet.address);
+	const attentionMintActivities = visibleMintActivities.filter((activity) => mintActivityNeedsAttention(activity));
+	const activityCount = visibleActivities.length + visibleFungibleActivities.length + visibleMintActivities.length;
 	const workingCount =
 		visibleActivities.filter((activity) => activity.phase === 'working').length +
-		visibleFungibleActivities.filter((activity) => activity.phase === 'working').length;
+		visibleFungibleActivities.filter((activity) => activity.phase === 'working').length +
+		visibleMintActivities.filter(
+			(activity) => activity.phase !== 'complete' && !mintActivityNeedsAttention(activity)
+		).length;
+	const clearUploadIssues = () => {
+		if (!attentionMintActivities.length) return;
+		const count = attentionMintActivities.length;
+		if (
+			!window.confirm(
+				`Clear ${count.toLocaleString()} upload ${
+					count === 1 ? 'item' : 'items'
+				} that need attention?\n\nThis removes local Activity tracking only. It does not delete anything from Arweave.`
+			)
+		)
+			return;
+		removeMintActivities(
+			localStorage,
+			attentionMintActivities.map((activity) => activity.id)
+		);
+		setOpen(false);
+	};
 	React.useEffect(() => {
 		if (!open) return;
 		const close = (event: MouseEvent) => {
@@ -1582,9 +1786,20 @@ function OperationActivityControl() {
 						<div>
 							<strong>Transaction activity</strong>
 							<span>
-								{workingCount ? `${workingCount} running in the background` : 'No transactions running'}
+								{attentionMintActivities.length
+									? `${attentionMintActivities.length.toLocaleString()} ${
+											attentionMintActivities.length === 1 ? 'upload needs' : 'uploads need'
+									  } attention`
+									: workingCount
+									? `${workingCount} running in the background`
+									: 'No transactions running'}
 							</span>
 						</div>
+						{attentionMintActivities.length ? (
+							<Button size="custom" variant="ghost" onClick={clearUploadIssues} type="button">
+								Clear upload issues
+							</Button>
+						) : null}
 					</div>
 					<div className="operation-activity-list">
 						{visibleActivities.map((activity) => (
@@ -1678,6 +1893,52 @@ function OperationActivityControl() {
 								</Button>
 							</div>
 						))}
+						{visibleMintActivities.map((activity) => {
+							const pinnedGateway =
+								activity.arweaveGateway !== arweaveGatewayFromLocation() ||
+								activity.computeGateway !== gatewayFromLocation();
+							const needsAttention = mintActivityNeedsAttention(activity);
+							return (
+								<div
+									className={`operation-activity-item ${needsAttention ? 'error' : 'working'}`}
+									key={activity.id}
+								>
+									<Link
+										className="operation-activity-open"
+										to={`/asset/${activity.collectionId}/${activity.asset.id}/pending`}
+									>
+										<span className="operation-activity-symbol" aria-hidden="true">
+											<Upload className="ui-icon ui-icon--sm" />
+										</span>
+										<span className="operation-activity-copy">
+											<strong>{activity.asset.name}</strong>
+											<small>
+												Upload ·{' '}
+												{needsAttention
+													? 'Needs attention'
+													: mintActivityPhaseLabel(activity.phase)}
+											</small>
+											<span>
+												{needsAttention
+													? 'This upload has not reached live process state.'
+													: activity.status}
+												{pinnedGateway ? ' Tracking is pinned to the original gateways.' : ''}
+											</span>
+										</span>
+										{needsAttention ? null : (
+											<LoaderCircle
+												className="ui-icon ui-icon--xs operation-activity-loader"
+												aria-hidden="true"
+											/>
+										)}
+										<ChevronRight
+											className="ui-icon ui-icon--sm operation-activity-chevron"
+											aria-hidden="true"
+										/>
+									</Link>
+								</div>
+							);
+						})}
 					</div>
 				</section>
 			) : null}
@@ -1693,6 +1954,10 @@ function operationActivityPhaseLabel(phase: OperationActivityPhase) {
 		done: 'Complete',
 		error: 'Needs attention',
 	}[phase];
+}
+
+function mintActivityPhaseLabel(phase: MintActivity['phase']) {
+	return { accepted: 'Accepted', mined: 'Mined', applied: 'Applied', complete: 'Complete' }[phase];
 }
 
 export type HomeMarketSummary =
@@ -2916,10 +3181,10 @@ function Home() {
 										{homeTab === 'discover'
 											? normalizedQuery
 												? `Results for “${query}” across the current Arweave collection indexes.`
-												: 'Active listings read from current live state across every marketplace collection.'
+												: 'Find and explore permanent digitals assets across the permaweb.'
 											: homeTab === 'collections'
-											? 'Permanent assets with ownership and settlement native to Arweave.'
-											: 'Recent signed market actions across every marketplace collection.'}
+											? 'Find and explore permanent digitals assets across the permaweb.'
+											: 'Recent activity of purchases, listings, and transfers across every marketplace collection.'}
 									</p>
 								</div>
 								{homeTab === 'discover' ? (
@@ -3817,7 +4082,7 @@ export function MarketSelect<Value extends string>({
 				type="button"
 			>
 				<span>{selected.label}</span>
-				<ChevronDown aria-hidden="true" />
+				<ChevronRight aria-hidden="true" />
 			</Button>
 			{open ? (
 				<div aria-label={label} className="market-select-menu" id={menuId} role="listbox">
@@ -6310,6 +6575,99 @@ function AssetDetailLoadingShell({
 	);
 }
 
+function PendingAssetView() {
+	const { collectionId = '', assetId = '' } = useParams();
+	const navigate = useNavigate();
+	const { mintActivities } = useOperationActivity();
+	const activity =
+		mintActivities.find((candidate) => candidate.asset.id === assetId) ??
+		loadMintActivities(localStorage).find((candidate) => candidate.asset.id === assetId);
+	const finalPath = `/asset/${activity?.collectionId ?? collectionId}/${assetId}`;
+	const asset = activity?.asset ?? loadMintedAssets().find((candidate) => candidate.id === assetId);
+
+	React.useEffect(() => {
+		const showLiveAsset = (event: Event) => {
+			if ((event as CustomEvent<MintActivity>).detail?.asset?.id === assetId)
+				navigate(finalPath, { replace: true });
+		};
+		window.addEventListener('bazar:mint-live', showLiveAsset);
+		return () => window.removeEventListener('bazar:mint-live', showLiveAsset);
+	}, [assetId, finalPath, navigate]);
+
+	if (!asset) {
+		return (
+			<RouteState title="Upload not found" backTo="/create" backLabel="Back to create">
+				<p>This browser does not have a saved upload for that transaction.</p>
+			</RouteState>
+		);
+	}
+	if (!activity) return <Navigate to={finalPath} replace />;
+
+	const phases: Array<[MintActivity['phase'], string]> = [
+		['accepted', 'Accepted by Arweave'],
+		['mined', 'Mined'],
+		['applied', 'Applied to process state'],
+		['complete', 'Live on Bazar'],
+	];
+	const currentPhase = phases.findIndex(([phase]) => phase === activity.phase);
+	const pinnedGateway =
+		activity.arweaveGateway !== arweaveGatewayFromLocation() || activity.computeGateway !== gatewayFromLocation();
+
+	return (
+		<section className="mint-pending-page">
+			<Link className="back" to="/">
+				<ArrowLeft className="ui-icon ui-icon--sm" aria-hidden="true" /> Continue browsing
+			</Link>
+			<div className="mint-pending-layout">
+				<div className="mint-pending-artwork">
+					{asset.image ? (
+						<ArtworkImage src={asset.image} alt={`${asset.name} artwork`} />
+					) : (
+						<AudioArtwork contentType={asset.contentType} name={asset.name} />
+					)}
+				</div>
+				<div className="mint-pending-copy">
+					<p className="eyebrow">Submitted · safe to leave</p>
+					<h1>{asset.name}</h1>
+					<p>{activity.status}</p>
+					<ol className="mint-pending-phases">
+						{phases.map(([phase, label], index) => (
+							<li className={index <= currentPhase ? 'reached' : undefined} key={phase}>
+								<span>{index < currentPhase ? <Check aria-hidden="true" /> : index + 1}</span>
+								{label}
+							</li>
+						))}
+					</ol>
+					<p className="mint-pending-gateway">
+						Tracking is pinned to the gateways that accepted this operation
+						{pinnedGateway
+							? '. Your current gateway selection is different; Bazar will not restart the upload'
+							: ''}
+						.
+					</p>
+					<div className="mint-pending-actions">
+						<a href={transactionExplorerUrl(asset.id)} target="_blank" rel="noreferrer">
+							View transaction <ArrowUpRight className="ui-icon ui-icon--sm" aria-hidden="true" />
+						</a>
+						<Button type="button" size="custom" disabled>
+							View when available <InfinityIcon className="ui-icon ui-icon--sm" aria-hidden="true" />
+						</Button>
+					</div>
+					<MintTransactionReceipt
+						entries={activity.transactionIds.map((transactionId, index) => ({
+							label:
+								index === activity.transactionIds.length - 1
+									? 'Asset transaction'
+									: 'Artwork transaction',
+							transactionId,
+						}))}
+					/>
+				</div>
+			</div>
+		</section>
+	);
+}
+
 function AssetView() {
 	const { collectionId = '', assetId = '' } = useParams();
 	const market = React.useContext(MarketContext);
@@ -6647,6 +7005,12 @@ function AssetView() {
 			if (saved?.buyer === walletAddress && saved?.order) {
 				const recoveryStatus = atomicPurchaseRecoveryStatus(state, walletAddress, saved.order, saved.snapshot);
 				if (recoveryStatus === 'resumable') {
+					const gatewayNotice = purchaseGatewaySwitchNotice(
+						saved.gateway,
+						currentPurchaseGatewayContext(),
+						saved.snapshot
+					);
+					if (gatewayNotice) setRecoveryNotice(gatewayNotice);
 					openOperation({ kind: 'buy', order: saved.order, resume: saved.snapshot }, { show: false });
 					return;
 				}
@@ -7212,6 +7576,24 @@ function AssetView() {
 									<span>Supply</span>
 									<strong>1</strong>
 								</div>
+								{asset.artist ? (
+									<div>
+										<span>Artist</span>
+										<strong>{asset.artist}</strong>
+									</div>
+								) : null}
+								{asset.album ? (
+									<div>
+										<span>Album</span>
+										<strong>{asset.album}</strong>
+									</div>
+								) : null}
+								{asset.duration ? (
+									<div>
+										<span>Duration</span>
+										<strong>{formatAudioDuration(asset.duration)}</strong>
+									</div>
+								) : null}
 							</div>
 						</section>
 					) : null}
@@ -7351,6 +7733,15 @@ function AssetView() {
 											<dd>{property.value}</dd>
 										</div>
 									))}
+									<div className="license-proof">
+										<dt>Proof</dt>
+										<dd>
+											<a href={transactionExplorerUrl(asset.id)} target="_blank" rel="noreferrer">
+												View license proof on ViewBlock{' '}
+												<ArrowUpRight className="ui-icon ui-icon--xs" aria-hidden="true" />
+											</a>
+										</dd>
+									</div>
 								</dl>
 							) : (
 								<div className="license-empty">
@@ -7364,7 +7755,8 @@ function AssetView() {
 								</div>
 							)}
 							<p className="market-note">
-								Terms are read directly from immutable process metadata when present.
+								Declared terms and effective UDL 0.2 defaults are derived from immutable process
+								metadata.
 							</p>
 						</section>
 					) : null}
@@ -7754,6 +8146,7 @@ function OperationDialog({
 						activityKind: 'atomic',
 						buyer: owner,
 						collectionId,
+						gateway: purchaseGatewayForRecovery(purchaseKey),
 						order: operation.order,
 						snapshot,
 						createdAt: submittedAtRef.current ?? Date.now(),
@@ -7884,6 +8277,7 @@ function OperationDialog({
 									activityKind: 'atomic',
 									buyer: owner,
 									collectionId,
+									gateway: purchaseGatewayForRecovery(purchaseKey),
 									order: operation.order,
 									snapshot: repaired.snapshot,
 									createdAt: submittedAtRef.current ?? Date.now(),
@@ -8184,6 +8578,7 @@ function OperationDialog({
 					activityKind: 'atomic',
 					buyer: owner,
 					collectionId,
+					gateway: purchaseGatewayForRecovery(atomicPurchaseStorageKey(asset.id, owner)),
 					order: operation.order,
 					snapshot,
 					createdAt: submittedAtRef.current ?? Date.now(),
@@ -8562,7 +8957,7 @@ function OperationDialog({
 					</div>
 				) : null}
 				{visiblePhase === 'working' && recoverable ? (
-					<div>
+					<div className="operation-working">
 						<p className="sr-only" aria-live="polite" role="status">
 							{workingStatus ||
 								'Watching independently addressed Arweave nodes report confirmations for this action.'}
@@ -9110,17 +9505,21 @@ export function mintErrorMessage(error: unknown) {
 		'mint-artwork-type-unsupported': 'Use a PNG, JPG, WebP, or GIF image for album artwork.',
 		'mint-artwork-size-invalid': 'Choose album artwork no larger than 10 MB.',
 		'mint-artwork-audio-only': 'Album artwork can only be attached to an MP3 or WAV asset.',
-		'mint-insufficient-balance': 'This wallet does not have enough AR for both Arweave transactions.',
+		'mint-insufficient-balance': 'This wallet does not have enough AR for the required Arweave transaction(s).',
 		'mint-high-cost-confirmation-required': 'Review and approve the unusually high network cost before minting.',
 		'wallet-sign-unavailable': 'Connect an Arweave wallet that can sign transactions.',
 		'wallet-account-changed': 'The connected wallet changed. Reconnect the original wallet and try again.',
 		'mint-draft-wallet-mismatch': 'Reconnect the wallet that uploaded this media to finish minting it.',
+		'mint-media-invalid': 'The earlier media upload is empty, too large, or unavailable in its original form.',
 		'mint-udl-access-fee-invalid': 'Enter a UDL access fee greater than zero.',
 		'mint-udl-fee-invalid': 'Enter a UDL license fee greater than zero.',
 		'mint-udl-share-invalid': 'Enter a UDL revenue share between 0 and 100 percent.',
 		'mint-udl-expiry-invalid': 'Enter a whole number of years for the UDL license term.',
 		'mint-udl-payment-address-invalid': 'Enter a valid 43-character Arweave payment address.',
 	};
+	if (value.startsWith('mint-media-unavailable-')) {
+		return 'The earlier media upload is not available through this gateway yet. Try finishing the mint later.';
+	}
 	return friendly[value] ?? value.replaceAll('-', ' ');
 }
 function arToWinston(value: string) {
@@ -9295,31 +9694,22 @@ function purchaseSnapshot(state: PurchaseState): PurchaseSnapshot {
 		...(state.dismissed ? { dismissed: true } : {}),
 	};
 }
+function currentPurchaseGatewayContext() {
+	return { arweave: arweaveGatewayFromLocation(), compute: gatewayFromLocation() };
+}
+
+function purchaseGatewayForRecovery(key: string) {
+	try {
+		const gateway = JSON.parse(localStorage.getItem(key) ?? 'null')?.gateway;
+		if (typeof gateway?.arweave === 'string' && typeof gateway?.compute === 'string') return gateway;
+	} catch {
+		// The recovery owner will discard malformed records before resuming them.
+	}
+	return currentPurchaseGatewayContext();
+}
+
 export function purchaseStatusMessage(state: PurchaseState | null) {
-	if (!state) return '';
-	if (
-		state.stage === 'dispatching-registration' ||
-		state.stage === 'registration-propagating' ||
-		state.stage === 'registration-confirming'
-	) {
-		return 'The payment is signed but held in this browser. It will only be released after the reservation has enough confirmations and appears in live process state.';
-	}
-	if (state.stage === 'registration-accepting') {
-		const confirmations = state.registration?.consensus.confirmations ?? 0;
-		return `Sampled observers report ${confirmations} registration confirmation${
-			confirmations === 1 ? '' : 's'
-		}. Waiting for ~arweave-scheduler@1.0 to reserve the order in live process state before releasing payment.`;
-	}
-	if (state.stage === 'signing-payment' || state.stage === 'dispatching-payment') {
-		return 'The reservation is live. Preparing the exact payment to the seller.';
-	}
-	if (state.stage === 'payment-propagating' || state.stage === 'payment-confirming') {
-		return 'The reservation is live and the submission gateway accepted the payment. Sampled observers are reporting settlement confirmations.';
-	}
-	if (state.stage === 'ownership-verifying') {
-		return 'Sampled observers report the payment as confirmed. Waiting for ~arweave-scheduler@1.0 to settle the order and transfer ownership in live process state.';
-	}
-	return '';
+	return purchaseLifecycleStatus(state);
 }
 export function atomicPurchaseFailureStage(state: PurchaseState | null) {
 	if (state?.payment?.id) {

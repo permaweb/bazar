@@ -20,6 +20,13 @@ A tradable process uses:
 -   `total-supply: 1`
 -   `initial-holder: <wallet address>`
 
+New assets are atomic at creation: the process transaction body is the primary
+media itself, while its process configuration, ANS-110 discoverability fields,
+and optional UDL terms are transaction tags. The asset/process ID is therefore
+also the media transaction ID. Optional album artwork for audio is an ancillary
+transaction referenced by `asset-artwork`, matching Bazar Studio's cover-art
+model. Older assets with a separate `asset-data` transaction remain readable.
+
 The write API is deliberately small:
 
 -   `transfer`
@@ -174,9 +181,9 @@ node scripts/fund_test_parties.mjs
 Publication scripts read `~/src/Documents/hyperbeam-key.json` by default. Set
 `BAZAR_TEST_WALLET` to use a different local key file.
 
-The media and asset processes are separate permanent transactions: the small
-JSON process body remains valid token state while `asset-data` points to the
-full-resolution PNG.
+The legacy test-publication scripts still describe their historical two-step
+media/process fixtures. Assets created through the application use the atomic
+single-transaction layout described above.
 
 ## License
 

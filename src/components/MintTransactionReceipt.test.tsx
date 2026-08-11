@@ -2,7 +2,7 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
-import { MintTransactionReceipt, shortTransactionId } from './MintTransactionReceipt';
+import { MintTransactionReceipt } from './MintTransactionReceipt';
 
 describe('mint transaction receipt', () => {
 	it('links each exact submitted transaction to ViewBlock with an explanatory label', () => {
@@ -21,6 +21,7 @@ describe('mint transaction receipt', () => {
 		expect(markup).toContain(`href="https://viewblock.io/arweave/tx/${assetId}"`);
 		expect(markup).toContain('View media upload');
 		expect(markup).toContain('View asset creation');
-		expect(markup).toContain(shortTransactionId(mediaId));
+		expect(markup).toContain(`<code>${mediaId}</code>`);
+		expect(markup).toContain('Copy view media upload transaction ID');
 	});
 });

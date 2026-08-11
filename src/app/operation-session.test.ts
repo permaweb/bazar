@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	acquireWalletOperationClaim,
 	assertWalletOperationAvailable,
+	assetHasSavedSignedAction,
 	atomicPurchaseStorageKey,
 	clearStaleWalletOperationClaim,
 	discardNewlyPreparedTransactionIfAborted,
@@ -479,6 +480,29 @@ describe('wallet-bound operation sessions', () => {
 			sign();
 		}).toThrow('wallet-recovery-conflict');
 		expect(signatures).toBe(0);
+	});
+
+	it.each([
+		['asset mutation', operationStorageKey('asset', 'wallet-a'), { txId: REGISTRATION_ID }],
+		[
+			'atomic purchase',
+			atomicPurchaseStorageKey('asset', 'wallet-a'),
+			{ snapshot: { registration: { id: REGISTRATION_ID, dispatched: true } } },
+		],
+		[
+			'fungible purchase',
+			fungibleBatchStorageKey('asset', 'wallet-a'),
+			{ entries: [{ snapshot: { registration: { id: REGISTRATION_ID, dispatched: true } } }] },
+		],
+	])('locks every action on the affected asset for a saved signed %s', (_kind, key, record) => {
+		const values = new Map([
+			[key, JSON.stringify(record)],
+			[`bazar-signed-transaction:${REGISTRATION_ID}`, JSON.stringify({ transaction: { id: REGISTRATION_ID } })],
+		]);
+		const storage = { getItem: (candidate: string) => values.get(candidate) ?? null };
+
+		expect(assetHasSavedSignedAction(storage, 'asset', 'wallet-a')).toBe(true);
+		expect(assetHasSavedSignedAction(storage, 'other-asset', 'wallet-a')).toBe(false);
 	});
 
 	it('holds one cross-document claim across deferred wallet approval', async () => {
