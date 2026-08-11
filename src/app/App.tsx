@@ -253,6 +253,7 @@ import { useDialogFocus } from './useDialogFocus';
 
 const FungibleAssetView = React.lazy(() => import('../routes/FungibleAssetRoute'));
 const CreateView = React.lazy(() => import('../routes/CreateRoute'));
+const DispatchView = React.lazy(() => import('../routes/DispatchRoute'));
 const MyAssetsView = React.lazy(() => import('../routes/MyAssetsRoute'));
 const DeferredAudioWaveformPlayer = React.lazy(async () => {
 	const module = await import('components/AudioWaveformPlayer');
@@ -499,6 +500,14 @@ export function App() {
 								element={
 									<React.Suspense fallback={<Loading label="Loading creator…" />}>
 										<CreateView />
+									</React.Suspense>
+								}
+							/>
+							<Route
+								path="/dispatch/:processId"
+								element={
+									<React.Suspense fallback={<Loading label="Loading dispatch…" />}>
+										<DispatchView />
 									</React.Suspense>
 								}
 							/>

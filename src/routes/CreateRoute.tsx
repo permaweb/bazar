@@ -11,21 +11,29 @@ import {
 	type CollectionMintResult,
 	CREATED_COLLECTION_ID,
 	discardMintDraft,
+	type FungibleMintEstimate,
+	type FungibleMintInput,
+	type FungibleMintResult,
 	getMintDraft,
 	isHighMintCost,
+	MAX_FUNGIBLE_DENOMINATION,
+	MAX_FUNGIBLE_TICKER_LENGTH,
 	type MintDraft,
 	type MintedAsset,
 	type MintEstimate,
 	type MintPhase,
 	UDL_LICENSE_ID,
 	type UdlTerms,
+	validateFungibleMintInput,
 } from 'api/asset-mint';
+import { FUNGIBLE_TOKEN_COLLECTION_ID } from 'api/collections';
 
 import { AudioArtwork } from 'components/AudioArtwork';
 import { Button } from 'components/Button';
 import { Loading } from 'components/Loading';
 import { MintTransactionReceipt, type MintTransactionReceiptEntry } from 'components/MintTransactionReceipt';
 import { SegmentedTabs } from 'components/SegmentedTabs';
+import { TokenArtwork } from 'components/TokenArtwork';
 import { isAudioContentType, normalizeAssetContentType } from 'helpers/asset-media';
 import { type EmbeddedAudioMetadata, extractEmbeddedAudioMetadata, formatAudioDuration } from 'helpers/audio-metadata';
 import { arweaveGatewayFromLocation } from 'helpers/config';
@@ -121,9 +129,16 @@ export default function CreateRoute() {
 	const artworkInput = React.useRef<HTMLInputElement>(null);
 	const metadataRequest = React.useRef(0);
 	const artworkRevision = React.useRef(0);
-	const [mode, setMode] = React.useState<'asset' | 'collection'>('asset');
+	const [mode, setMode] = React.useState<'asset' | 'collection' | 'fungible'>('asset');
 	const [name, setName] = React.useState('');
 	const [description, setDescription] = React.useState('');
+	const [ticker, setTicker] = React.useState('');
+	const [supply, setSupply] = React.useState('');
+	const [denomination, setDenomination] = React.useState('0');
+	const [logoTxId, setLogoTxId] = React.useState('');
+	const [fungibleEstimate, setFungibleEstimate] = React.useState<FungibleMintEstimate | null>(null);
+	const [fungiblePhase, setFungiblePhase] = React.useState<'signing' | 'uploading' | null>(null);
+	const [fungibleResult, setFungibleResult] = React.useState<FungibleMintResult | null>(null);
 	const [file, setFile] = React.useState<File | null>(null);
 	const [artwork, setArtwork] = React.useState<File | null>(null);
 	const [audioMetadata, setAudioMetadata] = React.useState<EmbeddedAudioMetadata>({});
@@ -155,6 +170,24 @@ export default function CreateRoute() {
 			['revenue-share', 'one-time', 'monthly'].includes(activeUdl?.commercialUse?.grant ?? '') ||
 			['one-time', 'monthly'].includes(activeUdl?.dataModelTraining?.grant ?? '')
 	);
+	const fungibleInput: FungibleMintInput = {
+		name,
+		description,
+		ticker,
+		supply,
+		denomination,
+		...(logoTxId.trim() ? { logo: logoTxId.trim() } : {}),
+	};
+	const fungibleReady =
+		mode === 'fungible' &&
+		(() => {
+			try {
+				validateFungibleMintInput(fungibleInput);
+				return true;
+			} catch {
+				return false;
+			}
+		})();
 
 	React.useEffect(() => {
 		setDraft(wallet.address ? getMintDraft(wallet.address) : null);
@@ -276,6 +309,35 @@ export default function CreateRoute() {
 			controller.abort();
 		};
 	}, [activeUdl, collectionFiles, description, mode, name]);
+	React.useEffect(() => {
+		if (mode !== 'fungible' || !fungibleReady) {
+			setFungibleEstimate(null);
+			return;
+		}
+		const controller = new AbortController();
+		const timer = window.setTimeout(() => {
+			setEstimating(true);
+			setError(null);
+			void new AssetMintClient()
+				.estimateFungible(fungibleInput, controller.signal)
+				.then(
+					(nextEstimate) => {
+						if (!controller.signal.aborted) setFungibleEstimate(nextEstimate);
+					},
+					(cause) => {
+						if (!controller.signal.aborted) setError(mintErrorMessage(cause));
+					}
+				)
+				.finally(() => {
+					if (!controller.signal.aborted) setEstimating(false);
+				});
+		}, 250);
+		return () => {
+			window.clearTimeout(timer);
+			controller.abort();
+		};
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [mode, fungibleReady, name, description, ticker, supply, denomination, logoTxId]);
 
 	const selectFile = (next: File | null) => {
 		const request = ++metadataRequest.current;
@@ -344,6 +406,9 @@ export default function CreateRoute() {
 		}
 		if (mode === 'asset' && !file) return setError('Choose an image, MP3, or WAV file to continue.');
 		if (mode === 'collection' && !collectionFiles.length) return setError('Choose at least one collection image.');
+		if (mode === 'fungible' && !fungibleReady) {
+			return setError('Complete the token name, ticker, supply, and denomination to continue.');
+		}
 		setError(null);
 		setResult(null);
 		setCollectionResult(null);
@@ -355,7 +420,16 @@ export default function CreateRoute() {
 			name: name.trim(),
 			status: 'Preparing secure wallet approvals…',
 		});
+		setFungibleResult(null);
 		try {
+			if (mode === 'fungible') {
+				const minted = await new AssetMintClient().mintFungible(fungibleInput, wallet.address, {
+					onPhase: setFungiblePhase,
+				});
+				setFungibleResult(minted);
+				setFungiblePhase(null);
+				return;
+			}
 			if (mode === 'collection') {
 				const minted = await new CollectionMintClient().mint(
 					{ files: collectionFiles, name, description, udl: activeUdl },
@@ -405,6 +479,7 @@ export default function CreateRoute() {
 			setDraft(getMintDraft(wallet.address));
 			setPhase(null);
 			setCollectionPhase(null);
+			setFungiblePhase(null);
 			setError(message);
 			failUpload(uploadId, message);
 		}
@@ -435,8 +510,13 @@ export default function CreateRoute() {
 			failUpload(uploadId, message);
 		}
 	};
-	const working = phase !== null || collectionPhase !== null;
-	const phaseLabel = collectionPhase
+	const working = phase !== null || collectionPhase !== null || fungiblePhase !== null;
+	const phaseLabel = fungiblePhase
+		? {
+				signing: 'Approve the token process in your wallet…',
+				uploading: 'Submitting the token process to Arweave…',
+		  }[fungiblePhase]
+		: collectionPhase
 		? collectionPhase.kind === 'asset'
 			? `Asset ${collectionPhase.index + 1} of ${collectionPhase.total}: ${
 					{
@@ -481,7 +561,9 @@ export default function CreateRoute() {
 				<p>
 					{mode === 'asset'
 						? 'Your media, metadata, and one-of-one marketplace process are stored together under one Arweave transaction ID.'
-						: 'Mint a group of one-of-one assets and submit a carrier process pointing to their permanent manifest.'}
+						: mode === 'collection'
+						? 'Mint a group of one-of-one assets and submit a carrier process pointing to their permanent manifest.'
+						: 'Publish a fungible token process. The whole supply is minted to your connected wallet; dispatch it to holders afterwards.'}
 				</p>
 			</div>
 
@@ -497,6 +579,7 @@ export default function CreateRoute() {
 				tabs={[
 					{ value: 'asset', label: 'Single asset' },
 					{ value: 'collection', label: 'Collection' },
+					{ value: 'fungible', label: 'Fungible token' },
 				]}
 			/>
 
@@ -530,58 +613,75 @@ export default function CreateRoute() {
 
 			<div className="create-layout">
 				<div className="create-preview-column">
-					<Button
-						className={`mint-dropzone${mode === 'asset' && preview ? ' has-file' : ''}${
-							mode === 'collection' && collectionPreviews.length ? ' has-file collection-files' : ''
-						}`}
-						type="button"
-						size="custom"
-						onClick={() => fileInput.current?.click()}
-						onDragOver={(event) => event.preventDefault()}
-						onDrop={(event) => {
-							event.preventDefault();
-							if (mode === 'collection')
-								selectCollectionFiles(Array.from(event.dataTransfer.files ?? []));
-							else selectFile(event.dataTransfer.files?.[0] ?? null);
-						}}
-					>
-						{mode === 'collection' && collectionPreviews.length ? (
-							<span className="collection-preview-grid">
-								{collectionPreviews.slice(0, 6).map((url, index) => (
-									<span key={`${collectionFiles[index]?.name}-${index}`}>
-										<img src={url} alt="" />
-										<small>{index + 1}</small>
-									</span>
-								))}
-								{collectionPreviews.length > 6 ? (
-									<strong>+{collectionPreviews.length - 6}</strong>
-								) : null}
-							</span>
-						) : mode === 'asset' && preview ? (
-							audioSelected ? (
-								artworkPreview ? (
-									<img src={artworkPreview} alt={`${name || file?.name || 'Audio'} album artwork`} />
-								) : (
-									<AudioArtwork
-										contentType={selectedContentType ?? undefined}
-										name={file?.name ?? name}
-									/>
-								)
-							) : (
-								<img src={preview} alt="Asset preview" />
-							)
-						) : (
+					{mode === 'fungible' ? (
+						<div className="mint-dropzone fungible-token-preview">
+							<TokenArtwork ticker={ticker.trim() || 'TOKEN'} />
 							<span>
-								<Upload aria-hidden="true" />
-								<strong>{mode === 'asset' ? 'Choose media' : 'Choose collection images'}</strong>
+								<strong>{name.trim() || 'Unnamed token'}</strong>
 								<small>
-									{mode === 'asset'
-										? 'Images up to 10 MB · MP3 or WAV up to 100 MB'
-										: 'PNG, JPG, WebP, or GIF · up to 10 MB each · 10 images maximum'}
+									{supply && /^[1-9]\d*$/.test(supply)
+										? `${supply} base units · denomination ${denomination || '0'}`
+										: 'Set a supply in base units'}
 								</small>
 							</span>
-						)}
-					</Button>
+						</div>
+					) : (
+						<Button
+							className={`mint-dropzone${mode === 'asset' && preview ? ' has-file' : ''}${
+								mode === 'collection' && collectionPreviews.length ? ' has-file collection-files' : ''
+							}`}
+							type="button"
+							size="custom"
+							onClick={() => fileInput.current?.click()}
+							onDragOver={(event) => event.preventDefault()}
+							onDrop={(event) => {
+								event.preventDefault();
+								if (mode === 'collection')
+									selectCollectionFiles(Array.from(event.dataTransfer.files ?? []));
+								else selectFile(event.dataTransfer.files?.[0] ?? null);
+							}}
+						>
+							{mode === 'collection' && collectionPreviews.length ? (
+								<span className="collection-preview-grid">
+									{collectionPreviews.slice(0, 6).map((url, index) => (
+										<span key={`${collectionFiles[index]?.name}-${index}`}>
+											<img src={url} alt="" />
+											<small>{index + 1}</small>
+										</span>
+									))}
+									{collectionPreviews.length > 6 ? (
+										<strong>+{collectionPreviews.length - 6}</strong>
+									) : null}
+								</span>
+							) : mode === 'asset' && preview ? (
+								audioSelected ? (
+									artworkPreview ? (
+										<img
+											src={artworkPreview}
+											alt={`${name || file?.name || 'Audio'} album artwork`}
+										/>
+									) : (
+										<AudioArtwork
+											contentType={selectedContentType ?? undefined}
+											name={file?.name ?? name}
+										/>
+									)
+								) : (
+									<img src={preview} alt="Asset preview" />
+								)
+							) : (
+								<span>
+									<Upload aria-hidden="true" />
+									<strong>{mode === 'asset' ? 'Choose media' : 'Choose collection images'}</strong>
+									<small>
+										{mode === 'asset'
+											? 'Images up to 10 MB · MP3 or WAV up to 100 MB'
+											: 'PNG, JPG, WebP, or GIF · up to 10 MB each · 10 images maximum'}
+									</small>
+								</span>
+							)}
+						</Button>
+					)}
 					<input
 						ref={fileInput}
 						className="mint-file-input"
@@ -713,11 +813,19 @@ export default function CreateRoute() {
 					}}
 				>
 					<div className="create-field">
-						<label htmlFor="mint-name">{mode === 'asset' ? 'Name' : 'Collection name'}</label>
+						<label htmlFor="mint-name">
+							{mode === 'asset' ? 'Name' : mode === 'collection' ? 'Collection name' : 'Token name'}
+						</label>
 						<input
 							id="mint-name"
 							maxLength={80}
-							placeholder={mode === 'asset' ? 'Name your asset' : 'Name your collection'}
+							placeholder={
+								mode === 'asset'
+									? 'Name your asset'
+									: mode === 'collection'
+									? 'Name your collection'
+									: 'Name your token'
+							}
 							value={name}
 							onChange={(event) => setName(event.target.value)}
 						/>
@@ -725,13 +833,22 @@ export default function CreateRoute() {
 					</div>
 					<div className="create-field">
 						<label htmlFor="mint-description">
-							{mode === 'asset' ? 'Description' : 'Collection description'} <small>Optional</small>
+							{mode === 'asset'
+								? 'Description'
+								: mode === 'collection'
+								? 'Collection description'
+								: 'Token description'}{' '}
+							<small>Optional</small>
 						</label>
 						<textarea
 							id="mint-description"
 							maxLength={600}
 							placeholder={
-								mode === 'asset' ? 'Tell collectors about this work' : 'Describe this collection'
+								mode === 'asset'
+									? 'Tell collectors about this work'
+									: mode === 'collection'
+									? 'Describe this collection'
+									: 'Describe this token'
 							}
 							rows={5}
 							value={description}
@@ -740,276 +857,364 @@ export default function CreateRoute() {
 						<span>{description.length} / 600</span>
 					</div>
 
-					<section className="create-license" aria-labelledby="mint-license-heading">
-						<div className="create-license-heading">
-							<div>
-								<strong id="mint-license-heading">Usage rights</strong>
+					{mode === 'fungible' ? (
+						<>
+							<div className="create-field">
+								<label htmlFor="mint-ticker">Ticker</label>
+								<input
+									id="mint-ticker"
+									maxLength={MAX_FUNGIBLE_TICKER_LENGTH}
+									placeholder="WEAVE"
+									value={ticker}
+									onChange={(event) => setTicker(event.target.value)}
+								/>
 								<span>
-									Attach machine-readable terms stored with{' '}
-									{mode === 'asset' ? 'this asset' : 'every asset'} on Arweave.
+									{ticker.length} / {MAX_FUNGIBLE_TICKER_LENGTH}
 								</span>
 							</div>
-							<MarketSelect<'udl' | 'none'>
-								label="License"
-								value={udlEnabled ? 'udl' : 'none'}
-								options={[
-									{ value: 'udl', label: 'Universal Data License 0.2' },
-									{ value: 'none', label: 'No license tags' },
-								]}
-								onChange={(value) => {
-									setUdlEnabled(value === 'udl');
-									setEstimate(null);
-									setCollectionEstimate(null);
-									setError(null);
-								}}
-								showLabel={false}
-							/>
-						</div>
-
-						{udlEnabled ? (
-							<div className="udl-options">
-								<p>
-									Free access is the default. Rights not granted below remain reserved.{' '}
-									<a
-										href={`${arweaveGatewayFromLocation()}/${UDL_LICENSE_ID}`}
-										target="_blank"
-										rel="noreferrer"
-									>
-										Read UDL 0.2 <ArrowUpRight className="ui-icon ui-icon--sm" aria-hidden="true" />
-									</a>
-								</p>
-								<div className="udl-grid">
-									<div className="udl-field">
-										<div
-											className={
-												udlTerms.accessFee
-													? 'udl-field-control with-value'
-													: 'udl-field-control'
-											}
-										>
-											<MarketSelect<'free' | 'one-time'>
-												label="Access"
-												value={udlTerms.accessFee ? 'one-time' : 'free'}
-												options={[
-													{ value: 'free', label: 'Free' },
-													{ value: 'one-time', label: 'One-time fee' },
-												]}
-												onChange={(value) =>
-													setUdlTerms((current) => ({
-														...current,
-														accessFee: value === 'one-time' ? '1' : undefined,
-													}))
-												}
-											/>
-											{udlTerms.accessFee ? (
-												<label className="udl-value">
-													<span>Amount</span>
-													<input
-														aria-label="Access fee amount"
-														inputMode="decimal"
-														min="0.000000000001"
-														step="any"
-														type="number"
-														value={udlTerms.accessFee}
-														onChange={(event) =>
-															setUdlTerms((current) => ({
-																...current,
-																accessFee: event.target.value || '1',
-															}))
-														}
-													/>
-												</label>
-											) : null}
-										</div>
-									</div>
-									<UdlGrantField
-										label="Derivatives"
-										value={udlTerms.derivation}
-										options={[
-											['allowed', 'Allowed'],
-											['credit', 'Allowed with credit'],
-											['indication', 'Allowed with change indication'],
-											['license-passthrough', 'Allowed with license passthrough'],
-											['revenue-share', 'Allowed with revenue share'],
-											['one-time', 'Allowed with one-time fee'],
-											['monthly', 'Allowed with monthly fee'],
-										]}
-										onChange={(value) =>
-											setUdlTerms((current) => ({
-												...current,
-												derivation: value as UdlTerms['derivation'],
-											}))
-										}
-									/>
-									<UdlGrantField
-										label="Commercial use"
-										value={udlTerms.commercialUse}
-										options={[
-											['allowed', 'Allowed'],
-											['credit', 'Allowed with credit'],
-											['revenue-share', 'Allowed with revenue share'],
-											['one-time', 'Allowed with one-time fee'],
-											['monthly', 'Allowed with monthly fee'],
-										]}
-										onChange={(value) =>
-											setUdlTerms((current) => ({
-												...current,
-												commercialUse: value as UdlTerms['commercialUse'],
-											}))
-										}
-									/>
-									<UdlGrantField
-										label="AI model training"
-										value={udlTerms.dataModelTraining}
-										options={[
-											['allowed', 'Allowed'],
-											['one-time', 'Allowed with one-time fee'],
-											['monthly', 'Allowed with monthly fee'],
-										]}
-										onChange={(value) =>
-											setUdlTerms((current) => ({
-												...current,
-												dataModelTraining: value as UdlTerms['dataModelTraining'],
-											}))
-										}
-									/>
-								</div>
-
-								{hasUdlPayment ? (
-									<div className="udl-payment">
-										<div className="udl-field">
-											<div className="udl-field-control">
-												<MarketSelect<'U' | 'AR'>
-													label="Payment currency"
-													value={udlTerms.currency ?? 'U'}
-													options={[
-														{ value: 'U', label: '$U (UDL default)' },
-														{ value: 'AR', label: 'AR' },
-													]}
-													onChange={(value) =>
-														setUdlTerms((current) => ({
-															...current,
-															currency: value === 'AR' ? 'AR' : undefined,
-														}))
-													}
-												/>
-											</div>
-										</div>
-										<div className="udl-field udl-address">
-											<label htmlFor="udl-payment-address">Payment address</label>
-											<div className="udl-field-control">
-												<input
-													id="udl-payment-address"
-													maxLength={43}
-													placeholder={wallet.address || 'Uploader wallet by default'}
-													value={udlTerms.paymentAddress ?? ''}
-													onChange={(event) =>
-														setUdlTerms((current) => ({
-															...current,
-															paymentAddress: event.target.value.trim() || undefined,
-														}))
-													}
-												/>
-											</div>
-										</div>
-										{udlTerms.paymentAddress && udlTerms.paymentAddress !== wallet.address ? (
-											<p className="udl-payment-warning">
-												License payments will go to this address, not the connected wallet.
-											</p>
-										) : null}
-									</div>
+							<div className="create-field">
+								<label htmlFor="mint-supply">Total supply (base units)</label>
+								<input
+									id="mint-supply"
+									inputMode="numeric"
+									placeholder="1000000"
+									value={supply}
+									onChange={(event) => setSupply(event.target.value.trim())}
+								/>
+								<span>
+									Indivisible base units, minted entirely to your wallet. Whole numbers only — no
+									decimal point.
+								</span>
+							</div>
+							<div className="create-field">
+								<label htmlFor="mint-denomination">Denomination</label>
+								<input
+									id="mint-denomination"
+									inputMode="numeric"
+									min="0"
+									max={MAX_FUNGIBLE_DENOMINATION}
+									step="1"
+									type="number"
+									value={denomination}
+									onChange={(event) => setDenomination(event.target.value.trim())}
+								/>
+								<span>
+									Display decimals (0–{MAX_FUNGIBLE_DENOMINATION}). Keep 0 for tokens you plan to
+									dispatch: an L1 transfer really costs its amount in winston (1 AR per 1e12 base
+									units), so high denominations with huge base-unit supplies make dispatching
+									expensive.
+								</span>
+							</div>
+							<div className="create-field">
+								<label htmlFor="mint-logo">
+									Logo transaction ID <small>Optional</small>
+								</label>
+								<input
+									id="mint-logo"
+									maxLength={43}
+									placeholder="43-character Arweave transaction ID of an image"
+									value={logoTxId}
+									onChange={(event) => setLogoTxId(event.target.value.trim())}
+								/>
+								{logoTxId.trim() && !/^[A-Za-z0-9_-]{43}$/.test(logoTxId.trim()) ? (
+									<span>Must be a 43-character Arweave transaction ID.</span>
 								) : null}
+							</div>
+						</>
+					) : null}
 
-								<details className="udl-advanced">
-									<summary>Advanced terms</summary>
+					{mode !== 'fungible' ? (
+						<section className="create-license" aria-labelledby="mint-license-heading">
+							<div className="create-license-heading">
+								<div>
+									<strong id="mint-license-heading">Usage rights</strong>
+									<span>
+										Attach machine-readable terms stored with{' '}
+										{mode === 'asset' ? 'this asset' : 'every asset'} on Arweave.
+									</span>
+								</div>
+								<MarketSelect<'udl' | 'none'>
+									label="License"
+									value={udlEnabled ? 'udl' : 'none'}
+									options={[
+										{ value: 'udl', label: 'Universal Data License 0.2' },
+										{ value: 'none', label: 'No license tags' },
+									]}
+									onChange={(value) => {
+										setUdlEnabled(value === 'udl');
+										setEstimate(null);
+										setCollectionEstimate(null);
+										setError(null);
+									}}
+									showLabel={false}
+								/>
+							</div>
+
+							{udlEnabled ? (
+								<div className="udl-options">
+									<p>
+										Free access is the default. Rights not granted below remain reserved.{' '}
+										<a
+											href={`${arweaveGatewayFromLocation()}/${UDL_LICENSE_ID}`}
+											target="_blank"
+											rel="noreferrer"
+										>
+											Read UDL 0.2{' '}
+											<ArrowUpRight className="ui-icon ui-icon--sm" aria-hidden="true" />
+										</a>
+									</p>
 									<div className="udl-grid">
 										<div className="udl-field">
-											<div className="udl-field-control">
-												<MarketSelect<'included' | 'excluded'>
-													label="Unknown usage rights"
-													value={udlTerms.unknownUsageRights ?? 'included'}
+											<div
+												className={
+													udlTerms.accessFee
+														? 'udl-field-control with-value'
+														: 'udl-field-control'
+												}
+											>
+												<MarketSelect<'free' | 'one-time'>
+													label="Access"
+													value={udlTerms.accessFee ? 'one-time' : 'free'}
 													options={[
-														{ value: 'included', label: 'Included when legally available' },
-														{ value: 'excluded', label: 'Excluded' },
+														{ value: 'free', label: 'Free' },
+														{ value: 'one-time', label: 'One-time fee' },
 													]}
 													onChange={(value) =>
 														setUdlTerms((current) => ({
 															...current,
-															unknownUsageRights:
-																value === 'excluded' ? 'excluded' : undefined,
+															accessFee: value === 'one-time' ? '1' : undefined,
 														}))
 													}
 												/>
+												{udlTerms.accessFee ? (
+													<label className="udl-value">
+														<span>Amount</span>
+														<input
+															aria-label="Access fee amount"
+															inputMode="decimal"
+															min="0.000000000001"
+															step="any"
+															type="number"
+															value={udlTerms.accessFee}
+															onChange={(event) =>
+																setUdlTerms((current) => ({
+																	...current,
+																	accessFee: event.target.value || '1',
+																}))
+															}
+														/>
+													</label>
+												) : null}
 											</div>
 										</div>
-										<div className="udl-field">
-											<label htmlFor="udl-expiry">License term</label>
-											<div className="udl-field-control with-suffix">
-												<input
-													id="udl-expiry"
-													inputMode="numeric"
-													min="1"
-													placeholder="Unlimited"
-													step="1"
-													type="number"
-													value={udlTerms.expiry ?? ''}
-													onChange={(event) =>
-														setUdlTerms((current) => ({
-															...current,
-															expiry: event.target.value || undefined,
-														}))
-													}
-												/>
-												<span>years</span>
-											</div>
-										</div>
-										{hasUdlPayment ? (
+										<UdlGrantField
+											label="Derivatives"
+											value={udlTerms.derivation}
+											options={[
+												['allowed', 'Allowed'],
+												['credit', 'Allowed with credit'],
+												['indication', 'Allowed with change indication'],
+												['license-passthrough', 'Allowed with license passthrough'],
+												['revenue-share', 'Allowed with revenue share'],
+												['one-time', 'Allowed with one-time fee'],
+												['monthly', 'Allowed with monthly fee'],
+											]}
+											onChange={(value) =>
+												setUdlTerms((current) => ({
+													...current,
+													derivation: value as UdlTerms['derivation'],
+												}))
+											}
+										/>
+										<UdlGrantField
+											label="Commercial use"
+											value={udlTerms.commercialUse}
+											options={[
+												['allowed', 'Allowed'],
+												['credit', 'Allowed with credit'],
+												['revenue-share', 'Allowed with revenue share'],
+												['one-time', 'Allowed with one-time fee'],
+												['monthly', 'Allowed with monthly fee'],
+											]}
+											onChange={(value) =>
+												setUdlTerms((current) => ({
+													...current,
+													commercialUse: value as UdlTerms['commercialUse'],
+												}))
+											}
+										/>
+										<UdlGrantField
+											label="AI model training"
+											value={udlTerms.dataModelTraining}
+											options={[
+												['allowed', 'Allowed'],
+												['one-time', 'Allowed with one-time fee'],
+												['monthly', 'Allowed with monthly fee'],
+											]}
+											onChange={(value) =>
+												setUdlTerms((current) => ({
+													...current,
+													dataModelTraining: value as UdlTerms['dataModelTraining'],
+												}))
+											}
+										/>
+									</div>
+
+									{hasUdlPayment ? (
+										<div className="udl-payment">
 											<div className="udl-field">
 												<div className="udl-field-control">
-													<MarketSelect<'direct' | 'random' | 'global'>
-														label="Payment mode"
-														value={udlTerms.paymentMode ?? 'direct'}
+													<MarketSelect<'U' | 'AR'>
+														label="Payment currency"
+														value={udlTerms.currency ?? 'U'}
 														options={[
-															{ value: 'direct', label: 'Direct to payment address' },
-															{ value: 'random', label: 'Random PST distribution' },
-															{ value: 'global', label: 'Global PST distribution' },
+															{ value: 'U', label: '$U (UDL default)' },
+															{ value: 'AR', label: 'AR' },
 														]}
 														onChange={(value) =>
 															setUdlTerms((current) => ({
 																...current,
-																paymentMode:
-																	value === 'random' || value === 'global'
-																		? value
-																		: undefined,
+																currency: value === 'AR' ? 'AR' : undefined,
 															}))
 														}
 													/>
 												</div>
 											</div>
-										) : null}
-									</div>
-								</details>
-							</div>
-						) : (
-							<p className="udl-none">
-								No license metadata will be written. Copyright defaults still apply.
-							</p>
-						)}
-					</section>
+											<div className="udl-field udl-address">
+												<label htmlFor="udl-payment-address">Payment address</label>
+												<div className="udl-field-control">
+													<input
+														id="udl-payment-address"
+														maxLength={43}
+														placeholder={wallet.address || 'Uploader wallet by default'}
+														value={udlTerms.paymentAddress ?? ''}
+														onChange={(event) =>
+															setUdlTerms((current) => ({
+																...current,
+																paymentAddress: event.target.value.trim() || undefined,
+															}))
+														}
+													/>
+												</div>
+											</div>
+											{udlTerms.paymentAddress && udlTerms.paymentAddress !== wallet.address ? (
+												<p className="udl-payment-warning">
+													License payments will go to this address, not the connected wallet.
+												</p>
+											) : null}
+										</div>
+									) : null}
+
+									<details className="udl-advanced">
+										<summary>Advanced terms</summary>
+										<div className="udl-grid">
+											<div className="udl-field">
+												<div className="udl-field-control">
+													<MarketSelect<'included' | 'excluded'>
+														label="Unknown usage rights"
+														value={udlTerms.unknownUsageRights ?? 'included'}
+														options={[
+															{
+																value: 'included',
+																label: 'Included when legally available',
+															},
+															{ value: 'excluded', label: 'Excluded' },
+														]}
+														onChange={(value) =>
+															setUdlTerms((current) => ({
+																...current,
+																unknownUsageRights:
+																	value === 'excluded' ? 'excluded' : undefined,
+															}))
+														}
+													/>
+												</div>
+											</div>
+											<div className="udl-field">
+												<label htmlFor="udl-expiry">License term</label>
+												<div className="udl-field-control with-suffix">
+													<input
+														id="udl-expiry"
+														inputMode="numeric"
+														min="1"
+														placeholder="Unlimited"
+														step="1"
+														type="number"
+														value={udlTerms.expiry ?? ''}
+														onChange={(event) =>
+															setUdlTerms((current) => ({
+																...current,
+																expiry: event.target.value || undefined,
+															}))
+														}
+													/>
+													<span>years</span>
+												</div>
+											</div>
+											{hasUdlPayment ? (
+												<div className="udl-field">
+													<div className="udl-field-control">
+														<MarketSelect<'direct' | 'random' | 'global'>
+															label="Payment mode"
+															value={udlTerms.paymentMode ?? 'direct'}
+															options={[
+																{ value: 'direct', label: 'Direct to payment address' },
+																{ value: 'random', label: 'Random PST distribution' },
+																{ value: 'global', label: 'Global PST distribution' },
+															]}
+															onChange={(value) =>
+																setUdlTerms((current) => ({
+																	...current,
+																	paymentMode:
+																		value === 'random' || value === 'global'
+																			? value
+																			: undefined,
+																}))
+															}
+														/>
+													</div>
+												</div>
+											) : null}
+										</div>
+									</details>
+								</div>
+							) : (
+								<p className="udl-none">
+									No license metadata will be written. Copyright defaults still apply.
+								</p>
+							)}
+						</section>
+					) : null}
 
 					<div className="mint-summary">
 						<div>
-							<span>{mode === 'asset' ? 'Edition' : 'Assets'}</span>
-							<strong>{mode === 'asset' ? '1 of 1' : collectionFiles.length || '—'}</strong>
+							<span>{mode === 'asset' ? 'Edition' : mode === 'collection' ? 'Assets' : 'Supply'}</span>
+							<strong>
+								{mode === 'asset'
+									? '1 of 1'
+									: mode === 'collection'
+									? collectionFiles.length || '—'
+									: supply && /^[1-9]\d*$/.test(supply)
+									? supply
+									: '—'}
+							</strong>
 						</div>
 						<div>
-							<span>{mode === 'asset' ? 'Storage target' : 'Transactions'}</span>
+							<span>
+								{mode === 'asset'
+									? 'Storage target'
+									: mode === 'collection'
+									? 'Transactions'
+									: 'Ticker'}
+							</span>
 							<strong>
 								{mode === 'asset'
 									? '1 atomic asset'
-									: collectionEstimate
-									? collectionEstimate.transactionCount
-									: '—'}
+									: mode === 'collection'
+									? collectionEstimate
+										? collectionEstimate.transactionCount
+										: '—'
+									: ticker.trim() || '—'}
 							</strong>
 						</div>
 						<div>
@@ -1017,6 +1222,10 @@ export default function CreateRoute() {
 							<strong>
 								{estimating
 									? 'Checking…'
+									: mode === 'fungible'
+									? fungibleEstimate
+										? `${winstonToAr(fungibleEstimate.reward.toString())} AR`
+										: '—'
 									: activeEstimate
 									? `${winstonToAr(activeEstimate.total.toString())} AR`
 									: '—'}
@@ -1048,6 +1257,8 @@ export default function CreateRoute() {
 								? artwork
 									? 'Your wallet will request two signatures: one for the optional album artwork and one atomic transaction containing the audio, metadata, and tradeable process.'
 									: 'Your wallet will request one signature for an atomic transaction containing the media, metadata, and tradeable process.'
+								: mode === 'fungible'
+								? 'Your wallet will request one signature for the token process transaction. The whole supply is minted to your connected wallet; the token becomes readable and dispatchable once the scheduler sequences it (~20 minutes).'
 								: collectionEstimate
 								? `Your wallet will request ${collectionEstimate.transactionCount} signatures: one atomic transaction per asset, then the collection manifest and carrier process.`
 								: 'Each image becomes one self-contained atomic transaction. Bazar then submits a collection manifest and carrier process to Arweave.'}
@@ -1058,7 +1269,49 @@ export default function CreateRoute() {
 							<span>{error}</span>
 						</div>
 					) : null}
-					{result || collectionResult ? (
+					{mode === 'fungible' && fungibleResult ? (
+						<div className="mint-success">
+							<span>
+								<Check aria-hidden="true" />
+							</span>
+							<div>
+								<strong>Token submitted to Arweave</strong>
+								<p>
+									All {fungibleResult.supply} base units of {fungibleResult.ticker} are minted to your
+									wallet. The process state becomes readable once the scheduler sequences the
+									transaction (~20 minutes) — dispatching to holders needs that state, so the dispatch
+									page may ask you to retry until then.
+								</p>
+								<MintTransactionReceipt
+									entries={[
+										{
+											label: 'Token process transaction',
+											transactionId: fungibleResult.processId,
+										},
+									]}
+								/>
+							</div>
+							<div className="mint-success-actions">
+								<Button
+									type="button"
+									size="custom"
+									onClick={() =>
+										navigate(`/asset/${FUNGIBLE_TOKEN_COLLECTION_ID}/${fungibleResult.processId}`)
+									}
+								>
+									View token <ArrowRight className="ui-icon ui-icon--sm" aria-hidden="true" />
+								</Button>
+								<Button
+									type="button"
+									size="custom"
+									onClick={() => navigate(`/dispatch/${fungibleResult.processId}`)}
+								>
+									Dispatch to holders{' '}
+									<ArrowRight className="ui-icon ui-icon--sm" aria-hidden="true" />
+								</Button>
+							</div>
+						</div>
+					) : result || collectionResult ? (
 						<div className={`mint-success${result && !resultReady ? ' propagating' : ''}`}>
 							<span>
 								{result && !resultReady ? (
@@ -1121,7 +1374,8 @@ export default function CreateRoute() {
 										collectionFiles.length &&
 										name.trim() &&
 										!collectionEstimate
-								)
+								) ||
+								Boolean(wallet.address && mode === 'fungible' && fungibleReady && !fungibleEstimate)
 							}
 						>
 							{working
@@ -1129,7 +1383,9 @@ export default function CreateRoute() {
 								: wallet.address
 								? mode === 'asset'
 									? 'Upload and mint'
-									: 'Mint collection'
+									: mode === 'collection'
+									? 'Mint collection'
+									: 'Mint token'
 								: 'Connect wallet to create'}
 							{!working ? <ArrowRight className="ui-icon" aria-hidden="true" /> : null}
 						</Button>

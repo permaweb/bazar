@@ -78,7 +78,10 @@ function parseJsonHolders(text: string): ParsedHolderList {
 	try {
 		parsed = JSON.parse(text);
 	} catch {
-		return { rows: [], errors: ['Invalid JSON. Paste [{"address","quantity"}], [[address, quantity]], or {address: quantity}.'] };
+		return {
+			rows: [],
+			errors: ['Invalid JSON. Paste [{"address","quantity"}], [[address, quantity]], or {address: quantity}.'],
+		};
 	}
 	const rows: HolderRow[] = [];
 	const errors: string[] = [];
