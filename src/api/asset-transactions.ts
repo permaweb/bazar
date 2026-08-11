@@ -33,7 +33,7 @@ import { acquireAssetObserverNetwork } from './asset-observers';
 import { filledOrder } from './order-matching';
 
 const ADDRESS = /^[A-Za-z0-9_-]{43}$/;
-const SIGNED_TRANSACTION_PREFIX = 'bazar-signed-transaction:';
+export const SIGNED_TRANSACTION_PREFIX = 'bazar-signed-transaction:';
 export const DEFAULT_REGISTRATION_FEE = 100_000_000n;
 export const ASSET_TRANSACTION_CONFIRMATION_TARGET = 5;
 /** No asset offer may exceed the maximum 66 million AR supply. */
@@ -277,6 +277,13 @@ export class AssetTransactionClient {
 		);
 	}
 
+	/**
+	 * KNOWN-BROKEN SHAPE (2026-08-11 mainnet): arweave.net rejects
+	 * target-bearing L1 transactions whose protocol winston quantity is 0
+	 * ("Transaction verification failed"), so this transaction can never
+	 * post. Kept unchanged for existing callers/tests; new code should use
+	 * transferFungible() below, which uses the shape that settles.
+	 */
 	async transfer(
 		processId: string,
 		recipient: string,
@@ -292,6 +299,54 @@ export class AssetTransactionClient {
 			{
 				target: processId,
 				quantity: '0',
+				tags: [
+					{ name: 'action', value: 'transfer' },
+					{ name: 'recipient', value: recipient },
+					{ name: 'quantity', value: quantity },
+				],
+			},
+			signal,
+			undefined,
+			expectedSigner
+		);
+	}
+
+	/**
+	 * L1 fungible transfer in the shape that actually settles (verified on
+	 * mainnet 2026-08-11):
+	 *
+	 * 1. arweave.net REJECTS target-bearing L1 transactions with winston
+	 *    quantity 0, so the tag-only shape used by transfer() cannot post.
+	 * 2. At fold time the transaction's protocol winston quantity SHADOWS the
+	 *    `quantity` tag: a 1-winston transfer carrying a `quantity: 250000`
+	 *    tag moved exactly 1 token unit. We therefore set the protocol
+	 *    winston quantity equal to the token amount AND keep the identical
+	 *    `quantity` tag — correct under both the current (quantity-shadowing)
+	 *    and any future-fixed (tag-honouring) fold semantics.
+	 * 3. Consequence of (2): the real AR cost of a transfer is its amount in
+	 *    winston (1 AR per 1e12 base units per transfer). Callers MUST show
+	 *    the total AR cost before dispatching; transactionCost()/the balance
+	 *    check already include the quantity.
+	 *
+	 * Do NOT convert this to a bundled DataItem: bundled transfers wedge
+	 * process state on deployed nodes. Plain L1 only.
+	 */
+	async transferFungible(
+		processId: string,
+		recipient: string,
+		quantity: string,
+		expectedSigner?: string,
+		signal?: AbortSignal
+	): Promise<PreparedTransaction> {
+		if (!ADDRESS.test(processId) || !ADDRESS.test(recipient)) {
+			throw new TypeError('invalid-asset-transfer');
+		}
+		assertTokenQuantity(quantity);
+		return this.#prepare(
+			{
+				target: processId,
+				// Protocol winston quantity = token amount (see contract above).
+				quantity,
 				tags: [
 					{ name: 'action', value: 'transfer' },
 					{ name: 'recipient', value: recipient },

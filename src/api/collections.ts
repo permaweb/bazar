@@ -159,6 +159,9 @@ export const IMAGE_COLLECTION_REFERENCES = IMAGE_COLLECTIONS.map((collection) =>
 export const FUNGIBLE_TOKEN_ID =
 	import.meta.env.VITE_FUNGIBLE_TOKEN_ID ?? 'IyFfmbTu8P4rv0KyrA0Q-QtfEnYntMj4RkRiBVip9KA';
 
+export const FUNGIBLE_TOKEN_COLLECTION_ID = 'fungible-tokens';
+export const FUNGIBLE_TOKEN_COLLECTION_NAME = '[TEST] Bazar Fungible Tokens';
+
 export type CollectionLoadResult = {
 	collections: Collection[];
 	unavailable: string[];
@@ -601,8 +604,8 @@ function collectionCount(value: unknown): number | null {
 
 function fungibleTokenCollection(assets: AssetSummary[], count = 0): Collection {
 	return {
-		id: 'fungible-tokens',
-		name: '[TEST] Bazar Fungible Tokens',
+		id: FUNGIBLE_TOKEN_COLLECTION_ID,
+		name: FUNGIBLE_TOKEN_COLLECTION_NAME,
 		description: 'Arweave-native fungible tokens with direct wallet ownership and native AR settlement.',
 		kind: 'tokens',
 		assets,
