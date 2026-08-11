@@ -209,7 +209,7 @@ export function mergeCollectionSnapshots(
 
 type CollectionSource = {
 	label: string;
-	load: () => Promise<Collection>;
+	load: (onProgress?: (collection: Collection) => void) => Promise<Collection>;
 	fallback?: () => Collection;
 };
 
@@ -219,14 +219,7 @@ export async function loadCollections(
 ): Promise<CollectionLoadResult> {
 	let collections: Array<Collection | undefined> = [];
 	const sources: CollectionSource[] = [
-		{
-			label: 'Arweave names',
-			load: () =>
-				loadNames(signal, (collection) => {
-					collections[0] = collection;
-					onProgress?.(collections.filter((item): item is Collection => Boolean(item)));
-				}),
-		},
+		{ label: 'Arweave names', load: (progress) => loadNames(signal, progress) },
 		{
 			label: 'Fungible token discovery',
 			load: () => loadFungibleTokens(signal),
@@ -242,12 +235,21 @@ export async function loadCollections(
 	const failures = new Array<boolean>(sources.length).fill(false);
 	await Promise.all(
 		sources.map(async (source, index) => {
+			let settled = false;
 			try {
-				collections[index] = await source.load();
+				collections[index] = await source.load((collection) => {
+					if (settled || signal?.aborted) return;
+					collections[index] = collection;
+					if (successes.some(Boolean)) {
+						onProgress?.(collections.filter((item): item is Collection => Boolean(item)));
+					}
+				});
+				settled = true;
 				throwIfAborted(signal);
 				successes[index] = true;
-				if (collections[index]?.indexSource === 'compiled-fallback') failures[index] = true;
+				failures[index] = collections[index]?.indexSource === 'compiled-fallback';
 			} catch (cause) {
+				settled = true;
 				throwIfAborted(signal);
 				failures[index] = true;
 				collections[index] = source.fallback?.();
@@ -429,10 +431,10 @@ function defaultFungibleToken(): AssetSummary {
 	};
 }
 
-async function loadNames(signal?: AbortSignal, onNamespace?: (collection: Collection) => void): Promise<Collection> {
+async function loadNames(signal?: AbortSignal, onProgress?: (collection: Collection) => void): Promise<Collection> {
 	const namespaceRequest = loadNamesNamespace(signal).then((namespace) => {
 		throwIfAborted(signal);
-		onNamespace?.(namesNamespaceCollection(namespace));
+		onProgress?.(namesNamespaceCollection(namespace));
 		return namespace;
 	});
 	const [namespace, page] = await Promise.all([namespaceRequest, loadCarrierPage(undefined, signal)]);
@@ -444,8 +446,6 @@ async function loadNames(signal?: AbortSignal, onNamespace?: (collection: Collec
 		cursor: page.cursor,
 		cursorHistory: page.cursor ? [page.cursor] : [],
 		hasMore: page.hasMore,
-		manifestId: namespace.manifestId,
-		namespace,
 	};
 }
 
@@ -458,6 +458,7 @@ function namesNamespaceCollection(namespace: NamesNamespaceIndex): Collection {
 		assets: [],
 		manifestId: namespace.manifestId,
 		namespace,
+		indexSource: 'reference',
 	};
 }
 
@@ -608,9 +609,8 @@ export async function loadImageCollection(
 		value = referencedManifest;
 	} catch {
 		throwIfAborted(signal);
-		// A just-published reference can remain pending after its immutable
-		// manifest is readable. The compiled manifest ID is the same signed
-		// value and keeps first load deterministic during that window.
+		// A reference can remain pending after its bundled immutable manifest
+		// is readable, so retain that manifest as the explicit fallback.
 		indexSource = 'compiled-fallback';
 	}
 	if (!value || !/^[A-Za-z0-9_-]{43}$/.test(value)) throw new Error('collection-reference-unavailable');

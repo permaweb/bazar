@@ -5,21 +5,40 @@ import {
 	isSupportedAssetContentType,
 	normalizeAssetContentType,
 } from 'helpers/asset-media';
+import { mapConcurrent } from 'helpers/concurrency';
 import { arweaveClientConfig, arweaveGatewayFromLocation, gatewayFromLocation } from 'helpers/config';
 
-import type { AssetSummary, Collection } from './collections';
+import type { AssetSummary } from './collections';
 import { acceptedMintActivity, upsertMintActivity } from './mint-activity';
+import {
+	CREATED_COLLECTION_ID,
+	CREATED_COLLECTION_NAME,
+	type MintedAsset,
+	type MintedCollection,
+	type StorageLike,
+	storeMintedAsset,
+	storeMintedCollection,
+} from './minted-assets';
+
+export type { MintedAsset, MintedCollection, StorageLike } from './minted-assets';
+export {
+	assetFromMintState,
+	CREATED_COLLECTION_ID,
+	CREATED_COLLECTION_NAME,
+	createdCollection,
+	loadMintedAssets,
+	loadMintedCollections,
+	storeMintedAsset,
+	storeMintedCollection,
+} from './minted-assets';
 
 const ADDRESS = /^[A-Za-z0-9_-]{43}$/;
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const MAX_AUDIO_BYTES = 100 * 1024 * 1024;
 export const ORDINARY_MINT_COST_MAX_WINSTON = 100_000_000_000n;
-const STORAGE_KEY = 'bazar-created-assets';
 const DRAFT_PREFIX = 'bazar-mint-draft:';
 const UDL_AMOUNT = /^(?:0|[1-9]\d*)(?:\.\d+)?$/;
 
-export const CREATED_COLLECTION_ID = 'created-assets';
-export const CREATED_COLLECTION_NAME = 'Created on Bazar';
 export const UDL_LICENSE_ID = 'dE0rmDfl9_OWjkDznNEXHaSO_JohJkRolvMzaCroUdw';
 
 export type UdlFeeGrant = 'one-time' | 'monthly';
@@ -81,14 +100,6 @@ export type MintDraft = {
 	udl?: UdlTerms;
 };
 
-export type MintedAsset = AssetSummary & {
-	description: string;
-	mediaId: string;
-	artworkId?: string;
-	owner: string;
-	createdAt: number;
-};
-
 export type MintResult = {
 	asset: MintedAsset;
 	mediaId: string;
@@ -114,19 +125,11 @@ export type CollectionMintPhase =
 	| { kind: 'asset'; index: number; total: number; phase: MintPhase }
 	| { kind: 'manifest' | 'reference'; phase: 'signing' | 'uploading' };
 
-export type MintedCollection = Collection & {
-	manifestId: string;
-	owner: string;
-	createdAt: number;
-};
-
 export type CollectionMintResult = {
 	collection: MintedCollection;
 	manifestId: string;
 	referenceId: string;
 };
-
-type StorageLike = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
 export type AssetMintClientOptions = {
 	wallet?: Window['arweaveWallet'];
@@ -433,10 +436,12 @@ export class CollectionMintClient {
 			byteLength(JSON.stringify(manifest)),
 			byteLength('Bazar collection index'),
 		];
-		const rewards = await Promise.all(sizes.map((size) => this.#price(size, signal)));
+		const uniqueSizes = [...new Set(sizes)];
+		const uniqueRewards = await mapConcurrent(uniqueSizes, 8, (size) => this.#price(size, signal));
+		const rewards = new Map(uniqueSizes.map((size, index) => [size, uniqueRewards[index]]));
 		return {
 			assetCount: input.files.length,
-			total: rewards.reduce((total, reward) => total + reward, 0n),
+			total: sizes.reduce((total, size) => total + rewards.get(size)!, 0n),
 			transactionCount: input.files.length + 2,
 		};
 	}
@@ -689,99 +694,6 @@ export function discardMintDraft(
 	if (ADDRESS.test(owner)) storage?.removeItem(`${DRAFT_PREFIX}${owner}`);
 }
 
-export function loadMintedAssets(storage: StorageLike | undefined = globalThis.window?.localStorage): MintedAsset[] {
-	if (!storage) return [];
-	try {
-		const assets = JSON.parse(storage.getItem(STORAGE_KEY) ?? '[]');
-		if (!Array.isArray(assets)) return [];
-		return assets.filter(isMintedAsset).sort((a, b) => b.createdAt - a.createdAt);
-	} catch {
-		return [];
-	}
-}
-
-export function storeMintedAsset(
-	asset: MintedAsset,
-	storage: StorageLike | undefined = globalThis.window?.localStorage
-): void {
-	if (!storage || !isMintedAsset(asset)) return;
-	storage.setItem(
-		STORAGE_KEY,
-		JSON.stringify([asset, ...loadMintedAssets(storage).filter((item) => item.id !== asset.id)])
-	);
-}
-
-export function loadMintedCollections(
-	storage: StorageLike | undefined = globalThis.window?.localStorage
-): MintedCollection[] {
-	if (!storage) return [];
-	try {
-		const collections = JSON.parse(storage.getItem(`${STORAGE_KEY}:collections`) ?? '[]');
-		return Array.isArray(collections)
-			? collections.filter(isMintedCollection).sort((a, b) => b.createdAt - a.createdAt)
-			: [];
-	} catch {
-		return [];
-	}
-}
-
-export function storeMintedCollection(
-	collection: MintedCollection,
-	storage: StorageLike | undefined = globalThis.window?.localStorage
-): void {
-	if (!storage || !isMintedCollection(collection)) return;
-	storage.setItem(
-		`${STORAGE_KEY}:collections`,
-		JSON.stringify([collection, ...loadMintedCollections(storage).filter((item) => item.id !== collection.id)])
-	);
-}
-
-export function createdCollection(assets: AssetSummary[] = loadMintedAssets()): Collection {
-	return {
-		id: CREATED_COLLECTION_ID,
-		name: CREATED_COLLECTION_NAME,
-		description: 'One-of-one media minted permanently through Bazar.',
-		kind: 'images',
-		assets,
-		total: assets.length,
-	};
-}
-
-export function assetFromMintState(
-	processId: string,
-	raw: Record<string, unknown>,
-	fallbackName = ''
-): AssetSummary | null {
-	const explicitMediaId = String(raw['asset-data'] ?? '');
-	const mediaId = explicitMediaId ? explicitMediaId : processId;
-	const contentType = normalizeAssetContentType(String(raw['asset-content-type'] ?? ''));
-	const artworkId = String(raw['asset-artwork'] ?? '');
-	const artist = typeof raw.artist === 'string' ? raw.artist.trim() : '';
-	const album = typeof raw.album === 'string' ? raw.album.trim() : '';
-	const duration = Number(raw.duration);
-	const name = String(raw.name ?? fallbackName).trim();
-	if (
-		!ADDRESS.test(processId) ||
-		!ADDRESS.test(mediaId) ||
-		!contentType ||
-		(artworkId && !ADDRESS.test(artworkId)) ||
-		!name
-	)
-		return null;
-	const gateway = arweaveGatewayFromLocation();
-	return {
-		id: processId,
-		name,
-		contentType,
-		...(artist ? { artist } : {}),
-		...(album ? { album } : {}),
-		...(Number.isFinite(duration) && duration > 0 ? { duration } : {}),
-		...(isAudioContentType(contentType)
-			? { media: `${gateway}/${mediaId}`, ...(artworkId ? { image: `${gateway}/${artworkId}` } : {}) }
-			: { image: `${gateway}/${mediaId}` }),
-	};
-}
-
 export function isBazarMintTags(tags: Record<string, string>): boolean {
 	return (
 		tags['app-name'] === 'Bazar' &&
@@ -928,45 +840,10 @@ function fileAssetName(file: File, index: number): string {
 	);
 }
 
-function isMintedAsset(value: unknown): value is MintedAsset {
-	if (!value || typeof value !== 'object') return false;
-	const asset = value as MintedAsset;
-	return (
-		ADDRESS.test(asset.id) &&
-		ADDRESS.test(asset.mediaId) &&
-		ADDRESS.test(asset.owner) &&
-		typeof asset.name === 'string' &&
-		typeof asset.description === 'string' &&
-		isSupportedAssetContentType(asset.contentType) &&
-		(isAudioContentType(asset.contentType) ? typeof asset.media === 'string' : typeof asset.image === 'string') &&
-		(asset.artworkId === undefined || ADDRESS.test(asset.artworkId)) &&
-		(asset.artist === undefined || typeof asset.artist === 'string') &&
-		(asset.album === undefined || typeof asset.album === 'string') &&
-		(asset.duration === undefined || (Number.isFinite(asset.duration) && asset.duration > 0)) &&
-		Number.isSafeInteger(asset.createdAt)
-	);
-}
-
 function requiredFileContentType(file: File): string {
 	const contentType = normalizeAssetContentType(file.type, file.name);
 	if (!contentType) throw new TypeError('mint-file-type-unsupported');
 	return contentType;
-}
-
-function isMintedCollection(value: unknown): value is MintedCollection {
-	if (!value || typeof value !== 'object') return false;
-	const collection = value as MintedCollection;
-	return (
-		ADDRESS.test(collection.id) &&
-		ADDRESS.test(collection.manifestId) &&
-		ADDRESS.test(collection.owner) &&
-		collection.kind === 'images' &&
-		typeof collection.name === 'string' &&
-		typeof collection.description === 'string' &&
-		Array.isArray(collection.assets) &&
-		collection.assets.every(isMintedAsset) &&
-		Number.isSafeInteger(collection.createdAt)
-	);
 }
 
 function assertAddress(value: string, error: string): void {

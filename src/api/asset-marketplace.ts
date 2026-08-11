@@ -1,3 +1,5 @@
+import { type AoCacheStatus, cacheMetadata } from 'ao-wrangler';
+
 import { DEFAULT_COMPUTE_GATEWAY, gatewaysFromLocation, normalizeComputeGateways } from 'helpers/config';
 
 import { aoFetch } from './ao';
@@ -38,6 +40,8 @@ export type ComputeResult = {
 	provider: string;
 	verifiedAt?: number;
 	maxAge?: number;
+	cacheStatus?: AoCacheStatus;
+	revalidation?: Promise<ComputeResult>;
 };
 
 export type AssetStateReadMode = 'now' | 'compute';
@@ -146,6 +150,7 @@ export async function readAssetState(
 		maxAttempts?: number;
 		maxAge?: number;
 		mode?: AssetStateReadMode;
+		staleWhileRevalidate?: number;
 		retryBaseDelay?: number;
 		onRetry?: (progress: ComputeRetryProgress) => void;
 	} = {}
@@ -154,12 +159,26 @@ export async function readAssetState(
 	const nodes = options.provider ? [options.provider] : currentServingNodes();
 	const provider = nodes[0];
 	const fetcher = aoFetch(nodes, options.fetch);
-	const state = await readState(processId, provider, fetcher, options);
-	return {
-		state,
-		provider,
-		verifiedAt: Date.now(),
+	const read = await readState(processId, provider, fetcher, options);
+	const result = {
+		state: read.state,
+		provider: read.provider,
+		verifiedAt: Date.now() - (read.cacheAge ?? 0) * 1_000,
 		maxAge: Math.max(0, Math.floor(options.maxAge ?? 60)),
+		...(read.cacheStatus ? { cacheStatus: read.cacheStatus } : {}),
+	};
+	return {
+		...result,
+		...(read.revalidation
+			? {
+					revalidation: read.revalidation.then((fresh) => ({
+						...result,
+						...fresh,
+						verifiedAt: Date.now(),
+						cacheStatus: 'miss' as const,
+					})),
+			  }
+			: {}),
 	};
 }
 
@@ -175,9 +194,19 @@ export async function readAssetStateAtSlot(
 	const nodes = currentServingNodes();
 	const provider = nodes[0];
 	const fetcher = aoFetch(nodes, options.fetch);
-	const state = await readState(processId, provider, fetcher, { ...options, slot });
-	if (assetStateSlot(state) !== slot) throw new Error('historical-state-slot-mismatch');
-	return { state, provider, verifiedAt: Date.now(), maxAge: 0 };
+	const read = await readState(processId, provider, fetcher, {
+		...options,
+		slot,
+		maxAge: 0,
+	});
+	if (assetStateSlot(read.state) !== slot) throw new Error('historical-state-slot-mismatch');
+	return {
+		state: read.state,
+		provider: read.provider,
+		verifiedAt: Date.now() - (read.cacheAge ?? 0) * 1_000,
+		maxAge: 0,
+		...(read.cacheStatus ? { cacheStatus: read.cacheStatus } : {}),
+	};
 }
 
 /** Read a complete, bounded immutable window from a process's schedule. */
@@ -447,11 +476,18 @@ async function readState(
 		maxAttempts?: number;
 		maxAge?: number;
 		mode?: AssetStateReadMode;
+		staleWhileRevalidate?: number;
 		retryBaseDelay?: number;
 		onRetry?: (progress: ComputeRetryProgress) => void;
 		slot?: number;
 	}
-): Promise<AssetState> {
+): Promise<{
+	state: AssetState;
+	provider: string;
+	cacheStatus?: AoCacheStatus;
+	cacheAge?: number;
+	revalidation?: Promise<{ state: AssetState; provider: string }>;
+}> {
 	const base = servingNode ? `${servingNode}/` : '/';
 	const maxAge = Math.max(0, Math.floor(options.maxAge ?? 60));
 	const endpoint =
@@ -459,7 +495,7 @@ async function readState(
 			? `compute?slot=${options.slot}`
 			: options.mode === 'compute'
 			? 'compute'
-			: `now&max-age=${maxAge}`;
+			: 'now&max-age=0';
 	const separator = endpoint.includes('?') ? '&' : '?';
 	const paths = [
 		`${base}${processId}~process@1.0/${endpoint}${separator}require-codec=json%401.0&accept-bundle=true`,
@@ -472,21 +508,67 @@ async function readState(
 	for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
 		let rateLimited = false;
 		for (const path of paths) {
-			try {
-				const response = await fetcher(path, {
-					...(options.slot === undefined && maxAge === 0 ? { cache: 'no-store' as const } : {}),
+			let retryInvalidCachedResponse = true;
+			const strictCurrent =
+				options.slot === undefined && maxAge === 0 && options.staleWhileRevalidate === undefined;
+			while (true) {
+				let response: Response | undefined;
+				const requestInit: RequestInit = {
+					...(strictCurrent
+						? { cache: 'reload' as const }
+						: options.slot !== undefined && maxAge === 0
+						? { cache: 'no-store' as const }
+						: {}),
+					...(!retryInvalidCachedResponse ? { cache: 'reload' as const } : {}),
 					headers: {
 						accept: 'application/json',
 						'require-codec': 'application/json',
 						'accept-bundle': 'true',
+						'cache-control':
+							options.staleWhileRevalidate === undefined
+								? `max-age=${maxAge}`
+								: `max-age=${maxAge}, stale-while-revalidate=${Math.max(
+										0,
+										Math.floor(options.staleWhileRevalidate)
+								  )}`,
 					},
 					signal: options.signal,
-				});
-				if (!response.ok) throw new Error(`HTTP ${response.status}`);
-				return parseAssetState(parseLosslessJson(await response.text()));
-			} catch (error) {
-				lastError = error;
-				rateLimited = error instanceof Error && /^HTTP 429(?:\b|$)/i.test(error.message);
+				};
+				const invalidate = (
+					fetcher as typeof fetch & {
+						invalidate?(input: RequestInfo | URL, init?: RequestInit): Promise<void>;
+					}
+				).invalidate;
+				try {
+					if (strictCurrent && retryInvalidCachedResponse && invalidate) {
+						await invalidate(path, requestInit).catch(() => undefined);
+					}
+					response = await fetcher(path, requestInit);
+					if (!response.ok) throw new Error(`HTTP ${response.status}`);
+					const state = parseAssetState(parseLosslessJson(await response.text()));
+					const cached = cacheMetadata(response);
+					return {
+						state,
+						provider: cached?.origin ?? servingNode,
+						...(cached ? { cacheStatus: cached.status, cacheAge: cached.age } : {}),
+						...(cached?.revalidation
+							? {
+									revalidation: cached.revalidation.then((fresh) =>
+										parseRevalidatedState(fresh, path, requestInit, fetcher, servingNode)
+									),
+							  }
+							: {}),
+					};
+				} catch (error) {
+					if (retryInvalidCachedResponse && response?.ok && cacheMetadata(response) && invalidate) {
+						retryInvalidCachedResponse = false;
+						await invalidate(path, requestInit).catch(() => undefined);
+						continue;
+					}
+					lastError = error;
+					rateLimited = error instanceof Error && /^HTTP 429(?:\b|$)/i.test(error.message);
+				}
+				break;
 			}
 			if (rateLimited) break;
 		}
@@ -498,6 +580,33 @@ async function readState(
 	}
 
 	throw lastError instanceof Error ? lastError : new Error('compute-provider-failed');
+}
+
+async function parseRevalidatedState(
+	response: Response,
+	path: string,
+	requestInit: RequestInit,
+	fetcher: typeof fetch,
+	servingNode: string,
+	retry = true
+): Promise<{ state: AssetState; provider: string }> {
+	try {
+		if (!response.ok) throw new Error(`HTTP ${response.status}`);
+		return {
+			state: parseAssetState(parseLosslessJson(await response.text())),
+			provider: cacheMetadata(response)?.origin ?? servingNode,
+		};
+	} catch (error) {
+		const invalidate = (
+			fetcher as typeof fetch & {
+				invalidate?(input: RequestInfo | URL, init?: RequestInit): Promise<void>;
+			}
+		).invalidate;
+		if (!retry || !response.ok || !invalidate) throw error;
+		await invalidate(path, requestInit).catch(() => undefined);
+		const replacement = await fetcher(path, { ...requestInit, cache: 'reload', signal: undefined });
+		return parseRevalidatedState(replacement, path, requestInit, fetcher, servingNode, false);
+	}
 }
 
 function parseProcessAssignments(value: unknown, fromSlot: number, toSlot: number): ProcessAssignment[] {

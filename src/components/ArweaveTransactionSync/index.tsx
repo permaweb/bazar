@@ -280,12 +280,16 @@ export function ArweaveTransactionSync({
 					</S.TransactionHeader>
 					<S.ProgressTrack
 						$active={progressActive}
-						$progress={displayedProgress}
 						$state={transactionState}
 						$confirmations={confirmationDepth}
 						$hasError={Boolean(active.hasError)}
 					>
-						<span style={{ width: `${displayedProgress}%` }} />
+						<span
+							style={{
+								width: `${displayedProgress}%`,
+								backgroundSize: `${10000 / Math.max(1, displayedProgress)}% 100%`,
+							}}
+						/>
 					</S.ProgressTrack>
 					{verificationDelayed ? (
 						<S.VerificationNote role="status">
@@ -368,7 +372,7 @@ export function ArweaveTransactionSync({
 							</React.Suspense>
 						</S.RaceShell>
 						<React.Suspense fallback={null}>
-							<CableTelemetryPanel telemetry={telemetry} />
+							<CableTelemetryPanel active={renderActive} telemetry={telemetry} />
 						</React.Suspense>
 					</>
 				</TransactionVisualizerBoundary>

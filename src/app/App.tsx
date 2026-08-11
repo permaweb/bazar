@@ -39,22 +39,23 @@ import type {
 	SwapPurchase,
 } from 'weave-wrangler';
 
-import { createAoFetch } from 'api/ao';
+import { aoClient } from 'api/ao';
 import { transactionExplorerUrl } from 'api/arweave-explorer';
 import {
 	type AssetCandidate,
 	bazarAtomicAssetFromState,
 	type CollectionActivityEvent,
 	confirmPurchaseActivity,
+	createAssetCandidateResolver,
 	createWalletCandidateScan,
 	discoverCollectionActivity,
 	discoverCollectionActivityBatched,
 	discoverMarketActivity,
 	discoverMarketActivityBatched,
-	discoverMarketActivityPage,
 	discoverPendingAssetOffers,
 	discoverWalletAssetCandidates,
 	isLiveListing,
+	partitionAssetCandidateSupport,
 	type PendingAssetOffer,
 	resolveAssetCandidates,
 	type ResolvedAsset,
@@ -80,30 +81,13 @@ import {
 	type SwapOrder,
 	waitForAssetState,
 } from 'api/asset-marketplace';
-import {
-	AssetMintClient,
-	CollectionMintClient,
-	type CollectionMintEstimate,
-	type CollectionMintPhase,
-	CREATED_COLLECTION_ID,
-	createdCollection,
-	discardMintDraft,
-	getMintDraft,
-	isHighMintCost,
-	loadMintedAssets,
-	loadMintedCollections,
-	type MintDraft,
-	type MintedAsset,
-	type MintEstimate,
-	type MintPhase,
-	UDL_LICENSE_ID,
-	type UdlTerms,
-} from 'api/asset-mint';
 import type { AssetObserverNetworkLease } from 'api/asset-observers';
 import {
 	cachedAssetState,
+	DISPLAY_STATE_CACHE,
 	invalidateAssetState,
 	prefetchAssetState,
+	prioritizeAssetStatePrefetch,
 	readAssetStateCached,
 } from 'api/asset-state-store';
 import type { PurchaseCostEstimate } from 'api/asset-transactions';
@@ -111,7 +95,6 @@ import {
 	type AssetSummary,
 	type Collection,
 	collectionAsset,
-	fallbackFungibleTokenCollection,
 	loadCollections,
 	loadMoreCarrierNames,
 	loadMoreFungibleTokens,
@@ -127,6 +110,13 @@ import {
 	removeMintActivity,
 	upsertMintActivity,
 } from 'api/mint-activity';
+import {
+	CREATED_COLLECTION_ID,
+	createdCollection,
+	loadMintedAssets,
+	loadMintedCollections,
+	type MintedAsset,
+} from 'api/minted-assets';
 import { formatTokenAmount } from 'api/order-matching';
 
 import { ArtworkImage } from 'components/ArtworkImage';
@@ -136,13 +126,11 @@ import { postConfirmationPendingLabel } from 'components/ArweaveTransactionSync/
 import { type AssetDetailTab, AssetDetailTabs } from 'components/AssetDetailTabs';
 import { assetOperationPendingActionLabel, AssetOperationStatus } from 'components/AssetOperationStatus';
 import { AudioArtwork } from 'components/AudioArtwork';
-import { AudioWaveformPlayer } from 'components/AudioWaveformPlayer';
 import { BazarMark } from 'components/BazarMark';
 import { Button } from 'components/Button';
 import { ConnectWalletButton } from 'components/ConnectWalletButton';
 import { ErrorPanel } from 'components/ErrorPanel';
 import { Loading } from 'components/Loading';
-import { MarketActivityList } from 'components/MarketActivityList';
 import { MintTransactionReceipt } from 'components/MintTransactionReceipt';
 import { NameArtwork } from 'components/NameArtwork';
 import { NamesCubePreview } from 'components/NamesCubePreview';
@@ -166,7 +154,12 @@ import { WalletMenu } from 'components/WalletMenu';
 import { isAudioContentType } from 'helpers/asset-media';
 import { formatAudioDuration } from 'helpers/audio-metadata';
 import { mapConcurrent } from 'helpers/concurrency';
-import { arweaveGatewayFromLocation, gatewayFromLocation } from 'helpers/config';
+import {
+	arweaveGatewayFromLocation,
+	arweaveGraphqlEndpoint,
+	gatewayFromLocation,
+	gatewaysFromLocation,
+} from 'helpers/config';
 import { scheduleIdleTask } from 'helpers/idle';
 import { optionalMotionBehavior } from 'helpers/motion';
 import { assetGroupRevealComplete, retainedAssetGroupLimit } from 'helpers/progressive-assets';
@@ -175,6 +168,7 @@ import { useWallet } from 'providers/WalletProvider';
 
 import './styles.css';
 
+import { loadMarketActivity, saveMarketActivity } from './market-activity-storage';
 import {
 	marketplaceCodedError,
 	marketplaceErrorMessage as errorMessage,
@@ -238,17 +232,20 @@ import {
 	purchaseObservationRetryMessage,
 	waitForPurchaseObservationRetry,
 } from './purchase-observation-retry';
-import { loadAtomicTransactionRuntime, preloadAtomicTransactionRuntime } from './runtime';
 import {
-	type HomeDiscoverCandidate,
-	type HomeDiscoverListing,
-	type HomeDiscoverSnapshot,
+	loadArweaveTransactionSync,
+	loadAtomicTransactionRuntime,
+	preloadArweaveTransactionSync,
+	preloadAtomicTransactionRuntime,
+} from './runtime';
+import {
+	type HomeListingShell,
 	loadAssetShellSnapshot,
-	loadHomeDiscoverSnapshot,
+	loadHomeListingSnapshot,
 	loadMarketShellSnapshot,
 	sessionSnapshotStorage,
 	storeAssetShellSnapshot,
-	storeHomeDiscoverSnapshot,
+	storeHomeListingSnapshot,
 	storeMarketShellSnapshot,
 } from './shell-snapshot';
 import { useDialogFocus } from './useDialogFocus';
@@ -258,19 +255,46 @@ const SESSION_SNAPSHOT_STORAGE = sessionSnapshotStorage(import.meta.env.PROD);
 const FungibleAssetView = React.lazy(() => import('../routes/FungibleAssetRoute'));
 const CreateView = React.lazy(() => import('../routes/CreateRoute'));
 const MyAssetsView = React.lazy(() => import('../routes/MyAssetsRoute'));
+const DeferredAudioWaveformPlayer = React.lazy(async () => {
+	const module = await import('components/AudioWaveformPlayer');
+	return { default: module.AudioWaveformPlayer };
+});
+const DeferredMarketActivityList = React.lazy(async () => {
+	const module = await import('components/MarketActivityList');
+	return { default: module.MarketActivityList };
+});
 const ArweaveTransactionSync = React.lazy(async () => {
-	const module = await import('components/ArweaveTransactionSync');
+	const module = await loadArweaveTransactionSync();
 	return { default: module.ArweaveTransactionSync };
 });
 
+function AudioWaveformPlayer(props: React.ComponentProps<typeof DeferredAudioWaveformPlayer>) {
+	return (
+		<React.Suspense fallback={<Loading label="Loading audio player…" />}>
+			<DeferredAudioWaveformPlayer {...props} />
+		</React.Suspense>
+	);
+}
+
+function MarketActivityList(props: React.ComponentProps<typeof DeferredMarketActivityList>) {
+	return (
+		<React.Suspense fallback={<Loading label="Loading activity…" />}>
+			<DeferredMarketActivityList {...props} />
+		</React.Suspense>
+	);
+}
+
 type MarketContextValue = {
 	collections: Collection[];
+	verifiedCollectionIds: ReadonlySet<string>;
 	loading: boolean;
 	error: string | null;
 	notice: string | null;
+	pageRefreshing: boolean;
 	loadMore(collectionId: string, signal?: AbortSignal): Promise<number>;
 	addCreatedAsset(asset: MintedAsset): void;
 	addCollection(collection: Collection): void;
+	setPageRefreshing(refreshing: boolean): void;
 	retry(): void;
 };
 
@@ -281,38 +305,47 @@ function initialMarketCollections() {
 	const known = new Set(cached.map((collection) => collection.id));
 	const localAdditions = localCollections.filter((collection) => !known.has(collection.id));
 	for (const collection of localAdditions) known.add(collection.id);
-	const discoveryFallback = [...cached, ...localAdditions].some((collection) => collection.kind === 'tokens')
-		? []
-		: [fallbackFungibleTokenCollection()];
 	return [
 		...cached,
 		...localAdditions,
-		...discoveryFallback,
 		...(mintedAssets.length && !known.has(CREATED_COLLECTION_ID) ? [createdCollection(mintedAssets)] : []),
 	];
 }
 
+export function verifiedCollectionIdsFrom(collections: Collection[]) {
+	return collections
+		.filter((collection) => collection.indexSource !== 'compiled-fallback')
+		.map((collection) => collection.id);
+}
+
 export const MarketContext = React.createContext<MarketContextValue>({
 	collections: [],
+	verifiedCollectionIds: new Set(),
 	loading: true,
 	error: null,
 	notice: null,
+	pageRefreshing: false,
 	loadMore: async () => 0,
 	addCreatedAsset: () => undefined,
 	addCollection: () => undefined,
+	setPageRefreshing: () => undefined,
 	retry: () => undefined,
 });
 
 export function App() {
 	const [marketRetry, setMarketRetry] = React.useState(0);
+	const [pageRefreshing, setPageRefreshing] = React.useState(false);
 	const [market, setMarket] = React.useState<MarketContextValue>(() => ({
 		collections: initialMarketCollections(),
+		verifiedCollectionIds: new Set(),
 		loading: true,
 		error: null,
 		notice: null,
+		pageRefreshing: false,
 		loadMore: async () => 0,
 		addCreatedAsset: () => undefined,
 		addCollection: () => undefined,
+		setPageRefreshing: () => undefined,
 		retry: () => undefined,
 	}));
 	React.useEffect(() => {
@@ -321,12 +354,17 @@ export function App() {
 	}, [market.collections]);
 	React.useEffect(() => {
 		const controller = new AbortController();
-		setMarket((current) => ({ ...current, loading: true, error: null }));
+		void aoClient(gatewaysFromLocation()).warm();
+		setMarket((current) => ({ ...current, verifiedCollectionIds: new Set(), loading: true, error: null }));
 		loadCollections(controller.signal, (collections) => {
 			if (!controller.signal.aborted) {
 				setMarket((current) => ({
 					...current,
 					collections: mergeCollectionSnapshots(current.collections, collections),
+					verifiedCollectionIds: new Set([
+						...current.verifiedCollectionIds,
+						...verifiedCollectionIdsFrom(collections),
+					]),
 				}));
 			}
 		}).then(
@@ -346,6 +384,11 @@ export function App() {
 								? [createdCollection(mintedAssets)]
 								: []),
 						],
+						verifiedCollectionIds: new Set([
+							...current.verifiedCollectionIds,
+							...verifiedCollectionIdsFrom(collections),
+							...localCollections.map((collection) => collection.id),
+						]),
 						loading: false,
 						error: null,
 						notice: unavailable.length
@@ -419,12 +462,13 @@ export function App() {
 		setMarket((current) => ({
 			...current,
 			collections: [collection, ...current.collections.filter((item) => item.id !== collection.id)],
+			verifiedCollectionIds: new Set([...current.verifiedCollectionIds, collection.id]),
 		}));
 	}, []);
 	const retry = React.useCallback(() => setMarketRetry((current) => current + 1), []);
 	const value = React.useMemo(
-		() => ({ ...market, loadMore, addCreatedAsset, addCollection, retry }),
-		[addCollection, addCreatedAsset, loadMore, market, retry]
+		() => ({ ...market, pageRefreshing, loadMore, addCreatedAsset, addCollection, setPageRefreshing, retry }),
+		[addCollection, addCreatedAsset, loadMore, market, pageRefreshing, retry]
 	);
 
 	return (
@@ -826,8 +870,16 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 			);
 		};
 		const cancelIdleValidation = scheduleIdleTask(() => {
-			void Promise.allSettled(candidates.map(validate)).then((results) => {
-				if (controller.signal.aborted || !results.some((result) => result.status === 'rejected')) return;
+			void mapConcurrent(candidates, 2, async (candidate) => {
+				if (controller.signal.aborted) return false;
+				try {
+					await validate(candidate);
+					return false;
+				} catch {
+					return true;
+				}
+			}).then((failed) => {
+				if (controller.signal.aborted || !failed.includes(true)) return;
 				const delay = Math.min(60_000, 5_000 * 2 ** Math.min(recoveryValidationRetry, 4));
 				retryTimer = window.setTimeout(() => setRecoveryValidationRetry((attempt) => attempt + 1), delay);
 			});
@@ -1030,6 +1082,7 @@ function RouteFocus() {
 			const headingText = heading?.textContent?.trim();
 			if (headingText) {
 				title = `${headingText} — Bazar`;
+				observer?.disconnect();
 			}
 			document.title = title;
 		};
@@ -1107,50 +1160,88 @@ function Header() {
 		(indexedAtomicSearch.query !== deferredNormalizedQuery || indexedAtomicSearch.loading);
 	const atomicIndexSearchFailed =
 		shouldSearchAtomicIndex && indexedAtomicSearch.query === deferredNormalizedQuery && indexedAtomicSearch.error;
-	const collectionResults = market.collections
-		.filter((collection) => {
-			if (scope === 'assets') return false;
-			if (scope === 'names' && collection.kind !== 'names') return false;
-			return collectionMatchesSearch(collection, deferredNormalizedQuery);
-		})
-		.slice(0, 6);
-	const searchableCollections = market.collections.filter(
-		(collection) => scope !== 'collections' && (scope !== 'names' || collection.kind === 'names')
+	const relevantSearchCollections = React.useMemo(
+		() => market.collections.filter((collection) => scope !== 'names' || collection.kind === 'names'),
+		[market.collections, scope]
 	);
-	const localAssetResults = deferredNormalizedQuery
-		? searchableCollections
-				.flatMap((collection) =>
-					collectionSearchAssets(collection, deferredNormalizedQuery).map((asset) => ({ asset, collection }))
-				)
-				.filter(({ asset, collection }) =>
-					marketplaceAssetMatchesSearch(asset, collection, deferredNormalizedQuery)
+	const localSearchMatches = React.useMemo(
+		() =>
+			new Map(
+				relevantSearchCollections.map((collection) => [
+					collection,
+					collectionSearchAssets(collection, deferredNormalizedQuery),
+				])
+			),
+		[deferredNormalizedQuery, relevantSearchCollections]
+	);
+	const collectionResults = React.useMemo(
+		() =>
+			scope === 'assets'
+				? []
+				: relevantSearchCollections
+						.filter(
+							(collection) =>
+								!deferredNormalizedQuery ||
+								`${collection.name} ${collection.description}`
+									.toLowerCase()
+									.includes(deferredNormalizedQuery) ||
+								Boolean(localSearchMatches.get(collection)?.length)
+						)
+						.slice(0, 6),
+		[deferredNormalizedQuery, localSearchMatches, relevantSearchCollections, scope]
+	);
+	const searchableCollections = React.useMemo(
+		() => (scope === 'collections' ? [] : relevantSearchCollections),
+		[relevantSearchCollections, scope]
+	);
+	const localAssetResults = React.useMemo(
+		() =>
+			deferredNormalizedQuery
+				? searchableCollections
+						.flatMap((collection) =>
+							(localSearchMatches.get(collection) ?? []).map((asset) => ({
+								asset,
+								collection,
+							}))
+						)
+						.filter(({ asset, collection }) =>
+							marketplaceAssetMatchesSearch(asset, collection, deferredNormalizedQuery)
+						)
+						.sort(
+							(left, right) =>
+								searchResultScore(right, deferredNormalizedQuery) -
+								searchResultScore(left, deferredNormalizedQuery)
+						)
+						.slice(0, 8)
+				: interleaveCollectionAssets(
+						searchableCollections,
+						8,
+						(asset, collection) =>
+							Boolean(asset.image || asset.media) ||
+							collection.kind === 'names' ||
+							collection.kind === 'tokens'
+				  ),
+		[deferredNormalizedQuery, localSearchMatches, searchableCollections]
+	);
+	const atomicIndexResults =
+		shouldSearchAtomicIndex && indexedAtomicSearch.query === deferredNormalizedQuery
+			? indexedAtomicSearch.results
+			: [];
+	const assetResults = React.useMemo(
+		() =>
+			[...localAssetResults, ...atomicIndexResults]
+				.filter(
+					({ asset }, index, results) =>
+						results.findIndex(({ asset: candidate }) => candidate.id === asset.id) === index
 				)
 				.sort(
 					(left, right) =>
 						searchResultScore(right, deferredNormalizedQuery) -
 						searchResultScore(left, deferredNormalizedQuery)
 				)
-				.slice(0, 8)
-		: interleaveCollectionAssets(
-				searchableCollections,
-				8,
-				(asset, collection) =>
-					Boolean(asset.image || asset.media) || collection.kind === 'names' || collection.kind === 'tokens'
-		  );
-	const atomicIndexResults =
-		shouldSearchAtomicIndex && indexedAtomicSearch.query === deferredNormalizedQuery
-			? indexedAtomicSearch.results
-			: [];
-	const assetResults = [...localAssetResults, ...atomicIndexResults]
-		.filter(
-			({ asset }, index, results) =>
-				results.findIndex(({ asset: candidate }) => candidate.id === asset.id) === index
-		)
-		.sort(
-			(left, right) =>
-				searchResultScore(right, deferredNormalizedQuery) - searchResultScore(left, deferredNormalizedQuery)
-		)
-		.slice(0, 8);
+				.slice(0, 8),
+		[atomicIndexResults, deferredNormalizedQuery, localAssetResults]
+	);
 	const directTokenCollection =
 		scope !== 'collections' && scope !== 'names'
 			? directTokenSearchCollection(market.collections, query)
@@ -1538,9 +1629,15 @@ function Header() {
 													key={`${collection.id}-${asset.id}`}
 													to={`/asset/${collection.id}/${asset.id}`}
 													onClick={followSearchResult}
-													onFocus={() => prefetchAssetPage(asset.id)}
-													onMouseEnter={() => prefetchAssetPage(asset.id)}
-													onTouchStart={() => prefetchAssetPage(asset.id)}
+													onFocus={() =>
+														prefetchAssetPage(asset.id, collection.kind === 'tokens')
+													}
+													onMouseEnter={() =>
+														prefetchAssetPage(asset.id, collection.kind === 'tokens')
+													}
+													onTouchStart={() =>
+														prefetchAssetPage(asset.id, collection.kind === 'tokens')
+													}
 												>
 													<span className="search-result-image">
 														{asset.image ? (
@@ -1576,9 +1673,9 @@ function Header() {
 											<Link
 												to={`/asset/${directTokenCollection.id}/${query.trim()}`}
 												onClick={followSearchResult}
-												onFocus={() => prefetchAssetPage(query.trim())}
-												onMouseEnter={() => prefetchAssetPage(query.trim())}
-												onTouchStart={() => prefetchAssetPage(query.trim())}
+												onFocus={() => prefetchAssetPage(query.trim(), true)}
+												onMouseEnter={() => prefetchAssetPage(query.trim(), true)}
+												onTouchStart={() => prefetchAssetPage(query.trim(), true)}
 											>
 												<span className="search-result-image">
 													<TokenArtwork ticker="Token" />
@@ -1972,6 +2069,18 @@ export function pendingHomeFloorCandidates(scan: HomeFloorScan) {
 	return [...scan.candidates.keys()].filter((processId) => !scan.settled.has(processId));
 }
 
+export function homeFloorCandidateNeedsResolution(
+	scan: HomeFloorScan | undefined,
+	scope: string,
+	candidate: Pick<AssetCandidate, 'processId' | 'height' | 'timestamp'>
+) {
+	return !(
+		scan?.scope === scope &&
+		scan.candidates.get(candidate.processId) === `${candidate.height}:${candidate.timestamp}` &&
+		scan.settled.has(candidate.processId)
+	);
+}
+
 export function commitHomeFloorResult(
 	scan: HomeFloorScan,
 	processId: string,
@@ -1986,6 +2095,24 @@ export function commitHomeFloorResult(
 	}
 	scan.failures.delete(processId);
 	scan.settled.set(processId, value);
+}
+
+export function publishHomeListingResult(
+	current: Record<string, AssetSummary[]>,
+	collectionId: string,
+	asset: AssetSummary,
+	listed: boolean
+) {
+	const previous = current[collectionId] ?? [];
+	const existing = previous.findIndex((candidate) => candidate.id === asset.id);
+	if (listed && existing >= 0) return current;
+	if (!listed && existing < 0) return current;
+	return {
+		...current,
+		[collectionId]: listed
+			? [...previous, asset]
+			: [...previous.slice(0, existing), ...previous.slice(existing + 1)],
+	};
 }
 
 export function homeFloorScanSummary(scan: HomeFloorScan): HomeMarketSummary {
@@ -2077,33 +2204,16 @@ export function compareHomeListingRecency(
 }
 
 export const HOME_ASSET_PAGE_SIZE = 9;
-const HOME_LISTING_RESOLUTION_BATCH_SIZE = 16;
-const HOME_LISTING_RESOLUTION_HEADROOM = 4;
-const HOME_LISTING_MAX_GRAPHQL_PAGES = 1_000;
-const HOME_LISTING_MAX_DEFERRED_PER_RUN = 24;
-const HOME_STATE_WAIT_TIMEOUT_MS = 2_500;
-const HOME_STATE_REQUEST_RATE = { requests: 8, period: 1 } as const;
-const HOME_DISCOVER_SNAPSHOT_RESUME_MS = 30_000;
+const HOME_LISTING_ASSET_LIMIT = HOME_ASSET_PAGE_SIZE * 4;
+const HOME_STATE_MAX_AGE = 30;
+const HOME_STATE_STALE_WHILE_REVALIDATE = 86_400;
+const HOME_LISTING_SNAPSHOT_MAX_AGE_MS = 60_000;
 
 export function homeAssetPage<T>(items: T[], requestedPage: number, pageSize = HOME_ASSET_PAGE_SIZE) {
 	const pageCount = Math.max(1, Math.ceil(items.length / pageSize));
 	const page = Math.min(Math.max(1, requestedPage), pageCount);
 	const start = (page - 1) * pageSize;
 	return { items: items.slice(start, start + pageSize), page, pageCount };
-}
-
-export function homeListingAssetPage<T>(
-	items: T[],
-	requestedPage: number,
-	hasMore: boolean,
-	pageSize = HOME_ASSET_PAGE_SIZE
-) {
-	const loadedPageCount = Math.max(1, Math.ceil(items.length / pageSize));
-	const requestablePageCount =
-		loadedPageCount + (hasMore && items.length > 0 && items.length % pageSize === 0 ? 1 : 0);
-	const page = Math.min(Math.max(1, requestedPage), requestablePageCount);
-	const start = (page - 1) * pageSize;
-	return { items: items.slice(start, start + pageSize), page, pageCount: requestablePageCount };
 }
 
 export function homeAssetVisibleForView(summary: HomeMarketSummary | undefined, view: HomeAssetView) {
@@ -2133,15 +2243,6 @@ function HomeMarketGhostCard({ kind }: { kind: 'collection' }) {
 	);
 }
 
-function HomeAssetLoadingMore() {
-	return (
-		<div className="home-feed-loading-more" role="status">
-			<LoaderCircle aria-hidden="true" />
-			<span>Loading more assets</span>
-		</div>
-	);
-}
-
 export function homeMarketPriceValue(value: string | null | undefined) {
 	if (!value) return Number.POSITIVE_INFINITY;
 	const match = value.replace(/,/g, '').match(/^([0-9]+(?:\.[0-9]+)?)\s+AR(?:\s*\/|$)/);
@@ -2161,132 +2262,48 @@ export function homeMarketHasPending(loading: boolean, keys: string[], summaries
 	return loading || keys.some((key) => !summaries[key]);
 }
 
-export function homeSummaryFailureNoticeVisible(
-	discoverResultsReady: boolean,
-	summaryFailureCount: number,
-	publicListingsFailure: boolean
-) {
-	return discoverResultsReady && summaryFailureCount > 0 && !publicListingsFailure;
+export function homeListingComputeFailure<T>(failure: T | undefined, attempts: number, failures: number) {
+	return failure !== undefined && attempts > 0 && failures === attempts ? failure : undefined;
+}
+
+export type HomeListingComputeCircuit = {
+	scope: string;
+	consecutiveFailures: number;
+	failure?: unknown;
+};
+
+export function recordHomeListingComputeResult(circuit: HomeListingComputeCircuit, scope: string, failure?: unknown) {
+	if (circuit.scope !== scope) {
+		circuit.scope = scope;
+		circuit.consecutiveFailures = 0;
+		circuit.failure = undefined;
+	}
+	if (failure === undefined) {
+		if (circuit.failure === undefined) circuit.consecutiveFailures = 0;
+		return circuit.failure;
+	}
+	circuit.consecutiveFailures += 1;
+	if (circuit.consecutiveFailures >= HOME_LISTING_ASSET_LIMIT) circuit.failure ??= failure;
+	return circuit.failure;
 }
 
 export function homeMarketShellLoading(loading: boolean, collectionCount: number) {
 	return loading && collectionCount === 0;
 }
 
-export function shouldLoadHomeDiscover(tab: HomeTab) {
-	return tab === 'discover';
-}
-
 export function shouldLoadHomeCollectionSummaries(tab: HomeTab) {
 	return tab === 'collections';
 }
 
-export function homeDiscoveryCatalogReady(collections: Collection[], loading: boolean) {
-	const tokensReady = collections.some((collection) => collection.kind === 'tokens');
-	const namesReady = collections.some((collection) => collection.kind === 'names' && collection.namespace);
-	return tokensReady && (namesReady || !loading);
+export function shouldLoadHomeAssetSummaries(tab: HomeTab) {
+	return tab === 'discover';
 }
 
-export function homeListingCandidateLikelyLive(candidate: AssetCandidate, collections: Collection[]) {
-	return (
-		candidate.marketAction === 'make-offer' ||
-		collections.some(
-			(collection) =>
-				collection.kind === 'tokens' && collection.assets.some((asset) => asset.id === candidate.processId)
-		)
-	);
-}
-
-export function prioritizeHomeListingCandidates(
-	candidates: AssetCandidate[],
-	revalidationIds: ReadonlySet<string> = new Set()
-) {
-	return [...candidates].sort((left, right) => {
-		const priority = (candidate: AssetCandidate) =>
-			revalidationIds.has(candidate.processId) ? 0 : candidate.marketAction === 'make-offer' ? 1 : 2;
-		return priority(left) - priority(right);
-	});
-}
-
-export function homeCachedFeedRefreshPending(cachedListingCount: number, revalidationCount: number) {
-	return cachedListingCount > 0 && revalidationCount > 0;
-}
-
-function homeDiscoverCandidate(candidate: HomeDiscoverCandidate): AssetCandidate {
-	return {
-		...candidate,
-		sources: ['market-action'],
-	};
-}
-
-function homeDiscoverCandidateSnapshot(candidate: AssetCandidate): HomeDiscoverCandidate {
-	return {
-		processId: candidate.processId,
-		height: candidate.height,
-		timestamp: candidate.timestamp,
-		...(candidate.activityIds?.length ? { activityIds: candidate.activityIds } : {}),
-		...(candidate.marketAction ? { marketAction: candidate.marketAction } : {}),
-	};
-}
-
-function homeDiscoverListing(result: ResolvedAsset): HomeDiscoverListing | null {
-	const order = bestAskOfAsset(result.state);
-	if (!order || !isLiveListing(result)) return null;
-	return {
-		asset: result.asset,
-		collection: {
-			id: result.collection.id,
-			name: result.collection.name,
-			description: result.collection.description,
-			kind: result.collection.kind,
-			assets: [result.asset],
-			total: result.collection.total ?? 1,
-		},
-		activity: {
-			processId: result.activity.processId,
-			height: result.activity.height,
-			timestamp: result.activity.timestamp,
-		},
-		price: orderPriceLabel(order, result.state),
-	};
-}
-
-function sortedHomeDiscoverListings(listings: Iterable<HomeDiscoverListing>) {
-	return [...listings].sort(
-		(left, right) =>
-			right.activity.height - left.activity.height ||
-			right.activity.timestamp - left.activity.timestamp ||
-			left.asset.id.localeCompare(right.asset.id)
-	);
-}
-
-function homeDiscoverListingMatches(listing: HomeDiscoverListing, query: string, assetType: HomeAssetType) {
-	return (
-		homeAssetTypeMatches(listing.collection, assetType) &&
-		(!query || marketplaceAssetMatchesSearch(listing.asset, listing.collection, query))
-	);
-}
-
-function homeDiscoverSnapshotCanResume(snapshot?: HomeDiscoverSnapshot) {
-	return Boolean(snapshot && Date.now() - snapshot.updatedAt <= HOME_DISCOVER_SNAPSHOT_RESUME_MS);
-}
-
-function homeDiscoverSnapshotQueue(snapshot?: HomeDiscoverSnapshot, resume = true) {
-	const candidates = new Map<string, HomeDiscoverCandidate>();
-	for (const candidate of [
-		...(snapshot?.listings.map((listing) => listing.activity) ?? []),
-		...(resume ? snapshot?.pendingCandidates ?? [] : []),
-	]) {
-		const current = candidates.get(candidate.processId);
-		if (
-			!current ||
-			candidate.height > current.height ||
-			(candidate.height === current.height && candidate.timestamp > current.timestamp)
-		) {
-			candidates.set(candidate.processId, candidate);
-		}
-	}
-	return [...candidates.values()].map(homeDiscoverCandidate);
+export function homeListingSupportVersion(collections: Collection[]) {
+	return collections
+		.map((collection) => `${collection.id}:${collectionActivityVersion(collection)}`)
+		.sort()
+		.join('|');
 }
 
 export function homeScrollIndicatorMetrics(
@@ -2320,132 +2337,200 @@ function Home() {
 	const [assetType, setAssetType] = React.useState<HomeAssetType>('all');
 	const [assetView, setAssetView] = React.useState<HomeAssetView>(DEFAULT_HOME_ASSET_VIEW);
 	const [assetPage, setAssetPage] = React.useState(1);
-	const activeHomeTabRef = React.useRef(homeTab);
-	activeHomeTabRef.current = homeTab;
-	const activeHomeAssetViewRef = React.useRef(assetView);
-	activeHomeAssetViewRef.current = assetView;
 	const computeGateway = gatewayFromLocation();
-	const discoverScope = `${arweaveGatewayFromLocation()}|${computeGateway}`;
-	const homeStateFetch = React.useMemo(
-		() => createAoFetch(servingNodeOrigins(window.location), HOME_STATE_REQUEST_RATE),
-		[computeGateway]
-	);
-	const [initialDiscoverSnapshot] = React.useState(() =>
-		loadHomeDiscoverSnapshot(SESSION_SNAPSHOT_STORAGE, discoverScope)
-	);
-	const initialDiscoverSnapshotResumable = homeDiscoverSnapshotCanResume(initialDiscoverSnapshot);
+	const homeListingSnapshotScope = `${arweaveGraphqlEndpoint()}|${gatewaysFromLocation().join(',')}`;
 	const query = new URLSearchParams(search).get('q') ?? '';
 	const normalizedQuery = query.trim().toLowerCase();
-	const partialTokenCollection = normalizedQuery
-		? market.collections.find((collection) => collection.kind === 'tokens' && collection.hasMore)
-		: undefined;
-	const collections = market.collections.filter((collection) => {
-		if (!normalizedQuery) return true;
-		return collectionMatchesSearch(collection, normalizedQuery);
-	});
-	const [homeListings, setHomeListings] = React.useState<HomeDiscoverListing[]>(
-		initialDiscoverSnapshot?.listings ?? []
+	const homeSearchMatches = React.useMemo(
+		() =>
+			normalizedQuery
+				? new Map(
+						market.collections.map((collection) => [
+							collection,
+							collectionSearchAssets(collection, normalizedQuery),
+						])
+				  )
+				: null,
+		[market.collections, normalizedQuery]
 	);
-	const [homeListingsLoading, setHomeListingsLoading] = React.useState(false);
-	const [homeListingsRefreshingCached, setHomeListingsRefreshingCached] = React.useState(false);
-	const [homeListingsHasMore, setHomeListingsHasMore] = React.useState(
-		initialDiscoverSnapshotResumable ? initialDiscoverSnapshot?.hasMore ?? true : true
+	const partialTokenCollection = React.useMemo(
+		() =>
+			normalizedQuery
+				? market.collections.find((collection) => collection.kind === 'tokens' && collection.hasMore)
+				: undefined,
+		[market.collections, normalizedQuery]
 	);
-	const [homeListingsFailure, setHomeListingsFailure] = React.useState<
+	const collections = React.useMemo(
+		() =>
+			market.collections.filter((collection) => {
+				if (!normalizedQuery) return true;
+				return (
+					`${collection.name} ${collection.description}`.toLowerCase().includes(normalizedQuery) ||
+					Boolean(homeSearchMatches?.get(collection)?.length)
+				);
+			}),
+		[homeSearchMatches, market.collections, normalizedQuery]
+	);
+	const [verifiedHomeListings, setVerifiedHomeListings] = React.useState<Record<string, AssetSummary[]>>({});
+	const [verifiedHomeListingActivity, setVerifiedHomeListingActivity] = React.useState<
+		Record<string, HomeListingActivity>
+	>({});
+	const [portableHomeListings, setPortableHomeListings] = React.useState<ResolvedAsset[]>([]);
+	const [cachedHomeListings, setCachedHomeListings] = React.useState<HomeListingShell[]>(() =>
+		loadHomeListingSnapshot(SESSION_SNAPSHOT_STORAGE, homeListingSnapshotScope, HOME_LISTING_SNAPSHOT_MAX_AGE_MS)
+	);
+	React.useEffect(() => {
+		setCachedHomeListings(
+			loadHomeListingSnapshot(
+				SESSION_SNAPSHOT_STORAGE,
+				homeListingSnapshotScope,
+				HOME_LISTING_SNAPSHOT_MAX_AGE_MS
+			)
+		);
+	}, [homeListingSnapshotScope]);
+	const liveHomeListingShells = React.useMemo(
+		() => portableHomeListings.flatMap((result) => homeListingShell(result) ?? []),
+		[portableHomeListings]
+	);
+	const homeListingShells = React.useMemo(() => {
+		const listings = new Map(cachedHomeListings.map((listing) => [listing.asset.id, listing]));
+		for (const listing of liveHomeListingShells) listings.set(listing.asset.id, listing);
+		return [...listings.values()];
+	}, [cachedHomeListings, liveHomeListingShells]);
+	const displayHomeListings = React.useMemo(
+		() =>
+			homeListingShells.map(({ asset, collection, activity }) => ({
+				asset,
+				collection,
+				activity,
+			})),
+		[homeListingShells]
+	);
+	const [portableHomeListingsLoading, setPortableHomeListingsLoading] = React.useState(false);
+	const [portableHomeListingsComplete, setPortableHomeListingsComplete] = React.useState(false);
+	const [portableHomeListingsFailure, setPortableHomeListingsFailure] = React.useState<
 		Extract<HomeMarketSummary, { status: 'unavailable' }> | undefined
 	>();
-	const [homeListingsRetry, setHomeListingsRetry] = React.useState(0);
-	const [homeListingsProgress, setHomeListingsProgress] = React.useState(0);
-	const homeListingsRef = React.useRef(
-		new Map((initialDiscoverSnapshot?.listings ?? []).map((listing) => [listing.asset.id, listing]))
+	const [portableHomeRetry, setPortableHomeRetry] = React.useState(0);
+	const portableHomeComputeCircuit = React.useRef<HomeListingComputeCircuit>({
+		scope: '',
+		consecutiveFailures: 0,
+	});
+	const marketShellReady = market.collections.length > 0;
+	const listingSupportVersion = React.useMemo(
+		() => homeListingSupportVersion(market.collections),
+		[market.collections]
 	);
-	const homeListingCursorRef = React.useRef<string | null>(
-		initialDiscoverSnapshotResumable ? initialDiscoverSnapshot?.cursor ?? null : null
-	);
-	const homeListingGraphqlHasMoreRef = React.useRef(
-		initialDiscoverSnapshotResumable ? initialDiscoverSnapshot?.hasMore ?? true : true
-	);
-	const homeListingPendingRef = React.useRef(
-		homeDiscoverSnapshotQueue(initialDiscoverSnapshot, initialDiscoverSnapshotResumable)
-	);
-	const homeListingSeenRef = React.useRef(
-		new Set(
-			initialDiscoverSnapshotResumable
-				? initialDiscoverSnapshot?.seenProcessIds ?? []
-				: initialDiscoverSnapshot?.listings.map((listing) => listing.asset.id) ?? []
-		)
-	);
-	const homeListingVisitedCursorsRef = React.useRef(
-		new Set(
-			initialDiscoverSnapshotResumable && initialDiscoverSnapshot?.cursor ? [initialDiscoverSnapshot.cursor] : []
-		)
-	);
-	const homeListingRevalidationRef = React.useRef(
-		new Set((initialDiscoverSnapshot?.listings ?? []).map((listing) => listing.asset.id))
-	);
-	const homeListingScopeRef = React.useRef(discoverScope);
-	const marketShellReady = homeDiscoveryCatalogReady(market.collections, market.loading);
 	const marketCollectionsRef = React.useRef(market.collections);
 	marketCollectionsRef.current = market.collections;
-	const loadedAssetLimit =
-		market.collections.reduce((total, collection) => total + collection.assets.length, 0) + homeListings.length;
-	const listedAssetCandidates = homeListings.map(({ asset, collection }) => ({ asset, collection }));
-	const assetCandidates = normalizedQuery
-		? assetView === 'all'
-			? homeSearchAssets(market.collections, listedAssetCandidates, normalizedQuery, loadedAssetLimit)
-			: listedAssetCandidates.filter(({ asset, collection }) =>
-					marketplaceAssetMatchesSearch(asset, collection, normalizedQuery)
-			  )
-		: assetView === 'all'
-		? homeAllAssets(market.collections, loadedAssetLimit, listedAssetCandidates)
-		: listedAssetCandidates;
+	const loadedAssetLimit = React.useMemo(
+		() =>
+			market.collections.reduce((total, collection) => total + collection.assets.length, 0) +
+			displayHomeListings.length,
+		[displayHomeListings.length, market.collections]
+	);
+	const listingAssetLimit = HOME_LISTING_ASSET_LIMIT;
+	const assetCandidates = React.useMemo(
+		() =>
+			normalizedQuery
+				? homeSearchAssets(
+						market.collections,
+						displayHomeListings,
+						normalizedQuery,
+						assetView === 'all' ? loadedAssetLimit : listingAssetLimit,
+						homeSearchMatches ?? undefined
+				  )
+				: assetView === 'all'
+				? homeAllAssets(market.collections, loadedAssetLimit, displayHomeListings)
+				: homeDiscoveryAssets(market.collections, verifiedHomeListings, listingAssetLimit, displayHomeListings),
+		[
+			assetView,
+			loadedAssetLimit,
+			homeSearchMatches,
+			market.collections,
+			normalizedQuery,
+			displayHomeListings,
+			verifiedHomeListings,
+		]
+	);
 	const [assetPrices, setAssetPrices] = React.useState<Record<string, HomeMarketSummary>>({});
-	const homeListingPrices: Record<string, HomeMarketSummary> = Object.fromEntries(
-		homeListings.map((listing) => [listing.asset.id, { status: 'resolved', value: listing.price }])
-	);
-	const homeMarketPrices = assetView === 'all' ? assetPrices : homeListingPrices;
-	const homeListingActivityByAsset = new Map<string, HomeListingActivity>(
-		homeListings.map((listing) => [listing.asset.id, listing.activity])
-	);
-	const displayedAssets = [...assetCandidates]
-		.filter(({ asset }) => {
-			const summary = homeMarketPrices[asset.id];
-			return homeAssetVisibleForView(summary, assetView);
-		})
-		.filter(({ collection }) => homeAssetTypeMatches(collection, assetType))
-		.sort((left, right) => {
-			if (assetView === 'all') return 0;
-			if (assetView === 'listed') {
-				return compareHomeListingRecency(left.asset.id, right.asset.id, homeListingActivityByAsset);
+	const displayAssetPrices = React.useMemo(() => {
+		const prices: Record<string, HomeMarketSummary> = Object.fromEntries(
+			homeListingShells.map((listing) => [
+				listing.asset.id,
+				{ status: 'resolved', value: listing.price } satisfies HomeMarketSummary,
+			])
+		);
+		for (const [assetId, summary] of Object.entries(assetPrices)) {
+			if (summary.status === 'resolved') prices[assetId] = summary;
+			else if (!prices[assetId]) prices[assetId] = summary;
+		}
+		return prices;
+	}, [assetPrices, homeListingShells]);
+	const homeListingActivityByAsset = React.useMemo(() => {
+		const indexed = new Map<string, HomeListingActivity>(Object.entries(verifiedHomeListingActivity));
+		for (const result of displayHomeListings) {
+			const current = indexed.get(result.asset.id);
+			if (
+				!current ||
+				result.activity.height > current.height ||
+				(result.activity.height === current.height && result.activity.timestamp > current.timestamp)
+			) {
+				indexed.set(result.asset.id, result.activity);
 			}
-			const price = (assetId: string) => {
-				const summary = homeMarketPrices[assetId];
-				if (!summary || summary.status !== 'resolved' || !summary.value) return Number.POSITIVE_INFINITY;
-				return homeMarketPriceValue(summary.value);
-			};
-			const leftPrice = price(left.asset.id);
-			const rightPrice = price(right.asset.id);
-			if (Number.isFinite(leftPrice) !== Number.isFinite(rightPrice)) {
-				return Number.isFinite(leftPrice) ? -1 : 1;
-			}
-			return assetView === 'price-low' ? leftPrice - rightPrice : rightPrice - leftPrice;
-		});
-	const assetPagination =
-		assetView === 'all'
-			? homeAssetPage(displayedAssets, assetPage)
-			: homeListingAssetPage(displayedAssets, assetPage, homeListingsHasMore);
-	const assets = assetView === 'all' ? assetPagination.items : [];
+		}
+		return indexed;
+	}, [displayHomeListings, verifiedHomeListingActivity]);
+	const displayedAssets = React.useMemo(
+		() =>
+			[...assetCandidates]
+				.filter(({ asset }) => homeAssetVisibleForView(displayAssetPrices[asset.id], assetView))
+				.filter(({ collection }) => homeAssetTypeMatches(collection, assetType))
+				.sort((left, right) => {
+					if (assetView === 'all') return 0;
+					if (assetView === 'listed') {
+						return compareHomeListingRecency(left.asset.id, right.asset.id, homeListingActivityByAsset);
+					}
+					const price = (assetId: string) => {
+						const summary = displayAssetPrices[assetId];
+						if (!summary || summary.status !== 'resolved' || !summary.value)
+							return Number.POSITIVE_INFINITY;
+						return homeMarketPriceValue(summary.value);
+					};
+					const leftPrice = price(left.asset.id);
+					const rightPrice = price(right.asset.id);
+					if (Number.isFinite(leftPrice) !== Number.isFinite(rightPrice)) {
+						return Number.isFinite(leftPrice) ? -1 : 1;
+					}
+					return assetView === 'price-low' ? leftPrice - rightPrice : rightPrice - leftPrice;
+				}),
+		[assetCandidates, assetType, assetView, displayAssetPrices, homeListingActivityByAsset]
+	);
+	const assetPagination = homeAssetPage(displayedAssets, assetPage);
+	const assets = assetView === 'all' ? assetPagination.items : assetCandidates;
 	const assetKey = assets.map(({ asset }) => asset.id).join(',');
-	const collectionKey = collections
-		.map((collection) => `${collection.id}:${collection.assets.map((asset) => asset.id).join('.')}`)
-		.concat(computeGateway)
-		.join(',');
+	const portableHomeListingById = React.useMemo(
+		() => new Map(portableHomeListings.map((result) => [result.asset.id, result])),
+		[portableHomeListings]
+	);
+	const portableHomeStateKey = React.useMemo(
+		() =>
+			portableHomeListings
+				.map((result) => `${result.asset.id}:${String(result.state.raw['at-slot'] ?? result.state.swapHeight)}`)
+				.join(','),
+		[portableHomeListings]
+	);
+	const collectionKey = React.useMemo(
+		() =>
+			collections
+				.map((collection) => `${collection.id}:${collection.assets.map((asset) => asset.id).join('.')}`)
+				.concat(computeGateway)
+				.join(','),
+		[collections, computeGateway]
+	);
 	const [collectionFloors, setCollectionFloors] = React.useState<Record<string, HomeMarketSummary>>({});
 	const [summaryRetry, setSummaryRetry] = React.useState(0);
 	const [summaryRetrying, setSummaryRetrying] = React.useState(false);
-	const summaryRetryButtonRef = React.useRef<HTMLButtonElement>(null);
-	const summaryRetryOwnsFocus = React.useRef(false);
-	const homeHeadingRef = React.useRef<HTMLButtonElement>(null);
 	const assetSummaryControllers = React.useRef(new Map<string, AbortController>());
 	const collectionSummaryControllers = React.useRef(
 		new Map<
@@ -2462,6 +2547,7 @@ function Home() {
 	const retryAssetSummaries = React.useRef(new Set<string>());
 	const retryCollectionSummaries = React.useRef(new Set<string>());
 	const summaryRetryRun = React.useRef<HomeSummaryRetryRun>({ token: 0, pending: new Set() });
+	const shouldLoadAssetSummaries = shouldLoadHomeAssetSummaries(homeTab);
 	const finishSummaryRetry = React.useCallback((token: number, group: 'assets' | 'collections') => {
 		const activeRequests =
 			group === 'assets' ? assetSummaryControllers.current.size : collectionSummaryControllers.current.size;
@@ -2479,254 +2565,196 @@ function Home() {
 		[]
 	);
 	React.useEffect(() => {
-		if (homeListingScopeRef.current === discoverScope) return;
-		const snapshot = loadHomeDiscoverSnapshot(SESSION_SNAPSHOT_STORAGE, discoverScope);
-		const resumable = homeDiscoverSnapshotCanResume(snapshot);
-		homeListingScopeRef.current = discoverScope;
-		homeListingsRef.current = new Map((snapshot?.listings ?? []).map((listing) => [listing.asset.id, listing]));
-		homeListingCursorRef.current = resumable ? snapshot?.cursor ?? null : null;
-		homeListingGraphqlHasMoreRef.current = resumable ? snapshot?.hasMore ?? true : true;
-		homeListingPendingRef.current = homeDiscoverSnapshotQueue(snapshot, resumable);
-		homeListingSeenRef.current = new Set(
-			resumable ? snapshot?.seenProcessIds ?? [] : snapshot?.listings.map((listing) => listing.asset.id) ?? []
-		);
-		homeListingVisitedCursorsRef.current = new Set(resumable && snapshot?.cursor ? [snapshot.cursor] : []);
-		homeListingRevalidationRef.current = new Set((snapshot?.listings ?? []).map((listing) => listing.asset.id));
-		setHomeListings(snapshot?.listings ?? []);
-		setHomeListingsHasMore(resumable ? snapshot?.hasMore ?? true : true);
-		setHomeListingsFailure(undefined);
-		setHomeListingsProgress((current) => current + 1);
-	}, [discoverScope]);
-	React.useEffect(() => {
-		if (!SESSION_SNAPSHOT_STORAGE) return;
-		return scheduleIdleTask(
-			() =>
-				storeHomeDiscoverSnapshot(SESSION_SNAPSHOT_STORAGE, {
-					scope: discoverScope,
-					updatedAt: Date.now(),
-					cursor: homeListingCursorRef.current,
-					hasMore: homeListingsHasMore,
-					seenProcessIds: [...homeListingSeenRef.current],
-					pendingCandidates: homeListingPendingRef.current.map(homeDiscoverCandidateSnapshot),
-					listings: homeListings,
-				}),
-			250
-		);
-	}, [discoverScope, homeListings, homeListingsHasMore, homeListingsProgress]);
-	React.useEffect(() => {
-		if (!shouldLoadHomeDiscover(homeTab) || assetView === 'all') {
-			setHomeListingsLoading(false);
-			setHomeListingsRefreshingCached(false);
+		if (!marketShellReady || !shouldLoadAssetSummaries) {
+			setPortableHomeListingsLoading(false);
 			return;
 		}
-		if (!marketShellReady) return;
 		if (market.error) {
-			setHomeListingsLoading(false);
-			setHomeListingsRefreshingCached(false);
+			setPortableHomeListingsLoading(false);
+			return;
+		}
+		const computeCircuitScope = `${computeGateway}|${portableHomeRetry}`;
+		const computeCircuit = portableHomeComputeCircuit.current;
+		recordHomeListingComputeResult(computeCircuit, computeCircuitScope);
+		if (computeCircuit.failure !== undefined) {
+			setPortableHomeListingsLoading(false);
+			setPortableHomeListingsFailure({
+				status: 'unavailable',
+				source: 'compute',
+				kind: marketplaceFailureKind(computeCircuit.failure),
+			});
 			return;
 		}
 		const controller = new AbortController();
-		const requestScope = discoverScope;
-		const requestedListingCount = assetPage * HOME_ASSET_PAGE_SIZE;
-		setHomeListingsLoading(true);
-		setHomeListingsRefreshingCached(
-			homeCachedFeedRefreshPending(homeListingsRef.current.size, homeListingRevalidationRef.current.size)
-		);
-		setHomeListingsFailure(undefined);
+		let disposed = false;
+		setPortableHomeListingsLoading(true);
+		setPortableHomeListingsComplete(false);
+		setPortableHomeListingsFailure(undefined);
+		const publications = createAnimationFrameBatch<
+			ListingResolutionOutcome | { processId: string; state: AssetState; provider: string; refresh: true }
+		>((batch) => {
+			const settledIds = new Set(batch.map((publication) => publication.processId));
+			setCachedHomeListings((current) => current.filter((listing) => !settledIds.has(listing.asset.id)));
+			setPortableHomeListings((current) => {
+				const results = new Map(current.map((result) => [result.asset.id, result]));
+				for (const publication of batch) {
+					if ('refresh' in publication) {
+						const previous = results.get(publication.processId);
+						if (previous) {
+							const updated = {
+								...previous,
+								state: publication.state,
+								provider: publication.provider,
+							};
+							if (isLiveListing(updated)) results.set(publication.processId, updated);
+							else results.delete(publication.processId);
+						}
+					} else {
+						results.delete(publication.processId);
+						if (publication.result && isLiveListing(publication.result)) {
+							results.set(publication.processId, publication.result);
+						}
+					}
+				}
+				return [...results.values()];
+			});
+		});
 		void (async () => {
 			let indexFailure: unknown;
 			let computeFailure: unknown;
-			let activeBatch: AssetCandidate[] = [];
-			let completedBatchIds = new Set<string>();
-			const deferredCandidates: AssetCandidate[] = [];
-			const deferredIds = new Set<string>();
-			const deferCandidate = (candidate: AssetCandidate) => {
-				if (deferredIds.has(candidate.processId)) return;
-				deferredIds.add(candidate.processId);
-				deferredCandidates.push(candidate);
-			};
-			const matchingListingCount = () =>
-				[...homeListingsRef.current.values()].filter((listing) =>
-					homeDiscoverListingMatches(listing, normalizedQuery, assetType)
-				).length;
-			const publishListings = () => setHomeListings(sortedHomeDiscoverListings(homeListingsRef.current.values()));
-			const updateHasMore = () => {
-				const hasMore = homeListingPendingRef.current.length > 0 || homeListingGraphqlHasMoreRef.current;
-				setHomeListingsHasMore(hasMore);
-				setHomeListingsProgress((current) => current + 1);
-				return hasMore;
+			let computeAttempts = 0;
+			let computeFailures = 0;
+			let computeCircuitFailure: unknown;
+			let discoveryFailure: unknown;
+			const collections = marketCollectionsRef.current;
+			const resolver = createAssetCandidateResolver(collections, {
+				signal: controller.signal,
+				concurrency: 8,
+				read: (processId, signal) =>
+					readAssetStateCached(processId, {
+						signal,
+						maxAge: HOME_STATE_MAX_AGE,
+						maxAttempts: 1,
+						staleWhileRevalidate: HOME_STATE_STALE_WHILE_REVALIDATE,
+						onRevalidated: (fresh) => {
+							if (controller.signal.aborted) return;
+							publications.push({
+								processId,
+								state: fresh.state,
+								provider: fresh.provider,
+								refresh: true,
+							});
+						},
+					}),
+				onSettled: (result, candidate, cause) => {
+					if (controller.signal.aborted) return;
+					computeAttempts += 1;
+					if (cause) {
+						computeFailures += 1;
+						computeFailure ??= cause;
+						computeCircuitFailure ??= recordHomeListingComputeResult(
+							computeCircuit,
+							computeCircuitScope,
+							cause
+						);
+						if (computeCircuitFailure !== undefined) controller.abort(computeCircuitFailure);
+						return;
+					}
+					recordHomeListingComputeResult(computeCircuit, computeCircuitScope);
+					publications.push({ processId: candidate.processId, result });
+				},
+			});
+			let supportTail = Promise.resolve();
+			const publishCandidates = (candidates: AssetCandidate[]) => {
+				const { supported, unverified } = partitionAssetCandidateSupport(candidates, collections);
+				resolver.enqueue(supported);
+				if (unverified.length) {
+					supportTail = supportTail.then(async () => {
+						try {
+							const verification = await verifyAssetCandidateSupport(unverified, collections, {
+								signal: controller.signal,
+								onVerified: (verified) => resolver.enqueue(verified),
+							});
+							indexFailure ??= verification.unavailable[0]?.error;
+						} catch (cause) {
+							if (controller.signal.aborted) throw cause;
+							indexFailure ??= cause;
+						}
+					});
+				}
 			};
 			try {
-				while (homeListingRevalidationRef.current.size > 0 || matchingListingCount() < requestedListingCount) {
-					controller.signal.throwIfAborted();
-					if (!homeListingPendingRef.current.length) {
-						if (!homeListingGraphqlHasMoreRef.current) break;
-						if (homeListingVisitedCursorsRef.current.size >= HOME_LISTING_MAX_GRAPHQL_PAGES) {
-							throw new Error('home-listing-pagination-limit');
-						}
-						const page = await discoverMarketActivityPage({
-							cursor: homeListingCursorRef.current,
-							signal: controller.signal,
-						});
-						homeListingCursorRef.current = page.cursor;
-						homeListingGraphqlHasMoreRef.current = page.hasMore;
-						if (page.hasMore) {
-							if (!page.cursor || homeListingVisitedCursorsRef.current.has(page.cursor)) {
-								throw new Error('home-listing-pagination-stalled');
-							}
-							homeListingVisitedCursorsRef.current.add(page.cursor);
-						}
-						for (const candidate of page.candidates) {
-							if (
-								!homeListingCandidateLikelyLive(candidate, marketCollectionsRef.current) &&
-								!homeListingsRef.current.has(candidate.processId)
-							) {
-								homeListingSeenRef.current.add(candidate.processId);
-								continue;
-							}
-							if (homeListingSeenRef.current.has(candidate.processId)) {
-								const listing = homeListingsRef.current.get(candidate.processId);
-								if (
-									listing &&
-									(candidate.height > listing.activity.height ||
-										(candidate.height === listing.activity.height &&
-											candidate.timestamp > listing.activity.timestamp))
-								) {
-									homeListingsRef.current.set(candidate.processId, {
-										...listing,
-										activity: {
-											processId: candidate.processId,
-											height: candidate.height,
-											timestamp: candidate.timestamp,
-										},
-									});
-									publishListings();
-								}
-								continue;
-							}
-							homeListingSeenRef.current.add(candidate.processId);
-							homeListingPendingRef.current.push(candidate);
-						}
-						homeListingPendingRef.current = prioritizeHomeListingCandidates(
-							homeListingPendingRef.current,
-							homeListingRevalidationRef.current
-						);
-						updateHasMore();
-						if (!homeListingPendingRef.current.length) continue;
-					}
-
-					const remainingListings = Math.max(1, requestedListingCount - matchingListingCount());
-					const batchSize = homeListingRevalidationRef.current.size
-						? Math.min(HOME_LISTING_RESOLUTION_BATCH_SIZE, homeListingRevalidationRef.current.size)
-						: Math.min(
-								HOME_LISTING_RESOLUTION_BATCH_SIZE,
-								remainingListings + HOME_LISTING_RESOLUTION_HEADROOM
-						  );
-					const candidates = homeListingPendingRef.current.splice(0, batchSize);
-					activeBatch = candidates;
-					completedBatchIds = new Set();
-					const collections = marketCollectionsRef.current;
-					const verification = await verifyAssetCandidateSupport(candidates, collections, {
-						signal: controller.signal,
-					});
-					const unavailableIds = new Set(
-						verification.unavailable.map(({ candidate, error }) => {
-							indexFailure ??= error;
-							return candidate.processId;
-						})
-					);
-					const supportedIds = new Set(verification.supported.map((candidate) => candidate.processId));
-					for (const candidate of candidates) {
-						if (supportedIds.has(candidate.processId)) continue;
-						completedBatchIds.add(candidate.processId);
-						if (unavailableIds.has(candidate.processId)) {
-							deferCandidate(candidate);
-							continue;
-						}
-						homeListingRevalidationRef.current.delete(candidate.processId);
-						homeListingsRef.current.delete(candidate.processId);
-					}
-					await resolveAssetCandidates(verification.supported, collections, {
-						signal: controller.signal,
-						concurrency: 8,
-						read: (processId, signal) =>
-							readAssetStateCached(processId, {
-								fetch: homeStateFetch,
-								signal,
-								maxAttempts: 1,
-								mode: 'compute',
-								waitTimeoutMs: HOME_STATE_WAIT_TIMEOUT_MS,
-							}),
-						onSettled: (result, candidate, cause) => {
-							completedBatchIds.add(candidate.processId);
-							if (cause) {
-								computeFailure ??= cause;
-								deferCandidate(candidate);
-							}
-							homeListingRevalidationRef.current.delete(candidate.processId);
-							homeListingsRef.current.delete(candidate.processId);
-							if (!result && market.loading) deferCandidate(candidate);
-							const listing = result ? homeDiscoverListing(result) : null;
-							if (listing) homeListingsRef.current.set(candidate.processId, listing);
-							publishListings();
-						},
-					});
-					activeBatch = [];
-					completedBatchIds.clear();
-					updateHasMore();
-					if (deferredCandidates.length >= HOME_LISTING_MAX_DEFERRED_PER_RUN) break;
-				}
-				if (controller.signal.aborted) return;
-				const failure = indexFailure ?? computeFailure;
-				setHomeListingsFailure(
+				await discoverMarketActivity({
+					listingsOnly: true,
+					signal: controller.signal,
+					onPage: publishCandidates,
+				});
+			} catch (cause) {
+				if (computeCircuitFailure === undefined) discoveryFailure = cause;
+			}
+			try {
+				await supportTail;
+				await resolver.finish();
+				controller.signal.throwIfAborted();
+				const failure =
+					discoveryFailure ??
+					indexFailure ??
+					homeListingComputeFailure(computeFailure, computeAttempts, computeFailures);
+				setPortableHomeListingsComplete(!failure);
+				setPortableHomeListingsFailure(
 					failure
 						? {
 								status: 'unavailable',
-								source: indexFailure ? 'index' : 'compute',
+								source: discoveryFailure || indexFailure ? 'index' : 'compute',
 								kind: marketplaceFailureKind(failure),
 						  }
 						: undefined
 				);
 			} catch (cause) {
-				if (!controller.signal.aborted) {
-					setHomeListingsFailure({
+				if (!disposed) {
+					setPortableHomeListingsFailure({
 						status: 'unavailable',
-						source: 'index',
-						kind: marketplaceFailureKind(cause),
+						source:
+							computeCircuitFailure === undefined && (discoveryFailure || indexFailure)
+								? 'index'
+								: 'compute',
+						kind: marketplaceFailureKind(computeCircuitFailure ?? cause),
 					});
 				}
 			} finally {
-				if (homeListingScopeRef.current === requestScope) {
-					homeListingPendingRef.current.unshift(
-						...activeBatch.filter((candidate) => !completedBatchIds.has(candidate.processId))
-					);
-					homeListingPendingRef.current.push(...deferredCandidates);
-				}
-				if (!controller.signal.aborted) {
-					setHomeListingsHasMore(
-						homeListingPendingRef.current.length > 0 || homeListingGraphqlHasMoreRef.current
-					);
-					setHomeListingsLoading(false);
-					setHomeListingsRefreshingCached(false);
-					setHomeListingsProgress((current) => current + 1);
+				if (!disposed) {
+					publications.flush();
+					setPortableHomeListingsLoading(false);
 				}
 			}
 		})();
-		return () => controller.abort();
+		return () => {
+			disposed = true;
+			controller.abort();
+			publications.cancel();
+		};
 	}, [
-		assetPage,
-		assetType,
-		assetView,
-		discoverScope,
-		homeListingsRetry,
-		homeTab,
+		computeGateway,
+		listingSupportVersion,
 		market.error,
-		market.loading,
 		marketShellReady,
-		normalizedQuery,
+		portableHomeRetry,
+		shouldLoadAssetSummaries,
 	]);
 	React.useEffect(() => {
-		if (!shouldLoadHomeDiscover(homeTab) || assetView !== 'all') {
+		if (
+			!SESSION_SNAPSHOT_STORAGE ||
+			!liveHomeListingShells.length ||
+			(!portableHomeListingsComplete && liveHomeListingShells.length < HOME_ASSET_PAGE_SIZE)
+		)
+			return;
+		return scheduleIdleTask(
+			() => storeHomeListingSnapshot(SESSION_SNAPSHOT_STORAGE, homeListingSnapshotScope, liveHomeListingShells),
+			250
+		);
+	}, [homeListingSnapshotScope, liveHomeListingShells, portableHomeListingsComplete]);
+	React.useEffect(() => {
+		if (!shouldLoadAssetSummaries) {
 			for (const controller of assetSummaryControllers.current.values()) controller.abort();
 			assetSummaryControllers.current.clear();
 			return;
@@ -2757,28 +2785,44 @@ function Home() {
 			finishSummaryRetry(retryToken, 'assets');
 		};
 		retryAssetSummaries.current.clear();
-		void mapConcurrent(requestedAssets, 4, async ({ asset }) => {
-			if (!shouldLoadHomeDiscover(activeHomeTabRef.current) || activeHomeAssetViewRef.current !== 'all') return;
+		void mapConcurrent(requestedAssets, 8, async ({ asset }) => {
 			const previous = assetSummaryControllers.current.get(asset.id);
 			if (previous) previous.abort();
 			const controller = new AbortController();
 			assetSummaryControllers.current.set(asset.id, controller);
+			let trackingRevalidation = false;
 			try {
-				const state = (
-					await readAssetStateCached(asset.id, {
+				const publishPrice = (state: AssetState) => {
+					const order = bestAskOfAsset(state);
+					if (!controller.signal.aborted) {
+						setAssetPrices((current) => ({
+							...current,
+							[asset.id]: { status: 'resolved', value: order ? orderPriceLabel(order, state) : null },
+						}));
+					}
+				};
+				const portable = portableHomeListingById.get(asset.id);
+				let state = portable?.state;
+				if (!state) {
+					const computed = await readAssetStateCached(asset.id, {
 						signal: controller.signal,
+						maxAge: HOME_STATE_MAX_AGE,
 						maxAttempts: 1,
-						mode: 'compute',
-						waitTimeoutMs: HOME_STATE_WAIT_TIMEOUT_MS,
-					})
-				).state;
-				const order = bestAskOfAsset(state);
-				if (!controller.signal.aborted) {
-					setAssetPrices((current) => ({
-						...current,
-						[asset.id]: { status: 'resolved', value: order ? orderPriceLabel(order, state) : null },
-					}));
+						staleWhileRevalidate: HOME_STATE_STALE_WHILE_REVALIDATE,
+						onRevalidated: (fresh) => publishPrice(fresh.state),
+					});
+					state = computed.state;
+					if (computed.revalidation) {
+						trackingRevalidation = true;
+						const finishRevalidation = () => {
+							if (assetSummaryControllers.current.get(asset.id) === controller) {
+								assetSummaryControllers.current.delete(asset.id);
+							}
+						};
+						void computed.revalidation.then(finishRevalidation, finishRevalidation);
+					}
 				}
+				publishPrice(state);
 			} catch (cause) {
 				if (!controller.signal.aborted) {
 					setAssetPrices((current) => ({
@@ -2787,12 +2831,12 @@ function Home() {
 					}));
 				}
 			} finally {
-				if (assetSummaryControllers.current.get(asset.id) === controller) {
+				if (!trackingRevalidation && assetSummaryControllers.current.get(asset.id) === controller) {
 					assetSummaryControllers.current.delete(asset.id);
 				}
 			}
 		}).then(finishRetry);
-	}, [assetKey, assetView, finishSummaryRetry, homeTab, summaryRetry]);
+	}, [assetKey, finishSummaryRetry, portableHomeStateKey, shouldLoadAssetSummaries, summaryRetry]);
 	const marketShellLoading = homeMarketShellLoading(market.loading, market.collections.length);
 	const shouldLoadCollectionSummaries = shouldLoadHomeCollectionSummaries(homeTab);
 	React.useEffect(() => {
@@ -2859,6 +2903,72 @@ function Home() {
 				collectionSummaryControllers.current.set(collection.id, { version, controller });
 				collectionSummaryVersions.current.set(collection.id, version);
 				try {
+					const previousFloorScan = collectionFloorScans.current.get(collection.id);
+					const scheduled = new Set<string>();
+					const outcomes = new Map<
+						string,
+						{ candidate: AssetCandidate; asking: bigint | null; failure?: MarketplaceFailureKind }
+					>();
+					let floorScan: HomeFloorScan | undefined;
+					const resolver = createAssetCandidateResolver([collection], {
+						concurrency: 4,
+						signal: controller.signal,
+						read: (processId, signal) =>
+							readAssetStateCached(processId, {
+								signal,
+								maxAge: HOME_STATE_MAX_AGE,
+								maxAttempts: 1,
+								staleWhileRevalidate: HOME_STATE_STALE_WHILE_REVALIDATE,
+							}),
+						onSettled: (result, candidate, cause) => {
+							if (
+								controller.signal.aborted ||
+								collectionSummaryControllers.current.get(collection.id)?.controller !== controller ||
+								collectionSummaryControllers.current.get(collection.id)?.version !== version
+							)
+								return;
+							const order = !cause && result ? bestAskOfAsset(result.state) : null;
+							const outcome = {
+								candidate,
+								asking: order && result ? unitPriceWinston(order, result.state.denomination) : null,
+								...(cause ? { failure: marketplaceFailureKind(cause) } : {}),
+							};
+							if (
+								floorScan?.candidates.get(candidate.processId) ===
+								`${candidate.height}:${candidate.timestamp}`
+							) {
+								commitHomeFloorResult(floorScan, candidate.processId, outcome.asking, outcome.failure);
+							} else if (!floorScan) outcomes.set(candidate.processId, outcome);
+							if (cause) return;
+							const asset = collectionAsset(collection, candidate.processId);
+							if (!asset) return;
+							setVerifiedHomeListings((current) =>
+								publishHomeListingResult(current, collection.id, asset, Boolean(order))
+							);
+							if (!order || !result) return;
+							setAssetPrices((current) => ({
+								...current,
+								[asset.id]: { status: 'resolved', value: orderPriceLabel(order, result.state) },
+							}));
+							setVerifiedHomeListingActivity((current) => ({
+								...current,
+								[asset.id]: candidate,
+							}));
+						},
+					});
+					const enqueueCandidates = (candidates: AssetCandidate[]) => {
+						resolver.enqueue(
+							candidates.filter((candidate) => {
+								if (
+									scheduled.has(candidate.processId) ||
+									!homeFloorCandidateNeedsResolution(previousFloorScan, version, candidate)
+								)
+									return false;
+								scheduled.add(candidate.processId);
+								return true;
+							})
+						);
+					};
 					let candidates: AssetCandidate[];
 					if (collection.kind === 'names') {
 						const includesCollectionAsset = collectionCandidateMembership(collection);
@@ -2866,6 +2976,7 @@ function Home() {
 							listingsOnly: true,
 							signal: controller.signal,
 							acceptProcessId: includesCollectionAsset,
+							onPage: enqueueCandidates,
 						});
 					} else {
 						const recipients = [...new Set(collection.assets.map((asset) => asset.id))];
@@ -2890,6 +3001,7 @@ function Home() {
 									)
 										return;
 									commitHomeActivityBatch(scan, batchCandidates, batchRecipients);
+									enqueueCandidates(batchCandidates);
 								},
 							});
 						}
@@ -2904,57 +3016,52 @@ function Home() {
 						completeHomeActivityScan(scan, recipients);
 						candidates = [...scan.candidates.values()];
 					}
-					const floorScan = reconcileHomeFloorScan(
-						collectionFloorScans.current.get(collection.id),
-						version,
-						candidates
-					);
+					enqueueCandidates(candidates);
+					floorScan = reconcileHomeFloorScan(previousFloorScan, version, candidates);
 					collectionFloorScans.current.set(collection.id, floorScan);
-					const pendingFloorIds = new Set(pendingHomeFloorCandidates(floorScan));
-					const pendingFloorCandidates = candidates.filter((candidate) =>
-						pendingFloorIds.has(candidate.processId)
-					);
-					await resolveAssetCandidates(pendingFloorCandidates, [collection], {
-						concurrency: 4,
-						signal: controller.signal,
-						read: (processId, signal) =>
-							readAssetStateCached(processId, {
-								signal,
-								maxAttempts: 1,
-								mode: 'compute',
-								waitTimeoutMs: HOME_STATE_WAIT_TIMEOUT_MS,
-							}),
-						onSettled: (result, candidate, cause) => {
-							if (
-								controller.signal.aborted ||
-								collectionSummaryControllers.current.get(collection.id)?.controller !== controller ||
-								collectionSummaryControllers.current.get(collection.id)?.version !== version ||
-								collectionFloorScans.current.get(collection.id) !== floorScan
-							)
-								return;
-							if (cause) {
-								commitHomeFloorResult(
-									floorScan,
-									candidate.processId,
-									null,
-									marketplaceFailureKind(cause)
-								);
-								return;
-							}
-							const order = result ? bestAskOfAsset(result.state) : null;
+					for (const outcome of outcomes.values()) {
+						if (
+							floorScan.candidates.get(outcome.candidate.processId) ===
+							`${outcome.candidate.height}:${outcome.candidate.timestamp}`
+						) {
 							commitHomeFloorResult(
 								floorScan,
-								candidate.processId,
-								order && result ? unitPriceWinston(order, result.state.denomination) : null
+								outcome.candidate.processId,
+								outcome.asking,
+								outcome.failure
 							);
-						},
-					});
+						}
+					}
+					await resolver.finish();
 					controller.signal.throwIfAborted();
 					if (collectionFloorScans.current.get(collection.id) !== floorScan) {
 						controller.abort(new DOMException('Home floor scan replaced.', 'AbortError'));
 						controller.signal.throwIfAborted();
 					}
 					if (!controller.signal.aborted) {
+						const verifiedListings = [...floorScan.settled].flatMap(([processId, asking]) => {
+							if (asking === null) return [];
+							const asset = collectionAsset(collection, processId);
+							return asset ? [asset] : [];
+						});
+						const activityScan = collectionActivityScans.current.get(collection.id);
+						setVerifiedHomeListingActivity((current) => {
+							const next = { ...current };
+							for (const asset of verifiedListings) {
+								const candidate = activityScan?.candidates.get(asset.id);
+								if (candidate) next[asset.id] = candidate;
+							}
+							return next;
+						});
+						setVerifiedHomeListings((current) => {
+							const previous = current[collection.id] ?? [];
+							if (
+								previous.length === verifiedListings.length &&
+								previous.every((asset, index) => asset.id === verifiedListings[index]?.id)
+							)
+								return current;
+							return { ...current, [collection.id]: verifiedListings };
+						});
 						setCollectionFloors((current) => ({
 							...current,
 							[collection.id]: homeFloorScanSummary(floorScan),
@@ -2970,6 +3077,7 @@ function Home() {
 								kind: marketplaceFailureKind(cause),
 							},
 						}));
+						controller.abort(cause);
 					}
 				} finally {
 					if (collectionSummaryControllers.current.get(collection.id)?.controller === controller) {
@@ -2983,14 +3091,13 @@ function Home() {
 	const summaryFailures = [...Object.values(assetPrices), ...Object.values(collectionFloors)].filter(
 		(summary): summary is Extract<HomeMarketSummary, { status: 'unavailable' }> => summary.status === 'unavailable'
 	);
-	const summaryFailureMessage = (['index', 'compute'] as const)
-		.flatMap((source) => {
-			const failures = summaryFailures.filter((failure) => failure.source === source);
-			if (!failures.length) return [];
-			const kind = failures.some((failure) => failure.kind === 'rate-limited') ? 'rate-limited' : 'unavailable';
-			return marketplaceRequestFailureMessage(source, kind);
-		})
-		.join(' ');
+	const failedAssetIds = assets
+		.map(({ asset }) => asset.id)
+		.filter((assetId) => assetPrices[assetId]?.status === 'unavailable');
+	const failedCollectionIds = collections
+		.map((collection) => collection.id)
+		.filter((collectionId) => collectionFloors[collectionId]?.status === 'unavailable');
+	const summaryFailureKey = `${failedAssetIds.join(',')}|${failedCollectionIds.join(',')}`;
 	const retryMarketSummaries = () => {
 		if (summaryRetrying) return;
 		retryAssetSummaries.current = new Set(
@@ -3013,27 +3120,17 @@ function Home() {
 		setSummaryRetry((current) => current + 1);
 	};
 	React.useEffect(() => {
-		if (summaryRetrying || !summaryRetryOwnsFocus.current) return;
-		summaryRetryOwnsFocus.current = false;
-		window.requestAnimationFrame(() => {
-			const target = summaryRetryButtonRef.current ?? homeHeadingRef.current;
-			if (target?.isConnected && document.activeElement !== target) {
-				target.focus({ preventScroll: true });
-			}
-		});
-	}, [summaryFailures.length, summaryRetrying]);
-	React.useEffect(() => setAssetPage(1), [normalizedQuery]);
-	React.useEffect(() => {
-		const routedSearch = homeRouteSearch(search);
-		if (routedSearch === search) return;
-		navigate(
-			{
-				pathname: location.pathname,
-				search: routedSearch,
-			},
-			{ replace: true }
-		);
-	}, [location.pathname, navigate, search]);
+		if (
+			!summaryFailureKey ||
+			summaryFailureKey === '|' ||
+			summaryRetrying ||
+			portableHomeListingsFailure?.source === 'compute'
+		)
+			return;
+		const timer = window.setTimeout(retryMarketSummaries, 15_000);
+		return () => window.clearTimeout(timer);
+	}, [portableHomeListingsFailure, summaryFailureKey, summaryRetrying]);
+	React.useEffect(() => setAssetPage(1), [assetType, assetView, normalizedQuery]);
 	React.useEffect(() => {
 		if (assetPage !== assetPagination.page) setAssetPage(assetPagination.page);
 	}, [assetPage, assetPagination.page]);
@@ -3045,20 +3142,22 @@ function Home() {
 	const assetSummariesRetrying = summaryRetrying && summaryRetryRun.current.pending.has('assets');
 	const collectionSummariesRetrying = summaryRetrying && summaryRetryRun.current.pending.has('collections');
 	const collectionResultsPending = homeMarketHasPending(
-		market.loading || collectionSummariesRetrying,
+		market.loading || collectionSummariesRetrying || failedCollectionIds.length > 0,
 		collections.map((collection) => collection.id),
 		collectionFloors
 	);
-	const discoverResultsPending =
-		assetView === 'all'
-			? homeMarketHasPending(
-					market.loading || assetSummariesRetrying,
-					assets.map(({ asset }) => asset.id),
-					assetPrices
-			  )
-			: market.loading || homeListingsLoading;
-	const discoverResultsFailed = Boolean(homeListingsFailure) || summaryFailures.length > 0;
-	const discoverResultsReady = !discoverResultsPending;
+	const discoverResultsPending = homeMarketHasPending(
+		market.loading || assetSummariesRetrying || portableHomeListingsLoading || failedAssetIds.length > 0,
+		assets.map(({ asset }) => asset.id),
+		assetPrices
+	);
+	const discoverResultsFailed = Boolean(portableHomeListingsFailure) || summaryFailures.length > 0;
+	const pageRefreshing =
+		homeTab === 'discover' ? discoverResultsPending : homeTab === 'collections' ? collectionResultsPending : false;
+	React.useEffect(() => {
+		market.setPageRefreshing(pageRefreshing);
+		return () => market.setPageRefreshing(false);
+	}, [market.setPageRefreshing, pageRefreshing]);
 	const selectHomeTab = (tab: HomeTab) => {
 		navigate({ pathname: homeTabPath(tab), search: homeRouteSearch(search) });
 		if (marketPaneRef.current) marketPaneRef.current.scrollTop = 0;
@@ -3083,7 +3182,6 @@ function Home() {
 											className="home-market-tab"
 											id="home-discover-tab"
 											onClick={() => selectHomeTab('discover')}
-											ref={homeHeadingRef}
 											role="tab"
 											size="small"
 										>
@@ -3127,18 +3225,9 @@ function Home() {
 								</div>
 								{homeTab === 'discover' ? (
 									<div aria-busy={discoverResultsPending} className="home-asset-filters">
-										{homeListingsRefreshingCached ? (
-											<span className="home-asset-filters-loading" role="status">
-												<LoaderCircle aria-hidden="true" />
-												<span className="sr-only">Refreshing cached marketplace results</span>
-											</span>
-										) : null}
 										<MarketSelect<HomeAssetType>
 											label="Asset type"
-											onChange={(value) => {
-												setAssetType(value);
-												setAssetPage(1);
-											}}
+											onChange={setAssetType}
 											options={[
 												{ value: 'all', label: 'All' },
 												{ value: 'tokens', label: 'Tokens' },
@@ -3148,10 +3237,7 @@ function Home() {
 										/>
 										<MarketSelect<HomeAssetView>
 											label="View"
-											onChange={(value) => {
-												setAssetView(value);
-												setAssetPage(1);
-											}}
+											onChange={setAssetView}
 											options={[
 												{ value: 'all', label: 'All assets' },
 												{ value: 'listed', label: 'Listed for sale' },
@@ -3170,13 +3256,13 @@ function Home() {
 									retryLabel="Retry collections"
 								/>
 							) : null}
-							{homeTab === 'discover' && homeListingsFailure ? (
+							{homeTab === 'discover' && portableHomeListingsFailure ? (
 								<ErrorPanel
 									message={marketplaceRequestFailureMessage(
-										homeListingsFailure.source,
-										homeListingsFailure.kind
+										portableHomeListingsFailure.source,
+										portableHomeListingsFailure.kind
 									)}
-									onRetry={() => setHomeListingsRetry((current) => current + 1)}
+									onRetry={() => setPortableHomeRetry((current) => current + 1)}
 									retryLabel="Retry public listings"
 								/>
 							) : null}
@@ -3198,38 +3284,6 @@ function Home() {
 										Continue token search
 										<ArrowRight className="ui-icon ui-icon--xs" aria-hidden="true" />
 									</Link>
-								</div>
-							) : null}
-							{homeTab !== 'activity' &&
-							homeSummaryFailureNoticeVisible(
-								discoverResultsReady,
-								summaryFailures.length,
-								Boolean(homeListingsFailure)
-							) ? (
-								<div className="collection-source-notice">
-									<span role="status">
-										{summaryRetrying ? 'Rechecking unfinished market data.' : summaryFailureMessage}
-									</span>
-									<Button
-										aria-busy={summaryRetrying}
-										aria-disabled={summaryRetrying}
-										className="with-icon"
-										size="custom"
-										onBlur={(event) => {
-											if (summaryRetrying && event.relatedTarget)
-												summaryRetryOwnsFocus.current = false;
-										}}
-										onClick={() => {
-											if (summaryRetrying) return;
-											summaryRetryOwnsFocus.current = true;
-											retryMarketSummaries();
-										}}
-										ref={summaryRetryButtonRef}
-										type="button"
-									>
-										<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" />{' '}
-										{summaryRetrying ? 'Retrying…' : 'Retry market data'}
-									</Button>
 								</div>
 							) : null}
 							{homeTab === 'collections' ? (
@@ -3369,17 +3423,30 @@ function Home() {
 										<>
 											<div className="home-asset-grid">
 												{assetPagination.items.map(({ asset, collection }, index) => {
-													const price = homeMarketPrices[asset.id];
-													const pricePending =
-														!price ||
-														(assetSummariesRetrying && price.status === 'unavailable');
+													const price = displayAssetPrices[asset.id];
+													const pricePending = !price;
 													return (
 														<Link
 															key={`${collection.id}-${asset.id}`}
 															to={`/asset/${collection.id}/${asset.id}`}
-															onFocus={() => prefetchAssetPage(asset.id)}
-															onMouseEnter={() => prefetchAssetPage(asset.id)}
-															onTouchStart={() => prefetchAssetPage(asset.id)}
+															onFocus={() =>
+																prefetchAssetPage(
+																	asset.id,
+																	collection.kind === 'tokens'
+																)
+															}
+															onMouseEnter={() =>
+																prefetchAssetPage(
+																	asset.id,
+																	collection.kind === 'tokens'
+																)
+															}
+															onTouchStart={() =>
+																prefetchAssetPage(
+																	asset.id,
+																	collection.kind === 'tokens'
+																)
+															}
 														>
 															{asset.image ? (
 																<ArtworkImage
@@ -3427,18 +3494,13 @@ function Home() {
 													);
 												})}
 											</div>
-											{discoverResultsPending && !homeListingsRefreshingCached ? (
-												<HomeAssetLoadingMore />
-											) : null}
-											{displayedAssets.length ? (
-												<Pagination
-													ariaLabel="Discover pages"
-													className="home-asset-pagination"
-													onPageChange={selectAssetPage}
-													page={assetPagination.page}
-													pageCount={assetPagination.pageCount}
-												/>
-											) : null}
+											<Pagination
+												ariaLabel="Discover pages"
+												className="home-asset-pagination"
+												onPageChange={selectAssetPage}
+												page={assetPagination.page}
+												pageCount={assetPagination.pageCount}
+											/>
 										</>
 									) : discoverResultsFailed ? null : (
 										<div className="home-assets-empty">
@@ -3457,8 +3519,22 @@ function Home() {
 	);
 }
 
+const globalActivityCollections = new WeakMap<Collection[], Map<string, Collection>>();
+
 export function globalActivityCollection(collections: Collection[], processId: string) {
-	return collections.find((collection) => collectionCandidateMembership(collection)(processId));
+	let indexed = globalActivityCollections.get(collections);
+	if (!indexed) {
+		indexed = new Map();
+		for (const collection of collections) {
+			const processIds =
+				collection.kind === 'names'
+					? Object.keys(collection.namespace?.namesById ?? {})
+					: collection.assets.map((asset) => asset.id);
+			for (const id of processIds) indexed.set(id, collection);
+		}
+		globalActivityCollections.set(collections, indexed);
+	}
+	return indexed.get(processId);
 }
 
 export type GlobalActivityFilter = 'all' | CollectionActivityEvent['action'];
@@ -3499,6 +3575,21 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 	}, [activityFilter, activityScope]);
 
 	React.useEffect(() => {
+		if (!activityScope || scopeRef.current === activityScope) return;
+		try {
+			const cachedEvents = loadMarketActivity(window.localStorage, activityScope);
+			if (!cachedEvents.length) return;
+			scopeRef.current = activityScope;
+			eventsRef.current = cachedEvents;
+			setEvents(cachedEvents);
+			setDiscoveredAssets({});
+			setPreservingEvents(true);
+		} catch {
+			// Browser storage is optional; live Arweave discovery continues below.
+		}
+	}, [activityScope]);
+
+	React.useEffect(() => {
 		if (marketLoading) return;
 		if (!collections.length) {
 			setEvents([]);
@@ -3507,12 +3598,25 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 		}
 		const controller = new AbortController();
 		const sameScope = scopeRef.current === activityScope;
-		const preserveEvents = sameScope && eventsRef.current.length > 0;
-		const found = new Map((preserveEvents ? eventsRef.current : []).map((event) => [event.id, event]));
+		let cachedEvents: CollectionActivityEvent[] = [];
+		if (!sameScope) {
+			try {
+				cachedEvents = loadMarketActivity(window.localStorage, activityScope);
+			} catch {
+				// Browser storage is optional; live Arweave discovery continues below.
+			}
+		}
+		const initialEvents = sameScope && eventsRef.current.length ? eventsRef.current : cachedEvents;
+		const preserveEvents = initialEvents.length > 0;
+		const found = new Map(initialEvents.map((event) => [event.id, event]));
 		scopeRef.current = activityScope;
 		if (!preserveEvents) {
 			eventsRef.current = [];
 			setEvents([]);
+			setDiscoveredAssets({});
+		} else if (!sameScope) {
+			eventsRef.current = initialEvents;
+			setEvents(initialEvents);
 			setDiscoveredAssets({});
 		}
 		setLoading(true);
@@ -3521,44 +3625,83 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 		setPreservingEvents(preserveEvents);
 		const publish = (nextEvents: CollectionActivityEvent[]) => {
 			if (controller.signal.aborted) return;
-			for (const event of nextEvents) found.set(event.id, event);
+			for (const event of nextEvents) {
+				const previous = found.get(event.id);
+				found.set(
+					event.id,
+					previous?.purchaseProof && !event.purchaseProof
+						? { ...event, purchaseProof: previous.purchaseProof }
+						: event
+				);
+			}
 			eventsRef.current = newestCollectionActivity([...found.values()]);
 			setEvents(eventsRef.current);
 			setPages((current) => current + 1);
 		};
 		const knownMembership = (processId: string) => globalActivityCollection(collections, processId);
-		const unknownEvents: CollectionActivityEvent[] = [];
+		const unknownEvents = new Map<string, CollectionActivityEvent[]>();
+		const resolvedUnknown = new Map<string, ResolvedAsset>();
+		const pendingUnknownSettlements = new Set<string>();
+		let settlementFrame: number | undefined;
+		const flushUnknownSettlements = () => {
+			if (settlementFrame !== undefined) window.cancelAnimationFrame(settlementFrame);
+			settlementFrame = undefined;
+			if (controller.signal.aborted || !pendingUnknownSettlements.size) return;
+			const settled = [...pendingUnknownSettlements];
+			pendingUnknownSettlements.clear();
+			setDiscoveredAssets((current) => ({
+				...current,
+				...Object.fromEntries(settled.map((processId) => [processId, resolvedUnknown.get(processId)!])),
+			}));
+			publish(settled.flatMap((processId) => unknownEvents.get(processId) ?? []));
+		};
+		const resolver = createAssetCandidateResolver(collections, {
+			signal: controller.signal,
+			concurrency: 2,
+			read: (processId, signal) => readAssetStateCached(processId, { signal, maxAttempts: 1 }),
+			onSettled: (result, candidate) => {
+				if (!result || controller.signal.aborted) return;
+				resolvedUnknown.set(candidate.processId, result);
+				pendingUnknownSettlements.add(candidate.processId);
+				settlementFrame ??= window.requestAnimationFrame(flushUnknownSettlements);
+			},
+		});
+		const supportFailures: unknown[] = [];
+		let supportTail = Promise.resolve();
 		const acceptPage = (pageEvents: CollectionActivityEvent[]) => {
 			const known = pageEvents.filter((event) => knownMembership(event.processId));
+			const unknown = pageEvents.filter((event) => !knownMembership(event.processId));
 			if (known.length) publish(known);
-			unknownEvents.push(...pageEvents.filter((event) => !knownMembership(event.processId)));
-		};
-		const resolveUnknownEvents = async () => {
-			const candidates: AssetCandidate[] = [
-				...new Map(
-					unknownEvents.map((event) => [
-						event.processId,
-						{
-							processId: event.processId,
-							height: event.height,
-							timestamp: event.timestamp,
-							sources: ['market-action'] as AssetCandidate['sources'],
-						},
-					])
-				).values(),
-			];
-			const verification = await verifyAssetCandidateSupport(candidates, collections, {
-				signal: controller.signal,
-			});
-			const resolved = await resolveAssetCandidates(verification.supported, collections, {
-				signal: controller.signal,
-				concurrency: 2,
-				read: (processId, signal) => readAssetStateCached(processId, { signal, maxAttempts: 1 }),
-			});
-			const byId = Object.fromEntries(resolved.map((result) => [result.asset.id, result]));
-			if (resolved.length) {
-				setDiscoveredAssets((current) => ({ ...current, ...byId }));
-				publish(unknownEvents.filter((event) => byId[event.processId]));
+			const candidates: AssetCandidate[] = [];
+			const resolvedEvents: CollectionActivityEvent[] = [];
+			for (const event of unknown) {
+				const processEvents = unknownEvents.get(event.processId);
+				if (processEvents) {
+					processEvents.push(event);
+				} else {
+					unknownEvents.set(event.processId, [event]);
+					candidates.push({
+						processId: event.processId,
+						height: event.height,
+						timestamp: event.timestamp,
+						sources: ['market-action'],
+					});
+				}
+				if (resolvedUnknown.has(event.processId)) resolvedEvents.push(event);
+			}
+			if (resolvedEvents.length) publish(resolvedEvents);
+			if (candidates.length) {
+				supportTail = supportTail.then(async () => {
+					try {
+						await verifyAssetCandidateSupport(candidates, collections, {
+							signal: controller.signal,
+							onVerified: (verified) => resolver.enqueue(verified),
+						});
+					} catch (cause) {
+						if (controller.signal.aborted) throw cause;
+						supportFailures.push(cause);
+					}
+				});
 			}
 		};
 		const requests = [
@@ -3571,14 +3714,15 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 		void Promise.allSettled(requests).then(async (outcomes) => {
 			if (controller.signal.aborted) return;
 			const failures = outcomes.flatMap((outcome) => (outcome.status === 'rejected' ? [outcome.reason] : []));
-			if (!failures.length && unknownEvents.length) {
-				try {
-					await resolveUnknownEvents();
-				} catch (cause) {
-					if (controller.signal.aborted) return;
-					failures.push(cause);
-				}
+			try {
+				await supportTail;
+				await resolver.finish();
+			} catch (cause) {
+				if (controller.signal.aborted) return;
+				failures.push(cause);
 			}
+			flushUnknownSettlements();
+			failures.push(...supportFailures);
 			eventsRef.current = newestCollectionActivity([...found.values()]);
 			try {
 				eventsRef.current = await confirmPurchaseActivity(eventsRef.current, {
@@ -3590,6 +3734,15 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 				failures.push(cause);
 			}
 			setEvents(eventsRef.current);
+			try {
+				saveMarketActivity(
+					window.localStorage,
+					activityScope,
+					eventsRef.current.filter((event) => knownMembership(event.processId))
+				);
+			} catch {
+				// The live result remains available even when storage is unavailable.
+			}
 			if (failures.length) {
 				const kind = failures.some((cause) => marketplaceFailureKind(cause) === 'rate-limited')
 					? 'rate-limited'
@@ -3599,7 +3752,10 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 			setLoading(false);
 			setPreservingEvents(false);
 		});
-		return () => controller.abort();
+		return () => {
+			controller.abort();
+			if (settlementFrame !== undefined) window.cancelAnimationFrame(settlementFrame);
+		};
 	}, [activityScope, marketLoading, retry]);
 
 	const includedEvents = events.filter((event) => event.height > 0).length;
@@ -3759,6 +3915,7 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 }
 
 function GatewayControl() {
+	const { pageRefreshing } = React.useContext(MarketContext);
 	const computeNodes = servingNodeOrigins(window.location);
 	const computeCurrent = computeNodes.join(', ');
 	const [computeValue, setComputeValue] = React.useState(computeCurrent);
@@ -3800,52 +3957,65 @@ function GatewayControl() {
 		window.location.assign(url);
 	}
 	return (
-		<details className="gateway" open={open} ref={detailsRef}>
-			<summary
-				aria-controls="gateway-panel"
-				aria-expanded={open}
-				aria-label={`Compute peers, ${computeCurrent}`}
-				onClick={(event) => {
-					event.preventDefault();
-					setOpen((currentOpen) => !currentOpen);
-				}}
-				ref={triggerRef}
-				role="button"
-				title={`Compute: ${computeCurrent}`}
-			>
-				<Server className="ui-icon ui-icon--sm" aria-hidden="true" />
-				<span className="gateway-label">Gateway</span>
-			</summary>
-			<div id="gateway-panel">
-				<form onSubmit={apply}>
-					<label>
-						HyperBEAM peers
-						<input
-							aria-describedby={error ? 'gateway-error' : undefined}
-							aria-invalid={Boolean(error)}
-							onChange={(event) => {
-								setComputeValue(event.target.value);
-								setError('');
-							}}
-							ref={inputRef}
-							value={computeValue}
-						/>
-					</label>
-					{error ? (
-						<p className="gateway-error" id="gateway-error" role="alert">
-							{error}
-						</p>
-					) : null}
-					<Button className="with-icon" type="submit" size="custom">
-						<Server className="ui-icon ui-icon--sm" aria-hidden="true" /> Apply peers
-					</Button>
-				</form>
-				<p>
-					Process reads and observer requests fail over across these peers. Content, pricing, balances, and
-					settlement use the site gateway by default.
-				</p>
-			</div>
-		</details>
+		<div className="gateway-control">
+			{pageRefreshing ? (
+				<span
+					aria-label="Some assets on this page are still being refreshed on your configured nodes."
+					className="gateway-refreshing"
+					data-tooltip="Some assets on this page are still being refreshed on your configured nodes."
+					role="status"
+					tabIndex={0}
+				>
+					<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" />
+				</span>
+			) : null}
+			<details className="gateway" open={open} ref={detailsRef}>
+				<summary
+					aria-controls="gateway-panel"
+					aria-expanded={open}
+					aria-label={`Compute peers, ${computeCurrent}`}
+					onClick={(event) => {
+						event.preventDefault();
+						setOpen((currentOpen) => !currentOpen);
+					}}
+					ref={triggerRef}
+					role="button"
+					title={`Compute: ${computeCurrent}`}
+				>
+					<Server className="ui-icon ui-icon--sm" aria-hidden="true" />
+					<span className="gateway-label">Gateway</span>
+				</summary>
+				<div id="gateway-panel">
+					<form onSubmit={apply}>
+						<label>
+							HyperBEAM peers
+							<input
+								aria-describedby={error ? 'gateway-error' : undefined}
+								aria-invalid={Boolean(error)}
+								onChange={(event) => {
+									setComputeValue(event.target.value);
+									setError('');
+								}}
+								ref={inputRef}
+								value={computeValue}
+							/>
+						</label>
+						{error ? (
+							<p className="gateway-error" id="gateway-error" role="alert">
+								{error}
+							</p>
+						) : null}
+						<Button className="with-icon" type="submit" size="custom">
+							<Server className="ui-icon ui-icon--sm" aria-hidden="true" /> Apply peers
+						</Button>
+					</form>
+					<p>
+						Process reads and observer requests fail over across these peers. Content, pricing, balances,
+						and settlement use the site gateway by default.
+					</p>
+				</div>
+			</details>
+		</div>
 	);
 }
 
@@ -4007,15 +4177,79 @@ type ListingResolutionOutcome = {
 	result: ResolvedAsset | null;
 };
 
+type CollectionListingPublication = {
+	outcome: ListingResolutionOutcome;
+	price: CollectionCardPrice;
+	resolved: number;
+	failures: number;
+	rateLimited: number;
+};
+
+export function createAnimationFrameBatch<T>(
+	publish: (values: T[]) => void,
+	requestFrame: (callback: FrameRequestCallback) => number = (callback) => window.requestAnimationFrame(callback),
+	cancelFrame: (handle: number) => void = (handle) => window.cancelAnimationFrame(handle)
+) {
+	let frame: number | undefined;
+	let pending: T[] = [];
+	const publishPending = () => {
+		if (!pending.length) return;
+		const values = pending;
+		pending = [];
+		publish(values);
+	};
+	const flush = () => {
+		if (frame !== undefined) cancelFrame(frame);
+		frame = undefined;
+		publishPending();
+	};
+	return {
+		push(value: T) {
+			pending.push(value);
+			frame ??= requestFrame(() => {
+				frame = undefined;
+				publishPending();
+			});
+		},
+		flush,
+		cancel() {
+			if (frame !== undefined) cancelFrame(frame);
+			frame = undefined;
+			pending = [];
+		},
+	};
+}
+
 export function collectionActivityVersion(collection: Collection) {
 	if (collection.kind === 'names') return collection.namespace?.manifestId ?? '';
 	return `${collection.manifestId ?? ''}:${collection.assets.map((asset) => asset.id).join('.')}`;
 }
 
 export function newestCollectionActivity(events: CollectionActivityEvent[], limit = 100) {
-	return [...new Map(events.map((event) => [event.id, event])).values()]
+	const byId = new Map<string, CollectionActivityEvent>();
+	for (const event of events) {
+		const previous = byId.get(event.id);
+		byId.set(
+			event.id,
+			previous?.purchaseProof && !event.purchaseProof
+				? { ...event, purchaseProof: previous.purchaseProof }
+				: event
+		);
+	}
+	return [...byId.values()]
 		.sort((a, b) => b.height - a.height || b.timestamp - a.timestamp || a.id.localeCompare(b.id))
 		.slice(0, limit);
+}
+
+export function retainNewestCollectionActivity(
+	events: Map<string, CollectionActivityEvent>,
+	additions: CollectionActivityEvent[],
+	limit = 100
+) {
+	const retained = newestCollectionActivity([...events.values(), ...additions], limit);
+	events.clear();
+	for (const event of retained) events.set(event.id, event);
+	return retained;
 }
 
 export function collectionListingScopeVersion(collection: Collection) {
@@ -4031,6 +4265,21 @@ export function collectionAssetWindowDelta(previousIds: Iterable<string>, curren
 	return {
 		reset,
 		added: reset ? currentIds : currentIds.filter((assetId) => !previous.has(assetId)),
+	};
+}
+
+export function collectionActivityWindowDelta(
+	kind: Collection['kind'],
+	listedOnly: boolean,
+	previousIds: Iterable<string>,
+	currentIds: string[]
+) {
+	const recipientBatched = kind !== 'names' || !listedOnly;
+	const window = collectionAssetWindowDelta(previousIds, currentIds);
+	return {
+		recipientBatched,
+		reset: recipientBatched && window.reset,
+		added: recipientBatched ? window.added : currentIds,
 	};
 }
 
@@ -4166,6 +4415,30 @@ function CollectionView() {
 		resolved: 0,
 		failures: 0,
 	});
+	const createListingPublications = () =>
+		createAnimationFrameBatch<CollectionListingPublication>((batch) => {
+			setListed((current) =>
+				mergeResolvedListingBatch(
+					current,
+					batch.map(({ outcome }) => outcome)
+				)
+			);
+			setCardPrices((current) => ({
+				...current,
+				...Object.fromEntries(batch.map(({ outcome, price }) => [outcome.processId, price])),
+			}));
+			const resolved = batch.reduce((total, publication) => total + publication.resolved, 0);
+			const failures = batch.reduce((total, publication) => total + publication.failures, 0);
+			const rateLimited = batch.reduce((total, publication) => total + publication.rateLimited, 0);
+			if (resolved || failures || rateLimited) {
+				setActivityState((current) => ({
+					...current,
+					resolved: current.resolved + resolved,
+					failures: current.failures + failures,
+					rateLimited: current.rateLimited + rateLimited,
+				}));
+			}
+		});
 	const assetGridId = React.useId();
 	const resultSummaryId = React.useId();
 	const resultSummaryRef = React.useRef<HTMLParagraphElement>(null);
@@ -4228,40 +4501,67 @@ function CollectionView() {
 		target.focus({ preventScroll: true });
 	};
 	const gateway = servingNodeOrigin(window.location);
-	const activityByAsset = new Map(activity.map((candidate) => [candidate.processId, candidate]));
-	const defaultIndex = new Map((collection?.assets ?? []).map((asset, index) => [asset.id, index]));
-	const visibleAssets = listedOnly
-		? listed.map((result) => result.asset)
-		: collection && deferredQuery.trim()
-		? collectionSearchAssets(collection, deferredQuery.trim().toLowerCase())
-		: collection?.assets ?? [];
+	const activityByAsset = React.useMemo(
+		() => new Map(activity.map((candidate) => [candidate.processId, candidate])),
+		[activity]
+	);
+	const defaultIndex = React.useMemo(
+		() =>
+			collection?.kind === 'names'
+				? null
+				: new Map((collection?.assets ?? []).map((asset, index) => [asset.id, index])),
+		[collection]
+	);
+	const visibleAssets = React.useMemo(
+		() =>
+			listedOnly
+				? listed.map((result) => result.asset)
+				: collection && deferredQuery.trim()
+				? collectionSearchAssets(collection, deferredQuery.trim().toLowerCase())
+				: collection?.assets ?? [],
+		[collection, deferredQuery, listed, listedOnly]
+	);
 	const listedIdsKey = listed
 		.map((result) => result.asset.id)
 		.sort()
 		.join(',');
-	const filtered = visibleAssets
-		.filter(
-			(asset) =>
-				assetMatchesCollectionQuery(asset, deferredQuery) &&
-				(initial === 'all' || asset.name.trim().toLowerCase().startsWith(initial.toLowerCase()))
-		)
-		.sort((a, b) => {
-			if (initial !== 'all') return compareCollectionAssetNames(a, b);
-			if (sort === 'recent' && !recentOrderState.loading && !recentOrderState.error) {
-				const activityA = activityByAsset.get(a.id);
-				const activityB = activityByAsset.get(b.id);
-				return (
-					(activityB?.height ?? 0) - (activityA?.height ?? 0) ||
-					(activityB?.timestamp ?? 0) - (activityA?.timestamp ?? 0) ||
-					compareCollectionAssetNames(a, b)
-				);
-			}
-			if (collection?.kind === 'names') return compareCollectionAssetNames(a, b);
-			return (
-				(defaultIndex.get(a.id) ?? Number.MAX_SAFE_INTEGER) -
-					(defaultIndex.get(b.id) ?? Number.MAX_SAFE_INTEGER) || compareCollectionAssetNames(a, b)
-			);
-		});
+	const filtered = React.useMemo(
+		() =>
+			visibleAssets
+				.filter(
+					(asset) =>
+						assetMatchesCollectionQuery(asset, deferredQuery) &&
+						(initial === 'all' || asset.name.trim().toLowerCase().startsWith(initial.toLowerCase()))
+				)
+				.sort((a, b) => {
+					if (initial !== 'all') return compareCollectionAssetNames(a, b);
+					if (sort === 'recent' && !recentOrderState.error) {
+						const activityA = activityByAsset.get(a.id);
+						const activityB = activityByAsset.get(b.id);
+						return (
+							(activityB?.height ?? 0) - (activityA?.height ?? 0) ||
+							(activityB?.timestamp ?? 0) - (activityA?.timestamp ?? 0) ||
+							compareCollectionAssetNames(a, b)
+						);
+					}
+					if (collection?.kind === 'names') return compareCollectionAssetNames(a, b);
+					return (
+						(defaultIndex?.get(a.id) ?? Number.MAX_SAFE_INTEGER) -
+							(defaultIndex?.get(b.id) ?? Number.MAX_SAFE_INTEGER) || compareCollectionAssetNames(a, b)
+					);
+				}),
+		[
+			activityByAsset,
+			collection?.kind,
+			defaultIndex,
+			deferredQuery,
+			initial,
+			recentOrderState.error,
+			recentOrderState.loading,
+			sort,
+			visibleAssets,
+		]
+	);
 	const filteredCountRef = React.useRef(filtered.length);
 	filteredCountRef.current = filtered.length;
 	const revealNextAssetPage = React.useCallback(
@@ -4373,7 +4673,11 @@ function CollectionView() {
 								signal: controller.signal,
 								concurrency: 4,
 								read: (processId, signal) =>
-									readAssetStateCached(processId, { signal, maxAttempts: 1 }),
+									readAssetStateCached(processId, {
+										...DISPLAY_STATE_CACHE,
+										signal,
+										maxAttempts: 1,
+									}),
 								onSettled: (result, candidate, cause) => {
 									if (controller.signal.aborted || priceScope.current !== nextScope) return;
 									resolvedPriceIds.current.add(candidate.processId);
@@ -4387,6 +4691,18 @@ function CollectionView() {
 													label:
 														order && result ? orderPriceLabel(order, result.state) : null,
 											  },
+									}));
+								},
+								onRevalidated: (result, candidate, cause) => {
+									if (controller.signal.aborted || priceScope.current !== nextScope) return;
+									if (cause) return;
+									const order = result ? bestAskOfAsset(result.state) : null;
+									setCardPrices((current) => ({
+										...current,
+										[candidate.processId]: {
+											status: 'resolved',
+											label: order && result ? orderPriceLabel(order, result.state) : null,
+										},
 									}));
 								},
 							}
@@ -4441,11 +4757,14 @@ function CollectionView() {
 		const controller = new AbortController();
 		const collectionAssetIds = collection.assets.map((asset) => asset.id);
 		const includesCollectionAsset = collectionCandidateMembership(collection);
-		const tokenWindow = collectionAssetWindowDelta(listingLoadedAssetIds.current, collectionAssetIds);
-		const continuing =
-			listingActivityScope.current === listingScope && !(collection.kind === 'tokens' && tokenWindow.reset);
-		const addedTokenIds = collection.kind === 'tokens' && continuing ? tokenWindow.added : [];
-		const requestedAssetIds = collection.kind === 'tokens' && continuing ? addedTokenIds : collectionAssetIds;
+		const assetWindow = collectionActivityWindowDelta(
+			collection.kind,
+			listedOnly,
+			listingLoadedAssetIds.current,
+			collectionAssetIds
+		);
+		const continuing = listingActivityScope.current === listingScope && !assetWindow.reset;
+		const requestedAssetIds = continuing ? assetWindow.added : collectionAssetIds;
 		listingActivityScope.current = listingScope;
 		if (!continuing) {
 			listingActivityCandidates.current.clear();
@@ -4467,7 +4786,7 @@ function CollectionView() {
 		} else {
 			setActivityState((current) => ({ ...current, loading: true, pages: 0, error: null }));
 		}
-		if (collection.kind === 'tokens' && !requestedAssetIds.length) {
+		if (assetWindow.recipientBatched && !requestedAssetIds.length) {
 			setActivityState((current) => ({ ...current, loading: false }));
 			if (listedOnly) setCardPricesLoading(false);
 			return () => controller.abort();
@@ -4477,9 +4796,72 @@ function CollectionView() {
 			setCardPricesLoading(true);
 			setCardPricesFailure(null);
 		}
+		const publications = createListingPublications();
 		void (async () => {
 			try {
-				const resolvePage = async (page: AssetCandidate[]) => {
+				const resolver = listedOnly
+					? createAssetCandidateResolver([collection], {
+							concurrency: 4,
+							signal: controller.signal,
+							read: (processId, signal) =>
+								readAssetStateCached(processId, {
+									...DISPLAY_STATE_CACHE,
+									signal,
+									maxAttempts: 1,
+								}),
+							onSettled: (result, candidate, cause) => {
+								if (controller.signal.aborted || listingActivityScope.current !== listingScope) return;
+								const outcome: ListingResolutionOutcome & {
+									candidate: AssetCandidate;
+									failureKind?: MarketplaceFailureKind;
+								} = {
+									candidate,
+									processId: candidate.processId,
+									result,
+									...(cause ? { failureKind: marketplaceFailureKind(cause) } : {}),
+								};
+								settledListingCandidates.current.add(outcome.processId);
+								if (outcome.failureKind) {
+									failedListingCandidates.current.set(outcome.processId, {
+										candidate,
+										kind: outcome.failureKind,
+									});
+								} else {
+									failedListingCandidates.current.delete(outcome.processId);
+								}
+								const order = result ? bestAskOfAsset(result.state) : null;
+								publications.push({
+									outcome,
+									price: outcome.failureKind
+										? { status: 'unavailable', kind: outcome.failureKind }
+										: {
+												status: 'resolved',
+												label: order && result ? orderPriceLabel(order, result.state) : null,
+										  },
+									resolved: 1,
+									failures: outcome.failureKind ? 1 : 0,
+									rateLimited: outcome.failureKind === 'rate-limited' ? 1 : 0,
+								});
+							},
+							onRevalidated: (result, candidate, cause) => {
+								if (controller.signal.aborted || listingActivityScope.current !== listingScope || cause)
+									return;
+								const outcome = { candidate, processId: candidate.processId, result };
+								const order = result ? bestAskOfAsset(result.state) : null;
+								publications.push({
+									outcome,
+									price: {
+										status: 'resolved',
+										label: order && result ? orderPriceLabel(order, result.state) : null,
+									},
+									resolved: 0,
+									failures: 0,
+									rateLimited: 0,
+								});
+							},
+					  })
+					: null;
+				const resolvePage = (page: AssetCandidate[]) => {
 					if (controller.signal.aborted) return;
 					const pageCandidates = page.filter((candidate) => includesCollectionAsset(candidate.processId));
 					const newCandidates = pageCandidates.filter(
@@ -4488,112 +4870,67 @@ function CollectionView() {
 					for (const candidate of pageCandidates) {
 						listingActivityCandidates.current.set(candidate.processId, candidate);
 					}
-					setActivity(
-						[...listingActivityCandidates.current.values()].sort(
-							(a, b) =>
-								b.height - a.height ||
-								b.timestamp - a.timestamp ||
-								a.processId.localeCompare(b.processId)
-						)
-					);
+					if (!listedOnly) {
+						setActivity(
+							[...listingActivityCandidates.current.values()].sort(
+								(a, b) =>
+									b.height - a.height ||
+									b.timestamp - a.timestamp ||
+									a.processId.localeCompare(b.processId)
+							)
+						);
+					}
 					setActivityState((current) => ({
 						...current,
 						pages: current.pages + 1,
 						total: current.total + newCandidates.length,
 					}));
 					if (!listedOnly) return;
-					const candidates = pageCandidates.filter(
-						(candidate) => !settledListingCandidates.current.has(candidate.processId)
-					);
-					if (!candidates.length) return;
-					const outcomes = new Map<
-						string,
-						ListingResolutionOutcome & {
-							candidate: AssetCandidate;
-							failureKind?: MarketplaceFailureKind;
-						}
-					>();
-					await resolveAssetCandidates(candidates, [collection], {
-						concurrency: 4,
-						signal: controller.signal,
-						read: (processId, signal) => readAssetStateCached(processId, { signal, maxAttempts: 1 }),
-						onSettled: (result, candidate, cause) => {
-							if (controller.signal.aborted) return;
-							outcomes.set(candidate.processId, {
-								candidate,
-								processId: candidate.processId,
-								result,
-								...(cause ? { failureKind: marketplaceFailureKind(cause) } : {}),
-							});
-						},
-					});
-					if (controller.signal.aborted || listingActivityScope.current !== listingScope) return;
-					const priceUpdates: Record<string, CollectionCardPrice> = {};
-					let failures = 0;
-					let rateLimited = 0;
-					for (const outcome of outcomes.values()) {
-						settledListingCandidates.current.add(outcome.processId);
-						if (outcome.failureKind) {
-							failures += 1;
-							if (outcome.failureKind === 'rate-limited') rateLimited += 1;
-							failedListingCandidates.current.set(outcome.processId, {
-								candidate: outcome.candidate,
-								kind: outcome.failureKind,
-							});
-						} else {
-							failedListingCandidates.current.delete(outcome.processId);
-						}
-						const order = outcome.result ? bestAskOfAsset(outcome.result.state) : null;
-						priceUpdates[outcome.processId] = outcome.failureKind
-							? { status: 'unavailable', kind: outcome.failureKind }
-							: {
-									status: 'resolved',
-									label:
-										order && outcome.result ? orderPriceLabel(order, outcome.result.state) : null,
-							  };
-					}
-					setListed((current) => mergeResolvedListingBatch(current, outcomes.values()));
-					setCardPrices((current) => ({ ...current, ...priceUpdates }));
-					setActivityState((current) => ({
-						...current,
-						resolved: current.resolved + outcomes.size,
-						failures: current.failures + failures,
-						rateLimited: current.rateLimited + rateLimited,
-					}));
+					resolver?.enqueue(newCandidates);
 				};
-				const allActivity =
-					collection.kind === 'names'
-						? await discoverMarketActivity({
-								signal: controller.signal,
-								listingsOnly: listedOnly,
-								acceptProcessId: includesCollectionAsset,
-								onPage: resolvePage,
-						  })
-						: await discoverMarketActivityBatched({
-								recipients: requestedAssetIds,
-								signal: controller.signal,
-								listingsOnly: listedOnly,
-								onBatch: async (candidates, completedRecipients) => {
-									await resolvePage(candidates);
-									if (controller.signal.aborted || listingActivityScope.current !== listingScope)
-										return;
-									for (const assetId of completedRecipients)
-										listingLoadedAssetIds.current.add(assetId);
-								},
-						  });
+				let allActivity: AssetCandidate[] = [];
+				let discoveryFailure: unknown;
+				try {
+					allActivity =
+						collection.kind === 'names' && listedOnly
+							? await discoverMarketActivity({
+									signal: controller.signal,
+									listingsOnly: listedOnly,
+									acceptProcessId: includesCollectionAsset,
+									onPage: resolvePage,
+							  })
+							: await discoverMarketActivityBatched({
+									recipients: requestedAssetIds,
+									signal: controller.signal,
+									listingsOnly: listedOnly,
+									onBatch: (candidates, completedRecipients) => {
+										resolvePage(candidates);
+										if (controller.signal.aborted || listingActivityScope.current !== listingScope)
+											return;
+										for (const assetId of completedRecipients)
+											listingLoadedAssetIds.current.add(assetId);
+									},
+							  });
+				} catch (cause) {
+					discoveryFailure = cause;
+				}
+				await resolver?.finish();
+				publications.flush();
 				if (controller.signal.aborted) return;
+				if (discoveryFailure) throw discoveryFailure;
 				const candidates = allActivity.filter((candidate) => includesCollectionAsset(candidate.processId));
 				for (const candidate of candidates) {
 					listingActivityCandidates.current.set(candidate.processId, candidate);
 				}
-				const mergedCandidates = [...listingActivityCandidates.current.values()].sort(
-					(a, b) => b.height - a.height || b.timestamp - a.timestamp || a.processId.localeCompare(b.processId)
-				);
 				if (collection.kind === 'names') {
 					for (const assetId of requestedAssetIds) listingLoadedAssetIds.current.add(assetId);
 				}
-				setActivity(mergedCandidates);
 				if (!listedOnly) {
+					const mergedCandidates = [...listingActivityCandidates.current.values()].sort(
+						(a, b) =>
+							b.height - a.height || b.timestamp - a.timestamp || a.processId.localeCompare(b.processId)
+					);
+					setActivity(mergedCandidates);
 					setActivityState((current) => ({
 						...current,
 						loading: false,
@@ -4603,11 +4940,16 @@ function CollectionView() {
 					return;
 				}
 				if (!controller.signal.aborted) {
-					setActivityState((current) => ({ ...current, loading: false, total: mergedCandidates.length }));
+					setActivityState((current) => ({
+						...current,
+						loading: false,
+						total: listingActivityCandidates.current.size,
+					}));
 					setCardPricesLoading(false);
 				}
 			} catch (cause) {
 				if (!controller.signal.aborted) {
+					publications.flush();
 					if (listedOnly) {
 						setCardPricesLoading(false);
 						setCardPricesFailure({ source: 'index', kind: marketplaceFailureKind(cause) });
@@ -4620,7 +4962,10 @@ function CollectionView() {
 				}
 			}
 		})();
-		return () => controller.abort();
+		return () => {
+			controller.abort();
+			publications.cancel();
+		};
 	}, [listedOnly, listingScope, listingWindowVersion, retry]);
 	React.useEffect(() => {
 		if (!listingRetry || !collection || !listedOnly) return;
@@ -4630,55 +4975,68 @@ function CollectionView() {
 		if (!candidates.length) return;
 		setListingRetrying(true);
 		void (async () => {
-			const outcomes = new Map<
-				string,
-				ListingResolutionOutcome & {
-					candidate: AssetCandidate;
-					failureKind?: MarketplaceFailureKind;
-				}
-			>();
 			try {
 				await resolveAssetCandidates(candidates, [collection], {
 					concurrency: 4,
 					signal: controller.signal,
-					read: (processId, signal) => readAssetStateCached(processId, { signal, maxAttempts: 1 }),
+					read: (processId, signal) =>
+						readAssetStateCached(processId, {
+							...DISPLAY_STATE_CACHE,
+							signal,
+							maxAttempts: 1,
+						}),
 					onSettled: (result, candidate, cause) => {
-						if (controller.signal.aborted) return;
-						outcomes.set(candidate.processId, {
+						if (controller.signal.aborted || listingActivityScope.current !== requestScope) return;
+						const outcome: ListingResolutionOutcome & {
+							candidate: AssetCandidate;
+							failureKind?: MarketplaceFailureKind;
+						} = {
 							candidate,
 							processId: candidate.processId,
 							result,
 							...(cause ? { failureKind: marketplaceFailureKind(cause) } : {}),
-						});
+						};
+						if (outcome.failureKind) {
+							failedListingCandidates.current.set(outcome.processId, {
+								candidate,
+								kind: outcome.failureKind,
+							});
+						} else {
+							failedListingCandidates.current.delete(outcome.processId);
+						}
+						const order = result ? bestAskOfAsset(result.state) : null;
+						setListed((current) => mergeResolvedListingBatch(current, [outcome]));
+						setCardPrices((current) => ({
+							...current,
+							[outcome.processId]: outcome.failureKind
+								? { status: 'unavailable', kind: outcome.failureKind }
+								: {
+										status: 'resolved',
+										label: order && result ? orderPriceLabel(order, result.state) : null,
+								  },
+						}));
+						const failures = [...failedListingCandidates.current.values()];
+						setActivityState((current) => ({
+							...current,
+							failures: failures.length,
+							rateLimited: failures.filter(({ kind }) => kind === 'rate-limited').length,
+						}));
+					},
+					onRevalidated: (result, candidate, cause) => {
+						if (controller.signal.aborted || listingActivityScope.current !== requestScope) return;
+						if (cause) return;
+						const outcome = { candidate, processId: candidate.processId, result };
+						const order = result ? bestAskOfAsset(result.state) : null;
+						setListed((current) => mergeResolvedListingBatch(current, [outcome]));
+						setCardPrices((current) => ({
+							...current,
+							[candidate.processId]: {
+								status: 'resolved',
+								label: order && result ? orderPriceLabel(order, result.state) : null,
+							},
+						}));
 					},
 				});
-				if (controller.signal.aborted || listingActivityScope.current !== requestScope) return;
-				const priceUpdates: Record<string, CollectionCardPrice> = {};
-				for (const outcome of outcomes.values()) {
-					if (outcome.failureKind) {
-						failedListingCandidates.current.set(outcome.processId, {
-							candidate: outcome.candidate,
-							kind: outcome.failureKind,
-						});
-					} else {
-						failedListingCandidates.current.delete(outcome.processId);
-					}
-					const order = outcome.result ? bestAskOfAsset(outcome.result.state) : null;
-					priceUpdates[outcome.processId] = outcome.failureKind
-						? { status: 'unavailable', kind: outcome.failureKind }
-						: {
-								status: 'resolved',
-								label: order && outcome.result ? orderPriceLabel(order, outcome.result.state) : null,
-						  };
-				}
-				setListed((current) => mergeResolvedListingBatch(current, outcomes.values()));
-				setCardPrices((current) => ({ ...current, ...priceUpdates }));
-				const failures = [...failedListingCandidates.current.values()];
-				setActivityState((current) => ({
-					...current,
-					failures: failures.length,
-					rateLimited: failures.filter(({ kind }) => kind === 'rate-limited').length,
-				}));
 			} catch {
 				// Aborts leave retained listings and retry metadata unchanged.
 			} finally {
@@ -4695,10 +5053,6 @@ function CollectionView() {
 			recentOrderActivity.current.clear();
 			recentOrderResolvedIds.current.clear();
 			setRecentOrderState({ loading: false, error: null });
-			return;
-		}
-		if (activityState.loading || listingRetrying) {
-			setRecentOrderState({ loading: true, error: null });
 			return;
 		}
 		const controller = new AbortController();
@@ -4739,6 +5093,12 @@ function CollectionView() {
 				if (controller.signal.aborted || recentOrderScope.current !== scope) return;
 				for (const id of completedRecipients) recentOrderResolvedIds.current.add(id);
 				for (const candidate of latest) recentOrderActivity.current.set(candidate.processId, candidate);
+				setActivity(
+					[...recentOrderActivity.current.values()].sort(
+						(a, b) =>
+							b.height - a.height || b.timestamp - a.timestamp || a.processId.localeCompare(b.processId)
+					)
+				);
 			},
 		}).then(
 			() => {
@@ -4761,7 +5121,7 @@ function CollectionView() {
 			}
 		);
 		return () => controller.abort();
-	}, [activityState.loading, collection?.id, listedIdsKey, listedOnly, listingRetrying, recentOrderRetry, sort]);
+	}, [collection?.id, listedIdsKey, listedOnly, recentOrderRetry, sort]);
 	React.useEffect(() => setLimit(pageSize), [initial, listedOnly, query, sort]);
 	React.useEffect(() => setLimit((current) => retainedAssetGroupLimit(current, pageSize)), [pageSize]);
 	if (!collection && market.loading)
@@ -5100,13 +5460,14 @@ function CollectionView() {
 				}`}
 				id={assetGridId}
 			>
-				{filtered.slice(0, limit).map((asset) => {
+				{filtered.slice(0, limit).map((asset, index) => {
 					const price = cardPrices[asset.id];
 					return (
 						<AssetCard
 							key={asset.id}
 							collection={collection}
 							asset={asset}
+							priority={index < 2}
 							collectionContext
 							badge={listedOnly ? 'For sale' : undefined}
 							price={
@@ -5440,23 +5801,37 @@ function CollectionActivityView() {
 		const controller = new AbortController();
 		const includesCollectionAsset = collectionCandidateMembership(collection);
 		const sameScope = scopeRef.current === activityScope;
+		let cachedEvents: CollectionActivityEvent[] = [];
+		if (!sameScope) {
+			try {
+				cachedEvents = loadMarketActivity(window.localStorage, activityScope);
+			} catch {
+				// Browser storage is optional; live Arweave discovery continues below.
+			}
+		}
 		const assetIds = collection.assets.map((asset) => asset.id);
-		const window = collectionAssetWindowDelta(activityLoadedAssetIds.current, assetIds);
+		const assetWindow = collectionAssetWindowDelta(activityLoadedAssetIds.current, assetIds);
 		const retryMissing =
-			collection.kind !== 'names' && sameScope && !window.reset && activityRunMode.current === 'retry';
-		const continueWindow = collection.kind !== 'names' && sameScope && !window.reset && window.added.length > 0;
+			collection.kind !== 'names' && sameScope && !assetWindow.reset && activityRunMode.current === 'retry';
+		const continueWindow =
+			collection.kind !== 'names' && sameScope && !assetWindow.reset && assetWindow.added.length > 0;
 		const incremental = retryMissing || continueWindow;
-		const preserveEvents = sameScope && eventsRef.current.length > 0;
-		const nextEvents: CollectionActivityEvent[] = [];
+		const initialEvents = sameScope && eventsRef.current.length ? eventsRef.current : cachedEvents;
+		const preserveEvents = initialEvents.length > 0;
+		let nextEvents = newestCollectionActivity(initialEvents);
 		scopeRef.current = activityScope;
 		activityRunMode.current = 'refresh';
 		if (!incremental) {
 			activityBatchEvents.current.clear();
 			activityLoadedAssetIds.current.clear();
+			retainNewestCollectionActivity(activityBatchEvents.current, initialEvents);
 		}
 		if (!preserveEvents) {
 			eventsRef.current = [];
 			setEvents([]);
+		} else if (!sameScope) {
+			eventsRef.current = initialEvents;
+			setEvents(initialEvents);
 		}
 		setPreservingEvents(preserveEvents);
 		setLoading(true);
@@ -5471,12 +5846,10 @@ function CollectionActivityView() {
 						requiredExecutionDevice: 'carrier@1.0',
 						onPage: (page) => {
 							if (controller.signal.aborted) return;
-							nextEvents.push(...page);
+							nextEvents = newestCollectionActivity([...nextEvents, ...page]);
 							setPages((current) => current + 1);
-							if (!preserveEvents) {
-								eventsRef.current = [...nextEvents];
-								setEvents(eventsRef.current);
-							}
+							eventsRef.current = nextEvents;
+							setEvents(eventsRef.current);
 						},
 				  })
 				: discoverCollectionActivityBatched({
@@ -5487,13 +5860,13 @@ function CollectionActivityView() {
 							: assetIds,
 						onBatch: (batchEvents, completedRecipients) => {
 							if (controller.signal.aborted || scopeRef.current !== activityScope) return;
-							for (const event of batchEvents) activityBatchEvents.current.set(event.id, event);
 							for (const assetId of completedRecipients) activityLoadedAssetIds.current.add(assetId);
 							setPages((current) => current + 1);
-							if (!preserveEvents) {
-								eventsRef.current = newestCollectionActivity([...activityBatchEvents.current.values()]);
-								setEvents(eventsRef.current);
-							}
+							eventsRef.current = retainNewestCollectionActivity(
+								activityBatchEvents.current,
+								batchEvents
+							);
+							setEvents(eventsRef.current);
 						},
 				  });
 		void discovery.then(
@@ -5501,9 +5874,14 @@ function CollectionActivityView() {
 				if (!controller.signal.aborted) {
 					eventsRef.current =
 						collection.kind === 'names'
-							? nextEvents
+							? newestCollectionActivity(nextEvents)
 							: newestCollectionActivity([...activityBatchEvents.current.values()]);
 					setEvents(eventsRef.current);
+					try {
+						saveMarketActivity(window.localStorage, activityScope, eventsRef.current);
+					} catch {
+						// The live result remains available when storage is unavailable.
+					}
 					setLoading(false);
 					setPreservingEvents(false);
 				}
@@ -5738,6 +6116,7 @@ export const AssetCard = React.memo(function AssetCard({
 	price,
 	priceListed = false,
 	collectionContext = false,
+	priority = false,
 }: {
 	collection: Collection;
 	asset: AssetSummary;
@@ -5745,20 +6124,26 @@ export const AssetCard = React.memo(function AssetCard({
 	price?: string;
 	priceListed?: boolean;
 	collectionContext?: boolean;
+	priority?: boolean;
 }) {
 	return (
 		<Link
 			className={`asset-card${collection.kind === 'tokens' ? ' token-asset-card' : ''}${
 				collectionContext ? ' collection-context' : ''
 			}`}
-			onFocus={() => prefetchAssetPage(asset.id)}
-			onMouseEnter={() => prefetchAssetPage(asset.id)}
-			onTouchStart={() => prefetchAssetPage(asset.id)}
+			onFocus={() => prefetchAssetPage(asset.id, collection.kind === 'tokens')}
+			onMouseEnter={() => prefetchAssetPage(asset.id, collection.kind === 'tokens')}
+			onTouchStart={() => prefetchAssetPage(asset.id, collection.kind === 'tokens')}
 			to={`/asset/${collection.id}/${asset.id}`}
 		>
 			<div className="asset-media">
 				{asset.image ? (
-					<ArtworkImage src={asset.image} loading="lazy" alt="" />
+					<ArtworkImage
+						src={asset.image}
+						fetchPriority={priority ? 'high' : 'auto'}
+						loading={priority ? 'eager' : 'lazy'}
+						alt=""
+					/>
 				) : isAudioContentType(asset.contentType) ? (
 					<AudioArtwork contentType={asset.contentType} name={asset.name} />
 				) : collection.kind === 'tokens' ? (
@@ -5864,10 +6249,6 @@ export function walletResolutionShowsProgress(status: WalletResolutionStatus) {
 	return status.phase !== 'error';
 }
 
-export function walletResolutionMaxAge(refresh: number) {
-	return refresh > 0 ? 0 : 60;
-}
-
 export type WalletAnnouncementProgress = { scope: string; discovered: number; revalidated: number };
 
 export function nextWalletAnnouncementProgress(
@@ -5939,16 +6320,17 @@ export function walletDiscoveryScope(address: string, gateway: string, collectio
 export function walletDiscoverySession(
 	current: WalletDiscoverySession | undefined,
 	scope: string,
-	address: string
+	address: string,
+	scan = createWalletCandidateScan(address)
 ): WalletDiscoverySession {
 	if (current?.scope === scope) return current;
 	return {
 		scope,
-		scan: createWalletCandidateScan(address),
+		scan,
 		counted: new Set<string>(),
 		screened: new Set<string>(),
 		completed: new Set<string>(),
-		latestCandidates: new Map<string, AssetCandidate>(),
+		latestCandidates: new Map(scan.found),
 		resolvedAssets: new Map<string, ResolvedAsset>(),
 		complete: false,
 	};
@@ -5997,73 +6379,6 @@ export function reopenWalletCandidate(session: WalletDiscoverySession, candidate
 	};
 }
 
-export function walletPageResolutionQueue(
-	resolvePage: (page: AssetCandidate[]) => void | Promise<void>,
-	signal: AbortSignal
-) {
-	let tail: Promise<void> = Promise.resolve();
-	const pending: Promise<void>[] = [];
-	let failed = false;
-	let failure: unknown;
-	const throwIfStopped = () => {
-		if (signal.aborted) throw signal.reason;
-		if (failed) throw failure;
-	};
-	const waitFor = (promise: Promise<void>) => {
-		if (signal.aborted) return Promise.reject(signal.reason);
-		return new Promise<void>((resolve, reject) => {
-			const onAbort = () => reject(signal.reason);
-			signal.addEventListener('abort', onAbort, { once: true });
-			promise.then(
-				() => {
-					signal.removeEventListener('abort', onAbort);
-					resolve();
-				},
-				(cause) => {
-					signal.removeEventListener('abort', onAbort);
-					reject(cause);
-				}
-			);
-		});
-	};
-	return {
-		async push(page: AssetCandidate[]) {
-			throwIfStopped();
-			while (pending.length >= 2) {
-				await waitFor(pending[0]);
-				throwIfStopped();
-			}
-			const running = tail.then(async () => {
-				throwIfStopped();
-				try {
-					await resolvePage(page);
-				} catch (cause) {
-					if (!failed) {
-						failed = true;
-						failure = cause;
-					}
-					throw cause;
-				}
-			});
-			tail = running.catch(() => undefined);
-			pending.push(running);
-			const remove = () => {
-				const index = pending.indexOf(running);
-				if (index >= 0) pending.splice(index, 1);
-			};
-			void running.then(remove, remove);
-			if (pending.length >= 2) {
-				await waitFor(pending[0]);
-				throwIfStopped();
-			}
-		},
-		async drain() {
-			await waitFor(tail);
-			throwIfStopped();
-		},
-	};
-}
-
 export function initialWalletResolutionStatus(): WalletResolutionStatus {
 	return {
 		phase: 'discovering',
@@ -6077,6 +6392,52 @@ export function initialWalletResolutionStatus(): WalletResolutionStatus {
 		indexRateLimited: 0,
 		error: null,
 	};
+}
+
+export function assetDetailCanResolve({
+	assetId,
+	cachedAsset,
+	indexedAsset,
+	indexedCollection,
+	directAtomicRoute,
+	directFungibleRoute = false,
+}: {
+	assetId: string;
+	cachedAsset?: AssetSummary;
+	indexedAsset?: AssetSummary;
+	indexedCollection?: Collection;
+	directAtomicRoute: boolean;
+	directFungibleRoute?: boolean;
+}) {
+	return Boolean(
+		directAtomicRoute ||
+			directFungibleRoute ||
+			indexedAsset ||
+			(indexedCollection?.kind === 'tokens' && ARWEAVE_ADDRESS.test(assetId)) ||
+			(cachedAsset?.id === assetId && ARWEAVE_ADDRESS.test(assetId))
+	);
+}
+
+export function assetDetailMembershipVerified(
+	collectionId: string | undefined,
+	verifiedCollectionIds: ReadonlySet<string>,
+	directAtomicAsset: boolean
+) {
+	return directAtomicAsset || Boolean(collectionId && verifiedCollectionIds.has(collectionId));
+}
+
+export function verifiedAssetForDetail(
+	collection: Collection | undefined,
+	indexedAsset: AssetSummary | undefined,
+	resolvedAsset: AssetSummary | null | undefined,
+	state: AssetState | null
+) {
+	if (!collection) return undefined;
+	return collection.kind === 'names'
+		? state && ['carrier@1.0', 'name-token@1.0'].includes(state.device)
+			? indexedAsset
+			: null
+		: resolvedAsset;
 }
 
 function AssetDetailLoadingShell({
@@ -6373,19 +6734,37 @@ function AssetView() {
 	const provider = liveResult.assetId === assetId ? liveResult.provider : prefetchedState?.provider ?? '';
 	const verifiedAt = liveResult.assetId === assetId ? liveResult.verifiedAt : prefetchedState?.verifiedAt ?? null;
 	const directAtomicRoute = collectionId === CREATED_COLLECTION_ID && ARWEAVE_ADDRESS.test(assetId);
-	const canResolveAsset = Boolean(
-		indexedAsset || (indexedCollection?.kind === 'tokens' && ARWEAVE_ADDRESS.test(assetId)) || directAtomicRoute
-	);
+	const canResolveAsset = assetDetailCanResolve({
+		assetId,
+		cachedAsset,
+		indexedAsset,
+		indexedCollection,
+		directAtomicRoute,
+		directFungibleRoute: collectionId === 'fungible-tokens' && ARWEAVE_ADDRESS.test(assetId),
+	});
 	const directAtomicAsset = directAtomicRoute && state ? bazarAtomicAssetFromState(assetId, state) : null;
 	const collection = indexedCollection ?? directAtomicAsset?.collection;
 	const resolvedAsset =
 		directAtomicAsset?.asset ??
 		(indexedCollection && state ? collectionAsset(indexedCollection, assetId, state) : indexedAsset);
+	const membershipVerified = assetDetailMembershipVerified(
+		indexedCollection?.id,
+		market.verifiedCollectionIds,
+		Boolean(directAtomicAsset)
+	);
+	const verifiedAsset = membershipVerified
+		? verifiedAssetForDetail(collection, indexedAsset, resolvedAsset, state)
+		: undefined;
 	const shellAsset = indexedAsset ?? cachedAsset;
 	React.useEffect(() => {
-		if (!SESSION_SNAPSHOT_STORAGE || !resolvedAsset) return;
-		return scheduleIdleTask(() => storeAssetShellSnapshot(SESSION_SNAPSHOT_STORAGE, resolvedAsset), 500);
-	}, [resolvedAsset]);
+		if (collectionId === 'fungible-tokens' || indexedCollection?.kind === 'tokens') {
+			void import('../routes/FungibleAssetRoute');
+		}
+	}, [collectionId, indexedCollection?.kind]);
+	React.useEffect(() => {
+		if (!SESSION_SNAPSHOT_STORAGE || !verifiedAsset) return;
+		return scheduleIdleTask(() => storeAssetShellSnapshot(SESSION_SNAPSHOT_STORAGE, verifiedAsset), 500);
+	}, [verifiedAsset]);
 	const {
 		activities: operationActivities,
 		start: startOperationActivity,
@@ -6404,12 +6783,12 @@ function AssetView() {
 	const operation = operationActivityEntry?.operation ?? null;
 	const openOperation = React.useCallback(
 		(next: Operation, options?: { show?: boolean }) => {
-			const activityAsset = resolvedAsset ?? indexedAsset ?? cachedAsset;
-			if (!wallet.address || !activityAsset) return;
+			if (!wallet.address || !verifiedAsset) return;
 			preloadAtomicTransactionRuntime();
+			preloadArweaveTransactionSync();
 			startOperationActivity(
 				{
-					asset: activityAsset,
+					asset: verifiedAsset,
 					collectionId,
 					owner: wallet.address,
 					operation: next,
@@ -6418,15 +6797,7 @@ function AssetView() {
 				options
 			);
 		},
-		[
-			cachedAsset,
-			collectionId,
-			indexedAsset,
-			operationFocusFallback,
-			resolvedAsset,
-			startOperationActivity,
-			wallet.address,
-		]
+		[collectionId, operationFocusFallback, startOperationActivity, verifiedAsset, wallet.address]
 	);
 	const [recoverySuppressed, setRecoverySuppressed] = React.useState(false);
 	const [recoveryNotice, setRecoveryNotice] = React.useState('');
@@ -6441,58 +6812,75 @@ function AssetView() {
 	const [activeSection, setActiveSection] = React.useState<
 		'about' | 'orders' | 'activity' | 'rights' | 'blockchain' | 'more'
 	>('about');
-	const load = React.useCallback(async () => {
-		requestRef.current?.abort();
-		if (!canResolveAsset) {
-			setLiveResult({ assetId, state: null, loading: false, error: null, provider: '', verifiedAt: null });
-			return;
-		}
-		const controller = new AbortController();
-		requestRef.current = controller;
-		const cached = cachedAssetState(assetId);
-		setLiveResult((current) => ({
-			assetId,
-			state: current.assetId === assetId ? current.state : cached?.state ?? null,
-			loading: true,
-			error: null,
-			provider: current.assetId === assetId ? current.provider : cached?.provider ?? '',
-			verifiedAt: current.assetId === assetId ? current.verifiedAt : cached?.verifiedAt ?? null,
-		}));
-		try {
-			const result = await readAssetStateCached(assetId, {
-				cacheTtlMs: 20_000,
-				force: true,
-				maxAge: 0,
-				signal: controller.signal,
-			});
-			if (requestRef.current === controller && !controller.signal.aborted) {
-				setLiveResult({
-					assetId,
-					state: result.state,
-					loading: false,
-					error: null,
-					provider: result.provider,
-					verifiedAt: result.verifiedAt ?? Date.now(),
+	const readLiveState = React.useCallback(
+		async (force: boolean) => {
+			requestRef.current?.abort();
+			if (!canResolveAsset) {
+				setLiveResult({ assetId, state: null, loading: false, error: null, provider: '', verifiedAt: null });
+				return;
+			}
+			const controller = new AbortController();
+			requestRef.current = controller;
+			const cached = cachedAssetState(assetId);
+			setLiveResult((current) => ({
+				assetId,
+				state: current.assetId === assetId ? current.state : cached?.state ?? null,
+				loading: true,
+				error: null,
+				provider: current.assetId === assetId ? current.provider : cached?.provider ?? '',
+				verifiedAt: current.assetId === assetId ? current.verifiedAt : cached?.verifiedAt ?? null,
+			}));
+			try {
+				const result = await readAssetStateCached(assetId, {
+					...(force ? { maxAge: 0 } : DISPLAY_STATE_CACHE),
+					cacheTtlMs: force ? 20_000 : DISPLAY_STATE_CACHE.maxAge * 1_000,
+					force,
+					signal: controller.signal,
 				});
+				if (requestRef.current === controller && !controller.signal.aborted) {
+					setLiveResult({
+						assetId,
+						state: result.state,
+						loading: Boolean(result.revalidation),
+						error: null,
+						provider: result.provider,
+						verifiedAt: result.verifiedAt ?? Date.now(),
+					});
+				}
+				if (result.revalidation) {
+					const fresh = await result.revalidation;
+					if (requestRef.current === controller && !controller.signal.aborted) {
+						setLiveResult({
+							assetId,
+							state: fresh.state,
+							loading: false,
+							error: null,
+							provider: fresh.provider,
+							verifiedAt: fresh.verifiedAt ?? Date.now(),
+						});
+					}
+				}
+			} catch (cause) {
+				if (requestRef.current === controller && !controller.signal.aborted) {
+					setLiveResult((current) => ({
+						assetId,
+						state: current.assetId === assetId ? current.state : null,
+						loading: false,
+						error: assetStateErrorMessage(cause),
+						provider: current.assetId === assetId ? current.provider : '',
+						verifiedAt: current.assetId === assetId ? current.verifiedAt : null,
+					}));
+				}
 			}
-		} catch (cause) {
-			if (requestRef.current === controller && !controller.signal.aborted) {
-				setLiveResult((current) => ({
-					assetId,
-					state: current.assetId === assetId ? current.state : null,
-					loading: false,
-					error: assetStateErrorMessage(cause),
-					provider: current.assetId === assetId ? current.provider : '',
-					verifiedAt: current.assetId === assetId ? current.verifiedAt : null,
-				}));
-			}
-		}
-	}, [assetId, canResolveAsset]);
+		},
+		[assetId, canResolveAsset]
+	);
+	const load = React.useCallback(() => readLiveState(false), [readLiveState]);
 	const refreshAsset = React.useCallback(async () => {
 		invalidateAssetState(assetId);
 		setActivityRetry((value) => value + 1);
-		await load();
-	}, [assetId, load]);
+		await readLiveState(true);
+	}, [assetId, readLiveState]);
 	React.useEffect(() => {
 		const refreshFinishedOperation = (event: Event) => {
 			if ((event as CustomEvent<string>).detail === assetId) void refreshAsset();
@@ -6538,6 +6926,7 @@ function AssetView() {
 		return () => window.removeEventListener('storage', onStorage);
 	}, [assetId, operation, operationActivityEntry, refreshAsset, removeOperationActivity, wallet.address]);
 	React.useEffect(() => {
+		void prioritizeAssetStatePrefetch(assetId);
 		void load();
 		return () => {
 			requestRef.current?.abort();
@@ -6552,16 +6941,20 @@ function AssetView() {
 	}, [state, wallet.address]);
 	React.useEffect(() => {
 		const refreshVisibleState = () => {
-			if (document.visibilityState === 'visible') void refreshAsset();
+			if (document.visibilityState === 'visible') void load();
 		};
 		document.addEventListener('visibilitychange', refreshVisibleState);
 		return () => document.removeEventListener('visibilitychange', refreshVisibleState);
-	}, [refreshAsset]);
+	}, [load]);
 	React.useEffect(() => {
 		const controller = new AbortController();
 		if (activityAssetRef.current !== assetId) {
 			activityAssetRef.current = assetId;
-			setAssetActivity([]);
+			try {
+				setAssetActivity(loadMarketActivity(window.localStorage, `asset:${assetId}`));
+			} catch {
+				setAssetActivity([]);
+			}
 		}
 		setActivityError(null);
 		if (!resolvedAsset || !activityRequested) {
@@ -6572,7 +6965,14 @@ function AssetView() {
 		void discoverCollectionActivity({ recipients: [assetId], signal: controller.signal, limit: 24 })
 			.then(
 				(events) => {
-					if (!controller.signal.aborted) setAssetActivity(events);
+					if (!controller.signal.aborted) {
+						setAssetActivity(events);
+						try {
+							saveMarketActivity(window.localStorage, `asset:${assetId}`, events);
+						} catch {
+							// The live result remains available when storage is unavailable.
+						}
+					}
 				},
 				(cause) => {
 					if (!controller.signal.aborted) {
@@ -6767,7 +7167,7 @@ function AssetView() {
 		return () => controller.abort();
 	}, [assetId, openOperation, operation, recoverySuppressed, state, storageVersion, wallet.address]);
 	if (!collection && (market.loading || (directAtomicRoute && loading))) {
-		return <AssetDetailLoadingShell collectionId={collectionId} error={error} onRetry={load} />;
+		return <AssetDetailLoadingShell asset={shellAsset} collectionId={collectionId} error={error} onRetry={load} />;
 	}
 	if (!collection && market.error)
 		return (
@@ -6787,12 +7187,17 @@ function AssetView() {
 				<ErrorPanel message="This collection could not be found on Arweave." />
 			</RouteState>
 		);
-	const asset =
-		collection.kind === 'names'
-			? state && ['carrier@1.0', 'name-token@1.0'].includes(state.device)
-				? indexedAsset
-				: null
-			: resolvedAsset;
+	if (!membershipVerified)
+		return (
+			<AssetDetailLoadingShell
+				asset={shellAsset}
+				collection={collection}
+				collectionId={collectionId}
+				error={market.loading ? error : market.notice ?? 'Current collection membership could not be verified.'}
+				onRetry={market.loading ? load : market.retry}
+			/>
+		);
+	const asset = verifiedAsset;
 	if (!asset && error)
 		return (
 			<RouteState title="Asset unavailable" backTo={`/collection/${collection.id}`} backLabel={collection.name}>
@@ -6865,7 +7270,7 @@ function AssetView() {
 	const operationIsBusy = Boolean(operationActivityEntry && operationActivityEntry.phase !== 'error');
 	const license = state ? licenseProperties(state) : [];
 	const description = assetDescription(state, collection.description);
-	const moreAssets = collection.assets.filter((item) => item.id !== asset.id).slice(0, 4);
+	const moreAssets = collectionMoreAssets(collection.assets, asset.id);
 	type AtomicAssetSection = typeof activeSection;
 	const assetTabs: AssetDetailTab<AtomicAssetSection>[] = [
 		{
@@ -8852,17 +9257,36 @@ export function searchResultScore(
 	return `${collection.name} ${collection.description}`.toLowerCase().includes(query) ? 1 : 0;
 }
 
+const canonicalNameSearchIndexes = new WeakMap<object, ReadonlyArray<{ asset: AssetSummary; searchName: string }>>();
+
 export function collectionSearchAssets(collection: Collection, query: string): AssetSummary[] {
 	const normalizedQuery = query.trim().toLowerCase();
 	if (!normalizedQuery) return collection.assets;
 	const loadedMatches = collection.assets.filter((asset) => assetMatchesCollectionQuery(asset, normalizedQuery));
 	if (collection.kind !== 'names' || !collection.namespace) return loadedMatches;
 	const seen = new Set(loadedMatches.map((asset) => asset.id));
-	const canonicalMatches = Object.entries(collection.namespace.namesById)
-		.filter(([, name]) => name.toLowerCase().includes(normalizedQuery))
-		.map(([id, name]) => ({ id, name }))
-		.filter((asset) => !seen.has(asset.id));
+	let canonicalIndex = canonicalNameSearchIndexes.get(collection.namespace.namesById);
+	if (!canonicalIndex) {
+		canonicalIndex = Object.entries(collection.namespace.namesById).map(([id, name]) => ({
+			asset: { id, name },
+			searchName: name.toLowerCase(),
+		}));
+		canonicalNameSearchIndexes.set(collection.namespace.namesById, canonicalIndex);
+	}
+	const canonicalMatches = canonicalIndex
+		.filter(({ asset, searchName }) => searchName.includes(normalizedQuery) && !seen.has(asset.id))
+		.map(({ asset }) => asset);
 	return [...loadedMatches, ...canonicalMatches];
+}
+
+export function collectionMoreAssets(assets: AssetSummary[], assetId: string, limit = 4): AssetSummary[] {
+	const result: AssetSummary[] = [];
+	for (const asset of assets) {
+		if (asset.id === assetId) continue;
+		result.push(asset);
+		if (result.length === limit) break;
+	}
+	return result;
 }
 
 export function assetMatchesCollectionQuery(asset: AssetSummary, query: string): boolean {
@@ -8928,7 +9352,7 @@ export function homeDiscoveryAssets(
 	collections: Collection[],
 	verifiedListings: Record<string, AssetSummary[]>,
 	limit: number,
-	portableListings: Array<Pick<ResolvedAsset, 'asset' | 'collection'>> = []
+	portableListings: Array<Pick<ResolvedAsset, 'asset' | 'collection'> & { activity?: HomeListingActivity }> = []
 ) {
 	const collectionsById = new Map(collections.map((collection) => [collection.id, collection]));
 	const verified = interleaveCollectionAssets(
@@ -8938,8 +9362,17 @@ export function homeDiscoveryAssets(
 		})),
 		limit
 	).map(({ asset, collection }) => ({ asset, collection: collectionsById.get(collection.id)! }));
+	const fallback = interleaveCollectionAssets(
+		collections,
+		limit,
+		(asset, collection) => Boolean(asset.image || asset.media) || collection.kind === 'tokens'
+	);
 	const seen = new Set<string>();
-	return [...portableListings, ...verified]
+	const portable = [...portableListings].sort((left, right) => {
+		if (!left.activity || !right.activity) return 0;
+		return right.activity.height - left.activity.height || right.activity.timestamp - left.activity.timestamp;
+	});
+	return [...portable, ...verified, ...fallback]
 		.filter(({ asset }) => {
 			if (seen.has(asset.id)) return false;
 			seen.add(asset.id);
@@ -8972,10 +9405,11 @@ export function homeSearchAssets(
 	collections: Collection[],
 	portableListings: Array<Pick<ResolvedAsset, 'asset' | 'collection'>>,
 	query: string,
-	limit: number
+	limit: number,
+	matches?: ReadonlyMap<Collection, AssetSummary[]>
 ) {
 	const indexed = collections.flatMap((collection) =>
-		collectionSearchAssets(collection, query)
+		(matches?.get(collection) ?? collectionSearchAssets(collection, query))
 			.filter(
 				(asset) => asset.image || asset.media || collection.kind === 'tokens' || collection.kind === 'names'
 			)
@@ -9060,6 +9494,22 @@ function orderPriceLabel(order: SwapOrder, state: AssetState) {
 		state.totalSupply === '1' && state.denomination === 0 ? '' : ` / ${state.ticker || 'token'}`
 	}`;
 }
+function homeListingShell(result: ResolvedAsset): HomeListingShell | undefined {
+	const order = bestAskOfAsset(result.state);
+	if (!order || !isLiveListing(result)) return undefined;
+	return {
+		asset: result.asset,
+		collection: {
+			id: result.collection.id,
+			name: result.collection.name,
+			description: result.collection.description,
+			kind: result.collection.kind,
+			assets: [result.asset],
+		},
+		activity: result.activity,
+		price: orderPriceLabel(order, result.state),
+	};
+}
 export function tokenBalanceLabel(value: string, state: AssetState) {
 	const [whole, fraction] = formatTokenAmount(value, state.denomination).split('.');
 	const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
@@ -9122,9 +9572,10 @@ function hasStoredSignedTransaction(storage: Pick<Storage, 'key' | 'length'>) {
 	return false;
 }
 
-function prefetchAssetPage(processId: string) {
+function prefetchAssetPage(processId: string, fungible = false) {
+	if (fungible) void import('../routes/FungibleAssetRoute');
 	void prefetchAssetState(processId).then((result) => {
-		if (result && (result.state.totalSupply !== '1' || result.state.denomination > 0)) {
+		if (!fungible && result && (result.state.totalSupply !== '1' || result.state.denomination > 0)) {
 			void import('../routes/FungibleAssetRoute');
 		}
 	});
@@ -9279,7 +9730,6 @@ function purchaseSnapshot(state: PurchaseState): PurchaseSnapshot {
 		...(state.dismissed ? { dismissed: true } : {}),
 	};
 }
-
 function currentPurchaseGatewayContext() {
 	return { arweave: arweaveGatewayFromLocation(), compute: gatewayFromLocation() };
 }

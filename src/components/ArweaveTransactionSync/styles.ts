@@ -246,7 +246,7 @@ export const Depth = styled.div<{ $success: boolean }>`
 	}
 `;
 
-export const ProgressTrack = styled.div<{ $active: boolean; $progress: number } & LaneTrustProps>`
+export const ProgressTrack = styled.div<{ $active: boolean } & LaneTrustProps>`
 	position: relative;
 	z-index: 2;
 	height: 16px;
@@ -263,7 +263,6 @@ export const ProgressTrack = styled.div<{ $active: boolean; $progress: number } 
 		overflow: hidden;
 		border-radius: inherit;
 		background: ${(props) => (props.$hasError ? props.theme.colors.warning.primary : PROGRESS_GRADIENT)};
-		background-size: ${(props) => `${10000 / Math.max(1, props.$progress)}% 100%`};
 		transition: width 420ms ease;
 
 		&::after {

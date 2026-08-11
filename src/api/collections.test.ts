@@ -18,6 +18,11 @@ import {
 
 const encodeJson = (value: unknown) =>
 	btoa(JSON.stringify(value)).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
+const encodeUtf8Json = (value: unknown) =>
+	btoa(Array.from(new TextEncoder().encode(JSON.stringify(value)), (byte) => String.fromCharCode(byte)).join(''))
+		.replaceAll('+', '-')
+		.replaceAll('/', '_')
+		.replaceAll('=', '');
 
 afterEach(() => {
 	vi.unstubAllGlobals();
@@ -398,6 +403,79 @@ describe('collection index loading', () => {
 		expect(progress.some((ids) => ids.length === 2)).toBe(true);
 	});
 
+	it('publishes exact namespace membership before the first carrier page settles', async () => {
+		const controller = new AbortController();
+		const reason = new Error('test-complete');
+		const nameId = 'N'.repeat(43);
+		const namespace = encodeJson({
+			manifest: 'arweave/paths',
+			version: '0.2.0',
+			paths: { alice: { id: nameId } },
+		});
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+				const body = typeof init?.body === 'string' ? init.body : '';
+				if (body.includes('CarrierAssets')) {
+					return new Promise<Response>((_resolve, reject) => {
+						init?.signal?.addEventListener('abort', () => reject(init.signal?.reason), { once: true });
+					});
+				}
+				if (body.includes('FungibleTokens')) {
+					return Response.json({
+						data: { transactions: { count: 0, pageInfo: { hasNextPage: false }, edges: [] } },
+					});
+				}
+				if (String(input).includes(`/tx/${NAMES_NAMESPACE_ID}/data`)) return new Response(namespace);
+				return new Response('unavailable', { status: 503 });
+			})
+		);
+		let resolveNames!: (collection: Collection) => void;
+		const namesProgress = new Promise<Collection>((resolve) => {
+			resolveNames = resolve;
+		});
+		const loading = loadCollections(controller.signal, (collections) => {
+			const names = collections.find((collection) => collection.kind === 'names');
+			if (names) resolveNames(names);
+		});
+
+		const names = await namesProgress;
+		expect(names.assets).toEqual([]);
+		expect(collectionAsset(names, nameId)?.name).toBe('alice');
+		controller.abort(reason);
+		await expect(loading).rejects.toBe(reason);
+	});
+
+	it('starts carrier discovery while the namespace manifest is still loading', async () => {
+		const controller = new AbortController();
+		const reason = new Error('test-complete');
+		const requests: string[] = [];
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+				const body = typeof init?.body === 'string' ? init.body : '';
+				if (body.includes('CarrierAssets')) {
+					requests.push('carrier');
+					return new Promise<Response>((_resolve, reject) => {
+						init?.signal?.addEventListener('abort', () => reject(init.signal?.reason), { once: true });
+					});
+				}
+				if (String(input).includes(`/tx/${NAMES_NAMESPACE_ID}/data`)) {
+					requests.push('namespace');
+					return new Promise<Response>((_resolve, reject) => {
+						init?.signal?.addEventListener('abort', () => reject(init.signal?.reason), { once: true });
+					});
+				}
+				return new Response('unavailable', { status: 503 });
+			})
+		);
+
+		const loading = loadCollections(controller.signal);
+		await vi.waitFor(() => expect(requests).toEqual(expect.arrayContaining(['namespace', 'carrier'])));
+		controller.abort(reason);
+		await expect(loading).rejects.toBe(reason);
+	});
+
 	it('discovers every fungible token across GraphQL pages without duplicate assets', async () => {
 		const tokenIds = [
 			FUNGIBLE_TOKEN_ID,
@@ -658,12 +736,10 @@ describe('collection index loading', () => {
 		const manifestId = 'M'.repeat(43);
 		const fallbackId = 'F'.repeat(43);
 		const encode = (value: string) => btoa(value).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
-		const manifest = encode(
-			JSON.stringify({
-				name: 'Referenced collection',
-				assets: [{ id: 'A'.repeat(43), name: 'Asset one' }],
-			})
-		);
+		const manifest = encodeUtf8Json({
+			name: 'Referenced collection — café 🐈',
+			assets: [{ id: 'A'.repeat(43), name: 'Asset one' }],
+		});
 		vi.stubGlobal(
 			'fetch',
 			vi.fn(async (input: RequestInfo | URL) => {
@@ -680,7 +756,7 @@ describe('collection index loading', () => {
 		);
 
 		await expect(loadImageCollection(referenceId, fallbackId)).resolves.toMatchObject({
-			name: 'Referenced collection',
+			name: 'Referenced collection — café 🐈',
 			indexSource: 'reference',
 			manifestId,
 		});
@@ -717,6 +793,70 @@ describe('collection index loading', () => {
 			manifestId: fallbackId,
 		});
 		expect(fetcher).toHaveBeenCalledTimes(3);
+	});
+
+	it('waits for the live image reference before loading an index', async () => {
+		const referenceId = 'A7TGD0bktXYkQSrz4UWfPqgcb8A4TAOEsKQU5_zAu7g';
+		const publishedManifestId = '8aITB5SF-jc9MXx9IuCe_RaAoOrUHkkvgsy0cmLNCQw';
+		const liveManifestId = 'L'.repeat(43);
+		const encode = (value: string) => btoa(value).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
+		const live = encodeJson({
+			name: 'Live collection',
+			assets: [{ id: 'B'.repeat(43), name: 'Live asset' }],
+		});
+		let resolveReference!: (response: Response) => void;
+		const reference = new Promise<Response>((resolve) => {
+			resolveReference = resolve;
+		});
+		const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+			const url = String(input);
+			if (url.endsWith(`/tx/${referenceId}`)) return reference;
+			if (url.endsWith(`/tx/${liveManifestId}/data`)) return new Response(live);
+			return new Response('unavailable', { status: 503 });
+		});
+		vi.stubGlobal('fetch', fetcher);
+		let settled = false;
+		const loading = loadImageCollection(referenceId, publishedManifestId);
+		void loading.then(() => {
+			settled = true;
+		});
+		await Promise.resolve();
+		expect(settled).toBe(false);
+		expect(fetcher).toHaveBeenCalledTimes(1);
+		expect(fetcher.mock.calls.map(([input]) => String(input))).toEqual([
+			expect.stringContaining(`/tx/${referenceId}`),
+		]);
+
+		resolveReference(Response.json({ tags: [{ name: encode('reference-value'), value: encode(liveManifestId) }] }));
+		const result = await loading;
+
+		expect(result).toMatchObject({
+			name: 'Live collection',
+			manifestId: liveManifestId,
+			indexSource: 'reference',
+		});
+		expect(fetcher).toHaveBeenCalledTimes(2);
+		expect(fetcher.mock.calls.map(([input]) => String(input))).toEqual([
+			expect.stringContaining(`/tx/${referenceId}`),
+			expect.stringContaining(`/tx/${liveManifestId}/data`),
+		]);
+	});
+
+	it('does not start a fallback image request after abort', async () => {
+		const controller = new AbortController();
+		const reason = new Error('gateway-changed');
+		const referenceId = 'R'.repeat(43);
+		const publishedManifestId = 'F'.repeat(43);
+		const pending = new Promise<Response>(() => undefined);
+		const fetcher = vi.fn(async () => pending);
+		vi.stubGlobal('fetch', fetcher);
+		const loading = loadImageCollection(referenceId, publishedManifestId, controller.signal);
+
+		expect(fetcher).toHaveBeenCalledTimes(1);
+		controller.abort(reason);
+
+		await expect(loading).rejects.toBe(reason);
+		expect(fetcher).toHaveBeenCalledTimes(1);
 	});
 
 	it('does not turn an aborted load into fallback marketplace content', async () => {

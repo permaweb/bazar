@@ -9,7 +9,14 @@ export type SegmentedTab<Value extends string> = {
 	panelId?: string;
 };
 
-export function SegmentedTabs<Value extends string>({ active, ariaLabel, className, idPrefix, onChange, tabs }: {
+export function SegmentedTabs<Value extends string>({
+	active,
+	ariaLabel,
+	className,
+	idPrefix,
+	onChange,
+	tabs,
+}: {
 	active: Value;
 	ariaLabel: string;
 	className?: string;
@@ -33,13 +40,17 @@ export function SegmentedTabs<Value extends string>({ active, ariaLabel, classNa
 							let nextIndex: number | null = null;
 							if (event.key === 'Home') nextIndex = 0;
 							if (event.key === 'End') nextIndex = tabs.length - 1;
-							if (event.key === 'ArrowRight' || event.key === 'ArrowDown') nextIndex = (index + 1) % tabs.length;
-							if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') nextIndex = (index - 1 + tabs.length) % tabs.length;
+							if (event.key === 'ArrowRight' || event.key === 'ArrowDown')
+								nextIndex = (index + 1) % tabs.length;
+							if (event.key === 'ArrowLeft' || event.key === 'ArrowUp')
+								nextIndex = (index - 1 + tabs.length) % tabs.length;
 							if (nextIndex === null) return;
 							event.preventDefault();
 							const nextTab = tabs[nextIndex];
 							onChange(nextTab.value);
-							window.requestAnimationFrame(() => document.getElementById(`${idPrefix}-${nextTab.value}-tab`)?.focus());
+							window.requestAnimationFrame(() =>
+								document.getElementById(`${idPrefix}-${nextTab.value}-tab`)?.focus()
+							);
 						}}
 						role="tab"
 						size="custom"

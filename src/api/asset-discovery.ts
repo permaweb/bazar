@@ -13,9 +13,9 @@ import {
 	readAssetStateAtSlot,
 	readProcessAssignments,
 } from './asset-marketplace';
-import { assetFromMintState, CREATED_COLLECTION_ID, CREATED_COLLECTION_NAME } from './asset-mint';
 import { type AssetSummary, type Collection, collectionAsset } from './collections';
 import { fetchJsonWithDeadline } from './fetch-with-deadline';
+import { assetFromMintState, CREATED_COLLECTION_ID, CREATED_COLLECTION_NAME } from './minted-assets';
 
 const ADDRESS = /^[A-Za-z0-9_-]{43}$/;
 const GRAPHQL_PAGE_SIZE = 100;
@@ -23,6 +23,8 @@ const GRAPHQL_ID_BATCH_SIZE = 100;
 const ARWEAVE_GRAPHQL_ID_BATCH_SIZE = 9;
 const MAX_GRAPHQL_PAGES = 1_000;
 const WALLET_HEAD_CATCH_UP_PAGES_PER_PASS = 20;
+const WALLET_SCAN_CACHE_VERSION = 1;
+const WALLET_SCAN_CACHE_PREFIX = 'bazar.wallet-candidate-scan';
 const ASSET_SUPPORT_CONCURRENCY = 2;
 export const ASSET_RESOLUTION_CONCURRENCY = 8;
 
@@ -91,7 +93,10 @@ export async function confirmPurchaseActivity(
 ): Promise<CollectionActivityEvent[]> {
 	const purchases = events.filter(
 		(event) =>
-			event.action === 'register-interest' && ADDRESS.test(event.actor) && ADDRESS.test(event.orderId ?? '')
+			event.action === 'register-interest' &&
+			!event.purchaseProof &&
+			ADDRESS.test(event.actor) &&
+			ADDRESS.test(event.orderId ?? '')
 	);
 	if (!purchases.length) return events;
 	const readCurrent = options.readCurrent ?? ((processId, signal) => readAssetState(processId, { signal }));
@@ -234,6 +239,16 @@ export type WalletCandidateScan = {
 	caughtUp: boolean;
 };
 
+type StoredWalletCandidate = Array<string | number | string[] | null>;
+
+type StoredWalletCandidateScan = {
+	v: number;
+	a: string;
+	g: string;
+	h: Array<string | null>;
+	c: StoredWalletCandidate[];
+};
+
 type WalletCandidateOptions = CandidateOptions & {
 	scan?: WalletCandidateScan;
 	catchUp?: boolean;
@@ -243,6 +258,7 @@ export type MarketActivityOptions = CandidateOptions & {
 	recipients?: string[];
 	listingsOnly?: boolean;
 	acceptProcessId?: (processId: string) => boolean;
+	maxPages?: number;
 };
 
 export type MarketActivityPage = {
@@ -279,6 +295,7 @@ type ResolutionOptions = {
 	concurrency?: number;
 	read?: (processId: string, signal?: AbortSignal) => Promise<ComputeResult>;
 	onSettled?: (result: ResolvedAsset | null, candidate: AssetCandidate, error?: unknown) => void;
+	onRevalidated?: (result: ResolvedAsset | null, candidate: AssetCandidate, error?: unknown) => void;
 };
 
 const WALLET_CANDIDATES_QUERY = `query WalletAssetCandidates(
@@ -497,6 +514,194 @@ export function createWalletCandidateScan(address: string, graphql = arweaveGrap
 		found: new Map(),
 		heads: { initiallyHeld: undefined, marketActions: undefined, receivedTransfers: undefined },
 		caughtUp: false,
+	};
+}
+
+export function resumeCompletedWalletCandidateScan(
+	scan: WalletCandidateScan | undefined,
+	address: string,
+	graphql = arweaveGraphqlEndpoint()
+): WalletCandidateScan | undefined {
+	if (
+		!scan ||
+		scan.address !== address ||
+		scan.graphql !== graphql ||
+		scan.active.size ||
+		scan.catchUp ||
+		!scan.caughtUp
+	)
+		return undefined;
+	return restoredWalletCandidateScan(address, graphql, scan.heads, scan.found);
+}
+
+export function loadCompletedWalletCandidateScan(
+	storage: Pick<Storage, 'getItem'>,
+	address: string,
+	graphql = arweaveGraphqlEndpoint()
+): WalletCandidateScan | undefined {
+	if (!ADDRESS.test(address)) return undefined;
+	try {
+		const value = storage.getItem(walletCandidateScanKey(address, graphql));
+		if (!value) return undefined;
+		const stored = JSON.parse(value) as StoredWalletCandidateScan;
+		if (
+			stored?.v !== WALLET_SCAN_CACHE_VERSION ||
+			stored.a !== address ||
+			stored.g !== graphql ||
+			!Array.isArray(stored.h) ||
+			stored.h.length !== 3 ||
+			stored.h.some((head) => head !== null && !ADDRESS.test(head)) ||
+			!Array.isArray(stored.c)
+		)
+			return undefined;
+		const found = new Map<string, AssetCandidate>();
+		for (const value of stored.c) {
+			const candidate = decodeStoredWalletCandidate(value);
+			if (!candidate || found.has(candidate.processId)) return undefined;
+			found.set(candidate.processId, candidate);
+		}
+		return restoredWalletCandidateScan(
+			address,
+			graphql,
+			{
+				initiallyHeld: stored.h[0]!,
+				marketActions: stored.h[1]!,
+				receivedTransfers: stored.h[2]!,
+			},
+			found
+		);
+	} catch {
+		return undefined;
+	}
+}
+
+export function storeCompletedWalletCandidateScan(
+	storage: Pick<Storage, 'setItem'>,
+	scan: WalletCandidateScan
+): boolean {
+	if (scan.active.size || scan.catchUp || !scan.caughtUp) return false;
+	const stored: StoredWalletCandidateScan = {
+		v: WALLET_SCAN_CACHE_VERSION,
+		a: scan.address,
+		g: scan.graphql,
+		h: [scan.heads.initiallyHeld ?? null, scan.heads.marketActions ?? null, scan.heads.receivedTransfers ?? null],
+		c: [...scan.found.values()].map(encodeStoredWalletCandidate),
+	};
+	try {
+		storage.setItem(walletCandidateScanKey(scan.address, scan.graphql), JSON.stringify(stored));
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+export function clearCompletedWalletCandidateScan(
+	storage: Pick<Storage, 'removeItem'>,
+	address: string,
+	graphql = arweaveGraphqlEndpoint()
+) {
+	try {
+		storage.removeItem(walletCandidateScanKey(address, graphql));
+	} catch {
+		// Browser storage is optional; a fresh in-memory scan still proceeds.
+	}
+}
+
+function walletCandidateScanKey(address: string, graphql: string) {
+	return `${WALLET_SCAN_CACHE_PREFIX}:v${WALLET_SCAN_CACHE_VERSION}:${address}:${encodeURIComponent(graphql)}`;
+}
+
+function restoredWalletCandidateScan(
+	address: string,
+	graphql: string,
+	heads: WalletCandidateScan['heads'],
+	found: Map<string, AssetCandidate>
+): WalletCandidateScan {
+	const scan = createWalletCandidateScan(address, graphql);
+	scan.active.clear();
+	scan.found = new Map(found);
+	scan.heads = { ...heads };
+	return scan;
+}
+
+function encodeStoredWalletCandidate(candidate: AssetCandidate): StoredWalletCandidate {
+	const stored: StoredWalletCandidate = [
+		candidate.processId,
+		candidate.height,
+		candidate.timestamp,
+		(candidate.sources.includes('initial-holder') ? 1 : 0) |
+			(candidate.sources.includes('market-action') ? 2 : 0) |
+			(candidate.sources.includes('transfer') ? 4 : 0),
+		candidate.activityIds?.length === 1 && candidate.activityIds[0] === candidate.processId
+			? 0
+			: candidate.activityIds ?? null,
+		candidate.device ?? null,
+		candidate.collection ?? null,
+		candidate.processDevice ?? null,
+		candidate.assetType ?? null,
+		candidate.swapDevice ?? null,
+		candidate.schedulerDevice ?? null,
+		candidate.schedulerMode ?? null,
+	];
+	while (stored.at(-1) === null) stored.pop();
+	return stored;
+}
+
+function decodeStoredWalletCandidate(value: StoredWalletCandidate): AssetCandidate | undefined {
+	if (!Array.isArray(value) || value.length < 4 || value.length > 12) return undefined;
+	const [
+		processId,
+		height,
+		timestamp,
+		sourceMask,
+		activity,
+		device,
+		collection,
+		processDevice,
+		assetType,
+		swapDevice,
+		schedulerDevice,
+		schedulerMode,
+	] = value;
+	if (
+		typeof processId !== 'string' ||
+		!ADDRESS.test(processId) ||
+		typeof height !== 'number' ||
+		!Number.isSafeInteger(height) ||
+		height < 0 ||
+		typeof timestamp !== 'number' ||
+		!Number.isSafeInteger(timestamp) ||
+		timestamp < 0 ||
+		typeof sourceMask !== 'number' ||
+		!Number.isSafeInteger(sourceMask) ||
+		sourceMask < 1 ||
+		sourceMask > 7 ||
+		(activity !== undefined &&
+			activity !== null &&
+			activity !== 0 &&
+			(!Array.isArray(activity) || activity.some((id) => typeof id !== 'string' || !ADDRESS.test(id)))) ||
+		[device, collection, processDevice, assetType, swapDevice, schedulerDevice, schedulerMode].some(
+			(item) => item !== undefined && item !== null && typeof item !== 'string'
+		)
+	)
+		return undefined;
+	return {
+		processId,
+		height,
+		timestamp,
+		...(activity === 0 ? { activityIds: [processId] } : Array.isArray(activity) ? { activityIds: activity } : {}),
+		sources: [
+			...(sourceMask & 1 ? (['initial-holder'] as const) : []),
+			...(sourceMask & 2 ? (['market-action'] as const) : []),
+			...(sourceMask & 4 ? (['transfer'] as const) : []),
+		],
+		...(typeof device === 'string' ? { device } : {}),
+		...(typeof collection === 'string' ? { collection } : {}),
+		...(typeof processDevice === 'string' ? { processDevice } : {}),
+		...(typeof assetType === 'string' ? { assetType } : {}),
+		...(typeof swapDevice === 'string' ? { swapDevice } : {}),
+		...(typeof schedulerDevice === 'string' ? { schedulerDevice } : {}),
+		...(typeof schedulerMode === 'string' ? { schedulerMode } : {}),
 	};
 }
 
@@ -757,10 +962,12 @@ export async function discoverMarketActivityPage(
 }
 
 export async function discoverMarketActivity(options: MarketActivityOptions = {}): Promise<AssetCandidate[]> {
-	const { onPage, ...pageOptions } = options;
+	const { onPage, maxPages: requestedMaxPages, ...pageOptions } = options;
 	const found = new Map<string, AssetCandidate>();
 	let cursor: string | null = null;
+	let pages = 0;
 	const visited = new Set<string>();
+	const maxPages = Math.max(1, Math.floor(requestedMaxPages ?? MAX_GRAPHQL_PAGES));
 
 	while (true) {
 		const page = await discoverMarketActivityPage({ ...pageOptions, cursor });
@@ -770,8 +977,9 @@ export async function discoverMarketActivity(options: MarketActivityOptions = {}
 			return firstOccurrence;
 		});
 		await onPage?.(sortCandidates(pageCandidates));
+		pages += 1;
 		options.signal?.throwIfAborted();
-		if (!page.hasMore) return sortCandidates([...found.values()]);
+		if (pages >= maxPages || !page.hasMore) return sortCandidates([...found.values()]);
 		if (!page.cursor || visited.has(page.cursor) || visited.size >= MAX_GRAPHQL_PAGES) {
 			throw new Error('asset-activity-pagination-stalled');
 		}
@@ -793,7 +1001,7 @@ export async function discoverMarketActivityBatched(options: BatchedMarketActivi
 
 	await Promise.all(
 		Array.from({ length: Math.min(concurrency, batches.length) }, async () => {
-			while (!failures.length) {
+			while (true) {
 				options.signal?.throwIfAborted();
 				const batch = batches[nextBatch++];
 				if (!batch) return;
@@ -974,7 +1182,7 @@ export async function discoverCollectionActivityBatched(
 
 	await Promise.all(
 		Array.from({ length: Math.min(concurrency, batches.length) }, async () => {
-			while (!failures.length) {
+			while (true) {
 				options.signal?.throwIfAborted();
 				const batch = batches[nextBatch++];
 				if (!batch) return;
@@ -1103,31 +1311,102 @@ export async function resolveAssetCandidates(
 	collections: Collection[],
 	options: ResolutionOptions = {}
 ): Promise<ResolvedAsset[]> {
-	const sorted = sortCandidates(candidates);
+	const resolver = createAssetCandidateResolver(collections, options);
+	resolver.enqueue(candidates);
+	return resolver.finish();
+}
+
+export function createAssetCandidateResolver(collections: Collection[], options: ResolutionOptions = {}) {
+	const pending: AssetCandidate[] = [];
 	const resolved: ResolvedAsset[] = [];
 	const concurrency = Math.max(1, Math.min(16, Math.floor(options.concurrency ?? ASSET_RESOLUTION_CONCURRENCY)));
 	const read = options.read ?? ((processId: string, signal?: AbortSignal) => readAssetState(processId, { signal }));
-	let cursor = 0;
+	let active = 0;
+	let sealed = false;
+	let failure: unknown;
+	let finishPromise: Promise<ResolvedAsset[]> | undefined;
+	let resolveFinish: ((value: ResolvedAsset[]) => void) | undefined;
+	let rejectFinish: ((reason?: unknown) => void) | undefined;
 
-	const workers = Array.from({ length: Math.min(concurrency, sorted.length) }, async () => {
-		while (cursor < sorted.length) {
-			options.signal?.throwIfAborted();
-			const index = cursor;
-			cursor += 1;
-			const candidate = sorted[index];
-			try {
-				const computed = await read(candidate.processId, options.signal);
-				const result = supportedAsset(candidate, computed, collections);
-				if (result) resolved.push(result);
-				options.onSettled?.(result, candidate);
-			} catch (error) {
-				if (options.signal?.aborted) throw error;
-				options.onSettled?.(null, candidate, error);
-			}
+	const settle = () => {
+		if (!finishPromise) return;
+		if (failure !== undefined) {
+			rejectFinish?.(failure);
+		} else if (sealed && active === 0 && pending.length === 0) {
+			resolveFinish?.(resolved.sort((a, b) => compareActivity(a.activity, b.activity)));
+		} else {
+			return;
 		}
-	});
-	await Promise.all(workers);
-	return resolved.sort((a, b) => compareActivity(a.activity, b.activity));
+		resolveFinish = undefined;
+		rejectFinish = undefined;
+		options.signal?.removeEventListener('abort', onAbort);
+	};
+	const fail = (reason: unknown) => {
+		failure ??= reason ?? new DOMException('Aborted', 'AbortError');
+		pending.length = 0;
+		settle();
+	};
+	const onAbort = () => fail(options.signal?.reason);
+	const resolveCandidate = async (candidate: AssetCandidate) => {
+		let computed: ComputeResult;
+		let result: ResolvedAsset | null;
+		try {
+			computed = await read(candidate.processId, options.signal);
+			options.signal?.throwIfAborted();
+			result = supportedAsset(candidate, computed, collections);
+		} catch (error) {
+			if (options.signal?.aborted) throw options.signal.reason ?? error;
+			options.onSettled?.(null, candidate, error);
+			return;
+		}
+		if (result) resolved.push(result);
+		options.onSettled?.(result, candidate);
+		if (computed.revalidation && options.onRevalidated) {
+			void computed.revalidation.then(
+				(fresh) => {
+					if (!options.signal?.aborted) {
+						options.onRevalidated?.(supportedAsset(candidate, fresh, collections), candidate);
+					}
+				},
+				(error) => {
+					if (!options.signal?.aborted) options.onRevalidated?.(null, candidate, error);
+				}
+			);
+		}
+	};
+	const pump = () => {
+		while (failure === undefined && active < concurrency && pending.length) {
+			active += 1;
+			void resolveCandidate(pending.shift()!)
+				.catch(fail)
+				.finally(() => {
+					active -= 1;
+					pump();
+					settle();
+				});
+		}
+	};
+
+	options.signal?.addEventListener('abort', onAbort, { once: true });
+	if (options.signal?.aborted) onAbort();
+	return {
+		enqueue(candidates: AssetCandidate[]) {
+			if (sealed) throw new Error('asset-candidate-resolver-finished');
+			if (failure !== undefined) throw failure;
+			pending.push(...candidates);
+			pending.sort(compareActivity);
+			pump();
+		},
+		finish() {
+			sealed = true;
+			finishPromise ??= new Promise<ResolvedAsset[]>((resolve, reject) => {
+				resolveFinish = resolve;
+				rejectFinish = reject;
+			});
+			settle();
+			return finishPromise;
+		},
+	};
 }
 
 type CandidateCollectionIndex = {
@@ -1182,7 +1461,9 @@ export function restrictAssetCandidates(candidates: AssetCandidate[], collection
 export async function verifyAssetCandidateSupport(
 	candidates: AssetCandidate[],
 	collections: Collection[],
-	options: Pick<CandidateOptions, 'fetch' | 'graphql' | 'requestTimeoutMs' | 'signal'> = {}
+	options: Pick<CandidateOptions, 'fetch' | 'graphql' | 'requestTimeoutMs' | 'signal'> & {
+		onVerified?: (candidates: AssetCandidate[]) => void | Promise<void>;
+	} = {}
 ): Promise<AssetCandidateSupportResult> {
 	const { supported, unverified: unindexed } = partitionAssetCandidateSupport(candidates, collections);
 	if (!unindexed.length) return { supported, unavailable: [] };
@@ -1202,6 +1483,7 @@ export async function verifyAssetCandidateSupport(
 	let nextChunk = 0;
 	const verifyChunk = async (chunk: string[]) => {
 		const requested = new Set(chunk);
+		const verifiedChunk = new Set<string>();
 		options.signal?.throwIfAborted();
 		const { response, body: payload } = await fetchJsonWithDeadline<any>(
 			fetcher,
@@ -1236,24 +1518,33 @@ export async function verifyAssetCandidateSupport(
 		for (const edge of fungible.edges) {
 			if (!requested.has(edge.node.id)) throw new Error('asset-support-graphql-schema');
 			verified.add(edge.node.id);
+			verifiedChunk.add(edge.node.id);
 		}
 		for (const edge of atomic.edges) {
 			if (!requested.has(edge.node.id) || !atomicProcessNode(edge.node)) {
 				throw new Error('asset-support-graphql-schema');
 			}
 			verified.add(edge.node.id);
+			verifiedChunk.add(edge.node.id);
 		}
+		return restrictAssetCandidates(
+			unindexed.filter((candidate) => verifiedChunk.has(candidate.processId)),
+			collections
+		);
 	};
 	const workers = Array.from({ length: Math.min(ASSET_SUPPORT_CONCURRENCY, chunks.length) }, async () => {
 		while (nextChunk < chunks.length) {
 			options.signal?.throwIfAborted();
 			const chunk = chunks[nextChunk++];
+			let verifiedCandidates: AssetCandidate[];
 			try {
-				await verifyChunk(chunk);
+				verifiedCandidates = await verifyChunk(chunk);
 			} catch (error) {
 				if (options.signal?.aborted) throw options.signal.reason ?? error;
 				for (const processId of chunk) unavailable.set(processId, error);
+				continue;
 			}
+			if (verifiedCandidates.length) await options.onVerified?.(verifiedCandidates);
 		}
 	});
 	await Promise.all(workers);

@@ -33,6 +33,7 @@ export default defineConfig({
 					if (!id.includes('node_modules') && !id.includes('/vendor/')) return;
 					if (id.includes('/three/')) return 'graphics';
 					if (id.includes('/arweave/')) return 'arweave';
+					if (id.includes('/ao-wrangler/')) return 'ao-wrangler';
 					if (id.includes('weave-wrangler')) return 'transactions';
 					if (id.includes('/react/') || id.includes('/react-dom/') || id.includes('/react-router'))
 						return 'react';

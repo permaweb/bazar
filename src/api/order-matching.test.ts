@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
 import type { SwapOrder } from './asset-marketplace';
-import { filledOrder, formatTokenAmount, matchOrderFills, parseTokenAmount } from './order-matching';
+import {
+	filledOrder,
+	formatTokenAmount,
+	matchOrderFills,
+	matchSortedOrderFills,
+	parseTokenAmount,
+} from './order-matching';
 
 describe('token amount conversion', () => {
 	it('parses and formats 12-decimal amounts exactly', () => {
@@ -39,6 +45,15 @@ describe('partial order matching', () => {
 			['2', '4', true],
 		]);
 		expect(result?.totalAsking).toBe('6');
+	});
+
+	it('matches an already sorted book without changing its price order', () => {
+		const cheap = swapOrder('A'.repeat(43), '2', '2', 1);
+		const dear = swapOrder('B'.repeat(43), '5', '10', 2);
+		expect(matchSortedOrderFills([cheap, dear], '4')?.fills.map((fill) => fill.sourceOrder.orderId)).toEqual([
+			cheap.orderId,
+			dear.orderId,
+		]);
 	});
 
 	it('fills one unit from a larger order', () => {

@@ -35,6 +35,48 @@ function storage() {
 }
 
 describe('asset mint contract', () => {
+	it('deduplicates collection price sizes while retaining every transaction in the total', async () => {
+		const calls: string[] = [];
+		const file = new File([new Uint8Array([1, 2, 3])], 'same.png', { type: 'image/png' });
+		const estimate = await new CollectionMintClient({
+			gateway: 'https://gateway.example',
+			fetch: vi.fn(async (input) => {
+				calls.push(String(input));
+				return new Response('7');
+			}),
+		}).estimate({ name: 'Repeated sizes', description: '', files: Array(10).fill(file) });
+
+		expect(estimate).toMatchObject({ assetCount: 10, transactionCount: 12, total: 84n });
+		expect(new Set(calls).size).toBe(calls.length);
+		expect(calls.length).toBeLessThan(12);
+	});
+
+	it('bounds distinct collection price lookups to eight at a time', async () => {
+		let active = 0;
+		let maxActive = 0;
+		let calls = 0;
+		const files = Array.from(
+			{ length: 10 },
+			(_, index) =>
+				new File([new Uint8Array(index + 1)], `asset-${index}-${'x'.repeat(index)}.png`, { type: 'image/png' })
+		);
+		const estimate = await new CollectionMintClient({
+			gateway: 'https://gateway.example',
+			fetch: vi.fn(async () => {
+				calls += 1;
+				active += 1;
+				maxActive = Math.max(maxActive, active);
+				await new Promise((resolve) => setTimeout(resolve, 5));
+				active -= 1;
+				return new Response('1');
+			}),
+		}).estimate({ name: 'Distinct sizes', description: '', files });
+
+		expect(estimate.total).toBe(12n);
+		expect(calls).toBeGreaterThan(8);
+		expect(maxActive).toBe(8);
+	});
+
 	it('creates a discoverable one-of-one process whose transaction body is the asset media', () => {
 		const tags = mintProcessTags(
 			{ name: 'Signal #1', description: 'Permanent', contentType: 'image/png', createdAt: 123 },

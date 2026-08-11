@@ -4,7 +4,6 @@ import { ThemeProvider } from 'styled-components';
 import { describe, expect, it, vi } from 'vitest';
 
 import { theme } from 'helpers/theme';
-import { LanguageProvider } from 'providers/LanguageProvider';
 
 import { type ArweaveSyncStep, ArweaveTransactionSync } from '.';
 
@@ -22,16 +21,12 @@ function renderControl(skipKind?: 'yolo' | 'skip', confirmations = 2) {
 		React.createElement(
 			ThemeProvider,
 			{ theme },
-			React.createElement(
-				LanguageProvider,
-				null,
-				React.createElement(ArweaveTransactionSync, {
-					subject: 'Asset',
-					steps,
-					skipKind,
-					onSkip: skipKind ? vi.fn() : undefined,
-				})
-			)
+			React.createElement(ArweaveTransactionSync, {
+				subject: 'Asset',
+				steps,
+				skipKind,
+				onSkip: skipKind ? vi.fn() : undefined,
+			})
 		)
 	);
 }
