@@ -26,6 +26,7 @@ import { arweaveGatewayFromLocation } from 'helpers/config';
 import { useWallet } from 'providers/WalletProvider';
 
 import { winstonToAr } from '../app/App';
+import { announceFungibleOperationActivityChange } from '../app/operation-activity';
 
 const ADDRESS = /^[A-Za-z0-9_-]{43}$/;
 
@@ -126,19 +127,66 @@ export default function DispatchRoute() {
 	const senderMismatch = Boolean(plan && wallet.address && plan.sender !== wallet.address);
 	const balance = state && wallet.address ? liquidBalanceOf(state, wallet.address) : null;
 
+	// Surface the run in the top-bar activity notifier the same as a buy/sell/
+	// transfer. It rides the fungible runtime-activity channel with a dedicated
+	// `:dispatch` id so it never collides with a manual transfer on the same
+	// token; the operation reads as a transfer (a dispatch is batched transfers)
+	// and the status line carries the settled/total progress.
+	const dispatchActivity = (
+		sender: string,
+		phase: 'working' | 'done' | 'error',
+		status: string,
+		createdAt: number
+	) => {
+		const id = `fungible:${processId}:${sender}:dispatch`;
+		if (phase === 'done') {
+			announceFungibleOperationActivityChange({ type: 'remove', id, owner: sender });
+			return;
+		}
+		announceFungibleOperationActivityChange({
+			type: 'upsert',
+			activity: {
+				id,
+				asset: {
+					id: processId,
+					name: state?.ticker || 'Token',
+					...(state?.ticker ? { ticker: state.ticker } : {}),
+				},
+				collectionId: FUNGIBLE_TOKEN_COLLECTION_ID,
+				owner: sender,
+				operationKind: 'transfer',
+				phase,
+				status,
+				createdAt,
+			},
+		});
+	};
+
 	const execute = async (dispatchPlan: DispatchPlan) => {
 		const controller = new AbortController();
 		abortRef.current = controller;
 		setRunning(true);
 		setRunError(null);
+		const sender = dispatchPlan.sender;
+		const total = dispatchPlan.rows.length;
+		const startedAt = Date.now();
+		dispatchActivity(sender, 'working', `Dispatching to ${total} holder${total === 1 ? '' : 's'}…`, startedAt);
 		try {
 			await runDispatch(dispatchPlan, {
 				signal: controller.signal,
 				batchSize: DEFAULT_DISPATCH_BATCH_SIZE,
-				onProgress: setPlan,
+				onProgress: (next) => {
+					setPlan(next);
+					const settled = next.rows.filter((row) => row.status === 'settled').length;
+					dispatchActivity(sender, 'working', `${settled} of ${next.rows.length} settled`, startedAt);
+				},
 			});
+			dispatchActivity(sender, 'done', '', startedAt);
 		} catch (cause) {
-			if (!controller.signal.aborted) setRunError(dispatchErrorMessage(cause));
+			if (!controller.signal.aborted) {
+				setRunError(dispatchErrorMessage(cause));
+				dispatchActivity(sender, 'error', dispatchErrorMessage(cause), startedAt);
+			}
 		} finally {
 			if (!controller.signal.aborted) setRunning(false);
 		}
@@ -175,6 +223,7 @@ export default function DispatchRoute() {
 
 	const discard = () => {
 		if (running) return;
+		if (plan) dispatchActivity(plan.sender, 'done', '', 0);
 		discardDispatchPlan(processId);
 		setPlan(null);
 		setRunError(null);
