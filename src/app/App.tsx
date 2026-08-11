@@ -8518,17 +8518,20 @@ function purchaseSnapshot(state: PurchaseState): PurchaseSnapshot {
 		...(state.dismissed ? { dismissed: true } : {}),
 	};
 }
-function purchaseStatusMessage(state: PurchaseState | null) {
+export function purchaseStatusMessage(state: PurchaseState | null) {
 	if (!state) return '';
 	if (
 		state.stage === 'dispatching-registration' ||
 		state.stage === 'registration-propagating' ||
 		state.stage === 'registration-confirming'
 	) {
-		return 'The payment is signed but held in this browser. It will only be released after sampled observers report five confirmations and the reservation appears in live process state.';
+		return 'The payment is signed but held in this browser. It will only be released after the reservation has enough confirmations and appears in live process state.';
 	}
 	if (state.stage === 'registration-accepting') {
-		return 'Sampled observers report five registration confirmations. Waiting for ~arweave-scheduler@1.0 to reserve the order in live process state before releasing payment.';
+		const confirmations = state.registration?.consensus.confirmations ?? 0;
+		return `Sampled observers report ${confirmations} registration confirmation${
+			confirmations === 1 ? '' : 's'
+		}. Waiting for ~arweave-scheduler@1.0 to reserve the order in live process state before releasing payment.`;
 	}
 	if (state.stage === 'signing-payment' || state.stage === 'dispatching-payment') {
 		return 'The reservation is live. Preparing the exact payment to the seller.';

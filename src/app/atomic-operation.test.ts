@@ -16,10 +16,20 @@ import {
 	atomicPurchaseSequence,
 	externalReservationTransaction,
 	pendingListingMessage,
+	purchaseStatusMessage,
 } from './App';
 import { purchaseObservationResumeState } from './purchase-observation-retry';
 
 describe('atomic operation error semantics', () => {
+	it('reports the actual confirmation depth after continuing early', () => {
+		expect(
+			purchaseStatusMessage({
+				stage: 'registration-accepting',
+				registration: { consensus: { confirmations: 2 } },
+			} as any)
+		).toContain('2 registration confirmations');
+	});
+
 	it('keeps transaction recovery outside the assertive alert summary', () => {
 		const alert = renderToStaticMarkup(
 			React.createElement(AtomicOperationErrorAlert, {

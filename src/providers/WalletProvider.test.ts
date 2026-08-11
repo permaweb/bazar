@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { connectWallet, createLatestAddressCommitter, isValidWalletJwk } from './WalletProvider';
+import { completePrivateJwk, connectWallet, createLatestAddressCommitter, isValidWalletJwk } from './WalletProvider';
 
 function deferred<T>() {
 	let resolve!: (value: T) => void;
@@ -91,5 +91,22 @@ describe('local Arweave keyfiles', () => {
 	it('rejects public-only and non-RSA wallet files', () => {
 		expect(isValidWalletJwk({ kty: 'RSA', n: 'public-key', e: 'AQAB' })).toBe(false);
 		expect(isValidWalletJwk({ kty: 'EC', n: 'public-key', e: 'AQAB', d: 'private-key' })).toBe(false);
+	});
+
+	it('completes a private RSA key that omits CRT parameters', () => {
+		const encoded = (value: number) => {
+			const hex = value.toString(16).padStart(Math.ceil(value.toString(16).length / 2) * 2, '0');
+			return btoa(
+				(hex.match(/.{2}/g) ?? []).map((byte) => String.fromCharCode(parseInt(byte, 16))).join('')
+			).replace(/=+$/, '');
+		};
+		const completed = completePrivateJwk({
+			kty: 'RSA',
+			n: encoded(61 * 53),
+			e: btoa(String.fromCharCode(0, 17)).replace(/=+$/, ''),
+			d: encoded(2753),
+		} as any);
+		expect(['p', 'q', 'dp', 'dq', 'qi'].every((field) => typeof (completed as any)[field] === 'string')).toBe(true);
+		expect(completed.e).toBe(encoded(17));
 	});
 });
