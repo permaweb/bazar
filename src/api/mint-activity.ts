@@ -4,6 +4,7 @@ const ADDRESS = /^[A-Za-z0-9_-]{43}$/;
 
 export const MINT_ACTIVITY_STORAGE_KEY = 'bazar-mint-activities:v1';
 export const MINT_ACTIVITY_CHANGE_EVENT = 'bazar:mint-activities-changed';
+export const MINT_ACTIVITY_ATTENTION_AFTER_MS = 30 * 60 * 1_000;
 
 export type MintActivityPhase = 'accepted' | 'mined' | 'applied' | 'complete';
 
@@ -86,6 +87,20 @@ export function removeMintActivity(storage: StorageLike, id: string) {
 		loadMintActivities(storage).filter((activity) => activity.id !== id)
 	);
 	notifyMintActivityChange(storage);
+}
+
+export function removeMintActivities(storage: StorageLike, ids: Iterable<string>) {
+	const removed = new Set(ids);
+	if (!removed.size) return;
+	saveMintActivities(
+		storage,
+		loadMintActivities(storage).filter((activity) => !removed.has(activity.id))
+	);
+	notifyMintActivityChange(storage);
+}
+
+export function mintActivityNeedsAttention(activity: MintActivity, now = Date.now()) {
+	return activity.phase !== 'complete' && now - activity.createdAt >= MINT_ACTIVITY_ATTENTION_AFTER_MS;
 }
 
 export function mintActivityStatus(phase: MintActivityPhase) {
