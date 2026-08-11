@@ -2503,6 +2503,7 @@ input:focus {
 	background-image: radial-gradient(var(--line-dark) 0.7px, var(--transparent) 0.7px);
 	background-size: 3px 3px;
 	background-position: -1.5px -1.5px;
+	font-size: var(--type-display);
 }
 .token-artwork::before {
 	content: '';
@@ -2511,7 +2512,7 @@ input:focus {
 	top: 50%;
 	left: 50%;
 	height: 72%;
-	max-width: calc(100% - 28px);
+	max-width: calc(100% - clamp(8px, 20%, 28px));
 	aspect-ratio: 1;
 	border: 1px solid var(--line-dark);
 	border-radius: 50%;
@@ -2522,7 +2523,7 @@ input:focus {
 	position: relative;
 	z-index: 1;
 	color: var(--ink);
-	font: 400 var(--type-display) / 0.95 'DM Sans', sans-serif;
+	font: 400 1em / 0.95 'DM Sans', sans-serif;
 	letter-spacing: -0.045em;
 	white-space: nowrap;
 }
@@ -8234,6 +8235,7 @@ body input:focus-visible {
 	gap: 8px;
 	color: var(--home-muted);
 	font-size: var(--type-body);
+	margin: 12px 0 0 0;
 }
 .home-feed-loading-more > svg {
 	width: 18px;

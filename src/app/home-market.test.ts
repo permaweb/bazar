@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { CollectionActivityEvent } from 'api/asset-discovery';
+import type { AssetCandidate, CollectionActivityEvent } from 'api/asset-discovery';
 import type { Collection } from 'api/collections';
 
 import {
@@ -16,42 +16,158 @@ import {
 	compareHomeListingRecency,
 	completeHomeActivityScan,
 	completeHomeSummaryRetryGroup,
+	DEFAULT_HOME_ASSET_VIEW,
 	filterGlobalActivity,
 	globalActivityCollection,
 	homeAllAssets,
-	homeAssetCardsPublished,
 	homeAssetPage,
 	homeAssetTypeMatches,
 	homeAssetVisibleForView,
+	homeCachedFeedRefreshPending,
 	homeDiscoveryAssets,
+	homeDiscoveryCatalogReady,
 	homeFloorScanSummary,
+	homeListingAssetPage,
+	homeListingCandidateLikelyLive,
 	homeMarketHasPending,
 	homeMarketPriceValue,
 	homeMarketShellLoading,
 	homeMarketSummariesReady,
 	type HomeMarketSummary,
+	homeRouteSearch,
 	homeScrollIndicatorMetrics,
 	homeSearchAssets,
 	homeSummaryFailureNoticeVisible,
 	homeSummaryRequestKeys,
+	homeTabFromPathname,
+	homeTabPath,
 	mergeResolvedListingBatch,
 	newestCollectionActivity,
 	nextListingAnnouncementProgress,
 	pendingHomeActivityRecipients,
 	pendingHomeFloorCandidates,
+	prioritizeHomeListingCandidates,
 	reconcileHomeActivityScan,
 	reconcileHomeFloorScan,
 	retryableHomeSummaryKeys,
 	shouldLoadHomeCollectionSummaries,
+	shouldLoadHomeDiscover,
 } from './App';
 import {
 	loadAssetShellSnapshot,
+	loadHomeDiscoverSnapshot,
 	loadMarketShellSnapshot,
+	sessionSnapshotStorage,
 	storeAssetShellSnapshot,
+	storeHomeDiscoverSnapshot,
 	storeMarketShellSnapshot,
 } from './shell-snapshot';
 
 describe('Home market summary retries', () => {
+	it('does not resolve session storage outside production', () => {
+		const resolve = () => {
+			throw new Error('session-storage-accessed');
+		};
+		expect(sessionSnapshotStorage(false, resolve)).toBeUndefined();
+	});
+
+	it('defaults Discover to live listings', () => {
+		expect(DEFAULT_HOME_ASSET_VIEW).toBe('listed');
+	});
+
+	it('maps every Home tab to a hash-router subroute without dropping other query parameters', () => {
+		expect(homeTabFromPathname('/discover')).toBe('discover');
+		expect(homeTabFromPathname('/collections/')).toBe('collections');
+		expect(homeTabFromPathname('/activity')).toBe('activity');
+		expect(homeTabFromPathname('/unknown')).toBe('discover');
+		expect(homeTabPath('discover')).toBe('/discover');
+		expect(homeTabPath('collections')).toBe('/collections');
+		expect(homeTabPath('activity')).toBe('/activity');
+		expect(homeRouteSearch('?q=art&tab=discover')).toBe('?q=art');
+		expect(homeRouteSearch('?q=art')).toBe('?q=art');
+	});
+
+	it('starts Discover as soon as the lightweight token catalog is available', () => {
+		expect(homeDiscoveryCatalogReady([], true)).toBe(false);
+		expect(
+			homeDiscoveryCatalogReady(
+				[{ id: 'tokens', name: 'Tokens', description: 'Tokens', kind: 'tokens', assets: [] }],
+				true
+			)
+		).toBe(false);
+		expect(
+			homeDiscoveryCatalogReady(
+				[
+					{ id: 'tokens', name: 'Tokens', description: 'Tokens', kind: 'tokens', assets: [] },
+					{
+						id: 'names',
+						name: 'Names',
+						description: 'Names',
+						kind: 'names',
+						assets: [],
+						namespace: { manifestId: 'M'.repeat(43), namesById: {} },
+					},
+				],
+				true
+			)
+		).toBe(true);
+		expect(
+			homeDiscoveryCatalogReady(
+				[{ id: 'tokens', name: 'Tokens', description: 'Tokens', kind: 'tokens', assets: [] }],
+				false
+			)
+		).toBe(true);
+	});
+
+	it('skips superseded atomic offers while retaining indexed fungible activity', () => {
+		const processId = 'P'.repeat(43);
+		const candidate: AssetCandidate = {
+			processId,
+			height: 1,
+			timestamp: 1,
+			sources: ['market-action'],
+			marketAction: 'register-interest',
+		};
+		expect(homeListingCandidateLikelyLive(candidate, [])).toBe(false);
+		expect(homeListingCandidateLikelyLive({ ...candidate, marketAction: 'make-offer' }, [])).toBe(true);
+		expect(
+			homeListingCandidateLikelyLive(candidate, [
+				{
+					id: 'tokens',
+					name: 'Tokens',
+					description: 'Tokens',
+					kind: 'tokens',
+					assets: [{ id: processId, name: 'Token' }],
+				},
+			])
+		).toBe(true);
+	});
+
+	it('resolves cached and explicit sale candidates before ambiguous token activity', () => {
+		const candidate = (id: string, marketAction: AssetCandidate['marketAction']): AssetCandidate => ({
+			processId: id.repeat(43),
+			height: 1,
+			timestamp: 1,
+			sources: ['market-action'],
+			marketAction,
+		});
+		const ambiguous = candidate('a', 'register-interest');
+		const offer = candidate('o', 'make-offer');
+		const cached = candidate('c', 'register-interest');
+
+		expect(prioritizeHomeListingCandidates([ambiguous, offer, cached], new Set([cached.processId]))).toEqual([
+			cached,
+			offer,
+			ambiguous,
+		]);
+	});
+
+	it('only marks a cached Discover feed as refreshing when listings need revalidation', () => {
+		expect(homeCachedFeedRefreshPending(3, 3)).toBe(true);
+		expect(homeCachedFeedRefreshPending(0, 3)).toBe(false);
+		expect(homeCachedFeedRefreshPending(3, 0)).toBe(false);
+	});
+
 	it('opens Arweave names on complete live listings ordered A to Z', () => {
 		expect(collectionDefaultsToListed('arweave-names')).toBe(true);
 		expect(collectionDefaultsToListed('fungible-tokens')).toBe(false);
@@ -102,6 +218,45 @@ describe('Home market summary retries', () => {
 		storeAssetShellSnapshot(storage, asset);
 		expect(loadAssetShellSnapshot(storage, asset.id)).toEqual(asset);
 		expect(loadAssetShellSnapshot(storage, 'another-id')).toBeUndefined();
+	});
+
+	it('round-trips a scoped resumable Discover listing snapshot', () => {
+		const values = new Map<string, string>();
+		const storage = {
+			getItem: (key: string) => values.get(key) ?? null,
+			setItem: (key: string, value: string) => values.set(key, value),
+		};
+		const processId = 'p'.repeat(43);
+		const activityId = 'a'.repeat(43);
+		const asset = { id: processId, name: 'Listed asset' };
+		const collection: Collection = {
+			id: 'collection',
+			name: 'Collection',
+			description: 'Cached display metadata',
+			kind: 'images',
+			assets: [asset],
+		};
+		const snapshot = {
+			scope: 'arweave|compute',
+			updatedAt: 123,
+			cursor: 'cursor-1',
+			hasMore: true,
+			seenProcessIds: [processId],
+			pendingCandidates: [
+				{
+					processId,
+					height: 10,
+					timestamp: 20,
+					activityIds: [activityId],
+					marketAction: 'make-offer' as const,
+				},
+			],
+			listings: [{ asset, collection, activity: { processId, height: 10, timestamp: 20 }, price: '1 AR' }],
+		};
+
+		storeHomeDiscoverSnapshot(storage, snapshot);
+		expect(loadHomeDiscoverSnapshot(storage, snapshot.scope)).toEqual(snapshot);
+		expect(loadHomeDiscoverSnapshot(storage, 'another-scope')).toBeUndefined();
 	});
 
 	it('sizes and positions persistent pane scroll indicators', () => {
@@ -168,7 +323,6 @@ describe('Home market summary retries', () => {
 
 		expect(homeDiscoveryAssets(collections, { names: [name] }, 10)).toEqual([
 			{ asset: name, collection: collections[0] },
-			{ asset: image, collection: collections[1] },
 		]);
 	});
 
@@ -187,7 +341,7 @@ describe('Home market summary retries', () => {
 			assets: [audio],
 		};
 
-		expect(homeDiscoveryAssets([collection], {}, 10)).toEqual([{ asset: audio, collection }]);
+		expect(homeDiscoveryAssets([collection], {}, 10)).toEqual([]);
 		expect(homeSearchAssets([collection], [], 'signal', 10)).toEqual([{ asset: audio, collection }]);
 	});
 
@@ -211,10 +365,7 @@ describe('Home market summary retries', () => {
 
 		expect(
 			homeDiscoveryAssets([indexedCollection], {}, 10, [{ asset: portable, collection: portableCollection }])
-		).toEqual([
-			{ asset: portable, collection: portableCollection },
-			{ asset: indexed, collection: indexedCollection },
-		]);
+		).toEqual([{ asset: portable, collection: portableCollection }]);
 	});
 
 	it('uses indexed collection assets before listings-only additions for the All assets view', () => {
@@ -310,12 +461,6 @@ describe('Home market summary retries', () => {
 		expect(homeAssetVisibleForView(listed, 'price-low')).toBe(true);
 	});
 
-	it('holds Listed for sale cards until the complete result set is resolved', () => {
-		expect(homeAssetCardsPublished('listed', true)).toBe(false);
-		expect(homeAssetCardsPublished('listed', false)).toBe(true);
-		expect(homeAssetCardsPublished('all', true)).toBe(true);
-	});
-
 	it('paginates Discover assets and clamps pages when filters reduce the result set', () => {
 		const assets = Array.from({ length: 20 }, (_, index) => `asset-${index + 1}`);
 
@@ -328,6 +473,26 @@ describe('Home market summary retries', () => {
 			items: assets.slice(0, 4),
 			page: 1,
 			pageCount: 1,
+		});
+	});
+
+	it('exposes one demand-driven listing page only after the loaded page is full', () => {
+		const assets = Array.from({ length: 18 }, (_, index) => `asset-${index + 1}`);
+
+		expect(homeListingAssetPage(assets.slice(0, 8), 1, true)).toEqual({
+			items: assets.slice(0, 8),
+			page: 1,
+			pageCount: 1,
+		});
+		expect(homeListingAssetPage(assets.slice(0, 9), 2, true)).toEqual({
+			items: [],
+			page: 2,
+			pageCount: 2,
+		});
+		expect(homeListingAssetPage(assets, 2, false)).toEqual({
+			items: assets.slice(9),
+			page: 2,
+			pageCount: 2,
 		});
 	});
 
@@ -365,12 +530,14 @@ describe('Home market summary retries', () => {
 		expect(homeSummaryFailureNoticeVisible(false, 1, false)).toBe(false);
 	});
 
-	it('keeps collection floor scans off the initial discover render path', () => {
-		expect(shouldLoadHomeCollectionSummaries('discover', true, false)).toBe(false);
-		expect(shouldLoadHomeCollectionSummaries('discover', false, false)).toBe(false);
-		expect(shouldLoadHomeCollectionSummaries('discover', false, true)).toBe(true);
-		expect(shouldLoadHomeCollectionSummaries('collections', true, false)).toBe(true);
-		expect(shouldLoadHomeCollectionSummaries('activity', false, true)).toBe(false);
+	it('loads home tab data only while that tab is active', () => {
+		expect(shouldLoadHomeDiscover('discover')).toBe(true);
+		expect(shouldLoadHomeDiscover('collections')).toBe(false);
+		expect(shouldLoadHomeDiscover('activity')).toBe(false);
+
+		expect(shouldLoadHomeCollectionSummaries('discover')).toBe(false);
+		expect(shouldLoadHomeCollectionSummaries('collections')).toBe(true);
+		expect(shouldLoadHomeCollectionSummaries('activity')).toBe(false);
 	});
 
 	it('resolves global activity to its marketplace collection', () => {
