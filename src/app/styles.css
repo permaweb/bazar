@@ -3509,28 +3509,13 @@ input:focus {
 	min-width: 0;
 	display: grid;
 }
-.fungible-trade-switcher .asset-detail-tabs {
+.fungible-trade-switcher .fungible-trade-tabs {
+	width: 100%;
 	margin: 18px 0 9px;
-	flex-wrap: nowrap;
-	gap: 0;
 }
-.fungible-trade-switcher .asset-detail-tab {
-	min-height: 40px;
-	flex: 1 1 50%;
-	border: 0;
-	border-bottom: 1px solid var(--line-dark);
-	border-radius: 0;
-	background: var(--transparent);
-}
-.fungible-trade-switcher .asset-detail-tab:hover:not(:disabled):not([aria-disabled='true']) {
-	border-color: var(--line-dark);
-	background: var(--surface-hover);
-}
-.fungible-trade-switcher .asset-detail-tab[aria-selected='true'] {
-	color: var(--ink);
-	border-color: var(--ink);
-	background: var(--transparent);
-	box-shadow: inset 0 -2px 0 var(--ink);
+.fungible-trade-switcher .fungible-trade-tabs button {
+	min-width: 0;
+	flex: 1 1 0;
 }
 .fungible-trade-panel {
 	min-width: 0;
@@ -6892,9 +6877,8 @@ body input:focus-visible {
 	font-size: var(--type-body);
 	line-height: 1.6;
 }
-.create-mode {
+.segmented-tabs {
 	width: fit-content;
-	margin: -20px 0 30px;
 	padding: 3px;
 	display: flex;
 	gap: 3px;
@@ -6902,7 +6886,7 @@ body input:focus-visible {
 	border-radius: 8px;
 	background: var(--surface-subtle);
 }
-.create-mode button {
+.segmented-tabs button {
 	min-height: 34px;
 	padding: 0 14px;
 	border: 0;
@@ -6913,10 +6897,17 @@ body input:focus-visible {
 	font-size: var(--type-body);
 	font-weight: 400;
 }
-.create-mode button.active {
+.segmented-tabs button.active {
 	background: var(--paper);
 	color: var(--ink);
 	box-shadow: 0 1px 3px var(--shadow-tiny);
+}
+.segmented-tabs button:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 2px;
+}
+.create-mode {
+	margin: -20px 0 30px;
 }
 .create-layout {
 	display: grid;

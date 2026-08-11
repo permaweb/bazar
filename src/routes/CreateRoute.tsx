@@ -25,6 +25,7 @@ import { AudioArtwork } from 'components/AudioArtwork';
 import { Button } from 'components/Button';
 import { Loading } from 'components/Loading';
 import { MintTransactionReceipt, type MintTransactionReceiptEntry } from 'components/MintTransactionReceipt';
+import { SegmentedTabs } from 'components/SegmentedTabs';
 import { isAudioContentType, normalizeAssetContentType } from 'helpers/asset-media';
 import { type EmbeddedAudioMetadata, extractEmbeddedAudioMetadata, formatAudioDuration } from 'helpers/audio-metadata';
 import { arweaveGatewayFromLocation } from 'helpers/config';
@@ -416,34 +417,20 @@ export default function CreateRoute() {
 				</p>
 			</div>
 
-			<div className="create-mode" role="tablist" aria-label="Create type">
-				<Button
-					className={mode === 'asset' ? 'active' : undefined}
-					role="tab"
-					aria-selected={mode === 'asset'}
-					type="button"
-					size="custom"
-					onClick={() => {
-						setMode('asset');
-						setError(null);
-					}}
-				>
-					Single asset
-				</Button>
-				<Button
-					className={mode === 'collection' ? 'active' : undefined}
-					role="tab"
-					aria-selected={mode === 'collection'}
-					type="button"
-					size="custom"
-					onClick={() => {
-						setMode('collection');
-						setError(null);
-					}}
-				>
-					Collection
-				</Button>
-			</div>
+			<SegmentedTabs
+				active={mode}
+				ariaLabel="Create type"
+				className="create-mode"
+				idPrefix="create-mode"
+				onChange={(nextMode) => {
+					setMode(nextMode);
+					setError(null);
+				}}
+				tabs={[
+					{ value: 'asset', label: 'Single asset' },
+					{ value: 'collection', label: 'Collection' },
+				]}
+			/>
 
 			{mode === 'asset' && draft ? (
 				<div className="mint-recovery" role="status">
