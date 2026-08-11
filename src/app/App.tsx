@@ -7,7 +7,6 @@ import {
 	AtSign,
 	BarChart3,
 	Check,
-	ChevronDown,
 	ChevronRight,
 	CircleX,
 	Compass,
@@ -3896,7 +3895,7 @@ export function MarketSelect<Value extends string>({
 				type="button"
 			>
 				<span>{selected.label}</span>
-				<ChevronDown aria-hidden="true" />
+				<ChevronRight aria-hidden="true" />
 			</Button>
 			{open ? (
 				<div aria-label={label} className="market-select-menu" id={menuId} role="listbox">
@@ -7312,6 +7311,15 @@ function AssetView() {
 											<dd>{property.value}</dd>
 										</div>
 									))}
+									<div className="license-proof">
+										<dt>Proof</dt>
+										<dd>
+											<a href={transactionExplorerUrl(asset.id)} target="_blank" rel="noreferrer">
+												View license proof on ViewBlock{' '}
+												<ArrowUpRight className="ui-icon ui-icon--xs" aria-hidden="true" />
+											</a>
+										</dd>
+									</div>
 								</dl>
 							) : (
 								<div className="license-empty">
@@ -7325,7 +7333,8 @@ function AssetView() {
 								</div>
 							)}
 							<p className="market-note">
-								Terms are read directly from immutable process metadata when present.
+								Declared terms and effective UDL 0.2 defaults are derived from immutable process
+								metadata.
 							</p>
 						</section>
 					) : null}

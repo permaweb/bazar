@@ -359,9 +359,34 @@ describe('asset state', () => {
 			ignored: { inferred: false },
 		});
 		expect(licenseProperties(state)).toEqual([
-			{ key: 'license', label: 'License', value: 'Universal Data License' },
+			{ key: 'license', label: 'License', value: 'Universal Data License 0.2' },
 			{ key: 'access-fee', label: 'Access fee', value: '12' },
+			{ key: 'derivation', label: 'Derivatives', value: 'Non-commercial only' },
+			{ key: 'unknown-usage-rights', label: 'Unknown usage rights', value: 'Included where available' },
 			{ key: 'commercial-use', label: 'Commercial use', value: 'true' },
+			{ key: 'data-model-training', label: 'AI model training', value: 'Not allowed' },
+			{ key: 'expiry', label: 'License term', value: 'Unlimited' },
+			{ key: 'currency', label: 'Currency', value: '$U' },
+		]);
+	});
+
+	it('shows the effective defaults of a license-only UDL asset', () => {
+		const state = parseAssetState({
+			'execution-device': 'token@1.0',
+			'total-supply': 1,
+			balances: { [owner]: 1 },
+			license: 'dE0rmDfl9_OWjkDznNEXHaSO_JohJkRolvMzaCroUdw',
+		});
+
+		expect(licenseProperties(state)).toEqual([
+			{ key: 'license', label: 'License', value: 'Universal Data License 0.2' },
+			{ key: 'access', label: 'Access', value: 'Free' },
+			{ key: 'derivation', label: 'Derivatives', value: 'Non-commercial only' },
+			{ key: 'unknown-usage-rights', label: 'Unknown usage rights', value: 'Included where available' },
+			{ key: 'commercial-use', label: 'Commercial use', value: 'Not allowed' },
+			{ key: 'data-model-training', label: 'AI model training', value: 'Not allowed' },
+			{ key: 'expiry', label: 'License term', value: 'Unlimited' },
+			{ key: 'currency', label: 'Currency', value: '$U' },
 		]);
 	});
 });
