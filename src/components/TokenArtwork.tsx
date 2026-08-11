@@ -7,7 +7,7 @@ export function TokenArtwork({ ticker, className = '' }: TokenArtworkProps) {
 	const visibleTicker = ticker.slice(0, 8);
 	return (
 		<span
-			className={`token-artwork${visibleTicker.length > 5 ? ' ticker-long' : ''}${
+			className={`token-artwork ticker-${visibleTicker.length}${visibleTicker.length > 5 ? ' ticker-long' : ''}${
 				className ? ` ${className}` : ''
 			}`}
 			aria-hidden="true"

@@ -2222,7 +2222,7 @@ input:focus {
 	gap: var(--asset-grid-gap);
 }
 .asset-grid.token-collection-grid {
-	grid-template-columns: minmax(0, 1fr);
+	grid-template-columns: repeat(2, minmax(0, 1fr));
 	gap: 8px;
 }
 .asset-grid.names-collection-grid {
@@ -2353,8 +2353,33 @@ input:focus {
 	white-space: nowrap;
 }
 .token-artwork.ticker-long strong {
-	font-size: var(--type-small);
+	font-size: 0.76em;
 	letter-spacing: -0.035em;
+}
+.token-artwork.ticker-7 strong {
+	font-size: 0.68em;
+}
+.token-artwork.ticker-8 strong {
+	font-size: 0.62em;
+}
+.circle-only-token-art {
+	background: var(--transparent);
+}
+.circle-only-token-art strong {
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	width: 62%;
+	overflow: hidden;
+	text-align: center;
+	text-overflow: clip;
+	transform: translate(-50%, -50%);
+}
+.circle-only-token-art::before {
+	background: var(--transparent);
+}
+.circle-only-token-art small {
+	display: none;
 }
 .token-artwork small {
 	position: relative;
@@ -5575,6 +5600,9 @@ body input:focus-visible {
 	.asset-grid {
 		grid-template-columns: repeat(3, minmax(0, 1fr));
 	}
+	.asset-grid.token-collection-grid {
+		grid-template-columns: minmax(0, 1fr);
+	}
 	.asset-layout {
 		display: flex;
 		align-items: stretch;
@@ -7731,6 +7759,9 @@ body input:focus-visible {
 	display: grid;
 	place-content: center;
 	justify-items: center;
+}
+.home-asset-grid .home-token-art.home-asset-media.circle-only-token-art {
+	background: var(--transparent);
 }
 .name-asset-artwork {
 	position: relative;
