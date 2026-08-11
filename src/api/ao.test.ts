@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { aoFetch } from './ao';
+import { aoFetch, createAoFetch } from './ao';
 
 describe('AO peer routing', () => {
 	it('routes an application default URL through the full fallback peer list', async () => {
@@ -37,5 +37,18 @@ describe('AO peer routing', () => {
 		await routed('https://arweave.net/graphql');
 
 		expect(requested.at(-1)).toBe('https://arweave.net/graphql');
+	});
+
+	it('can create an isolated bounded client without rate discovery', async () => {
+		const requested: string[] = [];
+		const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+			requested.push(String(input));
+			return new Response('ok');
+		});
+		const routed = createAoFetch(['https://alpha.example'], { requests: 8, period: 1 }, fetcher as typeof fetch);
+
+		await routed('https://alpha.example/process~process@1.0/compute');
+
+		expect(requested).toEqual(['https://alpha.example/process~process@1.0/compute']);
 	});
 });

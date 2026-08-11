@@ -1,4 +1,4 @@
-import { type ComputeResult, readAssetState, servingNodeOrigin } from './asset-marketplace';
+import { type AssetStateReadMode, type ComputeResult, readAssetState, servingNodeOrigin } from './asset-marketplace';
 
 const DEFAULT_STATE_TTL_MS = 20_000;
 const PREFETCH_CONCURRENCY = 2;
@@ -14,8 +14,10 @@ type CachedReadOptions = {
 	force?: boolean;
 	maxAge?: number;
 	maxAttempts?: number;
+	mode?: AssetStateReadMode;
 	retryBaseDelay?: number;
 	signal?: AbortSignal;
+	waitTimeoutMs?: number;
 };
 
 const results = new Map<string, CacheEntry>();
@@ -24,30 +26,43 @@ const queuedPrefetches: string[] = [];
 const prefetchWaiters = new Map<string, Array<(result: ComputeResult | undefined) => void>>();
 let activePrefetches = 0;
 
-function cacheKey(processId: string) {
+function cacheKey(processId: string, mode: AssetStateReadMode = 'now') {
 	const provider =
 		typeof window !== 'undefined' && ['http:', 'https:'].includes(window.location.protocol)
 			? servingNodeOrigin(window.location)
 			: '';
-	return `${provider}:${processId}`;
+	return `${provider}:${mode}:${processId}`;
 }
 
-function waitForConsumer<Result>(promise: Promise<Result>, signal?: AbortSignal): Promise<Result> {
-	if (!signal) return promise;
-	if (signal.aborted) return Promise.reject(signal.reason);
+function waitForConsumer<Result>(
+	promise: Promise<Result>,
+	signal?: AbortSignal,
+	waitTimeoutMs?: number
+): Promise<Result> {
+	if (!signal && waitTimeoutMs === undefined) return promise;
+	if (signal?.aborted) return Promise.reject(signal.reason);
 
 	return new Promise<Result>((resolve, reject) => {
-		const abort = () => reject(signal.reason);
-		signal.addEventListener('abort', abort, { once: true });
+		let settled = false;
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		const finish = (settle: () => void) => {
+			if (settled) return;
+			settled = true;
+			if (timer !== undefined) clearTimeout(timer);
+			signal?.removeEventListener('abort', abort);
+			settle();
+		};
+		const abort = () => finish(() => reject(signal?.reason));
+		signal?.addEventListener('abort', abort, { once: true });
+		if (waitTimeoutMs !== undefined) {
+			timer = setTimeout(
+				() => finish(() => reject(new Error('asset-state-read-timeout'))),
+				Math.max(1, Math.floor(waitTimeoutMs))
+			);
+		}
 		promise.then(
-			(value) => {
-				signal.removeEventListener('abort', abort);
-				resolve(value);
-			},
-			(cause) => {
-				signal.removeEventListener('abort', abort);
-				reject(cause);
-			}
+			(value) => finish(() => resolve(value)),
+			(cause) => finish(() => reject(cause))
 		);
 	});
 }
@@ -57,7 +72,7 @@ export function cachedAssetState(processId: string): ComputeResult | undefined {
 }
 
 export async function readAssetStateCached(processId: string, options: CachedReadOptions = {}): Promise<ComputeResult> {
-	const key = cacheKey(processId);
+	const key = cacheKey(processId, options.mode);
 	const cached = results.get(key);
 	if (!options.force && cached && cached.expiresAt > Date.now()) return cached.result;
 
@@ -68,6 +83,7 @@ export async function readAssetStateCached(processId: string, options: CachedRea
 			fetch: options.fetch,
 			maxAge: options.maxAge ?? Math.ceil(cacheTtlMs / 1000),
 			maxAttempts: options.maxAttempts,
+			mode: options.mode,
 			retryBaseDelay: options.retryBaseDelay,
 		}).then((result) => {
 			results.set(key, { expiresAt: Date.now() + cacheTtlMs, result });
@@ -80,11 +96,12 @@ export async function readAssetStateCached(processId: string, options: CachedRea
 		void request.then(cleanup, cleanup);
 	}
 
-	return waitForConsumer(request, options.signal);
+	return waitForConsumer(request, options.signal, options.waitTimeoutMs);
 }
 
 export function invalidateAssetState(processId: string) {
-	results.delete(cacheKey(processId));
+	results.delete(cacheKey(processId, 'now'));
+	results.delete(cacheKey(processId, 'compute'));
 }
 
 function drainPrefetchQueue() {

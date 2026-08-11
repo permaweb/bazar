@@ -1,4 +1,4 @@
-import { aoWrangler, type AoWranglerClient, createAoWrangler } from 'ao-wrangler';
+import { aoWrangler, type AoWranglerClient, createAoWrangler, type RateLimit } from 'ao-wrangler';
 
 type Nodes = string | readonly string[];
 
@@ -18,6 +18,16 @@ export function aoFetch(nodes: Nodes, override?: typeof fetch): typeof fetch {
 	const client = override
 		? createAoWrangler({ nodes: peers.map((prefix) => ({ prefix, 'rate-limit': false })) }, override)
 		: aoClient(peers);
+	return routedClientFetch(client, peers);
+}
+
+export function createAoFetch(nodes: Nodes, rateLimit: RateLimit, override?: typeof fetch): typeof fetch {
+	const peers = nodeList(nodes);
+	const client = createAoWrangler({ nodes: peers.map((prefix) => ({ prefix, 'rate-limit': rateLimit })) }, override);
+	return routedClientFetch(client, peers);
+}
+
+function routedClientFetch(client: AoWranglerClient, peers: string[]): typeof fetch {
 	const origins = new Set(peers.map((peer) => new URL(peer).origin));
 	return (input, init) => client.fetch(routeDefaultPeerRequest(input, origins), init);
 }

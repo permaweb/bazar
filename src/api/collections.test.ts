@@ -6,6 +6,7 @@ import { parseAssetState } from './asset-marketplace';
 import {
 	type Collection,
 	collectionAsset,
+	fallbackFungibleTokenCollection,
 	FUNGIBLE_TOKEN_ID,
 	loadCollections,
 	loadImageCollection,
@@ -23,6 +24,14 @@ afterEach(() => {
 });
 
 describe('collection index loading', () => {
+	it('provides a synchronous token catalog for progressive market discovery', () => {
+		expect(fallbackFungibleTokenCollection()).toMatchObject({
+			id: 'fungible-tokens',
+			kind: 'tokens',
+			indexSource: 'compiled-fallback',
+		});
+	});
+
 	it('indexes each immutable collection snapshot once for repeated exact lookups', () => {
 		const indexedAssets = Array.from({ length: 1_000 }, (_, index) => ({
 			id: index.toString(36).padStart(43, 'A'),

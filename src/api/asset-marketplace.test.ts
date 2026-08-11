@@ -169,6 +169,26 @@ describe('asset state', () => {
 		expect(result.provider).toBe('https://original-compute.example');
 	});
 
+	it('can read the latest cached process state through compute', async () => {
+		const processId = 'IyFfmbTu8P4rv0KyrA0Q-QtfEnYntMj4RkRiBVip9KA';
+		let requested = '';
+		await readAssetState(processId, {
+			mode: 'compute',
+			fetch: async (input) => {
+				requested = String(input);
+				return Response.json({
+					'execution-device': 'token@1.0',
+					'total-supply': '1',
+					balances: { [owner]: '1' },
+					orders: {},
+				});
+			},
+		});
+
+		expect(requested).toContain('~process@1.0/compute?require-codec=json%401.0');
+		expect(requested).not.toContain('/now');
+	});
+
 	it('preserves the requested freshness when the preferred codec falls back', async () => {
 		const processId = 'IyFfmbTu8P4rv0KyrA0Q-QtfEnYntMj4RkRiBVip9KA';
 		const requested: string[] = [];

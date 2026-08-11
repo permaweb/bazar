@@ -40,6 +40,8 @@ export type ComputeResult = {
 	maxAge?: number;
 };
 
+export type AssetStateReadMode = 'now' | 'compute';
+
 export type ProcessAssignment = {
 	slot: number;
 	blockHeight: number;
@@ -131,6 +133,7 @@ export async function readAssetState(
 		provider?: string;
 		maxAttempts?: number;
 		maxAge?: number;
+		mode?: AssetStateReadMode;
 		retryBaseDelay?: number;
 		onRetry?: (progress: ComputeRetryProgress) => void;
 	} = {}
@@ -429,6 +432,7 @@ async function readState(
 		signal?: AbortSignal;
 		maxAttempts?: number;
 		maxAge?: number;
+		mode?: AssetStateReadMode;
 		retryBaseDelay?: number;
 		onRetry?: (progress: ComputeRetryProgress) => void;
 		slot?: number;
@@ -436,7 +440,12 @@ async function readState(
 ): Promise<AssetState> {
 	const base = servingNode ? `${servingNode}/` : '/';
 	const maxAge = Math.max(0, Math.floor(options.maxAge ?? 60));
-	const endpoint = options.slot === undefined ? `now&max-age=${maxAge}` : `compute?slot=${options.slot}`;
+	const endpoint =
+		options.slot !== undefined
+			? `compute?slot=${options.slot}`
+			: options.mode === 'compute'
+			? 'compute'
+			: `now&max-age=${maxAge}`;
 	const separator = endpoint.includes('?') ? '&' : '?';
 	const paths = [
 		`${base}${processId}~process@1.0/${endpoint}${separator}require-codec=json%401.0&accept-bundle=true`,

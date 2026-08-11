@@ -217,22 +217,27 @@ export async function loadCollections(
 	signal?: AbortSignal,
 	onProgress?: (collections: Collection[]) => void
 ): Promise<CollectionLoadResult> {
+	let collections: Array<Collection | undefined> = [];
 	const sources: CollectionSource[] = [
-		{ label: 'Arweave names', load: () => loadNames(signal) },
+		{
+			label: 'Arweave names',
+			load: () =>
+				loadNames(signal, (collection) => {
+					collections[0] = collection;
+					onProgress?.(collections.filter((item): item is Collection => Boolean(item)));
+				}),
+		},
 		{
 			label: 'Fungible token discovery',
 			load: () => loadFungibleTokens(signal),
-			fallback: () => ({
-				...fungibleTokenCollection([defaultFungibleToken()]),
-				indexSource: 'compiled-fallback',
-			}),
+			fallback: fallbackFungibleTokenCollection,
 		},
 		...IMAGE_COLLECTIONS.map(({ reference, manifest }, index) => ({
 			label: `Permanent artwork collection ${index + 1}`,
 			load: () => loadImageCollection(reference, manifest, signal),
 		})),
 	];
-	const collections = new Array<Collection | undefined>(sources.length);
+	collections = new Array<Collection | undefined>(sources.length);
 	const successes = new Array<boolean>(sources.length).fill(false);
 	const failures = new Array<boolean>(sources.length).fill(false);
 	await Promise.all(
@@ -408,6 +413,13 @@ function fungibleTokenCollection(assets: AssetSummary[], count = 0): Collection 
 	};
 }
 
+export function fallbackFungibleTokenCollection(): Collection {
+	return {
+		...fungibleTokenCollection([defaultFungibleToken()]),
+		indexSource: 'compiled-fallback',
+	};
+}
+
 function defaultFungibleToken(): AssetSummary {
 	return {
 		id: FUNGIBLE_TOKEN_ID,
@@ -417,19 +429,33 @@ function defaultFungibleToken(): AssetSummary {
 	};
 }
 
-async function loadNames(signal?: AbortSignal): Promise<Collection> {
-	const [namespace, page] = await Promise.all([loadNamesNamespace(signal), loadCarrierPage(undefined, signal)]);
+async function loadNames(signal?: AbortSignal, onNamespace?: (collection: Collection) => void): Promise<Collection> {
+	const namespaceRequest = loadNamesNamespace(signal).then((namespace) => {
+		throwIfAborted(signal);
+		onNamespace?.(namesNamespaceCollection(namespace));
+		return namespace;
+	});
+	const [namespace, page] = await Promise.all([namespaceRequest, loadCarrierPage(undefined, signal)]);
 	const assets = carrierAssets(page, namespace);
 	return {
-		id: 'arweave-names',
-		name: 'Arweave names',
-		description: 'Current carrier names owned and traded directly on Arweave.',
-		kind: 'names',
+		...namesNamespaceCollection(namespace),
 		assets,
 		total: page.hasMore ? undefined : assets.length,
 		cursor: page.cursor,
 		cursorHistory: page.cursor ? [page.cursor] : [],
 		hasMore: page.hasMore,
+		manifestId: namespace.manifestId,
+		namespace,
+	};
+}
+
+function namesNamespaceCollection(namespace: NamesNamespaceIndex): Collection {
+	return {
+		id: 'arweave-names',
+		name: 'Arweave names',
+		description: 'Current carrier names owned and traded directly on Arweave.',
+		kind: 'names',
+		assets: [],
 		manifestId: namespace.manifestId,
 		namespace,
 	};
@@ -660,11 +686,7 @@ async function fetchJson<T>(path: string, signal?: AbortSignal, process = false)
 		if (!/^[A-Za-z0-9_-]+$/.test(body) || body === 'Accepted') {
 			throw new Error('collection-data-pending');
 		}
-		const encoded = body.replaceAll('-', '+').replaceAll('_', '/');
-		const json = decodeURIComponent(
-			Array.from(atob(encoded), (byte) => `%${byte.charCodeAt(0).toString(16).padStart(2, '0')}`).join('')
-		);
-		return JSON.parse(json) as T;
+		return JSON.parse(decodeBase64Url(body)) as T;
 	}
 	const url = process && path.startsWith('http') ? path : `${arweaveGatewayFromLocation()}/${path}`;
 	const { response, body } = await fetchJsonWithDeadline<any>(
@@ -682,9 +704,10 @@ async function fetchJson<T>(path: string, signal?: AbortSignal, process = false)
 
 function decodeBase64Url(value: string): string {
 	const encoded = value.replaceAll('-', '+').replaceAll('_', '/');
-	return decodeURIComponent(
-		Array.from(atob(encoded), (byte) => `%${byte.charCodeAt(0).toString(16).padStart(2, '0')}`).join('')
-	);
+	const binary = atob(encoded);
+	const bytes = new Uint8Array(binary.length);
+	for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+	return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
 }
 
 function shortId(value: string) {

@@ -40,6 +40,7 @@ import type {
 	SwapPurchase,
 } from 'weave-wrangler';
 
+import { createAoFetch } from 'api/ao';
 import { transactionExplorerUrl } from 'api/arweave-explorer';
 import {
 	type AssetCandidate,
@@ -51,10 +52,10 @@ import {
 	discoverCollectionActivityBatched,
 	discoverMarketActivity,
 	discoverMarketActivityBatched,
+	discoverMarketActivityPage,
 	discoverPendingAssetOffers,
 	discoverWalletAssetCandidates,
 	isLiveListing,
-	partitionAssetCandidateSupport,
 	type PendingAssetOffer,
 	resolveAssetCandidates,
 	type ResolvedAsset,
@@ -111,6 +112,7 @@ import {
 	type AssetSummary,
 	type Collection,
 	collectionAsset,
+	fallbackFungibleTokenCollection,
 	loadCollections,
 	loadMoreCarrierNames,
 	loadMoreFungibleTokens,
@@ -237,12 +239,20 @@ import {
 } from './purchase-observation-retry';
 import { loadAtomicTransactionRuntime, preloadAtomicTransactionRuntime } from './runtime';
 import {
+	type HomeDiscoverCandidate,
+	type HomeDiscoverListing,
+	type HomeDiscoverSnapshot,
 	loadAssetShellSnapshot,
+	loadHomeDiscoverSnapshot,
 	loadMarketShellSnapshot,
+	sessionSnapshotStorage,
 	storeAssetShellSnapshot,
+	storeHomeDiscoverSnapshot,
 	storeMarketShellSnapshot,
 } from './shell-snapshot';
 import { useDialogFocus } from './useDialogFocus';
+
+const SESSION_SNAPSHOT_STORAGE = sessionSnapshotStorage(import.meta.env.PROD);
 
 const FungibleAssetView = React.lazy(() => import('../routes/FungibleAssetRoute'));
 const CreateView = React.lazy(() => import('../routes/CreateRoute'));
@@ -264,15 +274,19 @@ type MarketContextValue = {
 };
 
 function initialMarketCollections() {
-	const cached = loadMarketShellSnapshot(window.sessionStorage);
+	const cached = loadMarketShellSnapshot(SESSION_SNAPSHOT_STORAGE);
 	const localCollections = loadMintedCollections();
 	const mintedAssets = loadMintedAssets();
 	const known = new Set(cached.map((collection) => collection.id));
 	const localAdditions = localCollections.filter((collection) => !known.has(collection.id));
 	for (const collection of localAdditions) known.add(collection.id);
+	const discoveryFallback = [...cached, ...localAdditions].some((collection) => collection.kind === 'tokens')
+		? []
+		: [fallbackFungibleTokenCollection()];
 	return [
 		...cached,
 		...localAdditions,
+		...discoveryFallback,
 		...(mintedAssets.length && !known.has(CREATED_COLLECTION_ID) ? [createdCollection(mintedAssets)] : []),
 	];
 }
@@ -301,8 +315,8 @@ export function App() {
 		retry: () => undefined,
 	}));
 	React.useEffect(() => {
-		if (!market.collections.length) return;
-		return scheduleIdleTask(() => storeMarketShellSnapshot(window.sessionStorage, market.collections), 750);
+		if (!SESSION_SNAPSHOT_STORAGE || !market.collections.length) return;
+		return scheduleIdleTask(() => storeMarketShellSnapshot(SESSION_SNAPSHOT_STORAGE, market.collections), 750);
 	}, [market.collections]);
 	React.useEffect(() => {
 		const controller = new AbortController();
@@ -432,7 +446,10 @@ export function App() {
 					<Header />
 					<main aria-label="Marketplace content" className="max-view-wrapper" id="main-content" tabIndex={-1}>
 						<Routes>
-							<Route path="/" element={<Home />} />
+							<Route path="/" element={<HomeRedirect />} />
+							<Route path="/discover" element={<Home />} />
+							<Route path="/collections" element={<Home />} />
+							<Route path="/activity" element={<Home />} />
 							<Route
 								path="/create"
 								element={
@@ -1971,6 +1988,24 @@ function homeMarketSummaryListed(summary: HomeMarketSummary | undefined) {
 
 export type HomeTab = 'discover' | 'collections' | 'activity';
 export type HomeAssetView = 'all' | 'listed' | 'price-low' | 'price-high';
+export const DEFAULT_HOME_ASSET_VIEW: HomeAssetView = 'listed';
+const HOME_TABS = new Set<HomeTab>(['discover', 'collections', 'activity']);
+
+export function homeTabFromPathname(pathname: string): HomeTab {
+	const tab = pathname.replace(/^\/+|\/+$/g, '');
+	return HOME_TABS.has(tab as HomeTab) ? (tab as HomeTab) : 'discover';
+}
+
+export function homeTabPath(tab: HomeTab) {
+	return `/${tab}`;
+}
+
+export function homeRouteSearch(search: string) {
+	const params = new URLSearchParams(search);
+	params.delete('tab');
+	const value = params.toString();
+	return value ? `?${value}` : '';
+}
 
 export type HomeListingActivity = Pick<AssetCandidate, 'processId' | 'height' | 'timestamp'>;
 
@@ -1990,7 +2025,13 @@ export function compareHomeListingRecency(
 }
 
 export const HOME_ASSET_PAGE_SIZE = 9;
-const HOME_LISTING_PAGE_LIMIT = 4;
+const HOME_LISTING_RESOLUTION_BATCH_SIZE = 16;
+const HOME_LISTING_RESOLUTION_HEADROOM = 4;
+const HOME_LISTING_MAX_GRAPHQL_PAGES = 1_000;
+const HOME_LISTING_MAX_DEFERRED_PER_RUN = 24;
+const HOME_STATE_WAIT_TIMEOUT_MS = 2_500;
+const HOME_STATE_REQUEST_RATE = { requests: 8, period: 1 } as const;
+const HOME_DISCOVER_SNAPSHOT_RESUME_MS = 30_000;
 
 export function homeAssetPage<T>(items: T[], requestedPage: number, pageSize = HOME_ASSET_PAGE_SIZE) {
 	const pageCount = Math.max(1, Math.ceil(items.length / pageSize));
@@ -1999,12 +2040,22 @@ export function homeAssetPage<T>(items: T[], requestedPage: number, pageSize = H
 	return { items: items.slice(start, start + pageSize), page, pageCount };
 }
 
-export function homeAssetVisibleForView(summary: HomeMarketSummary | undefined, view: HomeAssetView) {
-	return view === 'all' || homeMarketSummaryListed(summary);
+export function homeListingAssetPage<T>(
+	items: T[],
+	requestedPage: number,
+	hasMore: boolean,
+	pageSize = HOME_ASSET_PAGE_SIZE
+) {
+	const loadedPageCount = Math.max(1, Math.ceil(items.length / pageSize));
+	const requestablePageCount =
+		loadedPageCount + (hasMore && items.length > 0 && items.length % pageSize === 0 ? 1 : 0);
+	const page = Math.min(Math.max(1, requestedPage), requestablePageCount);
+	const start = (page - 1) * pageSize;
+	return { items: items.slice(start, start + pageSize), page, pageCount: requestablePageCount };
 }
 
-export function homeAssetCardsPublished(view: HomeAssetView, pending: boolean) {
-	return view !== 'listed' || !pending;
+export function homeAssetVisibleForView(summary: HomeMarketSummary | undefined, view: HomeAssetView) {
+	return view === 'all' || homeMarketSummaryListed(summary);
 }
 
 function HomePendingMarketValue({ label = 'Checking…' }: { label?: string }) {
@@ -2070,8 +2121,120 @@ export function homeMarketShellLoading(loading: boolean, collectionCount: number
 	return loading && collectionCount === 0;
 }
 
-export function shouldLoadHomeCollectionSummaries(tab: HomeTab, marketLoading: boolean, discoverPublished: boolean) {
-	return tab === 'collections' || (tab === 'discover' && !marketLoading && discoverPublished);
+export function shouldLoadHomeDiscover(tab: HomeTab) {
+	return tab === 'discover';
+}
+
+export function shouldLoadHomeCollectionSummaries(tab: HomeTab) {
+	return tab === 'collections';
+}
+
+export function homeDiscoveryCatalogReady(collections: Collection[], loading: boolean) {
+	const tokensReady = collections.some((collection) => collection.kind === 'tokens');
+	const namesReady = collections.some((collection) => collection.kind === 'names' && collection.namespace);
+	return tokensReady && (namesReady || !loading);
+}
+
+export function homeListingCandidateLikelyLive(candidate: AssetCandidate, collections: Collection[]) {
+	return (
+		candidate.marketAction === 'make-offer' ||
+		collections.some(
+			(collection) =>
+				collection.kind === 'tokens' && collection.assets.some((asset) => asset.id === candidate.processId)
+		)
+	);
+}
+
+export function prioritizeHomeListingCandidates(
+	candidates: AssetCandidate[],
+	revalidationIds: ReadonlySet<string> = new Set()
+) {
+	return [...candidates].sort((left, right) => {
+		const priority = (candidate: AssetCandidate) =>
+			revalidationIds.has(candidate.processId) ? 0 : candidate.marketAction === 'make-offer' ? 1 : 2;
+		return priority(left) - priority(right);
+	});
+}
+
+export function homeCachedFeedRefreshPending(cachedListingCount: number, revalidationCount: number) {
+	return cachedListingCount > 0 && revalidationCount > 0;
+}
+
+function homeDiscoverCandidate(candidate: HomeDiscoverCandidate): AssetCandidate {
+	return {
+		...candidate,
+		sources: ['market-action'],
+	};
+}
+
+function homeDiscoverCandidateSnapshot(candidate: AssetCandidate): HomeDiscoverCandidate {
+	return {
+		processId: candidate.processId,
+		height: candidate.height,
+		timestamp: candidate.timestamp,
+		...(candidate.activityIds?.length ? { activityIds: candidate.activityIds } : {}),
+		...(candidate.marketAction ? { marketAction: candidate.marketAction } : {}),
+	};
+}
+
+function homeDiscoverListing(result: ResolvedAsset): HomeDiscoverListing | null {
+	const order = bestAskOfAsset(result.state);
+	if (!order || !isLiveListing(result)) return null;
+	return {
+		asset: result.asset,
+		collection: {
+			id: result.collection.id,
+			name: result.collection.name,
+			description: result.collection.description,
+			kind: result.collection.kind,
+			assets: [result.asset],
+			total: result.collection.total ?? 1,
+		},
+		activity: {
+			processId: result.activity.processId,
+			height: result.activity.height,
+			timestamp: result.activity.timestamp,
+		},
+		price: orderPriceLabel(order, result.state),
+	};
+}
+
+function sortedHomeDiscoverListings(listings: Iterable<HomeDiscoverListing>) {
+	return [...listings].sort(
+		(left, right) =>
+			right.activity.height - left.activity.height ||
+			right.activity.timestamp - left.activity.timestamp ||
+			left.asset.id.localeCompare(right.asset.id)
+	);
+}
+
+function homeDiscoverListingMatches(listing: HomeDiscoverListing, query: string, assetType: HomeAssetType) {
+	return (
+		homeAssetTypeMatches(listing.collection, assetType) &&
+		(!query || marketplaceAssetMatchesSearch(listing.asset, listing.collection, query))
+	);
+}
+
+function homeDiscoverSnapshotCanResume(snapshot?: HomeDiscoverSnapshot) {
+	return Boolean(snapshot && Date.now() - snapshot.updatedAt <= HOME_DISCOVER_SNAPSHOT_RESUME_MS);
+}
+
+function homeDiscoverSnapshotQueue(snapshot?: HomeDiscoverSnapshot, resume = true) {
+	const candidates = new Map<string, HomeDiscoverCandidate>();
+	for (const candidate of [
+		...(snapshot?.listings.map((listing) => listing.activity) ?? []),
+		...(resume ? snapshot?.pendingCandidates ?? [] : []),
+	]) {
+		const current = candidates.get(candidate.processId);
+		if (
+			!current ||
+			candidate.height > current.height ||
+			(candidate.height === current.height && candidate.timestamp > current.timestamp)
+		) {
+			candidates.set(candidate.processId, candidate);
+		}
+	}
+	return [...candidates.values()].map(homeDiscoverCandidate);
 }
 
 export function homeScrollIndicatorMetrics(
@@ -2090,15 +2253,35 @@ export function homeScrollIndicatorMetrics(
 	return { visible: true, size, offset: offsetRange * progress };
 }
 
+function HomeRedirect() {
+	const { search } = useLocation();
+	return <Navigate to={{ pathname: homeTabPath('discover'), search: homeRouteSearch(search) }} replace />;
+}
+
 function Home() {
 	const market = React.useContext(MarketContext);
-	const { search } = useLocation();
+	const location = useLocation();
+	const navigate = useNavigate();
+	const { search } = location;
 	const marketPaneRef = React.useRef<HTMLElement>(null);
-	const [homeTab, setHomeTab] = React.useState<HomeTab>('discover');
+	const homeTab = homeTabFromPathname(location.pathname);
 	const [assetType, setAssetType] = React.useState<HomeAssetType>('all');
-	const [assetView, setAssetView] = React.useState<HomeAssetView>('listed');
+	const [assetView, setAssetView] = React.useState<HomeAssetView>(DEFAULT_HOME_ASSET_VIEW);
 	const [assetPage, setAssetPage] = React.useState(1);
+	const activeHomeTabRef = React.useRef(homeTab);
+	activeHomeTabRef.current = homeTab;
+	const activeHomeAssetViewRef = React.useRef(assetView);
+	activeHomeAssetViewRef.current = assetView;
 	const computeGateway = gatewayFromLocation();
+	const discoverScope = `${arweaveGatewayFromLocation()}|${computeGateway}`;
+	const homeStateFetch = React.useMemo(
+		() => createAoFetch(servingNodeOrigins(window.location), HOME_STATE_REQUEST_RATE),
+		[computeGateway]
+	);
+	const [initialDiscoverSnapshot] = React.useState(() =>
+		loadHomeDiscoverSnapshot(SESSION_SNAPSHOT_STORAGE, discoverScope)
+	);
+	const initialDiscoverSnapshotResumable = homeDiscoverSnapshotCanResume(initialDiscoverSnapshot);
 	const query = new URLSearchParams(search).get('q') ?? '';
 	const normalizedQuery = query.trim().toLowerCase();
 	const partialTokenCollection = normalizedQuery
@@ -2108,50 +2291,73 @@ function Home() {
 		if (!normalizedQuery) return true;
 		return collectionMatchesSearch(collection, normalizedQuery);
 	});
-	const [verifiedHomeListings, setVerifiedHomeListings] = React.useState<Record<string, AssetSummary[]>>({});
-	const [verifiedHomeListingActivity, setVerifiedHomeListingActivity] = React.useState<
-		Record<string, HomeListingActivity>
-	>({});
-	const [portableHomeListings, setPortableHomeListings] = React.useState<ResolvedAsset[]>([]);
-	const [portableHomeListingsLoading, setPortableHomeListingsLoading] = React.useState(false);
-	const [portableHomeListingsFailure, setPortableHomeListingsFailure] = React.useState<
+	const [homeListings, setHomeListings] = React.useState<HomeDiscoverListing[]>(
+		initialDiscoverSnapshot?.listings ?? []
+	);
+	const [homeListingsLoading, setHomeListingsLoading] = React.useState(false);
+	const [homeListingsRefreshingCached, setHomeListingsRefreshingCached] = React.useState(false);
+	const [homeListingsHasMore, setHomeListingsHasMore] = React.useState(
+		initialDiscoverSnapshotResumable ? initialDiscoverSnapshot?.hasMore ?? true : true
+	);
+	const [homeListingsFailure, setHomeListingsFailure] = React.useState<
 		Extract<HomeMarketSummary, { status: 'unavailable' }> | undefined
 	>();
-	const [portableHomeRetry, setPortableHomeRetry] = React.useState(0);
-	const marketShellReady = market.collections.length > 0;
+	const [homeListingsRetry, setHomeListingsRetry] = React.useState(0);
+	const [homeListingsProgress, setHomeListingsProgress] = React.useState(0);
+	const homeListingsRef = React.useRef(
+		new Map((initialDiscoverSnapshot?.listings ?? []).map((listing) => [listing.asset.id, listing]))
+	);
+	const homeListingCursorRef = React.useRef<string | null>(
+		initialDiscoverSnapshotResumable ? initialDiscoverSnapshot?.cursor ?? null : null
+	);
+	const homeListingGraphqlHasMoreRef = React.useRef(
+		initialDiscoverSnapshotResumable ? initialDiscoverSnapshot?.hasMore ?? true : true
+	);
+	const homeListingPendingRef = React.useRef(
+		homeDiscoverSnapshotQueue(initialDiscoverSnapshot, initialDiscoverSnapshotResumable)
+	);
+	const homeListingSeenRef = React.useRef(
+		new Set(
+			initialDiscoverSnapshotResumable
+				? initialDiscoverSnapshot?.seenProcessIds ?? []
+				: initialDiscoverSnapshot?.listings.map((listing) => listing.asset.id) ?? []
+		)
+	);
+	const homeListingVisitedCursorsRef = React.useRef(
+		new Set(
+			initialDiscoverSnapshotResumable && initialDiscoverSnapshot?.cursor ? [initialDiscoverSnapshot.cursor] : []
+		)
+	);
+	const homeListingRevalidationRef = React.useRef(
+		new Set((initialDiscoverSnapshot?.listings ?? []).map((listing) => listing.asset.id))
+	);
+	const homeListingScopeRef = React.useRef(discoverScope);
+	const marketShellReady = homeDiscoveryCatalogReady(market.collections, market.loading);
 	const marketCollectionsRef = React.useRef(market.collections);
 	marketCollectionsRef.current = market.collections;
 	const loadedAssetLimit =
-		market.collections.reduce((total, collection) => total + collection.assets.length, 0) +
-		portableHomeListings.length;
-	const listingAssetLimit = HOME_ASSET_PAGE_SIZE * HOME_LISTING_PAGE_LIMIT;
+		market.collections.reduce((total, collection) => total + collection.assets.length, 0) + homeListings.length;
+	const listedAssetCandidates = homeListings.map(({ asset, collection }) => ({ asset, collection }));
 	const assetCandidates = normalizedQuery
-		? homeSearchAssets(
-				market.collections,
-				portableHomeListings,
-				normalizedQuery,
-				assetView === 'all' ? loadedAssetLimit : listingAssetLimit
-		  )
+		? assetView === 'all'
+			? homeSearchAssets(market.collections, listedAssetCandidates, normalizedQuery, loadedAssetLimit)
+			: listedAssetCandidates.filter(({ asset, collection }) =>
+					marketplaceAssetMatchesSearch(asset, collection, normalizedQuery)
+			  )
 		: assetView === 'all'
-		? homeAllAssets(market.collections, loadedAssetLimit, portableHomeListings)
-		: homeDiscoveryAssets(market.collections, verifiedHomeListings, listingAssetLimit, portableHomeListings);
+		? homeAllAssets(market.collections, loadedAssetLimit, listedAssetCandidates)
+		: listedAssetCandidates;
 	const [assetPrices, setAssetPrices] = React.useState<Record<string, HomeMarketSummary>>({});
-	const homeListingActivityByAsset = new Map<string, HomeListingActivity>(
-		Object.entries(verifiedHomeListingActivity)
+	const homeListingPrices: Record<string, HomeMarketSummary> = Object.fromEntries(
+		homeListings.map((listing) => [listing.asset.id, { status: 'resolved', value: listing.price }])
 	);
-	for (const result of portableHomeListings) {
-		const current = homeListingActivityByAsset.get(result.asset.id);
-		if (
-			!current ||
-			result.activity.height > current.height ||
-			(result.activity.height === current.height && result.activity.timestamp > current.timestamp)
-		) {
-			homeListingActivityByAsset.set(result.asset.id, result.activity);
-		}
-	}
+	const homeMarketPrices = assetView === 'all' ? assetPrices : homeListingPrices;
+	const homeListingActivityByAsset = new Map<string, HomeListingActivity>(
+		homeListings.map((listing) => [listing.asset.id, listing.activity])
+	);
 	const displayedAssets = [...assetCandidates]
 		.filter(({ asset }) => {
-			const summary = assetPrices[asset.id];
+			const summary = homeMarketPrices[asset.id];
 			return homeAssetVisibleForView(summary, assetView);
 		})
 		.filter(({ collection }) => homeAssetTypeMatches(collection, assetType))
@@ -2161,7 +2367,7 @@ function Home() {
 				return compareHomeListingRecency(left.asset.id, right.asset.id, homeListingActivityByAsset);
 			}
 			const price = (assetId: string) => {
-				const summary = assetPrices[assetId];
+				const summary = homeMarketPrices[assetId];
 				if (!summary || summary.status !== 'resolved' || !summary.value) return Number.POSITIVE_INFINITY;
 				return homeMarketPriceValue(summary.value);
 			};
@@ -2172,14 +2378,12 @@ function Home() {
 			}
 			return assetView === 'price-low' ? leftPrice - rightPrice : rightPrice - leftPrice;
 		});
-	const assetPagination = homeAssetPage(displayedAssets, assetPage);
-	const assets = assetView === 'all' ? assetPagination.items : assetCandidates;
+	const assetPagination =
+		assetView === 'all'
+			? homeAssetPage(displayedAssets, assetPage)
+			: homeListingAssetPage(displayedAssets, assetPage, homeListingsHasMore);
+	const assets = assetView === 'all' ? assetPagination.items : [];
 	const assetKey = assets.map(({ asset }) => asset.id).join(',');
-	const portableHomeListingById = new Map(portableHomeListings.map((result) => [result.asset.id, result]));
-	const portableHomeStateKey = portableHomeListings
-		.map((result) => `${result.asset.id}:${String(result.state.raw['at-slot'] ?? result.state.swapHeight)}`)
-		.join(',');
-	const [publishedDiscoverQuery, setPublishedDiscoverQuery] = React.useState<string | null>(null);
 	const collectionKey = collections
 		.map((collection) => `${collection.id}:${collection.assets.map((asset) => asset.id).join('.')}`)
 		.concat(computeGateway)
@@ -2223,52 +2427,206 @@ function Home() {
 		[]
 	);
 	React.useEffect(() => {
+		if (homeListingScopeRef.current === discoverScope) return;
+		const snapshot = loadHomeDiscoverSnapshot(SESSION_SNAPSHOT_STORAGE, discoverScope);
+		const resumable = homeDiscoverSnapshotCanResume(snapshot);
+		homeListingScopeRef.current = discoverScope;
+		homeListingsRef.current = new Map((snapshot?.listings ?? []).map((listing) => [listing.asset.id, listing]));
+		homeListingCursorRef.current = resumable ? snapshot?.cursor ?? null : null;
+		homeListingGraphqlHasMoreRef.current = resumable ? snapshot?.hasMore ?? true : true;
+		homeListingPendingRef.current = homeDiscoverSnapshotQueue(snapshot, resumable);
+		homeListingSeenRef.current = new Set(
+			resumable ? snapshot?.seenProcessIds ?? [] : snapshot?.listings.map((listing) => listing.asset.id) ?? []
+		);
+		homeListingVisitedCursorsRef.current = new Set(resumable && snapshot?.cursor ? [snapshot.cursor] : []);
+		homeListingRevalidationRef.current = new Set((snapshot?.listings ?? []).map((listing) => listing.asset.id));
+		setHomeListings(snapshot?.listings ?? []);
+		setHomeListingsHasMore(resumable ? snapshot?.hasMore ?? true : true);
+		setHomeListingsFailure(undefined);
+		setHomeListingsProgress((current) => current + 1);
+	}, [discoverScope]);
+	React.useEffect(() => {
+		if (!SESSION_SNAPSHOT_STORAGE) return;
+		return scheduleIdleTask(
+			() =>
+				storeHomeDiscoverSnapshot(SESSION_SNAPSHOT_STORAGE, {
+					scope: discoverScope,
+					updatedAt: Date.now(),
+					cursor: homeListingCursorRef.current,
+					hasMore: homeListingsHasMore,
+					seenProcessIds: [...homeListingSeenRef.current],
+					pendingCandidates: homeListingPendingRef.current.map(homeDiscoverCandidateSnapshot),
+					listings: homeListings,
+				}),
+			250
+		);
+	}, [discoverScope, homeListings, homeListingsHasMore, homeListingsProgress]);
+	React.useEffect(() => {
+		if (!shouldLoadHomeDiscover(homeTab) || assetView === 'all') {
+			setHomeListingsLoading(false);
+			setHomeListingsRefreshingCached(false);
+			return;
+		}
 		if (!marketShellReady) return;
 		if (market.error) {
-			setPortableHomeListingsLoading(false);
+			setHomeListingsLoading(false);
+			setHomeListingsRefreshingCached(false);
 			return;
 		}
 		const controller = new AbortController();
-		setPortableHomeListingsLoading(true);
-		setPortableHomeListingsFailure(undefined);
+		const requestScope = discoverScope;
+		const requestedListingCount = assetPage * HOME_ASSET_PAGE_SIZE;
+		setHomeListingsLoading(true);
+		setHomeListingsRefreshingCached(
+			homeCachedFeedRefreshPending(homeListingsRef.current.size, homeListingRevalidationRef.current.size)
+		);
+		setHomeListingsFailure(undefined);
 		void (async () => {
 			let indexFailure: unknown;
 			let computeFailure: unknown;
-			const publishCandidates = async (candidates: AssetCandidate[]) => {
-				const collections = marketCollectionsRef.current;
-				const { unverified } = partitionAssetCandidateSupport(candidates, collections);
-				if (!unverified.length) return;
-				const verification = await verifyAssetCandidateSupport(unverified, collections, {
-					signal: controller.signal,
-				});
-				indexFailure ??= verification.unavailable[0]?.error;
-				const unverifiedIds = new Set(unverified.map((candidate) => candidate.processId));
-				await resolveAssetCandidates(
-					verification.supported.filter((candidate) => unverifiedIds.has(candidate.processId)),
-					collections,
-					{
-						signal: controller.signal,
-						concurrency: 2,
-						read: (processId, signal) => readAssetStateCached(processId, { signal, maxAttempts: 1 }),
-						onSettled: (result, candidate, cause) => {
-							if (cause && computeFailure === undefined) computeFailure = cause;
-							setPortableHomeListings((current) =>
-								mergeResolvedListingBatch(current, [{ processId: candidate.processId, result }])
-							);
-						},
-					}
-				);
-				controller.signal.throwIfAborted();
+			let activeBatch: AssetCandidate[] = [];
+			let completedBatchIds = new Set<string>();
+			const deferredCandidates: AssetCandidate[] = [];
+			const deferredIds = new Set<string>();
+			const deferCandidate = (candidate: AssetCandidate) => {
+				if (deferredIds.has(candidate.processId)) return;
+				deferredIds.add(candidate.processId);
+				deferredCandidates.push(candidate);
+			};
+			const matchingListingCount = () =>
+				[...homeListingsRef.current.values()].filter((listing) =>
+					homeDiscoverListingMatches(listing, normalizedQuery, assetType)
+				).length;
+			const publishListings = () => setHomeListings(sortedHomeDiscoverListings(homeListingsRef.current.values()));
+			const updateHasMore = () => {
+				const hasMore = homeListingPendingRef.current.length > 0 || homeListingGraphqlHasMoreRef.current;
+				setHomeListingsHasMore(hasMore);
+				setHomeListingsProgress((current) => current + 1);
+				return hasMore;
 			};
 			try {
-				await discoverMarketActivity({
-					listingsOnly: true,
-					signal: controller.signal,
-					onPage: publishCandidates,
-				});
+				while (homeListingRevalidationRef.current.size > 0 || matchingListingCount() < requestedListingCount) {
+					controller.signal.throwIfAborted();
+					if (!homeListingPendingRef.current.length) {
+						if (!homeListingGraphqlHasMoreRef.current) break;
+						if (homeListingVisitedCursorsRef.current.size >= HOME_LISTING_MAX_GRAPHQL_PAGES) {
+							throw new Error('home-listing-pagination-limit');
+						}
+						const page = await discoverMarketActivityPage({
+							cursor: homeListingCursorRef.current,
+							signal: controller.signal,
+						});
+						homeListingCursorRef.current = page.cursor;
+						homeListingGraphqlHasMoreRef.current = page.hasMore;
+						if (page.hasMore) {
+							if (!page.cursor || homeListingVisitedCursorsRef.current.has(page.cursor)) {
+								throw new Error('home-listing-pagination-stalled');
+							}
+							homeListingVisitedCursorsRef.current.add(page.cursor);
+						}
+						for (const candidate of page.candidates) {
+							if (
+								!homeListingCandidateLikelyLive(candidate, marketCollectionsRef.current) &&
+								!homeListingsRef.current.has(candidate.processId)
+							) {
+								homeListingSeenRef.current.add(candidate.processId);
+								continue;
+							}
+							if (homeListingSeenRef.current.has(candidate.processId)) {
+								const listing = homeListingsRef.current.get(candidate.processId);
+								if (
+									listing &&
+									(candidate.height > listing.activity.height ||
+										(candidate.height === listing.activity.height &&
+											candidate.timestamp > listing.activity.timestamp))
+								) {
+									homeListingsRef.current.set(candidate.processId, {
+										...listing,
+										activity: {
+											processId: candidate.processId,
+											height: candidate.height,
+											timestamp: candidate.timestamp,
+										},
+									});
+									publishListings();
+								}
+								continue;
+							}
+							homeListingSeenRef.current.add(candidate.processId);
+							homeListingPendingRef.current.push(candidate);
+						}
+						homeListingPendingRef.current = prioritizeHomeListingCandidates(
+							homeListingPendingRef.current,
+							homeListingRevalidationRef.current
+						);
+						updateHasMore();
+						if (!homeListingPendingRef.current.length) continue;
+					}
+
+					const remainingListings = Math.max(1, requestedListingCount - matchingListingCount());
+					const batchSize = homeListingRevalidationRef.current.size
+						? Math.min(HOME_LISTING_RESOLUTION_BATCH_SIZE, homeListingRevalidationRef.current.size)
+						: Math.min(
+								HOME_LISTING_RESOLUTION_BATCH_SIZE,
+								remainingListings + HOME_LISTING_RESOLUTION_HEADROOM
+						  );
+					const candidates = homeListingPendingRef.current.splice(0, batchSize);
+					activeBatch = candidates;
+					completedBatchIds = new Set();
+					const collections = marketCollectionsRef.current;
+					const verification = await verifyAssetCandidateSupport(candidates, collections, {
+						signal: controller.signal,
+					});
+					const unavailableIds = new Set(
+						verification.unavailable.map(({ candidate, error }) => {
+							indexFailure ??= error;
+							return candidate.processId;
+						})
+					);
+					const supportedIds = new Set(verification.supported.map((candidate) => candidate.processId));
+					for (const candidate of candidates) {
+						if (supportedIds.has(candidate.processId)) continue;
+						completedBatchIds.add(candidate.processId);
+						if (unavailableIds.has(candidate.processId)) {
+							deferCandidate(candidate);
+							continue;
+						}
+						homeListingRevalidationRef.current.delete(candidate.processId);
+						homeListingsRef.current.delete(candidate.processId);
+					}
+					await resolveAssetCandidates(verification.supported, collections, {
+						signal: controller.signal,
+						concurrency: 8,
+						read: (processId, signal) =>
+							readAssetStateCached(processId, {
+								fetch: homeStateFetch,
+								signal,
+								maxAttempts: 1,
+								mode: 'compute',
+								waitTimeoutMs: HOME_STATE_WAIT_TIMEOUT_MS,
+							}),
+						onSettled: (result, candidate, cause) => {
+							completedBatchIds.add(candidate.processId);
+							if (cause) {
+								computeFailure ??= cause;
+								deferCandidate(candidate);
+							}
+							homeListingRevalidationRef.current.delete(candidate.processId);
+							homeListingsRef.current.delete(candidate.processId);
+							if (!result && market.loading) deferCandidate(candidate);
+							const listing = result ? homeDiscoverListing(result) : null;
+							if (listing) homeListingsRef.current.set(candidate.processId, listing);
+							publishListings();
+						},
+					});
+					activeBatch = [];
+					completedBatchIds.clear();
+					updateHasMore();
+					if (deferredCandidates.length >= HOME_LISTING_MAX_DEFERRED_PER_RUN) break;
+				}
 				if (controller.signal.aborted) return;
 				const failure = indexFailure ?? computeFailure;
-				setPortableHomeListingsFailure(
+				setHomeListingsFailure(
 					failure
 						? {
 								status: 'unavailable',
@@ -2279,19 +2637,48 @@ function Home() {
 				);
 			} catch (cause) {
 				if (!controller.signal.aborted) {
-					setPortableHomeListingsFailure({
+					setHomeListingsFailure({
 						status: 'unavailable',
 						source: 'index',
 						kind: marketplaceFailureKind(cause),
 					});
 				}
 			} finally {
-				if (!controller.signal.aborted) setPortableHomeListingsLoading(false);
+				if (homeListingScopeRef.current === requestScope) {
+					homeListingPendingRef.current.unshift(
+						...activeBatch.filter((candidate) => !completedBatchIds.has(candidate.processId))
+					);
+					homeListingPendingRef.current.push(...deferredCandidates);
+				}
+				if (!controller.signal.aborted) {
+					setHomeListingsHasMore(
+						homeListingPendingRef.current.length > 0 || homeListingGraphqlHasMoreRef.current
+					);
+					setHomeListingsLoading(false);
+					setHomeListingsRefreshingCached(false);
+					setHomeListingsProgress((current) => current + 1);
+				}
 			}
 		})();
 		return () => controller.abort();
-	}, [computeGateway, market.error, marketShellReady, portableHomeRetry]);
+	}, [
+		assetPage,
+		assetType,
+		assetView,
+		discoverScope,
+		homeListingsRetry,
+		homeTab,
+		market.error,
+		market.loading,
+		marketShellReady,
+		normalizedQuery,
+	]);
 	React.useEffect(() => {
+		if (!shouldLoadHomeDiscover(homeTab) || assetView !== 'all') {
+			for (const controller of assetSummaryControllers.current.values()) controller.abort();
+			assetSummaryControllers.current.clear();
+			return;
+		}
 		const visibleAssetIds = new Set(assets.map(({ asset }) => asset.id));
 		for (const [assetId, controller] of assetSummaryControllers.current) {
 			if (visibleAssetIds.has(assetId)) continue;
@@ -2319,20 +2706,20 @@ function Home() {
 		};
 		retryAssetSummaries.current.clear();
 		void mapConcurrent(requestedAssets, 4, async ({ asset }) => {
+			if (!shouldLoadHomeDiscover(activeHomeTabRef.current) || activeHomeAssetViewRef.current !== 'all') return;
 			const previous = assetSummaryControllers.current.get(asset.id);
 			if (previous) previous.abort();
 			const controller = new AbortController();
 			assetSummaryControllers.current.set(asset.id, controller);
 			try {
-				const portable = portableHomeListingById.get(asset.id);
-				const state = portable
-					? portable.state
-					: (
-							await readAssetStateCached(asset.id, {
-								signal: controller.signal,
-								maxAttempts: 1,
-							})
-					  ).state;
+				const state = (
+					await readAssetStateCached(asset.id, {
+						signal: controller.signal,
+						maxAttempts: 1,
+						mode: 'compute',
+						waitTimeoutMs: HOME_STATE_WAIT_TIMEOUT_MS,
+					})
+				).state;
 				const order = bestAskOfAsset(state);
 				if (!controller.signal.aborted) {
 					setAssetPrices((current) => ({
@@ -2353,22 +2740,9 @@ function Home() {
 				}
 			}
 		}).then(finishRetry);
-	}, [assetKey, finishSummaryRetry, portableHomeStateKey, summaryRetry]);
+	}, [assetKey, assetView, finishSummaryRetry, homeTab, summaryRetry]);
 	const marketShellLoading = homeMarketShellLoading(market.loading, market.collections.length);
-	const visibleAssetResultsReady = homeMarketSummariesReady(
-		marketShellLoading,
-		assets.map(({ asset }) => asset.id),
-		assetPrices
-	);
-	const discoverResultsPublished = publishedDiscoverQuery === normalizedQuery;
-	React.useEffect(() => {
-		if (visibleAssetResultsReady) setPublishedDiscoverQuery(normalizedQuery);
-	}, [normalizedQuery, visibleAssetResultsReady]);
-	const shouldLoadCollectionSummaries = shouldLoadHomeCollectionSummaries(
-		homeTab,
-		market.loading,
-		discoverResultsPublished
-	);
+	const shouldLoadCollectionSummaries = shouldLoadHomeCollectionSummaries(homeTab);
 	React.useEffect(() => {
 		if (!shouldLoadCollectionSummaries) {
 			for (const { controller } of collectionSummaryControllers.current.values()) controller.abort();
@@ -2491,7 +2865,13 @@ function Home() {
 					await resolveAssetCandidates(pendingFloorCandidates, [collection], {
 						concurrency: 4,
 						signal: controller.signal,
-						read: (processId, signal) => readAssetStateCached(processId, { signal, maxAttempts: 1 }),
+						read: (processId, signal) =>
+							readAssetStateCached(processId, {
+								signal,
+								maxAttempts: 1,
+								mode: 'compute',
+								waitTimeoutMs: HOME_STATE_WAIT_TIMEOUT_MS,
+							}),
 						onSettled: (result, candidate, cause) => {
 							if (
 								controller.signal.aborted ||
@@ -2523,29 +2903,6 @@ function Home() {
 						controller.signal.throwIfAborted();
 					}
 					if (!controller.signal.aborted) {
-						const verifiedListings = [...floorScan.settled].flatMap(([processId, asking]) => {
-							if (asking === null) return [];
-							const asset = collectionAsset(collection, processId);
-							return asset ? [asset] : [];
-						});
-						const activityScan = collectionActivityScans.current.get(collection.id);
-						setVerifiedHomeListingActivity((current) => {
-							const next = { ...current };
-							for (const asset of verifiedListings) {
-								const candidate = activityScan?.candidates.get(asset.id);
-								if (candidate) next[asset.id] = candidate;
-							}
-							return next;
-						});
-						setVerifiedHomeListings((current) => {
-							const previous = current[collection.id] ?? [];
-							if (
-								previous.length === verifiedListings.length &&
-								previous.every((asset, index) => asset.id === verifiedListings[index]?.id)
-							)
-								return current;
-							return { ...current, [collection.id]: verifiedListings };
-						});
 						setCollectionFloors((current) => ({
 							...current,
 							[collection.id]: homeFloorScanSummary(floorScan),
@@ -2613,7 +2970,18 @@ function Home() {
 			}
 		});
 	}, [summaryFailures.length, summaryRetrying]);
-	React.useEffect(() => setAssetPage(1), [assetType, assetView, normalizedQuery]);
+	React.useEffect(() => setAssetPage(1), [normalizedQuery]);
+	React.useEffect(() => {
+		const routedSearch = homeRouteSearch(search);
+		if (routedSearch === search) return;
+		navigate(
+			{
+				pathname: location.pathname,
+				search: routedSearch,
+			},
+			{ replace: true }
+		);
+	}, [location.pathname, navigate, search]);
 	React.useEffect(() => {
 		if (assetPage !== assetPagination.page) setAssetPage(assetPagination.page);
 	}, [assetPage, assetPagination.page]);
@@ -2629,16 +2997,18 @@ function Home() {
 		collections.map((collection) => collection.id),
 		collectionFloors
 	);
-	const discoverResultsPending = homeMarketHasPending(
-		market.loading || assetSummariesRetrying || portableHomeListingsLoading,
-		assets.map(({ asset }) => asset.id),
-		assetPrices
-	);
-	const discoverResultsFailed = Boolean(portableHomeListingsFailure) || summaryFailures.length > 0;
-	const publishAssetCards = homeAssetCardsPublished(assetView, discoverResultsPending);
-	const discoverResultsReady = discoverResultsPublished || visibleAssetResultsReady;
+	const discoverResultsPending =
+		assetView === 'all'
+			? homeMarketHasPending(
+					market.loading || assetSummariesRetrying,
+					assets.map(({ asset }) => asset.id),
+					assetPrices
+			  )
+			: market.loading || homeListingsLoading;
+	const discoverResultsFailed = Boolean(homeListingsFailure) || summaryFailures.length > 0;
+	const discoverResultsReady = !discoverResultsPending;
 	const selectHomeTab = (tab: HomeTab) => {
-		setHomeTab(tab);
+		navigate({ pathname: homeTabPath(tab), search: homeRouteSearch(search) });
 		if (marketPaneRef.current) marketPaneRef.current.scrollTop = 0;
 	};
 	const selectAssetPage = (page: number) => {
@@ -2705,17 +3075,18 @@ function Home() {
 								</div>
 								{homeTab === 'discover' ? (
 									<div aria-busy={discoverResultsPending} className="home-asset-filters">
-										<span className="home-asset-filters-loading" role="status">
-											{discoverResultsPending ? (
-												<>
-													<LoaderCircle aria-hidden="true" />
-													<span className="sr-only">Loading marketplace results</span>
-												</>
-											) : null}
-										</span>
+										{homeListingsRefreshingCached ? (
+											<span className="home-asset-filters-loading" role="status">
+												<LoaderCircle aria-hidden="true" />
+												<span className="sr-only">Refreshing cached marketplace results</span>
+											</span>
+										) : null}
 										<MarketSelect<HomeAssetType>
 											label="Asset type"
-											onChange={setAssetType}
+											onChange={(value) => {
+												setAssetType(value);
+												setAssetPage(1);
+											}}
 											options={[
 												{ value: 'all', label: 'All' },
 												{ value: 'tokens', label: 'Tokens' },
@@ -2725,7 +3096,10 @@ function Home() {
 										/>
 										<MarketSelect<HomeAssetView>
 											label="View"
-											onChange={setAssetView}
+											onChange={(value) => {
+												setAssetView(value);
+												setAssetPage(1);
+											}}
 											options={[
 												{ value: 'all', label: 'All assets' },
 												{ value: 'listed', label: 'Listed for sale' },
@@ -2744,13 +3118,13 @@ function Home() {
 									retryLabel="Retry collections"
 								/>
 							) : null}
-							{homeTab === 'discover' && portableHomeListingsFailure ? (
+							{homeTab === 'discover' && homeListingsFailure ? (
 								<ErrorPanel
 									message={marketplaceRequestFailureMessage(
-										portableHomeListingsFailure.source,
-										portableHomeListingsFailure.kind
+										homeListingsFailure.source,
+										homeListingsFailure.kind
 									)}
-									onRetry={() => setPortableHomeRetry((current) => current + 1)}
+									onRetry={() => setHomeListingsRetry((current) => current + 1)}
 									retryLabel="Retry public listings"
 								/>
 							) : null}
@@ -2778,7 +3152,7 @@ function Home() {
 							homeSummaryFailureNoticeVisible(
 								discoverResultsReady,
 								summaryFailures.length,
-								Boolean(portableHomeListingsFailure)
+								Boolean(homeListingsFailure)
 							) ? (
 								<div className="collection-source-notice">
 									<span role="status">
@@ -2942,71 +3316,69 @@ function Home() {
 									{displayedAssets.length || discoverResultsPending ? (
 										<>
 											<div className="home-asset-grid">
-												{(publishAssetCards ? assetPagination.items : []).map(
-													({ asset, collection }, index) => {
-														const price = assetPrices[asset.id];
-														const pricePending =
-															!price ||
-															(assetSummariesRetrying && price.status === 'unavailable');
-														return (
-															<Link
-																key={`${collection.id}-${asset.id}`}
-																to={`/asset/${collection.id}/${asset.id}`}
-																onFocus={() => prefetchAssetPage(asset.id)}
-																onMouseEnter={() => prefetchAssetPage(asset.id)}
-																onTouchStart={() => prefetchAssetPage(asset.id)}
-															>
-																{asset.image ? (
-																	<ArtworkImage
-																		className="home-asset-media"
-																		src={asset.image}
-																		alt=""
-																		fetchPriority={index < 2 ? 'high' : 'auto'}
-																		loading={index < 2 ? 'eager' : 'lazy'}
-																	/>
-																) : isAudioContentType(asset.contentType) ? (
-																	<AudioArtwork
-																		className="home-asset-media"
-																		contentType={asset.contentType}
-																		name={asset.name}
-																	/>
-																) : collection.kind === 'names' ? (
-																	<NameArtwork
-																		className="home-asset-media"
-																		name={asset.name}
-																	/>
-																) : (
-																	<TokenArtwork
-																		className="home-asset-media home-token-art"
-																		ticker={asset.ticker ?? 'Token'}
-																	/>
-																)}
-																<div className="home-asset-details">
-																	<div>
-																		<strong>{asset.name}</strong>
-																		<span>{collection.name}</span>
-																	</div>
-																	<b
-																		className={`home-asset-price${
-																			homeMarketSummaryListed(price)
-																				? ' listed'
-																				: ''
-																		}`}
-																	>
-																		{!pricePending && price ? (
-																			homeMarketSummaryLabel(price, 'Not listed')
-																		) : (
-																			<HomePendingMarketValue />
-																		)}
-																	</b>
+												{assetPagination.items.map(({ asset, collection }, index) => {
+													const price = homeMarketPrices[asset.id];
+													const pricePending =
+														!price ||
+														(assetSummariesRetrying && price.status === 'unavailable');
+													return (
+														<Link
+															key={`${collection.id}-${asset.id}`}
+															to={`/asset/${collection.id}/${asset.id}`}
+															onFocus={() => prefetchAssetPage(asset.id)}
+															onMouseEnter={() => prefetchAssetPage(asset.id)}
+															onTouchStart={() => prefetchAssetPage(asset.id)}
+														>
+															{asset.image ? (
+																<ArtworkImage
+																	className="home-asset-media"
+																	src={asset.image}
+																	alt=""
+																	fetchPriority={index < 2 ? 'high' : 'auto'}
+																	loading={index < 2 ? 'eager' : 'lazy'}
+																/>
+															) : isAudioContentType(asset.contentType) ? (
+																<AudioArtwork
+																	className="home-asset-media"
+																	contentType={asset.contentType}
+																	name={asset.name}
+																/>
+															) : collection.kind === 'names' ? (
+																<NameArtwork
+																	className="home-asset-media"
+																	name={asset.name}
+																/>
+															) : (
+																<TokenArtwork
+																	className="home-asset-media home-token-art"
+																	ticker={asset.ticker ?? 'Token'}
+																/>
+															)}
+															<div className="home-asset-details">
+																<div>
+																	<strong>{asset.name}</strong>
+																	<span>{collection.name}</span>
 																</div>
-															</Link>
-														);
-													}
-												)}
+																<b
+																	className={`home-asset-price${
+																		homeMarketSummaryListed(price) ? ' listed' : ''
+																	}`}
+																>
+																	{!pricePending && price ? (
+																		homeMarketSummaryLabel(price, 'Not listed')
+																	) : (
+																		<HomePendingMarketValue />
+																	)}
+																</b>
+															</div>
+														</Link>
+													);
+												})}
 											</div>
-											{discoverResultsPending ? <HomeAssetLoadingMore /> : null}
-											{publishAssetCards ? (
+											{discoverResultsPending && !homeListingsRefreshingCached ? (
+												<HomeAssetLoadingMore />
+											) : null}
+											{displayedAssets.length ? (
 												<Pagination
 													ariaLabel="Discover pages"
 													className="home-asset-pagination"
@@ -5925,7 +6297,7 @@ function AssetView() {
 	const wallet = useWallet();
 	const indexedCollection = market.collections.find((item) => item.id === collectionId);
 	const indexedAsset = indexedCollection ? collectionAsset(indexedCollection, assetId) : undefined;
-	const cachedAsset = React.useMemo(() => loadAssetShellSnapshot(window.sessionStorage, assetId), [assetId]);
+	const cachedAsset = React.useMemo(() => loadAssetShellSnapshot(SESSION_SNAPSHOT_STORAGE, assetId), [assetId]);
 	const prefetchedState = React.useMemo(() => cachedAssetState(assetId), [assetId]);
 	const [liveResult, setLiveResult] = React.useState<{
 		assetId: string;
@@ -5959,8 +6331,8 @@ function AssetView() {
 		(indexedCollection && state ? collectionAsset(indexedCollection, assetId, state) : indexedAsset);
 	const shellAsset = indexedAsset ?? cachedAsset;
 	React.useEffect(() => {
-		if (!resolvedAsset) return;
-		return scheduleIdleTask(() => storeAssetShellSnapshot(window.sessionStorage, resolvedAsset), 500);
+		if (!SESSION_SNAPSHOT_STORAGE || !resolvedAsset) return;
+		return scheduleIdleTask(() => storeAssetShellSnapshot(SESSION_SNAPSHOT_STORAGE, resolvedAsset), 500);
 	}, [resolvedAsset]);
 	const {
 		activities: operationActivities,
@@ -8504,13 +8876,8 @@ export function homeDiscoveryAssets(
 		})),
 		limit
 	).map(({ asset, collection }) => ({ asset, collection: collectionsById.get(collection.id)! }));
-	const fallback = interleaveCollectionAssets(
-		collections,
-		limit,
-		(asset, collection) => Boolean(asset.image || asset.media) || collection.kind === 'tokens'
-	);
 	const seen = new Set<string>();
-	return [...portableListings, ...verified, ...fallback]
+	return [...portableListings, ...verified]
 		.filter(({ asset }) => {
 			if (seen.has(asset.id)) return false;
 			seen.add(asset.id);

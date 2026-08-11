@@ -12,6 +12,7 @@ import {
 	discoverCollectionActivityBatched,
 	discoverMarketActivity,
 	discoverMarketActivityBatched,
+	discoverMarketActivityPage,
 	discoverPendingAssetOffers,
 	discoverWalletAssetCandidates,
 	partitionAssetCandidateSupport,
@@ -984,6 +985,49 @@ describe('wallet candidate discovery', () => {
 		expect(body.query).toContain('recipients: $recipients');
 		expect(body.variables.recipients).toEqual([assetA, assetB]);
 		expect(body.variables.tags).toEqual([{ name: 'action', values: ['make-offer'] }]);
+	});
+
+	it('returns exactly one resumable market activity page', async () => {
+		const fetcher = vi.fn(async () =>
+			Response.json({
+				data: {
+					transactions: {
+						pageInfo: { hasNextPage: true },
+						edges: [activityEdge('next-page', assetA, 20)],
+					},
+				},
+			})
+		);
+
+		await expect(
+			discoverMarketActivityPage({ fetch: fetcher as typeof fetch, listingsOnly: true, cursor: 'current-page' })
+		).resolves.toEqual({
+			candidates: [expect.objectContaining({ processId: assetA, height: 20 })],
+			cursor: 'next-page',
+			hasMore: true,
+		});
+		expect(fetcher).toHaveBeenCalledTimes(1);
+		const call = fetcher.mock.calls[0] as unknown as [RequestInfo | URL, RequestInit];
+		const body = JSON.parse(String(call[1].body));
+		expect(body.variables).toMatchObject({
+			cursor: 'current-page',
+			recipients: null,
+			tags: [{ name: 'action', values: ['make-offer'] }],
+		});
+	});
+
+	it('retains the latest market action on each activity candidate', async () => {
+		const edge = activityEdge('latest-action', assetA, 20);
+		edge.node.tags = [{ name: 'action', value: 'register-interest' }];
+		const fetcher = vi.fn(async () =>
+			Response.json({
+				data: { transactions: { pageInfo: { hasNextPage: false }, edges: [edge] } },
+			})
+		);
+
+		await expect(discoverMarketActivityPage({ fetch: fetcher as typeof fetch })).resolves.toMatchObject({
+			candidates: [{ processId: assetA, marketAction: 'register-interest' }],
+		});
 	});
 
 	it('queries every market action when ordering verified listings by recent activity', async () => {

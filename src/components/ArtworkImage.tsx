@@ -11,6 +11,7 @@ export function ArtworkImage({
 	className = '',
 	decoding = 'async',
 	fallback,
+	fetchPriority,
 	loading = 'lazy',
 	src,
 	...props
@@ -37,6 +38,7 @@ export function ArtworkImage({
 	return (
 		<img
 			{...props}
+			{...(fetchPriority ? { fetchpriority: fetchPriority } : {})}
 			alt={alt}
 			className={`artwork-image is-${status}${className ? ` ${className}` : ''}`}
 			decoding={decoding}

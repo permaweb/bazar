@@ -32,6 +32,7 @@ export type AssetCandidate = {
 	timestamp: number;
 	activityIds?: string[];
 	sources: Array<'initial-holder' | 'market-action' | 'transfer'>;
+	marketAction?: 'make-offer' | 'register-interest' | 'transfer' | 'cancel-order';
 	device?: string;
 	collection?: string;
 	processDevice?: string;
@@ -238,10 +239,16 @@ type WalletCandidateOptions = CandidateOptions & {
 	catchUp?: boolean;
 };
 
-type MarketActivityOptions = CandidateOptions & {
+export type MarketActivityOptions = CandidateOptions & {
 	recipients?: string[];
 	listingsOnly?: boolean;
 	acceptProcessId?: (processId: string) => boolean;
+};
+
+export type MarketActivityPage = {
+	candidates: AssetCandidate[];
+	cursor: string | null;
+	hasMore: boolean;
 };
 
 type BatchedMarketActivityOptions = Omit<MarketActivityOptions, 'onPage' | 'recipients'> & {
@@ -692,59 +699,84 @@ export async function discoverWalletAssetCandidates(
 	return sortCandidates([...scan.found.values()]);
 }
 
-export async function discoverMarketActivity(options: MarketActivityOptions = {}): Promise<AssetCandidate[]> {
+export async function discoverMarketActivityPage(
+	options: Omit<MarketActivityOptions, 'onPage'> & { cursor?: string | null } = {}
+): Promise<MarketActivityPage> {
 	const fetcher = options.fetch ?? globalThis.fetch.bind(globalThis);
 	const graphql = options.graphql ?? arweaveGraphqlEndpoint();
-	const found = new Map<string, AssetCandidate>();
 	const recipients = [...new Set((options.recipients ?? []).filter((id) => ADDRESS.test(id)))];
+	const cursor = options.cursor ?? null;
+	options.signal?.throwIfAborted();
+	const { response, body: payload } = await fetchJsonWithDeadline<any>(
+		fetcher,
+		graphql,
+		{
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({
+				query: MARKET_ACTIVITY_QUERY,
+				variables: {
+					cursor,
+					recipients: recipients.length ? recipients : null,
+					tags: [
+						{
+							name: 'action',
+							values: options.listingsOnly
+								? ['make-offer']
+								: ['make-offer', 'register-interest', 'transfer', 'cancel-order'],
+						},
+					],
+				},
+			}),
+			signal: options.signal,
+		},
+		{
+			timeoutMs: options.requestTimeoutMs,
+			timeoutError: 'asset-activity-graphql-timeout',
+		}
+	);
+	if (!response.ok) throw new Error(`asset-activity-graphql-${response.status}`);
+	if (!payload) throw new Error('asset-activity-graphql-empty');
+	if (payload?.errors?.length) throw new Error('asset-activity-graphql-error');
+	const connection = decodeGraphqlConnection(payload, 'transactions', 'asset-activity-graphql-schema');
+	const found = new Map<string, AssetCandidate>();
+	for (const edge of connection.edges) {
+		const candidate = candidateFromNode(edge.node, 'market-action');
+		if (!candidate || (options.acceptProcessId && !options.acceptProcessId(candidate.processId))) continue;
+		mergeCandidate(found, candidate);
+	}
+	const nextCursor = connection.edges.at(-1)?.cursor ?? null;
+	if (connection.pageInfo.hasNextPage && (!nextCursor || nextCursor === cursor)) {
+		throw new Error('asset-activity-pagination-stalled');
+	}
+	return {
+		candidates: sortCandidates([...found.values()]),
+		cursor: nextCursor,
+		hasMore: connection.pageInfo.hasNextPage,
+	};
+}
+
+export async function discoverMarketActivity(options: MarketActivityOptions = {}): Promise<AssetCandidate[]> {
+	const { onPage, ...pageOptions } = options;
+	const found = new Map<string, AssetCandidate>();
 	let cursor: string | null = null;
 	const visited = new Set<string>();
 
 	while (true) {
-		options.signal?.throwIfAborted();
-		const { response, body: payload } = await fetchJsonWithDeadline<any>(
-			fetcher,
-			graphql,
-			{
-				method: 'POST',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({
-					query: MARKET_ACTIVITY_QUERY,
-					variables: {
-						cursor,
-						recipients: recipients.length ? recipients : null,
-						tags: [
-							{
-								name: 'action',
-								values: options.listingsOnly
-									? ['make-offer']
-									: ['make-offer', 'register-interest', 'transfer', 'cancel-order'],
-							},
-						],
-					},
-				}),
-				signal: options.signal,
-			},
-			{
-				timeoutMs: options.requestTimeoutMs,
-				timeoutError: 'asset-activity-graphql-timeout',
-			}
-		);
-		if (!response.ok) throw new Error(`asset-activity-graphql-${response.status}`);
-		if (!payload) throw new Error('asset-activity-graphql-empty');
-		if (payload?.errors?.length) throw new Error('asset-activity-graphql-error');
-		const connection = decodeGraphqlConnection(payload, 'transactions', 'asset-activity-graphql-schema');
-		const edges = connection.edges;
-		const pageCandidates = edges.flatMap((edge) => {
-			const candidate = candidateFromNode(edge.node, 'market-action');
-			if (!candidate || (options.acceptProcessId && !options.acceptProcessId(candidate.processId))) return [];
+		const page = await discoverMarketActivityPage({ ...pageOptions, cursor });
+		const pageCandidates = page.candidates.filter((candidate) => {
 			const firstOccurrence = !found.has(candidate.processId);
 			mergeCandidate(found, candidate);
-			return firstOccurrence ? [candidate] : [];
+			return firstOccurrence;
 		});
-		await options.onPage?.(sortCandidates(pageCandidates));
-		if (!connection.pageInfo.hasNextPage) return sortCandidates([...found.values()]);
-		cursor = advanceGraphqlCursor(connection, visited, 'asset-activity-pagination-stalled');
+		await onPage?.(sortCandidates(pageCandidates));
+		options.signal?.throwIfAborted();
+		if (!page.hasMore) return sortCandidates([...found.values()]);
+		if (!page.cursor || visited.has(page.cursor) || visited.size >= MAX_GRAPHQL_PAGES) {
+			throw new Error('asset-activity-pagination-stalled');
+		}
+		visited.add(page.cursor);
+		cursor = page.cursor;
 	}
 }
 
@@ -1423,6 +1455,9 @@ function candidateFromNode(
 					schedulerMode: tags['scheduler-mode'],
 			  }
 			: {}),
+		...(source === 'market-action'
+			? { marketAction: tags.action as NonNullable<AssetCandidate['marketAction']> }
+			: {}),
 	};
 }
 
@@ -1472,6 +1507,7 @@ function mergeCandidate(found: Map<string, AssetCandidate>, next: AssetCandidate
 			? [...new Set([...(current.activityIds ?? []), ...(next.activityIds ?? [])])]
 			: activity.activityIds,
 		sources: [...new Set([...current.sources, ...next.sources])],
+		marketAction: activity.marketAction ?? current.marketAction ?? next.marketAction,
 		device: current.device ?? next.device,
 		collection: current.collection ?? next.collection,
 		processDevice: current.processDevice ?? next.processDevice,
