@@ -660,10 +660,15 @@ export default function CreateRoute() {
 			<div className="create-layout">
 				<div className="create-preview-column">
 					{mode === 'fungible' ? (
-						<div className="mint-dropzone fungible-token-preview">
-							<TokenArtwork ticker={ticker.trim() || 'TOKEN'} />
+						<div className="fungible-token-preview">
+							<div className="fungible-token-preview-mark" aria-hidden="true">
+								<TokenArtwork ticker={ticker.trim() || 'TKN'} />
+							</div>
 							<span>
 								<strong>{name.trim() || 'Unnamed token'}</strong>
+								<small className="fungible-token-preview-ticker">
+									{ticker.trim() || 'Set a ticker'}
+								</small>
 								<small>
 									{supply && /^[1-9]\d*$/.test(supply)
 										? `${supply} base units · denomination ${denomination || '0'}`
