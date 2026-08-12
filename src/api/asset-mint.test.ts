@@ -738,6 +738,11 @@ describe('asset mint contract', () => {
 		expect(result).toMatchObject({ processId, logo: logoId, ticker: 'SIG' });
 		expect(loadMintActivities(store, owner)).toMatchObject([
 			{
+				asset: {
+					contentType: 'application/x.arweave-token',
+					image: `https://arweave.net/${logoId}`,
+					ticker: 'SIG',
+				},
 				transactionIds: [logoId, processId],
 				arweaveGateway: 'https://arweave.net',
 				computeGateway: 'https://compute.example',

@@ -439,6 +439,7 @@ export class AssetMintClient {
 				ticker: input.ticker,
 				contentType: 'application/x.arweave-token',
 				description: input.description?.trim() ?? '',
+				...(logoId ? { image: `${this.#gateway}/${logoId}` } : {}),
 				mediaId: processId,
 				owner,
 				createdAt,

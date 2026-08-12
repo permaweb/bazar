@@ -96,6 +96,7 @@ import {
 	type AssetSummary,
 	type Collection,
 	collectionAsset,
+	FUNGIBLE_TOKEN_COLLECTION_ID,
 	loadCollections,
 	loadMoreCarrierNames,
 	loadMoreFungibleTokens,
@@ -7333,6 +7334,14 @@ function AssetDetailLoadingShell({
 	);
 }
 
+export function isFungiblePendingMint(asset: Pick<MintedAsset, 'contentType' | 'ticker'>, collectionId: string) {
+	return (
+		collectionId === FUNGIBLE_TOKEN_COLLECTION_ID ||
+		asset.contentType === 'application/x.arweave-token' ||
+		Boolean(asset.ticker)
+	);
+}
+
 function PendingAssetView() {
 	const { collectionId = '', assetId = '' } = useParams();
 	const navigate = useNavigate();
@@ -7360,6 +7369,7 @@ function PendingAssetView() {
 		);
 	}
 	if (!activity) return <Navigate to={finalPath} replace />;
+	const fungible = isFungiblePendingMint(asset, activity.collectionId ?? collectionId);
 
 	const phases: Array<[MintActivity['phase'], string]> = [
 		['accepted', 'Accepted by Arweave'],
@@ -7380,8 +7390,14 @@ function PendingAssetView() {
 				<div className="mint-pending-artwork">
 					{asset.image ? (
 						<ArtworkImage src={asset.image} alt={`${asset.name} artwork`} />
-					) : (
+					) : fungible ? (
+						<TokenArtwork ticker={asset.ticker || asset.name} />
+					) : isAudioContentType(asset.contentType) ? (
 						<AudioArtwork contentType={asset.contentType} name={asset.name} />
+					) : (
+						<span className="mint-pending-artwork-fallback" aria-hidden="true">
+							{asset.name.slice(0, 1)}
+						</span>
 					)}
 				</div>
 				<div className="mint-pending-copy">
@@ -7413,10 +7429,13 @@ function PendingAssetView() {
 					</div>
 					<MintTransactionReceipt
 						entries={activity.transactionIds.map((transactionId, index) => ({
-							label:
-								index === activity.transactionIds.length - 1
-									? 'Asset transaction'
-									: 'Artwork transaction',
+							label: fungible
+								? index === activity.transactionIds.length - 1
+									? 'Token process transaction'
+									: 'Token logo transaction'
+								: index === activity.transactionIds.length - 1
+								? 'Asset transaction'
+								: 'Artwork transaction',
 							transactionId,
 						}))}
 					/>

@@ -36,8 +36,15 @@ import { AudioArtwork } from 'components/AudioArtwork';
 import { Button } from 'components/Button';
 import { Loading } from 'components/Loading';
 import { MintTransactionReceipt, type MintTransactionReceiptEntry } from 'components/MintTransactionReceipt';
+import { OperationOutcome, OperationOutcomeAnnouncement } from 'components/OperationOutcomeAnnouncement';
 import { SegmentedTabs } from 'components/SegmentedTabs';
 import { TokenArtwork } from 'components/TokenArtwork';
+import {
+	prepareTransactionDialogHide,
+	TRANSACTION_DIALOG_HIDE_DURATION_MS,
+	TransactionDialogControl,
+	type TransactionDialogPhase,
+} from 'components/TransactionDialogControl';
 import { isAudioContentType, normalizeAssetContentType } from 'helpers/asset-media';
 import { type EmbeddedAudioMetadata, extractEmbeddedAudioMetadata, formatAudioDuration } from 'helpers/audio-metadata';
 import { arweaveGatewayFromLocation } from 'helpers/config';
@@ -51,6 +58,7 @@ import {
 	useOperationActivity,
 	winstonToAr,
 } from '../app/App';
+import { useDialogFocus } from '../app/useDialogFocus';
 
 const ArweaveTransactionSync = React.lazy(async () => {
 	const module = await import('components/ArweaveTransactionSync');
@@ -58,6 +66,210 @@ const ArweaveTransactionSync = React.lazy(async () => {
 });
 
 type UdlGrantValue = NonNullable<UdlTerms['derivation'] | UdlTerms['commercialUse'] | UdlTerms['dataModelTraining']>;
+
+type FungibleMintDialogProps = {
+	error: string | null;
+	logoPreview: string;
+	name: string;
+	onClearError: () => void;
+	onNavigate: (path: string) => void;
+	onVisibleChange: (visible: boolean) => void;
+	phase: FungibleMintPhase | null;
+	phaseLabel: string;
+	progressButton: React.RefObject<HTMLButtonElement>;
+	ready: boolean;
+	result: FungibleMintResult | null;
+	ticker: string;
+	visible: boolean;
+	views: ObserverView[];
+	consensus: Consensus | null;
+	confirmations: number;
+};
+
+export function FungibleMintDialog({
+	error,
+	logoPreview,
+	name,
+	onClearError,
+	onNavigate,
+	onVisibleChange,
+	phase,
+	phaseLabel,
+	progressButton,
+	ready,
+	result,
+	ticker,
+	visible,
+	views,
+	consensus,
+	confirmations,
+}: FungibleMintDialogProps) {
+	const [hiding, setHiding] = React.useState(false);
+	const hideTimerRef = React.useRef<number | null>(null);
+	const dialogPhase: TransactionDialogPhase = error ? 'error' : ready ? 'done' : 'working';
+	const closeOrHide = React.useCallback(() => {
+		if (dialogPhase !== 'working') {
+			onVisibleChange(false);
+			return;
+		}
+		if (hiding) return;
+		if (dialogRef.current) prepareTransactionDialogHide(dialogRef.current, progressButton.current);
+		setHiding(true);
+		hideTimerRef.current = window.setTimeout(() => {
+			hideTimerRef.current = null;
+			onVisibleChange(false);
+		}, TRANSACTION_DIALOG_HIDE_DURATION_MS);
+	}, [dialogPhase, hiding, onVisibleChange, progressButton]);
+	const dialogRef = useDialogFocus<HTMLDivElement>(visible, closeOrHide, () => progressButton.current, dialogPhase);
+
+	React.useEffect(() => {
+		if (visible) setHiding(false);
+	}, [visible]);
+	React.useEffect(
+		() => () => {
+			if (hideTimerRef.current !== null) window.clearTimeout(hideTimerRef.current);
+		},
+		[]
+	);
+
+	if (!visible && dialogPhase !== 'working') return null;
+	const tokenName = result?.name || name.trim() || 'Fungible token';
+	const tokenTicker = result?.ticker || ticker.trim() || 'TKN';
+	const receiptEntries: MintTransactionReceiptEntry[] = result
+		? [
+				...(result.logo ? [{ label: 'Token logo transaction', transactionId: result.logo }] : []),
+				{ label: 'Token process transaction', transactionId: result.processId },
+		  ]
+		: [];
+
+	return (
+		<div
+			className={`dialog-backdrop operation-panel-backdrop${hiding ? ' dialog-backdrop-hiding' : ''}`}
+			hidden={!visible}
+			onMouseDown={(event) => event.target === event.currentTarget && closeOrHide()}
+			role="presentation"
+		>
+			<div
+				aria-hidden={visible ? undefined : true}
+				aria-labelledby={visible ? 'fungible-mint-operation fungible-mint-title' : undefined}
+				aria-modal={visible ? true : undefined}
+				className="dialog operation-side-panel fungible-dialog fungible-mint-dialog"
+				ref={dialogRef}
+				role={visible ? 'dialog' : undefined}
+				tabIndex={-1}
+			>
+				<div className="dialog-heading">
+					<div className="dialog-asset-heading">
+						{logoPreview ? (
+							<img alt="" className="dialog-asset-artwork" src={logoPreview} />
+						) : (
+							<TokenArtwork className="dialog-asset-artwork" ticker={tokenTicker} />
+						)}
+						<div className="dialog-asset-heading-copy">
+							<p className="eyebrow" id="fungible-mint-operation">
+								Create token
+							</p>
+							<h2 id="fungible-mint-title">{tokenName}</h2>
+						</div>
+					</div>
+					<TransactionDialogControl hiding={hiding} phase={dialogPhase} onClick={closeOrHide} />
+				</div>
+				<OperationOutcomeAnnouncement
+					active={dialogPhase === 'done'}
+					detail={`All ${result?.supply ?? ''} base units are in your wallet and ready to dispatch.`}
+					title="Token live on Bazar"
+				/>
+				{dialogPhase === 'working' && !result ? (
+					<div className="operation-preparing">
+						<Loading label={phaseLabel || 'Preparing token transactions…'} />
+						<p>
+							{phase
+								? 'Keep this wallet request open while Bazar prepares and submits the permanent token transactions.'
+								: 'Checking the connected wallet, network cost, and token details before requesting approval.'}
+						</p>
+					</div>
+				) : null}
+				{dialogPhase === 'working' && result ? (
+					<div className="operation-working">
+						<p className="sr-only" aria-live="polite" role="status">
+							Token submitted. Watching independently addressed Arweave nodes and waiting for the token
+							process state.
+						</p>
+						<p className="scheduler-wait">
+							All {result.supply} base units of {result.ticker} are minted to your wallet. Bazar is
+							waiting for the scheduler to make the process readable.
+						</p>
+						<React.Suspense fallback={<Loading label="Loading transaction progress…" />}>
+							<ArweaveTransactionSync
+								active={visible}
+								activeStep="mint"
+								pendingAfterConfirmation="Waiting for token process state"
+								steps={[
+									{
+										key: 'mint',
+										label: 'Mint token',
+										target: 5,
+										confirmations,
+										transaction: {
+											id: result.processId,
+											views,
+											...(consensus ? { consensus } : {}),
+										},
+									},
+								]}
+								subject={tokenTicker}
+							/>
+						</React.Suspense>
+						<MintTransactionReceipt entries={receiptEntries} />
+					</div>
+				) : null}
+				{dialogPhase === 'done' && result ? (
+					<div className="result success">
+						<OperationOutcome
+							detail={`All ${result.supply} base units of ${result.ticker} are in your wallet and ready to dispatch.`}
+							title="Token live on Bazar"
+						/>
+						<MintTransactionReceipt entries={receiptEntries} />
+						<Button
+							className="with-icon"
+							data-dialog-initial
+							onClick={() => onNavigate(`/asset/${FUNGIBLE_TOKEN_COLLECTION_ID}/${result.processId}`)}
+							size="custom"
+							variant="primary"
+						>
+							View token <ArrowRight className="ui-icon ui-icon--sm" aria-hidden="true" />
+						</Button>
+						<Button
+							className="with-icon"
+							onClick={() => onNavigate(`/dispatch/${result.processId}`)}
+							size="custom"
+						>
+							Dispatch to holders <ArrowRight className="ui-icon ui-icon--sm" aria-hidden="true" />
+						</Button>
+					</div>
+				) : null}
+				{dialogPhase === 'error' ? (
+					<div className="result error">
+						<div className="result-alert" role="alert">
+							<h3>Could not create this token</h3>
+							<p>{error}</p>
+						</div>
+						<Button
+							data-dialog-initial
+							onClick={() => {
+								onClearError();
+								onVisibleChange(false);
+							}}
+							size="custom"
+						>
+							Return to token details
+						</Button>
+					</div>
+				) : null}
+			</div>
+		</div>
+	);
+}
 
 function UdlGrantField({
 	label,
@@ -137,6 +349,7 @@ export default function CreateRoute() {
 	const fileInput = React.useRef<HTMLInputElement>(null);
 	const artworkInput = React.useRef<HTMLInputElement>(null);
 	const logoInput = React.useRef<HTMLInputElement>(null);
+	const fungibleProgressButton = React.useRef<HTMLButtonElement>(null);
 	const metadataRequest = React.useRef(0);
 	const artworkRevision = React.useRef(0);
 	const [mode, setMode] = React.useState<'asset' | 'collection' | 'fungible'>('asset');
@@ -152,6 +365,9 @@ export default function CreateRoute() {
 	const [fungiblePhase, setFungiblePhase] = React.useState<FungibleMintPhase | null>(null);
 	const [fungibleResult, setFungibleResult] = React.useState<FungibleMintResult | null>(null);
 	const [fungibleResultReady, setFungibleResultReady] = React.useState(false);
+	const [fungibleSubmitting, setFungibleSubmitting] = React.useState(false);
+	const [fungibleDialogVisible, setFungibleDialogVisible] = React.useState(false);
+	const [fungibleOperationError, setFungibleOperationError] = React.useState<string | null>(null);
 	const [mintViews, setMintViews] = React.useState<ObserverView[]>([]);
 	const [mintConsensus, setMintConsensus] = React.useState<Consensus | null>(null);
 	const [mintConfirmations, setMintConfirmations] = React.useState(0);
@@ -492,16 +708,21 @@ export default function CreateRoute() {
 		setResult(null);
 		setCollectionResult(null);
 		const uploadId = `upload:${wallet.address}:${Date.now()}`;
-		beginUpload({
-			id: uploadId,
-			owner: wallet.address,
-			kind: mode,
-			name: name.trim(),
-			status: 'Preparing secure wallet approvals…',
-		});
+		if (mode !== 'fungible') {
+			beginUpload({
+				id: uploadId,
+				owner: wallet.address,
+				kind: mode,
+				name: name.trim(),
+				status: 'Preparing secure wallet approvals…',
+			});
+		}
 		setFungibleResult(null);
 		try {
 			if (mode === 'fungible') {
+				setFungibleSubmitting(true);
+				setFungibleOperationError(null);
+				setFungibleDialogVisible(true);
 				const minted = await new AssetMintClient().mintFungible(fungibleInput, wallet.address, {
 					logo: logo ?? undefined,
 					onLogoUploaded: setLogoTxId,
@@ -509,6 +730,7 @@ export default function CreateRoute() {
 				});
 				setFungibleResult(minted);
 				setFungiblePhase(null);
+				setFungibleSubmitting(false);
 				return;
 			}
 			if (mode === 'collection') {
@@ -561,8 +783,12 @@ export default function CreateRoute() {
 			setPhase(null);
 			setCollectionPhase(null);
 			setFungiblePhase(null);
-			setError(message);
-			failUpload(uploadId, message);
+			setFungibleSubmitting(false);
+			if (mode === 'fungible') setFungibleOperationError(message);
+			else {
+				setError(message);
+				failUpload(uploadId, message);
+			}
 		}
 	};
 	const resume = async () => {
@@ -591,7 +817,7 @@ export default function CreateRoute() {
 			failUpload(uploadId, message);
 		}
 	};
-	const working = phase !== null || collectionPhase !== null || fungiblePhase !== null;
+	const working = phase !== null || collectionPhase !== null || fungibleSubmitting;
 	const phaseLabel = fungiblePhase
 		? {
 				'signing-logo': 'Approve the token logo in your wallet…',
@@ -1408,79 +1634,7 @@ export default function CreateRoute() {
 							<span>{error}</span>
 						</div>
 					) : null}
-					{mode === 'fungible' && fungibleResult ? (
-						<div className={`mint-success${!fungibleResultReady ? ' propagating' : ''}`}>
-							<span>
-								{fungibleResultReady ? (
-									<Check aria-hidden="true" />
-								) : (
-									<InfinityIcon aria-hidden="true" />
-								)}
-							</span>
-							<div>
-								<strong>{fungibleResultReady ? 'Token live on Bazar' : 'Sequencing on Arweave'}</strong>
-								<p>
-									{fungibleResultReady
-										? `All ${fungibleResult.supply} base units of ${fungibleResult.ticker} are in your wallet and ready to dispatch.`
-										: `All ${fungibleResult.supply} base units of ${fungibleResult.ticker} are minted to your wallet. Bazar is watching for the scheduler to sequence the process (~20 minutes); dispatch unlocks once its state is readable.`}
-								</p>
-								<React.Suspense fallback={<Loading label="Loading transaction progress…" />}>
-									<ArweaveTransactionSync
-										subject={fungibleResult.ticker || fungibleResult.name}
-										active
-										steps={[
-											{
-												key: 'mint',
-												label: 'Mint token',
-												target: 5,
-												confirmations: mintConfirmations,
-												transaction: {
-													id: fungibleResult.processId,
-													views: mintViews,
-													...(mintConsensus ? { consensus: mintConsensus } : {}),
-												},
-											},
-										]}
-									/>
-								</React.Suspense>
-								<MintTransactionReceipt
-									entries={[
-										...(fungibleResult.logo
-											? [{ label: 'Token logo transaction', transactionId: fungibleResult.logo }]
-											: []),
-										{
-											label: 'Token process transaction',
-											transactionId: fungibleResult.processId,
-										},
-									]}
-								/>
-							</div>
-							<div className="mint-success-actions">
-								<Button
-									type="button"
-									size="custom"
-									onClick={() =>
-										navigate(`/asset/${FUNGIBLE_TOKEN_COLLECTION_ID}/${fungibleResult.processId}`)
-									}
-								>
-									View token <ArrowRight className="ui-icon ui-icon--sm" aria-hidden="true" />
-								</Button>
-								<Button
-									type="button"
-									size="custom"
-									disabled={!fungibleResultReady}
-									onClick={() => navigate(`/dispatch/${fungibleResult.processId}`)}
-								>
-									Dispatch to holders{' '}
-									{fungibleResultReady ? (
-										<ArrowRight className="ui-icon ui-icon--sm" aria-hidden="true" />
-									) : (
-										<InfinityIcon className="ui-icon ui-icon--sm" aria-hidden="true" />
-									)}
-								</Button>
-							</div>
-						</div>
-					) : result || collectionResult ? (
+					{result || collectionResult ? (
 						<div className={`mint-success${result && !resultReady ? ' propagating' : ''}`}>
 							<span>
 								{result && !resultReady ? (
@@ -1528,6 +1682,25 @@ export default function CreateRoute() {
 								</Button>
 							</div>
 						</div>
+					) : mode === 'fungible' && (fungibleSubmitting || fungibleResult || fungibleOperationError) ? (
+						<Button
+							className="mint-submit"
+							ref={fungibleProgressButton}
+							type="button"
+							size="custom"
+							onClick={() => setFungibleDialogVisible(true)}
+						>
+							{fungibleOperationError
+								? 'Review mint error'
+								: fungibleResultReady
+								? 'View mint result'
+								: 'View mint progress'}
+							{fungibleOperationError || fungibleResultReady ? (
+								<ArrowRight className="ui-icon" aria-hidden="true" />
+							) : (
+								<InfinityIcon className="ui-icon" aria-hidden="true" />
+							)}
+						</Button>
 					) : (
 						<Button
 							className="mint-submit"
@@ -1565,6 +1738,26 @@ export default function CreateRoute() {
 					</p>
 				</form>
 			</div>
+			{fungibleSubmitting || fungibleResult || fungibleOperationError || fungibleDialogVisible ? (
+				<FungibleMintDialog
+					confirmations={mintConfirmations}
+					consensus={mintConsensus}
+					error={fungibleOperationError}
+					logoPreview={logoPreview}
+					name={name}
+					onClearError={() => setFungibleOperationError(null)}
+					onNavigate={navigate}
+					onVisibleChange={setFungibleDialogVisible}
+					phase={fungiblePhase}
+					phaseLabel={phaseLabel}
+					progressButton={fungibleProgressButton}
+					ready={fungibleResultReady}
+					result={fungibleResult}
+					ticker={ticker}
+					views={mintViews}
+					visible={fungibleDialogVisible}
+				/>
+			) : null}
 		</section>
 	);
 }

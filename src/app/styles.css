@@ -1755,6 +1755,13 @@ main {
 	height: 100%;
 	object-fit: cover;
 }
+.mint-pending-artwork > .token-artwork {
+	font-size: clamp(2rem, 6vw, 5rem);
+}
+.mint-pending-artwork-fallback {
+	color: var(--muted);
+	font-size: var(--type-display);
+}
 .mint-pending-copy {
 	min-width: 0;
 	display: grid;
@@ -8427,6 +8434,16 @@ body input:focus-visible {
 }
 .upload-activity-panel > .wide {
 	margin-top: var(--space-4);
+}
+.fungible-mint-dialog .operation-working {
+	display: grid;
+	gap: 18px;
+}
+.fungible-mint-dialog .operation-working > .scheduler-wait {
+	margin: 0;
+}
+.fungible-mint-dialog .mint-transaction-receipts {
+	margin-top: 0;
 }
 
 .ui-button.market-primary-action {

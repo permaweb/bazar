@@ -43,6 +43,7 @@ import {
 	homeSummaryRequestKeys,
 	homeTabFromPathname,
 	homeTabPath,
+	isFungiblePendingMint,
 	mergeResolvedListingBatch,
 	newestCollectionActivity,
 	nextListingAnnouncementProgress,
@@ -69,6 +70,12 @@ import {
 } from './shell-snapshot';
 
 describe('Home market summary retries', () => {
+	it('classifies pending fungible processes as tokens instead of media assets', () => {
+		expect(
+			isFungiblePendingMint({ contentType: 'application/x.arweave-token', ticker: 'SIG' }, 'fungible-tokens')
+		).toBe(true);
+		expect(isFungiblePendingMint({ contentType: 'audio/mpeg' }, 'created-assets')).toBe(false);
+	});
 	it('maps every Home tab to a hash-router subroute without dropping other query parameters', () => {
 		expect(homeTabFromPathname('/discover')).toBe('discover');
 		expect(homeTabFromPathname('/collections/')).toBe('collections');
