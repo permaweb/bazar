@@ -648,6 +648,7 @@ describe('asset mint contract', () => {
 			return new Response('', { status: 200 });
 		});
 		const store = storage();
+		const onTransaction = vi.fn();
 		const client = new AssetMintClient({
 			arweave: {
 				createTransaction: vi.fn().mockResolvedValueOnce(artwork).mockResolvedValueOnce(asset),
@@ -676,7 +677,8 @@ describe('asset mint contract', () => {
 				album: 'Long Orbit',
 				duration: 125,
 			},
-			owner
+			owner,
+			{ onTransaction }
 		);
 
 		expect(artwork.addTag).toHaveBeenCalledWith('type', 'Asset-Artwork');
@@ -686,6 +688,10 @@ describe('asset mint contract', () => {
 		expect(asset.addTag).toHaveBeenCalledWith('album', 'Long Orbit');
 		expect(asset.addTag).toHaveBeenCalledWith('duration', '125');
 		expect(asset.addTag).not.toHaveBeenCalledWith('asset-data', expect.anything());
+		expect(onTransaction.mock.calls).toEqual([
+			[{ id: artworkId, label: 'Artwork transaction' }],
+			[{ id: processId, label: 'Asset transaction' }],
+		]);
 		expect(result.asset).toMatchObject({
 			contentType: 'audio/mpeg',
 			media: `https://arweave.net/raw/${processId}`,
@@ -818,7 +824,7 @@ describe('asset mint contract', () => {
 			{
 				asset: {
 					contentType: 'application/x.arweave-token',
-					image: `https://arweave.net/${logoId}`,
+					image: `https://arweave.net/raw/${logoId}`,
 					ticker: 'SIG',
 				},
 				transactionIds: [logoId, processId],

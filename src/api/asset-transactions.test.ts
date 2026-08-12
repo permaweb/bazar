@@ -278,7 +278,7 @@ describe('fungible asset transactions', () => {
 		});
 
 		expect(subject.requests).toHaveLength(1);
-		expect(subject.requests[0]).toContain('/now?require-codec=');
+		expect(subject.requests[0]).toContain('/now/remove~message@1.0&item=data?require-codec=');
 	});
 
 	it('leaves native AR at zero so tx@1.0 promotes the token quantity tag', async () => {
@@ -629,7 +629,7 @@ describe('fungible asset transactions', () => {
 				if (url.includes(`/tx/${transactionId}/status`)) {
 					return new Response(JSON.stringify({ block_height: 51 }));
 				}
-				if (url.includes('/now?')) return new Response(JSON.stringify(later.raw));
+				if (url.includes('/now/remove~message@1.0')) return new Response(JSON.stringify(later.raw));
 				const schedule = url.match(/schedule&from=(\d+)&to=(\d+)\/assignments/);
 				if (schedule) {
 					const assignments: Record<number, unknown> = {};
@@ -644,8 +644,8 @@ describe('fungible asset transactions', () => {
 					}
 					return new Response(JSON.stringify(assignments));
 				}
-				if (url.includes('compute?slot=10&')) return new Response(JSON.stringify(before.raw));
-				if (url.includes('compute?slot=11&')) return new Response(JSON.stringify(settled.raw));
+				if (url.includes('compute&slot=10/')) return new Response(JSON.stringify(before.raw));
+				if (url.includes('compute&slot=11/')) return new Response(JSON.stringify(settled.raw));
 				throw new Error(`unexpected-request:${url}`);
 			},
 		});
@@ -738,7 +738,7 @@ describe('fungible asset transactions', () => {
 				if (url.includes(`/tx/${transactionId}/status`)) {
 					return new Response(JSON.stringify({ block_height: 51 }));
 				}
-				if (url.includes('/now?')) return new Response(JSON.stringify(current.raw));
+				if (url.includes('/now/remove~message@1.0')) return new Response(JSON.stringify(current.raw));
 				const schedule = url.match(/schedule&from=(\d+)&to=(\d+)\/assignments/);
 				if (schedule) {
 					const assignments: Record<number, unknown> = {};
@@ -751,8 +751,8 @@ describe('fungible asset transactions', () => {
 					}
 					return new Response(JSON.stringify(assignments));
 				}
-				if (url.includes('compute?slot=11&')) return new Response(JSON.stringify(before.raw));
-				if (url.includes('compute?slot=12&')) return new Response(JSON.stringify(rejected.raw));
+				if (url.includes('compute&slot=11/')) return new Response(JSON.stringify(before.raw));
+				if (url.includes('compute&slot=12/')) return new Response(JSON.stringify(rejected.raw));
 				throw new Error(`unexpected-request:${url}`);
 			},
 		});
@@ -773,7 +773,7 @@ describe('fungible asset transactions', () => {
 				if (url.includes(`/tx/${transactionId}/status`)) {
 					return new Response(JSON.stringify({ block_height: 51 }));
 				}
-				if (url.includes('/now?')) return new Response(JSON.stringify(current.raw));
+				if (url.includes('/now/remove~message@1.0')) return new Response(JSON.stringify(current.raw));
 				const schedule = url.match(/schedule&from=(\d+)&to=(\d+)\/assignments/);
 				if (schedule) {
 					const assignments: Record<number, unknown> = {};
@@ -786,8 +786,8 @@ describe('fungible asset transactions', () => {
 					}
 					return new Response(JSON.stringify(assignments));
 				}
-				if (url.includes('compute?slot=11&')) return new Response(JSON.stringify(before.raw));
-				if (url.includes('compute?slot=12&')) return new Response(JSON.stringify(cancelled.raw));
+				if (url.includes('compute&slot=11/')) return new Response(JSON.stringify(before.raw));
+				if (url.includes('compute&slot=12/')) return new Response(JSON.stringify(cancelled.raw));
 				throw new Error(`unexpected-request:${url}`);
 			},
 		});
@@ -915,11 +915,11 @@ describe('fungible asset transactions', () => {
 				if (url.includes(`/tx/${transactionId}/status`)) {
 					return new Response(JSON.stringify({ block_height: 51 }));
 				}
-				if (url.includes('/now?')) return new Response(JSON.stringify(later.raw));
+				if (url.includes('/now/remove~message@1.0')) return new Response(JSON.stringify(later.raw));
 				if (url.includes('/schedule&from=11&to=11/assignments')) {
 					return new Response(JSON.stringify({ 11: mismatched }));
 				}
-				if (url.includes('compute?slot=')) historicalReads += 1;
+				if (url.includes('compute&slot=')) historicalReads += 1;
 				throw new Error(`unexpected-request:${url}`);
 			},
 		});
@@ -940,7 +940,7 @@ describe('fungible asset transactions', () => {
 			if (url.includes(`/tx/${transactionId}/status`)) {
 				return new Response(JSON.stringify({ block_height: 51 }));
 			}
-			if (url.includes('/now?')) return new Response(JSON.stringify(later.raw));
+			if (url.includes('/now/remove~message@1.0')) return new Response(JSON.stringify(later.raw));
 			const schedule = url.match(/schedule&from=(\d+)&to=(\d+)\/assignments/);
 			if (schedule) {
 				const assignments: Record<number, unknown> = {};
@@ -952,8 +952,8 @@ describe('fungible asset transactions', () => {
 				}
 				return new Response(JSON.stringify(assignments));
 			}
-			if (url.includes('compute?slot=11&')) return new Response(JSON.stringify(before.raw));
-			if (url.includes('compute?slot=12&')) return new Response(JSON.stringify(applied.raw));
+			if (url.includes('compute&slot=11/')) return new Response(JSON.stringify(before.raw));
+			if (url.includes('compute&slot=12/')) return new Response(JSON.stringify(applied.raw));
 			throw new Error(`unexpected-request:${url}`);
 		};
 		const subject = new AssetTransactionClient({ fetch: fetcher as typeof fetch });
@@ -978,7 +978,7 @@ describe('fungible asset transactions', () => {
 				if (url.includes(`/tx/${transactionId}/status`)) {
 					return new Response(JSON.stringify({ block_height: targetHeight }));
 				}
-				if (url.includes('/now?')) return new Response(JSON.stringify(current.raw));
+				if (url.includes('/now/remove~message@1.0')) return new Response(JSON.stringify(current.raw));
 				const schedule = url.match(/schedule&from=(\d+)&to=(\d+)\/assignments/);
 				if (schedule) {
 					scheduleReads += 1;
@@ -992,7 +992,7 @@ describe('fungible asset transactions', () => {
 					}
 					return new Response(JSON.stringify(assignments));
 				}
-				if (url.includes(`compute?slot=${targetSlot}&`)) {
+				if (url.includes(`compute&slot=${targetSlot}/`)) {
 					return new Response(JSON.stringify(applied.raw));
 				}
 				throw new Error(`unexpected-request:${url}`);
@@ -1017,7 +1017,7 @@ describe('fungible asset transactions', () => {
 					statusReads += 1;
 					return new Response(JSON.stringify({ block_height: statusReads === 1 ? 51 : 52 }));
 				}
-				if (url.includes('/now?')) return new Response(JSON.stringify(current.raw));
+				if (url.includes('/now/remove~message@1.0')) return new Response(JSON.stringify(current.raw));
 				const schedule = url.match(/schedule&from=(\d+)&to=(\d+)\/assignments/);
 				if (schedule) {
 					const assignments: Record<number, unknown> = {};
@@ -1030,7 +1030,7 @@ describe('fungible asset transactions', () => {
 					}
 					return new Response(JSON.stringify(assignments));
 				}
-				if (url.includes('compute?slot=13&')) return new Response(JSON.stringify(applied.raw));
+				if (url.includes('compute&slot=13/')) return new Response(JSON.stringify(applied.raw));
 				throw new Error(`unexpected-request:${url}`);
 			},
 		});
@@ -1058,7 +1058,7 @@ describe('fungible asset transactions', () => {
 						statusReads += 1;
 						return new Response(JSON.stringify({ block_height: 51 }));
 					}
-					if (url.includes('/now?')) {
+					if (url.includes('/now/remove~message@1.0')) {
 						statePolls += 1;
 						return new Response(JSON.stringify(current.raw));
 					}
@@ -1077,7 +1077,7 @@ describe('fungible asset transactions', () => {
 						}
 						return new Response(JSON.stringify(assignments));
 					}
-					if (url.includes('compute?slot=10&')) return new Response(JSON.stringify(applied.raw));
+					if (url.includes('compute&slot=10/')) return new Response(JSON.stringify(applied.raw));
 					throw new Error(`unexpected-request:${url}`);
 				},
 			});

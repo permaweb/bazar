@@ -97,6 +97,8 @@ type Props = {
 	active?: boolean;
 	pendingAfterConfirmation?: string;
 	onProgressChange?: (progress: number) => void;
+	miningTelemetryEnabled?: boolean;
+	telemetryPanelEnabled?: boolean;
 };
 
 export function ArweaveTransactionSync({
@@ -109,6 +111,8 @@ export function ArweaveTransactionSync({
 	active: renderActive = true,
 	pendingAfterConfirmation,
 	onProgressChange,
+	miningTelemetryEnabled = true,
+	telemetryPanelEnabled = true,
 }: Props) {
 	const language = useLanguageProvider().strings;
 	const skipTooltipId = React.useId();
@@ -160,7 +164,7 @@ export function ArweaveTransactionSync({
 		telemetrySessionRef.current.startedAt
 	);
 	const miningTelemetry = useArweaveMiningTelemetry(
-		renderActive && lanes.length > 0,
+		miningTelemetryEnabled && renderActive && lanes.length > 0,
 		telemetrySessionKey,
 		telemetrySessionRef.current.startedAt
 	);
@@ -371,9 +375,11 @@ export function ArweaveTransactionSync({
 								/>
 							</React.Suspense>
 						</S.RaceShell>
-						<React.Suspense fallback={null}>
-							<CableTelemetryPanel active={renderActive} telemetry={telemetry} />
-						</React.Suspense>
+						{telemetryPanelEnabled ? (
+							<React.Suspense fallback={null}>
+								<CableTelemetryPanel active={renderActive} telemetry={telemetry} />
+							</React.Suspense>
+						) : null}
 					</>
 				</TransactionVisualizerBoundary>
 			)}

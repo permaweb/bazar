@@ -233,7 +233,12 @@ export class AssetMintClient {
 	async mint(
 		input: MintInput,
 		owner: string,
-		options: { allowHighCost?: boolean; signal?: AbortSignal; onPhase?: (phase: MintPhase) => void } = {}
+		options: {
+			allowHighCost?: boolean;
+			signal?: AbortSignal;
+			onPhase?: (phase: MintPhase) => void;
+			onTransaction?: (transaction: MintUploadTransaction) => void;
+		} = {}
 	): Promise<MintResult> {
 		validateMintInput(input);
 		assertAddress(owner, 'invalid-mint-owner');
@@ -264,6 +269,7 @@ export class AssetMintClient {
 				artwork.addTag(name, value);
 			}
 			const signedArtwork = await this.#sign(artwork, owner, options.signal);
+			options.onTransaction?.({ id: signedArtwork.id, label: 'Artwork transaction' });
 			options.onPhase?.('uploading-artwork');
 			await this.#post(signedArtwork, options.signal);
 			artworkId = signedArtwork.id;
@@ -289,7 +295,12 @@ export class AssetMintClient {
 	async resume(
 		draft: MintDraft,
 		owner: string,
-		options: { allowHighCost?: boolean; signal?: AbortSignal; onPhase?: (phase: MintPhase) => void } = {}
+		options: {
+			allowHighCost?: boolean;
+			signal?: AbortSignal;
+			onPhase?: (phase: MintPhase) => void;
+			onTransaction?: (transaction: MintUploadTransaction) => void;
+		} = {}
 	): Promise<MintResult> {
 		validateMintDraft(draft);
 		assertAddress(owner, 'invalid-mint-owner');
@@ -323,7 +334,11 @@ export class AssetMintClient {
 		data: Uint8Array,
 		input: Omit<MintDraft, 'owner' | 'mediaId'>,
 		owner: string,
-		options: { signal?: AbortSignal; onPhase?: (phase: MintPhase) => void }
+		options: {
+			signal?: AbortSignal;
+			onPhase?: (phase: MintPhase) => void;
+			onTransaction?: (transaction: MintUploadTransaction) => void;
+		}
 	): Promise<MintResult> {
 		const arweave = await this.#getArweave();
 		options.onPhase?.('signing-asset');
@@ -332,6 +347,7 @@ export class AssetMintClient {
 			process.addTag(name, value);
 		}
 		const signedProcess = await this.#sign(process, owner, options.signal);
+		options.onTransaction?.({ id: signedProcess.id, label: 'Asset transaction' });
 		options.onPhase?.('uploading-asset');
 		await this.#post(signedProcess, options.signal);
 
@@ -452,7 +468,7 @@ export class AssetMintClient {
 				ticker: input.ticker,
 				contentType: 'application/x.arweave-token',
 				description: input.description?.trim() ?? '',
-				...(logoId ? { image: `${this.#gateway}/${logoId}` } : {}),
+				...(logoId ? { image: arweaveRawDataUrl(logoId, this.#gateway) } : {}),
 				mediaId: processId,
 				owner,
 				createdAt,
@@ -490,6 +506,7 @@ export class AssetMintClient {
 			signal?: AbortSignal;
 			target?: string;
 			onPhase?: (phase: 'signing' | 'uploading') => void;
+			onTransaction?: (transactionId: string) => void;
 		} = {}
 	): Promise<string> {
 		assertAddress(owner, 'invalid-mint-owner');
@@ -505,6 +522,7 @@ export class AssetMintClient {
 		);
 		for (const [name, value] of Object.entries(normalizeUploadTags(tags))) transaction.addTag(name, value);
 		const signed = await this.#sign(transaction, owner, options.signal);
+		options.onTransaction?.(signed.id);
 		options.onPhase?.('uploading');
 		await this.#post(signed, options.signal);
 		return signed.id;
@@ -612,7 +630,7 @@ export class CollectionMintClient {
 			id: placeholder,
 			name: fileAssetName(file, index),
 			contentType: requiredFileContentType(file),
-			image: `${this.#gateway}/${placeholder}`,
+			image: arweaveRawDataUrl(placeholder, this.#gateway),
 			mediaId: placeholder,
 		}));
 		const manifest = collectionManifest(input, assets);
@@ -638,6 +656,7 @@ export class CollectionMintClient {
 			allowHighCost?: boolean;
 			signal?: AbortSignal;
 			onPhase?: (phase: CollectionMintPhase) => void;
+			onTransaction?: (transaction: MintUploadTransaction) => void;
 		} = {}
 	): Promise<CollectionMintResult> {
 		validateCollectionMintInput(input);
@@ -660,6 +679,11 @@ export class CollectionMintClient {
 					allowHighCost: options.allowHighCost,
 					signal: options.signal,
 					onPhase: (phase) => options.onPhase?.({ kind: 'asset', index, total: input.files.length, phase }),
+					onTransaction: (transaction) =>
+						options.onTransaction?.({
+							...transaction,
+							label: `Asset ${index + 1} of ${input.files.length}`,
+						}),
 				}
 			);
 			assets.push(result.asset);
@@ -675,13 +699,21 @@ export class CollectionMintClient {
 				name: input.name.trim(),
 			},
 			owner,
-			{ signal: options.signal, onPhase: (phase) => options.onPhase?.({ kind: 'manifest', phase }) }
+			{
+				signal: options.signal,
+				onPhase: (phase) => options.onPhase?.({ kind: 'manifest', phase }),
+				onTransaction: (id) => options.onTransaction?.({ id, label: 'Collection manifest' }),
+			}
 		);
 		const processId = await this.#assetClient.publishData(
 			'Bazar collection process',
 			collectionProcessTags(input.name, manifestId, owner),
 			owner,
-			{ signal: options.signal, onPhase: (phase) => options.onPhase?.({ kind: 'process', phase }) }
+			{
+				signal: options.signal,
+				onPhase: (phase) => options.onPhase?.({ kind: 'process', phase }),
+				onTransaction: (id) => options.onTransaction?.({ id, label: 'Collection process' }),
+			}
 		);
 		const collection: MintedCollection = {
 			id: processId,
@@ -745,6 +777,7 @@ export class CollectionMintClient {
 			allowHighCost?: boolean;
 			signal?: AbortSignal;
 			onPhase?: (phase: CollectionMintPhase) => void;
+			onTransaction?: (transaction: MintUploadTransaction) => void;
 		} = {}
 	): Promise<CollectionAppendResult> {
 		assertAddress(collection.id, 'invalid-collection-process-id');
@@ -768,6 +801,8 @@ export class CollectionMintClient {
 					allowHighCost: options.allowHighCost,
 					signal: options.signal,
 					onPhase: (phase) => options.onPhase?.({ kind: 'asset', index, total: files.length, phase }),
+					onTransaction: (transaction) =>
+						options.onTransaction?.({ ...transaction, label: `Asset ${index + 1} of ${files.length}` }),
 				}
 			);
 			additions.push(result.asset);
@@ -783,7 +818,11 @@ export class CollectionMintClient {
 				name: collection.name,
 			},
 			owner,
-			{ signal: options.signal, onPhase: (phase) => options.onPhase?.({ kind: 'manifest', phase }) }
+			{
+				signal: options.signal,
+				onPhase: (phase) => options.onPhase?.({ kind: 'manifest', phase }),
+				onTransaction: (id) => options.onTransaction?.({ id, label: 'Collection manifest' }),
+			}
 		);
 		const updateId = await this.#assetClient.publishData(
 			'',
@@ -801,6 +840,7 @@ export class CollectionMintClient {
 				target: collection.id,
 				signal: options.signal,
 				onPhase: (phase) => options.onPhase?.({ kind: 'process', phase }),
+				onTransaction: (id) => options.onTransaction?.({ id, label: 'Collection update' }),
 			}
 		);
 		const updated = { ...collection, assets, total: assets.length, manifestId };

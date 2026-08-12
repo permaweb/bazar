@@ -82,7 +82,7 @@ import {
 	type SwapOrder,
 	waitForAssetState,
 } from 'api/asset-marketplace';
-import type { CollectionMintEstimate, CollectionMintPhase } from 'api/asset-mint';
+import type { CollectionMintEstimate, CollectionMintPhase, MintUploadTransaction } from 'api/asset-mint';
 import type { AssetObserverNetworkLease } from 'api/asset-observers';
 import {
 	cachedAssetState,
@@ -581,6 +581,7 @@ export type UploadActivity = {
 	createdAt: number;
 	transactionIds: string[];
 	extended?: boolean;
+	transactions: MintUploadTransaction[];
 	assetId?: string;
 	assetIds?: string[];
 	collectionId?: string;
@@ -602,6 +603,7 @@ type OperationActivityContextValue = {
 	showMint(id: string): void;
 	beginUpload(input: Pick<UploadActivity, 'id' | 'owner' | 'kind' | 'name' | 'status'>): void;
 	updateUpload(id: string, status: string): void;
+	recordUploadTransaction(id: string, transaction: MintUploadTransaction): void;
 	finishUpload(
 		id: string,
 		result: Pick<UploadActivity, 'transactionIds'> &
@@ -1058,7 +1060,7 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 	const beginUpload = React.useCallback(
 		(input: Pick<UploadActivity, 'id' | 'owner' | 'kind' | 'name' | 'status'>) => {
 			setUploadActivities((current) => [
-				{ ...input, phase: 'working', createdAt: Date.now(), transactionIds: [] },
+				{ ...input, phase: 'working', createdAt: Date.now(), transactionIds: [], transactions: [] },
 				...current.filter((activity) => activity.id !== input.id),
 			]);
 			setActiveId(null);
@@ -1070,6 +1072,15 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 	const updateUpload = React.useCallback((id: string, status: string) => {
 		setUploadActivities((current) =>
 			current.map((activity) => (activity.id === id ? { ...activity, phase: 'working', status } : activity))
+		);
+	}, []);
+	const recordUploadTransaction = React.useCallback((id: string, transaction: MintUploadTransaction) => {
+		setUploadActivities((current) =>
+			current.map((activity) =>
+				activity.id === id && !activity.transactions.some((candidate) => candidate.id === transaction.id)
+					? { ...activity, transactions: [...activity.transactions, transaction] }
+					: activity
+			)
 		);
 	}, []);
 	const finishUpload = React.useCallback(
@@ -1145,6 +1156,7 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 			},
 			beginUpload,
 			updateUpload,
+			recordUploadTransaction,
 			finishUpload,
 			failUpload,
 			hide: () => {
@@ -1163,6 +1175,7 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 			fungibleActivities,
 			mintActivities,
 			navigate,
+			recordUploadTransaction,
 			remove,
 			start,
 			updateUpload,
@@ -1231,7 +1244,14 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 				<UploadActivityPanel
 					activity={activity}
 					key={activity.id}
-					mintActivity={mintActivities.find((candidate) => candidate.asset.id === activity.assetId)}
+					relatedMintActivities={mintActivities.filter(
+						(candidate) =>
+							candidate.asset.id === activity.assetId ||
+							activity.assetIds?.includes(candidate.asset.id) ||
+							candidate.transactionIds.some((id) =>
+								activity.transactions.some((transaction) => transaction.id === id)
+							)
+					)}
 					visible={activeUploadId === activity.id}
 					onHide={() => setActiveUploadId(null)}
 					onClose={() => removeUpload(activity.id)}
@@ -1256,11 +1276,18 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 							status: activity.status,
 							createdAt: activity.createdAt,
 							transactionIds: activity.transactionIds,
+							transactions: activity.transactionIds.map((id, index) => ({
+								id,
+								label:
+									index === activity.transactionIds.length - 1
+										? 'Asset transaction'
+										: 'Artwork transaction',
+							})),
 							assetId: activity.asset.id,
 							collectionId: activity.collectionId,
 						}}
 						key={activity.id}
-						mintActivity={activity}
+						relatedMintActivities={[activity]}
 						visible={activeMintId === activity.id}
 						onHide={() => setActiveMintId(null)}
 						onClose={() => setActiveMintId(null)}
@@ -1276,15 +1303,53 @@ export function useOperationActivity() {
 	return value;
 }
 
+const UPLOAD_STATUS_OBSERVER: ObserverView['observer'] = {
+	url: 'bazar://upload-status',
+	label: 'Upload status',
+	source: 'local',
+	failures: 0,
+};
+
+function uploadActivitySyncSteps(activity: UploadActivity, relatedMintActivities: MintActivity[]): ArweaveSyncStep[] {
+	return activity.transactions.map((transaction, index) => {
+		const mintActivity = relatedMintActivities.find((candidate) =>
+			candidate.transactionIds.includes(transaction.id)
+		);
+		const phase = mintActivity?.phase;
+		const confirmed = phase === 'mined' || phase === 'applied' || phase === 'complete';
+		const phaseRank = phase
+			? ['accepted', 'mined', 'applied', 'complete'].indexOf(phase) + 1
+			: activity.phase === 'error'
+			? 5
+			: 0;
+		const observedAt = activity.createdAt + phaseRank * 1_000 + index;
+		const view: ObserverView = {
+			observer: UPLOAD_STATUS_OBSERVER,
+			state: activity.phase === 'error' ? 'not-found' : confirmed ? 'confirmed' : 'pending',
+			confirmations: confirmed ? 1 : 0,
+			updatedAt: observedAt,
+			changedAt: observedAt,
+		};
+		return {
+			key: transaction.id,
+			label: transaction.label,
+			target: 1,
+			confirmations: view.confirmations,
+			transaction: { id: transaction.id, views: [view] },
+			hasError: activity.phase === 'error',
+		};
+	});
+}
+
 function UploadActivityPanel({
 	activity,
-	mintActivity,
+	relatedMintActivities,
 	visible,
 	onHide,
 	onClose,
 }: {
 	activity: UploadActivity;
-	mintActivity?: MintActivity;
+	relatedMintActivities: MintActivity[];
 	visible: boolean;
 	onHide(): void;
 	onClose(): void;
@@ -1294,8 +1359,15 @@ function UploadActivityPanel({
 	const hideTimerRef = React.useRef<number | null>(null);
 	const titleId = React.useId();
 	const working = activity.phase === 'working' || activity.phase === 'tracking';
-	const displayedStatus = mintActivity?.status ?? activity.status;
-	const displayedPhase = mintActivity?.phase ?? (activity.phase === 'tracking' ? 'accepted' : undefined);
+	const primaryMintActivity =
+		relatedMintActivities.find((candidate) => candidate.asset.id === activity.assetId) ??
+		relatedMintActivities[relatedMintActivities.length - 1];
+	const displayedStatus =
+		activity.phase === 'tracking' ? primaryMintActivity?.status ?? activity.status : activity.status;
+	const syncSteps = uploadActivitySyncSteps(activity, relatedMintActivities);
+	const activeSyncStep =
+		[...syncSteps].reverse().find((step) => (step.confirmations ?? 0) < step.target) ??
+		syncSteps[syncSteps.length - 1];
 	const closeOrHide = React.useCallback(() => {
 		if (!working) {
 			onClose();
@@ -1333,19 +1405,24 @@ function UploadActivityPanel({
 		[]
 	);
 	if (!visible && !working) return null;
-	const receiptEntries = activity.transactionIds.map((transactionId, index) => ({
-		label:
-			activity.kind === 'collection'
-				? index === activity.transactionIds.length - 1
-					? activity.extended
-						? 'Collection update'
-						: 'Collection process'
-					: 'Collection manifest'
-				: index === activity.transactionIds.length - 1
-				? 'Asset transaction'
-				: 'Artwork transaction',
-		transactionId,
-	}));
+	const receiptEntries = activity.transactions.length
+		? activity.transactions.map((transaction) => ({
+				label: transaction.label,
+				transactionId: transaction.id,
+		  }))
+		: activity.transactionIds.map((transactionId, index) => ({
+				label:
+					activity.kind === 'collection'
+						? index === activity.transactionIds.length - 1
+							? activity.extended
+								? 'Collection update'
+								: 'Collection process'
+							: 'Collection manifest'
+						: index === activity.transactionIds.length - 1
+						? 'Asset transaction'
+						: 'Artwork transaction',
+				transactionId,
+		  }));
 	const dialogPhase = activity.phase === 'error' ? 'error' : activity.phase === 'done' ? 'done' : 'working';
 	return (
 		<div
@@ -1381,51 +1458,57 @@ function UploadActivityPanel({
 					</div>
 					<TransactionDialogControl hiding={hiding} phase={dialogPhase} onClick={closeOrHide} />
 				</div>
-				<div className={`upload-activity-state ${activity.phase}`}>
-					<span className="upload-infinity-loader" aria-hidden="true">
-						{activity.phase === 'done' ? (
-							<Check />
-						) : activity.phase === 'error' ? (
-							<CircleX />
-						) : (
-							<InfinityIcon />
-						)}
-					</span>
-					<div>
-						<strong>
-							{activity.phase === 'done'
-								? activity.kind === 'collection'
-									? activity.extended
-										? 'Collection extended'
-										: 'Collection submitted'
-									: 'Live on Bazar'
-								: activity.phase === 'error'
-								? 'Upload needs attention'
-								: activity.phase === 'tracking'
-								? 'Propagating on Arweave'
-								: 'Uploading to Arweave'}
-						</strong>
-						<p aria-live="polite" role="status">
+				{working && !syncSteps.length ? (
+					<div className="operation-preparing">
+						<Loading label={displayedStatus} />
+						<p>The network view will appear as soon as the first signed transaction is available.</p>
+					</div>
+				) : null}
+				{working && syncSteps.length ? (
+					<div className="operation-working">
+						<p className="sr-only" aria-live="polite" role="status">
 							{displayedStatus}
 						</p>
+						<React.Suspense fallback={<Loading label="Loading transaction progress…" />}>
+							<ArweaveTransactionSync
+								active={visible}
+								activeStep={activeSyncStep?.key}
+								miningTelemetryEnabled={false}
+								pendingAfterConfirmation={
+									primaryMintActivity?.phase === 'mined'
+										? 'Waiting for live process state'
+										: primaryMintActivity?.phase === 'applied'
+										? 'Finishing Bazar indexing'
+										: undefined
+								}
+								startedAt={activity.createdAt}
+								steps={syncSteps}
+								subject={activity.name}
+								telemetryPanelEnabled={false}
+							/>
+						</React.Suspense>
 					</div>
-				</div>
-				{displayedPhase ? (
-					<ol className="upload-activity-phases" aria-label="Upload progress">
-						{(['accepted', 'mined', 'applied', 'complete'] as const).map((phase, index, phases) => {
-							const current = phases.indexOf(displayedPhase);
-							return (
-								<li className={index <= current ? 'reached' : undefined} key={phase}>
-									<span>{index < current ? <Check aria-hidden="true" /> : index + 1}</span>
-									{
-										{ accepted: 'Accepted', mined: 'Mined', applied: 'Applied', complete: 'Live' }[
-											phase
-										]
-									}
-								</li>
-							);
-						})}
-					</ol>
+				) : null}
+				{!working ? (
+					<div className={`upload-activity-state ${activity.phase}`}>
+						<span className="upload-activity-result-icon" aria-hidden="true">
+							{activity.phase === 'done' ? <Check /> : <CircleX />}
+						</span>
+						<div>
+							<strong>
+								{activity.phase === 'done'
+									? activity.kind === 'collection'
+										? activity.extended
+											? 'Collection extended'
+											: 'Collection submitted'
+										: 'Live on Bazar'
+									: 'Upload needs attention'}
+							</strong>
+							<p aria-live="polite" role="status">
+								{displayedStatus}
+							</p>
+						</div>
+					</div>
 				) : null}
 				{receiptEntries.length ? <MintTransactionReceipt entries={receiptEntries} /> : null}
 				{activity.phase === 'done' && activity.collectionId ? (
@@ -4969,7 +5052,7 @@ function CollectionView() {
 	const { search } = useLocation();
 	const market = React.useContext(MarketContext);
 	const wallet = useWallet();
-	const { beginUpload, failUpload, finishUpload, updateUpload } = useOperationActivity();
+	const { beginUpload, failUpload, finishUpload, recordUploadTransaction, updateUpload } = useOperationActivity();
 	const collection = market.collections.find((item) => item.id === collectionId);
 	const ownedCollection = React.useMemo(
 		() => loadMintedCollections().find((item) => item.id === collectionId),
@@ -5126,6 +5209,7 @@ function CollectionView() {
 			};
 			const result = await new CollectionMintClient().append(source, appendFiles, wallet.address, {
 				allowHighCost: true,
+				onTransaction: (transaction) => recordUploadTransaction(uploadId, transaction),
 				onPhase: (phase) => {
 					const status = collectionAppendPhaseLabel(phase);
 					setAppendStatus(status);

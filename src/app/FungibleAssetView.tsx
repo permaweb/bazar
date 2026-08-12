@@ -406,6 +406,12 @@ export function FungibleAssetView({
 		() => purchasableOrders.reduce((total, order) => total + BigInt(order.quantity), 0n),
 		[purchasableOrders]
 	);
+	const purchaseQuantityTracksMaximum = React.useRef(false);
+	const maximumPurchaseQuantity = formatTokenAmount(purchasableQuantity.toString(), state.denomination);
+	React.useEffect(() => {
+		if (!purchaseQuantityTracksMaximum.current) return;
+		setPurchaseQuantity((current) => (current === maximumPurchaseQuantity ? current : maximumPurchaseQuantity));
+	}, [maximumPurchaseQuantity]);
 	const purchaseAmountResult = React.useMemo(
 		() => purchaseAmountMatch(purchasableOrders, purchaseQuantity, state),
 		[purchasableOrders, purchaseQuantity, state]
@@ -482,6 +488,7 @@ export function FungibleAssetView({
 	];
 
 	React.useEffect(() => {
+		purchaseQuantityTracksMaximum.current = false;
 		setPurchaseQuantity('');
 		setListingQuantity('');
 		setListingUnitPrice('');
@@ -894,14 +901,17 @@ export function FungibleAssetView({
 								{purchasableOrders.length ? (
 									<FungiblePurchaseComposer
 										availableQuantity={purchasableQuantity.toString()}
+										excludedQuantity={(BigInt(forSale) - purchasableQuantity).toString()}
 										error={purchaseAmountResult.error}
 										match={purchaseAmountResult.match}
-										onChange={setPurchaseQuantity}
-										onMax={() =>
-											setPurchaseQuantity(
-												formatTokenAmount(purchasableQuantity.toString(), state.denomination)
-											)
-										}
+										onChange={(quantity) => {
+											purchaseQuantityTracksMaximum.current = false;
+											setPurchaseQuantity(quantity);
+										}}
+										onMax={() => {
+											purchaseQuantityTracksMaximum.current = true;
+											setPurchaseQuantity(maximumPurchaseQuantity);
+										}}
 										quantity={purchaseQuantity}
 										state={state}
 									/>
@@ -3317,6 +3327,7 @@ export function purchaseAmountMatch(orders: SwapOrder[], quantity: string, state
 
 export function FungiblePurchaseComposer({
 	availableQuantity,
+	excludedQuantity = '0',
 	error,
 	match,
 	onChange,
@@ -3325,6 +3336,7 @@ export function FungiblePurchaseComposer({
 	state,
 }: {
 	availableQuantity: string;
+	excludedQuantity?: string;
 	error: string;
 	match: ReturnType<typeof matchOrderFills>;
 	onChange(quantity: string): void;
@@ -3359,7 +3371,12 @@ export function FungiblePurchaseComposer({
 					/>
 					<span className="purchase-composer-token">{ticker}</span>
 				</div>
-				<small id={guidanceId}>{tokenLabel(availableQuantity, state)} available</small>
+				<small id={guidanceId}>
+					{tokenLabel(availableQuantity, state)} available to buy
+					{BigInt(excludedQuantity) > 0n
+						? ` · ${tokenLabel(excludedQuantity, state)} from your listing excluded`
+						: ''}
+				</small>
 			</div>
 			<div className="purchase-composer-panel purchase-composer-pay" aria-live="polite">
 				<span className="purchase-composer-direction" aria-hidden="true">

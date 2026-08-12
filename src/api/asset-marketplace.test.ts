@@ -145,9 +145,47 @@ describe('asset state', () => {
 		const { state } = result;
 		expect(state.totalSupply).toBe('1000000000000000000');
 		expect(state.balances[owner]).toBe('999997000000000001');
-		expect(requested).toContain('/now?require-codec=');
+		expect(requested).toContain('/now/remove~message@1.0&item=data?require-codec=');
 		expect(result.maxAge).toBe(0);
 		expect(result.verifiedAt).toBeGreaterThan(0);
+	});
+
+	it('projects binary data out of process state and resolves linked tables independently', async () => {
+		const balancesLink = 'B'.repeat(43);
+		const ordersLink = 'O'.repeat(43);
+		const requests: Array<{ url: string; headers: Headers }> = [];
+		const result = await readAssetState(processId, {
+			provider: 'https://compute.example',
+			fetch: async (input, init) => {
+				const url = String(input);
+				requests.push({ url, headers: new Headers(init?.headers) });
+				if (url.includes(balancesLink)) {
+					return new Response(`{"${owner}":999997000000000001,"status":200}`);
+				}
+				if (url.includes(ordersLink)) {
+					return Response.json({ [orderId]: order(orderId), status: 200 });
+				}
+				return Response.json({
+					'execution-device': 'token@1.0',
+					'total-supply': '1000000000000000000',
+					'balances+link': balancesLink,
+					'orders+link': ordersLink,
+				});
+			},
+		});
+
+		expect(result.state.balances).toEqual({ [owner]: '999997000000000001' });
+		expect(result.state.orders[orderId]).toMatchObject({ orderId, creator: owner });
+		expect(result.state.raw).toMatchObject({
+			'balances+link': balancesLink,
+			'orders+link': ordersLink,
+		});
+		expect(requests).toHaveLength(3);
+		expect(requests[0].url).toContain('/remove~message@1.0&item=data?');
+		expect(requests[0].headers.get('accept-bundle')).toBe('false');
+		expect(requests.slice(1).every(({ headers }) => headers.get('accept-bundle') === null)).toBe(true);
+		expect(requests.slice(1).every(({ headers }) => headers.get('require-codec') === null)).toBe(true);
+		expect(requests.slice(1).every(({ headers }) => headers.get('cache-control') === null)).toBe(true);
 	});
 
 	it('pins background observation to the operation compute gateway', async () => {
@@ -191,8 +229,8 @@ describe('asset state', () => {
 		});
 
 		expect(requested).toHaveLength(2);
-		expect(requested[0]).toContain('/now?require-codec=');
-		expect(requested[1]).toContain('/now?require-codec=');
+		expect(requested[0]).toContain('/now/remove~message@1.0&item=data?require-codec=');
+		expect(requested[1]).toContain('/now/remove~message@1.0&item=data?require-codec=');
 		expect(requested[1]).toContain('require-codec=application%2Fjson');
 	});
 
@@ -287,7 +325,7 @@ describe('asset state', () => {
 		});
 
 		expect(requested).toHaveLength(2);
-		expect(requested.every((url) => url.includes('/now?require-codec='))).toBe(true);
+		expect(requested.every((url) => url.includes('/now/remove~message@1.0&item=data?require-codec='))).toBe(true);
 		expect(requestOptions.every((options) => options.cache === 'reload')).toBe(true);
 		expect(result.maxAge).toBe(0);
 	});
@@ -336,7 +374,7 @@ describe('asset state', () => {
 			state: { raw: { 'at-slot': 18 } },
 			maxAge: 0,
 		});
-		expect(requested[0]).toContain('compute?slot=18&require-codec=json%401.0');
+		expect(requested[0]).toContain('compute&slot=18/remove~message@1.0&item=data?require-codec=json%401.0');
 		expect(requestOptions[0].cache).toBe('no-store');
 		expect(new Headers(requestOptions[0].headers).get('cache-control')).toBe('max-age=0');
 		await readAssetStateAtSlot(processId, 18, { fetch: fetcher as typeof fetch });
