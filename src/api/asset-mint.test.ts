@@ -19,6 +19,7 @@ import {
 	storeMintedCollection,
 	UDL_LICENSE_ID,
 	udlLicenseTags,
+	udlTermsForPreset,
 	validateCollectionMintInput,
 	validateMintInput,
 } from './asset-mint';
@@ -221,6 +222,21 @@ describe('asset mint contract', () => {
 		expect(() => udlLicenseTags({ commercialUse: { grant: 'one-time', value: '0' } })).toThrow(
 			'mint-udl-fee-invalid'
 		);
+	});
+
+	it('provides protected, credit, and open UDL presets', () => {
+		expect(udlLicenseTags(udlTermsForPreset('protected'))).toEqual({ license: UDL_LICENSE_ID });
+		expect(udlLicenseTags(udlTermsForPreset('share-with-credit'))).toEqual({
+			license: UDL_LICENSE_ID,
+			derivation: 'Allowed-With-Credit',
+			'commercial-use': 'Allowed-With-Credit',
+		});
+		expect(udlLicenseTags(udlTermsForPreset('open-use'))).toEqual({
+			license: UDL_LICENSE_ID,
+			derivation: 'Allowed',
+			'commercial-use': 'Allowed',
+			'data-model-training': 'Allowed',
+		});
 	});
 
 	it('keeps UDL terms in a recoverable mint draft', () => {

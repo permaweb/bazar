@@ -64,6 +64,26 @@ export type UdlTerms = {
 	paymentMode?: 'random' | 'global';
 };
 
+export type UdlPreset = 'protected' | 'share-with-credit' | 'open-use';
+
+export function udlTermsForPreset(preset: UdlPreset): UdlTerms {
+	switch (preset) {
+		case 'protected':
+			return {};
+		case 'share-with-credit':
+			return {
+				derivation: { grant: 'credit' },
+				commercialUse: { grant: 'credit' },
+			};
+		case 'open-use':
+			return {
+				derivation: { grant: 'allowed' },
+				commercialUse: { grant: 'allowed' },
+				dataModelTraining: { grant: 'allowed' },
+			};
+	}
+}
+
 export type MintInput = {
 	name: string;
 	description: string;

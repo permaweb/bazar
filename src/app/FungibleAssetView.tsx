@@ -53,9 +53,9 @@ import {
 	parseTokenAmount,
 } from 'api/order-matching';
 
-import { ArtworkImage } from 'components/ArtworkImage';
 import { type ArweaveSyncStep, ArweaveTransactionSync } from 'components/ArweaveTransactionSync';
 import { postConfirmationPendingLabel } from 'components/ArweaveTransactionSync/sequence';
+import { ArCurrencyLabel } from 'components/ArCurrencyLabel';
 import { type AssetDetailTab, AssetDetailTabs } from 'components/AssetDetailTabs';
 import { assetOperationPendingActionLabel, AssetOperationStatus } from 'components/AssetOperationStatus';
 import { Button } from 'components/Button';
@@ -65,7 +65,7 @@ import { Loading } from 'components/Loading';
 import { MarketActivityList } from 'components/MarketActivityList';
 import { OperationOutcome, OperationOutcomeAnnouncement } from 'components/OperationOutcomeAnnouncement';
 import { type SegmentedTab, SegmentedTabs } from 'components/SegmentedTabs';
-import { TokenArtwork } from 'components/TokenArtwork';
+import { TokenAvatar } from 'components/TokenAvatar';
 import {
 	prepareTransactionDialogHide,
 	TRANSACTION_DIALOG_HIDE_DURATION_MS,
@@ -781,13 +781,13 @@ export function FungibleAssetView({
 				/>
 			) : null}
 			<header className="fungible-token-header">
-				<div className="fungible-token-avatar" aria-hidden="true">
-					{asset.image ? (
-						<ArtworkImage src={asset.image} alt="" fetchPriority="high" loading="eager" />
-					) : (
-						<TokenArtwork ticker={ticker} />
-					)}
-				</div>
+				<TokenAvatar
+					className="fungible-token-avatar"
+					fetchPriority="high"
+					image={asset.image}
+					loading="eager"
+					ticker={ticker}
+				/>
 				<div className="fungible-token-identity">
 					<div className="fungible-token-title">
 						<h1 ref={operationFocusFallbackRef} tabIndex={-1}>
@@ -1156,7 +1156,9 @@ export function FungibleAssetView({
 								</div>
 								<div>
 									<span>Settlement</span>
-									<strong>Native AR</strong>
+									<strong>
+										<ArCurrencyLabel />
+									</strong>
 								</div>
 							</div>
 						</section>
@@ -1213,6 +1215,7 @@ export function FungibleAssetView({
 									ariaLabel={`${asset.name} market activity`}
 									collectionId={collection.id}
 									describeEvent={(event) => activityDetail(event, state)}
+									eventAmount={(event) => activityAmount(event, state)}
 									events={activity}
 									loading={activityLoading}
 									resolveAsset={() => asset}
@@ -2422,20 +2425,12 @@ function FungibleOperationDialog({
 				<div className="dialog-heading">
 					<div className={phase === 'working' ? 'dialog-asset-heading' : undefined}>
 						{phase === 'working' ? (
-							asset.image ? (
-								<ArtworkImage
-									alt=""
-									className="dialog-asset-artwork"
-									decoding="async"
-									loading="eager"
-									src={asset.image}
-								/>
-							) : (
-								<TokenArtwork
-									className="dialog-asset-artwork"
-									ticker={state.ticker || asset.ticker || asset.name}
-								/>
-							)
+							<TokenAvatar
+								className="dialog-asset-artwork"
+								image={asset.image}
+								loading="eager"
+								ticker={state.ticker || asset.ticker || asset.name}
+							/>
 						) : null}
 						<div className="dialog-asset-heading-copy">
 							{compactPurchaseForm ? (
@@ -4047,18 +4042,18 @@ export function batchStageLabel(state?: PurchaseState) {
 
 function activityDetail(event: CollectionActivityEvent, state: AssetState) {
 	if (event.action === 'make-offer') {
-		const quantity = event.quantity ? tokenLabel(event.quantity, state) : '';
-		const asking = event.asking ? `${winstonToAr(event.asking)} AR total` : '';
-		return [quantity, asking].filter(Boolean).join(' for ');
+		return event.asking ? `${winstonToAr(event.asking)} AR total` : '';
 	}
 	if (event.action === 'transfer') {
-		const quantity = event.quantity ? tokenLabel(event.quantity, state) : '';
-		const recipient = event.recipient ? `to ${short(event.recipient)}` : '';
-		return [quantity, recipient].filter(Boolean).join(' ');
+		return event.recipient ? `To ${short(event.recipient)}` : '';
 	}
 	if (event.action === 'register-interest' && event.orderId) return `Order ${short(event.orderId)}`;
 	if (event.action === 'cancel-order' && event.orderId) return `Order ${short(event.orderId)}`;
 	return '';
+}
+
+function activityAmount(event: CollectionActivityEvent, state: AssetState) {
+	return event.quantity ? tokenLabel(event.quantity, state) : '';
 }
 
 function short(value: string) {

@@ -122,6 +122,7 @@ import {
 import { formatTokenAmount } from 'api/order-matching';
 
 import { ArtworkImage } from 'components/ArtworkImage';
+import { ArCurrencyLabel } from 'components/ArCurrencyLabel';
 import type { ArweaveSyncStep } from 'components/ArweaveTransactionSync';
 import { quorumConfirmationDepth } from 'components/ArweaveTransactionSync/confirmationDepth';
 import { postConfirmationPendingLabel } from 'components/ArweaveTransactionSync/sequence';
@@ -139,7 +140,7 @@ import { NamesCubePreview } from 'components/NamesCubePreview';
 import { OperationOutcome, OperationOutcomeAnnouncement } from 'components/OperationOutcomeAnnouncement';
 import { Pagination } from 'components/Pagination';
 import { StateVerification } from 'components/StateVerification';
-import { TokenArtwork } from 'components/TokenArtwork';
+import { TokenAvatar } from 'components/TokenAvatar';
 import {
 	isTransactionActivityVisible,
 	prepareTransactionDialogHide,
@@ -1933,15 +1934,19 @@ function Header() {
 														to={`/collection/${collection.id}`}
 														onClick={followSearchResult}
 													>
-														<span className="search-result-image">
-															{preview ? (
+														<span
+															className={`search-result-image${
+																collection.kind === 'tokens' ? ' token-avatar-slot' : ''
+															}`}
+														>
+															{collection.kind === 'tokens' ? (
+																<TokenAvatar
+																	ticker={collection.assets[0]?.ticker ?? 'Token'}
+																/>
+															) : preview ? (
 																<ArtworkImage src={preview} alt="" />
 															) : collection.kind === 'names' ? (
 																<NamesCubePreview />
-															) : collection.kind === 'tokens' ? (
-																<TokenArtwork
-																	ticker={collection.assets[0]?.ticker ?? 'Token'}
-																/>
 															) : (
 																<BazarMark />
 															)}
@@ -1994,16 +1999,20 @@ function Header() {
 														prefetchAssetPage(asset.id, collection.kind === 'tokens')
 													}
 												>
-													<span className="search-result-image">
-														{asset.image ? (
+													<span
+														className={`search-result-image${
+															collection.kind === 'tokens' ? ' token-avatar-slot' : ''
+														}`}
+													>
+														{collection.kind === 'tokens' ? (
+															<TokenAvatar ticker={asset.ticker ?? 'Token'} />
+														) : asset.image ? (
 															<ArtworkImage src={asset.image} alt="" />
 														) : isAudioContentType(asset.contentType) ? (
 															<AudioArtwork
 																contentType={asset.contentType}
 																name={asset.name}
 															/>
-														) : collection.kind === 'tokens' ? (
-															<TokenArtwork ticker={asset.ticker ?? 'Token'} />
 														) : (
 															<BazarMark />
 														)}
@@ -2032,8 +2041,8 @@ function Header() {
 												onMouseEnter={() => prefetchAssetPage(query.trim(), true)}
 												onTouchStart={() => prefetchAssetPage(query.trim(), true)}
 											>
-												<span className="search-result-image">
-													<TokenArtwork ticker="Token" />
+												<span className="search-result-image token-avatar-slot">
+													<TokenAvatar ticker="Token" />
 												</span>
 												<span>
 													<strong>Check token process</strong>
@@ -2290,13 +2299,11 @@ function OperationActivityControl() {
 									type="button"
 									variant="ghost"
 								>
-									<span className="operation-activity-symbol" aria-hidden="true">
-										{activity.asset.image ? (
-											<img src={activity.asset.image} alt="" />
-										) : (
-											<span>{activity.asset.name.slice(0, 1)}</span>
-										)}
-									</span>
+									<TokenAvatar
+										className="operation-activity-symbol"
+										image={activity.asset.image}
+										ticker={activity.asset.ticker ?? activity.asset.name}
+									/>
 									<span className="operation-activity-copy">
 										<strong>{activity.asset.name}</strong>
 										<small>
@@ -3846,7 +3853,7 @@ function Home() {
 															) : collection.kind === 'names' ? (
 																<NamesCubePreview />
 															) : collection.kind === 'tokens' ? (
-																<TokenArtwork
+																<TokenAvatar
 																	className="home-token-collection-art"
 																	ticker={collection.assets[0]?.ticker ?? 'Token'}
 																/>
@@ -3962,10 +3969,9 @@ function Home() {
 															}
 														>
 															{collection.kind === 'tokens' ? (
-																<TokenArtwork
-																	className="home-asset-media home-token-art circle-only-token-art"
-																	ticker={asset.ticker ?? 'Token'}
-																/>
+																<div className="home-asset-media home-token-media">
+																	<TokenAvatar ticker={asset.ticker ?? 'Token'} />
+																</div>
 															) : asset.image ? (
 																<ArtworkImage
 																	className="home-asset-media"
@@ -3986,10 +3992,9 @@ function Home() {
 																	name={asset.name}
 																/>
 															) : (
-																<TokenArtwork
-																	className="home-asset-media home-token-art"
-																	ticker={asset.ticker ?? 'Token'}
-																/>
+																<div className="home-asset-media home-token-media">
+																	<TokenAvatar ticker={asset.ticker ?? 'Token'} />
+																</div>
 															)}
 															<div className="home-asset-details">
 																<div>
@@ -6849,7 +6854,7 @@ export const AssetCard = React.memo(function AssetCard({
 		>
 			<div className="asset-media">
 				{collection.kind === 'tokens' && collectionContext ? (
-					<TokenArtwork className="circle-only-token-art" ticker={asset.ticker ?? 'Token'} />
+					<TokenAvatar ticker={asset.ticker ?? 'Token'} />
 				) : asset.image ? (
 					<ArtworkImage
 						src={asset.image}
@@ -6860,7 +6865,7 @@ export const AssetCard = React.memo(function AssetCard({
 				) : isAudioContentType(asset.contentType) ? (
 					<AudioArtwork contentType={asset.contentType} name={asset.name} />
 				) : collection.kind === 'tokens' ? (
-					<TokenArtwork className="circle-only-token-art" ticker={asset.ticker ?? 'Token'} />
+					<TokenAvatar ticker={asset.ticker ?? 'Token'} />
 				) : (
 					<span>{asset.name.slice(0, 1)}</span>
 				)}
@@ -7174,15 +7179,17 @@ function AssetDetailLoadingShell({
 		return (
 			<section className="asset-page asset-detail-page asset-detail-loading-shell fungible-asset-page">
 				<header className="fungible-token-header">
-					<div className="fungible-token-avatar" aria-hidden="true">
-						{asset?.image ? (
-							<ArtworkImage src={asset.image} alt="" fetchPriority="high" loading="eager" />
-						) : asset ? (
-							<TokenArtwork ticker={asset.ticker ?? asset.name} />
-						) : (
-							<span className="layout-placeholder" />
-						)}
-					</div>
+					{asset ? (
+						<TokenAvatar
+							className="fungible-token-avatar"
+							fetchPriority="high"
+							image={asset.image}
+							loading="eager"
+							ticker={asset.ticker ?? asset.name}
+						/>
+					) : (
+						<span className="fungible-token-avatar layout-placeholder" aria-hidden="true" />
+					)}
 					<div className="fungible-token-identity">
 						<div className="fungible-token-title">
 							{asset ? (
@@ -8537,7 +8544,9 @@ function AssetView() {
 								</div>
 								<div>
 									<dt>Settlement</dt>
-									<dd>Native AR</dd>
+									<dd>
+										<ArCurrencyLabel />
+									</dd>
 								</div>
 								<div>
 									<dt>Content type</dt>

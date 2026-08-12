@@ -740,7 +740,7 @@ const AssetGroup = React.memo(function AssetGroup({
 													? liquidBalanceOf(result.state, address)
 													: listedBalanceOf(result.state, address),
 												result.state
-										  )} ${group === 'owned' ? 'liquid' : 'listed'}`
+										  )}${group === 'listed' ? ' listed' : ''}`
 										: undefined
 								}
 							/>
