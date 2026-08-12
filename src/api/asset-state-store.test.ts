@@ -34,6 +34,7 @@ describe('asset state store', () => {
 		await Promise.all([readAssetStateCached(processId), readAssetStateCached(processId)]);
 		await readAssetStateCached(processId);
 		expect(mocks.readAssetState).toHaveBeenCalledTimes(1);
+		expect(mocks.readAssetState).toHaveBeenCalledWith(processId, expect.objectContaining({ maxAge: 60 }));
 	});
 
 	it('can force a commerce-safe revalidation', async () => {

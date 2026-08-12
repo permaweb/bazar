@@ -122,7 +122,7 @@ export async function readAssetStateCached(processId: string, options: CachedRea
 		const controller = new AbortController();
 		const promise = readAssetState(processId, {
 			fetch: options.fetch,
-			maxAge: options.maxAge ?? Math.ceil(cacheTtlMs / 1000),
+			maxAge: options.maxAge ?? 60,
 			maxAttempts: options.maxAttempts,
 			retryBaseDelay: options.retryBaseDelay,
 			signal: controller.signal,

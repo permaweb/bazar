@@ -145,7 +145,7 @@ describe('asset state', () => {
 		const { state } = result;
 		expect(state.totalSupply).toBe('1000000000000000000');
 		expect(state.balances[owner]).toBe('999997000000000001');
-		expect(requested).toContain('now&max-age=0');
+		expect(requested).toContain('/now?require-codec=');
 		expect(result.maxAge).toBe(0);
 		expect(result.verifiedAt).toBeGreaterThan(0);
 	});
@@ -191,8 +191,8 @@ describe('asset state', () => {
 		});
 
 		expect(requested).toHaveLength(2);
-		expect(requested[0]).toContain('now&max-age=0');
-		expect(requested[1]).toContain('now&max-age=0');
+		expect(requested[0]).toContain('/now?require-codec=');
+		expect(requested[1]).toContain('/now?require-codec=');
 		expect(requested[1]).toContain('require-codec=application%2Fjson');
 	});
 
@@ -213,7 +213,7 @@ describe('asset state', () => {
 			},
 		});
 
-		expect(requested).toContain('now&max-age=0');
+		expect(requested).toContain('compute&max-age=60');
 		expect(requestOptions[0].cache).toBeUndefined();
 		expect(new Headers(requestOptions[0].headers).get('cache-control')).toBe('max-age=60');
 	});
@@ -287,7 +287,7 @@ describe('asset state', () => {
 		});
 
 		expect(requested).toHaveLength(2);
-		expect(requested.every((url) => url.includes('now&max-age=0'))).toBe(true);
+		expect(requested.every((url) => url.includes('/now?require-codec='))).toBe(true);
 		expect(requestOptions.every((options) => options.cache === 'reload')).toBe(true);
 		expect(result.maxAge).toBe(0);
 	});
@@ -348,23 +348,27 @@ describe('asset state', () => {
 
 	it('replaces passive current state after a strict read', async () => {
 		let calls = 0;
+		let balance = '1';
 		vi.stubGlobal('caches', memoryCacheStorage());
-		const fetcher = async () =>
-			Response.json({
+		const fetcher = async () => {
+			calls += 1;
+			return Response.json({
 				'execution-device': 'token@1.0',
 				'total-supply': '1',
-				balances: { [owner]: String(++calls) },
+				balances: { [owner]: balance },
 				orders: {},
 			});
+		};
 		try {
 			const passive = await readAssetState(processId, { fetch: fetcher as typeof fetch, maxAge: 60 });
+			balance = '2';
 			const strict = await readAssetState(processId, { fetch: fetcher as typeof fetch, maxAge: 0 });
 			const restored = await readAssetState(processId, { fetch: fetcher as typeof fetch, maxAge: 60 });
 
 			expect(passive.state.balances[owner]).toBe('1');
 			expect(strict.state.balances[owner]).toBe('2');
 			expect(restored.state.balances[owner]).toBe('2');
-			expect(calls).toBe(2);
+			expect(calls).toBe(3);
 		} finally {
 			vi.unstubAllGlobals();
 		}

@@ -6777,7 +6777,7 @@ function AssetView() {
 		'about' | 'orders' | 'activity' | 'rights' | 'blockchain' | 'more'
 	>('about');
 	const readLiveState = React.useCallback(
-		async (force: boolean) => {
+		async (_force: boolean) => {
 			requestRef.current?.abort();
 			if (!canResolveAsset) {
 				setLiveResult({ assetId, state: null, loading: false, error: null, provider: '', verifiedAt: null });
@@ -6796,9 +6796,9 @@ function AssetView() {
 			}));
 			try {
 				const result = await readAssetStateCached(assetId, {
-					...(force ? { maxAge: 0 } : DISPLAY_STATE_CACHE),
-					cacheTtlMs: force ? 20_000 : DISPLAY_STATE_CACHE.maxAge * 1_000,
-					force,
+					maxAge: 0,
+					cacheTtlMs: 20_000,
+					force: true,
 					signal: controller.signal,
 				});
 				if (requestRef.current === controller && !controller.signal.aborted) {

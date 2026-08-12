@@ -272,7 +272,7 @@ describe('fungible asset transactions', () => {
 		});
 
 		expect(subject.requests).toHaveLength(1);
-		expect(subject.requests[0]).toContain('now&max-age=0');
+		expect(subject.requests[0]).toContain('/now?require-codec=');
 	});
 
 	it('keeps the native amount from shadowing arbitrary token transfer quantities', async () => {
@@ -619,7 +619,7 @@ describe('fungible asset transactions', () => {
 				if (url.includes(`/tx/${transactionId}/status`)) {
 					return new Response(JSON.stringify({ block_height: 51 }));
 				}
-				if (url.includes('/now&')) return new Response(JSON.stringify(later.raw));
+				if (url.includes('/now?')) return new Response(JSON.stringify(later.raw));
 				const schedule = url.match(/schedule&from=(\d+)&to=(\d+)\/assignments/);
 				if (schedule) {
 					const assignments: Record<number, unknown> = {};
@@ -728,7 +728,7 @@ describe('fungible asset transactions', () => {
 				if (url.includes(`/tx/${transactionId}/status`)) {
 					return new Response(JSON.stringify({ block_height: 51 }));
 				}
-				if (url.includes('/now&')) return new Response(JSON.stringify(current.raw));
+				if (url.includes('/now?')) return new Response(JSON.stringify(current.raw));
 				const schedule = url.match(/schedule&from=(\d+)&to=(\d+)\/assignments/);
 				if (schedule) {
 					const assignments: Record<number, unknown> = {};
@@ -763,7 +763,7 @@ describe('fungible asset transactions', () => {
 				if (url.includes(`/tx/${transactionId}/status`)) {
 					return new Response(JSON.stringify({ block_height: 51 }));
 				}
-				if (url.includes('/now&')) return new Response(JSON.stringify(current.raw));
+				if (url.includes('/now?')) return new Response(JSON.stringify(current.raw));
 				const schedule = url.match(/schedule&from=(\d+)&to=(\d+)\/assignments/);
 				if (schedule) {
 					const assignments: Record<number, unknown> = {};
@@ -859,7 +859,7 @@ describe('fungible asset transactions', () => {
 				if (url.includes(`/tx/${transactionId}/status`)) {
 					return new Response(JSON.stringify({ block_height: 51 }));
 				}
-				if (url.includes('/now&')) return new Response(JSON.stringify(later.raw));
+				if (url.includes('/now?')) return new Response(JSON.stringify(later.raw));
 				if (url.includes('/schedule&from=11&to=11/assignments')) {
 					return new Response(JSON.stringify({ 11: mismatched }));
 				}
@@ -884,7 +884,7 @@ describe('fungible asset transactions', () => {
 			if (url.includes(`/tx/${transactionId}/status`)) {
 				return new Response(JSON.stringify({ block_height: 51 }));
 			}
-			if (url.includes('/now&')) return new Response(JSON.stringify(later.raw));
+			if (url.includes('/now?')) return new Response(JSON.stringify(later.raw));
 			const schedule = url.match(/schedule&from=(\d+)&to=(\d+)\/assignments/);
 			if (schedule) {
 				const assignments: Record<number, unknown> = {};
@@ -922,7 +922,7 @@ describe('fungible asset transactions', () => {
 				if (url.includes(`/tx/${transactionId}/status`)) {
 					return new Response(JSON.stringify({ block_height: targetHeight }));
 				}
-				if (url.includes('/now&')) return new Response(JSON.stringify(current.raw));
+				if (url.includes('/now?')) return new Response(JSON.stringify(current.raw));
 				const schedule = url.match(/schedule&from=(\d+)&to=(\d+)\/assignments/);
 				if (schedule) {
 					scheduleReads += 1;
@@ -961,7 +961,7 @@ describe('fungible asset transactions', () => {
 					statusReads += 1;
 					return new Response(JSON.stringify({ block_height: statusReads === 1 ? 51 : 52 }));
 				}
-				if (url.includes('/now&')) return new Response(JSON.stringify(current.raw));
+				if (url.includes('/now?')) return new Response(JSON.stringify(current.raw));
 				const schedule = url.match(/schedule&from=(\d+)&to=(\d+)\/assignments/);
 				if (schedule) {
 					const assignments: Record<number, unknown> = {};
@@ -1002,7 +1002,7 @@ describe('fungible asset transactions', () => {
 						statusReads += 1;
 						return new Response(JSON.stringify({ block_height: 51 }));
 					}
-					if (url.includes('/now&')) {
+					if (url.includes('/now?')) {
 						statePolls += 1;
 						return new Response(JSON.stringify(current.raw));
 					}

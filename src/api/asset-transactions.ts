@@ -1179,7 +1179,7 @@ export class AssetTransactionClient {
 		signal?: AbortSignal
 	): Promise<void> {
 		try {
-			const { state } = await readAssetState(processId, { fetch: this.#peerFetch, signal });
+			const { state } = await readAssetState(processId, { fetch: this.#peerFetch, maxAge: 0, signal });
 			if (!accept(state)) throw new Error(errorCode);
 		} catch (error) {
 			if (signal?.aborted) throw error;

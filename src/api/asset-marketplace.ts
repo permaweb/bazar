@@ -70,6 +70,7 @@ const ASSET_PROCESS_DEVICES = new Set(['carrier@1.0', 'name-token@1.0', 'token@1
 const MAX_TOKEN_DENOMINATION = 255;
 const COMPUTE_RETRY_BASE_DELAY = 1_000;
 const COMPUTE_RETRY_MAX_DELAY = 8_000;
+const PASSIVE_STATE_MAX_AGES = [30, 60, 120] as const;
 const LICENSE_FIELDS = [
 	['license', 'License'],
 	['access', 'Access'],
@@ -486,15 +487,17 @@ async function readState(
 }> {
 	const base = servingNode ? `${servingNode}/` : '/';
 	const maxAge = Math.max(0, Math.floor(options.maxAge ?? 60));
-	const endpoint = options.slot === undefined ? 'now&max-age=0' : `compute?slot=${options.slot}`;
-	const separator = endpoint.includes('?') ? '&' : '?';
-	const paths = [
-		`${base}${processId}~process@1.0/${endpoint}${separator}require-codec=json%401.0&accept-bundle=true`,
-		`${base}${processId}~process@1.0/${endpoint}${separator}require-codec=application%2Fjson&accept-bundle=true`,
-	];
+	const endpoint =
+		options.slot === undefined
+			? maxAge === 0
+				? 'now'
+				: `compute&max-age=${maxAge}`
+			: `compute?slot=${options.slot}`;
+	const paths = statePaths(base, processId, endpoint);
 	const maxAttempts = Math.max(1, Math.floor(options.maxAttempts ?? 1));
 	const retryBaseDelay = Math.max(0, options.retryBaseDelay ?? COMPUTE_RETRY_BASE_DELAY);
 	let lastError: unknown;
+	let invalidatedCurrent = false;
 
 	for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
 		let rateLimited = false;
@@ -532,7 +535,17 @@ async function readState(
 				).invalidate;
 				try {
 					if (strictCurrent && retryInvalidCachedResponse && invalidate) {
-						await invalidate(path, requestInit).catch(() => undefined);
+						if (!invalidatedCurrent) {
+							invalidatedCurrent = true;
+							await Promise.all(
+								[
+									...paths,
+									...PASSIVE_STATE_MAX_AGES.flatMap((age) =>
+										statePaths(base, processId, `compute&max-age=${age}`)
+									),
+								].map((candidate) => invalidate(candidate, requestInit).catch(() => undefined))
+							);
+						}
 					}
 					response = await fetcher(path, requestInit);
 					if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -571,6 +584,14 @@ async function readState(
 	}
 
 	throw lastError instanceof Error ? lastError : new Error('compute-provider-failed');
+}
+
+function statePaths(base: string, processId: string, endpoint: string): string[] {
+	const separator = endpoint.includes('?') ? '&' : '?';
+	return [
+		`${base}${processId}~process@1.0/${endpoint}${separator}require-codec=json%401.0&accept-bundle=true`,
+		`${base}${processId}~process@1.0/${endpoint}${separator}require-codec=application%2Fjson&accept-bundle=true`,
+	];
 }
 
 async function parseRevalidatedState(
