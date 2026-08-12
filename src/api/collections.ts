@@ -360,9 +360,9 @@ export async function discoverBazarCollections(
 						first: 100
 						sort: HEIGHT_DESC
 							tags: [
-								{ name: "app-name", values: ["Bazar"] }
 								{ name: "device", values: ["process@1.0"] }
 								{ name: "execution-device", values: ["carrier@1.0"] }
+								{ name: "ticker", values: ["COLLECTION"] }
 								{ name: "type", values: ["Process"] }
 						]
 					) {
@@ -440,13 +440,11 @@ function parseBazarCollectionCandidate(edge: any): BazarCollectionCandidate {
 		tags['scheduler-device'] === 'arweave-scheduler@1.0' &&
 		tags['scheduler-mode'] === 'all' &&
 		tags.ticker === 'COLLECTION';
-	const legacy = !tags['scheduler-device'] && !tags['scheduler-mode'] && !tags.ticker;
 	if (
-		tags['app-name'] !== 'Bazar' ||
 		tags.device !== 'process@1.0' ||
 		tags['execution-device'] !== 'carrier@1.0' ||
 		tags.type !== 'Process' ||
-		(!scheduled && !legacy) ||
+		!scheduled ||
 		!ARWEAVE_ID.test(manifestId)
 	) {
 		throw new Error('collection-discovery-schema');
