@@ -60,8 +60,6 @@ async function main() {
 			const transaction = await arweave.createTransaction({ data: bytes }, fundingWallet);
 			addTags(transaction, {
 				'Content-Type': 'image/png',
-				'App-Name': 'Bazar',
-				'App-Version': '2.0.0',
 				type: 'Collection-Media',
 				name: source.name,
 				collection: definition.name,

@@ -32,19 +32,19 @@ for (const definition of definitions) {
 	collection.processes ??= [];
 	for (const media of collection.assets) {
 		if (collection.processes.some((asset) => asset.index === media.index)) continue;
-		const metadata = JSON.stringify({
-			name: media.name,
-			description: `${definition.name} on Bazar`,
-			contentType: 'image/png',
-			image: media.id,
-			collection: definition.name,
-			index: media.index,
-		});
-		const transaction = await arweave.createTransaction({ data: metadata }, wallet);
+		const response = await fetch(`https://arweave.net/raw/${media.id}`);
+		if (!response.ok) throw new Error(`asset-media-${response.status}-${media.id}`);
+		const transaction = await arweave.createTransaction(
+			{ data: new Uint8Array(await response.arrayBuffer()) },
+			wallet
+		);
 		addTags(transaction, {
-			'content-type': 'application/json',
-			'app-name': 'Bazar',
-			'app-version': '2.0.0',
+			'content-type': 'image/png',
+			'hint-style': 'non-fungible',
+			creator: ledger.fundingAddress,
+			description: `${definition.name} on Bazar`,
+			implements: 'ANS-110',
+			title: media.name,
 			device: 'process@1.0',
 			type: 'Process',
 			'execution-device': 'token@1.0',
@@ -56,10 +56,8 @@ for (const definition of definitions) {
 			denomination: '0',
 			ticker: 'ASSET',
 			name: media.name,
-			collection: definition.name,
+			'base-collection': definition.name,
 			'collection-index': media.index,
-			'asset-content-type': 'image/png',
-			'asset-data': media.id,
 		});
 		await publish(transaction);
 		const asset = {
@@ -67,8 +65,8 @@ for (const definition of definitions) {
 			id: transaction.id,
 			name: media.name,
 			contentType: 'image/png',
-			image: `https://arweave.net/${media.id}`,
-			mediaId: media.id,
+			image: `https://arweave.net/raw/${transaction.id}`,
+			mediaId: transaction.id,
 		};
 		collection.processes.push(asset);
 		ledger.transactions.push(record(transaction, 'asset-process', definition.slug));
@@ -94,8 +92,6 @@ for (const definition of definitions) {
 		);
 		addTags(manifest, {
 			'content-type': 'application/json',
-			'app-name': 'Bazar',
-			'app-version': '2.0.0',
 			type: 'Collection-Manifest',
 			name: definition.name,
 		});
@@ -105,27 +101,23 @@ for (const definition of definitions) {
 		await save();
 	}
 
-	if (!collection.processReferenceId) {
+	collection.carrierId ??= collection.processReferenceId;
+	if (!collection.carrierId) {
 		const carrier = await arweave.createTransaction({ data: 'Bazar collection process' }, wallet);
 		addTags(carrier, {
-			'content-type': 'application/x.ao-message',
-			'app-name': 'Bazar',
-			'app-version': '2.0.0',
 			device: 'process@1.0',
 			'execution-device': 'carrier@1.0',
 			'scheduler-device': 'arweave-scheduler@1.0',
 			'scheduler-mode': 'all',
 			'initial-holder': ledger.fundingAddress,
 			'initial-value': collection.processManifestId,
-			'reference-value': collection.processManifestId,
 			'total-supply': '1',
 			denomination: '0',
-			ticker: 'COLLECTION',
 			type: 'Process',
 			name: definition.name,
 		});
 		await publish(carrier);
-		collection.processReferenceId = carrier.id;
+		collection.carrierId = carrier.id;
 		ledger.transactions.push(record(carrier, 'collection-carrier-process', definition.slug));
 		await save();
 	}
@@ -143,7 +135,7 @@ console.log(
 				{
 					assets: collection.processes.length,
 					manifestId: collection.processManifestId,
-					processId: collection.processReferenceId,
+					processId: collection.carrierId,
 				},
 			])
 		),

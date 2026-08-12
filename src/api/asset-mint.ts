@@ -8,6 +8,7 @@ import {
 import { mapConcurrent } from 'helpers/concurrency';
 import { arweaveClientConfig, arweaveDataUrl, arweaveGatewayFromLocation, gatewayFromLocation } from 'helpers/config';
 
+import { AtomicAssetUploader, normalizeUploadTags } from './asset-uploader';
 import { type AssetSummary, FUNGIBLE_TOKEN_COLLECTION_ID, FUNGIBLE_TOKEN_COLLECTION_NAME } from './collections';
 import { acceptedMintActivity, mintActivityId, removeMintActivities, upsertMintActivity } from './mint-activity';
 import {
@@ -21,6 +22,20 @@ import {
 	storeMintedCollection,
 } from './minted-assets';
 
+export {
+	type ArweaveChunkUploader,
+	type ArweaveUploadAdapter,
+	assertAtomicAssetTags,
+	type AssetUploadData,
+	type AssetUploadOptions,
+	type AssetUploadPhase,
+	type AssetUploadRequest,
+	type AssetUploadSignContext,
+	AtomicAssetUploader,
+	type AtomicAssetUploaderOptions,
+	type AtomicAssetUploadRequest,
+	normalizeUploadTags,
+} from './asset-uploader';
 export type { MintedAsset, MintedCollection, StorageLike } from './minted-assets';
 export {
 	assetFromMintState,
@@ -128,12 +143,9 @@ export type MintResult = {
 	processId: string;
 };
 
-export type MintPhase = 'signing-asset' | 'uploading-asset' | 'signing-artwork' | 'uploading-artwork';
+export type MintUploadTransaction = { id: string; label: string };
 
-export type MintUploadTransaction = {
-	id: string;
-	label: string;
-};
+export type MintPhase = 'signing-asset' | 'uploading-asset' | 'signing-artwork' | 'uploading-artwork';
 
 export const MAX_FUNGIBLE_TICKER_LENGTH = 32;
 /** Mirrors MAX_TOKEN_DENOMINATION in asset-marketplace.ts — parseAssetState rejects anything above it. */
@@ -207,33 +219,72 @@ export type AssetMintClientOptions = {
 	wallet?: Window['arweaveWallet'];
 	fetch?: typeof fetch;
 	arweave?: any;
+	uploader?: AtomicAssetUploader;
 	storage?: StorageLike;
 	gateway?: string;
 	computeGateway?: string;
 };
 
 export class AssetMintClient {
-	#wallet?: Window['arweaveWallet'];
 	#fetch: typeof fetch;
-	#arweave?: any;
+	#uploader: AtomicAssetUploader;
 	#storage?: StorageLike;
 	#gateway: string;
 	#computeGateway: string;
 
 	constructor(options: AssetMintClientOptions = {}) {
-		this.#wallet = options.wallet ?? globalThis.window?.arweaveWallet;
 		this.#fetch = options.fetch ?? globalThis.fetch.bind(globalThis);
-		this.#arweave = options.arweave;
 		this.#storage = options.storage ?? globalThis.window?.localStorage;
-		this.#gateway = options.gateway ?? arweaveGatewayFromLocation();
+		this.#gateway = options.gateway ?? options.uploader?.gateway ?? arweaveGatewayFromLocation();
 		this.#computeGateway = options.computeGateway ?? (typeof window === 'undefined' ? '' : gatewayFromLocation());
+		if (options.uploader) {
+			this.#uploader = options.uploader;
+			return;
+		}
+		const wallet = options.wallet ?? globalThis.window?.arweaveWallet;
+		let arweave = options.arweave;
+		const getArweave = async () => {
+			arweave ??= await createArweaveClient(arweaveClientConfig(this.#gateway));
+			return arweave;
+		};
+		this.#uploader = new AtomicAssetUploader({
+			gateway: this.#gateway,
+			fetch: this.#fetch,
+			adapter: {
+				createTransaction: async (attributes) =>
+					(await getArweave()).createTransaction(attributes, 'use_wallet'),
+				signTransaction: async (transaction, { signal }) => {
+					if (!wallet?.sign) throw new Error('wallet-sign-unavailable');
+					signal?.throwIfAborted();
+					const walletResult = (await wallet.sign(transaction)) ?? transaction;
+					if (walletResult === transaction || typeof transaction?.setSignature !== 'function')
+						return walletResult;
+					transaction.setSignature({
+						id: walletResult.id,
+						owner: walletResult.owner,
+						reward: walletResult.reward,
+						tags: walletResult.tags,
+						signature: walletResult.signature,
+					});
+					return transaction;
+				},
+				ownerToAddress: async (owner) => (await getArweave()).wallets.ownerToAddress(owner),
+				...(wallet?.getActiveAddress ? { getActiveAddress: () => wallet.getActiveAddress!() } : {}),
+				getUploader: async (transaction) => {
+					const candidate = (await getArweave())?.transactions?.getUploader;
+					return typeof candidate === 'function'
+						? candidate.call((await getArweave()).transactions, transaction)
+						: undefined;
+				},
+			},
+		});
 	}
 
 	async estimate(input: MintInput, signal?: AbortSignal): Promise<MintEstimate> {
 		validateMintInput(input);
 		const [assetReward, artworkReward] = await Promise.all([
-			this.#price(input.file.size, signal),
-			input.artwork ? this.#price(input.artwork.size, signal) : 0n,
+			this.#uploader.price(input.file.size, signal),
+			input.artwork ? this.#uploader.price(input.artwork.size, signal) : 0n,
 		]);
 		return {
 			assetReward,
@@ -257,37 +308,33 @@ export class AssetMintClient {
 	): Promise<MintResult> {
 		validateMintInput(input);
 		assertAddress(owner, 'invalid-mint-owner');
-		await this.#assertActiveSigner(owner);
+		await this.#uploader.assertOwner(owner);
 		const estimate = await this.estimate(input, options.signal);
 		if (estimate.total > ORDINARY_MINT_COST_MAX_WINSTON && !options.allowHighCost)
 			throw new Error('mint-high-cost-confirmation-required');
-		await this.#assertBalance(owner, estimate.total, options.signal);
-		const arweave = await this.#getArweave();
+		await this.#uploader.assertBalance(owner, estimate.total, options.signal);
 		const contentType = requiredFileContentType(input.file);
 
 		let artworkId: string | undefined;
 		if (input.artwork) {
-			options.onPhase?.('signing-artwork');
-			const artwork = await arweave.createTransaction(
-				{ data: new Uint8Array(await input.artwork.arrayBuffer()) },
-				'use_wallet'
+			artworkId = await this.#uploader.upload(
+				{
+					data: new Uint8Array(await input.artwork.arrayBuffer()),
+					tags: {
+						'content-type': requiredFileContentType(input.artwork),
+						type: 'Asset-Artwork',
+						...udlLicenseTags(input.udl),
+					},
+				},
+				owner,
+				{
+					signal: options.signal,
+					preflighted: true,
+					onPhase: (phase) =>
+						options.onPhase?.(phase === 'signing' ? 'signing-artwork' : 'uploading-artwork'),
+					onTransaction: (id) => options.onTransaction?.({ id, label: 'Artwork transaction' }),
+				}
 			);
-			for (const [name, value] of Object.entries(
-				normalizeUploadTags({
-					'content-type': requiredFileContentType(input.artwork),
-					'app-name': 'Bazar',
-					'app-version': '2.0.0',
-					type: 'Asset-Artwork',
-					...udlLicenseTags(input.udl),
-				})
-			)) {
-				artwork.addTag(name, value);
-			}
-			const signedArtwork = await this.#sign(artwork, owner, options.signal);
-			options.onTransaction?.({ id: signedArtwork.id, label: 'Artwork transaction' });
-			options.onPhase?.('uploading-artwork');
-			await this.#post(signedArtwork, options.signal);
-			artworkId = signedArtwork.id;
 		}
 
 		const createdAt = Date.now();
@@ -320,16 +367,16 @@ export class AssetMintClient {
 		validateMintDraft(draft);
 		assertAddress(owner, 'invalid-mint-owner');
 		if (draft.owner !== owner) throw new Error('mint-draft-wallet-mismatch');
-		await this.#assertActiveSigner(owner);
+		await this.#uploader.assertOwner(owner);
 		const response = await this.#fetch(arweaveDataUrl(draft.mediaId, this.#gateway), { signal: options.signal });
 		if (!response.ok) throw new Error(`mint-media-unavailable-${response.status}`);
 		const data = new Uint8Array(await response.arrayBuffer());
 		const maxBytes = isAudioContentType(draft.contentType) ? MAX_AUDIO_BYTES : MAX_IMAGE_BYTES;
 		if (!data.byteLength || data.byteLength > maxBytes) throw new Error('mint-media-invalid');
-		const assetReward = await this.#price(data.byteLength, options.signal);
+		const assetReward = await this.#uploader.price(data.byteLength, options.signal);
 		if (assetReward > ORDINARY_MINT_COST_MAX_WINSTON && !options.allowHighCost)
 			throw new Error('mint-high-cost-confirmation-required');
-		await this.#assertBalance(owner, assetReward, options.signal);
+		await this.#uploader.assertBalance(owner, assetReward, options.signal);
 		const assetInput = {
 			name: draft.name,
 			description: draft.description,
@@ -355,19 +402,15 @@ export class AssetMintClient {
 			onTransaction?: (transaction: MintUploadTransaction) => void;
 		}
 	): Promise<MintResult> {
-		const arweave = await this.#getArweave();
-		options.onPhase?.('signing-asset');
-		const process = await arweave.createTransaction({ data }, 'use_wallet');
-		for (const [name, value] of Object.entries(normalizeUploadTags(mintProcessTags(input, owner)))) {
-			process.addTag(name, value);
-		}
-		const signedProcess = await this.#sign(process, owner, options.signal);
-		options.onTransaction?.({ id: signedProcess.id, label: 'Asset transaction' });
-		options.onPhase?.('uploading-asset');
-		await this.#post(signedProcess, options.signal);
+		const processId = await this.#uploader.uploadAtomicAsset({ data, tags: mintProcessTags(input, owner) }, owner, {
+			signal: options.signal,
+			preflighted: true,
+			onPhase: (phase) => options.onPhase?.(phase === 'signing' ? 'signing-asset' : 'uploading-asset'),
+			onTransaction: (id) => options.onTransaction?.({ id, label: 'Asset transaction' }),
+		});
 
 		const asset: MintedAsset = {
-			id: signedProcess.id,
+			id: processId,
 			name: input.name,
 			description: input.description,
 			contentType: input.contentType,
@@ -376,11 +419,11 @@ export class AssetMintClient {
 			...(input.duration ? { duration: input.duration } : {}),
 			...(isAudioContentType(input.contentType)
 				? {
-						media: arweaveDataUrl(signedProcess.id, this.#computeGateway),
+						media: arweaveDataUrl(processId, this.#computeGateway),
 						...(input.artworkId ? { image: arweaveDataUrl(input.artworkId, this.#gateway) } : {}),
 				  }
-				: { image: arweaveDataUrl(signedProcess.id, this.#computeGateway) }),
-			mediaId: signedProcess.id,
+				: { image: arweaveDataUrl(processId, this.#computeGateway) }),
+			mediaId: processId,
 			...(input.artworkId ? { artworkId: input.artworkId } : {}),
 			owner,
 			createdAt: input.createdAt,
@@ -393,14 +436,14 @@ export class AssetMintClient {
 					owner,
 					asset,
 					collectionId: CREATED_COLLECTION_ID,
-					transactionIds: [input.artworkId, signedProcess.id].filter((id): id is string => Boolean(id)),
+					transactionIds: [input.artworkId, processId].filter((id): id is string => Boolean(id)),
 					arweaveGateway: this.#gateway,
 					computeGateway: this.#computeGateway,
 				})
 			);
 		}
 		this.#storage?.removeItem(`${DRAFT_PREFIX}${owner}`);
-		return { asset, mediaId: signedProcess.id, processId: signedProcess.id };
+		return { asset, mediaId: processId, processId };
 	}
 
 	async estimateFungible(input: FungibleMintInput, logo?: File, signal?: AbortSignal): Promise<FungibleMintEstimate> {
@@ -409,8 +452,8 @@ export class AssetMintClient {
 		const processBytes = byteLength(fungibleMintData(input));
 		const logoBytes = input.logo ? 0 : logo?.size ?? 0;
 		const [processReward, logoReward] = await Promise.all([
-			this.#price(processBytes, signal),
-			logoBytes ? this.#price(logoBytes, signal) : 0n,
+			this.#uploader.price(processBytes, signal),
+			logoBytes ? this.#uploader.price(logoBytes, signal) : 0n,
 		]);
 		return {
 			processReward,
@@ -427,7 +470,7 @@ export class AssetMintClient {
 	 * The supply is minted through the `initial-holder` tag alone. Do NOT
 	 * attach a balances+link structure at creation: deployed nodes 502 on
 	 * init when one is present (verified 2026-08-11). The tag set mirrors
-	 * scripts/publish_fungible_token.mjs; `asset-type: fungible` is required
+	 * scripts/publish_fungible_token.mjs; `hint-style: fungible` is required
 	 * for discovery (collections.ts fungible GraphQL filter and
 	 * fungibleAssetFromState both demand it).
 	 */
@@ -439,6 +482,7 @@ export class AssetMintClient {
 			signal?: AbortSignal;
 			onLogoUploaded?: (transactionId: string) => void;
 			onPhase?: (phase: FungibleMintPhase) => void;
+			onTransaction?: (transaction: MintUploadTransaction) => void;
 		} = {}
 	): Promise<FungibleMintResult> {
 		validateFungibleMintInput(input);
@@ -451,24 +495,29 @@ export class AssetMintClient {
 				new Uint8Array(await options.logo.arrayBuffer()),
 				{
 					'Content-Type': contentType,
-					'App-Name': 'Bazar',
-					'App-Version': '2.0.0',
 					Type: 'Token-Logo',
 				},
 				owner,
 				{
 					signal: options.signal,
 					onPhase: (phase) => options.onPhase?.(phase === 'signing' ? 'signing-logo' : 'uploading-logo'),
+					onTransaction: (id) => options.onTransaction?.({ id, label: 'Token logo' }),
 				}
 			);
 			options.onLogoUploaded?.(logoId);
 		}
 		const processInput = logoId ? { ...input, logo: logoId } : input;
-		const processId = await this.publishData(
-			fungibleMintData(processInput),
-			fungibleMintProcessTags(processInput, owner),
+		const processId = await this.#uploader.uploadAtomicAsset(
+			{
+				data: fungibleMintData(processInput),
+				tags: fungibleMintProcessTags(processInput, owner),
+			},
 			owner,
-			{ signal: options.signal, onPhase: options.onPhase }
+			{
+				signal: options.signal,
+				onPhase: options.onPhase,
+				onTransaction: (id) => options.onTransaction?.({ id, label: 'Fungible token' }),
+			}
 		);
 		const createdAt = Date.now();
 		// Record the mint in the shared activity notifier the same as an atomic
@@ -524,117 +573,26 @@ export class AssetMintClient {
 			onTransaction?: (transactionId: string) => void;
 		} = {}
 	): Promise<string> {
-		assertAddress(owner, 'invalid-mint-owner');
-		if (options.target) assertAddress(options.target, 'invalid-mint-target');
-		await this.#assertActiveSigner(owner);
-		const reward = await this.#price(byteLength(data), options.signal, options.target);
-		await this.#assertBalance(owner, reward, options.signal);
-		const arweave = await this.#getArweave();
-		options.onPhase?.('signing');
-		const transaction = await arweave.createTransaction(
-			options.target ? { data, target: options.target, quantity: '1' } : { data },
-			'use_wallet'
+		return this.#uploader.upload(
+			{ data, tags, ...(options.target ? { target: options.target } : {}) },
+			owner,
+			options
 		);
-		for (const [name, value] of Object.entries(normalizeUploadTags(tags))) transaction.addTag(name, value);
-		const signed = await this.#sign(transaction, owner, options.signal);
-		options.onTransaction?.(signed.id);
-		options.onPhase?.('uploading');
-		await this.#post(signed, options.signal);
-		return signed.id;
 	}
 
-	async #price(bytes: number, signal?: AbortSignal, target?: string): Promise<bigint> {
-		const response = await this.#fetch(`${this.#gateway}/price/${bytes}${target ? `/${target}` : ''}`, {
-			signal,
-		});
-		if (!response.ok) throw new Error(`mint-price-${response.status}`);
-		const value = (await response.text()).trim();
-		if (!/^\d+$/.test(value)) throw new Error('mint-price-invalid');
-		return BigInt(value);
-	}
-
-	async #sign(transaction: any, owner: string, signal?: AbortSignal): Promise<any> {
-		if (!this.#wallet?.sign) throw new Error('wallet-sign-unavailable');
-		signal?.throwIfAborted();
-		await this.#assertActiveSigner(owner);
-		const walletResult = (await this.#wallet.sign(transaction)) ?? transaction;
-		let signed = walletResult;
-		if (walletResult !== transaction && typeof transaction?.setSignature === 'function') {
-			transaction.setSignature({
-				id: walletResult.id,
-				owner: walletResult.owner,
-				reward: walletResult.reward,
-				tags: walletResult.tags,
-				signature: walletResult.signature,
-			});
-			signed = transaction;
-		}
-		if (!ADDRESS.test(signed?.id)) throw new Error('wallet-returned-unsigned-transaction');
-		const signedOwner = String(signed.owner ?? '');
-		const arweave = await this.#getArweave();
-		if (!signedOwner || (await arweave.wallets.ownerToAddress(signedOwner)) !== owner) {
-			throw new Error('wallet-account-changed');
-		}
-		return signed;
-	}
-
-	async #post(transaction: any, signal?: AbortSignal): Promise<void> {
-		const arweave = await this.#getArweave();
-		const chunks = transaction?.chunks?.chunks;
-		if (Array.isArray(chunks) && chunks.length > 1 && arweave?.transactions?.getUploader) {
-			const uploader = await arweave.transactions.getUploader(transaction);
-			while (!uploader.isComplete) {
-				signal?.throwIfAborted();
-				await uploader.uploadChunk();
-			}
-			return;
-		}
-
-		const serializable =
-			typeof transaction.toJSON === 'function' ? transaction.toJSON() : JSON.parse(JSON.stringify(transaction));
-		serializable.id = transaction.id;
-		for (let attempt = 1; attempt <= 3; attempt += 1) {
-			const response = await this.#fetch(`${this.#gateway}/tx`, {
-				method: 'POST',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify(serializable),
-				signal,
-			});
-			if ([200, 202, 208].includes(response.status)) return;
-			if (attempt === 3) throw new Error(`mint-upload-${response.status}`);
-			await delay(attempt * 750, signal);
-		}
-	}
-
-	async #assertActiveSigner(owner: string): Promise<void> {
-		if (this.#wallet?.getActiveAddress && (await this.#wallet.getActiveAddress()) !== owner) {
-			throw new Error('wallet-account-changed');
-		}
-	}
-
-	async #getArweave() {
-		this.#arweave ??= await createArweaveClient(arweaveClientConfig(this.#gateway));
-		return this.#arweave;
-	}
-
-	async #assertBalance(owner: string, required: bigint, signal?: AbortSignal): Promise<void> {
-		const response = await this.#fetch(`${this.#gateway}/wallet/${owner}/balance`, { signal });
-		if (!response.ok) throw new Error(`wallet-balance-${response.status}`);
-		const balance = BigInt((await response.text()).trim());
-		if (balance < required) throw new Error('mint-insufficient-balance');
+	async priceData(bytes: number, signal?: AbortSignal, target?: string): Promise<bigint> {
+		return this.#uploader.price(bytes, signal, target);
 	}
 }
 
 export class CollectionMintClient {
 	#assetClient: AssetMintClient;
-	#fetch: typeof fetch;
 	#gateway: string;
 	#storage?: StorageLike;
 
 	constructor(options: AssetMintClientOptions = {}) {
 		this.#assetClient = new AssetMintClient(options);
-		this.#fetch = options.fetch ?? globalThis.fetch.bind(globalThis);
-		this.#gateway = options.gateway ?? arweaveGatewayFromLocation();
+		this.#gateway = options.gateway ?? options.uploader?.gateway ?? arweaveGatewayFromLocation();
 		this.#storage = options.storage ?? globalThis.window?.localStorage;
 	}
 
@@ -655,7 +613,7 @@ export class CollectionMintClient {
 			byteLength('Bazar collection process'),
 		];
 		const uniqueSizes = [...new Set(sizes)];
-		const uniqueRewards = await mapConcurrent(uniqueSizes, 8, (size) => this.#price(size, signal));
+		const uniqueRewards = await mapConcurrent(uniqueSizes, 8, (size) => this.#assetClient.priceData(size, signal));
 		const rewards = new Map(uniqueSizes.map((size, index) => [size, uniqueRewards[index]]));
 		return {
 			assetCount: input.files.length,
@@ -708,8 +666,6 @@ export class CollectionMintClient {
 			manifestData,
 			{
 				'content-type': 'application/json',
-				'app-name': 'Bazar',
-				'app-version': '2.0.0',
 				type: 'Collection-Manifest',
 				name: input.name.trim(),
 			},
@@ -773,8 +729,8 @@ export class CollectionMintClient {
 		];
 		const uniqueSizes = [...new Set(sizes)];
 		const [uniqueRewards, updateReward] = await Promise.all([
-			mapConcurrent(uniqueSizes, 8, (size) => this.#price(size, signal)),
-			this.#price(0, signal, collection.id),
+			mapConcurrent(uniqueSizes, 8, (size) => this.#assetClient.priceData(size, signal)),
+			this.#assetClient.priceData(0, signal, collection.id),
 		]);
 		const rewards = new Map(uniqueSizes.map((size, index) => [size, uniqueRewards[index]]));
 		return {
@@ -827,8 +783,6 @@ export class CollectionMintClient {
 			JSON.stringify(collectionManifest(collection, assets)),
 			{
 				'content-type': 'application/json',
-				'app-name': 'Bazar',
-				'app-version': '2.0.0',
 				type: 'Collection-Manifest',
 				name: collection.name,
 			},
@@ -841,15 +795,7 @@ export class CollectionMintClient {
 		);
 		const updateId = await this.#assetClient.publishData(
 			'',
-			{
-				'content-type': 'application/x.ao-message',
-				'app-name': 'Bazar',
-				'app-version': '2.0.0',
-				action: 'set',
-				'reference-value': manifestId,
-				type: 'Collection-Update',
-				name: collection.name,
-			},
+			collectionCarrierUpdateTags(collection.name, manifestId),
 			owner,
 			{
 				target: collection.id,
@@ -871,14 +817,6 @@ export class CollectionMintClient {
 			);
 		}
 		return { collection: updated, manifestId, updateId };
-	}
-
-	async #price(bytes: number, signal?: AbortSignal, target?: string): Promise<bigint> {
-		const response = await this.#fetch(`${this.#gateway}/price/${bytes}${target ? `/${target}` : ''}`, {
-			signal,
-		});
-		if (!response.ok) throw new Error(`mint-price-${response.status}`);
-		return BigInt((await response.text()).trim());
 	}
 }
 
@@ -949,7 +887,7 @@ export function mintMetadata(
 		...(isAudioContentType(contentType)
 			? { audio: mediaId, ...(artworkId ? { image: artworkId } : {}) }
 			: { image: mediaId }),
-		collection: input.collection?.trim() || CREATED_COLLECTION_NAME,
+		...(input.collection?.trim() ? { collection: input.collection.trim() } : {}),
 		...(input.artist?.trim() ? { artist: input.artist.trim() } : {}),
 		...(input.album?.trim() ? { album: input.album.trim() } : {}),
 		...(input.duration && input.duration > 0 ? { duration: input.duration } : {}),
@@ -978,11 +916,8 @@ export function mintProcessTags(
 	const contentType = normalizeAssetContentType(input.contentType) ?? input.contentType;
 	return normalizeUploadTags({
 		'content-type': contentType,
-		'app-name': 'Bazar',
-		'app-version': '2.0.0',
-		'asset-type': contentType,
+		'hint-style': 'non-fungible',
 		creator: owner,
-		'date-created': String(input.createdAt ?? Date.now()),
 		description: input.description?.trim() ?? '',
 		implements: 'ANS-110',
 		title: input.name.trim(),
@@ -997,8 +932,7 @@ export function mintProcessTags(
 		denomination: '0',
 		ticker: 'ASSET',
 		name: input.name.trim(),
-		collection: input.collection?.trim() || CREATED_COLLECTION_NAME,
-		'asset-content-type': contentType,
+		...(input.collection?.trim() ? { 'base-collection': input.collection.trim() } : {}),
 		...(input.artist?.trim() ? { artist: input.artist.trim() } : {}),
 		...(input.album?.trim() ? { album: input.album.trim() } : {}),
 		...(input.duration && input.duration > 0 ? { duration: String(input.duration) } : {}),
@@ -1067,8 +1001,6 @@ export function fungibleMintProcessTags(input: FungibleMintInput, owner: string)
 	assertAddress(owner, 'invalid-mint-owner');
 	return {
 		'Content-Type': 'application/json',
-		'App-Name': 'Bazar',
-		'App-Version': '2.0.0',
 		device: 'process@1.0',
 		type: 'Process',
 		'execution-device': 'token@1.0',
@@ -1081,8 +1013,7 @@ export function fungibleMintProcessTags(input: FungibleMintInput, owner: string)
 		ticker: input.ticker,
 		name: input.name.trim(),
 		...(input.description.trim() ? { description: input.description.trim() } : {}),
-		collection: FUNGIBLE_TOKEN_COLLECTION_NAME,
-		'asset-type': 'fungible',
+		'hint-style': 'fungible',
 		...(input.logo ? { logo: input.logo } : {}),
 	};
 }
@@ -1106,37 +1037,29 @@ export function udlLicenseTags(terms?: UdlTerms): Record<string, string> {
 	return normalizeUploadTags(tags);
 }
 
-export function normalizeUploadTags(tags: Record<string, string>): Record<string, string> {
-	const normalized: Record<string, string> = {};
-	for (const [rawName, value] of Object.entries(tags)) {
-		const name = rawName.trim().toLowerCase();
-		if (!name) throw new TypeError('upload-tag-name-invalid');
-		if (Object.prototype.hasOwnProperty.call(normalized, name)) {
-			throw new TypeError(`duplicate-upload-tag-${name}`);
-		}
-		normalized[name] = value;
-	}
-	return normalized;
-}
-
 export function collectionProcessTags(name: string, manifestId: string, owner: string): Record<string, string> {
 	assertAddress(manifestId, 'invalid-collection-manifest-id');
 	assertAddress(owner, 'invalid-mint-owner');
 	return normalizeUploadTags({
-		'content-type': 'application/x.ao-message',
-		'app-name': 'Bazar',
-		'app-version': '2.0.0',
 		device: 'process@1.0',
 		'execution-device': 'carrier@1.0',
 		'scheduler-device': 'arweave-scheduler@1.0',
 		'scheduler-mode': 'all',
 		'initial-holder': owner,
 		'initial-value': manifestId,
-		'reference-value': manifestId,
 		'total-supply': '1',
 		denomination: '0',
-		ticker: 'COLLECTION',
 		type: 'Process',
+		name: name.trim(),
+	});
+}
+
+export function collectionCarrierUpdateTags(name: string, manifestId: string): Record<string, string> {
+	assertAddress(manifestId, 'invalid-collection-manifest-id');
+	return normalizeUploadTags({
+		action: 'set',
+		value: manifestId,
+		type: 'Collection-Update',
 		name: name.trim(),
 	});
 }
@@ -1164,12 +1087,12 @@ export function discardMintDraft(
 
 export function isBazarMintTags(tags: Record<string, string>): boolean {
 	return (
-		tags['app-name'] === 'Bazar' &&
+		tags['hint-style'] === 'non-fungible' &&
 		tags.type === 'Process' &&
 		tags['execution-device'] === 'token@1.0' &&
 		tags['swap-device'] === 'arweave-swap@1.0' &&
 		(!tags['asset-data'] || ADDRESS.test(tags['asset-data'])) &&
-		isSupportedAssetContentType(tags['asset-content-type']) &&
+		isSupportedAssetContentType(tags['asset-content-type'] ?? tags['content-type']) &&
 		(!tags['asset-artwork'] || ADDRESS.test(tags['asset-artwork']))
 	);
 }
@@ -1312,18 +1235,4 @@ function assertAddress(value: string, error: string): void {
 
 function byteLength(value: string | Uint8Array): number {
 	return typeof value === 'string' ? new TextEncoder().encode(value).byteLength : value.byteLength;
-}
-
-function delay(duration: number, signal?: AbortSignal): Promise<void> {
-	return new Promise((resolve, reject) => {
-		const timer = setTimeout(resolve, duration);
-		signal?.addEventListener(
-			'abort',
-			() => {
-				clearTimeout(timer);
-				reject(signal.reason ?? new DOMException('Aborted', 'AbortError'));
-			},
-			{ once: true }
-		);
-	});
 }

@@ -33,7 +33,7 @@ export type Collection = {
 	cursor?: string;
 	cursorHistory?: string[];
 	hasMore?: boolean;
-	indexSource?: 'reference' | 'compiled-fallback';
+	indexSource?: 'carrier' | 'reference' | 'compiled-fallback';
 	manifestId?: string;
 	namespace?: NamesNamespaceIndex;
 };
@@ -83,7 +83,7 @@ export function fungibleAssetFromState(id: string, state?: AssetState): AssetSum
 		!state ||
 		state.raw.device !== 'process@1.0' ||
 		state.device !== 'token@1.0' ||
-		state.raw['asset-type'] !== 'fungible' ||
+		state.raw['hint-style'] !== 'fungible' ||
 		state.raw['swap-device'] !== 'arweave-swap@1.0' ||
 		state.raw['scheduler-device'] !== 'arweave-scheduler@1.0' ||
 		state.raw['scheduler-mode'] !== 'all'
@@ -465,13 +465,11 @@ async function loadDiscoveredImageCollection(
 	let manifestId = candidate.manifestId;
 	if (candidate.scheduled) {
 		manifestId =
-			carrierManifestReference(
-				(await readAssetState(candidate.id, { signal, maxAge: 30, maxAttempts: 1 })).state
-			) ?? '';
+			carrierManifestId((await readAssetState(candidate.id, { signal, maxAge: 30, maxAttempts: 1 })).state) ?? '';
 		if (!manifestId) throw new Error('collection-reference-unavailable');
 	}
 	return enrichImageCollectionAssetMetadata(
-		imageCollection(candidate.id, manifestId, 'reference', await fetchJson<ImageManifest>(manifestId, signal)),
+		imageCollection(candidate.id, manifestId, 'carrier', await fetchJson<ImageManifest>(manifestId, signal)),
 		signal
 	);
 }
@@ -496,9 +494,9 @@ function indexedAtomicAsset(node: AtomicAssetIndexNode): AssetSummary | undefine
 		(node.tags as Array<{ name: string; value: string }>).map(({ name, value }) => [name.toLowerCase(), value])
 	);
 	if (
-		tags['app-name'] !== 'Bazar' ||
 		tags.device !== 'process@1.0' ||
 		tags['execution-device'] !== 'token@1.0' ||
+		tags['hint-style'] !== 'non-fungible' ||
 		tags['swap-device'] !== 'arweave-swap@1.0' ||
 		tags['scheduler-device'] !== 'arweave-scheduler@1.0' ||
 		tags['scheduler-mode'] !== 'all' ||
@@ -506,7 +504,7 @@ function indexedAtomicAsset(node: AtomicAssetIndexNode): AssetSummary | undefine
 		tags.denomination !== '0' ||
 		tags.ticker !== 'ASSET' ||
 		!ARWEAVE_ID.test(tags['initial-holder'] ?? '') ||
-		!isSupportedAssetContentType(tags['asset-content-type'])
+		!isSupportedAssetContentType(tags['asset-content-type'] ?? tags['content-type'])
 	)
 		return undefined;
 	return assetFromMintState(node.id, tags) ?? undefined;
@@ -622,7 +620,7 @@ async function loadFungibleTokenPage(after?: string, signal?: AbortSignal): Prom
 						{ name: "execution-device", values: ["token@1.0"] }
 						{ name: "swap-device", values: ["arweave-swap@1.0"] }
 						{ name: "scheduler-device", values: ["arweave-scheduler@1.0"] }
-						{ name: "asset-type", values: ["fungible"] }
+						{ name: "hint-style", values: ["fungible"] }
 						{ name: "scheduler-mode", values: ["all"] }
 					]
 				) {
@@ -742,7 +740,7 @@ function namesNamespaceCollection(namespace: NamesNamespaceIndex): Collection {
 		assets: [],
 		manifestId: namespace.manifestId,
 		namespace,
-		indexSource: 'reference',
+		indexSource: 'carrier',
 	};
 }
 
@@ -888,8 +886,9 @@ export async function loadImageCollection(
 		);
 		let referencedManifest: string | undefined = tags['reference-value'];
 		if (tags['execution-device'] === 'carrier@1.0' && tags['scheduler-device'] === 'arweave-scheduler@1.0') {
+			indexSource = 'carrier';
 			try {
-				referencedManifest = carrierManifestReference(
+				referencedManifest = carrierManifestId(
 					(await readAssetState(referenceId, { signal, maxAge: 30, maxAttempts: 1 })).state
 				);
 			} catch {
@@ -912,7 +911,11 @@ export async function loadImageCollection(
 		return imageCollection(referenceId, value, indexSource, await fetchJson<ImageManifest>(value, signal));
 	} catch (cause) {
 		throwIfAborted(signal);
-		if (indexSource !== 'reference' || value === publishedManifestId || !ARWEAVE_ID.test(publishedManifestId)) {
+		if (
+			indexSource === 'compiled-fallback' ||
+			value === publishedManifestId ||
+			!ARWEAVE_ID.test(publishedManifestId)
+		) {
 			throw cause;
 		}
 		return imageCollection(
@@ -924,12 +927,15 @@ export async function loadImageCollection(
 	}
 }
 
-export function carrierManifestReference(state: Pick<AssetState, 'value'>): string | undefined {
+export function carrierManifestId(state: Pick<AssetState, 'value'>): string | undefined {
 	if (typeof state.value === 'string' && ARWEAVE_ID.test(state.value)) return state.value;
 	if (!state.value || typeof state.value !== 'object' || Array.isArray(state.value)) return undefined;
 	const target = (state.value as Record<string, unknown>).target;
 	return typeof target === 'string' && ARWEAVE_ID.test(target) ? target : undefined;
 }
+
+/** @deprecated Legacy name retained for callers that still read reference-backed collections. */
+export const carrierManifestReference = carrierManifestId;
 
 function imageCollection(
 	referenceId: string,
