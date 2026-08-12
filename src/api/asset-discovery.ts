@@ -13,7 +13,7 @@ import {
 	readAssetStateAtSlot,
 	readProcessAssignments,
 } from './asset-marketplace';
-import { type AssetSummary, type Collection, collectionAsset } from './collections';
+import { type AssetSummary, assetUiStyle, type Collection, collectionAsset } from './collections';
 import { fetchJsonWithDeadline } from './fetch-with-deadline';
 import { assetFromMintState, CREATED_COLLECTION_ID, CREATED_COLLECTION_NAME } from './minted-assets';
 
@@ -390,6 +390,36 @@ const VERIFY_ASSET_PROCESSES_QUERY = `query VerifyAssetProcesses(
 			{ name: "swap-device", values: ["arweave-swap@1.0"] }
 			{ name: "scheduler-device", values: ["arweave-scheduler@1.0"] }
 			{ name: "hint-ui-style", values: ["fungible"] }
+			{ name: "scheduler-mode", values: ["all"] }
+		]
+	) {
+		pageInfo { hasNextPage }
+		edges { cursor node { id } }
+	}
+	legacyFungibleHintStyle: transactions(
+		first: ${GRAPHQL_PAGE_SIZE}
+		ids: $ids
+		tags: [
+			{ name: "device", values: ["process@1.0"] }
+			{ name: "execution-device", values: ["token@1.0"] }
+			{ name: "swap-device", values: ["arweave-swap@1.0"] }
+			{ name: "scheduler-device", values: ["arweave-scheduler@1.0"] }
+			{ name: "hint-style", values: ["fungible"] }
+			{ name: "scheduler-mode", values: ["all"] }
+		]
+	) {
+		pageInfo { hasNextPage }
+		edges { cursor node { id } }
+	}
+	legacyFungibleAssetType: transactions(
+		first: ${GRAPHQL_PAGE_SIZE}
+		ids: $ids
+		tags: [
+			{ name: "device", values: ["process@1.0"] }
+			{ name: "execution-device", values: ["token@1.0"] }
+			{ name: "swap-device", values: ["arweave-swap@1.0"] }
+			{ name: "scheduler-device", values: ["arweave-scheduler@1.0"] }
+			{ name: "asset-type", values: ["fungible"] }
 			{ name: "scheduler-mode", values: ["all"] }
 		]
 	) {
@@ -1504,13 +1534,20 @@ export async function verifyAssetCandidateSupport(
 			payload.data?.fungible ? 'fungible' : 'transactions',
 			'asset-support-graphql-schema'
 		);
+		const legacyFungible = ['legacyFungibleHintStyle', 'legacyFungibleAssetType']
+			.filter((key) => payload.data?.[key])
+			.map((key) => decodeGraphqlConnection(payload, key, 'asset-support-graphql-schema'));
 		const atomic = payload.data?.atomic
 			? decodeGraphqlConnection(payload, 'atomic', 'asset-support-graphql-schema')
 			: { pageInfo: { hasNextPage: false }, edges: [] };
-		if (fungible.pageInfo.hasNextPage || atomic.pageInfo.hasNextPage) {
+		if (
+			fungible.pageInfo.hasNextPage ||
+			legacyFungible.some((connection) => connection.pageInfo.hasNextPage) ||
+			atomic.pageInfo.hasNextPage
+		) {
 			throw new Error('asset-support-pagination-stalled');
 		}
-		for (const edge of fungible.edges) {
+		for (const edge of [fungible, ...legacyFungible].flatMap((connection) => connection.edges)) {
 			if (!requested.has(edge.node.id)) throw new Error('asset-support-graphql-schema');
 			verified.add(edge.node.id);
 			verifiedChunk.add(edge.node.id);
@@ -1771,7 +1808,7 @@ function candidateFromNode(
 					processDevice: tags.device,
 					device: tags['execution-device'] ?? tags.device,
 					collection: tags['base-collection'],
-					assetType: tags['hint-ui-style'],
+					assetType: assetUiStyle(tags),
 					swapDevice: tags['swap-device'],
 					schedulerDevice: tags['scheduler-device'],
 					schedulerMode: tags['scheduler-mode'],

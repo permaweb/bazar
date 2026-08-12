@@ -2081,6 +2081,7 @@ describe('live candidate resolution', () => {
 
 	it('keeps unloaded fungible candidates and accepts them only after exact live-state verification', async () => {
 		const unloaded = 'U'.repeat(43);
+		const legacy = 'L'.repeat(43);
 		const unsupported = 'V'.repeat(43);
 		const withTokens: Collection[] = [
 			...collections,
@@ -2092,7 +2093,7 @@ describe('live candidate resolution', () => {
 				assets: [],
 			},
 		];
-		const candidates: AssetCandidate[] = [unloaded, unsupported].map((processId) => ({
+		const candidates: AssetCandidate[] = [unloaded, legacy, unsupported].map((processId) => ({
 			processId,
 			height: 1,
 			timestamp: 0,
@@ -2106,10 +2107,10 @@ describe('live candidate resolution', () => {
 				state: parseAssetState({
 					device: 'process@1.0',
 					'execution-device': 'token@1.0',
-					'hint-ui-style': 'fungible',
+					...(processId === unloaded ? { 'hint-ui-style': 'fungible' } : { 'asset-type': 'fungible' }),
 					'swap-device': 'arweave-swap@1.0',
 					'scheduler-device': 'arweave-scheduler@1.0',
-					'scheduler-mode': processId === unloaded ? 'all' : 'local',
+					'scheduler-mode': processId === unsupported ? 'local' : 'all',
 					name: 'Page two token',
 					ticker: 'PAGE2',
 					'total-supply': '1000000000000',
@@ -2120,9 +2121,50 @@ describe('live candidate resolution', () => {
 			}),
 		});
 
-		expect(results).toHaveLength(1);
-		expect(results[0].asset).toMatchObject({ id: unloaded, name: 'Page two token', ticker: 'PAGE2' });
-		expect(results[0].collection.kind).toBe('tokens');
+		expect(results).toHaveLength(2);
+		expect(results.map(({ asset }) => asset)).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({ id: unloaded, name: 'Page two token', ticker: 'PAGE2' }),
+				expect.objectContaining({ id: legacy, name: 'Page two token', ticker: 'PAGE2' }),
+			])
+		);
+		expect(results.every(({ collection }) => collection.kind === 'tokens')).toBe(true);
+	});
+
+	it('finds unindexed fungible candidates created with the legacy asset-type marker', async () => {
+		const processId = 'L'.repeat(43);
+		const candidate: AssetCandidate = {
+			processId,
+			height: 1,
+			timestamp: 0,
+			sources: ['transfer'],
+		};
+		const tokenCollection: Collection = {
+			id: 'fungible-tokens',
+			name: 'Tokens',
+			description: 'Tokens',
+			kind: 'tokens',
+			assets: [],
+		};
+		const fetcher = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+			const body = JSON.parse(String(init?.body));
+			expect(body.query).toContain('{ name: "asset-type", values: ["fungible"] }');
+			return Response.json({
+				data: {
+					fungible: { pageInfo: { hasNextPage: false }, edges: [] },
+					legacyFungibleHintStyle: { pageInfo: { hasNextPage: false }, edges: [] },
+					legacyFungibleAssetType: {
+						pageInfo: { hasNextPage: false },
+						edges: [{ cursor: 'legacy', node: { id: processId } }],
+					},
+					atomic: { pageInfo: { hasNextPage: false }, edges: [] },
+				},
+			});
+		});
+
+		await expect(
+			verifyAssetCandidateSupport([candidate], [tokenCollection], { fetch: fetcher as typeof fetch })
+		).resolves.toEqual({ supported: [candidate], unavailable: [] });
 	});
 
 	it('verifies and reconstructs Bazar audio assets with artwork without origin-local storage', async () => {
