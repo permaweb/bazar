@@ -141,6 +141,7 @@ import { Pagination } from 'components/Pagination';
 import { PortalIcon } from 'components/PortalIcon';
 import { StateVerification } from 'components/StateVerification';
 import { TokenAvatar } from 'components/TokenAvatar';
+import { Tooltip } from 'components/Tooltip';
 import {
 	isTransactionActivityVisible,
 	prepareTransactionDialogHide,
@@ -4500,9 +4501,12 @@ function GatewayControl() {
 				<div id="gateway-panel">
 					<form onSubmit={apply}>
 						<label>
-							HyperBEAM peers
+							<span>Change AO-Core peers</span>
+							<span className="gateway-peer-description" id="gateway-peer-description">
+								If you would like to use different machines for your computer, enter in below
+							</span>
 							<input
-								aria-describedby={error ? 'gateway-error' : undefined}
+								aria-describedby={`gateway-peer-description${error ? ' gateway-error' : ''}`}
 								aria-invalid={Boolean(error)}
 								onChange={(event) => {
 									setComputeValue(event.target.value);
@@ -4517,14 +4521,36 @@ function GatewayControl() {
 								{error}
 							</p>
 						) : null}
-						<Button className="with-icon" type="submit" size="custom">
-							<PortalIcon className="ui-icon gateway-portal-icon" aria-hidden="true" /> Apply peers
-						</Button>
+						<div className="gateway-apply-row">
+							<Button className="gateway-apply-button with-icon" type="submit" size="custom">
+								<PortalIcon className="ui-icon gateway-portal-icon" aria-hidden="true" /> Apply peers
+							</Button>
+							<Tooltip
+								className="gateway-peer-help"
+								content={
+									<>
+										Bazar is a fully decentralized marketplace: Operated by everyone, owned by
+										nobody. By default, your requests are handled by the computer that gave you this
+										page. If you would like to use different machines for your compute, just enter
+										their address above.
+									</>
+								}
+							>
+								{(tooltipId) => (
+									<Button
+										aria-describedby={tooltipId}
+										aria-label="About compute peers"
+										className="gateway-peer-help-trigger"
+										size="custom"
+										type="button"
+										variant="ghost"
+									>
+										<Info className="ui-icon ui-icon--sm" aria-hidden="true" />
+									</Button>
+								)}
+							</Tooltip>
+						</div>
 					</form>
-					<p>
-						Process reads and observer requests fail over across these peers. Content, pricing, balances,
-						and settlement use the site gateway by default.
-					</p>
 				</div>
 			</details>
 		</div>
@@ -6609,8 +6635,6 @@ function CollectionActivityView() {
 				<ErrorPanel message="This collection could not be found on Arweave." />
 			</RouteState>
 		);
-	const confirmedEvents = events.filter((event) => event.height > 0).length;
-	const pendingEvents = events.length - confirmedEvents;
 	const activityScanAnnouncement = collectionActivityScanAnnouncement({
 		error: Boolean(error),
 		events: events.length,
@@ -6633,7 +6657,37 @@ function CollectionActivityView() {
 					come only from live process state.
 				</p>
 			</div>
-			<CollectionTabs collection={collection} active="activity" />
+			<CollectionTabs
+				action={
+					<Button
+						aria-disabled={loading}
+						aria-label={
+							loading
+								? 'Refreshing collection activity'
+								: error
+								? 'Retry collection activity'
+								: 'Refresh collection activity'
+						}
+						className={`collection-tabs-refresh${loading ? ' loading' : ''}`}
+						size="custom"
+						title={loading ? 'Refreshing activity' : error ? 'Retry activity' : 'Refresh activity'}
+						type="button"
+						onClick={() => {
+							if (loading) return;
+							setActivityRevealAnnouncement('');
+							activityRunMode.current = error ? 'retry' : 'refresh';
+							setRetry((value) => value + 1);
+						}}
+					>
+						<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" />
+					</Button>
+				}
+				collection={collection}
+				active="activity"
+			/>
+			<span aria-live="polite" className="sr-only" role="status">
+				{activityScanAnnouncement}
+			</span>
 			<CollectionIndexNotice collection={collection} checking={market.loading} onRetry={market.retry} />
 			{collection.kind === 'tokens' && collection.hasMore ? (
 				<div className="collection-source-notice">
@@ -6648,49 +6702,6 @@ function CollectionActivityView() {
 					</Link>
 				</div>
 			) : null}
-			<div className="activity-heading">
-				<div>
-					<h2>Recent market activity</h2>
-					<span aria-hidden="true">
-						{loading
-							? preservingEvents
-								? `${events.length.toLocaleString()} retained · ${
-										pages
-											? `refresh checked ${pages.toLocaleString()} ${
-													pages === 1 ? 'page' : 'pages'
-											  }`
-											: 'refreshing from Arweave'
-								  }`
-								: pages
-								? `${events.length.toLocaleString()} found across ${pages.toLocaleString()} ${
-										pages === 1 ? 'page' : 'pages'
-								  } · still reading Arweave`
-								: 'Reading indexed transactions from Arweave…'
-							: `${events.length.toLocaleString()} indexed ${
-									events.length === 1 ? 'transaction' : 'transactions'
-							  } · ${confirmedEvents.toLocaleString()} confirmed${
-									pendingEvents ? ` · ${pendingEvents.toLocaleString()} pending` : ''
-							  } · newest first`}
-					</span>
-					<span aria-live="polite" className="sr-only" role="status">
-						{activityScanAnnouncement}
-					</span>
-				</div>
-				<Button
-					aria-disabled={loading}
-					className="with-icon"
-					size="custom"
-					onClick={() => {
-						if (loading) return;
-						setActivityRevealAnnouncement('');
-						activityRunMode.current = error ? 'retry' : 'refresh';
-						setRetry((value) => value + 1);
-					}}
-				>
-					<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" />
-					{loading ? (events.length ? 'Refreshing…' : 'Loading…') : error ? 'Retry activity' : 'Refresh'}
-				</Button>
-			</div>
 			{error ? (
 				<ErrorPanel
 					message={`Activity scanning was interrupted. ${
@@ -6783,7 +6794,15 @@ export function collectionActivityScanAnnouncement({
 	} so far.`;
 }
 
-function CollectionTabs({ collection, active }: { collection: Collection; active: 'assets' | 'activity' }) {
+function CollectionTabs({
+	collection,
+	active,
+	action,
+}: {
+	collection: Collection;
+	active: 'assets' | 'activity';
+	action?: React.ReactNode;
+}) {
 	return (
 		<nav className="collection-tabs" aria-label={`${collection.name} views`}>
 			<Link
@@ -6800,6 +6819,7 @@ function CollectionTabs({ collection, active }: { collection: Collection; active
 			>
 				<History className="ui-icon ui-icon--sm" aria-hidden="true" /> Activity
 			</Link>
+			{action}
 		</nav>
 	);
 }
