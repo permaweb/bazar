@@ -107,6 +107,18 @@ export function arweaveRawDataUrl(id: string, gateway = arweaveGatewayFromLocati
 	return `${gateway}/raw/${id}`;
 }
 
+export function normalizeArweaveRawDataUrl(value: string): string {
+	try {
+		const url = new URL(value);
+		const directId = url.pathname.match(/^\/([A-Za-z0-9_-]{43})\/?$/)?.[1];
+		if (!directId) return value;
+		url.pathname = `/raw/${directId}`;
+		return url.toString();
+	} catch {
+		return value;
+	}
+}
+
 export function gatewayFromLocation(location: Location = window.location): string {
 	return gatewaysFromLocation(location)[0];
 }

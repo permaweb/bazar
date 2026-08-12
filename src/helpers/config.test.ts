@@ -6,6 +6,7 @@ import {
 	arweaveGatewayOverrideFromLocation,
 	arweaveGraphqlEndpoint,
 	arweaveRawDataUrl,
+	normalizeArweaveRawDataUrl,
 	computeGatewayForEnvironment,
 	computeGatewaysForEnvironment,
 	DEFAULT_ARWEAVE_GATEWAY,
@@ -110,5 +111,12 @@ describe('Arweave gateway routing', () => {
 
 	it('keeps the Raw fallback suite on the non-redirecting immutable-data route', () => {
 		expect(arweaveRawDataUrl('asset-id', 'https://gateway.example')).toBe('https://gateway.example/raw/asset-id');
+	});
+
+	it('upgrades legacy direct transaction URLs without changing other artwork URLs', () => {
+		const id = 'L'.repeat(43);
+		expect(normalizeArweaveRawDataUrl(`https://arweave.net/${id}`)).toBe(`https://arweave.net/raw/${id}`);
+		expect(normalizeArweaveRawDataUrl(`https://arweave.net/raw/${id}`)).toBe(`https://arweave.net/raw/${id}`);
+		expect(normalizeArweaveRawDataUrl('https://images.example/token.png')).toBe('https://images.example/token.png');
 	});
 });

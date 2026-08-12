@@ -56,7 +56,7 @@ import {
 
 import { type ArweaveSyncStep, ArweaveTransactionSync } from 'components/ArweaveTransactionSync';
 import { postConfirmationPendingLabel } from 'components/ArweaveTransactionSync/sequence';
-import { ArCurrencyLabel, ArCurrencyText } from 'components/ArCurrencyLabel';
+import { ArCurrencyLabel, ArCurrencyText, formatArCurrencyText } from 'components/ArCurrencyLabel';
 import { type AssetDetailTab, AssetDetailTabs } from 'components/AssetDetailTabs';
 import { assetOperationPendingActionLabel, AssetOperationStatus } from 'components/AssetOperationStatus';
 import { Button } from 'components/Button';
@@ -2858,13 +2858,15 @@ function FungibleOperationDialog({
 									) : null}
 									{matchedOrders.length ? (
 										<p id={quoteStatusId} className="sr-only" aria-live="polite" role="status">
-											{quoteState === 'ready' && estimatedCost
-												? `Purchase quote ready. Maximum total ${winstonToAr(
-														estimatedCost
-												  )} AR.${canAfford ? '' : ' This wallet has insufficient AR.'}`
-												: quoteState === 'error'
-												? 'Purchase quote unavailable. Retry the cost check before buying.'
-												: 'Checking the wallet balance and network fees.'}
+											<ArCurrencyText>
+												{quoteState === 'ready' && estimatedCost
+													? `Purchase quote ready. Maximum total ${winstonToAr(
+															estimatedCost
+													  )} AR.${canAfford ? '' : ' This wallet has insufficient AR.'}`
+													: quoteState === 'error'
+													? 'Purchase quote unavailable. Retry the cost check before buying.'
+													: 'Checking the wallet balance and network fees.'}
+											</ArCurrencyText>
 										</p>
 									) : null}
 									{matchedOrders.length ? (
@@ -4136,10 +4138,12 @@ function unitPriceWinston(order: SwapOrder, denomination: number): bigint {
 }
 
 function orderPriceLabel(order: SwapOrder, state: AssetState) {
-	return `${winstonToAr(unitPriceWinston(order, state.denomination).toString())} AR / ${formatTickerLabel(
-		state.ticker,
-		'token'
-	)}`;
+	return formatArCurrencyText(
+		`${winstonToAr(unitPriceWinston(order, state.denomination).toString())} AR / ${formatTickerLabel(
+			state.ticker,
+			'token'
+		)}`
+	);
 }
 
 function tokenLabel(raw: string, state: AssetState) {
@@ -4147,14 +4151,16 @@ function tokenLabel(raw: string, state: AssetState) {
 }
 
 export function fungibleOrderActionLabel(action: 'buy' | 'cancel', order: SwapOrder, state: AssetState) {
-	const lot = `${tokenLabel(order.quantity, state)} for ${winstonToAr(order.asking)} AR`;
+	const lot = formatArCurrencyText(`${tokenLabel(order.quantity, state)} for ${winstonToAr(order.asking)} AR`);
 	return action === 'buy' ? `Buy ${lot} from ${order.creator}` : `Cancel listing of ${lot}`;
 }
 
 export function fungibleListingAccessibleLabel(order: SwapOrder, state: AssetState) {
-	return `${tokenLabel(order.quantity, state)}, ${orderPriceLabel(order, state)}, ${winstonToAr(
-		order.asking
-	)} AR total, seller ${order.creator}`;
+	return formatArCurrencyText(
+		`${tokenLabel(order.quantity, state)}, ${orderPriceLabel(order, state)}, ${winstonToAr(
+			order.asking
+		)} AR total, seller ${order.creator}`
+	);
 }
 
 export function fungibleOperationStateError(

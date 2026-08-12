@@ -124,7 +124,7 @@ import {
 import { formatTokenAmount } from 'api/order-matching';
 
 import { ArtworkImage } from 'components/ArtworkImage';
-import { ArCurrencyLabel, ArCurrencyText } from 'components/ArCurrencyLabel';
+import { ArCurrencyLabel, ArCurrencyText, formatArCurrencyText } from 'components/ArCurrencyLabel';
 import type { ArweaveSyncStep } from 'components/ArweaveTransactionSync';
 import { quorumConfirmationDepth } from 'components/ArweaveTransactionSync/confirmationDepth';
 import { postConfirmationPendingLabel } from 'components/ArweaveTransactionSync/sequence';
@@ -3037,12 +3037,16 @@ function Home() {
 	}, [cachedHomeListings, liveHomeListingShells]);
 	const displayHomeListings = React.useMemo(
 		() =>
-			homeListingShells.map(({ asset, collection, activity }) => ({
-				asset,
-				collection,
-				activity,
-			})),
-		[homeListingShells]
+			homeListingShells.map(({ asset, collection, activity }) => {
+				const currentCollection = market.collections.find((candidate) => candidate.id === collection.id);
+				const currentAsset = currentCollection ? collectionAsset(currentCollection, asset.id) : undefined;
+				return {
+					asset: currentAsset?.image && !asset.image ? { ...asset, image: currentAsset.image } : asset,
+					collection: currentCollection ?? collection,
+					activity,
+				};
+			}),
+		[homeListingShells, market.collections]
 	);
 	const [portableHomeListingsLoading, setPortableHomeListingsLoading] = React.useState(false);
 	const [portableHomeListingsComplete, setPortableHomeListingsComplete] = React.useState(false);
@@ -3092,6 +3096,7 @@ function Home() {
 		]
 	);
 	const [assetPrices, setAssetPrices] = React.useState<Record<string, HomeMarketSummary>>({});
+	const [assetImages, setAssetImages] = React.useState<Record<string, string>>({});
 	const displayAssetPrices = React.useMemo(() => {
 		const prices: Record<string, HomeMarketSummary> = Object.fromEntries(
 			homeListingShells.map((listing) => [
@@ -3410,6 +3415,9 @@ function Home() {
 		setAssetPrices((current) =>
 			Object.fromEntries(Object.entries(current).filter(([assetId]) => visibleAssetIds.has(assetId)))
 		);
+		setAssetImages((current) =>
+			Object.fromEntries(Object.entries(current).filter(([assetId]) => visibleAssetIds.has(assetId)))
+		);
 		const requestedAssetIds = new Set(
 			homeSummaryRequestKeys(
 				assets.map(({ asset }) => asset.id),
@@ -3427,7 +3435,7 @@ function Home() {
 			finishSummaryRetry(retryToken, 'assets');
 		};
 		retryAssetSummaries.current.clear();
-		void mapConcurrent(requestedAssets, 8, async ({ asset }) => {
+		void mapConcurrent(requestedAssets, 8, async ({ asset, collection }) => {
 			const previous = assetSummaryControllers.current.get(asset.id);
 			if (previous) previous.abort();
 			const controller = new AbortController();
@@ -3437,10 +3445,16 @@ function Home() {
 				const publishPrice = (state: AssetState) => {
 					const order = bestAskOfAsset(state);
 					if (!controller.signal.aborted) {
+						const image = collectionAsset(collection, asset.id, state)?.image;
 						setAssetPrices((current) => ({
 							...current,
 							[asset.id]: { status: 'resolved', value: order ? orderPriceLabel(order, state) : null },
 						}));
+						if (image) {
+							setAssetImages((current) =>
+								current[asset.id] === image ? current : { ...current, [asset.id]: image }
+							);
+						}
 					}
 				};
 				const portable = portableHomeListingById.get(asset.id);
@@ -4092,7 +4106,7 @@ function Home() {
 															) : (
 																<div className="home-name-art">
 																	<BazarMark />
-																	<span>AR</span>
+																	<span>$AR</span>
 																</div>
 															)}
 															<div className="home-feature-glow" />
@@ -4202,7 +4216,7 @@ function Home() {
 																<div className="home-asset-media home-token-media">
 																	<TokenAvatar
 																		fetchPriority={index < 2 ? 'high' : 'auto'}
-																		image={asset.image}
+																		image={assetImages[asset.id] ?? asset.image}
 																		loading={index < 2 ? 'eager' : 'lazy'}
 																		ticker={asset.ticker ?? 'Token'}
 																	/>
@@ -4871,7 +4885,7 @@ export function MarketSelect<Value extends string>({
 				aria-controls={menuId}
 				aria-expanded={open}
 				aria-haspopup="listbox"
-				aria-label={`${label}: ${selected.label}`}
+				aria-label={formatArCurrencyText(`${label}: ${selected.label}`)}
 				className={`market-select-trigger${open ? ' open' : ''}`}
 				size="custom"
 				onClick={() => (open ? setOpen(false) : openAndFocus())}
@@ -4883,7 +4897,9 @@ export function MarketSelect<Value extends string>({
 				ref={triggerRef}
 				type="button"
 			>
-				<span>{selected.label}</span>
+				<span>
+					<ArCurrencyText>{selected.label}</ArCurrencyText>
+				</span>
 				<ChevronRight aria-hidden="true" />
 			</Button>
 			{open ? (
@@ -4917,7 +4933,9 @@ export function MarketSelect<Value extends string>({
 								variant="ghost"
 								type="button"
 							>
-								<span>{option.label}</span>
+								<span>
+									<ArCurrencyText>{option.label}</ArCurrencyText>
+								</span>
 								{active ? <Check aria-hidden="true" /> : null}
 							</Button>
 						);
@@ -10026,13 +10044,15 @@ function OperationDialog({
 							) : null}
 							{operation.kind === 'buy' ? (
 								<p className="sr-only" id={quoteStatusId} aria-live="polite" role="status">
-									{quoteError
-										? 'Purchase quote unavailable. Retry the cost check before buying.'
-										: purchaseQuote
-										? `Purchase quote ready. Maximum total ${winstonToAr(purchaseQuote.total)} AR.${
-												purchaseAffordable ? '' : ' This wallet has insufficient AR.'
-										  }`
-										: 'Checking the purchase cost.'}
+									<ArCurrencyText>
+										{quoteError
+											? 'Purchase quote unavailable. Retry the cost check before buying.'
+											: purchaseQuote
+											? `Purchase quote ready. Maximum total ${winstonToAr(
+													purchaseQuote.total
+											  )} AR.${purchaseAffordable ? '' : ' This wallet has insufficient AR.'}`
+											: 'Checking the exact purchase cost.'}
+									</ArCurrencyText>
 								</p>
 							) : null}
 							{operation.kind === 'buy' ? (

@@ -303,7 +303,7 @@ describe('fungible operation error semantics', () => {
 		expect(composer).toContain('value="0.00002"');
 		expect(composer).toContain('$MINTA');
 		expect(composer).toContain('0.00024 <span class="ar-currency-label">');
-		expect(composer).toContain('AR</span> total');
+		expect(composer).toContain('$AR</span> total');
 	});
 
 	it('counts only the new wallet approvals missing from a recovered batch', () => {
@@ -1015,12 +1015,12 @@ describe('fungible order action names', () => {
 		} as SwapOrder;
 
 		expect(fungibleOrderActionLabel('buy', first, state)).toBe(
-			`Buy 3 $WEAVE for 0.000003 AR from ${'A'.repeat(43)}`
+			`Buy 3 $WEAVE for 0.000003 $AR from ${'A'.repeat(43)}`
 		);
 		expect(fungibleOrderActionLabel('buy', second, state)).toBe(
-			`Buy 5 $WEAVE for 0.000006 AR from ${'B'.repeat(43)}`
+			`Buy 5 $WEAVE for 0.000006 $AR from ${'B'.repeat(43)}`
 		);
-		expect(fungibleOrderActionLabel('cancel', first, state)).toBe('Cancel listing of 3 $WEAVE for 0.000003 AR');
+		expect(fungibleOrderActionLabel('cancel', first, state)).toBe('Cancel listing of 3 $WEAVE for 0.000003 $AR');
 	});
 
 	it('distinguishes sellers whose compact identities collide', () => {

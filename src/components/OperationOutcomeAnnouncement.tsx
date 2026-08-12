@@ -13,7 +13,7 @@ export function OperationOutcomeAnnouncement({
 }) {
 	return (
 		<div aria-atomic="true" className="sr-only" role="status">
-			{active ? `${title}. ${detail}` : ''}
+			{active ? <ArCurrencyText>{`${title}. ${detail}`}</ArCurrencyText> : ''}
 		</div>
 	);
 }

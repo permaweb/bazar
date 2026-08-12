@@ -62,6 +62,6 @@ describe('market activity labels', () => {
 		expect(markup).toContain('activity-main has-amount');
 		expect(markup).toContain('<strong class="activity-amount">12 TOKEN</strong>');
 		expect(markup).toContain('0.1 <span class="ar-currency-label">');
-		expect(markup).toContain('AR</span> total');
+		expect(markup).toContain('$AR</span> total');
 	});
 });
