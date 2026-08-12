@@ -14,12 +14,13 @@ import {
 } from 'helpers/config';
 
 import { type AssetSummary, FUNGIBLE_TOKEN_COLLECTION_ID, FUNGIBLE_TOKEN_COLLECTION_NAME } from './collections';
-import { acceptedMintActivity, upsertMintActivity } from './mint-activity';
+import { acceptedMintActivity, mintActivityId, removeMintActivities, upsertMintActivity } from './mint-activity';
 import {
 	CREATED_COLLECTION_ID,
 	CREATED_COLLECTION_NAME,
 	type MintedAsset,
 	type MintedCollection,
+	removeMintedAssets,
 	type StorageLike,
 	storeMintedAsset,
 	storeMintedCollection,
@@ -33,6 +34,7 @@ export {
 	createdCollection,
 	loadMintedAssets,
 	loadMintedCollections,
+	removeMintedAssets,
 	storeMintedAsset,
 	storeMintedCollection,
 } from './minted-assets';
@@ -112,6 +114,11 @@ export type MintResult = {
 };
 
 export type MintPhase = 'signing-asset' | 'uploading-asset' | 'signing-artwork' | 'uploading-artwork';
+
+export type MintUploadTransaction = {
+	id: string;
+	label: string;
+};
 
 export const MAX_FUNGIBLE_TICKER_LENGTH = 32;
 /** Mirrors MAX_TOKEN_DENOMINATION in asset-marketplace.ts — parseAssetState rejects anything above it. */
@@ -688,6 +695,16 @@ export class CollectionMintClient {
 			createdAt: Date.now(),
 		};
 		storeMintedCollection(collection, this.#storage);
+		removeMintedAssets(
+			assets.map((asset) => asset.id),
+			this.#storage
+		);
+		if (this.#storage) {
+			removeMintActivities(
+				this.#storage,
+				assets.map((asset) => mintActivityId(owner, asset.id))
+			);
+		}
 		return { collection, manifestId, processId };
 	}
 
@@ -788,6 +805,16 @@ export class CollectionMintClient {
 		);
 		const updated = { ...collection, assets, total: assets.length, manifestId };
 		storeMintedCollection(updated, this.#storage);
+		removeMintedAssets(
+			additions.map((asset) => asset.id),
+			this.#storage
+		);
+		if (this.#storage) {
+			removeMintActivities(
+				this.#storage,
+				additions.map((asset) => mintActivityId(owner, asset.id))
+			);
+		}
 		return { collection: updated, manifestId, updateId };
 	}
 

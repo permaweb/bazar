@@ -364,6 +364,57 @@ describe('asset mint contract', () => {
 		expect(fetchMock).toHaveBeenCalledTimes(3);
 	});
 
+	it('keeps a completed collection mint out of the standalone asset bucket', async () => {
+		const store = storage();
+		const ids = ['A', 'M', 'C'].map((prefix) => prefix.repeat(43));
+		const transactions = ids.map(() => {
+			const transaction: any = { id: '', owner: '', chunks: { chunks: [{}] }, addTag: vi.fn() };
+			transaction.setSignature = vi.fn((signature) => Object.assign(transaction, signature));
+			transaction.toJSON = () => ({ id: transaction.id, owner: transaction.owner, tags: [] });
+			return transaction;
+		});
+		let signed = 0;
+		const client = new CollectionMintClient({
+			arweave: {
+				createTransaction: vi.fn(async () => transactions.shift()),
+				transactions: {},
+				wallets: { ownerToAddress: vi.fn(async () => owner) },
+			},
+			fetch: vi.fn(async (input: RequestInfo | URL) =>
+				String(input).includes('/wallet/') ? new Response('1000') : new Response('1')
+			) as typeof fetch,
+			storage: store,
+			wallet: {
+				getActiveAddress: vi.fn(async () => owner),
+				sign: vi.fn(async () => ({
+					id: ids[signed++],
+					owner: 'signed-owner',
+					tags: [],
+					signature: 'signed',
+				})),
+			} as any,
+		});
+
+		const result = await client.mint(
+			{
+				name: 'HTTP Word Art',
+				description: '',
+				files: [new File([new Uint8Array([1])], 'http.png', { type: 'image/png' })],
+			},
+			owner,
+			{ allowHighCost: true }
+		);
+
+		expect(result).toMatchObject({
+			manifestId: ids[1],
+			processId: ids[2],
+			collection: { id: ids[2], assets: [{ id: ids[0] }], total: 1 },
+		});
+		expect(loadMintedCollections(store)).toHaveLength(1);
+		expect(loadMintedAssets(store)).toEqual([]);
+		expect(loadMintActivities(store)).toEqual([]);
+	});
+
 	it('appends assets by targeting a signed carrier set update', async () => {
 		const store = storage();
 		const ids = ['A', 'B', 'M', 'U'].map((prefix) => prefix.repeat(43));
@@ -434,6 +485,8 @@ describe('asset mint contract', () => {
 		expect(update.addTag).toHaveBeenCalledWith('action', 'set');
 		expect(update.addTag).toHaveBeenCalledWith('reference-value', ids[2]);
 		expect(loadMintedCollections(store)[0]).toMatchObject({ id: collection.id, manifestId: ids[2], total: 2 });
+		expect(loadMintedAssets(store)).toEqual([]);
+		expect(loadMintActivities(store)).toEqual([]);
 	});
 
 	it('explains the bytes and transaction count in a single-asset quote', async () => {

@@ -309,11 +309,24 @@ function initialMarketCollections() {
 	const known = new Set(cached.map((collection) => collection.id));
 	const localAdditions = localCollections.filter((collection) => !known.has(collection.id));
 	for (const collection of localAdditions) known.add(collection.id);
-	return [
+	return withoutDuplicatedCreatedAssets([
 		...cached,
 		...localAdditions,
 		...(mintedAssets.length && !known.has(CREATED_COLLECTION_ID) ? [createdCollection(mintedAssets)] : []),
-	];
+	]);
+}
+
+export function withoutDuplicatedCreatedAssets(collections: Collection[]): Collection[] {
+	const collectionAssetIds = new Set(
+		collections
+			.filter((collection) => collection.id !== CREATED_COLLECTION_ID)
+			.flatMap((collection) => collection.assets.map((asset) => asset.id))
+	);
+	return collections.flatMap((collection) => {
+		if (collection.id !== CREATED_COLLECTION_ID) return [collection];
+		const assets = collection.assets.filter((asset) => !collectionAssetIds.has(asset.id));
+		return assets.length ? [{ ...collection, assets, total: assets.length }] : [];
+	});
 }
 
 export function verifiedCollectionIdsFrom(collections: Collection[]) {
@@ -364,7 +377,9 @@ export function App() {
 			if (!controller.signal.aborted) {
 				setMarket((current) => ({
 					...current,
-					collections: mergeCollectionSnapshots(current.collections, collections),
+					collections: withoutDuplicatedCreatedAssets(
+						mergeCollectionSnapshots(current.collections, collections)
+					),
 					verifiedCollectionIds: new Set([
 						...current.verifiedCollectionIds,
 						...verifiedCollectionIdsFrom(collections),
@@ -381,13 +396,13 @@ export function App() {
 					const known = new Set(resolved.map((collection) => collection.id));
 					return {
 						...current,
-						collections: [
+						collections: withoutDuplicatedCreatedAssets([
 							...resolved,
 							...localCollections.filter((collection) => !known.has(collection.id)),
 							...(mintedAssets.length && !known.has(CREATED_COLLECTION_ID)
 								? [createdCollection(mintedAssets)]
 								: []),
-						],
+						]),
 						verifiedCollectionIds: new Set([
 							...current.verifiedCollectionIds,
 							...verifiedCollectionIdsFrom(collections),
@@ -465,7 +480,10 @@ export function App() {
 	const addCollection = React.useCallback((collection: Collection) => {
 		setMarket((current) => ({
 			...current,
-			collections: [collection, ...current.collections.filter((item) => item.id !== collection.id)],
+			collections: withoutDuplicatedCreatedAssets([
+				collection,
+				...current.collections.filter((item) => item.id !== collection.id),
+			]),
 			verifiedCollectionIds: new Set([...current.verifiedCollectionIds, collection.id]),
 		}));
 	}, []);
