@@ -170,6 +170,7 @@ import {
 import { scheduleIdleTask } from 'helpers/idle';
 import { optionalMotionBehavior } from 'helpers/motion';
 import { assetGroupRevealComplete, retainedAssetGroupLimit } from 'helpers/progressive-assets';
+import { formatTickerLabel } from 'helpers/token-display';
 import { useProgressiveReveal } from 'hooks/useProgressiveReveal';
 import { useWallet } from 'providers/WalletProvider';
 
@@ -6912,10 +6913,6 @@ function CollectionActivityView() {
 					<p className="eyebrow">Arweave activity</p>
 					<h1>{collection.name}</h1>
 				</div>
-				<p>
-					Indexed signed market actions discovered from Arweave. Current ownership and listing status still
-					come only from live process state.
-				</p>
 			</div>
 			<CollectionTabs
 				action={
@@ -7566,11 +7563,11 @@ function AssetDetailLoadingShell({
 					<div className="fungible-token-identity">
 						<div className="fungible-token-title">
 							{asset ? (
-								<h1>{asset.name}</h1>
+								<h1>{formatTickerLabel(asset.ticker)}</h1>
 							) : (
 								<span className="layout-placeholder layout-placeholder-title" />
 							)}
-							{asset?.ticker ? <strong>{asset.ticker}</strong> : null}
+							{asset ? <span className="fungible-token-name">{asset.name}</span> : null}
 						</div>
 						<div className="fungible-token-meta" aria-hidden="true">
 							{collection ? (
@@ -10649,7 +10646,7 @@ function unitPriceWinston(order: SwapOrder, denomination: number) {
 }
 function orderPriceLabel(order: SwapOrder, state: AssetState) {
 	return `${winstonToAr(unitPriceWinston(order, state.denomination).toString())} AR${
-		state.totalSupply === '1' && state.denomination === 0 ? '' : ` / ${state.ticker || 'token'}`
+		state.totalSupply === '1' && state.denomination === 0 ? '' : ` / ${formatTickerLabel(state.ticker, 'token')}`
 	}`;
 }
 function homeListingShell(result: ResolvedAsset): HomeListingShell | undefined {
@@ -10671,9 +10668,10 @@ function homeListingShell(result: ResolvedAsset): HomeListingShell | undefined {
 export function tokenBalanceLabel(value: string, state: AssetState) {
 	const [whole, fraction] = formatTokenAmount(value, state.denomination).split('.');
 	const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-	return `${fraction ? `${grouped}.${fraction}` : grouped} ${
-		state.ticker || (state.totalSupply === '1' ? 'asset' : 'tokens')
-	}`;
+	return `${fraction ? `${grouped}.${fraction}` : grouped} ${formatTickerLabel(
+		state.ticker,
+		state.totalSupply === '1' ? 'asset' : 'tokens'
+	)}`;
 }
 function short(value: string) {
 	return `${value.slice(0, 6)}…${value.slice(-5)}`;
