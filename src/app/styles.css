@@ -8210,7 +8210,7 @@ body input:focus-visible {
 	gap: 22px;
 	text-align: center;
 }
-.upload-infinity-loader {
+.upload-activity-result-icon {
 	width: 96px;
 	height: 96px;
 	display: grid;
@@ -8219,22 +8219,20 @@ body input:focus-visible {
 	border-radius: 50%;
 	background: var(--surface-subtle);
 }
-.upload-infinity-loader svg {
+.upload-activity-result-icon svg {
 	width: 48px;
 	height: 48px;
 	stroke-width: 1.25;
 }
-.upload-activity-state.working .upload-infinity-loader svg,
-.upload-activity-state.tracking .upload-infinity-loader svg,
 .operation-activity-infinity {
 	animation: infinity-pulse 1.15s ease-in-out infinite;
 }
-.upload-activity-state.done .upload-infinity-loader {
+.upload-activity-state.done .upload-activity-result-icon {
 	color: var(--positive-text);
 	border-color: var(--positive-border);
 	background: var(--positive-surface);
 }
-.upload-activity-state.error .upload-infinity-loader {
+.upload-activity-state.error .upload-activity-result-icon {
 	color: var(--negative);
 	border-color: var(--negative-border);
 	background: var(--negative-surface);
@@ -8253,55 +8251,6 @@ body input:focus-visible {
 	color: var(--muted);
 	font-size: var(--type-body);
 	line-height: 1.55;
-}
-.upload-activity-phases {
-	margin: 0 0 var(--space-5);
-	padding: 0;
-	display: grid;
-	grid-template-columns: repeat(4, minmax(0, 1fr));
-	list-style: none;
-}
-.upload-activity-phases li {
-	position: relative;
-	display: grid;
-	justify-items: center;
-	gap: 7px;
-	color: var(--muted-subtle);
-	font-size: var(--type-small);
-}
-.upload-activity-phases li::after {
-	content: '';
-	position: absolute;
-	top: 13px;
-	left: calc(50% + 13px);
-	width: calc(100% - 26px);
-	height: 1px;
-	background: var(--line-dark);
-}
-.upload-activity-phases li:last-child::after {
-	display: none;
-}
-.upload-activity-phases li > span {
-	width: 26px;
-	height: 26px;
-	z-index: 1;
-	display: grid;
-	place-items: center;
-	border: 1px solid var(--line-dark);
-	border-radius: 50%;
-	background: var(--paper);
-}
-.upload-activity-phases li > span svg {
-	width: 13px;
-	height: 13px;
-}
-.upload-activity-phases li.reached {
-	color: var(--ink);
-}
-.upload-activity-phases li.reached > span {
-	color: var(--paper);
-	border-color: var(--ink);
-	background: var(--ink);
 }
 .upload-activity-panel > .mint-transaction-receipts {
 	margin-top: auto;

@@ -116,7 +116,7 @@ export default function CreateRoute() {
 	const market = React.useContext(MarketContext);
 	const wallet = useWallet();
 	const navigate = useNavigate();
-	const { beginUpload, failUpload, finishUpload, updateUpload } = useOperationActivity();
+	const { beginUpload, failUpload, finishUpload, recordUploadTransaction, updateUpload } = useOperationActivity();
 	const fileInput = React.useRef<HTMLInputElement>(null);
 	const artworkInput = React.useRef<HTMLInputElement>(null);
 	const metadataRequest = React.useRef(0);
@@ -362,6 +362,7 @@ export default function CreateRoute() {
 					wallet.address,
 					{
 						allowHighCost: true,
+						onTransaction: (transaction) => recordUploadTransaction(uploadId, transaction),
 						onPhase: (nextPhase) => {
 							setCollectionPhase(nextPhase);
 							updateUpload(uploadId, collectionMintPhaseLabel(nextPhase));
@@ -393,6 +394,7 @@ export default function CreateRoute() {
 				wallet.address,
 				{
 					allowHighCost: true,
+					onTransaction: (transaction) => recordUploadTransaction(uploadId, transaction),
 					onPhase: (nextPhase) => {
 						setPhase(nextPhase);
 						updateUpload(uploadId, mintPhaseStatus(nextPhase));
@@ -422,6 +424,7 @@ export default function CreateRoute() {
 		});
 		try {
 			const minted = await new AssetMintClient().resume(draft, wallet.address, {
+				onTransaction: (transaction) => recordUploadTransaction(uploadId, transaction),
 				onPhase: (nextPhase) => {
 					setPhase(nextPhase);
 					updateUpload(uploadId, mintPhaseStatus(nextPhase));
