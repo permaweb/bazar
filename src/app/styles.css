@@ -985,6 +985,7 @@ p {
 	height: clamp(165px, 14vw, 220px);
 	position: relative;
 	overflow: hidden;
+	container-type: size;
 	border-bottom: 1px solid var(--home-line);
 	border-radius: 0;
 	background: var(--panel);
@@ -1216,7 +1217,7 @@ p {
 	min-width: 0;
 }
 .home-asset-grid img,
-.home-asset-grid .home-token-art,
+.home-asset-grid .home-token-media,
 .home-asset-grid .home-name-asset-art,
 .home-asset-grid .artwork-fallback {
 	width: 100%;
@@ -1231,8 +1232,10 @@ p {
 .home-asset-grid img {
 	background: var(--panel);
 }
-.home-asset-grid .home-token-art {
-	font-size: var(--type-display);
+.home-asset-grid .home-token-media {
+	display: grid;
+	place-items: center;
+	container-type: size;
 }
 .home-asset-grid .home-name-asset-art {
 	background-color: var(--surface);
@@ -1256,19 +1259,19 @@ p {
 .home-asset-details > div {
 	min-width: 0;
 }
-.home-asset-grid strong,
-.home-asset-grid span {
+.home-asset-details strong,
+.home-asset-details span {
 	display: block;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
-.home-asset-grid strong {
+.home-asset-details strong {
 	color: var(--ink);
 	font-size: var(--type-body);
 	font-weight: 400;
 }
-.home-asset-grid span {
+.home-asset-details span {
 	color: var(--muted-subtle);
 	font-size: var(--type-small);
 }
@@ -2351,15 +2354,8 @@ input:focus {
 	background: var(--transparent);
 	font-size: var(--type-body);
 }
-.token-collection-grid .token-asset-card .token-artwork {
-	background: var(--transparent);
-	font-size: var(--type-body);
-}
-.token-collection-grid .token-asset-card .token-artwork::before {
-	background: var(--transparent);
-}
-.token-collection-grid .token-asset-card .token-artwork small {
-	display: none;
+.token-collection-grid .token-asset-card .token-avatar {
+	--token-avatar-size: 52px;
 }
 .token-collection-grid .token-asset-card .asset-card-copy {
 	align-content: center;
@@ -2395,90 +2391,78 @@ input:focus {
 	color: var(--accent);
 	font: 400 var(--type-display) 'DM Sans', sans-serif;
 }
-.token-artwork {
+.token-avatar {
+	--token-avatar-size: 100%;
 	position: relative;
 	isolation: isolate;
-	width: 100%;
-	height: 100%;
-	display: grid;
-	place-content: center;
-	justify-items: center;
-	gap: 0.16em;
-	overflow: hidden;
-	color: var(--ink);
-	background-color: var(--surface);
-	background-image: radial-gradient(var(--line-dark) 0.7px, var(--transparent) 0.7px);
-	background-size: 3px 3px;
-	background-position: -1.5px -1.5px;
-}
-.token-artwork::before {
-	content: '';
-	position: absolute;
-	z-index: 0;
-	top: 50%;
-	left: 50%;
-	height: 72%;
-	max-width: calc(100% - 28px);
+	width: var(--token-avatar-size);
+	height: var(--token-avatar-size);
+	max-width: 100%;
 	aspect-ratio: 1;
+	flex: 0 0 auto;
+	display: grid;
+	place-items: center;
+	overflow: hidden;
 	border: 1px solid var(--line-dark);
 	border-radius: 50%;
-	background: var(--image-glass-surface);
-	transform: translate(-50%, -50%);
+	color: var(--ink);
+	background: var(--transparent);
+	container-type: inline-size;
 }
-.token-artwork strong {
+.token-avatar strong {
 	position: relative;
 	z-index: 1;
+	width: 78%;
+	overflow: hidden;
 	color: var(--ink);
-	font: 400 var(--type-display) / 0.95 'DM Sans', sans-serif;
+	font: 400 30cqw / 1 'DM Sans', sans-serif;
 	letter-spacing: -0.045em;
+	text-align: center;
+	text-overflow: clip;
 	white-space: nowrap;
 }
-.token-artwork.ticker-long strong {
-	font-size: 0.76em;
+.token-avatar.ticker-5 strong {
+	font-size: 25cqw;
+}
+.token-avatar.ticker-long strong {
+	font-size: 21cqw;
 	letter-spacing: -0.035em;
 }
-.token-artwork.ticker-7 strong {
-	font-size: 0.68em;
+.token-avatar.ticker-7 strong {
+	font-size: 18cqw;
 }
-.token-artwork.ticker-8 strong {
-	font-size: 0.62em;
+.token-avatar.ticker-8 strong {
+	font-size: 16cqw;
 }
-.circle-only-token-art {
-	background: var(--transparent);
+.token-avatar-image,
+.token-avatar > .artwork-fallback {
+	width: 100%;
+	height: 100%;
+	border: 0;
+	border-radius: inherit;
+	object-fit: cover;
 }
-.circle-only-token-art strong {
+.home-token-collection-art {
+	--token-avatar-size: min(62cqw, 62cqh, 240px);
+}
+.home-feature-art > .home-token-collection-art {
 	position: absolute;
 	top: 50%;
 	left: 50%;
-	width: 62%;
-	overflow: hidden;
-	text-align: center;
-	text-overflow: clip;
 	transform: translate(-50%, -50%);
 }
-.circle-only-token-art::before {
+.search-result-image.token-avatar-slot {
+	overflow: visible;
+	border: 0;
+	border-radius: 50%;
 	background: var(--transparent);
 }
-.circle-only-token-art small {
-	display: none;
+.search-result-image .token-avatar {
+	--token-avatar-size: 44px;
 }
-.token-artwork small {
-	position: relative;
-	z-index: 1;
-	color: var(--muted);
-	font: 400 var(--type-small) / 1 'DM Sans', sans-serif;
-}
-.home-token-collection-art {
-	font-size: var(--type-display);
-}
-.search-result-image .token-artwork {
-	font-size: var(--type-body);
-}
-.search-result-image .token-artwork small {
-	display: none;
-}
-.asset-media .token-artwork {
-	font-size: var(--type-display);
+.operation-activity-symbol.token-avatar {
+	--token-avatar-size: 40px;
+	border-radius: 50%;
 }
 .asset-media img {
 	width: 100%;
@@ -3726,6 +3710,21 @@ input:focus {
 	align-items: center;
 	gap: 3px;
 }
+.ar-currency-label {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+}
+.ar-currency-label img {
+	width: 15px;
+	height: 15px;
+	flex: 0 0 auto;
+	display: block;
+}
+:root[data-theme='dimmed'] .ar-currency-label img,
+:root[data-theme='dark'] .ar-currency-label img {
+	filter: invert(1);
+}
 .asset-history-current {
 	padding: 13px 14px;
 	display: flex;
@@ -3901,6 +3900,16 @@ input:focus {
 	display: grid;
 	gap: 3px;
 }
+.activity-main.has-amount {
+	grid-template-columns: minmax(0, 1fr) auto;
+	align-items: center;
+	column-gap: 20px;
+}
+.activity-main-copy {
+	min-width: 0;
+	display: grid;
+	gap: 3px;
+}
 .activity-actor {
 	min-width: 0;
 	display: flex;
@@ -3918,11 +3927,11 @@ input:focus {
 	align-items: center;
 	gap: 14px;
 }
-.activity-main strong {
+.activity-main-copy > strong {
 	font: 400 var(--type-body) 'DM Sans', sans-serif;
 }
-.activity-main a,
-.activity-main > span {
+.activity-main-copy > a,
+.activity-main-copy > span {
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
@@ -3930,10 +3939,20 @@ input:focus {
 	text-decoration: underline;
 	text-underline-offset: 3px;
 }
-.activity-main small {
+.activity-main-copy > small {
 	overflow: hidden;
 	color: var(--muted);
 	font-size: var(--type-small);
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.activity-main .activity-amount {
+	max-width: 19ch;
+	overflow: hidden;
+	color: var(--ink);
+	font: 400 clamp(1.2rem, 1.8vw, 1.55rem) / 1.1 'DM Sans', sans-serif;
+	letter-spacing: -0.04em;
+	text-align: right;
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
@@ -4347,20 +4366,10 @@ input:focus {
 	background: var(--panel);
 	object-fit: cover;
 }
-.dialog-asset-artwork.token-artwork {
-	font-size: 0.55rem;
-}
-.dialog-asset-artwork.token-artwork::before {
-	height: 70%;
-	max-width: calc(100% - 12px);
-}
-.dialog-asset-artwork.token-artwork strong,
-.dialog-asset-artwork.token-artwork.ticker-long strong {
-	font-size: 0.58rem;
-	letter-spacing: -0.02em;
-}
-.dialog-asset-artwork.token-artwork small {
-	display: none;
+.dialog-asset-artwork.token-avatar {
+	--token-avatar-size: 44px;
+	border-radius: 50%;
+	background: var(--transparent);
 }
 .dialog-asset-artwork-fallback {
 	display: grid;
@@ -5039,8 +5048,8 @@ body input:focus-visible {
 .asset-hero-media.token-hero {
 	background: var(--surface);
 }
-.asset-hero-media.token-hero > .token-artwork {
-	font-size: var(--type-display);
+.asset-hero-media.token-hero > .token-avatar {
+	--token-avatar-size: min(72%, 420px);
 }
 .fungible-orderbook .orderbook-head,
 .fungible-orderbook .orderbook-row {
@@ -5109,39 +5118,11 @@ body input:focus-visible {
 	gap: 18px;
 }
 .fungible-token-avatar {
+	--token-avatar-size: 68px;
 	width: 68px;
 	height: 68px;
-	display: grid;
-	place-items: center;
-	overflow: hidden;
-	border: 1px solid var(--line-dark);
 	border-radius: 50%;
-	background: var(--panel);
-}
-.fungible-token-avatar > img {
-	width: 100%;
-	height: 100%;
-	object-fit: cover;
-}
-.fungible-token-avatar > .layout-placeholder {
-	width: 100%;
-	height: 100%;
-	border-radius: 50%;
-}
-.fungible-token-avatar .token-artwork {
-	font-size: 0.7rem;
-}
-.fungible-token-avatar .token-artwork::before {
-	height: 72%;
-	max-width: calc(100% - 14px);
-}
-.fungible-token-avatar .token-artwork strong,
-.fungible-token-avatar .token-artwork.ticker-long strong {
-	font-size: 0.72rem;
-	letter-spacing: -0.025em;
-}
-.fungible-token-avatar .token-artwork small {
-	display: none;
+	background: var(--transparent);
 }
 .fungible-token-identity {
 	min-width: 0;
@@ -6391,6 +6372,9 @@ body input:focus-visible {
 	.token-collection-grid .token-asset-card .asset-media {
 		min-height: 64px;
 	}
+	.token-collection-grid .token-asset-card .token-avatar {
+		--token-avatar-size: 48px;
+	}
 	.token-collection-grid .token-asset-card .asset-card-copy {
 		padding: 10px 12px;
 	}
@@ -6520,11 +6504,11 @@ body input:focus-visible {
 	.asset-history-list a {
 		min-height: 44px;
 	}
-	.collection-activity-page .activity-main a,
+	.collection-activity-page .activity-main-copy > a,
 	.collection-activity-page .activity-actor a,
 	.collection-activity-page .activity-actor .wallet-address,
 	.collection-activity-page .activity-block a,
-	.home-activity-panel .activity-main a,
+	.home-activity-panel .activity-main-copy > a,
 	.home-activity-panel .activity-actor a,
 	.home-activity-panel .activity-actor .wallet-address,
 	.home-activity-panel .activity-block a {
@@ -7227,6 +7211,54 @@ body input:focus-visible {
 	color: var(--ink);
 	font-weight: 400;
 }
+.udl-presets {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 8px;
+}
+.udl-preset {
+	min-width: 0;
+	padding: 13px;
+	display: grid;
+	align-content: start;
+	gap: 5px;
+	border: 1px solid var(--line-dark);
+	border-radius: 7px;
+	background: var(--paper);
+	color: var(--ink);
+	cursor: pointer;
+	font: inherit;
+	text-align: left;
+}
+.udl-preset:hover {
+	border-color: var(--ink);
+}
+.udl-preset[aria-pressed='true'] {
+	border-color: var(--ink);
+	background: var(--panel);
+	box-shadow: inset 0 0 0 1px var(--ink);
+}
+.udl-preset:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 2px;
+}
+.udl-preset-title {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+.udl-preset-title .ui-icon {
+	flex: 0 0 auto;
+}
+.udl-preset strong {
+	font-size: var(--type-body);
+	font-weight: 500;
+}
+.udl-preset > span {
+	color: var(--muted-subtle);
+	font-size: var(--type-small);
+	line-height: 1.4;
+}
 .udl-grid {
 	display: grid;
 	grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -7307,6 +7339,10 @@ body input:focus-visible {
 }
 .udl-advanced[open] summary {
 	margin-bottom: 13px;
+}
+.udl-advanced-content {
+	display: grid;
+	gap: 14px;
 }
 .udl-field-control.with-suffix {
 	position: relative;
@@ -7927,7 +7963,7 @@ body input:focus-visible {
 }
 .home-asset-media,
 .home-asset-grid img.home-asset-media,
-.home-asset-grid .home-token-art.home-asset-media,
+.home-asset-grid .home-token-media.home-asset-media,
 .home-asset-grid .name-asset-artwork.home-asset-media,
 .home-asset-grid .artwork-fallback.home-asset-media {
 	width: 100%;
@@ -7948,13 +7984,13 @@ body input:focus-visible {
 	opacity: 0.86;
 	border-color: var(--home-line);
 }
-.home-asset-grid .home-token-art.home-asset-media {
+.home-asset-grid .home-token-media.home-asset-media {
 	display: grid;
-	place-content: center;
-	justify-items: center;
-}
-.home-asset-grid .home-token-art.home-asset-media.circle-only-token-art {
+	place-items: center;
 	background: var(--transparent);
+}
+.home-token-media .token-avatar {
+	--token-avatar-size: min(62cqw, 62cqh, 240px);
 }
 .name-asset-artwork {
 	position: relative;
@@ -8200,6 +8236,9 @@ body input:focus-visible {
 		width: 100%;
 		min-width: 0;
 	}
+	.udl-presets {
+		grid-template-columns: 1fr;
+	}
 	.udl-field-control.with-value,
 	.udl-payment,
 	.mint-summary {
@@ -8227,6 +8266,7 @@ body input:focus-visible {
 		gap: 10px 14px;
 	}
 	.fungible-token-avatar {
+		--token-avatar-size: 58px;
 		width: 58px;
 		height: 58px;
 		grid-row: 1 / span 2;
