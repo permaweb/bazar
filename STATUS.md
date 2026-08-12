@@ -918,10 +918,9 @@ AO-Connect push path, or application backend.
     `fQXYPE9MAcfI1wV2CwJ3sJIhgT9btBOlYFOKFDGhAs0`, containing 16,621 names.
     Collection browsing must page/search this index and compute only viewed
     details or live offer candidates; eagerly computing every name is forbidden.
--   Image collection indexes will be `reference@1.0` init messages whose scalar
-    `reference-value` points at an immutable JSON collection manifest. This
-    matches the device's documented foreign-message pattern without inventing a
-    backend or a nested on-chain encoding.
+-   Image collections are `process@1.0` messages executed by `carrier@1.0` whose
+    scalar `reference-value` points at an immutable JSON manifest containing the
+    collection asset IDs.
 
 ## Final mission progress
 

@@ -81,6 +81,7 @@ import {
 	type SwapOrder,
 	waitForAssetState,
 } from 'api/asset-marketplace';
+import type { CollectionMintEstimate, CollectionMintPhase } from 'api/asset-mint';
 import type { AssetObserverNetworkLease } from 'api/asset-observers';
 import {
 	cachedAssetState,
@@ -116,6 +117,7 @@ import {
 	loadMintedAssets,
 	loadMintedCollections,
 	type MintedAsset,
+	type MintedCollection,
 } from 'api/minted-assets';
 import { formatTokenAmount } from 'api/order-matching';
 
@@ -535,10 +537,26 @@ type OperationActivity = {
 	restoreFallback(): HTMLElement | null;
 };
 
+export type UploadActivity = {
+	id: string;
+	owner: string;
+	kind: 'asset' | 'collection';
+	name: string;
+	phase: 'working' | 'tracking' | 'done' | 'error';
+	status: string;
+	createdAt: number;
+	transactionIds: string[];
+	extended?: boolean;
+	assetId?: string;
+	assetIds?: string[];
+	collectionId?: string;
+};
+
 type OperationActivityContextValue = {
 	activities: OperationActivity[];
 	fungibleActivities: FungibleOperationActivitySummary[];
 	mintActivities: MintActivity[];
+	uploadActivities: UploadActivity[];
 	activeId: string | null;
 	start(
 		input: Pick<OperationActivity, 'asset' | 'collectionId' | 'owner' | 'operation' | 'restoreFallback'>,
@@ -546,6 +564,16 @@ type OperationActivityContextValue = {
 	): void;
 	show(id: string): void;
 	showFungible(id: string): void;
+	showUpload(id: string): void;
+	showMint(id: string): void;
+	beginUpload(input: Pick<UploadActivity, 'id' | 'owner' | 'kind' | 'name' | 'status'>): void;
+	updateUpload(id: string, status: string): void;
+	finishUpload(
+		id: string,
+		result: Pick<UploadActivity, 'transactionIds'> &
+			Partial<Pick<UploadActivity, 'assetId' | 'assetIds' | 'collectionId' | 'extended'>>
+	): void;
+	failUpload(id: string, status: string): void;
 	hide(): void;
 	remove(id: string): void;
 };
@@ -630,8 +658,11 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 	const [activities, setActivities] = React.useState<OperationActivity[]>([]);
 	const [fungibleActivities, setFungibleActivities] = React.useState<FungibleOperationActivitySummary[]>([]);
 	const [mintActivities, setMintActivities] = React.useState<MintActivity[]>([]);
+	const [uploadActivities, setUploadActivities] = React.useState<UploadActivity[]>([]);
 	const [mintNotice, setMintNotice] = React.useState<MintActivity | null>(null);
 	const [activeId, setActiveId] = React.useState<string | null>(null);
+	const [activeUploadId, setActiveUploadId] = React.useState<string | null>(null);
+	const [activeMintId, setActiveMintId] = React.useState<string | null>(null);
 	const [hydratedOwners, setHydratedOwners] = React.useState<string[]>([]);
 	const [recoveryValidationRetry, setRecoveryValidationRetry] = React.useState(0);
 	const fungibleRuntimeActivitiesRef = React.useRef<FungibleOperationActivitySummary[]>([]);
@@ -701,6 +732,21 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 			window.removeEventListener('storage', refreshStorage);
 		};
 	}, [refreshMintActivities]);
+	React.useEffect(() => {
+		const completeUpload = (event: Event) => {
+			const completed = (event as CustomEvent<MintActivity>).detail;
+			if (!completed?.asset?.id) return;
+			setUploadActivities((current) =>
+				current.map((activity) =>
+					activity.assetId === completed.asset.id
+						? { ...activity, phase: 'done', status: 'Live on Bazar.' }
+						: activity
+				)
+			);
+		};
+		window.addEventListener('bazar:mint-live', completeUpload);
+		return () => window.removeEventListener('bazar:mint-live', completeUpload);
+	}, []);
 	React.useEffect(() => {
 		for (const activity of mintActivities) {
 			if (
@@ -896,7 +942,11 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 					activity.asset.id === input.asset.id && activity.owner === input.owner && activity.phase !== 'done'
 			);
 			if (existing) {
-				if (show) setActiveId(existing.id);
+				if (show) {
+					setActiveUploadId(null);
+					setActiveMintId(null);
+					setActiveId(existing.id);
+				}
 				return;
 			}
 			const phase: OperationActivityPhase =
@@ -937,7 +987,11 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 					...current,
 				];
 			});
-			if (show) setActiveId(id);
+			if (show) {
+				setActiveUploadId(null);
+				setActiveMintId(null);
+				setActiveId(id);
+			}
 		},
 		[]
 	);
@@ -967,6 +1021,57 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 		setActivities((current) => current.filter((activity) => activity.id !== id));
 		setActiveId((current) => (current === id ? null : current));
 	}, []);
+	const beginUpload = React.useCallback(
+		(input: Pick<UploadActivity, 'id' | 'owner' | 'kind' | 'name' | 'status'>) => {
+			setUploadActivities((current) => [
+				{ ...input, phase: 'working', createdAt: Date.now(), transactionIds: [] },
+				...current.filter((activity) => activity.id !== input.id),
+			]);
+			setActiveId(null);
+			setActiveMintId(null);
+			setActiveUploadId(input.id);
+		},
+		[]
+	);
+	const updateUpload = React.useCallback((id: string, status: string) => {
+		setUploadActivities((current) =>
+			current.map((activity) => (activity.id === id ? { ...activity, phase: 'working', status } : activity))
+		);
+	}, []);
+	const finishUpload = React.useCallback(
+		(
+			id: string,
+			result: Pick<UploadActivity, 'transactionIds'> &
+				Partial<Pick<UploadActivity, 'assetId' | 'assetIds' | 'collectionId' | 'extended'>>
+		) => {
+			setUploadActivities((current) =>
+				current.map((activity) =>
+					activity.id === id
+						? {
+								...activity,
+								...result,
+								phase: result.assetId ? 'tracking' : 'done',
+								status: result.assetId
+									? 'Submitted; accepted by Arweave. Waiting for live process state.'
+									: activity.kind === 'collection' && result.extended
+									? 'Collection manifest update submitted to Arweave.'
+									: 'Collection process submitted to Arweave.',
+						  }
+						: activity
+				)
+			);
+		},
+		[]
+	);
+	const failUpload = React.useCallback((id: string, status: string) => {
+		setUploadActivities((current) =>
+			current.map((activity) => (activity.id === id ? { ...activity, phase: 'error', status } : activity))
+		);
+	}, []);
+	const removeUpload = React.useCallback((id: string) => {
+		setUploadActivities((current) => current.filter((activity) => activity.id !== id));
+		setActiveUploadId((current) => (current === id ? null : current));
+	}, []);
 	React.useEffect(() => {
 		if (!activities.some((activity) => activity.phase === 'done' && activity.id !== activeId)) return;
 		setActivities((current) => current.filter((activity) => activity.phase !== 'done' || activity.id === activeId));
@@ -976,20 +1081,59 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 			activities,
 			fungibleActivities,
 			mintActivities,
+			uploadActivities,
 			activeId,
 			start,
-			show: setActiveId,
+			show: (id) => {
+				setActiveUploadId(null);
+				setActiveMintId(null);
+				setActiveId(id);
+			},
 			showFungible: (id) => {
 				const activity = fungibleActivities.find((candidate) => candidate.id === id);
 				if (!activity) return;
+				setActiveId(null);
+				setActiveUploadId(null);
+				setActiveMintId(null);
 				navigate(`/asset/${activity.collectionId}/${activity.asset.id}`, {
 					state: { fungibleOperationActivityId: activity.id },
 				});
 			},
-			hide: () => setActiveId(null),
+			showMint: (id) => {
+				setActiveId(null);
+				setActiveUploadId(null);
+				setActiveMintId(id);
+			},
+			showUpload: (id) => {
+				setActiveId(null);
+				setActiveMintId(null);
+				setActiveUploadId(id);
+			},
+			beginUpload,
+			updateUpload,
+			finishUpload,
+			failUpload,
+			hide: () => {
+				setActiveId(null);
+				setActiveUploadId(null);
+				setActiveMintId(null);
+			},
 			remove,
 		}),
-		[activeId, activities, fungibleActivities, mintActivities, navigate, remove, start]
+		[
+			activeId,
+			activities,
+			beginUpload,
+			failUpload,
+			finishUpload,
+			fungibleActivities,
+			mintActivities,
+			navigate,
+			remove,
+			start,
+			updateUpload,
+			uploadActivities,
+		]
 	);
 	return (
 		<OperationActivityContext.Provider value={value}>
@@ -1049,6 +1193,45 @@ function OperationActivityProvider({ children }: React.PropsWithChildren) {
 					}}
 				/>
 			))}
+			{uploadActivities.map((activity) => (
+				<UploadActivityPanel
+					activity={activity}
+					key={activity.id}
+					mintActivity={mintActivities.find((candidate) => candidate.asset.id === activity.assetId)}
+					visible={activeUploadId === activity.id}
+					onHide={() => setActiveUploadId(null)}
+					onClose={() => removeUpload(activity.id)}
+				/>
+			))}
+			{mintActivities
+				.filter(
+					(activity) =>
+						!uploadActivities.some(
+							(upload) =>
+								upload.assetId === activity.asset.id || upload.assetIds?.includes(activity.asset.id)
+						)
+				)
+				.map((activity) => (
+					<UploadActivityPanel
+						activity={{
+							id: activity.id,
+							owner: activity.owner,
+							kind: 'asset',
+							name: activity.asset.name,
+							phase: 'tracking',
+							status: activity.status,
+							createdAt: activity.createdAt,
+							transactionIds: activity.transactionIds,
+							assetId: activity.asset.id,
+							collectionId: activity.collectionId,
+						}}
+						key={activity.id}
+						mintActivity={activity}
+						visible={activeMintId === activity.id}
+						onHide={() => setActiveMintId(null)}
+						onClose={() => setActiveMintId(null)}
+					/>
+				))}
 		</OperationActivityContext.Provider>
 	);
 }
@@ -1057,6 +1240,181 @@ export function useOperationActivity() {
 	const value = React.useContext(OperationActivityContext);
 	if (!value) throw new Error('operation-activity-provider-missing');
 	return value;
+}
+
+function UploadActivityPanel({
+	activity,
+	mintActivity,
+	visible,
+	onHide,
+	onClose,
+}: {
+	activity: UploadActivity;
+	mintActivity?: MintActivity;
+	visible: boolean;
+	onHide(): void;
+	onClose(): void;
+}) {
+	const navigate = useNavigate();
+	const [hiding, setHiding] = React.useState(false);
+	const hideTimerRef = React.useRef<number | null>(null);
+	const titleId = React.useId();
+	const working = activity.phase === 'working' || activity.phase === 'tracking';
+	const displayedStatus = mintActivity?.status ?? activity.status;
+	const displayedPhase = mintActivity?.phase ?? (activity.phase === 'tracking' ? 'accepted' : undefined);
+	const closeOrHide = React.useCallback(() => {
+		if (!working) {
+			onClose();
+			return;
+		}
+		if (hiding) return;
+		if (dialogRef.current) {
+			prepareTransactionDialogHide(
+				dialogRef.current,
+				document.querySelector<HTMLElement>('.operation-activity-trigger[data-activity-owner="global"]')
+			);
+		}
+		setHiding(true);
+		hideTimerRef.current = window.setTimeout(() => {
+			hideTimerRef.current = null;
+			onHide();
+		}, TRANSACTION_DIALOG_HIDE_DURATION_MS);
+	}, [hiding, onClose, onHide, working]);
+	const dialogRef = useDialogFocus<HTMLDivElement>(
+		visible,
+		closeOrHide,
+		undefined,
+		activity.phase,
+		() =>
+			document.querySelector<HTMLElement>('.operation-activity-trigger[data-activity-owner="global"]') ??
+			document.getElementById('main-content')
+	);
+	React.useEffect(() => {
+		if (visible) setHiding(false);
+	}, [visible]);
+	React.useEffect(
+		() => () => {
+			if (hideTimerRef.current !== null) window.clearTimeout(hideTimerRef.current);
+		},
+		[]
+	);
+	if (!visible && !working) return null;
+	const receiptEntries = activity.transactionIds.map((transactionId, index) => ({
+		label:
+			activity.kind === 'collection'
+				? index === activity.transactionIds.length - 1
+					? activity.extended
+						? 'Collection update'
+						: 'Collection process'
+					: 'Collection manifest'
+				: index === activity.transactionIds.length - 1
+				? 'Asset transaction'
+				: 'Artwork transaction',
+		transactionId,
+	}));
+	const dialogPhase = activity.phase === 'error' ? 'error' : activity.phase === 'done' ? 'done' : 'working';
+	return (
+		<div
+			className={`dialog-backdrop operation-panel-backdrop${hiding ? ' dialog-backdrop-hiding' : ''}`}
+			hidden={!visible}
+			onMouseDown={(event) => event.target === event.currentTarget && closeOrHide()}
+			role="presentation"
+		>
+			<div
+				aria-hidden={visible ? undefined : true}
+				aria-labelledby={visible ? titleId : undefined}
+				aria-modal={visible ? true : undefined}
+				className="dialog operation-side-panel upload-activity-panel"
+				ref={dialogRef}
+				role={visible ? 'dialog' : undefined}
+				tabIndex={-1}
+			>
+				<div className="dialog-heading">
+					<div className="dialog-asset-heading">
+						<span aria-hidden="true" className="dialog-asset-artwork dialog-asset-artwork-fallback">
+							{activity.kind === 'collection' ? (
+								<Images className="ui-icon ui-icon--sm" />
+							) : (
+								<Upload className="ui-icon ui-icon--sm" />
+							)}
+						</span>
+						<div className="dialog-asset-heading-copy">
+							<p className="eyebrow">
+								{activity.kind === 'collection' ? 'Collection upload' : 'Asset upload'}
+							</p>
+							<h2 id={titleId}>{activity.name}</h2>
+						</div>
+					</div>
+					<TransactionDialogControl hiding={hiding} phase={dialogPhase} onClick={closeOrHide} />
+				</div>
+				<div className={`upload-activity-state ${activity.phase}`}>
+					<span className="upload-infinity-loader" aria-hidden="true">
+						{activity.phase === 'done' ? (
+							<Check />
+						) : activity.phase === 'error' ? (
+							<CircleX />
+						) : (
+							<InfinityIcon />
+						)}
+					</span>
+					<div>
+						<strong>
+							{activity.phase === 'done'
+								? activity.kind === 'collection'
+									? activity.extended
+										? 'Collection extended'
+										: 'Collection submitted'
+									: 'Live on Bazar'
+								: activity.phase === 'error'
+								? 'Upload needs attention'
+								: activity.phase === 'tracking'
+								? 'Propagating on Arweave'
+								: 'Uploading to Arweave'}
+						</strong>
+						<p aria-live="polite" role="status">
+							{displayedStatus}
+						</p>
+					</div>
+				</div>
+				{displayedPhase ? (
+					<ol className="upload-activity-phases" aria-label="Upload progress">
+						{(['accepted', 'mined', 'applied', 'complete'] as const).map((phase, index, phases) => {
+							const current = phases.indexOf(displayedPhase);
+							return (
+								<li className={index <= current ? 'reached' : undefined} key={phase}>
+									<span>{index < current ? <Check aria-hidden="true" /> : index + 1}</span>
+									{
+										{ accepted: 'Accepted', mined: 'Mined', applied: 'Applied', complete: 'Live' }[
+											phase
+										]
+									}
+								</li>
+							);
+						})}
+					</ol>
+				) : null}
+				{receiptEntries.length ? <MintTransactionReceipt entries={receiptEntries} /> : null}
+				{activity.phase === 'done' && activity.collectionId ? (
+					<Button
+						className="wide"
+						data-dialog-initial
+						onClick={() => {
+							navigate(
+								activity.kind === 'collection'
+									? `/collection/${activity.collectionId}`
+									: `/asset/${CREATED_COLLECTION_ID}/${activity.assetId}`
+							);
+							onClose();
+						}}
+						size="custom"
+						variant="primary"
+					>
+						View {activity.kind === 'collection' ? 'collection' : 'asset'}
+					</Button>
+				) : null}
+			</div>
+		</div>
+	);
 }
 
 function RouteFocus() {
@@ -1720,7 +2078,16 @@ function Header() {
 
 function OperationActivityControl() {
 	const wallet = useWallet();
-	const { activities, fungibleActivities, mintActivities, show, showFungible } = useOperationActivity();
+	const {
+		activities,
+		fungibleActivities,
+		mintActivities,
+		uploadActivities,
+		show,
+		showFungible,
+		showMint,
+		showUpload,
+	} = useOperationActivity();
 	const [open, setOpen] = React.useState(false);
 	const containerRef = React.useRef<HTMLDivElement>(null);
 	const visibleActivities = activities.filter(
@@ -1729,12 +2096,23 @@ function OperationActivityControl() {
 	const visibleFungibleActivities = fungibleActivities.filter((activity) =>
 		isTransactionActivityVisible(activity.phase)
 	);
-	const visibleMintActivities = mintActivities.filter((activity) => activity.owner === wallet.address);
+	const visibleUploadActivities = uploadActivities.filter((activity) => activity.owner === wallet.address);
+	const linkedUploadAssets = new Set(
+		visibleUploadActivities.flatMap((activity) => [activity.assetId, ...(activity.assetIds ?? [])])
+	);
+	const visibleMintActivities = mintActivities.filter(
+		(activity) => activity.owner === wallet.address && !linkedUploadAssets.has(activity.asset.id)
+	);
 	const attentionMintActivities = visibleMintActivities.filter((activity) => mintActivityNeedsAttention(activity));
-	const activityCount = visibleActivities.length + visibleFungibleActivities.length + visibleMintActivities.length;
+	const activityCount =
+		visibleActivities.length +
+		visibleFungibleActivities.length +
+		visibleUploadActivities.length +
+		visibleMintActivities.length;
 	const workingCount =
 		visibleActivities.filter((activity) => activity.phase === 'working').length +
 		visibleFungibleActivities.filter((activity) => activity.phase === 'working').length +
+		visibleUploadActivities.filter((activity) => ['working', 'tracking'].includes(activity.phase)).length +
 		visibleMintActivities.filter(
 			(activity) => activity.phase !== 'complete' && !mintActivityNeedsAttention(activity)
 		).length;
@@ -1802,6 +2180,52 @@ function OperationActivityControl() {
 						) : null}
 					</div>
 					<div className="operation-activity-list">
+						{visibleUploadActivities.map((activity) => (
+							<div className={`operation-activity-item ${activity.phase}`} key={activity.id}>
+								<Button
+									className="operation-activity-open"
+									size="custom"
+									onClick={() => {
+										showUpload(activity.id);
+										setOpen(false);
+									}}
+									type="button"
+									variant="ghost"
+								>
+									<span className="operation-activity-symbol" aria-hidden="true">
+										{activity.kind === 'collection' ? (
+											<Images className="ui-icon ui-icon--sm" />
+										) : (
+											<Upload className="ui-icon ui-icon--sm" />
+										)}
+									</span>
+									<span className="operation-activity-copy">
+										<strong>{activity.name}</strong>
+										<small>
+											{activity.kind === 'collection' ? 'Collection upload' : 'Upload'} ·{' '}
+											{activity.phase === 'done'
+												? 'Complete'
+												: activity.phase === 'error'
+												? 'Needs attention'
+												: 'In progress'}
+										</small>
+										<span>{activity.status}</span>
+									</span>
+									<span className="operation-activity-progress">
+										{['working', 'tracking'].includes(activity.phase) ? (
+											<InfinityIcon
+												className="ui-icon ui-icon--xs operation-activity-infinity"
+												aria-hidden="true"
+											/>
+										) : null}
+									</span>
+									<ChevronRight
+										className="ui-icon ui-icon--sm operation-activity-chevron"
+										aria-hidden="true"
+									/>
+								</Button>
+							</div>
+						))}
 						{visibleActivities.map((activity) => (
 							<div className={`operation-activity-item ${activity.phase}`} key={activity.id}>
 								<Button
@@ -1903,9 +2327,15 @@ function OperationActivityControl() {
 									className={`operation-activity-item ${needsAttention ? 'error' : 'working'}`}
 									key={activity.id}
 								>
-									<Link
+									<Button
 										className="operation-activity-open"
-										to={`/asset/${activity.collectionId}/${activity.asset.id}/pending`}
+										onClick={() => {
+											showMint(activity.id);
+											setOpen(false);
+										}}
+										size="custom"
+										type="button"
+										variant="ghost"
 									>
 										<span className="operation-activity-symbol" aria-hidden="true">
 											<Upload className="ui-icon ui-icon--sm" />
@@ -1935,7 +2365,7 @@ function OperationActivityControl() {
 											className="ui-icon ui-icon--sm operation-activity-chevron"
 											aria-hidden="true"
 										/>
-									</Link>
+									</Button>
 								</div>
 							);
 						})}
@@ -4319,7 +4749,25 @@ function CollectionView() {
 	const { collectionId = '' } = useParams();
 	const { search } = useLocation();
 	const market = React.useContext(MarketContext);
+	const wallet = useWallet();
+	const { beginUpload, failUpload, finishUpload, updateUpload } = useOperationActivity();
 	const collection = market.collections.find((item) => item.id === collectionId);
+	const ownedCollection = React.useMemo(
+		() => loadMintedCollections().find((item) => item.id === collectionId),
+		[collectionId, collection?.assets]
+	);
+	const [appendOpen, setAppendOpen] = React.useState(false);
+	const [appendFiles, setAppendFiles] = React.useState<File[]>([]);
+	const [appendEstimate, setAppendEstimate] = React.useState<CollectionMintEstimate | null>(null);
+	const [appendEstimating, setAppendEstimating] = React.useState(false);
+	const [appendWorking, setAppendWorking] = React.useState(false);
+	const [appendStatus, setAppendStatus] = React.useState('');
+	const [appendError, setAppendError] = React.useState<string | null>(null);
+	const appendPreviews = React.useMemo(
+		() => appendFiles.map((file) => ({ file, url: URL.createObjectURL(file) })),
+		[appendFiles]
+	);
+	React.useEffect(() => () => appendPreviews.forEach(({ url }) => URL.revokeObjectURL(url)), [appendPreviews]);
 	const routedQuery = new URLSearchParams(search).get('q') ?? '';
 	const [query, setQuery] = React.useState(routedQuery);
 	const deferredQuery = React.useDeferredValue(query);
@@ -4412,6 +4860,80 @@ function CollectionView() {
 	const resultSummaryId = React.useId();
 	const resultSummaryRef = React.useRef<HTMLParagraphElement>(null);
 	const collectionStatusRef = React.useRef<HTMLSpanElement>(null);
+	React.useEffect(() => {
+		if (!appendOpen || !appendFiles.length || !ownedCollection) {
+			setAppendEstimate(null);
+			return;
+		}
+		const controller = new AbortController();
+		setAppendEstimating(true);
+		void import('api/asset-mint')
+			.then(({ CollectionMintClient }) =>
+				new CollectionMintClient().estimateAppend(ownedCollection, appendFiles, controller.signal)
+			)
+			.then(
+				(estimate) => {
+					if (!controller.signal.aborted) setAppendEstimate(estimate);
+				},
+				(cause) => {
+					if (!controller.signal.aborted) setAppendError(errorMessage(cause));
+				}
+			)
+			.finally(() => {
+				if (!controller.signal.aborted) setAppendEstimating(false);
+			});
+		return () => controller.abort();
+	}, [appendFiles, appendOpen, ownedCollection]);
+	const appendToCollection = async () => {
+		if (!collection || !ownedCollection || !wallet.address || !appendFiles.length || appendWorking) return;
+		const uploadId = `upload:${wallet.address}:${Date.now()}`;
+		setAppendError(null);
+		setAppendWorking(true);
+		beginUpload({
+			id: uploadId,
+			owner: wallet.address,
+			kind: 'collection',
+			name: `${collection.name} additions`,
+			status: 'Preparing secure wallet approvals…',
+		});
+		try {
+			const { CollectionMintClient } = await import('api/asset-mint');
+			const source: MintedCollection = {
+				...ownedCollection,
+				...collection,
+				owner: ownedCollection.owner,
+				createdAt: ownedCollection.createdAt,
+				manifestId: collection.manifestId ?? ownedCollection.manifestId,
+			};
+			const result = await new CollectionMintClient().append(source, appendFiles, wallet.address, {
+				allowHighCost: true,
+				onPhase: (phase) => {
+					const status = collectionAppendPhaseLabel(phase);
+					setAppendStatus(status);
+					updateUpload(uploadId, status);
+				},
+			});
+			const previousIds = new Set(collection.assets.map((asset) => asset.id));
+			const added = result.collection.assets.filter((asset) => !previousIds.has(asset.id));
+			market.addCollection(result.collection);
+			finishUpload(uploadId, {
+				collectionId: collection.id,
+				assetIds: added.map((asset) => asset.id),
+				transactionIds: [result.manifestId, result.updateId],
+				extended: true,
+			});
+			setAppendFiles([]);
+			setAppendEstimate(null);
+			setAppendOpen(false);
+		} catch (cause) {
+			const message = errorMessage(cause);
+			setAppendError(message);
+			failUpload(uploadId, message);
+		} finally {
+			setAppendWorking(false);
+			setAppendStatus('');
+		}
+	};
 	React.useEffect(() => {
 		const scroller = alphabetScrollerRef.current;
 		if (!scroller || collection?.kind !== 'names') return;
@@ -5190,8 +5712,99 @@ function CollectionView() {
 					<p className="eyebrow">{collectionEyebrow(collection)}</p>
 					<h1>{collection.name}</h1>
 				</div>
-				<p>{collection.description}</p>
+				<div className="collection-title-copy">
+					<p>{collection.description}</p>
+					{collection.kind === 'images' && ownedCollection?.owner === wallet.address ? (
+						<Button onClick={() => setAppendOpen(true)} type="button" variant="neutral">
+							<Images aria-hidden="true" /> Add assets
+						</Button>
+					) : null}
+				</div>
 			</div>
+			{appendOpen && ownedCollection ? (
+				<div className="dialog-backdrop" role="presentation">
+					<section
+						aria-labelledby="append-collection-title"
+						aria-modal="true"
+						className="dialog dialog-compact collection-append-dialog"
+						role="dialog"
+					>
+						<div className="dialog-heading">
+							<div>
+								<p className="eyebrow">Extend collection</p>
+								<h2 id="append-collection-title">Add assets to {collection.name}</h2>
+							</div>
+							<Button
+								aria-label="Close add assets"
+								disabled={appendWorking}
+								onClick={() => setAppendOpen(false)}
+								size="icon"
+								type="button"
+								variant="ghost"
+							>
+								<X aria-hidden="true" />
+							</Button>
+						</div>
+						<p className="append-collection-copy">
+							Each image becomes a wallet-owned Arweave asset. A new immutable manifest then updates the
+							collection carrier.
+						</p>
+						<label className={`mint-dropzone${appendFiles.length ? ' has-file' : ''}`}>
+							<input
+								accept="image/png,image/jpeg,image/webp,image/gif"
+								disabled={appendWorking}
+								multiple
+								onChange={(event) => {
+									setAppendFiles(Array.from(event.target.files ?? []).slice(0, 10));
+									setAppendError(null);
+								}}
+								type="file"
+							/>
+							<span>
+								<Upload aria-hidden="true" />
+								<strong>
+									{appendFiles.length ? `${appendFiles.length} images ready` : 'Choose images'}
+								</strong>
+								<small>PNG, JPEG, WebP, or GIF · up to 10 files</small>
+							</span>
+						</label>
+						{appendFiles.length ? (
+							<div className="collection-append-preview" aria-label="Selected images">
+								{appendPreviews.map(({ file, url }) => (
+									<figure key={`${file.name}:${file.size}`}>
+										<img alt="" src={url} />
+										<figcaption>{file.name.replace(/\.[^.]+$/, '')}</figcaption>
+									</figure>
+								))}
+							</div>
+						) : null}
+						<div className="collection-append-summary">
+							<span>{appendEstimating ? 'Checking Arweave storage cost…' : appendStatus || 'Ready'}</span>
+							<strong>
+								{appendEstimate
+									? `${winstonToAr(appendEstimate.total.toString())} AR · ${
+											appendEstimate.transactionCount
+									  } transactions`
+									: '—'}
+							</strong>
+						</div>
+						{appendError ? <ErrorPanel message={appendError} /> : null}
+						<Button
+							className="wide"
+							disabled={!appendFiles.length || !appendEstimate || appendWorking}
+							onClick={() => void appendToCollection()}
+							type="button"
+						>
+							{appendWorking ? (
+								<LoaderCircle className="spin" aria-hidden="true" />
+							) : (
+								<Upload aria-hidden="true" />
+							)}
+							{appendWorking ? 'Adding assets…' : `Add ${appendFiles.length || ''} assets`}
+						</Button>
+					</section>
+				</div>
+			) : null}
 			<CollectionTabs collection={collection} active="assets" />
 			<CollectionIndexNotice collection={collection} checking={market.loading} onRetry={market.retry} />
 			{pagedTokenScope ? (
@@ -5649,6 +6262,16 @@ function CollectionView() {
 			) : null}
 		</section>
 	);
+}
+
+function collectionAppendPhaseLabel(phase: CollectionMintPhase) {
+	if (phase.kind === 'asset') {
+		const action = phase.phase.startsWith('signing') ? 'Approve in your wallet' : 'Uploading to Arweave';
+		return `Asset ${phase.index + 1} of ${phase.total} · ${action}`;
+	}
+	if (phase.kind === 'manifest')
+		return phase.phase === 'signing' ? 'Approve the new manifest' : 'Publishing manifest';
+	return phase.phase === 'signing' ? 'Approve the collection update' : 'Updating collection carrier';
 }
 
 function CollectionResultStatus({ message }: { message: string }) {

@@ -34,9 +34,10 @@ The write API is deliberately small:
 -   `cancel-order`
 -   `register-interest`, followed by a native AR payment bearing the `order-id`
 
-Collection indexes are immutable JSON manifests addressed through
-`reference@1.0`. Carrier names are discovered directly from Arweave GraphQL and
-paged in the browser.
+Collections are `process@1.0` processes executed by `carrier@1.0`. Each process
+starts with an immutable JSON manifest and lets its holder publish a signed
+`set` pointing at a later manifest when assets are added. Carrier names are discovered directly from Arweave
+GraphQL and paged in the browser.
 
 ## Wallet inventory
 

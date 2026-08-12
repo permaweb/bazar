@@ -1,6 +1,6 @@
 import { arweaveGatewayFromLocation, arweaveGraphqlEndpoint, NAMES_NAMESPACE_ID } from 'helpers/config';
 
-import type { AssetState } from './asset-marketplace';
+import { type AssetState, readAssetState } from './asset-marketplace';
 import { fetchJsonWithDeadline, fetchTextWithDeadline } from './fetch-with-deadline';
 
 const ARWEAVE_ID = /^[A-Za-z0-9_-]{43}$/;
@@ -92,7 +92,7 @@ export function fungibleAssetFromState(id: string, state?: AssetState): AssetSum
 type ImageManifest = {
 	name: string;
 	description?: string;
-	assets: Array<{ id: string; name: string; contentType?: string; image?: string; media?: string }>;
+	assets: Array<string | { id: string; name: string; contentType?: string; image?: string; media?: string }>;
 };
 
 type FungibleTokenConnection = {
@@ -597,7 +597,17 @@ export async function loadImageCollection(
 		const tags = Object.fromEntries(
 			(transaction.tags ?? []).map((tag) => [decodeBase64Url(tag.name), decodeBase64Url(tag.value)])
 		);
-		const referencedManifest = tags['reference-value'];
+		let referencedManifest: string | undefined = tags['reference-value'];
+		if (tags['execution-device'] === 'carrier@1.0' && tags['scheduler-device'] === 'arweave-scheduler@1.0') {
+			try {
+				referencedManifest = carrierManifestReference(
+					(await readAssetState(referenceId, { signal, maxAge: 30, maxAttempts: 1 })).state
+				);
+			} catch {
+				throwIfAborted(signal);
+				referencedManifest = tags['initial-value'] ?? referencedManifest;
+			}
+		}
 		if (!referencedManifest || !/^[A-Za-z0-9_-]{43}$/.test(referencedManifest)) {
 			throw new Error('collection-reference-invalid');
 		}
@@ -625,6 +635,13 @@ export async function loadImageCollection(
 	}
 }
 
+export function carrierManifestReference(state: Pick<AssetState, 'value'>): string | undefined {
+	if (typeof state.value === 'string' && ARWEAVE_ID.test(state.value)) return state.value;
+	if (!state.value || typeof state.value !== 'object' || Array.isArray(state.value)) return undefined;
+	const target = (state.value as Record<string, unknown>).target;
+	return typeof target === 'string' && ARWEAVE_ID.test(target) ? target : undefined;
+}
+
 function imageCollection(
 	referenceId: string,
 	manifestId: string,
@@ -639,8 +656,9 @@ function imageCollection(
 		!manifest.name.trim() ||
 		(manifest.description !== undefined && typeof manifest.description !== 'string') ||
 		!Array.isArray(manifest.assets) ||
-		manifest.assets.some(
-			(asset) =>
+		manifest.assets.some((asset) => {
+			if (typeof asset === 'string') return !ARWEAVE_ID.test(asset);
+			return (
 				!asset ||
 				typeof asset !== 'object' ||
 				!ARWEAVE_ID.test(asset.id) ||
@@ -649,7 +667,8 @@ function imageCollection(
 				(asset.contentType !== undefined && typeof asset.contentType !== 'string') ||
 				(asset.image !== undefined && typeof asset.image !== 'string') ||
 				(asset.media !== undefined && typeof asset.media !== 'string')
-		)
+			);
+		})
 	)
 		throw new Error('collection-manifest-schema');
 	return {
@@ -659,10 +678,15 @@ function imageCollection(
 		kind: 'images',
 		indexSource,
 		manifestId,
-		assets: manifest.assets.map((asset) => ({
-			...asset,
-			...(!asset.image && !asset.media ? { image: `${arweaveGatewayFromLocation()}/${asset.id}` } : {}),
-		})),
+		assets: manifest.assets.map((asset) => {
+			if (typeof asset === 'string') {
+				return { id: asset, name: shortId(asset), image: `${arweaveGatewayFromLocation()}/${asset}` };
+			}
+			return {
+				...asset,
+				...(!asset.image && !asset.media ? { image: `${arweaveGatewayFromLocation()}/${asset.id}` } : {}),
+			};
+		}),
 	};
 }
 

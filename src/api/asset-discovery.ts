@@ -400,7 +400,6 @@ const VERIFY_ASSET_PROCESSES_QUERY = `query VerifyAssetProcesses(
 		first: ${GRAPHQL_PAGE_SIZE}
 		ids: $ids
 		tags: [
-			{ name: "App-Name", values: ["Bazar"] }
 			{ name: "device", values: ["process@1.0"] }
 			{ name: "execution-device", values: ["token@1.0"] }
 			{ name: "swap-device", values: ["arweave-swap@1.0"] }
@@ -421,7 +420,6 @@ const SEARCH_BAZAR_ATOMIC_ASSETS_QUERY = `query SearchBazarAtomicAssets($names: 
 		first: 20
 		sort: HEIGHT_DESC
 		tags: [
-			{ name: "App-Name", values: ["Bazar"] }
 			{ name: "name", values: $names }
 			{ name: "device", values: ["process@1.0"] }
 			{ name: "execution-device", values: ["token@1.0"] }

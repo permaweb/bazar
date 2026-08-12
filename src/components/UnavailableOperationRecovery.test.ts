@@ -22,7 +22,7 @@ describe('unavailable operation recovery notice', () => {
 		);
 
 		expect(markup).toContain('No replacement action will be created while this record remains.');
-		expect(markup).toContain(`href="https://viewblock.io/arweave/tx/${txId}"`);
+		expect(markup).toContain(`href="https://lunar.arweave.net/#/explorer/${txId}"`);
 		expect(markup).toContain('Refresh live state');
 		expect(markup).toContain('Discard local tracking');
 		expect(markup).toContain('The live source of truth remains current ownership and orders above.');

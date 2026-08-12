@@ -4,6 +4,7 @@ import { NAMES_NAMESPACE_ID } from 'helpers/config';
 
 import { parseAssetState } from './asset-marketplace';
 import {
+	carrierManifestReference,
 	type Collection,
 	collectionAsset,
 	FUNGIBLE_TOKEN_ID,
@@ -28,6 +29,12 @@ afterEach(() => {
 });
 
 describe('collection index loading', () => {
+	it('reads the current manifest from a carrier value', () => {
+		const manifestId = 'M'.repeat(43);
+		expect(carrierManifestReference({ value: { target: manifestId } })).toBe(manifestId);
+		expect(carrierManifestReference({ value: manifestId })).toBe(manifestId);
+		expect(carrierManifestReference({ value: { target: 'invalid' } })).toBeUndefined();
+	});
 	it('indexes each immutable collection snapshot once for repeated exact lookups', () => {
 		const indexedAssets = Array.from({ length: 1_000 }, (_, index) => ({
 			id: index.toString(36).padStart(43, 'A'),

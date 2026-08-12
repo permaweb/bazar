@@ -31,7 +31,14 @@ import { type EmbeddedAudioMetadata, extractEmbeddedAudioMetadata, formatAudioDu
 import { arweaveGatewayFromLocation } from 'helpers/config';
 import { useWallet } from 'providers/WalletProvider';
 
-import { formatBytes, MarketContext, MarketSelect, mintErrorMessage, winstonToAr } from '../app/App';
+import {
+	formatBytes,
+	MarketContext,
+	MarketSelect,
+	mintErrorMessage,
+	useOperationActivity,
+	winstonToAr,
+} from '../app/App';
 
 type UdlGrantValue = NonNullable<UdlTerms['derivation'] | UdlTerms['commercialUse'] | UdlTerms['dataModelTraining']>;
 
@@ -89,10 +96,27 @@ function UdlGrantField({
 	);
 }
 
+function mintPhaseStatus(phase: MintPhase) {
+	return {
+		'signing-asset': 'Waiting for approval of the atomic asset in your wallet…',
+		'uploading-asset': 'Uploading the atomic asset to Arweave…',
+		'signing-artwork': 'Waiting for approval of the album artwork in your wallet…',
+		'uploading-artwork': 'Uploading album artwork to Arweave…',
+	}[phase];
+}
+
+function collectionMintPhaseLabel(phase: CollectionMintPhase) {
+	if (phase.kind === 'asset') {
+		return `Asset ${phase.index + 1} of ${phase.total}: ${mintPhaseStatus(phase.phase)}`;
+	}
+	return `${phase.kind === 'manifest' ? 'Collection manifest' : 'Collection process'}: ${phase.phase}…`;
+}
+
 export default function CreateRoute() {
 	const market = React.useContext(MarketContext);
 	const wallet = useWallet();
 	const navigate = useNavigate();
+	const { beginUpload, failUpload, finishUpload, updateUpload } = useOperationActivity();
 	const fileInput = React.useRef<HTMLInputElement>(null);
 	const artworkInput = React.useRef<HTMLInputElement>(null);
 	const metadataRequest = React.useRef(0);
@@ -302,12 +326,16 @@ export default function CreateRoute() {
 		setError(next.length > 10 ? 'Collections support up to 10 images at a time.' : null);
 		setCollectionResult(null);
 	};
-	const completeMint = (asset: MintedAsset) => {
+	const completeMint = (asset: MintedAsset, uploadId: string) => {
 		market.addCreatedAsset(asset);
 		setResult(asset);
 		setDraft(null);
 		setPhase(null);
-		navigate(`/asset/${CREATED_COLLECTION_ID}/${asset.id}/pending`, { replace: true });
+		finishUpload(uploadId, {
+			assetId: asset.id,
+			collectionId: CREATED_COLLECTION_ID,
+			transactionIds: [asset.artworkId, asset.id].filter((id): id is string => Boolean(id)),
+		});
 	};
 	const mint = async () => {
 		if (!wallet.address) {
@@ -319,16 +347,35 @@ export default function CreateRoute() {
 		setError(null);
 		setResult(null);
 		setCollectionResult(null);
+		const uploadId = `upload:${wallet.address}:${Date.now()}`;
+		beginUpload({
+			id: uploadId,
+			owner: wallet.address,
+			kind: mode,
+			name: name.trim(),
+			status: 'Preparing secure wallet approvals…',
+		});
 		try {
 			if (mode === 'collection') {
 				const minted = await new CollectionMintClient().mint(
 					{ files: collectionFiles, name, description, udl: activeUdl },
 					wallet.address,
-					{ allowHighCost: true, onPhase: setCollectionPhase }
+					{
+						allowHighCost: true,
+						onPhase: (nextPhase) => {
+							setCollectionPhase(nextPhase);
+							updateUpload(uploadId, collectionMintPhaseLabel(nextPhase));
+						},
+					}
 				);
 				market.addCollection(minted.collection);
 				setCollectionResult(minted);
 				setCollectionPhase(null);
+				finishUpload(uploadId, {
+					collectionId: minted.collection.id,
+					assetIds: minted.collection.assets.map((asset) => asset.id),
+					transactionIds: [minted.manifestId, minted.processId],
+				});
 				return;
 			}
 			if (!file) return;
@@ -346,25 +393,46 @@ export default function CreateRoute() {
 				wallet.address,
 				{
 					allowHighCost: true,
-					onPhase: setPhase,
+					onPhase: (nextPhase) => {
+						setPhase(nextPhase);
+						updateUpload(uploadId, mintPhaseStatus(nextPhase));
+					},
 				}
 			);
-			completeMint(minted.asset);
+			completeMint(minted.asset, uploadId);
 		} catch (cause) {
+			const message = mintErrorMessage(cause);
 			setDraft(getMintDraft(wallet.address));
 			setPhase(null);
-			setError(mintErrorMessage(cause));
+			setCollectionPhase(null);
+			setError(message);
+			failUpload(uploadId, message);
 		}
 	};
 	const resume = async () => {
 		if (!wallet.address || !draft) return;
 		setError(null);
+		const uploadId = `upload:${wallet.address}:${Date.now()}`;
+		beginUpload({
+			id: uploadId,
+			owner: wallet.address,
+			kind: 'asset',
+			name: draft.name,
+			status: 'Recovering the saved asset upload…',
+		});
 		try {
-			const minted = await new AssetMintClient().resume(draft, wallet.address, { onPhase: setPhase });
-			completeMint(minted.asset);
+			const minted = await new AssetMintClient().resume(draft, wallet.address, {
+				onPhase: (nextPhase) => {
+					setPhase(nextPhase);
+					updateUpload(uploadId, mintPhaseStatus(nextPhase));
+				},
+			});
+			completeMint(minted.asset, uploadId);
 		} catch (cause) {
+			const message = mintErrorMessage(cause);
 			setPhase(null);
-			setError(mintErrorMessage(cause));
+			setError(message);
+			failUpload(uploadId, message);
 		}
 	};
 	const working = phase !== null || collectionPhase !== null;
@@ -378,7 +446,7 @@ export default function CreateRoute() {
 						'uploading-artwork': 'uploading artwork',
 					}[collectionPhase.phase]
 			  }…`
-			: `${collectionPhase.kind === 'manifest' ? 'Collection manifest' : 'Collection index'}: ${
+			: `${collectionPhase.kind === 'manifest' ? 'Collection manifest' : 'Collection process'}: ${
 					collectionPhase.phase
 			  }…`
 		: phase
@@ -394,7 +462,7 @@ export default function CreateRoute() {
 	const receiptEntries: MintTransactionReceiptEntry[] = collectionResult
 		? [
 				{ label: 'View collection manifest', transactionId: collectionResult.manifestId },
-				{ label: 'View collection index', transactionId: collectionResult.referenceId },
+				{ label: 'View collection process', transactionId: collectionResult.processId },
 		  ]
 		: result
 		? [
@@ -413,7 +481,7 @@ export default function CreateRoute() {
 				<p>
 					{mode === 'asset'
 						? 'Your media, metadata, and one-of-one marketplace process are stored together under one Arweave transaction ID.'
-						: 'Mint a group of one-of-one assets and submit their shareable collection index to Arweave.'}
+						: 'Mint a group of one-of-one assets and submit a carrier process pointing to their permanent manifest.'}
 				</p>
 			</div>
 
@@ -981,8 +1049,8 @@ export default function CreateRoute() {
 									? 'Your wallet will request two signatures: one for the optional album artwork and one atomic transaction containing the audio, metadata, and tradeable process.'
 									: 'Your wallet will request one signature for an atomic transaction containing the media, metadata, and tradeable process.'
 								: collectionEstimate
-								? `Your wallet will request ${collectionEstimate.transactionCount} signatures: one atomic transaction per asset, then the collection manifest and index.`
-								: 'Each image becomes one self-contained atomic transaction. Bazar then submits a collection manifest and index to Arweave.'}
+								? `Your wallet will request ${collectionEstimate.transactionCount} signatures: one atomic transaction per asset, then the collection manifest and carrier process.`
+								: 'Each image becomes one self-contained atomic transaction. Bazar then submits a collection manifest and carrier process to Arweave.'}
 						</span>
 					</div>
 					{error ? (

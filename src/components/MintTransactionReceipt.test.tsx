@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { MintTransactionReceipt } from './MintTransactionReceipt';
 
 describe('mint transaction receipt', () => {
-	it('links each exact submitted transaction to ViewBlock with an explanatory label', () => {
+	it('uses the shared transaction address control and links each receipt to Lunar', () => {
 		const mediaId = `media-${'m'.repeat(37)}`;
 		const assetId = `asset-${'a'.repeat(37)}`;
 		const markup = renderToStaticMarkup(
@@ -17,11 +17,11 @@ describe('mint transaction receipt', () => {
 			/>
 		);
 
-		expect(markup).toContain(`href="https://viewblock.io/arweave/tx/${mediaId}"`);
-		expect(markup).toContain(`href="https://viewblock.io/arweave/tx/${assetId}"`);
+		expect(markup).toContain(`href="https://lunar.arweave.net/#/explorer/${mediaId}"`);
+		expect(markup).toContain(`href="https://lunar.arweave.net/#/explorer/${assetId}"`);
 		expect(markup).toContain('View media upload');
 		expect(markup).toContain('View asset creation');
-		expect(markup).toContain(`<code>${mediaId}</code>`);
-		expect(markup).toContain('Copy view media upload transaction ID');
+		expect(markup).toContain(`class="tx-address is-wrapped"`);
+		expect(markup).toContain('Copy transaction address');
 	});
 });

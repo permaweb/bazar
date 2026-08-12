@@ -1894,6 +1894,80 @@ main {
 	margin: 0;
 }
 
+.collection-title-copy {
+	display: flex;
+	align-items: flex-end;
+	flex-direction: column;
+	gap: 16px;
+}
+
+.collection-title-copy > p {
+	margin: 0;
+}
+
+.collection-append-dialog {
+	max-width: 720px;
+}
+
+.collection-append-dialog .mint-dropzone {
+	min-height: 132px;
+	aspect-ratio: auto;
+	margin: 20px 0 16px;
+}
+
+.collection-append-dialog .mint-dropzone > span {
+	padding: 22px;
+}
+
+.append-collection-copy {
+	color: var(--muted);
+	line-height: 1.55;
+}
+
+.collection-append-dialog .mint-dropzone input {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	opacity: 0;
+}
+
+.collection-append-preview {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
+	gap: 12px;
+}
+
+.collection-append-preview figure {
+	min-width: 0;
+	margin: 0;
+}
+
+.collection-append-preview img {
+	display: block;
+	width: 100%;
+	aspect-ratio: 1;
+	border-radius: 10px;
+	object-fit: cover;
+}
+
+.collection-append-preview figcaption {
+	margin-top: 6px;
+	overflow: hidden;
+	color: var(--muted);
+	font-size: 12px;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.collection-append-summary {
+	display: flex;
+	justify-content: space-between;
+	gap: 16px;
+	padding: 14px 0;
+	border-top: 1px solid var(--line);
+	border-bottom: 1px solid var(--line);
+}
+
 .collection-grid {
 	display: grid;
 	grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -7410,7 +7484,7 @@ body input:focus-visible {
 .mint-transaction-receipt {
 	min-width: 0;
 	display: grid;
-	grid-template-columns: auto minmax(0, 1fr) auto;
+	grid-template-columns: auto minmax(0, 1fr);
 	align-items: center;
 	gap: 8px;
 }
@@ -7426,21 +7500,16 @@ body input:focus-visible {
 	text-decoration: underline;
 	text-underline-offset: 2px;
 }
-.mint-transaction-receipts code {
-	color: var(--muted);
-	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-	font-size: inherit;
-	overflow-wrap: anywhere;
-}
 .mint-transaction-receipts svg {
 	width: 13px;
 	height: 13px;
 }
-.mint-transaction-receipt button {
-	min-height: 30px;
-	padding: 0 9px;
-	gap: 5px;
-	font-size: var(--type-small);
+.mint-transaction-receipt .tx-address {
+	min-width: 0;
+}
+.mint-transaction-receipt .tx-address-link {
+	min-width: 0;
+	overflow-wrap: anywhere;
 }
 .mint-success-actions {
 	display: flex;
@@ -8127,6 +8196,120 @@ body input:focus-visible {
 	filter: none;
 	opacity: 0;
 	transform: translate3d(100%, 0, 0);
+}
+.upload-activity-panel {
+	display: flex;
+	flex-direction: column;
+}
+.upload-activity-state {
+	min-height: 250px;
+	padding: clamp(28px, 7vh, 64px) 20px;
+	display: grid;
+	place-items: center;
+	align-content: center;
+	gap: 22px;
+	text-align: center;
+}
+.upload-infinity-loader {
+	width: 96px;
+	height: 96px;
+	display: grid;
+	place-items: center;
+	border: 1px solid var(--line-dark);
+	border-radius: 50%;
+	background: var(--surface-subtle);
+}
+.upload-infinity-loader svg {
+	width: 48px;
+	height: 48px;
+	stroke-width: 1.25;
+}
+.upload-activity-state.working .upload-infinity-loader svg,
+.upload-activity-state.tracking .upload-infinity-loader svg,
+.operation-activity-infinity {
+	animation: infinity-pulse 1.15s ease-in-out infinite;
+}
+.upload-activity-state.done .upload-infinity-loader {
+	color: var(--positive-text);
+	border-color: var(--positive-border);
+	background: var(--positive-surface);
+}
+.upload-activity-state.error .upload-infinity-loader {
+	color: var(--negative);
+	border-color: var(--negative-border);
+	background: var(--negative-surface);
+}
+.upload-activity-state > div {
+	max-width: 460px;
+	display: grid;
+	gap: 7px;
+}
+.upload-activity-state strong {
+	font-size: var(--type-display);
+	font-weight: 500;
+}
+.upload-activity-state p {
+	margin: 0;
+	color: var(--muted);
+	font-size: var(--type-body);
+	line-height: 1.55;
+}
+.upload-activity-phases {
+	margin: 0 0 var(--space-5);
+	padding: 0;
+	display: grid;
+	grid-template-columns: repeat(4, minmax(0, 1fr));
+	list-style: none;
+}
+.upload-activity-phases li {
+	position: relative;
+	display: grid;
+	justify-items: center;
+	gap: 7px;
+	color: var(--muted-subtle);
+	font-size: var(--type-small);
+}
+.upload-activity-phases li::after {
+	content: '';
+	position: absolute;
+	top: 13px;
+	left: calc(50% + 13px);
+	width: calc(100% - 26px);
+	height: 1px;
+	background: var(--line-dark);
+}
+.upload-activity-phases li:last-child::after {
+	display: none;
+}
+.upload-activity-phases li > span {
+	width: 26px;
+	height: 26px;
+	z-index: 1;
+	display: grid;
+	place-items: center;
+	border: 1px solid var(--line-dark);
+	border-radius: 50%;
+	background: var(--paper);
+}
+.upload-activity-phases li > span svg {
+	width: 13px;
+	height: 13px;
+}
+.upload-activity-phases li.reached {
+	color: var(--ink);
+}
+.upload-activity-phases li.reached > span {
+	color: var(--paper);
+	border-color: var(--ink);
+	background: var(--ink);
+}
+.upload-activity-panel > .mint-transaction-receipts {
+	margin-top: auto;
+	padding-top: var(--space-4);
+	border-top: 1px solid var(--line);
+}
+.upload-activity-panel > .wide {
+	margin-top: var(--space-4);
 }
 
 .ui-button.market-primary-action {

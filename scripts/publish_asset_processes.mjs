@@ -42,9 +42,9 @@ for (const definition of definitions) {
 		});
 		const transaction = await arweave.createTransaction({ data: metadata }, wallet);
 		addTags(transaction, {
-			'Content-Type': 'application/json',
-			'App-Name': 'Bazar',
-			'App-Version': '2.0.0',
+			'content-type': 'application/json',
+			'app-name': 'Bazar',
+			'app-version': '2.0.0',
 			device: 'process@1.0',
 			type: 'Process',
 			'execution-device': 'token@1.0',
@@ -85,15 +85,17 @@ for (const definition of definitions) {
 					description: definition.description,
 					kind: 'arweave-native-token-assets',
 					assetCount: collection.processes.length,
-					assets: collection.processes.sort((left, right) => left.index - right.index),
+					assets: collection.processes
+						.sort((left, right) => left.index - right.index)
+						.map((asset) => asset.id),
 				}),
 			},
 			wallet
 		);
 		addTags(manifest, {
-			'Content-Type': 'application/json',
-			'App-Name': 'Bazar',
-			'App-Version': '2.0.0',
+			'content-type': 'application/json',
+			'app-name': 'Bazar',
+			'app-version': '2.0.0',
 			type: 'Collection-Manifest',
 			name: definition.name,
 		});
@@ -104,19 +106,27 @@ for (const definition of definitions) {
 	}
 
 	if (!collection.processReferenceId) {
-		const reference = await arweave.createTransaction({ data: 'Bazar collection index' }, wallet);
-		addTags(reference, {
-			'Content-Type': 'application/x.ao-message',
-			'App-Name': 'Bazar',
-			'App-Version': '2.0.0',
-			device: 'reference@1.0',
+		const carrier = await arweave.createTransaction({ data: 'Bazar collection process' }, wallet);
+		addTags(carrier, {
+			'content-type': 'application/x.ao-message',
+			'app-name': 'Bazar',
+			'app-version': '2.0.0',
+			device: 'process@1.0',
+			'execution-device': 'carrier@1.0',
+			'scheduler-device': 'arweave-scheduler@1.0',
+			'scheduler-mode': 'all',
+			'initial-holder': ledger.fundingAddress,
+			'initial-value': collection.processManifestId,
 			'reference-value': collection.processManifestId,
-			type: 'Collection-Index',
+			'total-supply': '1',
+			denomination: '0',
+			ticker: 'COLLECTION',
+			type: 'Process',
 			name: definition.name,
 		});
-		await publish(reference);
-		collection.processReferenceId = reference.id;
-		ledger.transactions.push(record(reference, 'process-reference', definition.slug));
+		await publish(carrier);
+		collection.processReferenceId = carrier.id;
+		ledger.transactions.push(record(carrier, 'collection-carrier-process', definition.slug));
 		await save();
 	}
 }
@@ -133,7 +143,7 @@ console.log(
 				{
 					assets: collection.processes.length,
 					manifestId: collection.processManifestId,
-					referenceId: collection.processReferenceId,
+					processId: collection.processReferenceId,
 				},
 			])
 		),
@@ -143,7 +153,13 @@ console.log(
 );
 
 function addTags(transaction, tags) {
-	for (const [name, value] of Object.entries(tags)) transaction.addTag(name, String(value));
+	const normalized = new Set();
+	for (const [rawName, value] of Object.entries(tags)) {
+		const name = rawName.toLowerCase();
+		if (normalized.has(name)) throw new Error(`duplicate-upload-tag-${name}`);
+		normalized.add(name);
+		transaction.addTag(name, String(value));
+	}
 }
 
 async function publish(transaction) {
