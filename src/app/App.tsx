@@ -1878,9 +1878,6 @@ function Header() {
 						<span className="brand-mark">
 							<BazarMark />
 						</span>
-						<small className="brand-version">
-							1.0
-						</small>
 					</Link>
 					<form
 						className={`site-search${searchOpen ? ' expanded' : ''}`}

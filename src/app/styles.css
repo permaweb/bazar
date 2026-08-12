@@ -462,14 +462,6 @@ p {
 :root[data-theme='dark'] .brand-mark img {
 	filter: invert(1);
 }
-.brand-version {
-	padding: 3px 6px 2px;
-	border-radius: 5px;
-	color: var(--fixed-ink);
-	background: var(--button-accent);
-	font: 400 var(--type-small) / 1.1 'DM Sans', sans-serif;
-	letter-spacing: 0.05em;
-}
 .site-nav {
 	grid-column: 3;
 	justify-self: end;
@@ -6162,7 +6154,6 @@ body input:focus-visible {
 	.site-search {
 		height: 44px;
 	}
-	.brand small,
 	.site-nav-primary > a:not(.my-assets-link),
 	.site-nav-primary > .create-link-tooltip {
 		display: none;
@@ -6309,9 +6300,6 @@ body input:focus-visible {
 	.brand-mark img {
 		width: 25px;
 		height: 23px;
-	}
-	.brand small {
-		display: none;
 	}
 	.brand-name {
 		display: none;
