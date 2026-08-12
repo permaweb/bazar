@@ -113,6 +113,7 @@ for (const definition of definitions) {
 			'initial-value': collection.processManifestId,
 			'total-supply': '1',
 			denomination: '0',
+			ticker: 'COLLECTION',
 			type: 'Process',
 			name: definition.name,
 		});

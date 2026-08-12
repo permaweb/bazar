@@ -370,6 +370,7 @@ describe('asset mint contract', () => {
 			'initial-value': manifestId,
 			'total-supply': '1',
 			denomination: '0',
+			ticker: 'COLLECTION',
 			type: 'Process',
 			name: 'Signal set',
 		});

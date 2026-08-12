@@ -1049,6 +1049,7 @@ export function collectionProcessTags(name: string, manifestId: string, owner: s
 		'initial-value': manifestId,
 		'total-supply': '1',
 		denomination: '0',
+		ticker: 'COLLECTION',
 		type: 'Process',
 		name: name.trim(),
 	});
