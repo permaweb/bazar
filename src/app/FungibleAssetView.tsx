@@ -9,6 +9,7 @@ import {
 	CircleX,
 	FileText,
 	Grid2X2,
+	History,
 	Layers3,
 	RefreshCw,
 	Send,
@@ -66,6 +67,7 @@ import { MarketActivityList } from 'components/MarketActivityList';
 import { OperationOutcome, OperationOutcomeAnnouncement } from 'components/OperationOutcomeAnnouncement';
 import { type SegmentedTab, SegmentedTabs } from 'components/SegmentedTabs';
 import { TokenArtwork } from 'components/TokenArtwork';
+import { TokenPriceChart, type TokenPricePoint } from 'components/TokenPriceChart';
 import {
 	prepareTransactionDialogHide,
 	TRANSACTION_DIALOG_HIDE_DURATION_MS,
@@ -82,7 +84,7 @@ import { arweaveGatewayFromLocation, gatewayFromLocation } from 'helpers/config'
 import { optionalMotionBehavior } from 'helpers/motion';
 import { useWallet } from 'providers/WalletProvider';
 
-import { MarketSelect } from './App';
+import { collectionDisplayName, MarketSelect } from './App';
 import {
 	marketplaceCodedError,
 	marketplaceErrorMessage as errorMessage,
@@ -205,6 +207,29 @@ export function restartFungibleOperationActivity(activity: FungibleOperationActi
 		visible: true,
 		createdAt: Math.max(now, (activity.createdAt ?? 0) + 1),
 	};
+}
+
+export function fungibleAskHistory(events: CollectionActivityEvent[], denomination: number): TokenPricePoint[] {
+	const scale = 10n ** BigInt(denomination);
+	return events
+		.flatMap((event) => {
+			if (event.action !== 'make-offer' || !event.asking || !event.quantity) return [];
+			try {
+				const asking = BigInt(event.asking);
+				const quantity = BigInt(event.quantity);
+				if (asking <= 0n || quantity <= 0n) return [];
+				return [
+					{
+						id: event.id,
+						timestamp: event.timestamp,
+						value: ((asking * scale + quantity - 1n) / quantity).toString(),
+					},
+				];
+			} catch {
+				return [];
+			}
+		})
+		.sort((left, right) => left.timestamp - right.timestamp || left.id.localeCompare(right.id));
 }
 
 const ADDRESS = /^[A-Za-z0-9_-]{43}$/;
@@ -335,7 +360,9 @@ export function FungibleAssetView({
 	const [listingQuantity, setListingQuantity] = React.useState('');
 	const [listingUnitPrice, setListingUnitPrice] = React.useState('');
 	const [tradeMode, setTradeMode] = React.useState<'buy' | 'sell' | 'transfer'>('buy');
-	const [activeSection, setActiveSection] = React.useState<'orders' | 'about' | 'activity' | 'rights'>('orders');
+	const [activeSection, setActiveSection] = React.useState<'market' | 'orders' | 'about' | 'activity' | 'rights'>(
+		'orders'
+	);
 	const [orderReveal, setOrderReveal] = React.useState({ assetId: asset.id, limit: 50 });
 	const orderRevealStatusRef = React.useRef<HTMLParagraphElement>(null);
 	const [storageVersion, setStorageVersion] = React.useState(0);
@@ -394,9 +421,19 @@ export function FungibleAssetView({
 	}, [orders, state.balances]);
 	const license = licenseProperties(state);
 	const description = assetDescription(state, collection.description);
+	const askHistory = React.useMemo(
+		() => fungibleAskHistory(activity, state.denomination),
+		[activity, state.denomination]
+	);
 	const purchaseKey = wallet.address ? fungibleBatchStorageKey(asset.id, wallet.address) : '';
 	type FungibleAssetSection = typeof activeSection;
 	const assetTabs: AssetDetailTab<FungibleAssetSection>[] = [
+		{
+			value: 'market',
+			label: 'Market',
+			icon: <BarChart3 className="ui-icon" aria-hidden="true" />,
+			panelId: 'fungible-asset-market',
+		},
 		{
 			value: 'orders',
 			label: 'Orders',
@@ -412,7 +449,7 @@ export function FungibleAssetView({
 		{
 			value: 'activity',
 			label: 'Activity',
-			icon: <BarChart3 className="ui-icon" aria-hidden="true" />,
+			icon: <History className="ui-icon" aria-hidden="true" />,
 			panelId: 'fungible-asset-activity',
 		},
 		{
@@ -453,7 +490,7 @@ export function FungibleAssetView({
 	}, [asset.id]);
 
 	React.useEffect(() => {
-		if (activeSection === 'activity') onActivityVisible();
+		if (activeSection === 'market' || activeSection === 'activity') onActivityVisible();
 	}, [activeSection, onActivityVisible]);
 
 	React.useEffect(() => {
@@ -796,7 +833,7 @@ export function FungibleAssetView({
 						<strong>{ticker}</strong>
 					</div>
 					<div className="fungible-token-meta" aria-label="Token protocol details">
-						<Link to={`/collection/${collection.id}`}>{collection.name}</Link>
+						<Link to={`/collection/${collection.id}`}>{collectionDisplayName(collection)}</Link>
 						<span>{state.device}</span>
 						<span>{state.denomination} decimals</span>
 					</div>
@@ -1022,6 +1059,48 @@ export function FungibleAssetView({
 						onChange={setActiveSection}
 						tabs={assetTabs}
 					/>
+					{activeSection === 'market' ? (
+						<section
+							aria-labelledby="fungible-asset-market-tab"
+							className="asset-tab-panel fungible-market-panel"
+							id="fungible-asset-market"
+							role="tabpanel"
+							tabIndex={0}
+						>
+							<TokenPriceChart
+								error={activityError}
+								formatValue={(value) => `${winstonToAr(value)} AR / ${ticker}`}
+								loading={activityLoading}
+								points={askHistory}
+								ticker={ticker}
+							/>
+							<div className="token-market-snapshot" aria-label="Current token market">
+								<div>
+									<span>Best live ask</span>
+									<strong>{best ? orderPriceLabel(best, state) : 'Not listed'}</strong>
+								</div>
+								<div>
+									<span>Open asks</span>
+									<strong>{openOrders.length.toLocaleString()}</strong>
+								</div>
+								<div>
+									<span>Listed supply</span>
+									<strong>{tokenLabel(forSale, state)}</strong>
+								</div>
+								<div>
+									<span>Holders</span>
+									<strong>{holders.toLocaleString()}</strong>
+								</div>
+							</div>
+							{activityError ? (
+								<div className="asset-history-actions">
+									<Button className="with-icon" onClick={onActivityRetry} size="custom" type="button">
+										<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Retry history
+									</Button>
+								</div>
+							) : null}
+						</section>
+					) : null}
 					{activeSection === 'orders' ? (
 						<section
 							aria-labelledby="fungible-asset-orders-tab"

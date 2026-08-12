@@ -141,6 +141,7 @@ import { OperationOutcome, OperationOutcomeAnnouncement } from 'components/Opera
 import { Pagination } from 'components/Pagination';
 import { StateVerification } from 'components/StateVerification';
 import { TokenArtwork } from 'components/TokenArtwork';
+import { TokenMarketRow } from 'components/TokenMarketRow';
 import {
 	isTransactionActivityVisible,
 	prepareTransactionDialogHide,
@@ -1479,7 +1480,7 @@ function Header() {
 	const searchRoute = React.useRef(routeKey);
 	const [query, setQuery] = React.useState(urlQuery);
 	const [searchOpen, setSearchOpen] = React.useState(false);
-	const [scope, setScope] = React.useState<'all' | 'collections' | 'assets' | 'names'>('all');
+	const [scope, setScope] = React.useState<'all' | 'collections' | 'tokens' | 'assets' | 'names'>('all');
 	const [recentQueries, setRecentQueries] = React.useState<string[]>([]);
 	const [searchFeedback, setSearchFeedback] = React.useState('');
 	const normalizedQuery = query.trim().toLowerCase();
@@ -1492,7 +1493,11 @@ function Header() {
 		results: Array<{ asset: AssetSummary; collection: Collection }>;
 	}>({ query: '', loading: false, error: false, results: [] });
 	const shouldSearchAtomicIndex =
-		searchOpen && Boolean(deferredNormalizedQuery) && scope !== 'collections' && scope !== 'names';
+		searchOpen &&
+		Boolean(deferredNormalizedQuery) &&
+		scope !== 'collections' &&
+		scope !== 'tokens' &&
+		scope !== 'names';
 	React.useEffect(() => {
 		if (!shouldSearchAtomicIndex) {
 			setIndexedAtomicSearch({ query: deferredNormalizedQuery, loading: false, error: false, results: [] });
@@ -1526,7 +1531,16 @@ function Header() {
 	const atomicIndexSearchFailed =
 		shouldSearchAtomicIndex && indexedAtomicSearch.query === deferredNormalizedQuery && indexedAtomicSearch.error;
 	const relevantSearchCollections = React.useMemo(
-		() => market.collections.filter((collection) => scope !== 'names' || collection.kind === 'names'),
+		() =>
+			market.collections.filter((collection) =>
+				scope === 'names'
+					? collection.kind === 'names'
+					: scope === 'tokens'
+					? collection.kind === 'tokens'
+					: scope === 'assets'
+					? collection.kind !== 'tokens'
+					: true
+			),
 		[market.collections, scope]
 	);
 	const localSearchMatches = React.useMemo(
@@ -1541,9 +1555,10 @@ function Header() {
 	);
 	const collectionResults = React.useMemo(
 		() =>
-			scope === 'assets'
+			scope === 'assets' || scope === 'tokens'
 				? []
 				: relevantSearchCollections
+						.filter((collection) => collection.kind !== 'tokens')
 						.filter(
 							(collection) =>
 								!deferredNormalizedQuery ||
@@ -1607,13 +1622,15 @@ function Header() {
 				.slice(0, 8),
 		[atomicIndexResults, deferredNormalizedQuery, localAssetResults]
 	);
+	const tokenResults = assetResults.filter(({ collection }) => collection.kind === 'tokens');
+	const collectibleResults = assetResults.filter(({ collection }) => collection.kind !== 'tokens');
 	const directTokenCollection =
-		scope !== 'collections' && scope !== 'names'
+		scope !== 'collections' && scope !== 'assets' && scope !== 'names'
 			? directTokenSearchCollection(market.collections, query)
 			: undefined;
 	const directTokenProcess = directTokenCollection && !assetResults.some(({ asset }) => asset.id === query.trim());
 	const partialTokenCollection =
-		normalizedQuery && scope !== 'collections' && scope !== 'names'
+		normalizedQuery && scope !== 'collections' && scope !== 'assets' && scope !== 'names'
 			? market.collections.find((collection) => collection.kind === 'tokens' && collection.hasMore)
 			: undefined;
 	const searchResultAnnouncement = atomicIndexSearchPending
@@ -1626,8 +1643,8 @@ function Header() {
 		? 'Marketplace search is unavailable.'
 		: normalizedQuery && !collectionResults.length && !assetResults.length && !directTokenProcess
 		? partialTokenCollection
-			? `No loaded collections or assets match ${query.trim()}; more token records remain available.`
-			: `No collections or assets match ${query.trim()}.`
+			? `No loaded tokens, collections, or collectibles match ${query.trim()}; more token records remain available.`
+			: `No tokens, collections, or collectibles match ${query.trim()}.`
 		: `Showing ${collectionResults.length.toLocaleString()} ${
 				collectionResults.length === 1 ? 'collection' : 'collections'
 		  } and ${(assetResults.length + (directTokenProcess ? 1 : 0)).toLocaleString()} ${
@@ -1741,8 +1758,9 @@ function Header() {
 	const searchDialogRef = useDialogFocus<HTMLElement>(searchOpen, closeSearch, searchRestoreTarget);
 	const scopes = [
 		{ id: 'all' as const, label: 'All', Icon: Search },
+		{ id: 'tokens' as const, label: 'Tokens', Icon: BarChart3 },
 		{ id: 'collections' as const, label: 'Collections', Icon: LayoutGrid },
-		{ id: 'assets' as const, label: 'Assets', Icon: Images },
+		{ id: 'assets' as const, label: 'Collectibles', Icon: Images },
 		{ id: 'names' as const, label: 'Names', Icon: AtSign },
 	];
 	return (
@@ -1763,8 +1781,8 @@ function Header() {
 						<Search className="ui-icon ui-icon--sm" aria-hidden="true" />
 						<input
 							ref={inputRef}
-							aria-label="Search collections and assets"
-							placeholder="Search collections and assets"
+							aria-label="Search tokens, collections, and collectibles"
+							placeholder="Search tokens, collections, and assets"
 							value={query}
 							onChange={(event) => updateQuery(event.target.value)}
 							onClick={openSearch}
@@ -1982,14 +2000,37 @@ function Header() {
 										</div>
 									</section>
 								) : null}
-								{assetResults.length ? (
+								{tokenResults.length ? (
+									<section className="search-result-section token-search-results">
+										<div className="search-result-heading">
+											<h2>{normalizedQuery ? 'Matching tokens' : 'Tokens'}</h2>
+											<span>{tokenResults.length} shown</span>
+										</div>
+										<div className="token-market-list compact">
+											{tokenResults.map(({ asset, collection }, index) => (
+												<TokenMarketRow
+													asset={asset}
+													collection={collection}
+													context="Fungible token"
+													key={`${collection.id}-${asset.id}`}
+													onFollow={followSearchResult}
+													onWarm={() => prefetchAssetPage(asset.id, true)}
+													priority={index === 0}
+												/>
+											))}
+										</div>
+									</section>
+								) : null}
+								{collectibleResults.length ? (
 									<section className="search-result-section">
 										<div className="search-result-heading">
-											<h2>{normalizedQuery ? 'Matching assets' : 'Featured assets'}</h2>
-											<span>{assetResults.length} shown</span>
+											<h2>
+												{normalizedQuery ? 'Matching collectibles' : 'Featured collectibles'}
+											</h2>
+											<span>{collectibleResults.length} shown</span>
 										</div>
 										<div className="search-asset-grid">
-											{assetResults.map(({ asset, collection }) => (
+											{collectibleResults.map(({ asset, collection }) => (
 												<Link
 													key={`${collection.id}-${asset.id}`}
 													to={`/asset/${collection.id}/${asset.id}`}
@@ -2034,25 +2075,19 @@ function Header() {
 											<h2>Direct process</h2>
 											<span>Live state check required</span>
 										</div>
-										<div className="search-asset-grid">
-											<Link
-												to={`/asset/${directTokenCollection.id}/${query.trim()}`}
-												onClick={followSearchResult}
-												onFocus={() => prefetchAssetPage(query.trim(), true)}
-												onMouseEnter={() => prefetchAssetPage(query.trim(), true)}
-												onTouchStart={() => prefetchAssetPage(query.trim(), true)}
-											>
-												<span className="search-result-image">
-													<TokenArtwork ticker="Token" />
-												</span>
-												<span>
-													<strong>Check token process</strong>
-													<small>
-														{short(query.trim())} · support is determined from live state
-													</small>
-												</span>
-												<ArrowUpRight className="ui-icon ui-icon--sm" aria-hidden="true" />
-											</Link>
+										<div className="token-market-list compact">
+											<TokenMarketRow
+												asset={{
+													id: query.trim(),
+													name: 'Check token process',
+													ticker: 'TOKEN',
+													contentType: 'application/x.arweave-token',
+												}}
+												collection={directTokenCollection}
+												context={`${short(query.trim())} · live state check`}
+												onFollow={followSearchResult}
+												onWarm={() => prefetchAssetPage(query.trim(), true)}
+											/>
 										</div>
 									</section>
 								) : null}
@@ -2076,7 +2111,7 @@ function Header() {
 												? 'More token records remain available from the token collection.'
 												: atomicIndexSearchFailed
 												? 'Permanent Bazar creation-record search is temporarily unavailable. Try again shortly.'
-												: 'Try another asset, collection, or Arweave name.'}
+												: 'Try another token, collectible, collection, or Arweave name.'}
 										</span>
 									</div>
 								) : null}
@@ -2840,6 +2875,7 @@ function Home() {
 		const activity = new Map(Object.entries(collectionActivity));
 		return market.collections
 			.filter((collection) => {
+				if (collection.kind === 'tokens') return false;
 				if (!normalizedQuery) return true;
 				return (
 					`${collection.name} ${collection.description}`.toLowerCase().includes(normalizedQuery) ||
@@ -2979,8 +3015,12 @@ function Home() {
 				}),
 		[assetCandidates, assetType, assetView, displayAssetPrices, homeListingActivityByAsset]
 	);
+	const discoverTokens = displayedAssets.filter(({ collection }) => collection.kind === 'tokens');
+	const discoverCollectibles = displayedAssets.filter(({ collection }) => collection.kind !== 'tokens');
+	const discoverOverviewAssets = [...discoverTokens.slice(0, 8), ...discoverCollectibles.slice(0, 12)];
 	const assetPagination = homeAssetPage(displayedAssets, assetPage);
-	const assets = assetView === 'all' ? assetPagination.items : assetCandidates;
+	const assets =
+		assetView === 'all' ? (assetType === 'all' ? discoverOverviewAssets : assetPagination.items) : assetCandidates;
 	const assetKey = assets.map(({ asset }) => asset.id).join(',');
 	const portableHomeListingById = React.useMemo(
 		() => new Map(portableHomeListings.map((result) => [result.asset.id, result])),
@@ -3676,6 +3716,60 @@ function Home() {
 		setAssetPage(page);
 		marketPaneRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
 	};
+	const renderTokenList = (items: typeof displayedAssets) => (
+		<div className="token-market-list" role="list">
+			{items.map(({ asset, collection }, index) => {
+				const price = displayAssetPrices[asset.id];
+				return (
+					<TokenMarketRow
+						asset={asset}
+						collection={collection}
+						context={`Fungible token · ${short(asset.id)}`}
+						key={`${collection.id}-${asset.id}`}
+						metric={{
+							label: 'Unit price',
+							value: price ? homeMarketSummaryLabel(price, 'Not listed') : <HomePendingMarketValue />,
+							tone: homeMarketSummaryListed(price) ? 'positive' : 'default',
+						}}
+						onWarm={() => prefetchAssetPage(asset.id, true)}
+						priority={index < 2}
+					/>
+				);
+			})}
+		</div>
+	);
+	const renderCollectibleGrid = (items: typeof displayedAssets) => (
+		<div className="home-asset-grid">
+			{items.map(({ asset, collection }, index) => {
+				const price = displayAssetPrices[asset.id];
+				const pricePending = !price;
+				return (
+					<Link
+						key={`${collection.id}-${asset.id}`}
+						to={`/asset/${collection.id}/${asset.id}`}
+						onFocus={() => prefetchAssetPage(asset.id, false)}
+						onMouseEnter={() => prefetchAssetPage(asset.id, false)}
+						onTouchStart={() => prefetchAssetPage(asset.id, false)}
+					>
+						<DiscoveryAssetArtwork asset={asset} collection={collection} priority={index < 2} />
+						<div className="home-asset-details">
+							<div>
+								<strong>{asset.name}</strong>
+								<span>{collection.name}</span>
+							</div>
+							<b className={`home-asset-price${homeMarketSummaryListed(price) ? ' listed' : ''}`}>
+								{!pricePending && price ? (
+									homeMarketSummaryLabel(price, 'Not listed')
+								) : (
+									<HomePendingMarketValue />
+								)}
+							</b>
+						</div>
+					</Link>
+				);
+			})}
+		</div>
+	);
 	return (
 		<div className="home-shell">
 			<div className="home-main">
@@ -3727,9 +3821,9 @@ function Home() {
 										{homeTab === 'discover'
 											? normalizedQuery
 												? `Results for “${query}” across the current Arweave collection indexes.`
-												: 'Find and explore permanent digitals assets across the permaweb.'
+												: 'Browse fungible tokens and collectible assets on the permaweb.'
 											: homeTab === 'collections'
-											? 'Find and explore permanent digitals assets across the permaweb.'
+											? 'Browse NFT and name collections.'
 											: 'Recent activity of purchases, listings, and transfers across every marketplace collection.'}
 									</p>
 								</div>
@@ -3741,7 +3835,7 @@ function Home() {
 											options={[
 												{ value: 'all', label: 'All' },
 												{ value: 'tokens', label: 'Tokens' },
-												{ value: 'atomic', label: 'Atomic assets (NFT)' },
+												{ value: 'atomic', label: 'Collectibles (NFTs)' },
 											]}
 											value={assetType}
 										/>
@@ -3749,7 +3843,7 @@ function Home() {
 											label="View"
 											onChange={setAssetView}
 											options={[
-												{ value: 'all', label: 'All assets' },
+												{ value: 'all', label: 'All records' },
 												{ value: 'listed', label: 'Listed for sale' },
 												{ value: 'price-low', label: 'Price: low to high' },
 												{ value: 'price-high', label: 'Price: high to low' },
@@ -3943,73 +4037,74 @@ function Home() {
 									role="tabpanel"
 								>
 									{displayedAssets.length || discoverResultsPending ? (
-										<>
-											<div className="home-asset-grid">
-												{assetPagination.items.map(({ asset, collection }, index) => {
-													const price = displayAssetPrices[asset.id];
-													const pricePending = !price;
-													return (
-														<Link
-															key={`${collection.id}-${asset.id}`}
-															to={`/asset/${collection.id}/${asset.id}`}
-															onFocus={() =>
-																prefetchAssetPage(
-																	asset.id,
-																	collection.kind === 'tokens'
-																)
-															}
-															onMouseEnter={() =>
-																prefetchAssetPage(
-																	asset.id,
-																	collection.kind === 'tokens'
-																)
-															}
-															onTouchStart={() =>
-																prefetchAssetPage(
-																	asset.id,
-																	collection.kind === 'tokens'
-																)
-															}
-														>
-															<DiscoveryAssetArtwork
-																asset={asset}
-																collection={collection}
-																priority={index < 2}
+										assetType === 'all' ? (
+											<div className="discover-market-sections">
+												<section className="discover-market-section token-section">
+													<div className="discover-market-heading">
+														<div>
+															<p className="eyebrow">Fungible assets</p>
+															<h2>Tokens</h2>
+														</div>
+														<Button size="custom" onClick={() => setAssetType('tokens')}>
+															View all tokens
+															<ArrowRight
+																className="ui-icon ui-icon--xs"
+																aria-hidden="true"
 															/>
-															<div className="home-asset-details">
-																<div>
-																	<strong>{asset.name}</strong>
-																	<span>{collection.name}</span>
-																</div>
-																<b
-																	className={`home-asset-price${
-																		homeMarketSummaryListed(price) ? ' listed' : ''
-																	}`}
-																>
-																	{!pricePending && price ? (
-																		homeMarketSummaryLabel(price, 'Not listed')
-																	) : (
-																		<HomePendingMarketValue />
-																	)}
-																</b>
-															</div>
-														</Link>
-													);
-												})}
+														</Button>
+													</div>
+													{discoverTokens.length ? (
+														renderTokenList(discoverTokens.slice(0, 8))
+													) : (
+														<p className="discover-section-empty">
+															No tokens match this view.
+														</p>
+													)}
+												</section>
+												<section className="discover-market-section collectible-section">
+													<div className="discover-market-heading">
+														<div>
+															<p className="eyebrow">Unique assets</p>
+															<h2>Collectibles</h2>
+														</div>
+														<Button size="custom" onClick={() => setAssetType('atomic')}>
+															View all collectibles
+															<ArrowRight
+																className="ui-icon ui-icon--xs"
+																aria-hidden="true"
+															/>
+														</Button>
+													</div>
+													{discoverCollectibles.length ? (
+														renderCollectibleGrid(discoverCollectibles.slice(0, 12))
+													) : (
+														<p className="discover-section-empty">
+															No collectibles match this view.
+														</p>
+													)}
+												</section>
 											</div>
-											<Pagination
-												ariaLabel="Discover pages"
-												className="home-asset-pagination"
-												onPageChange={selectAssetPage}
-												page={assetPagination.page}
-												pageCount={assetPagination.pageCount}
-											/>
-										</>
+										) : (
+											<>
+												{assetType === 'tokens'
+													? renderTokenList(assetPagination.items)
+													: renderCollectibleGrid(assetPagination.items)}
+												<Pagination
+													ariaLabel={
+														assetType === 'tokens' ? 'Token pages' : 'Collectible pages'
+													}
+													className="home-asset-pagination"
+													onPageChange={selectAssetPage}
+													page={assetPagination.page}
+													pageCount={assetPagination.pageCount}
+												/>
+											</>
+										)
 									) : discoverResultsFailed ? null : (
 										<div className="home-assets-empty">
 											{assetView === 'all'
-												? 'No assets match this asset type.'
-												: 'No live listings match this asset type.'}
+												? 'No records match this type.'
+												: 'No live listings match this type.'}
 										</div>
 									)}
 								</div>
@@ -5809,12 +5904,13 @@ function CollectionView() {
 	return (
 		<section className="collection-page">
 			<Link className="back" to="/">
-				<ArrowLeft className="ui-icon ui-icon--sm" aria-hidden="true" /> All collections
+				<ArrowLeft className="ui-icon ui-icon--sm" aria-hidden="true" />{' '}
+				{collection.kind === 'tokens' ? 'Discover' : 'All collections'}
 			</Link>
 			<div className="collection-title">
 				<div>
 					<p className="eyebrow">{collectionEyebrow(collection)}</p>
-					<h1>{collection.name}</h1>
+					<h1>{collectionDisplayName(collection)}</h1>
 				</div>
 				<div className="collection-title-copy">
 					<p>{collection.description}</p>
@@ -6006,7 +6102,7 @@ function CollectionView() {
 							label="Show"
 							onChange={(nextValue) => setListedOnly(nextValue === 'listed')}
 							options={[
-								{ value: 'all', label: 'All assets' },
+								{ value: 'all', label: collection.kind === 'tokens' ? 'All tokens' : 'All assets' },
 								{ value: 'listed', label: 'Listed for sale' },
 							]}
 							value={listedOnly ? 'listed' : 'all'}
@@ -6138,40 +6234,78 @@ function CollectionView() {
 					) : null}
 				</div>
 			) : null}
-			<div
-				aria-describedby={resultSummaryId}
-				aria-label={`${collection.name} assets`}
-				className={`asset-grid${collection.kind === 'tokens' ? ' token-collection-grid' : ''}${
-					collection.kind === 'names' ? ' names-collection-grid' : ''
-				}`}
-				id={assetGridId}
-			>
-				{filtered.slice(0, limit).map((asset, index) => {
-					const price = cardPrices[asset.id];
-					return (
-						<AssetCard
-							key={asset.id}
-							collection={collection}
-							asset={asset}
-							priority={index < 2}
-							collectionContext
-							badge={listedOnly ? 'For sale' : undefined}
-							price={
-								price?.status === 'unavailable'
-									? 'Unavailable'
-									: price?.status === 'unindexed'
-									? 'No indexed ask'
-									: price?.status === 'resolved'
-									? price.label ?? 'Not listed'
-									: cardPricesFailure
-									? 'Unavailable'
-									: 'Checking…'
-							}
-							priceListed={price?.status === 'resolved' && Boolean(price.label)}
-						/>
-					);
-				})}
-			</div>
+			{collection.kind === 'tokens' ? (
+				<div
+					aria-describedby={resultSummaryId}
+					aria-label={`${collection.name} tokens`}
+					className="token-market-list collection-token-list"
+					id={assetGridId}
+					role="list"
+				>
+					{filtered.slice(0, limit).map((asset, index) => {
+						const price = cardPrices[asset.id];
+						const priceLabel =
+							price?.status === 'unavailable'
+								? 'Unavailable'
+								: price?.status === 'unindexed'
+								? 'No indexed ask'
+								: price?.status === 'resolved'
+								? price.label ?? 'Not listed'
+								: cardPricesFailure
+								? 'Unavailable'
+								: 'Checking…';
+						return (
+							<TokenMarketRow
+								asset={asset}
+								badge={listedOnly ? 'For sale' : undefined}
+								collection={collection}
+								context={`Process · ${short(asset.id)}`}
+								key={asset.id}
+								metric={{
+									label: 'Unit price',
+									value: priceLabel,
+									tone: price?.status === 'resolved' && price.label ? 'positive' : 'default',
+								}}
+								onWarm={() => prefetchAssetPage(asset.id, true)}
+								priority={index < 2}
+							/>
+						);
+					})}
+				</div>
+			) : (
+				<div
+					aria-describedby={resultSummaryId}
+					aria-label={`${collection.name} assets`}
+					className={`asset-grid${collection.kind === 'names' ? ' names-collection-grid' : ''}`}
+					id={assetGridId}
+				>
+					{filtered.slice(0, limit).map((asset, index) => {
+						const price = cardPrices[asset.id];
+						return (
+							<AssetCard
+								key={asset.id}
+								collection={collection}
+								asset={asset}
+								priority={index < 2}
+								collectionContext
+								badge={listedOnly ? 'For sale' : undefined}
+								price={
+									price?.status === 'unavailable'
+										? 'Unavailable'
+										: price?.status === 'unindexed'
+										? 'No indexed ask'
+										: price?.status === 'resolved'
+										? price.label ?? 'Not listed'
+										: cardPricesFailure
+										? 'Unavailable'
+										: 'Checking…'
+								}
+								priceListed={price?.status === 'resolved' && Boolean(price.label)}
+							/>
+						);
+					})}
+				</div>
+			)}
 			<p
 				className={
 					filtered.length > pageSize && limit >= filtered.length
@@ -6786,13 +6920,18 @@ export function collectionActivityScanAnnouncement({
 
 function CollectionTabs({ collection, active }: { collection: Collection; active: 'assets' | 'activity' }) {
 	return (
-		<nav className="collection-tabs" aria-label={`${collection.name} views`}>
+		<nav className="collection-tabs" aria-label={`${collectionDisplayName(collection)} views`}>
 			<Link
 				aria-current={active === 'assets' ? 'page' : undefined}
 				className={active === 'assets' ? 'active' : ''}
 				to={`/collection/${collection.id}`}
 			>
-				<LayoutGrid className="ui-icon ui-icon--sm" aria-hidden="true" /> Assets
+				{collection.kind === 'tokens' ? (
+					<BarChart3 className="ui-icon ui-icon--sm" aria-hidden="true" />
+				) : (
+					<LayoutGrid className="ui-icon ui-icon--sm" aria-hidden="true" />
+				)}{' '}
+				{collection.kind === 'tokens' ? 'Tokens' : 'Assets'}
 			</Link>
 			<Link
 				aria-current={active === 'activity' ? 'page' : undefined}
@@ -9997,6 +10136,10 @@ function collectionKindLabel(collection: Collection) {
 	if (collection.kind === 'names') return 'Arweave identity';
 	if (collection.kind === 'tokens') return 'Fungible token collection';
 	return 'Permanent artwork collection';
+}
+
+export function collectionDisplayName(collection: Collection) {
+	return collection.kind === 'tokens' ? 'Tokens' : collection.name;
 }
 
 function collectionEyebrow(collection: Collection) {

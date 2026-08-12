@@ -8806,3 +8806,330 @@ body input:focus-visible {
 .dispatch-layout {
 	grid-template-columns: minmax(0, 1fr);
 }
+
+/* Fungible assets use market rows; collectible assets retain the artwork-card grammar. */
+.token-market-list {
+	display: grid;
+	border-top: 1px solid var(--line-dark);
+}
+.token-market-row {
+	min-width: 0;
+	min-height: 76px;
+	padding: 12px 14px;
+	display: grid;
+	grid-template-columns: 48px minmax(150px, 1.15fr) minmax(130px, 1fr) minmax(105px, auto) minmax(120px, auto) auto 18px;
+	align-items: center;
+	gap: 14px;
+	border-bottom: 1px solid var(--line-dark);
+	color: var(--ink);
+	background: var(--paper);
+	transition: background 100ms ease;
+}
+.token-market-row:hover {
+	background: var(--button-accent);
+}
+.token-market-logo {
+	grid-column: 1;
+	width: 48px;
+	height: 48px;
+	display: grid;
+	place-items: center;
+	overflow: hidden;
+	border: 1px solid var(--line-dark);
+	border-radius: 50%;
+	background: var(--surface);
+}
+.token-market-logo img,
+.token-market-logo .token-artwork {
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+}
+.token-market-logo .token-artwork {
+	font-size: 0.62rem;
+}
+.token-market-logo .token-artwork::before {
+	height: 72%;
+}
+.token-market-logo .token-artwork strong,
+.token-market-logo .token-artwork.ticker-long strong {
+	font-size: 0.64rem;
+}
+.token-market-logo .token-artwork small {
+	display: none;
+}
+.token-market-identity {
+	grid-column: 2;
+	min-width: 0;
+	display: grid;
+	gap: 3px;
+}
+.token-market-identity strong,
+.token-market-identity small,
+.token-market-context,
+.token-market-metric strong {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.token-market-identity strong {
+	font-size: var(--type-body);
+	font-weight: 500;
+}
+.token-market-identity small,
+.token-market-context,
+.token-market-metric small {
+	color: var(--muted);
+	font-size: var(--type-small);
+	font-weight: 400;
+}
+.token-market-context {
+	grid-column: 3;
+}
+.token-market-metric {
+	grid-column: 5;
+	min-width: 0;
+	display: grid;
+	justify-items: end;
+	gap: 3px;
+	font-variant-numeric: tabular-nums;
+}
+.token-market-metric.secondary {
+	grid-column: 4;
+}
+.token-market-metric strong {
+	max-width: 22ch;
+	font-size: var(--type-body);
+	font-weight: 500;
+}
+.token-market-metric.positive strong {
+	color: var(--positive-text);
+}
+.token-market-metric.muted strong {
+	color: var(--muted);
+}
+.token-market-badge {
+	grid-column: 6;
+	padding: 4px 7px;
+	border: 1px solid var(--line-dark);
+	color: var(--muted);
+	font-size: var(--type-small);
+	white-space: nowrap;
+}
+.token-market-arrow {
+	grid-column: 7;
+	color: var(--muted);
+}
+.token-market-list.compact .token-market-row {
+	min-height: 66px;
+	padding: 8px 10px;
+	grid-template-columns: 44px minmax(130px, 1fr) minmax(110px, 0.8fr) 0 minmax(0, 0) 0 18px;
+}
+.token-market-list.compact .token-market-logo {
+	width: 44px;
+	height: 44px;
+}
+.discover-market-sections {
+	display: grid;
+	gap: clamp(36px, 5vw, 68px);
+}
+.discover-market-section {
+	min-width: 0;
+}
+.discover-market-heading {
+	min-height: 68px;
+	padding: 12px 0;
+	display: flex;
+	align-items: end;
+	justify-content: space-between;
+	gap: 18px;
+	border-top: 1px solid var(--ink);
+}
+.discover-market-heading h2,
+.discover-market-heading p {
+	margin: 0;
+}
+.discover-market-heading h2 {
+	font-size: var(--type-display);
+	font-weight: 500;
+}
+.discover-market-heading button {
+	min-height: 36px;
+	display: inline-flex;
+	align-items: center;
+	gap: 7px;
+	border: 0;
+	background: var(--transparent);
+}
+.discover-section-empty {
+	margin: 0;
+	padding: 28px 0;
+	border-top: 1px solid var(--line);
+	border-bottom: 1px solid var(--line);
+	color: var(--muted);
+}
+.collection-token-list {
+	margin-top: 18px;
+}
+.wallet-asset-kind + .wallet-asset-kind {
+	margin-top: var(--space-6);
+}
+.wallet-asset-kind > h3 {
+	margin: 0;
+	padding: 10px 0;
+	border-top: 1px solid var(--ink);
+	font-size: var(--type-body);
+	font-weight: 500;
+}
+
+.token-price-chart {
+	border-top: 1px solid var(--ink);
+	border-bottom: 1px solid var(--line-dark);
+}
+.token-price-chart-heading {
+	min-height: 78px;
+	padding: 14px 0;
+	display: flex;
+	align-items: end;
+	justify-content: space-between;
+	gap: 18px;
+}
+.token-price-chart-heading h2,
+.token-price-chart-heading p {
+	margin: 0;
+}
+.token-price-chart-heading h2 {
+	font-size: var(--type-display);
+	font-weight: 500;
+}
+.token-price-latest {
+	display: grid;
+	justify-items: end;
+	gap: 3px;
+}
+.token-price-latest span,
+.token-price-range,
+.token-market-snapshot span {
+	color: var(--muted);
+	font-size: var(--type-small);
+}
+.token-price-latest strong {
+	font-size: var(--type-body);
+	font-weight: 500;
+	font-variant-numeric: tabular-nums;
+}
+.token-price-plot {
+	height: 220px;
+	padding: 20px 0;
+	border-top: 1px solid var(--line);
+}
+.token-price-plot svg {
+	width: 100%;
+	height: 100%;
+	overflow: visible;
+}
+.token-price-plot line {
+	stroke: var(--line);
+	stroke-width: 1;
+	vector-effect: non-scaling-stroke;
+}
+.token-price-plot polyline {
+	fill: none;
+	stroke: var(--ink);
+	stroke-width: 2;
+	stroke-linejoin: round;
+	stroke-linecap: round;
+	vector-effect: non-scaling-stroke;
+}
+.token-price-plot circle {
+	fill: var(--ink);
+}
+.token-price-range {
+	padding: 10px 0;
+	display: flex;
+	justify-content: space-between;
+	gap: 16px;
+	border-top: 1px solid var(--line);
+	font-variant-numeric: tabular-nums;
+}
+.token-price-empty {
+	min-height: 220px;
+	margin: 0;
+	display: grid;
+	place-items: center;
+	border-top: 1px solid var(--line);
+	color: var(--muted);
+}
+.token-price-chart .market-note {
+	margin: 0;
+	padding: 12px 0;
+	border-top: 1px solid var(--line);
+}
+.token-market-snapshot {
+	display: grid;
+	grid-template-columns: repeat(4, minmax(0, 1fr));
+	border-bottom: 1px solid var(--line-dark);
+}
+.token-market-snapshot > div {
+	min-width: 0;
+	padding: 14px 12px;
+	display: grid;
+	gap: 4px;
+	border-right: 1px solid var(--line);
+}
+.token-market-snapshot > div:first-child {
+	padding-left: 0;
+}
+.token-market-snapshot > div:last-child {
+	border-right: 0;
+}
+.token-market-snapshot strong {
+	overflow: hidden;
+	font-size: var(--type-body);
+	font-weight: 500;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+@media (max-width: 760px) {
+	.token-market-row,
+	.token-market-list.compact .token-market-row {
+		grid-template-columns: 44px minmax(0, 1fr) minmax(96px, auto) 18px;
+		gap: 10px;
+		padding: 10px 6px;
+	}
+	.token-market-logo,
+	.token-market-list.compact .token-market-logo {
+		width: 44px;
+		height: 44px;
+	}
+	.token-market-identity {
+		grid-column: 2;
+	}
+	.token-market-context,
+	.token-market-metric.secondary,
+	.token-market-badge {
+		display: none;
+	}
+	.token-market-metric {
+		grid-column: 3;
+	}
+	.token-market-arrow {
+		grid-column: 4;
+	}
+	.discover-market-heading {
+		align-items: center;
+	}
+	.token-market-snapshot {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+	.token-market-snapshot > div:nth-child(2) {
+		border-right: 0;
+	}
+	.token-market-snapshot > div:nth-child(n + 3) {
+		border-top: 1px solid var(--line);
+	}
+	.token-price-range span:nth-child(2) {
+		display: none;
+	}
+}
