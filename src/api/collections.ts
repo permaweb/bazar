@@ -1,4 +1,5 @@
 import { mapConcurrent } from 'helpers/concurrency';
+import { isSupportedAssetContentType } from 'helpers/asset-media';
 import {
 	arweaveGatewayFromLocation,
 	arweaveGraphqlEndpoint,
@@ -8,6 +9,7 @@ import {
 
 import { type AssetState, readAssetState } from './asset-marketplace';
 import { fetchJsonWithDeadline, fetchTextWithDeadline } from './fetch-with-deadline';
+import { assetFromMintState } from './minted-assets';
 
 const ARWEAVE_ID = /^[A-Za-z0-9_-]{43}$/;
 const collectionAssetIndexes = new WeakMap<AssetSummary[], ReadonlyMap<string, AssetSummary>>();
@@ -158,6 +160,7 @@ const IMAGE_COLLECTIONS = [
 ].filter((collection) => /^[A-Za-z0-9_-]{43}$/.test(collection.reference));
 
 const MAX_INDEX_PAGES = 1_000;
+const ARWEAVE_GRAPHQL_ID_BATCH_SIZE = 9;
 
 export const IMAGE_COLLECTION_REFERENCES = IMAGE_COLLECTIONS.map((collection) => collection.reference);
 
@@ -469,7 +472,96 @@ async function loadDiscoveredImageCollection(
 			) ?? '';
 		if (!manifestId) throw new Error('collection-reference-unavailable');
 	}
-	return imageCollection(candidate.id, manifestId, 'reference', await fetchJson<ImageManifest>(manifestId, signal));
+	return enrichImageCollectionAssetMetadata(
+		imageCollection(candidate.id, manifestId, 'reference', await fetchJson<ImageManifest>(manifestId, signal)),
+		signal
+	);
+}
+
+type AtomicAssetIndexNode = { id?: unknown; tags?: unknown };
+
+function indexedAtomicAsset(node: AtomicAssetIndexNode): AssetSummary | undefined {
+	if (
+		typeof node.id !== 'string' ||
+		!ARWEAVE_ID.test(node.id) ||
+		!Array.isArray(node.tags) ||
+		node.tags.some(
+			(tag) =>
+				!tag ||
+				typeof tag !== 'object' ||
+				typeof (tag as { name?: unknown }).name !== 'string' ||
+				typeof (tag as { value?: unknown }).value !== 'string'
+		)
+	)
+		return undefined;
+	const tags = Object.fromEntries(
+		(node.tags as Array<{ name: string; value: string }>).map(({ name, value }) => [name.toLowerCase(), value])
+	);
+	if (
+		tags['app-name'] !== 'Bazar' ||
+		tags.device !== 'process@1.0' ||
+		tags['execution-device'] !== 'token@1.0' ||
+		tags['swap-device'] !== 'arweave-swap@1.0' ||
+		tags['scheduler-device'] !== 'arweave-scheduler@1.0' ||
+		tags['scheduler-mode'] !== 'all' ||
+		tags['total-supply'] !== '1' ||
+		tags.denomination !== '0' ||
+		tags.ticker !== 'ASSET' ||
+		!ARWEAVE_ID.test(tags['initial-holder'] ?? '') ||
+		!isSupportedAssetContentType(tags['asset-content-type'])
+	)
+		return undefined;
+	return assetFromMintState(node.id, tags) ?? undefined;
+}
+
+/** Replace ID-only manifest placeholders with immutable transaction metadata. */
+export async function enrichImageCollectionAssetMetadata(
+	collection: Collection,
+	signal?: AbortSignal,
+	fetcher: typeof fetch = globalThis.fetch.bind(globalThis)
+): Promise<Collection> {
+	if (collection.kind !== 'images') return collection;
+	const unresolved = collection.assets.filter((asset) => asset.name === shortId(asset.id));
+	if (!unresolved.length) return collection;
+	const batches = Array.from({ length: Math.ceil(unresolved.length / ARWEAVE_GRAPHQL_ID_BATCH_SIZE) }, (_, index) =>
+		unresolved.slice(index * ARWEAVE_GRAPHQL_ID_BATCH_SIZE, (index + 1) * ARWEAVE_GRAPHQL_ID_BATCH_SIZE)
+	);
+	const indexed = new Map<string, AssetSummary>();
+	await mapConcurrent(batches, 2, async (batch) => {
+		try {
+			const { response, body } = await fetchJsonWithDeadline<any>(
+				fetcher,
+				arweaveGraphqlEndpoint(),
+				{
+					method: 'POST',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify({
+						query: `query BazarAtomicAssetsByIds($ids: [ID!]!) {
+							transactions(ids: $ids, first: 9) {
+								edges { node { id tags { name value } } }
+							}
+						}`,
+						variables: { ids: batch.map((asset) => asset.id) },
+					}),
+					signal,
+				},
+				{ timeoutError: 'collection-asset-index-timeout' }
+			);
+			if (!response.ok || !body || body.errors?.length || !Array.isArray(body.data?.transactions?.edges)) return;
+			for (const edge of body.data.transactions.edges) {
+				const asset = indexedAtomicAsset(edge?.node ?? {});
+				if (asset && batch.some((candidate) => candidate.id === asset.id)) indexed.set(asset.id, asset);
+			}
+		} catch {
+			throwIfAborted(signal);
+			// Keep the stable ID fallback when GraphQL has not indexed an asset yet.
+		}
+	});
+	if (!indexed.size) return collection;
+	return {
+		...collection,
+		assets: collection.assets.map((asset) => indexed.get(asset.id) ?? asset),
+	};
 }
 
 function throwIfAborted(signal?: AbortSignal) {

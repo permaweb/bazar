@@ -8,6 +8,7 @@ import {
 	type Collection,
 	collectionAsset,
 	discoverBazarCollections,
+	enrichImageCollectionAssetMetadata,
 	FUNGIBLE_TOKEN_ID,
 	loadCollections,
 	loadImageCollection,
@@ -30,6 +31,60 @@ afterEach(() => {
 });
 
 describe('collection index loading', () => {
+	it('batch-enriches ID-only manifests with permanent Atomic Asset names', async () => {
+		const owner = 'O'.repeat(43);
+		const ids = Array.from({ length: 101 }, (_, index) => index.toString(36).padStart(43, 'A'));
+		const collection: Collection = {
+			id: 'C'.repeat(43),
+			name: 'HTML Colors',
+			description: '',
+			kind: 'images',
+			assets: ids.map((id) => ({
+				id,
+				name: `${id.slice(0, 7)}…${id.slice(-6)}`,
+				image: `https://arweave.net/raw/${id}`,
+			})),
+		};
+		const fetcher = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+			const request = JSON.parse(String(init?.body));
+			return Response.json({
+				data: {
+					transactions: {
+						edges: request.variables.ids.map((id: string) => ({
+							node: {
+								id,
+								tags: [
+									{ name: 'app-name', value: 'Bazar' },
+									{ name: 'device', value: 'process@1.0' },
+									{ name: 'execution-device', value: 'token@1.0' },
+									{ name: 'swap-device', value: 'arweave-swap@1.0' },
+									{ name: 'scheduler-device', value: 'arweave-scheduler@1.0' },
+									{ name: 'scheduler-mode', value: 'all' },
+									{ name: 'initial-holder', value: owner },
+									{ name: 'total-supply', value: '1' },
+									{ name: 'denomination', value: '0' },
+									{ name: 'ticker', value: 'ASSET' },
+									{ name: 'name', value: `Color ${ids.indexOf(id) + 1}` },
+									{ name: 'asset-content-type', value: 'image/png' },
+								],
+							},
+						})),
+					},
+				},
+			});
+		});
+
+		const enriched = await enrichImageCollectionAssetMetadata(collection, undefined, fetcher as typeof fetch);
+
+		expect(enriched.assets[0].name).toBe('Color 1');
+		expect(enriched.assets[100].name).toBe('Color 101');
+		expect(enriched.assets[0].image).toBe(`https://arweave.net/raw/${ids[0]}`);
+		expect(fetcher).toHaveBeenCalledTimes(12);
+		expect(fetcher.mock.calls.map(([, init]) => JSON.parse(String(init?.body)).variables.ids.length)).toEqual([
+			9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 2,
+		]);
+	});
+
 	it('discovers current and legacy Bazar carrier collections from GraphQL in block order', async () => {
 		const currentId = 'C'.repeat(43);
 		const legacyId = 'L'.repeat(43);
