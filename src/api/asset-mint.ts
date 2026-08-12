@@ -8,11 +8,7 @@ import {
 import { mapConcurrent } from 'helpers/concurrency';
 import { arweaveClientConfig, arweaveGatewayFromLocation, gatewayFromLocation } from 'helpers/config';
 
-import {
-	type AssetSummary,
-	FUNGIBLE_TOKEN_COLLECTION_ID,
-	FUNGIBLE_TOKEN_COLLECTION_NAME,
-} from './collections';
+import { type AssetSummary, FUNGIBLE_TOKEN_COLLECTION_ID, FUNGIBLE_TOKEN_COLLECTION_NAME } from './collections';
 import { acceptedMintActivity, upsertMintActivity } from './mint-activity';
 import {
 	CREATED_COLLECTION_ID,

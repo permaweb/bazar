@@ -7566,7 +7566,7 @@ body input:focus-visible {
 	color: var(--muted);
 	font-size: var(--type-small);
 	line-height: 1.5;
-	box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
+	box-shadow: 0 8px 24px var(--shadow-medium);
 	opacity: 0;
 	visibility: hidden;
 	transition: opacity 0.12s ease;
@@ -7629,7 +7629,7 @@ body input:focus-visible {
 	padding: 6px 10px;
 	border: 1px dashed var(--border);
 	border-radius: 8px;
-	background: transparent;
+	background: var(--transparent);
 	color: var(--text);
 	font-size: var(--type-small);
 	cursor: pointer;
