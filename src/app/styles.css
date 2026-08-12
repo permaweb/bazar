@@ -8854,7 +8854,9 @@ body input:focus-visible {
 	font-size: 0.62rem;
 }
 .token-market-logo .token-artwork::before {
+	width: 72%;
 	height: 72%;
+	max-width: none;
 }
 .token-market-logo .token-artwork strong,
 .token-market-logo .token-artwork.ticker-long strong {
