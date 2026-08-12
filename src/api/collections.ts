@@ -1,5 +1,10 @@
 import { mapConcurrent } from 'helpers/concurrency';
-import { arweaveGatewayFromLocation, arweaveGraphqlEndpoint, NAMES_NAMESPACE_ID } from 'helpers/config';
+import {
+	arweaveGatewayFromLocation,
+	arweaveGraphqlEndpoint,
+	arweaveRawDataUrl,
+	NAMES_NAMESPACE_ID,
+} from 'helpers/config';
 
 import { type AssetState, readAssetState } from './asset-marketplace';
 import { fetchJsonWithDeadline, fetchTextWithDeadline } from './fetch-with-deadline';
@@ -61,7 +66,14 @@ export function collectionAsset(collection: Collection, id: string, state?: Asse
 	if (collection.kind === 'tokens') {
 		if (!state) return loaded;
 		const verified = fungibleAssetFromState(id, state);
-		return verified ? loaded ?? verified : undefined;
+		if (!verified) return undefined;
+		return loaded
+			? {
+					...verified,
+					...loaded,
+					...(loaded.image ? {} : verified.image ? { image: verified.image } : {}),
+			  }
+			: verified;
 	}
 	if (collection.kind !== 'names') return loaded;
 	const name = collection.namespace?.namesById[id];
@@ -86,9 +98,7 @@ export function fungibleAssetFromState(id: string, state?: AssetState): AssetSum
 		name: state.name || state.ticker || shortId(id),
 		contentType: 'application/x.arweave-token',
 		...(state.ticker ? { ticker: state.ticker } : {}),
-		...(typeof logo === 'string' && ARWEAVE_ID.test(logo)
-			? { image: `${arweaveGatewayFromLocation()}/${logo}` }
-			: {}),
+		...(typeof logo === 'string' && ARWEAVE_ID.test(logo) ? { image: arweaveRawDataUrl(logo) } : {}),
 	};
 }
 
@@ -573,9 +583,7 @@ async function loadFungibleTokenPage(after?: string, signal?: AbortSignal): Prom
 			name: tags.name ?? tags.ticker ?? shortId(node.id),
 			contentType: 'application/x.arweave-token',
 			...(tags.ticker ? { ticker: tags.ticker } : {}),
-			...(tags.logo && ARWEAVE_ID.test(tags.logo)
-				? { image: `${arweaveGatewayFromLocation()}/${tags.logo}` }
-				: {}),
+			...(tags.logo && ARWEAVE_ID.test(tags.logo) ? { image: arweaveRawDataUrl(tags.logo) } : {}),
 		});
 	}
 	const cursor = connection.edges.at(-1)?.cursor;
@@ -603,7 +611,7 @@ function fungibleTokenCollection(assets: AssetSummary[], count = 0): Collection 
 	return {
 		id: 'fungible-tokens',
 		name: '[TEST] Bazar Fungible Tokens',
-		description: 'Arweave-native fungible tokens with direct wallet ownership and native AR settlement.',
+		description: 'Arweave-native fungible tokens with direct wallet ownership and native $AR settlement.',
 		kind: 'tokens',
 		assets,
 		total: Math.max(count, assets.length),

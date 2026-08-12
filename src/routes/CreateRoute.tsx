@@ -35,6 +35,7 @@ import {
 } from 'api/asset-mint';
 
 import { AudioArtwork } from 'components/AudioArtwork';
+import { ArCurrencyText } from 'components/ArCurrencyLabel';
 import { Button } from 'components/Button';
 import { Loading } from 'components/Loading';
 import { MintTransactionReceipt, type MintTransactionReceiptEntry } from 'components/MintTransactionReceipt';
@@ -1090,11 +1091,15 @@ export default function CreateRoute() {
 						<div>
 							<span>Estimated network cost</span>
 							<strong>
-								{estimating
-									? 'Checking…'
-									: activeEstimate
-									? `${winstonToAr(activeEstimate.total.toString())} AR`
-									: '—'}
+								{estimating ? (
+									'Checking…'
+								) : activeEstimate ? (
+									<ArCurrencyText>{`${winstonToAr(
+										activeEstimate.total.toString()
+									)} AR`}</ArCurrencyText>
+								) : (
+									'—'
+								)}
 							</strong>
 						</div>
 					</div>
@@ -1104,7 +1109,9 @@ export default function CreateRoute() {
 							<Info className="ui-icon" aria-hidden="true" />
 							<div>
 								<strong>
-									{winstonToAr(activeEstimate.total.toString())} AR estimated storage cost
+									<ArCurrencyText>
+										{`${winstonToAr(activeEstimate.total.toString())} AR estimated storage cost`}
+									</ArCurrencyText>
 								</strong>
 								<span>
 									Based on{' '}

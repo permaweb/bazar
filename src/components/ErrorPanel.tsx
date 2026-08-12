@@ -1,6 +1,6 @@
 import { RefreshCw } from 'lucide-react';
 
-import { ArCurrencyText } from './ArCurrencyLabel';
+import { ArCurrencyText, formatArCurrencyText } from './ArCurrencyLabel';
 import { Button } from './Button';
 
 export function ErrorPanel({
@@ -15,7 +15,7 @@ export function ErrorPanel({
 	return (
 		<div className="error-panel">
 			<strong>Unable to load</strong>
-			<span aria-label={`Unable to load. ${message}`} role="alert">
+			<span aria-label={formatArCurrencyText(`Unable to load. ${message}`)} role="alert">
 				<ArCurrencyText>{message}</ArCurrencyText>
 			</span>
 			{onRetry ? (

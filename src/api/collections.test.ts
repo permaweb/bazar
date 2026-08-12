@@ -210,6 +210,7 @@ describe('collection index loading', () => {
 
 	it('recognizes an unloaded fungible token only from its exact live process contract', () => {
 		const processId = 'T'.repeat(43);
+		const logoId = 'L'.repeat(43);
 		const tokens: Collection = {
 			id: 'fungible-tokens',
 			name: 'Tokens',
@@ -226,6 +227,7 @@ describe('collection index loading', () => {
 			'scheduler-mode': 'all',
 			name: 'Unloaded Token',
 			ticker: 'NEW',
+			logo: logoId,
 			'total-supply': '1000000000000',
 			denomination: 12,
 			balances: { ['W'.repeat(43)]: '1000000000000' },
@@ -237,6 +239,30 @@ describe('collection index loading', () => {
 			name: 'Unloaded Token',
 			ticker: 'NEW',
 			contentType: 'application/x.arweave-token',
+			image: `https://arweave.net/raw/${logoId}`,
+		});
+		expect(
+			collectionAsset(
+				{
+					...tokens,
+					assets: [
+						{
+							id: processId,
+							name: 'Indexed Token',
+							contentType: 'application/x.arweave-token',
+							ticker: 'NEW',
+						},
+					],
+				},
+				processId,
+				state
+			)
+		).toEqual({
+			id: processId,
+			name: 'Indexed Token',
+			ticker: 'NEW',
+			contentType: 'application/x.arweave-token',
+			image: `https://arweave.net/raw/${logoId}`,
 		});
 		expect(
 			collectionAsset(tokens, processId, {

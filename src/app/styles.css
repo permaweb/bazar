@@ -1320,19 +1320,19 @@ p {
 .home-asset-details > div {
 	min-width: 0;
 }
-.home-asset-details strong,
-.home-asset-details span {
+.home-asset-details > div > strong,
+.home-asset-details > div > span {
 	display: block;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
-.home-asset-details strong {
+.home-asset-details > div > strong {
 	color: var(--ink);
 	font-size: var(--type-body);
 	font-weight: 400;
 }
-.home-asset-details span {
+.home-asset-details > div > span {
 	color: var(--muted-subtle);
 	font-size: var(--type-small);
 }
@@ -3909,6 +3909,12 @@ input:focus {
 	height: 1em;
 	flex: 0 0 auto;
 	display: block;
+	aspect-ratio: auto;
+	border: 0;
+	border-radius: 0;
+	background: var(--transparent);
+	object-fit: contain;
+	transition: none;
 }
 :root[data-theme='dimmed'] .ar-currency-label img,
 :root[data-theme='dark'] .ar-currency-label img {
@@ -8766,6 +8772,15 @@ body input:focus-visible {
 	overflow-wrap: normal;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+}
+.fungible-orderbook .wallet-address {
+	max-width: 100%;
+	min-height: 24px;
+	padding: 2px 0;
+	justify-content: flex-start;
+	gap: 5px;
+	border: 0;
+	border-radius: 3px;
 }
 .fungible-orderbook .orderbook-row > .order-status {
 	grid-column: 5;

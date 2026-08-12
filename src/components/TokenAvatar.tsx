@@ -1,4 +1,5 @@
 import { ArtworkImage } from 'components/ArtworkImage';
+import { normalizeArweaveRawDataUrl } from 'helpers/config';
 
 type TokenAvatarProps = {
 	ticker: string;
@@ -11,6 +12,7 @@ type TokenAvatarProps = {
 export function TokenAvatar({ ticker, className = '', image, fetchPriority, loading = 'lazy' }: TokenAvatarProps) {
 	const visibleTicker = ticker.trim().slice(0, 8) || 'TOKEN';
 	const tickerLabel = <strong>{visibleTicker}</strong>;
+	const artwork = image ? normalizeArweaveRawDataUrl(image) : undefined;
 
 	return (
 		<span
@@ -19,14 +21,14 @@ export function TokenAvatar({ ticker, className = '', image, fetchPriority, load
 			}`}
 			aria-hidden="true"
 		>
-			{image ? (
+			{artwork ? (
 				<ArtworkImage
 					alt=""
 					className="token-avatar-image"
 					fallback={tickerLabel}
 					fetchPriority={fetchPriority}
 					loading={loading}
-					src={image}
+					src={artwork}
 				/>
 			) : (
 				tickerLabel

@@ -20,4 +20,11 @@ describe('TokenAvatar', () => {
 		expect(markup).toContain('token-avatar-image');
 		expect(markup).toContain('fetchpriority="high"');
 	});
+
+	it('upgrades cached direct Arweave logo URLs to the raw media route', () => {
+		const logoId = 'L'.repeat(43);
+		const markup = renderToStaticMarkup(<TokenAvatar image={`https://arweave.net/${logoId}`} ticker="TRUNKY" />);
+
+		expect(markup).toContain(`src="https://arweave.net/raw/${logoId}"`);
+	});
 });

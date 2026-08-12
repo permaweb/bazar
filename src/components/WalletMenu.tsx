@@ -105,7 +105,7 @@ export function WalletMenu() {
 							<strong>{shortAddress(wallet.address)}</strong>
 						</div>
 					</div>
-					<div aria-label="AR Balance" className="wallet-dropdown-balance" role="group">
+					<div aria-label="$AR Balance" className="wallet-dropdown-balance" role="group">
 						<span>
 							<ArCurrencyText>AR Balance</ArCurrencyText>
 						</span>

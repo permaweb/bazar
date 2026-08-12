@@ -5,6 +5,8 @@ import {
 	arweaveGatewayFromLocation,
 	arweaveGatewayOverrideFromLocation,
 	arweaveGraphqlEndpoint,
+	arweaveRawDataUrl,
+	normalizeArweaveRawDataUrl,
 	computeGatewayForEnvironment,
 	computeGatewaysForEnvironment,
 	DEFAULT_ARWEAVE_GATEWAY,
@@ -105,5 +107,19 @@ describe('Arweave gateway routing', () => {
 		expect(arweaveGraphqlEndpoint(location({ search: '?arweave-node=https%3A%2F%2Fgateway.example' }))).toBe(
 			'https://gateway.example/graphql'
 		);
+	});
+
+	it('uses the raw data route for immutable media bytes', () => {
+		expect(arweaveRawDataUrl('logo-id', location())).toBe('https://bazar.arweave.net/raw/logo-id');
+		expect(arweaveRawDataUrl('logo-id', location({ search: '?arweave-node=https%3A%2F%2Fgateway.example' }))).toBe(
+			'https://gateway.example/raw/logo-id'
+		);
+	});
+
+	it('upgrades legacy direct transaction URLs without changing other artwork URLs', () => {
+		const id = 'L'.repeat(43);
+		expect(normalizeArweaveRawDataUrl(`https://arweave.net/${id}`)).toBe(`https://arweave.net/raw/${id}`);
+		expect(normalizeArweaveRawDataUrl(`https://arweave.net/raw/${id}`)).toBe(`https://arweave.net/raw/${id}`);
+		expect(normalizeArweaveRawDataUrl('https://images.example/token.png')).toBe('https://images.example/token.png');
 	});
 });
