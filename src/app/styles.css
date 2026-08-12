@@ -3928,6 +3928,9 @@ input:focus {
 	display: flex;
 	justify-content: flex-end;
 }
+.asset-history-refresh.loading .ui-icon {
+	animation: spin 0.8s linear infinite;
+}
 .asset-history-list {
 	margin-top: 10px;
 	display: grid;
@@ -4082,13 +4085,14 @@ input:focus {
 }
 .activity-actor .wallet-address {
 	min-width: 0;
-	padding-inline: 0;
+	min-height: 0;
+	padding: 0;
 }
 .activity-meta {
 	min-width: 0;
 	display: grid;
 	grid-template-columns: minmax(130px, 0.6fr) minmax(180px, 0.7fr);
-	align-items: center;
+	align-items: start;
 	gap: 14px;
 }
 .activity-main-copy > strong {
@@ -4140,6 +4144,8 @@ input:focus {
 }
 .activity-actor > span {
 	color: var(--ink);
+	font-size: var(--type-body);
+	line-height: 1.35;
 }
 .activity-actor strong,
 .activity-actor a,
@@ -5334,10 +5340,10 @@ body input:focus-visible {
 	outline-offset: 5px;
 	border-radius: 2px;
 }
-.fungible-token-title > strong {
+.fungible-token-name {
 	color: var(--muted);
 	font-size: 1.05rem;
-	font-weight: 450;
+	font-weight: 400;
 }
 .fungible-token-meta {
 	min-width: 0;
@@ -8012,6 +8018,12 @@ body input:focus-visible {
 .asset-activity-panel .activity-row {
 	grid-template-columns: 36px minmax(0, 1fr);
 	padding: 12px 13px;
+}
+.asset-activity-panel .activity-main .activity-amount {
+	max-width: 32ch;
+	font-size: var(--type-body);
+	line-height: 1.35;
+	letter-spacing: 0;
 }
 .asset-activity-panel .activity-meta {
 	grid-column: 1 / -1;
