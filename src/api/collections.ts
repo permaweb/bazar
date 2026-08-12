@@ -1,5 +1,5 @@
-import { mapConcurrent } from 'helpers/concurrency';
 import { isSupportedAssetContentType } from 'helpers/asset-media';
+import { mapConcurrent } from 'helpers/concurrency';
 import {
 	arweaveGatewayFromLocation,
 	arweaveGraphqlEndpoint,
@@ -93,9 +93,7 @@ export function fungibleAssetFromState(id: string, state?: AssetState): AssetSum
 		name: state.name || state.ticker || shortId(id),
 		contentType: 'application/x.arweave-token',
 		...(state.ticker ? { ticker: state.ticker } : {}),
-		...(typeof logo === 'string' && ARWEAVE_ID.test(logo)
-			? { image: `${arweaveGatewayFromLocation()}/${logo}` }
-			: {}),
+		...(typeof logo === 'string' && ARWEAVE_ID.test(logo) ? { image: arweaveRawDataUrl(logo) } : {}),
 	};
 }
 
@@ -673,9 +671,7 @@ async function loadFungibleTokenPage(after?: string, signal?: AbortSignal): Prom
 			name: tags.name ?? tags.ticker ?? shortId(node.id),
 			contentType: 'application/x.arweave-token',
 			...(tags.ticker ? { ticker: tags.ticker } : {}),
-			...(tags.logo && ARWEAVE_ID.test(tags.logo)
-				? { image: `${arweaveGatewayFromLocation()}/${tags.logo}` }
-				: {}),
+			...(tags.logo && ARWEAVE_ID.test(tags.logo) ? { image: arweaveRawDataUrl(tags.logo) } : {}),
 		});
 	}
 	const cursor = connection.edges.at(-1)?.cursor;

@@ -466,7 +466,7 @@ export class AssetMintClient {
 				ticker: input.ticker,
 				contentType: 'application/x.arweave-token',
 				description: input.description?.trim() ?? '',
-				...(logoId ? { image: `${this.#gateway}/${logoId}` } : {}),
+				...(logoId ? { image: arweaveRawDataUrl(logoId, this.#gateway) } : {}),
 				mediaId: processId,
 				owner,
 				createdAt,
@@ -628,7 +628,7 @@ export class CollectionMintClient {
 			id: placeholder,
 			name: fileAssetName(file, index),
 			contentType: requiredFileContentType(file),
-			image: `${this.#gateway}/${placeholder}`,
+			image: arweaveRawDataUrl(placeholder, this.#gateway),
 			mediaId: placeholder,
 		}));
 		const manifest = collectionManifest(input, assets);

@@ -771,7 +771,7 @@ describe('asset mint contract', () => {
 			{
 				asset: {
 					contentType: 'application/x.arweave-token',
-					image: `https://arweave.net/${logoId}`,
+					image: `https://arweave.net/raw/${logoId}`,
 					ticker: 'SIG',
 				},
 				transactionIds: [logoId, processId],
