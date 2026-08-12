@@ -1,5 +1,5 @@
 import { isAudioContentType, isSupportedAssetContentType, normalizeAssetContentType } from 'helpers/asset-media';
-import { arweaveGatewayFromLocation } from 'helpers/config';
+import { arweaveGatewayFromLocation, arweaveRawDataUrl } from 'helpers/config';
 
 import type { AssetSummary, Collection } from './collections';
 
@@ -116,8 +116,11 @@ export function assetFromMintState(
 		...(album ? { album } : {}),
 		...(Number.isFinite(duration) && duration > 0 ? { duration } : {}),
 		...(isAudioContentType(contentType)
-			? { media: `${gateway}/${mediaId}`, ...(artworkId ? { image: `${gateway}/${artworkId}` } : {}) }
-			: { image: `${gateway}/${mediaId}` }),
+			? {
+					media: arweaveRawDataUrl(mediaId, gateway),
+					...(artworkId ? { image: arweaveRawDataUrl(artworkId, gateway) } : {}),
+			  }
+			: { image: arweaveRawDataUrl(mediaId, gateway) }),
 	};
 }
 

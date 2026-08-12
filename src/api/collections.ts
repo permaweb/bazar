@@ -1,5 +1,10 @@
 import { mapConcurrent } from 'helpers/concurrency';
-import { arweaveGatewayFromLocation, arweaveGraphqlEndpoint, NAMES_NAMESPACE_ID } from 'helpers/config';
+import {
+	arweaveGatewayFromLocation,
+	arweaveGraphqlEndpoint,
+	arweaveRawDataUrl,
+	NAMES_NAMESPACE_ID,
+} from 'helpers/config';
 
 import { type AssetState, readAssetState } from './asset-marketplace';
 import { fetchJsonWithDeadline, fetchTextWithDeadline } from './fetch-with-deadline';
@@ -876,11 +881,11 @@ function imageCollection(
 		manifestId,
 		assets: manifest.assets.map((asset) => {
 			if (typeof asset === 'string') {
-				return { id: asset, name: shortId(asset), image: `${arweaveGatewayFromLocation()}/${asset}` };
+				return { id: asset, name: shortId(asset), image: arweaveRawDataUrl(asset) };
 			}
 			return {
 				...asset,
-				...(!asset.image && !asset.media ? { image: `${arweaveGatewayFromLocation()}/${asset.id}` } : {}),
+				...(!asset.image && !asset.media ? { image: arweaveRawDataUrl(asset.id) } : {}),
 			};
 		}),
 	};

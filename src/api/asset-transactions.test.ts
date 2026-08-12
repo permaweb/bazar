@@ -44,7 +44,7 @@ function scheduledAssignment(slot: number, signedId: string, blockHeight = 51) {
 					'commitment-device': 'tx@1.0',
 					committer: seller,
 					committed: ['action', 'recipient', 'quantity', 'target'],
-					'field-quantity': '1',
+					'field-quantity': undefined as string | undefined,
 					'field-target': processId,
 					'original-tags': {
 						1: { name: 'action', value: 'transfer' },
@@ -53,7 +53,7 @@ function scheduledAssignment(slot: number, signedId: string, blockHeight = 51) {
 					},
 				},
 			},
-			quantity: '1',
+			quantity: '10',
 			recipient,
 			target: processId,
 		},
@@ -281,12 +281,12 @@ describe('fungible asset transactions', () => {
 		expect(subject.requests[0]).toContain('/now?require-codec=');
 	});
 
-	it('separates one-winston scheduler dust from arbitrary token transfer quantities', async () => {
+	it('leaves native AR at zero so tx@1.0 promotes the token quantity tag', async () => {
 		const subject = client();
 		const prepared = await subject.client.transfer(processId, recipient, '12500000000000', seller);
 		const stored = JSON.parse(subject.storage.getItem(`bazar-signed-transaction:${prepared.id}`)!);
-		expect((prepared as typeof prepared & { cost: bigint }).cost).toBe(1001n);
-		expect(stored.transaction.quantity).toBe('1');
+		expect((prepared as typeof prepared & { cost: bigint }).cost).toBe(1000n);
+		expect(stored.transaction.quantity).toBe('0');
 		expect(decodedTags(stored.transaction)).toContainEqual({
 			name: 'quantity',
 			value: '12500000000000',
@@ -316,7 +316,7 @@ describe('fungible asset transactions', () => {
 		const stored = JSON.parse(subject.storage.getItem(`bazar-signed-transaction:${prepared.id}`)!);
 
 		expect(stored.transaction.target).toBe(processId);
-		expect(stored.transaction.quantity).toBe('1');
+		expect(stored.transaction.quantity).toBe('0');
 		expect(stored.transaction.signature).toBe('wallet-signature');
 		expect(decodedTags(stored.transaction)).toContainEqual({ name: 'recipient', value: recipient });
 	});
@@ -820,6 +820,23 @@ describe('fungible asset transactions', () => {
 		const raw = scheduledAssignment(11, transactionId);
 		raw.body.quantity = '10';
 		raw.body.commitments[transactionId]['field-quantity'] = '10';
+
+		expect(() =>
+			assertExactFungibleTransferAssignment(
+				{ slot: 11, blockHeight: 51, transactionIds: [transactionId], raw },
+				processId,
+				transactionId,
+				seller,
+				recipient,
+				'10'
+			)
+		).not.toThrow();
+	});
+
+	it('accepts transfers created by the previous one-winston workaround', () => {
+		const raw = scheduledAssignment(11, transactionId);
+		raw.body.quantity = '1';
+		raw.body.commitments[transactionId]['field-quantity'] = '1';
 
 		expect(() =>
 			assertExactFungibleTransferAssignment(

@@ -211,7 +211,7 @@ export default function DispatchRoute() {
 		if (needsCostApproval && !costApproved) return;
 		setRunError(null);
 		try {
-			// Pre-flight every network reward and the one-winston scheduler dust
+			// Pre-flight every network reward. Native AR quantity stays zero.
 			// before creating a resumable dispatch plan.
 			if (estimate) {
 				const arBalance = await new AssetTransactionClient().walletBalance(wallet.address);
@@ -486,8 +486,7 @@ export default function DispatchRoute() {
 										Each recipient is one L1 transfer signed in your wallet ({parsed.rows.length}{' '}
 										signature{parsed.rows.length === 1 ? '' : 's'}, sent in batches of{' '}
 										{DEFAULT_DISPATCH_BATCH_SIZE}). Behind this form, each token amount is converted
-										to atomic units. The AR quote includes one winston of scheduler dust per
-										transfer plus network rewards.
+										to atomic units. The AR quote includes network rewards only.
 									</span>
 								</div>
 								{needsCostApproval ? (

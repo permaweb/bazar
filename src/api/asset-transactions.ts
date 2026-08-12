@@ -287,13 +287,7 @@ export class AssetTransactionClient {
 		return this.transferFungible(processId, recipient, quantity, expectedSigner, signal);
 	}
 
-	/**
-	 * A target-bearing L1 transaction needs a non-zero native quantity. The
-	 * protocol quantity carries one winston of scheduler dust while the token
-	 * amount remains in the standard `quantity` tag. Compatible `token@1.0`
-	 * devices read that tag from the signed transaction's `original-tags`
-	 * commitment so the native field cannot shadow it.
-	 */
+	/** Keep native AR at zero so tx@1.0 promotes the token `quantity` tag. */
 	async transferFungible(
 		processId: string,
 		recipient: string,
@@ -308,7 +302,7 @@ export class AssetTransactionClient {
 		return this.#prepare(
 			{
 				target: processId,
-				quantity: '1',
+				quantity: '0',
 				tags: [
 					{ name: 'action', value: 'transfer' },
 					{ name: 'recipient', value: recipient },
@@ -1351,20 +1345,24 @@ export function assertExactFungibleTransferAssignment(
 	const committed = Array.isArray(commitment?.committed)
 		? new Set(commitment.committed.filter((key): key is string => typeof key === 'string'))
 		: new Set<string>();
-	const nativeQuantity = wireAmount(body?.quantity);
+	const decodedQuantity = wireAmount(body?.quantity);
+	const nativeQuantity = wireAmount(commitment?.['field-quantity']) ?? '0';
 	const originalQuantity = uniqueOriginalTagValue(commitment?.['original-tags'], 'quantity');
+	const quantityShapeMatches =
+		(nativeQuantity === '0' && decodedQuantity === quantity) ||
+		(nativeQuantity === '1' && decodedQuantity === '1') ||
+		(nativeQuantity === quantity && decodedQuantity === quantity);
 	if (
 		!assignment.transactionIds.includes(transactionId) ||
 		assignment.raw.process !== processId ||
 		body?.target !== processId ||
 		body?.action !== 'transfer' ||
 		body?.recipient !== recipient ||
-		(nativeQuantity !== '1' && nativeQuantity !== quantity) ||
+		!quantityShapeMatches ||
 		wireAmount(originalQuantity) !== quantity ||
 		commitment?.['commitment-device'] !== 'tx@1.0' ||
 		commitment.committer !== sender ||
 		commitment['field-target'] !== processId ||
-		wireAmount(commitment['field-quantity']) !== nativeQuantity ||
 		!['action', 'recipient', 'quantity', 'target'].every((field) => committed.has(field))
 	)
 		throw new Error('fungible-transfer-proof-mismatch');

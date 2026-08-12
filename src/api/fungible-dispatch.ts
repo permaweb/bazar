@@ -167,14 +167,14 @@ export function planTotals(rows: ReadonlyArray<HolderRow>): { count: number; tot
 export type DispatchCostEstimate = {
 	totalQuantity: bigint;
 	totalReward: bigint;
-	/** What the sender's AR balance pays: one winston of dust per transfer plus rewards. */
+	/** What the sender's AR balance pays: network rewards only. */
 	totalWinston: bigint;
 };
 
 export function estimateDispatchCost(rows: ReadonlyArray<HolderRow>, perTransferReward: bigint): DispatchCostEstimate {
 	const { totalQuantity } = planTotals(rows);
 	const totalReward = perTransferReward * BigInt(rows.length);
-	return { totalQuantity, totalReward, totalWinston: BigInt(rows.length) + totalReward };
+	return { totalQuantity, totalReward, totalWinston: totalReward };
 }
 
 export function requiresCostConfirmation(totalWinston: bigint): boolean {

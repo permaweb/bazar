@@ -16,6 +16,7 @@ import {
 	discoverMarketActivityBatched,
 	discoverPendingAssetOffers,
 	discoverWalletAssetCandidates,
+	loadBazarAtomicAssetById,
 	loadCompletedWalletCandidateScan,
 	partitionAssetCandidateSupport,
 	pendingAssetOffersFromActivity,
@@ -83,6 +84,60 @@ afterEach(() => {
 });
 
 describe('Bazar atomic asset search', () => {
+	it('loads permanent display metadata by process ID without requiring live compute state', async () => {
+		const processId = 'P'.repeat(43);
+		const tags = [
+			{ name: 'App-Name', value: 'Bazar' },
+			{ name: 'device', value: 'process@1.0' },
+			{ name: 'execution-device', value: 'token@1.0' },
+			{ name: 'swap-device', value: 'arweave-swap@1.0' },
+			{ name: 'scheduler-device', value: 'arweave-scheduler@1.0' },
+			{ name: 'scheduler-mode', value: 'all' },
+			{ name: 'initial-holder', value: wallet },
+			{ name: 'total-supply', value: '1' },
+			{ name: 'denomination', value: '0' },
+			{ name: 'ticker', value: 'ASSET' },
+			{ name: 'name', value: 'AntiqueWhite' },
+			{ name: 'collection', value: 'HTML Colors' },
+			{ name: 'asset-content-type', value: 'image/png' },
+		];
+		const fetcher = vi.fn(async (..._args: Parameters<typeof fetch>) =>
+			Response.json({ data: { transaction: { id: processId, tags } } })
+		);
+
+		await expect(loadBazarAtomicAssetById(processId, { fetch: fetcher as typeof fetch })).resolves.toMatchObject({
+			asset: {
+				id: processId,
+				name: 'AntiqueWhite',
+				contentType: 'image/png',
+				image: `https://arweave.net/raw/${processId}`,
+			},
+			collection: { id: 'created-assets', name: 'HTML Colors', kind: 'images' },
+		});
+		const request = JSON.parse(String(fetcher.mock.calls[0][1]?.body));
+		expect(request.variables).toEqual({ id: processId });
+		expect(request.query).toContain('BazarAtomicAssetById');
+	});
+
+	it('rejects an indexed process ID that does not declare the Atomic Asset contract', async () => {
+		const processId = 'P'.repeat(43);
+		const fetcher = vi.fn(async () =>
+			Response.json({
+				data: {
+					transaction: {
+						id: processId,
+						tags: [
+							{ name: 'device', value: 'process@1.0' },
+							{ name: 'execution-device', value: 'carrier@1.0' },
+						],
+					},
+				},
+			})
+		);
+
+		await expect(loadBazarAtomicAssetById(processId, { fetch: fetcher as typeof fetch })).resolves.toBeNull();
+	});
+
 	it('finds an exact named creation and rejects records outside the atomic contract', async () => {
 		const processId = 'P'.repeat(43);
 		const exactTags = [
@@ -128,7 +183,7 @@ describe('Bazar atomic asset search', () => {
 				id: processId,
 				name: 'lucifer shrek',
 				contentType: 'image/webp',
-				image: `https://arweave.net/${processId}`,
+				image: `https://arweave.net/raw/${processId}`,
 			},
 			collection: { id: 'created-assets', name: 'Created on Bazar' },
 		});
@@ -2151,8 +2206,8 @@ describe('live candidate resolution', () => {
 				id: processId,
 				name: 'Portable asset',
 				contentType: 'audio/mpeg',
-				media: `https://arweave.net/${mediaId}`,
-				image: `https://arweave.net/${artworkId}`,
+				media: `https://arweave.net/raw/${mediaId}`,
+				image: `https://arweave.net/raw/${artworkId}`,
 			},
 			collection: { id: 'created-assets', name: 'Portable collection' },
 		});

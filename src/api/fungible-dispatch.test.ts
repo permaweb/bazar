@@ -87,7 +87,7 @@ describe('parseHolderList', () => {
 });
 
 describe('dispatch cost estimate', () => {
-	it('keeps token units separate from one-winston transfer dust and rewards', () => {
+	it('keeps token units separate from native transfer cost and rewards', () => {
 		const rows = [
 			{ address: addressA, quantity: '250000' },
 			{ address: addressB, quantity: '750000' },
@@ -95,7 +95,7 @@ describe('dispatch cost estimate', () => {
 		const estimate = estimateDispatchCost(rows, 1000n);
 		expect(estimate.totalQuantity).toBe(1_000_000n);
 		expect(estimate.totalReward).toBe(2000n);
-		expect(estimate.totalWinston).toBe(2002n);
+		expect(estimate.totalWinston).toBe(2000n);
 	});
 
 	it('requires confirmation above 0.1 AR only', () => {

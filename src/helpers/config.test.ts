@@ -5,6 +5,7 @@ import {
 	arweaveGatewayFromLocation,
 	arweaveGatewayOverrideFromLocation,
 	arweaveGraphqlEndpoint,
+	arweaveRawDataUrl,
 	computeGatewayForEnvironment,
 	computeGatewaysForEnvironment,
 	DEFAULT_ARWEAVE_GATEWAY,
@@ -105,5 +106,9 @@ describe('Arweave gateway routing', () => {
 		expect(arweaveGraphqlEndpoint(location({ search: '?arweave-node=https%3A%2F%2Fgateway.example' }))).toBe(
 			'https://gateway.example/graphql'
 		);
+	});
+
+	it('uses the non-redirecting raw-data route for immutable asset bytes', () => {
+		expect(arweaveRawDataUrl('asset-id', 'https://gateway.example')).toBe('https://gateway.example/raw/asset-id');
 	});
 });

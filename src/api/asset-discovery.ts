@@ -436,7 +436,52 @@ const SEARCH_BAZAR_ATOMIC_ASSETS_QUERY = `query SearchBazarAtomicAssets($names: 
 	}
 }`;
 
+const BAZAR_ATOMIC_ASSET_BY_ID_QUERY = `query BazarAtomicAssetById($id: ID!) {
+	transaction(id: $id) {
+		id
+		tags { name value }
+	}
+}`;
+
 type AtomicAssetSearchOptions = Pick<CandidateOptions, 'fetch' | 'graphql' | 'requestTimeoutMs' | 'signal'>;
+
+export async function loadBazarAtomicAssetById(
+	processId: string,
+	options: AtomicAssetSearchOptions = {}
+): Promise<{ asset: AssetSummary; collection: Collection } | null> {
+	if (!ADDRESS.test(processId)) throw new TypeError('invalid-asset-process-id');
+	const fetcher = options.fetch ?? globalThis.fetch.bind(globalThis);
+	const graphql = options.graphql ?? arweaveGraphqlEndpoint();
+	const { response, body: payload } = await fetchJsonWithDeadline<any>(
+		fetcher,
+		graphql,
+		{
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ query: BAZAR_ATOMIC_ASSET_BY_ID_QUERY, variables: { id: processId } }),
+			signal: options.signal,
+		},
+		{
+			timeoutMs: options.requestTimeoutMs,
+			timeoutError: 'asset-index-graphql-timeout',
+		}
+	);
+	if (!response.ok) throw new Error(`asset-index-graphql-${response.status}`);
+	if (!payload) throw new Error('asset-index-graphql-empty');
+	if (payload.errors?.length) throw new Error('asset-index-graphql-error');
+	const node: unknown = payload.data?.transaction;
+	if (node === null) return null;
+	if (
+		!node ||
+		typeof node !== 'object' ||
+		(node as GraphqlNode).id !== processId ||
+		!Array.isArray((node as GraphqlNode).tags) ||
+		(node as GraphqlNode).tags!.some((tag) => !tag || typeof tag.name !== 'string' || typeof tag.value !== 'string')
+	) {
+		throw new Error('asset-index-graphql-schema');
+	}
+	return bazarAtomicAssetFromNode(node as GraphqlNode);
+}
 
 export async function searchBazarAtomicAssetsByName(
 	query: string,
@@ -467,26 +512,8 @@ export async function searchBazarAtomicAssetsByName(
 	if (payload?.errors?.length) throw new Error('asset-search-graphql-error');
 	const connection = decodeGraphqlConnection(payload, 'transactions', 'asset-search-graphql-schema');
 	return connection.edges.flatMap(({ node }) => {
-		if (!atomicProcessNode(node)) return [];
-		const tags = Object.fromEntries(
-			(node.tags ?? []).map(({ name: tagName, value }) => [tagName.toLowerCase(), value])
-		);
-		const asset = assetFromMintState(node.id, tags);
-		if (!asset || asset.name.toLowerCase() !== name.toLowerCase()) return [];
-		const collectionName = String(tags.collection ?? '').trim() || CREATED_COLLECTION_NAME;
-		return [
-			{
-				asset,
-				collection: {
-					id: CREATED_COLLECTION_ID,
-					name: collectionName,
-					description: 'One-of-one media discovered from its permanent Bazar creation record.',
-					kind: 'images' as const,
-					assets: [asset],
-					total: 1,
-				},
-			},
-		];
+		const result = bazarAtomicAssetFromNode(node);
+		return result?.asset.name.toLowerCase() === name.toLowerCase() ? [result] : [];
 	});
 }
 
@@ -1585,6 +1612,27 @@ function atomicProcessNode(node: GraphqlNode): boolean {
 		(!tags['asset-artwork'] || ADDRESS.test(tags['asset-artwork'])) &&
 		Boolean(tags.name?.trim())
 	);
+}
+
+function bazarAtomicAssetFromNode(node: GraphqlNode): { asset: AssetSummary; collection: Collection } | null {
+	if (!atomicProcessNode(node)) return null;
+	const tags = Object.fromEntries(
+		(node.tags ?? []).map(({ name: tagName, value }) => [tagName.toLowerCase(), value])
+	);
+	const asset = assetFromMintState(node.id, tags);
+	if (!asset) return null;
+	const collectionName = String(tags.collection ?? '').trim() || CREATED_COLLECTION_NAME;
+	return {
+		asset,
+		collection: {
+			id: CREATED_COLLECTION_ID,
+			name: collectionName,
+			description: 'One-of-one media discovered from its permanent Bazar creation record.',
+			kind: 'images',
+			assets: [asset],
+			total: 1,
+		},
+	};
 }
 
 export type WalletAssetGroup = 'owned' | 'listed';

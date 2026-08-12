@@ -4,7 +4,7 @@ const FRIENDLY_ERRORS: Record<string, string> = {
 	'asset-purchase-insufficient-funds-after-signing':
 		'This wallet does not have enough AR for the transaction and network fee. Add AR, then continue the transaction saved in this browser with the same wallet.',
 	'asset-purchase-insufficient-funds':
-		'This wallet does not have enough AR for the one-winston scheduler dust and network reward. No transaction was submitted.',
+		'This wallet does not have enough AR for the network reward. No transaction was submitted.',
 	'transaction-propagation-timeout':
 		'The sampled observers did not reach the required propagation quorum in time. The signed transaction remains saved in this browser; return with the same wallet and retained browser data to continue checking it.',
 	'asset-state-timeout':

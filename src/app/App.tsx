@@ -55,6 +55,7 @@ import {
 	discoverPendingAssetOffers,
 	discoverWalletAssetCandidates,
 	isLiveListing,
+	loadBazarAtomicAssetById,
 	partitionAssetCandidateSupport,
 	type PendingAssetOffer,
 	resolveAssetCandidates,
@@ -114,6 +115,7 @@ import {
 } from 'api/mint-activity';
 import {
 	CREATED_COLLECTION_ID,
+	CREATED_COLLECTION_NAME,
 	createdCollection,
 	loadMintedAssets,
 	loadMintedCollections,
@@ -7323,6 +7325,40 @@ export function verifiedAssetForDetail(
 		: resolvedAsset;
 }
 
+export function assetDetailLoadingPresentation(collection: Collection | undefined, collectionId: string) {
+	const kind =
+		collection?.kind ??
+		(collectionId === FUNGIBLE_TOKEN_COLLECTION_ID
+			? 'tokens'
+			: collectionId === CREATED_COLLECTION_ID
+			? 'images'
+			: 'names');
+	return { kind, device: kind === 'names' ? 'carrier@1.0' : 'token@1.0' } as const;
+}
+
+export function mergeAssetDetailMetadata(
+	primary: AssetSummary | undefined,
+	indexed: AssetSummary | undefined
+): AssetSummary | undefined {
+	if (!primary) return indexed;
+	if (!indexed || primary.id !== indexed.id) return primary;
+	const abbreviatedName = `${primary.id.slice(0, 7)}…${primary.id.slice(-6)}`;
+	return {
+		...primary,
+		...indexed,
+		name: !primary.name || primary.name === abbreviatedName ? indexed.name : primary.name,
+	};
+}
+
+export function assetDetailErrorMessage(
+	error: string | null,
+	asset: Pick<AssetSummary, 'name'> | undefined,
+	indexed: boolean
+): string | null {
+	if (!error || !asset || !indexed) return error;
+	return `${asset.name} is published and indexed, but its ownership and market state are currently unavailable from the configured compute peers. Retry shortly.`;
+}
+
 function AssetDetailLoadingShell({
 	asset,
 	collection,
@@ -7336,9 +7372,11 @@ function AssetDetailLoadingShell({
 	error?: string | null;
 	onRetry?: () => void;
 }) {
-	const kind = collection?.kind ?? (collectionId === 'fungible-tokens' ? 'tokens' : 'names');
+	const { kind, device } = assetDetailLoadingPresentation(collection, collectionId);
 	const detailClass = kind === 'tokens' ? 'fungible-asset-page' : 'atomic-asset-page';
-	const collectionName = collection?.name ?? (kind === 'tokens' ? 'Fungible tokens' : 'Arweave names');
+	const collectionName =
+		collection?.name ??
+		(kind === 'tokens' ? 'Fungible tokens' : kind === 'images' ? CREATED_COLLECTION_NAME : 'Arweave names');
 
 	if (kind === 'tokens') {
 		return (
@@ -7438,7 +7476,7 @@ function AssetDetailLoadingShell({
 							<span>Loading ownership and market state</span>
 						</div>
 						<div className="asset-token-tags" aria-hidden="true">
-							<span>carrier@1.0</span>
+							<span>{device}</span>
 							<span>Arweave</span>
 							<span>Supply 1</span>
 						</div>
@@ -7612,6 +7650,10 @@ function AssetView() {
 	const indexedCollection = market.collections.find((item) => item.id === collectionId);
 	const indexedAsset = indexedCollection ? collectionAsset(indexedCollection, assetId) : undefined;
 	const cachedAsset = React.useMemo(() => loadAssetShellSnapshot(window.localStorage, assetId), [assetId]);
+	const [indexedAtomicResult, setIndexedAtomicResult] = React.useState<{
+		assetId: string;
+		result: { asset: AssetSummary; collection: Collection } | null;
+	}>({ assetId, result: null });
 	const prefetchedState = React.useMemo(() => cachedAssetState(assetId), [assetId]);
 	const [liveResult, setLiveResult] = React.useState<{
 		assetId: string;
@@ -7635,6 +7677,22 @@ function AssetView() {
 	const provider = liveResult.assetId === assetId ? liveResult.provider : prefetchedState?.provider ?? '';
 	const verifiedAt = liveResult.assetId === assetId ? liveResult.verifiedAt : prefetchedState?.verifiedAt ?? null;
 	const directAtomicRoute = collectionId === CREATED_COLLECTION_ID && ARWEAVE_ADDRESS.test(assetId);
+	const indexedAtomic = indexedAtomicResult.assetId === assetId ? indexedAtomicResult.result : null;
+	React.useEffect(() => {
+		if (!ARWEAVE_ADDRESS.test(assetId) || (!directAtomicRoute && indexedCollection?.kind !== 'images')) {
+			return;
+		}
+		const controller = new AbortController();
+		void loadBazarAtomicAssetById(assetId, { signal: controller.signal }).then(
+			(result) => {
+				if (!controller.signal.aborted) setIndexedAtomicResult({ assetId, result });
+			},
+			() => {
+				if (!controller.signal.aborted) setIndexedAtomicResult({ assetId, result: null });
+			}
+		);
+		return () => controller.abort();
+	}, [assetId, directAtomicRoute, indexedCollection?.kind]);
 	const canResolveAsset = assetDetailCanResolve({
 		assetId,
 		cachedAsset,
@@ -7644,19 +7702,29 @@ function AssetView() {
 		directFungibleRoute: collectionId === 'fungible-tokens' && ARWEAVE_ADDRESS.test(assetId),
 	});
 	const directAtomicAsset = directAtomicRoute && state ? bazarAtomicAssetFromState(assetId, state) : null;
-	const collection = indexedCollection ?? directAtomicAsset?.collection;
+	const indexedMetadata = indexedAtomic?.asset;
+	const shellAsset = mergeAssetDetailMetadata(indexedAsset ?? cachedAsset, indexedMetadata);
+	const collection =
+		indexedCollection ??
+		directAtomicAsset?.collection ??
+		(directAtomicRoute ? indexedAtomic?.collection : undefined);
 	const resolvedAsset =
 		directAtomicAsset?.asset ??
-		(indexedCollection && state ? collectionAsset(indexedCollection, assetId, state) : indexedAsset);
+		mergeAssetDetailMetadata(
+			indexedCollection && state
+				? collectionAsset(indexedCollection, assetId, state)
+				: indexedAsset ?? cachedAsset,
+			indexedMetadata
+		);
 	const membershipVerified = assetDetailMembershipVerified(
 		indexedCollection?.id,
 		market.verifiedCollectionIds,
-		Boolean(directAtomicAsset)
+		Boolean(directAtomicAsset || (directAtomicRoute && indexedAtomic))
 	);
 	const verifiedAsset = membershipVerified
 		? verifiedAssetForDetail(collection, indexedAsset, resolvedAsset, state)
 		: undefined;
-	const shellAsset = indexedAsset ?? cachedAsset;
+	const detailError = assetDetailErrorMessage(error, shellAsset, Boolean(indexedAtomic));
 	React.useEffect(() => {
 		if (collectionId === 'fungible-tokens' || indexedCollection?.kind === 'tokens') {
 			void import('../routes/FungibleAssetRoute');
@@ -8068,7 +8136,14 @@ function AssetView() {
 		return () => controller.abort();
 	}, [assetId, openOperation, operation, recoverySuppressed, state, storageVersion, wallet.address]);
 	if (!collection && (market.loading || (directAtomicRoute && loading))) {
-		return <AssetDetailLoadingShell asset={shellAsset} collectionId={collectionId} error={error} onRetry={load} />;
+		return (
+			<AssetDetailLoadingShell
+				asset={shellAsset}
+				collectionId={collectionId}
+				error={detailError}
+				onRetry={load}
+			/>
+		);
 	}
 	if (!collection && market.error)
 		return (
@@ -8079,7 +8154,7 @@ function AssetView() {
 	if (!collection && directAtomicRoute && error)
 		return (
 			<RouteState title="Asset unavailable">
-				<ErrorPanel message={error} onRetry={load} retryLabel="Retry live state" />
+				<ErrorPanel message={detailError ?? error} onRetry={load} retryLabel="Retry live state" />
 			</RouteState>
 		);
 	if (!collection)
@@ -8094,7 +8169,11 @@ function AssetView() {
 				asset={shellAsset}
 				collection={collection}
 				collectionId={collectionId}
-				error={market.loading ? error : market.notice ?? 'Current collection membership could not be verified.'}
+				error={
+					market.loading
+						? detailError
+						: market.notice ?? 'Current collection membership could not be verified.'
+				}
 				onRetry={market.loading ? load : market.retry}
 			/>
 		);
@@ -8102,7 +8181,7 @@ function AssetView() {
 	if (!asset && error)
 		return (
 			<RouteState title="Asset unavailable" backTo={`/collection/${collection.id}`} backLabel={collection.name}>
-				<ErrorPanel message={error} onRetry={load} retryLabel="Retry live state" />
+				<ErrorPanel message={detailError ?? error} onRetry={load} retryLabel="Retry live state" />
 			</RouteState>
 		);
 	if (!asset && !loading)
@@ -8126,7 +8205,7 @@ function AssetView() {
 				asset={asset}
 				collection={collection}
 				collectionId={collectionId}
-				error={error}
+				error={detailError}
 				onRetry={load}
 			/>
 		);
@@ -10681,6 +10760,9 @@ export function assetStateErrorMessage(error: unknown) {
 	const value = error instanceof Error ? error.message : String(error);
 	if (/^HTTP 429(?:\b|$)/i.test(value)) {
 		return marketplaceRequestFailureMessage('compute', 'rate-limited');
+	}
+	if (/ao[- ]wrangler.*response quorum not met/i.test(value) || /^HTTP 5\d\d(?:\b|$)/i.test(value)) {
+		return 'Live state could not be read through the configured compute gateways. Retry shortly, or choose Compute gateway in the header.';
 	}
 	if (['Failed to fetch', 'fetch failed', 'compute-provider-failed', 'compute-provider-timeout'].includes(value)) {
 		let host = 'the selected compute gateway';

@@ -6,7 +6,12 @@ import {
 	normalizeAssetContentType,
 } from 'helpers/asset-media';
 import { mapConcurrent } from 'helpers/concurrency';
-import { arweaveClientConfig, arweaveGatewayFromLocation, gatewayFromLocation } from 'helpers/config';
+import {
+	arweaveClientConfig,
+	arweaveGatewayFromLocation,
+	arweaveRawDataUrl,
+	gatewayFromLocation,
+} from 'helpers/config';
 
 import { type AssetSummary, FUNGIBLE_TOKEN_COLLECTION_ID, FUNGIBLE_TOKEN_COLLECTION_NAME } from './collections';
 import { acceptedMintActivity, upsertMintActivity } from './mint-activity';
@@ -283,7 +288,7 @@ export class AssetMintClient {
 		assertAddress(owner, 'invalid-mint-owner');
 		if (draft.owner !== owner) throw new Error('mint-draft-wallet-mismatch');
 		await this.#assertActiveSigner(owner);
-		const response = await this.#fetch(`${this.#gateway}/${draft.mediaId}`, { signal: options.signal });
+		const response = await this.#fetch(arweaveRawDataUrl(draft.mediaId, this.#gateway), { signal: options.signal });
 		if (!response.ok) throw new Error(`mint-media-unavailable-${response.status}`);
 		const data = new Uint8Array(await response.arrayBuffer());
 		const maxBytes = isAudioContentType(draft.contentType) ? MAX_AUDIO_BYTES : MAX_IMAGE_BYTES;
@@ -333,10 +338,10 @@ export class AssetMintClient {
 			...(input.duration ? { duration: input.duration } : {}),
 			...(isAudioContentType(input.contentType)
 				? {
-						media: `${this.#gateway}/${signedProcess.id}`,
-						...(input.artworkId ? { image: `${this.#gateway}/${input.artworkId}` } : {}),
+						media: arweaveRawDataUrl(signedProcess.id, this.#gateway),
+						...(input.artworkId ? { image: arweaveRawDataUrl(input.artworkId, this.#gateway) } : {}),
 				  }
-				: { image: `${this.#gateway}/${signedProcess.id}` }),
+				: { image: arweaveRawDataUrl(signedProcess.id, this.#gateway) }),
 			mediaId: signedProcess.id,
 			...(input.artworkId ? { artworkId: input.artworkId } : {}),
 			owner,
