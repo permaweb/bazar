@@ -55,7 +55,7 @@ import {
 
 import { type ArweaveSyncStep, ArweaveTransactionSync } from 'components/ArweaveTransactionSync';
 import { postConfirmationPendingLabel } from 'components/ArweaveTransactionSync/sequence';
-import { ArCurrencyLabel } from 'components/ArCurrencyLabel';
+import { ArCurrencyLabel, ArCurrencyText } from 'components/ArCurrencyLabel';
 import { type AssetDetailTab, AssetDetailTabs } from 'components/AssetDetailTabs';
 import { assetOperationPendingActionLabel, AssetOperationStatus } from 'components/AssetOperationStatus';
 import { Button } from 'components/Button';
@@ -824,7 +824,13 @@ export function FungibleAssetView({
 						<div className="asset-market-stats">
 							<div>
 								<span>Current unit price</span>
-								<strong>{best ? orderPriceLabel(best, state) : 'Not listed'}</strong>
+								<strong>
+									{best ? (
+										<ArCurrencyText>{orderPriceLabel(best, state)}</ArCurrencyText>
+									) : (
+										'Not listed'
+									)}
+								</strong>
 							</div>
 							<div>
 								<span>For sale</span>
@@ -1050,13 +1056,13 @@ export function FungibleAssetView({
 									return (
 										<div className="orderbook-row" key={order.orderId} role="row">
 											<strong data-label="Unit price" role="cell">
-												{orderPriceLabel(order, state)}
+												<ArCurrencyText>{orderPriceLabel(order, state)}</ArCurrencyText>
 											</strong>
 											<span data-label="Quantity" role="cell">
 												{tokenLabel(order.quantity, state)}
 											</span>
 											<span data-label="Total" role="cell">
-												{winstonToAr(order.asking)} AR
+												{winstonToAr(order.asking)} <ArCurrencyLabel />
 											</span>
 											<span data-label="Seller" role="cell">
 												<WalletAddress address={order.creator} label="seller" />
@@ -2483,7 +2489,7 @@ function FungibleOperationDialog({
 											.reduce((total, order) => total + BigInt(order.asking), 0n)
 											.toString()
 									)}{' '}
-									AR
+									<ArCurrencyLabel />
 								</strong>
 							</div>
 							<div>
@@ -2542,7 +2548,9 @@ function FungibleOperationDialog({
 											/>
 										</label>
 										<label>
-											Price per {tickerDisplay} in AR
+											<span>
+												Price per {tickerDisplay} in <ArCurrencyLabel />
+											</span>
 											<input
 												aria-describedby={
 													unitPrice && !unitPriceValid ? priceGuidanceId : undefined
@@ -2558,7 +2566,9 @@ function FungibleOperationDialog({
 									{listingQuote ? (
 										<div className="trade-quote">
 											<span>Listing total</span>
-											<strong>{listingQuote} AR</strong>
+											<strong>
+												{listingQuote} <ArCurrencyLabel />
+											</strong>
 										</div>
 									) : null}
 									{enteredQuantity && enteredQuantity <= currentLiquid ? (
@@ -2578,7 +2588,9 @@ function FungibleOperationDialog({
 									) : null}
 									{unitPrice && !unitPriceValid ? (
 										<p id={priceGuidanceId} className="trade-guidance" role="alert">
-											Enter a positive AR price with no more than 12 decimal places.
+											<ArCurrencyText>
+												Enter a positive AR price with no more than 12 decimal places.
+											</ArCurrencyText>
 										</p>
 									) : null}
 									<p className="settlement-disclosure">
@@ -2661,7 +2673,7 @@ function FungibleOperationDialog({
 										<strong>Return this listing to your balance?</strong>
 										<span>
 											{tokenLabel(operation.order.quantity, state)} ·{' '}
-											{winstonToAr(operation.order.asking)} AR total
+											{winstonToAr(operation.order.asking)} <ArCurrencyLabel /> total
 										</span>
 										<span>
 											After network confirmation:{' '}
@@ -2697,45 +2709,55 @@ function FungibleOperationDialog({
 											<dl className="purchase-confirmation-facts">
 												<div>
 													<dt>Seller total</dt>
-													<dd>{winstonToAr(matchedAsking.toString())} AR</dd>
+													<dd>
+														{winstonToAr(matchedAsking.toString())} <ArCurrencyLabel />
+													</dd>
 												</div>
 												<div>
 													<dt>Network fees</dt>
 													<dd>
-														{quoteState === 'error'
-															? 'Unavailable'
-															: estimatedCost
-															? `${winstonToAr(
-																	(BigInt(estimatedCost) - matchedAsking).toString()
-															  )} AR`
-															: 'Checking…'}
+														{quoteState === 'error' ? (
+															'Unavailable'
+														) : estimatedCost ? (
+															<ArCurrencyText>{`${winstonToAr(
+																(BigInt(estimatedCost) - matchedAsking).toString()
+															)} AR`}</ArCurrencyText>
+														) : (
+															'Checking…'
+														)}
 													</dd>
 												</div>
 												<div className="purchase-confirmation-total">
 													<dt>Maximum total</dt>
 													<dd>
-														{quoteState === 'error'
-															? 'Quote unavailable'
-															: estimatedCost
-															? `${winstonToAr(estimatedCost)} AR`
-															: 'Checking…'}
+														{quoteState === 'error' ? (
+															'Quote unavailable'
+														) : estimatedCost ? (
+															<ArCurrencyText>{`${winstonToAr(
+																estimatedCost
+															)} AR`}</ArCurrencyText>
+														) : (
+															'Checking…'
+														)}
 													</dd>
 												</div>
 												<div>
 													<dt>Wallet after</dt>
 													<dd>
-														{quoteState === 'error'
-															? '—'
-															: canAfford === false
-															? 'Insufficient AR'
-															: estimatedCost && estimatedWalletBalance
-															? `${winstonToAr(
-																	(
-																		BigInt(estimatedWalletBalance) -
-																		BigInt(estimatedCost)
-																	).toString()
-															  )} AR`
-															: 'Checking…'}
+														{quoteState === 'error' ? (
+															'—'
+														) : canAfford === false ? (
+															<ArCurrencyText>Insufficient AR</ArCurrencyText>
+														) : estimatedCost && estimatedWalletBalance ? (
+															<ArCurrencyText>{`${winstonToAr(
+																(
+																	BigInt(estimatedWalletBalance) -
+																	BigInt(estimatedCost)
+																).toString()
+															)} AR`}</ArCurrencyText>
+														) : (
+															'Checking…'
+														)}
 													</dd>
 												</div>
 											</dl>
@@ -2776,7 +2798,9 @@ function FungibleOperationDialog({
 									) : null}
 									{canAfford === false ? (
 										<p className="purchase-form-error" role="alert">
-											This wallet does not have enough AR for the purchase and network fees.
+											<ArCurrencyText>
+												This wallet does not have enough AR for the purchase and network fees.
+											</ArCurrencyText>
 										</p>
 									) : null}
 								</>
@@ -2818,17 +2842,25 @@ function FungibleOperationDialog({
 								) : operation.kind === 'sell' ? (
 									<Tag className="ui-icon ui-icon--sm" aria-hidden="true" />
 								) : null}
-								{operation.kind === 'buy' && matchedOrders.length
-									? `Buy ${tokenLabel(matchedQuantity.toString(), state)} · ${
-											estimatedCost ? `${winstonToAr(estimatedCost)} AR max` : 'checking total…'
-									  }`
-									: operation.kind === 'sell' && listingQuote && enteredQuantity
-									? `List ${tokenLabel(enteredQuantity.toString(), state)} for ${listingQuote} AR`
-									: operation.kind === 'cancel'
-									? `Cancel listing and return ${tokenLabel(operation.order.quantity, state)}`
-									: operation.kind === 'transfer' && enteredQuantity
-									? fungibleTransferSubmitLabel(enteredQuantity.toString(), state, transferRecipient)
-									: operationLabel(operation.kind)}
+								<ArCurrencyText>
+									{operation.kind === 'buy' && matchedOrders.length
+										? `Buy ${tokenLabel(matchedQuantity.toString(), state)} · ${
+												estimatedCost
+													? `${winstonToAr(estimatedCost)} AR max`
+													: 'checking total…'
+										  }`
+										: operation.kind === 'sell' && listingQuote && enteredQuantity
+										? `List ${tokenLabel(enteredQuantity.toString(), state)} for ${listingQuote} AR`
+										: operation.kind === 'cancel'
+										? `Cancel listing and return ${tokenLabel(operation.order.quantity, state)}`
+										: operation.kind === 'transfer' && enteredQuantity
+										? fungibleTransferSubmitLabel(
+												enteredQuantity.toString(),
+												state,
+												transferRecipient
+										  )
+										: operationLabel(operation.kind)}
+								</ArCurrencyText>
 							</Button>
 						</div>
 					</form>
@@ -3156,7 +3188,9 @@ export function MatchedListingsReview({
 							<span>
 								<strong>{tokenLabel(order.quantity, state)}</strong>
 								<small>
-									{orderPriceLabel(order, state)} · {winstonToAr(order.asking)} AR total
+									<ArCurrencyText>
+										{`${orderPriceLabel(order, state)} · ${winstonToAr(order.asking)} AR total`}
+									</ArCurrencyText>
 								</small>
 							</span>
 							<WalletIdentity address={order.creator} />
@@ -3265,7 +3299,9 @@ export function FungiblePurchaseComposer({
 				</div>
 				<div className="purchase-composer-value">
 					<strong>{match ? winstonToAr(match.totalAsking) : '0'}</strong>
-					<span className="purchase-composer-token">AR</span>
+					<span className="purchase-composer-token">
+						<ArCurrencyLabel />
+					</span>
 				</div>
 				<small>
 					{match
@@ -3347,7 +3383,7 @@ export function FungibleListingComposer({
 				</span>
 				<div className="purchase-composer-heading">
 					<label htmlFor={unitPriceId}>Unit price</label>
-					<span>{total ? `${total} AR total` : 'Listing total'}</span>
+					<span>{total ? <ArCurrencyText>{`${total} AR total`}</ArCurrencyText> : 'Listing total'}</span>
 				</div>
 				<div className="purchase-composer-value">
 					<input
@@ -3359,7 +3395,9 @@ export function FungibleListingComposer({
 						placeholder="0"
 						value={unitPrice}
 					/>
-					<span className="purchase-composer-token">AR</span>
+					<span className="purchase-composer-token">
+						<ArCurrencyLabel />
+					</span>
 				</div>
 				<small id={priceGuidanceId}>Price per {tickerDisplay}; network fees are shown in review.</small>
 			</div>
@@ -3370,7 +3408,7 @@ export function FungibleListingComposer({
 			) : null}
 			{unitPriceError ? (
 				<p className="purchase-composer-error" id={priceErrorId} role="alert">
-					{unitPriceError}
+					<ArCurrencyText>{unitPriceError}</ArCurrencyText>
 				</p>
 			) : null}
 		</section>
@@ -3391,7 +3429,7 @@ export function PurchaseRoute({ fills, state }: { fills: OrderFill[]; state: Ass
 						<span className="purchase-route-fill">
 							<strong>{tokenLabel(order.quantity, state)}</strong>
 							<small>
-								{orderPriceLabel(order, state)}
+								<ArCurrencyText>{orderPriceLabel(order, state)}</ArCurrencyText>
 								{partial
 									? ` · ${tokenLabel(order.quantity, state)} of ${tokenLabel(
 											sourceOrder.quantity,
@@ -3400,7 +3438,9 @@ export function PurchaseRoute({ fills, state }: { fills: OrderFill[]; state: Ass
 									: ' · full order'}
 							</small>
 						</span>
-						<span className="purchase-route-total">{winstonToAr(order.asking)} AR</span>
+						<span className="purchase-route-total">
+							{winstonToAr(order.asking)} <ArCurrencyLabel />
+						</span>
 						<WalletAddress address={order.creator} label="seller" />
 					</li>
 				))}
@@ -3470,7 +3510,9 @@ export function FungiblePurchaseReceiptNavigator({
 					</div>
 					<div>
 						<dt>Seller payment</dt>
-						<dd>{winstonToAr(order.asking)} AR</dd>
+						<dd>
+							{winstonToAr(order.asking)} <ArCurrencyLabel />
+						</dd>
 					</div>
 				</dl>
 				<div className="settlement-receipt-links receipt-proof-links">

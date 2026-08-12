@@ -3900,11 +3900,13 @@ input:focus {
 .ar-currency-label {
 	display: inline-flex;
 	align-items: center;
-	gap: 6px;
+	gap: 3px;
+	vertical-align: -0.14em;
+	white-space: nowrap;
 }
 .ar-currency-label img {
-	width: 15px;
-	height: 15px;
+	width: 1em;
+	height: 1em;
 	flex: 0 0 auto;
 	display: block;
 }

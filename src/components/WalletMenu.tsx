@@ -5,8 +5,7 @@ import { Check, Copy, Library, LogOut, Monitor, Moon, Sun, SunDim, Wallet } from
 import { useTheme } from 'providers/ThemeProvider';
 import { useWallet } from 'providers/WalletProvider';
 
-import arLogo from '../assets/ar.svg';
-
+import { ArCurrencyText } from './ArCurrencyLabel';
 import { Button } from './Button';
 
 const THEME_OPTIONS = [
@@ -107,10 +106,11 @@ export function WalletMenu() {
 						</div>
 					</div>
 					<div aria-label="AR Balance" className="wallet-dropdown-balance" role="group">
-						<span>AR Balance</span>
+						<span>
+							<ArCurrencyText>AR Balance</ArCurrencyText>
+						</span>
 						<strong aria-live="polite">
-							<img alt="" aria-hidden="true" src={arLogo} />
-							{arBalanceLabel(wallet.arBalance, wallet.arBalanceStatus)}
+							<ArCurrencyText>{arBalanceLabel(wallet.arBalance, wallet.arBalanceStatus)}</ArCurrencyText>
 						</strong>
 					</div>
 					<div className="wallet-dropdown-actions">

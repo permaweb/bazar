@@ -121,7 +121,7 @@ import {
 import { formatTokenAmount } from 'api/order-matching';
 
 import { ArtworkImage } from 'components/ArtworkImage';
-import { ArCurrencyLabel } from 'components/ArCurrencyLabel';
+import { ArCurrencyLabel, ArCurrencyText } from 'components/ArCurrencyLabel';
 import type { ArweaveSyncStep } from 'components/ArweaveTransactionSync';
 import { quorumConfirmationDepth } from 'components/ArweaveTransactionSync/confirmationDepth';
 import { postConfirmationPendingLabel } from 'components/ArweaveTransactionSync/sequence';
@@ -3912,13 +3912,15 @@ function Home() {
 																	}
 																>
 																	{!floorPending && floor ? (
-																		homeMarketSummaryLabel(
-																			floor,
-																			collection.hasMore
-																				? 'No loaded listings'
-																				: 'No live listings',
-																			'N/A'
-																		)
+																		<ArCurrencyText>
+																			{homeMarketSummaryLabel(
+																				floor,
+																				collection.hasMore
+																					? 'No loaded listings'
+																					: 'No live listings',
+																				'N/A'
+																			)}
+																		</ArCurrencyText>
 																	) : (
 																		<HomePendingMarketValue />
 																	)}
@@ -4028,7 +4030,12 @@ function Home() {
 																	}`}
 																>
 																	{!pricePending && price ? (
-																		homeMarketSummaryLabel(price, 'Not listed')
+																		<ArCurrencyText>
+																			{homeMarketSummaryLabel(
+																				price,
+																				'Not listed'
+																			)}
+																		</ArCurrencyText>
 																	) : (
 																		<HomePendingMarketValue />
 																	)}
@@ -5918,11 +5925,13 @@ function CollectionView() {
 						<div className="collection-append-summary">
 							<span>{appendEstimating ? 'Checking Arweave storage cost…' : appendStatus || 'Ready'}</span>
 							<strong>
-								{appendEstimate
-									? `${winstonToAr(appendEstimate.total.toString())} AR · ${
-											appendEstimate.transactionCount
-									  } transactions`
-									: '—'}
+								{appendEstimate ? (
+									<ArCurrencyText>{`${winstonToAr(appendEstimate.total.toString())} AR · ${
+										appendEstimate.transactionCount
+									} transactions`}</ArCurrencyText>
+								) : (
+									'—'
+								)}
 							</strong>
 						</div>
 						{appendError ? <ErrorPanel message={appendError} /> : null}
@@ -8128,7 +8137,13 @@ function AssetView() {
 								<div className="asset-market-stats">
 									<div>
 										<span>Current ask</span>
-										<strong>{order ? `${winstonToAr(order.asking)} AR` : 'Not listed'}</strong>
+										<strong>
+											{order ? (
+												<ArCurrencyText>{`${winstonToAr(order.asking)} AR`}</ArCurrencyText>
+											) : (
+												'Not listed'
+											)}
+										</strong>
 									</div>
 									<div>
 										<span>Supply</span>
@@ -8151,7 +8166,13 @@ function AssetView() {
 											? 'Buy for'
 											: 'Market status'}
 									</span>
-									<strong>{order ? `${winstonToAr(order.asking)} AR` : 'Not listed'}</strong>
+									<strong>
+										{order ? (
+											<ArCurrencyText>{`${winstonToAr(order.asking)} AR`}</ArCurrencyText>
+										) : (
+											'Not listed'
+										)}
+									</strong>
 								</div>
 								{operationActivityEntry ? (
 									<AssetOperationStatus
@@ -8377,7 +8398,7 @@ function AssetView() {
 								{order ? (
 									<div className="orderbook-row" role="row">
 										<strong data-label="Price" role="cell">
-											{winstonToAr(order.asking)} AR
+											{winstonToAr(order.asking)} <ArCurrencyLabel />
 										</strong>
 										<span data-label="Quantity" role="cell">
 											{order.quantity}
@@ -8419,7 +8440,9 @@ function AssetView() {
 							{order ? (
 								<div className="asset-history-current">
 									<span>Current ask</span>
-									<strong>{winstonToAr(order.asking)} AR</strong>
+									<strong>
+										{winstonToAr(order.asking)} <ArCurrencyLabel />
+									</strong>
 								</div>
 							) : null}
 							{activityLoading ? (
@@ -9482,7 +9505,9 @@ function OperationDialog({
 								label="seller"
 							/>
 							<span>Seller payment</span>
-							<strong>{sellerPrice}</strong>
+							<strong>
+								<ArCurrencyText>{sellerPrice}</ArCurrencyText>
+							</strong>
 							<span>New approvals</span>
 							<strong>{recoveryApprovalCount}</strong>
 							{operation.resume?.registration?.id ? (
@@ -9530,40 +9555,50 @@ function OperationDialog({
 										label="seller"
 									/>
 									<span>Seller price</span>
-									<strong>{sellerPrice}</strong>
+									<strong>
+										<ArCurrencyText>{sellerPrice}</ArCurrencyText>
+									</strong>
 									<span>Network fees</span>
 									<strong>
-										{quoteError
-											? 'Unavailable'
-											: purchaseQuote
-											? `${winstonToAr(
-													(
-														BigInt(purchaseQuote.total) - BigInt(purchaseQuote.asking)
-													).toString()
-											  )} AR`
-											: 'Checking…'}
+										{quoteError ? (
+											'Unavailable'
+										) : purchaseQuote ? (
+											<ArCurrencyText>{`${winstonToAr(
+												(BigInt(purchaseQuote.total) - BigInt(purchaseQuote.asking)).toString()
+											)} AR`}</ArCurrencyText>
+										) : (
+											'Checking…'
+										)}
 									</strong>
 									<span>Maximum total</span>
 									<strong>
-										{quoteError
-											? 'Unavailable'
-											: purchaseQuote
-											? `${winstonToAr(purchaseQuote.total)} AR`
-											: 'Checking…'}
+										{quoteError ? (
+											'Unavailable'
+										) : purchaseQuote ? (
+											<ArCurrencyText>{`${winstonToAr(purchaseQuote.total)} AR`}</ArCurrencyText>
+										) : (
+											'Checking…'
+										)}
 									</strong>
 									<span>Wallet after purchase</span>
 									<strong>
-										{quoteError
-											? 'Unavailable'
-											: purchaseQuote && purchaseWalletBalance !== null
-											? purchaseAffordable
-												? `${winstonToAr(
-														(purchaseWalletBalance - BigInt(purchaseQuote.total)).toString()
-												  )} AR`
-												: 'Insufficient AR'
-											: 'Checking…'}
+										{quoteError ? (
+											'Unavailable'
+										) : purchaseQuote && purchaseWalletBalance !== null ? (
+											purchaseAffordable ? (
+												<ArCurrencyText>{`${winstonToAr(
+													(purchaseWalletBalance - BigInt(purchaseQuote.total)).toString()
+												)} AR`}</ArCurrencyText>
+											) : (
+												<ArCurrencyText>Insufficient AR</ArCurrencyText>
+											)
+										) : (
+											'Checking…'
+										)}
 									</strong>
-									<small>One asset · native AR settlement</small>
+									<small>
+										One asset · native <ArCurrencyLabel /> settlement
+									</small>
 								</div>
 							) : null}
 							{operation.kind === 'buy' ? (
@@ -9610,7 +9645,9 @@ function OperationDialog({
 							) : null}
 							{operation.kind === 'sell' ? (
 								<label>
-									Sale price in AR
+									<span>
+										Sale price in <ArCurrencyLabel />
+									</span>
 									<input
 										autoFocus
 										data-dialog-initial
@@ -9653,7 +9690,9 @@ function OperationDialog({
 							{operation.kind === 'cancel' ? (
 								<div className="operation-summary">
 									<span>Open listing</span>
-									<strong>{sellerPrice}</strong>
+									<strong>
+										<ArCurrencyText>{sellerPrice}</ArCurrencyText>
+									</strong>
 									<small>
 										Cancelling returns the asset from order escrow to your liquid balance.
 									</small>
@@ -9665,7 +9704,7 @@ function OperationDialog({
 									className={value && formError ? 'field-help field-help-error' : 'field-help'}
 									role={value && formError ? 'alert' : undefined}
 								>
-									{formError}
+									{formError ? <ArCurrencyText>{formError}</ArCurrencyText> : null}
 								</p>
 							) : null}
 							<p className="operation-disclosure">
@@ -9696,11 +9735,13 @@ function OperationDialog({
 							) : operation.kind === 'sell' ? (
 								<Tag className="ui-icon ui-icon--sm" aria-hidden="true" />
 							) : null}
-							{operation.kind === 'buy' && purchaseAffordable === false
-								? 'Insufficient AR'
-								: operation.kind === 'buy' && purchaseQuote
-								? `Buy · up to ${winstonToAr(purchaseQuote.total)} AR`
-								: actionLabel}
+							{operation.kind === 'buy' && purchaseAffordable === false ? (
+								<ArCurrencyText>Insufficient AR</ArCurrencyText>
+							) : operation.kind === 'buy' && purchaseQuote ? (
+								<ArCurrencyText>{`Buy · up to ${winstonToAr(purchaseQuote.total)} AR`}</ArCurrencyText>
+							) : (
+								<ArCurrencyText>{actionLabel}</ArCurrencyText>
+							)}
 						</Button>
 					</form>
 				) : null}
@@ -9773,7 +9814,9 @@ function OperationDialog({
 							<div className="settlement-receipt">
 								<div>
 									<span>Seller payment</span>
-									<strong>{sellerPrice}</strong>
+									<strong>
+										<ArCurrencyText>{sellerPrice}</ArCurrencyText>
+									</strong>
 								</div>
 								<div>
 									<span>Seller</span>
