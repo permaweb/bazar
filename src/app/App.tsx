@@ -490,7 +490,10 @@ export function App() {
 					<Header />
 					<main aria-label="Marketplace content" className="max-view-wrapper" id="main-content" tabIndex={-1}>
 						<Routes>
-							<Route path="/" element={<Home />} />
+							<Route path="/" element={<HomeRedirect />} />
+							<Route path="/discover" element={<Home />} />
+							<Route path="/collections" element={<Home />} />
+							<Route path="/activity" element={<Home />} />
 							<Route
 								path="/create"
 								element={
@@ -2592,6 +2595,23 @@ function homeMarketSummaryListed(summary: HomeMarketSummary | undefined) {
 export type HomeTab = 'discover' | 'collections' | 'activity';
 export type HomeAssetView = 'all' | 'listed' | 'price-low' | 'price-high';
 export type HomeCollectionSort = 'recent' | 'newest' | 'oldest';
+const HOME_TABS = new Set<HomeTab>(['discover', 'collections', 'activity']);
+
+export function homeTabFromPathname(pathname: string): HomeTab {
+	const tab = pathname.replace(/^\/+|\/+$/g, '');
+	return HOME_TABS.has(tab as HomeTab) ? (tab as HomeTab) : 'discover';
+}
+
+export function homeTabPath(tab: HomeTab) {
+	return `/${tab}`;
+}
+
+export function homeRouteSearch(search: string) {
+	const params = new URLSearchParams(search);
+	params.delete('tab');
+	const value = params.toString();
+	return value ? `?${value}` : '';
+}
 
 export type HomeListingActivity = Pick<AssetCandidate, 'processId' | 'height' | 'timestamp'>;
 
@@ -2766,11 +2786,18 @@ export function homeScrollIndicatorMetrics(
 	return { visible: true, size, offset: offsetRange * progress };
 }
 
+function HomeRedirect() {
+	const { search } = useLocation();
+	return <Navigate to={{ pathname: homeTabPath('discover'), search: homeRouteSearch(search) }} replace />;
+}
+
 function Home() {
 	const market = React.useContext(MarketContext);
-	const { search } = useLocation();
+	const location = useLocation();
+	const navigate = useNavigate();
+	const { search } = location;
 	const marketPaneRef = React.useRef<HTMLElement>(null);
-	const [homeTab, setHomeTab] = React.useState<HomeTab>('discover');
+	const homeTab = homeTabFromPathname(location.pathname);
 	const [assetType, setAssetType] = React.useState<HomeAssetType>('all');
 	const [assetView, setAssetView] = React.useState<HomeAssetView>('listed');
 	const [collectionSort, setCollectionSort] = React.useState<HomeCollectionSort>('recent');
@@ -3632,7 +3659,7 @@ function Home() {
 		return () => market.setPageRefreshing(false);
 	}, [market.setPageRefreshing, pageRefreshing]);
 	const selectHomeTab = (tab: HomeTab) => {
-		setHomeTab(tab);
+		navigate({ pathname: homeTabPath(tab), search: homeRouteSearch(search) });
 		if (marketPaneRef.current) marketPaneRef.current.scrollTop = 0;
 	};
 	const selectAssetPage = (page: number) => {

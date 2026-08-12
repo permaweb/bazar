@@ -37,9 +37,12 @@ import {
 	homeMarketShellLoading,
 	homeMarketSummariesReady,
 	type HomeMarketSummary,
+	homeRouteSearch,
 	homeScrollIndicatorMetrics,
 	homeSearchAssets,
 	homeSummaryRequestKeys,
+	homeTabFromPathname,
+	homeTabPath,
 	mergeResolvedListingBatch,
 	newestCollectionActivity,
 	nextListingAnnouncementProgress,
@@ -66,6 +69,18 @@ import {
 } from './shell-snapshot';
 
 describe('Home market summary retries', () => {
+	it('maps every Home tab to a hash-router subroute without dropping other query parameters', () => {
+		expect(homeTabFromPathname('/discover')).toBe('discover');
+		expect(homeTabFromPathname('/collections/')).toBe('collections');
+		expect(homeTabFromPathname('/activity')).toBe('activity');
+		expect(homeTabFromPathname('/unknown')).toBe('discover');
+		expect(homeTabPath('discover')).toBe('/discover');
+		expect(homeTabPath('collections')).toBe('/collections');
+		expect(homeTabPath('activity')).toBe('/activity');
+		expect(homeRouteSearch('?q=art&tab=discover')).toBe('?q=art');
+		expect(homeRouteSearch('?q=art')).toBe('?q=art');
+	});
+
 	it('sorts collections by indexed activity or carrier creation height without computing state', () => {
 		const collection = (id: string, name: string, createdHeight?: number): Collection => ({
 			id,
