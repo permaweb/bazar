@@ -113,6 +113,11 @@ export type MintResult = {
 
 export type MintPhase = 'signing-asset' | 'uploading-asset' | 'signing-artwork' | 'uploading-artwork';
 
+export type MintUploadTransaction = {
+	id: string;
+	label: string;
+};
+
 export const MAX_FUNGIBLE_TICKER_LENGTH = 32;
 /** Mirrors MAX_TOKEN_DENOMINATION in asset-marketplace.ts — parseAssetState rejects anything above it. */
 export const MAX_FUNGIBLE_DENOMINATION = 255;
@@ -461,7 +466,7 @@ export class AssetMintClient {
 				ticker: input.ticker,
 				contentType: 'application/x.arweave-token',
 				description: input.description?.trim() ?? '',
-				...(logoId ? { image: `${this.#gateway}/${logoId}` } : {}),
+				...(logoId ? { image: arweaveRawDataUrl(logoId, this.#gateway) } : {}),
 				mediaId: processId,
 				owner,
 				createdAt,
@@ -623,7 +628,7 @@ export class CollectionMintClient {
 			id: placeholder,
 			name: fileAssetName(file, index),
 			contentType: requiredFileContentType(file),
-			image: `${this.#gateway}/${placeholder}`,
+			image: arweaveRawDataUrl(placeholder, this.#gateway),
 			mediaId: placeholder,
 		}));
 		const manifest = collectionManifest(input, assets);

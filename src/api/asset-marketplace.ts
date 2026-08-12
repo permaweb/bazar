@@ -71,6 +71,7 @@ const MAX_TOKEN_DENOMINATION = 255;
 const COMPUTE_RETRY_BASE_DELAY = 1_000;
 const COMPUTE_RETRY_MAX_DELAY = 8_000;
 const PASSIVE_STATE_MAX_AGES = [30, 60, 120] as const;
+const LINKED_STATE_TABLES = ['balances', 'orders'] as const;
 const LICENSE_FIELDS = [
 	['license', 'License'],
 	['access', 'Access'],
@@ -492,7 +493,7 @@ async function readState(
 			? maxAge === 0
 				? 'now'
 				: `compute&max-age=${maxAge}`
-			: `compute?slot=${options.slot}`;
+			: `compute&slot=${options.slot}`;
 	const paths = statePaths(base, processId, endpoint);
 	const maxAttempts = Math.max(1, Math.floor(options.maxAttempts ?? 1));
 	const retryBaseDelay = Math.max(0, options.retryBaseDelay ?? COMPUTE_RETRY_BASE_DELAY);
@@ -517,7 +518,7 @@ async function readState(
 					headers: {
 						accept: 'application/json',
 						'require-codec': 'application/json',
-						'accept-bundle': 'true',
+						'accept-bundle': 'false',
 						'cache-control':
 							options.staleWhileRevalidate === undefined
 								? `max-age=${maxAge}`
@@ -549,7 +550,7 @@ async function readState(
 					}
 					response = await fetcher(path, requestInit);
 					if (!response.ok) throw new Error(`HTTP ${response.status}`);
-					const state = parseAssetState(parseLosslessJson(await response.text()));
+					const state = await parseStateResponse(response, base, requestInit, fetcher);
 					const cached = cacheMetadata(response);
 					return {
 						state,
@@ -587,11 +588,57 @@ async function readState(
 }
 
 function statePaths(base: string, processId: string, endpoint: string): string[] {
-	const separator = endpoint.includes('?') ? '&' : '?';
+	const projected = `${endpoint}/remove~message@1.0&item=data`;
 	return [
-		`${base}${processId}~process@1.0/${endpoint}${separator}require-codec=json%401.0&accept-bundle=true`,
-		`${base}${processId}~process@1.0/${endpoint}${separator}require-codec=application%2Fjson&accept-bundle=true`,
+		`${base}${processId}~process@1.0/${projected}?require-codec=json%401.0&accept-bundle=false`,
+		`${base}${processId}~process@1.0/${projected}?require-codec=application%2Fjson&accept-bundle=false`,
 	];
+}
+
+async function parseStateResponse(
+	response: Response,
+	base: string,
+	requestInit: RequestInit,
+	fetcher: typeof fetch
+): Promise<AssetState> {
+	const raw = unwrapState(parseLosslessJson(await response.text()));
+	const linked = await Promise.all(
+		LINKED_STATE_TABLES.flatMap((key) => {
+			if (isRecord(raw[key])) return [];
+			const id = raw[`${key}+link`];
+			if (id === undefined) return [];
+			if (typeof id !== 'string' || !ADDRESS.test(id)) throw new TypeError('invalid-asset-state-link');
+			return [readLinkedStateTable(key, id, base, requestInit, fetcher)];
+		})
+	);
+	return parseAssetState({ ...raw, ...Object.fromEntries(linked) });
+}
+
+async function readLinkedStateTable(
+	key: (typeof LINKED_STATE_TABLES)[number],
+	id: string,
+	base: string,
+	requestInit: RequestInit,
+	fetcher: typeof fetch
+): Promise<[string, Record<string, unknown>]> {
+	let lastError: unknown;
+	for (const path of [
+		`${base}${id}?require-codec=json%401.0&accept-bundle=true`,
+		`${base}${id}?require-codec=application%2Fjson&accept-bundle=true`,
+	]) {
+		try {
+			const response = await fetcher(path, {
+				headers: { accept: 'application/json' },
+				signal: requestInit.signal,
+			});
+			if (!response.ok) throw new Error(`HTTP ${response.status}`);
+			const table = unwrapState(parseLosslessJson(await response.text()));
+			return [key, Object.fromEntries(Object.entries(table).filter(([entry]) => ADDRESS.test(entry)))];
+		} catch (error) {
+			lastError = error;
+		}
+	}
+	throw lastError instanceof Error ? lastError : new Error('linked-asset-state-unavailable');
 }
 
 async function parseRevalidatedState(
@@ -605,7 +652,7 @@ async function parseRevalidatedState(
 	try {
 		if (!response.ok) throw new Error(`HTTP ${response.status}`);
 		return {
-			state: parseAssetState(parseLosslessJson(await response.text())),
+			state: await parseStateResponse(response, servingNode ? `${servingNode}/` : '/', requestInit, fetcher),
 			provider: cacheMetadata(response)?.origin ?? servingNode,
 		};
 	} catch (error) {
