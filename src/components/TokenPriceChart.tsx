@@ -1,4 +1,5 @@
 import React from 'react';
+import { type CandlestickData, ColorType, createChart, CrosshairMode, type UTCTimestamp } from 'lightweight-charts';
 
 import { TooltipSurface } from 'components/Tooltip';
 
@@ -35,6 +36,27 @@ const PRICE_RANGE_MS: Record<Exclude<TokenPriceRange, 'all'>, number> = {
 	'30d': 30 * 24 * 60 * 60 * 1_000,
 };
 
+const PRICE_CANDLE_INTERVAL_SECONDS: Record<Exclude<TokenPriceRange, 'all'>, number> = {
+	'24h': 60 * 60,
+	'7d': 6 * 60 * 60,
+	'30d': 24 * 60 * 60,
+};
+
+const ALL_RANGE_CANDLE_INTERVALS = [
+	60,
+	5 * 60,
+	15 * 60,
+	30 * 60,
+	60 * 60,
+	2 * 60 * 60,
+	4 * 60 * 60,
+	12 * 60 * 60,
+	24 * 60 * 60,
+	7 * 24 * 60 * 60,
+	14 * 24 * 60 * 60,
+	30 * 24 * 60 * 60,
+];
+
 function timestampMilliseconds(timestamp: number) {
 	return timestamp < 1_000_000_000_000 ? timestamp * 1_000 : timestamp;
 }
@@ -46,6 +68,62 @@ export function tokenPricePointsForRange(points: TokenPricePoint[], range: Token
 	if (range === 'all') return ordered;
 	const threshold = now - PRICE_RANGE_MS[range];
 	return ordered.filter((point) => timestampMilliseconds(point.timestamp) >= threshold);
+}
+
+function tokenPriceCandleInterval(points: TokenPricePoint[], range: TokenPriceRange) {
+	if (range !== 'all') return PRICE_CANDLE_INTERVAL_SECONDS[range];
+	if (points.length < 2) return ALL_RANGE_CANDLE_INTERVALS[0];
+	const first = timestampMilliseconds(points[0].timestamp) / 1_000;
+	const last = timestampMilliseconds(points.at(-1)!.timestamp) / 1_000;
+	const targetCandleCount = Math.min(48, Math.max(8, Math.ceil(points.length / 3)));
+	const targetInterval = Math.max(1, (last - first) / targetCandleCount);
+	return (
+		ALL_RANGE_CANDLE_INTERVALS.find((interval) => interval >= targetInterval) ?? ALL_RANGE_CANDLE_INTERVALS.at(-1)!
+	);
+}
+
+export type TokenPriceCandle = CandlestickData<UTCTimestamp> & {
+	openPoint: TokenPricePoint;
+	highPoint: TokenPricePoint;
+	lowPoint: TokenPricePoint;
+	closePoint: TokenPricePoint;
+};
+
+export function tokenPriceCandlestickSeries(points: TokenPricePoint[], range: TokenPriceRange = 'all') {
+	const ordered = tokenPricePointsForRange(points, 'all');
+	const interval = tokenPriceCandleInterval(ordered, range);
+	const candles = new Map<number, TokenPriceCandle>();
+	for (const point of ordered) {
+		const seconds = Math.floor(timestampMilliseconds(point.timestamp) / 1_000);
+		const time = Math.floor(seconds / interval) * interval;
+		const value = Number(point.value) / 1_000_000_000_000;
+		const candle = candles.get(time);
+		if (!candle) {
+			candles.set(time, {
+				time: time as UTCTimestamp,
+				open: value,
+				high: value,
+				low: value,
+				close: value,
+				openPoint: point,
+				highPoint: point,
+				lowPoint: point,
+				closePoint: point,
+			});
+			continue;
+		}
+		candle.close = value;
+		candle.closePoint = point;
+		if (BigInt(point.value) > BigInt(candle.highPoint.value)) {
+			candle.high = value;
+			candle.highPoint = point;
+		}
+		if (BigInt(point.value) < BigInt(candle.lowPoint.value)) {
+			candle.low = value;
+			candle.lowPoint = point;
+		}
+	}
+	return [...candles.values()];
 }
 
 export function tokenPriceCoordinates(points: TokenPricePoint[], width = 640, height = 180) {
@@ -106,30 +184,94 @@ export function TokenPriceChart({
 }) {
 	const [range, setRange] = React.useState<TokenPriceRange>('all');
 	const [activePointId, setActivePointId] = React.useState<string | null>(null);
+	const [activeCandleTime, setActiveCandleTime] = React.useState<UTCTimestamp | null>(null);
+	const [activeChartCoordinate, setActiveChartCoordinate] = React.useState<TokenPriceCoordinate | null>(null);
+	const chartContainerRef = React.useRef<HTMLDivElement>(null);
 	const visiblePoints = React.useMemo(() => tokenPricePointsForRange(points, range), [points, range]);
+	const candlestickSeries = React.useMemo(
+		() => tokenPriceCandlestickSeries(visiblePoints, range),
+		[range, visiblePoints]
+	);
 	const activeIndex = Math.max(
 		0,
 		activePointId ? visiblePoints.findIndex((point) => point.id === activePointId) : visiblePoints.length - 1
 	);
 	const activePoint = visiblePoints[activeIndex] ?? null;
-	const coordinates = tokenPriceCoordinates(visiblePoints);
-	const activeCoordinate = coordinates[activeIndex] ?? null;
-	const polyline = tokenPricePolyline(visiblePoints);
-	const area = polyline ? `${polyline} 640.00,180.00 0.00,180.00` : '';
+	const activeCandle =
+		candlestickSeries.find((candle) => candle.time === activeCandleTime) ?? candlestickSeries.at(-1) ?? null;
 	const change = tokenPriceChangePercent(visiblePoints);
 	const direction = change === null || change === 0 ? 'flat' : change > 0 ? 'up' : 'down';
-	const gradientId = `token-price-area-${React.useId().replace(/:/g, '')}`;
 
-	const inspectNearestPoint = React.useCallback(
-		(event: React.PointerEvent<HTMLDivElement>) => {
-			if (!visiblePoints.length) return;
-			const bounds = event.currentTarget.getBoundingClientRect();
-			const progress = Math.min(1, Math.max(0, (event.clientX - bounds.left) / bounds.width));
-			const index = Math.round(progress * Math.max(0, visiblePoints.length - 1));
-			setActivePointId(visiblePoints[index].id);
-		},
-		[visiblePoints]
-	);
+	React.useEffect(() => {
+		const container = chartContainerRef.current;
+		if (!container || !candlestickSeries.length) return;
+
+		const styles = getComputedStyle(container);
+		const color = (name: string, fallback: string) => styles.getPropertyValue(name).trim() || fallback;
+		const paper = color('--paper', 'white');
+		const ink = color('--ink', 'black');
+		const muted = color('--muted', ink);
+		const line = color('--line', muted);
+		const positive = color('--positive', ink);
+		const negative = color('--negative', muted);
+
+		const chart = createChart(container, {
+			autoSize: true,
+			layout: {
+				attributionLogo: false,
+				background: { color: paper, type: ColorType.Solid },
+				fontFamily: styles.fontFamily,
+				textColor: muted,
+			},
+			grid: {
+				horzLines: { color: line },
+				vertLines: { color: line },
+			},
+			crosshair: {
+				mode: CrosshairMode.Magnet,
+				horzLine: { color: muted, labelBackgroundColor: ink },
+				vertLine: { color: muted, labelBackgroundColor: ink },
+			},
+			rightPriceScale: {
+				borderColor: line,
+				scaleMargins: { bottom: 0.18, top: 0.12 },
+			},
+			timeScale: {
+				borderColor: line,
+				rightOffset: 4,
+				secondsVisible: false,
+				timeVisible: true,
+			},
+		});
+		const series = chart.addCandlestickSeries({
+			borderDownColor: negative,
+			borderUpColor: positive,
+			downColor: negative,
+			priceFormat: { minMove: 0.000000000001, precision: 12, type: 'price' },
+			upColor: positive,
+			wickDownColor: negative,
+			wickUpColor: positive,
+		});
+		series.setData(candlestickSeries.map(({ time, open, high, low, close }) => ({ time, open, high, low, close })));
+		const candleByTime = new Map(candlestickSeries.map((candle) => [candle.time, candle]));
+		chart.subscribeCrosshairMove((event) => {
+			if (typeof event.time !== 'number' || !event.point) {
+				setActiveChartCoordinate(null);
+				return;
+			}
+			const candle = candleByTime.get(event.time as UTCTimestamp);
+			if (!candle) return;
+			setActivePointId(candle.closePoint.id);
+			setActiveCandleTime(candle.time);
+			setActiveChartCoordinate({
+				x: (event.point.x / Math.max(1, container.clientWidth)) * 100,
+				y: (event.point.y / Math.max(1, container.clientHeight)) * 100,
+			});
+		});
+		chart.timeScale().fitContent();
+
+		return () => chart.remove();
+	}, [candlestickSeries]);
 
 	return (
 		<section className="token-price-chart" aria-busy={loading} aria-label={`${ticker} indexed ask history`}>
@@ -150,6 +292,8 @@ export function TokenPriceChart({
 							onClick={() => {
 								setRange(option.value);
 								setActivePointId(null);
+								setActiveCandleTime(null);
+								setActiveChartCoordinate(null);
 							}}
 							type="button"
 						>
@@ -165,77 +309,40 @@ export function TokenPriceChart({
 						<span data-direction={direction}>{changeLabel(change)}</span>
 						<small>across {PRICE_RANGE_CONTEXT_LABELS[range]}</small>
 					</div>
-					<div
-						className="token-price-plot"
-						onPointerDown={inspectNearestPoint}
-						onPointerMove={inspectNearestPoint}
-					>
-						<svg aria-hidden="true" preserveAspectRatio="none" viewBox="0 0 640 180">
-							<defs>
-								<linearGradient id={gradientId} x1="0" x2="0" y1="0" y2="1">
-									<stop offset="0%" stopColor="var(--positive)" stopOpacity="0.22" />
-									<stop offset="100%" stopColor="var(--positive)" stopOpacity="0" />
-								</linearGradient>
-							</defs>
-							<line className="token-price-grid-line" x1="0" x2="640" y1="0" y2="0" />
-							<line className="token-price-grid-line" x1="0" x2="640" y1="90" y2="90" />
-							<line className="token-price-grid-line" x1="0" x2="640" y1="180" y2="180" />
-							{visiblePoints.length > 1 ? (
-								<>
-									<polygon fill={`url(#${gradientId})`} points={area} />
-									<polyline className="token-price-line" points={polyline} />
-								</>
-							) : null}
-							{activeCoordinate ? (
-								<>
-									<line
-										className="token-price-cursor"
-										x1={activeCoordinate.x}
-										x2={activeCoordinate.x}
-										y1="0"
-										y2="180"
-									/>
-									<circle
-										className="token-price-active-point"
-										cx={activeCoordinate.x}
-										cy={activeCoordinate.y}
-										r="5"
-									/>
-								</>
-							) : null}
-						</svg>
-						<div className="token-price-hit-points">
-							{coordinates.map((coordinate, index) => {
-								const point = visiblePoints[index];
-								return (
-									<button
-										aria-label={`${formattedTimestamp(point.timestamp)}, ${formatValue(
-											point.value
-										)}`}
-										className={point.id === activePoint?.id ? 'is-active' : ''}
-										key={point.id}
-										onFocus={() => setActivePointId(point.id)}
-										onMouseEnter={() => setActivePointId(point.id)}
-										style={{
-											left: `${(coordinate.x / 640) * 100}%`,
-											top: `${(coordinate.y / 180) * 100}%`,
-										}}
-										type="button"
-									/>
-								);
-							})}
-						</div>
-						{activePoint && activeCoordinate ? (
+					<div aria-label={`${ticker} candlestick ask price chart`} className="token-price-plot" role="img">
+						<div className="token-price-tradingview" ref={chartContainerRef} />
+						{activeCandle && activeChartCoordinate ? (
 							<TooltipSurface
 								className="token-price-tooltip"
-								style={{
-									left: `${Math.min(88, Math.max(12, (activeCoordinate.x / 640) * 100))}%`,
-									top: `${Math.min(84, Math.max(16, (activeCoordinate.y / 180) * 100))}%`,
-								}}
+								data-placement={activeChartCoordinate.y < 50 ? 'below' : 'above'}
+								style={
+									{
+										'--token-price-tooltip-x': `${activeChartCoordinate.x}%`,
+										top: `${Math.min(84, Math.max(16, activeChartCoordinate.y))}%`,
+									} as React.CSSProperties
+								}
 								visible
 							>
-								<strong>{formatValue(activePoint.value)}</strong>
-								<span>{formattedTimestamp(activePoint.timestamp)}</span>
+								<strong>{formatValue(activeCandle.closePoint.value)}</strong>
+								<span>{formattedTimestamp(activeCandle.closePoint.timestamp)}</span>
+								<dl className="token-price-candle-values">
+									<div>
+										<dt>O</dt>
+										<dd>{formatValue(activeCandle.openPoint.value)}</dd>
+									</div>
+									<div>
+										<dt>H</dt>
+										<dd>{formatValue(activeCandle.highPoint.value)}</dd>
+									</div>
+									<div>
+										<dt>L</dt>
+										<dd>{formatValue(activeCandle.lowPoint.value)}</dd>
+									</div>
+									<div>
+										<dt>C</dt>
+										<dd>{formatValue(activeCandle.closePoint.value)}</dd>
+									</div>
+								</dl>
 							</TooltipSurface>
 						) : null}
 					</div>

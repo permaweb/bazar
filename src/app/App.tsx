@@ -2855,6 +2855,7 @@ export function compareHomeListingRecency(
 }
 
 export const HOME_ASSET_PAGE_SIZE = 9;
+export const HOME_DISCOVER_TOKEN_PAGE_SIZE = 5;
 const HOME_LISTING_ASSET_LIMIT = HOME_ASSET_PAGE_SIZE * 4;
 const HOME_STATE_MAX_AGE = 30;
 const HOME_STATE_STALE_WHILE_REVALIDATE = 86_400;
@@ -2990,6 +2991,7 @@ function Home() {
 	const [collectionSort, setCollectionSort] = React.useState<HomeCollectionSort>('recent');
 	const [collectionActivity, setCollectionActivity] = React.useState<Record<string, HomeListingActivity>>({});
 	const [assetPage, setAssetPage] = React.useState(1);
+	const [discoverTokenPage, setDiscoverTokenPage] = React.useState(1);
 	const computeGateway = gatewayFromLocation();
 	const homeListingSnapshotScope = `${arweaveGraphqlEndpoint()}|${gatewaysFromLocation().join(',')}`;
 	const query = new URLSearchParams(search).get('q') ?? '';
@@ -3164,7 +3166,12 @@ function Home() {
 	);
 	const discoverTokens = displayedAssets.filter(({ collection }) => collection.kind === 'tokens');
 	const discoverCollectibles = displayedAssets.filter(({ collection }) => collection.kind !== 'tokens');
-	const discoverOverviewAssets = [...discoverTokens.slice(0, 8), ...discoverCollectibles.slice(0, 12)];
+	const discoverTokenPagination = homeAssetPage(
+		discoverTokens,
+		discoverTokenPage,
+		HOME_DISCOVER_TOKEN_PAGE_SIZE
+	);
+	const discoverOverviewAssets = [...discoverTokenPagination.items, ...discoverCollectibles.slice(0, 12)];
 	const assetPagination = homeAssetPage(displayedAssets, assetPage);
 	const assets =
 		assetView === 'all' ? (assetType === 'all' ? discoverOverviewAssets : assetPagination.items) : assetCandidates;
@@ -3837,9 +3844,15 @@ function Home() {
 		return () => window.clearTimeout(timer);
 	}, [portableHomeListingsFailure, summaryFailureKey, summaryRetrying]);
 	React.useEffect(() => setAssetPage(1), [assetType, assetView, normalizedQuery]);
+	React.useEffect(() => setDiscoverTokenPage(1), [assetType, assetView, normalizedQuery]);
 	React.useEffect(() => {
 		if (assetPage !== assetPagination.page) setAssetPage(assetPagination.page);
 	}, [assetPage, assetPagination.page]);
+	React.useEffect(() => {
+		if (discoverTokenPage !== discoverTokenPagination.page) {
+			setDiscoverTokenPage(discoverTokenPagination.page);
+		}
+	}, [discoverTokenPage, discoverTokenPagination.page]);
 	const collectionResultsReady = homeMarketSummariesReady(
 		marketShellLoading,
 		collections.map((collection) => collection.id),
@@ -3878,7 +3891,7 @@ function Home() {
 				const price = displayAssetPrices[asset.id];
 				return (
 					<TokenMarketRow
-						asset={asset}
+						asset={{ ...asset, image: assetImages[asset.id] ?? asset.image }}
 						collection={collection}
 						context={`Fungible token · ${short(asset.id)}`}
 						key={`${collection.id}-${asset.id}`}
@@ -4197,101 +4210,66 @@ function Home() {
 									role="tabpanel"
 								>
 									{displayedAssets.length || discoverResultsPending ? (
-										<>
-											<div className="home-asset-grid">
-												{assetPagination.items.map(({ asset, collection }, index) => {
-													const price = displayAssetPrices[asset.id];
-													const pricePending = !price;
-													return (
-														<Link
-															key={`${collection.id}-${asset.id}`}
-															to={`/asset/${collection.id}/${asset.id}`}
-															onFocus={() =>
-																prefetchAssetPage(
-																	asset.id,
-																	collection.kind === 'tokens'
-																)
-															}
-															onMouseEnter={() =>
-																prefetchAssetPage(
-																	asset.id,
-																	collection.kind === 'tokens'
-																)
-															}
-															onTouchStart={() =>
-																prefetchAssetPage(
-																	asset.id,
-																	collection.kind === 'tokens'
-																)
-															}
-														>
-															{collection.kind === 'tokens' ? (
-																<div className="home-asset-media home-token-media">
-																	<TokenAvatar
-																		fetchPriority={index < 2 ? 'high' : 'auto'}
-																		image={assetImages[asset.id] ?? asset.image}
-																		loading={index < 2 ? 'eager' : 'lazy'}
-																		ticker={asset.ticker ?? 'Token'}
-																	/>
-																</div>
-															) : asset.image ? (
-																<ArtworkImage
-																	className="home-asset-media"
-																	src={asset.image}
-																	alt=""
-																	fetchPriority={index < 2 ? 'high' : 'auto'}
-																	loading={index < 2 ? 'eager' : 'lazy'}
-																/>
-															) : isAudioContentType(asset.contentType) ? (
-																<AudioArtwork
-																	className="home-asset-media"
-																	contentType={asset.contentType}
-																	name={asset.name}
-																/>
-															) : collection.kind === 'names' ? (
-																<NameArtwork
-																	className="home-asset-media"
-																	name={asset.name}
-																/>
-															) : (
-																<div className="home-asset-media home-token-media">
-																	<TokenAvatar ticker={asset.ticker ?? 'Token'} />
-																</div>
-															)}
-															<div className="home-asset-details">
-																<div>
-																	<strong>{asset.name}</strong>
-																	<span>{collection.name}</span>
-																</div>
-																<b
-																	className={`home-asset-price${
-																		homeMarketSummaryListed(price) ? ' listed' : ''
-																	}`}
-																>
-																	{!pricePending && price ? (
-																		<ArCurrencyText>
-																			{homeMarketSummaryLabel(
-																				price,
-																				'Not listed'
-																			)}
-																		</ArCurrencyText>
-																	) : (
-																		<HomePendingMarketValue />
-																	)}
-																</b>
-															</div>
-														</Link>
-													);
-												})}
+										assetType === 'all' ? (
+											<div className="discover-market-sections">
+												<section className="discover-market-section token-section">
+													<div className="discover-market-heading">
+														<div>
+															<p className="eyebrow">Fungible assets</p>
+															<h2>Tokens</h2>
+														</div>
+														<Button size="custom" onClick={() => setAssetType('tokens')}>
+															View all tokens
+															<ArrowRight className="ui-icon ui-icon--xs" aria-hidden="true" />
+														</Button>
+													</div>
+													{discoverTokens.length ? (
+														<>
+															{renderTokenList(discoverTokenPagination.items)}
+															<Pagination
+																ariaLabel="Token overview pages"
+																className="discover-token-pagination"
+																onPageChange={setDiscoverTokenPage}
+																page={discoverTokenPagination.page}
+																pageCount={discoverTokenPagination.pageCount}
+															/>
+														</>
+													) : (
+														<p className="discover-section-empty">No tokens match this view.</p>
+													)}
+												</section>
+												<section className="discover-market-section collectible-section">
+													<div className="discover-market-heading">
+														<div>
+															<p className="eyebrow">1/1 assets</p>
+															<h2>Uniques</h2>
+														</div>
+														<Button size="custom" onClick={() => setAssetType('atomic')}>
+															View all collectibles
+															<ArrowRight className="ui-icon ui-icon--xs" aria-hidden="true" />
+														</Button>
+													</div>
+													{discoverCollectibles.length ? (
+														renderCollectibleGrid(discoverCollectibles.slice(0, 12))
+													) : (
+														<p className="discover-section-empty">No collectibles match this view.</p>
+													)}
+												</section>
 											</div>
-											<Pagination
-												ariaLabel="Discover pages"
-												className="home-asset-pagination"
-												onPageChange={selectAssetPage}
-												page={assetPagination.page}
-												pageCount={assetPagination.pageCount}
-											/>
-										</>
+										) : (
+											<>
+												{assetType === 'tokens'
+													? renderTokenList(assetPagination.items)
+													: renderCollectibleGrid(assetPagination.items)}
+												<Pagination
+													ariaLabel={assetType === 'tokens' ? 'Token pages' : 'Collectible pages'}
+													className="home-asset-pagination"
+													onPageChange={selectAssetPage}
+													page={assetPagination.page}
+													pageCount={assetPagination.pageCount}
+												/>
+											</>
+										)
 									) : discoverResultsFailed ? null : (
 										<div className="home-assets-empty">
 											{assetView === 'all'
@@ -6961,38 +6939,7 @@ function CollectionActivityView() {
 					<h1>{collection.name}</h1>
 				</div>
 			</div>
-			<CollectionTabs
-				action={
-					<Tooltip content={loading ? 'Refreshing activity' : error ? 'Retry activity' : 'Refresh activity'}>
-						{(tooltipId) => (
-							<Button
-								aria-describedby={tooltipId}
-								aria-disabled={loading}
-								aria-label={
-									loading
-										? 'Refreshing collection activity'
-										: error
-										? 'Retry collection activity'
-										: 'Refresh collection activity'
-								}
-								className={`collection-tabs-refresh${loading ? ' loading' : ''}`}
-								size="custom"
-								type="button"
-								onClick={() => {
-									if (loading) return;
-									setActivityRevealAnnouncement('');
-									activityRunMode.current = error ? 'retry' : 'refresh';
-									setRetry((value) => value + 1);
-								}}
-							>
-								<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" />
-							</Button>
-						)}
-					</Tooltip>
-				}
-				collection={collection}
-				active="activity"
-			/>
+			<CollectionTabs collection={collection} active="activity" />
 			<span aria-live="polite" className="sr-only" role="status">
 				{activityScanAnnouncement}
 			</span>
@@ -7015,6 +6962,12 @@ function CollectionActivityView() {
 					message={`Activity scanning was interrupted. ${
 						events.length ? `${events.length.toLocaleString()} existing events remain visible. ` : ''
 					}${error}`}
+					onRetry={() => {
+						setActivityRevealAnnouncement('');
+						activityRunMode.current = 'retry';
+						setRetry((value) => value + 1);
+					}}
+					retryLabel="Retry activity"
 				/>
 			) : null}
 			<MarketActivityList
@@ -7102,15 +7055,7 @@ export function collectionActivityScanAnnouncement({
 	} so far.`;
 }
 
-function CollectionTabs({
-	collection,
-	active,
-	action,
-}: {
-	collection: Collection;
-	active: 'assets' | 'activity';
-	action?: React.ReactNode;
-}) {
+function CollectionTabs({ collection, active }: { collection: Collection; active: 'assets' | 'activity' }) {
 	return (
 		<nav className="collection-tabs" aria-label={`${collectionDisplayName(collection)} views`}>
 			<Link
@@ -7132,7 +7077,6 @@ function CollectionTabs({
 			>
 				<History className="ui-icon ui-icon--sm" aria-hidden="true" /> Activity
 			</Link>
-			{action}
 		</nav>
 	);
 }
@@ -7590,10 +7534,11 @@ function AssetDetailLoadingShell({
 	error?: string | null;
 	onRetry?: () => void;
 }) {
+	const wallet = useWallet();
 	const { kind, device } = assetDetailLoadingPresentation(collection, collectionId);
 	const detailClass = kind === 'tokens' ? 'fungible-asset-page' : 'atomic-asset-page';
 	const collectionName =
-		collection?.name ??
+		(collection ? (kind === 'tokens' ? collectionDisplayName(collection) : collection.name) : undefined) ??
 		(kind === 'tokens' ? 'Fungible tokens' : kind === 'images' ? CREATED_COLLECTION_NAME : 'Arweave names');
 
 	if (kind === 'tokens') {
@@ -7627,11 +7572,11 @@ function AssetDetailLoadingShell({
 								<span>{collectionName}</span>
 							)}
 							<span>token@1.0</span>
-							<span>Token</span>
 						</div>
 					</div>
-					<div className="fungible-token-balance">
-						<span>Loading market state</span>
+					<div aria-hidden="true" className="fungible-token-balance">
+						<span>{wallet.address ? 'Your liquid balance' : 'Circulating supply'}</span>
+						<strong className="layout-placeholder asset-loading-balance" />
 					</div>
 				</header>
 				{error ? (
@@ -7642,30 +7587,92 @@ function AssetDetailLoadingShell({
 					</div>
 				)}
 				<div className="asset-detail-layout">
-					<div className="asset-commerce-column asset-commerce-primary">
-						<section aria-hidden="true" className="asset-commerce-card asset-commerce-card-loading">
-							<div className="asset-loading-stat-grid">
-								{Array.from({ length: 4 }, (_, index) => (
-									<span className="layout-placeholder" key={index} />
-								))}
+				<div className="asset-commerce-column asset-commerce-primary">
+					<section aria-hidden="true" className="asset-commerce-card asset-commerce-card-loading">
+						<div className="asset-market-stats asset-loading-market-stats">
+							{['Current unit price', 'For sale', 'Your listed', 'Holders'].map((label) => (
+								<div key={label}>
+									<span>{label}</span>
+									<i className="layout-placeholder" />
+								</div>
+							))}
+						</div>
+						<div className="fungible-trade-switcher">
+							<div className="segmented-tabs fungible-trade-tabs asset-loading-trade-tabs">
+								<span>Buy</span>
+								<span>List</span>
+								<span>Transfer</span>
 							</div>
-							<span className="layout-placeholder asset-loading-summary" />
-							<span className="layout-placeholder asset-loading-action" />
-						</section>
+						</div>
+						<div className="asset-loading-trade-composer">
+							<div>
+								<span>You buy</span>
+								<i className="layout-placeholder" />
+								<small className="layout-placeholder" />
+							</div>
+							<div>
+								<span>You pay</span>
+								<i className="layout-placeholder" />
+								<small className="layout-placeholder" />
+							</div>
+						</div>
+						<span className="layout-placeholder asset-loading-action" />
+					</section>
 					</div>
 					<div className="asset-commerce-column asset-commerce-secondary">
 						<nav
 							aria-hidden="true"
 							className="home-market-tabs asset-detail-tabs asset-section-tabs-loading"
 						>
-							<span>Orders</span>
-							<span>Details</span>
-							<span>Activity</span>
+							<span>Market</span>
+							<span>Holders</span>
+							<span>About</span>
 						</nav>
-						<div aria-hidden="true" className="asset-loading-panel">
-							<span className="layout-placeholder" />
-							<span className="layout-placeholder" />
-							<span className="layout-placeholder" />
+						<div aria-hidden="true" className="fungible-market-panel asset-loading-market-panel">
+							<section className="token-price-chart asset-loading-chart">
+								<div className="token-price-chart-heading">
+									<div className="asset-loading-chart-quote">
+										<span>Indexed ask history</span>
+										<strong className="layout-placeholder" />
+									</div>
+									<div className="asset-loading-chart-ranges">
+										{Array.from({ length: 4 }, (_, index) => (
+											<span className="layout-placeholder" key={index} />
+										))}
+									</div>
+								</div>
+								<div className="asset-loading-chart-plot">
+									<span />
+									<span />
+									<span />
+								</div>
+							</section>
+							<div className="orderbook-table fungible-orderbook asset-loading-orderbook">
+								<div className="orderbook-head">
+									<span>Price</span>
+									<span>Size</span>
+									<span>Value</span>
+									<span>Seller</span>
+									<span>State</span>
+								</div>
+								{Array.from({ length: 3 }, (_, row) => (
+									<div className="orderbook-row" key={row}>
+										{Array.from({ length: 5 }, (_, column) => (
+											<span className="layout-placeholder" key={column} />
+										))}
+									</div>
+								))}
+							</div>
+							<section className="asset-loading-activity">
+								<h2>Activity</h2>
+								{Array.from({ length: 3 }, (_, row) => (
+									<div key={row}>
+										<span className="layout-placeholder" />
+										<span className="layout-placeholder" />
+										<span className="layout-placeholder" />
+									</div>
+								))}
+							</section>
 						</div>
 					</div>
 				</div>
@@ -8734,17 +8741,6 @@ function AssetView() {
 												: 'Transfer'}
 										</Button>
 									) : null}
-									<Button
-										aria-disabled={loading}
-										className="with-icon"
-										size="custom"
-										onClick={() => {
-											if (!loading) void refreshAsset();
-										}}
-									>
-										<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" />{' '}
-										{loading ? 'Refreshing…' : 'Refresh'}
-									</Button>
 								</div>
 							</section>
 						) : null}
@@ -8920,26 +8916,6 @@ function AssetView() {
 									}
 								/>
 							) : null}
-							<div className="asset-history-actions">
-								<Button
-									aria-disabled={activityLoading}
-									className="with-icon"
-									size="custom"
-									type="button"
-									onClick={() => {
-										if (!activityLoading) setActivityRetry((value) => value + 1);
-									}}
-								>
-									<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" />{' '}
-									{activityLoading
-										? assetActivity.length
-											? 'Refreshing history…'
-											: 'Loading history…'
-										: activityError
-										? 'Retry history'
-										: 'Refresh history'}
-								</Button>
-							</div>
 							{activityError ? (
 								<div className="inline-error" role={assetActivity.length ? 'status' : 'alert'}>
 									<span>
@@ -8948,6 +8924,14 @@ function AssetView() {
 											? `Previously loaded events remain visible. ${activityError}`
 											: activityError}
 									</span>
+									<Button
+										className="with-icon"
+										onClick={() => setActivityRetry((value) => value + 1)}
+										size="custom"
+										type="button"
+									>
+										<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Retry history
+									</Button>
 								</div>
 							) : null}
 							{assetActivity.length ? (

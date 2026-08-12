@@ -7,10 +7,7 @@ import {
 	BarChart3,
 	Check,
 	CircleX,
-	FileText,
 	Grid2X2,
-	History,
-	Layers3,
 	RefreshCw,
 	Send,
 	ShoppingCart,
@@ -278,6 +275,21 @@ export function fungibleHolders(state: AssetState): FungibleHolder[] {
 		});
 }
 
+export function fungibleHoldingPercentage(balance: string, totalSupply: string) {
+	try {
+		const held = BigInt(balance);
+		const supply = BigInt(totalSupply);
+		if (held <= 0n || supply <= 0n) return '—';
+		const hundredths = (held * 10_000n + supply / 2n) / supply;
+		if (hundredths === 0n) return '<0.01%';
+		const whole = hundredths / 100n;
+		const fraction = (hundredths % 100n).toString().padStart(2, '0').replace(/0+$/, '');
+		return `${whole.toString()}${fraction ? `.${fraction}` : ''}%`;
+	} catch {
+		return '—';
+	}
+}
+
 export function purchaseSettlementNeedsManualReview(state?: PurchaseState) {
 	if (state?.stage !== 'failed' || !state.error) return false;
 	if (TERMINAL_PURCHASE_FAILURES.has(state.error.code)) return true;
@@ -401,17 +413,19 @@ export function FungibleAssetView({
 	const [listingQuantity, setListingQuantity] = React.useState('');
 	const [listingUnitPrice, setListingUnitPrice] = React.useState('');
 	const [tradeMode, setTradeMode] = React.useState<'buy' | 'sell' | 'transfer'>('buy');
-	const [activeSection, setActiveSection] = React.useState<
-		'market' | 'orders' | 'holders' | 'about' | 'activity' | 'rights'
-	>('orders');
+	const [activeSection, setActiveSection] = React.useState<'market' | 'holders' | 'about'>('market');
 	const [orderReveal, setOrderReveal] = React.useState({ assetId: asset.id, limit: 50 });
 	const orderRevealStatusRef = React.useRef<HTMLParagraphElement>(null);
+	const [activityReveal, setActivityReveal] = React.useState({ assetId: asset.id, limit: 8 });
 	const [holderReveal, setHolderReveal] = React.useState({ assetId: asset.id, limit: 50 });
 	const holderRevealStatusRef = React.useRef<HTMLParagraphElement>(null);
 	const [storageVersion, setStorageVersion] = React.useState(0);
 	const orders = React.useMemo(() => liveOrdersOfAsset(state), [state]);
 	const orderLimit = orderReveal.assetId === asset.id ? orderReveal.limit : 50;
 	const visibleOrderRows = visibleOrderbookRows(orders, orderLimit);
+	const orderDepths = React.useMemo(() => orderbookCumulativeDepths(orders), [orders]);
+	const activityLimit = activityReveal.assetId === asset.id ? activityReveal.limit : 8;
+	const visibleActivityRows = activity.slice(0, activityLimit);
 	const openOrders = React.useMemo(() => orders.filter((order) => order.status === 'open'), [orders]);
 	const purchasableOrders = React.useMemo(
 		() => openOrders.filter((order) => order.creator !== wallet.address && order.recipient !== wallet.address),
@@ -480,12 +494,6 @@ export function FungibleAssetView({
 			panelId: 'fungible-asset-market',
 		},
 		{
-			value: 'orders',
-			label: 'Orders',
-			icon: <Layers3 className="ui-icon" aria-hidden="true" />,
-			panelId: 'fungible-asset-orders',
-		},
-		{
 			value: 'holders',
 			label: 'Holders',
 			icon: <Users className="ui-icon" aria-hidden="true" />,
@@ -496,18 +504,6 @@ export function FungibleAssetView({
 			label: 'About',
 			icon: <Grid2X2 className="ui-icon" aria-hidden="true" />,
 			panelId: 'fungible-asset-about',
-		},
-		{
-			value: 'activity',
-			label: 'Activity',
-			icon: <History className="ui-icon" aria-hidden="true" />,
-			panelId: 'fungible-asset-activity',
-		},
-		{
-			value: 'rights',
-			label: 'Usage rights',
-			icon: <FileText className="ui-icon" aria-hidden="true" />,
-			panelId: 'fungible-asset-rights',
 		},
 	];
 	type FungibleTradeMode = typeof tradeMode;
@@ -538,11 +534,12 @@ export function FungibleAssetView({
 		setListingQuantity('');
 		setListingUnitPrice('');
 		setTradeMode('buy');
-		setActiveSection('orders');
+		setActiveSection('market');
+		setActivityReveal({ assetId: asset.id, limit: 8 });
 	}, [asset.id]);
 
 	React.useEffect(() => {
-		if (activeSection === 'market' || activeSection === 'activity') onActivityVisible();
+		if (activeSection === 'market') onActivityVisible();
 	}, [activeSection, onActivityVisible]);
 
 	React.useEffect(() => {
@@ -1135,86 +1132,57 @@ export function FungibleAssetView({
 								points={askHistory}
 								ticker={ticker}
 							/>
-							<section className="token-market-overview" aria-labelledby="token-market-overview-title">
-								<div className="token-market-overview-heading">
-									<div>
-										<span>Live order book</span>
-										<strong id="token-market-overview-title">Market snapshot</strong>
-									</div>
-									<span className="token-market-live-status" data-active={openOrders.length > 0}>
-										<i aria-hidden="true" />
-										{openOrders.length.toLocaleString()} open{' '}
-										{openOrders.length === 1 ? 'ask' : 'asks'}
-									</span>
-								</div>
-								<div className="token-market-snapshot" aria-label="Current token market">
-									<div className="token-market-primary-metric">
-										<span>Best live ask</span>
-										<strong>{best ? orderPriceLabel(best, state) : 'Not listed'}</strong>
-									</div>
-									<div>
-										<span>Open asks</span>
-										<strong>{openOrders.length.toLocaleString()}</strong>
-									</div>
-									<div>
-										<span>Listed supply</span>
-										<strong>{tokenLabel(forSale, state)}</strong>
-									</div>
-									<div>
-										<span>Holders</span>
-										<strong>{holders.toLocaleString()}</strong>
-									</div>
-								</div>
-							</section>
-							{activityError ? (
-								<div className="asset-history-actions">
-									<Button className="with-icon" onClick={onActivityRetry} size="custom" type="button">
-										<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Retry history
-									</Button>
-								</div>
-							) : null}
-						</section>
-					) : null}
-					{activeSection === 'orders' ? (
-						<section
-							aria-labelledby="fungible-asset-orders-tab"
-							className="asset-tab-panel"
-							id="fungible-asset-orders"
-							role="tabpanel"
-							tabIndex={0}
-						>
 							<div
 								aria-label={`${asset.name} order book`}
 								className="orderbook-table fungible-orderbook"
 								role="table"
 							>
 								<div className="orderbook-head" role="row">
-									<span role="columnheader">Unit price</span>
-									<span role="columnheader">Quantity</span>
-									<span role="columnheader">Total</span>
+									<span role="columnheader">Price (AR)</span>
+									<span role="columnheader">Size ({tickerDisplay})</span>
+									<span role="columnheader">Value (AR)</span>
 									<span role="columnheader">Seller</span>
-									<span role="columnheader">Status</span>
+									<span role="columnheader">State</span>
 									<span aria-label="Actions" role="columnheader" />
 								</div>
-								{visibleOrderRows.map((order) => {
+								{visibleOrderRows.map((order, index) => {
 									const own = order.creator === wallet.address;
 									return (
-										<div className="orderbook-row" key={order.orderId} role="row">
-											<strong data-label="Unit price" role="cell">
-												<ArCurrencyText>{orderPriceLabel(order, state)}</ArCurrencyText>
+										<div
+											className="orderbook-row orderbook-depth-row"
+											key={order.orderId}
+											role="row"
+											style={
+												{ '--orderbook-depth': `${orderDepths[index]}%` } as React.CSSProperties
+											}
+										>
+											<strong
+												aria-label={orderPriceLabel(order, state)}
+												data-label="Price (AR)"
+												role="cell"
+											>
+												{winstonToAr(unitPriceWinston(order, state.denomination).toString())}
 											</strong>
-											<span data-label="Quantity" role="cell">
-												{tokenLabel(order.quantity, state)}
+											<span
+												aria-label={tokenLabel(order.quantity, state)}
+												data-label={`Size (${tickerDisplay})`}
+												role="cell"
+											>
+												{formatGroupedTokenAmount(order.quantity, state.denomination)}
 											</span>
-											<span data-label="Total" role="cell">
-												{winstonToAr(order.asking)} <ArCurrencyLabel />
+											<span
+												aria-label={`${winstonToAr(order.asking)} AR`}
+												data-label="Value (AR)"
+												role="cell"
+											>
+												{winstonToAr(order.asking)}
 											</span>
 											<span data-label="Seller" role="cell">
 												<WalletAddress address={order.creator} label="seller" />
 											</span>
 											<span
 												className={`order-status ${order.status}`}
-												data-label="Status"
+												data-label="State"
 												role="cell"
 											>
 												{order.status}
@@ -1283,6 +1251,69 @@ export function FungibleAssetView({
 									) : null}
 								</div>
 							) : null}
+							<section className="asset-market-activity" aria-labelledby="fungible-market-activity-title">
+								<div className="asset-market-activity-heading">
+									<div>
+										<h2 id="fungible-market-activity-title">Activity</h2>
+										{activityLoading ? <span role="status">Refreshing…</span> : null}
+									</div>
+								</div>
+								{activityError ? (
+									<div className="inline-error" role={activity.length ? 'status' : 'alert'}>
+										<span>
+											Market history could not be read.{' '}
+											{activity.length
+												? `Previously loaded events remain visible. ${activityError}`
+												: activityError}
+										</span>
+										<Button
+											className="with-icon"
+											onClick={onActivityRetry}
+											size="custom"
+											type="button"
+										>
+											<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Retry
+											history
+										</Button>
+									</div>
+								) : null}
+								{visibleActivityRows.length ? (
+									<MarketActivityList
+										ariaLabel={`${asset.name} market activity`}
+										collectionId={collection.id}
+										compact
+										describeEvent={(event) => activityDetail(event, state)}
+										eventAmount={(event) => fungiblePurchaseActivityAmount(event, activity, state)}
+										events={visibleActivityRows}
+										loading={activityLoading}
+										resolveAsset={() => asset}
+									/>
+								) : null}
+								{!activityLoading && !activityError && !activity.length ? (
+									<p className="asset-empty-copy">No indexed market events found.</p>
+								) : null}
+								<div className="asset-market-activity-footer">
+									<p className="market-note">
+										Recent signed submissions from Arweave. Live orders remain authoritative.
+									</p>
+									{visibleActivityRows.length < activity.length ? (
+										<Button
+											type="button"
+											size="custom"
+											onClick={() =>
+												setActivityReveal({
+													assetId: asset.id,
+													limit: Math.min(activity.length, activityLimit + 8),
+												})
+											}
+										>
+											Show{' '}
+											{Math.min(8, activity.length - visibleActivityRows.length).toLocaleString()}{' '}
+											more
+										</Button>
+									) : null}
+								</div>
+							</section>
 						</section>
 					) : null}
 					{activeSection === 'holders' ? (
@@ -1301,6 +1332,7 @@ export function FungibleAssetView({
 								<div className="orderbook-head" role="row">
 									<span role="columnheader">Holder</span>
 									<span role="columnheader">Total balance</span>
+									<span role="columnheader">Share</span>
 									<span role="columnheader">Listed</span>
 								</div>
 								{visibleHolderRows.map((holder) => (
@@ -1311,6 +1343,9 @@ export function FungibleAssetView({
 										<strong data-label="Total balance" role="cell">
 											{tokenLabel(holder.total, state)}
 										</strong>
+										<span className="fungible-holder-share" data-label="Share" role="cell">
+											{fungibleHoldingPercentage(holder.total, state.totalSupply)}
+										</span>
 										<span data-label="Listed" role="cell">
 											{BigInt(holder.listed) > 0n ? tokenLabel(holder.listed, state) : '—'}
 										</span>
@@ -1318,7 +1353,7 @@ export function FungibleAssetView({
 								))}
 								{!holderRows.length ? (
 									<div className="orderbook-empty" role="row">
-										<div aria-colspan={3} className="orderbook-empty-cell" role="cell">
+										<div aria-colspan={4} className="orderbook-empty-cell" role="cell">
 											<strong>No holders found</strong>
 											<span>The current process state does not contain a positive balance.</span>
 										</div>
@@ -1393,123 +1428,37 @@ export function FungibleAssetView({
 									</strong>
 								</div>
 							</div>
-						</section>
-					) : null}
-					{activeSection === 'activity' ? (
-						<section
-							aria-labelledby="fungible-asset-activity-tab"
-							className="asset-tab-panel asset-activity-panel"
-							id="fungible-asset-activity"
-							role="tabpanel"
-							tabIndex={0}
-						>
-							{activityLoading ? (
-								<Loading
-									label={
-										activity.length
-											? 'Refreshing market history…'
-											: 'Reading indexed market history…'
-									}
-								/>
-							) : null}
-							<div className="asset-history-actions">
-								<Tooltip
-									content={
-										activityLoading
-											? 'Refreshing history'
-											: activityError
-											? 'Retry history'
-											: 'Refresh history'
-									}
-								>
-									{(tooltipId) => (
-										<Button
-											aria-describedby={tooltipId}
-											aria-disabled={activityLoading}
-											aria-label={
-												activityLoading
-													? activity.length
-														? 'Refreshing history'
-														: 'Loading history'
-													: activityError
-													? 'Retry history'
-													: 'Refresh history'
-											}
-											className={`asset-history-refresh${activityLoading ? ' loading' : ''}`}
-											type="button"
-											size="icon"
-											onClick={() => {
-												if (!activityLoading) onActivityRetry();
-											}}
-										>
-											<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" />
-										</Button>
-									)}
-								</Tooltip>
-							</div>
-							{activityError ? (
-								<div className="inline-error" role={activity.length ? 'status' : 'alert'}>
-									<span>
-										Market history could not be read.{' '}
-										{activity.length
-											? `Previously loaded events remain visible. ${activityError}`
-											: activityError}
-									</span>
-								</div>
-							) : null}
-							{activity.length ? (
-								<MarketActivityList
-									ariaLabel={`${asset.name} market activity`}
-									collectionId={collection.id}
-									describeEvent={(event) => activityDetail(event, state)}
-									eventAmount={(event) => fungibleActivityAmount(event, state)}
-									events={activity}
-									loading={activityLoading}
-									resolveAsset={() => asset}
-								/>
-							) : null}
-							{!activityLoading && !activityError && !activity.length ? (
-								<p className="asset-empty-copy">No indexed market events found.</p>
-							) : null}
-							<p className="market-note">
-								Up to 24 recent signed process submissions indexed from Arweave. Live balances and
-								orders above remain authoritative.
-							</p>
-						</section>
-					) : null}
-					{activeSection === 'rights' ? (
-						<section
-							aria-labelledby="fungible-asset-rights-tab"
-							className="asset-tab-panel"
-							id="fungible-asset-rights"
-							role="tabpanel"
-							tabIndex={0}
-						>
-							{license.length ? (
-								<dl className="license-properties">
-									{license.map((property) => (
-										<div key={property.key}>
-											<dt>{property.label}</dt>
-											<dd>{property.value}</dd>
+							<section className="asset-about-rights" aria-labelledby="fungible-about-rights-title">
+								<h2 id="fungible-about-rights-title">Usage rights</h2>
+								{license.length ? (
+									<dl className="license-properties">
+										{license.map((property) => (
+											<div key={property.key}>
+												<dt>{property.label}</dt>
+												<dd>{property.value}</dd>
+											</div>
+										))}
+										<div className="license-proof">
+											<dt>Proof</dt>
+											<dd>
+												<a
+													href={transactionExplorerUrl(asset.id)}
+													target="_blank"
+													rel="noreferrer"
+												>
+													View license proof on ViewBlock{' '}
+													<ArrowUpRight className="ui-icon ui-icon--xs" aria-hidden="true" />
+												</a>
+											</dd>
 										</div>
-									))}
-									<div className="license-proof">
-										<dt>Proof</dt>
-										<dd>
-											<a href={transactionExplorerUrl(asset.id)} target="_blank" rel="noreferrer">
-												View license proof on ViewBlock{' '}
-												<ArrowUpRight className="ui-icon ui-icon--xs" aria-hidden="true" />
-											</a>
-										</dd>
-									</div>
-								</dl>
-							) : (
-								<p className="asset-empty-copy">No UDL terms declared.</p>
-							)}
-							<p className="market-note">
-								Declared terms and effective UDL 0.2 defaults are derived from immutable process
-								metadata.
-							</p>
+									</dl>
+								) : (
+									<p className="asset-empty-copy">No UDL terms declared.</p>
+								)}
+								<p className="market-note">
+									Declared terms and effective UDL 0.2 defaults come from immutable process metadata.
+								</p>
+							</section>
 						</section>
 					) : null}
 				</div>
@@ -3273,7 +3222,9 @@ function FungibleOperationDialog({
 											<span>Order</span>
 											<Tooltip content={activeOrder.orderId} placement="top">
 												{(tooltipId) => (
-													<strong aria-describedby={tooltipId}>{short(activeOrder.orderId)}</strong>
+													<strong aria-describedby={tooltipId}>
+														{short(activeOrder.orderId)}
+													</strong>
 												)}
 											</Tooltip>
 										</div>
@@ -4127,6 +4078,21 @@ export function visibleOrderbookRows<T>(orders: T[], limit: number) {
 	return orders.slice(0, Math.max(0, limit));
 }
 
+/**
+ * Build the one-sided sell-depth contour shown behind the ask rows. Reserved
+ * listings stay visible in the table but do not add purchasable market depth.
+ */
+export function orderbookCumulativeDepths(orders: ReadonlyArray<Pick<SwapOrder, 'quantity' | 'status'>>) {
+	const total = orders.reduce((sum, order) => (order.status === 'open' ? sum + BigInt(order.quantity) : sum), 0n);
+	if (total === 0n) return orders.map(() => 0);
+
+	let cumulative = 0n;
+	return orders.map((order) => {
+		if (order.status === 'open') cumulative += BigInt(order.quantity);
+		return Number((cumulative * 10_000n) / total) / 100;
+	});
+}
+
 function equalPurchaseSnapshots(left: PurchaseSnapshot, right: PurchaseSnapshot) {
 	return (
 		left.registration?.id === right.registration?.id &&
@@ -4419,6 +4385,36 @@ export function fungibleActivityAmount(event: CollectionActivityEvent, state: As
 	if (!event.quantity) return '';
 	const quantity = tokenLabel(event.quantity, state);
 	return event.action === 'make-offer' && event.asking ? `${quantity} for ${winstonToAr(event.asking)} AR` : quantity;
+}
+
+export function fungiblePurchaseActivityAmount(
+	event: CollectionActivityEvent,
+	events: CollectionActivityEvent[],
+	state: AssetState
+) {
+	if (event.action !== 'register-interest' || !event.orderId || !event.quantity) {
+		return fungibleActivityAmount(event, state);
+	}
+	const indexedListing = events.find(
+		(candidate) =>
+			candidate.action === 'make-offer' &&
+			candidate.id === event.orderId &&
+			Boolean(candidate.asking) &&
+			Boolean(candidate.quantity)
+	);
+	const liveListing = state.orders?.[event.orderId];
+	const asking = indexedListing?.asking ?? liveListing?.asking;
+	const listedQuantity = indexedListing?.quantity ?? liveListing?.quantity;
+	if (!asking || !listedQuantity) return fungibleActivityAmount(event, state);
+	try {
+		const fill = BigInt(event.quantity);
+		const lot = BigInt(listedQuantity);
+		if (fill <= 0n || lot <= 0n || fill > lot) return fungibleActivityAmount(event, state);
+		const paid = (BigInt(asking) * fill + lot - 1n) / lot;
+		return `${tokenLabel(event.quantity, state)} for ${winstonToAr(paid.toString())} AR`;
+	} catch {
+		return fungibleActivityAmount(event, state);
+	}
 }
 
 function short(value: string) {

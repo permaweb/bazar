@@ -1653,6 +1653,51 @@ describe('wallet candidate discovery', () => {
 		expect(body.variables.recipients).toEqual([assetA]);
 	});
 
+	it('keeps the registered fill quantity needed to price purchase activity', async () => {
+		const transaction = 'R'.repeat(43);
+		const orderId = 'O'.repeat(43);
+		const fetcher = vi.fn(async () =>
+			Response.json({
+				data: {
+					transactions: {
+						pageInfo: { hasNextPage: false },
+						edges: [
+							{
+								cursor: 'purchase',
+								node: {
+									id: transaction,
+									recipient: assetA,
+									owner: { address: wallet },
+									tags: [
+										{ name: 'action', value: 'register-interest' },
+										{ name: 'order-id', value: orderId },
+										{ name: 'fill-quantity', value: '250' },
+									],
+									block: { height: 42, timestamp: 420 },
+								},
+							},
+						],
+					},
+				},
+			})
+		);
+
+		await expect(
+			discoverCollectionActivity({ fetch: fetcher as typeof fetch, recipients: [assetA] })
+		).resolves.toEqual([
+			{
+				id: transaction,
+				processId: assetA,
+				action: 'register-interest',
+				actor: wallet,
+				height: 42,
+				timestamp: 420,
+				orderId,
+				quantity: '250',
+			},
+		]);
+	});
+
 	it('bounds token collection activity and merges the newest events independent of completion order', async () => {
 		const recipients = Array.from({ length: 205 }, (_, index) => index.toString(36).padStart(43, 'D'));
 		let active = 0;

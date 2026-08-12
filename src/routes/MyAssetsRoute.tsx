@@ -36,8 +36,8 @@ import { useWallet } from 'providers/WalletProvider';
 import {
 	AssetCard,
 	type CandidateSupportFailure,
-	groupWalletResults,
 	initialWalletResolutionStatus,
+	MarketSelect,
 	MarketContext,
 	nextWalletAnnouncementProgress,
 	refreshCandidateRetryMetadata,
@@ -70,6 +70,8 @@ export default function MyAssetsRoute() {
 	const [retry, setRetry] = React.useState(0);
 	const [discoveryRetry, setDiscoveryRetry] = React.useState(0);
 	const [failedRetry, setFailedRetry] = React.useState(0);
+	const [tokenView, setTokenView] = React.useState<'all' | 'listed'>('all');
+	const [uniqueView, setUniqueView] = React.useState<'all' | 'listed'>('all');
 	const failedCandidates = React.useRef(new Map<string, AssetCandidate>());
 	const supportFailures = React.useRef(new Map<string, CandidateSupportFailure>());
 	const computeRateLimits = React.useRef(new Set<string>());
@@ -87,10 +89,6 @@ export default function MyAssetsRoute() {
 	const sessionIsCurrent = walletDiscoverySessionIsCurrent(discoverySession.current, requestedSessionScope);
 	const visibleResults = sessionIsCurrent ? results : [];
 	const status = sessionIsCurrent ? storedStatus : initialWalletResolutionStatus();
-	const groupedResults = React.useMemo(
-		() => (wallet.address ? groupWalletResults(visibleResults, wallet.address) : { owned: [], listed: [] }),
-		[visibleResults, wallet.address]
-	);
 	const retryDiscovery = () => {
 		setDiscoveryRetry((value) => value + 1);
 	};
@@ -532,7 +530,17 @@ export default function MyAssetsRoute() {
 			</section>
 		);
 	}
-	const { owned, listed } = groupedResults;
+	const walletAddress = wallet.address;
+	const tokenResults = visibleResults.filter(
+		(result) =>
+			result.collection.kind === 'tokens' &&
+			(tokenView === 'all' || walletAssetGroups(result, walletAddress).includes('listed'))
+	);
+	const uniqueResults = visibleResults.filter(
+		(result) =>
+			result.collection.kind !== 'tokens' &&
+			(uniqueView === 'all' || walletAssetGroups(result, walletAddress).includes('listed'))
+	);
 	const working = status.phase === 'discovering' || status.phase === 'resolving' || status.phase === 'revalidating';
 	const computeRateLimited = status.rateLimited - status.indexRateLimited;
 	const computeFailures = status.failures - status.indexFailures;
@@ -583,11 +591,18 @@ export default function MyAssetsRoute() {
 						</Tooltip>
 					</span>
 				</div>
-				{status.phase !== 'error' ? (
-					<Button className="with-icon" onClick={refreshAssets} disabled={working} size="custom">
-						<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" />
-						{working ? 'Resolving…' : 'Refresh assets'}
-					</Button>
+				{!status.error && status.phase === 'done' && status.failures && status.failures < status.total ? (
+					<div className="my-assets-heading-status">
+						<span role="status">
+							{aggregateFailureMessage} {status.failures.toLocaleString()}{' '}
+							{status.failures === 1 ? 'candidate remains' : 'candidates remain'} unavailable. Resolved assets
+							remain visible.
+						</span>
+						<Button className="with-icon" type="button" onClick={retryUnavailableAssets} size="custom">
+							<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" />{' '}
+							{status.rateLimited ? 'Retry later' : 'Retry unavailable'}
+						</Button>
+					</div>
 				) : null}
 			</div>
 			<p className="sr-only" aria-live="polite" role="status">
@@ -629,36 +644,25 @@ export default function MyAssetsRoute() {
 					</div>
 				</div>
 			) : null}
-			{!status.error && status.phase === 'done' && status.failures && status.failures < status.total ? (
-				<div className="inline-error">
-					<span role="status">
-						{aggregateFailureMessage} {status.failures.toLocaleString()}{' '}
-						{status.failures === 1 ? 'candidate remains' : 'candidates remain'} unavailable. Resolved assets
-						remain visible.
-					</span>
-					<Button className="with-icon" type="button" onClick={retryUnavailableAssets} size="custom">
-						<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" />{' '}
-						{status.rateLimited ? 'Retry later' : 'Retry unavailable'}
-					</Button>
-				</div>
-			) : null}
 			{!working || visibleResults.length ? (
 				<>
 					<AssetGroup
-						title="Listed for sale"
-						results={listed}
-						badge="For sale"
-						address={wallet.address}
-						group="listed"
+						title="Tokens"
+						results={tokenResults}
+						address={walletAddress}
+						kind="tokens"
+						onViewChange={setTokenView}
 						settled={status.phase === 'done'}
+						view={tokenView}
 					/>
 					<AssetGroup
-						title="Owned"
-						results={owned}
-						badge="Owned"
-						address={wallet.address}
-						group="owned"
+						title="Uniques"
+						results={uniqueResults}
+						address={walletAddress}
+						kind="uniques"
+						onViewChange={setUniqueView}
 						settled={status.phase === 'done'}
+						view={uniqueView}
 					/>
 				</>
 			) : null}
@@ -672,7 +676,7 @@ export default function MyAssetsRoute() {
 					<p>
 						{status.failures
 							? `${aggregateFailureMessage} ${status.failures} of ${status.total} candidates could not be checked. Retry them before treating this as an empty wallet.`
-							: 'Arweave GraphQL discovers candidates and can lag behind new transactions. Refresh after indexing; live state remains authoritative for every candidate found.'}
+							: 'Arweave GraphQL discovers candidates and can lag behind new transactions. Newly indexed candidates appear the next time this page opens; live state remains authoritative for every candidate found.'}
 					</p>
 					{status.failures ? (
 						<Button className="with-icon" type="button" onClick={retryUnavailableAssets} size="custom">
@@ -689,17 +693,19 @@ export default function MyAssetsRoute() {
 const AssetGroup = React.memo(function AssetGroup({
 	title,
 	results,
-	badge,
 	address,
-	group,
+	kind,
+	onViewChange,
 	settled,
+	view,
 }: {
 	title: string;
 	results: ResolvedAsset[];
-	badge: string;
 	address: string;
-	group: 'owned' | 'listed';
+	kind: 'tokens' | 'uniques';
+	onViewChange(view: 'all' | 'listed'): void;
 	settled: boolean;
+	view: 'all' | 'listed';
 }) {
 	const pageSize = useProgressiveAssetPageSize();
 	const [limit, setLimit] = React.useState(pageSize);
@@ -708,10 +714,7 @@ const AssetGroup = React.memo(function AssetGroup({
 	const resultCountRef = React.useRef(results.length);
 	const [revealAnnouncement, setRevealAnnouncement] = React.useState('');
 	resultCountRef.current = results.length;
-	const visibleResults = results.slice(0, limit);
-	const tokenResults = visibleResults.filter((result) => result.collection.kind === 'tokens');
-	const collectibleResults = visibleResults.filter((result) => result.collection.kind !== 'tokens');
-	const assetLabel = group === 'owned' ? 'owned assets' : 'listed assets';
+	const assetLabel = `${view === 'listed' ? 'listed ' : ''}${kind}`;
 	const revealNextAssetPage = React.useCallback(() => {
 		setLimit((current) => {
 			const nextLimit = Math.min(resultCountRef.current, current + pageSize);
@@ -723,36 +726,53 @@ const AssetGroup = React.memo(function AssetGroup({
 	React.useEffect(() => {
 		setLimit(pageSize);
 		setRevealAnnouncement('');
-	}, [address, group]);
+	}, [address, kind, view]);
 	React.useEffect(() => setLimit((current) => retainedAssetGroupLimit(current, pageSize)), [pageSize]);
 	return (
 		<section className="asset-group">
 			<div className="asset-group-title">
-				<h2 aria-label={`${title}, ${results.length.toLocaleString()}`}>{title}</h2>
-				<span aria-hidden="true">{results.length.toLocaleString()}</span>
+				<div className="asset-group-heading">
+					<h2 aria-label={`${title}, ${results.length.toLocaleString()}`}>{title}</h2>
+					<span aria-hidden="true">{results.length.toLocaleString()}</span>
+				</div>
+				<MarketSelect<'all' | 'listed'>
+					label={`${title} view`}
+					onChange={onViewChange}
+					options={[
+						{ value: 'all', label: 'All assets' },
+						{ value: 'listed', label: 'Listed for sale' },
+					]}
+					showLabel={false}
+					value={view}
+				/>
 			</div>
 			{results.length ? (
 				<>
 					<div className="asset-grid" id={gridId}>
-						{results.slice(0, limit).map((result, index) => (
-							<AssetCard
-								key={result.asset.id}
-								collection={result.collection}
-								asset={result.asset}
-								badge={badge}
-								priority={index < 2}
-								price={
-									result.collection.kind === 'tokens'
-										? `${tokenBalanceLabel(
-												group === 'owned'
-													? liquidBalanceOf(result.state, address)
-													: listedBalanceOf(result.state, address),
-												result.state
-										  )}${group === 'listed' ? ' listed' : ''}`
-										: undefined
-								}
-							/>
-						))}
+						{results.slice(0, limit).map((result, index) => {
+							const listed = walletAssetGroups(result, address).includes('listed');
+							const listedBalance = listedBalanceOf(result.state, address);
+							const balance =
+								view === 'listed'
+									? listedBalance
+									: (BigInt(liquidBalanceOf(result.state, address)) + BigInt(listedBalance)).toString();
+							return (
+								<AssetCard
+									key={result.asset.id}
+									collection={result.collection}
+									asset={result.asset}
+									badge={view === 'listed' || listed ? 'For sale' : 'Owned'}
+									priority={index < 2}
+									price={
+										result.collection.kind === 'tokens'
+											? `${tokenBalanceLabel(balance, result.state)}${
+													view === 'listed' ? ' listed' : ''
+											  }`
+											: undefined
+									}
+								/>
+							);
+						})}
 					</div>
 					<p
 						className={
