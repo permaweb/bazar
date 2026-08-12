@@ -322,6 +322,20 @@ describe('collection index loading', () => {
 				raw: { ...state.raw, 'scheduler-mode': 'local' },
 			})
 		).toBeUndefined();
+		for (const legacyTag of ['hint-style', 'asset-type']) {
+			const raw = { ...state.raw, [legacyTag]: 'fungible' };
+			delete raw['hint-ui-style'];
+			expect(collectionAsset(tokens, processId, { ...state, raw })).toMatchObject({
+				id: processId,
+				name: 'Unloaded Token',
+			});
+		}
+		expect(
+			collectionAsset(tokens, processId, {
+				...state,
+				raw: { ...state.raw, 'hint-ui-style': 'non-fungible', 'asset-type': 'fungible' },
+			})
+		).toBeUndefined();
 	});
 
 	it('retains loaded token pages when a refresh returns only page one or its fallback', () => {
@@ -723,6 +737,48 @@ describe('collection index loading', () => {
 				([, init]) => typeof init?.body === 'string' && init.body.includes('FungibleTokens')
 			)
 		).toHaveLength(2);
+	});
+
+	it('includes fungible tokens indexed under immutable legacy marker names', async () => {
+		const legacyId = 'L'.repeat(43);
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+				const body = typeof init?.body === 'string' ? JSON.parse(init.body) : {};
+				if (!body.query?.includes('FungibleTokens')) return new Response('unavailable', { status: 503 });
+				return Response.json({
+					data: {
+						transactions: { count: 0, pageInfo: { hasNextPage: false }, edges: [] },
+						legacyHintStyle: { count: 0, pageInfo: { hasNextPage: false }, edges: [] },
+						legacyAssetType: {
+							count: 1,
+							pageInfo: { hasNextPage: false },
+							edges: [
+								{
+									cursor: 'legacy-token',
+									node: {
+										id: legacyId,
+										tags: [
+											{ name: 'asset-type', value: 'fungible' },
+											{ name: 'name', value: 'Legacy Token' },
+											{ name: 'ticker', value: 'OLD' },
+										],
+									},
+								},
+							],
+						},
+					},
+				});
+			})
+		);
+
+		const result = await loadCollections();
+		const tokens = result.collections.find((collection) => collection.kind === 'tokens');
+
+		expect(tokens?.assets).toEqual(
+			expect.arrayContaining([expect.objectContaining({ id: legacyId, name: 'Legacy Token', ticker: 'OLD' })])
+		);
+		expect(tokens?.total).toBe(2);
 	});
 
 	it('retains loaded fungible tokens when a later page is unavailable', async () => {

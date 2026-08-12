@@ -7,6 +7,7 @@ import {
 	AtSign,
 	BarChart3,
 	Check,
+	ChevronDown,
 	ChevronRight,
 	CircleX,
 	Compass,
@@ -4959,7 +4960,7 @@ export function MarketSelect<Value extends string>({
 				<span>
 					<ArCurrencyText>{selected.label}</ArCurrencyText>
 				</span>
-				<ChevronRight aria-hidden="true" />
+				<ChevronDown aria-hidden="true" />
 			</Button>
 			{open ? (
 				<div aria-label={label} className="market-select-menu" id={menuId} role="listbox">
