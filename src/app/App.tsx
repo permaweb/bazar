@@ -4074,8 +4074,6 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 	const [discoveredAssets, setDiscoveredAssets] = React.useState<Record<string, ResolvedAsset>>({});
 	const [loading, setLoading] = React.useState(true);
 	const [error, setError] = React.useState<string | null>(null);
-	const [pages, setPages] = React.useState(0);
-	const [preservingEvents, setPreservingEvents] = React.useState(false);
 	const [retry, setRetry] = React.useState(0);
 	const [activityFilter, setActivityFilter] = React.useState<GlobalActivityFilter>('all');
 	const [activityLimit, setActivityLimit] = React.useState(20);
@@ -4106,7 +4104,6 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 			eventsRef.current = cachedEvents;
 			setEvents(cachedEvents);
 			setDiscoveredAssets({});
-			setPreservingEvents(true);
 		} catch {
 			// Browser storage is optional; live Arweave discovery continues below.
 		}
@@ -4144,8 +4141,6 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 		}
 		setLoading(true);
 		setError(null);
-		setPages(0);
-		setPreservingEvents(preserveEvents);
 		const publish = (nextEvents: CollectionActivityEvent[]) => {
 			if (controller.signal.aborted) return;
 			for (const event of nextEvents) {
@@ -4159,7 +4154,6 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 			}
 			eventsRef.current = newestCollectionActivity([...found.values()]);
 			setEvents(eventsRef.current);
-			setPages((current) => current + 1);
 		};
 		const knownMembership = (processId: string) => globalActivityCollection(collections, processId);
 		const unknownEvents = new Map<string, CollectionActivityEvent[]>();
@@ -4273,7 +4267,6 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 				setError(marketplaceRequestFailureMessage('index', kind));
 			}
 			setLoading(false);
-			setPreservingEvents(false);
 		});
 		return () => {
 			controller.abort();
@@ -4281,8 +4274,6 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 		};
 	}, [activityScope, marketLoading, retry]);
 
-	const includedEvents = events.filter((event) => event.height > 0).length;
-	const pendingEvents = events.length - includedEvents;
 	const filteredEvents = filterGlobalActivity(events, activityFilter);
 	eventCountRef.current = filteredEvents.length;
 	const activityFilters: Array<{ value: GlobalActivityFilter; label: string }> = [
@@ -4292,6 +4283,11 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 		{ value: 'transfer', label: 'Transfers' },
 		{ value: 'cancel-order', label: 'Cancellations' },
 	];
+	const retryActivity = () => {
+		if (loading) return;
+		setActivityRevealAnnouncement('');
+		setRetry((value) => value + 1);
+	};
 	const resolveCollection = (event: CollectionActivityEvent) =>
 		globalActivityCollection(collections, event.processId) ?? discoveredAssets[event.processId]?.collection;
 	return (
@@ -4302,39 +4298,6 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 			id="home-activity-panel"
 			role="tabpanel"
 		>
-			<div className="activity-heading">
-				<div>
-					<h2>Global market activity</h2>
-					<span aria-hidden="true">
-						{loading
-							? preservingEvents
-								? `${events.length.toLocaleString()} retained · refreshing from Arweave`
-								: pages
-								? `${events.length.toLocaleString()} found across ${pages.toLocaleString()} ${
-										pages === 1 ? 'check' : 'checks'
-								  } · still reading Arweave`
-								: 'Reading indexed transactions from Arweave…'
-							: `${events.length.toLocaleString()} indexed ${
-									events.length === 1 ? 'transaction' : 'transactions'
-							  } · ${includedEvents.toLocaleString()} included in blocks${
-									pendingEvents ? ` · ${pendingEvents.toLocaleString()} pending` : ''
-							  } · newest first`}
-					</span>
-				</div>
-				<Button
-					aria-disabled={loading}
-					className="with-icon"
-					size="custom"
-					onClick={() => {
-						if (loading) return;
-						setActivityRevealAnnouncement('');
-						setRetry((value) => value + 1);
-					}}
-				>
-					<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" />
-					{loading ? (events.length ? 'Refreshing…' : 'Loading…') : error ? 'Retry activity' : 'Refresh'}
-				</Button>
-			</div>
 			<div aria-label="Filter global activity" className="activity-filters" role="group">
 				{activityFilters.map((filter) => {
 					const count = filterGlobalActivity(events, filter.value).length;
@@ -4362,9 +4325,16 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 							Some activity sources could not be refreshed. Showing {events.length.toLocaleString()}{' '}
 							indexed {events.length === 1 ? 'event' : 'events'} already loaded. {error}
 						</span>
+						<Button className="with-icon" onClick={retryActivity} size="custom" type="button">
+							<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Retry activity
+						</Button>
 					</div>
 				) : (
-					<ErrorPanel message={`Global activity could not be loaded. ${error}`} />
+					<ErrorPanel
+						message={`Global activity could not be loaded. ${error}`}
+						onRetry={retryActivity}
+						retryLabel="Retry activity"
+					/>
 				)
 			) : null}
 			<MarketActivityList
@@ -4897,7 +4867,6 @@ function CollectionView() {
 	const deferredQuery = React.useDeferredValue(query);
 	const pageSize = useProgressiveAssetPageSize();
 	const [limit, setLimit] = React.useState(pageSize);
-	const [sort, setSort] = React.useState<'default' | 'recent'>('default');
 	const [listedOnly, setListedOnly] = React.useState(() => collectionDefaultsToListed(collectionId));
 	const [initial, setInitial] = React.useState<string>('all');
 	const [alphabetFocus, setAlphabetFocus] = React.useState<string>('all');
@@ -5150,7 +5119,7 @@ function CollectionView() {
 				)
 				.sort((a, b) => {
 					if (initial !== 'all') return compareCollectionAssetNames(a, b);
-					if (sort === 'recent' && !recentOrderState.error) {
+					if (!recentOrderState.error) {
 						const activityA = activityByAsset.get(a.id);
 						const activityB = activityByAsset.get(b.id);
 						return (
@@ -5173,7 +5142,6 @@ function CollectionView() {
 			initial,
 			recentOrderState.error,
 			recentOrderState.loading,
-			sort,
 			visibleAssets,
 		]
 	);
@@ -5193,7 +5161,7 @@ function CollectionView() {
 		const price = cardPrices[asset.id];
 		return price?.status === 'unavailable' && price.kind === 'rate-limited';
 	}).length;
-	const activityRequestMode = listedOnly ? 'listed' : sort === 'recent' ? 'recent' : 'idle';
+	const activityRequestMode = listedOnly ? 'listed' : 'recent';
 	const listingCollectionVersion = React.useMemo(
 		() => (collection ? collectionListingScopeVersion(collection) : ''),
 		[collection]
@@ -5349,7 +5317,7 @@ function CollectionView() {
 		window.requestAnimationFrame(() => collectionStatusRef.current?.focus());
 	};
 	React.useEffect(() => {
-		if (!collection || (!listedOnly && sort === 'default')) {
+		if (!collection) {
 			listingActivityScope.current = '';
 			listingActivityCandidates.current.clear();
 			listingLoadedAssetIds.current.clear();
@@ -5663,7 +5631,7 @@ function CollectionView() {
 		return () => controller.abort();
 	}, [listedOnly, listingRetry, listingScope]);
 	React.useEffect(() => {
-		if (!collection || !listedOnly || sort !== 'recent') {
+		if (!collection || !listedOnly) {
 			recentOrderScope.current = '';
 			recentOrderActivity.current.clear();
 			recentOrderResolvedIds.current.clear();
@@ -5736,8 +5704,8 @@ function CollectionView() {
 			}
 		);
 		return () => controller.abort();
-	}, [collection?.id, listedIdsKey, listedOnly, recentOrderRetry, sort]);
-	React.useEffect(() => setLimit(pageSize), [initial, listedOnly, query, sort]);
+	}, [collection?.id, listedIdsKey, listedOnly, recentOrderRetry]);
+	React.useEffect(() => setLimit(pageSize), [initial, listedOnly, query]);
 	React.useEffect(() => setLimit((current) => retainedAssetGroupLimit(current, pageSize)), [pageSize]);
 	if (!collection && market.loading)
 		return (
@@ -5836,14 +5804,13 @@ function CollectionView() {
 					<p className="eyebrow">{collectionEyebrow(collection)}</p>
 					<h1>{collection.name}</h1>
 				</div>
-				<div className="collection-title-copy">
-					<p>{collection.description}</p>
-					{collection.kind === 'images' && ownedCollection?.owner === wallet.address ? (
+				{collection.kind === 'images' && ownedCollection?.owner === wallet.address ? (
+					<div className="collection-title-copy">
 						<Button onClick={() => setAppendOpen(true)} type="button" variant="neutral">
 							<Images aria-hidden="true" /> Add assets
 						</Button>
-					) : null}
-				</div>
+					</div>
+				) : null}
 			</div>
 			{appendOpen && ownedCollection ? (
 				<div className="dialog-backdrop" role="presentation">
@@ -6021,29 +5988,22 @@ function CollectionView() {
 						onChange={(event) => setQuery(event.target.value)}
 						placeholder="Search this collection"
 					/>
-					<div className="asset-filters">
-						<MarketSelect<'all' | 'listed'>
-							label="Show"
-							onChange={(nextValue) => setListedOnly(nextValue === 'listed')}
-							options={[
-								{ value: 'all', label: 'All assets' },
-								{ value: 'listed', label: 'Listed for sale' },
-							]}
-							value={listedOnly ? 'listed' : 'all'}
-						/>
-						<MarketSelect<'default' | 'recent'>
-							label="Sort"
-							onChange={setSort}
-							options={[
-								{ value: 'default', label: collection.kind === 'names' ? 'Name: A to Z' : 'Default' },
-								{ value: 'recent', label: 'Recent activity' },
-							]}
-							value={sort}
-						/>
+					<div className="asset-tools-controls">
+						<div className="asset-filters single-filter">
+							<MarketSelect<'all' | 'listed'>
+								label="Show"
+								onChange={(nextValue) => setListedOnly(nextValue === 'listed')}
+								options={[
+									{ value: 'all', label: 'All assets' },
+									{ value: 'listed', label: 'Listed for sale' },
+								]}
+								value={listedOnly ? 'listed' : 'all'}
+							/>
+						</div>
+						<span id={resultSummaryId} ref={collectionStatusRef} tabIndex={-1}>
+							{resultSummary}
+						</span>
 					</div>
-					<span id={resultSummaryId} ref={collectionStatusRef} tabIndex={-1}>
-						{resultSummary}
-					</span>
 					<CollectionResultStatus message={resultAnnouncement} />
 				</div>
 			)}
@@ -6133,7 +6093,7 @@ function CollectionView() {
 					</Button>
 				</div>
 			) : null}
-			{listedOnly && sort === 'recent' && (recentOrderState.loading || recentOrderState.error) ? (
+			{listedOnly && (recentOrderState.loading || recentOrderState.error) ? (
 				<div className={recentOrderState.error ? 'inline-error' : 'collection-source-notice'}>
 					<span role="status">
 						{recentOrderState.loading

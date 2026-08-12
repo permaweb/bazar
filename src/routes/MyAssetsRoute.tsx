@@ -1,5 +1,5 @@
 import React from 'react';
-import { RefreshCw, Server } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
 
 import {
 	type AssetCandidate,
@@ -23,6 +23,7 @@ import { Button } from 'components/Button';
 import { ConnectWalletButton } from 'components/ConnectWalletButton';
 import { ErrorPanel } from 'components/ErrorPanel';
 import { Loading } from 'components/Loading';
+import { PortalIcon } from 'components/PortalIcon';
 import { scheduleIdleTask } from 'helpers/idle';
 import {
 	assetGroupRevealAnnouncement,
@@ -572,7 +573,7 @@ export default function MyAssetsRoute() {
 					<h1>My assets</h1>
 					<p>Your assets, read from live Arweave state.</p>
 					<span className="gateway-pill">
-						<Server className="ui-icon ui-icon--xs" aria-hidden="true" /> Gateway{' '}
+						<PortalIcon className="ui-icon ui-icon--xs" aria-hidden="true" /> Gateway{' '}
 						<span className="gateway-pill-host" title={new URL(gateway).host}>
 							{new URL(gateway).host}
 						</span>
