@@ -85,11 +85,9 @@ describe('collection index loading', () => {
 		]);
 	});
 
-	it('discovers current and legacy Bazar carrier collections from GraphQL in block order', async () => {
+	it('discovers scheduled carrier collections by the COLLECTION ticker without an app tag', async () => {
 		const currentId = 'C'.repeat(43);
-		const legacyId = 'L'.repeat(43);
 		const currentManifest = 'M'.repeat(43);
-		const legacyManifest = 'N'.repeat(43);
 		const assetId = 'A'.repeat(43);
 		const edge = (
 			id: string,
@@ -102,7 +100,6 @@ describe('collection index loading', () => {
 				id,
 				block: { height, timestamp: height * 10 },
 				tags: [
-					{ name: 'app-name', value: 'Bazar' },
 					{ name: 'device', value: 'process@1.0' },
 					{ name: 'execution-device', value: 'carrier@1.0' },
 					{ name: 'type', value: 'Process' },
@@ -126,7 +123,6 @@ describe('collection index loading', () => {
 									{ name: 'scheduler-mode', value: 'all' },
 									{ name: 'ticker', value: 'COLLECTION' },
 								]),
-								edge(legacyId, legacyManifest, 10, []),
 							],
 						},
 					},
@@ -147,7 +143,6 @@ describe('collection index loading', () => {
 				);
 			}
 			if (String(input).includes(`/tx/${currentManifest}/data`)) return new Response(encodeManifest('Current'));
-			if (String(input).includes(`/tx/${legacyManifest}/data`)) return new Response(encodeManifest('Legacy'));
 			return new Response('unavailable', { status: 503 });
 		});
 		vi.stubGlobal('fetch', fetcher);
@@ -162,16 +157,15 @@ describe('collection index loading', () => {
 				createdHeight,
 				indexSource,
 			}))
-		).toEqual([
-			{ id: currentId, name: 'Current', createdHeight: 20, indexSource: 'reference' },
-			{ id: legacyId, name: 'Legacy', createdHeight: 10, indexSource: 'reference' },
-		]);
-		expect(new Set(progress)).toEqual(new Set([currentId, legacyId]));
-		expect(
-			fetcher.mock.calls.find(
-				([, init]) => typeof init?.body === 'string' && init.body.includes('BazarCollections')
-			)?.[1]?.body
-		).toContain('sort: HEIGHT_DESC');
+		).toEqual([{ id: currentId, name: 'Current', createdHeight: 20, indexSource: 'reference' }]);
+		expect(progress).toEqual([currentId]);
+		const discoveryBody = fetcher.mock.calls.find(
+			([, init]) => typeof init?.body === 'string' && init.body.includes('BazarCollections')
+		)?.[1]?.body;
+		const discoveryQuery = JSON.parse(String(discoveryBody)).query;
+		expect(discoveryQuery).toContain('sort: HEIGHT_DESC');
+		expect(discoveryQuery).toContain('{ name: "ticker", values: ["COLLECTION"] }');
+		expect(discoveryQuery).not.toContain('{ name: "app-name"');
 	});
 
 	it('skips tagged collection candidates whose live carrier or immutable manifest is invalid', async () => {
@@ -193,7 +187,6 @@ describe('collection index loading', () => {
 											id: carrierId,
 											block: { height: 2, timestamp: 3 },
 											tags: [
-												{ name: 'app-name', value: 'Bazar' },
 												{ name: 'device', value: 'process@1.0' },
 												{ name: 'execution-device', value: 'carrier@1.0' },
 												{ name: 'scheduler-device', value: 'arweave-scheduler@1.0' },
