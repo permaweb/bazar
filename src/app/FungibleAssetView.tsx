@@ -14,6 +14,7 @@ import {
 	Send,
 	ShoppingCart,
 	Tag,
+	Users,
 } from 'lucide-react';
 import {
 	type Consensus,
@@ -213,6 +214,44 @@ const SETTLEMENT_ERROR_PANEL_ID = 'fungible-settlement-error-panel';
 const TERMINAL_PURCHASE_FAILURES = new Set(['asset-purchase-rejected', 'asset-purchase-proof-mismatch']);
 const TERMINAL_PURCHASE_FAILURE_MESSAGES = new Set(['asset purchase rejected', 'asset purchase proof mismatch']);
 
+export type FungibleHolder = {
+	address: string;
+	liquid: string;
+	listed: string;
+	total: string;
+};
+
+export function fungibleHolders(state: AssetState): FungibleHolder[] {
+	const listedByAddress = new Map<string, bigint>();
+	for (const order of liveOrdersOfAsset(state)) {
+		listedByAddress.set(order.creator, (listedByAddress.get(order.creator) ?? 0n) + BigInt(order.quantity));
+	}
+
+	const addresses = new Set([
+		...Object.entries(state.balances)
+			.filter(([address, balance]) => ADDRESS.test(address) && BigInt(balance) > 0n)
+			.map(([address]) => address),
+		...listedByAddress.keys(),
+	]);
+
+	return [...addresses]
+		.map((address) => {
+			const liquid = BigInt(state.balances[address] ?? '0');
+			const listed = listedByAddress.get(address) ?? 0n;
+			return {
+				address,
+				liquid: liquid.toString(),
+				listed: listed.toString(),
+				total: (liquid + listed).toString(),
+			};
+		})
+		.sort((left, right) => {
+			const difference = BigInt(right.total) - BigInt(left.total);
+			if (difference !== 0n) return difference < 0n ? -1 : 1;
+			return left.address.localeCompare(right.address);
+		});
+}
+
 export function purchaseSettlementNeedsManualReview(state?: PurchaseState) {
 	if (state?.stage !== 'failed' || !state.error) return false;
 	if (TERMINAL_PURCHASE_FAILURES.has(state.error.code)) return true;
@@ -336,9 +375,13 @@ export function FungibleAssetView({
 	const [listingQuantity, setListingQuantity] = React.useState('');
 	const [listingUnitPrice, setListingUnitPrice] = React.useState('');
 	const [tradeMode, setTradeMode] = React.useState<'buy' | 'sell' | 'transfer'>('buy');
-	const [activeSection, setActiveSection] = React.useState<'orders' | 'about' | 'activity' | 'rights'>('orders');
+	const [activeSection, setActiveSection] = React.useState<'orders' | 'holders' | 'about' | 'activity' | 'rights'>(
+		'orders'
+	);
 	const [orderReveal, setOrderReveal] = React.useState({ assetId: asset.id, limit: 50 });
 	const orderRevealStatusRef = React.useRef<HTMLParagraphElement>(null);
+	const [holderReveal, setHolderReveal] = React.useState({ assetId: asset.id, limit: 50 });
+	const holderRevealStatusRef = React.useRef<HTMLParagraphElement>(null);
 	const [storageVersion, setStorageVersion] = React.useState(0);
 	const orders = React.useMemo(() => liveOrdersOfAsset(state), [state]);
 	const orderLimit = orderReveal.assetId === asset.id ? orderReveal.limit : 50;
@@ -385,15 +428,9 @@ export function FungibleAssetView({
 		() => purchaseAmountMatch(purchasableOrders, purchaseQuantity, state),
 		[purchasableOrders, purchaseQuantity, state]
 	);
-	const holders = React.useMemo(() => {
-		const addresses = new Set(
-			Object.entries(state.balances)
-				.filter(([, balance]) => BigInt(balance) > 0n)
-				.map(([address]) => address)
-		);
-		for (const order of orders) addresses.add(order.creator);
-		return addresses.size;
-	}, [orders, state.balances]);
+	const holderRows = React.useMemo(() => fungibleHolders(state), [state]);
+	const holderLimit = holderReveal.assetId === asset.id ? holderReveal.limit : 50;
+	const visibleHolderRows = holderRows.slice(0, holderLimit);
 	const license = licenseProperties(state);
 	const description = assetDescription(state, collection.description);
 	const purchaseKey = wallet.address ? fungibleBatchStorageKey(asset.id, wallet.address) : '';
@@ -404,6 +441,12 @@ export function FungibleAssetView({
 			label: 'Orders',
 			icon: <Layers3 className="ui-icon" aria-hidden="true" />,
 			panelId: 'fungible-asset-orders',
+		},
+		{
+			value: 'holders',
+			label: 'Holders',
+			icon: <Users className="ui-icon" aria-hidden="true" />,
+			panelId: 'fungible-asset-holders',
 		},
 		{
 			value: 'about',
@@ -842,7 +885,7 @@ export function FungibleAssetView({
 							</div>
 							<div>
 								<span>Holders</span>
-								<strong>{holders.toLocaleString()}</strong>
+								<strong>{holderRows.length.toLocaleString()}</strong>
 							</div>
 						</div>
 						<div className="fungible-trade-switcher">
@@ -1138,6 +1181,85 @@ export function FungibleAssetView({
 									) : null}
 								</div>
 							) : null}
+						</section>
+					) : null}
+					{activeSection === 'holders' ? (
+						<section
+							aria-labelledby="fungible-asset-holders-tab"
+							className="asset-tab-panel"
+							id="fungible-asset-holders"
+							role="tabpanel"
+							tabIndex={0}
+						>
+							<div
+								aria-label={`${asset.name} token holders`}
+								className="orderbook-table fungible-holder-table"
+								role="table"
+							>
+								<div className="orderbook-head" role="row">
+									<span role="columnheader">Holder</span>
+									<span role="columnheader">Total balance</span>
+									<span role="columnheader">Listed</span>
+								</div>
+								{visibleHolderRows.map((holder) => (
+									<div className="orderbook-row" key={holder.address} role="row">
+										<span data-label="Holder" role="cell">
+											<WalletAddress address={holder.address} label="holder" />
+										</span>
+										<strong data-label="Total balance" role="cell">
+											{tokenLabel(holder.total, state)}
+										</strong>
+										<span data-label="Listed" role="cell">
+											{BigInt(holder.listed) > 0n ? tokenLabel(holder.listed, state) : '—'}
+										</span>
+									</div>
+								))}
+								{!holderRows.length ? (
+									<div className="orderbook-empty" role="row">
+										<div aria-colspan={3} className="orderbook-empty-cell" role="cell">
+											<strong>No holders found</strong>
+											<span>The current process state does not contain a positive balance.</span>
+										</div>
+									</div>
+								) : null}
+							</div>
+							{holderRows.length > 50 ? (
+								<div className="orderbook-reveal">
+									<p
+										aria-atomic="true"
+										aria-live="polite"
+										ref={holderRevealStatusRef}
+										role="status"
+										tabIndex={-1}
+									>
+										Showing {visibleHolderRows.length.toLocaleString()} of{' '}
+										{holderRows.length.toLocaleString()} holders.
+									</p>
+									{visibleHolderRows.length < holderRows.length ? (
+										<Button
+											type="button"
+											size="custom"
+											onClick={() => {
+												const next = Math.min(holderRows.length, holderLimit + 50);
+												setHolderReveal({ assetId: asset.id, limit: next });
+												if (next === holderRows.length) {
+													window.requestAnimationFrame(() =>
+														holderRevealStatusRef.current?.focus()
+													);
+												}
+											}}
+										>
+											Show{' '}
+											{Math.min(
+												50,
+												holderRows.length - visibleHolderRows.length
+											).toLocaleString()}{' '}
+											more holders
+										</Button>
+									) : null}
+								</div>
+							) : null}
+							<p className="market-note">Balances include tokens held in active marketplace listings.</p>
 						</section>
 					) : null}
 					{activeSection === 'about' ? (
