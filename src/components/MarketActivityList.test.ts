@@ -89,6 +89,8 @@ describe('market activity labels', () => {
 		expect(markup).toContain('class="activity-list compact"');
 		expect(markup).toContain('class="activity-row activity-row-compact"');
 		expect(markup).toContain('class="activity-compact-amount"');
+		expect(markup).toContain('class="activity-compact-amount-static"');
+		expect(markup).toContain('aria-hidden="true" class="activity-compact-amount-track"');
 		expect(markup).not.toContain('activity-meta');
 	});
 });

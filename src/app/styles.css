@@ -8602,8 +8602,51 @@ body input:focus-visible {
 }
 .activity-compact-amount {
 	grid-column: 3;
+	position: relative;
 	font-variant-numeric: tabular-nums;
 	text-align: right;
+}
+.activity-compact-amount-static {
+	display: block;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	transition: opacity 100ms ease;
+}
+.activity-compact-amount-track {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: max-content;
+	display: flex;
+	gap: 24px;
+	opacity: 0;
+	pointer-events: none;
+	text-align: left;
+	will-change: transform;
+}
+.activity-compact-amount-track > span {
+	flex: 0 0 auto;
+}
+.activity-row-compact:hover .activity-compact-amount.is-overflowing .activity-compact-amount-static {
+	opacity: 0;
+}
+.activity-row-compact:hover .activity-compact-amount.is-overflowing .activity-compact-amount-track {
+	opacity: 1;
+	animation: activity-compact-amount-ticker var(--activity-ticker-duration) linear infinite;
+}
+@keyframes activity-compact-amount-ticker {
+	to {
+		transform: translate3d(var(--activity-ticker-shift), 0, 0);
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.activity-row-compact:hover .activity-compact-amount.is-overflowing .activity-compact-amount-static {
+		opacity: 1;
+	}
+	.activity-row-compact:hover .activity-compact-amount.is-overflowing .activity-compact-amount-track {
+		display: none;
+		animation: none;
+	}
 }
 .activity-compact-actor {
 	grid-column: 4;

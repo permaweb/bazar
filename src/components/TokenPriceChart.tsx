@@ -2,6 +2,8 @@ import React from 'react';
 import { type CandlestickData, ColorType, createChart, CrosshairMode, type UTCTimestamp } from 'lightweight-charts';
 
 import { TooltipSurface } from 'components/Tooltip';
+import { themes } from 'helpers/theme';
+import { useTheme } from 'providers/ThemeProvider';
 
 export type TokenPricePoint = {
 	id: string;
@@ -182,6 +184,7 @@ export function TokenPriceChart({
 	error: string | null;
 	formatValue(value: string): string;
 }) {
+	const { resolvedTheme } = useTheme();
 	const [range, setRange] = React.useState<TokenPriceRange>('all');
 	const [activePointId, setActivePointId] = React.useState<string | null>(null);
 	const [activeCandleTime, setActiveCandleTime] = React.useState<UTCTimestamp | null>(null);
@@ -206,21 +209,20 @@ export function TokenPriceChart({
 		const container = chartContainerRef.current;
 		if (!container || !candlestickSeries.length) return;
 
-		const styles = getComputedStyle(container);
-		const color = (name: string, fallback: string) => styles.getPropertyValue(name).trim() || fallback;
-		const paper = color('--paper', 'white');
-		const ink = color('--ink', 'black');
-		const muted = color('--muted', ink);
-		const line = color('--line', muted);
-		const positive = color('--positive', ink);
-		const negative = color('--negative', muted);
+		const chartTheme = themes[resolvedTheme];
+		const paper = chartTheme.colors.container.primary.background;
+		const muted = chartTheme.colors.font.alt1;
+		const line = chartTheme.colors.border.primary;
+		const crosshairLabel = chartTheme.colors.container.alt2.background;
+		const positive = chartTheme.colors.indicator.primary;
+		const negative = chartTheme.colors.global.negative;
 
 		const chart = createChart(container, {
 			autoSize: true,
 			layout: {
 				attributionLogo: false,
 				background: { color: paper, type: ColorType.Solid },
-				fontFamily: styles.fontFamily,
+				fontFamily: chartTheme.typography.family.primary,
 				textColor: muted,
 			},
 			grid: {
@@ -229,8 +231,8 @@ export function TokenPriceChart({
 			},
 			crosshair: {
 				mode: CrosshairMode.Magnet,
-				horzLine: { color: muted, labelBackgroundColor: ink },
-				vertLine: { color: muted, labelBackgroundColor: ink },
+				horzLine: { color: muted, labelBackgroundColor: crosshairLabel },
+				vertLine: { color: muted, labelBackgroundColor: crosshairLabel },
 			},
 			rightPriceScale: {
 				borderColor: line,
@@ -271,7 +273,7 @@ export function TokenPriceChart({
 		chart.timeScale().fitContent();
 
 		return () => chart.remove();
-	}, [candlestickSeries]);
+	}, [candlestickSeries, resolvedTheme]);
 
 	return (
 		<section className="token-price-chart" aria-busy={loading} aria-label={`${ticker} indexed ask history`}>

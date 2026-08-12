@@ -19,6 +19,64 @@ const absoluteTime = new Intl.DateTimeFormat(undefined, {
 	minute: '2-digit',
 });
 
+function CompactActivityAmount({ amount }: { amount: string }) {
+	const containerRef = React.useRef<HTMLSpanElement>(null);
+	const textRef = React.useRef<HTMLSpanElement>(null);
+	const [ticker, setTicker] = React.useState({ active: false, shift: 0, duration: 0 });
+
+	React.useEffect(() => {
+		const container = containerRef.current;
+		const text = textRef.current;
+		if (!container || !text) return;
+		let disposed = false;
+		const update = () => {
+			if (disposed) return;
+			const active = text.scrollWidth > container.clientWidth + 1;
+			const shift = active ? text.scrollWidth + 24 : 0;
+			const duration = active ? Math.max(4, shift / 32) : 0;
+			setTicker((current) =>
+				current.active === active && current.shift === shift && current.duration === duration
+					? current
+					: { active, shift, duration }
+			);
+		};
+		const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(update);
+		observer?.observe(container);
+		window.addEventListener('resize', update);
+		void document.fonts?.ready.then(update);
+		update();
+		return () => {
+			disposed = true;
+			observer?.disconnect();
+			window.removeEventListener('resize', update);
+		};
+	}, [amount]);
+
+	const value = <ArCurrencyText>{amount}</ArCurrencyText>;
+	return (
+		<span
+			className={`activity-compact-amount${ticker.active ? ' is-overflowing' : ''}`}
+			ref={containerRef}
+			style={
+				ticker.active
+					? ({
+							'--activity-ticker-duration': `${ticker.duration}s`,
+							'--activity-ticker-shift': `-${ticker.shift}px`,
+					  } as React.CSSProperties)
+					: undefined
+			}
+		>
+			<span className="activity-compact-amount-static" ref={textRef}>
+				{value}
+			</span>
+			<span aria-hidden="true" className="activity-compact-amount-track">
+				<span>{value}</span>
+				<span>{value}</span>
+			</span>
+		</span>
+	);
+}
+
 export function MarketActivityList({
 	ariaLabel,
 	collectionId,
@@ -98,9 +156,7 @@ export function MarketActivityList({
 									</small>
 								) : null}
 							</div>
-							<span className="activity-compact-amount">
-								<ArCurrencyText>{amount || '—'}</ArCurrencyText>
-							</span>
+							<CompactActivityAmount amount={amount || '—'} />
 							<div className="activity-compact-actor">
 								{event.actor ? (
 									<WalletAddress address={event.actor} label="actor" />
