@@ -203,7 +203,8 @@ describe('asset mint contract', () => {
 			paymentMode: 'global' as const,
 		};
 
-		expect(udlLicenseTags({})).toEqual({ license: UDL_LICENSE_ID });
+		expect(udlLicenseTags({})).toEqual({ license: UDL_LICENSE_ID, currency: 'AR' });
+		expect(udlLicenseTags({ currency: 'U' })).toEqual({ license: UDL_LICENSE_ID });
 		expect(udlLicenseTags(terms)).toEqual({
 			license: UDL_LICENSE_ID,
 			'access-fee': 'One-Time-1.5',
@@ -229,14 +230,19 @@ describe('asset mint contract', () => {
 	});
 
 	it('provides protected, credit, and open UDL presets', () => {
-		expect(udlLicenseTags(udlTermsForPreset('protected'))).toEqual({ license: UDL_LICENSE_ID });
+		expect(udlLicenseTags(udlTermsForPreset('protected'))).toEqual({
+			license: UDL_LICENSE_ID,
+			currency: 'AR',
+		});
 		expect(udlLicenseTags(udlTermsForPreset('share-with-credit'))).toEqual({
 			license: UDL_LICENSE_ID,
+			currency: 'AR',
 			derivation: 'Allowed-With-Credit',
 			'commercial-use': 'Allowed-With-Credit',
 		});
 		expect(udlLicenseTags(udlTermsForPreset('open-use'))).toEqual({
 			license: UDL_LICENSE_ID,
+			currency: 'AR',
 			derivation: 'Allowed',
 			'commercial-use': 'Allowed',
 			'data-model-training': 'Allowed',

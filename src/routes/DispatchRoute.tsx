@@ -23,6 +23,7 @@ import { Button } from 'components/Button';
 import { type HolderDraftRow, HolderListField } from 'components/HolderListField';
 import { Loading } from 'components/Loading';
 import { TokenArtwork } from 'components/TokenArtwork';
+import { Tooltip } from 'components/Tooltip';
 import { arweaveGatewayFromLocation } from 'helpers/config';
 import { useWallet } from 'providers/WalletProvider';
 
@@ -366,10 +367,14 @@ export default function DispatchRoute() {
 								</tr>
 							</thead>
 							<tbody>
-								{plan.rows.map((row) => (
-									<tr key={row.address} className={`dispatch-row-${row.status}`}>
-										<td>
-											<code title={row.address}>{shortAddress(row.address)}</code>
+							{plan.rows.map((row) => (
+								<tr key={row.address} className={`dispatch-row-${row.status}`}>
+									<td>
+										<Tooltip content={row.address} placement="top">
+											{(tooltipId) => (
+												<code aria-describedby={tooltipId}>{shortAddress(row.address)}</code>
+											)}
+										</Tooltip>
 										</td>
 										<td>{state ? tokenAmount(row.quantity, state) : '—'}</td>
 										<td>
@@ -449,10 +454,14 @@ export default function DispatchRoute() {
 											</tr>
 										</thead>
 										<tbody>
-											{parsed.rows.map((row) => (
-												<tr key={row.address}>
-													<td>
-														<code title={row.address}>{shortAddress(row.address)}</code>
+								{parsed.rows.map((row) => (
+									<tr key={row.address}>
+										<td>
+											<Tooltip content={row.address} placement="top">
+												{(tooltipId) => (
+													<code aria-describedby={tooltipId}>{shortAddress(row.address)}</code>
+												)}
+											</Tooltip>
 													</td>
 													<td>{state ? tokenAmount(row.quantity, state) : '—'}</td>
 												</tr>

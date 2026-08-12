@@ -7,6 +7,7 @@ import { useWallet } from 'providers/WalletProvider';
 
 import { ArCurrencyText } from './ArCurrencyLabel';
 import { Button } from './Button';
+import { Tooltip } from './Tooltip';
 
 const THEME_OPTIONS = [
 	{ id: 'system', label: 'System', Icon: Monitor },
@@ -75,27 +76,31 @@ export function WalletMenu() {
 
 	return (
 		<div className="wallet-menu" ref={root}>
-			<Button
-				aria-expanded={wallet.address ? open : undefined}
-				aria-haspopup={wallet.address ? 'menu' : undefined}
-				aria-label={wallet.address ? `Wallet ${wallet.address}` : 'Connect wallet'}
-				className="wallet"
-				onClick={(event) => {
-					if (!wallet.address) {
-						wallet.openConnectDialog(event.currentTarget);
-						return;
-					}
-					setOpen((current) => !current);
-					setError('');
-				}}
-				ref={trigger}
-				size="custom"
-				title={wallet.address || undefined}
-				variant="primary"
-			>
-				<Wallet className="ui-icon ui-icon--sm" aria-hidden="true" />
-				<span>{wallet.address ? shortAddress(wallet.address) : 'Connect'}</span>
-			</Button>
+			<Tooltip content={wallet.address || 'Connect wallet'} disabled={open}>
+				{(tooltipId) => (
+					<Button
+						aria-describedby={tooltipId}
+						aria-expanded={wallet.address ? open : undefined}
+						aria-haspopup={wallet.address ? 'menu' : undefined}
+						aria-label={wallet.address ? `Wallet ${wallet.address}` : 'Connect wallet'}
+						className="wallet"
+						onClick={(event) => {
+							if (!wallet.address) {
+								wallet.openConnectDialog(event.currentTarget);
+								return;
+							}
+							setOpen((current) => !current);
+							setError('');
+						}}
+						ref={trigger}
+						size="custom"
+						variant="primary"
+					>
+						<Wallet className="ui-icon ui-icon--sm" aria-hidden="true" />
+						<span>{wallet.address ? shortAddress(wallet.address) : 'Connect'}</span>
+					</Button>
+				)}
+			</Tooltip>
 			{open && wallet.address ? (
 				<div aria-label="Wallet options" className="wallet-dropdown" role="menu">
 					<div className="wallet-dropdown-header">

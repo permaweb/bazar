@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
-import { Tooltip } from './Tooltip';
+import { Tooltip, TooltipSurface } from './Tooltip';
 
 describe('Tooltip', () => {
 	it('links reusable trigger content to a bottom tooltip', () => {
@@ -28,5 +28,37 @@ describe('Tooltip', () => {
 		);
 
 		expect(markup).toContain('ui-tooltip--top');
+	});
+
+	it('uses the same visible surface for dynamically positioned inspectors', () => {
+		const markup = renderToStaticMarkup(
+			<TooltipSurface id="inspection" visible>
+				Observer details
+			</TooltipSurface>
+		);
+
+		expect(markup).toContain('ui-tooltip__content ui-tooltip__content--visible');
+		expect(markup).toContain('role="tooltip"');
+	});
+
+	it('can suppress an anchored tooltip while its trigger opens another surface', () => {
+		const markup = renderToStaticMarkup(
+			<Tooltip content="Activity" disabled>
+				{(tooltipId) => <button aria-describedby={tooltipId}>Open</button>}
+			</Tooltip>
+		);
+
+		expect(markup).toContain('ui-tooltip--disabled');
+	});
+
+	it('supports centered delayed hover labels without delaying keyboard semantics', () => {
+		const markup = renderToStaticMarkup(
+			<Tooltip align="center" content="Portal" delayMs={1000}>
+				{(tooltipId) => <button aria-describedby={tooltipId}>Open</button>}
+			</Tooltip>
+		);
+
+		expect(markup).toContain('ui-tooltip--align-center');
+		expect(markup).toContain('--ui-tooltip-delay:1000ms');
 	});
 });

@@ -1102,7 +1102,8 @@ export function udlLicenseTags(terms?: UdlTerms): Record<string, string> {
 	if (terms.dataModelTraining) tags['data-model-training'] = udlGrantValue(terms.dataModelTraining);
 	if (terms.unknownUsageRights === 'excluded') tags['unknown-usage-rights'] = 'Excluded';
 	if (terms.expiry) tags.expiry = terms.expiry;
-	if (terms.currency && terms.currency !== 'U') tags.currency = terms.currency;
+	const currency = terms.currency ?? 'AR';
+	if (currency !== 'U') tags.currency = currency;
 	if (terms.paymentAddress) tags['payment-address'] = terms.paymentAddress;
 	if (terms.paymentMode) {
 		tags['payment-mode'] = terms.paymentMode === 'random' ? 'Random-Distribution' : 'Global-Distribution';

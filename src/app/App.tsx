@@ -1878,7 +1878,9 @@ function Header() {
 						<span className="brand-mark">
 							<BazarMark />
 						</span>
-						<small>2.0</small>
+						<small className="brand-version">
+							1.0
+						</small>
 					</Link>
 					<form
 						className={`site-search${searchOpen ? ' expanded' : ''}`}
@@ -1903,15 +1905,24 @@ function Header() {
 					</form>
 					<nav className="site-nav">
 						<div className="site-nav-primary">
-							<Link
-								aria-label="Create asset"
-								aria-current={location.pathname === '/create' ? 'page' : undefined}
-								className={`create-link${location.pathname === '/create' ? ' active' : ''}`}
-								data-tooltip="Create asset"
-								to="/create"
+							<Tooltip
+								align="center"
+								className="create-link-tooltip"
+								content="Create asset"
+								delayMs={1000}
 							>
-								<Upload className="ui-icon ui-icon--sm" aria-hidden="true" />
-							</Link>
+								{(tooltipId) => (
+									<Link
+										aria-describedby={tooltipId}
+										aria-label="Create asset"
+										aria-current={location.pathname === '/create' ? 'page' : undefined}
+										className={`create-link${location.pathname === '/create' ? ' active' : ''}`}
+										to="/create"
+									>
+										<Upload className="ui-icon ui-icon--sm" aria-hidden="true" />
+									</Link>
+								)}
+							</Tooltip>
 							<GatewayControl />
 						</div>
 						<div className="site-nav-wallet">
@@ -2320,20 +2331,24 @@ function OperationActivityControl() {
 	if (!activityCount) return null;
 	return (
 		<div className="operation-activity-control" ref={containerRef}>
-			<Button
-				aria-expanded={open}
-				aria-label={`Transaction activity, ${activityCount} ${activityCount === 1 ? 'item' : 'items'}`}
-				className={`operation-activity-trigger${workingCount ? ' working' : ''}`}
-				data-activity-owner="global"
-				data-tooltip="Transaction activity"
-				size="custom"
-				onClick={() => setOpen((value) => !value)}
-				type="button"
-				variant="ghost"
-			>
-				<InfinityIcon className="ui-icon" aria-hidden="true" />
-				<span>{activityCount}</span>
-			</Button>
+			<Tooltip content="Transaction activity" disabled={open}>
+				{(tooltipId) => (
+					<Button
+						aria-describedby={tooltipId}
+						aria-expanded={open}
+						aria-label={`Transaction activity, ${activityCount} ${activityCount === 1 ? 'item' : 'items'}`}
+						className={`operation-activity-trigger${workingCount ? ' working' : ''}`}
+						data-activity-owner="global"
+						size="custom"
+						onClick={() => setOpen((value) => !value)}
+						type="button"
+						variant="ghost"
+					>
+						<InfinityIcon className="ui-icon" aria-hidden="true" />
+						<span>{activityCount}</span>
+					</Button>
+				)}
+			</Tooltip>
 			{open ? (
 				<section aria-label="Transaction activity" className="operation-activity-menu">
 					<div className="operation-activity-heading">
@@ -2433,7 +2448,6 @@ function OperationActivityControl() {
 										<span
 											aria-label={`${activity.confirmations} of ${activity.confirmationTarget} confirmations`}
 											className="operation-activity-confirmations"
-											title="Confirmations"
 										>
 											{activity.confirmations}/{activity.confirmationTarget}
 										</span>
@@ -4708,15 +4722,19 @@ function GatewayControl() {
 	return (
 		<div className="gateway-control">
 			{pageRefreshing ? (
-				<span
-					aria-label="Some assets on this page are still being refreshed on your configured nodes."
-					className="gateway-refreshing"
-					data-tooltip="Some assets on this page are still being refreshed on your configured nodes."
-					role="status"
-					tabIndex={0}
-				>
-					<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" />
-				</span>
+				<Tooltip content="Some assets on this page are still being refreshed on your configured nodes.">
+					{(tooltipId) => (
+						<span
+							aria-describedby={tooltipId}
+							aria-label="Some assets on this page are still being refreshed on your configured nodes."
+							className="gateway-refreshing"
+							role="status"
+							tabIndex={0}
+						>
+							<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" />
+						</span>
+					)}
+				</Tooltip>
 			) : null}
 			<details className="gateway" open={open} ref={detailsRef}>
 				<summary
@@ -4729,10 +4747,21 @@ function GatewayControl() {
 					}}
 					ref={triggerRef}
 					role="button"
-					title={`Compute: ${computeCurrent}`}
 				>
-					<PortalIcon className="ui-icon gateway-portal-icon" aria-hidden="true" />
-					<span className="gateway-label">Gateway</span>
+					<Tooltip
+						align="center"
+						className="gateway-trigger-tooltip"
+						content="AO-Core peers"
+							delayMs={1000}
+						disabled={open}
+					>
+						{(tooltipId) => (
+							<span aria-describedby={tooltipId} className="gateway-summary-content">
+								<PortalIcon className="ui-icon gateway-portal-icon" aria-hidden="true" />
+								<span className="gateway-label">Gateway</span>
+							</span>
+						)}
+					</Tooltip>
 				</summary>
 				<div id="gateway-panel">
 					<form onSubmit={apply}>
@@ -6937,28 +6966,32 @@ function CollectionActivityView() {
 			</div>
 			<CollectionTabs
 				action={
-					<Button
-						aria-disabled={loading}
-						aria-label={
-							loading
-								? 'Refreshing collection activity'
-								: error
-								? 'Retry collection activity'
-								: 'Refresh collection activity'
-						}
-						className={`collection-tabs-refresh${loading ? ' loading' : ''}`}
-						size="custom"
-						title={loading ? 'Refreshing activity' : error ? 'Retry activity' : 'Refresh activity'}
-						type="button"
-						onClick={() => {
-							if (loading) return;
-							setActivityRevealAnnouncement('');
-							activityRunMode.current = error ? 'retry' : 'refresh';
-							setRetry((value) => value + 1);
-						}}
-					>
-						<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" />
-					</Button>
+					<Tooltip content={loading ? 'Refreshing activity' : error ? 'Retry activity' : 'Refresh activity'}>
+						{(tooltipId) => (
+							<Button
+								aria-describedby={tooltipId}
+								aria-disabled={loading}
+								aria-label={
+									loading
+										? 'Refreshing collection activity'
+										: error
+										? 'Retry collection activity'
+										: 'Refresh collection activity'
+								}
+								className={`collection-tabs-refresh${loading ? ' loading' : ''}`}
+								size="custom"
+								type="button"
+								onClick={() => {
+									if (loading) return;
+									setActivityRevealAnnouncement('');
+									activityRunMode.current = error ? 'retry' : 'refresh';
+									setRetry((value) => value + 1);
+								}}
+							>
+								<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" />
+							</Button>
+						)}
+					</Tooltip>
 				}
 				collection={collection}
 				active="activity"

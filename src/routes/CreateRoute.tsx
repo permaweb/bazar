@@ -1501,15 +1501,15 @@ export default function CreateRoute() {
 														<div className="udl-field-control">
 															<MarketSelect<'U' | 'AR'>
 																label="Payment currency"
-																value={udlTerms.currency ?? 'U'}
+																value={udlTerms.currency ?? 'AR'}
 																options={[
-																	{ value: 'U', label: '$U (UDL default)' },
-																	{ value: 'AR', label: 'AR' },
+																	{ value: 'AR', label: 'AR (default)' },
+																	{ value: 'U', label: '$U' },
 																]}
 																onChange={(value) =>
 																	customizeUdlTerms((current) => ({
 																		...current,
-																		currency: value === 'AR' ? 'AR' : undefined,
+																		currency: value,
 																	}))
 																}
 															/>

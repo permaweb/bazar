@@ -7,6 +7,7 @@ import type { CollectionActivityEvent } from 'api/asset-discovery';
 import type { AssetSummary, Collection } from 'api/collections';
 
 import { ArCurrencyText } from 'components/ArCurrencyLabel';
+import { Tooltip } from 'components/Tooltip';
 import { WalletAddress } from 'components/WalletAddress';
 
 const relativeTime = new Intl.RelativeTimeFormat('en', { numeric: 'always' });
@@ -92,14 +93,14 @@ export function MarketActivityList({
 								)}
 								<small className={detail ? undefined : 'activity-time-only'}>
 									<ArCurrencyText>{detail}</ArCurrencyText>
-									<time
-										className="activity-mobile-time"
-										dateTime={timestampDateTime}
-										title={absoluteTimestamp}
-									>
-										{detail ? ' · ' : ''}
-										{timestamp}
-									</time>
+									<Tooltip className="activity-mobile-time" content={absoluteTimestamp ?? timestamp}>
+										{(tooltipId) => (
+											<time aria-describedby={tooltipId} dateTime={timestampDateTime}>
+												{detail ? ' · ' : ''}
+												{timestamp}
+											</time>
+										)}
+									</Tooltip>
 								</small>
 							</div>
 							{amount ? (
@@ -118,13 +119,13 @@ export function MarketActivityList({
 								)}
 							</div>
 							<div className="activity-block">
-								<time
-									className="activity-desktop-time"
-									dateTime={timestampDateTime}
-									title={absoluteTimestamp}
-								>
-									{timestamp}
-								</time>
+								<Tooltip className="activity-desktop-time" content={absoluteTimestamp ?? timestamp}>
+									{(tooltipId) => (
+										<time aria-describedby={tooltipId} dateTime={timestampDateTime}>
+											{timestamp}
+										</time>
+									)}
+								</Tooltip>
 								<a
 									aria-label={
 										transactionHeight > 0

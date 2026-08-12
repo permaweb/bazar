@@ -6,6 +6,7 @@ import { ARWEAVE_OBSERVER_RESPONSE_EVENT, type ArweaveObserverResponseDetail } f
 
 import { TxAddress } from 'components/atoms/TxAddress';
 import { Button } from 'components/Button';
+import { Tooltip } from 'components/Tooltip';
 import { useLanguageProvider } from 'providers/LanguageProvider';
 
 import { observerVerificationDelayed, quorumConfirmationDepth } from './confirmationDepth';
@@ -115,7 +116,6 @@ export function ArweaveTransactionSync({
 	telemetryPanelEnabled = true,
 }: Props) {
 	const language = useLanguageProvider().strings;
-	const skipTooltipId = React.useId();
 	const active = steps.find((step) => step.key === activeStep) ?? steps[0];
 	const activeKey = active?.key;
 	const transaction = active?.transaction;
@@ -319,14 +319,15 @@ export function ArweaveTransactionSync({
 										: language.transactionSyncSkipDetail}
 								</small>
 							</span>
-							<S.SkipButtonWrap>
-								<Button aria-describedby={skipTooltipId} onClick={onSkip} size="custom">
-									{skipKind === 'yolo' ? language.transactionSyncYolo : language.transactionSyncSkip}
-								</Button>
-								<S.SkipTooltip id={skipTooltipId} role="tooltip">
-									{language.transactionSyncSkipTooltip}
-								</S.SkipTooltip>
-							</S.SkipButtonWrap>
+							<Tooltip className="transaction-skip-tooltip" content={language.transactionSyncSkipTooltip}>
+								{(tooltipId) => (
+									<Button aria-describedby={tooltipId} onClick={onSkip} size="custom">
+										{skipKind === 'yolo'
+											? language.transactionSyncYolo
+											: language.transactionSyncSkip}
+									</Button>
+								)}
+							</Tooltip>
 						</S.SkipAction>
 					) : null}
 				</>

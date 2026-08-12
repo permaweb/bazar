@@ -69,6 +69,7 @@ import { OperationOutcome, OperationOutcomeAnnouncement } from 'components/Opera
 import { type SegmentedTab, SegmentedTabs } from 'components/SegmentedTabs';
 import { TokenAvatar } from 'components/TokenAvatar';
 import { TokenPriceChart, type TokenPricePoint } from 'components/TokenPriceChart';
+import { Tooltip } from 'components/Tooltip';
 import {
 	prepareTransactionDialogHide,
 	TRANSACTION_DIALOG_HIDE_DURATION_MS,
@@ -1134,24 +1135,37 @@ export function FungibleAssetView({
 								points={askHistory}
 								ticker={ticker}
 							/>
-							<div className="token-market-snapshot" aria-label="Current token market">
-								<div>
-									<span>Best live ask</span>
-									<strong>{best ? orderPriceLabel(best, state) : 'Not listed'}</strong>
+							<section className="token-market-overview" aria-labelledby="token-market-overview-title">
+								<div className="token-market-overview-heading">
+									<div>
+										<span>Live order book</span>
+										<strong id="token-market-overview-title">Market snapshot</strong>
+									</div>
+									<span className="token-market-live-status" data-active={openOrders.length > 0}>
+										<i aria-hidden="true" />
+										{openOrders.length.toLocaleString()} open{' '}
+										{openOrders.length === 1 ? 'ask' : 'asks'}
+									</span>
 								</div>
-								<div>
-									<span>Open asks</span>
-									<strong>{openOrders.length.toLocaleString()}</strong>
+								<div className="token-market-snapshot" aria-label="Current token market">
+									<div className="token-market-primary-metric">
+										<span>Best live ask</span>
+										<strong>{best ? orderPriceLabel(best, state) : 'Not listed'}</strong>
+									</div>
+									<div>
+										<span>Open asks</span>
+										<strong>{openOrders.length.toLocaleString()}</strong>
+									</div>
+									<div>
+										<span>Listed supply</span>
+										<strong>{tokenLabel(forSale, state)}</strong>
+									</div>
+									<div>
+										<span>Holders</span>
+										<strong>{holders.toLocaleString()}</strong>
+									</div>
 								</div>
-								<div>
-									<span>Listed supply</span>
-									<strong>{tokenLabel(forSale, state)}</strong>
-								</div>
-								<div>
-									<span>Holders</span>
-									<strong>{holders.toLocaleString()}</strong>
-								</div>
-							</div>
+							</section>
 							{activityError ? (
 								<div className="asset-history-actions">
 									<Button className="with-icon" onClick={onActivityRetry} size="custom" type="button">
@@ -1399,33 +1413,39 @@ export function FungibleAssetView({
 								/>
 							) : null}
 							<div className="asset-history-actions">
-								<Button
-									aria-disabled={activityLoading}
-									aria-label={
-										activityLoading
-											? activity.length
-												? 'Refreshing history'
-												: 'Loading history'
-											: activityError
-											? 'Retry history'
-											: 'Refresh history'
-									}
-									className={`asset-history-refresh${activityLoading ? ' loading' : ''}`}
-									type="button"
-									size="icon"
-									title={
+								<Tooltip
+									content={
 										activityLoading
 											? 'Refreshing history'
 											: activityError
 											? 'Retry history'
 											: 'Refresh history'
 									}
-									onClick={() => {
-										if (!activityLoading) onActivityRetry();
-									}}
 								>
-									<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" />
-								</Button>
+									{(tooltipId) => (
+										<Button
+											aria-describedby={tooltipId}
+											aria-disabled={activityLoading}
+											aria-label={
+												activityLoading
+													? activity.length
+														? 'Refreshing history'
+														: 'Loading history'
+													: activityError
+													? 'Retry history'
+													: 'Refresh history'
+											}
+											className={`asset-history-refresh${activityLoading ? ' loading' : ''}`}
+											type="button"
+											size="icon"
+											onClick={() => {
+												if (!activityLoading) onActivityRetry();
+											}}
+										>
+											<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" />
+										</Button>
+									)}
+								</Tooltip>
 							</div>
 							{activityError ? (
 								<div className="inline-error" role={activity.length ? 'status' : 'alert'}>
@@ -3251,7 +3271,11 @@ function FungibleOperationDialog({
 										</div>
 										<div>
 											<span>Order</span>
-											<strong title={activeOrder.orderId}>{short(activeOrder.orderId)}</strong>
+											<Tooltip content={activeOrder.orderId} placement="top">
+												{(tooltipId) => (
+													<strong aria-describedby={tooltipId}>{short(activeOrder.orderId)}</strong>
+												)}
+											</Tooltip>
 										</div>
 										<p>
 											{activePurchase?.error
@@ -3757,7 +3781,11 @@ export function FungiblePurchaseReceiptNavigator({
 					</div>
 					<div>
 						<dt>Order</dt>
-						<dd title={order.orderId}>{short(order.orderId)}</dd>
+						<dd>
+							<Tooltip content={order.orderId} placement="top">
+								{(tooltipId) => <span aria-describedby={tooltipId}>{short(order.orderId)}</span>}
+							</Tooltip>
+						</dd>
 					</div>
 					<div>
 						<dt>Seller payment</dt>

@@ -23,6 +23,7 @@ import { Button } from 'components/Button';
 import { ConnectWalletButton } from 'components/ConnectWalletButton';
 import { ErrorPanel } from 'components/ErrorPanel';
 import { Loading } from 'components/Loading';
+import { Tooltip } from 'components/Tooltip';
 import { scheduleIdleTask } from 'helpers/idle';
 import {
 	assetGroupRevealAnnouncement,
@@ -573,9 +574,13 @@ export default function MyAssetsRoute() {
 					<p>Your assets, read from live Arweave state.</p>
 					<span className="gateway-pill">
 						<Server className="ui-icon ui-icon--xs" aria-hidden="true" /> Gateway{' '}
-						<span className="gateway-pill-host" title={new URL(gateway).host}>
-							{new URL(gateway).host}
-						</span>
+						<Tooltip content={new URL(gateway).host}>
+							{(tooltipId) => (
+								<span aria-describedby={tooltipId} className="gateway-pill-host">
+									{new URL(gateway).host}
+								</span>
+							)}
+						</Tooltip>
 					</span>
 				</div>
 				{status.phase !== 'error' ? (
