@@ -198,6 +198,7 @@ describe('fungible operation error semantics', () => {
 		const composer = renderToStaticMarkup(
 			React.createElement(FungiblePurchaseComposer, {
 				availableQuantity: '7',
+				excludedQuantity: '2',
 				error: quote.error,
 				match: quote.match,
 				onChange: () => undefined,
@@ -213,6 +214,7 @@ describe('fungible operation error semantics', () => {
 		]);
 		expect(composer).toContain('You buy');
 		expect(composer).toContain('value="4"');
+		expect(composer).toContain('7 WEAVE available to buy · 2 WEAVE from your listing excluded');
 		expect(composer).toContain('You pay');
 		expect(composer).toContain('0.000000000006');
 		expect(composer).toContain('2 orders · 2 sellers · network fees shown in review');
