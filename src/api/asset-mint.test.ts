@@ -8,6 +8,7 @@ import {
 	collectionProcessTags,
 	CREATED_COLLECTION_ID,
 	createdCollection,
+	fungibleAtomicSupply,
 	fungibleMintProcessTags,
 	getMintDraft,
 	isBazarMintTags,
@@ -653,15 +654,26 @@ describe('asset mint contract', () => {
 	});
 
 	it('validates fungible token fields and image-only logos', () => {
-		const input = { name: 'Signal Token', description: '', ticker: 'SIG', supply: '1000', denomination: '12' };
+		const input = {
+			name: 'Signal Token',
+			description: '',
+			ticker: 'SIG',
+			wholeSupply: '42622000',
+			denomination: '3',
+		};
 		expect(() => validateFungibleMintInput(input)).not.toThrow();
+		expect(fungibleAtomicSupply(input.wholeSupply, input.denomination)).toBe('42622000000');
+		expect(fungibleAtomicSupply('1', '0')).toBe('1');
+		expect(fungibleAtomicSupply('900719925474099312345678', '12')).toBe('900719925474099312345678000000000000');
 		expect(fungibleMintProcessTags(input, owner)).toMatchObject({
 			'asset-type': 'fungible',
 			'initial-holder': owner,
-			'total-supply': '1000',
-			denomination: '12',
+			'total-supply': '42622000000',
+			denomination: '3',
 			ticker: 'SIG',
 		});
+		expect(() => fungibleAtomicSupply('1.5', '3')).toThrow('mint-supply-invalid');
+		expect(() => fungibleAtomicSupply('1', '256')).toThrow('mint-denomination-invalid');
 		expect(() =>
 			validateFungibleLogo(new File([new Uint8Array([1])], 'logo.png', { type: 'image/png' }))
 		).not.toThrow();
@@ -676,7 +688,13 @@ describe('asset mint contract', () => {
 	it('quotes and uploads a selected logo before the fungible process', async () => {
 		const logoId = 'L'.repeat(43);
 		const logoFile = new File([new Uint8Array([1, 2, 3])], 'logo.png', { type: 'image/png' });
-		const input = { name: 'Signal Token', description: '', ticker: 'SIG', supply: '1000', denomination: '12' };
+		const input = {
+			name: 'Signal Token',
+			description: '',
+			ticker: 'SIG',
+			wholeSupply: '1000',
+			denomination: '12',
+		};
 		const transaction = () => {
 			const held: any = { id: '', owner: '', chunks: { chunks: [{}] }, addTag: vi.fn() };
 			held.setSignature = vi.fn((signature) => Object.assign(held, signature));
@@ -733,9 +751,16 @@ describe('asset mint contract', () => {
 		expect(logoTransaction.addTag).toHaveBeenCalledWith('Type', 'Token-Logo');
 		expect(processTransaction.addTag).toHaveBeenCalledWith('logo', logoId);
 		expect(processTransaction.addTag).toHaveBeenCalledWith('asset-type', 'fungible');
+		expect(processTransaction.addTag).toHaveBeenCalledWith('total-supply', '1000000000000000');
 		expect(phases).toEqual(['signing-logo', 'uploading-logo', 'signing', 'uploading']);
 		expect(uploaded).toEqual([logoId]);
-		expect(result).toMatchObject({ processId, logo: logoId, ticker: 'SIG' });
+		expect(result).toMatchObject({
+			processId,
+			logo: logoId,
+			ticker: 'SIG',
+			wholeSupply: '1000',
+			atomicSupply: '1000000000000000',
+		});
 		expect(loadMintActivities(store, owner)).toMatchObject([
 			{
 				asset: {

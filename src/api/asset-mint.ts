@@ -117,9 +117,9 @@ export type FungibleMintInput = {
 	description: string;
 	/** 1-32 printable characters, no surrounding whitespace (mirrors safeTicker in asset-marketplace.ts). */
 	ticker: string;
-	/** Total supply in indivisible base units, as a decimal string (bigint-safe). */
-	supply: string;
-	/** Display decimals, 0-255. Keep 0 for tokens meant to be mass-dispatched: an L1 transfer costs its amount in winston. */
+	/** Positive integer count of whole tokens. Converted to atomic units exactly once when publishing. */
+	wholeSupply: string;
+	/** Fractional precision, 0-255. One whole token equals 10^denomination atomic units. */
 	denomination: string;
 	/** Optional 43-char Arweave transaction id rendered as the token logo. */
 	logo?: string;
@@ -131,7 +131,8 @@ export type FungibleMintResult = {
 	owner: string;
 	name: string;
 	ticker: string;
-	supply: string;
+	wholeSupply: string;
+	atomicSupply: string;
 	denomination: number;
 	createdAt: number;
 };
@@ -462,7 +463,8 @@ export class AssetMintClient {
 			owner,
 			name: input.name.trim(),
 			ticker: input.ticker,
-			supply: input.supply,
+			wholeSupply: input.wholeSupply,
+			atomicSupply: fungibleAtomicSupply(input.wholeSupply, input.denomination),
 			denomination: Number(input.denomination),
 			createdAt,
 		};
@@ -933,17 +935,23 @@ export function validateFungibleMintInput(input: FungibleMintInput): void {
 	) {
 		throw new TypeError('mint-ticker-invalid');
 	}
-	if (typeof input.supply !== 'string' || !/^[1-9]\d*$/.test(input.supply)) {
+	fungibleAtomicSupply(input.wholeSupply, input.denomination);
+	if (input.logo !== undefined) assertAddress(input.logo, 'mint-logo-invalid');
+}
+
+/** Convert a creator-entered whole-token count into the protocol's exact atomic integer. */
+export function fungibleAtomicSupply(wholeSupply: string, denomination: string): string {
+	if (typeof wholeSupply !== 'string' || !/^[1-9]\d*$/.test(wholeSupply)) {
 		throw new TypeError('mint-supply-invalid');
 	}
 	if (
-		typeof input.denomination !== 'string' ||
-		!/^(?:0|[1-9]\d*)$/.test(input.denomination) ||
-		Number(input.denomination) > MAX_FUNGIBLE_DENOMINATION
+		typeof denomination !== 'string' ||
+		!/^(?:0|[1-9]\d*)$/.test(denomination) ||
+		Number(denomination) > MAX_FUNGIBLE_DENOMINATION
 	) {
 		throw new TypeError('mint-denomination-invalid');
 	}
-	if (input.logo !== undefined) assertAddress(input.logo, 'mint-logo-invalid');
+	return (BigInt(wholeSupply) * 10n ** BigInt(denomination)).toString();
 }
 
 export function validateFungibleLogo(logo: File): void {
@@ -981,7 +989,7 @@ export function fungibleMintProcessTags(input: FungibleMintInput, owner: string)
 		'scheduler-device': 'arweave-scheduler@1.0',
 		'scheduler-mode': 'all',
 		'initial-holder': owner,
-		'total-supply': input.supply,
+		'total-supply': fungibleAtomicSupply(input.wholeSupply, input.denomination),
 		denomination: input.denomination,
 		ticker: input.ticker,
 		name: input.name.trim(),

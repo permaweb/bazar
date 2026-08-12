@@ -62,7 +62,7 @@ describe('atomic operation error semantics', () => {
 
 describe('atomic asset operation validation', () => {
 	it('requires a positive AR price with at most twelve decimals', () => {
-		expect(atomicOperationFormError('sell', '')).toContain('exact AR price');
+		expect(atomicOperationFormError('sell', '')).toContain('AR price');
 		expect(atomicOperationFormError('sell', '0')).toContain('at least');
 		expect(atomicOperationFormError('sell', '0.000000000001')).toBe('');
 		expect(atomicOperationFormError('sell', '0.0000000000001')).toContain('valid AR amount');

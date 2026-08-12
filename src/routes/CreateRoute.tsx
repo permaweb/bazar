@@ -176,7 +176,9 @@ export function FungibleMintDialog({
 				</div>
 				<OperationOutcomeAnnouncement
 					active={dialogPhase === 'done'}
-					detail={`All ${result?.supply ?? ''} base units are in your wallet and ready to dispatch.`}
+					detail={`All ${result?.wholeSupply ?? ''} ${
+						result?.ticker ?? ''
+					} are in your wallet and ready to dispatch.`}
 					title="Token live on Bazar"
 				/>
 				{dialogPhase === 'working' && !result ? (
@@ -196,8 +198,8 @@ export function FungibleMintDialog({
 							process state.
 						</p>
 						<p className="scheduler-wait">
-							All {result.supply} base units of {result.ticker} are minted to your wallet. Bazar is
-							waiting for the scheduler to make the process readable.
+							All {result.wholeSupply} {result.ticker} are minted to your wallet. Bazar is waiting for the
+							scheduler to make the process readable.
 						</p>
 						<React.Suspense fallback={<Loading label="Loading transaction progress…" />}>
 							<ArweaveTransactionSync
@@ -226,7 +228,7 @@ export function FungibleMintDialog({
 				{dialogPhase === 'done' && result ? (
 					<div className="result success">
 						<OperationOutcome
-							detail={`All ${result.supply} base units of ${result.ticker} are in your wallet and ready to dispatch.`}
+							detail={`All ${result.wholeSupply} ${result.ticker} are in your wallet and ready to dispatch.`}
 							title="Token live on Bazar"
 						/>
 						<MintTransactionReceipt entries={receiptEntries} />
@@ -356,7 +358,7 @@ export default function CreateRoute() {
 	const [name, setName] = React.useState('');
 	const [description, setDescription] = React.useState('');
 	const [ticker, setTicker] = React.useState('');
-	const [supply, setSupply] = React.useState('');
+	const [wholeSupply, setWholeSupply] = React.useState('');
 	const [denomination, setDenomination] = React.useState('12');
 	const [logo, setLogo] = React.useState<File | null>(null);
 	const [logoTxId, setLogoTxId] = React.useState('');
@@ -406,7 +408,7 @@ export default function CreateRoute() {
 		name,
 		description,
 		ticker,
-		supply,
+		wholeSupply,
 		denomination,
 		...(logoTxId.trim() ? { logo: logoTxId.trim() } : {}),
 	};
@@ -614,7 +616,7 @@ export default function CreateRoute() {
 			controller.abort();
 		};
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [mode, fungibleReady, name, description, ticker, supply, denomination, logo, logoTxId]);
+	}, [mode, fungibleReady, name, description, ticker, wholeSupply, denomination, logo, logoTxId]);
 
 	const selectFile = (next: File | null) => {
 		const request = ++metadataRequest.current;
@@ -702,7 +704,7 @@ export default function CreateRoute() {
 		if (mode === 'asset' && !file) return setError('Choose an image, MP3, or WAV file to continue.');
 		if (mode === 'collection' && !collectionFiles.length) return setError('Choose at least one collection image.');
 		if (mode === 'fungible' && !fungibleReady) {
-			return setError('Complete the token name, ticker, supply, and denomination to continue.');
+			return setError('Complete the token name, ticker, total supply, and decimal places to continue.');
 		}
 		setError(null);
 		setResult(null);
@@ -937,9 +939,11 @@ export default function CreateRoute() {
 									{ticker.trim() || 'Set a ticker'}
 								</small>
 								<small>
-									{supply && /^[1-9]\d*$/.test(supply)
-										? `${supply} base units · denomination ${denomination || '0'}`
-										: 'Set a supply in base units'}
+									{wholeSupply && /^[1-9]\d*$/.test(wholeSupply)
+										? `${wholeSupply} ${ticker.trim() || 'tokens'} total · ${
+												denomination || '0'
+										  } decimal places`
+										: 'Set the whole-token supply'}
 								</small>
 							</span>
 						</div>
@@ -1191,21 +1195,17 @@ export default function CreateRoute() {
 								</span>
 							</div>
 							<div className="create-field">
-								<label htmlFor="mint-supply">Total supply (base units)</label>
+								<label htmlFor="mint-supply">Total supply</label>
 								<input
 									id="mint-supply"
 									inputMode="numeric"
 									placeholder="1000000"
-									value={supply}
-									onChange={(event) => setSupply(event.target.value.trim())}
+									value={wholeSupply}
+									onChange={(event) => setWholeSupply(event.target.value.trim())}
 								/>
-								<span>
-									Indivisible base units, minted entirely to your wallet. Whole numbers only — no
-									decimal point.
-								</span>
 							</div>
 							<div className="create-field">
-								<label htmlFor="mint-denomination">Denomination</label>
+								<label htmlFor="mint-denomination">Decimal places</label>
 								<input
 									id="mint-denomination"
 									inputMode="numeric"
@@ -1555,8 +1555,8 @@ export default function CreateRoute() {
 									? '1 of 1'
 									: mode === 'collection'
 									? collectionFiles.length || '—'
-									: supply && /^[1-9]\d*$/.test(supply)
-									? supply
+									: wholeSupply && /^[1-9]\d*$/.test(wholeSupply)
+									? `${wholeSupply} ${ticker.trim() || 'tokens'}`
 									: '—'}
 							</strong>
 						</div>

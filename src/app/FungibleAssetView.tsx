@@ -580,7 +580,7 @@ export function FungibleAssetView({
 				}
 			} else {
 				setRecoveryNotice(
-					'A previous token purchase is paused because a dispatched seller payment still needs an exact settlement check. Its signed transaction details remain saved in this browser, and no replacement payment will be created.'
+					'A previous token purchase is paused because a dispatched seller payment still needs a settlement check. Its signed transaction details remain saved in this browser, and no replacement payment will be created.'
 				);
 			}
 		} else if (savedBatch !== null) {
@@ -2224,7 +2224,7 @@ function FungibleOperationDialog({
 		recoveryBuffer.clear();
 		if (batchRecoveryBufferRef.current === recoveryBuffer) batchRecoveryBufferRef.current = null;
 		purchaseStateBufferRef.current!.flush();
-		setMessage('Every lot is proven in its exact scheduled payment slot.');
+		setMessage('Every lot is proven in its scheduled payment slot.');
 		removeWalletRecoveryAndSignatures<BatchResume>(
 			localStorage,
 			fungibleBatchStorageKey(asset.id, owner),
@@ -2896,7 +2896,7 @@ function FungibleOperationDialog({
 								pendingAfterConfirmation={postConfirmationPendingLabel(confirmations, 5, message)}
 							/>
 						) : (
-							<Loading label="Preparing the exact signed transaction…" />
+							<Loading label="Preparing the signed transaction…" />
 						)}
 					</div>
 				) : null}
@@ -3066,9 +3066,9 @@ function FungibleOperationDialog({
 							<>
 								{purchaseNeedsManualReview ? (
 									<p>
-										The process rejected this exact scheduled purchase after payment. Rechecking it
-										cannot apply the transfer, so Bazar will keep the permanent receipts without
-										creating a replacement.
+										The process rejected this scheduled purchase after payment. Rechecking it cannot
+										apply the transfer, so Bazar will keep the permanent receipts without creating a
+										replacement.
 									</p>
 								) : recoverableBatch ? (
 									<p>
@@ -3146,7 +3146,7 @@ export function MatchedListingsReview({
 				</span>
 			</div>
 			{orders.length ? (
-				<ul aria-label="Exact matched seller addresses" tabIndex={orders.length > 4 ? 0 : undefined}>
+				<ul aria-label="Matched seller addresses" tabIndex={orders.length > 4 ? 0 : undefined}>
 					{orders.map((order) => (
 						<li key={order.orderId}>
 							<span>
@@ -3269,7 +3269,7 @@ export function FungiblePurchaseComposer({
 						  } · ${matchedSellerCount} ${
 								matchedSellerCount === 1 ? 'seller' : 'sellers'
 						  } · network fees shown in review`
-						: 'Enter an amount to see the exact seller payment.'}
+						: 'Enter an amount to see the seller payment.'}
 				</small>
 			</div>
 			{error ? (

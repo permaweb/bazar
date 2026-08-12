@@ -1,5 +1,6 @@
 import { liquidBalanceOf, readAssetState, waitForAssetState } from './asset-marketplace';
 import { AssetTransactionClient, SIGNED_TRANSACTION_PREFIX } from './asset-transactions';
+import { parseTokenAmount } from './order-matching';
 
 const ADDRESS = /^[A-Za-z0-9_-]{43}$/;
 const QUANTITY = /^[1-9]\d*$/;
@@ -11,7 +12,7 @@ export const DEFAULT_DISPATCH_BATCH_SIZE = 100;
  * before anything is signed. A fungible L1 transfer really spends its token
  * amount in winston (the protocol quantity shadows the quantity tag at fold
  * time — see AssetTransactionClient.transferFungible), so large dispatches
- * have real AR cost: 1 AR per 1e12 base units per transfer, plus rewards.
+ * have real AR cost: 1 AR per 1e12 atomic units per transfer, plus rewards.
  */
 export const DISPATCH_COST_CONFIRMATION_WINSTON = 100_000_000_000n;
 
@@ -45,12 +46,18 @@ export type DispatchPlan = {
  * - JSON: [["address", "10"], ...]
  * - JSON: { "address": "10", ... }
  * - CSV: one `address,quantity` per line; lines starting with # are comments.
- * Quantities are positive integers in base units (strings or safe integers).
+ * Quantities are human token amounts. Decimal JSON quantities must be strings
+ * so they never pass through floating point. Returned rows contain atomic
+ * integer quantities ready for protocol balance checks and transactions.
  */
-export function parseHolderList(text: string): ParsedHolderList {
+export function parseHolderList(text: string, denomination: number): ParsedHolderList {
+	// Validate the process precision once even when the pasted list is empty.
+	parseTokenAmount('1', denomination);
 	const trimmed = text.trim();
 	if (!trimmed) return { rows: [], errors: ['The holder list is empty.'] };
-	const result = /^[[{]/.test(trimmed) ? parseJsonHolders(trimmed) : parseCsvHolders(trimmed);
+	const result = /^[[{]/.test(trimmed)
+		? parseJsonHolders(trimmed, denomination)
+		: parseCsvHolders(trimmed, denomination);
 	if (result.errors.length) return { rows: [], errors: result.errors };
 	const duplicates = [...new Set(result.rows.map((row) => row.address).filter(duplicated(result.rows)))];
 	if (duplicates.length) {
@@ -73,7 +80,7 @@ function duplicated(rows: HolderRow[]): (address: string) => boolean {
 	return (address) => (counts.get(address) ?? 0) > 1;
 }
 
-function parseJsonHolders(text: string): ParsedHolderList {
+function parseJsonHolders(text: string, denomination: number): ParsedHolderList {
 	let parsed: unknown;
 	try {
 		parsed = JSON.parse(text);
@@ -89,17 +96,17 @@ function parseJsonHolders(text: string): ParsedHolderList {
 		parsed.forEach((entry, index) => {
 			const label = `Entry ${index + 1}`;
 			if (Array.isArray(entry) && entry.length === 2) {
-				collectRow(rows, errors, label, entry[0], entry[1]);
+				collectRow(rows, errors, label, entry[0], entry[1], denomination);
 			} else if (entry && typeof entry === 'object' && !Array.isArray(entry)) {
 				const record = entry as Record<string, unknown>;
-				collectRow(rows, errors, label, record.address, record.quantity);
+				collectRow(rows, errors, label, record.address, record.quantity, denomination);
 			} else {
 				errors.push(`${label}: expected {"address","quantity"} or [address, quantity].`);
 			}
 		});
 	} else if (parsed && typeof parsed === 'object') {
 		Object.entries(parsed as Record<string, unknown>).forEach(([address, quantity], index) => {
-			collectRow(rows, errors, `Entry ${index + 1}`, address, quantity);
+			collectRow(rows, errors, `Entry ${index + 1}`, address, quantity, denomination);
 		});
 	} else {
 		errors.push('Expected a JSON array or object of address/quantity pairs.');
@@ -107,7 +114,7 @@ function parseJsonHolders(text: string): ParsedHolderList {
 	return { rows, errors };
 }
 
-function parseCsvHolders(text: string): ParsedHolderList {
+function parseCsvHolders(text: string, denomination: number): ParsedHolderList {
 	const rows: HolderRow[] = [];
 	const errors: string[] = [];
 	text.split(/\r?\n/).forEach((line, index) => {
@@ -118,27 +125,42 @@ function parseCsvHolders(text: string): ParsedHolderList {
 			errors.push(`Line ${index + 1}: expected "address,quantity".`);
 			return;
 		}
-		collectRow(rows, errors, `Line ${index + 1}`, fields[0], fields[1]);
+		collectRow(rows, errors, `Line ${index + 1}`, fields[0], fields[1], denomination);
 	});
 	return { rows, errors };
 }
 
-function collectRow(rows: HolderRow[], errors: string[], label: string, address: unknown, quantity: unknown): void {
+function collectRow(
+	rows: HolderRow[],
+	errors: string[],
+	label: string,
+	address: unknown,
+	quantity: unknown,
+	denomination: number
+): void {
 	if (typeof address !== 'string' || !ADDRESS.test(address)) {
 		errors.push(`${label}: "${String(address).slice(0, 60)}" is not a 43-character Arweave address.`);
 		return;
 	}
-	const normalized =
+	const humanAmount =
 		typeof quantity === 'number' && Number.isSafeInteger(quantity) && quantity > 0
 			? String(quantity)
 			: typeof quantity === 'string'
 			? quantity.trim()
 			: '';
-	if (!QUANTITY.test(normalized)) {
-		errors.push(`${label}: quantity must be a positive integer amount of base units.`);
+	let atomicAmount: string;
+	try {
+		atomicAmount = parseTokenAmount(humanAmount, denomination);
+		if (BigInt(atomicAmount) < 1n) throw new TypeError('invalid-token-amount');
+	} catch {
+		errors.push(
+			`${label}: quantity must be a positive token amount${
+				denomination ? ` with no more than ${denomination} decimal places` : ' in whole tokens'
+			}. Use a JSON string for fractional quantities.`
+		);
 		return;
 	}
-	rows.push({ address, quantity: normalized });
+	rows.push({ address, quantity: atomicAmount });
 }
 
 export function planTotals(rows: ReadonlyArray<HolderRow>): { count: number; totalQuantity: bigint } {
@@ -151,7 +173,7 @@ export function planTotals(rows: ReadonlyArray<HolderRow>): { count: number; tot
 export type DispatchCostEstimate = {
 	totalQuantity: bigint;
 	totalReward: bigint;
-	/** What the sender's AR balance really pays: token units (in winston) + rewards. */
+	/** What the sender's AR balance really pays: atomic token units (in winston) + rewards. */
 	totalWinston: bigint;
 };
 

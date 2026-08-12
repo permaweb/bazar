@@ -1,9 +1,12 @@
+import React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
 import type { CollectionActivityEvent } from 'api/asset-discovery';
 import type { Collection } from 'api/collections';
 
 import {
+	AssetCardArtwork,
 	assetDetailCanResolve,
 	assetDetailMembershipVerified,
 	collectionActivityScanAnnouncement,
@@ -21,6 +24,7 @@ import {
 	completeHomeActivityScan,
 	completeHomeSummaryRetryGroup,
 	createAnimationFrameBatch,
+	DiscoveryAssetArtwork,
 	filterGlobalActivity,
 	globalActivityCollection,
 	homeAllAssets,
@@ -70,6 +74,56 @@ import {
 } from './shell-snapshot';
 
 describe('Home market summary retries', () => {
+	it('renders permanent token logos in Discover and collection cards', () => {
+		const logo = `https://arweave.net/${'L'.repeat(43)}`;
+		const asset = {
+			id: 'T'.repeat(43),
+			name: 'Trunky',
+			ticker: 'TRUNKY',
+			contentType: 'application/x.arweave-token',
+			image: logo,
+		};
+		const collection: Collection = {
+			id: 'fungible-tokens',
+			name: 'Tokens',
+			description: '',
+			kind: 'tokens',
+			assets: [asset],
+		};
+
+		const discover = renderToStaticMarkup(
+			React.createElement(DiscoveryAssetArtwork, { asset, collection, priority: true })
+		);
+		const collectionCard = renderToStaticMarkup(React.createElement(AssetCardArtwork, { asset, collection }));
+
+		expect(discover).toContain(`src="${logo}"`);
+		expect(discover).toContain('home-asset-media');
+		expect(discover).not.toContain('token-artwork');
+		expect(collectionCard).toContain(`src="${logo}"`);
+		expect(collectionCard).not.toContain('token-artwork');
+	});
+
+	it('keeps the ticker artwork as the fungible-card fallback when no logo exists', () => {
+		const asset = {
+			id: 'T'.repeat(43),
+			name: 'Trunky',
+			ticker: 'TRUNKY',
+			contentType: 'application/x.arweave-token',
+		};
+		const collection: Collection = {
+			id: 'fungible-tokens',
+			name: 'Tokens',
+			description: '',
+			kind: 'tokens',
+			assets: [asset],
+		};
+
+		const markup = renderToStaticMarkup(React.createElement(DiscoveryAssetArtwork, { asset, collection }));
+
+		expect(markup).toContain('token-artwork');
+		expect(markup).toContain('circle-only-token-art');
+		expect(markup).toContain('TRUNKY');
+	});
 	it('classifies pending fungible processes as tokens instead of media assets', () => {
 		expect(
 			isFungiblePendingMint({ contentType: 'application/x.arweave-token', ticker: 'SIG' }, 'fungible-tokens')

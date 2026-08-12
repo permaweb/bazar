@@ -17,6 +17,7 @@ import {
 	requiresCostConfirmation,
 	runDispatch,
 } from 'api/fungible-dispatch';
+import { formatTokenAmount } from 'api/order-matching';
 
 import { Button } from 'components/Button';
 import { type HolderDraftRow, HolderListField } from 'components/HolderListField';
@@ -32,6 +33,12 @@ const ADDRESS = /^[A-Za-z0-9_-]{43}$/;
 
 function shortAddress(address: string): string {
 	return `${address.slice(0, 6)}…${address.slice(-6)}`;
+}
+
+function tokenAmount(raw: string, state: Pick<AssetState, 'denomination' | 'ticker'>): string {
+	const [whole, fraction] = formatTokenAmount(raw, state.denomination).split('.');
+	const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+	return `${fraction ? `${grouped}.${fraction}` : grouped} ${state.ticker || 'tokens'}`;
 }
 
 function dispatchErrorMessage(cause: unknown): string {
@@ -118,7 +125,10 @@ export default function DispatchRoute() {
 				.join('\n'),
 		[holderRows]
 	);
-	const parsed = React.useMemo(() => (text.trim() ? parseHolderList(text) : null), [text]);
+	const parsed = React.useMemo(
+		() => (text.trim() && state ? parseHolderList(text, state.denomination) : null),
+		[state, text]
+	);
 	const estimate = parsed?.rows.length && reward !== null ? estimateDispatchCost(parsed.rows, reward) : null;
 	const needsCostApproval = Boolean(estimate && requiresCostConfirmation(estimate.totalWinston));
 	const planSettled = plan ? plan.rows.filter((row) => row.status === 'settled').length : 0;
@@ -201,7 +211,7 @@ export default function DispatchRoute() {
 		if (needsCostApproval && !costApproved) return;
 		setRunError(null);
 		try {
-			// walletBalance pre-flights the full AR spend (token units are paid
+			// walletBalance pre-flights the full AR spend (atomic token units are
 			// in winston — the protocol quantity shadows the quantity tag) so a
 			// long dispatch does not die halfway through on an empty wallet.
 			if (estimate) {
@@ -251,8 +261,8 @@ export default function DispatchRoute() {
 					<h1>{state ? state.name || state.ticker || shortAddress(processId) : shortAddress(processId)}</h1>
 				</div>
 				<p>
-					Send base units to a pasted holder list as individual Arweave L1 transfers. Progress is saved
-					locally, so a reload resumes without double-sending.
+					Send token amounts from a pasted holder list. Bazar converts them to atomic units for individual
+					Arweave L1 transfers and saves progress locally so you can resume.
 				</p>
 			</div>
 
@@ -281,7 +291,7 @@ export default function DispatchRoute() {
 						</div>
 						<div>
 							<dt>Total supply</dt>
-							<dd>{state.totalSupply} base units</dd>
+							<dd>{tokenAmount(state.totalSupply, state)}</dd>
 						</div>
 						<div>
 							<dt>Denomination</dt>
@@ -289,7 +299,7 @@ export default function DispatchRoute() {
 						</div>
 						<div>
 							<dt>Your balance</dt>
-							<dd>{wallet.address ? `${balance ?? '0'} base units` : 'Connect wallet'}</dd>
+							<dd>{wallet.address ? tokenAmount(balance ?? '0', state) : 'Connect wallet'}</dd>
 						</div>
 					</dl>
 					<Link to={`/asset/${FUNGIBLE_TOKEN_COLLECTION_ID}/${processId}`}>View token page</Link>
@@ -352,7 +362,7 @@ export default function DispatchRoute() {
 							<thead>
 								<tr>
 									<th scope="col">Recipient</th>
-									<th scope="col">Base units</th>
+									<th scope="col">Token amount</th>
 									<th scope="col">Status</th>
 								</tr>
 							</thead>
@@ -362,7 +372,7 @@ export default function DispatchRoute() {
 										<td>
 											<code title={row.address}>{shortAddress(row.address)}</code>
 										</td>
-										<td>{row.quantity}</td>
+										<td>{state ? tokenAmount(row.quantity, state) : '—'}</td>
 										<td>
 											{row.status === 'settled' ? (
 												<Check className="ui-icon ui-icon--sm" aria-hidden="true" />
@@ -400,6 +410,8 @@ export default function DispatchRoute() {
 							<HolderListField
 								rows={holderRows}
 								disabled={running}
+								denomination={state?.denomination ?? 0}
+								ticker={state?.ticker || 'tokens'}
 								onChange={(next) => {
 									setHolderRows(next);
 									setCostApproved(false);
@@ -434,7 +446,7 @@ export default function DispatchRoute() {
 										<thead>
 											<tr>
 												<th scope="col">Recipient</th>
-												<th scope="col">Base units</th>
+												<th scope="col">Token amount</th>
 											</tr>
 										</thead>
 										<tbody>
@@ -443,7 +455,7 @@ export default function DispatchRoute() {
 													<td>
 														<code title={row.address}>{shortAddress(row.address)}</code>
 													</td>
-													<td>{row.quantity}</td>
+													<td>{state ? tokenAmount(row.quantity, state) : '—'}</td>
 												</tr>
 											))}
 										</tbody>
@@ -455,8 +467,12 @@ export default function DispatchRoute() {
 										<strong>{parsed.rows.length}</strong>
 									</div>
 									<div>
-										<span>Total base units</span>
-										<strong>{estimate ? estimate.totalQuantity.toString() : '—'}</strong>
+										<span>Total token amount</span>
+										<strong>
+											{estimate && state
+												? tokenAmount(estimate.totalQuantity.toString(), state)
+												: '—'}
+										</strong>
 									</div>
 									<div>
 										<span>Total AR cost</span>
@@ -470,10 +486,10 @@ export default function DispatchRoute() {
 									<span>
 										Each recipient is one L1 transfer signed in your wallet ({parsed.rows.length}{' '}
 										signature{parsed.rows.length === 1 ? '' : 's'}, sent in batches of{' '}
-										{DEFAULT_DISPATCH_BATCH_SIZE}). A transfer really spends its token amount in
-										winston — the protocol quantity shadows the quantity tag — so the AR cost above
-										is {estimate ? winstonToAr(estimate.totalQuantity.toString()) : '0'} AR of token
-										units plus network rewards.
+										{DEFAULT_DISPATCH_BATCH_SIZE}). Behind this form, each token amount is converted
+										to atomic units. The protocol requires the same winston quantity, so this quote
+										includes {estimate ? winstonToAr(estimate.totalQuantity.toString()) : '0'} AR
+										from atomic transfer quantities plus network rewards.
 									</span>
 								</div>
 								{needsCostApproval ? (
@@ -493,8 +509,9 @@ export default function DispatchRoute() {
 												in real AR spend
 											</span>
 											<small>
-												Token units are paid in winston at 1 AR per 1e12 base units per
-												transfer. Approve the quote to enable sending.
+												Token amounts are converted to atomic units before signing. The protocol
+												charges 1 AR per 1e12 atomic units per transfer. Approve the quote to
+												enable sending.
 											</small>
 										</div>
 										<Button

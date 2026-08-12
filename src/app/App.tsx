@@ -3971,36 +3971,11 @@ function Home() {
 																)
 															}
 														>
-															{collection.kind === 'tokens' ? (
-																<TokenArtwork
-																	className="home-asset-media home-token-art circle-only-token-art"
-																	ticker={asset.ticker ?? 'Token'}
-																/>
-															) : asset.image ? (
-																<ArtworkImage
-																	className="home-asset-media"
-																	src={asset.image}
-																	alt=""
-																	fetchPriority={index < 2 ? 'high' : 'auto'}
-																	loading={index < 2 ? 'eager' : 'lazy'}
-																/>
-															) : isAudioContentType(asset.contentType) ? (
-																<AudioArtwork
-																	className="home-asset-media"
-																	contentType={asset.contentType}
-																	name={asset.name}
-																/>
-															) : collection.kind === 'names' ? (
-																<NameArtwork
-																	className="home-asset-media"
-																	name={asset.name}
-																/>
-															) : (
-																<TokenArtwork
-																	className="home-asset-media home-token-art"
-																	ticker={asset.ticker ?? 'Token'}
-																/>
-															)}
+															<DiscoveryAssetArtwork
+																asset={asset}
+																collection={collection}
+																priority={index < 2}
+															/>
 															<div className="home-asset-details">
 																<div>
 																	<strong>{asset.name}</strong>
@@ -6857,24 +6832,7 @@ export const AssetCard = React.memo(function AssetCard({
 			onTouchStart={() => prefetchAssetPage(asset.id, collection.kind === 'tokens')}
 			to={`/asset/${collection.id}/${asset.id}`}
 		>
-			<div className="asset-media">
-				{collection.kind === 'tokens' && collectionContext ? (
-					<TokenArtwork className="circle-only-token-art" ticker={asset.ticker ?? 'Token'} />
-				) : asset.image ? (
-					<ArtworkImage
-						src={asset.image}
-						fetchPriority={priority ? 'high' : 'auto'}
-						loading={priority ? 'eager' : 'lazy'}
-						alt=""
-					/>
-				) : isAudioContentType(asset.contentType) ? (
-					<AudioArtwork contentType={asset.contentType} name={asset.name} />
-				) : collection.kind === 'tokens' ? (
-					<TokenArtwork className="circle-only-token-art" ticker={asset.ticker ?? 'Token'} />
-				) : (
-					<span>{asset.name.slice(0, 1)}</span>
-				)}
-			</div>
+			<AssetCardArtwork asset={asset} collection={collection} priority={priority} />
 			<div className="asset-card-copy">
 				{!collectionContext ? <p>{collection.name}</p> : null}
 				<div className="asset-card-heading">
@@ -6887,6 +6845,69 @@ export const AssetCard = React.memo(function AssetCard({
 		</Link>
 	);
 });
+
+export function AssetCardArtwork({
+	asset,
+	collection,
+	priority = false,
+}: {
+	asset: AssetSummary;
+	collection: Collection;
+	priority?: boolean;
+}) {
+	return (
+		<div className="asset-media">
+			{asset.image ? (
+				<ArtworkImage
+					src={asset.image}
+					fetchPriority={priority ? 'high' : 'auto'}
+					loading={priority ? 'eager' : 'lazy'}
+					alt=""
+				/>
+			) : isAudioContentType(asset.contentType) ? (
+				<AudioArtwork contentType={asset.contentType} name={asset.name} />
+			) : collection.kind === 'tokens' ? (
+				<TokenArtwork className="circle-only-token-art" ticker={asset.ticker ?? 'Token'} />
+			) : (
+				<span>{asset.name.slice(0, 1)}</span>
+			)}
+		</div>
+	);
+}
+
+export function DiscoveryAssetArtwork({
+	asset,
+	collection,
+	priority = false,
+}: {
+	asset: AssetSummary;
+	collection: Collection;
+	priority?: boolean;
+}) {
+	if (asset.image) {
+		return (
+			<ArtworkImage
+				className="home-asset-media"
+				src={asset.image}
+				alt=""
+				fetchPriority={priority ? 'high' : 'auto'}
+				loading={priority ? 'eager' : 'lazy'}
+			/>
+		);
+	}
+	if (isAudioContentType(asset.contentType)) {
+		return <AudioArtwork className="home-asset-media" contentType={asset.contentType} name={asset.name} />;
+	}
+	if (collection.kind === 'names') {
+		return <NameArtwork className="home-asset-media" name={asset.name} />;
+	}
+	return (
+		<TokenArtwork
+			className={`home-asset-media home-token-art${collection.kind === 'tokens' ? ' circle-only-token-art' : ''}`}
+			ticker={asset.ticker ?? 'Token'}
+		/>
+	);
+}
 
 export type CandidateSupportFailure = { candidate: AssetCandidate; error: unknown };
 export type WalletResolutionStatus = {
@@ -9587,7 +9608,7 @@ function OperationDialog({
 										? `Purchase quote ready. Maximum total ${winstonToAr(purchaseQuote.total)} AR.${
 												purchaseAffordable ? '' : ' This wallet has insufficient AR.'
 										  }`
-										: 'Checking the exact purchase cost.'}
+										: 'Checking the purchase cost.'}
 								</p>
 							) : null}
 							{operation.kind === 'buy' ? (
@@ -9597,9 +9618,9 @@ function OperationDialog({
 								>
 									<span>
 										{quoteError
-											? 'The exact network cost could not be checked.'
+											? 'The network cost could not be checked.'
 											: purchaseQuote
-											? 'Exact costs checked.'
+											? 'Costs checked.'
 											: 'Checking wallet balance and network fees…'}
 									</span>
 									<Button
@@ -9683,7 +9704,7 @@ function OperationDialog({
 							) : null}
 							<p className="operation-disclosure">
 								{operation.kind === 'buy'
-									? 'Your wallet will ask for two approvals: one reservation and one exact seller payment. The payment stays local until the reservation is accepted by the network.'
+									? 'Your wallet will ask for two approvals: one reservation and one seller payment. The payment stays local until the reservation is accepted by the network.'
 									: 'After signing, Bazar observes this action through independently addressed Arweave nodes. Signed transaction details are saved in this browser so you can return with the same wallet while browser data remains available.'}
 							</p>
 						</div>
@@ -9722,7 +9743,7 @@ function OperationDialog({
 						<Loading
 							label={
 								(operation.kind === 'buy' ? operation.resume : operation.resumeId)
-									? 'Recovering the exact signed transaction…'
+									? 'Recovering the signed transaction…'
 									: 'Preparing secure wallet approvals…'
 							}
 						/>
@@ -10284,6 +10305,9 @@ export function mintErrorMessage(error: unknown) {
 		'mint-artwork-audio-only': 'Album artwork can only be attached to an MP3 or WAV asset.',
 		'mint-logo-type-unsupported': 'Use a PNG, JPG, WebP, or GIF image for the token logo.',
 		'mint-logo-size-invalid': 'Choose a token logo no larger than 10 MB.',
+		'mint-ticker-invalid': 'Enter a token ticker between 1 and 32 characters.',
+		'mint-supply-invalid': 'Enter a positive whole-number token supply.',
+		'mint-denomination-invalid': 'Enter decimal places from 0 to 255.',
 		'mint-insufficient-balance': 'This wallet does not have enough AR for the required Arweave transaction(s).',
 		'mint-high-cost-confirmation-required': 'Review and approve the unusually high network cost before minting.',
 		'wallet-sign-unavailable': 'Connect an Arweave wallet that can sign transactions.',
@@ -10328,7 +10352,7 @@ const ARWEAVE_ADDRESS = /^[A-Za-z0-9_-]{43}$/;
 
 export function atomicOperationFormError(kind: Operation['kind'], value: string, owner = '') {
 	if (kind === 'sell') {
-		if (!value.trim()) return 'Enter the exact AR price for this asset.';
+		if (!value.trim()) return 'Enter the AR price for this asset.';
 		if (/^0(?:\.0*)?$/.test(value)) return 'Enter a price of at least 0.000000000001 AR.';
 		try {
 			if (BigInt(arToWinston(value)) < 1n) return 'Enter a price of at least 0.000000000001 AR.';

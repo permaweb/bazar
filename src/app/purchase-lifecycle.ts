@@ -36,7 +36,7 @@ export function purchaseLifecycleStatus(state: PurchaseState | null) {
 		return 'Applied to live process state. Purchase complete.';
 	}
 	if (state.stage === 'ownership-verifying') {
-		return 'Payment mined. Waiting for the exact payment to be applied to live process state.';
+		return 'Payment mined. Waiting for it to be applied to live process state.';
 	}
 	if (state.stage === 'payment-confirming') {
 		return 'Payment mined. Waiting for the required confirmation depth.';
@@ -45,10 +45,10 @@ export function purchaseLifecycleStatus(state: PurchaseState | null) {
 		return 'Payment accepted by Arweave. Waiting for it to be mined.';
 	}
 	if (state.stage === 'dispatching-payment') {
-		return 'Exact signed seller payment submitted. Waiting for Arweave acceptance; observation delay will not create a replacement.';
+		return 'Signed seller payment submitted. Waiting for Arweave acceptance; observation delay will not create a replacement.';
 	}
 	if (state.stage === 'signing-payment') {
-		return 'Reservation applied to live process state. Preparing the exact seller payment.';
+		return 'Reservation applied to live process state. Preparing the seller payment.';
 	}
 	if (state.stage === 'registration-accepting') {
 		const confirmations = state.registration?.consensus.confirmations ?? 0;
@@ -63,9 +63,9 @@ export function purchaseLifecycleStatus(state: PurchaseState | null) {
 		return 'Reservation accepted by Arweave. Waiting for it to be mined.';
 	}
 	if (state.stage === 'dispatching-registration') {
-		return 'Exact signed reservation submitted. Waiting for Arweave acceptance; observation delay will not create a replacement.';
+		return 'Signed reservation submitted. Waiting for Arweave acceptance; observation delay will not create a replacement.';
 	}
-	if (state.stage === 'signing') return 'Waiting for the exact reservation and seller payment signatures.';
+	if (state.stage === 'signing') return 'Waiting for the reservation and seller payment signatures.';
 	if (state.stage === 'failed') return state.error?.message ?? 'Purchase observation needs attention.';
 	return '';
 }

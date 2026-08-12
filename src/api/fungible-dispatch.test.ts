@@ -30,43 +30,48 @@ describe('parseHolderList', () => {
 			JSON.stringify([
 				{ address: addressA, quantity: '10' },
 				{ address: addressB, quantity: 250000 },
-			])
+			]),
+			3
 		);
 		expect(parsed.errors).toEqual([]);
 		expect(parsed.rows).toEqual([
-			{ address: addressA, quantity: '10' },
-			{ address: addressB, quantity: '250000' },
+			{ address: addressA, quantity: '10000' },
+			{ address: addressB, quantity: '250000000' },
 		]);
 	});
 
 	it('parses JSON pair arrays and object maps', () => {
-		expect(parseHolderList(JSON.stringify([[addressA, '7']])).rows).toEqual([{ address: addressA, quantity: '7' }]);
-		expect(parseHolderList(JSON.stringify({ [addressA]: '3', [addressB]: '4' })).rows).toEqual([
-			{ address: addressA, quantity: '3' },
-			{ address: addressB, quantity: '4' },
+		expect(parseHolderList(JSON.stringify([[addressA, '7']]), 3).rows).toEqual([
+			{ address: addressA, quantity: '7000' },
+		]);
+		expect(parseHolderList(JSON.stringify({ [addressA]: '3', [addressB]: '4' }), 3).rows).toEqual([
+			{ address: addressA, quantity: '3000' },
+			{ address: addressB, quantity: '4000' },
 		]);
 	});
 
-	it('parses CSV lines with comments and blank lines', () => {
-		const parsed = parseHolderList(`# holders\n\n${addressA}, 5\n${addressB},1\n`);
+	it('converts human CSV quantities to atomic units without floating point', () => {
+		const parsed = parseHolderList(`# holders\n\n${addressA}, 5.125\n${addressB},1\n`, 3);
 		expect(parsed.errors).toEqual([]);
 		expect(parsed.rows).toEqual([
-			{ address: addressA, quantity: '5' },
-			{ address: addressB, quantity: '1' },
+			{ address: addressA, quantity: '5125' },
+			{ address: addressB, quantity: '1000' },
 		]);
 	});
 
 	it('rejects invalid addresses, non-positive quantities, and empty input', () => {
-		expect(parseHolderList('not-an-address,5').errors).toHaveLength(1);
-		expect(parseHolderList(`${addressA},0`).errors).toHaveLength(1);
-		expect(parseHolderList(`${addressA},1.5`).errors).toHaveLength(1);
-		expect(parseHolderList(`${addressA},-2`).errors).toHaveLength(1);
-		expect(parseHolderList('   ').errors).toHaveLength(1);
-		expect(parseHolderList('{broken').errors).toHaveLength(1);
+		expect(parseHolderList('not-an-address,5', 3).errors).toHaveLength(1);
+		expect(parseHolderList(`${addressA},0`, 3).errors).toHaveLength(1);
+		expect(parseHolderList(`${addressA},1.0001`, 3).errors).toHaveLength(1);
+		expect(parseHolderList(JSON.stringify([{ address: addressA, quantity: 1.5 }]), 3).errors).toHaveLength(1);
+		expect(parseHolderList(`${addressA},-2`, 3).errors).toHaveLength(1);
+		expect(parseHolderList('   ', 3).errors).toHaveLength(1);
+		expect(parseHolderList('{broken', 3).errors).toHaveLength(1);
+		expect(parseHolderList(`${addressA},1.5`, 0).errors).toHaveLength(1);
 	});
 
 	it('rejects duplicate addresses and names them', () => {
-		const parsed = parseHolderList(`${addressA},1\n${addressB},2\n${addressA},3`);
+		const parsed = parseHolderList(`${addressA},1\n${addressB},2\n${addressA},3`, 3);
 		expect(parsed.rows).toEqual([]);
 		expect(parsed.errors).toHaveLength(1);
 		expect(parsed.errors[0]).toContain(addressA);
@@ -74,10 +79,10 @@ describe('parseHolderList', () => {
 	});
 
 	it('keeps quantities bigint-safe beyond Number precision', () => {
-		const parsed = parseHolderList(`${addressA},123456789012345678901234567890`);
+		const parsed = parseHolderList(`${addressA},123456789012345678901234567890.123`, 3);
 		expect(parsed.errors).toEqual([]);
-		expect(parsed.rows[0].quantity).toBe('123456789012345678901234567890');
-		expect(planTotals(parsed.rows).totalQuantity).toBe(123456789012345678901234567890n);
+		expect(parsed.rows[0].quantity).toBe('123456789012345678901234567890123');
+		expect(planTotals(parsed.rows).totalQuantity).toBe(123456789012345678901234567890123n);
 	});
 });
 

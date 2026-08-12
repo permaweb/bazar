@@ -56,12 +56,17 @@ export function HolderListField({
 	rows,
 	onChange,
 	disabled,
+	denomination,
+	ticker,
 }: {
 	rows: HolderDraftRow[];
 	onChange: (rows: HolderDraftRow[]) => void;
 	disabled?: boolean;
+	denomination: number;
+	ticker: string;
 }) {
 	const editable = rows.length ? rows : [EMPTY_ROW];
+	const exampleAmount = denomination ? '250.5' : '250';
 
 	const setRow = (index: number, patch: Partial<HolderDraftRow>) => {
 		onChange(editable.map((row, i) => (i === index ? { ...row, ...patch } : row)));
@@ -93,14 +98,11 @@ export function HolderListField({
 					<span className="field-hint-pop" role="tooltip">
 						Paste a whole list into any field to autofill the rows. Accepts CSV — one{' '}
 						<code>address,quantity</code> per line, <code>#</code> lines are comments — or JSON:{' '}
-						<code>
-							[{'{'}"address":"…","quantity":"250000"{'}'}]
-						</code>
-						, <code>[["…","250000"]]</code>, or{' '}
-						<code>
-							{'{'}"…":"250000"{'}'}
-						</code>
-						. Quantities are base units (positive integers); one row per address.
+						<code>{`[{"address":"…","quantity":"${exampleAmount}"}]`}</code>,{' '}
+						<code>{`[["…","${exampleAmount}"]]`}</code>, or <code>{`{"…":"${exampleAmount}"}`}</code>.
+						Quantities are {ticker} amounts with up to {denomination} decimal
+						{denomination === 1 ? ' place' : ' places'}; one row per address. Use quoted JSON strings for
+						fractional or very large quantities.
 					</span>
 				</span>
 			</div>
@@ -118,9 +120,9 @@ export function HolderListField({
 							onChange={(event) => setRow(index, { address: event.target.value.trim() })}
 						/>
 						<input
-							aria-label={`Quantity in base units, row ${index + 1}`}
-							placeholder="Quantity"
-							inputMode="numeric"
+							aria-label={`Quantity in ${ticker}, row ${index + 1}`}
+							placeholder={`Amount in ${ticker}`}
+							inputMode="decimal"
 							spellCheck={false}
 							autoComplete="off"
 							value={row.quantity}
