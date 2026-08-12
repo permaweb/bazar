@@ -5695,10 +5695,10 @@ body input:focus-visible {
 		flex-direction: column;
 	}
 	.asset-detail-layout {
-		grid-template-columns: 1fr;
+		grid-template-columns: minmax(0, 1fr);
 	}
 	.fungible-asset-page .asset-detail-layout {
-		grid-template-columns: 1fr;
+		grid-template-columns: minmax(0, 1fr);
 		grid-template-rows: auto auto;
 		row-gap: 18px;
 	}
@@ -5711,7 +5711,7 @@ body input:focus-visible {
 		grid-row: 2;
 	}
 	.atomic-asset-page .asset-detail-layout {
-		grid-template-columns: 1fr;
+		grid-template-columns: minmax(0, 1fr);
 		grid-template-rows: auto auto auto;
 		row-gap: 20px;
 	}
@@ -5734,8 +5734,8 @@ body input:focus-visible {
 		max-height: none;
 	}
 	.atomic-asset-page .asset-hero-media {
-		aspect-ratio: 16 / 6;
-		max-height: 240px;
+		aspect-ratio: 1;
+		max-height: none;
 	}
 	.asset-column {
 		display: contents;
@@ -5911,9 +5911,15 @@ body input:focus-visible {
 		position: sticky;
 		top: 61px;
 		z-index: 20;
+		max-width: 100%;
 		gap: 20px;
+		overflow-x: auto;
 		background: var(--paper-translucent);
 		backdrop-filter: blur(10px);
+	}
+	.asset-section-tabs button {
+		flex: 0 0 auto;
+		white-space: nowrap;
 	}
 	.asset-section-tabs button,
 	.asset-collection-link {
@@ -6498,7 +6504,7 @@ body input:focus-visible {
 	}
 	.asset-section-tabs {
 		margin: 0 0 16px;
-		justify-content: space-between;
+		justify-content: flex-start;
 		gap: 0;
 	}
 	.asset-section-tabs button {
