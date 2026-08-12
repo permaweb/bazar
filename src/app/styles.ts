@@ -23,6 +23,7 @@ export const GlobalStyle = createGlobalStyle`
     --type-small: ${(props) => props.theme.typography.size.small};
     --type-body: ${(props) => props.theme.typography.size.body};
     --type-display: ${(props) => props.theme.typography.size.display};
+    --type-page-title: calc(var(--type-display) - 0.125rem);
 
     --ink: ${(props) => props.theme.colors.font.primary};
     --muted: ${(props) => props.theme.colors.font.alt1};

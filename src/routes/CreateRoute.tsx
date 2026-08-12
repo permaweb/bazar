@@ -1496,10 +1496,6 @@ export default function CreateRoute() {
 							{!working ? <ArrowRight className="ui-icon" aria-hidden="true" /> : null}
 						</Button>
 					)}
-					<p className="mint-permanence">
-						Confirmed Arweave uploads are permanent and cannot be edited. Review every image, name, and
-						description before signing.
-					</p>
 				</form>
 			</div>
 			{fungibleSubmitting || fungibleResult || fungibleOperationError || fungibleDialogVisible ? (
