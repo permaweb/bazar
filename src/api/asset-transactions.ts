@@ -33,7 +33,7 @@ import { acquireAssetObserverNetwork } from './asset-observers';
 import { filledOrder } from './order-matching';
 
 const ADDRESS = /^[A-Za-z0-9_-]{43}$/;
-const SIGNED_TRANSACTION_PREFIX = 'bazar-signed-transaction:';
+export const SIGNED_TRANSACTION_PREFIX = 'bazar-signed-transaction:';
 export const DEFAULT_REGISTRATION_FEE = 100_000_000n;
 export const ASSET_TRANSACTION_CONFIRMATION_TARGET = 5;
 /** No asset offer may exceed the maximum 66 million AR supply. */
@@ -278,6 +278,17 @@ export class AssetTransactionClient {
 	}
 
 	async transfer(
+		processId: string,
+		recipient: string,
+		quantity: string,
+		expectedSigner?: string,
+		signal?: AbortSignal
+	): Promise<PreparedTransaction> {
+		return this.transferFungible(processId, recipient, quantity, expectedSigner, signal);
+	}
+
+	/** Keep native AR at zero so tx@1.0 promotes the token `quantity` tag. */
+	async transferFungible(
 		processId: string,
 		recipient: string,
 		quantity: string,
@@ -1334,19 +1345,36 @@ export function assertExactFungibleTransferAssignment(
 	const committed = Array.isArray(commitment?.committed)
 		? new Set(commitment.committed.filter((key): key is string => typeof key === 'string'))
 		: new Set<string>();
+	const decodedQuantity = wireAmount(body?.quantity);
+	const nativeQuantity = wireAmount(commitment?.['field-quantity']) ?? '0';
+	const originalQuantity = uniqueOriginalTagValue(commitment?.['original-tags'], 'quantity');
+	const quantityShapeMatches =
+		(nativeQuantity === '0' && decodedQuantity === quantity) ||
+		(nativeQuantity === '1' && decodedQuantity === '1') ||
+		(nativeQuantity === quantity && decodedQuantity === quantity);
 	if (
 		!assignment.transactionIds.includes(transactionId) ||
 		assignment.raw.process !== processId ||
 		body?.target !== processId ||
 		body?.action !== 'transfer' ||
 		body?.recipient !== recipient ||
-		wireAmount(body?.quantity) !== quantity ||
+		!quantityShapeMatches ||
+		wireAmount(originalQuantity) !== quantity ||
 		commitment?.['commitment-device'] !== 'tx@1.0' ||
 		commitment.committer !== sender ||
 		commitment['field-target'] !== processId ||
 		!['action', 'recipient', 'quantity', 'target'].every((field) => committed.has(field))
 	)
 		throw new Error('fungible-transfer-proof-mismatch');
+}
+
+function uniqueOriginalTagValue(originalTags: unknown, expectedName: string): unknown {
+	const tags = record(originalTags);
+	if (!tags) return undefined;
+	const matches = Object.values(tags)
+		.map((tag) => record(tag))
+		.filter((tag) => tag?.name?.toString().toLowerCase() === expectedName);
+	return matches.length === 1 ? matches[0]?.value : undefined;
 }
 
 export function hasExactFungibleTransferReceipt(
@@ -1434,21 +1462,32 @@ function requestDeadline(parent: AbortSignal | undefined, timeout: number) {
 	};
 }
 
-export async function dispatchAndConfirm(
-	transaction: PreparedTransaction,
-	options: {
-		signal?: AbortSignal;
-		target?: number;
-		onProgress?: (progress: TransactionProgress) => void;
-		onViews?: (views: ObserverView[]) => void;
-		onConsensus?: (consensus: Consensus) => void;
-	} = {}
-): Promise<void> {
+export type ConfirmTransactionOptions = {
+	signal?: AbortSignal;
+	target?: number;
+	onProgress?: (progress: TransactionProgress) => void;
+	onViews?: (views: ObserverView[]) => void;
+	onConsensus?: (consensus: Consensus) => void;
+};
+
+/**
+ * Acquire a shared observer network, watch `txId` to the requested
+ * confirmation target, and forward every aggregate change through the
+ * callbacks. `run` receives the live watcher and the settlement promise so a
+ * caller can do additional work (e.g. dispatch the transaction) while the same
+ * watcher observes it. The observer lease, watcher lifecycle, and the
+ * settlement wiring are identical for watch-only and dispatch-and-watch use.
+ */
+async function withTransactionWatcher<T>(
+	txId: string,
+	options: ConfirmTransactionOptions,
+	run: (context: { watcher: TxWatcher; settlement: Promise<void> }) => Promise<T>
+): Promise<T> {
 	const observerLease = acquireAssetObserverNetwork();
 	const network = observerLease.network;
 	try {
 		await observerLease.ready;
-		const watcher = network.watch(transaction.id, {
+		const watcher = network.watch(txId, {
 			target: options.target ?? 1,
 			minObservers: 2,
 			propagation: 'all',
@@ -1472,6 +1511,34 @@ export async function dispatchAndConfirm(
 		});
 		void settlement.catch(() => undefined);
 		watcher.start();
+		try {
+			return await run({ watcher, settlement });
+		} finally {
+			watcher.stop();
+		}
+	} finally {
+		observerLease.release();
+	}
+}
+
+/**
+ * Watch an already-posted transaction id until it reaches the confirmation
+ * target, forwarding observer views/consensus/progress. Unlike
+ * dispatchAndConfirm this never submits anything — it is for flows that posted
+ * the transaction elsewhere (e.g. a minted process tx) and only need the same
+ * L1 confirmation race the buy/sell flow renders.
+ */
+export async function confirmTransactionId(txId: string, options: ConfirmTransactionOptions = {}): Promise<void> {
+	await withTransactionWatcher(txId, options, async ({ settlement }) => {
+		await settlement;
+	});
+}
+
+export async function dispatchAndConfirm(
+	transaction: PreparedTransaction,
+	options: ConfirmTransactionOptions = {}
+): Promise<void> {
+	await withTransactionWatcher(transaction.id, options, async ({ watcher, settlement }) => {
 		const dispatchController = new AbortController();
 		const abortDispatch = () => dispatchController.abort(options.signal?.reason);
 		if (options.signal?.aborted) abortDispatch();
@@ -1506,11 +1573,8 @@ export async function dispatchAndConfirm(
 				dispatchController.abort(new DOMException('Transaction observation finished', 'AbortError'));
 			}
 			options.signal?.removeEventListener('abort', abortDispatch);
-			watcher.stop();
 		}
-	} finally {
-		observerLease.release();
-	}
+	});
 }
 
 function reportProvider(

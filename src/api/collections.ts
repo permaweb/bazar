@@ -1,5 +1,10 @@
 import { mapConcurrent } from 'helpers/concurrency';
-import { arweaveGatewayFromLocation, arweaveGraphqlEndpoint, NAMES_NAMESPACE_ID } from 'helpers/config';
+import {
+	arweaveGatewayFromLocation,
+	arweaveGraphqlEndpoint,
+	arweaveRawDataUrl,
+	NAMES_NAMESPACE_ID,
+} from 'helpers/config';
 
 import { type AssetState, readAssetState } from './asset-marketplace';
 import { fetchJsonWithDeadline, fetchTextWithDeadline } from './fetch-with-deadline';
@@ -158,6 +163,9 @@ export const IMAGE_COLLECTION_REFERENCES = IMAGE_COLLECTIONS.map((collection) =>
 
 export const FUNGIBLE_TOKEN_ID =
 	import.meta.env.VITE_FUNGIBLE_TOKEN_ID ?? 'IyFfmbTu8P4rv0KyrA0Q-QtfEnYntMj4RkRiBVip9KA';
+
+export const FUNGIBLE_TOKEN_COLLECTION_ID = 'fungible-tokens';
+export const FUNGIBLE_TOKEN_COLLECTION_NAME = '[TEST] Bazar Fungible Tokens';
 
 export type CollectionLoadResult = {
 	collections: Collection[];
@@ -601,8 +609,8 @@ function collectionCount(value: unknown): number | null {
 
 function fungibleTokenCollection(assets: AssetSummary[], count = 0): Collection {
 	return {
-		id: 'fungible-tokens',
-		name: '[TEST] Bazar Fungible Tokens',
+		id: FUNGIBLE_TOKEN_COLLECTION_ID,
+		name: FUNGIBLE_TOKEN_COLLECTION_NAME,
 		description: 'Arweave-native fungible tokens with direct wallet ownership and native AR settlement.',
 		kind: 'tokens',
 		assets,
@@ -873,11 +881,11 @@ function imageCollection(
 		manifestId,
 		assets: manifest.assets.map((asset) => {
 			if (typeof asset === 'string') {
-				return { id: asset, name: shortId(asset), image: `${arweaveGatewayFromLocation()}/${asset}` };
+				return { id: asset, name: shortId(asset), image: arweaveRawDataUrl(asset) };
 			}
 			return {
 				...asset,
-				...(!asset.image && !asset.media ? { image: `${arweaveGatewayFromLocation()}/${asset.id}` } : {}),
+				...(!asset.image && !asset.media ? { image: arweaveRawDataUrl(asset.id) } : {}),
 			};
 		}),
 	};

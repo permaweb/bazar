@@ -99,6 +99,10 @@ export function arweaveGraphqlEndpoint(
 	return `${arweaveGatewayFromLocation(location)}/graphql`;
 }
 
+export function arweaveRawDataUrl(id: string, gateway = arweaveGatewayFromLocation()): string {
+	return `${gateway}/raw/${id}`;
+}
+
 export function gatewayFromLocation(location: Location = window.location): string {
 	return gatewaysFromLocation(location)[0];
 }

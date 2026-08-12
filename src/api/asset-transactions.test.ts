@@ -44,7 +44,13 @@ function scheduledAssignment(slot: number, signedId: string, blockHeight = 51) {
 					'commitment-device': 'tx@1.0',
 					committer: seller,
 					committed: ['action', 'recipient', 'quantity', 'target'],
+					'field-quantity': undefined as string | undefined,
 					'field-target': processId,
+					'original-tags': {
+						1: { name: 'action', value: 'transfer' },
+						2: { name: 'recipient', value: recipient },
+						3: { name: 'quantity', value: '10' },
+					},
 				},
 			},
 			quantity: '10',
@@ -275,12 +281,16 @@ describe('fungible asset transactions', () => {
 		expect(subject.requests[0]).toContain('/now?require-codec=');
 	});
 
-	it('keeps the native amount from shadowing arbitrary token transfer quantities', async () => {
+	it('leaves native AR at zero so tx@1.0 promotes the token quantity tag', async () => {
 		const subject = client();
 		const prepared = await subject.client.transfer(processId, recipient, '12500000000000', seller);
 		const stored = JSON.parse(subject.storage.getItem(`bazar-signed-transaction:${prepared.id}`)!);
+		expect((prepared as typeof prepared & { cost: bigint }).cost).toBe(1000n);
 		expect(stored.transaction.quantity).toBe('0');
-		expect(decodedTags(stored.transaction)).toContainEqual({ name: 'quantity', value: '12500000000000' });
+		expect(decodedTags(stored.transaction)).toContainEqual({
+			name: 'quantity',
+			value: '12500000000000',
+		});
 	});
 
 	it('verifies the base64url tag representation emitted by Arweave transaction JSON', async () => {
@@ -398,7 +408,7 @@ describe('fungible asset transactions', () => {
 		[
 			'native quantity',
 			(transaction: any) => {
-				transaction.quantity = '1';
+				transaction.quantity = '2';
 			},
 		],
 		[
@@ -441,7 +451,7 @@ describe('fungible asset transactions', () => {
 		const prepared = await subject.client.transfer(processId, recipient, '12500000000000', seller);
 		const key = `bazar-signed-transaction:${prepared.id}`;
 		const stored = JSON.parse(subject.storage.getItem(key)!);
-		stored.transaction.quantity = '1';
+		stored.transaction.quantity = '2';
 		subject.storage.setItem(key, JSON.stringify(stored));
 
 		expect(() => subject.client.restore(prepared.id, seller)).toThrow('wallet-modified-transaction-fields');
@@ -806,6 +816,40 @@ describe('fungible asset transactions', () => {
 		).toBe(true);
 	});
 
+	it('accepts exact legacy transfers whose native quantity matched the token amount', () => {
+		const raw = scheduledAssignment(11, transactionId);
+		raw.body.quantity = '10';
+		raw.body.commitments[transactionId]['field-quantity'] = '10';
+
+		expect(() =>
+			assertExactFungibleTransferAssignment(
+				{ slot: 11, blockHeight: 51, transactionIds: [transactionId], raw },
+				processId,
+				transactionId,
+				seller,
+				recipient,
+				'10'
+			)
+		).not.toThrow();
+	});
+
+	it('accepts transfers created by the previous one-winston workaround', () => {
+		const raw = scheduledAssignment(11, transactionId);
+		raw.body.quantity = '1';
+		raw.body.commitments[transactionId]['field-quantity'] = '1';
+
+		expect(() =>
+			assertExactFungibleTransferAssignment(
+				{ slot: 11, blockHeight: 51, transactionIds: [transactionId], raw },
+				processId,
+				transactionId,
+				seller,
+				recipient,
+				'10'
+			)
+		).not.toThrow();
+	});
+
 	it('distinguishes incomplete scheduler proof from an exact token rejection', () => {
 		const validRaw = scheduledAssignment(11, transactionId);
 		const mutations: Array<(raw: any) => void> = [
@@ -820,6 +864,18 @@ describe('fungible asset transactions', () => {
 			},
 			(raw) => {
 				raw.body.quantity = '11';
+			},
+			(raw) => {
+				raw.body.commitments[transactionId]['field-quantity'] = '11';
+			},
+			(raw) => {
+				raw.body.commitments[transactionId]['original-tags'][3].value = '11';
+			},
+			(raw) => {
+				raw.body.commitments[transactionId]['original-tags'][4] = {
+					name: 'Quantity',
+					value: '10',
+				};
 			},
 			(raw) => {
 				raw.body.target = recipient;

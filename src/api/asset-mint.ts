@@ -6,9 +6,14 @@ import {
 	normalizeAssetContentType,
 } from 'helpers/asset-media';
 import { mapConcurrent } from 'helpers/concurrency';
-import { arweaveClientConfig, arweaveGatewayFromLocation, gatewayFromLocation } from 'helpers/config';
+import {
+	arweaveClientConfig,
+	arweaveGatewayFromLocation,
+	arweaveRawDataUrl,
+	gatewayFromLocation,
+} from 'helpers/config';
 
-import type { AssetSummary } from './collections';
+import { type AssetSummary, FUNGIBLE_TOKEN_COLLECTION_ID, FUNGIBLE_TOKEN_COLLECTION_NAME } from './collections';
 import { acceptedMintActivity, upsertMintActivity } from './mint-activity';
 import {
 	CREATED_COLLECTION_ID,
@@ -108,10 +113,44 @@ export type MintResult = {
 
 export type MintPhase = 'signing-asset' | 'uploading-asset' | 'signing-artwork' | 'uploading-artwork';
 
-export type MintUploadTransaction = {
-	id: string;
-	label: string;
+export const MAX_FUNGIBLE_TICKER_LENGTH = 32;
+/** Mirrors MAX_TOKEN_DENOMINATION in asset-marketplace.ts — parseAssetState rejects anything above it. */
+export const MAX_FUNGIBLE_DENOMINATION = 255;
+
+export type FungibleMintInput = {
+	name: string;
+	description: string;
+	/** 1-32 printable characters, no surrounding whitespace (mirrors safeTicker in asset-marketplace.ts). */
+	ticker: string;
+	/** Positive integer count of whole tokens. Converted to atomic units exactly once when publishing. */
+	wholeSupply: string;
+	/** Fractional precision, 0-255. One whole token equals 10^denomination atomic units. */
+	denomination: string;
+	/** Optional 43-char Arweave transaction id rendered as the token logo. */
+	logo?: string;
 };
+
+export type FungibleMintResult = {
+	processId: string;
+	logo?: string;
+	owner: string;
+	name: string;
+	ticker: string;
+	wholeSupply: string;
+	atomicSupply: string;
+	denomination: number;
+	createdAt: number;
+};
+
+export type FungibleMintEstimate = {
+	processReward: bigint;
+	logoReward: bigint;
+	reward: bigint;
+	bytes: number;
+	transactionCount: number;
+};
+
+export type FungibleMintPhase = 'signing-logo' | 'uploading-logo' | 'signing' | 'uploading';
 
 export type CollectionMintInput = {
 	name: string;
@@ -260,7 +299,7 @@ export class AssetMintClient {
 		assertAddress(owner, 'invalid-mint-owner');
 		if (draft.owner !== owner) throw new Error('mint-draft-wallet-mismatch');
 		await this.#assertActiveSigner(owner);
-		const response = await this.#fetch(`${this.#gateway}/${draft.mediaId}`, { signal: options.signal });
+		const response = await this.#fetch(arweaveRawDataUrl(draft.mediaId, this.#gateway), { signal: options.signal });
 		if (!response.ok) throw new Error(`mint-media-unavailable-${response.status}`);
 		const data = new Uint8Array(await response.arrayBuffer());
 		const maxBytes = isAudioContentType(draft.contentType) ? MAX_AUDIO_BYTES : MAX_IMAGE_BYTES;
@@ -315,10 +354,10 @@ export class AssetMintClient {
 			...(input.duration ? { duration: input.duration } : {}),
 			...(isAudioContentType(input.contentType)
 				? {
-						media: `${this.#gateway}/${signedProcess.id}`,
-						...(input.artworkId ? { image: `${this.#gateway}/${input.artworkId}` } : {}),
+						media: arweaveRawDataUrl(signedProcess.id, this.#gateway),
+						...(input.artworkId ? { image: arweaveRawDataUrl(input.artworkId, this.#gateway) } : {}),
 				  }
-				: { image: `${this.#gateway}/${signedProcess.id}` }),
+				: { image: arweaveRawDataUrl(signedProcess.id, this.#gateway) }),
 			mediaId: signedProcess.id,
 			...(input.artworkId ? { artworkId: input.artworkId } : {}),
 			owner,
@@ -342,8 +381,118 @@ export class AssetMintClient {
 		return { asset, mediaId: signedProcess.id, processId: signedProcess.id };
 	}
 
+	async estimateFungible(input: FungibleMintInput, logo?: File, signal?: AbortSignal): Promise<FungibleMintEstimate> {
+		validateFungibleMintInput(input);
+		if (logo) validateFungibleLogo(logo);
+		const processBytes = byteLength(fungibleMintData(input));
+		const logoBytes = input.logo ? 0 : logo?.size ?? 0;
+		const [processReward, logoReward] = await Promise.all([
+			this.#price(processBytes, signal),
+			logoBytes ? this.#price(logoBytes, signal) : 0n,
+		]);
+		return {
+			processReward,
+			logoReward,
+			reward: processReward + logoReward,
+			bytes: processBytes + logoBytes,
+			transactionCount: logoBytes ? 2 : 1,
+		};
+	}
+
+	/**
+	 * Publish a fungible token process minting the whole supply to `owner`.
+	 *
+	 * The supply is minted through the `initial-holder` tag alone. Do NOT
+	 * attach a balances+link structure at creation: deployed nodes 502 on
+	 * init when one is present (verified 2026-08-11). The tag set mirrors
+	 * scripts/publish_fungible_token.mjs; `asset-type: fungible` is required
+	 * for discovery (collections.ts fungible GraphQL filter and
+	 * fungibleAssetFromState both demand it).
+	 */
+	async mintFungible(
+		input: FungibleMintInput,
+		owner: string,
+		options: {
+			logo?: File;
+			signal?: AbortSignal;
+			onLogoUploaded?: (transactionId: string) => void;
+			onPhase?: (phase: FungibleMintPhase) => void;
+		} = {}
+	): Promise<FungibleMintResult> {
+		validateFungibleMintInput(input);
+		assertAddress(owner, 'invalid-mint-owner');
+		let logoId = input.logo;
+		if (!logoId && options.logo) {
+			validateFungibleLogo(options.logo);
+			const contentType = requiredFileContentType(options.logo);
+			logoId = await this.publishData(
+				new Uint8Array(await options.logo.arrayBuffer()),
+				{
+					'Content-Type': contentType,
+					'App-Name': 'Bazar',
+					'App-Version': '2.0.0',
+					Type: 'Token-Logo',
+				},
+				owner,
+				{
+					signal: options.signal,
+					onPhase: (phase) => options.onPhase?.(phase === 'signing' ? 'signing-logo' : 'uploading-logo'),
+				}
+			);
+			options.onLogoUploaded?.(logoId);
+		}
+		const processInput = logoId ? { ...input, logo: logoId } : input;
+		const processId = await this.publishData(
+			fungibleMintData(processInput),
+			fungibleMintProcessTags(processInput, owner),
+			owner,
+			{ signal: options.signal, onPhase: options.onPhase }
+		);
+		const createdAt = Date.now();
+		// Record the mint in the shared activity notifier the same as an atomic
+		// mint. The App-level watcher advances it accepted → mined → applied →
+		// complete by polling readAssetState(processId) — which is exactly the
+		// scheduler-sequencing / process-state-readable signal a fungible token
+		// waits on — then self-removes and fires bazar:mint-live.
+		if (this.#storage) {
+			const asset: MintedAsset = {
+				id: processId,
+				name: input.name.trim(),
+				ticker: input.ticker,
+				contentType: 'application/x.arweave-token',
+				description: input.description?.trim() ?? '',
+				...(logoId ? { image: `${this.#gateway}/${logoId}` } : {}),
+				mediaId: processId,
+				owner,
+				createdAt,
+			};
+			upsertMintActivity(
+				this.#storage,
+				acceptedMintActivity({
+					owner,
+					asset,
+					collectionId: FUNGIBLE_TOKEN_COLLECTION_ID,
+					transactionIds: [logoId, processId].filter((id): id is string => Boolean(id)),
+					arweaveGateway: this.#gateway,
+					computeGateway: this.#computeGateway,
+				})
+			);
+		}
+		return {
+			processId,
+			...(logoId ? { logo: logoId } : {}),
+			owner,
+			name: input.name.trim(),
+			ticker: input.ticker,
+			wholeSupply: input.wholeSupply,
+			atomicSupply: fungibleAtomicSupply(input.wholeSupply, input.denomination),
+			denomination: Number(input.denomination),
+			createdAt,
+		};
+	}
+
 	async publishData(
-		data: string,
+		data: string | Uint8Array,
 		tags: Record<string, string>,
 		owner: string,
 		options: {
@@ -817,6 +966,85 @@ export function mintProcessTags(
 	});
 }
 
+export function validateFungibleMintInput(input: FungibleMintInput): void {
+	const name = input.name.trim();
+	const description = input.description.trim();
+	if (!name || name.length > 80) throw new TypeError('mint-name-invalid');
+	if (description.length > 600) throw new TypeError('mint-description-invalid');
+	if (
+		typeof input.ticker !== 'string' ||
+		input.ticker.length < 1 ||
+		input.ticker.length > MAX_FUNGIBLE_TICKER_LENGTH ||
+		input.ticker.trim() !== input.ticker ||
+		/[\u0000-\u001f\u007f-\u009f]/u.test(input.ticker)
+	) {
+		throw new TypeError('mint-ticker-invalid');
+	}
+	fungibleAtomicSupply(input.wholeSupply, input.denomination);
+	if (input.logo !== undefined) assertAddress(input.logo, 'mint-logo-invalid');
+}
+
+/** Convert a creator-entered whole-token count into the protocol's exact atomic integer. */
+export function fungibleAtomicSupply(wholeSupply: string, denomination: string): string {
+	if (typeof wholeSupply !== 'string' || !/^[1-9]\d*$/.test(wholeSupply)) {
+		throw new TypeError('mint-supply-invalid');
+	}
+	if (
+		typeof denomination !== 'string' ||
+		!/^(?:0|[1-9]\d*)$/.test(denomination) ||
+		Number(denomination) > MAX_FUNGIBLE_DENOMINATION
+	) {
+		throw new TypeError('mint-denomination-invalid');
+	}
+	return (BigInt(wholeSupply) * 10n ** BigInt(denomination)).toString();
+}
+
+export function validateFungibleLogo(logo: File): void {
+	if (!(logo instanceof File) || !isImageContentType(normalizeAssetContentType(logo.type, logo.name) ?? undefined)) {
+		throw new TypeError('mint-logo-type-unsupported');
+	}
+	if (!logo.size || logo.size > MAX_IMAGE_BYTES) throw new TypeError('mint-logo-size-invalid');
+}
+
+function fungibleMintData(input: FungibleMintInput): string {
+	return JSON.stringify({
+		name: input.name.trim(),
+		ticker: input.ticker,
+		description: input.description.trim(),
+		collection: FUNGIBLE_TOKEN_COLLECTION_NAME,
+	});
+}
+
+/**
+ * Tag set for a fungible token process, mirroring
+ * scripts/publish_fungible_token.mjs. The whole supply is minted to `owner`
+ * via `initial-holder` — the only creation shape deployed nodes accept.
+ */
+export function fungibleMintProcessTags(input: FungibleMintInput, owner: string): Record<string, string> {
+	validateFungibleMintInput(input);
+	assertAddress(owner, 'invalid-mint-owner');
+	return {
+		'Content-Type': 'application/json',
+		'App-Name': 'Bazar',
+		'App-Version': '2.0.0',
+		device: 'process@1.0',
+		type: 'Process',
+		'execution-device': 'token@1.0',
+		'swap-device': 'arweave-swap@1.0',
+		'scheduler-device': 'arweave-scheduler@1.0',
+		'scheduler-mode': 'all',
+		'initial-holder': owner,
+		'total-supply': fungibleAtomicSupply(input.wholeSupply, input.denomination),
+		denomination: input.denomination,
+		ticker: input.ticker,
+		name: input.name.trim(),
+		...(input.description.trim() ? { description: input.description.trim() } : {}),
+		collection: FUNGIBLE_TOKEN_COLLECTION_NAME,
+		'asset-type': 'fungible',
+		...(input.logo ? { logo: input.logo } : {}),
+	};
+}
+
 export function udlLicenseTags(terms?: UdlTerms): Record<string, string> {
 	if (!terms) return {};
 	validateUdlTerms(terms);
@@ -1039,8 +1267,8 @@ function assertAddress(value: string, error: string): void {
 	if (!ADDRESS.test(value)) throw new TypeError(error);
 }
 
-function byteLength(value: string): number {
-	return new TextEncoder().encode(value).byteLength;
+function byteLength(value: string | Uint8Array): number {
+	return typeof value === 'string' ? new TextEncoder().encode(value).byteLength : value.byteLength;
 }
 
 function delay(duration: number, signal?: AbortSignal): Promise<void> {

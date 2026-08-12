@@ -18,6 +18,7 @@ import {
 	batchSettlementSummary,
 	batchStageLabel,
 	checkpointBatchPreparation,
+	fungibleAskHistory,
 	fungibleBatchRecoveryStatus,
 	fungibleListingAccessibleLabel,
 	FungibleListingComposer,
@@ -54,6 +55,55 @@ const BUYER = 'b'.repeat(43);
 const ORDER_ID = 'o'.repeat(43);
 const REGISTRATION_ID = 'r'.repeat(43);
 const PAYMENT_ID = 'p'.repeat(43);
+
+describe('fungible ask history', () => {
+	it('converts atomic lot quantities into whole-token unit prices', () => {
+		const points = fungibleAskHistory(
+			[
+				{
+					id: 'newer',
+					processId: 'token',
+					action: 'make-offer',
+					actor: BUYER,
+					height: 2,
+					timestamp: 20,
+					asking: '2500000000000',
+					quantity: '1000',
+				},
+				{
+					id: 'older',
+					processId: 'token',
+					action: 'make-offer',
+					actor: BUYER,
+					height: 1,
+					timestamp: 10,
+					asking: '1000000000000',
+					quantity: '2000',
+				},
+			],
+			3
+		);
+
+		expect(points).toEqual([
+			{ id: 'older', timestamp: 10, value: '500000000000' },
+			{ id: 'newer', timestamp: 20, value: '2500000000000' },
+		]);
+	});
+
+	it('ignores transfers and malformed or zero-value asks', () => {
+		const base = { processId: 'token', actor: BUYER, height: 1, timestamp: 1 };
+		expect(
+			fungibleAskHistory(
+				[
+					{ ...base, id: 'transfer', action: 'transfer', quantity: '1000' },
+					{ ...base, id: 'bad', action: 'make-offer', asking: 'nope', quantity: '1000' },
+					{ ...base, id: 'zero', action: 'make-offer', asking: '1', quantity: '0' },
+				],
+				3
+			)
+		).toEqual([]);
+	});
+});
 
 function purchaseOrder(orderId: string, creator: string, quantity: string, asking: string): SwapOrder {
 	return {

@@ -8,6 +8,8 @@ import {
 	collectionProcessTags,
 	CREATED_COLLECTION_ID,
 	createdCollection,
+	fungibleAtomicSupply,
+	fungibleMintProcessTags,
 	getMintDraft,
 	isBazarMintTags,
 	loadMintedAssets,
@@ -20,6 +22,8 @@ import {
 	UDL_LICENSE_ID,
 	udlLicenseTags,
 	validateCollectionMintInput,
+	validateFungibleLogo,
+	validateFungibleMintInput,
 	validateMintInput,
 } from './asset-mint';
 import { loadMintActivities } from './mint-activity';
@@ -122,7 +126,7 @@ describe('asset mint contract', () => {
 			id: processId,
 			name: 'Signal #1',
 			contentType: 'image/png',
-			image: `https://arweave.net/${processId}`,
+			image: `https://arweave.net/raw/${processId}`,
 		});
 		expect(
 			mintMetadata({ name: ' Signal #1 ', description: ' Permanent ', contentType: 'image/png' }, mediaId)
@@ -177,8 +181,8 @@ describe('asset mint contract', () => {
 			id: processId,
 			name: 'Signal',
 			contentType: 'audio/mpeg',
-			media: `https://arweave.net/${mediaId}`,
-			image: `https://arweave.net/${artworkId}`,
+			media: `https://arweave.net/raw/${mediaId}`,
+			image: `https://arweave.net/raw/${artworkId}`,
 			artist: 'Kite Array',
 			album: 'Long Orbit',
 			duration: 125,
@@ -252,7 +256,7 @@ describe('asset mint contract', () => {
 				name: 'Signal #1',
 				description: 'Permanent',
 				contentType: 'image/png',
-				image: `https://arweave.net/${mediaId}`,
+				image: `https://arweave.net/raw/${mediaId}`,
 				mediaId,
 				owner,
 				createdAt: 1,
@@ -275,7 +279,7 @@ describe('asset mint contract', () => {
 			id: processId,
 			name: 'Signal #1',
 			contentType: 'image/png',
-			image: `https://arweave.net/${mediaId}`,
+			image: `https://arweave.net/raw/${mediaId}`,
 		});
 	});
 
@@ -532,7 +536,7 @@ describe('asset mint contract', () => {
 		const createTransaction = vi.fn(async () => asset);
 		const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
 			const url = String(input);
-			if (url === `https://arweave.net/${mediaId}`) return new Response(new Uint8Array([7, 8, 9]));
+			if (url === `https://arweave.net/raw/${mediaId}`) return new Response(new Uint8Array([7, 8, 9]));
 			if (url.includes('/price/')) return new Response('1');
 			if (url.includes('/wallet/')) return new Response('100');
 			if (init?.method === 'POST') return new Response('', { status: 200 });
@@ -637,9 +641,9 @@ describe('asset mint contract', () => {
 		]);
 		expect(result.asset).toMatchObject({
 			contentType: 'audio/mpeg',
-			media: `https://arweave.net/${processId}`,
+			media: `https://arweave.net/raw/${processId}`,
 			mediaId: processId,
-			image: `https://arweave.net/${artworkId}`,
+			image: `https://arweave.net/raw/${artworkId}`,
 			artworkId,
 			artist: 'Kite Array',
 			album: 'Long Orbit',
@@ -649,6 +653,128 @@ describe('asset mint contract', () => {
 			{
 				phase: 'accepted',
 				transactionIds: [artworkId, processId],
+				arweaveGateway: 'https://arweave.net',
+				computeGateway: 'https://compute.example',
+			},
+		]);
+	});
+
+	it('validates fungible token fields and image-only logos', () => {
+		const input = {
+			name: 'Signal Token',
+			description: '',
+			ticker: 'SIG',
+			wholeSupply: '42622000',
+			denomination: '3',
+		};
+		expect(() => validateFungibleMintInput(input)).not.toThrow();
+		expect(fungibleAtomicSupply(input.wholeSupply, input.denomination)).toBe('42622000000');
+		expect(fungibleAtomicSupply('1', '0')).toBe('1');
+		expect(fungibleAtomicSupply('900719925474099312345678', '12')).toBe('900719925474099312345678000000000000');
+		expect(fungibleMintProcessTags(input, owner)).toMatchObject({
+			'asset-type': 'fungible',
+			'initial-holder': owner,
+			'total-supply': '42622000000',
+			denomination: '3',
+			ticker: 'SIG',
+		});
+		expect(() => fungibleAtomicSupply('1.5', '3')).toThrow('mint-supply-invalid');
+		expect(() => fungibleAtomicSupply('1', '256')).toThrow('mint-denomination-invalid');
+		expect(() =>
+			validateFungibleLogo(new File([new Uint8Array([1])], 'logo.png', { type: 'image/png' }))
+		).not.toThrow();
+		expect(() => validateFungibleLogo(new File([new Uint8Array([1])], 'logo.mp3', { type: 'audio/mpeg' }))).toThrow(
+			'mint-logo-type-unsupported'
+		);
+		expect(() =>
+			validateFungibleLogo(new File([new Uint8Array(10 * 1024 * 1024 + 1)], 'logo.png', { type: 'image/png' }))
+		).toThrow('mint-logo-size-invalid');
+	});
+
+	it('quotes and uploads a selected logo before the fungible process', async () => {
+		const logoId = 'L'.repeat(43);
+		const logoFile = new File([new Uint8Array([1, 2, 3])], 'logo.png', { type: 'image/png' });
+		const input = {
+			name: 'Signal Token',
+			description: '',
+			ticker: 'SIG',
+			wholeSupply: '1000',
+			denomination: '12',
+		};
+		const transaction = () => {
+			const held: any = { id: '', owner: '', chunks: { chunks: [{}] }, addTag: vi.fn() };
+			held.setSignature = vi.fn((signature) => Object.assign(held, signature));
+			held.toJSON = () => ({ id: held.id, owner: held.owner, tags: [] });
+			return held;
+		};
+		const logoTransaction = transaction();
+		const processTransaction = transaction();
+		const createTransaction = vi
+			.fn()
+			.mockResolvedValueOnce(logoTransaction)
+			.mockResolvedValueOnce(processTransaction);
+		const fetchMock = vi.fn(async (request: RequestInfo | URL) => {
+			const url = String(request);
+			if (url.includes('/price/')) return new Response('5');
+			if (url.includes('/wallet/')) return new Response('100');
+			return new Response('', { status: 200 });
+		});
+		const store = storage();
+		const client = new AssetMintClient({
+			arweave: {
+				createTransaction,
+				transactions: {},
+				wallets: { ownerToAddress: vi.fn(async () => owner) },
+			},
+			fetch: fetchMock as typeof fetch,
+			storage: store,
+			computeGateway: 'https://compute.example',
+			wallet: {
+				getActiveAddress: vi.fn(async () => owner),
+				sign: vi
+					.fn()
+					.mockResolvedValueOnce({ id: logoId, owner: 'signed-owner', tags: [], signature: 'logo' })
+					.mockResolvedValueOnce({ id: processId, owner: 'signed-owner', tags: [], signature: 'process' }),
+			} as any,
+		});
+
+		await expect(client.estimateFungible(input, logoFile)).resolves.toMatchObject({
+			processReward: 5n,
+			logoReward: 5n,
+			reward: 10n,
+			transactionCount: 2,
+		});
+		const phases: string[] = [];
+		const uploaded: string[] = [];
+		const result = await client.mintFungible(input, owner, {
+			logo: logoFile,
+			onLogoUploaded: (id) => uploaded.push(id),
+			onPhase: (phase) => phases.push(phase),
+		});
+
+		expect(createTransaction).toHaveBeenNthCalledWith(1, { data: new Uint8Array([1, 2, 3]) }, 'use_wallet');
+		expect(logoTransaction.addTag).toHaveBeenCalledWith('content-type', 'image/png');
+		expect(logoTransaction.addTag).toHaveBeenCalledWith('type', 'Token-Logo');
+		expect(processTransaction.addTag).toHaveBeenCalledWith('logo', logoId);
+		expect(processTransaction.addTag).toHaveBeenCalledWith('asset-type', 'fungible');
+		expect(processTransaction.addTag).toHaveBeenCalledWith('total-supply', '1000000000000000');
+		expect(phases).toEqual(['signing-logo', 'uploading-logo', 'signing', 'uploading']);
+		expect(uploaded).toEqual([logoId]);
+		expect(result).toMatchObject({
+			processId,
+			logo: logoId,
+			ticker: 'SIG',
+			wholeSupply: '1000',
+			atomicSupply: '1000000000000000',
+		});
+		expect(loadMintActivities(store, owner)).toMatchObject([
+			{
+				asset: {
+					contentType: 'application/x.arweave-token',
+					image: `https://arweave.net/${logoId}`,
+					ticker: 'SIG',
+				},
+				transactionIds: [logoId, processId],
 				arweaveGateway: 'https://arweave.net',
 				computeGateway: 'https://compute.example',
 			},

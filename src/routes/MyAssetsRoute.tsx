@@ -23,6 +23,7 @@ import { Button } from 'components/Button';
 import { ConnectWalletButton } from 'components/ConnectWalletButton';
 import { ErrorPanel } from 'components/ErrorPanel';
 import { Loading } from 'components/Loading';
+import { TokenMarketRow } from 'components/TokenMarketRow';
 import { scheduleIdleTask } from 'helpers/idle';
 import {
 	assetGroupRevealAnnouncement,
@@ -703,6 +704,9 @@ const AssetGroup = React.memo(function AssetGroup({
 	const resultCountRef = React.useRef(results.length);
 	const [revealAnnouncement, setRevealAnnouncement] = React.useState('');
 	resultCountRef.current = results.length;
+	const visibleResults = results.slice(0, limit);
+	const tokenResults = visibleResults.filter((result) => result.collection.kind === 'tokens');
+	const collectibleResults = visibleResults.filter((result) => result.collection.kind !== 'tokens');
 	const assetLabel = group === 'owned' ? 'owned assets' : 'listed assets';
 	const revealNextAssetPage = React.useCallback(() => {
 		setLimit((current) => {
@@ -725,26 +729,49 @@ const AssetGroup = React.memo(function AssetGroup({
 			</div>
 			{results.length ? (
 				<>
-					<div className="asset-grid" id={gridId}>
-						{results.slice(0, limit).map((result, index) => (
-							<AssetCard
-								key={result.asset.id}
-								collection={result.collection}
-								asset={result.asset}
-								badge={badge}
-								priority={index < 2}
-								price={
-									result.collection.kind === 'tokens'
-										? `${tokenBalanceLabel(
-												group === 'owned'
-													? liquidBalanceOf(result.state, address)
-													: listedBalanceOf(result.state, address),
-												result.state
-										  )} ${group === 'owned' ? 'liquid' : 'listed'}`
-										: undefined
-								}
-							/>
-						))}
+					<div id={gridId}>
+						{tokenResults.length ? (
+							<section className="wallet-asset-kind">
+								{collectibleResults.length ? <h3>Tokens</h3> : null}
+								<div className="token-market-list wallet-token-list">
+									{tokenResults.map((result, index) => (
+										<TokenMarketRow
+											asset={result.asset}
+											badge={badge}
+											collection={result.collection}
+											context="Fungible token"
+											key={result.asset.id}
+											metric={{
+												label: group === 'owned' ? 'Liquid balance' : 'Listed balance',
+												value: tokenBalanceLabel(
+													group === 'owned'
+														? liquidBalanceOf(result.state, address)
+														: listedBalanceOf(result.state, address),
+													result.state
+												),
+											}}
+											priority={index < 2}
+										/>
+									))}
+								</div>
+							</section>
+						) : null}
+						{collectibleResults.length ? (
+							<section className="wallet-asset-kind">
+								{tokenResults.length ? <h3>Collectibles</h3> : null}
+								<div className="asset-grid">
+									{collectibleResults.map((result, index) => (
+										<AssetCard
+											key={result.asset.id}
+											collection={result.collection}
+											asset={result.asset}
+											badge={badge}
+											priority={index < 2}
+										/>
+									))}
+								</div>
+							</section>
+						) : null}
 					</div>
 					<p
 						className={

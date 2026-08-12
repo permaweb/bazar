@@ -55,6 +55,7 @@ import {
 	discoverPendingAssetOffers,
 	discoverWalletAssetCandidates,
 	isLiveListing,
+	loadBazarAtomicAssetById,
 	partitionAssetCandidateSupport,
 	type PendingAssetOffer,
 	resolveAssetCandidates,
@@ -96,6 +97,7 @@ import {
 	type AssetSummary,
 	type Collection,
 	collectionAsset,
+	FUNGIBLE_TOKEN_COLLECTION_ID,
 	loadCollections,
 	loadMoreCarrierNames,
 	loadMoreFungibleTokens,
@@ -113,6 +115,7 @@ import {
 } from 'api/mint-activity';
 import {
 	CREATED_COLLECTION_ID,
+	CREATED_COLLECTION_NAME,
 	createdCollection,
 	loadMintedAssets,
 	loadMintedCollections,
@@ -140,6 +143,7 @@ import { OperationOutcome, OperationOutcomeAnnouncement } from 'components/Opera
 import { Pagination } from 'components/Pagination';
 import { StateVerification } from 'components/StateVerification';
 import { TokenArtwork } from 'components/TokenArtwork';
+import { TokenMarketRow } from 'components/TokenMarketRow';
 import {
 	isTransactionActivityVisible,
 	prepareTransactionDialogHide,
@@ -253,6 +257,7 @@ import { useDialogFocus } from './useDialogFocus';
 
 const FungibleAssetView = React.lazy(() => import('../routes/FungibleAssetRoute'));
 const CreateView = React.lazy(() => import('../routes/CreateRoute'));
+const DispatchView = React.lazy(() => import('../routes/DispatchRoute'));
 const MyAssetsView = React.lazy(() => import('../routes/MyAssetsRoute'));
 const DeferredAudioWaveformPlayer = React.lazy(async () => {
 	const module = await import('components/AudioWaveformPlayer');
@@ -499,6 +504,14 @@ export function App() {
 								element={
 									<React.Suspense fallback={<Loading label="Loading creator…" />}>
 										<CreateView />
+									</React.Suspense>
+								}
+							/>
+							<Route
+								path="/dispatch/:processId"
+								element={
+									<React.Suspense fallback={<Loading label="Loading dispatch…" />}>
+										<DispatchView />
 									</React.Suspense>
 								}
 							/>
@@ -1552,7 +1565,7 @@ function Header() {
 	const searchRoute = React.useRef(routeKey);
 	const [query, setQuery] = React.useState(urlQuery);
 	const [searchOpen, setSearchOpen] = React.useState(false);
-	const [scope, setScope] = React.useState<'all' | 'collections' | 'assets' | 'names'>('all');
+	const [scope, setScope] = React.useState<'all' | 'collections' | 'tokens' | 'assets' | 'names'>('all');
 	const [recentQueries, setRecentQueries] = React.useState<string[]>([]);
 	const [searchFeedback, setSearchFeedback] = React.useState('');
 	const normalizedQuery = query.trim().toLowerCase();
@@ -1565,7 +1578,11 @@ function Header() {
 		results: Array<{ asset: AssetSummary; collection: Collection }>;
 	}>({ query: '', loading: false, error: false, results: [] });
 	const shouldSearchAtomicIndex =
-		searchOpen && Boolean(deferredNormalizedQuery) && scope !== 'collections' && scope !== 'names';
+		searchOpen &&
+		Boolean(deferredNormalizedQuery) &&
+		scope !== 'collections' &&
+		scope !== 'tokens' &&
+		scope !== 'names';
 	React.useEffect(() => {
 		if (!shouldSearchAtomicIndex) {
 			setIndexedAtomicSearch({ query: deferredNormalizedQuery, loading: false, error: false, results: [] });
@@ -1599,7 +1616,16 @@ function Header() {
 	const atomicIndexSearchFailed =
 		shouldSearchAtomicIndex && indexedAtomicSearch.query === deferredNormalizedQuery && indexedAtomicSearch.error;
 	const relevantSearchCollections = React.useMemo(
-		() => market.collections.filter((collection) => scope !== 'names' || collection.kind === 'names'),
+		() =>
+			market.collections.filter((collection) =>
+				scope === 'names'
+					? collection.kind === 'names'
+					: scope === 'tokens'
+					? collection.kind === 'tokens'
+					: scope === 'assets'
+					? collection.kind !== 'tokens'
+					: true
+			),
 		[market.collections, scope]
 	);
 	const localSearchMatches = React.useMemo(
@@ -1614,9 +1640,10 @@ function Header() {
 	);
 	const collectionResults = React.useMemo(
 		() =>
-			scope === 'assets'
+			scope === 'assets' || scope === 'tokens'
 				? []
 				: relevantSearchCollections
+						.filter((collection) => collection.kind !== 'tokens')
 						.filter(
 							(collection) =>
 								!deferredNormalizedQuery ||
@@ -1680,13 +1707,15 @@ function Header() {
 				.slice(0, 8),
 		[atomicIndexResults, deferredNormalizedQuery, localAssetResults]
 	);
+	const tokenResults = assetResults.filter(({ collection }) => collection.kind === 'tokens');
+	const collectibleResults = assetResults.filter(({ collection }) => collection.kind !== 'tokens');
 	const directTokenCollection =
-		scope !== 'collections' && scope !== 'names'
+		scope !== 'collections' && scope !== 'assets' && scope !== 'names'
 			? directTokenSearchCollection(market.collections, query)
 			: undefined;
 	const directTokenProcess = directTokenCollection && !assetResults.some(({ asset }) => asset.id === query.trim());
 	const partialTokenCollection =
-		normalizedQuery && scope !== 'collections' && scope !== 'names'
+		normalizedQuery && scope !== 'collections' && scope !== 'assets' && scope !== 'names'
 			? market.collections.find((collection) => collection.kind === 'tokens' && collection.hasMore)
 			: undefined;
 	const searchResultAnnouncement = atomicIndexSearchPending
@@ -1699,8 +1728,8 @@ function Header() {
 		? 'Marketplace search is unavailable.'
 		: normalizedQuery && !collectionResults.length && !assetResults.length && !directTokenProcess
 		? partialTokenCollection
-			? `No loaded collections or assets match ${query.trim()}; more token records remain available.`
-			: `No collections or assets match ${query.trim()}.`
+			? `No loaded tokens, collections, or collectibles match ${query.trim()}; more token records remain available.`
+			: `No tokens, collections, or collectibles match ${query.trim()}.`
 		: `Showing ${collectionResults.length.toLocaleString()} ${
 				collectionResults.length === 1 ? 'collection' : 'collections'
 		  } and ${(assetResults.length + (directTokenProcess ? 1 : 0)).toLocaleString()} ${
@@ -1814,8 +1843,9 @@ function Header() {
 	const searchDialogRef = useDialogFocus<HTMLElement>(searchOpen, closeSearch, searchRestoreTarget);
 	const scopes = [
 		{ id: 'all' as const, label: 'All', Icon: Search },
+		{ id: 'tokens' as const, label: 'Tokens', Icon: BarChart3 },
 		{ id: 'collections' as const, label: 'Collections', Icon: LayoutGrid },
-		{ id: 'assets' as const, label: 'Assets', Icon: Images },
+		{ id: 'assets' as const, label: 'Collectibles', Icon: Images },
 		{ id: 'names' as const, label: 'Names', Icon: AtSign },
 	];
 	return (
@@ -1836,8 +1866,8 @@ function Header() {
 						<Search className="ui-icon ui-icon--sm" aria-hidden="true" />
 						<input
 							ref={inputRef}
-							aria-label="Search collections and assets"
-							placeholder="Search collections and assets"
+							aria-label="Search tokens, collections, and collectibles"
+							placeholder="Search tokens, collections, and assets"
 							value={query}
 							onChange={(event) => updateQuery(event.target.value)}
 							onClick={openSearch}
@@ -2055,14 +2085,37 @@ function Header() {
 										</div>
 									</section>
 								) : null}
-								{assetResults.length ? (
+								{tokenResults.length ? (
+									<section className="search-result-section token-search-results">
+										<div className="search-result-heading">
+											<h2>{normalizedQuery ? 'Matching tokens' : 'Tokens'}</h2>
+											<span>{tokenResults.length} shown</span>
+										</div>
+										<div className="token-market-list compact">
+											{tokenResults.map(({ asset, collection }, index) => (
+												<TokenMarketRow
+													asset={asset}
+													collection={collection}
+													context="Fungible token"
+													key={`${collection.id}-${asset.id}`}
+													onFollow={followSearchResult}
+													onWarm={() => prefetchAssetPage(asset.id, true)}
+													priority={index === 0}
+												/>
+											))}
+										</div>
+									</section>
+								) : null}
+								{collectibleResults.length ? (
 									<section className="search-result-section">
 										<div className="search-result-heading">
-											<h2>{normalizedQuery ? 'Matching assets' : 'Featured assets'}</h2>
-											<span>{assetResults.length} shown</span>
+											<h2>
+												{normalizedQuery ? 'Matching collectibles' : 'Featured collectibles'}
+											</h2>
+											<span>{collectibleResults.length} shown</span>
 										</div>
 										<div className="search-asset-grid">
-											{assetResults.map(({ asset, collection }) => (
+											{collectibleResults.map(({ asset, collection }) => (
 												<Link
 													key={`${collection.id}-${asset.id}`}
 													to={`/asset/${collection.id}/${asset.id}`}
@@ -2107,25 +2160,19 @@ function Header() {
 											<h2>Direct process</h2>
 											<span>Live state check required</span>
 										</div>
-										<div className="search-asset-grid">
-											<Link
-												to={`/asset/${directTokenCollection.id}/${query.trim()}`}
-												onClick={followSearchResult}
-												onFocus={() => prefetchAssetPage(query.trim(), true)}
-												onMouseEnter={() => prefetchAssetPage(query.trim(), true)}
-												onTouchStart={() => prefetchAssetPage(query.trim(), true)}
-											>
-												<span className="search-result-image">
-													<TokenArtwork ticker="Token" />
-												</span>
-												<span>
-													<strong>Check token process</strong>
-													<small>
-														{short(query.trim())} · support is determined from live state
-													</small>
-												</span>
-												<ArrowUpRight className="ui-icon ui-icon--sm" aria-hidden="true" />
-											</Link>
+										<div className="token-market-list compact">
+											<TokenMarketRow
+												asset={{
+													id: query.trim(),
+													name: 'Check token process',
+													ticker: 'TOKEN',
+													contentType: 'application/x.arweave-token',
+												}}
+												collection={directTokenCollection}
+												context={`${short(query.trim())} · live state check`}
+												onFollow={followSearchResult}
+												onWarm={() => prefetchAssetPage(query.trim(), true)}
+											/>
 										</div>
 									</section>
 								) : null}
@@ -2149,7 +2196,7 @@ function Header() {
 												? 'More token records remain available from the token collection.'
 												: atomicIndexSearchFailed
 												? 'Permanent Bazar creation-record search is temporarily unavailable. Try again shortly.'
-												: 'Try another asset, collection, or Arweave name.'}
+												: 'Try another token, collectible, collection, or Arweave name.'}
 										</span>
 									</div>
 								) : null}
@@ -2913,6 +2960,7 @@ function Home() {
 		const activity = new Map(Object.entries(collectionActivity));
 		return market.collections
 			.filter((collection) => {
+				if (collection.kind === 'tokens') return false;
 				if (!normalizedQuery) return true;
 				return (
 					`${collection.name} ${collection.description}`.toLowerCase().includes(normalizedQuery) ||
@@ -3052,8 +3100,12 @@ function Home() {
 				}),
 		[assetCandidates, assetType, assetView, displayAssetPrices, homeListingActivityByAsset]
 	);
+	const discoverTokens = displayedAssets.filter(({ collection }) => collection.kind === 'tokens');
+	const discoverCollectibles = displayedAssets.filter(({ collection }) => collection.kind !== 'tokens');
+	const discoverOverviewAssets = [...discoverTokens.slice(0, 8), ...discoverCollectibles.slice(0, 12)];
 	const assetPagination = homeAssetPage(displayedAssets, assetPage);
-	const assets = assetView === 'all' ? assetPagination.items : assetCandidates;
+	const assets =
+		assetView === 'all' ? (assetType === 'all' ? discoverOverviewAssets : assetPagination.items) : assetCandidates;
 	const assetKey = assets.map(({ asset }) => asset.id).join(',');
 	const portableHomeListingById = React.useMemo(
 		() => new Map(portableHomeListings.map((result) => [result.asset.id, result])),
@@ -3749,6 +3801,60 @@ function Home() {
 		setAssetPage(page);
 		marketPaneRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
 	};
+	const renderTokenList = (items: typeof displayedAssets) => (
+		<div className="token-market-list" role="list">
+			{items.map(({ asset, collection }, index) => {
+				const price = displayAssetPrices[asset.id];
+				return (
+					<TokenMarketRow
+						asset={asset}
+						collection={collection}
+						context={`Fungible token · ${short(asset.id)}`}
+						key={`${collection.id}-${asset.id}`}
+						metric={{
+							label: 'Unit price',
+							value: price ? homeMarketSummaryLabel(price, 'Not listed') : <HomePendingMarketValue />,
+							tone: homeMarketSummaryListed(price) ? 'positive' : 'default',
+						}}
+						onWarm={() => prefetchAssetPage(asset.id, true)}
+						priority={index < 2}
+					/>
+				);
+			})}
+		</div>
+	);
+	const renderCollectibleGrid = (items: typeof displayedAssets) => (
+		<div className="home-asset-grid">
+			{items.map(({ asset, collection }, index) => {
+				const price = displayAssetPrices[asset.id];
+				const pricePending = !price;
+				return (
+					<Link
+						key={`${collection.id}-${asset.id}`}
+						to={`/asset/${collection.id}/${asset.id}`}
+						onFocus={() => prefetchAssetPage(asset.id, false)}
+						onMouseEnter={() => prefetchAssetPage(asset.id, false)}
+						onTouchStart={() => prefetchAssetPage(asset.id, false)}
+					>
+						<DiscoveryAssetArtwork asset={asset} collection={collection} priority={index < 2} />
+						<div className="home-asset-details">
+							<div>
+								<strong>{asset.name}</strong>
+								<span>{collection.name}</span>
+							</div>
+							<b className={`home-asset-price${homeMarketSummaryListed(price) ? ' listed' : ''}`}>
+								{!pricePending && price ? (
+									homeMarketSummaryLabel(price, 'Not listed')
+								) : (
+									<HomePendingMarketValue />
+								)}
+							</b>
+						</div>
+					</Link>
+				);
+			})}
+		</div>
+	);
 	return (
 		<div className="home-shell">
 			<div className="home-main">
@@ -3800,9 +3906,9 @@ function Home() {
 										{homeTab === 'discover'
 											? normalizedQuery
 												? `Results for “${query}” across the current Arweave collection indexes.`
-												: 'Find and explore permanent digitals assets across the permaweb.'
+												: 'Browse fungible tokens and collectible assets on the permaweb.'
 											: homeTab === 'collections'
-											? 'Find and explore permanent digitals assets across the permaweb.'
+											? 'Browse NFT and name collections.'
 											: 'Recent activity of purchases, listings, and transfers across every marketplace collection.'}
 									</p>
 								</div>
@@ -3814,7 +3920,7 @@ function Home() {
 											options={[
 												{ value: 'all', label: 'All' },
 												{ value: 'tokens', label: 'Tokens' },
-												{ value: 'atomic', label: 'Atomic assets (NFT)' },
+												{ value: 'atomic', label: 'Collectibles (NFTs)' },
 											]}
 											value={assetType}
 										/>
@@ -3822,7 +3928,7 @@ function Home() {
 											label="View"
 											onChange={setAssetView}
 											options={[
-												{ value: 'all', label: 'All assets' },
+												{ value: 'all', label: 'All records' },
 												{ value: 'listed', label: 'Listed for sale' },
 												{ value: 'price-low', label: 'Price: low to high' },
 												{ value: 'price-high', label: 'Price: high to low' },
@@ -4016,98 +4122,74 @@ function Home() {
 									role="tabpanel"
 								>
 									{displayedAssets.length || discoverResultsPending ? (
-										<>
-											<div className="home-asset-grid">
-												{assetPagination.items.map(({ asset, collection }, index) => {
-													const price = displayAssetPrices[asset.id];
-													const pricePending = !price;
-													return (
-														<Link
-															key={`${collection.id}-${asset.id}`}
-															to={`/asset/${collection.id}/${asset.id}`}
-															onFocus={() =>
-																prefetchAssetPage(
-																	asset.id,
-																	collection.kind === 'tokens'
-																)
-															}
-															onMouseEnter={() =>
-																prefetchAssetPage(
-																	asset.id,
-																	collection.kind === 'tokens'
-																)
-															}
-															onTouchStart={() =>
-																prefetchAssetPage(
-																	asset.id,
-																	collection.kind === 'tokens'
-																)
-															}
-														>
-															{collection.kind === 'tokens' ? (
-																<TokenArtwork
-																	className="home-asset-media home-token-art circle-only-token-art"
-																	ticker={asset.ticker ?? 'Token'}
-																/>
-															) : asset.image ? (
-																<ArtworkImage
-																	className="home-asset-media"
-																	src={asset.image}
-																	alt=""
-																	fetchPriority={index < 2 ? 'high' : 'auto'}
-																	loading={index < 2 ? 'eager' : 'lazy'}
-																/>
-															) : isAudioContentType(asset.contentType) ? (
-																<AudioArtwork
-																	className="home-asset-media"
-																	contentType={asset.contentType}
-																	name={asset.name}
-																/>
-															) : collection.kind === 'names' ? (
-																<NameArtwork
-																	className="home-asset-media"
-																	name={asset.name}
-																/>
-															) : (
-																<TokenArtwork
-																	className="home-asset-media home-token-art"
-																	ticker={asset.ticker ?? 'Token'}
-																/>
-															)}
-															<div className="home-asset-details">
-																<div>
-																	<strong>{asset.name}</strong>
-																	<span>{collection.name}</span>
-																</div>
-																<b
-																	className={`home-asset-price${
-																		homeMarketSummaryListed(price) ? ' listed' : ''
-																	}`}
-																>
-																	{!pricePending && price ? (
-																		homeMarketSummaryLabel(price, 'Not listed')
-																	) : (
-																		<HomePendingMarketValue />
-																	)}
-																</b>
-															</div>
-														</Link>
-													);
-												})}
+										assetType === 'all' ? (
+											<div className="discover-market-sections">
+												<section className="discover-market-section token-section">
+													<div className="discover-market-heading">
+														<div>
+															<p className="eyebrow">Fungible assets</p>
+															<h2>Tokens</h2>
+														</div>
+														<Button size="custom" onClick={() => setAssetType('tokens')}>
+															View all tokens
+															<ArrowRight
+																className="ui-icon ui-icon--xs"
+																aria-hidden="true"
+															/>
+														</Button>
+													</div>
+													{discoverTokens.length ? (
+														renderTokenList(discoverTokens.slice(0, 8))
+													) : (
+														<p className="discover-section-empty">
+															No tokens match this view.
+														</p>
+													)}
+												</section>
+												<section className="discover-market-section collectible-section">
+													<div className="discover-market-heading">
+														<div>
+															<p className="eyebrow">Unique assets</p>
+															<h2>Collectibles</h2>
+														</div>
+														<Button size="custom" onClick={() => setAssetType('atomic')}>
+															View all collectibles
+															<ArrowRight
+																className="ui-icon ui-icon--xs"
+																aria-hidden="true"
+															/>
+														</Button>
+													</div>
+													{discoverCollectibles.length ? (
+														renderCollectibleGrid(discoverCollectibles.slice(0, 12))
+													) : (
+														<p className="discover-section-empty">
+															No collectibles match this view.
+														</p>
+													)}
+												</section>
 											</div>
-											<Pagination
-												ariaLabel="Discover pages"
-												className="home-asset-pagination"
-												onPageChange={selectAssetPage}
-												page={assetPagination.page}
-												pageCount={assetPagination.pageCount}
-											/>
-										</>
+										) : (
+											<>
+												{assetType === 'tokens'
+													? renderTokenList(assetPagination.items)
+													: renderCollectibleGrid(assetPagination.items)}
+												<Pagination
+													ariaLabel={
+														assetType === 'tokens' ? 'Token pages' : 'Collectible pages'
+													}
+													className="home-asset-pagination"
+													onPageChange={selectAssetPage}
+													page={assetPagination.page}
+													pageCount={assetPagination.pageCount}
+												/>
+											</>
+										)
 									) : discoverResultsFailed ? null : (
 										<div className="home-assets-empty">
 											{assetView === 'all'
-												? 'No assets match this asset type.'
-												: 'No live listings match this asset type.'}
+												? 'No records match this type.'
+												: 'No live listings match this type.'}
 										</div>
 									)}
 								</div>
@@ -5908,12 +5990,13 @@ function CollectionView() {
 	return (
 		<section className="collection-page">
 			<Link className="back" to="/">
-				<ArrowLeft className="ui-icon ui-icon--sm" aria-hidden="true" /> All collections
+				<ArrowLeft className="ui-icon ui-icon--sm" aria-hidden="true" />{' '}
+				{collection.kind === 'tokens' ? 'Discover' : 'All collections'}
 			</Link>
 			<div className="collection-title">
 				<div>
 					<p className="eyebrow">{collectionEyebrow(collection)}</p>
-					<h1>{collection.name}</h1>
+					<h1>{collectionDisplayName(collection)}</h1>
 				</div>
 				<div className="collection-title-copy">
 					<p>{collection.description}</p>
@@ -6105,7 +6188,7 @@ function CollectionView() {
 							label="Show"
 							onChange={(nextValue) => setListedOnly(nextValue === 'listed')}
 							options={[
-								{ value: 'all', label: 'All assets' },
+								{ value: 'all', label: collection.kind === 'tokens' ? 'All tokens' : 'All assets' },
 								{ value: 'listed', label: 'Listed for sale' },
 							]}
 							value={listedOnly ? 'listed' : 'all'}
@@ -6237,40 +6320,78 @@ function CollectionView() {
 					) : null}
 				</div>
 			) : null}
-			<div
-				aria-describedby={resultSummaryId}
-				aria-label={`${collection.name} assets`}
-				className={`asset-grid${collection.kind === 'tokens' ? ' token-collection-grid' : ''}${
-					collection.kind === 'names' ? ' names-collection-grid' : ''
-				}`}
-				id={assetGridId}
-			>
-				{filtered.slice(0, limit).map((asset, index) => {
-					const price = cardPrices[asset.id];
-					return (
-						<AssetCard
-							key={asset.id}
-							collection={collection}
-							asset={asset}
-							priority={index < 2}
-							collectionContext
-							badge={listedOnly ? 'For sale' : undefined}
-							price={
-								price?.status === 'unavailable'
-									? 'Unavailable'
-									: price?.status === 'unindexed'
-									? 'No indexed ask'
-									: price?.status === 'resolved'
-									? price.label ?? 'Not listed'
-									: cardPricesFailure
-									? 'Unavailable'
-									: 'Checking…'
-							}
-							priceListed={price?.status === 'resolved' && Boolean(price.label)}
-						/>
-					);
-				})}
-			</div>
+			{collection.kind === 'tokens' ? (
+				<div
+					aria-describedby={resultSummaryId}
+					aria-label={`${collection.name} tokens`}
+					className="token-market-list collection-token-list"
+					id={assetGridId}
+					role="list"
+				>
+					{filtered.slice(0, limit).map((asset, index) => {
+						const price = cardPrices[asset.id];
+						const priceLabel =
+							price?.status === 'unavailable'
+								? 'Unavailable'
+								: price?.status === 'unindexed'
+								? 'No indexed ask'
+								: price?.status === 'resolved'
+								? price.label ?? 'Not listed'
+								: cardPricesFailure
+								? 'Unavailable'
+								: 'Checking…';
+						return (
+							<TokenMarketRow
+								asset={asset}
+								badge={listedOnly ? 'For sale' : undefined}
+								collection={collection}
+								context={`Process · ${short(asset.id)}`}
+								key={asset.id}
+								metric={{
+									label: 'Unit price',
+									value: priceLabel,
+									tone: price?.status === 'resolved' && price.label ? 'positive' : 'default',
+								}}
+								onWarm={() => prefetchAssetPage(asset.id, true)}
+								priority={index < 2}
+							/>
+						);
+					})}
+				</div>
+			) : (
+				<div
+					aria-describedby={resultSummaryId}
+					aria-label={`${collection.name} assets`}
+					className={`asset-grid${collection.kind === 'names' ? ' names-collection-grid' : ''}`}
+					id={assetGridId}
+				>
+					{filtered.slice(0, limit).map((asset, index) => {
+						const price = cardPrices[asset.id];
+						return (
+							<AssetCard
+								key={asset.id}
+								collection={collection}
+								asset={asset}
+								priority={index < 2}
+								collectionContext
+								badge={listedOnly ? 'For sale' : undefined}
+								price={
+									price?.status === 'unavailable'
+										? 'Unavailable'
+										: price?.status === 'unindexed'
+										? 'No indexed ask'
+										: price?.status === 'resolved'
+										? price.label ?? 'Not listed'
+										: cardPricesFailure
+										? 'Unavailable'
+										: 'Checking…'
+								}
+								priceListed={price?.status === 'resolved' && Boolean(price.label)}
+							/>
+						);
+					})}
+				</div>
+			)}
 			<p
 				className={
 					filtered.length > pageSize && limit >= filtered.length
@@ -6885,13 +7006,18 @@ export function collectionActivityScanAnnouncement({
 
 function CollectionTabs({ collection, active }: { collection: Collection; active: 'assets' | 'activity' }) {
 	return (
-		<nav className="collection-tabs" aria-label={`${collection.name} views`}>
+		<nav className="collection-tabs" aria-label={`${collectionDisplayName(collection)} views`}>
 			<Link
 				aria-current={active === 'assets' ? 'page' : undefined}
 				className={active === 'assets' ? 'active' : ''}
 				to={`/collection/${collection.id}`}
 			>
-				<LayoutGrid className="ui-icon ui-icon--sm" aria-hidden="true" /> Assets
+				{collection.kind === 'tokens' ? (
+					<BarChart3 className="ui-icon ui-icon--sm" aria-hidden="true" />
+				) : (
+					<LayoutGrid className="ui-icon ui-icon--sm" aria-hidden="true" />
+				)}{' '}
+				{collection.kind === 'tokens' ? 'Tokens' : 'Assets'}
 			</Link>
 			<Link
 				aria-current={active === 'activity' ? 'page' : undefined}
@@ -6931,24 +7057,7 @@ export const AssetCard = React.memo(function AssetCard({
 			onTouchStart={() => prefetchAssetPage(asset.id, collection.kind === 'tokens')}
 			to={`/asset/${collection.id}/${asset.id}`}
 		>
-			<div className="asset-media">
-				{collection.kind === 'tokens' && collectionContext ? (
-					<TokenArtwork className="circle-only-token-art" ticker={asset.ticker ?? 'Token'} />
-				) : asset.image ? (
-					<ArtworkImage
-						src={asset.image}
-						fetchPriority={priority ? 'high' : 'auto'}
-						loading={priority ? 'eager' : 'lazy'}
-						alt=""
-					/>
-				) : isAudioContentType(asset.contentType) ? (
-					<AudioArtwork contentType={asset.contentType} name={asset.name} />
-				) : collection.kind === 'tokens' ? (
-					<TokenArtwork className="circle-only-token-art" ticker={asset.ticker ?? 'Token'} />
-				) : (
-					<span>{asset.name.slice(0, 1)}</span>
-				)}
-			</div>
+			<AssetCardArtwork asset={asset} collection={collection} priority={priority} />
 			<div className="asset-card-copy">
 				{!collectionContext ? <p>{collection.name}</p> : null}
 				<div className="asset-card-heading">
@@ -6961,6 +7070,69 @@ export const AssetCard = React.memo(function AssetCard({
 		</Link>
 	);
 });
+
+export function AssetCardArtwork({
+	asset,
+	collection,
+	priority = false,
+}: {
+	asset: AssetSummary;
+	collection: Collection;
+	priority?: boolean;
+}) {
+	return (
+		<div className="asset-media">
+			{asset.image ? (
+				<ArtworkImage
+					src={asset.image}
+					fetchPriority={priority ? 'high' : 'auto'}
+					loading={priority ? 'eager' : 'lazy'}
+					alt=""
+				/>
+			) : isAudioContentType(asset.contentType) ? (
+				<AudioArtwork contentType={asset.contentType} name={asset.name} />
+			) : collection.kind === 'tokens' ? (
+				<TokenArtwork className="circle-only-token-art" ticker={asset.ticker ?? 'Token'} />
+			) : (
+				<span>{asset.name.slice(0, 1)}</span>
+			)}
+		</div>
+	);
+}
+
+export function DiscoveryAssetArtwork({
+	asset,
+	collection,
+	priority = false,
+}: {
+	asset: AssetSummary;
+	collection: Collection;
+	priority?: boolean;
+}) {
+	if (asset.image) {
+		return (
+			<ArtworkImage
+				className="home-asset-media"
+				src={asset.image}
+				alt=""
+				fetchPriority={priority ? 'high' : 'auto'}
+				loading={priority ? 'eager' : 'lazy'}
+			/>
+		);
+	}
+	if (isAudioContentType(asset.contentType)) {
+		return <AudioArtwork className="home-asset-media" contentType={asset.contentType} name={asset.name} />;
+	}
+	if (collection.kind === 'names') {
+		return <NameArtwork className="home-asset-media" name={asset.name} />;
+	}
+	return (
+		<TokenArtwork
+			className={`home-asset-media home-token-art${collection.kind === 'tokens' ? ' circle-only-token-art' : ''}`}
+			ticker={asset.ticker ?? 'Token'}
+		/>
+	);
+}
 
 export type CandidateSupportFailure = { candidate: AssetCandidate; error: unknown };
 export type WalletResolutionStatus = {
@@ -7237,6 +7409,40 @@ export function verifiedAssetForDetail(
 		: resolvedAsset;
 }
 
+export function assetDetailLoadingPresentation(collection: Collection | undefined, collectionId: string) {
+	const kind =
+		collection?.kind ??
+		(collectionId === FUNGIBLE_TOKEN_COLLECTION_ID
+			? 'tokens'
+			: collectionId === CREATED_COLLECTION_ID
+			? 'images'
+			: 'names');
+	return { kind, device: kind === 'names' ? 'carrier@1.0' : 'token@1.0' } as const;
+}
+
+export function mergeAssetDetailMetadata(
+	primary: AssetSummary | undefined,
+	indexed: AssetSummary | undefined
+): AssetSummary | undefined {
+	if (!primary) return indexed;
+	if (!indexed || primary.id !== indexed.id) return primary;
+	const abbreviatedName = `${primary.id.slice(0, 7)}…${primary.id.slice(-6)}`;
+	return {
+		...primary,
+		...indexed,
+		name: !primary.name || primary.name === abbreviatedName ? indexed.name : primary.name,
+	};
+}
+
+export function assetDetailErrorMessage(
+	error: string | null,
+	asset: Pick<AssetSummary, 'name'> | undefined,
+	indexed: boolean
+): string | null {
+	if (!error || !asset || !indexed) return error;
+	return `${asset.name} is published and indexed, but its ownership and market state are currently unavailable from the configured compute peers. Retry shortly.`;
+}
+
 function AssetDetailLoadingShell({
 	asset,
 	collection,
@@ -7250,9 +7456,11 @@ function AssetDetailLoadingShell({
 	error?: string | null;
 	onRetry?: () => void;
 }) {
-	const kind = collection?.kind ?? (collectionId === 'fungible-tokens' ? 'tokens' : 'names');
+	const { kind, device } = assetDetailLoadingPresentation(collection, collectionId);
 	const detailClass = kind === 'tokens' ? 'fungible-asset-page' : 'atomic-asset-page';
-	const collectionName = collection?.name ?? (kind === 'tokens' ? 'Fungible tokens' : 'Arweave names');
+	const collectionName =
+		collection?.name ??
+		(kind === 'tokens' ? 'Fungible tokens' : kind === 'images' ? CREATED_COLLECTION_NAME : 'Arweave names');
 
 	if (kind === 'tokens') {
 		return (
@@ -7352,7 +7560,7 @@ function AssetDetailLoadingShell({
 							<span>Loading ownership and market state</span>
 						</div>
 						<div className="asset-token-tags" aria-hidden="true">
-							<span>carrier@1.0</span>
+							<span>{device}</span>
 							<span>Arweave</span>
 							<span>Supply 1</span>
 						</div>
@@ -7408,6 +7616,14 @@ function AssetDetailLoadingShell({
 	);
 }
 
+export function isFungiblePendingMint(asset: Pick<MintedAsset, 'contentType' | 'ticker'>, collectionId: string) {
+	return (
+		collectionId === FUNGIBLE_TOKEN_COLLECTION_ID ||
+		asset.contentType === 'application/x.arweave-token' ||
+		Boolean(asset.ticker)
+	);
+}
+
 function PendingAssetView() {
 	const { collectionId = '', assetId = '' } = useParams();
 	const navigate = useNavigate();
@@ -7435,6 +7651,7 @@ function PendingAssetView() {
 		);
 	}
 	if (!activity) return <Navigate to={finalPath} replace />;
+	const fungible = isFungiblePendingMint(asset, activity.collectionId ?? collectionId);
 
 	const phases: Array<[MintActivity['phase'], string]> = [
 		['accepted', 'Accepted by Arweave'],
@@ -7455,8 +7672,14 @@ function PendingAssetView() {
 				<div className="mint-pending-artwork">
 					{asset.image ? (
 						<ArtworkImage src={asset.image} alt={`${asset.name} artwork`} />
-					) : (
+					) : fungible ? (
+						<TokenArtwork ticker={asset.ticker || asset.name} />
+					) : isAudioContentType(asset.contentType) ? (
 						<AudioArtwork contentType={asset.contentType} name={asset.name} />
+					) : (
+						<span className="mint-pending-artwork-fallback" aria-hidden="true">
+							{asset.name.slice(0, 1)}
+						</span>
 					)}
 				</div>
 				<div className="mint-pending-copy">
@@ -7488,10 +7711,13 @@ function PendingAssetView() {
 					</div>
 					<MintTransactionReceipt
 						entries={activity.transactionIds.map((transactionId, index) => ({
-							label:
-								index === activity.transactionIds.length - 1
-									? 'Asset transaction'
-									: 'Artwork transaction',
+							label: fungible
+								? index === activity.transactionIds.length - 1
+									? 'Token process transaction'
+									: 'Token logo transaction'
+								: index === activity.transactionIds.length - 1
+								? 'Asset transaction'
+								: 'Artwork transaction',
 							transactionId,
 						}))}
 					/>
@@ -7508,6 +7734,10 @@ function AssetView() {
 	const indexedCollection = market.collections.find((item) => item.id === collectionId);
 	const indexedAsset = indexedCollection ? collectionAsset(indexedCollection, assetId) : undefined;
 	const cachedAsset = React.useMemo(() => loadAssetShellSnapshot(window.localStorage, assetId), [assetId]);
+	const [indexedAtomicResult, setIndexedAtomicResult] = React.useState<{
+		assetId: string;
+		result: { asset: AssetSummary; collection: Collection } | null;
+	}>({ assetId, result: null });
 	const prefetchedState = React.useMemo(() => cachedAssetState(assetId), [assetId]);
 	const [liveResult, setLiveResult] = React.useState<{
 		assetId: string;
@@ -7531,6 +7761,22 @@ function AssetView() {
 	const provider = liveResult.assetId === assetId ? liveResult.provider : prefetchedState?.provider ?? '';
 	const verifiedAt = liveResult.assetId === assetId ? liveResult.verifiedAt : prefetchedState?.verifiedAt ?? null;
 	const directAtomicRoute = collectionId === CREATED_COLLECTION_ID && ARWEAVE_ADDRESS.test(assetId);
+	const indexedAtomic = indexedAtomicResult.assetId === assetId ? indexedAtomicResult.result : null;
+	React.useEffect(() => {
+		if (!ARWEAVE_ADDRESS.test(assetId) || (!directAtomicRoute && indexedCollection?.kind !== 'images')) {
+			return;
+		}
+		const controller = new AbortController();
+		void loadBazarAtomicAssetById(assetId, { signal: controller.signal }).then(
+			(result) => {
+				if (!controller.signal.aborted) setIndexedAtomicResult({ assetId, result });
+			},
+			() => {
+				if (!controller.signal.aborted) setIndexedAtomicResult({ assetId, result: null });
+			}
+		);
+		return () => controller.abort();
+	}, [assetId, directAtomicRoute, indexedCollection?.kind]);
 	const canResolveAsset = assetDetailCanResolve({
 		assetId,
 		cachedAsset,
@@ -7540,19 +7786,29 @@ function AssetView() {
 		directFungibleRoute: collectionId === 'fungible-tokens' && ARWEAVE_ADDRESS.test(assetId),
 	});
 	const directAtomicAsset = directAtomicRoute && state ? bazarAtomicAssetFromState(assetId, state) : null;
-	const collection = indexedCollection ?? directAtomicAsset?.collection;
+	const indexedMetadata = indexedAtomic?.asset;
+	const shellAsset = mergeAssetDetailMetadata(indexedAsset ?? cachedAsset, indexedMetadata);
+	const collection =
+		indexedCollection ??
+		directAtomicAsset?.collection ??
+		(directAtomicRoute ? indexedAtomic?.collection : undefined);
 	const resolvedAsset =
 		directAtomicAsset?.asset ??
-		(indexedCollection && state ? collectionAsset(indexedCollection, assetId, state) : indexedAsset);
+		mergeAssetDetailMetadata(
+			indexedCollection && state
+				? collectionAsset(indexedCollection, assetId, state)
+				: indexedAsset ?? cachedAsset,
+			indexedMetadata
+		);
 	const membershipVerified = assetDetailMembershipVerified(
 		indexedCollection?.id,
 		market.verifiedCollectionIds,
-		Boolean(directAtomicAsset)
+		Boolean(directAtomicAsset || (directAtomicRoute && indexedAtomic))
 	);
 	const verifiedAsset = membershipVerified
 		? verifiedAssetForDetail(collection, indexedAsset, resolvedAsset, state)
 		: undefined;
-	const shellAsset = indexedAsset ?? cachedAsset;
+	const detailError = assetDetailErrorMessage(error, shellAsset, Boolean(indexedAtomic));
 	React.useEffect(() => {
 		if (collectionId === 'fungible-tokens' || indexedCollection?.kind === 'tokens') {
 			void import('../routes/FungibleAssetRoute');
@@ -7964,7 +8220,14 @@ function AssetView() {
 		return () => controller.abort();
 	}, [assetId, openOperation, operation, recoverySuppressed, state, storageVersion, wallet.address]);
 	if (!collection && (market.loading || (directAtomicRoute && loading))) {
-		return <AssetDetailLoadingShell asset={shellAsset} collectionId={collectionId} error={error} onRetry={load} />;
+		return (
+			<AssetDetailLoadingShell
+				asset={shellAsset}
+				collectionId={collectionId}
+				error={detailError}
+				onRetry={load}
+			/>
+		);
 	}
 	if (!collection && market.error)
 		return (
@@ -7975,7 +8238,7 @@ function AssetView() {
 	if (!collection && directAtomicRoute && error)
 		return (
 			<RouteState title="Asset unavailable">
-				<ErrorPanel message={error} onRetry={load} retryLabel="Retry live state" />
+				<ErrorPanel message={detailError ?? error} onRetry={load} retryLabel="Retry live state" />
 			</RouteState>
 		);
 	if (!collection)
@@ -7990,7 +8253,11 @@ function AssetView() {
 				asset={shellAsset}
 				collection={collection}
 				collectionId={collectionId}
-				error={market.loading ? error : market.notice ?? 'Current collection membership could not be verified.'}
+				error={
+					market.loading
+						? detailError
+						: market.notice ?? 'Current collection membership could not be verified.'
+				}
 				onRetry={market.loading ? load : market.retry}
 			/>
 		);
@@ -7998,7 +8265,7 @@ function AssetView() {
 	if (!asset && error)
 		return (
 			<RouteState title="Asset unavailable" backTo={`/collection/${collection.id}`} backLabel={collection.name}>
-				<ErrorPanel message={error} onRetry={load} retryLabel="Retry live state" />
+				<ErrorPanel message={detailError ?? error} onRetry={load} retryLabel="Retry live state" />
 			</RouteState>
 		);
 	if (!asset && !loading)
@@ -8022,7 +8289,7 @@ function AssetView() {
 				asset={asset}
 				collection={collection}
 				collectionId={collectionId}
-				error={error}
+				error={detailError}
 				onRetry={load}
 			/>
 		);
@@ -9643,7 +9910,7 @@ function OperationDialog({
 										? `Purchase quote ready. Maximum total ${winstonToAr(purchaseQuote.total)} AR.${
 												purchaseAffordable ? '' : ' This wallet has insufficient AR.'
 										  }`
-										: 'Checking the exact purchase cost.'}
+										: 'Checking the purchase cost.'}
 								</p>
 							) : null}
 							{operation.kind === 'buy' ? (
@@ -9653,9 +9920,9 @@ function OperationDialog({
 								>
 									<span>
 										{quoteError
-											? 'The exact network cost could not be checked.'
+											? 'The network cost could not be checked.'
 											: purchaseQuote
-											? 'Exact costs checked.'
+											? 'Costs checked.'
 											: 'Checking wallet balance and network fees…'}
 									</span>
 									<Button
@@ -9739,7 +10006,7 @@ function OperationDialog({
 							) : null}
 							<p className="operation-disclosure">
 								{operation.kind === 'buy'
-									? 'Your wallet will ask for two approvals: one reservation and one exact seller payment. The payment stays local until the reservation is accepted by the network.'
+									? 'Your wallet will ask for two approvals: one reservation and one seller payment. The payment stays local until the reservation is accepted by the network.'
 									: 'After signing, Bazar observes this action through independently addressed Arweave nodes. Signed transaction details are saved in this browser so you can return with the same wallet while browser data remains available.'}
 							</p>
 						</div>
@@ -9778,7 +10045,7 @@ function OperationDialog({
 						<Loading
 							label={
 								(operation.kind === 'buy' ? operation.resume : operation.resumeId)
-									? 'Recovering the exact signed transaction…'
+									? 'Recovering the signed transaction…'
 									: 'Preparing secure wallet approvals…'
 							}
 						/>
@@ -10032,6 +10299,10 @@ function collectionKindLabel(collection: Collection) {
 	if (collection.kind === 'names') return 'Arweave identity';
 	if (collection.kind === 'tokens') return 'Fungible token collection';
 	return 'Permanent artwork collection';
+}
+
+export function collectionDisplayName(collection: Collection) {
+	return collection.kind === 'tokens' ? 'Tokens' : collection.name;
 }
 
 function collectionEyebrow(collection: Collection) {
@@ -10338,6 +10609,11 @@ export function mintErrorMessage(error: unknown) {
 		'mint-artwork-type-unsupported': 'Use a PNG, JPG, WebP, or GIF image for album artwork.',
 		'mint-artwork-size-invalid': 'Choose album artwork no larger than 10 MB.',
 		'mint-artwork-audio-only': 'Album artwork can only be attached to an MP3 or WAV asset.',
+		'mint-logo-type-unsupported': 'Use a PNG, JPG, WebP, or GIF image for the token logo.',
+		'mint-logo-size-invalid': 'Choose a token logo no larger than 10 MB.',
+		'mint-ticker-invalid': 'Enter a token ticker between 1 and 32 characters.',
+		'mint-supply-invalid': 'Enter a positive whole-number token supply.',
+		'mint-denomination-invalid': 'Enter decimal places from 0 to 255.',
 		'mint-insufficient-balance': 'This wallet does not have enough AR for the required Arweave transaction(s).',
 		'mint-high-cost-confirmation-required': 'Review and approve the unusually high network cost before minting.',
 		'wallet-sign-unavailable': 'Connect an Arweave wallet that can sign transactions.',
@@ -10382,7 +10658,7 @@ const ARWEAVE_ADDRESS = /^[A-Za-z0-9_-]{43}$/;
 
 export function atomicOperationFormError(kind: Operation['kind'], value: string, owner = '') {
 	if (kind === 'sell') {
-		if (!value.trim()) return 'Enter the exact AR price for this asset.';
+		if (!value.trim()) return 'Enter the AR price for this asset.';
 		if (/^0(?:\.0*)?$/.test(value)) return 'Enter a price of at least 0.000000000001 AR.';
 		try {
 			if (BigInt(arToWinston(value)) < 1n) return 'Enter a price of at least 0.000000000001 AR.';
@@ -10568,6 +10844,9 @@ export function assetStateErrorMessage(error: unknown) {
 	const value = error instanceof Error ? error.message : String(error);
 	if (/^HTTP 429(?:\b|$)/i.test(value)) {
 		return marketplaceRequestFailureMessage('compute', 'rate-limited');
+	}
+	if (/ao[- ]wrangler.*response quorum not met/i.test(value) || /^HTTP 5\d\d(?:\b|$)/i.test(value)) {
+		return 'Live state could not be read through the configured compute gateways. Retry shortly, or choose Compute gateway in the header.';
 	}
 	if (['Failed to fetch', 'fetch failed', 'compute-provider-failed', 'compute-provider-timeout'].includes(value)) {
 		let host = 'the selected compute gateway';
