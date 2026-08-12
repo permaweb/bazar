@@ -1,5 +1,5 @@
-import { mapConcurrent } from 'helpers/concurrency';
 import { isSupportedAssetContentType } from 'helpers/asset-media';
+import { mapConcurrent } from 'helpers/concurrency';
 import {
 	arweaveGatewayFromLocation,
 	arweaveGraphqlEndpoint,
