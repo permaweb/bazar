@@ -113,6 +113,11 @@ export type MintResult = {
 
 export type MintPhase = 'signing-asset' | 'uploading-asset' | 'signing-artwork' | 'uploading-artwork';
 
+export type MintUploadTransaction = {
+	id: string;
+	label: string;
+};
+
 export const MAX_FUNGIBLE_TICKER_LENGTH = 32;
 /** Mirrors MAX_TOKEN_DENOMINATION in asset-marketplace.ts — parseAssetState rejects anything above it. */
 export const MAX_FUNGIBLE_DENOMINATION = 255;
