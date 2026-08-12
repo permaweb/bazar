@@ -302,7 +302,8 @@ describe('fungible operation error semantics', () => {
 		expect(composer).toContain('Unit price');
 		expect(composer).toContain('value="0.00002"');
 		expect(composer).toContain('$MINTA');
-		expect(composer).toContain('0.00024 AR total');
+		expect(composer).toContain('0.00024 <span class="ar-currency-label">');
+		expect(composer).toContain('AR</span> total');
 	});
 
 	it('counts only the new wallet approvals missing from a recovered batch', () => {

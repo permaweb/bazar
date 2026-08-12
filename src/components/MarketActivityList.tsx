@@ -6,6 +6,7 @@ import { transactionExplorerUrl } from 'api/arweave-explorer';
 import type { CollectionActivityEvent } from 'api/asset-discovery';
 import type { AssetSummary, Collection } from 'api/collections';
 
+import { ArCurrencyText } from 'components/ArCurrencyLabel';
 import { WalletAddress } from 'components/WalletAddress';
 
 const relativeTime = new Intl.RelativeTimeFormat('en', { numeric: 'always' });
@@ -90,7 +91,7 @@ export function MarketActivityList({
 									<span>{shortActivityValue(event.processId)}</span>
 								)}
 								<small className={detail ? undefined : 'activity-time-only'}>
-									{detail}
+									<ArCurrencyText>{detail}</ArCurrencyText>
 									<time
 										className="activity-mobile-time"
 										dateTime={timestampDateTime}
@@ -101,7 +102,11 @@ export function MarketActivityList({
 									</time>
 								</small>
 							</div>
-							{amount ? <strong className="activity-amount">{amount}</strong> : null}
+							{amount ? (
+								<strong className="activity-amount">
+									<ArCurrencyText>{amount}</ArCurrencyText>
+								</strong>
+							) : null}
 						</div>
 						<div className="activity-meta">
 							<div className="activity-actor">

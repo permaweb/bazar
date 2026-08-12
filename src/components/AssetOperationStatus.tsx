@@ -1,6 +1,7 @@
 import React from 'react';
 import { AlertCircle, ChevronRight, LoaderCircle } from 'lucide-react';
 
+import { ArCurrencyText } from './ArCurrencyLabel';
 import { Button } from './Button';
 
 export type AssetOperationKind = 'sell' | 'buy' | 'cancel' | 'transfer';
@@ -45,7 +46,9 @@ export function AssetOperationStatus({ kind, phase, status, onView }: Props) {
 			</span>
 			<span className="asset-operation-status-copy" aria-atomic="true" aria-live="polite" role="status">
 				<strong>{assetOperationProgressTitle(kind, phase)}</strong>
-				<small>{status}</small>
+				<small>
+					<ArCurrencyText>{status}</ArCurrencyText>
+				</small>
 			</span>
 			<Button className="with-icon" onClick={onView}>
 				View details <ChevronRight className="ui-icon ui-icon--sm" aria-hidden="true" />
