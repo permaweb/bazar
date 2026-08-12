@@ -27,6 +27,7 @@ import {
 	homeAssetPage,
 	homeAssetTypeMatches,
 	homeAssetVisibleForView,
+	homeCollectionAssetCountLabel,
 	homeDiscoveryAssets,
 	homeFloorCandidateNeedsResolution,
 	homeFloorScanSummary,
@@ -181,6 +182,29 @@ describe('Home market summary retries', () => {
 				.sort(compareCollectionAssetNames)
 				.map(({ name }) => name)
 		).toEqual(['blockdata2', 'blockdata10', 'zupercollectiv']);
+	});
+
+	it('does not present an empty partial names page as a zero-asset collection', () => {
+		expect(
+			homeCollectionAssetCountLabel({
+				id: 'arweave-names',
+				name: 'Arweave names',
+				description: 'Names',
+				kind: 'names',
+				assets: [],
+				hasMore: true,
+			})
+		).toBe('N/A');
+		expect(
+			homeCollectionAssetCountLabel({
+				id: 'arweave-names',
+				name: 'Arweave names',
+				description: 'Names',
+				kind: 'names',
+				assets: [{ id: 'name-id', name: 'alice' }],
+				hasMore: true,
+			})
+		).toBe('1');
 	});
 
 	it('round-trips a structural market snapshot for stable refresh shells', () => {

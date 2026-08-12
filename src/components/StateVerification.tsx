@@ -1,6 +1,5 @@
 import React from 'react';
-
-import { PortalIcon } from 'components/PortalIcon';
+import { Server } from 'lucide-react';
 
 export function stateVerificationTimeLabel(verifiedAt: number) {
 	const timestamp = new Date(verifiedAt);
@@ -30,7 +29,7 @@ export function StateVerification({
 	const timestamp = new Date(verifiedAt);
 	return (
 		<p className="state-verification">
-			<PortalIcon className="ui-icon ui-icon--xs" aria-hidden="true" />
+			<Server className="ui-icon ui-icon--xs" aria-hidden="true" />
 			<span>
 				{refreshing ? 'Refreshing · last checked' : failed ? 'Refresh failed · last checked' : 'Checked'}
 			</span>{' '}

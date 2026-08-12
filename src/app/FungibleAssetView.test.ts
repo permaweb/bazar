@@ -383,6 +383,20 @@ describe('fungible operation error semantics', () => {
 		const previousButton = firstReceipt.match(/<button[^>]*>Previous receipt<\/button>/)?.[0] ?? '';
 		expect(previousButton).toContain('aria-disabled="true"');
 		expect(previousButton).not.toMatch(/\sdisabled(?:=|\s|>)/);
+
+		const singleReceipt = renderToStaticMarkup(
+			React.createElement(FungiblePurchaseReceiptNavigator, {
+				activeOrderId: orders[0].orderId,
+				onSelect: () => undefined,
+				orders: orders.slice(0, 1),
+				purchaseStates,
+				state: { denomination: 0, ticker: 'WEAVE' } as AssetState,
+			})
+		);
+		expect(singleReceipt).toContain('settlement-receipt-navigation single');
+		expect(singleReceipt).toContain('settlement-receipt-count');
+		expect(singleReceipt).toContain('receipt-proof-links');
+		expect(singleReceipt).not.toContain('class="market-select"');
 	});
 
 	it('makes every matched seller reachable through one bounded keyboard region', () => {

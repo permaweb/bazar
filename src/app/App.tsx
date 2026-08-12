@@ -24,7 +24,6 @@ import {
 	RefreshCw,
 	Search,
 	Send,
-	Server,
 	ShoppingCart,
 	Tag,
 	Upload,
@@ -139,6 +138,7 @@ import { NameArtwork } from 'components/NameArtwork';
 import { NamesCubePreview } from 'components/NamesCubePreview';
 import { OperationOutcome, OperationOutcomeAnnouncement } from 'components/OperationOutcomeAnnouncement';
 import { Pagination } from 'components/Pagination';
+import { PortalIcon } from 'components/PortalIcon';
 import { StateVerification } from 'components/StateVerification';
 import { TokenAvatar } from 'components/TokenAvatar';
 import {
@@ -1928,6 +1928,9 @@ function Header() {
 										<div className="search-collection-grid">
 											{collectionResults.map((collection) => {
 												const preview = collection.assets.find((asset) => asset.image)?.image;
+												const tokenPreview =
+													collection.assets.find((asset) => asset.image) ??
+													collection.assets[0];
 												return (
 													<Link
 														key={collection.id}
@@ -1941,7 +1944,8 @@ function Header() {
 														>
 															{collection.kind === 'tokens' ? (
 																<TokenAvatar
-																	ticker={collection.assets[0]?.ticker ?? 'Token'}
+																	image={tokenPreview?.image}
+																	ticker={tokenPreview?.ticker ?? 'Token'}
 																/>
 															) : preview ? (
 																<ArtworkImage src={preview} alt="" />
@@ -2005,7 +2009,10 @@ function Header() {
 														}`}
 													>
 														{collection.kind === 'tokens' ? (
-															<TokenAvatar ticker={asset.ticker ?? 'Token'} />
+															<TokenAvatar
+																image={asset.image}
+																ticker={asset.ticker ?? 'Token'}
+															/>
 														) : asset.image ? (
 															<ArtworkImage src={asset.image} alt="" />
 														) : isAudioContentType(asset.contentType) ? (
@@ -2597,6 +2604,11 @@ function homeMarketSummaryLabel(
 
 function homeMarketSummaryListed(summary: HomeMarketSummary | undefined) {
 	return summary?.status === 'resolved' && Boolean(summary.value);
+}
+
+export function homeCollectionAssetCountLabel(collection: Collection) {
+	if (collection.kind === 'names' && collection.hasMore && collection.assets.length === 0) return 'N/A';
+	return (collection.total ?? collection.assets.length).toLocaleString();
 }
 
 export type HomeTab = 'discover' | 'collections' | 'activity';
@@ -3817,6 +3829,9 @@ function Home() {
 										<div className="home-feature-grid">
 											{collections.map((collection, index) => {
 												const image = collection.assets.find((asset) => asset.image)?.image;
+												const tokenPreview =
+													collection.assets.find((asset) => asset.image) ??
+													collection.assets[0];
 												const floor = collectionFloors[collection.id];
 												const floorPending =
 													!floor ||
@@ -3828,7 +3843,15 @@ function Home() {
 														to={`/collection/${collection.id}`}
 													>
 														<div className="home-feature-art">
-															{image ? (
+															{collection.kind === 'tokens' ? (
+																<TokenAvatar
+																	className="home-token-collection-art"
+																	fetchPriority={index === 0 ? 'high' : 'auto'}
+																	image={tokenPreview?.image}
+																	loading={index === 0 ? 'eager' : 'lazy'}
+																	ticker={tokenPreview?.ticker ?? 'Token'}
+																/>
+															) : image ? (
 																<ArtworkImage
 																	src={image}
 																	alt=""
@@ -3852,11 +3875,6 @@ function Home() {
 																/>
 															) : collection.kind === 'names' ? (
 																<NamesCubePreview />
-															) : collection.kind === 'tokens' ? (
-																<TokenAvatar
-																	className="home-token-collection-art"
-																	ticker={collection.assets[0]?.ticker ?? 'Token'}
-																/>
 															) : (
 																<div className="home-name-art">
 																	<BazarMark />
@@ -3877,9 +3895,7 @@ function Home() {
 																		: 'Assets'}
 																</span>
 																<strong>
-																	{(
-																		collection.total ?? collection.assets.length
-																	).toLocaleString()}
+																	{homeCollectionAssetCountLabel(collection)}
 																</strong>
 															</div>
 															<div>
@@ -3899,9 +3915,7 @@ function Home() {
 																			collection.hasMore
 																				? 'No loaded listings'
 																				: 'No live listings',
-																			collection.hasMore
-																				? 'No loaded asks'
-																				: 'No indexed asks'
+																			'N/A'
 																		)
 																	) : (
 																		<HomePendingMarketValue />
@@ -3970,7 +3984,12 @@ function Home() {
 														>
 															{collection.kind === 'tokens' ? (
 																<div className="home-asset-media home-token-media">
-																	<TokenAvatar ticker={asset.ticker ?? 'Token'} />
+																	<TokenAvatar
+																		fetchPriority={index < 2 ? 'high' : 'auto'}
+																		image={asset.image}
+																		loading={index < 2 ? 'eager' : 'lazy'}
+																		ticker={asset.ticker ?? 'Token'}
+																	/>
 																</div>
 															) : asset.image ? (
 																<ArtworkImage
@@ -4475,7 +4494,7 @@ function GatewayControl() {
 					role="button"
 					title={`Compute: ${computeCurrent}`}
 				>
-					<Server className="ui-icon ui-icon--sm" aria-hidden="true" />
+					<PortalIcon className="ui-icon gateway-portal-icon" aria-hidden="true" />
 					<span className="gateway-label">Gateway</span>
 				</summary>
 				<div id="gateway-panel">
@@ -4499,7 +4518,7 @@ function GatewayControl() {
 							</p>
 						) : null}
 						<Button className="with-icon" type="submit" size="custom">
-							<Server className="ui-icon ui-icon--sm" aria-hidden="true" /> Apply peers
+							<PortalIcon className="ui-icon gateway-portal-icon" aria-hidden="true" /> Apply peers
 						</Button>
 					</form>
 					<p>
@@ -6814,7 +6833,12 @@ export const AssetCard = React.memo(function AssetCard({
 		>
 			<div className="asset-media">
 				{collection.kind === 'tokens' && collectionContext ? (
-					<TokenAvatar ticker={asset.ticker ?? 'Token'} />
+					<TokenAvatar
+						fetchPriority={priority ? 'high' : 'auto'}
+						image={asset.image}
+						loading={priority ? 'eager' : 'lazy'}
+						ticker={asset.ticker ?? 'Token'}
+					/>
 				) : asset.image ? (
 					<ArtworkImage
 						src={asset.image}
@@ -6825,7 +6849,12 @@ export const AssetCard = React.memo(function AssetCard({
 				) : isAudioContentType(asset.contentType) ? (
 					<AudioArtwork contentType={asset.contentType} name={asset.name} />
 				) : collection.kind === 'tokens' ? (
-					<TokenAvatar ticker={asset.ticker ?? 'Token'} />
+					<TokenAvatar
+						fetchPriority={priority ? 'high' : 'auto'}
+						image={asset.image}
+						loading={priority ? 'eager' : 'lazy'}
+						ticker={asset.ticker ?? 'Token'}
+					/>
 				) : (
 					<span>{asset.name.slice(0, 1)}</span>
 				)}

@@ -3421,46 +3421,70 @@ export function FungiblePurchaseReceiptNavigator({
 	const receiptOptions = fungiblePurchaseReceiptOptions(orders, state);
 	return (
 		<div className="settlement-receipts">
-			<div className="settlement-receipt-navigation">
-				<MarketSelect
-					label="Settlement receipt"
-					onChange={onSelect}
-					options={receiptOptions}
-					value={order.orderId}
-				/>
-				<span aria-live="polite">
+			<div className={`settlement-receipt-navigation${orders.length === 1 ? ' single' : ''}`}>
+				<div>
+					<strong>Settlement receipt</strong>
+					{orders.length > 1 ? (
+						<MarketSelect
+							label="Choose settlement receipt"
+							onChange={onSelect}
+							options={receiptOptions}
+							showLabel={false}
+							value={order.orderId}
+						/>
+					) : null}
+				</div>
+				<span aria-live="polite" className="settlement-receipt-count">
 					{activeIndex + 1} of {orders.length}
 				</span>
 			</div>
 			<section
 				aria-label={`Settlement receipt ${activeIndex + 1} of ${orders.length}`}
-				className="settlement-receipt"
+				className="settlement-receipt purchase-settlement-receipt"
 			>
-				<div>
+				<div className="settlement-receipt-amount">
 					<span>Listing {activeIndex + 1}</span>
 					<strong>{tokenLabel(order.quantity, state)}</strong>
 				</div>
-				<div>
-					<span>Seller</span>
-					<WalletAddress address={order.creator} full label="seller" />
-				</div>
-				<div>
-					<span>Order</span>
-					<strong title={order.orderId}>{short(order.orderId)}</strong>
-				</div>
-				<div>
-					<span>Seller payment</span>
-					<strong>{winstonToAr(order.asking)} AR</strong>
-				</div>
-				<div className="settlement-receipt-links">
+				<dl className="settlement-receipt-facts">
+					<div>
+						<dt>Seller</dt>
+						<dd>
+							<WalletAddress address={order.creator} label="seller" />
+						</dd>
+					</div>
+					<div>
+						<dt>Order</dt>
+						<dd title={order.orderId}>{short(order.orderId)}</dd>
+					</div>
+					<div>
+						<dt>Seller payment</dt>
+						<dd>{winstonToAr(order.asking)} AR</dd>
+					</div>
+				</dl>
+				<div className="settlement-receipt-links receipt-proof-links">
 					{settled?.registration?.id ? (
-						<a href={transactionExplorerUrl(settled.registration.id)} rel="noreferrer" target="_blank">
-							Reservation {short(settled.registration.id)} ↗
+						<a
+							aria-label={`View reservation ${settled.registration.id}`}
+							href={transactionExplorerUrl(settled.registration.id)}
+							rel="noreferrer"
+							target="_blank"
+						>
+							<span>Reservation</span>
+							<strong>{short(settled.registration.id)}</strong>
+							<ArrowUpRight aria-hidden="true" className="ui-icon ui-icon--xs" />
 						</a>
 					) : null}
 					{settled?.payment?.id ? (
-						<a href={transactionExplorerUrl(settled.payment.id)} rel="noreferrer" target="_blank">
-							Payment {short(settled.payment.id)} ↗
+						<a
+							aria-label={`View payment ${settled.payment.id}`}
+							href={transactionExplorerUrl(settled.payment.id)}
+							rel="noreferrer"
+							target="_blank"
+						>
+							<span>Payment</span>
+							<strong>{short(settled.payment.id)}</strong>
+							<ArrowUpRight aria-hidden="true" className="ui-icon ui-icon--xs" />
 						</a>
 					) : null}
 				</div>
