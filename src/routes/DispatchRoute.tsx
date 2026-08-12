@@ -211,9 +211,8 @@ export default function DispatchRoute() {
 		if (needsCostApproval && !costApproved) return;
 		setRunError(null);
 		try {
-			// walletBalance pre-flights the full AR spend (atomic token units are
-			// in winston — the protocol quantity shadows the quantity tag) so a
-			// long dispatch does not die halfway through on an empty wallet.
+			// Pre-flight every network reward and the one-winston scheduler dust
+			// before creating a resumable dispatch plan.
 			if (estimate) {
 				const arBalance = await new AssetTransactionClient().walletBalance(wallet.address);
 				if (arBalance < estimate.totalWinston) throw new Error('asset-purchase-insufficient-funds');
@@ -487,9 +486,8 @@ export default function DispatchRoute() {
 										Each recipient is one L1 transfer signed in your wallet ({parsed.rows.length}{' '}
 										signature{parsed.rows.length === 1 ? '' : 's'}, sent in batches of{' '}
 										{DEFAULT_DISPATCH_BATCH_SIZE}). Behind this form, each token amount is converted
-										to atomic units. The protocol requires the same winston quantity, so this quote
-										includes {estimate ? winstonToAr(estimate.totalQuantity.toString()) : '0'} AR
-										from atomic transfer quantities plus network rewards.
+										to atomic units. The AR quote includes one winston of scheduler dust per
+										transfer plus network rewards.
 									</span>
 								</div>
 								{needsCostApproval ? (
@@ -508,11 +506,7 @@ export default function DispatchRoute() {
 												</b>{' '}
 												in real AR spend
 											</span>
-											<small>
-												Token amounts are converted to atomic units before signing. The protocol
-												charges 1 AR per 1e12 atomic units per transfer. Approve the quote to
-												enable sending.
-											</small>
+											<small>Approve the network quote to enable sending.</small>
 										</div>
 										<Button
 											type="button"

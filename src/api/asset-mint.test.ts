@@ -747,8 +747,8 @@ describe('asset mint contract', () => {
 		});
 
 		expect(createTransaction).toHaveBeenNthCalledWith(1, { data: new Uint8Array([1, 2, 3]) }, 'use_wallet');
-		expect(logoTransaction.addTag).toHaveBeenCalledWith('Content-Type', 'image/png');
-		expect(logoTransaction.addTag).toHaveBeenCalledWith('Type', 'Token-Logo');
+		expect(logoTransaction.addTag).toHaveBeenCalledWith('content-type', 'image/png');
+		expect(logoTransaction.addTag).toHaveBeenCalledWith('type', 'Token-Logo');
 		expect(processTransaction.addTag).toHaveBeenCalledWith('logo', logoId);
 		expect(processTransaction.addTag).toHaveBeenCalledWith('asset-type', 'fungible');
 		expect(processTransaction.addTag).toHaveBeenCalledWith('total-supply', '1000000000000000');

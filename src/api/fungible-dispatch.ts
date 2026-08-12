@@ -7,13 +7,7 @@ const QUANTITY = /^[1-9]\d*$/;
 
 export const DISPATCH_PLAN_PREFIX = 'bazar-fungible-dispatch:';
 export const DEFAULT_DISPATCH_BATCH_SIZE = 100;
-/**
- * Above this total (0.1 AR) the UI must collect an explicit confirmation
- * before anything is signed. A fungible L1 transfer really spends its token
- * amount in winston (the protocol quantity shadows the quantity tag at fold
- * time — see AssetTransactionClient.transferFungible), so large dispatches
- * have real AR cost: 1 AR per 1e12 atomic units per transfer, plus rewards.
- */
+/** Above this total (0.1 AR) the UI collects confirmation before signing. */
 export const DISPATCH_COST_CONFIRMATION_WINSTON = 100_000_000_000n;
 
 type StorageLike = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
@@ -173,14 +167,14 @@ export function planTotals(rows: ReadonlyArray<HolderRow>): { count: number; tot
 export type DispatchCostEstimate = {
 	totalQuantity: bigint;
 	totalReward: bigint;
-	/** What the sender's AR balance really pays: atomic token units (in winston) + rewards. */
+	/** What the sender's AR balance pays: one winston of dust per transfer plus rewards. */
 	totalWinston: bigint;
 };
 
 export function estimateDispatchCost(rows: ReadonlyArray<HolderRow>, perTransferReward: bigint): DispatchCostEstimate {
 	const { totalQuantity } = planTotals(rows);
 	const totalReward = perTransferReward * BigInt(rows.length);
-	return { totalQuantity, totalReward, totalWinston: totalQuantity + totalReward };
+	return { totalQuantity, totalReward, totalWinston: BigInt(rows.length) + totalReward };
 }
 
 export function requiresCostConfirmation(totalWinston: bigint): boolean {

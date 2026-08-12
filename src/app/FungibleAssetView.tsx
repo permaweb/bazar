@@ -3124,6 +3124,38 @@ function FungibleOperationDialog({
 							<Button data-dialog-initial onClick={() => onClose(false)} size="custom">
 								View updated token
 							</Button>
+						) : failureKind === 'transaction-not-sent' && transaction ? (
+							<>
+								<p>No transaction was submitted. Retry this signature or discard it to start over.</p>
+								<div className="dialog-actions">
+									<Button data-dialog-initial onClick={() => void submit()} size="custom">
+										Retry transfer
+									</Button>
+									<Button
+										size="custom"
+										onClick={() => {
+											const discarded = removeWalletRecoveryAndSignatures<any>(
+												localStorage,
+												operationStorageKey(asset.id, owner),
+												(record) => record?.txId === transaction.id,
+												[transaction.id],
+												owner
+											);
+											if (!discarded) {
+												setMessage(
+													'This saved transfer changed in another tab. Close this panel and review the active action.'
+												);
+												return;
+											}
+											setTransaction(null);
+											onClose(false, false);
+										}}
+										variant="danger"
+									>
+										Discard transfer
+									</Button>
+								</div>
+							</>
 						) : failureKind === 'transaction-rejected' && transaction ? (
 							<Button
 								data-dialog-initial

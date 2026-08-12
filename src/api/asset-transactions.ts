@@ -277,13 +277,6 @@ export class AssetTransactionClient {
 		);
 	}
 
-	/**
-	 * KNOWN-BROKEN SHAPE (2026-08-11 mainnet): arweave.net rejects
-	 * target-bearing L1 transactions whose protocol winston quantity is 0
-	 * ("Transaction verification failed"), so this transaction can never
-	 * post. Kept unchanged for existing callers/tests; new code should use
-	 * transferFungible() below, which uses the shape that settles.
-	 */
 	async transfer(
 		processId: string,
 		recipient: string,
@@ -291,45 +284,15 @@ export class AssetTransactionClient {
 		expectedSigner?: string,
 		signal?: AbortSignal
 	): Promise<PreparedTransaction> {
-		if (!ADDRESS.test(processId) || !ADDRESS.test(recipient)) {
-			throw new TypeError('invalid-asset-transfer');
-		}
-		assertTokenQuantity(quantity);
-		return this.#prepare(
-			{
-				target: processId,
-				quantity: '0',
-				tags: [
-					{ name: 'action', value: 'transfer' },
-					{ name: 'recipient', value: recipient },
-					{ name: 'quantity', value: quantity },
-				],
-			},
-			signal,
-			undefined,
-			expectedSigner
-		);
+		return this.transferFungible(processId, recipient, quantity, expectedSigner, signal);
 	}
 
 	/**
-	 * L1 fungible transfer in the shape that actually settles (verified on
-	 * mainnet 2026-08-11):
-	 *
-	 * 1. arweave.net REJECTS target-bearing L1 transactions with winston
-	 *    quantity 0, so the tag-only shape used by transfer() cannot post.
-	 * 2. At fold time the transaction's protocol winston quantity SHADOWS the
-	 *    `quantity` tag: a 1-winston transfer carrying a `quantity: 250000`
-	 *    tag moved exactly 1 token unit. We therefore set the protocol
-	 *    winston quantity equal to the token amount AND keep the identical
-	 *    `quantity` tag — correct under both the current (quantity-shadowing)
-	 *    and any future-fixed (tag-honouring) fold semantics.
-	 * 3. Consequence of (2): the real AR cost of a transfer is its amount in
-	 *    winston (1 AR per 1e12 base units per transfer). Callers MUST show
-	 *    the total AR cost before dispatching; transactionCost()/the balance
-	 *    check already include the quantity.
-	 *
-	 * Do NOT convert this to a bundled DataItem: bundled transfers wedge
-	 * process state on deployed nodes. Plain L1 only.
+	 * A target-bearing L1 transaction needs a non-zero native quantity. The
+	 * protocol quantity carries one winston of scheduler dust while the token
+	 * amount remains in the standard `quantity` tag. Compatible `token@1.0`
+	 * devices read that tag from the signed transaction's `original-tags`
+	 * commitment so the native field cannot shadow it.
 	 */
 	async transferFungible(
 		processId: string,
@@ -345,8 +308,7 @@ export class AssetTransactionClient {
 		return this.#prepare(
 			{
 				target: processId,
-				// Protocol winston quantity = token amount (see contract above).
-				quantity,
+				quantity: '1',
 				tags: [
 					{ name: 'action', value: 'transfer' },
 					{ name: 'recipient', value: recipient },
@@ -1389,19 +1351,32 @@ export function assertExactFungibleTransferAssignment(
 	const committed = Array.isArray(commitment?.committed)
 		? new Set(commitment.committed.filter((key): key is string => typeof key === 'string'))
 		: new Set<string>();
+	const nativeQuantity = wireAmount(body?.quantity);
+	const originalQuantity = uniqueOriginalTagValue(commitment?.['original-tags'], 'quantity');
 	if (
 		!assignment.transactionIds.includes(transactionId) ||
 		assignment.raw.process !== processId ||
 		body?.target !== processId ||
 		body?.action !== 'transfer' ||
 		body?.recipient !== recipient ||
-		wireAmount(body?.quantity) !== quantity ||
+		(nativeQuantity !== '1' && nativeQuantity !== quantity) ||
+		wireAmount(originalQuantity) !== quantity ||
 		commitment?.['commitment-device'] !== 'tx@1.0' ||
 		commitment.committer !== sender ||
 		commitment['field-target'] !== processId ||
+		wireAmount(commitment['field-quantity']) !== nativeQuantity ||
 		!['action', 'recipient', 'quantity', 'target'].every((field) => committed.has(field))
 	)
 		throw new Error('fungible-transfer-proof-mismatch');
+}
+
+function uniqueOriginalTagValue(originalTags: unknown, expectedName: string): unknown {
+	const tags = record(originalTags);
+	if (!tags) return undefined;
+	const matches = Object.values(tags)
+		.map((tag) => record(tag))
+		.filter((tag) => tag?.name?.toString().toLowerCase() === expectedName);
+	return matches.length === 1 ? matches[0]?.value : undefined;
 }
 
 export function hasExactFungibleTransferReceipt(

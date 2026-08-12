@@ -57,6 +57,13 @@ describe('marketplaceErrorMessage', () => {
 		expect(marketplaceOperationFailure(new Error('asset-order-reservation-expired'))).toBe('transaction-rejected');
 		expect(marketplaceOperationFailure(new Error('fungible-transfer-proof-mismatch'))).toBe('other');
 		expect(marketplaceOperationFailure(new Error('temporary quote failure'))).toBe('other');
+		expect(
+			marketplaceOperationFailure(
+				Object.assign(new Error('asset-purchase-insufficient-funds'), {
+					code: 'transaction-dispatch-not-sent',
+				})
+			)
+		).toBe('transaction-not-sent');
 	});
 
 	it('does not claim a different buyer won when current state only proves the reservation is inactive', () => {

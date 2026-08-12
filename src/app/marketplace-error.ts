@@ -3,6 +3,8 @@ const FRIENDLY_ERRORS: Record<string, string> = {
 		'No collection index could be read from Arweave. Check your connection and retry.',
 	'asset-purchase-insufficient-funds-after-signing':
 		'This wallet does not have enough AR for the transaction and network fee. Add AR, then continue the transaction saved in this browser with the same wallet.',
+	'asset-purchase-insufficient-funds':
+		'This wallet does not have enough AR for the one-winston scheduler dust and network reward. No transaction was submitted.',
 	'transaction-propagation-timeout':
 		'The sampled observers did not reach the required propagation quorum in time. The signed transaction remains saved in this browser; return with the same wallet and retained browser data to continue checking it.',
 	'asset-state-timeout':
@@ -61,7 +63,11 @@ export function marketplaceErrorMessage(error: unknown): string {
 	return FRIENDLY_ERRORS[code] ?? FRIENDLY_ERRORS[value] ?? value.replaceAll('-', ' ');
 }
 
-export type MarketplaceOperationFailure = 'market-state-changed' | 'transaction-rejected' | 'other';
+export type MarketplaceOperationFailure =
+	| 'market-state-changed'
+	| 'transaction-not-sent'
+	| 'transaction-rejected'
+	| 'other';
 
 export function marketplaceCodedError(code: string, message = code): Error & { code: string } {
 	return Object.assign(new Error(message), { code });
@@ -71,6 +77,7 @@ export function marketplaceOperationFailure(error: unknown): MarketplaceOperatio
 	const value = error instanceof Error ? error.message : String(error);
 	const code = error && typeof error === 'object' ? String((error as { code?: unknown }).code ?? '') : '';
 	if (value === 'market-state-changed') return 'market-state-changed';
+	if (code === 'transaction-dispatch-not-sent') return 'transaction-not-sent';
 	return [
 		'fungible-transfer-rejected',
 		'asset-cancel-rejected',
