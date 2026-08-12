@@ -7,6 +7,7 @@ import {
 	carrierManifestReference,
 	type Collection,
 	collectionAsset,
+	discoverBazarCollections,
 	FUNGIBLE_TOKEN_ID,
 	loadCollections,
 	loadImageCollection,
@@ -29,6 +30,134 @@ afterEach(() => {
 });
 
 describe('collection index loading', () => {
+	it('discovers current and legacy Bazar carrier collections from GraphQL in block order', async () => {
+		const currentId = 'C'.repeat(43);
+		const legacyId = 'L'.repeat(43);
+		const currentManifest = 'M'.repeat(43);
+		const legacyManifest = 'N'.repeat(43);
+		const assetId = 'A'.repeat(43);
+		const edge = (
+			id: string,
+			manifestId: string,
+			height: number,
+			tags: Array<{ name: string; value: string }>
+		) => ({
+			cursor: `${id.slice(0, 1)}-cursor`,
+			node: {
+				id,
+				block: { height, timestamp: height * 10 },
+				tags: [
+					{ name: 'app-name', value: 'Bazar' },
+					{ name: 'device', value: 'process@1.0' },
+					{ name: 'execution-device', value: 'carrier@1.0' },
+					{ name: 'type', value: 'Process' },
+					{ name: 'reference-value', value: manifestId },
+					...tags,
+				],
+			},
+		});
+		const encodeManifest = (name: string) =>
+			encodeUtf8Json({ name, description: `${name} description`, assets: [assetId] });
+		const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+			const body = typeof init?.body === 'string' ? JSON.parse(init.body) : undefined;
+			if (body?.query?.includes('BazarCollections')) {
+				return Response.json({
+					data: {
+						transactions: {
+							pageInfo: { hasNextPage: false },
+							edges: [
+								edge(currentId, currentManifest, 20, [
+									{ name: 'scheduler-device', value: 'arweave-scheduler@1.0' },
+									{ name: 'scheduler-mode', value: 'all' },
+									{ name: 'ticker', value: 'COLLECTION' },
+								]),
+								edge(legacyId, legacyManifest, 10, []),
+							],
+						},
+					},
+				});
+			}
+			if (String(input).includes(currentId) && String(input).includes('/compute')) {
+				return Response.json({
+					'execution-device': 'carrier@1.0',
+					'total-supply': '1',
+					denomination: 0,
+					balances: { ['O'.repeat(43)]: '1' },
+					orders: {},
+					value: { target: currentManifest },
+					'at-slot': 1,
+				});
+			}
+			if (String(input).includes(`/tx/${currentManifest}/data`)) return new Response(encodeManifest('Current'));
+			if (String(input).includes(`/tx/${legacyManifest}/data`)) return new Response(encodeManifest('Legacy'));
+			return new Response('unavailable', { status: 503 });
+		});
+		vi.stubGlobal('fetch', fetcher);
+		const progress: string[] = [];
+
+		const collections = await discoverBazarCollections(undefined, (collection) => progress.push(collection.id));
+
+		expect(
+			collections.map(({ id, name, createdHeight, indexSource }) => ({
+				id,
+				name,
+				createdHeight,
+				indexSource,
+			}))
+		).toEqual([
+			{ id: currentId, name: 'Current', createdHeight: 20, indexSource: 'reference' },
+			{ id: legacyId, name: 'Legacy', createdHeight: 10, indexSource: 'reference' },
+		]);
+		expect(new Set(progress)).toEqual(new Set([currentId, legacyId]));
+		expect(
+			fetcher.mock.calls.find(
+				([, init]) => typeof init?.body === 'string' && init.body.includes('BazarCollections')
+			)?.[1]?.body
+		).toContain('sort: HEIGHT_DESC');
+	});
+
+	it('skips tagged collection candidates whose live carrier or immutable manifest is invalid', async () => {
+		const carrierId = 'C'.repeat(43);
+		const manifestId = 'M'.repeat(43);
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+				const body = typeof init?.body === 'string' ? JSON.parse(init.body) : undefined;
+				if (body?.query?.includes('BazarCollections')) {
+					return Response.json({
+						data: {
+							transactions: {
+								pageInfo: { hasNextPage: false },
+								edges: [
+									{
+										cursor: 'candidate',
+										node: {
+											id: carrierId,
+											block: { height: 2, timestamp: 3 },
+											tags: [
+												{ name: 'app-name', value: 'Bazar' },
+												{ name: 'device', value: 'process@1.0' },
+												{ name: 'execution-device', value: 'carrier@1.0' },
+												{ name: 'scheduler-device', value: 'arweave-scheduler@1.0' },
+												{ name: 'scheduler-mode', value: 'all' },
+												{ name: 'ticker', value: 'COLLECTION' },
+												{ name: 'type', value: 'Process' },
+												{ name: 'initial-value', value: manifestId },
+											],
+										},
+									},
+								],
+							},
+						},
+					});
+				}
+				return new Response('carrier unavailable', { status: 502 });
+			})
+		);
+
+		await expect(discoverBazarCollections()).resolves.toEqual([]);
+	});
+
 	it('reads the current manifest from a carrier value', () => {
 		const manifestId = 'M'.repeat(43);
 		expect(carrierManifestReference({ value: { target: manifestId } })).toBe(manifestId);
@@ -388,6 +517,7 @@ describe('collection index loading', () => {
 			'[TEST] Bazar Fungible Tokens',
 			'[TEST] Progressive images',
 			'Permanent artwork collection 2',
+			'Bazar collection discovery',
 		]);
 		expect(result.collections.find((collection) => collection.name === '[TEST] Progressive images')).toMatchObject({
 			indexSource: 'compiled-fallback',

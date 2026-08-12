@@ -16,6 +16,7 @@ import {
 	commitHomeActivityBatch,
 	commitHomeFloorResult,
 	compareCollectionAssetNames,
+	compareHomeCollections,
 	compareHomeListingRecency,
 	completeHomeActivityScan,
 	completeHomeSummaryRetryGroup,
@@ -65,6 +66,35 @@ import {
 } from './shell-snapshot';
 
 describe('Home market summary retries', () => {
+	it('sorts collections by indexed activity or carrier creation height without computing state', () => {
+		const collection = (id: string, name: string, createdHeight?: number): Collection => ({
+			id,
+			name,
+			description: name,
+			kind: 'images',
+			assets: [],
+			...(createdHeight === undefined ? {} : { createdHeight, createdAt: createdHeight * 1_000 }),
+		});
+		const alpha = collection('alpha', 'Alpha', 10);
+		const beta = collection('beta', 'Beta', 20);
+		const newest = collection('newest', 'Newest', 50);
+		const unknown = collection('unknown', 'Unknown');
+		const activity = new Map([
+			['alpha', { processId: 'A'.repeat(43), height: 40, timestamp: 40 }],
+			['beta', { processId: 'B'.repeat(43), height: 30, timestamp: 30 }],
+		]);
+
+		expect([beta, unknown, newest, alpha].sort((a, b) => compareHomeCollections(a, b, 'recent', activity))).toEqual(
+			[newest, alpha, beta, unknown]
+		);
+		expect([alpha, unknown, beta, newest].sort((a, b) => compareHomeCollections(a, b, 'newest', activity))).toEqual(
+			[newest, beta, alpha, unknown]
+		);
+		expect([beta, unknown, newest, alpha].sort((a, b) => compareHomeCollections(a, b, 'oldest', activity))).toEqual(
+			[alpha, beta, newest, unknown]
+		);
+	});
+
 	it('reports compute failure only when every listing refresh failed', () => {
 		const failure = new Error('compute unavailable');
 		expect(homeListingComputeFailure(failure, 3, 3)).toBe(failure);

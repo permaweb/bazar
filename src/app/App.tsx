@@ -2591,8 +2591,46 @@ function homeMarketSummaryListed(summary: HomeMarketSummary | undefined) {
 
 export type HomeTab = 'discover' | 'collections' | 'activity';
 export type HomeAssetView = 'all' | 'listed' | 'price-low' | 'price-high';
+export type HomeCollectionSort = 'recent' | 'newest' | 'oldest';
 
 export type HomeListingActivity = Pick<AssetCandidate, 'processId' | 'height' | 'timestamp'>;
+
+export function compareHomeCollections(
+	left: Collection,
+	right: Collection,
+	sort: HomeCollectionSort,
+	activityByCollection: ReadonlyMap<string, HomeListingActivity>
+) {
+	const leftActivity = activityByCollection.get(left.id);
+	const rightActivity = activityByCollection.get(right.id);
+	if (sort === 'recent') {
+		const point = (collection: Collection, activity: HomeListingActivity | undefined) => {
+			const created = collection.createdAt
+				? { height: collection.createdHeight ?? 0, timestamp: Math.floor(collection.createdAt / 1_000) }
+				: collection.createdHeight === undefined
+				? undefined
+				: { height: collection.createdHeight, timestamp: 0 };
+			if (!created || (activity && activity.timestamp >= created.timestamp)) return activity;
+			return created;
+		};
+		const leftPoint = point(left, leftActivity);
+		const rightPoint = point(right, rightActivity);
+		if (leftPoint && !rightPoint) return -1;
+		if (!leftPoint && rightPoint) return 1;
+		if (leftPoint && rightPoint) {
+			const activityOrder = rightPoint.timestamp - leftPoint.timestamp || rightPoint.height - leftPoint.height;
+			if (activityOrder) return activityOrder;
+		}
+	}
+	const leftCreated = left.createdHeight ?? (left.createdAt ? Math.floor(left.createdAt / 1_000) : undefined);
+	const rightCreated = right.createdHeight ?? (right.createdAt ? Math.floor(right.createdAt / 1_000) : undefined);
+	if (leftCreated !== undefined && rightCreated === undefined) return -1;
+	if (leftCreated === undefined && rightCreated !== undefined) return 1;
+	if (leftCreated !== undefined && rightCreated !== undefined && leftCreated !== rightCreated) {
+		return sort === 'oldest' ? leftCreated - rightCreated : rightCreated - leftCreated;
+	}
+	return left.name.localeCompare(right.name) || left.id.localeCompare(right.id);
+}
 
 export function compareHomeListingRecency(
 	leftAssetId: string,
@@ -2735,6 +2773,8 @@ function Home() {
 	const [homeTab, setHomeTab] = React.useState<HomeTab>('discover');
 	const [assetType, setAssetType] = React.useState<HomeAssetType>('all');
 	const [assetView, setAssetView] = React.useState<HomeAssetView>('listed');
+	const [collectionSort, setCollectionSort] = React.useState<HomeCollectionSort>('recent');
+	const [collectionActivity, setCollectionActivity] = React.useState<Record<string, HomeListingActivity>>({});
 	const [assetPage, setAssetPage] = React.useState(1);
 	const computeGateway = gatewayFromLocation();
 	const homeListingSnapshotScope = `${arweaveGraphqlEndpoint()}|${gatewaysFromLocation().join(',')}`;
@@ -2759,17 +2799,18 @@ function Home() {
 				: undefined,
 		[market.collections, normalizedQuery]
 	);
-	const collections = React.useMemo(
-		() =>
-			market.collections.filter((collection) => {
+	const collections = React.useMemo(() => {
+		const activity = new Map(Object.entries(collectionActivity));
+		return market.collections
+			.filter((collection) => {
 				if (!normalizedQuery) return true;
 				return (
 					`${collection.name} ${collection.description}`.toLowerCase().includes(normalizedQuery) ||
 					Boolean(homeSearchMatches?.get(collection)?.length)
 				);
-			}),
-		[homeSearchMatches, market.collections, normalizedQuery]
-	);
+			})
+			.sort((left, right) => compareHomeCollections(left, right, collectionSort, activity));
+	}, [collectionActivity, collectionSort, homeSearchMatches, market.collections, normalizedQuery]);
 	const [verifiedHomeListings, setVerifiedHomeListings] = React.useState<Record<string, AssetSummary[]>>({});
 	const [verifiedHomeListingActivity, setVerifiedHomeListingActivity] = React.useState<
 		Record<string, HomeListingActivity>
@@ -2919,6 +2960,7 @@ function Home() {
 		() =>
 			collections
 				.map((collection) => `${collection.id}:${collection.assets.map((asset) => asset.id).join('.')}`)
+				.sort()
 				.concat(computeGateway)
 				.join(','),
 		[collections, computeGateway]
@@ -3482,6 +3524,43 @@ function Home() {
 		);
 		void Promise.all(requests).then(finishRetry);
 	}, [collectionKey, computeGateway, finishSummaryRetry, shouldLoadCollectionSummaries, summaryRetry]);
+	const collectionActivityKey = React.useMemo(
+		() =>
+			collections
+				.map((collection) => `${collection.id}:${collectionActivityVersion(collection)}`)
+				.sort()
+				.join('|'),
+		[collections]
+	);
+	React.useEffect(() => {
+		if (!shouldLoadCollectionSummaries || collectionSort !== 'recent') return;
+		const controller = new AbortController();
+		void mapConcurrent(collections, 2, async (collection) => {
+			try {
+				const events = await discoverCollectionActivityBatched({
+					limit: 1,
+					recipients: collection.assets.map((asset) => asset.id),
+					signal: controller.signal,
+				});
+				const latest = events[0];
+				if (!latest || controller.signal.aborted) return;
+				setCollectionActivity((current) => {
+					const previous = current[collection.id];
+					if (
+						previous &&
+						(previous.height > latest.height ||
+							(previous.height === latest.height && previous.timestamp >= latest.timestamp))
+					)
+						return current;
+					return { ...current, [collection.id]: latest };
+				});
+			} catch {
+				controller.signal.throwIfAborted();
+				// Creation time remains a truthful fallback when activity indexing is unavailable.
+			}
+		});
+		return () => controller.abort();
+	}, [collectionActivityKey, collectionSort, shouldLoadCollectionSummaries]);
 	const summaryFailures = [...Object.values(assetPrices), ...Object.values(collectionFloors)].filter(
 		(summary): summary is Extract<HomeMarketSummary, { status: 'unavailable' }> => summary.status === 'unavailable'
 	);
@@ -3639,6 +3718,19 @@ function Home() {
 												{ value: 'price-high', label: 'Price: high to low' },
 											]}
 											value={assetView}
+										/>
+									</div>
+								) : homeTab === 'collections' ? (
+									<div aria-busy={collectionResultsPending} className="home-asset-filters">
+										<MarketSelect<HomeCollectionSort>
+											label="Sort collections"
+											onChange={setCollectionSort}
+											options={[
+												{ value: 'recent', label: 'Recent Activity' },
+												{ value: 'newest', label: 'Newest' },
+												{ value: 'oldest', label: 'Oldest' },
+											]}
+											value={collectionSort}
 										/>
 									</div>
 								) : null}

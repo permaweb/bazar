@@ -1,3 +1,4 @@
+import { mapConcurrent } from 'helpers/concurrency';
 import { arweaveGatewayFromLocation, arweaveGraphqlEndpoint, NAMES_NAMESPACE_ID } from 'helpers/config';
 
 import { type AssetState, readAssetState } from './asset-marketplace';
@@ -24,6 +25,8 @@ export type Collection = {
 	description: string;
 	kind: 'names' | 'images' | 'tokens';
 	assets: AssetSummary[];
+	createdAt?: number;
+	createdHeight?: number;
 	total?: number;
 	cursor?: string;
 	cursorHistory?: string[];
@@ -118,6 +121,24 @@ type CarrierPage = {
 	}>;
 	cursor?: string;
 	hasMore: boolean;
+};
+
+type BazarCollectionCandidate = {
+	id: string;
+	manifestId: string;
+	createdAt: number;
+	createdHeight: number;
+	scheduled: boolean;
+};
+
+type BazarCollectionConnection = {
+	pageInfo: { hasNextPage: boolean };
+	edges: unknown[];
+};
+
+type BazarCollectionPayload = {
+	errors?: unknown[];
+	data?: { transactions?: BazarCollectionConnection };
 };
 
 const IMAGE_COLLECTIONS = [
@@ -233,18 +254,25 @@ export async function loadCollections(
 		})),
 	];
 	const collections = new Array<Collection | undefined>(sources.length);
+	let discoveredCollections: Collection[] = [];
 	const successes = new Array<boolean>(sources.length).fill(false);
 	const failures = new Array<boolean>(sources.length).fill(false);
-	await Promise.all(
-		sources.map(async (source, index) => {
+	const publish = () =>
+		onProgress?.(
+			deduplicateCollections([
+				...collections.filter((item): item is Collection => Boolean(item)),
+				...discoveredCollections,
+			])
+		);
+	let discoveryUnavailable = false;
+	await Promise.all([
+		...sources.map(async (source, index) => {
 			let settled = false;
 			try {
 				collections[index] = await source.load((collection) => {
 					if (settled || signal?.aborted) return;
 					collections[index] = collection;
-					if (successes.some(Boolean)) {
-						onProgress?.(collections.filter((item): item is Collection => Boolean(item)));
-					}
+					if (successes.some(Boolean)) publish();
 				});
 				settled = true;
 				throwIfAborted(signal);
@@ -256,19 +284,184 @@ export async function loadCollections(
 				failures[index] = true;
 				collections[index] = source.fallback?.();
 			}
-			if (successes.some(Boolean)) {
-				onProgress?.(collections.filter((item): item is Collection => Boolean(item)));
-			}
-		})
-	);
-	const loaded = collections.filter((item): item is Collection => Boolean(item));
-	if (!successes.some(Boolean)) throw new Error('collection-indexes-unavailable');
+			if (successes.some(Boolean)) publish();
+		}),
+		discoverBazarCollections(signal, (collection) => {
+			discoveredCollections = deduplicateCollections([...discoveredCollections, collection]);
+			publish();
+		}).catch(() => {
+			throwIfAborted(signal);
+			discoveryUnavailable = true;
+		}),
+	]);
+	const loaded = deduplicateCollections([
+		...collections.filter((item): item is Collection => Boolean(item)),
+		...discoveredCollections,
+	]);
+	if (!successes.some(Boolean) && !discoveredCollections.length) throw new Error('collection-indexes-unavailable');
 	return {
 		collections: loaded,
-		unavailable: sources
-			.map((source, index) => (failures[index] ? collections[index]?.name ?? source.label : undefined))
-			.filter((label): label is string => Boolean(label)),
+		unavailable: [
+			...sources.map((source, index) => (failures[index] ? collections[index]?.name ?? source.label : undefined)),
+			discoveryUnavailable ? 'Bazar collection discovery' : undefined,
+		].filter((label): label is string => Boolean(label)),
 	};
+}
+
+function deduplicateCollections(collections: Collection[]): Collection[] {
+	const deduplicated = new Map<string, Collection>();
+	for (const collection of collections) {
+		const current = deduplicated.get(collection.id);
+		deduplicated.set(
+			collection.id,
+			current
+				? {
+						...current,
+						...collection,
+						createdAt: collection.createdAt ?? current.createdAt,
+						createdHeight: collection.createdHeight ?? current.createdHeight,
+				  }
+				: collection
+		);
+	}
+	return [...deduplicated.values()];
+}
+
+export async function discoverBazarCollections(
+	signal?: AbortSignal,
+	onCollection?: (collection: Collection) => void
+): Promise<Collection[]> {
+	const found = new Map<string, Collection>();
+	let cursor: string | null = null;
+	const visited = new Set<string>();
+	for (let page = 0; page < MAX_INDEX_PAGES; page += 1) {
+		throwIfAborted(signal);
+		const request = await fetchJsonWithDeadline<BazarCollectionPayload>(
+			fetch,
+			arweaveGraphqlEndpoint(),
+			{
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({
+					query: `query BazarCollections($after: String) {
+					transactions(
+						after: $after
+						first: 100
+						sort: HEIGHT_DESC
+							tags: [
+								{ name: "app-name", values: ["Bazar"] }
+								{ name: "device", values: ["process@1.0"] }
+								{ name: "execution-device", values: ["carrier@1.0"] }
+								{ name: "type", values: ["Process"] }
+						]
+					) {
+						pageInfo { hasNextPage }
+						edges { cursor node { id tags { name value } block { height timestamp } } }
+					}
+				}`,
+					variables: { after: cursor },
+				}),
+				signal,
+			},
+			{ timeoutError: 'collection-discovery-timeout' }
+		);
+		const { response, body: payload } = request;
+		if (!response.ok) throw new Error(`collection-discovery-${response.status}`);
+		if (!payload || payload.errors?.length) throw new Error('collection-discovery-query');
+		const connection: BazarCollectionConnection | undefined = payload.data?.transactions;
+		if (!connection || !Array.isArray(connection.edges) || typeof connection.pageInfo?.hasNextPage !== 'boolean') {
+			throw new Error('collection-discovery-schema');
+		}
+		const candidates: BazarCollectionCandidate[] = connection.edges.flatMap((edge: unknown) => {
+			try {
+				return [parseBazarCollectionCandidate(edge)];
+			} catch {
+				return [];
+			}
+		});
+		await mapConcurrent(candidates, 4, async (candidate) => {
+			try {
+				const collection = await loadDiscoveredImageCollection(candidate, signal);
+				const discovered = {
+					...collection,
+					createdAt: candidate.createdAt,
+					createdHeight: candidate.createdHeight,
+				};
+				found.set(discovered.id, discovered);
+				onCollection?.(discovered);
+			} catch {
+				throwIfAborted(signal);
+				// Invalid or not-yet-computable candidates never enter the marketplace catalogue.
+			}
+		});
+		if (!connection.pageInfo.hasNextPage) {
+			return [...found.values()].sort(
+				(left, right) =>
+					(right.createdHeight ?? 0) - (left.createdHeight ?? 0) || left.id.localeCompare(right.id)
+			);
+		}
+		const next: unknown = (connection.edges.at(-1) as { cursor?: unknown } | undefined)?.cursor;
+		if (typeof next !== 'string' || !next || visited.has(next)) {
+			throw new Error('collection-discovery-pagination-stalled');
+		}
+		visited.add(next);
+		cursor = next;
+	}
+	throw new Error('collection-discovery-pagination-limit');
+}
+
+function parseBazarCollectionCandidate(edge: any): BazarCollectionCandidate {
+	if (
+		!edge ||
+		typeof edge.cursor !== 'string' ||
+		!ARWEAVE_ID.test(edge.node?.id) ||
+		!Array.isArray(edge.node?.tags) ||
+		!Number.isSafeInteger(edge.node?.block?.height) ||
+		!Number.isSafeInteger(edge.node?.block?.timestamp)
+	) {
+		throw new Error('collection-discovery-schema');
+	}
+	const tags = Object.fromEntries(
+		edge.node.tags.map((tag: any) => [String(tag?.name ?? '').toLowerCase(), String(tag?.value ?? '')])
+	);
+	const manifestId = tags['initial-value'] || tags['reference-value'];
+	const scheduled =
+		tags['scheduler-device'] === 'arweave-scheduler@1.0' &&
+		tags['scheduler-mode'] === 'all' &&
+		tags.ticker === 'COLLECTION';
+	const legacy = !tags['scheduler-device'] && !tags['scheduler-mode'] && !tags.ticker;
+	if (
+		tags['app-name'] !== 'Bazar' ||
+		tags.device !== 'process@1.0' ||
+		tags['execution-device'] !== 'carrier@1.0' ||
+		tags.type !== 'Process' ||
+		(!scheduled && !legacy) ||
+		!ARWEAVE_ID.test(manifestId)
+	) {
+		throw new Error('collection-discovery-schema');
+	}
+	return {
+		id: edge.node.id,
+		manifestId,
+		createdAt: edge.node.block.timestamp * 1_000,
+		createdHeight: edge.node.block.height,
+		scheduled,
+	};
+}
+
+async function loadDiscoveredImageCollection(
+	candidate: BazarCollectionCandidate,
+	signal?: AbortSignal
+): Promise<Collection> {
+	let manifestId = candidate.manifestId;
+	if (candidate.scheduled) {
+		manifestId =
+			carrierManifestReference(
+				(await readAssetState(candidate.id, { signal, maxAge: 30, maxAttempts: 1 })).state
+			) ?? '';
+		if (!manifestId) throw new Error('collection-reference-unavailable');
+	}
+	return imageCollection(candidate.id, manifestId, 'reference', await fetchJson<ImageManifest>(manifestId, signal));
 }
 
 function throwIfAborted(signal?: AbortSignal) {
