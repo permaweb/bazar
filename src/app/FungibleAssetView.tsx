@@ -908,7 +908,7 @@ export function FungibleAssetView({
 								) : (
 									<div className="asset-buy-summary">
 										<span>Purchase amount</span>
-										<strong>No purchasable listings</strong>
+										<strong className="asset-buy-summary-empty">No purchasable listings</strong>
 										<small>No open listings are available to this wallet.</small>
 									</div>
 								)}

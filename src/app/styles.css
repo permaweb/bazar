@@ -3364,6 +3364,11 @@ input:focus {
 	line-height: 1.05;
 	letter-spacing: -0.025em;
 }
+.asset-buy-summary strong.asset-buy-summary-empty {
+	font-size: 1.125rem;
+	line-height: 1.2;
+	letter-spacing: -0.01em;
+}
 .asset-buy-summary small {
 	color: var(--muted);
 	font-size: var(--type-small);
