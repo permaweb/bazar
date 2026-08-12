@@ -12,6 +12,7 @@ import {
 	Upload,
 	X,
 } from 'lucide-react';
+import type { Consensus, ObserverView } from 'weave-wrangler';
 
 import { waitForAssetState } from 'api/asset-marketplace';
 import {
@@ -38,12 +39,14 @@ import {
 	type UdlPreset,
 	type UdlTerms,
 	udlTermsForPreset,
+	validateFungibleLogo,
+	validateFungibleMintInput,
 } from 'api/asset-mint';
 import { confirmTransactionId } from 'api/asset-transactions';
 import { FUNGIBLE_TOKEN_COLLECTION_ID } from 'api/collections';
 
-import { AudioArtwork } from 'components/AudioArtwork';
 import { ArCurrencyText } from 'components/ArCurrencyLabel';
+import { AudioArtwork } from 'components/AudioArtwork';
 import { Button } from 'components/Button';
 import { Loading } from 'components/Loading';
 import { MintTransactionReceipt, type MintTransactionReceiptEntry } from 'components/MintTransactionReceipt';
@@ -77,6 +80,212 @@ const ArweaveTransactionSync = React.lazy(async () => {
 });
 
 type UdlGrantValue = NonNullable<UdlTerms['derivation'] | UdlTerms['commercialUse'] | UdlTerms['dataModelTraining']>;
+
+type FungibleMintDialogProps = {
+	error: string | null;
+	logoPreview: string;
+	name: string;
+	onClearError: () => void;
+	onNavigate: (path: string) => void;
+	onVisibleChange: (visible: boolean) => void;
+	phase: FungibleMintPhase | null;
+	phaseLabel: string;
+	progressButton: React.RefObject<HTMLButtonElement>;
+	ready: boolean;
+	result: FungibleMintResult | null;
+	ticker: string;
+	visible: boolean;
+	views: ObserverView[];
+	consensus: Consensus | null;
+	confirmations: number;
+};
+
+export function FungibleMintDialog({
+	error,
+	logoPreview,
+	name,
+	onClearError,
+	onNavigate,
+	onVisibleChange,
+	phase,
+	phaseLabel,
+	progressButton,
+	ready,
+	result,
+	ticker,
+	visible,
+	views,
+	consensus,
+	confirmations,
+}: FungibleMintDialogProps) {
+	const [hiding, setHiding] = React.useState(false);
+	const hideTimerRef = React.useRef<number | null>(null);
+	const dialogPhase: TransactionDialogPhase = error ? 'error' : ready ? 'done' : 'working';
+	const closeOrHide = React.useCallback(() => {
+		if (dialogPhase !== 'working') {
+			onVisibleChange(false);
+			return;
+		}
+		if (hiding) return;
+		if (dialogRef.current) prepareTransactionDialogHide(dialogRef.current, progressButton.current);
+		setHiding(true);
+		hideTimerRef.current = window.setTimeout(() => {
+			hideTimerRef.current = null;
+			onVisibleChange(false);
+		}, TRANSACTION_DIALOG_HIDE_DURATION_MS);
+	}, [dialogPhase, hiding, onVisibleChange, progressButton]);
+	const dialogRef = useDialogFocus<HTMLDivElement>(visible, closeOrHide, () => progressButton.current, dialogPhase);
+
+	React.useEffect(() => {
+		if (visible) setHiding(false);
+	}, [visible]);
+	React.useEffect(
+		() => () => {
+			if (hideTimerRef.current !== null) window.clearTimeout(hideTimerRef.current);
+		},
+		[]
+	);
+
+	if (!visible && dialogPhase !== 'working') return null;
+	const tokenName = result?.name || name.trim() || 'Fungible token';
+	const tokenTicker = result?.ticker || ticker.trim() || 'TKN';
+	const receiptEntries: MintTransactionReceiptEntry[] = result
+		? [
+				...(result.logo ? [{ label: 'Token logo transaction', transactionId: result.logo }] : []),
+				{ label: 'Token process transaction', transactionId: result.processId },
+		  ]
+		: [];
+
+	return (
+		<div
+			className={`dialog-backdrop operation-panel-backdrop${hiding ? ' dialog-backdrop-hiding' : ''}`}
+			hidden={!visible}
+			onMouseDown={(event) => event.target === event.currentTarget && closeOrHide()}
+			role="presentation"
+		>
+			<div
+				aria-hidden={visible ? undefined : true}
+				aria-labelledby={visible ? 'fungible-mint-operation fungible-mint-title' : undefined}
+				aria-modal={visible ? true : undefined}
+				className="dialog operation-side-panel fungible-dialog fungible-mint-dialog"
+				ref={dialogRef}
+				role={visible ? 'dialog' : undefined}
+				tabIndex={-1}
+			>
+				<div className="dialog-heading">
+					<div className="dialog-asset-heading">
+						{logoPreview ? (
+							<img alt="" className="dialog-asset-artwork" src={logoPreview} />
+						) : (
+							<TokenArtwork className="dialog-asset-artwork" ticker={tokenTicker} />
+						)}
+						<div className="dialog-asset-heading-copy">
+							<p className="eyebrow" id="fungible-mint-operation">
+								Create token
+							</p>
+							<h2 id="fungible-mint-title">{tokenName}</h2>
+						</div>
+					</div>
+					<TransactionDialogControl hiding={hiding} phase={dialogPhase} onClick={closeOrHide} />
+				</div>
+				<OperationOutcomeAnnouncement
+					active={dialogPhase === 'done'}
+					detail={`All ${result?.wholeSupply ?? ''} ${
+						result?.ticker ?? ''
+					} are in your wallet and ready to dispatch.`}
+					title="Token live on Bazar"
+				/>
+				{dialogPhase === 'working' && !result ? (
+					<div className="operation-preparing">
+						<Loading label={phaseLabel || 'Preparing token transactions…'} />
+						<p>
+							{phase
+								? 'Keep this wallet request open while Bazar prepares and submits the permanent token transactions.'
+								: 'Checking the connected wallet, network cost, and token details before requesting approval.'}
+						</p>
+					</div>
+				) : null}
+				{dialogPhase === 'working' && result ? (
+					<div className="operation-working">
+						<p className="sr-only" aria-live="polite" role="status">
+							Token submitted. Watching independently addressed Arweave nodes and waiting for the token
+							process state.
+						</p>
+						<p className="scheduler-wait">
+							All {result.wholeSupply} {result.ticker} are minted to your wallet. Bazar is waiting for the
+							scheduler to make the process readable.
+						</p>
+						<React.Suspense fallback={<Loading label="Loading transaction progress…" />}>
+							<ArweaveTransactionSync
+								active={visible}
+								activeStep="mint"
+								pendingAfterConfirmation="Waiting for token process state"
+								steps={[
+									{
+										key: 'mint',
+										label: 'Mint token',
+										target: 5,
+										confirmations,
+										transaction: {
+											id: result.processId,
+											views,
+											...(consensus ? { consensus } : {}),
+										},
+									},
+								]}
+								subject={tokenTicker}
+							/>
+						</React.Suspense>
+						<MintTransactionReceipt entries={receiptEntries} />
+					</div>
+				) : null}
+				{dialogPhase === 'done' && result ? (
+					<div className="result success">
+						<OperationOutcome
+							detail={`All ${result.wholeSupply} ${result.ticker} are in your wallet and ready to dispatch.`}
+							title="Token live on Bazar"
+						/>
+						<MintTransactionReceipt entries={receiptEntries} />
+						<Button
+							className="with-icon"
+							data-dialog-initial
+							onClick={() => onNavigate(`/asset/${FUNGIBLE_TOKEN_COLLECTION_ID}/${result.processId}`)}
+							size="custom"
+							variant="primary"
+						>
+							View token <ArrowRight className="ui-icon ui-icon--sm" aria-hidden="true" />
+						</Button>
+						<Button
+							className="with-icon"
+							onClick={() => onNavigate(`/dispatch/${result.processId}`)}
+							size="custom"
+						>
+							Dispatch to holders <ArrowRight className="ui-icon ui-icon--sm" aria-hidden="true" />
+						</Button>
+					</div>
+				) : null}
+				{dialogPhase === 'error' ? (
+					<div className="result error">
+						<div className="result-alert" role="alert">
+							<h3>Could not create this token</h3>
+							<p>{error}</p>
+						</div>
+						<Button
+							data-dialog-initial
+							onClick={() => {
+								onClearError();
+								onVisibleChange(false);
+							}}
+							size="custom"
+						>
+							Return to token details
+						</Button>
+					</div>
+				) : null}
+			</div>
+		</div>
+	);
+}
 
 const UDL_PRESET_OPTIONS: Array<{
 	value: UdlPreset;
@@ -1038,279 +1247,392 @@ export default function CreateRoute() {
 									{ticker.length} / {MAX_FUNGIBLE_TICKER_LENGTH}
 								</span>
 							</div>
-							<MarketSelect<'udl' | 'none'>
-								label="License"
-								value={udlEnabled ? 'udl' : 'none'}
-								options={[
-									{ value: 'udl', label: 'Universal Data License 0.2' },
-									{ value: 'none', label: 'No license tags' },
-								]}
-								onChange={(value) => {
-									setUdlEnabled(value === 'udl');
-									setEstimate(null);
-									setCollectionEstimate(null);
-									setError(null);
-								}}
-								showLabel={false}
-							/>
-						</div>
-
-						{udlEnabled ? (
-							<div className="udl-options">
-								<p>
-									Free access is the default. Rights not granted below remain reserved.{' '}
-									<a
-										href={`${arweaveGatewayFromLocation()}/${UDL_LICENSE_ID}`}
-										target="_blank"
-										rel="noreferrer"
-									>
-										Read UDL 0.2 <ArrowUpRight className="ui-icon ui-icon--sm" aria-hidden="true" />
-									</a>
-								</p>
-								<div aria-label="UDL presets" className="udl-presets" role="group">
-									{UDL_PRESET_OPTIONS.map((preset) => (
-										<button
-											aria-pressed={udlPreset === preset.value}
-											className="udl-preset"
-											key={preset.value}
-											onClick={() => applyUdlPreset(preset.value)}
+							<div className="create-field">
+								<label htmlFor="mint-supply">Total supply</label>
+								<input
+									id="mint-supply"
+									inputMode="numeric"
+									placeholder="1000000"
+									value={wholeSupply}
+									onChange={(event) => setWholeSupply(event.target.value.trim())}
+								/>
+							</div>
+							<div className="create-field">
+								<label htmlFor="mint-denomination">Decimal places</label>
+								<input
+									id="mint-denomination"
+									inputMode="numeric"
+									min="0"
+									max={MAX_FUNGIBLE_DENOMINATION}
+									step="1"
+									type="number"
+									value={denomination}
+									onChange={(event) => setDenomination(event.target.value.trim())}
+								/>
+							</div>
+							<div className="create-field fungible-logo-field">
+								<label htmlFor="mint-logo">
+									Token logo <small>Optional</small>
+								</label>
+								<Button
+									className={`fungible-logo-dropzone${logoPreview ? ' has-file' : ''}`}
+									type="button"
+									size="custom"
+									onClick={() => logoInput.current?.click()}
+									onDragOver={(event) => event.preventDefault()}
+									onDrop={(event) => {
+										event.preventDefault();
+										selectLogo(event.dataTransfer.files?.[0] ?? null);
+									}}
+								>
+									{logoPreview && logo ? (
+										<>
+											<img
+												src={logoPreview}
+												alt={`${name.trim() || ticker.trim() || 'Token'} logo preview`}
+											/>
+											<span>
+												<strong>{logo.name}</strong>
+												<small>{formatBytes(logo.size)} · click or drop to replace</small>
+											</span>
+										</>
+									) : (
+										<span>
+											<Upload aria-hidden="true" />
+											<strong>Choose a token logo</strong>
+											<small>PNG, JPG, WebP, or GIF · up to 10 MB</small>
+										</span>
+									)}
+								</Button>
+								<input
+									ref={logoInput}
+									className="mint-file-input"
+									id="mint-logo"
+									type="file"
+									accept="image/png,image/jpeg,image/webp,image/gif"
+									onChange={(event) => selectLogo(event.target.files?.[0] ?? null)}
+								/>
+								{logo ? (
+									<div className="fungible-logo-meta">
+										<span>
+											{logoTxId ? (
+												<>
+													Transaction ID <code>{logoTxId}</code>
+												</>
+											) : (
+												'The transaction ID will appear here after the logo upload.'
+											)}
+										</span>
+										<Button
 											type="button"
+											size="custom"
+											variant="danger"
+											onClick={() => selectLogo(null)}
 										>
-											<div className="udl-preset-title">
-												{preset.icon}
-												<strong>{preset.label}</strong>
-											</div>
-											<span>{preset.description}</span>
-										</button>
-									))}
-								</div>
+											<X className="ui-icon ui-icon--sm" aria-hidden="true" /> Remove
+										</Button>
+									</div>
+								) : null}
+							</div>
+						</>
+					) : null}
 
-								<details className="udl-advanced">
-									<summary>{udlPreset ? 'Advanced terms' : 'Advanced terms · Custom'}</summary>
-									<div className="udl-advanced-content">
-										<div className="udl-grid">
-											<div className="udl-field">
-												<div
-													className={
-														udlTerms.accessFee
-															? 'udl-field-control with-value'
-															: 'udl-field-control'
-													}
-												>
-													<MarketSelect<'free' | 'one-time'>
-														label="Access"
-														value={udlTerms.accessFee ? 'one-time' : 'free'}
-														options={[
-															{ value: 'free', label: 'Free' },
-															{ value: 'one-time', label: 'One-time fee' },
-														]}
-														onChange={(value) =>
-															customizeUdlTerms((current) => ({
-																...current,
-																accessFee: value === 'one-time' ? '1' : undefined,
-															}))
+					{mode !== 'fungible' ? (
+						<section className="create-license" aria-labelledby="mint-license-heading">
+							<div className="create-license-heading">
+								<div>
+									<strong id="mint-license-heading">Usage rights</strong>
+									<span>
+										Attach machine-readable terms stored with{' '}
+										{mode === 'asset' ? 'this asset' : 'every asset'} on Arweave.
+									</span>
+								</div>
+								<MarketSelect<'udl' | 'none'>
+									label="License"
+									value={udlEnabled ? 'udl' : 'none'}
+									options={[
+										{ value: 'udl', label: 'Universal Data License 0.2' },
+										{ value: 'none', label: 'No license tags' },
+									]}
+									onChange={(value) => {
+										setUdlEnabled(value === 'udl');
+										setEstimate(null);
+										setCollectionEstimate(null);
+										setError(null);
+									}}
+									showLabel={false}
+								/>
+							</div>
+
+							{udlEnabled ? (
+								<div className="udl-options">
+									<p>
+										Free access is the default. Rights not granted below remain reserved.{' '}
+										<a
+											href={`${arweaveGatewayFromLocation()}/${UDL_LICENSE_ID}`}
+											target="_blank"
+											rel="noreferrer"
+										>
+											Read UDL 0.2{' '}
+											<ArrowUpRight className="ui-icon ui-icon--sm" aria-hidden="true" />
+										</a>
+									</p>
+									<div aria-label="UDL presets" className="udl-presets" role="group">
+										{UDL_PRESET_OPTIONS.map((preset) => (
+											<button
+												aria-pressed={udlPreset === preset.value}
+												className="udl-preset"
+												key={preset.value}
+												onClick={() => applyUdlPreset(preset.value)}
+												type="button"
+											>
+												<div className="udl-preset-title">
+													{preset.icon}
+													<strong>{preset.label}</strong>
+												</div>
+												<span>{preset.description}</span>
+											</button>
+										))}
+									</div>
+
+									<details className="udl-advanced">
+										<summary>{udlPreset ? 'Advanced terms' : 'Advanced terms · Custom'}</summary>
+										<div className="udl-advanced-content">
+											<div className="udl-grid">
+												<div className="udl-field">
+													<div
+														className={
+															udlTerms.accessFee
+																? 'udl-field-control with-value'
+																: 'udl-field-control'
 														}
-													/>
-													{udlTerms.accessFee ? (
-														<label className="udl-value">
-															<span>Amount</span>
-															<input
-																aria-label="Access fee amount"
-																inputMode="decimal"
-																min="0.000000000001"
-																step="any"
-																type="number"
-																value={udlTerms.accessFee}
-																onChange={(event) =>
+													>
+														<MarketSelect<'free' | 'one-time'>
+															label="Access"
+															value={udlTerms.accessFee ? 'one-time' : 'free'}
+															options={[
+																{ value: 'free', label: 'Free' },
+																{ value: 'one-time', label: 'One-time fee' },
+															]}
+															onChange={(value) =>
+																customizeUdlTerms((current) => ({
+																	...current,
+																	accessFee: value === 'one-time' ? '1' : undefined,
+																}))
+															}
+														/>
+														{udlTerms.accessFee ? (
+															<label className="udl-value">
+																<span>Amount</span>
+																<input
+																	aria-label="Access fee amount"
+																	inputMode="decimal"
+																	min="0.000000000001"
+																	step="any"
+																	type="number"
+																	value={udlTerms.accessFee}
+																	onChange={(event) =>
+																		customizeUdlTerms((current) => ({
+																			...current,
+																			accessFee: event.target.value || '1',
+																		}))
+																	}
+																/>
+															</label>
+														) : null}
+													</div>
+												</div>
+												<UdlGrantField
+													label="Derivatives"
+													value={udlTerms.derivation}
+													options={[
+														['allowed', 'Allowed'],
+														['credit', 'Allowed with credit'],
+														['indication', 'Allowed with change indication'],
+														['license-passthrough', 'Allowed with license passthrough'],
+														['revenue-share', 'Allowed with revenue share'],
+														['one-time', 'Allowed with one-time fee'],
+														['monthly', 'Allowed with monthly fee'],
+													]}
+													onChange={(value) =>
+														customizeUdlTerms((current) => ({
+															...current,
+															derivation: value as UdlTerms['derivation'],
+														}))
+													}
+												/>
+												<UdlGrantField
+													label="Commercial use"
+													value={udlTerms.commercialUse}
+													options={[
+														['allowed', 'Allowed'],
+														['credit', 'Allowed with credit'],
+														['revenue-share', 'Allowed with revenue share'],
+														['one-time', 'Allowed with one-time fee'],
+														['monthly', 'Allowed with monthly fee'],
+													]}
+													onChange={(value) =>
+														customizeUdlTerms((current) => ({
+															...current,
+															commercialUse: value as UdlTerms['commercialUse'],
+														}))
+													}
+												/>
+												<UdlGrantField
+													label="AI model training"
+													value={udlTerms.dataModelTraining}
+													options={[
+														['allowed', 'Allowed'],
+														['one-time', 'Allowed with one-time fee'],
+														['monthly', 'Allowed with monthly fee'],
+													]}
+													onChange={(value) =>
+														customizeUdlTerms((current) => ({
+															...current,
+															dataModelTraining: value as UdlTerms['dataModelTraining'],
+														}))
+													}
+												/>
+											</div>
+
+											{hasUdlPayment ? (
+												<div className="udl-payment">
+													<div className="udl-field">
+														<div className="udl-field-control">
+															<MarketSelect<'U' | 'AR'>
+																label="Payment currency"
+																value={udlTerms.currency ?? 'U'}
+																options={[
+																	{ value: 'U', label: '$U (UDL default)' },
+																	{ value: 'AR', label: 'AR' },
+																]}
+																onChange={(value) =>
 																	customizeUdlTerms((current) => ({
 																		...current,
-																		accessFee: event.target.value || '1',
+																		currency: value === 'AR' ? 'AR' : undefined,
 																	}))
 																}
 															/>
-														</label>
+														</div>
+													</div>
+													<div className="udl-field udl-address">
+														<label htmlFor="udl-payment-address">Payment address</label>
+														<div className="udl-field-control">
+															<input
+																id="udl-payment-address"
+																maxLength={43}
+																placeholder={
+																	wallet.address || 'Uploader wallet by default'
+																}
+																value={udlTerms.paymentAddress ?? ''}
+																onChange={(event) =>
+																	customizeUdlTerms((current) => ({
+																		...current,
+																		paymentAddress:
+																			event.target.value.trim() || undefined,
+																	}))
+																}
+															/>
+														</div>
+													</div>
+													{udlTerms.paymentAddress &&
+													udlTerms.paymentAddress !== wallet.address ? (
+														<p className="udl-payment-warning">
+															License payments will go to this address, not the connected
+															wallet.
+														</p>
 													) : null}
 												</div>
-											</div>
-											<UdlGrantField
-												label="Derivatives"
-												value={udlTerms.derivation}
-												options={[
-													['allowed', 'Allowed'],
-													['credit', 'Allowed with credit'],
-													['indication', 'Allowed with change indication'],
-													['license-passthrough', 'Allowed with license passthrough'],
-													['revenue-share', 'Allowed with revenue share'],
-													['one-time', 'Allowed with one-time fee'],
-													['monthly', 'Allowed with monthly fee'],
-												]}
-												onChange={(value) =>
-													customizeUdlTerms((current) => ({
-														...current,
-														derivation: value as UdlTerms['derivation'],
-													}))
-												}
-											/>
-											<UdlGrantField
-												label="Commercial use"
-												value={udlTerms.commercialUse}
-												options={[
-													['allowed', 'Allowed'],
-													['credit', 'Allowed with credit'],
-													['revenue-share', 'Allowed with revenue share'],
-													['one-time', 'Allowed with one-time fee'],
-													['monthly', 'Allowed with monthly fee'],
-												]}
-												onChange={(value) =>
-													customizeUdlTerms((current) => ({
-														...current,
-														commercialUse: value as UdlTerms['commercialUse'],
-													}))
-												}
-											/>
-											<UdlGrantField
-												label="AI model training"
-												value={udlTerms.dataModelTraining}
-												options={[
-													['allowed', 'Allowed'],
-													['one-time', 'Allowed with one-time fee'],
-													['monthly', 'Allowed with monthly fee'],
-												]}
-												onChange={(value) =>
-													customizeUdlTerms((current) => ({
-														...current,
-														dataModelTraining: value as UdlTerms['dataModelTraining'],
-													}))
-												}
-											/>
-										</div>
+											) : null}
 
-										{hasUdlPayment ? (
-											<div className="udl-payment">
+											<div className="udl-grid">
 												<div className="udl-field">
 													<div className="udl-field-control">
-														<MarketSelect<'U' | 'AR'>
-															label="Payment currency"
-															value={udlTerms.currency ?? 'U'}
+														<MarketSelect<'included' | 'excluded'>
+															label="Unknown usage rights"
+															value={udlTerms.unknownUsageRights ?? 'included'}
 															options={[
-																{ value: 'U', label: '$U (UDL default)' },
-																{ value: 'AR', label: 'AR' },
+																{
+																	value: 'included',
+																	label: 'Included when legally available',
+																},
+																{ value: 'excluded', label: 'Excluded' },
 															]}
 															onChange={(value) =>
 																customizeUdlTerms((current) => ({
 																	...current,
-																	currency: value === 'AR' ? 'AR' : undefined,
+																	unknownUsageRights:
+																		value === 'excluded' ? 'excluded' : undefined,
 																}))
 															}
 														/>
 													</div>
 												</div>
-												<div className="udl-field udl-address">
-													<label htmlFor="udl-payment-address">Payment address</label>
-													<div className="udl-field-control">
+												<div className="udl-field">
+													<label htmlFor="udl-expiry">License term</label>
+													<div className="udl-field-control with-suffix">
 														<input
-															id="udl-payment-address"
-															maxLength={43}
-															placeholder={wallet.address || 'Uploader wallet by default'}
-															value={udlTerms.paymentAddress ?? ''}
+															id="udl-expiry"
+															inputMode="numeric"
+															min="1"
+															placeholder="Unlimited"
+															step="1"
+															type="number"
+															value={udlTerms.expiry ?? ''}
 															onChange={(event) =>
 																customizeUdlTerms((current) => ({
 																	...current,
-																	paymentAddress:
-																		event.target.value.trim() || undefined,
+																	expiry: event.target.value || undefined,
 																}))
 															}
 														/>
+														<span>years</span>
 													</div>
 												</div>
-												{udlTerms.paymentAddress &&
-												udlTerms.paymentAddress !== wallet.address ? (
-													<p className="udl-payment-warning">
-														License payments will go to this address, not the connected
-														wallet.
-													</p>
+												{hasUdlPayment ? (
+													<div className="udl-field">
+														<div className="udl-field-control">
+															<MarketSelect<'direct' | 'random' | 'global'>
+																label="Payment mode"
+																value={udlTerms.paymentMode ?? 'direct'}
+																options={[
+																	{
+																		value: 'direct',
+																		label: 'Direct to payment address',
+																	},
+																	{
+																		value: 'random',
+																		label: 'Random PST distribution',
+																	},
+																	{
+																		value: 'global',
+																		label: 'Global PST distribution',
+																	},
+																]}
+																onChange={(value) =>
+																	customizeUdlTerms((current) => ({
+																		...current,
+																		paymentMode:
+																			value === 'random' || value === 'global'
+																				? value
+																				: undefined,
+																	}))
+																}
+															/>
+														</div>
+													</div>
 												) : null}
 											</div>
-										) : null}
-
-										<div className="udl-grid">
-											<div className="udl-field">
-												<div className="udl-field-control">
-													<MarketSelect<'included' | 'excluded'>
-														label="Unknown usage rights"
-														value={udlTerms.unknownUsageRights ?? 'included'}
-														options={[
-															{
-																value: 'included',
-																label: 'Included when legally available',
-															},
-															{ value: 'excluded', label: 'Excluded' },
-														]}
-														onChange={(value) =>
-															customizeUdlTerms((current) => ({
-																...current,
-																unknownUsageRights:
-																	value === 'excluded' ? 'excluded' : undefined,
-															}))
-														}
-													/>
-												</div>
-											</div>
-											<div className="udl-field">
-												<label htmlFor="udl-expiry">License term</label>
-												<div className="udl-field-control with-suffix">
-													<input
-														id="udl-expiry"
-														inputMode="numeric"
-														min="1"
-														placeholder="Unlimited"
-														step="1"
-														type="number"
-														value={udlTerms.expiry ?? ''}
-														onChange={(event) =>
-															customizeUdlTerms((current) => ({
-																...current,
-																expiry: event.target.value || undefined,
-															}))
-														}
-													/>
-													<span>years</span>
-												</div>
-											</div>
-											{hasUdlPayment ? (
-												<div className="udl-field">
-													<div className="udl-field-control">
-														<MarketSelect<'direct' | 'random' | 'global'>
-															label="Payment mode"
-															value={udlTerms.paymentMode ?? 'direct'}
-															options={[
-																{ value: 'direct', label: 'Direct to payment address' },
-																{ value: 'random', label: 'Random PST distribution' },
-																{ value: 'global', label: 'Global PST distribution' },
-															]}
-															onChange={(value) =>
-																customizeUdlTerms((current) => ({
-																	...current,
-																	paymentMode:
-																		value === 'random' || value === 'global'
-																			? value
-																			: undefined,
-																}))
-															}
-														/>
-													</div>
-												</div>
-											) : null}
 										</div>
-									</div>
-								</details>
-							</div>
-						) : (
-							<p className="udl-none">
-								No license metadata will be written. Copyright defaults still apply.
-							</p>
-						)}
-					</section>
+									</details>
+								</div>
+							) : (
+								<p className="udl-none">
+									No license metadata will be written. Copyright defaults still apply.
+								</p>
+							)}
+						</section>
+					) : null}
 
 					<div className="mint-summary">
 						<div>

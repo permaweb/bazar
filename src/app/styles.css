@@ -8882,6 +8882,14 @@ body input:focus-visible {
 .fungible-orderbook .orderbook-action-cell:empty {
 	display: none;
 }
+.fungible-holder-table .orderbook-head,
+.fungible-holder-table .orderbook-row {
+	grid-template-columns: minmax(220px, 1.4fr) minmax(150px, 0.8fr) minmax(130px, 0.7fr);
+}
+.fungible-holder-table .wallet-address {
+	max-width: 100%;
+	justify-content: flex-start;
+}
 
 @media (max-width: 1050px) {
 	.fungible-asset-page .asset-detail-layout {

@@ -123,8 +123,8 @@ import {
 } from 'api/minted-assets';
 import { formatTokenAmount } from 'api/order-matching';
 
-import { ArtworkImage } from 'components/ArtworkImage';
 import { ArCurrencyLabel, ArCurrencyText, formatArCurrencyText } from 'components/ArCurrencyLabel';
+import { ArtworkImage } from 'components/ArtworkImage';
 import type { ArweaveSyncStep } from 'components/ArweaveTransactionSync';
 import { quorumConfirmationDepth } from 'components/ArweaveTransactionSync/confirmationDepth';
 import { postConfirmationPendingLabel } from 'components/ArweaveTransactionSync/sequence';
@@ -143,7 +143,9 @@ import { OperationOutcome, OperationOutcomeAnnouncement } from 'components/Opera
 import { Pagination } from 'components/Pagination';
 import { PortalIcon } from 'components/PortalIcon';
 import { StateVerification } from 'components/StateVerification';
+import { TokenArtwork } from 'components/TokenArtwork';
 import { TokenAvatar } from 'components/TokenAvatar';
+import { TokenMarketRow } from 'components/TokenMarketRow';
 import { Tooltip } from 'components/Tooltip';
 import {
 	isTransactionActivityVisible,
@@ -4271,22 +4273,14 @@ function Home() {
 													);
 												})}
 											</div>
-										) : (
-											<>
-												{assetType === 'tokens'
-													? renderTokenList(assetPagination.items)
-													: renderCollectibleGrid(assetPagination.items)}
-												<Pagination
-													ariaLabel={
-														assetType === 'tokens' ? 'Token pages' : 'Collectible pages'
-													}
-													className="home-asset-pagination"
-													onPageChange={selectAssetPage}
-													page={assetPagination.page}
-													pageCount={assetPagination.pageCount}
-												/>
-											</>
-										)
+											<Pagination
+												ariaLabel="Discover pages"
+												className="home-asset-pagination"
+												onPageChange={selectAssetPage}
+												page={assetPagination.page}
+												pageCount={assetPagination.pageCount}
+											/>
+										</>
 									) : discoverResultsFailed ? null : (
 										<div className="home-assets-empty">
 											{assetView === 'all'

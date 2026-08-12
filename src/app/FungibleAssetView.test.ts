@@ -19,9 +19,10 @@ import {
 	batchSettlementSummary,
 	batchStageLabel,
 	checkpointBatchPreparation,
+	fungibleActivityAmount,
 	fungibleAskHistory,
 	fungibleBatchRecoveryStatus,
-	fungibleActivityAmount,
+	fungibleHolders,
 	fungibleListingAccessibleLabel,
 	FungibleListingComposer,
 	type FungibleOperationActivity,
@@ -121,6 +122,50 @@ function purchaseOrder(orderId: string, creator: string, quantity: string, askin
 		status: 'open',
 	};
 }
+
+describe('fungible holders', () => {
+	it('combines liquid and listed balances and sorts holders by total ownership', () => {
+		const largest = 'a'.repeat(43);
+		const listedOnly = 'b'.repeat(43);
+		const liquidOnly = 'c'.repeat(43);
+		const open = purchaseOrder('d'.repeat(43), listedOnly, '300', '1');
+		const reserved = {
+			...purchaseOrder('e'.repeat(43), listedOnly, '200', '1'),
+			status: 'reserved',
+		} as SwapOrder;
+		const cancelled = {
+			...purchaseOrder('f'.repeat(43), liquidOnly, '900', '1'),
+			status: 'cancelled',
+		} as SwapOrder;
+		const state = {
+			device: 'token@1.0',
+			name: 'Test token',
+			ticker: 'TEST',
+			denomination: 0,
+			totalSupply: '1200',
+			balances: {
+				[largest]: '700',
+				[listedOnly]: '0',
+				[liquidOnly]: '500',
+				invalid: '1000',
+			},
+			orders: {
+				[open.orderId]: open,
+				[reserved.orderId]: reserved,
+				[cancelled.orderId]: cancelled,
+			},
+			swapHeight: 0,
+			value: null,
+			raw: {},
+		} satisfies AssetState;
+
+		expect(fungibleHolders(state)).toEqual([
+			{ address: largest, liquid: '700', listed: '0', total: '700' },
+			{ address: listedOnly, liquid: '0', listed: '500', total: '500' },
+			{ address: liquidOnly, liquid: '500', listed: '0', total: '500' },
+		]);
+	});
+});
 
 describe('fungible operation error semantics', () => {
 	it('shows the gated transaction sequence for a multi-listing purchase', () => {

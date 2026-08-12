@@ -5,8 +5,8 @@ import { describe, expect, it } from 'vitest';
 import {
 	formatMarketActivityTimestamp,
 	marketActivityLabel,
-	marketActivityRefreshDelay,
 	MarketActivityList,
+	marketActivityRefreshDelay,
 } from './MarketActivityList';
 
 describe('market activity labels', () => {

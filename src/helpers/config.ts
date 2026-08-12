@@ -103,8 +103,17 @@ export function arweaveGraphqlEndpoint(
  * Raw fallback suite: bypass redirect/cache inconsistencies for immutable media bytes.
  * Keep callers on this helper so the node-side fix can later remove the suite as one unit.
  */
-export function arweaveRawDataUrl(id: string, gateway = arweaveGatewayFromLocation()): string {
-	return `${gateway}/raw/${id}`;
+export function arweaveRawDataUrl(
+	id: string,
+	locationOrGateway: GatewayLocation | string | undefined = typeof window === 'undefined'
+		? undefined
+		: window.location
+): string {
+	const gateway =
+		typeof locationOrGateway === 'string'
+			? locationOrGateway.replace(/\/$/, '')
+			: arweaveGatewayFromLocation(locationOrGateway);
+	return `${gateway}/raw/${encodeURIComponent(id)}`;
 }
 
 export function normalizeArweaveRawDataUrl(value: string): string {
