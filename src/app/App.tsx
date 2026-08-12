@@ -10263,6 +10263,8 @@ export function mintErrorMessage(error: unknown) {
 		'mint-artwork-type-unsupported': 'Use a PNG, JPG, WebP, or GIF image for album artwork.',
 		'mint-artwork-size-invalid': 'Choose album artwork no larger than 10 MB.',
 		'mint-artwork-audio-only': 'Album artwork can only be attached to an MP3 or WAV asset.',
+		'mint-logo-type-unsupported': 'Use a PNG, JPG, WebP, or GIF image for the token logo.',
+		'mint-logo-size-invalid': 'Choose a token logo no larger than 10 MB.',
 		'mint-insufficient-balance': 'This wallet does not have enough AR for the required Arweave transaction(s).',
 		'mint-high-cost-confirmation-required': 'Review and approve the unusually high network cost before minting.',
 		'wallet-sign-unavailable': 'Connect an Arweave wallet that can sign transactions.',

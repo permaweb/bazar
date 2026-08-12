@@ -14,6 +14,7 @@ import {
 	discardMintDraft,
 	type FungibleMintEstimate,
 	type FungibleMintInput,
+	type FungibleMintPhase,
 	type FungibleMintResult,
 	getMintDraft,
 	isHighMintCost,
@@ -25,6 +26,7 @@ import {
 	type MintPhase,
 	UDL_LICENSE_ID,
 	type UdlTerms,
+	validateFungibleLogo,
 	validateFungibleMintInput,
 } from 'api/asset-mint';
 import { confirmTransactionId } from 'api/asset-transactions';
@@ -134,6 +136,7 @@ export default function CreateRoute() {
 	const { beginUpload, failUpload, finishUpload, updateUpload } = useOperationActivity();
 	const fileInput = React.useRef<HTMLInputElement>(null);
 	const artworkInput = React.useRef<HTMLInputElement>(null);
+	const logoInput = React.useRef<HTMLInputElement>(null);
 	const metadataRequest = React.useRef(0);
 	const artworkRevision = React.useRef(0);
 	const [mode, setMode] = React.useState<'asset' | 'collection' | 'fungible'>('asset');
@@ -142,9 +145,11 @@ export default function CreateRoute() {
 	const [ticker, setTicker] = React.useState('');
 	const [supply, setSupply] = React.useState('');
 	const [denomination, setDenomination] = React.useState('12');
+	const [logo, setLogo] = React.useState<File | null>(null);
 	const [logoTxId, setLogoTxId] = React.useState('');
+	const [logoPreview, setLogoPreview] = React.useState('');
 	const [fungibleEstimate, setFungibleEstimate] = React.useState<FungibleMintEstimate | null>(null);
-	const [fungiblePhase, setFungiblePhase] = React.useState<'signing' | 'uploading' | null>(null);
+	const [fungiblePhase, setFungiblePhase] = React.useState<FungibleMintPhase | null>(null);
 	const [fungibleResult, setFungibleResult] = React.useState<FungibleMintResult | null>(null);
 	const [fungibleResultReady, setFungibleResultReady] = React.useState(false);
 	const [mintViews, setMintViews] = React.useState<ObserverView[]>([]);
@@ -194,6 +199,7 @@ export default function CreateRoute() {
 		(() => {
 			try {
 				validateFungibleMintInput(fungibleInput);
+				if (logo) validateFungibleLogo(logo);
 				return true;
 			} catch {
 				return false;
@@ -203,6 +209,15 @@ export default function CreateRoute() {
 	React.useEffect(() => {
 		setDraft(wallet.address ? getMintDraft(wallet.address) : null);
 	}, [wallet.address]);
+	React.useEffect(() => {
+		if (!logo) {
+			setLogoPreview('');
+			return;
+		}
+		const url = URL.createObjectURL(logo);
+		setLogoPreview(url);
+		return () => URL.revokeObjectURL(url);
+	}, [logo]);
 	React.useEffect(() => {
 		if (!file) {
 			setPreview('');
@@ -365,7 +380,7 @@ export default function CreateRoute() {
 			setEstimating(true);
 			setError(null);
 			void new AssetMintClient()
-				.estimateFungible(fungibleInput, controller.signal)
+				.estimateFungible(fungibleInput, logo ?? undefined, controller.signal)
 				.then(
 					(nextEstimate) => {
 						if (!controller.signal.aborted) setFungibleEstimate(nextEstimate);
@@ -383,7 +398,7 @@ export default function CreateRoute() {
 			controller.abort();
 		};
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [mode, fungibleReady, name, description, ticker, supply, denomination, logoTxId]);
+	}, [mode, fungibleReady, name, description, ticker, supply, denomination, logo, logoTxId]);
 
 	const selectFile = (next: File | null) => {
 		const request = ++metadataRequest.current;
@@ -434,6 +449,24 @@ export default function CreateRoute() {
 		setError(next.length > 10 ? 'Collections support up to 10 images at a time.' : null);
 		setCollectionResult(null);
 	};
+	const selectLogo = (next: File | null) => {
+		if (next) {
+			try {
+				validateFungibleLogo(next);
+			} catch (cause) {
+				setLogo(null);
+				setLogoTxId('');
+				setFungibleEstimate(null);
+				setError(mintErrorMessage(cause));
+				if (logoInput.current) logoInput.current.value = '';
+				return;
+			}
+		}
+		setLogo(next);
+		setLogoTxId('');
+		setFungibleEstimate(null);
+		setError(null);
+	};
 	const completeMint = (asset: MintedAsset, uploadId: string) => {
 		market.addCreatedAsset(asset);
 		setResult(asset);
@@ -470,6 +503,8 @@ export default function CreateRoute() {
 		try {
 			if (mode === 'fungible') {
 				const minted = await new AssetMintClient().mintFungible(fungibleInput, wallet.address, {
+					logo: logo ?? undefined,
+					onLogoUploaded: setLogoTxId,
 					onPhase: setFungiblePhase,
 				});
 				setFungibleResult(minted);
@@ -559,6 +594,8 @@ export default function CreateRoute() {
 	const working = phase !== null || collectionPhase !== null || fungiblePhase !== null;
 	const phaseLabel = fungiblePhase
 		? {
+				'signing-logo': 'Approve the token logo in your wallet…',
+				'uploading-logo': 'Uploading the token logo to Arweave…',
 				signing: 'Approve the token process in your wallet…',
 				uploading: 'Submitting the token process to Arweave…',
 		  }[fungiblePhase]
@@ -662,7 +699,11 @@ export default function CreateRoute() {
 					{mode === 'fungible' ? (
 						<div className="fungible-token-preview">
 							<div className="fungible-token-preview-mark" aria-hidden="true">
-								<TokenArtwork ticker={ticker.trim() || 'TKN'} />
+								{logoPreview ? (
+									<img src={logoPreview} alt="" />
+								) : (
+									<TokenArtwork ticker={ticker.trim() || 'TKN'} />
+								)}
 							</div>
 							<span>
 								<strong>{name.trim() || 'Unnamed token'}</strong>
@@ -950,19 +991,68 @@ export default function CreateRoute() {
 									onChange={(event) => setDenomination(event.target.value.trim())}
 								/>
 							</div>
-							<div className="create-field">
+							<div className="create-field fungible-logo-field">
 								<label htmlFor="mint-logo">
-									Logo transaction ID <small>Optional</small>
+									Token logo <small>Optional</small>
 								</label>
+								<Button
+									className={`fungible-logo-dropzone${logoPreview ? ' has-file' : ''}`}
+									type="button"
+									size="custom"
+									onClick={() => logoInput.current?.click()}
+									onDragOver={(event) => event.preventDefault()}
+									onDrop={(event) => {
+										event.preventDefault();
+										selectLogo(event.dataTransfer.files?.[0] ?? null);
+									}}
+								>
+									{logoPreview && logo ? (
+										<>
+											<img
+												src={logoPreview}
+												alt={`${name.trim() || ticker.trim() || 'Token'} logo preview`}
+											/>
+											<span>
+												<strong>{logo.name}</strong>
+												<small>{formatBytes(logo.size)} · click or drop to replace</small>
+											</span>
+										</>
+									) : (
+										<span>
+											<Upload aria-hidden="true" />
+											<strong>Choose a token logo</strong>
+											<small>PNG, JPG, WebP, or GIF · up to 10 MB</small>
+										</span>
+									)}
+								</Button>
 								<input
+									ref={logoInput}
+									className="mint-file-input"
 									id="mint-logo"
-									maxLength={43}
-									placeholder="43-character Arweave transaction ID of an image"
-									value={logoTxId}
-									onChange={(event) => setLogoTxId(event.target.value.trim())}
+									type="file"
+									accept="image/png,image/jpeg,image/webp,image/gif"
+									onChange={(event) => selectLogo(event.target.files?.[0] ?? null)}
 								/>
-								{logoTxId.trim() && !/^[A-Za-z0-9_-]{43}$/.test(logoTxId.trim()) ? (
-									<span>Must be a 43-character Arweave transaction ID.</span>
+								{logo ? (
+									<div className="fungible-logo-meta">
+										<span>
+											{logoTxId ? (
+												<>
+													Transaction ID <code>{logoTxId}</code>
+												</>
+											) : (
+												'The transaction ID will appear here after the logo upload.'
+											)}
+										</span>
+										<Button
+											type="button"
+											size="custom"
+											variant="danger"
+											onClick={() => selectLogo(null)}
+										>
+											<X className="ui-icon ui-icon--sm" aria-hidden="true" /> Remove
+										</Button>
+									</div>
 								) : null}
 							</div>
 						</>
@@ -1303,7 +1393,11 @@ export default function CreateRoute() {
 									? 'Your wallet will request two signatures: one for the optional album artwork and one atomic transaction containing the audio, metadata, and tradeable process.'
 									: 'Your wallet will request one signature for an atomic transaction containing the media, metadata, and tradeable process.'
 								: mode === 'fungible'
-								? 'Your wallet will request one signature for the token process transaction. The whole supply is minted to your connected wallet; the token becomes readable and dispatchable once the scheduler sequences it (~20 minutes).'
+								? `${
+										logo && !logoTxId
+											? 'Your wallet will request two signatures: one for the logo and one for the token process.'
+											: 'Your wallet will request one signature for the token process transaction.'
+								  } The whole supply is minted to your connected wallet; the token becomes readable and dispatchable once the scheduler sequences it (~20 minutes).`
 								: collectionEstimate
 								? `Your wallet will request ${collectionEstimate.transactionCount} signatures: one atomic transaction per asset, then the collection manifest and carrier process.`
 								: 'Each image becomes one self-contained atomic transaction. Bazar then submits a collection manifest and carrier process to Arweave.'}
@@ -1351,6 +1445,9 @@ export default function CreateRoute() {
 								</React.Suspense>
 								<MintTransactionReceipt
 									entries={[
+										...(fungibleResult.logo
+											? [{ label: 'Token logo transaction', transactionId: fungibleResult.logo }]
+											: []),
 										{
 											label: 'Token process transaction',
 											transactionId: fungibleResult.processId,

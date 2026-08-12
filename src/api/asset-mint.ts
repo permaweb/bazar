@@ -127,6 +127,7 @@ export type FungibleMintInput = {
 
 export type FungibleMintResult = {
 	processId: string;
+	logo?: string;
 	owner: string;
 	name: string;
 	ticker: string;
@@ -136,9 +137,14 @@ export type FungibleMintResult = {
 };
 
 export type FungibleMintEstimate = {
+	processReward: bigint;
+	logoReward: bigint;
 	reward: bigint;
 	bytes: number;
+	transactionCount: number;
 };
+
+export type FungibleMintPhase = 'signing-logo' | 'uploading-logo' | 'signing' | 'uploading';
 
 export type CollectionMintInput = {
 	name: string;
@@ -353,10 +359,22 @@ export class AssetMintClient {
 		return { asset, mediaId: signedProcess.id, processId: signedProcess.id };
 	}
 
-	async estimateFungible(input: FungibleMintInput, signal?: AbortSignal): Promise<FungibleMintEstimate> {
+	async estimateFungible(input: FungibleMintInput, logo?: File, signal?: AbortSignal): Promise<FungibleMintEstimate> {
 		validateFungibleMintInput(input);
-		const bytes = byteLength(fungibleMintData(input));
-		return { reward: await this.#price(bytes, signal), bytes };
+		if (logo) validateFungibleLogo(logo);
+		const processBytes = byteLength(fungibleMintData(input));
+		const logoBytes = input.logo ? 0 : logo?.size ?? 0;
+		const [processReward, logoReward] = await Promise.all([
+			this.#price(processBytes, signal),
+			logoBytes ? this.#price(logoBytes, signal) : 0n,
+		]);
+		return {
+			processReward,
+			logoReward,
+			reward: processReward + logoReward,
+			bytes: processBytes + logoBytes,
+			transactionCount: logoBytes ? 2 : 1,
+		};
 	}
 
 	/**
@@ -372,15 +390,41 @@ export class AssetMintClient {
 	async mintFungible(
 		input: FungibleMintInput,
 		owner: string,
-		options: { signal?: AbortSignal; onPhase?: (phase: 'signing' | 'uploading') => void } = {}
+		options: {
+			logo?: File;
+			signal?: AbortSignal;
+			onLogoUploaded?: (transactionId: string) => void;
+			onPhase?: (phase: FungibleMintPhase) => void;
+		} = {}
 	): Promise<FungibleMintResult> {
 		validateFungibleMintInput(input);
 		assertAddress(owner, 'invalid-mint-owner');
+		let logoId = input.logo;
+		if (!logoId && options.logo) {
+			validateFungibleLogo(options.logo);
+			const contentType = requiredFileContentType(options.logo);
+			logoId = await this.publishData(
+				new Uint8Array(await options.logo.arrayBuffer()),
+				{
+					'Content-Type': contentType,
+					'App-Name': 'Bazar',
+					'App-Version': '2.0.0',
+					Type: 'Token-Logo',
+				},
+				owner,
+				{
+					signal: options.signal,
+					onPhase: (phase) => options.onPhase?.(phase === 'signing' ? 'signing-logo' : 'uploading-logo'),
+				}
+			);
+			options.onLogoUploaded?.(logoId);
+		}
+		const processInput = logoId ? { ...input, logo: logoId } : input;
 		const processId = await this.publishData(
-			fungibleMintData(input),
-			fungibleMintProcessTags(input, owner),
+			fungibleMintData(processInput),
+			fungibleMintProcessTags(processInput, owner),
 			owner,
-			options
+			{ signal: options.signal, onPhase: options.onPhase }
 		);
 		const createdAt = Date.now();
 		// Record the mint in the shared activity notifier the same as an atomic
@@ -405,7 +449,7 @@ export class AssetMintClient {
 					owner,
 					asset,
 					collectionId: FUNGIBLE_TOKEN_COLLECTION_ID,
-					transactionIds: [processId],
+					transactionIds: [logoId, processId].filter((id): id is string => Boolean(id)),
 					arweaveGateway: this.#gateway,
 					computeGateway: this.#computeGateway,
 				})
@@ -413,6 +457,7 @@ export class AssetMintClient {
 		}
 		return {
 			processId,
+			...(logoId ? { logo: logoId } : {}),
 			owner,
 			name: input.name.trim(),
 			ticker: input.ticker,
@@ -423,7 +468,7 @@ export class AssetMintClient {
 	}
 
 	async publishData(
-		data: string,
+		data: string | Uint8Array,
 		tags: Record<string, string>,
 		owner: string,
 		options: {
@@ -900,6 +945,13 @@ export function validateFungibleMintInput(input: FungibleMintInput): void {
 	if (input.logo !== undefined) assertAddress(input.logo, 'mint-logo-invalid');
 }
 
+export function validateFungibleLogo(logo: File): void {
+	if (!(logo instanceof File) || !isImageContentType(normalizeAssetContentType(logo.type, logo.name) ?? undefined)) {
+		throw new TypeError('mint-logo-type-unsupported');
+	}
+	if (!logo.size || logo.size > MAX_IMAGE_BYTES) throw new TypeError('mint-logo-size-invalid');
+}
+
 function fungibleMintData(input: FungibleMintInput): string {
 	return JSON.stringify({
 		name: input.name.trim(),
@@ -1161,8 +1213,8 @@ function assertAddress(value: string, error: string): void {
 	if (!ADDRESS.test(value)) throw new TypeError(error);
 }
 
-function byteLength(value: string): number {
-	return new TextEncoder().encode(value).byteLength;
+function byteLength(value: string | Uint8Array): number {
+	return typeof value === 'string' ? new TextEncoder().encode(value).byteLength : value.byteLength;
 }
 
 function delay(duration: number, signal?: AbortSignal): Promise<void> {

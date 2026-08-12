@@ -8,6 +8,7 @@ import {
 	collectionProcessTags,
 	CREATED_COLLECTION_ID,
 	createdCollection,
+	fungibleMintProcessTags,
 	getMintDraft,
 	isBazarMintTags,
 	loadMintedAssets,
@@ -20,6 +21,8 @@ import {
 	UDL_LICENSE_ID,
 	udlLicenseTags,
 	validateCollectionMintInput,
+	validateFungibleLogo,
+	validateFungibleMintInput,
 	validateMintInput,
 } from './asset-mint';
 import { loadMintActivities } from './mint-activity';
@@ -643,6 +646,99 @@ describe('asset mint contract', () => {
 			{
 				phase: 'accepted',
 				transactionIds: [artworkId, processId],
+				arweaveGateway: 'https://arweave.net',
+				computeGateway: 'https://compute.example',
+			},
+		]);
+	});
+
+	it('validates fungible token fields and image-only logos', () => {
+		const input = { name: 'Signal Token', description: '', ticker: 'SIG', supply: '1000', denomination: '12' };
+		expect(() => validateFungibleMintInput(input)).not.toThrow();
+		expect(fungibleMintProcessTags(input, owner)).toMatchObject({
+			'asset-type': 'fungible',
+			'initial-holder': owner,
+			'total-supply': '1000',
+			denomination: '12',
+			ticker: 'SIG',
+		});
+		expect(() =>
+			validateFungibleLogo(new File([new Uint8Array([1])], 'logo.png', { type: 'image/png' }))
+		).not.toThrow();
+		expect(() => validateFungibleLogo(new File([new Uint8Array([1])], 'logo.mp3', { type: 'audio/mpeg' }))).toThrow(
+			'mint-logo-type-unsupported'
+		);
+		expect(() =>
+			validateFungibleLogo(new File([new Uint8Array(10 * 1024 * 1024 + 1)], 'logo.png', { type: 'image/png' }))
+		).toThrow('mint-logo-size-invalid');
+	});
+
+	it('quotes and uploads a selected logo before the fungible process', async () => {
+		const logoId = 'L'.repeat(43);
+		const logoFile = new File([new Uint8Array([1, 2, 3])], 'logo.png', { type: 'image/png' });
+		const input = { name: 'Signal Token', description: '', ticker: 'SIG', supply: '1000', denomination: '12' };
+		const transaction = () => {
+			const held: any = { id: '', owner: '', chunks: { chunks: [{}] }, addTag: vi.fn() };
+			held.setSignature = vi.fn((signature) => Object.assign(held, signature));
+			held.toJSON = () => ({ id: held.id, owner: held.owner, tags: [] });
+			return held;
+		};
+		const logoTransaction = transaction();
+		const processTransaction = transaction();
+		const createTransaction = vi
+			.fn()
+			.mockResolvedValueOnce(logoTransaction)
+			.mockResolvedValueOnce(processTransaction);
+		const fetchMock = vi.fn(async (request: RequestInfo | URL) => {
+			const url = String(request);
+			if (url.includes('/price/')) return new Response('5');
+			if (url.includes('/wallet/')) return new Response('100');
+			return new Response('', { status: 200 });
+		});
+		const store = storage();
+		const client = new AssetMintClient({
+			arweave: {
+				createTransaction,
+				transactions: {},
+				wallets: { ownerToAddress: vi.fn(async () => owner) },
+			},
+			fetch: fetchMock as typeof fetch,
+			storage: store,
+			computeGateway: 'https://compute.example',
+			wallet: {
+				getActiveAddress: vi.fn(async () => owner),
+				sign: vi
+					.fn()
+					.mockResolvedValueOnce({ id: logoId, owner: 'signed-owner', tags: [], signature: 'logo' })
+					.mockResolvedValueOnce({ id: processId, owner: 'signed-owner', tags: [], signature: 'process' }),
+			} as any,
+		});
+
+		await expect(client.estimateFungible(input, logoFile)).resolves.toMatchObject({
+			processReward: 5n,
+			logoReward: 5n,
+			reward: 10n,
+			transactionCount: 2,
+		});
+		const phases: string[] = [];
+		const uploaded: string[] = [];
+		const result = await client.mintFungible(input, owner, {
+			logo: logoFile,
+			onLogoUploaded: (id) => uploaded.push(id),
+			onPhase: (phase) => phases.push(phase),
+		});
+
+		expect(createTransaction).toHaveBeenNthCalledWith(1, { data: new Uint8Array([1, 2, 3]) }, 'use_wallet');
+		expect(logoTransaction.addTag).toHaveBeenCalledWith('Content-Type', 'image/png');
+		expect(logoTransaction.addTag).toHaveBeenCalledWith('Type', 'Token-Logo');
+		expect(processTransaction.addTag).toHaveBeenCalledWith('logo', logoId);
+		expect(processTransaction.addTag).toHaveBeenCalledWith('asset-type', 'fungible');
+		expect(phases).toEqual(['signing-logo', 'uploading-logo', 'signing', 'uploading']);
+		expect(uploaded).toEqual([logoId]);
+		expect(result).toMatchObject({ processId, logo: logoId, ticker: 'SIG' });
+		expect(loadMintActivities(store, owner)).toMatchObject([
+			{
+				transactionIds: [logoId, processId],
 				arweaveGateway: 'https://arweave.net',
 				computeGateway: 'https://compute.example',
 			},
