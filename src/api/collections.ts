@@ -63,7 +63,14 @@ export function collectionAsset(collection: Collection, id: string, state?: Asse
 	if (collection.kind === 'tokens') {
 		if (!state) return loaded;
 		const verified = fungibleAssetFromState(id, state);
-		return verified ? loaded ?? verified : undefined;
+		if (!verified) return undefined;
+		return loaded
+			? {
+					...verified,
+					...loaded,
+					...(loaded.image ? {} : verified.image ? { image: verified.image } : {}),
+			  }
+			: verified;
 	}
 	if (collection.kind !== 'names') return loaded;
 	const name = collection.namespace?.namesById[id];
@@ -692,9 +699,9 @@ function collectionCount(value: unknown): number | null {
 
 function fungibleTokenCollection(assets: AssetSummary[], count = 0): Collection {
 	return {
-		id: FUNGIBLE_TOKEN_COLLECTION_ID,
-		name: FUNGIBLE_TOKEN_COLLECTION_NAME,
-		description: 'Arweave-native fungible tokens with direct wallet ownership and native AR settlement.',
+		id: 'fungible-tokens',
+		name: '[TEST] Bazar Fungible Tokens',
+		description: 'Arweave-native fungible tokens with direct wallet ownership and native $AR settlement.',
 		kind: 'tokens',
 		assets,
 		total: Math.max(count, assets.length),

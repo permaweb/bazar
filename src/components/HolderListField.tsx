@@ -1,6 +1,8 @@
 import React from 'react';
 import { Info, Plus, X } from 'lucide-react';
 
+import { Tooltip } from 'components/Tooltip';
+
 export type HolderDraftRow = { address: string; quantity: string };
 
 const EMPTY_ROW: HolderDraftRow = { address: '', quantity: '' };
@@ -93,18 +95,26 @@ export function HolderListField({
 		<div className="holder-list">
 			<div className="holder-list-head">
 				<span>Recipients</span>
-				<span className="field-hint" tabIndex={0} aria-label="Holder list format">
-					<Info aria-hidden="true" />
-					<span className="field-hint-pop" role="tooltip">
-						Paste a whole list into any field to autofill the rows. Accepts CSV — one{' '}
-						<code>address,quantity</code> per line, <code>#</code> lines are comments — or JSON:{' '}
-						<code>{`[{"address":"…","quantity":"${exampleAmount}"}]`}</code>,{' '}
-						<code>{`[["…","${exampleAmount}"]]`}</code>, or <code>{`{"…":"${exampleAmount}"}`}</code>.
-						Quantities are {ticker} amounts with up to {denomination} decimal
-						{denomination === 1 ? ' place' : ' places'}; one row per address. Use quoted JSON strings for
-						fractional or very large quantities.
-					</span>
-				</span>
+				<Tooltip
+					className="field-hint"
+					content={
+						<>
+							Paste a whole list into any field to autofill the rows. Accepts CSV — one{' '}
+							<code>address,quantity</code> per line, <code>#</code> lines are comments — or JSON:{' '}
+							<code>{`[{"address":"…","quantity":"${exampleAmount}"}]`}</code>,{' '}
+							<code>{`[["…","${exampleAmount}"]]`}</code>, or <code>{`{"…":"${exampleAmount}"}`}</code>.
+							Quantities are {ticker} amounts with up to {denomination} decimal
+							{denomination === 1 ? ' place' : ' places'}; one row per address. Use quoted JSON strings
+							for fractional or very large quantities.
+						</>
+					}
+				>
+					{(tooltipId) => (
+						<span aria-describedby={tooltipId} aria-label="Holder list format" tabIndex={0}>
+							<Info aria-hidden="true" />
+						</span>
+					)}
+				</Tooltip>
 			</div>
 			<div className="holder-list-rows">
 				{editable.map((row, index) => (

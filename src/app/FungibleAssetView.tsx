@@ -15,6 +15,7 @@ import {
 	Send,
 	ShoppingCart,
 	Tag,
+	Users,
 } from 'lucide-react';
 import {
 	type Consensus,
@@ -54,7 +55,7 @@ import {
 	parseTokenAmount,
 } from 'api/order-matching';
 
-import { ArtworkImage } from 'components/ArtworkImage';
+import { ArCurrencyLabel, ArCurrencyText, formatArCurrencyText } from 'components/ArCurrencyLabel';
 import { type ArweaveSyncStep, ArweaveTransactionSync } from 'components/ArweaveTransactionSync';
 import { postConfirmationPendingLabel } from 'components/ArweaveTransactionSync/sequence';
 import { type AssetDetailTab, AssetDetailTabs } from 'components/AssetDetailTabs';
@@ -66,8 +67,9 @@ import { Loading } from 'components/Loading';
 import { MarketActivityList } from 'components/MarketActivityList';
 import { OperationOutcome, OperationOutcomeAnnouncement } from 'components/OperationOutcomeAnnouncement';
 import { type SegmentedTab, SegmentedTabs } from 'components/SegmentedTabs';
-import { TokenArtwork } from 'components/TokenArtwork';
+import { TokenAvatar } from 'components/TokenAvatar';
 import { TokenPriceChart, type TokenPricePoint } from 'components/TokenPriceChart';
+import { Tooltip } from 'components/Tooltip';
 import {
 	prepareTransactionDialogHide,
 	TRANSACTION_DIALOG_HIDE_DURATION_MS,
@@ -82,6 +84,7 @@ import {
 import { WalletAddress, WalletIdentity } from 'components/WalletAddress';
 import { arweaveGatewayFromLocation, gatewayFromLocation } from 'helpers/config';
 import { optionalMotionBehavior } from 'helpers/motion';
+import { formatTickerLabel } from 'helpers/token-display';
 import { useWallet } from 'providers/WalletProvider';
 
 import { collectionDisplayName, MarketSelect } from './App';
@@ -237,6 +240,44 @@ const SETTLEMENT_ERROR_PANEL_ID = 'fungible-settlement-error-panel';
 const TERMINAL_PURCHASE_FAILURES = new Set(['asset-purchase-rejected', 'asset-purchase-proof-mismatch']);
 const TERMINAL_PURCHASE_FAILURE_MESSAGES = new Set(['asset purchase rejected', 'asset purchase proof mismatch']);
 
+export type FungibleHolder = {
+	address: string;
+	liquid: string;
+	listed: string;
+	total: string;
+};
+
+export function fungibleHolders(state: AssetState): FungibleHolder[] {
+	const listedByAddress = new Map<string, bigint>();
+	for (const order of liveOrdersOfAsset(state)) {
+		listedByAddress.set(order.creator, (listedByAddress.get(order.creator) ?? 0n) + BigInt(order.quantity));
+	}
+
+	const addresses = new Set([
+		...Object.entries(state.balances)
+			.filter(([address, balance]) => ADDRESS.test(address) && BigInt(balance) > 0n)
+			.map(([address]) => address),
+		...listedByAddress.keys(),
+	]);
+
+	return [...addresses]
+		.map((address) => {
+			const liquid = BigInt(state.balances[address] ?? '0');
+			const listed = listedByAddress.get(address) ?? 0n;
+			return {
+				address,
+				liquid: liquid.toString(),
+				listed: listed.toString(),
+				total: (liquid + listed).toString(),
+			};
+		})
+		.sort((left, right) => {
+			const difference = BigInt(right.total) - BigInt(left.total);
+			if (difference !== 0n) return difference < 0n ? -1 : 1;
+			return left.address.localeCompare(right.address);
+		});
+}
+
 export function purchaseSettlementNeedsManualReview(state?: PurchaseState) {
 	if (state?.stage !== 'failed' || !state.error) return false;
 	if (TERMINAL_PURCHASE_FAILURES.has(state.error.code)) return true;
@@ -360,11 +401,13 @@ export function FungibleAssetView({
 	const [listingQuantity, setListingQuantity] = React.useState('');
 	const [listingUnitPrice, setListingUnitPrice] = React.useState('');
 	const [tradeMode, setTradeMode] = React.useState<'buy' | 'sell' | 'transfer'>('buy');
-	const [activeSection, setActiveSection] = React.useState<'market' | 'orders' | 'about' | 'activity' | 'rights'>(
-		'orders'
-	);
+	const [activeSection, setActiveSection] = React.useState<
+		'market' | 'orders' | 'holders' | 'about' | 'activity' | 'rights'
+	>('orders');
 	const [orderReveal, setOrderReveal] = React.useState({ assetId: asset.id, limit: 50 });
 	const orderRevealStatusRef = React.useRef<HTMLParagraphElement>(null);
+	const [holderReveal, setHolderReveal] = React.useState({ assetId: asset.id, limit: 50 });
+	const holderRevealStatusRef = React.useRef<HTMLParagraphElement>(null);
 	const [storageVersion, setStorageVersion] = React.useState(0);
 	const orders = React.useMemo(() => liveOrdersOfAsset(state), [state]);
 	const orderLimit = orderReveal.assetId === asset.id ? orderReveal.limit : 50;
@@ -377,6 +420,7 @@ export function FungibleAssetView({
 	const liquid = wallet.address ? liquidBalanceOf(state, wallet.address) : '0';
 	const listed = wallet.address ? listedBalanceOf(state, wallet.address) : '0';
 	const ticker = state.ticker || 'Token';
+	const tickerDisplay = formatTickerLabel(ticker);
 	const best = openOrders[0] ?? null;
 	const forSale = React.useMemo(
 		() => openOrders.reduce((total, order) => total + BigInt(order.quantity), 0n).toString(),
@@ -386,7 +430,7 @@ export function FungibleAssetView({
 	const listingBalance = BigInt(liquid);
 	const listingQuantityError = listingQuantity.trim()
 		? listingAmount === null
-			? `Enter a valid ${ticker} amount using no more than ${state.denomination} decimal places.`
+			? `Enter a valid ${tickerDisplay} amount using no more than ${state.denomination} decimal places.`
 			: listingAmount > listingBalance
 			? `You can list up to ${tokenLabel(liquid, state)}.`
 			: ''
@@ -416,15 +460,10 @@ export function FungibleAssetView({
 		() => purchaseAmountMatch(purchasableOrders, purchaseQuantity, state),
 		[purchasableOrders, purchaseQuantity, state]
 	);
-	const holders = React.useMemo(() => {
-		const addresses = new Set(
-			Object.entries(state.balances)
-				.filter(([, balance]) => BigInt(balance) > 0n)
-				.map(([address]) => address)
-		);
-		for (const order of orders) addresses.add(order.creator);
-		return addresses.size;
-	}, [orders, state.balances]);
+	const holderRows = React.useMemo(() => fungibleHolders(state), [state]);
+	const holders = holderRows.length;
+	const holderLimit = holderReveal.assetId === asset.id ? holderReveal.limit : 50;
+	const visibleHolderRows = holderRows.slice(0, holderLimit);
 	const license = licenseProperties(state);
 	const description = assetDescription(state, collection.description);
 	const askHistory = React.useMemo(
@@ -445,6 +484,12 @@ export function FungibleAssetView({
 			label: 'Orders',
 			icon: <Layers3 className="ui-icon" aria-hidden="true" />,
 			panelId: 'fungible-asset-orders',
+		},
+		{
+			value: 'holders',
+			label: 'Holders',
+			icon: <Users className="ui-icon" aria-hidden="true" />,
+			panelId: 'fungible-asset-holders',
 		},
 		{
 			value: 'about',
@@ -825,19 +870,19 @@ export function FungibleAssetView({
 				/>
 			) : null}
 			<header className="fungible-token-header">
-				<div className="fungible-token-avatar" aria-hidden="true">
-					{asset.image ? (
-						<ArtworkImage src={asset.image} alt="" fetchPriority="high" loading="eager" />
-					) : (
-						<TokenArtwork ticker={ticker} />
-					)}
-				</div>
+				<TokenAvatar
+					className="fungible-token-avatar"
+					fetchPriority="high"
+					image={asset.image}
+					loading="eager"
+					ticker={ticker}
+				/>
 				<div className="fungible-token-identity">
 					<div className="fungible-token-title">
 						<h1 ref={operationFocusFallbackRef} tabIndex={-1}>
-							{asset.name}
+							{tickerDisplay}
 						</h1>
-						<strong>{ticker}</strong>
+						<span className="fungible-token-name">{asset.name}</span>
 					</div>
 					<div className="fungible-token-meta" aria-label="Token protocol details">
 						<Link to={`/collection/${collection.id}`}>{collectionDisplayName(collection)}</Link>
@@ -866,7 +911,13 @@ export function FungibleAssetView({
 						<div className="asset-market-stats">
 							<div>
 								<span>Current unit price</span>
-								<strong>{best ? orderPriceLabel(best, state) : 'Not listed'}</strong>
+								<strong>
+									{best ? (
+										<ArCurrencyText>{orderPriceLabel(best, state)}</ArCurrencyText>
+									) : (
+										'Not listed'
+									)}
+								</strong>
 							</div>
 							<div>
 								<span>For sale</span>
@@ -878,7 +929,7 @@ export function FungibleAssetView({
 							</div>
 							<div>
 								<span>Holders</span>
-								<strong>{holders.toLocaleString()}</strong>
+								<strong>{holderRows.length.toLocaleString()}</strong>
 							</div>
 						</div>
 						<div className="fungible-trade-switcher">
@@ -916,9 +967,9 @@ export function FungibleAssetView({
 										state={state}
 									/>
 								) : (
-									<div className="asset-buy-summary">
+									<div className="asset-buy-summary asset-buy-summary-empty">
 										<span>Purchase amount</span>
-										<strong>No purchasable listings</strong>
+										<h1>No purchasable listings</h1>
 										<small>No open listings are available to this wallet.</small>
 									</div>
 								)}
@@ -944,9 +995,9 @@ export function FungibleAssetView({
 										unitPriceError={listingUnitPriceError}
 									/>
 								) : (
-									<div className="asset-buy-summary">
+									<div className="asset-buy-summary asset-buy-summary-empty">
 										<span>Listing amount</span>
-										<strong>{wallet.address ? 'No liquid tokens' : 'Connect to list'}</strong>
+										<h1>{wallet.address ? 'No liquid tokens' : 'Connect to list'}</h1>
 										<small>
 											{wallet.address
 												? 'Tokens already listed for sale are not available for a new listing.'
@@ -962,15 +1013,15 @@ export function FungibleAssetView({
 								id="fungible-trade-transfer"
 								role="tabpanel"
 							>
-								<div className="asset-buy-summary">
+								<div className="asset-buy-summary asset-buy-summary-empty">
 									<span>Available to transfer</span>
-									<strong>
+									<h1>
 										{wallet.address
 											? listingBalance > 0n
 												? tokenLabel(liquid, state)
 												: 'No liquid tokens'
 											: 'Connect to transfer'}
-									</strong>
+									</h1>
 									<small>
 										{wallet.address
 											? listingBalance > 0n
@@ -1084,24 +1135,37 @@ export function FungibleAssetView({
 								points={askHistory}
 								ticker={ticker}
 							/>
-							<div className="token-market-snapshot" aria-label="Current token market">
-								<div>
-									<span>Best live ask</span>
-									<strong>{best ? orderPriceLabel(best, state) : 'Not listed'}</strong>
+							<section className="token-market-overview" aria-labelledby="token-market-overview-title">
+								<div className="token-market-overview-heading">
+									<div>
+										<span>Live order book</span>
+										<strong id="token-market-overview-title">Market snapshot</strong>
+									</div>
+									<span className="token-market-live-status" data-active={openOrders.length > 0}>
+										<i aria-hidden="true" />
+										{openOrders.length.toLocaleString()} open{' '}
+										{openOrders.length === 1 ? 'ask' : 'asks'}
+									</span>
 								</div>
-								<div>
-									<span>Open asks</span>
-									<strong>{openOrders.length.toLocaleString()}</strong>
+								<div className="token-market-snapshot" aria-label="Current token market">
+									<div className="token-market-primary-metric">
+										<span>Best live ask</span>
+										<strong>{best ? orderPriceLabel(best, state) : 'Not listed'}</strong>
+									</div>
+									<div>
+										<span>Open asks</span>
+										<strong>{openOrders.length.toLocaleString()}</strong>
+									</div>
+									<div>
+										<span>Listed supply</span>
+										<strong>{tokenLabel(forSale, state)}</strong>
+									</div>
+									<div>
+										<span>Holders</span>
+										<strong>{holders.toLocaleString()}</strong>
+									</div>
 								</div>
-								<div>
-									<span>Listed supply</span>
-									<strong>{tokenLabel(forSale, state)}</strong>
-								</div>
-								<div>
-									<span>Holders</span>
-									<strong>{holders.toLocaleString()}</strong>
-								</div>
-							</div>
+							</section>
 							{activityError ? (
 								<div className="asset-history-actions">
 									<Button className="with-icon" onClick={onActivityRetry} size="custom" type="button">
@@ -1137,13 +1201,13 @@ export function FungibleAssetView({
 									return (
 										<div className="orderbook-row" key={order.orderId} role="row">
 											<strong data-label="Unit price" role="cell">
-												{orderPriceLabel(order, state)}
+												<ArCurrencyText>{orderPriceLabel(order, state)}</ArCurrencyText>
 											</strong>
 											<span data-label="Quantity" role="cell">
 												{tokenLabel(order.quantity, state)}
 											</span>
 											<span data-label="Total" role="cell">
-												{winstonToAr(order.asking)} AR
+												{winstonToAr(order.asking)} <ArCurrencyLabel />
 											</span>
 											<span data-label="Seller" role="cell">
 												<WalletAddress address={order.creator} label="seller" />
@@ -1221,6 +1285,85 @@ export function FungibleAssetView({
 							) : null}
 						</section>
 					) : null}
+					{activeSection === 'holders' ? (
+						<section
+							aria-labelledby="fungible-asset-holders-tab"
+							className="asset-tab-panel"
+							id="fungible-asset-holders"
+							role="tabpanel"
+							tabIndex={0}
+						>
+							<div
+								aria-label={`${asset.name} token holders`}
+								className="orderbook-table fungible-holder-table"
+								role="table"
+							>
+								<div className="orderbook-head" role="row">
+									<span role="columnheader">Holder</span>
+									<span role="columnheader">Total balance</span>
+									<span role="columnheader">Listed</span>
+								</div>
+								{visibleHolderRows.map((holder) => (
+									<div className="orderbook-row" key={holder.address} role="row">
+										<span data-label="Holder" role="cell">
+											<WalletAddress address={holder.address} label="holder" />
+										</span>
+										<strong data-label="Total balance" role="cell">
+											{tokenLabel(holder.total, state)}
+										</strong>
+										<span data-label="Listed" role="cell">
+											{BigInt(holder.listed) > 0n ? tokenLabel(holder.listed, state) : '—'}
+										</span>
+									</div>
+								))}
+								{!holderRows.length ? (
+									<div className="orderbook-empty" role="row">
+										<div aria-colspan={3} className="orderbook-empty-cell" role="cell">
+											<strong>No holders found</strong>
+											<span>The current process state does not contain a positive balance.</span>
+										</div>
+									</div>
+								) : null}
+							</div>
+							{holderRows.length > 50 ? (
+								<div className="orderbook-reveal">
+									<p
+										aria-atomic="true"
+										aria-live="polite"
+										ref={holderRevealStatusRef}
+										role="status"
+										tabIndex={-1}
+									>
+										Showing {visibleHolderRows.length.toLocaleString()} of{' '}
+										{holderRows.length.toLocaleString()} holders.
+									</p>
+									{visibleHolderRows.length < holderRows.length ? (
+										<Button
+											type="button"
+											size="custom"
+											onClick={() => {
+												const next = Math.min(holderRows.length, holderLimit + 50);
+												setHolderReveal({ assetId: asset.id, limit: next });
+												if (next === holderRows.length) {
+													window.requestAnimationFrame(() =>
+														holderRevealStatusRef.current?.focus()
+													);
+												}
+											}}
+										>
+											Show{' '}
+											{Math.min(
+												50,
+												holderRows.length - visibleHolderRows.length
+											).toLocaleString()}{' '}
+											more holders
+										</Button>
+									) : null}
+								</div>
+							) : null}
+							<p className="market-note">Balances include tokens held in active marketplace listings.</p>
+						</section>
+					) : null}
 					{activeSection === 'about' ? (
 						<section
 							aria-labelledby="fungible-asset-about-tab"
@@ -1233,7 +1376,7 @@ export function FungibleAssetView({
 							<div className="asset-detail-facts">
 								<div>
 									<span>Ticker</span>
-									<strong>{ticker}</strong>
+									<strong>{tickerDisplay}</strong>
 								</div>
 								<div>
 									<span>Total supply</span>
@@ -1245,7 +1388,9 @@ export function FungibleAssetView({
 								</div>
 								<div>
 									<span>Settlement</span>
-									<strong>Native AR</strong>
+									<strong>
+										<ArCurrencyLabel />
+									</strong>
 								</div>
 							</div>
 						</section>
@@ -1268,24 +1413,39 @@ export function FungibleAssetView({
 								/>
 							) : null}
 							<div className="asset-history-actions">
-								<Button
-									aria-disabled={activityLoading}
-									className="with-icon"
-									type="button"
-									size="custom"
-									onClick={() => {
-										if (!activityLoading) onActivityRetry();
-									}}
+								<Tooltip
+									content={
+										activityLoading
+											? 'Refreshing history'
+											: activityError
+											? 'Retry history'
+											: 'Refresh history'
+									}
 								>
-									<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" />{' '}
-									{activityLoading
-										? activity.length
-											? 'Refreshing history…'
-											: 'Loading history…'
-										: activityError
-										? 'Retry history'
-										: 'Refresh history'}
-								</Button>
+									{(tooltipId) => (
+										<Button
+											aria-describedby={tooltipId}
+											aria-disabled={activityLoading}
+											aria-label={
+												activityLoading
+													? activity.length
+														? 'Refreshing history'
+														: 'Loading history'
+													: activityError
+													? 'Retry history'
+													: 'Refresh history'
+											}
+											className={`asset-history-refresh${activityLoading ? ' loading' : ''}`}
+											type="button"
+											size="icon"
+											onClick={() => {
+												if (!activityLoading) onActivityRetry();
+											}}
+										>
+											<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" />
+										</Button>
+									)}
+								</Tooltip>
 							</div>
 							{activityError ? (
 								<div className="inline-error" role={activity.length ? 'status' : 'alert'}>
@@ -1302,6 +1462,7 @@ export function FungibleAssetView({
 									ariaLabel={`${asset.name} market activity`}
 									collectionId={collection.id}
 									describeEvent={(event) => activityDetail(event, state)}
+									eventAmount={(event) => fungibleActivityAmount(event, state)}
 									events={activity}
 									loading={activityLoading}
 									resolveAsset={() => asset}
@@ -1588,6 +1749,7 @@ function FungibleOperationDialog({
 	phaseChangeRef.current = onPhaseChange;
 	const resumed = React.useRef(false);
 	const ticker = state.ticker || 'Token';
+	const tickerDisplay = formatTickerLabel(ticker);
 	const automaticMatchResult = React.useMemo(() => {
 		if (operation.kind !== 'buy') return { match: null, error: '' };
 		try {
@@ -1609,11 +1771,11 @@ function FungibleOperationDialog({
 					cause instanceof RangeError
 						? 'This order book is too large to quote safely. Refresh and try again.'
 						: quantity
-						? `Enter a valid ${ticker} amount using no more than ${state.denomination} decimal places.`
+						? `Enter a valid ${tickerDisplay} amount using no more than ${state.denomination} decimal places.`
 						: '',
 			};
 		}
-	}, [eligible, operation.kind, quantity, state, state.denomination, ticker]);
+	}, [eligible, operation.kind, quantity, state, state.denomination, tickerDisplay]);
 	const automaticMatch = automaticMatchResult.match;
 	const matchedFills = automaticMatch?.fills ?? [];
 	const matchedOrders = matchedFills.map((fill) => fill.order);
@@ -2511,20 +2673,12 @@ function FungibleOperationDialog({
 				<div className="dialog-heading">
 					<div className={phase === 'working' ? 'dialog-asset-heading' : undefined}>
 						{phase === 'working' ? (
-							asset.image ? (
-								<ArtworkImage
-									alt=""
-									className="dialog-asset-artwork"
-									decoding="async"
-									loading="eager"
-									src={asset.image}
-								/>
-							) : (
-								<TokenArtwork
-									className="dialog-asset-artwork"
-									ticker={state.ticker || asset.ticker || asset.name}
-								/>
-							)
+							<TokenAvatar
+								className="dialog-asset-artwork"
+								image={asset.image}
+								loading="eager"
+								ticker={state.ticker || asset.ticker || asset.name}
+							/>
 						) : null}
 						<div className="dialog-asset-heading-copy">
 							{compactPurchaseForm ? (
@@ -2565,7 +2719,7 @@ function FungibleOperationDialog({
 											.reduce((total, order) => total + BigInt(order.asking), 0n)
 											.toString()
 									)}{' '}
-									AR
+									<ArCurrencyLabel />
 								</strong>
 							</div>
 							<div>
@@ -2624,7 +2778,9 @@ function FungibleOperationDialog({
 											/>
 										</label>
 										<label>
-											Price per {ticker} in AR
+											<span>
+												Price per {tickerDisplay} in <ArCurrencyLabel />
+											</span>
 											<input
 												aria-describedby={
 													unitPrice && !unitPriceValid ? priceGuidanceId : undefined
@@ -2640,7 +2796,9 @@ function FungibleOperationDialog({
 									{listingQuote ? (
 										<div className="trade-quote">
 											<span>Listing total</span>
-											<strong>{listingQuote} AR</strong>
+											<strong>
+												{listingQuote} <ArCurrencyLabel />
+											</strong>
 										</div>
 									) : null}
 									{enteredQuantity && enteredQuantity <= currentLiquid ? (
@@ -2660,7 +2818,9 @@ function FungibleOperationDialog({
 									) : null}
 									{unitPrice && !unitPriceValid ? (
 										<p id={priceGuidanceId} className="trade-guidance" role="alert">
-											Enter a positive AR price with no more than 12 decimal places.
+											<ArCurrencyText>
+												Enter a positive AR price with no more than 12 decimal places.
+											</ArCurrencyText>
 										</p>
 									) : null}
 									<p className="settlement-disclosure">
@@ -2743,7 +2903,7 @@ function FungibleOperationDialog({
 										<strong>Return this listing to your balance?</strong>
 										<span>
 											{tokenLabel(operation.order.quantity, state)} ·{' '}
-											{winstonToAr(operation.order.asking)} AR total
+											{winstonToAr(operation.order.asking)} <ArCurrencyLabel /> total
 										</span>
 										<span>
 											After network confirmation:{' '}
@@ -2779,45 +2939,55 @@ function FungibleOperationDialog({
 											<dl className="purchase-confirmation-facts">
 												<div>
 													<dt>Seller total</dt>
-													<dd>{winstonToAr(matchedAsking.toString())} AR</dd>
+													<dd>
+														{winstonToAr(matchedAsking.toString())} <ArCurrencyLabel />
+													</dd>
 												</div>
 												<div>
 													<dt>Network fees</dt>
 													<dd>
-														{quoteState === 'error'
-															? 'Unavailable'
-															: estimatedCost
-															? `${winstonToAr(
-																	(BigInt(estimatedCost) - matchedAsking).toString()
-															  )} AR`
-															: 'Checking…'}
+														{quoteState === 'error' ? (
+															'Unavailable'
+														) : estimatedCost ? (
+															<ArCurrencyText>{`${winstonToAr(
+																(BigInt(estimatedCost) - matchedAsking).toString()
+															)} AR`}</ArCurrencyText>
+														) : (
+															'Checking…'
+														)}
 													</dd>
 												</div>
 												<div className="purchase-confirmation-total">
 													<dt>Maximum total</dt>
 													<dd>
-														{quoteState === 'error'
-															? 'Quote unavailable'
-															: estimatedCost
-															? `${winstonToAr(estimatedCost)} AR`
-															: 'Checking…'}
+														{quoteState === 'error' ? (
+															'Quote unavailable'
+														) : estimatedCost ? (
+															<ArCurrencyText>{`${winstonToAr(
+																estimatedCost
+															)} AR`}</ArCurrencyText>
+														) : (
+															'Checking…'
+														)}
 													</dd>
 												</div>
 												<div>
 													<dt>Wallet after</dt>
 													<dd>
-														{quoteState === 'error'
-															? '—'
-															: canAfford === false
-															? 'Insufficient AR'
-															: estimatedCost && estimatedWalletBalance
-															? `${winstonToAr(
-																	(
-																		BigInt(estimatedWalletBalance) -
-																		BigInt(estimatedCost)
-																	).toString()
-															  )} AR`
-															: 'Checking…'}
+														{quoteState === 'error' ? (
+															'—'
+														) : canAfford === false ? (
+															<ArCurrencyText>Insufficient AR</ArCurrencyText>
+														) : estimatedCost && estimatedWalletBalance ? (
+															<ArCurrencyText>{`${winstonToAr(
+																(
+																	BigInt(estimatedWalletBalance) -
+																	BigInt(estimatedCost)
+																).toString()
+															)} AR`}</ArCurrencyText>
+														) : (
+															'Checking…'
+														)}
 													</dd>
 												</div>
 											</dl>
@@ -2830,13 +3000,15 @@ function FungibleOperationDialog({
 									) : null}
 									{matchedOrders.length ? (
 										<p id={quoteStatusId} className="sr-only" aria-live="polite" role="status">
-											{quoteState === 'ready' && estimatedCost
-												? `Purchase quote ready. Maximum total ${winstonToAr(
-														estimatedCost
-												  )} AR.${canAfford ? '' : ' This wallet has insufficient AR.'}`
-												: quoteState === 'error'
-												? 'Purchase quote unavailable. Retry the cost check before buying.'
-												: 'Checking the wallet balance and network fees.'}
+											<ArCurrencyText>
+												{quoteState === 'ready' && estimatedCost
+													? `Purchase quote ready. Maximum total ${winstonToAr(
+															estimatedCost
+													  )} AR.${canAfford ? '' : ' This wallet has insufficient AR.'}`
+													: quoteState === 'error'
+													? 'Purchase quote unavailable. Retry the cost check before buying.'
+													: 'Checking the wallet balance and network fees.'}
+											</ArCurrencyText>
 										</p>
 									) : null}
 									{matchedOrders.length ? (
@@ -2858,7 +3030,9 @@ function FungibleOperationDialog({
 									) : null}
 									{canAfford === false ? (
 										<p className="purchase-form-error" role="alert">
-											This wallet does not have enough AR for the purchase and network fees.
+											<ArCurrencyText>
+												This wallet does not have enough AR for the purchase and network fees.
+											</ArCurrencyText>
 										</p>
 									) : null}
 								</>
@@ -2900,20 +3074,25 @@ function FungibleOperationDialog({
 								) : operation.kind === 'sell' ? (
 									<Tag className="ui-icon ui-icon--sm" aria-hidden="true" />
 								) : null}
-								{operation.kind === 'buy' && matchedOrders.length
-									? `Buy ${formatGroupedTokenAmount(
-											matchedQuantity.toString(),
-											state.denomination
-									  )} ${ticker} · ${
-											estimatedCost ? `${winstonToAr(estimatedCost)} AR max` : 'checking total…'
-									  }`
-									: operation.kind === 'sell' && listingQuote && enteredQuantity
-									? `List ${tokenLabel(enteredQuantity.toString(), state)} for ${listingQuote} AR`
-									: operation.kind === 'cancel'
-									? `Cancel listing and return ${tokenLabel(operation.order.quantity, state)}`
-									: operation.kind === 'transfer' && enteredQuantity
-									? fungibleTransferSubmitLabel(enteredQuantity.toString(), state, transferRecipient)
-									: operationLabel(operation.kind)}
+								<ArCurrencyText>
+									{operation.kind === 'buy' && matchedOrders.length
+										? `Buy ${tokenLabel(matchedQuantity.toString(), state)} · ${
+												estimatedCost
+													? `${winstonToAr(estimatedCost)} AR max`
+													: 'checking total…'
+										  }`
+										: operation.kind === 'sell' && listingQuote && enteredQuantity
+										? `List ${tokenLabel(enteredQuantity.toString(), state)} for ${listingQuote} AR`
+										: operation.kind === 'cancel'
+										? `Cancel listing and return ${tokenLabel(operation.order.quantity, state)}`
+										: operation.kind === 'transfer' && enteredQuantity
+										? fungibleTransferSubmitLabel(
+												enteredQuantity.toString(),
+												state,
+												transferRecipient
+										  )
+										: operationLabel(operation.kind)}
+								</ArCurrencyText>
 							</Button>
 						</div>
 					</form>
@@ -3092,7 +3271,13 @@ function FungibleOperationDialog({
 										</div>
 										<div>
 											<span>Order</span>
-											<strong title={activeOrder.orderId}>{short(activeOrder.orderId)}</strong>
+											<Tooltip content={activeOrder.orderId} placement="top">
+												{(tooltipId) => (
+													<strong aria-describedby={tooltipId}>
+														{short(activeOrder.orderId)}
+													</strong>
+												)}
+											</Tooltip>
 										</div>
 										<p>
 											{activePurchase?.error
@@ -3273,7 +3458,9 @@ export function MatchedListingsReview({
 							<span>
 								<strong>{tokenLabel(order.quantity, state)}</strong>
 								<small>
-									{orderPriceLabel(order, state)} · {winstonToAr(order.asking)} AR total
+									<ArCurrencyText>
+										{`${orderPriceLabel(order, state)} · ${winstonToAr(order.asking)} AR total`}
+									</ArCurrencyText>
 								</small>
 							</span>
 							<WalletIdentity address={order.creator} />
@@ -3318,7 +3505,7 @@ export function purchaseAmountMatch(orders: SwapOrder[], quantity: string, state
 			error:
 				cause instanceof RangeError
 					? 'This order book is too large to quote safely. Refresh and try again.'
-					: `Enter a valid ${state.ticker || 'Token'} amount using no more than ${
+					: `Enter a valid ${formatTickerLabel(state.ticker)} amount using no more than ${
 							state.denomination
 					  } decimal places.`,
 		};
@@ -3345,6 +3532,7 @@ export function FungiblePurchaseComposer({
 	state: AssetState;
 }) {
 	const ticker = state.ticker || 'Token';
+	const tickerDisplay = formatTickerLabel(ticker);
 	const matchedSellerCount = match ? new Set(match.fills.map((fill) => fill.order.creator)).size : 0;
 	const inputId = React.useId();
 	const guidanceId = React.useId();
@@ -3369,7 +3557,7 @@ export function FungiblePurchaseComposer({
 						placeholder="0"
 						value={quantity}
 					/>
-					<span className="purchase-composer-token">{ticker}</span>
+					<span className="purchase-composer-token">{tickerDisplay}</span>
 				</div>
 				<small id={guidanceId}>
 					{tokenLabel(availableQuantity, state)} available to buy
@@ -3388,7 +3576,9 @@ export function FungiblePurchaseComposer({
 				</div>
 				<div className="purchase-composer-value">
 					<strong>{match ? winstonToAr(match.totalAsking) : '0'}</strong>
-					<span className="purchase-composer-token">AR</span>
+					<span className="purchase-composer-token">
+						<ArCurrencyLabel />
+					</span>
 				</div>
 				<small>
 					{match
@@ -3433,6 +3623,7 @@ export function FungibleListingComposer({
 	unitPriceError: string;
 }) {
 	const ticker = state.ticker || 'Token';
+	const tickerDisplay = formatTickerLabel(ticker);
 	const quantityId = React.useId();
 	const quantityGuidanceId = React.useId();
 	const quantityErrorId = React.useId();
@@ -3459,7 +3650,7 @@ export function FungibleListingComposer({
 						placeholder="0"
 						value={quantity}
 					/>
-					<span className="purchase-composer-token">{ticker}</span>
+					<span className="purchase-composer-token">{tickerDisplay}</span>
 				</div>
 				<small id={quantityGuidanceId}>{tokenLabel(availableQuantity, state)} available</small>
 			</div>
@@ -3469,7 +3660,7 @@ export function FungibleListingComposer({
 				</span>
 				<div className="purchase-composer-heading">
 					<label htmlFor={unitPriceId}>Unit price</label>
-					<span>{total ? `${total} AR total` : 'Listing total'}</span>
+					<span>{total ? <ArCurrencyText>{`${total} AR total`}</ArCurrencyText> : 'Listing total'}</span>
 				</div>
 				<div className="purchase-composer-value">
 					<input
@@ -3481,9 +3672,11 @@ export function FungibleListingComposer({
 						placeholder="0"
 						value={unitPrice}
 					/>
-					<span className="purchase-composer-token">AR</span>
+					<span className="purchase-composer-token">
+						<ArCurrencyLabel />
+					</span>
 				</div>
-				<small id={priceGuidanceId}>Price per {ticker}; network fees are shown in review.</small>
+				<small id={priceGuidanceId}>Price per {tickerDisplay}; network fees are shown in review.</small>
 			</div>
 			{quantityError ? (
 				<p className="purchase-composer-error" id={quantityErrorId} role="alert">
@@ -3492,7 +3685,7 @@ export function FungibleListingComposer({
 			) : null}
 			{unitPriceError ? (
 				<p className="purchase-composer-error" id={priceErrorId} role="alert">
-					{unitPriceError}
+					<ArCurrencyText>{unitPriceError}</ArCurrencyText>
 				</p>
 			) : null}
 		</section>
@@ -3513,7 +3706,7 @@ export function PurchaseRoute({ fills, state }: { fills: OrderFill[]; state: Ass
 						<span className="purchase-route-fill">
 							<strong>{tokenLabel(order.quantity, state)}</strong>
 							<small>
-								{orderPriceLabel(order, state)}
+								<ArCurrencyText>{orderPriceLabel(order, state)}</ArCurrencyText>
 								{partial
 									? ` · ${tokenLabel(order.quantity, state)} of ${tokenLabel(
 											sourceOrder.quantity,
@@ -3522,7 +3715,9 @@ export function PurchaseRoute({ fills, state }: { fills: OrderFill[]; state: Ass
 									: ' · full order'}
 							</small>
 						</span>
-						<span className="purchase-route-total">{winstonToAr(order.asking)} AR</span>
+						<span className="purchase-route-total">
+							{winstonToAr(order.asking)} <ArCurrencyLabel />
+						</span>
 						<WalletAddress address={order.creator} label="seller" />
 					</li>
 				))}
@@ -3554,46 +3749,76 @@ export function FungiblePurchaseReceiptNavigator({
 	const receiptOptions = fungiblePurchaseReceiptOptions(orders, state);
 	return (
 		<div className="settlement-receipts">
-			<div className="settlement-receipt-navigation">
-				<MarketSelect
-					label="Settlement receipt"
-					onChange={onSelect}
-					options={receiptOptions}
-					value={order.orderId}
-				/>
-				<span aria-live="polite">
+			<div className={`settlement-receipt-navigation${orders.length === 1 ? ' single' : ''}`}>
+				<div>
+					<strong>Settlement receipt</strong>
+					{orders.length > 1 ? (
+						<MarketSelect
+							label="Choose settlement receipt"
+							onChange={onSelect}
+							options={receiptOptions}
+							showLabel={false}
+							value={order.orderId}
+						/>
+					) : null}
+				</div>
+				<span aria-live="polite" className="settlement-receipt-count">
 					{activeIndex + 1} of {orders.length}
 				</span>
 			</div>
 			<section
 				aria-label={`Settlement receipt ${activeIndex + 1} of ${orders.length}`}
-				className="settlement-receipt"
+				className="settlement-receipt purchase-settlement-receipt"
 			>
-				<div>
+				<div className="settlement-receipt-amount">
 					<span>Listing {activeIndex + 1}</span>
 					<strong>{tokenLabel(order.quantity, state)}</strong>
 				</div>
-				<div>
-					<span>Seller</span>
-					<WalletAddress address={order.creator} full label="seller" />
-				</div>
-				<div>
-					<span>Order</span>
-					<strong title={order.orderId}>{short(order.orderId)}</strong>
-				</div>
-				<div>
-					<span>Seller payment</span>
-					<strong>{winstonToAr(order.asking)} AR</strong>
-				</div>
-				<div className="settlement-receipt-links">
+				<dl className="settlement-receipt-facts">
+					<div>
+						<dt>Seller</dt>
+						<dd>
+							<WalletAddress address={order.creator} label="seller" />
+						</dd>
+					</div>
+					<div>
+						<dt>Order</dt>
+						<dd>
+							<Tooltip content={order.orderId} placement="top">
+								{(tooltipId) => <span aria-describedby={tooltipId}>{short(order.orderId)}</span>}
+							</Tooltip>
+						</dd>
+					</div>
+					<div>
+						<dt>Seller payment</dt>
+						<dd>
+							{winstonToAr(order.asking)} <ArCurrencyLabel />
+						</dd>
+					</div>
+				</dl>
+				<div className="settlement-receipt-links receipt-proof-links">
 					{settled?.registration?.id ? (
-						<a href={transactionExplorerUrl(settled.registration.id)} rel="noreferrer" target="_blank">
-							Reservation {short(settled.registration.id)} ↗
+						<a
+							aria-label={`View reservation ${settled.registration.id}`}
+							href={transactionExplorerUrl(settled.registration.id)}
+							rel="noreferrer"
+							target="_blank"
+						>
+							<span>Reservation</span>
+							<strong>{short(settled.registration.id)}</strong>
+							<ArrowUpRight aria-hidden="true" className="ui-icon ui-icon--xs" />
 						</a>
 					) : null}
 					{settled?.payment?.id ? (
-						<a href={transactionExplorerUrl(settled.payment.id)} rel="noreferrer" target="_blank">
-							Payment {short(settled.payment.id)} ↗
+						<a
+							aria-label={`View payment ${settled.payment.id}`}
+							href={transactionExplorerUrl(settled.payment.id)}
+							rel="noreferrer"
+							target="_blank"
+						>
+							<span>Payment</span>
+							<strong>{short(settled.payment.id)}</strong>
+							<ArrowUpRight aria-hidden="true" className="ui-icon ui-icon--xs" />
 						</a>
 					) : null}
 				</div>
@@ -4065,22 +4290,29 @@ function unitPriceWinston(order: SwapOrder, denomination: number): bigint {
 }
 
 function orderPriceLabel(order: SwapOrder, state: AssetState) {
-	return `${winstonToAr(unitPriceWinston(order, state.denomination).toString())} AR / ${state.ticker || 'token'}`;
+	return formatArCurrencyText(
+		`${winstonToAr(unitPriceWinston(order, state.denomination).toString())} AR / ${formatTickerLabel(
+			state.ticker,
+			'token'
+		)}`
+	);
 }
 
 function tokenLabel(raw: string, state: AssetState) {
-	return `${formatGroupedTokenAmount(raw, state.denomination)} ${state.ticker || 'tokens'}`;
+	return `${formatGroupedTokenAmount(raw, state.denomination)} ${formatTickerLabel(state.ticker, 'tokens')}`;
 }
 
 export function fungibleOrderActionLabel(action: 'buy' | 'cancel', order: SwapOrder, state: AssetState) {
-	const lot = `${tokenLabel(order.quantity, state)} for ${winstonToAr(order.asking)} AR`;
+	const lot = formatArCurrencyText(`${tokenLabel(order.quantity, state)} for ${winstonToAr(order.asking)} AR`);
 	return action === 'buy' ? `Buy ${lot} from ${order.creator}` : `Cancel listing of ${lot}`;
 }
 
 export function fungibleListingAccessibleLabel(order: SwapOrder, state: AssetState) {
-	return `${tokenLabel(order.quantity, state)}, ${orderPriceLabel(order, state)}, ${winstonToAr(
-		order.asking
-	)} AR total, seller ${order.creator}`;
+	return formatArCurrencyText(
+		`${tokenLabel(order.quantity, state)}, ${orderPriceLabel(order, state)}, ${winstonToAr(
+			order.asking
+		)} AR total, seller ${order.creator}`
+	);
 }
 
 export function fungibleOperationStateError(
@@ -4175,18 +4407,20 @@ export function batchStageLabel(state?: PurchaseState) {
 
 function activityDetail(event: CollectionActivityEvent, state: AssetState) {
 	if (event.action === 'make-offer') {
-		const quantity = event.quantity ? tokenLabel(event.quantity, state) : '';
-		const asking = event.asking ? `${winstonToAr(event.asking)} AR total` : '';
-		return [quantity, asking].filter(Boolean).join(' for ');
+		return event.asking ? `${winstonToAr(event.asking)} AR total` : '';
 	}
 	if (event.action === 'transfer') {
-		const quantity = event.quantity ? tokenLabel(event.quantity, state) : '';
-		const recipient = event.recipient ? `to ${short(event.recipient)}` : '';
-		return [quantity, recipient].filter(Boolean).join(' ');
+		return event.recipient ? `To ${short(event.recipient)}` : '';
 	}
 	if (event.action === 'register-interest' && event.orderId) return `Order ${short(event.orderId)}`;
 	if (event.action === 'cancel-order' && event.orderId) return `Order ${short(event.orderId)}`;
 	return '';
+}
+
+export function fungibleActivityAmount(event: CollectionActivityEvent, state: AssetState) {
+	if (!event.quantity) return '';
+	const quantity = tokenLabel(event.quantity, state);
+	return event.action === 'make-offer' && event.asking ? `${quantity} for ${winstonToAr(event.asking)} AR` : quantity;
 }
 
 function short(value: string) {

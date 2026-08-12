@@ -6,6 +6,8 @@ import { transactionExplorerUrl } from 'api/arweave-explorer';
 import type { CollectionActivityEvent } from 'api/asset-discovery';
 import type { AssetSummary, Collection } from 'api/collections';
 
+import { ArCurrencyText } from 'components/ArCurrencyLabel';
+import { Tooltip } from 'components/Tooltip';
 import { WalletAddress } from 'components/WalletAddress';
 
 const relativeTime = new Intl.RelativeTimeFormat('en', { numeric: 'always' });
@@ -21,6 +23,7 @@ export function MarketActivityList({
 	ariaLabel,
 	collectionId,
 	describeEvent = marketActivityDetail,
+	eventAmount,
 	events,
 	id,
 	loading = false,
@@ -30,6 +33,7 @@ export function MarketActivityList({
 	ariaLabel: string;
 	collectionId?: string;
 	describeEvent?(event: CollectionActivityEvent): string;
+	eventAmount?(event: CollectionActivityEvent): string;
 	events: CollectionActivityEvent[];
 	id?: string;
 	loading?: boolean;
@@ -61,6 +65,7 @@ export function MarketActivityList({
 				const asset = resolveAsset(event);
 				const collection = resolveCollection?.(event);
 				const detail = [collection?.name, describeEvent(event)].filter(Boolean).join(' · ');
+				const amount = eventAmount?.(event) ?? '';
 				const assetCollectionId = collection?.id ?? collectionId;
 				const transactionId = event.purchaseProof?.transactionId ?? event.id;
 				const transactionHeight = event.purchaseProof?.height ?? event.height;
@@ -76,26 +81,33 @@ export function MarketActivityList({
 						<span aria-hidden="true" className={`activity-icon action-${event.action}`}>
 							{marketActivitySymbol(event.action)}
 						</span>
-						<div className="activity-main">
-							<strong>{marketActivityLabel(event.action, Boolean(event.purchaseProof))}</strong>
-							{asset && assetCollectionId ? (
-								<Link to={`/asset/${assetCollectionId}/${asset.id}`}>{asset.name}</Link>
-							) : asset ? (
-								<span>{asset.name}</span>
-							) : (
-								<span>{shortActivityValue(event.processId)}</span>
-							)}
-							<small className={detail ? undefined : 'activity-time-only'}>
-								{detail}
-								<time
-									className="activity-mobile-time"
-									dateTime={timestampDateTime}
-									title={absoluteTimestamp}
-								>
-									{detail ? ' · ' : ''}
-									{timestamp}
-								</time>
-							</small>
+						<div className={`activity-main${amount ? ' has-amount' : ''}`}>
+							<div className="activity-main-copy">
+								<strong>{marketActivityLabel(event.action, Boolean(event.purchaseProof))}</strong>
+								{asset && assetCollectionId ? (
+									<Link to={`/asset/${assetCollectionId}/${asset.id}`}>{asset.name}</Link>
+								) : asset ? (
+									<span>{asset.name}</span>
+								) : (
+									<span>{shortActivityValue(event.processId)}</span>
+								)}
+								<small className={detail ? undefined : 'activity-time-only'}>
+									<ArCurrencyText>{detail}</ArCurrencyText>
+									<Tooltip className="activity-mobile-time" content={absoluteTimestamp ?? timestamp}>
+										{(tooltipId) => (
+											<time aria-describedby={tooltipId} dateTime={timestampDateTime}>
+												{detail ? ' · ' : ''}
+												{timestamp}
+											</time>
+										)}
+									</Tooltip>
+								</small>
+							</div>
+							{amount ? (
+								<strong className="activity-amount">
+									<ArCurrencyText>{amount}</ArCurrencyText>
+								</strong>
+							) : null}
 						</div>
 						<div className="activity-meta">
 							<div className="activity-actor">
@@ -107,13 +119,13 @@ export function MarketActivityList({
 								)}
 							</div>
 							<div className="activity-block">
-								<time
-									className="activity-desktop-time"
-									dateTime={timestampDateTime}
-									title={absoluteTimestamp}
-								>
-									{timestamp}
-								</time>
+								<Tooltip className="activity-desktop-time" content={absoluteTimestamp ?? timestamp}>
+									{(tooltipId) => (
+										<time aria-describedby={tooltipId} dateTime={timestampDateTime}>
+											{timestamp}
+										</time>
+									)}
+								</Tooltip>
 								<a
 									aria-label={
 										transactionHeight > 0

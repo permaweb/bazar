@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type { PurchaseSnapshot, PurchaseState } from 'weave-wrangler';
 
+import type { CollectionActivityEvent } from 'api/asset-discovery';
 import type { AssetState, SwapOrder } from 'api/asset-marketplace';
 import { filledOrder } from 'api/order-matching';
 
@@ -18,8 +19,10 @@ import {
 	batchSettlementSummary,
 	batchStageLabel,
 	checkpointBatchPreparation,
+	fungibleActivityAmount,
 	fungibleAskHistory,
 	fungibleBatchRecoveryStatus,
+	fungibleHolders,
 	fungibleListingAccessibleLabel,
 	FungibleListingComposer,
 	type FungibleOperationActivity,
@@ -119,6 +122,50 @@ function purchaseOrder(orderId: string, creator: string, quantity: string, askin
 		status: 'open',
 	};
 }
+
+describe('fungible holders', () => {
+	it('combines liquid and listed balances and sorts holders by total ownership', () => {
+		const largest = 'a'.repeat(43);
+		const listedOnly = 'b'.repeat(43);
+		const liquidOnly = 'c'.repeat(43);
+		const open = purchaseOrder('d'.repeat(43), listedOnly, '300', '1');
+		const reserved = {
+			...purchaseOrder('e'.repeat(43), listedOnly, '200', '1'),
+			status: 'reserved',
+		} as SwapOrder;
+		const cancelled = {
+			...purchaseOrder('f'.repeat(43), liquidOnly, '900', '1'),
+			status: 'cancelled',
+		} as SwapOrder;
+		const state = {
+			device: 'token@1.0',
+			name: 'Test token',
+			ticker: 'TEST',
+			denomination: 0,
+			totalSupply: '1200',
+			balances: {
+				[largest]: '700',
+				[listedOnly]: '0',
+				[liquidOnly]: '500',
+				invalid: '1000',
+			},
+			orders: {
+				[open.orderId]: open,
+				[reserved.orderId]: reserved,
+				[cancelled.orderId]: cancelled,
+			},
+			swapHeight: 0,
+			value: null,
+			raw: {},
+		} satisfies AssetState;
+
+		expect(fungibleHolders(state)).toEqual([
+			{ address: largest, liquid: '700', listed: '0', total: '700' },
+			{ address: listedOnly, liquid: '0', listed: '500', total: '500' },
+			{ address: liquidOnly, liquid: '500', listed: '0', total: '500' },
+		]);
+	});
+});
 
 describe('fungible operation error semantics', () => {
 	it('shows the gated transaction sequence for a multi-listing purchase', () => {
@@ -264,7 +311,7 @@ describe('fungible operation error semantics', () => {
 		]);
 		expect(composer).toContain('You buy');
 		expect(composer).toContain('value="4"');
-		expect(composer).toContain('7 WEAVE available to buy · 2 WEAVE from your listing excluded');
+		expect(composer).toContain('$WEAVE');
 		expect(composer).toContain('You pay');
 		expect(composer).toContain('0.000000000006');
 		expect(composer).toContain('2 orders · 2 sellers · network fees shown in review');
@@ -275,7 +322,7 @@ describe('fungible operation error semantics', () => {
 		const state = { denomination: 0, ticker: 'WEAVE' } as AssetState;
 		const quote = purchaseAmountMatch([purchaseOrder('1'.repeat(43), 'a'.repeat(43), '2', '2')], '3', state);
 		expect(quote.match).toBeNull();
-		expect(quote.error).toBe('Only 2 WEAVE is currently available.');
+		expect(quote.error).toBe('Only 2 $WEAVE is currently available.');
 	});
 
 	it('presents listing quantity and unit price as one connected composer', () => {
@@ -299,7 +346,9 @@ describe('fungible operation error semantics', () => {
 		expect(composer).toContain('value="12"');
 		expect(composer).toContain('Unit price');
 		expect(composer).toContain('value="0.00002"');
-		expect(composer).toContain('0.00024 AR total');
+		expect(composer).toContain('$MINTA');
+		expect(composer).toContain('0.00024 <span class="ar-currency-label">');
+		expect(composer).toContain('$AR</span> total');
 	});
 
 	it('counts only the new wallet approvals missing from a recovered batch', () => {
@@ -400,7 +449,7 @@ describe('fungible operation error semantics', () => {
 		expect(receiptOptions).toHaveLength(512);
 		expect(receiptOptions[511]).toEqual({
 			value: orders[511].orderId,
-			label: `Listing 512 · 1 WEAVE · ${orders[511].creator.slice(0, 6)}…${orders[511].creator.slice(-5)}`,
+			label: `Listing 512 · 1 $WEAVE · ${orders[511].creator.slice(0, 6)}…${orders[511].creator.slice(-5)}`,
 		});
 		const receipt = renderToStaticMarkup(
 			React.createElement(FungiblePurchaseReceiptNavigator, {
@@ -435,6 +484,20 @@ describe('fungible operation error semantics', () => {
 		const previousButton = firstReceipt.match(/<button[^>]*>Previous receipt<\/button>/)?.[0] ?? '';
 		expect(previousButton).toContain('aria-disabled="true"');
 		expect(previousButton).not.toMatch(/\sdisabled(?:=|\s|>)/);
+
+		const singleReceipt = renderToStaticMarkup(
+			React.createElement(FungiblePurchaseReceiptNavigator, {
+				activeOrderId: orders[0].orderId,
+				onSelect: () => undefined,
+				orders: orders.slice(0, 1),
+				purchaseStates,
+				state: { denomination: 0, ticker: 'WEAVE' } as AssetState,
+			})
+		);
+		expect(singleReceipt).toContain('settlement-receipt-navigation single');
+		expect(singleReceipt).toContain('settlement-receipt-count');
+		expect(singleReceipt).toContain('receipt-proof-links');
+		expect(singleReceipt).not.toContain('class="market-select"');
 	});
 
 	it('makes every matched seller reachable through one bounded keyboard region', () => {
@@ -997,12 +1060,12 @@ describe('fungible order action names', () => {
 		} as SwapOrder;
 
 		expect(fungibleOrderActionLabel('buy', first, state)).toBe(
-			`Buy 3 WEAVE for 0.000003 AR from ${'A'.repeat(43)}`
+			`Buy 3 $WEAVE for 0.000003 $AR from ${'A'.repeat(43)}`
 		);
 		expect(fungibleOrderActionLabel('buy', second, state)).toBe(
-			`Buy 5 WEAVE for 0.000006 AR from ${'B'.repeat(43)}`
+			`Buy 5 $WEAVE for 0.000006 $AR from ${'B'.repeat(43)}`
 		);
-		expect(fungibleOrderActionLabel('cancel', first, state)).toBe('Cancel listing of 3 WEAVE for 0.000003 AR');
+		expect(fungibleOrderActionLabel('cancel', first, state)).toBe('Cancel listing of 3 $WEAVE for 0.000003 $AR');
 	});
 
 	it('distinguishes sellers whose compact identities collide', () => {
@@ -1014,6 +1077,21 @@ describe('fungible order action names', () => {
 		expect(fungibleListingAccessibleLabel(first, state)).toContain(first.creator);
 		expect(fungibleListingAccessibleLabel(second, state)).toContain(second.creator);
 		expect(fungibleListingAccessibleLabel(first, state)).not.toBe(fungibleListingAccessibleLabel(second, state));
+	});
+});
+
+describe('fungible activity amounts', () => {
+	it('includes the AR total beside the listed token quantity', () => {
+		expect(
+			fungibleActivityAmount(
+				{
+					action: 'make-offer',
+					asking: '7800000000000',
+					quantity: '1000000000000000',
+				} as CollectionActivityEvent,
+				{ denomination: 12, ticker: 'MIST' } as AssetState
+			)
+		).toBe('1,000 $MIST for 7.8 AR');
 	});
 });
 
@@ -1057,9 +1135,9 @@ describe('fungible transfer recipient validation', () => {
 	it('names the exact recipient before an irreversible transfer', () => {
 		const recipient = 'c'.repeat(43);
 		const state = { denomination: 12, ticker: 'WEAVE' } as AssetState;
-		expect(fungibleTransferSubmitLabel('2000000000000', state, recipient)).toBe('Send 2 WEAVE to cccccc…ccccc');
+		expect(fungibleTransferSubmitLabel('2000000000000', state, recipient)).toBe('Send 2 $WEAVE to cccccc…ccccc');
 		expect(fungibleTransferSubmitLabel('2000000000000', state, recipient, true)).toBe(
-			`Send 2 WEAVE to ${recipient}`
+			`Send 2 $WEAVE to ${recipient}`
 		);
 	});
 });

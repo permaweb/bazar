@@ -1,6 +1,8 @@
 import styled, { type DefaultTheme, keyframes } from 'styled-components';
 import type { ObserverView } from 'weave-wrangler';
 
+import { TooltipSurface } from 'components/Tooltip';
+
 import { confirmationTrustTone } from './confirmationTrust';
 import { confirmationProgress, PROGRESS_GRADIENT, progressColorCss } from './progressColors';
 
@@ -431,7 +433,7 @@ export const RaceInfield = styled.div`
 	}
 `;
 
-export const RaceTooltip = styled.span<{
+export const RaceTooltip = styled(TooltipSurface).attrs({ visible: true })<{
 	$left: number;
 	$top: number;
 	$below: boolean;
@@ -452,27 +454,23 @@ export const RaceTooltip = styled.span<{
 		)
 		${(props) => (props.$below ? 'translate(-50%, 12px)' : 'translate(-50%, calc(-100% - 12px))')};
 	will-change: transform;
-	background: ${(props) => props.theme.colors.container.primary.background};
-	border: 1px solid ${(props) => props.theme.colors.border.alt1};
-	border-radius: 10px;
-	box-shadow: 0 14px 36px rgba(28, 25, 22, 0.1);
-	color: ${(props) => props.theme.colors.font.primary};
 	font-family: ${(props) => props.theme.typography.family.primary};
-	font-size: ${(props) => props.theme.typography.size.small};
-	line-height: 1.35;
 	text-align: left;
 	white-space: normal;
 	pointer-events: none;
 
+	&::before {
+		display: none;
+	}
+
 	&::after {
-		content: '';
-		position: absolute;
+		right: auto;
 		left: 50%;
 		width: 7px;
 		height: 7px;
 		transform: translateX(-50%) rotate(45deg);
-		background: ${(props) => props.theme.colors.container.primary.background};
-		border: solid ${(props) => props.theme.colors.border.alt1};
+		background: var(--surface-subtle);
+		border: solid var(--line-dark);
 		border-width: ${(props) => (props.$below ? '1px 0 0 1px' : '0 1px 1px 0')};
 		${(props) => (props.$below ? 'top: -5px;' : 'bottom: -5px;')}
 	}
@@ -595,44 +593,6 @@ export const SkipAction = styled.div<{ $warning: boolean }>`
 		button {
 			width: 100%;
 		}
-	}
-`;
-
-export const SkipButtonWrap = styled.span`
-	position: relative;
-	flex: 0 0 auto;
-	display: inline-flex;
-
-	@media (max-width: 560px) {
-		width: 100%;
-	}
-`;
-
-export const SkipTooltip = styled.span`
-	position: absolute;
-	top: calc(100% + 8px);
-	right: 0;
-	z-index: 20;
-	width: min(360px, calc(100vw - 64px));
-	padding: 9px 11px;
-	transform: translateY(-3px);
-	visibility: hidden;
-	background: ${(props) => props.theme.colors.font.primary};
-	border-radius: 7px;
-	box-shadow: 0 10px 28px rgba(28, 25, 22, 0.18);
-	color: ${(props) => props.theme.colors.container.primary.background};
-	font-size: ${(props) => props.theme.typography.size.small};
-	line-height: 1.4;
-	opacity: 0;
-	pointer-events: none;
-	transition: opacity 120ms ease, transform 120ms ease, visibility 120ms ease;
-
-	${SkipButtonWrap} > button:hover + &,
-  ${SkipButtonWrap} > button:focus + &,
-  ${SkipButtonWrap} > button:focus-visible + & {
-		transform: translateY(0);
-		visibility: visible;
-		opacity: 1;
 	}
 `;
 

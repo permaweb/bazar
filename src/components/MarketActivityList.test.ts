@@ -1,6 +1,13 @@
+import React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
-import { formatMarketActivityTimestamp, marketActivityLabel, marketActivityRefreshDelay } from './MarketActivityList';
+import {
+	formatMarketActivityTimestamp,
+	marketActivityLabel,
+	MarketActivityList,
+	marketActivityRefreshDelay,
+} from './MarketActivityList';
 
 describe('market activity labels', () => {
 	it('presents a purchase reservation as a submitted purchase', () => {
@@ -30,5 +37,31 @@ describe('market activity labels', () => {
 		expect(marketActivityRefreshDelay([event(7_200_500)], now)).toBe(3_599_520);
 		expect(marketActivityRefreshDelay([event(172_800_500)], now)).toBe(86_399_520);
 		expect(marketActivityRefreshDelay([], now)).toBeNull();
+	});
+
+	it('renders a supplied amount separately from the event detail', () => {
+		const markup = renderToStaticMarkup(
+			React.createElement(MarketActivityList, {
+				ariaLabel: 'Token activity',
+				describeEvent: () => '0.1 AR total',
+				eventAmount: () => '12 TOKEN',
+				events: [
+					{
+						action: 'make-offer',
+						actor: 'actor',
+						height: 1,
+						id: 'transaction',
+						processId: 'process',
+						timestamp: 1,
+					},
+				],
+				resolveAsset: () => undefined,
+			})
+		);
+
+		expect(markup).toContain('activity-main has-amount');
+		expect(markup).toContain('<strong class="activity-amount">12 TOKEN</strong>');
+		expect(markup).toContain('0.1 <span class="ar-currency-label">');
+		expect(markup).toContain('$AR</span> total');
 	});
 });

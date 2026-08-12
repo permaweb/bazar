@@ -1,5 +1,7 @@
 import React from 'react';
 
+import { ArCurrencyText } from './ArCurrencyLabel';
+
 export function OperationOutcomeAnnouncement({
 	active,
 	title,
@@ -11,7 +13,7 @@ export function OperationOutcomeAnnouncement({
 }) {
 	return (
 		<div aria-atomic="true" className="sr-only" role="status">
-			{active ? `${title}. ${detail}` : ''}
+			{active ? <ArCurrencyText>{`${title}. ${detail}`}</ArCurrencyText> : ''}
 		</div>
 	);
 }
@@ -23,9 +25,13 @@ export function OperationOutcome({
 }: React.PropsWithChildren<{ title: string; detail: string }>) {
 	return (
 		<div className="result-outcome">
-			<h3>{title}</h3>
+			<h3>
+				<ArCurrencyText>{title}</ArCurrencyText>
+			</h3>
 			{children}
-			<p>{detail}</p>
+			<p>
+				<ArCurrencyText>{detail}</ArCurrencyText>
+			</p>
 		</div>
 	);
 }

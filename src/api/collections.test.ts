@@ -300,6 +300,29 @@ describe('collection index loading', () => {
 			image: `https://arweave.net/${logoId}`,
 		});
 		expect(
+			collectionAsset(
+				{
+					...tokens,
+					assets: [
+						{
+							id: processId,
+							name: 'Indexed Token',
+							contentType: 'application/x.arweave-token',
+							ticker: 'NEW',
+						},
+					],
+				},
+				processId,
+				state
+			)
+		).toEqual({
+			id: processId,
+			name: 'Indexed Token',
+			ticker: 'NEW',
+			contentType: 'application/x.arweave-token',
+			image: `https://arweave.net/${logoId}`,
+		});
+		expect(
 			collectionAsset(tokens, processId, {
 				...state,
 				raw: { ...state.raw, 'scheduler-mode': 'local' },

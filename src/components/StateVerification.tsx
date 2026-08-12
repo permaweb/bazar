@@ -1,6 +1,8 @@
 import React from 'react';
 import { Server } from 'lucide-react';
 
+import { Tooltip } from 'components/Tooltip';
+
 export function stateVerificationTimeLabel(verifiedAt: number) {
 	const timestamp = new Date(verifiedAt);
 	const time = timestamp.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' });
@@ -33,10 +35,17 @@ export function StateVerification({
 			<span>
 				{refreshing ? 'Refreshing · last checked' : failed ? 'Refresh failed · last checked' : 'Checked'}
 			</span>{' '}
-			<time dateTime={timestamp.toISOString()} title={timestamp.toLocaleString()}>
-				{stateVerificationTimeLabel(verifiedAt)}
-			</time>{' '}
-			<span>via</span> <strong title={provider}>{host}</strong>
+			<Tooltip content={timestamp.toLocaleString()} placement="top">
+				{(tooltipId) => (
+					<time aria-describedby={tooltipId} dateTime={timestamp.toISOString()}>
+						{stateVerificationTimeLabel(verifiedAt)}
+					</time>
+				)}
+			</Tooltip>{' '}
+			<span>via</span>{' '}
+			<Tooltip content={provider} placement="top">
+				{(tooltipId) => <strong aria-describedby={tooltipId}>{host}</strong>}
+			</Tooltip>
 			<span>· current state requested</span>
 		</p>
 	);

@@ -24,7 +24,6 @@ import {
 	RefreshCw,
 	Search,
 	Send,
-	Server,
 	ShoppingCart,
 	Tag,
 	Upload,
@@ -124,6 +123,7 @@ import {
 } from 'api/minted-assets';
 import { formatTokenAmount } from 'api/order-matching';
 
+import { ArCurrencyLabel, ArCurrencyText, formatArCurrencyText } from 'components/ArCurrencyLabel';
 import { ArtworkImage } from 'components/ArtworkImage';
 import type { ArweaveSyncStep } from 'components/ArweaveTransactionSync';
 import { quorumConfirmationDepth } from 'components/ArweaveTransactionSync/confirmationDepth';
@@ -141,9 +141,12 @@ import { NameArtwork } from 'components/NameArtwork';
 import { NamesCubePreview } from 'components/NamesCubePreview';
 import { OperationOutcome, OperationOutcomeAnnouncement } from 'components/OperationOutcomeAnnouncement';
 import { Pagination } from 'components/Pagination';
+import { PortalIcon } from 'components/PortalIcon';
 import { StateVerification } from 'components/StateVerification';
 import { TokenArtwork } from 'components/TokenArtwork';
+import { TokenAvatar } from 'components/TokenAvatar';
 import { TokenMarketRow } from 'components/TokenMarketRow';
+import { Tooltip } from 'components/Tooltip';
 import {
 	isTransactionActivityVisible,
 	prepareTransactionDialogHide,
@@ -169,6 +172,7 @@ import {
 import { scheduleIdleTask } from 'helpers/idle';
 import { optionalMotionBehavior } from 'helpers/motion';
 import { assetGroupRevealComplete, retainedAssetGroupLimit } from 'helpers/progressive-assets';
+import { formatTickerLabel } from 'helpers/token-display';
 import { useProgressiveReveal } from 'hooks/useProgressiveReveal';
 import { useWallet } from 'providers/WalletProvider';
 
@@ -1874,7 +1878,6 @@ function Header() {
 						<span className="brand-mark">
 							<BazarMark />
 						</span>
-						<small>2.0</small>
 					</Link>
 					<form
 						className={`site-search${searchOpen ? ' expanded' : ''}`}
@@ -1899,15 +1902,24 @@ function Header() {
 					</form>
 					<nav className="site-nav">
 						<div className="site-nav-primary">
-							<Link
-								aria-label="Create asset"
-								aria-current={location.pathname === '/create' ? 'page' : undefined}
-								className={`create-link${location.pathname === '/create' ? ' active' : ''}`}
-								data-tooltip="Create asset"
-								to="/create"
+							<Tooltip
+								align="center"
+								className="create-link-tooltip"
+								content="Create asset"
+								delayMs={1000}
 							>
-								<Upload className="ui-icon ui-icon--sm" aria-hidden="true" />
-							</Link>
+								{(tooltipId) => (
+									<Link
+										aria-describedby={tooltipId}
+										aria-label="Create asset"
+										aria-current={location.pathname === '/create' ? 'page' : undefined}
+										className={`create-link${location.pathname === '/create' ? ' active' : ''}`}
+										to="/create"
+									>
+										<Upload className="ui-icon ui-icon--sm" aria-hidden="true" />
+									</Link>
+								)}
+							</Tooltip>
 							<GatewayControl />
 						</div>
 						<div className="site-nav-wallet">
@@ -2058,21 +2070,29 @@ function Header() {
 										<div className="search-collection-grid">
 											{collectionResults.map((collection) => {
 												const preview = collection.assets.find((asset) => asset.image)?.image;
+												const tokenPreview =
+													collection.assets.find((asset) => asset.image) ??
+													collection.assets[0];
 												return (
 													<Link
 														key={collection.id}
 														to={`/collection/${collection.id}`}
 														onClick={followSearchResult}
 													>
-														<span className="search-result-image">
-															{preview ? (
+														<span
+															className={`search-result-image${
+																collection.kind === 'tokens' ? ' token-avatar-slot' : ''
+															}`}
+														>
+															{collection.kind === 'tokens' ? (
+																<TokenAvatar
+																	image={tokenPreview?.image}
+																	ticker={tokenPreview?.ticker ?? 'Token'}
+																/>
+															) : preview ? (
 																<ArtworkImage src={preview} alt="" />
 															) : collection.kind === 'names' ? (
 																<NamesCubePreview />
-															) : collection.kind === 'tokens' ? (
-																<TokenArtwork
-																	ticker={collection.assets[0]?.ticker ?? 'Token'}
-																/>
 															) : (
 																<BazarMark />
 															)}
@@ -2148,16 +2168,23 @@ function Header() {
 														prefetchAssetPage(asset.id, collection.kind === 'tokens')
 													}
 												>
-													<span className="search-result-image">
-														{asset.image ? (
+													<span
+														className={`search-result-image${
+															collection.kind === 'tokens' ? ' token-avatar-slot' : ''
+														}`}
+													>
+														{collection.kind === 'tokens' ? (
+															<TokenAvatar
+																image={asset.image}
+																ticker={asset.ticker ?? 'Token'}
+															/>
+														) : asset.image ? (
 															<ArtworkImage src={asset.image} alt="" />
 														) : isAudioContentType(asset.contentType) ? (
 															<AudioArtwork
 																contentType={asset.contentType}
 																name={asset.name}
 															/>
-														) : collection.kind === 'tokens' ? (
-															<TokenArtwork ticker={asset.ticker ?? 'Token'} />
 														) : (
 															<BazarMark />
 														)}
@@ -2178,19 +2205,25 @@ function Header() {
 											<h2>Direct process</h2>
 											<span>Live state check required</span>
 										</div>
-										<div className="token-market-list compact">
-											<TokenMarketRow
-												asset={{
-													id: query.trim(),
-													name: 'Check token process',
-													ticker: 'TOKEN',
-													contentType: 'application/x.arweave-token',
-												}}
-												collection={directTokenCollection}
-												context={`${short(query.trim())} · live state check`}
-												onFollow={followSearchResult}
-												onWarm={() => prefetchAssetPage(query.trim(), true)}
-											/>
+										<div className="search-asset-grid">
+											<Link
+												to={`/asset/${directTokenCollection.id}/${query.trim()}`}
+												onClick={followSearchResult}
+												onFocus={() => prefetchAssetPage(query.trim(), true)}
+												onMouseEnter={() => prefetchAssetPage(query.trim(), true)}
+												onTouchStart={() => prefetchAssetPage(query.trim(), true)}
+											>
+												<span className="search-result-image token-avatar-slot">
+													<TokenAvatar ticker="Token" />
+												</span>
+												<span>
+													<strong>Check token process</strong>
+													<small>
+														{short(query.trim())} · support is determined from live state
+													</small>
+												</span>
+												<ArrowUpRight className="ui-icon ui-icon--sm" aria-hidden="true" />
+											</Link>
 										</div>
 									</section>
 								) : null}
@@ -2295,20 +2328,24 @@ function OperationActivityControl() {
 	if (!activityCount) return null;
 	return (
 		<div className="operation-activity-control" ref={containerRef}>
-			<Button
-				aria-expanded={open}
-				aria-label={`Transaction activity, ${activityCount} ${activityCount === 1 ? 'item' : 'items'}`}
-				className={`operation-activity-trigger${workingCount ? ' working' : ''}`}
-				data-activity-owner="global"
-				data-tooltip="Transaction activity"
-				size="custom"
-				onClick={() => setOpen((value) => !value)}
-				type="button"
-				variant="ghost"
-			>
-				<InfinityIcon className="ui-icon" aria-hidden="true" />
-				<span>{activityCount}</span>
-			</Button>
+			<Tooltip content="Transaction activity" disabled={open}>
+				{(tooltipId) => (
+					<Button
+						aria-describedby={tooltipId}
+						aria-expanded={open}
+						aria-label={`Transaction activity, ${activityCount} ${activityCount === 1 ? 'item' : 'items'}`}
+						className={`operation-activity-trigger${workingCount ? ' working' : ''}`}
+						data-activity-owner="global"
+						size="custom"
+						onClick={() => setOpen((value) => !value)}
+						type="button"
+						variant="ghost"
+					>
+						<InfinityIcon className="ui-icon" aria-hidden="true" />
+						<span>{activityCount}</span>
+					</Button>
+				)}
+			</Tooltip>
 			{open ? (
 				<section aria-label="Transaction activity" className="operation-activity-menu">
 					<div className="operation-activity-heading">
@@ -2408,7 +2445,6 @@ function OperationActivityControl() {
 										<span
 											aria-label={`${activity.confirmations} of ${activity.confirmationTarget} confirmations`}
 											className="operation-activity-confirmations"
-											title="Confirmations"
 										>
 											{activity.confirmations}/{activity.confirmationTarget}
 										</span>
@@ -2438,13 +2474,11 @@ function OperationActivityControl() {
 									type="button"
 									variant="ghost"
 								>
-									<span className="operation-activity-symbol" aria-hidden="true">
-										{activity.asset.image ? (
-											<ArtworkImage src={activity.asset.image} alt="" />
-										) : (
-											<span>{activity.asset.name.slice(0, 1)}</span>
-										)}
-									</span>
+									<TokenAvatar
+										className="operation-activity-symbol"
+										image={activity.asset.image}
+										ticker={activity.asset.ticker ?? activity.asset.name}
+									/>
 									<span className="operation-activity-copy">
 										<strong>{activity.asset.name}</strong>
 										<small>
@@ -2740,6 +2774,11 @@ function homeMarketSummaryListed(summary: HomeMarketSummary | undefined) {
 	return summary?.status === 'resolved' && Boolean(summary.value);
 }
 
+export function homeCollectionAssetCountLabel(collection: Collection) {
+	if (collection.kind === 'names' && collection.hasMore && collection.assets.length === 0) return 'N/A';
+	return (collection.total ?? collection.assets.length).toLocaleString();
+}
+
 export type HomeTab = 'discover' | 'collections' | 'activity';
 export type HomeAssetView = 'all' | 'listed' | 'price-low' | 'price-high';
 export type HomeCollectionSort = 'recent' | 'newest' | 'oldest';
@@ -3011,12 +3050,16 @@ function Home() {
 	}, [cachedHomeListings, liveHomeListingShells]);
 	const displayHomeListings = React.useMemo(
 		() =>
-			homeListingShells.map(({ asset, collection, activity }) => ({
-				asset,
-				collection,
-				activity,
-			})),
-		[homeListingShells]
+			homeListingShells.map(({ asset, collection, activity }) => {
+				const currentCollection = market.collections.find((candidate) => candidate.id === collection.id);
+				const currentAsset = currentCollection ? collectionAsset(currentCollection, asset.id) : undefined;
+				return {
+					asset: currentAsset?.image && !asset.image ? { ...asset, image: currentAsset.image } : asset,
+					collection: currentCollection ?? collection,
+					activity,
+				};
+			}),
+		[homeListingShells, market.collections]
 	);
 	const [portableHomeListingsLoading, setPortableHomeListingsLoading] = React.useState(false);
 	const [portableHomeListingsComplete, setPortableHomeListingsComplete] = React.useState(false);
@@ -3066,6 +3109,7 @@ function Home() {
 		]
 	);
 	const [assetPrices, setAssetPrices] = React.useState<Record<string, HomeMarketSummary>>({});
+	const [assetImages, setAssetImages] = React.useState<Record<string, string>>({});
 	const displayAssetPrices = React.useMemo(() => {
 		const prices: Record<string, HomeMarketSummary> = Object.fromEntries(
 			homeListingShells.map((listing) => [
@@ -3384,6 +3428,9 @@ function Home() {
 		setAssetPrices((current) =>
 			Object.fromEntries(Object.entries(current).filter(([assetId]) => visibleAssetIds.has(assetId)))
 		);
+		setAssetImages((current) =>
+			Object.fromEntries(Object.entries(current).filter(([assetId]) => visibleAssetIds.has(assetId)))
+		);
 		const requestedAssetIds = new Set(
 			homeSummaryRequestKeys(
 				assets.map(({ asset }) => asset.id),
@@ -3401,7 +3448,7 @@ function Home() {
 			finishSummaryRetry(retryToken, 'assets');
 		};
 		retryAssetSummaries.current.clear();
-		void mapConcurrent(requestedAssets, 8, async ({ asset }) => {
+		void mapConcurrent(requestedAssets, 8, async ({ asset, collection }) => {
 			const previous = assetSummaryControllers.current.get(asset.id);
 			if (previous) previous.abort();
 			const controller = new AbortController();
@@ -3411,10 +3458,16 @@ function Home() {
 				const publishPrice = (state: AssetState) => {
 					const order = bestAskOfAsset(state);
 					if (!controller.signal.aborted) {
+						const image = collectionAsset(collection, asset.id, state)?.image;
 						setAssetPrices((current) => ({
 							...current,
 							[asset.id]: { status: 'resolved', value: order ? orderPriceLabel(order, state) : null },
 						}));
+						if (image) {
+							setAssetImages((current) =>
+								current[asset.id] === image ? current : { ...current, [asset.id]: image }
+							);
+						}
 					}
 				};
 				const portable = portableHomeListingById.get(asset.id);
@@ -4017,6 +4070,9 @@ function Home() {
 										<div className="home-feature-grid">
 											{collections.map((collection, index) => {
 												const image = collection.assets.find((asset) => asset.image)?.image;
+												const tokenPreview =
+													collection.assets.find((asset) => asset.image) ??
+													collection.assets[0];
 												const floor = collectionFloors[collection.id];
 												const floorPending =
 													!floor ||
@@ -4028,7 +4084,15 @@ function Home() {
 														to={`/collection/${collection.id}`}
 													>
 														<div className="home-feature-art">
-															{image ? (
+															{collection.kind === 'tokens' ? (
+																<TokenAvatar
+																	className="home-token-collection-art"
+																	fetchPriority={index === 0 ? 'high' : 'auto'}
+																	image={tokenPreview?.image}
+																	loading={index === 0 ? 'eager' : 'lazy'}
+																	ticker={tokenPreview?.ticker ?? 'Token'}
+																/>
+															) : image ? (
 																<ArtworkImage
 																	src={image}
 																	alt=""
@@ -4052,15 +4116,10 @@ function Home() {
 																/>
 															) : collection.kind === 'names' ? (
 																<NamesCubePreview />
-															) : collection.kind === 'tokens' ? (
-																<TokenArtwork
-																	className="home-token-collection-art"
-																	ticker={collection.assets[0]?.ticker ?? 'Token'}
-																/>
 															) : (
 																<div className="home-name-art">
 																	<BazarMark />
-																	<span>AR</span>
+																	<span>$AR</span>
 																</div>
 															)}
 															<div className="home-feature-glow" />
@@ -4077,9 +4136,7 @@ function Home() {
 																		: 'Assets'}
 																</span>
 																<strong>
-																	{(
-																		collection.total ?? collection.assets.length
-																	).toLocaleString()}
+																	{homeCollectionAssetCountLabel(collection)}
 																</strong>
 															</div>
 															<div>
@@ -4094,15 +4151,15 @@ function Home() {
 																	}
 																>
 																	{!floorPending && floor ? (
-																		homeMarketSummaryLabel(
-																			floor,
-																			collection.hasMore
-																				? 'No loaded listings'
-																				: 'No live listings',
-																			collection.hasMore
-																				? 'No loaded asks'
-																				: 'No indexed asks'
-																		)
+																		<ArCurrencyText>
+																			{homeMarketSummaryLabel(
+																				floor,
+																				collection.hasMore
+																					? 'No loaded listings'
+																					: 'No live listings',
+																				'N/A'
+																			)}
+																		</ArCurrencyText>
 																	) : (
 																		<HomePendingMarketValue />
 																	)}
@@ -4140,69 +4197,101 @@ function Home() {
 									role="tabpanel"
 								>
 									{displayedAssets.length || discoverResultsPending ? (
-										assetType === 'all' ? (
-											<div className="discover-market-sections">
-												<section className="discover-market-section token-section">
-													<div className="discover-market-heading">
-														<div>
-															<p className="eyebrow">Fungible assets</p>
-															<h2>Tokens</h2>
-														</div>
-														<Button size="custom" onClick={() => setAssetType('tokens')}>
-															View all tokens
-															<ArrowRight
-																className="ui-icon ui-icon--xs"
-																aria-hidden="true"
-															/>
-														</Button>
-													</div>
-													{discoverTokens.length ? (
-														renderTokenList(discoverTokens.slice(0, 8))
-													) : (
-														<p className="discover-section-empty">
-															No tokens match this view.
-														</p>
-													)}
-												</section>
-												<section className="discover-market-section collectible-section">
-													<div className="discover-market-heading">
-														<div>
-															<p className="eyebrow">Unique assets</p>
-															<h2>Collectibles</h2>
-														</div>
-														<Button size="custom" onClick={() => setAssetType('atomic')}>
-															View all collectibles
-															<ArrowRight
-																className="ui-icon ui-icon--xs"
-																aria-hidden="true"
-															/>
-														</Button>
-													</div>
-													{discoverCollectibles.length ? (
-														renderCollectibleGrid(discoverCollectibles.slice(0, 12))
-													) : (
-														<p className="discover-section-empty">
-															No collectibles match this view.
-														</p>
-													)}
-												</section>
+										<>
+											<div className="home-asset-grid">
+												{assetPagination.items.map(({ asset, collection }, index) => {
+													const price = displayAssetPrices[asset.id];
+													const pricePending = !price;
+													return (
+														<Link
+															key={`${collection.id}-${asset.id}`}
+															to={`/asset/${collection.id}/${asset.id}`}
+															onFocus={() =>
+																prefetchAssetPage(
+																	asset.id,
+																	collection.kind === 'tokens'
+																)
+															}
+															onMouseEnter={() =>
+																prefetchAssetPage(
+																	asset.id,
+																	collection.kind === 'tokens'
+																)
+															}
+															onTouchStart={() =>
+																prefetchAssetPage(
+																	asset.id,
+																	collection.kind === 'tokens'
+																)
+															}
+														>
+															{collection.kind === 'tokens' ? (
+																<div className="home-asset-media home-token-media">
+																	<TokenAvatar
+																		fetchPriority={index < 2 ? 'high' : 'auto'}
+																		image={assetImages[asset.id] ?? asset.image}
+																		loading={index < 2 ? 'eager' : 'lazy'}
+																		ticker={asset.ticker ?? 'Token'}
+																	/>
+																</div>
+															) : asset.image ? (
+																<ArtworkImage
+																	className="home-asset-media"
+																	src={asset.image}
+																	alt=""
+																	fetchPriority={index < 2 ? 'high' : 'auto'}
+																	loading={index < 2 ? 'eager' : 'lazy'}
+																/>
+															) : isAudioContentType(asset.contentType) ? (
+																<AudioArtwork
+																	className="home-asset-media"
+																	contentType={asset.contentType}
+																	name={asset.name}
+																/>
+															) : collection.kind === 'names' ? (
+																<NameArtwork
+																	className="home-asset-media"
+																	name={asset.name}
+																/>
+															) : (
+																<div className="home-asset-media home-token-media">
+																	<TokenAvatar ticker={asset.ticker ?? 'Token'} />
+																</div>
+															)}
+															<div className="home-asset-details">
+																<div>
+																	<strong>{asset.name}</strong>
+																	<span>{collection.name}</span>
+																</div>
+																<b
+																	className={`home-asset-price${
+																		homeMarketSummaryListed(price) ? ' listed' : ''
+																	}`}
+																>
+																	{!pricePending && price ? (
+																		<ArCurrencyText>
+																			{homeMarketSummaryLabel(
+																				price,
+																				'Not listed'
+																			)}
+																		</ArCurrencyText>
+																	) : (
+																		<HomePendingMarketValue />
+																	)}
+																</b>
+															</div>
+														</Link>
+													);
+												})}
 											</div>
-										) : (
-											<>
-												{assetType === 'tokens'
-													? renderTokenList(assetPagination.items)
-													: renderCollectibleGrid(assetPagination.items)}
-												<Pagination
-													ariaLabel={
-														assetType === 'tokens' ? 'Token pages' : 'Collectible pages'
-													}
-													className="home-asset-pagination"
-													onPageChange={selectAssetPage}
-													page={assetPagination.page}
-													pageCount={assetPagination.pageCount}
-												/>
-											</>
-										)
+											<Pagination
+												ariaLabel="Discover pages"
+												className="home-asset-pagination"
+												onPageChange={selectAssetPage}
+												page={assetPagination.page}
+												pageCount={assetPagination.pageCount}
+											/>
+										</>
 									) : discoverResultsFailed ? null : (
 										<div className="home-assets-empty">
 											{assetView === 'all'
@@ -4252,8 +4341,6 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 	const [discoveredAssets, setDiscoveredAssets] = React.useState<Record<string, ResolvedAsset>>({});
 	const [loading, setLoading] = React.useState(true);
 	const [error, setError] = React.useState<string | null>(null);
-	const [pages, setPages] = React.useState(0);
-	const [preservingEvents, setPreservingEvents] = React.useState(false);
 	const [retry, setRetry] = React.useState(0);
 	const [activityFilter, setActivityFilter] = React.useState<GlobalActivityFilter>('all');
 	const [activityLimit, setActivityLimit] = React.useState(20);
@@ -4284,7 +4371,6 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 			eventsRef.current = cachedEvents;
 			setEvents(cachedEvents);
 			setDiscoveredAssets({});
-			setPreservingEvents(true);
 		} catch {
 			// Browser storage is optional; live Arweave discovery continues below.
 		}
@@ -4322,8 +4408,6 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 		}
 		setLoading(true);
 		setError(null);
-		setPages(0);
-		setPreservingEvents(preserveEvents);
 		const publish = (nextEvents: CollectionActivityEvent[]) => {
 			if (controller.signal.aborted) return;
 			for (const event of nextEvents) {
@@ -4337,7 +4421,6 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 			}
 			eventsRef.current = newestCollectionActivity([...found.values()]);
 			setEvents(eventsRef.current);
-			setPages((current) => current + 1);
 		};
 		const knownMembership = (processId: string) => globalActivityCollection(collections, processId);
 		const unknownEvents = new Map<string, CollectionActivityEvent[]>();
@@ -4451,7 +4534,6 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 				setError(marketplaceRequestFailureMessage('index', kind));
 			}
 			setLoading(false);
-			setPreservingEvents(false);
 		});
 		return () => {
 			controller.abort();
@@ -4459,8 +4541,6 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 		};
 	}, [activityScope, marketLoading, retry]);
 
-	const includedEvents = events.filter((event) => event.height > 0).length;
-	const pendingEvents = events.length - includedEvents;
 	const filteredEvents = filterGlobalActivity(events, activityFilter);
 	eventCountRef.current = filteredEvents.length;
 	const activityFilters: Array<{ value: GlobalActivityFilter; label: string }> = [
@@ -4470,6 +4550,11 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 		{ value: 'transfer', label: 'Transfers' },
 		{ value: 'cancel-order', label: 'Cancellations' },
 	];
+	const retryActivity = () => {
+		if (loading) return;
+		setActivityRevealAnnouncement('');
+		setRetry((value) => value + 1);
+	};
 	const resolveCollection = (event: CollectionActivityEvent) =>
 		globalActivityCollection(collections, event.processId) ?? discoveredAssets[event.processId]?.collection;
 	return (
@@ -4480,39 +4565,6 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 			id="home-activity-panel"
 			role="tabpanel"
 		>
-			<div className="activity-heading">
-				<div>
-					<h2>Global market activity</h2>
-					<span aria-hidden="true">
-						{loading
-							? preservingEvents
-								? `${events.length.toLocaleString()} retained · refreshing from Arweave`
-								: pages
-								? `${events.length.toLocaleString()} found across ${pages.toLocaleString()} ${
-										pages === 1 ? 'check' : 'checks'
-								  } · still reading Arweave`
-								: 'Reading indexed transactions from Arweave…'
-							: `${events.length.toLocaleString()} indexed ${
-									events.length === 1 ? 'transaction' : 'transactions'
-							  } · ${includedEvents.toLocaleString()} included in blocks${
-									pendingEvents ? ` · ${pendingEvents.toLocaleString()} pending` : ''
-							  } · newest first`}
-					</span>
-				</div>
-				<Button
-					aria-disabled={loading}
-					className="with-icon"
-					size="custom"
-					onClick={() => {
-						if (loading) return;
-						setActivityRevealAnnouncement('');
-						setRetry((value) => value + 1);
-					}}
-				>
-					<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" />
-					{loading ? (events.length ? 'Refreshing…' : 'Loading…') : error ? 'Retry activity' : 'Refresh'}
-				</Button>
-			</div>
 			<div aria-label="Filter global activity" className="activity-filters" role="group">
 				{activityFilters.map((filter) => {
 					const count = filterGlobalActivity(events, filter.value).length;
@@ -4540,9 +4592,16 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 							Some activity sources could not be refreshed. Showing {events.length.toLocaleString()}{' '}
 							indexed {events.length === 1 ? 'event' : 'events'} already loaded. {error}
 						</span>
+						<Button className="with-icon" onClick={retryActivity} size="custom" type="button">
+							<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Retry activity
+						</Button>
 					</div>
 				) : (
-					<ErrorPanel message={`Global activity could not be loaded. ${error}`} />
+					<ErrorPanel
+						message={`Global activity could not be loaded. ${error}`}
+						onRetry={retryActivity}
+						retryLabel="Retry activity"
+					/>
 				)
 			) : null}
 			<MarketActivityList
@@ -4660,15 +4719,19 @@ function GatewayControl() {
 	return (
 		<div className="gateway-control">
 			{pageRefreshing ? (
-				<span
-					aria-label="Some assets on this page are still being refreshed on your configured nodes."
-					className="gateway-refreshing"
-					data-tooltip="Some assets on this page are still being refreshed on your configured nodes."
-					role="status"
-					tabIndex={0}
-				>
-					<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" />
-				</span>
+				<Tooltip content="Some assets on this page are still being refreshed on your configured nodes.">
+					{(tooltipId) => (
+						<span
+							aria-describedby={tooltipId}
+							aria-label="Some assets on this page are still being refreshed on your configured nodes."
+							className="gateway-refreshing"
+							role="status"
+							tabIndex={0}
+						>
+							<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" />
+						</span>
+					)}
+				</Tooltip>
 			) : null}
 			<details className="gateway" open={open} ref={detailsRef}>
 				<summary
@@ -4681,17 +4744,31 @@ function GatewayControl() {
 					}}
 					ref={triggerRef}
 					role="button"
-					title={`Compute: ${computeCurrent}`}
 				>
-					<Server className="ui-icon ui-icon--sm" aria-hidden="true" />
-					<span className="gateway-label">Gateway</span>
+					<Tooltip
+						align="center"
+						className="gateway-trigger-tooltip"
+						content="AO-Core peers"
+						delayMs={1000}
+						disabled={open}
+					>
+						{(tooltipId) => (
+							<span aria-describedby={tooltipId} className="gateway-summary-content">
+								<PortalIcon className="ui-icon gateway-portal-icon" aria-hidden="true" />
+								<span className="gateway-label">Gateway</span>
+							</span>
+						)}
+					</Tooltip>
 				</summary>
 				<div id="gateway-panel">
 					<form onSubmit={apply}>
 						<label>
-							HyperBEAM peers
+							<span>Change AO-Core peers</span>
+							<span className="gateway-peer-description" id="gateway-peer-description">
+								If you would like to use different machines for your computer, enter in below
+							</span>
 							<input
-								aria-describedby={error ? 'gateway-error' : undefined}
+								aria-describedby={`gateway-peer-description${error ? ' gateway-error' : ''}`}
 								aria-invalid={Boolean(error)}
 								onChange={(event) => {
 									setComputeValue(event.target.value);
@@ -4706,14 +4783,36 @@ function GatewayControl() {
 								{error}
 							</p>
 						) : null}
-						<Button className="with-icon" type="submit" size="custom">
-							<Server className="ui-icon ui-icon--sm" aria-hidden="true" /> Apply peers
-						</Button>
+						<div className="gateway-apply-row">
+							<Button className="gateway-apply-button with-icon" type="submit" size="custom">
+								<PortalIcon className="ui-icon gateway-portal-icon" aria-hidden="true" /> Apply peers
+							</Button>
+							<Tooltip
+								className="gateway-peer-help"
+								content={
+									<>
+										Bazar is a fully decentralized marketplace: Operated by everyone, owned by
+										nobody. By default, your requests are handled by the computer that gave you this
+										page. If you would like to use different machines for your compute, just enter
+										their address above.
+									</>
+								}
+							>
+								{(tooltipId) => (
+									<Button
+										aria-describedby={tooltipId}
+										aria-label="About compute peers"
+										className="gateway-peer-help-trigger"
+										size="custom"
+										type="button"
+										variant="ghost"
+									>
+										<Info className="ui-icon ui-icon--sm" aria-hidden="true" />
+									</Button>
+								)}
+							</Tooltip>
+						</div>
 					</form>
-					<p>
-						Process reads and observer requests fail over across these peers. Content, pricing, balances,
-						and settlement use the site gateway by default.
-					</p>
 				</div>
 			</details>
 		</div>
@@ -4806,7 +4905,7 @@ export function MarketSelect<Value extends string>({
 				aria-controls={menuId}
 				aria-expanded={open}
 				aria-haspopup="listbox"
-				aria-label={`${label}: ${selected.label}`}
+				aria-label={formatArCurrencyText(`${label}: ${selected.label}`)}
 				className={`market-select-trigger${open ? ' open' : ''}`}
 				size="custom"
 				onClick={() => (open ? setOpen(false) : openAndFocus())}
@@ -4818,7 +4917,9 @@ export function MarketSelect<Value extends string>({
 				ref={triggerRef}
 				type="button"
 			>
-				<span>{selected.label}</span>
+				<span>
+					<ArCurrencyText>{selected.label}</ArCurrencyText>
+				</span>
 				<ChevronRight aria-hidden="true" />
 			</Button>
 			{open ? (
@@ -4852,7 +4953,9 @@ export function MarketSelect<Value extends string>({
 								variant="ghost"
 								type="button"
 							>
-								<span>{option.label}</span>
+								<span>
+									<ArCurrencyText>{option.label}</ArCurrencyText>
+								</span>
 								{active ? <Check aria-hidden="true" /> : null}
 							</Button>
 						);
@@ -5075,7 +5178,6 @@ function CollectionView() {
 	const deferredQuery = React.useDeferredValue(query);
 	const pageSize = useProgressiveAssetPageSize();
 	const [limit, setLimit] = React.useState(pageSize);
-	const [sort, setSort] = React.useState<'default' | 'recent'>('default');
 	const [listedOnly, setListedOnly] = React.useState(() => collectionDefaultsToListed(collectionId));
 	const [initial, setInitial] = React.useState<string>('all');
 	const [alphabetFocus, setAlphabetFocus] = React.useState<string>('all');
@@ -5329,7 +5431,7 @@ function CollectionView() {
 				)
 				.sort((a, b) => {
 					if (initial !== 'all') return compareCollectionAssetNames(a, b);
-					if (sort === 'recent' && !recentOrderState.error) {
+					if (!recentOrderState.error) {
 						const activityA = activityByAsset.get(a.id);
 						const activityB = activityByAsset.get(b.id);
 						return (
@@ -5352,7 +5454,6 @@ function CollectionView() {
 			initial,
 			recentOrderState.error,
 			recentOrderState.loading,
-			sort,
 			visibleAssets,
 		]
 	);
@@ -5372,7 +5473,7 @@ function CollectionView() {
 		const price = cardPrices[asset.id];
 		return price?.status === 'unavailable' && price.kind === 'rate-limited';
 	}).length;
-	const activityRequestMode = listedOnly ? 'listed' : sort === 'recent' ? 'recent' : 'idle';
+	const activityRequestMode = listedOnly ? 'listed' : 'recent';
 	const listingCollectionVersion = React.useMemo(
 		() => (collection ? collectionListingScopeVersion(collection) : ''),
 		[collection]
@@ -5528,7 +5629,7 @@ function CollectionView() {
 		window.requestAnimationFrame(() => collectionStatusRef.current?.focus());
 	};
 	React.useEffect(() => {
-		if (!collection || (!listedOnly && sort === 'default')) {
+		if (!collection) {
 			listingActivityScope.current = '';
 			listingActivityCandidates.current.clear();
 			listingLoadedAssetIds.current.clear();
@@ -5842,7 +5943,7 @@ function CollectionView() {
 		return () => controller.abort();
 	}, [listedOnly, listingRetry, listingScope]);
 	React.useEffect(() => {
-		if (!collection || !listedOnly || sort !== 'recent') {
+		if (!collection || !listedOnly) {
 			recentOrderScope.current = '';
 			recentOrderActivity.current.clear();
 			recentOrderResolvedIds.current.clear();
@@ -5915,8 +6016,8 @@ function CollectionView() {
 			}
 		);
 		return () => controller.abort();
-	}, [collection?.id, listedIdsKey, listedOnly, recentOrderRetry, sort]);
-	React.useEffect(() => setLimit(pageSize), [initial, listedOnly, query, sort]);
+	}, [collection?.id, listedIdsKey, listedOnly, recentOrderRetry]);
+	React.useEffect(() => setLimit(pageSize), [initial, listedOnly, query]);
 	React.useEffect(() => setLimit((current) => retainedAssetGroupLimit(current, pageSize)), [pageSize]);
 	if (!collection && market.loading)
 		return (
@@ -6016,14 +6117,13 @@ function CollectionView() {
 					<p className="eyebrow">{collectionEyebrow(collection)}</p>
 					<h1>{collectionDisplayName(collection)}</h1>
 				</div>
-				<div className="collection-title-copy">
-					<p>{collection.description}</p>
-					{collection.kind === 'images' && ownedCollection?.owner === wallet.address ? (
+				{collection.kind === 'images' && ownedCollection?.owner === wallet.address ? (
+					<div className="collection-title-copy">
 						<Button onClick={() => setAppendOpen(true)} type="button" variant="neutral">
 							<Images aria-hidden="true" /> Add assets
 						</Button>
-					) : null}
-				</div>
+					</div>
+				) : null}
 			</div>
 			{appendOpen && ownedCollection ? (
 				<div className="dialog-backdrop" role="presentation">
@@ -6085,11 +6185,13 @@ function CollectionView() {
 						<div className="collection-append-summary">
 							<span>{appendEstimating ? 'Checking Arweave storage cost…' : appendStatus || 'Ready'}</span>
 							<strong>
-								{appendEstimate
-									? `${winstonToAr(appendEstimate.total.toString())} AR · ${
-											appendEstimate.transactionCount
-									  } transactions`
-									: '—'}
+								{appendEstimate ? (
+									<ArCurrencyText>{`${winstonToAr(appendEstimate.total.toString())} AR · ${
+										appendEstimate.transactionCount
+									} transactions`}</ArCurrencyText>
+								) : (
+									'—'
+								)}
 							</strong>
 						</div>
 						{appendError ? <ErrorPanel message={appendError} /> : null}
@@ -6201,29 +6303,22 @@ function CollectionView() {
 						onChange={(event) => setQuery(event.target.value)}
 						placeholder="Search this collection"
 					/>
-					<div className="asset-filters">
-						<MarketSelect<'all' | 'listed'>
-							label="Show"
-							onChange={(nextValue) => setListedOnly(nextValue === 'listed')}
-							options={[
-								{ value: 'all', label: collection.kind === 'tokens' ? 'All tokens' : 'All assets' },
-								{ value: 'listed', label: 'Listed for sale' },
-							]}
-							value={listedOnly ? 'listed' : 'all'}
-						/>
-						<MarketSelect<'default' | 'recent'>
-							label="Sort"
-							onChange={setSort}
-							options={[
-								{ value: 'default', label: collection.kind === 'names' ? 'Name: A to Z' : 'Default' },
-								{ value: 'recent', label: 'Recent activity' },
-							]}
-							value={sort}
-						/>
+					<div className="asset-tools-controls">
+						<div className="asset-filters single-filter">
+							<MarketSelect<'all' | 'listed'>
+								label="Show"
+								onChange={(nextValue) => setListedOnly(nextValue === 'listed')}
+								options={[
+									{ value: 'all', label: 'All assets' },
+									{ value: 'listed', label: 'Listed for sale' },
+								]}
+								value={listedOnly ? 'listed' : 'all'}
+							/>
+						</div>
+						<span id={resultSummaryId} ref={collectionStatusRef} tabIndex={-1}>
+							{resultSummary}
+						</span>
 					</div>
-					<span id={resultSummaryId} ref={collectionStatusRef} tabIndex={-1}>
-						{resultSummary}
-					</span>
 					<CollectionResultStatus message={resultAnnouncement} />
 				</div>
 			)}
@@ -6313,7 +6408,7 @@ function CollectionView() {
 					</Button>
 				</div>
 			) : null}
-			{listedOnly && sort === 'recent' && (recentOrderState.loading || recentOrderState.error) ? (
+			{listedOnly && (recentOrderState.loading || recentOrderState.error) ? (
 				<div className={recentOrderState.error ? 'inline-error' : 'collection-source-notice'}>
 					<span role="status">
 						{recentOrderState.loading
@@ -6848,8 +6943,6 @@ function CollectionActivityView() {
 				<ErrorPanel message="This collection could not be found on Arweave." />
 			</RouteState>
 		);
-	const confirmedEvents = events.filter((event) => event.height > 0).length;
-	const pendingEvents = events.length - confirmedEvents;
 	const activityScanAnnouncement = collectionActivityScanAnnouncement({
 		error: Boolean(error),
 		events: events.length,
@@ -6867,12 +6960,42 @@ function CollectionActivityView() {
 					<p className="eyebrow">Arweave activity</p>
 					<h1>{collection.name}</h1>
 				</div>
-				<p>
-					Indexed signed market actions discovered from Arweave. Current ownership and listing status still
-					come only from live process state.
-				</p>
 			</div>
-			<CollectionTabs collection={collection} active="activity" />
+			<CollectionTabs
+				action={
+					<Tooltip content={loading ? 'Refreshing activity' : error ? 'Retry activity' : 'Refresh activity'}>
+						{(tooltipId) => (
+							<Button
+								aria-describedby={tooltipId}
+								aria-disabled={loading}
+								aria-label={
+									loading
+										? 'Refreshing collection activity'
+										: error
+										? 'Retry collection activity'
+										: 'Refresh collection activity'
+								}
+								className={`collection-tabs-refresh${loading ? ' loading' : ''}`}
+								size="custom"
+								type="button"
+								onClick={() => {
+									if (loading) return;
+									setActivityRevealAnnouncement('');
+									activityRunMode.current = error ? 'retry' : 'refresh';
+									setRetry((value) => value + 1);
+								}}
+							>
+								<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" />
+							</Button>
+						)}
+					</Tooltip>
+				}
+				collection={collection}
+				active="activity"
+			/>
+			<span aria-live="polite" className="sr-only" role="status">
+				{activityScanAnnouncement}
+			</span>
 			<CollectionIndexNotice collection={collection} checking={market.loading} onRetry={market.retry} />
 			{collection.kind === 'tokens' && collection.hasMore ? (
 				<div className="collection-source-notice">
@@ -6887,49 +7010,6 @@ function CollectionActivityView() {
 					</Link>
 				</div>
 			) : null}
-			<div className="activity-heading">
-				<div>
-					<h2>Recent market activity</h2>
-					<span aria-hidden="true">
-						{loading
-							? preservingEvents
-								? `${events.length.toLocaleString()} retained · ${
-										pages
-											? `refresh checked ${pages.toLocaleString()} ${
-													pages === 1 ? 'page' : 'pages'
-											  }`
-											: 'refreshing from Arweave'
-								  }`
-								: pages
-								? `${events.length.toLocaleString()} found across ${pages.toLocaleString()} ${
-										pages === 1 ? 'page' : 'pages'
-								  } · still reading Arweave`
-								: 'Reading indexed transactions from Arweave…'
-							: `${events.length.toLocaleString()} indexed ${
-									events.length === 1 ? 'transaction' : 'transactions'
-							  } · ${confirmedEvents.toLocaleString()} confirmed${
-									pendingEvents ? ` · ${pendingEvents.toLocaleString()} pending` : ''
-							  } · newest first`}
-					</span>
-					<span aria-live="polite" className="sr-only" role="status">
-						{activityScanAnnouncement}
-					</span>
-				</div>
-				<Button
-					aria-disabled={loading}
-					className="with-icon"
-					size="custom"
-					onClick={() => {
-						if (loading) return;
-						setActivityRevealAnnouncement('');
-						activityRunMode.current = error ? 'retry' : 'refresh';
-						setRetry((value) => value + 1);
-					}}
-				>
-					<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" />
-					{loading ? (events.length ? 'Refreshing…' : 'Loading…') : error ? 'Retry activity' : 'Refresh'}
-				</Button>
-			</div>
 			{error ? (
 				<ErrorPanel
 					message={`Activity scanning was interrupted. ${
@@ -7022,7 +7102,15 @@ export function collectionActivityScanAnnouncement({
 	} so far.`;
 }
 
-function CollectionTabs({ collection, active }: { collection: Collection; active: 'assets' | 'activity' }) {
+function CollectionTabs({
+	collection,
+	active,
+	action,
+}: {
+	collection: Collection;
+	active: 'assets' | 'activity';
+	action?: React.ReactNode;
+}) {
 	return (
 		<nav className="collection-tabs" aria-label={`${collectionDisplayName(collection)} views`}>
 			<Link
@@ -7044,6 +7132,7 @@ function CollectionTabs({ collection, active }: { collection: Collection; active
 			>
 				<History className="ui-icon ui-icon--sm" aria-hidden="true" /> Activity
 			</Link>
+			{action}
 		</nav>
 	);
 }
@@ -7075,7 +7164,34 @@ export const AssetCard = React.memo(function AssetCard({
 			onTouchStart={() => prefetchAssetPage(asset.id, collection.kind === 'tokens')}
 			to={`/asset/${collection.id}/${asset.id}`}
 		>
-			<AssetCardArtwork asset={asset} collection={collection} priority={priority} />
+			<div className="asset-media">
+				{collection.kind === 'tokens' && collectionContext ? (
+					<TokenAvatar
+						fetchPriority={priority ? 'high' : 'auto'}
+						image={asset.image}
+						loading={priority ? 'eager' : 'lazy'}
+						ticker={asset.ticker ?? 'Token'}
+					/>
+				) : asset.image ? (
+					<ArtworkImage
+						src={asset.image}
+						fetchPriority={priority ? 'high' : 'auto'}
+						loading={priority ? 'eager' : 'lazy'}
+						alt=""
+					/>
+				) : isAudioContentType(asset.contentType) ? (
+					<AudioArtwork contentType={asset.contentType} name={asset.name} />
+				) : collection.kind === 'tokens' ? (
+					<TokenAvatar
+						fetchPriority={priority ? 'high' : 'auto'}
+						image={asset.image}
+						loading={priority ? 'eager' : 'lazy'}
+						ticker={asset.ticker ?? 'Token'}
+					/>
+				) : (
+					<span>{asset.name.slice(0, 1)}</span>
+				)}
+			</div>
 			<div className="asset-card-copy">
 				{!collectionContext ? <p>{collection.name}</p> : null}
 				<div className="asset-card-heading">
@@ -7484,23 +7600,25 @@ function AssetDetailLoadingShell({
 		return (
 			<section className="asset-page asset-detail-page asset-detail-loading-shell fungible-asset-page">
 				<header className="fungible-token-header">
-					<div className="fungible-token-avatar" aria-hidden="true">
-						{asset?.image ? (
-							<ArtworkImage src={asset.image} alt="" fetchPriority="high" loading="eager" />
-						) : asset ? (
-							<TokenArtwork ticker={asset.ticker ?? asset.name} />
-						) : (
-							<span className="layout-placeholder" />
-						)}
-					</div>
+					{asset ? (
+						<TokenAvatar
+							className="fungible-token-avatar"
+							fetchPriority="high"
+							image={asset.image}
+							loading="eager"
+							ticker={asset.ticker ?? asset.name}
+						/>
+					) : (
+						<span className="fungible-token-avatar layout-placeholder" aria-hidden="true" />
+					)}
 					<div className="fungible-token-identity">
 						<div className="fungible-token-title">
 							{asset ? (
-								<h1>{asset.name}</h1>
+								<h1>{formatTickerLabel(asset.ticker)}</h1>
 							) : (
 								<span className="layout-placeholder layout-placeholder-title" />
 							)}
-							{asset?.ticker ? <strong>{asset.ticker}</strong> : null}
+							{asset ? <span className="fungible-token-name">{asset.name}</span> : null}
 						</div>
 						<div className="fungible-token-meta" aria-hidden="true">
 							{collection ? (
@@ -8485,7 +8603,13 @@ function AssetView() {
 								<div className="asset-market-stats">
 									<div>
 										<span>Current ask</span>
-										<strong>{order ? `${winstonToAr(order.asking)} AR` : 'Not listed'}</strong>
+										<strong>
+											{order ? (
+												<ArCurrencyText>{`${winstonToAr(order.asking)} AR`}</ArCurrencyText>
+											) : (
+												'Not listed'
+											)}
+										</strong>
 									</div>
 									<div>
 										<span>Supply</span>
@@ -8508,7 +8632,13 @@ function AssetView() {
 											? 'Buy for'
 											: 'Market status'}
 									</span>
-									<strong>{order ? `${winstonToAr(order.asking)} AR` : 'Not listed'}</strong>
+									<strong>
+										{order ? (
+											<ArCurrencyText>{`${winstonToAr(order.asking)} AR`}</ArCurrencyText>
+										) : (
+											'Not listed'
+										)}
+									</strong>
 								</div>
 								{operationActivityEntry ? (
 									<AssetOperationStatus
@@ -8734,7 +8864,7 @@ function AssetView() {
 								{order ? (
 									<div className="orderbook-row" role="row">
 										<strong data-label="Price" role="cell">
-											{winstonToAr(order.asking)} AR
+											{winstonToAr(order.asking)} <ArCurrencyLabel />
 										</strong>
 										<span data-label="Quantity" role="cell">
 											{order.quantity}
@@ -8776,7 +8906,9 @@ function AssetView() {
 							{order ? (
 								<div className="asset-history-current">
 									<span>Current ask</span>
-									<strong>{winstonToAr(order.asking)} AR</strong>
+									<strong>
+										{winstonToAr(order.asking)} <ArCurrencyLabel />
+									</strong>
 								</div>
 							) : null}
 							{activityLoading ? (
@@ -8907,7 +9039,9 @@ function AssetView() {
 								</div>
 								<div>
 									<dt>Settlement</dt>
-									<dd>Native AR</dd>
+									<dd>
+										<ArCurrencyLabel />
+									</dd>
 								</div>
 								<div>
 									<dt>Content type</dt>
@@ -9837,7 +9971,9 @@ function OperationDialog({
 								label="seller"
 							/>
 							<span>Seller payment</span>
-							<strong>{sellerPrice}</strong>
+							<strong>
+								<ArCurrencyText>{sellerPrice}</ArCurrencyText>
+							</strong>
 							<span>New approvals</span>
 							<strong>{recoveryApprovalCount}</strong>
 							{operation.resume?.registration?.id ? (
@@ -9885,51 +10021,63 @@ function OperationDialog({
 										label="seller"
 									/>
 									<span>Seller price</span>
-									<strong>{sellerPrice}</strong>
+									<strong>
+										<ArCurrencyText>{sellerPrice}</ArCurrencyText>
+									</strong>
 									<span>Network fees</span>
 									<strong>
-										{quoteError
-											? 'Unavailable'
-											: purchaseQuote
-											? `${winstonToAr(
-													(
-														BigInt(purchaseQuote.total) - BigInt(purchaseQuote.asking)
-													).toString()
-											  )} AR`
-											: 'Checking…'}
+										{quoteError ? (
+											'Unavailable'
+										) : purchaseQuote ? (
+											<ArCurrencyText>{`${winstonToAr(
+												(BigInt(purchaseQuote.total) - BigInt(purchaseQuote.asking)).toString()
+											)} AR`}</ArCurrencyText>
+										) : (
+											'Checking…'
+										)}
 									</strong>
 									<span>Maximum total</span>
 									<strong>
-										{quoteError
-											? 'Unavailable'
-											: purchaseQuote
-											? `${winstonToAr(purchaseQuote.total)} AR`
-											: 'Checking…'}
+										{quoteError ? (
+											'Unavailable'
+										) : purchaseQuote ? (
+											<ArCurrencyText>{`${winstonToAr(purchaseQuote.total)} AR`}</ArCurrencyText>
+										) : (
+											'Checking…'
+										)}
 									</strong>
 									<span>Wallet after purchase</span>
 									<strong>
-										{quoteError
-											? 'Unavailable'
-											: purchaseQuote && purchaseWalletBalance !== null
-											? purchaseAffordable
-												? `${winstonToAr(
-														(purchaseWalletBalance - BigInt(purchaseQuote.total)).toString()
-												  )} AR`
-												: 'Insufficient AR'
-											: 'Checking…'}
+										{quoteError ? (
+											'Unavailable'
+										) : purchaseQuote && purchaseWalletBalance !== null ? (
+											purchaseAffordable ? (
+												<ArCurrencyText>{`${winstonToAr(
+													(purchaseWalletBalance - BigInt(purchaseQuote.total)).toString()
+												)} AR`}</ArCurrencyText>
+											) : (
+												<ArCurrencyText>Insufficient AR</ArCurrencyText>
+											)
+										) : (
+											'Checking…'
+										)}
 									</strong>
-									<small>One asset · native AR settlement</small>
+									<small>
+										One asset · native <ArCurrencyLabel /> settlement
+									</small>
 								</div>
 							) : null}
 							{operation.kind === 'buy' ? (
 								<p className="sr-only" id={quoteStatusId} aria-live="polite" role="status">
-									{quoteError
-										? 'Purchase quote unavailable. Retry the cost check before buying.'
-										: purchaseQuote
-										? `Purchase quote ready. Maximum total ${winstonToAr(purchaseQuote.total)} AR.${
-												purchaseAffordable ? '' : ' This wallet has insufficient AR.'
-										  }`
-										: 'Checking the purchase cost.'}
+									<ArCurrencyText>
+										{quoteError
+											? 'Purchase quote unavailable. Retry the cost check before buying.'
+											: purchaseQuote
+											? `Purchase quote ready. Maximum total ${winstonToAr(
+													purchaseQuote.total
+											  )} AR.${purchaseAffordable ? '' : ' This wallet has insufficient AR.'}`
+											: 'Checking the exact purchase cost.'}
+									</ArCurrencyText>
 								</p>
 							) : null}
 							{operation.kind === 'buy' ? (
@@ -9965,7 +10113,9 @@ function OperationDialog({
 							) : null}
 							{operation.kind === 'sell' ? (
 								<label>
-									Sale price in AR
+									<span>
+										Sale price in <ArCurrencyLabel />
+									</span>
 									<input
 										autoFocus
 										data-dialog-initial
@@ -10008,7 +10158,9 @@ function OperationDialog({
 							{operation.kind === 'cancel' ? (
 								<div className="operation-summary">
 									<span>Open listing</span>
-									<strong>{sellerPrice}</strong>
+									<strong>
+										<ArCurrencyText>{sellerPrice}</ArCurrencyText>
+									</strong>
 									<small>
 										Cancelling returns the asset from order escrow to your liquid balance.
 									</small>
@@ -10020,7 +10172,7 @@ function OperationDialog({
 									className={value && formError ? 'field-help field-help-error' : 'field-help'}
 									role={value && formError ? 'alert' : undefined}
 								>
-									{formError}
+									{formError ? <ArCurrencyText>{formError}</ArCurrencyText> : null}
 								</p>
 							) : null}
 							<p className="operation-disclosure">
@@ -10051,11 +10203,13 @@ function OperationDialog({
 							) : operation.kind === 'sell' ? (
 								<Tag className="ui-icon ui-icon--sm" aria-hidden="true" />
 							) : null}
-							{operation.kind === 'buy' && purchaseAffordable === false
-								? 'Insufficient AR'
-								: operation.kind === 'buy' && purchaseQuote
-								? `Buy · up to ${winstonToAr(purchaseQuote.total)} AR`
-								: actionLabel}
+							{operation.kind === 'buy' && purchaseAffordable === false ? (
+								<ArCurrencyText>Insufficient AR</ArCurrencyText>
+							) : operation.kind === 'buy' && purchaseQuote ? (
+								<ArCurrencyText>{`Buy · up to ${winstonToAr(purchaseQuote.total)} AR`}</ArCurrencyText>
+							) : (
+								<ArCurrencyText>{actionLabel}</ArCurrencyText>
+							)}
 						</Button>
 					</form>
 				) : null}
@@ -10128,7 +10282,9 @@ function OperationDialog({
 							<div className="settlement-receipt">
 								<div>
 									<span>Seller payment</span>
-									<strong>{sellerPrice}</strong>
+									<strong>
+										<ArCurrencyText>{sellerPrice}</ArCurrencyText>
+									</strong>
 								</div>
 								<div>
 									<span>Seller</span>
@@ -10578,7 +10734,7 @@ function unitPriceWinston(order: SwapOrder, denomination: number) {
 }
 function orderPriceLabel(order: SwapOrder, state: AssetState) {
 	return `${winstonToAr(unitPriceWinston(order, state.denomination).toString())} AR${
-		state.totalSupply === '1' && state.denomination === 0 ? '' : ` / ${state.ticker || 'token'}`
+		state.totalSupply === '1' && state.denomination === 0 ? '' : ` / ${formatTickerLabel(state.ticker, 'token')}`
 	}`;
 }
 function homeListingShell(result: ResolvedAsset): HomeListingShell | undefined {
@@ -10600,9 +10756,10 @@ function homeListingShell(result: ResolvedAsset): HomeListingShell | undefined {
 export function tokenBalanceLabel(value: string, state: AssetState) {
 	const [whole, fraction] = formatTokenAmount(value, state.denomination).split('.');
 	const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-	return `${fraction ? `${grouped}.${fraction}` : grouped} ${
-		state.ticker || (state.totalSupply === '1' ? 'asset' : 'tokens')
-	}`;
+	return `${fraction ? `${grouped}.${fraction}` : grouped} ${formatTickerLabel(
+		state.ticker,
+		state.totalSupply === '1' ? 'asset' : 'tokens'
+	)}`;
 }
 function short(value: string) {
 	return `${value.slice(0, 6)}…${value.slice(-5)}`;
