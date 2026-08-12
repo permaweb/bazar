@@ -926,8 +926,8 @@ export default function CreateRoute() {
 					{mode === 'asset'
 						? 'Your media, metadata, and one-of-one marketplace process are stored together under one Arweave transaction ID.'
 						: mode === 'collection'
-						? 'Mint a group of one-of-one assets and submit a carrier process pointing to their permanent manifest.'
-						: 'Publish a fungible token process. The whole supply is minted to your connected wallet; dispatch it to holders afterwards.'}
+						? 'Mint a group of atomic one-of-one assets and submit a carrier whose value is their permanent manifest.'
+						: 'Publish one atomic fungible-token process. The whole supply is minted to your connected wallet; dispatch it to holders afterwards.'}
 				</p>
 			</div>
 
@@ -1710,8 +1710,8 @@ export default function CreateRoute() {
 								: mode === 'fungible'
 								? `${
 										logo && !logoTxId
-											? 'Your wallet will request two signatures: one for the logo and one for the token process.'
-											: 'Your wallet will request one signature for the token process transaction.'
+											? 'Your wallet will request two signatures: one for the logo and one for the atomic token process.'
+											: 'Your wallet will request one signature for the atomic token process.'
 								  } The whole supply is minted to your connected wallet; the token becomes readable and dispatchable once the scheduler sequences it (~20 minutes).`
 								: collectionEstimate
 								? `Your wallet will request ${collectionEstimate.transactionCount} signatures: one atomic transaction per asset, then the collection manifest and carrier process.`

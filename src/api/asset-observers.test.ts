@@ -1,9 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { DEFAULT_COMPUTE_GATEWAY, DEFAULT_COMPUTE_GATEWAYS } from 'helpers/config';
 
 import { aoClient } from './ao';
-import { assetObserverNetworkOptions } from './asset-observers';
+import { assetObserverNetworkOptions, observerRelayFetch } from './asset-observers';
 
 function location(overrides: Partial<Location>): Location {
 	return {
@@ -47,6 +47,26 @@ describe('assetObserverNetworkOptions', () => {
 		expect(options['relay-with']).toBe('https://alpha.example');
 		expect(options.fetch).toBeTypeOf('function');
 		expect(options.ao).toBe(aoClient(['https://alpha.example', 'https://charlie.example']));
+	});
+
+	it('fails an observer relay request over without combining relay-specific commitments', async () => {
+		const fetcher = vi.fn(async (input: RequestInfo | URL) =>
+			String(input).startsWith('https://alpha.example/')
+				? new Response('relay unavailable', { status: 502 })
+				: Response.json({ network: 'arweave.N.1', height: 1 })
+		);
+		const relayFetch = observerRelayFetch(
+			['https://alpha.example', 'https://charlie.example'],
+			fetcher as typeof fetch
+		);
+
+		await expect(
+			relayFetch('https://alpha.example/~relay@1.0/call?relay-path=https%3A%2F%2Farweave.net%2Finfo')
+		).resolves.toMatchObject({ status: 200 });
+		expect(fetcher.mock.calls.map(([input]) => String(input))).toEqual([
+			'https://alpha.example/~relay@1.0/call?relay-path=https%3A%2F%2Farweave.net%2Finfo',
+			'https://charlie.example/~relay@1.0/call?relay-path=https%3A%2F%2Farweave.net%2Finfo',
+		]);
 	});
 
 	it('uses the default compute gateway when no relay is selected', () => {

@@ -4,7 +4,7 @@ import { NAMES_NAMESPACE_ID } from 'helpers/config';
 
 import { parseAssetState } from './asset-marketplace';
 import {
-	carrierManifestReference,
+	carrierManifestId,
 	type Collection,
 	collectionAsset,
 	discoverBazarCollections,
@@ -54,7 +54,6 @@ describe('collection index loading', () => {
 							node: {
 								id,
 								tags: [
-									{ name: 'app-name', value: 'Bazar' },
 									{ name: 'device', value: 'process@1.0' },
 									{ name: 'execution-device', value: 'token@1.0' },
 									{ name: 'swap-device', value: 'arweave-swap@1.0' },
@@ -65,7 +64,8 @@ describe('collection index loading', () => {
 									{ name: 'denomination', value: '0' },
 									{ name: 'ticker', value: 'ASSET' },
 									{ name: 'name', value: `Color ${ids.indexOf(id) + 1}` },
-									{ name: 'asset-content-type', value: 'image/png' },
+									{ name: 'hint-ui-style', value: 'non-fungible' },
+									{ name: 'content-type', value: 'image/png' },
 								],
 							},
 						})),
@@ -93,7 +93,8 @@ describe('collection index loading', () => {
 			id: string,
 			manifestId: string,
 			height: number,
-			tags: Array<{ name: string; value: string }>
+			tags: Array<{ name: string; value: string }>,
+			manifestTag = 'initial-value'
 		) => ({
 			cursor: `${id.slice(0, 1)}-cursor`,
 			node: {
@@ -103,7 +104,7 @@ describe('collection index loading', () => {
 					{ name: 'device', value: 'process@1.0' },
 					{ name: 'execution-device', value: 'carrier@1.0' },
 					{ name: 'type', value: 'Process' },
-					{ name: 'reference-value', value: manifestId },
+					{ name: manifestTag, value: manifestId },
 					...tags,
 				],
 			},
@@ -136,7 +137,7 @@ describe('collection index loading', () => {
 						denomination: 0,
 						balances: { ['O'.repeat(43)]: '1' },
 						orders: {},
-						value: { target: currentManifest },
+						value: currentManifest,
 						'at-slot': 1,
 					},
 					{ headers: { 'codec-device': 'json@1.0' } }
@@ -157,7 +158,7 @@ describe('collection index loading', () => {
 				createdHeight,
 				indexSource,
 			}))
-		).toEqual([{ id: currentId, name: 'Current', createdHeight: 20, indexSource: 'reference' }]);
+		).toEqual([{ id: currentId, name: 'Current', createdHeight: 20, indexSource: 'carrier' }]);
 		expect(progress).toEqual([currentId]);
 		const discoveryBody = fetcher.mock.calls.find(
 			([, init]) => typeof init?.body === 'string' && init.body.includes('BazarCollections')
@@ -211,9 +212,9 @@ describe('collection index loading', () => {
 
 	it('reads the current manifest from a carrier value', () => {
 		const manifestId = 'M'.repeat(43);
-		expect(carrierManifestReference({ value: { target: manifestId } })).toBe(manifestId);
-		expect(carrierManifestReference({ value: manifestId })).toBe(manifestId);
-		expect(carrierManifestReference({ value: { target: 'invalid' } })).toBeUndefined();
+		expect(carrierManifestId({ value: manifestId })).toBe(manifestId);
+		expect(carrierManifestId({ value: { target: manifestId } })).toBe(manifestId);
+		expect(carrierManifestId({ value: { target: 'invalid' } })).toBeUndefined();
 	});
 	it('indexes each immutable collection snapshot once for repeated exact lookups', () => {
 		const indexedAssets = Array.from({ length: 1_000 }, (_, index) => ({
@@ -272,7 +273,7 @@ describe('collection index loading', () => {
 		const state = parseAssetState({
 			device: 'process@1.0',
 			'execution-device': 'token@1.0',
-			'asset-type': 'fungible',
+			'hint-ui-style': 'fungible',
 			'swap-device': 'arweave-swap@1.0',
 			'scheduler-device': 'arweave-scheduler@1.0',
 			'scheduler-mode': 'all',

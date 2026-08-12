@@ -244,6 +244,7 @@ import {
 } from './purchase-observation-retry';
 import {
 	loadArweaveTransactionSync,
+	loadAssetObserverRuntime,
 	loadAtomicTransactionRuntime,
 	preloadArweaveTransactionSync,
 	preloadAtomicTransactionRuntime,
@@ -1307,39 +1308,31 @@ export function useOperationActivity() {
 	return value;
 }
 
-const UPLOAD_STATUS_OBSERVER: ObserverView['observer'] = {
-	url: 'bazar://upload-status',
-	label: 'Upload status',
-	source: 'local',
-	failures: 0,
-};
+export type UploadObserverState = Record<string, { views: ObserverView[]; consensus?: Consensus }>;
 
-function uploadActivitySyncSteps(activity: UploadActivity, relatedMintActivities: MintActivity[]): ArweaveSyncStep[] {
-	return activity.transactions.map((transaction, index) => {
+export function uploadActivitySyncSteps(
+	activity: UploadActivity,
+	relatedMintActivities: MintActivity[],
+	observerState: UploadObserverState = {}
+): ArweaveSyncStep[] {
+	return activity.transactions.map((transaction) => {
 		const mintActivity = relatedMintActivities.find((candidate) =>
 			candidate.transactionIds.includes(transaction.id)
 		);
 		const phase = mintActivity?.phase;
 		const confirmed = phase === 'mined' || phase === 'applied' || phase === 'complete';
-		const phaseRank = phase
-			? ['accepted', 'mined', 'applied', 'complete'].indexOf(phase) + 1
-			: activity.phase === 'error'
-			? 5
-			: 0;
-		const observedAt = activity.createdAt + phaseRank * 1_000 + index;
-		const view: ObserverView = {
-			observer: UPLOAD_STATUS_OBSERVER,
-			state: activity.phase === 'error' ? 'not-found' : confirmed ? 'confirmed' : 'pending',
-			confirmations: confirmed ? 1 : 0,
-			updatedAt: observedAt,
-			changedAt: observedAt,
-		};
+		const observed = observerState[transaction.id];
+		const confirmations = observed?.consensus?.confirmations ?? (confirmed ? 1 : 0);
 		return {
 			key: transaction.id,
 			label: transaction.label,
 			target: 1,
-			confirmations: view.confirmations,
-			transaction: { id: transaction.id, views: [view] },
+			confirmations,
+			transaction: {
+				id: transaction.id,
+				views: observed?.views ?? [],
+				...(observed?.consensus ? { consensus: observed.consensus } : {}),
+			},
 			hasError: activity.phase === 'error',
 		};
 	});
@@ -1360,6 +1353,7 @@ function UploadActivityPanel({
 }) {
 	const navigate = useNavigate();
 	const [hiding, setHiding] = React.useState(false);
+	const [observerState, setObserverState] = React.useState<UploadObserverState>({});
 	const hideTimerRef = React.useRef<number | null>(null);
 	const titleId = React.useId();
 	const working = activity.phase === 'working' || activity.phase === 'tracking';
@@ -1368,7 +1362,7 @@ function UploadActivityPanel({
 		relatedMintActivities[relatedMintActivities.length - 1];
 	const displayedStatus =
 		activity.phase === 'tracking' ? primaryMintActivity?.status ?? activity.status : activity.status;
-	const syncSteps = uploadActivitySyncSteps(activity, relatedMintActivities);
+	const syncSteps = uploadActivitySyncSteps(activity, relatedMintActivities, observerState);
 	const activeSyncStep =
 		[...syncSteps].reverse().find((step) => (step.confirmations ?? 0) < step.target) ??
 		syncSteps[syncSteps.length - 1];
@@ -1402,6 +1396,51 @@ function UploadActivityPanel({
 	React.useEffect(() => {
 		if (visible) setHiding(false);
 	}, [visible]);
+	React.useEffect(() => {
+		if (!visible || !working || !activity.transactions.length) return;
+		let cancelled = false;
+		let lease: AssetObserverNetworkLease | undefined;
+		const watchers: Array<{ stop(): void }> = [];
+		const unsubscribe: Array<() => void> = [];
+		const observe = async () => {
+			const runtime = await loadAssetObserverRuntime();
+			if (cancelled) return;
+			lease = runtime.acquireAssetObserverNetwork();
+			await lease.ready;
+			if (cancelled) return;
+			for (const transaction of activity.transactions) {
+				const watcher = lease.network.watch(transaction.id, {
+					target: 1,
+					minObservers: 3,
+					propagation: 'all',
+					notFoundTimeout: 180_000,
+				});
+				const publish = (consensus = watcher.consensus()) => {
+					if (cancelled) return;
+					setObserverState((current) => ({
+						...current,
+						[transaction.id]: { views: watcher.views(), consensus },
+					}));
+				};
+				unsubscribe.push(
+					watcher.on('view', () => publish()),
+					watcher.on('consensus', publish)
+				);
+				watchers.push(watcher);
+				watcher.start();
+			}
+		};
+		void observe().catch(() => {
+			lease?.release();
+			lease = undefined;
+		});
+		return () => {
+			cancelled = true;
+			for (const off of unsubscribe) off();
+			for (const watcher of watchers) watcher.stop();
+			lease?.release();
+		};
+	}, [activity.transactions, visible, working]);
 	React.useEffect(
 		() => () => {
 			if (hideTimerRef.current !== null) window.clearTimeout(hideTimerRef.current);

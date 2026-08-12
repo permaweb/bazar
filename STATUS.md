@@ -919,8 +919,9 @@ AO-Connect push path, or application backend.
     Collection browsing must page/search this index and compute only viewed
     details or live offer candidates; eagerly computing every name is forbidden.
 -   Image collections are `process@1.0` messages executed by `carrier@1.0` whose
-    scalar `reference-value` points at an immutable JSON manifest containing the
-    collection asset IDs.
+    scalar value is the immutable JSON manifest containing the collection asset
+    IDs. New carriers initialize directly from that manifest ID; they do not add
+    an intermediate `reference@1.0` process.
 
 ## Final mission progress
 

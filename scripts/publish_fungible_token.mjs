@@ -34,8 +34,6 @@ const transaction = await arweave.createTransaction(
 );
 for (const [name, value] of Object.entries({
 	'Content-Type': 'application/json',
-	'App-Name': 'Bazar',
-	'App-Version': '2.0.0',
 	device: 'process@1.0',
 	type: 'Process',
 	'execution-device': 'token@1.0',
@@ -48,8 +46,7 @@ for (const [name, value] of Object.entries({
 	ticker: 'WEAVE',
 	name: '[TEST] Weave Credit',
 	description: 'One million 12-decimal test units for exercising Bazar’s Arweave-native fungible market.',
-	collection: '[TEST] Bazar Fungible Tokens',
-	'asset-type': 'fungible',
+	'hint-ui-style': 'fungible',
 })) {
 	transaction.addTag(name, value);
 }
