@@ -1,6 +1,8 @@
 import React from 'react';
 import { ImageOff } from 'lucide-react';
 
+import { arweaveDataFallbackUrls } from 'helpers/config';
+
 type Props = Omit<React.ImgHTMLAttributes<HTMLImageElement>, 'onError' | 'onLoad'> & {
 	src: string;
 	fallback?: React.ReactNode;
@@ -17,8 +19,13 @@ export function ArtworkImage({
 	...props
 }: Props) {
 	const [status, setStatus] = React.useState<'loading' | 'loaded' | 'error'>('loading');
+	const [sourceIndex, setSourceIndex] = React.useState(0);
+	const sources = React.useMemo(() => arweaveDataFallbackUrls(src), [src]);
 
-	React.useEffect(() => setStatus('loading'), [src]);
+	React.useEffect(() => {
+		setSourceIndex(0);
+		setStatus('loading');
+	}, [src]);
 
 	if (status === 'error') {
 		if (fallback) return <>{fallback}</>;
@@ -43,8 +50,13 @@ export function ArtworkImage({
 			className={`artwork-image is-${status}${className ? ` ${className}` : ''}`}
 			decoding={decoding}
 			loading={loading}
-			src={src}
-			onError={() => setStatus('error')}
+			src={sources[sourceIndex]}
+			onError={() => {
+				if (sourceIndex + 1 < sources.length) {
+					setSourceIndex(sourceIndex + 1);
+					setStatus('loading');
+				} else setStatus('error');
+			}}
 			onLoad={(event) => {
 				const image = event.currentTarget;
 				void image

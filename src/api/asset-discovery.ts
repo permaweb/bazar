@@ -1664,8 +1664,21 @@ function supportedAsset(
 	if (indexedCollection) {
 		if (computed.state.device !== 'token@1.0') return null;
 		const asset = collectionAsset(indexedCollection, activity.processId, computed.state);
+		const liveAtomicAsset = bazarAtomicAssetFromState(activity.processId, computed.state, computed.provider)?.asset;
 		return asset
-			? { asset, collection: indexedCollection, state: computed.state, provider: computed.provider, activity }
+			? {
+					asset: liveAtomicAsset
+						? {
+								...asset,
+								...(liveAtomicAsset.image ? { image: liveAtomicAsset.image } : {}),
+								...(liveAtomicAsset.media ? { media: liveAtomicAsset.media } : {}),
+						  }
+						: asset,
+					collection: indexedCollection,
+					state: computed.state,
+					provider: computed.provider,
+					activity,
+			  }
 			: null;
 	}
 	const tokenCollection = collections.find((collection) => collection.kind === 'tokens');
@@ -1682,7 +1695,7 @@ function supportedAsset(
 		};
 	}
 
-	const atomicAsset = bazarAtomicAssetFromState(activity.processId, computed.state);
+	const atomicAsset = bazarAtomicAssetFromState(activity.processId, computed.state, computed.provider);
 	if (atomicAsset) {
 		return { ...atomicAsset, state: computed.state, provider: computed.provider, activity };
 	}
@@ -1697,7 +1710,8 @@ function supportedAsset(
 
 export function bazarAtomicAssetFromState(
 	processId: string,
-	state: AssetState
+	state: AssetState,
+	provider?: string
 ): { asset: AssetSummary; collection: Collection } | null {
 	if (
 		state.device !== 'token@1.0' ||
@@ -1712,7 +1726,7 @@ export function bazarAtomicAssetFromState(
 	) {
 		return null;
 	}
-	const asset = assetFromMintState(processId, state.raw);
+	const asset = assetFromMintState(processId, state.raw, '', provider);
 	if (!asset) return null;
 	const name = String(state.raw.collection ?? '').trim() || CREATED_COLLECTION_NAME;
 	return {

@@ -110,7 +110,7 @@ describe('Bazar atomic asset search', () => {
 				id: processId,
 				name: 'AntiqueWhite',
 				contentType: 'image/png',
-				image: `https://arweave.net/raw/${processId}`,
+				image: `https://arweave.net/${processId}`,
 			},
 			collection: { id: 'created-assets', name: 'HTML Colors', kind: 'images' },
 		});
@@ -183,7 +183,7 @@ describe('Bazar atomic asset search', () => {
 				id: processId,
 				name: 'lucifer shrek',
 				contentType: 'image/webp',
-				image: `https://arweave.net/raw/${processId}`,
+				image: `https://arweave.net/${processId}`,
 			},
 			collection: { id: 'created-assets', name: 'Created on Bazar' },
 		});
@@ -2206,11 +2206,22 @@ describe('live candidate resolution', () => {
 				id: processId,
 				name: 'Portable asset',
 				contentType: 'audio/mpeg',
-				media: `https://arweave.net/raw/${mediaId}`,
-				image: `https://arweave.net/raw/${artworkId}`,
+				media: `https://arweave.net/${mediaId}`,
+				image: `https://arweave.net/${artworkId}`,
 			},
 			collection: { id: 'created-assets', name: 'Portable collection' },
 		});
+		const embeddedImage = bazarAtomicAssetFromState(
+			processId,
+			parseAssetState({
+				...state.raw,
+				'asset-content-type': 'image/png',
+				'asset-data': undefined,
+				'asset-artwork': undefined,
+			}),
+			'https://charlie.example'
+		);
+		expect(embeddedImage?.asset.image).toBe(`https://charlie.example/${processId}`);
 		await expect(
 			resolveAssetCandidates(verification.supported, [tokenCollection], {
 				read: async () => ({ provider: 'https://compute.example', state }),

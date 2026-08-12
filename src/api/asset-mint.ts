@@ -6,12 +6,7 @@ import {
 	normalizeAssetContentType,
 } from 'helpers/asset-media';
 import { mapConcurrent } from 'helpers/concurrency';
-import {
-	arweaveClientConfig,
-	arweaveGatewayFromLocation,
-	arweaveRawDataUrl,
-	gatewayFromLocation,
-} from 'helpers/config';
+import { arweaveClientConfig, arweaveDataUrl, arweaveGatewayFromLocation, gatewayFromLocation } from 'helpers/config';
 
 import { type AssetSummary, FUNGIBLE_TOKEN_COLLECTION_ID, FUNGIBLE_TOKEN_COLLECTION_NAME } from './collections';
 import { acceptedMintActivity, mintActivityId, removeMintActivities, upsertMintActivity } from './mint-activity';
@@ -306,7 +301,7 @@ export class AssetMintClient {
 		assertAddress(owner, 'invalid-mint-owner');
 		if (draft.owner !== owner) throw new Error('mint-draft-wallet-mismatch');
 		await this.#assertActiveSigner(owner);
-		const response = await this.#fetch(arweaveRawDataUrl(draft.mediaId, this.#gateway), { signal: options.signal });
+		const response = await this.#fetch(arweaveDataUrl(draft.mediaId, this.#gateway), { signal: options.signal });
 		if (!response.ok) throw new Error(`mint-media-unavailable-${response.status}`);
 		const data = new Uint8Array(await response.arrayBuffer());
 		const maxBytes = isAudioContentType(draft.contentType) ? MAX_AUDIO_BYTES : MAX_IMAGE_BYTES;
@@ -361,10 +356,10 @@ export class AssetMintClient {
 			...(input.duration ? { duration: input.duration } : {}),
 			...(isAudioContentType(input.contentType)
 				? {
-						media: arweaveRawDataUrl(signedProcess.id, this.#gateway),
-						...(input.artworkId ? { image: arweaveRawDataUrl(input.artworkId, this.#gateway) } : {}),
+						media: arweaveDataUrl(signedProcess.id, this.#computeGateway),
+						...(input.artworkId ? { image: arweaveDataUrl(input.artworkId, this.#gateway) } : {}),
 				  }
-				: { image: arweaveRawDataUrl(signedProcess.id, this.#gateway) }),
+				: { image: arweaveDataUrl(signedProcess.id, this.#computeGateway) }),
 			mediaId: signedProcess.id,
 			...(input.artworkId ? { artworkId: input.artworkId } : {}),
 			owner,
@@ -468,7 +463,7 @@ export class AssetMintClient {
 				ticker: input.ticker,
 				contentType: 'application/x.arweave-token',
 				description: input.description?.trim() ?? '',
-				...(logoId ? { image: arweaveRawDataUrl(logoId, this.#gateway) } : {}),
+				...(logoId ? { image: arweaveDataUrl(logoId, this.#gateway) } : {}),
 				mediaId: processId,
 				owner,
 				createdAt,
@@ -630,7 +625,7 @@ export class CollectionMintClient {
 			id: placeholder,
 			name: fileAssetName(file, index),
 			contentType: requiredFileContentType(file),
-			image: arweaveRawDataUrl(placeholder, this.#gateway),
+			image: arweaveDataUrl(placeholder, this.#gateway),
 			mediaId: placeholder,
 		}));
 		const manifest = collectionManifest(input, assets);

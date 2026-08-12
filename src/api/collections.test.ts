@@ -42,7 +42,7 @@ describe('collection index loading', () => {
 			assets: ids.map((id) => ({
 				id,
 				name: `${id.slice(0, 7)}…${id.slice(-6)}`,
-				image: `https://arweave.net/raw/${id}`,
+				image: `https://arweave.net/${id}`,
 			})),
 		};
 		const fetcher = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
@@ -78,7 +78,7 @@ describe('collection index loading', () => {
 
 		expect(enriched.assets[0].name).toBe('Color 1');
 		expect(enriched.assets[100].name).toBe('Color 101');
-		expect(enriched.assets[0].image).toBe(`https://arweave.net/raw/${ids[0]}`);
+		expect(enriched.assets[0].image).toBe(`https://arweave.net/${ids[0]}`);
 		expect(fetcher).toHaveBeenCalledTimes(12);
 		expect(fetcher.mock.calls.map(([, init]) => JSON.parse(String(init?.body)).variables.ids.length)).toEqual([
 			9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 2,
@@ -133,15 +133,18 @@ describe('collection index loading', () => {
 				});
 			}
 			if (String(input).includes(currentId) && String(input).includes('/compute')) {
-				return Response.json({
-					'execution-device': 'carrier@1.0',
-					'total-supply': '1',
-					denomination: 0,
-					balances: { ['O'.repeat(43)]: '1' },
-					orders: {},
-					value: { target: currentManifest },
-					'at-slot': 1,
-				});
+				return Response.json(
+					{
+						'execution-device': 'carrier@1.0',
+						'total-supply': '1',
+						denomination: 0,
+						balances: { ['O'.repeat(43)]: '1' },
+						orders: {},
+						value: { target: currentManifest },
+						'at-slot': 1,
+					},
+					{ headers: { 'codec-device': 'json@1.0' } }
+				);
 			}
 			if (String(input).includes(`/tx/${currentManifest}/data`)) return new Response(encodeManifest('Current'));
 			if (String(input).includes(`/tx/${legacyManifest}/data`)) return new Response(encodeManifest('Legacy'));
@@ -294,7 +297,7 @@ describe('collection index loading', () => {
 			name: 'Unloaded Token',
 			ticker: 'NEW',
 			contentType: 'application/x.arweave-token',
-			image: `https://arweave.net/raw/${logoId}`,
+			image: `https://arweave.net/${logoId}`,
 		});
 		expect(
 			collectionAsset(tokens, processId, {

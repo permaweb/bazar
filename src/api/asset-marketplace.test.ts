@@ -38,6 +38,21 @@ function assignment(slot: number, transactionId: string) {
 	};
 }
 
+function jsonResponse(value: unknown, init: ResponseInit = {}): Response {
+	const headers = new Headers(init.headers);
+	headers.set('content-type', 'application/json');
+	headers.set('codec-device', 'json@1.0');
+	return new Response(typeof value === 'string' ? value : JSON.stringify(value), { ...init, headers });
+}
+
+function httpsigHeaderName(name: string): string {
+	return [...name]
+		.map((character) =>
+			/[A-Z]/.test(character) ? `%${character.charCodeAt(0).toString(16).toUpperCase()}` : character
+		)
+		.join('');
+}
+
 describe('servingNodeOrigin', () => {
 	it('uses the default compute gateway unless an explicit node is selected', () => {
 		expect(servingNodeOrigin({ protocol: 'http:', hostname: '127.0.0.1', port: '3000' })).toBe(
@@ -136,16 +151,13 @@ describe('asset state', () => {
 			maxAge: 0,
 			fetch: async (input) => {
 				requested = String(input);
-				return new Response(responseBody, {
-					status: 200,
-					headers: { 'content-type': 'application/json' },
-				});
+				return jsonResponse(responseBody);
 			},
 		});
 		const { state } = result;
 		expect(state.totalSupply).toBe('1000000000000000000');
 		expect(state.balances[owner]).toBe('999997000000000001');
-		expect(requested).toContain('/now/remove~message@1.0&item=data?require-codec=');
+		expect(requested).toContain('/now');
 		expect(result.maxAge).toBe(0);
 		expect(result.verifiedAt).toBeGreaterThan(0);
 	});
@@ -160,12 +172,12 @@ describe('asset state', () => {
 				const url = String(input);
 				requests.push({ url, headers: new Headers(init?.headers) });
 				if (url.includes(balancesLink)) {
-					return new Response(`{"${owner}":999997000000000001,"status":200}`);
+					return jsonResponse(`{"${owner}":999997000000000001,"status":200}`);
 				}
 				if (url.includes(ordersLink)) {
-					return Response.json({ [orderId]: order(orderId), status: 200 });
+					return jsonResponse({ [orderId]: order(orderId), status: 200 });
 				}
-				return Response.json({
+				return jsonResponse({
 					'execution-device': 'token@1.0',
 					'total-supply': '1000000000000000000',
 					'balances+link': balancesLink,
@@ -181,11 +193,128 @@ describe('asset state', () => {
 			'orders+link': ordersLink,
 		});
 		expect(requests).toHaveLength(3);
-		expect(requests[0].url).toContain('/remove~message@1.0&item=data?');
-		expect(requests[0].headers.get('accept-bundle')).toBe('false');
+		expect(requests[0].url).toContain('/compute&max-age=60');
+		expect(requests.every(({ headers }) => [...headers].length === 0)).toBe(true);
 		expect(requests.slice(1).every(({ headers }) => headers.get('accept-bundle') === null)).toBe(true);
 		expect(requests.slice(1).every(({ headers }) => headers.get('require-codec') === null)).toBe(true);
 		expect(requests.slice(1).every(({ headers }) => headers.get('cache-control') === null)).toBe(true);
+	});
+
+	it('reads ordinary HTTPSig headers and walks a 1,000-owner linked trie without codec parameters', async () => {
+		const rootId = 'R'.repeat(43);
+		const prefixes = 'abcdefghij';
+		const childIds = new Map([...prefixes].map((prefix, index) => [prefix, String(index).repeat(43)]));
+		const requests: Array<{ url: string; init: RequestInit }> = [];
+		const expected = Object.fromEntries(
+			[...prefixes].flatMap((prefix) =>
+				Array.from({ length: 100 }, (_, index) => [`${prefix}${index.toString(36).padStart(42, '0')}`, '1'])
+			)
+		);
+
+		const result = await readAssetState(processId, {
+			provider: 'https://compute.example',
+			fetch: async (input, init = {}) => {
+				const url = String(input);
+				requests.push({ url, init });
+				if (url.endsWith(rootId)) {
+					return new Response(null, {
+						headers: Object.fromEntries([
+							['device', 'trie@1.0'],
+							...[...childIds].map(([prefix, id]) => [`${prefix}+link`, id]),
+						]),
+					});
+				}
+				const child = [...childIds].find(([, id]) => url.endsWith(id));
+				if (child) {
+					const [prefix] = child;
+					return new Response(null, {
+						headers: Object.fromEntries(
+							Object.keys(expected)
+								.filter((address) => address.startsWith(prefix))
+								.map((address) => [address.slice(1), '1'])
+						),
+					});
+				}
+				return new Response(null, {
+					headers: {
+						'ao-body-key': 'data',
+						'balances+link': rootId,
+						device: 'process@1.0',
+						'execution-device': 'token@1.0',
+						'total-supply': '1000',
+					},
+				});
+			},
+		});
+
+		expect(result.state.balances).toEqual(expected);
+		expect(Object.keys(result.state.balances)).toHaveLength(1000);
+		expect(requests).toHaveLength(12);
+		expect(requests.every(({ url }) => !url.includes('?'))).toBe(true);
+		expect(requests.every(({ init }) => init.method === 'HEAD')).toBe(true);
+		expect(requests.every(({ init }) => [...new Headers(init.headers)].length === 0)).toBe(true);
+	});
+
+	it('restores escaped mixed-case HTTPSig field names', async () => {
+		const balancesLink = 'B'.repeat(43);
+		const result = await readAssetState(processId, {
+			provider: 'https://compute.example',
+			fetch: async (input) =>
+				String(input).endsWith(balancesLink)
+					? new Response(null, { headers: { [httpsigHeaderName(owner)]: '1' } })
+					: new Response(null, {
+							headers: {
+								'balances+link': balancesLink,
+								'execution-device': 'token@1.0',
+								'total-supply': '1',
+							},
+					  }),
+		});
+
+		expect(result.state.balances).toEqual({ [owner]: '1' });
+	});
+
+	it('reads an order status through the message device when HTTP status shadows its header', async () => {
+		const balancesLink = 'B'.repeat(43);
+		const ordersLink = 'O'.repeat(43);
+		const orderLink = 'L'.repeat(43);
+		const requested: string[] = [];
+		const result = await readAssetState(processId, {
+			provider: 'https://compute.example',
+			fetch: async (input) => {
+				const url = String(input);
+				requested.push(url);
+				if (url.endsWith(`${orderLink}~message@1.0/status`)) return new Response('open');
+				if (url.endsWith(orderLink)) {
+					return new Response(null, {
+						headers: Object.fromEntries(
+							Object.entries({ ...order(orderId), status: '200' }).map(([name, value]) => [
+								name,
+								String(value),
+							])
+						),
+					});
+				}
+				if (url.endsWith(ordersLink)) {
+					return new Response(null, { headers: { [`${orderId.toLowerCase()}+link`]: orderLink } });
+				}
+				if (url.endsWith(balancesLink)) {
+					return new Response(null, { headers: { [httpsigHeaderName(owner)]: '1' } });
+				}
+				return new Response(null, {
+					headers: {
+						'balances+link': balancesLink,
+						'execution-device': 'token@1.0',
+						'orders+link': ordersLink,
+						'total-supply': '1',
+					},
+				});
+			},
+		});
+
+		expect(result.state.orders[orderId]).toMatchObject({ orderId, status: 'open' });
+		expect(requested).toContain(`https://compute.example/${orderLink}~message@1.0/status`);
+		expect(requested.every((url) => !url.includes('require-codec'))).toBe(true);
 	});
 
 	it('pins background observation to the operation compute gateway', async () => {
@@ -195,7 +324,7 @@ describe('asset state', () => {
 			provider: 'https://original-compute.example',
 			fetch: async (input) => {
 				requested = String(input);
-				return Response.json({
+				return jsonResponse({
 					'execution-device': 'token@1.0',
 					'total-supply': '1',
 					balances: { [owner]: '1' },
@@ -208,33 +337,30 @@ describe('asset state', () => {
 		expect(result.provider).toBe('https://original-compute.example');
 	});
 
-	it('preserves the requested freshness when the preferred codec falls back', async () => {
+	it('uses one unqualified HTTPSig HEAD request for current state', async () => {
 		const processId = 'IyFfmbTu8P4rv0KyrA0Q-QtfEnYntMj4RkRiBVip9KA';
 		const requested: string[] = [];
+		const requestOptions: RequestInit[] = [];
 		await readAssetState(processId, {
 			maxAge: 0,
-			fetch: async (input) => {
+			fetch: async (input, init) => {
 				requested.push(String(input));
-				if (requested.length === 1) return new Response('unsupported codec', { status: 415 });
-				return new Response(
-					JSON.stringify({
-						'execution-device': 'token@1.0',
-						'total-supply': '1',
-						balances: { [owner]: '1' },
-						orders: {},
-					}),
-					{ status: 200 }
-				);
+				requestOptions.push(init ?? {});
+				return jsonResponse({
+					'execution-device': 'token@1.0',
+					'total-supply': '1',
+					balances: { [owner]: '1' },
+					orders: {},
+				});
 			},
 		});
 
-		expect(requested).toHaveLength(2);
-		expect(requested[0]).toContain('/now/remove~message@1.0&item=data?require-codec=');
-		expect(requested[1]).toContain('/now/remove~message@1.0&item=data?require-codec=');
-		expect(requested[1]).toContain('require-codec=application%2Fjson');
+		expect(requested).toEqual([`https://arweave.net/${processId}~process@1.0/now`]);
+		expect(requestOptions[0].method).toBe('HEAD');
+		expect([...new Headers(requestOptions[0].headers)]).toEqual([]);
 	});
 
-	it('makes passive max-age reads reusable without allowing stale state', async () => {
+	it('expresses passive freshness in the AO path without request headers', async () => {
 		let requested = '';
 		const requestOptions: RequestInit[] = [];
 		await readAssetState('IyFfmbTu8P4rv0KyrA0Q-QtfEnYntMj4RkRiBVip9KA', {
@@ -242,7 +368,7 @@ describe('asset state', () => {
 			fetch: async (input, init) => {
 				requested = String(input);
 				requestOptions.push(init ?? {});
-				return Response.json({
+				return jsonResponse({
 					'execution-device': 'token@1.0',
 					'total-supply': '1',
 					balances: { [owner]: '1' },
@@ -253,7 +379,8 @@ describe('asset state', () => {
 
 		expect(requested).toContain('compute&max-age=60');
 		expect(requestOptions[0].cache).toBeUndefined();
-		expect(new Headers(requestOptions[0].headers).get('cache-control')).toBe('max-age=60');
+		expect(requestOptions[0].method).toBe('HEAD');
+		expect([...new Headers(requestOptions[0].headers)]).toEqual([]);
 	});
 
 	it('reports the peer that returned the routed process state', async () => {
@@ -269,15 +396,19 @@ describe('asset state', () => {
 		try {
 			const result = await readAssetState('IyFfmbTu8P4rv0KyrA0Q-QtfEnYntMj4RkRiBVip9KA', {
 				maxAge: 60,
-				fetch: async (input) =>
-					String(input).startsWith('https://alpha.example/')
-						? new Response('unavailable', { status: 502 })
-						: Response.json({
-								'execution-device': 'token@1.0',
-								'total-supply': '1',
-								balances: { [owner]: '1' },
-								orders: {},
-						  }),
+				fetch: async (input) => {
+					if (String(input).startsWith('https://alpha.example/')) {
+						return new Response('unavailable', { status: 502 });
+					}
+					const response = jsonResponse({
+						'execution-device': 'token@1.0',
+						'total-supply': '1',
+						balances: { [owner]: '1' },
+						orders: {},
+					});
+					Object.defineProperty(response, 'url', { value: 'https://charlie.example/state' });
+					return response;
+				},
 			});
 
 			expect(result.provider).toBe('https://charlie.example');
@@ -286,24 +417,18 @@ describe('asset state', () => {
 		}
 	});
 
-	it('evicts and retries a malformed cached process response', async () => {
+	it('rejects malformed HTTPSig headers without a codec fallback', async () => {
 		let requests = 0;
-		const result = await readAssetState('IyFfmbTu8P4rv0KyrA0Q-QtfEnYntMj4RkRiBVip9KA', {
-			maxAge: 60,
-			fetch: async () => {
-				requests += 1;
-				if (requests === 1) return new Response('not-json');
-				return Response.json({
-					'execution-device': 'token@1.0',
-					'total-supply': '1',
-					balances: { [owner]: '1' },
-					orders: {},
-				});
-			},
-		});
-
-		expect(result.state.balances[owner]).toBe('1');
-		expect(requests).toBe(2);
+		await expect(
+			readAssetState('IyFfmbTu8P4rv0KyrA0Q-QtfEnYntMj4RkRiBVip9KA', {
+				maxAge: 60,
+				fetch: async () => {
+					requests += 1;
+					return new Response(null, { headers: { name: 'incomplete' } });
+				},
+			})
+		).rejects.toThrow('invalid-asset-state');
+		expect(requests).toBe(1);
 	});
 
 	it('bypasses cached process state throughout transaction acceptance polling', async () => {
@@ -314,8 +439,7 @@ describe('asset state', () => {
 			fetch: async (input, init) => {
 				requested.push(String(input));
 				requestOptions.push(init ?? {});
-				if (requested.length === 1) return new Response('unsupported codec', { status: 415 });
-				return Response.json({
+				return jsonResponse({
 					'execution-device': 'token@1.0',
 					'total-supply': '1',
 					balances: { [owner]: '1' },
@@ -324,20 +448,21 @@ describe('asset state', () => {
 			},
 		});
 
-		expect(requested).toHaveLength(2);
-		expect(requested.every((url) => url.includes('/now/remove~message@1.0&item=data?require-codec='))).toBe(true);
-		expect(requestOptions.every((options) => options.cache === 'reload')).toBe(true);
+		expect(requested).toEqual([`https://arweave.net/${processId}~process@1.0/now`]);
+		expect(requestOptions.every((options) => options.cache === undefined)).toBe(true);
+		expect(requestOptions.every((options) => options.method === 'HEAD')).toBe(true);
+		expect(requestOptions.every((options) => [...new Headers(options.headers)].length === 0)).toBe(true);
 		expect(result.maxAge).toBe(0);
 	});
 
-	it('allows zero-age stale state while its live replacement revalidates', async () => {
+	it('does not send browser cache policy to the HyperBEAM node', async () => {
 		const requestOptions: RequestInit[] = [];
 		await readAssetState('IyFfmbTu8P4rv0KyrA0Q-QtfEnYntMj4RkRiBVip9KA', {
 			maxAge: 0,
 			staleWhileRevalidate: 86_400,
 			fetch: async (_input, init) => {
 				requestOptions.push(init ?? {});
-				return Response.json({
+				return jsonResponse({
 					'execution-device': 'token@1.0',
 					'total-supply': '1',
 					balances: { [owner]: '1' },
@@ -347,9 +472,8 @@ describe('asset state', () => {
 		});
 
 		expect(requestOptions[0].cache).toBeUndefined();
-		expect(new Headers(requestOptions[0].headers).get('cache-control')).toBe(
-			'max-age=0, stale-while-revalidate=86400'
-		);
+		expect(requestOptions[0].method).toBe('HEAD');
+		expect([...new Headers(requestOptions[0].headers)]).toEqual([]);
 	});
 
 	it('reads one exact historical state and rejects a mismatched slot', async () => {
@@ -359,24 +483,23 @@ describe('asset state', () => {
 		const fetcher = async (input: RequestInfo | URL, init?: RequestInit) => {
 			requested.push(String(input));
 			requestOptions.push(init ?? {});
-			return new Response(
-				JSON.stringify({
-					'execution-device': 'token@1.0',
-					'at-slot': 18,
-					'total-supply': '1',
-					balances: { [owner]: '1' },
-					orders: {},
-				})
-			);
+			return jsonResponse({
+				'execution-device': 'token@1.0',
+				'at-slot': 18,
+				'total-supply': '1',
+				balances: { [owner]: '1' },
+				orders: {},
+			});
 		};
 
 		await expect(readAssetStateAtSlot(processId, 18, { fetch: fetcher as typeof fetch })).resolves.toMatchObject({
 			state: { raw: { 'at-slot': 18 } },
 			maxAge: 0,
 		});
-		expect(requested[0]).toContain('compute&slot=18/remove~message@1.0&item=data?require-codec=json%401.0');
-		expect(requestOptions[0].cache).toBe('no-store');
-		expect(new Headers(requestOptions[0].headers).get('cache-control')).toBe('max-age=0');
+		expect(requested[0]).toContain('compute&slot=18');
+		expect(requestOptions[0].cache).toBeUndefined();
+		expect(requestOptions[0].method).toBe('HEAD');
+		expect([...new Headers(requestOptions[0].headers)]).toEqual([]);
 		await readAssetStateAtSlot(processId, 18, { fetch: fetcher as typeof fetch });
 		expect(requested).toHaveLength(2);
 		await expect(readAssetStateAtSlot(processId, 17, { fetch: fetcher as typeof fetch })).rejects.toThrow(
@@ -390,7 +513,7 @@ describe('asset state', () => {
 		vi.stubGlobal('caches', memoryCacheStorage());
 		const fetcher = async () => {
 			calls += 1;
-			return Response.json({
+			return jsonResponse({
 				'execution-device': 'token@1.0',
 				'total-supply': '1',
 				balances: { [owner]: balance },
@@ -412,42 +535,24 @@ describe('asset state', () => {
 		}
 	});
 
-	it('repairs a malformed stale revalidation before publishing it', async () => {
-		let now = 1_000;
-		vi.spyOn(Date, 'now').mockImplementation(() => now);
-		vi.stubGlobal('caches', memoryCacheStorage());
+	it('does not persist HEAD state responses in the browser body cache', async () => {
 		let calls = 0;
 		const fetcher = async () => {
 			calls += 1;
-			if (calls === 2) return new Response('not-json');
-			return Response.json({
+			return jsonResponse({
 				'execution-device': 'token@1.0',
 				'total-supply': '1',
-				balances: { [owner]: calls === 1 ? '1' : '2' },
+				balances: { [owner]: String(calls) },
 				orders: {},
 			});
 		};
-		try {
-			await readAssetState(processId, {
-				fetch: fetcher as typeof fetch,
-				maxAge: 0,
-				staleWhileRevalidate: 60,
-			});
-			now += 1_000;
-			const stale = await readAssetState(processId, {
-				fetch: fetcher as typeof fetch,
-				maxAge: 0,
-				staleWhileRevalidate: 60,
-			});
-			const fresh = await stale.revalidation;
+		const first = await readAssetState(processId, { fetch: fetcher as typeof fetch, maxAge: 30 });
+		const second = await readAssetState(processId, { fetch: fetcher as typeof fetch, maxAge: 30 });
 
-			expect(stale.state.balances[owner]).toBe('1');
-			expect(fresh?.state.balances[owner]).toBe('2');
-			expect(calls).toBe(3);
-		} finally {
-			vi.restoreAllMocks();
-			vi.unstubAllGlobals();
-		}
+		expect(first.state.balances[owner]).toBe('1');
+		expect(second.state.balances[owner]).toBe('2');
+		expect(second.revalidation).toBeUndefined();
+		expect(calls).toBe(2);
 	});
 
 	it('reads a complete schedule window and extracts exact signed transaction IDs', async () => {
@@ -480,14 +585,14 @@ describe('asset state', () => {
 		).rejects.toThrow('incomplete-process-schedule');
 	});
 
-	it('retries a rate limit without multiplying it across codec fallbacks', async () => {
+	it('retries a rate limit without multiplying the plain state request', async () => {
 		const requested: string[] = [];
 		const fetcher = vi.fn(async (input: RequestInfo | URL) => {
 			requested.push(String(input));
 			if (requested.length === 1) {
 				return new Response('rate limited', { status: 429, headers: { 'retry-after': '0' } });
 			}
-			return Response.json({
+			return jsonResponse({
 				'execution-device': 'token@1.0',
 				'total-supply': '1',
 				balances: { [owner]: '1' },

@@ -509,24 +509,7 @@ async function readState(
 			while (true) {
 				let response: Response | undefined;
 				const requestInit: RequestInit = {
-					...(strictCurrent
-						? { cache: 'reload' as const }
-						: options.slot !== undefined && maxAge === 0
-						? { cache: 'no-store' as const }
-						: {}),
-					...(!retryInvalidCachedResponse ? { cache: 'reload' as const } : {}),
-					headers: {
-						accept: 'application/json',
-						'require-codec': 'application/json',
-						'accept-bundle': 'false',
-						'cache-control':
-							options.staleWhileRevalidate === undefined
-								? `max-age=${maxAge}`
-								: `max-age=${maxAge}, stale-while-revalidate=${Math.max(
-										0,
-										Math.floor(options.staleWhileRevalidate)
-								  )}`,
-					},
+					method: 'HEAD',
 					signal: options.signal,
 				};
 				const invalidate = (
@@ -554,7 +537,7 @@ async function readState(
 					const cached = cacheMetadata(response);
 					return {
 						state,
-						provider: cached?.origin ?? servingNode,
+						provider: responseProvider(response, cached?.origin ?? servingNode),
 						...(cached ? { cacheStatus: cached.status, cacheAge: cached.age } : {}),
 						...(cached?.revalidation
 							? {
@@ -588,11 +571,7 @@ async function readState(
 }
 
 function statePaths(base: string, processId: string, endpoint: string): string[] {
-	const projected = `${endpoint}/remove~message@1.0&item=data`;
-	return [
-		`${base}${processId}~process@1.0/${projected}?require-codec=json%401.0&accept-bundle=false`,
-		`${base}${processId}~process@1.0/${projected}?require-codec=application%2Fjson&accept-bundle=false`,
-	];
+	return [`${base}${processId}~process@1.0/${endpoint}`];
 }
 
 async function parseStateResponse(
@@ -601,7 +580,7 @@ async function parseStateResponse(
 	requestInit: RequestInit,
 	fetcher: typeof fetch
 ): Promise<AssetState> {
-	const raw = unwrapState(parseLosslessJson(await response.text()));
+	const raw = await responseMessage(response);
 	const linked = await Promise.all(
 		LINKED_STATE_TABLES.flatMap((key) => {
 			if (isRecord(raw[key])) return [];
@@ -621,24 +600,154 @@ async function readLinkedStateTable(
 	requestInit: RequestInit,
 	fetcher: typeof fetch
 ): Promise<[string, Record<string, unknown>]> {
-	let lastError: unknown;
-	for (const path of [
-		`${base}${id}?require-codec=json%401.0&accept-bundle=true`,
-		`${base}${id}?require-codec=application%2Fjson&accept-bundle=true`,
-	]) {
-		try {
-			const response = await fetcher(path, {
-				headers: { accept: 'application/json' },
-				signal: requestInit.signal,
-			});
-			if (!response.ok) throw new Error(`HTTP ${response.status}`);
-			const table = unwrapState(parseLosslessJson(await response.text()));
-			return [key, Object.fromEntries(Object.entries(table).filter(([entry]) => ADDRESS.test(entry)))];
-		} catch (error) {
-			lastError = error;
+	const messages = new Map<string, Promise<Record<string, unknown>>>();
+	const read = (messageId: string): Promise<Record<string, unknown>> => {
+		if (!ADDRESS.test(messageId)) return Promise.reject(new TypeError('invalid-asset-state-link'));
+		if (messages.size >= 4096 && !messages.has(messageId)) {
+			return Promise.reject(new TypeError('asset-state-link-limit'));
 		}
+		const existing = messages.get(messageId);
+		if (existing) return existing;
+		const pending = fetcher(`${base}${messageId}`, { method: 'HEAD', signal: requestInit.signal }).then(
+			async (response) => {
+				if (!response.ok) throw new Error(`HTTP ${response.status}`);
+				return responseMessage(response);
+			}
+		);
+		messages.set(messageId, pending);
+		return pending;
+	};
+	const readScalar = async (messageId: string, field: string): Promise<string> => {
+		const response = await fetcher(`${base}${messageId}~message@1.0/${field}`, {
+			signal: requestInit.signal,
+		});
+		if (!response.ok) throw new Error(`HTTP ${response.status}`);
+		return response.text();
+	};
+	const root = await read(id);
+	return [
+		key,
+		root.device === 'trie@1.0' ? await flattenLinkedTrie(root, read) : await linkedRecord(root, read, readScalar),
+	];
+}
+
+const HTTPSIG_TRANSPORT_HEADERS = new Set([
+	'accept-ranges',
+	'access-control-allow-headers',
+	'access-control-allow-methods',
+	'access-control-allow-origin',
+	'access-control-expose-headers',
+	'age',
+	'cache-control',
+	'connection',
+	'content-digest',
+	'content-length',
+	'date',
+	'etag',
+	'keep-alive',
+	'location',
+	'server',
+	'signature',
+	'signature-input',
+	'transfer-encoding',
+	'vary',
+	'via',
+]);
+
+const TRIE_RESERVED_KEYS = new Set([
+	'ao-body-key',
+	'ao-types',
+	'commitments',
+	'content-type',
+	'device',
+	'hashpath',
+	'node-value',
+	'priv',
+	'status',
+]);
+
+async function responseMessage(response: Response): Promise<Record<string, unknown>> {
+	if (response.headers.get('codec-device')?.toLowerCase() === 'json@1.0') {
+		return unwrapState(parseLosslessJson(await response.text()));
 	}
-	throw lastError instanceof Error ? lastError : new Error('linked-asset-state-unavailable');
+	const message: Record<string, unknown> = {};
+	response.headers.forEach((value, encodedName) => {
+		const name = decodeHttpsigHeaderName(encodedName);
+		if (!HTTPSIG_TRANSPORT_HEADERS.has(name)) message[name] = value;
+	});
+	return message;
+}
+
+function decodeHttpsigHeaderName(name: string): string {
+	try {
+		return decodeURIComponent(name);
+	} catch {
+		return name;
+	}
+}
+
+async function linkedRecord(
+	message: Record<string, unknown>,
+	read: (id: string) => Promise<Record<string, unknown>>,
+	readScalar: (id: string, field: string) => Promise<string>
+): Promise<Record<string, unknown>> {
+	const entries = await Promise.all(
+		Object.entries(message).flatMap(([name, value]) => {
+			if (ADDRESS.test(name)) return [Promise.resolve<[string, unknown]>([name, value])];
+			if (!name.endsWith('+link') || typeof value !== 'string') return [];
+			const key = name.slice(0, -5);
+			return ADDRESS.test(key) && ADDRESS.test(value)
+				? [
+						read(value).then(async (child): Promise<[string, unknown]> => {
+							const status = child.status;
+							const decoded =
+								typeof child['order-id'] === 'string' && (!status || /^\d{3}$/.test(String(status)))
+									? { ...child, status: await readScalar(value, 'status') }
+									: child;
+							const exactKey =
+								typeof decoded['order-id'] === 'string' && ADDRESS.test(decoded['order-id'])
+									? decoded['order-id']
+									: key;
+							return [exactKey, decoded];
+						}),
+				  ]
+				: [];
+		})
+	);
+	return Object.fromEntries(entries);
+}
+
+async function flattenLinkedTrie(
+	root: Record<string, unknown>,
+	read: (id: string) => Promise<Record<string, unknown>>
+): Promise<Record<string, unknown>> {
+	const balances: Record<string, unknown> = {};
+	const visit = async (
+		node: Record<string, unknown>,
+		prefix: string,
+		ancestors: ReadonlySet<string>
+	): Promise<void> => {
+		const nodeValue = node['node-value'];
+		if (nodeValue !== undefined && ADDRESS.test(prefix)) balances[prefix] = nodeValue;
+		await Promise.all(
+			Object.entries(node).flatMap(([rawName, value]) => {
+				const linked = rawName.endsWith('+link');
+				const edge = linked ? rawName.slice(0, -5) : rawName;
+				if (TRIE_RESERVED_KEYS.has(edge) || !/^[A-Za-z0-9_-]+$/.test(edge)) return [];
+				const owner = `${prefix}${edge}`;
+				if (!linked) {
+					if (ADDRESS.test(owner)) balances[owner] = value;
+					return [];
+				}
+				if (typeof value !== 'string' || !ADDRESS.test(value) || ancestors.has(value)) {
+					throw new TypeError('invalid-asset-state-trie');
+				}
+				return [read(value).then((child) => visit(child, owner, new Set([...ancestors, value])))];
+			})
+		);
+	};
+	await visit(root, '', new Set());
+	return balances;
 }
 
 async function parseRevalidatedState(
@@ -653,7 +762,7 @@ async function parseRevalidatedState(
 		if (!response.ok) throw new Error(`HTTP ${response.status}`);
 		return {
 			state: await parseStateResponse(response, servingNode ? `${servingNode}/` : '/', requestInit, fetcher),
-			provider: cacheMetadata(response)?.origin ?? servingNode,
+			provider: responseProvider(response, cacheMetadata(response)?.origin ?? servingNode),
 		};
 	} catch (error) {
 		const invalidate = (
@@ -665,6 +774,14 @@ async function parseRevalidatedState(
 		await invalidate(path, requestInit).catch(() => undefined);
 		const replacement = await fetcher(path, { ...requestInit, cache: 'reload', signal: undefined });
 		return parseRevalidatedState(replacement, path, requestInit, fetcher, servingNode, false);
+	}
+}
+
+function responseProvider(response: Response, fallback: string): string {
+	try {
+		return response.url ? new URL(response.url).origin : fallback;
+	} catch {
+		return fallback;
 	}
 }
 

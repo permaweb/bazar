@@ -126,7 +126,7 @@ describe('asset mint contract', () => {
 			id: processId,
 			name: 'Signal #1',
 			contentType: 'image/png',
-			image: `https://arweave.net/raw/${processId}`,
+			image: `https://arweave.net/${processId}`,
 		});
 		expect(
 			mintMetadata({ name: ' Signal #1 ', description: ' Permanent ', contentType: 'image/png' }, mediaId)
@@ -181,8 +181,8 @@ describe('asset mint contract', () => {
 			id: processId,
 			name: 'Signal',
 			contentType: 'audio/mpeg',
-			media: `https://arweave.net/raw/${mediaId}`,
-			image: `https://arweave.net/raw/${artworkId}`,
+			media: `https://arweave.net/${mediaId}`,
+			image: `https://arweave.net/${artworkId}`,
 			artist: 'Kite Array',
 			album: 'Long Orbit',
 			duration: 125,
@@ -256,7 +256,7 @@ describe('asset mint contract', () => {
 				name: 'Signal #1',
 				description: 'Permanent',
 				contentType: 'image/png',
-				image: `https://arweave.net/raw/${mediaId}`,
+				image: `https://arweave.net/${mediaId}`,
 				mediaId,
 				owner,
 				createdAt: 1,
@@ -279,7 +279,7 @@ describe('asset mint contract', () => {
 			id: processId,
 			name: 'Signal #1',
 			contentType: 'image/png',
-			image: `https://arweave.net/raw/${mediaId}`,
+			image: `https://arweave.net/${mediaId}`,
 		});
 	});
 
@@ -589,7 +589,7 @@ describe('asset mint contract', () => {
 		const createTransaction = vi.fn(async () => asset);
 		const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
 			const url = String(input);
-			if (url === `https://arweave.net/raw/${mediaId}`) return new Response(new Uint8Array([7, 8, 9]));
+			if (url === `https://arweave.net/${mediaId}`) return new Response(new Uint8Array([7, 8, 9]));
 			if (url.includes('/price/')) return new Response('1');
 			if (url.includes('/wallet/')) return new Response('100');
 			if (init?.method === 'POST') return new Response('', { status: 200 });
@@ -694,9 +694,9 @@ describe('asset mint contract', () => {
 		]);
 		expect(result.asset).toMatchObject({
 			contentType: 'audio/mpeg',
-			media: `https://arweave.net/raw/${processId}`,
+			media: `https://compute.example/${processId}`,
 			mediaId: processId,
-			image: `https://arweave.net/raw/${artworkId}`,
+			image: `https://arweave.net/${artworkId}`,
 			artworkId,
 			artist: 'Kite Array',
 			album: 'Long Orbit',
@@ -824,7 +824,7 @@ describe('asset mint contract', () => {
 			{
 				asset: {
 					contentType: 'application/x.arweave-token',
-					image: `https://arweave.net/raw/${logoId}`,
+					image: `https://arweave.net/${logoId}`,
 					ticker: 'SIG',
 				},
 				transactionIds: [logoId, processId],

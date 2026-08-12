@@ -2,10 +2,11 @@ import { describe, expect, it } from 'vitest';
 
 import {
 	arweaveClientConfig,
+	arweaveDataFallbackUrls,
+	arweaveDataUrl,
 	arweaveGatewayFromLocation,
 	arweaveGatewayOverrideFromLocation,
 	arweaveGraphqlEndpoint,
-	arweaveRawDataUrl,
 	computeGatewayForEnvironment,
 	computeGatewaysForEnvironment,
 	DEFAULT_ARWEAVE_GATEWAY,
@@ -108,7 +109,19 @@ describe('Arweave gateway routing', () => {
 		);
 	});
 
-	it('keeps the Raw fallback suite on the non-redirecting immutable-data route', () => {
-		expect(arweaveRawDataUrl('asset-id', 'https://gateway.example')).toBe('https://gateway.example/raw/asset-id');
+	it('builds an ordinary Arweave resource URL', () => {
+		expect(arweaveDataUrl('asset-id', 'https://gateway.example')).toBe('https://gateway.example/asset-id');
+	});
+
+	it('orders ordinary item URLs across selected compute peers and the Arweave gateway', () => {
+		const id = 'A'.repeat(43);
+		expect(
+			arweaveDataFallbackUrls(
+				`https://alpha.example/${id}`,
+				location({
+					search: `?node=${encodeURIComponent('https://alpha.example,https://charlie.example')}`,
+				})
+			)
+		).toEqual([`https://alpha.example/${id}`, `https://charlie.example/${id}`, `https://bazar.arweave.net/${id}`]);
 	});
 });
