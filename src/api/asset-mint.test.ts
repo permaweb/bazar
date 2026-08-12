@@ -93,7 +93,7 @@ describe('asset mint contract', () => {
 		);
 
 		expect(tags).toMatchObject({
-			'hint-style': 'non-fungible',
+			'hint-ui-style': 'non-fungible',
 			'content-type': 'image/png',
 			creator: owner,
 			description: 'Permanent',
@@ -607,7 +607,7 @@ describe('asset mint contract', () => {
 		expect(asset.addTag).toHaveBeenCalledWith('data-model-training', 'Allowed');
 		expect(asset.addTag).not.toHaveBeenCalledWith('collection', expect.anything());
 		expect(asset.addTag).not.toHaveBeenCalledWith('asset-content-type', expect.anything());
-		expect(asset.addTag).toHaveBeenCalledWith('hint-style', 'non-fungible');
+		expect(asset.addTag).toHaveBeenCalledWith('hint-ui-style', 'non-fungible');
 		expect(asset.addTag).not.toHaveBeenCalledWith('asset-type', expect.anything());
 		expect(asset.addTag).not.toHaveBeenCalledWith('app-name', expect.anything());
 		expect(asset.addTag).not.toHaveBeenCalledWith('app-version', expect.anything());
@@ -762,7 +762,7 @@ describe('asset mint contract', () => {
 		expect(fungibleAtomicSupply('1', '0')).toBe('1');
 		expect(fungibleAtomicSupply('900719925474099312345678', '12')).toBe('900719925474099312345678000000000000');
 		expect(fungibleMintProcessTags(input, owner)).toMatchObject({
-			'hint-style': 'fungible',
+			'hint-ui-style': 'fungible',
 			'initial-holder': owner,
 			'total-supply': '42622000000',
 			denomination: '3',
@@ -852,7 +852,7 @@ describe('asset mint contract', () => {
 		expect(logoTransaction.addTag).toHaveBeenCalledWith('content-type', 'image/png');
 		expect(logoTransaction.addTag).toHaveBeenCalledWith('type', 'Token-Logo');
 		expect(processTransaction.addTag).toHaveBeenCalledWith('logo', logoId);
-		expect(processTransaction.addTag).toHaveBeenCalledWith('hint-style', 'fungible');
+		expect(processTransaction.addTag).toHaveBeenCalledWith('hint-ui-style', 'fungible');
 		expect(processTransaction.addTag).not.toHaveBeenCalledWith('collection', expect.anything());
 		expect(processTransaction.addTag).toHaveBeenCalledWith('total-supply', '1000000000000000');
 		expect(createTransaction).toHaveBeenNthCalledWith(

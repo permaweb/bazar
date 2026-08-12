@@ -46,7 +46,7 @@ for (const [name, value] of Object.entries({
 	ticker: 'WEAVE',
 	name: '[TEST] Weave Credit',
 	description: 'One million 12-decimal test units for exercising Bazar’s Arweave-native fungible market.',
-	'hint-style': 'fungible',
+	'hint-ui-style': 'fungible',
 })) {
 	transaction.addTag(name, value);
 }

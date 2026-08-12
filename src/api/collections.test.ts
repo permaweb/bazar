@@ -64,7 +64,7 @@ describe('collection index loading', () => {
 									{ name: 'denomination', value: '0' },
 									{ name: 'ticker', value: 'ASSET' },
 									{ name: 'name', value: `Color ${ids.indexOf(id) + 1}` },
-									{ name: 'hint-style', value: 'non-fungible' },
+									{ name: 'hint-ui-style', value: 'non-fungible' },
 									{ name: 'content-type', value: 'image/png' },
 								],
 							},
@@ -273,7 +273,7 @@ describe('collection index loading', () => {
 		const state = parseAssetState({
 			device: 'process@1.0',
 			'execution-device': 'token@1.0',
-			'hint-style': 'fungible',
+			'hint-ui-style': 'fungible',
 			'swap-device': 'arweave-swap@1.0',
 			'scheduler-device': 'arweave-scheduler@1.0',
 			'scheduler-mode': 'all',

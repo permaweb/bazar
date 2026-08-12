@@ -83,7 +83,7 @@ export function fungibleAssetFromState(id: string, state?: AssetState): AssetSum
 		!state ||
 		state.raw.device !== 'process@1.0' ||
 		state.device !== 'token@1.0' ||
-		state.raw['hint-style'] !== 'fungible' ||
+		state.raw['hint-ui-style'] !== 'fungible' ||
 		state.raw['swap-device'] !== 'arweave-swap@1.0' ||
 		state.raw['scheduler-device'] !== 'arweave-scheduler@1.0' ||
 		state.raw['scheduler-mode'] !== 'all'
@@ -496,7 +496,7 @@ function indexedAtomicAsset(node: AtomicAssetIndexNode): AssetSummary | undefine
 	if (
 		tags.device !== 'process@1.0' ||
 		tags['execution-device'] !== 'token@1.0' ||
-		tags['hint-style'] !== 'non-fungible' ||
+		tags['hint-ui-style'] !== 'non-fungible' ||
 		tags['swap-device'] !== 'arweave-swap@1.0' ||
 		tags['scheduler-device'] !== 'arweave-scheduler@1.0' ||
 		tags['scheduler-mode'] !== 'all' ||
@@ -620,7 +620,7 @@ async function loadFungibleTokenPage(after?: string, signal?: AbortSignal): Prom
 						{ name: "execution-device", values: ["token@1.0"] }
 						{ name: "swap-device", values: ["arweave-swap@1.0"] }
 						{ name: "scheduler-device", values: ["arweave-scheduler@1.0"] }
-						{ name: "hint-style", values: ["fungible"] }
+						{ name: "hint-ui-style", values: ["fungible"] }
 						{ name: "scheduler-mode", values: ["all"] }
 					]
 				) {

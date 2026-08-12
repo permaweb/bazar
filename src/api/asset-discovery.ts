@@ -389,7 +389,7 @@ const VERIFY_ASSET_PROCESSES_QUERY = `query VerifyAssetProcesses(
 			{ name: "execution-device", values: ["token@1.0"] }
 			{ name: "swap-device", values: ["arweave-swap@1.0"] }
 			{ name: "scheduler-device", values: ["arweave-scheduler@1.0"] }
-			{ name: "hint-style", values: ["fungible"] }
+			{ name: "hint-ui-style", values: ["fungible"] }
 			{ name: "scheduler-mode", values: ["all"] }
 		]
 	) {
@@ -404,7 +404,7 @@ const VERIFY_ASSET_PROCESSES_QUERY = `query VerifyAssetProcesses(
 			{ name: "execution-device", values: ["token@1.0"] }
 			{ name: "swap-device", values: ["arweave-swap@1.0"] }
 			{ name: "scheduler-device", values: ["arweave-scheduler@1.0"] }
-			{ name: "hint-style", values: ["non-fungible"] }
+			{ name: "hint-ui-style", values: ["non-fungible"] }
 			{ name: "scheduler-mode", values: ["all"] }
 			{ name: "total-supply", values: ["1"] }
 			{ name: "denomination", values: ["0"] }
@@ -426,7 +426,7 @@ const SEARCH_BAZAR_ATOMIC_ASSETS_QUERY = `query SearchBazarAtomicAssets($names: 
 			{ name: "execution-device", values: ["token@1.0"] }
 			{ name: "swap-device", values: ["arweave-swap@1.0"] }
 			{ name: "scheduler-device", values: ["arweave-scheduler@1.0"] }
-			{ name: "hint-style", values: ["non-fungible"] }
+			{ name: "hint-ui-style", values: ["non-fungible"] }
 			{ name: "scheduler-mode", values: ["all"] }
 			{ name: "total-supply", values: ["1"] }
 			{ name: "denomination", values: ["0"] }
@@ -1601,7 +1601,7 @@ function atomicProcessNode(node: GraphqlNode): boolean {
 		ADDRESS.test(node.id) &&
 		tags.device === 'process@1.0' &&
 		tags['execution-device'] === 'token@1.0' &&
-		tags['hint-style'] === 'non-fungible' &&
+		tags['hint-ui-style'] === 'non-fungible' &&
 		tags['swap-device'] === 'arweave-swap@1.0' &&
 		tags['scheduler-device'] === 'arweave-scheduler@1.0' &&
 		tags['scheduler-mode'] === 'all' &&
@@ -1721,7 +1721,7 @@ export function bazarAtomicAssetFromState(
 		state.denomination !== 0 ||
 		state.raw.device !== 'process@1.0' ||
 		state.raw['execution-device'] !== 'token@1.0' ||
-		state.raw['hint-style'] !== 'non-fungible' ||
+		state.raw['hint-ui-style'] !== 'non-fungible' ||
 		state.raw['swap-device'] !== 'arweave-swap@1.0' ||
 		state.raw['scheduler-device'] !== 'arweave-scheduler@1.0' ||
 		state.raw['scheduler-mode'] !== 'all' ||
@@ -1771,7 +1771,7 @@ function candidateFromNode(
 					processDevice: tags.device,
 					device: tags['execution-device'] ?? tags.device,
 					collection: tags['base-collection'],
-					assetType: tags['hint-style'],
+					assetType: tags['hint-ui-style'],
 					swapDevice: tags['swap-device'],
 					schedulerDevice: tags['scheduler-device'],
 					schedulerMode: tags['scheduler-mode'],

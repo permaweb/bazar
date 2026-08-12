@@ -40,7 +40,7 @@ for (const definition of definitions) {
 		);
 		addTags(transaction, {
 			'content-type': 'image/png',
-			'hint-style': 'non-fungible',
+			'hint-ui-style': 'non-fungible',
 			creator: ledger.fundingAddress,
 			description: `${definition.name} on Bazar`,
 			implements: 'ANS-110',

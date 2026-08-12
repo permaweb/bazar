@@ -55,14 +55,14 @@ describe('atomic asset uploader', () => {
 		await uploader.uploadAtomicAsset(
 			{
 				data: new Uint8Array([1, 2, 3]),
-				tags: { ...commonTags, 'content-type': 'image/png', 'hint-style': 'non-fungible' },
+				tags: { ...commonTags, 'content-type': 'image/png', 'hint-ui-style': 'non-fungible' },
 			},
 			owner
 		);
 		await uploader.uploadAtomicAsset(
 			{
 				data: JSON.stringify({ name: 'CLI token' }),
-				tags: { ...commonTags, 'content-type': 'application/json', 'hint-style': 'fungible' },
+				tags: { ...commonTags, 'content-type': 'application/json', 'hint-ui-style': 'fungible' },
 			},
 			owner
 		);

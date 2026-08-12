@@ -97,7 +97,7 @@ describe('Bazar atomic asset search', () => {
 			{ name: 'denomination', value: '0' },
 			{ name: 'ticker', value: 'ASSET' },
 			{ name: 'name', value: 'AntiqueWhite' },
-			{ name: 'hint-style', value: 'non-fungible' },
+			{ name: 'hint-ui-style', value: 'non-fungible' },
 			{ name: 'Content-Type', value: 'image/png' },
 		];
 		const fetcher = vi.fn(async (..._args: Parameters<typeof fetch>) =>
@@ -150,7 +150,7 @@ describe('Bazar atomic asset search', () => {
 			{ name: 'denomination', value: '0' },
 			{ name: 'ticker', value: 'ASSET' },
 			{ name: 'name', value: 'lucifer shrek' },
-			{ name: 'hint-style', value: 'non-fungible' },
+			{ name: 'hint-ui-style', value: 'non-fungible' },
 			{ name: 'Content-Type', value: 'image/webp' },
 		];
 		const fetcher = vi.fn(async (_url: string | URL | Request, _init?: RequestInit) =>
@@ -2106,7 +2106,7 @@ describe('live candidate resolution', () => {
 				state: parseAssetState({
 					device: 'process@1.0',
 					'execution-device': 'token@1.0',
-					'hint-style': 'fungible',
+					'hint-ui-style': 'fungible',
 					'swap-device': 'arweave-swap@1.0',
 					'scheduler-device': 'arweave-scheduler@1.0',
 					'scheduler-mode': processId === unloaded ? 'all' : 'local',
@@ -2152,7 +2152,7 @@ describe('live candidate resolution', () => {
 		const processTags = [
 			['device', 'process@1.0'],
 			['execution-device', 'token@1.0'],
-			['hint-style', 'non-fungible'],
+			['hint-ui-style', 'non-fungible'],
 			['swap-device', 'arweave-swap@1.0'],
 			['scheduler-device', 'arweave-scheduler@1.0'],
 			['scheduler-mode', 'all'],
@@ -2186,7 +2186,7 @@ describe('live candidate resolution', () => {
 		const state = parseAssetState({
 			device: 'process@1.0',
 			'execution-device': 'token@1.0',
-			'hint-style': 'non-fungible',
+			'hint-ui-style': 'non-fungible',
 			'swap-device': 'arweave-swap@1.0',
 			'scheduler-device': 'arweave-scheduler@1.0',
 			'scheduler-mode': 'all',
@@ -2436,7 +2436,7 @@ describe('live candidate resolution', () => {
 		const exact = {
 			device: 'process@1.0',
 			'execution-device': 'token@1.0',
-			'hint-style': 'fungible',
+			'hint-ui-style': 'fungible',
 			'swap-device': 'arweave-swap@1.0',
 			'scheduler-device': 'arweave-scheduler@1.0',
 			'scheduler-mode': 'all',
@@ -2458,7 +2458,7 @@ describe('live candidate resolution', () => {
 		await expect(resolve(exact)).resolves.toHaveLength(1);
 		for (const [key, value] of [
 			['device', 'message@1.0'],
-			['hint-style', 'non-fungible'],
+			['hint-ui-style', 'non-fungible'],
 			['swap-device', 'other-swap@1.0'],
 			['scheduler-device', 'other-scheduler@1.0'],
 			['scheduler-mode', 'local'],

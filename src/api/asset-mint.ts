@@ -470,7 +470,7 @@ export class AssetMintClient {
 	 * The supply is minted through the `initial-holder` tag alone. Do NOT
 	 * attach a balances+link structure at creation: deployed nodes 502 on
 	 * init when one is present (verified 2026-08-11). The tag set mirrors
-	 * scripts/publish_fungible_token.mjs; `hint-style: fungible` is required
+	 * scripts/publish_fungible_token.mjs; `hint-ui-style: fungible` is required
 	 * for discovery (collections.ts fungible GraphQL filter and
 	 * fungibleAssetFromState both demand it).
 	 */
@@ -916,7 +916,7 @@ export function mintProcessTags(
 	const contentType = normalizeAssetContentType(input.contentType) ?? input.contentType;
 	return normalizeUploadTags({
 		'content-type': contentType,
-		'hint-style': 'non-fungible',
+		'hint-ui-style': 'non-fungible',
 		creator: owner,
 		description: input.description?.trim() ?? '',
 		implements: 'ANS-110',
@@ -1013,7 +1013,7 @@ export function fungibleMintProcessTags(input: FungibleMintInput, owner: string)
 		ticker: input.ticker,
 		name: input.name.trim(),
 		...(input.description.trim() ? { description: input.description.trim() } : {}),
-		'hint-style': 'fungible',
+		'hint-ui-style': 'fungible',
 		...(input.logo ? { logo: input.logo } : {}),
 	};
 }
@@ -1087,7 +1087,7 @@ export function discardMintDraft(
 
 export function isBazarMintTags(tags: Record<string, string>): boolean {
 	return (
-		tags['hint-style'] === 'non-fungible' &&
+		tags['hint-ui-style'] === 'non-fungible' &&
 		tags.type === 'Process' &&
 		tags['execution-device'] === 'token@1.0' &&
 		tags['swap-device'] === 'arweave-swap@1.0' &&

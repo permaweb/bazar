@@ -190,7 +190,7 @@ export function assertAtomicAssetTags(tags: Record<string, string>): void {
 		normalized.device !== 'process@1.0' ||
 		normalized.type !== 'Process' ||
 		normalized['execution-device'] !== 'token@1.0' ||
-		!['fungible', 'non-fungible'].includes(normalized['hint-style']) ||
+		!['fungible', 'non-fungible'].includes(normalized['hint-ui-style']) ||
 		!normalized['content-type']
 	) {
 		throw new TypeError('atomic-asset-tags-invalid');
