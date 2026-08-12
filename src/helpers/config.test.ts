@@ -108,7 +108,7 @@ describe('Arweave gateway routing', () => {
 		);
 	});
 
-	it('uses the non-redirecting raw-data route for immutable asset bytes', () => {
+	it('keeps the Raw fallback suite on the non-redirecting immutable-data route', () => {
 		expect(arweaveRawDataUrl('asset-id', 'https://gateway.example')).toBe('https://gateway.example/raw/asset-id');
 	});
 });

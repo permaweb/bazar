@@ -63,6 +63,7 @@ import {
 	shouldLoadHomeCollectionSummaries,
 	verifiedAssetForDetail,
 	verifiedCollectionIdsFrom,
+	withoutDuplicatedCreatedAssets,
 } from './App';
 import {
 	loadAssetShellSnapshot,
@@ -429,6 +430,31 @@ describe('Home market summary retries', () => {
 		expect(fallbackIds).toEqual([]);
 		expect(assetDetailMembershipVerified(fallback.id, new Set(fallbackIds), false)).toBe(false);
 		expect(verifiedCollectionIdsFrom([{ ...fallback, indexSource: 'reference' }])).toEqual(['collection']);
+	});
+
+	it('keeps collection members out of the standalone created-assets collection', () => {
+		const shared = { id: 'A'.repeat(43), name: 'Collection asset' };
+		const standalone = { id: 'S'.repeat(43), name: 'Standalone asset' };
+		const collections = withoutDuplicatedCreatedAssets([
+			{
+				id: 'created-assets',
+				name: 'Created on Bazar',
+				description: '',
+				kind: 'images',
+				assets: [shared, standalone],
+				total: 2,
+			},
+			{
+				id: 'C'.repeat(43),
+				name: 'Uploaded collection',
+				description: '',
+				kind: 'images',
+				assets: [shared],
+				total: 1,
+			},
+		]);
+
+		expect(collections[0]).toMatchObject({ id: 'created-assets', assets: [standalone], total: 1 });
 	});
 
 	it('sizes and positions persistent pane scroll indicators', () => {

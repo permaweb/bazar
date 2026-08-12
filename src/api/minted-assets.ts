@@ -50,6 +50,16 @@ export function storeMintedAsset(
 	);
 }
 
+export function removeMintedAssets(
+	ids: Iterable<string>,
+	storage: StorageLike | undefined = globalThis.window?.localStorage
+): void {
+	if (!storage) return;
+	const removed = new Set(ids);
+	if (!removed.size) return;
+	storage.setItem(STORAGE_KEY, JSON.stringify(loadMintedAssets(storage).filter((asset) => !removed.has(asset.id))));
+}
+
 export function loadMintedCollections(
 	storage: StorageLike | undefined = globalThis.window?.localStorage
 ): MintedCollection[] {
