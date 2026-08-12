@@ -99,33 +99,32 @@ export function arweaveGraphqlEndpoint(
 	return `${arweaveGatewayFromLocation(location)}/graphql`;
 }
 
-/**
- * Raw fallback suite: bypass redirect/cache inconsistencies for immutable media bytes.
- * Keep callers on this helper so the node-side fix can later remove the suite as one unit.
- */
-export function arweaveRawDataUrl(
-	id: string,
-	locationOrGateway: GatewayLocation | string | undefined = typeof window === 'undefined'
-		? undefined
-		: window.location
-): string {
-	const gateway =
-		typeof locationOrGateway === 'string'
-			? locationOrGateway.replace(/\/$/, '')
-			: arweaveGatewayFromLocation(locationOrGateway);
-	return `${gateway}/raw/${encodeURIComponent(id)}`;
+/** Address an Arweave item through the gateway's ordinary HTTPSig resource route. */
+export function arweaveDataUrl(id: string, gateway = arweaveGatewayFromLocation()): string {
+	return `${gateway}/${id}`;
 }
 
-export function normalizeArweaveRawDataUrl(value: string): string {
+/** Ordinary resource URLs for one Arweave item, ordered across the selected serving peers. */
+export function arweaveDataFallbackUrls(
+	value: string,
+	location: GatewayLocation | undefined = typeof window === 'undefined' ? undefined : window.location
+): string[] {
+	if (!location) return [value];
+	let url: URL;
 	try {
-		const url = new URL(value);
-		const directId = url.pathname.match(/^\/([A-Za-z0-9_-]{43})\/?$/)?.[1];
-		if (!directId) return value;
-		url.pathname = `/raw/${directId}`;
-		return url.toString();
+		url = new URL(value, `${location.protocol}//${location.hostname}${location.port ? `:${location.port}` : ''}`);
 	} catch {
-		return value;
+		return [value];
 	}
+	const match = url.pathname.match(/^\/([A-Za-z0-9_-]{43})$/);
+	if (!match) return [value];
+	return [
+		...new Set([
+			value,
+			...gatewaysFromLocation(location).map((gateway) => arweaveDataUrl(match[1], gateway)),
+			arweaveDataUrl(match[1], arweaveGatewayFromLocation(location)),
+		]),
+	];
 }
 
 export function gatewayFromLocation(location: Location = window.location): string {

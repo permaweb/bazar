@@ -41,7 +41,7 @@ describe('asset detail fallbacks', () => {
 			id: assetId,
 			name: 'AntiqueWhite',
 			contentType: 'image/png',
-			image: `https://arweave.net/raw/${assetId}`,
+			image: `https://arweave.net/${assetId}`,
 		};
 
 		expect(mergeAssetDetailMetadata(manifestAsset, indexedAsset)).toEqual(indexedAsset);

@@ -2428,7 +2428,7 @@ function OperationActivityControl() {
 								>
 									<span className="operation-activity-symbol" aria-hidden="true">
 										{activity.asset.image ? (
-											<img src={activity.asset.image} alt="" />
+											<ArtworkImage src={activity.asset.image} alt="" />
 										) : (
 											<span>{activity.asset.name.slice(0, 1)}</span>
 										)}
@@ -4749,7 +4749,7 @@ function GatewayControl() {
 						align="center"
 						className="gateway-trigger-tooltip"
 						content="AO-Core peers"
-							delayMs={1000}
+						delayMs={1000}
 						disabled={open}
 					>
 						{(tooltipId) => (
@@ -7921,7 +7921,8 @@ function AssetView() {
 		directAtomicRoute,
 		directFungibleRoute: collectionId === 'fungible-tokens' && ARWEAVE_ADDRESS.test(assetId),
 	});
-	const directAtomicAsset = directAtomicRoute && state ? bazarAtomicAssetFromState(assetId, state) : null;
+	const directAtomicAsset =
+		directAtomicRoute && state ? bazarAtomicAssetFromState(assetId, state, provider || undefined) : null;
 	const indexedMetadata = indexedAtomic?.asset;
 	const shellAsset = mergeAssetDetailMetadata(indexedAsset ?? cachedAsset, indexedMetadata);
 	const collection =

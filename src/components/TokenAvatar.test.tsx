@@ -21,10 +21,10 @@ describe('TokenAvatar', () => {
 		expect(markup).toContain('fetchpriority="high"');
 	});
 
-	it('upgrades cached direct Arweave logo URLs to the raw media route', () => {
+	it('keeps Arweave logos on the ordinary HTTPSig resource route', () => {
 		const logoId = 'L'.repeat(43);
 		const markup = renderToStaticMarkup(<TokenAvatar image={`https://arweave.net/${logoId}`} ticker="TRUNKY" />);
 
-		expect(markup).toContain(`src="https://arweave.net/raw/${logoId}"`);
+		expect(markup).toContain(`src="https://arweave.net/${logoId}"`);
 	});
 });

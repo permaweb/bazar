@@ -1,11 +1,6 @@
 import { isSupportedAssetContentType } from 'helpers/asset-media';
 import { mapConcurrent } from 'helpers/concurrency';
-import {
-	arweaveGatewayFromLocation,
-	arweaveGraphqlEndpoint,
-	arweaveRawDataUrl,
-	NAMES_NAMESPACE_ID,
-} from 'helpers/config';
+import { arweaveDataUrl, arweaveGatewayFromLocation, arweaveGraphqlEndpoint, NAMES_NAMESPACE_ID } from 'helpers/config';
 
 import { type AssetState, readAssetState } from './asset-marketplace';
 import { fetchJsonWithDeadline, fetchTextWithDeadline } from './fetch-with-deadline';
@@ -100,7 +95,7 @@ export function fungibleAssetFromState(id: string, state?: AssetState): AssetSum
 		name: state.name || state.ticker || shortId(id),
 		contentType: 'application/x.arweave-token',
 		...(state.ticker ? { ticker: state.ticker } : {}),
-		...(typeof logo === 'string' && ARWEAVE_ID.test(logo) ? { image: arweaveRawDataUrl(logo) } : {}),
+		...(typeof logo === 'string' && ARWEAVE_ID.test(logo) ? { image: arweaveDataUrl(logo) } : {}),
 	};
 }
 
@@ -678,7 +673,7 @@ async function loadFungibleTokenPage(after?: string, signal?: AbortSignal): Prom
 			name: tags.name ?? tags.ticker ?? shortId(node.id),
 			contentType: 'application/x.arweave-token',
 			...(tags.ticker ? { ticker: tags.ticker } : {}),
-			...(tags.logo && ARWEAVE_ID.test(tags.logo) ? { image: arweaveRawDataUrl(tags.logo) } : {}),
+			...(tags.logo && ARWEAVE_ID.test(tags.logo) ? { image: arweaveDataUrl(tags.logo) } : {}),
 		});
 	}
 	const cursor = connection.edges.at(-1)?.cursor;
@@ -976,11 +971,11 @@ function imageCollection(
 		manifestId,
 		assets: manifest.assets.map((asset) => {
 			if (typeof asset === 'string') {
-				return { id: asset, name: shortId(asset), image: arweaveRawDataUrl(asset) };
+				return { id: asset, name: shortId(asset), image: arweaveDataUrl(asset) };
 			}
 			return {
 				...asset,
-				...(!asset.image && !asset.media ? { image: arweaveRawDataUrl(asset.id) } : {}),
+				...(!asset.image && !asset.media ? { image: arweaveDataUrl(asset.id) } : {}),
 			};
 		}),
 	};
