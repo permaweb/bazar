@@ -1468,9 +1468,7 @@ export default function CreateRoute() {
 
 							{udlEnabled ? (
 								<div className="udl-options">
-									<img alt="Universal Data License" className="udl-options-logo" src={udlLogo} />
 									<p>
-										Free access is the default. Rights not granted below remain reserved.{' '}
 										<a
 											href={`${arweaveGatewayFromLocation()}/${UDL_LICENSE_ID}`}
 											target="_blank"
@@ -1480,6 +1478,7 @@ export default function CreateRoute() {
 											<ArrowUpRight className="ui-icon ui-icon--sm" aria-hidden="true" />
 										</a>
 									</p>
+									<img alt="Universal Data License" className="udl-options-logo" src={udlLogo} />
 									<div aria-label="UDL presets" className="udl-presets" role="group">
 										{UDL_PRESET_OPTIONS.map((preset) => (
 											<button
