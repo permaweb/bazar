@@ -2954,6 +2954,10 @@ export function homeMarketHasPending(loading: boolean, keys: string[], summaries
 	return loading || keys.some((key) => !summaries[key]);
 }
 
+export function homeMarketShowsInitialLoader(pending: boolean, visibleAssetCount: number) {
+	return pending && visibleAssetCount === 0;
+}
+
 export function homeListingComputeFailure<T>(failure: T | undefined, attempts: number, failures: number) {
 	return failure !== undefined && attempts > 0 && failures === attempts ? failure : undefined;
 }
@@ -3907,6 +3911,7 @@ function Home() {
 		assetPrices
 	);
 	const discoverResultsFailed = Boolean(portableHomeListingsFailure) || summaryFailures.length > 0;
+	const discoverInitialLoading = homeMarketShowsInitialLoader(discoverResultsPending, displayedAssets.length);
 	const pageRefreshing =
 		homeTab === 'discover' ? discoverResultsPending : homeTab === 'collections' ? collectionResultsPending : false;
 	React.useEffect(() => {
@@ -4238,7 +4243,11 @@ function Home() {
 									id="home-discover-panel"
 									role="tabpanel"
 								>
-									{displayedAssets.length || discoverResultsPending ? (
+									{discoverInitialLoading ? (
+										<div className="home-market-loading">
+											<Loading label="Loading marketplace assets…" />
+										</div>
+									) : displayedAssets.length ? (
 										assetType === 'all' ? (
 											<div className="discover-market-sections">
 												<section className="discover-market-section token-section">

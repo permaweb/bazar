@@ -39,6 +39,7 @@ import {
 	homeListingComputeFailure,
 	homeListingSupportVersion,
 	homeMarketHasPending,
+	homeMarketShowsInitialLoader,
 	homeMarketPriceValue,
 	homeMarketShellLoading,
 	homeMarketSummariesReady,
@@ -783,6 +784,12 @@ describe('Home market summary retries', () => {
 		expect(homeMarketHasPending(true, ['ready'], summaries)).toBe(true);
 		expect(homeMarketHasPending(false, ['ready', 'pending'], summaries)).toBe(true);
 		expect(homeMarketHasPending(false, ['ready'], summaries)).toBe(false);
+	});
+
+	it('shows the home loader only while results are pending and no assets are visible', () => {
+		expect(homeMarketShowsInitialLoader(true, 0)).toBe(true);
+		expect(homeMarketShowsInitialLoader(true, 1)).toBe(false);
+		expect(homeMarketShowsInitialLoader(false, 0)).toBe(false);
 	});
 
 	it('keeps collection floor scans isolated to the collections view', () => {
