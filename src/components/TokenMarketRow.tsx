@@ -4,8 +4,7 @@ import { ArrowUpRight } from 'lucide-react';
 
 import type { AssetSummary, Collection } from 'api/collections';
 
-import { ArtworkImage } from './ArtworkImage';
-import { TokenArtwork } from './TokenArtwork';
+import { TokenAvatar } from './TokenAvatar';
 
 export type TokenMarketMetric = {
 	label: string;
@@ -45,16 +44,12 @@ export function TokenMarketRow({
 			to={`/asset/${collection.id}/${asset.id}`}
 		>
 			<span className="token-market-logo">
-				{asset.image ? (
-					<ArtworkImage
-						alt={`${asset.name} logo`}
-						fetchPriority={priority ? 'high' : 'auto'}
-						loading={priority ? 'eager' : 'lazy'}
-						src={asset.image}
-					/>
-				) : (
-					<TokenArtwork ticker={ticker} />
-				)}
+				<TokenAvatar
+					fetchPriority={priority ? 'high' : 'auto'}
+					image={asset.image}
+					loading={priority ? 'eager' : 'lazy'}
+					ticker={ticker}
+				/>
 			</span>
 			<span className="token-market-identity">
 				<strong>{asset.name}</strong>

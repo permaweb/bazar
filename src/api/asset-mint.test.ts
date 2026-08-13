@@ -204,13 +204,12 @@ describe('asset mint contract', () => {
 			dataModelTraining: { grant: 'monthly' as const, value: '3' },
 			unknownUsageRights: 'excluded' as const,
 			expiry: '5',
-			currency: 'AR' as const,
-			paymentAddress: owner,
-			paymentMode: 'global' as const,
 		};
 
-		expect(udlLicenseTags({})).toEqual({ license: UDL_LICENSE_ID, currency: 'AR' });
-		expect(udlLicenseTags({ currency: 'U' })).toEqual({ license: UDL_LICENSE_ID });
+		expect(udlLicenseTags({})).toEqual({ license: UDL_LICENSE_ID, currency: 'Arweave' });
+		expect(
+			udlLicenseTags({ currency: 'U', paymentAddress: owner } as unknown as Parameters<typeof udlLicenseTags>[0])
+		).toEqual({ license: UDL_LICENSE_ID, currency: 'Arweave' });
 		expect(udlLicenseTags(terms)).toEqual({
 			license: UDL_LICENSE_ID,
 			'access-fee': 'One-Time-1.5',
@@ -219,9 +218,7 @@ describe('asset mint contract', () => {
 			'data-model-training': 'Allowed-With-Fee-Monthly-3',
 			'unknown-usage-rights': 'Excluded',
 			expiry: '5',
-			currency: 'AR',
-			'payment-address': owner,
-			'payment-mode': 'Global-Distribution',
+			currency: 'Arweave',
 		});
 		expect(
 			mintProcessTags({ name: 'Signal #1', contentType: 'image/png', mediaId, udl: terms }, owner)
@@ -235,20 +232,24 @@ describe('asset mint contract', () => {
 		);
 	});
 
-	it('provides protected, credit, and open UDL presets', () => {
-		expect(udlLicenseTags(udlTermsForPreset('protected'))).toEqual({
-			license: UDL_LICENSE_ID,
-			currency: 'AR',
-		});
+	it('provides credit, payment, and open UDL presets', () => {
 		expect(udlLicenseTags(udlTermsForPreset('share-with-credit'))).toEqual({
 			license: UDL_LICENSE_ID,
-			currency: 'AR',
+			currency: 'Arweave',
 			derivation: 'Allowed-With-Credit',
 			'commercial-use': 'Allowed-With-Credit',
+			'data-model-training': 'Allowed',
+		});
+		expect(udlLicenseTags(udlTermsForPreset('share-with-payment'))).toEqual({
+			license: UDL_LICENSE_ID,
+			currency: 'Arweave',
+			derivation: 'Allowed-With-Fee-One-Time-1',
+			'commercial-use': 'Allowed-With-Fee-One-Time-1',
+			'data-model-training': 'Allowed-With-Fee-One-Time-1',
 		});
 		expect(udlLicenseTags(udlTermsForPreset('open-use'))).toEqual({
 			license: UDL_LICENSE_ID,
-			currency: 'AR',
+			currency: 'Arweave',
 			derivation: 'Allowed',
 			'commercial-use': 'Allowed',
 			'data-model-training': 'Allowed',

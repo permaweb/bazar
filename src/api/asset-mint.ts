@@ -76,21 +76,23 @@ export type UdlTerms = {
 	dataModelTraining?: { grant: UdlTrainingGrant; value?: string };
 	unknownUsageRights?: 'excluded';
 	expiry?: string;
-	currency?: 'U' | 'AR';
-	paymentAddress?: string;
-	paymentMode?: 'random' | 'global';
 };
 
-export type UdlPreset = 'protected' | 'share-with-credit' | 'open-use';
+export type UdlPreset = 'share-with-credit' | 'share-with-payment' | 'open-use';
 
 export function udlTermsForPreset(preset: UdlPreset): UdlTerms {
 	switch (preset) {
-		case 'protected':
-			return {};
 		case 'share-with-credit':
 			return {
 				derivation: { grant: 'credit' },
 				commercialUse: { grant: 'credit' },
+				dataModelTraining: { grant: 'allowed' },
+			};
+		case 'share-with-payment':
+			return {
+				derivation: { grant: 'one-time', value: '1' },
+				commercialUse: { grant: 'one-time', value: '1' },
+				dataModelTraining: { grant: 'one-time', value: '1' },
 			};
 		case 'open-use':
 			return {
@@ -1021,19 +1023,13 @@ export function fungibleMintProcessTags(input: FungibleMintInput, owner: string)
 export function udlLicenseTags(terms?: UdlTerms): Record<string, string> {
 	if (!terms) return {};
 	validateUdlTerms(terms);
-	const tags: Record<string, string> = { license: UDL_LICENSE_ID };
+	const tags: Record<string, string> = { license: UDL_LICENSE_ID, currency: 'Arweave' };
 	if (terms.accessFee) tags['access-fee'] = `One-Time-${terms.accessFee}`;
 	if (terms.derivation) tags.derivation = udlGrantValue(terms.derivation);
 	if (terms.commercialUse) tags['commercial-use'] = udlGrantValue(terms.commercialUse);
 	if (terms.dataModelTraining) tags['data-model-training'] = udlGrantValue(terms.dataModelTraining);
 	if (terms.unknownUsageRights === 'excluded') tags['unknown-usage-rights'] = 'Excluded';
 	if (terms.expiry) tags.expiry = terms.expiry;
-	const currency = terms.currency ?? 'AR';
-	if (currency !== 'U') tags.currency = currency;
-	if (terms.paymentAddress) tags['payment-address'] = terms.paymentAddress;
-	if (terms.paymentMode) {
-		tags['payment-mode'] = terms.paymentMode === 'random' ? 'Random-Distribution' : 'Global-Distribution';
-	}
 	return normalizeUploadTags(tags);
 }
 
@@ -1151,15 +1147,6 @@ function validateUdlTerms(terms?: UdlTerms): void {
 	}
 	if (terms.expiry !== undefined && !/^[1-9]\d*$/.test(terms.expiry)) {
 		throw new TypeError('mint-udl-expiry-invalid');
-	}
-	if (terms.currency !== undefined && !['U', 'AR'].includes(terms.currency)) {
-		throw new TypeError('mint-udl-currency-invalid');
-	}
-	if (terms.paymentAddress !== undefined && !ADDRESS.test(terms.paymentAddress)) {
-		throw new TypeError('mint-udl-payment-address-invalid');
-	}
-	if (terms.paymentMode !== undefined && !['random', 'global'].includes(terms.paymentMode)) {
-		throw new TypeError('mint-udl-payment-mode-invalid');
 	}
 }
 

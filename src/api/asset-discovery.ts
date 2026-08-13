@@ -1836,13 +1836,21 @@ function activityEventFromNode(node: GraphqlNode): CollectionActivityEvent | nul
 		height: safeNumber(node.block?.height),
 		timestamp: safeNumber(node.block?.timestamp),
 		...(action === 'make-offer' && /^[1-9]\d*$/.test(tags.asking ?? '') ? { asking: tags.asking } : {}),
-		...(['make-offer', 'transfer'].includes(action) &&
+		...(['make-offer', 'register-interest', 'transfer'].includes(action) &&
 		/^[1-9]\d*$/.test(
-			action === 'make-offer' ? tags['offer-quantity'] ?? '' : tags.quantity ?? tags['token-quantity'] ?? ''
+			action === 'make-offer'
+				? tags['offer-quantity'] ?? ''
+				: action === 'register-interest'
+				? tags['fill-quantity'] ?? ''
+				: tags.quantity ?? tags['token-quantity'] ?? ''
 		)
 			? {
 					quantity:
-						action === 'make-offer' ? tags['offer-quantity'] : tags.quantity ?? tags['token-quantity'],
+						action === 'make-offer'
+							? tags['offer-quantity']
+							: action === 'register-interest'
+							? tags['fill-quantity']
+							: tags.quantity ?? tags['token-quantity'],
 			  }
 			: {}),
 		...(['register-interest', 'cancel-order'].includes(action) && ADDRESS.test(tags['order-id'] ?? '')

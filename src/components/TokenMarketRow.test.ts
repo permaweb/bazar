@@ -43,4 +43,27 @@ describe('TokenMarketRow', () => {
 		expect(markup).toContain('Unit price');
 		expect(markup).not.toContain('home-asset-media');
 	});
+
+	it('centers a ticker avatar when the token has no uploaded logo', () => {
+		const markup = renderToStaticMarkup(
+			React.createElement(
+				StaticRouter,
+				{ location: '/' },
+				React.createElement(TokenMarketRow, {
+					asset: {
+						id: 'M'.repeat(43),
+						name: 'Mint CLI Alpha',
+						ticker: 'MINTA',
+						contentType: 'application/x.arweave-token',
+					},
+					collection,
+				})
+			)
+		);
+
+		expect(markup).toContain('token-market-logo');
+		expect(markup).toContain('token-avatar ticker-5');
+		expect(markup).toContain('<strong>MINTA</strong>');
+		expect(markup).not.toContain('token-artwork');
+	});
 });

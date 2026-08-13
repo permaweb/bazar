@@ -64,4 +64,33 @@ describe('market activity labels', () => {
 		expect(markup).toContain('0.1 <span class="ar-currency-label">');
 		expect(markup).toContain('$AR</span> total');
 	});
+
+	it('renders the compact market variant as a single information row', () => {
+		const markup = renderToStaticMarkup(
+			React.createElement(MarketActivityList, {
+				ariaLabel: 'Token activity',
+				compact: true,
+				describeEvent: () => '0.1 AR total',
+				eventAmount: () => '12 TOKEN',
+				events: [
+					{
+						action: 'make-offer',
+						actor: 'actor',
+						height: 1,
+						id: 'transaction',
+						processId: 'process',
+						timestamp: 1,
+					},
+				],
+				resolveAsset: () => undefined,
+			})
+		);
+
+		expect(markup).toContain('class="activity-list compact"');
+		expect(markup).toContain('class="activity-row activity-row-compact"');
+		expect(markup).toContain('class="activity-compact-amount"');
+		expect(markup).toContain('class="activity-compact-amount-static"');
+		expect(markup).toContain('aria-hidden="true" class="activity-compact-amount-track"');
+		expect(markup).not.toContain('activity-meta');
+	});
 });

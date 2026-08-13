@@ -19,9 +19,68 @@ const absoluteTime = new Intl.DateTimeFormat(undefined, {
 	minute: '2-digit',
 });
 
+function CompactActivityAmount({ amount }: { amount: string }) {
+	const containerRef = React.useRef<HTMLSpanElement>(null);
+	const textRef = React.useRef<HTMLSpanElement>(null);
+	const [ticker, setTicker] = React.useState({ active: false, shift: 0, duration: 0 });
+
+	React.useEffect(() => {
+		const container = containerRef.current;
+		const text = textRef.current;
+		if (!container || !text) return;
+		let disposed = false;
+		const update = () => {
+			if (disposed) return;
+			const active = text.scrollWidth > container.clientWidth + 1;
+			const shift = active ? text.scrollWidth + 24 : 0;
+			const duration = active ? Math.max(4, shift / 32) : 0;
+			setTicker((current) =>
+				current.active === active && current.shift === shift && current.duration === duration
+					? current
+					: { active, shift, duration }
+			);
+		};
+		const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(update);
+		observer?.observe(container);
+		window.addEventListener('resize', update);
+		void document.fonts?.ready.then(update);
+		update();
+		return () => {
+			disposed = true;
+			observer?.disconnect();
+			window.removeEventListener('resize', update);
+		};
+	}, [amount]);
+
+	const value = <ArCurrencyText>{amount}</ArCurrencyText>;
+	return (
+		<span
+			className={`activity-compact-amount${ticker.active ? ' is-overflowing' : ''}`}
+			ref={containerRef}
+			style={
+				ticker.active
+					? ({
+							'--activity-ticker-duration': `${ticker.duration}s`,
+							'--activity-ticker-shift': `-${ticker.shift}px`,
+					  } as React.CSSProperties)
+					: undefined
+			}
+		>
+			<span className="activity-compact-amount-static" ref={textRef}>
+				{value}
+			</span>
+			<span aria-hidden="true" className="activity-compact-amount-track">
+				<span>{value}</span>
+				<span>{value}</span>
+			</span>
+		</span>
+	);
+}
+
 export function MarketActivityList({
 	ariaLabel,
 	collectionId,
+	compact = false,
 	describeEvent = marketActivityDetail,
 	eventAmount,
 	events,
@@ -32,6 +91,7 @@ export function MarketActivityList({
 }: {
 	ariaLabel: string;
 	collectionId?: string;
+	compact?: boolean;
 	describeEvent?(event: CollectionActivityEvent): string;
 	eventAmount?(event: CollectionActivityEvent): string;
 	events: CollectionActivityEvent[];
@@ -60,7 +120,7 @@ export function MarketActivityList({
 		};
 	}, [events]);
 	return (
-		<ul aria-busy={loading} aria-label={ariaLabel} className="activity-list" id={id}>
+		<ul aria-busy={loading} aria-label={ariaLabel} className={`activity-list${compact ? ' compact' : ''}`} id={id}>
 			{events.map((event) => {
 				const asset = resolveAsset(event);
 				const collection = resolveCollection?.(event);
@@ -76,6 +136,57 @@ export function MarketActivityList({
 					? formatMarketActivityAbsoluteTimestamp(event.timestamp)
 					: undefined;
 				const timestampDateTime = event.timestamp ? new Date(event.timestamp * 1_000).toISOString() : undefined;
+				const transactionLabel =
+					transactionHeight > 0
+						? `View ${
+								event.purchaseProof ? 'settlement proof' : 'submitted transaction'
+						  } included in block ${transactionHeight.toLocaleString()}`
+						: 'View submitted transaction';
+				if (compact) {
+					return (
+						<li className="activity-row activity-row-compact" key={event.id}>
+							<span aria-hidden="true" className={`activity-icon action-${event.action}`}>
+								{marketActivitySymbol(event.action)}
+							</span>
+							<div className="activity-compact-summary">
+								<strong>{marketActivityLabel(event.action, Boolean(event.purchaseProof))}</strong>
+								{detail ? (
+									<small>
+										<ArCurrencyText>{detail}</ArCurrencyText>
+									</small>
+								) : null}
+							</div>
+							<CompactActivityAmount amount={amount || '—'} />
+							<div className="activity-compact-actor">
+								{event.actor ? (
+									<WalletAddress address={event.actor} label="actor" />
+								) : (
+									<span>Unknown</span>
+								)}
+							</div>
+							<Tooltip className="activity-compact-time-wrap" content={absoluteTimestamp ?? timestamp}>
+								{(tooltipId) => (
+									<time
+										aria-describedby={tooltipId}
+										className="activity-compact-time"
+										dateTime={timestampDateTime}
+									>
+										{timestamp}
+									</time>
+								)}
+							</Tooltip>
+							<a
+								aria-label={transactionLabel}
+								className="activity-compact-transaction"
+								href={transactionExplorerUrl(transactionId)}
+								target="_blank"
+								rel="noreferrer"
+							>
+								<ArrowUpRight className="ui-icon ui-icon--xs" aria-hidden="true" />
+							</a>
+						</li>
+					);
+				}
 				return (
 					<li className="activity-row" key={event.id}>
 						<span aria-hidden="true" className={`activity-icon action-${event.action}`}>
@@ -127,13 +238,7 @@ export function MarketActivityList({
 									)}
 								</Tooltip>
 								<a
-									aria-label={
-										transactionHeight > 0
-											? `View ${
-													event.purchaseProof ? 'settlement proof' : 'submitted transaction'
-											  } included in block ${transactionHeight.toLocaleString()}`
-											: 'View submitted transaction'
-									}
+									aria-label={transactionLabel}
 									href={transactionExplorerUrl(transactionId)}
 									target="_blank"
 									rel="noreferrer"

@@ -1760,9 +1760,6 @@ const AcceptedProofStem = styled.span`
 	animation: ${acceptedProofConnectorEnter} 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
 	pointer-events: none;
 
-	@media (prefers-reduced-motion: reduce) {
-		animation: none;
-	}
 `;
 
 const AcceptedProofCard = styled.span`
@@ -1782,10 +1779,6 @@ const AcceptedProofCard = styled.span`
 	box-shadow: 0 10px 28px rgba(28, 25, 22, 0.14);
 	animation: ${acceptedProofCardEnter} 360ms ease-out both;
 	pointer-events: auto;
-
-	@media (prefers-reduced-motion: reduce) {
-		animation: none;
-	}
 
 	@media (max-width: 480px) {
 		width: var(--proof-card-width, ${ACCEPTED_PROOF_CARD_COMPACT_WIDTH}px);

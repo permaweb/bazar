@@ -27,6 +27,7 @@ import {
 	DiscoveryAssetArtwork,
 	filterGlobalActivity,
 	globalActivityCollection,
+	HOME_DISCOVER_TOKEN_PAGE_SIZE,
 	homeAllAssets,
 	homeAssetPage,
 	homeAssetTypeMatches,
@@ -743,6 +744,16 @@ describe('Home market summary retries', () => {
 			items: assets.slice(0, 4),
 			page: 1,
 			pageCount: 1,
+		});
+	});
+
+	it('limits the mixed Discover overview to five tokens per page', () => {
+		const tokens = Array.from({ length: 12 }, (_, index) => `token-${index + 1}`);
+
+		expect(homeAssetPage(tokens, 2, HOME_DISCOVER_TOKEN_PAGE_SIZE)).toEqual({
+			items: tokens.slice(5, 10),
+			page: 2,
+			pageCount: 3,
 		});
 	});
 

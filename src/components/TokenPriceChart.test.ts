@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
 import {
+	tokenPriceCandlestickSeries,
 	tokenPriceChangePercent,
 	TokenPriceChart,
 	tokenPricePointsForRange,
@@ -38,6 +39,33 @@ describe('TokenPriceChart', () => {
 				{ id: 'b', timestamp: 2, value: '945755921747804265000000000' },
 			])
 		).toBe(5);
+	});
+
+	it('builds honest OHLC candles from asks inside each range bucket', () => {
+		const base = Date.UTC(2026, 7, 12, 12) / 1_000;
+		const series = tokenPriceCandlestickSeries(
+			[
+				{ id: 'open', timestamp: base, value: '1000000000000' },
+				{ id: 'high', timestamp: base + 10 * 60, value: '2000000000000' },
+				{ id: 'low', timestamp: base + 20 * 60, value: '750000000000' },
+				{ id: 'close', timestamp: base + 30 * 60, value: '1250000000000' },
+				{ id: 'next', timestamp: base + 60 * 60, value: '1500000000000' },
+			],
+			'24h'
+		);
+		expect(
+			series.map(({ time, open, high, low, close, closePoint }) => ({
+				time,
+				open,
+				high,
+				low,
+				close,
+				closeId: closePoint.id,
+			}))
+		).toEqual([
+			{ time: base, open: 1, high: 2, low: 0.75, close: 1.25, closeId: 'close' },
+			{ time: base + 60 * 60, open: 1.5, high: 1.5, low: 1.5, close: 1.5, closeId: 'next' },
+		]);
 	});
 
 	it('renders interactive range controls without instructional footer copy', () => {

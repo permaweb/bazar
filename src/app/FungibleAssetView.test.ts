@@ -23,12 +23,14 @@ import {
 	fungibleAskHistory,
 	fungibleBatchRecoveryStatus,
 	fungibleHolders,
+	fungibleHoldingPercentage,
 	fungibleListingAccessibleLabel,
 	FungibleListingComposer,
 	type FungibleOperationActivity,
 	FungibleOperationErrorAlert,
 	fungibleOperationStateError,
 	fungibleOrderActionLabel,
+	fungiblePurchaseActivityAmount,
 	FungiblePurchaseComposer,
 	FungiblePurchaseReceiptNavigator,
 	fungiblePurchaseReceiptOptions,
@@ -41,6 +43,7 @@ import {
 	latestRecoverableSnapshot,
 	MatchedListingsReview,
 	nextSettlementAnnouncement,
+	orderbookCumulativeDepths,
 	purchaseAmountMatch,
 	purchaseFailureMessageNeedsManualReview,
 	purchaseQuoteIdentity,
@@ -164,6 +167,13 @@ describe('fungible holders', () => {
 			{ address: listedOnly, liquid: '0', listed: '500', total: '500' },
 			{ address: liquidOnly, liquid: '500', listed: '0', total: '500' },
 		]);
+	});
+
+	it('formats each holder share from integer balances without losing precision', () => {
+		expect(fungibleHoldingPercentage('8000000000', '8000000000')).toBe('100%');
+		expect(fungibleHoldingPercentage('1', '3')).toBe('33.33%');
+		expect(fungibleHoldingPercentage('1', '1000000')).toBe('<0.01%');
+		expect(fungibleHoldingPercentage('1', '0')).toBe('—');
 	});
 });
 
@@ -424,6 +434,25 @@ describe('fungible operation error semantics', () => {
 		expect(visibleOrderbookRows(orders, 50)).toEqual(orders.slice(0, 50));
 		expect(visibleOrderbookRows(orders, 100)).toEqual(orders.slice(0, 100));
 		expect(orders).toHaveLength(5_000);
+	});
+
+	it('builds cumulative ask depth from open liquidity without counting reservations', () => {
+		expect(
+			orderbookCumulativeDepths([
+				{ quantity: '2', status: 'open' },
+				{ quantity: '100', status: 'reserved' },
+				{ quantity: '3', status: 'open' },
+			])
+		).toEqual([40, 40, 100]);
+	});
+
+	it('leaves the ask-depth background empty when no listed quantity is available', () => {
+		expect(
+			orderbookCumulativeDepths([
+				{ quantity: '10', status: 'reserved' },
+				{ quantity: '20', status: 'reserved' },
+			])
+		).toEqual([0, 0]);
 	});
 
 	it('keeps a 512-order completion bounded while every exact receipt remains selectable', () => {
@@ -1092,6 +1121,63 @@ describe('fungible activity amounts', () => {
 				{ denomination: 12, ticker: 'MIST' } as AssetState
 			)
 		).toBe('1,000 $MIST for 7.8 AR');
+	});
+
+	it('shows the exact proportional AR payment for a submitted partial purchase', () => {
+		const orderId = 'o'.repeat(43);
+		const listing = {
+			id: orderId,
+			action: 'make-offer',
+			asking: '7800000000000',
+			quantity: '1000000000000000',
+		} as CollectionActivityEvent;
+		const purchase = {
+			id: 'p'.repeat(43),
+			action: 'register-interest',
+			orderId,
+			quantity: '250000000000000',
+		} as CollectionActivityEvent;
+		expect(
+			fungiblePurchaseActivityAmount(purchase, [purchase, listing], {
+				denomination: 12,
+				ticker: 'MIST',
+			} as AssetState)
+		).toBe('250 $MIST for 1.95 AR');
+	});
+
+	it('still shows the purchased quantity when an older listing is outside the activity window', () => {
+		const purchase = {
+			action: 'register-interest',
+			orderId: 'o'.repeat(43),
+			quantity: '250000000000000',
+		} as CollectionActivityEvent;
+		expect(
+			fungiblePurchaseActivityAmount(purchase, [purchase], {
+				denomination: 12,
+				ticker: 'MIST',
+			} as AssetState)
+		).toBe('250 $MIST');
+	});
+
+	it('prices a submitted purchase from its still-live order when listing history is outside the window', () => {
+		const orderId = 'o'.repeat(43);
+		const purchase = {
+			action: 'register-interest',
+			orderId,
+			quantity: '250000000000000',
+		} as CollectionActivityEvent;
+		expect(
+			fungiblePurchaseActivityAmount(purchase, [purchase], {
+				denomination: 12,
+				ticker: 'MIST',
+				orders: {
+					[orderId]: {
+						asking: '7800000000000',
+						quantity: '1000000000000000',
+					} as SwapOrder,
+				},
+			} as AssetState)
+		).toBe('250 $MIST for 1.95 AR');
 	});
 });
 
