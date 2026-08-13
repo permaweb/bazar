@@ -1043,9 +1043,9 @@ export default function CreateRoute() {
 					setError(null);
 				}}
 				tabs={[
-					{ value: 'asset', label: 'Single asset' },
+					{ value: 'asset', label: 'Unique 1/1' },
 					{ value: 'collection', label: 'Collection' },
-					{ value: 'fungible', label: 'Fungible token' },
+					{ value: 'fungible', label: 'Token' },
 				]}
 			/>
 
