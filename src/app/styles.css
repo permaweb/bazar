@@ -4529,10 +4529,21 @@ input:focus {
 	color: var(--negative);
 	font-size: var(--type-body);
 }
-.inline-error-actions {
-	display: flex;
-	flex: none;
-	gap: 8px;
+.error-panel.retry-notice,
+.inline-error.retry-notice,
+.collection-source-notice.retry-notice,
+.my-assets-heading-status.retry-notice {
+	border: 1px solid var(--line);
+	background: var(--surface-subtle);
+	color: var(--ink);
+}
+.my-assets-heading-status.retry-notice {
+	padding: var(--space-3) var(--space-4);
+	border-radius: 10px;
+}
+.retry-notice .with-icon > .ui-icon,
+.retry-notice-action > .ui-icon {
+	color: var(--retry-icon);
 }
 .collection-source-notice {
 	display: flex;
@@ -6676,9 +6687,6 @@ body input:focus-visible {
 	.pending-operation-notice {
 		align-items: stretch;
 		flex-direction: column;
-	}
-	.inline-error-actions {
-		flex-wrap: wrap;
 	}
 	.site-footer-content {
 		align-items: flex-start;

@@ -43,6 +43,7 @@ const commonGlobal = {
 	gradientBlue: 'rgba(107, 125, 232, 0.28)',
 	gradientBlueSoft: 'rgba(82, 119, 255, 0.22)',
 	ghostGlow: 'rgba(114, 106, 96, 0.08)',
+	retryIcon: '#d6a100',
 } satisfies Partial<DefaultTheme['colors']['global']>;
 
 const lightGlobal: DefaultTheme['colors']['global'] = {

@@ -26,6 +26,7 @@ declare module 'styled-components' {
 		warningText: string;
 		warningSurface: string;
 		warningBorder: string;
+		retryIcon: string;
 		noticeText: string;
 		noticeSurface: string;
 		eventPurple: string;

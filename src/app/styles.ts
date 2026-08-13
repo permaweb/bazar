@@ -51,6 +51,7 @@ export const GlobalStyle = createGlobalStyle`
     --warning-text: ${(props) => props.theme.colors.global.warningText};
     --warning-surface: ${(props) => props.theme.colors.global.warningSurface};
     --warning-border: ${(props) => props.theme.colors.global.warningBorder};
+    --retry-icon: ${(props) => props.theme.colors.global.retryIcon};
     --notice-text: ${(props) => props.theme.colors.global.noticeText};
     --notice-surface: ${(props) => props.theme.colors.global.noticeSurface};
     --event-purple: ${(props) => props.theme.colors.global.eventPurple};

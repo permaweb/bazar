@@ -1259,12 +1259,10 @@ export function FungibleAssetView({
 									</div>
 								</div>
 								{activityError ? (
-									<div className="inline-error" role={activity.length ? 'status' : 'alert'}>
+									<div className="inline-error retry-notice" role="status">
 										<span>
-											Market history could not be read.{' '}
-											{activity.length
-												? `Previously loaded events remain visible. ${activityError}`
-												: activityError}
+											Compute hasn’t completed yet. Please try again.{' '}
+											{activity.length ? 'Previously loaded events remain visible.' : ''}
 										</span>
 										<Button
 											className="with-icon"
@@ -2959,8 +2957,8 @@ function FungibleOperationDialog({
 									) : null}
 									{matchedOrders.length ? (
 										quoteState === 'error' ? (
-											<div className="inline-error" role="alert">
-												<span>Live fees and wallet balance could not be checked.</span>
+											<div className="inline-error retry-notice" role="status">
+												<span>Compute hasn’t completed yet. Please try again.</span>
 												<Button
 													aria-describedby={quoteStatusId}
 													className="with-icon"
