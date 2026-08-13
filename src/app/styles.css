@@ -457,8 +457,8 @@ p {
 		transform: translateX(-5px) scaleX(1.1);
 	}
 }
-:root[data-theme='dimmed'] .brand-mark img,
-:root[data-theme='dark'] .brand-mark img {
+:root[data-theme='dimmed'] .bazar-mark,
+:root[data-theme='dark'] .bazar-mark {
 	filter: invert(1);
 }
 .site-nav {
@@ -1270,9 +1270,13 @@ p {
 	font-weight: 400;
 }
 .home-feature-copy > span {
-	min-height: 36px;
+	min-height: 3em;
+	max-height: 3em;
 	margin-top: 6px;
-	display: block;
+	display: -webkit-box;
+	overflow: hidden;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 2;
 	color: var(--muted);
 	font-size: var(--type-body);
 	line-height: 1.5;
@@ -2057,14 +2061,14 @@ main {
 .my-assets-page {
 	width: 100%;
 	margin: 0 auto;
-	padding: var(--page-block-spacing) 0 var(--page-footer-spacing);
+	padding: 40px 0 var(--page-footer-spacing);
 }
 .route-state-shell {
 	width: min(760px, 100%);
 	min-height: calc(100vh - 124px);
 	min-height: calc(100dvh - 124px);
 	margin: 0 auto;
-	padding: var(--page-block-spacing) 0 var(--page-footer-spacing);
+	padding: 40px 0 var(--page-footer-spacing);
 }
 .route-state-shell > .back {
 	margin-bottom: var(--space-5);
@@ -2599,7 +2603,7 @@ input:focus {
 	transition: transform 120ms ease;
 }
 .market-select-trigger.open svg {
-	transform: rotate(90deg);
+	transform: rotate(180deg);
 }
 .market-select-menu {
 	position: absolute;
@@ -9167,11 +9171,6 @@ body input:focus-visible {
 	object-fit: contain;
 	object-position: center;
 }
-:root[data-theme='dimmed'] .search-result-image > .bazar-mark,
-:root[data-theme='dark'] .search-result-image > .bazar-mark {
-	filter: invert(1);
-}
-
 .my-assets-resolution-status {
 	margin: 0 0 30px;
 	padding: 15px 17px;

@@ -1565,6 +1565,55 @@ describe('fungible asset transactions', () => {
 		);
 		expect(payment.target).toBe(order.recipient);
 		expect(payment.quantity).toBe('333334');
+		expect(decodedTags(payment)).toContainEqual({ name: 'assign-to', value: processId });
+		expect(decodedTags(registration)).not.toContainEqual({ name: 'assign-to', value: processId });
+	});
+
+	it('never restores a seller payment that is not assigned to the asset process', async () => {
+		const order = swapOrder(transactionId, '3000000000000', '1000000');
+		const subject = client(undefined, async (input) => {
+			if (String(input).endsWith('/info')) return Response.json({ height: 1000 });
+			return new Response('1000000000000');
+		});
+		const adapter = subject.client.purchaseAdapter({
+			processId,
+			order,
+			buyer: seller,
+			startingBalance: '0',
+			network: { tip: () => 1000 } as any,
+		});
+		const payment = await adapter.preparePayment('', new AbortController().signal);
+		const key = `bazar-signed-transaction:${payment.id}`;
+		const stored = JSON.parse(subject.storage.getItem(key)!);
+		const encodedName = Buffer.from('assign-to').toString('base64url');
+		stored.transaction.tags = stored.transaction.tags.filter((tag: { name: string }) => tag.name !== encodedName);
+		stored.intent.tags = stored.intent.tags.filter((tag: { name: string }) => tag.name !== 'assign-to');
+		subject.storage.setItem(key, JSON.stringify(stored));
+
+		expect(
+			subject.client.findStoredPayment(order.recipient, processId, order.orderId, order.asking, seller, 1000)
+		).toBeNull();
+		await expect(adapter.restorePrepared!('payment', payment.id, new AbortController().signal)).rejects.toThrow(
+			'signed-transaction-process-routing-mismatch'
+		);
+	});
+
+	it('rejects a conflicting duplicate assignment returned by the wallet', async () => {
+		const order = swapOrder(transactionId, '3000000000000', '1000000');
+		const subject = approvalSubject([order], { conflictingAssignment: recipient });
+
+		await expect(
+			subject.client
+				.purchaseAdapter({
+					processId,
+					order,
+					buyer: seller,
+					startingBalance: '0',
+					network: { tip: () => 1000 } as any,
+				})
+				.preparePayment('', new AbortController().signal)
+		).rejects.toThrow('wallet-modified-transaction-fields');
+		expect(subject.signedKeys()).toEqual([]);
 	});
 
 	it.each(['0', '3000000000001'])('refuses invalid fill quantity %s before wallet approval', (fillQuantity) => {
@@ -1800,7 +1849,12 @@ function swapOrder(orderId: string, quantity: string, asking: string) {
 
 function approvalSubject(
 	orders: ReturnType<typeof swapOrder>[],
-	options: { rejectAt?: number; failBalanceAt?: number; deferBalanceAt?: number } = {}
+	options: {
+		rejectAt?: number;
+		failBalanceAt?: number;
+		deferBalanceAt?: number;
+		conflictingAssignment?: string;
+	} = {}
 ) {
 	const values = new Map<string, string>();
 	const ids = ['R', 'P', 'S', 'T', 'U', 'V'].map((prefix) => prefix.repeat(43));
@@ -1838,11 +1892,14 @@ function approvalSubject(
 					this.tags.push({ name, value });
 				},
 				toJSON() {
+					const tags = options.conflictingAssignment
+						? [...this.tags, { name: 'assign-to', value: options.conflictingAssignment }]
+						: this.tags;
 					return {
 						...this,
 						addTag: undefined,
 						toJSON: undefined,
-						tags: this.tags.map((tag: { name: string; value: string }) => ({
+						tags: tags.map((tag: { name: string; value: string }) => ({
 							name: Buffer.from(tag.name).toString('base64url'),
 							value: Buffer.from(tag.value).toString('base64url'),
 						})),

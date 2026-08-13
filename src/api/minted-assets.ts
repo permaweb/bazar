@@ -104,7 +104,7 @@ export function assetFromMintState(
 ): AssetSummary | null {
 	const explicitMediaId = String(raw['asset-data'] ?? '');
 	const mediaId = explicitMediaId || processId;
-	const contentType = normalizeAssetContentType(String(raw['asset-content-type'] ?? ''));
+	const contentType = normalizeAssetContentType(String(raw['asset-content-type'] ?? raw['content-type'] ?? ''));
 	const artworkId = String(raw['asset-artwork'] ?? '');
 	const artist = typeof raw.artist === 'string' ? raw.artist.trim() : '';
 	const album = typeof raw.album === 'string' ? raw.album.trim() : '';

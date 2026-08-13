@@ -111,9 +111,7 @@ export function WalletMenu() {
 						</div>
 					</div>
 					<div aria-label="Balance" className="wallet-dropdown-balance" role="group">
-						<span>
-							Balance
-						</span>
+						<span>Balance</span>
 						<strong aria-live="polite">
 							<ArCurrencyText>{arBalanceLabel(wallet.arBalance, wallet.arBalanceStatus)}</ArCurrencyText>
 						</strong>

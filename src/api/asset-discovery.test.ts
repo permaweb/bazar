@@ -87,7 +87,6 @@ describe('Bazar atomic asset search', () => {
 	it('loads permanent display metadata by process ID without requiring live compute state', async () => {
 		const processId = 'P'.repeat(43);
 		const tags = [
-			{ name: 'App-Name', value: 'Bazar' },
 			{ name: 'device', value: 'process@1.0' },
 			{ name: 'execution-device', value: 'token@1.0' },
 			{ name: 'swap-device', value: 'arweave-swap@1.0' },
@@ -98,8 +97,8 @@ describe('Bazar atomic asset search', () => {
 			{ name: 'denomination', value: '0' },
 			{ name: 'ticker', value: 'ASSET' },
 			{ name: 'name', value: 'AntiqueWhite' },
-			{ name: 'collection', value: 'HTML Colors' },
-			{ name: 'asset-content-type', value: 'image/png' },
+			{ name: 'hint-ui-style', value: 'non-fungible' },
+			{ name: 'Content-Type', value: 'image/png' },
 		];
 		const fetcher = vi.fn(async (..._args: Parameters<typeof fetch>) =>
 			Response.json({ data: { transaction: { id: processId, tags } } })
@@ -112,7 +111,7 @@ describe('Bazar atomic asset search', () => {
 				contentType: 'image/png',
 				image: `https://arweave.net/${processId}`,
 			},
-			collection: { id: 'created-assets', name: 'HTML Colors', kind: 'images' },
+			collection: { id: 'created-assets', name: 'Created on Bazar', kind: 'images' },
 		});
 		const request = JSON.parse(String(fetcher.mock.calls[0][1]?.body));
 		expect(request.variables).toEqual({ id: processId });
@@ -141,7 +140,6 @@ describe('Bazar atomic asset search', () => {
 	it('finds an exact named creation and rejects records outside the atomic contract', async () => {
 		const processId = 'P'.repeat(43);
 		const exactTags = [
-			{ name: 'App-Name', value: 'Bazar' },
 			{ name: 'device', value: 'process@1.0' },
 			{ name: 'execution-device', value: 'token@1.0' },
 			{ name: 'swap-device', value: 'arweave-swap@1.0' },
@@ -152,8 +150,8 @@ describe('Bazar atomic asset search', () => {
 			{ name: 'denomination', value: '0' },
 			{ name: 'ticker', value: 'ASSET' },
 			{ name: 'name', value: 'lucifer shrek' },
-			{ name: 'collection', value: 'Created on Bazar' },
-			{ name: 'asset-content-type', value: 'image/webp' },
+			{ name: 'hint-ui-style', value: 'non-fungible' },
+			{ name: 'Content-Type', value: 'image/webp' },
 		];
 		const fetcher = vi.fn(async (_url: string | URL | Request, _init?: RequestInit) =>
 			Response.json({
@@ -768,7 +766,7 @@ describe('wallet candidate discovery', () => {
 				processDevice: 'process@1.0',
 				device: 'carrier@1.0',
 				collection: 'names',
-				assetType: 'atomic',
+				assetType: 'non-fungible',
 				swapDevice: 'arweave-swap@1.0',
 				schedulerDevice: 'arweave-scheduler@1.0',
 				schedulerMode: 'all',
@@ -2128,6 +2126,7 @@ describe('live candidate resolution', () => {
 
 	it('keeps unloaded fungible candidates and accepts them only after exact live-state verification', async () => {
 		const unloaded = 'U'.repeat(43);
+		const legacy = 'L'.repeat(43);
 		const unsupported = 'V'.repeat(43);
 		const withTokens: Collection[] = [
 			...collections,
@@ -2139,7 +2138,7 @@ describe('live candidate resolution', () => {
 				assets: [],
 			},
 		];
-		const candidates: AssetCandidate[] = [unloaded, unsupported].map((processId) => ({
+		const candidates: AssetCandidate[] = [unloaded, legacy, unsupported].map((processId) => ({
 			processId,
 			height: 1,
 			timestamp: 0,
@@ -2153,10 +2152,10 @@ describe('live candidate resolution', () => {
 				state: parseAssetState({
 					device: 'process@1.0',
 					'execution-device': 'token@1.0',
-					'asset-type': 'fungible',
+					...(processId === unloaded ? { 'hint-ui-style': 'fungible' } : { 'asset-type': 'fungible' }),
 					'swap-device': 'arweave-swap@1.0',
 					'scheduler-device': 'arweave-scheduler@1.0',
-					'scheduler-mode': processId === unloaded ? 'all' : 'local',
+					'scheduler-mode': processId === unsupported ? 'local' : 'all',
 					name: 'Page two token',
 					ticker: 'PAGE2',
 					'total-supply': '1000000000000',
@@ -2167,9 +2166,50 @@ describe('live candidate resolution', () => {
 			}),
 		});
 
-		expect(results).toHaveLength(1);
-		expect(results[0].asset).toMatchObject({ id: unloaded, name: 'Page two token', ticker: 'PAGE2' });
-		expect(results[0].collection.kind).toBe('tokens');
+		expect(results).toHaveLength(2);
+		expect(results.map(({ asset }) => asset)).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({ id: unloaded, name: 'Page two token', ticker: 'PAGE2' }),
+				expect.objectContaining({ id: legacy, name: 'Page two token', ticker: 'PAGE2' }),
+			])
+		);
+		expect(results.every(({ collection }) => collection.kind === 'tokens')).toBe(true);
+	});
+
+	it('finds unindexed fungible candidates created with the legacy asset-type marker', async () => {
+		const processId = 'L'.repeat(43);
+		const candidate: AssetCandidate = {
+			processId,
+			height: 1,
+			timestamp: 0,
+			sources: ['transfer'],
+		};
+		const tokenCollection: Collection = {
+			id: 'fungible-tokens',
+			name: 'Tokens',
+			description: 'Tokens',
+			kind: 'tokens',
+			assets: [],
+		};
+		const fetcher = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+			const body = JSON.parse(String(init?.body));
+			expect(body.query).toContain('{ name: "asset-type", values: ["fungible"] }');
+			return Response.json({
+				data: {
+					fungible: { pageInfo: { hasNextPage: false }, edges: [] },
+					legacyFungibleHintStyle: { pageInfo: { hasNextPage: false }, edges: [] },
+					legacyFungibleAssetType: {
+						pageInfo: { hasNextPage: false },
+						edges: [{ cursor: 'legacy', node: { id: processId } }],
+					},
+					atomic: { pageInfo: { hasNextPage: false }, edges: [] },
+				},
+			});
+		});
+
+		await expect(
+			verifyAssetCandidateSupport([candidate], [tokenCollection], { fetch: fetcher as typeof fetch })
+		).resolves.toEqual({ supported: [candidate], unavailable: [] });
 	});
 
 	it('verifies and reconstructs Bazar audio assets with artwork without origin-local storage', async () => {
@@ -2183,6 +2223,7 @@ describe('live candidate resolution', () => {
 			sources: ['initial-holder'],
 			processDevice: 'process@1.0',
 			device: 'token@1.0',
+			assetType: 'non-fungible',
 			swapDevice: 'arweave-swap@1.0',
 			schedulerDevice: 'arweave-scheduler@1.0',
 			schedulerMode: 'all',
@@ -2196,9 +2237,9 @@ describe('live candidate resolution', () => {
 			assets: [],
 		};
 		const processTags = [
-			['App-Name', 'Bazar'],
 			['device', 'process@1.0'],
 			['execution-device', 'token@1.0'],
+			['hint-ui-style', 'non-fungible'],
 			['swap-device', 'arweave-swap@1.0'],
 			['scheduler-device', 'arweave-scheduler@1.0'],
 			['scheduler-mode', 'all'],
@@ -2207,7 +2248,7 @@ describe('live candidate resolution', () => {
 			['denomination', '0'],
 			['ticker', 'ASSET'],
 			['name', 'Portable asset'],
-			['collection', 'Portable collection'],
+			['base-collection', 'Portable collection'],
 			['asset-content-type', 'audio/mpeg'],
 			['asset-data', mediaId],
 			['asset-artwork', artworkId],
@@ -2232,12 +2273,13 @@ describe('live candidate resolution', () => {
 		const state = parseAssetState({
 			device: 'process@1.0',
 			'execution-device': 'token@1.0',
+			'hint-ui-style': 'non-fungible',
 			'swap-device': 'arweave-swap@1.0',
 			'scheduler-device': 'arweave-scheduler@1.0',
 			'scheduler-mode': 'all',
 			ticker: 'ASSET',
 			name: 'Portable asset',
-			collection: 'Portable collection',
+			'base-collection': 'Portable collection',
 			'asset-content-type': 'audio/mpeg',
 			'asset-data': mediaId,
 			'asset-artwork': artworkId,
@@ -2481,7 +2523,7 @@ describe('live candidate resolution', () => {
 		const exact = {
 			device: 'process@1.0',
 			'execution-device': 'token@1.0',
-			'asset-type': 'fungible',
+			'hint-ui-style': 'fungible',
 			'swap-device': 'arweave-swap@1.0',
 			'scheduler-device': 'arweave-scheduler@1.0',
 			'scheduler-mode': 'all',
@@ -2503,7 +2545,7 @@ describe('live candidate resolution', () => {
 		await expect(resolve(exact)).resolves.toHaveLength(1);
 		for (const [key, value] of [
 			['device', 'message@1.0'],
-			['asset-type', 'atomic'],
+			['hint-ui-style', 'non-fungible'],
 			['swap-device', 'other-swap@1.0'],
 			['scheduler-device', 'other-scheduler@1.0'],
 			['scheduler-mode', 'local'],

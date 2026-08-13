@@ -2,7 +2,7 @@ import type { WeaveNetworkOptions } from 'weave-wrangler';
 
 import { arweaveGatewayFromLocation, DEFAULT_COMPUTE_GATEWAYS, gatewaysFromLocation } from 'helpers/config';
 
-import { aoClient, aoFetch } from './ao';
+import { aoClient } from './ao';
 import { ArweaveObserverNetwork } from './arweave-observers';
 import { ARWEAVE_OBSERVER_HEALTHY_TARGET } from './observer-policy';
 
@@ -37,8 +37,46 @@ export function assetObserverNetworkOptions(location: Location = window.location
 		maxObservers: ARWEAVE_OBSERVER_HEALTHY_TARGET,
 		...(isLocalDevelopment && !hasSelectedRelay
 			? { pageProtocol: location.protocol }
-			: { fetch: aoFetch(relays), 'relay-with': relay }),
+			: { fetch: observerRelayFetch(relays), 'relay-with': relay }),
 	};
+}
+
+/**
+ * Relay responses contain relay-specific commitments, so combining the same
+ * logical observer request through AO Wrangler's response quorum can reject
+ * otherwise valid answers as different. Try the selected relay origins in
+ * order and return one complete HTTP response instead.
+ */
+export function observerRelayFetch(
+	relays: readonly string[],
+	fetcher: typeof fetch = globalThis.fetch.bind(globalThis)
+) {
+	const origins = [...new Set(relays.map((relay) => new URL(relay).origin))];
+	return (async (input: RequestInfo | URL, init?: RequestInit) => {
+		const source = input instanceof Request ? input.url : String(input);
+		let requested: URL;
+		try {
+			requested = new URL(source);
+		} catch {
+			return fetcher(input, init);
+		}
+		if (!origins.includes(requested.origin)) return fetcher(input, init);
+		const ordered = [requested.origin, ...origins.filter((origin) => origin !== requested.origin)];
+		let lastResponse: Response | undefined;
+		let lastError: unknown;
+		for (const origin of ordered) {
+			const target = `${origin}${requested.pathname}${requested.search}${requested.hash}`;
+			try {
+				const response = await fetcher(input instanceof Request ? new Request(target, input) : target, init);
+				lastResponse = response;
+				if (response.status !== 429 && response.status < 500) return response;
+			} catch (error) {
+				lastError = error;
+			}
+		}
+		if (lastResponse) return lastResponse;
+		throw lastError instanceof Error ? lastError : new Error('observer-relay-unavailable');
+	}) as typeof fetch;
 }
 
 function observerNetworkKey(options: WeaveNetworkOptions): string {

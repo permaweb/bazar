@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
 	assetFromMintState,
 	AssetMintClient,
+	collectionCarrierUpdateTags,
 	collectionManifest,
 	CollectionMintClient,
 	collectionProcessTags,
@@ -92,11 +93,9 @@ describe('asset mint contract', () => {
 		);
 
 		expect(tags).toMatchObject({
-			'app-name': 'Bazar',
-			'asset-type': 'image/png',
+			'hint-ui-style': 'non-fungible',
 			'content-type': 'image/png',
 			creator: owner,
-			'date-created': '123',
 			description: 'Permanent',
 			implements: 'ANS-110',
 			title: 'Signal #1',
@@ -108,6 +107,12 @@ describe('asset mint contract', () => {
 		});
 		expect(Object.keys(tags)).toEqual(Object.keys(tags).map((tag) => tag.toLowerCase()));
 		expect(new Set(Object.keys(tags)).size).toBe(Object.keys(tags).length);
+		expect(tags).not.toHaveProperty('app-name');
+		expect(tags).not.toHaveProperty('app-version');
+		expect(tags).not.toHaveProperty('date-created');
+		expect(tags).not.toHaveProperty('asset-type');
+		expect(tags).not.toHaveProperty('collection');
+		expect(tags).not.toHaveProperty('asset-content-type');
 		expect(tags).not.toHaveProperty('asset-data');
 		expect(
 			mintProcessTags(
@@ -118,12 +123,15 @@ describe('asset mint contract', () => {
 					collection: 'Signal set',
 				},
 				owner
-			).collection
+			)['base-collection']
 		).toBe('Signal set');
+		expect(
+			mintProcessTags({ name: 'Signal #1', contentType: 'image/png', mediaId, collection: 'Signal set' }, owner)
+		).not.toHaveProperty('collection');
 		expect(
 			isBazarMintTags(Object.fromEntries(Object.entries(tags).map(([key, value]) => [key.toLowerCase(), value])))
 		).toBe(true);
-		expect(assetFromMintState(processId, { name: 'Signal #1', 'asset-content-type': 'image/png' })).toEqual({
+		expect(assetFromMintState(processId, { name: 'Signal #1', 'content-type': 'image/png' })).toEqual({
 			id: processId,
 			name: 'Signal #1',
 			contentType: 'image/png',
@@ -136,7 +144,6 @@ describe('asset mint contract', () => {
 			description: 'Permanent',
 			contentType: 'image/png',
 			image: mediaId,
-			collection: 'Created on Bazar',
 		});
 	});
 
@@ -154,7 +161,7 @@ describe('asset mint contract', () => {
 		expect(
 			mintProcessTags({ name: 'Signal', contentType: 'audio/x-wav', mediaId, artworkId }, owner)
 		).toMatchObject({
-			'asset-content-type': 'audio/wav',
+			'content-type': 'audio/wav',
 			'asset-data': mediaId,
 			'asset-artwork': artworkId,
 		});
@@ -166,7 +173,6 @@ describe('asset mint contract', () => {
 			contentType: 'audio/mpeg',
 			audio: mediaId,
 			image: artworkId,
-			collection: 'Created on Bazar',
 		});
 		expect(
 			assetFromMintState(processId, {
@@ -356,20 +362,22 @@ describe('asset mint contract', () => {
 			assets: [processId],
 		});
 		expect(collectionProcessTags('Signal set', manifestId, owner)).toEqual({
-			'content-type': 'application/x.ao-message',
-			'app-name': 'Bazar',
-			'app-version': '2.0.0',
 			device: 'process@1.0',
 			'execution-device': 'carrier@1.0',
 			'scheduler-device': 'arweave-scheduler@1.0',
 			'scheduler-mode': 'all',
 			'initial-holder': owner,
 			'initial-value': manifestId,
-			'reference-value': manifestId,
 			'total-supply': '1',
 			denomination: '0',
 			ticker: 'COLLECTION',
 			type: 'Process',
+			name: 'Signal set',
+		});
+		expect(collectionCarrierUpdateTags('Signal set', manifestId)).toEqual({
+			action: 'set',
+			value: manifestId,
+			type: 'Collection-Update',
 			name: 'Signal set',
 		});
 	});
@@ -505,7 +513,8 @@ describe('asset mint contract', () => {
 		});
 		const update = await createTransaction.mock.results.at(-1)?.value;
 		expect(update.addTag).toHaveBeenCalledWith('action', 'set');
-		expect(update.addTag).toHaveBeenCalledWith('reference-value', ids[2]);
+		expect(update.addTag).toHaveBeenCalledWith('value', ids[2]);
+		expect(update.addTag).not.toHaveBeenCalledWith('reference-value', expect.anything());
 		expect(loadMintedCollections(store)[0]).toMatchObject({ id: collection.id, manifestId: ids[2], total: 2 });
 		expect(loadMintedAssets(store)).toEqual([]);
 		expect(loadMintActivities(store)).toEqual([]);
@@ -597,6 +606,13 @@ describe('asset mint contract', () => {
 		expect(asset.addTag).toHaveBeenCalledWith('device', 'process@1.0');
 		expect(asset.addTag).toHaveBeenCalledWith('license', UDL_LICENSE_ID);
 		expect(asset.addTag).toHaveBeenCalledWith('data-model-training', 'Allowed');
+		expect(asset.addTag).not.toHaveBeenCalledWith('collection', expect.anything());
+		expect(asset.addTag).not.toHaveBeenCalledWith('asset-content-type', expect.anything());
+		expect(asset.addTag).toHaveBeenCalledWith('hint-ui-style', 'non-fungible');
+		expect(asset.addTag).not.toHaveBeenCalledWith('asset-type', expect.anything());
+		expect(asset.addTag).not.toHaveBeenCalledWith('app-name', expect.anything());
+		expect(asset.addTag).not.toHaveBeenCalledWith('app-version', expect.anything());
+		expect(asset.addTag).not.toHaveBeenCalledWith('date-created', expect.anything());
 		expect(asset.addTag).not.toHaveBeenCalledWith('asset-data', expect.anything());
 		expect(asset.setSignature).toHaveBeenCalledWith(expect.objectContaining({ id: processId, signature: 'asset' }));
 		expect(uploadChunk).toHaveBeenCalledOnce();
@@ -747,12 +763,16 @@ describe('asset mint contract', () => {
 		expect(fungibleAtomicSupply('1', '0')).toBe('1');
 		expect(fungibleAtomicSupply('900719925474099312345678', '12')).toBe('900719925474099312345678000000000000');
 		expect(fungibleMintProcessTags(input, owner)).toMatchObject({
-			'asset-type': 'fungible',
+			'hint-ui-style': 'fungible',
 			'initial-holder': owner,
 			'total-supply': '42622000000',
 			denomination: '3',
 			ticker: 'SIG',
 		});
+		expect(fungibleMintProcessTags(input, owner)).not.toHaveProperty('collection');
+		expect(fungibleMintProcessTags(input, owner)).not.toHaveProperty('app-name');
+		expect(fungibleMintProcessTags(input, owner)).not.toHaveProperty('app-version');
+		expect(fungibleMintProcessTags(input, owner)).not.toHaveProperty('asset-type');
 		expect(() => fungibleAtomicSupply('1.5', '3')).toThrow('mint-supply-invalid');
 		expect(() => fungibleAtomicSupply('1', '256')).toThrow('mint-denomination-invalid');
 		expect(() =>
@@ -821,20 +841,32 @@ describe('asset mint contract', () => {
 		});
 		const phases: string[] = [];
 		const uploaded: string[] = [];
+		const published: Array<{ id: string; label: string }> = [];
 		const result = await client.mintFungible(input, owner, {
 			logo: logoFile,
 			onLogoUploaded: (id) => uploaded.push(id),
 			onPhase: (phase) => phases.push(phase),
+			onTransaction: (transaction) => published.push(transaction),
 		});
 
 		expect(createTransaction).toHaveBeenNthCalledWith(1, { data: new Uint8Array([1, 2, 3]) }, 'use_wallet');
 		expect(logoTransaction.addTag).toHaveBeenCalledWith('content-type', 'image/png');
 		expect(logoTransaction.addTag).toHaveBeenCalledWith('type', 'Token-Logo');
 		expect(processTransaction.addTag).toHaveBeenCalledWith('logo', logoId);
-		expect(processTransaction.addTag).toHaveBeenCalledWith('asset-type', 'fungible');
+		expect(processTransaction.addTag).toHaveBeenCalledWith('hint-ui-style', 'fungible');
+		expect(processTransaction.addTag).not.toHaveBeenCalledWith('collection', expect.anything());
 		expect(processTransaction.addTag).toHaveBeenCalledWith('total-supply', '1000000000000000');
+		expect(createTransaction).toHaveBeenNthCalledWith(
+			2,
+			{ data: expect.stringContaining('"name":"Signal Token"') },
+			'use_wallet'
+		);
 		expect(phases).toEqual(['signing-logo', 'uploading-logo', 'signing', 'uploading']);
 		expect(uploaded).toEqual([logoId]);
+		expect(published).toEqual([
+			{ id: logoId, label: 'Token logo' },
+			{ id: processId, label: 'Fungible token' },
+		]);
 		expect(result).toMatchObject({
 			processId,
 			logo: logoId,

@@ -33,7 +33,7 @@ export type Collection = {
 	cursor?: string;
 	cursorHistory?: string[];
 	hasMore?: boolean;
-	indexSource?: 'reference' | 'compiled-fallback';
+	indexSource?: 'carrier' | 'reference' | 'compiled-fallback';
 	manifestId?: string;
 	namespace?: NamesNamespaceIndex;
 };
@@ -83,7 +83,7 @@ export function fungibleAssetFromState(id: string, state?: AssetState): AssetSum
 		!state ||
 		state.raw.device !== 'process@1.0' ||
 		state.device !== 'token@1.0' ||
-		state.raw['asset-type'] !== 'fungible' ||
+		assetUiStyle(state.raw) !== 'fungible' ||
 		state.raw['swap-device'] !== 'arweave-swap@1.0' ||
 		state.raw['scheduler-device'] !== 'arweave-scheduler@1.0' ||
 		state.raw['scheduler-mode'] !== 'all'
@@ -97,6 +97,15 @@ export function fungibleAssetFromState(id: string, state?: AssetState): AssetSum
 		...(state.ticker ? { ticker: state.ticker } : {}),
 		...(typeof logo === 'string' && ARWEAVE_ID.test(logo) ? { image: arweaveDataUrl(logo) } : {}),
 	};
+}
+
+/** Read the current UI hint while retaining immutable assets created with earlier tag names. */
+export function assetUiStyle(tags: Readonly<Record<string, unknown>>): string | undefined {
+	for (const name of ['hint-ui-style', 'hint-style', 'asset-type']) {
+		const value = tags[name];
+		if (typeof value === 'string') return value;
+	}
+	return undefined;
 }
 
 type ImageManifest = {
@@ -360,9 +369,9 @@ export async function discoverBazarCollections(
 						first: 100
 						sort: HEIGHT_DESC
 							tags: [
-								{ name: "app-name", values: ["Bazar"] }
 								{ name: "device", values: ["process@1.0"] }
 								{ name: "execution-device", values: ["carrier@1.0"] }
+								{ name: "ticker", values: ["COLLECTION"] }
 								{ name: "type", values: ["Process"] }
 						]
 					) {
@@ -440,13 +449,11 @@ function parseBazarCollectionCandidate(edge: any): BazarCollectionCandidate {
 		tags['scheduler-device'] === 'arweave-scheduler@1.0' &&
 		tags['scheduler-mode'] === 'all' &&
 		tags.ticker === 'COLLECTION';
-	const legacy = !tags['scheduler-device'] && !tags['scheduler-mode'] && !tags.ticker;
 	if (
-		tags['app-name'] !== 'Bazar' ||
 		tags.device !== 'process@1.0' ||
 		tags['execution-device'] !== 'carrier@1.0' ||
 		tags.type !== 'Process' ||
-		(!scheduled && !legacy) ||
+		!scheduled ||
 		!ARWEAVE_ID.test(manifestId)
 	) {
 		throw new Error('collection-discovery-schema');
@@ -467,13 +474,11 @@ async function loadDiscoveredImageCollection(
 	let manifestId = candidate.manifestId;
 	if (candidate.scheduled) {
 		manifestId =
-			carrierManifestReference(
-				(await readAssetState(candidate.id, { signal, maxAge: 30, maxAttempts: 1 })).state
-			) ?? '';
+			carrierManifestId((await readAssetState(candidate.id, { signal, maxAge: 30, maxAttempts: 1 })).state) ?? '';
 		if (!manifestId) throw new Error('collection-reference-unavailable');
 	}
 	return enrichImageCollectionAssetMetadata(
-		imageCollection(candidate.id, manifestId, 'reference', await fetchJson<ImageManifest>(manifestId, signal)),
+		imageCollection(candidate.id, manifestId, 'carrier', await fetchJson<ImageManifest>(manifestId, signal)),
 		signal
 	);
 }
@@ -498,9 +503,9 @@ function indexedAtomicAsset(node: AtomicAssetIndexNode): AssetSummary | undefine
 		(node.tags as Array<{ name: string; value: string }>).map(({ name, value }) => [name.toLowerCase(), value])
 	);
 	if (
-		tags['app-name'] !== 'Bazar' ||
 		tags.device !== 'process@1.0' ||
 		tags['execution-device'] !== 'token@1.0' ||
+		tags['hint-ui-style'] !== 'non-fungible' ||
 		tags['swap-device'] !== 'arweave-swap@1.0' ||
 		tags['scheduler-device'] !== 'arweave-scheduler@1.0' ||
 		tags['scheduler-mode'] !== 'all' ||
@@ -508,7 +513,7 @@ function indexedAtomicAsset(node: AtomicAssetIndexNode): AssetSummary | undefine
 		tags.denomination !== '0' ||
 		tags.ticker !== 'ASSET' ||
 		!ARWEAVE_ID.test(tags['initial-holder'] ?? '') ||
-		!isSupportedAssetContentType(tags['asset-content-type'])
+		!isSupportedAssetContentType(tags['asset-content-type'] ?? tags['content-type'])
 	)
 		return undefined;
 	return assetFromMintState(node.id, tags) ?? undefined;
@@ -615,7 +620,7 @@ async function loadFungibleTokenPage(after?: string, signal?: AbortSignal): Prom
 			headers: { 'content-type': 'application/json' },
 			body: JSON.stringify({
 				query: `query FungibleTokens($after: String) {
-				transactions(
+					transactions(
 					after: $after
 					first: 100
 					sort: HEIGHT_DESC
@@ -624,15 +629,47 @@ async function loadFungibleTokenPage(after?: string, signal?: AbortSignal): Prom
 						{ name: "execution-device", values: ["token@1.0"] }
 						{ name: "swap-device", values: ["arweave-swap@1.0"] }
 						{ name: "scheduler-device", values: ["arweave-scheduler@1.0"] }
-						{ name: "asset-type", values: ["fungible"] }
+						{ name: "hint-ui-style", values: ["fungible"] }
 						{ name: "scheduler-mode", values: ["all"] }
 					]
 				) {
 					count
 					pageInfo { hasNextPage }
-					edges { cursor node { id tags { name value } } }
-				}
-			}`,
+						edges { cursor node { id tags { name value } } }
+					}
+					legacyHintStyle: transactions(
+						first: 100
+						sort: HEIGHT_DESC
+						tags: [
+							{ name: "device", values: ["process@1.0"] }
+							{ name: "execution-device", values: ["token@1.0"] }
+							{ name: "swap-device", values: ["arweave-swap@1.0"] }
+							{ name: "scheduler-device", values: ["arweave-scheduler@1.0"] }
+							{ name: "hint-style", values: ["fungible"] }
+							{ name: "scheduler-mode", values: ["all"] }
+						]
+					) {
+						count
+						pageInfo { hasNextPage }
+						edges { cursor node { id tags { name value } } }
+					}
+					legacyAssetType: transactions(
+						first: 100
+						sort: HEIGHT_DESC
+						tags: [
+							{ name: "device", values: ["process@1.0"] }
+							{ name: "execution-device", values: ["token@1.0"] }
+							{ name: "swap-device", values: ["arweave-swap@1.0"] }
+							{ name: "scheduler-device", values: ["arweave-scheduler@1.0"] }
+							{ name: "asset-type", values: ["fungible"] }
+							{ name: "scheduler-mode", values: ["all"] }
+						]
+					) {
+						count
+						pageInfo { hasNextPage }
+						edges { cursor node { id tags { name value } } }
+					}
+				}`,
 				variables: { after: after ?? null },
 			}),
 			signal,
@@ -680,11 +717,50 @@ async function loadFungibleTokenPage(after?: string, signal?: AbortSignal): Prom
 	if (connection.pageInfo.hasNextPage && (!cursor || cursor === after)) {
 		throw new Error('fungible-index-pagination-stalled');
 	}
+	const legacyAssets = new Map<string, AssetSummary>();
+	for (const [key, expectedTag] of [
+		['legacyHintStyle', 'hint-style'],
+		['legacyAssetType', 'asset-type'],
+	] as const) {
+		const legacy = payload.data?.[key] as FungibleTokenConnection | undefined;
+		if (!legacy) continue;
+		const legacyCount = collectionCount(legacy.count);
+		if (
+			legacyCount === null ||
+			typeof legacy.pageInfo?.hasNextPage !== 'boolean' ||
+			!Array.isArray(legacy.edges) ||
+			legacy.edges.some(
+				(edge: any) =>
+					!edge ||
+					typeof edge.cursor !== 'string' ||
+					!edge.cursor ||
+					!ARWEAVE_ID.test(edge.node?.id) ||
+					!Array.isArray(edge.node?.tags) ||
+					edge.node.tags.some(
+						(tag: any) => !tag || typeof tag.name !== 'string' || typeof tag.value !== 'string'
+					)
+			)
+		)
+			throw new Error('fungible-index-schema');
+		if (legacy.pageInfo.hasNextPage) throw new Error('fungible-index-legacy-pagination-stalled');
+		for (const { node } of legacy.edges) {
+			const tags = Object.fromEntries(node.tags.map((tag) => [tag.name.toLowerCase(), tag.value]));
+			if (assetUiStyle(tags) !== 'fungible' || !(expectedTag in tags)) continue;
+			legacyAssets.set(node.id, {
+				id: node.id,
+				name: tags.name ?? tags.ticker ?? shortId(node.id),
+				contentType: 'application/x.arweave-token',
+				...(tags.ticker ? { ticker: tags.ticker } : {}),
+				...(tags.logo && ARWEAVE_ID.test(tags.logo) ? { image: arweaveDataUrl(tags.logo) } : {}),
+			});
+		}
+	}
+	for (const id of assets.keys()) legacyAssets.delete(id);
 	return {
-		assets: [...assets.values()],
+		assets: [...assets.values(), ...legacyAssets.values()],
 		cursor,
 		hasMore: connection.pageInfo.hasNextPage,
-		total: count,
+		total: count + legacyAssets.size,
 	};
 }
 
@@ -744,7 +820,7 @@ function namesNamespaceCollection(namespace: NamesNamespaceIndex): Collection {
 		assets: [],
 		manifestId: namespace.manifestId,
 		namespace,
-		indexSource: 'reference',
+		indexSource: 'carrier',
 	};
 }
 
@@ -890,8 +966,9 @@ export async function loadImageCollection(
 		);
 		let referencedManifest: string | undefined = tags['reference-value'];
 		if (tags['execution-device'] === 'carrier@1.0' && tags['scheduler-device'] === 'arweave-scheduler@1.0') {
+			indexSource = 'carrier';
 			try {
-				referencedManifest = carrierManifestReference(
+				referencedManifest = carrierManifestId(
 					(await readAssetState(referenceId, { signal, maxAge: 30, maxAttempts: 1 })).state
 				);
 			} catch {
@@ -914,7 +991,11 @@ export async function loadImageCollection(
 		return imageCollection(referenceId, value, indexSource, await fetchJson<ImageManifest>(value, signal));
 	} catch (cause) {
 		throwIfAborted(signal);
-		if (indexSource !== 'reference' || value === publishedManifestId || !ARWEAVE_ID.test(publishedManifestId)) {
+		if (
+			indexSource === 'compiled-fallback' ||
+			value === publishedManifestId ||
+			!ARWEAVE_ID.test(publishedManifestId)
+		) {
 			throw cause;
 		}
 		return imageCollection(
@@ -926,12 +1007,15 @@ export async function loadImageCollection(
 	}
 }
 
-export function carrierManifestReference(state: Pick<AssetState, 'value'>): string | undefined {
+export function carrierManifestId(state: Pick<AssetState, 'value'>): string | undefined {
 	if (typeof state.value === 'string' && ARWEAVE_ID.test(state.value)) return state.value;
 	if (!state.value || typeof state.value !== 'object' || Array.isArray(state.value)) return undefined;
 	const target = (state.value as Record<string, unknown>).target;
 	return typeof target === 'string' && ARWEAVE_ID.test(target) ? target : undefined;
 }
+
+/** @deprecated Legacy name retained for callers that still read reference-backed collections. */
+export const carrierManifestReference = carrierManifestId;
 
 function imageCollection(
 	referenceId: string,

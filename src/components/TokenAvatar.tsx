@@ -11,7 +11,6 @@ type TokenAvatarProps = {
 export function TokenAvatar({ ticker, className = '', image, fetchPriority, loading = 'lazy' }: TokenAvatarProps) {
 	const visibleTicker = ticker.trim().slice(0, 8) || 'TOKEN';
 	const tickerLabel = <strong>{visibleTicker}</strong>;
-	const artwork = image;
 
 	return (
 		<span
@@ -20,14 +19,14 @@ export function TokenAvatar({ ticker, className = '', image, fetchPriority, load
 			}`}
 			aria-hidden="true"
 		>
-			{artwork ? (
+			{image ? (
 				<ArtworkImage
 					alt=""
 					className="token-avatar-image"
 					fallback={tickerLabel}
 					fetchPriority={fetchPriority}
 					loading={loading}
-					src={artwork}
+					src={image}
 				/>
 			) : (
 				tickerLabel

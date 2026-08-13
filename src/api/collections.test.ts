@@ -4,7 +4,7 @@ import { NAMES_NAMESPACE_ID } from 'helpers/config';
 
 import { parseAssetState } from './asset-marketplace';
 import {
-	carrierManifestReference,
+	carrierManifestId,
 	type Collection,
 	collectionAsset,
 	discoverBazarCollections,
@@ -54,7 +54,6 @@ describe('collection index loading', () => {
 							node: {
 								id,
 								tags: [
-									{ name: 'app-name', value: 'Bazar' },
 									{ name: 'device', value: 'process@1.0' },
 									{ name: 'execution-device', value: 'token@1.0' },
 									{ name: 'swap-device', value: 'arweave-swap@1.0' },
@@ -65,7 +64,8 @@ describe('collection index loading', () => {
 									{ name: 'denomination', value: '0' },
 									{ name: 'ticker', value: 'ASSET' },
 									{ name: 'name', value: `Color ${ids.indexOf(id) + 1}` },
-									{ name: 'asset-content-type', value: 'image/png' },
+									{ name: 'hint-ui-style', value: 'non-fungible' },
+									{ name: 'content-type', value: 'image/png' },
 								],
 							},
 						})),
@@ -85,28 +85,26 @@ describe('collection index loading', () => {
 		]);
 	});
 
-	it('discovers current and legacy Bazar carrier collections from GraphQL in block order', async () => {
+	it('discovers scheduled carrier collections by the COLLECTION ticker without an app tag', async () => {
 		const currentId = 'C'.repeat(43);
-		const legacyId = 'L'.repeat(43);
 		const currentManifest = 'M'.repeat(43);
-		const legacyManifest = 'N'.repeat(43);
 		const assetId = 'A'.repeat(43);
 		const edge = (
 			id: string,
 			manifestId: string,
 			height: number,
-			tags: Array<{ name: string; value: string }>
+			tags: Array<{ name: string; value: string }>,
+			manifestTag = 'initial-value'
 		) => ({
 			cursor: `${id.slice(0, 1)}-cursor`,
 			node: {
 				id,
 				block: { height, timestamp: height * 10 },
 				tags: [
-					{ name: 'app-name', value: 'Bazar' },
 					{ name: 'device', value: 'process@1.0' },
 					{ name: 'execution-device', value: 'carrier@1.0' },
 					{ name: 'type', value: 'Process' },
-					{ name: 'reference-value', value: manifestId },
+					{ name: manifestTag, value: manifestId },
 					...tags,
 				],
 			},
@@ -126,7 +124,6 @@ describe('collection index loading', () => {
 									{ name: 'scheduler-mode', value: 'all' },
 									{ name: 'ticker', value: 'COLLECTION' },
 								]),
-								edge(legacyId, legacyManifest, 10, []),
 							],
 						},
 					},
@@ -140,14 +137,13 @@ describe('collection index loading', () => {
 						denomination: 0,
 						balances: { ['O'.repeat(43)]: '1' },
 						orders: {},
-						value: { target: currentManifest },
+						value: currentManifest,
 						'at-slot': 1,
 					},
 					{ headers: { 'codec-device': 'json@1.0' } }
 				);
 			}
 			if (String(input).includes(`/tx/${currentManifest}/data`)) return new Response(encodeManifest('Current'));
-			if (String(input).includes(`/tx/${legacyManifest}/data`)) return new Response(encodeManifest('Legacy'));
 			return new Response('unavailable', { status: 503 });
 		});
 		vi.stubGlobal('fetch', fetcher);
@@ -162,16 +158,15 @@ describe('collection index loading', () => {
 				createdHeight,
 				indexSource,
 			}))
-		).toEqual([
-			{ id: currentId, name: 'Current', createdHeight: 20, indexSource: 'reference' },
-			{ id: legacyId, name: 'Legacy', createdHeight: 10, indexSource: 'reference' },
-		]);
-		expect(new Set(progress)).toEqual(new Set([currentId, legacyId]));
-		expect(
-			fetcher.mock.calls.find(
-				([, init]) => typeof init?.body === 'string' && init.body.includes('BazarCollections')
-			)?.[1]?.body
-		).toContain('sort: HEIGHT_DESC');
+		).toEqual([{ id: currentId, name: 'Current', createdHeight: 20, indexSource: 'carrier' }]);
+		expect(progress).toEqual([currentId]);
+		const discoveryBody = fetcher.mock.calls.find(
+			([, init]) => typeof init?.body === 'string' && init.body.includes('BazarCollections')
+		)?.[1]?.body;
+		const discoveryQuery = JSON.parse(String(discoveryBody)).query;
+		expect(discoveryQuery).toContain('sort: HEIGHT_DESC');
+		expect(discoveryQuery).toContain('{ name: "ticker", values: ["COLLECTION"] }');
+		expect(discoveryQuery).not.toContain('{ name: "app-name"');
 	});
 
 	it('skips tagged collection candidates whose live carrier or immutable manifest is invalid', async () => {
@@ -193,7 +188,6 @@ describe('collection index loading', () => {
 											id: carrierId,
 											block: { height: 2, timestamp: 3 },
 											tags: [
-												{ name: 'app-name', value: 'Bazar' },
 												{ name: 'device', value: 'process@1.0' },
 												{ name: 'execution-device', value: 'carrier@1.0' },
 												{ name: 'scheduler-device', value: 'arweave-scheduler@1.0' },
@@ -218,9 +212,9 @@ describe('collection index loading', () => {
 
 	it('reads the current manifest from a carrier value', () => {
 		const manifestId = 'M'.repeat(43);
-		expect(carrierManifestReference({ value: { target: manifestId } })).toBe(manifestId);
-		expect(carrierManifestReference({ value: manifestId })).toBe(manifestId);
-		expect(carrierManifestReference({ value: { target: 'invalid' } })).toBeUndefined();
+		expect(carrierManifestId({ value: manifestId })).toBe(manifestId);
+		expect(carrierManifestId({ value: { target: manifestId } })).toBe(manifestId);
+		expect(carrierManifestId({ value: { target: 'invalid' } })).toBeUndefined();
 	});
 	it('indexes each immutable collection snapshot once for repeated exact lookups', () => {
 		const indexedAssets = Array.from({ length: 1_000 }, (_, index) => ({
@@ -279,7 +273,7 @@ describe('collection index loading', () => {
 		const state = parseAssetState({
 			device: 'process@1.0',
 			'execution-device': 'token@1.0',
-			'asset-type': 'fungible',
+			'hint-ui-style': 'fungible',
 			'swap-device': 'arweave-swap@1.0',
 			'scheduler-device': 'arweave-scheduler@1.0',
 			'scheduler-mode': 'all',
@@ -326,6 +320,20 @@ describe('collection index loading', () => {
 			collectionAsset(tokens, processId, {
 				...state,
 				raw: { ...state.raw, 'scheduler-mode': 'local' },
+			})
+		).toBeUndefined();
+		for (const legacyTag of ['hint-style', 'asset-type']) {
+			const raw = { ...state.raw, [legacyTag]: 'fungible' };
+			delete raw['hint-ui-style'];
+			expect(collectionAsset(tokens, processId, { ...state, raw })).toMatchObject({
+				id: processId,
+				name: 'Unloaded Token',
+			});
+		}
+		expect(
+			collectionAsset(tokens, processId, {
+				...state,
+				raw: { ...state.raw, 'hint-ui-style': 'non-fungible', 'asset-type': 'fungible' },
 			})
 		).toBeUndefined();
 	});
@@ -729,6 +737,48 @@ describe('collection index loading', () => {
 				([, init]) => typeof init?.body === 'string' && init.body.includes('FungibleTokens')
 			)
 		).toHaveLength(2);
+	});
+
+	it('includes fungible tokens indexed under immutable legacy marker names', async () => {
+		const legacyId = 'L'.repeat(43);
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+				const body = typeof init?.body === 'string' ? JSON.parse(init.body) : {};
+				if (!body.query?.includes('FungibleTokens')) return new Response('unavailable', { status: 503 });
+				return Response.json({
+					data: {
+						transactions: { count: 0, pageInfo: { hasNextPage: false }, edges: [] },
+						legacyHintStyle: { count: 0, pageInfo: { hasNextPage: false }, edges: [] },
+						legacyAssetType: {
+							count: 1,
+							pageInfo: { hasNextPage: false },
+							edges: [
+								{
+									cursor: 'legacy-token',
+									node: {
+										id: legacyId,
+										tags: [
+											{ name: 'asset-type', value: 'fungible' },
+											{ name: 'name', value: 'Legacy Token' },
+											{ name: 'ticker', value: 'OLD' },
+										],
+									},
+								},
+							],
+						},
+					},
+				});
+			})
+		);
+
+		const result = await loadCollections();
+		const tokens = result.collections.find((collection) => collection.kind === 'tokens');
+
+		expect(tokens?.assets).toEqual(
+			expect.arrayContaining([expect.objectContaining({ id: legacyId, name: 'Legacy Token', ticker: 'OLD' })])
+		);
+		expect(tokens?.total).toBe(2);
 	});
 
 	it('retains loaded fungible tokens when a later page is unavailable', async () => {

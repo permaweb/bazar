@@ -126,7 +126,8 @@ type SafePreparedTransaction = PreparedTransaction & {
 };
 
 type TransactionFields = {
-	target?: string;
+	processId: string;
+	target: string;
 	quantity?: string;
 	rewardFloor?: string;
 	data?: string;
@@ -236,6 +237,7 @@ export class AssetTransactionClient {
 		}
 		return this.#prepare(
 			{
+				processId: input.processId,
 				target: input.processId,
 				quantity: '1',
 				tags: [
@@ -264,6 +266,7 @@ export class AssetTransactionClient {
 	): Promise<PreparedTransaction> {
 		return this.#prepare(
 			{
+				processId,
 				target: processId,
 				quantity: '1',
 				tags: [
@@ -301,6 +304,7 @@ export class AssetTransactionClient {
 		assertTokenQuantity(quantity);
 		return this.#prepare(
 			{
+				processId,
 				target: processId,
 				quantity: '0',
 				tags: [
@@ -577,6 +581,7 @@ export class AssetTransactionClient {
 				'registration',
 				await this.#prepare(
 					{
+						processId: input.processId,
 						target: input.processId,
 						quantity: '1',
 						rewardFloor: purchaseOrder.minimumFee,
@@ -595,19 +600,26 @@ export class AssetTransactionClient {
 			const tip = Math.max(await this.#currentHeight(signal), input.network.tip());
 			const storedPaymentId = this.findStoredPayment(
 				purchaseOrder.recipient,
+				input.processId,
 				input.order.orderId,
 				purchaseOrder.asking,
 				input.buyer,
 				tip
 			);
 			if (storedPaymentId) {
-				return reportPrepared('payment', this.restore(storedPaymentId, input.buyer) as SafePreparedTransaction);
+				return reportPrepared(
+					'payment',
+					this.restore(storedPaymentId, input.buyer, {
+						processId: input.processId,
+					}) as SafePreparedTransaction
+				);
 			}
 
 			return reportPrepared(
 				'payment',
 				await this.#prepare(
 					{
+						processId: input.processId,
 						target: purchaseOrder.recipient,
 						quantity: purchaseOrder.asking,
 						tags: [{ name: 'order-id', value: input.order.orderId }],
@@ -677,7 +689,10 @@ export class AssetTransactionClient {
 						signal
 					);
 				}
-				return this.restore(id, input.buyer, { preserveExpiry: which !== 'payment' });
+				return this.restore(id, input.buyer, {
+					preserveExpiry: which !== 'payment',
+					processId: input.processId,
+				});
 			},
 			waitForRegistrationAcceptance: async ({ registrationId, signal, report }) => {
 				let expired = false;
@@ -837,7 +852,11 @@ export class AssetTransactionClient {
 		}
 	}
 
-	restore(id: string, expectedSigner?: string, options: { preserveExpiry?: boolean } = {}): PreparedTransaction {
+	restore(
+		id: string,
+		expectedSigner?: string,
+		options: { preserveExpiry?: boolean; processId?: string } = {}
+	): PreparedTransaction {
 		if (!ADDRESS.test(id)) throw new TypeError('invalid-signed-transaction-id');
 		const held = this.#storage?.getItem(`${SIGNED_TRANSACTION_PREFIX}${id}`);
 		if (!held) throw new Error('signed-transaction-not-found');
@@ -846,6 +865,8 @@ export class AssetTransactionClient {
 		if (transaction.id !== id) throw new Error('signed-transaction-id-mismatch');
 		assertZeroDataTransaction(transaction);
 		assertTransactionIntent(transaction, stored.intent);
+		const processId = options.processId ?? stored.processId;
+		if (processId) assertProcessInteractionRouting(transaction, processId);
 		if (stored.expectedSigner && expectedSigner && stored.expectedSigner !== expectedSigner) {
 			throw new Error('signed-transaction-signer-mismatch');
 		}
@@ -854,7 +875,8 @@ export class AssetTransactionClient {
 			options.preserveExpiry === false ? undefined : stored.validUntilHeight,
 			expectedSigner ?? stored.expectedSigner,
 			stored.requiredBalance === undefined ? undefined : BigInt(stored.requiredBalance),
-			stored.intent
+			stored.intent,
+			processId
 		);
 	}
 
@@ -887,12 +909,16 @@ export class AssetTransactionClient {
 
 	findStoredPayment(
 		recipient: string,
+		processId: string,
 		orderId: string,
 		asking: string,
 		expectedSigner: string,
 		minimumValidHeight?: number
 	): string | null {
-		if (![recipient, orderId, expectedSigner].every((value) => ADDRESS.test(value)) || !/^[1-9]\d*$/.test(asking)) {
+		if (
+			![recipient, processId, orderId, expectedSigner].every((value) => ADDRESS.test(value)) ||
+			!/^[1-9]\d*$/.test(asking)
+		) {
 			throw new TypeError('invalid-stored-payment-lookup');
 		}
 		if (!this.#storage?.key || typeof this.#storage.length !== 'number') return null;
@@ -908,6 +934,7 @@ export class AssetTransactionClient {
 					transaction?.target === recipient &&
 					transaction?.quantity === asking &&
 					transactionTagMatches(transaction?.tags, 'order-id', orderId) &&
+					processInteractionRoutesTo(transaction, processId) &&
 					ADDRESS.test(transaction?.id) &&
 					(minimumValidHeight === undefined ||
 						stored?.validUntilHeight === undefined ||
@@ -987,6 +1014,7 @@ export class AssetTransactionClient {
 		if (signal?.aborted) throw signal.reason;
 		if (expectedSigner) await this.#assertActiveSigner(expectedSigner);
 		const arweave = await this.#getArweave();
+		const tags = processInteractionTags(fields);
 
 		const transaction = await arweave.createTransaction(
 			{
@@ -999,12 +1027,12 @@ export class AssetTransactionClient {
 		if (fields.rewardFloor && BigInt(transaction.reward) < BigInt(fields.rewardFloor)) {
 			transaction.reward = fields.rewardFloor;
 		}
-		for (const tag of fields.tags) transaction.addTag(tag.name, tag.value);
+		for (const tag of tags) transaction.addTag(tag.name, tag.value);
 		const intent: TransactionIntent = {
-			target: fields.target ?? '',
+			target: fields.target,
 			quantity: fields.quantity ?? '0',
 			reward: String(transaction.reward),
-			tags: fields.tags,
+			tags,
 		};
 
 		const walletResult = (await this.#wallet.sign(transaction)) ?? transaction;
@@ -1048,12 +1076,20 @@ export class AssetTransactionClient {
 			JSON.stringify({
 				transaction: serializable,
 				intent,
+				processId: fields.processId,
 				...(validUntilHeight === undefined ? {} : { validUntilHeight }),
 				...(expectedSigner ? { expectedSigner } : {}),
 				...(expectedSigner ? { requiredBalance: requiredBalance.toString() } : {}),
 			})
 		);
-		return this.#prepared(serializable, validUntilHeight, expectedSigner, requiredBalance, intent);
+		return this.#prepared(
+			serializable,
+			validUntilHeight,
+			expectedSigner,
+			requiredBalance,
+			intent,
+			fields.processId
+		);
 	}
 
 	#prepared(
@@ -1061,7 +1097,8 @@ export class AssetTransactionClient {
 		validUntilHeight?: number,
 		expectedSigner?: string,
 		initialRequiredBalance?: bigint,
-		intent?: TransactionIntent
+		intent?: TransactionIntent,
+		processId?: string
 	): SafePreparedTransaction {
 		const id = String(transaction.id);
 		const cost = transactionCost(transaction);
@@ -1082,6 +1119,7 @@ export class AssetTransactionClient {
 				try {
 					assertZeroDataTransaction(transaction);
 					assertTransactionIntent(transaction, intent);
+					if (processId) assertProcessInteractionRouting(transaction, processId);
 					if (expectedSigner) {
 						await this.#assertSigner(transaction, expectedSigner);
 						await this.#assertBalance(expectedSigner, requiredBalance, signal);
@@ -1630,6 +1668,31 @@ function assertZeroDataTransaction(transaction: Record<string, unknown>): void {
 	}
 }
 
+function processInteractionTags(fields: TransactionFields): TransactionFields['tags'] {
+	if (!ADDRESS.test(fields.processId) || !ADDRESS.test(fields.target)) {
+		throw new TypeError('invalid-process-interaction-routing');
+	}
+	const assignmentTags = fields.tags.filter((tag) => tag.name === 'assign-to');
+	if (assignmentTags.some((tag) => tag.value !== fields.processId)) {
+		throw new TypeError('invalid-process-interaction-routing');
+	}
+	if (fields.target === fields.processId || assignmentTags.length) return fields.tags;
+	return [...fields.tags, { name: 'assign-to', value: fields.processId }];
+}
+
+function assertProcessInteractionRouting(transaction: Record<string, unknown>, processId: string): void {
+	if (!processInteractionRoutesTo(transaction, processId)) {
+		throw new Error('signed-transaction-process-routing-mismatch');
+	}
+}
+
+function processInteractionRoutesTo(transaction: Record<string, unknown>, processId: string): boolean {
+	if (!ADDRESS.test(processId)) return false;
+	if (transaction.target === processId) return true;
+	const assignments = transactionTagNameValues(transaction.tags, 'assign-to');
+	return assignments.length > 0 && assignments.every((value) => value === processId);
+}
+
 function assertTransactionIntent(transaction: Record<string, unknown>, expected: unknown): void {
 	if (!expected || typeof expected !== 'object' || Array.isArray(expected)) {
 		throw new Error('signed-transaction-intent-unavailable');
@@ -1681,14 +1744,15 @@ function transactionCost(transaction: Record<string, unknown>): bigint {
 }
 
 function transactionTagMatches(tags: unknown, expectedName: string, expectedValue: string): boolean {
-	if (!Array.isArray(tags)) return false;
-	return tags.some((tag) => {
-		if (!tag || typeof tag !== 'object') return false;
+	return transactionTagNameValues(tags, expectedName).includes(expectedValue);
+}
+
+function transactionTagNameValues(tags: unknown, expectedName: string): string[] {
+	if (!Array.isArray(tags)) return [];
+	return tags.flatMap((tag) => {
+		if (!tag || typeof tag !== 'object') return [];
 		const record = tag as Record<string, unknown>;
-		return (
-			transactionTagValues(record.name).includes(expectedName) &&
-			transactionTagValues(record.value).includes(expectedValue)
-		);
+		return transactionTagValues(record.name).includes(expectedName) ? transactionTagValues(record.value) : [];
 	});
 }
 

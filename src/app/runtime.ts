@@ -1,4 +1,5 @@
 let atomicRuntime: Promise<AtomicTransactionRuntime> | undefined;
+let observerRuntime: Promise<typeof import('api/asset-observers')> | undefined;
 let transactionSyncRuntime: Promise<typeof import('components/ArweaveTransactionSync')> | undefined;
 
 export type AtomicTransactionRuntime = Awaited<ReturnType<typeof importAtomicTransactionRuntime>>;
@@ -23,6 +24,14 @@ export function loadAtomicTransactionRuntime() {
 
 export function preloadAtomicTransactionRuntime() {
 	void loadAtomicTransactionRuntime();
+}
+
+export function loadAssetObserverRuntime() {
+	observerRuntime ??= import('api/asset-observers').catch((cause) => {
+		observerRuntime = undefined;
+		throw cause;
+	});
+	return observerRuntime;
 }
 
 export function loadArweaveTransactionSync() {

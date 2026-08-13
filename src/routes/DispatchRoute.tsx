@@ -367,14 +367,16 @@ export default function DispatchRoute() {
 								</tr>
 							</thead>
 							<tbody>
-							{plan.rows.map((row) => (
-								<tr key={row.address} className={`dispatch-row-${row.status}`}>
-									<td>
-										<Tooltip content={row.address} placement="top">
-											{(tooltipId) => (
-												<code aria-describedby={tooltipId}>{shortAddress(row.address)}</code>
-											)}
-										</Tooltip>
+								{plan.rows.map((row) => (
+									<tr key={row.address} className={`dispatch-row-${row.status}`}>
+										<td>
+											<Tooltip content={row.address} placement="top">
+												{(tooltipId) => (
+													<code aria-describedby={tooltipId}>
+														{shortAddress(row.address)}
+													</code>
+												)}
+											</Tooltip>
 										</td>
 										<td>{state ? tokenAmount(row.quantity, state) : '—'}</td>
 										<td>
@@ -454,14 +456,16 @@ export default function DispatchRoute() {
 											</tr>
 										</thead>
 										<tbody>
-								{parsed.rows.map((row) => (
-									<tr key={row.address}>
-										<td>
-											<Tooltip content={row.address} placement="top">
-												{(tooltipId) => (
-													<code aria-describedby={tooltipId}>{shortAddress(row.address)}</code>
-												)}
-											</Tooltip>
+											{parsed.rows.map((row) => (
+												<tr key={row.address}>
+													<td>
+														<Tooltip content={row.address} placement="top">
+															{(tooltipId) => (
+																<code aria-describedby={tooltipId}>
+																	{shortAddress(row.address)}
+																</code>
+															)}
+														</Tooltip>
 													</td>
 													<td>{state ? tokenAmount(row.quantity, state) : '—'}</td>
 												</tr>

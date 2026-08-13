@@ -44,9 +44,7 @@ export function StateVerification({
 			</Tooltip>{' '}
 			<span>via</span>{' '}
 			<Tooltip content={provider} placement="top">
-				{(tooltipId) => (
-					<strong aria-describedby={tooltipId}>{host}</strong>
-				)}
+				{(tooltipId) => <strong aria-describedby={tooltipId}>{host}</strong>}
 			</Tooltip>
 			<span>· current state requested</span>
 		</p>

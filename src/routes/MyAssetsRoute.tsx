@@ -37,8 +37,8 @@ import {
 	AssetCard,
 	type CandidateSupportFailure,
 	initialWalletResolutionStatus,
-	MarketSelect,
 	MarketContext,
+	MarketSelect,
 	nextWalletAnnouncementProgress,
 	refreshCandidateRetryMetadata,
 	reopenWalletCandidate,
@@ -595,8 +595,8 @@ export default function MyAssetsRoute() {
 					<div className="my-assets-heading-status">
 						<span role="status">
 							{aggregateFailureMessage} {status.failures.toLocaleString()}{' '}
-							{status.failures === 1 ? 'candidate remains' : 'candidates remain'} unavailable. Resolved assets
-							remain visible.
+							{status.failures === 1 ? 'candidate remains' : 'candidates remain'} unavailable. Resolved
+							assets remain visible.
 						</span>
 						<Button className="with-icon" type="button" onClick={retryUnavailableAssets} size="custom">
 							<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" />{' '}
@@ -755,7 +755,9 @@ const AssetGroup = React.memo(function AssetGroup({
 							const balance =
 								view === 'listed'
 									? listedBalance
-									: (BigInt(liquidBalanceOf(result.state, address)) + BigInt(listedBalance)).toString();
+									: (
+											BigInt(liquidBalanceOf(result.state, address)) + BigInt(listedBalance)
+									  ).toString();
 							return (
 								<AssetCard
 									key={result.asset.id}
