@@ -8495,7 +8495,9 @@ body input:focus-visible {
 .asset-activity-panel .activity-transaction-short {
 	display: inline;
 }
-.asset-market-activity,
+.asset-market-activity {
+	margin-top: var(--space-4);
+}
 .asset-about-rights {
 	margin-top: var(--space-6);
 	padding-top: var(--space-4);
@@ -8543,7 +8545,6 @@ body input:focus-visible {
 }
 .activity-list.compact {
 	gap: 0;
-	border-top: 1px solid var(--line);
 }
 .activity-row-compact {
 	min-height: 40px;
@@ -8553,12 +8554,10 @@ body input:focus-visible {
 		minmax(88px, auto) 24px;
 	gap: 8px;
 	border: 0;
-	border-bottom: 1px solid var(--line);
 	border-radius: 0;
 	background: var(--transparent);
 }
 .activity-row-compact:hover {
-	border-color: var(--line-dark);
 	background: var(--surface-subtle);
 }
 .activity-row-compact .activity-icon {
@@ -9325,6 +9324,28 @@ body input:focus-visible {
 .fungible-asset-page .asset-commerce-secondary {
 	min-width: 0;
 }
+.fungible-asset-page .asset-commerce-primary {
+	position: sticky;
+	top: 82px;
+	align-self: start;
+}
+.fungible-asset-page .asset-detail-tabs {
+	--asset-detail-tabs-header-gap: 21px;
+	position: sticky;
+	top: 82px;
+	z-index: 20;
+	background: var(--paper);
+}
+.fungible-asset-page .asset-detail-tabs::before {
+	content: '';
+	position: absolute;
+	right: 0;
+	bottom: 100%;
+	left: 0;
+	height: var(--asset-detail-tabs-header-gap);
+	background: var(--paper);
+	pointer-events: none;
+}
 .fungible-asset-page .asset-commerce-card {
 	padding: 0;
 	border: 0;
@@ -9506,6 +9527,14 @@ body input:focus-visible {
 		grid-template-columns: 1fr;
 		grid-template-rows: auto auto;
 		row-gap: 24px;
+	}
+	.fungible-asset-page .asset-commerce-primary {
+		position: static;
+		top: auto;
+	}
+	.fungible-asset-page .asset-detail-tabs {
+		--asset-detail-tabs-header-gap: 0px;
+		top: 61px;
 	}
 }
 
@@ -9774,7 +9803,7 @@ body input:focus-visible {
 	min-height: 76px;
 	padding: 12px 14px;
 	display: grid;
-	grid-template-columns: 48px minmax(150px, 1.15fr) minmax(130px, 1fr) minmax(105px, auto) minmax(120px, auto) auto 18px;
+	grid-template-columns: 48px minmax(150px, 1.15fr) minmax(130px, 1fr) minmax(105px, auto) minmax(120px, 22ch) auto 18px;
 	align-items: center;
 	gap: 14px;
 	border-bottom: 1px solid var(--line);
@@ -9827,6 +9856,7 @@ body input:focus-visible {
 }
 .token-market-context {
 	grid-column: 3;
+	text-align: left;
 }
 .token-market-metric {
 	grid-column: 5;

@@ -1292,11 +1292,8 @@ export function FungibleAssetView({
 								{!activityLoading && !activityError && !activity.length ? (
 									<p className="asset-empty-copy">No indexed market events found.</p>
 								) : null}
-								<div className="asset-market-activity-footer">
-									<p className="market-note">
-										Recent signed submissions from Arweave. Live orders remain authoritative.
-									</p>
-									{visibleActivityRows.length < activity.length ? (
+								{visibleActivityRows.length < activity.length ? (
+									<div className="asset-market-activity-footer">
 										<Button
 											type="button"
 											size="custom"
@@ -1311,8 +1308,8 @@ export function FungibleAssetView({
 											{Math.min(8, activity.length - visibleActivityRows.length).toLocaleString()}{' '}
 											more
 										</Button>
-									) : null}
-								</div>
+									</div>
+								) : null}
 							</section>
 						</section>
 					) : null}
