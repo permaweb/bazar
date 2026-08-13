@@ -4529,10 +4529,21 @@ input:focus {
 	color: var(--negative);
 	font-size: var(--type-body);
 }
-.inline-error-actions {
-	display: flex;
-	flex: none;
-	gap: 8px;
+.error-panel.retry-notice,
+.inline-error.retry-notice,
+.collection-source-notice.retry-notice,
+.my-assets-heading-status.retry-notice {
+	border: 1px solid var(--line);
+	background: var(--surface-subtle);
+	color: var(--ink);
+}
+.my-assets-heading-status.retry-notice {
+	padding: var(--space-3) var(--space-4);
+	border-radius: 10px;
+}
+.retry-notice .with-icon > .ui-icon,
+.retry-notice-action > .ui-icon {
+	color: var(--retry-icon);
 }
 .collection-source-notice {
 	display: flex;
@@ -5466,6 +5477,76 @@ input:focus {
 .result-alert {
 	display: grid;
 	gap: 8px;
+}
+.result-status-heading {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 10px;
+}
+.result-status-icon {
+	width: 34px;
+	height: 34px;
+	stroke-width: 1.6;
+}
+.result.success .result-status-icon {
+	color: var(--positive-text);
+}
+.result.error .result-status-icon {
+	color: var(--warning-text);
+}
+.operation-external-link-label {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+}
+.operation-external-link-label .ui-icon {
+	width: 15px;
+	height: 15px;
+}
+.operation-outcome-subject {
+	min-width: 0;
+	display: flex;
+	align-items: center;
+	gap: 14px;
+}
+.operation-outcome-subject-media {
+	width: 72px;
+	height: 72px;
+	flex: 0 0 72px;
+}
+.operation-outcome-subject-artwork {
+	width: 100%;
+	height: 100%;
+	display: grid;
+	place-items: center;
+	border: 1px solid var(--line);
+	border-radius: 9px;
+	background: var(--panel);
+	object-fit: cover;
+}
+.operation-outcome-subject-artwork-fallback {
+	color: var(--muted);
+	font-size: var(--type-display);
+}
+.operation-outcome-token-avatar {
+	--token-avatar-size: 72px;
+}
+.operation-outcome-subject-copy {
+	min-width: 0;
+	display: grid;
+	gap: 3px;
+}
+.operation-outcome-subject-copy > span,
+.operation-outcome-subject-copy > small {
+	color: var(--muted);
+	font-size: var(--type-small);
+}
+.operation-outcome-subject-copy > strong {
+	overflow-wrap: anywhere;
+	color: var(--ink);
+	font-size: 1.05rem;
+	font-weight: 500;
 }
 .result-alert p,
 .result.error > p {
@@ -6676,9 +6757,6 @@ body input:focus-visible {
 	.pending-operation-notice {
 		align-items: stretch;
 		flex-direction: column;
-	}
-	.inline-error-actions {
-		flex-wrap: wrap;
 	}
 	.site-footer-content {
 		align-items: flex-start;
@@ -9407,6 +9485,64 @@ body input:focus-visible {
 	border-radius: 0;
 	box-shadow: -18px 0 52px var(--shadow-strong);
 	transform-origin: right center;
+}
+.operation-side-panel .operation-summary,
+.operation-side-panel .settlement-receipt,
+.operation-side-panel .settlement-error-detail,
+.operation-side-panel .trade-balance,
+.operation-side-panel .trade-quote,
+.operation-side-panel .cancel-summary,
+.operation-side-panel .batch-quote,
+.operation-side-panel .matched-listings,
+.operation-side-panel .purchase-route {
+	padding: 0;
+	border: 0;
+	border-radius: 0;
+	background: var(--transparent);
+}
+.operation-side-panel .settlement-error-detail {
+	margin-inline: 0;
+}
+.operation-side-panel .batch-quote {
+	gap: 12px 20px;
+	overflow: visible;
+}
+.operation-side-panel .batch-quote > div,
+.operation-side-panel .batch-quote > div:nth-child(n) {
+	padding: 0;
+	border: 0;
+}
+.operation-side-panel .purchase-settlement-receipt {
+	gap: 0;
+	overflow: visible;
+}
+.operation-side-panel .purchase-settlement-receipt .settlement-receipt-amount,
+.operation-side-panel .settlement-receipt-facts,
+.operation-side-panel .receipt-proof-links {
+	padding-inline: 0;
+}
+.operation-side-panel .purchase-settlement-receipt .settlement-receipt-amount,
+.operation-side-panel .settlement-receipt-facts > div + div,
+.operation-side-panel .settlement-receipt-links {
+	border: 0;
+}
+.operation-side-panel .settlement-receipt-links {
+	padding-top: 0;
+}
+.operation-side-panel .receipt-proof-links a {
+	padding-inline: 0;
+	border: 0;
+	border-radius: 0;
+	background: var(--transparent);
+}
+.operation-side-panel .receipt-proof-links a:hover {
+	background: var(--surface-hover);
+}
+.operation-side-panel .matched-listings-heading,
+.operation-side-panel .matched-listings ul,
+.operation-side-panel .purchase-route summary,
+.operation-side-panel .purchase-route li {
+	padding-inline: 0;
 }
 .operation-panel-backdrop.dialog-backdrop-hiding .operation-side-panel {
 	filter: none;

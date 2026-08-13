@@ -62,7 +62,13 @@ import { ConnectWalletButton } from 'components/ConnectWalletButton';
 import { ErrorPanel } from 'components/ErrorPanel';
 import { Loading } from 'components/Loading';
 import { MarketActivityList } from 'components/MarketActivityList';
-import { OperationOutcome, OperationOutcomeAnnouncement } from 'components/OperationOutcomeAnnouncement';
+import {
+	OperationErrorAlert,
+	OperationExternalLink,
+	OperationOutcome,
+	OperationOutcomeAnnouncement,
+	OperationOutcomeSubject,
+} from 'components/OperationOutcomeAnnouncement';
 import { type SegmentedTab, SegmentedTabs } from 'components/SegmentedTabs';
 import { TokenAvatar } from 'components/TokenAvatar';
 import { TokenPriceChart, type TokenPricePoint } from 'components/TokenPriceChart';
@@ -1259,12 +1265,10 @@ export function FungibleAssetView({
 									</div>
 								</div>
 								{activityError ? (
-									<div className="inline-error" role={activity.length ? 'status' : 'alert'}>
+									<div className="inline-error retry-notice" role="status">
 										<span>
-											Market history could not be read.{' '}
-											{activity.length
-												? `Previously loaded events remain visible. ${activityError}`
-												: activityError}
+											Compute hasn’t completed yet. Please try again.{' '}
+											{activity.length ? 'Previously loaded events remain visible.' : ''}
 										</span>
 										<Button
 											className="with-icon"
@@ -2959,8 +2963,8 @@ function FungibleOperationDialog({
 									) : null}
 									{matchedOrders.length ? (
 										quoteState === 'error' ? (
-											<div className="inline-error" role="alert">
-												<span>Live fees and wallet balance could not be checked.</span>
+											<div className="inline-error retry-notice" role="status">
+												<span>Compute hasn’t completed yet. Please try again.</span>
 												<Button
 													aria-describedby={quoteStatusId}
 													className="with-icon"
@@ -3116,10 +3120,36 @@ function FungibleOperationDialog({
 				) : null}
 				{phase === 'done' ? (
 					<div className="result success">
-						<OperationOutcome title={outcomeTitle} detail={outcomeDetail} />
+						<OperationOutcome title={outcomeTitle} detail={outcomeDetail}>
+							{operation.kind === 'buy' || operation.kind === 'sell' ? (
+								<OperationOutcomeSubject
+									label={operation.kind === 'buy' ? 'You received' : 'You listed'}
+									title={
+										operation.kind === 'buy'
+											? tokenLabel(completedPurchaseQuantity.toString(), state)
+											: enteredQuantity
+											? tokenLabel(enteredQuantity.toString(), state)
+											: asset.name
+									}
+									detail={
+										operation.kind === 'sell' && listingQuote
+											? `${listingQuote} AR total`
+											: asset.name
+									}
+									media={
+										<TokenAvatar
+											className="operation-outcome-token-avatar"
+											image={asset.image}
+											loading="eager"
+											ticker={state.ticker || asset.ticker || asset.name}
+										/>
+									}
+								/>
+							) : null}
+						</OperationOutcome>
 						{transaction && operation.kind !== 'transfer' ? (
 							<a href={transactionExplorerUrl(transaction.id)} rel="noreferrer" target="_blank">
-								View transaction {short(transaction.id)} ↗
+								<OperationExternalLink>View transaction {short(transaction.id)}</OperationExternalLink>
 							</a>
 						) : null}
 						{operation.kind === 'buy' ? (
@@ -3142,7 +3172,9 @@ function FungibleOperationDialog({
 								</div>
 								<div className="settlement-receipt-links">
 									<a href={transactionExplorerUrl(transaction.id)} rel="noreferrer" target="_blank">
-										Transaction {short(transaction.id)} ↗
+										<OperationExternalLink>
+											Transaction {short(transaction.id)}
+										</OperationExternalLink>
 									</a>
 								</div>
 							</div>
@@ -3244,7 +3276,9 @@ function FungibleOperationDialog({
 													rel="noreferrer"
 													target="_blank"
 												>
-													Reservation {short(activePurchase.registration.id)} ↗
+													<OperationExternalLink>
+														Reservation {short(activePurchase.registration.id)}
+													</OperationExternalLink>
 												</a>
 											) : null}
 											{activePurchase?.payment?.id ? (
@@ -3253,7 +3287,9 @@ function FungibleOperationDialog({
 													rel="noreferrer"
 													target="_blank"
 												>
-													Payment {short(activePurchase.payment.id)} ↗
+													<OperationExternalLink>
+														Payment {short(activePurchase.payment.id)}
+													</OperationExternalLink>
 												</a>
 											) : null}
 										</div>
@@ -3372,12 +3408,7 @@ function FungibleOperationDialog({
 }
 
 export function FungibleOperationErrorAlert({ message }: { message: string }) {
-	return (
-		<div className="result-alert" role="alert">
-			<h3>Could not complete this action</h3>
-			<p>{message}</p>
-		</div>
-	);
+	return <OperationErrorAlert title="Could not complete this action" message={message} />;
 }
 
 export function MatchedListingsReview({

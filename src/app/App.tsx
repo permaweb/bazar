@@ -140,7 +140,13 @@ import { Loading } from 'components/Loading';
 import { MintTransactionReceipt } from 'components/MintTransactionReceipt';
 import { NameArtwork } from 'components/NameArtwork';
 import { NamesCubePreview } from 'components/NamesCubePreview';
-import { OperationOutcome, OperationOutcomeAnnouncement } from 'components/OperationOutcomeAnnouncement';
+import {
+	OperationErrorAlert,
+	OperationExternalLink,
+	OperationOutcome,
+	OperationOutcomeAnnouncement,
+	OperationOutcomeSubject,
+} from 'components/OperationOutcomeAnnouncement';
 import { Pagination } from 'components/Pagination';
 import { PortalIcon } from 'components/PortalIcon';
 import { StateVerification } from 'components/StateVerification';
@@ -2267,13 +2273,7 @@ function Header() {
 										</div>
 									</section>
 								) : null}
-								{market.error ? (
-									<ErrorPanel
-										message={market.error}
-										onRetry={market.retry}
-										retryLabel="Retry marketplace"
-									/>
-								) : null}
+								{market.error ? <ErrorPanel message={market.error} onRetry={market.retry} /> : null}
 								{!market.loading &&
 								!market.error &&
 								!atomicIndexSearchPending &&
@@ -4071,13 +4071,7 @@ function Home() {
 									</div>
 								) : null}
 							</div>
-							{market.error ? (
-								<ErrorPanel
-									message={market.error}
-									onRetry={market.retry}
-									retryLabel="Retry collections"
-								/>
-							) : null}
+							{market.error ? <ErrorPanel message={market.error} onRetry={market.retry} /> : null}
 							{homeTab === 'discover' && portableHomeListingsFailure ? (
 								<ErrorPanel
 									message={marketplaceRequestFailureMessage(
@@ -4085,7 +4079,6 @@ function Home() {
 										portableHomeListingsFailure.kind
 									)}
 									onRetry={() => setPortableHomeRetry((current) => current + 1)}
-									retryLabel="Retry public listings"
 								/>
 							) : null}
 							{homeTab === 'discover' && partialTokenCollection ? (
@@ -4613,21 +4606,17 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 			</div>
 			{error ? (
 				events.length ? (
-					<div className="collection-source-notice home-activity-partial-notice">
+					<div className="collection-source-notice home-activity-partial-notice retry-notice">
 						<span role="status">
-							Some activity sources could not be refreshed. Showing {events.length.toLocaleString()}{' '}
-							indexed {events.length === 1 ? 'event' : 'events'} already loaded. {error}
+							Compute hasn’t completed yet. Please try again. Showing {events.length.toLocaleString()}{' '}
+							indexed {events.length === 1 ? 'event' : 'events'} already loaded.
 						</span>
 						<Button className="with-icon" onClick={retryActivity} size="custom" type="button">
-							<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Retry activity
+							<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Retry
 						</Button>
 					</div>
 				) : (
-					<ErrorPanel
-						message={`Global activity could not be loaded. ${error}`}
-						onRetry={retryActivity}
-						retryLabel="Retry activity"
-					/>
+					<ErrorPanel message={`Global activity could not be loaded. ${error}`} onRetry={retryActivity} />
 				)
 			) : null}
 			<MarketActivityList
@@ -6054,7 +6043,7 @@ function CollectionView() {
 	if (!collection && market.error)
 		return (
 			<RouteState title="Collection unavailable">
-				<ErrorPanel message={market.error} onRetry={market.retry} retryLabel="Retry collection index" />
+				<ErrorPanel message={market.error} onRetry={market.retry} />
 			</RouteState>
 		);
 	if (!collection)
@@ -6365,8 +6354,8 @@ function CollectionView() {
 				</div>
 			) : null}
 			{activityState.error ? (
-				<div className="inline-error">
-					<span role="alert">{activityState.error}</span>
+				<div className="inline-error retry-notice">
+					<span role="status">Compute hasn’t completed yet. Please try again.</span>
 					<Button
 						className="with-icon"
 						size="custom"
@@ -6380,14 +6369,9 @@ function CollectionView() {
 				</div>
 			) : null}
 			{!listedOnly && !cardPricesLoading && (cardPricesFailure || visibleUnavailablePrices > 0) ? (
-				<div className="inline-error">
+				<div className="inline-error retry-notice">
 					<span role="status">
-						{cardPricesFailure
-							? marketplaceRequestFailureMessage(cardPricesFailure.source, cardPricesFailure.kind)
-							: marketplaceRequestFailureMessage(
-									'compute',
-									visibleRateLimitedPrices ? 'rate-limited' : 'unavailable'
-							  )}
+						Compute hasn’t completed yet. Please try again.
 						{!cardPricesFailure && visibleUnavailablePrices
 							? ` ${visibleUnavailablePrices.toLocaleString()} visible ${
 									visibleUnavailablePrices === 1 ? 'price remains' : 'prices remain'
@@ -6396,21 +6380,16 @@ function CollectionView() {
 					</span>
 					<Button className="with-icon" type="button" onClick={retryCardPrices} size="custom">
 						<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" />
-						{cardPricesFailure?.kind === 'rate-limited' || visibleRateLimitedPrices
-							? 'Retry later'
-							: 'Retry prices'}
+						Retry
 					</Button>
 				</div>
 			) : null}
 			{listedOnly && !activityState.loading && !activityState.error && activityState.failures ? (
-				<div className="inline-error">
+				<div className="inline-error retry-notice">
 					<span role="status">
 						{listingRetrying
 							? 'Rechecking only the listing candidates that were unavailable.'
-							: marketplaceRequestFailureMessage(
-									'compute',
-									activityState.rateLimited ? 'rate-limited' : 'unavailable'
-							  )}{' '}
+							: 'Compute hasn’t completed yet. Please try again.'}{' '}
 						{activityState.failures.toLocaleString()} listing{' '}
 						{activityState.failures === 1 ? 'candidate remains' : 'candidates remain'} unavailable. Resolved
 						listings remain visible.
@@ -6425,24 +6404,16 @@ function CollectionView() {
 							window.requestAnimationFrame(() => collectionStatusRef.current?.focus());
 						}}
 					>
-						<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" />{' '}
-						{listingRetrying
-							? 'Retrying…'
-							: activityState.rateLimited
-							? 'Retry later'
-							: 'Retry unavailable'}
+						<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Retry
 					</Button>
 				</div>
 			) : null}
 			{listedOnly && (recentOrderState.loading || recentOrderState.error) ? (
-				<div className={recentOrderState.error ? 'inline-error' : 'collection-source-notice'}>
+				<div className={recentOrderState.error ? 'inline-error retry-notice' : 'collection-source-notice'}>
 					<span role="status">
 						{recentOrderState.loading
 							? 'Ordering live listings by their latest indexed market activity…'
-							: `${marketplaceRequestFailureMessage(
-									'index',
-									recentOrderState.error!
-							  )} Resolved listings are shown in Default order.`}
+							: 'Compute hasn’t completed yet. Please try again. Resolved listings are shown in Default order.'}
 					</span>
 					{recentOrderState.error ? (
 						<Button
@@ -6454,7 +6425,7 @@ function CollectionView() {
 								window.requestAnimationFrame(() => collectionStatusRef.current?.focus());
 							}}
 						>
-							<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Retry recent order
+							<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Retry
 						</Button>
 					) : null}
 				</div>
@@ -6620,15 +6591,13 @@ function CollectionView() {
 			) : null}
 			{moreState.error ? (
 				<div
-					className="inline-error"
+					className="inline-error retry-notice"
 					ref={(node) => {
 						moreOutcomeRef.current = node;
 					}}
 					tabIndex={-1}
 				>
-					<span role="alert">
-						More {collection.kind === 'tokens' ? 'tokens' : 'names'} could not be loaded: {moreState.error}
-					</span>
+					<span role="status">Compute hasn’t completed yet. Please try again.</span>
 					<Button
 						className="with-icon"
 						size="custom"
@@ -6638,8 +6607,7 @@ function CollectionView() {
 							window.requestAnimationFrame(() => collectionStatusRef.current?.focus());
 						}}
 					>
-						<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Retry{' '}
-						{collection.kind === 'tokens' ? 'tokens' : 'names'}
+						<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Retry
 					</Button>
 				</div>
 			) : null}
@@ -6748,7 +6716,6 @@ function CollectionResultStatus({ message }: { message: string }) {
 function CollectionIndexNotice({
 	collection,
 	checking,
-	directlyVerified = false,
 	onRetry,
 }: {
 	collection: Collection;
@@ -6757,27 +6724,12 @@ function CollectionIndexNotice({
 	onRetry(): void;
 }) {
 	if (collection.indexSource !== 'compiled-fallback') return null;
-	const tokenIndex = collection.kind === 'tokens';
 	const message = checking
-		? tokenIndex
-			? directlyVerified
-				? 'Checking token discovery. This token remains available directly from live state through the selected gateway.'
-				: 'Checking token discovery. The configured token remains available; ownership, orders, and balances are still computed live through the selected gateway.'
-			: 'Checking this collection’s live asset index. Its bundled index remains available; ownership and orders are still computed live through the selected gateway.'
-		: tokenIndex
-		? directlyVerified
-			? 'This token was read directly from live state and may not appear in collection browsing while token discovery is unavailable.'
-			: 'Token discovery is unavailable. Showing the configured token only; ownership, orders, and balances are still computed live through the selected gateway.'
-		: 'This collection’s live asset index is unavailable. Showing its last published index; ownership and orders are still computed live through the selected gateway.';
-	const compactMessage = tokenIndex
-		? directlyVerified
-			? `${checking ? 'Checking discovery' : 'Discovery unavailable'}; live token state remains available.`
-			: `${checking ? 'Checking discovery' : 'Showing the configured token'}; balances and orders remain live.`
-		: `${
-				checking ? 'Checking the published index' : 'Using the published index'
-		  }; ownership and orders remain live.`;
+		? 'Checking compute. This page remains available while the check finishes.'
+		: 'Compute hasn’t completed yet. Please try again.';
+	const compactMessage = checking ? 'Checking compute…' : 'Compute hasn’t completed yet. Please try again.';
 	return (
-		<div className="collection-source-notice collection-index-notice">
+		<div className="collection-source-notice collection-index-notice retry-notice">
 			<span role="status">
 				<span aria-hidden="true" className="collection-index-message-full">
 					{message}
@@ -6789,7 +6741,7 @@ function CollectionIndexNotice({
 			</span>
 			<Button
 				aria-disabled={checking}
-				aria-label={checking ? 'Checking collection index' : 'Retry collection index'}
+				aria-label="Retry"
 				className="with-icon"
 				size="custom"
 				type="button"
@@ -6799,10 +6751,10 @@ function CollectionIndexNotice({
 			>
 				<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" />
 				<span aria-hidden="true" className="collection-index-action-full">
-					{checking ? 'Checking collection index…' : 'Retry collection index'}
+					Retry
 				</span>
 				<span aria-hidden="true" className="collection-index-action-compact">
-					{checking ? 'Checking…' : 'Retry'}
+					Retry
 				</span>
 			</Button>
 		</div>
@@ -6960,7 +6912,7 @@ function CollectionActivityView() {
 	if (!collection && market.error)
 		return (
 			<RouteState title="Activity unavailable">
-				<ErrorPanel message={market.error} onRetry={market.retry} retryLabel="Retry collection index" />
+				<ErrorPanel message={market.error} onRetry={market.retry} />
 			</RouteState>
 		);
 	if (!collection)
@@ -7015,7 +6967,6 @@ function CollectionActivityView() {
 						activityRunMode.current = 'retry';
 						setRetry((value) => value + 1);
 					}}
-					retryLabel="Retry activity"
 				/>
 			) : null}
 			<MarketActivityList
@@ -7628,7 +7579,7 @@ function AssetDetailLoadingShell({
 					</div>
 				</header>
 				{error ? (
-					<ErrorPanel message={error} onRetry={onRetry} retryLabel="Retry live state" />
+					<ErrorPanel message={error} onRetry={onRetry} />
 				) : (
 					<div aria-live="polite" className="state-verification asset-loading-verification" role="status">
 						<span aria-hidden="true" /> Computing current state…
@@ -7756,7 +7707,7 @@ function AssetDetailLoadingShell({
 							<span>Supply 1</span>
 						</div>
 						{error ? (
-							<ErrorPanel message={error} onRetry={onRetry} retryLabel="Retry live state" />
+							<ErrorPanel message={error} onRetry={onRetry} />
 						) : (
 							<div
 								aria-live="polite"
@@ -8424,13 +8375,13 @@ function AssetView() {
 	if (!collection && market.error)
 		return (
 			<RouteState title="Asset unavailable">
-				<ErrorPanel message={market.error} onRetry={market.retry} retryLabel="Retry collection index" />
+				<ErrorPanel message={market.error} onRetry={market.retry} />
 			</RouteState>
 		);
 	if (!collection && directAtomicRoute && error)
 		return (
 			<RouteState title="Asset unavailable">
-				<ErrorPanel message={detailError ?? error} onRetry={load} retryLabel="Retry live state" />
+				<ErrorPanel message={detailError ?? error} onRetry={load} />
 			</RouteState>
 		);
 	if (!collection)
@@ -8457,7 +8408,7 @@ function AssetView() {
 	if (!asset && error)
 		return (
 			<RouteState title="Asset unavailable" backTo={`/collection/${collection.id}`} backLabel={collection.name}>
-				<ErrorPanel message={detailError ?? error} onRetry={load} retryLabel="Retry live state" />
+				<ErrorPanel message={detailError ?? error} onRetry={load} />
 			</RouteState>
 		);
 	if (!asset && !loading)
@@ -8652,7 +8603,7 @@ function AssetView() {
 							failed={Boolean(error)}
 						/>
 						{loading ? <Loading label="Computing current state…" /> : null}
-						{error ? <ErrorPanel message={error} onRetry={load} retryLabel="Retry live state" /> : null}
+						{error ? <ErrorPanel message={error} onRetry={load} /> : null}
 						{state ? (
 							<section aria-busy={operationIsBusy} className="asset-commerce-card">
 								<div className="asset-market-stats">
@@ -8965,12 +8916,10 @@ function AssetView() {
 								/>
 							) : null}
 							{activityError ? (
-								<div className="inline-error" role={assetActivity.length ? 'status' : 'alert'}>
+								<div className="inline-error retry-notice" role="status">
 									<span>
-										Market history could not be read.{' '}
-										{assetActivity.length
-											? `Previously loaded events remain visible. ${activityError}`
-											: activityError}
+										Compute hasn’t completed yet. Please try again.{' '}
+										{assetActivity.length ? 'Previously loaded events remain visible.' : ''}
 									</span>
 									<Button
 										className="with-icon"
@@ -8978,7 +8927,7 @@ function AssetView() {
 										size="custom"
 										type="button"
 									>
-										<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Retry history
+										<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Retry
 									</Button>
 								</div>
 							) : null}
@@ -10016,7 +9965,9 @@ function OperationDialog({
 										rel="noreferrer"
 										target="_blank"
 									>
-										{short(operation.resume.registration.id)} ↗
+										<OperationExternalLink>
+											{short(operation.resume.registration.id)}
+										</OperationExternalLink>
 									</a>{' '}
 									is already signed.
 								</small>
@@ -10114,12 +10065,12 @@ function OperationDialog({
 							) : null}
 							{operation.kind === 'buy' ? (
 								<div
-									className={quoteError ? 'inline-error' : 'quote-check-action'}
-									role={quoteError ? 'alert' : undefined}
+									className={quoteError ? 'inline-error retry-notice' : 'quote-check-action'}
+									role={quoteError ? 'status' : undefined}
 								>
 									<span>
 										{quoteError
-											? 'The network cost could not be checked.'
+											? 'Compute hasn’t completed yet. Please try again.'
 											: purchaseQuote
 											? 'Costs checked.'
 											: 'Checking wallet balance and network fees…'}
@@ -10134,12 +10085,7 @@ function OperationDialog({
 											if (purchaseQuote || quoteError) setQuoteRetry((current) => current + 1);
 										}}
 									>
-										<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" />{' '}
-										{quoteError
-											? 'Retry cost check'
-											: purchaseQuote
-											? 'Recheck cost'
-											: 'Checking cost…'}
+										<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Retry
 									</Button>
 								</div>
 							) : null}
@@ -10290,24 +10236,31 @@ function OperationDialog({
 				{visiblePhase === 'done' ? (
 					<div className="result success">
 						<OperationOutcome title={resultCopy.title} detail={resultCopy.detail}>
-							{operation.kind === 'sell' ? (
-								asset.image ? (
-									<ArtworkImage
-										alt={`${asset.name} artwork`}
-										className="operation-result-artwork"
-										decoding="async"
-										loading="eager"
-										src={asset.image}
-									/>
-								) : (
-									<span
-										aria-label={`${asset.name} artwork`}
-										className="operation-result-artwork operation-result-artwork-fallback"
-										role="img"
-									>
-										{asset.name.slice(0, 1)}
-									</span>
-								)
+							{operation.kind === 'buy' || operation.kind === 'sell' ? (
+								<OperationOutcomeSubject
+									label={operation.kind === 'buy' ? 'You received' : 'You listed'}
+									title={asset.name}
+									detail={operation.kind === 'sell' ? `${value} AR` : 'One asset'}
+									media={
+										asset.image ? (
+											<ArtworkImage
+												alt={`${asset.name} artwork`}
+												className="operation-outcome-subject-artwork"
+												decoding="async"
+												loading="eager"
+												src={asset.image}
+											/>
+										) : (
+											<span
+												aria-label={`${asset.name} artwork`}
+												className="operation-outcome-subject-artwork operation-outcome-subject-artwork-fallback"
+												role="img"
+											>
+												{asset.name.slice(0, 1)}
+											</span>
+										)
+									}
+								/>
 							) : null}
 						</OperationOutcome>
 						{operation.kind === 'buy' ? (
@@ -10329,7 +10282,7 @@ function OperationDialog({
 										rel="noreferrer"
 										target="_blank"
 									>
-										{short(operation.order.orderId)} ↗
+										<OperationExternalLink>{short(operation.order.orderId)}</OperationExternalLink>
 									</a>
 								</div>
 								<div className="settlement-receipt-links">
@@ -10339,7 +10292,9 @@ function OperationDialog({
 											rel="noreferrer"
 											target="_blank"
 										>
-											Reservation {short(purchaseState.registration.id)} ↗
+											<OperationExternalLink>
+												Reservation {short(purchaseState.registration.id)}
+											</OperationExternalLink>
 										</a>
 									) : null}
 									{purchaseState?.payment?.id ? (
@@ -10348,7 +10303,9 @@ function OperationDialog({
 											rel="noreferrer"
 											target="_blank"
 										>
-											Payment {short(purchaseState.payment.id)} ↗
+											<OperationExternalLink>
+												Payment {short(purchaseState.payment.id)}
+											</OperationExternalLink>
 										</a>
 									) : null}
 								</div>
@@ -10365,13 +10322,15 @@ function OperationDialog({
 								</div>
 								<div className="settlement-receipt-links">
 									<a href={transactionExplorerUrl(transaction.id)} rel="noreferrer" target="_blank">
-										Transaction {short(transaction.id)} ↗
+										<OperationExternalLink>
+											Transaction {short(transaction.id)}
+										</OperationExternalLink>
 									</a>
 								</div>
 							</div>
 						) : transaction ? (
 							<a href={transactionExplorerUrl(transaction.id)} rel="noreferrer" target="_blank">
-								View transaction {short(transaction.id)} ↗
+								<OperationExternalLink>View transaction {short(transaction.id)}</OperationExternalLink>
 							</a>
 						) : null}
 						<Button
@@ -10410,7 +10369,9 @@ function OperationDialog({
 											rel="noreferrer"
 											target="_blank"
 										>
-											{short(operation.order.orderId)} ↗
+											<OperationExternalLink>
+												{short(operation.order.orderId)}
+											</OperationExternalLink>
 										</a>
 									</div>
 									<div className="settlement-receipt-links">
@@ -10420,7 +10381,9 @@ function OperationDialog({
 												rel="noreferrer"
 												target="_blank"
 											>
-												Reservation {short(purchaseState.registration.id)} ↗
+												<OperationExternalLink>
+													Reservation {short(purchaseState.registration.id)}
+												</OperationExternalLink>
 											</a>
 										) : null}
 										{purchaseState?.payment?.id ? (
@@ -10429,7 +10392,9 @@ function OperationDialog({
 												rel="noreferrer"
 												target="_blank"
 											>
-												Payment {short(purchaseState.payment.id)} ↗
+												<OperationExternalLink>
+													Payment {short(purchaseState.payment.id)}
+												</OperationExternalLink>
 											</a>
 										) : null}
 									</div>
@@ -10494,12 +10459,7 @@ function OperationDialog({
 }
 
 export function AtomicOperationErrorAlert({ message }: { message: string }) {
-	return (
-		<div className="result-alert" role="alert">
-			<h3>Could not complete this action</h3>
-			<p>{message}</p>
-		</div>
-	);
+	return <OperationErrorAlert title="Could not complete this action" message={message} />;
 }
 
 function collectionKindLabel(collection: Collection) {

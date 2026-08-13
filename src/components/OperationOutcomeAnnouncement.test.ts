@@ -2,7 +2,11 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
-import { OperationOutcome, OperationOutcomeAnnouncement } from './OperationOutcomeAnnouncement';
+import {
+	OperationOutcome,
+	OperationOutcomeAnnouncement,
+	OperationOutcomeSubject,
+} from './OperationOutcomeAnnouncement';
 
 describe('operation outcome announcements', () => {
 	it('announces only the concise completed outcome', () => {
@@ -43,5 +47,20 @@ describe('operation outcome announcements', () => {
 		);
 		expect(outcome.indexOf('Listing is live')).toBeLessThan(outcome.indexOf('catsun artwork'));
 		expect(outcome.indexOf('catsun artwork')).toBeLessThan(outcome.indexOf('catsun is offered'));
+	});
+
+	it('names the item or value received in a completed outcome', () => {
+		const subject = renderToStaticMarkup(
+			React.createElement(OperationOutcomeSubject, {
+				label: 'You received',
+				title: '0.11 AR',
+				detail: 'For tSteelBlue',
+				media: React.createElement('img', { alt: 'tSteelBlue artwork', src: '/tsteelblue.png' }),
+			})
+		);
+		expect(subject).toContain('You received');
+		expect(subject).toContain('tSteelBlue artwork');
+		expect(subject).toContain('ar-currency-label');
+		expect(subject).toContain('For tSteelBlue');
 	});
 });

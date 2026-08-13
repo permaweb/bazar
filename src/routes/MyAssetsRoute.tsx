@@ -3,7 +3,6 @@ import { RefreshCw, Server } from 'lucide-react';
 
 import {
 	type AssetCandidate,
-	clearCompletedWalletCandidateScan,
 	createAssetCandidateResolver,
 	createWalletCandidateScan,
 	discoverWalletAssetCandidates,
@@ -97,11 +96,6 @@ export default function MyAssetsRoute() {
 	};
 	const refreshAssets = () => {
 		setRetry((value) => value + 1);
-	};
-	const restartDiscovery = () => {
-		if (wallet.address) clearCompletedWalletCandidateScan(window.localStorage, wallet.address);
-		discoverySession.current = undefined;
-		refreshAssets();
 	};
 	React.useEffect(() => {
 		if (!wallet.address || !market.collections.length || market.error) return;
@@ -526,7 +520,7 @@ export default function MyAssetsRoute() {
 			<section className="my-assets-page">
 				<p className="eyebrow">Live wallet inventory</p>
 				<h1>My assets</h1>
-				<ErrorPanel message={market.error} onRetry={market.retry} retryLabel="Retry asset index" />
+				<ErrorPanel message={market.error} onRetry={market.retry} />
 			</section>
 		);
 	}
@@ -592,15 +586,14 @@ export default function MyAssetsRoute() {
 					</span>
 				</div>
 				{!status.error && status.phase === 'done' && status.failures && status.failures < status.total ? (
-					<div className="my-assets-heading-status">
+					<div className="my-assets-heading-status retry-notice">
 						<span role="status">
-							{aggregateFailureMessage} {status.failures.toLocaleString()}{' '}
+							Compute hasn’t completed yet. Please try again. {status.failures.toLocaleString()}{' '}
 							{status.failures === 1 ? 'candidate remains' : 'candidates remain'} unavailable. Resolved
 							assets remain visible.
 						</span>
 						<Button className="with-icon" type="button" onClick={retryUnavailableAssets} size="custom">
-							<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" />{' '}
-							{status.rateLimited ? 'Retry later' : 'Retry unavailable'}
+							<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Retry
 						</Button>
 					</div>
 				) : null}
@@ -632,16 +625,11 @@ export default function MyAssetsRoute() {
 				</div>
 			) : null}
 			{status.error ? (
-				<div className="inline-error">
-					<span role="alert">{status.error}</span>
-					<div className="inline-error-actions">
-						<Button className="with-icon" onClick={retryDiscovery} size="custom">
-							<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Retry from checkpoint
-						</Button>
-						<Button onClick={restartDiscovery} size="custom">
-							Restart discovery
-						</Button>
-					</div>
+				<div className="inline-error retry-notice">
+					<span role="status">Compute hasn’t completed yet. Please try again.</span>
+					<Button className="with-icon" onClick={retryDiscovery} size="custom">
+						<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Retry
+					</Button>
 				</div>
 			) : null}
 			{!working || visibleResults.length ? (
@@ -675,13 +663,17 @@ export default function MyAssetsRoute() {
 					</h3>
 					<p>
 						{status.failures
-							? `${aggregateFailureMessage} ${status.failures} of ${status.total} candidates could not be checked. Retry them before treating this as an empty wallet.`
+							? `Compute hasn’t completed yet. Please try again. ${status.failures} of ${status.total} candidates still need to be checked.`
 							: 'Arweave GraphQL discovers candidates and can lag behind new transactions. Newly indexed candidates appear the next time this page opens; live state remains authoritative for every candidate found.'}
 					</p>
 					{status.failures ? (
-						<Button className="with-icon" type="button" onClick={retryUnavailableAssets} size="custom">
-							<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" />{' '}
-							{status.rateLimited ? 'Retry later' : 'Retry unavailable assets'}
+						<Button
+							className="with-icon retry-notice-action"
+							type="button"
+							onClick={retryUnavailableAssets}
+							size="custom"
+						>
+							<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Retry
 						</Button>
 					) : null}
 				</div>
