@@ -6473,7 +6473,7 @@ function CollectionView() {
 							price?.status === 'unavailable'
 								? 'Unavailable'
 								: price?.status === 'unindexed'
-								? 'No indexed ask'
+								? 'Unlisted'
 								: price?.status === 'resolved'
 								? price.label ?? 'Not listed'
 								: cardPricesFailure
@@ -6518,7 +6518,7 @@ function CollectionView() {
 									price?.status === 'unavailable'
 										? 'Unavailable'
 										: price?.status === 'unindexed'
-										? 'No indexed ask'
+										? 'Unlisted'
 										: price?.status === 'resolved'
 										? price.label ?? 'Not listed'
 										: cardPricesFailure
@@ -10832,7 +10832,6 @@ export function mintErrorMessage(error: unknown) {
 		'mint-udl-fee-invalid': 'Enter a UDL license fee greater than zero.',
 		'mint-udl-share-invalid': 'Enter a UDL revenue share between 0 and 100 percent.',
 		'mint-udl-expiry-invalid': 'Enter a whole number of years for the UDL license term.',
-		'mint-udl-payment-address-invalid': 'Enter a valid 43-character Arweave payment address.',
 	};
 	if (value.startsWith('mint-media-unavailable-')) {
 		return 'The earlier media upload is not available through this gateway yet. Try finishing the mint later.';

@@ -3,12 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import {
 	ArrowRight,
 	ArrowUpRight,
-	BadgeCheck,
 	Check,
-	Globe2,
 	InfinityIcon,
 	Info,
-	ShieldCheck,
 	Upload,
 	X,
 } from 'lucide-react';
@@ -45,7 +42,7 @@ import {
 import { confirmTransactionId } from 'api/asset-transactions';
 import { FUNGIBLE_TOKEN_COLLECTION_ID } from 'api/collections';
 
-import { ArCurrencyText } from 'components/ArCurrencyLabel';
+import { ArCurrencyLabel, ArCurrencyText } from 'components/ArCurrencyLabel';
 import { AudioArtwork } from 'components/AudioArtwork';
 import { Button } from 'components/Button';
 import { Loading } from 'components/Loading';
@@ -64,6 +61,8 @@ import { type EmbeddedAudioMetadata, extractEmbeddedAudioMetadata, formatAudioDu
 import { arweaveGatewayFromLocation } from 'helpers/config';
 import { useWallet } from 'providers/WalletProvider';
 
+import udlLogo from '../assets/udl.svg';
+
 import {
 	formatBytes,
 	MarketContext,
@@ -80,6 +79,78 @@ const ArweaveTransactionSync = React.lazy(async () => {
 });
 
 type UdlGrantValue = NonNullable<UdlTerms['derivation'] | UdlTerms['commercialUse'] | UdlTerms['dataModelTraining']>;
+
+function WireframeGlobeIcon() {
+	const clipId = React.useId();
+	return (
+		<svg
+			aria-hidden="true"
+			className="ui-icon ui-icon--sm udl-wireframe-globe"
+			fill="currentColor"
+			viewBox="0 0 256 256"
+		>
+			<defs>
+				<clipPath id={clipId}>
+					<circle cx="128" cy="128" r="88" />
+				</clipPath>
+			</defs>
+			<g clipPath={`url(#${clipId})`} fill="none" stroke="currentColor" strokeWidth="16">
+				<path d="M32 96h192M32 160h192" />
+				<g className="udl-wireframe-globe__details">
+					{[0, 128, 256, 384].map((center) => (
+						<ellipse cx={center} cy="128" key={center} rx="44" ry="96" />
+					))}
+				</g>
+			</g>
+			<circle cx="128" cy="128" fill="none" r="96" stroke="currentColor" strokeWidth="16" />
+		</svg>
+	);
+}
+
+function FloatingPaymentIcon() {
+	return (
+		<svg
+			aria-hidden="true"
+			className="ui-icon ui-icon--sm udl-payment-icon"
+			fill="none"
+			viewBox="0 0 24 24"
+		>
+			<g className="udl-payment-icon__pluses" stroke="currentColor" strokeLinecap="round" strokeWidth="1.35">
+				<path className="udl-payment-icon__plus" d="M4.5 7v3M3 8.5h3" />
+				<path className="udl-payment-icon__plus" d="M19.5 5.5v3M18 7h3" />
+				<path className="udl-payment-icon__plus" d="M4.5 15v3M3 16.5h3" />
+				<path className="udl-payment-icon__plus" d="M19.5 14v3M18 15.5h3" />
+			</g>
+			<g className="udl-payment-icon__coin" stroke="currentColor" strokeLinecap="round" strokeWidth="1.5">
+				<circle cx="12" cy="11" r="6.75" />
+				<path d="M12 6.75v8.5" />
+				<path d="M14.6 8.25h-3.7a1.7 1.7 0 0 0 0 3.4h2.2a1.7 1.7 0 0 1 0 3.4H9.4" />
+			</g>
+		</svg>
+	);
+}
+
+function AnimatedCreditBadgeIcon() {
+	return (
+		<svg
+			aria-hidden="true"
+			className="ui-icon ui-icon--sm udl-credit-icon"
+			fill="none"
+			viewBox="0 0 24 24"
+		>
+			<g className="udl-credit-icon__badge" stroke="currentColor" strokeLinejoin="round" strokeWidth="1.5">
+				<polygon points="12,3.5 13.88,5 16.25,4.64 17.13,6.87 19.36,7.75 19,10.12 20.5,12 19,13.88 19.36,16.25 17.13,17.13 16.25,19.36 13.88,19 12,20.5 10.12,19 7.75,19.36 6.87,17.13 4.64,16.25 5,13.88 3.5,12 5,10.12 4.64,7.75 6.87,6.87 7.75,4.64 10.12,5" />
+			</g>
+			<path className="udl-credit-icon__check" d="m8.5 11.7 2.2 2.2 4.8-5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.7" />
+			<g className="udl-credit-icon__particles" fill="currentColor">
+				<circle className="udl-credit-icon__particle" cx="5" cy="5" r="1" />
+				<circle className="udl-credit-icon__particle" cx="19" cy="5.5" r="0.9" />
+				<circle className="udl-credit-icon__particle" cx="4" cy="18" r="0.8" />
+				<circle className="udl-credit-icon__particle" cx="20" cy="18" r="1" />
+			</g>
+		</svg>
+	);
+}
 
 type FungibleMintDialogProps = {
 	error: string | null;
@@ -294,24 +365,45 @@ const UDL_PRESET_OPTIONS: Array<{
 	icon: React.ReactNode;
 }> = [
 	{
-		value: 'protected',
-		label: 'Protected',
-		description: 'Non-commercial derivatives only. Commercial use and AI training stay reserved.',
-		icon: <ShieldCheck aria-hidden="true" className="ui-icon ui-icon--sm" />,
-	},
-	{
 		value: 'share-with-credit',
 		label: 'Share with credit',
-		description: 'Derivatives and commercial use are allowed with credit. AI training stays reserved.',
-		icon: <BadgeCheck aria-hidden="true" className="ui-icon ui-icon--sm" />,
+		description: 'Derivatives and commercial use are allowed with credit. AI training is allowed.',
+		icon: <AnimatedCreditBadgeIcon />,
+	},
+	{
+		value: 'share-with-payment',
+		label: 'Share with payment',
+		description: 'Access is free. All usage rights are allowed with a one-time fee.',
+		icon: <FloatingPaymentIcon />,
 	},
 	{
 		value: 'open-use',
 		label: 'Open use',
 		description: 'Derivatives, commercial use, and AI training are allowed.',
-		icon: <Globe2 aria-hidden="true" className="ui-icon ui-icon--sm" />,
+		icon: <WireframeGlobeIcon />,
 	},
 ];
+
+function udlTermsMatchPreset(terms: UdlTerms, preset: UdlPreset): boolean {
+	const expected = udlTermsForPreset(preset);
+	const grantKeys = ['derivation', 'commercialUse', 'dataModelTraining'] as const;
+	const baseTermsMatch =
+		terms.accessFee === expected.accessFee &&
+		terms.unknownUsageRights === expected.unknownUsageRights &&
+		terms.expiry === expected.expiry;
+	const grantsMatch = grantKeys.every((key) => terms[key]?.grant === expected[key]?.grant);
+	if (preset === 'share-with-payment') {
+		const feeValues = grantKeys.map((key) => terms[key]?.value ?? '');
+		return baseTermsMatch && grantsMatch && feeValues.every((value) => value === feeValues[0]);
+	}
+	return (
+		baseTermsMatch &&
+		grantsMatch &&
+		grantKeys.every(
+			(key) => terms[key]?.value === expected[key]?.value
+		)
+	);
+}
 
 function UdlGrantField({
 	label,
@@ -327,9 +419,11 @@ function UdlGrantField({
 	const needsValue = value && ['revenue-share', 'one-time', 'monthly'].includes(value.grant);
 	return (
 		<div className={needsValue ? 'udl-field udl-grant-field has-value' : 'udl-field udl-grant-field'}>
+			<label>{label}</label>
 			<div className={needsValue ? 'udl-field-control with-value' : 'udl-field-control'}>
 				<MarketSelect
 					label={label}
+					showLabel={false}
 					value={value?.grant ?? ''}
 					options={[
 						{ value: '', label: 'Not granted' },
@@ -349,9 +443,12 @@ function UdlGrantField({
 				/>
 				{needsValue ? (
 					<label className="udl-value">
-						<span>{value.grant === 'revenue-share' ? 'Percent' : 'Amount'}</span>
+						<span className="udl-value-label">
+							{value.grant === 'revenue-share' ? 'Percent' : 'Amount'}
+						</span>
 						<input
 							aria-label={`${label} ${value.grant === 'revenue-share' ? 'percentage' : 'fee amount'}`}
+							className={value.grant === 'revenue-share' ? undefined : 'has-currency-suffix'}
 							inputMode="decimal"
 							min="0.000000000001"
 							max={value.grant === 'revenue-share' ? '100' : undefined}
@@ -360,6 +457,11 @@ function UdlGrantField({
 							value={value.value ?? '1'}
 							onChange={(event) => onChange({ ...value, value: event.target.value || '1' })}
 						/>
+						{value.grant !== 'revenue-share' ? (
+							<span className="udl-value-suffix">
+								<ArCurrencyLabel />
+							</span>
+						) : null}
 					</label>
 				) : null}
 			</div>
@@ -425,8 +527,8 @@ export default function CreateRoute() {
 	const [collectionEstimate, setCollectionEstimate] = React.useState<CollectionMintEstimate | null>(null);
 	const [estimating, setEstimating] = React.useState(false);
 	const [udlEnabled, setUdlEnabled] = React.useState(true);
-	const [udlTerms, setUdlTerms] = React.useState<UdlTerms>({});
-	const [udlPreset, setUdlPreset] = React.useState<UdlPreset | null>('protected');
+	const [udlTerms, setUdlTerms] = React.useState<UdlTerms>(() => udlTermsForPreset('share-with-credit'));
+	const udlPreset = UDL_PRESET_OPTIONS.find(({ value }) => udlTermsMatchPreset(udlTerms, value))?.value ?? null;
 	const [phase, setPhase] = React.useState<MintPhase | null>(null);
 	const [collectionPhase, setCollectionPhase] = React.useState<CollectionMintPhase | null>(null);
 	const [error, setError] = React.useState<string | null>(null);
@@ -437,23 +539,23 @@ export default function CreateRoute() {
 		wallet.address ? getMintDraft(wallet.address) : null
 	);
 	const applyUdlPreset = (preset: UdlPreset) => {
-		setUdlPreset(preset);
 		setUdlTerms(udlTermsForPreset(preset));
 		setError(null);
 	};
 	const customizeUdlTerms = (next: React.SetStateAction<UdlTerms>) => {
-		setUdlPreset(null);
 		setUdlTerms(next);
+	};
+	const setShareWithPaymentAmount = (value: string) => {
+		setUdlTerms((current) => ({
+			...current,
+			derivation: { grant: 'one-time', value },
+			commercialUse: { grant: 'one-time', value },
+			dataModelTraining: { grant: 'one-time', value },
+		}));
 	};
 	const activeUdl = udlEnabled ? udlTerms : undefined;
 	const selectedContentType = file ? normalizeAssetContentType(file.type, file.name) : null;
 	const audioSelected = isAudioContentType(selectedContentType ?? undefined);
-	const hasUdlPayment = Boolean(
-		activeUdl?.accessFee ||
-			['revenue-share', 'one-time', 'monthly'].includes(activeUdl?.derivation?.grant ?? '') ||
-			['revenue-share', 'one-time', 'monthly'].includes(activeUdl?.commercialUse?.grant ?? '') ||
-			['one-time', 'monthly'].includes(activeUdl?.dataModelTraining?.grant ?? '')
-	);
 	const fungibleInput: FungibleMintInput = {
 		name,
 		description,
@@ -1366,6 +1468,7 @@ export default function CreateRoute() {
 
 							{udlEnabled ? (
 								<div className="udl-options">
+									<img alt="Universal Data License" className="udl-options-logo" src={udlLogo} />
 									<p>
 										Free access is the default. Rights not granted below remain reserved.{' '}
 										<a
@@ -1381,7 +1484,7 @@ export default function CreateRoute() {
 										{UDL_PRESET_OPTIONS.map((preset) => (
 											<button
 												aria-pressed={udlPreset === preset.value}
-												className="udl-preset"
+												className={`udl-preset udl-preset--${preset.value}`}
 												key={preset.value}
 												onClick={() => applyUdlPreset(preset.value)}
 												type="button"
@@ -1394,235 +1497,213 @@ export default function CreateRoute() {
 											</button>
 										))}
 									</div>
+									{udlPreset === 'share-with-payment' ? (
+										<div className="udl-preset-payment">
+											<div className="udl-preset-payment-copy">
+												<strong>One-time fee</strong>
+												<span>
+													Applied to derivatives, commercial use, and AI model training.
+												</span>
+											</div>
+											<label className="udl-value udl-preset-payment-value">
+												<span className="udl-value-label">Amount</span>
+												<input
+													aria-label="Share with payment one-time fee amount"
+													className="has-currency-suffix"
+													inputMode="decimal"
+													min="0.000000000001"
+													step="any"
+													type="number"
+													value={udlTerms.derivation?.value ?? '1'}
+													onBlur={(event) => {
+														if (!event.target.value) setShareWithPaymentAmount('1');
+													}}
+													onChange={(event) => setShareWithPaymentAmount(event.target.value)}
+												/>
+												<span className="udl-value-suffix">
+													<ArCurrencyLabel />
+												</span>
+											</label>
+										</div>
+									) : null}
 
 									<details className="udl-advanced">
 										<summary>{udlPreset ? 'Advanced terms' : 'Advanced terms · Custom'}</summary>
 										<div className="udl-advanced-content">
-											<div className="udl-grid">
-												<div className="udl-field">
-													<div
-														className={
-															udlTerms.accessFee
-																? 'udl-field-control with-value'
-																: 'udl-field-control'
+											<section
+												className="udl-term-section"
+												aria-labelledby="udl-payment-terms-heading"
+											>
+												<div className="udl-term-section-heading">
+													<strong id="udl-payment-terms-heading">Usage and payment</strong>
+													<span>
+														Choose access and usage permissions, including any required
+														fees.
+													</span>
+												</div>
+								<div className="udl-grid udl-payment-terms-grid">
+									<div className="udl-field">
+										<label>Access</label>
+										<div
+															className={
+																udlTerms.accessFee
+																	? 'udl-field-control with-value'
+																	: 'udl-field-control'
+															}
+														>
+											<MarketSelect<'free' | 'one-time'>
+												label="Access"
+												showLabel={false}
+																value={udlTerms.accessFee ? 'one-time' : 'free'}
+																options={[
+																	{ value: 'free', label: 'Free' },
+																	{ value: 'one-time', label: 'One-time fee' },
+																]}
+																onChange={(value) =>
+																	customizeUdlTerms((current) => ({
+																		...current,
+																		accessFee:
+																			value === 'one-time' ? '1' : undefined,
+																	}))
+																}
+															/>
+											{udlTerms.accessFee ? (
+												<label className="udl-value">
+													<span className="udl-value-label">Amount</span>
+													<input
+														aria-label="Access fee amount"
+														className="has-currency-suffix"
+																		inputMode="decimal"
+																		min="0.000000000001"
+																		step="any"
+																		type="number"
+																		value={udlTerms.accessFee}
+																		onChange={(event) =>
+																			customizeUdlTerms((current) => ({
+																				...current,
+																				accessFee: event.target.value || '1',
+																			}))
 														}
-													>
-														<MarketSelect<'free' | 'one-time'>
-															label="Access"
-															value={udlTerms.accessFee ? 'one-time' : 'free'}
-															options={[
-																{ value: 'free', label: 'Free' },
-																{ value: 'one-time', label: 'One-time fee' },
-															]}
-															onChange={(value) =>
-																customizeUdlTerms((current) => ({
-																	...current,
-																	accessFee: value === 'one-time' ? '1' : undefined,
-																}))
-															}
-														/>
-														{udlTerms.accessFee ? (
-															<label className="udl-value">
-																<span>Amount</span>
-																<input
-																	aria-label="Access fee amount"
-																	inputMode="decimal"
-																	min="0.000000000001"
-																	step="any"
-																	type="number"
-																	value={udlTerms.accessFee}
-																	onChange={(event) =>
-																		customizeUdlTerms((current) => ({
-																			...current,
-																			accessFee: event.target.value || '1',
-																		}))
-																	}
-																/>
-															</label>
-														) : null}
+													/>
+													<span className="udl-value-suffix">
+														<ArCurrencyLabel />
+													</span>
+												</label>
+															) : null}
+														</div>
 													</div>
+													<UdlGrantField
+														label="Derivatives"
+														value={udlTerms.derivation}
+														options={[
+															['allowed', 'Allowed'],
+															['credit', 'Allowed with credit'],
+															['indication', 'Allowed with change indication'],
+															['license-passthrough', 'Allowed with license passthrough'],
+															['revenue-share', 'Allowed with revenue share'],
+															['one-time', 'Allowed with one-time fee'],
+															['monthly', 'Allowed with monthly fee'],
+														]}
+														onChange={(value) =>
+															customizeUdlTerms((current) => ({
+																...current,
+																derivation: value as UdlTerms['derivation'],
+															}))
+														}
+													/>
+													<UdlGrantField
+														label="Commercial use"
+														value={udlTerms.commercialUse}
+														options={[
+															['allowed', 'Allowed'],
+															['credit', 'Allowed with credit'],
+															['revenue-share', 'Allowed with revenue share'],
+															['one-time', 'Allowed with one-time fee'],
+															['monthly', 'Allowed with monthly fee'],
+														]}
+														onChange={(value) =>
+															customizeUdlTerms((current) => ({
+																...current,
+																commercialUse: value as UdlTerms['commercialUse'],
+															}))
+														}
+													/>
+													<UdlGrantField
+														label="AI model training"
+														value={udlTerms.dataModelTraining}
+														options={[
+															['allowed', 'Allowed'],
+															['one-time', 'Allowed with one-time fee'],
+															['monthly', 'Allowed with monthly fee'],
+														]}
+														onChange={(value) =>
+															customizeUdlTerms((current) => ({
+																...current,
+																dataModelTraining:
+																	value as UdlTerms['dataModelTraining'],
+															}))
+														}
+													/>
 												</div>
-												<UdlGrantField
-													label="Derivatives"
-													value={udlTerms.derivation}
-													options={[
-														['allowed', 'Allowed'],
-														['credit', 'Allowed with credit'],
-														['indication', 'Allowed with change indication'],
-														['license-passthrough', 'Allowed with license passthrough'],
-														['revenue-share', 'Allowed with revenue share'],
-														['one-time', 'Allowed with one-time fee'],
-														['monthly', 'Allowed with monthly fee'],
-													]}
-													onChange={(value) =>
-														customizeUdlTerms((current) => ({
-															...current,
-															derivation: value as UdlTerms['derivation'],
-														}))
-													}
-												/>
-												<UdlGrantField
-													label="Commercial use"
-													value={udlTerms.commercialUse}
-													options={[
-														['allowed', 'Allowed'],
-														['credit', 'Allowed with credit'],
-														['revenue-share', 'Allowed with revenue share'],
-														['one-time', 'Allowed with one-time fee'],
-														['monthly', 'Allowed with monthly fee'],
-													]}
-													onChange={(value) =>
-														customizeUdlTerms((current) => ({
-															...current,
-															commercialUse: value as UdlTerms['commercialUse'],
-														}))
-													}
-												/>
-												<UdlGrantField
-													label="AI model training"
-													value={udlTerms.dataModelTraining}
-													options={[
-														['allowed', 'Allowed'],
-														['one-time', 'Allowed with one-time fee'],
-														['monthly', 'Allowed with monthly fee'],
-													]}
-													onChange={(value) =>
-														customizeUdlTerms((current) => ({
-															...current,
-															dataModelTraining: value as UdlTerms['dataModelTraining'],
-														}))
-													}
-												/>
-											</div>
+											</section>
 
-											{hasUdlPayment ? (
-												<div className="udl-payment">
+											<section
+												className="udl-term-section"
+												aria-labelledby="udl-other-terms-heading"
+											>
+												<div className="udl-term-section-heading">
+													<strong id="udl-other-terms-heading">Other terms</strong>
+													<span>Set the fallback rights and duration for this license.</span>
+												</div>
+
+												<div className="udl-grid udl-other-terms-grid">
 													<div className="udl-field">
 														<div className="udl-field-control">
-															<MarketSelect<'U' | 'AR'>
-																label="Payment currency"
-																value={udlTerms.currency ?? 'AR'}
+															<MarketSelect<'included' | 'excluded'>
+																label="Unknown usage rights"
+																value={udlTerms.unknownUsageRights ?? 'included'}
 																options={[
-																	{ value: 'AR', label: 'AR (default)' },
-																	{ value: 'U', label: '$U' },
+																	{
+																		value: 'included',
+																		label: 'Included when legally available',
+																	},
+																	{ value: 'excluded', label: 'Excluded' },
 																]}
 																onChange={(value) =>
 																	customizeUdlTerms((current) => ({
 																		...current,
-																		currency: value,
-																	}))
-																}
-															/>
-														</div>
-													</div>
-													<div className="udl-field udl-address">
-														<label htmlFor="udl-payment-address">Payment address</label>
-														<div className="udl-field-control">
-															<input
-																id="udl-payment-address"
-																maxLength={43}
-																placeholder={
-																	wallet.address || 'Uploader wallet by default'
-																}
-																value={udlTerms.paymentAddress ?? ''}
-																onChange={(event) =>
-																	customizeUdlTerms((current) => ({
-																		...current,
-																		paymentAddress:
-																			event.target.value.trim() || undefined,
-																	}))
-																}
-															/>
-														</div>
-													</div>
-													{udlTerms.paymentAddress &&
-													udlTerms.paymentAddress !== wallet.address ? (
-														<p className="udl-payment-warning">
-															License payments will go to this address, not the connected
-															wallet.
-														</p>
-													) : null}
-												</div>
-											) : null}
-
-											<div className="udl-grid">
-												<div className="udl-field">
-													<div className="udl-field-control">
-														<MarketSelect<'included' | 'excluded'>
-															label="Unknown usage rights"
-															value={udlTerms.unknownUsageRights ?? 'included'}
-															options={[
-																{
-																	value: 'included',
-																	label: 'Included when legally available',
-																},
-																{ value: 'excluded', label: 'Excluded' },
-															]}
-															onChange={(value) =>
-																customizeUdlTerms((current) => ({
-																	...current,
-																	unknownUsageRights:
-																		value === 'excluded' ? 'excluded' : undefined,
-																}))
-															}
-														/>
-													</div>
-												</div>
-												<div className="udl-field">
-													<label htmlFor="udl-expiry">License term</label>
-													<div className="udl-field-control with-suffix">
-														<input
-															id="udl-expiry"
-															inputMode="numeric"
-															min="1"
-															placeholder="Unlimited"
-															step="1"
-															type="number"
-															value={udlTerms.expiry ?? ''}
-															onChange={(event) =>
-																customizeUdlTerms((current) => ({
-																	...current,
-																	expiry: event.target.value || undefined,
-																}))
-															}
-														/>
-														<span>years</span>
-													</div>
-												</div>
-												{hasUdlPayment ? (
-													<div className="udl-field">
-														<div className="udl-field-control">
-															<MarketSelect<'direct' | 'random' | 'global'>
-																label="Payment mode"
-																value={udlTerms.paymentMode ?? 'direct'}
-																options={[
-																	{
-																		value: 'direct',
-																		label: 'Direct to payment address',
-																	},
-																	{
-																		value: 'random',
-																		label: 'Random PST distribution',
-																	},
-																	{
-																		value: 'global',
-																		label: 'Global PST distribution',
-																	},
-																]}
-																onChange={(value) =>
-																	customizeUdlTerms((current) => ({
-																		...current,
-																		paymentMode:
-																			value === 'random' || value === 'global'
-																				? value
+																		unknownUsageRights:
+																			value === 'excluded'
+																				? 'excluded'
 																				: undefined,
 																	}))
 																}
 															/>
 														</div>
 													</div>
-												) : null}
-											</div>
+													<div className="udl-field">
+														<label htmlFor="udl-expiry">License term</label>
+														<div className="udl-field-control with-suffix">
+															<input
+																id="udl-expiry"
+																inputMode="numeric"
+																min="1"
+																placeholder="Unlimited"
+																step="1"
+																type="number"
+																value={udlTerms.expiry ?? ''}
+																onChange={(event) =>
+																	customizeUdlTerms((current) => ({
+																		...current,
+																		expiry: event.target.value || undefined,
+																	}))
+																}
+															/>
+															<span>years</span>
+														</div>
+													</div>
+												</div>
+											</section>
 										</div>
 									</details>
 								</div>

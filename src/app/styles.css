@@ -271,13 +271,6 @@ p {
 		opacity: 1;
 	}
 }
-@media (prefers-reduced-motion: reduce) {
-	.gateway summary:is(:hover, :focus-visible) .portal-icon__twinkle,
-	.gateway form button:is(:hover, :focus-visible) .portal-icon__twinkle {
-		animation: none;
-		opacity: 1;
-	}
-}
 .with-icon {
 	display: inline-flex;
 	align-items: center;
@@ -7858,6 +7851,10 @@ body input:focus-visible {
 	border-radius: 0 0 8px 8px;
 	background: var(--paper);
 }
+.udl-options-logo {
+	width: 150px;
+	height: auto;
+}
 .udl-options > p {
 	margin: 0;
 	color: var(--muted-subtle);
@@ -7875,6 +7872,35 @@ body input:focus-visible {
 	display: grid;
 	grid-template-columns: repeat(3, minmax(0, 1fr));
 	gap: 8px;
+}
+.udl-preset-payment {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 20px;
+	padding: 14px 16px;
+	border: 1px solid var(--line);
+	border-radius: 8px;
+	background: var(--panel);
+}
+.udl-preset-payment-copy {
+	display: grid;
+	gap: 3px;
+}
+.udl-preset-payment-copy strong {
+	font-size: var(--type-body);
+	font-weight: 500;
+}
+.udl-preset-payment-copy span {
+	color: var(--muted-subtle);
+	font-size: var(--type-small);
+	line-height: 1.4;
+}
+.udl-preset-payment-value {
+	flex: 0 0 180px;
+}
+.udl-preset-payment-value .udl-value-label {
+	background: var(--panel);
 }
 .udl-preset {
 	min-width: 0;
@@ -7909,6 +7935,146 @@ body input:focus-visible {
 }
 .udl-preset-title .ui-icon {
 	flex: 0 0 auto;
+	transform-origin: center;
+	transition: color 160ms ease;
+}
+.udl-preset--share-with-payment .udl-payment-icon {
+	width: 22px;
+	height: 22px;
+	margin: -3px -2px -3px 0;
+}
+.udl-preset--open-use .udl-wireframe-globe {
+	width: 19px;
+	height: 19px;
+	margin: -1px 0;
+}
+.udl-preset--share-with-credit .udl-credit-icon {
+	width: 20px;
+	height: 20px;
+	margin: -2px -1px -2px 0;
+}
+.udl-credit-icon__check {
+	color: var(--positive);
+}
+.udl-preset--share-with-credit:is(:hover, :focus-visible) .udl-preset-title .ui-icon {
+	color: var(--ink);
+}
+.udl-preset--share-with-credit:is(:hover, :focus-visible) .udl-credit-icon__badge {
+	animation: udl-credit-badge-spin 2400ms linear infinite;
+	transform-box: view-box;
+	transform-origin: 12px 12px;
+}
+.udl-credit-icon__particle {
+	opacity: 0;
+	transform-box: fill-box;
+	transform-origin: center;
+}
+.udl-preset--share-with-credit:is(:hover, :focus-visible) .udl-credit-icon__particle {
+	animation: udl-credit-particle-burst 620ms ease-out 440ms both;
+}
+.udl-preset--share-with-credit:is(:hover, :focus-visible) .udl-credit-icon__particle:nth-child(2) {
+	animation-delay: 500ms;
+}
+.udl-preset--share-with-credit:is(:hover, :focus-visible) .udl-credit-icon__particle:nth-child(3) {
+	animation-delay: 550ms;
+}
+.udl-preset--share-with-credit:is(:hover, :focus-visible) .udl-credit-icon__particle:nth-child(4) {
+	animation-delay: 610ms;
+}
+.udl-preset--share-with-payment:is(:hover, :focus-visible) .udl-preset-title .ui-icon {
+	color: var(--positive);
+}
+.udl-preset--share-with-payment:is(:hover, :focus-visible) .udl-payment-icon__coin {
+	animation: udl-payment-coin-rise 680ms ease-out both;
+}
+.udl-payment-icon__plus {
+	opacity: 0;
+}
+.udl-preset--share-with-payment:is(:hover, :focus-visible) .udl-payment-icon__plus {
+	animation: udl-payment-plus-loop 950ms ease-out 560ms infinite;
+}
+.udl-preset--share-with-payment:is(:hover, :focus-visible) .udl-payment-icon__plus:nth-child(2) {
+	animation-delay: 680ms;
+}
+.udl-preset--share-with-payment:is(:hover, :focus-visible) .udl-payment-icon__plus:nth-child(3) {
+	animation-delay: 800ms;
+}
+.udl-preset--share-with-payment:is(:hover, :focus-visible) .udl-payment-icon__plus:nth-child(4) {
+	animation-delay: 920ms;
+}
+.udl-preset--open-use:is(:hover, :focus-visible) .udl-preset-title .ui-icon {
+	color: var(--event-blue);
+}
+.udl-preset--open-use:is(:hover, :focus-visible) .udl-wireframe-globe__details {
+	animation: udl-globe-lines-left 1800ms linear infinite;
+	transform-box: view-box;
+	transform-origin: center;
+}
+@keyframes udl-credit-badge-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+@keyframes udl-credit-particle-burst {
+	0% {
+		transform: translate(0, 0) scale(0.5);
+		opacity: 0;
+	}
+	30% {
+		opacity: 1;
+	}
+	100% {
+		transform: translate(var(--udl-particle-x, 0), var(--udl-particle-y, 0)) scale(0);
+		opacity: 0;
+	}
+}
+.udl-credit-icon__particle:nth-child(1) {
+	--udl-particle-x: -2px;
+	--udl-particle-y: -2px;
+}
+.udl-credit-icon__particle:nth-child(2) {
+	--udl-particle-x: 2px;
+	--udl-particle-y: -2px;
+}
+.udl-credit-icon__particle:nth-child(3) {
+	--udl-particle-x: -2px;
+	--udl-particle-y: 2px;
+}
+.udl-credit-icon__particle:nth-child(4) {
+	--udl-particle-x: 2px;
+	--udl-particle-y: 2px;
+}
+@keyframes udl-payment-coin-rise {
+	0% {
+		transform: translateY(1px);
+	}
+	45% {
+		transform: translateY(-2px);
+	}
+	100% {
+		transform: translateY(1px);
+	}
+}
+@keyframes udl-payment-plus-loop {
+	0% {
+		transform: translateY(3px) scale(0.7);
+		opacity: 0;
+	}
+	35% {
+		opacity: 1;
+	}
+	100% {
+		transform: translateY(-4px) scale(1.08);
+		opacity: 0;
+	}
+}
+@keyframes udl-globe-lines-left {
+	from {
+		transform: translateX(0);
+	}
+	to {
+		transform: translateX(-50%);
+	}
 }
 .udl-preset strong {
 	font-size: var(--type-body);
@@ -7924,6 +8090,31 @@ body input:focus-visible {
 	grid-template-columns: repeat(2, minmax(0, 1fr));
 	gap: 14px;
 }
+.udl-term-section {
+	display: grid;
+	gap: 14px;
+	padding: 14px;
+	border: 1px solid var(--line);
+	border-radius: 7px;
+	background: var(--panel);
+}
+.udl-term-section-heading {
+	display: grid;
+	gap: 3px;
+}
+.udl-term-section-heading strong {
+	color: var(--ink);
+	font-size: var(--type-body);
+	font-weight: 500;
+}
+.udl-term-section-heading span {
+	color: var(--muted-subtle);
+	font-size: var(--type-small);
+	line-height: 1.4;
+}
+.udl-payment-terms-grid {
+	grid-template-columns: minmax(0, 1fr);
+}
 .udl-field {
 	min-width: 0;
 	display: grid;
@@ -7931,7 +8122,7 @@ body input:focus-visible {
 	gap: 6px;
 }
 .udl-field > label,
-.udl-value > span {
+.udl-value-label {
 	color: var(--muted-subtle);
 	font-size: var(--type-small);
 	font-weight: 400;
@@ -7955,7 +8146,7 @@ body input:focus-visible {
 	position: relative;
 	min-width: 0;
 }
-.udl-value > span {
+.udl-value-label {
 	position: absolute;
 	z-index: 1;
 	top: -6px;
@@ -7964,27 +8155,27 @@ body input:focus-visible {
 	background: var(--paper);
 	font-size: var(--type-small);
 }
-.udl-value > input {
-	height: 38px;
-	padding-right: 5px;
-}
-.udl-payment {
-	display: grid;
-	grid-template-columns: 190px minmax(0, 1fr);
-	gap: 14px;
-	padding: 14px;
-	border: 1px solid var(--line);
-	border-radius: 7px;
+.udl-term-section .udl-value-label {
 	background: var(--panel);
 }
-.udl-address input {
-	font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-	font-size: var(--type-small);
+.udl-value > input {
+	height: 40px;
+	padding-right: 5px;
 }
-.udl-payment-warning {
-	grid-column: 1 / -1;
-	color: var(--warning-text) !important;
-	font-size: var(--type-small) !important;
+.udl-value > input.has-currency-suffix {
+	padding-right: 58px;
+}
+.udl-value-suffix {
+	position: absolute;
+	top: 50%;
+	right: 9px;
+	color: var(--muted-subtle);
+	font-size: var(--type-small);
+	transform: translateY(-50%);
+	pointer-events: none;
+}
+.udl-value-suffix .ar-currency-label {
+	gap: 3px;
 }
 .udl-advanced {
 	border-top: 1px solid var(--line);
@@ -8642,15 +8833,6 @@ body input:focus-visible {
 		transform: translate3d(var(--activity-ticker-shift), 0, 0);
 	}
 }
-@media (prefers-reduced-motion: reduce) {
-	.activity-row-compact:hover .activity-compact-amount.is-overflowing .activity-compact-amount-static {
-		opacity: 1;
-	}
-	.activity-row-compact:hover .activity-compact-amount.is-overflowing .activity-compact-amount-track {
-		display: none;
-		animation: none;
-	}
-}
 .activity-compact-actor {
 	grid-column: 4;
 }
@@ -9103,9 +9285,20 @@ body input:focus-visible {
 	.udl-presets {
 		grid-template-columns: 1fr;
 	}
+	.udl-preset-payment {
+		align-items: stretch;
+		flex-direction: column;
+		gap: 12px;
+	}
+	.udl-preset-payment-value {
+		flex-basis: auto;
+		width: 100%;
+	}
 	.udl-field-control.with-value,
-	.udl-payment,
 	.mint-summary {
+		grid-template-columns: 1fr;
+	}
+	.udl-other-terms-grid {
 		grid-template-columns: 1fr;
 	}
 }
