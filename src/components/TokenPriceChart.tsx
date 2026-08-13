@@ -210,7 +210,7 @@ export function TokenPriceChart({
 		const paper = chartTheme.colors.container.primary.background;
 		const muted = chartTheme.colors.font.alt1;
 		const line = chartTheme.colors.border.primary;
-		const crosshairLabel = chartTheme.colors.container.alt2.background;
+		const crosshairLabel = chartTheme.colors.global.fixedInk;
 		const positive = chartTheme.colors.indicator.primary;
 		const negative = chartTheme.colors.global.negative;
 
