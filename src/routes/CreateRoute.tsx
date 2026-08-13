@@ -47,9 +47,15 @@ import { AudioArtwork } from 'components/AudioArtwork';
 import { Button } from 'components/Button';
 import { Loading } from 'components/Loading';
 import { MintTransactionReceipt, type MintTransactionReceiptEntry } from 'components/MintTransactionReceipt';
-import { OperationOutcome, OperationOutcomeAnnouncement } from 'components/OperationOutcomeAnnouncement';
+import {
+	OperationErrorAlert,
+	OperationOutcome,
+	OperationOutcomeAnnouncement,
+	OperationOutcomeSubject,
+} from 'components/OperationOutcomeAnnouncement';
 import { SegmentedTabs } from 'components/SegmentedTabs';
 import { TokenArtwork } from 'components/TokenArtwork';
+import { TokenAvatar } from 'components/TokenAvatar';
 import {
 	prepareTransactionDialogHide,
 	TRANSACTION_DIALOG_HIDE_DURATION_MS,
@@ -315,7 +321,21 @@ export function FungibleMintDialog({
 						<OperationOutcome
 							detail={`All ${result.wholeSupply} ${result.ticker} are in your wallet and ready to dispatch.`}
 							title="Token live on Bazar"
-						/>
+						>
+							<OperationOutcomeSubject
+								label="You created"
+								title={`${result.wholeSupply} ${result.ticker}`}
+								detail={tokenName}
+								media={
+									<TokenAvatar
+										className="operation-outcome-token-avatar"
+										image={logoPreview || undefined}
+										loading="eager"
+										ticker={result.ticker}
+									/>
+								}
+							/>
+						</OperationOutcome>
 						<MintTransactionReceipt entries={receiptEntries} />
 						<Button
 							className="with-icon"
@@ -337,10 +357,7 @@ export function FungibleMintDialog({
 				) : null}
 				{dialogPhase === 'error' ? (
 					<div className="result error">
-						<div className="result-alert" role="alert">
-							<h3>Could not create this token</h3>
-							<p>{error}</p>
-						</div>
+						<OperationErrorAlert title="Could not create this token" message={error ?? ''} />
 						<Button
 							data-dialog-initial
 							onClick={() => {

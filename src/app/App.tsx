@@ -140,7 +140,13 @@ import { Loading } from 'components/Loading';
 import { MintTransactionReceipt } from 'components/MintTransactionReceipt';
 import { NameArtwork } from 'components/NameArtwork';
 import { NamesCubePreview } from 'components/NamesCubePreview';
-import { OperationOutcome, OperationOutcomeAnnouncement } from 'components/OperationOutcomeAnnouncement';
+import {
+	OperationErrorAlert,
+	OperationExternalLink,
+	OperationOutcome,
+	OperationOutcomeAnnouncement,
+	OperationOutcomeSubject,
+} from 'components/OperationOutcomeAnnouncement';
 import { Pagination } from 'components/Pagination';
 import { PortalIcon } from 'components/PortalIcon';
 import { StateVerification } from 'components/StateVerification';
@@ -9959,7 +9965,9 @@ function OperationDialog({
 										rel="noreferrer"
 										target="_blank"
 									>
-										{short(operation.resume.registration.id)} ↗
+										<OperationExternalLink>
+											{short(operation.resume.registration.id)}
+										</OperationExternalLink>
 									</a>{' '}
 									is already signed.
 								</small>
@@ -10228,24 +10236,31 @@ function OperationDialog({
 				{visiblePhase === 'done' ? (
 					<div className="result success">
 						<OperationOutcome title={resultCopy.title} detail={resultCopy.detail}>
-							{operation.kind === 'sell' ? (
-								asset.image ? (
-									<ArtworkImage
-										alt={`${asset.name} artwork`}
-										className="operation-result-artwork"
-										decoding="async"
-										loading="eager"
-										src={asset.image}
-									/>
-								) : (
-									<span
-										aria-label={`${asset.name} artwork`}
-										className="operation-result-artwork operation-result-artwork-fallback"
-										role="img"
-									>
-										{asset.name.slice(0, 1)}
-									</span>
-								)
+							{operation.kind === 'buy' || operation.kind === 'sell' ? (
+								<OperationOutcomeSubject
+									label={operation.kind === 'buy' ? 'You received' : 'You listed'}
+									title={asset.name}
+									detail={operation.kind === 'sell' ? `${value} AR` : 'One asset'}
+									media={
+										asset.image ? (
+											<ArtworkImage
+												alt={`${asset.name} artwork`}
+												className="operation-outcome-subject-artwork"
+												decoding="async"
+												loading="eager"
+												src={asset.image}
+											/>
+										) : (
+											<span
+												aria-label={`${asset.name} artwork`}
+												className="operation-outcome-subject-artwork operation-outcome-subject-artwork-fallback"
+												role="img"
+											>
+												{asset.name.slice(0, 1)}
+											</span>
+										)
+									}
+								/>
 							) : null}
 						</OperationOutcome>
 						{operation.kind === 'buy' ? (
@@ -10267,7 +10282,7 @@ function OperationDialog({
 										rel="noreferrer"
 										target="_blank"
 									>
-										{short(operation.order.orderId)} ↗
+										<OperationExternalLink>{short(operation.order.orderId)}</OperationExternalLink>
 									</a>
 								</div>
 								<div className="settlement-receipt-links">
@@ -10277,7 +10292,9 @@ function OperationDialog({
 											rel="noreferrer"
 											target="_blank"
 										>
-											Reservation {short(purchaseState.registration.id)} ↗
+											<OperationExternalLink>
+												Reservation {short(purchaseState.registration.id)}
+											</OperationExternalLink>
 										</a>
 									) : null}
 									{purchaseState?.payment?.id ? (
@@ -10286,7 +10303,9 @@ function OperationDialog({
 											rel="noreferrer"
 											target="_blank"
 										>
-											Payment {short(purchaseState.payment.id)} ↗
+											<OperationExternalLink>
+												Payment {short(purchaseState.payment.id)}
+											</OperationExternalLink>
 										</a>
 									) : null}
 								</div>
@@ -10303,13 +10322,15 @@ function OperationDialog({
 								</div>
 								<div className="settlement-receipt-links">
 									<a href={transactionExplorerUrl(transaction.id)} rel="noreferrer" target="_blank">
-										Transaction {short(transaction.id)} ↗
+										<OperationExternalLink>
+											Transaction {short(transaction.id)}
+										</OperationExternalLink>
 									</a>
 								</div>
 							</div>
 						) : transaction ? (
 							<a href={transactionExplorerUrl(transaction.id)} rel="noreferrer" target="_blank">
-								View transaction {short(transaction.id)} ↗
+								<OperationExternalLink>View transaction {short(transaction.id)}</OperationExternalLink>
 							</a>
 						) : null}
 						<Button
@@ -10348,7 +10369,9 @@ function OperationDialog({
 											rel="noreferrer"
 											target="_blank"
 										>
-											{short(operation.order.orderId)} ↗
+											<OperationExternalLink>
+												{short(operation.order.orderId)}
+											</OperationExternalLink>
 										</a>
 									</div>
 									<div className="settlement-receipt-links">
@@ -10358,7 +10381,9 @@ function OperationDialog({
 												rel="noreferrer"
 												target="_blank"
 											>
-												Reservation {short(purchaseState.registration.id)} ↗
+												<OperationExternalLink>
+													Reservation {short(purchaseState.registration.id)}
+												</OperationExternalLink>
 											</a>
 										) : null}
 										{purchaseState?.payment?.id ? (
@@ -10367,7 +10392,9 @@ function OperationDialog({
 												rel="noreferrer"
 												target="_blank"
 											>
-												Payment {short(purchaseState.payment.id)} ↗
+												<OperationExternalLink>
+													Payment {short(purchaseState.payment.id)}
+												</OperationExternalLink>
 											</a>
 										) : null}
 									</div>
@@ -10432,12 +10459,7 @@ function OperationDialog({
 }
 
 export function AtomicOperationErrorAlert({ message }: { message: string }) {
-	return (
-		<div className="result-alert" role="alert">
-			<h3>Could not complete this action</h3>
-			<p>{message}</p>
-		</div>
-	);
+	return <OperationErrorAlert title="Could not complete this action" message={message} />;
 }
 
 function collectionKindLabel(collection: Collection) {
