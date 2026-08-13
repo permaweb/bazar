@@ -1,7 +1,13 @@
 import React from 'react';
-import { type CandlestickData, ColorType, createChart, CrosshairMode, type UTCTimestamp } from 'lightweight-charts';
+import {
+	type CandlestickData,
+	ColorType,
+	createChart,
+	CrosshairMode,
+	LineStyle,
+	type UTCTimestamp,
+} from 'lightweight-charts';
 
-import { TooltipSurface } from 'components/Tooltip';
 import { themes } from 'helpers/theme';
 import { useTheme } from 'providers/ThemeProvider';
 
@@ -12,11 +18,6 @@ export type TokenPricePoint = {
 };
 
 export type TokenPriceRange = '24h' | '7d' | '30d' | 'all';
-
-type TokenPriceCoordinate = {
-	x: number;
-	y: number;
-};
 
 const PRICE_RANGE_OPTIONS: Array<{ label: string; value: TokenPriceRange }> = [
 	{ label: '24H', value: '24h' },
@@ -187,8 +188,6 @@ export function TokenPriceChart({
 	const { resolvedTheme } = useTheme();
 	const [range, setRange] = React.useState<TokenPriceRange>('all');
 	const [activePointId, setActivePointId] = React.useState<string | null>(null);
-	const [activeCandleTime, setActiveCandleTime] = React.useState<UTCTimestamp | null>(null);
-	const [activeChartCoordinate, setActiveChartCoordinate] = React.useState<TokenPriceCoordinate | null>(null);
 	const chartContainerRef = React.useRef<HTMLDivElement>(null);
 	const visiblePoints = React.useMemo(() => tokenPricePointsForRange(points, range), [points, range]);
 	const candlestickSeries = React.useMemo(
@@ -200,8 +199,6 @@ export function TokenPriceChart({
 		activePointId ? visiblePoints.findIndex((point) => point.id === activePointId) : visiblePoints.length - 1
 	);
 	const activePoint = visiblePoints[activeIndex] ?? null;
-	const activeCandle =
-		candlestickSeries.find((candle) => candle.time === activeCandleTime) ?? candlestickSeries.at(-1) ?? null;
 	const change = tokenPriceChangePercent(visiblePoints);
 	const direction = change === null || change === 0 ? 'flat' : change > 0 ? 'up' : 'down';
 
@@ -230,9 +227,21 @@ export function TokenPriceChart({
 				vertLines: { color: line },
 			},
 			crosshair: {
-				mode: CrosshairMode.Magnet,
-				horzLine: { color: muted, labelBackgroundColor: crosshairLabel },
-				vertLine: { color: muted, labelBackgroundColor: crosshairLabel },
+				mode: CrosshairMode.Normal,
+				horzLine: {
+					color: muted,
+					labelBackgroundColor: crosshairLabel,
+					labelVisible: true,
+					style: LineStyle.Dashed,
+					visible: true,
+				},
+				vertLine: {
+					color: muted,
+					labelBackgroundColor: crosshairLabel,
+					labelVisible: true,
+					style: LineStyle.Dashed,
+					visible: true,
+				},
 			},
 			rightPriceScale: {
 				borderColor: line,
@@ -257,18 +266,10 @@ export function TokenPriceChart({
 		series.setData(candlestickSeries.map(({ time, open, high, low, close }) => ({ time, open, high, low, close })));
 		const candleByTime = new Map(candlestickSeries.map((candle) => [candle.time, candle]));
 		chart.subscribeCrosshairMove((event) => {
-			if (typeof event.time !== 'number' || !event.point) {
-				setActiveChartCoordinate(null);
-				return;
-			}
+			if (typeof event.time !== 'number') return;
 			const candle = candleByTime.get(event.time as UTCTimestamp);
 			if (!candle) return;
 			setActivePointId(candle.closePoint.id);
-			setActiveCandleTime(candle.time);
-			setActiveChartCoordinate({
-				x: (event.point.x / Math.max(1, container.clientWidth)) * 100,
-				y: (event.point.y / Math.max(1, container.clientHeight)) * 100,
-			});
 		});
 		chart.timeScale().fitContent();
 
@@ -294,8 +295,6 @@ export function TokenPriceChart({
 							onClick={() => {
 								setRange(option.value);
 								setActivePointId(null);
-								setActiveCandleTime(null);
-								setActiveChartCoordinate(null);
 							}}
 							type="button"
 						>
@@ -313,40 +312,6 @@ export function TokenPriceChart({
 					</div>
 					<div aria-label={`${ticker} candlestick ask price chart`} className="token-price-plot" role="img">
 						<div className="token-price-tradingview" ref={chartContainerRef} />
-						{activeCandle && activeChartCoordinate ? (
-							<TooltipSurface
-								className="token-price-tooltip"
-								data-placement={activeChartCoordinate.y < 50 ? 'below' : 'above'}
-								style={
-									{
-										'--token-price-tooltip-x': `${activeChartCoordinate.x}%`,
-										top: `${Math.min(84, Math.max(16, activeChartCoordinate.y))}%`,
-									} as React.CSSProperties
-								}
-								visible
-							>
-								<strong>{formatValue(activeCandle.closePoint.value)}</strong>
-								<span>{formattedTimestamp(activeCandle.closePoint.timestamp)}</span>
-								<dl className="token-price-candle-values">
-									<div>
-										<dt>O</dt>
-										<dd>{formatValue(activeCandle.openPoint.value)}</dd>
-									</div>
-									<div>
-										<dt>H</dt>
-										<dd>{formatValue(activeCandle.highPoint.value)}</dd>
-									</div>
-									<div>
-										<dt>L</dt>
-										<dd>{formatValue(activeCandle.lowPoint.value)}</dd>
-									</div>
-									<div>
-										<dt>C</dt>
-										<dd>{formatValue(activeCandle.closePoint.value)}</dd>
-									</div>
-								</dl>
-							</TooltipSurface>
-						) : null}
 					</div>
 				</>
 			) : loading ? (
