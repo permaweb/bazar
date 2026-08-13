@@ -6394,10 +6394,10 @@ body input:focus-visible {
 		flex-direction: column;
 	}
 	.asset-detail-layout {
-		grid-template-columns: 1fr;
+		grid-template-columns: minmax(0, 1fr);
 	}
 	.fungible-asset-page .asset-detail-layout {
-		grid-template-columns: 1fr;
+		grid-template-columns: minmax(0, 1fr);
 		grid-template-rows: auto auto;
 		row-gap: 18px;
 	}
@@ -6410,7 +6410,7 @@ body input:focus-visible {
 		grid-row: 2;
 	}
 	.atomic-asset-page .asset-detail-layout {
-		grid-template-columns: 1fr;
+		grid-template-columns: minmax(0, 1fr);
 		grid-template-rows: auto auto auto;
 		row-gap: 20px;
 	}
@@ -6433,8 +6433,8 @@ body input:focus-visible {
 		max-height: none;
 	}
 	.atomic-asset-page .asset-hero-media {
-		aspect-ratio: 16 / 6;
-		max-height: 240px;
+		aspect-ratio: 1;
+		max-height: none;
 	}
 	.asset-column {
 		display: contents;
@@ -9208,8 +9208,7 @@ body input:focus-visible {
 	text-align: center;
 }
 .home-market-loading {
-	min-height: calc(100vh - 230px);
-	min-height: calc(100dvh - 230px);
+	min-height: 160px;
 	display: grid;
 	place-items: center;
 	border-top: 1px solid var(--home-line);
@@ -9217,7 +9216,7 @@ body input:focus-visible {
 }
 .home-market-loading .loading {
 	justify-content: center;
-	padding: 48px 28px;
+	padding: 36px 28px;
 }
 @container (min-width: 1500px) {
 	.home-asset-grid {
