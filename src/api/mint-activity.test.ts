@@ -57,31 +57,6 @@ describe('background mint activity', () => {
 		expect(restored.status).toContain('Safe to leave');
 	});
 
-	it('removes denylisted token processes from stale mint activity storage', () => {
-		const store = storage();
-		const hiddenId = '9CYTQq_O0ARfEV4QC-R12E0DdwFswaYdWthOAG4DRLA';
-		const hidden = acceptedMintActivity({
-			owner,
-			asset: {
-				id: hiddenId,
-				name: '[TEST] Mint CLI Alpha',
-				description: '',
-				contentType: 'application/x.arweave-token',
-				mediaId: hiddenId,
-				owner,
-				createdAt: 1,
-			},
-			collectionId: 'fungible-tokens',
-			transactionIds: [hiddenId],
-			arweaveGateway: 'https://arweave.net',
-			computeGateway: 'https://compute.example',
-		});
-		store.setItem(MINT_ACTIVITY_STORAGE_KEY, JSON.stringify({ version: 1, activities: [hidden] }));
-
-		expect(loadMintActivities(store)).toEqual([]);
-		expect(store.getItem(MINT_ACTIVITY_STORAGE_KEY)).toBeNull();
-	});
-
 	it('moves forward through accepted, mined, applied, and complete without regressing', () => {
 		const initial = acceptedMintActivity({
 			owner,

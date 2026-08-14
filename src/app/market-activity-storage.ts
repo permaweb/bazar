@@ -1,5 +1,4 @@
 import type { CollectionActivityEvent } from 'api/asset-discovery';
-import { isVisibleAssetId } from 'api/collections';
 
 export const MARKET_ACTIVITY_STORAGE_KEY = 'bazar-market-activity:v1';
 
@@ -13,10 +12,7 @@ type StoredActivity = {
 
 export function loadMarketActivity(storage: ActivityStorage, scope: string) {
 	const entries = readEntries(storage);
-	return (
-		entries.find((entry) => entry.scope === scope)?.events.filter((event) => isVisibleAssetId(event.processId)) ??
-		[]
-	);
+	return entries.find((entry) => entry.scope === scope)?.events ?? [];
 }
 
 export function saveMarketActivity(
@@ -27,11 +23,7 @@ export function saveMarketActivity(
 ) {
 	try {
 		const entries = readEntries(storage).filter((entry) => entry.scope !== scope);
-		entries.unshift({
-			scope,
-			savedAt,
-			events: events.filter((event) => isVisibleAssetId(event.processId)).slice(0, 100),
-		});
+		entries.unshift({ scope, savedAt, events: events.slice(0, 100) });
 		storage.setItem(MARKET_ACTIVITY_STORAGE_KEY, JSON.stringify({ version: 1, entries: entries.slice(0, 24) }));
 	} catch {
 		// Activity is an immutable display cache; live discovery remains authoritative.

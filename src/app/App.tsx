@@ -99,12 +99,15 @@ import {
 	collectionAsset,
 	enrichImageCollectionAssetMetadata,
 	FUNGIBLE_TOKEN_COLLECTION_ID,
+	hiddenCollectionAssetIndex,
+	hiddenCollectionAssetIndexComplete,
 	isVisibleAssetId,
 	isVisibleCollectionId,
 	loadCollections,
 	loadMoreCarrierNames,
 	loadMoreFungibleTokens,
 	mergeCollectionSnapshots,
+	replaceHiddenCollectionAssetIndex,
 	withVisibleCollectionAssets,
 } from 'api/collections';
 import {
@@ -263,9 +266,11 @@ import {
 import {
 	type HomeListingShell,
 	loadAssetShellSnapshot,
+	loadHiddenCollectionAssetIndex,
 	loadHomeListingSnapshot,
 	loadMarketShellSnapshot,
 	storeAssetShellSnapshot,
+	storeHiddenCollectionAssetIndex,
 	storeHomeListingSnapshot,
 	storeMarketShellSnapshot,
 } from './shell-snapshot';
@@ -307,6 +312,7 @@ function MarketActivityList(props: React.ComponentProps<typeof DeferredMarketAct
 type MarketContextValue = {
 	collections: Collection[];
 	verifiedCollectionIds: ReadonlySet<string>;
+	visibilityReady: boolean;
 	loading: boolean;
 	error: string | null;
 	notice: string | null;
@@ -319,6 +325,12 @@ type MarketContextValue = {
 };
 
 function initialMarketCollections() {
+	replaceHiddenCollectionAssetIndex(loadHiddenCollectionAssetIndex(window.localStorage));
+	if (!hiddenCollectionAssetIndexComplete()) return [];
+	return storedMarketCollections();
+}
+
+function storedMarketCollections() {
 	const cached = loadMarketShellSnapshot(window.localStorage);
 	const localCollections = loadMintedCollections();
 	const mintedAssets = loadMintedAssets();
@@ -360,6 +372,7 @@ export function verifiedCollectionIdsFrom(collections: Collection[]) {
 export const MarketContext = React.createContext<MarketContextValue>({
 	collections: [],
 	verifiedCollectionIds: new Set(),
+	visibilityReady: false,
 	loading: true,
 	error: null,
 	notice: null,
@@ -377,6 +390,7 @@ export function App() {
 	const [market, setMarket] = React.useState<MarketContextValue>(() => ({
 		collections: initialMarketCollections(),
 		verifiedCollectionIds: new Set(),
+		visibilityReady: hiddenCollectionAssetIndexComplete(),
 		loading: true,
 		error: null,
 		notice: null,
@@ -395,18 +409,32 @@ export function App() {
 		const controller = new AbortController();
 		void aoClient(gatewaysFromLocation()).warm();
 		setMarket((current) => ({ ...current, verifiedCollectionIds: new Set(), loading: true, error: null }));
-		loadCollections(controller.signal, (collections) => {
-			if (!controller.signal.aborted) {
+		loadCollections(
+			controller.signal,
+			(collections) => {
+				if (!controller.signal.aborted) {
+					setMarket((current) => ({
+						...current,
+						collections: marketCatalogueCollections(
+							mergeCollectionSnapshots(current.collections, collections)
+						),
+						verifiedCollectionIds: new Set([
+							...current.verifiedCollectionIds,
+							...verifiedCollectionIdsFrom(collections),
+						]),
+					}));
+				}
+			},
+			() => {
+				if (controller.signal.aborted) return;
+				storeHiddenCollectionAssetIndex(window.localStorage, hiddenCollectionAssetIndex());
 				setMarket((current) => ({
 					...current,
-					collections: marketCatalogueCollections(mergeCollectionSnapshots(current.collections, collections)),
-					verifiedCollectionIds: new Set([
-						...current.verifiedCollectionIds,
-						...verifiedCollectionIdsFrom(collections),
-					]),
+					collections: current.collections.length ? current.collections : storedMarketCollections(),
+					visibilityReady: true,
 				}));
 			}
-		}).then(
+		).then(
 			({ collections, unavailable }) => {
 				if (controller.signal.aborted) return;
 				const mintedAssets = loadMintedAssets();
@@ -469,16 +497,18 @@ export function App() {
 			const added = updated.assets.filter((asset) => !previous.has(asset.id)).length;
 			setMarket((current) => ({
 				...current,
-				collections: current.collections.map((item) => {
-					if (item.id !== collectionId) return item;
-					const seen = new Set(item.assets.map((asset) => asset.id));
-					const additions = updated.assets.filter((asset) => !seen.has(asset.id));
-					return {
-						...item,
-						...updated,
-						assets: [...item.assets, ...additions],
-					};
-				}),
+				collections: marketCatalogueCollections(
+					current.collections.map((item) => {
+						if (item.id !== collectionId) return item;
+						const seen = new Set(item.assets.map((asset) => asset.id));
+						const additions = updated.assets.filter((asset) => !seen.has(asset.id));
+						return {
+							...item,
+							...updated,
+							assets: [...item.assets, ...additions],
+						};
+					})
+				),
 			}));
 			return added;
 		},
@@ -491,9 +521,11 @@ export function App() {
 			const created = createdCollection(assets);
 			return {
 				...current,
-				collections: existing
-					? current.collections.map((item) => (item.id === CREATED_COLLECTION_ID ? created : item))
-					: [...current.collections, created],
+				collections: marketCatalogueCollections(
+					existing
+						? current.collections.map((item) => (item.id === CREATED_COLLECTION_ID ? created : item))
+						: [...current.collections, created]
+				),
 			};
 		});
 	}, []);
@@ -1660,7 +1692,7 @@ function Header() {
 		scope !== 'tokens' &&
 		scope !== 'names';
 	React.useEffect(() => {
-		if (!shouldSearchAtomicIndex) {
+		if (!shouldSearchAtomicIndex || !market.visibilityReady) {
 			setIndexedAtomicSearch({ query: deferredNormalizedQuery, loading: false, error: false, results: [] });
 			return;
 		}
@@ -1685,7 +1717,7 @@ function Header() {
 			window.clearTimeout(timer);
 			controller.abort();
 		};
-	}, [deferredNormalizedQuery, deferredQuery, shouldSearchAtomicIndex]);
+	}, [deferredNormalizedQuery, deferredQuery, market.visibilityReady, shouldSearchAtomicIndex]);
 	const atomicIndexSearchPending =
 		shouldSearchAtomicIndex &&
 		(indexedAtomicSearch.query !== deferredNormalizedQuery || indexedAtomicSearch.loading);
@@ -1771,6 +1803,7 @@ function Header() {
 	const assetResults = React.useMemo(
 		() =>
 			[...localAssetResults, ...atomicIndexResults]
+				.filter(({ asset, collection }) => isVisibleCollectionId(collection.id) && isVisibleAssetId(asset.id))
 				.filter(
 					({ asset }, index, results) =>
 						results.findIndex(({ asset: candidate }) => candidate.id === asset.id) === index
@@ -3090,7 +3123,7 @@ function Home() {
 		setCachedHomeListings(
 			loadHomeListingSnapshot(window.sessionStorage, homeListingSnapshotScope, HOME_LISTING_SNAPSHOT_MAX_AGE_MS)
 		);
-	}, [homeListingSnapshotScope]);
+	}, [homeListingSnapshotScope, market.visibilityReady]);
 	const liveHomeListingShells = React.useMemo(
 		() => portableHomeListings.flatMap((result) => homeListingShell(result) ?? []),
 		[portableHomeListings]
@@ -3102,15 +3135,17 @@ function Home() {
 	}, [cachedHomeListings, liveHomeListingShells]);
 	const displayHomeListings = React.useMemo(
 		() =>
-			homeListingShells.map(({ asset, collection, activity }) => {
-				const currentCollection = market.collections.find((candidate) => candidate.id === collection.id);
-				const currentAsset = currentCollection ? collectionAsset(currentCollection, asset.id) : undefined;
-				return {
-					asset: currentAsset?.image && !asset.image ? { ...asset, image: currentAsset.image } : asset,
-					collection: currentCollection ?? collection,
-					activity,
-				};
-			}),
+			homeListingShells
+				.filter(({ asset, collection }) => isVisibleCollectionId(collection.id) && isVisibleAssetId(asset.id))
+				.map(({ asset, collection, activity }) => {
+					const currentCollection = market.collections.find((candidate) => candidate.id === collection.id);
+					const currentAsset = currentCollection ? collectionAsset(currentCollection, asset.id) : undefined;
+					return {
+						asset: currentAsset?.image && !asset.image ? { ...asset, image: currentAsset.image } : asset,
+						collection: currentCollection ?? collection,
+						activity,
+					};
+				}),
 		[homeListingShells, market.collections]
 	);
 	const [portableHomeListingsLoading, setPortableHomeListingsLoading] = React.useState(false);
@@ -4344,6 +4379,7 @@ function Home() {
 const globalActivityCollections = new WeakMap<Collection[], Map<string, Collection>>();
 
 export function globalActivityCollection(collections: Collection[], processId: string) {
+	if (!isVisibleAssetId(processId)) return undefined;
 	let indexed = globalActivityCollections.get(collections);
 	if (!indexed) {
 		indexed = new Map();
@@ -4352,7 +4388,9 @@ export function globalActivityCollection(collections: Collection[], processId: s
 				collection.kind === 'names'
 					? Object.keys(collection.namespace?.namesById ?? {})
 					: collection.assets.map((asset) => asset.id);
-			for (const id of processIds) indexed.set(id, collection);
+			for (const id of processIds) {
+				if (isVisibleAssetId(id)) indexed.set(id, collection);
+			}
 		}
 		globalActivityCollections.set(collections, indexed);
 	}
@@ -4397,7 +4435,9 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 	React.useEffect(() => {
 		if (!activityScope || scopeRef.current === activityScope) return;
 		try {
-			const cachedEvents = loadMarketActivity(window.localStorage, activityScope);
+			const cachedEvents = loadMarketActivity(window.localStorage, activityScope).filter((event) =>
+				Boolean(globalActivityCollection(collections, event.processId))
+			);
 			if (!cachedEvents.length) return;
 			scopeRef.current = activityScope;
 			eventsRef.current = cachedEvents;
@@ -4406,7 +4446,7 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 		} catch {
 			// Browser storage is optional; live Arweave discovery continues below.
 		}
-	}, [activityScope]);
+	}, [activityScope, collections]);
 
 	React.useEffect(() => {
 		if (marketLoading) return;
@@ -4420,7 +4460,9 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 		let cachedEvents: CollectionActivityEvent[] = [];
 		if (!sameScope) {
 			try {
-				cachedEvents = loadMarketActivity(window.localStorage, activityScope);
+				cachedEvents = loadMarketActivity(window.localStorage, activityScope).filter((event) =>
+					Boolean(globalActivityCollection(collections, event.processId))
+				);
 			} catch {
 				// Browser storage is optional; live Arweave discovery continues below.
 			}
@@ -5118,10 +5160,10 @@ export function collectionActivityWindowDelta(
 export function collectionCandidateMembership(collection: Collection) {
 	if (collection.kind === 'names') {
 		const namesById = collection.namespace?.namesById ?? {};
-		return (processId: string) => Object.hasOwn(namesById, processId);
+		return (processId: string) => isVisibleAssetId(processId) && Object.hasOwn(namesById, processId);
 	}
-	const assetIds = new Set(collection.assets.map((asset) => asset.id));
-	return (processId: string) => assetIds.has(processId);
+	const assetIds = new Set(collection.assets.filter((asset) => isVisibleAssetId(asset.id)).map((asset) => asset.id));
+	return (processId: string) => isVisibleAssetId(processId) && assetIds.has(processId);
 }
 
 export function collectionDefaultsToListed(collectionId: string) {
@@ -6846,7 +6888,9 @@ function CollectionActivityView() {
 		let cachedEvents: CollectionActivityEvent[] = [];
 		if (!sameScope) {
 			try {
-				cachedEvents = loadMarketActivity(window.localStorage, activityScope);
+				cachedEvents = loadMarketActivity(window.localStorage, activityScope).filter((event) =>
+					includesCollectionAsset(event.processId)
+				);
 			} catch {
 				// Browser storage is optional; live Arweave discovery continues below.
 			}
@@ -7914,12 +7958,18 @@ function AssetView() {
 	const wallet = useWallet();
 	const indexedCollection = market.collections.find((item) => item.id === collectionId);
 	const indexedAsset = indexedCollection ? collectionAsset(indexedCollection, assetId) : undefined;
-	const cachedAsset = React.useMemo(() => loadAssetShellSnapshot(window.localStorage, assetId), [assetId]);
+	const cachedAsset = React.useMemo(
+		() => loadAssetShellSnapshot(window.localStorage, assetId),
+		[assetId, market.visibilityReady]
+	);
 	const [indexedAtomicResult, setIndexedAtomicResult] = React.useState<{
 		assetId: string;
 		result: { asset: AssetSummary; collection: Collection } | null;
 	}>({ assetId, result: null });
-	const prefetchedState = React.useMemo(() => cachedAssetState(assetId), [assetId]);
+	const prefetchedState = React.useMemo(
+		() => (market.visibilityReady ? cachedAssetState(assetId) : undefined),
+		[assetId, market.visibilityReady]
+	);
 	const [liveResult, setLiveResult] = React.useState<{
 		assetId: string;
 		state: AssetState | null;
@@ -7942,11 +7992,12 @@ function AssetView() {
 	const provider = liveResult.assetId === assetId ? liveResult.provider : prefetchedState?.provider ?? '';
 	const verifiedAt = liveResult.assetId === assetId ? liveResult.verifiedAt : prefetchedState?.verifiedAt ?? null;
 	const directAtomicRoute =
-		isVisibleAssetId(assetId) && collectionId === CREATED_COLLECTION_ID && ARWEAVE_ADDRESS.test(assetId);
+		collectionId === CREATED_COLLECTION_ID && ARWEAVE_ADDRESS.test(assetId) && isVisibleAssetId(assetId);
 	const indexedAtomic = indexedAtomicResult.assetId === assetId ? indexedAtomicResult.result : null;
 	React.useEffect(() => {
 		if (
 			!ARWEAVE_ADDRESS.test(assetId) ||
+			!isVisibleAssetId(assetId) ||
 			collectionId === FUNGIBLE_TOKEN_COLLECTION_ID ||
 			collectionId === 'arweave-names'
 		)
@@ -7961,7 +8012,7 @@ function AssetView() {
 			}
 		);
 		return () => controller.abort();
-	}, [assetId, collectionId]);
+	}, [assetId, collectionId, market.visibilityReady]);
 	const canResolveAsset = assetDetailCanResolve({
 		assetId,
 		cachedAsset,
@@ -7970,7 +8021,7 @@ function AssetView() {
 		indexedCollection,
 		directAtomicRoute,
 		directFungibleRoute:
-			isVisibleAssetId(assetId) && collectionId === 'fungible-tokens' && ARWEAVE_ADDRESS.test(assetId),
+			collectionId === 'fungible-tokens' && ARWEAVE_ADDRESS.test(assetId) && isVisibleAssetId(assetId),
 	});
 	const directAtomicAsset =
 		directAtomicRoute && state ? bazarAtomicAssetFromState(assetId, state, provider || undefined) : null;
@@ -8167,7 +8218,7 @@ function AssetView() {
 		return () => window.removeEventListener('storage', onStorage);
 	}, [assetId, operation, operationActivityEntry, refreshAsset, removeOperationActivity, wallet.address]);
 	React.useEffect(() => {
-		void prioritizeAssetStatePrefetch(assetId);
+		if (isVisibleAssetId(assetId)) void prioritizeAssetStatePrefetch(assetId);
 		void load();
 		return () => {
 			requestRef.current?.abort();
@@ -10566,7 +10617,7 @@ export function collectionSearchAssets(collection: Collection, query: string): A
 export function collectionMoreAssets(assets: AssetSummary[], assetId: string, limit = 4): AssetSummary[] {
 	const result: AssetSummary[] = [];
 	for (const asset of assets) {
-		if (asset.id === assetId) continue;
+		if (asset.id === assetId || !isVisibleAssetId(asset.id)) continue;
 		result.push(asset);
 		if (result.length === limit) break;
 	}
@@ -10584,6 +10635,7 @@ export function assetMatchesCollectionQuery(asset: AssetSummary, query: string):
 }
 
 export function marketplaceAssetMatchesSearch(asset: AssetSummary, collection: Collection, query: string): boolean {
+	if (!isVisibleCollectionId(collection.id) || !isVisibleAssetId(asset.id)) return false;
 	const normalizedQuery = query.trim().toLowerCase();
 	return (
 		assetMatchesCollectionQuery(asset, normalizedQuery) ||
@@ -10617,10 +10669,12 @@ export function interleaveCollectionAssets(
 	limit: number,
 	include: (asset: AssetSummary, collection: Collection) => boolean = () => true
 ) {
-	const queues = collections.map((collection) => ({
-		collection,
-		assets: collection.assets.filter((asset) => include(asset, collection)),
-	}));
+	const queues = collections
+		.filter((collection) => isVisibleCollectionId(collection.id))
+		.map((collection) => ({
+			collection,
+			assets: collection.assets.filter((asset) => isVisibleAssetId(asset.id) && include(asset, collection)),
+		}));
 	const results: { asset: AssetSummary; collection: Collection }[] = [];
 	for (let index = 0; results.length < limit && queues.some(({ assets }) => index < assets.length); index += 1) {
 		for (const { collection, assets } of queues) {
@@ -10657,6 +10711,7 @@ export function homeDiscoveryAssets(
 		return right.activity.height - left.activity.height || right.activity.timestamp - left.activity.timestamp;
 	});
 	return [...portable, ...verified, ...fallback]
+		.filter(({ asset, collection }) => isVisibleCollectionId(collection.id) && isVisibleAssetId(asset.id))
 		.filter(({ asset }) => {
 			if (seen.has(asset.id)) return false;
 			seen.add(asset.id);
@@ -10677,6 +10732,7 @@ export function homeAllAssets(
 	);
 	const seen = new Set<string>();
 	return [...indexed, ...portableListings]
+		.filter(({ asset, collection }) => isVisibleCollectionId(collection.id) && isVisibleAssetId(asset.id))
 		.filter(({ asset }) => {
 			if (seen.has(asset.id)) return false;
 			seen.add(asset.id);

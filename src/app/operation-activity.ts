@@ -1,7 +1,7 @@
 import type { PurchaseSnapshot } from 'weave-wrangler';
 
 import { type AssetState, liquidBalanceOf, liveOrderOfAsset, type SwapOrder } from 'api/asset-marketplace';
-import { type AssetSummary, type Collection, isVisibleAssetId } from 'api/collections';
+import type { AssetSummary, Collection } from 'api/collections';
 import { filledOrder, parseTokenAmount } from 'api/order-matching';
 
 import {
@@ -190,15 +190,6 @@ export function loadOperationActivities(storage: ActivityStorage, owner: string)
 	const activities: OperationActivity[] = [];
 	let removedStaleActivity = false;
 	for (const candidate of parsed.activities) {
-		if (
-			isRecord(candidate) &&
-			isRecord(candidate.asset) &&
-			typeof candidate.asset.id === 'string' &&
-			!isVisibleAssetId(candidate.asset.id)
-		) {
-			removedStaleActivity = true;
-			continue;
-		}
 		const activity = parseActivity(candidate);
 		if (!activity || activity.owner !== owner || activity.phase === 'done') continue;
 		if (!operationActivityHasRecovery(storage, activity)) {
@@ -239,7 +230,6 @@ export function discoverOperationActivities(
 		const operation = key.startsWith('bazar-operation:');
 		if (!purchase && !operation) continue;
 		const assetId = key.slice(purchase ? 'bazar-purchase:'.length : 'bazar-operation:'.length, -ownerSuffix.length);
-		if (!isVisibleAssetId(assetId)) continue;
 		if (purchase) {
 			const record = parseJson<StoredPurchase>(storage.getItem(key));
 			if (!validAtomicPurchase(record, owner)) continue;
@@ -310,9 +300,7 @@ export function saveOperationActivities(
 	managedOwners: string[]
 ): void {
 	const durable = activities.filter(
-		(activity) =>
-			isVisibleAssetId(activity.asset.id) &&
-			(activity.phase === 'approval' || activity.phase === 'working' || activity.phase === 'error')
+		(activity) => activity.phase === 'approval' || activity.phase === 'working' || activity.phase === 'error'
 	);
 	const preserved = readStoredActivities(storage).filter((activity) => !managedOwners.includes(activity.owner));
 	const stored = [...durable, ...preserved];
@@ -376,7 +364,6 @@ function parseActivity(value: unknown): OperationActivity | null {
 	if (
 		typeof value.id !== 'string' ||
 		typeof value.asset.id !== 'string' ||
-		!isVisibleAssetId(value.asset.id) ||
 		typeof value.asset.name !== 'string' ||
 		typeof value.collectionId !== 'string' ||
 		typeof value.owner !== 'string' ||
@@ -447,12 +434,10 @@ export function mergeFungibleOperationActivities(
 	owner: string
 ) {
 	const byId = new Map(
-		recovered
-			.filter((activity) => activity.owner === owner && isVisibleAssetId(activity.asset.id))
-			.map((activity) => [activity.id, activity])
+		recovered.filter((activity) => activity.owner === owner).map((activity) => [activity.id, activity])
 	);
 	for (const activity of runtime) {
-		if (activity.owner === owner && isVisibleAssetId(activity.asset.id)) byId.set(activity.id, activity);
+		if (activity.owner === owner) byId.set(activity.id, activity);
 	}
 	return [...byId.values()].sort((left, right) => right.createdAt - left.createdAt);
 }
@@ -461,11 +446,9 @@ export function reduceFungibleRuntimeActivities(
 	current: FungibleOperationActivitySummary[],
 	change: FungibleOperationActivityChange
 ) {
-	current = current.filter((activity) => isVisibleAssetId(activity.asset.id));
 	if (change.type === 'remove') {
 		return current.filter((activity) => activity.id !== change.id || activity.owner !== change.owner);
 	}
-	if (!isVisibleAssetId(change.activity.asset.id)) return current;
 	return [
 		change.activity,
 		...current.filter((activity) => activity.id !== change.activity.id || activity.owner !== change.activity.owner),
@@ -485,10 +468,7 @@ export function saveFungibleOperationActivities(
 	const preserved = readStoredFungibleActivities(storage).filter(
 		(activity) => !managedOwners.includes(activity.owner)
 	);
-	const stored = [
-		...activities.filter((activity) => activity.phase !== 'done' && isVisibleAssetId(activity.asset.id)),
-		...preserved,
-	];
+	const stored = [...activities.filter((activity) => activity.phase !== 'done'), ...preserved];
 	if (!stored.length) {
 		storage.removeItem(FUNGIBLE_OPERATION_ACTIVITY_STORAGE_KEY);
 		return;
@@ -533,7 +513,6 @@ export function discoverFungibleOperationActivities(
 			purchase ? 'bazar-purchase-batch:'.length : 'bazar-operation:'.length,
 			-operationSuffix.length
 		);
-		if (!isVisibleAssetId(assetId)) continue;
 		const record = parseJson<Record<string, unknown>>(storage.getItem(key));
 		if (!record) continue;
 		if (purchase ? !validFungiblePurchase(record, owner) : record?.signer !== owner) continue;
@@ -563,17 +542,9 @@ function readStoredFungibleActivities(storage: ActivityStorage): FungibleOperati
 	try {
 		const parsed = JSON.parse(storage.getItem(FUNGIBLE_OPERATION_ACTIVITY_STORAGE_KEY) ?? 'null');
 		if (!isRecord(parsed) || parsed.version !== 1 || !Array.isArray(parsed.activities)) return [];
-		const activities = parsed.activities
+		return parsed.activities
 			.map(parseFungibleActivity)
 			.filter((activity): activity is FungibleOperationActivitySummary => Boolean(activity));
-		if (activities.length !== parsed.activities.length) {
-			if (activities.length) {
-				storage.setItem(FUNGIBLE_OPERATION_ACTIVITY_STORAGE_KEY, JSON.stringify({ version: 1, activities }));
-			} else {
-				storage.removeItem(FUNGIBLE_OPERATION_ACTIVITY_STORAGE_KEY);
-			}
-		}
-		return activities;
 	} catch {
 		storage.removeItem(FUNGIBLE_OPERATION_ACTIVITY_STORAGE_KEY);
 		return [];
@@ -586,7 +557,6 @@ function parseFungibleActivity(value: unknown): FungibleOperationActivitySummary
 	if (
 		typeof value.id !== 'string' ||
 		typeof value.asset.id !== 'string' ||
-		!isVisibleAssetId(value.asset.id) ||
 		typeof value.asset.name !== 'string' ||
 		typeof value.collectionId !== 'string' ||
 		typeof value.owner !== 'string' ||

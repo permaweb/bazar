@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { arweaveGraphqlEndpoint } from 'helpers/config';
 
@@ -29,7 +29,7 @@ import {
 	walletAssetGroup,
 } from './asset-discovery';
 import { parseAssetState } from './asset-marketplace';
-import type { Collection } from './collections';
+import { type Collection, HIDDEN_COLLECTION_IDS, replaceHiddenCollectionAssetIndex } from './collections';
 
 const wallet = 'W'.repeat(43);
 const buyer = 'B'.repeat(43);
@@ -40,6 +40,7 @@ const nameAsset = 'N'.repeat(43);
 const traditionalName = 'R'.repeat(43);
 const outsideName = 'Z'.repeat(43);
 const orderId = 'O'.repeat(43);
+const readyHiddenCollectionIndex = Object.fromEntries(HIDDEN_COLLECTION_IDS.map((id) => [id, []]));
 
 function memoryStorage() {
 	const values = new Map<string, string>();
@@ -79,8 +80,11 @@ const collections: Collection[] = [
 	},
 ];
 
+beforeEach(() => replaceHiddenCollectionAssetIndex(readyHiddenCollectionIndex));
+
 afterEach(() => {
 	vi.useRealTimers();
+	replaceHiddenCollectionAssetIndex({});
 });
 
 describe('Bazar atomic asset search', () => {
@@ -135,6 +139,17 @@ describe('Bazar atomic asset search', () => {
 		);
 
 		await expect(loadBazarAtomicAssetById(processId, { fetch: fetcher as typeof fetch })).resolves.toBeNull();
+	});
+
+	it('does not query an exact denied process ID', async () => {
+		const fetcher = vi.fn();
+
+		await expect(
+			loadBazarAtomicAssetById('bASFYsRBQm_dfG__wqRVwMh8bqwEvSTl4lURRBqfu2M', {
+				fetch: fetcher as typeof fetch,
+			})
+		).resolves.toBeNull();
+		expect(fetcher).not.toHaveBeenCalled();
 	});
 
 	it('finds an exact named creation and rejects records outside the atomic contract', async () => {
@@ -747,25 +762,6 @@ describe('wallet candidate discovery', () => {
 			includeMarket: false,
 			includeTransfers: false,
 		});
-	});
-
-	it('does not persist or restore denylisted wallet candidates', () => {
-		const hidden = 'IyFfmbTu8P4rv0KyrA0Q-QtfEnYntMj4RkRiBVip9KA';
-		const scan = createWalletCandidateScan(wallet);
-		scan.active.clear();
-		scan.caughtUp = true;
-		scan.heads = { initiallyHeld: assetA, marketActions: null, receivedTransfers: null };
-		for (const processId of [assetA, hidden]) {
-			scan.found.set(processId, { processId, height: 1, timestamp: 1, sources: ['initial-holder'] });
-		}
-		const storage = memoryStorage();
-
-		expect(storeCompletedWalletCandidateScan(storage, scan)).toBe(true);
-		expect([...storage.values.values()][0]).not.toContain(hidden);
-		expect([...loadCompletedWalletCandidateScan(storage, wallet)!.found]).toEqual([
-			[assetA, scan.found.get(assetA)],
-		]);
-		expect(resumeCompletedWalletCandidateScan(scan, wallet)!.found.has(hidden)).toBe(false);
 	});
 
 	it('restores 16,000 completed candidates with one unchanged head request', async () => {
@@ -2188,6 +2184,7 @@ describe('live candidate resolution', () => {
 		});
 
 		expect(results).toHaveLength(2);
+		expect(read.mock.calls.map(([processId]) => processId)).not.toContain(hidden);
 		expect(results.map(({ asset }) => asset)).toEqual(
 			expect.arrayContaining([
 				expect.objectContaining({ id: unloaded, name: 'Page two token', ticker: 'PAGE2' }),
@@ -2195,7 +2192,6 @@ describe('live candidate resolution', () => {
 			])
 		);
 		expect(results.every(({ collection }) => collection.kind === 'tokens')).toBe(true);
-		expect(read.mock.calls.map(([processId]) => processId)).not.toContain(hidden);
 	});
 
 	it('finds unindexed fungible candidates created with the legacy asset-type marker', async () => {

@@ -364,23 +364,6 @@ describe('fungible operation activity persistence', () => {
 		expect(stored.activities).toHaveLength(1);
 	});
 
-	it('drops denylisted tokens from stale persisted and runtime activity', () => {
-		const storage = new MemoryStorage();
-		const hidden = fungibleActivity({
-			id: 'hidden',
-			asset: {
-				id: 'bASFYsRBQm_dfG__wqRVwMh8bqwEvSTl4lURRBqfu2M',
-				name: '[TEST] PcMK spawn trade transfer',
-			},
-		});
-		storage.setItem(FUNGIBLE_OPERATION_ACTIVITY_STORAGE_KEY, JSON.stringify({ version: 1, activities: [hidden] }));
-
-		expect(loadFungibleOperationActivities(storage, owner)).toEqual([]);
-		expect(storage.getItem(FUNGIBLE_OPERATION_ACTIVITY_STORAGE_KEY)).toBeNull();
-		expect(mergeFungibleOperationActivities([], [hidden], owner)).toEqual([]);
-		expect(reduceFungibleRuntimeActivities([], { type: 'upsert', activity: hidden })).toEqual([]);
-	});
-
 	it('upserts and removes one wallet activity without disturbing another wallet', () => {
 		const storage = new MemoryStorage();
 		saveFungibleOperationActivities(storage, [fungibleActivity({ owner: otherOwner })], [otherOwner]);

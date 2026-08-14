@@ -1,10 +1,14 @@
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import type { CollectionActivityEvent } from 'api/asset-discovery';
-import type { Collection } from 'api/collections';
-import { loadMintedCollections } from 'api/minted-assets';
+import {
+	type Collection,
+	HIDDEN_COLLECTION_IDS,
+	hiddenCollectionAssetIndex,
+	replaceHiddenCollectionAssetIndex,
+} from 'api/collections';
 
 import {
 	AssetCardArtwork,
@@ -72,12 +76,19 @@ import {
 } from './App';
 import {
 	loadAssetShellSnapshot,
+	loadHiddenCollectionAssetIndex,
 	loadHomeListingSnapshot,
 	loadMarketShellSnapshot,
 	storeAssetShellSnapshot,
+	storeHiddenCollectionAssetIndex,
 	storeHomeListingSnapshot,
 	storeMarketShellSnapshot,
 } from './shell-snapshot';
+
+const readyHiddenCollectionIndex = Object.fromEntries(HIDDEN_COLLECTION_IDS.map((id) => [id, []]));
+
+beforeEach(() => replaceHiddenCollectionAssetIndex(readyHiddenCollectionIndex));
+afterEach(() => replaceHiddenCollectionAssetIndex({}));
 
 describe('Home market summary retries', () => {
 	it('renders permanent token logos in Discover and collection cards', () => {
@@ -293,52 +304,51 @@ describe('Home market summary retries', () => {
 		expect(loadMarketShellSnapshot(storage)).toEqual(collections);
 	});
 
-	it('drops hidden legacy collections from restored market snapshots', () => {
-		const hidden = {
+	it('hides denied collection cards, their assets, and denied fungible assets at the catalogue boundary', () => {
+		const previousIndex = hiddenCollectionAssetIndex();
+		const hidden: Collection = {
 			id: 'q5KruM1NXsh-bu0oh51sk-3czm5ZBAu22twpwDl8WMY',
-			name: 'HTML Colors',
-			description: 'Superseded collection',
-			kind: 'images' as const,
-			assets: [],
-		};
-		expect(loadMarketShellSnapshot({ getItem: () => JSON.stringify([hidden]) })).toEqual([]);
-	});
-
-	it('drops hidden fungible assets from restored market snapshots', () => {
-		const hiddenId = 'bASFYsRBQm_dfG__wqRVwMh8bqwEvSTl4lURRBqfu2M';
-		const visible = { id: 'rQugKt4xEQcsy2yTmJJtlbPqblX6sFAudqjlf2ndV2Y', name: 'REKT TRUNK' };
-		const tokens = {
-			id: 'fungible-tokens',
-			name: 'Fungible tokens',
-			description: 'Tokens',
-			kind: 'tokens' as const,
-			assets: [{ id: hiddenId, name: '[TEST] PcMK spawn trade transfer' }, visible],
-			total: 2,
-		};
-
-		expect(loadMarketShellSnapshot({ getItem: () => JSON.stringify([tokens]) })).toEqual([
-			{ ...tokens, assets: [visible], total: 1 },
-		]);
-	});
-
-	it('does not reinsert a hidden collection from durable creator storage', () => {
-		const hidden = {
-			id: 'q5KruM1NXsh-bu0oh51sk-3czm5ZBAu22twpwDl8WMY',
-			manifestId: 'M'.repeat(43),
-			owner: 'O'.repeat(43),
-			createdAt: 1,
 			name: 'HTML Colors',
 			description: 'Superseded collection',
 			kind: 'images',
-			assets: [],
+			assets: [{ id: 'z'.repeat(43), name: 'Old color' }],
 		};
-		const storage = {
-			getItem: (key: string) => (key.endsWith(':collections') ? JSON.stringify([hidden]) : null),
-			setItem: () => undefined,
-			removeItem: () => undefined,
+		const hiddenId = 'bASFYsRBQm_dfG__wqRVwMh8bqwEvSTl4lURRBqfu2M';
+		const visible = { id: 'rQugKt4xEQcsy2yTmJJtlbPqblX6sFAudqjlf2ndV2Y', name: 'REKT TRUNK' };
+		const tokens: Collection = {
+			id: 'fungible-tokens',
+			name: 'Fungible tokens',
+			description: 'Tokens',
+			kind: 'tokens',
+			assets: [hidden.assets[0], { id: hiddenId, name: '[TEST] PcMK spawn trade transfer' }, visible],
+			total: 3,
 		};
 
-		expect(marketCatalogueCollections(loadMintedCollections(storage))).toEqual([]);
+		try {
+			replaceHiddenCollectionAssetIndex({
+				...previousIndex,
+				[hidden.id]: hidden.assets.map((asset) => asset.id),
+			});
+			expect(marketCatalogueCollections([hidden, tokens])).toEqual([{ ...tokens, assets: [visible], total: 1 }]);
+		} finally {
+			replaceHiddenCollectionAssetIndex(previousIndex);
+		}
+	});
+
+	it('round-trips verified hidden-collection membership for offline reloads', () => {
+		const values = new Map<string, string>();
+		const storage = {
+			getItem: (key: string) => values.get(key) ?? null,
+			setItem: (key: string, value: string) => values.set(key, value),
+		};
+		const index = {
+			...readyHiddenCollectionIndex,
+			'q5KruM1NXsh-bu0oh51sk-3czm5ZBAu22twpwDl8WMY': ['z'.repeat(43)],
+		};
+
+		storeHiddenCollectionAssetIndex(storage, index);
+
+		expect(loadHiddenCollectionAssetIndex(storage)).toEqual(index);
 	});
 
 	it('ignores malformed market snapshots', () => {
@@ -353,17 +363,16 @@ describe('Home market summary retries', () => {
 			setItem: (key: string, value: string) => values.set(key, value),
 		};
 		const asset = { id: 'asset-id', name: 'blockdata', ticker: 'BLOCK' };
+		const hiddenAsset = {
+			id: 'bASFYsRBQm_dfG__wqRVwMh8bqwEvSTl4lURRBqfu2M',
+			name: 'Hidden test token',
+		};
 
 		storeAssetShellSnapshot(storage, asset);
+		storeAssetShellSnapshot(storage, hiddenAsset);
 		expect(loadAssetShellSnapshot(storage, asset.id)).toEqual(asset);
 		expect(loadAssetShellSnapshot(storage, 'another-id')).toBeUndefined();
-	});
-
-	it('does not restore hidden fungible asset metadata', () => {
-		const id = '9CYTQq_O0ARfEV4QC-R12E0DdwFswaYdWthOAG4DRLA';
-		expect(
-			loadAssetShellSnapshot({ getItem: () => JSON.stringify({ id, name: '[TEST] Mint CLI Alpha' }) }, id)
-		).toBeUndefined();
+		expect(loadAssetShellSnapshot(storage, hiddenAsset.id)).toBeUndefined();
 	});
 
 	it('restores only recent Home listing display metadata from the same peer scope', () => {
@@ -392,56 +401,27 @@ describe('Home market summary retries', () => {
 		expect(loadHomeListingSnapshot(storage, 'alpha,charlie', 60_000, 61_001)).toEqual([]);
 	});
 
-	it('drops Home listing shells from hidden legacy collections', () => {
-		const asset = { id: 'A'.repeat(43), name: 'Old color' };
+	it('drops cached Home listings for denied collections and fungible assets', () => {
+		const listing = (assetId: string, collectionId: string) => ({
+			asset: { id: assetId, name: 'Hidden' },
+			collection: {
+				id: collectionId,
+				name: 'Hidden',
+				description: '',
+				kind: 'images',
+				assets: [{ id: assetId, name: 'Hidden' }],
+			},
+			activity: { processId: assetId, height: 1, timestamp: 1 },
+			price: '1 AR',
+		});
 		const storage = {
 			getItem: () =>
 				JSON.stringify({
 					scope: 'nodes',
 					updatedAt: 1,
 					listings: [
-						{
-							asset,
-							collection: {
-								id: 'q5KruM1NXsh-bu0oh51sk-3czm5ZBAu22twpwDl8WMY',
-								name: 'HTML Colors',
-								description: 'Superseded collection',
-								kind: 'images',
-								assets: [asset],
-							},
-							activity: { processId: asset.id, height: 1, timestamp: 1 },
-							price: '1 AR',
-						},
-					],
-				}),
-		};
-
-		expect(loadHomeListingSnapshot(storage, 'nodes', 60_000, 2)).toEqual([]);
-	});
-
-	it('drops Home listing shells for hidden fungible assets', () => {
-		const asset = {
-			id: 'IyFfmbTu8P4rv0KyrA0Q-QtfEnYntMj4RkRiBVip9KA',
-			name: '[TEST] Weave Credit',
-		};
-		const storage = {
-			getItem: () =>
-				JSON.stringify({
-					scope: 'nodes',
-					updatedAt: 1,
-					listings: [
-						{
-							asset,
-							collection: {
-								id: 'fungible-tokens',
-								name: 'Fungible tokens',
-								description: 'Tokens',
-								kind: 'tokens',
-								assets: [asset],
-							},
-							activity: { processId: asset.id, height: 1, timestamp: 1 },
-							price: '0.000001 AR',
-						},
+						listing('A'.repeat(43), 'q5KruM1NXsh-bu0oh51sk-3czm5ZBAu22twpwDl8WMY'),
+						listing('IyFfmbTu8P4rv0KyrA0Q-QtfEnYntMj4RkRiBVip9KA', 'fungible-tokens'),
 					],
 				}),
 		};
@@ -500,6 +480,20 @@ describe('Home market summary retries', () => {
 		expect(verified).toBe(pending);
 	});
 
+	it('does not resolve cached or direct assets while hidden membership is incomplete', () => {
+		const asset = { id: 'A'.repeat(43), name: 'Cached asset' };
+		replaceHiddenCollectionAssetIndex({});
+
+		expect(
+			assetDetailCanResolve({
+				assetId: asset.id,
+				cachedAsset: asset,
+				directAtomicRoute: true,
+				directFungibleRoute: true,
+			})
+		).toBe(false);
+	});
+
 	it('starts a direct fungible read before its immutable collection index settles', () => {
 		const assetId = 'A'.repeat(43);
 		expect(
@@ -512,6 +506,18 @@ describe('Home market summary retries', () => {
 		expect(assetDetailMembershipVerified('fungible-tokens', new Set(), false)).toBe(false);
 	});
 
+	it('does not resolve exact denied asset routes', () => {
+		const assetId = 'bASFYsRBQm_dfG__wqRVwMh8bqwEvSTl4lURRBqfu2M';
+		expect(
+			assetDetailCanResolve({
+				assetId,
+				cachedAsset: { id: assetId, name: 'Hidden test token' },
+				directAtomicRoute: true,
+				directFungibleRoute: true,
+			})
+		).toBe(false);
+	});
+
 	it('starts a deep-linked atomic read from its exact indexed metadata while collection membership settles', () => {
 		const asset = { id: 'A'.repeat(43), name: 'Indexed asset' };
 		expect(
@@ -522,16 +528,6 @@ describe('Home market summary retries', () => {
 			})
 		).toBe(true);
 		expect(assetDetailMembershipVerified('large-collection', new Set(), false)).toBe(false);
-	});
-
-	it('does not resolve a denylisted token from a hand-authored direct route', () => {
-		expect(
-			assetDetailCanResolve({
-				assetId: 'bASFYsRBQm_dfG__wqRVwMh8bqwEvSTl4lURRBqfu2M',
-				directAtomicRoute: false,
-				directFungibleRoute: true,
-			})
-		).toBe(false);
 	});
 
 	it('restarts listing support as progressively loaded collections expand', () => {
@@ -943,6 +939,7 @@ describe('Home market summary retries', () => {
 	it('resolves global activity to its marketplace collection', () => {
 		const tokenId = 't'.repeat(43);
 		const nameId = 'n'.repeat(43);
+		const hiddenId = 'bASFYsRBQm_dfG__wqRVwMh8bqwEvSTl4lURRBqfu2M';
 		const collections: Collection[] = [
 			{
 				id: 'tokens',
@@ -957,12 +954,16 @@ describe('Home market summary retries', () => {
 				description: '',
 				kind: 'names',
 				assets: [],
-				namespace: { manifestId: 'm'.repeat(43), namesById: { [nameId]: 'name' } },
+				namespace: {
+					manifestId: 'm'.repeat(43),
+					namesById: { [nameId]: 'name', [hiddenId]: 'hidden' },
+				},
 			},
 		];
 
 		expect(globalActivityCollection(collections, tokenId)?.id).toBe('tokens');
 		expect(globalActivityCollection(collections, nameId)?.id).toBe('names');
+		expect(globalActivityCollection(collections, hiddenId)).toBeUndefined();
 		expect(globalActivityCollection(collections, 'x'.repeat(43))).toBeUndefined();
 	});
 
@@ -985,6 +986,7 @@ describe('Home market summary retries', () => {
 		const loadedImage = 'i'.repeat(43);
 		const loadedToken = 't'.repeat(43);
 		const canonicalName = 'n'.repeat(43);
+		const hiddenName = 'bASFYsRBQm_dfG__wqRVwMh8bqwEvSTl4lURRBqfu2M';
 		const staleLoadedName = 's'.repeat(43);
 		const foreign = 'f'.repeat(43);
 		const imageIncludes = collectionCandidateMembership({
@@ -1009,13 +1011,14 @@ describe('Home market summary retries', () => {
 			assets: [{ id: staleLoadedName, name: 'Stale' }],
 			namespace: {
 				manifestId: 'm'.repeat(43),
-				namesById: { [canonicalName]: 'canonical' },
+				namesById: { [canonicalName]: 'canonical', [hiddenName]: 'hidden' },
 			},
 		});
 
 		expect([imageIncludes(loadedImage), imageIncludes(foreign)]).toEqual([true, false]);
 		expect([tokenIncludes(loadedToken), tokenIncludes(foreign)]).toEqual([true, false]);
 		expect([nameIncludes(canonicalName), nameIncludes(staleLoadedName)]).toEqual([true, false]);
+		expect(nameIncludes(hiddenName)).toBe(false);
 	});
 
 	it('screens a large collection candidate set with exact indexed membership', () => {

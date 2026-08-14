@@ -482,6 +482,7 @@ export async function loadBazarAtomicAssetById(
 	options: AtomicAssetSearchOptions = {}
 ): Promise<{ asset: AssetSummary; collection: Collection } | null> {
 	if (!ADDRESS.test(processId)) throw new TypeError('invalid-asset-process-id');
+	if (!isVisibleAssetId(processId)) return null;
 	const fetcher = options.fetch ?? globalThis.fetch.bind(globalThis);
 	const graphql = options.graphql ?? arweaveGraphqlEndpoint();
 	const { response, body: payload } = await fetchJsonWithDeadline<any>(
@@ -608,7 +609,6 @@ export function loadCompletedWalletCandidateScan(
 		for (const value of stored.c) {
 			const candidate = decodeStoredWalletCandidate(value);
 			if (!candidate || found.has(candidate.processId)) return undefined;
-			if (!isVisibleAssetId(candidate.processId)) continue;
 			found.set(candidate.processId, candidate);
 		}
 		return restoredWalletCandidateScan(
@@ -636,9 +636,7 @@ export function storeCompletedWalletCandidateScan(
 		a: scan.address,
 		g: scan.graphql,
 		h: [scan.heads.initiallyHeld ?? null, scan.heads.marketActions ?? null, scan.heads.receivedTransfers ?? null],
-		c: [...scan.found.values()]
-			.filter((candidate) => isVisibleAssetId(candidate.processId))
-			.map(encodeStoredWalletCandidate),
+		c: [...scan.found.values()].map(encodeStoredWalletCandidate),
 	};
 	try {
 		storage.setItem(walletCandidateScanKey(scan.address, scan.graphql), JSON.stringify(stored));
@@ -672,7 +670,7 @@ function restoredWalletCandidateScan(
 ): WalletCandidateScan {
 	const scan = createWalletCandidateScan(address, graphql);
 	scan.active.clear();
-	scan.found = new Map([...found].filter(([processId]) => isVisibleAssetId(processId)));
+	scan.found = new Map(found);
 	scan.heads = { ...heads };
 	return scan;
 }
@@ -832,7 +830,7 @@ export async function discoverWalletAssetCandidates(
 						: alias === 'marketActions'
 						? candidateFromNode(edge.node, 'market-action', address, true)
 						: candidateFromNode(edge.node, 'transfer', address, false);
-				if (!candidate || !isVisibleAssetId(candidate.processId)) continue;
+				if (!candidate) continue;
 				if (!updates.has(candidate.processId)) {
 					const existing = scan.found.get(candidate.processId);
 					if (existing) updates.set(candidate.processId, existing);
@@ -1376,6 +1374,10 @@ export function createAssetCandidateResolver(collections: Collection[], options:
 	};
 	const onAbort = () => fail(options.signal?.reason);
 	const resolveCandidate = async (candidate: AssetCandidate) => {
+		if (!isVisibleAssetId(candidate.processId)) {
+			options.onSettled?.(null, candidate);
+			return;
+		}
 		let computed: ComputeResult;
 		let result: ResolvedAsset | null;
 		try {
@@ -1392,7 +1394,7 @@ export function createAssetCandidateResolver(collections: Collection[], options:
 		if (computed.revalidation && options.onRevalidated) {
 			void computed.revalidation.then(
 				(fresh) => {
-					if (!options.signal?.aborted) {
+					if (!options.signal?.aborted && isVisibleAssetId(candidate.processId)) {
 						options.onRevalidated?.(supportedAsset(candidate, fresh, collections), candidate);
 					}
 				},
@@ -1658,7 +1660,7 @@ function atomicProcessNode(node: GraphqlNode): boolean {
 }
 
 function bazarAtomicAssetFromNode(node: GraphqlNode): { asset: AssetSummary; collection: Collection } | null {
-	if (!atomicProcessNode(node)) return null;
+	if (!isVisibleAssetId(node.id) || !atomicProcessNode(node)) return null;
 	const tags = Object.fromEntries(
 		(node.tags ?? []).map(({ name: tagName, value }) => [tagName.toLowerCase(), value])
 	);
@@ -1757,6 +1759,7 @@ export function bazarAtomicAssetFromState(
 	provider?: string
 ): { asset: AssetSummary; collection: Collection } | null {
 	if (
+		!isVisibleAssetId(processId) ||
 		state.device !== 'token@1.0' ||
 		state.totalSupply !== '1' ||
 		state.denomination !== 0 ||
