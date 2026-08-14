@@ -2184,7 +2184,7 @@ describe('live candidate resolution', () => {
 			...collections,
 			{
 				id: 'fungible-tokens',
-				name: '[TEST] Bazar Fungible Tokens',
+				name: 'Bazar Fungible Tokens',
 				description: 'Tokens',
 				kind: 'tokens',
 				assets: [],

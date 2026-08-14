@@ -258,7 +258,7 @@ const GRAPHQL_PAGE_SIZE = 100;
 const ARWEAVE_GRAPHQL_ID_BATCH_SIZE = 9;
 
 export const FUNGIBLE_TOKEN_COLLECTION_ID = 'fungible-tokens';
-export const FUNGIBLE_TOKEN_COLLECTION_NAME = '[TEST] Bazar Fungible Tokens';
+export const FUNGIBLE_TOKEN_COLLECTION_NAME = 'Bazar Fungible Tokens';
 export const IMAGE_COLLECTION_REFERENCES = IMAGE_COLLECTIONS.map((collection) => collection.reference);
 export const FUNGIBLE_TOKEN_ID =
 	import.meta.env.VITE_FUNGIBLE_TOKEN_ID ?? 'IyFfmbTu8P4rv0KyrA0Q-QtfEnYntMj4RkRiBVip9KA';

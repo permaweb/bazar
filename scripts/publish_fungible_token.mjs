@@ -27,7 +27,7 @@ const transaction = await arweave.createTransaction(
 			name: '[TEST] Weave Credit',
 			ticker: 'WEAVE',
 			description: 'One million 12-decimal test units for exercising Bazar’s Arweave-native fungible market.',
-			collection: '[TEST] Bazar Fungible Tokens',
+			collection: 'Bazar Fungible Tokens',
 		}),
 	},
 	wallet
