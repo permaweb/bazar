@@ -5237,6 +5237,57 @@ function CollectionRoute() {
 	return <CollectionView key={collectionId} />;
 }
 
+export function CollectionDescription({ description }: { description: string }) {
+	const text = description.trim();
+	const contentId = React.useId();
+	const paragraphRef = React.useRef<HTMLParagraphElement>(null);
+	const [expanded, setExpanded] = React.useState(false);
+	const [overflowing, setOverflowing] = React.useState(false);
+
+	React.useEffect(() => {
+		const paragraph = paragraphRef.current;
+		if (!paragraph) return;
+		let disposed = false;
+		const update = () => {
+			if (disposed || !paragraph.classList.contains('is-collapsed')) return;
+			const next = paragraph.scrollHeight > paragraph.clientHeight + 1;
+			setOverflowing((current) => (current === next ? current : next));
+		};
+		const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(update);
+		observer?.observe(paragraph);
+		window.addEventListener('resize', update);
+		void document.fonts?.ready.then(update);
+		update();
+		return () => {
+			disposed = true;
+			observer?.disconnect();
+			window.removeEventListener('resize', update);
+		};
+	}, [expanded, text]);
+
+	if (!text) return null;
+	return (
+		<div className="collection-description">
+			<p className={expanded ? undefined : 'is-collapsed'} id={contentId} ref={paragraphRef}>
+				{text}
+			</p>
+			{overflowing ? (
+				<Button
+					aria-controls={contentId}
+					aria-expanded={expanded}
+					className="collection-description-toggle"
+					onClick={() => setExpanded((current) => !current)}
+					size="custom"
+					variant="ghost"
+				>
+					Show {expanded ? 'less' : 'more'}
+					<ChevronDown aria-hidden="true" />
+				</Button>
+			) : null}
+		</div>
+	);
+}
+
 function CollectionView() {
 	const { collectionId = '' } = useParams();
 	const { search } = useLocation();
@@ -6222,9 +6273,10 @@ function CollectionView() {
 				{collection.kind === 'tokens' ? 'Discover' : 'All collections'}
 			</Link>
 			<div className="collection-title">
-				<div>
+				<div className="collection-heading-copy">
 					<p className="eyebrow">{collectionEyebrow(collection)}</p>
 					<h1>{collectionDisplayName(collection)}</h1>
+					<CollectionDescription description={collection.description} />
 				</div>
 				{collection.kind === 'images' && ownedCollection?.owner === wallet.address ? (
 					<div className="collection-title-copy">
@@ -7030,9 +7082,10 @@ function CollectionActivityView() {
 				<ArrowLeft className="ui-icon ui-icon--sm" aria-hidden="true" /> All collections
 			</Link>
 			<div className="collection-title">
-				<div>
+				<div className="collection-heading-copy">
 					<p className="eyebrow">Arweave activity</p>
 					<h1>{collection.name}</h1>
+					<CollectionDescription description={collection.description} />
 				</div>
 			</div>
 			<CollectionTabs collection={collection} active="activity" />

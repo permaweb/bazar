@@ -20,6 +20,7 @@ import {
 	collectionAssetWindowDelta,
 	collectionCandidateMembership,
 	collectionDefaultsToListed,
+	CollectionDescription,
 	collectionListingScopeVersion,
 	commitHomeActivityBatch,
 	commitHomeFloorResult,
@@ -92,6 +93,16 @@ beforeEach(() => replaceHiddenCollectionAssetIndex(readyHiddenCollectionIndex));
 afterEach(() => replaceHiddenCollectionAssetIndex({}));
 
 describe('Home market summary retries', () => {
+	it('renders collection descriptions as collapsed, wrappable header copy', () => {
+		const description =
+			'Dumdumz are a long-running collection of expressive characters permanently published on Arweave.';
+		const markup = renderToStaticMarkup(React.createElement(CollectionDescription, { description }));
+
+		expect(markup).toContain(description);
+		expect(markup).toContain('collection-description');
+		expect(markup).toContain('is-collapsed');
+	});
+
 	it('renders permanent token logos in Discover and collection cards', () => {
 		const logo = `https://arweave.net/${'L'.repeat(43)}`;
 		const asset = {
