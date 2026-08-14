@@ -1,6 +1,7 @@
 import type { PurchaseSnapshot, PurchaseState } from 'weave-wrangler';
 
 export type PurchaseLifecycleMilestone = 'signed' | 'submitted' | 'accepted' | 'mined' | 'applied' | 'complete';
+export const PURCHASE_SKIP_FROM_DEPTH = 3;
 
 const REGISTRATION_APPLIED_STAGES = new Set<PurchaseState['stage']>([
 	'signing-payment',
@@ -19,15 +20,20 @@ export function purchaseLifecycleMilestone(state: PurchaseState | null): Purchas
 		const payment = state.payment;
 		if (!payment?.id) return 'applied';
 		if (!payment.dispatched) return state.stage === 'dispatching-payment' ? 'submitted' : 'signed';
-		if ((payment.consensus?.confirmations ?? 0) > 0 || state.stage === 'payment-confirming') return 'mined';
+		if ((payment.consensus?.confirmations ?? 0) > 0) return 'mined';
 		return 'accepted';
 	}
 	if (state.stage === 'registration-accepting') return 'mined';
 	const registration = state.registration;
 	if (!registration?.id) return null;
 	if (!registration.dispatched) return state.stage === 'dispatching-registration' ? 'submitted' : 'signed';
-	if ((registration.consensus?.confirmations ?? 0) > 0 || state.stage === 'registration-confirming') return 'mined';
+	if ((registration.consensus?.confirmations ?? 0) > 0) return 'mined';
 	return 'accepted';
+}
+
+export function purchaseSkipKind(state: PurchaseState | null): 'yolo' | 'skip' | undefined {
+	if (!state?.canSkip) return undefined;
+	return (state.registration?.consensus?.confirmations ?? 0) <= PURCHASE_SKIP_FROM_DEPTH ? 'yolo' : 'skip';
 }
 
 export function purchaseLifecycleStatus(state: PurchaseState | null) {
@@ -39,7 +45,9 @@ export function purchaseLifecycleStatus(state: PurchaseState | null) {
 		return 'Payment mined. Waiting for it to be applied to live process state.';
 	}
 	if (state.stage === 'payment-confirming') {
-		return 'Payment mined. Waiting for the required confirmation depth.';
+		return (state.payment?.consensus.confirmations ?? 0) > 0
+			? 'Payment mined. Waiting for the required confirmation depth.'
+			: 'Payment dispatched. Waiting for it to be mined.';
 	}
 	if (state.stage === 'payment-propagating') {
 		return 'Payment accepted by Arweave. Waiting for it to be mined.';
@@ -57,7 +65,9 @@ export function purchaseLifecycleStatus(state: PurchaseState | null) {
 		} reported. Waiting for it to be applied to live process state before payment is released.`;
 	}
 	if (state.stage === 'registration-confirming') {
-		return 'Reservation mined. Waiting for the required confirmation depth.';
+		return (state.registration?.consensus.confirmations ?? 0) > 0
+			? 'Reservation mined. Waiting for the required confirmation depth.'
+			: 'Reservation dispatched. Waiting for it to be mined.';
 	}
 	if (state.stage === 'registration-propagating') {
 		return 'Reservation accepted by Arweave. Waiting for it to be mined.';

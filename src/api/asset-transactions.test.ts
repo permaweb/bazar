@@ -261,6 +261,20 @@ describe('fungible asset transactions', () => {
 		expect(stored.transaction.quantity).toBe('1');
 		expect(decodedTags(stored.transaction)).toContainEqual({ name: 'offer-quantity', value: '3500000000000' });
 		expect(decodedTags(stored.transaction)).toContainEqual({ name: 'asking', value: '700000000000' });
+		expect(decodedTags(stored.transaction)).toContainEqual({ name: 'deadline', value: '20' });
+	});
+
+	it('writes an offer deadline as a relative block count', async () => {
+		const subject = client();
+		const prepared = await subject.client.makeOffer({
+			processId,
+			quantity: '1',
+			asking: '1',
+			deadline: 7,
+			seller,
+		});
+		const stored = JSON.parse(subject.storage.getItem(`bazar-signed-transaction:${prepared.id}`)!);
+		expect(decodedTags(stored.transaction)).toContainEqual({ name: 'deadline', value: '7' });
 	});
 
 	it('verifies listing acceptance from uncached live process state', async () => {

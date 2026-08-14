@@ -15,6 +15,7 @@ import {
 	isBazarMintTags,
 	loadMintedAssets,
 	loadMintedCollections,
+	MAX_FUNGIBLE_WHOLE_SUPPLY,
 	mintMetadata,
 	mintProcessTags,
 	normalizeUploadTags,
@@ -762,7 +763,14 @@ describe('asset mint contract', () => {
 		expect(() => validateFungibleMintInput(input)).not.toThrow();
 		expect(fungibleAtomicSupply(input.wholeSupply, input.denomination)).toBe('42622000000');
 		expect(fungibleAtomicSupply('1', '0')).toBe('1');
-		expect(fungibleAtomicSupply('900719925474099312345678', '12')).toBe('900719925474099312345678000000000000');
+		expect(fungibleAtomicSupply('900719925474099', '12')).toBe('900719925474099000000000000');
+		expect(fungibleAtomicSupply(MAX_FUNGIBLE_WHOLE_SUPPLY.toString(), '12')).toBe('1000000000000000000000000000');
+		expect(fungibleAtomicSupply(MAX_FUNGIBLE_WHOLE_SUPPLY.toString(), '0')).toBe(
+			MAX_FUNGIBLE_WHOLE_SUPPLY.toString()
+		);
+		expect(() => fungibleAtomicSupply((MAX_FUNGIBLE_WHOLE_SUPPLY + 1n).toString(), '0')).toThrow(
+			'mint-supply-too-large'
+		);
 		expect(fungibleMintProcessTags(input, owner)).toMatchObject({
 			'hint-ui-style': 'fungible',
 			'initial-holder': owner,

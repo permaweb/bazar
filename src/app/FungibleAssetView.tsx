@@ -122,9 +122,11 @@ import {
 	walletOperationStorageChange,
 } from './operation-session';
 import {
+	PURCHASE_SKIP_FROM_DEPTH,
 	type PurchaseGatewayContext,
 	purchaseGatewaySwitchNotice,
 	purchaseLifecycleStatus,
+	purchaseSkipKind,
 } from './purchase-lifecycle';
 import {
 	purchaseObservationCheckingMessage,
@@ -2333,7 +2335,7 @@ function FungibleOperationDialog({
 					registrationTarget: 5,
 					paymentTarget: 5,
 					paymentSuccessDepth: 1,
-					skipFrom: 2,
+					skipFrom: PURCHASE_SKIP_FROM_DEPTH,
 					propagation: 'all',
 					minObservers: 2,
 					...(resume || observationRetryAttempt > 0 ? { resume: entry.snapshot } : {}),
@@ -3081,7 +3083,7 @@ function FungibleOperationDialog({
 							activeOrder && activePurchase ? (
 								<ArweaveTransactionSync
 									active={visible}
-									skipKind={activePurchase.canSkip ? activePurchase.skipKind ?? 'skip' : undefined}
+									skipKind={purchaseSkipKind(activePurchase)}
 									onSkip={
 										activePurchase.canSkip
 											? () => {

@@ -74,7 +74,7 @@ const strings: Record<string, string> = {
 		'Skip waiting for further confirmation of the registration. Registration protects you from sending a payment while another user is purchasing the same asset.',
 	transactionSyncSkipTitle: 'Continue at {depth} confirmations',
 	transactionSyncYolo: 'YOLO',
-	transactionSyncYoloDetail: 'Continue after two confirmations. Faster, with higher reorganization risk.',
+	transactionSyncYoloDetail: 'Continue after three confirmations. Faster, with higher reorganization risk.',
 	transactionSyncYoloTitle: 'Continue early?',
 };
 
