@@ -3,8 +3,11 @@ import { mapConcurrent } from 'helpers/concurrency';
 import { arweaveDataUrl, arweaveGatewayFromLocation, arweaveGraphqlEndpoint, NAMES_NAMESPACE_ID } from 'helpers/config';
 
 import { type AssetState, readAssetState } from './asset-marketplace';
+import { HIDDEN_ASSET_IDS, HIDDEN_COLLECTION_IDS } from './catalogue-policy';
 import { fetchJsonWithDeadline, fetchTextWithDeadline } from './fetch-with-deadline';
 import { assetFromMintState } from './minted-assets';
+
+export { HIDDEN_ASSET_IDS, HIDDEN_COLLECTION_IDS } from './catalogue-policy';
 
 const ARWEAVE_ID = /^[A-Za-z0-9_-]{43}$/;
 const collectionAssetIndexes = new WeakMap<AssetSummary[], ReadonlyMap<string, AssetSummary>>();
@@ -159,26 +162,8 @@ type BazarCollectionPayload = {
 	data?: { transactions?: BazarCollectionConnection };
 };
 
-/** Immutable legacy collection IDs intentionally excluded from the public catalogue. */
-export const HIDDEN_COLLECTION_IDS = [
-	'A7TGD0bktXYkQSrz4UWfPqgcb8A4TAOEsKQU5_zAu7g', // [TEST] Permanent Strata
-	'IMKioUfmOrqtTnrLO3_Jpg5zv8zg8PKjWYNVhD3xsZM', // [TEST] Weave Signals
-	'NGV2FNAtc-Zp-iAmMnIFYIj77ZPiMUWlA2AC2rW2OGo', // [TEST] Happy Unattended AGENTs
-	'q5KruM1NXsh-bu0oh51sk-3czm5ZBAu22twpwDl8WMY', // Superseded HTML Colors
-] as const;
 const hiddenCollectionIds = new Set<string>(HIDDEN_COLLECTION_IDS);
 
-/** Immutable test-token process IDs intentionally excluded from every public asset surface. */
-export const HIDDEN_ASSET_IDS = [
-	'66azdZXrCXt-W5pP8IeBbX1tQ6TyiSebc9099PNB2y8', // MINTF — Mint CLI Zeta
-	'7T99-MfMpuIx9qZMRSACFQK6j49HlXCHZ9nKUwts26c', // MINTE — Mint CLI Epsilon
-	'9CYTQq_O0ARfEV4QC-R12E0DdwFswaYdWthOAG4DRLA', // MINTA — Mint CLI Alpha
-	'IyFfmbTu8P4rv0KyrA0Q-QtfEnYntMj4RkRiBVip9KA', // WEAVE — Weave Credit
-	'MtNTshqw3VkML6cOe4y1yOFAVupRWz1O7b2j6ay01qM', // TKEY — Thousand Tiny Owners
-	'VeS61CgitggqhFBnUwXwyZJHoJQPfYffTk-UWq3VXoY', // MINTG — Mint CLI Eta
-	'bASFYsRBQm_dfG__wqRVwMh8bqwEvSTl4lURRBqfu2M', // PCMKQA1 — PcMK spawn trade transfer
-	'cT_QvNJkzjSfkazrgv0HTwsoMVFFchvx0btwR0s5mPI', // MINTH — Mint CLI Theta
-] as const;
 const hiddenAssetIds = new Set<string>(HIDDEN_ASSET_IDS);
 
 /** Opt into the hidden catalogue for QA with `#/discover?showTest=1` and a hard reload. */
