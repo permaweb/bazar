@@ -10259,6 +10259,9 @@ body input:focus-visible {
 .token-market-metric.positive strong {
 	color: var(--positive-text);
 }
+.token-market-metric.negative strong {
+	color: var(--negative);
+}
 .token-market-metric.muted strong {
 	color: var(--muted);
 }

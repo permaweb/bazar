@@ -2995,6 +2995,46 @@ export function homeMarketPriceValue(value: string | null | undefined) {
 	return Number.isFinite(parsed) ? parsed : Number.POSITIVE_INFINITY;
 }
 
+export function homeTokenPriceChangePercent(
+	events: CollectionActivityEvent[],
+	now = Date.now(),
+	windowComplete = true
+) {
+	if (!windowComplete) return null;
+	const threshold = now - 24 * 60 * 60 * 1_000;
+	const asks = events
+		.flatMap((event) => {
+			if (
+				event.action !== 'make-offer' ||
+				!event.asking ||
+				!event.quantity ||
+				(event.timestamp < 1_000_000_000_000 ? event.timestamp * 1_000 : event.timestamp) < threshold
+			)
+				return [];
+			try {
+				const asking = BigInt(event.asking);
+				const quantity = BigInt(event.quantity);
+				return asking > 0n && quantity > 0n ? [{ ...event, asking, quantity }] : [];
+			} catch {
+				return [];
+			}
+		})
+		.sort((left, right) => left.timestamp - right.timestamp || left.id.localeCompare(right.id));
+	if (asks.length < 2) return null;
+	const first = asks[0];
+	const last = asks.at(-1)!;
+	const baseline = first.asking * last.quantity;
+	const delta = last.asking * first.quantity - baseline;
+	const scaled = (delta * 10_000n) / baseline;
+	if (scaled > BigInt(Number.MAX_SAFE_INTEGER) || scaled < BigInt(Number.MIN_SAFE_INTEGER)) return null;
+	return Number(scaled) / 100;
+}
+
+export function homeTokenPriceChangeLabel(change: number | null | 'unavailable') {
+	if (change === null || change === 'unavailable' || !Number.isFinite(change)) return '—';
+	return `${change > 0 ? '+' : ''}${change.toLocaleString(undefined, { maximumFractionDigits: 2 })}%`;
+}
+
 export function homeMarketSummariesReady(
 	loading: boolean,
 	keys: string[],
@@ -3268,6 +3308,14 @@ function Home() {
 	const discoverTokenPagination = homeAssetPage(discoverTokens, discoverTokenPage, HOME_DISCOVER_TOKEN_PAGE_SIZE);
 	const discoverOverviewAssets = [...discoverTokenPagination.items, ...discoverCollectibles.slice(0, 12)];
 	const assetPagination = homeAssetPage(displayedAssets, assetPage);
+	const visibleDiscoverTokens =
+		assetType === 'all'
+			? discoverTokenPagination.items
+			: assetType === 'tokens'
+			? assetPagination.items.filter(({ collection }) => collection.kind === 'tokens')
+			: [];
+	const visibleDiscoverTokenKey = visibleDiscoverTokens.map(({ asset }) => asset.id).join(',');
+	const [tokenPriceChanges, setTokenPriceChanges] = React.useState<Record<string, number | null | 'unavailable'>>({});
 	const assets =
 		assetView === 'all' ? (assetType === 'all' ? discoverOverviewAssets : assetPagination.items) : assetCandidates;
 	const assetKey = assets.map(({ asset }) => asset.id).join(',');
@@ -3327,6 +3375,46 @@ function Home() {
 		},
 		[]
 	);
+	React.useEffect(() => {
+		if (!shouldLoadAssetSummaries || !visibleDiscoverTokenKey) {
+			setTokenPriceChanges({});
+			return;
+		}
+		const controller = new AbortController();
+		const tokenIds = visibleDiscoverTokenKey.split(',');
+		const eventLimit = 200;
+		setTokenPriceChanges({});
+		void discoverCollectionActivity({
+			actions: ['make-offer'],
+			limit: eventLimit,
+			recipients: tokenIds,
+			signal: controller.signal,
+		}).then(
+			(events) => {
+				if (controller.signal.aborted) return;
+				const now = Date.now();
+				const windowComplete = events.length < eventLimit;
+				setTokenPriceChanges(
+					Object.fromEntries(
+						tokenIds.map((tokenId) => [
+							tokenId,
+							homeTokenPriceChangePercent(
+								events.filter((event) => event.processId === tokenId),
+								now,
+								windowComplete
+							),
+						])
+					)
+				);
+			},
+			() => {
+				if (!controller.signal.aborted) {
+					setTokenPriceChanges(Object.fromEntries(tokenIds.map((tokenId) => [tokenId, 'unavailable'])));
+				}
+			}
+		);
+		return () => controller.abort();
+	}, [homeListingSnapshotScope, shouldLoadAssetSummaries, visibleDiscoverTokenKey]);
 	React.useEffect(() => {
 		if (!marketShellReady || !shouldLoadAssetSummaries) {
 			setPortableHomeListingsLoading(false);
@@ -3988,6 +4076,7 @@ function Home() {
 		<div className="token-market-list" role="list">
 			{items.map(({ asset, collection }, index) => {
 				const price = displayAssetPrices[asset.id];
+				const change = tokenPriceChanges[asset.id];
 				return (
 					<TokenMarketRow
 						asset={{ ...asset, image: assetImages[asset.id] ?? asset.image }}
@@ -3998,6 +4087,19 @@ function Home() {
 							label: 'Unit price',
 							value: price ? homeMarketSummaryLabel(price, 'Not listed') : <HomePendingMarketValue />,
 							tone: homeMarketSummaryListed(price) ? 'positive' : 'default',
+						}}
+						secondaryMetric={{
+							label: '24h change',
+							value:
+								change === undefined ? <HomePendingMarketValue /> : homeTokenPriceChangeLabel(change),
+							tone:
+								typeof change !== 'number'
+									? 'muted'
+									: change > 0
+									? 'positive'
+									: change < 0
+									? 'negative'
+									: 'muted',
 						}}
 						onWarm={() => prefetchAssetPage(asset.id, true)}
 						priority={index < 2}

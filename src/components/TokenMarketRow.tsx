@@ -9,7 +9,7 @@ import { TokenAvatar } from './TokenAvatar';
 export type TokenMarketMetric = {
 	label: string;
 	value: React.ReactNode;
-	tone?: 'default' | 'positive' | 'muted';
+	tone?: 'default' | 'positive' | 'negative' | 'muted';
 };
 
 export function TokenMarketRow({

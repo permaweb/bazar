@@ -56,6 +56,8 @@ import {
 	homeSummaryRequestKeys,
 	homeTabFromPathname,
 	homeTabPath,
+	homeTokenPriceChangeLabel,
+	homeTokenPriceChangePercent,
 	isFungiblePendingMint,
 	marketCatalogueCollections,
 	mergeResolvedListingBatch,
@@ -93,6 +95,44 @@ beforeEach(() => replaceHiddenCollectionAssetIndex(readyHiddenCollectionIndex));
 afterEach(() => replaceHiddenCollectionAssetIndex({}));
 
 describe('Home market summary retries', () => {
+	it('calculates an exact 24-hour token ask change from differently sized listings', () => {
+		const now = Date.UTC(2026, 7, 14, 12);
+		const offer = (id: string, hoursAgo: number, asking: string, quantity: string): CollectionActivityEvent => ({
+			id,
+			processId: 'T'.repeat(43),
+			action: 'make-offer',
+			actor: 'W'.repeat(43),
+			height: 1,
+			timestamp: (now - hoursAgo * 60 * 60 * 1_000) / 1_000,
+			asking,
+			quantity,
+		});
+
+		expect(
+			homeTokenPriceChangePercent(
+				[offer('old', 25, '1', '1'), offer('first', 20, '200', '2'), offer('last', 1, '450', '3')],
+				now
+			)
+		).toBe(50);
+		expect(
+			homeTokenPriceChangePercent(
+				Array.from({ length: 200 }, (_, index) => offer(String(index), 20 - index / 20, '100', '1')),
+				now,
+				false
+			)
+		).toBeNull();
+		expect(
+			homeTokenPriceChangePercent(
+				[offer('first', 20, '1', '1'), offer('last', 1, `1${'0'.repeat(400)}`, '1')],
+				now
+			)
+		).toBeNull();
+		expect(homeTokenPriceChangeLabel(50)).toBe('+50%');
+		expect(homeTokenPriceChangeLabel(-12.5)).toBe('-12.5%');
+		expect(homeTokenPriceChangeLabel(null)).toBe('—');
+		expect(homeTokenPriceChangeLabel(Number.POSITIVE_INFINITY)).toBe('—');
+	});
+
 	it('renders collection descriptions as collapsed, wrappable header copy', () => {
 		const description =
 			'Dumdumz are a long-running collection of expressive characters permanently published on Arweave.';
