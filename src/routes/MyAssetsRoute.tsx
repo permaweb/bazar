@@ -53,8 +53,6 @@ import {
 	walletDiscoverySession,
 	walletDiscoverySessionIsCurrent,
 	walletResolutionCopy,
-	walletResolutionIsDeterminate,
-	walletResolutionShowsProgress,
 	type WalletResolutionStatus,
 } from '../app/App';
 import {
@@ -578,12 +576,6 @@ export default function MyAssetsRoute({
 		},
 		aggregateFailureMessage
 	);
-	const resolutionDeterminate = walletResolutionIsDeterminate(status);
-	const resolutionProgressTotal = status.phase === 'revalidating' ? status.revalidationTotal ?? 0 : status.total;
-	const resolutionProgressValue = status.phase === 'revalidating' ? status.revalidated ?? 0 : status.resolved;
-	const resolutionProgress = resolutionProgressTotal
-		? Math.min(100, Math.round((resolutionProgressValue / resolutionProgressTotal) * 100))
-		: 0;
 	return (
 		<section className={pageClassName}>
 			{!embedded ? (
@@ -626,21 +618,6 @@ export default function MyAssetsRoute({
 						<Loading label={resolutionCopy.heading} />
 						<p>{resolutionCopy.announcement}</p>
 					</div>
-					{walletResolutionShowsProgress(status) ? (
-						<div
-							aria-label={resolutionCopy.heading}
-							aria-valuemax={resolutionDeterminate ? 100 : undefined}
-							aria-valuemin={resolutionDeterminate ? 0 : undefined}
-							aria-valuenow={resolutionDeterminate ? resolutionProgress : undefined}
-							aria-valuetext={resolutionCopy.announcement}
-							className={`resolution-track${resolutionDeterminate ? '' : ' indeterminate'}${
-								status.failures ? ' has-failures' : ''
-							}`}
-							role="progressbar"
-						>
-							<span style={resolutionDeterminate ? { width: `${resolutionProgress}%` } : undefined} />
-						</div>
-					) : null}
 				</div>
 			) : null}
 			{status.error ? (

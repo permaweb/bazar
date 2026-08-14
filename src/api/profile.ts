@@ -1,10 +1,17 @@
 import { createArweaveClient } from 'helpers/arweave';
 import { arweaveClientConfig, arweaveDataUrl, arweaveGatewayFromLocation } from 'helpers/config';
 
-import { type AssetUploadOptions } from './asset-uploader';
+import { type AssetUploadData, type AssetUploadOptions } from './asset-uploader';
 
 const ARWEAVE_ID = /^[A-Za-z0-9_-]{43}$/;
 export const ACCOUNT_PROFILE_PROTOCOL = 'Account-0.3';
+export const PROFILE_AVATAR_CONTENT_TYPES: ReadonlyArray<string> = [
+	'image/gif',
+	'image/jpeg',
+	'image/png',
+	'image/webp',
+];
+export const PROFILE_AVATAR_MAX_BYTES = 10 * 1024 * 1024;
 
 export type AccountProfile = {
 	address: string;
@@ -26,12 +33,17 @@ export type ProfileClientOptions = {
 	fetch?: typeof fetch;
 	arweave?: any;
 	publish?: (
-		data: string,
+		data: AssetUploadData,
 		tags: ReadonlyArray<{ name: string; value: string }>,
 		owner: string,
 		options: AssetUploadOptions
 	) => Promise<string>;
 	gateway?: string;
+};
+
+export type ProfileUpdate = {
+	displayName?: string;
+	avatar?: string;
 };
 
 const cached = new Map<string, AccountProfile | null>();
@@ -179,6 +191,67 @@ export class ProfileClient {
 
 	read(address: string, signal?: AbortSignal) {
 		return readAccountProfile(address, { fetch: this.#fetch, gateway: this.#gateway, signal });
+	}
+
+	async uploadAvatar(
+		owner: string,
+		data: Uint8Array,
+		contentType: string,
+		options: AssetUploadOptions = {}
+	): Promise<string> {
+		assertId(owner, 'invalid-profile-address');
+		if (!PROFILE_AVATAR_CONTENT_TYPES.includes(contentType)) {
+			throw new TypeError('invalid-profile-avatar-type');
+		}
+		if (!data.byteLength || data.byteLength > PROFILE_AVATAR_MAX_BYTES) {
+			throw new TypeError('invalid-profile-avatar-size');
+		}
+		return this.#publish(
+			data,
+			[
+				{ name: 'Content-Type', value: contentType },
+				{ name: 'App-Name', value: 'Bazar' },
+				{ name: 'Type', value: 'Profile-Avatar' },
+			],
+			owner,
+			options
+		);
+	}
+
+	async update(owner: string, update: ProfileUpdate, options: AssetUploadOptions = {}): Promise<AccountProfile> {
+		assertId(owner, 'invalid-profile-address');
+		if (update.displayName === undefined && update.avatar === undefined) {
+			throw new TypeError('empty-profile-update');
+		}
+		const existing = await limitedProfileRead(() =>
+			fetchAccountProfile(owner, {
+				fetch: this.#fetch,
+				gateway: this.#gateway,
+				signal: options.signal,
+			})
+		);
+		const displayName = update.displayName?.trim();
+		const avatar = update.avatar?.trim();
+		const body = {
+			handle: displayName ?? existing?.handle ?? '',
+			name: existing?.name ?? '',
+			bio: existing?.bio ?? '',
+			avatar: avatar === undefined ? existing?.avatar ?? '' : avatar ? normalizeAvatar(avatar) : '',
+		};
+		const transactionId = await this.#publish(
+			JSON.stringify(body),
+			[
+				{ name: 'Content-Type', value: 'application/json' },
+				{ name: 'Protocol-Name', value: ACCOUNT_PROFILE_PROTOCOL },
+				{ name: 'App-Name', value: 'Bazar' },
+				{ name: 'handle', value: body.handle },
+			],
+			owner,
+			options
+		);
+		const profile = { address: owner, transactionId, ...body };
+		cached.set(owner, profile);
+		return profile;
 	}
 
 	async setAvatar(owner: string, avatar: string, options: AssetUploadOptions = {}): Promise<AccountProfile> {

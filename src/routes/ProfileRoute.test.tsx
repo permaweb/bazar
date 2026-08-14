@@ -34,4 +34,11 @@ describe('ProfileRoute', () => {
 		expect(markup).toContain('role="alert"');
 		expect(markup).toContain('Retry');
 	});
+
+	it('makes both the avatar and name edit control available to the owner', () => {
+		const markup = renderToStaticMarkup(<ProfilePage onEdit={() => undefined} profile={profile} />);
+
+		expect(markup).toContain('aria-label="Edit profile picture"');
+		expect(markup).toContain('aria-label="Edit profile"');
+	});
 });

@@ -73,8 +73,8 @@ npm run start
 ```
 
 Vite serves the application on `http://127.0.0.1:3000` by default. Development
-uses `https://arweave.net` for compute. Production defaults to Alpha and Charlie
-and fails over between them through AO Wrangler. Select peers in the header, set
+and production both default to Alpha and Charlie for compute and fail over
+between them through AO Wrangler. Select peers in the header, set
 `VITE_COMPUTE_GATEWAY`, or append a comma-separated `node` query parameter:
 
 ```text

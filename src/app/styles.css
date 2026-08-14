@@ -9589,10 +9589,6 @@ body input:focus-visible {
 }
 .my-assets-resolution-status {
 	margin: 0 0 30px;
-	padding: 15px 17px;
-	border: 1px solid var(--line);
-	border-radius: 10px;
-	background: var(--panel);
 }
 .my-assets-resolution-status > div:first-child {
 	display: grid;
