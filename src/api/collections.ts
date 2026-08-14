@@ -181,13 +181,31 @@ export const HIDDEN_ASSET_IDS = [
 ] as const;
 const hiddenAssetIds = new Set<string>(HIDDEN_ASSET_IDS);
 
+/** Opt into the hidden catalogue for QA with `#/discover?showTest=1` and a hard reload. */
+export function testCatalogueItemsRequested(
+	browserLocation: Pick<Location, 'hash' | 'search'> | undefined = typeof window === 'undefined'
+		? undefined
+		: window.location
+): boolean {
+	if (!browserLocation) return false;
+	const hashQuery = browserLocation.hash.split('?')[1] ?? '';
+	return [browserLocation.search, hashQuery].some((query) => new URLSearchParams(query).get('showTest') === '1');
+}
+
+const SHOW_TEST_CATALOGUE_ITEMS = testCatalogueItemsRequested();
+
 const HIDDEN_COLLECTION_ASSET_IDS = new Map<string, ReadonlySet<string>>();
 
+export function isHiddenCollectionId(id: string): boolean {
+	return hiddenCollectionIds.has(id);
+}
+
 export function isVisibleCollectionId(id: string): boolean {
-	return !hiddenCollectionIds.has(id);
+	return SHOW_TEST_CATALOGUE_ITEMS || !isHiddenCollectionId(id);
 }
 
 export function isVisibleAssetId(id: string): boolean {
+	if (SHOW_TEST_CATALOGUE_ITEMS) return true;
 	if (!hiddenCollectionAssetIndexComplete() || hiddenAssetIds.has(id)) return false;
 	for (const assetIds of HIDDEN_COLLECTION_ASSET_IDS.values()) {
 		if (assetIds.has(id)) return false;
@@ -197,7 +215,7 @@ export function isVisibleAssetId(id: string): boolean {
 
 function registerHiddenCollectionAssets(collections: Collection[]): void {
 	for (const collection of collections) {
-		if (isVisibleCollectionId(collection.id)) continue;
+		if (!isHiddenCollectionId(collection.id)) continue;
 		HIDDEN_COLLECTION_ASSET_IDS.set(collection.id, new Set(collection.assets.map((asset) => asset.id)));
 	}
 }
@@ -218,7 +236,10 @@ export function hiddenCollectionAssetIndex(): Record<string, string[]> {
 }
 
 export function hiddenCollectionAssetIndexComplete(): boolean {
-	return HIDDEN_COLLECTION_IDS.every((collectionId) => HIDDEN_COLLECTION_ASSET_IDS.has(collectionId));
+	return (
+		SHOW_TEST_CATALOGUE_ITEMS ||
+		HIDDEN_COLLECTION_IDS.every((collectionId) => HIDDEN_COLLECTION_ASSET_IDS.has(collectionId))
+	);
 }
 
 export function withVisibleCollectionAssets(collection: Collection): Collection {
@@ -234,11 +255,11 @@ export function withVisibleCollectionAssets(collection: Collection): Collection 
 
 const IMAGE_COLLECTIONS = [
 	{
-		reference: import.meta.env.VITE_COLLECTION_ONE_REFERENCE,
+		reference: import.meta.env.VITE_COLLECTION_ONE_REFERENCE ?? HIDDEN_COLLECTION_IDS[0],
 		manifest: '8aITB5SF-jc9MXx9IuCe_RaAoOrUHkkvgsy0cmLNCQw',
 	},
 	{
-		reference: import.meta.env.VITE_COLLECTION_TWO_REFERENCE,
+		reference: import.meta.env.VITE_COLLECTION_TWO_REFERENCE ?? HIDDEN_COLLECTION_IDS[1],
 		manifest: 'EK3bWZ0yvkYZ8btaPw0q-fNWsKLUeOeq3blqhRQlQJg',
 	},
 ].filter(
@@ -353,6 +374,7 @@ type CollectionSource = {
 };
 
 async function ensureHiddenCollectionAssets(signal?: AbortSignal): Promise<void> {
+	if (hiddenCollectionAssetIndexComplete()) return;
 	const missing = HIDDEN_COLLECTION_IDS.filter((collectionId) => !HIDDEN_COLLECTION_ASSET_IDS.has(collectionId));
 	await mapConcurrent(missing, 4, async (collectionId) => {
 		const transaction = await fetchJson<{ tags?: Array<{ name: string; value: string }> }>(

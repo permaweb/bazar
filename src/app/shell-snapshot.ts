@@ -1,4 +1,10 @@
-import { type AssetSummary, type Collection, isVisibleAssetId, isVisibleCollectionId } from 'api/collections';
+import {
+	type AssetSummary,
+	type Collection,
+	isHiddenCollectionId,
+	isVisibleAssetId,
+	isVisibleCollectionId,
+} from 'api/collections';
 
 const MARKET_SHELL_STORAGE_KEY = 'bazar-market-shell:v1';
 const ASSET_SHELL_STORAGE_PREFIX = 'bazar-asset-shell:v1:';
@@ -67,7 +73,7 @@ function isHiddenCollectionAssetIndex(value: unknown): value is Record<string, s
 		!Array.isArray(value) &&
 		Object.entries(value as Record<string, unknown>).every(
 			([collectionId, assetIds]) =>
-				!isVisibleCollectionId(collectionId) &&
+				isHiddenCollectionId(collectionId) &&
 				Array.isArray(assetIds) &&
 				assetIds.every((assetId) => typeof assetId === 'string' && /^[A-Za-z0-9_-]{43}$/.test(assetId))
 		)

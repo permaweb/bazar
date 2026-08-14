@@ -22,6 +22,7 @@ import {
 	mergeCollectionSnapshots,
 	parseNamesNamespace,
 	replaceHiddenCollectionAssetIndex,
+	testCatalogueItemsRequested,
 } from './collections';
 
 const emptyHiddenCollectionAssetIndex = Object.fromEntries(HIDDEN_COLLECTION_IDS.map((id) => [id, []]));
@@ -50,6 +51,22 @@ describe('collection index loading', () => {
 		expect(isVisibleCollectionId('c_014vjkJNIBA4cSXXvN3ijEmYr5byU2iJarTSx0rKo')).toBe(true);
 		for (const id of HIDDEN_ASSET_IDS) expect(isVisibleAssetId(id)).toBe(false);
 		expect(isVisibleAssetId('rQugKt4xEQcsy2yTmJJtlbPqblX6sFAudqjlf2ndV2Y')).toBe(true);
+	});
+
+	it('recognizes the explicit test-catalogue URL switch', () => {
+		expect(testCatalogueItemsRequested({ search: '', hash: '#/discover?showTest=1' })).toBe(true);
+		expect(testCatalogueItemsRequested({ search: '?showTest=1', hash: '#/discover' })).toBe(true);
+		expect(testCatalogueItemsRequested({ search: '', hash: '#/discover?showTest=true' })).toBe(false);
+	});
+
+	it('restores reference-backed test collection sources when requested', async () => {
+		vi.stubGlobal('window', { location: { search: '', hash: '#/discover?showTest=1' } });
+		vi.resetModules();
+		const flagged = await import('./collections');
+
+		expect(flagged.IMAGE_COLLECTION_REFERENCES).toEqual(HIDDEN_COLLECTION_IDS.slice(0, 2));
+		expect(flagged.isVisibleCollectionId(HIDDEN_COLLECTION_IDS[0])).toBe(true);
+		expect(flagged.isVisibleAssetId(HIDDEN_ASSET_IDS[0])).toBe(true);
 	});
 
 	it('fails asset visibility closed until every hidden manifest is known', () => {
