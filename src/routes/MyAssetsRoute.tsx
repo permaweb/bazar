@@ -63,9 +63,17 @@ import {
 	marketplaceRequestFailureMessage,
 } from '../app/marketplace-error';
 
-export default function MyAssetsRoute() {
+export default function MyAssetsRoute({
+	address,
+	embedded = false,
+}: {
+	address?: string;
+	embedded?: boolean;
+} = {}) {
 	const market = React.useContext(MarketContext);
 	const wallet = useWallet();
+	const walletAddress = address ?? wallet.address ?? '';
+	const pageClassName = `my-assets-page${embedded ? ' profile-assets' : ''}`;
 	const gateway = servingNodeOrigin(window.location);
 	const [retry, setRetry] = React.useState(0);
 	const [discoveryRetry, setDiscoveryRetry] = React.useState(0);
@@ -84,7 +92,7 @@ export default function MyAssetsRoute() {
 	});
 	const [results, setResults] = React.useState<ResolvedAsset[]>([]);
 	const [storedStatus, setStatus] = React.useState<WalletResolutionStatus>(initialWalletResolutionStatus);
-	const discoveryScope = wallet.address ? walletDiscoveryScope(wallet.address, gateway, market.collections) : '';
+	const discoveryScope = walletAddress ? walletDiscoveryScope(walletAddress, gateway, market.collections) : '';
 	const requestedSessionScope = discoveryScope ? `${discoveryScope}|refresh:${retry}` : '';
 	const sessionIsCurrent = walletDiscoverySessionIsCurrent(discoverySession.current, requestedSessionScope);
 	const visibleResults = sessionIsCurrent ? results : [];
@@ -99,9 +107,8 @@ export default function MyAssetsRoute() {
 		setRetry((value) => value + 1);
 	};
 	React.useEffect(() => {
-		if (!wallet.address || !market.collections.length || market.error) return;
+		if (!walletAddress || !market.collections.length || market.error) return;
 		const controller = new AbortController();
-		const walletAddress = wallet.address;
 		const scope = requestedSessionScope;
 		const previousSession = discoverySession.current;
 		const scan =
@@ -387,11 +394,11 @@ export default function MyAssetsRoute() {
 			cancelScanStore?.();
 			if (renderFrame !== undefined) window.cancelAnimationFrame(renderFrame);
 		};
-	}, [discoveryRetry, discoveryScope, gateway, market.error, retry, wallet.address]);
+	}, [discoveryRetry, discoveryScope, gateway, market.error, retry, walletAddress]);
 	React.useEffect(() => {
 		if (
 			!failedRetry ||
-			!wallet.address ||
+			!walletAddress ||
 			!market.collections.length ||
 			market.error ||
 			(!failedCandidates.current.size && !supportFailures.current.size)
@@ -401,7 +408,6 @@ export default function MyAssetsRoute() {
 		const session = discoverySession.current;
 		if (!walletDiscoverySessionIsCurrent(session, requestedSessionScope)) return;
 		const active = () => !controller.signal.aborted && discoverySession.current === session;
-		const walletAddress = wallet.address;
 		const candidates = [...failedCandidates.current.values()];
 		const unverified = [...supportFailures.current.values()].map(({ candidate }) => candidate);
 		const retryCount = candidates.length + unverified.length;
@@ -494,11 +500,11 @@ export default function MyAssetsRoute() {
 			}
 		);
 		return () => controller.abort();
-	}, [failedRetry, gateway, market.collections, market.error, requestedSessionScope, wallet.address]);
+	}, [failedRetry, gateway, market.collections, market.error, requestedSessionScope, walletAddress]);
 
-	if (!wallet.address) {
+	if (!walletAddress) {
 		return (
-			<section className="my-assets-page">
+			<section className={pageClassName}>
 				<p className="eyebrow">Your wallet</p>
 				<h1>My assets</h1>
 				<div className="empty-state">
@@ -510,6 +516,13 @@ export default function MyAssetsRoute() {
 		);
 	}
 	if (market.loading && !market.collections.length) {
+		if (embedded) {
+			return (
+				<section className={pageClassName}>
+					<Loading label="Reading supported asset collections from Arweave…" />
+				</section>
+			);
+		}
 		return (
 			<RouteState title="My assets">
 				<Loading label="Reading the supported asset collections from Arweave…" />
@@ -518,14 +531,17 @@ export default function MyAssetsRoute() {
 	}
 	if (market.error) {
 		return (
-			<section className="my-assets-page">
-				<p className="eyebrow">Live wallet inventory</p>
-				<h1>My assets</h1>
+			<section className={pageClassName}>
+				{!embedded ? (
+					<>
+						<p className="eyebrow">Live wallet inventory</p>
+						<h1>My assets</h1>
+					</>
+				) : null}
 				<ErrorPanel message={market.error} onRetry={market.retry} />
 			</section>
 		);
 	}
-	const walletAddress = wallet.address;
 	const tokenResults = visibleResults.filter(
 		(result) =>
 			result.collection.kind === 'tokens' &&
@@ -569,36 +585,38 @@ export default function MyAssetsRoute() {
 		? Math.min(100, Math.round((resolutionProgressValue / resolutionProgressTotal) * 100))
 		: 0;
 	return (
-		<section className="my-assets-page">
-			<div className="my-assets-heading">
-				<div>
-					<p className="eyebrow">Live wallet inventory</p>
-					<h1>My assets</h1>
-					<p>Your assets, read from live Arweave state.</p>
-					<span className="gateway-pill">
-						<Server className="ui-icon ui-icon--xs" aria-hidden="true" /> Gateway{' '}
-						<Tooltip content={new URL(gateway).host}>
-							{(tooltipId) => (
-								<span aria-describedby={tooltipId} className="gateway-pill-host">
-									{new URL(gateway).host}
-								</span>
-							)}
-						</Tooltip>
-					</span>
-				</div>
-				{!status.error && status.phase === 'done' && status.failures && status.failures < status.total ? (
-					<div className="my-assets-heading-status retry-notice">
-						<span role="status">
-							Compute hasn’t completed yet. Please try again. {status.failures.toLocaleString()}{' '}
-							{status.failures === 1 ? 'candidate remains' : 'candidates remain'} unavailable. Resolved
-							assets remain visible.
+		<section className={pageClassName}>
+			{!embedded ? (
+				<div className="my-assets-heading">
+					<div>
+						<p className="eyebrow">Live wallet inventory</p>
+						<h1>My assets</h1>
+						<p>Your assets, read from live Arweave state.</p>
+						<span className="gateway-pill">
+							<Server className="ui-icon ui-icon--xs" aria-hidden="true" /> Gateway{' '}
+							<Tooltip content={new URL(gateway).host}>
+								{(tooltipId) => (
+									<span aria-describedby={tooltipId} className="gateway-pill-host">
+										{new URL(gateway).host}
+									</span>
+								)}
+							</Tooltip>
 						</span>
-						<Button className="with-icon" type="button" onClick={retryUnavailableAssets} size="custom">
-							<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Retry
-						</Button>
 					</div>
-				) : null}
-			</div>
+				</div>
+			) : null}
+			{!status.error && status.phase === 'done' && status.failures && status.failures < status.total ? (
+				<div className="my-assets-heading-status retry-notice">
+					<span role="status">
+						Compute hasn’t completed yet. Please try again. {status.failures.toLocaleString()}{' '}
+						{status.failures === 1 ? 'candidate remains' : 'candidates remain'} unavailable. Resolved assets
+						remain visible.
+					</span>
+					<Button className="with-icon" type="button" onClick={retryUnavailableAssets} size="custom">
+						<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Retry
+					</Button>
+				</div>
+			) : null}
 			<p className="sr-only" aria-live="polite" role="status">
 				{resolutionCopy.announcement}
 			</p>
@@ -660,12 +678,12 @@ export default function MyAssetsRoute() {
 					<h3>
 						{status.failures
 							? 'Ownership could not be checked'
-							: 'No indexed candidates currently resolve to your ownership'}
+							: 'No indexed candidates currently resolve to this address'}
 					</h3>
 					<p>
 						{status.failures
 							? `Compute hasn’t completed yet. Please try again. ${status.failures} of ${status.total} candidates still need to be checked.`
-							: 'Arweave GraphQL discovers candidates and can lag behind new transactions. Newly indexed candidates appear the next time this page opens; live state remains authoritative for every candidate found.'}
+							: 'Arweave GraphQL discovers candidates and can lag behind new transactions. Newly indexed candidates appear the next time this profile opens; live state remains authoritative for every candidate found.'}
 					</p>
 					{status.failures ? (
 						<Button

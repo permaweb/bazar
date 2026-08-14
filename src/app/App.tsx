@@ -29,6 +29,7 @@ import {
 	ShoppingCart,
 	Tag,
 	Upload,
+	UserRound,
 	X,
 } from 'lucide-react';
 import type {
@@ -131,6 +132,7 @@ import {
 	type MintedCollection,
 } from 'api/minted-assets';
 import { formatTokenAmount } from 'api/order-matching';
+import { ProfileClient } from 'api/profile';
 
 import { ArCurrencyLabel, ArCurrencyText, formatArCurrencyText } from 'components/ArCurrencyLabel';
 import { ArtworkImage } from 'components/ArtworkImage';
@@ -289,7 +291,7 @@ import { useDialogFocus } from './useDialogFocus';
 const FungibleAssetView = React.lazy(() => import('../routes/FungibleAssetRoute'));
 const CreateView = React.lazy(() => import('../routes/CreateRoute'));
 const DispatchView = React.lazy(() => import('../routes/DispatchRoute'));
-const MyAssetsView = React.lazy(() => import('../routes/MyAssetsRoute'));
+const ProfileView = React.lazy(() => import('../routes/ProfileRoute'));
 const DeferredAudioWaveformPlayer = React.lazy(async () => {
 	const module = await import('components/AudioWaveformPlayer');
 	return { default: module.AudioWaveformPlayer };
@@ -596,10 +598,10 @@ export function App() {
 								}
 							/>
 							<Route
-								path="/my-assets"
+								path="/profile/:address"
 								element={
-									<React.Suspense fallback={<Loading label="Loading wallet assets…" />}>
-										<MyAssetsView />
+									<React.Suspense fallback={<Loading label="Loading profile…" />}>
+										<ProfileView />
 									</React.Suspense>
 								}
 							/>
@@ -8199,6 +8201,69 @@ function PendingAssetView() {
 	);
 }
 
+function SetProfilePictureButton({
+	assetId,
+	disabled,
+	image,
+	owner,
+}: {
+	assetId: string;
+	disabled: boolean;
+	image: string;
+	owner: string;
+}) {
+	const [status, setStatus] = React.useState<'idle' | 'checking' | 'signing' | 'uploading' | 'done'>('idle');
+	const [error, setError] = React.useState('');
+	const apply = async () => {
+		setError('');
+		setStatus('checking');
+		try {
+			const current = await readAssetState(assetId, { maxAge: 0 });
+			if (
+				current.state.totalSupply !== '1' ||
+				current.state.denomination > 0 ||
+				ownerOfAsset(current.state) !== owner
+			) {
+				throw new Error('This wallet no longer owns this unique asset.');
+			}
+			await new ProfileClient().setAvatar(owner, image, {
+				onPhase: (phase) => setStatus(phase),
+			});
+			setStatus('done');
+		} catch (cause) {
+			setStatus('idle');
+			setError(cause instanceof Error ? cause.message : 'Profile picture could not be updated.');
+		}
+	};
+	return (
+		<>
+			<Button
+				className="with-icon"
+				disabled={disabled || status !== 'idle'}
+				onClick={() => void apply()}
+				size="custom"
+				type="button"
+			>
+				<UserRound className="ui-icon ui-icon--sm" aria-hidden="true" />
+				{status === 'checking'
+					? 'Checking ownership…'
+					: status === 'signing'
+					? 'Approve profile…'
+					: status === 'uploading'
+					? 'Publishing profile…'
+					: status === 'done'
+					? 'Profile picture set'
+					: 'Set as profile picture'}
+			</Button>
+			{error ? (
+				<small className="profile-picture-error" role="alert">
+					{error}
+				</small>
+			) : null}
+		</>
+	);
+}
+
 function AssetView() {
 	const { collectionId = '', assetId = '' } = useParams();
 	const market = React.useContext(MarketContext);
@@ -9083,6 +9148,14 @@ function AssetView() {
 												: 'Transfer'}
 										</Button>
 									) : null}
+									{wallet.address && mine && asset.image ? (
+										<SetProfilePictureButton
+											assetId={asset.id}
+											disabled={operationBlocksActions || loading || Boolean(error)}
+											image={asset.image}
+											owner={wallet.address}
+										/>
+									) : null}
 								</div>
 							</section>
 						) : null}
@@ -9149,7 +9222,11 @@ function AssetView() {
 							<div className="asset-detail-facts">
 								<div>
 									<span>Owner</span>
-									<strong>{owner ? short(owner) : state ? 'Unassigned' : 'State unavailable'}</strong>
+									{owner ? (
+										<WalletAddress address={owner} label="owner" />
+									) : (
+										<strong>{state ? 'Unassigned' : 'State unavailable'}</strong>
+									)}
 								</div>
 								<div>
 									<span>Collection</span>
