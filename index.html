@@ -4,8 +4,9 @@
 		<meta charset="UTF-8" />
 		<script>
 			const path = window.location.pathname || '/';
+			const basePath = path.replace(/^\/+|\/+$/g, '');
 			const base = document.createElement('base');
-			base.href = path === '/' ? '/' : `${path.replace(/\/+$/, '')}/`;
+			base.href = basePath ? `/${basePath}/` : '/';
 			document.head.appendChild(base);
 		</script>
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
