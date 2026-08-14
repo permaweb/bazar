@@ -794,7 +794,7 @@ describe('collection index loading', () => {
 		});
 
 		expect(result.collections.map((collection) => collection.id)).toEqual(['arweave-names', 'fungible-tokens']);
-		expect(result.unavailable).toEqual(['[TEST] Bazar Fungible Tokens', 'Bazar collection discovery']);
+		expect(result.unavailable).toEqual(['Bazar Fungible Tokens', 'Bazar collection discovery']);
 		expect(progress.at(-1)).toEqual(['arweave-names', 'fungible-tokens']);
 		expect(progress.some((ids) => ids.length === 2)).toBe(true);
 	});

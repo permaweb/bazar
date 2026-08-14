@@ -992,7 +992,7 @@ function collectionCount(value: unknown): number | null {
 function fungibleTokenCollection(assets: AssetSummary[], count = 0): Collection {
 	return {
 		id: 'fungible-tokens',
-		name: '[TEST] Bazar Fungible Tokens',
+		name: 'Bazar Fungible Tokens',
 		description: 'Arweave-native fungible tokens with direct wallet ownership and native $AR settlement.',
 		kind: 'tokens',
 		assets,
