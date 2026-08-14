@@ -1150,7 +1150,7 @@ export function FungibleAssetView({
 					<span>
 						{loading || error
 							? wallet.address
-								? 'Last known balance'
+								? 'Balance'
 								: 'Last known supply'
 							: wallet.address
 							? 'Your liquid balance'

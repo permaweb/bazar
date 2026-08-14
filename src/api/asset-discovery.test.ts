@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { arweaveGraphqlEndpoint } from 'helpers/config';
 
@@ -29,7 +29,7 @@ import {
 	walletAssetGroup,
 } from './asset-discovery';
 import { parseAssetState } from './asset-marketplace';
-import type { Collection } from './collections';
+import { type Collection, HIDDEN_COLLECTION_IDS, replaceHiddenCollectionAssetIndex } from './collections';
 
 const wallet = 'W'.repeat(43);
 const buyer = 'B'.repeat(43);
@@ -40,6 +40,7 @@ const nameAsset = 'N'.repeat(43);
 const traditionalName = 'R'.repeat(43);
 const outsideName = 'Z'.repeat(43);
 const orderId = 'O'.repeat(43);
+const readyHiddenCollectionIndex = Object.fromEntries(HIDDEN_COLLECTION_IDS.map((id) => [id, []]));
 
 function memoryStorage() {
 	const values = new Map<string, string>();
@@ -79,8 +80,11 @@ const collections: Collection[] = [
 	},
 ];
 
+beforeEach(() => replaceHiddenCollectionAssetIndex(readyHiddenCollectionIndex));
+
 afterEach(() => {
 	vi.useRealTimers();
+	replaceHiddenCollectionAssetIndex({});
 });
 
 describe('Bazar atomic asset search', () => {
@@ -135,6 +139,17 @@ describe('Bazar atomic asset search', () => {
 		);
 
 		await expect(loadBazarAtomicAssetById(processId, { fetch: fetcher as typeof fetch })).resolves.toBeNull();
+	});
+
+	it('does not query an exact denied process ID', async () => {
+		const fetcher = vi.fn();
+
+		await expect(
+			loadBazarAtomicAssetById('bASFYsRBQm_dfG__wqRVwMh8bqwEvSTl4lURRBqfu2M', {
+				fetch: fetcher as typeof fetch,
+			})
+		).resolves.toBeNull();
+		expect(fetcher).not.toHaveBeenCalled();
 	});
 
 	it('finds an exact named creation and rejects records outside the atomic contract', async () => {
@@ -1878,6 +1893,42 @@ function activityEdge(cursor: string, processId: string, height: number) {
 }
 
 describe('live candidate resolution', () => {
+	it.each([
+		[`${assetA.slice(0, 7)}…${assetA.slice(-6)}`, 'Chartreuse'],
+		['Curated green', 'Curated green'],
+	])('resolves Atomic Asset names without replacing explicit manifest names', async (indexedName, expectedName) => {
+		const collection: Collection = {
+			id: 'images',
+			name: 'HTML Colors',
+			description: 'Colors',
+			kind: 'images',
+			assets: [{ id: assetA, name: indexedName }],
+		};
+		const state = parseAssetState({
+			device: 'process@1.0',
+			'execution-device': 'token@1.0',
+			'hint-ui-style': 'non-fungible',
+			'swap-device': 'arweave-swap@1.0',
+			'scheduler-device': 'arweave-scheduler@1.0',
+			'scheduler-mode': 'all',
+			ticker: 'ASSET',
+			name: 'Chartreuse',
+			'asset-content-type': 'image/png',
+			'total-supply': '1',
+			denomination: '0',
+			balances: { [wallet]: '1' },
+			orders: {},
+		});
+
+		await expect(
+			resolveAssetCandidates(
+				[{ processId: assetA, height: 1, timestamp: 1, sources: ['market-action'] }],
+				[collection],
+				{ read: async () => ({ provider: 'https://compute.example', state }) }
+			)
+		).resolves.toMatchObject([{ asset: { id: assetA, name: expectedName }, collection: { id: 'images' } }]);
+	});
+
 	it('shares one concurrency budget across progressively enqueued pages', async () => {
 		const started: string[] = [];
 		const releases: Array<() => void> = [];
@@ -2128,6 +2179,7 @@ describe('live candidate resolution', () => {
 		const unloaded = 'U'.repeat(43);
 		const legacy = 'L'.repeat(43);
 		const unsupported = 'V'.repeat(43);
+		const hidden = 'bASFYsRBQm_dfG__wqRVwMh8bqwEvSTl4lURRBqfu2M';
 		const withTokens: Collection[] = [
 			...collections,
 			{
@@ -2138,35 +2190,37 @@ describe('live candidate resolution', () => {
 				assets: [],
 			},
 		];
-		const candidates: AssetCandidate[] = [unloaded, legacy, unsupported].map((processId) => ({
+		const candidates: AssetCandidate[] = [unloaded, legacy, unsupported, hidden].map((processId) => ({
 			processId,
 			height: 1,
 			timestamp: 0,
 			sources: ['transfer'],
 		}));
 
-		expect(restrictAssetCandidates(candidates, withTokens)).toEqual(candidates);
-		const results = await resolveAssetCandidates(candidates, withTokens, {
-			read: async (processId) => ({
-				provider: 'https://compute.example',
-				state: parseAssetState({
-					device: 'process@1.0',
-					'execution-device': 'token@1.0',
-					...(processId === unloaded ? { 'hint-ui-style': 'fungible' } : { 'asset-type': 'fungible' }),
-					'swap-device': 'arweave-swap@1.0',
-					'scheduler-device': 'arweave-scheduler@1.0',
-					'scheduler-mode': processId === unsupported ? 'local' : 'all',
-					name: 'Page two token',
-					ticker: 'PAGE2',
-					'total-supply': '1000000000000',
-					denomination: 12,
-					balances: { [wallet]: '1000000000000' },
-					orders: {},
-				}),
+		expect(restrictAssetCandidates(candidates, withTokens)).toEqual(candidates.slice(0, 3));
+		const read = vi.fn(async (processId: string) => ({
+			provider: 'https://compute.example',
+			state: parseAssetState({
+				device: 'process@1.0',
+				'execution-device': 'token@1.0',
+				...(processId === unloaded ? { 'hint-ui-style': 'fungible' } : { 'asset-type': 'fungible' }),
+				'swap-device': 'arweave-swap@1.0',
+				'scheduler-device': 'arweave-scheduler@1.0',
+				'scheduler-mode': processId === unsupported ? 'local' : 'all',
+				name: 'Page two token',
+				ticker: 'PAGE2',
+				'total-supply': '1000000000000',
+				denomination: 12,
+				balances: { [wallet]: '1000000000000' },
+				orders: {},
 			}),
+		}));
+		const results = await resolveAssetCandidates(candidates, withTokens, {
+			read,
 		});
 
 		expect(results).toHaveLength(2);
+		expect(read.mock.calls.map(([processId]) => processId)).not.toContain(hidden);
 		expect(results.map(({ asset }) => asset)).toEqual(
 			expect.arrayContaining([
 				expect.objectContaining({ id: unloaded, name: 'Page two token', ticker: 'PAGE2' }),

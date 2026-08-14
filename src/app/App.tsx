@@ -99,10 +99,16 @@ import {
 	collectionAsset,
 	enrichImageCollectionAssetMetadata,
 	FUNGIBLE_TOKEN_COLLECTION_ID,
+	hiddenCollectionAssetIndex,
+	hiddenCollectionAssetIndexComplete,
+	isVisibleAssetId,
+	isVisibleCollectionId,
 	loadCollections,
 	loadMoreCarrierNames,
 	loadMoreFungibleTokens,
 	mergeCollectionSnapshots,
+	replaceHiddenCollectionAssetIndex,
+	withVisibleCollectionAssets,
 } from 'api/collections';
 import {
 	advanceMintActivity,
@@ -269,9 +275,11 @@ import {
 import {
 	type HomeListingShell,
 	loadAssetShellSnapshot,
+	loadHiddenCollectionAssetIndex,
 	loadHomeListingSnapshot,
 	loadMarketShellSnapshot,
 	storeAssetShellSnapshot,
+	storeHiddenCollectionAssetIndex,
 	storeHomeListingSnapshot,
 	storeMarketShellSnapshot,
 } from './shell-snapshot';
@@ -313,6 +321,7 @@ function MarketActivityList(props: React.ComponentProps<typeof DeferredMarketAct
 type MarketContextValue = {
 	collections: Collection[];
 	verifiedCollectionIds: ReadonlySet<string>;
+	visibilityReady: boolean;
 	loading: boolean;
 	error: string | null;
 	notice: string | null;
@@ -325,17 +334,29 @@ type MarketContextValue = {
 };
 
 function initialMarketCollections() {
+	replaceHiddenCollectionAssetIndex(loadHiddenCollectionAssetIndex(window.localStorage));
+	if (!hiddenCollectionAssetIndexComplete()) return [];
+	return storedMarketCollections();
+}
+
+function storedMarketCollections() {
 	const cached = loadMarketShellSnapshot(window.localStorage);
 	const localCollections = loadMintedCollections();
 	const mintedAssets = loadMintedAssets();
 	const known = new Set(cached.map((collection) => collection.id));
 	const localAdditions = localCollections.filter((collection) => !known.has(collection.id));
 	for (const collection of localAdditions) known.add(collection.id);
-	return withoutDuplicatedCreatedAssets([
+	return marketCatalogueCollections([
 		...cached,
 		...localAdditions,
 		...(mintedAssets.length && !known.has(CREATED_COLLECTION_ID) ? [createdCollection(mintedAssets)] : []),
 	]);
+}
+
+export function marketCatalogueCollections(collections: Collection[]): Collection[] {
+	return withoutDuplicatedCreatedAssets(
+		collections.filter((collection) => isVisibleCollectionId(collection.id)).map(withVisibleCollectionAssets)
+	);
 }
 
 export function withoutDuplicatedCreatedAssets(collections: Collection[]): Collection[] {
@@ -360,6 +381,7 @@ export function verifiedCollectionIdsFrom(collections: Collection[]) {
 export const MarketContext = React.createContext<MarketContextValue>({
 	collections: [],
 	verifiedCollectionIds: new Set(),
+	visibilityReady: false,
 	loading: true,
 	error: null,
 	notice: null,
@@ -377,6 +399,7 @@ export function App() {
 	const [market, setMarket] = React.useState<MarketContextValue>(() => ({
 		collections: initialMarketCollections(),
 		verifiedCollectionIds: new Set(),
+		visibilityReady: hiddenCollectionAssetIndexComplete(),
 		loading: true,
 		error: null,
 		notice: null,
@@ -395,20 +418,32 @@ export function App() {
 		const controller = new AbortController();
 		void aoClient(gatewaysFromLocation()).warm();
 		setMarket((current) => ({ ...current, verifiedCollectionIds: new Set(), loading: true, error: null }));
-		loadCollections(controller.signal, (collections) => {
-			if (!controller.signal.aborted) {
+		loadCollections(
+			controller.signal,
+			(collections) => {
+				if (!controller.signal.aborted) {
+					setMarket((current) => ({
+						...current,
+						collections: marketCatalogueCollections(
+							mergeCollectionSnapshots(current.collections, collections)
+						),
+						verifiedCollectionIds: new Set([
+							...current.verifiedCollectionIds,
+							...verifiedCollectionIdsFrom(collections),
+						]),
+					}));
+				}
+			},
+			() => {
+				if (controller.signal.aborted) return;
+				storeHiddenCollectionAssetIndex(window.localStorage, hiddenCollectionAssetIndex());
 				setMarket((current) => ({
 					...current,
-					collections: withoutDuplicatedCreatedAssets(
-						mergeCollectionSnapshots(current.collections, collections)
-					),
-					verifiedCollectionIds: new Set([
-						...current.verifiedCollectionIds,
-						...verifiedCollectionIdsFrom(collections),
-					]),
+					collections: current.collections.length ? current.collections : storedMarketCollections(),
+					visibilityReady: true,
 				}));
 			}
-		}).then(
+		).then(
 			({ collections, unavailable }) => {
 				if (controller.signal.aborted) return;
 				const mintedAssets = loadMintedAssets();
@@ -418,7 +453,7 @@ export function App() {
 					const known = new Set(resolved.map((collection) => collection.id));
 					return {
 						...current,
-						collections: withoutDuplicatedCreatedAssets([
+						collections: marketCatalogueCollections([
 							...resolved,
 							...localCollections.filter((collection) => !known.has(collection.id)),
 							...(mintedAssets.length && !known.has(CREATED_COLLECTION_ID)
@@ -471,16 +506,18 @@ export function App() {
 			const added = updated.assets.filter((asset) => !previous.has(asset.id)).length;
 			setMarket((current) => ({
 				...current,
-				collections: current.collections.map((item) => {
-					if (item.id !== collectionId) return item;
-					const seen = new Set(item.assets.map((asset) => asset.id));
-					const additions = updated.assets.filter((asset) => !seen.has(asset.id));
-					return {
-						...item,
-						...updated,
-						assets: [...item.assets, ...additions],
-					};
-				}),
+				collections: marketCatalogueCollections(
+					current.collections.map((item) => {
+						if (item.id !== collectionId) return item;
+						const seen = new Set(item.assets.map((asset) => asset.id));
+						const additions = updated.assets.filter((asset) => !seen.has(asset.id));
+						return {
+							...item,
+							...updated,
+							assets: [...item.assets, ...additions],
+						};
+					})
+				),
 			}));
 			return added;
 		},
@@ -493,16 +530,18 @@ export function App() {
 			const created = createdCollection(assets);
 			return {
 				...current,
-				collections: existing
-					? current.collections.map((item) => (item.id === CREATED_COLLECTION_ID ? created : item))
-					: [...current.collections, created],
+				collections: marketCatalogueCollections(
+					existing
+						? current.collections.map((item) => (item.id === CREATED_COLLECTION_ID ? created : item))
+						: [...current.collections, created]
+				),
 			};
 		});
 	}, []);
 	const addCollection = React.useCallback((collection: Collection) => {
 		setMarket((current) => ({
 			...current,
-			collections: withoutDuplicatedCreatedAssets([
+			collections: marketCatalogueCollections([
 				collection,
 				...current.collections.filter((item) => item.id !== collection.id),
 			]),
@@ -1663,7 +1702,7 @@ function Header() {
 		scope !== 'tokens' &&
 		scope !== 'names';
 	React.useEffect(() => {
-		if (!shouldSearchAtomicIndex) {
+		if (!shouldSearchAtomicIndex || !market.visibilityReady) {
 			setIndexedAtomicSearch({ query: deferredNormalizedQuery, loading: false, error: false, results: [] });
 			return;
 		}
@@ -1688,7 +1727,7 @@ function Header() {
 			window.clearTimeout(timer);
 			controller.abort();
 		};
-	}, [deferredNormalizedQuery, deferredQuery, shouldSearchAtomicIndex]);
+	}, [deferredNormalizedQuery, deferredQuery, market.visibilityReady, shouldSearchAtomicIndex]);
 	const atomicIndexSearchPending =
 		shouldSearchAtomicIndex &&
 		(indexedAtomicSearch.query !== deferredNormalizedQuery || indexedAtomicSearch.loading);
@@ -1774,6 +1813,7 @@ function Header() {
 	const assetResults = React.useMemo(
 		() =>
 			[...localAssetResults, ...atomicIndexResults]
+				.filter(({ asset, collection }) => isVisibleCollectionId(collection.id) && isVisibleAssetId(asset.id))
 				.filter(
 					({ asset }, index, results) =>
 						results.findIndex(({ asset: candidate }) => candidate.id === asset.id) === index
@@ -2763,7 +2803,13 @@ export function publishHomeListingResult(
 ) {
 	const previous = current[collectionId] ?? [];
 	const existing = previous.findIndex((candidate) => candidate.id === asset.id);
-	if (listed && existing >= 0) return current;
+	if (listed && existing >= 0) {
+		if (previous[existing] === asset) return current;
+		return {
+			...current,
+			[collectionId]: [...previous.slice(0, existing), asset, ...previous.slice(existing + 1)],
+		};
+	}
 	if (!listed && existing < 0) return current;
 	return {
 		...current,
@@ -2771,6 +2817,14 @@ export function publishHomeListingResult(
 			? [...previous, asset]
 			: [...previous.slice(0, existing), ...previous.slice(existing + 1)],
 	};
+}
+
+export function reconcileHomeListingAssets(previous: AssetSummary[], assetIds: string[], collection: Collection) {
+	const previousById = new Map(previous.map((asset) => [asset.id, asset]));
+	return assetIds.flatMap((assetId) => {
+		const asset = previousById.get(assetId) ?? collectionAsset(collection, assetId);
+		return asset ? [asset] : [];
+	});
 }
 
 export function homeFloorScanSummary(scan: HomeFloorScan): HomeMarketSummary {
@@ -2951,6 +3005,46 @@ export function homeMarketPriceValue(value: string | null | undefined) {
 	return Number.isFinite(parsed) ? parsed : Number.POSITIVE_INFINITY;
 }
 
+export function homeTokenPriceChangePercent(
+	events: CollectionActivityEvent[],
+	now = Date.now(),
+	windowComplete = true
+) {
+	if (!windowComplete) return null;
+	const threshold = now - 24 * 60 * 60 * 1_000;
+	const asks = events
+		.flatMap((event) => {
+			if (
+				event.action !== 'make-offer' ||
+				!event.asking ||
+				!event.quantity ||
+				(event.timestamp < 1_000_000_000_000 ? event.timestamp * 1_000 : event.timestamp) < threshold
+			)
+				return [];
+			try {
+				const asking = BigInt(event.asking);
+				const quantity = BigInt(event.quantity);
+				return asking > 0n && quantity > 0n ? [{ ...event, asking, quantity }] : [];
+			} catch {
+				return [];
+			}
+		})
+		.sort((left, right) => left.timestamp - right.timestamp || left.id.localeCompare(right.id));
+	if (asks.length < 2) return null;
+	const first = asks[0];
+	const last = asks.at(-1)!;
+	const baseline = first.asking * last.quantity;
+	const delta = last.asking * first.quantity - baseline;
+	const scaled = (delta * 10_000n) / baseline;
+	if (scaled > BigInt(Number.MAX_SAFE_INTEGER) || scaled < BigInt(Number.MIN_SAFE_INTEGER)) return null;
+	return Number(scaled) / 100;
+}
+
+export function homeTokenPriceChangeLabel(change: number | null | 'unavailable') {
+	if (change === null || change === 'unavailable' || !Number.isFinite(change)) return '—';
+	return `${change > 0 ? '+' : ''}${change.toLocaleString(undefined, { maximumFractionDigits: 2 })}%`;
+}
+
 export function homeMarketSummariesReady(
 	loading: boolean,
 	keys: string[],
@@ -3093,7 +3187,7 @@ function Home() {
 		setCachedHomeListings(
 			loadHomeListingSnapshot(window.sessionStorage, homeListingSnapshotScope, HOME_LISTING_SNAPSHOT_MAX_AGE_MS)
 		);
-	}, [homeListingSnapshotScope]);
+	}, [homeListingSnapshotScope, market.visibilityReady]);
 	const liveHomeListingShells = React.useMemo(
 		() => portableHomeListings.flatMap((result) => homeListingShell(result) ?? []),
 		[portableHomeListings]
@@ -3105,15 +3199,17 @@ function Home() {
 	}, [cachedHomeListings, liveHomeListingShells]);
 	const displayHomeListings = React.useMemo(
 		() =>
-			homeListingShells.map(({ asset, collection, activity }) => {
-				const currentCollection = market.collections.find((candidate) => candidate.id === collection.id);
-				const currentAsset = currentCollection ? collectionAsset(currentCollection, asset.id) : undefined;
-				return {
-					asset: currentAsset?.image && !asset.image ? { ...asset, image: currentAsset.image } : asset,
-					collection: currentCollection ?? collection,
-					activity,
-				};
-			}),
+			homeListingShells
+				.filter(({ asset, collection }) => isVisibleCollectionId(collection.id) && isVisibleAssetId(asset.id))
+				.map(({ asset, collection, activity }) => {
+					const currentCollection = market.collections.find((candidate) => candidate.id === collection.id);
+					const currentAsset = currentCollection ? collectionAsset(currentCollection, asset.id) : undefined;
+					return {
+						asset: currentAsset?.image && !asset.image ? { ...asset, image: currentAsset.image } : asset,
+						collection: currentCollection ?? collection,
+						activity,
+					};
+				}),
 		[homeListingShells, market.collections]
 	);
 	const [portableHomeListingsLoading, setPortableHomeListingsLoading] = React.useState(false);
@@ -3222,6 +3318,14 @@ function Home() {
 	const discoverTokenPagination = homeAssetPage(discoverTokens, discoverTokenPage, HOME_DISCOVER_TOKEN_PAGE_SIZE);
 	const discoverOverviewAssets = [...discoverTokenPagination.items, ...discoverCollectibles.slice(0, 12)];
 	const assetPagination = homeAssetPage(displayedAssets, assetPage);
+	const visibleDiscoverTokens =
+		assetType === 'all'
+			? discoverTokenPagination.items
+			: assetType === 'tokens'
+			? assetPagination.items.filter(({ collection }) => collection.kind === 'tokens')
+			: [];
+	const visibleDiscoverTokenKey = visibleDiscoverTokens.map(({ asset }) => asset.id).join(',');
+	const [tokenPriceChanges, setTokenPriceChanges] = React.useState<Record<string, number | null | 'unavailable'>>({});
 	const assets =
 		assetView === 'all' ? (assetType === 'all' ? discoverOverviewAssets : assetPagination.items) : assetCandidates;
 	const assetKey = assets.map(({ asset }) => asset.id).join(',');
@@ -3281,6 +3385,46 @@ function Home() {
 		},
 		[]
 	);
+	React.useEffect(() => {
+		if (!shouldLoadAssetSummaries || !visibleDiscoverTokenKey) {
+			setTokenPriceChanges({});
+			return;
+		}
+		const controller = new AbortController();
+		const tokenIds = visibleDiscoverTokenKey.split(',');
+		const eventLimit = 200;
+		setTokenPriceChanges({});
+		void discoverCollectionActivity({
+			actions: ['make-offer'],
+			limit: eventLimit,
+			recipients: tokenIds,
+			signal: controller.signal,
+		}).then(
+			(events) => {
+				if (controller.signal.aborted) return;
+				const now = Date.now();
+				const windowComplete = events.length < eventLimit;
+				setTokenPriceChanges(
+					Object.fromEntries(
+						tokenIds.map((tokenId) => [
+							tokenId,
+							homeTokenPriceChangePercent(
+								events.filter((event) => event.processId === tokenId),
+								now,
+								windowComplete
+							),
+						])
+					)
+				);
+			},
+			() => {
+				if (!controller.signal.aborted) {
+					setTokenPriceChanges(Object.fromEntries(tokenIds.map((tokenId) => [tokenId, 'unavailable'])));
+				}
+			}
+		);
+		return () => controller.abort();
+	}, [homeListingSnapshotScope, shouldLoadAssetSummaries, visibleDiscoverTokenKey]);
 	React.useEffect(() => {
 		if (!marketShellReady || !shouldLoadAssetSummaries) {
 			setPortableHomeListingsLoading(false);
@@ -3665,7 +3809,7 @@ function Home() {
 								commitHomeFloorResult(floorScan, candidate.processId, outcome.asking, outcome.failure);
 							} else if (!floorScan) outcomes.set(candidate.processId, outcome);
 							if (cause) return;
-							const asset = collectionAsset(collection, candidate.processId);
+							const asset = result?.asset ?? collectionAsset(collection, candidate.processId);
 							if (!asset) return;
 							setVerifiedHomeListings((current) =>
 								publishHomeListingResult(current, collection.id, asset, Boolean(order))
@@ -3764,25 +3908,28 @@ function Home() {
 						controller.signal.throwIfAborted();
 					}
 					if (!controller.signal.aborted) {
-						const verifiedListings = [...floorScan.settled].flatMap(([processId, asking]) => {
-							if (asking === null) return [];
-							const asset = collectionAsset(collection, processId);
-							return asset ? [asset] : [];
-						});
+						const verifiedListingIds = [...floorScan.settled].flatMap(([processId, asking]) =>
+							asking === null ? [] : [processId]
+						);
 						const activityScan = collectionActivityScans.current.get(collection.id);
 						setVerifiedHomeListingActivity((current) => {
 							const next = { ...current };
-							for (const asset of verifiedListings) {
-								const candidate = activityScan?.candidates.get(asset.id);
-								if (candidate) next[asset.id] = candidate;
+							for (const assetId of verifiedListingIds) {
+								const candidate = activityScan?.candidates.get(assetId);
+								if (candidate) next[assetId] = candidate;
 							}
 							return next;
 						});
 						setVerifiedHomeListings((current) => {
 							const previous = current[collection.id] ?? [];
+							const verifiedListings = reconcileHomeListingAssets(
+								previous,
+								verifiedListingIds,
+								collection
+							);
 							if (
 								previous.length === verifiedListings.length &&
-								previous.every((asset, index) => asset.id === verifiedListings[index]?.id)
+								previous.every((asset, index) => asset === verifiedListings[index])
 							)
 								return current;
 							return { ...current, [collection.id]: verifiedListings };
@@ -3939,6 +4086,7 @@ function Home() {
 		<div className="token-market-list" role="list">
 			{items.map(({ asset, collection }, index) => {
 				const price = displayAssetPrices[asset.id];
+				const change = tokenPriceChanges[asset.id];
 				return (
 					<TokenMarketRow
 						asset={{ ...asset, image: assetImages[asset.id] ?? asset.image }}
@@ -3949,6 +4097,19 @@ function Home() {
 							label: 'Unit price',
 							value: price ? homeMarketSummaryLabel(price, 'Not listed') : <HomePendingMarketValue />,
 							tone: homeMarketSummaryListed(price) ? 'positive' : 'default',
+						}}
+						secondaryMetric={{
+							label: '24h change',
+							value:
+								change === undefined ? <HomePendingMarketValue /> : homeTokenPriceChangeLabel(change),
+							tone:
+								typeof change !== 'number'
+									? 'muted'
+									: change > 0
+									? 'positive'
+									: change < 0
+									? 'negative'
+									: 'muted',
 						}}
 						onWarm={() => prefetchAssetPage(asset.id, true)}
 						priority={index < 2}
@@ -4347,6 +4508,7 @@ function Home() {
 const globalActivityCollections = new WeakMap<Collection[], Map<string, Collection>>();
 
 export function globalActivityCollection(collections: Collection[], processId: string) {
+	if (!isVisibleAssetId(processId)) return undefined;
 	let indexed = globalActivityCollections.get(collections);
 	if (!indexed) {
 		indexed = new Map();
@@ -4355,7 +4517,9 @@ export function globalActivityCollection(collections: Collection[], processId: s
 				collection.kind === 'names'
 					? Object.keys(collection.namespace?.namesById ?? {})
 					: collection.assets.map((asset) => asset.id);
-			for (const id of processIds) indexed.set(id, collection);
+			for (const id of processIds) {
+				if (isVisibleAssetId(id)) indexed.set(id, collection);
+			}
 		}
 		globalActivityCollections.set(collections, indexed);
 	}
@@ -4400,7 +4564,9 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 	React.useEffect(() => {
 		if (!activityScope || scopeRef.current === activityScope) return;
 		try {
-			const cachedEvents = loadMarketActivity(window.localStorage, activityScope);
+			const cachedEvents = loadMarketActivity(window.localStorage, activityScope).filter((event) =>
+				Boolean(globalActivityCollection(collections, event.processId))
+			);
 			if (!cachedEvents.length) return;
 			scopeRef.current = activityScope;
 			eventsRef.current = cachedEvents;
@@ -4409,7 +4575,7 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 		} catch {
 			// Browser storage is optional; live Arweave discovery continues below.
 		}
-	}, [activityScope]);
+	}, [activityScope, collections]);
 
 	React.useEffect(() => {
 		if (marketLoading) return;
@@ -4423,7 +4589,9 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 		let cachedEvents: CollectionActivityEvent[] = [];
 		if (!sameScope) {
 			try {
-				cachedEvents = loadMarketActivity(window.localStorage, activityScope);
+				cachedEvents = loadMarketActivity(window.localStorage, activityScope).filter((event) =>
+					Boolean(globalActivityCollection(collections, event.processId))
+				);
 			} catch {
 				// Browser storage is optional; live Arweave discovery continues below.
 			}
@@ -5121,10 +5289,10 @@ export function collectionActivityWindowDelta(
 export function collectionCandidateMembership(collection: Collection) {
 	if (collection.kind === 'names') {
 		const namesById = collection.namespace?.namesById ?? {};
-		return (processId: string) => Object.hasOwn(namesById, processId);
+		return (processId: string) => isVisibleAssetId(processId) && Object.hasOwn(namesById, processId);
 	}
-	const assetIds = new Set(collection.assets.map((asset) => asset.id));
-	return (processId: string) => assetIds.has(processId);
+	const assetIds = new Set(collection.assets.filter((asset) => isVisibleAssetId(asset.id)).map((asset) => asset.id));
+	return (processId: string) => isVisibleAssetId(processId) && assetIds.has(processId);
 }
 
 export function collectionDefaultsToListed(collectionId: string) {
@@ -5179,6 +5347,57 @@ export function useProgressiveAssetPageSize() {
 function CollectionRoute() {
 	const { collectionId = '' } = useParams();
 	return <CollectionView key={collectionId} />;
+}
+
+export function CollectionDescription({ description }: { description: string }) {
+	const text = description.trim();
+	const contentId = React.useId();
+	const paragraphRef = React.useRef<HTMLParagraphElement>(null);
+	const [expanded, setExpanded] = React.useState(false);
+	const [overflowing, setOverflowing] = React.useState(false);
+
+	React.useEffect(() => {
+		const paragraph = paragraphRef.current;
+		if (!paragraph) return;
+		let disposed = false;
+		const update = () => {
+			if (disposed || !paragraph.classList.contains('is-collapsed')) return;
+			const next = paragraph.scrollHeight > paragraph.clientHeight + 1;
+			setOverflowing((current) => (current === next ? current : next));
+		};
+		const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(update);
+		observer?.observe(paragraph);
+		window.addEventListener('resize', update);
+		void document.fonts?.ready.then(update);
+		update();
+		return () => {
+			disposed = true;
+			observer?.disconnect();
+			window.removeEventListener('resize', update);
+		};
+	}, [expanded, text]);
+
+	if (!text) return null;
+	return (
+		<div className="collection-description">
+			<p className={expanded ? undefined : 'is-collapsed'} id={contentId} ref={paragraphRef}>
+				{text}
+			</p>
+			{overflowing ? (
+				<Button
+					aria-controls={contentId}
+					aria-expanded={expanded}
+					className="collection-description-toggle"
+					onClick={() => setExpanded((current) => !current)}
+					size="custom"
+					variant="ghost"
+				>
+					Show {expanded ? 'less' : 'more'}
+					<ChevronDown aria-hidden="true" />
+				</Button>
+			) : null}
+		</div>
+	);
 }
 
 function CollectionView() {
@@ -6166,9 +6385,10 @@ function CollectionView() {
 				{collection.kind === 'tokens' ? 'Discover' : 'All collections'}
 			</Link>
 			<div className="collection-title">
-				<div>
+				<div className="collection-heading-copy">
 					<p className="eyebrow">{collectionEyebrow(collection)}</p>
 					<h1>{collectionDisplayName(collection)}</h1>
+					<CollectionDescription description={collection.description} />
 				</div>
 				{collection.kind === 'images' && ownedCollection?.owner === wallet.address ? (
 					<div className="collection-title-copy">
@@ -6849,7 +7069,9 @@ function CollectionActivityView() {
 		let cachedEvents: CollectionActivityEvent[] = [];
 		if (!sameScope) {
 			try {
-				cachedEvents = loadMarketActivity(window.localStorage, activityScope);
+				cachedEvents = loadMarketActivity(window.localStorage, activityScope).filter((event) =>
+					includesCollectionAsset(event.processId)
+				);
 			} catch {
 				// Browser storage is optional; live Arweave discovery continues below.
 			}
@@ -6972,9 +7194,10 @@ function CollectionActivityView() {
 				<ArrowLeft className="ui-icon ui-icon--sm" aria-hidden="true" /> All collections
 			</Link>
 			<div className="collection-title">
-				<div>
+				<div className="collection-heading-copy">
 					<p className="eyebrow">Arweave activity</p>
 					<h1>{collection.name}</h1>
+					<CollectionDescription description={collection.description} />
 				</div>
 			</div>
 			<CollectionTabs collection={collection} active="activity" />
@@ -7495,6 +7718,7 @@ export function assetDetailCanResolve({
 	directAtomicRoute: boolean;
 	directFungibleRoute?: boolean;
 }) {
+	if (!isVisibleAssetId(assetId)) return false;
 	return Boolean(
 		directAtomicRoute ||
 			directFungibleRoute ||
@@ -7916,12 +8140,18 @@ function AssetView() {
 	const wallet = useWallet();
 	const indexedCollection = market.collections.find((item) => item.id === collectionId);
 	const indexedAsset = indexedCollection ? collectionAsset(indexedCollection, assetId) : undefined;
-	const cachedAsset = React.useMemo(() => loadAssetShellSnapshot(window.localStorage, assetId), [assetId]);
+	const cachedAsset = React.useMemo(
+		() => loadAssetShellSnapshot(window.localStorage, assetId),
+		[assetId, market.visibilityReady]
+	);
 	const [indexedAtomicResult, setIndexedAtomicResult] = React.useState<{
 		assetId: string;
 		result: { asset: AssetSummary; collection: Collection } | null;
 	}>({ assetId, result: null });
-	const prefetchedState = React.useMemo(() => cachedAssetState(assetId), [assetId]);
+	const prefetchedState = React.useMemo(
+		() => (market.visibilityReady ? cachedAssetState(assetId) : undefined),
+		[assetId, market.visibilityReady]
+	);
 	const [liveResult, setLiveResult] = React.useState<{
 		assetId: string;
 		state: AssetState | null;
@@ -7943,11 +8173,13 @@ function AssetView() {
 	const loading = liveResult.assetId !== assetId || liveResult.loading;
 	const provider = liveResult.assetId === assetId ? liveResult.provider : prefetchedState?.provider ?? '';
 	const verifiedAt = liveResult.assetId === assetId ? liveResult.verifiedAt : prefetchedState?.verifiedAt ?? null;
-	const directAtomicRoute = collectionId === CREATED_COLLECTION_ID && ARWEAVE_ADDRESS.test(assetId);
+	const directAtomicRoute =
+		collectionId === CREATED_COLLECTION_ID && ARWEAVE_ADDRESS.test(assetId) && isVisibleAssetId(assetId);
 	const indexedAtomic = indexedAtomicResult.assetId === assetId ? indexedAtomicResult.result : null;
 	React.useEffect(() => {
 		if (
 			!ARWEAVE_ADDRESS.test(assetId) ||
+			!isVisibleAssetId(assetId) ||
 			collectionId === FUNGIBLE_TOKEN_COLLECTION_ID ||
 			collectionId === 'arweave-names'
 		)
@@ -7962,7 +8194,7 @@ function AssetView() {
 			}
 		);
 		return () => controller.abort();
-	}, [assetId, collectionId]);
+	}, [assetId, collectionId, market.visibilityReady]);
 	const canResolveAsset = assetDetailCanResolve({
 		assetId,
 		cachedAsset,
@@ -7970,7 +8202,8 @@ function AssetView() {
 		indexedMetadata: indexedAtomic?.asset,
 		indexedCollection,
 		directAtomicRoute,
-		directFungibleRoute: collectionId === 'fungible-tokens' && ARWEAVE_ADDRESS.test(assetId),
+		directFungibleRoute:
+			collectionId === 'fungible-tokens' && ARWEAVE_ADDRESS.test(assetId) && isVisibleAssetId(assetId),
 	});
 	const directAtomicAsset =
 		directAtomicRoute && state ? bazarAtomicAssetFromState(assetId, state, provider || undefined) : null;
@@ -8167,7 +8400,7 @@ function AssetView() {
 		return () => window.removeEventListener('storage', onStorage);
 	}, [assetId, operation, operationActivityEntry, refreshAsset, removeOperationActivity, wallet.address]);
 	React.useEffect(() => {
-		void prioritizeAssetStatePrefetch(assetId);
+		if (isVisibleAssetId(assetId)) void prioritizeAssetStatePrefetch(assetId);
 		void load();
 		return () => {
 			requestRef.current?.abort();
@@ -10574,8 +10807,9 @@ const canonicalNameSearchIndexes = new WeakMap<object, ReadonlyArray<{ asset: As
 
 export function collectionSearchAssets(collection: Collection, query: string): AssetSummary[] {
 	const normalizedQuery = query.trim().toLowerCase();
-	if (!normalizedQuery) return collection.assets;
-	const loadedMatches = collection.assets.filter((asset) => assetMatchesCollectionQuery(asset, normalizedQuery));
+	const visibleAssets = collection.assets.filter((asset) => isVisibleAssetId(asset.id));
+	if (!normalizedQuery) return visibleAssets;
+	const loadedMatches = visibleAssets.filter((asset) => assetMatchesCollectionQuery(asset, normalizedQuery));
 	if (collection.kind !== 'names' || !collection.namespace) return loadedMatches;
 	const seen = new Set(loadedMatches.map((asset) => asset.id));
 	let canonicalIndex = canonicalNameSearchIndexes.get(collection.namespace.namesById);
@@ -10587,7 +10821,10 @@ export function collectionSearchAssets(collection: Collection, query: string): A
 		canonicalNameSearchIndexes.set(collection.namespace.namesById, canonicalIndex);
 	}
 	const canonicalMatches = canonicalIndex
-		.filter(({ asset, searchName }) => searchName.includes(normalizedQuery) && !seen.has(asset.id))
+		.filter(
+			({ asset, searchName }) =>
+				isVisibleAssetId(asset.id) && searchName.includes(normalizedQuery) && !seen.has(asset.id)
+		)
 		.map(({ asset }) => asset);
 	return [...loadedMatches, ...canonicalMatches];
 }
@@ -10595,7 +10832,7 @@ export function collectionSearchAssets(collection: Collection, query: string): A
 export function collectionMoreAssets(assets: AssetSummary[], assetId: string, limit = 4): AssetSummary[] {
 	const result: AssetSummary[] = [];
 	for (const asset of assets) {
-		if (asset.id === assetId) continue;
+		if (asset.id === assetId || !isVisibleAssetId(asset.id)) continue;
 		result.push(asset);
 		if (result.length === limit) break;
 	}
@@ -10613,6 +10850,7 @@ export function assetMatchesCollectionQuery(asset: AssetSummary, query: string):
 }
 
 export function marketplaceAssetMatchesSearch(asset: AssetSummary, collection: Collection, query: string): boolean {
+	if (!isVisibleCollectionId(collection.id) || !isVisibleAssetId(asset.id)) return false;
 	const normalizedQuery = query.trim().toLowerCase();
 	return (
 		assetMatchesCollectionQuery(asset, normalizedQuery) ||
@@ -10621,7 +10859,7 @@ export function marketplaceAssetMatchesSearch(asset: AssetSummary, collection: C
 }
 
 export function directTokenSearchCollection(collections: Collection[], query: string): Collection | undefined {
-	return ARWEAVE_ADDRESS.test(query.trim())
+	return ARWEAVE_ADDRESS.test(query.trim()) && isVisibleAssetId(query.trim())
 		? collections.find((collection) => collection.kind === 'tokens')
 		: undefined;
 }
@@ -10646,10 +10884,12 @@ export function interleaveCollectionAssets(
 	limit: number,
 	include: (asset: AssetSummary, collection: Collection) => boolean = () => true
 ) {
-	const queues = collections.map((collection) => ({
-		collection,
-		assets: collection.assets.filter((asset) => include(asset, collection)),
-	}));
+	const queues = collections
+		.filter((collection) => isVisibleCollectionId(collection.id))
+		.map((collection) => ({
+			collection,
+			assets: collection.assets.filter((asset) => isVisibleAssetId(asset.id) && include(asset, collection)),
+		}));
 	const results: { asset: AssetSummary; collection: Collection }[] = [];
 	for (let index = 0; results.length < limit && queues.some(({ assets }) => index < assets.length); index += 1) {
 		for (const { collection, assets } of queues) {
@@ -10680,12 +10920,23 @@ export function homeDiscoveryAssets(
 		limit,
 		(asset, collection) => Boolean(asset.image || asset.media) || collection.kind === 'tokens'
 	);
+	const verifiedAssets = new Map(
+		Object.values(verifiedListings)
+			.flat()
+			.map((asset) => [asset.id, asset])
+	);
 	const seen = new Set<string>();
-	const portable = [...portableListings].sort((left, right) => {
-		if (!left.activity || !right.activity) return 0;
-		return right.activity.height - left.activity.height || right.activity.timestamp - left.activity.timestamp;
-	});
+	const portable = [...portableListings]
+		.sort((left, right) => {
+			if (!left.activity || !right.activity) return 0;
+			return right.activity.height - left.activity.height || right.activity.timestamp - left.activity.timestamp;
+		})
+		.map((listing) => {
+			const asset = verifiedAssets.get(listing.asset.id);
+			return asset ? { ...listing, asset } : listing;
+		});
 	return [...portable, ...verified, ...fallback]
+		.filter(({ asset, collection }) => isVisibleCollectionId(collection.id) && isVisibleAssetId(asset.id))
 		.filter(({ asset }) => {
 			if (seen.has(asset.id)) return false;
 			seen.add(asset.id);
@@ -10706,6 +10957,7 @@ export function homeAllAssets(
 	);
 	const seen = new Set<string>();
 	return [...indexed, ...portableListings]
+		.filter(({ asset, collection }) => isVisibleCollectionId(collection.id) && isVisibleAssetId(asset.id))
 		.filter(({ asset }) => {
 			if (seen.has(asset.id)) return false;
 			seen.add(asset.id);
@@ -10892,6 +11144,7 @@ function hasStoredSignedTransaction(storage: Pick<Storage, 'key' | 'length'>) {
 }
 
 function prefetchAssetPage(processId: string, fungible = false) {
+	if (!isVisibleAssetId(processId)) return;
 	if (fungible) void import('../routes/FungibleAssetRoute');
 	void prefetchAssetState(processId).then((result) => {
 		if (!fungible && result && (result.state.totalSupply !== '1' || result.state.denomination > 0)) {
