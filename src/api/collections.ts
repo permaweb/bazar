@@ -229,6 +229,24 @@ export function mergeCollectionSnapshots(
 				};
 			}
 			if (
+				collection.kind === 'images' &&
+				replacement.kind === 'images' &&
+				collection.manifestId &&
+				collection.manifestId === replacement.manifestId
+			) {
+				const retained = retainedCollections.get(collection.id) ?? collection;
+				const retainedAssets = new Map(retained.assets.map((asset) => [asset.id, asset]));
+				return {
+					...replacement,
+					assets: replacement.assets.map((asset) => {
+						const previous = retainedAssets.get(asset.id);
+						return previous && asset.name === shortId(asset.id) && previous.name !== shortId(previous.id)
+							? { ...asset, ...previous, id: asset.id }
+							: asset;
+					}),
+				};
+			}
+			if (
 				collection.kind !== 'names' ||
 				replacement.kind !== 'names' ||
 				collection.namespace?.manifestId !== replacement.namespace?.manifestId
@@ -477,10 +495,7 @@ async function loadDiscoveredImageCollection(
 			carrierManifestId((await readAssetState(candidate.id, { signal, maxAge: 30, maxAttempts: 1 })).state) ?? '';
 		if (!manifestId) throw new Error('collection-reference-unavailable');
 	}
-	return enrichImageCollectionAssetMetadata(
-		imageCollection(candidate.id, manifestId, 'carrier', await fetchJson<ImageManifest>(manifestId, signal)),
-		signal
-	);
+	return imageCollection(candidate.id, manifestId, 'carrier', await fetchJson<ImageManifest>(manifestId, signal));
 }
 
 type AtomicAssetIndexNode = { id?: unknown; tags?: unknown };

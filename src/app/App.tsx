@@ -97,6 +97,7 @@ import {
 	type AssetSummary,
 	type Collection,
 	collectionAsset,
+	enrichImageCollectionAssetMetadata,
 	FUNGIBLE_TOKEN_COLLECTION_ID,
 	loadCollections,
 	loadMoreCarrierNames,
@@ -5181,6 +5182,28 @@ function CollectionView() {
 	const wallet = useWallet();
 	const { beginUpload, failUpload, finishUpload, recordUploadTransaction, updateUpload } = useOperationActivity();
 	const collection = market.collections.find((item) => item.id === collectionId);
+	const metadataEnrichmentScope =
+		collection?.kind === 'images' && collection.manifestId ? `${collection.id}:${collection.manifestId}` : '';
+	const metadataEnrichmentTarget = React.useRef(collection);
+	metadataEnrichmentTarget.current = collection;
+	const metadataEnrichmentScopes = React.useRef(new Set<string>());
+	React.useEffect(() => {
+		const target = metadataEnrichmentTarget.current;
+		if (!metadataEnrichmentScope || target?.kind !== 'images') return;
+		if (metadataEnrichmentScopes.current.has(metadataEnrichmentScope)) return;
+		metadataEnrichmentScopes.current.add(metadataEnrichmentScope);
+		const controller = new AbortController();
+		void enrichImageCollectionAssetMetadata(target, controller.signal).then(
+			(enriched) => {
+				if (!controller.signal.aborted && enriched !== target) market.addCollection(enriched);
+			},
+			() => undefined
+		);
+		return () => {
+			controller.abort();
+			metadataEnrichmentScopes.current.delete(metadataEnrichmentScope);
+		};
+	}, [metadataEnrichmentScope, market.addCollection]);
 	const ownedCollection = React.useMemo(
 		() => loadMintedCollections().find((item) => item.id === collectionId),
 		[collectionId, collection?.assets]

@@ -167,6 +167,33 @@ describe('collection index loading', () => {
 		expect(discoveryQuery).toContain('sort: HEIGHT_DESC');
 		expect(discoveryQuery).toContain('{ name: "ticker", values: ["COLLECTION"] }');
 		expect(discoveryQuery).not.toContain('{ name: "app-name"');
+		expect(
+			fetcher.mock.calls.some(
+				([, init]) => typeof init?.body === 'string' && init.body.includes('BazarAtomicAssetsByIds')
+			)
+		).toBe(false);
+		expect(collections[0].assets[0].name).toBe('AAAAAAA…AAAAAA');
+	});
+
+	it('retains enriched image metadata when the same immutable manifest is republished', () => {
+		const collectionId = 'C'.repeat(43);
+		const manifestId = 'M'.repeat(43);
+		const assetId = 'A'.repeat(43);
+		const placeholder = `${assetId.slice(0, 7)}…${assetId.slice(-6)}`;
+		const current: Collection = {
+			id: collectionId,
+			name: 'Colors',
+			description: '',
+			kind: 'images',
+			manifestId,
+			assets: [{ id: assetId, name: 'AliceBlue', image: `https://arweave.net/${assetId}` }],
+		};
+		const replacement: Collection = {
+			...current,
+			assets: [{ id: assetId, name: placeholder, image: `https://arweave.net/${assetId}` }],
+		};
+
+		expect(mergeCollectionSnapshots([current], [replacement])[0].assets[0].name).toBe('AliceBlue');
 	});
 
 	it('skips tagged collection candidates whose live carrier or immutable manifest is invalid', async () => {
