@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { purchaseGatewaySwitchNotice, purchaseLifecycleStatus } from './purchase-lifecycle';
+import {
+	purchaseGatewaySwitchNotice,
+	purchaseLifecycleMilestone,
+	purchaseLifecycleStatus,
+	purchaseSkipKind,
+} from './purchase-lifecycle';
 
 const registrationId = 'R'.repeat(43);
 const paymentId = 'P'.repeat(43);
@@ -60,6 +65,25 @@ describe('purchase lifecycle copy', () => {
 		['complete', 'Purchase complete'],
 	])('distinguishes the %s phase', (stage, expected) => {
 		expect(purchaseLifecycleStatus(state(stage))).toContain(expected);
+	});
+
+	it.each([
+		['registration-confirming', 'registration', 'Reservation'],
+		['payment-confirming', 'payment', 'Payment'],
+	] as const)('does not call a dispatched %s transaction mined at depth zero', (stage, transaction, label) => {
+		const current = state(stage);
+		current[transaction].consensus.confirmations = 0;
+		expect(purchaseLifecycleStatus(current)).toBe(`${label} dispatched. Waiting for it to be mined.`);
+		expect(purchaseLifecycleMilestone(current)).toBe('accepted');
+	});
+
+	it('offers YOLO at depth three and Skip at depth four', () => {
+		const current = state('registration-confirming');
+		current.canSkip = true;
+		current.registration.consensus.confirmations = 3;
+		expect(purchaseSkipKind(current)).toBe('yolo');
+		current.registration.consensus.confirmations = 4;
+		expect(purchaseSkipKind(current)).toBe('skip');
 	});
 
 	it.each([

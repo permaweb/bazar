@@ -155,6 +155,7 @@ export type OfferInput = {
 	quantity: string;
 	asking: string;
 	minimumFee?: string;
+	/** Relative number of L1 blocks for which a reservation remains valid. */
 	deadline?: number;
 	seller?: string;
 };

@@ -7,7 +7,7 @@ import { theme } from 'helpers/theme';
 
 import { type ArweaveSyncStep, ArweaveTransactionSync } from '.';
 
-function renderControl(skipKind?: 'yolo' | 'skip', confirmations = 2) {
+function renderControl(skipKind?: 'yolo' | 'skip', confirmations = 3) {
 	const steps: ArweaveSyncStep[] = [
 		{
 			key: 'register',
@@ -36,6 +36,7 @@ describe('purchase skip control', () => {
 		const markup = renderControl('yolo');
 		expect(markup).toContain('Continue early?');
 		expect(markup).toContain('>YOLO</button>');
+		expect(markup).toContain('Continue after three confirmations.');
 		expect(markup).toContain('higher reorganization risk');
 		expect(markup).toContain('aria-describedby=');
 		expect(markup).toContain('Registration protects you from sending a payment while another user is purchasing');

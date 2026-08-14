@@ -152,6 +152,8 @@ export type MintPhase = 'signing-asset' | 'uploading-asset' | 'signing-artwork' 
 export const MAX_FUNGIBLE_TICKER_LENGTH = 32;
 /** Mirrors MAX_TOKEN_DENOMINATION in asset-marketplace.ts — parseAssetState rejects anything above it. */
 export const MAX_FUNGIBLE_DENOMINATION = 255;
+/** A deliberately generous, finite ceiling on creator-entered whole-token supply. */
+export const MAX_FUNGIBLE_WHOLE_SUPPLY = 10n ** 15n;
 
 export type FungibleMintInput = {
 	name: string;
@@ -967,6 +969,8 @@ export function fungibleAtomicSupply(wholeSupply: string, denomination: string):
 	if (typeof wholeSupply !== 'string' || !/^[1-9]\d*$/.test(wholeSupply)) {
 		throw new TypeError('mint-supply-invalid');
 	}
+	const whole = BigInt(wholeSupply);
+	if (whole > MAX_FUNGIBLE_WHOLE_SUPPLY) throw new TypeError('mint-supply-too-large');
 	if (
 		typeof denomination !== 'string' ||
 		!/^(?:0|[1-9]\d*)$/.test(denomination) ||
@@ -974,7 +978,7 @@ export function fungibleAtomicSupply(wholeSupply: string, denomination: string):
 	) {
 		throw new TypeError('mint-denomination-invalid');
 	}
-	return (BigInt(wholeSupply) * 10n ** BigInt(denomination)).toString();
+	return (whole * 10n ** BigInt(denomination)).toString();
 }
 
 export function validateFungibleLogo(logo: File): void {

@@ -240,7 +240,12 @@ import {
 	type WalletOperationClaim,
 	walletOperationStorageChange,
 } from './operation-session';
-import { purchaseGatewaySwitchNotice, purchaseLifecycleStatus } from './purchase-lifecycle';
+import {
+	PURCHASE_SKIP_FROM_DEPTH,
+	purchaseGatewaySwitchNotice,
+	purchaseLifecycleStatus,
+	purchaseSkipKind,
+} from './purchase-lifecycle';
 import {
 	purchaseObservationCheckingMessage,
 	purchaseObservationPendingState,
@@ -9480,7 +9485,7 @@ function OperationDialog({
 							registrationTarget: 5,
 							paymentTarget: 5,
 							paymentSuccessDepth: 1,
-							skipFrom: 2,
+							skipFrom: PURCHASE_SKIP_FROM_DEPTH,
 							propagation: 'all',
 							minObservers: 2,
 							...(currentPurchaseSnapshot ? { resume: currentPurchaseSnapshot } : {}),
@@ -10251,7 +10256,7 @@ function OperationDialog({
 						<React.Suspense fallback={<Loading label="Loading transaction progress…" />}>
 							<ArweaveTransactionSync
 								active={visible}
-								skipKind={purchaseState?.canSkip ? purchaseState.skipKind ?? 'skip' : undefined}
+								skipKind={purchaseSkipKind(purchaseState)}
 								onSkip={
 									purchaseState?.canSkip
 										? () => {
@@ -10816,6 +10821,7 @@ export function mintErrorMessage(error: unknown) {
 		'mint-logo-size-invalid': 'Choose a token logo no larger than 10 MB.',
 		'mint-ticker-invalid': 'Enter a token ticker between 1 and 32 characters.',
 		'mint-supply-invalid': 'Enter a positive whole-number token supply.',
+		'mint-supply-too-large': 'Token supply exceeds the maximum allowed.',
 		'mint-denomination-invalid': 'Enter decimal places from 0 to 255.',
 		'mint-insufficient-balance': 'This wallet does not have enough AR for the required Arweave transaction(s).',
 		'mint-high-cost-confirmation-required': 'Review and approve the unusually high network cost before minting.',
