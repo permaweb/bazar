@@ -33,7 +33,7 @@ afterEach(() => {
 describe('collection index loading', () => {
 	it('batch-enriches ID-only manifests with permanent Atomic Asset names', async () => {
 		const owner = 'O'.repeat(43);
-		const ids = Array.from({ length: 101 }, (_, index) => index.toString(36).padStart(43, 'A'));
+		const ids = Array.from({ length: 205 }, (_, index) => index.toString(36).padStart(43, 'A'));
 		const collection: Collection = {
 			id: 'C'.repeat(43),
 			name: 'HTML Colors',
@@ -47,10 +47,14 @@ describe('collection index loading', () => {
 		};
 		const fetcher = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
 			const request = JSON.parse(String(init?.body));
+			const offset = request.variables.after ? Number(request.variables.after) + 1 : 0;
+			const page = ids.slice(offset, offset + 100);
 			return Response.json({
 				data: {
 					transactions: {
-						edges: request.variables.ids.map((id: string) => ({
+						pageInfo: { hasNextPage: offset + page.length < ids.length },
+						edges: page.map((id: string, index) => ({
+							cursor: String(offset + index),
 							node: {
 								id,
 								tags: [
@@ -77,12 +81,84 @@ describe('collection index loading', () => {
 		const enriched = await enrichImageCollectionAssetMetadata(collection, undefined, fetcher as typeof fetch);
 
 		expect(enriched.assets[0].name).toBe('Color 1');
-		expect(enriched.assets[100].name).toBe('Color 101');
+		expect(enriched.assets[204].name).toBe('Color 205');
 		expect(enriched.assets[0].image).toBe(`https://arweave.net/${ids[0]}`);
-		expect(fetcher).toHaveBeenCalledTimes(12);
-		expect(fetcher.mock.calls.map(([, init]) => JSON.parse(String(init?.body)).variables.ids.length)).toEqual([
-			9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 2,
+		expect(fetcher).toHaveBeenCalledTimes(3);
+		expect(fetcher.mock.calls.map(([, init]) => JSON.parse(String(init?.body)).variables)).toEqual([
+			{ collection: ['HTML Colors'], after: null },
+			{ collection: ['HTML Colors'], after: '99' },
+			{ collection: ['HTML Colors'], after: '199' },
 		]);
+	});
+
+	it('falls back to exact IDs when a collection name is not indexed on every asset', async () => {
+		const owner = 'O'.repeat(43);
+		const ids = ['A'.repeat(43), 'B'.repeat(43)];
+		const collection: Collection = {
+			id: 'C'.repeat(43),
+			name: 'Legacy collection',
+			description: '',
+			kind: 'images',
+			assets: ids.map((id) => ({ id, name: `${id.slice(0, 7)}…${id.slice(-6)}` })),
+		};
+		const fetcher = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+			const request = JSON.parse(String(init?.body));
+			if (request.query.includes('BazarAtomicAssetsByCollection')) {
+				return Response.json({
+					data: { transactions: { pageInfo: { hasNextPage: false }, edges: [] } },
+				});
+			}
+			return Response.json({
+				data: {
+					transactions: {
+						edges: request.variables.ids.map((id: string) => ({
+							node: {
+								id,
+								tags: [
+									{ name: 'device', value: 'process@1.0' },
+									{ name: 'execution-device', value: 'token@1.0' },
+									{ name: 'swap-device', value: 'arweave-swap@1.0' },
+									{ name: 'scheduler-device', value: 'arweave-scheduler@1.0' },
+									{ name: 'scheduler-mode', value: 'all' },
+									{ name: 'initial-holder', value: owner },
+									{ name: 'total-supply', value: '1' },
+									{ name: 'denomination', value: '0' },
+									{ name: 'ticker', value: 'ASSET' },
+									{ name: 'name', value: `Legacy ${ids.indexOf(id) + 1}` },
+									{ name: 'hint-ui-style', value: 'non-fungible' },
+									{ name: 'content-type', value: 'image/png' },
+								],
+							},
+						})),
+					},
+				},
+			});
+		});
+
+		const enriched = await enrichImageCollectionAssetMetadata(collection, undefined, fetcher as typeof fetch);
+
+		expect(enriched.assets.map((asset) => asset.name)).toEqual(['Legacy 1', 'Legacy 2']);
+		expect(fetcher).toHaveBeenCalledTimes(2);
+		expect(JSON.parse(String(fetcher.mock.calls[1][1]?.body)).variables.ids).toEqual(ids);
+	});
+
+	it('does not fan out exact-ID fallbacks when the collection index request fails', async () => {
+		const collection: Collection = {
+			id: 'C'.repeat(43),
+			name: 'Unavailable collection',
+			description: '',
+			kind: 'images',
+			assets: Array.from({ length: 100 }, (_, index) => {
+				const id = index.toString(36).padStart(43, 'A');
+				return { id, name: `${id.slice(0, 7)}…${id.slice(-6)}` };
+			}),
+		};
+		const fetcher = vi.fn(async () => new Response('unavailable', { status: 503 }));
+
+		await expect(
+			enrichImageCollectionAssetMetadata(collection, undefined, fetcher as typeof fetch)
+		).resolves.toEqual(collection);
+		expect(fetcher).toHaveBeenCalledTimes(1);
 	});
 
 	it('discovers scheduled carrier collections by the COLLECTION ticker without an app tag', async () => {
@@ -167,6 +243,85 @@ describe('collection index loading', () => {
 		expect(discoveryQuery).toContain('sort: HEIGHT_DESC');
 		expect(discoveryQuery).toContain('{ name: "ticker", values: ["COLLECTION"] }');
 		expect(discoveryQuery).not.toContain('{ name: "app-name"');
+	});
+
+	it('publishes verified manifest membership before background metadata enrichment settles', async () => {
+		const collectionId = 'C'.repeat(43);
+		const manifestId = 'M'.repeat(43);
+		const assetId = 'A'.repeat(43);
+		let resolveMetadata!: (response: Response) => void;
+		const metadata = new Promise<Response>((resolve) => {
+			resolveMetadata = resolve;
+		});
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+				const request = typeof init?.body === 'string' ? JSON.parse(init.body) : undefined;
+				if (request?.query?.includes('BazarCollections')) {
+					return Response.json({
+						data: {
+							transactions: {
+								pageInfo: { hasNextPage: false },
+								edges: [
+									{
+										cursor: 'collection',
+										node: {
+											id: collectionId,
+											block: { height: 2, timestamp: 3 },
+											tags: [
+												{ name: 'device', value: 'process@1.0' },
+												{ name: 'execution-device', value: 'carrier@1.0' },
+												{ name: 'scheduler-device', value: 'arweave-scheduler@1.0' },
+												{ name: 'scheduler-mode', value: 'all' },
+												{ name: 'ticker', value: 'COLLECTION' },
+												{ name: 'type', value: 'Process' },
+												{ name: 'initial-value', value: manifestId },
+											],
+										},
+									},
+								],
+							},
+						},
+					});
+				}
+				if (String(input).includes(collectionId) && String(input).includes('/compute')) {
+					return Response.json(
+						{
+							'execution-device': 'carrier@1.0',
+							'total-supply': '1',
+							denomination: 0,
+							balances: { ['O'.repeat(43)]: '1' },
+							orders: {},
+							value: manifestId,
+							'at-slot': 1,
+						},
+						{ headers: { 'codec-device': 'json@1.0' } }
+					);
+				}
+				if (String(input).includes(`/tx/${manifestId}/data`)) {
+					return new Response(encodeUtf8Json({ name: 'Large collection', assets: [assetId] }));
+				}
+				if (request?.query?.includes('BazarAtomicAssetsByCollection')) return metadata;
+				return new Response('unavailable', { status: 503 });
+			})
+		);
+		const progress: Collection[] = [];
+		const discovery = discoverBazarCollections(undefined, (collection) => progress.push(collection));
+
+		await vi.waitFor(() => expect(progress).toHaveLength(1));
+		expect(progress[0]).toMatchObject({ id: collectionId, manifestId, assets: [{ id: assetId }] });
+
+		resolveMetadata(
+			Response.json({
+				data: {
+					transactions: {
+						pageInfo: { hasNextPage: false },
+						edges: [],
+					},
+				},
+			})
+		);
+		await expect(discovery).resolves.toHaveLength(1);
 	});
 
 	it('skips tagged collection candidates whose live carrier or immutable manifest is invalid', async () => {

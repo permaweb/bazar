@@ -169,6 +169,7 @@ const IMAGE_COLLECTIONS = [
 ].filter((collection) => /^[A-Za-z0-9_-]{43}$/.test(collection.reference));
 
 const MAX_INDEX_PAGES = 1_000;
+const GRAPHQL_PAGE_SIZE = 100;
 const ARWEAVE_GRAPHQL_ID_BATCH_SIZE = 9;
 
 export const IMAGE_COLLECTION_REFERENCES = IMAGE_COLLECTIONS.map((collection) => collection.reference);
@@ -401,14 +402,17 @@ export async function discoverBazarCollections(
 		});
 		await mapConcurrent(candidates, 4, async (candidate) => {
 			try {
-				const collection = await loadDiscoveredImageCollection(candidate, signal);
-				const discovered = {
-					...collection,
-					createdAt: candidate.createdAt,
-					createdHeight: candidate.createdHeight,
+				const publish = (collection: Collection) => {
+					const discovered = {
+						...collection,
+						createdAt: candidate.createdAt,
+						createdHeight: candidate.createdHeight,
+					};
+					if (found.get(discovered.id)?.assets === discovered.assets) return;
+					found.set(discovered.id, discovered);
+					onCollection?.(discovered);
 				};
-				found.set(discovered.id, discovered);
-				onCollection?.(discovered);
+				publish(await loadDiscoveredImageCollection(candidate, signal, publish));
 			} catch {
 				throwIfAborted(signal);
 				// Invalid or not-yet-computable candidates never enter the marketplace catalogue.
@@ -469,7 +473,8 @@ function parseBazarCollectionCandidate(edge: any): BazarCollectionCandidate {
 
 async function loadDiscoveredImageCollection(
 	candidate: BazarCollectionCandidate,
-	signal?: AbortSignal
+	signal?: AbortSignal,
+	onManifest?: (collection: Collection) => void
 ): Promise<Collection> {
 	let manifestId = candidate.manifestId;
 	if (candidate.scheduled) {
@@ -477,13 +482,25 @@ async function loadDiscoveredImageCollection(
 			carrierManifestId((await readAssetState(candidate.id, { signal, maxAge: 30, maxAttempts: 1 })).state) ?? '';
 		if (!manifestId) throw new Error('collection-reference-unavailable');
 	}
-	return enrichImageCollectionAssetMetadata(
-		imageCollection(candidate.id, manifestId, 'carrier', await fetchJson<ImageManifest>(manifestId, signal)),
-		signal
+	const collection = imageCollection(
+		candidate.id,
+		manifestId,
+		'carrier',
+		await fetchJson<ImageManifest>(manifestId, signal)
 	);
+	onManifest?.(collection);
+	return enrichImageCollectionAssetMetadata(collection, signal);
 }
 
 type AtomicAssetIndexNode = { id?: unknown; tags?: unknown };
+type AtomicAssetIndexConnection = {
+	pageInfo: { hasNextPage: boolean };
+	edges: Array<{ cursor?: unknown; node?: AtomicAssetIndexNode }>;
+};
+type AtomicAssetIndexPayload = {
+	errors?: unknown[];
+	data?: { transactions?: AtomicAssetIndexConnection };
+};
 
 function indexedAtomicAsset(node: AtomicAssetIndexNode): AssetSummary | undefined {
 	if (
@@ -528,10 +545,81 @@ export async function enrichImageCollectionAssetMetadata(
 	if (collection.kind !== 'images') return collection;
 	const unresolved = collection.assets.filter((asset) => asset.name === shortId(asset.id));
 	if (!unresolved.length) return collection;
-	const batches = Array.from({ length: Math.ceil(unresolved.length / ARWEAVE_GRAPHQL_ID_BATCH_SIZE) }, (_, index) =>
-		unresolved.slice(index * ARWEAVE_GRAPHQL_ID_BATCH_SIZE, (index + 1) * ARWEAVE_GRAPHQL_ID_BATCH_SIZE)
-	);
+	const unresolvedIds = new Set(unresolved.map((asset) => asset.id));
 	const indexed = new Map<string, AssetSummary>();
+	let cursor: string | null = null;
+	let collectionIndexComplete = false;
+	const visited = new Set<string>();
+	const indexEdges = (edges: any[]) => {
+		for (const edge of edges) {
+			const asset = indexedAtomicAsset(edge?.node ?? {});
+			if (asset && unresolvedIds.has(asset.id)) indexed.set(asset.id, asset);
+		}
+	};
+	for (let page = 0; page < MAX_INDEX_PAGES; page += 1) {
+		try {
+			const { response, body } = await fetchJsonWithDeadline<AtomicAssetIndexPayload>(
+				fetcher,
+				arweaveGraphqlEndpoint(),
+				{
+					method: 'POST',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify({
+						query: `query BazarAtomicAssetsByCollection($collection: [String!]!, $after: String) {
+							transactions(
+								after: $after
+								first: ${GRAPHQL_PAGE_SIZE}
+								sort: HEIGHT_DESC
+								tags: [
+									{ name: "base-collection", values: $collection }
+									{ name: "device", values: ["process@1.0"] }
+									{ name: "execution-device", values: ["token@1.0"] }
+									{ name: "swap-device", values: ["arweave-swap@1.0"] }
+									{ name: "scheduler-device", values: ["arweave-scheduler@1.0"] }
+									{ name: "hint-ui-style", values: ["non-fungible"] }
+									{ name: "scheduler-mode", values: ["all"] }
+									{ name: "total-supply", values: ["1"] }
+									{ name: "denomination", values: ["0"] }
+									{ name: "ticker", values: ["ASSET"] }
+								]) {
+								pageInfo { hasNextPage }
+								edges { cursor node { id tags { name value } } }
+							}
+						}`,
+						variables: { collection: [collection.name], after: cursor },
+					}),
+					signal,
+				},
+				{ timeoutError: 'collection-asset-index-timeout' }
+			);
+			const connection: AtomicAssetIndexConnection | undefined = body?.data?.transactions;
+			if (
+				!response.ok ||
+				body?.errors?.length ||
+				!Array.isArray(connection?.edges) ||
+				typeof connection.pageInfo?.hasNextPage !== 'boolean'
+			)
+				break;
+			indexEdges(connection.edges);
+			if (!connection.pageInfo.hasNextPage || indexed.size === unresolvedIds.size) {
+				collectionIndexComplete = true;
+				break;
+			}
+			const next: unknown = connection.edges.at(-1)?.cursor;
+			if (typeof next !== 'string' || !next || visited.has(next)) break;
+			visited.add(next);
+			cursor = next;
+		} catch {
+			throwIfAborted(signal);
+			break;
+		}
+	}
+	// A completed empty/partial collection query means older assets need exact-ID
+	// lookup. A failed query must not turn into hundreds of fallback requests.
+	const remaining = collectionIndexComplete ? unresolved.filter((asset) => !indexed.has(asset.id)) : [];
+	const batches = Array.from({ length: Math.ceil(remaining.length / ARWEAVE_GRAPHQL_ID_BATCH_SIZE) }, (_, index) =>
+		remaining.slice(index * ARWEAVE_GRAPHQL_ID_BATCH_SIZE, (index + 1) * ARWEAVE_GRAPHQL_ID_BATCH_SIZE)
+	);
 	await mapConcurrent(batches, 2, async (batch) => {
 		try {
 			const { response, body } = await fetchJsonWithDeadline<any>(
@@ -552,10 +640,8 @@ export async function enrichImageCollectionAssetMetadata(
 				},
 				{ timeoutError: 'collection-asset-index-timeout' }
 			);
-			if (!response.ok || !body || body.errors?.length || !Array.isArray(body.data?.transactions?.edges)) return;
-			for (const edge of body.data.transactions.edges) {
-				const asset = indexedAtomicAsset(edge?.node ?? {});
-				if (asset && batch.some((candidate) => candidate.id === asset.id)) indexed.set(asset.id, asset);
+			if (response.ok && !body?.errors?.length && Array.isArray(body?.data?.transactions?.edges)) {
+				indexEdges(body.data.transactions.edges);
 			}
 		} catch {
 			throwIfAborted(signal);

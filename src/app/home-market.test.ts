@@ -39,9 +39,9 @@ import {
 	homeListingComputeFailure,
 	homeListingSupportVersion,
 	homeMarketHasPending,
-	homeMarketShowsInitialLoader,
 	homeMarketPriceValue,
 	homeMarketShellLoading,
+	homeMarketShowsInitialLoader,
 	homeMarketSummariesReady,
 	type HomeMarketSummary,
 	homeRouteSearch,
@@ -396,6 +396,18 @@ describe('Home market summary retries', () => {
 			})
 		).toBe(true);
 		expect(assetDetailMembershipVerified('fungible-tokens', new Set(), false)).toBe(false);
+	});
+
+	it('starts a deep-linked atomic read from its exact indexed metadata while collection membership settles', () => {
+		const asset = { id: 'A'.repeat(43), name: 'Indexed asset' };
+		expect(
+			assetDetailCanResolve({
+				assetId: asset.id,
+				indexedMetadata: asset,
+				directAtomicRoute: false,
+			})
+		).toBe(true);
+		expect(assetDetailMembershipVerified('large-collection', new Set(), false)).toBe(false);
 	});
 
 	it('restarts listing support as progressively loaded collections expand', () => {

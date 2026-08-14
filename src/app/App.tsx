@@ -7453,6 +7453,7 @@ export function assetDetailCanResolve({
 	assetId,
 	cachedAsset,
 	indexedAsset,
+	indexedMetadata,
 	indexedCollection,
 	directAtomicRoute,
 	directFungibleRoute = false,
@@ -7460,6 +7461,7 @@ export function assetDetailCanResolve({
 	assetId: string;
 	cachedAsset?: AssetSummary;
 	indexedAsset?: AssetSummary;
+	indexedMetadata?: AssetSummary;
 	indexedCollection?: Collection;
 	directAtomicRoute: boolean;
 	directFungibleRoute?: boolean;
@@ -7468,6 +7470,7 @@ export function assetDetailCanResolve({
 		directAtomicRoute ||
 			directFungibleRoute ||
 			indexedAsset ||
+			(indexedMetadata?.id === assetId && ARWEAVE_ADDRESS.test(assetId)) ||
 			(indexedCollection?.kind === 'tokens' && ARWEAVE_ADDRESS.test(assetId)) ||
 			(cachedAsset?.id === assetId && ARWEAVE_ADDRESS.test(assetId))
 	);
@@ -7914,9 +7917,12 @@ function AssetView() {
 	const directAtomicRoute = collectionId === CREATED_COLLECTION_ID && ARWEAVE_ADDRESS.test(assetId);
 	const indexedAtomic = indexedAtomicResult.assetId === assetId ? indexedAtomicResult.result : null;
 	React.useEffect(() => {
-		if (!ARWEAVE_ADDRESS.test(assetId) || (!directAtomicRoute && indexedCollection?.kind !== 'images')) {
+		if (
+			!ARWEAVE_ADDRESS.test(assetId) ||
+			collectionId === FUNGIBLE_TOKEN_COLLECTION_ID ||
+			collectionId === 'arweave-names'
+		)
 			return;
-		}
 		const controller = new AbortController();
 		void loadBazarAtomicAssetById(assetId, { signal: controller.signal }).then(
 			(result) => {
@@ -7927,11 +7933,12 @@ function AssetView() {
 			}
 		);
 		return () => controller.abort();
-	}, [assetId, directAtomicRoute, indexedCollection?.kind]);
+	}, [assetId, collectionId]);
 	const canResolveAsset = assetDetailCanResolve({
 		assetId,
 		cachedAsset,
 		indexedAsset,
+		indexedMetadata: indexedAtomic?.asset,
 		indexedCollection,
 		directAtomicRoute,
 		directFungibleRoute: collectionId === 'fungible-tokens' && ARWEAVE_ADDRESS.test(assetId),
