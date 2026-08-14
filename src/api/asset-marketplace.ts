@@ -608,12 +608,14 @@ async function readLinkedStateTable(
 		}
 		const existing = messages.get(messageId);
 		if (existing) return existing;
-		const pending = fetcher(`${base}${messageId}`, { method: 'HEAD', signal: requestInit.signal }).then(
-			async (response) => {
-				if (!response.ok) throw new Error(`HTTP ${response.status}`);
-				return responseMessage(response);
-			}
-		);
+		const serialized = key === 'balances';
+		const pending = fetcher(`${base}${messageId}${serialized ? '~message@1.0/serialize~json@1.0' : ''}`, {
+			...(serialized ? {} : { method: 'HEAD' as const }),
+			signal: requestInit.signal,
+		}).then(async (response) => {
+			if (!response.ok) throw new Error(`HTTP ${response.status}`);
+			return serialized ? unwrapState(parseLosslessJson(await response.text())) : responseMessage(response);
+		});
 		messages.set(messageId, pending);
 		return pending;
 	};

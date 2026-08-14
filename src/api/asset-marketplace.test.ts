@@ -45,14 +45,6 @@ function jsonResponse(value: unknown, init: ResponseInit = {}): Response {
 	return new Response(typeof value === 'string' ? value : JSON.stringify(value), { ...init, headers });
 }
 
-function httpsigHeaderName(name: string): string {
-	return [...name]
-		.map((character) =>
-			/[A-Z]/.test(character) ? `%${character.charCodeAt(0).toString(16).toUpperCase()}` : character
-		)
-		.join('');
-}
-
 describe('servingNodeOrigin', () => {
 	it('uses the default compute gateway unless an explicit node is selected', () => {
 		expect(servingNodeOrigin({ protocol: 'http:', hostname: '127.0.0.1', port: '3000' })).toBe(
@@ -194,13 +186,15 @@ describe('asset state', () => {
 		});
 		expect(requests).toHaveLength(3);
 		expect(requests[0].url).toContain('/compute&max-age=60');
+		expect(requests[1].url).toBe(`https://compute.example/${balancesLink}~message@1.0/serialize~json@1.0`);
+		expect(requests[2].url).toBe(`https://compute.example/${ordersLink}`);
 		expect(requests.every(({ headers }) => [...headers].length === 0)).toBe(true);
 		expect(requests.slice(1).every(({ headers }) => headers.get('accept-bundle') === null)).toBe(true);
 		expect(requests.slice(1).every(({ headers }) => headers.get('require-codec') === null)).toBe(true);
 		expect(requests.slice(1).every(({ headers }) => headers.get('cache-control') === null)).toBe(true);
 	});
 
-	it('reads ordinary HTTPSig headers and walks a 1,000-owner linked trie without codec parameters', async () => {
+	it('serializes every message in a 1,000-owner linked balance trie', async () => {
 		const rootId = 'R'.repeat(43);
 		const prefixes = 'abcdefghij';
 		const childIds = new Map([...prefixes].map((prefix, index) => [prefix, String(index).repeat(43)]));
@@ -216,24 +210,24 @@ describe('asset state', () => {
 			fetch: async (input, init = {}) => {
 				const url = String(input);
 				requests.push({ url, init });
-				if (url.endsWith(rootId)) {
-					return new Response(null, {
-						headers: Object.fromEntries([
+				if (url.endsWith(`${rootId}~message@1.0/serialize~json@1.0`)) {
+					return jsonResponse(
+						Object.fromEntries([
 							['device', 'trie@1.0'],
 							...[...childIds].map(([prefix, id]) => [`${prefix}+link`, id]),
-						]),
-					});
+						])
+					);
 				}
-				const child = [...childIds].find(([, id]) => url.endsWith(id));
+				const child = [...childIds].find(([, id]) => url.endsWith(`${id}~message@1.0/serialize~json@1.0`));
 				if (child) {
 					const [prefix] = child;
-					return new Response(null, {
-						headers: Object.fromEntries(
+					return jsonResponse(
+						Object.fromEntries(
 							Object.keys(expected)
 								.filter((address) => address.startsWith(prefix))
 								.map((address) => [address.slice(1), '1'])
-						),
-					});
+						)
+					);
 				}
 				return new Response(null, {
 					headers: {
@@ -251,24 +245,33 @@ describe('asset state', () => {
 		expect(Object.keys(result.state.balances)).toHaveLength(1000);
 		expect(requests).toHaveLength(12);
 		expect(requests.every(({ url }) => !url.includes('?'))).toBe(true);
-		expect(requests.every(({ init }) => init.method === 'HEAD')).toBe(true);
+		expect(requests.slice(1).every(({ url }) => url.endsWith('~message@1.0/serialize~json@1.0'))).toBe(true);
+		expect(requests[0].init.method).toBe('HEAD');
+		expect(requests.slice(1).every(({ init }) => init.method === undefined)).toBe(true);
 		expect(requests.every(({ init }) => [...new Headers(init.headers)].length === 0)).toBe(true);
 	});
 
-	it('restores escaped mixed-case HTTPSig field names', async () => {
+	it('preserves mixed-case balance keys across serialized trie descendants', async () => {
 		const balancesLink = 'B'.repeat(43);
+		const childLink = 'C'.repeat(43);
 		const result = await readAssetState(processId, {
 			provider: 'https://compute.example',
-			fetch: async (input) =>
-				String(input).endsWith(balancesLink)
-					? new Response(null, { headers: { [httpsigHeaderName(owner)]: '1' } })
-					: new Response(null, {
-							headers: {
-								'balances+link': balancesLink,
-								'execution-device': 'token@1.0',
-								'total-supply': '1',
-							},
-					  }),
+			fetch: async (input) => {
+				const url = String(input);
+				if (url.endsWith(`${balancesLink}~message@1.0/serialize~json@1.0`)) {
+					return jsonResponse({ device: 'trie@1.0', [`${owner[0]}+link`]: childLink });
+				}
+				if (url.endsWith(`${childLink}~message@1.0/serialize~json@1.0`)) {
+					return jsonResponse({ [owner.slice(1)]: '1' });
+				}
+				return new Response(null, {
+					headers: {
+						'balances+link': balancesLink,
+						'execution-device': 'token@1.0',
+						'total-supply': '1',
+					},
+				});
+			},
 		});
 
 		expect(result.state.balances).toEqual({ [owner]: '1' });
@@ -298,8 +301,8 @@ describe('asset state', () => {
 				if (url.endsWith(ordersLink)) {
 					return new Response(null, { headers: { [`${orderId.toLowerCase()}+link`]: orderLink } });
 				}
-				if (url.endsWith(balancesLink)) {
-					return new Response(null, { headers: { [httpsigHeaderName(owner)]: '1' } });
+				if (url.endsWith(`${balancesLink}~message@1.0/serialize~json@1.0`)) {
+					return jsonResponse({ [owner]: '1' });
 				}
 				return new Response(null, {
 					headers: {
@@ -313,6 +316,8 @@ describe('asset state', () => {
 		});
 
 		expect(result.state.orders[orderId]).toMatchObject({ orderId, status: 'open' });
+		expect(requested).toContain(`https://compute.example/${balancesLink}~message@1.0/serialize~json@1.0`);
+		expect(requested).toContain(`https://compute.example/${ordersLink}`);
 		expect(requested).toContain(`https://compute.example/${orderLink}~message@1.0/status`);
 		expect(requested.every((url) => !url.includes('require-codec'))).toBe(true);
 	});
