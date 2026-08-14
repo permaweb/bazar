@@ -55,6 +55,31 @@ function renderLoader(answering: number, eligible: number, views: ObserverView[]
 }
 
 describe('observer verification delay', () => {
+	it('renders the required denominator while a terminal transaction is still confirming', () => {
+		const markup = renderToStaticMarkup(
+			<ThemeProvider theme={theme}>
+				<LanguageProvider>
+					<ArweaveTransactionSync
+						subject="Asset"
+						steps={[
+							{
+								key: 'list',
+								label: 'List for sale',
+								target: 5,
+								terminal: true,
+								confirmations: 1,
+								transaction: { id: 'L'.repeat(43), views: [] },
+							},
+						]}
+					/>
+				</LanguageProvider>
+			</ThemeProvider>
+		);
+
+		expect(markup).toContain('aria-label="1 of 5"');
+		expect(markup).toContain('>1</strong><span> / 5</span>');
+	});
+
 	it('renders terminal confirmation depth without a denominator or cap', () => {
 		const markup = renderToStaticMarkup(
 			<ThemeProvider theme={theme}>

@@ -136,6 +136,7 @@ export function ArweaveTransactionSync({
 		Boolean(active?.hasError)
 	);
 	const displayedConfirmationDepth = active?.terminal ? confirmationDepth : lifecycle.depth;
+	const terminalTargetReached = Boolean(active?.terminal && target > 0 && confirmationDepth >= target);
 	const transactionState = transaction?.consensus?.state ?? latestObserverState(transaction?.views ?? []);
 	const progressKey = `${transaction?.id ?? 'none'}:${active?.key ?? 'none'}`;
 	const [estimatedProgress, setEstimatedProgress] = React.useState({ key: progressKey, value: 0 });
@@ -269,7 +270,7 @@ export function ArweaveTransactionSync({
 						</div>
 						<S.Depth
 							aria-label={
-								active.terminal
+								terminalTargetReached
 									? `${displayedConfirmationDepth} confirmation${
 											displayedConfirmationDepth === 1 ? '' : 's'
 									  }`
@@ -281,7 +282,7 @@ export function ArweaveTransactionSync({
 							}
 							$success={lifecycle.complete}
 						>
-							{active.terminal ? (
+							{terminalTargetReached ? (
 								<strong>{displayedConfirmationDepth}</strong>
 							) : lifecycle.pending ? (
 								<strong>{pendingAfterConfirmation}</strong>
