@@ -103,8 +103,35 @@ describe('observer verification delay', () => {
 		);
 
 		expect(markup).toContain('aria-label="7 confirmations"');
-		expect(markup).toContain('>7</strong>');
+		expect(markup).toContain('>7</strong><span> confirmations</span>');
 		expect(markup).not.toContain(' / 1');
+		expect(markup).toContain('Checking receipt');
+	});
+
+	it('renders the completed payment target instead of a bare one while checking the receipt', () => {
+		const markup = renderToStaticMarkup(
+			<ThemeProvider theme={theme}>
+				<LanguageProvider>
+					<ArweaveTransactionSync
+						subject="Asset"
+						pendingAfterConfirmation="Checking receipt"
+						steps={[
+							{
+								key: 'pay',
+								label: 'Pay seller',
+								target: 1,
+								terminal: true,
+								confirmations: 1,
+								transaction: { id: 'P'.repeat(43), views: [] },
+							},
+						]}
+					/>
+				</LanguageProvider>
+			</ThemeProvider>
+		);
+
+		expect(markup).toContain('aria-label="1 of 1"');
+		expect(markup).toContain('>1</strong><span> / 1</span>');
 		expect(markup).toContain('Checking receipt');
 	});
 

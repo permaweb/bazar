@@ -11119,7 +11119,7 @@ function unitPriceWinston(order: SwapOrder, denomination: number) {
 	const scale = 10n ** BigInt(denomination);
 	return (BigInt(order.asking) * scale + BigInt(order.quantity) - 1n) / BigInt(order.quantity);
 }
-function orderPriceLabel(order: SwapOrder, state: AssetState) {
+export function orderPriceLabel(order: SwapOrder, state: AssetState) {
 	return `${winstonToAr(unitPriceWinston(order, state.denomination).toString())} AR${
 		state.totalSupply === '1' && state.denomination === 0 ? '' : ` / ${formatTickerLabel(state.ticker, 'token')}`
 	}`;
