@@ -2248,6 +2248,60 @@ main {
 	margin: 0;
 }
 
+.collection-heading-copy {
+	min-width: 0;
+	flex: 1;
+}
+
+.collection-description {
+	max-width: 720px;
+	margin-top: 12px;
+}
+
+.collection-description > p {
+	margin: 0;
+	color: var(--muted);
+	font-size: var(--type-body);
+	line-height: 1.55;
+	overflow-wrap: anywhere;
+	white-space: pre-wrap;
+}
+
+.collection-description > p.is-collapsed {
+	display: -webkit-box;
+	overflow: hidden;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 2;
+	line-clamp: 2;
+}
+
+.ui-button.collection-description-toggle {
+	min-height: 0;
+	margin-top: 7px;
+	padding: 0;
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	border: 0;
+	border-radius: 0;
+	color: var(--ink);
+	background: var(--transparent);
+	font-size: var(--type-small);
+}
+
+.ui-button.collection-description-toggle:hover:not(:disabled):not([aria-disabled='true']) {
+	background: var(--transparent);
+}
+
+.collection-description-toggle svg {
+	width: 14px;
+	height: 14px;
+}
+
+.collection-description-toggle[aria-expanded='true'] svg {
+	transform: rotate(180deg);
+}
+
 .collection-title-copy {
 	display: flex;
 	align-items: flex-end;
@@ -10391,6 +10445,9 @@ body input:focus-visible {
 }
 .token-market-metric.positive strong {
 	color: var(--positive-text);
+}
+.token-market-metric.negative strong {
+	color: var(--negative);
 }
 .token-market-metric.muted strong {
 	color: var(--muted);

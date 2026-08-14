@@ -13,7 +13,7 @@ import {
 	readAssetStateAtSlot,
 	readProcessAssignments,
 } from './asset-marketplace';
-import { type AssetSummary, assetUiStyle, type Collection, collectionAsset } from './collections';
+import { type AssetSummary, assetUiStyle, type Collection, collectionAsset, isVisibleAssetId } from './collections';
 import { fetchJsonWithDeadline } from './fetch-with-deadline';
 import { assetFromMintState, CREATED_COLLECTION_ID, CREATED_COLLECTION_NAME } from './minted-assets';
 
@@ -482,6 +482,7 @@ export async function loadBazarAtomicAssetById(
 	options: AtomicAssetSearchOptions = {}
 ): Promise<{ asset: AssetSummary; collection: Collection } | null> {
 	if (!ADDRESS.test(processId)) throw new TypeError('invalid-asset-process-id');
+	if (!isVisibleAssetId(processId)) return null;
 	const fetcher = options.fetch ?? globalThis.fetch.bind(globalThis);
 	const graphql = options.graphql ?? arweaveGraphqlEndpoint();
 	const { response, body: payload } = await fetchJsonWithDeadline<any>(
@@ -1373,6 +1374,10 @@ export function createAssetCandidateResolver(collections: Collection[], options:
 	};
 	const onAbort = () => fail(options.signal?.reason);
 	const resolveCandidate = async (candidate: AssetCandidate) => {
+		if (!isVisibleAssetId(candidate.processId)) {
+			options.onSettled?.(null, candidate);
+			return;
+		}
 		let computed: ComputeResult;
 		let result: ResolvedAsset | null;
 		try {
@@ -1389,7 +1394,7 @@ export function createAssetCandidateResolver(collections: Collection[], options:
 		if (computed.revalidation && options.onRevalidated) {
 			void computed.revalidation.then(
 				(fresh) => {
-					if (!options.signal?.aborted) {
+					if (!options.signal?.aborted && isVisibleAssetId(candidate.processId)) {
 						options.onRevalidated?.(supportedAsset(candidate, fresh, collections), candidate);
 					}
 				},
@@ -1418,7 +1423,7 @@ export function createAssetCandidateResolver(collections: Collection[], options:
 		enqueue(candidates: AssetCandidate[]) {
 			if (sealed) throw new Error('asset-candidate-resolver-finished');
 			if (failure !== undefined) throw failure;
-			pending.push(...candidates);
+			pending.push(...candidates.filter((candidate) => isVisibleAssetId(candidate.processId)));
 			pending.sort(compareActivity);
 			pump();
 		},
@@ -1464,6 +1469,7 @@ function candidateCollectionIndex(collections: Collection[]): CandidateCollectio
 
 function restrictAssetCandidatesWithIndex(candidates: AssetCandidate[], index: CandidateCollectionIndex) {
 	return candidates.filter((candidate) => {
+		if (!isVisibleAssetId(candidate.processId)) return false;
 		const collection = index.byAssetId.get(candidate.processId);
 		if (!candidate.device) return Boolean(collection || index.tokens);
 		if (['carrier@1.0', 'name-token@1.0'].includes(candidate.device)) {
@@ -1654,7 +1660,7 @@ function atomicProcessNode(node: GraphqlNode): boolean {
 }
 
 function bazarAtomicAssetFromNode(node: GraphqlNode): { asset: AssetSummary; collection: Collection } | null {
-	if (!atomicProcessNode(node)) return null;
+	if (!isVisibleAssetId(node.id) || !atomicProcessNode(node)) return null;
 	const tags = Object.fromEntries(
 		(node.tags ?? []).map(({ name: tagName, value }) => [tagName.toLowerCase(), value])
 	);
@@ -1709,6 +1715,10 @@ function supportedAsset(
 					asset: liveAtomicAsset
 						? {
 								...asset,
+								name:
+									asset.name === `${asset.id.slice(0, 7)}…${asset.id.slice(-6)}`
+										? liveAtomicAsset.name
+										: asset.name,
 								...(liveAtomicAsset.image ? { image: liveAtomicAsset.image } : {}),
 								...(liveAtomicAsset.media ? { media: liveAtomicAsset.media } : {}),
 						  }
@@ -1753,6 +1763,7 @@ export function bazarAtomicAssetFromState(
 	provider?: string
 ): { asset: AssetSummary; collection: Collection } | null {
 	if (
+		!isVisibleAssetId(processId) ||
 		state.device !== 'token@1.0' ||
 		state.totalSupply !== '1' ||
 		state.denomination !== 0 ||

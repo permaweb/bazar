@@ -1,6 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import type { AssetSummary, Collection } from 'api/collections';
+import {
+	type AssetSummary,
+	type Collection,
+	HIDDEN_COLLECTION_IDS,
+	replaceHiddenCollectionAssetIndex,
+} from 'api/collections';
 
 import {
 	alphabetBrowseIndex,
@@ -22,6 +27,10 @@ const collection: Collection = {
 	kind: 'tokens',
 	assets: [],
 };
+const readyHiddenCollectionIndex = Object.fromEntries(HIDDEN_COLLECTION_IDS.map((id) => [id, []]));
+
+beforeEach(() => replaceHiddenCollectionAssetIndex(readyHiddenCollectionIndex));
+afterEach(() => replaceHiddenCollectionAssetIndex({}));
 
 function score(asset: AssetSummary, query: string) {
 	return searchResultScore({ asset, collection }, query);
@@ -153,22 +162,31 @@ describe('marketplace search ranking', () => {
 	});
 
 	it('matches loaded fungible tokens by ticker or process ID as well as name', () => {
+		const processId = 'P'.repeat(43);
+		const hiddenId = 'bASFYsRBQm_dfG__wqRVwMh8bqwEvSTl4lURRBqfu2M';
 		const tokens: Collection = {
 			...collection,
-			assets: [{ id: 'IyFfmbTu8P4rv0KyrA0Q-QtfEnYntMj4RkRiBVip9KA', name: 'Weave Credit', ticker: 'WEAVE' }],
+			assets: [
+				{ id: processId, name: 'Internet Token', ticker: 'WWW' },
+				{ id: hiddenId, name: '[TEST] PcMK spawn trade transfer', ticker: 'PCMKQA1' },
+			],
 		};
 
-		expect(collectionSearchAssets(tokens, 'weave')).toEqual(tokens.assets);
-		expect(collectionSearchAssets(tokens, 'iyffmbtu')).toEqual(tokens.assets);
+		expect(collectionSearchAssets(tokens, 'internet')).toEqual([tokens.assets[0]]);
+		expect(collectionSearchAssets(tokens, 'pppppppp')).toEqual([tokens.assets[0]]);
+		expect(collectionSearchAssets(tokens, 'pcmk')).toEqual([]);
 		expect(collectionSearchAssets(tokens, 'missing')).toEqual([]);
-		expect(marketplaceAssetMatchesSearch(tokens.assets[0], tokens, 'WEAVE')).toBe(true);
-		expect(marketplaceAssetMatchesSearch(tokens.assets[0], tokens, 'IyFfmbTu')).toBe(true);
+		expect(marketplaceAssetMatchesSearch(tokens.assets[0], tokens, 'WWW')).toBe(true);
+		expect(marketplaceAssetMatchesSearch(tokens.assets[0], tokens, 'PPPPPPPP')).toBe(true);
 	});
 
 	it('offers exact process IDs for direct live token verification', () => {
 		const processId = 'P'.repeat(43);
 
 		expect(directTokenSearchCollection([collection], processId)).toBe(collection);
+		expect(
+			directTokenSearchCollection([collection], 'bASFYsRBQm_dfG__wqRVwMh8bqwEvSTl4lURRBqfu2M')
+		).toBeUndefined();
 		expect(directTokenSearchCollection([collection], 'not-a-process')).toBeUndefined();
 		expect(directTokenSearchCollection([], processId)).toBeUndefined();
 	});

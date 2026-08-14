@@ -3,8 +3,11 @@ import { mapConcurrent } from 'helpers/concurrency';
 import { arweaveDataUrl, arweaveGatewayFromLocation, arweaveGraphqlEndpoint, NAMES_NAMESPACE_ID } from 'helpers/config';
 
 import { type AssetState, readAssetState } from './asset-marketplace';
+import { HIDDEN_ASSET_IDS, HIDDEN_COLLECTION_IDS } from './catalogue-policy';
 import { fetchJsonWithDeadline, fetchTextWithDeadline } from './fetch-with-deadline';
 import { assetFromMintState } from './minted-assets';
+
+export { HIDDEN_ASSET_IDS, HIDDEN_COLLECTION_IDS } from './catalogue-policy';
 
 const ARWEAVE_ID = /^[A-Za-z0-9_-]{43}$/;
 const collectionAssetIndexes = new WeakMap<AssetSummary[], ReadonlyMap<string, AssetSummary>>();
@@ -58,7 +61,7 @@ function loadedCollectionAsset(assets: AssetSummary[], id: string) {
 
 /** Return an indexed asset, or an exact live fungible process belonging to the token collection. */
 export function collectionAsset(collection: Collection, id: string, state?: AssetState): AssetSummary | undefined {
-	if (!ARWEAVE_ID.test(id)) return undefined;
+	if (!ARWEAVE_ID.test(id) || !isVisibleAssetId(id)) return undefined;
 	const loaded = loadedCollectionAsset(collection.assets, id);
 	if (collection.kind === 'tokens') {
 		if (!state) return loaded;
@@ -80,6 +83,7 @@ export function collectionAsset(collection: Collection, id: string, state?: Asse
 export function fungibleAssetFromState(id: string, state?: AssetState): AssetSummary | undefined {
 	if (
 		!ARWEAVE_ID.test(id) ||
+		!isVisibleAssetId(id) ||
 		!state ||
 		state.raw.device !== 'process@1.0' ||
 		state.device !== 'token@1.0' ||
@@ -128,6 +132,7 @@ type FungibleTokenPage = {
 	cursor?: string;
 	hasMore: boolean;
 	total: number;
+	hiddenAssetCount: number;
 };
 
 type CarrierPage = {
@@ -157,28 +162,106 @@ type BazarCollectionPayload = {
 	data?: { transactions?: BazarCollectionConnection };
 };
 
+const hiddenCollectionIds = new Set<string>(HIDDEN_COLLECTION_IDS);
+
+const hiddenAssetIds = new Set<string>(HIDDEN_ASSET_IDS);
+
+/** Opt into the hidden catalogue for QA with `#/discover?showTest=1` and a hard reload. */
+export function testCatalogueItemsRequested(
+	browserLocation: Pick<Location, 'hash' | 'search'> | undefined = typeof window === 'undefined'
+		? undefined
+		: window.location
+): boolean {
+	if (!browserLocation) return false;
+	const hashQuery = browserLocation.hash.split('?')[1] ?? '';
+	return [browserLocation.search, hashQuery].some((query) => new URLSearchParams(query).get('showTest') === '1');
+}
+
+const SHOW_TEST_CATALOGUE_ITEMS = testCatalogueItemsRequested();
+
+const HIDDEN_COLLECTION_ASSET_IDS = new Map<string, ReadonlySet<string>>();
+
+export function isHiddenCollectionId(id: string): boolean {
+	return hiddenCollectionIds.has(id);
+}
+
+export function isVisibleCollectionId(id: string): boolean {
+	return SHOW_TEST_CATALOGUE_ITEMS || !isHiddenCollectionId(id);
+}
+
+export function isVisibleAssetId(id: string): boolean {
+	if (SHOW_TEST_CATALOGUE_ITEMS) return true;
+	if (!hiddenCollectionAssetIndexComplete() || hiddenAssetIds.has(id)) return false;
+	for (const assetIds of HIDDEN_COLLECTION_ASSET_IDS.values()) {
+		if (assetIds.has(id)) return false;
+	}
+	return true;
+}
+
+function registerHiddenCollectionAssets(collections: Collection[]): void {
+	for (const collection of collections) {
+		if (!isHiddenCollectionId(collection.id)) continue;
+		HIDDEN_COLLECTION_ASSET_IDS.set(collection.id, new Set(collection.assets.map((asset) => asset.id)));
+	}
+}
+
+export function replaceHiddenCollectionAssetIndex(index: Readonly<Record<string, readonly string[]>>): void {
+	HIDDEN_COLLECTION_ASSET_IDS.clear();
+	for (const collectionId of HIDDEN_COLLECTION_IDS) {
+		const assetIds = index[collectionId];
+		if (assetIds)
+			HIDDEN_COLLECTION_ASSET_IDS.set(collectionId, new Set(assetIds.filter((id) => ARWEAVE_ID.test(id))));
+	}
+}
+
+export function hiddenCollectionAssetIndex(): Record<string, string[]> {
+	return Object.fromEntries(
+		[...HIDDEN_COLLECTION_ASSET_IDS].map(([collectionId, assetIds]) => [collectionId, [...assetIds]])
+	);
+}
+
+export function hiddenCollectionAssetIndexComplete(): boolean {
+	return (
+		SHOW_TEST_CATALOGUE_ITEMS ||
+		HIDDEN_COLLECTION_IDS.every((collectionId) => HIDDEN_COLLECTION_ASSET_IDS.has(collectionId))
+	);
+}
+
+export function withVisibleCollectionAssets(collection: Collection): Collection {
+	const assets = collection.assets.filter((asset) => isVisibleAssetId(asset.id));
+	const removed = collection.assets.length - assets.length;
+	if (!removed) return collection;
+	return {
+		...collection,
+		assets,
+		...(collection.total === undefined ? {} : { total: Math.max(assets.length, collection.total - removed) }),
+	};
+}
+
 const IMAGE_COLLECTIONS = [
 	{
-		reference: import.meta.env.VITE_COLLECTION_ONE_REFERENCE ?? 'A7TGD0bktXYkQSrz4UWfPqgcb8A4TAOEsKQU5_zAu7g',
+		reference: import.meta.env.VITE_COLLECTION_ONE_REFERENCE ?? HIDDEN_COLLECTION_IDS[0],
 		manifest: '8aITB5SF-jc9MXx9IuCe_RaAoOrUHkkvgsy0cmLNCQw',
 	},
 	{
-		reference: import.meta.env.VITE_COLLECTION_TWO_REFERENCE ?? 'IMKioUfmOrqtTnrLO3_Jpg5zv8zg8PKjWYNVhD3xsZM',
+		reference: import.meta.env.VITE_COLLECTION_TWO_REFERENCE ?? HIDDEN_COLLECTION_IDS[1],
 		manifest: 'EK3bWZ0yvkYZ8btaPw0q-fNWsKLUeOeq3blqhRQlQJg',
 	},
-].filter((collection) => /^[A-Za-z0-9_-]{43}$/.test(collection.reference));
+].filter(
+	(collection): collection is { reference: string; manifest: string } =>
+		Boolean(collection.reference && ARWEAVE_ID.test(collection.reference)) &&
+		isVisibleCollectionId(collection.reference ?? '')
+);
 
 const MAX_INDEX_PAGES = 1_000;
 const GRAPHQL_PAGE_SIZE = 100;
 const ARWEAVE_GRAPHQL_ID_BATCH_SIZE = 9;
 
-export const IMAGE_COLLECTION_REFERENCES = IMAGE_COLLECTIONS.map((collection) => collection.reference);
-
-export const FUNGIBLE_TOKEN_ID =
-	import.meta.env.VITE_FUNGIBLE_TOKEN_ID ?? 'IyFfmbTu8P4rv0KyrA0Q-QtfEnYntMj4RkRiBVip9KA';
-
 export const FUNGIBLE_TOKEN_COLLECTION_ID = 'fungible-tokens';
 export const FUNGIBLE_TOKEN_COLLECTION_NAME = '[TEST] Bazar Fungible Tokens';
+export const IMAGE_COLLECTION_REFERENCES = IMAGE_COLLECTIONS.map((collection) => collection.reference);
+export const FUNGIBLE_TOKEN_ID =
+	import.meta.env.VITE_FUNGIBLE_TOKEN_ID ?? 'IyFfmbTu8P4rv0KyrA0Q-QtfEnYntMj4RkRiBVip9KA';
 
 export type CollectionLoadResult = {
 	collections: Collection[];
@@ -226,7 +309,9 @@ export function mergeCollectionSnapshots(
 								hasMore: retained.hasMore,
 						  }
 						: {}),
-					total: Math.max(retained.total ?? 0, replacement.total ?? 0),
+					total: currentIsAhead
+						? Math.max(primary.length, retained.total ?? 0)
+						: Math.max(retained.total ?? 0, replacement.total ?? 0),
 				};
 			}
 			if (
@@ -273,17 +358,43 @@ type CollectionSource = {
 	fallback?: () => Collection;
 };
 
+async function ensureHiddenCollectionAssets(signal?: AbortSignal): Promise<void> {
+	if (hiddenCollectionAssetIndexComplete()) return;
+	const missing = HIDDEN_COLLECTION_IDS.filter((collectionId) => !HIDDEN_COLLECTION_ASSET_IDS.has(collectionId));
+	await mapConcurrent(missing, 4, async (collectionId) => {
+		const transaction = await fetchJson<{ tags?: Array<{ name: string; value: string }> }>(
+			`tx/${collectionId}`,
+			signal,
+			true
+		);
+		const tags = Object.fromEntries(
+			(transaction.tags ?? []).map((tag) => [decodeBase64Url(tag.name), decodeBase64Url(tag.value)])
+		);
+		const manifestId = tags['initial-value'] ?? tags['reference-value'];
+		if (typeof manifestId !== 'string' || !ARWEAVE_ID.test(manifestId)) {
+			throw new Error('hidden-collection-reference-invalid');
+		}
+		registerHiddenCollectionAssets([
+			imageCollection(collectionId, manifestId, 'reference', await fetchJson<ImageManifest>(manifestId, signal)),
+		]);
+	});
+	if (!hiddenCollectionAssetIndexComplete()) throw new Error('hidden-collection-index-unavailable');
+}
+
 export async function loadCollections(
 	signal?: AbortSignal,
-	onProgress?: (collections: Collection[]) => void
+	onProgress?: (collections: Collection[]) => void,
+	onVisibilityReady?: () => void
 ): Promise<CollectionLoadResult> {
+	await ensureHiddenCollectionAssets(signal);
+	onVisibilityReady?.();
 	const sources: CollectionSource[] = [
 		{ label: 'Arweave names', load: (progress) => loadNames(signal, progress) },
 		{
 			label: 'Fungible token discovery',
 			load: () => loadFungibleTokens(signal),
 			fallback: () => ({
-				...fungibleTokenCollection([defaultFungibleToken()]),
+				...fungibleTokenCollection(isVisibleAssetId(FUNGIBLE_TOKEN_ID) ? [defaultFungibleToken()] : []),
 				indexSource: 'compiled-fallback',
 			}),
 		},
@@ -420,6 +531,7 @@ export async function discoverBazarCollections(
 		});
 		await mapConcurrent(candidates, 4, async (candidate) => {
 			try {
+				if (!isVisibleCollectionId(candidate.id)) return;
 				const collection = await loadDiscoveredImageCollection(candidate, signal);
 				const discovered = {
 					...collection,
@@ -669,12 +781,14 @@ function throwIfAborted(signal?: AbortSignal) {
 
 async function loadFungibleTokens(signal?: AbortSignal): Promise<Collection> {
 	const page = await loadFungibleTokenPage(undefined, signal);
-	const assets = [...page.assets];
-	if (ARWEAVE_ID.test(FUNGIBLE_TOKEN_ID) && !assets.some((asset) => asset.id === FUNGIBLE_TOKEN_ID)) {
-		assets.unshift(defaultFungibleToken());
-	}
+	const includeConfiguredToken =
+		ARWEAVE_ID.test(FUNGIBLE_TOKEN_ID) &&
+		isVisibleAssetId(FUNGIBLE_TOKEN_ID) &&
+		!page.assets.some((asset) => asset.id === FUNGIBLE_TOKEN_ID);
+	const assets = includeConfiguredToken ? [defaultFungibleToken(), ...page.assets] : page.assets;
+	const total = page.hasMore ? Math.max(assets.length, page.total - page.hiddenAssetCount) : assets.length;
 	return {
-		...fungibleTokenCollection(assets, page.total),
+		...fungibleTokenCollection(assets, total),
 		cursor: page.cursor,
 		cursorHistory: page.cursor ? [page.cursor] : [],
 		hasMore: page.hasMore,
@@ -700,7 +814,9 @@ export async function loadMoreFungibleTokens(collection: Collection, signal?: Ab
 		cursor: page.cursor,
 		cursorHistory: page.cursor ? [...cursorHistory, page.cursor] : cursorHistory,
 		hasMore: page.hasMore,
-		total: Math.max(page.total, assets.length),
+		total: page.hasMore
+			? Math.max(assets.length, (collection.total ?? page.total) - page.hiddenAssetCount)
+			: assets.length,
 	};
 }
 
@@ -796,7 +912,12 @@ async function loadFungibleTokenPage(after?: string, signal?: AbortSignal): Prom
 	)
 		throw new Error('fungible-index-schema');
 	const assets = new Map<string, AssetSummary>();
+	let hiddenIndexedAssets = 0;
 	for (const { node } of connection.edges) {
+		if (!isVisibleAssetId(node.id)) {
+			hiddenIndexedAssets += 1;
+			continue;
+		}
 		const tags = Object.fromEntries(node.tags.map((tag) => [tag.name.toLowerCase(), tag.value]));
 		assets.set(node.id, {
 			id: node.id,
@@ -837,6 +958,7 @@ async function loadFungibleTokenPage(after?: string, signal?: AbortSignal): Prom
 			throw new Error('fungible-index-schema');
 		if (legacy.pageInfo.hasNextPage) throw new Error('fungible-index-legacy-pagination-stalled');
 		for (const { node } of legacy.edges) {
+			if (!isVisibleAssetId(node.id)) continue;
 			const tags = Object.fromEntries(node.tags.map((tag) => [tag.name.toLowerCase(), tag.value]));
 			if (assetUiStyle(tags) !== 'fungible' || !(expectedTag in tags)) continue;
 			legacyAssets.set(node.id, {
@@ -854,6 +976,7 @@ async function loadFungibleTokenPage(after?: string, signal?: AbortSignal): Prom
 		cursor,
 		hasMore: connection.pageInfo.hasNextPage,
 		total: count + legacyAssets.size,
+		hiddenAssetCount: hiddenIndexedAssets,
 	};
 }
 
@@ -869,7 +992,7 @@ function collectionCount(value: unknown): number | null {
 function fungibleTokenCollection(assets: AssetSummary[], count = 0): Collection {
 	return {
 		id: 'fungible-tokens',
-		name: '[TEST] Bazar Fungible Tokens',
+		name: 'Bazar Fungible Tokens',
 		description: 'Arweave-native fungible tokens with direct wallet ownership and native $AR settlement.',
 		kind: 'tokens',
 		assets,
@@ -893,7 +1016,7 @@ async function loadNames(signal?: AbortSignal, onProgress?: (collection: Collect
 		return namespace;
 	});
 	const [namespace, page] = await Promise.all([namespaceRequest, loadCarrierPage(undefined, signal)]);
-	const assets = carrierAssets(page, namespace);
+	const assets = carrierAssets(page, namespace).filter((asset) => isVisibleAssetId(asset.id));
 	return {
 		...namesNamespaceCollection(namespace),
 		assets,
@@ -926,7 +1049,9 @@ export async function loadMoreCarrierNames(collection: Collection, signal?: Abor
 		throw new Error('carrier-index-pagination-stalled');
 	}
 	const seen = new Set(collection.assets.map((asset) => asset.id));
-	const additions = carrierAssets(page, collection.namespace).filter((asset) => !seen.has(asset.id));
+	const additions = carrierAssets(page, collection.namespace).filter(
+		(asset) => isVisibleAssetId(asset.id) && !seen.has(asset.id)
+	);
 	const assets = [...collection.assets, ...additions];
 	return {
 		...collection,

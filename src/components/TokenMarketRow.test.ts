@@ -33,6 +33,7 @@ describe('TokenMarketRow', () => {
 					collection,
 					context: 'Fungible token',
 					metric: { label: 'Unit price', value: '0.1 AR / TRUNKY', tone: 'positive' },
+					secondaryMetric: { label: '24h change', value: '-12.5%', tone: 'negative' },
 				})
 			)
 		);
@@ -41,6 +42,9 @@ describe('TokenMarketRow', () => {
 		expect(markup).toContain(`src="${logo}"`);
 		expect(markup).toContain('TRUNKY');
 		expect(markup).toContain('Unit price');
+		expect(markup).toContain('24h change');
+		expect(markup).toContain('-12.5%');
+		expect(markup).toContain('token-market-metric secondary negative');
 		expect(markup).not.toContain('home-asset-media');
 	});
 

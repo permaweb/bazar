@@ -1,8 +1,15 @@
-import type { AssetSummary, Collection } from 'api/collections';
+import {
+	type AssetSummary,
+	type Collection,
+	isHiddenCollectionId,
+	isVisibleAssetId,
+	isVisibleCollectionId,
+} from 'api/collections';
 
 const MARKET_SHELL_STORAGE_KEY = 'bazar-market-shell:v1';
 const ASSET_SHELL_STORAGE_PREFIX = 'bazar-asset-shell:v1:';
 const HOME_LISTING_SHELL_STORAGE_KEY = 'bazar-home-listing-shell:v1';
+const HIDDEN_COLLECTION_ASSETS_STORAGE_KEY = 'bazar-hidden-collection-assets:v1';
 
 export type HomeListingShell = {
 	asset: AssetSummary;
@@ -59,6 +66,40 @@ function isHomeListingShell(value: unknown): value is HomeListingShell {
 	);
 }
 
+function isHiddenCollectionAssetIndex(value: unknown): value is Record<string, string[]> {
+	return (
+		Boolean(value) &&
+		typeof value === 'object' &&
+		!Array.isArray(value) &&
+		Object.entries(value as Record<string, unknown>).every(
+			([collectionId, assetIds]) =>
+				isHiddenCollectionId(collectionId) &&
+				Array.isArray(assetIds) &&
+				assetIds.every((assetId) => typeof assetId === 'string' && /^[A-Za-z0-9_-]{43}$/.test(assetId))
+		)
+	);
+}
+
+export function loadHiddenCollectionAssetIndex(storage: Pick<Storage, 'getItem'>): Record<string, string[]> {
+	try {
+		const value = JSON.parse(storage.getItem(HIDDEN_COLLECTION_ASSETS_STORAGE_KEY) ?? 'null');
+		return isHiddenCollectionAssetIndex(value) ? value : {};
+	} catch {
+		return {};
+	}
+}
+
+export function storeHiddenCollectionAssetIndex(
+	storage: Pick<Storage, 'setItem'>,
+	index: Readonly<Record<string, readonly string[]>>
+): void {
+	try {
+		storage.setItem(HIDDEN_COLLECTION_ASSETS_STORAGE_KEY, JSON.stringify(index));
+	} catch {
+		// Browser storage is an optional acceleration layer.
+	}
+}
+
 export function loadMarketShellSnapshot(storage: Pick<Storage, 'getItem'>): Collection[] {
 	try {
 		const value = JSON.parse(storage.getItem(MARKET_SHELL_STORAGE_KEY) ?? 'null');
@@ -79,7 +120,7 @@ export function storeMarketShellSnapshot(storage: Pick<Storage, 'setItem'>, coll
 export function loadAssetShellSnapshot(storage: Pick<Storage, 'getItem'>, assetId: string): AssetSummary | undefined {
 	try {
 		const value = JSON.parse(storage.getItem(`${ASSET_SHELL_STORAGE_PREFIX}${assetId}`) ?? 'null');
-		return isCachedAsset(value) && value.id === assetId ? value : undefined;
+		return isCachedAsset(value) && value.id === assetId && isVisibleAssetId(assetId) ? value : undefined;
 	} catch {
 		return undefined;
 	}
@@ -112,7 +153,9 @@ export function loadHomeListingSnapshot(
 			now - (value.updatedAt ?? 0) <= maxAgeMs &&
 			Array.isArray(value.listings) &&
 			value.listings.every(isHomeListingShell)
-			? value.listings
+			? value.listings.filter(
+					(listing) => isVisibleCollectionId(listing.collection.id) && isVisibleAssetId(listing.asset.id)
+			  )
 			: [];
 	} catch {
 		return [];

@@ -1,9 +1,14 @@
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import type { CollectionActivityEvent } from 'api/asset-discovery';
-import type { Collection } from 'api/collections';
+import {
+	type Collection,
+	HIDDEN_COLLECTION_IDS,
+	hiddenCollectionAssetIndex,
+	replaceHiddenCollectionAssetIndex,
+} from 'api/collections';
 
 import {
 	AssetCardArtwork,
@@ -15,6 +20,7 @@ import {
 	collectionAssetWindowDelta,
 	collectionCandidateMembership,
 	collectionDefaultsToListed,
+	CollectionDescription,
 	collectionListingScopeVersion,
 	commitHomeActivityBatch,
 	commitHomeFloorResult,
@@ -50,7 +56,10 @@ import {
 	homeSummaryRequestKeys,
 	homeTabFromPathname,
 	homeTabPath,
+	homeTokenPriceChangeLabel,
+	homeTokenPriceChangePercent,
 	isFungiblePendingMint,
+	marketCatalogueCollections,
 	mergeResolvedListingBatch,
 	newestCollectionActivity,
 	nextListingAnnouncementProgress,
@@ -59,6 +68,7 @@ import {
 	publishHomeListingResult,
 	reconcileHomeActivityScan,
 	reconcileHomeFloorScan,
+	reconcileHomeListingAssets,
 	recordHomeListingComputeResult,
 	retainNewestCollectionActivity,
 	retryableHomeSummaryKeys,
@@ -70,14 +80,69 @@ import {
 } from './App';
 import {
 	loadAssetShellSnapshot,
+	loadHiddenCollectionAssetIndex,
 	loadHomeListingSnapshot,
 	loadMarketShellSnapshot,
 	storeAssetShellSnapshot,
+	storeHiddenCollectionAssetIndex,
 	storeHomeListingSnapshot,
 	storeMarketShellSnapshot,
 } from './shell-snapshot';
 
+const readyHiddenCollectionIndex = Object.fromEntries(HIDDEN_COLLECTION_IDS.map((id) => [id, []]));
+
+beforeEach(() => replaceHiddenCollectionAssetIndex(readyHiddenCollectionIndex));
+afterEach(() => replaceHiddenCollectionAssetIndex({}));
+
 describe('Home market summary retries', () => {
+	it('calculates an exact 24-hour token ask change from differently sized listings', () => {
+		const now = Date.UTC(2026, 7, 14, 12);
+		const offer = (id: string, hoursAgo: number, asking: string, quantity: string): CollectionActivityEvent => ({
+			id,
+			processId: 'T'.repeat(43),
+			action: 'make-offer',
+			actor: 'W'.repeat(43),
+			height: 1,
+			timestamp: (now - hoursAgo * 60 * 60 * 1_000) / 1_000,
+			asking,
+			quantity,
+		});
+
+		expect(
+			homeTokenPriceChangePercent(
+				[offer('old', 25, '1', '1'), offer('first', 20, '200', '2'), offer('last', 1, '450', '3')],
+				now
+			)
+		).toBe(50);
+		expect(
+			homeTokenPriceChangePercent(
+				Array.from({ length: 200 }, (_, index) => offer(String(index), 20 - index / 20, '100', '1')),
+				now,
+				false
+			)
+		).toBeNull();
+		expect(
+			homeTokenPriceChangePercent(
+				[offer('first', 20, '1', '1'), offer('last', 1, `1${'0'.repeat(400)}`, '1')],
+				now
+			)
+		).toBeNull();
+		expect(homeTokenPriceChangeLabel(50)).toBe('+50%');
+		expect(homeTokenPriceChangeLabel(-12.5)).toBe('-12.5%');
+		expect(homeTokenPriceChangeLabel(null)).toBe('—');
+		expect(homeTokenPriceChangeLabel(Number.POSITIVE_INFINITY)).toBe('—');
+	});
+
+	it('renders collection descriptions as collapsed, wrappable header copy', () => {
+		const description =
+			'Dumdumz are a long-running collection of expressive characters permanently published on Arweave.';
+		const markup = renderToStaticMarkup(React.createElement(CollectionDescription, { description }));
+
+		expect(markup).toContain(description);
+		expect(markup).toContain('collection-description');
+		expect(markup).toContain('is-collapsed');
+	});
+
 	it('renders permanent token logos in Discover and collection cards', () => {
 		const logo = `https://arweave.net/${'L'.repeat(43)}`;
 		const asset = {
@@ -291,6 +356,53 @@ describe('Home market summary retries', () => {
 		expect(loadMarketShellSnapshot(storage)).toEqual(collections);
 	});
 
+	it('hides denied collection cards, their assets, and denied fungible assets at the catalogue boundary', () => {
+		const previousIndex = hiddenCollectionAssetIndex();
+		const hidden: Collection = {
+			id: 'q5KruM1NXsh-bu0oh51sk-3czm5ZBAu22twpwDl8WMY',
+			name: 'HTML Colors',
+			description: 'Superseded collection',
+			kind: 'images',
+			assets: [{ id: 'z'.repeat(43), name: 'Old color' }],
+		};
+		const hiddenId = 'bASFYsRBQm_dfG__wqRVwMh8bqwEvSTl4lURRBqfu2M';
+		const visible = { id: 'rQugKt4xEQcsy2yTmJJtlbPqblX6sFAudqjlf2ndV2Y', name: 'REKT TRUNK' };
+		const tokens: Collection = {
+			id: 'fungible-tokens',
+			name: 'Fungible tokens',
+			description: 'Tokens',
+			kind: 'tokens',
+			assets: [hidden.assets[0], { id: hiddenId, name: '[TEST] PcMK spawn trade transfer' }, visible],
+			total: 3,
+		};
+
+		try {
+			replaceHiddenCollectionAssetIndex({
+				...previousIndex,
+				[hidden.id]: hidden.assets.map((asset) => asset.id),
+			});
+			expect(marketCatalogueCollections([hidden, tokens])).toEqual([{ ...tokens, assets: [visible], total: 1 }]);
+		} finally {
+			replaceHiddenCollectionAssetIndex(previousIndex);
+		}
+	});
+
+	it('round-trips verified hidden-collection membership for offline reloads', () => {
+		const values = new Map<string, string>();
+		const storage = {
+			getItem: (key: string) => values.get(key) ?? null,
+			setItem: (key: string, value: string) => values.set(key, value),
+		};
+		const index = {
+			...readyHiddenCollectionIndex,
+			'q5KruM1NXsh-bu0oh51sk-3czm5ZBAu22twpwDl8WMY': ['z'.repeat(43)],
+		};
+
+		storeHiddenCollectionAssetIndex(storage, index);
+
+		expect(loadHiddenCollectionAssetIndex(storage)).toEqual(index);
+	});
+
 	it('ignores malformed market snapshots', () => {
 		expect(loadMarketShellSnapshot({ getItem: () => '{bad json' })).toEqual([]);
 		expect(loadMarketShellSnapshot({ getItem: () => JSON.stringify([{ id: 'broken' }]) })).toEqual([]);
@@ -303,10 +415,16 @@ describe('Home market summary retries', () => {
 			setItem: (key: string, value: string) => values.set(key, value),
 		};
 		const asset = { id: 'asset-id', name: 'blockdata', ticker: 'BLOCK' };
+		const hiddenAsset = {
+			id: 'bASFYsRBQm_dfG__wqRVwMh8bqwEvSTl4lURRBqfu2M',
+			name: 'Hidden test token',
+		};
 
 		storeAssetShellSnapshot(storage, asset);
+		storeAssetShellSnapshot(storage, hiddenAsset);
 		expect(loadAssetShellSnapshot(storage, asset.id)).toEqual(asset);
 		expect(loadAssetShellSnapshot(storage, 'another-id')).toBeUndefined();
+		expect(loadAssetShellSnapshot(storage, hiddenAsset.id)).toBeUndefined();
 	});
 
 	it('restores only recent Home listing display metadata from the same peer scope', () => {
@@ -333,6 +451,34 @@ describe('Home market summary retries', () => {
 		expect(loadHomeListingSnapshot(storage, 'alpha,charlie', 60_000, 1_001)).toEqual([listing]);
 		expect(loadHomeListingSnapshot(storage, 'charlie', 60_000, 1_001)).toEqual([]);
 		expect(loadHomeListingSnapshot(storage, 'alpha,charlie', 60_000, 61_001)).toEqual([]);
+	});
+
+	it('drops cached Home listings for denied collections and fungible assets', () => {
+		const listing = (assetId: string, collectionId: string) => ({
+			asset: { id: assetId, name: 'Hidden' },
+			collection: {
+				id: collectionId,
+				name: 'Hidden',
+				description: '',
+				kind: 'images',
+				assets: [{ id: assetId, name: 'Hidden' }],
+			},
+			activity: { processId: assetId, height: 1, timestamp: 1 },
+			price: '1 AR',
+		});
+		const storage = {
+			getItem: () =>
+				JSON.stringify({
+					scope: 'nodes',
+					updatedAt: 1,
+					listings: [
+						listing('A'.repeat(43), 'q5KruM1NXsh-bu0oh51sk-3czm5ZBAu22twpwDl8WMY'),
+						listing('IyFfmbTu8P4rv0KyrA0Q-QtfEnYntMj4RkRiBVip9KA', 'fungible-tokens'),
+					],
+				}),
+		};
+
+		expect(loadHomeListingSnapshot(storage, 'nodes', 60_000, 2)).toEqual([]);
 	});
 
 	it('rejects Home listing shells that do not bind activity to the displayed asset', () => {
@@ -386,6 +532,20 @@ describe('Home market summary retries', () => {
 		expect(verified).toBe(pending);
 	});
 
+	it('does not resolve cached or direct assets while hidden membership is incomplete', () => {
+		const asset = { id: 'A'.repeat(43), name: 'Cached asset' };
+		replaceHiddenCollectionAssetIndex({});
+
+		expect(
+			assetDetailCanResolve({
+				assetId: asset.id,
+				cachedAsset: asset,
+				directAtomicRoute: true,
+				directFungibleRoute: true,
+			})
+		).toBe(false);
+	});
+
 	it('starts a direct fungible read before its immutable collection index settles', () => {
 		const assetId = 'A'.repeat(43);
 		expect(
@@ -396,6 +556,18 @@ describe('Home market summary retries', () => {
 			})
 		).toBe(true);
 		expect(assetDetailMembershipVerified('fungible-tokens', new Set(), false)).toBe(false);
+	});
+
+	it('does not resolve exact denied asset routes', () => {
+		const assetId = 'bASFYsRBQm_dfG__wqRVwMh8bqwEvSTl4lURRBqfu2M';
+		expect(
+			assetDetailCanResolve({
+				assetId,
+				cachedAsset: { id: assetId, name: 'Hidden test token' },
+				directAtomicRoute: true,
+				directFungibleRoute: true,
+			})
+		).toBe(false);
 	});
 
 	it('starts a deep-linked atomic read from its exact indexed metadata while collection membership settles', () => {
@@ -608,6 +780,24 @@ describe('Home market summary retries', () => {
 		]);
 	});
 
+	it('replaces stale portable metadata with the verified collection asset', () => {
+		const id = 'i'.repeat(43);
+		const other = { id: 'o'.repeat(43), name: 'Other' };
+		const placeholder = { id, name: `${id.slice(0, 7)}…${id.slice(-6)}` };
+		const resolved = { id, name: 'Chartreuse', image: `https://arweave.net/${id}` };
+		const collection: Collection = {
+			id: 'images',
+			name: 'HTML Colors',
+			description: '',
+			kind: 'images',
+			assets: [placeholder],
+		};
+
+		expect(
+			homeDiscoveryAssets([collection], { images: [other, resolved] }, 1, [{ asset: placeholder, collection }])
+		).toEqual([{ asset: resolved, collection }]);
+	});
+
 	it('caps portable listings by indexed activity rather than compute completion', () => {
 		const collection: Collection = {
 			id: 'images',
@@ -735,14 +925,33 @@ describe('Home market summary retries', () => {
 	it('publishes and removes each live collection listing independently', () => {
 		const first = { id: 'first', name: 'First' };
 		const second = { id: 'second', name: 'Second' };
+		const renamed = { id: 'first', name: 'Resolved First' };
 		const start = { collection: [first] };
 
 		expect(publishHomeListingResult(start, 'collection', first, true)).toBe(start);
+		expect(publishHomeListingResult(start, 'collection', renamed, true)).toEqual({ collection: [renamed] });
 		expect(publishHomeListingResult(start, 'collection', second, true)).toEqual({
 			collection: [first, second],
 		});
 		expect(publishHomeListingResult(start, 'collection', first, false)).toEqual({ collection: [] });
 		expect(publishHomeListingResult(start, 'collection', second, false)).toBe(start);
+	});
+
+	it('preserves resolved listing metadata when a refreshed floor scan reorders assets', () => {
+		const first = { id: 'f'.repeat(43), name: 'Resolved First' };
+		const second = { id: 's'.repeat(43), name: 'Resolved Second' };
+		const collection: Collection = {
+			id: 'images',
+			name: 'HTML Colors',
+			description: '',
+			kind: 'images',
+			assets: [
+				{ id: first.id, name: 'fffffff…ffffff' },
+				{ id: second.id, name: 'sssssss…ssssss' },
+			],
+		};
+
+		expect(reconcileHomeListingAssets([first, second], [second.id, first.id], collection)).toEqual([second, first]);
 	});
 
 	it('paginates Discover assets and clamps pages when filters reduce the result set', () => {
@@ -819,6 +1028,7 @@ describe('Home market summary retries', () => {
 	it('resolves global activity to its marketplace collection', () => {
 		const tokenId = 't'.repeat(43);
 		const nameId = 'n'.repeat(43);
+		const hiddenId = 'bASFYsRBQm_dfG__wqRVwMh8bqwEvSTl4lURRBqfu2M';
 		const collections: Collection[] = [
 			{
 				id: 'tokens',
@@ -833,12 +1043,16 @@ describe('Home market summary retries', () => {
 				description: '',
 				kind: 'names',
 				assets: [],
-				namespace: { manifestId: 'm'.repeat(43), namesById: { [nameId]: 'name' } },
+				namespace: {
+					manifestId: 'm'.repeat(43),
+					namesById: { [nameId]: 'name', [hiddenId]: 'hidden' },
+				},
 			},
 		];
 
 		expect(globalActivityCollection(collections, tokenId)?.id).toBe('tokens');
 		expect(globalActivityCollection(collections, nameId)?.id).toBe('names');
+		expect(globalActivityCollection(collections, hiddenId)).toBeUndefined();
 		expect(globalActivityCollection(collections, 'x'.repeat(43))).toBeUndefined();
 	});
 
@@ -861,6 +1075,7 @@ describe('Home market summary retries', () => {
 		const loadedImage = 'i'.repeat(43);
 		const loadedToken = 't'.repeat(43);
 		const canonicalName = 'n'.repeat(43);
+		const hiddenName = 'bASFYsRBQm_dfG__wqRVwMh8bqwEvSTl4lURRBqfu2M';
 		const staleLoadedName = 's'.repeat(43);
 		const foreign = 'f'.repeat(43);
 		const imageIncludes = collectionCandidateMembership({
@@ -885,13 +1100,14 @@ describe('Home market summary retries', () => {
 			assets: [{ id: staleLoadedName, name: 'Stale' }],
 			namespace: {
 				manifestId: 'm'.repeat(43),
-				namesById: { [canonicalName]: 'canonical' },
+				namesById: { [canonicalName]: 'canonical', [hiddenName]: 'hidden' },
 			},
 		});
 
 		expect([imageIncludes(loadedImage), imageIncludes(foreign)]).toEqual([true, false]);
 		expect([tokenIncludes(loadedToken), tokenIncludes(foreign)]).toEqual([true, false]);
 		expect([nameIncludes(canonicalName), nameIncludes(staleLoadedName)]).toEqual([true, false]);
+		expect(nameIncludes(hiddenName)).toBe(false);
 	});
 
 	it('screens a large collection candidate set with exact indexed membership', () => {
