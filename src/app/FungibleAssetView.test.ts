@@ -230,8 +230,11 @@ describe('fungible holders', () => {
 		);
 
 		expect(chart).toContain('aria-label="Test token supply distribution"');
+		expect(chart).toContain('<h2 id="fungible-holder-chart-title">Supply distribution</h2>');
 		expect(chart).toContain('80% of supply; 25% offered for sale');
 		expect(chart).toContain('<pattern');
+		expect(chart).toContain('Selected holder');
+		expect(chart).toContain('Total balance');
 		expect(chart).toContain('Offered for sale');
 	});
 });

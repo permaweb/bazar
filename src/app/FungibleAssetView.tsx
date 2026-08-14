@@ -502,10 +502,14 @@ export function FungibleHolderChart({
 			</div>
 			<div className="fungible-holder-chart-detail">
 				<header>
-					<span>Supply distribution</span>
-					<strong id="fungible-holder-chart-title">{holders.length.toLocaleString()} holders</strong>
+					<div>
+						<h2 id="fungible-holder-chart-title">Supply distribution</h2>
+						<p>Select a ring segment to inspect a holder.</p>
+					</div>
+					<span>{holders.length.toLocaleString()} holders</span>
 				</header>
 				<div className="fungible-holder-chart-identity">
+					<span>Selected holder</span>
 					{active.address ? (
 						<WalletAddress address={active.address} label="holder" />
 					) : (
@@ -522,10 +526,16 @@ export function FungibleHolderChart({
 						<dd>{activeOffered}</dd>
 					</div>
 				</dl>
-				<p>
-					{tokenLabel(active.total, state)} total ·{' '}
-					{BigInt(active.listed) > 0n ? tokenLabel(active.listed, state) : 'None'} listed
-				</p>
+				<div className="fungible-holder-chart-balances">
+					<div>
+						<span>Total balance</span>
+						<strong>{tokenLabel(active.total, state)}</strong>
+					</div>
+					<div>
+						<span>Listed</span>
+						<strong>{BigInt(active.listed) > 0n ? tokenLabel(active.listed, state) : 'None'}</strong>
+					</div>
+				</div>
 				<div aria-label="Chart legend" className="fungible-holder-chart-legend">
 					<span>
 						<i aria-hidden="true" /> Held
@@ -1925,7 +1935,11 @@ function FungibleOperationDialog({
 	const [hiding, setHiding] = React.useState(false);
 	const [settlementAnnouncement, setSettlementAnnouncement] = React.useState('');
 	const settlementAnnouncementKeyRef = React.useRef('');
-	const submittedAtRef = React.useRef<number>();
+	const submittedAtRef = React.useRef<number | undefined>(
+		operation.kind === 'buy' && Number.isFinite(operation.resume?.createdAt)
+			? operation.resume?.createdAt
+			: undefined
+	);
 	const purchasesRef = React.useRef<Map<string, SwapPurchase>>(new Map());
 	const networkRef = React.useRef<AssetObserverNetworkLease | null>(null);
 	const claimRef = React.useRef<WalletOperationClaim | null>(null);
@@ -2376,7 +2390,7 @@ function FungibleOperationDialog({
 			collectionId,
 			startingBalance,
 			entries,
-			createdAt: resume?.createdAt ?? Date.now(),
+			createdAt: resume?.createdAt ?? submittedAtRef.current ?? Date.now(),
 			gateway: resume?.gateway ?? currentPurchaseGatewayContext(),
 		};
 		let terminalRecoveryRemoved = false;
@@ -3399,17 +3413,6 @@ function FungibleOperationDialog({
 									: undefined
 							}
 						>
-							{operation.kind === 'buy' && purchaseSteps.length ? (
-								<div className="result-outcome-sync">
-									<ArweaveTransactionSync
-										active={visible}
-										activeStep="pay"
-										startedAt={submittedAtRef.current}
-										steps={purchaseSteps}
-										subject={`${asset.name} · ${tokenLabel(activeOrder?.quantity ?? '0', state)}`}
-									/>
-								</div>
-							) : null}
 							{operation.kind === 'buy' || operation.kind === 'sell' ? (
 								<OperationOutcomeSubject
 									label={operation.kind === 'buy' ? 'You received' : 'You listed'}
@@ -3434,6 +3437,17 @@ function FungibleOperationDialog({
 										/>
 									}
 								/>
+							) : null}
+							{operation.kind === 'buy' && purchaseSteps.length ? (
+								<div className="result-outcome-sync">
+									<ArweaveTransactionSync
+										active={visible}
+										activeStep="pay"
+										startedAt={submittedAtRef.current}
+										steps={purchaseSteps}
+										subject={`${asset.name} · ${tokenLabel(activeOrder?.quantity ?? '0', state)}`}
+									/>
+								</div>
 							) : null}
 						</OperationOutcome>
 						{transaction && operation.kind !== 'transfer' ? (
@@ -4044,7 +4058,7 @@ export function FungiblePurchaseReceiptNavigator({
 					<div>
 						<dt>Seller</dt>
 						<dd>
-							<WalletAddress address={order.creator} label="seller" />
+							<WalletAddress address={order.creator} label="seller" tooltipEscapesOverflow />
 						</dd>
 					</div>
 					<div>

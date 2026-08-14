@@ -9,11 +9,13 @@ export function WalletAddress({
 	className = '',
 	full = false,
 	label = 'wallet',
+	tooltipEscapesOverflow = false,
 }: {
 	address: string;
 	className?: string;
 	full?: boolean;
 	label?: string;
+	tooltipEscapesOverflow?: boolean;
 }) {
 	const [copyState, setCopyState] = React.useState<'idle' | 'copied' | 'failed'>('idle');
 	const resetTimer = React.useRef<number | null>(null);
@@ -38,7 +40,12 @@ export function WalletAddress({
 	const shortened = address.length > 14 ? `${address.slice(0, 6)}…${address.slice(-5)}` : address;
 	return (
 		<>
-			<Tooltip className="wallet-address-tooltip" content={address} placement="top">
+			<Tooltip
+				className="wallet-address-tooltip"
+				content={address}
+				escapeOverflow={tooltipEscapesOverflow}
+				placement="top"
+			>
 				{(tooltipId) => (
 					<Button
 						aria-describedby={tooltipId}
