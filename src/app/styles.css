@@ -1543,15 +1543,55 @@ p {
 	overflow-wrap: anywhere;
 	z-index: 60;
 }
-.gateway label {
-	display: grid;
-	gap: 7px;
+.gateway-peer-editor {
+	min-width: 0;
+	margin: 0;
+	padding: 0;
+	border: 0;
+}
+.gateway-peer-editor legend {
+	margin-bottom: 8px;
+	padding: 0;
 	font-size: var(--type-body);
 }
-.gateway-peer-description {
+.gateway-peer-fields {
+	display: grid;
+	gap: 7px;
+}
+.gateway-peer-row {
+	min-width: 0;
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	align-items: center;
+	gap: 6px;
+}
+.gateway-peer-row input {
+	min-width: 0;
+}
+.gateway .gateway-peer-remove {
+	width: 40px;
+	min-height: 40px;
+	margin-top: 0;
+	padding: 0;
+	display: grid;
+	place-items: center;
+	color: var(--muted);
+}
+.gateway .gateway-peer-remove:hover:not(:disabled) {
+	color: var(--negative-text);
+}
+.gateway .gateway-peer-add {
+	min-height: 32px;
+	margin-top: 7px;
+	padding: 5px 7px;
+	border: 0;
+	background: var(--transparent);
 	color: var(--muted);
 	font-size: var(--type-small);
-	line-height: 1.45;
+}
+.gateway .gateway-peer-add:hover:not(:disabled) {
+	color: var(--ink);
+	background: var(--surface-hover);
 }
 .gateway button {
 	margin-top: 10px;
@@ -8727,7 +8767,7 @@ body input:focus-visible {
 	height: calc(100vh - 122px);
 	height: calc(100dvh - 122px);
 	min-height: 0;
-	overflow: hidden;
+	overflow: visible;
 	position: relative;
 }
 .home-main,
@@ -8736,28 +8776,29 @@ body input:focus-visible {
 }
 .home-content {
 	padding: 0;
-	overflow: hidden;
+	overflow: visible;
 }
 .home-market-layout {
-	width: 100%;
+	width: 100vw;
 	height: 100%;
+	margin-inline: calc(50% - 50vw);
 	display: block;
-}
-.home-section {
-	height: 100%;
-	width: 100%;
-	min-width: 0;
-	max-width: var(--max-view-width);
-	margin: 0 auto;
-	padding-bottom: var(--page-footer-spacing);
 	overflow-y: auto;
 	overscroll-behavior: contain;
 	scroll-padding-bottom: var(--page-footer-spacing);
 	scrollbar-width: none;
 }
-.home-section::-webkit-scrollbar {
+.home-market-layout::-webkit-scrollbar {
 	width: 0;
 	height: 0;
+}
+.home-section {
+	min-height: 100%;
+	width: calc(100% - var(--page-gutter) - var(--page-gutter));
+	min-width: 0;
+	max-width: calc(var(--max-view-width) - var(--page-gutter) - var(--page-gutter));
+	margin: 0 auto;
+	padding-bottom: var(--page-footer-spacing);
 }
 .home-section-heading {
 	min-height: 108px;
