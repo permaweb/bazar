@@ -1,4 +1,10 @@
-import type { AssetSummary, Collection } from 'api/collections';
+import {
+	type AssetSummary,
+	type Collection,
+	isVisibleAssetId,
+	isVisibleCollectionId,
+	withVisibleCollectionAssets,
+} from 'api/collections';
 
 const MARKET_SHELL_STORAGE_KEY = 'bazar-market-shell:v1';
 const ASSET_SHELL_STORAGE_PREFIX = 'bazar-asset-shell:v1:';
@@ -62,7 +68,9 @@ function isHomeListingShell(value: unknown): value is HomeListingShell {
 export function loadMarketShellSnapshot(storage: Pick<Storage, 'getItem'>): Collection[] {
 	try {
 		const value = JSON.parse(storage.getItem(MARKET_SHELL_STORAGE_KEY) ?? 'null');
-		return Array.isArray(value) && value.every(isCachedCollection) ? value : [];
+		return Array.isArray(value) && value.every(isCachedCollection)
+			? value.filter((collection) => isVisibleCollectionId(collection.id)).map(withVisibleCollectionAssets)
+			: [];
 	} catch {
 		return [];
 	}
@@ -79,7 +87,7 @@ export function storeMarketShellSnapshot(storage: Pick<Storage, 'setItem'>, coll
 export function loadAssetShellSnapshot(storage: Pick<Storage, 'getItem'>, assetId: string): AssetSummary | undefined {
 	try {
 		const value = JSON.parse(storage.getItem(`${ASSET_SHELL_STORAGE_PREFIX}${assetId}`) ?? 'null');
-		return isCachedAsset(value) && value.id === assetId ? value : undefined;
+		return isCachedAsset(value) && value.id === assetId && isVisibleAssetId(assetId) ? value : undefined;
 	} catch {
 		return undefined;
 	}
@@ -112,7 +120,9 @@ export function loadHomeListingSnapshot(
 			now - (value.updatedAt ?? 0) <= maxAgeMs &&
 			Array.isArray(value.listings) &&
 			value.listings.every(isHomeListingShell)
-			? value.listings
+			? value.listings.filter(
+					(listing) => isVisibleCollectionId(listing.collection.id) && isVisibleAssetId(listing.asset.id)
+			  )
 			: [];
 	} catch {
 		return [];

@@ -153,22 +153,26 @@ describe('marketplace search ranking', () => {
 	});
 
 	it('matches loaded fungible tokens by ticker or process ID as well as name', () => {
+		const processId = 'P'.repeat(43);
 		const tokens: Collection = {
 			...collection,
-			assets: [{ id: 'IyFfmbTu8P4rv0KyrA0Q-QtfEnYntMj4RkRiBVip9KA', name: 'Weave Credit', ticker: 'WEAVE' }],
+			assets: [{ id: processId, name: 'Internet Token', ticker: 'WWW' }],
 		};
 
-		expect(collectionSearchAssets(tokens, 'weave')).toEqual(tokens.assets);
-		expect(collectionSearchAssets(tokens, 'iyffmbtu')).toEqual(tokens.assets);
+		expect(collectionSearchAssets(tokens, 'internet')).toEqual(tokens.assets);
+		expect(collectionSearchAssets(tokens, 'pppppppp')).toEqual(tokens.assets);
 		expect(collectionSearchAssets(tokens, 'missing')).toEqual([]);
-		expect(marketplaceAssetMatchesSearch(tokens.assets[0], tokens, 'WEAVE')).toBe(true);
-		expect(marketplaceAssetMatchesSearch(tokens.assets[0], tokens, 'IyFfmbTu')).toBe(true);
+		expect(marketplaceAssetMatchesSearch(tokens.assets[0], tokens, 'WWW')).toBe(true);
+		expect(marketplaceAssetMatchesSearch(tokens.assets[0], tokens, 'PPPPPPPP')).toBe(true);
 	});
 
 	it('offers exact process IDs for direct live token verification', () => {
 		const processId = 'P'.repeat(43);
 
 		expect(directTokenSearchCollection([collection], processId)).toBe(collection);
+		expect(
+			directTokenSearchCollection([collection], 'bASFYsRBQm_dfG__wqRVwMh8bqwEvSTl4lURRBqfu2M')
+		).toBeUndefined();
 		expect(directTokenSearchCollection([collection], 'not-a-process')).toBeUndefined();
 		expect(directTokenSearchCollection([], processId)).toBeUndefined();
 	});

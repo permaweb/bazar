@@ -17,9 +17,9 @@ class MemoryStorage {
 	}
 }
 
-const event = (id: string): CollectionActivityEvent => ({
+const event = (id: string, processId = 'P'.repeat(43)): CollectionActivityEvent => ({
 	id,
-	processId: 'P'.repeat(43),
+	processId,
 	action: 'make-offer',
 	actor: 'A'.repeat(43),
 	height: 10,
@@ -54,5 +54,15 @@ describe('market activity display cache', () => {
 		expect(loadMarketActivity(storage, 'scope')).toEqual([]);
 		expect(storage.value).toBeNull();
 		expect(MARKET_ACTIVITY_STORAGE_KEY).toBe('bazar-market-activity:v1');
+	});
+
+	it('does not persist or restore activity for hidden fungible assets', () => {
+		const storage = new MemoryStorage();
+		const hidden = event('hidden', 'bASFYsRBQm_dfG__wqRVwMh8bqwEvSTl4lURRBqfu2M');
+		const visible = event('visible');
+		saveMarketActivity(storage, 'scope', [hidden, visible], 30);
+
+		expect(loadMarketActivity(storage, 'scope')).toEqual([visible]);
+		expect(JSON.parse(storage.value ?? '{}').entries[0].events).toEqual([visible]);
 	});
 });

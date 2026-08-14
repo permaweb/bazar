@@ -99,10 +99,13 @@ import {
 	collectionAsset,
 	enrichImageCollectionAssetMetadata,
 	FUNGIBLE_TOKEN_COLLECTION_ID,
+	isVisibleAssetId,
+	isVisibleCollectionId,
 	loadCollections,
 	loadMoreCarrierNames,
 	loadMoreFungibleTokens,
 	mergeCollectionSnapshots,
+	withVisibleCollectionAssets,
 } from 'api/collections';
 import {
 	advanceMintActivity,
@@ -322,11 +325,17 @@ function initialMarketCollections() {
 	const known = new Set(cached.map((collection) => collection.id));
 	const localAdditions = localCollections.filter((collection) => !known.has(collection.id));
 	for (const collection of localAdditions) known.add(collection.id);
-	return withoutDuplicatedCreatedAssets([
+	return marketCatalogueCollections([
 		...cached,
 		...localAdditions,
 		...(mintedAssets.length && !known.has(CREATED_COLLECTION_ID) ? [createdCollection(mintedAssets)] : []),
 	]);
+}
+
+export function marketCatalogueCollections(collections: Collection[]): Collection[] {
+	return withoutDuplicatedCreatedAssets(
+		collections.filter((collection) => isVisibleCollectionId(collection.id)).map(withVisibleCollectionAssets)
+	);
 }
 
 export function withoutDuplicatedCreatedAssets(collections: Collection[]): Collection[] {
@@ -390,9 +399,7 @@ export function App() {
 			if (!controller.signal.aborted) {
 				setMarket((current) => ({
 					...current,
-					collections: withoutDuplicatedCreatedAssets(
-						mergeCollectionSnapshots(current.collections, collections)
-					),
+					collections: marketCatalogueCollections(mergeCollectionSnapshots(current.collections, collections)),
 					verifiedCollectionIds: new Set([
 						...current.verifiedCollectionIds,
 						...verifiedCollectionIdsFrom(collections),
@@ -409,7 +416,7 @@ export function App() {
 					const known = new Set(resolved.map((collection) => collection.id));
 					return {
 						...current,
-						collections: withoutDuplicatedCreatedAssets([
+						collections: marketCatalogueCollections([
 							...resolved,
 							...localCollections.filter((collection) => !known.has(collection.id)),
 							...(mintedAssets.length && !known.has(CREATED_COLLECTION_ID)
@@ -493,7 +500,7 @@ export function App() {
 	const addCollection = React.useCallback((collection: Collection) => {
 		setMarket((current) => ({
 			...current,
-			collections: withoutDuplicatedCreatedAssets([
+			collections: marketCatalogueCollections([
 				collection,
 				...current.collections.filter((item) => item.id !== collection.id),
 			]),
@@ -7485,6 +7492,7 @@ export function assetDetailCanResolve({
 	directAtomicRoute: boolean;
 	directFungibleRoute?: boolean;
 }) {
+	if (!isVisibleAssetId(assetId)) return false;
 	return Boolean(
 		directAtomicRoute ||
 			directFungibleRoute ||
@@ -7933,7 +7941,8 @@ function AssetView() {
 	const loading = liveResult.assetId !== assetId || liveResult.loading;
 	const provider = liveResult.assetId === assetId ? liveResult.provider : prefetchedState?.provider ?? '';
 	const verifiedAt = liveResult.assetId === assetId ? liveResult.verifiedAt : prefetchedState?.verifiedAt ?? null;
-	const directAtomicRoute = collectionId === CREATED_COLLECTION_ID && ARWEAVE_ADDRESS.test(assetId);
+	const directAtomicRoute =
+		isVisibleAssetId(assetId) && collectionId === CREATED_COLLECTION_ID && ARWEAVE_ADDRESS.test(assetId);
 	const indexedAtomic = indexedAtomicResult.assetId === assetId ? indexedAtomicResult.result : null;
 	React.useEffect(() => {
 		if (
@@ -7960,7 +7969,8 @@ function AssetView() {
 		indexedMetadata: indexedAtomic?.asset,
 		indexedCollection,
 		directAtomicRoute,
-		directFungibleRoute: collectionId === 'fungible-tokens' && ARWEAVE_ADDRESS.test(assetId),
+		directFungibleRoute:
+			isVisibleAssetId(assetId) && collectionId === 'fungible-tokens' && ARWEAVE_ADDRESS.test(assetId),
 	});
 	const directAtomicAsset =
 		directAtomicRoute && state ? bazarAtomicAssetFromState(assetId, state, provider || undefined) : null;
@@ -10531,8 +10541,9 @@ const canonicalNameSearchIndexes = new WeakMap<object, ReadonlyArray<{ asset: As
 
 export function collectionSearchAssets(collection: Collection, query: string): AssetSummary[] {
 	const normalizedQuery = query.trim().toLowerCase();
-	if (!normalizedQuery) return collection.assets;
-	const loadedMatches = collection.assets.filter((asset) => assetMatchesCollectionQuery(asset, normalizedQuery));
+	const visibleAssets = collection.assets.filter((asset) => isVisibleAssetId(asset.id));
+	if (!normalizedQuery) return visibleAssets;
+	const loadedMatches = visibleAssets.filter((asset) => assetMatchesCollectionQuery(asset, normalizedQuery));
 	if (collection.kind !== 'names' || !collection.namespace) return loadedMatches;
 	const seen = new Set(loadedMatches.map((asset) => asset.id));
 	let canonicalIndex = canonicalNameSearchIndexes.get(collection.namespace.namesById);
@@ -10544,7 +10555,10 @@ export function collectionSearchAssets(collection: Collection, query: string): A
 		canonicalNameSearchIndexes.set(collection.namespace.namesById, canonicalIndex);
 	}
 	const canonicalMatches = canonicalIndex
-		.filter(({ asset, searchName }) => searchName.includes(normalizedQuery) && !seen.has(asset.id))
+		.filter(
+			({ asset, searchName }) =>
+				isVisibleAssetId(asset.id) && searchName.includes(normalizedQuery) && !seen.has(asset.id)
+		)
 		.map(({ asset }) => asset);
 	return [...loadedMatches, ...canonicalMatches];
 }
@@ -10578,7 +10592,7 @@ export function marketplaceAssetMatchesSearch(asset: AssetSummary, collection: C
 }
 
 export function directTokenSearchCollection(collections: Collection[], query: string): Collection | undefined {
-	return ARWEAVE_ADDRESS.test(query.trim())
+	return ARWEAVE_ADDRESS.test(query.trim()) && isVisibleAssetId(query.trim())
 		? collections.find((collection) => collection.kind === 'tokens')
 		: undefined;
 }
@@ -10848,6 +10862,7 @@ function hasStoredSignedTransaction(storage: Pick<Storage, 'key' | 'length'>) {
 }
 
 function prefetchAssetPage(processId: string, fungible = false) {
+	if (!isVisibleAssetId(processId)) return;
 	if (fungible) void import('../routes/FungibleAssetRoute');
 	void prefetchAssetState(processId).then((result) => {
 		if (!fungible && result && (result.state.totalSupply !== '1' || result.state.denomination > 0)) {

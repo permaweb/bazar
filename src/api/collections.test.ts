@@ -9,7 +9,10 @@ import {
 	collectionAsset,
 	discoverBazarCollections,
 	enrichImageCollectionAssetMetadata,
+	FUNGIBLE_TOKEN_COLLECTION_ID,
 	FUNGIBLE_TOKEN_ID,
+	isVisibleAssetId,
+	isVisibleCollectionId,
 	loadCollections,
 	loadImageCollection,
 	loadMoreCarrierNames,
@@ -31,6 +34,32 @@ afterEach(() => {
 });
 
 describe('collection index loading', () => {
+	it('uses exact immutable IDs for collection visibility', () => {
+		for (const id of [
+			'A7TGD0bktXYkQSrz4UWfPqgcb8A4TAOEsKQU5_zAu7g',
+			'IMKioUfmOrqtTnrLO3_Jpg5zv8zg8PKjWYNVhD3xsZM',
+			'NGV2FNAtc-Zp-iAmMnIFYIj77ZPiMUWlA2AC2rW2OGo',
+			'q5KruM1NXsh-bu0oh51sk-3czm5ZBAu22twpwDl8WMY',
+		]) {
+			expect(isVisibleCollectionId(id)).toBe(false);
+		}
+		expect(isVisibleCollectionId('c_014vjkJNIBA4cSXXvN3ijEmYr5byU2iJarTSx0rKo')).toBe(true);
+		expect(isVisibleCollectionId(FUNGIBLE_TOKEN_COLLECTION_ID)).toBe(true);
+		for (const id of [
+			'66azdZXrCXt-W5pP8IeBbX1tQ6TyiSebc9099PNB2y8',
+			'7T99-MfMpuIx9qZMRSACFQK6j49HlXCHZ9nKUwts26c',
+			'9CYTQq_O0ARfEV4QC-R12E0DdwFswaYdWthOAG4DRLA',
+			'IyFfmbTu8P4rv0KyrA0Q-QtfEnYntMj4RkRiBVip9KA',
+			'MtNTshqw3VkML6cOe4y1yOFAVupRWz1O7b2j6ay01qM',
+			'VeS61CgitggqhFBnUwXwyZJHoJQPfYffTk-UWq3VXoY',
+			'bASFYsRBQm_dfG__wqRVwMh8bqwEvSTl4lURRBqfu2M',
+			'cT_QvNJkzjSfkazrgv0HTwsoMVFFchvx0btwR0s5mPI',
+		]) {
+			expect(isVisibleAssetId(id)).toBe(false);
+		}
+		expect(isVisibleAssetId('rQugKt4xEQcsy2yTmJJtlbPqblX6sFAudqjlf2ndV2Y')).toBe(true);
+	});
+
 	it('batch-enriches ID-only manifests with permanent Atomic Asset names', async () => {
 		const owner = 'O'.repeat(43);
 		const ids = Array.from({ length: 205 }, (_, index) => index.toString(36).padStart(43, 'A'));
@@ -164,6 +193,7 @@ describe('collection index loading', () => {
 	it('discovers scheduled carrier collections by the COLLECTION ticker without an app tag', async () => {
 		const currentId = 'C'.repeat(43);
 		const currentManifest = 'M'.repeat(43);
+		const hiddenId = 'q5KruM1NXsh-bu0oh51sk-3czm5ZBAu22twpwDl8WMY';
 		const assetId = 'A'.repeat(43);
 		const edge = (
 			id: string,
@@ -196,6 +226,11 @@ describe('collection index loading', () => {
 							pageInfo: { hasNextPage: false },
 							edges: [
 								edge(currentId, currentManifest, 20, [
+									{ name: 'scheduler-device', value: 'arweave-scheduler@1.0' },
+									{ name: 'scheduler-mode', value: 'all' },
+									{ name: 'ticker', value: 'COLLECTION' },
+								]),
+								edge(hiddenId, 'H'.repeat(43), 10, [
 									{ name: 'scheduler-device', value: 'arweave-scheduler@1.0' },
 									{ name: 'scheduler-mode', value: 'all' },
 									{ name: 'ticker', value: 'COLLECTION' },
@@ -249,6 +284,7 @@ describe('collection index loading', () => {
 			)
 		).toBe(false);
 		expect(collections[0].assets[0].name).toBe('AAAAAAA…AAAAAA');
+		expect(fetcher.mock.calls.some(([input]) => String(input).includes(hiddenId))).toBe(false);
 	});
 
 	it('retains enriched image metadata when the same immutable manifest is republished', () => {
@@ -439,6 +475,7 @@ describe('collection index loading', () => {
 				raw: { ...state.raw, 'hint-ui-style': 'non-fungible', 'asset-type': 'fungible' },
 			})
 		).toBeUndefined();
+		expect(collectionAsset(tokens, FUNGIBLE_TOKEN_ID, state)).toBeUndefined();
 	});
 
 	it('retains loaded token pages when a refresh returns only page one or its fallback', () => {
@@ -455,9 +492,12 @@ describe('collection index loading', () => {
 			cursor: `cursor-${id}`,
 			cursorHistory: Array.from({ length: Number(id) / 100 }, (_, index) => `cursor-${index}`),
 			hasMore: true,
+			hiddenAssetCount: 0,
 		});
 		const current = token('200');
 		const firstPage = token('100');
+		current.hiddenAssetCount = 2;
+		firstPage.hiddenAssetCount = 1;
 		const fallback = {
 			...token('1'),
 			indexSource: 'compiled-fallback' as const,
@@ -467,6 +507,7 @@ describe('collection index loading', () => {
 		expect(refreshed.assets).toHaveLength(200);
 		expect(refreshed.cursor).toBe('cursor-200');
 		expect(refreshed.cursorHistory).toHaveLength(2);
+		expect(refreshed.hiddenAssetCount).toBe(2);
 		expect(mergeCollectionSnapshots([current], [firstPage], true)[0].assets).toHaveLength(200);
 		expect(mergeCollectionSnapshots([current], [fallback])).toEqual([current]);
 	});
@@ -660,10 +701,6 @@ describe('collection index loading', () => {
 
 	it('publishes successful sources progressively and reports partial failures', async () => {
 		const nameId = 'N'.repeat(43);
-		const imageManifest = encodeJson({
-			name: '[TEST] Progressive images',
-			assets: [{ id: 'I'.repeat(43), name: 'Image one' }],
-		});
 		const namesNamespace = encodeJson({
 			manifest: 'arweave/paths',
 			version: '0.2.0',
@@ -690,10 +727,6 @@ describe('collection index loading', () => {
 					});
 				}
 				if (String(input).includes(`/tx/${NAMES_NAMESPACE_ID}/data`)) return new Response(namesNamespace);
-				if (String(input).includes('/tx/8aITB5SF-jc9MXx9IuCe_RaAoOrUHkkvgsy0cmLNCQw/data')) {
-					await new Promise((resolve) => setTimeout(resolve, 5));
-					return new Response(imageManifest);
-				}
 				return new Response('unavailable', { status: 503 });
 			})
 		);
@@ -703,26 +736,9 @@ describe('collection index loading', () => {
 			progress.push(collections.map((collection) => collection.id));
 		});
 
-		expect(result.collections.map((collection) => collection.id)).toEqual([
-			'arweave-names',
-			'fungible-tokens',
-			'A7TGD0bktXYkQSrz4UWfPqgcb8A4TAOEsKQU5_zAu7g',
-		]);
-		expect(result.unavailable).toEqual([
-			'[TEST] Bazar Fungible Tokens',
-			'[TEST] Progressive images',
-			'Permanent artwork collection 2',
-			'Bazar collection discovery',
-		]);
-		expect(result.collections.find((collection) => collection.name === '[TEST] Progressive images')).toMatchObject({
-			indexSource: 'compiled-fallback',
-			manifestId: '8aITB5SF-jc9MXx9IuCe_RaAoOrUHkkvgsy0cmLNCQw',
-		});
-		expect(progress.at(-1)).toEqual([
-			'arweave-names',
-			'fungible-tokens',
-			'A7TGD0bktXYkQSrz4UWfPqgcb8A4TAOEsKQU5_zAu7g',
-		]);
+		expect(result.collections.map((collection) => collection.id)).toEqual(['arweave-names', 'fungible-tokens']);
+		expect(result.unavailable).toEqual(['[TEST] Bazar Fungible Tokens', 'Bazar collection discovery']);
+		expect(progress.at(-1)).toEqual(['arweave-names', 'fungible-tokens']);
 		expect(progress.some((ids) => ids.length === 2)).toBe(true);
 	});
 
@@ -800,10 +816,7 @@ describe('collection index loading', () => {
 	});
 
 	it('discovers every fungible token across GraphQL pages without duplicate assets', async () => {
-		const tokenIds = [
-			FUNGIBLE_TOKEN_ID,
-			...Array.from({ length: 100 }, (_, index) => `${index.toString(36).padStart(42, '0')}A`),
-		];
+		const tokenIds = Array.from({ length: 101 }, (_, index) => `${index.toString(36).padStart(42, '0')}A`);
 		const tokenEdge = (id: string, index: number) => ({
 			cursor: `token-${index}`,
 			node: { id, tags: [{ name: 'Name', value: `Token ${index}` }] },
@@ -842,6 +855,59 @@ describe('collection index loading', () => {
 		).toHaveLength(2);
 	});
 
+	it('carries denylisted token counts across pages and finalizes the visible total', async () => {
+		const hiddenFirst = 'bASFYsRBQm_dfG__wqRVwMh8bqwEvSTl4lURRBqfu2M';
+		const hiddenSecond = '9CYTQq_O0ARfEV4QC-R12E0DdwFswaYdWthOAG4DRLA';
+		const visible = 'V'.repeat(43);
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+				const body = typeof init?.body === 'string' ? JSON.parse(init.body) : {};
+				if (!body.query?.includes('FungibleTokens')) return new Response('unavailable', { status: 503 });
+				const secondPage = body.variables.after === 'page-1';
+				return Response.json({
+					data: {
+						transactions: {
+							count: 3,
+							pageInfo: { hasNextPage: !secondPage },
+							edges: secondPage
+								? [
+										{
+											cursor: 'page-2',
+											node: {
+												id: hiddenSecond,
+												tags: [{ name: 'Name', value: 'Hidden second' }],
+											},
+										},
+								  ]
+								: [
+										{
+											cursor: 'hidden-1',
+											node: { id: hiddenFirst, tags: [{ name: 'Name', value: 'Hidden first' }] },
+										},
+										{
+											cursor: 'page-1',
+											node: { id: visible, tags: [{ name: 'Name', value: 'Visible token' }] },
+										},
+								  ],
+						},
+					},
+				});
+			})
+		);
+
+		const result = await loadCollections();
+		const firstPage = result.collections.find((collection) => collection.kind === 'tokens')!;
+		expect(firstPage.assets.map(({ id }) => id)).toEqual([visible]);
+		expect(firstPage.total).toBe(2);
+		expect(firstPage.hiddenAssetCount).toBe(1);
+
+		const complete = await loadMoreFungibleTokens(firstPage);
+		expect(complete.assets.map(({ id }) => id)).toEqual([visible]);
+		expect(complete.total).toBe(1);
+		expect(complete.hiddenAssetCount).toBe(2);
+	});
+
 	it('includes fungible tokens indexed under immutable legacy marker names', async () => {
 		const legacyId = 'L'.repeat(43);
 		vi.stubGlobal(
@@ -854,7 +920,7 @@ describe('collection index loading', () => {
 						transactions: { count: 0, pageInfo: { hasNextPage: false }, edges: [] },
 						legacyHintStyle: { count: 0, pageInfo: { hasNextPage: false }, edges: [] },
 						legacyAssetType: {
-							count: 1,
+							count: 2,
 							pageInfo: { hasNextPage: false },
 							edges: [
 								{
@@ -865,6 +931,17 @@ describe('collection index loading', () => {
 											{ name: 'asset-type', value: 'fungible' },
 											{ name: 'name', value: 'Legacy Token' },
 											{ name: 'ticker', value: 'OLD' },
+										],
+									},
+								},
+								{
+									cursor: 'hidden-test-token',
+									node: {
+										id: FUNGIBLE_TOKEN_ID,
+										tags: [
+											{ name: 'asset-type', value: 'fungible' },
+											{ name: 'name', value: '[TEST] Weave Credit' },
+											{ name: 'ticker', value: 'WEAVE' },
 										],
 									},
 								},
@@ -881,7 +958,8 @@ describe('collection index loading', () => {
 		expect(tokens?.assets).toEqual(
 			expect.arrayContaining([expect.objectContaining({ id: legacyId, name: 'Legacy Token', ticker: 'OLD' })])
 		);
-		expect(tokens?.total).toBe(2);
+		expect(tokens?.assets.some((asset) => asset.id === FUNGIBLE_TOKEN_ID)).toBe(false);
+		expect(tokens?.total).toBe(1);
 	});
 
 	it('retains loaded fungible tokens when a later page is unavailable', async () => {

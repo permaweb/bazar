@@ -1,4 +1,5 @@
 import type { MintedAsset } from './asset-mint';
+import { isVisibleAssetId } from './collections';
 
 const ADDRESS = /^[A-Za-z0-9_-]{43}$/;
 
@@ -61,11 +62,12 @@ export function loadMintActivities(storage: StorageLike, owner?: string | null):
 	) {
 		return [];
 	}
-	return (parsed as any).activities
+	const activities = (parsed as any).activities
 		.map(parseMintActivity)
-		.filter((activity: MintActivity | null): activity is MintActivity =>
-			Boolean(activity && (!owner || activity.owner === owner))
-		)
+		.filter((activity: MintActivity | null): activity is MintActivity => Boolean(activity));
+	if (activities.length !== (parsed as any).activities.length) saveMintActivities(storage, activities);
+	return activities
+		.filter((activity: MintActivity) => !owner || activity.owner === owner)
 		.sort((left: MintActivity, right: MintActivity) => right.createdAt - left.createdAt);
 }
 
@@ -126,6 +128,7 @@ function parseMintActivity(value: unknown): MintActivity | null {
 		!ADDRESS.test(activity.owner) ||
 		!activity.asset ||
 		!ADDRESS.test(activity.asset.id) ||
+		!isVisibleAssetId(activity.asset.id) ||
 		typeof activity.asset.name !== 'string' ||
 		typeof activity.collectionId !== 'string' ||
 		!Array.isArray(activity.transactionIds) ||

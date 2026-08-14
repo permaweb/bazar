@@ -33,6 +33,8 @@ export type Collection = {
 	cursor?: string;
 	cursorHistory?: string[];
 	hasMore?: boolean;
+	/** Number of denylisted IDs already removed from the paged fungible index total. */
+	hiddenAssetCount?: number;
 	indexSource?: 'carrier' | 'reference' | 'compiled-fallback';
 	manifestId?: string;
 	namespace?: NamesNamespaceIndex;
@@ -58,7 +60,7 @@ function loadedCollectionAsset(assets: AssetSummary[], id: string) {
 
 /** Return an indexed asset, or an exact live fungible process belonging to the token collection. */
 export function collectionAsset(collection: Collection, id: string, state?: AssetState): AssetSummary | undefined {
-	if (!ARWEAVE_ID.test(id)) return undefined;
+	if (!ARWEAVE_ID.test(id) || !isVisibleAssetId(id)) return undefined;
 	const loaded = loadedCollectionAsset(collection.assets, id);
 	if (collection.kind === 'tokens') {
 		if (!state) return loaded;
@@ -128,6 +130,7 @@ type FungibleTokenPage = {
 	cursor?: string;
 	hasMore: boolean;
 	total: number;
+	hiddenAssetCount: number;
 };
 
 type CarrierPage = {
@@ -157,6 +160,58 @@ type BazarCollectionPayload = {
 	data?: { transactions?: BazarCollectionConnection };
 };
 
+/** Immutable legacy collection IDs intentionally excluded from the public catalogue. */
+const HIDDEN_COLLECTION_IDS = new Set([
+	'A7TGD0bktXYkQSrz4UWfPqgcb8A4TAOEsKQU5_zAu7g', // [TEST] Permanent Strata
+	'IMKioUfmOrqtTnrLO3_Jpg5zv8zg8PKjWYNVhD3xsZM', // [TEST] Weave Signals
+	'NGV2FNAtc-Zp-iAmMnIFYIj77ZPiMUWlA2AC2rW2OGo', // [TEST] Happy Unattended AGENTs
+	'q5KruM1NXsh-bu0oh51sk-3czm5ZBAu22twpwDl8WMY', // Superseded HTML Colors
+]);
+
+/** Immutable test-token process IDs intentionally excluded from every public asset surface. */
+const HIDDEN_ASSET_IDS = new Set([
+	'66azdZXrCXt-W5pP8IeBbX1tQ6TyiSebc9099PNB2y8', // MINTF — Mint CLI Zeta
+	'7T99-MfMpuIx9qZMRSACFQK6j49HlXCHZ9nKUwts26c', // MINTE — Mint CLI Epsilon
+	'9CYTQq_O0ARfEV4QC-R12E0DdwFswaYdWthOAG4DRLA', // MINTA — Mint CLI Alpha
+	'IyFfmbTu8P4rv0KyrA0Q-QtfEnYntMj4RkRiBVip9KA', // WEAVE — Weave Credit
+	'MtNTshqw3VkML6cOe4y1yOFAVupRWz1O7b2j6ay01qM', // TKEY — Thousand Tiny Owners
+	'VeS61CgitggqhFBnUwXwyZJHoJQPfYffTk-UWq3VXoY', // MINTG — Mint CLI Eta
+	'bASFYsRBQm_dfG__wqRVwMh8bqwEvSTl4lURRBqfu2M', // PCMKQA1 — PcMK spawn trade transfer
+	'cT_QvNJkzjSfkazrgv0HTwsoMVFFchvx0btwR0s5mPI', // MINTH — Mint CLI Theta
+]);
+
+export function isVisibleCollectionId(id: string): boolean {
+	return !HIDDEN_COLLECTION_IDS.has(id);
+}
+
+export function isVisibleAssetId(id: string): boolean {
+	return !HIDDEN_ASSET_IDS.has(id);
+}
+
+export function withVisibleCollectionAssets(collection: Collection): Collection {
+	const assets = collection.assets.filter((asset) => isVisibleAssetId(asset.id));
+	const removed = collection.assets.length - assets.length;
+	const legacyHiddenCount =
+		collection.id === FUNGIBLE_TOKEN_COLLECTION_ID && collection.hiddenAssetCount === undefined
+			? HIDDEN_ASSET_IDS.size
+			: 0;
+	const total =
+		collection.total === undefined
+			? undefined
+			: collection.hasMore
+			? Math.max(assets.length, collection.total - Math.max(removed, legacyHiddenCount))
+			: assets.length;
+	if (removed === 0 && legacyHiddenCount === 0 && total === collection.total) return collection;
+	return {
+		...collection,
+		assets,
+		...(total === undefined ? {} : { total }),
+		...(collection.id === FUNGIBLE_TOKEN_COLLECTION_ID && collection.hasMore
+			? { hiddenAssetCount: collection.hiddenAssetCount ?? legacyHiddenCount }
+			: {}),
+	};
+}
+
 const IMAGE_COLLECTIONS = [
 	{
 		reference: import.meta.env.VITE_COLLECTION_ONE_REFERENCE ?? 'A7TGD0bktXYkQSrz4UWfPqgcb8A4TAOEsKQU5_zAu7g',
@@ -166,7 +221,9 @@ const IMAGE_COLLECTIONS = [
 		reference: import.meta.env.VITE_COLLECTION_TWO_REFERENCE ?? 'IMKioUfmOrqtTnrLO3_Jpg5zv8zg8PKjWYNVhD3xsZM',
 		manifest: 'EK3bWZ0yvkYZ8btaPw0q-fNWsKLUeOeq3blqhRQlQJg',
 	},
-].filter((collection) => /^[A-Za-z0-9_-]{43}$/.test(collection.reference));
+].filter(
+	(collection) => /^[A-Za-z0-9_-]{43}$/.test(collection.reference) && isVisibleCollectionId(collection.reference)
+);
 
 const MAX_INDEX_PAGES = 1_000;
 const GRAPHQL_PAGE_SIZE = 100;
@@ -190,6 +247,8 @@ export function mergeCollectionSnapshots(
 	next: Collection[],
 	canonicalOrder = false
 ): Collection[] {
+	current = current.filter((collection) => isVisibleCollectionId(collection.id)).map(withVisibleCollectionAssets);
+	next = next.filter((collection) => isVisibleCollectionId(collection.id)).map(withVisibleCollectionAssets);
 	const source = canonicalOrder ? next : current;
 	const additions = canonicalOrder ? current : next;
 	const replacements = new Map(next.map((collection) => [collection.id, collection]));
@@ -224,9 +283,12 @@ export function mergeCollectionSnapshots(
 								cursor: retained.cursor,
 								cursorHistory: retained.cursorHistory,
 								hasMore: retained.hasMore,
+								hiddenAssetCount: retained.hiddenAssetCount,
 						  }
 						: {}),
-					total: Math.max(retained.total ?? 0, replacement.total ?? 0),
+					total: currentIsAhead
+						? Math.max(primary.length, retained.total ?? 0)
+						: Math.max(retained.total ?? 0, replacement.total ?? 0),
 				};
 			}
 			if (
@@ -283,7 +345,7 @@ export async function loadCollections(
 			label: 'Fungible token discovery',
 			load: () => loadFungibleTokens(signal),
 			fallback: () => ({
-				...fungibleTokenCollection([defaultFungibleToken()]),
+				...fungibleTokenCollection(isVisibleAssetId(FUNGIBLE_TOKEN_ID) ? [defaultFungibleToken()] : []),
 				indexSource: 'compiled-fallback',
 			}),
 		},
@@ -349,7 +411,9 @@ export async function loadCollections(
 
 function deduplicateCollections(collections: Collection[]): Collection[] {
 	const deduplicated = new Map<string, Collection>();
-	for (const collection of collections) {
+	for (const candidate of collections) {
+		const collection = withVisibleCollectionAssets(candidate);
+		if (!isVisibleCollectionId(collection.id)) continue;
 		const current = deduplicated.get(collection.id);
 		deduplicated.set(
 			collection.id,
@@ -413,7 +477,8 @@ export async function discoverBazarCollections(
 		}
 		const candidates: BazarCollectionCandidate[] = connection.edges.flatMap((edge: unknown) => {
 			try {
-				return [parseBazarCollectionCandidate(edge)];
+				const candidate = parseBazarCollectionCandidate(edge);
+				return isVisibleCollectionId(candidate.id) ? [candidate] : [];
 			} catch {
 				return [];
 			}
@@ -670,18 +735,27 @@ function throwIfAborted(signal?: AbortSignal) {
 async function loadFungibleTokens(signal?: AbortSignal): Promise<Collection> {
 	const page = await loadFungibleTokenPage(undefined, signal);
 	const assets = [...page.assets];
-	if (ARWEAVE_ID.test(FUNGIBLE_TOKEN_ID) && !assets.some((asset) => asset.id === FUNGIBLE_TOKEN_ID)) {
+	if (
+		ARWEAVE_ID.test(FUNGIBLE_TOKEN_ID) &&
+		isVisibleAssetId(FUNGIBLE_TOKEN_ID) &&
+		!assets.some((asset) => asset.id === FUNGIBLE_TOKEN_ID)
+	) {
 		assets.unshift(defaultFungibleToken());
 	}
 	return {
-		...fungibleTokenCollection(assets, page.total),
+		...fungibleTokenCollection(
+			assets,
+			page.hasMore ? Math.max(assets.length, page.total - page.hiddenAssetCount) : assets.length
+		),
 		cursor: page.cursor,
 		cursorHistory: page.cursor ? [page.cursor] : [],
 		hasMore: page.hasMore,
+		hiddenAssetCount: page.hiddenAssetCount,
 	};
 }
 
 export async function loadMoreFungibleTokens(collection: Collection, signal?: AbortSignal): Promise<Collection> {
+	collection = withVisibleCollectionAssets(collection);
 	if (collection.kind !== 'tokens' || !collection.hasMore) return collection;
 	const page = await loadFungibleTokenPage(collection.cursor, signal);
 	const cursorHistory = collection.cursorHistory ?? (collection.cursor ? [collection.cursor] : []);
@@ -694,13 +768,15 @@ export async function loadMoreFungibleTokens(collection: Collection, signal?: Ab
 		...collection.assets.map((asset) => replacements.get(asset.id) ?? asset),
 		...page.assets.filter((asset) => !seen.has(asset.id)),
 	];
+	const hiddenAssetCount = (collection.hiddenAssetCount ?? 0) + page.hiddenAssetCount;
 	return {
 		...collection,
 		assets,
 		cursor: page.cursor,
 		cursorHistory: page.cursor ? [...cursorHistory, page.cursor] : cursorHistory,
 		hasMore: page.hasMore,
-		total: Math.max(page.total, assets.length),
+		total: page.hasMore ? Math.max(assets.length, page.total - hiddenAssetCount) : assets.length,
+		hiddenAssetCount,
 	};
 }
 
@@ -796,7 +872,12 @@ async function loadFungibleTokenPage(after?: string, signal?: AbortSignal): Prom
 	)
 		throw new Error('fungible-index-schema');
 	const assets = new Map<string, AssetSummary>();
+	let hiddenIndexedAssets = 0;
 	for (const { node } of connection.edges) {
+		if (!isVisibleAssetId(node.id)) {
+			hiddenIndexedAssets += 1;
+			continue;
+		}
 		const tags = Object.fromEntries(node.tags.map((tag) => [tag.name.toLowerCase(), tag.value]));
 		assets.set(node.id, {
 			id: node.id,
@@ -837,6 +918,7 @@ async function loadFungibleTokenPage(after?: string, signal?: AbortSignal): Prom
 			throw new Error('fungible-index-schema');
 		if (legacy.pageInfo.hasNextPage) throw new Error('fungible-index-legacy-pagination-stalled');
 		for (const { node } of legacy.edges) {
+			if (!isVisibleAssetId(node.id)) continue;
 			const tags = Object.fromEntries(node.tags.map((tag) => [tag.name.toLowerCase(), tag.value]));
 			if (assetUiStyle(tags) !== 'fungible' || !(expectedTag in tags)) continue;
 			legacyAssets.set(node.id, {
@@ -854,6 +936,7 @@ async function loadFungibleTokenPage(after?: string, signal?: AbortSignal): Prom
 		cursor,
 		hasMore: connection.pageInfo.hasNextPage,
 		total: count + legacyAssets.size,
+		hiddenAssetCount: hiddenIndexedAssets,
 	};
 }
 

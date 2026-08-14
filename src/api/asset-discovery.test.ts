@@ -749,6 +749,25 @@ describe('wallet candidate discovery', () => {
 		});
 	});
 
+	it('does not persist or restore denylisted wallet candidates', () => {
+		const hidden = 'IyFfmbTu8P4rv0KyrA0Q-QtfEnYntMj4RkRiBVip9KA';
+		const scan = createWalletCandidateScan(wallet);
+		scan.active.clear();
+		scan.caughtUp = true;
+		scan.heads = { initiallyHeld: assetA, marketActions: null, receivedTransfers: null };
+		for (const processId of [assetA, hidden]) {
+			scan.found.set(processId, { processId, height: 1, timestamp: 1, sources: ['initial-holder'] });
+		}
+		const storage = memoryStorage();
+
+		expect(storeCompletedWalletCandidateScan(storage, scan)).toBe(true);
+		expect([...storage.values.values()][0]).not.toContain(hidden);
+		expect([...loadCompletedWalletCandidateScan(storage, wallet)!.found]).toEqual([
+			[assetA, scan.found.get(assetA)],
+		]);
+		expect(resumeCompletedWalletCandidateScan(scan, wallet)!.found.has(hidden)).toBe(false);
+	});
+
 	it('restores 16,000 completed candidates with one unchanged head request', async () => {
 		const processAt = (index: number) => index.toString(36).padStart(43, 'A');
 		const scan = createWalletCandidateScan(wallet);
@@ -2128,6 +2147,7 @@ describe('live candidate resolution', () => {
 		const unloaded = 'U'.repeat(43);
 		const legacy = 'L'.repeat(43);
 		const unsupported = 'V'.repeat(43);
+		const hidden = 'bASFYsRBQm_dfG__wqRVwMh8bqwEvSTl4lURRBqfu2M';
 		const withTokens: Collection[] = [
 			...collections,
 			{
@@ -2138,32 +2158,33 @@ describe('live candidate resolution', () => {
 				assets: [],
 			},
 		];
-		const candidates: AssetCandidate[] = [unloaded, legacy, unsupported].map((processId) => ({
+		const candidates: AssetCandidate[] = [unloaded, legacy, unsupported, hidden].map((processId) => ({
 			processId,
 			height: 1,
 			timestamp: 0,
 			sources: ['transfer'],
 		}));
 
-		expect(restrictAssetCandidates(candidates, withTokens)).toEqual(candidates);
-		const results = await resolveAssetCandidates(candidates, withTokens, {
-			read: async (processId) => ({
-				provider: 'https://compute.example',
-				state: parseAssetState({
-					device: 'process@1.0',
-					'execution-device': 'token@1.0',
-					...(processId === unloaded ? { 'hint-ui-style': 'fungible' } : { 'asset-type': 'fungible' }),
-					'swap-device': 'arweave-swap@1.0',
-					'scheduler-device': 'arweave-scheduler@1.0',
-					'scheduler-mode': processId === unsupported ? 'local' : 'all',
-					name: 'Page two token',
-					ticker: 'PAGE2',
-					'total-supply': '1000000000000',
-					denomination: 12,
-					balances: { [wallet]: '1000000000000' },
-					orders: {},
-				}),
+		expect(restrictAssetCandidates(candidates, withTokens)).toEqual(candidates.slice(0, 3));
+		const read = vi.fn(async (processId: string) => ({
+			provider: 'https://compute.example',
+			state: parseAssetState({
+				device: 'process@1.0',
+				'execution-device': 'token@1.0',
+				...(processId === unloaded ? { 'hint-ui-style': 'fungible' } : { 'asset-type': 'fungible' }),
+				'swap-device': 'arweave-swap@1.0',
+				'scheduler-device': 'arweave-scheduler@1.0',
+				'scheduler-mode': processId === unsupported ? 'local' : 'all',
+				name: 'Page two token',
+				ticker: 'PAGE2',
+				'total-supply': '1000000000000',
+				denomination: 12,
+				balances: { [wallet]: '1000000000000' },
+				orders: {},
 			}),
+		}));
+		const results = await resolveAssetCandidates(candidates, withTokens, {
+			read,
 		});
 
 		expect(results).toHaveLength(2);
@@ -2174,6 +2195,7 @@ describe('live candidate resolution', () => {
 			])
 		);
 		expect(results.every(({ collection }) => collection.kind === 'tokens')).toBe(true);
+		expect(read.mock.calls.map(([processId]) => processId)).not.toContain(hidden);
 	});
 
 	it('finds unindexed fungible candidates created with the legacy asset-type marker', async () => {

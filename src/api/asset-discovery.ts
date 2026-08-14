@@ -13,7 +13,7 @@ import {
 	readAssetStateAtSlot,
 	readProcessAssignments,
 } from './asset-marketplace';
-import { type AssetSummary, assetUiStyle, type Collection, collectionAsset } from './collections';
+import { type AssetSummary, assetUiStyle, type Collection, collectionAsset, isVisibleAssetId } from './collections';
 import { fetchJsonWithDeadline } from './fetch-with-deadline';
 import { assetFromMintState, CREATED_COLLECTION_ID, CREATED_COLLECTION_NAME } from './minted-assets';
 
@@ -608,6 +608,7 @@ export function loadCompletedWalletCandidateScan(
 		for (const value of stored.c) {
 			const candidate = decodeStoredWalletCandidate(value);
 			if (!candidate || found.has(candidate.processId)) return undefined;
+			if (!isVisibleAssetId(candidate.processId)) continue;
 			found.set(candidate.processId, candidate);
 		}
 		return restoredWalletCandidateScan(
@@ -635,7 +636,9 @@ export function storeCompletedWalletCandidateScan(
 		a: scan.address,
 		g: scan.graphql,
 		h: [scan.heads.initiallyHeld ?? null, scan.heads.marketActions ?? null, scan.heads.receivedTransfers ?? null],
-		c: [...scan.found.values()].map(encodeStoredWalletCandidate),
+		c: [...scan.found.values()]
+			.filter((candidate) => isVisibleAssetId(candidate.processId))
+			.map(encodeStoredWalletCandidate),
 	};
 	try {
 		storage.setItem(walletCandidateScanKey(scan.address, scan.graphql), JSON.stringify(stored));
@@ -669,7 +672,7 @@ function restoredWalletCandidateScan(
 ): WalletCandidateScan {
 	const scan = createWalletCandidateScan(address, graphql);
 	scan.active.clear();
-	scan.found = new Map(found);
+	scan.found = new Map([...found].filter(([processId]) => isVisibleAssetId(processId)));
 	scan.heads = { ...heads };
 	return scan;
 }
@@ -829,7 +832,7 @@ export async function discoverWalletAssetCandidates(
 						: alias === 'marketActions'
 						? candidateFromNode(edge.node, 'market-action', address, true)
 						: candidateFromNode(edge.node, 'transfer', address, false);
-				if (!candidate) continue;
+				if (!candidate || !isVisibleAssetId(candidate.processId)) continue;
 				if (!updates.has(candidate.processId)) {
 					const existing = scan.found.get(candidate.processId);
 					if (existing) updates.set(candidate.processId, existing);
@@ -1418,7 +1421,7 @@ export function createAssetCandidateResolver(collections: Collection[], options:
 		enqueue(candidates: AssetCandidate[]) {
 			if (sealed) throw new Error('asset-candidate-resolver-finished');
 			if (failure !== undefined) throw failure;
-			pending.push(...candidates);
+			pending.push(...candidates.filter((candidate) => isVisibleAssetId(candidate.processId)));
 			pending.sort(compareActivity);
 			pump();
 		},
@@ -1464,6 +1467,7 @@ function candidateCollectionIndex(collections: Collection[]): CandidateCollectio
 
 function restrictAssetCandidatesWithIndex(candidates: AssetCandidate[], index: CandidateCollectionIndex) {
 	return candidates.filter((candidate) => {
+		if (!isVisibleAssetId(candidate.processId)) return false;
 		const collection = index.byAssetId.get(candidate.processId);
 		if (!candidate.device) return Boolean(collection || index.tokens);
 		if (['carrier@1.0', 'name-token@1.0'].includes(candidate.device)) {
