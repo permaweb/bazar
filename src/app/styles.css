@@ -6985,7 +6985,7 @@ body input:focus-visible {
 		position: relative;
 		width: 44px;
 		height: 44px;
-		justify-self: center;
+		justify-self: end;
 		justify-content: center;
 		padding: 0;
 	}
@@ -9395,6 +9395,8 @@ body input:focus-visible {
 	}
 	.home-market-layout {
 		display: block;
+		overflow-y: visible;
+		overscroll-behavior: auto;
 	}
 	.home-section {
 		overflow: visible;
