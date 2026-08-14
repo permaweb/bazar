@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
-import { arBalanceLabel } from './WalletMenu';
+import { arBalanceLabel, walletMenuLabel } from './WalletMenu';
+
+describe('wallet menu identity', () => {
+	it('shows only a known profile name and preserves the address fallback', () => {
+		const address = `${'a'.repeat(38)}12345`;
+		expect(walletMenuLabel(address, 'Agent Smith')).toBe('Agent Smith');
+		expect(walletMenuLabel(address)).toBe(`${'a'.repeat(6)}…12345`);
+		expect(walletMenuLabel()).toBe('Connect');
+	});
+});
 
 describe('wallet AR balance', () => {
 	it('formats winston as AR fixed to four decimal places', () => {

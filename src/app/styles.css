@@ -87,14 +87,11 @@ button {
 	border: 0;
 	border-radius: 5px;
 	background: var(--transparent);
-	cursor: pointer;
+	cursor: default;
 	color: inherit;
 	font: inherit;
 	font-weight: inherit;
 	line-height: 1.2;
-	text-decoration: underline dotted;
-	text-decoration-color: var(--line-dark);
-	text-underline-offset: 3px;
 }
 .wallet-address > span {
 	overflow: hidden;
@@ -119,7 +116,6 @@ button {
 }
 .wallet-address:hover {
 	background: var(--surface-hover);
-	text-decoration-color: currentColor;
 }
 .wallet-address.is-failed {
 	color: var(--negative);
@@ -129,6 +125,19 @@ button {
 	flex: 0 0 auto;
 	font-size: var(--type-small);
 	white-space: nowrap;
+}
+.wallet-address-copy {
+	min-width: 22px;
+	min-height: 22px;
+	padding: 3px;
+	flex: 0 0 auto;
+	border-radius: 4px;
+	color: var(--muted-subtle);
+}
+.wallet-address-copy:hover,
+.wallet-address-copy:focus-visible {
+	color: var(--ink);
+	background: var(--surface-hover);
 }
 .tx-address {
 	min-width: 0;
@@ -4105,6 +4114,10 @@ input:focus {
 }
 .asset-commerce-actions .connect-wallet-error {
 	grid-column: 1 / -1;
+}
+.profile-picture-error {
+	flex-basis: 100%;
+	color: var(--negative);
 }
 .asset-section-tabs {
 	margin: 4px 0 24px;
