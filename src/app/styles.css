@@ -5538,6 +5538,26 @@ input:focus {
 	align-items: flex-start;
 	gap: 10px;
 }
+.result-status-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 16px;
+}
+.result-outcome .result-status-heading {
+	flex-direction: row;
+	align-items: center;
+	margin: 0;
+}
+.result-status-meta {
+	color: var(--muted);
+	font-size: var(--type-body);
+	font-weight: 500;
+	white-space: nowrap;
+}
+.result-outcome-sync {
+	margin-top: 4px;
+}
 .result-status-icon {
 	width: 34px;
 	height: 34px;
@@ -6952,6 +6972,11 @@ body input:focus-visible {
 	}
 	.result {
 		padding: 12px 0;
+	}
+	.result-status-row {
+		align-items: flex-start;
+		flex-direction: column;
+		gap: 8px;
 	}
 	.settlement-receipt,
 	.settlement-error-detail {
@@ -9875,6 +9900,162 @@ body input:focus-visible {
 .fungible-holder-table .orderbook-row {
 	grid-template-columns: minmax(200px, 1.35fr) minmax(150px, 0.8fr) minmax(70px, 0.35fr) minmax(130px, 0.7fr);
 }
+.fungible-holder-chart-card {
+	margin-bottom: 16px;
+	padding: clamp(16px, 2.2vw, 24px);
+	display: grid;
+	grid-template-columns: minmax(210px, 0.85fr) minmax(240px, 1.15fr);
+	align-items: center;
+	gap: clamp(18px, 3vw, 42px);
+	border: 1px solid var(--line);
+	border-radius: 9px;
+	background: radial-gradient(
+			circle at 24% 48%,
+			color-mix(in srgb, var(--gradient-purple) 38%, var(--transparent)),
+			var(--transparent) 42%
+		),
+		var(--panel);
+}
+.fungible-holder-chart-visual {
+	width: min(100%, 286px);
+	justify-self: center;
+}
+.fungible-holder-chart-visual svg {
+	width: 100%;
+	height: auto;
+	display: block;
+	overflow: visible;
+}
+.fungible-holder-chart-track,
+.fungible-holder-chart-arc,
+.fungible-holder-chart-hit {
+	fill: none;
+	transform: rotate(-90deg);
+	transform-origin: 120px 120px;
+}
+.fungible-holder-chart-track {
+	stroke: var(--surface-hover);
+	stroke-width: 42;
+}
+.fungible-holder-chart-arc {
+	stroke-width: 42;
+	transition: filter 140ms ease, opacity 140ms ease, stroke-width 140ms ease;
+}
+.fungible-holder-chart-hit {
+	stroke: var(--transparent);
+	stroke-width: 52;
+}
+.fungible-holder-chart-slice {
+	cursor: default;
+	outline: none;
+}
+.fungible-holder-chart-slice:hover .fungible-holder-chart-arc,
+.fungible-holder-chart-slice.is-active .fungible-holder-chart-arc,
+.fungible-holder-chart-slice:focus-visible .fungible-holder-chart-arc {
+	filter: saturate(1.08) drop-shadow(0 2px 3px var(--shadow-soft));
+	stroke-width: 46;
+}
+.fungible-holder-chart-slice:focus-visible .fungible-holder-chart-hit {
+	stroke: color-mix(in srgb, var(--focus-ring) 48%, var(--transparent));
+	stroke-width: 50;
+}
+.fungible-holder-chart-value {
+	fill: var(--ink);
+	font-size: 1.45rem;
+	font-weight: 400;
+	font-variant-numeric: tabular-nums;
+}
+.fungible-holder-chart-label {
+	fill: var(--muted);
+	font-size: 0.68rem;
+	letter-spacing: 0.06em;
+}
+.fungible-holder-chart-detail {
+	min-width: 0;
+	display: grid;
+	gap: 13px;
+}
+.fungible-holder-chart-detail header {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 16px;
+}
+.fungible-holder-chart-detail header span,
+.fungible-holder-chart-detail dt {
+	color: var(--muted);
+	font-size: var(--type-small);
+}
+.fungible-holder-chart-detail header span {
+	letter-spacing: 0.08em;
+}
+.fungible-holder-chart-detail header strong {
+	font-size: var(--type-small);
+	font-weight: 400;
+}
+.fungible-holder-chart-identity {
+	min-height: 34px;
+	display: flex;
+	align-items: center;
+	font-size: var(--type-body);
+}
+.fungible-holder-chart-identity .wallet-address {
+	max-width: 100%;
+	padding-left: 0;
+	font-size: var(--type-body);
+}
+.fungible-holder-chart-detail dl {
+	margin: 0;
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 1px;
+	overflow: hidden;
+	border: 1px solid var(--line);
+	border-radius: 7px;
+	background: var(--line);
+}
+.fungible-holder-chart-detail dl div {
+	padding: 12px;
+	display: grid;
+	gap: 4px;
+	background: var(--surface-subtle);
+}
+.fungible-holder-chart-detail dd {
+	margin: 0;
+	font-size: 1.1rem;
+	font-variant-numeric: tabular-nums;
+}
+.fungible-holder-chart-detail > p {
+	margin: 0;
+	color: var(--muted);
+	font-size: var(--type-small);
+}
+.fungible-holder-chart-legend {
+	display: flex;
+	align-items: center;
+	gap: 16px;
+	color: var(--muted);
+	font-size: var(--type-small);
+}
+.fungible-holder-chart-legend span {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+}
+.fungible-holder-chart-legend i {
+	width: 17px;
+	height: 8px;
+	display: inline-block;
+	border-radius: 2px;
+	background: var(--positive-text);
+}
+.fungible-holder-chart-legend i.is-listed {
+	background: repeating-linear-gradient(
+		128deg,
+		var(--positive-text) 0 4px,
+		color-mix(in srgb, var(--positive-text) 30%, var(--panel)) 4px 7px
+	);
+}
 .fungible-holder-table .wallet-address {
 	max-width: 100%;
 	justify-content: flex-start;
@@ -9885,6 +10066,12 @@ body input:focus-visible {
 }
 
 @media (max-width: 640px) {
+	.fungible-holder-chart-card {
+		grid-template-columns: 1fr;
+	}
+	.fungible-holder-chart-visual {
+		width: min(82vw, 248px);
+	}
 	.fungible-orderbook .orderbook-head,
 	.fungible-orderbook .orderbook-row {
 		min-width: 0;

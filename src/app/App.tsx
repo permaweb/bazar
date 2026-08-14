@@ -246,7 +246,16 @@ import {
 	type WalletOperationClaim,
 	walletOperationStorageChange,
 } from './operation-session';
-import { purchaseGatewaySwitchNotice, purchaseLifecycleStatus } from './purchase-lifecycle';
+import {
+	continuePaymentConfirmations,
+	PURCHASE_PAYMENT_TARGET,
+	PURCHASE_REGISTRATION_TARGET,
+	PURCHASE_SKIP_FROM_DEPTH,
+	purchaseGatewaySwitchNotice,
+	purchaseLifecycleStatus,
+	purchaseSkipKind,
+	withContinuingPaymentObservation,
+} from './purchase-lifecycle';
 import {
 	purchaseObservationCheckingMessage,
 	purchaseObservationPendingState,
@@ -1362,7 +1371,7 @@ export function uploadActivitySyncSteps(
 	relatedMintActivities: MintActivity[],
 	observerState: UploadObserverState = {}
 ): ArweaveSyncStep[] {
-	return activity.transactions.map((transaction) => {
+	return activity.transactions.map((transaction, index) => {
 		const mintActivity = relatedMintActivities.find((candidate) =>
 			candidate.transactionIds.includes(transaction.id)
 		);
@@ -1374,6 +1383,7 @@ export function uploadActivitySyncSteps(
 			key: transaction.id,
 			label: transaction.label,
 			target: 1,
+			terminal: index === activity.transactions.length - 1,
 			confirmations,
 			transaction: {
 				id: transaction.id,
@@ -9498,6 +9508,16 @@ function OperationDialog({
 		if (visible) setHiding(false);
 	}, [visible]);
 	React.useEffect(() => {
+		const paymentId = purchaseState?.payment?.id;
+		if (phase !== 'done' || operation.kind !== 'buy' || !visible || !paymentId) return;
+		const network = networkRef.current?.network;
+		if (!network) return;
+		const watcher = continuePaymentConfirmations(network, paymentId, (observation) => {
+			setPurchaseState((current) => withContinuingPaymentObservation(current, paymentId, observation));
+		});
+		return () => watcher.stop();
+	}, [operation.kind, phase, purchaseState?.payment?.id, visible]);
+	React.useEffect(() => {
 		if (operation.kind !== 'buy' || operation.resume) return;
 		const controller = new AbortController();
 		setPurchaseQuote(null);
@@ -9710,10 +9730,10 @@ function OperationDialog({
 							network,
 						}),
 						{
-							registrationTarget: 5,
-							paymentTarget: 5,
+							registrationTarget: PURCHASE_REGISTRATION_TARGET,
+							paymentTarget: PURCHASE_PAYMENT_TARGET,
 							paymentSuccessDepth: 1,
-							skipFrom: 2,
+							skipFrom: PURCHASE_SKIP_FROM_DEPTH,
 							propagation: 'all',
 							minObservers: 2,
 							...(currentPurchaseSnapshot ? { resume: currentPurchaseSnapshot } : {}),
@@ -9810,8 +9830,6 @@ function OperationDialog({
 					operationClaim = null;
 					claimRef.current = null;
 				}
-				observerLease.release();
-				if (networkRef.current === observerLease) networkRef.current = null;
 				setPhase('done');
 				return;
 			}
@@ -9987,13 +10005,14 @@ function OperationDialog({
 					{
 						key: 'register',
 						label: 'Reserve asset',
-						target: 5,
+						target: PURCHASE_REGISTRATION_TARGET,
 						transaction: purchaseState.registration,
 					},
 					{
 						key: 'pay',
 						label: 'Pay seller',
-						target: 5,
+						target: PURCHASE_PAYMENT_TARGET,
+						terminal: true,
 						transaction: purchaseState.payment,
 					},
 			  ]
@@ -10004,6 +10023,7 @@ function OperationDialog({
 					key: operation.kind,
 					label: operationLabel(operation.kind),
 					target: 5,
+					terminal: true,
 					confirmations,
 					transaction: { id: transaction.id, views, ...(consensus ? { consensus } : {}) },
 				},
@@ -10484,7 +10504,7 @@ function OperationDialog({
 						<React.Suspense fallback={<Loading label="Loading transaction progress…" />}>
 							<ArweaveTransactionSync
 								active={visible}
-								skipKind={purchaseState?.canSkip ? purchaseState.skipKind ?? 'skip' : undefined}
+								skipKind={purchaseSkipKind(purchaseState)}
 								onSkip={
 									purchaseState?.canSkip
 										? () => {
@@ -10503,7 +10523,30 @@ function OperationDialog({
 				) : null}
 				{visiblePhase === 'done' ? (
 					<div className="result success">
-						<OperationOutcome title={resultCopy.title} detail={resultCopy.detail}>
+						<OperationOutcome
+							title={resultCopy.title}
+							detail={resultCopy.detail}
+							status={
+								operation.kind === 'buy'
+									? `Confirmations: ${quorumConfirmationDepth(
+											purchaseSteps.find((step) => step.key === 'pay')
+									  )}`
+									: undefined
+							}
+						>
+							{operation.kind === 'buy' && purchaseSteps.length ? (
+								<div className="result-outcome-sync">
+									<React.Suspense fallback={<Loading label="Loading transaction progress…" />}>
+										<ArweaveTransactionSync
+											active={visible}
+											activeStep="pay"
+											startedAt={submittedAtRef.current}
+											steps={purchaseSteps}
+											subject={asset.name}
+										/>
+									</React.Suspense>
+								</div>
+							) : null}
 							{operation.kind === 'buy' || operation.kind === 'sell' ? (
 								<OperationOutcomeSubject
 									label={operation.kind === 'buy' ? 'You received' : 'You listed'}
@@ -11068,6 +11111,7 @@ export function mintErrorMessage(error: unknown) {
 		'mint-logo-size-invalid': 'Choose a token logo no larger than 10 MB.',
 		'mint-ticker-invalid': 'Enter a token ticker between 1 and 32 characters.',
 		'mint-supply-invalid': 'Enter a positive whole-number token supply.',
+		'mint-supply-too-large': 'Token supply exceeds the maximum allowed.',
 		'mint-denomination-invalid': 'Enter decimal places from 0 to 255.',
 		'mint-insufficient-balance': 'This wallet does not have enough AR for the required Arweave transaction(s).',
 		'mint-high-cost-confirmation-required': 'Review and approve the unusually high network cost before minting.',

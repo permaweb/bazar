@@ -59,6 +59,7 @@ describe('upload observer lanes', () => {
 	it('does not invent a local observer lane before the network answers', () => {
 		expect(uploadActivitySyncSteps(upload, [mint])[0]).toMatchObject({
 			confirmations: 1,
+			terminal: true,
 			transaction: { id: processId, views: [] },
 		});
 	});

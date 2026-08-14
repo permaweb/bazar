@@ -22,14 +22,18 @@ export function OperationOutcomeAnnouncement({
 export function OperationOutcome({
 	title,
 	detail,
+	status,
 	children,
-}: React.PropsWithChildren<{ title: string; detail: string }>) {
+}: React.PropsWithChildren<{ title: string; detail: string; status?: React.ReactNode }>) {
 	return (
 		<div className="result-outcome">
-			<h3 className="result-status-heading">
-				<CircleCheck aria-hidden="true" className="result-status-icon ui-icon" />
-				<ArCurrencyText>{title}</ArCurrencyText>
-			</h3>
+			<div className="result-status-row">
+				<h3 className="result-status-heading">
+					<CircleCheck aria-hidden="true" className="result-status-icon ui-icon" />
+					<ArCurrencyText>{title}</ArCurrencyText>
+				</h3>
+				{status ? <span className="result-status-meta">{status}</span> : null}
+			</div>
 			{children}
 			<p>
 				<ArCurrencyText>{detail}</ArCurrencyText>

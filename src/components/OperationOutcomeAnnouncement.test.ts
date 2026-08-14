@@ -49,6 +49,24 @@ describe('operation outcome announcements', () => {
 		expect(outcome.indexOf('catsun artwork')).toBeLessThan(outcome.indexOf('catsun is offered'));
 	});
 
+	it('places a live confirmation count beside the completed title', () => {
+		const outcome = renderToStaticMarkup(
+			React.createElement(
+				OperationOutcome,
+				{
+					title: 'Purchase complete',
+					detail: 'The asset is now yours.',
+					status: 'Confirmations: 4',
+				},
+				React.createElement('div', { className: 'network-view' }, 'Network view')
+			)
+		);
+		expect(outcome).toContain('result-status-row');
+		expect(outcome).toContain('Purchase complete');
+		expect(outcome).toContain('Confirmations: 4');
+		expect(outcome.indexOf('Purchase complete')).toBeLessThan(outcome.indexOf('Network view'));
+	});
+
 	it('names the item or value received in a completed outcome', () => {
 		const subject = renderToStaticMarkup(
 			React.createElement(OperationOutcomeSubject, {

@@ -28,6 +28,7 @@ import {
 	isHighMintCost,
 	MAX_FUNGIBLE_DENOMINATION,
 	MAX_FUNGIBLE_TICKER_LENGTH,
+	MAX_FUNGIBLE_WHOLE_SUPPLY,
 	type MintDraft,
 	type MintedAsset,
 	type MintEstimate,
@@ -302,6 +303,7 @@ export function FungibleMintDialog({
 										key: 'mint',
 										label: 'Mint token',
 										target: 5,
+										terminal: true,
 										confirmations,
 										transaction: {
 											id: result.processId,
@@ -873,6 +875,12 @@ export default function CreateRoute() {
 		if (mode === 'asset' && !file) return setError('Choose an image, MP3, or WAV file to continue.');
 		if (mode === 'collection' && !collectionFiles.length) return setError('Choose at least one collection image.');
 		if (mode === 'fungible' && !fungibleReady) {
+			try {
+				validateFungibleMintInput(fungibleInput);
+				if (logo) validateFungibleLogo(logo);
+			} catch (cause) {
+				return setError(mintErrorMessage(cause));
+			}
 			return setError('Complete the token name, ticker, total supply, and decimal places to continue.');
 		}
 		setError(null);
@@ -1371,10 +1379,12 @@ export default function CreateRoute() {
 								<input
 									id="mint-supply"
 									inputMode="numeric"
+									maxLength={MAX_FUNGIBLE_WHOLE_SUPPLY.toString().length}
 									placeholder="1000000"
 									value={wholeSupply}
 									onChange={(event) => setWholeSupply(event.target.value.trim())}
 								/>
+								<span>Maximum {MAX_FUNGIBLE_WHOLE_SUPPLY.toLocaleString()} whole tokens</span>
 							</div>
 							<div className="create-field">
 								<label htmlFor="mint-denomination">Decimal places</label>

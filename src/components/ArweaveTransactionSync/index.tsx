@@ -84,6 +84,8 @@ export type ArweaveSyncStep = {
 	label: string;
 	transaction?: ArweaveSyncTransaction;
 	target: number;
+	/** The last transaction has no bounded follow-up depth; keep displaying its live depth. */
+	terminal?: boolean;
 	confirmations?: number;
 	hasError?: boolean;
 };
@@ -128,7 +130,7 @@ export function ArweaveTransactionSync({
 		pendingAfterConfirmation,
 		Boolean(active?.hasError)
 	);
-	const displayedConfirmationDepth = lifecycle.depth;
+	const displayedConfirmationDepth = active?.terminal ? confirmationDepth : lifecycle.depth;
 	const transactionState = transaction?.consensus?.state ?? latestObserverState(transaction?.views ?? []);
 	const progressKey = `${transaction?.id ?? 'none'}:${active?.key ?? 'none'}`;
 	const [estimatedProgress, setEstimatedProgress] = React.useState({ key: progressKey, value: 0 });
@@ -262,7 +264,11 @@ export function ArweaveTransactionSync({
 						</div>
 						<S.Depth
 							aria-label={
-								lifecycle.pending
+								active.terminal
+									? `${displayedConfirmationDepth} confirmation${
+											displayedConfirmationDepth === 1 ? '' : 's'
+									  }`
+									: lifecycle.pending
 									? pendingAfterConfirmation
 									: verificationDelayed
 									? language.transactionSyncVerificationDelayed
@@ -270,7 +276,9 @@ export function ArweaveTransactionSync({
 							}
 							$success={lifecycle.complete}
 						>
-							{lifecycle.pending ? (
+							{active.terminal ? (
+								<strong>{displayedConfirmationDepth}</strong>
+							) : lifecycle.pending ? (
 								<strong>{pendingAfterConfirmation}</strong>
 							) : verificationDelayed ? (
 								<strong>{language.transactionSyncVerificationDelayed}</strong>
@@ -299,6 +307,8 @@ export function ArweaveTransactionSync({
 						<S.VerificationNote role="status">
 							{language.transactionSyncVerificationDelayedDetail}
 						</S.VerificationNote>
+					) : active.terminal && lifecycle.pending ? (
+						<S.VerificationNote role="status">{pendingAfterConfirmation}</S.VerificationNote>
 					) : confirmationDepth >= 2 ? (
 						<S.RiskNote>{localizedRisk(confirmationDepth, language)}</S.RiskNote>
 					) : null}
