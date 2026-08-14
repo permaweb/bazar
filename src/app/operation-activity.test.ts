@@ -323,7 +323,9 @@ function fungibleActivity(overrides: Partial<FungibleOperationActivitySummary> =
 		owner,
 		operationKind: 'buy',
 		phase: 'working',
-		status: 'Transaction in progress',
+		status: 'Watching Arweave confirmations…',
+		confirmations: 2,
+		confirmationTarget: 5,
 		createdAt: 200,
 		...overrides,
 	};

@@ -355,7 +355,7 @@ describe('asset state', () => {
 			},
 		});
 
-		expect(requested).toEqual([`https://arweave.net/${processId}~process@1.0/now`]);
+		expect(requested).toEqual([`${DEFAULT_COMPUTE_GATEWAY}/${processId}~process@1.0/now`]);
 		expect(requestOptions[0].method).toBe('HEAD');
 		expect([...new Headers(requestOptions[0].headers)]).toEqual([]);
 	});
@@ -448,7 +448,7 @@ describe('asset state', () => {
 			},
 		});
 
-		expect(requested).toEqual([`https://arweave.net/${processId}~process@1.0/now`]);
+		expect(requested).toEqual([`${DEFAULT_COMPUTE_GATEWAY}/${processId}~process@1.0/now`]);
 		expect(requestOptions.every((options) => options.cache === undefined)).toBe(true);
 		expect(requestOptions.every((options) => options.method === 'HEAD')).toBe(true);
 		expect(requestOptions.every((options) => [...new Headers(options.headers)].length === 0)).toBe(true);

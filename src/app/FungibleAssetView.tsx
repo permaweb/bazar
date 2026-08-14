@@ -98,7 +98,11 @@ import {
 	type MarketplaceOperationFailure,
 	marketplaceOperationFailure,
 } from './marketplace-error';
-import { announceFungibleOperationActivityChange, fungibleOperationActivityId } from './operation-activity';
+import {
+	announceFungibleOperationActivityChange,
+	fungibleOperationActivityId,
+	type FungibleOperationActivitySummary,
+} from './operation-activity';
 import {
 	acquireWalletOperationClaim,
 	assetHasSavedSignedAction,
@@ -502,10 +506,14 @@ export function FungibleHolderChart({
 			</div>
 			<div className="fungible-holder-chart-detail">
 				<header>
-					<span>Supply distribution</span>
-					<strong id="fungible-holder-chart-title">{holders.length.toLocaleString()} holders</strong>
+					<div>
+						<h2 id="fungible-holder-chart-title">Supply distribution</h2>
+						<p>Select a ring segment to inspect a holder.</p>
+					</div>
+					<span>{holders.length.toLocaleString()} holders</span>
 				</header>
 				<div className="fungible-holder-chart-identity">
+					<span>Selected holder</span>
 					{active.address ? (
 						<WalletAddress address={active.address} label="holder" />
 					) : (
@@ -522,10 +530,16 @@ export function FungibleHolderChart({
 						<dd>{activeOffered}</dd>
 					</div>
 				</dl>
-				<p>
-					{tokenLabel(active.total, state)} total ·{' '}
-					{BigInt(active.listed) > 0n ? tokenLabel(active.listed, state) : 'None'} listed
-				</p>
+				<div className="fungible-holder-chart-balances">
+					<div>
+						<span>Total balance</span>
+						<strong>{tokenLabel(active.total, state)}</strong>
+					</div>
+					<div>
+						<span>Listed</span>
+						<strong>{BigInt(active.listed) > 0n ? tokenLabel(active.listed, state) : 'None'}</strong>
+					</div>
+				</div>
 				<div aria-label="Chart legend" className="fungible-holder-chart-legend">
 					<span>
 						<i aria-hidden="true" /> Held
@@ -594,7 +608,11 @@ export function FungibleAssetView({
 		setOperationActivities((current) => current.map((activity) => ({ ...activity, visible: activity.id === id })));
 	}, []);
 	const publishOperationActivity = React.useCallback(
-		(activity: FungibleOperationActivity, nextPhase: TransactionDialogPhase | null = activity.phase) => {
+		(
+			activity: FungibleOperationActivity,
+			nextPhase: TransactionDialogPhase | null = activity.phase,
+			progress?: Pick<FungibleOperationActivitySummary, 'status' | 'confirmations' | 'confirmationTarget'>
+		) => {
 			const phase = nextPhase ?? 'form';
 			if (phase === 'done') {
 				announceFungibleOperationActivityChange({ type: 'remove', id: activity.id, owner: activity.signer });
@@ -606,7 +624,13 @@ export function FungibleAssetView({
 					owner: activity.signer,
 					operationKind: activity.operation.kind,
 					phase,
-					status: fungibleActivityPhaseStatus(phase),
+					status: progress?.status ?? fungibleActivityPhaseStatus(phase),
+					...(progress?.confirmations !== undefined && progress.confirmationTarget !== undefined
+						? {
+								confirmations: progress.confirmations,
+								confirmationTarget: progress.confirmationTarget,
+						  }
+						: {}),
 					createdAt: activity.createdAt ?? Date.now(),
 				};
 				announceFungibleOperationActivityChange({ type: 'upsert', activity: summary });
@@ -1036,14 +1060,17 @@ export function FungibleAssetView({
 	const recoveryBlocksActions = recoverySuppressed || Boolean(unavailableRecovery) || signedRecoveryLocksAsset;
 	const purchaseBlocksActions = recoveryBlocksActions || Boolean(activePurchaseActivity);
 	const assetBlocksActions = recoveryBlocksActions || Boolean(activeAssetActivity);
-	const handleOperationPhaseChange = React.useCallback(
-		(id: string, nextPhase: TransactionDialogPhase) => {
+	const handleOperationActivityChange = React.useCallback(
+		(
+			id: string,
+			update: Pick<FungibleOperationActivitySummary, 'phase' | 'status' | 'confirmations' | 'confirmationTarget'>
+		) => {
 			const activity = operationActivitiesRef.current.find((candidate) => candidate.id === id);
-			if (activity) publishOperationActivity(activity, nextPhase);
+			if (activity) publishOperationActivity(activity, update.phase, update);
 			setOperationActivities((current) =>
-				current.map((activity) => (activity.id === id ? { ...activity, phase: nextPhase } : activity))
+				current.map((activity) => (activity.id === id ? { ...activity, phase: update.phase } : activity))
 			);
-			if (nextPhase === 'done') void onRefresh();
+			if (update.phase === 'done') void onRefresh();
 		},
 		[onRefresh, publishOperationActivity]
 	);
@@ -1727,7 +1754,7 @@ export function FungibleAssetView({
 							)
 						)
 					}
-					onPhaseChange={(phase) => handleOperationPhaseChange(activity.id, phase)}
+					onActivityChange={(update) => handleOperationActivityChange(activity.id, update)}
 					onRestart={() => {
 						setRecoverySuppressed(false);
 						setOperationActivities((current) =>
@@ -1764,6 +1791,30 @@ function fungibleActivityPhaseStatus(phase: TransactionDialogPhase) {
 		done: 'Complete',
 		error: 'Needs attention',
 	}[phase];
+}
+
+export function fungibleOperationActivityProgress(
+	phase: TransactionDialogPhase,
+	activeStep?: ArweaveSyncStep
+): Pick<FungibleOperationActivitySummary, 'phase' | 'status' | 'confirmations' | 'confirmationTarget'> {
+	if (phase === 'working' && activeStep?.transaction) {
+		const confirmationTarget = Math.max(1, activeStep.target);
+		return {
+			phase,
+			status: 'Watching Arweave confirmations…',
+			confirmations: Math.min(confirmationTarget, quorumConfirmationDepth(activeStep)),
+			confirmationTarget,
+		};
+	}
+	return { phase, status: fungibleActivityPhaseStatus(phase) };
+}
+
+export function fungibleOperationWorkingStatus(
+	operationKind: FungibleOperation['kind'],
+	message: string,
+	purchase?: PurchaseState
+): string {
+	return operationKind === 'buy' ? message || purchaseLifecycleStatus(purchase ?? null) : message;
 }
 
 export type FungiblePurchaseSequenceStep = {
@@ -1849,7 +1900,7 @@ function FungibleOperationDialog({
 	visible,
 	restoreFallback,
 	onHide,
-	onPhaseChange,
+	onActivityChange,
 	onRestart,
 	onClose,
 }: {
@@ -1861,7 +1912,9 @@ function FungibleOperationDialog({
 	visible: boolean;
 	restoreFallback(): HTMLElement | null;
 	onHide(): void;
-	onPhaseChange(phase: TransactionDialogPhase): void;
+	onActivityChange(
+		update: Pick<FungibleOperationActivitySummary, 'phase' | 'status' | 'confirmations' | 'confirmationTarget'>
+	): void;
 	onRestart(): void;
 	onClose(resumeLater?: boolean, refresh?: boolean): void;
 }) {
@@ -1925,7 +1978,11 @@ function FungibleOperationDialog({
 	const [hiding, setHiding] = React.useState(false);
 	const [settlementAnnouncement, setSettlementAnnouncement] = React.useState('');
 	const settlementAnnouncementKeyRef = React.useRef('');
-	const submittedAtRef = React.useRef<number>();
+	const submittedAtRef = React.useRef<number | undefined>(
+		operation.kind === 'buy' && Number.isFinite(operation.resume?.createdAt)
+			? operation.resume?.createdAt
+			: undefined
+	);
 	const purchasesRef = React.useRef<Map<string, SwapPurchase>>(new Map());
 	const networkRef = React.useRef<AssetObserverNetworkLease | null>(null);
 	const claimRef = React.useRef<WalletOperationClaim | null>(null);
@@ -1939,8 +1996,8 @@ function FungibleOperationDialog({
 	const attemptRef = React.useRef(new AbortController());
 	const cleanupTimerRef = React.useRef<number | undefined>();
 	const hideTimerRef = React.useRef<number | null>(null);
-	const phaseChangeRef = React.useRef(onPhaseChange);
-	phaseChangeRef.current = onPhaseChange;
+	const activityChangeRef = React.useRef(onActivityChange);
+	activityChangeRef.current = onActivityChange;
 	const resumed = React.useRef(false);
 	const ticker = state.ticker || 'Token';
 	const tickerDisplay = formatTickerLabel(ticker);
@@ -2025,10 +2082,6 @@ function FungibleOperationDialog({
 	React.useEffect(() => {
 		if (visible) setHiding(false);
 	}, [visible]);
-
-	React.useEffect(() => {
-		phaseChangeRef.current(phase);
-	}, [phase]);
 
 	React.useEffect(() => {
 		if (operation.kind !== 'buy' || !matchedOrders.length || operation.resume) {
@@ -2376,7 +2429,7 @@ function FungibleOperationDialog({
 			collectionId,
 			startingBalance,
 			entries,
-			createdAt: resume?.createdAt ?? Date.now(),
+			createdAt: resume?.createdAt ?? submittedAtRef.current ?? Date.now(),
 			gateway: resume?.gateway ?? currentPurchaseGatewayContext(),
 		};
 		let terminalRecoveryRemoved = false;
@@ -2695,6 +2748,7 @@ function FungibleOperationDialog({
 	const visibleOrders = visibleFills.map((fill) => fill.order);
 	const activeOrder = visibleOrders.find((order) => order.orderId === activeOrderId) ?? visibleOrders[0];
 	const activePurchase = activeOrder ? purchaseStates[activeOrder.orderId] : undefined;
+	const workingStatus = fungibleOperationWorkingStatus(operation.kind, message, activePurchase);
 	const observedOrderId = activeOrder?.orderId;
 	React.useEffect(() => {
 		const paymentId = activePurchase?.payment?.id;
@@ -2787,6 +2841,19 @@ function FungibleOperationDialog({
 				},
 		  ]
 		: [];
+	const activeSyncStep =
+		operation.kind === 'buy'
+			? purchaseSteps.find((step) => step.key === activeStep) ?? purchaseSteps[0]
+			: singleSteps[0];
+	const activityProgress = fungibleOperationActivityProgress(phase, activeSyncStep);
+	React.useEffect(() => {
+		activityChangeRef.current(activityProgress);
+	}, [
+		activityProgress.confirmations,
+		activityProgress.confirmationTarget,
+		activityProgress.phase,
+		activityProgress.status,
+	]);
 	const closeOrHide = () => {
 		const action = transactionDialogDismissAction(phase, Boolean(transaction || recoverableBatch));
 		if (action.kind === 'close') {
@@ -3341,10 +3408,7 @@ function FungibleOperationDialog({
 								while this browser data remains available.
 							</p>
 						) : null}
-						{message ? <p className="scheduler-wait">{message}</p> : null}
-						{operation.kind === 'buy' && activePurchase ? (
-							<p className="scheduler-wait">{purchaseLifecycleStatus(activePurchase)}</p>
-						) : null}
+						{workingStatus ? <p className="scheduler-wait">{workingStatus}</p> : null}
 						{operation.kind === 'buy' && visibleOrders.length ? (
 							activeOrder && activePurchase ? (
 								<ArweaveTransactionSync
@@ -3399,17 +3463,6 @@ function FungibleOperationDialog({
 									: undefined
 							}
 						>
-							{operation.kind === 'buy' && purchaseSteps.length ? (
-								<div className="result-outcome-sync">
-									<ArweaveTransactionSync
-										active={visible}
-										activeStep="pay"
-										startedAt={submittedAtRef.current}
-										steps={purchaseSteps}
-										subject={`${asset.name} · ${tokenLabel(activeOrder?.quantity ?? '0', state)}`}
-									/>
-								</div>
-							) : null}
 							{operation.kind === 'buy' || operation.kind === 'sell' ? (
 								<OperationOutcomeSubject
 									label={operation.kind === 'buy' ? 'You received' : 'You listed'}
@@ -3434,6 +3487,17 @@ function FungibleOperationDialog({
 										/>
 									}
 								/>
+							) : null}
+							{operation.kind === 'buy' && purchaseSteps.length ? (
+								<div className="result-outcome-sync">
+									<ArweaveTransactionSync
+										active={visible}
+										activeStep="pay"
+										startedAt={submittedAtRef.current}
+										steps={purchaseSteps}
+										subject={`${asset.name} · ${tokenLabel(activeOrder?.quantity ?? '0', state)}`}
+									/>
+								</div>
 							) : null}
 						</OperationOutcome>
 						{transaction && operation.kind !== 'transfer' ? (
@@ -4044,7 +4108,7 @@ export function FungiblePurchaseReceiptNavigator({
 					<div>
 						<dt>Seller</dt>
 						<dd>
-							<WalletAddress address={order.creator} label="seller" />
+							<WalletAddress address={order.creator} label="seller" tooltipEscapesOverflow />
 						</dd>
 					</div>
 					<div>

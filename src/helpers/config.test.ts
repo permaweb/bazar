@@ -29,9 +29,10 @@ function location(overrides: Partial<Location> = {}): Location {
 }
 
 describe('Arweave gateway routing', () => {
-	it('keeps local development off the production compute gateway by default', () => {
-		expect(computeGatewayForEnvironment(true)).toBe(DEFAULT_ARWEAVE_GATEWAY);
+	it('uses the production compute peers during local development too', () => {
+		expect(computeGatewayForEnvironment(true)).toBe(PRODUCTION_COMPUTE_GATEWAY);
 		expect(computeGatewayForEnvironment(false)).toBe(PRODUCTION_COMPUTE_GATEWAY);
+		expect(computeGatewaysForEnvironment(true)).toEqual(PRODUCTION_COMPUTE_GATEWAYS);
 		expect(computeGatewaysForEnvironment(false)).toEqual(PRODUCTION_COMPUTE_GATEWAYS);
 		expect(computeGatewayForEnvironment(true, 'http://127.0.0.1:3101/path')).toBe('http://127.0.0.1:3101');
 	});

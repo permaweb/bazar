@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
-import { Tooltip, TooltipSurface } from './Tooltip';
+import { floatingTooltipPosition, Tooltip, TooltipSurface } from './Tooltip';
 
 describe('Tooltip', () => {
 	it('links reusable trigger content to a bottom tooltip', () => {
@@ -60,5 +60,15 @@ describe('Tooltip', () => {
 
 		expect(markup).toContain('ui-tooltip--align-center');
 		expect(markup).toContain('--ui-tooltip-delay:1000ms');
+	});
+
+	it('keeps floating tooltips within the viewport and flips them away from an edge', () => {
+		expect(
+			floatingTooltipPosition(
+				{ bottom: 28, height: 20, left: 4, right: 104, top: 8, width: 100 },
+				{ height: 44, width: 240 },
+				{ align: 'end', placement: 'top', viewportHeight: 320, viewportWidth: 280 }
+			)
+		).toEqual({ arrowLeft: 46, left: 8, placement: 'bottom', top: 37 });
 	});
 });

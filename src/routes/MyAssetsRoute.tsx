@@ -15,7 +15,7 @@ import {
 	verifyAssetCandidateSupport,
 	walletAssetGroups,
 } from 'api/asset-discovery';
-import { liquidBalanceOf, listedBalanceOf, servingNodeOrigin } from 'api/asset-marketplace';
+import { liquidBalanceOf, listedBalanceOf, liveOrdersOfAsset, servingNodeOrigin } from 'api/asset-marketplace';
 import { DISPLAY_STATE_CACHE, readAssetStateCached } from 'api/asset-state-store';
 
 import { Button } from 'components/Button';
@@ -39,6 +39,7 @@ import {
 	MarketContext,
 	MarketSelect,
 	nextWalletAnnouncementProgress,
+	orderPriceLabel,
 	refreshCandidateRetryMetadata,
 	reopenWalletCandidate,
 	RouteState,
@@ -52,8 +53,6 @@ import {
 	walletDiscoverySession,
 	walletDiscoverySessionIsCurrent,
 	walletResolutionCopy,
-	walletResolutionIsDeterminate,
-	walletResolutionShowsProgress,
 	type WalletResolutionStatus,
 } from '../app/App';
 import {
@@ -577,12 +576,6 @@ export default function MyAssetsRoute({
 		},
 		aggregateFailureMessage
 	);
-	const resolutionDeterminate = walletResolutionIsDeterminate(status);
-	const resolutionProgressTotal = status.phase === 'revalidating' ? status.revalidationTotal ?? 0 : status.total;
-	const resolutionProgressValue = status.phase === 'revalidating' ? status.revalidated ?? 0 : status.resolved;
-	const resolutionProgress = resolutionProgressTotal
-		? Math.min(100, Math.round((resolutionProgressValue / resolutionProgressTotal) * 100))
-		: 0;
 	return (
 		<section className={pageClassName}>
 			{!embedded ? (
@@ -625,21 +618,6 @@ export default function MyAssetsRoute({
 						<Loading label={resolutionCopy.heading} />
 						<p>{resolutionCopy.announcement}</p>
 					</div>
-					{walletResolutionShowsProgress(status) ? (
-						<div
-							aria-label={resolutionCopy.heading}
-							aria-valuemax={resolutionDeterminate ? 100 : undefined}
-							aria-valuemin={resolutionDeterminate ? 0 : undefined}
-							aria-valuenow={resolutionDeterminate ? resolutionProgress : undefined}
-							aria-valuetext={resolutionCopy.announcement}
-							className={`resolution-track${resolutionDeterminate ? '' : ' indeterminate'}${
-								status.failures ? ' has-failures' : ''
-							}`}
-							role="progressbar"
-						>
-							<span style={resolutionDeterminate ? { width: `${resolutionProgress}%` } : undefined} />
-						</div>
-					) : null}
 				</div>
 			) : null}
 			{status.error ? (
@@ -698,6 +676,12 @@ export default function MyAssetsRoute({
 			) : null}
 		</section>
 	);
+}
+
+export function listedUniquePrice(result: ResolvedAsset, address: string): string | undefined {
+	if (result.collection.kind === 'tokens') return undefined;
+	const order = liveOrdersOfAsset(result.state).find((candidate) => candidate.creator === address);
+	return order ? orderPriceLabel(order, result.state) : undefined;
 }
 
 const AssetGroup = React.memo(function AssetGroup({
@@ -762,6 +746,7 @@ const AssetGroup = React.memo(function AssetGroup({
 						{results.slice(0, limit).map((result, index) => {
 							const listed = walletAssetGroups(result, address).includes('listed');
 							const listedBalance = listedBalanceOf(result.state, address);
+							const uniquePrice = listed ? listedUniquePrice(result, address) : undefined;
 							const balance =
 								view === 'listed'
 									? listedBalance
@@ -780,8 +765,9 @@ const AssetGroup = React.memo(function AssetGroup({
 											? `${tokenBalanceLabel(balance, result.state)}${
 													view === 'listed' ? ' listed' : ''
 											  }`
-											: undefined
+											: uniquePrice
 									}
+									priceListed={Boolean(uniquePrice)}
 								/>
 							);
 						})}

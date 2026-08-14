@@ -30,8 +30,10 @@ import {
 	FungibleListingComposer,
 	fungibleOfferedPercentage,
 	type FungibleOperationActivity,
+	fungibleOperationActivityProgress,
 	FungibleOperationErrorAlert,
 	fungibleOperationStateError,
+	fungibleOperationWorkingStatus,
 	fungibleOrderActionLabel,
 	fungiblePurchaseActivityAmount,
 	FungiblePurchaseComposer,
@@ -59,6 +61,43 @@ import {
 	visibleOrderbookRows,
 	waitForSettlementBatch,
 } from './FungibleAssetView';
+
+describe('fungible operation activity progress', () => {
+	it('reports the active Arweave confirmation depth for a purchase', () => {
+		expect(
+			fungibleOperationActivityProgress('working', {
+				key: 'register',
+				label: 'Reserve listing',
+				target: 5,
+				confirmations: 2,
+				transaction: { id: 'R'.repeat(43), views: [] },
+			})
+		).toEqual({
+			phase: 'working',
+			status: 'Watching Arweave confirmations…',
+			confirmations: 2,
+			confirmationTarget: 5,
+		});
+	});
+
+	it('keeps the generic working status before a transaction is available', () => {
+		expect(fungibleOperationActivityProgress('working')).toEqual({
+			phase: 'working',
+			status: 'Transaction in progress',
+		});
+	});
+});
+
+describe('fungible operation working status', () => {
+	it('uses one concrete retry message instead of stacking it with purchase lifecycle status', () => {
+		const retryMessage = 'Checking the exact submitted reservation again.';
+		expect(
+			fungibleOperationWorkingStatus('buy', retryMessage, {
+				stage: 'registration-propagating',
+			} as PurchaseState)
+		).toBe(retryMessage);
+	});
+});
 
 const BUYER = 'b'.repeat(43);
 const ORDER_ID = 'o'.repeat(43);
@@ -230,8 +269,11 @@ describe('fungible holders', () => {
 		);
 
 		expect(chart).toContain('aria-label="Test token supply distribution"');
+		expect(chart).toContain('<h2 id="fungible-holder-chart-title">Supply distribution</h2>');
 		expect(chart).toContain('80% of supply; 25% offered for sale');
 		expect(chart).toContain('<pattern');
+		expect(chart).toContain('Selected holder');
+		expect(chart).toContain('Total balance');
 		expect(chart).toContain('Offered for sale');
 	});
 });

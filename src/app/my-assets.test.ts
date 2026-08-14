@@ -7,6 +7,7 @@ import {
 	assetGroupRevealComplete,
 	retainedAssetGroupLimit,
 } from '../helpers/progressive-assets';
+import { listedUniquePrice } from '../routes/MyAssetsRoute';
 
 import {
 	type CandidateSupportFailure,
@@ -195,6 +196,16 @@ describe('My assets retry bookkeeping', () => {
 
 		expect(groups.owned).toEqual([both, owned]);
 		expect(groups.listed).toEqual([both, listed]);
+	});
+
+	it('shows the wallet listing price for a unique asset', () => {
+		const listed = resolved('listed-unique', '0', '1');
+		listed.collection = { ...listed.collection, kind: 'images' };
+		listed.state.totalSupply = '1';
+		listed.state.orders['listed-unique-order'].asking = '2500000000000';
+
+		expect(listedUniquePrice(listed, wallet)).toBe('2.5 AR');
+		expect(listedUniquePrice(listed, 'X'.repeat(43))).toBeUndefined();
 	});
 
 	it('writes retry recovery through the active resumable session', () => {

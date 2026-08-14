@@ -22,13 +22,13 @@ export function normalizeComputeGateways(value: string, defaultProtocol = 'https
 	return origins.length && origins.every(Boolean) ? [...new Set(origins as string[])] : null;
 }
 
-export function computeGatewaysForEnvironment(development: boolean, configured = configuredComputeGateway): string[] {
+export function computeGatewaysForEnvironment(_development: boolean, configured = configuredComputeGateway): string[] {
 	if (configured) {
 		const parsed = normalizeComputeGateways(configured);
 		if (!parsed) throw new TypeError('invalid-compute-gateways');
 		return parsed;
 	}
-	return development ? [DEFAULT_ARWEAVE_GATEWAY] : [...PRODUCTION_COMPUTE_GATEWAYS];
+	return [...PRODUCTION_COMPUTE_GATEWAYS];
 }
 
 export function computeGatewayForEnvironment(development: boolean, configured = configuredComputeGateway) {

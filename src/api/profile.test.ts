@@ -64,7 +64,7 @@ describe('Account-0.3 profiles', () => {
 			.mockResolvedValueOnce(
 				Response.json({ handle: 'holder', name: 'Token Holder', bio: 'Collects.', avatar: '' })
 			);
-		const publish = vi.fn(async (_data: string) => 'T'.repeat(43));
+		const publish = vi.fn(async (_data: string | Uint8Array) => 'T'.repeat(43));
 		const client = new ProfileClient({
 			fetch: fetcher as typeof fetch,
 			gateway: 'https://gateway.example',
@@ -90,15 +90,106 @@ describe('Account-0.3 profiles', () => {
 		);
 	});
 
+	it('updates the display name without changing the avatar', async () => {
+		const owner = 'F'.repeat(43);
+		const fetcher = vi
+			.fn()
+			.mockResolvedValueOnce(Response.json({ data: { transactions: { edges: [{ node: { id: profileId } }] } } }))
+			.mockResolvedValueOnce(
+				Response.json({
+					handle: 'old-name',
+					name: 'Full Name',
+					bio: 'Still here.',
+					avatar: `ar://${avatarId}`,
+				})
+			);
+		const publish = vi.fn(async (_data: string | Uint8Array) => 'T'.repeat(43));
+		const client = new ProfileClient({
+			fetch: fetcher as typeof fetch,
+			gateway: 'https://gateway.example',
+			publish,
+		});
+
+		const profile = await client.update(owner, { displayName: 'New name' });
+
+		expect(profile).toMatchObject({
+			handle: 'New name',
+			name: 'Full Name',
+			bio: 'Still here.',
+			avatar: `ar://${avatarId}`,
+		});
+		expect(JSON.parse(String(publish.mock.calls[0][0]))).toMatchObject({
+			handle: 'New name',
+			name: 'Full Name',
+			bio: 'Still here.',
+			avatar: `ar://${avatarId}`,
+		});
+	});
+
+	it('updates the avatar without requiring a display name change', async () => {
+		const owner = 'H'.repeat(43);
+		const fetcher = vi
+			.fn()
+			.mockResolvedValueOnce(Response.json({ data: { transactions: { edges: [{ node: { id: profileId } }] } } }))
+			.mockResolvedValueOnce(
+				Response.json({ handle: 'Keep this name', name: '', bio: 'Still here.', avatar: '' })
+			);
+		const client = new ProfileClient({
+			fetch: fetcher as typeof fetch,
+			gateway: 'https://gateway.example',
+			publish: vi.fn(async () => 'T'.repeat(43)),
+		});
+
+		const profile = await client.update(owner, { avatar: avatarId });
+
+		expect(profile).toMatchObject({
+			handle: 'Keep this name',
+			bio: 'Still here.',
+			avatar: `ar://${avatarId}`,
+		});
+	});
+
+	it('uploads a dropped profile image as a permanent avatar transaction', async () => {
+		const owner = 'G'.repeat(43);
+		const publish = vi.fn(async () => avatarId);
+		const client = new ProfileClient({ publish });
+		const data = new Uint8Array([1, 2, 3]);
+
+		await expect(client.uploadAvatar(owner, data, 'image/webp')).resolves.toBe(avatarId);
+		expect(publish).toHaveBeenCalledWith(
+			data,
+			expect.arrayContaining([
+				{ name: 'Content-Type', value: 'image/webp' },
+				{ name: 'Type', value: 'Profile-Avatar' },
+			]),
+			owner,
+			{}
+		);
+	});
+
+	it('rejects unsupported or oversized profile images before publishing', async () => {
+		const publish = vi.fn(async () => avatarId);
+		const client = new ProfileClient({ publish });
+
+		await expect(client.uploadAvatar(address, new Uint8Array([1]), 'image/svg+xml')).rejects.toThrow(
+			'invalid-profile-avatar-type'
+		);
+		await expect(client.uploadAvatar(address, new Uint8Array(), 'image/png')).rejects.toThrow(
+			'invalid-profile-avatar-size'
+		);
+		expect(publish).not.toHaveBeenCalled();
+	});
+
 	it('rejects malformed wallet and avatar identifiers before network access', async () => {
 		await expect(readAccountProfile('not-an-address')).rejects.toThrow('invalid-profile-address');
 		const client = new ProfileClient({ publish: vi.fn() });
 		await expect(client.setAvatar(address, 'not-an-asset')).rejects.toThrow('invalid-profile-avatar');
+		await expect(client.update(address, {})).rejects.toThrow('empty-profile-update');
 	});
 
 	it('keeps an asset image URL when setting it as the profile picture', async () => {
 		const owner = 'D'.repeat(43);
-		const publish = vi.fn(async (_data: string) => 'T'.repeat(43));
+		const publish = vi.fn(async (_data: string | Uint8Array) => 'T'.repeat(43));
 		const client = new ProfileClient({
 			fetch: vi.fn(async () => Response.json({ data: { transactions: { edges: [] } } })) as typeof fetch,
 			gateway: 'https://gateway.example',
@@ -107,7 +198,7 @@ describe('Account-0.3 profiles', () => {
 
 		await client.setAvatar(owner, `https://arweave.net/${avatarId}`);
 
-		expect(JSON.parse(publish.mock.calls[0][0])).toMatchObject({
+		expect(JSON.parse(String(publish.mock.calls[0][0]))).toMatchObject({
 			avatar: `https://arweave.net/${avatarId}`,
 		});
 	});

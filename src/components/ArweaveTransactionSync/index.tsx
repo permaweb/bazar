@@ -75,6 +75,11 @@ type LiveObserverResponseStore = {
 	viewsByTransaction: Map<string, Map<string, ObserverView>>;
 };
 
+type TransactionSyncSessionStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
+
+const TRANSACTION_SYNC_VIEW_CACHE_VERSION = 1;
+const TRANSACTION_SYNC_VIEW_CACHE_PREFIX = 'bazar-transaction-sync-views:v1:';
+
 export type ArweaveSyncTransaction = Pick<PurchaseTransaction, 'id' | 'views'> & {
 	consensus?: PurchaseTransaction['consensus'];
 };
@@ -131,6 +136,7 @@ export function ArweaveTransactionSync({
 		Boolean(active?.hasError)
 	);
 	const displayedConfirmationDepth = active?.terminal ? confirmationDepth : lifecycle.depth;
+	const terminalDepthBeyondTarget = Boolean(active?.terminal && target > 0 && confirmationDepth > target);
 	const transactionState = transaction?.consensus?.state ?? latestObserverState(transaction?.views ?? []);
 	const progressKey = `${transaction?.id ?? 'none'}:${active?.key ?? 'none'}`;
 	const [estimatedProgress, setEstimatedProgress] = React.useState({ key: progressKey, value: 0 });
@@ -264,11 +270,11 @@ export function ArweaveTransactionSync({
 						</div>
 						<S.Depth
 							aria-label={
-								active.terminal
+								terminalDepthBeyondTarget
 									? `${displayedConfirmationDepth} confirmation${
 											displayedConfirmationDepth === 1 ? '' : 's'
 									  }`
-									: lifecycle.pending
+									: lifecycle.pending && !active.terminal
 									? pendingAfterConfirmation
 									: verificationDelayed
 									? language.transactionSyncVerificationDelayed
@@ -276,9 +282,12 @@ export function ArweaveTransactionSync({
 							}
 							$success={lifecycle.complete}
 						>
-							{active.terminal ? (
-								<strong>{displayedConfirmationDepth}</strong>
-							) : lifecycle.pending ? (
+							{terminalDepthBeyondTarget ? (
+								<>
+									<strong>{displayedConfirmationDepth}</strong>
+									<span> confirmations</span>
+								</>
+							) : lifecycle.pending && !active.terminal ? (
 								<strong>{pendingAfterConfirmation}</strong>
 							) : verificationDelayed ? (
 								<strong>{language.transactionSyncVerificationDelayed}</strong>
@@ -451,14 +460,23 @@ function localizedRisk(depth: number, language: any): string {
 
 function useLiveObserverResponses(steps: ArweaveSyncStep[]): ArweaveSyncStep[] {
 	const key = steps.map((step) => `${step.key}:${step.transaction?.id ?? ''}`).join('|');
-	const storeRef = React.useRef<LiveObserverResponseStore>({ key, viewsByTransaction: new Map() });
+	const storeRef = React.useRef<LiveObserverResponseStore>();
+	if (!storeRef.current) storeRef.current = createLiveObserverResponseStore(key, steps);
 	const [version, setVersion] = React.useState(0);
 	if (storeRef.current.key !== key) {
-		storeRef.current = { key, viewsByTransaction: new Map() };
+		storeRef.current = createLiveObserverResponseStore(key, steps);
 	}
+	const store = storeRef.current;
 
 	React.useEffect(() => {
 		const transactionIds = new Set(steps.flatMap((step) => (step.transaction ? [step.transaction.id] : [])));
+		for (const step of steps) {
+			if (!step.transaction) continue;
+			const transactionViews = store.viewsByTransaction.get(step.transaction.id) ?? new Map();
+			mergeObserverViewsIntoMap(transactionViews, step.transaction.views);
+			store.viewsByTransaction.set(step.transaction.id, transactionViews);
+			writeCachedObserverViews(browserSessionStorage(), step.transaction.id, [...transactionViews.values()]);
+		}
 		let flushTimer: number | undefined;
 		const scheduleRender = () => {
 			if (flushTimer !== undefined) return;
@@ -470,12 +488,13 @@ function useLiveObserverResponses(steps: ArweaveSyncStep[]): ArweaveSyncStep[] {
 		const handleResponse = (event: Event) => {
 			const detail = (event as CustomEvent<ArweaveObserverResponseDetail>).detail;
 			if (!detail || !transactionIds.has(detail.transactionId)) return;
-			const transactionViews = storeRef.current.viewsByTransaction.get(detail.transactionId) ?? new Map();
+			const transactionViews = store.viewsByTransaction.get(detail.transactionId) ?? new Map();
 			const previous = transactionViews.get(detail.observer.url);
 			const view = observerViewFromResponse(detail, previous);
 			if (!view) return;
 			transactionViews.set(detail.observer.url, view);
-			storeRef.current.viewsByTransaction.set(detail.transactionId, transactionViews);
+			store.viewsByTransaction.set(detail.transactionId, transactionViews);
+			writeCachedObserverViews(browserSessionStorage(), detail.transactionId, [...transactionViews.values()]);
 			scheduleRender();
 		};
 
@@ -490,9 +509,101 @@ function useLiveObserverResponses(steps: ArweaveSyncStep[]): ArweaveSyncStep[] {
 		() =>
 			steps.map((step) => ({
 				...step,
-				transaction: mergeLiveObserverViews(step.transaction, storeRef.current.viewsByTransaction),
+				transaction: mergeLiveObserverViews(step.transaction, store.viewsByTransaction),
 			})),
 		[steps, version]
+	);
+}
+
+function createLiveObserverResponseStore(key: string, steps: ArweaveSyncStep[]): LiveObserverResponseStore {
+	const viewsByTransaction = new Map<string, Map<string, ObserverView>>();
+	const storage = browserSessionStorage();
+	for (const step of steps) {
+		if (!step.transaction) continue;
+		const views = new Map<string, ObserverView>();
+		mergeObserverViewsIntoMap(views, readCachedObserverViews(storage, step.transaction.id));
+		mergeObserverViewsIntoMap(views, step.transaction.views);
+		viewsByTransaction.set(step.transaction.id, views);
+	}
+	return { key, viewsByTransaction };
+}
+
+function mergeObserverViewsIntoMap(target: Map<string, ObserverView>, views: ObserverView[]) {
+	for (const view of views) {
+		const existing = target.get(view.observer.url);
+		if (!existing || observerViewTimestamp(view) >= observerViewTimestamp(existing)) {
+			target.set(view.observer.url, view);
+		}
+	}
+}
+
+function observerViewTimestamp(view: ObserverView) {
+	return Math.max(view.updatedAt, view.lastSeenAt ?? 0);
+}
+
+function browserSessionStorage(): TransactionSyncSessionStorage | undefined {
+	try {
+		return typeof window === 'undefined' ? undefined : window.sessionStorage;
+	} catch {
+		return undefined;
+	}
+}
+
+export function readCachedObserverViews(
+	storage: TransactionSyncSessionStorage | undefined,
+	transactionId: string
+): ObserverView[] {
+	if (!storage) return [];
+	const key = `${TRANSACTION_SYNC_VIEW_CACHE_PREFIX}${transactionId}`;
+	try {
+		const value = JSON.parse(storage.getItem(key) ?? 'null');
+		if (
+			!value ||
+			value.version !== TRANSACTION_SYNC_VIEW_CACHE_VERSION ||
+			value.transactionId !== transactionId ||
+			!Array.isArray(value.views) ||
+			!value.views.every(isCachedObserverView)
+		) {
+			if (value !== null) storage.removeItem(key);
+			return [];
+		}
+		return value.views;
+	} catch {
+		try {
+			storage.removeItem(key);
+		} catch {
+			// A blocked session store should not affect transaction observation.
+		}
+		return [];
+	}
+}
+
+export function writeCachedObserverViews(
+	storage: TransactionSyncSessionStorage | undefined,
+	transactionId: string,
+	views: ObserverView[]
+) {
+	if (!storage || !views.length) return;
+	try {
+		storage.setItem(
+			`${TRANSACTION_SYNC_VIEW_CACHE_PREFIX}${transactionId}`,
+			JSON.stringify({ version: TRANSACTION_SYNC_VIEW_CACHE_VERSION, transactionId, views })
+		);
+	} catch {
+		// Visual continuity is best effort; authoritative recovery uses a separate durable record.
+	}
+}
+
+function isCachedObserverView(value: unknown): value is ObserverView {
+	if (!value || typeof value !== 'object') return false;
+	const view = value as Partial<ObserverView>;
+	return Boolean(
+		view.observer &&
+			typeof view.observer.url === 'string' &&
+			typeof view.observer.label === 'string' &&
+			['unknown', 'not-found', 'pending', 'confirmed', 'gone'].includes(view.state ?? '') &&
+			Number.isFinite(view.confirmations) &&
+			Number.isFinite(view.updatedAt)
 	);
 }
 
@@ -504,7 +615,9 @@ function mergeLiveObserverViews(
 	const merged = new Map(transaction.views.map((view) => [view.observer.url, view]));
 	for (const view of viewsByTransaction.get(transaction.id)?.values() ?? []) {
 		const existing = merged.get(view.observer.url);
-		if (!existing || view.updatedAt >= existing.updatedAt) merged.set(view.observer.url, view);
+		if (!existing || observerViewTimestamp(view) >= observerViewTimestamp(existing)) {
+			merged.set(view.observer.url, view);
+		}
 	}
 	return { ...transaction, views: [...merged.values()] };
 }

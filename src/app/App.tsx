@@ -22,6 +22,7 @@ import {
 	LayoutGrid,
 	Library,
 	LoaderCircle,
+	Plus,
 	RefreshCw,
 	Search,
 	Send,
@@ -2579,6 +2580,15 @@ function OperationActivityControl() {
 										<span>{activity.status}</span>
 									</span>
 									<span className="operation-activity-progress">
+										{activity.confirmations !== undefined &&
+										activity.confirmationTarget !== undefined ? (
+											<span
+												aria-label={`${activity.confirmations} of ${activity.confirmationTarget} confirmations`}
+												className="operation-activity-confirmations"
+											>
+												{activity.confirmations}/{activity.confirmationTarget}
+											</span>
+										) : null}
 										{activity.phase === 'working' ? (
 											<LoaderCircle
 												className="ui-icon ui-icon--xs operation-activity-loader"
@@ -3133,7 +3143,7 @@ function Home() {
 	const location = useLocation();
 	const navigate = useNavigate();
 	const { search } = location;
-	const marketPaneRef = React.useRef<HTMLElement>(null);
+	const marketPaneRef = React.useRef<HTMLDivElement>(null);
 	const homeTab = homeTabFromPathname(location.pathname);
 	const [assetType, setAssetType] = React.useState<HomeAssetType>('all');
 	const [assetView, setAssetView] = React.useState<HomeAssetView>('listed');
@@ -4156,8 +4166,8 @@ function Home() {
 		<div className="home-shell">
 			<div className="home-main">
 				<div className="home-content">
-					<div className="home-market-layout">
-						<section className="home-section home-assets" id="market" ref={marketPaneRef}>
+					<div className="home-market-layout" ref={marketPaneRef}>
+						<section className="home-section home-assets" id="market">
 							<h1 className="sr-only">Marketplace</h1>
 							<div className="home-section-heading">
 								<div>
@@ -4879,15 +4889,15 @@ function GatewayControl() {
 	const { pageRefreshing } = React.useContext(MarketContext);
 	const computeNodes = servingNodeOrigins(window.location);
 	const computeCurrent = computeNodes.join(', ');
-	const [computeValue, setComputeValue] = React.useState(computeCurrent);
+	const [computeValues, setComputeValues] = React.useState(() => (computeNodes.length ? computeNodes : ['']));
 	const [open, setOpen] = React.useState(false);
 	const [error, setError] = React.useState('');
 	const detailsRef = React.useRef<HTMLDetailsElement>(null);
 	const triggerRef = React.useRef<HTMLElement>(null);
-	const inputRef = React.useRef<HTMLInputElement>(null);
+	const inputRefs = React.useRef<Array<HTMLInputElement | null>>([]);
 	React.useEffect(() => {
 		if (!open) return;
-		const focusFrame = window.requestAnimationFrame(() => inputRef.current?.focus());
+		const focusFrame = window.requestAnimationFrame(() => inputRefs.current[0]?.focus());
 		const closeOutside = (event: PointerEvent) => {
 			if (event.target instanceof Node && !detailsRef.current?.contains(event.target)) setOpen(false);
 		};
@@ -4907,9 +4917,13 @@ function GatewayControl() {
 	}, [open]);
 	function apply(event: React.FormEvent) {
 		event.preventDefault();
-		const computeOrigins = normalizeServingNodeOrigins(computeValue, window.location.protocol);
+		const parsedPeers = computeValues.map((value) => normalizeServingNodeOrigins(value, window.location.protocol));
+		const computeOrigins =
+			parsedPeers.every((origins) => origins?.length === 1) && parsedPeers.length
+				? [...new Set(parsedPeers.flatMap((origins) => origins ?? []))]
+				: null;
 		if (!computeOrigins) {
-			setError('Enter one or more HTTP or HTTPS HyperBEAM peers, separated by commas.');
+			setError('Enter one valid HTTP or HTTPS HyperBEAM peer in each field.');
 			return;
 		}
 		setError('');
@@ -4963,22 +4977,73 @@ function GatewayControl() {
 				</summary>
 				<div id="gateway-panel">
 					<form onSubmit={apply}>
-						<label>
-							<span>Change AO-Core peers</span>
-							<span className="gateway-peer-description" id="gateway-peer-description">
-								If you would like to use different machines for your computer, enter in below
-							</span>
-							<input
-								aria-describedby={`gateway-peer-description${error ? ' gateway-error' : ''}`}
-								aria-invalid={Boolean(error)}
-								onChange={(event) => {
-									setComputeValue(event.target.value);
+						<fieldset className="gateway-peer-editor">
+							<legend>Change AO-Core peers</legend>
+							<div className="gateway-peer-fields">
+								{computeValues.map((value, index) => (
+									<div className="gateway-peer-row" key={index}>
+										<label className="sr-only" htmlFor={`gateway-peer-${index}`}>
+											AO-Core peer {index + 1}
+										</label>
+										<input
+											aria-describedby={error ? 'gateway-error' : undefined}
+											aria-invalid={Boolean(error)}
+											autoComplete="url"
+											id={`gateway-peer-${index}`}
+											inputMode="url"
+											onChange={(event) => {
+												setComputeValues((current) =>
+													current.map((peer, peerIndex) =>
+														peerIndex === index ? event.target.value : peer
+													)
+												);
+												setError('');
+											}}
+											placeholder="https://peer.example"
+											ref={(node) => {
+												inputRefs.current[index] = node;
+											}}
+											spellCheck={false}
+											value={value}
+										/>
+										{computeValues.length > 1 ? (
+											<Button
+												aria-label={`Remove AO-Core peer ${index + 1}`}
+												className="gateway-peer-remove"
+												onClick={() => {
+													setComputeValues((current) =>
+														current.filter((_, peerIndex) => peerIndex !== index)
+													);
+													setError('');
+													window.requestAnimationFrame(() =>
+														inputRefs.current[Math.max(0, index - 1)]?.focus()
+													);
+												}}
+												size="custom"
+												type="button"
+												variant="ghost"
+											>
+												<X className="ui-icon ui-icon--sm" aria-hidden="true" />
+											</Button>
+										) : null}
+									</div>
+								))}
+							</div>
+							<Button
+								className="gateway-peer-add with-icon"
+								onClick={() => {
+									const nextIndex = computeValues.length;
+									setComputeValues((current) => [...current, '']);
 									setError('');
+									window.requestAnimationFrame(() => inputRefs.current[nextIndex]?.focus());
 								}}
-								ref={inputRef}
-								value={computeValue}
-							/>
-						</label>
+								size="custom"
+								type="button"
+								variant="ghost"
+							>
+								<Plus className="ui-icon ui-icon--sm" aria-hidden="true" /> Add peer
+							</Button>
+						</fieldset>
 						{error ? (
 							<p className="gateway-error" id="gateway-error" role="alert">
 								{error}
@@ -11131,7 +11196,7 @@ function unitPriceWinston(order: SwapOrder, denomination: number) {
 	const scale = 10n ** BigInt(denomination);
 	return (BigInt(order.asking) * scale + BigInt(order.quantity) - 1n) / BigInt(order.quantity);
 }
-function orderPriceLabel(order: SwapOrder, state: AssetState) {
+export function orderPriceLabel(order: SwapOrder, state: AssetState) {
 	return `${winstonToAr(unitPriceWinston(order, state.denomination).toString())} AR${
 		state.totalSupply === '1' && state.denomination === 0 ? '' : ` / ${formatTickerLabel(state.ticker, 'token')}`
 	}`;
