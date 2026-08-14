@@ -1,12 +1,13 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Check, Copy, Library, LogOut, Monitor, Moon, Sun, SunDim, Wallet } from 'lucide-react';
+import { Check, Copy, LogOut, Monitor, Moon, Sun, SunDim, UserRound, Wallet } from 'lucide-react';
 
 import { useTheme } from 'providers/ThemeProvider';
 import { useWallet } from 'providers/WalletProvider';
 
 import { ArCurrencyText } from './ArCurrencyLabel';
 import { Button } from './Button';
+import { useAccountProfileSummary } from './ProfileIdentity';
 import { Tooltip } from './Tooltip';
 
 const THEME_OPTIONS = [
@@ -27,6 +28,8 @@ export function WalletMenu() {
 	const [copied, setCopied] = React.useState(false);
 	const [disconnecting, setDisconnecting] = React.useState(false);
 	const [error, setError] = React.useState('');
+	const profile = useAccountProfileSummary(wallet.address ?? '');
+	const walletLabel = walletMenuLabel(wallet.address, profile.displayName);
 
 	React.useEffect(() => {
 		if (!open) return;
@@ -97,7 +100,7 @@ export function WalletMenu() {
 						variant="primary"
 					>
 						<Wallet className="ui-icon ui-icon--sm" aria-hidden="true" />
-						<span>{wallet.address ? shortAddress(wallet.address) : 'Connect'}</span>
+						<span>{walletLabel}</span>
 					</Button>
 				)}
 			</Tooltip>
@@ -107,7 +110,7 @@ export function WalletMenu() {
 						<Wallet className="ui-icon" aria-hidden="true" />
 						<div>
 							<span>Connected wallet</span>
-							<strong>{shortAddress(wallet.address)}</strong>
+							<strong>{walletLabel}</strong>
 						</div>
 					</div>
 					<div aria-label="Balance" className="wallet-dropdown-balance" role="group">
@@ -120,14 +123,14 @@ export function WalletMenu() {
 						<Button
 							onClick={() => {
 								setOpen(false);
-								navigate('/my-assets');
+								navigate(`/profile/${wallet.address}`);
 							}}
 							role="menuitem"
 							size="custom"
 							variant="ghost"
 						>
-							<Library className="ui-icon ui-icon--sm" aria-hidden="true" />
-							My assets
+							<UserRound className="ui-icon ui-icon--sm" aria-hidden="true" />
+							My profile
 						</Button>
 						<Button onClick={() => void copyAddress()} role="menuitem" size="custom" variant="ghost">
 							<Copy className="ui-icon ui-icon--sm" aria-hidden="true" />
@@ -178,6 +181,10 @@ export function WalletMenu() {
 
 function shortAddress(address: string) {
 	return `${address.slice(0, 6)}…${address.slice(-5)}`;
+}
+
+export function walletMenuLabel(address?: string | null, displayName?: string | null) {
+	return displayName?.trim() || (address ? shortAddress(address) : 'Connect');
 }
 
 export function arBalanceLabel(balance: bigint | null, status: 'idle' | 'loading' | 'ready' | 'error'): string {

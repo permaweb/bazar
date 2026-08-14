@@ -1,0 +1,113 @@
+.profile-page {
+	width: min(1120px, calc(100% - 40px));
+	margin: 0 auto;
+	padding: 42px 0 72px;
+}
+.profile-page__hero {
+	overflow: hidden;
+	border: 1px solid var(--line);
+	border-radius: 14px;
+	background: var(--paper);
+	box-shadow: 0 18px 54px var(--shadow-soft);
+}
+.profile-page__identity {
+	min-width: 0;
+	display: flex;
+	align-items: center;
+	gap: 20px;
+	padding: 28px;
+}
+.profile-page__avatar {
+	border: 3px solid var(--paper);
+	box-shadow: 0 7px 24px var(--shadow-medium);
+}
+.profile-page__heading {
+	min-width: 0;
+	flex: 1 1 auto;
+}
+.profile-page__heading h1 {
+	margin: 2px 0 4px;
+	font-size: clamp(1.65rem, 4vw, 2.35rem);
+	font-weight: 500;
+	letter-spacing: -0.04em;
+}
+.profile-page__eyebrow {
+	margin: 0;
+	color: var(--muted-subtle);
+	font-size: var(--type-small);
+	letter-spacing: 0.08em;
+}
+.profile-page__address {
+	max-width: 100%;
+	margin: 0;
+	overflow: hidden;
+	color: var(--muted);
+	font-size: var(--type-small);
+	font-variant-numeric: tabular-nums;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.profile-page__action {
+	flex: 0 0 auto;
+	padding-bottom: 7px;
+}
+.profile-page__bio {
+	max-width: 740px;
+	margin: 0 28px 28px 140px;
+	color: var(--muted);
+	font-size: var(--type-body);
+	line-height: 1.65;
+}
+.profile-page__notice {
+	margin-top: 18px;
+	padding: 14px 16px;
+	display: flex;
+	align-items: center;
+	gap: 9px;
+	border: 1px solid var(--line);
+	border-radius: 10px;
+	color: var(--muted);
+	background: var(--surface-subtle);
+	font-size: var(--type-small);
+}
+.profile-page__notice--error {
+	justify-content: space-between;
+	border-color: var(--danger-border);
+	color: var(--danger);
+}
+.profile-page__notice button {
+	padding: 5px 9px;
+	border: 1px solid currentColor;
+	border-radius: 6px;
+	color: inherit;
+	background: transparent;
+	cursor: pointer;
+}
+.profile-page__content {
+	margin-top: 24px;
+}
+@media (max-width: 640px) {
+	.profile-page {
+		width: min(100% - 24px, 1120px);
+		padding-top: 20px;
+	}
+	.profile-page__identity {
+		align-items: flex-start;
+		gap: 14px;
+		padding: 20px 18px;
+	}
+	.profile-page__avatar {
+		width: 72px;
+		height: 72px;
+	}
+	.profile-page__action {
+		position: absolute;
+		right: 30px;
+		margin-top: 76px;
+	}
+	.profile-page__bio {
+		margin-top: 24px;
+		margin-right: 18px;
+		margin-left: 18px;
+	}
+}

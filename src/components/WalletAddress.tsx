@@ -2,6 +2,7 @@ import React from 'react';
 import { Check, CircleAlert, Copy } from 'lucide-react';
 
 import { Button } from './Button';
+import { ProfileIdentityForAddress } from './ProfileIdentity';
 import { Tooltip } from './Tooltip';
 
 export function WalletAddress({
@@ -35,35 +36,38 @@ export function WalletAddress({
 		resetTimer.current = window.setTimeout(() => setCopyState('idle'), 2000);
 	};
 
-	const shortened = address.length > 14 ? `${address.slice(0, 6)}…${address.slice(-5)}` : address;
 	return (
 		<>
-			<Tooltip className="wallet-address-tooltip" content={address} placement="top">
-				{(tooltipId) => (
-					<Button
-						aria-describedby={tooltipId}
-						aria-label={`Copy ${label} address ${address}`}
-						className={`wallet-address${full ? ' is-full' : ''}${
-							copyState === 'failed' ? ' is-failed' : ''
-						}${className ? ` ${className}` : ''}`}
-						onClick={() => void copy()}
-						size="custom"
-						variant="ghost"
-					>
-						<span>{full ? address : shortened}</span>
-						{copyState === 'copied' ? (
-							<Check className="ui-icon ui-icon--xs" aria-hidden="true" />
-						) : copyState === 'failed' ? (
-							<>
-								<small>Copy failed</small>
-								<CircleAlert className="ui-icon ui-icon--xs" aria-hidden="true" />
-							</>
-						) : (
-							<Copy className="ui-icon ui-icon--xs" aria-hidden="true" />
-						)}
-					</Button>
-				)}
-			</Tooltip>
+			<span
+				className={`wallet-address${full ? ' is-full' : ''}${copyState === 'failed' ? ' is-failed' : ''}${
+					className ? ` ${className}` : ''
+				}`}
+			>
+				{full ? <span>{address}</span> : <ProfileIdentityForAddress address={address} />}
+				<Tooltip className="wallet-address-tooltip" content={`Copy ${label} address`} placement="top">
+					{(tooltipId) => (
+						<Button
+							aria-describedby={tooltipId}
+							aria-label={`Copy ${label} address ${address}`}
+							className="wallet-address-copy"
+							onClick={() => void copy()}
+							size="custom"
+							variant="ghost"
+						>
+							{copyState === 'copied' ? (
+								<Check className="ui-icon ui-icon--xs" aria-hidden="true" />
+							) : copyState === 'failed' ? (
+								<>
+									<small>Copy failed</small>
+									<CircleAlert className="ui-icon ui-icon--xs" aria-hidden="true" />
+								</>
+							) : (
+								<Copy className="ui-icon ui-icon--xs" aria-hidden="true" />
+							)}
+						</Button>
+					)}
+				</Tooltip>
+			</span>
 			<span className="sr-only" aria-live="polite" role="status">
 				{copyState === 'copied'
 					? `${label} address copied.`
