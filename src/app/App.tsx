@@ -2578,6 +2578,15 @@ function OperationActivityControl() {
 										<span>{activity.status}</span>
 									</span>
 									<span className="operation-activity-progress">
+										{activity.confirmations !== undefined &&
+										activity.confirmationTarget !== undefined ? (
+											<span
+												aria-label={`${activity.confirmations} of ${activity.confirmationTarget} confirmations`}
+												className="operation-activity-confirmations"
+											>
+												{activity.confirmations}/{activity.confirmationTarget}
+											</span>
+										) : null}
 										{activity.phase === 'working' ? (
 											<LoaderCircle
 												className="ui-icon ui-icon--xs operation-activity-loader"

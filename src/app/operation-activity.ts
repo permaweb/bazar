@@ -50,6 +50,8 @@ export type FungibleOperationActivitySummary = {
 	operationKind: FungibleOperationKind;
 	phase: OperationActivityPhase;
 	status: string;
+	confirmations?: number;
+	confirmationTarget?: number;
 	createdAt: number;
 };
 
@@ -574,6 +576,17 @@ function parseFungibleActivity(value: unknown): FungibleOperationActivitySummary
 		operationKind,
 		phase: value.phase,
 		status: value.status,
+		...(typeof value.confirmations === 'number' &&
+		Number.isFinite(value.confirmations) &&
+		value.confirmations >= 0 &&
+		typeof value.confirmationTarget === 'number' &&
+		Number.isFinite(value.confirmationTarget) &&
+		value.confirmationTarget > 0
+			? {
+					confirmations: value.confirmations,
+					confirmationTarget: value.confirmationTarget,
+			  }
+			: {}),
 		createdAt: value.createdAt,
 	};
 }

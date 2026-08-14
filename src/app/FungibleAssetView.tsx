@@ -98,7 +98,11 @@ import {
 	type MarketplaceOperationFailure,
 	marketplaceOperationFailure,
 } from './marketplace-error';
-import { announceFungibleOperationActivityChange, fungibleOperationActivityId } from './operation-activity';
+import {
+	announceFungibleOperationActivityChange,
+	fungibleOperationActivityId,
+	type FungibleOperationActivitySummary,
+} from './operation-activity';
 import {
 	acquireWalletOperationClaim,
 	assetHasSavedSignedAction,
@@ -604,7 +608,11 @@ export function FungibleAssetView({
 		setOperationActivities((current) => current.map((activity) => ({ ...activity, visible: activity.id === id })));
 	}, []);
 	const publishOperationActivity = React.useCallback(
-		(activity: FungibleOperationActivity, nextPhase: TransactionDialogPhase | null = activity.phase) => {
+		(
+			activity: FungibleOperationActivity,
+			nextPhase: TransactionDialogPhase | null = activity.phase,
+			progress?: Pick<FungibleOperationActivitySummary, 'status' | 'confirmations' | 'confirmationTarget'>
+		) => {
 			const phase = nextPhase ?? 'form';
 			if (phase === 'done') {
 				announceFungibleOperationActivityChange({ type: 'remove', id: activity.id, owner: activity.signer });
@@ -616,7 +624,13 @@ export function FungibleAssetView({
 					owner: activity.signer,
 					operationKind: activity.operation.kind,
 					phase,
-					status: fungibleActivityPhaseStatus(phase),
+					status: progress?.status ?? fungibleActivityPhaseStatus(phase),
+					...(progress?.confirmations !== undefined && progress.confirmationTarget !== undefined
+						? {
+								confirmations: progress.confirmations,
+								confirmationTarget: progress.confirmationTarget,
+						  }
+						: {}),
 					createdAt: activity.createdAt ?? Date.now(),
 				};
 				announceFungibleOperationActivityChange({ type: 'upsert', activity: summary });
@@ -1046,14 +1060,17 @@ export function FungibleAssetView({
 	const recoveryBlocksActions = recoverySuppressed || Boolean(unavailableRecovery) || signedRecoveryLocksAsset;
 	const purchaseBlocksActions = recoveryBlocksActions || Boolean(activePurchaseActivity);
 	const assetBlocksActions = recoveryBlocksActions || Boolean(activeAssetActivity);
-	const handleOperationPhaseChange = React.useCallback(
-		(id: string, nextPhase: TransactionDialogPhase) => {
+	const handleOperationActivityChange = React.useCallback(
+		(
+			id: string,
+			update: Pick<FungibleOperationActivitySummary, 'phase' | 'status' | 'confirmations' | 'confirmationTarget'>
+		) => {
 			const activity = operationActivitiesRef.current.find((candidate) => candidate.id === id);
-			if (activity) publishOperationActivity(activity, nextPhase);
+			if (activity) publishOperationActivity(activity, update.phase, update);
 			setOperationActivities((current) =>
-				current.map((activity) => (activity.id === id ? { ...activity, phase: nextPhase } : activity))
+				current.map((activity) => (activity.id === id ? { ...activity, phase: update.phase } : activity))
 			);
-			if (nextPhase === 'done') void onRefresh();
+			if (update.phase === 'done') void onRefresh();
 		},
 		[onRefresh, publishOperationActivity]
 	);
@@ -1737,7 +1754,7 @@ export function FungibleAssetView({
 							)
 						)
 					}
-					onPhaseChange={(phase) => handleOperationPhaseChange(activity.id, phase)}
+					onActivityChange={(update) => handleOperationActivityChange(activity.id, update)}
 					onRestart={() => {
 						setRecoverySuppressed(false);
 						setOperationActivities((current) =>
@@ -1774,6 +1791,30 @@ function fungibleActivityPhaseStatus(phase: TransactionDialogPhase) {
 		done: 'Complete',
 		error: 'Needs attention',
 	}[phase];
+}
+
+export function fungibleOperationActivityProgress(
+	phase: TransactionDialogPhase,
+	activeStep?: ArweaveSyncStep
+): Pick<FungibleOperationActivitySummary, 'phase' | 'status' | 'confirmations' | 'confirmationTarget'> {
+	if (phase === 'working' && activeStep?.transaction) {
+		const confirmationTarget = Math.max(1, activeStep.target);
+		return {
+			phase,
+			status: 'Watching Arweave confirmations…',
+			confirmations: Math.min(confirmationTarget, quorumConfirmationDepth(activeStep)),
+			confirmationTarget,
+		};
+	}
+	return { phase, status: fungibleActivityPhaseStatus(phase) };
+}
+
+export function fungibleOperationWorkingStatus(
+	operationKind: FungibleOperation['kind'],
+	message: string,
+	purchase?: PurchaseState
+): string {
+	return operationKind === 'buy' ? message || purchaseLifecycleStatus(purchase ?? null) : message;
 }
 
 export type FungiblePurchaseSequenceStep = {
@@ -1859,7 +1900,7 @@ function FungibleOperationDialog({
 	visible,
 	restoreFallback,
 	onHide,
-	onPhaseChange,
+	onActivityChange,
 	onRestart,
 	onClose,
 }: {
@@ -1871,7 +1912,9 @@ function FungibleOperationDialog({
 	visible: boolean;
 	restoreFallback(): HTMLElement | null;
 	onHide(): void;
-	onPhaseChange(phase: TransactionDialogPhase): void;
+	onActivityChange(
+		update: Pick<FungibleOperationActivitySummary, 'phase' | 'status' | 'confirmations' | 'confirmationTarget'>
+	): void;
 	onRestart(): void;
 	onClose(resumeLater?: boolean, refresh?: boolean): void;
 }) {
@@ -1953,8 +1996,8 @@ function FungibleOperationDialog({
 	const attemptRef = React.useRef(new AbortController());
 	const cleanupTimerRef = React.useRef<number | undefined>();
 	const hideTimerRef = React.useRef<number | null>(null);
-	const phaseChangeRef = React.useRef(onPhaseChange);
-	phaseChangeRef.current = onPhaseChange;
+	const activityChangeRef = React.useRef(onActivityChange);
+	activityChangeRef.current = onActivityChange;
 	const resumed = React.useRef(false);
 	const ticker = state.ticker || 'Token';
 	const tickerDisplay = formatTickerLabel(ticker);
@@ -2039,10 +2082,6 @@ function FungibleOperationDialog({
 	React.useEffect(() => {
 		if (visible) setHiding(false);
 	}, [visible]);
-
-	React.useEffect(() => {
-		phaseChangeRef.current(phase);
-	}, [phase]);
 
 	React.useEffect(() => {
 		if (operation.kind !== 'buy' || !matchedOrders.length || operation.resume) {
@@ -2709,6 +2748,7 @@ function FungibleOperationDialog({
 	const visibleOrders = visibleFills.map((fill) => fill.order);
 	const activeOrder = visibleOrders.find((order) => order.orderId === activeOrderId) ?? visibleOrders[0];
 	const activePurchase = activeOrder ? purchaseStates[activeOrder.orderId] : undefined;
+	const workingStatus = fungibleOperationWorkingStatus(operation.kind, message, activePurchase);
 	const observedOrderId = activeOrder?.orderId;
 	React.useEffect(() => {
 		const paymentId = activePurchase?.payment?.id;
@@ -2801,6 +2841,19 @@ function FungibleOperationDialog({
 				},
 		  ]
 		: [];
+	const activeSyncStep =
+		operation.kind === 'buy'
+			? purchaseSteps.find((step) => step.key === activeStep) ?? purchaseSteps[0]
+			: singleSteps[0];
+	const activityProgress = fungibleOperationActivityProgress(phase, activeSyncStep);
+	React.useEffect(() => {
+		activityChangeRef.current(activityProgress);
+	}, [
+		activityProgress.confirmations,
+		activityProgress.confirmationTarget,
+		activityProgress.phase,
+		activityProgress.status,
+	]);
 	const closeOrHide = () => {
 		const action = transactionDialogDismissAction(phase, Boolean(transaction || recoverableBatch));
 		if (action.kind === 'close') {
@@ -3355,10 +3408,7 @@ function FungibleOperationDialog({
 								while this browser data remains available.
 							</p>
 						) : null}
-						{message ? <p className="scheduler-wait">{message}</p> : null}
-						{operation.kind === 'buy' && activePurchase ? (
-							<p className="scheduler-wait">{purchaseLifecycleStatus(activePurchase)}</p>
-						) : null}
+						{workingStatus ? <p className="scheduler-wait">{workingStatus}</p> : null}
 						{operation.kind === 'buy' && visibleOrders.length ? (
 							activeOrder && activePurchase ? (
 								<ArweaveTransactionSync
