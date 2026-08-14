@@ -54,6 +54,7 @@ import {
 
 import { ArCurrencyLabel, ArCurrencyText, formatArCurrencyText } from 'components/ArCurrencyLabel';
 import { type ArweaveSyncStep, ArweaveTransactionSync } from 'components/ArweaveTransactionSync';
+import { quorumConfirmationDepth } from 'components/ArweaveTransactionSync/confirmationDepth';
 import { postConfirmationPendingLabel } from 'components/ArweaveTransactionSync/sequence';
 import { type AssetDetailTab, AssetDetailTabs } from 'components/AssetDetailTabs';
 import { assetOperationPendingActionLabel, AssetOperationStatus } from 'components/AssetOperationStatus';
@@ -122,11 +123,15 @@ import {
 	walletOperationStorageChange,
 } from './operation-session';
 import {
+	continuePaymentConfirmations,
+	PURCHASE_PAYMENT_TARGET,
+	PURCHASE_REGISTRATION_TARGET,
 	PURCHASE_SKIP_FROM_DEPTH,
 	type PurchaseGatewayContext,
 	purchaseGatewaySwitchNotice,
 	purchaseLifecycleStatus,
 	purchaseSkipKind,
+	withContinuingPaymentObservation,
 } from './purchase-lifecycle';
 import {
 	purchaseObservationCheckingMessage,
@@ -296,6 +301,242 @@ export function fungibleHoldingPercentage(balance: string, totalSupply: string) 
 	} catch {
 		return '—';
 	}
+}
+
+export type FungibleHolderChartSlice = Omit<FungibleHolder, 'address'> & {
+	address?: string;
+	holderCount: number;
+	key: string;
+	label: string;
+};
+
+export function fungibleHolderChartSlices(holders: FungibleHolder[], maximumSlices = 12): FungibleHolderChartSlice[] {
+	const limit = Math.max(2, maximumSlices);
+	if (holders.length <= limit) {
+		return holders.map((holder) => ({
+			...holder,
+			holderCount: 1,
+			key: holder.address,
+			label: holder.address,
+		}));
+	}
+
+	const visible = holders.slice(0, limit - 1).map((holder) => ({
+		...holder,
+		holderCount: 1,
+		key: holder.address,
+		label: holder.address,
+	}));
+	const remainder = holders.slice(limit - 1).reduce(
+		(total, holder) => ({
+			liquid: total.liquid + BigInt(holder.liquid),
+			listed: total.listed + BigInt(holder.listed),
+			total: total.total + BigInt(holder.total),
+		}),
+		{ liquid: 0n, listed: 0n, total: 0n }
+	);
+	const holderCount = holders.length - visible.length;
+	return [
+		...visible,
+		{
+			holderCount,
+			key: 'other-holders',
+			label: `Other ${holderCount.toLocaleString()} holders`,
+			liquid: remainder.liquid.toString(),
+			listed: remainder.listed.toString(),
+			total: remainder.total.toString(),
+		},
+	];
+}
+
+export function fungibleOfferedPercentage(listed: string, total: string) {
+	try {
+		if (BigInt(total) <= 0n) return '—';
+		if (BigInt(listed) <= 0n) return '0%';
+		return fungibleHoldingPercentage(listed, total);
+	} catch {
+		return '—';
+	}
+}
+
+const HOLDER_CHART_COLORS = [
+	'var(--positive-text)',
+	'var(--event-purple)',
+	'var(--event-orange)',
+	'var(--event-blue)',
+	'var(--event-pink)',
+	'var(--accent)',
+	'var(--warning-text)',
+	'var(--muted-subtle)',
+];
+
+function holderChartPercentage(value: bigint, total: bigint) {
+	if (value <= 0n || total <= 0n) return 0;
+	return Number((value * 1_000_000n) / total) / 10_000;
+}
+
+export function FungibleHolderChart({
+	assetName,
+	holders,
+	state,
+}: {
+	assetName: string;
+	holders: FungibleHolder[];
+	state: AssetState;
+}) {
+	const patternPrefix = React.useId().replace(/:/g, '');
+	const slices = React.useMemo(() => fungibleHolderChartSlices(holders), [holders]);
+	const [activeKey, setActiveKey] = React.useState(slices[0]?.key ?? '');
+	React.useEffect(() => {
+		if (!slices.some((slice) => slice.key === activeKey)) setActiveKey(slices[0]?.key ?? '');
+	}, [activeKey, slices]);
+	const active = slices.find((slice) => slice.key === activeKey) ?? slices[0];
+	const heldSupply = React.useMemo(() => slices.reduce((total, slice) => total + BigInt(slice.total), 0n), [slices]);
+	const declaredSupply = BigInt(state.totalSupply);
+	const chartSupply = declaredSupply > heldSupply ? declaredSupply : heldSupply;
+	let offset = 0n;
+	const chartSlices = slices.map((slice, index) => {
+		const total = BigInt(slice.total);
+		const liquid = BigInt(slice.liquid);
+		const start = holderChartPercentage(offset, chartSupply);
+		const end = holderChartPercentage(offset + total, chartSupply);
+		const span = end - start;
+		const gap = Math.min(0.34, span * 0.12);
+		const visibleStart = start + gap / 2;
+		const visibleSpan = Math.max(0, span - gap);
+		const liquidSpan = total > 0n ? (visibleSpan * holderChartPercentage(liquid, total)) / 100 : 0;
+		offset += total;
+		return {
+			...slice,
+			color: HOLDER_CHART_COLORS[index % HOLDER_CHART_COLORS.length],
+			liquidSpan,
+			listedSpan: Math.max(0, visibleSpan - liquidSpan),
+			start: visibleStart,
+		};
+	});
+
+	if (!active || chartSupply <= 0n) return null;
+	const activeShare = fungibleHoldingPercentage(active.total, state.totalSupply);
+	const activeOffered = fungibleOfferedPercentage(active.listed, active.total);
+
+	return (
+		<section aria-labelledby="fungible-holder-chart-title" className="fungible-holder-chart-card">
+			<div className="fungible-holder-chart-visual">
+				<svg aria-label={`${assetName} supply distribution`} role="list" viewBox="0 0 240 240">
+					<defs>
+						{chartSlices.map((slice) => (
+							<pattern
+								height="7"
+								id={`${patternPrefix}-${slice.key}`}
+								key={slice.key}
+								patternTransform="rotate(38)"
+								patternUnits="userSpaceOnUse"
+								width="7"
+							>
+								<rect fill={slice.color} height="7" width="7" />
+								<path d="m 0 0 v 7" stroke="var(--paper)" strokeOpacity="0.72" strokeWidth="2.25" />
+							</pattern>
+						))}
+					</defs>
+					<circle className="fungible-holder-chart-track" cx="120" cy="120" pathLength="100" r="82" />
+					{chartSlices.map((slice) => {
+						const share = fungibleHoldingPercentage(slice.total, state.totalSupply);
+						const offered = fungibleOfferedPercentage(slice.listed, slice.total);
+						const label = `${slice.label}: ${share} of supply; ${offered} offered for sale`;
+						return (
+							<g
+								aria-label={label}
+								className={`fungible-holder-chart-slice${slice.key === active.key ? ' is-active' : ''}`}
+								key={slice.key}
+								onFocus={() => setActiveKey(slice.key)}
+								onMouseEnter={() => setActiveKey(slice.key)}
+								role="listitem"
+								tabIndex={0}
+							>
+								<title>{label}</title>
+								{slice.liquidSpan > 0 ? (
+									<circle
+										className="fungible-holder-chart-arc"
+										cx="120"
+										cy="120"
+										pathLength="100"
+										r="82"
+										stroke={slice.color}
+										strokeDasharray={`${slice.liquidSpan} ${100 - slice.liquidSpan}`}
+										strokeDashoffset={-slice.start}
+									/>
+								) : null}
+								{slice.listedSpan > 0 ? (
+									<circle
+										className="fungible-holder-chart-arc"
+										cx="120"
+										cy="120"
+										pathLength="100"
+										r="82"
+										stroke={`url(#${patternPrefix}-${slice.key})`}
+										strokeDasharray={`${slice.listedSpan} ${100 - slice.listedSpan}`}
+										strokeDashoffset={-(slice.start + slice.liquidSpan)}
+									/>
+								) : null}
+								<circle
+									className="fungible-holder-chart-hit"
+									cx="120"
+									cy="120"
+									pathLength="100"
+									r="82"
+									strokeDasharray={`${slice.liquidSpan + slice.listedSpan} ${
+										100 - slice.liquidSpan - slice.listedSpan
+									}`}
+									strokeDashoffset={-slice.start}
+								/>
+							</g>
+						);
+					})}
+					<text className="fungible-holder-chart-value" textAnchor="middle" x="120" y="116">
+						{activeShare}
+					</text>
+					<text className="fungible-holder-chart-label" textAnchor="middle" x="120" y="136">
+						of supply
+					</text>
+				</svg>
+			</div>
+			<div className="fungible-holder-chart-detail">
+				<header>
+					<span>Supply distribution</span>
+					<strong id="fungible-holder-chart-title">{holders.length.toLocaleString()} holders</strong>
+				</header>
+				<div className="fungible-holder-chart-identity">
+					{active.address ? (
+						<WalletAddress address={active.address} label="holder" />
+					) : (
+						<strong>{active.label}</strong>
+					)}
+				</div>
+				<dl>
+					<div>
+						<dt>Supply share</dt>
+						<dd>{activeShare}</dd>
+					</div>
+					<div>
+						<dt>Offered for sale</dt>
+						<dd>{activeOffered}</dd>
+					</div>
+				</dl>
+				<p>
+					{tokenLabel(active.total, state)} total ·{' '}
+					{BigInt(active.listed) > 0n ? tokenLabel(active.listed, state) : 'None'} listed
+				</p>
+				<div aria-label="Chart legend" className="fungible-holder-chart-legend">
+					<span>
+						<i aria-hidden="true" /> Held
+					</span>
+					<span>
+						<i aria-hidden="true" className="is-listed" /> Listed
+					</span>
+				</div>
+			</div>
+		</section>
+	);
 }
 
 export function purchaseSettlementNeedsManualReview(state?: PurchaseState) {
@@ -1327,6 +1568,7 @@ export function FungibleAssetView({
 							role="tabpanel"
 							tabIndex={0}
 						>
+							<FungibleHolderChart assetName={asset.name} holders={holderRows} state={state} />
 							<div
 								aria-label={`${asset.name} token holders`}
 								className="orderbook-table fungible-holder-table"
@@ -2332,8 +2574,8 @@ function FungibleOperationDialog({
 			let observationRetryAttempt = 0;
 			while (true) {
 				const purchase = new SwapPurchase(network, coordinatedAdapter, {
-					registrationTarget: 5,
-					paymentTarget: 5,
+					registrationTarget: PURCHASE_REGISTRATION_TARGET,
+					paymentTarget: PURCHASE_PAYMENT_TARGET,
 					paymentSuccessDepth: 1,
 					skipFrom: PURCHASE_SKIP_FROM_DEPTH,
 					propagation: 'all',
@@ -2439,8 +2681,6 @@ function FungibleOperationDialog({
 			releaseWalletOperationClaim(localStorage, claimRef.current);
 			claimRef.current = null;
 		}
-		observerLease.release();
-		if (networkRef.current === observerLease) networkRef.current = null;
 		setPhase('done');
 	}
 
@@ -2455,6 +2695,20 @@ function FungibleOperationDialog({
 	const visibleOrders = visibleFills.map((fill) => fill.order);
 	const activeOrder = visibleOrders.find((order) => order.orderId === activeOrderId) ?? visibleOrders[0];
 	const activePurchase = activeOrder ? purchaseStates[activeOrder.orderId] : undefined;
+	const observedOrderId = activeOrder?.orderId;
+	React.useEffect(() => {
+		const paymentId = activePurchase?.payment?.id;
+		if (phase !== 'done' || operation.kind !== 'buy' || !visible || !observedOrderId || !paymentId) return;
+		const network = networkRef.current?.network;
+		if (!network) return;
+		const watcher = continuePaymentConfirmations(network, paymentId, (observation) => {
+			setPurchaseStates((current) => {
+				const next = withContinuingPaymentObservation(current[observedOrderId] ?? null, paymentId, observation);
+				return next ? { ...current, [observedOrderId]: next } : current;
+			});
+		});
+		return () => watcher.stop();
+	}, [activePurchase?.payment?.id, observedOrderId, operation.kind, phase, visible]);
 	const recoverableBatch =
 		operation.kind === 'buy' &&
 		(operation.resume?.entries.some((entry) => hasRecoverablePurchase(entry.snapshot)) ||
@@ -2502,8 +2756,19 @@ function FungibleOperationDialog({
 	}, [operation.kind, phase, settlementSummary.failed, settlementSummary.settled, signedWork, visibleOrders.length]);
 	const purchaseSteps: ArweaveSyncStep[] = activePurchase
 		? [
-				{ key: 'register', label: 'Reserve listing', target: 5, transaction: activePurchase.registration },
-				{ key: 'pay', label: 'Pay seller', target: 5, transaction: activePurchase.payment },
+				{
+					key: 'register',
+					label: 'Reserve listing',
+					target: PURCHASE_REGISTRATION_TARGET,
+					transaction: activePurchase.registration,
+				},
+				{
+					key: 'pay',
+					label: 'Pay seller',
+					target: PURCHASE_PAYMENT_TARGET,
+					terminal: true,
+					transaction: activePurchase.payment,
+				},
 		  ]
 		: [];
 	const activeStep =
@@ -2516,6 +2781,7 @@ function FungibleOperationDialog({
 					key: operation.kind,
 					label: operationLabel(operation.kind),
 					target: 5,
+					terminal: true,
 					confirmations,
 					transaction: { id: transaction.id, views, ...(consensus ? { consensus } : {}) },
 				},
@@ -3122,7 +3388,28 @@ function FungibleOperationDialog({
 				) : null}
 				{phase === 'done' ? (
 					<div className="result success">
-						<OperationOutcome title={outcomeTitle} detail={outcomeDetail}>
+						<OperationOutcome
+							title={outcomeTitle}
+							detail={outcomeDetail}
+							status={
+								operation.kind === 'buy'
+									? `Confirmations: ${quorumConfirmationDepth(
+											purchaseSteps.find((step) => step.key === 'pay')
+									  )}`
+									: undefined
+							}
+						>
+							{operation.kind === 'buy' && purchaseSteps.length ? (
+								<div className="result-outcome-sync">
+									<ArweaveTransactionSync
+										active={visible}
+										activeStep="pay"
+										startedAt={submittedAtRef.current}
+										steps={purchaseSteps}
+										subject={`${asset.name} · ${tokenLabel(activeOrder?.quantity ?? '0', state)}`}
+									/>
+								</div>
+							) : null}
 							{operation.kind === 'buy' || operation.kind === 'sell' ? (
 								<OperationOutcomeSubject
 									label={operation.kind === 'buy' ? 'You received' : 'You listed'}

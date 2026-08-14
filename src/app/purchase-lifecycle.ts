@@ -1,7 +1,50 @@
-import type { PurchaseSnapshot, PurchaseState } from 'weave-wrangler';
+import type { Consensus, ObserverView, PurchaseSnapshot, PurchaseState, TxWatcher, WeaveNetwork } from 'weave-wrangler';
 
 export type PurchaseLifecycleMilestone = 'signed' | 'submitted' | 'accepted' | 'mined' | 'applied' | 'complete';
 export const PURCHASE_SKIP_FROM_DEPTH = 3;
+export const PURCHASE_REGISTRATION_TARGET = 5;
+export const PURCHASE_PAYMENT_TARGET = 1;
+
+export type ContinuingPaymentObservation = {
+	consensus: Consensus;
+	views: ObserverView[];
+};
+
+export function continuePaymentConfirmations(
+	network: Pick<WeaveNetwork, 'watch'>,
+	transactionId: string,
+	onObservation: (observation: ContinuingPaymentObservation) => void
+): TxWatcher {
+	const watcher = network.watch(transactionId, {
+		target: PURCHASE_PAYMENT_TARGET,
+		minObservers: 2,
+		propagation: 'all',
+		stopWhenSettled: false,
+		pendingInterval: 2000,
+		interval: 4000,
+	});
+	watcher.on('consensus', (consensus) => onObservation({ consensus, views: watcher.views() }));
+	watcher.start();
+	return watcher;
+}
+
+export function withContinuingPaymentObservation(
+	state: PurchaseState | null,
+	transactionId: string,
+	observation: ContinuingPaymentObservation
+): PurchaseState | null {
+	if (!state?.payment || state.payment.id !== transactionId) return state;
+	const consensus =
+		state.payment.consensus?.state === 'confirmed' &&
+		!['confirmed', 'gone'].includes(observation.consensus.state)
+			? state.payment.consensus
+			: observation.consensus;
+	return {
+		...state,
+		payment: { ...state.payment, ...observation, consensus },
+		updatedAt: Date.now(),
+	};
+}
 
 const REGISTRATION_APPLIED_STAGES = new Set<PurchaseState['stage']>([
 	'signing-payment',

@@ -241,10 +241,14 @@ import {
 	walletOperationStorageChange,
 } from './operation-session';
 import {
+	continuePaymentConfirmations,
+	PURCHASE_PAYMENT_TARGET,
+	PURCHASE_REGISTRATION_TARGET,
 	PURCHASE_SKIP_FROM_DEPTH,
 	purchaseGatewaySwitchNotice,
 	purchaseLifecycleStatus,
 	purchaseSkipKind,
+	withContinuingPaymentObservation,
 } from './purchase-lifecycle';
 import {
 	purchaseObservationCheckingMessage,
@@ -1328,7 +1332,7 @@ export function uploadActivitySyncSteps(
 	relatedMintActivities: MintActivity[],
 	observerState: UploadObserverState = {}
 ): ArweaveSyncStep[] {
-	return activity.transactions.map((transaction) => {
+	return activity.transactions.map((transaction, index) => {
 		const mintActivity = relatedMintActivities.find((candidate) =>
 			candidate.transactionIds.includes(transaction.id)
 		);
@@ -1340,6 +1344,7 @@ export function uploadActivitySyncSteps(
 			key: transaction.id,
 			label: transaction.label,
 			target: 1,
+			terminal: index === activity.transactions.length - 1,
 			confirmations,
 			transaction: {
 				id: transaction.id,
@@ -9270,6 +9275,16 @@ function OperationDialog({
 		if (visible) setHiding(false);
 	}, [visible]);
 	React.useEffect(() => {
+		const paymentId = purchaseState?.payment?.id;
+		if (phase !== 'done' || operation.kind !== 'buy' || !visible || !paymentId) return;
+		const network = networkRef.current?.network;
+		if (!network) return;
+		const watcher = continuePaymentConfirmations(network, paymentId, (observation) => {
+			setPurchaseState((current) => withContinuingPaymentObservation(current, paymentId, observation));
+		});
+		return () => watcher.stop();
+	}, [operation.kind, phase, purchaseState?.payment?.id, visible]);
+	React.useEffect(() => {
 		if (operation.kind !== 'buy' || operation.resume) return;
 		const controller = new AbortController();
 		setPurchaseQuote(null);
@@ -9482,8 +9497,8 @@ function OperationDialog({
 							network,
 						}),
 						{
-							registrationTarget: 5,
-							paymentTarget: 5,
+							registrationTarget: PURCHASE_REGISTRATION_TARGET,
+							paymentTarget: PURCHASE_PAYMENT_TARGET,
 							paymentSuccessDepth: 1,
 							skipFrom: PURCHASE_SKIP_FROM_DEPTH,
 							propagation: 'all',
@@ -9582,8 +9597,6 @@ function OperationDialog({
 					operationClaim = null;
 					claimRef.current = null;
 				}
-				observerLease.release();
-				if (networkRef.current === observerLease) networkRef.current = null;
 				setPhase('done');
 				return;
 			}
@@ -9759,13 +9772,14 @@ function OperationDialog({
 					{
 						key: 'register',
 						label: 'Reserve asset',
-						target: 5,
+						target: PURCHASE_REGISTRATION_TARGET,
 						transaction: purchaseState.registration,
 					},
 					{
 						key: 'pay',
 						label: 'Pay seller',
-						target: 5,
+						target: PURCHASE_PAYMENT_TARGET,
+						terminal: true,
 						transaction: purchaseState.payment,
 					},
 			  ]
@@ -9776,6 +9790,7 @@ function OperationDialog({
 					key: operation.kind,
 					label: operationLabel(operation.kind),
 					target: 5,
+					terminal: true,
 					confirmations,
 					transaction: { id: transaction.id, views, ...(consensus ? { consensus } : {}) },
 				},
@@ -10275,7 +10290,30 @@ function OperationDialog({
 				) : null}
 				{visiblePhase === 'done' ? (
 					<div className="result success">
-						<OperationOutcome title={resultCopy.title} detail={resultCopy.detail}>
+						<OperationOutcome
+							title={resultCopy.title}
+							detail={resultCopy.detail}
+							status={
+								operation.kind === 'buy'
+									? `Confirmations: ${quorumConfirmationDepth(
+											purchaseSteps.find((step) => step.key === 'pay')
+									  )}`
+									: undefined
+							}
+						>
+							{operation.kind === 'buy' && purchaseSteps.length ? (
+								<div className="result-outcome-sync">
+									<React.Suspense fallback={<Loading label="Loading transaction progress…" />}>
+										<ArweaveTransactionSync
+											active={visible}
+											activeStep="pay"
+											startedAt={submittedAtRef.current}
+											steps={purchaseSteps}
+											subject={asset.name}
+										/>
+									</React.Suspense>
+								</div>
+							) : null}
 							{operation.kind === 'buy' || operation.kind === 'sell' ? (
 								<OperationOutcomeSubject
 									label={operation.kind === 'buy' ? 'You received' : 'You listed'}
