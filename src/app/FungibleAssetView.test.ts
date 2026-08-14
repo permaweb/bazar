@@ -22,10 +22,13 @@ import {
 	fungibleActivityAmount,
 	fungibleAskHistory,
 	fungibleBatchRecoveryStatus,
+	FungibleHolderChart,
+	fungibleHolderChartSlices,
 	fungibleHolders,
 	fungibleHoldingPercentage,
 	fungibleListingAccessibleLabel,
 	FungibleListingComposer,
+	fungibleOfferedPercentage,
 	type FungibleOperationActivity,
 	FungibleOperationErrorAlert,
 	fungibleOperationStateError,
@@ -174,6 +177,62 @@ describe('fungible holders', () => {
 		expect(fungibleHoldingPercentage('1', '3')).toBe('33.33%');
 		expect(fungibleHoldingPercentage('1', '1000000')).toBe('<0.01%');
 		expect(fungibleHoldingPercentage('1', '0')).toBe('—');
+	});
+
+	it('keeps large holders visible and groups the long tail without losing listed balances', () => {
+		const holders = [
+			{ address: 'a'.repeat(43), liquid: '500', listed: '100', total: '600' },
+			{ address: 'b'.repeat(43), liquid: '200', listed: '100', total: '300' },
+			{ address: 'c'.repeat(43), liquid: '60', listed: '40', total: '100' },
+			{ address: 'd'.repeat(43), liquid: '30', listed: '20', total: '50' },
+		];
+
+		expect(fungibleHolderChartSlices(holders, 3)).toEqual([
+			{ ...holders[0], holderCount: 1, key: holders[0].address, label: holders[0].address },
+			{ ...holders[1], holderCount: 1, key: holders[1].address, label: holders[1].address },
+			{
+				holderCount: 2,
+				key: 'other-holders',
+				label: 'Other 2 holders',
+				liquid: '90',
+				listed: '60',
+				total: '150',
+			},
+		]);
+	});
+
+	it('formats the proportion of a holder balance offered for sale', () => {
+		expect(fungibleOfferedPercentage('250', '1000')).toBe('25%');
+		expect(fungibleOfferedPercentage('0', '1000')).toBe('0%');
+		expect(fungibleOfferedPercentage('10', '0')).toBe('—');
+	});
+
+	it('renders accessible holder and listed-share details in the distribution chart', () => {
+		const address = 'a'.repeat(43);
+		const state = {
+			device: 'token@1.0',
+			name: 'Test token',
+			ticker: 'TEST',
+			denomination: 0,
+			totalSupply: '1000',
+			balances: { [address]: '750' },
+			orders: {},
+			swapHeight: 0,
+			value: null,
+			raw: {},
+		} satisfies AssetState;
+		const chart = renderToStaticMarkup(
+			React.createElement(FungibleHolderChart, {
+				assetName: state.name,
+				holders: [{ address, liquid: '600', listed: '200', total: '800' }],
+				state,
+			})
+		);
+
+		expect(chart).toContain('aria-label="Test token supply distribution"');
+		expect(chart).toContain('80% of supply; 25% offered for sale');
+		expect(chart).toContain('<pattern');
+		expect(chart).toContain('Offered for sale');
 	});
 });
 
