@@ -939,7 +939,10 @@ export function TransactionSequenceCable3D({
 												rel={recall.content?.kind === 'binary' ? undefined : 'noreferrer'}
 												aria-label={`${proof.label}: ${recall.contentLabel}`}
 											>
-												<RecallContentPreview content={recall.content} fallback={recall.fallback} />
+												<RecallContentPreview
+													content={recall.content}
+													fallback={recall.fallback}
+												/>
 												<AcceptedProofContentType>
 													{recall.contentLabel}
 													{recall.content?.kind !== 'binary' && recall.content?.contentUrl
@@ -1768,7 +1771,6 @@ const AcceptedProofStem = styled.span`
 	background: color-mix(in srgb, ${(props) => props.theme.colors.font.alt1} 48%, transparent);
 	animation: ${acceptedProofConnectorEnter} 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
 	pointer-events: none;
-
 `;
 
 const AcceptedProofCard = styled.span`

@@ -1,14 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-	ArrowRight,
-	ArrowUpRight,
-	Check,
-	InfinityIcon,
-	Info,
-	Upload,
-	X,
-} from 'lucide-react';
+import { ArrowRight, ArrowUpRight, Check, InfinityIcon, Info, Upload, X } from 'lucide-react';
 import type { Consensus, ObserverView } from 'weave-wrangler';
 
 import { waitForAssetState } from 'api/asset-marketplace';
@@ -68,8 +60,6 @@ import { type EmbeddedAudioMetadata, extractEmbeddedAudioMetadata, formatAudioDu
 import { arweaveGatewayFromLocation } from 'helpers/config';
 import { useWallet } from 'providers/WalletProvider';
 
-import udlLogo from '../assets/udl.svg';
-
 import {
 	formatBytes,
 	MarketContext,
@@ -79,6 +69,7 @@ import {
 	winstonToAr,
 } from '../app/App';
 import { useDialogFocus } from '../app/useDialogFocus';
+import udlLogo from '../assets/udl.svg';
 
 const ArweaveTransactionSync = React.lazy(async () => {
 	const module = await import('components/ArweaveTransactionSync');
@@ -116,12 +107,7 @@ function WireframeGlobeIcon() {
 
 function FloatingPaymentIcon() {
 	return (
-		<svg
-			aria-hidden="true"
-			className="ui-icon ui-icon--sm udl-payment-icon"
-			fill="none"
-			viewBox="0 0 24 24"
-		>
+		<svg aria-hidden="true" className="ui-icon ui-icon--sm udl-payment-icon" fill="none" viewBox="0 0 24 24">
 			<g className="udl-payment-icon__pluses" stroke="currentColor" strokeLinecap="round" strokeWidth="1.35">
 				<path className="udl-payment-icon__plus" d="M4.5 7v3M3 8.5h3" />
 				<path className="udl-payment-icon__plus" d="M19.5 5.5v3M18 7h3" />
@@ -139,16 +125,18 @@ function FloatingPaymentIcon() {
 
 function AnimatedCreditBadgeIcon() {
 	return (
-		<svg
-			aria-hidden="true"
-			className="ui-icon ui-icon--sm udl-credit-icon"
-			fill="none"
-			viewBox="0 0 24 24"
-		>
+		<svg aria-hidden="true" className="ui-icon ui-icon--sm udl-credit-icon" fill="none" viewBox="0 0 24 24">
 			<g className="udl-credit-icon__badge" stroke="currentColor" strokeLinejoin="round" strokeWidth="1.5">
 				<polygon points="12,3.5 13.88,5 16.25,4.64 17.13,6.87 19.36,7.75 19,10.12 20.5,12 19,13.88 19.36,16.25 17.13,17.13 16.25,19.36 13.88,19 12,20.5 10.12,19 7.75,19.36 6.87,17.13 4.64,16.25 5,13.88 3.5,12 5,10.12 4.64,7.75 6.87,6.87 7.75,4.64 10.12,5" />
 			</g>
-			<path className="udl-credit-icon__check" d="m8.5 11.7 2.2 2.2 4.8-5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.7" />
+			<path
+				className="udl-credit-icon__check"
+				d="m8.5 11.7 2.2 2.2 4.8-5"
+				stroke="currentColor"
+				strokeLinecap="round"
+				strokeLinejoin="round"
+				strokeWidth="1.7"
+			/>
 			<g className="udl-credit-icon__particles" fill="currentColor">
 				<circle className="udl-credit-icon__particle" cx="5" cy="5" r="1" />
 				<circle className="udl-credit-icon__particle" cx="19" cy="5.5" r="0.9" />
@@ -415,13 +403,7 @@ function udlTermsMatchPreset(terms: UdlTerms, preset: UdlPreset): boolean {
 		const feeValues = grantKeys.map((key) => terms[key]?.value ?? '');
 		return baseTermsMatch && grantsMatch && feeValues.every((value) => value === feeValues[0]);
 	}
-	return (
-		baseTermsMatch &&
-		grantsMatch &&
-		grantKeys.every(
-			(key) => terms[key]?.value === expected[key]?.value
-		)
-	);
+	return baseTermsMatch && grantsMatch && grantKeys.every((key) => terms[key]?.value === expected[key]?.value);
 }
 
 function UdlGrantField({
@@ -1567,19 +1549,19 @@ export default function CreateRoute() {
 														fees.
 													</span>
 												</div>
-								<div className="udl-grid udl-payment-terms-grid">
-									<div className="udl-field">
-										<label>Access</label>
-										<div
+												<div className="udl-grid udl-payment-terms-grid">
+													<div className="udl-field">
+														<label>Access</label>
+														<div
 															className={
 																udlTerms.accessFee
 																	? 'udl-field-control with-value'
 																	: 'udl-field-control'
 															}
 														>
-											<MarketSelect<'free' | 'one-time'>
-												label="Access"
-												showLabel={false}
+															<MarketSelect<'free' | 'one-time'>
+																label="Access"
+																showLabel={false}
 																value={udlTerms.accessFee ? 'one-time' : 'free'}
 																options={[
 																	{ value: 'free', label: 'Free' },
@@ -1593,12 +1575,12 @@ export default function CreateRoute() {
 																	}))
 																}
 															/>
-											{udlTerms.accessFee ? (
-												<label className="udl-value">
-													<span className="udl-value-label">Amount</span>
-													<input
-														aria-label="Access fee amount"
-														className="has-currency-suffix"
+															{udlTerms.accessFee ? (
+																<label className="udl-value">
+																	<span className="udl-value-label">Amount</span>
+																	<input
+																		aria-label="Access fee amount"
+																		className="has-currency-suffix"
 																		inputMode="decimal"
 																		min="0.000000000001"
 																		step="any"
@@ -1609,12 +1591,12 @@ export default function CreateRoute() {
 																				...current,
 																				accessFee: event.target.value || '1',
 																			}))
-														}
-													/>
-													<span className="udl-value-suffix">
-														<ArCurrencyLabel />
-													</span>
-												</label>
+																		}
+																	/>
+																	<span className="udl-value-suffix">
+																		<ArCurrencyLabel />
+																	</span>
+																</label>
 															) : null}
 														</div>
 													</div>

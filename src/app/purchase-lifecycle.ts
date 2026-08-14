@@ -35,8 +35,7 @@ export function withContinuingPaymentObservation(
 ): PurchaseState | null {
 	if (!state?.payment || state.payment.id !== transactionId) return state;
 	const consensus =
-		state.payment.consensus?.state === 'confirmed' &&
-		!['confirmed', 'gone'].includes(observation.consensus.state)
+		state.payment.consensus?.state === 'confirmed' && !['confirmed', 'gone'].includes(observation.consensus.state)
 			? state.payment.consensus
 			: observation.consensus;
 	return {
