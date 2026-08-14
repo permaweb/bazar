@@ -54,6 +54,7 @@ import {
 
 import { ArCurrencyLabel, ArCurrencyText, formatArCurrencyText } from 'components/ArCurrencyLabel';
 import { type ArweaveSyncStep, ArweaveTransactionSync } from 'components/ArweaveTransactionSync';
+import { quorumConfirmationDepth } from 'components/ArweaveTransactionSync/confirmationDepth';
 import { postConfirmationPendingLabel } from 'components/ArweaveTransactionSync/sequence';
 import { type AssetDetailTab, AssetDetailTabs } from 'components/AssetDetailTabs';
 import { assetOperationPendingActionLabel, AssetOperationStatus } from 'components/AssetOperationStatus';
@@ -122,11 +123,15 @@ import {
 	walletOperationStorageChange,
 } from './operation-session';
 import {
+	continuePaymentConfirmations,
+	PURCHASE_PAYMENT_TARGET,
+	PURCHASE_REGISTRATION_TARGET,
 	PURCHASE_SKIP_FROM_DEPTH,
 	type PurchaseGatewayContext,
 	purchaseGatewaySwitchNotice,
 	purchaseLifecycleStatus,
 	purchaseSkipKind,
+	withContinuingPaymentObservation,
 } from './purchase-lifecycle';
 import {
 	purchaseObservationCheckingMessage,
@@ -2332,8 +2337,8 @@ function FungibleOperationDialog({
 			let observationRetryAttempt = 0;
 			while (true) {
 				const purchase = new SwapPurchase(network, coordinatedAdapter, {
-					registrationTarget: 5,
-					paymentTarget: 5,
+					registrationTarget: PURCHASE_REGISTRATION_TARGET,
+					paymentTarget: PURCHASE_PAYMENT_TARGET,
 					paymentSuccessDepth: 1,
 					skipFrom: PURCHASE_SKIP_FROM_DEPTH,
 					propagation: 'all',
@@ -2439,8 +2444,6 @@ function FungibleOperationDialog({
 			releaseWalletOperationClaim(localStorage, claimRef.current);
 			claimRef.current = null;
 		}
-		observerLease.release();
-		if (networkRef.current === observerLease) networkRef.current = null;
 		setPhase('done');
 	}
 
@@ -2455,6 +2458,20 @@ function FungibleOperationDialog({
 	const visibleOrders = visibleFills.map((fill) => fill.order);
 	const activeOrder = visibleOrders.find((order) => order.orderId === activeOrderId) ?? visibleOrders[0];
 	const activePurchase = activeOrder ? purchaseStates[activeOrder.orderId] : undefined;
+	const observedOrderId = activeOrder?.orderId;
+	React.useEffect(() => {
+		const paymentId = activePurchase?.payment?.id;
+		if (phase !== 'done' || operation.kind !== 'buy' || !visible || !observedOrderId || !paymentId) return;
+		const network = networkRef.current?.network;
+		if (!network) return;
+		const watcher = continuePaymentConfirmations(network, paymentId, (observation) => {
+			setPurchaseStates((current) => {
+				const next = withContinuingPaymentObservation(current[observedOrderId] ?? null, paymentId, observation);
+				return next ? { ...current, [observedOrderId]: next } : current;
+			});
+		});
+		return () => watcher.stop();
+	}, [activePurchase?.payment?.id, observedOrderId, operation.kind, phase, visible]);
 	const recoverableBatch =
 		operation.kind === 'buy' &&
 		(operation.resume?.entries.some((entry) => hasRecoverablePurchase(entry.snapshot)) ||
@@ -2502,8 +2519,19 @@ function FungibleOperationDialog({
 	}, [operation.kind, phase, settlementSummary.failed, settlementSummary.settled, signedWork, visibleOrders.length]);
 	const purchaseSteps: ArweaveSyncStep[] = activePurchase
 		? [
-				{ key: 'register', label: 'Reserve listing', target: 5, transaction: activePurchase.registration },
-				{ key: 'pay', label: 'Pay seller', target: 5, transaction: activePurchase.payment },
+				{
+					key: 'register',
+					label: 'Reserve listing',
+					target: PURCHASE_REGISTRATION_TARGET,
+					transaction: activePurchase.registration,
+				},
+				{
+					key: 'pay',
+					label: 'Pay seller',
+					target: PURCHASE_PAYMENT_TARGET,
+					terminal: true,
+					transaction: activePurchase.payment,
+				},
 		  ]
 		: [];
 	const activeStep =
@@ -2516,6 +2544,7 @@ function FungibleOperationDialog({
 					key: operation.kind,
 					label: operationLabel(operation.kind),
 					target: 5,
+					terminal: true,
 					confirmations,
 					transaction: { id: transaction.id, views, ...(consensus ? { consensus } : {}) },
 				},
@@ -3122,7 +3151,28 @@ function FungibleOperationDialog({
 				) : null}
 				{phase === 'done' ? (
 					<div className="result success">
-						<OperationOutcome title={outcomeTitle} detail={outcomeDetail}>
+						<OperationOutcome
+							title={outcomeTitle}
+							detail={outcomeDetail}
+							status={
+								operation.kind === 'buy'
+									? `Confirmations: ${quorumConfirmationDepth(
+											purchaseSteps.find((step) => step.key === 'pay')
+									  )}`
+									: undefined
+							}
+						>
+							{operation.kind === 'buy' && purchaseSteps.length ? (
+								<div className="result-outcome-sync">
+									<ArweaveTransactionSync
+										active={visible}
+										activeStep="pay"
+										startedAt={submittedAtRef.current}
+										steps={purchaseSteps}
+										subject={`${asset.name} · ${tokenLabel(activeOrder?.quantity ?? '0', state)}`}
+									/>
+								</div>
+							) : null}
 							{operation.kind === 'buy' || operation.kind === 'sell' ? (
 								<OperationOutcomeSubject
 									label={operation.kind === 'buy' ? 'You received' : 'You listed'}

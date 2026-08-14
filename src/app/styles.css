@@ -5484,6 +5484,26 @@ input:focus {
 	align-items: flex-start;
 	gap: 10px;
 }
+.result-status-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 16px;
+}
+.result-outcome .result-status-heading {
+	flex-direction: row;
+	align-items: center;
+	margin: 0;
+}
+.result-status-meta {
+	color: var(--muted);
+	font-size: var(--type-body);
+	font-weight: 500;
+	white-space: nowrap;
+}
+.result-outcome-sync {
+	margin-top: 4px;
+}
 .result-status-icon {
 	width: 34px;
 	height: 34px;
@@ -6898,6 +6918,11 @@ body input:focus-visible {
 	}
 	.result {
 		padding: 12px 0;
+	}
+	.result-status-row {
+		align-items: flex-start;
+		flex-direction: column;
+		gap: 8px;
 	}
 	.settlement-receipt,
 	.settlement-error-detail {

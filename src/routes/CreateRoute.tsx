@@ -303,6 +303,7 @@ export function FungibleMintDialog({
 										key: 'mint',
 										label: 'Mint token',
 										target: 5,
+										terminal: true,
 										confirmations,
 										transaction: {
 											id: result.processId,

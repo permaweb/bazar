@@ -55,6 +55,34 @@ function renderLoader(answering: number, eligible: number, views: ObserverView[]
 }
 
 describe('observer verification delay', () => {
+	it('renders terminal confirmation depth without a denominator or cap', () => {
+		const markup = renderToStaticMarkup(
+			<ThemeProvider theme={theme}>
+				<LanguageProvider>
+					<ArweaveTransactionSync
+						subject="Asset"
+						pendingAfterConfirmation="Checking receipt"
+						steps={[
+							{
+								key: 'pay',
+								label: 'Pay seller',
+								target: 1,
+								terminal: true,
+								confirmations: 7,
+								transaction: { id: 'P'.repeat(43), views: [] },
+							},
+						]}
+					/>
+				</LanguageProvider>
+			</ThemeProvider>
+		);
+
+		expect(markup).toContain('aria-label="7 confirmations"');
+		expect(markup).toContain('>7</strong>');
+		expect(markup).not.toContain(' / 1');
+		expect(markup).toContain('Checking receipt');
+	});
+
 	it('replaces a misleading zero count when no observer quorum is available', () => {
 		const markup = renderLoader(0, 0);
 		expect(markup).toContain('Observers delayed');
