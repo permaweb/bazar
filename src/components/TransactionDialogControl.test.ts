@@ -30,6 +30,7 @@ describe('shared transaction dialog control', () => {
 		expect(markup).toContain('aria-label="Hide transaction details"');
 		expect(markup).toContain('transaction-hide-eye-open');
 		expect(markup).toContain('transaction-hide-eye-closed');
+		expect(markup).not.toContain('role="tooltip"');
 	});
 
 	it('uses the normal close control outside active progress', () => {
@@ -51,6 +52,7 @@ describe('shared transaction dialog control', () => {
 		);
 		expect(markup).toContain('aria-label="Close dialog"');
 		expect(markup).not.toContain('transaction-hide-eye-open');
+		expect(markup).not.toContain('role="tooltip"');
 	});
 
 	it('shrinks toward the measured transaction activity control', () => {

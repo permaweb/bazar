@@ -2,7 +2,6 @@ import React from 'react';
 import { Eye, EyeOff, X } from 'lucide-react';
 
 import { Button } from './Button';
-import { Tooltip } from './Tooltip';
 
 export type TransactionDialogPhase = 'form' | 'approval' | 'working' | 'done' | 'error';
 
@@ -80,28 +79,22 @@ export function TransactionDialogControl({
 	onClick(): void;
 }) {
 	const working = phase === 'working';
-	const tooltip = working ? 'Hide transaction details' : 'Close';
 	return (
-		<Tooltip content={tooltip}>
-			{(tooltipId) => (
-				<Button
-					aria-describedby={tooltipId}
-					aria-label={working ? 'Hide transaction details' : 'Close dialog'}
-					className={`close${working ? ' transaction-hide' : ''}`}
-					onClick={onClick}
-					size="icon"
-					variant="ghost"
-				>
-					{working ? (
-						<span className={`transaction-hide-icon${hiding ? ' hiding' : ''}`} aria-hidden="true">
-							<Eye className="ui-icon transaction-hide-eye-open" />
-							<EyeOff className="ui-icon transaction-hide-eye-closed" />
-						</span>
-					) : (
-						<X className="ui-icon" aria-hidden="true" />
-					)}
-				</Button>
+		<Button
+			aria-label={working ? 'Hide transaction details' : 'Close dialog'}
+			className={`close${working ? ' transaction-hide' : ''}`}
+			onClick={onClick}
+			size="icon"
+			variant="ghost"
+		>
+			{working ? (
+				<span className={`transaction-hide-icon${hiding ? ' hiding' : ''}`} aria-hidden="true">
+					<Eye className="ui-icon transaction-hide-eye-open" />
+					<EyeOff className="ui-icon transaction-hide-eye-closed" />
+				</span>
+			) : (
+				<X className="ui-icon" aria-hidden="true" />
 			)}
-		</Tooltip>
+		</Button>
 	);
 }

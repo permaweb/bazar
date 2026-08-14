@@ -1797,8 +1797,8 @@ function Header() {
 		? 'Marketplace search is unavailable.'
 		: normalizedQuery && !collectionResults.length && !assetResults.length && !directTokenProcess
 		? partialTokenCollection
-			? `No loaded tokens, collections, or collectibles match ${query.trim()}; more token records remain available.`
-			: `No tokens, collections, or collectibles match ${query.trim()}.`
+			? `No loaded tokens, collections, or Uniques match ${query.trim()}; more token records remain available.`
+			: `No tokens, collections, or Uniques match ${query.trim()}.`
 		: `Showing ${collectionResults.length.toLocaleString()} ${
 				collectionResults.length === 1 ? 'collection' : 'collections'
 		  } and ${(assetResults.length + (directTokenProcess ? 1 : 0)).toLocaleString()} ${
@@ -1914,7 +1914,7 @@ function Header() {
 		{ id: 'all' as const, label: 'All', Icon: Search },
 		{ id: 'tokens' as const, label: 'Tokens', Icon: BarChart3 },
 		{ id: 'collections' as const, label: 'Collections', Icon: LayoutGrid },
-		{ id: 'assets' as const, label: 'Collectibles', Icon: Images },
+		{ id: 'assets' as const, label: 'Uniques', Icon: Images },
 		{ id: 'names' as const, label: 'Names', Icon: AtSign },
 	];
 	return (
@@ -1934,7 +1934,7 @@ function Header() {
 						<Search className="ui-icon ui-icon--sm" aria-hidden="true" />
 						<input
 							ref={inputRef}
-							aria-label="Search tokens, collections, and collectibles"
+							aria-label="Search tokens, collections, and Uniques"
 							placeholder="Search tokens, collections, and assets"
 							value={query}
 							onChange={(event) => updateQuery(event.target.value)}
@@ -2194,9 +2194,7 @@ function Header() {
 								{collectibleResults.length ? (
 									<section className="search-result-section">
 										<div className="search-result-heading">
-											<h2>
-												{normalizedQuery ? 'Matching collectibles' : 'Featured collectibles'}
-											</h2>
+											<h2>{normalizedQuery ? 'Matching Uniques' : 'Featured Uniques'}</h2>
 											<span>{collectibleResults.length} shown</span>
 										</div>
 										<div className="search-asset-grid">
@@ -2288,7 +2286,7 @@ function Header() {
 												? 'More token records remain available from the token collection.'
 												: atomicIndexSearchFailed
 												? 'Permanent Bazar creation-record search is temporarily unavailable. Try again shortly.'
-												: 'Try another token, collectible, collection, or Arweave name.'}
+												: 'Try another token, Unique, collection, or Arweave name.'}
 										</span>
 									</div>
 								) : null}
@@ -4032,7 +4030,7 @@ function Home() {
 										{homeTab === 'discover'
 											? normalizedQuery
 												? `Results for “${query}” across the current Arweave collection indexes.`
-												: 'Browse fungible tokens and collectible assets on the permaweb.'
+												: 'Browse fungible tokens and Uniques on the permaweb.'
 											: homeTab === 'collections'
 											? 'Browse NFT and name collections.'
 											: 'Recent activity of purchases, listings, and transfers across every marketplace collection.'}
@@ -4046,7 +4044,7 @@ function Home() {
 											options={[
 												{ value: 'all', label: 'All' },
 												{ value: 'tokens', label: 'Tokens' },
-												{ value: 'atomic', label: 'Collectibles (NFTs)' },
+												{ value: 'atomic', label: 'Uniques (NFTs)' },
 											]}
 											value={assetType}
 										/>
@@ -4289,7 +4287,7 @@ function Home() {
 															<h2>Uniques</h2>
 														</div>
 														<Button size="custom" onClick={() => setAssetType('atomic')}>
-															View all collectibles
+															View all Uniques
 															<ArrowRight
 																className="ui-icon ui-icon--xs"
 																aria-hidden="true"
@@ -4300,7 +4298,7 @@ function Home() {
 														renderCollectibleGrid(discoverCollectibles.slice(0, 12))
 													) : (
 														<p className="discover-section-empty">
-															No collectibles match this view.
+															No Uniques match this view.
 														</p>
 													)}
 												</section>
@@ -4311,9 +4309,7 @@ function Home() {
 													? renderTokenList(assetPagination.items)
 													: renderCollectibleGrid(assetPagination.items)}
 												<Pagination
-													ariaLabel={
-														assetType === 'tokens' ? 'Token pages' : 'Collectible pages'
-													}
+													ariaLabel={assetType === 'tokens' ? 'Token pages' : 'Unique pages'}
 													className="home-asset-pagination"
 													onPageChange={selectAssetPage}
 													page={assetPagination.page}

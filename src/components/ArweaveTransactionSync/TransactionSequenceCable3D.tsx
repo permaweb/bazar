@@ -890,72 +890,74 @@ export function TransactionSequenceCable3D({
 
 	return (
 		<Stage>
-			<CanvasMount ref={mountRef} />
-			{rendererUnavailable ? <TransactionRendererFallback lanes={lanes} /> : null}
-			{laneHover &&
-				phaseLabels.map((phaseLabel, phaseIndex) => {
-					const stage = laneHover.stages[phaseIndex];
-					return (
-						<PhaseLabel
-							key={`${phaseIndex}:${phaseLabel}`}
-							ref={(element) => {
-								phaseLabelRefs.current[phaseIndex] = element;
-							}}
-						>
-							{stage?.label ?? phaseLabel}{' '}
-							<strong>
-								{stage?.count ?? 0}/{stage?.target ?? 0}
-							</strong>
-						</PhaseLabel>
-					);
-				})}
-			{shouldRenderProofPins(rendererUnavailable) ? (
-				<AcceptedProofPins>
-					{acceptedProofs.map((proof) => (
-						<AcceptedProofPin
-							key={proof.key}
-							ref={(element) => {
-								if (element) acceptedProofPinRefs.current.set(proof.key, element);
-								else acceptedProofPinRefs.current.delete(proof.key);
-							}}
-							data-block-height={proof.height}
-						>
-							<AcceptedProofStem />
-							<AcceptedProofCard>
-								<AcceptedProofLabel>{proof.label}</AcceptedProofLabel>
-								<AcceptedProofMeta>{proof.meta}</AcceptedProofMeta>
-								<AcceptedProofPayloads>
-									{proof.recalls.slice(0, 2).map((recall) => (
-										<AcceptedProofPayload
-											key={recall.key}
-											as={recall.content?.kind === 'binary' ? 'span' : 'a'}
-											href={
-												recall.content?.kind === 'binary'
-													? undefined
-													: recall.content?.contentUrl
-											}
-											target={recall.content?.kind === 'binary' ? undefined : '_blank'}
-											rel={recall.content?.kind === 'binary' ? undefined : 'noreferrer'}
-											aria-label={`${proof.label}: ${recall.contentLabel}`}
-										>
-											<RecallContentPreview content={recall.content} fallback={recall.fallback} />
-											<AcceptedProofContentType>
-												{recall.contentLabel}
-												{recall.content?.kind !== 'binary' && recall.content?.contentUrl
-													? ' ↗'
-													: ''}
-											</AcceptedProofContentType>
-											{recall.meta && (
-												<AcceptedProofRecallMeta>{recall.meta}</AcceptedProofRecallMeta>
-											)}
-										</AcceptedProofPayload>
-									))}
-								</AcceptedProofPayloads>
-							</AcceptedProofCard>
-						</AcceptedProofPin>
-					))}
-				</AcceptedProofPins>
-			) : null}
+			<StageViewport>
+				<CanvasMount ref={mountRef} />
+				{rendererUnavailable ? <TransactionRendererFallback lanes={lanes} /> : null}
+				{laneHover &&
+					phaseLabels.map((phaseLabel, phaseIndex) => {
+						const stage = laneHover.stages[phaseIndex];
+						return (
+							<PhaseLabel
+								key={`${phaseIndex}:${phaseLabel}`}
+								ref={(element) => {
+									phaseLabelRefs.current[phaseIndex] = element;
+								}}
+							>
+								{stage?.label ?? phaseLabel}{' '}
+								<strong>
+									{stage?.count ?? 0}/{stage?.target ?? 0}
+								</strong>
+							</PhaseLabel>
+						);
+					})}
+				{shouldRenderProofPins(rendererUnavailable) ? (
+					<AcceptedProofPins>
+						{acceptedProofs.map((proof) => (
+							<AcceptedProofPin
+								key={proof.key}
+								ref={(element) => {
+									if (element) acceptedProofPinRefs.current.set(proof.key, element);
+									else acceptedProofPinRefs.current.delete(proof.key);
+								}}
+								data-block-height={proof.height}
+							>
+								<AcceptedProofStem />
+								<AcceptedProofCard>
+									<AcceptedProofLabel>{proof.label}</AcceptedProofLabel>
+									<AcceptedProofMeta>{proof.meta}</AcceptedProofMeta>
+									<AcceptedProofPayloads>
+										{proof.recalls.slice(0, 2).map((recall) => (
+											<AcceptedProofPayload
+												key={recall.key}
+												as={recall.content?.kind === 'binary' ? 'span' : 'a'}
+												href={
+													recall.content?.kind === 'binary'
+														? undefined
+														: recall.content?.contentUrl
+												}
+												target={recall.content?.kind === 'binary' ? undefined : '_blank'}
+												rel={recall.content?.kind === 'binary' ? undefined : 'noreferrer'}
+												aria-label={`${proof.label}: ${recall.contentLabel}`}
+											>
+												<RecallContentPreview content={recall.content} fallback={recall.fallback} />
+												<AcceptedProofContentType>
+													{recall.contentLabel}
+													{recall.content?.kind !== 'binary' && recall.content?.contentUrl
+														? ' ↗'
+														: ''}
+												</AcceptedProofContentType>
+												{recall.meta && (
+													<AcceptedProofRecallMeta>{recall.meta}</AcceptedProofRecallMeta>
+												)}
+											</AcceptedProofPayload>
+										))}
+									</AcceptedProofPayloads>
+								</AcceptedProofCard>
+							</AcceptedProofPin>
+						))}
+					</AcceptedProofPins>
+				) : null}
+			</StageViewport>
 			{hover && (
 				<RaceTooltipContainer
 					aria-live="polite"
@@ -1688,7 +1690,14 @@ function phaseProgressColor(progress: number, phaseCount: number, target = new T
 	return progressColor(phaseProgress, target);
 }
 
-const Stage = styled.div`
+export const Stage = styled.div`
+	position: absolute;
+	inset: 0;
+	overflow: visible;
+	border-radius: 24px;
+`;
+
+export const StageViewport = styled.div`
 	position: absolute;
 	inset: 0;
 	overflow: hidden;

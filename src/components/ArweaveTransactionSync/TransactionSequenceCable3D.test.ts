@@ -15,6 +15,8 @@ import {
 	shouldClearTransactionInspection,
 	shouldRenderProofPins,
 	shouldScheduleActivityRolodex,
+	Stage,
+	StageViewport,
 	TransactionRendererFallback,
 } from './TransactionSequenceCable3D';
 import { TransactionVisualizerBoundary } from './TransactionVisualizerFallback';
@@ -98,6 +100,21 @@ describe('transaction map renderer fallback', () => {
 		sheet.seal();
 		expect(css).toContain('position:absolute');
 		expect(css).not.toContain('position:fixed');
+	});
+
+	it('clips the transaction map without clipping its tooltip layer', () => {
+		const stageSheet = new ServerStyleSheet();
+		renderToStaticMarkup(stageSheet.collectStyles(React.createElement(Stage)));
+		const stageCss = stageSheet.getStyleTags();
+		stageSheet.seal();
+
+		const viewportSheet = new ServerStyleSheet();
+		renderToStaticMarkup(viewportSheet.collectStyles(React.createElement(StageViewport)));
+		const viewportCss = viewportSheet.getStyleTags();
+		viewportSheet.seal();
+
+		expect(stageCss).toContain('overflow:visible');
+		expect(viewportCss).toContain('overflow:hidden');
 	});
 
 	it('keeps the transaction map in a fixed viewport as observer lanes are added', () => {
