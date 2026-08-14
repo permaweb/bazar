@@ -65,6 +65,7 @@ import {
 	publishHomeListingResult,
 	reconcileHomeActivityScan,
 	reconcileHomeFloorScan,
+	reconcileHomeListingAssets,
 	recordHomeListingComputeResult,
 	retainNewestCollectionActivity,
 	retryableHomeSummaryKeys,
@@ -728,6 +729,24 @@ describe('Home market summary retries', () => {
 		]);
 	});
 
+	it('replaces stale portable metadata with the verified collection asset', () => {
+		const id = 'i'.repeat(43);
+		const other = { id: 'o'.repeat(43), name: 'Other' };
+		const placeholder = { id, name: `${id.slice(0, 7)}…${id.slice(-6)}` };
+		const resolved = { id, name: 'Chartreuse', image: `https://arweave.net/${id}` };
+		const collection: Collection = {
+			id: 'images',
+			name: 'HTML Colors',
+			description: '',
+			kind: 'images',
+			assets: [placeholder],
+		};
+
+		expect(
+			homeDiscoveryAssets([collection], { images: [other, resolved] }, 1, [{ asset: placeholder, collection }])
+		).toEqual([{ asset: resolved, collection }]);
+	});
+
 	it('caps portable listings by indexed activity rather than compute completion', () => {
 		const collection: Collection = {
 			id: 'images',
@@ -855,14 +874,33 @@ describe('Home market summary retries', () => {
 	it('publishes and removes each live collection listing independently', () => {
 		const first = { id: 'first', name: 'First' };
 		const second = { id: 'second', name: 'Second' };
+		const renamed = { id: 'first', name: 'Resolved First' };
 		const start = { collection: [first] };
 
 		expect(publishHomeListingResult(start, 'collection', first, true)).toBe(start);
+		expect(publishHomeListingResult(start, 'collection', renamed, true)).toEqual({ collection: [renamed] });
 		expect(publishHomeListingResult(start, 'collection', second, true)).toEqual({
 			collection: [first, second],
 		});
 		expect(publishHomeListingResult(start, 'collection', first, false)).toEqual({ collection: [] });
 		expect(publishHomeListingResult(start, 'collection', second, false)).toBe(start);
+	});
+
+	it('preserves resolved listing metadata when a refreshed floor scan reorders assets', () => {
+		const first = { id: 'f'.repeat(43), name: 'Resolved First' };
+		const second = { id: 's'.repeat(43), name: 'Resolved Second' };
+		const collection: Collection = {
+			id: 'images',
+			name: 'HTML Colors',
+			description: '',
+			kind: 'images',
+			assets: [
+				{ id: first.id, name: 'fffffff…ffffff' },
+				{ id: second.id, name: 'sssssss…ssssss' },
+			],
+		};
+
+		expect(reconcileHomeListingAssets([first, second], [second.id, first.id], collection)).toEqual([second, first]);
 	});
 
 	it('paginates Discover assets and clamps pages when filters reduce the result set', () => {

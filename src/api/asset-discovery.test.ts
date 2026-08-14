@@ -1893,6 +1893,42 @@ function activityEdge(cursor: string, processId: string, height: number) {
 }
 
 describe('live candidate resolution', () => {
+	it.each([
+		[`${assetA.slice(0, 7)}…${assetA.slice(-6)}`, 'Chartreuse'],
+		['Curated green', 'Curated green'],
+	])('resolves Atomic Asset names without replacing explicit manifest names', async (indexedName, expectedName) => {
+		const collection: Collection = {
+			id: 'images',
+			name: 'HTML Colors',
+			description: 'Colors',
+			kind: 'images',
+			assets: [{ id: assetA, name: indexedName }],
+		};
+		const state = parseAssetState({
+			device: 'process@1.0',
+			'execution-device': 'token@1.0',
+			'hint-ui-style': 'non-fungible',
+			'swap-device': 'arweave-swap@1.0',
+			'scheduler-device': 'arweave-scheduler@1.0',
+			'scheduler-mode': 'all',
+			ticker: 'ASSET',
+			name: 'Chartreuse',
+			'asset-content-type': 'image/png',
+			'total-supply': '1',
+			denomination: '0',
+			balances: { [wallet]: '1' },
+			orders: {},
+		});
+
+		await expect(
+			resolveAssetCandidates(
+				[{ processId: assetA, height: 1, timestamp: 1, sources: ['market-action'] }],
+				[collection],
+				{ read: async () => ({ provider: 'https://compute.example', state }) }
+			)
+		).resolves.toMatchObject([{ asset: { id: assetA, name: expectedName }, collection: { id: 'images' } }]);
+	});
+
 	it('shares one concurrency budget across progressively enqueued pages', async () => {
 		const started: string[] = [];
 		const releases: Array<() => void> = [];

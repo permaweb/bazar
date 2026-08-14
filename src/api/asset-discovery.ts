@@ -1715,6 +1715,10 @@ function supportedAsset(
 					asset: liveAtomicAsset
 						? {
 								...asset,
+								name:
+									asset.name === `${asset.id.slice(0, 7)}…${asset.id.slice(-6)}`
+										? liveAtomicAsset.name
+										: asset.name,
 								...(liveAtomicAsset.image ? { image: liveAtomicAsset.image } : {}),
 								...(liveAtomicAsset.media ? { media: liveAtomicAsset.media } : {}),
 						  }

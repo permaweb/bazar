@@ -2793,7 +2793,13 @@ export function publishHomeListingResult(
 ) {
 	const previous = current[collectionId] ?? [];
 	const existing = previous.findIndex((candidate) => candidate.id === asset.id);
-	if (listed && existing >= 0) return current;
+	if (listed && existing >= 0) {
+		if (previous[existing] === asset) return current;
+		return {
+			...current,
+			[collectionId]: [...previous.slice(0, existing), asset, ...previous.slice(existing + 1)],
+		};
+	}
 	if (!listed && existing < 0) return current;
 	return {
 		...current,
@@ -2801,6 +2807,14 @@ export function publishHomeListingResult(
 			? [...previous, asset]
 			: [...previous.slice(0, existing), ...previous.slice(existing + 1)],
 	};
+}
+
+export function reconcileHomeListingAssets(previous: AssetSummary[], assetIds: string[], collection: Collection) {
+	const previousById = new Map(previous.map((asset) => [asset.id, asset]));
+	return assetIds.flatMap((assetId) => {
+		const asset = previousById.get(assetId) ?? collectionAsset(collection, assetId);
+		return asset ? [asset] : [];
+	});
 }
 
 export function homeFloorScanSummary(scan: HomeFloorScan): HomeMarketSummary {
@@ -3697,7 +3711,7 @@ function Home() {
 								commitHomeFloorResult(floorScan, candidate.processId, outcome.asking, outcome.failure);
 							} else if (!floorScan) outcomes.set(candidate.processId, outcome);
 							if (cause) return;
-							const asset = collectionAsset(collection, candidate.processId);
+							const asset = result?.asset ?? collectionAsset(collection, candidate.processId);
 							if (!asset) return;
 							setVerifiedHomeListings((current) =>
 								publishHomeListingResult(current, collection.id, asset, Boolean(order))
@@ -3796,25 +3810,28 @@ function Home() {
 						controller.signal.throwIfAborted();
 					}
 					if (!controller.signal.aborted) {
-						const verifiedListings = [...floorScan.settled].flatMap(([processId, asking]) => {
-							if (asking === null) return [];
-							const asset = collectionAsset(collection, processId);
-							return asset ? [asset] : [];
-						});
+						const verifiedListingIds = [...floorScan.settled].flatMap(([processId, asking]) =>
+							asking === null ? [] : [processId]
+						);
 						const activityScan = collectionActivityScans.current.get(collection.id);
 						setVerifiedHomeListingActivity((current) => {
 							const next = { ...current };
-							for (const asset of verifiedListings) {
-								const candidate = activityScan?.candidates.get(asset.id);
-								if (candidate) next[asset.id] = candidate;
+							for (const assetId of verifiedListingIds) {
+								const candidate = activityScan?.candidates.get(assetId);
+								if (candidate) next[assetId] = candidate;
 							}
 							return next;
 						});
 						setVerifiedHomeListings((current) => {
 							const previous = current[collection.id] ?? [];
+							const verifiedListings = reconcileHomeListingAssets(
+								previous,
+								verifiedListingIds,
+								collection
+							);
 							if (
 								previous.length === verifiedListings.length &&
-								previous.every((asset, index) => asset.id === verifiedListings[index]?.id)
+								previous.every((asset, index) => asset === verifiedListings[index])
 							)
 								return current;
 							return { ...current, [collection.id]: verifiedListings };
@@ -10705,11 +10722,21 @@ export function homeDiscoveryAssets(
 		limit,
 		(asset, collection) => Boolean(asset.image || asset.media) || collection.kind === 'tokens'
 	);
+	const verifiedAssets = new Map(
+		Object.values(verifiedListings)
+			.flat()
+			.map((asset) => [asset.id, asset])
+	);
 	const seen = new Set<string>();
-	const portable = [...portableListings].sort((left, right) => {
-		if (!left.activity || !right.activity) return 0;
-		return right.activity.height - left.activity.height || right.activity.timestamp - left.activity.timestamp;
-	});
+	const portable = [...portableListings]
+		.sort((left, right) => {
+			if (!left.activity || !right.activity) return 0;
+			return right.activity.height - left.activity.height || right.activity.timestamp - left.activity.timestamp;
+		})
+		.map((listing) => {
+			const asset = verifiedAssets.get(listing.asset.id);
+			return asset ? { ...listing, asset } : listing;
+		});
 	return [...portable, ...verified, ...fallback]
 		.filter(({ asset, collection }) => isVisibleCollectionId(collection.id) && isVisibleAssetId(asset.id))
 		.filter(({ asset }) => {
