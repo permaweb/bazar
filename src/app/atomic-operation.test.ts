@@ -2,6 +2,8 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
+import { liveOrderOfAsset, parseAssetState } from 'api/asset-marketplace';
+
 import {
 	AtomicOperationErrorAlert,
 	atomicOperationFormError,
@@ -120,6 +122,52 @@ describe('atomic order actions', () => {
 		expect(externalReservationTransaction(order, 'X'.repeat(43), [matching])).toBeNull();
 		expect(externalReservationTransaction(order, buyer, [{ ...matching, actor: 'X'.repeat(43) }])).toBeNull();
 		expect(externalReservationTransaction({ ...order, status: 'open' }, buyer, [matching])).toBeNull();
+	});
+
+	it('makes an expired process reservation actionable without showing a reservation recovery', () => {
+		const seller = 'S'.repeat(43);
+		const buyer = 'B'.repeat(43);
+		const orderId = 'O'.repeat(43);
+		const state = parseAssetState(
+			{
+				'execution-device': 'token@1.0',
+				'total-supply': '1',
+				balances: {},
+				orders: {
+					[orderId]: {
+						'order-id': orderId,
+						creator: seller,
+						recipient: seller,
+						asking: '100',
+						deadline: 20,
+						'created-at': 1,
+						quantity: '1',
+						status: 'reserved',
+						buyer,
+						'reserved-until': 1_980_253,
+					},
+				},
+				'swap-height': 1_980_233,
+				'next-deadline': 1_980_254,
+			},
+			1_980_357
+		);
+		const order = liveOrderOfAsset(state);
+
+		expect(atomicOrderCanBeBought(order)).toBe(true);
+		expect(
+			externalReservationTransaction(order, buyer, [
+				{
+					id: 'R'.repeat(43),
+					processId: 'P'.repeat(43),
+					action: 'register-interest',
+					actor: buyer,
+					orderId,
+					height: 100,
+					timestamp: 20,
+				},
+			] as any)
+		).toBeNull();
 	});
 
 	it('rejects stale ownership and order snapshots before approval', () => {

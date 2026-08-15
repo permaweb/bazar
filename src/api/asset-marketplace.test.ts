@@ -1,19 +1,23 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DEFAULT_COMPUTE_GATEWAY } from 'helpers/config';
 
+import { clearArweaveHeightCache } from './arweave-height';
 import {
 	bestAskOfAsset,
 	compareOrderUnitPrice,
 	licenseProperties,
 	liquidBalanceOf,
 	listedBalanceOf,
+	liveOrderOfAsset,
 	liveOrdersOfAsset,
+	openOrdersOfAsset,
 	ownerOfAsset,
 	parseAssetState,
 	readAssetState,
 	readAssetStateAtSlot,
 	readProcessAssignments,
+	reservationIsActive,
 	servingNodeOrigin,
 	servingNodeOrigins,
 	type SwapOrder,
@@ -24,6 +28,8 @@ const owner = '1uTLV5GvfQ5M46Tq_DTeJL7rIy7vCAOMxQ7Fbf82YZw';
 const buyer = 'BLyLiOZptmb-olB8wycvk_ynHiu1SZMKPqswx4KONwc';
 const orderId = 'qAhWNMSuX70lZpIRohKJn_SuVcymr_RmpGbltydjpwA';
 const processId = 'IyFfmbTu8P4rv0KyrA0Q-QtfEnYntMj4RkRiBVip9KA';
+
+beforeEach(clearArweaveHeightCache);
 
 function assignment(slot: number, transactionId: string) {
 	return {
@@ -108,11 +114,93 @@ describe('asset state', () => {
 					quantity: 1,
 					status: 'reserved',
 					buyer,
+					'reserved-until': 20,
 				},
 			},
 		});
 		expect(ownerOfAsset(state)).toBe(owner);
 		expect(state.orders[orderId].buyer).toBe(buyer);
+	});
+
+	it('projects an expired reservation as the same open order at every UI selector', () => {
+		const rawOrder = order(orderId, {
+			status: 'reserved',
+			buyer,
+			'reserved-until': 1_980_253,
+		});
+		const rawState = {
+			'execution-device': 'token@1.0',
+			'total-supply': '1',
+			balances: {},
+			orders: { [orderId]: rawOrder },
+			'swap-height': 1_980_233,
+			'next-deadline': 1_980_254,
+		};
+
+		// The process has not received another assignment, so its own processed
+		// height still makes this reservation look live.
+		expect(parseAssetState(rawState).orders[orderId]).toMatchObject({
+			status: 'reserved',
+			buyer,
+			reservedUntil: 1_980_253,
+		});
+		expect(parseAssetState(rawState, 1_980_253).orders[orderId].status).toBe('reserved');
+
+		const state = parseAssetState(rawState, 1_980_254);
+
+		expect(state.raw.orders).toEqual({ [orderId]: rawOrder });
+		expect(state.orders[orderId]).toEqual({
+			orderId,
+			creator: owner,
+			recipient: owner,
+			asking: '100000000',
+			deposit: '0',
+			minimumFee: '100000000',
+			deadline: 20,
+			createdAt: 1,
+			quantity: '1',
+			status: 'open',
+		});
+		expect(reservationIsActive(state.orders[orderId], 1_980_254)).toBe(false);
+		expect(ownerOfAsset(state)).toBe(owner);
+		expect(listedBalanceOf(state, owner)).toBe('1');
+		expect(liveOrderOfAsset(state)?.status).toBe('open');
+		expect(liveOrdersOfAsset(state)).toEqual(openOrdersOfAsset(state));
+		expect(bestAskOfAsset(state)?.orderId).toBe(orderId);
+	});
+
+	it('keeps a reservation active through its inclusive deadline height', () => {
+		const state = parseAssetState({
+			'execution-device': 'token@1.0',
+			'total-supply': '1',
+			balances: {},
+			orders: {
+				[orderId]: order(orderId, {
+					status: 'reserved',
+					buyer,
+					'reserved-until': 120,
+				}),
+			},
+			'swap-height': 120,
+		});
+
+		expect(reservationIsActive(state.orders[orderId], 120)).toBe(true);
+		expect(state.orders[orderId]).toMatchObject({ status: 'reserved', buyer, reservedUntil: 120 });
+		expect(openOrdersOfAsset(state)).toEqual([]);
+		expect(bestAskOfAsset(state)).toBeNull();
+	});
+
+	it('does not invent a live reservation when its authoritative deadline is absent', () => {
+		const state = parseAssetState({
+			'execution-device': 'token@1.0',
+			'total-supply': '1',
+			balances: {},
+			orders: { [orderId]: order(orderId, { status: 'reserved', buyer }) },
+			'swap-height': 0,
+		});
+
+		expect(state.orders[orderId]).toMatchObject({ status: 'open' });
+		expect(state.orders[orderId]).not.toHaveProperty('buyer');
 	});
 
 	it('preserves fungible amounts above MAX_SAFE_INTEGER and parses token metadata', () => {
@@ -363,6 +451,88 @@ describe('asset state', () => {
 		expect(requested).toEqual([`${DEFAULT_COMPUTE_GATEWAY}/${processId}~process@1.0/now`]);
 		expect(requestOptions[0].method).toBe('HEAD');
 		expect([...new Headers(requestOptions[0].headers)]).toEqual([]);
+	});
+
+	it('normalizes the live failure shape with one selected-gateway height read', async () => {
+		const heightRequests: string[] = [];
+		const result = await readAssetState(processId, {
+			provider: 'https://compute.example',
+			fetch: async () =>
+				jsonResponse({
+					'execution-device': 'token@1.0',
+					'total-supply': '1',
+					balances: {},
+					orders: {
+						[orderId]: order(orderId, {
+							status: 'reserved',
+							buyer,
+							'reserved-until': 1_980_253,
+						}),
+					},
+					'swap-height': 1_980_233,
+					'next-deadline': 1_980_254,
+				}),
+			heightGateway: 'https://gateway.example',
+			heightFetch: async (input, init) => {
+				heightRequests.push(String(input));
+				expect(init?.cache).toBe('no-store');
+				return Response.json({ network: 'arweave.N.1', height: 1_980_357 });
+			},
+		});
+
+		expect(heightRequests).toEqual(['https://gateway.example/info']);
+		expect(result.state.raw.orders).toHaveProperty(orderId);
+		expect(result.state.orders[orderId]).toMatchObject({ status: 'open' });
+		expect(result.state.orders[orderId]).not.toHaveProperty('buyer');
+	});
+
+	it('shares one selected-gateway height read across concurrent reserved assets', async () => {
+		const heightFetch = vi.fn<typeof fetch>(async () =>
+			Response.json({ network: 'arweave.N.1', height: 1_980_357 })
+		);
+		const read = (id: string) =>
+			readAssetState(id, {
+				provider: 'https://compute.example',
+				fetch: async () =>
+					jsonResponse({
+						'execution-device': 'token@1.0',
+						'total-supply': '1',
+						balances: {},
+						orders: {
+							[orderId]: order(orderId, {
+								status: 'reserved',
+								buyer,
+								'reserved-until': 1_980_253,
+							}),
+						},
+						'swap-height': 1_980_233,
+					}),
+				heightFetch,
+				heightGateway: 'https://gateway.example',
+			});
+
+		const results = await Promise.all([read(processId), read('P'.repeat(43))]);
+
+		expect(heightFetch).toHaveBeenCalledTimes(1);
+		expect(results.every(({ state }) => state.orders[orderId].status === 'open')).toBe(true);
+	});
+
+	it('does not read network height for ordinary unreserved state', async () => {
+		const heightFetch = vi.fn<typeof fetch>();
+		await readAssetState(processId, {
+			provider: 'https://compute.example',
+			fetch: async () =>
+				jsonResponse({
+					'execution-device': 'token@1.0',
+					'total-supply': '1',
+					balances: { [owner]: '1' },
+					orders: {},
+				}),
+			heightFetch,
+			heightGateway: 'https://gateway.example',
+		});
+
+		expect(heightFetch).not.toHaveBeenCalled();
 	});
 
 	it('expresses passive freshness in the AO path without request headers', async () => {

@@ -1,8 +1,14 @@
 import { type AoCacheStatus, cacheMetadata } from 'ao-wrangler';
 
-import { DEFAULT_COMPUTE_GATEWAY, gatewaysFromLocation, normalizeComputeGateways } from 'helpers/config';
+import {
+	arweaveGatewayFromLocation,
+	DEFAULT_COMPUTE_GATEWAY,
+	gatewaysFromLocation,
+	normalizeComputeGateways,
+} from 'helpers/config';
 
 import { aoFetch } from './ao';
+import { currentArweaveHeight } from './arweave-height';
 
 export type SwapOrderStatus = 'open' | 'reserved' | 'settled' | 'cancelled' | 'expired';
 
@@ -152,13 +158,24 @@ export async function readAssetState(
 		staleWhileRevalidate?: number;
 		retryBaseDelay?: number;
 		onRetry?: (progress: ComputeRetryProgress) => void;
+		currentHeight?: number;
+		heightFetch?: typeof fetch;
+		heightGateway?: string;
 	} = {}
 ): Promise<ComputeResult> {
 	if (!ADDRESS.test(processId)) throw new TypeError('invalid-asset-process-id');
 	const nodes = options.provider ? [options.provider] : currentServingNodes();
 	const provider = nodes[0];
 	const fetcher = aoFetch(nodes, options.fetch);
-	const read = await readState(processId, provider, fetcher, options);
+	const readReservationHeight = () =>
+		options.currentHeight === undefined
+			? currentArweaveHeight({
+					fetch: options.heightFetch,
+					gateway: options.heightGateway ?? arweaveGatewayFromLocation(),
+					signal: options.signal,
+			  })
+			: Promise.resolve(options.currentHeight);
+	const read = await readState(processId, provider, fetcher, { ...options, readReservationHeight });
 	const result = {
 		state: read.state,
 		provider: read.provider,
@@ -268,6 +285,9 @@ export async function waitForAssetState(
 		interval?: number;
 		timeout?: number;
 		onAttempt?: (provider: string, attempt: number, total: number) => void;
+		currentHeight?: () => number | undefined;
+		heightFetch?: typeof fetch;
+		heightGateway?: string;
 	} = {}
 ): Promise<ComputeResult> {
 	const nodes = options.provider ? [options.provider] : currentServingNodes();
@@ -282,11 +302,15 @@ export async function waitForAssetState(
 		attempt += 1;
 		options.onAttempt?.(provider, attempt, 1);
 		try {
+			const currentHeight = options.currentHeight?.();
 			const result = await readAssetState(processId, {
 				fetch: fetcher,
 				signal: options.signal,
 				provider: options.provider,
 				maxAge: 0,
+				...(currentHeight === undefined ? {} : { currentHeight }),
+				heightFetch: options.heightFetch,
+				heightGateway: options.heightGateway,
 			});
 			if (await accept(result.state)) return result;
 		} catch (error) {
@@ -298,13 +322,21 @@ export async function waitForAssetState(
 	throw new Error('asset-state-timeout');
 }
 
-export function parseAssetState(value: unknown): AssetState {
+export function parseAssetState(value: unknown, reservationHeight?: number): AssetState {
+	const parsed = parseAssetStateValue(value);
+	return reservationHeight === undefined
+		? parsed.state
+		: normalizeAssetStateReservations(parsed.state, reservationHeight);
+}
+
+function parseAssetStateValue(value: unknown): { state: AssetState; activeReservation: boolean } {
 	const raw = unwrapState(value);
 	const device = text(raw['execution-device'] ?? raw.device);
 	const totalSupply = amount(raw['total-supply']);
 	const denomination = raw.denomination === undefined ? 0 : integer(raw.denomination);
 	const ticker = raw.ticker === undefined ? '' : safeTicker(raw.ticker);
 	const balances = stringRecord(raw.balances);
+	const swapHeight = integer(raw['swap-height']) ?? 0;
 	if (
 		!ASSET_PROCESS_DEVICES.has(device) ||
 		totalSupply === null ||
@@ -318,25 +350,55 @@ export function parseAssetState(value: unknown): AssetState {
 	}
 
 	const orders: Record<string, SwapOrder> = {};
+	let activeReservation = false;
 	if (isRecord(raw.orders)) {
 		for (const [id, held] of Object.entries(raw.orders)) {
 			const order = parseSwapOrder(id, held);
-			if (order) orders[id] = order;
+			if (!order) continue;
+			const effective = orderWithoutExpiredReservation(order, swapHeight);
+			orders[id] = effective;
+			if (effective.status === 'reserved') activeReservation = true;
 		}
 	}
 
 	return {
-		device,
-		name: text(raw.name),
-		ticker,
-		denomination,
-		totalSupply,
-		balances,
-		orders,
-		swapHeight: integer(raw['swap-height']) ?? 0,
-		value: raw.value ?? raw['initial-value'],
-		raw,
+		activeReservation,
+		state: {
+			device,
+			name: text(raw.name),
+			ticker,
+			denomination,
+			totalSupply,
+			balances,
+			orders,
+			swapHeight,
+			value: raw.value ?? raw['initial-value'],
+			raw,
+		},
 	};
+}
+
+/** A reservation remains exclusive through its absolute L1 block-height deadline. */
+export function reservationIsActive(order: SwapOrder, height: number): boolean {
+	return order.status === 'reserved' && order.reservedUntil !== undefined && height <= order.reservedUntil;
+}
+
+function orderWithoutExpiredReservation(order: SwapOrder, swapHeight: number): SwapOrder {
+	if (order.status !== 'reserved' || reservationIsActive(order, swapHeight)) return order;
+	const { buyer: _buyer, reservedUntil: _reservedUntil, ...unreserved } = order;
+	return { ...unreserved, status: 'open' };
+}
+
+function normalizeAssetStateReservations(state: AssetState, height: number): AssetState {
+	if (!Number.isSafeInteger(height) || height < 0) throw new TypeError('invalid-reservation-height');
+	const reservationHeight = Math.max(state.swapHeight, height);
+	let orders = state.orders;
+	for (const [id, order] of Object.entries(state.orders)) {
+		if (order.status !== 'reserved' || reservationIsActive(order, reservationHeight)) continue;
+		if (orders === state.orders) orders = { ...state.orders };
+		orders[id] = orderWithoutExpiredReservation(order, reservationHeight);
+	}
+	return orders === state.orders ? state : { ...state, orders };
 }
 
 export function parseSwapOrder(id: string, value: unknown): SwapOrder | null {
@@ -478,6 +540,7 @@ async function readState(
 		retryBaseDelay?: number;
 		onRetry?: (progress: ComputeRetryProgress) => void;
 		slot?: number;
+		readReservationHeight?: () => Promise<number>;
 	}
 ): Promise<{
 	state: AssetState;
@@ -533,7 +596,13 @@ async function readState(
 					}
 					response = await fetcher(path, requestInit);
 					if (!response.ok) throw new Error(`HTTP ${response.status}`);
-					const state = await parseStateResponse(response, base, requestInit, fetcher);
+					const state = await parseStateResponse(
+						response,
+						base,
+						requestInit,
+						fetcher,
+						options.readReservationHeight
+					);
 					const cached = cacheMetadata(response);
 					return {
 						state,
@@ -542,7 +611,14 @@ async function readState(
 						...(cached?.revalidation
 							? {
 									revalidation: cached.revalidation.then((fresh) =>
-										parseRevalidatedState(fresh, path, requestInit, fetcher, servingNode)
+										parseRevalidatedState(
+											fresh,
+											path,
+											requestInit,
+											fetcher,
+											servingNode,
+											options.readReservationHeight
+										)
 									),
 							  }
 							: {}),
@@ -578,7 +654,8 @@ async function parseStateResponse(
 	response: Response,
 	base: string,
 	requestInit: RequestInit,
-	fetcher: typeof fetch
+	fetcher: typeof fetch,
+	readReservationHeight?: () => Promise<number>
 ): Promise<AssetState> {
 	const raw = await responseMessage(response);
 	const linked = await Promise.all(
@@ -590,7 +667,10 @@ async function parseStateResponse(
 			return [readLinkedStateTable(key, id, base, requestInit, fetcher)];
 		})
 	);
-	return parseAssetState({ ...raw, ...Object.fromEntries(linked) });
+	const parsed = parseAssetStateValue({ ...raw, ...Object.fromEntries(linked) });
+	return parsed.activeReservation && readReservationHeight
+		? normalizeAssetStateReservations(parsed.state, await readReservationHeight())
+		: parsed.state;
 }
 
 async function readLinkedStateTable(
@@ -758,12 +838,19 @@ async function parseRevalidatedState(
 	requestInit: RequestInit,
 	fetcher: typeof fetch,
 	servingNode: string,
+	readReservationHeight?: () => Promise<number>,
 	retry = true
 ): Promise<{ state: AssetState; provider: string }> {
 	try {
 		if (!response.ok) throw new Error(`HTTP ${response.status}`);
 		return {
-			state: await parseStateResponse(response, servingNode ? `${servingNode}/` : '/', requestInit, fetcher),
+			state: await parseStateResponse(
+				response,
+				servingNode ? `${servingNode}/` : '/',
+				requestInit,
+				fetcher,
+				readReservationHeight
+			),
 			provider: responseProvider(response, cacheMetadata(response)?.origin ?? servingNode),
 		};
 	} catch (error) {
@@ -775,7 +862,15 @@ async function parseRevalidatedState(
 		if (!retry || !response.ok || !invalidate) throw error;
 		await invalidate(path, requestInit).catch(() => undefined);
 		const replacement = await fetcher(path, { ...requestInit, cache: 'reload', signal: undefined });
-		return parseRevalidatedState(replacement, path, requestInit, fetcher, servingNode, false);
+		return parseRevalidatedState(
+			replacement,
+			path,
+			requestInit,
+			fetcher,
+			servingNode,
+			readReservationHeight,
+			false
+		);
 	}
 }
 
