@@ -1560,6 +1560,7 @@ export function FungibleAssetView({
 										eventAmount={(event) => fungiblePurchaseActivityAmount(event, activity, state)}
 										events={visibleActivityRows}
 										loading={activityLoading}
+										reservationState={state}
 										resolveAsset={() => asset}
 									/>
 								) : null}
