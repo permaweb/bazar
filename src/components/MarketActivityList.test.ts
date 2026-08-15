@@ -2,6 +2,8 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
+import { parseAssetState } from 'api/asset-marketplace';
+
 import {
 	formatMarketActivityTimestamp,
 	marketActivityLabel,
@@ -13,6 +15,69 @@ describe('market activity labels', () => {
 	it('presents a purchase reservation as a submitted purchase', () => {
 		expect(marketActivityLabel('register-interest')).toBe('Purchase submitted');
 		expect(marketActivityLabel('register-interest', true)).toBe('Purchase confirmed');
+	});
+
+	it('labels a reservation with its inclusive payment deadline and only marks it expired afterward', () => {
+		const seller = '1uTLV5GvfQ5M46Tq_DTeJL7rIy7vCAOMxQ7Fbf82YZw';
+		const buyer = 'BLyLiOZptmb-olB8wycvk_ynHiu1SZMKPqswx4KONwc';
+		const orderId = 'qAhWNMSuX70lZpIRohKJn_SuVcymr_RmpGbltydjpwA';
+		const processId = 'IyFfmbTu8P4rv0KyrA0Q-QtfEnYntMj4RkRiBVip9KA';
+		const rawState = {
+			'execution-device': 'token@1.0',
+			'total-supply': '1',
+			balances: {},
+			orders: {
+				[orderId]: {
+					'order-id': orderId,
+					creator: seller,
+					recipient: seller,
+					asking: '1000000000000',
+					deadline: 200,
+					'created-at': 100,
+					quantity: 1,
+					status: 'reserved',
+					buyer,
+					'reserved-until': 120,
+				},
+			},
+			'swap-height': 100,
+		};
+		const event = {
+			action: 'register-interest' as const,
+			actor: buyer,
+			height: 110,
+			id: 'transaction',
+			orderId,
+			processId,
+			timestamp: 1,
+		};
+		const render = (reservationHeight: number, purchaseProof = false) =>
+			renderToStaticMarkup(
+				React.createElement(MarketActivityList, {
+					ariaLabel: 'Asset activity',
+					events: [
+						purchaseProof
+							? { ...event, purchaseProof: { transactionId: 'settlement', height: 121 } }
+							: event,
+					],
+					reservationState: parseAssetState(rawState, reservationHeight),
+					resolveAsset: () => undefined,
+				})
+			);
+
+		const atDeadline = render(120);
+		expect(atDeadline).toContain('Reserved. Payment deadline at block 120.');
+		expect(atDeadline).not.toContain('(Expired)');
+
+		const afterDeadline = render(121);
+		expect(afterDeadline).toContain(
+			'Reserved. Payment deadline at block 120. <span class="activity-reservation-expired">(Expired)</span>'
+		);
+		expect(afterDeadline).not.toContain('Purchase submitted');
+
+		const confirmed = render(121, true);
+		expect(confirmed).toContain('Purchase confirmed');
+		expect(confirmed).not.toContain('Reserved. Payment deadline');
 	});
 
 	it('formats activity timestamps as live relative time', () => {

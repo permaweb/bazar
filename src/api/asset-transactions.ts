@@ -19,6 +19,7 @@ import {
 } from 'helpers/config';
 
 import { aoFetch } from './ao';
+import { currentArweaveHeight } from './arweave-height';
 import {
 	type AssetState,
 	assetStateSlot,
@@ -211,7 +212,6 @@ export class AssetTransactionClient {
 	#gateway: string;
 	#storage?: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> & Partial<Pick<Storage, 'key' | 'length'>>;
 	#reservationInclusionMargin: number;
-	#height?: { at: number; value: Promise<number> };
 
 	constructor(options: AssetTransactionClientOptions = {}) {
 		this.#wallet = options.wallet ?? globalThis.window?.arweaveWallet;
@@ -598,7 +598,7 @@ export class AssetTransactionClient {
 				)
 			);
 		const preparePayment = async (signal: AbortSignal) => {
-			const tip = Math.max(await this.#currentHeight(signal), input.network.tip());
+			const tip = await this.#networkHeight(input.network, signal);
 			const storedPaymentId = this.findStoredPayment(
 				purchaseOrder.recipient,
 				input.processId,
@@ -639,7 +639,7 @@ export class AssetTransactionClient {
 				const prepared: SafePreparedTransaction[] = [];
 				try {
 					await this.#assertActiveSigner(input.buyer);
-					const tip = Math.max(await this.#currentHeight(signal), input.network.tip());
+					const tip = await this.#networkHeight(input.network, signal);
 					await this.#requireProcessState(
 						input.processId,
 						(state) =>
@@ -652,7 +652,8 @@ export class AssetTransactionClient {
 								this.#reservationInclusionMargin
 							),
 						'asset-order-not-purchasable',
-						signal
+						signal,
+						tip
 					);
 					const registration = await prepareRegistration(signal);
 					prepared.push(registration);
@@ -674,7 +675,7 @@ export class AssetTransactionClient {
 			// second native-AR payment whose first dispatch remains ambiguous.
 			restorePrepared: async (which, id, signal) => {
 				if (which === 'registration') {
-					const tip = Math.max(await this.#currentHeight(signal), input.network.tip());
+					const tip = await this.#networkHeight(input.network, signal);
 					await this.#requireProcessState(
 						input.processId,
 						(state) =>
@@ -687,7 +688,8 @@ export class AssetTransactionClient {
 								this.#reservationInclusionMargin
 							),
 						'asset-order-not-purchasable',
-						signal
+						signal,
+						tip
 					);
 				}
 				return this.restore(id, input.buyer, {
@@ -703,7 +705,7 @@ export class AssetTransactionClient {
 					input.processId,
 					async (state) => {
 						const order = state.orders[input.order.orderId];
-						const tip = Math.max(await this.#currentHeight(signal), input.network.tip());
+						const tip = await this.#networkHeight(input.network, signal);
 						if (
 							order &&
 							purchaseOrderMatches(order, purchaseOrder) &&
@@ -720,7 +722,7 @@ export class AssetTransactionClient {
 						if (
 							order?.status === 'open' &&
 							purchaseOrderMatches(order, input.order) &&
-							state.swapHeight >= registrationHeight + input.order.deadline
+							tip > registrationHeight + input.order.deadline
 						) {
 							expired = true;
 							return true;
@@ -738,6 +740,12 @@ export class AssetTransactionClient {
 						fetch: this.#peerFetch,
 						signal,
 						timeout: STATE_INCLUSION_TIMEOUT,
+						currentHeight: () => {
+							const tip = input.network.tip();
+							return Number.isSafeInteger(tip) && tip > 0 ? tip : undefined;
+						},
+						heightFetch: this.#fetch,
+						heightGateway: this.#gateway,
 						onAttempt: (provider, attempt, total) =>
 							reportProvider(report, provider, attempt, total, 'checking-reservation'),
 					}
@@ -1183,25 +1191,15 @@ export class AssetTransactionClient {
 		}
 	}
 
-	async #currentHeight(signal: AbortSignal): Promise<number> {
-		const now = Date.now();
-		if (!this.#height || now - this.#height.at > 1000) {
-			this.#height = {
-				at: now,
-				value: this.#fetch(`${this.#gateway}/info`, {
-					cache: 'no-store',
-					signal,
-				}).then(async (response) => {
-					if (!response.ok) throw new Error(`network-info-${response.status}`);
-					const height = Number((await response.json()).height);
-					if (!Number.isSafeInteger(height) || height < 0) {
-						throw new Error('invalid-network-height');
-					}
-					return height;
-				}),
-			};
-		}
-		return this.#height.value;
+	async #networkHeight(network: WeaveNetwork, signal: AbortSignal): Promise<number> {
+		const observed = network.tip();
+		if (Number.isSafeInteger(observed) && observed > 0) return observed;
+		return currentArweaveHeight({
+			fetch: this.#fetch,
+			gateway: this.#gateway,
+			maxAgeMs: 1_000,
+			signal,
+		});
 	}
 
 	async #transactionBlockHeight(transactionId: string, signal?: AbortSignal): Promise<number> {
@@ -1226,10 +1224,18 @@ export class AssetTransactionClient {
 		processId: string,
 		accept: (state: AssetState) => boolean,
 		errorCode: string,
-		signal?: AbortSignal
+		signal?: AbortSignal,
+		currentHeight?: number
 	): Promise<void> {
 		try {
-			const { state } = await readAssetState(processId, { fetch: this.#peerFetch, maxAge: 0, signal });
+			const { state } = await readAssetState(processId, {
+				fetch: this.#peerFetch,
+				maxAge: 0,
+				signal,
+				...(currentHeight === undefined ? {} : { currentHeight }),
+				heightFetch: this.#fetch,
+				heightGateway: this.#gateway,
+			});
 			if (!accept(state)) throw new Error(errorCode);
 		} catch (error) {
 			if (signal?.aborted) throw error;

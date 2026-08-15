@@ -4,6 +4,7 @@ import { ArrowRight, ArrowUpRight, CircleX, ShoppingCart, Tag } from 'lucide-rea
 
 import { transactionExplorerUrl } from 'api/arweave-explorer';
 import type { CollectionActivityEvent } from 'api/asset-discovery';
+import { type AssetState, parseSwapOrder } from 'api/asset-marketplace';
 import type { AssetSummary, Collection } from 'api/collections';
 
 import { ArCurrencyText } from 'components/ArCurrencyLabel';
@@ -86,6 +87,7 @@ export function MarketActivityList({
 	events,
 	id,
 	loading = false,
+	reservationState,
 	resolveAsset,
 	resolveCollection,
 }: {
@@ -97,6 +99,7 @@ export function MarketActivityList({
 	events: CollectionActivityEvent[];
 	id?: string;
 	loading?: boolean;
+	reservationState?: AssetState | null;
 	resolveAsset(event: CollectionActivityEvent): AssetSummary | undefined;
 	resolveCollection?(event: CollectionActivityEvent): Pick<Collection, 'id' | 'name'> | undefined;
 }) {
@@ -124,6 +127,20 @@ export function MarketActivityList({
 			{events.map((event) => {
 				const asset = resolveAsset(event);
 				const collection = resolveCollection?.(event);
+				const reservation = marketActivityReservation(event, reservationState);
+				const headline = reservation ? (
+					<>
+						Reserved. Payment deadline at block {reservation.deadline.toLocaleString()}.
+						{reservation.expired ? (
+							<>
+								{' '}
+								<span className="activity-reservation-expired">(Expired)</span>
+							</>
+						) : null}
+					</>
+				) : (
+					marketActivityLabel(event.action, Boolean(event.purchaseProof))
+				);
 				const detail = [collection?.name, describeEvent(event)].filter(Boolean).join(' · ');
 				const amount = eventAmount?.(event) ?? '';
 				const assetCollectionId = collection?.id ?? collectionId;
@@ -149,7 +166,7 @@ export function MarketActivityList({
 								{marketActivitySymbol(event.action)}
 							</span>
 							<div className="activity-compact-summary">
-								<strong>{marketActivityLabel(event.action, Boolean(event.purchaseProof))}</strong>
+								<strong>{headline}</strong>
 								{detail ? (
 									<small>
 										<ArCurrencyText>{detail}</ArCurrencyText>
@@ -194,7 +211,7 @@ export function MarketActivityList({
 						</span>
 						<div className={`activity-main${amount ? ' has-amount' : ''}`}>
 							<div className="activity-main-copy">
-								<strong>{marketActivityLabel(event.action, Boolean(event.purchaseProof))}</strong>
+								<strong>{headline}</strong>
 								{asset && assetCollectionId ? (
 									<Link to={`/asset/${assetCollectionId}/${asset.id}`}>{asset.name}</Link>
 								) : asset ? (
@@ -263,6 +280,25 @@ export function MarketActivityList({
 		</ul>
 	);
 }
+
+export function marketActivityReservation(event: CollectionActivityEvent, state?: AssetState | null) {
+	if (event.action !== 'register-interest' || event.purchaseProof || !event.orderId || !state) return null;
+	const rawOrders = state.raw.orders;
+	if (!rawOrders || typeof rawOrders !== 'object' || Array.isArray(rawOrders)) return null;
+	const order = parseSwapOrder(event.orderId, (rawOrders as Record<string, unknown>)[event.orderId]);
+	const effectiveOrder = state.orders[event.orderId];
+	if (
+		order?.status !== 'reserved' ||
+		order.buyer !== event.actor ||
+		order.reservedUntil === undefined ||
+		!effectiveOrder ||
+		!['open', 'reserved'].includes(effectiveOrder.status)
+	) {
+		return null;
+	}
+	return { deadline: order.reservedUntil, expired: effectiveOrder.status === 'open' };
+}
+
 export function marketActivityLabel(action: CollectionActivityEvent['action'], purchaseConfirmed = false) {
 	return {
 		'make-offer': 'Listing submitted',

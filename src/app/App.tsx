@@ -9357,6 +9357,7 @@ function AssetView() {
 									collectionId={collection.id}
 									events={assetActivity}
 									loading={activityLoading}
+									reservationState={state}
 									resolveAsset={() => asset}
 								/>
 							) : null}

@@ -4519,6 +4519,10 @@ input:focus {
 .activity-main-copy > strong {
 	font: 400 var(--type-body) 'DM Sans', sans-serif;
 }
+.activity-reservation-expired {
+	color: var(--negative);
+	filter: brightness(0.82);
+}
 .activity-main-copy > a,
 .activity-main-copy > span {
 	overflow: hidden;

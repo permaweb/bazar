@@ -1687,13 +1687,17 @@ describe('fungible asset transactions', () => {
 	it('stops an expired reservation on its first fresh-state check', async () => {
 		const order = swapOrder(transactionId, '3000000000000', '1000000');
 		let stateReads = 0;
+		let heightReads = 0;
 		let posts = 0;
 		const subject = new AssetTransactionClient({
 			fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
 				const url = String(input);
 				if (init?.method === 'POST') posts += 1;
-				if (url.includes('/tx/') && url.endsWith('/status')) return Response.json({ block_height: 90 });
-				if (url.endsWith('/info')) return Response.json({ height: 101 });
+				if (url.includes('/tx/') && url.endsWith('/status')) return Response.json({ block_height: 80 });
+				if (url.endsWith('/info')) {
+					heightReads += 1;
+					return Response.json({ height: 101 });
+				}
 				stateReads += 1;
 				return stateResponse({
 					'execution-device': 'token@1.0',
@@ -1736,6 +1740,7 @@ describe('fungible asset transactions', () => {
 			})
 		).rejects.toThrow('asset-order-reservation-expired');
 		expect(stateReads).toBe(1);
+		expect(heightReads).toBe(0);
 		expect(posts).toBe(0);
 	});
 
