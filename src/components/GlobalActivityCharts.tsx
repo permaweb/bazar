@@ -243,31 +243,30 @@ function LineChart({
 					points={coordinates.map(({ x, y }) => `${x},${y}`).join(' ')}
 				/>
 				{selectedPoint ? (
-					<>
-						<line
-							className="global-activity-chart-crosshair"
-							x1={selectedPoint.x}
-							x2={selectedPoint.x}
-							y1="0"
-							y2="96"
-						/>
-						<circle
-							className="global-activity-chart-point"
-							cx={selectedPoint.x}
-							cy={selectedPoint.y}
-							r="4"
-						/>
-					</>
+					<line
+						className="global-activity-chart-crosshair"
+						x1={selectedPoint.x}
+						x2={selectedPoint.x}
+						y1="0"
+						y2="96"
+					/>
 				) : null}
 			</svg>
 			{selectedPoint && selectedDate !== undefined && selectedValue !== undefined ? (
-				<ChartTooltip
-					date={selectedDate}
-					unit={unit}
-					value={selectedValue}
-					x={selectedPoint.x}
-					y={selectedPoint.y}
-				/>
+				<>
+					<span
+						aria-hidden="true"
+						className="global-activity-chart-point"
+						style={{ left: `${(selectedPoint.x / 300) * 100}%`, top: `${selectedPoint.y}px` }}
+					/>
+					<ChartTooltip
+						date={selectedDate}
+						unit={unit}
+						value={selectedValue}
+						x={selectedPoint.x}
+						y={selectedPoint.y}
+					/>
+				</>
 			) : null}
 		</div>
 	);
@@ -312,12 +311,12 @@ export function GlobalActivityCharts({ events }: { events: CollectionActivityEve
 	return (
 		<section aria-label="Global market statistics" className="global-activity-stats">
 			<StatCard
-				label="Indexed events"
+				label="Events"
 				meta={`${latest?.events.toLocaleString() ?? 0} in the latest interval · ${stats.period}`}
 				value={stats.events}
 			>
 				<BarChart
-					label="Indexed events"
+					label="Events"
 					starts={starts}
 					unit="events"
 					values={stats.buckets.map((bucket) => bucket.events)}

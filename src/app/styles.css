@@ -4527,10 +4527,15 @@ input:focus {
 	vector-effect: non-scaling-stroke;
 }
 .global-activity-chart-point {
-	fill: var(--paper);
-	stroke: var(--event-blue);
-	stroke-width: 2;
-	vector-effect: non-scaling-stroke;
+	position: absolute;
+	z-index: 1;
+	width: 8px;
+	height: 8px;
+	transform: translate(-50%, -50%);
+	border: 2px solid var(--event-blue);
+	border-radius: 50%;
+	background: var(--paper);
+	pointer-events: none;
 }
 .global-activity-chart-tooltip {
 	position: absolute;
