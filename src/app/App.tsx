@@ -6502,39 +6502,47 @@ function CollectionView() {
 				<ArrowLeft className="ui-icon ui-icon--sm" aria-hidden="true" />{' '}
 				{collection.kind === 'tokens' ? 'Discover' : 'All collections'}
 			</Link>
-			<CollectionMarketHeader
-				action={
-					collection.kind === 'images' && ownedCollection?.owner === wallet.address ? (
-						<Button onClick={() => setAppendOpen(true)} type="button" variant="neutral">
-							<Images aria-hidden="true" /> Add assets
-						</Button>
-					) : undefined
-				}
-				collection={collection}
-				stats={[
-					{
-						label: 'Floor price',
-						value:
-							activityState.loading && !liveListingRows.length
-								? 'Checking…'
-								: liveListingRows[0]?.price ?? '—',
-					},
-					{
-						label: 'Live offers',
-						value:
-							activityState.loading && !liveListingRows.length
-								? 'Checking…'
-								: liveListingRows.length.toLocaleString(),
-					},
-					{
-						label: 'Loaded / supply',
-						value: `${collection.assets.length.toLocaleString()} / ${(
-							collection.total ?? collection.assets.length
-						).toLocaleString()}`,
-					},
-					{ label: 'Offer candidates', value: activity.length.toLocaleString() },
-				]}
-			/>
+			<div className="collection-market-navigation">
+				<CollectionMarketHeader
+					action={
+						collection.kind === 'images' && ownedCollection?.owner === wallet.address ? (
+							<Button onClick={() => setAppendOpen(true)} type="button" variant="neutral">
+								<Images aria-hidden="true" /> Add assets
+							</Button>
+						) : undefined
+					}
+					collection={collection}
+					stats={[
+						{
+							label: 'Floor price',
+							value:
+								activityState.loading && !liveListingRows.length
+									? 'Checking…'
+									: liveListingRows[0]?.price ?? '—',
+						},
+						{
+							label: 'Live offers',
+							value:
+								activityState.loading && !liveListingRows.length
+									? 'Checking…'
+									: liveListingRows.length.toLocaleString(),
+						},
+						{
+							label: 'Loaded / supply',
+							value: `${collection.assets.length.toLocaleString()} / ${(
+								collection.total ?? collection.assets.length
+							).toLocaleString()}`,
+						},
+						{ label: 'Offer candidates', value: activity.length.toLocaleString() },
+					]}
+				/>
+				<CollectionTabs
+					collection={collection}
+					active={listedOnly ? 'offers' : 'assets'}
+					onSelectAssets={() => setListedOnly(false)}
+					onSelectOffers={() => setListedOnly(true)}
+				/>
+			</div>
 			{appendOpen && ownedCollection ? (
 				<div className="dialog-backdrop" role="presentation">
 					<section
@@ -6621,12 +6629,6 @@ function CollectionView() {
 					</section>
 				</div>
 			) : null}
-			<CollectionTabs
-				collection={collection}
-				active={listedOnly ? 'offers' : 'assets'}
-				onSelectAssets={() => setListedOnly(false)}
-				onSelectOffers={() => setListedOnly(true)}
-			/>
 			<CollectionIndexNotice collection={collection} checking={market.loading} onRetry={market.retry} />
 			{pagedTokenScope ? (
 				<div className="collection-source-notice" role="status">
@@ -7433,33 +7435,37 @@ function CollectionActivityView() {
 			<Link className="back" to="/">
 				<ArrowLeft className="ui-icon ui-icon--sm" aria-hidden="true" /> All collections
 			</Link>
-			<CollectionMarketHeader
-				collection={collection}
-				stats={[
-					{
-						label: 'Indexed events',
-						value: loading ? `${events.length.toLocaleString()} so far` : events.length.toLocaleString(),
-					},
-					{
-						label: 'Loaded / supply',
-						value: `${collection.assets.length.toLocaleString()} / ${(
-							collection.total ?? collection.assets.length
-						).toLocaleString()}`,
-					},
-					{ label: 'Batches checked', value: pages.toLocaleString() },
-					{
-						label: 'Activity status',
-						value: error
-							? 'Needs retry'
-							: loading
-							? preservingEvents
-								? 'Refreshing'
-								: 'Checking…'
-							: 'Current',
-					},
-				]}
-			/>
-			<CollectionTabs collection={collection} active="activity" />
+			<div className="collection-market-navigation">
+				<CollectionMarketHeader
+					collection={collection}
+					stats={[
+						{
+							label: 'Indexed events',
+							value: loading
+								? `${events.length.toLocaleString()} so far`
+								: events.length.toLocaleString(),
+						},
+						{
+							label: 'Loaded / supply',
+							value: `${collection.assets.length.toLocaleString()} / ${(
+								collection.total ?? collection.assets.length
+							).toLocaleString()}`,
+						},
+						{ label: 'Batches checked', value: pages.toLocaleString() },
+						{
+							label: 'Activity status',
+							value: error
+								? 'Needs retry'
+								: loading
+								? preservingEvents
+									? 'Refreshing'
+									: 'Checking…'
+								: 'Current',
+						},
+					]}
+				/>
+				<CollectionTabs collection={collection} active="activity" />
+			</div>
 			<span aria-live="polite" className="sr-only" role="status">
 				{activityScanAnnouncement}
 			</span>

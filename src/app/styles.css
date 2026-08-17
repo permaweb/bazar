@@ -10991,6 +10991,22 @@ body input:focus-visible {
 .collection-marketplace-page > .back {
 	margin-bottom: 14px;
 }
+.collection-market-navigation {
+	position: sticky;
+	top: 85px;
+	z-index: 30;
+	background: var(--paper);
+}
+.collection-market-navigation::before {
+	content: '';
+	position: absolute;
+	right: 0;
+	bottom: 100%;
+	left: 0;
+	height: 24px;
+	background: var(--paper);
+	pointer-events: none;
+}
 .collection-market-header {
 	margin-bottom: 18px;
 	display: grid;
@@ -11405,6 +11421,12 @@ body input:focus-visible {
 	.collection-analytics {
 		position: static;
 		min-height: 0;
+	}
+	.collection-market-navigation {
+		position: static;
+	}
+	.collection-market-navigation::before {
+		display: none;
 	}
 }
 
