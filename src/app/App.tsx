@@ -163,6 +163,7 @@ import { StateVerification } from 'components/StateVerification';
 import { TokenArtwork } from 'components/TokenArtwork';
 import { TokenAvatar } from 'components/TokenAvatar';
 import { TokenMarketRow } from 'components/TokenMarketRow';
+import type { TokenPricePoint } from 'components/TokenPriceChart';
 import { Tooltip } from 'components/Tooltip';
 import {
 	isTransactionActivityVisible,
@@ -289,6 +290,9 @@ import {
 import { useDialogFocus } from './useDialogFocus';
 
 const FungibleAssetView = React.lazy(() => import('../routes/FungibleAssetRoute'));
+const UniquePriceChart = React.lazy(() =>
+	import('../components/TokenPriceChart').then(({ TokenPriceChart }) => ({ default: TokenPriceChart }))
+);
 const CreateView = React.lazy(() => import('../routes/CreateRoute'));
 const DispatchView = React.lazy(() => import('../routes/DispatchRoute'));
 const ProfileView = React.lazy(() => import('../routes/ProfileRoute'));
@@ -7804,6 +7808,20 @@ export function assetDetailMembershipVerified(
 	return directAtomicAsset || Boolean(collectionId && verifiedCollectionIds.has(collectionId));
 }
 
+export function uniqueAskHistory(events: CollectionActivityEvent[]): TokenPricePoint[] {
+	return events
+		.flatMap((event) => {
+			if (event.action !== 'make-offer' || !event.asking) return [];
+			try {
+				if (BigInt(event.asking) <= 0n) return [];
+				return [{ id: event.id, timestamp: event.timestamp, value: event.asking }];
+			} catch {
+				return [];
+			}
+		})
+		.sort((left, right) => left.timestamp - right.timestamp || left.id.localeCompare(right.id));
+}
+
 export function verifiedAssetForDetail(
 	collection: Collection | undefined,
 	indexedAsset: AssetSummary | undefined,
@@ -8770,6 +8788,7 @@ function AssetView() {
 		})().catch(() => undefined);
 		return () => controller.abort();
 	}, [assetId, openOperation, operation, recoverySuppressed, state, storageVersion, wallet.address]);
+	const uniqueAskPoints = React.useMemo(() => uniqueAskHistory(assetActivity), [assetActivity]);
 	if (!collection && (market.loading || (directAtomicRoute && loading))) {
 		return (
 			<AssetDetailLoadingShell
@@ -9206,7 +9225,7 @@ function AssetView() {
 						idPrefix="asset"
 						onChange={(section) => {
 							setActiveSection(section);
-							if (section === 'activity') setActivityRequested(true);
+							if (section === 'orders' || section === 'activity') setActivityRequested(true);
 						}}
 						tabs={assetTabs}
 					/>
@@ -9264,11 +9283,20 @@ function AssetView() {
 					{activeSection === 'orders' ? (
 						<section
 							aria-labelledby="asset-orders-tab"
-							className="asset-tab-panel"
+							className="asset-tab-panel atomic-market-panel"
 							id="asset-orders"
 							role="tabpanel"
 							tabIndex={0}
 						>
+							<React.Suspense fallback={<Loading label="Preparing ask history…" />}>
+								<UniquePriceChart
+									error={activityError}
+									formatValue={(value) => `${winstonToAr(value)} AR`}
+									loading={activityLoading}
+									points={uniqueAskPoints}
+									ticker={asset.name}
+								/>
+							</React.Suspense>
 							<div aria-label={`${asset.name} order book`} className="orderbook-table" role="table">
 								<div className="orderbook-head" role="row">
 									<span role="columnheader">Price</span>

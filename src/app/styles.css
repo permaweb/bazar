@@ -7649,6 +7649,51 @@ body input:focus-visible {
 	min-height: 36px;
 	padding: 0 11px;
 }
+@media (max-width: 600px) {
+	.site-nav,
+	.site-nav-wallet {
+		gap: 8px;
+	}
+	.gateway-control {
+		position: relative;
+		display: grid;
+		place-items: center;
+	}
+	.gateway,
+	.gateway-control > .ui-tooltip {
+		grid-area: 1 / 1 / 2 / 2;
+	}
+	.gateway-control > .ui-tooltip {
+		z-index: 1;
+		align-self: start;
+		justify-self: end;
+		transform: translate(3px, -3px);
+	}
+	.gateway-refreshing {
+		width: 16px;
+		height: 16px;
+		border: 1px solid var(--line);
+		border-radius: 999px;
+		background: var(--paper);
+	}
+	.gateway-refreshing > svg {
+		width: 10px;
+		height: 10px;
+	}
+	.gateway-refreshing:focus-visible {
+		outline-offset: 1px;
+	}
+	.site-search,
+	.site-nav-primary .gateway summary,
+	.wallet {
+		width: 44px;
+		min-width: 44px;
+		height: 44px;
+		min-height: 44px;
+		padding: 0;
+		border-radius: 7px;
+	}
+}
 .create-page {
 	width: 100%;
 	min-height: calc(100vh - 61px);
@@ -9409,7 +9454,6 @@ body input:focus-visible {
 		position: static;
 	}
 	.home-assets {
-		border-top: 1px solid var(--home-line);
 		border-left: 0;
 	}
 	.home-feature-art {
@@ -9445,6 +9489,26 @@ body input:focus-visible {
 		min-height: 0;
 	}
 }
+@media (max-width: 600px) {
+	.home-assets .home-section-heading {
+		align-items: stretch;
+		flex-direction: column;
+		gap: 14px;
+	}
+	.home-assets .market-select {
+		width: 100%;
+		min-width: 0;
+	}
+	.home-feature-grid {
+		grid-template-columns: minmax(0, 1fr);
+	}
+	.home-feature-card {
+		aspect-ratio: auto;
+	}
+	.home-feature-art {
+		flex: 0 0 auto;
+	}
+}
 @media (max-width: 480px) {
 	.home-content {
 		padding-bottom: 0;
@@ -9455,15 +9519,6 @@ body input:focus-visible {
 	.home-section-heading {
 		margin-bottom: 0;
 		padding: 20px 0;
-	}
-	.home-assets .home-section-heading {
-		align-items: stretch;
-		flex-direction: column;
-		gap: 14px;
-	}
-	.home-assets .market-select {
-		width: 100%;
-		min-width: 0;
 	}
 	.home-asset-filters {
 		width: 100%;
@@ -10667,58 +10722,83 @@ body input:focus-visible {
 	display: grid;
 	gap: 16px;
 }
+.atomic-market-panel {
+	display: grid;
+	gap: 16px;
+}
 .token-price-chart {
 	overflow: hidden;
 	border: 1px solid var(--line-dark);
-	border-radius: 16px;
-	background: radial-gradient(circle at 18% -10%, var(--success-subtle-surface), var(--transparent) 38%), var(--paper);
+	border-radius: 18px;
+	background: var(--paper);
 }
 .token-price-chart-heading {
-	min-height: 94px;
-	padding: 18px 18px 12px;
+	min-height: 128px;
+	padding: 22px 22px 8px;
 	display: flex;
 	align-items: start;
 	justify-content: space-between;
-	gap: 18px;
+	gap: 24px;
 }
 .token-price-quote {
 	min-width: 0;
 	display: grid;
-	gap: 3px;
+	gap: 5px;
 }
 .token-price-quote > small {
 	color: var(--muted);
 	font-size: var(--type-small);
+	font-weight: 500;
+	letter-spacing: 0.02em;
 }
 .token-price-quote > strong {
 	overflow: hidden;
-	font-size: clamp(1.35rem, 2.4vw, 2rem);
-	font-weight: 500;
+	font-size: clamp(1.8rem, 4vw, 2.65rem);
+	font-weight: 400;
 	font-variant-numeric: tabular-nums;
-	letter-spacing: -0.035em;
-	line-height: 1.08;
+	letter-spacing: -0.045em;
+	line-height: 1;
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
+.token-price-summary {
+	padding-top: 2px;
+	display: grid;
+	justify-items: end;
+	color: var(--muted);
+	font-variant-numeric: tabular-nums;
+	text-align: right;
+}
+.token-price-summary > small,
+.token-price-summary > span {
+	font-size: var(--type-small);
+}
+.token-price-summary > strong {
+	margin-top: 7px;
+	color: var(--ink);
+	font-size: 1.45rem;
+	font-weight: 500;
+	letter-spacing: -0.025em;
+	line-height: 1;
+}
 .token-price-ranges {
-	padding: 3px;
-	display: inline-flex;
+	padding: 12px 18px 16px;
+	display: flex;
 	align-items: center;
-	gap: 2px;
-	border: 1px solid var(--line);
-	border-radius: 10px;
-	background: color-mix(in srgb, var(--panel) 76%, var(--transparent));
+	justify-content: center;
+	gap: 5px;
 }
 .token-price-ranges button {
-	min-width: 38px;
-	height: 30px;
-	padding: 0 9px;
+	min-width: 44px;
+	height: 36px;
+	padding: 0 10px;
 	border: 0;
-	border-radius: 7px;
+	border-radius: 9px;
 	background: var(--transparent);
 	cursor: pointer;
 	color: var(--muted);
 	font-size: var(--type-small);
+	font-weight: 600;
 	transition: background 120ms ease, color 120ms ease, box-shadow 120ms ease;
 }
 .token-price-ranges button:hover {
@@ -10727,74 +10807,146 @@ body input:focus-visible {
 }
 .token-price-ranges button[aria-pressed='true'] {
 	color: var(--ink);
-	background: var(--paper);
-	box-shadow: 0 1px 5px color-mix(in srgb, var(--ink) 12%, var(--transparent));
+	background: var(--surface-subtle);
+	box-shadow: inset 0 0 0 1px var(--line);
 }
 .token-price-ranges button:focus-visible {
 	outline: 2px solid var(--focus-ring);
 	outline-offset: 2px;
 }
 .token-price-context {
-	padding: 0 18px 12px;
+	padding: 2px 0 0;
 	display: flex;
 	align-items: center;
 	gap: 8px;
 	color: var(--muted);
 }
 .token-price-context > span {
-	padding: 3px 7px;
-	border-radius: 999px;
-	background: var(--surface-subtle);
 	color: var(--muted);
-	font-size: var(--type-small);
+	font-size: var(--type-body);
+	font-weight: 500;
 	font-variant-numeric: tabular-nums;
 }
 .token-price-context > span[data-direction='up'] {
-	background: var(--success-subtle-surface);
 	color: var(--positive-text);
 }
 .token-price-context > span[data-direction='down'] {
-	background: var(--negative-subtle-surface);
 	color: var(--negative);
 }
 .token-price-plot {
+	--token-price-left-bleed: clamp(28px, 7vw, 56px);
 	position: relative;
-	height: 250px;
-	margin: 0 18px;
+	height: 285px;
+	margin: 0;
 	overflow: hidden;
-	border-top: 1px solid var(--line);
 	cursor: crosshair;
 	touch-action: pan-y;
 }
 .token-price-tradingview {
 	position: absolute;
-	inset: 0;
-	width: 100%;
+	inset: 0 0 0 calc(var(--token-price-left-bleed) * -1);
+	width: calc(100% + var(--token-price-left-bleed));
 	height: 100%;
 }
+.token-price-current-marker {
+	--token-price-marker-color: var(--positive-text);
+	z-index: 2;
+	position: absolute;
+	display: flex;
+	align-items: center;
+	transform: translate(-4px, -50%);
+	pointer-events: none;
+	color: var(--token-price-marker-color);
+	font-variant-numeric: tabular-nums;
+}
+.token-price-current-marker[data-direction='down'] {
+	--token-price-marker-color: var(--negative);
+}
+.token-price-current-dot {
+	position: relative;
+	width: 8px;
+	height: 8px;
+	flex: 0 0 auto;
+	border: 2px solid var(--paper);
+	border-radius: 999px;
+	background: var(--token-price-marker-color);
+	box-shadow: 0 0 0 1px var(--token-price-marker-color);
+}
+.token-price-current-dot::before,
+.token-price-current-dot::after {
+	position: absolute;
+	inset: -6px;
+	border: 1px solid var(--token-price-marker-color);
+	border-radius: inherit;
+	content: '';
+	animation: token-price-radar 1.8s ease-out infinite;
+}
+.token-price-current-dot::after {
+	animation-delay: 0.9s;
+}
+.token-price-current-marker > strong {
+	max-width: 24ch;
+	margin-left: 9px;
+	padding: 4px 8px;
+	overflow: hidden;
+	border: 1px solid color-mix(in srgb, var(--token-price-marker-color) 45%, var(--line));
+	border-radius: 7px;
+	background: color-mix(in srgb, var(--token-price-marker-color) 9%, var(--paper));
+	box-shadow: 0 2px 8px color-mix(in srgb, var(--ink) 10%, var(--transparent));
+	color: var(--ink);
+	font-size: var(--type-small);
+	font-weight: 600;
+	line-height: 1.2;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+@keyframes token-price-radar {
+	0% {
+		opacity: 0.62;
+		transform: scale(0.45);
+	}
+	100% {
+		opacity: 0;
+		transform: scale(1.65);
+	}
+}
 .token-price-empty {
-	min-height: 240px;
-	margin: 0 18px;
+	min-height: 285px;
+	margin: 0;
 	display: grid;
 	place-items: center;
-	border-top: 1px solid var(--line);
 	color: var(--muted);
 }
 @media (max-width: 760px) {
 	.token-price-chart-heading {
-		min-height: 0;
-		align-items: stretch;
-		flex-direction: column;
+		min-height: 122px;
+		padding: 20px 16px 6px;
+		gap: 12px;
+	}
+	.token-price-quote > strong {
+		font-size: clamp(1.55rem, 7vw, 2.25rem);
+	}
+	.token-price-summary > small {
+		max-width: 104px;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 	.token-price-ranges {
 		width: 100%;
+		padding: 10px 8px 14px;
+		gap: 3px;
 	}
 	.token-price-ranges button {
-		min-width: 0;
-		flex: 1;
+		min-width: 40px;
+		padding-inline: 7px;
+		flex: 0 1 48px;
 	}
 	.token-price-plot {
-		height: 220px;
+		height: 245px;
+	}
+	.token-price-empty {
+		min-height: 245px;
 	}
 	.token-market-row,
 	.token-market-list.compact .token-market-row {

@@ -8,6 +8,7 @@ import {
 	assetDetailLoadingPresentation,
 	assetStateErrorMessage,
 	mergeAssetDetailMetadata,
+	uniqueAskHistory,
 } from './App';
 
 const assetId = 'A'.repeat(43);
@@ -59,5 +60,24 @@ describe('asset detail fallbacks', () => {
 		expect(assetDetailErrorMessage(friendly, { name: 'AntiqueWhite' }, true)).toBe(
 			'AntiqueWhite is published and indexed, but its ownership and market state are currently unavailable from the configured compute peers. Retry shortly.'
 		);
+	});
+
+	it('builds a chronologically ordered Unique ask history from signed listing events', () => {
+		const shared = {
+			processId: assetId,
+			actor: 'B'.repeat(43),
+			height: 1,
+		};
+		expect(
+			uniqueAskHistory([
+				{ ...shared, id: 'later', action: 'make-offer', timestamp: 20, asking: '2500000000000' },
+				{ ...shared, id: 'transfer', action: 'transfer', timestamp: 15, asking: '999' },
+				{ ...shared, id: 'invalid', action: 'make-offer', timestamp: 12, asking: '0' },
+				{ ...shared, id: 'earlier', action: 'make-offer', timestamp: 10, asking: '1000000000000' },
+			])
+		).toEqual([
+			{ id: 'earlier', timestamp: 10, value: '1000000000000' },
+			{ id: 'later', timestamp: 20, value: '2500000000000' },
+		]);
 	});
 });
