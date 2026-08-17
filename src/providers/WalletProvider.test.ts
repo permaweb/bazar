@@ -24,6 +24,24 @@ describe('explicit wallet connection', () => {
 		expect(connect).toHaveBeenCalledWith(['ACCESS_ADDRESS', 'ACCESS_PUBLIC_KEY', 'SIGN_TRANSACTION']);
 	});
 
+	it('identifies Bazar when connecting through The Fold', async () => {
+		const connect = vi.fn(async () => undefined);
+		const address = 'b'.repeat(43);
+		await expect(
+			connectWallet(
+				{
+					connect,
+					getActiveAddress: async () => address,
+					sign: async (transaction) => transaction,
+				},
+				{ name: 'Bazar' }
+			)
+		).resolves.toBe(address);
+		expect(connect).toHaveBeenCalledWith(['ACCESS_ADDRESS', 'ACCESS_PUBLIC_KEY', 'SIGN_TRANSACTION'], {
+			name: 'Bazar',
+		});
+	});
+
 	it('rejects a connection whose active address cannot be read', async () => {
 		await expect(
 			connectWallet({

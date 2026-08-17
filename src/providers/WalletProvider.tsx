@@ -22,6 +22,7 @@ type WalletContextValue = {
 	arBalance: bigint | null;
 	arBalanceStatus: 'idle' | 'loading' | 'ready' | 'error';
 	connect(): Promise<void>;
+	connectTheFold(): Promise<void>;
 	disconnect(): Promise<void>;
 	generateLocalWallet(): Promise<GeneratedWallet>;
 	importLocalWallet(file: File): Promise<void>;
@@ -115,10 +116,23 @@ export function WalletProvider({ children }: React.PropsWithChildren) {
 				window.arweaveWallet = wallet;
 				commit(nextAddress);
 			},
+			connectTheFold: async () => {
+				const wallet = window.permawebConnect;
+				if (!wallet) throw new Error('Install The Fold browser extension to continue.');
+				rememberCurrentBrowserWallet(wallet);
+				const commit = addressRequests.current.begin();
+				const nextAddress = await connectWallet(wallet, { name: 'Bazar' });
+				clearLocalWallet();
+				window.arweaveWallet = wallet;
+				commit(nextAddress);
+			},
 			disconnect: async () => {
 				const commit = addressRequests.current.begin();
 				if (isLocalWallet(window.arweaveWallet)) {
 					clearLocalWallet();
+					restoreBrowserWallet();
+				} else if (window.arweaveWallet === window.permawebConnect) {
+					await window.permawebConnect?.disconnect?.();
 					restoreBrowserWallet();
 				} else {
 					await window.arweaveWallet?.disconnect?.();
@@ -195,7 +209,7 @@ function WalletConnectionDialog({
 }) {
 	const wallet = useWallet();
 	const fileInput = React.useRef<HTMLInputElement>(null);
-	const [action, setAction] = React.useState<'wander' | 'generate' | 'import' | null>(null);
+	const [action, setAction] = React.useState<'wander' | 'fold' | 'generate' | 'import' | null>(null);
 	const [error, setError] = React.useState('');
 	const [generatedWallet, setGeneratedWallet] = React.useState<GeneratedWallet | null>(null);
 	const [copied, setCopied] = React.useState(false);
@@ -221,6 +235,18 @@ function WalletConnectionDialog({
 		setError('');
 		try {
 			await wallet.connect();
+			onClose();
+		} catch (cause) {
+			setError(walletErrorMessage(cause));
+		} finally {
+			setAction(null);
+		}
+	};
+	const connectTheFold = async () => {
+		setAction('fold');
+		setError('');
+		try {
+			await wallet.connectTheFold();
 			onClose();
 		} catch (cause) {
 			setError(walletErrorMessage(cause));
@@ -366,6 +392,23 @@ function WalletConnectionDialog({
 							</div>
 							<div className="wallet-option">
 								<div className="wallet-option-copy">
+									<Wallet className="ui-icon" aria-hidden="true" />
+									<div>
+										<strong>The Fold</strong>
+										<span>Browser extension wallet</span>
+									</div>
+								</div>
+								<Button
+									onClick={() => void connectTheFold()}
+									disabled={action !== null}
+									type="button"
+									size="custom"
+								>
+									{action === 'fold' ? 'Connecting…' : 'Connect'}
+								</Button>
+							</div>
+							<div className="wallet-option">
+								<div className="wallet-option-copy">
 									<KeyRound className="ui-icon" aria-hidden="true" />
 									<div>
 										<strong>Generate keyfile</strong>
@@ -418,9 +461,10 @@ function WalletConnectionDialog({
 	);
 }
 
-export async function connectWallet(wallet: Window['arweaveWallet']) {
+export async function connectWallet(wallet: Window['arweaveWallet'], appInfo?: { name: string }) {
 	if (!wallet) throw new Error('Install the Wander wallet extension to continue.');
-	await wallet.connect(WALLET_PERMISSIONS);
+	if (appInfo) await wallet.connect(WALLET_PERMISSIONS, appInfo);
+	else await wallet.connect(WALLET_PERMISSIONS);
 	let address: string | undefined;
 	try {
 		address = await wallet.getActiveAddress?.();
@@ -470,11 +514,16 @@ export function isValidWalletJwk(value: unknown): value is WalletJwk {
 
 function browserWallet() {
 	const current = window.arweaveWallet;
-	if (current && !isLocalWallet(current)) {
+	if (current && current !== window.permawebConnect && !isLocalWallet(current)) {
 		rememberedBrowserWallet = current;
 		return current;
 	}
 	return rememberedBrowserWallet;
+}
+
+function rememberCurrentBrowserWallet(nextWallet: Window['arweaveWallet']) {
+	const current = window.arweaveWallet;
+	if (current && current !== nextWallet && !isLocalWallet(current)) rememberedBrowserWallet = current;
 }
 
 function isLocalWallet(wallet: Window['arweaveWallet']) {
