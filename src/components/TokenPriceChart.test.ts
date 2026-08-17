@@ -109,6 +109,7 @@ describe('TokenPriceChart', () => {
 		const markup = renderToStaticMarkup(
 			React.createElement(TokenPriceChart, {
 				points: [{ id: 'a', timestamp: 1, value: '1000000000000' }],
+				floorValue: '750000000000',
 				ticker: 'TOK',
 				loading: false,
 				error: null,
@@ -117,7 +118,9 @@ describe('TokenPriceChart', () => {
 		);
 		expect(markup).toContain('Ask history');
 		expect(markup).toContain('Ask history range');
-		expect(markup).toContain('Current price');
+		expect(markup).toContain('Floor price');
+		expect(markup).toContain('750000000000 winston');
+		expect(markup).not.toContain('Current price');
 		expect(markup).not.toContain('Selected ask');
 		expect(markup).toContain('indexed ask');
 		expect(markup).not.toContain('token-price-summary');

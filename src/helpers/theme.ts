@@ -23,6 +23,8 @@ const commonGlobal = {
 	brandBadgeBackground: '#303030',
 	tooltipBorder: '#3d3d3a',
 	tooltipBackground: '#292927',
+	activityChartBar: '#e3ecf9',
+	activityChartBarHover: '#b8cde9',
 	imageGlassSurface: 'rgba(255, 255, 255, 0.42)',
 	imageControlBorder: 'rgba(255, 255, 255, 0.55)',
 	imageDetailBorder: 'rgba(212, 212, 212, 0.8)',

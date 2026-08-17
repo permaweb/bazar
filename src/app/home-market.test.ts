@@ -35,6 +35,7 @@ import {
 	DiscoveryAssetArtwork,
 	filterGlobalActivity,
 	globalActivityCollection,
+	globalActivityRecipientIds,
 	globalActivityRevealDescription,
 	globalActivityWindowDescription,
 	HOME_DISCOVER_TOKEN_PAGE_SIZE,
@@ -1099,35 +1100,23 @@ describe('Home market summary retries', () => {
 		expect(filterGlobalActivity(events, 'cancel-order').map((event) => event.id)).toEqual(['cancel']);
 	});
 
-	it('describes filter counts as a bounded recent activity window', () => {
-		expect(globalActivityWindowDescription(0)).toBe('');
-		expect(globalActivityWindowDescription(1)).toBe(
-			'Filter counts cover the latest 1 indexed event currently loaded.'
+	it('describes a complete progressive scan without claiming unloaded collection assets', () => {
+		expect(globalActivityWindowDescription(42, 12, true)).toBe(
+			'Reading complete indexed history for 12 marketplace assets. 42 events found so far.'
 		);
-		expect(globalActivityWindowDescription(42)).toBe(
-			'Filter counts cover the latest 42 indexed events currently loaded.'
+		expect(globalActivityWindowDescription(1, 1)).toBe(
+			'All 1 indexed event found for 1 marketplace asset is loaded.'
 		);
-		expect(globalActivityWindowDescription(100)).toBe(
-			'Filter counts cover the latest 100 indexed events. Older activity may exist.'
-		);
-		expect(globalActivityWindowDescription(200, 200)).toBe(
-			'Filter counts cover the latest 200 indexed events. Older activity may exist.'
+		expect(globalActivityWindowDescription(200, 50, false, true)).toBe(
+			'All 200 indexed events found for the currently loaded 50 marketplace assets are loaded. More assets remain in paged collections.'
 		);
 	});
 
-	it('describes progressive activity reveal without claiming the window is the total', () => {
-		expect(globalActivityRevealDescription(40, 100, 100, false)).toBe(
-			'Showing 40 of 100 events in the latest indexed activity window.'
-		);
-		expect(globalActivityRevealDescription(100, 100, 100, false)).toBe(
-			'All 100 events in the latest indexed activity window are shown. Older activity may exist.'
-		);
-		expect(globalActivityRevealDescription(90, 90, 100, true)).toBe(
-			'All 90 matching events in the latest indexed activity window are shown. Older activity may exist.'
-		);
-		expect(globalActivityRevealDescription(1, 1, 18, true)).toBe(
-			'All 1 matching event in the latest indexed activity window is shown.'
-		);
+	it('describes progressive reveal within the complete loaded history', () => {
+		expect(globalActivityRevealDescription(40, 100, 100, false)).toBe('Showing 40 of 100 indexed events.');
+		expect(globalActivityRevealDescription(100, 100, 100, false)).toBe('All 100 indexed events are shown.');
+		expect(globalActivityRevealDescription(90, 90, 100, true)).toBe('All 90 matching indexed events are shown.');
+		expect(globalActivityRevealDescription(1, 1, 18, true)).toBe('All 1 matching indexed event is shown.');
 	});
 
 	it('checks exact collection membership without rescanning loaded assets', () => {
@@ -1167,6 +1156,35 @@ describe('Home market summary retries', () => {
 		expect([tokenIncludes(loadedToken), tokenIncludes(foreign)]).toEqual([true, false]);
 		expect([nameIncludes(canonicalName), nameIncludes(staleLoadedName)]).toEqual([true, false]);
 		expect(nameIncludes(hiddenName)).toBe(false);
+	});
+
+	it('deduplicates visible marketplace recipients for complete history scans', () => {
+		const shared = 'q'.repeat(43);
+		const image = 'i'.repeat(43);
+		const name = 'n'.repeat(43);
+		const indexed: Collection[] = [
+			{
+				id: 'images',
+				name: 'Images',
+				description: '',
+				kind: 'images',
+				assets: [
+					{ id: image, name: 'Image' },
+					{ id: shared, name: 'Shared' },
+				],
+			},
+			{ id: 'tokens', name: 'Tokens', description: '', kind: 'tokens', assets: [{ id: shared, name: 'Shared' }] },
+			{
+				id: 'names',
+				name: 'Names',
+				description: '',
+				kind: 'names',
+				assets: [],
+				namespace: { manifestId: 'm'.repeat(43), namesById: { [name]: 'name' } },
+			},
+		];
+
+		expect(globalActivityRecipientIds(indexed)).toEqual([image, shared, name]);
 	});
 
 	it('screens a large collection candidate set with exact indexed membership', () => {

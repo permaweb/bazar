@@ -4406,6 +4406,190 @@ input:focus {
 	white-space: nowrap;
 }
 
+.global-activity-stats {
+	margin: 0 0 12px;
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 10px;
+}
+.global-activity-stat {
+	min-width: 0;
+	min-height: 190px;
+	padding: 14px 14px 0;
+	display: flex;
+	flex-direction: column;
+	justify-content: space-between;
+	overflow: hidden;
+	border: 1px solid var(--line);
+	border-radius: 10px;
+	background: var(--paper);
+	font-family: inherit;
+	font-weight: 400;
+}
+.global-activity-stat-copy {
+	position: relative;
+	z-index: 1;
+}
+.global-activity-stat h3,
+.global-activity-stat p {
+	margin: 0;
+}
+.global-activity-stat h3 {
+	color: var(--muted);
+	font-size: var(--type-body);
+	font-weight: 400;
+	line-height: 1.3;
+}
+.global-activity-counter {
+	margin-top: 3px;
+	display: block;
+	font-size: var(--type-display);
+	font-weight: 400;
+	font-variant-numeric: tabular-nums;
+	line-height: 1;
+}
+.global-activity-counter-visual {
+	height: 1em;
+	display: inline-block;
+	overflow: hidden;
+	perspective: 4em;
+	vertical-align: top;
+}
+.global-activity-counter-value {
+	display: block;
+	line-height: 1;
+	transform-origin: center bottom;
+	animation: global-activity-counter-roll 480ms cubic-bezier(0.22, 0.8, 0.24, 1);
+}
+@keyframes global-activity-counter-roll {
+	from {
+		opacity: 0.35;
+		transform: translateY(0.5em) rotateX(-70deg);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0) rotateX(0);
+	}
+}
+.global-activity-stat p {
+	margin-top: 6px;
+	overflow: hidden;
+	color: var(--muted);
+	font-size: var(--type-small);
+	font-weight: 400;
+	line-height: 1.35;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.global-activity-chart-shell {
+	position: relative;
+	width: calc(100% + 28px);
+	height: 96px;
+	margin-left: -14px;
+	overflow: visible;
+	cursor: crosshair;
+	outline: none;
+	touch-action: pan-x pan-y;
+}
+.global-activity-chart-shell:focus-visible {
+	box-shadow: inset 0 0 0 2px var(--event-blue);
+}
+.global-activity-chart {
+	width: 100%;
+	height: 100%;
+	display: block;
+}
+.global-activity-chart-bar {
+	fill: var(--activity-chart-bar);
+	opacity: 1;
+	transition: fill 120ms ease;
+}
+.global-activity-chart-bar.is-active {
+	fill: var(--activity-chart-bar-hover);
+}
+.global-activity-chart-area {
+	fill: var(--event-blue-surface);
+	opacity: 0.72;
+}
+.global-activity-chart-line {
+	fill: none;
+	stroke: var(--event-blue);
+	stroke-linecap: round;
+	stroke-linejoin: round;
+	stroke-width: 2;
+	opacity: 0.82;
+	vector-effect: non-scaling-stroke;
+}
+.global-activity-chart-crosshair {
+	stroke: var(--event-blue);
+	stroke-dasharray: 3 3;
+	stroke-width: 1;
+	vector-effect: non-scaling-stroke;
+}
+.global-activity-chart-point {
+	fill: var(--paper);
+	stroke: var(--event-blue);
+	stroke-width: 2;
+	vector-effect: non-scaling-stroke;
+}
+.global-activity-chart-tooltip {
+	position: absolute;
+	z-index: 2;
+	min-width: max-content;
+	padding: 5px 7px;
+	transform: translate(calc(-100% - 7px), calc(-100% - 7px));
+	border: 1px solid var(--tooltip-border);
+	border-radius: 6px;
+	color: var(--contrast-text);
+	background: var(--tooltip-background);
+	box-shadow: 0 4px 12px var(--shadow-floating);
+	font-family: inherit;
+	font-size: var(--type-small);
+	font-weight: 400;
+	line-height: 1.35;
+	pointer-events: none;
+}
+.global-activity-chart-tooltip.is-left {
+	transform: translate(7px, calc(-100% - 7px));
+}
+.global-activity-chart-tooltip span,
+.global-activity-chart-tooltip strong {
+	display: block;
+}
+.global-activity-chart-tooltip span {
+	opacity: 0.72;
+}
+.global-activity-chart-tooltip strong {
+	margin-top: 1px;
+	font-size: inherit;
+	font-weight: 400;
+	font-variant-numeric: tabular-nums;
+}
+@media (prefers-reduced-motion: reduce) {
+	.global-activity-counter-value {
+		animation: none;
+	}
+}
+@media (max-width: 900px) {
+	.global-activity-stats {
+		grid-template-columns: repeat(3, minmax(260px, 82vw));
+		overflow-x: auto;
+		scroll-snap-type: x proximity;
+	}
+	.global-activity-stat {
+		scroll-snap-align: start;
+	}
+}
+.global-activity-loading .loading {
+	padding: 0 0 9px;
+	gap: 8px;
+	font-size: var(--type-small);
+}
+.global-activity-loading .loading span {
+	width: 14px;
+	height: 14px;
+}
+
 .activity-window-description {
 	margin: 0 0 9px;
 	color: var(--muted);

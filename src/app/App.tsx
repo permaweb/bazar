@@ -51,6 +51,7 @@ import {
 	confirmPurchaseActivity,
 	createAssetCandidateResolver,
 	createWalletCandidateScan,
+	discoverAllCollectionActivityBatched,
 	discoverCollectionActivity,
 	discoverCollectionActivityBatched,
 	discoverCollectionActivityPage,
@@ -148,6 +149,7 @@ import { BazarMark } from 'components/BazarMark';
 import { Button } from 'components/Button';
 import { ConnectWalletButton } from 'components/ConnectWalletButton';
 import { ErrorPanel } from 'components/ErrorPanel';
+import { GlobalActivityCharts } from 'components/GlobalActivityCharts';
 import { Loading } from 'components/Loading';
 import { MintTransactionReceipt } from 'components/MintTransactionReceipt';
 import { NameArtwork } from 'components/NameArtwork';
@@ -4544,6 +4546,18 @@ export function globalActivityCollection(collections: Collection[], processId: s
 	return indexed.get(processId);
 }
 
+export function globalActivityRecipientIds(collections: Collection[]) {
+	const ids = new Set<string>();
+	for (const collection of collections) {
+		const processIds =
+			collection.kind === 'names'
+				? Object.keys(collection.namespace?.namesById ?? {})
+				: collection.assets.map((asset) => asset.id);
+		for (const id of processIds) if (isVisibleAssetId(id)) ids.add(id);
+	}
+	return [...ids];
+}
+
 export type GlobalActivityFilter = 'all' | CollectionActivityEvent['action'];
 
 export const GLOBAL_ACTIVITY_WINDOW_SIZE = 100;
@@ -4555,43 +4569,46 @@ export function filterGlobalActivity(events: CollectionActivityEvent[], filter: 
 	);
 }
 
-export function globalActivityWindowDescription(eventCount: number, limit = GLOBAL_ACTIVITY_WINDOW_SIZE) {
+export function globalActivityWindowDescription(
+	eventCount: number,
+	assetCount = 0,
+	loading = false,
+	hasMoreAssets = false
+) {
 	const count = Math.max(0, Math.floor(eventCount));
-	const windowLimit = Math.max(1, Math.floor(limit));
-	if (!count) return '';
-	if (count >= windowLimit) {
-		return `Filter counts cover the latest ${windowLimit.toLocaleString()} indexed events. Older activity may exist.`;
+	const assets = Math.max(0, Math.floor(assetCount));
+	if (loading) {
+		return `Reading complete indexed history for ${assets.toLocaleString()} marketplace ${
+			assets === 1 ? 'asset' : 'assets'
+		}. ${count.toLocaleString()} ${count === 1 ? 'event' : 'events'} found so far.`;
 	}
-	return `Filter counts cover the latest ${count.toLocaleString()} indexed ${
-		count === 1 ? 'event' : 'events'
-	} currently loaded.`;
+	return `All ${count.toLocaleString()} indexed ${count === 1 ? 'event' : 'events'} found for ${
+		hasMoreAssets ? 'the currently loaded ' : ''
+	}${assets.toLocaleString()} marketplace ${assets === 1 ? 'asset is' : 'assets are'} loaded.${
+		hasMoreAssets ? ' More assets remain in paged collections.' : ''
+	}`;
 }
 
 export function globalActivityRevealDescription(
 	shownCount: number,
 	matchingCount: number,
-	loadedCount: number,
+	_loadedCount: number,
 	filtered: boolean,
-	limit = GLOBAL_ACTIVITY_WINDOW_SIZE
+	_limit = GLOBAL_ACTIVITY_WINDOW_SIZE
 ) {
 	const shown = Math.max(0, Math.floor(shownCount));
 	const matching = Math.max(0, Math.floor(matchingCount));
-	const loaded = Math.max(0, Math.floor(loadedCount));
-	const windowLimit = Math.max(1, Math.floor(limit));
 	const qualifier = filtered ? ' matching' : '';
 	if (shown < matching) {
-		return `Showing ${shown.toLocaleString()} of ${matching.toLocaleString()}${qualifier} events in the latest indexed activity window.`;
+		return `Showing ${shown.toLocaleString()} of ${matching.toLocaleString()}${qualifier} indexed events.`;
 	}
 	const eventLabel = matching === 1 ? 'event' : 'events';
 	const verb = matching === 1 ? 'is' : 'are';
-	return `All ${matching.toLocaleString()}${qualifier} ${eventLabel} in the latest indexed activity window ${verb} shown.${
-		loaded >= windowLimit ? ' Older activity may exist.' : ''
-	}`;
+	return `All ${matching.toLocaleString()}${qualifier} indexed ${eventLabel} ${verb} shown.`;
 }
 
 function HomeActivityPanel({ collections, marketLoading }: { collections: Collection[]; marketLoading: boolean }) {
 	const [events, setEvents] = React.useState<CollectionActivityEvent[]>([]);
-	const [discoveredAssets, setDiscoveredAssets] = React.useState<Record<string, ResolvedAsset>>({});
 	const [loading, setLoading] = React.useState(true);
 	const [error, setError] = React.useState<string | null>(null);
 	const [retry, setRetry] = React.useState(0);
@@ -4610,6 +4627,8 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 		.map((collection) => `${collection.id}:${collectionActivityVersion(collection)}`)
 		.sort()
 		.join('|');
+	const activityRecipients = React.useMemo(() => globalActivityRecipientIds(collections), [collections]);
+	const hasMoreActivityAssets = collections.some((collection) => collection.hasMore);
 
 	React.useEffect(() => {
 		setActivityLimit(20);
@@ -4626,7 +4645,6 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 			scopeRef.current = activityScope;
 			eventsRef.current = cachedEvents;
 			setEvents(cachedEvents);
-			setDiscoveredAssets({});
 		} catch {
 			// Browser storage is optional; live Arweave discovery continues below.
 		}
@@ -4658,15 +4676,20 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 		if (!preserveEvents) {
 			eventsRef.current = [];
 			setEvents([]);
-			setDiscoveredAssets({});
 		} else if (!sameScope) {
 			eventsRef.current = initialEvents;
 			setEvents(initialEvents);
-			setDiscoveredAssets({});
 		}
 		setLoading(true);
 		setError(null);
-		const publish = (nextEvents: CollectionActivityEvent[]) => {
+		let publishFrame: number | undefined;
+		const commitFound = () => {
+			publishFrame = undefined;
+			if (controller.signal.aborted) return;
+			eventsRef.current = newestCollectionActivity([...found.values()], Number.MAX_SAFE_INTEGER);
+			setEvents(eventsRef.current);
+		};
+		const publish = (nextEvents: CollectionActivityEvent[], immediately = false) => {
 			if (controller.signal.aborted) return;
 			for (const event of nextEvents) {
 				const previous = found.get(event.id);
@@ -4677,95 +4700,33 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 						: event
 				);
 			}
-			eventsRef.current = newestCollectionActivity([...found.values()]);
-			setEvents(eventsRef.current);
-		};
-		const knownMembership = (processId: string) => globalActivityCollection(collections, processId);
-		const unknownEvents = new Map<string, CollectionActivityEvent[]>();
-		const resolvedUnknown = new Map<string, ResolvedAsset>();
-		const pendingUnknownSettlements = new Set<string>();
-		let settlementFrame: number | undefined;
-		const flushUnknownSettlements = () => {
-			if (settlementFrame !== undefined) window.cancelAnimationFrame(settlementFrame);
-			settlementFrame = undefined;
-			if (controller.signal.aborted || !pendingUnknownSettlements.size) return;
-			const settled = [...pendingUnknownSettlements];
-			pendingUnknownSettlements.clear();
-			setDiscoveredAssets((current) => ({
-				...current,
-				...Object.fromEntries(settled.map((processId) => [processId, resolvedUnknown.get(processId)!])),
-			}));
-			publish(settled.flatMap((processId) => unknownEvents.get(processId) ?? []));
-		};
-		const resolver = createAssetCandidateResolver(collections, {
-			signal: controller.signal,
-			concurrency: 2,
-			read: (processId, signal) => readAssetStateCached(processId, { signal, maxAttempts: 1 }),
-			onSettled: (result, candidate) => {
-				if (!result || controller.signal.aborted) return;
-				resolvedUnknown.set(candidate.processId, result);
-				pendingUnknownSettlements.add(candidate.processId);
-				settlementFrame ??= window.requestAnimationFrame(flushUnknownSettlements);
-			},
-		});
-		const supportFailures: unknown[] = [];
-		let supportTail = Promise.resolve();
-		const acceptPage = (pageEvents: CollectionActivityEvent[]) => {
-			const known = pageEvents.filter((event) => knownMembership(event.processId));
-			const unknown = pageEvents.filter((event) => !knownMembership(event.processId));
-			if (known.length) publish(known);
-			const candidates: AssetCandidate[] = [];
-			const resolvedEvents: CollectionActivityEvent[] = [];
-			for (const event of unknown) {
-				const processEvents = unknownEvents.get(event.processId);
-				if (processEvents) {
-					processEvents.push(event);
-				} else {
-					unknownEvents.set(event.processId, [event]);
-					candidates.push({
-						processId: event.processId,
-						height: event.height,
-						timestamp: event.timestamp,
-						sources: ['market-action'],
-					});
-				}
-				if (resolvedUnknown.has(event.processId)) resolvedEvents.push(event);
-			}
-			if (resolvedEvents.length) publish(resolvedEvents);
-			if (candidates.length) {
-				supportTail = supportTail.then(async () => {
-					try {
-						await verifyAssetCandidateSupport(candidates, collections, {
-							signal: controller.signal,
-							onVerified: (verified) => resolver.enqueue(verified),
-						});
-					} catch (cause) {
-						if (controller.signal.aborted) throw cause;
-						supportFailures.push(cause);
-					}
-				});
+			if (immediately) {
+				if (publishFrame !== undefined) window.cancelAnimationFrame(publishFrame);
+				commitFound();
+			} else {
+				publishFrame ??= window.requestAnimationFrame(commitFound);
 			}
 		};
-		const requests = [
-			discoverCollectionActivity({
-				signal: controller.signal,
-				limit: 200,
-				onPage: acceptPage,
-			}),
-		];
-		void Promise.allSettled(requests).then(async (outcomes) => {
-			if (controller.signal.aborted) return;
-			const failures = outcomes.flatMap((outcome) => (outcome.status === 'rejected' ? [outcome.reason] : []));
+		void (async () => {
+			const failures: unknown[] = [];
 			try {
-				await supportTail;
-				await resolver.finish();
+				const completeEvents = await discoverAllCollectionActivityBatched({
+					recipients: activityRecipients,
+					concurrency: 2,
+					signal: controller.signal,
+					onPage: (page) => publish(page),
+				});
+				publish(completeEvents, true);
 			} catch (cause) {
 				if (controller.signal.aborted) return;
 				failures.push(cause);
 			}
-			flushUnknownSettlements();
-			failures.push(...supportFailures);
-			eventsRef.current = newestCollectionActivity([...found.values()]);
+			if (controller.signal.aborted) return;
+			if (publishFrame !== undefined) window.cancelAnimationFrame(publishFrame);
+			commitFound();
+			// The complete indexed-history scan ends here. Purchase-proof verification is
+			// slower optional enrichment and must not keep the history loader running.
+			setLoading(false);
 			try {
 				eventsRef.current = await confirmPurchaseActivity(eventsRef.current, {
 					signal: controller.signal,
@@ -4777,11 +4738,7 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 			}
 			setEvents(eventsRef.current);
 			try {
-				saveMarketActivity(
-					window.localStorage,
-					activityScope,
-					eventsRef.current.filter((event) => knownMembership(event.processId))
-				);
+				saveMarketActivity(window.localStorage, activityScope, eventsRef.current);
 			} catch {
 				// The live result remains available even when storage is unavailable.
 			}
@@ -4791,13 +4748,12 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 					: 'unavailable';
 				setError(marketplaceRequestFailureMessage('index', kind));
 			}
-			setLoading(false);
-		});
+		})();
 		return () => {
 			controller.abort();
-			if (settlementFrame !== undefined) window.cancelAnimationFrame(settlementFrame);
+			if (publishFrame !== undefined) window.cancelAnimationFrame(publishFrame);
 		};
-	}, [activityScope, marketLoading, retry]);
+	}, [activityRecipients, activityScope, collections, marketLoading, retry]);
 
 	const filteredEvents = filterGlobalActivity(events, activityFilter);
 	eventCountRef.current = filteredEvents.length;
@@ -4814,7 +4770,7 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 		setRetry((value) => value + 1);
 	};
 	const resolveCollection = (event: CollectionActivityEvent) =>
-		globalActivityCollection(collections, event.processId) ?? discoveredAssets[event.processId]?.collection;
+		globalActivityCollection(collections, event.processId);
 	return (
 		<div
 			aria-busy={loading}
@@ -4823,13 +4779,22 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 			id="home-activity-panel"
 			role="tabpanel"
 		>
-			{events.length ? (
-				<p className="activity-window-description" id={activityWindowDescriptionId}>
-					{globalActivityWindowDescription(events.length)}
-				</p>
+			<GlobalActivityCharts events={events} />
+			{loading ? (
+				<div className="global-activity-loading">
+					<Loading label="Loading complete global activity history…" />
+				</div>
 			) : null}
+			<p className="activity-window-description" id={activityWindowDescriptionId}>
+				{globalActivityWindowDescription(
+					events.length,
+					activityRecipients.length,
+					loading,
+					hasMoreActivityAssets
+				)}
+			</p>
 			<div
-				aria-describedby={events.length ? activityWindowDescriptionId : undefined}
+				aria-describedby={activityWindowDescriptionId}
 				aria-label="Filter global activity"
 				className="activity-filters"
 				role="group"
@@ -4857,8 +4822,8 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 				events.length ? (
 					<div className="collection-source-notice home-activity-partial-notice retry-notice">
 						<span role="status">
-							Compute hasn’t completed yet. Please try again. Showing {events.length.toLocaleString()}{' '}
-							indexed {events.length === 1 ? 'event' : 'events'} already loaded.
+							The complete history scan hasn’t finished. Showing {events.length.toLocaleString()} indexed{' '}
+							{events.length === 1 ? 'event' : 'events'} already loaded.
 						</span>
 						<Button className="with-icon" onClick={retryActivity} size="custom" type="button">
 							<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Retry
@@ -4877,10 +4842,7 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 				loading={loading}
 				resolveAsset={(event) => {
 					const collection = resolveCollection(event);
-					return (
-						discoveredAssets[event.processId]?.asset ??
-						(collection ? collectionAsset(collection, event.processId) : undefined)
-					);
+					return collection ? collectionAsset(collection, event.processId) : undefined;
 				}}
 				resolveCollection={resolveCollection}
 			/>
@@ -4924,11 +4886,10 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 					Show {Math.min(20, filteredEvents.length - activityLimit).toLocaleString()} more activity events
 				</Button>
 			) : null}
-			{loading && !events.length ? <Loading label="Reading global market activity from Arweave…" /> : null}
 			{!loading && !error && events.length > 0 && !filteredEvents.length ? (
 				<div className="empty-state">
 					<h3>No matching activity</h3>
-					<p>No submitted actions match this activity filter in the current indexed window.</p>
+					<p>No submitted actions match this filter in the indexed history loaded above.</p>
 				</div>
 			) : null}
 			{!loading && !error && !events.length ? (
@@ -9762,6 +9723,9 @@ function AssetView() {
 							<React.Suspense fallback={<Loading label="Preparing ask history…" />}>
 								<UniquePriceChart
 									error={askError}
+									floorValue={
+										order ? unitPriceWinston(order, state?.denomination ?? 0).toString() : null
+									}
 									formatValue={(value) => `${winstonToAr(value)} AR`}
 									hasNextPage={askHasNextPage}
 									loading={askLoading}

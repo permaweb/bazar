@@ -295,6 +295,24 @@ type BatchedCollectionActivityOptions = Omit<CollectionActivityOptions, 'onPage'
 	onBatch?: (events: CollectionActivityEvent[], recipients: string[]) => void | Promise<void>;
 };
 
+export type CompleteCollectionActivityProgress = {
+	batch: number;
+	batches: number;
+	page: number;
+	hasNextPage: boolean;
+};
+
+export type CompleteBatchedCollectionActivityOptions = Omit<CollectionActivityPageOptions, 'cursor' | 'recipients'> & {
+	recipients: string[];
+	batchSize?: number;
+	concurrency?: number;
+	onPage?: (
+		events: CollectionActivityEvent[],
+		recipients: string[],
+		progress: CompleteCollectionActivityProgress
+	) => void | Promise<void>;
+};
+
 type ResolutionOptions = {
 	signal?: AbortSignal;
 	concurrency?: number;
@@ -1370,6 +1388,75 @@ export async function discoverCollectionActivityBatched(
 		throw new AggregateError(failures, `collection-activity-batch-failed: ${messages.join('; ')}`);
 	}
 	return sortCollectionActivity([...found.values()]).slice(0, limit);
+}
+
+/**
+ * Read every indexed activity page for exact marketplace recipients.
+ *
+ * Recipient batches keep broad action tags from scanning the unrelated global
+ * transfer stream, while the bounded worker pool avoids overwhelming GraphQL.
+ */
+export async function discoverAllCollectionActivityBatched(
+	options: CompleteBatchedCollectionActivityOptions
+): Promise<CollectionActivityEvent[]> {
+	const recipients = [...new Set(options.recipients.filter((id) => ADDRESS.test(id)))];
+	const batchSize = Math.max(1, Math.min(100, Math.floor(options.batchSize ?? 100)));
+	const concurrency = Math.max(1, Math.min(4, Math.floor(options.concurrency ?? 2)));
+	const batches = Array.from({ length: Math.ceil(recipients.length / batchSize) }, (_, index) =>
+		recipients.slice(index * batchSize, (index + 1) * batchSize)
+	);
+	const found = new Map<string, CollectionActivityEvent>();
+	let nextBatch = 0;
+	const failures: unknown[] = [];
+
+	await Promise.all(
+		Array.from({ length: Math.min(concurrency, batches.length) }, async () => {
+			while (true) {
+				options.signal?.throwIfAborted();
+				const batchIndex = nextBatch++;
+				const batch = batches[batchIndex];
+				if (!batch) return;
+				let cursor: string | null = null;
+				const visited = new Set<string>();
+				try {
+					for (let pageIndex = 0; pageIndex < MAX_GRAPHQL_PAGES; pageIndex += 1) {
+						const page = await discoverCollectionActivityPage({
+							...options,
+							recipients: batch,
+							cursor,
+						});
+						options.signal?.throwIfAborted();
+						for (const event of page.events) found.set(event.id, event);
+						await options.onPage?.(page.events, batch, {
+							batch: batchIndex + 1,
+							batches: batches.length,
+							page: pageIndex + 1,
+							hasNextPage: page.hasNextPage,
+						});
+						if (!page.hasNextPage) break;
+						if (!page.cursor || visited.has(page.cursor)) {
+							throw new Error('collection-activity-pagination-stalled');
+						}
+						visited.add(page.cursor);
+						cursor = page.cursor;
+						if (pageIndex === MAX_GRAPHQL_PAGES - 1) {
+							throw new Error('collection-activity-pagination-limit');
+						}
+					}
+				} catch (cause) {
+					failures.push(cause);
+				}
+			}
+		})
+	);
+	options.signal?.throwIfAborted();
+	if (failures.length) {
+		const messages = failures
+			.map((failure) => (failure instanceof Error ? failure.message : String(failure)))
+			.sort();
+		throw new AggregateError(failures, `collection-activity-complete-batch-failed: ${messages.join('; ')}`);
+	}
+	return sortCollectionActivity([...found.values()]);
 }
 
 function sortCollectionActivity(events: CollectionActivityEvent[]) {

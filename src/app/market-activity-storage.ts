@@ -1,6 +1,7 @@
 import type { CollectionActivityEvent } from 'api/asset-discovery';
 
 export const MARKET_ACTIVITY_STORAGE_KEY = 'bazar-market-activity:v1';
+export const MARKET_ACTIVITY_STORAGE_SCOPE_LIMIT = 4;
 
 type ActivityStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
@@ -23,8 +24,11 @@ export function saveMarketActivity(
 ) {
 	try {
 		const entries = readEntries(storage).filter((entry) => entry.scope !== scope);
-		entries.unshift({ scope, savedAt, events: events.slice(0, 100) });
-		storage.setItem(MARKET_ACTIVITY_STORAGE_KEY, JSON.stringify({ version: 1, entries: entries.slice(0, 24) }));
+		entries.unshift({ scope, savedAt, events });
+		storage.setItem(
+			MARKET_ACTIVITY_STORAGE_KEY,
+			JSON.stringify({ version: 1, entries: entries.slice(0, MARKET_ACTIVITY_STORAGE_SCOPE_LIMIT) })
+		);
 	} catch {
 		// Activity is an immutable display cache; live discovery remains authoritative.
 	}

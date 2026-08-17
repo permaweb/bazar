@@ -197,6 +197,7 @@ function colorWithAlpha(color: string, alpha: number) {
 
 export function TokenPriceChart({
 	points,
+	floorValue,
 	ticker,
 	loading,
 	error,
@@ -207,6 +208,7 @@ export function TokenPriceChart({
 	onRetry,
 }: {
 	points: TokenPricePoint[];
+	floorValue: string | null;
 	ticker: string;
 	loading: boolean;
 	error: string | null;
@@ -350,8 +352,8 @@ export function TokenPriceChart({
 		<section className="token-price-chart" aria-busy={loading} aria-label={`${ticker} indexed ask history`}>
 			<div className="token-price-chart-heading">
 				<div className="token-price-quote" aria-live="polite">
-					<small>Current price</small>
-					<strong>{currentPoint ? formatValue(currentPoint.value) : 'No indexed asks'}</strong>
+					<small>Floor price</small>
+					<strong>{floorValue ? formatValue(floorValue) : 'No open asks'}</strong>
 					{visiblePoints.length ? (
 						<div className="token-price-context">
 							<span data-direction={direction}>{changeLabel(change)}</span>

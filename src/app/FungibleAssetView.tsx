@@ -1425,6 +1425,7 @@ export function FungibleAssetView({
 						>
 							<TokenPriceChart
 								error={askError}
+								floorValue={best ? unitPriceWinston(best, state.denomination).toString() : null}
 								formatValue={(value) => `${winstonToAr(value)} AR / ${ticker}`}
 								hasNextPage={askHasNextPage}
 								loading={askLoading}
