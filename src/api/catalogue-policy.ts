@@ -15,6 +15,7 @@ export const HIDDEN_ASSET_IDS = [
 	'IyFfmbTu8P4rv0KyrA0Q-QtfEnYntMj4RkRiBVip9KA', // WEAVE — Weave Credit
 	'MtNTshqw3VkML6cOe4y1yOFAVupRWz1O7b2j6ay01qM', // TKEY — Thousand Tiny Owners
 	'VeS61CgitggqhFBnUwXwyZJHoJQPfYffTk-UWq3VXoY', // MINTG — Mint CLI Eta
+	'YCmcwhXELMf_U5t8-d_hJDEVq6l_y1_2NLGwq7USXNY', // Blacklisted token
 	'bASFYsRBQm_dfG__wqRVwMh8bqwEvSTl4lURRBqfu2M', // PCMKQA1 — PcMK spawn trade transfer
 	'cT_QvNJkzjSfkazrgv0HTwsoMVFFchvx0btwR0s5mPI', // MINTH — Mint CLI Theta
 ] as const;
