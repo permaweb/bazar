@@ -7,6 +7,7 @@ import {
 	assetDetailErrorMessage,
 	assetDetailLoadingPresentation,
 	assetStateErrorMessage,
+	mergeAssetActivityPages,
 	mergeAssetDetailMetadata,
 	uniqueAskHistory,
 } from './App';
@@ -79,5 +80,22 @@ describe('asset detail fallbacks', () => {
 			{ id: 'earlier', timestamp: 10, value: '1000000000000' },
 			{ id: 'later', timestamp: 20, value: '2500000000000' },
 		]);
+	});
+
+	it('merges older cursor pages without duplicating indexed activity', () => {
+		const event = (id: string, height: number) => ({
+			id,
+			processId: assetId,
+			action: 'transfer' as const,
+			actor: 'B'.repeat(43),
+			height,
+			timestamp: height * 10,
+		});
+		expect(
+			mergeAssetActivityPages(
+				[event('newest', 3), event('overlap', 2)],
+				[event('overlap', 2), event('oldest', 1)]
+			)
+		).toEqual([event('newest', 3), event('overlap', 2), event('oldest', 1)]);
 	});
 });

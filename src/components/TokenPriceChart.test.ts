@@ -105,7 +105,7 @@ describe('TokenPriceChart', () => {
 		]);
 	});
 
-	it('renders interactive range controls without instructional footer copy', () => {
+	it('renders interactive range controls without an indexed-history footer', () => {
 		const markup = renderToStaticMarkup(
 			React.createElement(TokenPriceChart, {
 				points: [{ id: 'a', timestamp: 1, value: '1000000000000' }],
@@ -120,12 +120,13 @@ describe('TokenPriceChart', () => {
 		expect(markup).toContain('Current price');
 		expect(markup).not.toContain('Selected ask');
 		expect(markup).toContain('indexed ask');
+		expect(markup).not.toContain('token-price-summary');
 		expect(markup).toContain('>5M<');
 		expect(markup).toContain('>1H<');
 		expect(markup).toContain('aria-pressed="true"');
 		expect(markup).not.toContain('Move across the chart to inspect');
 		expect(markup).not.toContain('Listing submissions only');
-		expect(markup).not.toContain('submissions');
+		expect(markup).not.toContain('indexed listing submissions loaded');
 		expect(markup).not.toContain('>Indexed ask<');
 	});
 });

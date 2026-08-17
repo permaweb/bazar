@@ -12,6 +12,7 @@ import {
 	createWalletCandidateScan,
 	discoverCollectionActivity,
 	discoverCollectionActivityBatched,
+	discoverCollectionActivityPage,
 	discoverMarketActivity,
 	discoverMarketActivityBatched,
 	discoverPendingAssetOffers,
@@ -1664,6 +1665,61 @@ describe('wallet candidate discovery', () => {
 		const call = fetcher.mock.calls[0] as unknown as [RequestInfo | URL, RequestInit];
 		const body = JSON.parse(String(call[1].body));
 		expect(body.variables.recipients).toEqual([assetA]);
+	});
+
+	it('returns an exact initial activity count and a cursor for independently paged streams', async () => {
+		const fetcher = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+			const body = JSON.parse(String(init?.body));
+			return Response.json({
+				data: {
+					transactions: {
+						count: '5',
+						pageInfo: { hasNextPage: true },
+						edges: [activityEdge('listing-page-1', assetA, 42)],
+					},
+				},
+			});
+		});
+
+		await expect(
+			discoverCollectionActivityPage({
+				actions: ['make-offer'],
+				fetch: fetcher as typeof fetch,
+				pageSize: 24,
+				recipients: [assetA],
+			})
+		).resolves.toMatchObject({
+			cursor: 'listing-page-1',
+			hasNextPage: true,
+			totalCount: 5,
+			events: [{ action: 'make-offer', processId: assetA }],
+		});
+		const body = JSON.parse(String((fetcher.mock.calls[0] as unknown as [RequestInfo | URL, RequestInit])[1].body));
+		expect(body.query).toContain('count');
+		expect(body.variables).toMatchObject({
+			first: 24,
+			recipients: [assetA],
+			tags: [{ name: 'action', values: ['make-offer'] }],
+		});
+	});
+
+	it('omits count from cursor pages because the index cannot combine it with search_after', async () => {
+		const fetcher = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+			const body = JSON.parse(String(init?.body));
+			expect(body.query).not.toContain('\t\tcount');
+			expect(body.variables.cursor).toBe('older-page');
+			return Response.json({
+				data: { transactions: { pageInfo: { hasNextPage: false }, edges: [] } },
+			});
+		});
+
+		await expect(
+			discoverCollectionActivityPage({
+				cursor: 'older-page',
+				fetch: fetcher as typeof fetch,
+				recipients: [assetA],
+			})
+		).resolves.toEqual({ events: [], cursor: null, hasNextPage: false, totalCount: null });
 	});
 
 	it('keeps the registered fill quantity needed to price purchase activity', async () => {

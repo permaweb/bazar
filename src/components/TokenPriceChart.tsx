@@ -13,6 +13,8 @@ import {
 import { themes } from 'helpers/theme';
 import { useTheme } from 'providers/ThemeProvider';
 
+import { Button } from './Button';
+
 export type TokenPricePoint = {
 	id: string;
 	timestamp: number;
@@ -179,15 +181,6 @@ export function tokenPriceChangePercent(points: TokenPricePoint[]) {
 	return Number(((last - first) * 10_000n) / first) / 100;
 }
 
-function formattedTimestamp(timestamp: number) {
-	return new Intl.DateTimeFormat(undefined, {
-		month: 'short',
-		day: 'numeric',
-		hour: 'numeric',
-		minute: '2-digit',
-	}).format(new Date(timestampMilliseconds(timestamp)));
-}
-
 function changeLabel(change: number | null) {
 	if (change === null) return 'Not enough data';
 	if (change === 0) return 'No change';
@@ -208,12 +201,20 @@ export function TokenPriceChart({
 	loading,
 	error,
 	formatValue,
+	hasNextPage = false,
+	loadingMore = false,
+	onLoadMore,
+	onRetry,
 }: {
 	points: TokenPricePoint[];
 	ticker: string;
 	loading: boolean;
 	error: string | null;
 	formatValue(value: string): string;
+	hasNextPage?: boolean;
+	loadingMore?: boolean;
+	onLoadMore?(): void;
+	onRetry?(): void;
 }) {
 	const { resolvedTheme } = useTheme();
 	const [range, setRange] = React.useState<TokenPriceRange>('all');
@@ -358,11 +359,6 @@ export function TokenPriceChart({
 						</div>
 					) : null}
 				</div>
-				<div className="token-price-summary">
-					<small>{currentPoint ? formattedTimestamp(currentPoint.timestamp) : `No ${ticker} asks`}</small>
-					<strong>{visiblePoints.length.toLocaleString()}</strong>
-					<span>{visiblePoints.length === 1 ? 'indexed ask' : 'indexed asks'}</span>
-				</div>
 			</div>
 
 			{visiblePoints.length ? (
@@ -402,6 +398,19 @@ export function TokenPriceChart({
 					</button>
 				))}
 			</div>
+			{hasNextPage && onLoadMore ? (
+				<div className="token-price-history-footer">
+					<Button disabled={loadingMore} onClick={onLoadMore} size="custom" type="button">
+						{loadingMore ? 'Loading older asks…' : 'Load older asks'}
+					</Button>
+				</div>
+			) : error && onRetry ? (
+				<div className="token-price-history-footer">
+					<Button onClick={onRetry} size="custom" type="button">
+						Retry ask history
+					</Button>
+				</div>
+			) : null}
 		</section>
 	);
 }

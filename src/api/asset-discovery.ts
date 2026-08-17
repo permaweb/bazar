@@ -276,6 +276,18 @@ type CollectionActivityOptions = Omit<CandidateOptions, 'onPage'> & {
 	onPage?: (events: CollectionActivityEvent[]) => void | Promise<void>;
 };
 
+export type CollectionActivityPage = {
+	events: CollectionActivityEvent[];
+	cursor: string | null;
+	hasNextPage: boolean;
+	totalCount: number | null;
+};
+
+export type CollectionActivityPageOptions = Omit<CollectionActivityOptions, 'limit' | 'onPage'> & {
+	cursor?: string | null;
+	pageSize?: number;
+};
+
 type BatchedCollectionActivityOptions = Omit<CollectionActivityOptions, 'onPage' | 'recipients'> & {
 	recipients: string[];
 	batchSize?: number;
@@ -349,6 +361,47 @@ const MARKET_ACTIVITY_QUERY = `query AssetMarketActivity(
 ) {
 	transactions(
 		first: ${GRAPHQL_PAGE_SIZE}
+		after: $cursor
+		sort: HEIGHT_DESC
+		recipients: $recipients
+		tags: $tags
+	) {
+		pageInfo { hasNextPage }
+		edges {
+			cursor
+			node { id recipient tags { name value } owner { address } block { height timestamp } }
+		}
+	}
+}`;
+
+const COLLECTION_ACTIVITY_PAGE_QUERY = `query CollectionActivityPage(
+	$first: Int!
+	$recipients: [String!]
+	$tags: [TagFilter!]!
+) {
+	transactions(
+		first: $first
+		sort: HEIGHT_DESC
+		recipients: $recipients
+		tags: $tags
+	) {
+		count
+		pageInfo { hasNextPage }
+		edges {
+			cursor
+			node { id recipient tags { name value } owner { address } block { height timestamp } }
+		}
+	}
+}`;
+
+const COLLECTION_ACTIVITY_CURSOR_PAGE_QUERY = `query CollectionActivityCursorPage(
+	$cursor: String!
+	$first: Int!
+	$recipients: [String!]
+	$tags: [TagFilter!]!
+) {
+	transactions(
+		first: $first
 		after: $cursor
 		sort: HEIGHT_DESC
 		recipients: $recipients
@@ -1054,6 +1107,87 @@ export async function discoverMarketActivityBatched(options: BatchedMarketActivi
 		throw new AggregateError(failures, `asset-activity-batch-failed: ${messages.join('; ')}`);
 	}
 	return sortCandidates([...found.values()]);
+}
+
+export async function discoverCollectionActivityPage(
+	options: CollectionActivityPageOptions = {}
+): Promise<CollectionActivityPage> {
+	const fetcher = options.fetch ?? globalThis.fetch.bind(globalThis);
+	const graphql = options.graphql ?? arweaveGraphqlEndpoint();
+	const recipients = [...new Set((options.recipients ?? []).filter((id) => ADDRESS.test(id)))];
+	const actions = [
+		...new Set(
+			(options.actions ?? ['make-offer', 'register-interest', 'transfer', 'cancel-order']).filter((action) =>
+				['make-offer', 'register-interest', 'transfer', 'cancel-order'].includes(action)
+			)
+		),
+	];
+	const cursor = options.cursor?.trim() || null;
+	const pageSize = Math.max(1, Math.min(GRAPHQL_PAGE_SIZE, Math.floor(options.pageSize ?? GRAPHQL_PAGE_SIZE)));
+
+	if (options.recipients !== undefined && !recipients.length) {
+		return { events: [], cursor: null, hasNextPage: false, totalCount: 0 };
+	}
+	if (!actions.length) return { events: [], cursor: null, hasNextPage: false, totalCount: 0 };
+
+	options.signal?.throwIfAborted();
+	const includeCount = !cursor;
+	const { response, body: payload } = await fetchJsonWithDeadline<any>(
+		fetcher,
+		graphql,
+		{
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({
+				query: includeCount ? COLLECTION_ACTIVITY_PAGE_QUERY : COLLECTION_ACTIVITY_CURSOR_PAGE_QUERY,
+				variables: {
+					...(cursor ? { cursor } : {}),
+					first: pageSize,
+					recipients: options.recipients === undefined ? null : recipients,
+					tags: [{ name: 'action', values: actions }],
+				},
+			}),
+			signal: options.signal,
+		},
+		{
+			timeoutMs: options.requestTimeoutMs,
+			timeoutError: 'collection-activity-graphql-timeout',
+		}
+	);
+	if (!response.ok) throw new Error(`collection-activity-graphql-${response.status}`);
+	if (!payload) throw new Error('collection-activity-graphql-empty');
+	if (payload?.errors?.length) throw new Error('collection-activity-graphql-error');
+	const connection = decodeGraphqlConnection(payload, 'transactions', 'collection-activity-graphql-schema');
+	let events = connection.edges.flatMap((edge) => {
+		const event = activityEventFromNode(edge.node);
+		if (!event || (options.acceptProcessId && !options.acceptProcessId(event.processId))) return [];
+		return [event];
+	});
+	if (options.requiredExecutionDevice && events.length) {
+		const processIds = [...new Set(events.map((event) => event.processId))];
+		const verified = await verifyProcessDevices(
+			processIds,
+			options.requiredExecutionDevice,
+			fetcher,
+			graphql,
+			options
+		);
+		events = events.filter((event) => verified.has(event.processId));
+	}
+	const rawCount = includeCount ? payload?.data?.transactions?.count : undefined;
+	const parsedCount = typeof rawCount === 'string' && /^\d+$/.test(rawCount) ? Number(rawCount) : rawCount;
+	const totalCount =
+		typeof parsedCount === 'number' && Number.isSafeInteger(parsedCount) && parsedCount >= 0 ? parsedCount : null;
+	const nextCursor = connection.pageInfo.hasNextPage ? connection.edges.at(-1)?.cursor ?? null : null;
+	if (connection.pageInfo.hasNextPage && !nextCursor) {
+		throw new Error('collection-activity-pagination-stalled');
+	}
+	return {
+		events,
+		cursor: nextCursor,
+		hasNextPage: connection.pageInfo.hasNextPage,
+		totalCount,
+	};
 }
 
 export async function discoverCollectionActivity(

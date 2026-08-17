@@ -53,6 +53,7 @@ import {
 	createWalletCandidateScan,
 	discoverCollectionActivity,
 	discoverCollectionActivityBatched,
+	discoverCollectionActivityPage,
 	discoverMarketActivity,
 	discoverMarketActivityBatched,
 	discoverPendingAssetOffers,
@@ -4221,7 +4222,7 @@ function Home() {
 												: 'Browse fungible tokens and Uniques on the permaweb.'
 											: homeTab === 'collections'
 											? 'Browse NFT and name collections.'
-											: 'Recent activity of purchases, listings, and transfers across every marketplace collection.'}
+											: 'Latest indexed purchases, listings, and transfers across every marketplace collection.'}
 									</p>
 								</div>
 								{homeTab === 'discover' ? (
@@ -4545,11 +4546,47 @@ export function globalActivityCollection(collections: Collection[], processId: s
 
 export type GlobalActivityFilter = 'all' | CollectionActivityEvent['action'];
 
+export const GLOBAL_ACTIVITY_WINDOW_SIZE = 100;
+
 export function filterGlobalActivity(events: CollectionActivityEvent[], filter: GlobalActivityFilter) {
 	if (filter === 'all') return events;
 	return events.filter(
 		(event) => event.action === filter && (filter !== 'register-interest' || Boolean(event.purchaseProof))
 	);
+}
+
+export function globalActivityWindowDescription(eventCount: number, limit = GLOBAL_ACTIVITY_WINDOW_SIZE) {
+	const count = Math.max(0, Math.floor(eventCount));
+	const windowLimit = Math.max(1, Math.floor(limit));
+	if (!count) return '';
+	if (count >= windowLimit) {
+		return `Filter counts cover the latest ${windowLimit.toLocaleString()} indexed events. Older activity may exist.`;
+	}
+	return `Filter counts cover the latest ${count.toLocaleString()} indexed ${
+		count === 1 ? 'event' : 'events'
+	} currently loaded.`;
+}
+
+export function globalActivityRevealDescription(
+	shownCount: number,
+	matchingCount: number,
+	loadedCount: number,
+	filtered: boolean,
+	limit = GLOBAL_ACTIVITY_WINDOW_SIZE
+) {
+	const shown = Math.max(0, Math.floor(shownCount));
+	const matching = Math.max(0, Math.floor(matchingCount));
+	const loaded = Math.max(0, Math.floor(loadedCount));
+	const windowLimit = Math.max(1, Math.floor(limit));
+	const qualifier = filtered ? ' matching' : '';
+	if (shown < matching) {
+		return `Showing ${shown.toLocaleString()} of ${matching.toLocaleString()}${qualifier} events in the latest indexed activity window.`;
+	}
+	const eventLabel = matching === 1 ? 'event' : 'events';
+	const verb = matching === 1 ? 'is' : 'are';
+	return `All ${matching.toLocaleString()}${qualifier} ${eventLabel} in the latest indexed activity window ${verb} shown.${
+		loaded >= windowLimit ? ' Older activity may exist.' : ''
+	}`;
 }
 
 function HomeActivityPanel({ collections, marketLoading }: { collections: Collection[]; marketLoading: boolean }) {
@@ -4564,6 +4601,7 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 	const eventsRef = React.useRef(events);
 	const scopeRef = React.useRef('');
 	const activityListId = React.useId();
+	const activityWindowDescriptionId = React.useId();
 	const activityRevealRef = React.useRef<HTMLParagraphElement>(null);
 	const eventCountRef = React.useRef(events.length);
 	eventsRef.current = events;
@@ -4785,7 +4823,17 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 			id="home-activity-panel"
 			role="tabpanel"
 		>
-			<div aria-label="Filter global activity" className="activity-filters" role="group">
+			{events.length ? (
+				<p className="activity-window-description" id={activityWindowDescriptionId}>
+					{globalActivityWindowDescription(events.length)}
+				</p>
+			) : null}
+			<div
+				aria-describedby={events.length ? activityWindowDescriptionId : undefined}
+				aria-label="Filter global activity"
+				className="activity-filters"
+				role="group"
+			>
 				{activityFilters.map((filter) => {
 					const count = filterGlobalActivity(events, filter.value).length;
 					return (
@@ -4859,7 +4907,12 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 						const nextLimit = Math.min(filteredEvents.length, activityLimit + 20);
 						setActivityLimit(nextLimit);
 						setActivityRevealAnnouncement(
-							`Showing ${nextLimit.toLocaleString()} of ${filteredEvents.length.toLocaleString()} filtered global activity events.`
+							globalActivityRevealDescription(
+								nextLimit,
+								filteredEvents.length,
+								events.length,
+								activityFilter !== 'all'
+							)
 						);
 						window.requestAnimationFrame(() => {
 							if (assetGroupRevealComplete(nextLimit, eventCountRef.current)) {
@@ -5346,7 +5399,7 @@ export function collectionActivityVersion(collection: Collection) {
 	return `${collection.manifestId ?? ''}:${collection.assets.map((asset) => asset.id).join('.')}`;
 }
 
-export function newestCollectionActivity(events: CollectionActivityEvent[], limit = 100) {
+export function newestCollectionActivity(events: CollectionActivityEvent[], limit = GLOBAL_ACTIVITY_WINDOW_SIZE) {
 	const byId = new Map<string, CollectionActivityEvent>();
 	for (const event of events) {
 		const previous = byId.get(event.id);
@@ -8101,6 +8154,18 @@ export function uniqueAskHistory(events: CollectionActivityEvent[]): TokenPriceP
 		.sort((left, right) => left.timestamp - right.timestamp || left.id.localeCompare(right.id));
 }
 
+export function mergeAssetActivityPages(
+	current: CollectionActivityEvent[],
+	older: CollectionActivityEvent[]
+): CollectionActivityEvent[] {
+	const events = new Map(current.map((event) => [event.id, event]));
+	for (const event of older) events.set(event.id, event);
+	return [...events.values()].sort(
+		(left, right) =>
+			right.height - left.height || right.timestamp - left.timestamp || left.id.localeCompare(right.id)
+	);
+}
+
 export function verifiedAssetForDetail(
 	collection: Collection | undefined,
 	indexedAsset: AssetSummary | undefined,
@@ -8705,11 +8770,25 @@ function AssetView() {
 	const [unavailableRecovery, setUnavailableRecovery] = React.useState<UnavailableOperationRecovery | null>(null);
 	const [assetActivity, setAssetActivity] = React.useState<CollectionActivityEvent[]>([]);
 	const [activityLoading, setActivityLoading] = React.useState(false);
+	const [activityLoadingMore, setActivityLoadingMore] = React.useState(false);
 	const [activityRequested, setActivityRequested] = React.useState(false);
 	const [activityError, setActivityError] = React.useState<string | null>(null);
 	const [activityRetry, setActivityRetry] = React.useState(0);
+	const [activityCursor, setActivityCursor] = React.useState<string | null>(null);
+	const [activityHasNextPage, setActivityHasNextPage] = React.useState(false);
+	const [activityTotalCount, setActivityTotalCount] = React.useState<number | null>(null);
+	const [assetAskActivity, setAssetAskActivity] = React.useState<CollectionActivityEvent[]>([]);
+	const [askLoading, setAskLoading] = React.useState(false);
+	const [askLoadingMore, setAskLoadingMore] = React.useState(false);
+	const [askError, setAskError] = React.useState<string | null>(null);
+	const [askRetry, setAskRetry] = React.useState(0);
+	const [askCursor, setAskCursor] = React.useState<string | null>(null);
+	const [askHasNextPage, setAskHasNextPage] = React.useState(false);
 	const [storageVersion, setStorageVersion] = React.useState(0);
 	const activityAssetRef = React.useRef('');
+	const askAssetRef = React.useRef('');
+	const activityLoadMoreRef = React.useRef<AbortController | null>(null);
+	const askLoadMoreRef = React.useRef<AbortController | null>(null);
 	const [activeSection, setActiveSection] = React.useState<
 		'about' | 'orders' | 'activity' | 'rights' | 'blockchain' | 'more'
 	>('about');
@@ -8850,12 +8929,17 @@ function AssetView() {
 	React.useEffect(() => {
 		const controller = new AbortController();
 		if (activityAssetRef.current !== assetId) {
+			activityLoadMoreRef.current?.abort();
 			activityAssetRef.current = assetId;
 			try {
 				setAssetActivity(loadMarketActivity(window.localStorage, `asset:${assetId}`));
 			} catch {
 				setAssetActivity([]);
 			}
+			setActivityCursor(null);
+			setActivityHasNextPage(false);
+			setActivityTotalCount(null);
+			setActivityLoadingMore(false);
 		}
 		setActivityError(null);
 		if (!resolvedAsset || !activityRequested) {
@@ -8863,13 +8947,16 @@ function AssetView() {
 			return () => controller.abort();
 		}
 		setActivityLoading(true);
-		void discoverCollectionActivity({ recipients: [assetId], signal: controller.signal, limit: 24 })
+		void discoverCollectionActivityPage({ recipients: [assetId], signal: controller.signal, pageSize: 24 })
 			.then(
-				(events) => {
+				(page) => {
 					if (!controller.signal.aborted) {
-						setAssetActivity(events);
+						setAssetActivity(page.events);
+						setActivityCursor(page.cursor);
+						setActivityHasNextPage(page.hasNextPage);
+						setActivityTotalCount(page.totalCount);
 						try {
-							saveMarketActivity(window.localStorage, `asset:${assetId}`, events);
+							saveMarketActivity(window.localStorage, `asset:${assetId}`, page.events);
 						} catch {
 							// The live result remains available when storage is unavailable.
 						}
@@ -8886,6 +8973,100 @@ function AssetView() {
 			});
 		return () => controller.abort();
 	}, [activityRequested, activityRetry, assetId, resolvedAsset?.id]);
+	React.useEffect(() => {
+		const controller = new AbortController();
+		if (askAssetRef.current !== assetId) {
+			askLoadMoreRef.current?.abort();
+			askAssetRef.current = assetId;
+			setAssetAskActivity([]);
+			setAskCursor(null);
+			setAskHasNextPage(false);
+			setAskLoadingMore(false);
+		}
+		setAskError(null);
+		if (!resolvedAsset || !activityRequested) {
+			setAskLoading(false);
+			return () => controller.abort();
+		}
+		setAskLoading(true);
+		void discoverCollectionActivityPage({
+			actions: ['make-offer'],
+			pageSize: 100,
+			recipients: [assetId],
+			signal: controller.signal,
+		})
+			.then(
+				(page) => {
+					if (!controller.signal.aborted) {
+						setAssetAskActivity(page.events);
+						setAskCursor(page.cursor);
+						setAskHasNextPage(page.hasNextPage);
+					}
+				},
+				(cause) => {
+					if (!controller.signal.aborted) {
+						setAskError(marketplaceRequestFailureMessage('index', marketplaceFailureKind(cause)));
+					}
+				}
+			)
+			.finally(() => {
+				if (!controller.signal.aborted) setAskLoading(false);
+			});
+		return () => controller.abort();
+	}, [activityRequested, askRetry, assetId, resolvedAsset?.id]);
+	const loadOlderAssetActivity = React.useCallback(async () => {
+		if (!activityCursor || !activityHasNextPage || activityLoadingMore) return;
+		activityLoadMoreRef.current?.abort();
+		const controller = new AbortController();
+		activityLoadMoreRef.current = controller;
+		setActivityLoadingMore(true);
+		setActivityError(null);
+		try {
+			const page = await discoverCollectionActivityPage({
+				cursor: activityCursor,
+				pageSize: 100,
+				recipients: [assetId],
+				signal: controller.signal,
+			});
+			if (controller.signal.aborted || activityAssetRef.current !== assetId) return;
+			setAssetActivity((current) => mergeAssetActivityPages(current, page.events));
+			setActivityCursor(page.cursor);
+			setActivityHasNextPage(page.hasNextPage);
+		} catch (cause) {
+			if (!controller.signal.aborted) {
+				setActivityError(marketplaceRequestFailureMessage('index', marketplaceFailureKind(cause)));
+			}
+		} finally {
+			if (!controller.signal.aborted) setActivityLoadingMore(false);
+		}
+	}, [activityCursor, activityHasNextPage, activityLoadingMore, assetId]);
+	const loadOlderAssetAsks = React.useCallback(async () => {
+		if (!askCursor || !askHasNextPage || askLoadingMore) return;
+		askLoadMoreRef.current?.abort();
+		const controller = new AbortController();
+		askLoadMoreRef.current = controller;
+		setAskLoadingMore(true);
+		setAskError(null);
+		try {
+			const page = await discoverCollectionActivityPage({
+				actions: ['make-offer'],
+				cursor: askCursor,
+				pageSize: 100,
+				recipients: [assetId],
+				signal: controller.signal,
+			});
+			if (controller.signal.aborted || askAssetRef.current !== assetId) return;
+			setAssetAskActivity((current) => mergeAssetActivityPages(current, page.events));
+			setAskCursor(page.cursor);
+			setAskHasNextPage(page.hasNextPage);
+		} catch (cause) {
+			if (!controller.signal.aborted) {
+				setAskError(marketplaceRequestFailureMessage('index', marketplaceFailureKind(cause)));
+			}
+		} finally {
+			if (!controller.signal.aborted) setAskLoadingMore(false);
+		}
+	}, [askCursor, askHasNextPage, askLoadingMore, assetId]);
 	React.useEffect(() => {
 		setActiveSection('about');
 		setActivityRequested(false);
@@ -9067,7 +9248,7 @@ function AssetView() {
 		})().catch(() => undefined);
 		return () => controller.abort();
 	}, [assetId, openOperation, operation, recoverySuppressed, state, storageVersion, wallet.address]);
-	const uniqueAskPoints = React.useMemo(() => uniqueAskHistory(assetActivity), [assetActivity]);
+	const uniqueAskPoints = React.useMemo(() => uniqueAskHistory(assetAskActivity), [assetAskActivity]);
 	if (!collection && (market.loading || (directAtomicRoute && loading))) {
 		return (
 			<AssetDetailLoadingShell
@@ -9161,10 +9342,21 @@ function AssetView() {
 					}
 					state={state}
 					activity={assetActivity}
+					activityHasNextPage={activityHasNextPage}
 					activityLoading={activityLoading}
+					activityLoadingMore={activityLoadingMore}
+					activityTotalCount={activityTotalCount}
 					activityError={activityError}
+					askActivity={assetAskActivity}
+					askError={askError}
+					askHasNextPage={askHasNextPage}
+					askLoading={askLoading}
+					askLoadingMore={askLoadingMore}
+					onActivityLoadMore={() => void loadOlderAssetActivity()}
 					onActivityRetry={() => setActivityRetry((value) => value + 1)}
 					onActivityVisible={() => setActivityRequested(true)}
+					onAskLoadMore={() => void loadOlderAssetAsks()}
+					onAskRetry={() => setAskRetry((value) => value + 1)}
 					loading={loading}
 					error={error}
 					provider={provider}
@@ -9569,9 +9761,13 @@ function AssetView() {
 						>
 							<React.Suspense fallback={<Loading label="Preparing ask history…" />}>
 								<UniquePriceChart
-									error={activityError}
+									error={askError}
 									formatValue={(value) => `${winstonToAr(value)} AR`}
-									loading={activityLoading}
+									hasNextPage={askHasNextPage}
+									loading={askLoading}
+									loadingMore={askLoadingMore}
+									onLoadMore={() => void loadOlderAssetAsks()}
+									onRetry={() => setAskRetry((value) => value + 1)}
 									points={uniqueAskPoints}
 									ticker={asset.name}
 								/>
@@ -9663,7 +9859,7 @@ function AssetView() {
 									ariaLabel={`${asset.name} market activity`}
 									collectionId={collection.id}
 									events={assetActivity}
-									loading={activityLoading}
+									loading={activityLoading || activityLoadingMore}
 									reservationState={state}
 									resolveAsset={() => asset}
 								/>
@@ -9671,10 +9867,24 @@ function AssetView() {
 							{!activityLoading && !activityError && !assetActivity.length ? (
 								<p className="asset-empty-copy">No indexed market events found.</p>
 							) : null}
-							<p className="market-note">
-								Up to 24 recent signed process submissions indexed from Arweave. Live ownership and
-								orders above remain authoritative.
-							</p>
+							<div className="asset-market-activity-footer">
+								<p className="market-note">
+									{activityTotalCount === null
+										? `${assetActivity.length.toLocaleString()} indexed process submissions loaded.`
+										: `${assetActivity.length.toLocaleString()} of ${activityTotalCount.toLocaleString()} indexed process submissions loaded.`}{' '}
+									Live ownership and orders above remain authoritative.
+								</p>
+								{activityHasNextPage ? (
+									<Button
+										disabled={activityLoadingMore}
+										onClick={() => void loadOlderAssetActivity()}
+										size="custom"
+										type="button"
+									>
+										{activityLoadingMore ? 'Loading older activity…' : 'Load older activity'}
+									</Button>
+								) : null}
+							</div>
 						</section>
 					) : null}
 					{activeSection === 'rights' ? (

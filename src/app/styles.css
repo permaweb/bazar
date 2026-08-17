@@ -4406,6 +4406,11 @@ input:focus {
 	white-space: nowrap;
 }
 
+.activity-window-description {
+	margin: 0 0 9px;
+	color: var(--muted);
+	font-size: var(--type-small);
+}
 .activity-filters {
 	margin: 0 0 13px;
 	display: flex;
@@ -10737,7 +10742,7 @@ body input:focus-visible {
 	padding: 22px 22px 8px;
 	display: flex;
 	align-items: start;
-	justify-content: space-between;
+	justify-content: flex-start;
 	gap: 24px;
 }
 .token-price-quote {
@@ -10760,26 +10765,6 @@ body input:focus-visible {
 	line-height: 1;
 	text-overflow: ellipsis;
 	white-space: nowrap;
-}
-.token-price-summary {
-	padding-top: 2px;
-	display: grid;
-	justify-items: end;
-	color: var(--muted);
-	font-variant-numeric: tabular-nums;
-	text-align: right;
-}
-.token-price-summary > small,
-.token-price-summary > span {
-	font-size: var(--type-small);
-}
-.token-price-summary > strong {
-	margin-top: 7px;
-	color: var(--ink);
-	font-size: 1.45rem;
-	font-weight: 500;
-	letter-spacing: -0.025em;
-	line-height: 1;
 }
 .token-price-ranges {
 	padding: 12px 18px 16px;
@@ -10813,6 +10798,17 @@ body input:focus-visible {
 .token-price-ranges button:focus-visible {
 	outline: 2px solid var(--focus-ring);
 	outline-offset: 2px;
+}
+.token-price-history-footer {
+	min-height: 48px;
+	padding: 0 18px 14px;
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 12px;
+}
+.token-price-history-footer .ui-button {
+	flex: 0 0 auto;
 }
 .token-price-context {
 	padding: 2px 0 0;
@@ -10925,12 +10921,6 @@ body input:focus-visible {
 	}
 	.token-price-quote > strong {
 		font-size: clamp(1.55rem, 7vw, 2.25rem);
-	}
-	.token-price-summary > small {
-		max-width: 104px;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
 	}
 	.token-price-ranges {
 		width: 100%;

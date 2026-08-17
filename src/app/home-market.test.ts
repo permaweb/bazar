@@ -35,6 +35,8 @@ import {
 	DiscoveryAssetArtwork,
 	filterGlobalActivity,
 	globalActivityCollection,
+	globalActivityRevealDescription,
+	globalActivityWindowDescription,
 	HOME_DISCOVER_TOKEN_PAGE_SIZE,
 	homeAllAssets,
 	homeAssetPage,
@@ -1095,6 +1097,37 @@ describe('Home market summary retries', () => {
 		expect(filterGlobalActivity(events, 'register-interest').map((event) => event.id)).toEqual(['purchase']);
 		expect(filterGlobalActivity(events, 'transfer').map((event) => event.id)).toEqual(['transfer']);
 		expect(filterGlobalActivity(events, 'cancel-order').map((event) => event.id)).toEqual(['cancel']);
+	});
+
+	it('describes filter counts as a bounded recent activity window', () => {
+		expect(globalActivityWindowDescription(0)).toBe('');
+		expect(globalActivityWindowDescription(1)).toBe(
+			'Filter counts cover the latest 1 indexed event currently loaded.'
+		);
+		expect(globalActivityWindowDescription(42)).toBe(
+			'Filter counts cover the latest 42 indexed events currently loaded.'
+		);
+		expect(globalActivityWindowDescription(100)).toBe(
+			'Filter counts cover the latest 100 indexed events. Older activity may exist.'
+		);
+		expect(globalActivityWindowDescription(200, 200)).toBe(
+			'Filter counts cover the latest 200 indexed events. Older activity may exist.'
+		);
+	});
+
+	it('describes progressive activity reveal without claiming the window is the total', () => {
+		expect(globalActivityRevealDescription(40, 100, 100, false)).toBe(
+			'Showing 40 of 100 events in the latest indexed activity window.'
+		);
+		expect(globalActivityRevealDescription(100, 100, 100, false)).toBe(
+			'All 100 events in the latest indexed activity window are shown. Older activity may exist.'
+		);
+		expect(globalActivityRevealDescription(90, 90, 100, true)).toBe(
+			'All 90 matching events in the latest indexed activity window are shown. Older activity may exist.'
+		);
+		expect(globalActivityRevealDescription(1, 1, 18, true)).toBe(
+			'All 1 matching event in the latest indexed activity window is shown.'
+		);
 	});
 
 	it('checks exact collection membership without rescanning loaded assets', () => {
