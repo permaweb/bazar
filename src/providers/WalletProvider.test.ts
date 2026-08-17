@@ -11,6 +11,12 @@ function deferred<T>() {
 }
 
 describe('explicit wallet connection', () => {
+	it('reports the selected wallet when its provider is unavailable', async () => {
+		await expect(connectWallet(undefined, 'The Fold')).rejects.toThrow(
+			'Install The Fold wallet extension to continue.'
+		);
+	});
+
 	it('returns the active address only after the requested permissions are granted', async () => {
 		const connect = vi.fn(async () => undefined);
 		const address = 'a'.repeat(43);
