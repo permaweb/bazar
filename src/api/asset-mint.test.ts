@@ -1,0 +1,899 @@
+import { describe, expect, it, vi } from 'vitest';
+
+import {
+	assetFromMintState,
+	AssetMintClient,
+	collectionCarrierUpdateTags,
+	collectionManifest,
+	CollectionMintClient,
+	collectionProcessTags,
+	CREATED_COLLECTION_ID,
+	createdCollection,
+	fungibleAtomicSupply,
+	fungibleMintProcessTags,
+	getMintDraft,
+	isBazarMintTags,
+	loadMintedAssets,
+	loadMintedCollections,
+	MAX_FUNGIBLE_WHOLE_SUPPLY,
+	mintMetadata,
+	mintProcessTags,
+	normalizeUploadTags,
+	storeMintedAsset,
+	storeMintedCollection,
+	UDL_LICENSE_ID,
+	udlLicenseTags,
+	udlTermsForPreset,
+	validateCollectionMintInput,
+	validateFungibleLogo,
+	validateFungibleMintInput,
+	validateMintInput,
+} from './asset-mint';
+import { loadMintActivities } from './mint-activity';
+
+const owner = 'W'.repeat(43);
+const mediaId = 'M'.repeat(43);
+const processId = 'P'.repeat(43);
+
+function storage() {
+	const held = new Map<string, string>();
+	return {
+		getItem: (key: string) => held.get(key) ?? null,
+		setItem: (key: string, value: string) => void held.set(key, value),
+		removeItem: (key: string) => void held.delete(key),
+	};
+}
+
+describe('asset mint contract', () => {
+	it('deduplicates collection price sizes while retaining every transaction in the total', async () => {
+		const calls: string[] = [];
+		const file = new File([new Uint8Array([1, 2, 3])], 'same.png', { type: 'image/png' });
+		const estimate = await new CollectionMintClient({
+			gateway: 'https://gateway.example',
+			fetch: vi.fn(async (input) => {
+				calls.push(String(input));
+				return new Response('7');
+			}),
+		}).estimate({ name: 'Repeated sizes', description: '', files: Array(10).fill(file) });
+
+		expect(estimate).toMatchObject({ assetCount: 10, transactionCount: 12, total: 84n });
+		expect(new Set(calls).size).toBe(calls.length);
+		expect(calls.length).toBeLessThan(12);
+	});
+
+	it('bounds distinct collection price lookups to eight at a time', async () => {
+		let active = 0;
+		let maxActive = 0;
+		let calls = 0;
+		const files = Array.from(
+			{ length: 10 },
+			(_, index) =>
+				new File([new Uint8Array(index + 1)], `asset-${index}-${'x'.repeat(index)}.png`, { type: 'image/png' })
+		);
+		const estimate = await new CollectionMintClient({
+			gateway: 'https://gateway.example',
+			fetch: vi.fn(async () => {
+				calls += 1;
+				active += 1;
+				maxActive = Math.max(maxActive, active);
+				await new Promise((resolve) => setTimeout(resolve, 5));
+				active -= 1;
+				return new Response('1');
+			}),
+		}).estimate({ name: 'Distinct sizes', description: '', files });
+
+		expect(estimate.total).toBe(12n);
+		expect(calls).toBeGreaterThan(8);
+		expect(maxActive).toBe(8);
+	});
+
+	it('creates a discoverable one-of-one process whose transaction body is the asset media', () => {
+		const tags = mintProcessTags(
+			{ name: 'Signal #1', description: 'Permanent', contentType: 'image/png', createdAt: 123 },
+			owner
+		);
+
+		expect(tags).toMatchObject({
+			'hint-ui-style': 'non-fungible',
+			'content-type': 'image/png',
+			creator: owner,
+			description: 'Permanent',
+			implements: 'ANS-110',
+			title: 'Signal #1',
+			type: 'Process',
+			'execution-device': 'token@1.0',
+			'swap-device': 'arweave-swap@1.0',
+			'initial-holder': owner,
+			'total-supply': '1',
+		});
+		expect(Object.keys(tags)).toEqual(Object.keys(tags).map((tag) => tag.toLowerCase()));
+		expect(new Set(Object.keys(tags)).size).toBe(Object.keys(tags).length);
+		expect(tags).not.toHaveProperty('app-name');
+		expect(tags).not.toHaveProperty('app-version');
+		expect(tags).not.toHaveProperty('date-created');
+		expect(tags).not.toHaveProperty('asset-type');
+		expect(tags).not.toHaveProperty('collection');
+		expect(tags).not.toHaveProperty('asset-content-type');
+		expect(tags).not.toHaveProperty('asset-data');
+		expect(
+			mintProcessTags(
+				{
+					name: 'Signal #1',
+					contentType: 'image/png',
+					mediaId,
+					collection: 'Signal set',
+				},
+				owner
+			)['base-collection']
+		).toBe('Signal set');
+		expect(
+			mintProcessTags({ name: 'Signal #1', contentType: 'image/png', mediaId, collection: 'Signal set' }, owner)
+		).not.toHaveProperty('collection');
+		expect(
+			isBazarMintTags(Object.fromEntries(Object.entries(tags).map(([key, value]) => [key.toLowerCase(), value])))
+		).toBe(true);
+		expect(assetFromMintState(processId, { name: 'Signal #1', 'content-type': 'image/png' })).toEqual({
+			id: processId,
+			name: 'Signal #1',
+			contentType: 'image/png',
+			image: `https://arweave.net/${processId}`,
+		});
+		expect(
+			mintMetadata({ name: ' Signal #1 ', description: ' Permanent ', contentType: 'image/png' }, mediaId)
+		).toEqual({
+			name: 'Signal #1',
+			description: 'Permanent',
+			contentType: 'image/png',
+			image: mediaId,
+		});
+	});
+
+	it('accepts MP3 and WAV assets with optional immutable album artwork', () => {
+		const artworkId = 'A'.repeat(43);
+		const mp3 = new File([new Uint8Array([1])], 'signal.mp3', { type: 'audio/mpeg' });
+		const wav = new File([new Uint8Array([1])], 'signal.wav', { type: 'audio/x-wav' });
+		const artwork = new File([new Uint8Array([1])], 'cover.png', { type: 'image/png' });
+
+		expect(() => validateMintInput({ name: 'Signal', description: '', file: mp3, artwork })).not.toThrow();
+		expect(() => validateMintInput({ name: 'Signal', description: '', file: wav })).not.toThrow();
+		expect(() => validateCollectionMintInput({ name: 'Audio collection', description: '', files: [mp3] })).toThrow(
+			'mint-file-type-unsupported'
+		);
+		expect(
+			mintProcessTags({ name: 'Signal', contentType: 'audio/x-wav', mediaId, artworkId }, owner)
+		).toMatchObject({
+			'content-type': 'audio/wav',
+			'asset-data': mediaId,
+			'asset-artwork': artworkId,
+		});
+		expect(
+			mintMetadata({ name: 'Signal', description: '', contentType: 'audio/mpeg' }, mediaId, artworkId)
+		).toEqual({
+			name: 'Signal',
+			description: '',
+			contentType: 'audio/mpeg',
+			audio: mediaId,
+			image: artworkId,
+		});
+		expect(
+			assetFromMintState(processId, {
+				name: 'Signal',
+				'asset-data': mediaId,
+				'asset-artwork': artworkId,
+				'asset-content-type': 'audio/mpeg',
+				artist: 'Kite Array',
+				album: 'Long Orbit',
+				duration: '125',
+			})
+		).toEqual({
+			id: processId,
+			name: 'Signal',
+			contentType: 'audio/mpeg',
+			media: `https://arweave.net/${mediaId}`,
+			image: `https://arweave.net/${artworkId}`,
+			artist: 'Kite Array',
+			album: 'Long Orbit',
+			duration: 125,
+		});
+	});
+
+	it('encodes Universal Data License 0.2 terms with canonical tags', () => {
+		const terms = {
+			accessFee: '1.5',
+			derivation: { grant: 'revenue-share' as const, value: '12.5' },
+			commercialUse: { grant: 'one-time' as const, value: '20' },
+			dataModelTraining: { grant: 'monthly' as const, value: '3' },
+			unknownUsageRights: 'excluded' as const,
+			expiry: '5',
+		};
+
+		expect(udlLicenseTags({})).toEqual({ license: UDL_LICENSE_ID, currency: 'Arweave' });
+		expect(
+			udlLicenseTags({ currency: 'U', paymentAddress: owner } as unknown as Parameters<typeof udlLicenseTags>[0])
+		).toEqual({ license: UDL_LICENSE_ID, currency: 'Arweave' });
+		expect(udlLicenseTags(terms)).toEqual({
+			license: UDL_LICENSE_ID,
+			'access-fee': 'One-Time-1.5',
+			derivation: 'Allowed-With-RevenueShare-12.5%',
+			'commercial-use': 'Allowed-With-Fee-One-Time-20',
+			'data-model-training': 'Allowed-With-Fee-Monthly-3',
+			'unknown-usage-rights': 'Excluded',
+			expiry: '5',
+			currency: 'Arweave',
+		});
+		expect(
+			mintProcessTags({ name: 'Signal #1', contentType: 'image/png', mediaId, udl: terms }, owner)
+		).toMatchObject({
+			license: UDL_LICENSE_ID,
+			'data-model-training': 'Allowed-With-Fee-Monthly-3',
+		});
+		expect(() => normalizeUploadTags({ License: 'one', license: 'two' })).toThrow('duplicate-upload-tag-license');
+		expect(() => udlLicenseTags({ commercialUse: { grant: 'one-time', value: '0' } })).toThrow(
+			'mint-udl-fee-invalid'
+		);
+	});
+
+	it('provides credit, payment, and open UDL presets', () => {
+		expect(udlLicenseTags(udlTermsForPreset('share-with-credit'))).toEqual({
+			license: UDL_LICENSE_ID,
+			currency: 'Arweave',
+			derivation: 'Allowed-With-Credit',
+			'commercial-use': 'Allowed-With-Credit',
+			'data-model-training': 'Allowed',
+		});
+		expect(udlLicenseTags(udlTermsForPreset('share-with-payment'))).toEqual({
+			license: UDL_LICENSE_ID,
+			currency: 'Arweave',
+			derivation: 'Allowed-With-Fee-One-Time-1',
+			'commercial-use': 'Allowed-With-Fee-One-Time-1',
+			'data-model-training': 'Allowed-With-Fee-One-Time-1',
+		});
+		expect(udlLicenseTags(udlTermsForPreset('open-use'))).toEqual({
+			license: UDL_LICENSE_ID,
+			currency: 'Arweave',
+			derivation: 'Allowed',
+			'commercial-use': 'Allowed',
+			'data-model-training': 'Allowed',
+		});
+	});
+
+	it('keeps UDL terms in a recoverable mint draft', () => {
+		const store = storage();
+		store.setItem(
+			`bazar-mint-draft:${owner}`,
+			JSON.stringify({
+				owner,
+				mediaId,
+				name: 'Recoverable signal',
+				description: '',
+				contentType: 'image/png',
+				createdAt: 1,
+				udl: { commercialUse: { grant: 'credit' }, dataModelTraining: { grant: 'allowed' } },
+			})
+		);
+
+		expect(getMintDraft(owner, store)?.udl).toEqual({
+			commercialUse: { grant: 'credit' },
+			dataModelTraining: { grant: 'allowed' },
+		});
+	});
+
+	it('restores locally indexed minted assets without accepting malformed entries', () => {
+		const store = storage();
+		storeMintedAsset(
+			{
+				id: processId,
+				name: 'Signal #1',
+				description: 'Permanent',
+				contentType: 'image/png',
+				image: `https://arweave.net/${mediaId}`,
+				mediaId,
+				owner,
+				createdAt: 1,
+			},
+			store
+		);
+
+		expect(loadMintedAssets(store)).toHaveLength(1);
+		expect(createdCollection(loadMintedAssets(store))).toMatchObject({
+			id: CREATED_COLLECTION_ID,
+			total: 1,
+		});
+		expect(
+			assetFromMintState(processId, {
+				name: 'Signal #1',
+				'asset-data': mediaId,
+				'asset-content-type': 'image/png',
+			})
+		).toEqual({
+			id: processId,
+			name: 'Signal #1',
+			contentType: 'image/png',
+			image: `https://arweave.net/${mediaId}`,
+		});
+	});
+
+	it('persists a minted collection by its permanent carrier process', () => {
+		const store = storage();
+		const asset = {
+			id: processId,
+			name: 'Signal #1',
+			description: 'Permanent',
+			contentType: 'image/png',
+			image: `https://arweave.net/${mediaId}`,
+			mediaId,
+			owner,
+			createdAt: 1,
+		};
+		storeMintedCollection(
+			{
+				id: 'R'.repeat(43),
+				manifestId: 'N'.repeat(43),
+				owner,
+				createdAt: 2,
+				name: 'Signal set',
+				description: 'A collection',
+				kind: 'images',
+				assets: [asset],
+				total: 1,
+			},
+			store
+		);
+
+		expect(loadMintedCollections(store)).toMatchObject([
+			{
+				id: 'R'.repeat(43),
+				manifestId: 'N'.repeat(43),
+				name: 'Signal set',
+				total: 1,
+			},
+		]);
+	});
+
+	it('creates an ID-only manifest and a carrier process that points to it', () => {
+		const manifestId = 'N'.repeat(43);
+		const asset = {
+			id: processId,
+			name: 'Signal #1',
+			contentType: 'image/png',
+			image: `https://arweave.net/${processId}`,
+		};
+
+		expect(collectionManifest({ name: ' Signal set ', description: '' }, [asset])).toMatchObject({
+			name: 'Signal set',
+			assets: [processId],
+		});
+		expect(collectionProcessTags('Signal set', manifestId, owner)).toEqual({
+			device: 'process@1.0',
+			'execution-device': 'carrier@1.0',
+			'scheduler-device': 'arweave-scheduler@1.0',
+			'scheduler-mode': 'all',
+			'initial-holder': owner,
+			'initial-value': manifestId,
+			'total-supply': '1',
+			denomination: '0',
+			ticker: 'COLLECTION',
+			type: 'Process',
+			name: 'Signal set',
+		});
+		expect(collectionCarrierUpdateTags('Signal set', manifestId)).toEqual({
+			action: 'set',
+			value: manifestId,
+			type: 'Collection-Update',
+			name: 'Signal set',
+		});
+	});
+
+	it('prices one atomic transaction per collection asset plus the manifest and carrier process', async () => {
+		const fetchMock = vi.fn(async () => new Response('2'));
+		const estimate = await new CollectionMintClient({ fetch: fetchMock as typeof fetch }).estimate({
+			name: 'Signal set',
+			description: '',
+			files: [new File([new Uint8Array([1])], 'signal.png', { type: 'image/png' })],
+		});
+
+		expect(estimate).toEqual({ assetCount: 1, total: 6n, transactionCount: 3 });
+		expect(fetchMock).toHaveBeenCalledTimes(3);
+	});
+
+	it('keeps a completed collection mint out of the standalone asset bucket', async () => {
+		const store = storage();
+		const ids = ['A', 'M', 'C'].map((prefix) => prefix.repeat(43));
+		const transactions = ids.map(() => {
+			const transaction: any = { id: '', owner: '', chunks: { chunks: [{}] }, addTag: vi.fn() };
+			transaction.setSignature = vi.fn((signature) => Object.assign(transaction, signature));
+			transaction.toJSON = () => ({ id: transaction.id, owner: transaction.owner, tags: [] });
+			return transaction;
+		});
+		let signed = 0;
+		const client = new CollectionMintClient({
+			arweave: {
+				createTransaction: vi.fn(async () => transactions.shift()),
+				transactions: {},
+				wallets: { ownerToAddress: vi.fn(async () => owner) },
+			},
+			fetch: vi.fn(async (input: RequestInfo | URL) =>
+				String(input).includes('/wallet/') ? new Response('1000') : new Response('1')
+			) as typeof fetch,
+			storage: store,
+			wallet: {
+				getActiveAddress: vi.fn(async () => owner),
+				sign: vi.fn(async () => ({
+					id: ids[signed++],
+					owner: 'signed-owner',
+					tags: [],
+					signature: 'signed',
+				})),
+			} as any,
+		});
+
+		const result = await client.mint(
+			{
+				name: 'HTTP Word Art',
+				description: '',
+				files: [new File([new Uint8Array([1])], 'http.png', { type: 'image/png' })],
+			},
+			owner,
+			{ allowHighCost: true }
+		);
+
+		expect(result).toMatchObject({
+			manifestId: ids[1],
+			processId: ids[2],
+			collection: { id: ids[2], assets: [{ id: ids[0] }], total: 1 },
+		});
+		expect(loadMintedCollections(store)).toHaveLength(1);
+		expect(loadMintedAssets(store)).toEqual([]);
+		expect(loadMintActivities(store)).toEqual([]);
+	});
+
+	it('appends assets by targeting a signed carrier set update', async () => {
+		const store = storage();
+		const ids = ['A', 'B', 'M', 'U'].map((prefix) => prefix.repeat(43));
+		const transactions = ids.map((id) => {
+			const transaction: any = { id: '', owner: '', chunks: { chunks: [{}] }, addTag: vi.fn() };
+			transaction.setSignature = vi.fn((signature) => Object.assign(transaction, signature));
+			transaction.toJSON = () => ({ id: transaction.id, owner: transaction.owner, tags: [] });
+			return transaction;
+		});
+		const createTransaction = vi.fn(async () => transactions.shift());
+		let signed = 0;
+		const fetchMock = vi.fn(async (input: RequestInfo | URL) =>
+			String(input).includes('/wallet/') ? new Response('1000') : new Response('1')
+		) as typeof fetch;
+		const client = new CollectionMintClient({
+			arweave: {
+				createTransaction,
+				transactions: {},
+				wallets: { ownerToAddress: vi.fn(async () => owner) },
+			},
+			fetch: fetchMock,
+			storage: store,
+			wallet: {
+				getActiveAddress: vi.fn(async () => owner),
+				sign: vi.fn(async () => ({
+					id: ids[signed++],
+					owner: 'signed-owner',
+					tags: [],
+					signature: 'signed',
+				})),
+			} as any,
+		});
+		const collection = {
+			id: 'C'.repeat(43),
+			manifestId: 'O'.repeat(43),
+			owner,
+			createdAt: 1,
+			name: 'Happy agents',
+			description: 'A collection',
+			kind: 'images' as const,
+			assets: [],
+			total: 0,
+		};
+
+		const result = await client.append(
+			collection,
+			[
+				new File([new Uint8Array([1])], 'one.png', { type: 'image/png' }),
+				new File([new Uint8Array([2])], 'two.png', { type: 'image/png' }),
+			],
+			owner,
+			{ allowHighCost: true }
+		);
+
+		expect(result).toMatchObject({
+			manifestId: ids[2],
+			updateId: ids[3],
+			collection: { id: collection.id, manifestId: ids[2], total: 2 },
+		});
+		expect(createTransaction).toHaveBeenLastCalledWith(
+			{ data: '', target: collection.id, quantity: '1' },
+			'use_wallet'
+		);
+		expect(fetchMock).toHaveBeenCalledWith(`https://arweave.net/price/0/${collection.id}`, {
+			signal: undefined,
+		});
+		const update = await createTransaction.mock.results.at(-1)?.value;
+		expect(update.addTag).toHaveBeenCalledWith('action', 'set');
+		expect(update.addTag).toHaveBeenCalledWith('value', ids[2]);
+		expect(update.addTag).not.toHaveBeenCalledWith('reference-value', expect.anything());
+		expect(loadMintedCollections(store)[0]).toMatchObject({ id: collection.id, manifestId: ids[2], total: 2 });
+		expect(loadMintedAssets(store)).toEqual([]);
+		expect(loadMintActivities(store)).toEqual([]);
+	});
+
+	it('explains the bytes and transaction count in a single-asset quote', async () => {
+		const fetchMock = vi.fn(async () => new Response('3'));
+		const estimate = await new AssetMintClient({ fetch: fetchMock as typeof fetch }).estimate({
+			name: 'Signal',
+			description: '',
+			file: new File([new Uint8Array(4)], 'signal.mp3', { type: 'audio/mpeg' }),
+			artwork: new File([new Uint8Array(2)], 'cover.png', { type: 'image/png' }),
+		});
+
+		expect(estimate).toEqual({
+			assetReward: 3n,
+			artworkReward: 3n,
+			total: 6n,
+			assetBytes: 4,
+			artworkBytes: 2,
+			transactionCount: 2,
+		});
+	});
+
+	it('uploads one atomic process transaction through the chunk uploader', async () => {
+		const makeTransaction = (chunkCount: number) => {
+			const transaction: any = {
+				id: '',
+				owner: '',
+				data: new Uint8Array(1),
+				chunks: { chunks: Array.from({ length: chunkCount }, () => ({})) },
+				addTag: vi.fn(),
+			};
+			transaction.setSignature = vi.fn((signature) => Object.assign(transaction, signature));
+			transaction.toJSON = () => ({ id: transaction.id, owner: transaction.owner, data: '' });
+			return transaction;
+		};
+		const asset = makeTransaction(2);
+		let uploadComplete = false;
+		const uploadChunk = vi.fn(async () => {
+			uploadComplete = true;
+		});
+		const getUploader = vi.fn(async () => ({
+			get isComplete() {
+				return uploadComplete;
+			},
+			uploadChunk,
+		}));
+		const posted: string[] = [];
+		const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+			const url = String(input);
+			if (url.includes('/price/')) return new Response('1');
+			if (url.includes('/wallet/')) return new Response('100');
+			if (init?.method === 'POST') posted.push(url);
+			return new Response('', { status: 200 });
+		});
+		const client = new AssetMintClient({
+			arweave: {
+				createTransaction: vi.fn().mockResolvedValueOnce(asset),
+				transactions: { getUploader },
+				wallets: { ownerToAddress: vi.fn(async () => owner) },
+			},
+			fetch: fetchMock as typeof fetch,
+			storage: storage(),
+			wallet: {
+				getActiveAddress: vi.fn(async () => owner),
+				sign: vi.fn().mockResolvedValueOnce({
+					id: processId,
+					owner: 'signed-owner',
+					reward: '1',
+					tags: [],
+					signature: 'asset',
+				}),
+			} as any,
+		});
+
+		const result = await client.mint(
+			{
+				name: 'Large signal',
+				description: '',
+				file: new File([new Uint8Array(300_000)], 'large-signal.png', { type: 'image/png' }),
+				udl: { dataModelTraining: { grant: 'allowed' } },
+			},
+			owner
+		);
+
+		expect(getUploader).toHaveBeenCalledWith(asset);
+		expect(asset.addTag).toHaveBeenCalledWith('content-type', 'image/png');
+		expect(asset.addTag).toHaveBeenCalledWith('device', 'process@1.0');
+		expect(asset.addTag).toHaveBeenCalledWith('license', UDL_LICENSE_ID);
+		expect(asset.addTag).toHaveBeenCalledWith('data-model-training', 'Allowed');
+		expect(asset.addTag).not.toHaveBeenCalledWith('collection', expect.anything());
+		expect(asset.addTag).not.toHaveBeenCalledWith('asset-content-type', expect.anything());
+		expect(asset.addTag).toHaveBeenCalledWith('hint-ui-style', 'non-fungible');
+		expect(asset.addTag).not.toHaveBeenCalledWith('asset-type', expect.anything());
+		expect(asset.addTag).not.toHaveBeenCalledWith('app-name', expect.anything());
+		expect(asset.addTag).not.toHaveBeenCalledWith('app-version', expect.anything());
+		expect(asset.addTag).not.toHaveBeenCalledWith('date-created', expect.anything());
+		expect(asset.addTag).not.toHaveBeenCalledWith('asset-data', expect.anything());
+		expect(asset.setSignature).toHaveBeenCalledWith(expect.objectContaining({ id: processId, signature: 'asset' }));
+		expect(uploadChunk).toHaveBeenCalledOnce();
+		expect(posted).toEqual([]);
+		expect(result).toMatchObject({ mediaId: processId, processId, asset: { id: processId, mediaId: processId } });
+	});
+
+	it('finishes a legacy split-upload draft as a self-contained atomic asset', async () => {
+		const asset: any = { id: '', owner: '', chunks: { chunks: [{}] }, addTag: vi.fn() };
+		asset.setSignature = vi.fn((signature) => Object.assign(asset, signature));
+		asset.toJSON = () => ({ id: asset.id, owner: asset.owner, tags: [] });
+		const createTransaction = vi.fn(async () => asset);
+		const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+			const url = String(input);
+			if (url === `https://arweave.net/${mediaId}`) return new Response(new Uint8Array([7, 8, 9]));
+			if (url.includes('/price/')) return new Response('1');
+			if (url.includes('/wallet/')) return new Response('100');
+			if (init?.method === 'POST') return new Response('', { status: 200 });
+			return new Response('', { status: 404 });
+		});
+		const client = new AssetMintClient({
+			arweave: {
+				createTransaction,
+				transactions: {},
+				wallets: { ownerToAddress: vi.fn(async () => owner) },
+			},
+			fetch: fetchMock as typeof fetch,
+			storage: storage(),
+			wallet: {
+				getActiveAddress: vi.fn(async () => owner),
+				sign: vi.fn(async () => ({
+					id: processId,
+					owner: 'signed-owner',
+					tags: [],
+					signature: 'asset',
+				})),
+			} as any,
+		});
+
+		const result = await client.resume(
+			{
+				owner,
+				name: 'Recovered signal',
+				description: '',
+				contentType: 'image/png',
+				mediaId,
+				createdAt: 123,
+			},
+			owner
+		);
+
+		expect(createTransaction).toHaveBeenCalledWith({ data: new Uint8Array([7, 8, 9]) }, 'use_wallet');
+		expect(asset.addTag).not.toHaveBeenCalledWith('asset-data', expect.anything());
+		expect(result).toMatchObject({ mediaId: processId, processId, asset: { id: processId, mediaId: processId } });
+	});
+
+	it('uploads album artwork and records its transaction on the audio asset process', async () => {
+		const artworkId = 'A'.repeat(43);
+		const transaction = () => {
+			const held: any = { id: '', owner: '', chunks: { chunks: [{}] }, addTag: vi.fn() };
+			held.setSignature = vi.fn((signature) => Object.assign(held, signature));
+			held.toJSON = () => ({ id: held.id, owner: held.owner, tags: [] });
+			return held;
+		};
+		const artwork = transaction();
+		const asset = transaction();
+		const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+			const url = String(input);
+			if (url.includes('/price/')) return new Response('1');
+			if (url.includes('/wallet/')) return new Response('100');
+			return new Response('', { status: 200 });
+		});
+		const store = storage();
+		const onTransaction = vi.fn();
+		const client = new AssetMintClient({
+			arweave: {
+				createTransaction: vi.fn().mockResolvedValueOnce(artwork).mockResolvedValueOnce(asset),
+				transactions: {},
+				wallets: { ownerToAddress: vi.fn(async () => owner) },
+			},
+			fetch: fetchMock as typeof fetch,
+			storage: store,
+			computeGateway: 'https://compute.example',
+			wallet: {
+				getActiveAddress: vi.fn(async () => owner),
+				sign: vi
+					.fn()
+					.mockResolvedValueOnce({ id: artworkId, owner: 'signed-owner', tags: [], signature: 'artwork' })
+					.mockResolvedValueOnce({ id: processId, owner: 'signed-owner', tags: [], signature: 'asset' }),
+			} as any,
+		});
+
+		const result = await client.mint(
+			{
+				name: 'Permanent signal',
+				description: '',
+				file: new File([new Uint8Array([1])], 'signal.mp3', { type: 'audio/mpeg' }),
+				artwork: new File([new Uint8Array([2])], 'cover.jpg', { type: 'image/jpeg' }),
+				artist: 'Kite Array',
+				album: 'Long Orbit',
+				duration: 125,
+			},
+			owner,
+			{ onTransaction }
+		);
+
+		expect(artwork.addTag).toHaveBeenCalledWith('type', 'Asset-Artwork');
+		expect(asset.addTag).toHaveBeenCalledWith('content-type', 'audio/mpeg');
+		expect(asset.addTag).toHaveBeenCalledWith('asset-artwork', artworkId);
+		expect(asset.addTag).toHaveBeenCalledWith('artist', 'Kite Array');
+		expect(asset.addTag).toHaveBeenCalledWith('album', 'Long Orbit');
+		expect(asset.addTag).toHaveBeenCalledWith('duration', '125');
+		expect(asset.addTag).not.toHaveBeenCalledWith('asset-data', expect.anything());
+		expect(onTransaction.mock.calls).toEqual([
+			[{ id: artworkId, label: 'Artwork transaction' }],
+			[{ id: processId, label: 'Asset transaction' }],
+		]);
+		expect(result.asset).toMatchObject({
+			contentType: 'audio/mpeg',
+			media: `https://compute.example/${processId}`,
+			mediaId: processId,
+			image: `https://arweave.net/${artworkId}`,
+			artworkId,
+			artist: 'Kite Array',
+			album: 'Long Orbit',
+			duration: 125,
+		});
+		expect(loadMintActivities(store, owner)).toMatchObject([
+			{
+				phase: 'accepted',
+				transactionIds: [artworkId, processId],
+				arweaveGateway: 'https://arweave.net',
+				computeGateway: 'https://compute.example',
+			},
+		]);
+	});
+
+	it('validates fungible token fields and image-only logos', () => {
+		const input = {
+			name: 'Signal Token',
+			description: '',
+			ticker: 'SIG',
+			wholeSupply: '42622000',
+			denomination: '3',
+		};
+		expect(() => validateFungibleMintInput(input)).not.toThrow();
+		expect(fungibleAtomicSupply(input.wholeSupply, input.denomination)).toBe('42622000000');
+		expect(fungibleAtomicSupply('1', '0')).toBe('1');
+		expect(fungibleAtomicSupply('900719925474099', '12')).toBe('900719925474099000000000000');
+		expect(fungibleAtomicSupply(MAX_FUNGIBLE_WHOLE_SUPPLY.toString(), '12')).toBe('1000000000000000000000000000');
+		expect(fungibleAtomicSupply(MAX_FUNGIBLE_WHOLE_SUPPLY.toString(), '0')).toBe(
+			MAX_FUNGIBLE_WHOLE_SUPPLY.toString()
+		);
+		expect(() => fungibleAtomicSupply((MAX_FUNGIBLE_WHOLE_SUPPLY + 1n).toString(), '0')).toThrow(
+			'mint-supply-too-large'
+		);
+		expect(fungibleMintProcessTags(input, owner)).toMatchObject({
+			'hint-ui-style': 'fungible',
+			'initial-holder': owner,
+			'total-supply': '42622000000',
+			denomination: '3',
+			ticker: 'SIG',
+		});
+		expect(fungibleMintProcessTags(input, owner)).not.toHaveProperty('collection');
+		expect(fungibleMintProcessTags(input, owner)).not.toHaveProperty('app-name');
+		expect(fungibleMintProcessTags(input, owner)).not.toHaveProperty('app-version');
+		expect(fungibleMintProcessTags(input, owner)).not.toHaveProperty('asset-type');
+		expect(() => fungibleAtomicSupply('1.5', '3')).toThrow('mint-supply-invalid');
+		expect(() => fungibleAtomicSupply('1', '256')).toThrow('mint-denomination-invalid');
+		expect(() =>
+			validateFungibleLogo(new File([new Uint8Array([1])], 'logo.png', { type: 'image/png' }))
+		).not.toThrow();
+		expect(() => validateFungibleLogo(new File([new Uint8Array([1])], 'logo.mp3', { type: 'audio/mpeg' }))).toThrow(
+			'mint-logo-type-unsupported'
+		);
+		expect(() =>
+			validateFungibleLogo(new File([new Uint8Array(10 * 1024 * 1024 + 1)], 'logo.png', { type: 'image/png' }))
+		).toThrow('mint-logo-size-invalid');
+	});
+
+	it('quotes and uploads a selected logo before the fungible process', async () => {
+		const logoId = 'L'.repeat(43);
+		const logoFile = new File([new Uint8Array([1, 2, 3])], 'logo.png', { type: 'image/png' });
+		const input = {
+			name: 'Signal Token',
+			description: '',
+			ticker: 'SIG',
+			wholeSupply: '1000',
+			denomination: '12',
+		};
+		const transaction = () => {
+			const held: any = { id: '', owner: '', chunks: { chunks: [{}] }, addTag: vi.fn() };
+			held.setSignature = vi.fn((signature) => Object.assign(held, signature));
+			held.toJSON = () => ({ id: held.id, owner: held.owner, tags: [] });
+			return held;
+		};
+		const logoTransaction = transaction();
+		const processTransaction = transaction();
+		const createTransaction = vi
+			.fn()
+			.mockResolvedValueOnce(logoTransaction)
+			.mockResolvedValueOnce(processTransaction);
+		const fetchMock = vi.fn(async (request: RequestInfo | URL) => {
+			const url = String(request);
+			if (url.includes('/price/')) return new Response('5');
+			if (url.includes('/wallet/')) return new Response('100');
+			return new Response('', { status: 200 });
+		});
+		const store = storage();
+		const client = new AssetMintClient({
+			arweave: {
+				createTransaction,
+				transactions: {},
+				wallets: { ownerToAddress: vi.fn(async () => owner) },
+			},
+			fetch: fetchMock as typeof fetch,
+			storage: store,
+			computeGateway: 'https://compute.example',
+			wallet: {
+				getActiveAddress: vi.fn(async () => owner),
+				sign: vi
+					.fn()
+					.mockResolvedValueOnce({ id: logoId, owner: 'signed-owner', tags: [], signature: 'logo' })
+					.mockResolvedValueOnce({ id: processId, owner: 'signed-owner', tags: [], signature: 'process' }),
+			} as any,
+		});
+
+		await expect(client.estimateFungible(input, logoFile)).resolves.toMatchObject({
+			processReward: 5n,
+			logoReward: 5n,
+			reward: 10n,
+			transactionCount: 2,
+		});
+		const phases: string[] = [];
+		const uploaded: string[] = [];
+		const published: Array<{ id: string; label: string }> = [];
+		const result = await client.mintFungible(input, owner, {
+			logo: logoFile,
+			onLogoUploaded: (id) => uploaded.push(id),
+			onPhase: (phase) => phases.push(phase),
+			onTransaction: (transaction) => published.push(transaction),
+		});
+
+		expect(createTransaction).toHaveBeenNthCalledWith(1, { data: new Uint8Array([1, 2, 3]) }, 'use_wallet');
+		expect(logoTransaction.addTag).toHaveBeenCalledWith('content-type', 'image/png');
+		expect(logoTransaction.addTag).toHaveBeenCalledWith('type', 'Token-Logo');
+		expect(processTransaction.addTag).toHaveBeenCalledWith('logo', logoId);
+		expect(processTransaction.addTag).toHaveBeenCalledWith('hint-ui-style', 'fungible');
+		expect(processTransaction.addTag).not.toHaveBeenCalledWith('collection', expect.anything());
+		expect(processTransaction.addTag).toHaveBeenCalledWith('total-supply', '1000000000000000');
+		expect(createTransaction).toHaveBeenNthCalledWith(
+			2,
+			{ data: expect.stringContaining('"name":"Signal Token"') },
+			'use_wallet'
+		);
+		expect(phases).toEqual(['signing-logo', 'uploading-logo', 'signing', 'uploading']);
+		expect(uploaded).toEqual([logoId]);
+		expect(published).toEqual([
+			{ id: logoId, label: 'Token logo' },
+			{ id: processId, label: 'Fungible token' },
+		]);
+		expect(result).toMatchObject({
+			processId,
+			logo: logoId,
+			ticker: 'SIG',
+			wholeSupply: '1000',
+			atomicSupply: '1000000000000000',
+		});
+		expect(loadMintActivities(store, owner)).toMatchObject([
+			{
+				asset: {
+					contentType: 'application/x.arweave-token',
+					image: `https://arweave.net/${logoId}`,
+					ticker: 'SIG',
+				},
+				transactionIds: [logoId, processId],
+				arweaveGateway: 'https://arweave.net',
+				computeGateway: 'https://compute.example',
+			},
+		]);
+	});
+});

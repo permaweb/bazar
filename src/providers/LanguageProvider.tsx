@@ -1,39 +1,89 @@
 import React from 'react';
 
-import { language } from 'helpers/language';
+const strings: Record<string, string> = {
+	transaction: 'Transaction',
+	transactionSyncRacePrototypeInfinityCable: 'Network synchronization',
+	transactionSyncLaneConfirmed: 'confirmed',
+	transactionSyncLaneConnecting: 'connecting',
+	transactionSyncLanePending: 'pending',
+	transactionSyncLaneRecovered: 'recovered',
+	transactionSyncLaneReorged: 'reorganized',
+	transactionSyncLaneUnavailable: 'unavailable',
+	transactionSyncLaneWaiting: 'waiting',
+	transactionSyncProtocolTelemetry: 'Network consensus',
+	transactionSyncProtocolLive: 'Live',
+	transactionSyncProtocolRecent: 'Recent network activity',
+	transactionSyncProtocolAgreement: 'Network agreement',
+	transactionSyncProtocolConfirmationEvents: 'Confirmation updates',
+	transactionSyncProtocolDiscoveredBy: 'Discovered by {observer}',
+	transactionSyncProtocolLatestResponse: 'Latest response',
+	transactionSyncProtocolObserver: 'observer',
+	transactionSyncProtocolObservers: 'Observers',
+	transactionSyncProtocolPhase: 'Current phase',
+	transactionSyncProtocolResponseRate: 'Responses / sec',
+	transactionSyncProtocolResponses: 'Responses',
+	transactionSyncProtocolSecondsAgo: '{seconds}s ago',
+	transactionSyncProtocolStateChanges: 'State changes',
+	transactionSyncProtocolUnknown: 'Unknown',
+	transactionSyncVerificationDelayed: 'Observers delayed',
+	transactionSyncVerificationDelayedDetail:
+		'Observers are currently delayed. Your transaction may still be progressing. Come back soon to see progress.',
+	transactionSyncActivityConfirmation: 'Node depth',
+	transactionSyncActivityError: 'Error',
+	transactionSyncActivityProof: 'Block proof',
+	transactionSyncActivityStatus: 'Node status',
+	transactionSyncForkDaily: 'At depth 2, forks occur approximately once per day.',
+	transactionSyncForkMonthly: 'At depth 3, forks occur approximately once per month.',
+	transactionSyncForkTwoYears: 'At depth 4+, forks occur approximately once every two years.',
+	transactionSyncMiningAccepted: 'Accepted block proofs',
+	transactionSyncMiningAgeDays: '{value} days',
+	transactionSyncMiningAgeHours: '{value} hours',
+	transactionSyncMiningAgeYears: '{value} years',
+	transactionSyncMiningAverage: 'Average candidates / sec',
+	transactionSyncMiningBlockLabel: 'Block {height}',
+	transactionSyncMiningCandidateTotal: 'Candidates checked since submission',
+	transactionSyncMiningChecking: 'Sampling live mining activity',
+	transactionSyncMiningContentData: 'Arweave data',
+	transactionSyncMiningDataUnknown: 'Data details unavailable',
+	transactionSyncMiningDiskRate: 'Average disk bytes checked / sec',
+	transactionSyncMiningDiskTotal: 'Disk bytes checked since submission',
+	transactionSyncMiningPinOffset: 'Recall offset {offset}',
+	transactionSyncMiningPinProofMeta: '{proofs} PoA · {proofBytes} · VDF {step}',
+	transactionSyncMiningPinRecallMeta: '{age} · block {height}',
+	transactionSyncMiningProofDetail: 'Block {height} · {proofs} proofs',
+	transactionSyncMiningRecallDetail: 'Recall {index}: offset {offset}',
+	transactionSyncMiningSource: 'source block',
+	transactionSyncMiningTelemetry: 'Arweave protocol',
+	transactionSyncMiningUnavailable: 'Mining activity unavailable',
+	transactionSyncObserverLatency: '{latency} ms',
+	transactionSyncProofBlockId: 'Block {id}',
+	transactionSyncProofCheckedHeight: 'checked at {height}',
+	transactionSyncProofHttpStatus: 'HTTP {status}',
+	transactionSyncProofMinedAtHeight: 'mined at {height}',
+	transactionSyncProofObserved: 'observed',
+	transactionSyncProtocolActivity:
+		'{phase} · {state} · HTTP {status} · {latency} ms · node {height} · observer depth {depth}',
+	transactionSyncProtocolStateConfirmed: 'confirmed',
+	transactionSyncProtocolStateError: 'request failed',
+	transactionSyncProtocolStateGone: 'confirmation reorganized',
+	transactionSyncProtocolStateNotFound: 'not yet seen',
+	transactionSyncProtocolStatePending: 'waiting to be mined',
+	transactionSyncSkip: 'Skip',
+	transactionSyncSkipDetail: 'The registration will keep confirming in the background while settlement continues.',
+	transactionSyncSkipTooltip:
+		'Skip waiting for further confirmation of the registration. Registration protects you from sending a payment while another user is purchasing the same asset.',
+	transactionSyncSkipTitle: 'Continue at {depth} confirmations',
+	transactionSyncYolo: 'YOLO',
+	transactionSyncYoloDetail: 'Continue after three confirmations. Faster, with higher reorganization risk.',
+	transactionSyncYoloTitle: 'Continue early?',
+};
 
-type LanguageType = 'en' | 'sp';
+const LanguageContext = React.createContext({ strings });
 
-export interface LanguageContextState {
-	current: LanguageType;
-	setCurrent: (current: LanguageType) => void;
-	object: any;
+export function LanguageProvider({ children }: React.PropsWithChildren) {
+	return <LanguageContext.Provider value={{ strings }}>{children}</LanguageContext.Provider>;
 }
 
-export interface LanguageProviderProps {
-	children: React.ReactNode;
-}
-
-export const LanguageContext = React.createContext<LanguageContextState>({
-	current: 'en',
-	setCurrent(current: LanguageType) {
-		alert(current);
-	},
-	object: null,
-});
-
-export function useLanguageProvider(): LanguageContextState {
+export function useLanguageProvider() {
 	return React.useContext(LanguageContext);
-}
-
-export function LanguageProvider(props: LanguageProviderProps) {
-	const [current, setCurrent] = React.useState<LanguageType>('en');
-
-	return (
-		<LanguageContext.Provider
-			value={{ current, setCurrent: (current: LanguageType) => setCurrent(current), object: language }}
-		>
-			{props.children}
-		</LanguageContext.Provider>
-	);
 }
