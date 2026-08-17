@@ -22,6 +22,7 @@ import {
 	collectionDefaultsToListed,
 	CollectionDescription,
 	collectionListingScopeVersion,
+	collectionRecipientsWithoutListingCandidates,
 	commitHomeActivityBatch,
 	commitHomeFloorResult,
 	compareCollectionAssetNames,
@@ -30,9 +31,13 @@ import {
 	completeHomeActivityScan,
 	completeHomeSummaryRetryGroup,
 	createAnimationFrameBatch,
+	cumulativeCollectionDepth,
 	DiscoveryAssetArtwork,
 	filterGlobalActivity,
 	globalActivityCollection,
+	globalActivityRecipientIds,
+	globalActivityRevealDescription,
+	globalActivityWindowDescription,
 	HOME_DISCOVER_TOKEN_PAGE_SIZE,
 	homeAllAssets,
 	homeAssetPage,
@@ -63,6 +68,7 @@ import {
 	mergeResolvedListingBatch,
 	newestCollectionActivity,
 	nextListingAnnouncementProgress,
+	pendingCollectionPriceAssets,
 	pendingHomeActivityRecipients,
 	pendingHomeFloorCandidates,
 	publishHomeListingResult,
@@ -95,6 +101,29 @@ beforeEach(() => replaceHiddenCollectionAssetIndex(readyHiddenCollectionIndex));
 afterEach(() => replaceHiddenCollectionAssetIndex({}));
 
 describe('Home market summary retries', () => {
+	it('calculates cumulative order-book depth from ascending offer quantities', () => {
+		expect(cumulativeCollectionDepth([1, 1, 3, 5])).toEqual([10, 20, 50, 100]);
+		const fallback = cumulativeCollectionDepth([0, Number.NaN, -1]);
+		expect(fallback[0]).toBeCloseTo(100 / 3);
+		expect(fallback[1]).toBeCloseTo(200 / 3);
+		expect(fallback[2]).toBe(100);
+	});
+
+	it('does not start a visible-price fallback while the primary collection listing pass is active', () => {
+		const assets = [
+			{ id: 'A'.repeat(43), name: 'One' },
+			{ id: 'B'.repeat(43), name: 'Two' },
+		];
+		expect(pendingCollectionPriceAssets(assets, [], true)).toEqual([]);
+		expect(pendingCollectionPriceAssets(assets, [assets[0].id], false)).toEqual([assets[1]]);
+	});
+
+	it('marks completed recipients without listing candidates as resolved index misses', () => {
+		const first = 'A'.repeat(43);
+		const second = 'B'.repeat(43);
+		expect(collectionRecipientsWithoutListingCandidates([first, second], [{ processId: second }])).toEqual([first]);
+	});
+
 	it('calculates an exact 24-hour token ask change from differently sized listings', () => {
 		const now = Date.UTC(2026, 7, 14, 12);
 		const offer = (id: string, hoursAgo: number, asking: string, quantity: string): CollectionActivityEvent => ({
@@ -1071,6 +1100,25 @@ describe('Home market summary retries', () => {
 		expect(filterGlobalActivity(events, 'cancel-order').map((event) => event.id)).toEqual(['cancel']);
 	});
 
+	it('describes a complete progressive scan without claiming unloaded collection assets', () => {
+		expect(globalActivityWindowDescription(42, 12, true)).toBe(
+			'Reading complete indexed history for 12 marketplace assets. 42 events found so far.'
+		);
+		expect(globalActivityWindowDescription(1, 1)).toBe(
+			'All 1 indexed event found for 1 marketplace asset is loaded.'
+		);
+		expect(globalActivityWindowDescription(200, 50, false, true)).toBe(
+			'All 200 indexed events found for the currently loaded 50 marketplace assets are loaded. More assets remain in paged collections.'
+		);
+	});
+
+	it('describes progressive reveal within the complete loaded history', () => {
+		expect(globalActivityRevealDescription(40, 100, 100, false)).toBe('Showing 40 of 100 indexed events.');
+		expect(globalActivityRevealDescription(100, 100, 100, false)).toBe('All 100 indexed events are shown.');
+		expect(globalActivityRevealDescription(90, 90, 100, true)).toBe('All 90 matching indexed events are shown.');
+		expect(globalActivityRevealDescription(1, 1, 18, true)).toBe('All 1 matching indexed event is shown.');
+	});
+
 	it('checks exact collection membership without rescanning loaded assets', () => {
 		const loadedImage = 'i'.repeat(43);
 		const loadedToken = 't'.repeat(43);
@@ -1108,6 +1156,35 @@ describe('Home market summary retries', () => {
 		expect([tokenIncludes(loadedToken), tokenIncludes(foreign)]).toEqual([true, false]);
 		expect([nameIncludes(canonicalName), nameIncludes(staleLoadedName)]).toEqual([true, false]);
 		expect(nameIncludes(hiddenName)).toBe(false);
+	});
+
+	it('deduplicates visible marketplace recipients for complete history scans', () => {
+		const shared = 'q'.repeat(43);
+		const image = 'i'.repeat(43);
+		const name = 'n'.repeat(43);
+		const indexed: Collection[] = [
+			{
+				id: 'images',
+				name: 'Images',
+				description: '',
+				kind: 'images',
+				assets: [
+					{ id: image, name: 'Image' },
+					{ id: shared, name: 'Shared' },
+				],
+			},
+			{ id: 'tokens', name: 'Tokens', description: '', kind: 'tokens', assets: [{ id: shared, name: 'Shared' }] },
+			{
+				id: 'names',
+				name: 'Names',
+				description: '',
+				kind: 'names',
+				assets: [],
+				namespace: { manifestId: 'm'.repeat(43), namesById: { [name]: 'name' } },
+			},
+		];
+
+		expect(globalActivityRecipientIds(indexed)).toEqual([image, shared, name]);
 	});
 
 	it('screens a large collection candidate set with exact indexed membership', () => {

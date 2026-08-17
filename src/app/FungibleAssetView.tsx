@@ -154,10 +154,21 @@ type Props = {
 	collectionIndexNotice?: React.ReactNode;
 	state: AssetState;
 	activity: CollectionActivityEvent[];
+	activityHasNextPage: boolean;
 	activityLoading: boolean;
+	activityLoadingMore: boolean;
+	activityTotalCount: number | null;
 	activityError: string | null;
+	askActivity: CollectionActivityEvent[];
+	askError: string | null;
+	askHasNextPage: boolean;
+	askLoading: boolean;
+	askLoadingMore: boolean;
+	onActivityLoadMore(): void;
 	onActivityRetry(): void;
 	onActivityVisible(): void;
+	onAskLoadMore(): void;
+	onAskRetry(): void;
 	loading: boolean;
 	error: string | null;
 	provider: string;
@@ -576,10 +587,21 @@ export function FungibleAssetView({
 	collectionIndexNotice,
 	state,
 	activity,
+	activityHasNextPage,
 	activityLoading,
+	activityLoadingMore,
+	activityTotalCount,
 	activityError,
+	askActivity,
+	askError,
+	askHasNextPage,
+	askLoading,
+	askLoadingMore,
+	onActivityLoadMore,
 	onActivityRetry,
 	onActivityVisible,
+	onAskLoadMore,
+	onAskRetry,
 	loading,
 	error,
 	onRefresh,
@@ -754,8 +776,8 @@ export function FungibleAssetView({
 	const license = licenseProperties(state);
 	const description = assetDescription(state, collection.description);
 	const askHistory = React.useMemo(
-		() => fungibleAskHistory(activity, state.denomination),
-		[activity, state.denomination]
+		() => fungibleAskHistory(askActivity, state.denomination),
+		[askActivity, state.denomination]
 	);
 	const purchaseKey = wallet.address ? fungibleBatchStorageKey(asset.id, wallet.address) : '';
 	type FungibleAssetSection = typeof activeSection;
@@ -1402,9 +1424,14 @@ export function FungibleAssetView({
 							tabIndex={0}
 						>
 							<TokenPriceChart
-								error={activityError}
+								error={askError}
+								floorValue={best ? unitPriceWinston(best, state.denomination).toString() : null}
 								formatValue={(value) => `${winstonToAr(value)} AR / ${ticker}`}
-								loading={activityLoading}
+								hasNextPage={askHasNextPage}
+								loading={askLoading}
+								loadingMore={askLoadingMore}
+								onLoadMore={onAskLoadMore}
+								onRetry={onAskRetry}
 								points={askHistory}
 								ticker={ticker}
 							/>
@@ -1559,7 +1586,7 @@ export function FungibleAssetView({
 										describeEvent={(event) => activityDetail(event, state)}
 										eventAmount={(event) => fungiblePurchaseActivityAmount(event, activity, state)}
 										events={visibleActivityRows}
-										loading={activityLoading}
+										loading={activityLoading || activityLoadingMore}
 										reservationState={state}
 										resolveAsset={() => asset}
 									/>
@@ -1569,6 +1596,11 @@ export function FungibleAssetView({
 								) : null}
 								{visibleActivityRows.length < activity.length ? (
 									<div className="asset-market-activity-footer">
+										<p className="market-note">
+											{activityTotalCount === null
+												? `${activity.length.toLocaleString()} indexed events loaded.`
+												: `${activity.length.toLocaleString()} of ${activityTotalCount.toLocaleString()} indexed events loaded.`}
+										</p>
 										<Button
 											type="button"
 											size="custom"
@@ -1584,6 +1616,28 @@ export function FungibleAssetView({
 											more
 										</Button>
 									</div>
+								) : activityHasNextPage ? (
+									<div className="asset-market-activity-footer">
+										<p className="market-note">
+											{activityTotalCount === null
+												? `${activity.length.toLocaleString()} indexed events loaded.`
+												: `${activity.length.toLocaleString()} of ${activityTotalCount.toLocaleString()} indexed events loaded.`}
+										</p>
+										<Button
+											disabled={activityLoadingMore}
+											onClick={onActivityLoadMore}
+											size="custom"
+											type="button"
+										>
+											{activityLoadingMore ? 'Loading older activity…' : 'Load older activity'}
+										</Button>
+									</div>
+								) : activity.length ? (
+									<p className="market-note">
+										{activityTotalCount === null
+											? `${activity.length.toLocaleString()} indexed events loaded.`
+											: `${activity.length.toLocaleString()} of ${activityTotalCount.toLocaleString()} indexed events loaded.`}
+									</p>
 								) : null}
 							</section>
 						</section>

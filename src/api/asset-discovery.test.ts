@@ -10,8 +10,10 @@ import {
 	confirmPurchaseActivity,
 	createAssetCandidateResolver,
 	createWalletCandidateScan,
+	discoverAllCollectionActivityBatched,
 	discoverCollectionActivity,
 	discoverCollectionActivityBatched,
+	discoverCollectionActivityPage,
 	discoverMarketActivity,
 	discoverMarketActivityBatched,
 	discoverPendingAssetOffers,
@@ -1666,6 +1668,61 @@ describe('wallet candidate discovery', () => {
 		expect(body.variables.recipients).toEqual([assetA]);
 	});
 
+	it('returns an exact initial activity count and a cursor for independently paged streams', async () => {
+		const fetcher = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+			const body = JSON.parse(String(init?.body));
+			return Response.json({
+				data: {
+					transactions: {
+						count: '5',
+						pageInfo: { hasNextPage: true },
+						edges: [activityEdge('listing-page-1', assetA, 42)],
+					},
+				},
+			});
+		});
+
+		await expect(
+			discoverCollectionActivityPage({
+				actions: ['make-offer'],
+				fetch: fetcher as typeof fetch,
+				pageSize: 24,
+				recipients: [assetA],
+			})
+		).resolves.toMatchObject({
+			cursor: 'listing-page-1',
+			hasNextPage: true,
+			totalCount: 5,
+			events: [{ action: 'make-offer', processId: assetA }],
+		});
+		const body = JSON.parse(String((fetcher.mock.calls[0] as unknown as [RequestInfo | URL, RequestInit])[1].body));
+		expect(body.query).toContain('count');
+		expect(body.variables).toMatchObject({
+			first: 24,
+			recipients: [assetA],
+			tags: [{ name: 'action', values: ['make-offer'] }],
+		});
+	});
+
+	it('omits count from cursor pages because the index cannot combine it with search_after', async () => {
+		const fetcher = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+			const body = JSON.parse(String(init?.body));
+			expect(body.query).not.toContain('\t\tcount');
+			expect(body.variables.cursor).toBe('older-page');
+			return Response.json({
+				data: { transactions: { pageInfo: { hasNextPage: false }, edges: [] } },
+			});
+		});
+
+		await expect(
+			discoverCollectionActivityPage({
+				cursor: 'older-page',
+				fetch: fetcher as typeof fetch,
+				recipients: [assetA],
+			})
+		).resolves.toEqual({ events: [], cursor: null, hasNextPage: false, totalCount: null });
+	});
+
 	it('keeps the registered fill quantity needed to price purchase activity', async () => {
 		const transaction = 'R'.repeat(43);
 		const orderId = 'O'.repeat(43);
@@ -1774,6 +1831,83 @@ describe('wallet candidate discovery', () => {
 
 		expect(fetcher).toHaveBeenCalledTimes(3);
 		expect(completed).toEqual([recipients.slice(0, 100), recipients.slice(200)]);
+	});
+
+	it('reads every cursor page for exact marketplace recipient batches', async () => {
+		const pages = [
+			{
+				data: {
+					transactions: {
+						count: 3,
+						pageInfo: { hasNextPage: true },
+						edges: [activityEdge('cursor-one', assetA, 30), activityEdge('cursor-two', assetB, 20)],
+					},
+				},
+			},
+			{
+				data: {
+					transactions: {
+						pageInfo: { hasNextPage: false },
+						edges: [activityEdge('cursor-three', assetA, 10)],
+					},
+				},
+			},
+		];
+		const fetcher = vi.fn(async () => Response.json(pages.shift()));
+		const progress: Array<{ ids: string[]; page: number; hasNextPage: boolean }> = [];
+
+		const events = await discoverAllCollectionActivityBatched({
+			fetch: fetcher as typeof fetch,
+			recipients: [assetA, assetB],
+			onPage: async (page, _recipients, state) => {
+				await Promise.resolve();
+				progress.push({ ids: page.map((event) => event.id), page: state.page, hasNextPage: state.hasNextPage });
+			},
+		});
+
+		expect(fetcher).toHaveBeenCalledTimes(2);
+		expect(events.map((event) => event.height)).toEqual([30, 20, 10]);
+		expect(progress).toEqual([
+			{
+				ids: [activityEdge('cursor-one', assetA, 30).node.id, activityEdge('cursor-two', assetB, 20).node.id],
+				page: 1,
+				hasNextPage: true,
+			},
+			{ ids: [activityEdge('cursor-three', assetA, 10).node.id], page: 2, hasNextPage: false },
+		]);
+	});
+
+	it('bounds complete history recipient scans while preserving every batch result', async () => {
+		const recipients = Array.from({ length: 205 }, (_, index) => index.toString(36).padStart(43, 'F'));
+		let active = 0;
+		let maxActive = 0;
+		const fetcher = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+			const batch = JSON.parse(String(init?.body)).variables.recipients as string[];
+			active += 1;
+			maxActive = Math.max(maxActive, active);
+			await new Promise((resolve) => setTimeout(resolve, 1));
+			active -= 1;
+			return Response.json({
+				data: {
+					transactions: {
+						pageInfo: { hasNextPage: false },
+						edges: batch.map((processId) =>
+							activityEdge(
+								`complete-${recipients.indexOf(processId)}`,
+								processId,
+								recipients.indexOf(processId) + 1
+							)
+						),
+					},
+				},
+			});
+		});
+
+		const events = await discoverAllCollectionActivityBatched({ fetch: fetcher as typeof fetch, recipients });
+
+		expect(maxActive).toBe(2);
+		expect(fetcher).toHaveBeenCalledTimes(3);
+		expect(events).toHaveLength(205);
 	});
 
 	it('queries names activity globally, filters it locally, and verifies carrier processes', async () => {

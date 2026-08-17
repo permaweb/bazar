@@ -35,6 +35,8 @@ declare module 'styled-components' {
 		eventOrangeSurface: string;
 		eventBlue: string;
 		eventBlueSurface: string;
+		activityChartBar: string;
+		activityChartBarHover: string;
 		eventPink: string;
 		eventPinkSurface: string;
 		focusRing: string;

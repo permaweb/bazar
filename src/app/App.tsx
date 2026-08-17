@@ -21,6 +21,7 @@ import {
 	Layers3,
 	LayoutGrid,
 	Library,
+	List,
 	LoaderCircle,
 	Plus,
 	RefreshCw,
@@ -50,8 +51,10 @@ import {
 	confirmPurchaseActivity,
 	createAssetCandidateResolver,
 	createWalletCandidateScan,
+	discoverAllCollectionActivityBatched,
 	discoverCollectionActivity,
 	discoverCollectionActivityBatched,
+	discoverCollectionActivityPage,
 	discoverMarketActivity,
 	discoverMarketActivityBatched,
 	discoverPendingAssetOffers,
@@ -146,6 +149,7 @@ import { BazarMark } from 'components/BazarMark';
 import { Button } from 'components/Button';
 import { ConnectWalletButton } from 'components/ConnectWalletButton';
 import { ErrorPanel } from 'components/ErrorPanel';
+import { GlobalActivityCharts } from 'components/GlobalActivityCharts';
 import { Loading } from 'components/Loading';
 import { MintTransactionReceipt } from 'components/MintTransactionReceipt';
 import { NameArtwork } from 'components/NameArtwork';
@@ -163,6 +167,7 @@ import { StateVerification } from 'components/StateVerification';
 import { TokenArtwork } from 'components/TokenArtwork';
 import { TokenAvatar } from 'components/TokenAvatar';
 import { TokenMarketRow } from 'components/TokenMarketRow';
+import type { TokenPricePoint } from 'components/TokenPriceChart';
 import { Tooltip } from 'components/Tooltip';
 import {
 	isTransactionActivityVisible,
@@ -289,6 +294,9 @@ import {
 import { useDialogFocus } from './useDialogFocus';
 
 const FungibleAssetView = React.lazy(() => import('../routes/FungibleAssetRoute'));
+const UniquePriceChart = React.lazy(() =>
+	import('../components/TokenPriceChart').then(({ TokenPriceChart }) => ({ default: TokenPriceChart }))
+);
 const CreateView = React.lazy(() => import('../routes/CreateRoute'));
 const DispatchView = React.lazy(() => import('../routes/DispatchRoute'));
 const ProfileView = React.lazy(() => import('../routes/ProfileRoute'));
@@ -4216,7 +4224,7 @@ function Home() {
 												: 'Browse fungible tokens and Uniques on the permaweb.'
 											: homeTab === 'collections'
 											? 'Browse NFT and name collections.'
-											: 'Recent activity of purchases, listings, and transfers across every marketplace collection.'}
+											: 'Latest indexed purchases, listings, and transfers across every marketplace collection.'}
 									</p>
 								</div>
 								{homeTab === 'discover' ? (
@@ -4538,7 +4546,21 @@ export function globalActivityCollection(collections: Collection[], processId: s
 	return indexed.get(processId);
 }
 
+export function globalActivityRecipientIds(collections: Collection[]) {
+	const ids = new Set<string>();
+	for (const collection of collections) {
+		const processIds =
+			collection.kind === 'names'
+				? Object.keys(collection.namespace?.namesById ?? {})
+				: collection.assets.map((asset) => asset.id);
+		for (const id of processIds) if (isVisibleAssetId(id)) ids.add(id);
+	}
+	return [...ids];
+}
+
 export type GlobalActivityFilter = 'all' | CollectionActivityEvent['action'];
+
+export const GLOBAL_ACTIVITY_WINDOW_SIZE = 100;
 
 export function filterGlobalActivity(events: CollectionActivityEvent[], filter: GlobalActivityFilter) {
 	if (filter === 'all') return events;
@@ -4547,9 +4569,46 @@ export function filterGlobalActivity(events: CollectionActivityEvent[], filter: 
 	);
 }
 
+export function globalActivityWindowDescription(
+	eventCount: number,
+	assetCount = 0,
+	loading = false,
+	hasMoreAssets = false
+) {
+	const count = Math.max(0, Math.floor(eventCount));
+	const assets = Math.max(0, Math.floor(assetCount));
+	if (loading) {
+		return `Reading complete indexed history for ${assets.toLocaleString()} marketplace ${
+			assets === 1 ? 'asset' : 'assets'
+		}. ${count.toLocaleString()} ${count === 1 ? 'event' : 'events'} found so far.`;
+	}
+	return `All ${count.toLocaleString()} indexed ${count === 1 ? 'event' : 'events'} found for ${
+		hasMoreAssets ? 'the currently loaded ' : ''
+	}${assets.toLocaleString()} marketplace ${assets === 1 ? 'asset is' : 'assets are'} loaded.${
+		hasMoreAssets ? ' More assets remain in paged collections.' : ''
+	}`;
+}
+
+export function globalActivityRevealDescription(
+	shownCount: number,
+	matchingCount: number,
+	_loadedCount: number,
+	filtered: boolean,
+	_limit = GLOBAL_ACTIVITY_WINDOW_SIZE
+) {
+	const shown = Math.max(0, Math.floor(shownCount));
+	const matching = Math.max(0, Math.floor(matchingCount));
+	const qualifier = filtered ? ' matching' : '';
+	if (shown < matching) {
+		return `Showing ${shown.toLocaleString()} of ${matching.toLocaleString()}${qualifier} indexed events.`;
+	}
+	const eventLabel = matching === 1 ? 'event' : 'events';
+	const verb = matching === 1 ? 'is' : 'are';
+	return `All ${matching.toLocaleString()}${qualifier} indexed ${eventLabel} ${verb} shown.`;
+}
+
 function HomeActivityPanel({ collections, marketLoading }: { collections: Collection[]; marketLoading: boolean }) {
 	const [events, setEvents] = React.useState<CollectionActivityEvent[]>([]);
-	const [discoveredAssets, setDiscoveredAssets] = React.useState<Record<string, ResolvedAsset>>({});
 	const [loading, setLoading] = React.useState(true);
 	const [error, setError] = React.useState<string | null>(null);
 	const [retry, setRetry] = React.useState(0);
@@ -4559,6 +4618,7 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 	const eventsRef = React.useRef(events);
 	const scopeRef = React.useRef('');
 	const activityListId = React.useId();
+	const activityWindowDescriptionId = React.useId();
 	const activityRevealRef = React.useRef<HTMLParagraphElement>(null);
 	const eventCountRef = React.useRef(events.length);
 	eventsRef.current = events;
@@ -4567,6 +4627,8 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 		.map((collection) => `${collection.id}:${collectionActivityVersion(collection)}`)
 		.sort()
 		.join('|');
+	const activityRecipients = React.useMemo(() => globalActivityRecipientIds(collections), [collections]);
+	const hasMoreActivityAssets = collections.some((collection) => collection.hasMore);
 
 	React.useEffect(() => {
 		setActivityLimit(20);
@@ -4583,7 +4645,6 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 			scopeRef.current = activityScope;
 			eventsRef.current = cachedEvents;
 			setEvents(cachedEvents);
-			setDiscoveredAssets({});
 		} catch {
 			// Browser storage is optional; live Arweave discovery continues below.
 		}
@@ -4615,15 +4676,20 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 		if (!preserveEvents) {
 			eventsRef.current = [];
 			setEvents([]);
-			setDiscoveredAssets({});
 		} else if (!sameScope) {
 			eventsRef.current = initialEvents;
 			setEvents(initialEvents);
-			setDiscoveredAssets({});
 		}
 		setLoading(true);
 		setError(null);
-		const publish = (nextEvents: CollectionActivityEvent[]) => {
+		let publishFrame: number | undefined;
+		const commitFound = () => {
+			publishFrame = undefined;
+			if (controller.signal.aborted) return;
+			eventsRef.current = newestCollectionActivity([...found.values()], Number.MAX_SAFE_INTEGER);
+			setEvents(eventsRef.current);
+		};
+		const publish = (nextEvents: CollectionActivityEvent[], immediately = false) => {
 			if (controller.signal.aborted) return;
 			for (const event of nextEvents) {
 				const previous = found.get(event.id);
@@ -4634,95 +4700,33 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 						: event
 				);
 			}
-			eventsRef.current = newestCollectionActivity([...found.values()]);
-			setEvents(eventsRef.current);
-		};
-		const knownMembership = (processId: string) => globalActivityCollection(collections, processId);
-		const unknownEvents = new Map<string, CollectionActivityEvent[]>();
-		const resolvedUnknown = new Map<string, ResolvedAsset>();
-		const pendingUnknownSettlements = new Set<string>();
-		let settlementFrame: number | undefined;
-		const flushUnknownSettlements = () => {
-			if (settlementFrame !== undefined) window.cancelAnimationFrame(settlementFrame);
-			settlementFrame = undefined;
-			if (controller.signal.aborted || !pendingUnknownSettlements.size) return;
-			const settled = [...pendingUnknownSettlements];
-			pendingUnknownSettlements.clear();
-			setDiscoveredAssets((current) => ({
-				...current,
-				...Object.fromEntries(settled.map((processId) => [processId, resolvedUnknown.get(processId)!])),
-			}));
-			publish(settled.flatMap((processId) => unknownEvents.get(processId) ?? []));
-		};
-		const resolver = createAssetCandidateResolver(collections, {
-			signal: controller.signal,
-			concurrency: 2,
-			read: (processId, signal) => readAssetStateCached(processId, { signal, maxAttempts: 1 }),
-			onSettled: (result, candidate) => {
-				if (!result || controller.signal.aborted) return;
-				resolvedUnknown.set(candidate.processId, result);
-				pendingUnknownSettlements.add(candidate.processId);
-				settlementFrame ??= window.requestAnimationFrame(flushUnknownSettlements);
-			},
-		});
-		const supportFailures: unknown[] = [];
-		let supportTail = Promise.resolve();
-		const acceptPage = (pageEvents: CollectionActivityEvent[]) => {
-			const known = pageEvents.filter((event) => knownMembership(event.processId));
-			const unknown = pageEvents.filter((event) => !knownMembership(event.processId));
-			if (known.length) publish(known);
-			const candidates: AssetCandidate[] = [];
-			const resolvedEvents: CollectionActivityEvent[] = [];
-			for (const event of unknown) {
-				const processEvents = unknownEvents.get(event.processId);
-				if (processEvents) {
-					processEvents.push(event);
-				} else {
-					unknownEvents.set(event.processId, [event]);
-					candidates.push({
-						processId: event.processId,
-						height: event.height,
-						timestamp: event.timestamp,
-						sources: ['market-action'],
-					});
-				}
-				if (resolvedUnknown.has(event.processId)) resolvedEvents.push(event);
-			}
-			if (resolvedEvents.length) publish(resolvedEvents);
-			if (candidates.length) {
-				supportTail = supportTail.then(async () => {
-					try {
-						await verifyAssetCandidateSupport(candidates, collections, {
-							signal: controller.signal,
-							onVerified: (verified) => resolver.enqueue(verified),
-						});
-					} catch (cause) {
-						if (controller.signal.aborted) throw cause;
-						supportFailures.push(cause);
-					}
-				});
+			if (immediately) {
+				if (publishFrame !== undefined) window.cancelAnimationFrame(publishFrame);
+				commitFound();
+			} else {
+				publishFrame ??= window.requestAnimationFrame(commitFound);
 			}
 		};
-		const requests = [
-			discoverCollectionActivity({
-				signal: controller.signal,
-				limit: 200,
-				onPage: acceptPage,
-			}),
-		];
-		void Promise.allSettled(requests).then(async (outcomes) => {
-			if (controller.signal.aborted) return;
-			const failures = outcomes.flatMap((outcome) => (outcome.status === 'rejected' ? [outcome.reason] : []));
+		void (async () => {
+			const failures: unknown[] = [];
 			try {
-				await supportTail;
-				await resolver.finish();
+				const completeEvents = await discoverAllCollectionActivityBatched({
+					recipients: activityRecipients,
+					concurrency: 2,
+					signal: controller.signal,
+					onPage: (page) => publish(page),
+				});
+				publish(completeEvents, true);
 			} catch (cause) {
 				if (controller.signal.aborted) return;
 				failures.push(cause);
 			}
-			flushUnknownSettlements();
-			failures.push(...supportFailures);
-			eventsRef.current = newestCollectionActivity([...found.values()]);
+			if (controller.signal.aborted) return;
+			if (publishFrame !== undefined) window.cancelAnimationFrame(publishFrame);
+			commitFound();
+			// The complete indexed-history scan ends here. Purchase-proof verification is
+			// slower optional enrichment and must not keep the history loader running.
+			setLoading(false);
 			try {
 				eventsRef.current = await confirmPurchaseActivity(eventsRef.current, {
 					signal: controller.signal,
@@ -4734,11 +4738,7 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 			}
 			setEvents(eventsRef.current);
 			try {
-				saveMarketActivity(
-					window.localStorage,
-					activityScope,
-					eventsRef.current.filter((event) => knownMembership(event.processId))
-				);
+				saveMarketActivity(window.localStorage, activityScope, eventsRef.current);
 			} catch {
 				// The live result remains available even when storage is unavailable.
 			}
@@ -4748,13 +4748,12 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 					: 'unavailable';
 				setError(marketplaceRequestFailureMessage('index', kind));
 			}
-			setLoading(false);
-		});
+		})();
 		return () => {
 			controller.abort();
-			if (settlementFrame !== undefined) window.cancelAnimationFrame(settlementFrame);
+			if (publishFrame !== undefined) window.cancelAnimationFrame(publishFrame);
 		};
-	}, [activityScope, marketLoading, retry]);
+	}, [activityRecipients, activityScope, collections, marketLoading, retry]);
 
 	const filteredEvents = filterGlobalActivity(events, activityFilter);
 	eventCountRef.current = filteredEvents.length;
@@ -4771,7 +4770,7 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 		setRetry((value) => value + 1);
 	};
 	const resolveCollection = (event: CollectionActivityEvent) =>
-		globalActivityCollection(collections, event.processId) ?? discoveredAssets[event.processId]?.collection;
+		globalActivityCollection(collections, event.processId);
 	return (
 		<div
 			aria-busy={loading}
@@ -4780,7 +4779,26 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 			id="home-activity-panel"
 			role="tabpanel"
 		>
-			<div aria-label="Filter global activity" className="activity-filters" role="group">
+			<GlobalActivityCharts events={events} />
+			{loading ? (
+				<div className="global-activity-loading">
+					<Loading label="Loading complete global activity history…" />
+				</div>
+			) : null}
+			<p className="activity-window-description" id={activityWindowDescriptionId}>
+				{globalActivityWindowDescription(
+					events.length,
+					activityRecipients.length,
+					loading,
+					hasMoreActivityAssets
+				)}
+			</p>
+			<div
+				aria-describedby={activityWindowDescriptionId}
+				aria-label="Filter global activity"
+				className="activity-filters"
+				role="group"
+			>
 				{activityFilters.map((filter) => {
 					const count = filterGlobalActivity(events, filter.value).length;
 					return (
@@ -4804,8 +4822,8 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 				events.length ? (
 					<div className="collection-source-notice home-activity-partial-notice retry-notice">
 						<span role="status">
-							Compute hasn’t completed yet. Please try again. Showing {events.length.toLocaleString()}{' '}
-							indexed {events.length === 1 ? 'event' : 'events'} already loaded.
+							The complete history scan hasn’t finished. Showing {events.length.toLocaleString()} indexed{' '}
+							{events.length === 1 ? 'event' : 'events'} already loaded.
 						</span>
 						<Button className="with-icon" onClick={retryActivity} size="custom" type="button">
 							<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Retry
@@ -4824,10 +4842,7 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 				loading={loading}
 				resolveAsset={(event) => {
 					const collection = resolveCollection(event);
-					return (
-						discoveredAssets[event.processId]?.asset ??
-						(collection ? collectionAsset(collection, event.processId) : undefined)
-					);
+					return collection ? collectionAsset(collection, event.processId) : undefined;
 				}}
 				resolveCollection={resolveCollection}
 			/>
@@ -4854,7 +4869,12 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 						const nextLimit = Math.min(filteredEvents.length, activityLimit + 20);
 						setActivityLimit(nextLimit);
 						setActivityRevealAnnouncement(
-							`Showing ${nextLimit.toLocaleString()} of ${filteredEvents.length.toLocaleString()} filtered global activity events.`
+							globalActivityRevealDescription(
+								nextLimit,
+								filteredEvents.length,
+								events.length,
+								activityFilter !== 'all'
+							)
 						);
 						window.requestAnimationFrame(() => {
 							if (assetGroupRevealComplete(nextLimit, eventCountRef.current)) {
@@ -4866,11 +4886,10 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 					Show {Math.min(20, filteredEvents.length - activityLimit).toLocaleString()} more activity events
 				</Button>
 			) : null}
-			{loading && !events.length ? <Loading label="Reading global market activity from Arweave…" /> : null}
 			{!loading && !error && events.length > 0 && !filteredEvents.length ? (
 				<div className="empty-state">
 					<h3>No matching activity</h3>
-					<p>No submitted actions match this activity filter in the current indexed window.</p>
+					<p>No submitted actions match this filter in the indexed history loaded above.</p>
 				</div>
 			) : null}
 			{!loading && !error && !events.length ? (
@@ -5237,6 +5256,52 @@ type CollectionCardPrice =
 	| { status: 'unindexed' }
 	| { status: 'unavailable'; kind: MarketplaceFailureKind };
 
+type CollectionSort = 'recent' | 'price-low' | 'price-high' | 'name';
+type CollectionViewMode = 'comfortable' | 'compact' | 'list';
+type CollectionLiveListingRow = {
+	asset: AssetSummary;
+	depth: number;
+	price: string;
+	priceValue: number;
+	quantity: string;
+	quantityValue: number;
+	total: string;
+};
+
+function collectionPriceValue(price?: CollectionCardPrice): number | null {
+	if (price?.status !== 'resolved' || !price.label) return null;
+	const value = Number.parseFloat(price.label.replace(/,/g, ''));
+	return Number.isFinite(value) ? value : null;
+}
+
+export function cumulativeCollectionDepth(quantities: number[]): number[] {
+	const normalized = quantities.map((quantity) => (Number.isFinite(quantity) && quantity > 0 ? quantity : 0));
+	const total = normalized.reduce((sum, quantity) => sum + quantity, 0);
+	let cumulative = 0;
+	return normalized.map((quantity, index) => {
+		cumulative += quantity;
+		return total ? (cumulative / total) * 100 : ((index + 1) / normalized.length) * 100;
+	});
+}
+
+export function pendingCollectionPriceAssets(
+	assets: AssetSummary[],
+	resolvedIds: Iterable<string>,
+	primaryListingsLoading: boolean
+) {
+	if (primaryListingsLoading) return [];
+	const resolved = new Set(resolvedIds);
+	return assets.filter((asset) => !resolved.has(asset.id));
+}
+
+export function collectionRecipientsWithoutListingCandidates(
+	completedRecipients: Iterable<string>,
+	candidates: Pick<AssetCandidate, 'processId'>[]
+) {
+	const candidateIds = new Set(candidates.map((candidate) => candidate.processId));
+	return [...completedRecipients].filter((processId) => !candidateIds.has(processId));
+}
+
 type FailedListingCandidate = {
 	candidate: AssetCandidate;
 	kind: MarketplaceFailureKind;
@@ -5295,7 +5360,7 @@ export function collectionActivityVersion(collection: Collection) {
 	return `${collection.manifestId ?? ''}:${collection.assets.map((asset) => asset.id).join('.')}`;
 }
 
-export function newestCollectionActivity(events: CollectionActivityEvent[], limit = 100) {
+export function newestCollectionActivity(events: CollectionActivityEvent[], limit = GLOBAL_ACTIVITY_WINDOW_SIZE) {
 	const byId = new Map<string, CollectionActivityEvent>();
 	for (const event of events) {
 		const previous = byId.get(event.id);
@@ -5467,6 +5532,49 @@ export function CollectionDescription({ description }: { description: string }) 
 	);
 }
 
+type CollectionMarketStat = {
+	label: string;
+	value: React.ReactNode;
+};
+
+function CollectionMarketHeader({
+	action,
+	collection,
+	stats,
+}: {
+	action?: React.ReactNode;
+	collection: Collection;
+	stats: CollectionMarketStat[];
+}) {
+	return (
+		<div className="collection-title collection-market-header">
+			<div className="collection-identity">
+				<div className="collection-avatar" aria-hidden="true">
+					{collection.assets[0]?.image ? (
+						<ArtworkImage alt="" src={collection.assets[0].image} loading="eager" fetchPriority="high" />
+					) : (
+						<span>{collectionDisplayName(collection).slice(0, 1)}</span>
+					)}
+				</div>
+				<div className="collection-heading-copy">
+					<p className="eyebrow">{collectionEyebrow(collection)}</p>
+					<h1>{collectionDisplayName(collection)}</h1>
+					<CollectionDescription description={collection.description} />
+				</div>
+			</div>
+			{action ? <div className="collection-title-copy">{action}</div> : null}
+			<div className="collection-market-stats" aria-label="Collection summary">
+				{stats.map((stat) => (
+					<div key={stat.label}>
+						<span>{stat.label}</span>
+						<strong>{stat.value}</strong>
+					</div>
+				))}
+			</div>
+		</div>
+	);
+}
+
 function CollectionView() {
 	const { collectionId = '' } = useParams();
 	const { search } = useLocation();
@@ -5513,11 +5621,14 @@ function CollectionView() {
 	);
 	React.useEffect(() => () => appendPreviews.forEach(({ url }) => URL.revokeObjectURL(url)), [appendPreviews]);
 	const routedQuery = new URLSearchParams(search).get('q') ?? '';
+	const routedOffers = new URLSearchParams(search).get('view') === 'offers';
 	const [query, setQuery] = React.useState(routedQuery);
 	const deferredQuery = React.useDeferredValue(query);
 	const pageSize = useProgressiveAssetPageSize();
 	const [limit, setLimit] = React.useState(pageSize);
-	const [listedOnly, setListedOnly] = React.useState(() => collectionDefaultsToListed(collectionId));
+	const [listedOnly, setListedOnly] = React.useState(() => routedOffers || collectionDefaultsToListed(collectionId));
+	const [sort, setSort] = React.useState<CollectionSort>('recent');
+	const [viewMode, setViewMode] = React.useState<CollectionViewMode>('compact');
 	const [initial, setInitial] = React.useState<string>('all');
 	const [alphabetFocus, setAlphabetFocus] = React.useState<string>('all');
 	const alphabetRefs = React.useRef<Array<HTMLButtonElement | null>>([]);
@@ -5546,7 +5657,7 @@ function CollectionView() {
 	const resolvedPriceIds = React.useRef(new Set<string>());
 	const priceScope = React.useRef('');
 	const [activityState, setActivityState] = React.useState({
-		loading: false,
+		loading: Boolean(collection),
 		pages: 0,
 		resolved: 0,
 		total: 0,
@@ -5557,14 +5668,6 @@ function CollectionView() {
 	const [retry, setRetry] = React.useState(0);
 	const [listingRetry, setListingRetry] = React.useState(0);
 	const [listingRetrying, setListingRetrying] = React.useState(false);
-	const [recentOrderRetry, setRecentOrderRetry] = React.useState(0);
-	const [recentOrderState, setRecentOrderState] = React.useState<{
-		loading: boolean;
-		error: MarketplaceFailureKind | null;
-	}>({ loading: false, error: null });
-	const recentOrderScope = React.useRef('');
-	const recentOrderActivity = React.useRef(new Map<string, AssetCandidate>());
-	const recentOrderResolvedIds = React.useRef(new Set<string>());
 	const listingActivityScope = React.useRef('');
 	const listingActivityCandidates = React.useRef(new Map<string, AssetCandidate>());
 	const listingLoadedAssetIds = React.useRef(new Set<string>());
@@ -5756,10 +5859,6 @@ function CollectionView() {
 				: collection?.assets ?? [],
 		[collection, deferredQuery, listed, listedOnly]
 	);
-	const listedIdsKey = listed
-		.map((result) => result.asset.id)
-		.sort()
-		.join(',');
 	const filtered = React.useMemo(
 		() =>
 			visibleAssets
@@ -5769,10 +5868,20 @@ function CollectionView() {
 						(initial === 'all' || asset.name.trim().toLowerCase().startsWith(initial.toLowerCase()))
 				)
 				.sort((a, b) => {
+					if (sort === 'name') return compareCollectionAssetNames(a, b);
+					if (sort === 'price-low' || sort === 'price-high') {
+						const priceA = collectionPriceValue(cardPrices[a.id]);
+						const priceB = collectionPriceValue(cardPrices[b.id]);
+						if (priceA !== null || priceB !== null) {
+							if (priceA === null) return 1;
+							if (priceB === null) return -1;
+							if (priceA !== priceB) return sort === 'price-low' ? priceA - priceB : priceB - priceA;
+						}
+					}
 					if (initial !== 'all') return compareCollectionAssetNames(a, b);
-					if (!recentOrderState.error) {
-						const activityA = activityByAsset.get(a.id);
-						const activityB = activityByAsset.get(b.id);
+					const activityA = activityByAsset.get(a.id);
+					const activityB = activityByAsset.get(b.id);
+					if (activityA || activityB) {
 						return (
 							(activityB?.height ?? 0) - (activityA?.height ?? 0) ||
 							(activityB?.timestamp ?? 0) - (activityA?.timestamp ?? 0) ||
@@ -5785,17 +5894,34 @@ function CollectionView() {
 							(defaultIndex?.get(b.id) ?? Number.MAX_SAFE_INTEGER) || compareCollectionAssetNames(a, b)
 					);
 				}),
-		[
-			activityByAsset,
-			collection?.kind,
-			defaultIndex,
-			deferredQuery,
-			initial,
-			recentOrderState.error,
-			recentOrderState.loading,
-			visibleAssets,
-		]
+		[activityByAsset, cardPrices, collection?.kind, defaultIndex, deferredQuery, initial, sort, visibleAssets]
 	);
+	const liveListingRows = React.useMemo(() => {
+		const rows = listed
+			.flatMap((result) =>
+				liveOrdersOfAsset(result.state).map((order) => {
+					const price = orderPriceLabel(order, result.state);
+					const quantity = formatTokenAmount(order.quantity, result.state.denomination);
+					return {
+						asset: result.asset,
+						depth: 0,
+						price,
+						priceValue: Number.parseFloat(price.replace(/,/g, '')),
+						quantity,
+						quantityValue: Number.parseFloat(quantity.replace(/,/g, '')) || 0,
+						total: `${winstonToAr(order.asking)} AR`,
+					};
+				})
+			)
+			.sort((a, b) => a.priceValue - b.priceValue || a.asset.name.localeCompare(b.asset.name));
+		const depths = cumulativeCollectionDepth(rows.map((row) => row.quantityValue));
+		return rows.map((row, index) => {
+			return {
+				...row,
+				depth: depths[index],
+			};
+		});
+	}, [listed]);
 	const filteredCountRef = React.useRef(filtered.length);
 	filteredCountRef.current = filtered.length;
 	const revealNextAssetPage = React.useCallback(
@@ -5812,7 +5938,7 @@ function CollectionView() {
 		const price = cardPrices[asset.id];
 		return price?.status === 'unavailable' && price.kind === 'rate-limited';
 	}).length;
-	const activityRequestMode = listedOnly ? 'listed' : 'recent';
+	const activityRequestMode = 'listed';
 	const listingCollectionVersion = React.useMemo(
 		() => (collection ? collectionListingScopeVersion(collection) : ''),
 		[collection]
@@ -5867,7 +5993,7 @@ function CollectionView() {
 	}, [filtered.length, limit, moreState.error, moreState.loading, moreState.scanned]);
 	React.useEffect(() => {
 		if (!collection) return;
-		const nextScope = `${gateway}:${collection.id}:${listedOnly ? 'listed' : 'all'}`;
+		const nextScope = listingScope;
 		if (priceScope.current !== nextScope) {
 			priceScope.current = nextScope;
 			resolvedPriceIds.current.clear();
@@ -5876,7 +6002,11 @@ function CollectionView() {
 		}
 		if (listedOnly) return;
 		const controller = new AbortController();
-		const unresolvedAssets = visiblePriceAssets.filter((asset) => !resolvedPriceIds.current.has(asset.id));
+		const unresolvedAssets = pendingCollectionPriceAssets(
+			visiblePriceAssets,
+			resolvedPriceIds.current,
+			activityState.loading || listingActivityScope.current !== listingScope
+		);
 		setCardPricesLoading(Boolean(unresolvedAssets.length));
 		setCardPricesFailure(null);
 		if (!unresolvedAssets.length) return () => controller.abort();
@@ -5885,6 +6015,7 @@ function CollectionView() {
 				await discoverMarketActivityBatched({
 					recipients: unresolvedAssets.map((asset) => asset.id),
 					listingsOnly: true,
+					concurrency: 1,
 					signal: controller.signal,
 					onBatch: async (candidates, completedRecipients) => {
 						if (controller.signal.aborted || priceScope.current !== nextScope) return;
@@ -5905,7 +6036,7 @@ function CollectionView() {
 							[collection],
 							{
 								signal: controller.signal,
-								concurrency: 4,
+								concurrency: 2,
 								read: (processId, signal) =>
 									readAssetStateCached(processId, {
 										...DISPLAY_STATE_CACHE,
@@ -5916,6 +6047,11 @@ function CollectionView() {
 									if (controller.signal.aborted || priceScope.current !== nextScope) return;
 									resolvedPriceIds.current.add(candidate.processId);
 									const order = result ? bestAskOfAsset(result.state) : null;
+									setListed((current) =>
+										mergeResolvedListingBatch(current, [
+											{ processId: candidate.processId, result: cause ? null : result },
+										])
+									);
 									setCardPrices((current) => ({
 										...current,
 										[candidate.processId]: cause
@@ -5931,6 +6067,9 @@ function CollectionView() {
 									if (controller.signal.aborted || priceScope.current !== nextScope) return;
 									if (cause) return;
 									const order = result ? bestAskOfAsset(result.state) : null;
+									setListed((current) =>
+										mergeResolvedListingBatch(current, [{ processId: candidate.processId, result }])
+									);
 									setCardPrices((current) => ({
 										...current,
 										[candidate.processId]: {
@@ -5952,7 +6091,7 @@ function CollectionView() {
 			}
 		})();
 		return () => controller.abort();
-	}, [collection, gateway, listedOnly, priceRetry, visiblePriceKey]);
+	}, [activityState.loading, collection, listedOnly, listingScope, priceRetry, visiblePriceKey]);
 	const retryCardPrices = () => {
 		setCardPrices((current) =>
 			Object.fromEntries(
@@ -5993,7 +6132,7 @@ function CollectionView() {
 		const includesCollectionAsset = collectionCandidateMembership(collection);
 		const assetWindow = collectionActivityWindowDelta(
 			collection.kind,
-			listedOnly,
+			true,
 			listingLoadedAssetIds.current,
 			collectionAssetIds
 		);
@@ -6022,123 +6161,134 @@ function CollectionView() {
 		}
 		if (assetWindow.recipientBatched && !requestedAssetIds.length) {
 			setActivityState((current) => ({ ...current, loading: false }));
-			if (listedOnly) setCardPricesLoading(false);
+			setCardPricesLoading(false);
 			return () => controller.abort();
 		}
-		if (listedOnly) {
-			if (!continuing) setCardPrices({});
-			setCardPricesLoading(true);
-			setCardPricesFailure(null);
-		}
+		if (!continuing) setCardPrices({});
+		setCardPricesLoading(true);
+		setCardPricesFailure(null);
 		const publications = createListingPublications();
 		void (async () => {
 			try {
-				const resolver = listedOnly
-					? createAssetCandidateResolver([collection], {
-							concurrency: 4,
-							signal: controller.signal,
-							read: (processId, signal) =>
-								readAssetStateCached(processId, {
-									...DISPLAY_STATE_CACHE,
-									signal,
-									maxAttempts: 1,
-								}),
-							onSettled: (result, candidate, cause) => {
-								if (controller.signal.aborted || listingActivityScope.current !== listingScope) return;
-								const outcome: ListingResolutionOutcome & {
-									candidate: AssetCandidate;
-									failureKind?: MarketplaceFailureKind;
-								} = {
-									candidate,
-									processId: candidate.processId,
-									result,
-									...(cause ? { failureKind: marketplaceFailureKind(cause) } : {}),
-								};
-								settledListingCandidates.current.add(outcome.processId);
-								if (outcome.failureKind) {
-									failedListingCandidates.current.set(outcome.processId, {
-										candidate,
-										kind: outcome.failureKind,
-									});
-								} else {
-									failedListingCandidates.current.delete(outcome.processId);
-								}
-								const order = result ? bestAskOfAsset(result.state) : null;
-								publications.push({
-									outcome,
-									price: outcome.failureKind
-										? { status: 'unavailable', kind: outcome.failureKind }
-										: {
-												status: 'resolved',
-												label: order && result ? orderPriceLabel(order, result.state) : null,
-										  },
-									resolved: 1,
-									failures: outcome.failureKind ? 1 : 0,
-									rateLimited: outcome.failureKind === 'rate-limited' ? 1 : 0,
-								});
-							},
-							onRevalidated: (result, candidate, cause) => {
-								if (controller.signal.aborted || listingActivityScope.current !== listingScope || cause)
-									return;
-								const outcome = { candidate, processId: candidate.processId, result };
-								const order = result ? bestAskOfAsset(result.state) : null;
-								publications.push({
-									outcome,
-									price: {
+				const resolver = createAssetCandidateResolver([collection], {
+					concurrency: 2,
+					signal: controller.signal,
+					read: (processId, signal) =>
+						readAssetStateCached(processId, {
+							...DISPLAY_STATE_CACHE,
+							signal,
+							maxAttempts: 1,
+						}),
+					onSettled: (result, candidate, cause) => {
+						if (controller.signal.aborted || listingActivityScope.current !== listingScope) return;
+						resolvedPriceIds.current.add(candidate.processId);
+						const outcome: ListingResolutionOutcome & {
+							candidate: AssetCandidate;
+							failureKind?: MarketplaceFailureKind;
+						} = {
+							candidate,
+							processId: candidate.processId,
+							result,
+							...(cause ? { failureKind: marketplaceFailureKind(cause) } : {}),
+						};
+						settledListingCandidates.current.add(outcome.processId);
+						if (outcome.failureKind) {
+							failedListingCandidates.current.set(outcome.processId, {
+								candidate,
+								kind: outcome.failureKind,
+							});
+						} else {
+							failedListingCandidates.current.delete(outcome.processId);
+						}
+						const order = result ? bestAskOfAsset(result.state) : null;
+						publications.push({
+							outcome,
+							price: outcome.failureKind
+								? { status: 'unavailable', kind: outcome.failureKind }
+								: {
 										status: 'resolved',
 										label: order && result ? orderPriceLabel(order, result.state) : null,
-									},
-									resolved: 0,
-									failures: 0,
-									rateLimited: 0,
-								});
+								  },
+							resolved: 1,
+							failures: outcome.failureKind ? 1 : 0,
+							rateLimited: outcome.failureKind === 'rate-limited' ? 1 : 0,
+						});
+					},
+					onRevalidated: (result, candidate, cause) => {
+						if (controller.signal.aborted || listingActivityScope.current !== listingScope || cause) return;
+						resolvedPriceIds.current.add(candidate.processId);
+						const outcome = { candidate, processId: candidate.processId, result };
+						const order = result ? bestAskOfAsset(result.state) : null;
+						publications.push({
+							outcome,
+							price: {
+								status: 'resolved',
+								label: order && result ? orderPriceLabel(order, result.state) : null,
 							},
-					  })
-					: null;
-				const resolvePage = (page: AssetCandidate[]) => {
+							resolved: 0,
+							failures: 0,
+							rateLimited: 0,
+						});
+					},
+				});
+				const resolvePage = (page: AssetCandidate[], completedRecipients: string[] = []) => {
 					if (controller.signal.aborted) return;
 					const pageCandidates = page.filter((candidate) => includesCollectionAsset(candidate.processId));
+					const recipientsWithoutCandidates = collectionRecipientsWithoutListingCandidates(
+						completedRecipients.filter(includesCollectionAsset),
+						pageCandidates
+					);
+					for (const processId of recipientsWithoutCandidates) resolvedPriceIds.current.add(processId);
+					if (recipientsWithoutCandidates.length) {
+						setCardPrices((current) => ({
+							...current,
+							...Object.fromEntries(
+								recipientsWithoutCandidates.map((processId) => [
+									processId,
+									{ status: 'unindexed' as const },
+								])
+							),
+						}));
+					}
 					const newCandidates = pageCandidates.filter(
 						(candidate) => !listingActivityCandidates.current.has(candidate.processId)
 					);
 					for (const candidate of pageCandidates) {
 						listingActivityCandidates.current.set(candidate.processId, candidate);
 					}
-					if (!listedOnly) {
-						setActivity(
-							[...listingActivityCandidates.current.values()].sort(
-								(a, b) =>
-									b.height - a.height ||
-									b.timestamp - a.timestamp ||
-									a.processId.localeCompare(b.processId)
-							)
-						);
-					}
+					setActivity(
+						[...listingActivityCandidates.current.values()].sort(
+							(a, b) =>
+								b.height - a.height ||
+								b.timestamp - a.timestamp ||
+								a.processId.localeCompare(b.processId)
+						)
+					);
 					setActivityState((current) => ({
 						...current,
 						pages: current.pages + 1,
 						total: current.total + newCandidates.length,
 					}));
-					if (!listedOnly) return;
-					resolver?.enqueue(newCandidates);
+					resolver.enqueue(newCandidates);
 				};
 				let allActivity: AssetCandidate[] = [];
 				let discoveryFailure: unknown;
 				try {
 					allActivity =
-						collection.kind === 'names' && listedOnly
+						collection.kind === 'names'
 							? await discoverMarketActivity({
 									signal: controller.signal,
-									listingsOnly: listedOnly,
+									listingsOnly: true,
 									acceptProcessId: includesCollectionAsset,
 									onPage: resolvePage,
 							  })
 							: await discoverMarketActivityBatched({
 									recipients: requestedAssetIds,
 									signal: controller.signal,
-									listingsOnly: listedOnly,
+									listingsOnly: true,
+									concurrency: 1,
 									onBatch: (candidates, completedRecipients) => {
-										resolvePage(candidates);
+										resolvePage(candidates, completedRecipients);
 										if (controller.signal.aborted || listingActivityScope.current !== listingScope)
 											return;
 										for (const assetId of completedRecipients)
@@ -6148,7 +6298,7 @@ function CollectionView() {
 				} catch (cause) {
 					discoveryFailure = cause;
 				}
-				await resolver?.finish();
+				await resolver.finish();
 				publications.flush();
 				if (controller.signal.aborted) return;
 				if (discoveryFailure) throw discoveryFailure;
@@ -6159,20 +6309,10 @@ function CollectionView() {
 				if (collection.kind === 'names') {
 					for (const assetId of requestedAssetIds) listingLoadedAssetIds.current.add(assetId);
 				}
-				if (!listedOnly) {
-					const mergedCandidates = [...listingActivityCandidates.current.values()].sort(
-						(a, b) =>
-							b.height - a.height || b.timestamp - a.timestamp || a.processId.localeCompare(b.processId)
-					);
-					setActivity(mergedCandidates);
-					setActivityState((current) => ({
-						...current,
-						loading: false,
-						resolved: mergedCandidates.length,
-						total: mergedCandidates.length,
-					}));
-					return;
-				}
+				const mergedCandidates = [...listingActivityCandidates.current.values()].sort(
+					(a, b) => b.height - a.height || b.timestamp - a.timestamp || a.processId.localeCompare(b.processId)
+				);
+				setActivity(mergedCandidates);
 				if (!controller.signal.aborted) {
 					setActivityState((current) => ({
 						...current,
@@ -6184,10 +6324,8 @@ function CollectionView() {
 			} catch (cause) {
 				if (!controller.signal.aborted) {
 					publications.flush();
-					if (listedOnly) {
-						setCardPricesLoading(false);
-						setCardPricesFailure({ source: 'index', kind: marketplaceFailureKind(cause) });
-					}
+					setCardPricesLoading(false);
+					setCardPricesFailure({ source: 'index', kind: marketplaceFailureKind(cause) });
 					setActivityState((current) => ({
 						...current,
 						loading: false,
@@ -6200,7 +6338,7 @@ function CollectionView() {
 			controller.abort();
 			publications.cancel();
 		};
-	}, [listedOnly, listingScope, listingWindowVersion, retry]);
+	}, [listingScope, listingWindowVersion, retry]);
 	React.useEffect(() => {
 		if (!listingRetry || !collection || !listedOnly) return;
 		const controller = new AbortController();
@@ -6211,7 +6349,7 @@ function CollectionView() {
 		void (async () => {
 			try {
 				await resolveAssetCandidates(candidates, [collection], {
-					concurrency: 4,
+					concurrency: 2,
 					signal: controller.signal,
 					read: (processId, signal) =>
 						readAssetStateCached(processId, {
@@ -6281,81 +6419,6 @@ function CollectionView() {
 		})();
 		return () => controller.abort();
 	}, [listedOnly, listingRetry, listingScope]);
-	React.useEffect(() => {
-		if (!collection || !listedOnly) {
-			recentOrderScope.current = '';
-			recentOrderActivity.current.clear();
-			recentOrderResolvedIds.current.clear();
-			setRecentOrderState({ loading: false, error: null });
-			return;
-		}
-		const controller = new AbortController();
-		const recipients = listed.map((result) => result.asset.id);
-		const scope = collection.id;
-		if (recentOrderScope.current !== scope) {
-			recentOrderScope.current = scope;
-			recentOrderActivity.current.clear();
-			recentOrderResolvedIds.current.clear();
-		}
-		const activeIds = new Set(recipients);
-		for (const id of recentOrderResolvedIds.current) {
-			if (!activeIds.has(id)) recentOrderResolvedIds.current.delete(id);
-		}
-		for (const id of recentOrderActivity.current.keys()) {
-			if (!activeIds.has(id)) recentOrderActivity.current.delete(id);
-		}
-		if (!recipients.length) {
-			setActivity([]);
-			setRecentOrderState({ loading: false, error: null });
-			return () => controller.abort();
-		}
-		const pendingRecipients = recipients.filter((id) => !recentOrderResolvedIds.current.has(id));
-		if (!pendingRecipients.length) {
-			setActivity(
-				[...recentOrderActivity.current.values()].sort(
-					(a, b) => b.height - a.height || b.timestamp - a.timestamp || a.processId.localeCompare(b.processId)
-				)
-			);
-			setRecentOrderState({ loading: false, error: null });
-			return () => controller.abort();
-		}
-		setRecentOrderState({ loading: true, error: null });
-		void discoverMarketActivityBatched({
-			recipients: pendingRecipients,
-			signal: controller.signal,
-			onBatch: (latest, completedRecipients) => {
-				if (controller.signal.aborted || recentOrderScope.current !== scope) return;
-				for (const id of completedRecipients) recentOrderResolvedIds.current.add(id);
-				for (const candidate of latest) recentOrderActivity.current.set(candidate.processId, candidate);
-				setActivity(
-					[...recentOrderActivity.current.values()].sort(
-						(a, b) =>
-							b.height - a.height || b.timestamp - a.timestamp || a.processId.localeCompare(b.processId)
-					)
-				);
-			},
-		}).then(
-			() => {
-				if (!controller.signal.aborted) {
-					setActivity(
-						[...recentOrderActivity.current.values()].sort(
-							(a, b) =>
-								b.height - a.height ||
-								b.timestamp - a.timestamp ||
-								a.processId.localeCompare(b.processId)
-						)
-					);
-					setRecentOrderState({ loading: false, error: null });
-				}
-			},
-			(cause) => {
-				if (!controller.signal.aborted) {
-					setRecentOrderState({ loading: false, error: marketplaceFailureKind(cause) });
-				}
-			}
-		);
-		return () => controller.abort();
-	}, [collection?.id, listedIdsKey, listedOnly, recentOrderRetry]);
 	React.useEffect(() => setLimit(pageSize), [initial, listedOnly, query]);
 	React.useEffect(() => setLimit((current) => retainedAssetGroupLimit(current, pageSize)), [pageSize]);
 	if (!collection && market.loading)
@@ -6404,7 +6467,9 @@ function CollectionView() {
 	const resultSummary = activityState.loading
 		? listedOnly
 			? `${listed.length.toLocaleString()} live ${listed.length === 1 ? 'listing' : 'listings'} so far`
-			: 'Finding recent activity on Arweave…'
+			: `${liveListingRows.length.toLocaleString()} live ${
+					liveListingRows.length === 1 ? 'offer' : 'offers'
+			  } so far`
 		: query
 		? `${filtered.length.toLocaleString()} ${collection.kind === 'names' ? 'current namespace' : 'loaded'} matches`
 		: initial !== 'all'
@@ -6433,7 +6498,7 @@ function CollectionView() {
 	const resultAnnouncement = activityState.loading
 		? listedOnly
 			? `Searching Arweave for live listings in ${collection.name}: ${listingSearchAnnouncement}.`
-			: `Finding recent activity in ${collection.name}.`
+			: `Checking live offers in ${collection.name} while all items remain visible.`
 		: cardPricesLoading
 		? `Checking live prices for ${visiblePriceAssets.length.toLocaleString()} visible assets in ${collection.name}.`
 		: query
@@ -6446,24 +6511,51 @@ function CollectionView() {
 			: `No ${collection.kind === 'names' ? 'names' : 'assets'} match ${query} in ${collection.name}.`
 		: `${resultSummary} in ${collection.name}.`;
 	return (
-		<section className="collection-page">
+		<section className={`collection-page collection-marketplace-page view-${viewMode}`}>
 			<Link className="back" to="/">
 				<ArrowLeft className="ui-icon ui-icon--sm" aria-hidden="true" />{' '}
 				{collection.kind === 'tokens' ? 'Discover' : 'All collections'}
 			</Link>
-			<div className="collection-title">
-				<div className="collection-heading-copy">
-					<p className="eyebrow">{collectionEyebrow(collection)}</p>
-					<h1>{collectionDisplayName(collection)}</h1>
-					<CollectionDescription description={collection.description} />
-				</div>
-				{collection.kind === 'images' && ownedCollection?.owner === wallet.address ? (
-					<div className="collection-title-copy">
-						<Button onClick={() => setAppendOpen(true)} type="button" variant="neutral">
-							<Images aria-hidden="true" /> Add assets
-						</Button>
-					</div>
-				) : null}
+			<div className="collection-market-navigation">
+				<CollectionMarketHeader
+					action={
+						collection.kind === 'images' && ownedCollection?.owner === wallet.address ? (
+							<Button onClick={() => setAppendOpen(true)} type="button" variant="neutral">
+								<Images aria-hidden="true" /> Add assets
+							</Button>
+						) : undefined
+					}
+					collection={collection}
+					stats={[
+						{
+							label: 'Floor price',
+							value:
+								activityState.loading && !liveListingRows.length
+									? 'Checking…'
+									: liveListingRows[0]?.price ?? '—',
+						},
+						{
+							label: 'Live offers',
+							value:
+								activityState.loading && !liveListingRows.length
+									? 'Checking…'
+									: liveListingRows.length.toLocaleString(),
+						},
+						{
+							label: 'Loaded / supply',
+							value: `${collection.assets.length.toLocaleString()} / ${(
+								collection.total ?? collection.assets.length
+							).toLocaleString()}`,
+						},
+						{ label: 'Offer candidates', value: activity.length.toLocaleString() },
+					]}
+				/>
+				<CollectionTabs
+					collection={collection}
+					active={listedOnly ? 'offers' : 'assets'}
+					onSelectAssets={() => setListedOnly(false)}
+					onSelectOffers={() => setListedOnly(true)}
+				/>
 			</div>
 			{appendOpen && ownedCollection ? (
 				<div className="dialog-backdrop" role="presentation">
@@ -6551,7 +6643,6 @@ function CollectionView() {
 					</section>
 				</div>
 			) : null}
-			<CollectionTabs collection={collection} active="assets" />
 			<CollectionIndexNotice collection={collection} checking={market.loading} onRetry={market.retry} />
 			{pagedTokenScope ? (
 				<div className="collection-source-notice" role="status">
@@ -6634,17 +6725,67 @@ function CollectionView() {
 					1 token
 				</span>
 			) : (
-				<div className="asset-tools">
-					<input
-						aria-controls={assetGridId}
-						aria-describedby={resultSummaryId}
-						aria-label={`Search ${collection.name}`}
-						value={query}
-						onChange={(event) => setQuery(event.target.value)}
-						placeholder="Search this collection"
-					/>
+				<div className="asset-tools collection-market-tools">
+					<div className="collection-view-toggle" aria-label="Asset layout">
+						<Button
+							aria-label="Comfortable grid"
+							aria-pressed={viewMode === 'comfortable'}
+							className={viewMode === 'comfortable' ? 'active' : undefined}
+							onClick={() => setViewMode('comfortable')}
+							size="icon"
+							type="button"
+							variant="ghost"
+						>
+							<Grid2X2 aria-hidden="true" />
+						</Button>
+						<Button
+							aria-label="Compact grid"
+							aria-pressed={viewMode === 'compact'}
+							className={viewMode === 'compact' ? 'active' : undefined}
+							onClick={() => setViewMode('compact')}
+							size="icon"
+							type="button"
+							variant="ghost"
+						>
+							<LayoutGrid aria-hidden="true" />
+						</Button>
+						<Button
+							aria-label="List view"
+							aria-pressed={viewMode === 'list'}
+							className={viewMode === 'list' ? 'active' : undefined}
+							onClick={() => setViewMode('list')}
+							size="icon"
+							type="button"
+							variant="ghost"
+						>
+							<List aria-hidden="true" />
+						</Button>
+					</div>
+					<label className="collection-search">
+						<Search aria-hidden="true" />
+						<span className="sr-only">Search {collection.name}</span>
+						<input
+							aria-controls={assetGridId}
+							aria-describedby={resultSummaryId}
+							value={query}
+							onChange={(event) => setQuery(event.target.value)}
+							placeholder="Search items"
+						/>
+					</label>
 					<div className="asset-tools-controls">
-						<div className="asset-filters single-filter">
+						<div className="asset-filters">
+							<MarketSelect<CollectionSort>
+								label="Sort"
+								onChange={setSort}
+								options={[
+									{ value: 'recent', label: 'Recently active' },
+									{ value: 'price-low', label: 'Price: Low to High' },
+									{ value: 'price-high', label: 'Price: High to Low' },
+									{ value: 'name', label: 'Name: A to Z' },
+								]}
+								showLabel={false}
+								value={sort}
+							/>
 							<MarketSelect<'all' | 'listed'>
 								label="Show"
 								onChange={(nextValue) => setListedOnly(nextValue === 'listed')}
@@ -6652,6 +6793,7 @@ function CollectionView() {
 									{ value: 'all', label: 'All assets' },
 									{ value: 'listed', label: 'Listed for sale' },
 								]}
+								showLabel={false}
 								value={listedOnly ? 'listed' : 'all'}
 							/>
 						</div>
@@ -6733,28 +6875,6 @@ function CollectionView() {
 					</Button>
 				</div>
 			) : null}
-			{listedOnly && (recentOrderState.loading || recentOrderState.error) ? (
-				<div className={recentOrderState.error ? 'inline-error retry-notice' : 'collection-source-notice'}>
-					<span role="status">
-						{recentOrderState.loading
-							? 'Ordering live listings by their latest indexed market activity…'
-							: 'Compute hasn’t completed yet. Please try again. Resolved listings are shown in Default order.'}
-					</span>
-					{recentOrderState.error ? (
-						<Button
-							className="with-icon"
-							size="custom"
-							type="button"
-							onClick={() => {
-								setRecentOrderRetry((value) => value + 1);
-								window.requestAnimationFrame(() => collectionStatusRef.current?.focus());
-							}}
-						>
-							<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Retry
-						</Button>
-					) : null}
-				</div>
-			) : null}
 			{collection.kind === 'tokens' ? (
 				<div
 					aria-describedby={resultSummaryId}
@@ -6797,7 +6917,9 @@ function CollectionView() {
 				<div
 					aria-describedby={resultSummaryId}
 					aria-label={`${collection.name} assets`}
-					className={`asset-grid${collection.kind === 'names' ? ' names-collection-grid' : ''}`}
+					className={`asset-grid collection-market-grid${
+						collection.kind === 'names' ? ' names-collection-grid' : ''
+					}`}
 					id={assetGridId}
 				>
 					{filtered.slice(0, limit).map((asset, index) => {
@@ -7016,7 +7138,74 @@ function CollectionView() {
 						  } records`}
 				</Button>
 			) : null}
+			<CollectionAnalyticsPanel collection={collection} loading={activityState.loading} rows={liveListingRows} />
 		</section>
+	);
+}
+
+function CollectionAnalyticsPanel({
+	collection,
+	loading,
+	rows,
+}: {
+	collection: Collection;
+	loading: boolean;
+	rows: CollectionLiveListingRow[];
+}) {
+	return (
+		<aside className="collection-analytics" aria-label="Collection analytics">
+			<div className="collection-analytics-heading">
+				<div>
+					<span>Market</span>
+					<h2>Analytics</h2>
+				</div>
+				<BarChart3 aria-hidden="true" />
+			</div>
+			<div className="collection-analytics-tabs">
+				<span>Live offers</span>
+			</div>
+			{loading && !rows.length ? (
+				<div className="collection-analytics-empty">
+					<LoaderCircle className="spin" aria-hidden="true" />
+					<strong>Checking live offers</strong>
+					<p>Reading current asset state through the selected compute gateway.</p>
+				</div>
+			) : rows.length ? (
+				<div className="collection-orderbook">
+					{loading ? (
+						<span aria-live="polite" className="sr-only" role="status">
+							Refreshing live offer depth. Resolved offers remain visible.
+						</span>
+					) : null}
+					<div className="collection-orderbook-head" aria-hidden="true">
+						<span>Price</span>
+						<span>Quantity</span>
+						<span>Total</span>
+					</div>
+					<ul aria-label="Live offers">
+						{rows.slice(0, 24).map((row, index) => (
+							<li key={`${row.asset.id}:${row.price}:${index}`}>
+								<Link
+									style={{ '--order-depth': `${row.depth}%` } as React.CSSProperties}
+									to={`/asset/${collection.id}/${row.asset.id}`}
+									title={row.asset.name}
+								>
+									<span>{row.price}</span>
+									<span>{row.quantity}</span>
+									<span>{row.total}</span>
+									<span className="sr-only">{Math.round(row.depth)}% cumulative depth</span>
+								</Link>
+							</li>
+						))}
+					</ul>
+				</div>
+			) : (
+				<div className="collection-analytics-empty">
+					<strong>No live offers found</strong>
+					<p>No indexed offer currently survives live process-state verification.</p>
+				</div>
+			)}
+		</aside>
 	);
 }
 
@@ -7256,18 +7445,41 @@ function CollectionActivityView() {
 		preservingEvents,
 	});
 	return (
-		<section className="collection-page collection-activity-page">
+		<section className="collection-page collection-marketplace-page collection-activity-page view-compact">
 			<Link className="back" to="/">
 				<ArrowLeft className="ui-icon ui-icon--sm" aria-hidden="true" /> All collections
 			</Link>
-			<div className="collection-title">
-				<div className="collection-heading-copy">
-					<p className="eyebrow">Arweave activity</p>
-					<h1>{collection.name}</h1>
-					<CollectionDescription description={collection.description} />
-				</div>
+			<div className="collection-market-navigation">
+				<CollectionMarketHeader
+					collection={collection}
+					stats={[
+						{
+							label: 'Indexed events',
+							value: loading
+								? `${events.length.toLocaleString()} so far`
+								: events.length.toLocaleString(),
+						},
+						{
+							label: 'Loaded / supply',
+							value: `${collection.assets.length.toLocaleString()} / ${(
+								collection.total ?? collection.assets.length
+							).toLocaleString()}`,
+						},
+						{ label: 'Batches checked', value: pages.toLocaleString() },
+						{
+							label: 'Activity status',
+							value: error
+								? 'Needs retry'
+								: loading
+								? preservingEvents
+									? 'Refreshing'
+									: 'Checking…'
+								: 'Current',
+						},
+					]}
+				/>
+				<CollectionTabs collection={collection} active="activity" />
 			</div>
-			<CollectionTabs collection={collection} active="activity" />
 			<span aria-live="polite" className="sr-only" role="status">
 				{activityScanAnnouncement}
 			</span>
@@ -7347,7 +7559,58 @@ function CollectionActivityView() {
 					<p>This collection has no matching signed market actions in the current Arweave index.</p>
 				</div>
 			) : null}
+			<CollectionActivityAnalytics
+				error={Boolean(error)}
+				events={events.length}
+				loading={loading}
+				pages={pages}
+			/>
 		</section>
+	);
+}
+
+function CollectionActivityAnalytics({
+	error,
+	events,
+	loading,
+	pages,
+}: {
+	error: boolean;
+	events: number;
+	loading: boolean;
+	pages: number;
+}) {
+	return (
+		<aside className="collection-analytics collection-activity-analytics" aria-label="Activity analytics">
+			<div className="collection-analytics-heading">
+				<div>
+					<span>Market</span>
+					<h2>Analytics</h2>
+				</div>
+				<History aria-hidden="true" />
+			</div>
+			<div className="collection-analytics-tabs">
+				<span>Activity</span>
+			</div>
+			<div className="collection-activity-summary">
+				<div>
+					<span>Indexed events</span>
+					<strong>{events.toLocaleString()}</strong>
+				</div>
+				<div>
+					<span>Batches checked</span>
+					<strong>{pages.toLocaleString()}</strong>
+				</div>
+				<div>
+					<span>Source</span>
+					<strong>Arweave index</strong>
+				</div>
+				<div>
+					<span>Status</span>
+					<strong>{error ? 'Needs retry' : loading ? 'Refreshing' : 'Current'}</strong>
+				</div>
+			</div>
+		</aside>
 	);
 }
 
@@ -7382,21 +7645,55 @@ export function collectionActivityScanAnnouncement({
 	} so far.`;
 }
 
-function CollectionTabs({ collection, active }: { collection: Collection; active: 'assets' | 'activity' }) {
+function CollectionTabs({
+	collection,
+	active,
+	onSelectAssets,
+	onSelectOffers,
+}: {
+	collection: Collection;
+	active: 'assets' | 'offers' | 'activity';
+	onSelectAssets?(): void;
+	onSelectOffers?(): void;
+}) {
 	return (
 		<nav className="collection-tabs" aria-label={`${collectionDisplayName(collection)} views`}>
-			<Link
-				aria-current={active === 'assets' ? 'page' : undefined}
-				className={active === 'assets' ? 'active' : ''}
-				to={`/collection/${collection.id}`}
-			>
-				{collection.kind === 'tokens' ? (
-					<BarChart3 className="ui-icon ui-icon--sm" aria-hidden="true" />
-				) : (
-					<LayoutGrid className="ui-icon ui-icon--sm" aria-hidden="true" />
-				)}{' '}
-				{collection.kind === 'tokens' ? 'Tokens' : 'Assets'}
-			</Link>
+			{onSelectAssets ? (
+				<button
+					aria-current={active === 'assets' ? 'page' : undefined}
+					className={active === 'assets' ? 'active' : ''}
+					onClick={onSelectAssets}
+					type="button"
+				>
+					{collection.kind === 'tokens' ? 'Tokens' : 'Items'}
+				</button>
+			) : (
+				<Link
+					aria-current={active === 'assets' ? 'page' : undefined}
+					className={active === 'assets' ? 'active' : ''}
+					to={`/collection/${collection.id}`}
+				>
+					{collection.kind === 'tokens' ? 'Tokens' : 'Items'}
+				</Link>
+			)}
+			{onSelectOffers ? (
+				<button
+					aria-current={active === 'offers' ? 'page' : undefined}
+					className={active === 'offers' ? 'active' : ''}
+					onClick={onSelectOffers}
+					type="button"
+				>
+					Offers
+				</button>
+			) : (
+				<Link
+					aria-current={active === 'offers' ? 'page' : undefined}
+					className={active === 'offers' ? 'active' : ''}
+					to={`/collection/${collection.id}?view=offers`}
+				>
+					Offers
+				</Link>
+			)}
 			<Link
 				aria-current={active === 'activity' ? 'page' : undefined}
 				className={active === 'activity' ? 'active' : ''}
@@ -7802,6 +8099,32 @@ export function assetDetailMembershipVerified(
 	directAtomicAsset: boolean
 ) {
 	return directAtomicAsset || Boolean(collectionId && verifiedCollectionIds.has(collectionId));
+}
+
+export function uniqueAskHistory(events: CollectionActivityEvent[]): TokenPricePoint[] {
+	return events
+		.flatMap((event) => {
+			if (event.action !== 'make-offer' || !event.asking) return [];
+			try {
+				if (BigInt(event.asking) <= 0n) return [];
+				return [{ id: event.id, timestamp: event.timestamp, value: event.asking }];
+			} catch {
+				return [];
+			}
+		})
+		.sort((left, right) => left.timestamp - right.timestamp || left.id.localeCompare(right.id));
+}
+
+export function mergeAssetActivityPages(
+	current: CollectionActivityEvent[],
+	older: CollectionActivityEvent[]
+): CollectionActivityEvent[] {
+	const events = new Map(current.map((event) => [event.id, event]));
+	for (const event of older) events.set(event.id, event);
+	return [...events.values()].sort(
+		(left, right) =>
+			right.height - left.height || right.timestamp - left.timestamp || left.id.localeCompare(right.id)
+	);
 }
 
 export function verifiedAssetForDetail(
@@ -8408,11 +8731,25 @@ function AssetView() {
 	const [unavailableRecovery, setUnavailableRecovery] = React.useState<UnavailableOperationRecovery | null>(null);
 	const [assetActivity, setAssetActivity] = React.useState<CollectionActivityEvent[]>([]);
 	const [activityLoading, setActivityLoading] = React.useState(false);
+	const [activityLoadingMore, setActivityLoadingMore] = React.useState(false);
 	const [activityRequested, setActivityRequested] = React.useState(false);
 	const [activityError, setActivityError] = React.useState<string | null>(null);
 	const [activityRetry, setActivityRetry] = React.useState(0);
+	const [activityCursor, setActivityCursor] = React.useState<string | null>(null);
+	const [activityHasNextPage, setActivityHasNextPage] = React.useState(false);
+	const [activityTotalCount, setActivityTotalCount] = React.useState<number | null>(null);
+	const [assetAskActivity, setAssetAskActivity] = React.useState<CollectionActivityEvent[]>([]);
+	const [askLoading, setAskLoading] = React.useState(false);
+	const [askLoadingMore, setAskLoadingMore] = React.useState(false);
+	const [askError, setAskError] = React.useState<string | null>(null);
+	const [askRetry, setAskRetry] = React.useState(0);
+	const [askCursor, setAskCursor] = React.useState<string | null>(null);
+	const [askHasNextPage, setAskHasNextPage] = React.useState(false);
 	const [storageVersion, setStorageVersion] = React.useState(0);
 	const activityAssetRef = React.useRef('');
+	const askAssetRef = React.useRef('');
+	const activityLoadMoreRef = React.useRef<AbortController | null>(null);
+	const askLoadMoreRef = React.useRef<AbortController | null>(null);
 	const [activeSection, setActiveSection] = React.useState<
 		'about' | 'orders' | 'activity' | 'rights' | 'blockchain' | 'more'
 	>('about');
@@ -8553,12 +8890,17 @@ function AssetView() {
 	React.useEffect(() => {
 		const controller = new AbortController();
 		if (activityAssetRef.current !== assetId) {
+			activityLoadMoreRef.current?.abort();
 			activityAssetRef.current = assetId;
 			try {
 				setAssetActivity(loadMarketActivity(window.localStorage, `asset:${assetId}`));
 			} catch {
 				setAssetActivity([]);
 			}
+			setActivityCursor(null);
+			setActivityHasNextPage(false);
+			setActivityTotalCount(null);
+			setActivityLoadingMore(false);
 		}
 		setActivityError(null);
 		if (!resolvedAsset || !activityRequested) {
@@ -8566,13 +8908,16 @@ function AssetView() {
 			return () => controller.abort();
 		}
 		setActivityLoading(true);
-		void discoverCollectionActivity({ recipients: [assetId], signal: controller.signal, limit: 24 })
+		void discoverCollectionActivityPage({ recipients: [assetId], signal: controller.signal, pageSize: 24 })
 			.then(
-				(events) => {
+				(page) => {
 					if (!controller.signal.aborted) {
-						setAssetActivity(events);
+						setAssetActivity(page.events);
+						setActivityCursor(page.cursor);
+						setActivityHasNextPage(page.hasNextPage);
+						setActivityTotalCount(page.totalCount);
 						try {
-							saveMarketActivity(window.localStorage, `asset:${assetId}`, events);
+							saveMarketActivity(window.localStorage, `asset:${assetId}`, page.events);
 						} catch {
 							// The live result remains available when storage is unavailable.
 						}
@@ -8589,6 +8934,100 @@ function AssetView() {
 			});
 		return () => controller.abort();
 	}, [activityRequested, activityRetry, assetId, resolvedAsset?.id]);
+	React.useEffect(() => {
+		const controller = new AbortController();
+		if (askAssetRef.current !== assetId) {
+			askLoadMoreRef.current?.abort();
+			askAssetRef.current = assetId;
+			setAssetAskActivity([]);
+			setAskCursor(null);
+			setAskHasNextPage(false);
+			setAskLoadingMore(false);
+		}
+		setAskError(null);
+		if (!resolvedAsset || !activityRequested) {
+			setAskLoading(false);
+			return () => controller.abort();
+		}
+		setAskLoading(true);
+		void discoverCollectionActivityPage({
+			actions: ['make-offer'],
+			pageSize: 100,
+			recipients: [assetId],
+			signal: controller.signal,
+		})
+			.then(
+				(page) => {
+					if (!controller.signal.aborted) {
+						setAssetAskActivity(page.events);
+						setAskCursor(page.cursor);
+						setAskHasNextPage(page.hasNextPage);
+					}
+				},
+				(cause) => {
+					if (!controller.signal.aborted) {
+						setAskError(marketplaceRequestFailureMessage('index', marketplaceFailureKind(cause)));
+					}
+				}
+			)
+			.finally(() => {
+				if (!controller.signal.aborted) setAskLoading(false);
+			});
+		return () => controller.abort();
+	}, [activityRequested, askRetry, assetId, resolvedAsset?.id]);
+	const loadOlderAssetActivity = React.useCallback(async () => {
+		if (!activityCursor || !activityHasNextPage || activityLoadingMore) return;
+		activityLoadMoreRef.current?.abort();
+		const controller = new AbortController();
+		activityLoadMoreRef.current = controller;
+		setActivityLoadingMore(true);
+		setActivityError(null);
+		try {
+			const page = await discoverCollectionActivityPage({
+				cursor: activityCursor,
+				pageSize: 100,
+				recipients: [assetId],
+				signal: controller.signal,
+			});
+			if (controller.signal.aborted || activityAssetRef.current !== assetId) return;
+			setAssetActivity((current) => mergeAssetActivityPages(current, page.events));
+			setActivityCursor(page.cursor);
+			setActivityHasNextPage(page.hasNextPage);
+		} catch (cause) {
+			if (!controller.signal.aborted) {
+				setActivityError(marketplaceRequestFailureMessage('index', marketplaceFailureKind(cause)));
+			}
+		} finally {
+			if (!controller.signal.aborted) setActivityLoadingMore(false);
+		}
+	}, [activityCursor, activityHasNextPage, activityLoadingMore, assetId]);
+	const loadOlderAssetAsks = React.useCallback(async () => {
+		if (!askCursor || !askHasNextPage || askLoadingMore) return;
+		askLoadMoreRef.current?.abort();
+		const controller = new AbortController();
+		askLoadMoreRef.current = controller;
+		setAskLoadingMore(true);
+		setAskError(null);
+		try {
+			const page = await discoverCollectionActivityPage({
+				actions: ['make-offer'],
+				cursor: askCursor,
+				pageSize: 100,
+				recipients: [assetId],
+				signal: controller.signal,
+			});
+			if (controller.signal.aborted || askAssetRef.current !== assetId) return;
+			setAssetAskActivity((current) => mergeAssetActivityPages(current, page.events));
+			setAskCursor(page.cursor);
+			setAskHasNextPage(page.hasNextPage);
+		} catch (cause) {
+			if (!controller.signal.aborted) {
+				setAskError(marketplaceRequestFailureMessage('index', marketplaceFailureKind(cause)));
+			}
+		} finally {
+			if (!controller.signal.aborted) setAskLoadingMore(false);
+		}
+	}, [askCursor, askHasNextPage, askLoadingMore, assetId]);
 	React.useEffect(() => {
 		setActiveSection('about');
 		setActivityRequested(false);
@@ -8770,6 +9209,7 @@ function AssetView() {
 		})().catch(() => undefined);
 		return () => controller.abort();
 	}, [assetId, openOperation, operation, recoverySuppressed, state, storageVersion, wallet.address]);
+	const uniqueAskPoints = React.useMemo(() => uniqueAskHistory(assetAskActivity), [assetAskActivity]);
 	if (!collection && (market.loading || (directAtomicRoute && loading))) {
 		return (
 			<AssetDetailLoadingShell
@@ -8863,10 +9303,21 @@ function AssetView() {
 					}
 					state={state}
 					activity={assetActivity}
+					activityHasNextPage={activityHasNextPage}
 					activityLoading={activityLoading}
+					activityLoadingMore={activityLoadingMore}
+					activityTotalCount={activityTotalCount}
 					activityError={activityError}
+					askActivity={assetAskActivity}
+					askError={askError}
+					askHasNextPage={askHasNextPage}
+					askLoading={askLoading}
+					askLoadingMore={askLoadingMore}
+					onActivityLoadMore={() => void loadOlderAssetActivity()}
 					onActivityRetry={() => setActivityRetry((value) => value + 1)}
 					onActivityVisible={() => setActivityRequested(true)}
+					onAskLoadMore={() => void loadOlderAssetAsks()}
+					onAskRetry={() => setAskRetry((value) => value + 1)}
 					loading={loading}
 					error={error}
 					provider={provider}
@@ -9206,7 +9657,7 @@ function AssetView() {
 						idPrefix="asset"
 						onChange={(section) => {
 							setActiveSection(section);
-							if (section === 'activity') setActivityRequested(true);
+							if (section === 'orders' || section === 'activity') setActivityRequested(true);
 						}}
 						tabs={assetTabs}
 					/>
@@ -9264,11 +9715,27 @@ function AssetView() {
 					{activeSection === 'orders' ? (
 						<section
 							aria-labelledby="asset-orders-tab"
-							className="asset-tab-panel"
+							className="asset-tab-panel atomic-market-panel"
 							id="asset-orders"
 							role="tabpanel"
 							tabIndex={0}
 						>
+							<React.Suspense fallback={<Loading label="Preparing ask history…" />}>
+								<UniquePriceChart
+									error={askError}
+									floorValue={
+										order ? unitPriceWinston(order, state?.denomination ?? 0).toString() : null
+									}
+									formatValue={(value) => `${winstonToAr(value)} AR`}
+									hasNextPage={askHasNextPage}
+									loading={askLoading}
+									loadingMore={askLoadingMore}
+									onLoadMore={() => void loadOlderAssetAsks()}
+									onRetry={() => setAskRetry((value) => value + 1)}
+									points={uniqueAskPoints}
+									ticker={asset.name}
+								/>
+							</React.Suspense>
 							<div aria-label={`${asset.name} order book`} className="orderbook-table" role="table">
 								<div className="orderbook-head" role="row">
 									<span role="columnheader">Price</span>
@@ -9356,7 +9823,7 @@ function AssetView() {
 									ariaLabel={`${asset.name} market activity`}
 									collectionId={collection.id}
 									events={assetActivity}
-									loading={activityLoading}
+									loading={activityLoading || activityLoadingMore}
 									reservationState={state}
 									resolveAsset={() => asset}
 								/>
@@ -9364,10 +9831,24 @@ function AssetView() {
 							{!activityLoading && !activityError && !assetActivity.length ? (
 								<p className="asset-empty-copy">No indexed market events found.</p>
 							) : null}
-							<p className="market-note">
-								Up to 24 recent signed process submissions indexed from Arweave. Live ownership and
-								orders above remain authoritative.
-							</p>
+							<div className="asset-market-activity-footer">
+								<p className="market-note">
+									{activityTotalCount === null
+										? `${assetActivity.length.toLocaleString()} indexed process submissions loaded.`
+										: `${assetActivity.length.toLocaleString()} of ${activityTotalCount.toLocaleString()} indexed process submissions loaded.`}{' '}
+									Live ownership and orders above remain authoritative.
+								</p>
+								{activityHasNextPage ? (
+									<Button
+										disabled={activityLoadingMore}
+										onClick={() => void loadOlderAssetActivity()}
+										size="custom"
+										type="button"
+									>
+										{activityLoadingMore ? 'Loading older activity…' : 'Load older activity'}
+									</Button>
+								) : null}
+							</div>
 						</section>
 					) : null}
 					{activeSection === 'rights' ? (
