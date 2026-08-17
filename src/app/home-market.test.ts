@@ -22,6 +22,7 @@ import {
 	collectionDefaultsToListed,
 	CollectionDescription,
 	collectionListingScopeVersion,
+	collectionRecipientsWithoutListingCandidates,
 	commitHomeActivityBatch,
 	commitHomeFloorResult,
 	compareCollectionAssetNames,
@@ -30,6 +31,7 @@ import {
 	completeHomeActivityScan,
 	completeHomeSummaryRetryGroup,
 	createAnimationFrameBatch,
+	cumulativeCollectionDepth,
 	DiscoveryAssetArtwork,
 	filterGlobalActivity,
 	globalActivityCollection,
@@ -63,6 +65,7 @@ import {
 	mergeResolvedListingBatch,
 	newestCollectionActivity,
 	nextListingAnnouncementProgress,
+	pendingCollectionPriceAssets,
 	pendingHomeActivityRecipients,
 	pendingHomeFloorCandidates,
 	publishHomeListingResult,
@@ -95,6 +98,29 @@ beforeEach(() => replaceHiddenCollectionAssetIndex(readyHiddenCollectionIndex));
 afterEach(() => replaceHiddenCollectionAssetIndex({}));
 
 describe('Home market summary retries', () => {
+	it('calculates cumulative order-book depth from ascending offer quantities', () => {
+		expect(cumulativeCollectionDepth([1, 1, 3, 5])).toEqual([10, 20, 50, 100]);
+		const fallback = cumulativeCollectionDepth([0, Number.NaN, -1]);
+		expect(fallback[0]).toBeCloseTo(100 / 3);
+		expect(fallback[1]).toBeCloseTo(200 / 3);
+		expect(fallback[2]).toBe(100);
+	});
+
+	it('does not start a visible-price fallback while the primary collection listing pass is active', () => {
+		const assets = [
+			{ id: 'A'.repeat(43), name: 'One' },
+			{ id: 'B'.repeat(43), name: 'Two' },
+		];
+		expect(pendingCollectionPriceAssets(assets, [], true)).toEqual([]);
+		expect(pendingCollectionPriceAssets(assets, [assets[0].id], false)).toEqual([assets[1]]);
+	});
+
+	it('marks completed recipients without listing candidates as resolved index misses', () => {
+		const first = 'A'.repeat(43);
+		const second = 'B'.repeat(43);
+		expect(collectionRecipientsWithoutListingCandidates([first, second], [{ processId: second }])).toEqual([first]);
+	});
+
 	it('calculates an exact 24-hour token ask change from differently sized listings', () => {
 		const now = Date.UTC(2026, 7, 14, 12);
 		const offer = (id: string, hoursAgo: number, asking: string, quantity: string): CollectionActivityEvent => ({
