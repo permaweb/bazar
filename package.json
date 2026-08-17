@@ -9,7 +9,7 @@
 		"start:development": "vite",
 		"build": "tsc --noEmit && vite build",
 		"build:production": "tsc --noEmit && vite build",
-		"deploy:main": "npm run build && node scripts/deploy-site.mjs",
+		"deploy:main": "npm run build && permaweb-deploy deploy --use-names --name bazar",
 		"deploy:reference": "npm run build && node scripts/deploy-site.mjs && node scripts/site-reference.mjs set",
 		"reference:init": "node scripts/site-reference.mjs init",
 		"reference:set": "node scripts/site-reference.mjs set",
@@ -33,6 +33,7 @@
 		"weave-wrangler": "file:vendor/weave-wrangler-0.1.0.tgz"
 	},
 	"devDependencies": {
+		"@permaweb/deploy": "^7.0.0",
 		"@types/node": "^22.10.1",
 		"@types/react": "^18.3.12",
 		"@types/react-dom": "^18.3.1",
