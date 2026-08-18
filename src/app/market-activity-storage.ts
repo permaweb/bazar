@@ -1,6 +1,8 @@
 import type { CollectionActivityEvent } from 'api/asset-discovery';
 
-export const MARKET_ACTIVITY_STORAGE_KEY = 'bazar-market-activity:v1';
+import { MARKET_ACTIVITY_STORAGE_KEY } from 'helpers/browser-storage';
+
+export { MARKET_ACTIVITY_STORAGE_KEY } from 'helpers/browser-storage';
 export const MARKET_ACTIVITY_STORAGE_SCOPE_LIMIT = 4;
 
 type ActivityStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;

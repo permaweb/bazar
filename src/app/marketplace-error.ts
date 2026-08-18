@@ -1,4 +1,6 @@
 const FRIENDLY_ERRORS: Record<string, string> = {
+	'browser-storage-full':
+		'Bazar could not safely save this operation because this browser’s site storage is full. Bazar already cleared its rebuildable caches, but more space is required. Free storage for this site, then continue from the status shown here.',
 	'collection-indexes-unavailable':
 		'No collection index could be read from Arweave. Check your connection and retry.',
 	'asset-purchase-insufficient-funds-after-signing':

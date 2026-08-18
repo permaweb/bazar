@@ -1,5 +1,7 @@
 import type { PurchaseSnapshot } from 'weave-wrangler';
 
+import { setCriticalStorageItem } from 'helpers/browser-storage';
+
 export const WALLET_OPERATION_RECOVERY_CHANGE_EVENT = 'bazar:wallet-operation-recovery-changed';
 
 export type OperationSession<T> = {
@@ -281,7 +283,7 @@ export async function acquireWalletOperationClaim(
 				throw new Error('wallet-recovery-conflict');
 			}
 		}
-		storage.setItem(claimKey, JSON.stringify({ attemptId, createdAt: Date.now() }));
+		setCriticalStorageItem(storage, claimKey, JSON.stringify({ attemptId, createdAt: Date.now() }));
 		try {
 			if (
 				(JSON.parse(storage.getItem(claimKey) ?? 'null') as { attemptId?: string } | null)?.attemptId !==
@@ -433,7 +435,7 @@ export function removeWalletRecordIf<T>(
 }
 
 export function storeWalletRecordIf<T>(
-	storage: Pick<Storage, 'getItem' | 'setItem'>,
+	storage: Pick<Storage, 'getItem' | 'setItem'> & Partial<Pick<Storage, 'removeItem' | 'key' | 'length'>>,
 	key: string,
 	record: T,
 	matches: (current: T) => boolean,
@@ -442,19 +444,21 @@ export function storeWalletRecordIf<T>(
 	const current = storage.getItem(key);
 	if (!current) {
 		if (!allowMissing) return false;
-		storage.setItem(key, JSON.stringify(record));
+		setCriticalStorageItem(storage, key, JSON.stringify(record));
 		notifyWalletOperationRecoveryChange(storage, key);
 		return true;
 	}
+	let parsed: T;
 	try {
-		if (!matches(JSON.parse(current) as T)) return false;
-		storage.setItem(key, JSON.stringify(record));
-		// The owning dialog already publishes live phase updates. Existing-record
-		// writes do not change durable activity membership in this document.
-		return true;
+		parsed = JSON.parse(current) as T;
 	} catch {
 		return false;
 	}
+	if (!matches(parsed)) return false;
+	setCriticalStorageItem(storage, key, JSON.stringify(record));
+	// The owning dialog already publishes live phase updates. Existing-record
+	// writes do not change durable activity membership in this document.
+	return true;
 }
 
 function notifyWalletOperationRecoveryChange(storage: object, key: string) {
@@ -469,7 +473,7 @@ function notifyWalletOperationRecoveryChange(storage: object, key: string) {
 }
 
 export function storeWalletRecordOrThrow<T>(
-	storage: Pick<Storage, 'getItem' | 'setItem'>,
+	storage: Pick<Storage, 'getItem' | 'setItem'> & Partial<Pick<Storage, 'removeItem' | 'key' | 'length'>>,
 	key: string,
 	record: T,
 	matches: (current: T) => boolean,
