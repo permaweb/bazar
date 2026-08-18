@@ -11,6 +11,7 @@ import {
 
 describe('marketplaceErrorMessage', () => {
 	it.each([
+		['browser-storage-full', 'cleared its rebuildable caches'],
 		['asset-purchase-insufficient-funds-after-signing', 'saved in this browser with the same wallet'],
 		['transaction-propagation-timeout', 'return with the same wallet and retained browser data'],
 		['asset-state-timeout', 'sampled observers report the transaction as confirmed'],

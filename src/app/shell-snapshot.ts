@@ -6,10 +6,12 @@ import {
 	isVisibleCollectionId,
 } from 'api/collections';
 
-const MARKET_SHELL_STORAGE_KEY = 'bazar-market-shell:v1';
-const ASSET_SHELL_STORAGE_PREFIX = 'bazar-asset-shell:v1:';
-const HOME_LISTING_SHELL_STORAGE_KEY = 'bazar-home-listing-shell:v1';
-const HIDDEN_COLLECTION_ASSETS_STORAGE_KEY = 'bazar-hidden-collection-assets:v1';
+import {
+	ASSET_SHELL_STORAGE_PREFIX,
+	HIDDEN_COLLECTION_ASSETS_STORAGE_KEY,
+	HOME_LISTING_SHELL_STORAGE_KEY,
+	MARKET_SHELL_STORAGE_KEY,
+} from 'helpers/browser-storage';
 
 export type HomeListingShell = {
 	asset: AssetSummary;

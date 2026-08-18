@@ -1,4 +1,5 @@
 import { isSupportedAssetContentType } from 'helpers/asset-media';
+import { WALLET_CANDIDATE_SCAN_STORAGE_PREFIX } from 'helpers/browser-storage';
 import { arweaveGraphqlEndpoint } from 'helpers/config';
 
 import {
@@ -24,7 +25,6 @@ const ARWEAVE_GRAPHQL_ID_BATCH_SIZE = 9;
 const MAX_GRAPHQL_PAGES = 1_000;
 const WALLET_HEAD_CATCH_UP_PAGES_PER_PASS = 20;
 const WALLET_SCAN_CACHE_VERSION = 1;
-const WALLET_SCAN_CACHE_PREFIX = 'bazar.wallet-candidate-scan';
 const ASSET_SUPPORT_CONCURRENCY = 2;
 export const ASSET_RESOLUTION_CONCURRENCY = 8;
 
@@ -730,7 +730,9 @@ export function clearCompletedWalletCandidateScan(
 }
 
 function walletCandidateScanKey(address: string, graphql: string) {
-	return `${WALLET_SCAN_CACHE_PREFIX}:v${WALLET_SCAN_CACHE_VERSION}:${address}:${encodeURIComponent(graphql)}`;
+	return `${WALLET_CANDIDATE_SCAN_STORAGE_PREFIX}:v${WALLET_SCAN_CACHE_VERSION}:${address}:${encodeURIComponent(
+		graphql
+	)}`;
 }
 
 function restoredWalletCandidateScan(

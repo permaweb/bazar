@@ -11,6 +11,7 @@ import {
 } from 'weave-wrangler';
 
 import { createArweaveClient } from 'helpers/arweave';
+import { setCriticalStorageItem } from 'helpers/browser-storage';
 import {
 	arweaveClientConfig,
 	arweaveGatewayFromLocation,
@@ -1080,17 +1081,20 @@ export class AssetTransactionClient {
 		if (expectedSigner) await this.#assertSigner(serializable, expectedSigner);
 		if (signal?.aborted) throw signal.reason;
 		const requiredBalance = transactionCost(serializable);
-		this.#storage?.setItem(
-			`${SIGNED_TRANSACTION_PREFIX}${signed.id}`,
-			JSON.stringify({
-				transaction: serializable,
-				intent,
-				processId: fields.processId,
-				...(validUntilHeight === undefined ? {} : { validUntilHeight }),
-				...(expectedSigner ? { expectedSigner } : {}),
-				...(expectedSigner ? { requiredBalance: requiredBalance.toString() } : {}),
-			})
-		);
+		if (this.#storage) {
+			setCriticalStorageItem(
+				this.#storage,
+				`${SIGNED_TRANSACTION_PREFIX}${signed.id}`,
+				JSON.stringify({
+					transaction: serializable,
+					intent,
+					processId: fields.processId,
+					...(validUntilHeight === undefined ? {} : { validUntilHeight }),
+					...(expectedSigner ? { expectedSigner } : {}),
+					...(expectedSigner ? { requiredBalance: requiredBalance.toString() } : {}),
+				})
+			);
+		}
 		return this.#prepared(
 			serializable,
 			validUntilHeight,
@@ -1122,7 +1126,9 @@ export class AssetTransactionClient {
 				if (!held) return;
 				const stored = JSON.parse(held);
 				stored.requiredBalance = required.toString();
-				this.#storage?.setItem(`${SIGNED_TRANSACTION_PREFIX}${id}`, JSON.stringify(stored));
+				if (this.#storage) {
+					setCriticalStorageItem(this.#storage, `${SIGNED_TRANSACTION_PREFIX}${id}`, JSON.stringify(stored));
+				}
 			},
 			dispatch: async (signal) => {
 				try {
