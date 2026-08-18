@@ -194,7 +194,7 @@ import {
 import { scheduleIdleTask } from 'helpers/idle';
 import { optionalMotionBehavior } from 'helpers/motion';
 import { assetGroupRevealComplete, retainedAssetGroupLimit } from 'helpers/progressive-assets';
-import { formatTickerLabel } from 'helpers/token-display';
+import { formatTickerLabel, formatTokenDescription } from 'helpers/token-display';
 import { useProgressiveReveal } from 'hooks/useProgressiveReveal';
 import { useWallet } from 'providers/WalletProvider';
 
@@ -5482,7 +5482,7 @@ function CollectionRoute() {
 }
 
 export function CollectionDescription({ description }: { description: string }) {
-	const text = description.trim();
+	const text = formatTokenDescription(description);
 	const contentId = React.useId();
 	const paragraphRef = React.useRef<HTMLParagraphElement>(null);
 	const [expanded, setExpanded] = React.useState(false);
@@ -11655,21 +11655,21 @@ export function RouteState({
 	);
 }
 function assetDescription(state: AssetState | null, fallback: string) {
-	if (!state) return fallback;
+	if (!state) return formatTokenDescription(fallback);
 	if (typeof state.raw.description === 'string' && state.raw.description.trim()) {
-		return state.raw.description.trim();
+		return formatTokenDescription(state.raw.description);
 	}
 	if (typeof state.raw.data === 'string') {
 		try {
 			const metadata = JSON.parse(state.raw.data);
 			if (typeof metadata?.description === 'string' && metadata.description.trim()) {
-				return metadata.description.trim();
+				return formatTokenDescription(metadata.description);
 			}
 		} catch {
 			// Non-JSON process data is content, not asset metadata.
 		}
 	}
-	return fallback;
+	return formatTokenDescription(fallback);
 }
 function liveOrder(state: AssetState) {
 	return liveOrderOfAsset(state);

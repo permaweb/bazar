@@ -3336,6 +3336,7 @@ input:focus {
 	color: var(--muted-subtle);
 	font-size: var(--type-body);
 	line-height: 1.6;
+	white-space: pre-line;
 }
 .permanent-id {
 	margin: 0;

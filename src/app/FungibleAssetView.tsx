@@ -88,7 +88,7 @@ import {
 import { WalletAddress, WalletIdentity } from 'components/WalletAddress';
 import { arweaveGatewayFromLocation, gatewayFromLocation } from 'helpers/config';
 import { optionalMotionBehavior } from 'helpers/motion';
-import { formatTickerLabel } from 'helpers/token-display';
+import { formatTickerLabel, formatTokenDescription } from 'helpers/token-display';
 import { useWallet } from 'providers/WalletProvider';
 
 import { collectionDisplayName, MarketSelect } from './App';
@@ -4784,8 +4784,10 @@ function arToWinston(value: string) {
 }
 
 function assetDescription(state: AssetState, fallback: string) {
-	if (typeof state.raw.description === 'string' && state.raw.description.trim()) return state.raw.description.trim();
-	return fallback;
+	if (typeof state.raw.description === 'string' && state.raw.description.trim()) {
+		return formatTokenDescription(state.raw.description);
+	}
+	return formatTokenDescription(fallback);
 }
 
 function operationLabel(kind: FungibleOperation['kind']) {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { formatTickerLabel } from './token-display';
+import { formatTickerLabel, formatTokenDescription } from './token-display';
 
 describe('formatTickerLabel', () => {
 	it('prefixes tickers with a dollar sign', () => {
@@ -14,5 +14,17 @@ describe('formatTickerLabel', () => {
 	it('uses a prefixed fallback for missing tickers', () => {
 		expect(formatTickerLabel('')).toBe('$Token');
 		expect(formatTickerLabel(undefined, 'tokens')).toBe('$tokens');
+	});
+});
+
+describe('formatTokenDescription', () => {
+	it('turns escaped line breaks into actual newlines', () => {
+		expect(formatTokenDescription('First line\\nSecond line\\r\\nThird line')).toBe(
+			'First line\nSecond line\nThird line'
+		);
+	});
+
+	it('preserves actual newlines and trims surrounding whitespace', () => {
+		expect(formatTokenDescription('  First line\nSecond line  ')).toBe('First line\nSecond line');
 	});
 });
