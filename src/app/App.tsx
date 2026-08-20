@@ -42,7 +42,7 @@ import type {
 	SwapPurchase,
 } from 'weave-wrangler';
 
-import { aoClient } from 'api/ao';
+import { readyAoFetch } from 'api/ao';
 import { transactionExplorerUrl } from 'api/arweave-explorer';
 import {
 	type AssetCandidate,
@@ -83,7 +83,6 @@ import {
 	ownerOfAsset,
 	readAssetState,
 	servingNodeOrigin,
-	servingNodeOrigins,
 	type SwapOrder,
 	waitForAssetState,
 } from 'api/asset-marketplace';
@@ -186,10 +185,15 @@ import { isAudioContentType } from 'helpers/asset-media';
 import { formatAudioDuration } from 'helpers/audio-metadata';
 import { mapConcurrent } from 'helpers/concurrency';
 import {
+	AO_TRANSPORT_QUERY_PARAMETER,
 	arweaveGatewayFromLocation,
 	arweaveGraphqlEndpoint,
+	BAZAR_AO_TRANSPORT,
+	fallbackAoPeersFromLocation,
 	gatewayFromLocation,
 	gatewaysFromLocation,
+	permawebOsAoAvailable,
+	usesPermawebOsAo,
 } from 'helpers/config';
 import { scheduleIdleTask } from 'helpers/idle';
 import { optionalMotionBehavior } from 'helpers/motion';
@@ -427,82 +431,85 @@ export function App() {
 	}, [market.collections]);
 	React.useEffect(() => {
 		const controller = new AbortController();
-		void aoClient(gatewaysFromLocation()).warm();
 		setMarket((current) => ({ ...current, verifiedCollectionIds: new Set(), loading: true, error: null }));
-		loadCollections(
-			controller.signal,
-			(collections) => {
-				if (!controller.signal.aborted) {
-					setMarket((current) => ({
-						...current,
-						collections: marketCatalogueCollections(
-							mergeCollectionSnapshots(current.collections, collections)
-						),
-						verifiedCollectionIds: new Set([
-							...current.verifiedCollectionIds,
-							...verifiedCollectionIdsFrom(collections),
-						]),
-					}));
+		void readyAoFetch()
+			.then(() =>
+				loadCollections(
+					controller.signal,
+					(collections) => {
+						if (!controller.signal.aborted) {
+							setMarket((current) => ({
+								...current,
+								collections: marketCatalogueCollections(
+									mergeCollectionSnapshots(current.collections, collections)
+								),
+								verifiedCollectionIds: new Set([
+									...current.verifiedCollectionIds,
+									...verifiedCollectionIdsFrom(collections),
+								]),
+							}));
+						}
+					},
+					() => {
+						if (controller.signal.aborted) return;
+						storeHiddenCollectionAssetIndex(window.localStorage, hiddenCollectionAssetIndex());
+						setMarket((current) => ({
+							...current,
+							collections: current.collections.length ? current.collections : storedMarketCollections(),
+							visibilityReady: true,
+						}));
+					}
+				)
+			)
+			.then(
+				({ collections, unavailable }) => {
+					if (controller.signal.aborted) return;
+					const mintedAssets = loadMintedAssets();
+					const localCollections = loadMintedCollections();
+					setMarket((current) => {
+						const resolved = mergeCollectionSnapshots(current.collections, collections, true);
+						const known = new Set(resolved.map((collection) => collection.id));
+						return {
+							...current,
+							collections: marketCatalogueCollections([
+								...resolved,
+								...localCollections.filter((collection) => !known.has(collection.id)),
+								...(mintedAssets.length && !known.has(CREATED_COLLECTION_ID)
+									? [createdCollection(mintedAssets)]
+									: []),
+							]),
+							verifiedCollectionIds: new Set([
+								...current.verifiedCollectionIds,
+								...verifiedCollectionIdsFrom(collections),
+								...localCollections.map((collection) => collection.id),
+							]),
+							loading: false,
+							error: null,
+							notice: unavailable.length
+								? `The latest Arweave references for ${unavailable.join(
+										', '
+								  )} could not be checked. Showing their bundled immutable indexes; ownership, listings, and prices are still read from live state.`
+								: null,
+						};
+					});
+				},
+				(error) => {
+					if (!controller.signal.aborted) {
+						setMarket((current) =>
+							current.collections.length
+								? {
+										...current,
+										loading: false,
+										error: null,
+										notice: `Collection indexes could not be refreshed: ${errorMessage(
+											error
+										)}. Previously loaded collections remain available.`,
+								  }
+								: { ...current, loading: false, error: errorMessage(error), notice: null }
+						);
+					}
 				}
-			},
-			() => {
-				if (controller.signal.aborted) return;
-				storeHiddenCollectionAssetIndex(window.localStorage, hiddenCollectionAssetIndex());
-				setMarket((current) => ({
-					...current,
-					collections: current.collections.length ? current.collections : storedMarketCollections(),
-					visibilityReady: true,
-				}));
-			}
-		).then(
-			({ collections, unavailable }) => {
-				if (controller.signal.aborted) return;
-				const mintedAssets = loadMintedAssets();
-				const localCollections = loadMintedCollections();
-				setMarket((current) => {
-					const resolved = mergeCollectionSnapshots(current.collections, collections, true);
-					const known = new Set(resolved.map((collection) => collection.id));
-					return {
-						...current,
-						collections: marketCatalogueCollections([
-							...resolved,
-							...localCollections.filter((collection) => !known.has(collection.id)),
-							...(mintedAssets.length && !known.has(CREATED_COLLECTION_ID)
-								? [createdCollection(mintedAssets)]
-								: []),
-						]),
-						verifiedCollectionIds: new Set([
-							...current.verifiedCollectionIds,
-							...verifiedCollectionIdsFrom(collections),
-							...localCollections.map((collection) => collection.id),
-						]),
-						loading: false,
-						error: null,
-						notice: unavailable.length
-							? `The latest Arweave references for ${unavailable.join(
-									', '
-							  )} could not be checked. Showing their bundled immutable indexes; ownership, listings, and prices are still read from live state.`
-							: null,
-					};
-				});
-			},
-			(error) => {
-				if (!controller.signal.aborted) {
-					setMarket((current) =>
-						current.collections.length
-							? {
-									...current,
-									loading: false,
-									error: null,
-									notice: `Collection indexes could not be refreshed: ${errorMessage(
-										error
-									)}. Previously loaded collections remain available.`,
-							  }
-							: { ...current, loading: false, error: errorMessage(error), notice: null }
-					);
-				}
-			}
-		);
+			);
 		return () => controller.abort();
 	}, [marketRetry]);
 	const loadMore = React.useCallback(
@@ -4906,9 +4913,10 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 
 function GatewayControl() {
 	const { pageRefreshing } = React.useContext(MarketContext);
-	const computeNodes = servingNodeOrigins(window.location);
-	const computeCurrent = computeNodes.join(', ');
-	const [computeValues, setComputeValues] = React.useState(() => (computeNodes.length ? computeNodes : ['']));
+	const permawebOsConnected = permawebOsAoAvailable();
+	const fallbackPeers = fallbackAoPeersFromLocation(window.location);
+	const [computeValues, setComputeValues] = React.useState(() => (fallbackPeers.length ? fallbackPeers : ['']));
+	const [usePermawebOs, setUsePermawebOs] = React.useState(() => usesPermawebOsAo(window.location));
 	const [open, setOpen] = React.useState(false);
 	const [error, setError] = React.useState('');
 	const detailsRef = React.useRef<HTMLDetailsElement>(null);
@@ -4942,22 +4950,28 @@ function GatewayControl() {
 				? [...new Set(parsedPeers.flatMap((origins) => origins ?? []))]
 				: null;
 		if (!computeOrigins) {
-			setError('Enter one valid HTTP or HTTPS HyperBEAM peer in each field.');
+			setError('Enter one valid HTTP or HTTPS AO-Core peer in each field.');
 			return;
 		}
 		setError('');
 		const url = new URL(window.location.href);
 		url.searchParams.set('node', computeOrigins.join(','));
+		if (permawebOsConnected && usePermawebOs) {
+			url.searchParams.delete(AO_TRANSPORT_QUERY_PARAMETER);
+		} else {
+			url.searchParams.set(AO_TRANSPORT_QUERY_PARAMETER, BAZAR_AO_TRANSPORT);
+		}
 		window.location.assign(url);
 	}
+	const activePeers = usePermawebOs && permawebOsConnected ? window.aoFetch?.peers ?? [] : fallbackPeers;
 	return (
 		<div className="gateway-control">
 			{pageRefreshing ? (
-				<Tooltip content="Some assets on this page are still being refreshed on your configured nodes.">
+				<Tooltip content="Some assets on this page are still being refreshed on your configured AO peers.">
 					{(tooltipId) => (
 						<span
 							aria-describedby={tooltipId}
-							aria-label="Some assets on this page are still being refreshed on your configured nodes."
+							aria-label="Some assets on this page are still being refreshed on your configured AO peers."
 							className="gateway-refreshing"
 							role="status"
 							tabIndex={0}
@@ -4971,7 +4985,7 @@ function GatewayControl() {
 				<summary
 					aria-controls="gateway-panel"
 					aria-expanded={open}
-					aria-label={`Compute peers, ${computeCurrent}`}
+					aria-label={`AO-Core peers, ${activePeers.join(', ')}`}
 					onClick={(event) => {
 						event.preventDefault();
 						setOpen((currentOpen) => !currentOpen);
@@ -4989,20 +5003,42 @@ function GatewayControl() {
 						{(tooltipId) => (
 							<span aria-describedby={tooltipId} className="gateway-summary-content">
 								<PortalIcon className="ui-icon gateway-portal-icon" aria-hidden="true" />
-								<span className="gateway-label">Gateway</span>
+								<span className="gateway-label">AO Core</span>
 							</span>
 						)}
 					</Tooltip>
 				</summary>
 				<div id="gateway-panel">
 					<form onSubmit={apply}>
+						{permawebOsConnected ? (
+							<Button
+								aria-checked={usePermawebOs}
+								className="gateway-permaweb-os-toggle"
+								onClick={() => setUsePermawebOs((current) => !current)}
+								role="switch"
+								size="custom"
+								type="button"
+								variant="ghost"
+							>
+								<span>
+									<strong>Use PermawebOS Configured Peers</strong>
+									<small>Share the PermawebOS peer pool and request state.</small>
+								</span>
+								<span className="gateway-permaweb-os-toggle-control" aria-hidden="true">
+									{usePermawebOs ? <Check className="ui-icon ui-icon--sm" /> : null}
+								</span>
+							</Button>
+						) : null}
 						<fieldset className="gateway-peer-editor">
-							<legend>Change AO-Core peers</legend>
+							<legend>AO-Core peers</legend>
+							<p className="gateway-peer-description">
+								Used by Bazar when PermawebOS is unavailable or disabled above.
+							</p>
 							<div className="gateway-peer-fields">
 								{computeValues.map((value, index) => (
 									<div className="gateway-peer-row" key={index}>
 										<label className="sr-only" htmlFor={`gateway-peer-${index}`}>
-											AO-Core peer {index + 1}
+											Fallback AO-Core peer {index + 1}
 										</label>
 										<input
 											aria-describedby={error ? 'gateway-error' : undefined}
@@ -5027,7 +5063,7 @@ function GatewayControl() {
 										/>
 										{computeValues.length > 1 ? (
 											<Button
-												aria-label={`Remove AO-Core peer ${index + 1}`}
+												aria-label={`Remove fallback AO-Core peer ${index + 1}`}
 												className="gateway-peer-remove"
 												onClick={() => {
 													setComputeValues((current) =>
@@ -5070,23 +5106,16 @@ function GatewayControl() {
 						) : null}
 						<div className="gateway-apply-row">
 							<Button className="gateway-apply-button with-icon" type="submit" size="custom">
-								<PortalIcon className="ui-icon gateway-portal-icon" aria-hidden="true" /> Apply peers
+								<PortalIcon className="ui-icon gateway-portal-icon" aria-hidden="true" /> Apply settings
 							</Button>
 							<Tooltip
 								className="gateway-peer-help"
-								content={
-									<>
-										Bazar is a fully decentralized marketplace: Operated by everyone, owned by
-										nobody. By default, your requests are handled by the computer that gave you this
-										page. If you would like to use different machines for your compute, just enter
-										their address above.
-									</>
-								}
+								content="The PermawebOS transport is selected by default when available. Turning it off keeps AO requests inside Bazar and uses the ordered fallback peers above."
 							>
 								{(tooltipId) => (
 									<Button
 										aria-describedby={tooltipId}
-										aria-label="About compute peers"
+										aria-label="About AO transport settings"
 										className="gateway-peer-help-trigger"
 										size="custom"
 										type="button"
@@ -6992,7 +7021,7 @@ function CollectionView() {
 						{query || initial !== 'all'
 							? 'Clear the current filters to see every live listing.'
 							: activityState.failures
-							? 'Some candidates could not be checked through this compute gateway. Retry them before treating this as an empty market.'
+							? 'Some candidates could not be checked through the configured AO peers. Retry them before treating this as an empty market.'
 							: pagedTokenScope
 							? `Every offer candidate among the ${collection.assets.length.toLocaleString()} loaded tokens was checked against current process state. Load more tokens to extend this market view.`
 							: activityState.total
@@ -7168,7 +7197,7 @@ function CollectionAnalyticsPanel({
 				<div className="collection-analytics-empty">
 					<LoaderCircle className="spin" aria-hidden="true" />
 					<strong>Checking live offers</strong>
-					<p>Reading current asset state through the selected compute gateway.</p>
+					<p>Reading current asset state through the selected AO transport.</p>
 				</div>
 			) : rows.length ? (
 				<div className="collection-orderbook">
@@ -8172,7 +8201,7 @@ export function assetDetailErrorMessage(
 	indexed: boolean
 ): string | null {
 	if (!error || !asset || !indexed) return error;
-	return `${asset.name} is published and indexed, but its ownership and market state are currently unavailable from the configured compute peers. Retry shortly.`;
+	return `${asset.name} is published and indexed, but its ownership and market state are currently unavailable from the configured AO peers. Retry shortly.`;
 }
 
 function AssetDetailLoadingShell({
@@ -9772,8 +9801,7 @@ function AssetView() {
 								)}
 							</div>
 							<p className="market-note">
-								Computed from the last loaded asset process state through the selected HyperBEAM
-								gateway.
+								Computed from the last loaded asset process state through the selected AO transport.
 							</p>
 						</section>
 					) : null}
@@ -11968,17 +11996,17 @@ export function assetStateErrorMessage(error: unknown) {
 	if (/^HTTP 429(?:\b|$)/i.test(value)) {
 		return marketplaceRequestFailureMessage('compute', 'rate-limited');
 	}
-	if (/ao[- ]wrangler.*response quorum not met/i.test(value) || /^HTTP 5\d\d(?:\b|$)/i.test(value)) {
-		return 'Live state could not be read through the configured compute gateways. Retry shortly, or choose Compute gateway in the header.';
+	if (/response quorum not met/i.test(value) || /^HTTP 5\d\d(?:\b|$)/i.test(value)) {
+		return 'Live state could not be read through the configured AO peers. Retry shortly or review the AO Core settings in the header.';
 	}
 	if (['Failed to fetch', 'fetch failed', 'compute-provider-failed', 'compute-provider-timeout'].includes(value)) {
-		let host = 'the selected compute gateway';
+		let host = 'The selected AO peer';
 		try {
 			host = new URL(servingNodeOrigin(window.location)).host;
 		} catch {
 			// Keep the generic label if the selected origin cannot be parsed.
 		}
-		return `${host} could not be reached. Retry live state or choose Compute gateway in the header.`;
+		return `${host} could not be reached. Retry live state or review the AO Core settings in the header.`;
 	}
 	return errorMessage(error);
 }

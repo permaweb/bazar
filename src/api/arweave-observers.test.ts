@@ -34,7 +34,11 @@ describe('Arweave observer request pacing', () => {
 
 	it('applies the pacing policy to watchers created by the network wrapper', () => {
 		const watch = vi.spyOn(WeaveNetwork.prototype, 'watch').mockReturnValue({} as TxWatcher);
-		const network = new ArweaveObserverNetwork({ useDefaultSeeds: false, spider: false });
+		const network = new ArweaveObserverNetwork({
+			useDefaultSeeds: false,
+			spider: false,
+			fetch: vi.fn() as typeof fetch,
+		});
 
 		network.watch('T'.repeat(43), { pendingInterval: 2_000 });
 
@@ -44,7 +48,11 @@ describe('Arweave observer request pacing', () => {
 	});
 
 	it('pauses peer requests without permanently exhausting their discovery source', async () => {
-		const network = new ArweaveObserverNetwork({ useDefaultSeeds: false, spider: false });
+		const network = new ArweaveObserverNetwork({
+			useDefaultSeeds: false,
+			spider: false,
+			fetch: vi.fn() as typeof fetch,
+		});
 		vi.spyOn(network, 'active').mockReturnValue(Array.from({ length: 7 }, (_, index) => observer(index)));
 
 		await expect(network.request(observer(), '/peers')).resolves.toMatchObject({

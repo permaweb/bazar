@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const control = vi.hoisted(() => ({
 	constructed: [] as Array<Record<string, unknown>>,
@@ -41,7 +41,14 @@ describe('shared asset observer network', () => {
 		control.constructed.length = 0;
 		control.ready = 0;
 		control.stopped = 0;
+		const aoFetch = vi.fn(async () => new Response()) as unknown as PermawebOsAoFetch;
+		Object.defineProperty(aoFetch, 'peers', { value: ['https://permawebos-peer.example'] });
+		aoFetch.invalidate = vi.fn(async () => undefined);
+		aoFetch.cacheMetadata = vi.fn(() => undefined);
+		aoFetch.ready = vi.fn(async () => aoFetch.peers);
+		vi.stubGlobal('window', { aoFetch });
 	});
+	afterEach(() => vi.unstubAllGlobals());
 
 	it('shares discovery and transport for concurrent operations on one gateway', () => {
 		const first = acquireAssetObserverNetwork(location('https://alpha.example'));
@@ -72,16 +79,16 @@ describe('shared asset observer network', () => {
 		second.release();
 	});
 
-	it('keeps selected gateways isolated', () => {
+	it('shares the PermawebOS transport even when obsolete node parameters differ', () => {
 		const alpha = acquireAssetObserverNetwork(location('https://alpha.example'));
 		const beta = acquireAssetObserverNetwork(location('https://beta.example'));
 
-		expect(beta.network).not.toBe(alpha.network);
-		expect(control.constructed).toHaveLength(2);
+		expect(beta.network).toBe(alpha.network);
+		expect(control.constructed).toHaveLength(1);
 
 		alpha.release();
 		beta.release();
-		expect(control.stopped).toBe(2);
+		expect(control.stopped).toBe(1);
 	});
 
 	it('makes lease release idempotent', () => {

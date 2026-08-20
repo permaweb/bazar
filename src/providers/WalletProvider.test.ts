@@ -12,8 +12,8 @@ function deferred<T>() {
 
 describe('explicit wallet connection', () => {
 	it('reports the selected wallet when its provider is unavailable', async () => {
-		await expect(connectWallet(undefined, 'The Fold')).rejects.toThrow(
-			'Install The Fold wallet extension to continue.'
+		await expect(connectWallet(undefined, 'PermawebOS')).rejects.toThrow(
+			'Install the PermawebOS wallet extension to continue.'
 		);
 	});
 

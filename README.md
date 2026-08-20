@@ -44,11 +44,11 @@ GraphQL and paged in the browser.
 `#/my-assets` discovers a wallet's possible assets with one paginated,
 aliased Arweave GraphQL query. It combines initial holdings, signed market
 actions, and incoming transfers, then computes only those candidates through
-the selected HyperBEAM gateway with bounded concurrency. GraphQL is never
+the selected AO transport with bounded concurrency. GraphQL is never
 treated as ownership or listing truth.
 
 Results appear progressively in `Owned` and `Listed for sale` groups. Changing
-the connected wallet or compute gateway aborts the previous resolution. The
+the connected wallet, AO transport, or AO peer pool aborts the previous resolution. The
 page is read-only and never requests a signature.
 
 Collection pages can retain their manifest order or sort by recent on-chain
@@ -72,28 +72,33 @@ npm install
 npm run start
 ```
 
-Vite serves the application on `http://127.0.0.1:3000` by default. Development
-and production both default to Alpha and Charlie for compute and fail over
-between them through AO Wrangler. Select peers in the header, set
-`VITE_COMPUTE_GATEWAY`, or append a comma-separated `node` query parameter:
+Vite serves the application on `http://127.0.0.1:3000` by default. When the PermawebOS
+browser extension is available, Bazar uses its injected `window.aoFetch` singleton
+by default, sharing AO Wrangler peer and rate-limit state with other applications.
+The AO Core control in the header can disable that transport and use Bazar's own
+AO Wrangler singleton instead. Its ordered fallback peer list defaults to Alpha
+and Charlie and can also be supplied with `VITE_COMPUTE_GATEWAY` or a comma-separated
+`node` query parameter:
 
 ```text
 http://127.0.0.1:3000/?node=https://alpha.example,https://charlie.example#/asset/…
 ```
 
-The ordered `node` list selects the catch-all peers used for process computation
-and the HyperBEAM relay used for browser-safe checks against independent Arweave nodes. AO Wrangler
-shares their advertised rate limits, honors `Retry-After`, and moves to the next peer when necessary. Arweave API requests
-use the gateway serving the site. During local development they fall back to
-`https://arweave.net`; set `VITE_ARWEAVE_GATEWAY` or append the advanced
+Applying the header control persists the peer list and transport selection in the
+page URL. Bazar does not silently switch to its local fallback after a request has
+been sent through PermawebOS; local AO Wrangler is selected only when PermawebOS is
+unavailable or the user disables it.
+
+Arweave API requests use the gateway serving the site. During local development
+they fall back to `https://arweave.net`; set `VITE_ARWEAVE_GATEWAY` or append the advanced
 `arweave-node` query parameter when another Arweave gateway is required:
 
 ```text
-http://127.0.0.1:3000/?node=http://127.0.0.1:3101&arweave-node=http://127.0.0.1:1984#/asset/…
+http://127.0.0.1:3000/?arweave-node=http://127.0.0.1:1984#/asset/…
 ```
 
-The compute and Arweave selections are independent. Transactions are signed by
-the connected wallet and submitted through the selected Arweave gateway.
+The AO peer pool and Arweave gateway selection are independent. Transactions
+are signed by the connected wallet and submitted through the selected Arweave gateway.
 
 ### HyperBEAM device configuration
 

@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { readWalletBalance, resolveBrowserWallet } from './wallet';
+import {
+	BROWSER_WALLET_PERMISSIONS,
+	readWalletBalance,
+	resolveBrowserWallet,
+	restoreBrowserWalletConnection,
+} from './wallet';
 
 function injectedWallet() {
 	return {
@@ -24,25 +29,76 @@ describe('readWalletBalance', () => {
 });
 
 describe('browser wallet selection', () => {
-	it('selects The Fold through its stable provider without replacing Wander', () => {
-		const theFold = injectedWallet();
+	it('selects PermawebOS through its stable provider without replacing Wander', () => {
+		const permawebOs = injectedWallet();
 		const wander = injectedWallet();
-		const scope = { arweaveWallet: wander, permawebConnect: theFold };
+		const scope = { arweaveWallet: wander, permawebConnect: permawebOs };
 
-		expect(resolveBrowserWallet(scope, 'the-fold')).toBe(theFold);
+		expect(resolveBrowserWallet(scope, 'permaweb-os')).toBe(permawebOs);
 		expect(resolveBrowserWallet(scope, 'wander')).toBe(wander);
 	});
 
-	it("does not present The Fold's compatibility alias as Wander", () => {
-		const theFold = injectedWallet();
+	it("does not present PermawebOS's compatibility alias as Wander", () => {
+		const permawebOs = injectedWallet();
 
-		expect(resolveBrowserWallet({ arweaveWallet: theFold, permawebConnect: theFold }, 'wander')).toBeUndefined();
-		expect(resolveBrowserWallet({ arweaveWallet: theFold, permawebConnect: theFold }, 'the-fold')).toBe(theFold);
+		expect(
+			resolveBrowserWallet({ arweaveWallet: permawebOs, permawebConnect: permawebOs }, 'wander')
+		).toBeUndefined();
+		expect(resolveBrowserWallet({ arweaveWallet: permawebOs, permawebConnect: permawebOs }, 'permaweb-os')).toBe(
+			permawebOs
+		);
 	});
 
 	it('rejects malformed injected providers at the browser boundary', () => {
 		expect(
-			resolveBrowserWallet({ permawebConnect: { connect: async () => undefined } }, 'the-fold')
+			resolveBrowserWallet({ permawebConnect: { connect: async () => undefined } }, 'permaweb-os')
 		).toBeUndefined();
+	});
+
+	it('restores an authorized PermawebOS connection when no compatibility alias is available', async () => {
+		const permawebOs = {
+			...injectedWallet(),
+			getPermissions: vi.fn(async () => BROWSER_WALLET_PERMISSIONS),
+		};
+
+		await expect(restoreBrowserWalletConnection({ permawebConnect: permawebOs })).resolves.toEqual({
+			address: 'A'.repeat(43),
+			wallet: permawebOs,
+		});
+	});
+
+	it('restores the explicitly selected PermawebOS provider ahead of an injected Wander provider', async () => {
+		const permawebOs = {
+			...injectedWallet(),
+			getPermissions: vi.fn(async () => BROWSER_WALLET_PERMISSIONS),
+		};
+		const wander = { ...injectedWallet(), getActiveAddress: vi.fn(async () => 'B'.repeat(43)) };
+
+		await expect(
+			restoreBrowserWalletConnection({ arweaveWallet: wander, permawebConnect: permawebOs }, 'permaweb-os')
+		).resolves.toEqual({ address: 'A'.repeat(43), wallet: permawebOs });
+	});
+
+	it('does not silently restore PermawebOS when Bazar permissions are incomplete', async () => {
+		const permawebOs = {
+			...injectedWallet(),
+			getPermissions: vi.fn(async () => ['ACCESS_ADDRESS']),
+		};
+
+		await expect(restoreBrowserWalletConnection({ permawebConnect: permawebOs })).resolves.toBeUndefined();
+		expect(permawebOs.getActiveAddress).not.toHaveBeenCalled();
+	});
+
+	it('keeps an active Wander connection when PermawebOS was not explicitly selected', async () => {
+		const permawebOs = {
+			...injectedWallet(),
+			getPermissions: vi.fn(async () => BROWSER_WALLET_PERMISSIONS),
+		};
+		const wander = { ...injectedWallet(), getActiveAddress: vi.fn(async () => 'B'.repeat(43)) };
+
+		await expect(
+			restoreBrowserWalletConnection({ arweaveWallet: wander, permawebConnect: permawebOs })
+		).resolves.toEqual({ address: 'B'.repeat(43), wallet: wander });
+		expect(permawebOs.getPermissions).not.toHaveBeenCalled();
 	});
 });

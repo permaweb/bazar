@@ -320,6 +320,12 @@ describe('collection index loading', () => {
 			return new Response('unavailable', { status: 503 });
 		});
 		vi.stubGlobal('fetch', fetcher);
+		const permawebOsFetch = fetcher as unknown as PermawebOsAoFetch;
+		Object.defineProperty(permawebOsFetch, 'peers', { value: ['https://permawebos-peer.example'] });
+		permawebOsFetch.invalidate = vi.fn(async () => undefined);
+		permawebOsFetch.cacheMetadata = vi.fn(() => undefined);
+		permawebOsFetch.ready = vi.fn(async () => permawebOsFetch.peers);
+		vi.stubGlobal('window', { aoFetch: permawebOsFetch });
 		const progress: string[] = [];
 
 		const collections = await discoverBazarCollections(undefined, (collection) => progress.push(collection.id));
