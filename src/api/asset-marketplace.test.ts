@@ -1,6 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-
-import { DEFAULT_COMPUTE_GATEWAY } from 'helpers/config';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { clearArweaveHeightCache } from './arweave-height';
 import {
@@ -29,7 +27,13 @@ const buyer = 'BLyLiOZptmb-olB8wycvk_ynHiu1SZMKPqswx4KONwc';
 const orderId = 'qAhWNMSuX70lZpIRohKJn_SuVcymr_RmpGbltydjpwA';
 const processId = 'IyFfmbTu8P4rv0KyrA0Q-QtfEnYntMj4RkRiBVip9KA';
 
-beforeEach(clearArweaveHeightCache);
+beforeEach(() => {
+	clearArweaveHeightCache();
+	vi.stubGlobal('window', {
+		aoFetch: { peers: ['https://primary.example', 'https://secondary.example'] },
+	});
+});
+afterEach(() => vi.unstubAllGlobals());
 
 function assignment(slot: number, transactionId: string) {
 	return {
@@ -52,32 +56,17 @@ function jsonResponse(value: unknown, init: ResponseInit = {}): Response {
 }
 
 describe('servingNodeOrigin', () => {
-	it('uses the default compute gateway unless an explicit node is selected', () => {
+	it('uses the PermawebOS peer pool and ignores application URL peer overrides', () => {
 		expect(servingNodeOrigin({ protocol: 'http:', hostname: '127.0.0.1', port: '3000' })).toBe(
-			DEFAULT_COMPUTE_GATEWAY
+			'https://primary.example'
 		);
-		expect(
-			servingNodeOrigin({
-				protocol: 'http:',
-				hostname: '127.0.0.1',
-				port: '3000',
-				search: '?node=http%3A%2F%2F127.0.0.1%3A3101',
-			})
-		).toBe('http://127.0.0.1:3101');
-	});
-
-	it('keeps every selected compute peer in order', () => {
 		expect(
 			servingNodeOrigins({
 				protocol: 'https:',
 				hostname: 'bazar.example',
 				search: `?node=${encodeURIComponent('https://alpha.example,https://charlie.example')}`,
 			})
-		).toEqual(['https://alpha.example', 'https://charlie.example']);
-	});
-
-	it('uses the default gateway instead of the site hosting origin', () => {
-		expect(servingNodeOrigin({ protocol: 'https:', hostname: 'arweave.net' })).toBe(DEFAULT_COMPUTE_GATEWAY);
+		).toEqual(['https://primary.example', 'https://secondary.example']);
 	});
 });
 
@@ -274,8 +263,8 @@ describe('asset state', () => {
 		});
 		expect(requests).toHaveLength(3);
 		expect(requests[0].url).toContain('/compute&max-age=60');
-		expect(requests[1].url).toBe(`https://compute.example/${balancesLink}~message@1.0/serialize~json@1.0`);
-		expect(requests[2].url).toBe(`https://compute.example/${ordersLink}`);
+		expect(requests[1].url).toBe(`/${balancesLink}~message@1.0/serialize~json@1.0`);
+		expect(requests[2].url).toBe(`/${ordersLink}`);
 		expect(requests.every(({ headers }) => [...headers].length === 0)).toBe(true);
 		expect(requests.slice(1).every(({ headers }) => headers.get('accept-bundle') === null)).toBe(true);
 		expect(requests.slice(1).every(({ headers }) => headers.get('require-codec') === null)).toBe(true);
@@ -404,13 +393,13 @@ describe('asset state', () => {
 		});
 
 		expect(result.state.orders[orderId]).toMatchObject({ orderId, status: 'open' });
-		expect(requested).toContain(`https://compute.example/${balancesLink}~message@1.0/serialize~json@1.0`);
-		expect(requested).toContain(`https://compute.example/${ordersLink}`);
-		expect(requested).toContain(`https://compute.example/${orderLink}~message@1.0/status`);
+		expect(requested).toContain(`/${balancesLink}~message@1.0/serialize~json@1.0`);
+		expect(requested).toContain(`/${ordersLink}`);
+		expect(requested).toContain(`/${orderLink}~message@1.0/status`);
 		expect(requested.every((url) => !url.includes('require-codec'))).toBe(true);
 	});
 
-	it('pins background observation to the operation compute gateway', async () => {
+	it('routes background observation through PermawebOS despite a legacy provider label', async () => {
 		const processId = 'IyFfmbTu8P4rv0KyrA0Q-QtfEnYntMj4RkRiBVip9KA';
 		let requested = '';
 		const result = await readAssetState(processId, {
@@ -426,8 +415,8 @@ describe('asset state', () => {
 			},
 		});
 
-		expect(requested).toMatch(/^https:\/\/original-compute\.example\//);
-		expect(result.provider).toBe('https://original-compute.example');
+		expect(requested).toBe(`/${processId}~process@1.0/compute&max-age=60`);
+		expect(result.provider).toBe('https://primary.example');
 	});
 
 	it('uses one unqualified HTTPSig HEAD request for current state', async () => {
@@ -448,7 +437,7 @@ describe('asset state', () => {
 			},
 		});
 
-		expect(requested).toEqual([`${DEFAULT_COMPUTE_GATEWAY}/${processId}~process@1.0/now`]);
+		expect(requested).toEqual([`/${processId}~process@1.0/now`]);
 		expect(requestOptions[0].method).toBe('HEAD');
 		expect([...new Headers(requestOptions[0].headers)]).toEqual([]);
 	});
@@ -559,37 +548,21 @@ describe('asset state', () => {
 	});
 
 	it('reports the peer that returned the routed process state', async () => {
-		vi.stubGlobal('window', {
-			location: {
-				protocol: 'https:',
-				hostname: 'bazar.example',
-				port: '',
-				search: `?node=${encodeURIComponent('https://alpha.example,https://charlie.example')}`,
-				hash: '',
+		const result = await readAssetState('IyFfmbTu8P4rv0KyrA0Q-QtfEnYntMj4RkRiBVip9KA', {
+			maxAge: 60,
+			fetch: async () => {
+				const response = jsonResponse({
+					'execution-device': 'token@1.0',
+					'total-supply': '1',
+					balances: { [owner]: '1' },
+					orders: {},
+				});
+				Object.defineProperty(response, 'url', { value: 'https://secondary.example/state' });
+				return response;
 			},
 		});
-		try {
-			const result = await readAssetState('IyFfmbTu8P4rv0KyrA0Q-QtfEnYntMj4RkRiBVip9KA', {
-				maxAge: 60,
-				fetch: async (input) => {
-					if (String(input).startsWith('https://alpha.example/')) {
-						return new Response('unavailable', { status: 502 });
-					}
-					const response = jsonResponse({
-						'execution-device': 'token@1.0',
-						'total-supply': '1',
-						balances: { [owner]: '1' },
-						orders: {},
-					});
-					Object.defineProperty(response, 'url', { value: 'https://charlie.example/state' });
-					return response;
-				},
-			});
 
-			expect(result.provider).toBe('https://charlie.example');
-		} finally {
-			vi.unstubAllGlobals();
-		}
+		expect(result.provider).toBe('https://secondary.example');
 	});
 
 	it('rejects malformed HTTPSig headers without a codec fallback', async () => {
@@ -623,7 +596,7 @@ describe('asset state', () => {
 			},
 		});
 
-		expect(requested).toEqual([`${DEFAULT_COMPUTE_GATEWAY}/${processId}~process@1.0/now`]);
+		expect(requested).toEqual([`/${processId}~process@1.0/now`]);
 		expect(requestOptions.every((options) => options.cache === undefined)).toBe(true);
 		expect(requestOptions.every((options) => options.method === 'HEAD')).toBe(true);
 		expect(requestOptions.every((options) => [...new Headers(options.headers)].length === 0)).toBe(true);
@@ -775,7 +748,13 @@ describe('asset state', () => {
 			});
 		});
 
-		await expect(readAssetState('R'.repeat(43), { fetch: fetcher as typeof fetch })).resolves.toBeDefined();
+		await expect(
+			readAssetState('R'.repeat(43), {
+				fetch: fetcher as typeof fetch,
+				maxAttempts: 2,
+				retryBaseDelay: 0,
+			})
+		).resolves.toBeDefined();
 		expect(requested).toHaveLength(2);
 		expect(requested[1]).toBe(requested[0]);
 	});

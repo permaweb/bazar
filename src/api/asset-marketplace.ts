@@ -1,13 +1,6 @@
-import { type AoCacheStatus, cacheMetadata } from 'ao-wrangler';
+import { arweaveGatewayFromLocation, gatewaysFromLocation, normalizeComputeGateways } from 'helpers/config';
 
-import {
-	arweaveGatewayFromLocation,
-	DEFAULT_COMPUTE_GATEWAY,
-	gatewaysFromLocation,
-	normalizeComputeGateways,
-} from 'helpers/config';
-
-import { aoFetch } from './ao';
+import { aoCacheMetadata as cacheMetadata, type AoCacheStatus, aoFetch, aoPrimaryPeer } from './ao';
 import { currentArweaveHeight } from './arweave-height';
 
 export type SwapOrderStatus = 'open' | 'reserved' | 'settled' | 'cancelled' | 'expired';
@@ -128,7 +121,7 @@ export function servingNodeOrigin(location: {
 	search?: string;
 	hash?: string;
 }): string {
-	return servingNodeOrigins(location)[0] ?? DEFAULT_COMPUTE_GATEWAY;
+	return servingNodeOrigins(location)[0] ?? '';
 }
 
 export function servingNodeOrigins(location: {
@@ -139,12 +132,6 @@ export function servingNodeOrigins(location: {
 	hash?: string;
 }): string[] {
 	return gatewaysFromLocation(location as Location);
-}
-
-function currentServingNodes(): string[] {
-	return typeof window !== 'undefined' && ['http:', 'https:'].includes(window.location.protocol)
-		? servingNodeOrigins(window.location)
-		: [DEFAULT_COMPUTE_GATEWAY];
 }
 
 export async function readAssetState(
@@ -164,9 +151,8 @@ export async function readAssetState(
 	} = {}
 ): Promise<ComputeResult> {
 	if (!ADDRESS.test(processId)) throw new TypeError('invalid-asset-process-id');
-	const nodes = options.provider ? [options.provider] : currentServingNodes();
-	const provider = nodes[0];
-	const fetcher = aoFetch(nodes, options.fetch);
+	const provider = aoPrimaryPeer() || options.provider || '';
+	const fetcher = aoFetch(options.fetch);
 	const readReservationHeight = () =>
 		options.currentHeight === undefined
 			? currentArweaveHeight({
@@ -207,9 +193,8 @@ export async function readAssetStateAtSlot(
 	if (!ADDRESS.test(processId) || !Number.isSafeInteger(slot) || slot < 0) {
 		throw new TypeError('invalid-process-slot');
 	}
-	const nodes = currentServingNodes();
-	const provider = nodes[0];
-	const fetcher = aoFetch(nodes, options.fetch);
+	const provider = aoPrimaryPeer();
+	const fetcher = aoFetch(options.fetch);
 	const read = await readState(processId, provider, fetcher, {
 		...options,
 		slot,
@@ -242,10 +227,8 @@ export async function readProcessAssignments(
 	) {
 		throw new TypeError('invalid-process-schedule-window');
 	}
-	const nodes = currentServingNodes();
-	const provider = nodes[0];
-	const fetcher = aoFetch(nodes, options.fetch);
-	const base = provider ? `${provider}/` : '/';
+	const fetcher = aoFetch(options.fetch);
+	const base = '/';
 	const paths = [
 		`${base}${processId}~process@1.0/schedule&from=${fromSlot}&to=${toSlot}/assignments?require-codec=json%401.0&accept-bundle=true`,
 		`${base}${processId}~process@1.0/schedule&from=${fromSlot}&to=${toSlot}/assignments?require-codec=application%2Fjson&accept-bundle=true`,
@@ -290,9 +273,8 @@ export async function waitForAssetState(
 		heightGateway?: string;
 	} = {}
 ): Promise<ComputeResult> {
-	const nodes = options.provider ? [options.provider] : currentServingNodes();
-	const provider = nodes[0];
-	const fetcher = aoFetch(nodes, options.fetch);
+	const provider = aoPrimaryPeer() || options.provider || '';
+	const fetcher = aoFetch(options.fetch);
 	const startedAt = Date.now();
 	const timeout = options.timeout ?? 180_000;
 	let attempt = 0;
@@ -549,7 +531,7 @@ async function readState(
 	cacheAge?: number;
 	revalidation?: Promise<{ state: AssetState; provider: string }>;
 }> {
-	const base = servingNode ? `${servingNode}/` : '/';
+	const base = '/';
 	const maxAge = Math.max(0, Math.floor(options.maxAge ?? 60));
 	const endpoint =
 		options.slot === undefined
