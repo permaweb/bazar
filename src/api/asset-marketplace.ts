@@ -689,8 +689,8 @@ async function readLinkedStateTable(
 		const existing = messages.get(messageId);
 		if (existing) return existing;
 		const serialized = key === 'balances';
-		const pending = fetcher(`${base}${messageId}${serialized ? '~message@1.0/serialize~json@1.0' : ''}`, {
-			...(serialized ? {} : { method: 'HEAD' as const }),
+		const pending = fetcher(`${base}${messageId}`, {
+			...(serialized ? { headers: { accept: 'application/json' } } : { method: 'HEAD' as const }),
 			signal: requestInit.signal,
 		}).then(async (response) => {
 			if (!response.ok) throw new Error(`HTTP ${response.status}`);

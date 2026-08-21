@@ -274,9 +274,9 @@ describe('asset state', () => {
 		});
 		expect(requests).toHaveLength(3);
 		expect(requests[0].url).toContain('/compute&max-age=60');
-		expect(requests[1].url).toBe(`https://compute.example/${balancesLink}~message@1.0/serialize~json@1.0`);
+		expect(requests[1].url).toBe(`https://compute.example/${balancesLink}`);
 		expect(requests[2].url).toBe(`https://compute.example/${ordersLink}`);
-		expect(requests.every(({ headers }) => [...headers].length === 0)).toBe(true);
+		expect(requests[1].headers.get('accept')).toBe('application/json');
 		expect(requests.slice(1).every(({ headers }) => headers.get('accept-bundle') === null)).toBe(true);
 		expect(requests.slice(1).every(({ headers }) => headers.get('require-codec') === null)).toBe(true);
 		expect(requests.slice(1).every(({ headers }) => headers.get('cache-control') === null)).toBe(true);
@@ -298,7 +298,7 @@ describe('asset state', () => {
 			fetch: async (input, init = {}) => {
 				const url = String(input);
 				requests.push({ url, init });
-				if (url.endsWith(`${rootId}~message@1.0/serialize~json@1.0`)) {
+				if (url.endsWith(rootId)) {
 					return jsonResponse(
 						Object.fromEntries([
 							['device', 'trie@1.0'],
@@ -306,7 +306,7 @@ describe('asset state', () => {
 						])
 					);
 				}
-				const child = [...childIds].find(([, id]) => url.endsWith(`${id}~message@1.0/serialize~json@1.0`));
+				const child = [...childIds].find(([, id]) => url.endsWith(id));
 				if (child) {
 					const [prefix] = child;
 					return jsonResponse(
@@ -332,11 +332,14 @@ describe('asset state', () => {
 		expect(result.state.balances).toEqual(expected);
 		expect(Object.keys(result.state.balances)).toHaveLength(1000);
 		expect(requests).toHaveLength(12);
-		expect(requests.every(({ url }) => !url.includes('?'))).toBe(true);
-		expect(requests.slice(1).every(({ url }) => url.endsWith('~message@1.0/serialize~json@1.0'))).toBe(true);
+		expect(requests.every(({ url }) => !url.includes('?') && !url.includes('~message@1.0'))).toBe(true);
+		expect(
+			requests.slice(1).every(({ init }) => new Headers(init.headers).get('accept') === 'application/json')
+		).toBe(true);
 		expect(requests[0].init.method).toBe('HEAD');
 		expect(requests.slice(1).every(({ init }) => init.method === undefined)).toBe(true);
-		expect(requests.every(({ init }) => [...new Headers(init.headers)].length === 0)).toBe(true);
+		expect([...new Headers(requests[0].init.headers)]).toHaveLength(0);
+		expect(requests.slice(1).every(({ init }) => [...new Headers(init.headers)].length === 1)).toBe(true);
 	});
 
 	it('preserves mixed-case balance keys across serialized trie descendants', async () => {
@@ -346,10 +349,10 @@ describe('asset state', () => {
 			provider: 'https://compute.example',
 			fetch: async (input) => {
 				const url = String(input);
-				if (url.endsWith(`${balancesLink}~message@1.0/serialize~json@1.0`)) {
+				if (url.endsWith(balancesLink)) {
 					return jsonResponse({ device: 'trie@1.0', [`${owner[0]}+link`]: childLink });
 				}
-				if (url.endsWith(`${childLink}~message@1.0/serialize~json@1.0`)) {
+				if (url.endsWith(childLink)) {
 					return jsonResponse({ [owner.slice(1)]: '1' });
 				}
 				return new Response(null, {
@@ -389,7 +392,7 @@ describe('asset state', () => {
 				if (url.endsWith(ordersLink)) {
 					return new Response(null, { headers: { [`${orderId.toLowerCase()}+link`]: orderLink } });
 				}
-				if (url.endsWith(`${balancesLink}~message@1.0/serialize~json@1.0`)) {
+				if (url.endsWith(balancesLink)) {
 					return jsonResponse({ [owner]: '1' });
 				}
 				return new Response(null, {
@@ -404,7 +407,7 @@ describe('asset state', () => {
 		});
 
 		expect(result.state.orders[orderId]).toMatchObject({ orderId, status: 'open' });
-		expect(requested).toContain(`https://compute.example/${balancesLink}~message@1.0/serialize~json@1.0`);
+		expect(requested).toContain(`https://compute.example/${balancesLink}`);
 		expect(requested).toContain(`https://compute.example/${ordersLink}`);
 		expect(requested).toContain(`https://compute.example/${orderLink}~message@1.0/status`);
 		expect(requested.every((url) => !url.includes('require-codec'))).toBe(true);
