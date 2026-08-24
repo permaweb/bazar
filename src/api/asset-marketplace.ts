@@ -35,6 +35,7 @@ export type AssetState = {
 	denomination: number;
 	totalSupply: string;
 	balances: Record<string, string>;
+	holderBalancesAvailable?: boolean;
 	orders: Record<string, SwapOrder>;
 	swapHeight: number;
 	value: unknown;
@@ -598,6 +599,7 @@ async function readState(
 					if (!response.ok) throw new Error(`HTTP ${response.status}`);
 					const state = await parseStateResponse(
 						response,
+						path,
 						base,
 						requestInit,
 						fetcher,
@@ -652,6 +654,7 @@ function statePaths(base: string, processId: string, endpoint: string): string[]
 
 async function parseStateResponse(
 	response: Response,
+	statePath: string,
 	base: string,
 	requestInit: RequestInit,
 	fetcher: typeof fetch,
@@ -664,10 +667,17 @@ async function parseStateResponse(
 			const id = raw[`${key}+link`];
 			if (id === undefined) return [];
 			if (typeof id !== 'string' || !ADDRESS.test(id)) throw new TypeError('invalid-asset-state-link');
-			return [readLinkedStateTable(key, id, base, requestInit, fetcher)];
+			return [readLinkedStateTable(key, id, statePath, base, requestInit, fetcher)];
 		})
 	);
-	const parsed = parseAssetStateValue({ ...raw, ...Object.fromEntries(linked) });
+	const parsed = parseAssetStateValue({
+		...raw,
+		...Object.fromEntries(linked.map(([key, value]) => [key, value])),
+	});
+	const holderBalancesAvailable = !linked.some(
+		([key, _value, available]) => key === 'balances' && available === false
+	);
+	parsed.state.holderBalancesAvailable = holderBalancesAvailable;
 	return parsed.activeReservation && readReservationHeight
 		? normalizeAssetStateReservations(parsed.state, await readReservationHeight())
 		: parsed.state;
@@ -676,10 +686,11 @@ async function parseStateResponse(
 async function readLinkedStateTable(
 	key: (typeof LINKED_STATE_TABLES)[number],
 	id: string,
+	statePath: string,
 	base: string,
 	requestInit: RequestInit,
 	fetcher: typeof fetch
-): Promise<[string, Record<string, unknown>]> {
+): Promise<[string, Record<string, unknown>, boolean?]> {
 	const messages = new Map<string, Promise<Record<string, unknown>>>();
 	const read = (messageId: string): Promise<Record<string, unknown>> => {
 		if (!ADDRESS.test(messageId)) return Promise.reject(new TypeError('invalid-asset-state-link'));
@@ -706,10 +717,24 @@ async function readLinkedStateTable(
 		if (!response.ok) throw new Error(`HTTP ${response.status}`);
 		return response.text();
 	};
+	if (key === 'balances') {
+		const allowNotFound = (
+			fetcher as typeof fetch & {
+				allowNotFound?(input: RequestInfo | URL, init?: RequestInit): Promise<Response>;
+			}
+		).allowNotFound;
+		const deviceResponse = await (allowNotFound ?? fetcher)(`${statePath}/balances/device`, {
+			signal: requestInit.signal,
+		});
+		if (deviceResponse.status === 404) return [key, {}, false];
+		if (!deviceResponse.ok) throw new Error(`HTTP ${deviceResponse.status}`);
+		if ((await deviceResponse.text()).trim() !== 'message@1.0') return [key, {}, false];
+	}
 	const root = await read(id);
 	return [
 		key,
 		root.device === 'trie@1.0' ? await flattenLinkedTrie(root, read) : await linkedRecord(root, read, readScalar),
+		true,
 	];
 }
 
@@ -846,6 +871,7 @@ async function parseRevalidatedState(
 		return {
 			state: await parseStateResponse(
 				response,
+				path,
 				servingNode ? `${servingNode}/` : '/',
 				requestInit,
 				fetcher,

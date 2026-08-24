@@ -4,6 +4,7 @@ type Nodes = string | readonly string[];
 
 export type AoPeerFetch = typeof fetch & {
 	invalidate(input: RequestInfo | URL, init?: RequestInit): Promise<void>;
+	allowNotFound(input: RequestInfo | URL, init?: RequestInit): Promise<Response>;
 };
 
 function nodeList(nodes?: Nodes): string[] {
@@ -21,7 +22,20 @@ export function aoFetch(nodes: Nodes, override?: typeof fetch): AoPeerFetch {
 	const origins = new Set(peers.map((peer) => new URL(peer).origin));
 	const routed = ((input, init) => client.fetch(routeDefaultPeerRequest(input, origins), init)) as AoPeerFetch;
 	routed.invalidate = (input, init) => client.invalidate(routeDefaultPeerRequest(input, origins), init);
+	routed.allowNotFound = (input, init) =>
+		client.request(
+			{
+				path: requestPath(routeDefaultPeerRequest(input, origins)),
+				method: init?.method ?? 'GET',
+				'multirequest-admissible-status': [200, 201, 202, 204, 206, 304, 404],
+			},
+			init
+		);
 	return routed;
+}
+
+function requestPath(input: RequestInfo | URL): string {
+	return typeof input === 'string' || input instanceof URL ? String(input) : input.url;
 }
 
 function peerConfig(peers: string[], rateLimit: 'discover' | false) {
