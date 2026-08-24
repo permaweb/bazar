@@ -81,4 +81,16 @@ describe('AO peer routing', () => {
 
 		expect(requested.at(-1)).toBe('https://arweave.net/graphql');
 	});
+
+	it('can return a not-found response for an optional AO path', async () => {
+		const routed = aoFetch(
+			['https://alpha.example'],
+			vi.fn(async () => new Response('not_found', { status: 404 })) as typeof fetch
+		);
+
+		const response = await routed.allowNotFound('https://alpha.example/message~message@1.0/device');
+
+		expect(response.status).toBe(404);
+		expect(await response.text()).toBe('not_found');
+	});
 });
