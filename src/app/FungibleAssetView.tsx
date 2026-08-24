@@ -770,9 +770,13 @@ export function FungibleAssetView({
 		[purchasableOrders, purchaseQuantity, state]
 	);
 	const holderRows = React.useMemo(() => fungibleHolders(state), [state]);
+	const holderBalancesAvailable = state.holderBalancesAvailable !== false;
 	const holders = holderRows.length;
 	const holderLimit = holderReveal.assetId === asset.id ? holderReveal.limit : 50;
 	const visibleHolderRows = holderRows.slice(0, holderLimit);
+	React.useEffect(() => {
+		if (!holderBalancesAvailable && activeSection === 'holders') setActiveSection('market');
+	}, [activeSection, holderBalancesAvailable]);
 	const license = licenseProperties(state);
 	const description = assetDescription(state, collection.description);
 	const askHistory = React.useMemo(
@@ -793,6 +797,8 @@ export function FungibleAssetView({
 			label: 'Holders',
 			icon: <Users className="ui-icon" aria-hidden="true" />,
 			panelId: 'fungible-asset-holders',
+			disabled: !holderBalancesAvailable,
+			disabledMessage: !holderBalancesAvailable ? 'Large balance tables are not displayed.' : undefined,
 		},
 		{
 			value: 'about',
@@ -1224,7 +1230,9 @@ export function FungibleAssetView({
 							</div>
 							<div>
 								<span>Holders</span>
-								<strong>{holderRows.length.toLocaleString()}</strong>
+								<strong>
+									{holderBalancesAvailable ? holderRows.length.toLocaleString() : 'Unavailable'}
+								</strong>
 							</div>
 						</div>
 						<div className="fungible-trade-switcher">
