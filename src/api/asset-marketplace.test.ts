@@ -240,6 +240,7 @@ describe('asset state', () => {
 			fetch: async (input, init) => {
 				const url = String(input);
 				requests.push({ url, headers: new Headers(init?.headers) });
+				if (url.endsWith('/balances/device')) return new Response('message@1.0');
 				if (url.includes(balancesLink)) {
 					return jsonResponse(`{"${owner}":999997000000000001,"status":200}`);
 				}
@@ -256,56 +257,35 @@ describe('asset state', () => {
 		});
 
 		expect(result.state.balances).toEqual({ [owner]: '999997000000000001' });
+		expect(result.state.holderBalancesAvailable).toBe(true);
 		expect(result.state.orders[orderId]).toMatchObject({ orderId, creator: owner });
 		expect(result.state.raw).toMatchObject({
 			'balances+link': balancesLink,
 			'orders+link': ordersLink,
 		});
-		expect(requests).toHaveLength(3);
+		expect(requests).toHaveLength(4);
 		expect(requests[0].url).toContain('/compute&max-age=60');
-		expect(requests[1].url).toBe(`/${balancesLink}~message@1.0/serialize~json@1.0`);
-		expect(requests[2].url).toBe(`/${ordersLink}`);
+		expect(requests.map(({ url }) => url)).toContain(
+			`/${processId}~process@1.0/compute&max-age=60/balances/device`
+		);
+		expect(requests.map(({ url }) => url)).toContain(`/${balancesLink}~message@1.0/serialize~json@1.0`);
+		expect(requests.map(({ url }) => url)).toContain(`/${ordersLink}`);
 		expect(requests.every(({ headers }) => [...headers].length === 0)).toBe(true);
 		expect(requests.slice(1).every(({ headers }) => headers.get('accept-bundle') === null)).toBe(true);
 		expect(requests.slice(1).every(({ headers }) => headers.get('require-codec') === null)).toBe(true);
 		expect(requests.slice(1).every(({ headers }) => headers.get('cache-control') === null)).toBe(true);
 	});
 
-	it('serializes every message in a 1,000-owner linked balance trie', async () => {
+	it('skips a linked balance trie instead of downloading every message', async () => {
 		const rootId = 'R'.repeat(43);
-		const prefixes = 'abcdefghij';
-		const childIds = new Map([...prefixes].map((prefix, index) => [prefix, String(index).repeat(43)]));
 		const requests: Array<{ url: string; init: RequestInit }> = [];
-		const expected = Object.fromEntries(
-			[...prefixes].flatMap((prefix) =>
-				Array.from({ length: 100 }, (_, index) => [`${prefix}${index.toString(36).padStart(42, '0')}`, '1'])
-			)
-		);
 
 		const result = await readAssetState(processId, {
 			provider: 'https://compute.example',
 			fetch: async (input, init = {}) => {
 				const url = String(input);
 				requests.push({ url, init });
-				if (url.endsWith(`${rootId}~message@1.0/serialize~json@1.0`)) {
-					return jsonResponse(
-						Object.fromEntries([
-							['device', 'trie@1.0'],
-							...[...childIds].map(([prefix, id]) => [`${prefix}+link`, id]),
-						])
-					);
-				}
-				const child = [...childIds].find(([, id]) => url.endsWith(`${id}~message@1.0/serialize~json@1.0`));
-				if (child) {
-					const [prefix] = child;
-					return jsonResponse(
-						Object.fromEntries(
-							Object.keys(expected)
-								.filter((address) => address.startsWith(prefix))
-								.map((address) => [address.slice(1), '1'])
-						)
-					);
-				}
+				if (url.endsWith('/balances/device')) return new Response('trie@1.0');
 				return new Response(null, {
 					headers: {
 						'ao-body-key': 'data',
@@ -318,29 +298,23 @@ describe('asset state', () => {
 			},
 		});
 
-		expect(result.state.balances).toEqual(expected);
-		expect(Object.keys(result.state.balances)).toHaveLength(1000);
-		expect(requests).toHaveLength(12);
-		expect(requests.every(({ url }) => !url.includes('?'))).toBe(true);
-		expect(requests.slice(1).every(({ url }) => url.endsWith('~message@1.0/serialize~json@1.0'))).toBe(true);
+		expect(result.state.balances).toEqual({});
+		expect(result.state.holderBalancesAvailable).toBe(false);
+		expect(requests).toHaveLength(2);
 		expect(requests[0].init.method).toBe('HEAD');
-		expect(requests.slice(1).every(({ init }) => init.method === undefined)).toBe(true);
+		expect(requests[1].url).toBe(`/${processId}~process@1.0/compute&max-age=60/balances/device`);
 		expect(requests.every(({ init }) => [...new Headers(init.headers)].length === 0)).toBe(true);
 	});
 
-	it('preserves mixed-case balance keys across serialized trie descendants', async () => {
+	it('treats a missing linked balance device as unavailable', async () => {
 		const balancesLink = 'B'.repeat(43);
-		const childLink = 'C'.repeat(43);
+		const requested: string[] = [];
 		const result = await readAssetState(processId, {
 			provider: 'https://compute.example',
 			fetch: async (input) => {
 				const url = String(input);
-				if (url.endsWith(`${balancesLink}~message@1.0/serialize~json@1.0`)) {
-					return jsonResponse({ device: 'trie@1.0', [`${owner[0]}+link`]: childLink });
-				}
-				if (url.endsWith(`${childLink}~message@1.0/serialize~json@1.0`)) {
-					return jsonResponse({ [owner.slice(1)]: '1' });
-				}
+				requested.push(url);
+				if (url.endsWith('/balances/device')) return new Response('not_found', { status: 404 });
 				return new Response(null, {
 					headers: {
 						'balances+link': balancesLink,
@@ -351,7 +325,9 @@ describe('asset state', () => {
 			},
 		});
 
-		expect(result.state.balances).toEqual({ [owner]: '1' });
+		expect(result.state.balances).toEqual({});
+		expect(result.state.holderBalancesAvailable).toBe(false);
+		expect(requested).not.toContain(`/${balancesLink}~message@1.0/serialize~json@1.0`);
 	});
 
 	it('reads an order status through the message device when HTTP status shadows its header', async () => {
@@ -364,6 +340,7 @@ describe('asset state', () => {
 			fetch: async (input) => {
 				const url = String(input);
 				requested.push(url);
+				if (url.endsWith('/balances/device')) return new Response('message@1.0');
 				if (url.endsWith(`${orderLink}~message@1.0/status`)) return new Response('open');
 				if (url.endsWith(orderLink)) {
 					return new Response(null, {
