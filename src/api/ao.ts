@@ -1,26 +1,60 @@
-import { aoWrangler, type AoWranglerClient, createAoWrangler } from 'ao-wrangler';
+import {
+	type AoCacheMetadata,
+	type AoCacheStatus,
+	aoWrangler,
+	type AoWranglerClient,
+	cacheMetadata,
+	createAoWrangler,
+} from 'ao-wrangler';
+
+import { fallbackAoPeersFromLocation, gatewaysFromLocation, usesPermawebOsAo } from 'helpers/config';
+
+export type { AoCacheMetadata, AoCacheStatus };
 
 type Nodes = string | readonly string[];
 
 export type AoPeerFetch = typeof fetch & {
 	invalidate(input: RequestInfo | URL, init?: RequestInit): Promise<void>;
+	cacheMetadata(response: Response): AoCacheMetadata | undefined;
+	readonly peers: readonly string[];
+	ready(): Promise<readonly string[]>;
+	allowNotFound?(input: RequestInfo | URL, init?: RequestInit): Promise<Response>;
+};
+
+type BazarAoPeerFetch = AoPeerFetch & {
 	allowNotFound(input: RequestInfo | URL, init?: RequestInit): Promise<Response>;
 };
+
+let bazarTransport: { peers: string; fetcher: BazarAoPeerFetch } | undefined;
 
 function nodeList(nodes?: Nodes): string[] {
 	return typeof nodes === 'string' ? [nodes] : [...(nodes ?? [])];
 }
 
+function permawebOsAoFetch(): AoPeerFetch | undefined {
+	return usesPermawebOsAo() ? globalThis.window?.aoFetch : undefined;
+}
+
+function directAoFetch(): BazarAoPeerFetch {
+	const peers = fallbackAoPeersFromLocation();
+	const signature = peers.join('\n');
+	if (bazarTransport?.peers !== signature) {
+		bazarTransport = { peers: signature, fetcher: createBazarAoFetch(peers) };
+	}
+	return bazarTransport.fetcher;
+}
+
 export function aoClient(nodes?: Nodes): AoWranglerClient {
-	const peers = nodeList(nodes);
+	const peers = nodeList(nodes ?? fallbackAoPeersFromLocation());
 	return aoWrangler(peerConfig(peers, 'discover'));
 }
 
-export function aoFetch(nodes: Nodes, override?: typeof fetch): AoPeerFetch {
-	const peers = nodeList(nodes);
+export function createBazarAoFetch(nodes: Nodes, override?: typeof fetch): BazarAoPeerFetch {
+	const peers = Object.freeze(nodeList(nodes));
 	const client = override ? createAoWrangler(peerConfig(peers, false), override) : aoClient(peers);
 	const origins = new Set(peers.map((peer) => new URL(peer).origin));
-	const routed = ((input, init) => client.fetch(routeDefaultPeerRequest(input, origins), init)) as AoPeerFetch;
+	const routed = ((input, init) => client.fetch(routeDefaultPeerRequest(input, origins), init)) as BazarAoPeerFetch;
+	let readiness: Promise<readonly string[]> | undefined;
 	routed.invalidate = (input, init) => client.invalidate(routeDefaultPeerRequest(input, origins), init);
 	routed.allowNotFound = (input, init) =>
 		client.request(
@@ -31,14 +65,43 @@ export function aoFetch(nodes: Nodes, override?: typeof fetch): AoPeerFetch {
 			},
 			init
 		);
+	routed.cacheMetadata = cacheMetadata;
+	Object.defineProperty(routed, 'peers', { value: peers });
+	routed.ready = () => {
+		readiness ??= client
+			.warm()
+			.catch(() => undefined)
+			.then(() => peers);
+		return readiness;
+	};
 	return routed;
 }
 
-function requestPath(input: RequestInfo | URL): string {
-	return typeof input === 'string' || input instanceof URL ? String(input) : input.url;
+export function aoFetch(override?: typeof fetch): AoPeerFetch | typeof fetch {
+	return override ?? permawebOsAoFetch() ?? directAoFetch();
 }
 
-function peerConfig(peers: string[], rateLimit: 'discover' | false) {
+export function aoPeers(): string[] {
+	return gatewaysFromLocation();
+}
+
+export function aoPrimaryPeer(): string {
+	return aoPeers()[0] ?? '';
+}
+
+export function aoCacheMetadata(response: Response): AoCacheMetadata | undefined {
+	const readPermawebOsMetadata = permawebOsAoFetch()?.cacheMetadata;
+	return (
+		(typeof readPermawebOsMetadata === 'function' ? readPermawebOsMetadata(response) : undefined) ??
+		cacheMetadata(response)
+	);
+}
+
+export async function readyAoFetch(): Promise<readonly string[]> {
+	return (permawebOsAoFetch() ?? directAoFetch()).ready();
+}
+
+function peerConfig(peers: readonly string[], rateLimit: 'discover' | false) {
 	const nodes = peers.map((prefix) => ({ prefix, 'rate-limit': rateLimit } as const));
 	const readRoute = (method: 'GET' | 'HEAD') => ({
 		template: { method },
@@ -60,6 +123,10 @@ function peerConfig(peers: string[], rateLimit: 'discover' | false) {
 			  }
 			: {}),
 	};
+}
+
+function requestPath(input: RequestInfo | URL): string {
+	return typeof input === 'string' || input instanceof URL ? String(input) : input.url;
 }
 
 function routeDefaultPeerRequest(input: RequestInfo | URL, origins: ReadonlySet<string>): RequestInfo | URL {

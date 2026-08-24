@@ -47,7 +47,7 @@ describe('marketplace search ranking', () => {
 
 	it('turns compute rate limits into actionable recovery guidance', () => {
 		expect(assetStateErrorMessage(new Error('HTTP 429'))).toBe(
-			'The selected compute gateway is temporarily rate-limiting live-state requests. Wait briefly and retry, or choose another Compute gateway in the header.'
+			'The configured AO peers are temporarily rate-limiting live-state requests. Wait briefly and retry, or review the AO Core settings in the header.'
 		);
 	});
 

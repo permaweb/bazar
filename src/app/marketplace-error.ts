@@ -10,7 +10,7 @@ const FRIENDLY_ERRORS: Record<string, string> = {
 	'transaction-propagation-timeout':
 		'The sampled observers did not reach the required propagation quorum in time. The signed transaction remains saved in this browser; return with the same wallet and retained browser data to continue checking it.',
 	'asset-state-timeout':
-		'The sampled observers report the transaction as confirmed, but the selected compute gateway has not applied it yet. Continue to keep checking live state.',
+		'The sampled observers report the transaction as confirmed, but the configured AO peers have not applied it yet. Continue to keep checking live state.',
 	'asset-order-reservation-expired':
 		'The reservation window passed before the seller payment was dispatched. No seller payment was sent. The stale recovery has been cleared; start a new purchase if the listing is still available.',
 	'asset-order-reservation-rejected':
@@ -36,19 +36,19 @@ const FRIENDLY_ERRORS: Record<string, string> = {
 	'fungible-transfer-rejected':
 		'This transfer reached its exact token schedule slot, but live state proves it was not applied. No tokens moved. Review the current balance before trying again.',
 	'fungible-transfer-proof-mismatch':
-		'The selected compute gateway returned incomplete scheduler proof for this transfer. The signed transaction is saved in this browser; continue it here, or close this dialog and choose another Compute gateway in the header.',
+		'The configured AO peers returned incomplete scheduler proof for this transfer. The signed transaction is saved in this browser; continue it here, or review the AO Core settings in the header.',
 	'asset-cancel-rejected':
 		'This cancellation reached its exact schedule slot, but live state proves it was not applied. The listing changed first. Review the current order book before trying again.',
 	'asset-cancel-proof-mismatch':
-		'The selected compute gateway returned incomplete scheduler proof for this cancellation. The signed transaction is saved in this browser; continue it here, or close this dialog and choose another Compute gateway in the header.',
+		'The configured AO peers returned incomplete scheduler proof for this cancellation. The signed transaction is saved in this browser; continue it here, or review the AO Core settings in the header.',
 	'asset-purchase-rejected':
 		'The exact seller payment reached this asset’s schedule, but the token transfer was not applied. The permanent payment evidence remains saved for review.',
 	'asset-purchase-proof-mismatch':
-		'The selected compute gateway returned incomplete scheduler proof for this purchase. Both transaction IDs remain saved in this browser; continue here, or close this dialog and choose another Compute gateway in the header.',
+		'The configured AO peers returned incomplete scheduler proof for this purchase. Both transaction IDs remain saved in this browser; continue here, or review the AO Core settings in the header.',
 	'asset-payment-id-missing':
 		'This purchase recovery does not contain its exact seller-payment ID, so Bazar cannot prove settlement safely.',
 	'asset-action-starting-slot-unavailable':
-		'The selected compute gateway did not expose an exact process slot, so Bazar did not ask the wallet to approve this action. Retry, or choose another Compute gateway.',
+		'The configured AO peers did not expose an exact process slot, so Bazar did not ask the wallet to approve this action. Retry, or review the AO Core settings in the header.',
 	'asset-action-recovery-baseline-missing':
 		'This older signed action has no exact process-slot baseline, so Bazar cannot reliably infer its outcome from aggregate state. The signed transaction remains saved in this browser for review.',
 	'transaction-dispatch-rejected':
@@ -105,13 +105,13 @@ export function marketplaceRequestFailureMessage(
 	kind: MarketplaceFailureKind
 ): string {
 	if (source === 'compute' && kind === 'rate-limited') {
-		return 'The selected compute gateway is temporarily rate-limiting live-state requests. Wait briefly and retry, or choose another Compute gateway in the header.';
+		return 'The configured AO peers are temporarily rate-limiting live-state requests. Wait briefly and retry, or review the AO Core settings in the header.';
 	}
 	if (source === 'index' && kind === 'rate-limited') {
 		return 'Arweave’s transaction index is temporarily rate-limiting requests. Wait briefly and retry.';
 	}
 	if (source === 'compute') {
-		return 'Live state could not be read through the selected compute gateway. Retry, or choose another Compute gateway in the header.';
+		return 'Live state could not be read through the configured AO peers. Retry, or review the AO Core settings in the header.';
 	}
 	return 'Arweave’s transaction index could not be read. Retry shortly.';
 }

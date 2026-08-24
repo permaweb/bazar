@@ -9,6 +9,8 @@ export const PRODUCTION_COMPUTE_GATEWAYS = [
 	'https://charlie.neo2.zephyrdev.xyz',
 ] as const;
 export const PRODUCTION_COMPUTE_GATEWAY = PRODUCTION_COMPUTE_GATEWAYS[0];
+export const AO_TRANSPORT_QUERY_PARAMETER = 'ao-transport';
+export const BAZAR_AO_TRANSPORT = 'bazar';
 
 export function normalizeComputeGateways(value: string, defaultProtocol = 'https:'): string[] | null {
 	let entries: unknown[];
@@ -127,14 +129,35 @@ export function arweaveDataFallbackUrls(
 	];
 }
 
-export function gatewayFromLocation(location: Location = window.location): string {
-	return gatewaysFromLocation(location)[0];
+export function permawebOsAoAvailable(scope: Pick<Window, 'aoFetch'> | undefined = globalThis.window): boolean {
+	return Boolean(scope?.aoFetch);
 }
 
-export function gatewaysFromLocation(
+export function usesPermawebOsAo(
+	location: GatewayLocation | undefined = typeof window === 'undefined' ? undefined : window.location,
+	scope: Pick<Window, 'aoFetch'> | undefined = globalThis.window
+): boolean {
+	if (!permawebOsAoAvailable(scope)) return false;
+	return !location || queryValue(location, AO_TRANSPORT_QUERY_PARAMETER) !== BAZAR_AO_TRANSPORT;
+}
+
+export function fallbackAoPeersFromLocation(
 	location: GatewayLocation | undefined = typeof window === 'undefined' ? undefined : window.location
 ): string[] {
 	if (!location) return [...DEFAULT_COMPUTE_GATEWAYS];
 	const requested = queryValue(location, 'node')?.trim();
 	return (requested && normalizeComputeGateways(requested, location.protocol)) || [...DEFAULT_COMPUTE_GATEWAYS];
+}
+
+export function gatewayFromLocation(
+	location: GatewayLocation | undefined = typeof window === 'undefined' ? undefined : window.location
+): string {
+	return gatewaysFromLocation(location)[0] ?? '';
+}
+
+export function gatewaysFromLocation(
+	location: GatewayLocation | undefined = typeof window === 'undefined' ? undefined : window.location
+): string[] {
+	if (usesPermawebOsAo(location)) return [...(globalThis.window?.aoFetch?.peers ?? [])];
+	return fallbackAoPeersFromLocation(location);
 }

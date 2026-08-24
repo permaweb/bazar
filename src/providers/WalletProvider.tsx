@@ -3,7 +3,13 @@ import { Copy, Download, FileUp, KeyRound, Wallet, X } from 'lucide-react';
 
 import type { JWKInterface } from 'arweave/web/lib/wallet';
 
-import { readWalletBalance } from 'api/wallet';
+import {
+	BROWSER_WALLET_PERMISSIONS,
+	type BrowserWalletId,
+	getBrowserWallet,
+	readWalletBalance,
+	restoreBrowserWalletConnection,
+} from 'api/wallet';
 
 import { Button } from 'components/Button';
 import { createArweaveClient } from 'helpers/arweave';
@@ -21,7 +27,7 @@ type WalletContextValue = {
 	address: string | null;
 	arBalance: bigint | null;
 	arBalanceStatus: 'idle' | 'loading' | 'ready' | 'error';
-	connect(): Promise<void>;
+	connect(walletId: BrowserWalletId): Promise<void>;
 	disconnect(): Promise<void>;
 	generateLocalWallet(): Promise<GeneratedWallet>;
 	importLocalWallet(file: File): Promise<void>;
@@ -29,9 +35,10 @@ type WalletContextValue = {
 	loadDevelopmentWallet?(file: File): Promise<void>;
 };
 
-const WALLET_PERMISSIONS = ['ACCESS_ADDRESS', 'ACCESS_PUBLIC_KEY', 'SIGN_TRANSACTION'];
 const ARWEAVE_ADDRESS = /^[A-Za-z0-9_-]{43}$/;
 const LOCAL_WALLET_KEY = 'bazar:local-wallet';
+const BROWSER_WALLET_KEY = 'bazar:browser-wallet';
+const LEGACY_PERMAWEB_OS_WALLET_ID = 'the-fold';
 const LOCAL_WALLET_ADAPTER = Symbol('bazar-local-wallet-adapter');
 
 const WalletContext = React.createContext<WalletContextValue | null>(null);
@@ -50,7 +57,9 @@ export function WalletProvider({ children }: React.PropsWithChildren) {
 	const refresh = React.useCallback(async () => {
 		const commit = addressRequests.current.begin();
 		try {
-			commit((await window.arweaveWallet?.getActiveAddress?.()) ?? null);
+			const connection = await restoreBrowserWalletConnection(window, readBrowserWalletPreference());
+			if (connection) window.arweaveWallet = connection.wallet;
+			commit(connection?.address ?? null);
 		} catch {
 			commit(null);
 		}
@@ -72,9 +81,11 @@ export function WalletProvider({ children }: React.PropsWithChildren) {
 			}
 		});
 		window.addEventListener('walletSwitch', refresh);
+		window.addEventListener('permawebConnectLoaded', refresh);
 		return () => {
 			cancelled = true;
 			window.removeEventListener('walletSwitch', refresh);
+			window.removeEventListener('permawebConnectLoaded', refresh);
 			addressRequests.current.invalidate();
 		};
 	}, [refresh]);
@@ -107,12 +118,13 @@ export function WalletProvider({ children }: React.PropsWithChildren) {
 			address,
 			arBalance,
 			arBalanceStatus,
-			connect: async () => {
-				const wallet = browserWallet();
+			connect: async (walletId) => {
+				const wallet = browserWallet(walletId);
 				const commit = addressRequests.current.begin();
-				const nextAddress = await connectWallet(wallet);
+				const nextAddress = await connectWallet(wallet, walletId === 'permaweb-os' ? 'PermawebOS' : 'Wander');
 				clearLocalWallet();
 				window.arweaveWallet = wallet;
+				storeBrowserWalletPreference(walletId);
 				commit(nextAddress);
 			},
 			disconnect: async () => {
@@ -123,6 +135,7 @@ export function WalletProvider({ children }: React.PropsWithChildren) {
 				} else {
 					await window.arweaveWallet?.disconnect?.();
 				}
+				clearBrowserWalletPreference();
 				commit(null);
 			},
 			generateLocalWallet: async () => {
@@ -195,7 +208,7 @@ function WalletConnectionDialog({
 }) {
 	const wallet = useWallet();
 	const fileInput = React.useRef<HTMLInputElement>(null);
-	const [action, setAction] = React.useState<'wander' | 'generate' | 'import' | null>(null);
+	const [action, setAction] = React.useState<BrowserWalletId | 'generate' | 'import' | null>(null);
 	const [error, setError] = React.useState('');
 	const [generatedWallet, setGeneratedWallet] = React.useState<GeneratedWallet | null>(null);
 	const [copied, setCopied] = React.useState(false);
@@ -216,11 +229,11 @@ function WalletConnectionDialog({
 
 	if (!open) return null;
 
-	const connectWander = async () => {
-		setAction('wander');
+	const connectBrowserWallet = async (walletId: BrowserWalletId) => {
+		setAction(walletId);
 		setError('');
 		try {
-			await wallet.connect();
+			await wallet.connect(walletId);
 			onClose();
 		} catch (cause) {
 			setError(walletErrorMessage(cause));
@@ -349,13 +362,31 @@ function WalletConnectionDialog({
 								<div className="wallet-option-copy">
 									<Wallet className="ui-icon" aria-hidden="true" />
 									<div>
+										<strong>PermawebOS</strong>
+										<span>Permaweb wallet extension</span>
+									</div>
+								</div>
+								<Button
+									data-dialog-initial
+									onClick={() => void connectBrowserWallet('permaweb-os')}
+									disabled={action !== null}
+									type="button"
+									size="custom"
+									variant="primary"
+								>
+									{action === 'permaweb-os' ? 'Connecting…' : 'Connect'}
+								</Button>
+							</div>
+							<div className="wallet-option">
+								<div className="wallet-option-copy">
+									<Wallet className="ui-icon" aria-hidden="true" />
+									<div>
 										<strong>Wander</strong>
 										<span>Browser extension wallet</span>
 									</div>
 								</div>
 								<Button
-									data-dialog-initial
-									onClick={() => void connectWander()}
+									onClick={() => void connectBrowserWallet('wander')}
 									disabled={action !== null}
 									type="button"
 									size="custom"
@@ -418,9 +449,12 @@ function WalletConnectionDialog({
 	);
 }
 
-export async function connectWallet(wallet: Window['arweaveWallet']) {
-	if (!wallet) throw new Error('Install the Wander wallet extension to continue.');
-	await wallet.connect(WALLET_PERMISSIONS);
+export async function connectWallet(wallet: Window['arweaveWallet'], walletName = 'Wander') {
+	if (!wallet) {
+		const installationName = `the ${walletName}`;
+		throw new Error(`Install ${installationName} wallet extension to continue.`);
+	}
+	await wallet.connect(BROWSER_WALLET_PERMISSIONS);
 	let address: string | undefined;
 	try {
 		address = await wallet.getActiveAddress?.();
@@ -468,13 +502,20 @@ export function isValidWalletJwk(value: unknown): value is WalletJwk {
 	);
 }
 
-function browserWallet() {
+function browserWallet(walletId: BrowserWalletId) {
 	const current = window.arweaveWallet;
-	if (current && !isLocalWallet(current)) {
-		rememberedBrowserWallet = current;
-		return current;
+	const requested = getBrowserWallet(walletId);
+	if (walletId === 'permaweb-os') {
+		if (current && !isLocalWallet(current) && current !== requested) rememberedBrowserWallet = current;
+		return requested;
 	}
-	return rememberedBrowserWallet;
+	if (requested && !isLocalWallet(requested)) {
+		rememberedBrowserWallet = requested;
+		return requested;
+	}
+	return rememberedBrowserWallet && rememberedBrowserWallet !== getBrowserWallet('permaweb-os')
+		? rememberedBrowserWallet
+		: undefined;
 }
 
 function isLocalWallet(wallet: Window['arweaveWallet']) {
@@ -613,6 +654,24 @@ function storeLocalWallet(wallet: WalletJwk) {
 
 function clearLocalWallet() {
 	localStorage.removeItem(LOCAL_WALLET_KEY);
+}
+
+function readBrowserWalletPreference(): BrowserWalletId | null {
+	try {
+		const walletId = localStorage.getItem(BROWSER_WALLET_KEY);
+		if (walletId === LEGACY_PERMAWEB_OS_WALLET_ID) return 'permaweb-os';
+		return walletId === 'permaweb-os' || walletId === 'wander' ? walletId : null;
+	} catch {
+		return null;
+	}
+}
+
+function storeBrowserWalletPreference(walletId: BrowserWalletId) {
+	localStorage.setItem(BROWSER_WALLET_KEY, walletId);
+}
+
+function clearBrowserWalletPreference() {
+	localStorage.removeItem(BROWSER_WALLET_KEY);
 }
 
 function walletErrorMessage(cause: unknown) {

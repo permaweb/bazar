@@ -91,7 +91,9 @@ describe('marketplace request failures', () => {
 	});
 
 	it('distinguishes compute and transaction-index recovery', () => {
-		expect(marketplaceRequestFailureMessage('compute', 'rate-limited')).toContain('choose another Compute gateway');
+		expect(marketplaceRequestFailureMessage('compute', 'rate-limited')).toContain(
+			'review the AO Core settings in the header'
+		);
 		expect(marketplaceRequestFailureMessage('index', 'rate-limited')).toBe(
 			'Arweave’s transaction index is temporarily rate-limiting requests. Wait briefly and retry.'
 		);

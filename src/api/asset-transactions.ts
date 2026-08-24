@@ -12,12 +12,7 @@ import {
 
 import { createArweaveClient } from 'helpers/arweave';
 import { setCriticalStorageItem } from 'helpers/browser-storage';
-import {
-	arweaveClientConfig,
-	arweaveGatewayFromLocation,
-	DEFAULT_COMPUTE_GATEWAYS,
-	gatewaysFromLocation,
-} from 'helpers/config';
+import { arweaveClientConfig, arweaveGatewayFromLocation } from 'helpers/config';
 
 import { aoFetch } from './ao';
 import { currentArweaveHeight } from './arweave-height';
@@ -217,8 +212,7 @@ export class AssetTransactionClient {
 	constructor(options: AssetTransactionClientOptions = {}) {
 		this.#wallet = options.wallet ?? globalThis.window?.arweaveWallet;
 		this.#fetch = options.fetch ?? globalThis.fetch.bind(globalThis);
-		const computeGateways = typeof window === 'undefined' ? DEFAULT_COMPUTE_GATEWAYS : gatewaysFromLocation();
-		this.#peerFetch = aoFetch(computeGateways, options.fetch);
+		this.#peerFetch = aoFetch(options.fetch);
 		this.#arweave = options.arweave;
 		this.#gateway = options.gateway ?? arweaveGatewayFromLocation();
 		this.#storage = options.storage ?? globalThis.window?.localStorage;

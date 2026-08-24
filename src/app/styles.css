@@ -1542,7 +1542,7 @@ p {
 	position: absolute;
 	right: 0;
 	top: 38px;
-	width: min(390px, 88vw);
+	width: min(410px, 88vw);
 	padding: 18px;
 	border: 1px solid var(--line);
 	border-radius: 10px;
@@ -1552,6 +1552,69 @@ p {
 	overflow-wrap: anywhere;
 	z-index: 60;
 }
+.gateway .gateway-permaweb-os-toggle {
+	width: 100%;
+	min-height: 54px;
+	margin: 0 0 16px;
+	padding: 9px 10px;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	border-color: var(--line);
+	text-align: left;
+}
+.gateway .gateway-permaweb-os-toggle > span:first-child {
+	min-width: 0;
+	display: grid;
+	gap: 2px;
+}
+.gateway .gateway-permaweb-os-toggle strong,
+.gateway .gateway-permaweb-os-toggle small {
+	display: block;
+}
+.gateway .gateway-permaweb-os-toggle strong {
+	color: var(--ink);
+	font-size: var(--type-body);
+	font-weight: 500;
+}
+.gateway .gateway-permaweb-os-toggle small {
+	color: var(--muted);
+	font-size: var(--type-small);
+	line-height: 1.35;
+}
+.gateway-permaweb-os-toggle-control {
+	width: 34px;
+	height: 20px;
+	flex: 0 0 auto;
+	padding: 2px;
+	display: flex;
+	align-items: center;
+	justify-content: flex-start;
+	border: 1px solid var(--line-dark);
+	border-radius: 999px;
+	background: var(--surface-subtle);
+	color: var(--paper);
+}
+.gateway-permaweb-os-toggle-control::before {
+	content: '';
+	width: 14px;
+	height: 14px;
+	border-radius: 50%;
+	background: var(--muted);
+	transition: transform 120ms ease;
+}
+.gateway-permaweb-os-toggle[aria-checked='true'] .gateway-permaweb-os-toggle-control {
+	justify-content: flex-end;
+	border-color: var(--accent);
+	background: var(--accent);
+}
+.gateway-permaweb-os-toggle[aria-checked='true'] .gateway-permaweb-os-toggle-control::before {
+	background: var(--paper);
+}
+.gateway-permaweb-os-toggle-control > svg {
+	display: none;
+}
 .gateway-peer-editor {
 	min-width: 0;
 	margin: 0;
@@ -1559,9 +1622,15 @@ p {
 	border: 0;
 }
 .gateway-peer-editor legend {
-	margin-bottom: 8px;
+	margin-bottom: 4px;
 	padding: 0;
 	font-size: var(--type-body);
+}
+.gateway-peer-description {
+	margin: 0 0 9px;
+	color: var(--muted);
+	font-size: var(--type-small);
+	line-height: 1.4;
 }
 .gateway-peer-fields {
 	display: grid;
@@ -1604,6 +1673,11 @@ p {
 }
 .gateway button {
 	margin-top: 10px;
+}
+.gateway-error {
+	margin: 8px 0 0;
+	color: var(--negative-text);
+	font-size: var(--type-small);
 }
 .gateway-apply-row {
 	margin-top: 10px;
@@ -1762,18 +1836,6 @@ p {
 		width: 100%;
 	}
 }
-.gateway p {
-	margin: 12px 0 0;
-	color: var(--muted);
-	font-size: var(--type-small);
-	line-height: 1.45;
-}
-.gateway .gateway-error {
-	margin: 8px 0 0;
-	color: var(--negative);
-	font-weight: 400;
-}
-
 .ui-button {
 	min-height: 35px;
 	border: 1px solid var(--line-dark);
@@ -6863,16 +6925,8 @@ body input:focus-visible {
 		padding: 7px 10px;
 	}
 	.site-nav-primary > a,
-	.site-nav-primary > .ui-tooltip > a,
-	.gateway summary {
+	.site-nav-primary > .ui-tooltip > a {
 		min-height: 44px;
-	}
-	.gateway summary {
-		font-size: 0;
-	}
-	.gateway summary::after {
-		content: 'Gateway';
-		font-size: var(--type-body);
 	}
 	.hero {
 		padding-top: 60px;
@@ -7161,20 +7215,6 @@ body input:focus-visible {
 	.brand > span:not(.brand-mark) {
 		display: none;
 	}
-	.gateway summary {
-		width: 44px;
-		min-width: 44px;
-		min-height: 44px;
-		padding: 0;
-		justify-content: center;
-	}
-	.gateway summary::after {
-		display: none;
-	}
-	.gateway[open] > div {
-		right: -44px;
-		width: min(360px, calc(100vw - 20px));
-	}
 	.site-nav-wallet {
 		margin-left: 0;
 		padding-left: 0;
@@ -7207,19 +7247,6 @@ body input:focus-visible {
 	}
 	.wallet-menu .wallet-chevron {
 		display: none;
-	}
-}
-
-@media (min-width: 360px) and (max-width: 600px) {
-	.gateway summary {
-		width: auto;
-		min-width: 44px;
-		padding: 0 6px;
-		gap: 4px;
-	}
-	.gateway summary::after {
-		display: inline;
-		font-size: var(--type-small);
 	}
 }
 
@@ -7291,10 +7318,6 @@ body input:focus-visible {
 		justify-content: center;
 	}
 	.back {
-		min-height: 44px;
-	}
-	.gateway input,
-	.gateway button {
 		min-height: 44px;
 	}
 	.search-overlay {
@@ -7833,9 +7856,6 @@ body input:focus-visible {
 .gateway summary .gateway-label {
 	display: none;
 }
-.gateway summary::after {
-	content: none;
-}
 .site-nav-primary .gateway summary .ui-icon {
 	color: var(--muted-subtle);
 }
@@ -7877,6 +7897,10 @@ body input:focus-visible {
 	}
 	.gateway-refreshing:focus-visible {
 		outline-offset: 1px;
+	}
+	.gateway[open] > div {
+		right: -44px;
+		width: min(360px, calc(100vw - 20px));
 	}
 	.site-search,
 	.site-nav-primary .gateway summary,

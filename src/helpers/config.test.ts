@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
 	arweaveClientConfig,
@@ -10,11 +10,13 @@ import {
 	computeGatewayForEnvironment,
 	computeGatewaysForEnvironment,
 	DEFAULT_ARWEAVE_GATEWAY,
+	fallbackAoPeersFromLocation,
 	gatewayFromLocation,
 	gatewaysFromLocation,
 	normalizeComputeGateways,
 	PRODUCTION_COMPUTE_GATEWAY,
 	PRODUCTION_COMPUTE_GATEWAYS,
+	usesPermawebOsAo,
 } from './config';
 
 function location(overrides: Partial<Location> = {}): Location {
@@ -29,7 +31,9 @@ function location(overrides: Partial<Location> = {}): Location {
 }
 
 describe('Arweave gateway routing', () => {
-	it('uses the production compute peers during local development too', () => {
+	afterEach(() => vi.unstubAllGlobals());
+
+	it('uses the production Bazar fallback peers during local development too', () => {
 		expect(computeGatewayForEnvironment(true)).toBe(PRODUCTION_COMPUTE_GATEWAY);
 		expect(computeGatewayForEnvironment(false)).toBe(PRODUCTION_COMPUTE_GATEWAY);
 		expect(computeGatewaysForEnvironment(true)).toEqual(PRODUCTION_COMPUTE_GATEWAYS);
@@ -77,22 +81,51 @@ describe('Arweave gateway routing', () => {
 		expect(arweaveGatewayFromLocation(hash)).toBe('http://localhost:1984');
 	});
 
-	it('keeps the compute and Arweave selections independent', () => {
+	it('keeps PermawebOS peers and the Arweave selection independent', () => {
+		vi.stubGlobal('window', {
+			aoFetch: { peers: ['https://permawebos-peer.example'] },
+		});
 		const selected = location({
 			search: '?node=https%3A%2F%2Fcompute.example&arweave-node=https%3A%2F%2Fgateway.example',
 		});
 
-		expect(gatewayFromLocation(selected)).toBe('https://compute.example');
+		expect(gatewayFromLocation(selected)).toBe('https://permawebos-peer.example');
 		expect(arweaveGatewayFromLocation(selected)).toBe('https://gateway.example');
 	});
 
-	it('treats the node parameter as an ordered catch-all peer list', () => {
+	it('prefers the ordered PermawebOS peer list while retaining the Bazar fallbacks', () => {
+		vi.stubGlobal('window', {
+			aoFetch: { peers: ['https://primary.example', 'https://secondary.example'] },
+		});
 		const selected = location({
-			search: `?node=${encodeURIComponent('https://alpha.example, https://charlie.example')}`,
+			search: `?node=${encodeURIComponent('https://ignored.example')}`,
 		});
 
+		expect(gatewaysFromLocation(selected)).toEqual(['https://primary.example', 'https://secondary.example']);
+		expect(gatewayFromLocation(selected)).toBe('https://primary.example');
+		expect(fallbackAoPeersFromLocation(selected)).toEqual(['https://ignored.example']);
+		expect(usesPermawebOsAo(selected)).toBe(true);
+	});
+
+	it('uses the URL fallback list when the user disables the PermawebOS transport', () => {
+		vi.stubGlobal('window', {
+			aoFetch: { peers: ['https://permawebos.example'] },
+		});
+		const selected = location({
+			search: `?ao-transport=bazar&node=${encodeURIComponent('https://alpha.example, https://charlie.example')}`,
+		});
+
+		expect(usesPermawebOsAo(selected)).toBe(false);
 		expect(gatewaysFromLocation(selected)).toEqual(['https://alpha.example', 'https://charlie.example']);
 		expect(gatewayFromLocation(selected)).toBe('https://alpha.example');
+	});
+
+	it('automatically uses Bazar fallback peers when PermawebOS is unavailable', () => {
+		vi.stubGlobal('window', {});
+		const selected = location({ search: `?node=${encodeURIComponent('https://fallback.example')}` });
+
+		expect(usesPermawebOsAo(selected)).toBe(false);
+		expect(gatewaysFromLocation(selected)).toEqual(['https://fallback.example']);
 	});
 
 	it('creates an Arweave SDK configuration from the same selected origin', () => {
@@ -115,6 +148,9 @@ describe('Arweave gateway routing', () => {
 	});
 
 	it('orders ordinary item URLs across selected compute peers and the Arweave gateway', () => {
+		vi.stubGlobal('window', {
+			aoFetch: { peers: ['https://alpha.example', 'https://charlie.example'] },
+		});
 		const id = 'A'.repeat(43);
 		expect(
 			arweaveDataFallbackUrls(

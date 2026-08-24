@@ -53,13 +53,13 @@ describe('asset detail fallbacks', () => {
 		});
 	});
 
-	it('turns ao-wrangler quorum failures into asset-specific compute availability copy', () => {
-		const internal = 'ao wrangler response quorum not met';
+	it('turns AO transport quorum failures into asset-specific compute availability copy', () => {
+		const internal = 'AO response quorum not met';
 		const friendly = assetStateErrorMessage(new Error(internal));
 		expect(friendly).not.toContain(internal);
-		expect(friendly).toContain('configured compute gateways');
+		expect(friendly).toContain('the configured AO peers');
 		expect(assetDetailErrorMessage(friendly, { name: 'AntiqueWhite' }, true)).toBe(
-			'AntiqueWhite is published and indexed, but its ownership and market state are currently unavailable from the configured compute peers. Retry shortly.'
+			'AntiqueWhite is published and indexed, but its ownership and market state are currently unavailable from the configured AO peers. Retry shortly.'
 		);
 	});
 

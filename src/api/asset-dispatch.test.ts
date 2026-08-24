@@ -1,6 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-
-import { DEFAULT_COMPUTE_GATEWAY } from 'helpers/config';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const control = vi.hoisted(() => ({
 	dispatchAborted: false,
@@ -62,6 +60,8 @@ vi.mock('./arweave-observers', () => ({
 import { dispatchAndConfirm } from './asset-transactions';
 
 describe('transaction dispatch observation', () => {
+	afterEach(() => vi.unstubAllGlobals());
+
 	beforeEach(() => {
 		control.dispatchAborted = false;
 		control.networkOptions = undefined;
@@ -69,7 +69,13 @@ describe('transaction dispatch observation', () => {
 		control.watcherStopped = false;
 		control.outcome = 'timeout';
 		control.listeners.clear();
+		const aoFetch = vi.fn(async () => new Response()) as unknown as PermawebOsAoFetch;
+		Object.defineProperty(aoFetch, 'peers', { value: ['https://permawebos-peer.example'] });
+		aoFetch.invalidate = vi.fn(async () => undefined);
+		aoFetch.cacheMetadata = vi.fn(() => undefined);
+		aoFetch.ready = vi.fn(async () => aoFetch.peers);
 		vi.stubGlobal('window', {
+			aoFetch,
 			location: {
 				protocol: 'https:',
 				hostname: 'lcno4nkkk4gsb5krqpa6irlzbuurmnzk4entikswauifsbryldfa.arweave.net',
@@ -91,7 +97,8 @@ describe('transaction dispatch observation', () => {
 			node: 'https://lcno4nkkk4gsb5krqpa6irlzbuurmnzk4entikswauifsbryldfa.arweave.net',
 			minObservers: 3,
 			maxObservers: 7,
-			'relay-with': DEFAULT_COMPUTE_GATEWAY,
+			'relay-with': 'https://permawebos-peer.example',
+			fetch: expect.any(Function),
 		});
 	});
 
