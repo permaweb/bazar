@@ -2639,7 +2639,9 @@ describe('live candidate resolution', () => {
 		const verification = await verifyAssetCandidateSupport(candidates, [tokenCollection], {
 			fetch: fetcher as typeof fetch,
 			graphql: 'https://arweave.net/graphql',
-			onVerified: (batch) => verifiedBatches.push(batch.map((candidate) => candidate.processId)),
+			onVerified: (batch) => {
+				verifiedBatches.push(batch.map((candidate) => candidate.processId));
+			},
 		});
 
 		expect(fetcher).toHaveBeenCalledTimes(5);
