@@ -20,22 +20,7 @@ interface PermawebOsAoFetch {
 	readonly peers: readonly string[];
 	ready(): Promise<readonly string[]>;
 	allowNotFound?(input: RequestInfo | URL, init?: RequestInit): Promise<Response>;
-	networkPolicy?(): Promise<{
-		version: 1;
-		fingerprint?: string;
-		arweaveGateway: { url: string; ownership: 'community' | 'default' | 'personal' };
-		permanentContent: { url: string; ownership: 'community' | 'default' | 'personal' };
-		publishing: { url: string; ownership: 'community' | 'default' | 'personal' };
-		ao: {
-			processReads: ReadonlyArray<{ url: string; ownership: 'community' | 'default' | 'personal' }>;
-			scheduleReads: ReadonlyArray<{ url: string; ownership: 'community' | 'default' | 'personal' }>;
-			linkedStateReads: ReadonlyArray<{ url: string; ownership: 'community' | 'default' | 'personal' }>;
-			observerRelay?: { url: string; ownership: 'community' | 'default' | 'personal' };
-			scheduleWrite?: { url: string; ownership: 'community' | 'default' | 'personal' };
-			directWrite?: { url: string; ownership: 'community' | 'default' | 'personal' };
-			fallbackMode: 'custom' | 'hosted' | 'personal-first' | 'personal-only';
-		};
-	}>;
+	networkPolicy?(): Promise<import('./config').EffectivePermawebNetworkPolicy>;
 }
 
 interface Window {

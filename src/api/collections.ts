@@ -1,5 +1,11 @@
 import { mapConcurrent } from 'helpers/concurrency';
-import { arweaveDataUrl, arweaveGatewayFromLocation, arweaveGraphqlEndpoint, NAMES_NAMESPACE_ID } from 'helpers/config';
+import {
+	arweaveDataUrl,
+	arweaveGatewayFromLocation,
+	arweaveGraphqlEndpoint,
+	NAMES_NAMESPACE_ID,
+	permanentContentGatewayFromLocation,
+} from 'helpers/config';
 
 import { type AssetState, readAssetState } from './asset-marketplace';
 import { HIDDEN_ASSET_IDS, HIDDEN_COLLECTION_IDS } from './catalogue-policy';
@@ -98,7 +104,9 @@ export function fungibleAssetFromState(id: string, state?: AssetState): AssetSum
 		name: state.name || state.ticker || shortId(id),
 		contentType: 'application/x.arweave-token',
 		...(state.ticker ? { ticker: state.ticker } : {}),
-		...(typeof logo === 'string' && ARWEAVE_ID.test(logo) ? { image: arweaveDataUrl(logo) } : {}),
+		...(typeof logo === 'string' && ARWEAVE_ID.test(logo)
+			? { image: arweaveDataUrl(logo, permanentContentGatewayFromLocation()) }
+			: {}),
 	};
 }
 
@@ -439,7 +447,6 @@ export async function loadCollections(
 		onBackgroundUnavailable?.('Bazar collection discovery');
 		return [];
 	});
-	void discovery;
 	await Promise.all(
 		sources.map(async (source, index) => {
 			let settled = false;
@@ -942,6 +949,7 @@ async function loadFungibleTokenPage(after?: string, signal?: AbortSignal): Prom
 		)
 	)
 		throw new Error('fungible-index-schema');
+	const contentGateway = permanentContentGatewayFromLocation();
 	const assets = new Map<string, AssetSummary>();
 	let hiddenIndexedAssets = 0;
 	for (const { node } of connection.edges) {
@@ -955,7 +963,7 @@ async function loadFungibleTokenPage(after?: string, signal?: AbortSignal): Prom
 			name: tags.name ?? tags.ticker ?? shortId(node.id),
 			contentType: 'application/x.arweave-token',
 			...(tags.ticker ? { ticker: tags.ticker } : {}),
-			...(tags.logo && ARWEAVE_ID.test(tags.logo) ? { image: arweaveDataUrl(tags.logo) } : {}),
+			...(tags.logo && ARWEAVE_ID.test(tags.logo) ? { image: arweaveDataUrl(tags.logo, contentGateway) } : {}),
 		});
 	}
 	const cursor = connection.edges.at(-1)?.cursor;
@@ -997,7 +1005,9 @@ async function loadFungibleTokenPage(after?: string, signal?: AbortSignal): Prom
 				name: tags.name ?? tags.ticker ?? shortId(node.id),
 				contentType: 'application/x.arweave-token',
 				...(tags.ticker ? { ticker: tags.ticker } : {}),
-				...(tags.logo && ARWEAVE_ID.test(tags.logo) ? { image: arweaveDataUrl(tags.logo) } : {}),
+				...(tags.logo && ARWEAVE_ID.test(tags.logo)
+					? { image: arweaveDataUrl(tags.logo, contentGateway) }
+					: {}),
 			});
 		}
 	}
@@ -1293,6 +1303,7 @@ function imageCollection(
 		})
 	)
 		throw new Error('collection-manifest-schema');
+	const contentGateway = permanentContentGatewayFromLocation();
 	return {
 		id: referenceId,
 		name: manifest.name,
@@ -1302,11 +1313,15 @@ function imageCollection(
 		manifestId,
 		assets: manifest.assets.map((asset) => {
 			if (typeof asset === 'string') {
-				return { id: asset, name: shortId(asset), image: arweaveDataUrl(asset) };
+				return {
+					id: asset,
+					name: shortId(asset),
+					image: arweaveDataUrl(asset, contentGateway),
+				};
 			}
 			return {
 				...asset,
-				...(!asset.image && !asset.media ? { image: arweaveDataUrl(asset.id) } : {}),
+				...(!asset.image && !asset.media ? { image: arweaveDataUrl(asset.id, contentGateway) } : {}),
 			};
 		}),
 	};

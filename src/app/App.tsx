@@ -193,6 +193,7 @@ import {
 	BAZAR_AO_TRANSPORT,
 	fallbackAoPeersFromLocation,
 	gatewayFromLocation,
+	gatewaysFromLocation,
 	permawebOsAoAvailable,
 	usesPermawebOsAo,
 } from 'helpers/config';
@@ -467,8 +468,7 @@ export function App() {
 				setMarket((current) => ({
 					...current,
 					notice:
-						current.notice ??
-						`${label} is still unavailable. Gateway-backed collections remain usable while AO enrichment continues independently.`,
+						current.notice ?? `${label} is unavailable. Loaded gateway-backed collections remain usable.`,
 				}));
 			}
 		).then(
@@ -4976,7 +4976,7 @@ function GatewayControl() {
 		}
 		window.location.assign(url);
 	}
-	const activePeers = usePermawebOs && permawebOsConnected ? window.aoFetch?.peers ?? [] : fallbackPeers;
+	const activePeers = usePermawebOs && permawebOsConnected ? gatewaysFromLocation(window.location) : fallbackPeers;
 	return (
 		<div className="gateway-control">
 			{pageRefreshing ? (
@@ -5034,8 +5034,8 @@ function GatewayControl() {
 								variant="ghost"
 							>
 								<span>
-									<strong>Use PermawebOS Configured Peers</strong>
-									<small>Share the PermawebOS peer pool and request state.</small>
+									<strong>Use PermawebOS Routing</strong>
+									<small>Use its role-aware routes and shared request state.</small>
 								</span>
 								<span className="gateway-permaweb-os-toggle-control" aria-hidden="true">
 									{usePermawebOs ? <Check className="ui-icon ui-icon--sm" /> : null}

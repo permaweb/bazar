@@ -233,6 +233,33 @@ describe('Arweave gateway routing', () => {
 		expect(observerRelayFromLocation(selected, scope)).toBe('');
 	});
 
+	it('treats an empty process-read role in a valid PermawebOS policy as explicitly disabled', async () => {
+		const policy = {
+			version: 1 as const,
+			arweaveGateway: { url: 'https://gateway.example', ownership: 'default' as const },
+			permanentContent: { url: 'https://content.example', ownership: 'community' as const },
+			publishing: { url: 'https://upload.example', ownership: 'default' as const },
+			ao: {
+				processReads: [],
+				scheduleReads: [],
+				linkedStateReads: [],
+				fallbackMode: 'personal-only' as const,
+			},
+		};
+		const aoFetch = Object.assign(vi.fn(), {
+			peers: ['https://legacy.example'],
+			networkPolicy: vi.fn(async () => policy),
+		}) as unknown as PermawebOsAoFetch;
+		const scope = { aoFetch };
+		const selected = location();
+		vi.stubGlobal('window', scope);
+
+		await expect(loadPermawebOsNetworkPolicy(scope)).resolves.toEqual(policy);
+
+		expect(gatewaysFromLocation(selected, scope)).toEqual([]);
+		expect(gatewayFromLocation(selected)).toBe('');
+	});
+
 	it('rejects a malformed optional policy fingerprint and retains legacy scope fallback', async () => {
 		const aoFetch = Object.assign(vi.fn(), {
 			peers: ['https://legacy.example'],

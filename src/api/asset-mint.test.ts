@@ -694,7 +694,7 @@ describe('asset mint contract', () => {
 		const createTransaction = vi.fn(async () => asset);
 		const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
 			const url = String(input);
-			if (url === `https://arweave.net/${mediaId}`) return new Response(new Uint8Array([7, 8, 9]));
+			if (url === `https://content.example/${mediaId}`) return new Response(new Uint8Array([7, 8, 9]));
 			if (url.includes('/price/')) return new Response('1');
 			if (url.includes('/wallet/')) return new Response('100');
 			if (init?.method === 'POST') return new Response('', { status: 200 });
@@ -707,6 +707,8 @@ describe('asset mint contract', () => {
 				wallets: { ownerToAddress: vi.fn(async () => owner) },
 			},
 			fetch: fetchMock as typeof fetch,
+			gateway: 'https://gateway.example',
+			permanentContentGateway: 'https://content.example',
 			storage: storage(),
 			wallet: {
 				getActiveAddress: vi.fn(async () => owner),
@@ -761,6 +763,8 @@ describe('asset mint contract', () => {
 				wallets: { ownerToAddress: vi.fn(async () => owner) },
 			},
 			fetch: fetchMock as typeof fetch,
+			gateway: 'https://gateway.example',
+			permanentContentGateway: 'https://content.example',
 			storage: store,
 			computeGateway: 'https://compute.example',
 			wallet: {
@@ -799,9 +803,9 @@ describe('asset mint contract', () => {
 		]);
 		expect(result.asset).toMatchObject({
 			contentType: 'audio/mpeg',
-			media: `https://arweave.net/${processId}`,
+			media: `https://content.example/${processId}`,
 			mediaId: processId,
-			image: `https://arweave.net/${artworkId}`,
+			image: `https://content.example/${artworkId}`,
 			artworkId,
 			artist: 'Kite Array',
 			album: 'Long Orbit',
@@ -811,7 +815,7 @@ describe('asset mint contract', () => {
 			{
 				phase: 'accepted',
 				transactionIds: [artworkId, processId],
-				arweaveGateway: 'https://arweave.net',
+				arweaveGateway: 'https://gateway.example',
 				computeGateway: 'https://compute.example',
 			},
 		]);
@@ -896,6 +900,8 @@ describe('asset mint contract', () => {
 				wallets: { ownerToAddress: vi.fn(async () => owner) },
 			},
 			fetch: fetchMock as typeof fetch,
+			gateway: 'https://gateway.example',
+			permanentContentGateway: 'https://content.example',
 			storage: store,
 			computeGateway: 'https://compute.example',
 			wallet: {
@@ -952,11 +958,11 @@ describe('asset mint contract', () => {
 			{
 				asset: {
 					contentType: 'application/x.arweave-token',
-					image: `https://arweave.net/${logoId}`,
+					image: `https://content.example/${logoId}`,
 					ticker: 'SIG',
 				},
 				transactionIds: [logoId, processId],
-				arweaveGateway: 'https://arweave.net',
+				arweaveGateway: 'https://gateway.example',
 				computeGateway: 'https://compute.example',
 			},
 		]);
