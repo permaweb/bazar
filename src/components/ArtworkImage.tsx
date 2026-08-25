@@ -1,7 +1,7 @@
 import React from 'react';
 import { ImageOff } from 'lucide-react';
 
-import { arweaveDataFallbackUrls } from 'helpers/config';
+import { aoRoutingScopeFromLocation, arweaveDataFallbackUrls } from 'helpers/config';
 
 type Props = Omit<React.ImgHTMLAttributes<HTMLImageElement>, 'onError' | 'onLoad'> & {
 	src: string;
@@ -20,12 +20,13 @@ export function ArtworkImage({
 }: Props) {
 	const [status, setStatus] = React.useState<'loading' | 'loaded' | 'error'>('loading');
 	const [sourceIndex, setSourceIndex] = React.useState(0);
-	const sources = React.useMemo(() => arweaveDataFallbackUrls(src), [src]);
+	const routingScope = aoRoutingScopeFromLocation();
+	const sources = React.useMemo(() => arweaveDataFallbackUrls(src), [routingScope, src]);
 
 	React.useEffect(() => {
 		setSourceIndex(0);
 		setStatus('loading');
-	}, [src]);
+	}, [routingScope, src]);
 
 	if (status === 'error') {
 		if (fallback) return <>{fallback}</>;
