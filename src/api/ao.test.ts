@@ -185,7 +185,7 @@ describe('PermawebOS AO transport boundary', () => {
 		expect(aoFetch(override)).toBe(override);
 	});
 
-	it('uses Bazar AO Wrangler when PermawebOS has not injected a transport', () => {
+	it('uses Bazar AO.js when PermawebOS has not injected a transport', () => {
 		vi.stubGlobal('window', browserWindow());
 
 		const direct = aoFetch() as ReturnType<typeof createBazarAoFetch>;
@@ -193,18 +193,7 @@ describe('PermawebOS AO transport boundary', () => {
 		expect(aoPeers()).toEqual(DEFAULT_COMPUTE_GATEWAYS);
 	});
 
-	it('describes the direct Bazar transport without overloading its peer list', async () => {
-		vi.stubGlobal('window', browserWindow());
-
-		const direct = aoFetch() as ReturnType<typeof createBazarAoFetch>;
-		const policy = await direct.networkPolicy();
-
-		expect(policy.permanentContent.url).toBe('https://bazar.example');
-		expect(policy.ao.processReads.map(({ url }) => url)).toEqual(DEFAULT_COMPUTE_GATEWAYS);
-		expect(policy.ao.observerRelay?.url).toBe(DEFAULT_COMPUTE_GATEWAYS[0]);
-	});
-
-	it('uses Bazar AO Wrangler with the fallback peers when the user disables PermawebOS', () => {
+	it('uses Bazar AO.js with the fallback peers when the user disables PermawebOS', () => {
 		const permawebOs = injectedAoFetch(['https://permawebos.example']);
 		vi.stubGlobal(
 			'window',
@@ -233,7 +222,7 @@ describe('PermawebOS AO transport boundary', () => {
 	});
 });
 
-describe('Bazar AO Wrangler routing', () => {
+describe('Bazar AO.js routing', () => {
 	it('routes an application peer URL through the full fallback list', async () => {
 		const requested: string[] = [];
 		const fetcher = vi.fn(async (input: RequestInfo | URL) => {

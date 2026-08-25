@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { NAMES_NAMESPACE_ID } from 'helpers/config';
+import { loadPermawebOsNetworkPolicy, NAMES_NAMESPACE_ID } from 'helpers/config';
 
 import { parseAssetState } from './asset-marketplace';
 import {
@@ -545,6 +545,83 @@ describe('collection index loading', () => {
 				raw: { ...state.raw, 'hint-ui-style': 'non-fungible', 'asset-type': 'fungible' },
 			})
 		).toBeUndefined();
+	});
+
+	it('uses the permanent-content role for generated token and collection media URLs', async () => {
+		const providers = [{ url: 'https://compute.example', ownership: 'personal' as const }];
+		const aoFetch = Object.assign(vi.fn(), {
+			peers: ['https://legacy.example'],
+			networkPolicy: vi.fn(async () => ({
+				version: 1 as const,
+				arweaveGateway: { url: 'https://gateway.example', ownership: 'default' as const },
+				permanentContent: { url: 'https://content.example', ownership: 'community' as const },
+				publishing: { url: 'https://upload.example', ownership: 'default' as const },
+				ao: {
+					processReads: providers,
+					scheduleReads: providers,
+					linkedStateReads: providers,
+					fallbackMode: 'personal-only' as const,
+				},
+			})),
+		}) as unknown as PermawebOsAoFetch;
+		vi.stubGlobal('window', {
+			aoFetch,
+			location: { protocol: 'https:', hostname: 'bazar.example', port: '', search: '', hash: '' },
+		});
+		await loadPermawebOsNetworkPolicy();
+
+		const processId = 'T'.repeat(43);
+		const logoId = 'L'.repeat(43);
+		const tokens: Collection = {
+			id: 'fungible-tokens',
+			name: 'Tokens',
+			description: 'Tokens',
+			kind: 'tokens',
+			assets: [],
+		};
+		const tokenState = parseAssetState({
+			device: 'process@1.0',
+			'execution-device': 'token@1.0',
+			'hint-ui-style': 'fungible',
+			'swap-device': 'arweave-swap@1.0',
+			'scheduler-device': 'arweave-scheduler@1.0',
+			'scheduler-mode': 'all',
+			name: 'Token',
+			logo: logoId,
+			'total-supply': '1',
+			denomination: 0,
+			balances: { ['W'.repeat(43)]: '1' },
+			orders: {},
+		});
+		expect(collectionAsset(tokens, processId, tokenState)?.image).toBe(`https://content.example/${logoId}`);
+
+		const referenceId = 'R'.repeat(43);
+		const manifestId = 'M'.repeat(43);
+		const stringAssetId = 'A'.repeat(43);
+		const objectAssetId = 'B'.repeat(43);
+		const manifest = encodeUtf8Json({
+			name: 'Content-routed collection',
+			assets: [stringAssetId, { id: objectAssetId, name: 'Object asset' }],
+		});
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (input: RequestInfo | URL) => {
+				const url = String(input);
+				if (url.endsWith(`/tx/${referenceId}`)) {
+					return Response.json({
+						tags: [{ name: encodeTag('reference-value'), value: encodeTag(manifestId) }],
+					});
+				}
+				if (url.endsWith(`/tx/${manifestId}/data`)) return new Response(manifest);
+				return new Response('unexpected', { status: 500 });
+			})
+		);
+
+		const collection = await loadImageCollection(referenceId, 'F'.repeat(43));
+		expect(collection.assets.map(({ image }) => image)).toEqual([
+			`https://content.example/${stringAssetId}`,
+			`https://content.example/${objectAssetId}`,
+		]);
 	});
 
 	it('retains loaded token pages when a refresh returns only page one or its fallback', () => {

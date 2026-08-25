@@ -23,13 +23,9 @@ export type EffectivePermawebNetworkPolicy = {
 	};
 };
 
-type NetworkPolicyFetcher = PermawebOsAoFetch & {
-	networkPolicy?(): Promise<EffectivePermawebNetworkPolicy>;
-};
-
-const networkPolicies = new WeakMap<NetworkPolicyFetcher, EffectivePermawebNetworkPolicy>();
-const networkPolicyLoads = new WeakMap<NetworkPolicyFetcher, Promise<EffectivePermawebNetworkPolicy | undefined>>();
-const networkPolicyRevisions = new WeakMap<NetworkPolicyFetcher, number>();
+const networkPolicies = new WeakMap<PermawebOsAoFetch, EffectivePermawebNetworkPolicy>();
+const networkPolicyLoads = new WeakMap<PermawebOsAoFetch, Promise<EffectivePermawebNetworkPolicy | undefined>>();
+const networkPolicyRevisions = new WeakMap<PermawebOsAoFetch, number>();
 
 export const DEFAULT_ARWEAVE_GATEWAY = configuredArweaveGateway
 	? new URL(configuredArweaveGateway).origin
@@ -186,7 +182,7 @@ export function fallbackAoPeersFromLocation(
 export async function loadPermawebOsNetworkPolicy(
 	scope: Pick<Window, 'aoFetch'> | undefined = globalThis.window
 ): Promise<EffectivePermawebNetworkPolicy | undefined> {
-	const fetcher = scope?.aoFetch as NetworkPolicyFetcher | undefined;
+	const fetcher = scope?.aoFetch;
 	if (!fetcher || typeof fetcher.networkPolicy !== 'function') return undefined;
 	const cached = networkPolicies.get(fetcher);
 	if (cached) return cached;
@@ -212,7 +208,7 @@ export async function loadPermawebOsNetworkPolicy(
 export function refreshPermawebOsNetworkPolicy(
 	scope: Pick<Window, 'aoFetch'> | undefined = globalThis.window
 ): Promise<EffectivePermawebNetworkPolicy | undefined> {
-	const fetcher = scope?.aoFetch as NetworkPolicyFetcher | undefined;
+	const fetcher = scope?.aoFetch;
 	if (!fetcher || typeof fetcher.networkPolicy !== 'function') return Promise.resolve(undefined);
 	networkPolicyRevisions.set(fetcher, (networkPolicyRevisions.get(fetcher) ?? 0) + 1);
 	networkPolicies.delete(fetcher);
@@ -223,7 +219,7 @@ export function refreshPermawebOsNetworkPolicy(
 export function currentPermawebOsNetworkPolicy(
 	scope: Pick<Window, 'aoFetch'> | undefined = globalThis.window
 ): EffectivePermawebNetworkPolicy | undefined {
-	const fetcher = scope?.aoFetch as NetworkPolicyFetcher | undefined;
+	const fetcher = scope?.aoFetch;
 	return fetcher ? networkPolicies.get(fetcher) : undefined;
 }
 
@@ -280,8 +276,8 @@ export function gatewaysFromLocation(
 	scope: Pick<Window, 'aoFetch'> | undefined = globalThis.window
 ): string[] {
 	if (usesPermawebOsAo(location, scope)) {
-		const configured = currentPermawebOsNetworkPolicy(scope)?.ao.processReads.map(({ url }) => url);
-		if (configured?.length) return [...configured];
+		const policy = currentPermawebOsNetworkPolicy(scope);
+		if (policy) return policy.ao.processReads.map(({ url }) => url);
 		return [...(scope?.aoFetch?.peers ?? [])];
 	}
 	return fallbackAoPeersFromLocation(location);

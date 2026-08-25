@@ -385,7 +385,9 @@ export class AssetMintClient {
 		assertAddress(owner, 'invalid-mint-owner');
 		if (draft.owner !== owner) throw new Error('mint-draft-wallet-mismatch');
 		await this.#uploader.assertOwner(owner);
-		const response = await this.#fetch(arweaveDataUrl(draft.mediaId, this.#gateway), { signal: options.signal });
+		const response = await this.#fetch(arweaveDataUrl(draft.mediaId, this.#permanentContentGateway), {
+			signal: options.signal,
+		});
 		if (!response.ok) throw new Error(`mint-media-unavailable-${response.status}`);
 		const data = new Uint8Array(await response.arrayBuffer());
 		const maxBytes = isAudioContentType(draft.contentType) ? MAX_AUDIO_BYTES : MAX_IMAGE_BYTES;
@@ -437,7 +439,9 @@ export class AssetMintClient {
 			...(isAudioContentType(input.contentType)
 				? {
 						media: arweaveDataUrl(processId, this.#permanentContentGateway),
-						...(input.artworkId ? { image: arweaveDataUrl(input.artworkId, this.#gateway) } : {}),
+						...(input.artworkId
+							? { image: arweaveDataUrl(input.artworkId, this.#permanentContentGateway) }
+							: {}),
 				  }
 				: { image: arweaveDataUrl(processId, this.#permanentContentGateway) }),
 			mediaId: processId,
@@ -549,7 +553,7 @@ export class AssetMintClient {
 				ticker: input.ticker,
 				contentType: 'application/x.arweave-token',
 				description: input.description?.trim() ?? '',
-				...(logoId ? { image: arweaveDataUrl(logoId, this.#gateway) } : {}),
+				...(logoId ? { image: arweaveDataUrl(logoId, this.#permanentContentGateway) } : {}),
 				mediaId: processId,
 				owner,
 				createdAt,

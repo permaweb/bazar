@@ -81,9 +81,9 @@ npm run start
 
 Vite serves the application on `http://127.0.0.1:3000` by default. When the PermawebOS
 browser extension is available, Bazar uses its injected `window.aoFetch` singleton
-by default, sharing AO Wrangler peer and rate-limit state with other applications.
+by default, sharing AO.js peer and rate-limit state with other applications.
 The AO Core control in the header can disable that transport and use Bazar's own
-AO Wrangler singleton instead. Its ordered fallback peer list defaults to Alpha
+AO.js singleton instead. Its ordered fallback peer list defaults to Alpha
 and Charlie and can also be supplied with `VITE_COMPUTE_GATEWAY` or a comma-separated
 `node` query parameter:
 
@@ -93,7 +93,7 @@ http://127.0.0.1:3000/?node=https://alpha.example,https://charlie.example#/asset
 
 Applying the header control persists the peer list and transport selection in the
 page URL. Bazar does not silently switch to its local fallback after a request has
-been sent through PermawebOS; local AO Wrangler is selected only when PermawebOS is
+been sent through PermawebOS; local AO.js is selected only when PermawebOS is
 unavailable or the user disables it.
 
 Arweave API requests use the gateway serving the site. During local development

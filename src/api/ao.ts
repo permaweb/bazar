@@ -1,12 +1,9 @@
 import { ao, type AoCacheMetadata, type AoCacheStatus, type AoClient, cacheMetadata, createAo } from 'ao.js';
 
 import {
-	arweaveGatewayFromLocation,
-	type EffectivePermawebNetworkPolicy,
 	fallbackAoPeersFromLocation,
 	gatewaysFromLocation,
 	loadPermawebOsNetworkPolicy,
-	PRODUCTION_COMPUTE_GATEWAYS,
 	refreshPermawebOsNetworkPolicy,
 	usesPermawebOsAo,
 } from 'helpers/config';
@@ -21,12 +18,10 @@ export type AoPeerFetch = typeof fetch & {
 	readonly peers: readonly string[];
 	ready(): Promise<readonly string[]>;
 	allowNotFound?(input: RequestInfo | URL, init?: RequestInit): Promise<Response>;
-	networkPolicy?(): Promise<EffectivePermawebNetworkPolicy>;
 };
 
 type BazarAoPeerFetch = AoPeerFetch & {
 	allowNotFound(input: RequestInfo | URL, init?: RequestInit): Promise<Response>;
-	networkPolicy(): Promise<EffectivePermawebNetworkPolicy>;
 };
 
 let bazarTransport: { peers: string; fetcher: BazarAoPeerFetch } | undefined;
@@ -71,7 +66,6 @@ export function createBazarAoFetch(nodes: Nodes, override?: typeof fetch): Bazar
 		);
 	routed.cacheMetadata = cacheMetadata;
 	Object.defineProperty(routed, 'peers', { value: peers });
-	routed.networkPolicy = async () => directNetworkPolicy(peers);
 	routed.ready = () => {
 		readiness ??= client
 			.warm()
@@ -127,44 +121,17 @@ export function warmAoFetch(onNetworkPolicy?: () => void): () => void {
 		});
 	};
 	const policyChanged = () => {
-		void readyAoFetch().catch(() => undefined);
+		void readyAoFetch();
 		loadPolicy(true);
 	};
 	globalThis.window?.addEventListener?.('aoFetchLoaded', policyChanged);
-	void readyAoFetch().catch(() => undefined);
+	void readyAoFetch();
 	loadPolicy(false);
 	return () => {
 		stopped = true;
 		globalThis.window?.removeEventListener?.('aoFetchLoaded', policyChanged);
 	};
 }
-
-function directNetworkPolicy(peers: readonly string[]): EffectivePermawebNetworkPolicy {
-	const gateway = arweaveGatewayFromLocation();
-	const provider = (url: string) => ({
-		url,
-		ownership: (PRODUCTION_COMPUTE_GATEWAYS as readonly string[]).includes(url)
-			? ('default' as const)
-			: ('community' as const),
-	});
-	const readProviders = peers.map(provider);
-	const primary = readProviders[0];
-	const arweave = { url: gateway, ownership: 'default' as const };
-	return {
-		version: 1,
-		arweaveGateway: arweave,
-		permanentContent: arweave,
-		publishing: arweave,
-		ao: {
-			processReads: readProviders,
-			scheduleReads: readProviders,
-			linkedStateReads: readProviders,
-			...(primary ? { observerRelay: primary, scheduleWrite: primary, directWrite: primary } : {}),
-			fallbackMode: 'hosted',
-		},
-	};
-}
-
 function peerConfig(peers: readonly string[], rateLimit: 'discover' | false) {
 	const nodes = peers.map((prefix) => ({ prefix, 'rate-limit': rateLimit } as const));
 	const readRoute = (method: 'GET' | 'HEAD') => ({
