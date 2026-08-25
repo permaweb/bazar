@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
+	aoRoutingScopeFromLocation,
 	arweaveClientConfig,
 	arweaveDataFallbackUrls,
 	arweaveDataUrl,
@@ -9,11 +10,15 @@ import {
 	arweaveGraphqlEndpoint,
 	computeGatewayForEnvironment,
 	computeGatewaysForEnvironment,
+	currentPermawebOsNetworkPolicy,
 	DEFAULT_ARWEAVE_GATEWAY,
 	fallbackAoPeersFromLocation,
 	gatewayFromLocation,
 	gatewaysFromLocation,
+	loadPermawebOsNetworkPolicy,
 	normalizeComputeGateways,
+	observerRelayFromLocation,
+	permanentContentGatewayFromLocation,
 	PRODUCTION_COMPUTE_GATEWAY,
 	PRODUCTION_COMPUTE_GATEWAYS,
 	usesPermawebOsAo,
@@ -147,7 +152,7 @@ describe('Arweave gateway routing', () => {
 		expect(arweaveDataUrl('asset-id', 'https://gateway.example')).toBe('https://gateway.example/asset-id');
 	});
 
-	it('orders ordinary item URLs across selected compute peers and the Arweave gateway', () => {
+	it('keeps ordinary item fallback on permanent-content gateways, not compute peers', () => {
 		vi.stubGlobal('window', {
 			aoFetch: { peers: ['https://alpha.example', 'https://charlie.example'] },
 		});
@@ -159,6 +164,45 @@ describe('Arweave gateway routing', () => {
 					search: `?node=${encodeURIComponent('https://alpha.example,https://charlie.example')}`,
 				})
 			)
-		).toEqual([`https://alpha.example/${id}`, `https://charlie.example/${id}`, `https://bazar.arweave.net/${id}`]);
+		).toEqual([`https://alpha.example/${id}`, `https://bazar.arweave.net/${id}`]);
+	});
+
+	it('uses the PermawebOS role descriptor instead of deriving every service from peers[0]', async () => {
+		const policy = {
+			version: 1 as const,
+			arweaveGateway: { url: 'https://gateway.example', ownership: 'default' as const },
+			permanentContent: { url: 'https://content.example', ownership: 'community' as const },
+			publishing: { url: 'https://upload.example', ownership: 'default' as const },
+			ao: {
+				processReads: [
+					{ url: 'https://andee.example', ownership: 'personal' as const },
+					{ url: 'https://alpha.example', ownership: 'default' as const },
+				],
+				scheduleReads: [{ url: 'https://andee.example', ownership: 'personal' as const }],
+				linkedStateReads: [{ url: 'https://andee.example', ownership: 'personal' as const }],
+				observerRelay: { url: 'https://alpha.example', ownership: 'default' as const },
+				fallbackMode: 'personal-first' as const,
+			},
+		};
+		const aoFetch = Object.assign(vi.fn(), {
+			peers: ['https://alpha.example', 'https://charlie.example'],
+			networkPolicy: vi.fn(async () => policy),
+		}) as unknown as PermawebOsAoFetch;
+		const scope = { aoFetch };
+		const selected = location();
+
+		expect(gatewaysFromLocation(selected, scope)).toEqual(['https://alpha.example', 'https://charlie.example']);
+		await expect(loadPermawebOsNetworkPolicy(scope)).resolves.toEqual(policy);
+
+		expect(currentPermawebOsNetworkPolicy(scope)).toEqual(policy);
+		expect(gatewaysFromLocation(selected, scope)).toEqual(['https://andee.example', 'https://alpha.example']);
+		expect(permanentContentGatewayFromLocation(selected, scope)).toBe('https://content.example');
+		expect(observerRelayFromLocation(selected, scope)).toBe('https://alpha.example');
+		expect(aoRoutingScopeFromLocation(selected, scope)).toContain('personal-first');
+		const id = 'A'.repeat(43);
+		expect(arweaveDataFallbackUrls(`https://andee.example/${id}`, selected, scope)).toEqual([
+			`https://content.example/${id}`,
+			`https://bazar.arweave.net/${id}`,
+		]);
 	});
 });

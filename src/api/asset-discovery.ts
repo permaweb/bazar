@@ -1944,7 +1944,7 @@ function supportedAsset(
 	if (indexedCollection) {
 		if (computed.state.device !== 'token@1.0') return null;
 		const asset = collectionAsset(indexedCollection, activity.processId, computed.state);
-		const liveAtomicAsset = bazarAtomicAssetFromState(activity.processId, computed.state, computed.provider)?.asset;
+		const liveAtomicAsset = bazarAtomicAssetFromState(activity.processId, computed.state)?.asset;
 		return asset
 			? {
 					asset: liveAtomicAsset
@@ -1979,7 +1979,7 @@ function supportedAsset(
 		};
 	}
 
-	const atomicAsset = bazarAtomicAssetFromState(activity.processId, computed.state, computed.provider);
+	const atomicAsset = bazarAtomicAssetFromState(activity.processId, computed.state);
 	if (atomicAsset) {
 		return { ...atomicAsset, state: computed.state, provider: computed.provider, activity };
 	}
@@ -1994,8 +1994,7 @@ function supportedAsset(
 
 export function bazarAtomicAssetFromState(
 	processId: string,
-	state: AssetState,
-	provider?: string
+	state: AssetState
 ): { asset: AssetSummary; collection: Collection } | null {
 	if (
 		!isVisibleAssetId(processId) ||
@@ -2012,7 +2011,7 @@ export function bazarAtomicAssetFromState(
 	) {
 		return null;
 	}
-	const asset = assetFromMintState(processId, state.raw, '', provider);
+	const asset = assetFromMintState(processId, state.raw);
 	if (!asset) return null;
 	const name = String(state.raw['base-collection'] ?? '').trim() || CREATED_COLLECTION_NAME;
 	return {

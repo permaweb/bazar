@@ -48,6 +48,32 @@ describe('PermawebOS AO transport boundary', () => {
 		expect(permawebOs.ready).toHaveBeenCalledOnce();
 	});
 
+	it('warms the role-aware network descriptor without blocking transport readiness', async () => {
+		const permawebOs = injectedAoFetch(['https://hosted.example']);
+		permawebOs.networkPolicy = vi.fn(
+			async () =>
+				({
+					version: 1,
+					arweaveGateway: { url: 'https://arweave.net', ownership: 'default' },
+					permanentContent: { url: 'https://arweave.net', ownership: 'default' },
+					publishing: { url: 'https://up.arweave.net', ownership: 'default' },
+					ao: {
+						processReads: [{ url: 'https://andee.example', ownership: 'personal' }],
+						scheduleReads: [{ url: 'https://andee.example', ownership: 'personal' }],
+						linkedStateReads: [{ url: 'https://andee.example', ownership: 'personal' }],
+						observerRelay: { url: 'https://hosted.example', ownership: 'default' },
+						fallbackMode: 'personal-first',
+					},
+				} as const)
+		);
+		vi.stubGlobal('window', browserWindow(permawebOs));
+		const loaded = vi.fn();
+
+		expect(warmAoFetch(loaded)).toBeUndefined();
+		await vi.waitFor(() => expect(loaded).toHaveBeenCalledOnce());
+		expect(permawebOs.networkPolicy).toHaveBeenCalledOnce();
+	});
+
 	it('retains known peers when injected readiness is malformed or rejects', async () => {
 		const permawebOs = injectedAoFetch(['https://primary.example']);
 		permawebOs.ready = undefined as unknown as PermawebOsAoFetch['ready'];
@@ -72,6 +98,17 @@ describe('PermawebOS AO transport boundary', () => {
 		const direct = aoFetch() as ReturnType<typeof createBazarAoFetch>;
 		expect(direct.peers).toEqual(DEFAULT_COMPUTE_GATEWAYS);
 		expect(aoPeers()).toEqual(DEFAULT_COMPUTE_GATEWAYS);
+	});
+
+	it('describes the direct Bazar transport without overloading its peer list', async () => {
+		vi.stubGlobal('window', browserWindow());
+
+		const direct = aoFetch() as ReturnType<typeof createBazarAoFetch>;
+		const policy = await direct.networkPolicy();
+
+		expect(policy.permanentContent.url).toBe('https://bazar.example');
+		expect(policy.ao.processReads.map(({ url }) => url)).toEqual(DEFAULT_COMPUTE_GATEWAYS);
+		expect(policy.ao.observerRelay?.url).toBe(DEFAULT_COMPUTE_GATEWAYS[0]);
 	});
 
 	it('uses Bazar AO Wrangler with the fallback peers when the user disables PermawebOS', () => {

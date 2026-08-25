@@ -187,12 +187,12 @@ import { formatAudioDuration } from 'helpers/audio-metadata';
 import { mapConcurrent } from 'helpers/concurrency';
 import {
 	AO_TRANSPORT_QUERY_PARAMETER,
+	aoRoutingScopeFromLocation,
 	arweaveGatewayFromLocation,
 	arweaveGraphqlEndpoint,
 	BAZAR_AO_TRANSPORT,
 	fallbackAoPeersFromLocation,
 	gatewayFromLocation,
-	gatewaysFromLocation,
 	permawebOsAoAvailable,
 	usesPermawebOsAo,
 } from 'helpers/config';
@@ -411,6 +411,7 @@ export const MarketContext = React.createContext<MarketContextValue>({
 
 export function App() {
 	const [marketRetry, setMarketRetry] = React.useState(0);
+	const [, setNetworkPolicyRevision] = React.useState(0);
 	const [pageRefreshing, setPageRefreshing] = React.useState(false);
 	const [market, setMarket] = React.useState<MarketContextValue>(() => ({
 		collections: initialMarketCollections(),
@@ -433,7 +434,9 @@ export function App() {
 	React.useEffect(() => {
 		const controller = new AbortController();
 		setMarket((current) => ({ ...current, verifiedCollectionIds: new Set(), loading: true, error: null }));
-		warmAoFetch();
+		warmAoFetch(() => {
+			if (!controller.signal.aborted) setNetworkPolicyRevision((revision) => revision + 1);
+		});
 		void loadCollections(
 			controller.signal,
 			(collections) => {
@@ -457,6 +460,15 @@ export function App() {
 					...current,
 					collections: current.collections.length ? current.collections : storedMarketCollections(),
 					visibilityReady: true,
+				}));
+			},
+			(label) => {
+				if (controller.signal.aborted) return;
+				setMarket((current) => ({
+					...current,
+					notice:
+						current.notice ??
+						`${label} is still unavailable. Gateway-backed collections remain usable while AO enrichment continues independently.`,
 				}));
 			}
 		).then(
@@ -3164,8 +3176,8 @@ function Home() {
 	const [collectionActivity, setCollectionActivity] = React.useState<Record<string, HomeListingActivity>>({});
 	const [assetPage, setAssetPage] = React.useState(1);
 	const [discoverTokenPage, setDiscoverTokenPage] = React.useState(1);
-	const computeGateway = gatewayFromLocation();
-	const homeListingSnapshotScope = `${arweaveGraphqlEndpoint()}|${gatewaysFromLocation().join(',')}`;
+	const aoRoutingScope = aoRoutingScopeFromLocation();
+	const homeListingSnapshotScope = `${arweaveGraphqlEndpoint()}|${aoRoutingScope}`;
 	const query = new URLSearchParams(search).get('q') ?? '';
 	const normalizedQuery = query.trim().toLowerCase();
 	const homeSearchMatches = React.useMemo(
@@ -3370,9 +3382,9 @@ function Home() {
 			collections
 				.map((collection) => `${collection.id}:${collection.assets.map((asset) => asset.id).join('.')}`)
 				.sort()
-				.concat(computeGateway)
+				.concat(aoRoutingScope)
 				.join(','),
-		[collections, computeGateway]
+		[aoRoutingScope, collections]
 	);
 	const [collectionFloors, setCollectionFloors] = React.useState<Record<string, HomeMarketSummary>>({});
 	const [summaryRetry, setSummaryRetry] = React.useState(0);
@@ -3459,7 +3471,7 @@ function Home() {
 			setPortableHomeListingsLoading(false);
 			return;
 		}
-		const computeCircuitScope = `${computeGateway}|${portableHomeRetry}`;
+		const computeCircuitScope = `${aoRoutingScope}|${portableHomeRetry}`;
 		const computeCircuit = portableHomeComputeCircuit.current;
 		recordHomeListingComputeResult(computeCircuit, computeCircuitScope);
 		if (computeCircuit.failure !== undefined) {
@@ -3620,7 +3632,7 @@ function Home() {
 			publications.cancel();
 		};
 	}, [
-		computeGateway,
+		aoRoutingScope,
 		listingSupportVersion,
 		market.error,
 		marketShellReady,
@@ -3742,7 +3754,7 @@ function Home() {
 		const visibleCollections = new Map(
 			collections.map((collection) => [
 				collection.id,
-				`${computeGateway}:${collection.id}:${collection.assets
+				`${aoRoutingScope}:${collection.id}:${collection.assets
 					.map((asset) => asset.id)
 					.sort()
 					.join('.')}`,
@@ -3984,7 +3996,7 @@ function Home() {
 			})()
 		);
 		void Promise.all(requests).then(finishRetry);
-	}, [collectionKey, computeGateway, finishSummaryRetry, shouldLoadCollectionSummaries, summaryRetry]);
+	}, [aoRoutingScope, collectionKey, finishSummaryRetry, shouldLoadCollectionSummaries, summaryRetry]);
 	const collectionActivityKey = React.useMemo(
 		() =>
 			collections
@@ -8685,8 +8697,7 @@ function AssetView() {
 		directFungibleRoute:
 			collectionId === 'fungible-tokens' && ARWEAVE_ADDRESS.test(assetId) && isVisibleAssetId(assetId),
 	});
-	const directAtomicAsset =
-		directAtomicRoute && state ? bazarAtomicAssetFromState(assetId, state, provider || undefined) : null;
+	const directAtomicAsset = directAtomicRoute && state ? bazarAtomicAssetFromState(assetId, state) : null;
 	const indexedMetadata = indexedAtomic?.asset;
 	const shellAsset = mergeAssetDetailMetadata(indexedAsset ?? cachedAsset, indexedMetadata);
 	const collection =

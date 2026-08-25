@@ -259,8 +259,8 @@ const IMAGE_COLLECTIONS = [
 const MAX_INDEX_PAGES = 1_000;
 const GRAPHQL_PAGE_SIZE = 100;
 const ARWEAVE_GRAPHQL_ID_BATCH_SIZE = 9;
-export const BAZAR_COLLECTION_DISCOVERY_TIMEOUT_MS = 15_000;
-export const COLLECTION_AO_READ_TIMEOUT_MS = 15_000;
+export const BAZAR_COLLECTION_DISCOVERY_TIMEOUT_MS = 300_000;
+export const COLLECTION_AO_READ_TIMEOUT_MS = 45_000;
 
 export const FUNGIBLE_TOKEN_COLLECTION_ID = 'fungible-tokens';
 export const FUNGIBLE_TOKEN_COLLECTION_NAME = 'Bazar Fungible Tokens';
@@ -389,7 +389,8 @@ async function ensureHiddenCollectionAssets(signal?: AbortSignal): Promise<void>
 export async function loadCollections(
 	signal?: AbortSignal,
 	onProgress?: (collections: Collection[]) => void,
-	onVisibilityReady?: () => void
+	onVisibilityReady?: () => void,
+	onBackgroundUnavailable?: (label: string) => void
 ): Promise<CollectionLoadResult> {
 	await ensureHiddenCollectionAssets(signal);
 	onVisibilityReady?.();
@@ -420,8 +421,27 @@ export async function loadCollections(
 			])
 		);
 	let discoveryUnavailable = false;
-	await Promise.all([
-		...sources.map(async (source, index) => {
+	const discovery = operationWithDeadline(
+		(discoverySignal) =>
+			discoverBazarCollections(discoverySignal, (collection) => {
+				if (discoverySignal.aborted) return;
+				discoveredCollections = deduplicateCollections([...discoveredCollections, collection]);
+				publish();
+			}),
+		signal,
+		{
+			timeoutMs: BAZAR_COLLECTION_DISCOVERY_TIMEOUT_MS,
+			timeoutError: 'collection-discovery-timeout',
+		}
+	).catch(() => {
+		if (signal?.aborted) return [];
+		discoveryUnavailable = true;
+		onBackgroundUnavailable?.('Bazar collection discovery');
+		return [];
+	});
+	void discovery;
+	await Promise.all(
+		sources.map(async (source, index) => {
 			let settled = false;
 			try {
 				collections[index] = await source.load((collection) => {
@@ -440,24 +460,9 @@ export async function loadCollections(
 				collections[index] = source.fallback?.();
 			}
 			if (successes.some(Boolean)) publish();
-		}),
-		operationWithDeadline(
-			(discoverySignal) =>
-				discoverBazarCollections(discoverySignal, (collection) => {
-					if (discoverySignal.aborted) return;
-					discoveredCollections = deduplicateCollections([...discoveredCollections, collection]);
-					publish();
-				}),
-			signal,
-			{
-				timeoutMs: BAZAR_COLLECTION_DISCOVERY_TIMEOUT_MS,
-				timeoutError: 'collection-discovery-timeout',
-			}
-		).catch(() => {
-			throwIfAborted(signal);
-			discoveryUnavailable = true;
-		}),
-	]);
+		})
+	);
+	if (!successes.some(Boolean) && !discoveredCollections.length) await discovery;
 	const loaded = deduplicateCollections([
 		...collections.filter((item): item is Collection => Boolean(item)),
 		...discoveredCollections,

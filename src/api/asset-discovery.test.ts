@@ -2525,10 +2525,9 @@ describe('live candidate resolution', () => {
 				'asset-content-type': 'image/png',
 				'asset-data': undefined,
 				'asset-artwork': undefined,
-			}),
-			'https://charlie.example'
+			})
 		);
-		expect(embeddedImage?.asset.image).toBe(`https://charlie.example/${processId}`);
+		expect(embeddedImage?.asset.image).toBe(`https://arweave.net/${processId}`);
 		await expect(
 			resolveAssetCandidates(verification.supported, [tokenCollection], {
 				read: async () => ({ provider: 'https://compute.example', state }),
