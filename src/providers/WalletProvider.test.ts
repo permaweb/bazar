@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import { PERMAWEB_OS_WALLET_PERMISSIONS } from 'api/wallet';
+
 import { completePrivateJwk, connectWallet, createLatestAddressCommitter, isValidWalletJwk } from './WalletProvider';
 
 function deferred<T>() {
@@ -28,6 +30,27 @@ describe('explicit wallet connection', () => {
 			})
 		).resolves.toBe(address);
 		expect(connect).toHaveBeenCalledWith(['ACCESS_ADDRESS', 'ACCESS_PUBLIC_KEY', 'SIGN_TRANSACTION']);
+	});
+
+	it('can request token access for PermawebOS without widening every wallet connection', async () => {
+		const connect = vi.fn(async () => undefined);
+		const address = 'a'.repeat(43);
+		await connectWallet(
+			{
+				connect,
+				getActiveAddress: async () => address,
+				sign: async (transaction) => transaction,
+			},
+			'PermawebOS',
+			PERMAWEB_OS_WALLET_PERMISSIONS
+		);
+
+		expect(connect).toHaveBeenCalledWith([
+			'ACCESS_ADDRESS',
+			'ACCESS_PUBLIC_KEY',
+			'SIGN_TRANSACTION',
+			'ACCESS_TOKENS',
+		]);
 	});
 
 	it('rejects a connection whose active address cannot be read', async () => {

@@ -1980,13 +1980,17 @@ p {
 	font-weight: 550;
 	text-overflow: ellipsis;
 }
-.wallet-dropdown-balance {
+.wallet-dropdown-balances {
 	padding: 12px 8px;
+	display: grid;
+	gap: 8px;
+	border-bottom: 1px solid var(--line);
+}
+.wallet-dropdown-balance {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
 	gap: 16px;
-	border-bottom: 1px solid var(--line);
 }
 .wallet-dropdown-balance > span {
 	color: var(--muted);
