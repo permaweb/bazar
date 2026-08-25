@@ -6,7 +6,7 @@ import {
 	normalizeAssetContentType,
 	normalizeDisplayAssetContentType,
 } from 'helpers/asset-media';
-import { arweaveDataUrl, arweaveGatewayFromLocation } from 'helpers/config';
+import { arweaveDataUrl, permanentContentGatewayFromLocation } from 'helpers/config';
 
 import type { AssetSummary, Collection } from './collections';
 
@@ -106,8 +106,7 @@ export function createdCollection(assets: AssetSummary[] = loadMintedAssets()): 
 export function assetFromMintState(
 	processId: string,
 	raw: Record<string, unknown>,
-	fallbackName = '',
-	processGateway?: string
+	fallbackName = ''
 ): AssetSummary | null {
 	const explicitMediaId = String(raw['asset-data'] ?? '');
 	const mediaId = explicitMediaId || processId;
@@ -132,8 +131,7 @@ export function assetFromMintState(
 		!name
 	)
 		return null;
-	const gateway = arweaveGatewayFromLocation();
-	const mediaGateway = mediaId === processId && processGateway ? processGateway : gateway;
+	const mediaGateway = permanentContentGatewayFromLocation();
 	return {
 		id: processId,
 		name,
@@ -143,13 +141,13 @@ export function assetFromMintState(
 		...(Number.isFinite(duration) && duration > 0 ? { duration } : {}),
 		...(isHtmlContentType(contentType)
 			? {
-					media: arweaveDataUrl(mediaId, gateway),
-					image: arweaveDataUrl(previewId, gateway),
+					media: arweaveDataUrl(mediaId, mediaGateway),
+					image: arweaveDataUrl(previewId, mediaGateway),
 			  }
 			: isAudioContentType(contentType)
 			? {
 					media: arweaveDataUrl(mediaId, mediaGateway),
-					...(artworkId ? { image: arweaveDataUrl(artworkId, gateway) } : {}),
+					...(artworkId ? { image: arweaveDataUrl(artworkId, mediaGateway) } : {}),
 			  }
 			: { image: arweaveDataUrl(mediaId, mediaGateway) }),
 	};

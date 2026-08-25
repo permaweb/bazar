@@ -4,7 +4,6 @@ import { NAMES_NAMESPACE_ID } from 'helpers/config';
 
 import { parseAssetState } from './asset-marketplace';
 import {
-	BAZAR_COLLECTION_DISCOVERY_TIMEOUT_MS,
 	carrierManifestId,
 	type Collection,
 	COLLECTION_AO_READ_TIMEOUT_MS,
@@ -809,11 +808,11 @@ describe('collection index loading', () => {
 		expect(progress.some((ids) => ids.length === 2)).toBe(true);
 	});
 
-	it('finishes catalog bootstrap when an injected AO collection read never settles', async () => {
-		vi.useFakeTimers();
+	it('finishes catalog bootstrap before a slower injected AO collection arrives', async () => {
 		const nameId = 'N'.repeat(43);
 		const collectionId = 'C'.repeat(43);
 		const manifestId = 'M'.repeat(43);
+		const assetId = 'A'.repeat(43);
 		const namespace = encodeJson({
 			manifest: 'arweave/paths',
 			version: '0.2.0',
@@ -860,13 +859,19 @@ describe('collection index loading', () => {
 				});
 			}
 			if (String(input).includes(`/tx/${NAMES_NAMESPACE_ID}/data`)) return new Response(namespace);
+			if (String(input).includes(`/tx/${manifestId}/data`)) {
+				return new Response(encodeUtf8Json({ name: 'Phone collection', description: '', assets: [assetId] }));
+			}
 			return new Response('unavailable', { status: 503 });
 		});
 		vi.stubGlobal('fetch', fetcher);
 		const stalledSignals: AbortSignal[] = [];
+		let resolveAo!: (response: Response) => void;
 		const permawebOsFetch = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
 			if (init?.signal) stalledSignals.push(init.signal);
-			return new Promise<Response>(() => undefined);
+			return new Promise<Response>((resolve) => {
+				resolveAo = resolve;
+			});
 		}) as unknown as PermawebOsAoFetch;
 		Object.defineProperty(permawebOsFetch, 'peers', { value: ['https://andee.example'] });
 		permawebOsFetch.invalidate = vi.fn(async () => undefined);
@@ -874,16 +879,41 @@ describe('collection index loading', () => {
 		permawebOsFetch.ready = vi.fn(async () => permawebOsFetch.peers);
 		vi.stubGlobal('window', { aoFetch: permawebOsFetch });
 		const progress = vi.fn();
+		const backgroundUnavailable = vi.fn();
 
-		const loading = loadCollections(undefined, progress);
+		const loading = loadCollections(undefined, progress, undefined, backgroundUnavailable);
 		await vi.waitFor(() => expect(permawebOsFetch).toHaveBeenCalledOnce());
-		await vi.advanceTimersByTimeAsync(BAZAR_COLLECTION_DISCOVERY_TIMEOUT_MS);
 		const result = await loading;
 
-		expect(stalledSignals[0]?.aborted).toBe(true);
+		expect(stalledSignals[0]?.aborted).toBe(false);
 		expect(result.collections.map((collection) => collection.id)).toEqual(['arweave-names', 'fungible-tokens']);
-		expect(result.unavailable).toContain('Bazar collection discovery');
+		expect(result.unavailable).not.toContain('Bazar collection discovery');
 		expect(progress).toHaveBeenCalled();
+
+		resolveAo(
+			Response.json(
+				{
+					'execution-device': 'carrier@1.0',
+					'total-supply': '1',
+					denomination: 0,
+					balances: { ['O'.repeat(43)]: '1' },
+					orders: {},
+					value: manifestId,
+					'at-slot': 1,
+				},
+				{ headers: { 'codec-device': 'json@1.0' } }
+			)
+		);
+
+		await vi.waitFor(() =>
+			expect(
+				progress.mock.calls.some(([collections]) =>
+					(collections as Collection[]).some(({ id }) => id === collectionId)
+				)
+			).toBe(true)
+		);
+		expect(stalledSignals[0]?.aborted).toBe(false);
+		expect(backgroundUnavailable).not.toHaveBeenCalled();
 	});
 
 	it('publishes exact namespace membership before the first carrier page settles', async () => {

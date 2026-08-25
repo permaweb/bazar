@@ -799,7 +799,7 @@ describe('asset mint contract', () => {
 		]);
 		expect(result.asset).toMatchObject({
 			contentType: 'audio/mpeg',
-			media: `https://compute.example/${processId}`,
+			media: `https://arweave.net/${processId}`,
 			mediaId: processId,
 			image: `https://arweave.net/${artworkId}`,
 			artworkId,

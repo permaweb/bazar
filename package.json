@@ -21,7 +21,7 @@
 	},
 	"dependencies": {
 		"@fontsource/dm-sans": "^5.3.0",
-		"ao-wrangler": "file:vendor/ao-wrangler-0.1.15.tgz",
+		"ao.js": "file:vendor/ao.js-0.1.15.tgz",
 		"arweave": "^1.15.7",
 		"lightweight-charts": "^4.2.0",
 		"lucide-react": "^1.28.0",

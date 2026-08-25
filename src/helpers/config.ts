@@ -1,6 +1,34 @@
 const configuredArweaveGateway = import.meta.env.VITE_ARWEAVE_GATEWAY?.trim();
 const configuredComputeGateway = import.meta.env.VITE_COMPUTE_GATEWAY?.trim();
 
+export type NetworkProviderSummary = {
+	url: string;
+	ownership: 'community' | 'default' | 'personal';
+};
+
+export type EffectivePermawebNetworkPolicy = {
+	version: 1;
+	arweaveGateway: NetworkProviderSummary;
+	permanentContent: NetworkProviderSummary;
+	publishing: NetworkProviderSummary;
+	ao: {
+		processReads: readonly NetworkProviderSummary[];
+		scheduleReads: readonly NetworkProviderSummary[];
+		linkedStateReads: readonly NetworkProviderSummary[];
+		observerRelay?: NetworkProviderSummary;
+		scheduleWrite?: NetworkProviderSummary;
+		directWrite?: NetworkProviderSummary;
+		fallbackMode: 'custom' | 'hosted' | 'personal-first' | 'personal-only';
+	};
+};
+
+type NetworkPolicyFetcher = PermawebOsAoFetch & {
+	networkPolicy?(): Promise<EffectivePermawebNetworkPolicy>;
+};
+
+const networkPolicies = new WeakMap<NetworkPolicyFetcher, EffectivePermawebNetworkPolicy>();
+const networkPolicyLoads = new WeakMap<NetworkPolicyFetcher, Promise<EffectivePermawebNetworkPolicy | undefined>>();
+
 export const DEFAULT_ARWEAVE_GATEWAY = configuredArweaveGateway
 	? new URL(configuredArweaveGateway).origin
 	: 'https://arweave.net';
@@ -109,7 +137,8 @@ export function arweaveDataUrl(id: string, gateway = arweaveGatewayFromLocation(
 /** Ordinary resource URLs for one Arweave item, ordered across the selected serving peers. */
 export function arweaveDataFallbackUrls(
 	value: string,
-	location: GatewayLocation | undefined = typeof window === 'undefined' ? undefined : window.location
+	location: GatewayLocation | undefined = typeof window === 'undefined' ? undefined : window.location,
+	scope: Pick<Window, 'aoFetch'> | undefined = globalThis.window
 ): string[] {
 	if (!location) return [value];
 	let url: URL;
@@ -120,10 +149,13 @@ export function arweaveDataFallbackUrls(
 	}
 	const match = url.pathname.match(/^\/([A-Za-z0-9_-]{43})$/);
 	if (!match) return [value];
+	const policy = usesPermawebOsAo(location, scope) ? currentPermawebOsNetworkPolicy(scope) : undefined;
+	const computeOrigins = new Set(policy?.ao.processReads.map(({ url: provider }) => new URL(provider).origin));
+	const permanent = arweaveDataUrl(match[1], permanentContentGatewayFromLocation(location, scope));
 	return [
 		...new Set([
-			value,
-			...gatewaysFromLocation(location).map((gateway) => arweaveDataUrl(match[1], gateway)),
+			...(computeOrigins.has(url.origin) && url.origin !== new URL(permanent).origin ? [] : [value]),
+			permanent,
 			arweaveDataUrl(match[1], arweaveGatewayFromLocation(location)),
 		]),
 	];
@@ -149,6 +181,76 @@ export function fallbackAoPeersFromLocation(
 	return (requested && normalizeComputeGateways(requested, location.protocol)) || [...DEFAULT_COMPUTE_GATEWAYS];
 }
 
+export async function loadPermawebOsNetworkPolicy(
+	scope: Pick<Window, 'aoFetch'> | undefined = globalThis.window
+): Promise<EffectivePermawebNetworkPolicy | undefined> {
+	const fetcher = scope?.aoFetch as NetworkPolicyFetcher | undefined;
+	if (!fetcher || typeof fetcher.networkPolicy !== 'function') return undefined;
+	const cached = networkPolicies.get(fetcher);
+	if (cached) return cached;
+	let loading = networkPolicyLoads.get(fetcher);
+	if (!loading) {
+		loading = fetcher
+			.networkPolicy()
+			.then((policy) => {
+				if (!isEffectivePermawebNetworkPolicy(policy)) return undefined;
+				networkPolicies.set(fetcher, policy);
+				return policy;
+			})
+			.catch(() => undefined);
+		networkPolicyLoads.set(fetcher, loading);
+	}
+	return loading;
+}
+
+export function currentPermawebOsNetworkPolicy(
+	scope: Pick<Window, 'aoFetch'> | undefined = globalThis.window
+): EffectivePermawebNetworkPolicy | undefined {
+	const fetcher = scope?.aoFetch as NetworkPolicyFetcher | undefined;
+	return fetcher ? networkPolicies.get(fetcher) : undefined;
+}
+
+export function permanentContentGatewayFromLocation(
+	location: GatewayLocation | undefined = typeof window === 'undefined' ? undefined : window.location,
+	scope: Pick<Window, 'aoFetch'> | undefined = globalThis.window
+): string {
+	if (usesPermawebOsAo(location, scope)) {
+		const configured = currentPermawebOsNetworkPolicy(scope)?.permanentContent.url;
+		if (configured) return configured;
+	}
+	return arweaveGatewayFromLocation(location);
+}
+
+export function observerRelayFromLocation(
+	location: GatewayLocation | undefined = typeof window === 'undefined' ? undefined : window.location,
+	scope: Pick<Window, 'aoFetch'> | undefined = globalThis.window
+): string {
+	if (usesPermawebOsAo(location, scope)) {
+		const configured = currentPermawebOsNetworkPolicy(scope)?.ao.observerRelay?.url;
+		if (configured) return configured;
+	}
+	return gatewaysFromLocation(location, scope)[0] ?? '';
+}
+
+export function aoRoutingScopeFromLocation(
+	location: GatewayLocation | undefined = typeof window === 'undefined' ? undefined : window.location,
+	scope: Pick<Window, 'aoFetch'> | undefined = globalThis.window
+): string {
+	if (usesPermawebOsAo(location, scope)) {
+		const policy = currentPermawebOsNetworkPolicy(scope);
+		if (policy) {
+			return JSON.stringify({
+				version: policy.version,
+				processReads: policy.ao.processReads.map(({ url }) => url),
+				scheduleReads: policy.ao.scheduleReads.map(({ url }) => url),
+				linkedStateReads: policy.ao.linkedStateReads.map(({ url }) => url),
+				fallbackMode: policy.ao.fallbackMode,
+			});
+		}
+	}
+	return gatewaysFromLocation(location, scope).join(',');
+}
+
 export function gatewayFromLocation(
 	location: GatewayLocation | undefined = typeof window === 'undefined' ? undefined : window.location
 ): string {
@@ -156,8 +258,51 @@ export function gatewayFromLocation(
 }
 
 export function gatewaysFromLocation(
-	location: GatewayLocation | undefined = typeof window === 'undefined' ? undefined : window.location
+	location: GatewayLocation | undefined = typeof window === 'undefined' ? undefined : window.location,
+	scope: Pick<Window, 'aoFetch'> | undefined = globalThis.window
 ): string[] {
-	if (usesPermawebOsAo(location)) return [...(globalThis.window?.aoFetch?.peers ?? [])];
+	if (usesPermawebOsAo(location, scope)) {
+		const configured = currentPermawebOsNetworkPolicy(scope)?.ao.processReads.map(({ url }) => url);
+		if (configured?.length) return [...configured];
+		return [...(scope?.aoFetch?.peers ?? [])];
+	}
 	return fallbackAoPeersFromLocation(location);
+}
+
+function isEffectivePermawebNetworkPolicy(value: unknown): value is EffectivePermawebNetworkPolicy {
+	if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+	const policy = value as Partial<EffectivePermawebNetworkPolicy>;
+	return (
+		policy.version === 1 &&
+		isProvider(policy.arweaveGateway) &&
+		isProvider(policy.permanentContent) &&
+		isProvider(policy.publishing) &&
+		Boolean(policy.ao) &&
+		Array.isArray(policy.ao?.processReads) &&
+		policy.ao.processReads.every(isProvider) &&
+		Array.isArray(policy.ao.scheduleReads) &&
+		policy.ao.scheduleReads.every(isProvider) &&
+		Array.isArray(policy.ao.linkedStateReads) &&
+		policy.ao.linkedStateReads.every(isProvider) &&
+		(policy.ao.observerRelay === undefined || isProvider(policy.ao.observerRelay)) &&
+		(policy.ao.scheduleWrite === undefined || isProvider(policy.ao.scheduleWrite)) &&
+		(policy.ao.directWrite === undefined || isProvider(policy.ao.directWrite)) &&
+		['custom', 'hosted', 'personal-first', 'personal-only'].includes(String(policy.ao.fallbackMode))
+	);
+}
+
+function isProvider(value: unknown): value is NetworkProviderSummary {
+	if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+	const provider = value as Partial<NetworkProviderSummary>;
+	if (
+		typeof provider.url !== 'string' ||
+		!['community', 'default', 'personal'].includes(String(provider.ownership))
+	) {
+		return false;
+	}
+	try {
+		return ['http:', 'https:'].includes(new URL(provider.url).protocol);
+	} catch {
+		return false;
+	}
 }

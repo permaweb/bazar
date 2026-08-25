@@ -1,8 +1,8 @@
 import type { WeaveNetworkOptions } from 'weave-wrangler';
 
-import { arweaveGatewayFromLocation } from 'helpers/config';
+import { arweaveGatewayFromLocation, observerRelayFromLocation } from 'helpers/config';
 
-import { aoFetch, aoPrimaryPeer } from './ao';
+import { aoFetch } from './ao';
 import { ArweaveObserverNetwork } from './arweave-observers';
 import { ARWEAVE_OBSERVER_HEALTHY_TARGET } from './observer-policy';
 
@@ -21,7 +21,7 @@ export type AssetObserverNetworkLease = {
 const sharedObserverNetworks = new Map<string, SharedObserverNetwork>();
 
 export function assetObserverNetworkOptions(location: Location = window.location): WeaveNetworkOptions {
-	const relay = aoPrimaryPeer();
+	const relay = observerRelayFromLocation(location);
 	if (!relay) throw new Error('No AO peer is configured.');
 
 	return {

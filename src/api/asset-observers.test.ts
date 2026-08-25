@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { loadPermawebOsNetworkPolicy } from 'helpers/config';
+
 import { assetObserverNetworkOptions } from './asset-observers';
 
 function location(overrides: Partial<Location>): Location {
@@ -53,5 +55,30 @@ describe('assetObserverNetworkOptions', () => {
 
 		expect(options.node).toBe('https://gateway.example');
 		expect(options['relay-with']).toBe('https://primary.example');
+	});
+
+	it('uses the explicit observer relay instead of a personal process-read peer', async () => {
+		permawebOsFetch.networkPolicy = vi.fn(
+			async () =>
+				({
+					version: 1,
+					arweaveGateway: { url: 'https://arweave.net', ownership: 'default' },
+					permanentContent: { url: 'https://arweave.net', ownership: 'default' },
+					publishing: { url: 'https://up.arweave.net', ownership: 'default' },
+					ao: {
+						processReads: [{ url: 'https://andee.example', ownership: 'personal' }],
+						scheduleReads: [{ url: 'https://andee.example', ownership: 'personal' }],
+						linkedStateReads: [{ url: 'https://andee.example', ownership: 'personal' }],
+						observerRelay: { url: 'https://primary.example', ownership: 'default' },
+						fallbackMode: 'personal-first',
+					},
+				} as const)
+		);
+		await loadPermawebOsNetworkPolicy();
+
+		const options = assetObserverNetworkOptions(location({}));
+
+		expect(options['relay-with']).toBe('https://primary.example');
+		expect(options.fetch).toBe(permawebOsFetch);
 	});
 });

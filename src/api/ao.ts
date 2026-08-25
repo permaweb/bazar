@@ -1,13 +1,14 @@
-import {
-	type AoCacheMetadata,
-	type AoCacheStatus,
-	aoWrangler,
-	type AoWranglerClient,
-	cacheMetadata,
-	createAoWrangler,
-} from 'ao-wrangler';
+import { ao, type AoCacheMetadata, type AoCacheStatus, type AoClient, cacheMetadata, createAo } from 'ao.js';
 
-import { fallbackAoPeersFromLocation, gatewaysFromLocation, usesPermawebOsAo } from 'helpers/config';
+import {
+	arweaveGatewayFromLocation,
+	type EffectivePermawebNetworkPolicy,
+	fallbackAoPeersFromLocation,
+	gatewaysFromLocation,
+	loadPermawebOsNetworkPolicy,
+	PRODUCTION_COMPUTE_GATEWAYS,
+	usesPermawebOsAo,
+} from 'helpers/config';
 
 export type { AoCacheMetadata, AoCacheStatus };
 
@@ -19,10 +20,12 @@ export type AoPeerFetch = typeof fetch & {
 	readonly peers: readonly string[];
 	ready(): Promise<readonly string[]>;
 	allowNotFound?(input: RequestInfo | URL, init?: RequestInit): Promise<Response>;
+	networkPolicy?(): Promise<EffectivePermawebNetworkPolicy>;
 };
 
 type BazarAoPeerFetch = AoPeerFetch & {
 	allowNotFound(input: RequestInfo | URL, init?: RequestInit): Promise<Response>;
+	networkPolicy(): Promise<EffectivePermawebNetworkPolicy>;
 };
 
 let bazarTransport: { peers: string; fetcher: BazarAoPeerFetch } | undefined;
@@ -44,14 +47,14 @@ function directAoFetch(): BazarAoPeerFetch {
 	return bazarTransport.fetcher;
 }
 
-export function aoClient(nodes?: Nodes): AoWranglerClient {
+export function aoClient(nodes?: Nodes): AoClient {
 	const peers = nodeList(nodes ?? fallbackAoPeersFromLocation());
-	return aoWrangler(peerConfig(peers, 'discover'));
+	return ao(peerConfig(peers, 'discover'));
 }
 
 export function createBazarAoFetch(nodes: Nodes, override?: typeof fetch): BazarAoPeerFetch {
 	const peers = Object.freeze(nodeList(nodes));
-	const client = override ? createAoWrangler(peerConfig(peers, false), override) : aoClient(peers);
+	const client = override ? createAo(peerConfig(peers, false), override) : aoClient(peers);
 	const origins = new Set(peers.map((peer) => new URL(peer).origin));
 	const routed = ((input, init) => client.fetch(routeDefaultPeerRequest(input, origins), init)) as BazarAoPeerFetch;
 	let readiness: Promise<readonly string[]> | undefined;
@@ -67,6 +70,7 @@ export function createBazarAoFetch(nodes: Nodes, override?: typeof fetch): Bazar
 		);
 	routed.cacheMetadata = cacheMetadata;
 	Object.defineProperty(routed, 'peers', { value: peers });
+	routed.networkPolicy = async () => directNetworkPolicy(peers);
 	routed.ready = () => {
 		readiness ??= client
 			.warm()
@@ -112,8 +116,39 @@ export async function readyAoFetch(): Promise<readonly string[]> {
 }
 
 /** Start transport discovery without making otherwise independent application data wait for it. */
-export function warmAoFetch(): void {
+export function warmAoFetch(onNetworkPolicy?: () => void): void {
 	void readyAoFetch().catch(() => undefined);
+	if (permawebOsAoFetch()) {
+		void loadPermawebOsNetworkPolicy().then((policy) => {
+			if (policy) onNetworkPolicy?.();
+		});
+	}
+}
+
+function directNetworkPolicy(peers: readonly string[]): EffectivePermawebNetworkPolicy {
+	const gateway = arweaveGatewayFromLocation();
+	const provider = (url: string) => ({
+		url,
+		ownership: (PRODUCTION_COMPUTE_GATEWAYS as readonly string[]).includes(url)
+			? ('default' as const)
+			: ('community' as const),
+	});
+	const readProviders = peers.map(provider);
+	const primary = readProviders[0];
+	const arweave = { url: gateway, ownership: 'default' as const };
+	return {
+		version: 1,
+		arweaveGateway: arweave,
+		permanentContent: arweave,
+		publishing: arweave,
+		ao: {
+			processReads: readProviders,
+			scheduleReads: readProviders,
+			linkedStateReads: readProviders,
+			...(primary ? { observerRelay: primary, scheduleWrite: primary, directWrite: primary } : {}),
+			fallbackMode: 'hosted',
+		},
+	};
 }
 
 function peerConfig(peers: readonly string[], rateLimit: 'discover' | false) {
@@ -124,6 +159,7 @@ function peerConfig(peers: readonly string[], rateLimit: 'discover' | false) {
 		strategy: 'By-Base' as const,
 		choose: nodes.length,
 		'admissible-status': [200, 201, 202, 204, 206, 304],
+		'fallback-on-cooldown': true,
 	});
 	return {
 		nodes,

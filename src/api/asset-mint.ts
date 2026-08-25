@@ -6,7 +6,13 @@ import {
 	normalizeAssetContentType,
 } from 'helpers/asset-media';
 import { mapConcurrent } from 'helpers/concurrency';
-import { arweaveClientConfig, arweaveDataUrl, arweaveGatewayFromLocation, gatewayFromLocation } from 'helpers/config';
+import {
+	arweaveClientConfig,
+	arweaveDataUrl,
+	arweaveGatewayFromLocation,
+	gatewayFromLocation,
+	permanentContentGatewayFromLocation,
+} from 'helpers/config';
 
 import { AtomicAssetUploader, normalizeUploadTags } from './asset-uploader';
 import { type AssetSummary, FUNGIBLE_TOKEN_COLLECTION_ID, FUNGIBLE_TOKEN_COLLECTION_NAME } from './collections';
@@ -229,6 +235,7 @@ export type AssetMintClientOptions = {
 	storage?: StorageLike;
 	gateway?: string;
 	computeGateway?: string;
+	permanentContentGateway?: string;
 };
 
 export class AssetMintClient {
@@ -237,12 +244,16 @@ export class AssetMintClient {
 	#storage?: StorageLike;
 	#gateway: string;
 	#computeGateway: string;
+	#permanentContentGateway: string;
 
 	constructor(options: AssetMintClientOptions = {}) {
 		this.#fetch = options.fetch ?? globalThis.fetch.bind(globalThis);
 		this.#storage = options.storage ?? globalThis.window?.localStorage;
 		this.#gateway = options.gateway ?? options.uploader?.gateway ?? arweaveGatewayFromLocation();
 		this.#computeGateway = options.computeGateway ?? (typeof window === 'undefined' ? '' : gatewayFromLocation());
+		this.#permanentContentGateway =
+			options.permanentContentGateway ??
+			(typeof window === 'undefined' ? this.#gateway : permanentContentGatewayFromLocation());
 		if (options.uploader) {
 			this.#uploader = options.uploader;
 			return;
@@ -425,10 +436,10 @@ export class AssetMintClient {
 			...(input.duration ? { duration: input.duration } : {}),
 			...(isAudioContentType(input.contentType)
 				? {
-						media: arweaveDataUrl(processId, this.#computeGateway),
+						media: arweaveDataUrl(processId, this.#permanentContentGateway),
 						...(input.artworkId ? { image: arweaveDataUrl(input.artworkId, this.#gateway) } : {}),
 				  }
-				: { image: arweaveDataUrl(processId, this.#computeGateway) }),
+				: { image: arweaveDataUrl(processId, this.#permanentContentGateway) }),
 			mediaId: processId,
 			...(input.artworkId ? { artworkId: input.artworkId } : {}),
 			owner,
