@@ -24,6 +24,7 @@ type SharedRequest = {
 };
 
 type Prefetch = {
+	processId: string;
 	controller: AbortController;
 	settled: boolean;
 	waiters: Array<(result: ComputeResult | undefined) => void>;
@@ -165,16 +166,19 @@ export function invalidateAssetState(processId: string) {
 
 function drainPrefetchQueue() {
 	while (activePrefetches < PREFETCH_CONCURRENCY && queuedPrefetches.length) {
-		const processId = queuedPrefetches.shift()!;
-		const prefetch = prefetches.get(processId);
+		const key = queuedPrefetches.shift()!;
+		const prefetch = prefetches.get(key);
 		if (!prefetch || prefetch.settled) continue;
+		if (cacheKey(prefetch.processId) !== key) {
+			settlePrefetch(key, prefetch);
+			continue;
+		}
 		activePrefetches += 1;
-		const key = cacheKey(processId);
 		const request = [...requests.entries()].find(([pendingKey]) => pendingKey.startsWith(`${key}\0`))?.[1];
 		void (
 			request
 				? consumeSharedRequest(request, prefetch.controller.signal)
-				: readAssetStateCached(processId, {
+				: readAssetStateCached(prefetch.processId, {
 						...DISPLAY_STATE_CACHE,
 						cacheTtlMs: 30_000,
 						maxAttempts: 1,
@@ -182,8 +186,8 @@ function drainPrefetchQueue() {
 				  })
 		)
 			.then(
-				(result) => settlePrefetch(processId, prefetch, result),
-				() => settlePrefetch(processId, prefetch)
+				(result) => settlePrefetch(key, prefetch, result),
+				() => settlePrefetch(key, prefetch)
 			)
 			.finally(() => {
 				activePrefetches -= 1;
@@ -192,10 +196,10 @@ function drainPrefetchQueue() {
 	}
 }
 
-function settlePrefetch(processId: string, prefetch: Prefetch, result?: ComputeResult) {
+function settlePrefetch(key: string, prefetch: Prefetch, result?: ComputeResult) {
 	if (prefetch.settled) return;
 	prefetch.settled = true;
-	if (prefetches.get(processId) === prefetch) prefetches.delete(processId);
+	if (prefetches.get(key) === prefetch) prefetches.delete(key);
 	prefetch.waiters.forEach((resolve) => resolve(result));
 }
 
@@ -204,40 +208,38 @@ export function prefetchAssetState(processId: string) {
 	const cached = results.get(key);
 	if (cached && cached.expiresAt > Date.now()) return Promise.resolve(cached.result);
 	return new Promise<ComputeResult | undefined>((resolve) => {
-		const prefetch = prefetches.get(processId);
+		const prefetch = prefetches.get(key);
 		if (prefetch) {
 			prefetch.waiters.push(resolve);
 			return;
 		}
-		prefetches.set(processId, {
+		prefetches.set(key, {
+			processId,
 			controller: new AbortController(),
 			settled: false,
 			waiters: [resolve],
 		});
-		queuedPrefetches.push(processId);
+		queuedPrefetches.push(key);
 		drainPrefetchQueue();
 	});
 }
 
 export function prioritizeAssetStatePrefetch(processId: string) {
-	for (const [otherId, prefetch] of prefetches) {
-		if (otherId === processId) continue;
+	const key = cacheKey(processId);
+	for (const [otherKey, prefetch] of prefetches) {
+		if (otherKey === key) continue;
 		prefetch.controller.abort(new DOMException('Another asset was opened', 'AbortError'));
-		settlePrefetch(otherId, prefetch);
+		settlePrefetch(otherKey, prefetch);
 	}
-	queuedPrefetches.splice(
-		0,
-		queuedPrefetches.length,
-		...queuedPrefetches.filter((queuedId) => queuedId === processId)
-	);
+	queuedPrefetches.splice(0, queuedPrefetches.length, ...queuedPrefetches.filter((queuedKey) => queuedKey === key));
 	return prefetchAssetState(processId);
 }
 
 export function clearAssetStateCache() {
 	results.clear();
-	for (const [processId, prefetch] of prefetches) {
+	for (const [key, prefetch] of prefetches) {
 		prefetch.controller.abort();
-		settlePrefetch(processId, prefetch);
+		settlePrefetch(key, prefetch);
 	}
 	for (const request of requests.values()) request.controller.abort();
 	requests.clear();

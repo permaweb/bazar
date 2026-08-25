@@ -25,6 +25,48 @@ const result = {
 	maxAge: 20,
 } as any;
 
+function stubPolicyScope(initialFingerprint: string) {
+	let fingerprint = initialFingerprint;
+	const providers = [{ url: 'https://andee.example', ownership: 'personal' as const }];
+	const aoFetch = vi.fn(async () => new Response()) as unknown as PermawebOsAoFetch;
+	aoFetch.invalidate = vi.fn(async () => undefined);
+	aoFetch.cacheMetadata = vi.fn(() => undefined);
+	Object.defineProperty(aoFetch, 'peers', { value: ['https://hosted.example'] });
+	aoFetch.ready = vi.fn(async () => aoFetch.peers);
+	aoFetch.networkPolicy = vi.fn(async () => ({
+		version: 1 as const,
+		fingerprint,
+		arweaveGateway: { url: 'https://gateway.example', ownership: 'default' as const },
+		permanentContent: { url: 'https://content.example', ownership: 'community' as const },
+		publishing: { url: 'https://upload.example', ownership: 'default' as const },
+		ao: {
+			processReads: providers,
+			scheduleReads: providers,
+			linkedStateReads: providers,
+			observerRelay: { url: 'https://hosted.example', ownership: 'default' as const },
+			fallbackMode: 'custom' as const,
+		},
+	}));
+	const scope = Object.assign(new EventTarget(), {
+		aoFetch,
+		location: {
+			protocol: 'https:',
+			hostname: 'bazar.example',
+			port: '',
+			search: '',
+			hash: '',
+		},
+	});
+	vi.stubGlobal('window', scope);
+	return {
+		stop: warmAoFetch(),
+		update(nextFingerprint: string) {
+			fingerprint = nextFingerprint;
+			scope.dispatchEvent(new Event('aoFetchLoaded'));
+		},
+	};
+}
+
 afterEach(() => vi.unstubAllGlobals());
 
 describe('asset state store', () => {
@@ -42,52 +84,76 @@ describe('asset state store', () => {
 	});
 
 	it('does not reuse cached state after an opaque route fingerprint changes', async () => {
-		const providers = [{ url: 'https://andee.example', ownership: 'personal' as const }];
-		let fingerprint = 'custom-routes-one';
-		const aoFetch = vi.fn(async () => new Response()) as unknown as PermawebOsAoFetch;
-		aoFetch.invalidate = vi.fn(async () => undefined);
-		aoFetch.cacheMetadata = vi.fn(() => undefined);
-		Object.defineProperty(aoFetch, 'peers', { value: ['https://hosted.example'] });
-		aoFetch.ready = vi.fn(async () => aoFetch.peers);
-		aoFetch.networkPolicy = vi.fn(async () => ({
-			version: 1 as const,
-			fingerprint,
-			arweaveGateway: { url: 'https://gateway.example', ownership: 'default' as const },
-			permanentContent: { url: 'https://content.example', ownership: 'community' as const },
-			publishing: { url: 'https://upload.example', ownership: 'default' as const },
-			ao: {
-				processReads: providers,
-				scheduleReads: providers,
-				linkedStateReads: providers,
-				observerRelay: { url: 'https://hosted.example', ownership: 'default' as const },
-				fallbackMode: 'custom' as const,
-			},
-		}));
-		const scope = Object.assign(new EventTarget(), {
-			aoFetch,
-			location: {
-				protocol: 'https:',
-				hostname: 'bazar.example',
-				port: '',
-				search: '',
-				hash: '',
-			},
-		});
-		vi.stubGlobal('window', scope);
-		const stop = warmAoFetch();
+		const policy = stubPolicyScope('custom-routes-one');
 
 		await vi.waitFor(() => expect(aoRoutingScopeFromLocation()).toBe('custom-routes-one'));
 		await readAssetStateCached(processId);
 		expect(cachedAssetState(processId)).toBe(result);
 
-		fingerprint = 'custom-routes-two';
-		scope.dispatchEvent(new Event('aoFetchLoaded'));
+		policy.update('custom-routes-two');
 		await vi.waitFor(() => expect(aoRoutingScopeFromLocation()).toBe('custom-routes-two'));
 
 		expect(cachedAssetState(processId)).toBeUndefined();
 		await readAssetStateCached(processId);
 		expect(mocks.readAssetState).toHaveBeenCalledTimes(2);
-		stop();
+		policy.stop();
+	});
+
+	it('does not join an active prefetch from an obsolete route fingerprint', async () => {
+		const policy = stubPolicyScope('custom-routes-one');
+		const pending: Array<(value: typeof result) => void> = [];
+		mocks.readAssetState.mockImplementation(
+			() =>
+				new Promise((resolve) => {
+					pending.push(resolve);
+				})
+		);
+		await vi.waitFor(() => expect(aoRoutingScopeFromLocation()).toBe('custom-routes-one'));
+
+		const oldPrefetch = prefetchAssetState(processId);
+		await vi.waitFor(() => expect(pending).toHaveLength(1));
+		policy.update('custom-routes-two');
+		await vi.waitFor(() => expect(aoRoutingScopeFromLocation()).toBe('custom-routes-two'));
+		const newPrefetch = prefetchAssetState(processId);
+		await vi.waitFor(() => expect(pending).toHaveLength(2));
+
+		const oldResult = { ...result, provider: 'https://old.example' };
+		const newResult = { ...result, provider: 'https://new.example' };
+		pending[1]!(newResult);
+		await expect(newPrefetch).resolves.toBe(newResult);
+		pending[0]!(oldResult);
+		await expect(oldPrefetch).resolves.toBe(oldResult);
+		expect(cachedAssetState(processId)).toBe(newResult);
+		policy.stop();
+	});
+
+	it('drops queued prefetch work from an obsolete route fingerprint', async () => {
+		const policy = stubPolicyScope('custom-routes-one');
+		const blockerIds = ['A', 'B'].map((letter) => letter.repeat(43));
+		const pending = new Map<string, (value: typeof result) => void>();
+		mocks.readAssetState.mockImplementation(
+			(id) =>
+				new Promise((resolve) => {
+					pending.set(id, resolve);
+				})
+		);
+		await vi.waitFor(() => expect(aoRoutingScopeFromLocation()).toBe('custom-routes-one'));
+
+		const blockers = blockerIds.map(prefetchAssetState);
+		await vi.waitFor(() => expect(mocks.readAssetState).toHaveBeenCalledTimes(2));
+		const oldPrefetch = prefetchAssetState(processId);
+		policy.update('custom-routes-two');
+		await vi.waitFor(() => expect(aoRoutingScopeFromLocation()).toBe('custom-routes-two'));
+		const newPrefetch = prefetchAssetState(processId);
+
+		for (const id of blockerIds) pending.get(id)!(result);
+		await expect(oldPrefetch).resolves.toBeUndefined();
+		await vi.waitFor(() => expect(pending.has(processId)).toBe(true));
+		const newResult = { ...result, provider: 'https://new.example' };
+		pending.get(processId)!(newResult);
+		await expect(newPrefetch).resolves.toBe(newResult);
+		await expect(Promise.all(blockers)).resolves.toEqual([result, result]);
+		policy.stop();
 	});
 
 	it('can force a commerce-safe revalidation', async () => {
