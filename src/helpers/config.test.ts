@@ -205,4 +205,30 @@ describe('Arweave gateway routing', () => {
 			`https://bazar.arweave.net/${id}`,
 		]);
 	});
+
+	it('treats an omitted observer relay in a valid PermawebOS policy as explicitly disabled', async () => {
+		const policy = {
+			version: 1 as const,
+			arweaveGateway: { url: 'https://gateway.example', ownership: 'default' as const },
+			permanentContent: { url: 'https://content.example', ownership: 'community' as const },
+			publishing: { url: 'https://upload.example', ownership: 'default' as const },
+			ao: {
+				processReads: [{ url: 'https://andee.example', ownership: 'personal' as const }],
+				scheduleReads: [{ url: 'https://andee.example', ownership: 'personal' as const }],
+				linkedStateReads: [{ url: 'https://andee.example', ownership: 'personal' as const }],
+				fallbackMode: 'personal-only' as const,
+			},
+		};
+		const aoFetch = Object.assign(vi.fn(), {
+			peers: ['https://legacy.example'],
+			networkPolicy: vi.fn(async () => policy),
+		}) as unknown as PermawebOsAoFetch;
+		const scope = { aoFetch };
+		const selected = location();
+
+		await expect(loadPermawebOsNetworkPolicy(scope)).resolves.toEqual(policy);
+
+		expect(gatewaysFromLocation(selected, scope)).toEqual(['https://andee.example']);
+		expect(observerRelayFromLocation(selected, scope)).toBe('');
+	});
 });

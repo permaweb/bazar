@@ -226,8 +226,8 @@ export function observerRelayFromLocation(
 	scope: Pick<Window, 'aoFetch'> | undefined = globalThis.window
 ): string {
 	if (usesPermawebOsAo(location, scope)) {
-		const configured = currentPermawebOsNetworkPolicy(scope)?.ao.observerRelay?.url;
-		if (configured) return configured;
+		const policy = currentPermawebOsNetworkPolicy(scope);
+		if (policy) return policy.ao.observerRelay?.url ?? '';
 	}
 	return gatewaysFromLocation(location, scope)[0] ?? '';
 }
