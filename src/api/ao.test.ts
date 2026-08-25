@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
+	aoRoutingScopeFromLocation,
 	DEFAULT_COMPUTE_GATEWAYS,
 	type EffectivePermawebNetworkPolicy,
 	observerRelayFromLocation,
@@ -86,6 +87,7 @@ describe('PermawebOS AO transport boundary', () => {
 		const permawebOs = injectedAoFetch(['https://legacy.example']);
 		let policy: EffectivePermawebNetworkPolicy = {
 			version: 1 as const,
+			fingerprint: 'opaque-policy-one',
 			arweaveGateway: { url: 'https://gateway.example', ownership: 'default' as const },
 			permanentContent: { url: 'https://content-one.example', ownership: 'community' as const },
 			publishing: { url: 'https://upload.example', ownership: 'default' as const },
@@ -107,9 +109,11 @@ describe('PermawebOS AO transport boundary', () => {
 		expect(aoPeers()).toEqual(['https://andee-one.example']);
 		expect(permanentContentGatewayFromLocation()).toBe('https://content-one.example');
 		expect(observerRelayFromLocation()).toBe('https://relay-one.example');
+		expect(aoRoutingScopeFromLocation()).toBe('opaque-policy-one');
 
 		policy = {
 			...policy,
+			fingerprint: 'opaque-policy-two',
 			permanentContent: { url: 'https://content-two.example', ownership: 'community' },
 			ao: {
 				...policy.ao,
@@ -127,6 +131,7 @@ describe('PermawebOS AO transport boundary', () => {
 		expect(aoPeers()).toEqual(['https://andee-two.example']);
 		expect(permanentContentGatewayFromLocation()).toBe('https://content-two.example');
 		expect(observerRelayFromLocation()).toBe('https://relay-two.example');
+		expect(aoRoutingScopeFromLocation()).toBe('opaque-policy-two');
 		stop();
 	});
 

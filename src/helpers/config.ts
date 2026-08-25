@@ -8,6 +8,7 @@ export type NetworkProviderSummary = {
 
 export type EffectivePermawebNetworkPolicy = {
 	version: 1;
+	fingerprint?: string;
 	arweaveGateway: NetworkProviderSummary;
 	permanentContent: NetworkProviderSummary;
 	publishing: NetworkProviderSummary;
@@ -255,6 +256,7 @@ export function aoRoutingScopeFromLocation(
 	if (usesPermawebOsAo(location, scope)) {
 		const policy = currentPermawebOsNetworkPolicy(scope);
 		if (policy) {
+			if (policy.fingerprint) return policy.fingerprint;
 			return JSON.stringify({
 				version: policy.version,
 				processReads: policy.ao.processReads.map(({ url }) => url),
@@ -290,6 +292,8 @@ function isEffectivePermawebNetworkPolicy(value: unknown): value is EffectivePer
 	const policy = value as Partial<EffectivePermawebNetworkPolicy>;
 	return (
 		policy.version === 1 &&
+		(policy.fingerprint === undefined ||
+			(typeof policy.fingerprint === 'string' && policy.fingerprint.length > 0)) &&
 		isProvider(policy.arweaveGateway) &&
 		isProvider(policy.permanentContent) &&
 		isProvider(policy.publishing) &&
