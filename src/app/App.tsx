@@ -8633,6 +8633,7 @@ function AssetView() {
 	const { collectionId = '', assetId = '' } = useParams();
 	const market = React.useContext(MarketContext);
 	const wallet = useWallet();
+	const aoRoutingScope = aoRoutingScopeFromLocation();
 	const indexedCollection = market.collections.find((item) => item.id === collectionId);
 	const indexedAsset = indexedCollection ? collectionAsset(indexedCollection, assetId) : undefined;
 	const cachedAsset = React.useMemo(
@@ -8645,17 +8646,18 @@ function AssetView() {
 	}>({ assetId, result: null });
 	const prefetchedState = React.useMemo(
 		() => (market.visibilityReady ? cachedAssetState(assetId) : undefined),
-		[assetId, market.visibilityReady]
+		[aoRoutingScope, assetId, market.visibilityReady]
 	);
+	const liveResultKey = `${assetId}\0${aoRoutingScope}`;
 	const [liveResult, setLiveResult] = React.useState<{
-		assetId: string;
+		key: string;
 		state: AssetState | null;
 		loading: boolean;
 		error: string | null;
 		provider: string;
 		verifiedAt: number | null;
 	}>({
-		assetId,
+		key: liveResultKey,
 		state: prefetchedState?.state ?? null,
 		loading: true,
 		error: null,
@@ -8663,11 +8665,12 @@ function AssetView() {
 		verifiedAt: prefetchedState?.verifiedAt ?? null,
 	});
 	const requestRef = React.useRef<AbortController>();
-	const state = liveResult.assetId === assetId ? liveResult.state : prefetchedState?.state ?? null;
-	const error = liveResult.assetId === assetId ? liveResult.error : null;
-	const loading = liveResult.assetId !== assetId || liveResult.loading;
-	const provider = liveResult.assetId === assetId ? liveResult.provider : prefetchedState?.provider ?? '';
-	const verifiedAt = liveResult.assetId === assetId ? liveResult.verifiedAt : prefetchedState?.verifiedAt ?? null;
+	const liveResultIsCurrent = liveResult.key === liveResultKey;
+	const state = liveResultIsCurrent ? liveResult.state : prefetchedState?.state ?? null;
+	const error = liveResultIsCurrent ? liveResult.error : null;
+	const loading = !liveResultIsCurrent || liveResult.loading;
+	const provider = liveResultIsCurrent ? liveResult.provider : prefetchedState?.provider ?? '';
+	const verifiedAt = liveResultIsCurrent ? liveResult.verifiedAt : prefetchedState?.verifiedAt ?? null;
 	const directAtomicRoute =
 		collectionId === CREATED_COLLECTION_ID && ARWEAVE_ADDRESS.test(assetId) && isVisibleAssetId(assetId);
 	const indexedAtomic = indexedAtomicResult.assetId === assetId ? indexedAtomicResult.result : null;
@@ -8798,20 +8801,30 @@ function AssetView() {
 		async (_force: boolean) => {
 			requestRef.current?.abort();
 			if (!canResolveAsset) {
-				setLiveResult({ assetId, state: null, loading: false, error: null, provider: '', verifiedAt: null });
+				setLiveResult({
+					key: liveResultKey,
+					state: null,
+					loading: false,
+					error: null,
+					provider: '',
+					verifiedAt: null,
+				});
 				return;
 			}
 			const controller = new AbortController();
 			requestRef.current = controller;
 			const cached = cachedAssetState(assetId);
-			setLiveResult((current) => ({
-				assetId,
-				state: current.assetId === assetId ? current.state : cached?.state ?? null,
-				loading: true,
-				error: null,
-				provider: current.assetId === assetId ? current.provider : cached?.provider ?? '',
-				verifiedAt: current.assetId === assetId ? current.verifiedAt : cached?.verifiedAt ?? null,
-			}));
+			setLiveResult((current) => {
+				const isCurrent = current.key === liveResultKey;
+				return {
+					key: liveResultKey,
+					state: isCurrent ? current.state : cached?.state ?? null,
+					loading: true,
+					error: null,
+					provider: isCurrent ? current.provider : cached?.provider ?? '',
+					verifiedAt: isCurrent ? current.verifiedAt : cached?.verifiedAt ?? null,
+				};
+			});
 			try {
 				const result = await readAssetStateCached(assetId, {
 					maxAge: 0,
@@ -8821,7 +8834,7 @@ function AssetView() {
 				});
 				if (requestRef.current === controller && !controller.signal.aborted) {
 					setLiveResult({
-						assetId,
+						key: liveResultKey,
 						state: result.state,
 						loading: Boolean(result.revalidation),
 						error: null,
@@ -8833,7 +8846,7 @@ function AssetView() {
 					const fresh = await result.revalidation;
 					if (requestRef.current === controller && !controller.signal.aborted) {
 						setLiveResult({
-							assetId,
+							key: liveResultKey,
 							state: fresh.state,
 							loading: false,
 							error: null,
@@ -8844,18 +8857,21 @@ function AssetView() {
 				}
 			} catch (cause) {
 				if (requestRef.current === controller && !controller.signal.aborted) {
-					setLiveResult((current) => ({
-						assetId,
-						state: current.assetId === assetId ? current.state : null,
-						loading: false,
-						error: assetStateErrorMessage(cause),
-						provider: current.assetId === assetId ? current.provider : '',
-						verifiedAt: current.assetId === assetId ? current.verifiedAt : null,
-					}));
+					setLiveResult((current) => {
+						const isCurrent = current.key === liveResultKey;
+						return {
+							key: liveResultKey,
+							state: isCurrent ? current.state : null,
+							loading: false,
+							error: assetStateErrorMessage(cause),
+							provider: isCurrent ? current.provider : '',
+							verifiedAt: isCurrent ? current.verifiedAt : null,
+						};
+					});
 				}
 			}
 		},
-		[assetId, canResolveAsset]
+		[assetId, canResolveAsset, liveResultKey]
 	);
 	const load = React.useCallback(() => readLiveState(false), [readLiveState]);
 	const refreshAsset = React.useCallback(async () => {
