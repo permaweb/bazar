@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { DEFAULT_COMPUTE_GATEWAYS } from 'helpers/config';
+import {
+	DEFAULT_COMPUTE_GATEWAYS,
+	type EffectivePermawebNetworkPolicy,
+	observerRelayFromLocation,
+	permanentContentGatewayFromLocation,
+} from 'helpers/config';
 
 import { aoFetch, aoPeers, aoPrimaryPeer, createBazarAoFetch, readyAoFetch, warmAoFetch } from './ao';
 
@@ -16,7 +21,7 @@ function injectedAoFetch(peers: string[]): PermawebOsAoFetch {
 afterEach(() => vi.unstubAllGlobals());
 
 function browserWindow(aoFetch?: PermawebOsAoFetch, search = '') {
-	return {
+	return Object.assign(new EventTarget(), {
 		...(aoFetch ? { aoFetch } : {}),
 		location: {
 			protocol: 'https:',
@@ -25,7 +30,7 @@ function browserWindow(aoFetch?: PermawebOsAoFetch, search = '') {
 			search,
 			hash: '',
 		},
-	};
+	});
 }
 
 describe('PermawebOS AO transport boundary', () => {
@@ -44,8 +49,10 @@ describe('PermawebOS AO transport boundary', () => {
 		permawebOs.ready = vi.fn(() => new Promise<readonly string[]>(() => undefined));
 		vi.stubGlobal('window', browserWindow(permawebOs));
 
-		expect(warmAoFetch()).toBeUndefined();
+		const stop = warmAoFetch();
+		expect(stop).toEqual(expect.any(Function));
 		expect(permawebOs.ready).toHaveBeenCalledOnce();
+		stop();
 	});
 
 	it('warms the role-aware network descriptor without blocking transport readiness', async () => {
@@ -69,9 +76,90 @@ describe('PermawebOS AO transport boundary', () => {
 		vi.stubGlobal('window', browserWindow(permawebOs));
 		const loaded = vi.fn();
 
-		expect(warmAoFetch(loaded)).toBeUndefined();
+		const stop = warmAoFetch(loaded);
 		await vi.waitFor(() => expect(loaded).toHaveBeenCalledOnce());
 		expect(permawebOs.networkPolicy).toHaveBeenCalledOnce();
+		stop();
+	});
+
+	it('refreshes every role derived from the same injected transport after aoFetchLoaded', async () => {
+		const permawebOs = injectedAoFetch(['https://legacy.example']);
+		let policy: EffectivePermawebNetworkPolicy = {
+			version: 1 as const,
+			arweaveGateway: { url: 'https://gateway.example', ownership: 'default' as const },
+			permanentContent: { url: 'https://content-one.example', ownership: 'community' as const },
+			publishing: { url: 'https://upload.example', ownership: 'default' as const },
+			ao: {
+				processReads: [{ url: 'https://andee-one.example', ownership: 'personal' as const }],
+				scheduleReads: [{ url: 'https://andee-one.example', ownership: 'personal' as const }],
+				linkedStateReads: [{ url: 'https://andee-one.example', ownership: 'personal' as const }],
+				observerRelay: { url: 'https://relay-one.example', ownership: 'community' as const },
+				fallbackMode: 'personal-first' as const,
+			},
+		};
+		permawebOs.networkPolicy = vi.fn(async () => policy);
+		const scope = browserWindow(permawebOs);
+		vi.stubGlobal('window', scope);
+		const changed = vi.fn();
+		const stop = warmAoFetch(changed);
+
+		await vi.waitFor(() => expect(changed).toHaveBeenCalledOnce());
+		expect(aoPeers()).toEqual(['https://andee-one.example']);
+		expect(permanentContentGatewayFromLocation()).toBe('https://content-one.example');
+		expect(observerRelayFromLocation()).toBe('https://relay-one.example');
+
+		policy = {
+			...policy,
+			permanentContent: { url: 'https://content-two.example', ownership: 'community' },
+			ao: {
+				...policy.ao,
+				processReads: [{ url: 'https://andee-two.example', ownership: 'personal' }],
+				scheduleReads: [{ url: 'https://andee-two.example', ownership: 'personal' }],
+				linkedStateReads: [{ url: 'https://andee-two.example', ownership: 'personal' }],
+				observerRelay: { url: 'https://relay-two.example', ownership: 'community' },
+				fallbackMode: 'personal-only',
+			},
+		};
+		scope.dispatchEvent(new Event('aoFetchLoaded'));
+
+		await vi.waitFor(() => expect(changed).toHaveBeenCalledTimes(2));
+		expect(permawebOs.networkPolicy).toHaveBeenCalledTimes(2);
+		expect(aoPeers()).toEqual(['https://andee-two.example']);
+		expect(permanentContentGatewayFromLocation()).toBe('https://content-two.example');
+		expect(observerRelayFromLocation()).toBe('https://relay-two.example');
+		stop();
+	});
+
+	it('loads role policy when PermawebOS is injected after application startup', async () => {
+		const scope = browserWindow();
+		vi.stubGlobal('window', scope);
+		const changed = vi.fn();
+		const stop = warmAoFetch(changed);
+		const permawebOs = injectedAoFetch(['https://legacy.example']);
+		permawebOs.networkPolicy = vi.fn(
+			async () =>
+				({
+					version: 1,
+					arweaveGateway: { url: 'https://gateway.example', ownership: 'default' },
+					permanentContent: { url: 'https://late-content.example', ownership: 'community' },
+					publishing: { url: 'https://upload.example', ownership: 'default' },
+					ao: {
+						processReads: [{ url: 'https://late-andee.example', ownership: 'personal' }],
+						scheduleReads: [{ url: 'https://late-andee.example', ownership: 'personal' }],
+						linkedStateReads: [{ url: 'https://late-andee.example', ownership: 'personal' }],
+						observerRelay: { url: 'https://late-relay.example', ownership: 'community' },
+						fallbackMode: 'personal-first',
+					},
+				} as const)
+		);
+		Object.assign(scope, { aoFetch: permawebOs });
+		scope.dispatchEvent(new Event('aoFetchLoaded'));
+
+		await vi.waitFor(() => expect(changed).toHaveBeenCalledOnce());
+		expect(aoPeers()).toEqual(['https://late-andee.example']);
+		expect(permanentContentGatewayFromLocation()).toBe('https://late-content.example');
+		expect(observerRelayFromLocation()).toBe('https://late-relay.example');
+		stop();
 	});
 
 	it('retains known peers when injected readiness is malformed or rejects', async () => {
