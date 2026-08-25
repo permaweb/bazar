@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { arBalanceLabel, walletMenuLabel } from './WalletMenu';
+import { arBalanceLabel, tokenBalanceLabel, walletMenuLabel } from './WalletMenu';
 
 describe('wallet menu identity', () => {
 	it('shows only a known profile name and preserves the address fallback', () => {
@@ -22,5 +22,10 @@ describe('wallet AR balance', () => {
 	it('labels pending and unavailable balances', () => {
 		expect(arBalanceLabel(null, 'loading')).toBe('Loading…');
 		expect(arBalanceLabel(null, 'error')).toBe('Unavailable');
+	});
+
+	it('formats extension balances using the denomination supplied with each token', () => {
+		expect(tokenBalanceLabel(12_345n, 'ready', 'AO', 3)).toBe('12.3450 AO');
+		expect(tokenBalanceLabel(999_950n, 'ready', 'AO', 6)).toBe('1.0000 AO');
 	});
 });

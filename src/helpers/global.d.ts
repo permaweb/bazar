@@ -3,6 +3,7 @@ interface ArweaveWalletProvider {
 	disconnect?(): Promise<void>;
 	getActiveAddress?(): Promise<string>;
 	getPermissions?(): Promise<string[]>;
+	getBalances?(): Promise<unknown>;
 	sign(transaction: unknown): Promise<any>;
 }
 

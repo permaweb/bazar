@@ -113,11 +113,33 @@ export function WalletMenu() {
 							<strong>{walletLabel}</strong>
 						</div>
 					</div>
-					<div aria-label="Balance" className="wallet-dropdown-balance" role="group">
-						<span>Balance</span>
-						<strong aria-live="polite">
-							<ArCurrencyText>{arBalanceLabel(wallet.arBalance, wallet.arBalanceStatus)}</ArCurrencyText>
-						</strong>
+					<div aria-label="Balances" className="wallet-dropdown-balances" role="group">
+						<div className="wallet-dropdown-balance">
+							<span>AR balance</span>
+							<strong aria-live="polite">
+								<ArCurrencyText>
+									{tokenBalanceLabel(
+										wallet.arBalance,
+										wallet.arBalanceStatus,
+										'AR',
+										wallet.arBalanceDenomination
+									)}
+								</ArCurrencyText>
+							</strong>
+						</div>
+						{wallet.aoBalanceStatus !== 'idle' ? (
+							<div className="wallet-dropdown-balance">
+								<span>AO balance</span>
+								<strong aria-live="polite">
+									{tokenBalanceLabel(
+										wallet.aoBalance,
+										wallet.aoBalanceStatus,
+										'AO',
+										wallet.aoBalanceDenomination
+									)}
+								</strong>
+							</div>
+						) : null}
 					</div>
 					<div className="wallet-dropdown-actions">
 						<Button
@@ -188,10 +210,20 @@ export function walletMenuLabel(address?: string | null, displayName?: string | 
 }
 
 export function arBalanceLabel(balance: bigint | null, status: 'idle' | 'loading' | 'ready' | 'error'): string {
+	return tokenBalanceLabel(balance, status, 'AR', 12);
+}
+
+export function tokenBalanceLabel(
+	balance: bigint | null,
+	status: 'idle' | 'loading' | 'ready' | 'error',
+	symbol: string,
+	denomination: number
+): string {
 	if (status === 'error') return 'Unavailable';
 	if (status !== 'ready' || balance === null) return 'Loading…';
-	const fixedBalance = (balance + 50_000_000n) / 100_000_000n;
+	const atomicScale = 10n ** BigInt(denomination);
+	const fixedBalance = (balance * 10_000n + atomicScale / 2n) / atomicScale;
 	const whole = fixedBalance / 10_000n;
 	const fraction = (fixedBalance % 10_000n).toString().padStart(4, '0');
-	return `${whole.toLocaleString()}.${fraction} AR`;
+	return `${whole.toLocaleString()}.${fraction} ${symbol}`;
 }
