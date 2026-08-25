@@ -4,8 +4,10 @@ import { NAMES_NAMESPACE_ID } from 'helpers/config';
 
 import { parseAssetState } from './asset-marketplace';
 import {
+	BAZAR_COLLECTION_DISCOVERY_TIMEOUT_MS,
 	carrierManifestId,
 	type Collection,
+	COLLECTION_AO_READ_TIMEOUT_MS,
 	collectionAsset,
 	discoverBazarCollections,
 	enrichImageCollectionAssetMetadata,
@@ -41,6 +43,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+	vi.useRealTimers();
 	vi.unstubAllGlobals();
 	replaceHiddenCollectionAssetIndex({});
 });
@@ -806,6 +809,83 @@ describe('collection index loading', () => {
 		expect(progress.some((ids) => ids.length === 2)).toBe(true);
 	});
 
+	it('finishes catalog bootstrap when an injected AO collection read never settles', async () => {
+		vi.useFakeTimers();
+		const nameId = 'N'.repeat(43);
+		const collectionId = 'C'.repeat(43);
+		const manifestId = 'M'.repeat(43);
+		const namespace = encodeJson({
+			manifest: 'arweave/paths',
+			version: '0.2.0',
+			paths: { alice: { id: nameId } },
+		});
+		const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+			const body = typeof init?.body === 'string' ? JSON.parse(init.body) : undefined;
+			if (body?.query?.includes('BazarCollections')) {
+				return Response.json({
+					data: {
+						transactions: {
+							pageInfo: { hasNextPage: false },
+							edges: [
+								{
+									cursor: 'candidate',
+									node: {
+										id: collectionId,
+										block: { height: 2, timestamp: 3 },
+										tags: [
+											{ name: 'device', value: 'process@1.0' },
+											{ name: 'execution-device', value: 'carrier@1.0' },
+											{ name: 'scheduler-device', value: 'arweave-scheduler@1.0' },
+											{ name: 'scheduler-mode', value: 'all' },
+											{ name: 'ticker', value: 'COLLECTION' },
+											{ name: 'type', value: 'Process' },
+											{ name: 'initial-value', value: manifestId },
+										],
+									},
+								},
+							],
+						},
+					},
+				});
+			}
+			if (body?.query?.includes('CarrierAssets')) {
+				return Response.json({
+					data: { transactions: { pageInfo: { hasNextPage: false }, edges: [] } },
+				});
+			}
+			if (body?.query?.includes('FungibleTokens')) {
+				const empty = { count: 0, pageInfo: { hasNextPage: false }, edges: [] };
+				return Response.json({
+					data: { transactions: empty, legacyHintStyle: empty, legacyAssetType: empty },
+				});
+			}
+			if (String(input).includes(`/tx/${NAMES_NAMESPACE_ID}/data`)) return new Response(namespace);
+			return new Response('unavailable', { status: 503 });
+		});
+		vi.stubGlobal('fetch', fetcher);
+		const stalledSignals: AbortSignal[] = [];
+		const permawebOsFetch = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
+			if (init?.signal) stalledSignals.push(init.signal);
+			return new Promise<Response>(() => undefined);
+		}) as unknown as PermawebOsAoFetch;
+		Object.defineProperty(permawebOsFetch, 'peers', { value: ['https://andee.example'] });
+		permawebOsFetch.invalidate = vi.fn(async () => undefined);
+		permawebOsFetch.cacheMetadata = vi.fn(() => undefined);
+		permawebOsFetch.ready = vi.fn(async () => permawebOsFetch.peers);
+		vi.stubGlobal('window', { aoFetch: permawebOsFetch });
+		const progress = vi.fn();
+
+		const loading = loadCollections(undefined, progress);
+		await vi.waitFor(() => expect(permawebOsFetch).toHaveBeenCalledOnce());
+		await vi.advanceTimersByTimeAsync(BAZAR_COLLECTION_DISCOVERY_TIMEOUT_MS);
+		const result = await loading;
+
+		expect(stalledSignals[0]?.aborted).toBe(true);
+		expect(result.collections.map((collection) => collection.id)).toEqual(['arweave-names', 'fungible-tokens']);
+		expect(result.unavailable).toContain('Bazar collection discovery');
+		expect(progress).toHaveBeenCalled();
+	});
+
 	it('publishes exact namespace membership before the first carrier page settles', async () => {
 		const controller = new AbortController();
 		const reason = new Error('test-complete');
@@ -1300,6 +1380,54 @@ describe('collection index loading', () => {
 			indexSource: 'reference',
 			manifestId,
 		});
+	});
+
+	it('uses the published carrier manifest when an injected AO state read never settles', async () => {
+		vi.useFakeTimers();
+		const referenceId = 'R'.repeat(43);
+		const manifestId = 'M'.repeat(43);
+		const manifest = encodeJson({
+			name: 'Published collection',
+			assets: [{ id: 'A'.repeat(43), name: 'Asset one' }],
+		});
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (input: RequestInfo | URL) => {
+				const url = String(input);
+				if (url.endsWith(`/tx/${referenceId}`)) {
+					return Response.json({
+						tags: [
+							{ name: encodeTag('execution-device'), value: encodeTag('carrier@1.0') },
+							{ name: encodeTag('scheduler-device'), value: encodeTag('arweave-scheduler@1.0') },
+							{ name: encodeTag('initial-value'), value: encodeTag(manifestId) },
+						],
+					});
+				}
+				if (url.endsWith(`/tx/${manifestId}/data`)) return new Response(manifest);
+				return new Response('unexpected', { status: 500 });
+			})
+		);
+		const stalledSignals: AbortSignal[] = [];
+		const permawebOsFetch = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
+			if (init?.signal) stalledSignals.push(init.signal);
+			return new Promise<Response>(() => undefined);
+		}) as unknown as PermawebOsAoFetch;
+		Object.defineProperty(permawebOsFetch, 'peers', { value: ['https://andee.example'] });
+		permawebOsFetch.invalidate = vi.fn(async () => undefined);
+		permawebOsFetch.cacheMetadata = vi.fn(() => undefined);
+		permawebOsFetch.ready = vi.fn(async () => permawebOsFetch.peers);
+		vi.stubGlobal('window', { aoFetch: permawebOsFetch });
+
+		const loading = loadImageCollection(referenceId, manifestId);
+		await vi.waitFor(() => expect(permawebOsFetch).toHaveBeenCalledOnce());
+		await vi.advanceTimersByTimeAsync(COLLECTION_AO_READ_TIMEOUT_MS);
+
+		await expect(loading).resolves.toMatchObject({
+			name: 'Published collection',
+			manifestId,
+			indexSource: 'carrier',
+		});
+		expect(stalledSignals[0]?.aborted).toBe(true);
 	});
 
 	it.each([

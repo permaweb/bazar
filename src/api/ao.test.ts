@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { DEFAULT_COMPUTE_GATEWAYS } from 'helpers/config';
 
-import { aoFetch, aoPeers, aoPrimaryPeer, createBazarAoFetch, readyAoFetch } from './ao';
+import { aoFetch, aoPeers, aoPrimaryPeer, createBazarAoFetch, readyAoFetch, warmAoFetch } from './ao';
 
 function injectedAoFetch(peers: string[]): PermawebOsAoFetch {
 	const fetcher = vi.fn(async () => new Response('from-permawebos')) as unknown as PermawebOsAoFetch;
@@ -37,6 +37,28 @@ describe('PermawebOS AO transport boundary', () => {
 		expect(aoPeers()).toEqual(['https://primary.example', 'https://secondary.example']);
 		expect(aoPrimaryPeer()).toBe('https://primary.example');
 		await expect(readyAoFetch()).resolves.toEqual(['https://primary.example', 'https://secondary.example']);
+	});
+
+	it('starts injected readiness without waiting for it to settle', () => {
+		const permawebOs = injectedAoFetch(['https://primary.example']);
+		permawebOs.ready = vi.fn(() => new Promise<readonly string[]>(() => undefined));
+		vi.stubGlobal('window', browserWindow(permawebOs));
+
+		expect(warmAoFetch()).toBeUndefined();
+		expect(permawebOs.ready).toHaveBeenCalledOnce();
+	});
+
+	it('retains known peers when injected readiness is malformed or rejects', async () => {
+		const permawebOs = injectedAoFetch(['https://primary.example']);
+		permawebOs.ready = undefined as unknown as PermawebOsAoFetch['ready'];
+		vi.stubGlobal('window', browserWindow(permawebOs));
+
+		await expect(readyAoFetch()).resolves.toEqual(['https://primary.example']);
+
+		permawebOs.ready = vi.fn(async () => {
+			throw new Error('extension-unavailable');
+		});
+		await expect(readyAoFetch()).resolves.toEqual(['https://primary.example']);
 	});
 
 	it('passes test transports through without constructing a Wrangler client', () => {

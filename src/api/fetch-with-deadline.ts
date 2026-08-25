@@ -5,6 +5,32 @@ type DeadlineOptions = {
 	timeoutError: string;
 };
 
+export async function operationWithDeadline<T>(
+	operation: (signal: AbortSignal) => Promise<T>,
+	signal: AbortSignal | null | undefined,
+	options: DeadlineOptions
+): Promise<T> {
+	signal?.throwIfAborted();
+	const controller = new AbortController();
+	const timeoutMs = Math.max(1, Math.floor(options.timeoutMs ?? DEFAULT_TIMEOUT_MS));
+	const forwardAbort = () => controller.abort(signal?.reason);
+	signal?.addEventListener('abort', forwardAbort, { once: true });
+	const timer = setTimeout(() => controller.abort(new Error(options.timeoutError)), timeoutMs);
+	let rejectAbort!: (reason: unknown) => void;
+	const aborted = new Promise<never>((_resolve, reject) => {
+		rejectAbort = reject;
+	});
+	const rejectWhenAborted = () => rejectAbort(controller.signal.reason);
+	controller.signal.addEventListener('abort', rejectWhenAborted, { once: true });
+	try {
+		return await Promise.race([operation(controller.signal), aborted]);
+	} finally {
+		clearTimeout(timer);
+		signal?.removeEventListener('abort', forwardAbort);
+		controller.signal.removeEventListener('abort', rejectWhenAborted);
+	}
+}
+
 export async function fetchWithDeadline(
 	fetcher: typeof fetch,
 	input: RequestInfo | URL,
@@ -45,23 +71,5 @@ async function requestWithDeadline<T>(
 	options: DeadlineOptions,
 	read: (response: Response) => Promise<T>
 ): Promise<T> {
-	init.signal?.throwIfAborted();
-	const controller = new AbortController();
-	const timeoutMs = Math.max(1, Math.floor(options.timeoutMs ?? DEFAULT_TIMEOUT_MS));
-	const forwardAbort = () => controller.abort(init.signal?.reason);
-	init.signal?.addEventListener('abort', forwardAbort, { once: true });
-	const timer = setTimeout(() => controller.abort(new Error(options.timeoutError)), timeoutMs);
-	let rejectAbort!: (reason: unknown) => void;
-	const aborted = new Promise<never>((_resolve, reject) => {
-		rejectAbort = reject;
-	});
-	const rejectWhenAborted = () => rejectAbort(controller.signal.reason);
-	controller.signal.addEventListener('abort', rejectWhenAborted, { once: true });
-	try {
-		return await Promise.race([fetcher(input, { ...init, signal: controller.signal }).then(read), aborted]);
-	} finally {
-		clearTimeout(timer);
-		init.signal?.removeEventListener('abort', forwardAbort);
-		controller.signal.removeEventListener('abort', rejectWhenAborted);
-	}
+	return operationWithDeadline((signal) => fetcher(input, { ...init, signal }).then(read), init.signal, options);
 }
