@@ -2604,6 +2604,50 @@ describe('live candidate resolution', () => {
 		);
 	});
 
+	it('isolates one candidate-local GraphQL failure without suppressing healthy assets in its batch', async () => {
+		const spawned = 'N'.repeat(43);
+		const healthy = ['V'.repeat(43), 'W'.repeat(43)];
+		const candidates: AssetCandidate[] = [spawned, ...healthy].map((processId, index) => ({
+			processId,
+			height: 3 - index,
+			timestamp: 0,
+			sources: ['transfer'],
+		}));
+		const tokenCollection: Collection = {
+			id: 'fungible-tokens',
+			name: 'Tokens',
+			description: 'Tokens',
+			kind: 'tokens',
+			assets: [],
+		};
+		const fetcher = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+			const ids: string[] = JSON.parse(String(init?.body)).variables.ids;
+			if (ids.includes(spawned)) {
+				return Response.json({ errors: [{ message: 'process initialization is not indexed' }] });
+			}
+			return Response.json({
+				data: {
+					transactions: {
+						pageInfo: { hasNextPage: false },
+						edges: ids.map((id) => ({ cursor: id, node: { id } })),
+					},
+				},
+			});
+		});
+		const verifiedBatches: string[][] = [];
+
+		const verification = await verifyAssetCandidateSupport(candidates, [tokenCollection], {
+			fetch: fetcher as typeof fetch,
+			graphql: 'https://arweave.net/graphql',
+			onVerified: (batch) => verifiedBatches.push(batch.map((candidate) => candidate.processId)),
+		});
+
+		expect(fetcher).toHaveBeenCalledTimes(5);
+		expect(verifiedBatches.flat()).toEqual(healthy);
+		expect(verification.supported.map((candidate) => candidate.processId)).toEqual(healthy);
+		expect(verification.unavailable.map(({ candidate }) => candidate.processId)).toEqual([spawned]);
+	});
+
 	it('aborts active support workers without starting queued batches', async () => {
 		const tokenCollection: Collection = {
 			id: 'fungible-tokens',

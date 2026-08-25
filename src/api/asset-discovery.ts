@@ -1778,34 +1778,40 @@ export async function verifyAssetCandidateSupport(
 		}
 		for (const edge of [fungible, ...legacyFungible].flatMap((connection) => connection.edges)) {
 			if (!requested.has(edge.node.id)) throw new Error('asset-support-graphql-schema');
-			verified.add(edge.node.id);
 			verifiedChunk.add(edge.node.id);
 		}
 		for (const edge of atomic.edges) {
 			if (!requested.has(edge.node.id) || !atomicProcessNode(edge.node)) {
 				throw new Error('asset-support-graphql-schema');
 			}
-			verified.add(edge.node.id);
 			verifiedChunk.add(edge.node.id);
 		}
+		for (const processId of verifiedChunk) verified.add(processId);
 		return restrictAssetCandidates(
 			unindexed.filter((candidate) => verifiedChunk.has(candidate.processId)),
 			collections
 		);
 	};
+	const verifyIsolatedChunk = async (chunk: string[]): Promise<void> => {
+		try {
+			const verifiedCandidates = await verifyChunk(chunk);
+			if (verifiedCandidates.length) await options.onVerified?.(verifiedCandidates);
+		} catch (error) {
+			if (options.signal?.aborted) throw options.signal.reason ?? error;
+			if (chunk.length > 1 && assetSupportBatchCanBeIsolated(error)) {
+				const middle = Math.ceil(chunk.length / 2);
+				await verifyIsolatedChunk(chunk.slice(0, middle));
+				await verifyIsolatedChunk(chunk.slice(middle));
+				return;
+			}
+			for (const processId of chunk) unavailable.set(processId, error);
+		}
+	};
 	const workers = Array.from({ length: Math.min(ASSET_SUPPORT_CONCURRENCY, chunks.length) }, async () => {
 		while (nextChunk < chunks.length) {
 			options.signal?.throwIfAborted();
 			const chunk = chunks[nextChunk++];
-			let verifiedCandidates: AssetCandidate[];
-			try {
-				verifiedCandidates = await verifyChunk(chunk);
-			} catch (error) {
-				if (options.signal?.aborted) throw options.signal.reason ?? error;
-				for (const processId of chunk) unavailable.set(processId, error);
-				continue;
-			}
-			if (verifiedCandidates.length) await options.onVerified?.(verifiedCandidates);
+			await verifyIsolatedChunk(chunk);
 		}
 	});
 	await Promise.all(workers);
@@ -1820,6 +1826,13 @@ export async function verifyAssetCandidateSupport(
 			.filter((candidate) => unavailable.has(candidate.processId))
 			.map((candidate) => ({ candidate, error: unavailable.get(candidate.processId) })),
 	};
+}
+
+function assetSupportBatchCanBeIsolated(error: unknown): boolean {
+	return (
+		error instanceof Error &&
+		['asset-support-graphql-error', 'asset-support-graphql-schema'].includes(error.message)
+	);
 }
 
 export function partitionAssetCandidateSupport(
