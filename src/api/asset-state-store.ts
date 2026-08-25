@@ -1,4 +1,6 @@
-import { type ComputeResult, readAssetState, servingNodeOrigins } from './asset-marketplace';
+import { aoRoutingScopeFromLocation } from 'helpers/config';
+
+import { type ComputeResult, readAssetState } from './asset-marketplace';
 
 const DEFAULT_STATE_TTL_MS = 20_000;
 const MAX_STATE_ENTRIES = 256;
@@ -52,11 +54,11 @@ function rememberResult(key: string, result: ComputeResult, cacheTtlMs: number) 
 }
 
 function cacheKey(processId: string) {
-	const provider =
+	const routingScope =
 		typeof window !== 'undefined' && ['http:', 'https:'].includes(window.location.protocol)
-			? servingNodeOrigins(window.location).join(',')
+			? aoRoutingScopeFromLocation(window.location)
 			: '';
-	return `${provider}:${processId}`;
+	return `${routingScope}:${processId}`;
 }
 
 function requestKey(key: string, options: CachedReadOptions) {

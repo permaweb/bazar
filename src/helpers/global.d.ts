@@ -22,6 +22,7 @@ interface PermawebOsAoFetch {
 	allowNotFound?(input: RequestInfo | URL, init?: RequestInit): Promise<Response>;
 	networkPolicy?(): Promise<{
 		version: 1;
+		fingerprint?: string;
 		arweaveGateway: { url: string; ownership: 'community' | 'default' | 'personal' };
 		permanentContent: { url: string; ownership: 'community' | 'default' | 'personal' };
 		publishing: { url: string; ownership: 'community' | 'default' | 'personal' };

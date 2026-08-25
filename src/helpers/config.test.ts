@@ -233,6 +233,32 @@ describe('Arweave gateway routing', () => {
 		expect(observerRelayFromLocation(selected, scope)).toBe('');
 	});
 
+	it('rejects a malformed optional policy fingerprint and retains legacy scope fallback', async () => {
+		const aoFetch = Object.assign(vi.fn(), {
+			peers: ['https://legacy.example'],
+			networkPolicy: vi.fn(async () => ({
+				version: 1,
+				fingerprint: 42,
+				arweaveGateway: { url: 'https://gateway.example', ownership: 'default' },
+				permanentContent: { url: 'https://content.example', ownership: 'community' },
+				publishing: { url: 'https://upload.example', ownership: 'default' },
+				ao: {
+					processReads: [{ url: 'https://andee.example', ownership: 'personal' }],
+					scheduleReads: [{ url: 'https://andee.example', ownership: 'personal' }],
+					linkedStateReads: [{ url: 'https://andee.example', ownership: 'personal' }],
+					fallbackMode: 'personal-only',
+				},
+			})),
+		}) as unknown as PermawebOsAoFetch;
+		const scope = { aoFetch };
+		const selected = location();
+
+		await expect(loadPermawebOsNetworkPolicy(scope)).resolves.toBeUndefined();
+
+		expect(currentPermawebOsNetworkPolicy(scope)).toBeUndefined();
+		expect(aoRoutingScopeFromLocation(selected, scope)).toBe('https://legacy.example');
+	});
+
 	it('does not let a delayed policy load overwrite a newer refresh', async () => {
 		const firstPolicy = {
 			version: 1 as const,

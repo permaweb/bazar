@@ -1,12 +1,14 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({ readAssetState: vi.fn() }));
 
 vi.mock('./asset-marketplace', () => ({
 	readAssetState: mocks.readAssetState,
-	servingNodeOrigins: () => ['https://node.example'],
 }));
 
+import { aoRoutingScopeFromLocation } from 'helpers/config';
+
+import { warmAoFetch } from './ao';
 import {
 	cachedAssetState,
 	clearAssetStateCache,
@@ -23,6 +25,8 @@ const result = {
 	maxAge: 20,
 } as any;
 
+afterEach(() => vi.unstubAllGlobals());
+
 describe('asset state store', () => {
 	beforeEach(() => {
 		clearAssetStateCache();
@@ -35,6 +39,55 @@ describe('asset state store', () => {
 		await readAssetStateCached(processId);
 		expect(mocks.readAssetState).toHaveBeenCalledTimes(1);
 		expect(mocks.readAssetState).toHaveBeenCalledWith(processId, expect.objectContaining({ maxAge: 60 }));
+	});
+
+	it('does not reuse cached state after an opaque route fingerprint changes', async () => {
+		const providers = [{ url: 'https://andee.example', ownership: 'personal' as const }];
+		let fingerprint = 'custom-routes-one';
+		const aoFetch = vi.fn(async () => new Response()) as unknown as PermawebOsAoFetch;
+		aoFetch.invalidate = vi.fn(async () => undefined);
+		aoFetch.cacheMetadata = vi.fn(() => undefined);
+		Object.defineProperty(aoFetch, 'peers', { value: ['https://hosted.example'] });
+		aoFetch.ready = vi.fn(async () => aoFetch.peers);
+		aoFetch.networkPolicy = vi.fn(async () => ({
+			version: 1 as const,
+			fingerprint,
+			arweaveGateway: { url: 'https://gateway.example', ownership: 'default' as const },
+			permanentContent: { url: 'https://content.example', ownership: 'community' as const },
+			publishing: { url: 'https://upload.example', ownership: 'default' as const },
+			ao: {
+				processReads: providers,
+				scheduleReads: providers,
+				linkedStateReads: providers,
+				observerRelay: { url: 'https://hosted.example', ownership: 'default' as const },
+				fallbackMode: 'custom' as const,
+			},
+		}));
+		const scope = Object.assign(new EventTarget(), {
+			aoFetch,
+			location: {
+				protocol: 'https:',
+				hostname: 'bazar.example',
+				port: '',
+				search: '',
+				hash: '',
+			},
+		});
+		vi.stubGlobal('window', scope);
+		const stop = warmAoFetch();
+
+		await vi.waitFor(() => expect(aoRoutingScopeFromLocation()).toBe('custom-routes-one'));
+		await readAssetStateCached(processId);
+		expect(cachedAssetState(processId)).toBe(result);
+
+		fingerprint = 'custom-routes-two';
+		scope.dispatchEvent(new Event('aoFetchLoaded'));
+		await vi.waitFor(() => expect(aoRoutingScopeFromLocation()).toBe('custom-routes-two'));
+
+		expect(cachedAssetState(processId)).toBeUndefined();
+		await readAssetStateCached(processId);
+		expect(mocks.readAssetState).toHaveBeenCalledTimes(2);
+		stop();
 	});
 
 	it('can force a commerce-safe revalidation', async () => {
