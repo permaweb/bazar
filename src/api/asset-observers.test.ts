@@ -81,4 +81,25 @@ describe('assetObserverNetworkOptions', () => {
 		expect(options['relay-with']).toBe('https://primary.example');
 		expect(options.fetch).toBe(permawebOsFetch);
 	});
+
+	it('fails closed when the PermawebOS policy does not assign an observer relay', async () => {
+		permawebOsFetch.networkPolicy = vi.fn(
+			async () =>
+				({
+					version: 1,
+					arweaveGateway: { url: 'https://arweave.net', ownership: 'default' },
+					permanentContent: { url: 'https://arweave.net', ownership: 'default' },
+					publishing: { url: 'https://up.arweave.net', ownership: 'default' },
+					ao: {
+						processReads: [{ url: 'https://andee.example', ownership: 'personal' }],
+						scheduleReads: [{ url: 'https://andee.example', ownership: 'personal' }],
+						linkedStateReads: [{ url: 'https://andee.example', ownership: 'personal' }],
+						fallbackMode: 'personal-only',
+					},
+				} as const)
+		);
+		await loadPermawebOsNetworkPolicy();
+
+		expect(() => assetObserverNetworkOptions(location({}))).toThrow('No AO peer is configured.');
+	});
 });
