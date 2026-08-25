@@ -28,6 +28,7 @@ type NetworkPolicyFetcher = PermawebOsAoFetch & {
 
 const networkPolicies = new WeakMap<NetworkPolicyFetcher, EffectivePermawebNetworkPolicy>();
 const networkPolicyLoads = new WeakMap<NetworkPolicyFetcher, Promise<EffectivePermawebNetworkPolicy | undefined>>();
+const networkPolicyRevisions = new WeakMap<NetworkPolicyFetcher, number>();
 
 export const DEFAULT_ARWEAVE_GATEWAY = configuredArweaveGateway
 	? new URL(configuredArweaveGateway).origin
@@ -190,9 +191,13 @@ export async function loadPermawebOsNetworkPolicy(
 	if (cached) return cached;
 	let loading = networkPolicyLoads.get(fetcher);
 	if (!loading) {
+		const revision = networkPolicyRevisions.get(fetcher) ?? 0;
 		loading = fetcher
 			.networkPolicy()
 			.then((policy) => {
+				if ((networkPolicyRevisions.get(fetcher) ?? 0) !== revision) {
+					return networkPolicies.get(fetcher);
+				}
 				if (!isEffectivePermawebNetworkPolicy(policy)) return undefined;
 				networkPolicies.set(fetcher, policy);
 				return policy;
@@ -201,6 +206,17 @@ export async function loadPermawebOsNetworkPolicy(
 		networkPolicyLoads.set(fetcher, loading);
 	}
 	return loading;
+}
+
+export function refreshPermawebOsNetworkPolicy(
+	scope: Pick<Window, 'aoFetch'> | undefined = globalThis.window
+): Promise<EffectivePermawebNetworkPolicy | undefined> {
+	const fetcher = scope?.aoFetch as NetworkPolicyFetcher | undefined;
+	if (!fetcher || typeof fetcher.networkPolicy !== 'function') return Promise.resolve(undefined);
+	networkPolicyRevisions.set(fetcher, (networkPolicyRevisions.get(fetcher) ?? 0) + 1);
+	networkPolicies.delete(fetcher);
+	networkPolicyLoads.delete(fetcher);
+	return loadPermawebOsNetworkPolicy(scope);
 }
 
 export function currentPermawebOsNetworkPolicy(

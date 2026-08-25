@@ -434,7 +434,7 @@ export function App() {
 	React.useEffect(() => {
 		const controller = new AbortController();
 		setMarket((current) => ({ ...current, verifiedCollectionIds: new Set(), loading: true, error: null }));
-		warmAoFetch(() => {
+		const stopAoWarmup = warmAoFetch(() => {
 			if (!controller.signal.aborted) setNetworkPolicyRevision((revision) => revision + 1);
 		});
 		void loadCollections(
@@ -520,7 +520,10 @@ export function App() {
 				}
 			}
 		);
-		return () => controller.abort();
+		return () => {
+			controller.abort();
+			stopAoWarmup();
+		};
 	}, [marketRetry]);
 	const loadMore = React.useCallback(
 		async (collectionId: string, signal?: AbortSignal) => {

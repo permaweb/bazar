@@ -21,6 +21,7 @@ import {
 	permanentContentGatewayFromLocation,
 	PRODUCTION_COMPUTE_GATEWAY,
 	PRODUCTION_COMPUTE_GATEWAYS,
+	refreshPermawebOsNetworkPolicy,
 	usesPermawebOsAo,
 } from './config';
 
@@ -230,5 +231,52 @@ describe('Arweave gateway routing', () => {
 
 		expect(gatewaysFromLocation(selected, scope)).toEqual(['https://andee.example']);
 		expect(observerRelayFromLocation(selected, scope)).toBe('');
+	});
+
+	it('does not let a delayed policy load overwrite a newer refresh', async () => {
+		const firstPolicy = {
+			version: 1 as const,
+			arweaveGateway: { url: 'https://gateway.example', ownership: 'default' as const },
+			permanentContent: { url: 'https://content-one.example', ownership: 'community' as const },
+			publishing: { url: 'https://upload.example', ownership: 'default' as const },
+			ao: {
+				processReads: [{ url: 'https://andee-one.example', ownership: 'personal' as const }],
+				scheduleReads: [{ url: 'https://andee-one.example', ownership: 'personal' as const }],
+				linkedStateReads: [{ url: 'https://andee-one.example', ownership: 'personal' as const }],
+				observerRelay: { url: 'https://relay-one.example', ownership: 'community' as const },
+				fallbackMode: 'personal-first' as const,
+			},
+		};
+		const secondPolicy = {
+			...firstPolicy,
+			permanentContent: { url: 'https://content-two.example', ownership: 'community' as const },
+			ao: {
+				...firstPolicy.ao,
+				processReads: [{ url: 'https://andee-two.example', ownership: 'personal' as const }],
+				observerRelay: { url: 'https://relay-two.example', ownership: 'community' as const },
+			},
+		};
+		let resolveFirst!: (policy: typeof firstPolicy) => void;
+		const firstLoad = new Promise<typeof firstPolicy>((resolve) => {
+			resolveFirst = resolve;
+		});
+		const networkPolicy = vi
+			.fn<() => Promise<typeof firstPolicy | typeof secondPolicy>>()
+			.mockReturnValueOnce(firstLoad)
+			.mockResolvedValue(secondPolicy);
+		const aoFetch = Object.assign(vi.fn(), {
+			peers: ['https://legacy.example'],
+			networkPolicy,
+		}) as unknown as PermawebOsAoFetch;
+		const scope = { aoFetch };
+
+		const loading = loadPermawebOsNetworkPolicy(scope);
+		await expect(refreshPermawebOsNetworkPolicy(scope)).resolves.toEqual(secondPolicy);
+		resolveFirst(firstPolicy);
+		await expect(loading).resolves.toEqual(secondPolicy);
+
+		expect(currentPermawebOsNetworkPolicy(scope)).toEqual(secondPolicy);
+		expect(permanentContentGatewayFromLocation(location(), scope)).toBe('https://content-two.example');
+		expect(observerRelayFromLocation(location(), scope)).toBe('https://relay-two.example');
 	});
 });

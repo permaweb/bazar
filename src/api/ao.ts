@@ -7,6 +7,7 @@ import {
 	gatewaysFromLocation,
 	loadPermawebOsNetworkPolicy,
 	PRODUCTION_COMPUTE_GATEWAYS,
+	refreshPermawebOsNetworkPolicy,
 	usesPermawebOsAo,
 } from 'helpers/config';
 
@@ -116,13 +117,26 @@ export async function readyAoFetch(): Promise<readonly string[]> {
 }
 
 /** Start transport discovery without making otherwise independent application data wait for it. */
-export function warmAoFetch(onNetworkPolicy?: () => void): void {
-	void readyAoFetch().catch(() => undefined);
-	if (permawebOsAoFetch()) {
-		void loadPermawebOsNetworkPolicy().then((policy) => {
-			if (policy) onNetworkPolicy?.();
+export function warmAoFetch(onNetworkPolicy?: () => void): () => void {
+	let stopped = false;
+	const loadPolicy = (refresh: boolean) => {
+		if (!permawebOsAoFetch()) return;
+		const loading = refresh ? refreshPermawebOsNetworkPolicy() : loadPermawebOsNetworkPolicy();
+		void loading.then((policy) => {
+			if (!stopped && (refresh || policy)) onNetworkPolicy?.();
 		});
-	}
+	};
+	const policyChanged = () => {
+		void readyAoFetch().catch(() => undefined);
+		loadPolicy(true);
+	};
+	globalThis.window?.addEventListener?.('aoFetchLoaded', policyChanged);
+	void readyAoFetch().catch(() => undefined);
+	loadPolicy(false);
+	return () => {
+		stopped = true;
+		globalThis.window?.removeEventListener?.('aoFetchLoaded', policyChanged);
+	};
 }
 
 function directNetworkPolicy(peers: readonly string[]): EffectivePermawebNetworkPolicy {
