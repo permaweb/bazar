@@ -26,6 +26,7 @@ export type EffectivePermawebNetworkPolicy = {
 const networkPolicies = new WeakMap<PermawebOsAoFetch, EffectivePermawebNetworkPolicy>();
 const networkPolicyLoads = new WeakMap<PermawebOsAoFetch, Promise<EffectivePermawebNetworkPolicy | undefined>>();
 const networkPolicyRevisions = new WeakMap<PermawebOsAoFetch, number>();
+const strictNetworkPolicyFetchers = new WeakSet<PermawebOsAoFetch>();
 
 export const DEFAULT_ARWEAVE_GATEWAY = configuredArweaveGateway
 	? new URL(configuredArweaveGateway).origin
@@ -196,6 +197,7 @@ export async function loadPermawebOsNetworkPolicy(
 					return networkPolicies.get(fetcher);
 				}
 				if (!isEffectivePermawebNetworkPolicy(policy)) return undefined;
+				strictNetworkPolicyFetchers.add(fetcher);
 				networkPolicies.set(fetcher, policy);
 				return policy;
 			})
@@ -261,6 +263,10 @@ export function aoRoutingScopeFromLocation(
 				fallbackMode: policy.ao.fallbackMode,
 			});
 		}
+		const fetcher = scope?.aoFetch;
+		if (fetcher && strictNetworkPolicyFetchers.has(fetcher)) {
+			return `permawebos-policy-unavailable:${networkPolicyRevisions.get(fetcher) ?? 0}`;
+		}
 	}
 	return gatewaysFromLocation(location, scope).join(',');
 }
@@ -278,6 +284,7 @@ export function gatewaysFromLocation(
 	if (usesPermawebOsAo(location, scope)) {
 		const policy = currentPermawebOsNetworkPolicy(scope);
 		if (policy) return policy.ao.processReads.map(({ url }) => url);
+		if (scope?.aoFetch && strictNetworkPolicyFetchers.has(scope.aoFetch)) return [];
 		return [...(scope?.aoFetch?.peers ?? [])];
 	}
 	return fallbackAoPeersFromLocation(location);

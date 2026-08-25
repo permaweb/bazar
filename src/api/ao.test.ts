@@ -132,6 +132,15 @@ describe('PermawebOS AO transport boundary', () => {
 		expect(permanentContentGatewayFromLocation()).toBe('https://content-two.example');
 		expect(observerRelayFromLocation()).toBe('https://relay-two.example');
 		expect(aoRoutingScopeFromLocation()).toBe('opaque-policy-two');
+
+		vi.mocked(permawebOs.networkPolicy).mockRejectedValueOnce(new Error('policy unavailable'));
+		scope.dispatchEvent(new Event('aoFetchLoaded'));
+
+		await vi.waitFor(() => expect(changed).toHaveBeenCalledTimes(3));
+		expect(permawebOs.networkPolicy).toHaveBeenCalledTimes(3);
+		expect(aoPeers()).toEqual([]);
+		expect(observerRelayFromLocation()).toBe('');
+		expect(aoRoutingScopeFromLocation()).toBe('permawebos-policy-unavailable:2');
 		stop();
 	});
 
