@@ -98,7 +98,22 @@ export function aoCacheMetadata(response: Response): AoCacheMetadata | undefined
 }
 
 export async function readyAoFetch(): Promise<readonly string[]> {
-	return (permawebOsAoFetch() ?? directAoFetch()).ready();
+	const fetcher = permawebOsAoFetch() ?? directAoFetch();
+	const currentPeers = Array.isArray(fetcher.peers)
+		? fetcher.peers.filter((peer): peer is string => typeof peer === 'string')
+		: [];
+	if (typeof fetcher.ready !== 'function') return currentPeers;
+	try {
+		const peers = await fetcher.ready();
+		return Array.isArray(peers) ? peers.filter((peer): peer is string => typeof peer === 'string') : currentPeers;
+	} catch {
+		return currentPeers;
+	}
+}
+
+/** Start transport discovery without making otherwise independent application data wait for it. */
+export function warmAoFetch(): void {
+	void readyAoFetch().catch(() => undefined);
 }
 
 function peerConfig(peers: readonly string[], rateLimit: 'discover' | false) {

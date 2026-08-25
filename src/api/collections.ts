@@ -3,7 +3,7 @@ import { arweaveDataUrl, arweaveGatewayFromLocation, arweaveGraphqlEndpoint, NAM
 
 import { type AssetState, readAssetState } from './asset-marketplace';
 import { HIDDEN_ASSET_IDS, HIDDEN_COLLECTION_IDS } from './catalogue-policy';
-import { fetchJsonWithDeadline, fetchTextWithDeadline } from './fetch-with-deadline';
+import { fetchJsonWithDeadline, fetchTextWithDeadline, operationWithDeadline } from './fetch-with-deadline';
 import { assetFromMintState } from './minted-assets';
 
 export { HIDDEN_ASSET_IDS, HIDDEN_COLLECTION_IDS } from './catalogue-policy';
@@ -259,6 +259,8 @@ const IMAGE_COLLECTIONS = [
 const MAX_INDEX_PAGES = 1_000;
 const GRAPHQL_PAGE_SIZE = 100;
 const ARWEAVE_GRAPHQL_ID_BATCH_SIZE = 9;
+export const BAZAR_COLLECTION_DISCOVERY_TIMEOUT_MS = 15_000;
+export const COLLECTION_AO_READ_TIMEOUT_MS = 15_000;
 
 export const FUNGIBLE_TOKEN_COLLECTION_ID = 'fungible-tokens';
 export const FUNGIBLE_TOKEN_COLLECTION_NAME = 'Bazar Fungible Tokens';
@@ -439,10 +441,19 @@ export async function loadCollections(
 			}
 			if (successes.some(Boolean)) publish();
 		}),
-		discoverBazarCollections(signal, (collection) => {
-			discoveredCollections = deduplicateCollections([...discoveredCollections, collection]);
-			publish();
-		}).catch(() => {
+		operationWithDeadline(
+			(discoverySignal) =>
+				discoverBazarCollections(discoverySignal, (collection) => {
+					if (discoverySignal.aborted) return;
+					discoveredCollections = deduplicateCollections([...discoveredCollections, collection]);
+					publish();
+				}),
+			signal,
+			{
+				timeoutMs: BAZAR_COLLECTION_DISCOVERY_TIMEOUT_MS,
+				timeoutError: 'collection-discovery-timeout',
+			}
+		).catch(() => {
 			throwIfAborted(signal);
 			discoveryUnavailable = true;
 		}),
@@ -607,11 +618,24 @@ async function loadDiscoveredImageCollection(
 ): Promise<Collection> {
 	let manifestId = candidate.manifestId;
 	if (candidate.scheduled) {
-		manifestId =
-			carrierManifestId((await readAssetState(candidate.id, { signal, maxAge: 30, maxAttempts: 1 })).state) ?? '';
+		manifestId = (await liveCarrierManifestId(candidate.id, signal)) ?? '';
 		if (!manifestId) throw new Error('collection-reference-unavailable');
 	}
 	return imageCollection(candidate.id, manifestId, 'carrier', await fetchJson<ImageManifest>(manifestId, signal));
+}
+
+async function liveCarrierManifestId(processId: string, signal?: AbortSignal): Promise<string | undefined> {
+	return operationWithDeadline(
+		async (readSignal) =>
+			carrierManifestId(
+				(await readAssetState(processId, { signal: readSignal, maxAge: 30, maxAttempts: 1 })).state
+			),
+		signal,
+		{
+			timeoutMs: COLLECTION_AO_READ_TIMEOUT_MS,
+			timeoutError: 'collection-carrier-read-timeout',
+		}
+	);
 }
 
 type AtomicAssetIndexNode = { id?: unknown; tags?: unknown };
@@ -1188,9 +1212,7 @@ export async function loadImageCollection(
 		if (tags['execution-device'] === 'carrier@1.0' && tags['scheduler-device'] === 'arweave-scheduler@1.0') {
 			indexSource = 'carrier';
 			try {
-				referencedManifest = carrierManifestId(
-					(await readAssetState(referenceId, { signal, maxAge: 30, maxAttempts: 1 })).state
-				);
+				referencedManifest = await liveCarrierManifestId(referenceId, signal);
 			} catch {
 				throwIfAborted(signal);
 				referencedManifest = tags['initial-value'] ?? referencedManifest;

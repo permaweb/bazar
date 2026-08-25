@@ -42,7 +42,7 @@ import type {
 	SwapPurchase,
 } from 'weave-wrangler';
 
-import { readyAoFetch } from 'api/ao';
+import { warmAoFetch } from 'api/ao';
 import { transactionExplorerUrl } from 'api/arweave-explorer';
 import {
 	type AssetCandidate,
@@ -433,84 +433,81 @@ export function App() {
 	React.useEffect(() => {
 		const controller = new AbortController();
 		setMarket((current) => ({ ...current, verifiedCollectionIds: new Set(), loading: true, error: null }));
-		void readyAoFetch()
-			.then(() =>
-				loadCollections(
-					controller.signal,
-					(collections) => {
-						if (!controller.signal.aborted) {
-							setMarket((current) => ({
-								...current,
-								collections: marketCatalogueCollections(
-									mergeCollectionSnapshots(current.collections, collections)
-								),
-								verifiedCollectionIds: new Set([
-									...current.verifiedCollectionIds,
-									...verifiedCollectionIdsFrom(collections),
-								]),
-							}));
-						}
-					},
-					() => {
-						if (controller.signal.aborted) return;
-						storeHiddenCollectionAssetIndex(window.localStorage, hiddenCollectionAssetIndex());
-						setMarket((current) => ({
-							...current,
-							collections: current.collections.length ? current.collections : storedMarketCollections(),
-							visibilityReady: true,
-						}));
-					}
-				)
-			)
-			.then(
-				({ collections, unavailable }) => {
-					if (controller.signal.aborted) return;
-					const mintedAssets = loadMintedAssets();
-					const localCollections = loadMintedCollections();
-					setMarket((current) => {
-						const resolved = mergeCollectionSnapshots(current.collections, collections, true);
-						const known = new Set(resolved.map((collection) => collection.id));
-						return {
-							...current,
-							collections: marketCatalogueCollections([
-								...resolved,
-								...localCollections.filter((collection) => !known.has(collection.id)),
-								...(mintedAssets.length && !known.has(CREATED_COLLECTION_ID)
-									? [createdCollection(mintedAssets)]
-									: []),
-							]),
-							verifiedCollectionIds: new Set([
-								...current.verifiedCollectionIds,
-								...verifiedCollectionIdsFrom(collections),
-								...localCollections.map((collection) => collection.id),
-							]),
-							loading: false,
-							error: null,
-							notice: unavailable.length
-								? `The latest Arweave references for ${unavailable.join(
-										', '
-								  )} could not be checked. Showing their bundled immutable indexes; ownership, listings, and prices are still read from live state.`
-								: null,
-						};
-					});
-				},
-				(error) => {
-					if (!controller.signal.aborted) {
-						setMarket((current) =>
-							current.collections.length
-								? {
-										...current,
-										loading: false,
-										error: null,
-										notice: `Collection indexes could not be refreshed: ${errorMessage(
-											error
-										)}. Previously loaded collections remain available.`,
-								  }
-								: { ...current, loading: false, error: errorMessage(error), notice: null }
-						);
-					}
+		warmAoFetch();
+		void loadCollections(
+			controller.signal,
+			(collections) => {
+				if (!controller.signal.aborted) {
+					setMarket((current) => ({
+						...current,
+						collections: marketCatalogueCollections(
+							mergeCollectionSnapshots(current.collections, collections)
+						),
+						verifiedCollectionIds: new Set([
+							...current.verifiedCollectionIds,
+							...verifiedCollectionIdsFrom(collections),
+						]),
+					}));
 				}
-			);
+			},
+			() => {
+				if (controller.signal.aborted) return;
+				storeHiddenCollectionAssetIndex(window.localStorage, hiddenCollectionAssetIndex());
+				setMarket((current) => ({
+					...current,
+					collections: current.collections.length ? current.collections : storedMarketCollections(),
+					visibilityReady: true,
+				}));
+			}
+		).then(
+			({ collections, unavailable }) => {
+				if (controller.signal.aborted) return;
+				const mintedAssets = loadMintedAssets();
+				const localCollections = loadMintedCollections();
+				setMarket((current) => {
+					const resolved = mergeCollectionSnapshots(current.collections, collections, true);
+					const known = new Set(resolved.map((collection) => collection.id));
+					return {
+						...current,
+						collections: marketCatalogueCollections([
+							...resolved,
+							...localCollections.filter((collection) => !known.has(collection.id)),
+							...(mintedAssets.length && !known.has(CREATED_COLLECTION_ID)
+								? [createdCollection(mintedAssets)]
+								: []),
+						]),
+						verifiedCollectionIds: new Set([
+							...current.verifiedCollectionIds,
+							...verifiedCollectionIdsFrom(collections),
+							...localCollections.map((collection) => collection.id),
+						]),
+						loading: false,
+						error: null,
+						notice: unavailable.length
+							? `The latest Arweave references for ${unavailable.join(
+									', '
+							  )} could not be checked. Showing their bundled immutable indexes; ownership, listings, and prices are still read from live state.`
+							: null,
+					};
+				});
+			},
+			(error) => {
+				if (!controller.signal.aborted) {
+					setMarket((current) =>
+						current.collections.length
+							? {
+									...current,
+									loading: false,
+									error: null,
+									notice: `Collection indexes could not be refreshed: ${errorMessage(
+										error
+									)}. Previously loaded collections remain available.`,
+							  }
+							: { ...current, loading: false, error: errorMessage(error), notice: null }
+					);
+				}
+			}
+		);
 		return () => controller.abort();
 	}, [marketRetry]);
 	const loadMore = React.useCallback(
