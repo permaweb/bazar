@@ -3,12 +3,11 @@ import { describe, expect, it, vi } from 'vitest';
 import { PERMAWEB_OS_WALLET_PERMISSIONS } from 'api/wallet';
 
 import {
-	browserWalletSelection,
 	completePrivateJwk,
 	connectWallet,
 	createLatestAddressCommitter,
 	isValidWalletJwk,
-	restoreBrowserWalletAfterDisconnect,
+	observeWalletLifecycle,
 } from './WalletProvider';
 
 function deferred<T>() {
@@ -82,43 +81,26 @@ describe('explicit wallet connection', () => {
 	});
 });
 
-describe('browser wallet provider handoff', () => {
-	const wallet = () => ({
-		connect: vi.fn(async () => undefined),
-		disconnect: vi.fn(async () => undefined),
-		getActiveAddress: vi.fn(async () => 'a'.repeat(43)),
-		sign: vi.fn(async (transaction: unknown) => transaction),
-	});
+describe('browser wallet lifecycle', () => {
+	it('subscribes to and removes disconnect and permission listeners', () => {
+		const on = vi.fn();
+		const off = vi.fn();
+		const disconnect = vi.fn();
+		const permissions = vi.fn();
+		const cleanup = observeWalletLifecycle(
+			{
+				connect: async () => undefined,
+				events: { on, off },
+				sign: async (transaction) => transaction,
+			},
+			{ disconnect, permissions }
+		);
 
-	it('restores Wander after disconnecting PermawebOS without requiring a reload', () => {
-		const wander = wallet();
-		const permawebOs = wallet();
-		const scope: Pick<Window, 'arweaveWallet' | 'permawebConnect'> = {
-			arweaveWallet: wander,
-			permawebConnect: permawebOs,
-		};
-
-		const permawebSelection = browserWalletSelection(scope, 'permaweb-os');
-		expect(permawebSelection).toEqual({ wallet: permawebOs, remembered: wander });
-		scope.arweaveWallet = permawebSelection.wallet;
-
-		restoreBrowserWalletAfterDisconnect(scope, permawebOs, permawebOs, permawebSelection.remembered);
-		expect(scope.arweaveWallet).toBe(wander);
-		expect(browserWalletSelection(scope, 'wander', permawebSelection.remembered).wallet).toBe(wander);
-	});
-
-	it('does not overwrite a different provider injected while PermawebOS disconnects', () => {
-		const remembered = wallet();
-		const reinjected = wallet();
-		const permawebOs = wallet();
-		const scope: Pick<Window, 'arweaveWallet' | 'permawebConnect'> = {
-			arweaveWallet: reinjected,
-			permawebConnect: permawebOs,
-		};
-
-		restoreBrowserWalletAfterDisconnect(scope, permawebOs, permawebOs, remembered);
-
-		expect(scope.arweaveWallet).toBe(reinjected);
+		expect(on).toHaveBeenCalledWith('disconnect', disconnect);
+		expect(on).toHaveBeenCalledWith('permissions', permissions);
+		cleanup?.();
+		expect(off).toHaveBeenCalledWith('disconnect', disconnect);
+		expect(off).toHaveBeenCalledWith('permissions', permissions);
 	});
 });
 

@@ -3,6 +3,7 @@ import { Copy, Download, FileUp, KeyRound, Wallet, X } from 'lucide-react';
 
 import type { JWKInterface } from 'arweave/web/lib/wallet';
 
+import { clearActiveWallet, getActiveWallet, selectActiveWallet } from 'api/active-wallet';
 import {
 	BROWSER_WALLET_PERMISSIONS,
 	type BrowserWalletId,
@@ -47,10 +48,10 @@ const LEGACY_PERMAWEB_OS_WALLET_ID = 'the-fold';
 const LOCAL_WALLET_ADAPTER = Symbol('bazar-local-wallet-adapter');
 
 const WalletContext = React.createContext<WalletContextValue | null>(null);
-let rememberedBrowserWallet: Window['arweaveWallet'];
 
 export function WalletProvider({ children }: React.PropsWithChildren) {
 	const [address, setAddress] = React.useState<string | null>(null);
+	const [provider, setProvider] = React.useState<ArweaveWalletProvider | null>(null);
 	const [arBalance, setArBalance] = React.useState<bigint | null>(null);
 	const [arBalanceDenomination, setArBalanceDenomination] = React.useState(12);
 	const [arBalanceStatus, setArBalanceStatus] = React.useState<WalletContextValue['arBalanceStatus']>('idle');
@@ -68,24 +69,45 @@ export function WalletProvider({ children }: React.PropsWithChildren) {
 		const commit = addressRequests.current.begin();
 		try {
 			const connection = await restoreBrowserWalletConnection(window, readBrowserWalletPreference());
-			if (connection) window.arweaveWallet = connection.wallet;
-			commit(connection?.address ?? null);
+			if (!commit(connection?.address ?? null)) return;
+			if (connection) selectActiveWallet(connection.wallet);
+			else clearActiveWallet();
+			setProvider(connection?.wallet ?? null);
 		} catch {
-			commit(null);
+			if (!commit(null)) return;
+			clearActiveWallet();
+			setProvider(null);
 		}
 	}, []);
 
 	React.useEffect(() => {
 		let cancelled = false;
-		void installDevelopmentWallet().then(() => {
+		void installDevelopmentWallet().then((developmentConnection) => {
 			if (cancelled) return;
+			if (developmentConnection) {
+				const commit = addressRequests.current.begin();
+				if (commit(developmentConnection.address)) {
+					selectActiveWallet(developmentConnection.wallet);
+					setProvider(developmentConnection.wallet);
+				}
+				return;
+			}
 			const storedWallet = readLocalWallet();
 			if (storedWallet) {
 				const commit = addressRequests.current.begin();
-				void activateLocalWallet(storedWallet).then(commit, () => {
-					clearLocalWallet();
-					commit(null);
-				});
+				void activateLocalWallet(storedWallet).then(
+					(connection) => {
+						if (!commit(connection.address)) return;
+						selectActiveWallet(connection.wallet);
+						setProvider(connection.wallet);
+					},
+					() => {
+						clearLocalWallet();
+						if (!commit(null)) return;
+						clearActiveWallet();
+						setProvider(null);
+					}
+				);
 			} else {
 				void refresh();
 			}
@@ -119,7 +141,7 @@ export function WalletProvider({ children }: React.PropsWithChildren) {
 		const controller = new AbortController();
 		setArBalanceStatus('loading');
 		setAoBalanceStatus('idle');
-		void readVisibleWalletBalances(address, { signal: controller.signal }).then((balances) => {
+		void readVisibleWalletBalances(address, { signal: controller.signal, wallet: provider }).then((balances) => {
 			if (controller.signal.aborted) return;
 			setArBalance(balances.ar.atomicBalance);
 			setArBalanceDenomination(balances.ar.denomination);
@@ -129,7 +151,32 @@ export function WalletProvider({ children }: React.PropsWithChildren) {
 			setAoBalanceStatus(balances.ao ? (balances.ao.atomicBalance === null ? 'error' : 'ready') : 'idle');
 		});
 		return () => controller.abort();
-	}, [address, balanceRevision]);
+	}, [address, balanceRevision, provider]);
+
+	const deactivateProvider = React.useCallback((wallet: ArweaveWalletProvider) => {
+		if (!clearActiveWallet(wallet)) return;
+		const commit = addressRequests.current.begin();
+		clearBrowserWalletPreference();
+		setProvider(null);
+		commit(null);
+	}, []);
+
+	React.useEffect(() => {
+		if (!provider) return;
+		const disconnect = () => deactivateProvider(provider);
+		const permissions = (value: unknown) => {
+			if (Array.isArray(value) && BROWSER_WALLET_PERMISSIONS.every((permission) => value.includes(permission))) {
+				setBalanceRevision((revision) => revision + 1);
+				return;
+			}
+			disconnect();
+		};
+		const stopObserving = observeWalletLifecycle(provider, { disconnect, permissions });
+		return () => {
+			stopObserving?.();
+			clearActiveWallet(provider);
+		};
+	}, [deactivateProvider, provider]);
 
 	const value = React.useMemo<WalletContextValue>(
 		() => ({
@@ -141,47 +188,45 @@ export function WalletProvider({ children }: React.PropsWithChildren) {
 			aoBalanceDenomination,
 			aoBalanceStatus,
 			connect: async (walletId) => {
-				const wallet = browserWallet(walletId);
+				const wallet = resolveBrowserWallet(window, walletId);
 				const commit = addressRequests.current.begin();
 				const nextAddress = await connectWallet(
 					wallet,
 					walletId === 'permaweb-os' ? 'PermawebOS' : 'Wander',
 					walletId === 'permaweb-os' ? PERMAWEB_OS_WALLET_PERMISSIONS : BROWSER_WALLET_PERMISSIONS
 				);
+				if (!commit(nextAddress) || !wallet) return;
 				clearLocalWallet();
-				window.arweaveWallet = wallet;
 				storeBrowserWalletPreference(walletId);
-				commit(nextAddress);
+				selectActiveWallet(wallet);
+				setProvider(wallet);
 				setBalanceRevision((revision) => revision + 1);
 			},
 			disconnect: async () => {
 				const commit = addressRequests.current.begin();
-				const disconnectedWallet = window.arweaveWallet;
-				const permawebOs = resolveBrowserWallet(window, 'permaweb-os');
+				const disconnectedWallet = provider ?? getActiveWallet();
 				if (isLocalWallet(disconnectedWallet)) {
 					clearLocalWallet();
-					restoreBrowserWallet();
 				} else {
 					await disconnectedWallet?.disconnect?.();
-					restoreBrowserWalletAfterDisconnect(
-						window,
-						disconnectedWallet,
-						permawebOs,
-						rememberedBrowserWallet
-					);
 				}
+				if (!commit(null)) return;
+				if (disconnectedWallet) clearActiveWallet(disconnectedWallet);
 				clearBrowserWalletPreference();
-				commit(null);
+				setProvider(null);
 			},
 			generateLocalWallet: async () => {
 				const arweave = await createArweaveClient();
 				const jwk = (await arweave.wallets.generate()) as unknown as WalletJwk;
 				if (!isValidWalletJwk(jwk)) throw new Error('The generated Arweave keyfile was invalid.');
-				storeLocalWallet(jwk);
 				const commit = addressRequests.current.begin();
-				const nextAddress = await activateLocalWallet(jwk);
-				commit(nextAddress);
-				return { address: nextAddress, jwk };
+				const connection = await activateLocalWallet(jwk);
+				if (commit(connection.address)) {
+					storeLocalWallet(jwk);
+					selectActiveWallet(connection.wallet);
+					setProvider(connection.wallet);
+				}
+				return { address: connection.address, jwk };
 			},
 			importLocalWallet: async (file: File) => {
 				let jwk: unknown;
@@ -191,9 +236,12 @@ export function WalletProvider({ children }: React.PropsWithChildren) {
 					throw new Error('Choose a valid Arweave JSON keyfile.');
 				}
 				if (!isValidWalletJwk(jwk)) throw new Error('Choose a valid Arweave JSON keyfile.');
-				storeLocalWallet(jwk);
 				const commit = addressRequests.current.begin();
-				commit(await activateLocalWallet(jwk));
+				const connection = await activateLocalWallet(jwk);
+				if (!commit(connection.address)) return;
+				storeLocalWallet(jwk);
+				selectActiveWallet(connection.wallet);
+				setProvider(connection.wallet);
 			},
 			openConnectDialog: (trigger) => {
 				connectDialogTrigger.current =
@@ -211,7 +259,16 @@ export function WalletProvider({ children }: React.PropsWithChildren) {
 				  }
 				: {}),
 		}),
-		[address, aoBalance, aoBalanceDenomination, aoBalanceStatus, arBalance, arBalanceDenomination, arBalanceStatus]
+		[
+			address,
+			aoBalance,
+			aoBalanceDenomination,
+			aoBalanceStatus,
+			arBalance,
+			arBalanceDenomination,
+			arBalanceStatus,
+			provider,
+		]
 	);
 
 	return (
@@ -527,6 +584,20 @@ export function createLatestAddressCommitter(commit: (address: string | null) =>
 	};
 }
 
+export function observeWalletLifecycle(
+	wallet: ArweaveWalletProvider | null,
+	handlers: { disconnect(): void; permissions(value: unknown): void }
+) {
+	const events = wallet?.events;
+	if (!events) return undefined;
+	events.on('disconnect', handlers.disconnect);
+	events.on('permissions', handlers.permissions);
+	return () => {
+		events.off('disconnect', handlers.disconnect);
+		events.off('permissions', handlers.permissions);
+	};
+}
+
 export function isValidWalletJwk(value: unknown): value is WalletJwk {
 	return Boolean(
 		value &&
@@ -541,50 +612,6 @@ export function isValidWalletJwk(value: unknown): value is WalletJwk {
 	);
 }
 
-export function browserWalletSelection(
-	scope: Pick<Window, 'arweaveWallet' | 'permawebConnect'>,
-	walletId: BrowserWalletId,
-	remembered?: Window['arweaveWallet']
-) {
-	const current = scope.arweaveWallet;
-	const requested = resolveBrowserWallet(scope, walletId);
-	if (walletId === 'permaweb-os') {
-		return {
-			wallet: requested,
-			remembered: current && !isLocalWallet(current) && current !== requested ? current : remembered,
-		};
-	}
-	if (requested && !isLocalWallet(requested)) {
-		return { wallet: requested, remembered: requested };
-	}
-	const permawebOs = resolveBrowserWallet(scope, 'permaweb-os');
-	return {
-		wallet: remembered && remembered !== permawebOs ? remembered : undefined,
-		remembered,
-	};
-}
-
-export function restoreBrowserWalletAfterDisconnect(
-	scope: Pick<Window, 'arweaveWallet' | 'permawebConnect'>,
-	disconnectedWallet: Window['arweaveWallet'],
-	permawebOs: Window['arweaveWallet'],
-	remembered?: Window['arweaveWallet']
-) {
-	if (!disconnectedWallet || disconnectedWallet !== permawebOs) return;
-	if (scope.arweaveWallet && scope.arweaveWallet !== disconnectedWallet) return;
-	if (remembered && remembered !== permawebOs) {
-		scope.arweaveWallet = remembered;
-	} else {
-		delete scope.arweaveWallet;
-	}
-}
-
-function browserWallet(walletId: BrowserWalletId) {
-	const selection = browserWalletSelection(window, walletId, rememberedBrowserWallet);
-	rememberedBrowserWallet = selection.remembered;
-	return selection.wallet;
-}
-
 function isLocalWallet(wallet: Window['arweaveWallet']) {
 	return Boolean(
 		wallet && (wallet as Window['arweaveWallet'] & { [LOCAL_WALLET_ADAPTER]?: boolean })[LOCAL_WALLET_ADAPTER]
@@ -592,12 +619,10 @@ function isLocalWallet(wallet: Window['arweaveWallet']) {
 }
 
 async function activateLocalWallet(jwk: WalletJwk) {
-	const current = window.arweaveWallet;
-	if (current && !isLocalWallet(current)) rememberedBrowserWallet = current;
 	const signingJwk = completePrivateJwk(jwk);
 	const arweave = await createArweaveClient();
 	const address = await arweave.wallets.jwkToAddress(signingJwk as any);
-	window.arweaveWallet = {
+	const wallet = {
 		[LOCAL_WALLET_ADAPTER]: true,
 		connect: async () => undefined,
 		disconnect: async () => undefined,
@@ -606,8 +631,8 @@ async function activateLocalWallet(jwk: WalletJwk) {
 			await arweave.transactions.sign(transaction, signingJwk as any);
 			return transaction;
 		},
-	} as Window['arweaveWallet'];
-	return address;
+	} as ArweaveWalletProvider;
+	return { address, wallet };
 }
 
 export function completePrivateJwk(jwk: WalletJwk): WalletJwk {
@@ -696,14 +721,6 @@ function encodeInteger(value: bigint) {
 	return btoa(bytes.join('')).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
-function restoreBrowserWallet() {
-	if (rememberedBrowserWallet) {
-		window.arweaveWallet = rememberedBrowserWallet;
-	} else {
-		delete window.arweaveWallet;
-	}
-}
-
 function readLocalWallet() {
 	try {
 		const stored = localStorage.getItem(LOCAL_WALLET_KEY);
@@ -754,7 +771,7 @@ async function installDevelopmentWallet() {
 		if (!isValidWalletJwk(wallet)) throw new Error('invalid-wallet');
 		const arweave = await createArweaveClient();
 		let address: string | undefined;
-		window.arweaveWallet = {
+		const developmentWallet = {
 			connect: async () => undefined,
 			disconnect: async () => undefined,
 			getActiveAddress: async () => {
@@ -765,7 +782,8 @@ async function installDevelopmentWallet() {
 				await arweave.transactions.sign(transaction, wallet);
 				return transaction;
 			},
-		};
+		} as ArweaveWalletProvider;
+		return { address: await developmentWallet.getActiveAddress!(), wallet: developmentWallet };
 	} catch {
 		localStorage.removeItem('bazar:e2e-wallet');
 	}

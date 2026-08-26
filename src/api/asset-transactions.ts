@@ -14,6 +14,7 @@ import { createArweaveClient } from 'helpers/arweave';
 import { setCriticalStorageItem } from 'helpers/browser-storage';
 import { arweaveClientConfig, arweaveGatewayFromLocation } from 'helpers/config';
 
+import { getActiveWallet } from './active-wallet';
 import { aoFetch } from './ao';
 import { currentArweaveHeight } from './arweave-height';
 import {
@@ -214,7 +215,7 @@ export class AssetTransactionClient {
 	#reservationInclusionMargin: number;
 
 	constructor(options: AssetTransactionClientOptions = {}) {
-		this.#wallet = options.wallet ?? globalThis.window?.arweaveWallet;
+		this.#wallet = options.wallet ?? getActiveWallet();
 		this.#fetch = options.fetch ?? globalThis.fetch.bind(globalThis);
 		this.#peerFetch = aoFetch(options.fetch);
 		this.#arweave = options.arweave;

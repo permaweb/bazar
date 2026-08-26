@@ -1,6 +1,7 @@
 import { createArweaveClient } from 'helpers/arweave';
 import { arweaveClientConfig, arweaveDataUrl, arweaveGatewayFromLocation } from 'helpers/config';
 
+import { getActiveWallet } from './active-wallet';
 import { type AssetUploadData, type AssetUploadOptions } from './asset-uploader';
 
 const ARWEAVE_ID = /^[A-Za-z0-9_-]{43}$/;
@@ -141,7 +142,7 @@ export class ProfileClient {
 			this.#publish = options.publish;
 			return;
 		}
-		const wallet = options.wallet ?? globalThis.window?.arweaveWallet;
+		const wallet = options.wallet ?? getActiveWallet();
 		let arweave = options.arweave;
 		const getArweave = async () => {
 			arweave ??= await createArweaveClient(arweaveClientConfig(this.#gateway));
