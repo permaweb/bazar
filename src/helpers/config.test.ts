@@ -19,6 +19,7 @@ import {
 	normalizeComputeGateways,
 	observerRelayFromLocation,
 	permanentContentGatewayFromLocation,
+	permawebOsAoAvailable,
 	PRODUCTION_COMPUTE_GATEWAY,
 	PRODUCTION_COMPUTE_GATEWAYS,
 	refreshPermawebOsNetworkPolicy,
@@ -34,6 +35,10 @@ function location(overrides: Partial<Location> = {}): Location {
 		hash: '',
 		...overrides,
 	} as Location;
+}
+
+function injectedAoFetch(peers: readonly string[]): PermawebOsAoFetch {
+	return Object.assign(vi.fn(), { peers }) as unknown as PermawebOsAoFetch;
 }
 
 describe('Arweave gateway routing', () => {
@@ -89,7 +94,7 @@ describe('Arweave gateway routing', () => {
 
 	it('keeps PermawebOS peers and the Arweave selection independent', () => {
 		vi.stubGlobal('window', {
-			aoFetch: { peers: ['https://permawebos-peer.example'] },
+			aoFetch: injectedAoFetch(['https://permawebos-peer.example']),
 		});
 		const selected = location({
 			search: '?node=https%3A%2F%2Fcompute.example&arweave-node=https%3A%2F%2Fgateway.example',
@@ -101,7 +106,7 @@ describe('Arweave gateway routing', () => {
 
 	it('prefers the ordered PermawebOS peer list while retaining the Bazar fallbacks', () => {
 		vi.stubGlobal('window', {
-			aoFetch: { peers: ['https://primary.example', 'https://secondary.example'] },
+			aoFetch: injectedAoFetch(['https://primary.example', 'https://secondary.example']),
 		});
 		const selected = location({
 			search: `?node=${encodeURIComponent('https://ignored.example')}`,
@@ -115,7 +120,7 @@ describe('Arweave gateway routing', () => {
 
 	it('uses the URL fallback list when the user disables the PermawebOS transport', () => {
 		vi.stubGlobal('window', {
-			aoFetch: { peers: ['https://permawebos.example'] },
+			aoFetch: injectedAoFetch(['https://permawebos.example']),
 		});
 		const selected = location({
 			search: `?ao-transport=bazar&node=${encodeURIComponent('https://alpha.example, https://charlie.example')}`,
@@ -130,6 +135,17 @@ describe('Arweave gateway routing', () => {
 		vi.stubGlobal('window', {});
 		const selected = location({ search: `?node=${encodeURIComponent('https://fallback.example')}` });
 
+		expect(usesPermawebOsAo(selected)).toBe(false);
+		expect(gatewaysFromLocation(selected)).toEqual(['https://fallback.example']);
+	});
+
+	it('ignores a non-callable aoFetch-shaped global', () => {
+		vi.stubGlobal('window', {
+			aoFetch: { peers: ['https://malformed.example'] },
+		});
+		const selected = location({ search: `?node=${encodeURIComponent('https://fallback.example')}` });
+
+		expect(permawebOsAoAvailable()).toBe(false);
 		expect(usesPermawebOsAo(selected)).toBe(false);
 		expect(gatewaysFromLocation(selected)).toEqual(['https://fallback.example']);
 	});
@@ -155,7 +171,7 @@ describe('Arweave gateway routing', () => {
 
 	it('keeps ordinary item fallback on permanent-content gateways, not compute peers', () => {
 		vi.stubGlobal('window', {
-			aoFetch: { peers: ['https://alpha.example', 'https://charlie.example'] },
+			aoFetch: injectedAoFetch(['https://alpha.example', 'https://charlie.example']),
 		});
 		const id = 'A'.repeat(43);
 		expect(

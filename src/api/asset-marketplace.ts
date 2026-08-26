@@ -706,21 +706,41 @@ async function readLinkedStateTable(
 				allowNotFound?(input: RequestInfo | URL, init?: RequestInit): Promise<Response>;
 			}
 		).allowNotFound;
-		const deviceResponse = await (allowNotFound ?? fetcher)(`${statePath}/balances/device`, {
-			signal: requestInit.signal,
-		});
-		if (deviceResponse.status === 404) {
-			// Small immutable balance maps can be projected as a direct json@1.0
-			// link without exposing a mounted balances/device child path. Follow
-			// that link, but retain the bounded-table guard for every other device.
+		try {
+			const deviceResponse = await (allowNotFound ?? fetcher)(`${statePath}/balances/device`, {
+				signal: requestInit.signal,
+			});
+			requestInit.signal?.throwIfAborted();
+			if (deviceResponse.status === 404 || !deviceResponse.ok) {
+				// A legacy routed fetch can reject or hide the optional 404 probe.
+				// Inspect only the linked root in that case; it is safe to use when
+				// it identifies itself as a direct immutable JSON value.
+				requireDirectJsonBalance = true;
+			} else if ((await deviceResponse.text()).trim() !== 'message@1.0') {
+				return [key, {}, false];
+			}
+		} catch {
+			requestInit.signal?.throwIfAborted();
 			requireDirectJsonBalance = true;
-		} else {
-			if (!deviceResponse.ok) throw new Error(`HTTP ${deviceResponse.status}`);
-			if ((await deviceResponse.text()).trim() !== 'message@1.0') return [key, {}, false];
 		}
 	}
-	const root = await read(id);
-	if (requireDirectJsonBalance && root.device !== 'json@1.0') return [key, {}, false];
+	let root: Record<string, unknown>;
+	try {
+		root = await read(id);
+	} catch (error) {
+		requestInit.signal?.throwIfAborted();
+		if (requireDirectJsonBalance) return [key, {}, false];
+		throw error;
+	}
+	if (requireDirectJsonBalance) {
+		if (root.device !== 'json@1.0') return [key, {}, false];
+		try {
+			return [key, await linkedRecord(root, read, readScalar), true];
+		} catch {
+			requestInit.signal?.throwIfAborted();
+			return [key, {}, false];
+		}
+	}
 	return [
 		key,
 		root.device === 'trie@1.0' ? await flattenLinkedTrie(root, read) : await linkedRecord(root, read, readScalar),

@@ -29,8 +29,11 @@ const processId = 'IyFfmbTu8P4rv0KyrA0Q-QtfEnYntMj4RkRiBVip9KA';
 
 beforeEach(() => {
 	clearArweaveHeightCache();
+	const aoFetch = Object.assign(vi.fn(), {
+		peers: ['https://primary.example', 'https://secondary.example'],
+	}) as unknown as PermawebOsAoFetch;
 	vi.stubGlobal('window', {
-		aoFetch: { peers: ['https://primary.example', 'https://secondary.example'] },
+		aoFetch,
 	});
 });
 afterEach(() => vi.unstubAllGlobals());
@@ -334,15 +337,135 @@ describe('asset state', () => {
 		expect(requested).toContain(`/${balancesLink}~message@1.0/serialize~json@1.0`);
 	});
 
+	it('recovers a direct JSON balance link when a public-beta style routed probe rejects its 404', async () => {
+		const balancesLink = 'B'.repeat(43);
+		const requested: string[] = [];
+		const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+			const url = String(input);
+			requested.push(url);
+			if (url.endsWith('/balances/device')) throw new Error('ao-wrangler-response-quorum-not-met');
+			if (url.endsWith(`${balancesLink}~message@1.0/serialize~json@1.0`)) {
+				return jsonResponse({ device: 'json@1.0', [owner]: 1 });
+			}
+			return new Response(null, {
+				headers: {
+					'balances+link': balancesLink,
+					'execution-device': 'token@1.0',
+					name: 'Legacy routed asset',
+					'total-supply': '1',
+				},
+			});
+		});
+
+		const result = await readAssetState(processId, { fetch: fetcher as unknown as typeof fetch });
+
+		expect(result.state.name).toBe('Legacy routed asset');
+		expect(result.state.balances).toEqual({ [owner]: '1' });
+		expect(result.state.holderBalancesAvailable).toBe(true);
+		expect(ownerOfAsset(result.state)).toBe(owner);
+		expect(requested).toContain(`/${balancesLink}~message@1.0/serialize~json@1.0`);
+	});
+
+	it('uses the allowNotFound helper when the selected transport provides it', async () => {
+		const balancesLink = 'B'.repeat(43);
+		const requested: string[] = [];
+		let probed = '';
+		const allowNotFound = vi.fn(async (input: RequestInfo | URL) => {
+			probed = String(input);
+			return new Response('not_found', { status: 404 });
+		});
+		const fetcher = Object.assign(
+			vi.fn(async (input: RequestInfo | URL) => {
+				const url = String(input);
+				requested.push(url);
+				if (url.endsWith(`${balancesLink}~message@1.0/serialize~json@1.0`)) {
+					return jsonResponse({ device: 'json@1.0', [owner]: 1 });
+				}
+				return new Response(null, {
+					headers: {
+						'balances+link': balancesLink,
+						'execution-device': 'token@1.0',
+						'total-supply': '1',
+					},
+				});
+			}),
+			{ allowNotFound }
+		);
+
+		const result = await readAssetState(processId, { fetch: fetcher as unknown as typeof fetch });
+
+		expect(result.state.balances).toEqual({ [owner]: '1' });
+		expect(result.state.holderBalancesAvailable).toBe(true);
+		expect(allowNotFound).toHaveBeenCalledOnce();
+		expect(probed).toContain('/balances/device');
+		expect(requested.every((url) => !url.endsWith('/balances/device'))).toBe(true);
+	});
+
+	it('keeps core state when neither a failed device probe nor its linked root is usable', async () => {
+		const balancesLink = 'B'.repeat(43);
+		const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+			const url = String(input);
+			if (url.endsWith('/balances/device') || url.includes(balancesLink)) {
+				throw new Error('ao-wrangler-response-quorum-not-met');
+			}
+			return new Response(null, {
+				headers: {
+					'balances+link': balancesLink,
+					'execution-device': 'token@1.0',
+					name: 'Core state survives',
+					'total-supply': '1',
+				},
+			});
+		});
+
+		const result = await readAssetState(processId, { fetch: fetcher as unknown as typeof fetch });
+
+		expect(result.state.name).toBe('Core state survives');
+		expect(result.state.balances).toEqual({});
+		expect(result.state.holderBalancesAvailable).toBe(false);
+	});
+
+	it('propagates caller cancellation during the optional balance-device probe', async () => {
+		const balancesLink = 'B'.repeat(43);
+		const controller = new AbortController();
+		const reason = new DOMException('Route changed', 'AbortError');
+		const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+			if (String(input).endsWith('/balances/device')) {
+				controller.abort(reason);
+				throw new Error('ao-wrangler-response-quorum-not-met');
+			}
+			return new Response(null, {
+				headers: {
+					'balances+link': balancesLink,
+					'execution-device': 'token@1.0',
+					'total-supply': '1',
+				},
+			});
+		});
+
+		await expect(
+			readAssetState(processId, {
+				fetch: fetcher as unknown as typeof fetch,
+				signal: controller.signal,
+			})
+		).rejects.toBe(reason);
+	});
+
 	it('keeps an unmounted non-JSON balance link unavailable', async () => {
 		const balancesLink = 'B'.repeat(43);
+		const childLink = 'C'.repeat(43);
+		const requested: string[] = [];
 		const result = await readAssetState(processId, {
 			provider: 'https://compute.example',
 			fetch: async (input) => {
 				const url = String(input);
+				requested.push(url);
 				if (url.endsWith('/balances/device')) return new Response('not_found', { status: 404 });
 				if (url.endsWith(`${balancesLink}~message@1.0/serialize~json@1.0`)) {
-					return jsonResponse({ device: 'trie@1.0' });
+					return jsonResponse({ device: 'trie@1.0', 'abc+link': childLink });
+				}
+				if (url.includes(childLink)) {
+					return jsonResponse({ 'node-value': 1 });
 				}
 				return new Response(null, {
 					headers: {
@@ -356,6 +479,7 @@ describe('asset state', () => {
 
 		expect(result.state.balances).toEqual({});
 		expect(result.state.holderBalancesAvailable).toBe(false);
+		expect(requested.every((url) => !url.includes(childLink))).toBe(true);
 	});
 
 	it('reads an order status through the message device when HTTP status shadows its header', async () => {

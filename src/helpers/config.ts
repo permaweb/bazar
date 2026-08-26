@@ -161,7 +161,7 @@ export function arweaveDataFallbackUrls(
 }
 
 export function permawebOsAoAvailable(scope: Pick<Window, 'aoFetch'> | undefined = globalThis.window): boolean {
-	return Boolean(scope?.aoFetch);
+	return typeof scope?.aoFetch === 'function';
 }
 
 export function usesPermawebOsAo(
