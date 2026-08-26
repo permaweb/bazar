@@ -12,9 +12,12 @@ import { warmAoFetch } from './ao';
 import {
 	cachedAssetState,
 	clearAssetStateCache,
+	DISPLAY_STATE_TIMEOUT_ERROR,
+	DISPLAY_STATE_TIMEOUT_MS,
 	prefetchAssetState,
 	prioritizeAssetStatePrefetch,
 	readAssetStateCached,
+	readAssetStateWithDeadline,
 } from './asset-state-store';
 
 const processId = 'P'.repeat(43);
@@ -67,7 +70,10 @@ function stubPolicyScope(initialFingerprint: string) {
 	};
 }
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+	vi.useRealTimers();
+	vi.unstubAllGlobals();
+});
 
 describe('asset state store', () => {
 	beforeEach(() => {
@@ -216,6 +222,98 @@ describe('asset state store', () => {
 		controller.abort(new DOMException('Route changed', 'AbortError'));
 		await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
 		expect(sharedSignal.aborted).toBe(true);
+	});
+
+	it('does not cache a late result after its only consumer leaves', async () => {
+		let release!: (value: typeof result) => void;
+		mocks.readAssetState.mockImplementationOnce(
+			() =>
+				new Promise((resolve) => {
+					release = resolve;
+				})
+		);
+		const controller = new AbortController();
+		const pending = readAssetStateCached(processId, { signal: controller.signal });
+
+		controller.abort(new DOMException('Route changed', 'AbortError'));
+		await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+		release(result);
+		await Promise.resolve();
+		await Promise.resolve();
+
+		expect(cachedAssetState(processId)).toBeUndefined();
+	});
+
+	it('bounds a shared foreground read even when the transport ignores abort', async () => {
+		vi.useFakeTimers();
+		let requestSignal!: AbortSignal;
+		mocks.readAssetState.mockImplementationOnce(
+			(_processId, options) =>
+				new Promise(() => {
+					requestSignal = options.signal;
+				})
+		);
+		const pending = readAssetStateCached(processId);
+		const rejected = expect(pending).rejects.toThrow(DISPLAY_STATE_TIMEOUT_ERROR);
+
+		await vi.advanceTimersByTimeAsync(DISPLAY_STATE_TIMEOUT_MS);
+		await rejected;
+
+		expect(requestSignal.aborted).toBe(true);
+		mocks.readAssetState.mockResolvedValueOnce(result);
+		await readAssetStateCached(processId);
+		expect(mocks.readAssetState).toHaveBeenCalledTimes(2);
+	});
+
+	it('separately bounds stale revalidation without replacing the cached state after timeout', async () => {
+		vi.useFakeTimers();
+		let requestSignal!: AbortSignal;
+		let resolveRevalidation!: (value: typeof result) => void;
+		const fresh = { ...result, verifiedAt: 2 };
+		mocks.readAssetState.mockImplementationOnce((_processId, options) => {
+			requestSignal = options.signal;
+			return Promise.resolve({
+				...result,
+				cacheStatus: 'stale',
+				revalidation: new Promise<typeof result>((resolve) => {
+					resolveRevalidation = resolve;
+				}),
+			});
+		});
+
+		const stale = await readAssetStateCached(processId);
+		const rejected = expect(stale.revalidation).rejects.toThrow(DISPLAY_STATE_TIMEOUT_ERROR);
+		await vi.advanceTimersByTimeAsync(DISPLAY_STATE_TIMEOUT_MS);
+		await rejected;
+
+		expect(requestSignal.aborted).toBe(true);
+		resolveRevalidation(fresh);
+		await Promise.resolve();
+		expect(cachedAssetState(processId)?.verifiedAt).toBe(result.verifiedAt);
+	});
+
+	it('bounds direct foreground preflight reads with the caller abort signal', async () => {
+		vi.useFakeTimers();
+		let requestSignal!: AbortSignal;
+		mocks.readAssetState.mockImplementationOnce(
+			(_processId, options) =>
+				new Promise(() => {
+					requestSignal = options.signal;
+				})
+		);
+		const prepareOrDispatch = vi.fn();
+		const pending = readAssetStateWithDeadline(processId, { maxAge: 0 }).then(prepareOrDispatch);
+		const rejected = expect(pending).rejects.toThrow(DISPLAY_STATE_TIMEOUT_ERROR);
+
+		await vi.advanceTimersByTimeAsync(DISPLAY_STATE_TIMEOUT_MS);
+		await rejected;
+
+		expect(requestSignal.aborted).toBe(true);
+		expect(prepareOrDispatch).not.toHaveBeenCalled();
+		expect(mocks.readAssetState).toHaveBeenCalledWith(
+			processId,
+			expect.objectContaining({ maxAge: 0, signal: requestSignal })
+		);
 	});
 
 	it('counts a prefetch joining visible work as an active consumer', async () => {

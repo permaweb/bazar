@@ -39,6 +39,12 @@ export const PRODUCTION_COMPUTE_GATEWAY = PRODUCTION_COMPUTE_GATEWAYS[0];
 export const AO_TRANSPORT_QUERY_PARAMETER = 'ao-transport';
 export const BAZAR_AO_TRANSPORT = 'bazar';
 
+export function bazarAoTransportUrl(value: string | URL): string {
+	const url = new URL(value.toString());
+	url.searchParams.set(AO_TRANSPORT_QUERY_PARAMETER, BAZAR_AO_TRANSPORT);
+	return url.toString();
+}
+
 export function normalizeComputeGateways(value: string, defaultProtocol = 'https:'): string[] | null {
 	let entries: unknown[];
 	try {

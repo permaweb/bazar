@@ -8,6 +8,7 @@ import {
 	arweaveGatewayFromLocation,
 	arweaveGatewayOverrideFromLocation,
 	arweaveGraphqlEndpoint,
+	bazarAoTransportUrl,
 	computeGatewayForEnvironment,
 	computeGatewaysForEnvironment,
 	currentPermawebOsNetworkPolicy,
@@ -129,6 +130,16 @@ describe('Arweave gateway routing', () => {
 		expect(usesPermawebOsAo(selected)).toBe(false);
 		expect(gatewaysFromLocation(selected)).toEqual(['https://alpha.example', 'https://charlie.example']);
 		expect(gatewayFromLocation(selected)).toBe('https://alpha.example');
+	});
+
+	it('switches only the AO transport while preserving the route, hash, and configured peer list', () => {
+		const source =
+			'https://bazar.arweave.net/?node=https%3A%2F%2Falpha.example%2Chttps%3A%2F%2Fcharlie.example#/asset/fungible-tokens/WEAVE?tab=holders';
+		const switched = new URL(bazarAoTransportUrl(source));
+
+		expect(switched.searchParams.get('ao-transport')).toBe('bazar');
+		expect(switched.searchParams.get('node')).toBe('https://alpha.example,https://charlie.example');
+		expect(switched.hash).toBe('#/asset/fungible-tokens/WEAVE?tab=holders');
 	});
 
 	it('automatically uses Bazar fallback peers when PermawebOS is unavailable', () => {

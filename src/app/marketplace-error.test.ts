@@ -15,6 +15,7 @@ describe('marketplaceErrorMessage', () => {
 		['asset-purchase-insufficient-funds-after-signing', 'saved in this browser with the same wallet'],
 		['transaction-propagation-timeout', 'return with the same wallet and retained browser data'],
 		['asset-state-timeout', 'sampled observers report the transaction as confirmed'],
+		['asset-state-read-timeout', 'No transaction was prepared or sent'],
 		['asset-order-reservation-expired', 'start a new purchase'],
 		['asset-order-reservation-rejected', 'may have lost a race'],
 		['wallet-account-changed', 'Reconnect the original signer to continue'],

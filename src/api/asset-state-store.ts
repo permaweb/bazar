@@ -1,10 +1,14 @@
 import { aoRoutingScopeFromLocation } from 'helpers/config';
 
 import { type ComputeResult, readAssetState } from './asset-marketplace';
+import { operationWithDeadline } from './fetch-with-deadline';
 
 const DEFAULT_STATE_TTL_MS = 20_000;
 const MAX_STATE_ENTRIES = 256;
 const PREFETCH_CONCURRENCY = 2;
+
+export const DISPLAY_STATE_TIMEOUT_MS = 45_000;
+export const DISPLAY_STATE_TIMEOUT_ERROR = 'asset-state-read-timeout';
 
 export const DISPLAY_STATE_CACHE = {
 	maxAge: 30,
@@ -46,7 +50,59 @@ const results = new Map<string, CacheEntry>();
 const requests = new Map<string, SharedRequest>();
 const queuedPrefetches: string[] = [];
 const prefetches = new Map<string, Prefetch>();
+const activeRevalidations = new Map<AbortController, string>();
 let activePrefetches = 0;
+
+type AssetStateReadOptions = NonNullable<Parameters<typeof readAssetState>[1]>;
+
+export function readAssetStateWithDeadline(
+	processId: string,
+	options: AssetStateReadOptions = {}
+): Promise<ComputeResult> {
+	return operationWithDeadline((signal) => readAssetState(processId, { ...options, signal }), options.signal, {
+		timeoutMs: DISPLAY_STATE_TIMEOUT_MS,
+		timeoutError: DISPLAY_STATE_TIMEOUT_ERROR,
+	});
+}
+
+function sharedStateOperationWithDeadline<Result>(
+	operation: (signal: AbortSignal) => Promise<Result>,
+	controller: AbortController
+): Promise<Result> {
+	return operationWithDeadline(
+		(deadlineSignal) => {
+			const abortRequest = () => controller.abort(deadlineSignal.reason);
+			deadlineSignal.addEventListener('abort', abortRequest, { once: true });
+			if (deadlineSignal.aborted) abortRequest();
+			return operation(controller.signal).finally(() =>
+				deadlineSignal.removeEventListener('abort', abortRequest)
+			);
+		},
+		controller.signal,
+		{
+			timeoutMs: DISPLAY_STATE_TIMEOUT_MS,
+			timeoutError: DISPLAY_STATE_TIMEOUT_ERROR,
+		}
+	);
+}
+
+function boundRevalidation(
+	result: ComputeResult,
+	controller: AbortController,
+	key: string,
+	cacheTtlMs: number
+): ComputeResult {
+	if (!result.revalidation) return result;
+	activeRevalidations.set(controller, key);
+	const revalidation = sharedStateOperationWithDeadline(() => result.revalidation!, controller);
+	void revalidation
+		.then(
+			(fresh) => rememberResult(key, fresh, cacheTtlMs),
+			() => undefined
+		)
+		.finally(() => activeRevalidations.delete(controller));
+	return { ...result, revalidation };
+}
 
 function rememberResult(key: string, result: ComputeResult, cacheTtlMs: number) {
 	results.delete(key);
@@ -123,22 +179,22 @@ export async function readAssetStateCached(processId: string, options: CachedRea
 	if (!request) {
 		const cacheTtlMs = Math.max(0, Math.floor(options.cacheTtlMs ?? DEFAULT_STATE_TTL_MS));
 		const controller = new AbortController();
-		const promise = readAssetState(processId, {
-			fetch: options.fetch,
-			maxAge: options.maxAge ?? 60,
-			maxAttempts: options.maxAttempts,
-			retryBaseDelay: options.retryBaseDelay,
-			signal: controller.signal,
-			staleWhileRevalidate: options.staleWhileRevalidate,
-		}).then((result) => {
-			rememberResult(key, result, cacheTtlMs);
-			if (result.revalidation) {
-				void result.revalidation.then(
-					(fresh) => rememberResult(key, fresh, cacheTtlMs),
-					() => undefined
-				);
-			}
-			return result;
+		const promise = sharedStateOperationWithDeadline(
+			(signal) =>
+				readAssetState(processId, {
+					fetch: options.fetch,
+					maxAge: options.maxAge ?? 60,
+					maxAttempts: options.maxAttempts,
+					retryBaseDelay: options.retryBaseDelay,
+					signal,
+					staleWhileRevalidate: options.staleWhileRevalidate,
+				}),
+			controller
+		).then((result) => {
+			controller.signal.throwIfAborted();
+			const bounded = boundRevalidation(result, controller, key, cacheTtlMs);
+			rememberResult(key, bounded, cacheTtlMs);
+			return bounded;
 		});
 		const shared = { controller, consumers: 0, promise, settled: false };
 		request = shared;
@@ -161,7 +217,11 @@ function observeRevalidation(result: ComputeResult, options: CachedReadOptions) 
 }
 
 export function invalidateAssetState(processId: string) {
-	results.delete(cacheKey(processId));
+	const key = cacheKey(processId);
+	results.delete(key);
+	for (const [controller, activeKey] of activeRevalidations) {
+		if (activeKey === key) controller.abort();
+	}
 }
 
 function drainPrefetchQueue() {
@@ -242,6 +302,8 @@ export function clearAssetStateCache() {
 		settlePrefetch(key, prefetch);
 	}
 	for (const request of requests.values()) request.controller.abort();
+	for (const controller of activeRevalidations.keys()) controller.abort();
 	requests.clear();
+	activeRevalidations.clear();
 	queuedPrefetches.splice(0);
 }

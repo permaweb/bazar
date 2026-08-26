@@ -7,8 +7,8 @@ import {
 	assetBalanceStateAvailable,
 	type AssetState,
 	liquidBalanceOf,
-	readAssetState,
 } from 'api/asset-marketplace';
+import { readAssetStateWithDeadline } from 'api/asset-state-store';
 import { AssetTransactionClient } from 'api/asset-transactions';
 import { FUNGIBLE_TOKEN_COLLECTION_ID } from 'api/collections';
 import {
@@ -95,7 +95,7 @@ export default function DispatchRoute() {
 		const controller = new AbortController();
 		setLoadingState(true);
 		setStateError(null);
-		void readAssetState(processId, { signal: controller.signal, maxAge: 0 })
+		void readAssetStateWithDeadline(processId, { signal: controller.signal, maxAge: 0 })
 			.then(
 				(result) => {
 					if (!controller.signal.aborted) setState(result.state);

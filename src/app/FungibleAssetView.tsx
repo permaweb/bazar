@@ -33,10 +33,10 @@ import {
 	liquidBalanceOf,
 	listedBalanceOf,
 	liveOrdersOfAsset,
-	readAssetState,
 	type SwapOrder,
 } from 'api/asset-marketplace';
 import { acquireAssetObserverNetwork, type AssetObserverNetworkLease } from 'api/asset-observers';
+import { readAssetStateWithDeadline } from 'api/asset-state-store';
 import {
 	AssetTransactionClient,
 	DEFAULT_REGISTRATION_FEE,
@@ -63,7 +63,7 @@ import { type AssetDetailTab, AssetDetailTabs } from 'components/AssetDetailTabs
 import { assetOperationPendingActionLabel, AssetOperationStatus } from 'components/AssetOperationStatus';
 import { Button } from 'components/Button';
 import { ConnectWalletButton } from 'components/ConnectWalletButton';
-import { ErrorPanel } from 'components/ErrorPanel';
+import { ErrorPanel, type ErrorPanelAction } from 'components/ErrorPanel';
 import { Loading } from 'components/Loading';
 import { MarketActivityList } from 'components/MarketActivityList';
 import {
@@ -178,6 +178,7 @@ type Props = {
 	provider: string;
 	verifiedAt: number | null;
 	onRefresh(): Promise<void>;
+	stateRecoveryAction?: ErrorPanelAction;
 };
 
 type BatchEntry = {
@@ -609,6 +610,7 @@ export function FungibleAssetView({
 	loading,
 	error,
 	onRefresh,
+	stateRecoveryAction,
 }: Props) {
 	const wallet = useWallet();
 	const location = useLocation();
@@ -1202,7 +1204,9 @@ export function FungibleAssetView({
 				</div>
 			</header>
 			{loading ? <Loading label="Computing current state…" /> : null}
-			{error ? <ErrorPanel message={error} /> : null}
+			{error ? (
+				<ErrorPanel message={error} onRetry={() => void onRefresh()} secondaryAction={stateRecoveryAction} />
+			) : null}
 			<div className="asset-detail-layout">
 				<div className="asset-commerce-column asset-commerce-primary">
 					<section aria-busy={hasBusyWalletActivities} className="asset-commerce-card">
@@ -2275,7 +2279,7 @@ function FungibleOperationDialog({
 				}
 			);
 			if (freshOperation) {
-				({ state: freshState } = await readAssetState(asset.id, { signal, maxAge: 0 }));
+				({ state: freshState } = await readAssetStateWithDeadline(asset.id, { signal, maxAge: 0 }));
 				const expectedOrders =
 					operation.kind === 'buy'
 						? matchedFills.map((fill) => fill.sourceOrder)
