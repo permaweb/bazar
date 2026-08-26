@@ -18,6 +18,8 @@ describe('ErrorPanel', () => {
 		expect(markup).toContain(message);
 		expect(markup).toContain('Retry');
 		expect(markup).toContain('Use Bazar peers');
+		expect(markup).toContain('Unable to load');
+		expect(markup).not.toContain('Compute hasn’t completed yet');
 		expect(markup).not.toContain('Please try again.');
 	});
 });

@@ -17,7 +17,7 @@ export function ErrorPanel({
 	onRetry?: () => void;
 	secondaryAction?: ErrorPanelAction;
 }) {
-	const heading = onRetry ? 'Compute hasn’t completed yet' : 'Unable to load';
+	const heading = 'Unable to load';
 	return (
 		<div className={`error-panel${onRetry ? ' retry-notice' : ''}`}>
 			<strong>{heading}</strong>

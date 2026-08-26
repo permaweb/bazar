@@ -11,7 +11,7 @@ describe('incomplete balance state notice', () => {
 		expect(markup).toContain('role="status"');
 		expect(markup).toContain('Balance state incomplete');
 		expect(markup).toContain('purchases, listings, cancellations, transfers');
-		expect(markup).toContain('Existing signed actions can still be resumed');
+		expect(markup).toContain('Saved signed actions remain available for recovery');
 	});
 
 	it('renders nothing when the balance table is complete', () => {
