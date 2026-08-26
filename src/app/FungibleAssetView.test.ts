@@ -383,6 +383,12 @@ describe('fungible operation error semantics', () => {
 				error: { code: 'asset-payment-observer-timeout', message: 'observer timeout' },
 			} as PurchaseState)
 		).toBe(false);
+		expect(
+			purchaseSettlementNeedsManualReview({
+				stage: 'failed',
+				error: { code: 'unexpected', message: 'asset-balance-proof-unavailable' },
+			} as PurchaseState)
+		).toBe(false);
 	});
 
 	it('recognizes a terminal failure reported only by the batch summary', () => {
@@ -392,6 +398,11 @@ describe('fungible operation error semantics', () => {
 		expect(
 			purchaseFailureMessageNeedsManualReview(
 				'1 of 1 settlements need attention. observer timed out while checking transaction'
+			)
+		).toBe(false);
+		expect(
+			purchaseFailureMessageNeedsManualReview(
+				'1 of 1 settlements need attention. asset-balance-proof-unavailable'
 			)
 		).toBe(false);
 	});

@@ -21,6 +21,7 @@ describe('marketplaceErrorMessage', () => {
 		['wallet-account-changed', 'Reconnect the original signer to continue'],
 		['wallet-recovery-conflict', 'Resume that action before starting a new one.'],
 		['asset-balance-state-unavailable', 'did not ask the wallet to approve'],
+		['asset-balance-proof-unavailable', 'signed transaction remains saved'],
 		['registration not found', 'without signing again.'],
 		['payment not found', 'without paying again.'],
 		['fungible-transfer-rejected', 'No tokens moved.'],
@@ -59,6 +60,7 @@ describe('marketplaceErrorMessage', () => {
 		expect(marketplaceOperationFailure(new Error('asset-order-reservation-rejected'))).toBe('transaction-rejected');
 		expect(marketplaceOperationFailure(new Error('asset-order-reservation-expired'))).toBe('transaction-rejected');
 		expect(marketplaceOperationFailure(new Error('fungible-transfer-proof-mismatch'))).toBe('other');
+		expect(marketplaceOperationFailure(new Error('asset-balance-proof-unavailable'))).toBe('other');
 		expect(marketplaceOperationFailure(new Error('temporary quote failure'))).toBe('other');
 		expect(
 			marketplaceOperationFailure(
