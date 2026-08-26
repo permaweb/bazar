@@ -11,6 +11,8 @@ const FRIENDLY_ERRORS: Record<string, string> = {
 		'The sampled observers did not reach the required propagation quorum in time. The signed transaction remains saved in this browser; return with the same wallet and retained browser data to continue checking it.',
 	'asset-state-timeout':
 		'The sampled observers report the transaction as confirmed, but the configured AO peers have not applied it yet. Continue to keep checking live state.',
+	'asset-state-read-timeout':
+		'The configured AO peers did not return live state within 45 seconds. No transaction was prepared or sent. Retry, or review the AO Core settings in the header.',
 	'asset-order-reservation-expired':
 		'The reservation window passed before the seller payment was dispatched. No seller payment was sent. The stale recovery has been cleared; start a new purchase if the listing is still available.',
 	'asset-order-reservation-rejected':

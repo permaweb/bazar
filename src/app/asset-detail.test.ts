@@ -7,6 +7,7 @@ import {
 	assetDetailErrorMessage,
 	assetDetailLoadingPresentation,
 	assetStateErrorMessage,
+	assetStateRecoveryUrl,
 	mergeAssetActivityPages,
 	mergeAssetDetailMetadata,
 	uniqueAskHistory,
@@ -54,13 +55,49 @@ describe('asset detail fallbacks', () => {
 	});
 
 	it('turns AO transport quorum failures into asset-specific compute availability copy', () => {
-		const internal = 'AO response quorum not met';
-		const friendly = assetStateErrorMessage(new Error(internal));
-		expect(friendly).not.toContain(internal);
+		const friendly = assetStateErrorMessage(new Error('AO response quorum not met'));
+		const legacyFriendly = assetStateErrorMessage(new Error('ao-wrangler-response-quorum-not-met'));
 		expect(friendly).toContain('the configured AO peers');
+		expect(legacyFriendly).toBe(friendly);
 		expect(assetDetailErrorMessage(friendly, { name: 'AntiqueWhite' }, true)).toBe(
 			'AntiqueWhite is published and indexed, but its ownership and market state are currently unavailable from the configured AO peers. Retry shortly.'
 		);
+	});
+
+	it('explains a bounded foreground state timeout', () => {
+		expect(assetStateErrorMessage(new Error('asset-state-read-timeout'))).toBe(
+			'The configured AO peers did not return live state within 45 seconds. Retry or review the AO Core settings in the header.'
+		);
+	});
+
+	it('offers an explicit Bazar peer route only for failed PermawebOS asset-state reads', () => {
+		const href =
+			'https://bazar.arweave.net/?node=https%3A%2F%2Falpha.example#/asset/fungible-tokens/WEAVE?tab=market';
+		const location = {
+			href,
+			protocol: 'https:',
+			hostname: 'bazar.arweave.net',
+			port: '',
+			search: '?node=https%3A%2F%2Falpha.example',
+			hash: '#/asset/fungible-tokens/WEAVE?tab=market',
+		};
+		const scope = { aoFetch: (() => undefined) as unknown as PermawebOsAoFetch };
+
+		expect(assetStateRecoveryUrl('Live state unavailable', location, scope)).toBe(
+			'https://bazar.arweave.net/?node=https%3A%2F%2Falpha.example&ao-transport=bazar#/asset/fungible-tokens/WEAVE?tab=market'
+		);
+		expect(assetStateRecoveryUrl(null, location, scope)).toBeNull();
+		expect(
+			assetStateRecoveryUrl(
+				'Live state unavailable',
+				{
+					...location,
+					href: 'https://bazar.arweave.net/?ao-transport=bazar#/asset/fungible-tokens/WEAVE?tab=market',
+					search: '?ao-transport=bazar',
+				},
+				scope
+			)
+		).toBeNull();
 	});
 
 	it('builds a chronologically ordered Unique ask history from signed listing events', () => {

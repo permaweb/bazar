@@ -93,10 +93,12 @@ import type { AssetObserverNetworkLease } from 'api/asset-observers';
 import {
 	cachedAssetState,
 	DISPLAY_STATE_CACHE,
+	DISPLAY_STATE_TIMEOUT_ERROR,
 	invalidateAssetState,
 	prefetchAssetState,
 	prioritizeAssetStatePrefetch,
 	readAssetStateCached,
+	readAssetStateWithDeadline,
 } from 'api/asset-state-store';
 import type { PurchaseCostEstimate } from 'api/asset-transactions';
 import {
@@ -150,7 +152,7 @@ import { AudioArtwork } from 'components/AudioArtwork';
 import { BazarMark } from 'components/BazarMark';
 import { Button } from 'components/Button';
 import { ConnectWalletButton } from 'components/ConnectWalletButton';
-import { ErrorPanel } from 'components/ErrorPanel';
+import { ErrorPanel, type ErrorPanelAction } from 'components/ErrorPanel';
 import { GlobalActivityCharts } from 'components/GlobalActivityCharts';
 import { InteractiveHtmlArtwork } from 'components/InteractiveHtmlArtwork';
 import { Loading } from 'components/Loading';
@@ -194,6 +196,7 @@ import {
 	arweaveGatewayFromLocation,
 	arweaveGraphqlEndpoint,
 	BAZAR_AO_TRANSPORT,
+	bazarAoTransportUrl,
 	fallbackAoPeersFromLocation,
 	gatewayFromLocation,
 	gatewaysFromLocation,
@@ -8220,18 +8223,30 @@ export function assetDetailErrorMessage(
 	return `${asset.name} is published and indexed, but its ownership and market state are currently unavailable from the configured AO peers. Retry shortly.`;
 }
 
+type AssetStateRecoveryLocation = Pick<Location, 'hash' | 'hostname' | 'href' | 'port' | 'protocol' | 'search'>;
+
+export function assetStateRecoveryUrl(
+	error: string | null,
+	location: AssetStateRecoveryLocation,
+	scope: Pick<Window, 'aoFetch'> | undefined = globalThis.window
+): string | null {
+	return error && usesPermawebOsAo(location, scope) ? bazarAoTransportUrl(location.href) : null;
+}
+
 function AssetDetailLoadingShell({
 	asset,
 	collection,
 	collectionId,
 	error,
 	onRetry,
+	secondaryAction,
 }: {
 	asset?: AssetSummary;
 	collection?: Collection;
 	collectionId: string;
 	error?: string | null;
 	onRetry?: () => void;
+	secondaryAction?: ErrorPanelAction;
 }) {
 	const wallet = useWallet();
 	const { kind, device } = assetDetailLoadingPresentation(collection, collectionId);
@@ -8279,7 +8294,7 @@ function AssetDetailLoadingShell({
 					</div>
 				</header>
 				{error ? (
-					<ErrorPanel message={error} onRetry={onRetry} />
+					<ErrorPanel message={error} onRetry={onRetry} secondaryAction={secondaryAction} />
 				) : (
 					<div aria-live="polite" className="state-verification asset-loading-verification" role="status">
 						<span aria-hidden="true" /> Computing current state…
@@ -8407,7 +8422,7 @@ function AssetDetailLoadingShell({
 							<span>Supply 1</span>
 						</div>
 						{error ? (
-							<ErrorPanel message={error} onRetry={onRetry} />
+							<ErrorPanel message={error} onRetry={onRetry} secondaryAction={secondaryAction} />
 						) : (
 							<div
 								aria-live="polite"
@@ -8586,7 +8601,7 @@ function SetProfilePictureButton({
 		setError('');
 		setStatus('checking');
 		try {
-			const current = await readAssetState(assetId, { maxAge: 0 });
+			const current = await readAssetStateWithDeadline(assetId, { maxAge: 0 });
 			if (
 				current.state.totalSupply !== '1' ||
 				current.state.denomination > 0 ||
@@ -8600,7 +8615,7 @@ function SetProfilePictureButton({
 			setStatus('done');
 		} catch (cause) {
 			setStatus('idle');
-			setError(cause instanceof Error ? cause.message : 'Profile picture could not be updated.');
+			setError(errorMessage(cause) || 'Profile picture could not be updated.');
 		}
 	};
 	return (
@@ -9260,6 +9275,13 @@ function AssetView() {
 		return () => controller.abort();
 	}, [assetId, openOperation, operation, recoverySuppressed, state, storageVersion, wallet.address]);
 	const uniqueAskPoints = React.useMemo(() => uniqueAskHistory(assetAskActivity), [assetAskActivity]);
+	const recoveryUrl = assetStateRecoveryUrl(error, window.location);
+	const stateRecoveryAction = recoveryUrl
+		? {
+				label: 'Use Bazar peers',
+				onClick: () => window.location.assign(recoveryUrl),
+		  }
+		: undefined;
 	if (!collection && (market.loading || (directAtomicRoute && loading))) {
 		return (
 			<AssetDetailLoadingShell
@@ -9267,6 +9289,7 @@ function AssetView() {
 				collectionId={collectionId}
 				error={detailError}
 				onRetry={load}
+				secondaryAction={detailError ? stateRecoveryAction : undefined}
 			/>
 		);
 	}
@@ -9279,7 +9302,7 @@ function AssetView() {
 	if (!collection && directAtomicRoute && error)
 		return (
 			<RouteState title="Asset unavailable">
-				<ErrorPanel message={detailError ?? error} onRetry={load} />
+				<ErrorPanel message={detailError ?? error} onRetry={load} secondaryAction={stateRecoveryAction} />
 			</RouteState>
 		);
 	if (!collection)
@@ -9300,13 +9323,14 @@ function AssetView() {
 						: market.notice ?? 'Current collection membership could not be verified.'
 				}
 				onRetry={market.loading ? load : market.retry}
+				secondaryAction={market.loading && detailError ? stateRecoveryAction : undefined}
 			/>
 		);
 	const asset = verifiedAsset;
 	if (!asset && error)
 		return (
 			<RouteState title="Asset unavailable" backTo={`/collection/${collection.id}`} backLabel={collection.name}>
-				<ErrorPanel message={detailError ?? error} onRetry={load} />
+				<ErrorPanel message={detailError ?? error} onRetry={load} secondaryAction={stateRecoveryAction} />
 			</RouteState>
 		);
 	if (!asset && !loading)
@@ -9332,6 +9356,7 @@ function AssetView() {
 				collectionId={collectionId}
 				error={detailError}
 				onRetry={load}
+				secondaryAction={stateRecoveryAction}
 			/>
 		);
 	}
@@ -9373,6 +9398,7 @@ function AssetView() {
 					provider={provider}
 					verifiedAt={verifiedAt}
 					onRefresh={refreshAsset}
+					stateRecoveryAction={stateRecoveryAction}
 				/>
 			</React.Suspense>
 		);
@@ -9519,7 +9545,9 @@ function AssetView() {
 							failed={Boolean(error)}
 						/>
 						{loading ? <Loading label="Computing current state…" /> : null}
-						{error ? <ErrorPanel message={error} onRetry={load} /> : null}
+						{error ? (
+							<ErrorPanel message={error} onRetry={load} secondaryAction={stateRecoveryAction} />
+						) : null}
 						{state ? (
 							<section aria-busy={operationIsBusy} className="asset-commerce-card">
 								<AssetBalanceStateNotice state={state} />
@@ -10315,7 +10343,7 @@ function OperationDialog({
 			);
 			claimRef.current = operationClaim;
 			if (freshOperation) {
-				const { state: freshState } = await readAssetState(asset.id, { signal, maxAge: 0 });
+				const { state: freshState } = await readAssetStateWithDeadline(asset.id, { signal, maxAge: 0 });
 				const stateError = atomicOperationStateError(
 					operation.kind,
 					freshState,
@@ -12046,8 +12074,11 @@ export function assetStateErrorMessage(error: unknown) {
 	if (/^HTTP 429(?:\b|$)/i.test(value)) {
 		return marketplaceRequestFailureMessage('compute', 'rate-limited');
 	}
-	if (/response quorum not met/i.test(value) || /^HTTP 5\d\d(?:\b|$)/i.test(value)) {
+	if (/response[-\s]+quorum[-\s]+not[-\s]+met/i.test(value) || /^HTTP 5\d\d(?:\b|$)/i.test(value)) {
 		return 'Live state could not be read through the configured AO peers. Retry shortly or review the AO Core settings in the header.';
+	}
+	if (value === DISPLAY_STATE_TIMEOUT_ERROR) {
+		return 'The configured AO peers did not return live state within 45 seconds. Retry or review the AO Core settings in the header.';
 	}
 	if (['Failed to fetch', 'fetch failed', 'compute-provider-failed', 'compute-provider-timeout'].includes(value)) {
 		let host = 'The selected AO peer';
