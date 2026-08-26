@@ -70,6 +70,8 @@ export type UdlCommercialGrant = 'allowed' | 'credit' | 'revenue-share' | UdlFee
 export type UdlTrainingGrant = 'allowed' | UdlFeeGrant;
 
 export type UdlTerms = {
+	/** When present, write only this License tag and ignore Bazar's configured UDL 0.2 terms. */
+	licenseId?: string;
 	accessFee?: string;
 	derivation?: { grant: UdlDerivationGrant; value?: string };
 	commercialUse?: { grant: UdlCommercialGrant; value?: string };
@@ -1027,6 +1029,7 @@ export function fungibleMintProcessTags(input: FungibleMintInput, owner: string)
 export function udlLicenseTags(terms?: UdlTerms): Record<string, string> {
 	if (!terms) return {};
 	validateUdlTerms(terms);
+	if (terms.licenseId) return { license: terms.licenseId };
 	const tags: Record<string, string> = { license: UDL_LICENSE_ID, currency: 'Arweave' };
 	if (terms.accessFee) tags['access-fee'] = `One-Time-${terms.accessFee}`;
 	if (terms.derivation) tags.derivation = udlGrantValue(terms.derivation);
@@ -1126,6 +1129,12 @@ function validateMintDraft(value: unknown): asserts value is MintDraft {
 function validateUdlTerms(terms?: UdlTerms): void {
 	if (terms === undefined) return;
 	if (!terms || typeof terms !== 'object' || Array.isArray(terms)) throw new TypeError('mint-udl-invalid');
+	if (terms.licenseId !== undefined) {
+		if (typeof terms.licenseId !== 'string' || !ADDRESS.test(terms.licenseId)) {
+			throw new TypeError('mint-udl-license-id-invalid');
+		}
+		return;
+	}
 	if (terms.accessFee !== undefined && !isPositiveUdlAmount(terms.accessFee)) {
 		throw new TypeError('mint-udl-access-fee-invalid');
 	}

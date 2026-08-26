@@ -277,6 +277,36 @@ describe('asset mint contract', () => {
 		});
 	});
 
+	it('lets a custom UDL transaction ID override every configured term', () => {
+		const customLicenseId = 'L'.repeat(43);
+		const configuredTerms = {
+			licenseId: customLicenseId,
+			accessFee: '1.5',
+			derivation: { grant: 'credit' as const },
+			commercialUse: { grant: 'one-time' as const, value: '20' },
+			dataModelTraining: { grant: 'allowed' as const },
+			unknownUsageRights: 'excluded' as const,
+			expiry: '5',
+		};
+
+		expect(udlLicenseTags(configuredTerms)).toEqual({ license: customLicenseId });
+		expect(
+			mintProcessTags({ name: 'Signal #1', contentType: 'image/png', mediaId, udl: configuredTerms }, owner)
+		).toMatchObject({ license: customLicenseId });
+		const tags = mintProcessTags(
+			{ name: 'Signal #1', contentType: 'image/png', mediaId, udl: configuredTerms },
+			owner
+		);
+		expect(tags).not.toHaveProperty('currency');
+		expect(tags).not.toHaveProperty('access-fee');
+		expect(tags).not.toHaveProperty('derivation');
+		expect(tags).not.toHaveProperty('commercial-use');
+		expect(tags).not.toHaveProperty('data-model-training');
+		expect(tags).not.toHaveProperty('unknown-usage-rights');
+		expect(tags).not.toHaveProperty('expiry');
+		expect(() => udlLicenseTags({ licenseId: 'not-a-transaction-id' })).toThrow('mint-udl-license-id-invalid');
+	});
+
 	it('keeps UDL terms in a recoverable mint draft', () => {
 		const store = storage();
 		store.setItem(
@@ -296,6 +326,21 @@ describe('asset mint contract', () => {
 			commercialUse: { grant: 'credit' },
 			dataModelTraining: { grant: 'allowed' },
 		});
+
+		const customLicenseId = 'L'.repeat(43);
+		store.setItem(
+			`bazar-mint-draft:${owner}`,
+			JSON.stringify({
+				owner,
+				mediaId,
+				name: 'Recoverable custom license',
+				description: '',
+				contentType: 'image/png',
+				createdAt: 1,
+				udl: { licenseId: customLicenseId },
+			})
+		);
+		expect(getMintDraft(owner, store)?.udl).toEqual({ licenseId: customLicenseId });
 	});
 
 	it('restores locally indexed minted assets without accepting malformed entries', () => {
