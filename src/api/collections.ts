@@ -1,4 +1,3 @@
-import { isSupportedAssetContentType } from 'helpers/asset-media';
 import { mapConcurrent } from 'helpers/concurrency';
 import { arweaveDataUrl, arweaveGatewayFromLocation, arweaveGraphqlEndpoint, NAMES_NAMESPACE_ID } from 'helpers/config';
 
@@ -652,8 +651,7 @@ function indexedAtomicAsset(node: AtomicAssetIndexNode): AssetSummary | undefine
 		tags['total-supply'] !== '1' ||
 		tags.denomination !== '0' ||
 		tags.ticker !== 'ASSET' ||
-		!ARWEAVE_ID.test(tags['initial-holder'] ?? '') ||
-		!isSupportedAssetContentType(tags['asset-content-type'] ?? tags['content-type'])
+		!ARWEAVE_ID.test(tags['initial-holder'] ?? '')
 	)
 		return undefined;
 	return assetFromMintState(node.id, tags) ?? undefined;

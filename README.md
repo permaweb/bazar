@@ -27,6 +27,13 @@ also the media transaction ID. Optional album artwork for audio is an ancillary
 transaction referenced by `asset-artwork`, matching Bazar Studio's cover-art
 model. Older assets with a separate `asset-data` transaction remain readable.
 
+Interactive web artworks use `content-type: text/html` and must reference a
+permanent lightweight card image with both `asset-preview: <transaction ID>`
+and `asset-preview-content-type: <image MIME type>`. Bazar renders that image
+in catalogue cards and loads the primary HTML transaction only on its asset
+detail page, inside an opaque-origin iframe sandbox that permits scripts and
+pointer interaction without same-origin, popup, form, or top-navigation access.
+
 The write API is deliberately small:
 
 -   `transfer`

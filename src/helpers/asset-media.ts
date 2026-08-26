@@ -1,5 +1,6 @@
 export const IMAGE_CONTENT_TYPES = new Set(['image/gif', 'image/jpeg', 'image/png', 'image/webp']);
 export const AUDIO_CONTENT_TYPES = new Set(['audio/mpeg', 'audio/wav']);
+export const HTML_CONTENT_TYPES = new Set(['text/html']);
 
 const CONTENT_TYPE_ALIASES = new Map([
 	['audio/mp3', 'audio/mpeg'],
@@ -27,6 +28,18 @@ export function normalizeAssetContentType(contentType: string | undefined, fileN
 	return EXTENSION_CONTENT_TYPES.get(extension) ?? null;
 }
 
+/**
+ * Normalize media that Bazar can display, including permanent interactive HTML.
+ * Creation remains limited to image and audio until its form can collect a preview.
+ */
+export function normalizeDisplayAssetContentType(contentType: string | undefined, fileName = ''): string | null {
+	const mintable = normalizeAssetContentType(contentType, fileName);
+	if (mintable) return mintable;
+	const normalized = contentType?.split(';', 1)[0].trim().toLowerCase() ?? '';
+	if (HTML_CONTENT_TYPES.has(normalized)) return normalized;
+	return /\.html?$/i.test(fileName) ? 'text/html' : null;
+}
+
 export function isImageContentType(contentType: string | undefined): boolean {
 	const normalized = normalizeAssetContentType(contentType);
 	return normalized !== null && IMAGE_CONTENT_TYPES.has(normalized);
@@ -37,8 +50,16 @@ export function isAudioContentType(contentType: string | undefined): boolean {
 	return normalized !== null && AUDIO_CONTENT_TYPES.has(normalized);
 }
 
+export function isHtmlContentType(contentType: string | undefined): boolean {
+	return normalizeDisplayAssetContentType(contentType) === 'text/html';
+}
+
 export function isSupportedAssetContentType(contentType: string | undefined): boolean {
 	return normalizeAssetContentType(contentType) !== null;
+}
+
+export function isDisplayAssetContentType(contentType: string | undefined): boolean {
+	return normalizeDisplayAssetContentType(contentType) !== null;
 }
 
 export function audioFormatLabel(contentType: string | undefined): string {

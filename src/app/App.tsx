@@ -149,6 +149,7 @@ import { Button } from 'components/Button';
 import { ConnectWalletButton } from 'components/ConnectWalletButton';
 import { ErrorPanel } from 'components/ErrorPanel';
 import { GlobalActivityCharts } from 'components/GlobalActivityCharts';
+import { InteractiveHtmlArtwork } from 'components/InteractiveHtmlArtwork';
 import { Loading } from 'components/Loading';
 import { MintTransactionReceipt } from 'components/MintTransactionReceipt';
 import { NameArtwork } from 'components/NameArtwork';
@@ -181,7 +182,7 @@ import {
 } from 'components/UnavailableOperationRecovery';
 import { WalletAddress, WalletIdentity } from 'components/WalletAddress';
 import { WalletMenu } from 'components/WalletMenu';
-import { isAudioContentType } from 'helpers/asset-media';
+import { isAudioContentType, isHtmlContentType } from 'helpers/asset-media';
 import { formatAudioDuration } from 'helpers/audio-metadata';
 import { mapConcurrent } from 'helpers/concurrency';
 import {
@@ -9645,9 +9646,11 @@ function AssetView() {
 					<div
 						className={`asset-hero-media${
 							isAudioContentType(asset.contentType) ? ' audio-hero-media' : ''
-						}`}
+						}${isHtmlContentType(asset.contentType) ? ' interactive-hero-media' : ''}`}
 					>
-						{isAudioContentType(asset.contentType) ? (
+						{isHtmlContentType(asset.contentType) && asset.media ? (
+							<InteractiveHtmlArtwork name={asset.name} src={asset.media} />
+						) : isAudioContentType(asset.contentType) ? (
 							<div className="asset-audio-player">
 								{asset.image ? (
 									<ArtworkImage

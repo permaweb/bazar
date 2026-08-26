@@ -1,4 +1,11 @@
-import { isAudioContentType, isSupportedAssetContentType, normalizeAssetContentType } from 'helpers/asset-media';
+import {
+	isAudioContentType,
+	isHtmlContentType,
+	isImageContentType,
+	isSupportedAssetContentType,
+	normalizeAssetContentType,
+	normalizeDisplayAssetContentType,
+} from 'helpers/asset-media';
 import { arweaveDataUrl, arweaveGatewayFromLocation } from 'helpers/config';
 
 import type { AssetSummary, Collection } from './collections';
@@ -104,8 +111,12 @@ export function assetFromMintState(
 ): AssetSummary | null {
 	const explicitMediaId = String(raw['asset-data'] ?? '');
 	const mediaId = explicitMediaId || processId;
-	const contentType = normalizeAssetContentType(String(raw['asset-content-type'] ?? raw['content-type'] ?? ''));
+	const contentType = normalizeDisplayAssetContentType(
+		String(raw['asset-content-type'] ?? raw['content-type'] ?? '')
+	);
 	const artworkId = String(raw['asset-artwork'] ?? '');
+	const previewId = String(raw['asset-preview'] ?? '');
+	const previewContentType = normalizeAssetContentType(String(raw['asset-preview-content-type'] ?? ''));
 	const artist = typeof raw.artist === 'string' ? raw.artist.trim() : '';
 	const album = typeof raw.album === 'string' ? raw.album.trim() : '';
 	const duration = Number(raw.duration);
@@ -115,6 +126,9 @@ export function assetFromMintState(
 		!ADDRESS.test(mediaId) ||
 		!contentType ||
 		(artworkId && !ADDRESS.test(artworkId)) ||
+		(previewId && !ADDRESS.test(previewId)) ||
+		(raw['asset-preview-content-type'] !== undefined && !isImageContentType(previewContentType ?? undefined)) ||
+		(isHtmlContentType(contentType) && (!previewId || !previewContentType)) ||
 		!name
 	)
 		return null;
@@ -127,7 +141,12 @@ export function assetFromMintState(
 		...(artist ? { artist } : {}),
 		...(album ? { album } : {}),
 		...(Number.isFinite(duration) && duration > 0 ? { duration } : {}),
-		...(isAudioContentType(contentType)
+		...(isHtmlContentType(contentType)
+			? {
+					media: arweaveDataUrl(mediaId, gateway),
+					image: arweaveDataUrl(previewId, gateway),
+			  }
+			: isAudioContentType(contentType)
 			? {
 					media: arweaveDataUrl(mediaId, mediaGateway),
 					...(artworkId ? { image: arweaveDataUrl(artworkId, gateway) } : {}),

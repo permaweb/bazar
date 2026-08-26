@@ -197,6 +197,26 @@ describe('asset mint contract', () => {
 		});
 	});
 
+	it('maps permanent HTML to a sandboxable media URL and required image preview', () => {
+		const previewId = 'V'.repeat(43);
+		const interactive = {
+			name: 'OBELISK',
+			'content-type': 'text/html',
+			'asset-preview': previewId,
+			'asset-preview-content-type': 'image/png',
+		};
+
+		expect(assetFromMintState(processId, interactive)).toEqual({
+			id: processId,
+			name: 'OBELISK',
+			contentType: 'text/html',
+			media: `https://arweave.net/${processId}`,
+			image: `https://arweave.net/${previewId}`,
+		});
+		expect(assetFromMintState(processId, { ...interactive, 'asset-preview': undefined })).toBeNull();
+		expect(assetFromMintState(processId, { ...interactive, 'asset-preview-content-type': 'text/html' })).toBeNull();
+	});
+
 	it('encodes Universal Data License 0.2 terms with canonical tags', () => {
 		const terms = {
 			accessFee: '1.5',
