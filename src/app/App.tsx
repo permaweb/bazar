@@ -71,6 +71,8 @@ import {
 	type WalletCandidateScan,
 } from 'api/asset-discovery';
 import {
+	ASSET_BALANCE_STATE_UNAVAILABLE,
+	assetBalanceStateAvailable,
 	type AssetState,
 	bestAskOfAsset,
 	licenseProperties,
@@ -141,6 +143,7 @@ import { ArtworkImage } from 'components/ArtworkImage';
 import type { ArweaveSyncStep } from 'components/ArweaveTransactionSync';
 import { quorumConfirmationDepth } from 'components/ArweaveTransactionSync/confirmationDepth';
 import { postConfirmationPendingLabel } from 'components/ArweaveTransactionSync/sequence';
+import { AssetBalanceStateNotice } from 'components/AssetBalanceStateNotice';
 import { type AssetDetailTab, AssetDetailTabs } from 'components/AssetDetailTabs';
 import { assetOperationPendingActionLabel, AssetOperationStatus } from 'components/AssetOperationStatus';
 import { AudioArtwork } from 'components/AudioArtwork';
@@ -9201,17 +9204,7 @@ function AssetView() {
 			try {
 				client.restore(savedOperation.txId, walletAddress);
 			} catch {
-				const currentOrder = liveOrder(state);
-				const canStillApply =
-					savedOperation.kind === 'sell'
-						? ownerOfAsset(state) === walletAddress && !currentOrder
-						: savedOperation.kind === 'cancel'
-						? Boolean(
-								savedOperation.order?.orderId &&
-									state.orders[savedOperation.order.orderId]?.status === 'open' &&
-									state.orders[savedOperation.order.orderId]?.creator === walletAddress
-						  )
-						: liquidBalanceOf(state, walletAddress) === '1';
+				const canStillApply = operationRecoveryCanStillApply(state, walletAddress, savedOperation, 'atomic');
 				const matches = (record: any) =>
 					record?.assetId === assetId &&
 					record?.signer === walletAddress &&
@@ -9386,6 +9379,7 @@ function AssetView() {
 	}
 	const owner = state ? ownerOfAsset(state) : null;
 	const order = state ? liveOrder(state) : null;
+	const balanceStateAvailable = state ? assetBalanceStateAvailable(state) : false;
 	const mine = Boolean(wallet.address && owner === wallet.address);
 	const externalReservation = externalReservationTransaction(order, wallet.address, assetActivity);
 	const recoveryBlocksActions = recoverySuppressed || Boolean(unavailableRecovery);
@@ -9504,7 +9498,13 @@ function AssetView() {
 							{owner ? (
 								<WalletAddress address={owner} label="owner" />
 							) : (
-								<strong>{state ? 'Unassigned' : 'State unavailable'}</strong>
+								<strong>
+									{state
+										? balanceStateAvailable
+											? 'Unassigned'
+											: 'Ownership unavailable'
+										: 'State unavailable'}
+								</strong>
 							)}
 						</div>
 						<div className="asset-token-tags" aria-label="Asset protocol details">
@@ -9522,6 +9522,7 @@ function AssetView() {
 						{error ? <ErrorPanel message={error} onRetry={load} /> : null}
 						{state ? (
 							<section aria-busy={operationIsBusy} className="asset-commerce-card">
+								<AssetBalanceStateNotice state={state} />
 								<div className="asset-market-stats">
 									<div>
 										<span>Current ask</span>
@@ -9604,7 +9605,12 @@ function AssetView() {
 									{wallet.address && atomicOrderCanBeBought(order) && !mine ? (
 										<Button
 											className="with-icon asset-buy-now market-primary-action"
-											disabled={operationBlocksActions || loading || Boolean(error)}
+											disabled={
+												operationBlocksActions ||
+												!balanceStateAvailable ||
+												loading ||
+												Boolean(error)
+											}
 											size="custom"
 											variant="primary"
 											onClick={() => openOperation({ kind: 'buy', order })}
@@ -9618,7 +9624,12 @@ function AssetView() {
 									{wallet.address && mine && !order ? (
 										<Button
 											className="with-icon asset-buy-now market-primary-action"
-											disabled={operationBlocksActions || loading || Boolean(error)}
+											disabled={
+												operationBlocksActions ||
+												!balanceStateAvailable ||
+												loading ||
+												Boolean(error)
+											}
 											size="custom"
 											variant="primary"
 											onClick={() => openOperation({ kind: 'sell' })}
@@ -9632,7 +9643,12 @@ function AssetView() {
 									{wallet.address && mine && order?.status === 'open' ? (
 										<Button
 											className="with-icon"
-											disabled={operationBlocksActions || loading || Boolean(error)}
+											disabled={
+												operationBlocksActions ||
+												!balanceStateAvailable ||
+												loading ||
+												Boolean(error)
+											}
 											size="custom"
 											onClick={() => openOperation({ kind: 'cancel', order })}
 											variant="danger"
@@ -9646,7 +9662,12 @@ function AssetView() {
 									{wallet.address && mine && !order ? (
 										<Button
 											className="with-icon"
-											disabled={operationBlocksActions || loading || Boolean(error)}
+											disabled={
+												operationBlocksActions ||
+												!balanceStateAvailable ||
+												loading ||
+												Boolean(error)
+											}
 											size="custom"
 											onClick={() => openOperation({ kind: 'transfer' })}
 										>
@@ -10295,16 +10316,13 @@ function OperationDialog({
 			claimRef.current = operationClaim;
 			if (freshOperation) {
 				const { state: freshState } = await readAssetState(asset.id, { signal, maxAge: 0 });
-				if (
-					atomicOperationStateError(
-						operation.kind,
-						freshState,
-						owner,
-						'order' in operation ? operation.order : null
-					)
-				) {
-					throw new Error('market-state-changed');
-				}
+				const stateError = atomicOperationStateError(
+					operation.kind,
+					freshState,
+					owner,
+					'order' in operation ? operation.order : null
+				);
+				if (stateError) throw new Error(stateError);
 				if (operation.kind === 'sell') {
 					let pendingOffers: PendingAssetOffer[];
 					try {
@@ -11926,6 +11944,7 @@ export function atomicOperationStateError(
 	owner: string,
 	expectedOrder: SwapOrder | null
 ) {
+	if (!assetBalanceStateAvailable(state)) return ASSET_BALANCE_STATE_UNAVAILABLE;
 	const currentOrder = expectedOrder ? state.orders[expectedOrder.orderId] : null;
 	const orderUnchanged = Boolean(
 		currentOrder &&

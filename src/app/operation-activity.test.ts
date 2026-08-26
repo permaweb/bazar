@@ -270,8 +270,43 @@ describe('live operation activity reconciliation', () => {
 		).toBe(false);
 	});
 
+	it('retains sell and transfer recovery while balances are unknown but honors exact order evidence', () => {
+		const txId = 'S'.repeat(43);
+		const incomplete = assetState({
+			balances: {},
+			holderBalancesAvailable: false,
+		});
+
+		expect(operationRecoveryCanStillApply(incomplete, owner, { kind: 'sell', txId, quantity: '1' }, 'atomic')).toBe(
+			true
+		);
+		expect(operationRecoveryCanStillApply(incomplete, owner, { kind: 'transfer', txId }, 'atomic')).toBe(true);
+		expect(
+			operationRecoveryCanStillApply(incomplete, owner, { kind: 'sell', txId, quantity: '1' }, 'fungible')
+		).toBe(true);
+		expect(
+			operationRecoveryCanStillApply(incomplete, owner, { kind: 'transfer', txId, quantity: '1' }, 'fungible')
+		).toBe(true);
+
+		const listed = assetState({
+			balances: {},
+			holderBalancesAvailable: false,
+			orders: { [txId]: { ...order, orderId: txId } },
+		});
+		expect(operationRecoveryCanStillApply(listed, owner, { kind: 'sell', txId, quantity: '1' }, 'atomic')).toBe(
+			false
+		);
+		expect(operationRecoveryCanStillApply(incomplete, owner, { kind: 'cancel', order, txId }, 'atomic')).toBe(
+			false
+		);
+	});
+
 	it('retains only purchases whose order is available or whose seller payment was dispatched', () => {
-		const missingOrderState = assetState({ totalSupply: '1000', balances: { [owner]: '1000' } });
+		const missingOrderState = assetState({
+			totalSupply: '1000',
+			balances: {},
+			holderBalancesAvailable: false,
+		});
 		expect(
 			atomicPurchaseRecoveryCanBeDiscarded(missingOrderState, otherOwner, order, {
 				registration: { id: 'R'.repeat(43), dispatched: true },

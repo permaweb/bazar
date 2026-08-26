@@ -1,6 +1,12 @@
 import type { PurchaseSnapshot } from 'weave-wrangler';
 
-import { type AssetState, liquidBalanceOf, liveOrderOfAsset, type SwapOrder } from 'api/asset-marketplace';
+import {
+	assetBalanceStateAvailable,
+	type AssetState,
+	liquidBalanceOf,
+	liveOrderOfAsset,
+	type SwapOrder,
+} from 'api/asset-marketplace';
 import type { AssetSummary, Collection } from 'api/collections';
 import { filledOrder, parseTokenAmount } from 'api/order-matching';
 
@@ -96,6 +102,7 @@ export function operationRecoveryCanStillApply(
 		return Boolean(current?.status === 'open' && current.creator === owner);
 	}
 	if (kind === 'sell' && typeof record.txId === 'string' && state.orders[record.txId]) return false;
+	if (!assetBalanceStateAvailable(state) && (kind === 'sell' || kind === 'transfer')) return true;
 	if (activityKind === 'atomic') {
 		return liquidBalanceOf(state, owner) === '1' && !liveOrderOfAsset(state);
 	}

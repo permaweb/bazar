@@ -1309,6 +1309,36 @@ describe('fungible state revalidation', () => {
 		expect(fungibleOperationStateError('transfer', state, seller, [], '5000')).toBe('');
 		expect(fungibleOperationStateError('transfer', state, seller, [], '5001')).toBe('market-state-changed');
 	});
+
+	it('rejects every new mutation when holder balance state is incomplete', () => {
+		const seller = 's'.repeat(43);
+		const buyer = 'b'.repeat(43);
+		const order = {
+			orderId: 'o'.repeat(43),
+			creator: seller,
+			asking: '2000',
+			quantity: '1000',
+			status: 'open',
+		} as SwapOrder;
+		const incomplete = {
+			denomination: 12,
+			balances: {},
+			holderBalancesAvailable: false,
+			orders: { [order.orderId]: order },
+		} as AssetState;
+
+		for (const kind of ['buy', 'sell', 'cancel', 'transfer'] as const) {
+			expect(
+				fungibleOperationStateError(
+					kind,
+					incomplete,
+					kind === 'buy' ? buyer : seller,
+					kind === 'buy' || kind === 'cancel' ? [order] : [],
+					'1000'
+				)
+			).toBe('asset-balance-state-unavailable');
+		}
+	});
 });
 
 describe('fungible transfer recipient validation', () => {

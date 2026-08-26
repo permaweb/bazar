@@ -23,6 +23,8 @@ const FRIENDLY_ERRORS: Record<string, string> = {
 		'This browser cannot safely coordinate wallet approvals across tabs. Use a current browser with Web Locks support to trade.',
 	'market-state-changed':
 		'The owner or listing changed since it was last checked. Close this dialog and review the updated market state before approving anything.',
+	'asset-balance-state-unavailable':
+		'The configured AO routes returned token and order state without a complete holder balance table. Bazar did not ask the wallet to approve a new purchase, listing, cancellation, or transfer. Retry after complete state is available; existing signed actions remain resumable.',
 	'asset-pending-listing-check-unavailable':
 		'Bazar could not check Arweave for another recent listing transaction, so it did not ask your wallet to sign. Retry shortly.',
 	'registration-not-found':

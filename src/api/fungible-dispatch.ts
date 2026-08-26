@@ -1,4 +1,10 @@
-import { liquidBalanceOf, readAssetState, waitForAssetState } from './asset-marketplace';
+import {
+	ASSET_BALANCE_STATE_UNAVAILABLE,
+	assetBalanceStateAvailable,
+	liquidBalanceOf,
+	readAssetState,
+	waitForAssetState,
+} from './asset-marketplace';
 import { AssetTransactionClient, SIGNED_TRANSACTION_PREFIX } from './asset-transactions';
 import { parseTokenAmount } from './order-matching';
 
@@ -272,6 +278,7 @@ export async function createDispatchPlan(
 		throw new Error('dispatch-self-recipient');
 	}
 	const { state } = await readAssetState(processId, { signal: options.signal, fetch: options.fetch, maxAge: 0 });
+	if (!assetBalanceStateAvailable(state)) throw new Error(ASSET_BALANCE_STATE_UNAVAILABLE);
 	const { totalQuantity } = planTotals(rows);
 	if (BigInt(liquidBalanceOf(state, sender)) < totalQuantity) {
 		throw new Error('dispatch-insufficient-token-balance');

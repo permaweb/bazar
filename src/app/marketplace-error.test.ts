@@ -19,6 +19,7 @@ describe('marketplaceErrorMessage', () => {
 		['asset-order-reservation-rejected', 'may have lost a race'],
 		['wallet-account-changed', 'Reconnect the original signer to continue'],
 		['wallet-recovery-conflict', 'Resume that action before starting a new one.'],
+		['asset-balance-state-unavailable', 'did not ask the wallet to approve'],
 		['registration not found', 'without signing again.'],
 		['payment not found', 'without paying again.'],
 		['fungible-transfer-rejected', 'No tokens moved.'],

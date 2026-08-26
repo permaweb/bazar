@@ -2,7 +2,13 @@ import React from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { ArrowRight, Check, Info, RefreshCw } from 'lucide-react';
 
-import { type AssetState, liquidBalanceOf, readAssetState } from 'api/asset-marketplace';
+import {
+	ASSET_BALANCE_STATE_UNAVAILABLE,
+	assetBalanceStateAvailable,
+	type AssetState,
+	liquidBalanceOf,
+	readAssetState,
+} from 'api/asset-marketplace';
 import { AssetTransactionClient } from 'api/asset-transactions';
 import { FUNGIBLE_TOKEN_COLLECTION_ID } from 'api/collections';
 import {
@@ -19,6 +25,7 @@ import {
 } from 'api/fungible-dispatch';
 import { formatTokenAmount } from 'api/order-matching';
 
+import { AssetBalanceStateNotice } from 'components/AssetBalanceStateNotice';
 import { Button } from 'components/Button';
 import { type HolderDraftRow, HolderListField } from 'components/HolderListField';
 import { Loading } from 'components/Loading';
@@ -49,6 +56,8 @@ function dispatchErrorMessage(cause: unknown): string {
 			return 'Your token balance is smaller than the total quantity in the holder list.';
 		case 'dispatch-self-recipient':
 			return 'Remove your own address from the list. A transfer to yourself is a no-op that balance-based settlement cannot verify.';
+		case ASSET_BALANCE_STATE_UNAVAILABLE:
+			return 'The configured AO routes did not return a complete holder balance table, so Bazar did not create or sign this dispatch. Retry after complete balance state is available.';
 		case 'asset-state-timeout':
 			return 'Timed out waiting for settlement. Nothing was lost: posted transfers stay posted — resume to continue watching without re-sending.';
 		case 'wallet-sign-unavailable':
@@ -136,7 +145,8 @@ export default function DispatchRoute() {
 	const planPosted = plan ? plan.rows.filter((row) => row.status === 'posted').length : 0;
 	const planComplete = Boolean(plan && planSettled === plan.rows.length);
 	const senderMismatch = Boolean(plan && wallet.address && plan.sender !== wallet.address);
-	const balance = state && wallet.address ? liquidBalanceOf(state, wallet.address) : null;
+	const balanceStateAvailable = state ? assetBalanceStateAvailable(state) : false;
+	const balance = state && wallet.address && balanceStateAvailable ? liquidBalanceOf(state, wallet.address) : null;
 
 	// Surface the run in the top-bar activity notifier the same as a buy/sell/
 	// transfer. It rides the fungible runtime-activity channel with a dedicated
@@ -212,6 +222,7 @@ export default function DispatchRoute() {
 		if (needsCostApproval && !costApproved) return;
 		setRunError(null);
 		try {
+			if (!state || !assetBalanceStateAvailable(state)) throw new Error(ASSET_BALANCE_STATE_UNAVAILABLE);
 			// Pre-flight every network reward. Native AR quantity stays zero.
 			// before creating a resumable dispatch plan.
 			if (estimate) {
@@ -299,12 +310,19 @@ export default function DispatchRoute() {
 						</div>
 						<div>
 							<dt>Your balance</dt>
-							<dd>{wallet.address ? tokenAmount(balance ?? '0', state) : 'Connect wallet'}</dd>
+							<dd>
+								{wallet.address
+									? balanceStateAvailable
+										? tokenAmount(balance ?? '0', state)
+										: 'Unavailable'
+									: 'Connect wallet'}
+							</dd>
 						</div>
 					</dl>
 					<Link to={`/asset/${FUNGIBLE_TOKEN_COLLECTION_ID}/${processId}`}>View token page</Link>
 				</div>
 			) : null}
+			{state ? <AssetBalanceStateNotice state={state} /> : null}
 
 			{plan ? (
 				<div className="dispatch-plan">
@@ -550,6 +568,7 @@ export default function DispatchRoute() {
 							disabled={
 								running ||
 								!state ||
+								!balanceStateAvailable ||
 								!parsed?.rows.length ||
 								Boolean(parsed?.errors.length) ||
 								Boolean(wallet.address && !estimate) ||
