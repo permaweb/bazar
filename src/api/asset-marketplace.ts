@@ -699,6 +699,7 @@ async function readLinkedStateTable(
 		if (!response.ok) throw new Error(`HTTP ${response.status}`);
 		return response.text();
 	};
+	let requireDirectJsonBalance = false;
 	if (key === 'balances') {
 		const allowNotFound = (
 			fetcher as typeof fetch & {
@@ -708,11 +709,18 @@ async function readLinkedStateTable(
 		const deviceResponse = await (allowNotFound ?? fetcher)(`${statePath}/balances/device`, {
 			signal: requestInit.signal,
 		});
-		if (deviceResponse.status === 404) return [key, {}, false];
-		if (!deviceResponse.ok) throw new Error(`HTTP ${deviceResponse.status}`);
-		if ((await deviceResponse.text()).trim() !== 'message@1.0') return [key, {}, false];
+		if (deviceResponse.status === 404) {
+			// Small immutable balance maps can be projected as a direct json@1.0
+			// link without exposing a mounted balances/device child path. Follow
+			// that link, but retain the bounded-table guard for every other device.
+			requireDirectJsonBalance = true;
+		} else {
+			if (!deviceResponse.ok) throw new Error(`HTTP ${deviceResponse.status}`);
+			if ((await deviceResponse.text()).trim() !== 'message@1.0') return [key, {}, false];
+		}
 	}
 	const root = await read(id);
+	if (requireDirectJsonBalance && root.device !== 'json@1.0') return [key, {}, false];
 	return [
 		key,
 		root.device === 'trie@1.0' ? await flattenLinkedTrie(root, read) : await linkedRecord(root, read, readScalar),
