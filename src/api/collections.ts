@@ -123,7 +123,11 @@ type FungibleTokenConnection = {
 	pageInfo: { hasNextPage: boolean };
 	edges: Array<{
 		cursor: string;
-		node: { id: string; tags: Array<{ name: string; value: string }> };
+		node: {
+			id: string;
+			bundledIn: { id: string } | null;
+			tags: Array<{ name: string; value: string }>;
+		};
 	}>;
 };
 
@@ -844,7 +848,7 @@ async function loadFungibleTokenPage(after?: string, signal?: AbortSignal): Prom
 				) {
 					count
 					pageInfo { hasNextPage }
-						edges { cursor node { id tags { name value } } }
+						edges { cursor node { id bundledIn { id } tags { name value } } }
 					}
 					legacyHintStyle: transactions(
 						first: 100
@@ -860,7 +864,7 @@ async function loadFungibleTokenPage(after?: string, signal?: AbortSignal): Prom
 					) {
 						count
 						pageInfo { hasNextPage }
-						edges { cursor node { id tags { name value } } }
+						edges { cursor node { id bundledIn { id } tags { name value } } }
 					}
 					legacyAssetType: transactions(
 						first: 100
@@ -876,7 +880,7 @@ async function loadFungibleTokenPage(after?: string, signal?: AbortSignal): Prom
 					) {
 						count
 						pageInfo { hasNextPage }
-						edges { cursor node { id tags { name value } } }
+						edges { cursor node { id bundledIn { id } tags { name value } } }
 					}
 				}`,
 				variables: { after: after ?? null },
@@ -914,7 +918,7 @@ async function loadFungibleTokenPage(after?: string, signal?: AbortSignal): Prom
 	const assets = new Map<string, AssetSummary>();
 	let hiddenIndexedAssets = 0;
 	for (const { node } of connection.edges) {
-		if (!isVisibleAssetId(node.id)) {
+		if (node.bundledIn || !isVisibleAssetId(node.id)) {
 			hiddenIndexedAssets += 1;
 			continue;
 		}
@@ -958,7 +962,7 @@ async function loadFungibleTokenPage(after?: string, signal?: AbortSignal): Prom
 			throw new Error('fungible-index-schema');
 		if (legacy.pageInfo.hasNextPage) throw new Error('fungible-index-legacy-pagination-stalled');
 		for (const { node } of legacy.edges) {
-			if (!isVisibleAssetId(node.id)) continue;
+			if (node.bundledIn || !isVisibleAssetId(node.id)) continue;
 			const tags = Object.fromEntries(node.tags.map((tag) => [tag.name.toLowerCase(), tag.value]));
 			if (assetUiStyle(tags) !== 'fungible' || !(expectedTag in tags)) continue;
 			legacyAssets.set(node.id, {
