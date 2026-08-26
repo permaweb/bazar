@@ -1,4 +1,3 @@
-import { isSupportedAssetContentType } from 'helpers/asset-media';
 import { WALLET_CANDIDATE_SCAN_STORAGE_PREFIX } from 'helpers/browser-storage';
 import { arweaveGraphqlEndpoint } from 'helpers/config';
 
@@ -1889,9 +1888,9 @@ function atomicProcessNode(node: GraphqlNode): boolean {
 		tags.ticker === 'ASSET' &&
 		ADDRESS.test(tags['initial-holder'] ?? '') &&
 		(!tags['asset-data'] || ADDRESS.test(tags['asset-data'])) &&
-		isSupportedAssetContentType(tags['asset-content-type'] ?? tags['content-type']) &&
 		(!tags['asset-artwork'] || ADDRESS.test(tags['asset-artwork'])) &&
-		Boolean(tags.name?.trim())
+		Boolean(tags.name?.trim()) &&
+		Boolean(assetFromMintState(node.id, tags))
 	);
 }
 

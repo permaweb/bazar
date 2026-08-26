@@ -143,6 +143,38 @@ describe('Bazar atomic asset search', () => {
 		await expect(loadBazarAtomicAssetById(processId, { fetch: fetcher as typeof fetch })).resolves.toBeNull();
 	});
 
+	it('loads indexed interactive HTML with its permanent preview', async () => {
+		const processId = 'P'.repeat(43);
+		const previewId = 'V'.repeat(43);
+		const tags = [
+			{ name: 'device', value: 'process@1.0' },
+			{ name: 'execution-device', value: 'token@1.0' },
+			{ name: 'swap-device', value: 'arweave-swap@1.0' },
+			{ name: 'scheduler-device', value: 'arweave-scheduler@1.0' },
+			{ name: 'scheduler-mode', value: 'all' },
+			{ name: 'initial-holder', value: wallet },
+			{ name: 'total-supply', value: '1' },
+			{ name: 'denomination', value: '0' },
+			{ name: 'ticker', value: 'ASSET' },
+			{ name: 'name', value: 'OBELISK' },
+			{ name: 'hint-ui-style', value: 'non-fungible' },
+			{ name: 'Content-Type', value: 'text/html' },
+			{ name: 'asset-preview', value: previewId },
+			{ name: 'asset-preview-content-type', value: 'image/png' },
+		];
+		const fetcher = vi.fn(async () => Response.json({ data: { transaction: { id: processId, tags } } }));
+
+		await expect(loadBazarAtomicAssetById(processId, { fetch: fetcher as typeof fetch })).resolves.toMatchObject({
+			asset: {
+				id: processId,
+				name: 'OBELISK',
+				contentType: 'text/html',
+				media: `https://arweave.net/${processId}`,
+				image: `https://arweave.net/${previewId}`,
+			},
+		});
+	});
+
 	it('does not query an exact denied process ID', async () => {
 		const fetcher = vi.fn();
 

@@ -3115,6 +3115,18 @@ input:focus {
 	object-fit: contain;
 	background: var(--paper);
 }
+.atomic-asset-page .asset-hero-media.interactive-hero-media {
+	aspect-ratio: 16 / 10;
+	background: var(--fixed-ink);
+}
+.asset-interactive-frame {
+	width: 100%;
+	height: 100%;
+	min-width: 0;
+	min-height: 0;
+	border: 0;
+	background: var(--fixed-ink);
+}
 .asset-audio-player {
 	width: 100%;
 	height: 100%;
@@ -3336,6 +3348,7 @@ input:focus {
 	backdrop-filter: blur(12px);
 	color: var(--contrast-text);
 	font-size: var(--type-small);
+	z-index: 1;
 }
 .asset-media-label strong {
 	font-family: 'DM Sans', sans-serif;
