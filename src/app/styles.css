@@ -8700,6 +8700,30 @@ body input:focus-visible {
 	display: grid;
 	gap: 14px;
 }
+.udl-source-tabs {
+	width: 100%;
+}
+.udl-source-tabs button {
+	flex: 1 1 0;
+}
+.udl-source-panel {
+	display: grid;
+	gap: 14px;
+}
+.udl-custom-license input[aria-invalid='true'] {
+	border-color: var(--negative);
+}
+.udl-field-help {
+	color: var(--muted-subtle);
+	font-size: var(--type-small);
+	line-height: 1.4;
+}
+.udl-field-help a {
+	display: inline-flex;
+	align-items: center;
+	gap: 3px;
+	color: var(--ink);
+}
 .udl-field-control.with-suffix {
 	position: relative;
 }

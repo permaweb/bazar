@@ -11774,6 +11774,7 @@ export function mintErrorMessage(error: unknown) {
 		'wallet-account-changed': 'The connected wallet changed. Reconnect the original wallet and try again.',
 		'mint-draft-wallet-mismatch': 'Reconnect the wallet that uploaded this media to finish minting it.',
 		'mint-media-invalid': 'The earlier media upload is empty, too large, or unavailable in its original form.',
+		'mint-udl-license-id-invalid': 'Enter a valid 43-character UDL transaction ID.',
 		'mint-udl-access-fee-invalid': 'Enter a UDL access fee greater than zero.',
 		'mint-udl-fee-invalid': 'Enter a UDL license fee greater than zero.',
 		'mint-udl-share-invalid': 'Enter a UDL revenue share between 0 and 100 percent.',
