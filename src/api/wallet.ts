@@ -155,6 +155,7 @@ export async function readPermawebOsBalances(
 	address: string,
 	options: {
 		scope?: BrowserWalletScope;
+		wallet?: unknown;
 		signal?: AbortSignal;
 		timeoutMs?: number;
 	} = {}
@@ -162,7 +163,8 @@ export async function readPermawebOsBalances(
 	if (!ARWEAVE_ADDRESS.test(address)) throw new TypeError('invalid-wallet-address');
 	const scope = options.scope ?? (typeof window === 'undefined' ? {} : window);
 	const provider = scope.permawebConnect;
-	if (!isBrowserWallet(provider) || scope.arweaveWallet !== provider || typeof provider.getBalances !== 'function') {
+	const selectedWallet = options.wallet ?? scope.arweaveWallet;
+	if (!isBrowserWallet(provider) || selectedWallet !== provider || typeof provider.getBalances !== 'function') {
 		return undefined;
 	}
 	const getBalances = provider.getBalances.bind(provider);
@@ -188,7 +190,7 @@ export async function readPermawebOsBalances(
 		}
 	);
 	if (balances === undefined) return undefined;
-	if (scope.permawebConnect !== provider || scope.arweaveWallet !== provider) return undefined;
+	if (scope.permawebConnect !== provider || (options.wallet ?? scope.arweaveWallet) !== provider) return undefined;
 	if (!balances || typeof balances !== 'object' || Array.isArray(balances)) {
 		throw new Error('wallet-balances-invalid');
 	}
@@ -223,6 +225,7 @@ export async function readVisibleWalletBalances(
 		fetch?: typeof fetch;
 		gateway?: string;
 		scope?: BrowserWalletScope;
+		wallet?: unknown;
 		signal?: AbortSignal;
 		timeoutMs?: number;
 	} = {}
@@ -231,6 +234,7 @@ export async function readVisibleWalletBalances(
 	try {
 		injected = await readPermawebOsBalances(address, {
 			scope: options.scope,
+			wallet: options.wallet,
 			signal: options.signal,
 			timeoutMs: options.timeoutMs,
 		});

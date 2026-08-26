@@ -14,6 +14,7 @@ import {
 	permanentContentGatewayFromLocation,
 } from 'helpers/config';
 
+import { getActiveWallet } from './active-wallet';
 import { AtomicAssetUploader, normalizeUploadTags } from './asset-uploader';
 import { type AssetSummary, FUNGIBLE_TOKEN_COLLECTION_ID, FUNGIBLE_TOKEN_COLLECTION_NAME } from './collections';
 import { acceptedMintActivity, mintActivityId, removeMintActivities, upsertMintActivity } from './mint-activity';
@@ -258,7 +259,7 @@ export class AssetMintClient {
 			this.#uploader = options.uploader;
 			return;
 		}
-		const wallet = options.wallet ?? globalThis.window?.arweaveWallet;
+		const wallet = options.wallet ?? getActiveWallet();
 		let arweave = options.arweave;
 		const getArweave = async () => {
 			arweave ??= await createArweaveClient(arweaveClientConfig(this.#gateway));

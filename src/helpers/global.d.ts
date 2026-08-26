@@ -4,6 +4,10 @@ interface ArweaveWalletProvider {
 	getActiveAddress?(): Promise<string>;
 	getPermissions?(): Promise<string[]>;
 	getBalances?(): Promise<unknown>;
+	events?: {
+		on(type: 'disconnect' | 'permissions', handler: (value: unknown) => void): void;
+		off(type: 'disconnect' | 'permissions', handler: (value: unknown) => void): void;
+	};
 	sign(transaction: unknown): Promise<any>;
 }
 

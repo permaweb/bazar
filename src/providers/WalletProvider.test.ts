@@ -2,7 +2,13 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { PERMAWEB_OS_WALLET_PERMISSIONS } from 'api/wallet';
 
-import { completePrivateJwk, connectWallet, createLatestAddressCommitter, isValidWalletJwk } from './WalletProvider';
+import {
+	completePrivateJwk,
+	connectWallet,
+	createLatestAddressCommitter,
+	isValidWalletJwk,
+	observeWalletLifecycle,
+} from './WalletProvider';
 
 function deferred<T>() {
 	let resolve!: (value: T) => void;
@@ -72,6 +78,29 @@ describe('explicit wallet connection', () => {
 				sign: async (transaction) => transaction,
 			})
 		).rejects.toThrow('no valid active address');
+	});
+});
+
+describe('browser wallet lifecycle', () => {
+	it('subscribes to and removes disconnect and permission listeners', () => {
+		const on = vi.fn();
+		const off = vi.fn();
+		const disconnect = vi.fn();
+		const permissions = vi.fn();
+		const cleanup = observeWalletLifecycle(
+			{
+				connect: async () => undefined,
+				events: { on, off },
+				sign: async (transaction) => transaction,
+			},
+			{ disconnect, permissions }
+		);
+
+		expect(on).toHaveBeenCalledWith('disconnect', disconnect);
+		expect(on).toHaveBeenCalledWith('permissions', permissions);
+		cleanup?.();
+		expect(off).toHaveBeenCalledWith('disconnect', disconnect);
+		expect(off).toHaveBeenCalledWith('permissions', permissions);
 	});
 });
 

@@ -56,8 +56,12 @@ describe('PermawebOS visible balances', () => {
 			},
 		]);
 
+		const wander = injectedWallet();
 		await expect(
-			readPermawebOsBalances(address, { scope: { arweaveWallet: provider, permawebConnect: provider } })
+			readPermawebOsBalances(address, {
+				scope: { arweaveWallet: wander, permawebConnect: provider },
+				wallet: provider,
+			})
 		).resolves.toEqual({
 			ar: { atomicBalance: 1234n, denomination: 12 },
 			ao: { atomicBalance: 5678n, denomination: 12 },
@@ -69,7 +73,10 @@ describe('PermawebOS visible balances', () => {
 		const wander = injectedWallet();
 
 		await expect(
-			readPermawebOsBalances(address, { scope: { arweaveWallet: wander, permawebConnect: provider } })
+			readPermawebOsBalances(address, {
+				scope: { arweaveWallet: wander, permawebConnect: provider },
+				wallet: wander,
+			})
 		).resolves.toBeUndefined();
 		expect(provider.getBalances).not.toHaveBeenCalled();
 	});
