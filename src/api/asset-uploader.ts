@@ -1,3 +1,5 @@
+import { signedTransactionSignerAddress } from './arweave-transaction-signature';
+
 const ARWEAVE_ID = /^[A-Za-z0-9_-]{43}$/;
 
 export type AssetUploadData = string | Uint8Array;
@@ -39,6 +41,7 @@ export type ArweaveUploadAdapter = {
 	createTransaction(attributes: Record<string, unknown>): Promise<any>;
 	signTransaction(transaction: any, context: AssetUploadSignContext): Promise<any>;
 	ownerToAddress(owner: string): Promise<string>;
+	verifyTransaction?: (transaction: any) => Promise<boolean>;
 	getActiveAddress?: () => Promise<string>;
 	getUploader?: (transaction: any) => Promise<ArweaveChunkUploader | undefined>;
 };
@@ -131,8 +134,16 @@ export class AtomicAssetUploader {
 		for (const [name, value] of Object.entries(tags)) transaction.addTag(name, value);
 		const signed = await this.#adapter.signTransaction(transaction, { owner, signal: options.signal });
 		if (!ARWEAVE_ID.test(signed?.id)) throw new Error('wallet-returned-unsigned-transaction');
-		const signedOwner = String(signed.owner ?? '');
-		if (!signedOwner || (await this.#adapter.ownerToAddress(signedOwner)) !== owner) {
+		let signerAddress: string;
+		try {
+			signerAddress = await signedTransactionSignerAddress(signed, {
+				ownerToAddress: this.#adapter.ownerToAddress,
+				verifyRsa: this.#adapter.verifyTransaction,
+			});
+		} catch {
+			throw new Error('wallet-returned-invalid-signature');
+		}
+		if (signerAddress !== owner) {
 			throw new Error('wallet-account-changed');
 		}
 		options.onTransaction?.(signed.id);

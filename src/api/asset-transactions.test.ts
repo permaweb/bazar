@@ -1,6 +1,10 @@
+import { secp256k1 } from '@noble/curves/secp256k1.js';
 import { describe, expect, it, vi } from 'vitest';
 import { SwapPurchase, TransactionDispatchNotSentError, TransactionDispatchRejectedError } from 'weave-wrangler';
 
+import Arweave from 'arweave';
+
+import { ecdsaTransactionSignatureData } from './arweave-transaction-signature';
 import { parseAssetState, type SwapOrder } from './asset-marketplace';
 import {
 	assertExactCancelAssignment,
@@ -163,7 +167,8 @@ function stateResponse(value: unknown): Response {
 function client(
 	sign: (transaction: any) => Promise<any> = async (transaction) => transaction,
 	fetchResponse?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
-	verify: (transaction: any) => Promise<boolean> = async () => true
+	verify: (transaction: any) => Promise<boolean> = async () => true,
+	activeSigner = seller
 ) {
 	const values = new Map<string, string>();
 	const requests: string[] = [];
@@ -212,7 +217,7 @@ function client(
 			return transaction;
 		},
 		transactions: { verify },
-		wallets: { ownerToAddress: async () => seller },
+		wallets: { ownerToAddress: async () => activeSigner },
 	};
 	return {
 		storage,
@@ -220,7 +225,7 @@ function client(
 		requests,
 		client: new AssetTransactionClient({
 			wallet: {
-				getActiveAddress: async () => seller,
+				getActiveAddress: async () => activeSigner,
 				sign,
 			},
 			arweave,
@@ -232,6 +237,12 @@ function client(
 			},
 		}),
 	};
+}
+
+async function testSha256(value: Uint8Array): Promise<Uint8Array> {
+	const input = new Uint8Array(value.byteLength);
+	input.set(value);
+	return new Uint8Array(await globalThis.crypto.subtle.digest('SHA-256', input));
 }
 
 describe('fungible asset transactions', () => {
@@ -405,6 +416,45 @@ describe('fungible asset transactions', () => {
 			'wallet-returned-invalid-signature'
 		);
 		expect(subject.storage.getItem(`bazar-signed-transaction:${transactionId}`)).toBeNull();
+	});
+
+	it('accepts an ownerless ECDSA transaction signed by the intended account', async () => {
+		const secretKey = secp256k1.utils.randomSecretKey();
+		const signer = Arweave.utils.bufferTob64Url(await testSha256(secp256k1.getPublicKey(secretKey, true)));
+		const verifyRsa = vi.fn(async () => false);
+		const subject = client(
+			async (transaction) => {
+				Object.assign(transaction, {
+					format: 2,
+					owner: '',
+					last_tx: '',
+					data_size: '0',
+					data_root: '',
+				});
+				const signatureData = await ecdsaTransactionSignatureData(transaction.toJSON());
+				const recovered = secp256k1.sign(signatureData, secretKey, { format: 'recovered' });
+				const signature = new Uint8Array(65);
+				signature.set(recovered.subarray(1));
+				signature[64] = recovered[0];
+				return {
+					id: Arweave.utils.bufferTob64Url(await testSha256(signature)),
+					owner: '',
+					reward: transaction.reward,
+					tags: transaction.tags,
+					signature: Arweave.utils.bufferTob64Url(signature),
+				};
+			},
+			undefined,
+			verifyRsa,
+			signer
+		);
+
+		const prepared = await subject.client.cancelOrder(processId, orderId, signer);
+		const stored = JSON.parse(subject.storage.getItem(`bazar-signed-transaction:${prepared.id}`)!);
+
+		expect(stored.transaction.owner).toBe('');
+		expect(verifyRsa).not.toHaveBeenCalled();
+		await expect(prepared.dispatch(new AbortController().signal)).resolves.toMatchObject({ status: 'accepted' });
 	});
 
 	it('rejects a noncanonical raw wire tag before persistence', async () => {

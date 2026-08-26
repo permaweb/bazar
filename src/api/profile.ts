@@ -1,6 +1,7 @@
 import { createArweaveClient } from 'helpers/arweave';
 import { arweaveClientConfig, arweaveDataUrl, arweaveGatewayFromLocation } from 'helpers/config';
 
+import { signedTransactionSignerAddress } from './arweave-transaction-signature';
 import { type AssetUploadData, type AssetUploadOptions } from './asset-uploader';
 
 const ARWEAVE_ID = /^[A-Za-z0-9_-]{43}$/;
@@ -168,7 +169,20 @@ export class ProfileClient {
 				});
 			}
 			if (!ARWEAVE_ID.test(transaction.id)) throw new Error('wallet-returned-unsigned-transaction');
-			if ((await arweaveClient.wallets.ownerToAddress(transaction.owner)) !== owner) {
+			let signerAddress: string;
+			try {
+				const verifyRsa = arweaveClient.transactions?.verify;
+				signerAddress = await signedTransactionSignerAddress(transaction, {
+					ownerToAddress: (signedOwner) => arweaveClient.wallets.ownerToAddress(signedOwner),
+					verifyRsa:
+						typeof verifyRsa === 'function'
+							? (candidate) => verifyRsa.call(arweaveClient.transactions, candidate)
+							: undefined,
+				});
+			} catch {
+				throw new Error('wallet-returned-invalid-signature');
+			}
+			if (signerAddress !== owner) {
 				throw new Error('wallet-account-changed');
 			}
 			uploadOptions.onTransaction?.(transaction.id);

@@ -273,6 +273,12 @@ export class AssetMintClient {
 					return transaction;
 				},
 				ownerToAddress: async (owner) => (await getArweave()).wallets.ownerToAddress(owner),
+				verifyTransaction: async (transaction) => {
+					const transactions = (await getArweave()).transactions;
+					return typeof transactions?.verify === 'function'
+						? Boolean(await transactions.verify(transaction))
+						: true;
+				},
 				...(wallet?.getActiveAddress ? { getActiveAddress: () => wallet.getActiveAddress!() } : {}),
 				getUploader: async (transaction) => {
 					const candidate = (await getArweave())?.transactions?.getUploader;
