@@ -319,7 +319,12 @@ describe('asset state', () => {
 				requested.push(url);
 				if (url.endsWith('/balances/device')) return new Response('not_found', { status: 404 });
 				if (url.endsWith(`${balancesLink}~message@1.0/serialize~json@1.0`)) {
-					return jsonResponse({ device: 'json@1.0', [owner]: 1 });
+					return jsonResponse({
+						'content-type': 'application/json',
+						device: 'json@1.0',
+						[owner]: 1,
+						status: 200,
+					});
 				}
 				return new Response(null, {
 					headers: {
@@ -335,6 +340,43 @@ describe('asset state', () => {
 		expect(result.state.holderBalancesAvailable).toBe(true);
 		expect(ownerOfAsset(result.state)).toBe(owner);
 		expect(requested).toContain(`/${balancesLink}~message@1.0/serialize~json@1.0`);
+	});
+
+	it('rejects malformed degraded JSON balance roots without following child links or accepting partial data', async () => {
+		const balancesLink = 'B'.repeat(43);
+		const childLink = 'C'.repeat(43);
+		const malformedRoots = [
+			{ device: 'json@1.0', [owner]: '1', [`${buyer}+link`]: childLink },
+			{ device: 'json@1.0', [owner]: { amount: '1' } },
+			{ device: 'json@1.0', [owner]: '1', [buyer]: '-1' },
+			{ device: 'json@1.0', [owner]: '1', description: 'not balance metadata' },
+		];
+
+		for (const root of malformedRoots) {
+			const requested: string[] = [];
+			const result = await readAssetState(processId, {
+				provider: 'https://compute.example',
+				fetch: async (input) => {
+					const url = String(input);
+					requested.push(url);
+					if (url.endsWith('/balances/device')) return new Response('not_found', { status: 404 });
+					if (url.endsWith(`${balancesLink}~message@1.0/serialize~json@1.0`)) return jsonResponse(root);
+					if (url.includes(childLink)) return jsonResponse({ 'node-value': '1' });
+					return new Response(null, {
+						headers: {
+							'balances+link': balancesLink,
+							'execution-device': 'token@1.0',
+							'total-supply': '1',
+						},
+					});
+				},
+			});
+
+			expect(result.state.balances).toEqual({});
+			expect(result.state.holderBalancesAvailable).toBe(false);
+			expect(ownerOfAsset(result.state)).toBeNull();
+			expect(requested.every((url) => !url.includes(childLink))).toBe(true);
+		}
 	});
 
 	it('recovers a direct JSON balance link when a public-beta style routed probe rejects its 404', async () => {
@@ -433,6 +475,34 @@ describe('asset state', () => {
 			if (String(input).endsWith('/balances/device')) {
 				controller.abort(reason);
 				throw new Error('ao-wrangler-response-quorum-not-met');
+			}
+			return new Response(null, {
+				headers: {
+					'balances+link': balancesLink,
+					'execution-device': 'token@1.0',
+					'total-supply': '1',
+				},
+			});
+		});
+
+		await expect(
+			readAssetState(processId, {
+				fetch: fetcher as unknown as typeof fetch,
+				signal: controller.signal,
+			})
+		).rejects.toBe(reason);
+	});
+
+	it('propagates the exact caller cancellation when a legacy linked-root transport ignores abort', async () => {
+		const balancesLink = 'B'.repeat(43);
+		const controller = new AbortController();
+		const reason = new DOMException('Asset route changed', 'AbortError');
+		const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+			const url = String(input);
+			if (url.endsWith('/balances/device')) return new Response('not_found', { status: 404 });
+			if (url.endsWith(`${balancesLink}~message@1.0/serialize~json@1.0`)) {
+				controller.abort(reason);
+				return jsonResponse({ device: 'json@1.0', [owner]: 1 });
 			}
 			return new Response(null, {
 				headers: {

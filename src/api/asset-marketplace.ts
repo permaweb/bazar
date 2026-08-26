@@ -78,6 +78,16 @@ const COMPUTE_RETRY_BASE_DELAY = 1_000;
 const COMPUTE_RETRY_MAX_DELAY = 8_000;
 const PASSIVE_STATE_MAX_AGES = [30, 60, 120] as const;
 const LINKED_STATE_TABLES = ['balances', 'orders'] as const;
+const DIRECT_JSON_BALANCE_METADATA = new Set([
+	'ao-body-key',
+	'ao-types',
+	'commitments',
+	'content-type',
+	'device',
+	'hashpath',
+	'priv',
+	'status',
+]);
 const LICENSE_FIELDS = [
 	['license', 'License'],
 	['access', 'Access'],
@@ -679,6 +689,7 @@ async function readLinkedStateTable(
 	requestInit: RequestInit,
 	fetcher: typeof fetch
 ): Promise<[string, Record<string, unknown>, boolean?]> {
+	const throwIfAborted = () => requestInit.signal?.throwIfAborted();
 	const messages = new Map<string, Promise<Record<string, unknown>>>();
 	const read = (messageId: string): Promise<Record<string, unknown>> => {
 		if (!ADDRESS.test(messageId)) return Promise.reject(new TypeError('invalid-asset-state-link'));
@@ -692,8 +703,16 @@ async function readLinkedStateTable(
 			...(serialized ? {} : { method: 'HEAD' as const }),
 			signal: requestInit.signal,
 		}).then(async (response) => {
+			throwIfAborted();
 			if (!response.ok) throw new Error(`HTTP ${response.status}`);
-			return serialized ? unwrapState(parseLosslessJson(await response.text())) : responseMessage(response);
+			if (serialized) {
+				const body = await response.text();
+				throwIfAborted();
+				return unwrapState(parseLosslessJson(body));
+			}
+			const message = await responseMessage(response);
+			throwIfAborted();
+			return message;
 		});
 		messages.set(messageId, pending);
 		return pending;
@@ -702,8 +721,11 @@ async function readLinkedStateTable(
 		const response = await fetcher(`${base}${messageId}~message@1.0/${field}`, {
 			signal: requestInit.signal,
 		});
+		throwIfAborted();
 		if (!response.ok) throw new Error(`HTTP ${response.status}`);
-		return response.text();
+		const value = await response.text();
+		throwIfAborted();
+		return value;
 	};
 	let requireDirectJsonBalance = false;
 	if (key === 'balances') {
@@ -716,42 +738,53 @@ async function readLinkedStateTable(
 			const deviceResponse = await (allowNotFound ?? fetcher)(`${statePath}/balances/device`, {
 				signal: requestInit.signal,
 			});
-			requestInit.signal?.throwIfAborted();
+			throwIfAborted();
 			if (deviceResponse.status === 404 || !deviceResponse.ok) {
 				// A legacy routed fetch can reject or hide the optional 404 probe.
 				// Inspect only the linked root in that case; it is safe to use when
 				// it identifies itself as a direct immutable JSON value.
 				requireDirectJsonBalance = true;
-			} else if ((await deviceResponse.text()).trim() !== 'message@1.0') {
-				return [key, {}, false];
+			} else {
+				const device = await deviceResponse.text();
+				throwIfAborted();
+				if (device.trim() !== 'message@1.0') return [key, {}, false];
 			}
 		} catch {
-			requestInit.signal?.throwIfAborted();
+			throwIfAborted();
 			requireDirectJsonBalance = true;
 		}
 	}
 	let root: Record<string, unknown>;
 	try {
 		root = await read(id);
+		throwIfAborted();
 	} catch (error) {
-		requestInit.signal?.throwIfAborted();
+		throwIfAborted();
 		if (requireDirectJsonBalance) return [key, {}, false];
 		throw error;
 	}
 	if (requireDirectJsonBalance) {
-		if (root.device !== 'json@1.0') return [key, {}, false];
-		try {
-			return [key, await linkedRecord(root, read, readScalar), true];
-		} catch {
-			requestInit.signal?.throwIfAborted();
-			return [key, {}, false];
-		}
+		const balances = strictDirectJsonBalances(root);
+		return balances ? [key, balances, true] : [key, {}, false];
 	}
-	return [
-		key,
-		root.device === 'trie@1.0' ? await flattenLinkedTrie(root, read) : await linkedRecord(root, read, readScalar),
-		true,
-	];
+	const value =
+		root.device === 'trie@1.0' ? await flattenLinkedTrie(root, read) : await linkedRecord(root, read, readScalar);
+	throwIfAborted();
+	return [key, value, true];
+}
+
+function strictDirectJsonBalances(message: Record<string, unknown>): Record<string, string> | null {
+	if (message.device !== 'json@1.0') return null;
+	const balances: Record<string, string> = {};
+	for (const [name, value] of Object.entries(message)) {
+		if (name.endsWith('+link')) return null;
+		if (DIRECT_JSON_BALANCE_METADATA.has(name)) continue;
+		if (!ADDRESS.test(name)) return null;
+		const balance = amount(value);
+		if (balance === null) return null;
+		balances[name] = balance;
+	}
+	return balances;
 }
 
 const HTTPSIG_TRANSPORT_HEADERS = new Set([

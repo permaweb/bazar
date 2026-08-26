@@ -9784,7 +9784,13 @@ function AssetView() {
 									{owner ? (
 										<WalletAddress address={owner} label="owner" />
 									) : (
-										<strong>{state ? 'Unassigned' : 'State unavailable'}</strong>
+										<strong>
+											{state
+												? balanceStateAvailable
+													? 'Unassigned'
+													: 'Ownership unavailable'
+												: 'State unavailable'}
+										</strong>
 									)}
 								</div>
 								<div>
