@@ -27,6 +27,8 @@ const FRIENDLY_ERRORS: Record<string, string> = {
 		'The owner or listing changed since it was last checked. Close this dialog and review the updated market state before approving anything.',
 	'asset-balance-state-unavailable':
 		'The configured AO routes returned token and order state without a complete holder balance table. Bazar did not ask the wallet to approve a new purchase, listing, cancellation, or transfer. Retry after complete state is available; existing signed actions remain resumable.',
+	'asset-balance-proof-unavailable':
+		'The exact scheduled action was found, but the configured AO routes did not return complete holder balances for its before-and-after state. Bazar cannot safely decide whether it applied. The signed transaction remains saved in this browser; retry after complete balance state is available.',
 	'asset-pending-listing-check-unavailable':
 		'Bazar could not check Arweave for another recent listing transaction, so it did not ask your wallet to sign. Retry shortly.',
 	'registration-not-found':

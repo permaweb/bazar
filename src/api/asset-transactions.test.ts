@@ -6,6 +6,7 @@ import {
 	assertExactCancelAssignment,
 	assertExactFungibleTransferAssignment,
 	assertExactPurchaseAssignment,
+	ASSET_BALANCE_PROOF_UNAVAILABLE,
 	AssetTransactionClient,
 	cancelAppliedAtSlot,
 	fungibleTransferAppliedAtSlot,
@@ -158,6 +159,13 @@ function decodedTags(transaction: { tags: Array<{ name: string; value: string }>
 
 function stateResponse(value: unknown): Response {
 	return Response.json(value, { headers: { 'codec-device': 'json@1.0' } });
+}
+
+function withoutMountedBalances(raw: Record<string, unknown>, link = 'B'.repeat(43)) {
+	const linked = structuredClone(raw);
+	delete linked.balances;
+	linked['balances+link'] = link;
+	return linked;
 }
 
 function client(
@@ -686,6 +694,73 @@ describe('fungible asset transactions', () => {
 		).resolves.toBeUndefined();
 	});
 
+	it.each(['before', 'after'] as const)(
+		'keeps a purchase recovery retryable when exact %s holder balances are unavailable',
+		async (unavailableAt) => {
+			const expected = {
+				...swapOrder(orderId, '10', '25'),
+				creator: seller,
+				recipient: seller,
+			};
+			const before = transferState(10, '90', '2', {
+				[orderId]: reservedPurchaseOrderRaw(expected),
+			});
+			const settled = transferState(11, '90', '12');
+			const later = transferState(12, '90', '0');
+			const subject = new AssetTransactionClient({
+				fetch: async (input: RequestInfo | URL) => {
+					const url = String(input);
+					if (url.includes(`/tx/${transactionId}/status`)) {
+						return new Response(JSON.stringify({ block_height: 51 }));
+					}
+					if (url.endsWith('/now')) return stateResponse(later.raw);
+					const schedule = url.match(/schedule&from=(\d+)&to=(\d+)\/assignments/);
+					if (schedule) {
+						const assignments: Record<number, unknown> = {};
+						for (let slot = Number(schedule[1]); slot <= Number(schedule[2]); slot += 1) {
+							assignments[slot] = scheduledPurchaseAssignment(
+								slot,
+								slot === 11 ? transactionId : `u${String(slot).padStart(42, '0')}`,
+								expected,
+								recipient,
+								slot < 11 ? 50 : slot === 11 ? 51 : 52
+							);
+						}
+						return new Response(JSON.stringify(assignments));
+					}
+					if (url.endsWith('/balances/device')) return new Response('trie@1.0');
+					if (url.includes('compute&slot=10')) {
+						return stateResponse(
+							unavailableAt === 'before' ? withoutMountedBalances(before.raw) : before.raw
+						);
+					}
+					if (url.includes('compute&slot=11')) {
+						return stateResponse(
+							unavailableAt === 'after' ? withoutMountedBalances(settled.raw) : settled.raw
+						);
+					}
+					throw new Error(`unexpected-request:${url}`);
+				},
+			});
+			const adapter = subject.purchaseAdapter({
+				processId,
+				order: expected,
+				buyer: recipient,
+				startingBalance: '2',
+				network: { tip: () => 60 } as any,
+			});
+
+			await expect(
+				adapter.verifyOwnership!({
+					registrationId: 'R'.repeat(43),
+					paymentId: transactionId,
+					signal: new AbortController().signal,
+					report: () => undefined,
+				})
+			).rejects.toThrow(ASSET_BALANCE_PROOF_UNAVAILABLE);
+		}
+	);
+
 	it('proves cancellation from the exact scheduled transition rather than order absence', () => {
 		const assignment = {
 			slot: 11,
@@ -780,6 +855,53 @@ describe('fungible asset transactions', () => {
 			subject.waitForExactCancellation(processId, transactionId, seller, expected, { startingSlot: 10 })
 		).rejects.toThrow('asset-cancel-rejected');
 	});
+
+	it.each(['before', 'after'] as const)(
+		'keeps a cancellation recovery retryable when exact %s holder balances are unavailable',
+		async (unavailableAt) => {
+			const current = transferState(12, '100', '0');
+			const before = transferState(11, '90', '0', { [orderId]: cancelOrderRaw() });
+			const cancelled = transferState(12, '100', '0');
+			const expected = before.orders[orderId];
+			const subject = new AssetTransactionClient({
+				fetch: async (input: RequestInfo | URL) => {
+					const url = String(input);
+					if (url.includes(`/tx/${transactionId}/status`)) {
+						return new Response(JSON.stringify({ block_height: 51 }));
+					}
+					if (url.endsWith('/now')) return stateResponse(current.raw);
+					const schedule = url.match(/schedule&from=(\d+)&to=(\d+)\/assignments/);
+					if (schedule) {
+						const assignments: Record<number, unknown> = {};
+						for (let slot = Number(schedule[1]); slot <= Number(schedule[2]); slot += 1) {
+							assignments[slot] = scheduledCancelAssignment(
+								slot,
+								slot === 12 ? transactionId : `v${String(slot).padStart(42, '0')}`,
+								slot === 12 ? 51 : 50
+							);
+						}
+						return new Response(JSON.stringify(assignments));
+					}
+					if (url.endsWith('/balances/device')) return new Response('trie@1.0');
+					if (url.includes('compute&slot=11')) {
+						return stateResponse(
+							unavailableAt === 'before' ? withoutMountedBalances(before.raw) : before.raw
+						);
+					}
+					if (url.includes('compute&slot=12')) {
+						return stateResponse(
+							unavailableAt === 'after' ? withoutMountedBalances(cancelled.raw) : cancelled.raw
+						);
+					}
+					throw new Error(`unexpected-request:${url}`);
+				},
+			});
+
+			await expect(
+				subject.waitForExactCancellation(processId, transactionId, seller, expected, { startingSlot: 10 })
+			).rejects.toThrow(ASSET_BALANCE_PROOF_UNAVAILABLE);
+		}
+	);
 
 	it('accepts an exact cancellation transition even after later state changes', async () => {
 		const current = transferState(13, '100', '0');
@@ -980,6 +1102,45 @@ describe('fungible asset transactions', () => {
 		await expect(
 			subject.waitForFungibleTransfer(processId, transactionId, seller, recipient, '10', { startingSlot: 10 })
 		).resolves.toMatchObject({ raw: { 'at-slot': 12 }, balances: { [recipient]: '110' } });
+	});
+
+	it('verifies an exact transfer from outbox notices without a holder balance table', async () => {
+		const applied = transferState(12, '90', '110');
+		applied.raw.results = { outbox: transferNotices('10') };
+		const later = transferState(13, '140', '0');
+		const subject = new AssetTransactionClient({
+			fetch: async (input: RequestInfo | URL) => {
+				const url = String(input);
+				if (url.includes(`/tx/${transactionId}/status`)) {
+					return new Response(JSON.stringify({ block_height: 51 }));
+				}
+				if (url.endsWith('/now')) return stateResponse(later.raw);
+				const schedule = url.match(/schedule&from=(\d+)&to=(\d+)\/assignments/);
+				if (schedule) {
+					const assignments: Record<number, unknown> = {};
+					for (let slot = Number(schedule[1]); slot <= Number(schedule[2]); slot += 1) {
+						assignments[slot] = scheduledAssignment(
+							slot,
+							slot === 12 ? transactionId : `w${String(slot).padStart(42, '0')}`
+						);
+					}
+					return new Response(JSON.stringify(assignments));
+				}
+				if (url.endsWith('/balances/device')) return new Response('trie@1.0');
+				if (url.includes('compute&slot=12')) return stateResponse(withoutMountedBalances(applied.raw));
+				throw new Error(`unexpected-request:${url}`);
+			},
+		});
+
+		await expect(
+			subject.waitForFungibleTransfer(processId, transactionId, seller, recipient, '10', {
+				startingSlot: 10,
+			})
+		).resolves.toMatchObject({
+			balances: {},
+			holderBalancesAvailable: false,
+			raw: { 'at-slot': 12 },
+		});
 	});
 
 	it('locates a late exact transfer in logarithmic schedule probes', async () => {

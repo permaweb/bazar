@@ -198,6 +198,10 @@ describe('wallet-bound operation sessions', () => {
 			discardIds: [],
 			snapshot: unsignedPair,
 		});
+		expect(repairRejectedPurchase(unsignedPair, 'asset-balance-proof-unavailable')).toEqual({
+			discardIds: [],
+			snapshot: unsignedPair,
+		});
 		expect(repairRejectedPurchase(unsignedPair, 'asset-order-reservation-rejected')).toEqual({
 			discardIds: [REGISTRATION_ID, PAYMENT_ID],
 			snapshot: null,

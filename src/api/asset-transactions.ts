@@ -17,6 +17,7 @@ import { arweaveClientConfig, arweaveGatewayFromLocation } from 'helpers/config'
 import { aoFetch } from './ao';
 import { currentArweaveHeight } from './arweave-height';
 import {
+	assetBalanceStateAvailable,
 	type AssetState,
 	assetStateSlot,
 	type ProcessAssignment,
@@ -31,6 +32,7 @@ import { filledOrder } from './order-matching';
 
 const ADDRESS = /^[A-Za-z0-9_-]{43}$/;
 export const SIGNED_TRANSACTION_PREFIX = 'bazar-signed-transaction:';
+export const ASSET_BALANCE_PROOF_UNAVAILABLE = 'asset-balance-proof-unavailable';
 export const DEFAULT_REGISTRATION_FEE = 100_000_000n;
 export const ASSET_TRANSACTION_CONFIRMATION_TARGET = 5;
 /** No asset offer may exceed the maximum 66 million AR supply. */
@@ -53,6 +55,8 @@ const STATE_INCLUSION_TIMEOUT = 60 * 60_000;
 export const SCHEDULER_INCLUSION_DEPTH = Number(import.meta.env?.VITE_SCHEDULER_INCLUSION_DEPTH ?? 10);
 /** Arweave's nominal block time, for turning blocks into human minutes. */
 const MINUTES_PER_BLOCK = 2;
+const BALANCE_PROOF_UNAVAILABLE = 'balance-proof-unavailable' as const;
+type ExactScheduledActionResult = boolean | typeof BALANCE_PROOF_UNAVAILABLE;
 
 export type SequencingCountdown = { blocksRemaining: number; etaMinutes: number; fraction: number };
 
@@ -393,7 +397,9 @@ export class AssetTransactionClient {
 			baseline,
 			(assignment) => assertExactCancelAssignment(assignment, processId, transactionId, seller, expected.orderId),
 			(after, assignment, before) =>
-				Boolean(before && hasExactCancelTransition(before, after, assignment, seller, expected)),
+				!before || !assetBalanceStateAvailable(before) || !assetBalanceStateAvailable(after)
+					? BALANCE_PROOF_UNAVAILABLE
+					: hasExactCancelTransition(before, after, assignment, seller, expected),
 			'asset-cancel-proof-mismatch',
 			'asset-cancel-rejected',
 			signal,
@@ -449,7 +455,7 @@ export class AssetTransactionClient {
 			after: AssetState,
 			assignment: ProcessAssignment,
 			before?: AssetState
-		) => boolean | Promise<boolean>,
+		) => ExactScheduledActionResult | Promise<ExactScheduledActionResult>,
 		proofMismatchCode: string,
 		rejectionCode: string,
 		signal?: AbortSignal,
@@ -463,6 +469,7 @@ export class AssetTransactionClient {
 		let exactState: AssetState | null = null;
 		let rejected = false;
 		let proofMismatch = false;
+		let balanceProofUnavailable = false;
 		await waitForAssetState(
 			processId,
 			async (current) => {
@@ -535,7 +542,12 @@ export class AssetTransactionClient {
 							  })
 							: undefined;
 						exactState = after.state;
-						rejected = !(await appliedAtSlot(after.state, assignment, before?.state));
+						const result = await appliedAtSlot(after.state, assignment, before?.state);
+						if (result === BALANCE_PROOF_UNAVAILABLE) {
+							balanceProofUnavailable = true;
+							return true;
+						}
+						rejected = !result;
 						return true;
 					}
 					if (firstLaterSlot === null) return false;
@@ -549,6 +561,7 @@ export class AssetTransactionClient {
 			{ fetch: this.#peerFetch, signal, timeout: STATE_INCLUSION_TIMEOUT }
 		);
 		if (proofMismatch) throw new Error(proofMismatchCode);
+		if (balanceProofUnavailable) throw new Error(ASSET_BALANCE_PROOF_UNAVAILABLE);
 		if (rejected) throw new Error(rejectionCode);
 		if (!exactState) throw new Error('scheduled-action-state-missing');
 		return exactState;
@@ -766,9 +779,9 @@ export class AssetTransactionClient {
 							purchaseOrder
 						),
 					(after, assignment, before) =>
-						Boolean(
-							before && hasExactPurchaseTransition(before, after, assignment, input.buyer, purchaseOrder)
-						),
+						!before || !assetBalanceStateAvailable(before) || !assetBalanceStateAvailable(after)
+							? BALANCE_PROOF_UNAVAILABLE
+							: hasExactPurchaseTransition(before, after, assignment, input.buyer, purchaseOrder),
 					'asset-purchase-proof-mismatch',
 					'asset-purchase-rejected',
 					signal,
