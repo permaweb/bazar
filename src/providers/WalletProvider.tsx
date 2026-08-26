@@ -6,9 +6,9 @@ import type { JWKInterface } from 'arweave/web/lib/wallet';
 import {
 	BROWSER_WALLET_PERMISSIONS,
 	type BrowserWalletId,
-	getBrowserWallet,
 	PERMAWEB_OS_WALLET_PERMISSIONS,
 	readVisibleWalletBalances,
+	resolveBrowserWallet,
 	restoreBrowserWalletConnection,
 } from 'api/wallet';
 
@@ -156,11 +156,19 @@ export function WalletProvider({ children }: React.PropsWithChildren) {
 			},
 			disconnect: async () => {
 				const commit = addressRequests.current.begin();
-				if (isLocalWallet(window.arweaveWallet)) {
+				const disconnectedWallet = window.arweaveWallet;
+				const permawebOs = resolveBrowserWallet(window, 'permaweb-os');
+				if (isLocalWallet(disconnectedWallet)) {
 					clearLocalWallet();
 					restoreBrowserWallet();
 				} else {
-					await window.arweaveWallet?.disconnect?.();
+					await disconnectedWallet?.disconnect?.();
+					restoreBrowserWalletAfterDisconnect(
+						window,
+						disconnectedWallet,
+						permawebOs,
+						rememberedBrowserWallet
+					);
 				}
 				clearBrowserWalletPreference();
 				commit(null);
@@ -533,20 +541,48 @@ export function isValidWalletJwk(value: unknown): value is WalletJwk {
 	);
 }
 
-function browserWallet(walletId: BrowserWalletId) {
-	const current = window.arweaveWallet;
-	const requested = getBrowserWallet(walletId);
+export function browserWalletSelection(
+	scope: Pick<Window, 'arweaveWallet' | 'permawebConnect'>,
+	walletId: BrowserWalletId,
+	remembered?: Window['arweaveWallet']
+) {
+	const current = scope.arweaveWallet;
+	const requested = resolveBrowserWallet(scope, walletId);
 	if (walletId === 'permaweb-os') {
-		if (current && !isLocalWallet(current) && current !== requested) rememberedBrowserWallet = current;
-		return requested;
+		return {
+			wallet: requested,
+			remembered: current && !isLocalWallet(current) && current !== requested ? current : remembered,
+		};
 	}
 	if (requested && !isLocalWallet(requested)) {
-		rememberedBrowserWallet = requested;
-		return requested;
+		return { wallet: requested, remembered: requested };
 	}
-	return rememberedBrowserWallet && rememberedBrowserWallet !== getBrowserWallet('permaweb-os')
-		? rememberedBrowserWallet
-		: undefined;
+	const permawebOs = resolveBrowserWallet(scope, 'permaweb-os');
+	return {
+		wallet: remembered && remembered !== permawebOs ? remembered : undefined,
+		remembered,
+	};
+}
+
+export function restoreBrowserWalletAfterDisconnect(
+	scope: Pick<Window, 'arweaveWallet' | 'permawebConnect'>,
+	disconnectedWallet: Window['arweaveWallet'],
+	permawebOs: Window['arweaveWallet'],
+	remembered?: Window['arweaveWallet']
+) {
+	if (!disconnectedWallet || disconnectedWallet !== permawebOs) return;
+	if (scope.arweaveWallet && scope.arweaveWallet !== disconnectedWallet) return;
+	if (remembered && remembered !== permawebOs) {
+		scope.arweaveWallet = remembered;
+	} else {
+		delete scope.arweaveWallet;
+	}
+}
+
+function browserWallet(walletId: BrowserWalletId) {
+	const selection = browserWalletSelection(window, walletId, rememberedBrowserWallet);
+	rememberedBrowserWallet = selection.remembered;
+	return selection.wallet;
 }
 
 function isLocalWallet(wallet: Window['arweaveWallet']) {
