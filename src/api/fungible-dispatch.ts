@@ -1,6 +1,7 @@
 import {
 	ASSET_BALANCE_STATE_UNAVAILABLE,
 	assetBalanceStateAvailable,
+	type AssetState,
 	liquidBalanceOf,
 	readAssetState,
 	waitForAssetState,
@@ -12,6 +13,7 @@ const ADDRESS = /^[A-Za-z0-9_-]{43}$/;
 const QUANTITY = /^[1-9]\d*$/;
 
 export const DISPATCH_PLAN_PREFIX = 'bazar-fungible-dispatch:';
+export const DISPATCH_SIGNED_TRANSACTION_RECOVERY_REQUIRED = 'dispatch-signed-transaction-recovery-required';
 export const DEFAULT_DISPATCH_BATCH_SIZE = 100;
 /** Above this total (0.1 AR) the UI collects confirmation before signing. */
 export const DISPATCH_COST_CONFIRMATION_WINSTON = 100_000_000_000n;
@@ -299,6 +301,11 @@ export type DispatchRunOptions = {
 	storage?: StorageLike;
 	batchSize?: number;
 	signal?: AbortSignal;
+	/** Fresh state gate used only before this run's first genuinely new signature. */
+	readCurrentState?: (
+		processId: string,
+		options: { signal?: AbortSignal; maxAge: 0 }
+	) => Promise<{ state: Pick<AssetState, 'holderBalancesAvailable'> }>;
 	/** Called with a fresh plan copy after every persisted status change. */
 	onProgress?: (plan: DispatchPlan) => void;
 	settlementInterval?: number;
@@ -315,7 +322,9 @@ export type DispatchRunOptions = {
  * transaction posted. A reload at any point resumes without double-sending:
  * an unsent row with a transaction id is restored from storage and
  * re-dispatched (arweave.net answers 208 for duplicates), a posted row only
- * waits for settlement.
+ * waits for settlement. If a recorded signed transaction cannot be restored,
+ * its id remains authoritative for manual review: the transaction may already
+ * have been posted before a crash, so Bazar must never sign a replacement.
  *
  * Settlement is balance-based: a row is settled once its recipient's live
  * balance has risen by at least its quantity over the plan baseline.
@@ -327,6 +336,8 @@ export async function runDispatch(initial: DispatchPlan, options: DispatchRunOpt
 	const batchSize = options.batchSize ?? DEFAULT_DISPATCH_BATCH_SIZE;
 	if (!Number.isSafeInteger(batchSize) || batchSize < 1) throw new TypeError('invalid-dispatch-batch-size');
 	const plan: DispatchPlan = { ...initial, rows: initial.rows.map((row) => ({ ...row })) };
+	const readCurrentState = options.readCurrentState ?? readAssetState;
+	let newSignaturesAuthorized = false;
 	const persist = () => {
 		saveDispatchPlan(plan, storage);
 		options.onProgress?.({ ...plan, rows: plan.rows.map((row) => ({ ...row })) });
@@ -345,15 +356,19 @@ export async function runDispatch(initial: DispatchPlan, options: DispatchRunOpt
 			if (row.transactionId) {
 				try {
 					prepared = client.restore(row.transactionId, plan.sender);
-				} catch {
-					// The signed transaction did not survive (cleared storage on
-					// another profile, or a crash before it was written). The row
-					// is still unsent, so signing a fresh transaction is safe.
-					prepared = undefined;
-					row.transactionId = undefined;
+				} catch (cause) {
+					throw new Error(DISPATCH_SIGNED_TRANSACTION_RECOVERY_REQUIRED, { cause });
 				}
 			}
 			if (!prepared) {
+				if (!newSignaturesAuthorized) {
+					const { state } = await readCurrentState(plan.processId, {
+						signal: options.signal,
+						maxAge: 0,
+					});
+					if (state.holderBalancesAvailable !== true) throw new Error(ASSET_BALANCE_STATE_UNAVAILABLE);
+					newSignaturesAuthorized = true;
+				}
 				prepared = await client.transferFungible(
 					plan.processId,
 					row.address,

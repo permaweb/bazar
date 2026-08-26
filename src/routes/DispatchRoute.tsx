@@ -15,6 +15,7 @@ import {
 	createDispatchPlan,
 	DEFAULT_DISPATCH_BATCH_SIZE,
 	discardDispatchPlan,
+	DISPATCH_SIGNED_TRANSACTION_RECOVERY_REQUIRED,
 	type DispatchPlan,
 	estimateDispatchCost,
 	fetchTransferReward,
@@ -49,7 +50,7 @@ function tokenAmount(raw: string, state: Pick<AssetState, 'denomination' | 'tick
 	return `${fraction ? `${grouped}.${fraction}` : grouped} ${state.ticker || 'tokens'}`;
 }
 
-function dispatchErrorMessage(cause: unknown): string {
+export function dispatchErrorMessage(cause: unknown): string {
 	const message = cause instanceof Error ? cause.message : String(cause);
 	switch (message) {
 		case 'dispatch-insufficient-token-balance':
@@ -58,6 +59,8 @@ function dispatchErrorMessage(cause: unknown): string {
 			return 'Remove your own address from the list. A transfer to yourself is a no-op that balance-based settlement cannot verify.';
 		case ASSET_BALANCE_STATE_UNAVAILABLE:
 			return 'The configured AO routes did not return a complete holder balance table, so Bazar did not create or sign this dispatch. Retry after complete balance state is available.';
+		case DISPATCH_SIGNED_TRANSACTION_RECOVERY_REQUIRED:
+			return 'Bazar found a transaction ID for this dispatch row, but its saved signed transaction could not be restored. It may already have reached Arweave, so Bazar will not sign a replacement. Keep this dispatch plan for manual review, or restore the original browser data before resuming.';
 		case 'asset-state-timeout':
 			return 'Timed out waiting for settlement. Nothing was lost: posted transfers stay posted — resume to continue watching without re-sending.';
 		case 'wallet-sign-unavailable':
