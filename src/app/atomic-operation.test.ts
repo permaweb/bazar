@@ -195,6 +195,28 @@ describe('atomic order actions', () => {
 			'market-state-changed'
 		);
 	});
+
+	it('rejects every new mutation when holder balance state is incomplete', () => {
+		const owner = 'A'.repeat(43);
+		const buyer = 'B'.repeat(43);
+		const order = {
+			orderId: 'O'.repeat(43),
+			creator: owner,
+			asking: '100',
+			quantity: '1',
+			status: 'open',
+		} as any;
+		const incomplete = {
+			balances: {},
+			holderBalancesAvailable: false,
+			orders: { [order.orderId]: order },
+		} as any;
+
+		expect(atomicOperationStateError('buy', incomplete, buyer, order)).toBe('asset-balance-state-unavailable');
+		expect(atomicOperationStateError('sell', incomplete, owner, null)).toBe('asset-balance-state-unavailable');
+		expect(atomicOperationStateError('cancel', incomplete, owner, order)).toBe('asset-balance-state-unavailable');
+		expect(atomicOperationStateError('transfer', incomplete, owner, null)).toBe('asset-balance-state-unavailable');
+	});
 });
 
 describe('atomic purchase failure trace', () => {

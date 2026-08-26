@@ -26,6 +26,8 @@ import {
 import { transactionExplorerUrl } from 'api/arweave-explorer';
 import type { CollectionActivityEvent } from 'api/asset-discovery';
 import {
+	ASSET_BALANCE_STATE_UNAVAILABLE,
+	assetBalanceStateAvailable,
 	type AssetState,
 	licenseProperties,
 	liquidBalanceOf,
@@ -56,6 +58,7 @@ import { ArCurrencyLabel, ArCurrencyText, formatArCurrencyText } from 'component
 import { type ArweaveSyncStep, ArweaveTransactionSync } from 'components/ArweaveTransactionSync';
 import { quorumConfirmationDepth } from 'components/ArweaveTransactionSync/confirmationDepth';
 import { postConfirmationPendingLabel } from 'components/ArweaveTransactionSync/sequence';
+import { AssetBalanceStateNotice } from 'components/AssetBalanceStateNotice';
 import { type AssetDetailTab, AssetDetailTabs } from 'components/AssetDetailTabs';
 import { assetOperationPendingActionLabel, AssetOperationStatus } from 'components/AssetOperationStatus';
 import { Button } from 'components/Button';
@@ -102,6 +105,7 @@ import {
 	announceFungibleOperationActivityChange,
 	fungibleOperationActivityId,
 	type FungibleOperationActivitySummary,
+	operationRecoveryCanStillApply,
 } from './operation-activity';
 import {
 	acquireWalletOperationClaim,
@@ -770,7 +774,7 @@ export function FungibleAssetView({
 		[purchasableOrders, purchaseQuantity, state]
 	);
 	const holderRows = React.useMemo(() => fungibleHolders(state), [state]);
-	const holderBalancesAvailable = state.holderBalancesAvailable !== false;
+	const holderBalancesAvailable = assetBalanceStateAvailable(state);
 	const holders = holderRows.length;
 	const holderLimit = holderReveal.assetId === asset.id ? holderReveal.limit : 50;
 	const visibleHolderRows = holderRows.slice(0, holderLimit);
@@ -996,18 +1000,7 @@ export function FungibleAssetView({
 			try {
 				new AssetTransactionClient().restore(saved.txId, wallet.address);
 			} catch {
-				let canStillApply = false;
-				if (saved.kind === 'cancel') {
-					const order = state.orders[saved.order?.orderId];
-					canStillApply = Boolean(order?.status === 'open' && order.creator === wallet.address);
-				} else if (!state.orders[saved.txId]) {
-					try {
-						const quantity = parseTokenAmount(saved.quantity ?? '', state.denomination);
-						canStillApply = BigInt(quantity) <= BigInt(liquidBalanceOf(state, wallet.address));
-					} catch {
-						canStillApply = false;
-					}
-				}
+				const canStillApply = operationRecoveryCanStillApply(state, wallet.address, saved, 'fungible');
 				const matches = (record: any) =>
 					record?.assetId === asset.id && record?.signer === wallet.address && record?.txId === saved.txId;
 				if (!canStillApply) {
@@ -1201,7 +1194,11 @@ export function FungibleAssetView({
 							? 'Your liquid balance'
 							: 'Circulating supply'}
 					</span>
-					<strong>{tokenLabel(wallet.address ? liquid : state.totalSupply, state)}</strong>
+					<strong>
+						{wallet.address && !holderBalancesAvailable
+							? 'Unavailable'
+							: tokenLabel(wallet.address ? liquid : state.totalSupply, state)}
+					</strong>
 				</div>
 			</header>
 			{loading ? <Loading label="Computing current state…" /> : null}
@@ -1209,6 +1206,7 @@ export function FungibleAssetView({
 			<div className="asset-detail-layout">
 				<div className="asset-commerce-column asset-commerce-primary">
 					<section aria-busy={hasBusyWalletActivities} className="asset-commerce-card">
+						<AssetBalanceStateNotice state={state} />
 						<div className="asset-market-stats">
 							<div>
 								<span>Current unit price</span>
@@ -1284,7 +1282,7 @@ export function FungibleAssetView({
 								id="fungible-trade-sell"
 								role="tabpanel"
 							>
-								{wallet.address && listingBalance > 0n ? (
+								{wallet.address && holderBalancesAvailable && listingBalance > 0n ? (
 									<FungibleListingComposer
 										availableQuantity={liquid}
 										onMax={() => setListingQuantity(formatTokenAmount(liquid, state.denomination))}
@@ -1300,10 +1298,18 @@ export function FungibleAssetView({
 								) : (
 									<div className="asset-buy-summary asset-buy-summary-empty">
 										<span>Listing amount</span>
-										<h1>{wallet.address ? 'No liquid tokens' : 'Connect to list'}</h1>
+										<h1>
+											{wallet.address
+												? holderBalancesAvailable
+													? 'No liquid tokens'
+													: 'Balance unavailable'
+												: 'Connect to list'}
+										</h1>
 										<small>
 											{wallet.address
-												? 'Tokens already listed for sale are not available for a new listing.'
+												? holderBalancesAvailable
+													? 'Tokens already listed for sale are not available for a new listing.'
+													: 'Complete holder balance state is required before listing tokens.'
 												: 'Connect your wallet to see the tokens available to list.'}
 										</small>
 									</div>
@@ -1320,14 +1326,18 @@ export function FungibleAssetView({
 									<span>Available to transfer</span>
 									<h1>
 										{wallet.address
-											? listingBalance > 0n
+											? !holderBalancesAvailable
+												? 'Balance unavailable'
+												: listingBalance > 0n
 												? tokenLabel(liquid, state)
 												: 'No liquid tokens'
 											: 'Connect to transfer'}
 									</h1>
 									<small>
 										{wallet.address
-											? listingBalance > 0n
+											? !holderBalancesAvailable
+												? 'Complete holder balance state is required before transferring tokens.'
+												: listingBalance > 0n
 												? 'Choose a recipient and amount in the transfer review.'
 												: 'Tokens listed for sale are not available to transfer.'
 											: 'Connect your wallet to see the tokens available to transfer.'}
@@ -1351,6 +1361,7 @@ export function FungibleAssetView({
 									className="with-icon market-primary-action"
 									disabled={
 										!purchaseAmountResult.match ||
+										!holderBalancesAvailable ||
 										purchaseBlocksActions ||
 										loading ||
 										Boolean(error)
@@ -1375,10 +1386,18 @@ export function FungibleAssetView({
 										: 'Enter an amount'}
 								</Button>
 							) : null}
-							{tradeMode === 'sell' && wallet.address && listingBalance > 0n ? (
+							{tradeMode === 'sell' &&
+							wallet.address &&
+							(!holderBalancesAvailable || listingBalance > 0n) ? (
 								<Button
 									className="with-icon market-primary-action"
-									disabled={!listingReady || assetBlocksActions || loading || Boolean(error)}
+									disabled={
+										!holderBalancesAvailable ||
+										!listingReady ||
+										assetBlocksActions ||
+										loading ||
+										Boolean(error)
+									}
 									size="custom"
 									onClick={() =>
 										openOperation({
@@ -1397,10 +1416,14 @@ export function FungibleAssetView({
 										: 'Enter listing details'}
 								</Button>
 							) : null}
-							{tradeMode === 'transfer' && wallet.address && listingBalance > 0n ? (
+							{tradeMode === 'transfer' &&
+							wallet.address &&
+							(!holderBalancesAvailable || listingBalance > 0n) ? (
 								<Button
 									className="with-icon market-primary-action"
-									disabled={assetBlocksActions || loading || Boolean(error)}
+									disabled={
+										!holderBalancesAvailable || assetBlocksActions || loading || Boolean(error)
+									}
 									size="custom"
 									onClick={() => openOperation({ kind: 'transfer' })}
 									variant="primary"
@@ -1503,7 +1526,12 @@ export function FungibleAssetView({
 													<Button
 														aria-label={fungibleOrderActionLabel('cancel', order, state)}
 														className="order-action"
-														disabled={assetBlocksActions || loading || Boolean(error)}
+														disabled={
+															!holderBalancesAvailable ||
+															assetBlocksActions ||
+															loading ||
+															Boolean(error)
+														}
 														size="custom"
 														onClick={() => openOperation({ kind: 'cancel', order })}
 														variant="danger"
@@ -2258,18 +2286,15 @@ function FungibleOperationDialog({
 					operation.kind === 'sell' || operation.kind === 'transfer'
 						? parseTokenAmount(quantity, state.denomination)
 						: '0';
-				if (
-					fungibleOperationStateError(
-						operation.kind,
-						freshState,
-						owner,
-						expectedOrders,
-						rawQuantity,
-						state.denomination
-					)
-				) {
-					throw new Error('market-state-changed');
-				}
+				const stateError = fungibleOperationStateError(
+					operation.kind,
+					freshState,
+					owner,
+					expectedOrders,
+					rawQuantity,
+					state.denomination
+				);
+				if (stateError) throw new Error(stateError);
 				if (operation.kind === 'cancel' || operation.kind === 'transfer') {
 					const startingSlot = Number(freshState.raw['at-slot']);
 					if (!Number.isSafeInteger(startingSlot) || startingSlot < 0) {
@@ -4731,6 +4756,7 @@ export function fungibleOperationStateError(
 	rawQuantity = '0',
 	expectedDenomination = state.denomination
 ) {
+	if (!assetBalanceStateAvailable(state)) return ASSET_BALANCE_STATE_UNAVAILABLE;
 	if (state.denomination !== expectedDenomination) return 'market-state-changed';
 	if (kind === 'buy' || kind === 'cancel') {
 		if (!expectedOrders.length) return 'market-state-changed';

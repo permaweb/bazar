@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+	createDispatchPlan,
 	estimateDispatchCost,
 	isDispatchPlan,
 	loadDispatchPlan,
@@ -126,5 +127,32 @@ describe('dispatch plan persistence', () => {
 		expect(isDispatchPlan({ ...plan, baseline: {} })).toBe(false);
 		expect(isDispatchPlan({ ...plan, rows: [{ ...plan.rows[0], status: 'weird' }] })).toBe(false);
 		expect(isDispatchPlan({ ...plan, sender: 'short' })).toBe(false);
+	});
+});
+
+describe('dispatch plan preflight', () => {
+	it('rejects incomplete holder balance state before creating a resumable plan', async () => {
+		const balancesLink = 'L'.repeat(43);
+		const requests: string[] = [];
+		const fetcher = async (input: RequestInfo | URL) => {
+			const url = String(input);
+			requests.push(url);
+			if (url.endsWith('/balances/device')) return new Response('trie@1.0');
+			return new Response(null, {
+				headers: {
+					'balances+link': balancesLink,
+					'execution-device': 'token@1.0',
+					'total-supply': '100',
+				},
+			});
+		};
+
+		await expect(
+			createDispatchPlan(processId, sender, [{ address: addressA, quantity: '10' }], {
+				fetch: fetcher as typeof fetch,
+			})
+		).rejects.toThrow('asset-balance-state-unavailable');
+		expect(requests).toHaveLength(2);
+		expect(requests[1]).toContain('/balances/device');
 	});
 });

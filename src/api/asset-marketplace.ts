@@ -57,6 +57,12 @@ export type ComputeRetryProgress = {
 	delayMs: number;
 };
 
+export const ASSET_BALANCE_STATE_UNAVAILABLE = 'asset-balance-state-unavailable';
+
+export function assetBalanceStateAvailable(state: Pick<AssetState, 'holderBalancesAvailable'>): boolean {
+	return state.holderBalancesAvailable !== false;
+}
+
 export type LicenseProperty = {
 	key: string;
 	label: string;
