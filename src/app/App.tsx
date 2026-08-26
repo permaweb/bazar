@@ -9410,6 +9410,7 @@ function AssetView() {
 	const externalReservation = externalReservationTransaction(order, wallet.address, assetActivity);
 	const recoveryBlocksActions = recoverySuppressed || Boolean(unavailableRecovery);
 	const operationBlocksActions = recoveryBlocksActions || Boolean(operationActivityEntry);
+	const newOperationBlocksActions = operationBlocksActions || !balanceStateAvailable || loading || Boolean(error);
 	const operationIsBusy = Boolean(operationActivityEntry && operationActivityEntry.phase !== 'error');
 	const license = state ? licenseProperties(state) : [];
 	const description = assetDescription(state, collection.description);
@@ -9633,12 +9634,7 @@ function AssetView() {
 									{wallet.address && atomicOrderCanBeBought(order) && !mine ? (
 										<Button
 											className="with-icon asset-buy-now market-primary-action"
-											disabled={
-												operationBlocksActions ||
-												!balanceStateAvailable ||
-												loading ||
-												Boolean(error)
-											}
+											disabled={newOperationBlocksActions}
 											size="custom"
 											variant="primary"
 											onClick={() => openOperation({ kind: 'buy', order })}
@@ -9652,12 +9648,7 @@ function AssetView() {
 									{wallet.address && mine && !order ? (
 										<Button
 											className="with-icon asset-buy-now market-primary-action"
-											disabled={
-												operationBlocksActions ||
-												!balanceStateAvailable ||
-												loading ||
-												Boolean(error)
-											}
+											disabled={newOperationBlocksActions}
 											size="custom"
 											variant="primary"
 											onClick={() => openOperation({ kind: 'sell' })}
@@ -9671,12 +9662,7 @@ function AssetView() {
 									{wallet.address && mine && order?.status === 'open' ? (
 										<Button
 											className="with-icon"
-											disabled={
-												operationBlocksActions ||
-												!balanceStateAvailable ||
-												loading ||
-												Boolean(error)
-											}
+											disabled={newOperationBlocksActions}
 											size="custom"
 											onClick={() => openOperation({ kind: 'cancel', order })}
 											variant="danger"
@@ -9690,12 +9676,7 @@ function AssetView() {
 									{wallet.address && mine && !order ? (
 										<Button
 											className="with-icon"
-											disabled={
-												operationBlocksActions ||
-												!balanceStateAvailable ||
-												loading ||
-												Boolean(error)
-											}
+											disabled={newOperationBlocksActions}
 											size="custom"
 											onClick={() => openOperation({ kind: 'transfer' })}
 										>

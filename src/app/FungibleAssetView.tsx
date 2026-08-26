@@ -804,7 +804,9 @@ export function FungibleAssetView({
 			icon: <Users className="ui-icon" aria-hidden="true" />,
 			panelId: 'fungible-asset-holders',
 			disabled: !holderBalancesAvailable,
-			disabledMessage: !holderBalancesAvailable ? 'Large balance tables are not displayed.' : undefined,
+			disabledMessage: !holderBalancesAvailable
+				? 'Holder balances are unavailable from the current AO routes.'
+				: undefined,
 		},
 		{
 			value: 'about',

@@ -8,7 +8,7 @@ import {
 	type AssetState,
 	liquidBalanceOf,
 } from 'api/asset-marketplace';
-import { readAssetStateWithDeadline } from 'api/asset-state-store';
+import { DISPLAY_STATE_TIMEOUT_ERROR, readAssetStateWithDeadline } from 'api/asset-state-store';
 import { AssetTransactionClient } from 'api/asset-transactions';
 import { FUNGIBLE_TOKEN_COLLECTION_ID } from 'api/collections';
 import {
@@ -58,7 +58,9 @@ export function dispatchErrorMessage(cause: unknown): string {
 		case 'dispatch-self-recipient':
 			return 'Remove your own address from the list. A transfer to yourself is a no-op that balance-based settlement cannot verify.';
 		case ASSET_BALANCE_STATE_UNAVAILABLE:
-			return 'The configured AO routes did not return a complete holder balance table, so Bazar did not create or sign this dispatch. Retry after complete balance state is available.';
+			return 'The configured AO routes did not return a complete holder balance table. Bazar did not sign a transfer. Retry after complete state is available; any saved dispatch progress remains available.';
+		case DISPLAY_STATE_TIMEOUT_ERROR:
+			return 'The configured AO routes did not return complete holder state within 45 seconds. No new transfer was signed; saved dispatch progress remains available.';
 		case DISPATCH_SIGNED_TRANSACTION_RECOVERY_REQUIRED:
 			return 'Bazar found a transaction ID for this dispatch row, but its saved signed transaction could not be restored. It may already have reached Arweave, so Bazar will not sign a replacement. Keep this dispatch plan for manual review, or restore the original browser data before resuming.';
 		case 'asset-state-timeout':
@@ -199,6 +201,7 @@ export default function DispatchRoute() {
 			await runDispatch(dispatchPlan, {
 				signal: controller.signal,
 				batchSize: DEFAULT_DISPATCH_BATCH_SIZE,
+				readCurrentState: readAssetStateWithDeadline,
 				onProgress: (next) => {
 					setPlan(next);
 					const settled = next.rows.filter((row) => row.status === 'settled').length;
