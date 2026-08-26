@@ -306,7 +306,7 @@ describe('asset state', () => {
 		expect(requests.every(({ init }) => [...new Headers(init.headers)].length === 0)).toBe(true);
 	});
 
-	it('treats a missing linked balance device as unavailable', async () => {
+	it('follows a direct JSON balance link when the mounted balance device is absent', async () => {
 		const balancesLink = 'B'.repeat(43);
 		const requested: string[] = [];
 		const result = await readAssetState(processId, {
@@ -315,6 +315,35 @@ describe('asset state', () => {
 				const url = String(input);
 				requested.push(url);
 				if (url.endsWith('/balances/device')) return new Response('not_found', { status: 404 });
+				if (url.endsWith(`${balancesLink}~message@1.0/serialize~json@1.0`)) {
+					return jsonResponse({ device: 'json@1.0', [owner]: 1 });
+				}
+				return new Response(null, {
+					headers: {
+						'balances+link': balancesLink,
+						'execution-device': 'token@1.0',
+						'total-supply': '1',
+					},
+				});
+			},
+		});
+
+		expect(result.state.balances).toEqual({ [owner]: '1' });
+		expect(result.state.holderBalancesAvailable).toBe(true);
+		expect(ownerOfAsset(result.state)).toBe(owner);
+		expect(requested).toContain(`/${balancesLink}~message@1.0/serialize~json@1.0`);
+	});
+
+	it('keeps an unmounted non-JSON balance link unavailable', async () => {
+		const balancesLink = 'B'.repeat(43);
+		const result = await readAssetState(processId, {
+			provider: 'https://compute.example',
+			fetch: async (input) => {
+				const url = String(input);
+				if (url.endsWith('/balances/device')) return new Response('not_found', { status: 404 });
+				if (url.endsWith(`${balancesLink}~message@1.0/serialize~json@1.0`)) {
+					return jsonResponse({ device: 'trie@1.0' });
+				}
 				return new Response(null, {
 					headers: {
 						'balances+link': balancesLink,
@@ -327,7 +356,6 @@ describe('asset state', () => {
 
 		expect(result.state.balances).toEqual({});
 		expect(result.state.holderBalancesAvailable).toBe(false);
-		expect(requested).not.toContain(`/${balancesLink}~message@1.0/serialize~json@1.0`);
 	});
 
 	it('reads an order status through the message device when HTTP status shadows its header', async () => {
