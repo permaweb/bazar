@@ -7,6 +7,8 @@ import {
 	BROWSER_WALLET_PERMISSIONS,
 	type BrowserWalletId,
 	getBrowserWallet,
+	isEmbeddedBrowserWallet,
+	openEmbeddedWebWallet,
 	PERMAWEB_OS_WALLET_PERMISSIONS,
 	readVisibleWalletBalances,
 	restoreBrowserWalletConnection,
@@ -32,11 +34,13 @@ type WalletContextValue = {
 	aoBalance: bigint | null;
 	aoBalanceDenomination: number;
 	aoBalanceStatus: 'idle' | 'loading' | 'ready' | 'error';
+	isEmbeddedWallet: boolean;
 	connect(walletId: BrowserWalletId): Promise<void>;
 	disconnect(): Promise<void>;
 	generateLocalWallet(): Promise<GeneratedWallet>;
 	importLocalWallet(file: File): Promise<void>;
 	openConnectDialog(trigger?: HTMLElement | null): void;
+	openWallet(): void;
 	loadDevelopmentWallet?(file: File): Promise<void>;
 };
 
@@ -45,6 +49,60 @@ const LOCAL_WALLET_KEY = 'bazar:local-wallet';
 const BROWSER_WALLET_KEY = 'bazar:browser-wallet';
 const LEGACY_PERMAWEB_OS_WALLET_ID = 'the-fold';
 const LOCAL_WALLET_ADAPTER = Symbol('bazar-local-wallet-adapter');
+const WALLET_RESPONSE_TIMEOUT_MS = 10_000;
+const WALLET_APPROVAL_TIMEOUT_MS = 125_000;
+const SLOW_WALLET_PHASE_MS = 1_000;
+
+type WalletConnectionPhase = 'permissions' | 'connect' | 'active-address';
+
+class WalletConnectionTimeoutError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = 'WalletConnectionTimeoutError';
+	}
+}
+
+function isWalletTimeout(error: unknown): boolean {
+	return (
+		error instanceof WalletConnectionTimeoutError ||
+		(error instanceof Error && /tim(?:e|ed)[ -]?out/i.test(error.message))
+	);
+}
+
+async function runWalletPhase<T>(
+	walletName: string,
+	phase: WalletConnectionPhase,
+	timeoutMs: number,
+	timeoutMessage: string,
+	operation: () => Promise<T>
+): Promise<T> {
+	const startedAt = Date.now();
+	let outcome: 'completed' | 'failed' | 'timed-out' = 'completed';
+	let timer: ReturnType<typeof globalThis.setTimeout> | undefined;
+	try {
+		return await Promise.race([
+			operation(),
+			new Promise<T>((_resolve, reject) => {
+				timer = globalThis.setTimeout(
+					() => reject(new WalletConnectionTimeoutError(timeoutMessage)),
+					timeoutMs
+				);
+			}),
+		]);
+	} catch (error) {
+		outcome = isWalletTimeout(error) ? 'timed-out' : 'failed';
+		if (outcome === 'timed-out' && !(error instanceof WalletConnectionTimeoutError)) {
+			throw new WalletConnectionTimeoutError(timeoutMessage);
+		}
+		throw error;
+	} finally {
+		if (timer !== undefined) globalThis.clearTimeout(timer);
+		const durationMs = Date.now() - startedAt;
+		if (durationMs >= SLOW_WALLET_PHASE_MS) {
+			console.warn('[wallet-connection]', { wallet: walletName, phase, durationMs, outcome });
+		}
+	}
+}
 
 const WalletContext = React.createContext<WalletContextValue | null>(null);
 let rememberedBrowserWallet: Window['arweaveWallet'];
@@ -63,6 +121,9 @@ export function WalletProvider({ children }: React.PropsWithChildren) {
 	const addressRequests = React.useRef(createLatestAddressCommitter(setAddress));
 	const closeConnectDialog = React.useCallback(() => setConnectDialogOpen(false), []);
 	const restoreConnectDialogFocus = React.useCallback(() => connectDialogTrigger.current, []);
+	const isEmbeddedWallet = Boolean(
+		address && isEmbeddedBrowserWallet(typeof window === 'undefined' ? undefined : window.arweaveWallet)
+	);
 
 	const refresh = React.useCallback(async () => {
 		const commit = addressRequests.current.begin();
@@ -108,6 +169,32 @@ export function WalletProvider({ children }: React.PropsWithChildren) {
 	}, [refresh]);
 
 	React.useEffect(() => {
+		const activeWallet = address ? window.arweaveWallet : undefined;
+		if (!activeWallet?.events) return;
+		// Injected wallets also dispatch `walletSwitch` on window; only the embedded
+		// provider needs its private address event channel.
+		const readsProviderAddressEvents = isEmbeddedBrowserWallet(activeWallet);
+
+		function handleActiveAddress(nextAddress: unknown) {
+			if (typeof nextAddress !== 'string' || !ARWEAVE_ADDRESS.test(nextAddress)) return;
+			addressRequests.current.begin()(nextAddress);
+			setBalanceRevision((revision) => revision + 1);
+		}
+
+		function handleWalletDisconnect() {
+			clearBrowserWalletPreference();
+			addressRequests.current.begin()(null);
+		}
+
+		if (readsProviderAddressEvents) activeWallet.events.on('activeAddress', handleActiveAddress);
+		activeWallet.events.on('disconnect', handleWalletDisconnect);
+		return () => {
+			if (readsProviderAddressEvents) activeWallet.events?.off('activeAddress', handleActiveAddress);
+			activeWallet.events?.off('disconnect', handleWalletDisconnect);
+		};
+	}, [address]);
+
+	React.useEffect(() => {
 		setArBalance(null);
 		setAoBalance(null);
 		if (!address) {
@@ -140,6 +227,7 @@ export function WalletProvider({ children }: React.PropsWithChildren) {
 			aoBalance,
 			aoBalanceDenomination,
 			aoBalanceStatus,
+			isEmbeddedWallet,
 			connect: async (walletId) => {
 				const wallet = browserWallet(walletId);
 				const commit = addressRequests.current.begin();
@@ -192,6 +280,7 @@ export function WalletProvider({ children }: React.PropsWithChildren) {
 					trigger ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
 				setConnectDialogOpen(true);
 			},
+			openWallet: openEmbeddedWebWallet,
 			...(import.meta.env.DEV
 				? {
 						loadDevelopmentWallet: async (file: File) => {
@@ -203,7 +292,16 @@ export function WalletProvider({ children }: React.PropsWithChildren) {
 				  }
 				: {}),
 		}),
-		[address, aoBalance, aoBalanceDenomination, aoBalanceStatus, arBalance, arBalanceDenomination, arBalanceStatus]
+		[
+			address,
+			aoBalance,
+			aoBalanceDenomination,
+			aoBalanceStatus,
+			arBalance,
+			arBalanceDenomination,
+			arBalanceStatus,
+			isEmbeddedWallet,
+		]
 	);
 
 	return (
@@ -485,11 +583,44 @@ export async function connectWallet(
 		const installationName = `the ${walletName}`;
 		throw new Error(`Install ${installationName} wallet extension to continue.`);
 	}
-	await wallet.connect([...permissions]);
+	let alreadyApproved = false;
+	if (walletName === 'PermawebOS' && wallet.getPermissions) {
+		try {
+			const granted = await runWalletPhase(
+				walletName,
+				'permissions',
+				WALLET_RESPONSE_TIMEOUT_MS,
+				'PermawebOS did not respond while checking permissions. Reload the wallet extension and try again.',
+				() => wallet.getPermissions!()
+			);
+			alreadyApproved = permissions.every((permission) => granted.includes(permission));
+		} catch (error) {
+			if (error instanceof WalletConnectionTimeoutError) throw error;
+		}
+	}
+	await runWalletPhase(
+		walletName,
+		'connect',
+		alreadyApproved ? WALLET_RESPONSE_TIMEOUT_MS : WALLET_APPROVAL_TIMEOUT_MS,
+		alreadyApproved
+			? `${walletName} did not respond to an already-approved connection. Reload the wallet extension and try again.`
+			: `${walletName} connection timed out. Open the wallet, finish approval, and try again.`,
+		() =>
+			walletName === 'PermawebOS'
+				? wallet.connect([...permissions], { name: 'Bazar' })
+				: wallet.connect([...permissions])
+	);
 	let address: string | undefined;
 	try {
-		address = await wallet.getActiveAddress?.();
-	} catch {
+		address = await runWalletPhase(
+			walletName,
+			'active-address',
+			WALLET_RESPONSE_TIMEOUT_MS,
+			`${walletName} connected, but its active address did not respond. Unlock or reload the wallet and try again.`,
+			async () => wallet.getActiveAddress?.()
+		);
+	} catch (error) {
+		if (error instanceof WalletConnectionTimeoutError) throw error;
 		throw new Error(
 			'The wallet connected, but its active address could not be read. Unlock or reconnect the wallet and try again.'
 		);

@@ -1,13 +1,18 @@
+// @vitest-environment jsdom
+
 import { describe, expect, it, vi } from 'vitest';
 
 import {
 	BROWSER_WALLET_PERMISSIONS,
+	isEmbeddedBrowserWallet,
+	openEmbeddedWebWallet,
 	PERMAWEB_OS_WALLET_PERMISSIONS,
 	readPermawebOsBalances,
 	readVisibleWalletBalances,
 	readWalletBalance,
 	resolveBrowserWallet,
 	restoreBrowserWalletConnection,
+	webWalletClientProvider,
 } from './wallet';
 
 function injectedWallet() {
@@ -248,6 +253,20 @@ describe('browser wallet selection', () => {
 
 		expect(resolveBrowserWallet(scope, 'permaweb-os')).toBe(permawebOs);
 		expect(resolveBrowserWallet(scope, 'wander')).toBe(wander);
+		expect(resolveBrowserWallet({}, 'permaweb-os')).toBe(webWalletClientProvider);
+		expect(isEmbeddedBrowserWallet(webWalletClientProvider)).toBe(true);
+	});
+
+	it('opens the embedded wallet from an explicit user action', () => {
+		const presentations: string[] = [];
+		const unsubscribe = webWalletClientProvider.subscribeToPresentation((state) =>
+			presentations.push(state.status)
+		);
+
+		openEmbeddedWebWallet();
+
+		expect(presentations).toEqual(['open']);
+		unsubscribe();
 	});
 
 	it("does not present PermawebOS's compatibility alias as Wander", () => {
@@ -261,10 +280,10 @@ describe('browser wallet selection', () => {
 		);
 	});
 
-	it('rejects malformed injected providers at the browser boundary', () => {
-		expect(
-			resolveBrowserWallet({ permawebConnect: { connect: async () => undefined } }, 'permaweb-os')
-		).toBeUndefined();
+	it('uses the embedded fallback when an injected provider is malformed', () => {
+		expect(resolveBrowserWallet({ permawebConnect: { connect: async () => undefined } }, 'permaweb-os')).toBe(
+			webWalletClientProvider
+		);
 	});
 
 	it('restores an authorized PermawebOS connection when no compatibility alias is available', async () => {

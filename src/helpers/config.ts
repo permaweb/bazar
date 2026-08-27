@@ -1,6 +1,19 @@
 const configuredArweaveGateway = import.meta.env.VITE_ARWEAVE_GATEWAY?.trim();
 const configuredComputeGateway = import.meta.env.VITE_COMPUTE_GATEWAY?.trim();
 
+export const PERMAWEBOS_WALLET_URL = import.meta.env.VITE_PERMAWEBOS_WALLET_URL || 'http://localhost:5173/';
+
+export const EMBEDDED_WALLET_STYLE = {
+	border: '1px',
+	borderRadius: '0.5rem',
+	errorPadding: '20px',
+	panelMaxWidth: '390px',
+	transitionDuration: '100ms',
+	viewportPadding: '20px',
+	viewportPaddingTotal: '40px',
+	zIndex: 1002,
+} as const;
+
 export type NetworkProviderSummary = {
 	url: string;
 	ownership: 'community' | 'default' | 'personal';

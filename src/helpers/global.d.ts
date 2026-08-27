@@ -1,4 +1,8 @@
 interface ArweaveWalletProvider {
+	events?: {
+		on(type: 'activeAddress' | 'disconnect', handler: (value: unknown) => void): void;
+		off(type: 'activeAddress' | 'disconnect', handler: (value: unknown) => void): void;
+	};
 	connect(permissions: string[], appInfo?: { name: string; logo?: string }): Promise<void>;
 	disconnect?(): Promise<void>;
 	getActiveAddress?(): Promise<string>;
@@ -28,4 +32,8 @@ interface Window {
 	arweaveWallet?: ArweaveWalletProvider;
 	permawebConnect?: ArweaveWalletProvider;
 	aoFetch?: PermawebOsAoFetch;
+}
+
+interface ImportMetaEnv {
+	readonly VITE_PERMAWEBOS_WALLET_URL?: string;
 }
