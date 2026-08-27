@@ -76,6 +76,10 @@ export function WalletMenu() {
 			setDisconnecting(false);
 		}
 	};
+	const openEmbeddedWallet = () => {
+		wallet.openWallet();
+		setOpen(false);
+	};
 
 	return (
 		<div className="wallet-menu" ref={root}>
@@ -142,6 +146,12 @@ export function WalletMenu() {
 						) : null}
 					</div>
 					<div className="wallet-dropdown-actions">
+						{wallet.isEmbeddedWallet ? (
+							<Button onClick={openEmbeddedWallet} role="menuitem" size="custom" variant="ghost">
+								<Wallet className="ui-icon ui-icon--sm" aria-hidden="true" />
+								Open wallet
+							</Button>
+						) : null}
 						<Button
 							onClick={() => {
 								setOpen(false);

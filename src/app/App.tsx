@@ -1,5 +1,6 @@
 import React from 'react';
 import { HashRouter, Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { EmbeddedWallet } from 'features/embeddedWallet';
 import {
 	ArrowLeft,
 	ArrowRight,
@@ -593,6 +594,7 @@ export function App() {
 
 	return (
 		<MarketContext.Provider value={value}>
+			<EmbeddedWallet />
 			<HashRouter future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
 				<OperationActivityProvider>
 					<RouteFocus />

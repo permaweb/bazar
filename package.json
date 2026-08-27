@@ -21,6 +21,7 @@
 	},
 	"dependencies": {
 		"@fontsource/dm-sans": "^5.3.0",
+		"@permaweb/web-wallet": "0.2.0",
 		"ao.js": "file:vendor/ao.js-0.1.15.tgz",
 		"arweave": "^1.15.7",
 		"lightweight-charts": "^4.2.0",
@@ -48,6 +49,7 @@
 		"eslint-plugin-react-hooks": "^4.6.2",
 		"eslint-plugin-simple-import-sort": "^10.0.0",
 		"husky": "^8.0.0",
+		"jsdom": "^26.1.0",
 		"prettier": "^2.8.3",
 		"typescript": "^5.7.2",
 		"vite": "^6.4.1",

@@ -1,4 +1,11 @@
-import { arweaveGatewayFromLocation } from 'helpers/config';
+import {
+	createWebWalletClientProvider,
+	openWebWallet as openPackageWebWallet,
+	resolveWebWalletConnectionUrl as resolvePackageWebWalletConnectionUrl,
+	type WebWalletLocation,
+} from '@permaweb/web-wallet';
+
+import { arweaveGatewayFromLocation, PERMAWEBOS_WALLET_URL } from 'helpers/config';
 
 import { operationWithDeadline } from './fetch-with-deadline';
 
@@ -29,6 +36,17 @@ type BrowserWalletScope = {
 	permawebConnect?: unknown;
 };
 
+export const webWalletClientProvider = createWebWalletClientProvider({
+	walletUrl: PERMAWEBOS_WALLET_URL,
+});
+
+export function resolveWebWalletConnectionUrl(
+	location: WebWalletLocation,
+	walletUrl: string | URL = PERMAWEBOS_WALLET_URL
+): URL {
+	return resolvePackageWebWalletConnectionUrl(location, walletUrl);
+}
+
 type InjectedWalletBalance = {
 	asset: 'AR' | 'AO';
 	network: 'arweave-mainnet' | 'ao-legacynet' | 'ao-mainnet';
@@ -47,9 +65,28 @@ function isBrowserWallet(value: unknown): value is ArweaveWalletProvider {
 }
 
 export function resolveBrowserWallet(scope: BrowserWalletScope, walletId: BrowserWalletId) {
-	const provider = walletId === 'permaweb-os' ? scope.permawebConnect : scope.arweaveWallet;
-	if (walletId === 'wander' && provider === scope.permawebConnect) return undefined;
+	const provider =
+		walletId === 'permaweb-os'
+			? isBrowserWallet(scope.permawebConnect)
+				? scope.permawebConnect
+				: webWalletClientProvider
+			: scope.arweaveWallet;
+	if (walletId === 'wander' && (provider === scope.permawebConnect || provider === webWalletClientProvider)) {
+		return undefined;
+	}
 	return isBrowserWallet(provider) ? provider : undefined;
+}
+
+export function hasInjectedPermawebWallet(scope: BrowserWalletScope): boolean {
+	return isBrowserWallet(scope.permawebConnect);
+}
+
+export function isEmbeddedBrowserWallet(wallet: ArweaveWalletProvider | null | undefined): boolean {
+	return wallet === webWalletClientProvider;
+}
+
+export function openEmbeddedWebWallet(): void {
+	openPackageWebWallet(webWalletClientProvider);
 }
 
 export function getBrowserWallet(walletId: BrowserWalletId) {
@@ -161,7 +198,7 @@ export async function readPermawebOsBalances(
 ): Promise<{ ar?: VisibleWalletBalance; ao?: VisibleWalletBalance } | undefined> {
 	if (!ARWEAVE_ADDRESS.test(address)) throw new TypeError('invalid-wallet-address');
 	const scope = options.scope ?? (typeof window === 'undefined' ? {} : window);
-	const provider = scope.permawebConnect;
+	const provider = scope.arweaveWallet === webWalletClientProvider ? webWalletClientProvider : scope.permawebConnect;
 	if (!isBrowserWallet(provider) || scope.arweaveWallet !== provider || typeof provider.getBalances !== 'function') {
 		return undefined;
 	}
@@ -188,7 +225,12 @@ export async function readPermawebOsBalances(
 		}
 	);
 	if (balances === undefined) return undefined;
-	if (scope.permawebConnect !== provider || scope.arweaveWallet !== provider) return undefined;
+	if (
+		scope.arweaveWallet !== provider ||
+		(provider !== webWalletClientProvider && scope.permawebConnect !== provider)
+	) {
+		return undefined;
+	}
 	if (!balances || typeof balances !== 'object' || Array.isArray(balances)) {
 		throw new Error('wallet-balances-invalid');
 	}

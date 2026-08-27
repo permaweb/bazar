@@ -1,4 +1,6 @@
-import { describe, expect, it, vi } from 'vitest';
+// @vitest-environment jsdom
+
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { PERMAWEB_OS_WALLET_PERMISSIONS } from 'api/wallet';
 
@@ -12,10 +14,15 @@ function deferred<T>() {
 	return { promise, resolve };
 }
 
+afterEach(() => {
+	vi.useRealTimers();
+	vi.restoreAllMocks();
+});
+
 describe('explicit wallet connection', () => {
 	it('reports the selected wallet when its provider is unavailable', async () => {
-		await expect(connectWallet(undefined, 'PermawebOS')).rejects.toThrow(
-			'Install the PermawebOS wallet extension to continue.'
+		await expect(connectWallet(undefined, 'Wander')).rejects.toThrow(
+			'Install the Wander wallet extension to continue.'
 		);
 	});
 
@@ -38,6 +45,7 @@ describe('explicit wallet connection', () => {
 		await connectWallet(
 			{
 				connect,
+				getPermissions: vi.fn(async () => []),
 				getActiveAddress: async () => address,
 				sign: async (transaction) => transaction,
 			},
@@ -45,12 +53,35 @@ describe('explicit wallet connection', () => {
 			PERMAWEB_OS_WALLET_PERMISSIONS
 		);
 
-		expect(connect).toHaveBeenCalledWith([
-			'ACCESS_ADDRESS',
-			'ACCESS_PUBLIC_KEY',
-			'SIGN_TRANSACTION',
-			'ACCESS_TOKENS',
-		]);
+		expect(connect).toHaveBeenCalledWith(
+			['ACCESS_ADDRESS', 'ACCESS_PUBLIC_KEY', 'SIGN_TRANSACTION', 'ACCESS_TOKENS'],
+			{ name: 'Bazar' }
+		);
+	});
+
+	it('fails quickly when an already-approved PermawebOS provider stops responding', async () => {
+		vi.useFakeTimers();
+		const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+		const connection = connectWallet(
+			{
+				connect: vi.fn(() => new Promise<void>(() => undefined)),
+				getPermissions: vi.fn(async () => [...PERMAWEB_OS_WALLET_PERMISSIONS]),
+				getActiveAddress: async () => 'a'.repeat(43),
+				sign: async (transaction) => transaction,
+			},
+			'PermawebOS',
+			PERMAWEB_OS_WALLET_PERMISSIONS
+		);
+		const rejection = expect(connection).rejects.toThrow('already-approved connection');
+
+		await vi.advanceTimersByTimeAsync(10_000);
+		await rejection;
+		expect(warning).toHaveBeenCalledWith('[wallet-connection]', {
+			wallet: 'PermawebOS',
+			phase: 'connect',
+			durationMs: 10_000,
+			outcome: 'timed-out',
+		});
 	});
 
 	it('rejects a connection whose active address cannot be read', async () => {
