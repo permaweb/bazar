@@ -173,6 +173,8 @@ describe('fungible holders', () => {
 		const largest = 'a'.repeat(43);
 		const listedOnly = 'b'.repeat(43);
 		const liquidOnly = 'c'.repeat(43);
+		const ethereumHolder = '0xbd8ee4A54fa820421B272E0d51c48068AeD08C4F';
+		const legacyHolder = '_Jwsx_-ameSFkPOrRIy1oCIT7G3HpBKdbN4sHcgrJTZs';
 		const open = purchaseOrder('d'.repeat(43), listedOnly, '300', '1');
 		const reserved = {
 			...purchaseOrder('e'.repeat(43), listedOnly, '200', '1'),
@@ -187,11 +189,13 @@ describe('fungible holders', () => {
 			name: 'Test token',
 			ticker: 'TEST',
 			denomination: 0,
-			totalSupply: '1200',
+			totalSupply: '1900',
 			balances: {
 				[largest]: '700',
+				[ethereumHolder]: '600',
 				[listedOnly]: '0',
 				[liquidOnly]: '500',
+				[legacyHolder]: '100',
 				invalid: '1000',
 			},
 			orders: {
@@ -206,8 +210,10 @@ describe('fungible holders', () => {
 
 		expect(fungibleHolders(state)).toEqual([
 			{ address: largest, liquid: '700', listed: '0', total: '700' },
+			{ address: ethereumHolder, liquid: '600', listed: '0', total: '600' },
 			{ address: listedOnly, liquid: '0', listed: '500', total: '500' },
 			{ address: liquidOnly, liquid: '500', listed: '0', total: '500' },
+			{ address: legacyHolder, liquid: '100', listed: '0', total: '100' },
 		]);
 	});
 
@@ -275,6 +281,32 @@ describe('fungible holders', () => {
 		expect(chart).toContain('Selected holder');
 		expect(chart).toContain('Total balance');
 		expect(chart).toContain('Offered for sale');
+	});
+
+	it('renders a legacy holder identity without an Arweave profile link', () => {
+		const address = '0xbd8ee4A54fa820421B272E0d51c48068AeD08C4F';
+		const state = {
+			device: 'token@1.0',
+			name: 'Legacy token',
+			ticker: 'LEGACY',
+			denomination: 0,
+			totalSupply: '100',
+			balances: { [address]: '100' },
+			orders: {},
+			swapHeight: 0,
+			value: null,
+			raw: {},
+		} satisfies AssetState;
+		const chart = renderToStaticMarkup(
+			React.createElement(FungibleHolderChart, {
+				assetName: state.name,
+				holders: [{ address, liquid: '100', listed: '0', total: '100' }],
+				state,
+			})
+		);
+
+		expect(chart).toContain(address);
+		expect(chart).not.toContain(`#/profile/${address}`);
 	});
 });
 
@@ -1355,6 +1387,12 @@ describe('fungible state revalidation', () => {
 describe('fungible transfer recipient validation', () => {
 	it('rejects malformed and same-wallet recipients before signing', () => {
 		expect(fungibleTransferRecipientError('not-an-address', BUYER)).toContain('43-character');
+		expect(fungibleTransferRecipientError('0xbd8ee4A54fa820421B272E0d51c48068AeD08C4F', BUYER)).toContain(
+			'43-character'
+		);
+		expect(fungibleTransferRecipientError('_Jwsx_-ameSFkPOrRIy1oCIT7G3HpBKdbN4sHcgrJTZs', BUYER)).toContain(
+			'43-character'
+		);
 		expect(fungibleTransferRecipientError(BUYER, BUYER)).toContain('different wallet');
 		expect(fungibleTransferRecipientError('c'.repeat(43), BUYER)).toBe('');
 		expect(fungibleTransferRecipientError(`  ${'c'.repeat(43)}\n`, BUYER)).toBe('');

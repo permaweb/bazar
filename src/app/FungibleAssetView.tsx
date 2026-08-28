@@ -29,6 +29,7 @@ import {
 	ASSET_BALANCE_STATE_UNAVAILABLE,
 	assetBalanceStateAvailable,
 	type AssetState,
+	isBalanceIdentity,
 	licenseProperties,
 	liquidBalanceOf,
 	listedBalanceOf,
@@ -277,6 +278,14 @@ export type FungibleHolder = {
 	total: string;
 };
 
+function FungibleHolderIdentity({ address }: { address: string }) {
+	return ADDRESS.test(address) ? (
+		<WalletAddress address={address} label="holder" />
+	) : (
+		<WalletIdentity address={address} />
+	);
+}
+
 export function fungibleHolders(state: AssetState): FungibleHolder[] {
 	const listedByAddress = new Map<string, bigint>();
 	for (const order of liveOrdersOfAsset(state)) {
@@ -285,7 +294,7 @@ export function fungibleHolders(state: AssetState): FungibleHolder[] {
 
 	const addresses = new Set([
 		...Object.entries(state.balances)
-			.filter(([address, balance]) => ADDRESS.test(address) && BigInt(balance) > 0n)
+			.filter(([address, balance]) => isBalanceIdentity(address) && BigInt(balance) > 0n)
 			.map(([address]) => address),
 		...listedByAddress.keys(),
 	]);
@@ -531,7 +540,7 @@ export function FungibleHolderChart({
 				<div className="fungible-holder-chart-identity">
 					<span>Selected holder</span>
 					{active.address ? (
-						<WalletAddress address={active.address} label="holder" />
+						<FungibleHolderIdentity address={active.address} />
 					) : (
 						<strong>{active.label}</strong>
 					)}
@@ -1707,7 +1716,7 @@ export function FungibleAssetView({
 								{visibleHolderRows.map((holder) => (
 									<div className="orderbook-row" key={holder.address} role="row">
 										<span data-label="Holder" role="cell">
-											<WalletAddress address={holder.address} label="holder" />
+											<FungibleHolderIdentity address={holder.address} />
 										</span>
 										<strong data-label="Total balance" role="cell">
 											{tokenLabel(holder.total, state)}

@@ -4,6 +4,7 @@ import { clearArweaveHeightCache } from './arweave-height';
 import {
 	bestAskOfAsset,
 	compareOrderUnitPrice,
+	isBalanceIdentity,
 	licenseProperties,
 	liquidBalanceOf,
 	listedBalanceOf,
@@ -74,6 +75,44 @@ describe('servingNodeOrigin', () => {
 });
 
 describe('asset state', () => {
+	it('recognizes legacy balance identities without relaxing arbitrary keys', () => {
+		expect(isBalanceIdentity(owner)).toBe(true);
+		expect(isBalanceIdentity('_Jwsx_-ameSFkPOrRIy1oCIT7G3HpBKdbN4sHcgrJTZs')).toBe(true);
+		expect(isBalanceIdentity('0xbd8ee4A54fa820421B272E0d51c48068AeD08C4F')).toBe(true);
+		expect(isBalanceIdentity('0xbd8ee4A54fa820421B272E0d51c48068AeD08C4G')).toBe(false);
+		expect(isBalanceIdentity('description')).toBe(false);
+	});
+
+	it('keeps legacy holder identities out of Arweave-only wallet and link paths', async () => {
+		const ethereumHolder = '0xbd8ee4A54fa820421B272E0d51c48068AeD08C4F';
+		const legacyHolder = '_Jwsx_-ameSFkPOrRIy1oCIT7G3HpBKdbN4sHcgrJTZs';
+		const state = parseAssetState({
+			'execution-device': 'token@1.0',
+			'total-supply': '6',
+			balances: { [owner]: '1', [ethereumHolder]: '2', [legacyHolder]: '3' },
+			orders: {},
+		});
+
+		expect(liquidBalanceOf(state, owner)).toBe('1');
+		expect(liquidBalanceOf(state, ethereumHolder)).toBe('0');
+		expect(liquidBalanceOf(state, legacyHolder)).toBe('0');
+
+		for (const invalidLink of [ethereumHolder, legacyHolder]) {
+			await expect(
+				readAssetState(processId, {
+					fetch: async () =>
+						new Response(null, {
+							headers: {
+								'balances+link': invalidLink,
+								'execution-device': 'token@1.0',
+								'total-supply': '6',
+							},
+						}),
+				})
+			).rejects.toThrow('invalid-asset-state-link');
+		}
+	});
+
 	it('parses one-unit token state and finds the direct owner', () => {
 		const state = parseAssetState({
 			'execution-device': 'token@1.0',
@@ -340,6 +379,41 @@ describe('asset state', () => {
 		expect(result.state.holderBalancesAvailable).toBe(true);
 		expect(ownerOfAsset(result.state)).toBe(owner);
 		expect(requested).toContain(`/${balancesLink}~message@1.0/serialize~json@1.0`);
+	});
+
+	it('preserves legacy identities in a direct JSON balance table', async () => {
+		const balancesLink = 'B'.repeat(43);
+		const ethereumHolder = '0xbd8ee4A54fa820421B272E0d51c48068AeD08C4F';
+		const legacyHolder = '_Jwsx_-ameSFkPOrRIy1oCIT7G3HpBKdbN4sHcgrJTZs';
+		const result = await readAssetState(processId, {
+			provider: 'https://compute.example',
+			fetch: async (input) => {
+				const url = String(input);
+				if (url.endsWith('/balances/device')) return new Response('not_found', { status: 404 });
+				if (url.endsWith(`${balancesLink}~message@1.0/serialize~json@1.0`)) {
+					return jsonResponse({
+						device: 'json@1.0',
+						[owner]: 1,
+						[ethereumHolder]: '221345000000000000',
+						[legacyHolder]: 1000000,
+					});
+				}
+				return new Response(null, {
+					headers: {
+						'balances+link': balancesLink,
+						'execution-device': 'token@1.0',
+						'total-supply': '221345000001000001',
+					},
+				});
+			},
+		});
+
+		expect(result.state.balances).toEqual({
+			[owner]: '1',
+			[ethereumHolder]: '221345000000000000',
+			[legacyHolder]: '1000000',
+		});
+		expect(result.state.holderBalancesAvailable).toBe(true);
 	});
 
 	it('rejects malformed degraded JSON balance roots without following child links or accepting partial data', async () => {
