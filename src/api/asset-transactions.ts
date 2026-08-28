@@ -16,6 +16,7 @@ import { arweaveClientConfig, arweaveGatewayFromLocation } from 'helpers/config'
 
 import { aoFetch } from './ao';
 import { currentArweaveHeight } from './arweave-height';
+import { signedTransactionSignerAddress } from './arweave-transaction-signature';
 import {
 	assetBalanceStateAvailable,
 	type AssetState,
@@ -1077,15 +1078,17 @@ export class AssetTransactionClient {
 		// returns. Keep the business intent strict, then make that exact signed
 		// reward immutable for persistence, recovery, and dispatch.
 		intent.reward = signedReward;
-		let signatureValid = false;
+		let signerAddress: string;
 		try {
-			signatureValid = Boolean(await arweave.transactions?.verify?.(signed));
+			signerAddress = await signedTransactionSignerAddress(signed, {
+				ownerToAddress: (owner) => arweave.wallets.ownerToAddress(owner),
+				verifyRsa: (candidate) => arweave.transactions.verify(candidate),
+			});
 		} catch {
-			signatureValid = false;
+			throw new Error('wallet-returned-invalid-signature');
 		}
-		if (!signatureValid) throw new Error('wallet-returned-invalid-signature');
 		assertTransactionIntent(serializable, intent);
-		if (expectedSigner) await this.#assertSigner(serializable, expectedSigner);
+		if (expectedSigner && signerAddress !== expectedSigner) throw new Error('wallet-account-changed');
 		if (signal?.aborted) throw signal.reason;
 		const requiredBalance = transactionCost(serializable);
 		if (this.#storage) {
@@ -1175,12 +1178,19 @@ export class AssetTransactionClient {
 	}
 
 	async #assertSigner(transaction: Record<string, unknown>, expectedSigner: string): Promise<void> {
-		const owner = String(transaction.owner ?? '');
 		const arweave = await this.#getArweave();
-		if (!owner || !arweave.wallets?.ownerToAddress) {
+		if (!arweave.wallets?.ownerToAddress) {
 			throw new Error('signed-transaction-owner-unavailable');
 		}
-		if ((await arweave.wallets.ownerToAddress(owner)) !== expectedSigner) {
+		let signerAddress: string;
+		try {
+			signerAddress = await signedTransactionSignerAddress(transaction, {
+				ownerToAddress: (owner) => arweave.wallets.ownerToAddress(owner),
+			});
+		} catch {
+			throw new Error('signed-transaction-owner-unavailable');
+		}
+		if (signerAddress !== expectedSigner) {
 			throw new Error('wallet-account-changed');
 		}
 	}
