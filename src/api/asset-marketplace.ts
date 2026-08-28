@@ -63,6 +63,12 @@ export function assetBalanceStateAvailable(state: Pick<AssetState, 'holderBalanc
 	return state.holderBalancesAvailable !== false;
 }
 
+export function isBalanceIdentity(value: string): boolean {
+	return (
+		ADDRESS.test(value) || LEGACY_BASE64URL_BALANCE_IDENTITY.test(value) || ETHEREUM_BALANCE_IDENTITY.test(value)
+	);
+}
+
 export type LicenseProperty = {
 	key: string;
 	label: string;
@@ -70,6 +76,8 @@ export type LicenseProperty = {
 };
 
 const ADDRESS = /^[A-Za-z0-9_-]{43}$/;
+const LEGACY_BASE64URL_BALANCE_IDENTITY = /^[A-Za-z0-9_-]{44}$/;
+const ETHEREUM_BALANCE_IDENTITY = /^0x[0-9a-fA-F]{40}$/;
 const UNSIGNED_INTEGER = /^(?:0|[1-9]\d*)$/;
 const LIVE_ORDER = new Set<SwapOrderStatus>(['open', 'reserved']);
 const ASSET_PROCESS_DEVICES = new Set(['carrier@1.0', 'name-token@1.0', 'token@1.0']);
@@ -779,7 +787,7 @@ function strictDirectJsonBalances(message: Record<string, unknown>): Record<stri
 	for (const [name, value] of Object.entries(message)) {
 		if (name.endsWith('+link')) return null;
 		if (DIRECT_JSON_BALANCE_METADATA.has(name)) continue;
-		if (!ADDRESS.test(name)) return null;
+		if (!isBalanceIdentity(name)) return null;
 		const balance = amount(value);
 		if (balance === null) return null;
 		balances[name] = balance;
