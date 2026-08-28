@@ -4733,6 +4733,15 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 				publishFrame ??= window.requestAnimationFrame(commitFound);
 			}
 		};
+		const publishConfirmed = (confirmedEvents: CollectionActivityEvent[]) => {
+			if (controller.signal.aborted) return;
+			publish(confirmedEvents, true);
+			try {
+				saveMarketActivity(window.localStorage, activityScope, eventsRef.current);
+			} catch {
+				// Streamed settlement counts remain visible when storage is unavailable.
+			}
+		};
 		void (async () => {
 			const failures: unknown[] = [];
 			try {
@@ -4740,7 +4749,23 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 					recipients: activityRecipients,
 					concurrency: 2,
 					signal: controller.signal,
-					onPage: (page) => publish(page),
+					onPage: async (page) => {
+						publish(page);
+						const registrations = page
+							.map((event) => found.get(event.id) ?? event)
+							.filter((event) => event.action === 'register-interest' && !event.purchaseProof);
+						if (!registrations.length) return;
+						try {
+							await confirmPurchaseActivity(registrations, {
+								signal: controller.signal,
+								verifyAo: false,
+								onUpdate: publishConfirmed,
+							});
+						} catch (cause) {
+							if (controller.signal.aborted) throw cause;
+							failures.push(cause);
+						}
+					},
 				});
 				publish(completeEvents, true);
 			} catch (cause) {
@@ -4750,13 +4775,14 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 			if (controller.signal.aborted) return;
 			if (publishFrame !== undefined) window.cancelAnimationFrame(publishFrame);
 			commitFound();
-			// The complete indexed-history scan ends here. Purchase-proof verification is
-			// slower optional enrichment and must not keep the history loader running.
+			// Indexed settlements have already streamed with their history pages. AO proof
+			// verification remains optional enrichment and must not keep the loader running.
 			setLoading(false);
 			try {
 				eventsRef.current = await confirmPurchaseActivity(eventsRef.current, {
 					signal: controller.signal,
 					readCurrent: (processId, signal) => readAssetStateCached(processId, { signal, maxAttempts: 1 }),
+					onUpdate: publishConfirmed,
 				});
 			} catch (cause) {
 				if (controller.signal.aborted) return;

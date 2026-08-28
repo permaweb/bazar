@@ -17,6 +17,7 @@ import {
 	discoverMarketActivity,
 	discoverMarketActivityBatched,
 	discoverPendingAssetOffers,
+	discoverPurchasePaymentSettlements,
 	discoverWalletAssetCandidates,
 	loadBazarAtomicAssetById,
 	loadCompletedWalletCandidateScan,
@@ -327,6 +328,7 @@ describe('purchase activity confirmation', () => {
 		};
 
 		const [confirmed] = await confirmPurchaseActivity([event], {
+			readPayments: async () => [],
 			readCurrent: async () => ({ state: after, provider: 'test' }),
 			readAssignments: async () => [assignment],
 			readAtSlot: async (_id, slot) => ({ state: slot === 4 ? before : after, provider: 'test' }),
@@ -357,8 +359,234 @@ describe('purchase activity confirmation', () => {
 			confirmPurchaseActivity([event], {
 				readCurrent: async () => ({ state, provider: 'test' }),
 				readAssignments: async () => [],
+				readPayments: async () => [],
 			})
 		).resolves.toEqual([event]);
+	});
+
+	it('returns an indexed payment page without waiting for AO verification', async () => {
+		const event: CollectionActivityEvent = {
+			id: 'R'.repeat(43),
+			processId: 'P'.repeat(43),
+			action: 'register-interest',
+			actor: 'B'.repeat(43),
+			height: 100,
+			timestamp: 1,
+			orderId: 'O'.repeat(43),
+		};
+		const readCurrent = vi.fn();
+
+		await expect(
+			confirmPurchaseActivity([event], {
+				verifyAo: false,
+				readPayments: async () => [],
+				readCurrent,
+			})
+		).resolves.toEqual([event]);
+		expect(readCurrent).not.toHaveBeenCalled();
+	});
+
+	it('falls back to the indexed AR payment without requiring a matching listing event', async () => {
+		const processId = 'P'.repeat(43);
+		const registrationId = 'R'.repeat(43);
+		const paymentId = 'Y'.repeat(43);
+		const orderId = 'O'.repeat(43);
+		const seller = 'S'.repeat(43);
+		const buyer = 'B'.repeat(43);
+		const registration: CollectionActivityEvent = {
+			id: registrationId,
+			processId,
+			action: 'register-interest',
+			actor: buyer,
+			height: 100,
+			timestamp: 2,
+			orderId,
+		};
+
+		const readCurrent = vi.fn();
+		const onUpdate = vi.fn();
+		const confirmed = await confirmPurchaseActivity([registration], {
+			readCurrent,
+			onUpdate,
+			readPayments: async () => [
+				{
+					transactionId: paymentId,
+					orderId,
+					processId,
+					buyer,
+					seller,
+					quantity: '2000000',
+					height: 123,
+					timestamp: 3,
+				},
+			],
+		});
+
+		expect(confirmed.find((event) => event.id === registrationId)?.purchaseProof).toEqual({
+			transactionId: paymentId,
+			height: 123,
+		});
+		expect(onUpdate).toHaveBeenCalledWith(confirmed);
+		expect(readCurrent).not.toHaveBeenCalled();
+	});
+
+	it('rejects payment lookalikes that do not match every settlement field', async () => {
+		const processId = 'P'.repeat(43);
+		const orderId = 'O'.repeat(43);
+		const seller = 'S'.repeat(43);
+		const buyer = 'B'.repeat(43);
+		const registration: CollectionActivityEvent = {
+			id: 'R'.repeat(43),
+			processId,
+			action: 'register-interest',
+			actor: buyer,
+			height: 100,
+			timestamp: 2,
+			orderId,
+		};
+		const payment = {
+			transactionId: 'Y'.repeat(43),
+			orderId,
+			processId,
+			buyer,
+			seller,
+			quantity: '2000000',
+			height: 123,
+			timestamp: 3,
+		};
+		const payments = [
+			{ ...payment, transactionId: 'A'.repeat(43), orderId: 'X'.repeat(43) },
+			{ ...payment, transactionId: 'C'.repeat(43), processId: 'X'.repeat(43) },
+			{ ...payment, transactionId: 'D'.repeat(43), buyer: 'X'.repeat(43) },
+			{ ...payment, transactionId: 'E'.repeat(43), seller: processId },
+			{ ...payment, transactionId: 'F'.repeat(43), quantity: '0' },
+			{ ...payment, transactionId: 'G'.repeat(43), height: 99 },
+		];
+
+		const confirmed = await confirmPurchaseActivity([registration], {
+			readCurrent: async () => {
+				throw new Error('compute-state-unavailable');
+			},
+			readPayments: async () => payments,
+		});
+
+		expect(confirmed.find((event) => event.id === registration.id)?.purchaseProof).toBeUndefined();
+	});
+
+	it('counts a settlement transaction only once across repeated registrations', async () => {
+		const processId = 'P'.repeat(43);
+		const orderId = 'O'.repeat(43);
+		const paymentId = 'Y'.repeat(43);
+		const seller = 'S'.repeat(43);
+		const buyer = 'B'.repeat(43);
+		const registrations: CollectionActivityEvent[] = [100, 101].map((height, index) => ({
+			id: String(index + 1).repeat(43),
+			processId,
+			action: 'register-interest',
+			actor: buyer,
+			height,
+			timestamp: height,
+			orderId,
+		}));
+		const payment = {
+			transactionId: paymentId,
+			orderId,
+			processId,
+			buyer,
+			seller,
+			quantity: '2000000',
+			height: 123,
+			timestamp: 3,
+		};
+
+		const confirmed = await confirmPurchaseActivity(registrations, {
+			readCurrent: async () => {
+				throw new Error('compute-state-unavailable');
+			},
+			readPayments: async () => [payment, payment],
+		});
+
+		expect(confirmed.filter((event) => event.purchaseProof?.transactionId === paymentId)).toHaveLength(1);
+	});
+
+	it('queries and decodes positive native AR settlement payments', async () => {
+		const processId = 'P'.repeat(43);
+		const orderId = 'O'.repeat(43);
+		const paymentId = 'Y'.repeat(43);
+		const seller = 'S'.repeat(43);
+		const buyer = 'B'.repeat(43);
+		const registration: CollectionActivityEvent = {
+			id: 'R'.repeat(43),
+			processId,
+			action: 'register-interest',
+			actor: buyer,
+			height: 100,
+			timestamp: 2,
+			orderId,
+		};
+		const fetcher = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+			Response.json({
+				data: {
+					transactions: {
+						pageInfo: { hasNextPage: false },
+						edges: [
+							{
+								cursor: 'payment-cursor',
+								node: {
+									id: paymentId,
+									recipient: seller,
+									quantity: { winston: '2000000' },
+									tags: [
+										{ name: 'order-id', value: orderId },
+										{ name: 'assign-to', value: processId },
+									],
+									owner: { address: buyer },
+									block: { height: 123, timestamp: 3 },
+								},
+							},
+						],
+					},
+				},
+			})
+		);
+		const onPage = vi.fn();
+
+		await expect(
+			discoverPurchasePaymentSettlements([registration], {
+				fetch: fetcher as typeof fetch,
+				graphql: 'https://arweave.net/graphql',
+				onPage,
+			})
+		).resolves.toEqual([
+			{
+				transactionId: paymentId,
+				orderId,
+				processId,
+				buyer,
+				seller,
+				quantity: '2000000',
+				height: 123,
+				timestamp: 3,
+			},
+		]);
+		const request = JSON.parse(String(fetcher.mock.calls[0][1]?.body));
+		expect(request.variables).toEqual({
+			cursor: null,
+			orderIds: [orderId],
+		});
+		expect(request.query).toContain('quantity { winston }');
+		expect(onPage).toHaveBeenCalledWith([
+			{
+				transactionId: paymentId,
+				orderId,
+				processId,
+				buyer,
+				seller,
+				quantity: '2000000',
+				height: 123,
+				timestamp: 3,
+			},
+		]);
 	});
 
 	it('does not recompute a purchase proof that was already verified', async () => {

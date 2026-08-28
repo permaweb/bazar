@@ -21,6 +21,7 @@ const ADDRESS = /^[A-Za-z0-9_-]{43}$/;
 const GRAPHQL_PAGE_SIZE = 100;
 const GRAPHQL_ID_BATCH_SIZE = 100;
 const ARWEAVE_GRAPHQL_ID_BATCH_SIZE = 9;
+const PURCHASE_ORDER_ID_BATCH_SIZE = 75;
 const MAX_GRAPHQL_PAGES = 1_000;
 const WALLET_HEAD_CATCH_UP_PAGES_PER_PASS = 20;
 const WALLET_SCAN_CACHE_VERSION = 1;
@@ -72,9 +73,24 @@ export type CollectionActivityEvent = {
 	};
 };
 
+export type PurchasePaymentSettlement = {
+	transactionId: string;
+	orderId: string;
+	processId: string;
+	buyer: string;
+	seller: string;
+	quantity: string;
+	height: number;
+	timestamp: number;
+};
+
 type PurchaseProofOptions = {
 	signal?: AbortSignal;
 	maxScheduleSlots?: number;
+	verifyAo?: boolean;
+	fetch?: typeof fetch;
+	graphql?: string;
+	requestTimeoutMs?: number;
 	readCurrent?: (processId: string, signal?: AbortSignal) => Promise<ComputeResult>;
 	readAssignments?: (
 		processId: string,
@@ -83,6 +99,8 @@ type PurchaseProofOptions = {
 		options?: { signal?: AbortSignal }
 	) => Promise<ProcessAssignment[]>;
 	readAtSlot?: (processId: string, slot: number, options?: { signal?: AbortSignal }) => Promise<ComputeResult>;
+	readPayments?: (events: CollectionActivityEvent[], signal?: AbortSignal) => Promise<PurchasePaymentSettlement[]>;
+	onUpdate?: (events: CollectionActivityEvent[]) => void | Promise<void>;
 };
 
 export async function confirmPurchaseActivity(
@@ -97,17 +115,57 @@ export async function confirmPurchaseActivity(
 			ADDRESS.test(event.orderId ?? '')
 	);
 	if (!purchases.length) return events;
+	const proofs = new Map<string, CollectionActivityEvent['purchaseProof']>();
+	let publishChain = Promise.resolve();
+	const publish = () => {
+		if (!options.onUpdate) return publishChain;
+		const snapshot = purchaseActivityWithProofs(events, proofs);
+		publishChain = publishChain.then(() => options.onUpdate!(snapshot));
+		return publishChain;
+	};
+	const correlateAndPublish = async (payments: PurchasePaymentSettlement[]) => {
+		const proofCount = proofs.size;
+		correlatePurchasePaymentSettlements(events, purchases, payments, proofs);
+		if (proofs.size > proofCount) await publish();
+	};
+	let paymentFailure: unknown;
+	try {
+		if (options.readPayments) {
+			await correlateAndPublish(await options.readPayments(purchases, options.signal));
+		} else {
+			await discoverPurchasePaymentSettlements(purchases, {
+				fetch: options.fetch,
+				graphql: options.graphql,
+				requestTimeoutMs: options.requestTimeoutMs,
+				signal: options.signal,
+				onPage: correlateAndPublish,
+			});
+		}
+	} catch (cause) {
+		if (options.signal?.aborted) throw cause;
+		paymentFailure = cause;
+	}
+	options.signal?.throwIfAborted();
+	if (options.verifyAo === false) {
+		if (paymentFailure) throw new AggregateError([paymentFailure], 'purchase-confirmation-failed');
+		return purchaseActivityWithProofs(events, proofs);
+	}
+
+	const unprovedPurchases = purchases.filter((event) => !proofs.has(event.id));
+	if (!unprovedPurchases.length) return purchaseActivityWithProofs(events, proofs);
 	const readCurrent = options.readCurrent ?? ((processId, signal) => readAssetState(processId, { signal }));
 	const readAssignments = options.readAssignments ?? readProcessAssignments;
 	const readAtSlot = options.readAtSlot ?? readAssetStateAtSlot;
 	const maxScheduleSlots = Math.max(100, Math.floor(options.maxScheduleSlots ?? 1_000));
 	const { purchaseAppliedAtSlot } = await import('./asset-transactions');
-	const proofs = new Map<string, CollectionActivityEvent['purchaseProof']>();
 	const groups = new Map<string, CollectionActivityEvent[]>();
-	for (const event of purchases) groups.set(event.processId, [...(groups.get(event.processId) ?? []), event]);
+	for (const event of unprovedPurchases) {
+		groups.set(event.processId, [...(groups.get(event.processId) ?? []), event]);
+	}
 
 	const pendingGroups = [...groups.entries()];
 	let nextGroup = 0;
+	const verificationFailures: unknown[] = [];
 	const verifyGroup = async (processId: string, processEvents: CollectionActivityEvent[]) => {
 		options.signal?.throwIfAborted();
 		const current = await readCurrent(processId, options.signal);
@@ -174,20 +232,24 @@ export async function confirmPurchaseActivity(
 		Array.from({ length: Math.min(3, pendingGroups.length) }, async () => {
 			while (nextGroup < pendingGroups.length) {
 				const group = pendingGroups[nextGroup++];
-				await verifyGroup(...group);
+				try {
+					const proofCount = proofs.size;
+					await verifyGroup(...group);
+					if (proofs.size > proofCount) await publish();
+				} catch (cause) {
+					if (options.signal?.aborted) throw cause;
+					verificationFailures.push(cause);
+				}
 			}
 		})
 	);
-	const seenPayments = new Set<string>();
-	return events
-		.map((event) => (proofs.has(event.id) ? { ...event, purchaseProof: proofs.get(event.id) } : event))
-		.filter((event) => {
-			const paymentId = event.purchaseProof?.transactionId;
-			if (!paymentId) return true;
-			if (seenPayments.has(paymentId)) return false;
-			seenPayments.add(paymentId);
-			return true;
-		});
+	await publishChain;
+	options.signal?.throwIfAborted();
+	if (paymentFailure) {
+		const failures = [...verificationFailures, paymentFailure];
+		throw new AggregateError(failures, 'purchase-confirmation-failed');
+	}
+	return purchaseActivityWithProofs(events, proofs);
 }
 
 export type PendingAssetOffer = Pick<
@@ -198,6 +260,7 @@ export type PendingAssetOffer = Pick<
 type GraphqlNode = {
 	id: string;
 	recipient?: string;
+	quantity?: { winston?: string };
 	tags?: Array<{ name: string; value: string }>;
 	owner?: { address?: string };
 	block?: { height?: number; timestamp?: number };
@@ -387,6 +450,31 @@ const MARKET_ACTIVITY_QUERY = `query AssetMarketActivity(
 		edges {
 			cursor
 			node { id recipient tags { name value } owner { address } block { height timestamp } }
+		}
+	}
+}`;
+
+const PURCHASE_SETTLEMENT_QUERY = `query PurchaseSettlements(
+	$cursor: String
+	$orderIds: [String!]!
+) {
+	transactions(
+		first: ${GRAPHQL_PAGE_SIZE}
+		after: $cursor
+		sort: HEIGHT_DESC
+		tags: [{ name: "order-id", values: $orderIds }]
+	) {
+		pageInfo { hasNextPage }
+		edges {
+			cursor
+			node {
+				id
+				recipient
+				quantity { winston }
+				tags { name value }
+				owner { address }
+				block { height timestamp }
+			}
 		}
 	}
 }`;
@@ -1025,6 +1113,86 @@ export async function discoverWalletAssetCandidates(
 	}
 
 	return sortCandidates([...scan.found.values()]);
+}
+
+/**
+ * Find native AR payments that can independently prove indexed purchase registrations.
+ * Order-ID batches keep the query bounded; buyer, assignment, recipient, amount, and
+ * block ordering are correlated locally before accepting a settlement.
+ */
+export async function discoverPurchasePaymentSettlements(
+	events: CollectionActivityEvent[],
+	options: Pick<PurchaseProofOptions, 'fetch' | 'graphql' | 'requestTimeoutMs' | 'signal'> & {
+		onPage?: (settlements: PurchasePaymentSettlement[]) => void | Promise<void>;
+	} = {}
+): Promise<PurchasePaymentSettlement[]> {
+	const criteria = new Map<string, { orderId: string; processId: string; buyer: string }>();
+	for (const event of events) {
+		if (
+			event.action !== 'register-interest' ||
+			event.purchaseProof ||
+			!ADDRESS.test(event.orderId ?? '') ||
+			!ADDRESS.test(event.processId) ||
+			!ADDRESS.test(event.actor)
+		)
+			continue;
+		const key = purchaseRegistrationKey(event.processId, event.orderId!, event.actor);
+		criteria.set(key, { orderId: event.orderId!, processId: event.processId, buyer: event.actor });
+	}
+	if (!criteria.size) return [];
+
+	const fetcher = options.fetch ?? globalThis.fetch.bind(globalThis);
+	const graphql = options.graphql ?? arweaveGraphqlEndpoint();
+	const candidates = [...criteria.values()];
+	const batches = Array.from({ length: Math.ceil(candidates.length / PURCHASE_ORDER_ID_BATCH_SIZE) }, (_, index) =>
+		candidates.slice(index * PURCHASE_ORDER_ID_BATCH_SIZE, (index + 1) * PURCHASE_ORDER_ID_BATCH_SIZE)
+	);
+	const found = new Map<string, PurchasePaymentSettlement>();
+	for (const batch of batches) {
+		let cursor: string | null = null;
+		const visited = new Set<string>();
+		while (true) {
+			options.signal?.throwIfAborted();
+			const { response, body: payload } = await fetchJsonWithDeadline<any>(
+				fetcher,
+				graphql,
+				{
+					method: 'POST',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify({
+						query: PURCHASE_SETTLEMENT_QUERY,
+						variables: {
+							cursor,
+							orderIds: [...new Set(batch.map((candidate) => candidate.orderId))],
+						},
+					}),
+					signal: options.signal,
+				},
+				{
+					timeoutMs: options.requestTimeoutMs,
+					timeoutError: 'purchase-settlement-graphql-timeout',
+				}
+			);
+			if (!response.ok) throw new Error(`purchase-settlement-graphql-${response.status}`);
+			if (!payload) throw new Error('purchase-settlement-graphql-empty');
+			if (payload?.errors?.length) throw new Error('purchase-settlement-graphql-error');
+			const connection = decodeGraphqlConnection(payload, 'transactions', 'purchase-settlement-graphql-schema');
+			const pageSettlements: PurchasePaymentSettlement[] = [];
+			for (const edge of connection.edges) {
+				const settlement = purchasePaymentSettlementFromNode(edge.node);
+				if (settlement && !found.has(settlement.transactionId)) {
+					found.set(settlement.transactionId, settlement);
+					pageSettlements.push(settlement);
+				}
+			}
+			if (pageSettlements.length) await options.onPage?.(pageSettlements);
+			if (!connection.pageInfo.hasNextPage) break;
+			cursor = advanceGraphqlCursor(connection, visited, 'purchase-settlement-pagination-stalled');
+		}
+	}
+	return [...found.values()].sort(
+		(a, b) => a.height - b.height || a.timestamp - b.timestamp || a.transactionId.localeCompare(b.transactionId)
+	);
 }
 
 export async function discoverMarketActivity(options: MarketActivityOptions = {}): Promise<AssetCandidate[]> {
@@ -2060,6 +2228,103 @@ function candidateFromNode(
 			  }
 			: {}),
 	};
+}
+
+function purchaseRegistrationKey(processId: string, orderId: string, buyer: string): string {
+	return `${processId}:${orderId}:${buyer}`;
+}
+
+function unambiguousTagValue(tags: GraphqlNode['tags'], name: string): string | undefined {
+	const values = (tags ?? []).filter((tag) => tag.name.toLowerCase() === name).map((tag) => tag.value);
+	return values.length && new Set(values).size === 1 ? values[0] : undefined;
+}
+
+function purchasePaymentSettlementFromNode(node: GraphqlNode): PurchasePaymentSettlement | null {
+	const orderId = unambiguousTagValue(node.tags, 'order-id');
+	const processId = unambiguousTagValue(node.tags, 'assign-to');
+	const buyer = node.owner?.address;
+	const seller = node.recipient;
+	const quantity = node.quantity?.winston;
+	const height = safeNumber(node.block?.height);
+	if (
+		!ADDRESS.test(node.id) ||
+		!ADDRESS.test(orderId ?? '') ||
+		!ADDRESS.test(processId ?? '') ||
+		!ADDRESS.test(buyer ?? '') ||
+		!ADDRESS.test(seller ?? '') ||
+		!quantity ||
+		!/^[1-9]\d*$/.test(quantity) ||
+		height < 1
+	) {
+		return null;
+	}
+	return {
+		transactionId: node.id,
+		orderId: orderId!,
+		processId: processId!,
+		buyer: buyer!,
+		seller: seller!,
+		quantity,
+		height,
+		timestamp: safeNumber(node.block?.timestamp),
+	};
+}
+
+function purchaseActivityWithProofs(
+	events: CollectionActivityEvent[],
+	proofs: Map<string, CollectionActivityEvent['purchaseProof']>
+): CollectionActivityEvent[] {
+	const seenPayments = new Set<string>();
+	return events
+		.map((event) => (proofs.has(event.id) ? { ...event, purchaseProof: proofs.get(event.id) } : event))
+		.filter((event) => {
+			const paymentId = event.purchaseProof?.transactionId;
+			if (!paymentId) return true;
+			if (seenPayments.has(paymentId)) return false;
+			seenPayments.add(paymentId);
+			return true;
+		});
+}
+
+function correlatePurchasePaymentSettlements(
+	events: CollectionActivityEvent[],
+	purchases: CollectionActivityEvent[],
+	payments: PurchasePaymentSettlement[],
+	proofs: Map<string, CollectionActivityEvent['purchaseProof']>
+): void {
+	const usedPayments = new Set<string>();
+	for (const event of events) {
+		if (event.purchaseProof?.transactionId) usedPayments.add(event.purchaseProof.transactionId);
+	}
+	for (const proof of proofs.values()) {
+		if (proof?.transactionId) usedPayments.add(proof.transactionId);
+	}
+	const orderedPayments = [...payments].sort(
+		(a, b) => a.height - b.height || a.timestamp - b.timestamp || a.transactionId.localeCompare(b.transactionId)
+	);
+	const orderedPurchases = [...purchases].sort(
+		(a, b) => b.height - a.height || b.timestamp - a.timestamp || a.id.localeCompare(b.id)
+	);
+	for (const event of orderedPurchases) {
+		if (!event.orderId) continue;
+		const payment = orderedPayments.find(
+			(candidate) =>
+				!usedPayments.has(candidate.transactionId) &&
+				ADDRESS.test(candidate.transactionId) &&
+				candidate.transactionId !== event.id &&
+				candidate.orderId === event.orderId &&
+				candidate.processId === event.processId &&
+				candidate.buyer === event.actor &&
+				ADDRESS.test(candidate.seller) &&
+				candidate.seller !== event.processId &&
+				/^[1-9]\d*$/.test(candidate.quantity) &&
+				candidate.height > 0 &&
+				candidate.height >= event.height
+		);
+		if (!payment) continue;
+		proofs.set(event.id, { transactionId: payment.transactionId, height: payment.height });
+		usedPayments.add(payment.transactionId);
+	}
 }
 
 function activityEventFromNode(node: GraphqlNode): CollectionActivityEvent | null {
