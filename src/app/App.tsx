@@ -118,6 +118,7 @@ import {
 	replaceHiddenCollectionAssetIndex,
 	withVisibleCollectionAssets,
 } from 'api/collections';
+import { operationWithDeadline } from 'api/fetch-with-deadline';
 import {
 	advanceMintActivity,
 	loadMintActivities,
@@ -4636,6 +4637,9 @@ export function globalActivityRevealDescription(
 function HomeActivityPanel({ collections, marketLoading }: { collections: Collection[]; marketLoading: boolean }) {
 	const [events, setEvents] = React.useState<CollectionActivityEvent[]>([]);
 	const [loading, setLoading] = React.useState(true);
+	const [verifyingPurchases, setVerifyingPurchases] = React.useState(false);
+	const [purchaseVerificationFailures, setPurchaseVerificationFailures] = React.useState(0);
+	const [purchaseVerificationIncomplete, setPurchaseVerificationIncomplete] = React.useState(false);
 	const [error, setError] = React.useState<string | null>(null);
 	const [retry, setRetry] = React.useState(0);
 	const [activityFilter, setActivityFilter] = React.useState<GlobalActivityFilter>('all');
@@ -4681,6 +4685,9 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 		if (!collections.length) {
 			setEvents([]);
 			setLoading(false);
+			setVerifyingPurchases(false);
+			setPurchaseVerificationFailures(0);
+			setPurchaseVerificationIncomplete(false);
 			return;
 		}
 		const controller = new AbortController();
@@ -4707,6 +4714,9 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 			setEvents(initialEvents);
 		}
 		setLoading(true);
+		setVerifyingPurchases(false);
+		setPurchaseVerificationFailures(0);
+		setPurchaseVerificationIncomplete(false);
 		setError(null);
 		let publishFrame: number | undefined;
 		const commitFound = () => {
@@ -4733,8 +4743,51 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 				publishFrame ??= window.requestAnimationFrame(commitFound);
 			}
 		};
+		const proofFailureProcesses = new Set<string>();
+		const publishedProofPayments = new Set(
+			initialEvents.flatMap((event) =>
+				event.purchaseProof?.transactionId ? [event.purchaseProof.transactionId] : []
+			)
+		);
+		let proofVerificationIncomplete = false;
+		const verifyPurchases = async (candidates: CollectionActivityEvent[]) => {
+			if (!candidates.some((event) => event.action === 'register-interest' && !event.purchaseProof)) return;
+			setVerifyingPurchases(true);
+			try {
+				await operationWithDeadline(
+					(signal) =>
+						confirmPurchaseActivity(candidates, {
+							signal,
+							verificationTimeoutMs: 15_000,
+							onFailure: (processId) => {
+								proofFailureProcesses.add(processId);
+							},
+							onProof: (event) => {
+								const paymentId = event.purchaseProof?.transactionId;
+								if (!paymentId || publishedProofPayments.has(paymentId)) return;
+								publishedProofPayments.add(paymentId);
+								publish([event]);
+							},
+							readCurrent: (processId, readSignal) =>
+								readAssetStateCached(processId, { signal: readSignal, maxAttempts: 1 }),
+						}),
+					controller.signal,
+					{
+						timeoutMs: 45_000,
+						timeoutError: 'purchase-proof-verification-budget-exhausted',
+					}
+				);
+			} catch (cause) {
+				if (controller.signal.aborted) return;
+				proofVerificationIncomplete = true;
+			}
+		};
+		const initialEventIds = new Set(initialEvents.map((event) => event.id));
+		// Cached activity can be verified immediately while the index refresh runs.
+		// This prevents a complete recipient scan from delaying recent purchase proofs.
+		const initialVerification = verifyPurchases(initialEvents);
 		void (async () => {
-			const failures: unknown[] = [];
+			const historyFailures: unknown[] = [];
 			try {
 				const completeEvents = await discoverAllCollectionActivityBatched({
 					recipients: activityRecipients,
@@ -4745,7 +4798,7 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 				publish(completeEvents, true);
 			} catch (cause) {
 				if (controller.signal.aborted) return;
-				failures.push(cause);
+				historyFailures.push(cause);
 			}
 			if (controller.signal.aborted) return;
 			if (publishFrame !== undefined) window.cancelAnimationFrame(publishFrame);
@@ -4754,22 +4807,30 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 			// slower optional enrichment and must not keep the history loader running.
 			setLoading(false);
 			try {
-				eventsRef.current = await confirmPurchaseActivity(eventsRef.current, {
-					signal: controller.signal,
-					readCurrent: (processId, signal) => readAssetStateCached(processId, { signal, maxAttempts: 1 }),
-				});
+				await initialVerification;
+				await verifyPurchases(
+					initialEvents.length
+						? eventsRef.current.filter((event) => !initialEventIds.has(event.id))
+						: eventsRef.current
+				);
 			} catch (cause) {
 				if (controller.signal.aborted) return;
-				failures.push(cause);
+				proofVerificationIncomplete = true;
 			}
-			setEvents(eventsRef.current);
+			if (controller.signal.aborted) return;
+			if (publishFrame !== undefined) window.cancelAnimationFrame(publishFrame);
+			publishFrame = undefined;
+			setVerifyingPurchases(false);
+			setPurchaseVerificationFailures(proofFailureProcesses.size);
+			setPurchaseVerificationIncomplete(proofVerificationIncomplete);
+			commitFound();
 			try {
 				saveMarketActivity(window.localStorage, activityScope, eventsRef.current);
 			} catch {
 				// The live result remains available even when storage is unavailable.
 			}
-			if (failures.length) {
-				const kind = failures.some((cause) => marketplaceFailureKind(cause) === 'rate-limited')
+			if (historyFailures.length) {
+				const kind = historyFailures.some((cause) => marketplaceFailureKind(cause) === 'rate-limited')
 					? 'rate-limited'
 					: 'unavailable';
 				setError(marketplaceRequestFailureMessage('index', kind));
@@ -4799,7 +4860,7 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 		globalActivityCollection(collections, event.processId);
 	return (
 		<div
-			aria-busy={loading}
+			aria-busy={loading || verifyingPurchases}
 			aria-labelledby="home-activity-tab"
 			className="home-activity-panel"
 			id="home-activity-panel"
@@ -4809,6 +4870,10 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 			{loading ? (
 				<div className="global-activity-loading">
 					<Loading label="Loading complete global activity history…" />
+				</div>
+			) : verifyingPurchases ? (
+				<div className="global-activity-loading">
+					<Loading label="Verifying confirmed purchases…" />
 				</div>
 			) : null}
 			<p className="activity-window-description" id={activityWindowDescriptionId}>
@@ -4827,6 +4892,7 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 			>
 				{activityFilters.map((filter) => {
 					const count = filterGlobalActivity(events, filter.value).length;
+					const verificationPending = filter.value === 'register-interest' && verifyingPurchases;
 					return (
 						<Button
 							aria-controls={activityListId}
@@ -4838,8 +4904,11 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 						>
 							<span>{filter.label}</span>
 							<span aria-hidden="true" className="activity-filter-count">
-								{count.toLocaleString()}
+								{verificationPending && count === 0 ? '…' : count.toLocaleString()}
 							</span>
+							{verificationPending ? (
+								<span className="sr-only">{count.toLocaleString()} verified so far</span>
+							) : null}
 						</Button>
 					);
 				})}
@@ -4858,6 +4927,25 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 				) : (
 					<ErrorPanel message={`Global activity could not be loaded. ${error}`} onRetry={retryActivity} />
 				)
+			) : null}
+			{purchaseVerificationFailures || purchaseVerificationIncomplete ? (
+				<div className="collection-source-notice home-activity-partial-notice retry-notice">
+					<span role="status">
+						{purchaseVerificationIncomplete ? (
+							<>Purchase verification reached its time limit. </>
+						) : (
+							<>
+								{purchaseVerificationFailures.toLocaleString()} marketplace{' '}
+								{purchaseVerificationFailures === 1 ? 'asset could' : 'assets could'} not be fully
+								checked.{' '}
+							</>
+						)}
+						Successfully verified purchases are still shown.
+					</span>
+					<Button className="with-icon" onClick={retryActivity} size="custom" type="button">
+						<RefreshCw className="ui-icon ui-icon--sm" aria-hidden="true" /> Retry verification
+					</Button>
+				</div>
 			) : null}
 			<MarketActivityList
 				ariaLabel={`Global market activity, ${
@@ -4912,7 +5000,7 @@ function HomeActivityPanel({ collections, marketLoading }: { collections: Collec
 					Show {Math.min(20, filteredEvents.length - activityLimit).toLocaleString()} more activity events
 				</Button>
 			) : null}
-			{!loading && !error && events.length > 0 && !filteredEvents.length ? (
+			{!loading && !verifyingPurchases && !error && events.length > 0 && !filteredEvents.length ? (
 				<div className="empty-state">
 					<h3>No matching activity</h3>
 					<p>No submitted actions match this filter in the indexed history loaded above.</p>
