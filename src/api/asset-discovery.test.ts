@@ -335,6 +335,190 @@ describe('purchase activity confirmation', () => {
 		expect(confirmed.purchaseProof).toEqual({ transactionId: paymentId, height: 123 });
 	});
 
+	it('keeps proofs from healthy assets when another asset cannot be verified', async () => {
+		const processId = 'P'.repeat(43);
+		const unavailableProcessId = 'Q'.repeat(43);
+		const registrationId = 'R'.repeat(43);
+		const paymentId = 'Y'.repeat(43);
+		const orderId = 'O'.repeat(43);
+		const seller = 'S'.repeat(43);
+		const buyer = 'B'.repeat(43);
+		const order = {
+			'order-id': orderId,
+			creator: seller,
+			recipient: seller,
+			asking: '2000000',
+			deposit: '0',
+			'minimum-fee': '100000000',
+			deadline: 20,
+			'created-at': 1,
+			quantity: '1',
+			status: 'reserved' as const,
+			buyer,
+			'reserved-until': 200,
+		};
+		const before = parseAssetState({
+			'execution-device': 'token@1.0',
+			'total-supply': '1',
+			balances: { [seller]: '0', [buyer]: '0' },
+			orders: { [orderId]: order },
+			'at-slot': 4,
+		});
+		const after = parseAssetState({
+			'execution-device': 'token@1.0',
+			'total-supply': '1',
+			balances: { [buyer]: '1' },
+			orders: {},
+			'at-slot': 5,
+		});
+		const assignment = {
+			slot: 5,
+			blockHeight: 123,
+			transactionIds: [paymentId],
+			raw: {
+				process: processId,
+				body: {
+					target: seller,
+					'order-id': orderId,
+					quantity: '2000000',
+					commitments: {
+						[paymentId]: {
+							'commitment-device': 'tx@1.0',
+							committer: buyer,
+							'field-target': seller,
+							committed: ['order-id', 'quantity', 'target'],
+						},
+					},
+				},
+			},
+		};
+		const healthyEvent = {
+			id: registrationId,
+			processId,
+			action: 'register-interest' as const,
+			actor: buyer,
+			height: 100,
+			timestamp: 1,
+			orderId,
+		};
+		const unavailableEvent = {
+			...healthyEvent,
+			id: 'U'.repeat(43),
+			processId: unavailableProcessId,
+			orderId: 'Z'.repeat(43),
+		};
+		const unavailable = new Error('process unavailable');
+		const onFailure = vi.fn();
+		const onProof = vi.fn();
+
+		const [confirmed, unconfirmed] = await confirmPurchaseActivity([healthyEvent, unavailableEvent], {
+			onFailure,
+			onProof,
+			readCurrent: async (id) => {
+				if (id === unavailableProcessId) throw unavailable;
+				return { state: after, provider: 'test' };
+			},
+			readAssignments: async () => [assignment],
+			readAtSlot: async (_id, slot) => ({ state: slot === 4 ? before : after, provider: 'test' }),
+		});
+
+		expect(confirmed.purchaseProof).toEqual({ transactionId: paymentId, height: 123 });
+		expect(unconfirmed.purchaseProof).toBeUndefined();
+		expect(onProof).toHaveBeenCalledWith(confirmed);
+		expect(onFailure).toHaveBeenCalledWith(unavailableProcessId, unavailable);
+	});
+
+	it('continues with later registrations when one historical state read fails', async () => {
+		const processId = 'P'.repeat(43);
+		const registrationId = 'R'.repeat(43);
+		const paymentId = 'Y'.repeat(43);
+		const failedPaymentId = 'F'.repeat(43);
+		const orderId = 'O'.repeat(43);
+		const failedOrderId = 'Z'.repeat(43);
+		const seller = 'S'.repeat(43);
+		const buyer = 'B'.repeat(43);
+		const order = {
+			'order-id': orderId,
+			creator: seller,
+			recipient: seller,
+			asking: '2000000',
+			deposit: '0',
+			'minimum-fee': '100000000',
+			deadline: 20,
+			'created-at': 1,
+			quantity: '1',
+			status: 'reserved' as const,
+			buyer,
+			'reserved-until': 200,
+		};
+		const before = parseAssetState({
+			'execution-device': 'token@1.0',
+			'total-supply': '1',
+			balances: { [seller]: '0', [buyer]: '0' },
+			orders: { [orderId]: order },
+			'at-slot': 4,
+		});
+		const after = parseAssetState({
+			'execution-device': 'token@1.0',
+			'total-supply': '1',
+			balances: { [buyer]: '1' },
+			orders: {},
+			'at-slot': 5,
+		});
+		const assignment = (slot: number, heldOrderId: string, heldPaymentId: string) => ({
+			slot,
+			blockHeight: 123,
+			transactionIds: [heldPaymentId],
+			raw: {
+				process: processId,
+				body: {
+					target: seller,
+					'order-id': heldOrderId,
+					quantity: '2000000',
+					commitments: {
+						[heldPaymentId]: {
+							'commitment-device': 'tx@1.0',
+							committer: buyer,
+							'field-target': seller,
+							committed: ['order-id', 'quantity', 'target'],
+						},
+					},
+				},
+			},
+		});
+		const event = (id: string, heldOrderId: string) => ({
+			id,
+			processId,
+			action: 'register-interest' as const,
+			actor: buyer,
+			height: 100,
+			timestamp: 1,
+			orderId: heldOrderId,
+		});
+		const historicalFailure = new Error('historical state unavailable');
+		const onFailure = vi.fn();
+
+		const [unconfirmed, confirmed] = await confirmPurchaseActivity(
+			[event('U'.repeat(43), failedOrderId), event(registrationId, orderId)],
+			{
+				onFailure,
+				readCurrent: async () => ({ state: after, provider: 'test' }),
+				readAssignments: async () => [
+					assignment(3, failedOrderId, failedPaymentId),
+					assignment(5, orderId, paymentId),
+				],
+				readAtSlot: async (_id, slot) => {
+					if (slot === 2) throw historicalFailure;
+					return { state: slot === 4 ? before : after, provider: 'test' };
+				},
+			}
+		);
+
+		expect(unconfirmed.purchaseProof).toBeUndefined();
+		expect(confirmed.purchaseProof).toEqual({ transactionId: paymentId, height: 123 });
+		expect(onFailure).toHaveBeenCalledWith(processId, historicalFailure);
+	});
+
 	it('leaves an unproved registration labeled as a submission', async () => {
 		const event = {
 			id: 'R'.repeat(43),
