@@ -145,12 +145,20 @@ export type TokenPriceAreaPoint = AreaData<UTCTimestamp> & {
 	sourcePoint: TokenPricePoint;
 };
 
-export function tokenPriceAreaSeries(points: TokenPricePoint[], range: TokenPriceRange = 'all') {
-	return tokenPriceCandlestickSeries(points, range).map(({ time, close, closePoint }) => ({
-		time,
-		value: close,
-		sourcePoint: closePoint,
-	}));
+export function tokenPriceAreaSeries(points: TokenPricePoint[], _range: TokenPriceRange = 'all') {
+	let previousTime = Number.NEGATIVE_INFINITY;
+	return tokenPricePointsForRange(points, 'all').map((point) => {
+		const sourceTime = Math.floor(timestampMilliseconds(point.timestamp) / 1_000);
+		// Lightweight Charts requires strictly increasing timestamps. Preserve price
+		// events recorded in the same second instead of dropping their path.
+		const time = Math.max(sourceTime, previousTime + 1);
+		previousTime = time;
+		return {
+			time: time as UTCTimestamp,
+			value: Number(point.value) / 1_000_000_000_000,
+			sourcePoint: point,
+		};
+	});
 }
 
 export function tokenPriceCoordinates(points: TokenPricePoint[], width = 640, height = 180) {
@@ -291,7 +299,7 @@ export function TokenPriceChart({
 			bottomColor: colorWithAlpha(seriesColor, 0),
 			lastValueVisible: true,
 			lineColor: seriesColor,
-			lineType: LineType.Curved,
+			lineType: LineType.WithSteps,
 			lineWidth: 3,
 			priceFormat: { minMove: 0.000000000001, precision: 12, type: 'price' },
 			priceLineColor: seriesColor,
@@ -349,7 +357,7 @@ export function TokenPriceChart({
 	}, [areaSeries, direction, resolvedTheme]);
 
 	return (
-		<section className="token-price-chart" aria-busy={loading} aria-label={`${ticker} indexed ask history`}>
+		<section className="token-price-chart" aria-busy={loading} aria-label={`${ticker} verified price history`}>
 			<div className="token-price-chart-heading">
 				<div className="token-price-quote" aria-live="polite">
 					<small>Floor price</small>
@@ -364,7 +372,11 @@ export function TokenPriceChart({
 			</div>
 
 			{visiblePoints.length ? (
-				<div aria-label={`${ticker} ask price trend chart`} className="token-price-plot" role="img">
+				<div
+					aria-label={`${ticker} opening listing and completed sale price chart`}
+					className="token-price-plot"
+					role="img"
+				>
 					<div className="token-price-tradingview" ref={chartContainerRef} />
 					{markerPosition && areaSeries.length ? (
 						<div
@@ -379,14 +391,14 @@ export function TokenPriceChart({
 					) : null}
 				</div>
 			) : loading ? (
-				<p className="token-price-empty">Reading indexed asks…</p>
+				<p className="token-price-empty">Reading verified price history…</p>
 			) : error ? (
-				<p className="token-price-empty">Ask history is temporarily unavailable.</p>
+				<p className="token-price-empty">Price history is temporarily unavailable.</p>
 			) : (
-				<p className="token-price-empty">No indexed asks in this range.</p>
+				<p className="token-price-empty">No opening listing or completed sales in this range.</p>
 			)}
 
-			<div aria-label="Ask history range" className="token-price-ranges" role="group">
+			<div aria-label="Price history range" className="token-price-ranges" role="group">
 				{PRICE_RANGE_OPTIONS.map((option) => (
 					<button
 						aria-pressed={range === option.value}
@@ -403,13 +415,13 @@ export function TokenPriceChart({
 			{hasNextPage && onLoadMore ? (
 				<div className="token-price-history-footer">
 					<Button disabled={loadingMore} onClick={onLoadMore} size="custom" type="button">
-						{loadingMore ? 'Loading older asks…' : 'Load older asks'}
+						{loadingMore ? 'Loading older prices…' : 'Load older prices'}
 					</Button>
 				</div>
 			) : error && onRetry ? (
 				<div className="token-price-history-footer">
 					<Button onClick={onRetry} size="custom" type="button">
-						Retry ask history
+						Retry price history
 					</Button>
 				</div>
 			) : null}

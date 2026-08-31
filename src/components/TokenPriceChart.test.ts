@@ -88,7 +88,7 @@ describe('TokenPriceChart', () => {
 		]);
 	});
 
-	it('uses each bucket close for the simplified area trend', () => {
+	it('preserves every ask in the area trend instead of hiding movement inside time buckets', () => {
 		const base = Date.UTC(2026, 7, 12, 12) / 1_000;
 		expect(
 			tokenPriceAreaSeries(
@@ -100,12 +100,27 @@ describe('TokenPriceChart', () => {
 				'24h'
 			).map(({ time, value, sourcePoint }) => ({ time, value, sourceId: sourcePoint.id }))
 		).toEqual([
-			{ time: base, value: 1.25, sourceId: 'close' },
+			{ time: base, value: 1, sourceId: 'open' },
+			{ time: base + 30 * 60, value: 1.25, sourceId: 'close' },
 			{ time: base + 60 * 60, value: 1.5, sourceId: 'next' },
 		]);
 	});
 
-	it('renders interactive range controls without an indexed-history footer', () => {
+	it('keeps multiple asks submitted in the same indexed second visible and ordered', () => {
+		expect(
+			tokenPriceAreaSeries([
+				{ id: 'a', timestamp: 100, value: '1000000000000' },
+				{ id: 'b', timestamp: 100, value: '2000000000000' },
+				{ id: 'c', timestamp: 101, value: '3000000000000' },
+			]).map(({ time, sourcePoint }) => ({ time, id: sourcePoint.id }))
+		).toEqual([
+			{ time: 100, id: 'a' },
+			{ time: 101, id: 'b' },
+			{ time: 102, id: 'c' },
+		]);
+	});
+
+	it('renders interactive range controls without a price-history footer', () => {
 		const markup = renderToStaticMarkup(
 			React.createElement(TokenPriceChart, {
 				points: [{ id: 'a', timestamp: 1, value: '1000000000000' }],
@@ -116,13 +131,13 @@ describe('TokenPriceChart', () => {
 				formatValue: (value: string) => `${value} winston`,
 			})
 		);
-		expect(markup).toContain('Ask history');
-		expect(markup).toContain('Ask history range');
+		expect(markup).toContain('verified price history');
+		expect(markup).toContain('Price history range');
 		expect(markup).toContain('Floor price');
 		expect(markup).toContain('750000000000 winston');
 		expect(markup).not.toContain('Current price');
 		expect(markup).not.toContain('Selected ask');
-		expect(markup).toContain('indexed ask');
+		expect(markup).toContain('opening listing and completed sale price chart');
 		expect(markup).not.toContain('token-price-summary');
 		expect(markup).toContain('>5M<');
 		expect(markup).toContain('>1H<');

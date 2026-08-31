@@ -243,27 +243,38 @@ export function restartFungibleOperationActivity(activity: FungibleOperationActi
 	};
 }
 
-export function fungibleAskHistory(events: CollectionActivityEvent[], denomination: number): TokenPricePoint[] {
+export function fungiblePriceHistory(events: CollectionActivityEvent[], denomination: number): TokenPricePoint[] {
 	const scale = 10n ** BigInt(denomination);
-	return events
-		.flatMap((event) => {
-			if (event.action !== 'make-offer' || !event.asking || !event.quantity) return [];
-			try {
-				const asking = BigInt(event.asking);
-				const quantity = BigInt(event.quantity);
-				if (asking <= 0n || quantity <= 0n) return [];
-				return [
-					{
-						id: event.id,
-						timestamp: event.timestamp,
-						value: ((asking * scale + quantity - 1n) / quantity).toString(),
-					},
-				];
-			} catch {
-				return [];
-			}
-		})
-		.sort((left, right) => left.timestamp - right.timestamp || left.id.localeCompare(right.id));
+	const ordered = [...events].sort(
+		(left, right) => left.timestamp - right.timestamp || left.id.localeCompare(right.id)
+	);
+	const listings = new Map<string, TokenPricePoint>();
+	for (const event of ordered) {
+		if (event.action !== 'make-offer' || !event.asking || !event.quantity) continue;
+		try {
+			const asking = BigInt(event.asking);
+			const quantity = BigInt(event.quantity);
+			if (asking <= 0n || quantity <= 0n) continue;
+			listings.set(event.id, {
+				id: event.id,
+				timestamp: event.timestamp,
+				value: ((asking * scale + quantity - 1n) / quantity).toString(),
+			});
+		} catch {
+			// Malformed indexed values are not price evidence.
+		}
+	}
+	const openingListing = listings.values().next().value as TokenPricePoint | undefined;
+	if (!openingListing) return [];
+	const completedSales = ordered.flatMap((event) => {
+		if (event.action !== 'register-interest' || !event.purchaseProof || !event.orderId) return [];
+		const listing = listings.get(event.orderId);
+		if (!listing || event.timestamp < listing.timestamp) return [];
+		return [{ id: event.id, timestamp: event.timestamp, value: listing.value }];
+	});
+	return [openingListing, ...completedSales].sort(
+		(left, right) => left.timestamp - right.timestamp || left.id.localeCompare(right.id)
+	);
 }
 
 const ADDRESS = /^[A-Za-z0-9_-]{43}$/;
@@ -794,8 +805,8 @@ export function FungibleAssetView({
 	}, [activeSection, holderBalancesAvailable]);
 	const license = licenseProperties(state);
 	const description = assetDescription(state, collection.description);
-	const askHistory = React.useMemo(
-		() => fungibleAskHistory(askActivity, state.denomination),
+	const priceHistory = React.useMemo(
+		() => fungiblePriceHistory(askActivity, state.denomination),
 		[askActivity, state.denomination]
 	);
 	const purchaseKey = wallet.address ? fungibleBatchStorageKey(asset.id, wallet.address) : '';
@@ -1478,7 +1489,7 @@ export function FungibleAssetView({
 								loadingMore={askLoadingMore}
 								onLoadMore={onAskLoadMore}
 								onRetry={onAskRetry}
-								points={askHistory}
+								points={priceHistory}
 								ticker={ticker}
 							/>
 							<div
