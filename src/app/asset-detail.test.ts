@@ -10,7 +10,7 @@ import {
 	assetStateRecoveryUrl,
 	mergeAssetActivityPages,
 	mergeAssetDetailMetadata,
-	uniqueAskHistory,
+	uniquePriceHistory,
 } from './App';
 
 const assetId = 'A'.repeat(43);
@@ -100,22 +100,37 @@ describe('asset detail fallbacks', () => {
 		).toBeNull();
 	});
 
-	it('builds a chronologically ordered Unique ask history from signed listing events', () => {
+	it('starts Unique price history at the first listing and then moves only on completed sales', () => {
 		const shared = {
 			processId: assetId,
 			actor: 'B'.repeat(43),
 			height: 1,
 		};
 		expect(
-			uniqueAskHistory([
+			uniquePriceHistory([
 				{ ...shared, id: 'later', action: 'make-offer', timestamp: 20, asking: '2500000000000' },
 				{ ...shared, id: 'transfer', action: 'transfer', timestamp: 15, asking: '999' },
 				{ ...shared, id: 'invalid', action: 'make-offer', timestamp: 12, asking: '0' },
 				{ ...shared, id: 'earlier', action: 'make-offer', timestamp: 10, asking: '1000000000000' },
+				{
+					...shared,
+					id: 'unpaid',
+					action: 'register-interest',
+					timestamp: 25,
+					orderId: 'later',
+				},
+				{
+					...shared,
+					id: 'sale',
+					action: 'register-interest',
+					timestamp: 30,
+					orderId: 'later',
+					purchaseProof: { transactionId: 'P'.repeat(43), height: 2 },
+				},
 			])
 		).toEqual([
 			{ id: 'earlier', timestamp: 10, value: '1000000000000' },
-			{ id: 'later', timestamp: 20, value: '2500000000000' },
+			{ id: 'sale', timestamp: 30, value: '2500000000000' },
 		]);
 	});
 

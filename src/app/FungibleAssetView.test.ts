@@ -20,7 +20,6 @@ import {
 	batchStageLabel,
 	checkpointBatchPreparation,
 	fungibleActivityAmount,
-	fungibleAskHistory,
 	fungibleBatchRecoveryStatus,
 	FungibleHolderChart,
 	fungibleHolderChartSlices,
@@ -35,6 +34,7 @@ import {
 	fungibleOperationStateError,
 	fungibleOperationWorkingStatus,
 	fungibleOrderActionLabel,
+	fungiblePriceHistory,
 	fungiblePurchaseActivityAmount,
 	FungiblePurchaseComposer,
 	FungiblePurchaseReceiptNavigator,
@@ -104,12 +104,12 @@ const ORDER_ID = 'o'.repeat(43);
 const REGISTRATION_ID = 'r'.repeat(43);
 const PAYMENT_ID = 'p'.repeat(43);
 
-describe('fungible ask history', () => {
-	it('converts atomic lot quantities into whole-token unit prices', () => {
-		const points = fungibleAskHistory(
+describe('fungible price history', () => {
+	it('starts at the first listing and then moves only on completed sales', () => {
+		const points = fungiblePriceHistory(
 			[
 				{
-					id: 'newer',
+					id: ORDER_ID,
 					processId: 'token',
 					action: 'make-offer',
 					actor: BUYER,
@@ -128,20 +128,41 @@ describe('fungible ask history', () => {
 					asking: '1000000000000',
 					quantity: '2000',
 				},
+				{
+					id: 'unpaid-registration',
+					processId: 'token',
+					action: 'register-interest',
+					actor: BUYER,
+					height: 3,
+					timestamp: 25,
+					orderId: ORDER_ID,
+					quantity: '100',
+				},
+				{
+					id: 'completed-sale',
+					processId: 'token',
+					action: 'register-interest',
+					actor: BUYER,
+					height: 4,
+					timestamp: 30,
+					orderId: ORDER_ID,
+					quantity: '100',
+					purchaseProof: { transactionId: PAYMENT_ID, height: 5 },
+				},
 			],
 			3
 		);
 
 		expect(points).toEqual([
 			{ id: 'older', timestamp: 10, value: '500000000000' },
-			{ id: 'newer', timestamp: 20, value: '2500000000000' },
+			{ id: 'completed-sale', timestamp: 30, value: '2500000000000' },
 		]);
 	});
 
 	it('ignores transfers and malformed or zero-value asks', () => {
 		const base = { processId: 'token', actor: BUYER, height: 1, timestamp: 1 };
 		expect(
-			fungibleAskHistory(
+			fungiblePriceHistory(
 				[
 					{ ...base, id: 'transfer', action: 'transfer', quantity: '1000' },
 					{ ...base, id: 'bad', action: 'make-offer', asking: 'nope', quantity: '1000' },

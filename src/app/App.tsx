@@ -8237,18 +8237,31 @@ export function assetDetailMembershipVerified(
 	return directAtomicAsset || Boolean(collectionId && verifiedCollectionIds.has(collectionId));
 }
 
-export function uniqueAskHistory(events: CollectionActivityEvent[]): TokenPricePoint[] {
-	return events
-		.flatMap((event) => {
-			if (event.action !== 'make-offer' || !event.asking) return [];
-			try {
-				if (BigInt(event.asking) <= 0n) return [];
-				return [{ id: event.id, timestamp: event.timestamp, value: event.asking }];
-			} catch {
-				return [];
-			}
-		})
-		.sort((left, right) => left.timestamp - right.timestamp || left.id.localeCompare(right.id));
+export function uniquePriceHistory(events: CollectionActivityEvent[]): TokenPricePoint[] {
+	const ordered = [...events].sort(
+		(left, right) => left.timestamp - right.timestamp || left.id.localeCompare(right.id)
+	);
+	const listings = new Map<string, TokenPricePoint>();
+	for (const event of ordered) {
+		if (event.action !== 'make-offer' || !event.asking) continue;
+		try {
+			if (BigInt(event.asking) <= 0n) continue;
+			listings.set(event.id, { id: event.id, timestamp: event.timestamp, value: event.asking });
+		} catch {
+			// Malformed indexed values are not price evidence.
+		}
+	}
+	const openingListing = listings.values().next().value as TokenPricePoint | undefined;
+	if (!openingListing) return [];
+	const completedSales = ordered.flatMap((event) => {
+		if (event.action !== 'register-interest' || !event.purchaseProof || !event.orderId) return [];
+		const listing = listings.get(event.orderId);
+		if (!listing || event.timestamp < listing.timestamp) return [];
+		return [{ id: event.id, timestamp: event.timestamp, value: listing.value }];
+	});
+	return [openingListing, ...completedSales].sort(
+		(left, right) => left.timestamp - right.timestamp || left.id.localeCompare(right.id)
+	);
 }
 
 export function mergeAssetActivityPages(
@@ -9114,17 +9127,31 @@ function AssetView() {
 		}
 		setAskLoading(true);
 		void discoverCollectionActivityPage({
-			actions: ['make-offer'],
+			actions: ['make-offer', 'register-interest'],
 			pageSize: 100,
 			recipients: [assetId],
 			signal: controller.signal,
 		})
 			.then(
-				(page) => {
-					if (!controller.signal.aborted) {
-						setAssetAskActivity(page.events);
-						setAskCursor(page.cursor);
-						setAskHasNextPage(page.hasNextPage);
+				async (page) => {
+					if (controller.signal.aborted) return;
+					setAssetAskActivity(page.events);
+					setAskCursor(page.cursor);
+					setAskHasNextPage(page.hasNextPage);
+					try {
+						const confirmed = await confirmPurchaseActivity(page.events, {
+							signal: controller.signal,
+							verificationTimeoutMs: 15_000,
+							readCurrent: (processId, readSignal) =>
+								readAssetStateCached(processId, { signal: readSignal, maxAttempts: 1 }),
+						});
+						if (!controller.signal.aborted && askAssetRef.current === assetId) {
+							setAssetAskActivity(confirmed);
+						}
+					} catch (cause) {
+						if (!controller.signal.aborted) {
+							setAskError(marketplaceRequestFailureMessage('index', marketplaceFailureKind(cause)));
+						}
 					}
 				},
 				(cause) => {
@@ -9173,7 +9200,7 @@ function AssetView() {
 		setAskError(null);
 		try {
 			const page = await discoverCollectionActivityPage({
-				actions: ['make-offer'],
+				actions: ['make-offer', 'register-interest'],
 				cursor: askCursor,
 				pageSize: 100,
 				recipients: [assetId],
@@ -9183,6 +9210,14 @@ function AssetView() {
 			setAssetAskActivity((current) => mergeAssetActivityPages(current, page.events));
 			setAskCursor(page.cursor);
 			setAskHasNextPage(page.hasNextPage);
+			const confirmed = await confirmPurchaseActivity(page.events, {
+				signal: controller.signal,
+				verificationTimeoutMs: 15_000,
+				readCurrent: (processId, readSignal) =>
+					readAssetStateCached(processId, { signal: readSignal, maxAttempts: 1 }),
+			});
+			if (controller.signal.aborted || askAssetRef.current !== assetId) return;
+			setAssetAskActivity((current) => mergeAssetActivityPages(current, confirmed));
 		} catch (cause) {
 			if (!controller.signal.aborted) {
 				setAskError(marketplaceRequestFailureMessage('index', marketplaceFailureKind(cause)));
@@ -9362,7 +9397,7 @@ function AssetView() {
 		})().catch(() => undefined);
 		return () => controller.abort();
 	}, [assetId, openOperation, operation, recoverySuppressed, state, storageVersion, wallet.address]);
-	const uniqueAskPoints = React.useMemo(() => uniqueAskHistory(assetAskActivity), [assetAskActivity]);
+	const uniquePricePoints = React.useMemo(() => uniquePriceHistory(assetAskActivity), [assetAskActivity]);
 	const recoveryUrl = assetStateRecoveryUrl(error, window.location);
 	const stateRecoveryAction = recoveryUrl
 		? {
@@ -9915,7 +9950,7 @@ function AssetView() {
 									loadingMore={askLoadingMore}
 									onLoadMore={() => void loadOlderAssetAsks()}
 									onRetry={() => setAskRetry((value) => value + 1)}
-									points={uniqueAskPoints}
+									points={uniquePricePoints}
 									ticker={asset.name}
 								/>
 							</React.Suspense>
