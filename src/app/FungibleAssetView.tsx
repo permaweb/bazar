@@ -40,7 +40,6 @@ import { acquireAssetObserverNetwork, type AssetObserverNetworkLease } from 'api
 import { readAssetStateWithDeadline } from 'api/asset-state-store';
 import {
 	AssetTransactionClient,
-	DEFAULT_REGISTRATION_FEE,
 	dispatchAndConfirm,
 	type PreparedPurchase,
 	type PurchaseBatchPreparationEvent,
@@ -2455,7 +2454,6 @@ function FungibleOperationDialog({
 						seller: owner,
 						quantity: expectedQuantity,
 						asking: expectedAsking,
-						minimumFee: DEFAULT_REGISTRATION_FEE.toString(),
 					},
 					signal
 				);

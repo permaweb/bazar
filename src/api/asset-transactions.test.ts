@@ -283,6 +283,58 @@ describe('fungible asset transactions', () => {
 		expect(decodedTags(stored.transaction)).toContainEqual({ name: 'deadline', value: '20' });
 	});
 
+	it.each(['1', '3500000000000'])('creates a zero-fee listing for quantity %s', async (quantity) => {
+		const subject = client();
+		const prepared = await subject.client.makeOffer({ processId, quantity, asking: '1000000', seller });
+		const stored = JSON.parse(subject.storage.getItem(`bazar-signed-transaction:${prepared.id}`)!);
+		expect(decodedTags(stored.transaction)).toContainEqual({ name: 'minimum-fee', value: '0' });
+		expect(decodedTags(stored.transaction)).toContainEqual({ name: 'deposit', value: '0' });
+		expect(stored.transaction.reward).toBe('1000');
+		expect(stored.transaction.quantity).toBe('1');
+	});
+
+	it.each(['0', '100000000'])('verifies a saved listing against its signed fee %s', async (minimumFee) => {
+		const subject = client(undefined, async () =>
+			stateResponse({
+				'execution-device': 'token@1.0',
+				'total-supply': '10',
+				balances: { [seller]: '0' },
+				orders: {
+					[transactionId]: { ...cancelOrderRaw(), 'order-id': transactionId, 'minimum-fee': minimumFee },
+				},
+			})
+		);
+		const prepared = await subject.client.makeOffer({ processId, quantity: '10', asking: '1000', seller });
+		// Model an exact pre-upgrade saved intent as well as a freshly signed zero-fee listing.
+		const key = `bazar-signed-transaction:${prepared.id}`;
+		const stored = JSON.parse(subject.storage.getItem(key)!);
+		stored.intent.tags.find((tag: any) => tag.name === 'minimum-fee').value = minimumFee;
+		stored.transaction.tags.find(
+			(tag: any) => tag.name === Buffer.from('minimum-fee').toString('base64url')
+		).value = Buffer.from(minimumFee).toString('base64url');
+		subject.storage.setItem(key, JSON.stringify(stored));
+
+		const state = await subject.client.waitForOfferAcceptance(processId, {
+			orderId: prepared.id,
+			seller,
+			quantity: '10',
+			asking: '1000',
+		});
+		expect(state.orders[prepared.id].minimumFee).toBe(minimumFee);
+		expect(subject.requests).toHaveLength(1);
+	});
+
+	it('does not guess a zero fee when the saved listing is missing', async () => {
+		await expect(
+			client().client.waitForOfferAcceptance(processId, {
+				orderId: transactionId,
+				seller,
+				quantity: '10',
+				asking: '1000',
+			})
+		).rejects.toThrow('signed-transaction-not-found');
+	});
+
 	it('writes an offer deadline as a relative block count', async () => {
 		const subject = client();
 		const prepared = await subject.client.makeOffer({
@@ -1375,6 +1427,45 @@ describe('fungible asset transactions', () => {
 			subject.estimatePurchaseCosts(swapOrder(transactionId, '3000000000000', '1000000'), processId)
 		).resolves.toMatchObject({ total: '101001001' });
 	});
+
+	it('quotes zero-fee orders with only asking, network rewards, and scheduler dust', async () => {
+		const subject = new AssetTransactionClient({ fetch: async () => new Response('1000') });
+		const order = { ...swapOrder(transactionId, '1', '1000000'), minimumFee: '0' };
+		await expect(subject.estimatePurchaseCosts(order, processId)).resolves.toEqual({
+			asking: '1000000',
+			registrationFee: '0',
+			registrationNetworkReward: '1000',
+			paymentNetworkReward: '1000',
+			total: '1002001',
+		});
+	});
+
+	it.each([
+		['0', '1', '1', '1000'],
+		['0', '3000000000000', '1000000000000', '1000'],
+		['100000000', '1', '1', '100000000'],
+		['100000000', '3000000000000', '1000000000000', '33333334'],
+	])(
+		'preserves network rewards and legacy floors: fee %s, lot %s, fill %s',
+		async (minimumFee, quantity, fillQuantity, reward) => {
+			const subject = client();
+			const order = { ...swapOrder(transactionId, quantity, '1000000'), minimumFee };
+			const adapter = subject.client.purchaseAdapter({
+				processId,
+				order,
+				fillQuantity,
+				buyer: seller,
+				startingBalance: '0',
+				network: { tip: () => 1000 } as any,
+			});
+			const prepared = await adapter.prepareRegistration(new AbortController().signal);
+			const stored = JSON.parse(subject.storage.getItem(`bazar-signed-transaction:${prepared.id}`)!);
+			expect(stored.transaction.reward).toBe(reward);
+			expect(stored.transaction.quantity).toBe('1');
+			expect(decodedTags(stored.transaction)).toContainEqual({ name: 'action', value: 'register-interest' });
+			expect(decodedTags(stored.transaction)).toContainEqual({ name: 'fill-quantity', value: fillQuantity });
+		}
+	);
 
 	it('coalesces identical price targets across a matched purchase batch', async () => {
 		const requests: string[] = [];

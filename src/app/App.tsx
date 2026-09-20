@@ -10775,7 +10775,6 @@ function OperationDialog({
 						seller: owner,
 						quantity: '1',
 						asking: arToWinston(value),
-						minimumFee: runtime.DEFAULT_REGISTRATION_FEE.toString(),
 					},
 					signal
 				);
