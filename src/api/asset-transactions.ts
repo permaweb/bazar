@@ -34,7 +34,8 @@ import { filledOrder } from './order-matching';
 const ADDRESS = /^[A-Za-z0-9_-]{43}$/;
 export const SIGNED_TRANSACTION_PREFIX = 'bazar-signed-transaction:';
 export const ASSET_BALANCE_PROOF_UNAVAILABLE = 'asset-balance-proof-unavailable';
-export const DEFAULT_REGISTRATION_FEE = 100_000_000n;
+/** New listings impose no reservation reward floor; Arweave network rewards still apply. */
+export const DEFAULT_REGISTRATION_FEE = 0n;
 export const ASSET_TRANSACTION_CONFIRMATION_TARGET = 5;
 /** No asset offer may exceed the maximum 66 million AR supply. */
 export const MAXIMUM_ASSET_OFFER_PRICE = 66_000_000_000_000_000_000n;
@@ -156,7 +157,6 @@ export type OfferInput = {
 	processId: string;
 	quantity: string;
 	asking: string;
-	minimumFee?: string;
 	/** Relative number of L1 blocks for which a reservation remains valid. */
 	deadline?: number;
 	seller?: string;
@@ -248,7 +248,7 @@ export class AssetTransactionClient {
 					{ name: 'deposit', value: '0' },
 					{
 						name: 'minimum-fee',
-						value: input.minimumFee ?? DEFAULT_REGISTRATION_FEE.toString(),
+						value: DEFAULT_REGISTRATION_FEE.toString(),
 					},
 					{ name: 'deadline', value: String(deadline) },
 				],
@@ -354,10 +354,27 @@ export class AssetTransactionClient {
 			seller: string;
 			quantity: string;
 			asking: string;
-			minimumFee: string;
+			/** Omit to verify the fee from the exact saved listing, including pre-upgrade recoveries. */
+			minimumFee?: string;
 		},
 		signal?: AbortSignal
 	): Promise<AssetState> {
+		let minimumFee = expected.minimumFee;
+		if (minimumFee === undefined) {
+			this.restore(expected.orderId, expected.seller, { processId });
+			const stored = JSON.parse(this.#storage!.getItem(`${SIGNED_TRANSACTION_PREFIX}${expected.orderId}`)!);
+			const tags = stored.transaction.tags;
+			const fees = transactionTagNameValues(tags, 'minimum-fee');
+			if (
+				!transactionTagMatches(tags, 'action', 'make-offer') ||
+				!fees.length ||
+				!/^\d+$/.test(fees[0]) ||
+				fees.some((fee) => fee !== fees[0])
+			) {
+				throw new Error('invalid-saved-offer-fee');
+			}
+			minimumFee = fees[0];
+		}
 		return (
 			await waitForAssetState(
 				processId,
@@ -369,7 +386,7 @@ export class AssetTransactionClient {
 							order.creator === expected.seller &&
 							order.quantity === expected.quantity &&
 							order.asking === expected.asking &&
-							order.minimumFee === expected.minimumFee
+							order.minimumFee === minimumFee
 					);
 				},
 				{ fetch: this.#peerFetch, signal, timeout: STATE_INCLUSION_TIMEOUT }

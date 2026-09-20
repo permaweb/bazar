@@ -41,6 +41,13 @@ The write API is deliberately small:
 -   `cancel-order`
 -   `register-interest`, followed by a native AR payment bearing the `order-id`
 
+New listings set `minimum-fee: 0`: there is no seller-imposed reservation
+fee. Reserving still requires a transaction, its normal Arweave network reward,
+and the one-winston scheduler quantity; seller payments have their own network
+reward. Existing orders retain their on-chain fee terms (and the purchase safety
+cap); cancel and relist to remove an older order's fee. Saved listing recoveries
+are verified against their original signed fee rather than the new default.
+
 Collections are `process@1.0` processes executed by `carrier@1.0`. Each process
 starts with an immutable JSON manifest and lets its holder publish a signed
 `set` pointing at a later manifest when assets are added. Carrier names are discovered directly from Arweave
