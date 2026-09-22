@@ -131,13 +131,27 @@ The published `token@1.0` implementation is
 }
 ```
 
+## Architecture
+
+The frontend follows the permaweb frontend architecture contract in
+`.agents/skills/permaweb-frontend-code-style` (shared by Codex and Claude; see
+`AGENTS.md`). Source is organized into `apps`, `views`, `navigation`,
+`features`, shared `components` (atoms, molecules, organisms), `providers`,
+`hooks`, `api` adapters, `helpers`, and `types`; tests live in `tests/`.
+Remaining adoption work is tracked in `docs/architecture-migration.md`.
+
 ## Validation
 
 ```sh
+npm run check:frontend
 npm run build
-npm test
+npm run check:performance
 git diff --check
 ```
+
+`check:frontend` runs the architecture validator, ESLint, both TypeScript
+projects, and the Vitest suite. `check:performance` enforces the build budgets
+in `.permaweb-frontend.json` against a fresh production build.
 
 The purchase workflow stores signed transactions and deterministic recovery
 metadata locally until live process state proves completion. Reloading does not

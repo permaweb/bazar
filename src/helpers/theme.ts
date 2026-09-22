@@ -277,3 +277,29 @@ export function resolveTheme(preference: ThemePreference, systemPrefersDark: boo
 
 // Retained for styled-component tests and consumers that need the default theme.
 export const theme = lightTheme;
+
+// Fixed palette for the transaction sequence visualization. Three.js materials and canvas textures
+// read these outside styled-components, so they are shared constants rather than per-theme values.
+export const TRANSACTION_SEQUENCE_COLORS = {
+	baseWire: '#aeb6b1',
+	highlightWire: '#d9dedb',
+	particleHighlight: '#ffffff',
+	dotTexture: '#ffffff',
+	stageGlow: 'rgba(0, 143, 32, 0.035)',
+	proofCardShadow: 'rgba(28, 25, 22, 0.14)',
+	phaseLabelShadow: 'rgba(0, 0, 0, 0.08)',
+	proofAccent: '#a76b00',
+	proofText: '#8b5900',
+	errorAccent: '#b42318',
+	errorText: '#9f1d14',
+	riskNoteText: '#525252',
+	stageDotBorder: 'rgba(0, 0, 0, 0.22)',
+} as const;
+
+export function colorWithAlpha(color: string, alpha: number) {
+	if (!/^#[\da-f]{6}$/i.test(color)) return color;
+	const red = Number.parseInt(color.slice(1, 3), 16);
+	const green = Number.parseInt(color.slice(3, 5), 16);
+	const blue = Number.parseInt(color.slice(5, 7), 16);
+	return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+}

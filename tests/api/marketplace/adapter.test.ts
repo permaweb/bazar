@@ -1,0 +1,1142 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { clearArweaveHeightCache } from 'api/arweave/height';
+import {
+	bestAskOfAsset,
+	compareOrderUnitPrice,
+	isBalanceIdentity,
+	licenseProperties,
+	liquidBalanceOf,
+	listedBalanceOf,
+	liveOrderOfAsset,
+	liveOrdersOfAsset,
+	openOrdersOfAsset,
+	ownerOfAsset,
+	parseAssetState,
+	readAssetState,
+	readAssetStateAtSlot,
+	readProcessAssignments,
+	reservationIsActive,
+	servingNodeOrigin,
+	servingNodeOrigins,
+	waitForAssetState,
+} from 'api/marketplace/adapter';
+
+const owner = '1uTLV5GvfQ5M46Tq_DTeJL7rIy7vCAOMxQ7Fbf82YZw';
+const buyer = 'BLyLiOZptmb-olB8wycvk_ynHiu1SZMKPqswx4KONwc';
+const orderId = 'qAhWNMSuX70lZpIRohKJn_SuVcymr_RmpGbltydjpwA';
+const processId = 'IyFfmbTu8P4rv0KyrA0Q-QtfEnYntMj4RkRiBVip9KA';
+
+beforeEach(() => {
+	clearArweaveHeightCache();
+	const aoFetch = Object.assign(vi.fn(), {
+		peers: ['https://primary.example', 'https://secondary.example'],
+	}) as unknown as PermawebOsAoFetch;
+	vi.stubGlobal('window', {
+		aoFetch,
+	});
+});
+afterEach(() => vi.unstubAllGlobals());
+
+function assignment(slot: number, transactionId: string) {
+	return {
+		'block-height': 1_972_540,
+		body: {
+			commitments: {
+				[transactionId]: { 'commitment-device': 'tx@1.0' },
+			},
+		},
+		process: 'IyFfmbTu8P4rv0KyrA0Q-QtfEnYntMj4RkRiBVip9KA',
+		slot,
+	};
+}
+
+function jsonResponse(value: unknown, init: ResponseInit = {}): Response {
+	const headers = new Headers(init.headers);
+	headers.set('content-type', 'application/json');
+	headers.set('codec-device', 'json@1.0');
+	return new Response(typeof value === 'string' ? value : JSON.stringify(value), { ...init, headers });
+}
+
+describe('servingNodeOrigin', () => {
+	it('uses the PermawebOS peer pool and ignores application URL peer overrides', () => {
+		expect(servingNodeOrigin({ protocol: 'http:', hostname: '127.0.0.1', port: '3000' })).toBe(
+			'https://primary.example'
+		);
+		expect(
+			servingNodeOrigins({
+				protocol: 'https:',
+				hostname: 'bazar.example',
+				search: `?node=${encodeURIComponent('https://alpha.example,https://charlie.example')}`,
+			})
+		).toEqual(['https://primary.example', 'https://secondary.example']);
+	});
+});
+
+describe('asset state', () => {
+	it('recognizes legacy balance identities without relaxing arbitrary keys', () => {
+		expect(isBalanceIdentity(owner)).toBe(true);
+		expect(isBalanceIdentity('_Jwsx_-ameSFkPOrRIy1oCIT7G3HpBKdbN4sHcgrJTZs')).toBe(true);
+		expect(isBalanceIdentity('0xbd8ee4A54fa820421B272E0d51c48068AeD08C4F')).toBe(true);
+		expect(isBalanceIdentity('0xbd8ee4A54fa820421B272E0d51c48068AeD08C4G')).toBe(false);
+		expect(isBalanceIdentity('description')).toBe(false);
+	});
+
+	it('keeps legacy holder identities out of Arweave-only wallet and link paths', async () => {
+		const ethereumHolder = '0xbd8ee4A54fa820421B272E0d51c48068AeD08C4F';
+		const legacyHolder = '_Jwsx_-ameSFkPOrRIy1oCIT7G3HpBKdbN4sHcgrJTZs';
+		const state = parseAssetState({
+			'execution-device': 'token@1.0',
+			'total-supply': '6',
+			balances: { [owner]: '1', [ethereumHolder]: '2', [legacyHolder]: '3' },
+			orders: {},
+		});
+
+		expect(liquidBalanceOf(state, owner)).toBe('1');
+		expect(liquidBalanceOf(state, ethereumHolder)).toBe('0');
+		expect(liquidBalanceOf(state, legacyHolder)).toBe('0');
+
+		for (const invalidLink of [ethereumHolder, legacyHolder]) {
+			await expect(
+				readAssetState(processId, {
+					fetch: async () =>
+						new Response(null, {
+							headers: {
+								'balances+link': invalidLink,
+								'execution-device': 'token@1.0',
+								'total-supply': '6',
+							},
+						}),
+				})
+			).rejects.toThrow('invalid-asset-state-link');
+		}
+	});
+
+	it('parses one-unit token state and finds the direct owner', () => {
+		const state = parseAssetState({
+			'execution-device': 'token@1.0',
+			name: 'Permanent Strata #001',
+			'total-supply': 1,
+			balances: { [owner]: '1' },
+			orders: {},
+		});
+		expect(state.name).toBe('Permanent Strata #001');
+		expect(state.totalSupply).toBe('1');
+		expect(state.denomination).toBe(0);
+		expect(state.ticker).toBe('');
+		expect(ownerOfAsset(state)).toBe(owner);
+	});
+
+	it('keeps the seller as owner while the unit is escrowed', () => {
+		const state = parseAssetState({
+			'execution-device': 'token@1.0',
+			'total-supply': '1',
+			balances: {},
+			orders: {
+				[orderId]: {
+					'order-id': orderId,
+					creator: owner,
+					recipient: owner,
+					asking: '100000000',
+					'minimum-fee': '100000000',
+					deadline: 20,
+					'created-at': 1,
+					quantity: 1,
+					status: 'reserved',
+					buyer,
+					'reserved-until': 20,
+				},
+			},
+		});
+		expect(ownerOfAsset(state)).toBe(owner);
+		expect(state.orders[orderId].buyer).toBe(buyer);
+	});
+
+	it('projects an expired reservation as the same open order at every UI selector', () => {
+		const rawOrder = order(orderId, {
+			status: 'reserved',
+			buyer,
+			'reserved-until': 1_980_253,
+		});
+		const rawState = {
+			'execution-device': 'token@1.0',
+			'total-supply': '1',
+			balances: {},
+			orders: { [orderId]: rawOrder },
+			'swap-height': 1_980_233,
+			'next-deadline': 1_980_254,
+		};
+
+		// The process has not received another assignment, so its own processed
+		// height still makes this reservation look live.
+		expect(parseAssetState(rawState).orders[orderId]).toMatchObject({
+			status: 'reserved',
+			buyer,
+			reservedUntil: 1_980_253,
+		});
+		expect(parseAssetState(rawState, 1_980_253).orders[orderId].status).toBe('reserved');
+
+		const state = parseAssetState(rawState, 1_980_254);
+
+		expect(state.raw.orders).toEqual({ [orderId]: rawOrder });
+		expect(state.orders[orderId]).toEqual({
+			orderId,
+			creator: owner,
+			recipient: owner,
+			asking: '100000000',
+			deposit: '0',
+			minimumFee: '100000000',
+			deadline: 20,
+			createdAt: 1,
+			quantity: '1',
+			status: 'open',
+		});
+		expect(reservationIsActive(state.orders[orderId], 1_980_254)).toBe(false);
+		expect(ownerOfAsset(state)).toBe(owner);
+		expect(listedBalanceOf(state, owner)).toBe('1');
+		expect(liveOrderOfAsset(state)?.status).toBe('open');
+		expect(liveOrdersOfAsset(state)).toEqual(openOrdersOfAsset(state));
+		expect(bestAskOfAsset(state)?.orderId).toBe(orderId);
+	});
+
+	it('keeps a reservation active through its inclusive deadline height', () => {
+		const state = parseAssetState({
+			'execution-device': 'token@1.0',
+			'total-supply': '1',
+			balances: {},
+			orders: {
+				[orderId]: order(orderId, {
+					status: 'reserved',
+					buyer,
+					'reserved-until': 120,
+				}),
+			},
+			'swap-height': 120,
+		});
+
+		expect(reservationIsActive(state.orders[orderId], 120)).toBe(true);
+		expect(state.orders[orderId]).toMatchObject({ status: 'reserved', buyer, reservedUntil: 120 });
+		expect(openOrdersOfAsset(state)).toEqual([]);
+		expect(bestAskOfAsset(state)).toBeNull();
+	});
+
+	it('does not invent a live reservation when its authoritative deadline is absent', () => {
+		const state = parseAssetState({
+			'execution-device': 'token@1.0',
+			'total-supply': '1',
+			balances: {},
+			orders: { [orderId]: order(orderId, { status: 'reserved', buyer }) },
+			'swap-height': 0,
+		});
+
+		expect(state.orders[orderId]).toMatchObject({ status: 'open' });
+		expect(state.orders[orderId]).not.toHaveProperty('buyer');
+	});
+
+	it('preserves fungible amounts above MAX_SAFE_INTEGER and parses token metadata', () => {
+		const state = parseAssetState({
+			'execution-device': 'token@1.0',
+			name: 'Fungible test token',
+			ticker: 'FTT',
+			denomination: '12',
+			'total-supply': '900719925474099312345678',
+			balances: { [owner]: '900719925474099312345678' },
+			orders: {
+				[orderId]: order(orderId, { quantity: '900719925474099312345' }),
+			},
+		});
+		expect(state.totalSupply).toBe('900719925474099312345678');
+		expect(state.balances[owner]).toBe('900719925474099312345678');
+		expect(state.denomination).toBe(12);
+		expect(state.ticker).toBe('FTT');
+		expect(state.orders[orderId].quantity).toBe('900719925474099312345');
+		expect(ownerOfAsset(state)).toBeNull();
+	});
+
+	it('preserves unsafe integer lexemes from live HyperBEAM JSON responses', async () => {
+		const processId = 'IyFfmbTu8P4rv0KyrA0Q-QtfEnYntMj4RkRiBVip9KA';
+		const responseBody = `{"execution-device":"token@1.0","denomination":12,"ticker":"WEAVE","total-supply":1000000000000000000,"balances":{"${owner}":999997000000000001},"orders":{}}`;
+		let requested = '';
+		const result = await readAssetState(processId, {
+			maxAge: 0,
+			fetch: async (input) => {
+				requested = String(input);
+				return jsonResponse(responseBody);
+			},
+		});
+		const { state } = result;
+		expect(state.totalSupply).toBe('1000000000000000000');
+		expect(state.balances[owner]).toBe('999997000000000001');
+		expect(requested).toContain('/now');
+		expect(result.maxAge).toBe(0);
+		expect(result.verifiedAt).toBeGreaterThan(0);
+	});
+
+	it('projects binary data out of process state and resolves linked tables independently', async () => {
+		const balancesLink = 'B'.repeat(43);
+		const ordersLink = 'O'.repeat(43);
+		const requests: Array<{ url: string; headers: Headers }> = [];
+		const result = await readAssetState(processId, {
+			provider: 'https://compute.example',
+			fetch: async (input, init) => {
+				const url = String(input);
+				requests.push({ url, headers: new Headers(init?.headers) });
+				if (url.endsWith('/balances/device')) return new Response('message@1.0');
+				if (url.includes(balancesLink)) {
+					return jsonResponse(`{"${owner}":999997000000000001,"status":200}`);
+				}
+				if (url.includes(ordersLink)) {
+					return jsonResponse({ [orderId]: order(orderId), status: 200 });
+				}
+				return jsonResponse({
+					'execution-device': 'token@1.0',
+					'total-supply': '1000000000000000000',
+					'balances+link': balancesLink,
+					'orders+link': ordersLink,
+				});
+			},
+		});
+
+		expect(result.state.balances).toEqual({ [owner]: '999997000000000001' });
+		expect(result.state.holderBalancesAvailable).toBe(true);
+		expect(result.state.orders[orderId]).toMatchObject({ orderId, creator: owner });
+		expect(result.state.raw).toMatchObject({
+			'balances+link': balancesLink,
+			'orders+link': ordersLink,
+		});
+		expect(requests).toHaveLength(4);
+		expect(requests[0].url).toContain('/compute&max-age=60');
+		expect(requests.map(({ url }) => url)).toContain(
+			`/${processId}~process@1.0/compute&max-age=60/balances/device`
+		);
+		expect(requests.map(({ url }) => url)).toContain(`/${balancesLink}~message@1.0/serialize~json@1.0`);
+		expect(requests.map(({ url }) => url)).toContain(`/${ordersLink}`);
+		expect(requests.every(({ headers }) => [...headers].length === 0)).toBe(true);
+		expect(requests.slice(1).every(({ headers }) => headers.get('accept-bundle') === null)).toBe(true);
+		expect(requests.slice(1).every(({ headers }) => headers.get('require-codec') === null)).toBe(true);
+		expect(requests.slice(1).every(({ headers }) => headers.get('cache-control') === null)).toBe(true);
+	});
+
+	it('skips a linked balance trie instead of downloading every message', async () => {
+		const rootId = 'R'.repeat(43);
+		const requests: Array<{ url: string; init: RequestInit }> = [];
+
+		const result = await readAssetState(processId, {
+			provider: 'https://compute.example',
+			fetch: async (input, init = {}) => {
+				const url = String(input);
+				requests.push({ url, init });
+				if (url.endsWith('/balances/device')) return new Response('trie@1.0');
+				return new Response(null, {
+					headers: {
+						'ao-body-key': 'data',
+						'balances+link': rootId,
+						device: 'process@1.0',
+						'execution-device': 'token@1.0',
+						'total-supply': '1000',
+					},
+				});
+			},
+		});
+
+		expect(result.state.balances).toEqual({});
+		expect(result.state.holderBalancesAvailable).toBe(false);
+		expect(requests).toHaveLength(2);
+		expect(requests[0].init.method).toBe('HEAD');
+		expect(requests[1].url).toBe(`/${processId}~process@1.0/compute&max-age=60/balances/device`);
+		expect(requests.every(({ init }) => [...new Headers(init.headers)].length === 0)).toBe(true);
+	});
+
+	it('follows a direct JSON balance link when the mounted balance device is absent', async () => {
+		const balancesLink = 'B'.repeat(43);
+		const requested: string[] = [];
+		const result = await readAssetState(processId, {
+			provider: 'https://compute.example',
+			fetch: async (input) => {
+				const url = String(input);
+				requested.push(url);
+				if (url.endsWith('/balances/device')) return new Response('not_found', { status: 404 });
+				if (url.endsWith(`${balancesLink}~message@1.0/serialize~json@1.0`)) {
+					return jsonResponse({
+						'content-type': 'application/json',
+						device: 'json@1.0',
+						[owner]: 1,
+						status: 200,
+					});
+				}
+				return new Response(null, {
+					headers: {
+						'balances+link': balancesLink,
+						'execution-device': 'token@1.0',
+						'total-supply': '1',
+					},
+				});
+			},
+		});
+
+		expect(result.state.balances).toEqual({ [owner]: '1' });
+		expect(result.state.holderBalancesAvailable).toBe(true);
+		expect(ownerOfAsset(result.state)).toBe(owner);
+		expect(requested).toContain(`/${balancesLink}~message@1.0/serialize~json@1.0`);
+	});
+
+	it('preserves legacy identities in a direct JSON balance table', async () => {
+		const balancesLink = 'B'.repeat(43);
+		const ethereumHolder = '0xbd8ee4A54fa820421B272E0d51c48068AeD08C4F';
+		const legacyHolder = '_Jwsx_-ameSFkPOrRIy1oCIT7G3HpBKdbN4sHcgrJTZs';
+		const result = await readAssetState(processId, {
+			provider: 'https://compute.example',
+			fetch: async (input) => {
+				const url = String(input);
+				if (url.endsWith('/balances/device')) return new Response('not_found', { status: 404 });
+				if (url.endsWith(`${balancesLink}~message@1.0/serialize~json@1.0`)) {
+					return jsonResponse({
+						device: 'json@1.0',
+						[owner]: 1,
+						[ethereumHolder]: '221345000000000000',
+						[legacyHolder]: 1000000,
+					});
+				}
+				return new Response(null, {
+					headers: {
+						'balances+link': balancesLink,
+						'execution-device': 'token@1.0',
+						'total-supply': '221345000001000001',
+					},
+				});
+			},
+		});
+
+		expect(result.state.balances).toEqual({
+			[owner]: '1',
+			[ethereumHolder]: '221345000000000000',
+			[legacyHolder]: '1000000',
+		});
+		expect(result.state.holderBalancesAvailable).toBe(true);
+	});
+
+	it('rejects malformed degraded JSON balance roots without following child links or accepting partial data', async () => {
+		const balancesLink = 'B'.repeat(43);
+		const childLink = 'C'.repeat(43);
+		const malformedRoots = [
+			{ device: 'json@1.0', [owner]: '1', [`${buyer}+link`]: childLink },
+			{ device: 'json@1.0', [owner]: { amount: '1' } },
+			{ device: 'json@1.0', [owner]: '1', [buyer]: '-1' },
+			{ device: 'json@1.0', [owner]: '1', description: 'not balance metadata' },
+		];
+
+		for (const root of malformedRoots) {
+			const requested: string[] = [];
+			const result = await readAssetState(processId, {
+				provider: 'https://compute.example',
+				fetch: async (input) => {
+					const url = String(input);
+					requested.push(url);
+					if (url.endsWith('/balances/device')) return new Response('not_found', { status: 404 });
+					if (url.endsWith(`${balancesLink}~message@1.0/serialize~json@1.0`)) return jsonResponse(root);
+					if (url.includes(childLink)) return jsonResponse({ 'node-value': '1' });
+					return new Response(null, {
+						headers: {
+							'balances+link': balancesLink,
+							'execution-device': 'token@1.0',
+							'total-supply': '1',
+						},
+					});
+				},
+			});
+
+			expect(result.state.balances).toEqual({});
+			expect(result.state.holderBalancesAvailable).toBe(false);
+			expect(ownerOfAsset(result.state)).toBeNull();
+			expect(requested.every((url) => !url.includes(childLink))).toBe(true);
+		}
+	});
+
+	it('recovers a direct JSON balance link when a public-beta style routed probe rejects its 404', async () => {
+		const balancesLink = 'B'.repeat(43);
+		const requested: string[] = [];
+		const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+			const url = String(input);
+			requested.push(url);
+			if (url.endsWith('/balances/device')) throw new Error('ao-wrangler-response-quorum-not-met');
+			if (url.endsWith(`${balancesLink}~message@1.0/serialize~json@1.0`)) {
+				return jsonResponse({ device: 'json@1.0', [owner]: 1 });
+			}
+			return new Response(null, {
+				headers: {
+					'balances+link': balancesLink,
+					'execution-device': 'token@1.0',
+					name: 'Legacy routed asset',
+					'total-supply': '1',
+				},
+			});
+		});
+
+		const result = await readAssetState(processId, { fetch: fetcher as unknown as typeof fetch });
+
+		expect(result.state.name).toBe('Legacy routed asset');
+		expect(result.state.balances).toEqual({ [owner]: '1' });
+		expect(result.state.holderBalancesAvailable).toBe(true);
+		expect(ownerOfAsset(result.state)).toBe(owner);
+		expect(requested).toContain(`/${balancesLink}~message@1.0/serialize~json@1.0`);
+	});
+
+	it('uses the allowNotFound helper when the selected transport provides it', async () => {
+		const balancesLink = 'B'.repeat(43);
+		const requested: string[] = [];
+		let probed = '';
+		const allowNotFound = vi.fn(async (input: RequestInfo | URL) => {
+			probed = String(input);
+			return new Response('not_found', { status: 404 });
+		});
+		const fetcher = Object.assign(
+			vi.fn(async (input: RequestInfo | URL) => {
+				const url = String(input);
+				requested.push(url);
+				if (url.endsWith(`${balancesLink}~message@1.0/serialize~json@1.0`)) {
+					return jsonResponse({ device: 'json@1.0', [owner]: 1 });
+				}
+				return new Response(null, {
+					headers: {
+						'balances+link': balancesLink,
+						'execution-device': 'token@1.0',
+						'total-supply': '1',
+					},
+				});
+			}),
+			{ allowNotFound }
+		);
+
+		const result = await readAssetState(processId, { fetch: fetcher as unknown as typeof fetch });
+
+		expect(result.state.balances).toEqual({ [owner]: '1' });
+		expect(result.state.holderBalancesAvailable).toBe(true);
+		expect(allowNotFound).toHaveBeenCalledOnce();
+		expect(probed).toContain('/balances/device');
+		expect(requested.every((url) => !url.endsWith('/balances/device'))).toBe(true);
+	});
+
+	it('keeps core state when neither a failed device probe nor its linked root is usable', async () => {
+		const balancesLink = 'B'.repeat(43);
+		const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+			const url = String(input);
+			if (url.endsWith('/balances/device') || url.includes(balancesLink)) {
+				throw new Error('ao-wrangler-response-quorum-not-met');
+			}
+			return new Response(null, {
+				headers: {
+					'balances+link': balancesLink,
+					'execution-device': 'token@1.0',
+					name: 'Core state survives',
+					'total-supply': '1',
+				},
+			});
+		});
+
+		const result = await readAssetState(processId, { fetch: fetcher as unknown as typeof fetch });
+
+		expect(result.state.name).toBe('Core state survives');
+		expect(result.state.balances).toEqual({});
+		expect(result.state.holderBalancesAvailable).toBe(false);
+	});
+
+	it('propagates caller cancellation during the optional balance-device probe', async () => {
+		const balancesLink = 'B'.repeat(43);
+		const controller = new AbortController();
+		const reason = new DOMException('Route changed', 'AbortError');
+		const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+			if (String(input).endsWith('/balances/device')) {
+				controller.abort(reason);
+				throw new Error('ao-wrangler-response-quorum-not-met');
+			}
+			return new Response(null, {
+				headers: {
+					'balances+link': balancesLink,
+					'execution-device': 'token@1.0',
+					'total-supply': '1',
+				},
+			});
+		});
+
+		await expect(
+			readAssetState(processId, {
+				fetch: fetcher as unknown as typeof fetch,
+				signal: controller.signal,
+			})
+		).rejects.toBe(reason);
+	});
+
+	it('propagates the exact caller cancellation when a legacy linked-root transport ignores abort', async () => {
+		const balancesLink = 'B'.repeat(43);
+		const controller = new AbortController();
+		const reason = new DOMException('Asset route changed', 'AbortError');
+		const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+			const url = String(input);
+			if (url.endsWith('/balances/device')) return new Response('not_found', { status: 404 });
+			if (url.endsWith(`${balancesLink}~message@1.0/serialize~json@1.0`)) {
+				controller.abort(reason);
+				return jsonResponse({ device: 'json@1.0', [owner]: 1 });
+			}
+			return new Response(null, {
+				headers: {
+					'balances+link': balancesLink,
+					'execution-device': 'token@1.0',
+					'total-supply': '1',
+				},
+			});
+		});
+
+		await expect(
+			readAssetState(processId, {
+				fetch: fetcher as unknown as typeof fetch,
+				signal: controller.signal,
+			})
+		).rejects.toBe(reason);
+	});
+
+	it('keeps an unmounted non-JSON balance link unavailable', async () => {
+		const balancesLink = 'B'.repeat(43);
+		const childLink = 'C'.repeat(43);
+		const requested: string[] = [];
+		const result = await readAssetState(processId, {
+			provider: 'https://compute.example',
+			fetch: async (input) => {
+				const url = String(input);
+				requested.push(url);
+				if (url.endsWith('/balances/device')) return new Response('not_found', { status: 404 });
+				if (url.endsWith(`${balancesLink}~message@1.0/serialize~json@1.0`)) {
+					return jsonResponse({ device: 'trie@1.0', 'abc+link': childLink });
+				}
+				if (url.includes(childLink)) {
+					return jsonResponse({ 'node-value': 1 });
+				}
+				return new Response(null, {
+					headers: {
+						'balances+link': balancesLink,
+						'execution-device': 'token@1.0',
+						'total-supply': '1',
+					},
+				});
+			},
+		});
+
+		expect(result.state.balances).toEqual({});
+		expect(result.state.holderBalancesAvailable).toBe(false);
+		expect(requested.every((url) => !url.includes(childLink))).toBe(true);
+	});
+
+	it('reads an order status through the message device when HTTP status shadows its header', async () => {
+		const balancesLink = 'B'.repeat(43);
+		const ordersLink = 'O'.repeat(43);
+		const orderLink = 'L'.repeat(43);
+		const requested: string[] = [];
+		const result = await readAssetState(processId, {
+			provider: 'https://compute.example',
+			fetch: async (input) => {
+				const url = String(input);
+				requested.push(url);
+				if (url.endsWith('/balances/device')) return new Response('message@1.0');
+				if (url.endsWith(`${orderLink}~message@1.0/status`)) return new Response('open');
+				if (url.endsWith(orderLink)) {
+					return new Response(null, {
+						headers: Object.fromEntries(
+							Object.entries({ ...order(orderId), status: '200' }).map(([name, value]) => [
+								name,
+								String(value),
+							])
+						),
+					});
+				}
+				if (url.endsWith(ordersLink)) {
+					return new Response(null, { headers: { [`${orderId.toLowerCase()}+link`]: orderLink } });
+				}
+				if (url.endsWith(`${balancesLink}~message@1.0/serialize~json@1.0`)) {
+					return jsonResponse({ [owner]: '1' });
+				}
+				return new Response(null, {
+					headers: {
+						'balances+link': balancesLink,
+						'execution-device': 'token@1.0',
+						'orders+link': ordersLink,
+						'total-supply': '1',
+					},
+				});
+			},
+		});
+
+		expect(result.state.orders[orderId]).toMatchObject({ orderId, status: 'open' });
+		expect(requested).toContain(`/${balancesLink}~message@1.0/serialize~json@1.0`);
+		expect(requested).toContain(`/${ordersLink}`);
+		expect(requested).toContain(`/${orderLink}~message@1.0/status`);
+		expect(requested.every((url) => !url.includes('require-codec'))).toBe(true);
+	});
+
+	it('routes background observation through PermawebOS despite a legacy provider label', async () => {
+		const processId = 'IyFfmbTu8P4rv0KyrA0Q-QtfEnYntMj4RkRiBVip9KA';
+		let requested = '';
+		const result = await readAssetState(processId, {
+			provider: 'https://original-compute.example',
+			fetch: async (input) => {
+				requested = String(input);
+				return jsonResponse({
+					'execution-device': 'token@1.0',
+					'total-supply': '1',
+					balances: { [owner]: '1' },
+					orders: {},
+				});
+			},
+		});
+
+		expect(requested).toBe(`/${processId}~process@1.0/compute&max-age=60`);
+		expect(result.provider).toBe('https://primary.example');
+	});
+
+	it('uses one unqualified HTTPSig HEAD request for current state', async () => {
+		const processId = 'IyFfmbTu8P4rv0KyrA0Q-QtfEnYntMj4RkRiBVip9KA';
+		const requested: string[] = [];
+		const requestOptions: RequestInit[] = [];
+		await readAssetState(processId, {
+			maxAge: 0,
+			fetch: async (input, init) => {
+				requested.push(String(input));
+				requestOptions.push(init ?? {});
+				return jsonResponse({
+					'execution-device': 'token@1.0',
+					'total-supply': '1',
+					balances: { [owner]: '1' },
+					orders: {},
+				});
+			},
+		});
+
+		expect(requested).toEqual([`/${processId}~process@1.0/now`]);
+		expect(requestOptions[0].method).toBe('HEAD');
+		expect([...new Headers(requestOptions[0].headers)]).toEqual([]);
+	});
+
+	it('normalizes the live failure shape with one selected-gateway height read', async () => {
+		const heightRequests: string[] = [];
+		const result = await readAssetState(processId, {
+			provider: 'https://compute.example',
+			fetch: async () =>
+				jsonResponse({
+					'execution-device': 'token@1.0',
+					'total-supply': '1',
+					balances: {},
+					orders: {
+						[orderId]: order(orderId, {
+							status: 'reserved',
+							buyer,
+							'reserved-until': 1_980_253,
+						}),
+					},
+					'swap-height': 1_980_233,
+					'next-deadline': 1_980_254,
+				}),
+			heightGateway: 'https://gateway.example',
+			heightFetch: async (input, init) => {
+				heightRequests.push(String(input));
+				expect(init?.cache).toBe('no-store');
+				return Response.json({ network: 'arweave.N.1', height: 1_980_357 });
+			},
+		});
+
+		expect(heightRequests).toEqual(['https://gateway.example/info']);
+		expect(result.state.raw.orders).toHaveProperty(orderId);
+		expect(result.state.orders[orderId]).toMatchObject({ status: 'open' });
+		expect(result.state.orders[orderId]).not.toHaveProperty('buyer');
+	});
+
+	it('shares one selected-gateway height read across concurrent reserved assets', async () => {
+		const heightFetch = vi.fn<typeof fetch>(async () =>
+			Response.json({ network: 'arweave.N.1', height: 1_980_357 })
+		);
+		const read = (id: string) =>
+			readAssetState(id, {
+				provider: 'https://compute.example',
+				fetch: async () =>
+					jsonResponse({
+						'execution-device': 'token@1.0',
+						'total-supply': '1',
+						balances: {},
+						orders: {
+							[orderId]: order(orderId, {
+								status: 'reserved',
+								buyer,
+								'reserved-until': 1_980_253,
+							}),
+						},
+						'swap-height': 1_980_233,
+					}),
+				heightFetch,
+				heightGateway: 'https://gateway.example',
+			});
+
+		const results = await Promise.all([read(processId), read('P'.repeat(43))]);
+
+		expect(heightFetch).toHaveBeenCalledTimes(1);
+		expect(results.every(({ state }) => state.orders[orderId].status === 'open')).toBe(true);
+	});
+
+	it('does not read network height for ordinary unreserved state', async () => {
+		const heightFetch = vi.fn<typeof fetch>();
+		await readAssetState(processId, {
+			provider: 'https://compute.example',
+			fetch: async () =>
+				jsonResponse({
+					'execution-device': 'token@1.0',
+					'total-supply': '1',
+					balances: { [owner]: '1' },
+					orders: {},
+				}),
+			heightFetch,
+			heightGateway: 'https://gateway.example',
+		});
+
+		expect(heightFetch).not.toHaveBeenCalled();
+	});
+
+	it('expresses passive freshness in the AO path without request headers', async () => {
+		let requested = '';
+		const requestOptions: RequestInit[] = [];
+		await readAssetState('IyFfmbTu8P4rv0KyrA0Q-QtfEnYntMj4RkRiBVip9KA', {
+			maxAge: 60,
+			fetch: async (input, init) => {
+				requested = String(input);
+				requestOptions.push(init ?? {});
+				return jsonResponse({
+					'execution-device': 'token@1.0',
+					'total-supply': '1',
+					balances: { [owner]: '1' },
+					orders: {},
+				});
+			},
+		});
+
+		expect(requested).toContain('compute&max-age=60');
+		expect(requestOptions[0].cache).toBeUndefined();
+		expect(requestOptions[0].method).toBe('HEAD');
+		expect([...new Headers(requestOptions[0].headers)]).toEqual([]);
+	});
+
+	it('reports the peer that returned the routed process state', async () => {
+		const result = await readAssetState('IyFfmbTu8P4rv0KyrA0Q-QtfEnYntMj4RkRiBVip9KA', {
+			maxAge: 60,
+			fetch: async () => {
+				const response = jsonResponse({
+					'execution-device': 'token@1.0',
+					'total-supply': '1',
+					balances: { [owner]: '1' },
+					orders: {},
+				});
+				Object.defineProperty(response, 'url', { value: 'https://secondary.example/state' });
+				return response;
+			},
+		});
+
+		expect(result.provider).toBe('https://secondary.example');
+	});
+
+	it('rejects malformed HTTPSig headers without a codec fallback', async () => {
+		let requests = 0;
+		await expect(
+			readAssetState('IyFfmbTu8P4rv0KyrA0Q-QtfEnYntMj4RkRiBVip9KA', {
+				maxAge: 60,
+				fetch: async () => {
+					requests += 1;
+					return new Response(null, { headers: { name: 'incomplete' } });
+				},
+			})
+		).rejects.toThrow('invalid-asset-state');
+		expect(requests).toBe(1);
+	});
+
+	it('bypasses cached process state throughout transaction acceptance polling', async () => {
+		const processId = 'IyFfmbTu8P4rv0KyrA0Q-QtfEnYntMj4RkRiBVip9KA';
+		const requested: string[] = [];
+		const requestOptions: RequestInit[] = [];
+		const result = await waitForAssetState(processId, (state) => state.balances[owner] === '1', {
+			fetch: async (input, init) => {
+				requested.push(String(input));
+				requestOptions.push(init ?? {});
+				return jsonResponse({
+					'execution-device': 'token@1.0',
+					'total-supply': '1',
+					balances: { [owner]: '1' },
+					orders: {},
+				});
+			},
+		});
+
+		expect(requested).toEqual([`/${processId}~process@1.0/now`]);
+		expect(requestOptions.every((options) => options.cache === undefined)).toBe(true);
+		expect(requestOptions.every((options) => options.method === 'HEAD')).toBe(true);
+		expect(requestOptions.every((options) => [...new Headers(options.headers)].length === 0)).toBe(true);
+		expect(result.maxAge).toBe(0);
+	});
+
+	it('does not send browser cache policy to the HyperBEAM node', async () => {
+		const requestOptions: RequestInit[] = [];
+		await readAssetState('IyFfmbTu8P4rv0KyrA0Q-QtfEnYntMj4RkRiBVip9KA', {
+			maxAge: 0,
+			staleWhileRevalidate: 86_400,
+			fetch: async (_input, init) => {
+				requestOptions.push(init ?? {});
+				return jsonResponse({
+					'execution-device': 'token@1.0',
+					'total-supply': '1',
+					balances: { [owner]: '1' },
+					orders: {},
+				});
+			},
+		});
+
+		expect(requestOptions[0].cache).toBeUndefined();
+		expect(requestOptions[0].method).toBe('HEAD');
+		expect([...new Headers(requestOptions[0].headers)]).toEqual([]);
+	});
+
+	it('reads one exact historical state and rejects a mismatched slot', async () => {
+		const processId = 'IyFfmbTu8P4rv0KyrA0Q-QtfEnYntMj4RkRiBVip9KA';
+		const requested: string[] = [];
+		const requestOptions: RequestInit[] = [];
+		const fetcher = async (input: RequestInfo | URL, init?: RequestInit) => {
+			requested.push(String(input));
+			requestOptions.push(init ?? {});
+			return jsonResponse({
+				'execution-device': 'token@1.0',
+				'at-slot': 18,
+				'total-supply': '1',
+				balances: { [owner]: '1' },
+				orders: {},
+			});
+		};
+
+		await expect(readAssetStateAtSlot(processId, 18, { fetch: fetcher as typeof fetch })).resolves.toMatchObject({
+			state: { raw: { 'at-slot': 18 } },
+			maxAge: 0,
+		});
+		expect(requested[0]).toContain('compute&slot=18');
+		expect(requestOptions[0].cache).toBeUndefined();
+		expect(requestOptions[0].method).toBe('HEAD');
+		expect([...new Headers(requestOptions[0].headers)]).toEqual([]);
+		await readAssetStateAtSlot(processId, 18, { fetch: fetcher as typeof fetch });
+		expect(requested).toHaveLength(2);
+		await expect(readAssetStateAtSlot(processId, 17, { fetch: fetcher as typeof fetch })).rejects.toThrow(
+			'historical-state-slot-mismatch'
+		);
+	});
+
+	it('replaces passive current state after a strict read', async () => {
+		let calls = 0;
+		let balance = '1';
+		vi.stubGlobal('caches', memoryCacheStorage());
+		const fetcher = async () => {
+			calls += 1;
+			return jsonResponse({
+				'execution-device': 'token@1.0',
+				'total-supply': '1',
+				balances: { [owner]: balance },
+				orders: {},
+			});
+		};
+		try {
+			const passive = await readAssetState(processId, { fetch: fetcher as typeof fetch, maxAge: 60 });
+			balance = '2';
+			const strict = await readAssetState(processId, { fetch: fetcher as typeof fetch, maxAge: 0 });
+			const restored = await readAssetState(processId, { fetch: fetcher as typeof fetch, maxAge: 60 });
+
+			expect(passive.state.balances[owner]).toBe('1');
+			expect(strict.state.balances[owner]).toBe('2');
+			expect(restored.state.balances[owner]).toBe('2');
+			expect(calls).toBe(3);
+		} finally {
+			vi.unstubAllGlobals();
+		}
+	});
+
+	it('does not persist HEAD state responses in the browser body cache', async () => {
+		let calls = 0;
+		const fetcher = async () => {
+			calls += 1;
+			return jsonResponse({
+				'execution-device': 'token@1.0',
+				'total-supply': '1',
+				balances: { [owner]: String(calls) },
+				orders: {},
+			});
+		};
+		const first = await readAssetState(processId, { fetch: fetcher as typeof fetch, maxAge: 30 });
+		const second = await readAssetState(processId, { fetch: fetcher as typeof fetch, maxAge: 30 });
+
+		expect(first.state.balances[owner]).toBe('1');
+		expect(second.state.balances[owner]).toBe('2');
+		expect(second.revalidation).toBeUndefined();
+		expect(calls).toBe(2);
+	});
+
+	it('reads a complete schedule window and extracts exact signed transaction IDs', async () => {
+		const processId = 'IyFfmbTu8P4rv0KyrA0Q-QtfEnYntMj4RkRiBVip9KA';
+		const transactionId = 'T'.repeat(43);
+		let requested = '';
+		const assignments = await readProcessAssignments(processId, 8, 9, {
+			fetch: async (input) => {
+				requested = String(input);
+				return new Response(
+					JSON.stringify({
+						8: assignment(8, 'A'.repeat(43)),
+						9: assignment(9, transactionId),
+						status: 200,
+					})
+				);
+			},
+		});
+
+		expect(requested).toContain('schedule&from=8&to=9/assignments');
+		expect(assignments.map((held) => held.slot)).toEqual([8, 9]);
+		expect(assignments[1].transactionIds).toEqual([transactionId]);
+	});
+
+	it('rejects an incomplete schedule window instead of skipping a transaction', async () => {
+		await expect(
+			readProcessAssignments('R'.repeat(43), 8, 9, {
+				fetch: async () => new Response(JSON.stringify({ 8: assignment(8, 'A'.repeat(43)) })),
+			})
+		).rejects.toThrow('incomplete-process-schedule');
+	});
+
+	it('retries a rate limit without multiplying the plain state request', async () => {
+		const requested: string[] = [];
+		const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+			requested.push(String(input));
+			if (requested.length === 1) {
+				return new Response('rate limited', { status: 429, headers: { 'retry-after': '0' } });
+			}
+			return jsonResponse({
+				'execution-device': 'token@1.0',
+				'total-supply': '1',
+				balances: { [owner]: '1' },
+				orders: {},
+			});
+		});
+
+		await expect(
+			readAssetState('R'.repeat(43), {
+				fetch: fetcher as typeof fetch,
+				maxAttempts: 2,
+				retryBaseDelay: 0,
+			})
+		).resolves.toBeDefined();
+		expect(requested).toHaveLength(2);
+		expect(requested[1]).toBe(requested[0]);
+	});
+
+	it('rejects unsafe token metadata', () => {
+		const base = {
+			'execution-device': 'token@1.0',
+			'total-supply': '2',
+			balances: { [owner]: '2' },
+		};
+		expect(() => parseAssetState({ ...base, denomination: 256 })).toThrow('invalid-asset-state');
+		expect(() => parseAssetState({ ...base, ticker: ' bad ' })).toThrow('invalid-asset-state');
+	});
+
+	it('reports liquid and escrowed balances and sorts all live asks exactly', () => {
+		const cheaperId = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
+		const olderTieId = 'BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB';
+		const newerTieId = 'CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC';
+		const state = parseAssetState({
+			'execution-device': 'token@1.0',
+			'total-supply': '100000000000000000000',
+			balances: { [owner]: '90000000000000000000' },
+			orders: {
+				[olderTieId]: order(olderTieId, { asking: '6', quantity: '4', 'created-at': 1 }),
+				[newerTieId]: order(newerTieId, { asking: '3', quantity: '2', 'created-at': 2 }),
+				[cheaperId]: order(cheaperId, { asking: '1', quantity: '1' }),
+				[orderId]: order(orderId, { asking: '2', quantity: '1', status: 'cancelled' }),
+			},
+		});
+
+		expect(liquidBalanceOf(state, owner)).toBe('90000000000000000000');
+		expect(listedBalanceOf(state, owner)).toBe('7');
+		expect(liveOrdersOfAsset(state).map((held) => held.orderId)).toEqual([cheaperId, olderTieId, newerTieId]);
+		expect(bestAskOfAsset(state)?.orderId).toBe(cheaperId);
+		expect(compareOrderUnitPrice(state.orders[olderTieId], state.orders[newerTieId])).toBeLessThan(0);
+	});
+
+	it('renders only declared scalar license properties', () => {
+		const state = parseAssetState({
+			'execution-device': 'token@1.0',
+			'total-supply': 1,
+			balances: { [owner]: 1 },
+			license: 'dE0rmDfl9_OWjkDznNEXHaSO_JohJkRolvMzaCroUdw',
+			commercial_use: true,
+			'access-fee': 12,
+			ignored: { inferred: false },
+		});
+		expect(licenseProperties(state)).toEqual([
+			{ key: 'license', label: 'License', value: 'Universal Data License 0.2' },
+			{ key: 'access-fee', label: 'Access fee', value: '12' },
+			{ key: 'derivation', label: 'Derivatives', value: 'Non-commercial only' },
+			{ key: 'unknown-usage-rights', label: 'Unknown usage rights', value: 'Included where available' },
+			{ key: 'commercial-use', label: 'Commercial use', value: 'true' },
+			{ key: 'data-model-training', label: 'AI model training', value: 'Not allowed' },
+			{ key: 'expiry', label: 'License term', value: 'Unlimited' },
+			{ key: 'currency', label: 'Currency', value: '$U' },
+		]);
+	});
+
+	it('shows the effective defaults of a license-only UDL asset', () => {
+		const state = parseAssetState({
+			'execution-device': 'token@1.0',
+			'total-supply': 1,
+			balances: { [owner]: 1 },
+			license: 'dE0rmDfl9_OWjkDznNEXHaSO_JohJkRolvMzaCroUdw',
+		});
+
+		expect(licenseProperties(state)).toEqual([
+			{ key: 'license', label: 'License', value: 'Universal Data License 0.2' },
+			{ key: 'access', label: 'Access', value: 'Free' },
+			{ key: 'derivation', label: 'Derivatives', value: 'Non-commercial only' },
+			{ key: 'unknown-usage-rights', label: 'Unknown usage rights', value: 'Included where available' },
+			{ key: 'commercial-use', label: 'Commercial use', value: 'Not allowed' },
+			{ key: 'data-model-training', label: 'AI model training', value: 'Not allowed' },
+			{ key: 'expiry', label: 'License term', value: 'Unlimited' },
+			{ key: 'currency', label: 'Currency', value: '$U' },
+		]);
+	});
+});
+
+function order(id: string, overrides: Partial<Record<string, unknown>> = {}): Record<string, unknown> {
+	return {
+		'order-id': id,
+		creator: owner,
+		recipient: owner,
+		asking: '100000000',
+		'minimum-fee': '100000000',
+		deadline: 20,
+		'created-at': 1,
+		quantity: '1',
+		status: 'open',
+		...overrides,
+	};
+}
+
+function memoryCacheStorage(): CacheStorage {
+	const held = new Map<string, Response>();
+	const cache = {
+		async delete(input: RequestInfo | URL) {
+			return held.delete(String(input));
+		},
+		async keys() {
+			return [...held.keys()].map((key) => new Request(key));
+		},
+		async match(input: RequestInfo | URL) {
+			return held.get(String(input))?.clone();
+		},
+		async put(input: RequestInfo | URL, response: Response) {
+			held.set(String(input), response.clone());
+		},
+	} as unknown as Cache;
+	return { open: async () => cache } as unknown as CacheStorage;
+}

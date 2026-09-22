@@ -1,0 +1,29 @@
+{
+	"status": "adopting",
+	"contractVersion": 1,
+	"sourceRoot": "src",
+	"testRoot": "tests",
+	"designTokenPaths": ["src/helpers/theme.ts"],
+	"externalSdkPackages": ["arweave", "ao.js", "weave-wrangler", "arbundles", "@noble/curves"],
+	"performanceInputs": [
+		"src",
+		"public",
+		"index.html",
+		"package.json",
+		"package-lock.json",
+		"vite.config.ts",
+		"tsconfig.json",
+		"scripts/source-aliases.ts"
+	],
+	"performanceBudgets": {
+		"directories": [{ "path": "dist", "maxBytes": 2800000 }],
+		"extensions": [
+			{ "path": "dist", "extension": ".js", "maxFileBytes": 650000 },
+			{ "path": "dist", "extension": ".css", "maxFileBytes": 250000 },
+			{ "path": "dist", "extension": ".woff2", "maxFileBytes": 50000 },
+			{ "path": "dist", "extension": ".png", "maxFileBytes": 60000 },
+			{ "path": "dist", "extension": ".svg", "maxFileBytes": 25000 }
+		]
+	},
+	"collectionThresholds": { "virtualizeAfter": 100 }
+}

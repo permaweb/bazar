@@ -3,6 +3,8 @@ import path from 'node:path';
 import { defineConfig } from 'vite';
 import { nodePolyfills } from 'vite-plugin-node-polyfills';
 
+import { sourceAliases } from './scripts/source-aliases';
+
 export default defineConfig({
 	base: './',
 	plugins: [
@@ -14,14 +16,7 @@ export default defineConfig({
 	],
 	resolve: {
 		dedupe: ['react', 'react-dom'],
-		alias: {
-			api: path.resolve(__dirname, 'src/api'),
-			components: path.resolve(__dirname, 'src/components'),
-			helpers: path.resolve(__dirname, 'src/helpers'),
-			hooks: path.resolve(__dirname, 'src/hooks'),
-			navigation: path.resolve(__dirname, 'src/navigation'),
-			providers: path.resolve(__dirname, 'src/providers'),
-		},
+		alias: sourceAliases,
 	},
 	build: {
 		outDir: 'dist',
@@ -29,6 +24,14 @@ export default defineConfig({
 		sourcemap: false,
 		rollupOptions: {
 			output: {
+				// Lazy entries resolve through folder barrels; name their chunks after the folder, not `index`.
+				chunkFileNames(chunk) {
+					const entry = chunk.facadeModuleId ?? '';
+					const base = path.basename(entry).replace(/\.[^.]+$/, '');
+					const fromSource = entry.includes(`${path.sep}src${path.sep}`);
+					const name = fromSource && base === 'index' ? path.basename(path.dirname(entry)) : chunk.name;
+					return `assets/${name}-[hash].js`;
+				},
 				manualChunks(id) {
 					if (!id.includes('node_modules') && !id.includes('/vendor/')) return;
 					if (id.includes('/three/')) return 'graphics';
