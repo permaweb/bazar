@@ -104,7 +104,10 @@ export function targetOwnsDialogEscape(target: EventTarget | null) {
 	return typeof closest === 'function' && Boolean(closest.call(target, '[data-dialog-escape-owner]'));
 }
 
-function resolveRestoreTarget(target?: HTMLElement | null | false | (() => HTMLElement | null)) {
+// Where focus returns when a dialog closes: an element, a lookup evaluated at close time, or `false` to skip.
+export type DialogFocusTarget = HTMLElement | null | false | (() => HTMLElement | null);
+
+function resolveRestoreTarget(target?: DialogFocusTarget) {
 	return typeof target === 'function' ? target() : target || null;
 }
 
@@ -127,35 +130,40 @@ export function isDialogFocusable(element: HTMLElement) {
 	return element.tabIndex >= 0 && element.getClientRects().length > 0;
 }
 
-export function useDialogFocus<T extends HTMLElement>(
-	active: boolean,
-	onEscape?: () => void,
-	restoreTarget?: HTMLElement | null | false | (() => HTMLElement | null),
-	focusKey?: unknown,
-	restoreFallback?: HTMLElement | null | false | (() => HTMLElement | null)
+// Modal focus behavior for the Dialog organism: scroll lock, background isolation, initial focus, Tab
+// containment, Escape, and focus restoration. Callbacks and restore targets are read at use time, so only
+// `active` and `focusKey` re-run initial focus.
+export function useDialogFocus(
+	containerRef: React.RefObject<HTMLElement>,
+	options: {
+		active: boolean;
+		focusKey?: unknown;
+		onEscape(): void;
+		restoreFallback?: DialogFocusTarget;
+		restoreTarget?: DialogFocusTarget;
+	}
 ) {
-	const containerRef = React.useRef<T>(null);
-	const escapeRef = React.useRef(onEscape);
+	const latestOptions = React.useRef(options);
 	const restoreFrameRef = React.useRef<number | null>(null);
 	const mountedRestoreTarget = React.useRef(
 		typeof document !== 'undefined' && document.activeElement instanceof HTMLElement ? document.activeElement : null
 	);
-	escapeRef.current = onEscape;
+	latestOptions.current = options;
 
 	React.useLayoutEffect(() => {
-		if (!active) return;
+		if (!options.active) return;
 		return lockDocumentScroll();
-	}, [active]);
+	}, [options.active]);
 
 	React.useLayoutEffect(() => {
-		if (!active) return;
+		if (!options.active) return;
 		const container = containerRef.current;
 		if (!container) return;
 		return isolateDialogBackground(container);
-	}, [active]);
+	}, [options.active]);
 
 	React.useLayoutEffect(() => {
-		if (!active) return;
+		if (!options.active) return;
 		if (restoreFrameRef.current !== null) {
 			window.cancelAnimationFrame(restoreFrameRef.current);
 			restoreFrameRef.current = null;
@@ -169,9 +177,9 @@ export function useDialogFocus<T extends HTMLElement>(
 		(initial ?? focusable()[0] ?? container).focus();
 		const handleKeyDown = (event: KeyboardEvent) => {
 			if (event.key === 'Escape' && targetOwnsDialogEscape(event.target)) return;
-			if (event.key === 'Escape' && escapeRef.current) {
+			if (event.key === 'Escape') {
 				event.preventDefault();
-				escapeRef.current();
+				latestOptions.current.onEscape();
 				return;
 			}
 			if (event.key !== 'Tab') return;
@@ -197,17 +205,15 @@ export function useDialogFocus<T extends HTMLElement>(
 		document.addEventListener('keydown', handleKeyDown, true);
 		return () => {
 			document.removeEventListener('keydown', handleKeyDown, true);
-			if (restoreTarget === false) return;
+			if (latestOptions.current.restoreTarget === false) return;
 			restoreFrameRef.current = window.requestAnimationFrame(() => {
 				restoreFrameRef.current = null;
 				const returnFocusTo = dialogRestoreTarget(
-					resolveRestoreTarget(restoreTarget) ?? mountedRestoreTarget.current,
-					resolveRestoreTarget(restoreFallback)
+					resolveRestoreTarget(latestOptions.current.restoreTarget) ?? mountedRestoreTarget.current,
+					resolveRestoreTarget(latestOptions.current.restoreFallback)
 				);
 				returnFocusTo?.focus();
 			});
 		};
-	}, [active, focusKey, restoreFallback, restoreTarget]);
-
-	return containerRef;
+	}, [options.active, options.focusKey]);
 }

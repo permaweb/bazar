@@ -35,6 +35,9 @@ Completed slices:
 7. Components read `props.name` (no destructuring); raw colors moved into `helpers/theme.ts`.
 8. Axe-checked component tests, property-based tests for identifiers and unit conversion, validator fixtures, and
    agent-contract tests.
+9. Dialog shell: the `components/organisms/Dialog` organism owns the backdrop, dialog semantics, focus containment,
+   Escape, and focus restoration for the operation, fungible operation, upload, mint, profile, append-collection,
+   search, and wallet dialogs; `tests/architecture/dialog-shell.test.ts` rejects dialog semantics anywhere else.
 
 ## Remaining slices
 
@@ -53,8 +56,5 @@ Work these as separate, behavior-preserving changes. Verify each in a real brows
    `CollectionMarket`, `AssetDetail`, `OperationDialog`, `FungibleOperationDialog`, `AssetCreator`, `MyAssets`. Extract
    data loading and state machines into feature `hooks/` and `model/` (discriminated async state) so organisms only
    compose UI.
-4. **Dialog shell.** Dialogs repeat backdrop, panel, and `useDialogFocus` wiring. Add a shared dialog organism that
-   owns focus containment and restoration, then adopt it in the operation, upload, mint, profile, append-collection,
-   search, and wallet dialogs.
-5. **Error taxonomy.** Map adapter failures to one application error type with stable codes (building on
+4. **Error taxonomy.** Map adapter failures to one application error type with stable codes (building on
    `helpers/marketplace-error.ts`) so UI branches never inspect provider messages.

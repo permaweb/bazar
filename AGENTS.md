@@ -13,7 +13,7 @@ Bazar is a browser-only Vite + React marketplace for Arweave-native assets: wall
 
 ## Adoption status
 
-`.permaweb-frontend.json` is `adopting`. The structural contract passes; the remaining slices (component styles, copy localization, orchestration hooks, dialog shell, error taxonomy) are mapped in `docs/architecture-migration.md`. Keep each requested change scoped: migrate a listed slice when the task touches that code or the user asks for it, never by expanding an unrelated change. Update the map as slices land, and set `status` to `compliant` (then delete the map) only when all of them are done and every gate passes.
+`.permaweb-frontend.json` is `adopting`. The structural contract passes; the remaining slices (component styles, copy localization, orchestration hooks, error taxonomy) are mapped in `docs/architecture-migration.md`. Keep each requested change scoped: migrate a listed slice when the task touches that code or the user asks for it, never by expanding an unrelated change. Update the map as slices land, and set `status` to `compliant` (then delete the map) only when all of them are done and every gate passes.
 
 ## Verification
 
@@ -43,6 +43,7 @@ Features: `Activity`, `AssetDetail` (unique and fungible asset pages), `Catalogu
 ## Conventions specific to Bazar
 
 -   Reuse the shared primitives before writing markup: `Button`, `IconButton`, `Pressable`, `TextInput` (with `IDENTIFIER_INPUT_PROPS` for addresses and IDs), `TextArea`, `FileInput`, `RangeInput`, `Select`, `Icon`, `Eyebrow`, `LiveRegion`, `VisuallyHidden`, `Tooltip`, and the molecules `DialogHeading`, `RetryNotice`, `EmptyState`, `StatusNotice`, `ErrorPanel`, `RouteState`, `TokenMarketRow`.
+-   Render every modal and transaction side panel through the `Dialog` organism (`components/organisms/Dialog`). It alone owns `role="dialog"`, `aria-modal`, focus containment, Escape, and focus restoration; use `isModalDialogOpen()` to check for an open modal.
 -   Validate Arweave identifiers with `isArweaveId` from `helpers/arweave-id`; never add another 43-character regex.
 -   Convert AR amounts with `helpers/ar-units` and token amounts with `parseTokenAmount`/`formatTokenAmount`; never use floating point for atomic units.
 -   Keep large surfaces lazy: `features/TransactionSync` exports only lazy components and light model helpers; the fungible asset page loads through `loadFungibleAssetView`; mint code loads through `loadMintRuntime`. Check `npm run build` output when touching these boundaries.

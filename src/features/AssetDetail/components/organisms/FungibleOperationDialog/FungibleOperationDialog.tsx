@@ -77,6 +77,7 @@ import {
 	TransactionDialogControl,
 	transactionDialogDismissAction,
 } from 'components/molecules/TransactionDialogControl';
+import { Dialog } from 'components/organisms/Dialog';
 import { WalletAddress } from 'components/organisms/WalletAddress';
 import { currentPurchaseGatewayContext } from 'features/Operations';
 import { type ArweaveSyncStep, postConfirmationPendingLabel, quorumConfirmationDepth } from 'features/TransactionSync';
@@ -90,7 +91,6 @@ import {
 	marketplaceOperationFailure,
 } from 'helpers/marketplace-error';
 import { formatTickerLabel } from 'helpers/token-display';
-import { useDialogFocus } from 'hooks/useDialogFocus';
 
 import {
 	batchPaymentBarrierState,
@@ -239,6 +239,7 @@ export default function FungibleOperationDialog(props: {
 	const attemptRef = React.useRef(new AbortController());
 	const cleanupTimerRef = React.useRef<number | undefined>();
 	const hideTimerRef = React.useRef<number | null>(null);
+	const dialogRef = React.useRef<HTMLElement | null>(null);
 	const activityChangeRef = React.useRef(props.onActivityChange);
 	activityChangeRef.current = props.onActivityChange;
 	const resumed = React.useRef(false);
@@ -1150,13 +1151,6 @@ export default function FungibleOperationDialog(props: {
 			props.onHide();
 		}, TRANSACTION_DIALOG_HIDE_DURATION_MS);
 	};
-	const dialogRef = useDialogFocus<HTMLDivElement>(
-		props.visible,
-		closeOrHide,
-		undefined,
-		phase,
-		props.restoreFallback
-	);
 	React.useEffect(() => {
 		if (props.visible) setHiding(false);
 	}, [props.visible]);
@@ -1217,230 +1211,101 @@ export default function FungibleOperationDialog(props: {
 		props.onClose(false);
 	};
 
-	if (!props.visible && phase !== 'working') return null;
 	const compactPurchaseForm = phase === 'form' && props.operation.kind === 'buy';
 	return (
-		<div
-			className={`dialog-backdrop operation-panel-backdrop${hiding ? ' dialog-backdrop-hiding' : ''}`}
-			hidden={!props.visible}
-			onMouseDown={(event) => event.target === event.currentTarget && closeOrHide()}
-			role="presentation"
+		<Dialog
+			backdropClassName="dialog-backdrop operation-panel-backdrop"
+			className={`dialog operation-side-panel fungible-dialog${phase === 'form' ? ' dialog-form-phase' : ''}${
+				compactPurchaseForm ? ' purchase-dialog' : ''
+			}`}
+			focusKey={phase}
+			hiding={hiding}
+			keepMounted={phase === 'working'}
+			labelledBy={compactPurchaseForm ? dialogTitleId : `${operationLabelId} ${dialogTitleId}`}
+			onDismiss={closeOrHide}
+			open={props.visible}
+			panelRef={dialogRef}
+			restoreFallback={props.restoreFallback}
 		>
-			<div
-				className={`dialog operation-side-panel fungible-dialog${phase === 'form' ? ' dialog-form-phase' : ''}${
-					compactPurchaseForm ? ' purchase-dialog' : ''
-				}`}
-				aria-hidden={props.visible ? undefined : true}
-				aria-labelledby={
-					props.visible
-						? compactPurchaseForm
-							? dialogTitleId
-							: `${operationLabelId} ${dialogTitleId}`
-						: undefined
+			<DialogHeading
+				artwork={
+					phase === 'working' ? (
+						<TokenAvatar
+							className="dialog-asset-artwork"
+							image={props.asset.image}
+							loading="eager"
+							ticker={props.state.ticker || props.asset.ticker || props.asset.name}
+						/>
+					) : null
 				}
-				aria-modal={props.visible ? true : undefined}
-				ref={dialogRef}
-				role={props.visible ? 'dialog' : undefined}
-				tabIndex={-1}
-			>
-				<DialogHeading
-					artwork={
-						phase === 'working' ? (
-							<TokenAvatar
-								className="dialog-asset-artwork"
-								image={props.asset.image}
-								loading="eager"
-								ticker={props.state.ticker || props.asset.ticker || props.asset.name}
-							/>
-						) : null
-					}
-					control={<TransactionDialogControl hiding={hiding} phase={phase} onClick={closeOrHide} />}
-					eyebrow={compactPurchaseForm ? undefined : operationLabel(props.operation.kind)}
-					eyebrowId={operationLabelId}
-					layout="asset"
-					title={compactPurchaseForm ? `Buy ${props.asset.name}` : props.asset.name}
-					titleId={dialogTitleId}
-				/>
-				<OperationOutcomeAnnouncement active={phase === 'done'} title={outcomeTitle} detail={outcomeDetail} />
-				{phase === 'approval' && props.operation.kind === 'buy' && props.operation.resume ? (
-					<div className="recovery-approval">
-						<div>
-							<h3>{recoveryApprovalCopy?.title}</h3>
-							<p>{recoveryApprovalCopy?.detail}</p>
-						</div>
-						<div className="batch-quote">
-							<div>
-								<span>Listings</span>
-								<strong>{visibleOrders.length}</strong>
-							</div>
-							<div>
-								<span>Sellers</span>
-								<strong>{new Set(visibleOrders.map((order) => order.creator)).size}</strong>
-							</div>
-							<div>
-								<span>Seller subtotal</span>
-								<strong>
-									{winstonToArDecimal(
-										visibleOrders
-											.reduce((total, order) => total + BigInt(order.asking), 0n)
-											.toString()
-									)}{' '}
-									<ArCurrencyLabel />
-								</strong>
-							</div>
-							<div>
-								<span>New approvals</span>
-								<strong>{recoveryApprovalCount}</strong>
-							</div>
-						</div>
-						<PurchaseRoute fills={visibleFills} state={props.state} />
-						<Button
-							className="wide"
-							data-dialog-initial
-							onClick={() => void submit()}
-							type="button"
-							size="custom"
-							variant="primary"
-						>
-							{recoveryApprovalCopy?.action}
-						</Button>
+				control={<TransactionDialogControl hiding={hiding} phase={phase} onClick={closeOrHide} />}
+				eyebrow={compactPurchaseForm ? undefined : operationLabel(props.operation.kind)}
+				eyebrowId={operationLabelId}
+				layout="asset"
+				title={compactPurchaseForm ? `Buy ${props.asset.name}` : props.asset.name}
+				titleId={dialogTitleId}
+			/>
+			<OperationOutcomeAnnouncement active={phase === 'done'} title={outcomeTitle} detail={outcomeDetail} />
+			{phase === 'approval' && props.operation.kind === 'buy' && props.operation.resume ? (
+				<div className="recovery-approval">
+					<div>
+						<h3>{recoveryApprovalCopy?.title}</h3>
+						<p>{recoveryApprovalCopy?.detail}</p>
 					</div>
-				) : null}
-				{phase === 'form' ? (
-					<form
-						className="trade-form"
-						onSubmit={(event) => {
-							event.preventDefault();
-							void submit();
-						}}
+					<div className="batch-quote">
+						<div>
+							<span>Listings</span>
+							<strong>{visibleOrders.length}</strong>
+						</div>
+						<div>
+							<span>Sellers</span>
+							<strong>{new Set(visibleOrders.map((order) => order.creator)).size}</strong>
+						</div>
+						<div>
+							<span>Seller subtotal</span>
+							<strong>
+								{winstonToArDecimal(
+									visibleOrders.reduce((total, order) => total + BigInt(order.asking), 0n).toString()
+								)}{' '}
+								<ArCurrencyLabel />
+							</strong>
+						</div>
+						<div>
+							<span>New approvals</span>
+							<strong>{recoveryApprovalCount}</strong>
+						</div>
+					</div>
+					<PurchaseRoute fills={visibleFills} state={props.state} />
+					<Button
+						className="wide"
+						data-dialog-initial
+						onClick={() => void submit()}
+						type="button"
+						size="custom"
+						variant="primary"
 					>
-						<div className="dialog-form-scroll">
-							{props.operation.kind === 'sell' ? (
-								<>
-									<div className="trade-balance">
-										<span>Available to list</span>
-										<strong>
-											{tokenLabel(liquidBalanceOf(props.state, props.owner), props.state)}
-										</strong>
-									</div>
-									<div className="trade-fields">
-										<label>
-											Token quantity
-											<TextInput
-												aria-describedby={
-													quantity &&
-													(enteredQuantity === null || enteredQuantity > currentLiquid)
-														? quantityGuidanceId
-														: undefined
-												}
-												aria-invalid={
-													Boolean(quantity) &&
-													(enteredQuantity === null || enteredQuantity > currentLiquid)
-												}
-												autoFocus
-												data-dialog-initial
-												inputMode="decimal"
-												value={quantity}
-												onChange={(event) => setQuantity(event.target.value)}
-												placeholder="100"
-											/>
-										</label>
-										<label>
-											<span>
-												Price per {tickerDisplay} in <ArCurrencyLabel />
-											</span>
-											<TextInput
-												aria-describedby={
-													unitPrice && !unitPriceValid ? priceGuidanceId : undefined
-												}
-												aria-invalid={Boolean(unitPrice) && !unitPriceValid}
-												inputMode="decimal"
-												value={unitPrice}
-												onChange={(event) => setUnitPrice(event.target.value)}
-												placeholder="0.01"
-											/>
-										</label>
-									</div>
-									{listingQuote ? (
-										<div className="trade-quote">
-											<span>Listing total</span>
-											<strong>
-												{listingQuote} <ArCurrencyLabel />
-											</strong>
-										</div>
-									) : null}
-									{enteredQuantity && enteredQuantity <= currentLiquid ? (
-										<div className="trade-quote">
-											<span>After network confirmation</span>
-											<strong>
-												{tokenLabel((currentLiquid - enteredQuantity).toString(), props.state)}{' '}
-												liquid ·{' '}
-												{tokenLabel((currentListed + enteredQuantity).toString(), props.state)}{' '}
-												listed
-											</strong>
-										</div>
-									) : null}
-									{quantity && (enteredQuantity === null || enteredQuantity > currentLiquid) ? (
-										<p id={quantityGuidanceId} className="trade-guidance" role="alert">
-											Enter a quantity up to {tokenLabel(currentLiquid.toString(), props.state)}.
-										</p>
-									) : null}
-									{unitPrice && !unitPriceValid ? (
-										<p id={priceGuidanceId} className="trade-guidance" role="alert">
-											<ArCurrencyText>
-												Enter a positive AR price with no more than 12 decimal places.
-											</ArCurrencyText>
-										</p>
-									) : null}
-									<p className="settlement-disclosure">
-										Listed tokens move into order escrow after network confirmation. Network fees
-										are shown by your wallet before signing.
-									</p>
-								</>
-							) : null}
-							{props.operation.kind === 'transfer' ? (
-								<>
-									<div className="trade-balance">
-										<span>Available to send</span>
-										<strong>
-											{tokenLabel(liquidBalanceOf(props.state, props.owner), props.state)}
-										</strong>
-									</div>
-									<label>
-										Recipient wallet address
-										<TextInput
-											aria-describedby={
-												recipient && recipientError ? recipientGuidanceId : undefined
-											}
-											aria-invalid={Boolean(recipient) && Boolean(recipientError)}
-											autoCapitalize="none"
-											autoComplete="off"
-											autoCorrect="off"
-											autoFocus
-											data-dialog-initial
-											spellCheck={false}
-											value={recipient}
-											onChange={(event) => setRecipient(event.target.value)}
-											placeholder="43-character Arweave address"
-										/>
-									</label>
-									{recipient && recipientError ? (
-										<p id={recipientGuidanceId} className="trade-guidance" role="alert">
-											{recipientError}
-										</p>
-									) : null}
-									{recipient && !recipientError ? (
-										<div className="trade-quote">
-											<span>Recipient</span>
-											<strong>{transferRecipient}</strong>
-										</div>
-									) : null}
-									{recipient && !recipientError ? (
-										<p className="settlement-disclosure">
-											Review the complete destination before asking your wallet to approve this
-											irreversible transfer.
-										</p>
-									) : null}
+						{recoveryApprovalCopy?.action}
+					</Button>
+				</div>
+			) : null}
+			{phase === 'form' ? (
+				<form
+					className="trade-form"
+					onSubmit={(event) => {
+						event.preventDefault();
+						void submit();
+					}}
+				>
+					<div className="dialog-form-scroll">
+						{props.operation.kind === 'sell' ? (
+							<>
+								<div className="trade-balance">
+									<span>Available to list</span>
+									<strong>
+										{tokenLabel(liquidBalanceOf(props.state, props.owner), props.state)}
+									</strong>
+								</div>
+								<div className="trade-fields">
 									<label>
 										Token quantity
 										<TextInput
@@ -1454,593 +1319,700 @@ export default function FungibleOperationDialog(props: {
 												Boolean(quantity) &&
 												(enteredQuantity === null || enteredQuantity > currentLiquid)
 											}
+											autoFocus
+											data-dialog-initial
 											inputMode="decimal"
 											value={quantity}
 											onChange={(event) => setQuantity(event.target.value)}
 											placeholder="100"
 										/>
 									</label>
-									{quantity && (enteredQuantity === null || enteredQuantity > currentLiquid) ? (
-										<p id={quantityGuidanceId} className="trade-guidance" role="alert">
-											Enter a quantity up to {tokenLabel(currentLiquid.toString(), props.state)}.
-										</p>
-									) : null}
-								</>
-							) : null}
-							{props.operation.kind === 'cancel' ? (
-								<div className="cancel-summary">
-									<CircleX aria-hidden="true" />
-									<div>
-										<strong>Return this listing to your balance?</strong>
+									<label>
 										<span>
-											{tokenLabel(props.operation.order.quantity, props.state)} ·{' '}
-											{winstonToArDecimal(props.operation.order.asking)} <ArCurrencyLabel /> total
+											Price per {tickerDisplay} in <ArCurrencyLabel />
 										</span>
-										<span>
-											After network confirmation:{' '}
-											{tokenLabel(
-												(currentLiquid + BigInt(props.operation.order.quantity)).toString(),
-												props.state
-											)}{' '}
-											liquid ·{' '}
-											{tokenLabel(
-												(currentListed - BigInt(props.operation.order.quantity)).toString(),
-												props.state
-											)}{' '}
-											listed
-										</span>
-										<span>
-											A reserved listing cannot be cancelled. This listing is currently open.
-										</span>
-									</div>
-								</div>
-							) : null}
-							{props.operation.kind === 'buy' ? (
-								<>
-									{matchedOrders.length ? (
-										<section
-											aria-busy={quoteState === 'loading'}
-											className="purchase-confirmation"
-											aria-label="Purchase summary"
-										>
-											<div className="purchase-confirmation-amount">
-												<span>You receive</span>
-												<strong>{tokenLabel(matchedQuantity.toString(), props.state)}</strong>
-											</div>
-											<dl className="purchase-confirmation-facts">
-												<div>
-													<dt>Seller total</dt>
-													<dd>
-														{winstonToArDecimal(matchedAsking.toString())}{' '}
-														<ArCurrencyLabel />
-													</dd>
-												</div>
-												<div>
-													<dt>Network fees</dt>
-													<dd>
-														{quoteState === 'error' ? (
-															'Unavailable'
-														) : estimatedCost ? (
-															<ArCurrencyText>{`${winstonToArDecimal(
-																(BigInt(estimatedCost) - matchedAsking).toString()
-															)} AR`}</ArCurrencyText>
-														) : (
-															'Checking…'
-														)}
-													</dd>
-												</div>
-												<div className="purchase-confirmation-total">
-													<dt>Maximum total</dt>
-													<dd>
-														{quoteState === 'error' ? (
-															'Quote unavailable'
-														) : estimatedCost ? (
-															<ArCurrencyText>{`${winstonToArDecimal(
-																estimatedCost
-															)} AR`}</ArCurrencyText>
-														) : (
-															'Checking…'
-														)}
-													</dd>
-												</div>
-												<div>
-													<dt>Wallet after</dt>
-													<dd>
-														{quoteState === 'error' ? (
-															'—'
-														) : canAfford === false ? (
-															<ArCurrencyText>Insufficient AR</ArCurrencyText>
-														) : estimatedCost && estimatedWalletBalance ? (
-															<ArCurrencyText>{`${winstonToArDecimal(
-																(
-																	BigInt(estimatedWalletBalance) -
-																	BigInt(estimatedCost)
-																).toString()
-															)} AR`}</ArCurrencyText>
-														) : (
-															'Checking…'
-														)}
-													</dd>
-												</div>
-											</dl>
-											<p className="purchase-confirmation-meta">
-												{matchedOrders.length} {matchedOrders.length === 1 ? 'order' : 'orders'}{' '}
-												· {matchedSellers} {matchedSellers === 1 ? 'seller' : 'sellers'} ·{' '}
-												{matchedOrders.length * 2} wallet approvals
-											</p>
-										</section>
-									) : null}
-									{matchedOrders.length ? (
-										<LiveRegion as="p" id={quoteStatusId}>
-											<ArCurrencyText>
-												{quoteState === 'ready' && estimatedCost
-													? `Purchase quote ready. Maximum total ${winstonToArDecimal(
-															estimatedCost
-													  )} AR.${canAfford ? '' : ' This wallet has insufficient AR.'}`
-													: quoteState === 'error'
-													? 'Purchase quote unavailable. Retry the cost check before buying.'
-													: 'Checking the wallet balance and network fees.'}
-											</ArCurrencyText>
-										</LiveRegion>
-									) : null}
-									{matchedOrders.length ? (
-										quoteState === 'error' ? (
-											<RetryNotice
-												onRetry={() => setQuoteRetry((value) => value + 1)}
-												retryDescribedBy={quoteStatusId}
-											/>
-										) : null
-									) : null}
-									{canAfford === false ? (
-										<p className="purchase-form-error" role="alert">
-											<ArCurrencyText>
-												This wallet does not have enough AR for the purchase and network fees.
-											</ArCurrencyText>
-										</p>
-									) : null}
-								</>
-							) : null}
-						</div>
-						<div className="trade-form-footer">
-							<Button
-								className={`wide${
-									props.operation.kind === 'buy' || props.operation.kind === 'sell'
-										? ' with-icon market-primary-action'
-										: ''
-								}`}
-								data-dialog-initial
-								aria-label={
-									props.operation.kind === 'transfer' && enteredQuantity && transferValid
-										? fungibleTransferSubmitLabel(
-												enteredQuantity.toString(),
-												props.state,
-												transferRecipient,
-												true
-										  )
-										: undefined
-								}
-								aria-describedby={
-									props.operation.kind === 'buy' && matchedOrders.length ? quoteStatusId : undefined
-								}
-								disabled={
-									(props.operation.kind === 'buy' &&
-										(!matchedOrders.length || !estimatedCost || canAfford !== true)) ||
-									(props.operation.kind === 'sell' && !sellValid) ||
-									(props.operation.kind === 'transfer' && !transferValid)
-								}
-								size="custom"
-								type="submit"
-								variant={props.operation.kind === 'cancel' ? 'danger' : 'primary'}
-							>
-								{props.operation.kind === 'buy' ? (
-									<Icon icon={ShoppingCart} size="sm" />
-								) : props.operation.kind === 'sell' ? (
-									<Icon icon={Tag} size="sm" />
-								) : null}
-								<ArCurrencyText>
-									{props.operation.kind === 'buy' && matchedOrders.length
-										? `Buy ${tokenLabel(matchedQuantity.toString(), props.state)} · ${
-												estimatedCost
-													? `${winstonToArDecimal(estimatedCost)} AR max`
-													: 'checking total…'
-										  }`
-										: props.operation.kind === 'sell' && listingQuote && enteredQuantity
-										? `List ${tokenLabel(
-												enteredQuantity.toString(),
-												props.state
-										  )} for ${listingQuote} AR`
-										: props.operation.kind === 'cancel'
-										? `Cancel listing and return ${tokenLabel(
-												props.operation.order.quantity,
-												props.state
-										  )}`
-										: props.operation.kind === 'transfer' && enteredQuantity
-										? fungibleTransferSubmitLabel(
-												enteredQuantity.toString(),
-												props.state,
-												transferRecipient
-										  )
-										: operationLabel(props.operation.kind)}
-								</ArCurrencyText>
-							</Button>
-						</div>
-					</form>
-				) : null}
-				{phase === 'working' ? (
-					<div className="operation-working">
-						{props.operation.kind === 'buy' ? (
-							<LiveRegion as="p">{settlementAnnouncement}</LiveRegion>
-						) : (
-							<LiveRegion as="p">
-								{message ||
-									(signedWork
-										? 'Watching this transaction.'
-										: 'Preparing the transaction for wallet approval.')}
-							</LiveRegion>
-						)}
-						{props.operation.kind === 'buy' && visibleOrders.length ? (
-							<FungiblePurchaseSequence
-								listingCount={visibleOrders.length}
-								states={visibleOrders.map((order) => purchaseStates[order.orderId])}
-							/>
-						) : null}
-						{signedWork && props.operation.kind !== 'buy' ? (
-							<p className="sync-resume-note">
-								Transaction details are saved in this browser. Return with the same wallet to continue
-								while this browser data remains available.
-							</p>
-						) : null}
-						{workingStatus ? <p className="scheduler-wait">{workingStatus}</p> : null}
-						{props.operation.kind === 'buy' && visibleOrders.length ? (
-							activeOrder && activePurchase ? (
-								<ArweaveTransactionSync
-									active={props.visible}
-									skipKind={purchaseSkipKind(activePurchase)}
-									onSkip={
-										activePurchase.canSkip
-											? () => {
-													purchasesRef.current.get(activeOrder.orderId)?.skip();
-											  }
-											: undefined
-									}
-									subject={`${props.asset.name} · ${tokenLabel(activeOrder.quantity, props.state)}`}
-									startedAt={submittedAtRef.current}
-									steps={purchaseSteps}
-									activeStep={activeStep}
-									pendingAfterConfirmation={
-										activePurchase.stage === 'registration-accepting'
-											? 'Checking live reservation'
-											: activePurchase.stage === 'ownership-verifying'
-											? 'Checking receipt'
-											: undefined
-									}
-								/>
-							) : (
-								<Loading label="Preparing the purchase for wallet approval…" />
-							)
-						) : singleSteps.length ? (
-							<ArweaveTransactionSync
-								active={props.visible}
-								subject={props.asset.name}
-								startedAt={submittedAtRef.current}
-								steps={singleSteps}
-								activeStep={props.operation.kind}
-								pendingAfterConfirmation={postConfirmationPendingLabel(confirmations, 5, message)}
-							/>
-						) : (
-							<Loading label="Preparing the signed transaction…" />
-						)}
-					</div>
-				) : null}
-				{phase === 'done' ? (
-					<div className="result success">
-						<OperationOutcome
-							title={outcomeTitle}
-							detail={outcomeDetail}
-							status={
-								props.operation.kind === 'buy'
-									? `Confirmations: ${quorumConfirmationDepth(
-											purchaseSteps.find((step) => step.key === 'pay')
-									  )}`
-									: undefined
-							}
-						>
-							{props.operation.kind === 'buy' || props.operation.kind === 'sell' ? (
-								<OperationOutcomeSubject
-									label={props.operation.kind === 'buy' ? 'You received' : 'You listed'}
-									title={
-										props.operation.kind === 'buy'
-											? tokenLabel(completedPurchaseQuantity.toString(), props.state)
-											: enteredQuantity
-											? tokenLabel(enteredQuantity.toString(), props.state)
-											: props.asset.name
-									}
-									detail={
-										props.operation.kind === 'sell' && listingQuote
-											? `${listingQuote} AR total`
-											: props.asset.name
-									}
-									media={
-										<TokenAvatar
-											className="operation-outcome-token-avatar"
-											image={props.asset.image}
-											loading="eager"
-											ticker={props.state.ticker || props.asset.ticker || props.asset.name}
+										<TextInput
+											aria-describedby={
+												unitPrice && !unitPriceValid ? priceGuidanceId : undefined
+											}
+											aria-invalid={Boolean(unitPrice) && !unitPriceValid}
+											inputMode="decimal"
+											value={unitPrice}
+											onChange={(event) => setUnitPrice(event.target.value)}
+											placeholder="0.01"
 										/>
-									}
-								/>
-							) : null}
-							{props.operation.kind === 'buy' && purchaseSteps.length ? (
-								<div className="result-outcome-sync">
-									<ArweaveTransactionSync
-										active={props.visible}
-										activeStep="pay"
-										startedAt={submittedAtRef.current}
-										steps={purchaseSteps}
-										subject={`${props.asset.name} · ${tokenLabel(
-											activeOrder?.quantity ?? '0',
-											props.state
-										)}`}
-									/>
+									</label>
 								</div>
-							) : null}
-						</OperationOutcome>
-						{transaction && props.operation.kind !== 'transfer' ? (
-							<a href={transactionExplorerUrl(transaction.id)} rel="noreferrer" target="_blank">
-								<OperationExternalLink>View transaction {short(transaction.id)}</OperationExternalLink>
-							</a>
+								{listingQuote ? (
+									<div className="trade-quote">
+										<span>Listing total</span>
+										<strong>
+											{listingQuote} <ArCurrencyLabel />
+										</strong>
+									</div>
+								) : null}
+								{enteredQuantity && enteredQuantity <= currentLiquid ? (
+									<div className="trade-quote">
+										<span>After network confirmation</span>
+										<strong>
+											{tokenLabel((currentLiquid - enteredQuantity).toString(), props.state)}{' '}
+											liquid ·{' '}
+											{tokenLabel((currentListed + enteredQuantity).toString(), props.state)}{' '}
+											listed
+										</strong>
+									</div>
+								) : null}
+								{quantity && (enteredQuantity === null || enteredQuantity > currentLiquid) ? (
+									<p id={quantityGuidanceId} className="trade-guidance" role="alert">
+										Enter a quantity up to {tokenLabel(currentLiquid.toString(), props.state)}.
+									</p>
+								) : null}
+								{unitPrice && !unitPriceValid ? (
+									<p id={priceGuidanceId} className="trade-guidance" role="alert">
+										<ArCurrencyText>
+											Enter a positive AR price with no more than 12 decimal places.
+										</ArCurrencyText>
+									</p>
+								) : null}
+								<p className="settlement-disclosure">
+									Listed tokens move into order escrow after network confirmation. Network fees are
+									shown by your wallet before signing.
+								</p>
+							</>
 						) : null}
-						{props.operation.kind === 'buy' ? (
-							<FungiblePurchaseReceiptNavigator
-								activeOrderId={activeOrder?.orderId}
-								onSelect={setActiveOrderId}
-								orders={visibleOrders}
-								purchaseStates={purchaseStates}
-								state={props.state}
-							/>
-						) : props.operation.kind === 'transfer' && transaction && enteredQuantity ? (
-							<div className="settlement-receipt">
-								<div>
-									<span>Quantity</span>
-									<strong>{tokenLabel(enteredQuantity.toString(), props.state)}</strong>
+						{props.operation.kind === 'transfer' ? (
+							<>
+								<div className="trade-balance">
+									<span>Available to send</span>
+									<strong>
+										{tokenLabel(liquidBalanceOf(props.state, props.owner), props.state)}
+									</strong>
 								</div>
+								<label>
+									Recipient wallet address
+									<TextInput
+										aria-describedby={recipient && recipientError ? recipientGuidanceId : undefined}
+										aria-invalid={Boolean(recipient) && Boolean(recipientError)}
+										autoCapitalize="none"
+										autoComplete="off"
+										autoCorrect="off"
+										autoFocus
+										data-dialog-initial
+										spellCheck={false}
+										value={recipient}
+										onChange={(event) => setRecipient(event.target.value)}
+										placeholder="43-character Arweave address"
+									/>
+								</label>
+								{recipient && recipientError ? (
+									<p id={recipientGuidanceId} className="trade-guidance" role="alert">
+										{recipientError}
+									</p>
+								) : null}
+								{recipient && !recipientError ? (
+									<div className="trade-quote">
+										<span>Recipient</span>
+										<strong>{transferRecipient}</strong>
+									</div>
+								) : null}
+								{recipient && !recipientError ? (
+									<p className="settlement-disclosure">
+										Review the complete destination before asking your wallet to approve this
+										irreversible transfer.
+									</p>
+								) : null}
+								<label>
+									Token quantity
+									<TextInput
+										aria-describedby={
+											quantity && (enteredQuantity === null || enteredQuantity > currentLiquid)
+												? quantityGuidanceId
+												: undefined
+										}
+										aria-invalid={
+											Boolean(quantity) &&
+											(enteredQuantity === null || enteredQuantity > currentLiquid)
+										}
+										inputMode="decimal"
+										value={quantity}
+										onChange={(event) => setQuantity(event.target.value)}
+										placeholder="100"
+									/>
+								</label>
+								{quantity && (enteredQuantity === null || enteredQuantity > currentLiquid) ? (
+									<p id={quantityGuidanceId} className="trade-guidance" role="alert">
+										Enter a quantity up to {tokenLabel(currentLiquid.toString(), props.state)}.
+									</p>
+								) : null}
+							</>
+						) : null}
+						{props.operation.kind === 'cancel' ? (
+							<div className="cancel-summary">
+								<CircleX aria-hidden="true" />
 								<div>
-									<span>Recipient</span>
-									<WalletAddress address={transferRecipient} full label="recipient" />
-								</div>
-								<div className="settlement-receipt-links">
-									<a href={transactionExplorerUrl(transaction.id)} rel="noreferrer" target="_blank">
-										<OperationExternalLink>
-											Transaction {short(transaction.id)}
-										</OperationExternalLink>
-									</a>
+									<strong>Return this listing to your balance?</strong>
+									<span>
+										{tokenLabel(props.operation.order.quantity, props.state)} ·{' '}
+										{winstonToArDecimal(props.operation.order.asking)} <ArCurrencyLabel /> total
+									</span>
+									<span>
+										After network confirmation:{' '}
+										{tokenLabel(
+											(currentLiquid + BigInt(props.operation.order.quantity)).toString(),
+											props.state
+										)}{' '}
+										liquid ·{' '}
+										{tokenLabel(
+											(currentListed - BigInt(props.operation.order.quantity)).toString(),
+											props.state
+										)}{' '}
+										listed
+									</span>
+									<span>A reserved listing cannot be cancelled. This listing is currently open.</span>
 								</div>
 							</div>
 						) : null}
-						<Button
-							className="with-icon"
-							data-dialog-initial
-							onClick={() => props.onClose(false)}
-							size="custom"
-							variant="primary"
-						>
-							<Icon icon={ArrowLeft} size="sm" /> View updated token
-						</Button>
-					</div>
-				) : null}
-				{phase === 'error' ? (
-					<div className="result error">
-						<FungibleOperationErrorAlert message={message} />
-						{props.operation.kind === 'buy' && visibleOrders.length ? (
+						{props.operation.kind === 'buy' ? (
 							<>
-								<div className="settlement-tabs" aria-label="Settlement recovery status" role="tablist">
-									{visibleOrders.map((order, index) => {
-										const active = order.orderId === activeOrder?.orderId;
-										return (
-											<Button
-												aria-controls={SETTLEMENT_ERROR_PANEL_ID}
-												aria-selected={active}
-												className={active ? 'active' : undefined}
-												id={`settlement-error-tab-${order.orderId}`}
-												key={order.orderId}
-												onClick={() => setActiveOrderId(order.orderId)}
-												size="custom"
-												onKeyDown={(event) => {
-													const nextIndex = settlementTabIndex(
-														event.key,
-														index,
-														visibleOrders.length
-													);
-													if (nextIndex === null) return;
-													event.preventDefault();
-													const nextOrder = visibleOrders[nextIndex];
-													setActiveOrderId(nextOrder.orderId);
-													window.requestAnimationFrame(() => {
-														document
-															.getElementById(`settlement-error-tab-${nextOrder.orderId}`)
-															?.focus();
-													});
-												}}
-												role="tab"
-												tabIndex={active ? 0 : -1}
-												type="button"
-											>
-												<span>Listing {index + 1}</span>
-												<strong>{tokenLabel(order.quantity, props.state)}</strong>
-												<small>{batchStageLabel(purchaseStates[order.orderId])}</small>
-											</Button>
-										);
-									})}
-								</div>
-								{activeOrder ? (
-									<FungibleSettlementRecoveryPanel
-										orderId={activeOrder.orderId}
-										settled={activePurchase?.stage === 'complete'}
+								{matchedOrders.length ? (
+									<section
+										aria-busy={quoteState === 'loading'}
+										className="purchase-confirmation"
+										aria-label="Purchase summary"
 									>
-										<div>
-											<span>Stage</span>
-											<strong>{batchStageLabel(activePurchase)}</strong>
+										<div className="purchase-confirmation-amount">
+											<span>You receive</span>
+											<strong>{tokenLabel(matchedQuantity.toString(), props.state)}</strong>
 										</div>
-										<div>
-											<span>Seller</span>
-											<WalletAddress address={activeOrder.creator} full label="seller" />
-										</div>
-										<div>
-											<span>Order</span>
-											<Tooltip content={activeOrder.orderId} placement="top">
-												{(tooltipId) => (
-													<strong aria-describedby={tooltipId}>
-														{short(activeOrder.orderId)}
-													</strong>
-												)}
-											</Tooltip>
-										</div>
-										<p>
-											{activePurchase?.error
-												? errorMessage(
-														marketplaceCodedError(
-															activePurchase.error.code,
-															activePurchase.error.message || activePurchase.error.code
-														)
-												  )
-												: activePurchase?.stage === 'complete'
-												? 'This listing settled successfully.'
-												: 'This incomplete listing has saved transaction details and can be continued with the same wallet.'}
+										<dl className="purchase-confirmation-facts">
+											<div>
+												<dt>Seller total</dt>
+												<dd>
+													{winstonToArDecimal(matchedAsking.toString())} <ArCurrencyLabel />
+												</dd>
+											</div>
+											<div>
+												<dt>Network fees</dt>
+												<dd>
+													{quoteState === 'error' ? (
+														'Unavailable'
+													) : estimatedCost ? (
+														<ArCurrencyText>{`${winstonToArDecimal(
+															(BigInt(estimatedCost) - matchedAsking).toString()
+														)} AR`}</ArCurrencyText>
+													) : (
+														'Checking…'
+													)}
+												</dd>
+											</div>
+											<div className="purchase-confirmation-total">
+												<dt>Maximum total</dt>
+												<dd>
+													{quoteState === 'error' ? (
+														'Quote unavailable'
+													) : estimatedCost ? (
+														<ArCurrencyText>{`${winstonToArDecimal(
+															estimatedCost
+														)} AR`}</ArCurrencyText>
+													) : (
+														'Checking…'
+													)}
+												</dd>
+											</div>
+											<div>
+												<dt>Wallet after</dt>
+												<dd>
+													{quoteState === 'error' ? (
+														'—'
+													) : canAfford === false ? (
+														<ArCurrencyText>Insufficient AR</ArCurrencyText>
+													) : estimatedCost && estimatedWalletBalance ? (
+														<ArCurrencyText>{`${winstonToArDecimal(
+															(
+																BigInt(estimatedWalletBalance) - BigInt(estimatedCost)
+															).toString()
+														)} AR`}</ArCurrencyText>
+													) : (
+														'Checking…'
+													)}
+												</dd>
+											</div>
+										</dl>
+										<p className="purchase-confirmation-meta">
+											{matchedOrders.length} {matchedOrders.length === 1 ? 'order' : 'orders'} ·{' '}
+											{matchedSellers} {matchedSellers === 1 ? 'seller' : 'sellers'} ·{' '}
+											{matchedOrders.length * 2} wallet approvals
 										</p>
-										<div className="settlement-receipt-links">
-											{activePurchase?.registration?.id ? (
-												<a
-													href={transactionExplorerUrl(activePurchase.registration.id)}
-													rel="noreferrer"
-													target="_blank"
-												>
-													<OperationExternalLink>
-														Reservation {short(activePurchase.registration.id)}
-													</OperationExternalLink>
-												</a>
-											) : null}
-											{activePurchase?.payment?.id ? (
-												<a
-													href={transactionExplorerUrl(activePurchase.payment.id)}
-													rel="noreferrer"
-													target="_blank"
-												>
-													<OperationExternalLink>
-														Payment {short(activePurchase.payment.id)}
-													</OperationExternalLink>
-												</a>
-											) : null}
-										</div>
-									</FungibleSettlementRecoveryPanel>
+									</section>
+								) : null}
+								{matchedOrders.length ? (
+									<LiveRegion as="p" id={quoteStatusId}>
+										<ArCurrencyText>
+											{quoteState === 'ready' && estimatedCost
+												? `Purchase quote ready. Maximum total ${winstonToArDecimal(
+														estimatedCost
+												  )} AR.${canAfford ? '' : ' This wallet has insufficient AR.'}`
+												: quoteState === 'error'
+												? 'Purchase quote unavailable. Retry the cost check before buying.'
+												: 'Checking the wallet balance and network fees.'}
+										</ArCurrencyText>
+									</LiveRegion>
+								) : null}
+								{matchedOrders.length ? (
+									quoteState === 'error' ? (
+										<RetryNotice
+											onRetry={() => setQuoteRetry((value) => value + 1)}
+											retryDescribedBy={quoteStatusId}
+										/>
+									) : null
+								) : null}
+								{canAfford === false ? (
+									<p className="purchase-form-error" role="alert">
+										<ArCurrencyText>
+											This wallet does not have enough AR for the purchase and network fees.
+										</ArCurrencyText>
+									</p>
 								) : null}
 							</>
 						) : null}
-						{failureKind === 'market-state-changed' ? (
-							<Button data-dialog-initial onClick={() => props.onClose(false)} size="custom">
-								View updated token
-							</Button>
-						) : failureKind === 'transaction-not-sent' && transaction ? (
-							<>
-								<p>No transaction was submitted. Retry this signature or discard it to start over.</p>
-								<div className="dialog-actions">
-									<Button data-dialog-initial onClick={() => void submit()} size="custom">
-										Retry transfer
-									</Button>
-									<Button
-										size="custom"
-										onClick={() => {
-											const discarded = removeWalletRecoveryAndSignatures<any>(
-												localStorage,
-												operationStorageKey(props.asset.id, props.owner),
-												(record) => record?.txId === transaction.id,
-												[transaction.id],
-												props.owner
-											);
-											if (!discarded) {
-												setMessage(
-													'This saved transfer changed in another tab. Close this panel and review the active action.'
-												);
-												return;
-											}
-											setTransaction(null);
-											props.onClose(false, false);
-										}}
-										variant="danger"
-									>
-										Discard transfer
-									</Button>
-								</div>
-							</>
-						) : failureKind === 'transaction-rejected' && transaction ? (
-							<Button
-								data-dialog-initial
-								size="custom"
-								onClick={() => {
-									removeWalletRecordIf<any>(
-										localStorage,
-										operationStorageKey(props.asset.id, props.owner),
-										(record) => record?.txId === transaction.id
-									);
-									localStorage.removeItem(`bazar-signed-transaction:${transaction.id}`);
-									props.onClose(false);
-								}}
-								variant="danger"
-							>
-								Discard rejected signature and sign again
-							</Button>
-						) : props.operation.kind === 'buy' ? (
-							<>
-								{purchaseNeedsManualReview ? (
-									<p>
-										The process rejected this scheduled purchase after payment. Rechecking it cannot
-										apply the transfer, so Bazar will keep the permanent receipts without creating a
-										replacement.
-									</p>
-								) : recoverableBatch ? (
-									<p>
-										Completed settlements will not be retried; only incomplete settlements will
-										continue.
-									</p>
-								) : (
-									<p>
-										No transaction was submitted. Any earlier approvals from this attempt were
-										discarded.
-									</p>
-								)}
-								<Button
-									data-dialog-initial
-									onClick={purchaseNeedsManualReview ? acknowledgeTerminalPurchase : restartPurchase}
-									size="custom"
-								>
-									{purchaseNeedsManualReview
-										? 'Unlock asset and close'
-										: recoverableBatch
-										? `Resume ${incompletePurchases} incomplete ${
-												incompletePurchases === 1 ? 'settlement' : 'settlements'
-										  }`
-										: 'Try again'}
-								</Button>
-							</>
-						) : transaction ? (
-							<Button data-dialog-initial onClick={() => void submit()} size="custom">
-								Resume the signed transaction
-							</Button>
-						) : (
-							<Button
-								data-dialog-initial
-								size="custom"
-								onClick={() => {
-									setFailureKind(null);
-									setMessage('');
-									setPhase('form');
-								}}
-							>
-								Try again
-							</Button>
-						)}
 					</div>
-				) : null}
-			</div>
-		</div>
+					<div className="trade-form-footer">
+						<Button
+							className={`wide${
+								props.operation.kind === 'buy' || props.operation.kind === 'sell'
+									? ' with-icon market-primary-action'
+									: ''
+							}`}
+							data-dialog-initial
+							aria-label={
+								props.operation.kind === 'transfer' && enteredQuantity && transferValid
+									? fungibleTransferSubmitLabel(
+											enteredQuantity.toString(),
+											props.state,
+											transferRecipient,
+											true
+									  )
+									: undefined
+							}
+							aria-describedby={
+								props.operation.kind === 'buy' && matchedOrders.length ? quoteStatusId : undefined
+							}
+							disabled={
+								(props.operation.kind === 'buy' &&
+									(!matchedOrders.length || !estimatedCost || canAfford !== true)) ||
+								(props.operation.kind === 'sell' && !sellValid) ||
+								(props.operation.kind === 'transfer' && !transferValid)
+							}
+							size="custom"
+							type="submit"
+							variant={props.operation.kind === 'cancel' ? 'danger' : 'primary'}
+						>
+							{props.operation.kind === 'buy' ? (
+								<Icon icon={ShoppingCart} size="sm" />
+							) : props.operation.kind === 'sell' ? (
+								<Icon icon={Tag} size="sm" />
+							) : null}
+							<ArCurrencyText>
+								{props.operation.kind === 'buy' && matchedOrders.length
+									? `Buy ${tokenLabel(matchedQuantity.toString(), props.state)} · ${
+											estimatedCost
+												? `${winstonToArDecimal(estimatedCost)} AR max`
+												: 'checking total…'
+									  }`
+									: props.operation.kind === 'sell' && listingQuote && enteredQuantity
+									? `List ${tokenLabel(
+											enteredQuantity.toString(),
+											props.state
+									  )} for ${listingQuote} AR`
+									: props.operation.kind === 'cancel'
+									? `Cancel listing and return ${tokenLabel(
+											props.operation.order.quantity,
+											props.state
+									  )}`
+									: props.operation.kind === 'transfer' && enteredQuantity
+									? fungibleTransferSubmitLabel(
+											enteredQuantity.toString(),
+											props.state,
+											transferRecipient
+									  )
+									: operationLabel(props.operation.kind)}
+							</ArCurrencyText>
+						</Button>
+					</div>
+				</form>
+			) : null}
+			{phase === 'working' ? (
+				<div className="operation-working">
+					{props.operation.kind === 'buy' ? (
+						<LiveRegion as="p">{settlementAnnouncement}</LiveRegion>
+					) : (
+						<LiveRegion as="p">
+							{message ||
+								(signedWork
+									? 'Watching this transaction.'
+									: 'Preparing the transaction for wallet approval.')}
+						</LiveRegion>
+					)}
+					{props.operation.kind === 'buy' && visibleOrders.length ? (
+						<FungiblePurchaseSequence
+							listingCount={visibleOrders.length}
+							states={visibleOrders.map((order) => purchaseStates[order.orderId])}
+						/>
+					) : null}
+					{signedWork && props.operation.kind !== 'buy' ? (
+						<p className="sync-resume-note">
+							Transaction details are saved in this browser. Return with the same wallet to continue while
+							this browser data remains available.
+						</p>
+					) : null}
+					{workingStatus ? <p className="scheduler-wait">{workingStatus}</p> : null}
+					{props.operation.kind === 'buy' && visibleOrders.length ? (
+						activeOrder && activePurchase ? (
+							<ArweaveTransactionSync
+								active={props.visible}
+								skipKind={purchaseSkipKind(activePurchase)}
+								onSkip={
+									activePurchase.canSkip
+										? () => {
+												purchasesRef.current.get(activeOrder.orderId)?.skip();
+										  }
+										: undefined
+								}
+								subject={`${props.asset.name} · ${tokenLabel(activeOrder.quantity, props.state)}`}
+								startedAt={submittedAtRef.current}
+								steps={purchaseSteps}
+								activeStep={activeStep}
+								pendingAfterConfirmation={
+									activePurchase.stage === 'registration-accepting'
+										? 'Checking live reservation'
+										: activePurchase.stage === 'ownership-verifying'
+										? 'Checking receipt'
+										: undefined
+								}
+							/>
+						) : (
+							<Loading label="Preparing the purchase for wallet approval…" />
+						)
+					) : singleSteps.length ? (
+						<ArweaveTransactionSync
+							active={props.visible}
+							subject={props.asset.name}
+							startedAt={submittedAtRef.current}
+							steps={singleSteps}
+							activeStep={props.operation.kind}
+							pendingAfterConfirmation={postConfirmationPendingLabel(confirmations, 5, message)}
+						/>
+					) : (
+						<Loading label="Preparing the signed transaction…" />
+					)}
+				</div>
+			) : null}
+			{phase === 'done' ? (
+				<div className="result success">
+					<OperationOutcome
+						title={outcomeTitle}
+						detail={outcomeDetail}
+						status={
+							props.operation.kind === 'buy'
+								? `Confirmations: ${quorumConfirmationDepth(
+										purchaseSteps.find((step) => step.key === 'pay')
+								  )}`
+								: undefined
+						}
+					>
+						{props.operation.kind === 'buy' || props.operation.kind === 'sell' ? (
+							<OperationOutcomeSubject
+								label={props.operation.kind === 'buy' ? 'You received' : 'You listed'}
+								title={
+									props.operation.kind === 'buy'
+										? tokenLabel(completedPurchaseQuantity.toString(), props.state)
+										: enteredQuantity
+										? tokenLabel(enteredQuantity.toString(), props.state)
+										: props.asset.name
+								}
+								detail={
+									props.operation.kind === 'sell' && listingQuote
+										? `${listingQuote} AR total`
+										: props.asset.name
+								}
+								media={
+									<TokenAvatar
+										className="operation-outcome-token-avatar"
+										image={props.asset.image}
+										loading="eager"
+										ticker={props.state.ticker || props.asset.ticker || props.asset.name}
+									/>
+								}
+							/>
+						) : null}
+						{props.operation.kind === 'buy' && purchaseSteps.length ? (
+							<div className="result-outcome-sync">
+								<ArweaveTransactionSync
+									active={props.visible}
+									activeStep="pay"
+									startedAt={submittedAtRef.current}
+									steps={purchaseSteps}
+									subject={`${props.asset.name} · ${tokenLabel(
+										activeOrder?.quantity ?? '0',
+										props.state
+									)}`}
+								/>
+							</div>
+						) : null}
+					</OperationOutcome>
+					{transaction && props.operation.kind !== 'transfer' ? (
+						<a href={transactionExplorerUrl(transaction.id)} rel="noreferrer" target="_blank">
+							<OperationExternalLink>View transaction {short(transaction.id)}</OperationExternalLink>
+						</a>
+					) : null}
+					{props.operation.kind === 'buy' ? (
+						<FungiblePurchaseReceiptNavigator
+							activeOrderId={activeOrder?.orderId}
+							onSelect={setActiveOrderId}
+							orders={visibleOrders}
+							purchaseStates={purchaseStates}
+							state={props.state}
+						/>
+					) : props.operation.kind === 'transfer' && transaction && enteredQuantity ? (
+						<div className="settlement-receipt">
+							<div>
+								<span>Quantity</span>
+								<strong>{tokenLabel(enteredQuantity.toString(), props.state)}</strong>
+							</div>
+							<div>
+								<span>Recipient</span>
+								<WalletAddress address={transferRecipient} full label="recipient" />
+							</div>
+							<div className="settlement-receipt-links">
+								<a href={transactionExplorerUrl(transaction.id)} rel="noreferrer" target="_blank">
+									<OperationExternalLink>Transaction {short(transaction.id)}</OperationExternalLink>
+								</a>
+							</div>
+						</div>
+					) : null}
+					<Button
+						className="with-icon"
+						data-dialog-initial
+						onClick={() => props.onClose(false)}
+						size="custom"
+						variant="primary"
+					>
+						<Icon icon={ArrowLeft} size="sm" /> View updated token
+					</Button>
+				</div>
+			) : null}
+			{phase === 'error' ? (
+				<div className="result error">
+					<FungibleOperationErrorAlert message={message} />
+					{props.operation.kind === 'buy' && visibleOrders.length ? (
+						<>
+							<div className="settlement-tabs" aria-label="Settlement recovery status" role="tablist">
+								{visibleOrders.map((order, index) => {
+									const active = order.orderId === activeOrder?.orderId;
+									return (
+										<Button
+											aria-controls={SETTLEMENT_ERROR_PANEL_ID}
+											aria-selected={active}
+											className={active ? 'active' : undefined}
+											id={`settlement-error-tab-${order.orderId}`}
+											key={order.orderId}
+											onClick={() => setActiveOrderId(order.orderId)}
+											size="custom"
+											onKeyDown={(event) => {
+												const nextIndex = settlementTabIndex(
+													event.key,
+													index,
+													visibleOrders.length
+												);
+												if (nextIndex === null) return;
+												event.preventDefault();
+												const nextOrder = visibleOrders[nextIndex];
+												setActiveOrderId(nextOrder.orderId);
+												window.requestAnimationFrame(() => {
+													document
+														.getElementById(`settlement-error-tab-${nextOrder.orderId}`)
+														?.focus();
+												});
+											}}
+											role="tab"
+											tabIndex={active ? 0 : -1}
+											type="button"
+										>
+											<span>Listing {index + 1}</span>
+											<strong>{tokenLabel(order.quantity, props.state)}</strong>
+											<small>{batchStageLabel(purchaseStates[order.orderId])}</small>
+										</Button>
+									);
+								})}
+							</div>
+							{activeOrder ? (
+								<FungibleSettlementRecoveryPanel
+									orderId={activeOrder.orderId}
+									settled={activePurchase?.stage === 'complete'}
+								>
+									<div>
+										<span>Stage</span>
+										<strong>{batchStageLabel(activePurchase)}</strong>
+									</div>
+									<div>
+										<span>Seller</span>
+										<WalletAddress address={activeOrder.creator} full label="seller" />
+									</div>
+									<div>
+										<span>Order</span>
+										<Tooltip content={activeOrder.orderId} placement="top">
+											{(tooltipId) => (
+												<strong aria-describedby={tooltipId}>
+													{short(activeOrder.orderId)}
+												</strong>
+											)}
+										</Tooltip>
+									</div>
+									<p>
+										{activePurchase?.error
+											? errorMessage(
+													marketplaceCodedError(
+														activePurchase.error.code,
+														activePurchase.error.message || activePurchase.error.code
+													)
+											  )
+											: activePurchase?.stage === 'complete'
+											? 'This listing settled successfully.'
+											: 'This incomplete listing has saved transaction details and can be continued with the same wallet.'}
+									</p>
+									<div className="settlement-receipt-links">
+										{activePurchase?.registration?.id ? (
+											<a
+												href={transactionExplorerUrl(activePurchase.registration.id)}
+												rel="noreferrer"
+												target="_blank"
+											>
+												<OperationExternalLink>
+													Reservation {short(activePurchase.registration.id)}
+												</OperationExternalLink>
+											</a>
+										) : null}
+										{activePurchase?.payment?.id ? (
+											<a
+												href={transactionExplorerUrl(activePurchase.payment.id)}
+												rel="noreferrer"
+												target="_blank"
+											>
+												<OperationExternalLink>
+													Payment {short(activePurchase.payment.id)}
+												</OperationExternalLink>
+											</a>
+										) : null}
+									</div>
+								</FungibleSettlementRecoveryPanel>
+							) : null}
+						</>
+					) : null}
+					{failureKind === 'market-state-changed' ? (
+						<Button data-dialog-initial onClick={() => props.onClose(false)} size="custom">
+							View updated token
+						</Button>
+					) : failureKind === 'transaction-not-sent' && transaction ? (
+						<>
+							<p>No transaction was submitted. Retry this signature or discard it to start over.</p>
+							<div className="dialog-actions">
+								<Button data-dialog-initial onClick={() => void submit()} size="custom">
+									Retry transfer
+								</Button>
+								<Button
+									size="custom"
+									onClick={() => {
+										const discarded = removeWalletRecoveryAndSignatures<any>(
+											localStorage,
+											operationStorageKey(props.asset.id, props.owner),
+											(record) => record?.txId === transaction.id,
+											[transaction.id],
+											props.owner
+										);
+										if (!discarded) {
+											setMessage(
+												'This saved transfer changed in another tab. Close this panel and review the active action.'
+											);
+											return;
+										}
+										setTransaction(null);
+										props.onClose(false, false);
+									}}
+									variant="danger"
+								>
+									Discard transfer
+								</Button>
+							</div>
+						</>
+					) : failureKind === 'transaction-rejected' && transaction ? (
+						<Button
+							data-dialog-initial
+							size="custom"
+							onClick={() => {
+								removeWalletRecordIf<any>(
+									localStorage,
+									operationStorageKey(props.asset.id, props.owner),
+									(record) => record?.txId === transaction.id
+								);
+								localStorage.removeItem(`bazar-signed-transaction:${transaction.id}`);
+								props.onClose(false);
+							}}
+							variant="danger"
+						>
+							Discard rejected signature and sign again
+						</Button>
+					) : props.operation.kind === 'buy' ? (
+						<>
+							{purchaseNeedsManualReview ? (
+								<p>
+									The process rejected this scheduled purchase after payment. Rechecking it cannot
+									apply the transfer, so Bazar will keep the permanent receipts without creating a
+									replacement.
+								</p>
+							) : recoverableBatch ? (
+								<p>
+									Completed settlements will not be retried; only incomplete settlements will
+									continue.
+								</p>
+							) : (
+								<p>
+									No transaction was submitted. Any earlier approvals from this attempt were
+									discarded.
+								</p>
+							)}
+							<Button
+								data-dialog-initial
+								onClick={purchaseNeedsManualReview ? acknowledgeTerminalPurchase : restartPurchase}
+								size="custom"
+							>
+								{purchaseNeedsManualReview
+									? 'Unlock asset and close'
+									: recoverableBatch
+									? `Resume ${incompletePurchases} incomplete ${
+											incompletePurchases === 1 ? 'settlement' : 'settlements'
+									  }`
+									: 'Try again'}
+							</Button>
+						</>
+					) : transaction ? (
+						<Button data-dialog-initial onClick={() => void submit()} size="custom">
+							Resume the signed transaction
+						</Button>
+					) : (
+						<Button
+							data-dialog-initial
+							size="custom"
+							onClick={() => {
+								setFailureKind(null);
+								setMessage('');
+								setPhase('form');
+							}}
+						>
+							Try again
+						</Button>
+					)}
+				</div>
+			) : null}
+		</Dialog>
 	);
 }

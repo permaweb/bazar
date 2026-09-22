@@ -1,8 +1,6 @@
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it, vi } from 'vitest';
-
-vi.mock('../app/useDialogFocus', () => ({ useDialogFocus: () => ({ current: null }) }));
+import { describe, expect, it } from 'vitest';
 
 import FungibleMintDialog from 'features/Create/components/organisms/FungibleMintDialog/FungibleMintDialog';
 

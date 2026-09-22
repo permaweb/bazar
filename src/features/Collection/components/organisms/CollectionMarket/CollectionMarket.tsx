@@ -53,6 +53,7 @@ import { ErrorPanel } from 'components/molecules/ErrorPanel';
 import { RetryNotice } from 'components/molecules/RetryNotice';
 import { RouteState } from 'components/molecules/RouteState';
 import { TokenMarketRow } from 'components/molecules/TokenMarketRow';
+import { Dialog } from 'components/organisms/Dialog';
 import {
 	collectionActivityWindowDelta,
 	collectionCandidateMembership,
@@ -135,6 +136,7 @@ export default function CollectionMarket() {
 		() => loadMintedCollections().find((item) => item.id === collectionId),
 		[collectionId, collection?.assets]
 	);
+	const appendTrigger = React.useRef<HTMLButtonElement>(null);
 	const [appendOpen, setAppendOpen] = React.useState(false);
 	const [appendFiles, setAppendFiles] = React.useState<File[]>([]);
 	const [appendEstimate, setAppendEstimate] = React.useState<CollectionMintEstimate | null>(null);
@@ -1046,7 +1048,12 @@ export default function CollectionMarket() {
 				<CollectionMarketSummary
 					action={
 						collection.kind === 'images' && ownedCollection?.owner === wallet.address ? (
-							<Button onClick={() => setAppendOpen(true)} type="button" variant="neutral">
+							<Button
+								onClick={() => setAppendOpen(true)}
+								ref={appendTrigger}
+								type="button"
+								variant="neutral"
+							>
 								<Images aria-hidden="true" /> Add assets
 							</Button>
 						) : undefined
@@ -1083,88 +1090,87 @@ export default function CollectionMarket() {
 					onSelectOffers={() => setListedOnly(true)}
 				/>
 			</div>
-			{appendOpen && ownedCollection ? (
-				<div className="dialog-backdrop" role="presentation">
-					<section
-						aria-labelledby="append-collection-title"
-						aria-modal="true"
-						className="dialog dialog-compact collection-append-dialog"
-						role="dialog"
-					>
-						<DialogHeading
-							control={
-								<IconButton
-									icon={X}
-									label="Close add assets"
-									onClick={() => setAppendOpen(false)}
-									disabled={appendWorking}
-								/>
-							}
-							eyebrow="Extend collection"
-							title={`Add assets to ${collection.name}`}
-							titleId="append-collection-title"
+			<Dialog
+				as="section"
+				backdropClassName="dialog-backdrop"
+				className="dialog dialog-compact collection-append-dialog"
+				labelledBy="append-collection-title"
+				onDismiss={() => {
+					if (!appendWorking) setAppendOpen(false);
+				}}
+				open={appendOpen && Boolean(ownedCollection)}
+				restoreTarget={() => appendTrigger.current}
+			>
+				<DialogHeading
+					control={
+						<IconButton
+							icon={X}
+							label="Close add assets"
+							onClick={() => setAppendOpen(false)}
+							disabled={appendWorking}
 						/>
-						<p className="append-collection-copy">
-							Each image becomes a wallet-owned Arweave asset. A new immutable manifest then updates the
-							collection carrier.
-						</p>
-						<label className={`mint-dropzone${appendFiles.length ? ' has-file' : ''}`}>
-							<FileInput
-								accept="image/png,image/jpeg,image/webp,image/gif"
-								disabled={appendWorking}
-								multiple
-								onChange={(event) => {
-									setAppendFiles(Array.from(event.target.files ?? []).slice(0, 10));
-									setAppendError(null);
-								}}
-							/>
-							<span>
-								<Upload aria-hidden="true" />
-								<strong>
-									{appendFiles.length ? `${appendFiles.length} images ready` : 'Choose images'}
-								</strong>
-								<small>PNG, JPEG, WebP, or GIF · up to 10 files</small>
-							</span>
-						</label>
-						{appendFiles.length ? (
-							<div className="collection-append-preview" aria-label="Selected images">
-								{appendPreviews.map(({ file, url }) => (
-									<figure key={`${file.name}:${file.size}`}>
-										<img alt="" src={url} />
-										<figcaption>{file.name.replace(/\.[^.]+$/, '')}</figcaption>
-									</figure>
-								))}
-							</div>
-						) : null}
-						<div className="collection-append-summary">
-							<span>{appendEstimating ? 'Checking Arweave storage cost…' : appendStatus || 'Ready'}</span>
-							<strong>
-								{appendEstimate ? (
-									<ArCurrencyText>{`${winstonToAr(appendEstimate.total.toString())} AR · ${
-										appendEstimate.transactionCount
-									} transactions`}</ArCurrencyText>
-								) : (
-									'—'
-								)}
-							</strong>
-						</div>
-						{appendError ? <ErrorPanel message={appendError} /> : null}
-						<Button
-							className="wide"
-							disabled={!appendFiles.length || !appendEstimate || appendWorking}
-							onClick={() => void appendToCollection()}
-							type="button"
-						>
-							{appendWorking ? (
-								<LoaderCircle className="spin" aria-hidden="true" />
-							) : (
-								<Upload aria-hidden="true" />
-							)}
-							{appendWorking ? 'Adding assets…' : `Add ${appendFiles.length || ''} assets`}
-						</Button>
-					</section>
+					}
+					eyebrow="Extend collection"
+					title={`Add assets to ${collection.name}`}
+					titleId="append-collection-title"
+				/>
+				<p className="append-collection-copy">
+					Each image becomes a wallet-owned Arweave asset. A new immutable manifest then updates the
+					collection carrier.
+				</p>
+				<label className={`mint-dropzone${appendFiles.length ? ' has-file' : ''}`}>
+					<FileInput
+						accept="image/png,image/jpeg,image/webp,image/gif"
+						disabled={appendWorking}
+						multiple
+						onChange={(event) => {
+							setAppendFiles(Array.from(event.target.files ?? []).slice(0, 10));
+							setAppendError(null);
+						}}
+					/>
+					<span>
+						<Upload aria-hidden="true" />
+						<strong>{appendFiles.length ? `${appendFiles.length} images ready` : 'Choose images'}</strong>
+						<small>PNG, JPEG, WebP, or GIF · up to 10 files</small>
+					</span>
+				</label>
+				{appendFiles.length ? (
+					<div className="collection-append-preview" aria-label="Selected images">
+						{appendPreviews.map(({ file, url }) => (
+							<figure key={`${file.name}:${file.size}`}>
+								<img alt="" src={url} />
+								<figcaption>{file.name.replace(/\.[^.]+$/, '')}</figcaption>
+							</figure>
+						))}
+					</div>
+				) : null}
+				<div className="collection-append-summary">
+					<span>{appendEstimating ? 'Checking Arweave storage cost…' : appendStatus || 'Ready'}</span>
+					<strong>
+						{appendEstimate ? (
+							<ArCurrencyText>{`${winstonToAr(appendEstimate.total.toString())} AR · ${
+								appendEstimate.transactionCount
+							} transactions`}</ArCurrencyText>
+						) : (
+							'—'
+						)}
+					</strong>
 				</div>
-			) : null}
+				{appendError ? <ErrorPanel message={appendError} /> : null}
+				<Button
+					className="wide"
+					disabled={!appendFiles.length || !appendEstimate || appendWorking}
+					onClick={() => void appendToCollection()}
+					type="button"
+				>
+					{appendWorking ? (
+						<LoaderCircle className="spin" aria-hidden="true" />
+					) : (
+						<Upload aria-hidden="true" />
+					)}
+					{appendWorking ? 'Adding assets…' : `Add ${appendFiles.length || ''} assets`}
+				</Button>
+			</Dialog>
 			<CollectionIndexNotice collection={collection} checking={market.loading} onRetry={market.retry} />
 			{pagedTokenScope ? (
 				<div className="collection-source-notice" role="status">

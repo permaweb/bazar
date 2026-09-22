@@ -42,9 +42,9 @@ import { TokenAvatar } from 'components/atoms/TokenAvatar';
 import { Tooltip } from 'components/atoms/Tooltip';
 import { ErrorPanel } from 'components/molecules/ErrorPanel';
 import { TokenMarketRow } from 'components/molecules/TokenMarketRow';
+import { Dialog, isModalDialogOpen } from 'components/organisms/Dialog';
 import { isAudioContentType } from 'helpers/asset-media';
 import { short } from 'helpers/format';
-import { useDialogFocus } from 'hooks/useDialogFocus';
 import { GatewayControl } from 'navigation/GatewayControl';
 import { OperationActivityControl } from 'navigation/OperationActivityControl';
 import { WalletMenu } from 'navigation/WalletMenu';
@@ -266,7 +266,7 @@ export default function Header() {
 		if (searchOpen && previousRoute !== routeKey) closeSearch(false);
 	}, [closeSearch, routeKey, searchOpen]);
 	const openSearch = React.useCallback(() => {
-		if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
+		if (isModalDialogOpen()) return;
 		suppressSearchFocusRestore.current = false;
 		setSearchOpen(true);
 	}, []);
@@ -282,7 +282,7 @@ export default function Header() {
 		const focusSearch = (event: KeyboardEvent) => {
 			if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
 				event.preventDefault();
-				if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
+				if (isModalDialogOpen()) return;
 				openSearch();
 			}
 			if (event.key === 'Escape' && searchOpen) {
@@ -340,7 +340,6 @@ export default function Header() {
 		() => (suppressSearchFocusRestore.current ? document.getElementById('main-content') : inputRef.current),
 		[]
 	);
-	const searchDialogRef = useDialogFocus<HTMLElement>(searchOpen, closeSearch, searchRestoreTarget);
 	const scopes = [
 		{ id: 'all' as const, label: 'All', Icon: Search },
 		{ id: 'tokens' as const, label: 'Tokens', Icon: BarChart3 },
@@ -407,318 +406,299 @@ export default function Header() {
 					</nav>
 				</div>
 			</header>
-			{searchOpen ? (
-				<div
-					className="search-overlay"
-					onMouseDown={(event) => event.target === event.currentTarget && closeSearch()}
-				>
-					<section
-						aria-label="Search Bazar"
-						aria-modal="true"
-						className="search-panel"
-						id="marketplace-search-panel"
-						ref={searchDialogRef}
-						role="dialog"
-						tabIndex={-1}
+			<Dialog
+				as="section"
+				backdropClassName="search-overlay"
+				className="search-panel"
+				id="marketplace-search-panel"
+				label="Search Bazar"
+				onDismiss={closeSearch}
+				open={searchOpen}
+				restoreTarget={searchRestoreTarget}
+			>
+				<form className="search-panel-query" role="search" onSubmit={submitSearch}>
+					<Icon icon={Search} />
+					<TextInput
+						autoFocus
+						aria-label="Search Bazar marketplace"
+						placeholder="Search Bazar"
+						value={query}
+						onChange={(event) => updateQuery(event.target.value)}
+						onKeyDown={(event) => {
+							if (event.key !== 'Enter') return;
+							event.preventDefault();
+							runSearch();
+						}}
+						ref={panelInputRef}
+					/>
+					{query ? (
+						<Button
+							size="custom"
+							type="button"
+							onClick={clearSearchQuery}
+							aria-label="Clear search"
+							variant="ghost"
+						>
+							Clear
+						</Button>
+					) : null}
+					<Button
+						size="icon"
+						className="search-panel-submit"
+						type="submit"
+						aria-label="View search results"
+						variant="primary"
 					>
-						<form className="search-panel-query" role="search" onSubmit={submitSearch}>
-							<Icon icon={Search} />
-							<TextInput
-								autoFocus
-								aria-label="Search Bazar marketplace"
-								placeholder="Search Bazar"
-								value={query}
-								onChange={(event) => updateQuery(event.target.value)}
-								onKeyDown={(event) => {
-									if (event.key !== 'Enter') return;
-									event.preventDefault();
-									runSearch();
-								}}
-								ref={panelInputRef}
-							/>
-							{query ? (
-								<Button
-									size="custom"
-									type="button"
-									onClick={clearSearchQuery}
-									aria-label="Clear search"
-									variant="ghost"
-								>
-									Clear
-								</Button>
-							) : null}
+						<Icon icon={ArrowRight} size="sm" />
+					</Button>
+					<IconButton
+						icon={X}
+						label="Close search"
+						onClick={() => closeSearch()}
+						className="search-panel-close"
+					/>
+				</form>
+				<aside className="search-categories" aria-label="Search categories">
+					{scopes.map((item) => {
+						const ScopeIcon = item.Icon;
+						return (
 							<Button
-								size="icon"
-								className="search-panel-submit"
-								type="submit"
-								aria-label="View search results"
-								variant="primary"
+								aria-pressed={scope === item.id}
+								className={scope === item.id ? 'active' : undefined}
+								key={item.id}
+								size="custom"
+								onClick={() => setScope(item.id)}
+								variant="ghost"
 							>
-								<Icon icon={ArrowRight} size="sm" />
+								<ScopeIcon className="ui-icon" aria-hidden="true" />
+								{item.label}
 							</Button>
-							<IconButton
-								icon={X}
-								label="Close search"
-								onClick={() => closeSearch()}
-								className="search-panel-close"
-							/>
-						</form>
-						<aside className="search-categories" aria-label="Search categories">
-							{scopes.map((item) => {
-								const ScopeIcon = item.Icon;
-								return (
-									<Button
-										aria-pressed={scope === item.id}
-										className={scope === item.id ? 'active' : undefined}
-										key={item.id}
-										size="custom"
-										onClick={() => setScope(item.id)}
-										variant="ghost"
-									>
-										<ScopeIcon className="ui-icon" aria-hidden="true" />
-										{item.label}
+						);
+					})}
+				</aside>
+				<div className="search-panel-main">
+					<div className="search-panel-content">
+						<LiveRegion>{searchFeedback || announcedSearchResult}</LiveRegion>
+						{market.loading && !market.collections.length ? (
+							<Loading label="Loading collection indexes from Arweave…" />
+						) : null}
+						{atomicIndexSearchPending && !assetResults.length ? (
+							<Loading label="Searching permanent Bazar creation records on Arweave…" />
+						) : null}
+						{partialTokenCollection ? (
+							<div className="collection-source-notice">
+								<span role="status">
+									Token matches cover {partialTokenCollection.assets.length.toLocaleString()} of{' '}
+									{(
+										partialTokenCollection.total ?? partialTokenCollection.assets.length
+									).toLocaleString()}{' '}
+									discovered records currently loaded.
+								</span>
+								<Link
+									className="with-icon"
+									to={`/collection/${partialTokenCollection.id}?q=${encodeURIComponent(
+										query.trim()
+									)}`}
+									onClick={followSearchResult}
+								>
+									Continue token search
+									<Icon icon={ArrowRight} size="xs" />
+								</Link>
+							</div>
+						) : null}
+						{!normalizedQuery && recentQueries.length ? (
+							<section className="search-result-section">
+								<div className="search-result-heading">
+									<h2>Recent searches</h2>
+									<Button onClick={clearRecentSearches} size="custom" variant="ghost">
+										Clear
 									</Button>
-								);
-							})}
-						</aside>
-						<div className="search-panel-main">
-							<div className="search-panel-content">
-								<LiveRegion>{searchFeedback || announcedSearchResult}</LiveRegion>
-								{market.loading && !market.collections.length ? (
-									<Loading label="Loading collection indexes from Arweave…" />
-								) : null}
-								{atomicIndexSearchPending && !assetResults.length ? (
-									<Loading label="Searching permanent Bazar creation records on Arweave…" />
-								) : null}
-								{partialTokenCollection ? (
-									<div className="collection-source-notice">
-										<span role="status">
-											Token matches cover {partialTokenCollection.assets.length.toLocaleString()}{' '}
-											of{' '}
-											{(
-												partialTokenCollection.total ?? partialTokenCollection.assets.length
-											).toLocaleString()}{' '}
-											discovered records currently loaded.
-										</span>
-										<Link
-											className="with-icon"
-											to={`/collection/${partialTokenCollection.id}?q=${encodeURIComponent(
-												query.trim()
-											)}`}
-											onClick={followSearchResult}
+								</div>
+								<div className="recent-searches">
+									{recentQueries.map((item) => (
+										<Button
+											key={item}
+											onClick={() => useRecentQuery(item)}
+											size="custom"
+											variant="ghost"
 										>
-											Continue token search
-											<Icon icon={ArrowRight} size="xs" />
-										</Link>
-									</div>
-								) : null}
-								{!normalizedQuery && recentQueries.length ? (
-									<section className="search-result-section">
-										<div className="search-result-heading">
-											<h2>Recent searches</h2>
-											<Button onClick={clearRecentSearches} size="custom" variant="ghost">
-												Clear
-											</Button>
-										</div>
-										<div className="recent-searches">
-											{recentQueries.map((item) => (
-												<Button
-													key={item}
-													onClick={() => useRecentQuery(item)}
-													size="custom"
-													variant="ghost"
-												>
-													<Icon icon={History} size="sm" />
-													{item}
-												</Button>
-											))}
-										</div>
-									</section>
-								) : null}
-								{collectionResults.length ? (
-									<section className="search-result-section">
-										<div className="search-result-heading">
-											<h2>{normalizedQuery ? 'Matching collections' : 'Featured collections'}</h2>
-											<span>{collectionResults.length} shown</span>
-										</div>
-										<div className="search-collection-grid">
-											{collectionResults.map((collection) => {
-												const preview = collection.assets.find((asset) => asset.image)?.image;
-												const tokenPreview =
-													collection.assets.find((asset) => asset.image) ??
-													collection.assets[0];
-												return (
-													<Link
-														key={collection.id}
-														to={`/collection/${collection.id}`}
-														onClick={followSearchResult}
-													>
-														<span
-															className={`search-result-image${
-																collection.kind === 'tokens' ? ' token-avatar-slot' : ''
-															}`}
-														>
-															{collection.kind === 'tokens' ? (
-																<TokenAvatar
-																	image={tokenPreview?.image}
-																	ticker={tokenPreview?.ticker ?? 'Token'}
-																/>
-															) : preview ? (
-																<ArtworkImage src={preview} alt="" />
-															) : collection.kind === 'names' ? (
-																<NamesCubePreview />
-															) : (
-																<BazarMark />
-															)}
-														</span>
-														<span>
-															<strong>{collection.name}</strong>
-															<small>
-																{collectionKindLabel(collection)} ·{' '}
-																{collection.kind === 'names'
-																	? `${collection.assets.length.toLocaleString()} names loaded`
-																	: `${(
-																			collection.total ?? collection.assets.length
-																	  ).toLocaleString()} ${
-																			(collection.total ??
-																				collection.assets.length) === 1
-																				? 'asset'
-																				: 'assets'
-																	  }`}
-															</small>
-														</span>
-														<Icon icon={ArrowUpRight} size="sm" />
-													</Link>
-												);
-											})}
-										</div>
-									</section>
-								) : null}
-								{tokenResults.length ? (
-									<section className="search-result-section token-search-results">
-										<div className="search-result-heading">
-											<h2>{normalizedQuery ? 'Matching tokens' : 'Tokens'}</h2>
-											<span>{tokenResults.length} shown</span>
-										</div>
-										<div className="token-market-list compact">
-											{tokenResults.map(({ asset, collection }, index) => (
-												<TokenMarketRow
-													asset={asset}
-													collection={collection}
-													context="Fungible token"
-													key={`${collection.id}-${asset.id}`}
-													onFollow={followSearchResult}
-													onWarm={() => prefetchAssetPage(asset.id, true)}
-													priority={index === 0}
-												/>
-											))}
-										</div>
-									</section>
-								) : null}
-								{collectibleResults.length ? (
-									<section className="search-result-section">
-										<div className="search-result-heading">
-											<h2>{normalizedQuery ? 'Matching Uniques' : 'Featured Uniques'}</h2>
-											<span>{collectibleResults.length} shown</span>
-										</div>
-										<div className="search-asset-grid">
-											{collectibleResults.map(({ asset, collection }) => (
-												<Link
-													key={`${collection.id}-${asset.id}`}
-													to={`/asset/${collection.id}/${asset.id}`}
-													onClick={followSearchResult}
-													onFocus={() =>
-														prefetchAssetPage(asset.id, collection.kind === 'tokens')
-													}
-													onMouseEnter={() =>
-														prefetchAssetPage(asset.id, collection.kind === 'tokens')
-													}
-													onTouchStart={() =>
-														prefetchAssetPage(asset.id, collection.kind === 'tokens')
-													}
-												>
-													<span
-														className={`search-result-image${
-															collection.kind === 'tokens' ? ' token-avatar-slot' : ''
-														}`}
-													>
-														{collection.kind === 'tokens' ? (
-															<TokenAvatar
-																image={asset.image}
-																ticker={asset.ticker ?? 'Token'}
-															/>
-														) : asset.image ? (
-															<ArtworkImage src={asset.image} alt="" />
-														) : isAudioContentType(asset.contentType) ? (
-															<AudioArtwork
-																contentType={asset.contentType}
-																name={asset.name}
-															/>
-														) : (
-															<BazarMark />
-														)}
-													</span>
-													<span>
-														<strong>{asset.name}</strong>
-														<small>{collection.name}</small>
-													</span>
-													<Icon icon={ArrowUpRight} size="sm" />
-												</Link>
-											))}
-										</div>
-									</section>
-								) : null}
-								{directTokenProcess && directTokenCollection ? (
-									<section className="search-result-section">
-										<div className="search-result-heading">
-											<h2>Direct process</h2>
-											<span>Live state check required</span>
-										</div>
-										<div className="search-asset-grid">
+											<Icon icon={History} size="sm" />
+											{item}
+										</Button>
+									))}
+								</div>
+							</section>
+						) : null}
+						{collectionResults.length ? (
+							<section className="search-result-section">
+								<div className="search-result-heading">
+									<h2>{normalizedQuery ? 'Matching collections' : 'Featured collections'}</h2>
+									<span>{collectionResults.length} shown</span>
+								</div>
+								<div className="search-collection-grid">
+									{collectionResults.map((collection) => {
+										const preview = collection.assets.find((asset) => asset.image)?.image;
+										const tokenPreview =
+											collection.assets.find((asset) => asset.image) ?? collection.assets[0];
+										return (
 											<Link
-												to={`/asset/${directTokenCollection.id}/${query.trim()}`}
+												key={collection.id}
+												to={`/collection/${collection.id}`}
 												onClick={followSearchResult}
-												onFocus={() => prefetchAssetPage(query.trim(), true)}
-												onMouseEnter={() => prefetchAssetPage(query.trim(), true)}
-												onTouchStart={() => prefetchAssetPage(query.trim(), true)}
 											>
-												<span className="search-result-image token-avatar-slot">
-													<TokenAvatar ticker="Token" />
+												<span
+													className={`search-result-image${
+														collection.kind === 'tokens' ? ' token-avatar-slot' : ''
+													}`}
+												>
+													{collection.kind === 'tokens' ? (
+														<TokenAvatar
+															image={tokenPreview?.image}
+															ticker={tokenPreview?.ticker ?? 'Token'}
+														/>
+													) : preview ? (
+														<ArtworkImage src={preview} alt="" />
+													) : collection.kind === 'names' ? (
+														<NamesCubePreview />
+													) : (
+														<BazarMark />
+													)}
 												</span>
 												<span>
-													<strong>Check token process</strong>
+													<strong>{collection.name}</strong>
 													<small>
-														{short(query.trim())} · support is determined from live state
+														{collectionKindLabel(collection)} ·{' '}
+														{collection.kind === 'names'
+															? `${collection.assets.length.toLocaleString()} names loaded`
+															: `${(
+																	collection.total ?? collection.assets.length
+															  ).toLocaleString()} ${
+																	(collection.total ?? collection.assets.length) === 1
+																		? 'asset'
+																		: 'assets'
+															  }`}
 													</small>
 												</span>
 												<Icon icon={ArrowUpRight} size="sm" />
 											</Link>
-										</div>
-									</section>
-								) : null}
-								{market.error ? <ErrorPanel message={market.error} onRetry={market.retry} /> : null}
-								{!market.loading &&
-								!market.error &&
-								!atomicIndexSearchPending &&
-								!collectionResults.length &&
-								!assetResults.length &&
-								!directTokenProcess ? (
-									<div className="search-empty">
-										<strong>No results for “{query}”</strong>
-										<span>
-											{partialTokenCollection
-												? 'More token records remain available from the token collection.'
-												: atomicIndexSearchFailed
-												? 'Permanent Bazar creation-record search is temporarily unavailable. Try again shortly.'
-												: 'Try another token, Unique, collection, or Arweave name.'}
+										);
+									})}
+								</div>
+							</section>
+						) : null}
+						{tokenResults.length ? (
+							<section className="search-result-section token-search-results">
+								<div className="search-result-heading">
+									<h2>{normalizedQuery ? 'Matching tokens' : 'Tokens'}</h2>
+									<span>{tokenResults.length} shown</span>
+								</div>
+								<div className="token-market-list compact">
+									{tokenResults.map(({ asset, collection }, index) => (
+										<TokenMarketRow
+											asset={asset}
+											collection={collection}
+											context="Fungible token"
+											key={`${collection.id}-${asset.id}`}
+											onFollow={followSearchResult}
+											onWarm={() => prefetchAssetPage(asset.id, true)}
+											priority={index === 0}
+										/>
+									))}
+								</div>
+							</section>
+						) : null}
+						{collectibleResults.length ? (
+							<section className="search-result-section">
+								<div className="search-result-heading">
+									<h2>{normalizedQuery ? 'Matching Uniques' : 'Featured Uniques'}</h2>
+									<span>{collectibleResults.length} shown</span>
+								</div>
+								<div className="search-asset-grid">
+									{collectibleResults.map(({ asset, collection }) => (
+										<Link
+											key={`${collection.id}-${asset.id}`}
+											to={`/asset/${collection.id}/${asset.id}`}
+											onClick={followSearchResult}
+											onFocus={() => prefetchAssetPage(asset.id, collection.kind === 'tokens')}
+											onMouseEnter={() =>
+												prefetchAssetPage(asset.id, collection.kind === 'tokens')
+											}
+											onTouchStart={() =>
+												prefetchAssetPage(asset.id, collection.kind === 'tokens')
+											}
+										>
+											<span
+												className={`search-result-image${
+													collection.kind === 'tokens' ? ' token-avatar-slot' : ''
+												}`}
+											>
+												{collection.kind === 'tokens' ? (
+													<TokenAvatar image={asset.image} ticker={asset.ticker ?? 'Token'} />
+												) : asset.image ? (
+													<ArtworkImage src={asset.image} alt="" />
+												) : isAudioContentType(asset.contentType) ? (
+													<AudioArtwork contentType={asset.contentType} name={asset.name} />
+												) : (
+													<BazarMark />
+												)}
+											</span>
+											<span>
+												<strong>{asset.name}</strong>
+												<small>{collection.name}</small>
+											</span>
+											<Icon icon={ArrowUpRight} size="sm" />
+										</Link>
+									))}
+								</div>
+							</section>
+						) : null}
+						{directTokenProcess && directTokenCollection ? (
+							<section className="search-result-section">
+								<div className="search-result-heading">
+									<h2>Direct process</h2>
+									<span>Live state check required</span>
+								</div>
+								<div className="search-asset-grid">
+									<Link
+										to={`/asset/${directTokenCollection.id}/${query.trim()}`}
+										onClick={followSearchResult}
+										onFocus={() => prefetchAssetPage(query.trim(), true)}
+										onMouseEnter={() => prefetchAssetPage(query.trim(), true)}
+										onTouchStart={() => prefetchAssetPage(query.trim(), true)}
+									>
+										<span className="search-result-image token-avatar-slot">
+											<TokenAvatar ticker="Token" />
 										</span>
-									</div>
-								) : null}
+										<span>
+											<strong>Check token process</strong>
+											<small>{short(query.trim())} · support is determined from live state</small>
+										</span>
+										<Icon icon={ArrowUpRight} size="sm" />
+									</Link>
+								</div>
+							</section>
+						) : null}
+						{market.error ? <ErrorPanel message={market.error} onRetry={market.retry} /> : null}
+						{!market.loading &&
+						!market.error &&
+						!atomicIndexSearchPending &&
+						!collectionResults.length &&
+						!assetResults.length &&
+						!directTokenProcess ? (
+							<div className="search-empty">
+								<strong>No results for “{query}”</strong>
+								<span>
+									{partialTokenCollection
+										? 'More token records remain available from the token collection.'
+										: atomicIndexSearchFailed
+										? 'Permanent Bazar creation-record search is temporarily unavailable. Try again shortly.'
+										: 'Try another token, Unique, collection, or Arweave name.'}
+								</span>
 							</div>
-						</div>
-					</section>
+						) : null}
+					</div>
 				</div>
-			) : null}
+			</Dialog>
 		</>
 	);
 }

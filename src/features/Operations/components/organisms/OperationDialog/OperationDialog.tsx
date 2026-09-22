@@ -71,6 +71,7 @@ import {
 	TransactionDialogControl,
 	transactionDialogDismissAction,
 } from 'components/molecules/TransactionDialogControl';
+import { Dialog } from 'components/organisms/Dialog';
 import { WalletAddress, WalletIdentity } from 'components/organisms/WalletAddress';
 import {
 	type ArweaveSyncStep,
@@ -87,7 +88,6 @@ import {
 	type MarketplaceOperationFailure,
 	marketplaceOperationFailure,
 } from 'helpers/marketplace-error';
-import { useDialogFocus } from 'hooks/useDialogFocus';
 import { OperationActivity } from 'providers/OperationActivityProvider';
 
 import {
@@ -173,6 +173,7 @@ export default function OperationDialog(props: {
 	const attemptRef = React.useRef(new AbortController());
 	const lifecycleRef = React.useRef<object | null>(null);
 	const hideTimerRef = React.useRef<number | null>(null);
+	const dialogRef = React.useRef<HTMLElement | null>(null);
 	const titleId = React.useId();
 	const operationLabelId = React.useId();
 	const fieldHelpId = React.useId();
@@ -882,424 +883,498 @@ export default function OperationDialog(props: {
 			props.onHide();
 		}, TRANSACTION_DIALOG_HIDE_DURATION_MS);
 	};
-	const dialogRef = useDialogFocus<HTMLDivElement>(
-		props.visible,
-		closeOrHide,
-		undefined,
-		visiblePhase,
-		props.restoreFallback
-	);
 	React.useEffect(() => {
 		if (props.visible) setHiding(false);
 	}, [props.visible]);
-	if (!props.visible && visiblePhase !== 'working') return null;
 	return (
-		<div
-			className={`dialog-backdrop operation-panel-backdrop${hiding ? ' dialog-backdrop-hiding' : ''}`}
-			hidden={!props.visible}
-			onMouseDown={(event) => event.target === event.currentTarget && closeOrHide()}
-			role="presentation"
+		<Dialog
+			backdropClassName="dialog-backdrop operation-panel-backdrop"
+			className={`dialog operation-side-panel${visiblePhase === 'working' ? '' : ' dialog-compact'}${
+				visiblePhase === 'form' ? ' dialog-form-phase' : ''
+			}`}
+			focusKey={visiblePhase}
+			hiding={hiding}
+			keepMounted={visiblePhase === 'working'}
+			labelledBy={`${operationLabelId} ${titleId}`}
+			onDismiss={closeOrHide}
+			open={props.visible}
+			panelRef={dialogRef}
+			restoreFallback={props.restoreFallback}
 		>
-			<div
-				className={`dialog operation-side-panel${visiblePhase === 'working' ? '' : ' dialog-compact'}${
-					visiblePhase === 'form' ? ' dialog-form-phase' : ''
-				}`}
-				aria-hidden={props.visible ? undefined : true}
-				aria-labelledby={props.visible ? `${operationLabelId} ${titleId}` : undefined}
-				aria-modal={props.visible ? true : undefined}
-				ref={dialogRef}
-				role={props.visible ? 'dialog' : undefined}
-				tabIndex={-1}
-			>
-				<DialogHeading
-					artwork={
-						visiblePhase === 'working' ? (
-							props.asset.image ? (
-								<ArtworkImage
-									alt=""
-									className="dialog-asset-artwork"
-									decoding="async"
-									loading="eager"
-									src={props.asset.image}
-								/>
-							) : (
-								<span aria-hidden="true" className="dialog-asset-artwork dialog-asset-artwork-fallback">
-									{props.asset.name.slice(0, 1)}
-								</span>
-							)
-						) : null
-					}
-					control={<TransactionDialogControl hiding={hiding} phase={visiblePhase} onClick={closeOrHide} />}
-					eyebrow={operationLabel(props.operation.kind)}
-					eyebrowId={operationLabelId}
-					layout="asset"
-					title={props.asset.name}
-					titleId={titleId}
-				/>
-				<OperationOutcomeAnnouncement
-					active={visiblePhase === 'done'}
-					title={resultCopy.title}
-					detail={resultCopy.detail}
-				/>
-				{visiblePhase === 'working' && props.operation.kind === 'buy' ? (
-					<AtomicPurchaseSequence state={purchaseState} />
-				) : null}
-				{visiblePhase === 'approval' && props.operation.kind === 'buy' ? (
-					<div className="recovery-approval">
-						<div>
-							<h3>{recoveryApprovalCopy?.title}</h3>
-							<p>{recoveryApprovalCopy?.detail}</p>
-						</div>
-						<div className="operation-summary">
-							<span>Seller</span>
-							<WalletAddress
-								address={purchaseOrderOf(props.operation).creator}
-								className="operation-summary-link"
-								full
-								label="seller"
+			<DialogHeading
+				artwork={
+					visiblePhase === 'working' ? (
+						props.asset.image ? (
+							<ArtworkImage
+								alt=""
+								className="dialog-asset-artwork"
+								decoding="async"
+								loading="eager"
+								src={props.asset.image}
 							/>
-							<span>Seller payment</span>
-							<strong>
-								<ArCurrencyText>{sellerPrice}</ArCurrencyText>
-							</strong>
-							<span>New approvals</span>
-							<strong>{recoveryApprovalCount}</strong>
-							{props.operation.resume?.registration?.id ? (
+						) : (
+							<span aria-hidden="true" className="dialog-asset-artwork dialog-asset-artwork-fallback">
+								{props.asset.name.slice(0, 1)}
+							</span>
+						)
+					) : null
+				}
+				control={<TransactionDialogControl hiding={hiding} phase={visiblePhase} onClick={closeOrHide} />}
+				eyebrow={operationLabel(props.operation.kind)}
+				eyebrowId={operationLabelId}
+				layout="asset"
+				title={props.asset.name}
+				titleId={titleId}
+			/>
+			<OperationOutcomeAnnouncement
+				active={visiblePhase === 'done'}
+				title={resultCopy.title}
+				detail={resultCopy.detail}
+			/>
+			{visiblePhase === 'working' && props.operation.kind === 'buy' ? (
+				<AtomicPurchaseSequence state={purchaseState} />
+			) : null}
+			{visiblePhase === 'approval' && props.operation.kind === 'buy' ? (
+				<div className="recovery-approval">
+					<div>
+						<h3>{recoveryApprovalCopy?.title}</h3>
+						<p>{recoveryApprovalCopy?.detail}</p>
+					</div>
+					<div className="operation-summary">
+						<span>Seller</span>
+						<WalletAddress
+							address={purchaseOrderOf(props.operation).creator}
+							className="operation-summary-link"
+							full
+							label="seller"
+						/>
+						<span>Seller payment</span>
+						<strong>
+							<ArCurrencyText>{sellerPrice}</ArCurrencyText>
+						</strong>
+						<span>New approvals</span>
+						<strong>{recoveryApprovalCount}</strong>
+						{props.operation.resume?.registration?.id ? (
+							<small>
+								Reservation{' '}
+								<a
+									href={transactionExplorerUrl(props.operation.resume.registration.id)}
+									rel="noreferrer"
+									target="_blank"
+								>
+									<OperationExternalLink>
+										{short(props.operation.resume.registration.id)}
+									</OperationExternalLink>
+								</a>{' '}
+								is already signed.
+							</small>
+						) : null}
+					</div>
+					<Button
+						className="wide"
+						data-dialog-initial
+						onClick={() => void submit()}
+						type="button"
+						size="custom"
+						variant="primary"
+					>
+						{recoveryApprovalCopy?.action}
+					</Button>
+				</div>
+			) : null}
+			{visiblePhase === 'form' ? (
+				<form
+					className="operation-form"
+					onSubmit={(event) => {
+						event.preventDefault();
+						void submit();
+					}}
+				>
+					<div className="dialog-form-scroll">
+						{props.operation.kind === 'buy' ? (
+							<div className="operation-summary">
+								<span>Seller</span>
+								<WalletAddress
+									address={purchaseOrderOf(props.operation).creator}
+									className="operation-summary-link"
+									full
+									label="seller"
+								/>
+								<span>Seller price</span>
+								<strong>
+									<ArCurrencyText>{sellerPrice}</ArCurrencyText>
+								</strong>
+								<span>Network fees</span>
+								<strong>
+									{quoteError ? (
+										'Unavailable'
+									) : purchaseQuote ? (
+										<ArCurrencyText>{`${winstonToAr(
+											(BigInt(purchaseQuote.total) - BigInt(purchaseQuote.asking)).toString()
+										)} AR`}</ArCurrencyText>
+									) : (
+										'Checking…'
+									)}
+								</strong>
+								<span>Maximum total</span>
+								<strong>
+									{quoteError ? (
+										'Unavailable'
+									) : purchaseQuote ? (
+										<ArCurrencyText>{`${winstonToAr(purchaseQuote.total)} AR`}</ArCurrencyText>
+									) : (
+										'Checking…'
+									)}
+								</strong>
+								<span>Wallet after purchase</span>
+								<strong>
+									{quoteError ? (
+										'Unavailable'
+									) : purchaseQuote && purchaseWalletBalance !== null ? (
+										purchaseAffordable ? (
+											<ArCurrencyText>{`${winstonToAr(
+												(purchaseWalletBalance - BigInt(purchaseQuote.total)).toString()
+											)} AR`}</ArCurrencyText>
+										) : (
+											<ArCurrencyText>Insufficient AR</ArCurrencyText>
+										)
+									) : (
+										'Checking…'
+									)}
+								</strong>
 								<small>
-									Reservation{' '}
+									One asset · native <ArCurrencyLabel /> settlement
+								</small>
+							</div>
+						) : null}
+						{props.operation.kind === 'buy' ? (
+							<LiveRegion as="p" id={quoteStatusId}>
+								<ArCurrencyText>
+									{quoteError
+										? 'Purchase quote unavailable. Retry the cost check before buying.'
+										: purchaseQuote
+										? `Purchase quote ready. Maximum total ${winstonToAr(purchaseQuote.total)} AR.${
+												purchaseAffordable ? '' : ' This wallet has insufficient AR.'
+										  }`
+										: 'Checking the exact purchase cost.'}
+								</ArCurrencyText>
+							</LiveRegion>
+						) : null}
+						{props.operation.kind === 'buy' ? (
+							<div
+								className={quoteError ? 'inline-error retry-notice' : 'quote-check-action'}
+								role={quoteError ? 'status' : undefined}
+							>
+								<span>
+									{quoteError
+										? 'Compute hasn’t completed yet. Please try again.'
+										: purchaseQuote
+										? 'Costs checked.'
+										: 'Checking wallet balance and network fees…'}
+								</span>
+								<Button
+									aria-describedby={quoteStatusId}
+									aria-disabled={!purchaseQuote && !quoteError}
+									className="with-icon"
+									size="custom"
+									type="button"
+									onClick={() => {
+										if (purchaseQuote || quoteError) setQuoteRetry((current) => current + 1);
+									}}
+								>
+									<Icon icon={RefreshCw} size="sm" /> Retry
+								</Button>
+							</div>
+						) : null}
+						{props.operation.kind === 'sell' ? (
+							<label>
+								<span>
+									Sale price in <ArCurrencyLabel />
+								</span>
+								<TextInput
+									autoFocus
+									data-dialog-initial
+									aria-describedby={fieldHelpId}
+									aria-invalid={Boolean(value && formError)}
+									value={value}
+									onChange={(event) => setValue(event.target.value)}
+									placeholder="0.25"
+								/>
+							</label>
+						) : null}
+						{props.operation.kind === 'transfer' ? (
+							<label>
+								Recipient wallet address
+								<TextInput
+									autoFocus
+									data-dialog-initial
+									aria-describedby={fieldHelpId}
+									aria-invalid={Boolean(value && formError)}
+									autoCapitalize="none"
+									autoComplete="off"
+									autoCorrect="off"
+									spellCheck={false}
+									value={value}
+									onChange={(event) => setValue(event.target.value)}
+									placeholder="43-character Arweave address"
+								/>
+							</label>
+						) : null}
+						{props.operation.kind === 'transfer' && operationValue && !formError ? (
+							<div className="operation-summary transfer-review">
+								<span>Recipient</span>
+								<WalletIdentity address={operationValue} />
+								<small>
+									Review the complete destination before asking your wallet to approve this
+									irreversible transfer.
+								</small>
+							</div>
+						) : null}
+						{props.operation.kind === 'cancel' ? (
+							<div className="operation-summary">
+								<span>Open listing</span>
+								<strong>
+									<ArCurrencyText>{sellerPrice}</ArCurrencyText>
+								</strong>
+								<small>Cancelling returns the asset from order escrow to your liquid balance.</small>
+							</div>
+						) : null}
+						{props.operation.kind === 'sell' || props.operation.kind === 'transfer' ? (
+							<p
+								id={fieldHelpId}
+								className={value && formError ? 'field-help field-help-error' : 'field-help'}
+								role={value && formError ? 'alert' : undefined}
+							>
+								{formError ? <ArCurrencyText>{formError}</ArCurrencyText> : null}
+							</p>
+						) : null}
+						<p className="operation-disclosure">
+							{props.operation.kind === 'buy'
+								? 'Your wallet will ask for two approvals: one reservation and one seller payment. The payment stays local until the reservation is accepted by the network.'
+								: 'After signing, Bazar observes this action through independently addressed Arweave nodes. Signed transaction details are saved in this browser so you can return with the same wallet while browser data remains available.'}
+						</p>
+					</div>
+					<Button
+						aria-describedby={props.operation.kind === 'buy' ? quoteStatusId : undefined}
+						className={`wide${
+							props.operation.kind === 'buy' || props.operation.kind === 'sell'
+								? ' with-icon market-primary-action'
+								: ''
+						}`}
+						data-dialog-initial
+						size="custom"
+						disabled={
+							Boolean(formError) ||
+							(props.operation.kind === 'buy' &&
+								(!purchaseQuote || purchaseAffordable !== true || Boolean(quoteError)))
+						}
+						type="submit"
+						variant={props.operation.kind === 'cancel' ? 'danger' : 'primary'}
+					>
+						{props.operation.kind === 'buy' ? (
+							<Icon icon={ShoppingCart} size="sm" />
+						) : props.operation.kind === 'sell' ? (
+							<Icon icon={Tag} size="sm" />
+						) : null}
+						{props.operation.kind === 'buy' && purchaseAffordable === false ? (
+							<ArCurrencyText>Insufficient AR</ArCurrencyText>
+						) : props.operation.kind === 'buy' && purchaseQuote ? (
+							<ArCurrencyText>{`Buy · up to ${winstonToAr(purchaseQuote.total)} AR`}</ArCurrencyText>
+						) : (
+							<ArCurrencyText>{actionLabel}</ArCurrencyText>
+						)}
+					</Button>
+				</form>
+			) : null}
+			{visiblePhase === 'working' && !steps.length ? (
+				<div className="operation-preparing">
+					<Loading
+						label={
+							(props.operation.kind === 'buy' ? props.operation.resume : props.operation.resumeId)
+								? 'Recovering the signed transaction…'
+								: 'Preparing secure wallet approvals…'
+						}
+					/>
+					<p>
+						{props.operation.kind === 'buy'
+							? 'Bazar may contact observer nodes while preparing the reservation and seller payment, but no transaction is submitted until its signing step completes.'
+							: 'Bazar is preparing the Arweave transaction. The network view will appear as soon as the signed transaction is recoverable.'}
+					</p>
+				</div>
+			) : null}
+			{visiblePhase === 'working' && recoverable ? (
+				<div className="operation-working">
+					<LiveRegion as="p">
+						{workingStatus ||
+							'Watching independently addressed Arweave nodes report confirmations for this action.'}
+					</LiveRegion>
+					<React.Suspense fallback={<Loading label="Loading transaction progress…" />}>
+						<LazyArweaveTransactionSync
+							active={props.visible}
+							skipKind={purchaseSkipKind(purchaseState)}
+							onSkip={
+								purchaseState?.canSkip
+									? () => {
+											purchaseRef.current?.skip();
+									  }
+									: undefined
+							}
+							subject={props.asset.name}
+							startedAt={submittedAtRef.current}
+							steps={steps}
+							activeStep={activeStep}
+							pendingAfterConfirmation={pendingAfterConfirmation}
+						/>
+					</React.Suspense>
+				</div>
+			) : null}
+			{visiblePhase === 'done' ? (
+				<div className="result success">
+					<OperationOutcome
+						title={resultCopy.title}
+						detail={resultCopy.detail}
+						status={
+							props.operation.kind === 'buy'
+								? `Confirmations: ${quorumConfirmationDepth(
+										purchaseSteps.find((step) => step.key === 'pay')
+								  )}`
+								: undefined
+						}
+					>
+						{props.operation.kind === 'buy' && purchaseSteps.length ? (
+							<div className="result-outcome-sync">
+								<React.Suspense fallback={<Loading label="Loading transaction progress…" />}>
+									<LazyArweaveTransactionSync
+										active={props.visible}
+										activeStep="pay"
+										startedAt={submittedAtRef.current}
+										steps={purchaseSteps}
+										subject={props.asset.name}
+									/>
+								</React.Suspense>
+							</div>
+						) : null}
+						{props.operation.kind === 'buy' || props.operation.kind === 'sell' ? (
+							<OperationOutcomeSubject
+								label={props.operation.kind === 'buy' ? 'You received' : 'You listed'}
+								title={props.asset.name}
+								detail={props.operation.kind === 'sell' ? `${value} AR` : 'One asset'}
+								media={
+									props.asset.image ? (
+										<ArtworkImage
+											alt={`${props.asset.name} artwork`}
+											className="operation-outcome-subject-artwork"
+											decoding="async"
+											loading="eager"
+											src={props.asset.image}
+										/>
+									) : (
+										<span
+											aria-label={`${props.asset.name} artwork`}
+											className="operation-outcome-subject-artwork operation-outcome-subject-artwork-fallback"
+											role="img"
+										>
+											{props.asset.name.slice(0, 1)}
+										</span>
+									)
+								}
+							/>
+						) : null}
+					</OperationOutcome>
+					{props.operation.kind === 'buy' ? (
+						<div className="settlement-receipt">
+							<div>
+								<span>Seller payment</span>
+								<strong>
+									<ArCurrencyText>{sellerPrice}</ArCurrencyText>
+								</strong>
+							</div>
+							<div>
+								<span>Seller</span>
+								<WalletAddress address={purchaseOrderOf(props.operation).creator} full label="seller" />
+							</div>
+							<div>
+								<span>Order</span>
+								<a
+									href={transactionExplorerUrl(purchaseOrderOf(props.operation).orderId)}
+									rel="noreferrer"
+									target="_blank"
+								>
+									<OperationExternalLink>
+										{short(purchaseOrderOf(props.operation).orderId)}
+									</OperationExternalLink>
+								</a>
+							</div>
+							<div className="settlement-receipt-links">
+								{purchaseState?.registration?.id ? (
 									<a
-										href={transactionExplorerUrl(props.operation.resume.registration.id)}
+										href={transactionExplorerUrl(purchaseState.registration.id)}
 										rel="noreferrer"
 										target="_blank"
 									>
 										<OperationExternalLink>
-											{short(props.operation.resume.registration.id)}
+											Reservation {short(purchaseState.registration.id)}
 										</OperationExternalLink>
-									</a>{' '}
-									is already signed.
-								</small>
-							) : null}
-						</div>
-						<Button
-							className="wide"
-							data-dialog-initial
-							onClick={() => void submit()}
-							type="button"
-							size="custom"
-							variant="primary"
-						>
-							{recoveryApprovalCopy?.action}
-						</Button>
-					</div>
-				) : null}
-				{visiblePhase === 'form' ? (
-					<form
-						className="operation-form"
-						onSubmit={(event) => {
-							event.preventDefault();
-							void submit();
-						}}
-					>
-						<div className="dialog-form-scroll">
-							{props.operation.kind === 'buy' ? (
-								<div className="operation-summary">
-									<span>Seller</span>
-									<WalletAddress
-										address={purchaseOrderOf(props.operation).creator}
-										className="operation-summary-link"
-										full
-										label="seller"
-									/>
-									<span>Seller price</span>
-									<strong>
-										<ArCurrencyText>{sellerPrice}</ArCurrencyText>
-									</strong>
-									<span>Network fees</span>
-									<strong>
-										{quoteError ? (
-											'Unavailable'
-										) : purchaseQuote ? (
-											<ArCurrencyText>{`${winstonToAr(
-												(BigInt(purchaseQuote.total) - BigInt(purchaseQuote.asking)).toString()
-											)} AR`}</ArCurrencyText>
-										) : (
-											'Checking…'
-										)}
-									</strong>
-									<span>Maximum total</span>
-									<strong>
-										{quoteError ? (
-											'Unavailable'
-										) : purchaseQuote ? (
-											<ArCurrencyText>{`${winstonToAr(purchaseQuote.total)} AR`}</ArCurrencyText>
-										) : (
-											'Checking…'
-										)}
-									</strong>
-									<span>Wallet after purchase</span>
-									<strong>
-										{quoteError ? (
-											'Unavailable'
-										) : purchaseQuote && purchaseWalletBalance !== null ? (
-											purchaseAffordable ? (
-												<ArCurrencyText>{`${winstonToAr(
-													(purchaseWalletBalance - BigInt(purchaseQuote.total)).toString()
-												)} AR`}</ArCurrencyText>
-											) : (
-												<ArCurrencyText>Insufficient AR</ArCurrencyText>
-											)
-										) : (
-											'Checking…'
-										)}
-									</strong>
-									<small>
-										One asset · native <ArCurrencyLabel /> settlement
-									</small>
-								</div>
-							) : null}
-							{props.operation.kind === 'buy' ? (
-								<LiveRegion as="p" id={quoteStatusId}>
-									<ArCurrencyText>
-										{quoteError
-											? 'Purchase quote unavailable. Retry the cost check before buying.'
-											: purchaseQuote
-											? `Purchase quote ready. Maximum total ${winstonToAr(
-													purchaseQuote.total
-											  )} AR.${purchaseAffordable ? '' : ' This wallet has insufficient AR.'}`
-											: 'Checking the exact purchase cost.'}
-									</ArCurrencyText>
-								</LiveRegion>
-							) : null}
-							{props.operation.kind === 'buy' ? (
-								<div
-									className={quoteError ? 'inline-error retry-notice' : 'quote-check-action'}
-									role={quoteError ? 'status' : undefined}
-								>
-									<span>
-										{quoteError
-											? 'Compute hasn’t completed yet. Please try again.'
-											: purchaseQuote
-											? 'Costs checked.'
-											: 'Checking wallet balance and network fees…'}
-									</span>
-									<Button
-										aria-describedby={quoteStatusId}
-										aria-disabled={!purchaseQuote && !quoteError}
-										className="with-icon"
-										size="custom"
-										type="button"
-										onClick={() => {
-											if (purchaseQuote || quoteError) setQuoteRetry((current) => current + 1);
-										}}
+									</a>
+								) : null}
+								{purchaseState?.payment?.id ? (
+									<a
+										href={transactionExplorerUrl(purchaseState.payment.id)}
+										rel="noreferrer"
+										target="_blank"
 									>
-										<Icon icon={RefreshCw} size="sm" /> Retry
-									</Button>
-								</div>
-							) : null}
-							{props.operation.kind === 'sell' ? (
-								<label>
-									<span>
-										Sale price in <ArCurrencyLabel />
-									</span>
-									<TextInput
-										autoFocus
-										data-dialog-initial
-										aria-describedby={fieldHelpId}
-										aria-invalid={Boolean(value && formError)}
-										value={value}
-										onChange={(event) => setValue(event.target.value)}
-										placeholder="0.25"
-									/>
-								</label>
-							) : null}
-							{props.operation.kind === 'transfer' ? (
-								<label>
-									Recipient wallet address
-									<TextInput
-										autoFocus
-										data-dialog-initial
-										aria-describedby={fieldHelpId}
-										aria-invalid={Boolean(value && formError)}
-										autoCapitalize="none"
-										autoComplete="off"
-										autoCorrect="off"
-										spellCheck={false}
-										value={value}
-										onChange={(event) => setValue(event.target.value)}
-										placeholder="43-character Arweave address"
-									/>
-								</label>
-							) : null}
-							{props.operation.kind === 'transfer' && operationValue && !formError ? (
-								<div className="operation-summary transfer-review">
-									<span>Recipient</span>
-									<WalletIdentity address={operationValue} />
-									<small>
-										Review the complete destination before asking your wallet to approve this
-										irreversible transfer.
-									</small>
-								</div>
-							) : null}
-							{props.operation.kind === 'cancel' ? (
-								<div className="operation-summary">
-									<span>Open listing</span>
-									<strong>
-										<ArCurrencyText>{sellerPrice}</ArCurrencyText>
-									</strong>
-									<small>
-										Cancelling returns the asset from order escrow to your liquid balance.
-									</small>
-								</div>
-							) : null}
-							{props.operation.kind === 'sell' || props.operation.kind === 'transfer' ? (
-								<p
-									id={fieldHelpId}
-									className={value && formError ? 'field-help field-help-error' : 'field-help'}
-									role={value && formError ? 'alert' : undefined}
-								>
-									{formError ? <ArCurrencyText>{formError}</ArCurrencyText> : null}
-								</p>
-							) : null}
-							<p className="operation-disclosure">
-								{props.operation.kind === 'buy'
-									? 'Your wallet will ask for two approvals: one reservation and one seller payment. The payment stays local until the reservation is accepted by the network.'
-									: 'After signing, Bazar observes this action through independently addressed Arweave nodes. Signed transaction details are saved in this browser so you can return with the same wallet while browser data remains available.'}
-							</p>
+										<OperationExternalLink>
+											Payment {short(purchaseState.payment.id)}
+										</OperationExternalLink>
+									</a>
+								) : null}
+							</div>
 						</div>
-						<Button
-							aria-describedby={props.operation.kind === 'buy' ? quoteStatusId : undefined}
-							className={`wide${
-								props.operation.kind === 'buy' || props.operation.kind === 'sell'
-									? ' with-icon market-primary-action'
-									: ''
-							}`}
-							data-dialog-initial
-							size="custom"
-							disabled={
-								Boolean(formError) ||
-								(props.operation.kind === 'buy' &&
-									(!purchaseQuote || purchaseAffordable !== true || Boolean(quoteError)))
-							}
-							type="submit"
-							variant={props.operation.kind === 'cancel' ? 'danger' : 'primary'}
-						>
-							{props.operation.kind === 'buy' ? (
-								<Icon icon={ShoppingCart} size="sm" />
-							) : props.operation.kind === 'sell' ? (
-								<Icon icon={Tag} size="sm" />
-							) : null}
-							{props.operation.kind === 'buy' && purchaseAffordable === false ? (
-								<ArCurrencyText>Insufficient AR</ArCurrencyText>
-							) : props.operation.kind === 'buy' && purchaseQuote ? (
-								<ArCurrencyText>{`Buy · up to ${winstonToAr(purchaseQuote.total)} AR`}</ArCurrencyText>
-							) : (
-								<ArCurrencyText>{actionLabel}</ArCurrencyText>
-							)}
+					) : props.operation.kind === 'transfer' && transaction ? (
+						<div className="settlement-receipt">
+							<div>
+								<span>Asset</span>
+								<strong>{props.asset.name}</strong>
+							</div>
+							<div>
+								<span>Recipient</span>
+								<WalletAddress address={value.trim()} full label="recipient" />
+							</div>
+							<div className="settlement-receipt-links">
+								<a href={transactionExplorerUrl(transaction.id)} rel="noreferrer" target="_blank">
+									<OperationExternalLink>Transaction {short(transaction.id)}</OperationExternalLink>
+								</a>
+							</div>
+						</div>
+					) : transaction ? (
+						<a href={transactionExplorerUrl(transaction.id)} rel="noreferrer" target="_blank">
+							<OperationExternalLink>View transaction {short(transaction.id)}</OperationExternalLink>
+						</a>
+					) : null}
+					<Button
+						className="with-icon"
+						data-dialog-initial
+						onClick={props.onViewAsset}
+						size="custom"
+						variant="primary"
+					>
+						<Icon icon={ArrowLeft} size="sm" /> View updated asset
+					</Button>
+				</div>
+			) : null}
+			{visiblePhase === 'error' ? (
+				<div className="result error">
+					<AtomicOperationErrorAlert message={visibleMessage} />
+					{failureKind === 'market-state-changed' ? (
+						<Button data-dialog-initial type="button" onClick={() => props.onClose(false)} size="custom">
+							View updated asset
 						</Button>
-					</form>
-				) : null}
-				{visiblePhase === 'working' && !steps.length ? (
-					<div className="operation-preparing">
-						<Loading
-							label={
-								(props.operation.kind === 'buy' ? props.operation.resume : props.operation.resumeId)
-									? 'Recovering the signed transaction…'
-									: 'Preparing secure wallet approvals…'
-							}
-						/>
-						<p>
-							{props.operation.kind === 'buy'
-								? 'Bazar may contact observer nodes while preparing the reservation and seller payment, but no transaction is submitted until its signing step completes.'
-								: 'Bazar is preparing the Arweave transaction. The network view will appear as soon as the signed transaction is recoverable.'}
-						</p>
-					</div>
-				) : null}
-				{visiblePhase === 'working' && recoverable ? (
-					<div className="operation-working">
-						<LiveRegion as="p">
-							{workingStatus ||
-								'Watching independently addressed Arweave nodes report confirmations for this action.'}
-						</LiveRegion>
-						<React.Suspense fallback={<Loading label="Loading transaction progress…" />}>
-							<LazyArweaveTransactionSync
-								active={props.visible}
-								skipKind={purchaseSkipKind(purchaseState)}
-								onSkip={
-									purchaseState?.canSkip
-										? () => {
-												purchaseRef.current?.skip();
-										  }
-										: undefined
-								}
-								subject={props.asset.name}
-								startedAt={submittedAtRef.current}
-								steps={steps}
-								activeStep={activeStep}
-								pendingAfterConfirmation={pendingAfterConfirmation}
-							/>
-						</React.Suspense>
-					</div>
-				) : null}
-				{visiblePhase === 'done' ? (
-					<div className="result success">
-						<OperationOutcome
-							title={resultCopy.title}
-							detail={resultCopy.detail}
-							status={
-								props.operation.kind === 'buy'
-									? `Confirmations: ${quorumConfirmationDepth(
-											purchaseSteps.find((step) => step.key === 'pay')
-									  )}`
-									: undefined
-							}
-						>
-							{props.operation.kind === 'buy' && purchaseSteps.length ? (
-								<div className="result-outcome-sync">
-									<React.Suspense fallback={<Loading label="Loading transaction progress…" />}>
-										<LazyArweaveTransactionSync
-											active={props.visible}
-											activeStep="pay"
-											startedAt={submittedAtRef.current}
-											steps={purchaseSteps}
-											subject={props.asset.name}
-										/>
-									</React.Suspense>
-								</div>
-							) : null}
-							{props.operation.kind === 'buy' || props.operation.kind === 'sell' ? (
-								<OperationOutcomeSubject
-									label={props.operation.kind === 'buy' ? 'You received' : 'You listed'}
-									title={props.asset.name}
-									detail={props.operation.kind === 'sell' ? `${value} AR` : 'One asset'}
-									media={
-										props.asset.image ? (
-											<ArtworkImage
-												alt={`${props.asset.name} artwork`}
-												className="operation-outcome-subject-artwork"
-												decoding="async"
-												loading="eager"
-												src={props.asset.image}
-											/>
-										) : (
-											<span
-												aria-label={`${props.asset.name} artwork`}
-												className="operation-outcome-subject-artwork operation-outcome-subject-artwork-fallback"
-												role="img"
-											>
-												{props.asset.name.slice(0, 1)}
-											</span>
-										)
-									}
-								/>
-							) : null}
-						</OperationOutcome>
-						{props.operation.kind === 'buy' ? (
+					) : props.operation.kind === 'buy' ? (
+						<>
 							<div className="settlement-receipt">
 								<div>
-									<span>Seller payment</span>
-									<strong>
-										<ArCurrencyText>{sellerPrice}</ArCurrencyText>
-									</strong>
+									<span>Failed stage</span>
+									<strong>{atomicPurchaseFailureStage(purchaseState)}</strong>
 								</div>
 								<div>
 									<span>Seller</span>
@@ -1346,159 +1421,60 @@ export default function OperationDialog(props: {
 									) : null}
 								</div>
 							</div>
-						) : props.operation.kind === 'transfer' && transaction ? (
-							<div className="settlement-receipt">
-								<div>
-									<span>Asset</span>
-									<strong>{props.asset.name}</strong>
-								</div>
-								<div>
-									<span>Recipient</span>
-									<WalletAddress address={value.trim()} full label="recipient" />
-								</div>
-								<div className="settlement-receipt-links">
-									<a href={transactionExplorerUrl(transaction.id)} rel="noreferrer" target="_blank">
-										<OperationExternalLink>
-											Transaction {short(transaction.id)}
-										</OperationExternalLink>
-									</a>
-								</div>
-							</div>
-						) : transaction ? (
-							<a href={transactionExplorerUrl(transaction.id)} rel="noreferrer" target="_blank">
-								<OperationExternalLink>View transaction {short(transaction.id)}</OperationExternalLink>
-							</a>
-						) : null}
+							{atomicPurchaseFailureCode(purchaseState) === 'registration-dispatch-rejected' ? (
+								<Button data-dialog-initial onClick={() => props.onClose(false)} size="custom">
+									View current listing
+								</Button>
+							) : terminalReservationFailure ? (
+								<Button data-dialog-initial onClick={startFreshPurchase} size="custom">
+									Start a new purchase
+								</Button>
+							) : atomicPurchaseFailureCode(purchaseState) === 'payment-dispatch-rejected' ? (
+								<Button data-dialog-initial onClick={() => void submit()} size="custom">
+									Sign a replacement seller payment
+								</Button>
+							) : (
+								<Button data-dialog-initial onClick={restartPurchase} size="custom">
+									{recoverable ? 'Continue saved purchase' : 'Try again'}
+								</Button>
+							)}
+						</>
+					) : failureKind === 'transaction-rejected' && transaction ? (
 						<Button
-							className="with-icon"
 							data-dialog-initial
-							onClick={props.onViewAsset}
 							size="custom"
-							variant="primary"
+							onClick={() => {
+								removeWalletRecordIf<any>(
+									localStorage,
+									operationStorageKey(props.asset.id, props.owner),
+									(record) => record?.txId === transaction.id
+								);
+								localStorage.removeItem(`bazar-signed-transaction:${transaction.id}`);
+								props.onClose(false);
+							}}
+							variant="danger"
 						>
-							<Icon icon={ArrowLeft} size="sm" /> View updated asset
+							Discard rejected signature and sign again
 						</Button>
-					</div>
-				) : null}
-				{visiblePhase === 'error' ? (
-					<div className="result error">
-						<AtomicOperationErrorAlert message={visibleMessage} />
-						{failureKind === 'market-state-changed' ? (
-							<Button
-								data-dialog-initial
-								type="button"
-								onClick={() => props.onClose(false)}
-								size="custom"
-							>
-								View updated asset
-							</Button>
-						) : props.operation.kind === 'buy' ? (
-							<>
-								<div className="settlement-receipt">
-									<div>
-										<span>Failed stage</span>
-										<strong>{atomicPurchaseFailureStage(purchaseState)}</strong>
-									</div>
-									<div>
-										<span>Seller</span>
-										<WalletAddress
-											address={purchaseOrderOf(props.operation).creator}
-											full
-											label="seller"
-										/>
-									</div>
-									<div>
-										<span>Order</span>
-										<a
-											href={transactionExplorerUrl(purchaseOrderOf(props.operation).orderId)}
-											rel="noreferrer"
-											target="_blank"
-										>
-											<OperationExternalLink>
-												{short(purchaseOrderOf(props.operation).orderId)}
-											</OperationExternalLink>
-										</a>
-									</div>
-									<div className="settlement-receipt-links">
-										{purchaseState?.registration?.id ? (
-											<a
-												href={transactionExplorerUrl(purchaseState.registration.id)}
-												rel="noreferrer"
-												target="_blank"
-											>
-												<OperationExternalLink>
-													Reservation {short(purchaseState.registration.id)}
-												</OperationExternalLink>
-											</a>
-										) : null}
-										{purchaseState?.payment?.id ? (
-											<a
-												href={transactionExplorerUrl(purchaseState.payment.id)}
-												rel="noreferrer"
-												target="_blank"
-											>
-												<OperationExternalLink>
-													Payment {short(purchaseState.payment.id)}
-												</OperationExternalLink>
-											</a>
-										) : null}
-									</div>
-								</div>
-								{atomicPurchaseFailureCode(purchaseState) === 'registration-dispatch-rejected' ? (
-									<Button data-dialog-initial onClick={() => props.onClose(false)} size="custom">
-										View current listing
-									</Button>
-								) : terminalReservationFailure ? (
-									<Button data-dialog-initial onClick={startFreshPurchase} size="custom">
-										Start a new purchase
-									</Button>
-								) : atomicPurchaseFailureCode(purchaseState) === 'payment-dispatch-rejected' ? (
-									<Button data-dialog-initial onClick={() => void submit()} size="custom">
-										Sign a replacement seller payment
-									</Button>
-								) : (
-									<Button data-dialog-initial onClick={restartPurchase} size="custom">
-										{recoverable ? 'Continue saved purchase' : 'Try again'}
-									</Button>
-								)}
-							</>
-						) : failureKind === 'transaction-rejected' && transaction ? (
-							<Button
-								data-dialog-initial
-								size="custom"
-								onClick={() => {
-									removeWalletRecordIf<any>(
-										localStorage,
-										operationStorageKey(props.asset.id, props.owner),
-										(record) => record?.txId === transaction.id
-									);
-									localStorage.removeItem(`bazar-signed-transaction:${transaction.id}`);
-									props.onClose(false);
-								}}
-								variant="danger"
-							>
-								Discard rejected signature and sign again
-							</Button>
-						) : transaction ? (
-							<Button data-dialog-initial onClick={() => void submit()} size="custom">
-								Resume the signed transaction
-							</Button>
-						) : (
-							<Button
-								data-dialog-initial
-								size="custom"
-								onClick={() => {
-									setFailureKind(null);
-									setMessage('');
-									setPhase('form');
-								}}
-							>
-								Try again
-							</Button>
-						)}
-					</div>
-				) : null}
-			</div>
-		</div>
+					) : transaction ? (
+						<Button data-dialog-initial onClick={() => void submit()} size="custom">
+							Resume the signed transaction
+						</Button>
+					) : (
+						<Button
+							data-dialog-initial
+							size="custom"
+							onClick={() => {
+								setFailureKind(null);
+								setMessage('');
+								setPhase('form');
+							}}
+						>
+							Try again
+						</Button>
+					)}
+				</div>
+			) : null}
+		</Dialog>
 	);
 }

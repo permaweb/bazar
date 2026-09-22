@@ -5,7 +5,7 @@ import {
 	isDialogFocusable,
 	isDialogRestoreTarget,
 	targetOwnsDialogEscape,
-} from 'hooks/useDialogFocus';
+} from 'components/organisms/Dialog/useDialogFocus';
 
 function restoreCandidate({
 	connected = true,

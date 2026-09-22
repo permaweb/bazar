@@ -17,8 +17,8 @@ import {
 	TRANSACTION_DIALOG_HIDE_DURATION_MS,
 	TransactionDialogControl,
 } from 'components/molecules/TransactionDialogControl';
+import { Dialog } from 'components/organisms/Dialog';
 import { LazyArweaveTransactionSync } from 'features/TransactionSync';
-import { useDialogFocus } from 'hooks/useDialogFocus';
 import { UploadActivity, UploadObserverState } from 'providers/OperationActivityProvider';
 
 import { uploadActivitySyncSteps } from '../../../model/upload-activity';
@@ -31,6 +31,7 @@ export default function UploadActivityPanel(props: {
 	onClose(): void;
 }) {
 	const navigate = useNavigate();
+	const dialogRef = React.useRef<HTMLElement | null>(null);
 	const [hiding, setHiding] = React.useState(false);
 	const [observerState, setObserverState] = React.useState<UploadObserverState>({});
 	const hideTimerRef = React.useRef<number | null>(null);
@@ -65,15 +66,6 @@ export default function UploadActivityPanel(props: {
 			props.onHide();
 		}, TRANSACTION_DIALOG_HIDE_DURATION_MS);
 	}, [hiding, props.onClose, props.onHide, working]);
-	const dialogRef = useDialogFocus<HTMLDivElement>(
-		props.visible,
-		closeOrHide,
-		undefined,
-		props.activity.phase,
-		() =>
-			document.querySelector<HTMLElement>('.operation-activity-trigger[data-activity-owner="global"]') ??
-			document.getElementById('main-content')
-	);
 	React.useEffect(() => {
 		if (props.visible) setHiding(false);
 	}, [props.visible]);
@@ -128,7 +120,6 @@ export default function UploadActivityPanel(props: {
 		},
 		[]
 	);
-	if (!props.visible && !working) return null;
 	const receiptEntries = props.activity.transactions.length
 		? props.activity.transactions.map((transaction) => ({
 				label: transaction.label,
@@ -150,107 +141,106 @@ export default function UploadActivityPanel(props: {
 	const dialogPhase =
 		props.activity.phase === 'error' ? 'error' : props.activity.phase === 'done' ? 'done' : 'working';
 	return (
-		<div
-			className={`dialog-backdrop operation-panel-backdrop${hiding ? ' dialog-backdrop-hiding' : ''}`}
-			hidden={!props.visible}
-			onMouseDown={(event) => event.target === event.currentTarget && closeOrHide()}
-			role="presentation"
+		<Dialog
+			backdropClassName="dialog-backdrop operation-panel-backdrop"
+			className="dialog operation-side-panel upload-activity-panel"
+			focusKey={props.activity.phase}
+			hiding={hiding}
+			keepMounted={working}
+			labelledBy={titleId}
+			onDismiss={closeOrHide}
+			open={props.visible}
+			panelRef={dialogRef}
+			restoreFallback={() =>
+				document.querySelector<HTMLElement>('.operation-activity-trigger[data-activity-owner="global"]') ??
+				document.getElementById('main-content')
+			}
 		>
-			<div
-				aria-hidden={props.visible ? undefined : true}
-				aria-labelledby={props.visible ? titleId : undefined}
-				aria-modal={props.visible ? true : undefined}
-				className="dialog operation-side-panel upload-activity-panel"
-				ref={dialogRef}
-				role={props.visible ? 'dialog' : undefined}
-				tabIndex={-1}
-			>
-				<DialogHeading
-					artwork={
-						<span aria-hidden="true" className="dialog-asset-artwork dialog-asset-artwork-fallback">
-							{props.activity.kind === 'collection' ? (
-								<Icon icon={Images} size="sm" />
-							) : (
-								<Icon icon={Upload} size="sm" />
-							)}
-						</span>
-					}
-					control={<TransactionDialogControl hiding={hiding} phase={dialogPhase} onClick={closeOrHide} />}
-					eyebrow={props.activity.kind === 'collection' ? 'Collection upload' : 'Asset upload'}
-					layout="asset"
-					title={props.activity.name}
-					titleId={titleId}
-				/>
-				{working && !syncSteps.length ? (
-					<div className="operation-preparing">
-						<Loading label={displayedStatus} />
-						<p>The network view will appear as soon as the first signed transaction is available.</p>
+			<DialogHeading
+				artwork={
+					<span aria-hidden="true" className="dialog-asset-artwork dialog-asset-artwork-fallback">
+						{props.activity.kind === 'collection' ? (
+							<Icon icon={Images} size="sm" />
+						) : (
+							<Icon icon={Upload} size="sm" />
+						)}
+					</span>
+				}
+				control={<TransactionDialogControl hiding={hiding} phase={dialogPhase} onClick={closeOrHide} />}
+				eyebrow={props.activity.kind === 'collection' ? 'Collection upload' : 'Asset upload'}
+				layout="asset"
+				title={props.activity.name}
+				titleId={titleId}
+			/>
+			{working && !syncSteps.length ? (
+				<div className="operation-preparing">
+					<Loading label={displayedStatus} />
+					<p>The network view will appear as soon as the first signed transaction is available.</p>
+				</div>
+			) : null}
+			{working && syncSteps.length ? (
+				<div className="operation-working">
+					<LiveRegion as="p">{displayedStatus}</LiveRegion>
+					<React.Suspense fallback={<Loading label="Loading transaction progress…" />}>
+						<LazyArweaveTransactionSync
+							active={props.visible}
+							activeStep={activeSyncStep?.key}
+							miningTelemetryEnabled={false}
+							pendingAfterConfirmation={
+								primaryMintActivity?.phase === 'mined'
+									? 'Waiting for live process state'
+									: primaryMintActivity?.phase === 'applied'
+									? 'Finishing Bazar indexing'
+									: undefined
+							}
+							startedAt={props.activity.createdAt}
+							steps={syncSteps}
+							subject={props.activity.name}
+							telemetryPanelEnabled={false}
+						/>
+					</React.Suspense>
+				</div>
+			) : null}
+			{!working ? (
+				<div className={`upload-activity-state ${props.activity.phase}`}>
+					<span className="upload-activity-result-icon" aria-hidden="true">
+						{props.activity.phase === 'done' ? <Check /> : <CircleX />}
+					</span>
+					<div>
+						<strong>
+							{props.activity.phase === 'done'
+								? props.activity.kind === 'collection'
+									? props.activity.extended
+										? 'Collection extended'
+										: 'Collection submitted'
+									: 'Live on Bazar'
+								: 'Upload needs attention'}
+						</strong>
+						<p aria-live="polite" role="status">
+							{displayedStatus}
+						</p>
 					</div>
-				) : null}
-				{working && syncSteps.length ? (
-					<div className="operation-working">
-						<LiveRegion as="p">{displayedStatus}</LiveRegion>
-						<React.Suspense fallback={<Loading label="Loading transaction progress…" />}>
-							<LazyArweaveTransactionSync
-								active={props.visible}
-								activeStep={activeSyncStep?.key}
-								miningTelemetryEnabled={false}
-								pendingAfterConfirmation={
-									primaryMintActivity?.phase === 'mined'
-										? 'Waiting for live process state'
-										: primaryMintActivity?.phase === 'applied'
-										? 'Finishing Bazar indexing'
-										: undefined
-								}
-								startedAt={props.activity.createdAt}
-								steps={syncSteps}
-								subject={props.activity.name}
-								telemetryPanelEnabled={false}
-							/>
-						</React.Suspense>
-					</div>
-				) : null}
-				{!working ? (
-					<div className={`upload-activity-state ${props.activity.phase}`}>
-						<span className="upload-activity-result-icon" aria-hidden="true">
-							{props.activity.phase === 'done' ? <Check /> : <CircleX />}
-						</span>
-						<div>
-							<strong>
-								{props.activity.phase === 'done'
-									? props.activity.kind === 'collection'
-										? props.activity.extended
-											? 'Collection extended'
-											: 'Collection submitted'
-										: 'Live on Bazar'
-									: 'Upload needs attention'}
-							</strong>
-							<p aria-live="polite" role="status">
-								{displayedStatus}
-							</p>
-						</div>
-					</div>
-				) : null}
-				{receiptEntries.length ? <MintTransactionReceipt entries={receiptEntries} /> : null}
-				{props.activity.phase === 'done' && props.activity.collectionId ? (
-					<Button
-						className="wide"
-						data-dialog-initial
-						onClick={() => {
-							navigate(
-								props.activity.kind === 'collection'
-									? `/collection/${props.activity.collectionId}`
-									: `/asset/${CREATED_COLLECTION_ID}/${props.activity.assetId}`
-							);
-							props.onClose();
-						}}
-						size="custom"
-						variant="primary"
-					>
-						View {props.activity.kind === 'collection' ? 'collection' : 'asset'}
-					</Button>
-				) : null}
-			</div>
-		</div>
+				</div>
+			) : null}
+			{receiptEntries.length ? <MintTransactionReceipt entries={receiptEntries} /> : null}
+			{props.activity.phase === 'done' && props.activity.collectionId ? (
+				<Button
+					className="wide"
+					data-dialog-initial
+					onClick={() => {
+						navigate(
+							props.activity.kind === 'collection'
+								? `/collection/${props.activity.collectionId}`
+								: `/asset/${CREATED_COLLECTION_ID}/${props.activity.assetId}`
+						);
+						props.onClose();
+					}}
+					size="custom"
+					variant="primary"
+				>
+					View {props.activity.kind === 'collection' ? 'collection' : 'asset'}
+				</Button>
+			) : null}
+		</Dialog>
 	);
 }
