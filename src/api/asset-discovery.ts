@@ -2,6 +2,8 @@ import { WALLET_CANDIDATE_SCAN_STORAGE_PREFIX } from 'helpers/browser-storage';
 import { arweaveGraphqlEndpoint } from 'helpers/config';
 
 import {
+	ASSET_BALANCE_STATE_UNAVAILABLE,
+	assetBalanceStateAvailable,
 	type AssetState,
 	assetStateSlot,
 	type ComputeResult,
@@ -364,6 +366,7 @@ export type CompleteBatchedCollectionActivityOptions = Omit<CollectionActivityPa
 type ResolutionOptions = {
 	signal?: AbortSignal;
 	concurrency?: number;
+	requireHolderBalances?: boolean;
 	read?: (processId: string, signal?: AbortSignal) => Promise<ComputeResult>;
 	onSettled?: (result: ResolvedAsset | null, candidate: AssetCandidate, error?: unknown) => void;
 	onRevalidated?: (result: ResolvedAsset | null, candidate: AssetCandidate, error?: unknown) => void;
@@ -1618,6 +1621,12 @@ export function createAssetCandidateResolver(collections: Collection[], options:
 	const resolved: ResolvedAsset[] = [];
 	const concurrency = Math.max(1, Math.min(16, Math.floor(options.concurrency ?? ASSET_RESOLUTION_CONCURRENCY)));
 	const read = options.read ?? ((processId: string, signal?: AbortSignal) => readAssetState(processId, { signal }));
+	const resolveComputed = (candidate: AssetCandidate, computed: ComputeResult) => {
+		if (options.requireHolderBalances && !assetBalanceStateAvailable(computed.state)) {
+			throw new Error(ASSET_BALANCE_STATE_UNAVAILABLE);
+		}
+		return supportedAsset(candidate, computed, collections);
+	};
 	let active = 0;
 	let sealed = false;
 	let failure: unknown;
@@ -1654,7 +1663,7 @@ export function createAssetCandidateResolver(collections: Collection[], options:
 		try {
 			computed = await read(candidate.processId, options.signal);
 			options.signal?.throwIfAborted();
-			result = supportedAsset(candidate, computed, collections);
+			result = resolveComputed(candidate, computed);
 		} catch (error) {
 			if (options.signal?.aborted) throw options.signal.reason ?? error;
 			options.onSettled?.(null, candidate, error);
@@ -1666,7 +1675,14 @@ export function createAssetCandidateResolver(collections: Collection[], options:
 			void computed.revalidation.then(
 				(fresh) => {
 					if (!options.signal?.aborted && isVisibleAssetId(candidate.processId)) {
-						options.onRevalidated?.(supportedAsset(candidate, fresh, collections), candidate);
+						let refreshed: ResolvedAsset | null;
+						try {
+							refreshed = resolveComputed(candidate, fresh);
+						} catch (error) {
+							options.onRevalidated?.(null, candidate, error);
+							return;
+						}
+						options.onRevalidated?.(refreshed, candidate);
 					}
 				},
 				(error) => {
@@ -1829,10 +1845,16 @@ export async function verifyAssetCandidateSupport(
 			verifiedChunk.add(edge.node.id);
 		}
 		for (const edge of atomic.edges) {
-			if (!requested.has(edge.node.id) || !atomicProcessNode(edge.node)) {
+			if (
+				!requested.has(edge.node.id) ||
+				!Array.isArray(edge.node.tags) ||
+				edge.node.tags.some((tag) => !tag || typeof tag.name !== 'string' || typeof tag.value !== 'string')
+			) {
 				throw new Error('asset-support-graphql-schema');
 			}
-			verifiedChunk.add(edge.node.id);
+			// A well-formed indexed process can still use unsupported media or
+			// metadata. Exclude it without retrying the batch as an index failure.
+			if (atomicProcessNode(edge.node)) verifiedChunk.add(edge.node.id);
 		}
 		for (const processId of verifiedChunk) verified.add(processId);
 		return restrictAssetCandidates(
