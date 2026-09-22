@@ -3290,7 +3290,7 @@ function Home() {
 						market.collections,
 						displayHomeListings,
 						normalizedQuery,
-						assetView === 'all' ? loadedAssetLimit : listingAssetLimit,
+						loadedAssetLimit,
 						homeSearchMatches ?? undefined
 				  )
 				: assetView === 'all'
@@ -3498,34 +3498,10 @@ function Home() {
 		setPortableHomeListingsLoading(true);
 		setPortableHomeListingsComplete(false);
 		setPortableHomeListingsFailure(undefined);
-		const publications = createAnimationFrameBatch<
-			ListingResolutionOutcome | { processId: string; state: AssetState; provider: string; refresh: true }
-		>((batch) => {
+		const publications = createAnimationFrameBatch<ListingResolutionOutcome>((batch) => {
 			const settledIds = new Set(batch.map((publication) => publication.processId));
 			setCachedHomeListings((current) => current.filter((listing) => !settledIds.has(listing.asset.id)));
-			setPortableHomeListings((current) => {
-				const results = new Map(current.map((result) => [result.asset.id, result]));
-				for (const publication of batch) {
-					if ('refresh' in publication) {
-						const previous = results.get(publication.processId);
-						if (previous) {
-							const updated = {
-								...previous,
-								state: publication.state,
-								provider: publication.provider,
-							};
-							if (isLiveListing(updated)) results.set(publication.processId, updated);
-							else results.delete(publication.processId);
-						}
-					} else {
-						results.delete(publication.processId);
-						if (publication.result && isLiveListing(publication.result)) {
-							results.set(publication.processId, publication.result);
-						}
-					}
-				}
-				return [...results.values()];
-			});
+			setPortableHomeListings((current) => mergeResolvedListingBatch(current, batch));
 		});
 		void (async () => {
 			let indexFailure: unknown;
@@ -3544,16 +3520,11 @@ function Home() {
 						maxAge: HOME_STATE_MAX_AGE,
 						maxAttempts: 1,
 						staleWhileRevalidate: HOME_STATE_STALE_WHILE_REVALIDATE,
-						onRevalidated: (fresh) => {
-							if (controller.signal.aborted) return;
-							publications.push({
-								processId,
-								state: fresh.state,
-								provider: fresh.provider,
-								refresh: true,
-							});
-						},
 					}),
+				onRevalidated: (result, candidate, cause) => {
+					if (controller.signal.aborted || cause) return;
+					publications.push({ processId: candidate.processId, result });
+				},
 				onSettled: (result, candidate, cause) => {
 					if (controller.signal.aborted) return;
 					computeAttempts += 1;
@@ -11741,7 +11712,7 @@ export function interleaveCollectionAssets(
 export function homeDiscoveryAssets(
 	collections: Collection[],
 	verifiedListings: Record<string, AssetSummary[]>,
-	limit: number,
+	fallbackLimit: number,
 	portableListings: Array<Pick<ResolvedAsset, 'asset' | 'collection'> & { activity?: HomeListingActivity }> = []
 ) {
 	const collectionsById = new Map(collections.map((collection) => [collection.id, collection]));
@@ -11750,13 +11721,18 @@ export function homeDiscoveryAssets(
 			...collection,
 			assets: verifiedListings[collection.id] ?? [],
 		})),
-		limit
+		Number.POSITIVE_INFINITY
 	).map(({ asset, collection }) => ({ asset, collection: collectionsById.get(collection.id)! }));
 	const fallback = interleaveCollectionAssets(
 		collections,
-		limit,
+		fallbackLimit,
 		(asset, collection) => Boolean(asset.image || asset.media) || collection.kind === 'tokens'
 	);
+	// The preview budget only bounds speculative reads. Known listings and
+	// indexed tokens must survive until the view filters and pagination run.
+	const tokens = collections
+		.filter((collection) => collection.kind === 'tokens')
+		.flatMap((collection) => collection.assets.map((asset) => ({ asset, collection })));
 	const verifiedAssets = new Map(
 		Object.values(verifiedListings)
 			.flat()
@@ -11772,14 +11748,13 @@ export function homeDiscoveryAssets(
 			const asset = verifiedAssets.get(listing.asset.id);
 			return asset ? { ...listing, asset } : listing;
 		});
-	return [...portable, ...verified, ...fallback]
+	return [...portable, ...verified, ...tokens, ...fallback]
 		.filter(({ asset, collection }) => isVisibleCollectionId(collection.id) && isVisibleAssetId(asset.id))
 		.filter(({ asset }) => {
 			if (seen.has(asset.id)) return false;
 			seen.add(asset.id);
 			return true;
-		})
-		.slice(0, limit);
+		});
 }
 
 export function homeAllAssets(
