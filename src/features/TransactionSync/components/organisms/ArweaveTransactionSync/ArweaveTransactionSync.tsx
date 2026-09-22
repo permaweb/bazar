@@ -7,9 +7,10 @@ import { type Observer, type ObserverView, type PurchaseTransaction } from 'api/
 import { Button } from 'components/atoms/Button';
 import { Tooltip } from 'components/atoms/Tooltip';
 import { TxAddress } from 'components/atoms/TxAddress';
-import { useLanguageProvider } from 'providers/LanguageProvider';
+import { useMessages } from 'providers/LanguageProvider';
 
 import { type ArweaveMiningTelemetry, useArweaveMiningTelemetry } from '../../../hooks/useArweaveMiningTelemetry';
+import { TRANSACTION_SYNC_MESSAGES, type TransactionSyncMessages } from '../../../messages';
 import { observerVerificationDelayed, quorumConfirmationDepth } from '../../../model/confirmationDepth';
 import { confirmationProgress } from '../../../model/progressColors';
 import {
@@ -111,7 +112,7 @@ type Props = {
 };
 
 export default function ArweaveTransactionSync(props: Props) {
-	const language = useLanguageProvider().strings;
+	const language = useMessages(TRANSACTION_SYNC_MESSAGES);
 	const active = props.steps.find((step) => step.key === props.activeStep) ?? props.steps[0];
 	const activeKey = active?.key;
 	const transaction = active?.transaction;
@@ -441,7 +442,7 @@ function latestObserverState(views: ObserverView[]): ObserverView['state'] {
 	return latest?.state ?? 'unknown';
 }
 
-function localizedRisk(depth: number, language: any): string {
+function localizedRisk(depth: number, language: TransactionSyncMessages): string {
 	if (depth === 2) return language.transactionSyncForkDaily;
 	if (depth === 3) return language.transactionSyncForkMonthly;
 	return language.transactionSyncForkTwoYears;
@@ -804,7 +805,10 @@ function useProtocolTelemetry(
 	};
 }
 
-function protocolMetrics(telemetry: ProtocolTelemetry, language: any): Array<{ label: string; value: string }> {
+function protocolMetrics(
+	telemetry: ProtocolTelemetry,
+	language: TransactionSyncMessages
+): Array<{ label: string; value: string }> {
 	return [
 		{ label: language.transactionSyncProtocolResponseRate, value: telemetry.responsesPerSecond.toFixed(2) },
 		{ label: language.transactionSyncProtocolResponses, value: telemetry.responses.toLocaleString() },
@@ -834,7 +838,7 @@ function protocolMetrics(telemetry: ProtocolTelemetry, language: any): Array<{ l
 	];
 }
 
-function formatCandidateRate(value: number | undefined, language: any): string {
+function formatCandidateRate(value: number | undefined, language: TransactionSyncMessages): string {
 	if (value === undefined) return language.transactionSyncProtocolUnknown;
 	return value.toLocaleString(undefined, {
 		notation: value >= 1_000_000 ? 'compact' : 'standard',
@@ -842,7 +846,7 @@ function formatCandidateRate(value: number | undefined, language: any): string {
 	});
 }
 
-function formatBytes(value: number | undefined, language: any, perSecond = false): string {
+function formatBytes(value: number | undefined, language: TransactionSyncMessages, perSecond = false): string {
 	if (value === undefined) return language.transactionSyncProtocolUnknown;
 	const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB'];
 	let formatted = Math.max(0, value);
@@ -856,18 +860,21 @@ function formatBytes(value: number | undefined, language: any, perSecond = false
 	})} ${units[unit]}${perSecond ? '/s' : ''}`;
 }
 
-function recallContentLabel(content: ArweaveAcceptedProof['recallSamples'][number]['content'], language: any): string {
+function recallContentLabel(
+	content: ArweaveAcceptedProof['recallSamples'][number]['content'],
+	language: TransactionSyncMessages
+): string {
 	const type = content?.contentType?.split(';', 1)[0] ?? language.transactionSyncMiningContentData;
 	return content?.contentLength === undefined ? type : `${type} · ${formatBytes(content.contentLength, language)}`;
 }
 
-function miningStatus(telemetry: ArweaveMiningTelemetry, language: any): string {
+function miningStatus(telemetry: ArweaveMiningTelemetry, language: TransactionSyncMessages): string {
 	if (!telemetry.checked) return language.transactionSyncMiningChecking;
 	if (!telemetry.available) return language.transactionSyncMiningUnavailable;
 	return language.transactionSyncMiningSource.replace('{source}', telemetry.sourceLabel);
 }
 
-function miningProofDetail(proof: ArweaveAcceptedProof, language: any): string {
+function miningProofDetail(proof: ArweaveAcceptedProof, language: TransactionSyncMessages): string {
 	const acceptedProofBytes = proof.recallSamples.reduce((total, sample) => total + (sample.packedBytes ?? 0), 0);
 	const summary = language.transactionSyncMiningProofDetail
 		.replace('{height}', proof.height.toLocaleString())
@@ -907,7 +914,7 @@ function miningProofDetail(proof: ArweaveAcceptedProof, language: any): string {
 	return [summary, ...recalls].join('\n');
 }
 
-function miningProofPinMeta(proof: ArweaveAcceptedProof, language: any): string {
+function miningProofPinMeta(proof: ArweaveAcceptedProof, language: TransactionSyncMessages): string {
 	const acceptedProofBytes = proof.recallSamples.reduce((total, sample) => total + (sample.packedBytes ?? 0), 0);
 	return language.transactionSyncMiningPinProofMeta
 		.replace('{proofs}', String(proof.proofCount))
@@ -924,7 +931,7 @@ function miningProofPinMeta(proof: ArweaveAcceptedProof, language: any): string 
 function miningRecallPinMeta(
 	proof: ArweaveAcceptedProof,
 	sample: ArweaveAcceptedProof['recallSamples'][number],
-	language: any
+	language: TransactionSyncMessages
 ): string | undefined {
 	if (sample.sourceHeight === undefined) return undefined;
 	const age =
@@ -936,7 +943,7 @@ function miningRecallPinMeta(
 		.replace('{height}', sample.sourceHeight.toLocaleString());
 }
 
-function durationLabel(seconds: number, language: any): string {
+function durationLabel(seconds: number, language: TransactionSyncMessages): string {
 	const day = 24 * 60 * 60;
 	const year = 365.25 * day;
 	if (seconds >= year) {
@@ -951,7 +958,7 @@ function durationLabel(seconds: number, language: any): string {
 	);
 }
 
-export function protocolActivityDetail(event: ProtocolActivity, language: any): string {
+export function protocolActivityDetail(event: ProtocolActivity, language: TransactionSyncMessages): string {
 	const unknown = language.transactionSyncProtocolUnknown;
 	const status = event.httpStatus ?? protocolStatusForState(event.state) ?? unknown;
 	const latency = event.latency === undefined ? unknown : String(Math.max(0, Math.round(event.latency)));
@@ -965,7 +972,7 @@ export function protocolActivityDetail(event: ProtocolActivity, language: any): 
 		.replace('{depth}', String(event.confirmations));
 }
 
-function protocolActivityState(event: ProtocolActivity, language: any): string {
+function protocolActivityState(event: ProtocolActivity, language: TransactionSyncMessages): string {
 	if (event.kind === 'error') return language.transactionSyncProtocolStateError;
 	if (event.state === 'not-found') return language.transactionSyncProtocolStateNotFound;
 	if (event.state === 'pending') return language.transactionSyncProtocolStatePending;
@@ -1026,7 +1033,7 @@ function infinity3DLane(
 	steps: ArweaveSyncStep[],
 	liveAt: number,
 	includeProofs: boolean,
-	language: any
+	language: TransactionSyncMessages
 ): Infinity3DLane {
 	const phases = steps.map((step, index) => {
 		const bounds = sequencePhaseBounds(index, steps.length);
@@ -1106,7 +1113,7 @@ function infinity3DPhase(
 	liveAt: number,
 	phaseLabel: string,
 	includeProofs: boolean,
-	language: any
+	language: TransactionSyncMessages
 ): Pick<Infinity3DLane, 'progress' | 'markers'> {
 	if (!lane?.events.length) return { progress: phaseStart, markers: [] };
 	const observedAt = complete ? lane.observedAt : Math.max(lane.observedAt, liveAt);
@@ -1169,7 +1176,7 @@ function infinity3DPhase(
 	};
 }
 
-function proofEventLabel(proof: LaneProof, language: any): string {
+function proofEventLabel(proof: LaneProof, language: TransactionSyncMessages): string {
 	const parts: string[] = [];
 	if (proof.httpStatus !== undefined) {
 		parts.push(language.transactionSyncProofHttpStatus.replace('{status}', String(proof.httpStatus)));
@@ -1195,15 +1202,15 @@ function latestLaneLatency(lane: LaneHistory | undefined): number | undefined {
 	return lane?.proofs[lane.proofs.length - 1]?.latency ?? latestLaneEvent(lane)?.latency;
 }
 
-function observerStatusLabel(label: string, latency: number | undefined, language: any): string {
+function observerStatusLabel(label: string, latency: number | undefined, language: TransactionSyncMessages): string {
 	return latency === undefined ? label : `${label} · ${observerLatencyLabel(latency, language)}`;
 }
 
-function observerLatencyLabel(latency: number, language: any): string {
+function observerLatencyLabel(latency: number, language: TransactionSyncMessages): string {
 	return language.transactionSyncObserverLatency.replace('{latency}', String(Math.max(0, Math.round(latency))));
 }
 
-function protocolEventContext(event: LaneEvent, language: any): string {
+function protocolEventContext(event: LaneEvent, language: TransactionSyncMessages): string {
 	const parts: string[] = [];
 	if (event.httpStatus !== undefined && ![404, 202].includes(event.httpStatus)) {
 		parts.push(language.transactionSyncProofHttpStatus.replace('{status}', String(event.httpStatus)));
@@ -1220,7 +1227,7 @@ function protocolEventContext(event: LaneEvent, language: any): string {
 	return parts.join(' · ');
 }
 
-function observerProtocolDetail(observer: Observer, language: any): string {
+function observerProtocolDetail(observer: Observer, language: TransactionSyncMessages): string {
 	const unknown = language.transactionSyncProtocolUnknown;
 	const sourceKey =
 		observer.source === 'seed'
@@ -1347,19 +1354,23 @@ function eventKey(event: LaneEvent): string {
 	].join(':');
 }
 
-function laneEventLabel(event: LaneEvent, language: any): string {
+function laneEventLabel(event: LaneEvent, language: TransactionSyncMessages): string {
 	return event.state === 'confirmed'
 		? language.transactionSyncLaneConfirmed.replace('{count}', String(event.confirmations))
 		: laneLabel(event.state, language);
 }
 
-function timelineEventLabel(event: LaneEvent, previous: LaneEvent | undefined, language: any): string {
+function timelineEventLabel(
+	event: LaneEvent,
+	previous: LaneEvent | undefined,
+	language: TransactionSyncMessages
+): string {
 	if (event.error) return language.transactionSyncLaneUnavailable;
 	const label = laneEventLabel(event, language);
 	return previous?.error ? language.transactionSyncLaneRecovered.replace('{status}', label) : label;
 }
 
-function laneLabel(state: ObserverView['state'], language: any): string {
+function laneLabel(state: ObserverView['state'], language: TransactionSyncMessages): string {
 	return {
 		unknown: language.transactionSyncLaneConnecting,
 		'not-found': language.transactionSyncLaneWaiting,

@@ -80,6 +80,16 @@ describe('Bazar frontend architecture', () => {
 		expect(result.stderr).toContain('[navigation-ownership]');
 	});
 
+	it('leaves nested git checkouts such as agent worktrees to their own validation', () => {
+		const result = project({
+			'src/helpers/value.ts': 'export const value = 1;',
+			'.claude/worktrees/agent/.git': 'gitdir: ../../../.git/worktrees/agent',
+			'.claude/worktrees/agent/src/helpers/value.test.ts': 'export {};',
+		});
+		expect(result.stderr).toBe('');
+		expect(result.status).toBe(0);
+	});
+
 	it('rejects shared components that depend on API adapters', () => {
 		const result = project({
 			'src/api/assets/index.ts':

@@ -1,89 +1,43 @@
 import React from 'react';
 
-const strings: Record<string, string> = {
-	transaction: 'Transaction',
-	transactionSyncRacePrototypeInfinityCable: 'Network synchronization',
-	transactionSyncLaneConfirmed: 'confirmed',
-	transactionSyncLaneConnecting: 'connecting',
-	transactionSyncLanePending: 'pending',
-	transactionSyncLaneRecovered: 'recovered',
-	transactionSyncLaneReorged: 'reorganized',
-	transactionSyncLaneUnavailable: 'unavailable',
-	transactionSyncLaneWaiting: 'waiting',
-	transactionSyncProtocolTelemetry: 'Network consensus',
-	transactionSyncProtocolLive: 'Live',
-	transactionSyncProtocolRecent: 'Recent network activity',
-	transactionSyncProtocolAgreement: 'Network agreement',
-	transactionSyncProtocolConfirmationEvents: 'Confirmation updates',
-	transactionSyncProtocolDiscoveredBy: 'Discovered by {observer}',
-	transactionSyncProtocolLatestResponse: 'Latest response',
-	transactionSyncProtocolObserver: 'observer',
-	transactionSyncProtocolObservers: 'Observers',
-	transactionSyncProtocolPhase: 'Current phase',
-	transactionSyncProtocolResponseRate: 'Responses / sec',
-	transactionSyncProtocolResponses: 'Responses',
-	transactionSyncProtocolSecondsAgo: '{seconds}s ago',
-	transactionSyncProtocolStateChanges: 'State changes',
-	transactionSyncProtocolUnknown: 'Unknown',
-	transactionSyncVerificationDelayed: 'Observers delayed',
-	transactionSyncVerificationDelayedDetail:
-		'Observers are currently delayed. Your transaction may still be progressing. Come back soon to see progress.',
-	transactionSyncActivityConfirmation: 'Node depth',
-	transactionSyncActivityError: 'Error',
-	transactionSyncActivityProof: 'Block proof',
-	transactionSyncActivityStatus: 'Node status',
-	transactionSyncForkDaily: 'At depth 2, forks occur approximately once per day.',
-	transactionSyncForkMonthly: 'At depth 3, forks occur approximately once per month.',
-	transactionSyncForkTwoYears: 'At depth 4+, forks occur approximately once every two years.',
-	transactionSyncMiningAccepted: 'Accepted block proofs',
-	transactionSyncMiningAgeDays: '{value} days',
-	transactionSyncMiningAgeHours: '{value} hours',
-	transactionSyncMiningAgeYears: '{value} years',
-	transactionSyncMiningAverage: 'Average candidates / sec',
-	transactionSyncMiningBlockLabel: 'Block {height}',
-	transactionSyncMiningCandidateTotal: 'Candidates checked since submission',
-	transactionSyncMiningChecking: 'Sampling live mining activity',
-	transactionSyncMiningContentData: 'Arweave data',
-	transactionSyncMiningDataUnknown: 'Data details unavailable',
-	transactionSyncMiningDiskRate: 'Average disk bytes checked / sec',
-	transactionSyncMiningDiskTotal: 'Disk bytes checked since submission',
-	transactionSyncMiningPinOffset: 'Recall offset {offset}',
-	transactionSyncMiningPinProofMeta: '{proofs} PoA · {proofBytes} · VDF {step}',
-	transactionSyncMiningPinRecallMeta: '{age} · block {height}',
-	transactionSyncMiningProofDetail: 'Block {height} · {proofs} proofs',
-	transactionSyncMiningRecallDetail: 'Recall {index}: offset {offset}',
-	transactionSyncMiningSource: 'source block',
-	transactionSyncMiningTelemetry: 'Arweave protocol',
-	transactionSyncMiningUnavailable: 'Mining activity unavailable',
-	transactionSyncObserverLatency: '{latency} ms',
-	transactionSyncProofBlockId: 'Block {id}',
-	transactionSyncProofCheckedHeight: 'checked at {height}',
-	transactionSyncProofHttpStatus: 'HTTP {status}',
-	transactionSyncProofMinedAtHeight: 'mined at {height}',
-	transactionSyncProofObserved: 'observed',
-	transactionSyncProtocolActivity:
-		'{phase} · {state} · HTTP {status} · {latency} ms · node {height} · observer depth {depth}',
-	transactionSyncProtocolStateConfirmed: 'confirmed',
-	transactionSyncProtocolStateError: 'request failed',
-	transactionSyncProtocolStateGone: 'confirmation reorganized',
-	transactionSyncProtocolStateNotFound: 'not yet seen',
-	transactionSyncProtocolStatePending: 'waiting to be mined',
-	transactionSyncSkip: 'Skip',
-	transactionSyncSkipDetail: 'The registration will keep confirming in the background while settlement continues.',
-	transactionSyncSkipTooltip:
-		'Skip waiting for further confirmation of the registration. Registration protects you from sending a payment while another user is purchasing the same asset.',
-	transactionSyncSkipTitle: 'Continue at {depth} confirmations',
-	transactionSyncYolo: 'YOLO',
-	transactionSyncYoloDetail: 'Continue after three confirmations. Faster, with higher reorganization risk.',
-	transactionSyncYoloTitle: 'Continue early?',
-};
+import {
+	DEFAULT_LANGUAGE,
+	formatPlural,
+	type Language,
+	type MessageCatalog,
+	type Messages,
+	type MessageValues,
+	type PluralMessage,
+	resolveMessages,
+} from 'helpers/i18n';
 
-const LanguageContext = React.createContext({ strings });
-
-export default function LanguageProvider(props: React.PropsWithChildren) {
-	return <LanguageContext.Provider value={{ strings }}>{props.children}</LanguageContext.Provider>;
+interface LanguageContextState {
+	language: Language;
 }
 
-export function useLanguageProvider() {
+// Components rendered outside the provider (isolated tests, portals) read the default language.
+const DEFAULT_CONTEXT: LanguageContextState = { language: DEFAULT_LANGUAGE };
+
+const LanguageContext = React.createContext<LanguageContextState>(DEFAULT_CONTEXT);
+
+export default function LanguageProvider(props: { children: React.ReactNode }) {
+	return <LanguageContext.Provider value={DEFAULT_CONTEXT}>{props.children}</LanguageContext.Provider>;
+}
+
+export function useLanguageProvider(): LanguageContextState {
 	return React.useContext(LanguageContext);
+}
+
+export function useMessages<T extends Messages>(catalog: MessageCatalog<T>): T {
+	const language = useLanguageProvider().language;
+	return React.useMemo(() => resolveMessages(catalog, language), [catalog, language]);
+}
+
+export function usePlural(): (message: PluralMessage, count: number, values?: MessageValues) => string {
+	const language = useLanguageProvider().language;
+	return React.useCallback(
+		(message: PluralMessage, count: number, values?: MessageValues) =>
+			formatPlural(language, message, count, values),
+		[language]
+	);
 }

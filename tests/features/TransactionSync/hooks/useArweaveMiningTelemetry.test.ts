@@ -14,17 +14,9 @@ import {
 	recordMiningSample,
 	writeMiningTelemetrySession,
 } from 'features/TransactionSync/hooks/useArweaveMiningTelemetry';
+import { TRANSACTION_SYNC_MESSAGES } from 'features/TransactionSync/messages';
 
-const language = {
-	transactionSyncProtocolActivity:
-		'{phase} · {state} · HTTP {status} · {latency} ms · node {height} · observer depth {depth}',
-	transactionSyncProtocolStateConfirmed: 'confirmed',
-	transactionSyncProtocolStateError: 'request failed',
-	transactionSyncProtocolStateGone: 'confirmation reorganized',
-	transactionSyncProtocolStateNotFound: 'not yet seen',
-	transactionSyncProtocolStatePending: 'waiting to be mined',
-	transactionSyncProtocolUnknown: 'Unknown',
-};
+const language = TRANSACTION_SYNC_MESSAGES.en;
 
 function step(key: string, id?: string): ArweaveSyncStep {
 	return {

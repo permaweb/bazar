@@ -197,6 +197,8 @@ function walk(directory, options = {}) {
 	return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
 		if (excluded.has(entry.name)) return [];
 		const entryPath = path.join(directory, entry.name);
+		// A nested git checkout (such as an agent worktree) is a separate project with its own validation run.
+		if (entry.isDirectory() && fs.existsSync(path.join(entryPath, '.git'))) return [];
 		if (entry.isDirectory()) return walk(entryPath, options);
 		return [entryPath];
 	});

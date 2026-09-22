@@ -2,7 +2,7 @@ module.exports = {
 	parser: '@typescript-eslint/parser',
 	plugins: ['import', '@typescript-eslint', 'simple-import-sort', 'react-hooks'],
 	extends: [],
-	ignorePatterns: ['dist/**', 'node_modules/**', 'build/**', 'cache/**', '*.config.js'],
+	ignorePatterns: ['dist/**', 'node_modules/**', 'build/**', 'cache/**', '*.config.js', '.claude/worktrees/**'],
 	rules: {
 		'import/no-duplicates': 'error',
 		'simple-import-sort/imports': 'error',
