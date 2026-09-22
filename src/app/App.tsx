@@ -205,6 +205,7 @@ import {
 	usesPermawebOsAo,
 } from 'helpers/config';
 import { scheduleIdleTask } from 'helpers/idle';
+import { createKeyedTaskQueue } from 'helpers/keyed-task-queue';
 import { optionalMotionBehavior } from 'helpers/motion';
 import { assetGroupRevealComplete, retainedAssetGroupLimit } from 'helpers/progressive-assets';
 import { formatTickerLabel, formatTokenDescription } from 'helpers/token-display';
@@ -3376,6 +3377,15 @@ function Home() {
 	const assets =
 		assetView === 'all' ? (assetType === 'all' ? discoverOverviewAssets : assetPagination.items) : assetCandidates;
 	const assetKey = assets.map(({ asset }) => asset.id).join(',');
+	const summaryPriorityKey = [
+		...new Set(
+			[
+				...(assetType === 'all' ? discoverOverviewAssets : assetPagination.items),
+				...assets.filter(({ collection }) => homeAssetTypeMatches(collection, assetType)),
+				...assets,
+			].map(({ asset }) => asset.id)
+		),
+	].join(',');
 	const portableHomeListingById = React.useMemo(
 		() => new Map(portableHomeListings.map((result) => [result.asset.id, result])),
 		[portableHomeListings]
@@ -3399,6 +3409,7 @@ function Home() {
 	const [collectionFloors, setCollectionFloors] = React.useState<Record<string, HomeMarketSummary>>({});
 	const [summaryRetry, setSummaryRetry] = React.useState(0);
 	const [summaryRetrying, setSummaryRetrying] = React.useState(false);
+	const [assetSummaryQueue] = React.useState(() => createKeyedTaskQueue(8));
 	const assetSummaryControllers = React.useRef(new Map<string, AbortController>());
 	const collectionSummaryControllers = React.useRef(
 		new Map<
@@ -3426,11 +3437,12 @@ function Home() {
 	React.useEffect(
 		() => () => {
 			for (const controller of assetSummaryControllers.current.values()) controller.abort();
+			assetSummaryQueue.clear();
 			for (const { controller } of collectionSummaryControllers.current.values()) controller.abort();
 			assetSummaryControllers.current.clear();
 			collectionSummaryControllers.current.clear();
 		},
-		[]
+		[assetSummaryQueue]
 	);
 	React.useEffect(() => {
 		if (!shouldLoadAssetSummaries || !visibleDiscoverTokenKey) {
@@ -3518,6 +3530,7 @@ function Home() {
 					readAssetStateCached(processId, {
 						signal,
 						maxAge: HOME_STATE_MAX_AGE,
+						includeBalances: false,
 						maxAttempts: 1,
 						staleWhileRevalidate: HOME_STATE_STALE_WHILE_REVALIDATE,
 					}),
@@ -3634,6 +3647,7 @@ function Home() {
 	React.useEffect(() => {
 		if (!shouldLoadAssetSummaries) {
 			for (const controller of assetSummaryControllers.current.values()) controller.abort();
+			assetSummaryQueue.clear();
 			assetSummaryControllers.current.clear();
 			return;
 		}
@@ -3641,6 +3655,7 @@ function Home() {
 		for (const [assetId, controller] of assetSummaryControllers.current) {
 			if (visibleAssetIds.has(assetId)) continue;
 			controller.abort();
+			assetSummaryQueue.cancel(assetId);
 			assetSummaryControllers.current.delete(assetId);
 		}
 		setAssetPrices((current) =>
@@ -3657,7 +3672,21 @@ function Home() {
 				retryAssetSummaries.current
 			)
 		);
-		const requestedAssets = assets.filter(({ asset }) => requestedAssetIds.has(asset.id));
+		const priorityIds = summaryPriorityKey.split(',');
+		const priority = new Map(priorityIds.map((id, index) => [id, index]));
+		const requestedAssets = assets
+			.filter(({ asset }) => requestedAssetIds.has(asset.id))
+			.sort((left, right) => priority.get(left.asset.id)! - priority.get(right.asset.id)!);
+		// Reserve every queued ID before starting work so incremental catalogue
+		// updates cannot enqueue and abort the same unfinished reads again.
+		const scheduled = requestedAssets.map(({ asset, collection }) => {
+			assetSummaryControllers.current.get(asset.id)?.abort();
+			assetSummaryQueue.cancel(asset.id);
+			const controller = new AbortController();
+			assetSummaryControllers.current.set(asset.id, controller);
+			return { asset, collection, controller };
+		});
+		assetSummaryQueue.prioritize(priorityIds);
 		const retryToken = summaryRetryRun.current.pending.has('assets') ? summaryRetryRun.current.token : null;
 		let retryFinished = false;
 		const finishRetry = () => {
@@ -3666,64 +3695,82 @@ function Home() {
 			finishSummaryRetry(retryToken, 'assets');
 		};
 		retryAssetSummaries.current.clear();
-		void mapConcurrent(requestedAssets, 8, async ({ asset, collection }) => {
-			const previous = assetSummaryControllers.current.get(asset.id);
-			if (previous) previous.abort();
-			const controller = new AbortController();
-			assetSummaryControllers.current.set(asset.id, controller);
-			let trackingRevalidation = false;
-			try {
-				const publishPrice = (state: AssetState) => {
-					const order = bestAskOfAsset(state);
-					if (!controller.signal.aborted) {
-						const image = collectionAsset(collection, asset.id, state)?.image;
-						setAssetPrices((current) => ({
-							...current,
-							[asset.id]: { status: 'resolved', value: order ? orderPriceLabel(order, state) : null },
-						}));
-						if (image) {
-							setAssetImages((current) =>
-								current[asset.id] === image ? current : { ...current, [asset.id]: image }
-							);
-						}
-					}
-				};
-				const portable = portableHomeListingById.get(asset.id);
-				let state = portable?.state;
-				if (!state) {
-					const computed = await readAssetStateCached(asset.id, {
-						signal: controller.signal,
-						maxAge: HOME_STATE_MAX_AGE,
-						maxAttempts: 1,
-						staleWhileRevalidate: HOME_STATE_STALE_WHILE_REVALIDATE,
-						onRevalidated: (fresh) => publishPrice(fresh.state),
-					});
-					state = computed.state;
-					if (computed.revalidation) {
-						trackingRevalidation = true;
-						const finishRevalidation = () => {
-							if (assetSummaryControllers.current.get(asset.id) === controller) {
-								assetSummaryControllers.current.delete(asset.id);
+		void Promise.all(
+			scheduled.map(({ asset, collection, controller }) =>
+				assetSummaryQueue.enqueue(asset.id, async () => {
+					if (controller.signal.aborted) return;
+					let trackingRevalidation = false;
+					try {
+						const publishPrice = (state: AssetState) => {
+							const order = bestAskOfAsset(state);
+							if (!controller.signal.aborted) {
+								const image = collectionAsset(collection, asset.id, state)?.image;
+								setAssetPrices((current) => ({
+									...current,
+									[asset.id]: {
+										status: 'resolved',
+										value: order ? orderPriceLabel(order, state) : null,
+									},
+								}));
+								if (image) {
+									setAssetImages((current) =>
+										current[asset.id] === image ? current : { ...current, [asset.id]: image }
+									);
+								}
 							}
 						};
-						void computed.revalidation.then(finishRevalidation, finishRevalidation);
+						const portable = portableHomeListingById.get(asset.id);
+						let state = portable?.state;
+						if (!state) {
+							const computed = await readAssetStateCached(asset.id, {
+								signal: controller.signal,
+								maxAge: HOME_STATE_MAX_AGE,
+								includeBalances: false,
+								maxAttempts: 1,
+								staleWhileRevalidate: HOME_STATE_STALE_WHILE_REVALIDATE,
+								onRevalidated: (fresh) => publishPrice(fresh.state),
+							});
+							state = computed.state;
+							if (computed.revalidation) {
+								trackingRevalidation = true;
+								const finishRevalidation = () => {
+									if (assetSummaryControllers.current.get(asset.id) === controller) {
+										assetSummaryControllers.current.delete(asset.id);
+									}
+								};
+								void computed.revalidation.then(finishRevalidation, finishRevalidation);
+							}
+						}
+						publishPrice(state);
+					} catch (cause) {
+						if (!controller.signal.aborted) {
+							setAssetPrices((current) => ({
+								...current,
+								[asset.id]: {
+									status: 'unavailable',
+									source: 'compute',
+									kind: marketplaceFailureKind(cause),
+								},
+							}));
+						}
+					} finally {
+						if (!trackingRevalidation && assetSummaryControllers.current.get(asset.id) === controller) {
+							assetSummaryControllers.current.delete(asset.id);
+						}
 					}
-				}
-				publishPrice(state);
-			} catch (cause) {
-				if (!controller.signal.aborted) {
-					setAssetPrices((current) => ({
-						...current,
-						[asset.id]: { status: 'unavailable', source: 'compute', kind: marketplaceFailureKind(cause) },
-					}));
-				}
-			} finally {
-				if (!trackingRevalidation && assetSummaryControllers.current.get(asset.id) === controller) {
-					assetSummaryControllers.current.delete(asset.id);
-				}
-			}
-		}).then(finishRetry);
-	}, [assetKey, finishSummaryRetry, portableHomeStateKey, shouldLoadAssetSummaries, summaryRetry]);
+				})
+			)
+		).then(finishRetry);
+		assetSummaryQueue.prioritize(priorityIds);
+	}, [
+		assetKey,
+		assetSummaryQueue,
+		finishSummaryRetry,
+		portableHomeStateKey,
+		shouldLoadAssetSummaries,
+		summaryRetry,
+		summaryPriorityKey,
+	]);
 	const marketShellLoading = homeMarketShellLoading(market.loading, market.collections.length);
 	const shouldLoadCollectionSummaries = shouldLoadHomeCollectionSummaries(homeTab);
 	React.useEffect(() => {
@@ -3804,6 +3851,7 @@ function Home() {
 							readAssetStateCached(processId, {
 								signal,
 								maxAge: HOME_STATE_MAX_AGE,
+								includeBalances: false,
 								maxAttempts: 1,
 								staleWhileRevalidate: HOME_STATE_STALE_WHILE_REVALIDATE,
 							}),
