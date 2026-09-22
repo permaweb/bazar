@@ -14,6 +14,7 @@ import {
 	clearAssetStateCache,
 	DISPLAY_STATE_TIMEOUT_ERROR,
 	DISPLAY_STATE_TIMEOUT_MS,
+	invalidateAssetState,
 	prefetchAssetState,
 	prioritizeAssetStatePrefetch,
 	readAssetStateCached,
@@ -87,6 +88,34 @@ describe('asset state store', () => {
 		await readAssetStateCached(processId);
 		expect(mocks.readAssetState).toHaveBeenCalledTimes(1);
 		expect(mocks.readAssetState).toHaveBeenCalledWith(processId, expect.objectContaining({ maxAge: 60 }));
+	});
+
+	it('reuses complete cached state for market reads without another network request', async () => {
+		await readAssetStateCached(processId);
+		expect(await readAssetStateCached(processId, { includeBalances: false })).toBe(result);
+		expect(mocks.readAssetState).toHaveBeenCalledOnce();
+	});
+
+	it('isolates market-only cache entries from full wallet state and invalidates both', async () => {
+		const market = { ...result, state: { ...result.state, balances: {}, holderBalancesAvailable: false } };
+		mocks.readAssetState.mockImplementation(async (_id, options) =>
+			options.includeBalances === false ? market : result
+		);
+		const [marketResult, fullResult] = await Promise.all([
+			readAssetStateCached(processId, { includeBalances: false }),
+			readAssetStateCached(processId),
+		]);
+		expect(marketResult).toBe(market);
+		expect(fullResult).toBe(result);
+		expect(mocks.readAssetState).toHaveBeenCalledTimes(2);
+		expect(cachedAssetState(processId)).toBe(result);
+		expect(await readAssetStateCached(processId, { includeBalances: false })).toBe(market);
+		expect(await readAssetStateCached(processId)).toBe(result);
+		expect(mocks.readAssetState).toHaveBeenCalledTimes(2);
+		invalidateAssetState(processId);
+		await readAssetStateCached(processId, { includeBalances: false });
+		await readAssetStateCached(processId);
+		expect(mocks.readAssetState).toHaveBeenCalledTimes(4);
 	});
 
 	it('does not reuse cached state after an opaque route fingerprint changes', async () => {

@@ -75,6 +75,54 @@ describe('servingNodeOrigin', () => {
 });
 
 describe('asset state', () => {
+	it('reads live market orders without requesting a slow holder table', async () => {
+		const balancesLink = 'B'.repeat(43);
+		const ordersLink = 'O'.repeat(43);
+		const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+			const url = String(input);
+			if (url === `/${ordersLink}`) return jsonResponse({ [orderId]: order(orderId) });
+			if (!url.includes('~process@1.0/')) throw new Error('unexpected holder request');
+			if (url.endsWith('/balances/device')) throw new Error('unexpected holder probe');
+			return new Response(null, {
+				headers: {
+					'execution-device': 'token@1.0',
+					'total-supply': '1',
+					'balances+link': balancesLink,
+					'orders+link': ordersLink,
+				},
+			});
+		});
+		const result = await readAssetState(processId, { fetch: fetcher, includeBalances: false });
+		expect(bestAskOfAsset(result.state)?.orderId).toBe(orderId);
+		expect(result.state.balances).toEqual({});
+		expect(result.state.holderBalancesAvailable).toBe(false);
+		expect(fetcher).toHaveBeenCalledTimes(2);
+	});
+
+	it('keeps market revalidation independent of holder tables', async () => {
+		const stale = jsonResponse({
+			'execution-device': 'token@1.0',
+			'total-supply': '1',
+			orders: {},
+			'balances+link': 'B'.repeat(43),
+		});
+		const fresh = jsonResponse({
+			'execution-device': 'token@1.0',
+			'total-supply': '1',
+			orders: { [orderId]: order(orderId) },
+			'balances+link': 'C'.repeat(43),
+		});
+		window.aoFetch!.cacheMetadata = (response) =>
+			response === stale ? { status: 'stale', age: 60, revalidation: Promise.resolve(fresh) } : undefined;
+		const fetcher = vi.fn(async () => stale);
+		const initial = await readAssetState(processId, { fetch: fetcher, includeBalances: false });
+		expect(bestAskOfAsset(initial.state)).toBeNull();
+		const refreshed = await initial.revalidation!;
+		expect(bestAskOfAsset(refreshed.state)?.orderId).toBe(orderId);
+		expect(refreshed.state.holderBalancesAvailable).toBe(false);
+		expect(fetcher).toHaveBeenCalledOnce();
+	});
+
 	it('recognizes legacy balance identities without relaxing arbitrary keys', () => {
 		expect(isBalanceIdentity(owner)).toBe(true);
 		expect(isBalanceIdentity('_Jwsx_-ameSFkPOrRIy1oCIT7G3HpBKdbN4sHcgrJTZs')).toBe(true);
