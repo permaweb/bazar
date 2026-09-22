@@ -318,6 +318,34 @@ describe('asset state', () => {
 		expect(requests.slice(1).every(({ headers }) => headers.get('cache-control') === null)).toBe(true);
 	});
 
+	it.each(['A work — kept forever', 'Café · 東京', '🎨 Permanent art', 'Legacy café'])(
+		'decodes display metadata from HTTP header octets: %s',
+		async (description) => {
+			const header = description.startsWith('Legacy')
+				? description
+				: Array.from(new TextEncoder().encode(description), (byte) => String.fromCharCode(byte)).join('');
+			const result = await readAssetState(processId, {
+				provider: 'https://compute.example',
+				fetch: async (input) => {
+					if (String(input).endsWith('/balances/device')) return new Response('message@1.0');
+					if (String(input).includes('serialize~json@1.0')) {
+						return jsonResponse({ device: 'json@1.0', [owner]: '1' });
+					}
+					return new Response(null, {
+						headers: {
+							device: 'process@1.0',
+							'execution-device': 'token@1.0',
+							'total-supply': '1',
+							'balances+link': 'B'.repeat(43),
+							description: header,
+						},
+					});
+				},
+			});
+			expect(result.state.raw.description).toBe(description);
+		}
+	);
+
 	it('skips a linked balance trie instead of downloading every message', async () => {
 		const rootId = 'R'.repeat(43);
 		const requests: Array<{ url: string; init: RequestInit }> = [];

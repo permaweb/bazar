@@ -334,6 +334,9 @@ export type CollectionActivityPage = {
 export type CollectionActivityPageOptions = Omit<CollectionActivityOptions, 'limit' | 'onPage'> & {
 	cursor?: string | null;
 	pageSize?: number;
+	/** Omit the gateway-specific count extension for portable native GraphQL paging. */
+	includeCount?: boolean;
+	priority?: RequestPriority;
 };
 
 type BatchedCollectionActivityOptions = Omit<CollectionActivityOptions, 'onPage' | 'recipients'> & {
@@ -461,7 +464,7 @@ const COLLECTION_ACTIVITY_PAGE_QUERY = `query CollectionActivityPage(
 }`;
 
 const COLLECTION_ACTIVITY_CURSOR_PAGE_QUERY = `query CollectionActivityCursorPage(
-	$cursor: String!
+	$cursor: String
 	$first: Int!
 	$recipients: [String!]
 	$tags: [TagFilter!]!
@@ -1199,12 +1202,13 @@ export async function discoverCollectionActivityPage(
 	if (!actions.length) return { events: [], cursor: null, hasNextPage: false, totalCount: 0 };
 
 	options.signal?.throwIfAborted();
-	const includeCount = !cursor;
+	const includeCount = !cursor && options.includeCount !== false;
 	const { response, body: payload } = await fetchJsonWithDeadline<any>(
 		fetcher,
 		graphql,
 		{
 			method: 'POST',
+			priority: options.priority,
 			headers: { 'content-type': 'application/json' },
 			body: JSON.stringify({
 				query: includeCount ? COLLECTION_ACTIVITY_PAGE_QUERY : COLLECTION_ACTIVITY_CURSOR_PAGE_QUERY,
@@ -1226,9 +1230,16 @@ export async function discoverCollectionActivityPage(
 	if (!payload) throw new Error('collection-activity-graphql-empty');
 	if (payload?.errors?.length) throw new Error('collection-activity-graphql-error');
 	const connection = decodeGraphqlConnection(payload, 'transactions', 'collection-activity-graphql-schema');
+	const requestedRecipients = options.recipients === undefined ? null : new Set(recipients);
 	let events = connection.edges.flatMap((edge) => {
 		const event = activityEventFromNode(edge.node);
-		if (!event || (options.acceptProcessId && !options.acceptProcessId(event.processId))) return [];
+		if (
+			!event ||
+			!actions.includes(event.action) ||
+			(requestedRecipients && !requestedRecipients.has(event.processId)) ||
+			(options.acceptProcessId && !options.acceptProcessId(event.processId))
+		)
+			return [];
 		return [event];
 	});
 	if (options.requiredExecutionDevice && events.length) {
@@ -1247,7 +1258,7 @@ export async function discoverCollectionActivityPage(
 	const totalCount =
 		typeof parsedCount === 'number' && Number.isSafeInteger(parsedCount) && parsedCount >= 0 ? parsedCount : null;
 	const nextCursor = connection.pageInfo.hasNextPage ? connection.edges.at(-1)?.cursor ?? null : null;
-	if (connection.pageInfo.hasNextPage && !nextCursor) {
+	if (connection.pageInfo.hasNextPage && (!nextCursor || nextCursor === cursor)) {
 		throw new Error('collection-activity-pagination-stalled');
 	}
 	return {

@@ -1,4 +1,8 @@
 const FRIENDLY_ERRORS: Record<string, string> = {
+	'asset-purchase-registration-fee-too-high':
+		'This listing requires a reservation fee above Bazar’s purchase limit. The seller needs to relist the asset with a lower fee.',
+	'asset-purchase-invalid-registration-fee':
+		'This listing has an invalid reservation fee. The seller needs to correct the listing before it can be purchased.',
 	'browser-storage-full':
 		'Bazar could not safely save this operation because this browser’s site storage is full. Bazar already cleared its rebuildable caches, but more space is required. Free storage for this site, then continue from the status shown here.',
 	'collection-indexes-unavailable':
@@ -64,6 +68,29 @@ const FRIENDLY_ERRORS: Record<string, string> = {
 	'payment-dispatch-rejected':
 		'The submission gateway rejected the signed seller payment. The reservation may still be active; continue to recheck it and sign only a replacement payment if needed.',
 };
+
+export function purchaseQuoteFailure(error: unknown): { message: string; retryable: boolean } {
+	const value = error instanceof Error ? error.message : String(error);
+	if (/^asset-purchase-(?:registration-fee-too-high|invalid-registration-fee)$/.test(value)) {
+		return { message: marketplaceErrorMessage(error), retryable: false };
+	}
+	if (/wallet-balance/.test(value)) {
+		return {
+			message: 'Your AR balance could not be checked. Retry the cost check before buying.',
+			retryable: true,
+		};
+	}
+	if (/transaction-price/.test(value)) {
+		return {
+			message: 'Arweave network fees are unavailable. Retry the cost check before buying.',
+			retryable: true,
+		};
+	}
+	return {
+		message: 'Purchase costs could not be checked. Check your connection and try again. No payment has been sent.',
+		retryable: true,
+	};
+}
 
 export function marketplaceErrorMessage(error: unknown): string {
 	const value = error instanceof Error ? error.message : String(error);

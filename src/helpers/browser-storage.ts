@@ -1,5 +1,6 @@
 export const MARKET_SHELL_STORAGE_KEY = 'bazar-market-shell:v1';
 export const MARKET_ACTIVITY_STORAGE_KEY = 'bazar-market-activity:v1';
+export const GLOBAL_ACTIVITY_STATS_STORAGE_KEY = 'bazar-global-activity-stats:v1';
 export const HOME_LISTING_SHELL_STORAGE_KEY = 'bazar-home-listing-shell:v1';
 export const HIDDEN_COLLECTION_ASSETS_STORAGE_KEY = 'bazar-hidden-collection-assets:v1';
 export const ASSET_SHELL_STORAGE_PREFIX = 'bazar-asset-shell:v1:';
@@ -8,6 +9,7 @@ export const WALLET_CANDIDATE_SCAN_STORAGE_PREFIX = 'bazar.wallet-candidate-scan
 const REBUILDABLE_CACHE_KEYS = [
 	MARKET_SHELL_STORAGE_KEY,
 	MARKET_ACTIVITY_STORAGE_KEY,
+	GLOBAL_ACTIVITY_STATS_STORAGE_KEY,
 	HOME_LISTING_SHELL_STORAGE_KEY,
 	HIDDEN_COLLECTION_ASSETS_STORAGE_KEY,
 ];

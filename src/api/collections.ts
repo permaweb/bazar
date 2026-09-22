@@ -953,7 +953,8 @@ async function loadFungibleTokenPage(after?: string, signal?: AbortSignal): Prom
 	const assets = new Map<string, AssetSummary>();
 	let hiddenIndexedAssets = 0;
 	for (const { node } of connection.edges) {
-		if (node.bundledIn || !isVisibleAssetId(node.id)) {
+		// Native query@1.0 represents an unbundled transaction as { id: '' }.
+		if (node.bundledIn?.id || !isVisibleAssetId(node.id)) {
 			hiddenIndexedAssets += 1;
 			continue;
 		}
@@ -997,7 +998,7 @@ async function loadFungibleTokenPage(after?: string, signal?: AbortSignal): Prom
 			throw new Error('fungible-index-schema');
 		if (legacy.pageInfo.hasNextPage) throw new Error('fungible-index-legacy-pagination-stalled');
 		for (const { node } of legacy.edges) {
-			if (node.bundledIn || !isVisibleAssetId(node.id)) continue;
+			if (node.bundledIn?.id || !isVisibleAssetId(node.id)) continue;
 			const tags = Object.fromEntries(node.tags.map((tag) => [tag.name.toLowerCase(), tag.value]));
 			if (assetUiStyle(tags) !== 'fungible' || !(expectedTag in tags)) continue;
 			legacyAssets.set(node.id, {

@@ -2,6 +2,8 @@ import React from 'react';
 
 import type { CollectionActivityEvent } from 'api/asset-discovery';
 
+import { Loading } from 'components/Loading';
+
 const MAX_BUCKETS = 30;
 const NATURAL_INTERVALS = [60 * 60, 6 * 60 * 60, 24 * 60 * 60, 7 * 24 * 60 * 60, 30 * 24 * 60 * 60];
 
@@ -27,7 +29,7 @@ function eventTimestamp(event: CollectionActivityEvent) {
 export function globalActivityChartStats(events: CollectionActivityEvent[]): GlobalActivityChartStats {
 	const dated = events
 		.map((event) => ({ event, timestamp: eventTimestamp(event) }))
-		.filter(({ timestamp }) => Number.isFinite(timestamp) && timestamp >= 0)
+		.filter(({ timestamp }) => Number.isFinite(timestamp) && timestamp > 0)
 		.sort((left, right) => left.timestamp - right.timestamp);
 	const participants = new Set(events.map((event) => event.actor).filter(Boolean));
 	const listings = events.filter((event) => event.action === 'make-offer').length;
@@ -304,10 +306,33 @@ function StatCard({
 	);
 }
 
-export function GlobalActivityCharts({ events }: { events: CollectionActivityEvent[] }) {
-	const stats = React.useMemo(() => globalActivityChartStats(events), [events]);
+export function GlobalActivityCharts({
+	events,
+	stats: summary,
+	loading = false,
+	unavailable = false,
+}: {
+	events?: CollectionActivityEvent[];
+	stats?: GlobalActivityChartStats;
+	loading?: boolean;
+	unavailable?: boolean;
+}) {
+	const stats = React.useMemo(() => summary ?? globalActivityChartStats(events ?? []), [events, summary]);
 	const latest = stats.buckets.at(-1);
 	const starts = stats.buckets.map((bucket) => bucket.start);
+	if (loading || unavailable)
+		return (
+			<section aria-label="Global market statistics" className="global-activity-stats">
+				{['Events', 'Listings submitted', 'Market participants'].map((label) => (
+					<article className="global-activity-stat global-activity-stat-pending" key={label}>
+						<div className="global-activity-stat-copy">
+							<h3>{label}</h3>
+						</div>
+						{loading ? <Loading label={`Loading ${label.toLowerCase()}…`} /> : <p>Unavailable</p>}
+					</article>
+				))}
+			</section>
+		);
 	return (
 		<section aria-label="Global market statistics" className="global-activity-stats">
 			<StatCard

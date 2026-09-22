@@ -169,11 +169,18 @@ describe('Arweave gateway routing', () => {
 		});
 	});
 
-	it('posts GraphQL queries through the selected Arweave gateway', () => {
-		expect(arweaveGraphqlEndpoint(location())).toBe('https://bazar.arweave.net/graphql');
+	it('uses the native query device on the selected Arweave gateway, independently of compute', () => {
+		expect(arweaveGraphqlEndpoint(location())).toBe('https://bazar.arweave.net/~query@1.0/graphql');
 		expect(arweaveGraphqlEndpoint(location({ search: '?arweave-node=https%3A%2F%2Fgateway.example' }))).toBe(
-			'https://gateway.example/graphql'
+			'https://gateway.example/~query@1.0/graphql'
 		);
+		expect(arweaveGraphqlEndpoint(location({ search: '?node=https%3A%2F%2Fcompute.example' }))).toBe(
+			'https://bazar.arweave.net/~query@1.0/graphql'
+		);
+		expect(arweaveGraphqlEndpoint(location({ protocol: 'http:', hostname: '127.0.0.1', port: '4174' }))).toBe(
+			'https://arweave.net/~query@1.0/graphql'
+		);
+		expect(arweaveGraphqlEndpoint('https://gateway.example/')).toBe('https://gateway.example/~query@1.0/graphql');
 	});
 
 	it('builds an ordinary Arweave resource URL', () => {

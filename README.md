@@ -53,6 +53,12 @@ starts with an immutable JSON manifest and lets its holder publish a signed
 `set` pointing at a later manifest when assets are added. Carrier names are discovered directly from Arweave
 GraphQL and paged in the browser.
 
+All GraphQL searches use `POST <selected-Arweave-gateway>/~query@1.0/graphql`,
+matching Molecule's native query-device route. Deployed builds use the serving
+gateway; local development defaults to `https://arweave.net`. An explicit
+`arweave-node` override selects another Arweave gateway independently of AO
+compute peers. There is no fallback to `/graphql` or Goldsky.
+
 ## Wallet inventory
 
 `#/my-assets` discovers a wallet's possible assets with one paginated,

@@ -221,7 +221,7 @@ describe('Bazar atomic asset search', () => {
 
 		const results = await searchBazarAtomicAssetsByName(' lucifer shrek ', {
 			fetch: fetcher as typeof fetch,
-			graphql: 'https://arweave.net/graphql',
+			graphql: 'https://arweave.net/~query@1.0/graphql',
 		});
 
 		expect(results).toHaveLength(1);
@@ -2805,7 +2805,7 @@ describe('live candidate resolution', () => {
 
 		const verification = await verifyAssetCandidateSupport(candidates, [tokenCollection], {
 			fetch: fetcher as typeof fetch,
-			graphql: 'https://arweave.net/graphql',
+			graphql: 'https://arweave.net/~query@1.0/graphql',
 			onVerified: (batch) => {
 				verifiedBatches.push(batch.map((candidate) => candidate.processId));
 			},
@@ -2853,7 +2853,7 @@ describe('live candidate resolution', () => {
 
 		const verification = await verifyAssetCandidateSupport(candidates, [tokenCollection], {
 			fetch: fetcher as typeof fetch,
-			graphql: 'https://arweave.net/graphql',
+			graphql: 'https://arweave.net/~query@1.0/graphql',
 			onVerified: (batch) => {
 				verifiedBatches.push(batch.map((candidate) => candidate.processId));
 			},
@@ -2890,7 +2890,7 @@ describe('live candidate resolution', () => {
 		const reason = new Error('support-check-stopped');
 		const pending = verifyAssetCandidateSupport(candidates, [tokenCollection], {
 			fetch: fetcher as typeof fetch,
-			graphql: 'https://arweave.net/graphql',
+			graphql: 'https://arweave.net/~query@1.0/graphql',
 			signal: controller.signal,
 		});
 		await vi.waitFor(() => expect(started).toBe(2));

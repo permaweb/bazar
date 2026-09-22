@@ -53,6 +53,26 @@ describe('global activity chart statistics', () => {
 		expect(chartHoverIndex(100, 100, 0, 3)).toBeNull();
 	});
 
+	it('shows spinners instead of partial numbers until the independent summary is ready', () => {
+		const markup = renderToStaticMarkup(
+			<GlobalActivityCharts loading events={[event('one', 'make-offer', 'wallet', 100)]} />
+		);
+		expect(markup.match(/role="status"/g)).toHaveLength(3);
+		expect(markup).toContain('Loading market participants');
+		expect(markup).not.toContain('global-activity-counter-value');
+		expect(markup).not.toContain('role="img"');
+	});
+
+	it('keeps pending events in totals without giving the chart a 1970 start date', () => {
+		expect(globalActivityChartStats([event('pending', 'make-offer', 'wallet', 0)])).toMatchObject({
+			events: 1,
+			listings: 1,
+			participants: 1,
+			buckets: [],
+			period: 'No dated activity',
+		});
+	});
+
 	it('renders keyboard-inspectable charts and naturally spaced rolling counters', () => {
 		const markup = renderToStaticMarkup(
 			<GlobalActivityCharts events={[event('listing', 'make-offer', 'wallet-a', 24 * 60 * 60)]} />
